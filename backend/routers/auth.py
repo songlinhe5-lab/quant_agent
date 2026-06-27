@@ -3,7 +3,7 @@ import secrets
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Cookie, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Cookie, Response, Request
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
@@ -13,6 +13,7 @@ from google.auth.transport import requests as google_requests
 
 from backend.core.database import get_db
 from backend.core import models
+from backend.services.audit_service import log_audit
 import httpx
 from sqlalchemy.orm import Session
 import bcrypt
@@ -81,6 +82,7 @@ def read_users_me(current_user: models.User = Depends(get_current_user)):
 @router.post("/login")
 def login_for_access_token(
     response: Response, 
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(), 
     db: Session = Depends(get_db)
 ):
@@ -98,6 +100,15 @@ def login_for_access_token(
     is_production = os.getenv("QUANT_ENV") == "production"
     response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=is_production, samesite="lax", max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60, path="/")
     
+    # 记录审计日志
+    log_audit(
+        db=db,
+        action="login",
+        detail={"username": user.username, "method": "password"},
+        request=request,
+        user_id=user.id
+    )
+    
     return {"status": "success", "access_token": jwt_token, "token_type": "bearer", "user": {"username": user.username, "email": getattr(user, 'email', None)}}
 
 class ChangePasswordRequest(BaseModel):
@@ -106,15 +117,26 @@ class ChangePasswordRequest(BaseModel):
 
 @router.post("/change-password")
 def change_password(
-    request: ChangePasswordRequest, 
+    password_request: ChangePasswordRequest, 
+    request: Request,
     current_user: models.User = Depends(get_current_user), 
     db: Session = Depends(get_db)
 ):
-    if not verify_password(request.old_password, current_user.hashed_password):
+    if not verify_password(password_request.old_password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="原密码错误")
         
-    current_user.hashed_password = get_password_hash(request.new_password)
+    current_user.hashed_password = get_password_hash(password_request.new_password)
     db.commit()
+    
+    # 记录审计日志
+    log_audit(
+        db=db,
+        action="change_password",
+        detail={"username": current_user.username},
+        request=request,
+        user_id=current_user.id
+    )
+    
     return {"status": "success", "message": "密码修改成功"}
 
 # ==========================================
@@ -125,14 +147,19 @@ class GoogleTokenRequest(BaseModel):
     credential: str
 
 @router.post("/google/verify")
-def verify_google_token(request: GoogleTokenRequest, response: Response, db: Session = Depends(get_db)):
+def verify_google_token(
+    request: Request,
+    token_request: GoogleTokenRequest,
+    response: Response = None,
+    db: Session = Depends(get_db)
+):
     try:
         client_id = os.getenv("GOOGLE_CLIENT_ID", "YOUR_GOOGLE_CLIENT_ID")
         
         # 1. 验证前端传来的 Google ID Token
         idinfo = id_token.verify_oauth2_token(
             # 💡 依赖 main.py 中配置的全局 socket.setdefaulttimeout(15.0) 防死锁挂起
-            request.credential, google_requests.Request(), client_id
+            token_request.credential, google_requests.Request(), client_id
         )
         
         # 2. 验证通过，提取用户信息
@@ -190,6 +217,15 @@ def verify_google_token(request: GoogleTokenRequest, response: Response, db: Ses
             path="/"
         )
         
+        # 记录审计日志
+        log_audit(
+            db=db,
+            action="login",
+            detail={"username": user.username, "method": "google", "email": email},
+            request=request,
+            user_id=user.id
+        )
+        
         return {
             "status": "success",
             "access_token": jwt_token,
@@ -236,7 +272,32 @@ async def refresh_access_token(refresh_token: Optional[str] = Cookie(None), db: 
     return {"access_token": new_access_token}
 
 @router.post("/logout")
-async def logout(response: Response):
+async def logout(response: Response, request: Request, db: Session = Depends(get_db)):
+    # 尝试获取当前用户（可选）
+    user_id = None
+    try:
+        # 从 cookie 中获取 refresh token
+        refresh_token = request.cookies.get("refresh_token")
+        if refresh_token:
+            payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+            username = payload.get("sub")
+            if username:
+                user = db.query(models.User).filter(models.User.username == username).first()
+                if user:
+                    user_id = user.id
+    except:
+        pass  # 忽略解析错误，允许用户未认证时登出
+    
+    # 记录审计日志（如果用户已认证）
+    if user_id:
+        log_audit(
+            db=db,
+            action="logout",
+            detail={"username": username} if username else {},
+            request=request,
+            user_id=user_id
+        )
+    
     # 清理客户端存留的 Refresh Token Cookie
     response.delete_cookie(key="refresh_token", path="/")
     return {"message": "Logged out successfully"}

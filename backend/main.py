@@ -80,12 +80,13 @@ from backend.routers.market import router as market_router
 from backend.routers.trade import router as trade_router
 from backend.routers.macro import router as macro_router
 from backend.routers.preferences import router as preferences_router
-from backend.routers.auth import router as auth_router, get_password_hash
+from backend.routers.auth import router as auth_router
 from backend.routers.backtest import router as backtest_router
 from backend.routers.screener import router as screener_router
 from backend.routers.search import router as search_router
 from backend.routers.strategy import router as strategy_router
 from backend.routers.oms import router as oms_router
+from backend.routers.audit import router as audit_router
 
 # --- 全局单例与连接池 ---
 global_registry = None
@@ -393,6 +394,7 @@ app.include_router(screener_router, prefix="/api/v1")
 app.include_router(search_router, prefix="/api/v1")
 app.include_router(strategy_router, prefix="/api/v1")
 app.include_router(oms_router, prefix="/api/v1")
+app.include_router(audit_router, prefix="/api/v1")
 
 # ==========================================
 # --- JWT 鉴权依赖 (SSR & Client 兼容) ---
