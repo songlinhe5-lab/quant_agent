@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import mermaid from 'mermaid'
 import { useTheme } from 'next-themes'
 import { Sparkles, Loader2 } from 'lucide-react'
+import { sanitizeHtml } from '@/lib/sanitize'
 
 export function MermaidRenderer({ chart }: { chart: string }) {
   const { theme } = useTheme()
@@ -14,7 +15,7 @@ export function MermaidRenderer({ chart }: { chart: string }) {
       startOnLoad: false,
       theme: theme === 'dark' ? 'dark' : 'default',
       fontFamily: 'monospace',
-      securityLevel: 'loose'
+      securityLevel: 'strict'
     })
     
     const renderChart = async () => {
@@ -50,7 +51,7 @@ export function MermaidRenderer({ chart }: { chart: string }) {
       </div>
       <div className="p-2 overflow-x-auto custom-scrollbar flex justify-center min-h-[100px]">
         {svgHtml ? (
-          <div dangerouslySetInnerHTML={{ __html: svgHtml }} />
+          <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(svgHtml) }} />
         ) : (
           <div className="flex items-center gap-2 text-muted-foreground py-4 text-xs m-auto">
             <Loader2 className="w-4 h-4 animate-spin text-indigo-500" /> 正在渲染拓扑图...

@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from '@/components/ui/toaster'
+import { ConfirmDialogProvider } from '@/components/confirm-dialog'
 import { ProtectedRoute } from '@/components/layout/protected-route'
 import DashboardLayout from '@/components/layout/dashboard-layout'
 import LoginPage from '@/features/auth/login'
@@ -33,7 +34,8 @@ function LoadingFallback() {
 export default function App() {
   return (
     <>
-      <BrowserRouter>
+      <ConfirmDialogProvider>
+        <BrowserRouter>
         <Routes>
           {/* 登录页（无布局） */}
           <Route path="/login" element={<LoginPage />} />
@@ -58,10 +60,11 @@ export default function App() {
             <Route path="/settings" element={<Suspense fallback={<LoadingFallback />}><SettingsPage /></Suspense>} />
           </Route>
         </Routes>
-      </BrowserRouter>
+        </BrowserRouter>
 
-      {/* 全局 Toast 通知 */}
-      <Toaster />
+        {/* 全局 Toast 通知 */}
+        <Toaster />
+      </ConfirmDialogProvider>
     </>
   )
 }

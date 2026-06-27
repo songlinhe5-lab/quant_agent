@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, createContext, useCallback, useMemo } from 'react'
 import { getAccessToken, apiClient, API_BASE_URL } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
+import { useConfirmDialog } from '@/components/confirm-dialog'
 import { SessionSidebarRef } from '@/features/copilot/session-sidebar'
 import { ChatMessage, ToolStep, ChatAttachment } from './types'
 
@@ -22,6 +23,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null)
   const [quickPrompts, setQuickPrompts] = useState<{title: string, prompt: string}[]>([])
   const { toast } = useToast()
+  const { confirm } = useConfirmDialog()
 
   const sidebarRef = useRef<SessionSidebarRef>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -137,7 +139,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const handleClearAll = useCallback(async () => {
-    if (!window.confirm('🚨 确定要清空所有聊天记录吗？\n此操作将永久删除云端所有历史会话，无法恢复。')) return;
+    const ok = await confirm({ title: '清空所有聊天记录', description: '此操作将永久删除云端所有历史会话，无法恢复。', confirmLabel: '全部清空' })
+    if (!ok) return;
     try {
       const res = await apiClient.delete('/sessions')
       if (res.data?.status === 'success') {

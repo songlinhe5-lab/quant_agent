@@ -7,10 +7,12 @@ import { DynamicStrategyForm } from '../dynamic-strategy-form'
 import { useStrategyStore } from '../stores/useStrategyStore'
 import { apiClient } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
+import { useConfirmDialog } from '@/components/confirm-dialog'
 
 export function RightSidebar() {
   const store = useStrategyStore()
   const { toast } = useToast()
+  const { confirm } = useConfirmDialog()
 
   // 💡 沙箱回测引擎：提取表单参数并抛给后端执行推演
   const handleApplyParams = async (className: string, data: Record<string, any>, isSilent: boolean = false) => {
@@ -206,8 +208,9 @@ export function RightSidebar() {
     toast({ title: '✅ 预设已保存', description: `参数预设 "${presetName}" 已存入本地。` })
   }
 
-  const handleDeletePreset = (key: string) => {
-    if (!window.confirm('确定要删除这个参数预设吗？')) return
+  const handleDeletePreset = async (key: string) => {
+    const ok = await confirm({ title: '删除参数预设', description: '确定要删除这个参数预设吗？', confirmLabel: '删除' })
+    if (!ok) return
     const next = { ...store.savedPresets }
     delete next[key]
     store.setSavedPresets(next)

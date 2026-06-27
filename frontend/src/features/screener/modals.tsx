@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 import { apiClient } from '@/lib/api-client'
 import { useTheme } from 'next-themes'
+import { useConfirmDialog } from '@/components/confirm-dialog'
 import { createChart, ColorType, CrosshairMode, CandlestickSeries, HistogramSeries } from 'lightweight-charts'
 import { formatDisplaySymbol } from './shared'
 
@@ -13,6 +14,7 @@ export function SubscriptionManagerPanel({ onClose }: { onClose: () => void }) {
   const [subs, setSubs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const { toast } = useToast()
+  const { confirm } = useConfirmDialog()
 
   useEffect(() => {
     const fetchSubs = async () => {
@@ -37,7 +39,8 @@ export function SubscriptionManagerPanel({ onClose }: { onClose: () => void }) {
   }
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm('确定要彻底删除该订阅任务吗？')) return
+    const ok = await confirm({ title: '删除订阅任务', description: '确定要彻底删除该订阅任务吗？', confirmLabel: '删除' })
+    if (!ok) return
     try {
       const res = await apiClient.delete(`/screener/subscriptions/${id}`)
       if (res.data?.status === 'success') {
@@ -102,6 +105,7 @@ export function RagDictionaryPanel({ onClose }: { onClose: () => void }) {
   const [searchQuery, setSearchQuery] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
+  const { confirm } = useConfirmDialog()
 
   const fetchDict = async () => {
     try {
@@ -125,7 +129,8 @@ export function RagDictionaryPanel({ onClose }: { onClose: () => void }) {
   }
 
   const handleDelete = async (d: string, r: string) => {
-    if (!window.confirm('确定要删除这条规则吗？')) return
+    const ok = await confirm({ title: '删除规则', description: '确定要删除这条规则吗？', confirmLabel: '删除' })
+    if (!ok) return
     try {
       const res = await apiClient.delete('/screener/dictionary', { data: { desc: d, rule: r } })
       if (res.data?.status === 'success') {

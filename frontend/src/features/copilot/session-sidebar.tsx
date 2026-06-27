@@ -4,6 +4,7 @@ import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'rea
 import { Plus, Trash2, Loader2, Gauge, X, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiClient } from '@/lib/api-client';
+import { useConfirmDialog } from '@/components/confirm-dialog';
 import { PCRatioTrendChart, VixCorrelationChart } from './sentiment-trend';
 
 // --- Type Definitions ---
@@ -28,6 +29,7 @@ export interface SessionSidebarRef {
 // --- Component ---
 export const SessionSidebar = forwardRef<SessionSidebarRef, SessionSidebarProps>(
   ({ activeSessionId, onSelectSession, onNewChat }, ref) => {
+    const { confirm } = useConfirmDialog();
     const [sessions, setSessions] = useState<SessionRecord[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [fgScore, setFgScore] = useState(74);
@@ -74,7 +76,8 @@ export const SessionSidebar = forwardRef<SessionSidebarRef, SessionSidebarProps>
 
     const handleDelete = async (e: React.MouseEvent, sessionId: string) => {
       e.stopPropagation(); // 阻止冒泡，防止触发选中会话的事件
-      if (!window.confirm('确定要彻底删除该会话记录吗？该操作同时清理冷热数据库，无法恢复。')) return;
+      const ok = await confirm({ title: '删除会话', description: '确定要彻底删除该会话记录吗？该操作同时清理冷热数据库，无法恢复。', confirmLabel: '永久删除' })
+      if (!ok) return;
 
       try {
         const res = await apiClient.delete(`/sessions/${sessionId}`);

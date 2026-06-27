@@ -3,11 +3,13 @@ import { FolderGit2, Plus, Star, GitBranch, Trash2 } from 'lucide-react'
 import { useStrategyStore } from '../stores/useStrategyStore'
 import { apiClient } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
+import { useConfirmDialog } from '@/components/confirm-dialog'
 import { cn } from '@/lib/utils'
 
 export function LeftSidebar() {
   const store = useStrategyStore()
   const { toast } = useToast()
+  const { confirm } = useConfirmDialog()
 
   useEffect(() => {
     store.fetchStrategies()
@@ -26,7 +28,8 @@ export function LeftSidebar() {
 
   const handleSelectStrategy = async (name: string) => {
     if (store.isDirty) {
-      if (!window.confirm('🚨 当前策略有未保存的修改，确定要放弃修改并切换吗？')) return;
+      const ok = await confirm({ title: '未保存的修改', description: '当前策略有未保存的修改，确定要放弃修改并切换吗？', confirmLabel: '放弃并切换' })
+      if (!ok) return;
     }
     store.setActiveStrategy(name)
     try {
@@ -43,7 +46,8 @@ export function LeftSidebar() {
   }
 
   const handleDeleteStrategy = async (name: string) => {
-    if (!window.confirm(`🚨 确定要彻底删除策略 ${name} 吗？\n该操作无法恢复。`)) return;
+    const ok = await confirm({ title: '删除策略', description: `确定要彻底删除策略 ${name} 吗？该操作无法恢复。`, confirmLabel: '永久删除' })
+    if (!ok) return;
     try {
       const res = await apiClient.delete(`/strategy/draft/${name}`)
       if (res.data?.status === 'success') {
@@ -64,9 +68,10 @@ export function LeftSidebar() {
     }
   }
 
-  const handleNewStrategy = () => {
+  const handleNewStrategy = async () => {
     if (store.isDirty) {
-      if (!window.confirm('🚨 当前策略有未保存的修改，确定要放弃修改并新建文档吗？')) return;
+      const ok = await confirm({ title: '未保存的修改', description: '当前策略有未保存的修改，确定要放弃修改并新建文档吗？', confirmLabel: '放弃并新建' })
+      if (!ok) return;
     }
     store.setActiveStrategy('')
     store.setCode('# Draft Strategy...\n')
