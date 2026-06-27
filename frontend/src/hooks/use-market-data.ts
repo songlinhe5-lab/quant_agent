@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useToast } from '@/hooks/use-toast'
 import { apiClient, API_BASE_URL } from '@/lib/api-client'
-import { market } from '@/lib/proto/market'
+import { market } from '@/lib/proto/market.ts'
 import { WatchlistItem } from '@/stores/use-watchlist'
 
 interface UseMarketDataProps {

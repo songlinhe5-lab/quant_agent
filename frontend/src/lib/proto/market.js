@@ -788,3 +788,7 @@
 
     return $root;
 });
+
+// ES Module 导出
+export default $root;
+export const market = $root.market;

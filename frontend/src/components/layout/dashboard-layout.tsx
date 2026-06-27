@@ -1,5 +1,5 @@
 import React from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, Outlet } from 'react-router-dom'
 import { Globe, BarChart3, ScanSearch, Code2, FlaskConical, Bot, ShieldAlert, Brain, Settings, Server } from 'lucide-react'
 import {
   Sidebar,
@@ -40,7 +40,7 @@ const modules = [
   { url: '/apm', name: '系统性能监控', label: 'System APM', icon: Server, domain: 'system' },
 ]
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default function DashboardLayout() {
   const location = useLocation();
   const pathname = location.pathname;
 
@@ -109,7 +109,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* 右侧主内容区域 */}
       <SidebarInset className="flex-1 h-full min-h-0 overflow-hidden bg-background">
         <main className="flex-1 p-4 overflow-y-auto">
-          {children}
+          <Outlet />
         </main>
         <WsStatusIndicator />
       </SidebarInset>

@@ -4,9 +4,9 @@
  */
 
 import { createBrowserRouter, Navigate } from 'react-router-dom';
-import TradingDashboard from '@/components/layout/trading-dashboard';
+import { TradingDashboard } from '@/components/layout/trading-dashboard';
 import LoginPage from '@/features/auth/login';
-import ProtectedRoute from '@/components/layout/protected-route';
+import { ProtectedRoute } from '@/components/layout/protected-route';
 
 /**
  * 路由配置说明：

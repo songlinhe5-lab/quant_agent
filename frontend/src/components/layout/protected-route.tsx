@@ -1,10 +1,10 @@
 import * as React from 'react';
 import { useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '@/contexts/auth-context';
 import { Loader2 } from 'lucide-react';
 
-export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const ProtectedRoute = () => {
   const { user, isLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -57,5 +57,5 @@ export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ childr
   }
 
   // 验证通过，正常渲染受保护的业务组件
-  return <>{children}</>;
+  return <Outlet />;
 };
