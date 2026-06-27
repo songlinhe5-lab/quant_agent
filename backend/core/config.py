@@ -76,6 +76,12 @@ class Settings(BaseSettings):
         default="default-internal-secret-change-me",
         alias="INTERNAL_API_SECRET"
     )
+    
+    # ===== 敏感字段加密 =====
+    encryption_master_key: Optional[str] = Field(
+        default=None,
+        alias="ENCRYPTION_MASTER_KEY"
+    )
 
     # ===== Meilisearch 配置 =====
     meilisearch_host: Optional[str] = Field(default=None, alias="MEILISEARCH_HOST")
