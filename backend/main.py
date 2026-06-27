@@ -87,6 +87,7 @@ from backend.routers.search import router as search_router
 from backend.routers.strategy import router as strategy_router
 from backend.routers.oms import router as oms_router
 from backend.routers.audit import router as audit_router
+from backend.routers.internal import router as internal_router
 
 # --- 全局单例与连接池 ---
 global_registry = None
@@ -395,6 +396,9 @@ app.include_router(search_router, prefix="/api/v1")
 app.include_router(strategy_router, prefix="/api/v1")
 app.include_router(oms_router, prefix="/api/v1")
 app.include_router(audit_router, prefix="/api/v1")
+
+# 挂载内部 API 路由（需要 HMAC 签名验证，符合 SEC-03 安全规范）
+app.include_router(internal_router, prefix="/api/v1")
 
 # ==========================================
 # --- JWT 鉴权依赖 (SSR & Client 兼容) ---

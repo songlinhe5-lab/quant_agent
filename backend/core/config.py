@@ -70,6 +70,12 @@ class Settings(BaseSettings):
 
     # ===== 全局风控 =====
     real_trade_execute: bool = Field(default=False, alias="REAL_TRADE_EXECUTE")
+    
+    # ===== 内部通信安全 =====
+    internal_api_secret: str = Field(
+        default="default-internal-secret-change-me",
+        alias="INTERNAL_API_SECRET"
+    )
 
     # ===== Meilisearch 配置 =====
     meilisearch_host: Optional[str] = Field(default=None, alias="MEILISEARCH_HOST")
