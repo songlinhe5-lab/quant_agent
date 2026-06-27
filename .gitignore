@@ -1,45 +1,275 @@
-# 1. 系统与编辑器缓存
+# ============================================
+# Quant Agent - Git Ignore 配置
+# ============================================
+
+# ============================================
+# 1. 操作系统与编辑器缓存
+# ============================================
+# macOS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
-.idea/
+
+# Windows
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+*~
+
+# ============================================
+# 2. IDE 与编辑器配置
+# ============================================
+# Visual Studio Code
 .vscode/
-*.swp
+*.code-workspace
 
-# 2. 前端缓存与依赖 (Vue/Vite)
-node_modules/
-dist/
-dist-ssr/
-.vite/
-*.local
-npm-debug.log*
+# IntelliJ IDEA / PyCharm
+.idea/
+*.iml
+*.iws
+*.ipr
 
-# 3. 后端缓存与依赖 (Python/FastAPI)
+# Vim
+[._]*.s[a-v][a-z]
+!*.svg
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+
+# Emacs
+*~[#]*#
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# ============================================
+# 3. 后端 - Python / FastAPI
+# ============================================
+# 字节码与缓存
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+*.dylib
+*.dll
+
+# 虚拟环境
 venv/
 env/
+ENV/
 .venv/
-pip-log.txt
+env.bak/
+venv.bak/
 
-# 测试与覆盖率产物
+# 打包与分发
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 测试与覆盖率
 .pytest_cache/
-htmlcov/
 .coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+*.cover
+*.py,cover
+.hypothesis/
+.tox/
+.nox/
 
-# 4. 本地数据库与日志 (禁止提交！)
+# 类型检查
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Lint 缓存
+.ruff_cache/
+.flake8_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb_checkpoints/
+
+# ============================================
+# 4. 前端 - Node.js / Vite / React
+# ============================================
+# 依赖
+node_modules/
+.pnp/
+.pnp.js/
+.yarn/
+
+# 构建产物
+dist/
+dist-ssr/
+build/
+coverage/
+*.local
+
+# Vite
+.vite/
+.vite-storybook/
+
+# Next.js
+.next/
+out/
+
+# Vue
+.vuepress/dist/
+
+# Parcel
+.parcel-cache/
+
+# Webpack
+.webpack/
+
+# TypeScript
+*.tsbuildinfo
+
+# ESLint
+.eslintcache
+
+# Prettier
+.prettierignore
+
+# Storybook
+.storybook-out/
+
+# ============================================
+# 5. Docker 相关
+# ============================================
+docker-compose.override.yml
+.dockerignore
+
+# ============================================
+# 6. 数据库与日志
+# ============================================
+# 数据库文件
 *.db
+*.sqlite
 *.sqlite3
-*.log
+*.db-shm
+*.db-wal
 
-# 5. 环境变量与机密配置
+# Redis
+dump.rdb
+appendonly.aof
+
+# 日志文件
+*.log
+*.log.*
+logs/
+log/
+
+# ============================================
+# 7. 环境变量与机密配置
+# ============================================
+# 环境变量文件
 .env
-.env.*
+.env.local
+.env.development
+.env.production
+.env.test
+.env.staging
+
+# 保留示例文件
 !.env.example
 
-# 6. 量化 Agent 专属忽略
-# 忽略 Agent 运行中产生的记忆状态、临时报告和会话 DB
+# 密钥与证书
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+secrets/
+keys/
+
+# AWS
+.aws/
+
+# Google Cloud
+.gcloud/
+
+# ============================================
+# 8. 量化 Agent 专属忽略
+# ============================================
+# Agent 运行状态与记忆
 .hermes/
 memory/
+session.db
+*.session
+
+# 临时报告与导出
 reports/*.pdf
+reports/*.csv
+reports/*.xlsx
+!reports/*.md
+!reports/*.txt
+
+# Mock 数据
 mock_data/
+test_data/
+fixtures/
+
+# 缓存数据
+data/cache/
+data/temp/
+
+# ============================================
+# 9. 临时文件与备份
+# ============================================
+# 备份文件
+*.bak
+*.backup
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# 归档文件
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# 文档临时文件
+*.docx~
+*.xlsx~
+*.pptx~
+
+# ============================================
+# 10. 其他
+# ============================================
+# 性能分析
+.prof
+*.prof
+
+# 调试文件
+*.pid
+*.pid.lock
+
+# 自定义忽略文件
+.customignore
