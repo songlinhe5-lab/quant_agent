@@ -1,0 +1,106 @@
+{
+    "pageTitle": {
+        "monitor": "Monitoring Panel"
+    },
+    "language": "Language",
+    "greeting": "Hello, Quant Agent!",
+    "languages": {
+        "zh": "Chinese",
+        "en": "English"
+    },
+    "theme": {
+        "light": "🌞 Light Mode",
+        "dark": "🌙 Dark Mode"
+    },
+    "navigation": {
+        "quotes": "Quotes & Charts",
+        "strategy": "Strategy R&D",
+        "backtest": "Backtest Engine",
+        "risk": "Live Risk Control",
+        "llm": "LLM Assistant"
+    },
+    "dashboard": {
+        "globalMacro": "Global Macro",
+        "watchlist": "Watchlist & Positions"
+    },
+    "screener": {
+        "turnover_ratio_fmt": "Turnover",
+        "turnover_ratio": "Turnover",
+        "industry": "Industry",
+        "plate": "Plate",
+        "matched_patterns": "Patterns",
+        "volume_ratio_fmt": "Vol Ratio",
+        "volume_ratio": "Vol Ratio",
+        "rsi_bottom_diverge": "RSI Bottom Diverge",
+        "rsi_top_diverge": "RSI Top Diverge",
+        "macd_gold_cross": "MACD Gold Cross",
+        "macd_golden_cross": "MACD Gold Cross",
+        "kdj_gold_cross": "KDJ Gold Cross",
+        "kdj_golden_cross": "KDJ Gold Cross",
+        "macd_bottom_diverge": "MACD Bottom Diverge",
+        "macd_top_diverge": "MACD Top Diverge"
+    },
+    "macro": {
+        "spx": "S&P 500",
+        "ndx": "Nasdaq 100",
+        "vix": "Volatility Idx",
+        "tnx": "US 10-Yr Yield",
+        "dxy": "Dollar Index",
+        "wti": "Crude Oil",
+        "gold": "Gold",
+        "btc": "Bitcoin",
+        "eurusd": "EUR/USD",
+        "fvx": "US 5-Yr Yield",
+        "es": "S&P 500 E-mini",
+        "jpy": "JPY/USD"
+    },
+    "risk": {
+        "totalNav": "Total Net Asset Value",
+        "sharpeRatio": "Sharpe Ratio (Ann.)",
+        "maxDrawdown": "Max Drawdown",
+        "marginUsage": "Margin Usage",
+        "exposure": "Long/Short Exp.",
+        "positionDetails": "Position Details",
+        "filterPositions": "Filter positions...",
+        "accounts": "Accounts",
+        "dragToSort": "Drag to sort",
+        "grossExposure": "Gross Exposure",
+        "unrealizedPnl": "Unrealized PnL",
+        "symbol": "Symbol",
+        "qty": "Qty",
+        "entryPrice": "Entry Price",
+        "price": "Price",
+        "weight": "Weight",
+        "pnl": "PnL",
+        "noPositions": "No holding positions found.",
+        "backToBottom": "Back to bottom",
+        "long": "Long",
+        "short": "Short",
+        "netExposure": "Net Exp.",
+        "leverage": "Leverage",
+        "totalFrictionCost": "Total Friction (Comm & Slip)",
+        "collapseAll": "Collapse All",
+        "expandAll": "Expand All",
+        "account": "Account",
+        "gridView": "Grid View",
+        "listView": "List View"
+    },
+    "login": {
+        "title": "Sign In / Register",
+        "email": "Email",
+        "password": "Password",
+        "signIn": "Sign In",
+        "register": "Register",
+        "forgotPassword": "Forgot Password?",
+        "close": "Close",
+        "signOut": "Sign Out",
+        "confirmLogout": "Are you sure?"
+    },
+    "userMenu": {
+        "profile": "Profile",
+        "billing": "Billing & Subscription",
+        "notifications": "Notifications",
+        "settings": "Settings",
+        "logout": "Sign Out"
+    }
+}

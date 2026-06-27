@@ -1,0 +1,1387 @@
+2026-06-11 22:28:07 | INFO     | uvicorn.error | INFO:uvicorn.error:Started server process [40388]
+2026-06-11 22:28:07 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application startup.
+2026-06-11 22:28:09 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 这是一条来自后端启动自检的通知！
+2026-06-11 22:28:09 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 22:28:09 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🚀 启动行情生产者 Daemon，关注标的: ['US.AAPL', 'HK.00700', 'US.TSLA', 'US.SPY', 'US.QQQ']...
+2026-06-11 22:28:09 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] ✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！
+2026-06-11 22:28:09 | INFO     | uvicorn.error | INFO:uvicorn.error:Application startup complete.
+2026-06-11 22:28:10 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56346 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:28:11 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 22:28:12 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:28:13 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56346 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:28:18 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56346 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:28:23 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56418 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:28:32 | INFO     | uvicorn.error | INFO:uvicorn.error:Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-06-11 22:28:32 | INFO     | uvicorn.error | INFO:uvicorn.error:Started reloader process [40533] using WatchFiles
+2026-06-11 22:28:32 | INFO     | watchfiles.main | INFO:watchfiles.main:45 changes detected
+2026-06-11 22:28:33 | INFO     | watchfiles.main | INFO:watchfiles.main:3 changes detected
+2026-06-11 22:28:33 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 22:28:34 | INFO     | uvicorn.error | INFO:uvicorn.error:Started server process [40567]
+2026-06-11 22:28:34 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application startup.
+2026-06-11 22:28:34 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 这是一条来自后端启动自检的通知！
+2026-06-11 22:28:35 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 22:28:35 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🚀 启动行情生产者 Daemon，关注标的: ['US.AAPL', 'HK.00700', 'US.TSLA', 'US.SPY', 'US.QQQ']...
+2026-06-11 22:28:35 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] ✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！
+2026-06-11 22:28:35 | INFO     | uvicorn.error | INFO:uvicorn.error:Application startup complete.
+2026-06-11 22:28:35 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:28:35 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:28:36 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 🚨 [性能警报] FastAPI 主事件循环发生严重阻塞！
+
+卡顿延迟: 650 ms
+2026-06-11 22:28:36 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:28:36 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 22:28:37 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 22:28:38 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 22:28:39 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:28:39 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:28:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:28:41 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 22:28:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:28:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:28:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:28:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:29:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:29:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:29:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:29:16 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 22:29:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:29:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:29:27 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 22:29:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:29:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:29:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:29:43 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:29:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:29:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:29:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:29:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:30:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:30:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:30:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:30:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:30:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:30:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:30:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:30:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:30:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:30:45 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:30:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:30:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:30:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:31:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:31:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56469 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:31:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56985 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:31:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56985 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:31:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56985 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:31:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56985 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:31:32 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57157 - "GET / HTTP/1.1" 200
+2026-06-11 22:31:33 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57157 - "GET /favicon.ico HTTP/1.1" 404
+2026-06-11 22:31:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56985 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:31:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56985 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:31:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56985 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:31:48 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:31:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56985 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:31:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56985 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:31:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56985 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:32:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56985 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:32:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56985 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:32:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56985 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:32:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56985 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:32:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56985 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:32:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56985 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:32:35 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57368 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:32:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57368 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:32:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57368 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:32:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57368 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:32:50 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:32:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57368 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:33:00 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57458 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:33:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57458 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:33:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57458 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:33:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57458 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:33:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57458 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:33:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57458 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:33:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57458 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:33:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57458 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:33:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57458 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:33:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57458 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:33:45 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 22:33:46 | INFO     | uvicorn.error | INFO:uvicorn.error:Shutting down
+2026-06-11 22:33:46 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application shutdown.
+2026-06-11 22:33:46 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🛑 行情生产者 Daemon 收到取消信号，正在安全退出...
+2026-06-11 22:33:47 | INFO     | watchfiles.main | INFO:watchfiles.main:3 changes detected
+2026-06-11 22:33:48 | INFO     | watchfiles.main | INFO:watchfiles.main:3 changes detected
+2026-06-11 22:33:49 | INFO     | uvicorn.error | INFO:uvicorn.error:Started server process [41099]
+2026-06-11 22:33:49 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application startup.
+2026-06-11 22:33:50 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 这是一条来自后端启动自检的通知！
+2026-06-11 22:33:51 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 22:33:51 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🚀 启动行情生产者 Daemon，关注标的: ['US.AAPL', 'HK.00700', 'US.TSLA', 'US.SPY', 'US.QQQ']...
+2026-06-11 22:33:51 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] ✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！
+2026-06-11 22:33:51 | INFO     | uvicorn.error | INFO:uvicorn.error:Application startup complete.
+2026-06-11 22:33:51 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:33:51 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57605 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:33:52 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 22:33:52 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 🚨 [性能警报] FastAPI 主事件循环发生严重阻塞！
+
+卡顿延迟: 413 ms
+2026-06-11 22:33:52 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:33:53 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:33:53 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 22:33:54 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 22:33:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57605 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:33:55 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:33:57 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 22:33:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57605 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:34:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57605 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:34:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57605 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:34:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57605 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:34:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57605 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:34:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57605 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:34:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57605 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:34:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57605 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:34:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57605 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:34:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57605 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:34:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57605 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:34:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57605 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:34:56 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:34:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57605 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:35:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57605 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:35:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57605 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:35:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57605 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:35:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57605 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:35:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57605 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:35:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57910 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:35:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57910 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:35:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57910 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:35:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57910 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:35:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57910 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:35:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57910 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:35:57 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:35:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57910 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:36:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57910 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:36:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57910 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:36:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57910 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:36:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57910 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:36:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57910 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:36:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57910 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:36:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57910 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:36:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57910 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:36:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57910 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:36:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57910 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:36:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57910 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:36:59 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:36:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:37:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:37:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:37:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:37:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:37:21 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:37:23 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 22:37:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:37:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:37:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:37:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:37:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:37:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:37:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:37:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:38:01 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:38:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:38:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:38:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:38:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:38:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:38:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:38:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:38:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:38:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:38:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:38:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:38:59 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 🚨 [宏观异动预警] ^VIX 发生分钟级 高台跳水 🩸!
+
+当前价: 21.07
+极速变动: -1.86%
+
+请密切关注全球系统性流动性风险！
+2026-06-11 22:38:59 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 22:38:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:39:03 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:39:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:39:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:39:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:39:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:39:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:39:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:39:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58204 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:39:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58665 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:39:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58665 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:39:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58665 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:39:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58665 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:39:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58665 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:40:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58751 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:40:05 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:40:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58751 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:40:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58751 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:40:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58751 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:40:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58751 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:40:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58751 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:40:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58751 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:40:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58751 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:40:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58751 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:40:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58751 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:40:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58751 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:40:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58751 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:41:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58751 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:41:06 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:41:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58932 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:41:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58932 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:41:19 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 22:41:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58932 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:41:21 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 22:41:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58932 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:41:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58932 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:41:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58932 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:41:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59017 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:41:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59017 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:41:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59017 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:41:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59017 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:41:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59017 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:42:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59017 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:42:08 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:42:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59086 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:42:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59086 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:42:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59086 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:42:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59086 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:42:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59086 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:42:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59086 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:42:35 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 22:42:36 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 22:42:37 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 22:42:39 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 22:42:39 | INFO     | uvicorn.error | INFO:uvicorn.error:Shutting down
+2026-06-11 22:42:39 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application shutdown.
+2026-06-11 22:42:39 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🛑 行情生产者 Daemon 收到取消信号，正在安全退出...
+2026-06-11 22:42:40 | INFO     | watchfiles.main | INFO:watchfiles.main:5 changes detected
+2026-06-11 22:42:41 | INFO     | watchfiles.main | INFO:watchfiles.main:3 changes detected
+2026-06-11 22:42:43 | INFO     | uvicorn.error | INFO:uvicorn.error:Started server process [41969]
+2026-06-11 22:42:43 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application startup.
+2026-06-11 22:42:44 | INFO     | uvicorn.error | INFO:uvicorn.error:Stopping reloader process [40533]
+2026-06-11 22:42:53 | INFO     | uvicorn.error | INFO:uvicorn.error:Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-06-11 22:42:53 | INFO     | uvicorn.error | INFO:uvicorn.error:Started reloader process [42094] using WatchFiles
+2026-06-11 22:42:53 | INFO     | watchfiles.main | INFO:watchfiles.main:3 changes detected
+2026-06-11 22:42:53 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 22:42:56 | INFO     | uvicorn.error | INFO:uvicorn.error:Started server process [42127]
+2026-06-11 22:42:56 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application startup.
+2026-06-11 22:42:57 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 这是一条来自后端启动自检的通知！
+2026-06-11 22:42:57 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:42:57 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 22:42:57 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🚀 启动行情生产者 Daemon，关注标的: ['US.AAPL', 'HK.00700', 'US.TSLA', 'US.SPY', 'US.QQQ']...
+2026-06-11 22:42:57 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] ✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！
+2026-06-11 22:42:57 | INFO     | uvicorn.error | INFO:uvicorn.error:Application startup complete.
+2026-06-11 22:42:57 | INFO     | watchfiles.main | INFO:watchfiles.main:10 changes detected
+2026-06-11 22:42:58 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 🚨 [性能警报] FastAPI 主事件循环发生严重阻塞！
+
+卡顿延迟: 671 ms
+2026-06-11 22:42:58 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:42:58 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59222 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:42:59 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 22:42:59 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 22:42:59 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:42:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59222 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:43:00 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 22:43:01 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:43:03 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 22:43:04 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:43:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59222 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:43:06 | INFO     | watchfiles.main | INFO:watchfiles.main:39 changes detected
+2026-06-11 22:43:08 | INFO     | watchfiles.main | INFO:watchfiles.main:24 changes detected
+2026-06-11 22:43:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59314 - "GET /api/auth/me HTTP/1.1" 401
+2026-06-11 22:43:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59317 - "POST /api/auth/refresh HTTP/1.1" 200
+2026-06-11 22:43:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59318 - "GET /api/auth/me HTTP/1.1" 200
+2026-06-11 22:43:08 | INFO     | watchfiles.main | INFO:watchfiles.main:41 changes detected
+2026-06-11 22:43:09 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 22:43:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59345 - "GET /api/macro/capital-flow HTTP/1.1" 200
+2026-06-11 22:43:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59346 - "GET /api/macro/calendar?days_ahead=7 HTTP/1.1" 200
+2026-06-11 22:43:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59347 - "GET /api/macro/news?limit=50 HTTP/1.1" 200
+2026-06-11 22:43:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59348 - "GET /api/macro/series?series_id=DGS10&limit=250 HTTP/1.1" 200
+2026-06-11 22:43:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59319 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:43:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59353 - "GET /api/macro/calendar?days_ahead=7 HTTP/1.1" 200
+2026-06-11 22:43:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59355 - "GET /api/macro/capital-flow HTTP/1.1" 200
+2026-06-11 22:43:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59356 - "GET /api/macro/news?limit=50 HTTP/1.1" 200
+2026-06-11 22:43:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59358 - "GET /api/macro/series?series_id=DGS10&limit=250 HTTP/1.1" 200
+2026-06-11 22:43:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59359 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:43:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59361 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:43:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59363 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:43:09 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 22:43:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59222 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:43:10 | INFO     | uvicorn.error | INFO:uvicorn.error:127.0.0.1:59371 - "WebSocket /api/macro/news/ws" 
+2026-06-11 22:43:10 | INFO     | uvicorn.error | INFO:uvicorn.error:connection open
+2026-06-11 22:43:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59222 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:43:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59222 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:43:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59222 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:43:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59222 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:43:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59222 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:43:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59222 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:43:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59222 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:43:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59222 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:43:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59222 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:43:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59222 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:44:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59222 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:44:04 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:44:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59523 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:44:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59526 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:44:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59526 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:44:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59526 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:44:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59526 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:44:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59526 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:44:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59591 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:44:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59591 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:44:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59591 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:44:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59591 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:44:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59591 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:44:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59591 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:45:03 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 22:45:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59591 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:45:06 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:45:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59706 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:45:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59591 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:45:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59591 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:45:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59591 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:45:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59591 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:45:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59591 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:45:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59783 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:45:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59783 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:45:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59783 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:45:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59825 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:45:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59825 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:45:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59825 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:46:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59825 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:46:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59905 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:46:08 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:46:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59825 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:46:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59825 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:46:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59825 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:46:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59825 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:46:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59825 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:46:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59825 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:46:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59825 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:46:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60020 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:46:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60020 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:46:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60020 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:46:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60020 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:47:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60020 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:47:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60084 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:47:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60089 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:47:10 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:47:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60089 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:47:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60112 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:47:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60112 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:47:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60112 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:47:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60112 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:47:39 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 22:47:39 | INFO     | uvicorn.error | INFO:uvicorn.error:Shutting down
+2026-06-11 22:47:39 | INFO     | uvicorn.error | INFO:uvicorn.error:connection closed
+2026-06-11 22:47:39 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application shutdown.
+2026-06-11 22:47:39 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🛑 行情生产者 Daemon 收到取消信号，正在安全退出...
+2026-06-11 22:47:40 | INFO     | watchfiles.main | INFO:watchfiles.main:4 changes detected
+2026-06-11 22:47:43 | INFO     | uvicorn.error | INFO:uvicorn.error:Started server process [42543]
+2026-06-11 22:47:43 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application startup.
+2026-06-11 22:47:44 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 这是一条来自后端启动自检的通知！
+2026-06-11 22:47:45 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 22:47:45 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🚀 启动行情生产者 Daemon，关注标的: ['US.AAPL', 'HK.00700', 'US.TSLA', 'US.SPY', 'US.QQQ']...
+2026-06-11 22:47:45 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] ✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！
+2026-06-11 22:47:45 | INFO     | uvicorn.error | INFO:uvicorn.error:Application startup complete.
+2026-06-11 22:47:45 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:47:45 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60203 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:47:46 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 22:47:47 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 22:47:48 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:47:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60203 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:47:50 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:47:52 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 22:47:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60203 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:47:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60203 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:48:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60203 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:48:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60286 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:48:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60291 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:48:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60292 - "GET /api/macro/capital-flow HTTP/1.1" 200
+2026-06-11 22:48:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60294 - "GET /api/macro/news?limit=50 HTTP/1.1" 200
+2026-06-11 22:48:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60293 - "GET /api/macro/calendar?days_ahead=7 HTTP/1.1" 200
+2026-06-11 22:48:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60203 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:48:09 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 22:48:10 | INFO     | uvicorn.error | INFO:uvicorn.error:Shutting down
+2026-06-11 22:48:10 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application shutdown.
+2026-06-11 22:48:10 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🛑 行情生产者 Daemon 收到取消信号，正在安全退出...
+2026-06-11 22:48:10 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:48:13 | INFO     | uvicorn.error | INFO:uvicorn.error:Started server process [42594]
+2026-06-11 22:48:13 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application startup.
+2026-06-11 22:48:13 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 这是一条来自后端启动自检的通知！
+2026-06-11 22:48:14 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 22:48:14 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🚀 启动行情生产者 Daemon，关注标的: ['US.AAPL', 'HK.00700', 'US.TSLA', 'US.SPY', 'US.QQQ']...
+2026-06-11 22:48:14 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] ✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！
+2026-06-11 22:48:14 | INFO     | uvicorn.error | INFO:uvicorn.error:Application startup complete.
+2026-06-11 22:48:14 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:48:15 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 22:48:15 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 🚨 [性能警报] FastAPI 主事件循环发生严重阻塞！
+
+卡顿延迟: 477 ms
+2026-06-11 22:48:15 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60328 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:48:15 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:48:15 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 22:48:16 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:48:17 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 22:48:17 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:48:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60328 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:48:20 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 22:48:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60328 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:48:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60328 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:48:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60328 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:48:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60328 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:48:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60328 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:48:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60441 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:48:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60441 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:48:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60468 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:49:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60468 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:49:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60491 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:49:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60468 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:49:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60468 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:49:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60468 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:49:21 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:49:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60468 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:49:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60468 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:49:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60573 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:49:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60573 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:49:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60573 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:49:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60573 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:49:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60573 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:49:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60573 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:50:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60573 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:50:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60648 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:50:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60573 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:50:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60661 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:50:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60661 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:50:23 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:50:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60661 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:50:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60661 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:50:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60708 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:50:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60708 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:50:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60708 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:50:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60708 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:50:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60770 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:50:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60770 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:51:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60798 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:51:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60812 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:51:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60798 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:51:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60798 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:51:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60798 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:51:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60798 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:51:25 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:51:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60798 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:51:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:51:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:51:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:51:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:51:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:51:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:52:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:52:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61035 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:52:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:52:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:52:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:52:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:52:26 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:52:29 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 🚨 [宏观异动预警] ^VIX 发生分钟级 高台跳水 🩸!
+
+当前价: 21.15
+极速变动: -1.58%
+
+请密切关注全球系统性流动性风险！
+2026-06-11 22:52:29 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 22:52:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:52:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:52:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:52:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:52:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:52:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:52:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:53:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:53:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61232 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:53:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61239 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:53:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61240 - "GET /api/macro/capital-flow HTTP/1.1" 200
+2026-06-11 22:53:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61241 - "GET /api/macro/calendar?days_ahead=7 HTTP/1.1" 200
+2026-06-11 22:53:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61242 - "GET /api/macro/news?limit=50 HTTP/1.1" 200
+2026-06-11 22:53:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:53:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:53:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:53:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:53:29 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:53:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:53:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:53:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:53:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:60900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:53:47 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 22:53:47 | INFO     | uvicorn.error | INFO:uvicorn.error:Shutting down
+2026-06-11 22:53:47 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application shutdown.
+2026-06-11 22:53:47 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🛑 行情生产者 Daemon 收到取消信号，正在安全退出...
+2026-06-11 22:53:48 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:53:49 | INFO     | watchfiles.main | INFO:watchfiles.main:3 changes detected
+2026-06-11 22:53:50 | INFO     | uvicorn.error | INFO:uvicorn.error:Started server process [43229]
+2026-06-11 22:53:50 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application startup.
+2026-06-11 22:53:51 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 这是一条来自后端启动自检的通知！
+2026-06-11 22:53:51 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 22:53:51 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🚀 启动行情生产者 Daemon，关注标的: ['US.AAPL', 'HK.00700', 'US.TSLA', 'US.SPY', 'US.QQQ']...
+2026-06-11 22:53:51 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] ✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！
+2026-06-11 22:53:51 | INFO     | uvicorn.error | INFO:uvicorn.error:Application startup complete.
+2026-06-11 22:53:51 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:53:51 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61345 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:53:52 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 🚨 [性能警报] FastAPI 主事件循环发生严重阻塞！
+
+卡顿延迟: 608 ms
+2026-06-11 22:53:52 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:53:52 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 22:53:53 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 22:53:53 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:53:54 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:53:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61345 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:53:55 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 22:53:55 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 22:53:57 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 22:53:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61345 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:54:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61345 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:54:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61416 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:54:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61345 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:54:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61345 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:54:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61345 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:54:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61345 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:54:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61345 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:54:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61345 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:54:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61345 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:54:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61345 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:54:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61345 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:54:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61345 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:54:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61345 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:55:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61345 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:55:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61585 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:55:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61345 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:55:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61345 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:55:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61630 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:55:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61630 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:55:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61630 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:55:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61630 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:55:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61630 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:55:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61630 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:55:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61630 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:55:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61630 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:55:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61630 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:56:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61630 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:56:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61748 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:56:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61630 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:56:10 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:56:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61630 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:56:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61630 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:56:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61630 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:56:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61630 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:56:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61630 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:56:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61630 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:56:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61630 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:56:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61630 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:56:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:56:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:57:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:57:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61931 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:57:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:57:13 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:57:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:57:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:57:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:57:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:57:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:57:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:57:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:57:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:57:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:57:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:58:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:58:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62069 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:58:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62074 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:58:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62076 - "GET /api/macro/calendar?days_ahead=7 HTTP/1.1" 200
+2026-06-11 22:58:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62077 - "GET /api/macro/news?limit=50 HTTP/1.1" 200
+2026-06-11 22:58:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62075 - "GET /api/macro/capital-flow HTTP/1.1" 200
+2026-06-11 22:58:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:58:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:58:18 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:58:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:58:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:58:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:58:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:58:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:58:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:58:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:58:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:58:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:59:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:59:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62250 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 22:59:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:59:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:59:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:59:22 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 22:59:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:59:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:59:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:61900 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:59:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62325 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:59:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62325 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:59:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62325 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:59:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62325 - "GET /metrics HTTP/1.1" 404
+2026-06-11 22:59:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62325 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:00:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62325 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:00:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62419 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:00:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62422 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:00:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62422 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:00:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62422 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:00:21 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:00:24 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 23:00:24 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:00:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62422 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:00:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62422 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:00:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62422 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:00:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62422 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:00:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62422 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:00:50 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62543 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:00:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62543 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:00:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62543 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:01:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62543 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:01:08 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62603 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:01:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62543 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:01:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62543 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:01:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62543 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:01:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62543 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:01:26 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:01:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62543 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:01:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62543 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:01:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62543 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:01:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62543 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:01:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62543 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:01:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:62543 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:01:57 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 23:01:57 | INFO     | uvicorn.error | INFO:uvicorn.error:Shutting down
+2026-06-11 23:01:57 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application shutdown.
+2026-06-11 23:01:57 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🛑 行情生产者 Daemon 收到取消信号，正在安全退出...
+2026-06-11 23:01:58 | INFO     | uvicorn.error | INFO:uvicorn.error:Application shutdown complete.
+2026-06-11 23:01:59 | INFO     | watchfiles.main | INFO:watchfiles.main:3 changes detected
+2026-06-11 23:02:01 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 23:02:04 | INFO     | uvicorn.error | INFO:uvicorn.error:Started server process [44077]
+2026-06-11 23:02:04 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application startup.
+2026-06-11 23:02:06 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 这是一条来自后端启动自检的通知！
+2026-06-11 23:02:06 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:02:06 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🚀 启动行情生产者 Daemon，关注标的: ['US.AAPL', 'HK.00700', 'US.TSLA', 'US.SPY', 'US.QQQ']...
+2026-06-11 23:02:06 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] ✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！
+2026-06-11 23:02:06 | INFO     | uvicorn.error | INFO:uvicorn.error:Application startup complete.
+2026-06-11 23:02:06 | INFO     | uvicorn.error | INFO:uvicorn.error:Shutting down
+2026-06-11 23:02:06 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application shutdown.
+2026-06-11 23:02:06 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🛑 行情生产者 Daemon 收到取消信号，正在安全退出...
+2026-06-11 23:02:07 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:02:08 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:03:10 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:04:20 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:05:22 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:05:33 | INFO     | uvicorn.error | INFO:uvicorn.error:Started server process [44451]
+2026-06-11 23:05:33 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application startup.
+2026-06-11 23:05:34 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 这是一条来自后端启动自检的通知！
+2026-06-11 23:05:35 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:05:35 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🚀 启动行情生产者 Daemon，关注标的: ['US.AAPL', 'HK.00700', 'US.TSLA', 'US.SPY', 'US.QQQ']...
+2026-06-11 23:05:35 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] ✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！
+2026-06-11 23:05:35 | INFO     | uvicorn.error | INFO:uvicorn.error:Application startup complete.
+2026-06-11 23:05:36 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 🚨 [性能警报] FastAPI 主事件循环发生严重阻塞！
+
+卡顿延迟: 445 ms
+2026-06-11 23:05:37 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:05:37 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:05:37 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:05:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63612 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:05:53 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63634 - "GET /api/auth/me HTTP/1.1" 401
+2026-06-11 23:05:53 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63636 - "POST /api/auth/refresh HTTP/1.1" 200
+2026-06-11 23:05:53 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63637 - "GET /api/auth/me HTTP/1.1" 200
+2026-06-11 23:05:53 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63642 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:05:53 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63644 - "GET /api/macro/calendar?days_ahead=7 HTTP/1.1" 200
+2026-06-11 23:05:53 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63643 - "GET /api/macro/capital-flow HTTP/1.1" 200
+2026-06-11 23:05:53 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63646 - "GET /api/macro/series?series_id=DGS10&limit=250 HTTP/1.1" 200
+2026-06-11 23:05:53 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63645 - "GET /api/macro/news?limit=50 HTTP/1.1" 200
+2026-06-11 23:05:53 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63651 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:05:53 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63655 - "GET /api/macro/capital-flow HTTP/1.1" 200
+2026-06-11 23:05:53 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63656 - "GET /api/macro/series?series_id=DGS10&limit=250 HTTP/1.1" 200
+2026-06-11 23:05:53 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63657 - "GET /api/macro/calendar?days_ahead=7 HTTP/1.1" 200
+2026-06-11 23:05:53 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63660 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:05:53 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63661 - "GET /api/macro/news?limit=50 HTTP/1.1" 200
+2026-06-11 23:05:53 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63663 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:05:54 | INFO     | uvicorn.error | INFO:uvicorn.error:127.0.0.1:63675 - "WebSocket /api/macro/news/ws" 
+2026-06-11 23:05:54 | INFO     | uvicorn.error | INFO:uvicorn.error:connection open
+2026-06-11 23:05:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63612 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:05:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63612 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:06:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63612 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:06:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63612 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:06:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63612 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:06:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63612 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:06:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63612 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:06:26 | INFO     | uvicorn.error | INFO:uvicorn.error:connection closed
+2026-06-11 23:06:26 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63813 - "GET /api/market/futu/status HTTP/1.1" 200
+2026-06-11 23:06:26 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63816 - "GET /api/market/futu/status HTTP/1.1" 200
+2026-06-11 23:06:26 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63814 - "GET /api/market/history?ticker=00700.HK&ktype=K_60M&num=300 HTTP/1.1" 200
+2026-06-11 23:06:26 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63822 - "GET /api/market/history?ticker=00700.HK&ktype=K_60M&num=300 HTTP/1.1" 200
+2026-06-11 23:06:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63612 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:06:33 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63852 - "GET /api/market/futu/status HTTP/1.1" 200
+2026-06-11 23:06:33 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63853 - "GET /api/market/history?ticker=SPY&ktype=K_60M&num=300 HTTP/1.1" 200
+2026-06-11 23:06:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63612 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:06:39 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:06:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63872 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:06:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63872 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:06:46 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63919 - "GET /api/chat/suggestions?limit=6 HTTP/1.1" 200
+2026-06-11 23:06:46 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63920 - "GET /api/sessions/f467703e-976e-4cbe-ba09-38d4f1c096fb HTTP/1.1" 200
+2026-06-11 23:06:46 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63918 - "GET /api/sessions HTTP/1.1" 200
+2026-06-11 23:06:46 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63921 - "GET /api/chat/suggestions?limit=6 HTTP/1.1" 200
+2026-06-11 23:06:46 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63926 - "GET /api/sessions HTTP/1.1" 200
+2026-06-11 23:06:46 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63927 - "GET /api/chat/suggestions?limit=6 HTTP/1.1" 200
+2026-06-11 23:06:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63942 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:06:53 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63955 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:06:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63942 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:06:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63942 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:07:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:63942 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:07:10 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:64012 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:07:11 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:64026 - "POST /api/chat HTTP/1.1" 200
+2026-06-11 23:07:12 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 🚨 [性能警报] FastAPI 主事件循环发生严重阻塞！
+
+卡顿延迟: 702 ms
+2026-06-11 23:07:12 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-06-11 23:07:12 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-06-11 23:07:13 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:07:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:64012 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:07:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:64012 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:07:23 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:64062 - "GET /api/market/history?ticker=US.GLD&ktype=K_DAY&num=60 HTTP/1.1" 200
+2026-06-11 23:07:23 | INFO     | httpx | INFO:httpx:HTTP Request: GET http://127.0.0.1:8000/api/market/history?ticker=US.GLD&ktype=K_DAY&num=60 "HTTP/1.1 200 OK"
+2026-06-11 23:07:23 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:64067 - "GET /api/macro/news?limit=30&category=general HTTP/1.1" 200
+2026-06-11 23:07:23 | INFO     | httpx | INFO:httpx:HTTP Request: GET http://127.0.0.1:8000/api/macro/news?limit=30&category=general "HTTP/1.1 200 OK"
+2026-06-11 23:07:23 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:64061 - "GET /api/market/quote?ticker=US.GLD HTTP/1.1" 200
+2026-06-11 23:07:23 | INFO     | httpx | INFO:httpx:HTTP Request: GET http://127.0.0.1:8000/api/market/quote?ticker=US.GLD "HTTP/1.1 200 OK"
+2026-06-11 23:07:24 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://api.stlouisfed.org/fred/series/observations?series_id=DGS10&api_key=ff3cb5acfdf642751b1f1aa2d2c450c9&file_type=json&limit=30&sort_order=desc "HTTP/1.1 200 OK"
+2026-06-11 23:07:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:64060 - "GET /api/macro/series?series_id=DGS10&limit=30 HTTP/1.1" 400
+2026-06-11 23:07:24 | INFO     | httpx | INFO:httpx:HTTP Request: GET http://127.0.0.1:8000/api/macro/series?series_id=DGS10&limit=30 "HTTP/1.1 400 Bad Request"
+2026-06-11 23:07:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:64070 - "GET /api/market/tech-indicators?ticker=US.GLD&lookback_days=7 HTTP/1.1" 200
+2026-06-11 23:07:24 | INFO     | httpx | INFO:httpx:HTTP Request: GET http://127.0.0.1:8000/api/market/tech-indicators?ticker=US.GLD&lookback_days=7 "HTTP/1.1 200 OK"
+2026-06-11 23:07:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:64012 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:07:26 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://api.stlouisfed.org/fred/series/observations?series_id=T10YIE&api_key=ff3cb5acfdf642751b1f1aa2d2c450c9&file_type=json&limit=30&sort_order=desc "HTTP/1.1 200 OK"
+2026-06-11 23:07:26 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:64073 - "GET /api/macro/series?series_id=T10YIE&limit=30 HTTP/1.1" 400
+2026-06-11 23:07:26 | INFO     | httpx | INFO:httpx:HTTP Request: GET http://127.0.0.1:8000/api/macro/series?series_id=T10YIE&limit=30 "HTTP/1.1 400 Bad Request"
+2026-06-11 23:07:27 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://api.deepseek.com/chat/completions "HTTP/1.1 200 OK"
+2026-06-11 23:07:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:64089 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:07:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:64089 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:07:40 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:64089 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:07:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:64089 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:07:45 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:07:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:64089 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:15:05 | INFO     | uvicorn.error | INFO:uvicorn.error:Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-06-11 23:15:05 | INFO     | uvicorn.error | INFO:uvicorn.error:Started reloader process [2561] using WatchFiles
+2026-06-11 23:15:06 | INFO     | uvicorn.error | INFO:uvicorn.error:Started server process [2600]
+2026-06-11 23:15:06 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application startup.
+2026-06-11 23:15:07 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 23:15:08 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 这是一条来自后端启动自检的通知！
+2026-06-11 23:15:08 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:15:09 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://api.stlouisfed.org/fred/series/observations?series_id=DGS10&api_key=ff3cb5acfdf642751b1f1aa2d2c450c9&file_type=json&limit=5&sort_order=desc "HTTP/1.1 200 OK"
+2026-06-11 23:15:10 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🚀 启动行情生产者 Daemon，关注标的: ['US.AAPL', 'HK.00700', 'US.TSLA', 'US.SPY', 'US.QQQ']...
+2026-06-11 23:15:10 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] ✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！
+2026-06-11 23:15:10 | INFO     | uvicorn.error | INFO:uvicorn.error:Application startup complete.
+2026-06-11 23:15:10 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:15:11 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:15:11 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 🚨 [性能警报] FastAPI 主事件循环发生严重阻塞！
+
+卡顿延迟: 712 ms
+2026-06-11 23:15:11 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:15:11 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:15:11 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:15:13 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 23:15:13 | INFO     | watchfiles.main | INFO:watchfiles.main:24 changes detected
+2026-06-11 23:15:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:51486 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:15:14 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 23:15:14 | INFO     | watchfiles.main | INFO:watchfiles.main:24 changes detected
+2026-06-11 23:15:14 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:15:15 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 23:15:16 | INFO     | uvicorn.error | INFO:uvicorn.error:127.0.0.1:51526 - "WebSocket /api/macro/news/ws" 
+2026-06-11 23:15:16 | INFO     | uvicorn.error | INFO:uvicorn.error:connection open
+2026-06-11 23:15:16 | INFO     | watchfiles.main | INFO:watchfiles.main:10 changes detected
+2026-06-11 23:15:18 | INFO     | watchfiles.main | INFO:watchfiles.main:5 changes detected
+2026-06-11 23:15:18 | INFO     | watchfiles.main | INFO:watchfiles.main:60 changes detected
+2026-06-11 23:15:28 | INFO     | watchfiles.main | INFO:watchfiles.main:24 changes detected
+2026-06-11 23:15:30 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 23:15:43 | INFO     | watchfiles.main | INFO:watchfiles.main:24 changes detected
+2026-06-11 23:15:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:51927 - "GET /api/auth/me HTTP/1.1" 401
+2026-06-11 23:15:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:51928 - "POST /api/auth/refresh HTTP/1.1" 200
+2026-06-11 23:15:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:51929 - "GET /api/auth/me HTTP/1.1" 200
+2026-06-11 23:15:44 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 23:15:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:51931 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:15:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:51936 - "GET /api/chat/suggestions?limit=6 HTTP/1.1" 200
+2026-06-11 23:15:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:51933 - "GET /api/sessions/8a947440-0a74-4f10-8daf-30281f53d5b5 HTTP/1.1" 200
+2026-06-11 23:15:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:51941 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:15:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:51942 - "GET /api/chat/suggestions?limit=6 HTTP/1.1" 200
+2026-06-11 23:15:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:51932 - "GET /api/sessions HTTP/1.1" 200
+2026-06-11 23:15:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:51944 - "GET /api/sessions/8a947440-0a74-4f10-8daf-30281f53d5b5 HTTP/1.1" 200
+2026-06-11 23:15:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:51946 - "GET /api/sessions HTTP/1.1" 200
+2026-06-11 23:15:46 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 23:15:52 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52001 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:15:52 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52003 - "GET /api/macro/calendar?days_ahead=7 HTTP/1.1" 200
+2026-06-11 23:15:52 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52002 - "GET /api/macro/capital-flow HTTP/1.1" 200
+2026-06-11 23:15:52 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52005 - "GET /api/macro/series?series_id=DGS10&limit=250 HTTP/1.1" 200
+2026-06-11 23:15:52 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52004 - "GET /api/macro/news?limit=50 HTTP/1.1" 200
+2026-06-11 23:15:52 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52006 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:15:52 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52011 - "GET /api/macro/calendar?days_ahead=7 HTTP/1.1" 200
+2026-06-11 23:15:52 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52012 - "GET /api/macro/capital-flow HTTP/1.1" 200
+2026-06-11 23:15:52 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52014 - "GET /api/macro/news?limit=50 HTTP/1.1" 200
+2026-06-11 23:15:52 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52013 - "GET /api/macro/series?series_id=DGS10&limit=250 HTTP/1.1" 200
+2026-06-11 23:15:53 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 23:15:53 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 23:15:54 | INFO     | uvicorn.error | INFO:uvicorn.error:127.0.0.1:52025 - "WebSocket /api/macro/news/ws" 
+2026-06-11 23:15:54 | INFO     | uvicorn.error | INFO:uvicorn.error:connection open
+2026-06-11 23:15:55 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 23:16:13 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:16:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52216 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:16:16 | INFO     | uvicorn.error | INFO:uvicorn.error:Stopping reloader process [2561]
+2026-06-11 23:16:23 | INFO     | uvicorn.error | INFO:uvicorn.error:Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-06-11 23:16:23 | INFO     | uvicorn.error | INFO:uvicorn.error:Started reloader process [2986] using WatchFiles
+2026-06-11 23:16:23 | INFO     | watchfiles.main | INFO:watchfiles.main:24 changes detected
+2026-06-11 23:16:24 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 23:16:24 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 23:16:25 | INFO     | uvicorn.error | INFO:uvicorn.error:Started server process [3018]
+2026-06-11 23:16:25 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application startup.
+2026-06-11 23:16:26 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:16:26 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 23:16:27 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 这是一条来自后端启动自检的通知！
+2026-06-11 23:16:27 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:16:28 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://api.stlouisfed.org/fred/series/observations?series_id=DGS10&api_key=ff3cb5acfdf642751b1f1aa2d2c450c9&file_type=json&limit=5&sort_order=desc "HTTP/1.1 200 OK"
+2026-06-11 23:16:28 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🚀 启动行情生产者 Daemon，关注标的: ['US.AAPL', 'HK.00700', 'US.TSLA', 'US.SPY', 'US.QQQ']...
+2026-06-11 23:16:28 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] ✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！
+2026-06-11 23:16:28 | INFO     | uvicorn.error | INFO:uvicorn.error:Application startup complete.
+2026-06-11 23:16:28 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:16:29 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 🚨 [性能警报] FastAPI 主事件循环发生严重阻塞！
+
+卡顿延迟: 639 ms
+2026-06-11 23:16:29 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:16:29 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:16:30 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:16:30 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52272 - "GET /api/auth/me HTTP/1.1" 401
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52320 - "GET /api/auth/me HTTP/1.1" 401
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52321 - "POST /api/auth/refresh HTTP/1.1" 200
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52323 - "POST /api/auth/refresh HTTP/1.1" 200
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52325 - "GET /api/auth/me HTTP/1.1" 200
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52327 - "GET /api/auth/me HTTP/1.1" 200
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52333 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52334 - "GET /api/macro/capital-flow HTTP/1.1" 200
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52335 - "GET /api/macro/calendar?days_ahead=7 HTTP/1.1" 200
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52336 - "GET /api/macro/news?limit=50 HTTP/1.1" 200
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52337 - "GET /api/macro/series?series_id=DGS10&limit=250 HTTP/1.1" 200
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52341 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52343 - "GET /api/macro/capital-flow HTTP/1.1" 200
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52342 - "GET /api/macro/calendar?days_ahead=7 HTTP/1.1" 200
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52348 - "GET /api/macro/series?series_id=DGS10&limit=250 HTTP/1.1" 200
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52350 - "GET /api/macro/news?limit=50 HTTP/1.1" 200
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52351 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52353 - "GET /api/macro/series?series_id=DGS10&limit=250 HTTP/1.1" 200
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52355 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52357 - "GET /api/macro/series?series_id=DGS10&limit=250 HTTP/1.1" 200
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52359 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:16:30 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52361 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:16:30 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 23:16:31 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 23:16:31 | INFO     | watchfiles.main | INFO:watchfiles.main:32 changes detected
+2026-06-11 23:16:31 | INFO     | uvicorn.error | INFO:uvicorn.error:127.0.0.1:52373 - "WebSocket /api/macro/news/ws" 
+2026-06-11 23:16:31 | INFO     | uvicorn.error | INFO:uvicorn.error:connection open
+2026-06-11 23:16:33 | INFO     | uvicorn.error | INFO:uvicorn.error:127.0.0.1:52377 - "WebSocket /api/macro/news/ws" 
+2026-06-11 23:16:33 | INFO     | uvicorn.error | INFO:uvicorn.error:connection open
+2026-06-11 23:16:33 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:16:35 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 23:16:44 | INFO     | uvicorn.error | INFO:uvicorn.error:Stopping reloader process [2986]
+2026-06-11 23:16:57 | INFO     | uvicorn.error | INFO:uvicorn.error:Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-06-11 23:16:57 | INFO     | uvicorn.error | INFO:uvicorn.error:Started reloader process [3516] using WatchFiles
+2026-06-11 23:17:00 | INFO     | uvicorn.error | INFO:uvicorn.error:Started server process [3548]
+2026-06-11 23:17:00 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application startup.
+2026-06-11 23:17:00 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 这是一条来自后端启动自检的通知！
+2026-06-11 23:17:01 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:17:01 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 23:17:02 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://api.stlouisfed.org/fred/series/observations?series_id=DGS10&api_key=ff3cb5acfdf642751b1f1aa2d2c450c9&file_type=json&limit=5&sort_order=desc "HTTP/1.1 200 OK"
+2026-06-11 23:17:02 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🚀 启动行情生产者 Daemon，关注标的: ['US.AAPL', 'HK.00700', 'US.TSLA', 'US.SPY', 'US.QQQ']...
+2026-06-11 23:17:02 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] ✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！
+2026-06-11 23:17:02 | INFO     | uvicorn.error | INFO:uvicorn.error:Application startup complete.
+2026-06-11 23:17:02 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:17:03 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 🚨 [性能警报] FastAPI 主事件循环发生严重阻塞！
+
+卡顿延迟: 692 ms
+2026-06-11 23:17:03 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:17:03 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:17:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52990 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:17:04 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:17:04 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:17:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52990 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:17:05 | INFO     | watchfiles.main | INFO:watchfiles.main:24 changes detected
+2026-06-11 23:17:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53042 - "GET /api/auth/me HTTP/1.1" 401
+2026-06-11 23:17:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53044 - "POST /api/auth/refresh HTTP/1.1" 200
+2026-06-11 23:17:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53045 - "GET /api/auth/me HTTP/1.1" 200
+2026-06-11 23:17:05 | INFO     | watchfiles.main | INFO:watchfiles.main:25 changes detected
+2026-06-11 23:17:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53049 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:17:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53050 - "GET /api/macro/capital-flow HTTP/1.1" 200
+2026-06-11 23:17:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53051 - "GET /api/macro/calendar?days_ahead=7 HTTP/1.1" 200
+2026-06-11 23:17:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53052 - "GET /api/macro/news?limit=50 HTTP/1.1" 200
+2026-06-11 23:17:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53053 - "GET /api/macro/series?series_id=DGS10&limit=250 HTTP/1.1" 200
+2026-06-11 23:17:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53057 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:17:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53058 - "GET /api/macro/capital-flow HTTP/1.1" 200
+2026-06-11 23:17:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53059 - "GET /api/macro/calendar?days_ahead=7 HTTP/1.1" 200
+2026-06-11 23:17:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53062 - "GET /api/macro/series?series_id=DGS10&limit=250 HTTP/1.1" 200
+2026-06-11 23:17:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53063 - "GET /api/macro/news?limit=50 HTTP/1.1" 200
+2026-06-11 23:17:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53065 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:17:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53067 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:17:06 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 23:17:06 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:17:07 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:17:07 | INFO     | uvicorn.error | INFO:uvicorn.error:127.0.0.1:53074 - "WebSocket /api/macro/news/ws" 
+2026-06-11 23:17:07 | INFO     | uvicorn.error | INFO:uvicorn.error:connection open
+2026-06-11 23:17:09 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 23:17:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52990 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:17:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52990 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:17:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:52990 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:17:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53163 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:17:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53163 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:17:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53163 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:17:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53224 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:17:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53224 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:17:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53224 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:17:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53224 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:17:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53224 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:18:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:18:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53313 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:18:08 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:18:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:18:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:18:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:18:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:18:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:18:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:18:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:18:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:18:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:18:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:18:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:19:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:19:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53550 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:19:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:19:10 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:19:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:19:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:19:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:19:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:19:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:19:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:19:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:19:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:19:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:19:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:20:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:20:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53750 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:20:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:20:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:20:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:20:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:20:25 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:20:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:20:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:20:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:20:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:20:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:20:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:20:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:21:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53309 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:21:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53918 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:21:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53929 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:21:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53929 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:21:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53929 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:21:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53929 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:21:28 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:21:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53929 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:21:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:53929 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:21:35 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 23:21:35 | INFO     | uvicorn.error | INFO:uvicorn.error:Shutting down
+2026-06-11 23:21:35 | INFO     | uvicorn.error | INFO:uvicorn.error:connection closed
+2026-06-11 23:21:35 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application shutdown.
+2026-06-11 23:21:35 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🛑 行情生产者 Daemon 收到取消信号，正在安全退出...
+2026-06-11 23:21:35 | INFO     | watchfiles.main | INFO:watchfiles.main:4 changes detected
+2026-06-11 23:21:36 | INFO     | watchfiles.main | INFO:watchfiles.main:3 changes detected
+2026-06-11 23:21:37 | INFO     | uvicorn.error | INFO:uvicorn.error:Started server process [3942]
+2026-06-11 23:21:37 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application startup.
+2026-06-11 23:21:38 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 这是一条来自后端启动自检的通知！
+2026-06-11 23:21:38 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:21:40 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://api.stlouisfed.org/fred/series/observations?series_id=DGS10&api_key=ff3cb5acfdf642751b1f1aa2d2c450c9&file_type=json&limit=5&sort_order=desc "HTTP/1.1 200 OK"
+2026-06-11 23:21:40 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🚀 启动行情生产者 Daemon，关注标的: ['US.AAPL', 'HK.00700', 'US.TSLA', 'US.SPY', 'US.QQQ']...
+2026-06-11 23:21:40 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] ✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！
+2026-06-11 23:21:40 | INFO     | uvicorn.error | INFO:uvicorn.error:Application startup complete.
+2026-06-11 23:21:40 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:21:40 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54033 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:21:40 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:21:42 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:21:42 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 23:21:43 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:21:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54033 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:21:45 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 23:21:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54033 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:21:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54033 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:21:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54033 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:22:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54033 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:22:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54127 - "GET /api/macro/capital-flow HTTP/1.1" 200
+2026-06-11 23:22:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54128 - "GET /api/macro/calendar?days_ahead=7 HTTP/1.1" 200
+2026-06-11 23:22:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54129 - "GET /api/macro/news?limit=50 HTTP/1.1" 200
+2026-06-11 23:22:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54126 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:22:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54154 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:22:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54033 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:22:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54033 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:22:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54033 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:22:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54201 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:22:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54201 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:22:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54201 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:22:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54201 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:22:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54248 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:22:45 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:22:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54248 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:22:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54248 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:22:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54248 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:23:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54248 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:23:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54297 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:23:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54248 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:23:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54248 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:23:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54248 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:23:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54355 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:23:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54355 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:23:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54384 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:23:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54384 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:23:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54384 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:23:46 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:23:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54384 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:23:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54384 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:23:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54384 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:24:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54384 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:24:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54476 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:24:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54384 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:24:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54384 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:24:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54384 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:24:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54384 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:24:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54384 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:24:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54384 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:24:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54384 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:24:41 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 23:24:42 | INFO     | uvicorn.error | INFO:uvicorn.error:Shutting down
+2026-06-11 23:24:42 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application shutdown.
+2026-06-11 23:24:42 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🛑 行情生产者 Daemon 收到取消信号，正在安全退出...
+2026-06-11 23:24:42 | INFO     | watchfiles.main | INFO:watchfiles.main:4 changes detected
+2026-06-11 23:24:43 | INFO     | watchfiles.main | INFO:watchfiles.main:3 changes detected
+2026-06-11 23:24:43 | INFO     | uvicorn.error | INFO:uvicorn.error:Started server process [4192]
+2026-06-11 23:24:43 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application startup.
+2026-06-11 23:24:44 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 这是一条来自后端启动自检的通知！
+2026-06-11 23:24:45 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:25:00 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🚀 启动行情生产者 Daemon，关注标的: ['US.AAPL', 'HK.00700', 'US.TSLA', 'US.SPY', 'US.QQQ']...
+2026-06-11 23:25:00 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] ✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！
+2026-06-11 23:25:00 | INFO     | uvicorn.error | INFO:uvicorn.error:Application startup complete.
+2026-06-11 23:25:00 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:25:00 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54641 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:25:00 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:25:02 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 23:25:03 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:25:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54641 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:25:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54673 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:25:05 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 23:25:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54641 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:25:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54641 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:25:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54641 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:25:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54641 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:25:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54641 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:25:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54641 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:25:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54641 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:25:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54641 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:25:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54641 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:25:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54641 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:25:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54641 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:26:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54641 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:26:05 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:55914 - "GET /api/macro/assets HTTP/1.1" 200
+2026-06-11 23:26:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54641 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:26:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54641 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:26:17 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:26:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54641 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:26:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54641 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:26:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:54641 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:26:34 | INFO     | uvicorn.error | INFO:uvicorn.error:Stopping reloader process [3516]
+2026-06-11 23:28:24 | INFO     | uvicorn.error | INFO:uvicorn.error:Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-06-11 23:28:24 | INFO     | uvicorn.error | INFO:uvicorn.error:Started reloader process [4981] using WatchFiles
+2026-06-11 23:28:25 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 23:28:25 | INFO     | watchfiles.main | INFO:watchfiles.main:24 changes detected
+2026-06-11 23:28:26 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 23:28:26 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-11 23:28:26 | INFO     | uvicorn.error | INFO:uvicorn.error:Started server process [5019]
+2026-06-11 23:28:26 | INFO     | uvicorn.error | INFO:uvicorn.error:Waiting for application startup.
+2026-06-11 23:28:27 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 这是一条来自后端启动自检的通知！
+2026-06-11 23:28:28 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:28:28 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 23:28:28 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:28:29 | INFO     | watchfiles.main | INFO:watchfiles.main:39 changes detected
+2026-06-11 23:28:33 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://api.stlouisfed.org/fred/series/observations?series_id=DGS10&api_key=ff3cb5acfdf642751b1f1aa2d2c450c9&file_type=json&limit=5&sort_order=desc "HTTP/1.1 200 OK"
+2026-06-11 23:28:33 | INFO     | backend.workers.quote_publisher | INFO:backend.workers.quote_publisher:🚀 启动行情生产者 Daemon，关注标的: ['US.AAPL', 'HK.00700', 'US.TSLA', 'US.SPY', 'US.QQQ']...
+2026-06-11 23:28:33 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] ✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！
+2026-06-11 23:28:33 | INFO     | uvicorn.error | INFO:uvicorn.error:Application startup complete.
+2026-06-11 23:28:33 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:28:33 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 🚨 [性能警报] FastAPI 主事件循环发生严重阻塞！
+
+卡顿延迟: 601 ms
+2026-06-11 23:28:33 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56451 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:28:34 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:28:34 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:28:34 | INFO     | watchfiles.main | INFO:watchfiles.main:25 changes detected
+2026-06-11 23:28:34 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:28:34 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:28:35 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56451 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:28:36 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 23:28:37 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:28:37 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:28:39 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 23:28:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56451 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:28:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56451 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:28:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56451 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:28:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56556 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:28:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56556 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:29:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56556 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:29:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56556 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:29:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56556 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:29:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56556 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:29:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56556 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:29:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56556 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:29:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56556 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:29:39 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:29:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56556 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:29:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56556 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:29:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56556 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:29:53 | INFO     | backend.services.notification_service | INFO:backend.services.notification_service:🔔 [System Notification] 🚨 [性能警报] FastAPI 主事件循环发生严重阻塞！
+
+卡顿延迟: 723 ms
+2026-06-11 23:29:53 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:29:53 | INFO     | httpx | INFO:httpx:HTTP Request: POST https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9 "HTTP/1.1 200 OK"
+2026-06-11 23:29:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56556 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:29:55 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 23:29:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56556 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:30:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56556 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:30:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56556 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:30:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:30:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:30:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:30:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:30:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:30:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:30:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:30:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:30:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:30:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:31:03 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-11 23:31:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:31:05 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 23:31:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:31:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:31:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:31:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:31:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:31:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:31:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:31:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:31:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:31:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:31:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:32:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:32:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:32:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:32:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:32:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:32:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:32:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:32:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:32:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:32:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:32:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:32:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:33:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:33:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:33:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:33:16 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:33:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:33:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:33:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:33:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:33:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:33:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:33:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:33:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:56792 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:33:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57642 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:34:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57642 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:34:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57642 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:34:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57642 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:34:18 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:34:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57642 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:34:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57642 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:34:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57642 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:34:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57642 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:34:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57642 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:34:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57752 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:34:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57752 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:34:52 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/economic?from=2026-06-10&to=2026-06-12&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 403 Forbidden"
+2026-06-11 23:34:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57752 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:34:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:35:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:35:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:35:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:35:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:35:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:35:27 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:35:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:35:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:35:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:35:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:35:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:35:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:35:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:36:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:36:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:36:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:36:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:36:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:36:29 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:36:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:36:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:36:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:36:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:57820 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:36:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58101 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:36:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58101 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:36:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58101 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:37:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58101 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:37:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58140 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:37:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58140 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:37:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:37:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:37:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:37:30 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:37:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:37:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:37:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:37:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:37:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:37:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:38:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:38:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:38:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:38:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:38:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:38:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:38:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:38:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:38:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:38:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:38:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:38:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:39:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:39:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:39:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:39:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58168 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:39:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58472 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:39:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58472 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:39:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58472 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:39:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58472 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:39:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58472 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:39:47 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:39:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58472 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:39:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58472 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:39:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58472 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:40:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58472 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:40:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58472 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:40:11 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 23:40:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58638 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:40:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58638 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:40:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58673 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:40:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58673 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:40:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58697 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:40:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58697 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:40:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58697 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:40:49 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:40:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58741 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:40:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58741 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:40:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58741 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:41:03 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-11 23:41:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58813 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:41:09 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/economic?from=2026-06-10&to=2026-06-12&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 403 Forbidden"
+2026-06-11 23:41:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58813 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:41:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58843 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:41:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58843 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:41:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58843 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:41:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58843 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:56:59 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:56:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58953 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:56:59 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/economic?from=2026-06-10&to=2026-06-12&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 403 Forbidden"
+2026-06-11 23:57:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58953 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:57:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:58953 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:57:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59021 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:57:19 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59021 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:57:24 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59021 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:57:29 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59021 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:57:34 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59021 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:57:39 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59021 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:57:44 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59021 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:57:49 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59021 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:57:54 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59021 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:57:59 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59021 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:58:01 | INFO     | httpx | INFO:httpx:HTTP Request: GET https://finnhub.io/api/v1/news?category=general&token=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng "HTTP/1.1 200 OK"
+2026-06-11 23:58:04 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59201 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:58:09 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59201 - "GET /metrics HTTP/1.1" 404
+2026-06-11 23:58:14 | INFO     | uvicorn.access | INFO:uvicorn.access:127.0.0.1:59201 - "GET /metrics HTTP/1.1" 404
+2026-06-12 00:13:33 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-12 00:13:35 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-12 00:45:48 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-12 00:45:50 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-12 00:45:57 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-12 01:51:55 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-12 01:51:57 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-12 02:08:08 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-12 02:08:10 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-12 02:58:06 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-12 02:58:08 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-12 04:02:48 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-12 04:02:50 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-12 05:09:34 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-12 05:09:36 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-12 05:44:39 | INFO     | watchfiles.main | INFO:watchfiles.main:24 changes detected
+2026-06-12 05:44:41 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-12 06:16:26 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-12 06:16:29 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-12 07:23:26 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-12 07:23:28 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-12 07:55:10 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-12 08:26:51 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-12 08:26:53 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-12 09:03:59 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-12 09:03:59 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-12 09:04:01 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-12 09:04:01 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-12 09:04:02 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-12 09:04:04 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-12 09:05:19 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-12 09:05:20 | INFO     | watchfiles.main | INFO:watchfiles.main:6 changes detected
+2026-06-12 09:05:28 | INFO     | watchfiles.main | INFO:watchfiles.main:19 changes detected
+2026-06-12 09:05:31 | INFO     | watchfiles.main | INFO:watchfiles.main:10 changes detected
+2026-06-12 09:05:36 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-12 09:05:38 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-12 09:06:02 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-12 09:06:04 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-12 09:10:53 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-12 09:10:53 | INFO     | watchfiles.main | INFO:watchfiles.main:4 changes detected
+2026-06-12 09:10:54 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-12 09:10:59 | INFO     | watchfiles.main | INFO:watchfiles.main:25 changes detected
+2026-06-12 09:11:02 | INFO     | watchfiles.main | INFO:watchfiles.main:10 changes detected
+2026-06-12 09:11:07 | INFO     | watchfiles.main | INFO:watchfiles.main:2 changes detected
+2026-06-12 09:11:09 | INFO     | watchfiles.main | INFO:watchfiles.main:8 changes detected
+2026-06-12 09:12:14 | INFO     | watchfiles.main | INFO:watchfiles.main:1 change detected
+2026-06-12 09:12:15 | INFO     | watchfiles.main | INFO:watchfiles.main:3 changes detected
+2026-06-12 09:23:50 | INFO     | uvicorn.error | INFO:uvicorn.error:Stopping reloader process [4981]

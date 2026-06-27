@@ -1,0 +1,399 @@
+---
+description: Quant Agent 全栈 Vibe Coding 核心规范 — 适用于所有 AI 辅助代码生成。在生成前端、后端、Agent 任何代码前，必须先读懂此规范。
+globs:
+  - "**/*.tsx"
+  - "**/*.ts"
+  - "**/*.py"
+  - "**/*.mdc"
+alwaysApply: true
+---
+
+# Quant Agent — Vibe Coding 铁律规范 (V2.0)
+
+> 本规范是量化终端的"代码宪法"。违反任何一条铁律，生成的代码一律视为无效，必须重写。
+
+---
+
+## 第一章：技术栈与框架选型（强制对齐，禁止偏差）
+
+### 1.1 前端（Web Terminal）
+
+> **架构决策（不可推翻）**：量化看板是"长期挂机的重型客户端"，核心诉求是毫秒级 WebSocket 渲染与 Canvas/WebGL 图表，不需要 SEO 或首屏秒开。Next.js App Router 的 RSC 模型与此背道而驰：所有涉及 `window`/`document`/WebSocket 的组件都必须加 `'use client'`，RSC 优势全部丧失，反而引入网络边界序列化开销与 Node.js 运行时部署成本。**选型已定：纯 Vite SPA。**
+
+```
+框架    : React 18+ (Hooks) — 纯 Vite SPA，禁止引入 Next.js
+路由    : React Router v6（客户端路由，无服务端渲染）
+语言    : TypeScript (严格模式, strict: true)
+构建    : Vite（开发 + 生产，打包为纯静态 HTML/CSS/JS）
+部署    : Nginx 静态服务 / Cloudflare Pages — 零 Node.js 运行时依赖
+样式    : Tailwind CSS v4 + tailwind-merge
+组件库  : shadcn/ui + Radix UI + lucide-react
+状态管理: Zustand（全局）+ useRef（高频可变数据，绕过 VDOM）
+本地缓存: IndexedDB（历史 K 线离线缓存，避免重复拉取）
+包管理  : pnpm（唯一锁文件：pnpm-lock.yaml，禁止混用 yarn/npm）
+```
+
+**⛔ 严禁出现以下技术**（已废弃/架构不兼容）：
+- `Next.js`、`Nuxt`、任何 SSR/SSG 框架 — **绝对禁止**（RSC 与高频 WebSocket 架构冲突）
+- Vue 3、Pinia、Vue Router — **绝对禁止**
+- Redux Toolkit、MobX — 已被 Zustand 替代
+- Axios — 使用原生 Fetch；WebSocket 直连后端 Gateway
+- ECharts 用于 K 线主图 — 必须用 Lightweight-Charts
+- 任何 DOM/SVG 图表库处理高频数据（`recharts`、`victory`、`nivo`）
+
+### 1.2 后端（FastAPI Execution Engine）
+
+```
+语言    : Python 3.11+（asyncio 原生协程）
+框架    : FastAPI + Pydantic v2（数据契约）
+ORM     : SQLAlchemy 2.0 (async)
+IPC     : ZeroMQ（进程间微秒级通信）
+缓存/MQ : Redis（Pub/Sub + Streams + Hash）
+数据库  : PostgreSQL + pgvector（OLTP）
+数据湖  : DuckDB + Parquet（OLAP 回测）
+容器化  : Docker + Docker Compose
+```
+
+**⛔ 严禁出现以下模式**：
+- 在 FastAPI 路由中直接执行同步阻塞调用（必须用 `asyncio.to_thread` 或 `ProcessPoolExecutor`）
+- 在 `routers/` 中写业务逻辑（路由只做参数校验与转发，业务在 `services/`）
+- 硬编码任何 API Key 或连接字符串（必须通过 `os.getenv` 读取 `.env`）
+
+### 1.3 Hermes Agent
+
+```
+框架    : 自研 ReAct 推理引擎（hermes_agent/）
+模式    : Plan → Tool → Verify → Output（禁止跳过 Verify）
+LLM     : OpenAI GPT-4o / 本地 Ollama（降级链路）
+协议    : SSE（流式推理，禁止用 WebSocket 传输 AI 思维链）
+```
+
+---
+
+## 第二章：前端铁律（Frontend Laws）
+
+### 2.1 渲染引擎分级使用（最重要的前端规则）
+
+| 场景 | 必须使用 | 禁止使用 |
+|:---|:---|:---|
+| K 线主图 / 分时图 | `Lightweight-Charts` | ECharts、Recharts |
+| Level 2 盘口挂单墙 | `PixiJS v8`（WebGL） | DOM 节点渲染 |
+| 选股结果 / OMS 订单列表（>1000行） | `AG Grid`（虚拟滚动） | 原生 table、普通列表 |
+| 多因子热力图 / AI 生成图表 / 归因双轴图 | `Apache ECharts` | PixiJS |
+| 实时数字跳动（价格、涨跌幅） | `useRef` + 直接 DOM 突变 | `useState`（禁止） |
+
+### 2.2 高频数据的零 GC 处理（零 GC 三原则）
+
+**原则一：Tick 数据禁止进 React 状态树**
+```
+✅ 正确：const tickRef = useRef<Float64Array>()
+⛔ 错误：const [tick, setTick] = useState()
+```
+
+**原则二：高频数组使用 TypedArray**
+```
+✅ 正确：new Float64Array(bufferSize) — 栈上分配，无 GC
+⛔ 错误：prices.push(newPrice) — 持续分配，触发 GC 卡顿
+```
+
+**原则三：计算密集型任务进 Web Worker**
+- 超过 1000 条记录的过滤、排序、因子计算 → 必须在 `frontend/workers/` 下独立 Worker 文件执行
+- Worker 与主线程通信优先使用 `SharedArrayBuffer` 零拷贝传输
+
+### 2.3 数据分层架构（MVVM Clean Architecture）
+
+量化前端严格遵循三层分离，**每一层只做一件事**：
+
+```
+数据层 (Data Layer)
+  ├── WebSocket 直连后端 Gateway（双向行情推送）
+  ├── Fetch API 拉取历史 K 线（HTTP，一次性）
+  └── IndexedDB 本地缓存（历史数据离线加速，避免重复拉取）
+
+逻辑层 (Logic Layer / ViewModel)
+  ├── Zustand Store — 管理全局交易状态（持仓、订单簿、账户资金）
+  ├── Web Workers — 承接高频指标计算（MACD/RSI/布林带）和 Tick 聚合
+  └── Custom Hooks — 封装 WebSocket 生命周期、重连、背压逻辑
+
+视图层 (UI Layer)
+  ├── 纯渲染，无数据拉取，无业务逻辑
+  ├── 图表：Canvas/WebGL 库（Lightweight-Charts / PixiJS）
+  └── 列表：虚拟滚动（AG Grid）
+```
+
+**⛔ 跨层访问禁止清单**：
+- 视图组件中禁止出现 `fetch()`、`WebSocket`、复杂计算逻辑
+- Zustand Store 中禁止存储高频 Tick 数组（用 `useRef` 绕过响应式追踪）
+- Web Worker 中禁止直接操作 DOM 或调用 React API
+
+### 2.4 Zustand Store 分层规范
+
+每个 Store 必须按以下切片（Slice）划分，严禁将高频可变数据混入 Zustand：
+
+```
+stores/
+├── useMarketStore.ts    # 仅存当前订阅状态（symbol列表），行情数据用 useRef
+├── useOmsStore.ts       # 订单状态机（OrderState），不存具体行情
+├── useChatStore.ts      # Hermes Agent 多轮对话历史与流式状态
+├── useLayoutStore.ts    # 面板折叠/展开状态、当前激活 Tab
+└── useSettingsStore.ts  # 用户配置（沙箱/实盘模式、数据源开关）
+```
+
+### 2.4 视觉语言规范（Dark Cyberpunk HUD）
+
+**颜色语义（禁止违反）**：
+```
+涨/多/盈利/成功  → text-emerald-400  / bg-emerald-500/10
+跌/空/亏损/危险  → text-red-400      / bg-red-500/10
+警告/延迟/降级   → text-amber-500    / bg-amber-500/10
+中性/次要信息    → text-slate-400    / text-gray-400
+背景基调         → bg-gray-900 / bg-zinc-950
+玻璃态面板       → backdrop-blur-md bg-white/5 border border-white/10
+```
+
+**数据降级（STALE）显示**：当 WebSocket 断连或数据超时时，必须：
+```
+1. 立即在数字旁显示 STALE 标签（text-amber-500）
+2. 将整个数据区域降低不透明度：opacity-60 saturate-50
+3. 不得展示过期数据且不加任何标注
+```
+
+### 2.5 组件架构规范
+
+```
+components/          ← 纯 UI 组件，无业务逻辑，无数据拉取
+features/            ← 业务功能模块，按领域划分
+  ├── market/        ← 市场感知（行情/K线/盘口）
+  ├── screener/      ← 投研选股
+  ├── trading/       ← 交易执行/OMS
+  └── risk/          ← 风控与 AI 副驾
+hooks/               ← 自定义 Hooks（数据获取、WebSocket 管理）
+stores/              ← Zustand 状态切片
+workers/             ← Web Worker 脚本（计算密集型任务）
+```
+
+**单文件不超过 300 行**：超过 300 行必须拆分，禁止出现超过 1000 行的单文件。
+
+---
+
+## 第三章：后端铁律（Backend Laws）
+
+### 3.1 数据流架构边界（Single Source of Truth）
+
+```
+外部 API（Futu/YFinance/Finnhub）
+    ↓ 只有 backend/workers/ 可直接访问
+Redis Pub/Sub（数据总线）
+    ↓ WebSocket Gateway 从总线订阅
+前端 / 移动端 / Hermes Agent Tools
+```
+
+**⛔ 绝对禁止**：
+- 前端直接调用 Futu API / YFinance / 任何外部数据源
+- Hermes Agent Tools 中包含直接的网络请求（必须通过内网 HTTP 调用后端接口）
+- 移动端 App 直接连接 Redis 或 PostgreSQL
+
+### 3.2 FastAPI 并发规范
+
+```python
+# ✅ CPU 密集型任务（Pandas 计算、回测）
+result = await asyncio.to_thread(compute_heavy_task, params)
+
+# ✅ 进程隔离（大模型调用、极重计算）
+with ProcessPoolExecutor() as pool:
+    result = await loop.run_in_executor(pool, task_func, args)
+
+# ⛔ 错误：在路由函数中直接调用同步阻塞代码
+@router.get("/backtest")
+async def run_backtest():
+    df = pandas_heavy_calc()  # 🚨 这会阻塞事件循环！
+```
+
+### 3.3 API 响应格式（统一，禁止例外）
+
+```json
+{
+  "status": "success",
+  "message": "描述信息",
+  "data": {},
+  "timestamp": "2026-06-27T10:00:00Z"
+}
+```
+
+错误响应：
+```json
+{
+  "status": "error",
+  "message": "具体错误描述",
+  "error_code": "FUTU_DISCONNECTED",
+  "data": null
+}
+```
+
+### 3.4 Pydantic 接口契约先行
+
+**在编写任何路由或 Service 函数前，必须先定义 Pydantic 模型**：
+```python
+# ✅ 先定义契约
+class ScreenerRequest(BaseModel):
+    market: Literal["HK", "US"]
+    max_pe: float = Field(gt=0, lt=1000)
+    min_market_cap: float = Field(gt=0)
+
+# 再写路由
+@router.post("/market/screener")
+async def screener(req: ScreenerRequest) -> ScreenerResponse:
+    ...
+```
+
+### 3.5 Futu API 特殊规范（血泪教训）
+
+**百分比参数必须传小数（不乘以100）**：
+```python
+# ✅ 正确：ROE 15% → 传 0.15
+StockScreenRequest(roe_ttm_min=0.15)
+
+# ⛔ 错误（会导致筛选结果为空或异常）
+StockScreenRequest(roe_ttm_min=15)
+```
+
+**行情订阅配额管理**：
+- 免费账户实时行情订阅有数量上限，必须在 `workers/` 中维护订阅计数器
+- 超出配额时自动降级至快照模式（拉取替代推送），并在 UI 显示降级标识
+
+### 3.6 ZeroMQ 节点通信规范
+
+```
+Data Node (PUSH)  →  OMS Node (PULL)    # 行情推送给执行引擎
+OMS Node (PUB)    →  Risk Node (SUB)    # 风控订阅所有持仓变动
+```
+
+- 所有 ZeroMQ 消息体必须使用 `msgpack` 序列化（禁止 JSON，延迟差10倍）
+- Socket 必须设置 `LINGER = 0`，防止进程退出时消息队列阻塞
+
+---
+
+## 第四章：Hermes Agent 铁律（Agent Laws）
+
+### 4.1 ReAct 执行约束
+
+**每次 Tool 调用必须遵循**：
+```
+1. Plan   — 明确此次调用的目的与预期返回
+2. Tool   — 执行 Tool 调用
+3. Verify — 校验返回数据的合理性（非空、数值范围、时间戳新鲜度）
+4. Output — 基于数据输出结论，禁止在数据未到位时先输出结论
+```
+
+### 4.2 零幻觉原则（数字类）
+
+- **任何数字必须 100% 来源于 Tool 返回值**，禁止使用预训练知识中的历史数据
+- 若 Tool 调用失败，输出必须包含明确的失败说明，禁止用"估计值"填充
+- 在分析报告末尾必须附注：数据获取时间戳 + 所用 Tool 名称
+
+### 4.3 ECharts 配置输出规范（UI 生成模式）
+
+当 Agent 需要输出动态图表时，使用以下格式（前端渲染引擎会自动拦截）：
+
+````
+```echarts
+{
+  "backgroundColor": "transparent",
+  "xAxis": { "type": "category", "axisLine": { "lineStyle": { "color": "#334155" } } },
+  "yAxis": { "splitLine": { "lineStyle": { "color": "#1e293b" } } },
+  "series": [{ "type": "line", "lineStyle": { "color": "#8b5cf6" } }]
+}
+```
+````
+
+**强制暗黑配色约束**：
+- 背景：`"backgroundColor": "transparent"` — 必须透明
+- 网格线：`#1e293b` 或 `#334155` — 暗石板色
+- 文字标签：`#64748b` 或 `#94a3b8` — 冷灰色
+- 上涨/看多数据线：`#10b981`（绿）
+- 下跌/看空数据线：`#ef4444`（红）
+- 主数据系列：`#8b5cf6`（紫）或 `#3b82f6`（蓝）
+- **禁止使用 ECharts 默认色系**（刺眼的橙红蓝）
+
+### 4.4 工具调用熔断规则
+
+- 同一 Tool 连续失败 **3 次** → 立即中止，输出熔断报告，进入等待状态
+- 禁止在熔断后继续尝试其他 Tool 绕过（可能导致无限循环）
+- 熔断报告必须包含：失败 Tool 名、错误原因、建议用户检查的配置项
+
+---
+
+## 第五章：工程化规范（Engineering Laws）
+
+### 5.1 沙箱/实盘安全锁
+
+```python
+# 所有涉及真实交易的函数必须前置检查
+REAL_TRADE_EXECUTE = os.getenv("REAL_TRADE_EXECUTE", "false").lower() == "true"
+
+if not REAL_TRADE_EXECUTE:
+    logger.warning("[SANDBOX] 沙箱模式，跳过真实交易指令")
+    return {"status": "sandbox", "message": "模拟推演，未实际发单"}
+```
+
+**UI 层强制显示当前模式**：
+- 沙箱模式：顶部导航显示橙色横幅「🟡 SANDBOX MODE — 模拟推演中，不影响真实资金」
+- 实盘模式：顶部导航显示红色横幅「🔴 LIVE TRADING — 所有操作将影响真实账户」
+
+### 5.2 Git 提交规范
+
+```
+feat(screener): 新增 RSI 横截面过滤支持
+fix(websocket): 修复断连后行情订阅未恢复的问题
+perf(k-line): 将 ECharts 替换为 Lightweight-Charts，FPS 从 30 提升至 60
+docs(api): 补充 /market/screener 的接口文档与 Pydantic Schema
+refactor(oms): 拆分 OMS 状态机为独立 Worker 节点
+```
+
+- **禁止提交包含 `.env` 文件的代码**（`.env` 必须在 `.gitignore` 中）
+- **禁止 `git push --force` 到 main 分支**
+
+### 5.3 测试覆盖要求
+
+| 层级 | 必须覆盖 | 工具 |
+|:---|:---|:---|
+| 后端 Tool | 所有 Tool 的正常/异常路径 | pytest + AsyncMock |
+| 后端 API | 参数校验、限流、WebSocket 握手 | FastAPI TestClient |
+| 前端 Hook | useMarketData、WebSocket 重连逻辑 | Vitest |
+| Agent | 幻觉压测用例集（Golden Dataset） | 自定义 Eval 脚本 |
+
+**禁止在单测中发起真实网络请求**（Redis、PostgreSQL、Futu、外部 API 必须全部 Mock）
+
+### 5.4 Docker 部署规范
+
+```yaml
+# docker-compose.yml 中每个服务必须配置
+healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+
+# 禁止使用 latest tag 部署实盘
+image: quant-agent:v2026.06.27-a1b2c3d  # ✅ 精确版本
+image: quant-agent:latest                 # ⛔ 禁止
+```
+
+---
+
+## 第六章：禁止事项速查表（Quick Reference）
+
+| 场景 | 禁止 | 替代方案 |
+|:---|:---|:---|
+| 前端高频数据 | `useState` 存 Tick | `useRef` + 直接 DOM 突变 |
+| 前端 K 线图 | ECharts | Lightweight-Charts |
+| 前端大数据列表 | 原生 `<table>` | AG Grid 虚拟滚动 |
+| 前端技术栈 | Vue/Pinia/Nuxt | React/Zustand/Next.js |
+| 后端路由函数 | 同步阻塞代码 | `asyncio.to_thread` |
+| 后端数据访问 | 各模块直连外部 API | 通过内网 Gateway 统一代理 |
+| Futu 百分比参数 | 传 `15`（ROE 15%） | 传 `0.15` |
+| Agent 数字输出 | 预训练权重中的历史数据 | 100% 来自 Tool 返回值 |
+| 实盘交易触发 | 无前置安全锁检查 | 必须检查 `REAL_TRADE_EXECUTE` |
+| Git 提交 | 包含 `.env` 文件 | `.env` 必须在 `.gitignore` |
+| 生产镜像 | `:latest` tag | 精确版本 tag |
+| ZeroMQ 消息 | JSON 序列化 | msgpack 序列化 |

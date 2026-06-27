@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package market;
+
+// 深度盘口单档结构
+message Order {
+  float price = 1;
+  float size = 2;
+}
+
+// 极速行情快照 (Tick & Level 2)
+message QuoteData {
+  string status = 1;
+  string ticker = 2;
+  float last_price = 3;
+  string change_pct = 4;
+  string volume_str = 5;
+  repeated Order bids = 6;
+  repeated Order asks = 7;
+  string source = 8;
+}

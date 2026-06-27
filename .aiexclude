@@ -1,0 +1,131 @@
+# 1. 依赖与虚拟环境 (Dependencies & Virtual Environments)
+node_modules/
+.venv/
+venv/
+env/
+
+# 2. 构建产物与缓存 (Build Artifacts & Caches)
+.next/
+build/
+dist/
+out/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.dylib
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.eslintcache
+.vite/
+.cache/
+*.tsbuildinfo
+*.egg-info/
+.eggs/
+*.egg
+.turbo/
+.vercel/
+
+# 排除编译后极度冗长的 Protobuf JS 产物 (仅保留 .proto 源码与 .d.ts 类型声明)
+frontend/src/lib/proto/*.js
+
+# 3. IDE 与操作系统文件 (IDE & OS Files)
+.idea/
+.vscode/
+.cursor/
+.windsurf/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# 4. 敏感信息与环境变量 (Secrets & Environment Variables)
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*secret*.json
+*credentials*.json
+
+# 5. 日志文件 (Log Files)
+*.log*
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 6. 包管理器锁定文件 (Package Manager Lock Files)
+# 极其耗费 Token 且无业务逻辑
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+poetry.lock
+Pipfile.lock
+uv.lock
+
+# 7. 测试与覆盖率报告 (Test & Coverage Reports)
+htmlcov/
+.coverage
+coverage/
+.tox/
+reports/
+
+# 8. 大型静态资源与数据集 (Large Static Assets & Datasets)
+frontend/src/assets/
+backend/data/
+mock_data/
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
+*.webp
+*.mp4
+*.mp3
+*.wav
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+*.csv
+*.parquet
+*.h5
+*.hdf5
+*.feather
+*.csv.gz
+*.jsonl
+*.pkl
+*.npy
+*.npz
+*.whl
+dump.rdb
+
+# 9. 模型权重 (Model Weights)
+*.pt
+*.pth
+*.onnx
+*.safetensors
+*.bin
+*.ckpt
+*.gguf
+
+# 10. 数据科学及 Jupyter 缓存 (Data Science & Jupyter Caches)
+.ipynb_checkpoints/
+wandb/
+mlruns/
+tb_logs/
+runs/
+
+# 11. Python 版本管理
+.python-version
+
+# 12. Git
+.git/

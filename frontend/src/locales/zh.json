@@ -1,0 +1,106 @@
+{
+    "pageTitle": {
+        "monitor": "量化监控面板"
+    },
+    "language": "语言",
+    "greeting": "你好，Quant Agent！",
+    "languages": {
+        "zh": "中文",
+        "en": "英文"
+    },
+    "theme": {
+        "light": "🌞 亮色模式",
+        "dark": "🌙 暗色模式"
+    },
+    "navigation": {
+        "quotes": "行情图表",
+        "strategy": "策略研发",
+        "backtest": "回测引擎",
+        "risk": "实盘风控",
+        "llm": "LLM助手"
+    },
+    "dashboard": {
+        "globalMacro": "全球宏观",
+        "watchlist": "自选与持仓"
+    },
+    "screener": {
+        "turnover_ratio_fmt": "换手率",
+        "turnover_ratio": "换手率",
+        "industry": "行业",
+        "plate": "所属板块",
+        "matched_patterns": "技术形态",
+        "volume_ratio_fmt": "量比",
+        "volume_ratio": "量比",
+        "rsi_bottom_diverge": "RSI底背离",
+        "rsi_top_diverge": "RSI顶背离",
+        "macd_gold_cross": "MACD金叉",
+        "macd_golden_cross": "MACD金叉",
+        "kdj_gold_cross": "KDJ金叉",
+        "kdj_golden_cross": "KDJ金叉",
+        "macd_bottom_diverge": "MACD底背离",
+        "macd_top_diverge": "MACD顶背离"
+    },
+    "macro": {
+        "spx": "标普 500",
+        "ndx": "纳斯达克 100",
+        "vix": "恐慌指数",
+        "tnx": "美债 10年期",
+        "dxy": "美元指数",
+        "wti": "原油",
+        "gold": "黄金",
+        "btc": "比特币",
+        "eurusd": "欧元/美元",
+        "fvx": "美债 5年期",
+        "es": "标普500期指",
+        "jpy": "日元/美元"
+    },
+    "risk": {
+        "totalNav": "总资产净值",
+        "sharpeRatio": "夏普比率 (年化)",
+        "maxDrawdown": "最大回撤",
+        "marginUsage": "保证金使用率",
+        "exposure": "多空敞口",
+        "positionDetails": "持仓明细",
+        "filterPositions": "搜索/过滤持仓...",
+        "accounts": "个账户",
+        "dragToSort": "拖拽以排序",
+        "grossExposure": "总风险敞口",
+        "unrealizedPnl": "未实现盈亏",
+        "symbol": "标的",
+        "qty": "数量",
+        "entryPrice": "成本价",
+        "price": "市价",
+        "weight": "占比",
+        "pnl": "盈亏",
+        "noPositions": "暂无持仓",
+        "backToBottom": "回到底部",
+        "long": "多头",
+        "short": "空头",
+        "netExposure": "净敞口",
+        "leverage": "杠杆率",
+        "totalFrictionCost": "总磨损 (手续费+滑点)",
+        "collapseAll": "收起持仓明细",
+        "expandAll": "展开持仓明细",
+        "account": "账户",
+        "gridView": "网格视图",
+        "listView": "列表视图"
+    },
+    "login": {
+        "title": "登录 / 注册",
+        "email": "邮箱地址",
+        "password": "密码",
+        "signIn": "登录",
+        "register": "注册",
+        "forgotPassword": "忘记密码？",
+        "close": "关闭",
+        "signOut": "退出系统",
+        "confirmLogout": "确认退出？"
+    },
+    "userMenu": {
+        "profile": "个人中心",
+        "billing": "账单与订阅",
+        "notifications": "消息通知",
+        "settings": "系统设置",
+        "logout": "退出登录"
+    }
+}

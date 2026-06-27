@@ -1,0 +1,45 @@
+# 1. 系统与编辑器缓存
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# 2. 前端缓存与依赖 (Vue/Vite)
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+npm-debug.log*
+
+# 3. 后端缓存与依赖 (Python/FastAPI)
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.venv/
+pip-log.txt
+
+# 测试与覆盖率产物
+.pytest_cache/
+htmlcov/
+.coverage
+
+# 4. 本地数据库与日志 (禁止提交！)
+*.db
+*.sqlite3
+*.log
+
+# 5. 环境变量与机密配置
+.env
+.env.*
+!.env.example
+
+# 6. 量化 Agent 专属忽略
+# 忽略 Agent 运行中产生的记忆状态、临时报告和会话 DB
+.hermes/
+memory/
+reports/*.pdf
+mock_data/
