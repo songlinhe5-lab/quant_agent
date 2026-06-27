@@ -2,13 +2,16 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+# 安装 pnpm
+RUN npm install -g pnpm
+
 # 复制依赖配置并安装
-COPY package*.json ./
-RUN npm ci
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
 # 复制源码并执行打包
 COPY . .
-RUN npm run build
+RUN pnpm build
 
 # 第二阶段：Nginx 部署 (Production)
 FROM nginx:alpine
