@@ -16,6 +16,7 @@ from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, HTTPBasic, HTTPBasicCredentials
@@ -23,6 +24,14 @@ from fastapi import Cookie
 from jose import JWTError, jwt
 import uuid
 import prometheus_client
+
+# --- BE-13: 统一响应封装 + 全局异常处理 ---
+from backend.core.error_codes import ErrorCode, ERROR_CODE_TO_HTTP_STATUS
+from backend.core.exceptions import QuantBaseException
+from backend.core.response import success as api_success, error as api_error
+
+# --- BE-05: structlog 结构化日志 ---
+from backend.core.structlog_config import configure_structlog, new_trace_id, trace_id_var, symbol_var, latency_ms_var
 
 # 将项目根目录加入 sys.path，避免直接运行 python backend/main.py 时出现 ModuleNotFoundError: No module named 'backend'
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -74,6 +83,7 @@ from backend.services.screener_service import screener_service
 from backend.services.fred_service import fred_service
 from backend.services.llm_service import llm_service
 from backend.core.middleware import AccessLogMiddleware
+from backend.core.logger import logger
 
 # --- 业务模块路由 ---
 from backend.routers.market import router as market_router
@@ -88,6 +98,7 @@ from backend.routers.strategy import router as strategy_router
 from backend.routers.oms import router as oms_router
 from backend.routers.audit import router as audit_router
 from backend.routers.internal import router as internal_router
+from backend.routers.client import router as client_router  # BE-08: 客户端 APM 心跳
 
 # --- 全局单例与连接池 ---
 global_registry = None
@@ -268,6 +279,133 @@ async def lifespan(app: FastAPI): # type: ignore
 app = FastAPI(title="Quant Agent Data Gateway", lifespan=lifespan)
 
 # ==========================================
+# --- BE-05: structlog 结构化日志初始化 ---
+# ==========================================
+configure_structlog()
+
+# ==========================================
+# --- BE-13: 全局异常处理器 ---
+# ==========================================
+
+@app.exception_handler(QuantBaseException)
+async def quant_exception_handler(request: Request, exc: QuantBaseException):
+    """捕获所有 QuantBaseException 子类，统一转换为 {code, msg, data, ts} 格式"""
+    http_status = ERROR_CODE_TO_HTTP_STATUS.get(exc.code, 500)
+    body = {
+        "code": exc.code,
+        "msg": exc.msg,
+        "data": exc.data,
+        "ts": int(time.time() * 1000),
+    }
+    if exc.trace_id:
+        body["trace_id"] = exc.trace_id
+    return JSONResponse(status_code=http_status, content=body)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """捕获 Pydantic 请求参数校验失败，转换为 code=2001 的统一格式"""
+    errors = []
+    for err in exc.errors():
+        loc = " -> ".join(str(l) for l in err["loc"]) if err.get("loc") else ""
+        errors.append({"field": loc, "msg": err.get("msg", ""), "type": err.get("type", "")})
+    body = {
+        "code": int(ErrorCode.VALIDATION_FAILED),
+        "msg": f"请求参数校验失败: {exc.errors()[0]['msg']}" if exc.errors() else "请求参数校验失败",
+        "data": errors,
+        "ts": int(time.time() * 1000),
+    }
+    return JSONResponse(status_code=422, content=body)
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """全局兜底异常处理器：捕获所有未预料的异常，返回 code=5000"""
+    # 生成 trace_id 便于排查日志
+    trace_id = str(uuid.uuid4())[:16]
+    logger.error(f"[UnhandledException] {request.method} {request.url.path} trace_id={trace_id} error={exc}", exc_info=True)
+    body = {
+        "code": int(ErrorCode.INTERNAL_ERROR),
+        "msg": f"内部服务器错误 (trace_id: {trace_id})",
+        "data": None,
+        "ts": int(time.time() * 1000),
+        "trace_id": trace_id,
+    }
+    return JSONResponse(status_code=500, content=body)
+
+
+# ==========================================
+# --- BE-13: 响应格式转换中间件 ---
+# ==========================================
+# 将尚未迁移的旧路由响应（不含 code 字段）自动包装为 {code, msg, data, ts} 统一格式。
+# 已使用 success()/error() 的新路由不受影响（检测到 code 字段即放行）。
+
+_SKIP_TRANSFORM_PREFIXES = (
+    "/api/v1/chat",       # SSE 流式响应
+    "/api/v1/sse",        # SSE 端点
+    "/api/v1/ws",         # WebSocket
+    "/ws/",               # WebSocket
+    "/assets",            # 静态资源
+    "/metrics",           # Prometheus（非 JSON）
+    "/mcp",               # MCP 探针
+)
+
+
+@app.middleware("http")
+async def response_envelope_middleware(request: Request, call_next):
+    """
+    BE-13: 将旧式 JSON 响应自动包装为统一信封格式。
+    - StreamingResponse / FileResponse: 直接放行
+    - 已有 code 字段: 直接放行（已迁移的新路由）
+    - 其他 JSON: 将原 body 包入 data 字段
+    """
+    response = await call_next(request)
+    path = request.url.path
+
+    # 快速跳过不需要转换的路径
+    if any(path.startswith(p) for p in _SKIP_TRANSFORM_PREFIXES):
+        return response
+    if path in ("/", "/monitor", "/health", "/metrics"):
+        return response
+
+    # 仅转换 JSON 响应
+    content_type = response.headers.get("content-type", "")
+    if "application/json" not in content_type:
+        return response
+
+    # 读取响应体
+    try:
+        body_chunks = []
+        async for chunk in response.body_iterator:
+            if isinstance(chunk, bytes):
+                body_chunks.append(chunk)
+            else:
+                body_chunks.append(chunk.encode("utf-8"))
+        raw_body = b"".join(body_chunks)
+        data = json.loads(raw_body)
+    except Exception:
+        # 无法解析的响应体直接原样返回
+        return JSONResponse(
+            status_code=response.status_code,
+            content=json.loads(raw_body) if raw_body else None,
+            headers=dict(response.headers),
+        )
+
+    # 已包含统一 code 字段 → 直接放行（已迁移的路由）
+    if isinstance(data, dict) and "code" in data:
+        return JSONResponse(status_code=response.status_code, content=data)
+
+    # 包装旧式响应
+    envelope = {
+        "code": 0 if 200 <= response.status_code < 300 else int(ErrorCode.INTERNAL_ERROR),
+        "msg": "ok" if 200 <= response.status_code < 300 else (data.get("message", "error") if isinstance(data, dict) else "error"),
+        "data": data,
+        "ts": int(time.time() * 1000),
+    }
+    return JSONResponse(status_code=response.status_code, content=envelope)
+
+
+# ==========================================
 # --- Prometheus 监控指标暴露 ---
 # ==========================================
 metrics_security = HTTPBasic()
@@ -298,6 +436,29 @@ def metrics(username: str = Depends(verify_metrics_auth)):
 # ==========================================
 RATE_LIMIT = 100  # 每个 IP 在时间窗口内的最大请求数
 RATE_WINDOW = 60  # 时间窗口 (秒)
+
+@app.middleware("http")
+async def trace_id_middleware(request: Request, call_next):
+    """
+    BE-05: 为每个请求注入 trace_id 上下文，供 structlog 自动携带。
+    - 优先读取请求头 X-Trace-Id（支持上游网关透传）
+    - 无则自动生成 16 字符 hex
+    - 同时在响应头中回传 X-Trace-Id，便于前端排查问题
+    """
+    tid = request.headers.get("x-trace-id") or new_trace_id()
+    token_trace = trace_id_var.set(tid)
+    token_symbol = symbol_var.set("-")
+    token_latency = latency_ms_var.set(0.0)
+    
+    try:
+        response = await call_next(request)
+        response.headers["X-Trace-Id"] = tid
+        return response
+    finally:
+        trace_id_var.reset(token_trace)
+        symbol_var.reset(token_symbol)
+        latency_ms_var.reset(token_latency)
+
 
 @app.middleware("http")
 async def pyinstrument_profiler_middleware(request: Request, call_next):
@@ -396,6 +557,7 @@ app.include_router(search_router, prefix="/api/v1")
 app.include_router(strategy_router, prefix="/api/v1")
 app.include_router(oms_router, prefix="/api/v1")
 app.include_router(audit_router, prefix="/api/v1")
+app.include_router(client_router, prefix="/api/v1")  # BE-08
 
 # 挂载内部 API 路由（需要 HMAC 签名验证，符合 SEC-03 安全规范）
 app.include_router(internal_router, prefix="/api/v1")

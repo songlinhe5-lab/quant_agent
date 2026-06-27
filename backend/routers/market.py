@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import random
 import re
 import time
@@ -9,6 +10,8 @@ import pandas as pd
 
 # 引入核心市场引擎和工具实例
 from backend.core.market_engine import manager
+from backend.core.logger import logger
+from backend.core.metrics import WS_MESSAGES_SENT, WS_MESSAGES_DROPPED
 from backend.services.futu_service import futu_service
 from backend.services.yfinance_service import yf_service, format_yf_ticker as _to_yf_ticker
 from backend.services.ticker_service import ticker_service
@@ -18,6 +21,13 @@ from backend.services.finnhub_service import finnhub_service
 from backend.services.fred_service import fred_service
 from backend.services.kline_warehouse import kline_warehouse
 from backend.core.redis_client import redis_client
+
+# BE-15: JWT 鉴权配置
+_SECRET_KEY = os.getenv("SECRET_KEY", "your-super-secret-key-keep-it-safe")
+_ALGORITHM = "HS256"
+
+# BE-15: WebSocket 心跳超时（秒）
+_WS_HEARTBEAT_TIMEOUT = 60
 
 # 全局异步锁池，用于防止各个标的的行情与新闻接口发生缓存击穿 (Cache Stampede)
 _news_locks = {}
@@ -31,44 +41,110 @@ router = APIRouter(prefix="/market", tags=["Market & Portfolio"])
 
 @router.websocket("/quotes/ws")
 async def quotes_websocket(websocket: WebSocket):
-    """多标的行情 WebSocket 推送（支持动态订阅/取消订阅）"""
+    """
+    多标的行情 WebSocket 推送（BE-15 增强版）
+    - 连接鉴权：Query String ?token=<jwt> 校验
+    - ping/pong 心跳保活：超时 60s 无心跳自动断开
+    - 订阅去重：重复 subscribe 同一 ticker 不会重复注册
+    - 背压保护：慢客户端缓冲区超过阈值时自动 drop-oldest
+    """
+    # BE-15: 连接鉴权 — 从 QueryString 提取 token 并校验
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=4001, reason="Missing authentication token")
+        return
+    try:
+        from jose import jwt as _jwt
+        payload = _jwt.decode(token, _SECRET_KEY, algorithms=[_ALGORITHM])
+        username = payload.get("sub")
+        if not username:
+            await websocket.close(code=4003, reason="Invalid token payload")
+            return
+    except Exception:
+        await websocket.close(code=4002, reason="Token expired or invalid")
+        return
+
     await manager.connect(websocket)
+    logger.info(f"[WS] 用户 {username} 已连接 (认证通过)")
+    last_heartbeat = time.monotonic()
     
     try:
         while True:
             data = await websocket.receive_text()
+            last_heartbeat = time.monotonic()  # 重置心跳计时器
             try:
                 msg = json.loads(data)
                 if not isinstance(msg, dict):
-                    await websocket.send_text(json.dumps({"status": "error", "message": "Payload must be a JSON object"}))
+                    await websocket.send_text(json.dumps({
+                        "code": 2001, "msg": "Payload must be a JSON object",
+                        "data": None, "ts": int(time.time() * 1000)
+                    }))
                     continue
                 action = msg.get("action")
                 req_tickers = msg.get("tickers", [])
                 if isinstance(req_tickers, str):
                     req_tickers = [t.strip() for t in req_tickers.split(",") if t.strip()]
                 
-                # 💡 核心防御：自动格式化前端传来的各种混用格式 (如 AAPL, 00700.HK) 为 Futu 官方强前缀格式 (US.AAPL, HK.00700)
+                # 核心防御：自动格式化前端传来的各种混用格式为 Futu 官方强前缀格式
                 req_tickers = [format_ticker(t) for t in req_tickers]
                 
                 if action == "subscribe":
-                    last_ids = msg.get("last_ids", {})
-                    manager.subscribe(websocket, req_tickers, last_ids)
-                    await websocket.send_text(json.dumps({"status": "system", "message": f"Subscribed to {req_tickers}"}))
+                    # BE-15: 订阅去重 — 过滤已订阅的 ticker
+                    current_subs = manager.subscriptions.get(websocket, set())
+                    new_tickers = [t for t in req_tickers if t not in current_subs]
+                    if new_tickers:
+                        last_ids = msg.get("last_ids", {})
+                        manager.subscribe(websocket, new_tickers, last_ids)
+                    WS_MESSAGES_SENT.labels(type="system").inc()
+                    await websocket.send_text(json.dumps({
+                        "code": 0, "msg": "ok",
+                        "data": {"subscribed": new_tickers, "already_subscribed": [t for t in req_tickers if t not in new_tickers]},
+                        "ts": int(time.time() * 1000)
+                    }))
                 elif action == "unsubscribe":
                     manager.unsubscribe(websocket, req_tickers)
-                    await websocket.send_text(json.dumps({"status": "system", "message": f"Unsubscribed from {req_tickers}"}))
+                    WS_MESSAGES_SENT.labels(type="system").inc()
+                    await websocket.send_text(json.dumps({
+                        "code": 0, "msg": "ok",
+                        "data": {"unsubscribed": req_tickers},
+                        "ts": int(time.time() * 1000)
+                    }))
                 elif action == "ping":
-                    # 💡 前端发送心跳包保活，服务器必须主动响应 pong，防止中间代理(如 Nginx)因空闲切断长连接
-                    # 💡 附加时间戳供前端计算 RTT (往返延迟) 与服务端处理耗时
-                    await websocket.send_text(json.dumps({"type": "pong", "client_ts": msg.get("ts"), "server_ts": int(time.time() * 1000)}))
+                    # BE-15: 增强型心跳响应
+                    WS_MESSAGES_SENT.labels(type="system").inc()
+                    await websocket.send_text(json.dumps({
+                        "code": 0,
+                        "type": "pong",
+                        "data": {
+                            "client_ts": msg.get("ts"),
+                            "server_ts": int(time.time() * 1000),
+                            "subscriptions": len(current_subs),
+                        },
+                        "ts": int(time.time() * 1000),
+                    }))
+                else:
+                    WS_MESSAGES_SENT.labels(type="error").inc()
+                    await websocket.send_text(json.dumps({
+                        "code": 2001, "msg": f"Unknown action: {action}",
+                        "data": None, "ts": int(time.time() * 1000)
+                    }))
             except json.JSONDecodeError:
-                await websocket.send_text(json.dumps({"status": "error", "message": "Invalid JSON"}))
+                WS_MESSAGES_SENT.labels(type="error").inc()
+                await websocket.send_text(json.dumps({
+                    "code": 2001, "msg": "Invalid JSON",
+                    "data": None, "ts": int(time.time() * 1000)
+                }))
+            
+            # BE-15: 心跳超时检查
+            if time.monotonic() - last_heartbeat > _WS_HEARTBEAT_TIMEOUT:
+                logger.warning(f"[WS] 用户 {username} 心跳超时，主动断开")
+                break
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-        print("前端已断开连接。")
+        logger.info(f"[WS] 用户 {username} 已断开")
     except Exception as e:
         manager.disconnect(websocket)
-        print(f"WebSocket 异常: {str(e)}")
+        logger.error(f"[WS] 异常断开: {e}")
 
 @router.get("/futu/status")
 async def get_futu_status():

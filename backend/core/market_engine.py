@@ -21,11 +21,16 @@ from backend.core.utils import safe_float, safe_divide
 from backend.core.redis_client import redis_client, l1_cached_redis
 from prometheus_client import Gauge
 
-# 📊 WebSocket 连接数监控指标 (暴露给 Prometheus/Grafana 大盘)
-WS_ACTIVE_CONNECTIONS = Gauge("quant_ws_active_connections", "Number of active market WebSocket connections")
+# BE-06: 统一指标定义
+from backend.core.metrics import (
+    WS_ACTIVE_CONNECTIONS, WS_MESSAGES_SENT, WS_MESSAGES_DROPPED,
+    WS_SUBSCRIPTIONS, MARKET_QUOTE_LATENCY, MARKET_QUOTE_TOTAL,
+    MARKET_QUOTE_STALENESS,
+)
 
 async def update_quote_to_redis(ticker: str, quote_data: dict):
     """通用的写入 Redis 逻辑（Futu 和 Yahoo 都调这个，统一序列化为 Protobuf）"""
+    _t0 = time.perf_counter()
     try:
         quote_msg = QuoteData(
             status="success",
@@ -43,6 +48,12 @@ async def update_quote_to_redis(ticker: str, quote_data: dict):
         payload_bytes = quote_msg.SerializeToString()
         await manager.raw_redis.hset("quant:quotes:latest", ticker, payload_bytes)
         await manager.raw_redis.publish("quant:quotes:stream", payload_bytes)
+
+        # BE-06: 行情指标埋点
+        source = quote_data.get("source", "unknown")
+        MARKET_QUOTE_TOTAL.labels(source=source, symbol=ticker).inc()
+        MARKET_QUOTE_LATENCY.labels(source=source, symbol=ticker).observe(time.perf_counter() - _t0)
+        MARKET_QUOTE_STALENESS.labels(symbol=ticker).set(0)  # 刚写入，延迟为 0
 
         # 💡 新增：实时价格突破/跌破报警检测
         last_price = quote_msg.last_price
@@ -143,6 +154,7 @@ class ConnectionManager:
     def subscribe(self, websocket: WebSocket, tickers: list[str], last_ids: Optional[dict] = None):
         if websocket in self.subscriptions:
             self.subscriptions[websocket].update(tickers)
+            WS_SUBSCRIPTIONS.set(sum(len(s) for s in self.subscriptions.values()))
             
         # 异步追补断层数据或拉取最新快照
         asyncio.create_task(self._catch_up_or_snapshot(websocket, tickers, last_ids or {}))
@@ -191,6 +203,7 @@ class ConnectionManager:
         if websocket in self.subscriptions:
             for t in tickers:
                 self.subscriptions[websocket].discard(t)
+            WS_SUBSCRIPTIONS.set(sum(len(s) for s in self.subscriptions.values()))
                 
 
     def get_all_subscribed_tickers(self) -> set[str]:
@@ -225,6 +238,7 @@ class ConnectionManager:
                             if ticker in ws_tickers:
                                 try:
                                     await ws.send_bytes(payload_bytes)
+                                    WS_MESSAGES_SENT.labels(type="quote").inc()
                                 except Exception:
                                     pass
                     except Exception:

@@ -1,0 +1,235 @@
+"""
+Quant Agent 熔断器（Circuit Breaker）
+
+对齐 docs/10 §1.4 错误码 3003 (CIRCUIT_BREAKER_OPEN) 和 docs/11 Redis Key `circuit:*`。
+
+状态机：
+  CLOSED ──[连续失败 ≥ max_failures]──► OPEN
+  OPEN   ──[超过 recovery_timeout 秒]──► HALF_OPEN
+  HALF_OPEN ──[探测成功]──► CLOSED
+  HALF_OPEN ──[探测失败]──► OPEN
+
+用法（同步 / 异步均支持）：
+    from backend.core.circuit_breaker import circuit_breaker, CircuitBreakerOpenError
+
+    # 异步用法
+    result = await circuit_breaker.call("futu_api", some_async_func, arg1, arg2)
+
+    # 同步用法（在线程池中调用）
+    result = await asyncio.to_thread(circuit_breaker.call_sync, "yfinance_api", some_sync_func, arg1)
+
+    # 装饰器用法
+    @circuit_breaker.guard("openai_api")
+    async def call_llm(prompt: str):
+        ...
+"""
+import asyncio
+import functools
+import time
+from enum import Enum
+from typing import Any, Callable, Optional, TypeVar
+
+from backend.core.exceptions import CircuitBreakerOpenError
+from backend.core.logger import logger
+from backend.core.metrics import CIRCUIT_BREAKER_STATE, CIRCUIT_BREAKER_TRANSITIONS
+
+T = TypeVar("T")
+
+
+class CircuitState(str, Enum):
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half_open"
+
+
+class _CircuitEntry:
+    """单个服务的熔断状态条目"""
+    __slots__ = ("state", "failures", "last_failure_ts", "lock", "service")
+
+    def __init__(self, service: str):
+        self.service: str = service
+        self.state: CircuitState = CircuitState.CLOSED
+        self.failures: int = 0
+        self.last_failure_ts: float = 0.0
+        self.lock: asyncio.Lock = asyncio.Lock()
+
+
+class CircuitBreaker:
+    """
+    异步优先的熔断器管理器。
+
+    - max_failures:     连续失败次数阈值，达到后触发 OPEN（默认 3）
+    - recovery_timeout: OPEN 状态持续时间（秒），超时自动转 HALF_OPEN（默认 60）
+    """
+
+    def __init__(self, max_failures: int = 3, recovery_timeout: float = 60.0):
+        self._max_failures = max_failures
+        self._recovery_timeout = recovery_timeout
+        self._entries: dict[str, _CircuitEntry] = {}
+
+    def _get_entry(self, service: str) -> _CircuitEntry:
+        """获取或懒创建服务对应的熔断条目"""
+        if service not in self._entries:
+            self._entries[service] = _CircuitEntry(service)
+        return self._entries[service]
+
+    def _check_state(self, entry: _CircuitEntry) -> CircuitState:
+        """根据当前时间判断是否需要从 OPEN 转为 HALF_OPEN"""
+        if entry.state == CircuitState.OPEN:
+            elapsed = time.monotonic() - entry.last_failure_ts
+            if elapsed >= self._recovery_timeout:
+                entry.state = CircuitState.HALF_OPEN
+                CIRCUIT_BREAKER_STATE.labels(service=entry.service).set(1)
+                CIRCUIT_BREAKER_TRANSITIONS.labels(
+                    service=entry.service, from_state="open", to_state="half_open"
+                ).inc()
+                logger.info(f"⏳ [CircuitBreaker] 熔断器进入半开状态 (等待探测)")
+        return entry.state
+
+    def get_state(self, service: str) -> CircuitState:
+        """查询指定服务的熔断状态（只读）"""
+        entry = self._get_entry(service)
+        return self._check_state(entry)
+
+    async def call(self, service: str, func: Callable, *args: Any, **kwargs: Any) -> Any:
+        """
+        通过熔断器调用异步函数。
+
+        Raises:
+            CircuitBreakerOpenError: 熔断器处于 OPEN 状态时
+        """
+        entry = self._get_entry(service)
+
+        async with entry.lock:
+            state = self._check_state(entry)
+            if state == CircuitState.OPEN:
+                remaining = self._recovery_timeout - (time.monotonic() - entry.last_failure_ts)
+                logger.warning(f"🚫 [CircuitBreaker] {service} 熔断中，剩余 {remaining:.0f}s")
+                raise CircuitBreakerOpenError(
+                    msg=f"外部 API [{service}] 熔断中，约 {max(0, int(remaining))}s 后自动恢复",
+                    service=service,
+                )
+
+        try:
+            if asyncio.iscoroutinefunction(func):
+                result = await func(*args, **kwargs)
+            else:
+                result = func(*args, **kwargs)
+        except Exception as exc:
+            async with entry.lock:
+                entry.failures += 1
+                entry.last_failure_ts = time.monotonic()
+                if entry.failures >= self._max_failures:
+                    prev_state = entry.state.value
+                    entry.state = CircuitState.OPEN
+                    CIRCUIT_BREAKER_STATE.labels(service=service).set(2)
+                    CIRCUIT_BREAKER_TRANSITIONS.labels(
+                        service=service, from_state=prev_state, to_state="open"
+                    ).inc()
+                    logger.error(
+                        f"🔴 [CircuitBreaker] {service} 连续失败 {entry.failures} 次，触发熔断！"
+                        f"将在 {self._recovery_timeout}s 后自动半开探测。"
+                    )
+                else:
+                    logger.warning(
+                        f"⚠️ [CircuitBreaker] {service} 失败 {entry.failures}/{self._max_failures}: {exc}"
+                    )
+            raise
+
+        # 调用成功 → 重置计数
+        async with entry.lock:
+            if entry.state == CircuitState.HALF_OPEN:
+                logger.info(f"✅ [CircuitBreaker] {service} 半开探测成功，恢复正常！")
+            prev_state = entry.state.value
+            entry.state = CircuitState.CLOSED
+            CIRCUIT_BREAKER_STATE.labels(service=service).set(0)
+            if prev_state != "closed":
+                CIRCUIT_BREAKER_TRANSITIONS.labels(
+                    service=service, from_state=prev_state, to_state="closed"
+                ).inc()
+            entry.failures = 0
+            entry.last_failure_ts = 0.0
+
+        return result
+
+    def call_sync(self, service: str, func: Callable, *args: Any, **kwargs: Any) -> Any:
+        """
+        通过熔断器调用同步函数（供 asyncio.to_thread 使用）。
+
+        注意：此方法使用同步锁（threading.Lock），仅在 to_thread 上下文中使用。
+        """
+        import threading
+
+        entry = self._get_entry(service)
+
+        # 同步版状态检查（无锁，简单判断）
+        state = self._check_state(entry)
+        if state == CircuitState.OPEN:
+            remaining = self._recovery_timeout - (time.monotonic() - entry.last_failure_ts)
+            raise CircuitBreakerOpenError(
+                msg=f"外部 API [{service}] 熔断中，约 {max(0, int(remaining))}s 后自动恢复",
+                service=service,
+            )
+
+        try:
+            result = func(*args, **kwargs)
+        except Exception as exc:
+            entry.failures += 1
+            entry.last_failure_ts = time.monotonic()
+            if entry.failures >= self._max_failures:
+                entry.state = CircuitState.OPEN
+                logger.error(f"🔴 [CircuitBreaker] {service} 连续失败 {entry.failures} 次，触发熔断！")
+            raise
+
+        entry.state = CircuitState.CLOSED
+        entry.failures = 0
+        entry.last_failure_ts = 0.0
+        return result
+
+    def guard(self, service: str):
+        """
+        装饰器：为异步函数自动包裹熔断保护。
+
+        用法：
+            @circuit_breaker.guard("openai_api")
+            async def call_llm(prompt: str):
+                return await client.chat.completions.create(...)
+        """
+        def decorator(func: Callable) -> Callable:
+            @functools.wraps(func)
+            async def wrapper(*args: Any, **kwargs: Any) -> Any:
+                return await self.call(service, func, *args, **kwargs)
+            return wrapper
+        return decorator
+
+    def reset(self, service: Optional[str] = None) -> None:
+        """手动重置熔断器（用于测试或运维恢复）"""
+        if service:
+            entry = self._get_entry(service)
+            entry.state = CircuitState.CLOSED
+            entry.failures = 0
+            entry.last_failure_ts = 0.0
+            logger.info(f"🔄 [CircuitBreaker] {service} 已手动重置为 CLOSED")
+        else:
+            for name, entry in self._entries.items():
+                entry.state = CircuitState.CLOSED
+                entry.failures = 0
+                entry.last_failure_ts = 0.0
+            logger.info(f"🔄 [CircuitBreaker] 所有服务熔断器已重置")
+
+    def status_snapshot(self) -> dict[str, dict]:
+        """获取所有服务的熔断状态快照（供 /health 或监控使用）"""
+        result = {}
+        for service, entry in self._entries.items():
+            state = self._check_state(entry)
+            result[service] = {
+                "state": state.value,
+                "failures": entry.failures,
+                "max_failures": self._max_failures,
+                "recovery_timeout": self._recovery_timeout,
+            }
+        return result
+
+
+# 全局单例（默认：3 次连续失败触发熔断，60 秒后自动半开探测）
+circuit_breaker = CircuitBreaker(max_failures=3, recovery_timeout=60.0)
