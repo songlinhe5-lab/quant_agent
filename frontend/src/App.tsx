@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from '@/components/ui/toaster'
 import { ProtectedRoute } from '@/components/layout/protected-route'
 import DashboardLayout from '@/components/layout/dashboard-layout'
-import LoginPage from '@/views/login'
+import LoginPage from '@/features/auth/login'
 
 // 懒加载各功能模块（按需加载，减少首屏体积）
 import { lazy, Suspense } from 'react'
@@ -17,7 +17,7 @@ const RiskModule = lazy(() => import('@/features/trading/risk').then(m => ({ def
 const CopilotModule = lazy(() => import('@/features/trading/copilot').then(m => ({ default: m.CopilotModule })))
 // TODO: 创建 @/features/system/apm 模块
 // const ApmPanel = lazy(() => import('@/features/system/apm').then(m => ({ default: m.ApmPanel })))
-const SettingsPage = lazy(() => import('@/views/settings'))
+const SettingsPage = lazy(() => import('@/features/settings/settings'))
 
 function LoadingFallback() {
   return (

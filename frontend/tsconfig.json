@@ -17,8 +17,8 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "typeRoots": [
-      "/Users/stephenhe/Development/workspace/quant_agent/frontend/node_modules/@types"
+    "types": [
+      "vite/client"
     ],
     "paths": {
       "@/*": [
