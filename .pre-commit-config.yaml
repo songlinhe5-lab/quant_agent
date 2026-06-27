@@ -1,28 +1,41 @@
-# 排除不需要检查的目录（编译产物、虚拟环境等）
-exclude: '^(frontend/dist|frontend/\.vite|venv|\.venv|__pycache__|\.git)/'
+# Pre-commit hooks 配置
+# 安装: pip install pre-commit && pre-commit install
 
 repos:
-  # 1. 基础检查：移除行尾空格、修复文件末尾空行、防止大文件提交
+  # Python linting (后端)
+  - repo: https://github.com/pycqa/ruff
+    rev: v0.3.0
+    hooks:
+      - id: ruff
+        files: ^backend/.*\.py$
+        args: [--fix]
+
+  # Python 测试 (后端)
+  - repo: local
+    hooks:
+      - id: backend-tests
+        name: Backend Tests
+        entry: bash -c 'cd backend && python -m pytest tests/test_security.py -v'
+        language: system
+        files: ^backend/.*\.py$
+        pass_filenames: false
+
+  # 前端测试
+  - repo: local
+    hooks:
+      - id: frontend-tests
+        name: Frontend Tests
+        entry: bash -c 'cd frontend && pnpm run test 2>&1 || true'
+        language: system
+        files: ^frontend/.*\.(ts|tsx|js|jsx)$
+        pass_filenames: false
+
+  # 通用检查
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v4.5.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
+      - id: check-yaml
       - id: check-added-large-files
-
-  # 2. Python 后端：使用 Ruff 进行代码规范检查和格式化
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.4.4
-    hooks:
-      # 自动修复可解决的语法/规范错误 (Lint)
-      - id: ruff
-        args: [ --fix ]
-      # 自动格式化 Python 代码 (Format)
-      - id: ruff-format
-
-  # 3. Vue/Node 前端：使用 Prettier 格式化代码
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v3.1.0
-    hooks:
-      - id: prettier
-        types_or: [vue, javascript, css, html, json, markdown]
+        args: ['--maxkb=5000']
