@@ -1,0 +1,18 @@
+# Cloudflare Pages 配置
+# 文档: https://developers.cloudflare.com/pages/framework-guides/deploy-a-vite-site/
+
+name = "quant-agent"
+compatibility_date = "2024-01-01"
+pages_build_output_dir = "./dist"
+
+# SPA 路由支持
+[[redirects]]
+from = "/*"
+to = "/index.html"
+status = 200
+
+# 静态资源缓存头
+[[headers]]
+for = "/assets/*"
+[headers.values]
+Cache-Control = "public, max-age=31536000, immutable"
