@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   security:
@@ -19,16 +18,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run Trivy vulnerability scanner
+      - name: Run Trivy vulnerability scanner (table output)
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'fs'
           scan-ref: '.'
           format: 'table'
-          exit-code: '0'  # Don't fail the workflow on vulnerabilities
+          exit-code: '0'  # Don't fail the workflow on vulnerabilities (private repo limitation)
           ignore-unfixed: true  # Ignore unfixed vulnerabilities
 
-      - name: Generate SARIF report (optional)
+      - name: Run Trivy vulnerability scanner (SARIF output for artifact)
         uses: aquasecurity/trivy-action@master
         if: always()
         with:
@@ -36,11 +35,14 @@ jobs:
           scan-ref: '.'
           format: 'sarif'
           output: 'trivy-results.sarif'
+          exit-code: '0'
+          ignore-unfixed: true
 
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+      - name: Upload Trivy results as artifact (optional)
+        uses: actions/upload-artifact@v4
         if: always()
-        continue-on-error: true  # Don't fail the workflow if code scanning is not enabled
         with:
-          sarif_file: 'trivy-results.sarif'
-          category: 'trivy'
+          name: trivy-scan-results
+          path: trivy-results.sarif
+          retention-days: 30
+        continue-on-error: true
