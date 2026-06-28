@@ -52,12 +52,14 @@ async def worker_heartbeat_daemon() -> None:
                     break
 
             # 3. 对集群所有 UUID 进行字典序排序，计算自己的 Rank
-            active_uuids = sorted([
-                k.decode("utf-8").split(":")[-1]
-                if isinstance(k, bytes)
-                else k.split(":")[-1]
-                for k in active_workers
-            ])
+            active_uuids = sorted(
+                [
+                    k.decode("utf-8").split(":")[-1]
+                    if isinstance(k, bytes)
+                    else k.split(":")[-1]
+                    for k in active_workers
+                ]
+            )
 
             if WORKER_UUID in active_uuids:
                 new_worker_id = active_uuids.index(WORKER_UUID)
@@ -99,14 +101,24 @@ async def main():
     # 🚀 1. 启动行情生产者后台守护任务 (非阻塞)
     publisher = QuotePublisher()
     all_quote_tickers = [
-        "US.AAPL", "HK.00700", "US.TSLA", "US.SPY", "US.QQQ",
-        "US.NVDA", "US.MSFT", "US.AMZN", "US.META", "US.GOOGL",
+        "US.AAPL",
+        "HK.00700",
+        "US.TSLA",
+        "US.SPY",
+        "US.QQQ",
+        "US.NVDA",
+        "US.MSFT",
+        "US.AMZN",
+        "US.META",
+        "US.GOOGL",
     ]
-    tasks.append(asyncio.create_task(
-        # 💡 这里直接传入所有 ticker，只要 publisher.run_daemon 内部
-        # 每次循环调用 is_my_shard 即可实现动态跟随
-        publisher.run_daemon(all_quote_tickers, interval=3.0)
-    ))
+    tasks.append(
+        asyncio.create_task(
+            # 💡 这里直接传入所有 ticker，只要 publisher.run_daemon 内部
+            # 每次循环调用 is_my_shard 即可实现动态跟随
+            publisher.run_daemon(all_quote_tickers, interval=3.0)
+        )
+    )
 
     # 🚀 2. 启动本地离线词库后台自动同步任务
     tasks.append(asyncio.create_task(ticker_service.sync_tickers_daemon()))
@@ -123,7 +135,9 @@ async def main():
     # 🚀 6. 启动选股器相关的各类定时与订阅后台任务
     tasks.append(asyncio.create_task(screener_service.screener_subscription_daemon()))
     tasks.append(asyncio.create_task(screener_service.daily_market_summary_daemon()))
-    tasks.append(asyncio.create_task(screener_service.clean_obsolete_knowledge_base_daemon()))
+    tasks.append(
+        asyncio.create_task(screener_service.clean_obsolete_knowledge_base_daemon())
+    )
 
     print("✅ [Worker] 所有数据拉取与守护任务已成功启动并在后台运行！")
     msg = "✅ [Quant Worker] 独立数据生产节点已成功连线启动！"

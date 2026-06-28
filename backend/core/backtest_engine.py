@@ -1475,14 +1475,14 @@ def run_monte_carlo_stress_test(
 
     return {
         "iterations": len(results),
-        "mean_return": f"{np.mean(returns_arr)*100:.2f}%",
-        "median_return": f"{np.median(returns_arr)*100:.2f}%",
-        "worst_return": f"{np.min(returns_arr)*100:.2f}%",
-        "best_return": f"{np.max(returns_arr)*100:.2f}%",
-        "win_rate_of_simulations": f"{(np.sum(returns_arr > 0) / len(returns_arr))*100:.2f}%",  # noqa: E501
+        "mean_return": f"{np.mean(returns_arr) * 100:.2f}%",
+        "median_return": f"{np.median(returns_arr) * 100:.2f}%",
+        "worst_return": f"{np.min(returns_arr) * 100:.2f}%",
+        "best_return": f"{np.max(returns_arr) * 100:.2f}%",
+        "win_rate_of_simulations": f"{(np.sum(returns_arr > 0) / len(returns_arr)) * 100:.2f}%",  # noqa: E501
         "mean_sharpe": f"{np.mean(sharpes_arr):.2f}",
-        "worst_max_drawdown": f"{np.min(mdds_arr)*100:.2f}%",
-        "mean_win_rate": f"{np.mean(win_rates_arr)*100:.2f}%",
+        "worst_max_drawdown": f"{np.min(mdds_arr) * 100:.2f}%",
+        "mean_win_rate": f"{np.mean(win_rates_arr) * 100:.2f}%",
         "mean_profit_factor": f"{np.mean(pfs_arr):.2f}",
         "mean_total_trades": int(np.mean(trades_arr)),
         # Raw data available for plotting the bell curve on the frontend!

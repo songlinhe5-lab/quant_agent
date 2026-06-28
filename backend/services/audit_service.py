@@ -2,6 +2,7 @@
 审计日志服务层
 提供审计日志的写入和查询功能
 """
+
 import uuid
 from datetime import datetime
 from typing import Any, Dict, Optional
@@ -45,7 +46,7 @@ def log_audit(
     detail: Optional[Dict[str, Any]] = None,
     request: Optional[Request] = None,
     user_id: Optional[int] = None,
-    trace_id: Optional[str] = None
+    trace_id: Optional[str] = None,
 ) -> AuditLog:
     """
     记录审计日志
@@ -69,7 +70,7 @@ def log_audit(
         ip=ip,
         trace_id=trace_id or generate_trace_id(),
         user_id=user_id,
-        created_at=datetime.utcnow()
+        created_at=datetime.utcnow(),
     )
 
     db.add(audit_log)
@@ -84,7 +85,7 @@ def get_audit_logs(
     action: Optional[str] = None,
     user_id: Optional[int] = None,
     skip: int = 0,
-    limit: int = 100
+    limit: int = 100,
 ):
     """
     查询审计日志

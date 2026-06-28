@@ -2,6 +2,7 @@
 Hermes Agent ReAct 循环单元测试
 TEST-11: mock LLM + mock Tool，验证推理步进、Tool 路由、熔断中止、上下文裁剪逻辑
 """
+
 import os
 import sys
 
@@ -79,6 +80,7 @@ class TestMemoryHealing:
         agent.messages = []
         # 绑定真实的 _heal_memory 方法
         from hermes_agent.agent import HermesAgent
+
         agent._heal_memory = HermesAgent._heal_memory.__get__(agent)
         return agent
 
@@ -107,7 +109,11 @@ class TestMemoryHealing:
         agent.messages = [
             {"role": "system", "content": "system prompt"},
             {"role": "user", "content": "query AAPL"},
-            {"role": "assistant", "content": "let me check", "tool_calls": [{"id": "call_1"}]},  # noqa: E501
+            {
+                "role": "assistant",
+                "content": "let me check",
+                "tool_calls": [{"id": "call_1"}],
+            },  # noqa: E501
             # 缺少 tool 回复 → 孤立
             {"role": "user", "content": "next question"},
         ]
@@ -123,7 +129,11 @@ class TestMemoryHealing:
         agent.messages = [
             {"role": "system", "content": "system prompt"},
             {"role": "user", "content": "check price"},
-            {"role": "assistant", "content": "checking", "tool_calls": [{"id": "call_1"}]},  # noqa: E501
+            {
+                "role": "assistant",
+                "content": "checking",
+                "tool_calls": [{"id": "call_1"}],
+            },  # noqa: E501
         ]
         agent._heal_memory()
         # 末尾的 tool_calls 应被剔除

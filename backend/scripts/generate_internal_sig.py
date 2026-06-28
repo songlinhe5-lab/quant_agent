@@ -2,6 +2,7 @@
 内部通信 HMAC 签名生成工具
 用于生成 X-Internal-Sig 签名头
 """
+
 import os
 import sys
 

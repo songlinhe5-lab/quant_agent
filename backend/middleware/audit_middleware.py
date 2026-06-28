@@ -2,6 +2,7 @@
 审计日志中间件
 自动记录关键操作到审计日志
 """
+
 from typing import Callable, Dict
 
 from fastapi import Request, Response
@@ -15,15 +16,12 @@ AUDITABLE_OPERATIONS: Dict[str, str] = {
     "/api/v1/auth/login": "login",
     "/api/v1/auth/logout": "logout",
     "/api/v1/auth/register": "register",
-
     # 订单相关
     "/api/v1/trade/order": "order_simulate",
     "/api/v1/oms/order": "order_execute",
-
     # 策略相关
     "/api/v1/strategy": "strategy_create",
     "/api/v1/strategy/": "strategy_modify",
-
     # 设置相关
     "/api/v1/settings": "settings_change",
 }
@@ -70,12 +68,7 @@ async def audit_middleware(request: Request, call_next: Callable) -> Response:
                 pass
 
             # 记录审计日志
-            log_audit(
-                db=db,
-                action=action,
-                detail=detail,
-                request=request
-            )
+            log_audit(db=db, action=action, detail=detail, request=request)
         except Exception as e:
             # 审计日志失败不应影响主流程
             print(f"审计日志写入失败: {e}")

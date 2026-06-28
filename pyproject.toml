@@ -64,8 +64,8 @@ build-backend = "hatchling.build"
 packages = ["backend"]
 
 [tool.ruff]
-# 默认单行最大长度为 88
-line-length = 88
+# 单行最大长度为 120 (兼顾代码可读性和现代宽屏显示器)
+line-length = 120
 target-version = "py311"
 exclude = [
     ".git",
@@ -77,6 +77,8 @@ exclude = [
 [tool.ruff.lint]
 # 启用 Pyflakes (F), pycodestyle (E, W) 和 isort (I 自动排序导入)
 select = ["E", "F", "W", "I"]
+# 忽略行长度检查 (E501)，因为项目中大量使用中文日志和注释
+ignore = ["E501"]
 
 [tool.ruff.format]
 # 使用与 Black 一致的格式化风格

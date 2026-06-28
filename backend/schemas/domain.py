@@ -6,6 +6,7 @@ Pydantic v2 领域模型（BE-14）
 
 对齐前端类型定义：frontend/src/types/domain.ts
 """
+
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -14,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # ─────────────────────────────────────────────
 # 基础枚举
 # ─────────────────────────────────────────────
+
 
 class Market(str, Enum):
     US = "US"
@@ -78,6 +80,7 @@ class OrderStatus(str, Enum):
 
 class OrderTIF(str, Enum):
     """订单有效时间 (Time in Force)"""
+
     DAY = "DAY"
     GTC = "GTC"  # Good Till Canceled
     GTD = "GTD"  # Good Till Date
@@ -96,13 +99,16 @@ class StrategyStatus(str, Enum):
 # 标的信息
 # ─────────────────────────────────────────────
 
+
 class SymbolModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     code: str = Field(..., description="标的代码，如 HK.00700")
     name: str = Field(..., description="标的名称")
     market: Market = Field(..., description="所属市场")
-    security_type: SecurityType = Field(..., alias="securityType", description="证券类型")  # noqa: E501
+    security_type: SecurityType = Field(
+        ..., alias="securityType", description="证券类型"
+    )  # noqa: E501
     lot_size: Optional[int] = Field(None, alias="lotSize", description="每手股数")
     currency: Optional[str] = Field(None, description="计价货币")
 
@@ -110,6 +116,7 @@ class SymbolModel(BaseModel):
 # ─────────────────────────────────────────────
 # 行情数据
 # ─────────────────────────────────────────────
+
 
 class QuoteModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -170,6 +177,7 @@ class TickModel(BaseModel):
 # 持仓与订单
 # ─────────────────────────────────────────────
 
+
 class PositionModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -182,7 +190,9 @@ class PositionModel(BaseModel):
     market_value: float = Field(..., alias="marketValue", description="持仓市值")
     unrealized_pnl: float = Field(..., alias="unrealizedPnl", description="未实现盈亏")
     realized_pnl: float = Field(..., alias="realizedPnl", description="已实现盈亏")
-    unrealized_pnl_percent: float = Field(..., alias="unrealizedPnlPercent", description="未实现盈亏百分比")  # noqa: E501
+    unrealized_pnl_percent: float = Field(
+        ..., alias="unrealizedPnlPercent", description="未实现盈亏百分比"
+    )  # noqa: E501
     status: PositionStatus = Field(..., description="持仓状态")
     opened_at: int = Field(..., alias="openedAt", description="开仓时间（UTC 毫秒）")
     updated_at: int = Field(..., alias="updatedAt", description="更新时间（UTC 毫秒）")
@@ -197,9 +207,15 @@ class OrderModel(BaseModel):
     type: OrderType = Field(..., description="订单类型")
     quantity: float = Field(..., description="订单数量")
     price: Optional[float] = Field(None, description="限价单价格")
-    stop_price: Optional[float] = Field(None, alias="stopPrice", description="止损单触发价")  # noqa: E501
-    filled_quantity: float = Field(..., alias="filledQuantity", description="已成交数量")  # noqa: E501
-    filled_avg_price: Optional[float] = Field(None, alias="filledAvgPrice", description="成交均价")  # noqa: E501
+    stop_price: Optional[float] = Field(
+        None, alias="stopPrice", description="止损单触发价"
+    )  # noqa: E501
+    filled_quantity: float = Field(
+        ..., alias="filledQuantity", description="已成交数量"
+    )  # noqa: E501
+    filled_avg_price: Optional[float] = Field(
+        None, alias="filledAvgPrice", description="成交均价"
+    )  # noqa: E501
     status: OrderStatus = Field(..., description="订单状态")
     created_at: int = Field(..., alias="createdAt", description="创建时间（UTC 毫秒）")
     updated_at: int = Field(..., alias="updatedAt", description="更新时间（UTC 毫秒）")
@@ -213,6 +229,7 @@ class OrderModel(BaseModel):
 # 账户信息
 # ─────────────────────────────────────────────
 
+
 class AccountModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -224,7 +241,9 @@ class AccountModel(BaseModel):
     unrealized_pnl: float = Field(..., alias="unrealizedPnl", description="未实现盈亏")
     realized_pnl: float = Field(..., alias="realizedPnl", description="已实现盈亏")
     daily_pnl: float = Field(..., alias="dailyPnl", description="当日盈亏")
-    daily_pnl_percent: float = Field(..., alias="dailyPnlPercent", description="当日盈亏百分比")  # noqa: E501
+    daily_pnl_percent: float = Field(
+        ..., alias="dailyPnlPercent", description="当日盈亏百分比"
+    )  # noqa: E501
     currency: str = Field(..., description="货币单位")
     updated_at: int = Field(..., alias="updatedAt", description="更新时间（UTC 毫秒）")
 
@@ -232,6 +251,7 @@ class AccountModel(BaseModel):
 # ─────────────────────────────────────────────
 # 技术指标
 # ─────────────────────────────────────────────
+
 
 class IndicatorType(str, Enum):
     MA = "MA"
@@ -248,7 +268,9 @@ class IndicatorParams(BaseModel):
     period: Optional[int] = Field(None, description="周期")
     fast_period: Optional[int] = Field(None, alias="fastPeriod", description="快线周期")
     slow_period: Optional[int] = Field(None, alias="slowPeriod", description="慢线周期")
-    signal_period: Optional[int] = Field(None, alias="signalPeriod", description="信号周期")  # noqa: E501
+    signal_period: Optional[int] = Field(
+        None, alias="signalPeriod", description="信号周期"
+    )  # noqa: E501
     multiplier: Optional[float] = Field(None, description="乘数")
 
 
@@ -263,19 +285,34 @@ class TechIndicatorsModel(BaseModel):
 # 选股相关
 # ─────────────────────────────────────────────
 
+
 class ScreenerFilterModel(BaseModel):
     market: Optional[List[Market]] = Field(None, description="市场过滤")
-    security_type: Optional[List[SecurityType]] = Field(None, alias="securityType", description="证券类型过滤")  # noqa: E501
-    min_market_cap: Optional[float] = Field(None, alias="minMarketCap", description="最小市值")  # noqa: E501
-    max_market_cap: Optional[float] = Field(None, alias="maxMarketCap", description="最大市值")  # noqa: E501
+    security_type: Optional[List[SecurityType]] = Field(
+        None, alias="securityType", description="证券类型过滤"
+    )  # noqa: E501
+    min_market_cap: Optional[float] = Field(
+        None, alias="minMarketCap", description="最小市值"
+    )  # noqa: E501
+    max_market_cap: Optional[float] = Field(
+        None, alias="maxMarketCap", description="最大市值"
+    )  # noqa: E501
     min_pe: Optional[float] = Field(None, alias="minPE", description="最小市盈率")
     max_pe: Optional[float] = Field(None, alias="maxPE", description="最大市盈率")
     min_pb: Optional[float] = Field(None, alias="minPB", description="最小市净率")
     max_pb: Optional[float] = Field(None, alias="maxPB", description="最大市净率")
-    min_volume: Optional[float] = Field(None, alias="minVolume", description="最小成交量")  # noqa: E501
-    min_change_percent: Optional[float] = Field(None, alias="minChangePercent", description="最小涨跌幅")  # noqa: E501
-    max_change_percent: Optional[float] = Field(None, alias="maxChangePercent", description="最大涨跌幅")  # noqa: E501
-    indicators: Optional[Dict[str, Dict[str, float]]] = Field(None, description="技术指标过滤")  # noqa: E501
+    min_volume: Optional[float] = Field(
+        None, alias="minVolume", description="最小成交量"
+    )  # noqa: E501
+    min_change_percent: Optional[float] = Field(
+        None, alias="minChangePercent", description="最小涨跌幅"
+    )  # noqa: E501
+    max_change_percent: Optional[float] = Field(
+        None, alias="maxChangePercent", description="最大涨跌幅"
+    )  # noqa: E501
+    indicators: Optional[Dict[str, Dict[str, float]]] = Field(
+        None, description="技术指标过滤"
+    )  # noqa: E501
 
 
 class ScreenerResultModel(BaseModel):
@@ -295,6 +332,7 @@ class ScreenerResultModel(BaseModel):
 # 策略相关
 # ─────────────────────────────────────────────
 
+
 class StrategyModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -311,6 +349,7 @@ class StrategyModel(BaseModel):
 # ─────────────────────────────────────────────
 # WebSocket 消息
 # ─────────────────────────────────────────────
+
 
 class WSSubscribeMessageModel(BaseModel):
     type: str = Field(..., description="消息类型")
@@ -332,6 +371,7 @@ class WSKlineMessageModel(BaseModel):
 # 统一 API 响应结构
 # ─────────────────────────────────────────────
 
+
 class ApiResponseModel(BaseModel):
     code: int = Field(..., description="业务错误码，0 表示成功")
     msg: str = Field(..., description="可读消息")
@@ -351,6 +391,7 @@ class PaginatedResponseModel(BaseModel):
 # 客户端 APM 心跳（BE-08）
 # ─────────────────────────────────────────────
 
+
 class ClientHeartbeatModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -358,6 +399,10 @@ class ClientHeartbeatModel(BaseModel):
     app_version: str = Field(..., alias="appVersion", description="应用版本")
     device_id: str = Field(..., alias="deviceId", description="设备ID")
     fps: Optional[float] = Field(None, description="帧率")
-    memory_mb: Optional[float] = Field(None, alias="memoryMb", description="内存占用（MB）")  # noqa: E501
-    ws_latency_ms: Optional[int] = Field(None, alias="wsLatencyMs", description="WebSocket 延迟（ms）")  # noqa: E501
+    memory_mb: Optional[float] = Field(
+        None, alias="memoryMb", description="内存占用（MB）"
+    )  # noqa: E501
+    ws_latency_ms: Optional[int] = Field(
+        None, alias="wsLatencyMs", description="WebSocket 延迟（ms）"
+    )  # noqa: E501
     timestamp: int = Field(..., description="UTC 毫秒时间戳")

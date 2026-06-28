@@ -9,6 +9,7 @@ Quant Agent 统一响应封装（对齐 docs/10 §1.2 通用响应结构）
     return success(data={"price": 123.45})
     return error(code=ErrorCode.VALIDATION_FAILED, msg="symbol 字段缺失")
 """
+
 import time
 from typing import Any, Optional
 

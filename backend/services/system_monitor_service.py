@@ -16,7 +16,13 @@ class SystemMonitorService:
     def __init__(self):
         self._last_alert_time = 0.0  # 报警防抖状态记录
 
-    def _save_performance_log(self, log_type: str, duration_ms: float, endpoint: Optional[str] = None, details: Optional[str] = None):  # noqa: E501
+    def _save_performance_log(
+        self,
+        log_type: str,
+        duration_ms: float,
+        endpoint: Optional[str] = None,
+        details: Optional[str] = None,
+    ):  # noqa: E501
         """后台线程执行：将性能日志写入数据库 (避免阻塞主事件循环)"""
         try:
             with SessionLocal() as db:
@@ -24,7 +30,7 @@ class SystemMonitorService:
                     log_type=log_type,
                     duration_ms=duration_ms,
                     endpoint=endpoint,
-                    details=details
+                    details=details,
                 )
                 db.add(log_entry)
                 db.commit()
@@ -49,12 +55,25 @@ class SystemMonitorService:
                     if current_time - self._last_alert_time > 60:
                         self._last_alert_time = current_time
                         print(f"🚨 [性能警报] FastAPI 主事件循环发生严重阻塞！{db_msg}")
-                        asyncio.create_task(notification_service.send_alert(f"🚨 [性能警报] FastAPI 主事件循环发生严重阻塞！\n\n{db_msg}"))  # noqa: E501
+                        asyncio.create_task(
+                            notification_service.send_alert(
+                                f"🚨 [性能警报] FastAPI 主事件循环发生严重阻塞！\n\n{db_msg}"
+                            )
+                        )  # noqa: E501
 
                     # 性能日志：所有严重的阻塞依然全量落盘，用于后续排查
-                    asyncio.create_task(asyncio.to_thread(self._save_performance_log, "event_loop_block", delay * 1000, None, db_msg))  # noqa: E501
+                    asyncio.create_task(
+                        asyncio.to_thread(
+                            self._save_performance_log,
+                            "event_loop_block",
+                            delay * 1000,
+                            None,
+                            db_msg,
+                        )
+                    )  # noqa: E501
             except asyncio.CancelledError:
                 break
+
 
 # 导出全局单例
 system_monitor_service = SystemMonitorService()

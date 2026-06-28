@@ -1,4 +1,3 @@
-
 import pandas as pd
 import pytest
 
@@ -10,13 +9,16 @@ class MockSimpleStrategy:
     A predictable mock strategy to test the EventDrivenBacktestEngine.
     It triggers a BUY, a SELL, and a STOP-LOSS scenario deterministically.
     """
+
     def __init__(self):
         self._position_size = 0
         self._position_data = {}
 
     def on_bar(self, window_df: pd.DataFrame) -> dict:
-        window_df.iloc[-1]['close']
-        bar_index = len(window_df) - 1 # The engine passes window_df up to the current bar  # noqa: E501
+        window_df.iloc[-1]["close"]
+        bar_index = (
+            len(window_df) - 1
+        )  # The engine passes window_df up to the current bar  # noqa: E501
 
         # Bar 11: Buy at 110. Stop loss at 105.
         if bar_index == 11:
@@ -42,15 +44,18 @@ def mock_dataframe():
     Prices steadily increase from 100 to 118, but drops suddenly on day 19 to trigger a stop loss.
     """  # noqa: E501
     dates = pd.date_range("2024-01-01", periods=20, freq="D")
-    prices = [100.0 + i for i in range(19)] + [100.0] # Sudden drop at the end
+    prices = [100.0 + i for i in range(19)] + [100.0]  # Sudden drop at the end
 
-    df = pd.DataFrame({
-        "Open": prices,
-        "High": [p + 2.0 for p in prices],
-        "Low": [p - 2.0 for p in prices],
-        "Close": prices,
-        "Volume": [1000] * 20
-    }, index=dates)
+    df = pd.DataFrame(
+        {
+            "Open": prices,
+            "High": [p + 2.0 for p in prices],
+            "Low": [p - 2.0 for p in prices],
+            "Close": prices,
+            "Volume": [1000] * 20,
+        },
+        index=dates,
+    )
 
     return df
 
@@ -62,15 +67,15 @@ def test_event_driven_engine_execution(mock_dataframe):
     """  # noqa: E501
     strategy = MockSimpleStrategy()
     initial_capital = 100000.0
-    commission_pct = 0.001 # 0.1%
-    slippage_pct = 0.001   # 0.1%
+    commission_pct = 0.001  # 0.1%
+    slippage_pct = 0.001  # 0.1%
 
     engine = EventDrivenBacktestEngine(
         strategy_instance=strategy,
         df=mock_dataframe,
         initial_capital=initial_capital,
         commission_pct=commission_pct,
-        slippage_pct=slippage_pct
+        slippage_pct=slippage_pct,
     )
 
     report = engine.run()
@@ -94,10 +99,12 @@ def test_event_driven_engine_execution(mock_dataframe):
     assert trades[0]["action"] == "BUY"
     assert trades[1]["action"] == "SELL"
     assert trades[2]["action"] == "BUY"
-    assert trades[3]["action"] == "SELL" # Stop loss
+    assert trades[3]["action"] == "SELL"  # Stop loss
 
     # 3. Verify Friction Costs (Slippage + Commission)
-    total_friction_str = metrics["total_friction_cost"].replace('$', '').replace(',', '')  # noqa: E501
+    total_friction_str = (
+        metrics["total_friction_cost"].replace("$", "").replace(",", "")
+    )  # noqa: E501
     total_friction = float(total_friction_str)
     assert total_friction > 0.0, "Friction costs (commission & slippage) should be > 0"
 
@@ -109,13 +116,16 @@ def test_event_driven_engine_execution(mock_dataframe):
     # On Bar 19, the price dips to 100.0. Stop loss was set at 112.0.
     # The engine should execute the exit at the current price (100.0) with slippage.
     stop_loss_trade = trades[3]
-    assert stop_loss_trade["price"] == 100.0 * (1 - slippage_pct), "Stop loss should execute at current price adjusted for slippage"  # noqa: E501
+    assert stop_loss_trade["price"] == 100.0 * (1 - slippage_pct), (
+        "Stop loss should execute at current price adjusted for slippage"
+    )  # noqa: E501
 
 
 class MockLimitStrategy:
     """
     A predictable strategy to test pending Limit Orders.
     """
+
     def __init__(self):
         self._position_size = 0
         self._position_data = {}
@@ -133,21 +143,30 @@ class MockLimitStrategy:
 
         return {}
 
+
 def test_limit_order_execution():
     dates = pd.date_range("2024-01-01", periods=15, freq="D")
     prices = [100.0] * 15
-    prices[7] = 90.0   # Dips low enough to trigger Buy limit
-    prices[12] = 120.0 # Surges high enough to trigger Sell limit
+    prices[7] = 90.0  # Dips low enough to trigger Buy limit
+    prices[12] = 120.0  # Surges high enough to trigger Sell limit
 
-    df = pd.DataFrame({
-        "Open": prices,
-        "High": [p + 5.0 for p in prices],
-        "Low": [p - 5.0 for p in prices],
-        "Close": prices,
-        "Volume": [1000] * 15
-    }, index=dates)
+    df = pd.DataFrame(
+        {
+            "Open": prices,
+            "High": [p + 5.0 for p in prices],
+            "Low": [p - 5.0 for p in prices],
+            "Close": prices,
+            "Volume": [1000] * 15,
+        },
+        index=dates,
+    )
 
-    engine = EventDrivenBacktestEngine(strategy_instance=MockLimitStrategy(), df=df, commission_pct=0.0, slippage_pct=0.0)  # noqa: E501
+    engine = EventDrivenBacktestEngine(
+        strategy_instance=MockLimitStrategy(),
+        df=df,
+        commission_pct=0.0,
+        slippage_pct=0.0,
+    )  # noqa: E501
     report = engine.run()
     trades = report["trades"]
 

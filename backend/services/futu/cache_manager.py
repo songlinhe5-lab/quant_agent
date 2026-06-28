@@ -2,6 +2,7 @@
 Futu 缓存管理模块
 统一管理所有 L1 内存缓存和数据压缩工具
 """
+
 import asyncio
 from typing import Any, Dict, Optional, Tuple
 
@@ -83,17 +84,19 @@ class CacheManager:
 
         compressed = []
         for _, row in raw_df.head(60).iterrows():
-            compressed.append({
-                "option_code": str(row.get('code', '')),
-                "option_type": str(row.get('option_type', '')),
-                "strike_price": safe_float(row.get('strike_price', 0.0))
-            })
+            compressed.append(
+                {
+                    "option_code": str(row.get("code", "")),
+                    "option_type": str(row.get("option_type", "")),
+                    "strike_price": safe_float(row.get("strike_price", 0.0)),
+                }
+            )
         return {
             "status": "success",
             "expiration_date": target_date,
             "count": len(compressed),
             "options": compressed,
-            "message": "已返回截断后的期权链。大模型可使用 option_code 调用行情工具获取实时价格与希腊字母。"  # noqa: E501
+            "message": "已返回截断后的期权链。大模型可使用 option_code 调用行情工具获取实时价格与希腊字母。",  # noqa: E501
         }
 
     @staticmethod
@@ -101,19 +104,25 @@ class CacheManager:
         """压缩行情数据，提取核心字段"""
         from backend.core.utils import safe_divide, safe_float
 
-        last_price = safe_float(row.get('last_price', 0.0))
-        prev_close = safe_float(row.get('prev_close_price', 0.0))
+        last_price = safe_float(row.get("last_price", 0.0))
+        prev_close = safe_float(row.get("prev_close_price", 0.0))
         change_pct = safe_divide(last_price - prev_close, prev_close) * 100
-        volume = safe_float(row.get('volume', 0))
+        volume = safe_float(row.get("volume", 0))
 
-        vol_str = f"{volume / 1e9:.2f}B" if volume >= 1e9 else \
-                  f"{volume / 1e6:.2f}M" if volume >= 1e6 else \
-                  f"{volume / 1e3:.2f}K" if volume >= 1e3 else str(volume)
+        vol_str = (
+            f"{volume / 1e9:.2f}B"
+            if volume >= 1e9
+            else f"{volume / 1e6:.2f}M"
+            if volume >= 1e6
+            else f"{volume / 1e3:.2f}K"
+            if volume >= 1e3
+            else str(volume)
+        )
 
         data = {
             "status": "success",
             "source": "futu",
-            "ticker": str(row.get('code', '')),
+            "ticker": str(row.get("code", "")),
             "last_price": last_price,
             "change_pct": f"{change_pct:+.2f}%",
             "volume": volume,
@@ -123,16 +132,16 @@ class CacheManager:
 
         # 动态提取期权特有字段
         option_fields = {
-            'strike_price': 'strike_price',
-            'option_implied_volatility': 'implied_volatility',
-            'option_delta': 'delta',
-            'option_gamma': 'gamma',
-            'option_vega': 'vega',
-            'option_theta': 'theta'
+            "strike_price": "strike_price",
+            "option_implied_volatility": "implied_volatility",
+            "option_delta": "delta",
+            "option_gamma": "gamma",
+            "option_vega": "vega",
+            "option_theta": "theta",
         }
         for futu_col, standard_col in option_fields.items():
             val = row.get(futu_col)
-            if val is not None and str(val).lower() not in ['nan', 'n/a', 'none']:
+            if val is not None and str(val).lower() not in ["nan", "n/a", "none"]:
                 data[standard_col] = safe_float(val)
 
         return data

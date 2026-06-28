@@ -12,17 +12,17 @@ class PairsTradingBot:
         self,
         stock1: str = "00700.HK",
         stock2: str = "09988.HK",
-        entry_z:  float = 2.5,
-        exit_z:   float = 0.5,
+        entry_z: float = 2.5,
+        exit_z: float = 0.5,
         pos_size: float = 0.5,
-        ma_type:  Literal['SMA', 'EMA', 'WMA'] = 'SMA',
+        ma_type: Literal["SMA", "EMA", "WMA"] = "SMA",
     ):
-        self.stock1    = stock1
-        self.stock2    = stock2
-        self.entry_z   = entry_z
-        self.exit_z    = exit_z
-        self.pos_size  = pos_size
-        self.ma_type   = ma_type
+        self.stock1 = stock1
+        self.stock2 = stock2
+        self.entry_z = entry_z
+        self.exit_z = exit_z
+        self.pos_size = pos_size
+        self.ma_type = ma_type
         self.position: Optional[str] = None
 
     def calc_zscore(self, p1: np.ndarray, p2: np.ndarray) -> float:

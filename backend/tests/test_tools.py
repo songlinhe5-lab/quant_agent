@@ -2,6 +2,7 @@
 Hermes Agent Tool 独立单元测试
 TEST-10: mock 外部数据源响应，校验 Tool 入参解析、出参结构、异常分支
 """
+
 import os
 import sys
 
@@ -25,6 +26,7 @@ class TestBaseToolNormalizeTicker:
 
     def setup_method(self):
         from hermes_agent.tools.base import BaseTool
+
         self.tool = BaseTool()
 
     def test_empty_ticker(self):
@@ -57,6 +59,7 @@ class TestBaseToolCache:
 
     def setup_method(self):
         from hermes_agent.tools.base import BaseTool
+
         # 清空共享缓存
         BaseTool._shared_cache.clear()
         self.tool = BaseTool()
@@ -78,6 +81,7 @@ class TestBaseToolCache:
         import time
 
         from hermes_agent.tools.base import BaseTool
+
         loop = asyncio.get_event_loop()
 
         async def _test():
@@ -93,6 +97,7 @@ class TestBaseToolCache:
     def test_cache_max_size_eviction(self):
         """测试缓存大小限制"""
         from hermes_agent.tools.base import BaseTool
+
         loop = asyncio.get_event_loop()
         BaseTool._max_cache_size = 3
 
@@ -215,7 +220,9 @@ class TestToolRegistry:
         """注册表应包含核心 Tool"""
         from hermes_agent.tool_registry import _AUTO_REGISTERED_TOOLS
 
-        tool_names = [cls.name for cls in _AUTO_REGISTERED_TOOLS if hasattr(cls, 'name')]  # noqa: E501
+        tool_names = [
+            cls.name for cls in _AUTO_REGISTERED_TOOLS if hasattr(cls, "name")
+        ]  # noqa: E501
         expected = ["get_broker_market_data", "get_fundamental_data"]
         for name in expected:
             assert name in tool_names, f"核心 Tool '{name}' 未注册"
@@ -225,7 +232,9 @@ class TestToolRegistry:
         from hermes_agent.tool_registry import _AUTO_REGISTERED_TOOLS
 
         for cls in _AUTO_REGISTERED_TOOLS:
-            assert hasattr(cls, "run"), f"Tool '{getattr(cls, 'name', cls.__name__)}' 缺少 run 方法"  # noqa: E501
+            assert hasattr(cls, "run"), (
+                f"Tool '{getattr(cls, 'name', cls.__name__)}' 缺少 run 方法"
+            )  # noqa: E501
 
     def test_tool_registry_class(self):
         """ToolRegistry 类实例化测试"""

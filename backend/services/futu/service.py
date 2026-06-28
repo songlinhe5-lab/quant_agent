@@ -2,6 +2,7 @@
 Futu 主服务模块
 整合所有子模块，提供统一的 FutuService 接口
 """
+
 import threading
 from typing import Any, Dict
 
@@ -21,6 +22,7 @@ class FutuService:
     全局 Futu OpenD 长连接与行情服务中心。
     采用模块化架构，各功能由专门的 Handler 处理。
     """
+
     _instance = None
     _lock = threading.Lock()
 
@@ -79,11 +81,11 @@ class FutuService:
         )
 
     async def unsubscribe_quote(self, ticker: str) -> Dict[str, Any]:
-        return await self.quote_handler.unsubscribe_quote(
-            ticker, format_ticker
-        )
+        return await self.quote_handler.unsubscribe_quote(ticker, format_ticker)
 
-    async def get_history(self, ticker: str, ktype: str = "K_DAY", num: int = 60) -> Dict[str, Any]:  # noqa: E501
+    async def get_history(
+        self, ticker: str, ktype: str = "K_DAY", num: int = 60
+    ) -> Dict[str, Any]:  # noqa: E501
         return await self.quote_handler.get_history(ticker, ktype, num)
 
     async def get_order_book(self, ticker: str) -> Dict[str, Any]:
@@ -91,7 +93,9 @@ class FutuService:
             ticker, format_ticker, is_futu_unsupported
         )
 
-    async def get_option_chain(self, ticker: str, expiration_date: str = "") -> Dict[str, Any]:  # noqa: E501
+    async def get_option_chain(
+        self, ticker: str, expiration_date: str = ""
+    ) -> Dict[str, Any]:  # noqa: E501
         return await self.option_fund_handler.get_option_chain(
             ticker, expiration_date, format_ticker, is_futu_unsupported
         )
@@ -109,20 +113,24 @@ class FutuService:
     async def get_market_snapshots(self, tickers: list) -> Dict[str, Any]:
         return await self.screener_handler.get_market_snapshots(tickers)
 
-    async def screen_stocks(self, market: str = "HK", filters: list = []) -> Dict[str, Any]:  # noqa: E501
+    async def screen_stocks(
+        self, market: str = "HK", filters: list = []
+    ) -> Dict[str, Any]:  # noqa: E501
         return await self.screener_handler.screen_stocks(market, filters)
 
     async def get_stock_basicinfo(self, market: str, sec_type: str) -> Dict[str, Any]:
         return await self.screener_handler.get_stock_basicinfo(market, sec_type)
 
-    async def place_order(self, ticker: str, qty: int, price: float,
-                         trd_side: TrdSide, market: TrdMarket) -> Dict[str, Any]:
+    async def place_order(
+        self, ticker: str, qty: int, price: float, trd_side: TrdSide, market: TrdMarket
+    ) -> Dict[str, Any]:
         return await self.trade_handler.place_order(
             ticker, qty, price, trd_side, market, format_ticker
         )
 
-    async def modify_order(self, order_id: str, op: ModifyOrderOp,
-                          market: TrdMarket) -> Dict[str, Any]:
+    async def modify_order(
+        self, order_id: str, op: ModifyOrderOp, market: TrdMarket
+    ) -> Dict[str, Any]:
         return await self.trade_handler.modify_order(order_id, op, market)
 
     async def query_order(self, order_id: str, market: TrdMarket) -> Dict[str, Any]:

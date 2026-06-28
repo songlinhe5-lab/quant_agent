@@ -13,6 +13,7 @@ BE-03: Futu OpenD 看门狗守护进程
 - 通过 ConnectionManager.status 感知连接状态
 - 指数退避：base_delay * 2^attempt，上限 max_delay
 """
+
 import asyncio
 import time
 from typing import Optional
@@ -38,19 +39,19 @@ class FutuWatchdog:
     """
 
     # ── 退避策略参数 ──────────────────────────────────────────────
-    BASE_DELAY: float = 2.0        # 首次重连等待 2s
-    MAX_DELAY: float = 120.0       # 最大退避 120s
-    BACKOFF_FACTOR: float = 2.0    # 指数因子
-    JITTER: float = 0.3            # 随机抖动比例（防止惊群效应）
+    BASE_DELAY: float = 2.0  # 首次重连等待 2s
+    MAX_DELAY: float = 120.0  # 最大退避 120s
+    BACKOFF_FACTOR: float = 2.0  # 指数因子
+    JITTER: float = 0.3  # 随机抖动比例（防止惊群效应）
 
     # ── 健康检查参数 ──────────────────────────────────────────────
-    HEALTH_CHECK_INTERVAL: float = 15.0   # 每 15s 做一次健康检查
+    HEALTH_CHECK_INTERVAL: float = 15.0  # 每 15s 做一次健康检查
     HEALTH_PROBE_SYMBOL: str = "HK.00700"  # 用腾讯控股做探针
-    HEALTH_TIMEOUT: float = 5.0            # 探针超时 5s
+    HEALTH_TIMEOUT: float = 5.0  # 探针超时 5s
 
     # ── 熔断保护 ──────────────────────────────────────────────
     MAX_CONSECUTIVE_FAILURES: int = 20  # 连续失败 20 次后进入长休眠
-    LONG_SLEEP: float = 300.0           # 长休眠 5 分钟后再尝试
+    LONG_SLEEP: float = 300.0  # 长休眠 5 分钟后再尝试
 
     def __init__(self, futu_svc):
         """
@@ -129,11 +130,13 @@ class FutuWatchdog:
             else:
                 # 指数退避 + 随机抖动
                 delay = min(
-                    self.BASE_DELAY * (self.BACKOFF_FACTOR ** (self._consecutive_failures - 1)),  # noqa: E501
+                    self.BASE_DELAY
+                    * (self.BACKOFF_FACTOR ** (self._consecutive_failures - 1)),  # noqa: E501
                     self.MAX_DELAY,
                 )
                 # 添加 ±JITTER 随机抖动，防止多节点惊群
                 import random
+
                 jitter = delay * self.JITTER * (2 * random.random() - 1)
                 delay = max(0.5, delay + jitter)
 
@@ -182,6 +185,7 @@ class FutuWatchdog:
         try:
             probe_ticker = self.HEALTH_PROBE_SYMBOL
             from backend.services.futu.utils import format_ticker
+
             market_ticker = format_ticker(probe_ticker)
 
             ret, df = await asyncio.wait_for(
@@ -195,7 +199,7 @@ class FutuWatchdog:
                 logger.debug(f"[FutuWatchdog] 健康探针失败: ret={ret}")
                 return False
 
-            if df is None or (hasattr(df, 'empty') and df.empty):
+            if df is None or (hasattr(df, "empty") and df.empty):
                 return False
 
             return True
@@ -276,6 +280,7 @@ def get_watchdog(futu_svc=None) -> FutuWatchdog:
     if _watchdog is None:
         if futu_svc is None:
             from backend.services.futu import futu_service
+
             futu_svc = futu_service
         _watchdog = FutuWatchdog(futu_svc)
     return _watchdog

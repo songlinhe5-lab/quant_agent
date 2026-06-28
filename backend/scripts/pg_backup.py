@@ -27,6 +27,7 @@ BE-18: PostgreSQL 每日备份脚本
     R2_BUCKET: R2 存储桶名称
     R2_PREFIX: R2 对象前缀（默认 "backups/postgres"）
 """  # noqa: E501
+
 import asyncio
 import gzip
 import os
@@ -190,8 +191,12 @@ class PostgresBackup:
 
     async def _upload_to_r2(self, file_path: Path, timestamp: str) -> str:
         """上传备份文件到 Cloudflare R2"""
-        if not all([self.r2_endpoint, self.r2_access_key, self.r2_secret_key, self.r2_bucket]):  # noqa: E501
-            raise ValueError("R2 配置不完整，请检查 R2_ENDPOINT/R2_ACCESS_KEY/R2_SECRET_KEY/R2_BUCKET")  # noqa: E501
+        if not all(
+            [self.r2_endpoint, self.r2_access_key, self.r2_secret_key, self.r2_bucket]
+        ):  # noqa: E501
+            raise ValueError(
+                "R2 配置不完整，请检查 R2_ENDPOINT/R2_ACCESS_KEY/R2_SECRET_KEY/R2_BUCKET"
+            )  # noqa: E501
 
         # 构建对象键
         object_key = f"{self.r2_prefix}/{timestamp}/{file_path.name}"
@@ -322,6 +327,7 @@ class PostgresBackup:
 
 # ── CLI 入口 ──────────────────────────────────────────────────────
 
+
 async def main():
     """命令行入口"""
     import argparse
@@ -330,7 +336,9 @@ async def main():
     parser.add_argument("--output", "-o", default="/tmp/pg_backup", help="备份输出目录")
     parser.add_argument("--upload", action="store_true", help="上传到 Cloudflare R2")
     parser.add_argument("--no-compress", action="store_true", help="不压缩备份文件")
-    parser.add_argument("--cleanup-days", type=int, default=7, help="清理多少天前的本地备份（0=不清理）")  # noqa: E501
+    parser.add_argument(
+        "--cleanup-days", type=int, default=7, help="清理多少天前的本地备份（0=不清理）"
+    )  # noqa: E501
     parser.add_argument("--restore", help="从备份文件恢复数据库")
 
     args = parser.parse_args()
@@ -347,6 +355,7 @@ async def main():
         )
 
     import json
+
     print(json.dumps(result, indent=2, ensure_ascii=False))
 
     # 返回退出码

@@ -3,6 +3,7 @@ Quant Agent 自定义异常层级
 
 所有业务异常都继承自 QuantBaseException，便于全局异常处理器统一捕获。
 """
+
 from typing import Any, Optional
 
 from backend.core.error_codes import ErrorCode
@@ -81,5 +82,12 @@ class RedisUnavailableError(QuantBaseException):
 
 
 class CircuitBreakerOpenError(QuantBaseException):
-    def __init__(self, msg: str = "外部 API 熔断中，请稍后重试", service: str = "unknown", **kw):  # noqa: E501
-        super().__init__(code=ErrorCode.CIRCUIT_BREAKER_OPEN, msg=msg, data={"service": service}, **kw)  # noqa: E501
+    def __init__(
+        self, msg: str = "外部 API 熔断中，请稍后重试", service: str = "unknown", **kw
+    ):  # noqa: E501
+        super().__init__(
+            code=ErrorCode.CIRCUIT_BREAKER_OPEN,
+            msg=msg,
+            data={"service": service},
+            **kw,
+        )  # noqa: E501

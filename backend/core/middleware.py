@@ -11,7 +11,7 @@ from backend.core.logger import logger
 REQUEST_COUNT = Counter(
     "fastapi_requests_total",
     "Total HTTP requests",
-    ["method", "endpoint", "http_status"]
+    ["method", "endpoint", "http_status"],
 )
 
 # 📊 2. 定义 Prometheus 直方图：用于计算 P99/P95 耗时
@@ -20,29 +20,31 @@ REQUEST_LATENCY = Histogram(
     "fastapi_request_duration_seconds",
     "HTTP request latency in seconds",
     ["method", "endpoint"],
-    buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, float("inf")]
+    buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, float("inf")],
 )
 
 # 📊 3. 外部 API 监控 (Egress Monitoring)
 EXTERNAL_API_COUNT = Counter(
     "external_api_requests_total",
     "Total outgoing HTTP requests to third-party APIs",
-    ["service_name", "method", "http_status"]
+    ["service_name", "method", "http_status"],
 )
 
 EXTERNAL_API_LATENCY = Histogram(
     "external_api_request_duration_seconds",
     "Outgoing HTTP request latency",
     ["service_name", "method"],
-    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, float("inf")]
+    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, float("inf")],
 )
 
 # 用于在请求和响应之间传递时间的字典 (协程/线程安全，以请求对象 id 为键)
 _request_timers = {}
 
+
 async def httpx_log_request(request: httpx.Request):
     """记录请求发出的时间 (TTFB 起点)"""
     _request_timers[id(request)] = time.perf_counter()
+
 
 async def httpx_log_response(response: httpx.Response):
     """统一拦截并收集 httpx 发出的所有外部第三方 API 请求耗时与状态码"""
@@ -53,27 +55,47 @@ async def httpx_log_response(response: httpx.Response):
     host = request.url.host
 
     service_name = "unknown"
-    if "finnhub" in host: service_name = "finnhub"  # noqa: E701
-    elif "stlouisfed" in host: service_name = "fred"  # noqa: E701
-    elif "tavily" in host: service_name = "tavily"  # noqa: E701
-    elif "bochaai" in host: service_name = "bocha"  # noqa: E701
-    elif "jina" in host: service_name = "jina_reader"  # noqa: E701
-    elif "dingtalk" in host: service_name = "dingtalk"  # noqa: E701
-    elif "feishu" in host: service_name = "feishu"  # noqa: E701
-    elif "telegram" in host: service_name = "telegram"  # noqa: E701
-    elif "openai" in host or "deepseek" in host: service_name = "llm_api"  # noqa: E701
-    elif "yahoo" in host: service_name = "yahoo"  # noqa: E701
+    if "finnhub" in host:
+        service_name = "finnhub"  # noqa: E701
+    elif "stlouisfed" in host:
+        service_name = "fred"  # noqa: E701
+    elif "tavily" in host:
+        service_name = "tavily"  # noqa: E701
+    elif "bochaai" in host:
+        service_name = "bocha"  # noqa: E701
+    elif "jina" in host:
+        service_name = "jina_reader"  # noqa: E701
+    elif "dingtalk" in host:
+        service_name = "dingtalk"  # noqa: E701
+    elif "feishu" in host:
+        service_name = "feishu"  # noqa: E701
+    elif "telegram" in host:
+        service_name = "telegram"  # noqa: E701
+    elif "openai" in host or "deepseek" in host:
+        service_name = "llm_api"  # noqa: E701
+    elif "yahoo" in host:
+        service_name = "yahoo"  # noqa: E701
 
-    EXTERNAL_API_COUNT.labels(service_name=service_name, method=request.method, http_status=response.status_code).inc()  # noqa: E501
-    EXTERNAL_API_LATENCY.labels(service_name=service_name, method=request.method).observe(process_time)  # noqa: E501
+    EXTERNAL_API_COUNT.labels(
+        service_name=service_name,
+        method=request.method,
+        http_status=response.status_code,
+    ).inc()  # noqa: E501
+    EXTERNAL_API_LATENCY.labels(
+        service_name=service_name, method=request.method
+    ).observe(process_time)  # noqa: E501
 
     if process_time > 3.0:
-        logger.warning(f"🐢 [Slow Egress API] {service_name} ({request.method} {host}) 耗时: {process_time:.2f}s")  # noqa: E501
+        logger.warning(
+            f"🐢 [Slow Egress API] {service_name} ({request.method} {host}) 耗时: {process_time:.2f}s"
+        )  # noqa: E501
+
 
 class AccessLogMiddleware(BaseHTTPMiddleware):
     """
     全局请求访问与性能监控中间件 (结合 Prometheus)
     """
+
     async def dispatch(self, request: Request, call_next):
         start_time = time.perf_counter()
         method = request.method
@@ -89,11 +111,19 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
             endpoint = route.path if route else "UNMATCHED_ROUTE"
 
             # 收集 Prometheus 监控数据 (纯内存操作，耗时约几百纳秒)
-            REQUEST_COUNT.labels(method=method, endpoint=endpoint, http_status=status_code).inc()  # noqa: E501
-            REQUEST_LATENCY.labels(method=method, endpoint=endpoint).observe(process_time)  # noqa: E501
+            REQUEST_COUNT.labels(
+                method=method, endpoint=endpoint, http_status=status_code
+            ).inc()  # noqa: E501
+            REQUEST_LATENCY.labels(method=method, endpoint=endpoint).observe(
+                process_time
+            )  # noqa: E501
 
             # 根据耗时动态染色：< 100ms 绿色，< 500ms 黄色，> 500ms 红色警报
-            color = "green" if process_time < 0.1 else ("yellow" if process_time < 0.5 else "red")  # noqa: E501
+            color = (
+                "green"
+                if process_time < 0.1
+                else ("yellow" if process_time < 0.5 else "red")
+            )  # noqa: E501
 
             logger.info(
                 f"[{color}]{method}[/] {endpoint} "
@@ -111,8 +141,14 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
             endpoint = route.path if route else "UNMATCHED_ROUTE"
 
             # 保证发生报错时，监控大盘同样能够捕捉到 500 熔断与耗时
-            REQUEST_COUNT.labels(method=method, endpoint=endpoint, http_status=500).inc()  # noqa: E501
-            REQUEST_LATENCY.labels(method=method, endpoint=endpoint).observe(process_time)  # noqa: E501
+            REQUEST_COUNT.labels(
+                method=method, endpoint=endpoint, http_status=500
+            ).inc()  # noqa: E501
+            REQUEST_LATENCY.labels(method=method, endpoint=endpoint).observe(
+                process_time
+            )  # noqa: E501
 
-            logger.exception(f"[red]🔥 接口异常熔断[/] {method} {endpoint} - [cyan]{process_time:.4f}s[/]")  # noqa: E501
+            logger.exception(
+                f"[red]🔥 接口异常熔断[/] {method} {endpoint} - [cyan]{process_time:.4f}s[/]"
+            )  # noqa: E501
             raise

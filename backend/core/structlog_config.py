@@ -9,6 +9,7 @@ Quant Agent structlog 结构化日志配置（BE-05）
 与现有 logger.py 的 QueueListener 体系完全兼容：
   structlog → 标准 logging → QueueHandler → QueueListener → Handlers
 """
+
 import contextvars
 import logging
 import os
@@ -21,9 +22,13 @@ from structlog.types import EventDict, WrappedLogger
 # ─────────────────────────────────────────
 #  上下文变量（跨协程/线程传播）
 # ─────────────────────────────────────────
-trace_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("trace_id", default="-")  # noqa: E501
+trace_id_var: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "trace_id", default="-"
+)  # noqa: E501
 symbol_var: contextvars.ContextVar[str] = contextvars.ContextVar("symbol", default="-")
-latency_ms_var: contextvars.ContextVar[float] = contextvars.ContextVar("latency_ms", default=0.0)  # noqa: E501
+latency_ms_var: contextvars.ContextVar[float] = contextvars.ContextVar(
+    "latency_ms", default=0.0
+)  # noqa: E501
 
 
 def new_trace_id() -> str:
@@ -35,7 +40,10 @@ def new_trace_id() -> str:
 #  structlog 处理器
 # ─────────────────────────────────────────
 
-def inject_context_vars(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:  # noqa: E501
+
+def inject_context_vars(
+    logger: WrappedLogger, method_name: str, event_dict: EventDict
+) -> EventDict:  # noqa: E501
     """从 contextvars 注入 trace_id / symbol / latency_ms 到每条日志"""
     event_dict.setdefault("trace_id", trace_id_var.get("-"))
     event_dict.setdefault("symbol", symbol_var.get("-"))
@@ -45,19 +53,24 @@ def inject_context_vars(logger: WrappedLogger, method_name: str, event_dict: Eve
     return event_dict
 
 
-def drop_color_for_json(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:  # noqa: E501
+def drop_color_for_json(
+    logger: WrappedLogger, method_name: str, event_dict: EventDict
+) -> EventDict:  # noqa: E501
     """剥离 Rich markup 标签，确保 JSON 输出干净"""
     msg = event_dict.get("event", "")
     if isinstance(msg, str) and "[" in msg:
         try:
             from rich.text import Text
+
             event_dict["event"] = Text.from_markup(msg).plain
         except Exception:
             pass
     return event_dict
 
 
-def order_fields(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:  # noqa: E501
+def order_fields(
+    logger: WrappedLogger, method_name: str, event_dict: EventDict
+) -> EventDict:  # noqa: E501
     """将关键字段排在前面，便于日志检索"""
     ordered: EventDict = {}
     for key in ("timestamp", "level", "event", "trace_id", "symbol", "latency_ms"):
@@ -71,11 +84,13 @@ def order_fields(logger: WrappedLogger, method_name: str, event_dict: EventDict)
 #  JSON 文件 Formatter
 # ─────────────────────────────────────────
 
+
 class StructlogJsonFormatter(logging.Formatter):
     """将 structlog 事件序列化为 JSON 行（每行一条 JSON）"""
 
     def format(self, record: logging.LogRecord) -> str:
         import json as _json
+
         # structlog 已序列化的消息存储在 record.msg 中
         msg = record.getMessage()
         # 如果已经是 JSON 字符串，直接返回
@@ -194,6 +209,7 @@ def _patch_file_handlers_json() -> None:
 # ─────────────────────────────────────────
 #  便捷 API
 # ─────────────────────────────────────────
+
 
 def get_logger(name: str = "quant_agent") -> structlog.stdlib.BoundLogger:
     """获取 structlog 绑定日志器，自动携带当前上下文的 trace_id / symbol / latency_ms"""

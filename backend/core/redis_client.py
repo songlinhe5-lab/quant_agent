@@ -24,15 +24,18 @@ redis_client = redis.Redis(
     port=REDIS_PORT,
     password=REDIS_PASSWORD,
     decode_responses=True,
-    protocol=2  # 💡 升级到 redis-py 5.x 后，重新加回此参数以强制使用 RESP2 协议向下兼容
+    protocol=2,  # 💡 升级到 redis-py 5.x 后，重新加回此参数以强制使用 RESP2 协议向下兼容
 )
+
 
 # ==========================================
 # 💡 高频异步批量写入队列 (Redis Async Batch Writer)
 # 解决高频 set 导致的 TCP 网络带宽堵塞与 RTT 延迟问题
 # ==========================================
 class RedisAsyncBatchWriter:
-    def __init__(self, client: redis.Redis, batch_size: int = 100, flush_interval: float = 1.0):  # noqa: E501
+    def __init__(
+        self, client: redis.Redis, batch_size: int = 100, flush_interval: float = 1.0
+    ):  # noqa: E501
         self.redis = client
         self.batch_size = batch_size
         self.flush_interval = flush_interval
@@ -63,7 +66,9 @@ class RedisAsyncBatchWriter:
         while True:
             try:
                 # 1. 挂起等待，直到队列有第一个数据或超时发车
-                item = await asyncio.wait_for(self.queue.get(), timeout=self.flush_interval)  # noqa: E501
+                item = await asyncio.wait_for(
+                    self.queue.get(), timeout=self.flush_interval
+                )  # noqa: E501
                 batch.append(item)
                 self.queue.task_done()
 
@@ -79,7 +84,7 @@ class RedisAsyncBatchWriter:
                 await self._flush_batch(batch)
                 batch = []
             except asyncio.TimeoutError:
-                continue # 超时说明没数据，继续等
+                continue  # 超时说明没数据，继续等
             except asyncio.CancelledError:
                 if batch:
                     await self._flush_batch(batch)
@@ -88,7 +93,8 @@ class RedisAsyncBatchWriter:
                 print(f"⚠️ [RedisBatchWriter] 队列消费异常: {e}")
 
     async def _flush_batch(self, batch):
-        if not batch: return  # noqa: E701
+        if not batch:
+            return  # noqa: E701
         try:
             async with self.redis.pipeline() as pipe:
                 for op in batch:
@@ -106,15 +112,21 @@ class RedisAsyncBatchWriter:
         if batch:
             await self._flush_batch(batch)
 
+
 # 初始化全局队列写入器
-redis_batch_writer = RedisAsyncBatchWriter(redis_client, batch_size=200, flush_interval=0.5)  # noqa: E501
+redis_batch_writer = RedisAsyncBatchWriter(
+    redis_client, batch_size=200, flush_interval=0.5
+)  # noqa: E501
+
 
 # ==========================================
 # 💡 进程内 L1 本地短效缓存 (Memory L1 Cache)
 # 彻底消除极高频读取 (如配置字典、系统开关) 的 Redis TCP 网络开销
 # ==========================================
 class LocalL1Cache:
-    def __init__(self, client: redis.Redis, default_ttl: float = 10.0, max_size: int = 5000):  # noqa: E501
+    def __init__(
+        self, client: redis.Redis, default_ttl: float = 10.0, max_size: int = 5000
+    ):  # noqa: E501
         self.redis = client
         self.default_ttl = default_ttl
         self.max_size = max_size
@@ -127,7 +139,7 @@ class LocalL1Cache:
             try:
                 self._cleanup_task = asyncio.create_task(self._sweep_daemon())
             except RuntimeError:
-                pass # 忽略事件循环尚未启动时的调用
+                pass  # 忽略事件循环尚未启动时的调用
 
     async def _sweep_daemon(self):
         """后台定时安全清理过期数据，彻底杜绝冷门 Key 堆积导致的内存泄漏"""
@@ -169,7 +181,9 @@ class LocalL1Cache:
         # (由于是 L1 缓存，清空是绝对安全的，下一次 get 会自动穿透到 L2 重建)
         if len(self._cache) >= self.max_size:
             self._cache.clear()
-            print(f"⚠️ [L1 Cache] 字典容量触及上限 ({self.max_size})，已执行安全熔断清空")  # noqa: E501
+            print(
+                f"⚠️ [L1 Cache] 字典容量触及上限 ({self.max_size})，已执行安全熔断清空"
+            )  # noqa: E501
 
         await self.redis.set(key, value, ex=ex)
         now = time.time()
@@ -177,6 +191,7 @@ class LocalL1Cache:
 
     def invalidate(self, key: str):
         self._cache.pop(key, None)
+
 
 # 导出全局 L1 缓存实例 (10秒自动过期)
 l1_cached_redis = LocalL1Cache(redis_client, default_ttl=10.0)

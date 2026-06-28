@@ -12,6 +12,7 @@ BE-16: 行情数据正确性处理引擎（量化命门）
 - 复权因子必须可追溯，禁止静默修改原始数据
 - 停牌/退市标的必须显式标记，严禁污染下游分析
 """
+
 import time
 from datetime import datetime, timezone
 from enum import Enum
@@ -29,16 +30,19 @@ logger = structlog.get_logger(__name__)
 #  复权类型枚举
 # ==========================================
 
+
 class AdjustType(str, Enum):
     """K线复权类型"""
-    NONE = "none"          # 不复权（原始价格）
-    QFQ = "qfq"            # 前复权（Forward Adjusted）- 技术分析默认
-    HFQ = "hfq"            # 后复权（Backward Adjusted）- 回测/收益计算默认
+
+    NONE = "none"  # 不复权（原始价格）
+    QFQ = "qfq"  # 前复权（Forward Adjusted）- 技术分析默认
+    HFQ = "hfq"  # 后复权（Backward Adjusted）- 回测/收益计算默认
 
 
 # ==========================================
 #  市场交易时段定义
 # ==========================================
+
 
 class MarketSession:
     """市场交易时段定义（UTC 时间）"""
@@ -47,24 +51,33 @@ class MarketSession:
     SESSIONS = {
         # 美股 (NYSE/NASDAQ)
         "US": {
-            "pre_market": ("04:00", "09:30"),      # 盘前 04:00-09:30 ET = 08:00-13:30 UTC  # noqa: E501
-            "regular": ("09:30", "16:00"),          # 常规 09:30-16:00 ET = 13:30-20:00 UTC  # noqa: E501
-            "after_hours": ("16:00", "20:00"),      # 盘后 16:00-20:00 ET = 20:00-00:00 UTC  # noqa: E501
+            "pre_market": (
+                "04:00",
+                "09:30",
+            ),  # 盘前 04:00-09:30 ET = 08:00-13:30 UTC  # noqa: E501
+            "regular": (
+                "09:30",
+                "16:00",
+            ),  # 常规 09:30-16:00 ET = 13:30-20:00 UTC  # noqa: E501
+            "after_hours": (
+                "16:00",
+                "20:00",
+            ),  # 盘后 16:00-20:00 ET = 20:00-00:00 UTC  # noqa: E501
             "timezone_offset": -5,  # EST (UTC-5)，夏令时 EDT (UTC-4)
         },
         # 港股 (HKEX)
         "HK": {
-            "pre_market": ("09:00", "09:30"),       # 盘前
-            "regular_am": ("09:30", "12:00"),       # 上午盘
-            "regular_pm": ("13:00", "16:00"),       # 下午盘
-            "after_hours": ("16:00", "16:10"),      # 收市竞价
-            "timezone_offset": 8,   # HKT (UTC+8)
+            "pre_market": ("09:00", "09:30"),  # 盘前
+            "regular_am": ("09:30", "12:00"),  # 上午盘
+            "regular_pm": ("13:00", "16:00"),  # 下午盘
+            "after_hours": ("16:00", "16:10"),  # 收市竞价
+            "timezone_offset": 8,  # HKT (UTC+8)
         },
         # A股 (SSE/SZSE)
         "CN": {
-            "regular_am": ("09:30", "11:30"),       # 上午盘
-            "regular_pm": ("13:00", "15:00"),       # 下午盘
-            "timezone_offset": 8,   # CST (UTC+8)
+            "regular_am": ("09:30", "11:30"),  # 上午盘
+            "regular_pm": ("13:00", "15:00"),  # 下午盘
+            "timezone_offset": 8,  # CST (UTC+8)
         },
     }
 
@@ -75,7 +88,11 @@ class MarketSession:
             return "US"
         elif symbol.startswith("HK.") or symbol.startswith("HK_"):
             return "HK"
-        elif symbol.startswith("SH.") or symbol.startswith("SZ.") or symbol.startswith("CN."):  # noqa: E501
+        elif (
+            symbol.startswith("SH.")
+            or symbol.startswith("SZ.")
+            or symbol.startswith("CN.")
+        ):  # noqa: E501
             return "CN"
         else:
             return "US"  # 默认美股
@@ -97,7 +114,9 @@ class MarketSession:
         local_min = dt.minute
 
         # 简单判断：工作日 + 交易时段
-        local_weekday = (dt.weekday() + (1 if offset < 0 and dt.hour + offset < 0 else 0)) % 7  # noqa: E501
+        local_weekday = (
+            dt.weekday() + (1 if offset < 0 and dt.hour + offset < 0 else 0)
+        ) % 7  # noqa: E501
         if local_weekday >= 5:  # 周六日
             return False
 
@@ -117,13 +136,15 @@ class MarketSession:
 #  停牌 / 退市标记
 # ==========================================
 
+
 class SuspensionStatus(str, Enum):
     """标的交易状态"""
-    NORMAL = "normal"           # 正常交易
-    SUSPENDED = "suspended"     # 停牌
-    DELISTED = "delisted"       # 退市
-    PRE_MARKET = "pre_market"   # 盘前
-    AFTER_HOURS = "after_hours" # 盘后
+
+    NORMAL = "normal"  # 正常交易
+    SUSPENDED = "suspended"  # 停牌
+    DELISTED = "delisted"  # 退市
+    PRE_MARKET = "pre_market"  # 盘前
+    AFTER_HOURS = "after_hours"  # 盘后
 
 
 def detect_suspension(kline_df: pd.DataFrame, symbol: str) -> Dict[str, Any]:
@@ -144,7 +165,12 @@ def detect_suspension(kline_df: pd.DataFrame, symbol: str) -> Dict[str, Any]:
         }
     """
     if kline_df is None or kline_df.empty:
-        return {"status": "delisted", "suspension_days": [], "last_trade_date": None, "confidence": 0.9}  # noqa: E501
+        return {
+            "status": "delisted",
+            "suspension_days": [],
+            "last_trade_date": None,
+            "confidence": 0.9,
+        }  # noqa: E501
 
     # 确保时间列已解析
     df = kline_df.copy()
@@ -153,7 +179,12 @@ def detect_suspension(kline_df: pd.DataFrame, symbol: str) -> Dict[str, Any]:
         df = df.sort_values("time")
 
     if len(df) < 5:
-        return {"status": "normal", "suspension_days": [], "last_trade_date": None, "confidence": 0.5}  # noqa: E501
+        return {
+            "status": "normal",
+            "suspension_days": [],
+            "last_trade_date": None,
+            "confidence": 0.5,
+        }  # noqa: E501
 
     # 1. 检测成交量为 0 的异常日
     zero_volume_days = df[df["volume"] == 0]["time"].tolist()
@@ -161,7 +192,7 @@ def detect_suspension(kline_df: pd.DataFrame, symbol: str) -> Dict[str, Any]:
     # 2. 检测价格连续不变（停牌前兆）
     price_unchanged = 0
     for i in range(1, min(6, len(df))):
-        if abs(df.iloc[i]["close"] - df.iloc[i-1]["close"]) < 0.001:
+        if abs(df.iloc[i]["close"] - df.iloc[i - 1]["close"]) < 0.001:
             price_unchanged += 1
 
     # 3. 检测最近交易日距今的天数
@@ -182,7 +213,9 @@ def detect_suspension(kline_df: pd.DataFrame, symbol: str) -> Dict[str, Any]:
     return {
         "status": status.value,
         "suspension_days": [d.strftime("%Y-%m-%d") for d in zero_volume_days[:10]],
-        "last_trade_date": last_date.strftime("%Y-%m-%d") if pd.notna(last_date) else None,  # noqa: E501
+        "last_trade_date": last_date.strftime("%Y-%m-%d")
+        if pd.notna(last_date)
+        else None,  # noqa: E501
         "confidence": confidence,
     }
 
@@ -190,6 +223,7 @@ def detect_suspension(kline_df: pd.DataFrame, symbol: str) -> Dict[str, Any]:
 # ==========================================
 #  复权因子处理
 # ==========================================
+
 
 def apply_adjustment(
     kline_df: pd.DataFrame,
@@ -266,6 +300,7 @@ def apply_adjustment(
 #  价格异常值检测
 # ==========================================
 
+
 def detect_price_anomalies(
     kline_df: pd.DataFrame,
     symbol: str,
@@ -300,35 +335,41 @@ def detect_price_anomalies(
         # 1. 价格 <= 0
         for col in ["open", "high", "low", "close"]:
             if col in row and row[col] <= 0:
-                anomalies.append({
-                    "date": str(date_str),
-                    "symbol": symbol,
-                    "type": "invalid_price",
-                    "field": col,
-                    "value": row[col],
-                    "severity": "critical",
-                })
+                anomalies.append(
+                    {
+                        "date": str(date_str),
+                        "symbol": symbol,
+                        "type": "invalid_price",
+                        "field": col,
+                        "value": row[col],
+                        "severity": "critical",
+                    }
+                )
 
         # 2. OHLC 逻辑错误
         if all(c in row for c in ["high", "low"]):
             if row["high"] < row["low"]:
-                anomalies.append({
-                    "date": str(date_str),
-                    "symbol": symbol,
-                    "type": "ohlc_inconsistency",
-                    "detail": f"high({row['high']}) < low({row['low']})",
-                    "severity": "critical",
-                })
+                anomalies.append(
+                    {
+                        "date": str(date_str),
+                        "symbol": symbol,
+                        "type": "ohlc_inconsistency",
+                        "detail": f"high({row['high']}) < low({row['low']})",
+                        "severity": "critical",
+                    }
+                )
 
         # 3. 成交量为负
         if "volume" in row and row["volume"] < 0:
-            anomalies.append({
-                "date": str(date_str),
-                "symbol": symbol,
-                "type": "negative_volume",
-                "value": row["volume"],
-                "severity": "warning",
-            })
+            anomalies.append(
+                {
+                    "date": str(date_str),
+                    "symbol": symbol,
+                    "type": "negative_volume",
+                    "value": row["volume"],
+                    "severity": "warning",
+                }
+            )
 
     # 4. 单日涨跌幅异常
     if "close" in df.columns and len(df) > 1:
@@ -338,13 +379,15 @@ def detect_price_anomalies(
             date_str = row.get("time", idx)
             if hasattr(date_str, "strftime"):
                 date_str = date_str.strftime("%Y-%m-%d")
-            anomalies.append({
-                "date": str(date_str),
-                "symbol": symbol,
-                "type": "extreme_change",
-                "value": f"{row['pct_change']:.2%}",
-                "severity": "warning",
-            })
+            anomalies.append(
+                {
+                    "date": str(date_str),
+                    "symbol": symbol,
+                    "type": "extreme_change",
+                    "value": f"{row['pct_change']:.2%}",
+                    "severity": "warning",
+                }
+            )
 
     return anomalies
 
@@ -352,6 +395,7 @@ def detect_price_anomalies(
 # ==========================================
 #  时区统一工具
 # ==========================================
+
 
 def normalize_to_utc(dt: Any) -> datetime:
     """
@@ -399,6 +443,7 @@ def format_market_time(symbol: str, dt: datetime) -> str:
 
     # 转换为本地时间
     from datetime import timedelta
+
     local_dt = dt + timedelta(hours=offset)
 
     # 格式化
@@ -414,6 +459,7 @@ def format_market_time(symbol: str, dt: datetime) -> str:
 # ==========================================
 #  综合数据质量检查
 # ==========================================
+
 
 class DataQualityChecker:
     """K线数据质量检查器"""
@@ -452,8 +498,12 @@ class DataQualityChecker:
             quality_score = 0.0
         else:
             # 每个严重异常扣 0.1，每个警告扣 0.05
-            critical_count = sum(1 for a in self.anomalies if a.get("severity") == "critical")  # noqa: E501
-            warning_count = sum(1 for a in self.anomalies if a.get("severity") == "warning")  # noqa: E501
+            critical_count = sum(
+                1 for a in self.anomalies if a.get("severity") == "critical"
+            )  # noqa: E501
+            warning_count = sum(
+                1 for a in self.anomalies if a.get("severity") == "warning"
+            )  # noqa: E501
             penalty = critical_count * 0.1 + warning_count * 0.05
             quality_score = max(0.0, 1.0 - penalty)
 

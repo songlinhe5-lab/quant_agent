@@ -8,6 +8,7 @@ Quant Agent 全局错误码定义（对齐 docs/10 §1.4 错误码表）
   3xxx  = 外部依赖 / 基础设施
   5xxx  = 内部未知错误
 """
+
 from enum import IntEnum
 
 

@@ -2,6 +2,7 @@
 内部通信安全模块测试
 测试 HMAC-SHA256 签名生成和验证功能
 """
+
 import os
 import sys
 

@@ -106,7 +106,8 @@ def compress_backup() -> Path:
 
         result = subprocess.run(
             ["docker", "cp", "quant_redis:/data/dump.rdb", str(docker_rdb)],
-            capture_output=True, text=True
+            capture_output=True,
+            text=True,
         )
         if result.returncode == 0:
             rdb_path = str(docker_rdb)
@@ -192,9 +193,9 @@ def main() -> None:
     parser.add_argument("--keep-days", type=int, default=30, help="保留天数")
     args = parser.parse_args()
 
-    print(f"{'='*50}")
+    print(f"{'=' * 50}")
     print(f"Redis RDB 备份 - {datetime.utcnow().isoformat()}Z")
-    print(f"{'='*50}")
+    print(f"{'=' * 50}")
 
     try:
         trigger_bgsave()

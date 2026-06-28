@@ -2,6 +2,7 @@
 敏感字段加密工具（AES-256-GCM）
 提供透明的加密/解密功能，防止敏感数据明文落库
 """
+
 import base64
 import os
 from typing import Union
@@ -16,6 +17,7 @@ from backend.core.config import settings
 # AES-256-GCM 加密/解密工具函数
 # ==========================================
 
+
 def get_encryption_key() -> bytes:
     """
     从配置中获取加密主密钥（AES-256 需要 32 字节）
@@ -25,16 +27,17 @@ def get_encryption_key() -> bytes:
     2. 生产环境建议使用 KMS/Vault 管理主密钥，而非直接配置在 .env
     3. 密钥长度必须 >= 32 字节（AES-256 要求）
     """
-    master_key = getattr(settings, 'encryption_master_key', None)
+    master_key = getattr(settings, "encryption_master_key", None)
     if not master_key:
         # 开发环境自动生成临时密钥（仅用于开发，生产必须配置）
         import warnings
+
         warnings.warn(
             "⚠️ ENCRYPTION_MASTER_KEY 未配置！使用临时密钥，重启后数据无法解密！",
-            RuntimeWarning
+            RuntimeWarning,
         )
         # 返回固定的开发密钥（仅用于开发环境）
-        return b'\x00' * 32
+        return b"\x00" * 32
 
     # 将十六进制或 Base64 编码的密钥解码为字节
     try:
@@ -45,9 +48,11 @@ def get_encryption_key() -> bytes:
         return base64.b64decode(master_key)
     except Exception:
         # 如果是原始字符串，直接编码（不推荐，仅用于兼容）
-        key_bytes = master_key.encode('utf-8')
+        key_bytes = master_key.encode("utf-8")
         if len(key_bytes) < 32:
-            raise ValueError("❌ ENCRYPTION_MASTER_KEY 长度必须 >= 32 字节（AES-256 要求）")  # noqa: E501
+            raise ValueError(
+                "❌ ENCRYPTION_MASTER_KEY 长度必须 >= 32 字节（AES-256 要求）"
+            )  # noqa: E501
         return key_bytes[:32]
 
 
@@ -66,7 +71,7 @@ def encrypt_sensitive_data(plaintext: Union[str, bytes]) -> str:
 
     # 统一转换为字节
     if isinstance(plaintext, str):
-        plaintext_bytes = plaintext.encode('utf-8')
+        plaintext_bytes = plaintext.encode("utf-8")
     else:
         plaintext_bytes = plaintext
 
@@ -75,11 +80,7 @@ def encrypt_sensitive_data(plaintext: Union[str, bytes]) -> str:
 
     # 创建 AES-GCM 加密器
     key = get_encryption_key()
-    cipher = Cipher(
-        algorithms.AES(key),
-        modes.GCM(nonce),
-        backend=default_backend()
-    )
+    cipher = Cipher(algorithms.AES(key), modes.GCM(nonce), backend=default_backend())
     encryptor = cipher.encryptor()
 
     # 执行加密
@@ -90,7 +91,7 @@ def encrypt_sensitive_data(plaintext: Union[str, bytes]) -> str:
 
     # 组合 nonce:ciphertext:tag 并 Base64 编码
     combined = nonce + ciphertext + tag
-    return base64.b64encode(combined).decode('utf-8')
+    return base64.b64encode(combined).decode("utf-8")
 
 
 def decrypt_sensitive_data(ciphertext_b64: str) -> str:
@@ -118,9 +119,7 @@ def decrypt_sensitive_data(ciphertext_b64: str) -> str:
         # 创建 AES-GCM 解密器
         key = get_encryption_key()
         cipher = Cipher(
-            algorithms.AES(key),
-            modes.GCM(nonce, tag),
-            backend=default_backend()
+            algorithms.AES(key), modes.GCM(nonce, tag), backend=default_backend()
         )
         decryptor = cipher.decryptor()
 
@@ -128,7 +127,7 @@ def decrypt_sensitive_data(ciphertext_b64: str) -> str:
         plaintext_bytes = decryptor.update(ciphertext) + decryptor.finalize()
 
         # 返回字符串
-        return plaintext_bytes.decode('utf-8')
+        return plaintext_bytes.decode("utf-8")
 
     except InvalidTag:
         raise ValueError("❌ 密文认证失败（可能密钥错误或数据被篡改）")
@@ -139,6 +138,7 @@ def decrypt_sensitive_data(ciphertext_b64: str) -> str:
 # ==========================================
 # SQLAlchemy 透明加密 Mixin（可选，用于未来扩展）
 # ==========================================
+
 
 class EncryptedFieldMixin:
     """
@@ -169,12 +169,14 @@ class EncryptedFieldMixin:
                 else:
                     self._encrypted_api_key = encrypt_sensitive_data(value)
     """  # noqa: E501
+
     pass
 
 
 # ==========================================
 # 工具函数：生成新的主密钥（用于初始化）
 # ==========================================
+
 
 def generate_new_master_key() -> str:
     """

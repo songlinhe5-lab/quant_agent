@@ -2,6 +2,7 @@
 行情路由 & 核心模块单元测试
 TEST-01: 行情管道、熔断器、响应封装
 """
+
 import os
 import sys
 
@@ -52,7 +53,10 @@ class TestCircuitBreaker:
             return "ok"
 
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(cb.call("test_svc", success_fn))  # noqa: E501
+
+        result = asyncio.get_event_loop().run_until_complete(
+            cb.call("test_svc", success_fn)
+        )  # noqa: E501
         assert result == "ok"
         assert cb.get_state("test_svc") == CircuitState.CLOSED
 
@@ -70,6 +74,7 @@ class TestCircuitBreaker:
             raise RuntimeError("外部服务失败")
 
         import asyncio
+
         loop = asyncio.get_event_loop()
 
         # 连续失败触发熔断

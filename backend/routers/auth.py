@@ -21,35 +21,51 @@ from backend.services.audit_service import log_audit
 # ==========================================
 SECRET_KEY = os.getenv("SECRET_KEY", "your-super-secret-key-keep-it-safe")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 15 # Access Token 有效期改短为 15 分钟
-REFRESH_TOKEN_EXPIRE_DAYS = 7 # Refresh Token 有效期设为 7 天
+ACCESS_TOKEN_EXPIRE_MINUTES = 15  # Access Token 有效期改短为 15 分钟
+REFRESH_TOKEN_EXPIRE_DAYS = 7  # Refresh Token 有效期设为 7 天
 
 # tokenUrl 指明了 Swagger UI 等工具要去哪个接口获取 Token
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
+
 def get_password_hash(password: str) -> str:
-    pwd_bytes = password.encode('utf-8')
+    pwd_bytes = password.encode("utf-8")
     salt = bcrypt.gensalt()
-    return bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
+    return bcrypt.hashpw(pwd_bytes, salt).decode("utf-8")
+
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))  # noqa: E501
+    return bcrypt.checkpw(
+        plain_password.encode("utf-8"), hashed_password.encode("utf-8")
+    )  # noqa: E501
 
-def _create_jwt_token(data: dict, expires_delta: timedelta, token_type: Optional[str] = None):  # noqa: E501
+
+def _create_jwt_token(
+    data: dict, expires_delta: timedelta, token_type: Optional[str] = None
+):  # noqa: E501
     to_encode = data.copy()
     to_encode.update({"exp": datetime.utcnow() + expires_delta})
     if token_type:
         to_encode["type"] = token_type
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    return _create_jwt_token(data, expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))  # noqa: E501
+    return _create_jwt_token(
+        data, expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )  # noqa: E501
+
 
 def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None):
-    return _create_jwt_token(data, expires_delta or timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS), "refresh")  # noqa: E501
+    return _create_jwt_token(
+        data, expires_delta or timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS), "refresh"
+    )  # noqa: E501
+
 
 # 核心鉴权依赖：拦截并解析 Token，返回当前登录的用户对象
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):  # noqa: E501
+def get_current_user(
+    token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
+):  # noqa: E501
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="无效的鉴权凭证或 Token 已过期",
@@ -68,23 +84,34 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
     return user
 
+
 router = APIRouter(prefix="/auth", tags=["Auth"])
+
+
 @router.get("/me")
 def read_users_me(current_user: models.User = Depends(get_current_user)):
-    return {"id": current_user.id, "username": current_user.username, "email": current_user.email}  # noqa: E501
+    return {
+        "id": current_user.id,
+        "username": current_user.username,
+        "email": current_user.email,
+    }  # noqa: E501
+
 
 # ==========================================
 # --- 标准账号密码登录与改密 API ---
 # ==========================================
+
 
 @router.post("/login")
 def login_for_access_token(
     response: Response,
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    user = db.query(models.User).filter(models.User.username == form_data.username).first()  # noqa: E501
+    user = (
+        db.query(models.User).filter(models.User.username == form_data.username).first()
+    )  # noqa: E501
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -92,11 +119,25 @@ def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    jwt_token = create_access_token(data={"sub": user.username}, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))  # noqa: E501
-    refresh_token = create_refresh_token(data={"sub": user.username}, expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS))  # noqa: E501
+    jwt_token = create_access_token(
+        data={"sub": user.username},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+    )  # noqa: E501
+    refresh_token = create_refresh_token(
+        data={"sub": user.username},
+        expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+    )  # noqa: E501
 
     is_production = os.getenv("QUANT_ENV") == "production"
-    response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=is_production, samesite="lax", max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60, path="/")  # noqa: E501
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=is_production,
+        samesite="lax",
+        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        path="/",
+    )  # noqa: E501
 
     # 记录审计日志
     log_audit(
@@ -104,21 +145,28 @@ def login_for_access_token(
         action="login",
         detail={"username": user.username, "method": "password"},
         request=request,
-        user_id=user.id
+        user_id=user.id,
     )
 
-    return {"status": "success", "access_token": jwt_token, "token_type": "bearer", "user": {"username": user.username, "email": getattr(user, 'email', None)}}  # noqa: E501
+    return {
+        "status": "success",
+        "access_token": jwt_token,
+        "token_type": "bearer",
+        "user": {"username": user.username, "email": getattr(user, "email", None)},
+    }  # noqa: E501
+
 
 class ChangePasswordRequest(BaseModel):
     old_password: str
     new_password: str
+
 
 @router.post("/change-password")
 def change_password(
     password_request: ChangePasswordRequest,
     request: Request,
     current_user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     if not verify_password(password_request.old_password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="原密码错误")
@@ -132,24 +180,27 @@ def change_password(
         action="change_password",
         detail={"username": current_user.username},
         request=request,
-        user_id=current_user.id
+        user_id=current_user.id,
     )
 
     return {"status": "success", "message": "密码修改成功"}
+
 
 # ==========================================
 # --- Google OAuth2 前端令牌验证 API ---
 # ==========================================
 
+
 class GoogleTokenRequest(BaseModel):
     credential: str
+
 
 @router.post("/google/verify")
 def verify_google_token(
     request: Request,
     token_request: GoogleTokenRequest,
     response: Response = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     try:
         client_id = os.getenv("GOOGLE_CLIENT_ID", "YOUR_GOOGLE_CLIENT_ID")
@@ -157,32 +208,48 @@ def verify_google_token(
         # 1. 验证前端传来的 Google ID Token
         idinfo = id_token.verify_oauth2_token(
             # 💡 依赖 main.py 中配置的全局 socket.setdefaulttimeout(15.0) 防死锁挂起
-            token_request.credential, google_requests.Request(), client_id
+            token_request.credential,
+            google_requests.Request(),
+            client_id,
         )
 
         # 2. 验证通过，提取用户信息
         email = idinfo.get("email")
         if not email:
-            raise HTTPException(status_code=400, detail="Google Auth Failed: No email provided")  # noqa: E501
+            raise HTTPException(
+                status_code=400, detail="Google Auth Failed: No email provided"
+            )  # noqa: E501
 
         # 兼容性处理：防止 models.User 没有 email 字段导致 500 崩溃
-        has_email_column = hasattr(models.User, 'email')
+        has_email_column = hasattr(models.User, "email")
 
         # 3. 在我们自己的数据库里查找用户，如果没有则自动帮他注册
         if has_email_column:
             user = db.query(models.User).filter(models.User.email == email).first()
         else:
-            user = db.query(models.User).filter(models.User.username == email.split('@')[0]).first()  # noqa: E501
+            user = (
+                db.query(models.User)
+                .filter(models.User.username == email.split("@")[0])
+                .first()
+            )  # noqa: E501
 
         if not user:
-            base_username = email.split('@')[0]
-            existing_user = db.query(models.User).filter(models.User.username == base_username).first()  # noqa: E501
-            username = base_username if not existing_user else f"{base_username}_{str(hash(email))[-4:]}"  # noqa: E501
+            base_username = email.split("@")[0]
+            existing_user = (
+                db.query(models.User)
+                .filter(models.User.username == base_username)
+                .first()
+            )  # noqa: E501
+            username = (
+                base_username
+                if not existing_user
+                else f"{base_username}_{str(hash(email))[-4:]}"
+            )  # noqa: E501
 
             user_kwargs = {
                 "username": username,
                 # bcrypt 限制输入最大 72 字节，改用安全的随机短字符串作为占位密码
-                "hashed_password": get_password_hash(secrets.token_urlsafe(32))
+                "hashed_password": get_password_hash(secrets.token_urlsafe(32)),
             }
             if has_email_column:
                 user_kwargs["email"] = email
@@ -195,12 +262,12 @@ def verify_google_token(
         # 4. 签发系统内部使用的短效 Access Token 和 长效 Refresh Token
         jwt_token = create_access_token(
             data={"sub": user.username},
-            expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+            expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
         )
 
         refresh_token = create_refresh_token(
             data={"sub": user.username},
-            expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+            expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
         )
 
         # 5. 设置 HttpOnly Cookie 并直接返回 JSON
@@ -209,10 +276,10 @@ def verify_google_token(
             key="refresh_token",
             value=refresh_token,
             httponly=True,
-            secure=is_production, # 生产环境建议开启 HTTPS
-            samesite="lax",       # 允许带跳转的请求携带 Cookie
+            secure=is_production,  # 生产环境建议开启 HTTPS
+            samesite="lax",  # 允许带跳转的请求携带 Cookie
             max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
-            path="/"
+            path="/",
         )
 
         # 记录审计日志
@@ -221,13 +288,13 @@ def verify_google_token(
             action="login",
             detail={"username": user.username, "method": "google", "email": email},
             request=request,
-            user_id=user.id
+            user_id=user.id,
         )
 
         return {
             "status": "success",
             "access_token": jwt_token,
-            "user": {"username": user.username, "email": email}
+            "user": {"username": user.username, "email": email},
         }
 
     except ValueError:
@@ -235,6 +302,7 @@ def verify_google_token(
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()  # 打印详细崩溃堆栈到后端终端
         # 把真实错误信息抛出到浏览器，不再展示全白 500 页面
         raise HTTPException(status_code=500, detail=f"Google Callback Error: {str(e)}")
@@ -244,7 +312,9 @@ def verify_google_token(
 # --- Token 刷新与注销 API ---
 # ==========================================
 @router.post("/refresh")
-async def refresh_access_token(refresh_token: Optional[str] = Cookie(None), db: Session = Depends(get_db)):  # noqa: E501
+async def refresh_access_token(
+    refresh_token: Optional[str] = Cookie(None), db: Session = Depends(get_db)
+):  # noqa: E501
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Refresh Token missing in cookies")
 
@@ -265,9 +335,10 @@ async def refresh_access_token(refresh_token: Optional[str] = Cookie(None), db: 
 
     new_access_token = create_access_token(
         data={"sub": user.username},
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
     )
     return {"access_token": new_access_token}
+
 
 @router.post("/logout")
 async def logout(response: Response, request: Request, db: Session = Depends(get_db)):
@@ -280,7 +351,11 @@ async def logout(response: Response, request: Request, db: Session = Depends(get
             payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
             username = payload.get("sub")
             if username:
-                user = db.query(models.User).filter(models.User.username == username).first()  # noqa: E501
+                user = (
+                    db.query(models.User)
+                    .filter(models.User.username == username)
+                    .first()
+                )  # noqa: E501
                 if user:
                     user_id = user.id
     except:  # noqa: E722
@@ -293,7 +368,7 @@ async def logout(response: Response, request: Request, db: Session = Depends(get
             action="logout",
             detail={"username": username} if username else {},
             request=request,
-            user_id=user_id
+            user_id=user_id,
         )
 
     # 清理客户端存留的 Refresh Token Cookie

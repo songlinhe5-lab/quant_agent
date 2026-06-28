@@ -7,6 +7,7 @@
 POST /api/v1/client/heartbeat
 GET  /api/v1/client/heartbeat/stats
 """
+
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends
@@ -76,10 +77,14 @@ async def heartbeat_stats(
             db.query(
                 models.ClientHeartbeat.platform,
                 func.count(models.ClientHeartbeat.id).label("total_heartbeats"),
-                func.count(func.distinct(models.ClientHeartbeat.device_id)).label("active_devices"),
+                func.count(func.distinct(models.ClientHeartbeat.device_id)).label(
+                    "active_devices"
+                ),
                 func.avg(models.ClientHeartbeat.fps).label("avg_fps"),
                 func.avg(models.ClientHeartbeat.memory_mb).label("avg_memory_mb"),
-                func.avg(models.ClientHeartbeat.ws_latency_ms).label("avg_ws_latency_ms"),
+                func.avg(models.ClientHeartbeat.ws_latency_ms).label(
+                    "avg_ws_latency_ms"
+                ),
             )
             .filter(models.ClientHeartbeat.created_at >= since)
             .group_by(models.ClientHeartbeat.platform)
@@ -88,19 +93,23 @@ async def heartbeat_stats(
 
         result = []
         for row in stats:
-            result.append({
-                "platform": row.platform,
-                "total_heartbeats": row.total_heartbeats,
-                "active_devices": row.active_devices or 0,
-                "avg_fps": round(float(row.avg_fps or 0), 1),
-                "avg_memory_mb": round(float(row.avg_memory_mb or 0), 1),
-                "avg_ws_latency_ms": round(float(row.avg_ws_latency_ms or 0), 0),
-            })
+            result.append(
+                {
+                    "platform": row.platform,
+                    "total_heartbeats": row.total_heartbeats,
+                    "active_devices": row.active_devices or 0,
+                    "avg_fps": round(float(row.avg_fps or 0), 1),
+                    "avg_memory_mb": round(float(row.avg_memory_mb or 0), 1),
+                    "avg_ws_latency_ms": round(float(row.avg_ws_latency_ms or 0), 0),
+                }
+            )
 
-        return success(data={
-            "window_minutes": minutes,
-            "platforms": result,
-        })
+        return success(
+            data={
+                "window_minutes": minutes,
+                "platforms": result,
+            }
+        )
     except Exception as e:
         logger.error(f"[Heartbeat Stats] 查询失败: {e}")
         return error(code=ErrorCode.INTERNAL_ERROR, msg="统计查询失败")

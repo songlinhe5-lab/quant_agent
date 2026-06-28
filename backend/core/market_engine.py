@@ -42,12 +42,16 @@ async def update_quote_to_redis(ticker: str, quote_data: dict):
             last_price=float(quote_data.get("last_price", 0.0)),
             change_pct=str(quote_data.get("change_pct", "0.0%")),
             volume_str=str(quote_data.get("volume_str", "--")),
-            source=str(quote_data.get("source", "unknown"))
+            source=str(quote_data.get("source", "unknown")),
         )
         for b in quote_data.get("bids", []):
-            quote_msg.bids.append(Order(price=float(b.get("price", 0.0)), size=float(b.get("size", 0.0))))  # noqa: E501
+            quote_msg.bids.append(
+                Order(price=float(b.get("price", 0.0)), size=float(b.get("size", 0.0)))
+            )  # noqa: E501
         for a in quote_data.get("asks", []):
-            quote_msg.asks.append(Order(price=float(a.get("price", 0.0)), size=float(a.get("size", 0.0))))  # noqa: E501
+            quote_msg.asks.append(
+                Order(price=float(a.get("price", 0.0)), size=float(a.get("size", 0.0)))
+            )  # noqa: E501
 
         payload_bytes = quote_msg.SerializeToString()
         await manager.raw_redis.hset("quant:quotes:latest", ticker, payload_bytes)
@@ -56,7 +60,9 @@ async def update_quote_to_redis(ticker: str, quote_data: dict):
         # BE-06: 行情指标埋点
         source = quote_data.get("source", "unknown")
         MARKET_QUOTE_TOTAL.labels(source=source, symbol=ticker).inc()
-        MARKET_QUOTE_LATENCY.labels(source=source, symbol=ticker).observe(time.perf_counter() - _t0)  # noqa: E501
+        MARKET_QUOTE_LATENCY.labels(source=source, symbol=ticker).observe(
+            time.perf_counter() - _t0
+        )  # noqa: E501
         MARKET_QUOTE_STALENESS.labels(symbol=ticker).set(0)  # 刚写入，延迟为 0
 
         # 💡 新增：实时价格突破/跌破报警检测
@@ -67,7 +73,11 @@ async def update_quote_to_redis(ticker: str, quote_data: dict):
             user_alerts = await redis_client.hgetall(f"quant:alerts:by_ticker:{ticker}")
             if user_alerts:
                 for user_id_bytes, rules_str in user_alerts.items():
-                    user_id = user_id_bytes.decode('utf-8') if isinstance(user_id_bytes, bytes) else user_id_bytes  # noqa: E501
+                    user_id = (
+                        user_id_bytes.decode("utf-8")
+                        if isinstance(user_id_bytes, bytes)
+                        else user_id_bytes
+                    )  # noqa: E501
                     rules = json.loads(rules_str)
                     upper = rules.get("upper")
                     lower = rules.get("lower")
@@ -80,7 +90,9 @@ async def update_quote_to_redis(ticker: str, quote_data: dict):
                         triggered_msg = f"🩸 [专属报警] {ticker} 最新价 {last_price} 已向下跌破您设定的下限 {lower}！"  # noqa: E501
                     elif pct_change is not None:
                         try:
-                            current_pct = float(change_pct_str.replace('%', '').replace('+', ''))  # noqa: E501
+                            current_pct = float(
+                                change_pct_str.replace("%", "").replace("+", "")
+                            )  # noqa: E501
                             if abs(current_pct) >= pct_change:
                                 direction = "暴涨" if current_pct > 0 else "暴跌"
                                 triggered_msg = f"💥 [异动报警] {ticker} 发生 {direction}，当前涨跌幅 {change_pct_str}，已触及您设定的 ±{pct_change}% 阈值！"  # noqa: E501
@@ -89,11 +101,18 @@ async def update_quote_to_redis(ticker: str, quote_data: dict):
 
                     if triggered_msg:
                         # 触发后仅删除该用户的一次回调报警，防止震荡轰炸
-                        await redis_client.hdel(f"quant:alerts:by_ticker:{ticker}", user_id)  # noqa: E501
+                        await redis_client.hdel(
+                            f"quant:alerts:by_ticker:{ticker}", user_id
+                        )  # noqa: E501
                         # 可进一步修改 notification_service 发送给指定 userid 绑定的飞书/钉钉  # noqa: E501
-                        asyncio.create_task(notification_service.send_alert(f"[To User: {user_id}] " + triggered_msg))  # noqa: E501
+                        asyncio.create_task(
+                            notification_service.send_alert(
+                                f"[To User: {user_id}] " + triggered_msg
+                            )
+                        )  # noqa: E501
     except Exception as e:
         print(f"⚠️ [Redis] 写入行情失败: {e}")
+
 
 async def update_trade_to_redis(ticker: str, trade_data: bytes):
     """处理必须不丢包的事件类数据 (如逐笔成交、K线增量) 的双写逻辑"""
@@ -105,6 +124,7 @@ async def update_trade_to_redis(ticker: str, trade_data: bytes):
         await manager.raw_redis.publish("quant:trades:stream", trade_data)
     except Exception as e:
         print(f"⚠️ [Redis] 写入逐笔成交流失败: {e}")
+
 
 class ConnectionManager:
     def __init__(self):
@@ -155,27 +175,35 @@ class ConnectionManager:
         if websocket in self.subscriptions:
             del self.subscriptions[websocket]
 
-    def subscribe(self, websocket: WebSocket, tickers: list[str], last_ids: Optional[dict] = None):  # noqa: E501
+    def subscribe(
+        self, websocket: WebSocket, tickers: list[str], last_ids: Optional[dict] = None
+    ):  # noqa: E501
         if websocket in self.subscriptions:
             self.subscriptions[websocket].update(tickers)
             WS_SUBSCRIPTIONS.set(sum(len(s) for s in self.subscriptions.values()))
 
         # 异步追补断层数据或拉取最新快照
-        asyncio.create_task(self._catch_up_or_snapshot(websocket, tickers, last_ids or {}))  # noqa: E501
+        asyncio.create_task(
+            self._catch_up_or_snapshot(websocket, tickers, last_ids or {})
+        )  # noqa: E501
 
-    async def _catch_up_or_snapshot(self, websocket: WebSocket, tickers: list[str], last_ids: dict):  # noqa: E501
+    async def _catch_up_or_snapshot(
+        self, websocket: WebSocket, tickers: list[str], last_ids: dict
+    ):  # noqa: E501
         try:
             for t in tickers:
                 last_id = last_ids.get(t)
                 if last_id:
                     # 💡 核心操作：通过 XRANGE 获取 (last_id, +无穷大] 区间错过的所有包
-                    missed_messages = await self.raw_redis.xrange(f"quant:trades:stream:{t}", min=f"({last_id}", max="+")  # noqa: E501
+                    missed_messages = await self.raw_redis.xrange(
+                        f"quant:trades:stream:{t}", min=f"({last_id}", max="+"
+                    )  # noqa: E501
                     if missed_messages:
                         # 💡 增加类型约束和严谨的 isinstance 防御，消除 Pylance 类型报错
                         payloads: list[bytes] = []
                         for _, fields in missed_messages:
                             if isinstance(fields, dict):
-                                val = fields.get(b'payload')
+                                val = fields.get(b"payload")
                                 if isinstance(val, bytes):
                                     payloads.append(val)
 
@@ -186,9 +214,11 @@ class ConnectionManager:
                             # 💡 高频优化：超过 100 条消息，组合成单一的二进制 Batch 帧一次性发送  # noqa: E501
                             # 格式: [0x01(表示zlib压缩模式)] + zlib_compressed([4字节包数量] + 循环([4字节单包长度] + [单包二进制数据]))  # noqa: E501
                             raw_buffer = bytearray()
-                            raw_buffer.extend(struct.pack('<I', len(payloads))) # Little-endian Unsigned Int  # noqa: E501
+                            raw_buffer.extend(
+                                struct.pack("<I", len(payloads))
+                            )  # Little-endian Unsigned Int  # noqa: E501
                             for p in payloads:
-                                raw_buffer.extend(struct.pack('<I', len(p)))
+                                raw_buffer.extend(struct.pack("<I", len(p)))
                                 raw_buffer.extend(p)
                             compressed_data = zlib.compress(raw_buffer)
                             final_buffer = bytearray([0x01]) + compressed_data
@@ -198,7 +228,10 @@ class ConnectionManager:
                                 await websocket.send_bytes(p)
                 else:
                     cached_bytes = await self.raw_redis.hget("quant:quotes:latest", t)
-                    if isinstance(cached_bytes, bytes) and websocket in self.active_connections:  # noqa: E501
+                    if (
+                        isinstance(cached_bytes, bytes)
+                        and websocket in self.active_connections
+                    ):  # noqa: E501
                         await websocket.send_bytes(cached_bytes)
         except Exception as e:
             print(f"⚠️ [Redis] 追补或发送缓存快照失败: {e}")
@@ -209,12 +242,29 @@ class ConnectionManager:
                 self.subscriptions[websocket].discard(t)
             WS_SUBSCRIPTIONS.set(sum(len(s) for s in self.subscriptions.values()))
 
-
     def get_all_subscribed_tickers(self) -> set[str]:
         # 基础宏观数据，确保后台始终将其拉取至 Redis，供 LLM 或前端秒开使用
         # 💡 将宏观指数替换为富途格式 (如 US.VIX, US.SPX) 以优先利用富途快速获取，并保留比特币与日元汇率  # noqa: E501
         # 💡 加入 6 大核心资本板块代理 ETF，确保后台守护进程高频拉取其资金流，解耦耗时的外部 API 轮询  # noqa: E501
-        all_tickers = {"GC=F", "CL=F", "^TNX", "ES=F", "US.VIX", "US.SPX", "US.IXIC", "^FVX", "DX-Y.NYB", "JPY=X", "BTC-USD", "US.SPY", "US.QQQ", "US.SOXX", "US.TLT", "US.KWEB", "SH.510300"}  # noqa: E501
+        all_tickers = {
+            "GC=F",
+            "CL=F",
+            "^TNX",
+            "ES=F",
+            "US.VIX",
+            "US.SPX",
+            "US.IXIC",
+            "^FVX",
+            "DX-Y.NYB",
+            "JPY=X",
+            "BTC-USD",
+            "US.SPY",
+            "US.QQQ",
+            "US.SOXX",
+            "US.TLT",
+            "US.KWEB",
+            "SH.510300",
+        }  # noqa: E501
         for tickers in self.subscriptions.values():
             all_tickers.update(tickers)
         return all_tickers
@@ -257,6 +307,7 @@ class ConnectionManager:
 
     def _get_yf_fast_info(self, ticker: str):
         import yfinance as yf
+
         yf_ticker = ticker
 
         # 💡 增加港股核心指数的 YFinance 代码映射，解决恒生科技等指数拉取失败的问题
@@ -280,18 +331,21 @@ class ConnectionManager:
         change_pct = safe_divide(last_price - prev_close, prev_close) * 100
 
         return {
-            "status": "success", "ticker": ticker, "requested_ticker": ticker,
-            "last_price": last_price, "change_pct": f"{change_pct:+.2f}%",
-            "volume": getattr(info, 'last_volume', 0), "source": "yfinance",
-            "data_timestamp": "Realtime(Delayed)"
+            "status": "success",
+            "ticker": ticker,
+            "requested_ticker": ticker,
+            "last_price": last_price,
+            "change_pct": f"{change_pct:+.2f}%",
+            "volume": getattr(info, "last_volume", 0),
+            "source": "yfinance",
+            "data_timestamp": "Realtime(Delayed)",
         }
 
     async def _fetch_fallback_quote(self, ticker: str):
         """通过异步线程隔离调用雅虎财经，作为富途熔断时的降级通道"""
         try:
             return await asyncio.wait_for(
-                asyncio.to_thread(self._get_yf_fast_info, ticker),
-                timeout=4.0
+                asyncio.to_thread(self._get_yf_fast_info, ticker), timeout=4.0
             )
         except Exception as e:
             print(f"[YFinance Fallback Error] {ticker}: {e}")
@@ -304,19 +358,27 @@ class ConnectionManager:
                 all_tickers = list(self.get_all_subscribed_tickers())
                 if all_tickers:
                     # 💡 动态读取全局 YFinance 开关状态
-                    yf_enabled_val = await l1_cached_redis.get("quant:settings:yfinance_enabled")  # noqa: E501
+                    yf_enabled_val = await l1_cached_redis.get(
+                        "quant:settings:yfinance_enabled"
+                    )  # noqa: E501
                     is_yf_enabled = yf_enabled_val != "0"
 
                     # 💡 [额度释放 GC 机制]：对比当前真实需要的标的与已订阅的标的，自动剔除无人观看的废弃订阅  # noqa: E501
-                    current_futu_needs = {t for t in all_tickers if not futu_service.is_futu_unsupported(t)}  # noqa: E501
+                    current_futu_needs = {
+                        t
+                        for t in all_tickers
+                        if not futu_service.is_futu_unsupported(t)
+                    }  # noqa: E501
                     stale_subs = self._futu_active_subs - current_futu_needs
 
                     if stale_subs:
-                        print(f"🧹 [Futu GC] 检测到 {len(stale_subs)} 只标的已无活跃监听，正在向富途发起退订以释放额度...")  # noqa: E501
+                        print(
+                            f"🧹 [Futu GC] 检测到 {len(stale_subs)} 只标的已无活跃监听，正在向富途发起退订以释放额度..."
+                        )  # noqa: E501
                         for stale_t in stale_subs:
                             try:
                                 # 调用 futu_service 的退订方法释放底层占用
-                                if hasattr(futu_service, 'unsubscribe_quote'):
+                                if hasattr(futu_service, "unsubscribe_quote"):
                                     await futu_service.unsubscribe_quote(stale_t)
                                 # 从系统的已订阅记录中移除
                                 self._futu_active_subs.discard(stale_t)
@@ -329,31 +391,57 @@ class ConnectionManager:
                     # 💡 优化 1: 定时刷新技术面指标缓存
                     # 技术指标(日线级)无需每 3 秒全量并发刷新。设定为 1 小时更新一次，或发现新标的时触发  # noqa: E501
                     current_time = time.time()
-                    need_global_tech_update = current_time - getattr(self, "last_tech_update", 0) > 3600  # noqa: E501
-                    tickers_to_update = [t for t in all_tickers if t not in self.tech_cache or need_global_tech_update]  # noqa: E501
+                    need_global_tech_update = (
+                        current_time - getattr(self, "last_tech_update", 0) > 3600
+                    )  # noqa: E501
+                    tickers_to_update = [
+                        t
+                        for t in all_tickers
+                        if t not in self.tech_cache or need_global_tech_update
+                    ]  # noqa: E501
 
                     if tickers_to_update:
-
                         for t in tickers_to_update:
                             try:
                                 # 优先尝试利用 Futu 获取 120 日历史，完全免除外部网络请求  # noqa: E501
-                                futu_res = await futu_service.get_history(t, ktype="K_DAY", num=120)  # noqa: E501
-                                if futu_res.get("status") == "success" and futu_res.get("data"):  # noqa: E501
+                                futu_res = await futu_service.get_history(
+                                    t, ktype="K_DAY", num=120
+                                )  # noqa: E501
+                                if futu_res.get("status") == "success" and futu_res.get(
+                                    "data"
+                                ):  # noqa: E501
                                     df = pd.DataFrame(futu_res["data"])
                                     if len(df) >= 30:
-                                        df.rename(columns={"open": "Open", "high": "High", "low": "Low", "close": "Close", "volume": "Volume"}, inplace=True)  # noqa: E501
-                                        df['time'] = pd.to_datetime(df['time'])
-                                        df.set_index('time', inplace=True)
-                                        res = await yf_service.get_tech_indicators(ticker=t, lookback_days=6, pre_fetched_df=df)  # noqa: E501
+                                        df.rename(
+                                            columns={
+                                                "open": "Open",
+                                                "high": "High",
+                                                "low": "Low",
+                                                "close": "Close",
+                                                "volume": "Volume",
+                                            },
+                                            inplace=True,
+                                        )  # noqa: E501
+                                        df["time"] = pd.to_datetime(df["time"])
+                                        df.set_index("time", inplace=True)
+                                        res = await yf_service.get_tech_indicators(
+                                            ticker=t, lookback_days=6, pre_fetched_df=df
+                                        )  # noqa: E501
                                         if res.get("status") == "success":
-                                            self.tech_cache[t] = res.get("data", {}).get("trend", [])  # noqa: E501
+                                            self.tech_cache[t] = res.get(
+                                                "data", {}
+                                            ).get("trend", [])  # noqa: E501
                                             continue
 
                                 # 如果 Futu 失败（加密货币/外汇等），且开启了 YF 兜底，则串行请求 YF  # noqa: E501
                                 if is_yf_enabled:
-                                    res = await yf_service.get_tech_indicators(ticker=t, lookback_days=6)  # noqa: E501
+                                    res = await yf_service.get_tech_indicators(
+                                        ticker=t, lookback_days=6
+                                    )  # noqa: E501
                                     if res.get("status") == "success":
-                                        self.tech_cache[t] = res.get("data", {}).get("trend", [])  # noqa: E501
+                                        self.tech_cache[t] = res.get("data", {}).get(
+                                            "trend", []
+                                        )  # noqa: E501
                             except Exception as e:
                                 print(f"⚠️ [Tech Cache] 更新 {t} 指标异常: {e}")
 
@@ -364,8 +452,12 @@ class ConnectionManager:
                             self.last_tech_update = current_time
 
                     # 💡 定时拉取资金流与席位 (Futu 内部已有 0.6s 排队锁，使用 gather 并发安全)  # noqa: E501
-                    flow_tasks = [futu_service.get_fund_flow(ticker=t) for t in all_tickers]  # noqa: E501
-                    flow_results = await asyncio.gather(*flow_tasks, return_exceptions=True)  # noqa: E501
+                    flow_tasks = [
+                        futu_service.get_fund_flow(ticker=t) for t in all_tickers
+                    ]  # noqa: E501
+                    flow_results = await asyncio.gather(
+                        *flow_tasks, return_exceptions=True
+                    )  # noqa: E501
 
                     for ticker, f_res in zip(all_tickers, flow_results):
                         if isinstance(f_res, dict) and f_res.get("status") == "success":
@@ -388,17 +480,23 @@ class ConnectionManager:
                             if flow_data:
                                 fund_data = flow_data.get("data", flow_data)
                                 net_inflow = fund_data.get("main_fund_net_inflow", 0)
-                                OUTFLOW_THRESHOLD = -500_000_000  # 阈值：主力净流出超过 5 亿  # noqa: E501
+                                OUTFLOW_THRESHOLD = (
+                                    -500_000_000
+                                )  # 阈值：主力净流出超过 5 亿  # noqa: E501
                                 if net_inflow < OUTFLOW_THRESHOLD:
                                     # 💡 升级为分布式防抖锁，防止集群多台服务器同时发出报警轰炸  # noqa: E501
                                     lock_key = f"quant:lock:outflow_alert:{t}:{int(current_time / 3600)}"  # noqa: E501
-                                    if await redis_client.set(lock_key, "1", nx=True, ex=3600):  # noqa: E501
+                                    if await redis_client.set(
+                                        lock_key, "1", nx=True, ex=3600
+                                    ):  # noqa: E501
                                         alert_msg = (
                                             f"🚨 [宏观风控预警] 宽基指数主力资金疯狂出逃！\n\n"  # noqa: E501
                                             f"标的: {t}\n今日主力净流出: {fund_data.get('main_fund_net_inflow_str')}\n\n"  # noqa: E501
                                             f"请警惕系统性流动性抽离风险，并考虑收紧多头敞口！"
                                         )
-                                        asyncio.create_task(notification_service.send_alert(alert_msg))
+                                        asyncio.create_task(
+                                            notification_service.send_alert(alert_msg)
+                                        )
 
                     # 💡 每 10 秒异步拉取一次账户真实资产快照，用于断连报警与缓存
                     if current_time - getattr(self, "last_acc_update", 0) > 10:
@@ -435,16 +533,28 @@ class ConnectionManager:
                                             bq = fund_data.get("broker_queue") or {}
                                             if isinstance(bq, dict):
                                                 if bq.get("bid_brokers_queue_str"):
-                                                    res["bid_brokers_queue_str"] = bq.get("bid_brokers_queue_str")  # noqa: E501
+                                                    res["bid_brokers_queue_str"] = (
+                                                        bq.get("bid_brokers_queue_str")
+                                                    )  # noqa: E501
                                                 if bq.get("ask_brokers_queue_str"):
-                                                    res["ask_brokers_queue_str"] = bq.get("ask_brokers_queue_str")  # noqa: E501
-                                            if fund_data.get("main_fund_net_inflow_str"):  # noqa: E501
-                                                res["main_fund_net_inflow_str"] = fund_data.get("main_fund_net_inflow_str")  # noqa: E501
+                                                    res["ask_brokers_queue_str"] = (
+                                                        bq.get("ask_brokers_queue_str")
+                                                    )  # noqa: E501
+                                            if fund_data.get(
+                                                "main_fund_net_inflow_str"
+                                            ):  # noqa: E501
+                                                res["main_fund_net_inflow_str"] = (
+                                                    fund_data.get(
+                                                        "main_fund_net_inflow_str"
+                                                    )
+                                                )  # noqa: E501
 
                                     self.last_futu_update[t] = time.time()
                                     await update_quote_to_redis(t, res)
                                 else:
-                                    last_futu_error = res.get("message", "API 返回错误状态")  # noqa: E501
+                                    last_futu_error = res.get(
+                                        "message", "API 返回错误状态"
+                                    )  # noqa: E501
                                     yf_candidates.append(t)
                                     # 💡 失败时也更新其访问时间，防止下个循环立刻重试引发连环报错  # noqa: E501
                                     self.last_futu_update[t] = time.time()
@@ -463,18 +573,26 @@ class ConnectionManager:
                             if getattr(futu_service, "status", "") != "CONNECTED":
                                 self._futu_alert_sent = True
                                 asyncio.create_task(
-                                    notification_service.send_alert(f"🚨 [风控报警] 富途 OpenD 行情接口意外断连！\n系统已自动平滑降级至 YFinance 轮询兜底。\n\n【断线前账户快照】\n{getattr(self, 'last_account_summary', '未知')}\n\n错误详情: {last_futu_error}")  # noqa: E501
+                                    notification_service.send_alert(
+                                        f"🚨 [风控报警] 富途 OpenD 行情接口意外断连！\n系统已自动平滑降级至 YFinance 轮询兜底。\n\n【断线前账户快照】\n{getattr(self, 'last_account_summary', '未知')}\n\n错误详情: {last_futu_error}"
+                                    )  # noqa: E501
                                 )
 
                     # 2. 启用真实的 YFinance 兜底轮询！（仅在开关打开时执行）
                     if yf_candidates and is_yf_enabled:
                         # 💡 无论从哪进来的获取请求，统统汇入微批队列，1 秒后打包为 1 个请求发车  # noqa: E501
-                        quote_tasks = [yf_service.get_batched_quote(t) for t in yf_candidates]  # noqa: E501
-                        quote_results = await asyncio.gather(*quote_tasks, return_exceptions=True)  # noqa: E501
+                        quote_tasks = [
+                            yf_service.get_batched_quote(t) for t in yf_candidates
+                        ]  # noqa: E501
+                        quote_results = await asyncio.gather(
+                            *quote_tasks, return_exceptions=True
+                        )  # noqa: E501
 
                         for ticker, q in zip(yf_candidates, quote_results):
                             if isinstance(q, dict) and q.get("status") == "success":
-                                q["ticker"] = ticker # 覆盖被 YF 格式化去掉了前缀的 Ticker，恢复为内部标准  # noqa: E501
+                                q["ticker"] = (
+                                    ticker  # 覆盖被 YF 格式化去掉了前缀的 Ticker，恢复为内部标准  # noqa: E501
+                                )
                                 q["tech_trend"] = self.tech_cache.get(ticker, [])
                                 q["requested_ticker"] = ticker
                                 # [Producer 职责]：将轮询兜底数据写入 Redis 数据总线
@@ -484,5 +602,6 @@ class ConnectionManager:
             except Exception as e:
                 print(f"行情与指标背景任务异常: {e}")
                 await asyncio.sleep(3)
+
 
 manager = ConnectionManager()

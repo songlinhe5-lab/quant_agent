@@ -13,17 +13,20 @@ from backend.services.futu import futu_service
 
 class TickerItem(Base):
     """定义持久化的股票词库 SQLAlchemy 数据模型"""
+
     __tablename__ = "tickers"
     symbol = Column(String, primary_key=True, index=True)
     name = Column(String, index=True)
     market = Column(String)
     type = Column(String)
 
+
 class TickerService:
     """
     股票词库服务 (基于 PostgreSQL/SQLite + Redis 双级架构)
     提供数据库持久化存储全市场标的，以及 Redis 毫秒级缓存热门搜索。
     """
+
     def __init__(self):
         self.sync_running = False
         self._search_locks = {}
@@ -35,7 +38,7 @@ class TickerService:
 
         query_upper = query.strip().upper()
         # 💡 修复脏数据漏洞：对任意用户输入进行 Hash，彻底阻断由于空格、冒号、换行符等引发的 Redis 命名空间污染  # noqa: E501
-        query_hash = hashlib.md5(query_upper.encode('utf-8')).hexdigest()
+        query_hash = hashlib.md5(query_upper.encode("utf-8")).hexdigest()
         cache_key = f"quant:tickers:search:{query_hash}"
 
         try:
@@ -53,39 +56,66 @@ class TickerService:
 
                 def _db_query():
                     from sqlalchemy import case, func, or_
+
                     with SessionLocal() as db:
-                        is_pg = engine.dialect.name == 'postgresql'
+                        is_pg = engine.dialect.name == "postgresql"
 
                         if is_pg:
                             # 1. 生产环境 PostgreSQL: 开启 pg_trgm 相似度评分 (容忍拼写错误)  # noqa: E501
                             sim_symbol = func.similarity(TickerItem.symbol, query_upper)
                             sim_name = func.similarity(TickerItem.name, query_upper)
 
-                            rows = db.query(TickerItem).filter(
-                                or_(
-                                    TickerItem.symbol.ilike(f"%{query_upper}%"),
-                                    TickerItem.name.ilike(f"%{query_upper}%"),
-                                    sim_symbol > 0.15,  # 相似度 > 0.15 即被召回 (容忍 APPL -> AAPL)  # noqa: E501
-                                    sim_name > 0.15
+                            rows = (
+                                db.query(TickerItem)
+                                .filter(
+                                    or_(
+                                        TickerItem.symbol.ilike(f"%{query_upper}%"),
+                                        TickerItem.name.ilike(f"%{query_upper}%"),
+                                        sim_symbol
+                                        > 0.15,  # 相似度 > 0.15 即被召回 (容忍 APPL -> AAPL)  # noqa: E501
+                                        sim_name > 0.15,
+                                    )
                                 )
-                            ).order_by(
-                                # 排序权重: 绝对等于排最前 > 代码相似度 > 名称相似度 > 字符串越短越精准  # noqa: E501
-                                case((TickerItem.symbol == query_upper, 0), else_=1),
-                                sim_symbol.desc(),
-                                sim_name.desc(),
-                                func.length(TickerItem.symbol)
-                            ).limit(10).all()
+                                .order_by(
+                                    # 排序权重: 绝对等于排最前 > 代码相似度 > 名称相似度 > 字符串越短越精准  # noqa: E501
+                                    case(
+                                        (TickerItem.symbol == query_upper, 0), else_=1
+                                    ),
+                                    sim_symbol.desc(),
+                                    sim_name.desc(),
+                                    func.length(TickerItem.symbol),
+                                )
+                                .limit(10)
+                                .all()
+                            )
                         else:
                             # 2. 开发环境 SQLite 兜底: 智能前缀权重排序
-                            rows = db.query(TickerItem).filter(
-                                or_(TickerItem.symbol.ilike(f"%{query_upper}%"), TickerItem.name.ilike(f"%{query_upper}%"))  # noqa: E501
-                            ).order_by(
-                                case((TickerItem.symbol == query_upper, 0), else_=1),
-                                case((TickerItem.symbol.ilike(f"{query_upper}%"), 0), else_=1),  # noqa: E501
-                                func.length(TickerItem.symbol)
-                            ).limit(10).all()
+                            rows = (
+                                db.query(TickerItem)
+                                .filter(
+                                    or_(
+                                        TickerItem.symbol.ilike(f"%{query_upper}%"),
+                                        TickerItem.name.ilike(f"%{query_upper}%"),
+                                    )  # noqa: E501
+                                )
+                                .order_by(
+                                    case(
+                                        (TickerItem.symbol == query_upper, 0), else_=1
+                                    ),
+                                    case(
+                                        (TickerItem.symbol.ilike(f"{query_upper}%"), 0),
+                                        else_=1,
+                                    ),  # noqa: E501
+                                    func.length(TickerItem.symbol),
+                                )
+                                .limit(10)
+                                .all()
+                            )
 
-                        return [{"symbol": r.symbol, "name": r.name, "type": r.type} for r in rows]  # noqa: E501
+                        return [
+                            {"symbol": r.symbol, "name": r.name, "type": r.type}
+                            for r in rows
+                        ]  # noqa: E501
 
                 results = await asyncio.to_thread(_db_query)
                 if results:
@@ -108,7 +138,9 @@ class TickerService:
 
                 if futu_service.status == "CONNECTED":
                     await self._fetch_and_save_from_futu()
-                    print("✅ [Ticker Sync] 股票词库同步完成，Redis 缓存 + DB 持久化就绪！")  # noqa: E501
+                    print(
+                        "✅ [Ticker Sync] 股票词库同步完成，Redis 缓存 + DB 持久化就绪！"
+                    )  # noqa: E501
                 else:
                     print("⚠️ [Ticker Sync] FutuService 未连接，跳过全市场增量同步。")
             except Exception as e:
@@ -119,14 +151,49 @@ class TickerService:
 
     def _write_base_tickers(self) -> List[Dict[str, Any]]:
         base_tickers = [
-            {"symbol": "HK.800000", "name": "恒生指数", "market": "HK", "type": "INDEX"},  # noqa: E501
-            {"symbol": "HK.800700", "name": "恒生科技指数", "market": "HK", "type": "INDEX"},  # noqa: E501
+            {
+                "symbol": "HK.800000",
+                "name": "恒生指数",
+                "market": "HK",
+                "type": "INDEX",
+            },  # noqa: E501
+            {
+                "symbol": "HK.800700",
+                "name": "恒生科技指数",
+                "market": "HK",
+                "type": "INDEX",
+            },  # noqa: E501
             {"symbol": "US.SPX", "name": "标普500", "market": "US", "type": "INDEX"},
-            {"symbol": "US.NDX", "name": "纳斯达克100", "market": "US", "type": "INDEX"},  # noqa: E501
-            {"symbol": "US.AAPL", "name": "Apple Inc.", "market": "US", "type": "EQUITY"},  # noqa: E501
-            {"symbol": "US.TSLA", "name": "Tesla Inc.", "market": "US", "type": "EQUITY"},  # noqa: E501
-            {"symbol": "US.NVDA", "name": "NVIDIA Corporation", "market": "US", "type": "EQUITY"},  # noqa: E501
-            {"symbol": "HK.00700", "name": "腾讯控股", "market": "HK", "type": "EQUITY"},  # noqa: E501
+            {
+                "symbol": "US.NDX",
+                "name": "纳斯达克100",
+                "market": "US",
+                "type": "INDEX",
+            },  # noqa: E501
+            {
+                "symbol": "US.AAPL",
+                "name": "Apple Inc.",
+                "market": "US",
+                "type": "EQUITY",
+            },  # noqa: E501
+            {
+                "symbol": "US.TSLA",
+                "name": "Tesla Inc.",
+                "market": "US",
+                "type": "EQUITY",
+            },  # noqa: E501
+            {
+                "symbol": "US.NVDA",
+                "name": "NVIDIA Corporation",
+                "market": "US",
+                "type": "EQUITY",
+            },  # noqa: E501
+            {
+                "symbol": "HK.00700",
+                "name": "腾讯控股",
+                "market": "HK",
+                "type": "EQUITY",
+            },  # noqa: E501
         ]
         with SessionLocal() as db:
             for item in base_tickers:
@@ -141,23 +208,31 @@ class TickerService:
                 res = await futu_service.get_stock_basicinfo(market, sec_type)
                 if res.get("status") == "success":
                     for row in res.get("data", []):
-                        code = row.get('code', '')
+                        code = row.get("code", "")
                         # 💡 修复：直接使用富途官方带前缀的代码作为唯一标识
                         symbol = code
-                        if not symbol: continue  # noqa: E701
+                        if not symbol:
+                            continue  # noqa: E701
 
-                        tickers_to_insert.append({
-                            "symbol": symbol, "name": row.get('name', ''),
-                            "market": market, "type": "EQUITY" if sec_type == "STOCK" else "ETF"  # noqa: E501
-                        })
+                        tickers_to_insert.append(
+                            {
+                                "symbol": symbol,
+                                "name": row.get("name", ""),
+                                "market": market,
+                                "type": "EQUITY" if sec_type == "STOCK" else "ETF",  # noqa: E501
+                            }
+                        )
 
         if tickers_to_insert:
+
             def _bulk_upsert():
                 with SessionLocal() as db:
                     for item in tickers_to_insert:
                         db.merge(TickerItem(**item))
                     db.commit()
+
             await asyncio.to_thread(_bulk_upsert)
         return tickers_to_insert
+
 
 ticker_service = TickerService()

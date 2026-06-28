@@ -2,6 +2,7 @@
 内部通信安全模块
 提供 HMAC-SHA256 签名生成和验证功能，防止内网横向渗透
 """
+
 import base64
 import hashlib
 import hmac
@@ -20,7 +21,7 @@ def generate_internal_signature(
     method: str,
     path: str,
     timestamp: Optional[int] = None,
-    secret: Optional[str] = None
+    secret: Optional[str] = None,
 ) -> str:
     """
     生成内部通信 HMAC-SHA256 签名
@@ -35,7 +36,9 @@ def generate_internal_signature(
         签名字符串（格式：timestamp.signature）
     """
     if secret is None:
-        secret = getattr(settings, 'INTERNAL_API_SECRET', 'default-internal-secret-change-me')  # noqa: E501
+        secret = getattr(
+            settings, "INTERNAL_API_SECRET", "default-internal-secret-change-me"
+        )  # noqa: E501
 
     if timestamp is None:
         timestamp = int(time.time())
@@ -44,11 +47,7 @@ def generate_internal_signature(
     message = f"{method.upper()}{path}{timestamp}".encode("utf-8")
 
     # 生成 HMAC-SHA256 签名
-    signature = hmac.new(
-        secret.encode("utf-8"),
-        message,
-        hashlib.sha256
-    ).digest()
+    signature = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).digest()
 
     # Base64 编码
     signature_b64 = base64.b64encode(signature).decode("utf-8")
@@ -58,10 +57,7 @@ def generate_internal_signature(
 
 
 def verify_internal_signature(
-    method: str,
-    path: str,
-    signature_header: str,
-    secret: Optional[str] = None
+    method: str, path: str, signature_header: str, secret: Optional[str] = None
 ) -> Tuple[bool, Optional[str]]:
     """
     验证内部通信 HMAC-SHA256 签名
@@ -76,7 +72,9 @@ def verify_internal_signature(
         (验证是否通过, 错误信息)
     """
     if secret is None:
-        secret = getattr(settings, 'INTERNAL_API_SECRET', 'default-internal-secret-change-me')  # noqa: E501
+        secret = getattr(
+            settings, "INTERNAL_API_SECRET", "default-internal-secret-change-me"
+        )  # noqa: E501
 
     try:
         # 解析签名头
@@ -95,9 +93,7 @@ def verify_internal_signature(
         # 重新计算签名
         message = f"{method.upper()}{path}{timestamp}".encode("utf-8")
         expected_signature = hmac.new(
-            secret.encode("utf-8"),
-            message,
-            hashlib.sha256
+            secret.encode("utf-8"), message, hashlib.sha256
         ).digest()
         expected_signature_b64 = base64.b64encode(expected_signature).decode("utf-8")
 
@@ -123,10 +119,7 @@ async def verify_internal_request(request: Request) -> None:
     # 从请求头获取签名
     signature_header = request.headers.get("X-Internal-Sig")
     if not signature_header:
-        raise HTTPException(
-            status_code=401,
-            detail="Missing X-Internal-Sig header"
-        )
+        raise HTTPException(status_code=401, detail="Missing X-Internal-Sig header")
 
     # 验证签名
     method = request.method
@@ -135,16 +128,12 @@ async def verify_internal_request(request: Request) -> None:
 
     if not is_valid:
         raise HTTPException(
-            status_code=401,
-            detail=f"Invalid internal signature: {error_msg}"
+            status_code=401, detail=f"Invalid internal signature: {error_msg}"
         )
 
 
 def add_internal_signature_to_headers(
-    headers: dict,
-    method: str,
-    path: str,
-    secret: Optional[str] = None
+    headers: dict, method: str, path: str, secret: Optional[str] = None
 ) -> dict:
     """
     为请求头添加 HMAC 签名（用于内部服务间调用）

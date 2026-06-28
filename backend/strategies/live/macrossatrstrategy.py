@@ -22,9 +22,14 @@ class MaCrossAtrStrategy(BaseStrategy):
     :param ma_type: Literal, 均线计算类型，默认SMA
     """
 
-    def __init__(self, fast_ma: int = 10, slow_ma: int = 20,
-                 atr_period: int = 14, atr_mult: float = 2.0,
-                 ma_type: Literal['SMA', 'EMA'] = 'SMA'):
+    def __init__(
+        self,
+        fast_ma: int = 10,
+        slow_ma: int = 20,
+        atr_period: int = 14,
+        atr_mult: float = 2.0,
+        ma_type: Literal["SMA", "EMA"] = "SMA",
+    ):
         super().__init__()
         self.fast_ma = fast_ma
         self.slow_ma = slow_ma
@@ -36,25 +41,29 @@ class MaCrossAtrStrategy(BaseStrategy):
     def _calculate_indicators(self):
         """计算技术指标：快线、慢线均线和ATR"""
         # 均线
-        if self.ma_type == 'EMA':
-            self.df['ma_fast'] = self.df['close'].ewm(span=self.fast_ma, adjust=False).mean()  # noqa: E501
-            self.df['ma_slow'] = self.df['close'].ewm(span=self.slow_ma, adjust=False).mean()  # noqa: E501
+        if self.ma_type == "EMA":
+            self.df["ma_fast"] = (
+                self.df["close"].ewm(span=self.fast_ma, adjust=False).mean()
+            )  # noqa: E501
+            self.df["ma_slow"] = (
+                self.df["close"].ewm(span=self.slow_ma, adjust=False).mean()
+            )  # noqa: E501
         else:
-            self.df['ma_fast'] = self.df['close'].rolling(window=self.fast_ma).mean()
-            self.df['ma_slow'] = self.df['close'].rolling(window=self.slow_ma).mean()
+            self.df["ma_fast"] = self.df["close"].rolling(window=self.fast_ma).mean()
+            self.df["ma_slow"] = self.df["close"].rolling(window=self.slow_ma).mean()
 
         # 计算ATR (Average True Range)
-        prev_close = self.df['close'].shift(1)
-        tr1 = self.df['high'] - self.df['low']
-        tr2 = (self.df['high'] - prev_close).abs()
-        tr3 = (self.df['low'] - prev_close).abs()
+        prev_close = self.df["close"].shift(1)
+        tr1 = self.df["high"] - self.df["low"]
+        tr2 = (self.df["high"] - prev_close).abs()
+        tr3 = (self.df["low"] - prev_close).abs()
         true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        self.df['atr'] = true_range.rolling(window=self.atr_period).mean()
+        self.df["atr"] = true_range.rolling(window=self.atr_period).mean()
 
     def _generate_signals(self):
         """生成交易信号：双均线金叉做多、死叉做空"""
-        ma_fast = self.df['ma_fast']
-        ma_slow = self.df['ma_slow']
+        ma_fast = self.df["ma_fast"]
+        ma_slow = self.df["ma_slow"]
 
         # 金叉：当前快线>慢线，且前一周期快线<=慢线
         long_cond = (ma_fast > ma_slow) & (ma_fast.shift(1) <= ma_slow.shift(1))
@@ -62,6 +71,6 @@ class MaCrossAtrStrategy(BaseStrategy):
         short_cond = (ma_fast < ma_slow) & (ma_fast.shift(1) >= ma_slow.shift(1))
 
         # 初始化信号为0（无仓位）
-        self.df['signal'] = 0
-        self.df.loc[long_cond, 'signal'] = 1
-        self.df.loc[short_cond, 'signal'] = -1
+        self.df["signal"] = 0
+        self.df.loc[long_cond, "signal"] = 1
+        self.df.loc[short_cond, "signal"] = -1

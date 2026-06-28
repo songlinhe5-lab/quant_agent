@@ -24,6 +24,7 @@ BE-17: pgvector 知识库迁移工具
     await migrator.import_from_file("kb_export.jsonl")
     await migrator.cleanup_old_fragments(days=90)
 """
+
 import asyncio
 import json
 import os
@@ -153,7 +154,9 @@ class KnowledgeBaseMigrator:
         skipped_count = 0
         error_count = 0
 
-        logger.info(f"[KB导入] 开始从 {input_path} 导入到 {table} 表 (冲突策略: {on_conflict})")  # noqa: E501
+        logger.info(
+            f"[KB导入] 开始从 {input_path} 导入到 {table} 表 (冲突策略: {on_conflict})"
+        )  # noqa: E501
 
         # 如果是 overwrite 模式，先清空目标表
         if on_conflict == "overwrite":
@@ -288,13 +291,17 @@ class KnowledgeBaseMigrator:
                     # 检查是否已存在
                     existing = None
                     if table == "webpage":
-                        existing = db.query(model_class).filter(
-                            model_class.id == record.id
-                        ).first()
+                        existing = (
+                            db.query(model_class)
+                            .filter(model_class.id == record.id)
+                            .first()
+                        )
                     else:
-                        existing = db.query(model_class).filter(
-                            model_class.id == record.id
-                        ).first()
+                        existing = (
+                            db.query(model_class)
+                            .filter(model_class.id == record.id)
+                            .first()
+                        )
 
                     if existing:
                         if on_conflict == "skip":
@@ -365,6 +372,7 @@ class KnowledgeBaseMigrator:
 
 # ── CLI 入口 ──────────────────────────────────────────────────────
 
+
 async def main():
     """命令行入口"""
     import argparse
@@ -375,19 +383,27 @@ async def main():
     # export 子命令
     export_parser = subparsers.add_parser("export", help="导出知识库")
     export_parser.add_argument("--output", "-o", required=True, help="输出文件路径")
-    export_parser.add_argument("--table", "-t", default="webpage", choices=["webpage", "screener_rule"])  # noqa: E501
+    export_parser.add_argument(
+        "--table", "-t", default="webpage", choices=["webpage", "screener_rule"]
+    )  # noqa: E501
     export_parser.add_argument("--user-id", "-u", type=int, help="用户 ID（可选）")
 
     # import 子命令
     import_parser = subparsers.add_parser("import", help="导入知识库")
     import_parser.add_argument("--input", "-i", required=True, help="输入文件路径")
-    import_parser.add_argument("--table", "-t", default="webpage", choices=["webpage", "screener_rule"])  # noqa: E501
-    import_parser.add_argument("--on-conflict", default="skip", choices=["skip", "update", "overwrite"])  # noqa: E501
+    import_parser.add_argument(
+        "--table", "-t", default="webpage", choices=["webpage", "screener_rule"]
+    )  # noqa: E501
+    import_parser.add_argument(
+        "--on-conflict", default="skip", choices=["skip", "update", "overwrite"]
+    )  # noqa: E501
 
     # cleanup 子命令
     cleanup_parser = subparsers.add_parser("cleanup", help="清理旧数据")
     cleanup_parser.add_argument("--days", "-d", type=int, default=90, help="保留天数")
-    cleanup_parser.add_argument("--table", "-t", default="webpage", choices=["webpage", "screener_rule"])  # noqa: E501
+    cleanup_parser.add_argument(
+        "--table", "-t", default="webpage", choices=["webpage", "screener_rule"]
+    )  # noqa: E501
     cleanup_parser.add_argument("--user-id", "-u", type=int, help="用户 ID（可选）")
     cleanup_parser.add_argument("--dry-run", action="store_true", help="仅统计不删除")
 

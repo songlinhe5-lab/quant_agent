@@ -25,6 +25,7 @@ BE-01: K线实时管道端到端压测工具
     # 仅测试 Redis 层
     python -m backend.scripts.benchmark_kline_pipeline --stage redis
 """  # noqa: E501
+
 import asyncio
 import json
 import os
@@ -207,9 +208,7 @@ class PipelineBenchmark:
                         await update_quote_to_redis(symbol, quote)
 
                         # 3. 从 Redis 读取验证
-                        await redis_client.hget(
-                            "quant:quotes:latest", symbol
-                        )
+                        await redis_client.hget("quant:quotes:latest", symbol)
 
                     t1 = time.perf_counter()
                     latencies.append((t1 - t0) * 1000)
@@ -287,20 +286,24 @@ class PipelineBenchmark:
 
         for stage_name, stage_result in stages.items():
             if stage_result.get("status") == "skipped":
-                report_lines.append(f"[{stage_name}] 跳过: {stage_result.get('reason')}")  # noqa: E501
+                report_lines.append(
+                    f"[{stage_name}] 跳过: {stage_result.get('reason')}"
+                )  # noqa: E501
                 continue
 
             status = "✅ PASS" if stage_result.get("pass") else "❌ FAIL"
             report_lines.append(f"[{stage_name}] {status}")
             report_lines.append(f"  P50: {stage_result.get('p50_ms')} ms")
             report_lines.append(f"  P95: {stage_result.get('p95_ms')} ms")
-            if stage_result.get('p99_ms'):
+            if stage_result.get("p99_ms"):
                 report_lines.append(f"  P99: {stage_result.get('p99_ms')} ms")
             report_lines.append("")
 
         report_lines.append("-" * 60)
         overall = "✅ PASS" if summary["overall_pass"] else "❌ FAIL"
-        report_lines.append(f"总结: {overall} ({summary['stages_passed']}/{summary['stages_total']} 阶段通过)")  # noqa: E501
+        report_lines.append(
+            f"总结: {overall} ({summary['stages_passed']}/{summary['stages_total']} 阶段通过)"
+        )  # noqa: E501
         report_lines.append("目标: P99 < 50ms")
         report_lines.append("=" * 60)
 
@@ -311,19 +314,23 @@ class PipelineBenchmark:
 
 # ── CLI 入口 ──────────────────────────────────────────────────────
 
+
 async def main():
     """命令行入口"""
     import argparse
 
     parser = argparse.ArgumentParser(description="K线管道压测工具")
     parser.add_argument(
-        "--symbols", "-s",
+        "--symbols",
+        "-s",
         default="US.AAPL,HK.00700,US.SPY",
         help="测试标的（逗号分隔）",
     )
     parser.add_argument(
-        "--iterations", "-n",
-        type=int, default=100,
+        "--iterations",
+        "-n",
+        type=int,
+        default=100,
         help="每个场景的迭代次数",
     )
     parser.add_argument(

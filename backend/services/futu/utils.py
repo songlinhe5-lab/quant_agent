@@ -24,7 +24,7 @@ def format_ticker(ticker: str) -> str:
         "SPX": "US.SPX",
         "NDX": "US.NDX",
         "TSMC": "US.TSM",
-        "US.TSMC": "US.TSM"  # 智能纠正用户的惯用称呼
+        "US.TSMC": "US.TSM",  # 智能纠正用户的惯用称呼
     }
     if ticker in index_map:
         return index_map[ticker]
@@ -40,7 +40,10 @@ def format_ticker(ticker: str) -> str:
     if ticker.endswith(".US"):
         return f"US.{ticker.replace('.US', '')}"
 
-    if any(ticker.startswith(prefix) for prefix in ["US.", "SH.", "SZ.", "JP.", "SG.", "UK.", "LSE."]):  # noqa: E501
+    if any(
+        ticker.startswith(prefix)
+        for prefix in ["US.", "SH.", "SZ.", "JP.", "SG.", "UK.", "LSE."]
+    ):  # noqa: E501
         return ticker
 
     return f"US.{ticker}"

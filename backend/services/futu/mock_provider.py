@@ -2,6 +2,7 @@
 Futu Mock 数据提供模块
 为开发环境提供模拟数据
 """
+
 import math
 from typing import Any, Dict
 
@@ -22,7 +23,7 @@ class MockProvider:
                 "strike_price": 150.0,
                 "implied_volatility": 0.35,
                 "delta": 0.45,
-                "source": "mock"
+                "source": "mock",
             }
         return {
             "status": "success",
@@ -30,7 +31,7 @@ class MockProvider:
             "last_price": 150.0,
             "change_pct": "+1.2%",
             "volume": "1.2M",
-            "source": "mock"
+            "source": "mock",
         }
 
     @staticmethod
@@ -44,15 +45,22 @@ class MockProvider:
         kl_list = []
         for i in range(num):
             val = base + math.sin(i * 0.5) * (base * 0.02)
-            kl_list.append({
-                "time": f"2026-06-01 10:00:{i%60:02d}",
-                "open": val*0.99,
-                "high": val*1.01,
-                "low": val*0.98,
-                "close": val,
-                "volume": 1000
-            })
-        return {"status": "success", "ticker": ticker, "data": kl_list, "source": "mock"}  # noqa: E501
+            kl_list.append(
+                {
+                    "time": f"2026-06-01 10:00:{i % 60:02d}",
+                    "open": val * 0.99,
+                    "high": val * 1.01,
+                    "low": val * 0.98,
+                    "close": val,
+                    "volume": 1000,
+                }
+            )
+        return {
+            "status": "success",
+            "ticker": ticker,
+            "data": kl_list,
+            "source": "mock",
+        }  # noqa: E501
 
     @staticmethod
     def mock_option_chain(ticker: str, expiration_date: str) -> Dict[str, Any]:
@@ -63,17 +71,17 @@ class MockProvider:
             "count": 2,
             "options": [
                 {
-                    "option_code": f"US.{ticker.upper().replace('US.','')}240119C00150000",  # noqa: E501
+                    "option_code": f"US.{ticker.upper().replace('US.', '')}240119C00150000",  # noqa: E501
                     "option_type": "CALL",
-                    "strike_price": 150.0
+                    "strike_price": 150.0,
                 },
                 {
-                    "option_code": f"US.{ticker.upper().replace('US.','')}240119P00150000",  # noqa: E501
+                    "option_code": f"US.{ticker.upper().replace('US.', '')}240119P00150000",  # noqa: E501
                     "option_type": "PUT",
-                    "strike_price": 150.0
-                }
+                    "strike_price": 150.0,
+                },
             ],
-            "source": "mock"
+            "source": "mock",
         }
 
     @staticmethod
@@ -86,13 +94,17 @@ class MockProvider:
             "main_fund_net_inflow_str": "4500.00万",
             "broker_queue": {
                 "bid_brokers_queue_str": "摩根士丹利, 瑞银, 高盛",
-                "ask_brokers_queue_str": "花旗, 汇丰, 中银"
-            } if is_hk else None,
+                "ask_brokers_queue_str": "花旗, 汇丰, 中银",
+            }
+            if is_hk
+            else None,
             "order_book_level_1": {
                 "bid1": {"price": 315.2, "volume": 125000},
                 "ask1": {"price": 315.4, "volume": 86000},
-            } if is_hk else None,
-            "source": "mock"
+            }
+            if is_hk
+            else None,
+            "source": "mock",
         }
 
     @staticmethod
@@ -105,9 +117,9 @@ class MockProvider:
                 "trailing_PE": 15.5,
                 "price_to_book": 1.2,
                 "market_cap": 50000000000.0,
-                "dividend_yield": "2.5%"
+                "dividend_yield": "2.5%",
             },
-            "source": "mock"
+            "source": "mock",
         }
 
     @staticmethod
@@ -130,7 +142,7 @@ class MockProvider:
             "ticker": ticker,
             "bids": bids,
             "asks": asks,
-            "source": "mock"
+            "source": "mock",
         }
 
     @staticmethod
@@ -155,8 +167,8 @@ class MockProvider:
                     "cost_price": 300.0 if is_hk else 150.0,
                     "market_val": 400000.0 if is_hk else 180000.0,
                     "pl_val": 100000.0 if is_hk else 30000.0,
-                    "pl_ratio": 33.33 if is_hk else 20.0
+                    "pl_ratio": 33.33 if is_hk else 20.0,
                 }
             ],
-            "message": f"[Mock] 成功获取 {env_str} 账户信息与持仓列表。"
+            "message": f"[Mock] 成功获取 {env_str} 账户信息与持仓列表。",
         }

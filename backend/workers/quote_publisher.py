@@ -102,17 +102,14 @@ class QuotePublisher:
         data = None
         try:
             # 强制仅从首选数据源拉取: Futu OpenD
-            data = await asyncio.wait_for(
-                self._fetch_futu_data(ticker), timeout=15.0
-            )
+            data = await asyncio.wait_for(self._fetch_futu_data(ticker), timeout=15.0)
         except Exception as e:
             if isinstance(e, asyncio.TimeoutError):
                 err_msg = "拉取超时"
             else:
                 err_msg = f"拉取异常 {type(e).__name__}: {e}"
             logger.error(
-                f"[{ticker}] Futu {err_msg}."
-                "系统已关闭 YFinance 兜底，使用 Mock 兜底."
+                f"[{ticker}] Futu {err_msg}.系统已关闭 YFinance 兜底，使用 Mock 兜底."
             )
             # 终极兜底：防止系统死锁或前端白屏
             data = self._get_mock_data(ticker)
@@ -143,18 +140,13 @@ class QuotePublisher:
 
             # 【双写策略】
             # A. 写入最新快照 (HSET)，供前端刚打开页面时瞬间获取当前盘口
-            await self.redis.hset(
-                "quant:quotes:latest", ticker, payload_bytes
-            )  # type: ignore
+            await self.redis.hset("quant:quotes:latest", ticker, payload_bytes)  # type: ignore
 
             # B. 发布到实时总线 (PUBLISH)，供所有已建立 WebSocket 连接的用户实时跳动
-            await self.redis.publish(
-                "quant:quotes:stream", payload_bytes
-            )  # type: ignore
+            await self.redis.publish("quant:quotes:stream", payload_bytes)  # type: ignore
 
             log_msg = (
-                f"已推送 {ticker}: {data['last_price']}"
-                f" ({data['source']}) [protobuf]"
+                f"已推送 {ticker}: {data['last_price']} ({data['source']}) [protobuf]"
             )
             if data.get("bids") or data.get("asks"):
                 bid_cnt = len(data.get("bids", []))
@@ -205,7 +197,5 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     asyncio.run(
-        QuotePublisher().run_daemon(
-            ["US.AAPL", "HK.00700", "US.TSLA"], interval=1.5
-        )
+        QuotePublisher().run_daemon(["US.AAPL", "HK.00700", "US.TSLA"], interval=1.5)
     )

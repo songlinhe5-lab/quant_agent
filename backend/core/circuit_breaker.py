@@ -23,6 +23,7 @@ Quant Agent 熔断器（Circuit Breaker）
     async def call_llm(prompt: str):
         ...
 """  # noqa: E501
+
 import asyncio
 import functools
 import time
@@ -44,6 +45,7 @@ class CircuitState(str, Enum):
 
 class _CircuitEntry:
     """单个服务的熔断状态条目"""
+
     __slots__ = ("state", "failures", "last_failure_ts", "lock", "service")
 
     def __init__(self, service: str):
@@ -91,7 +93,9 @@ class CircuitBreaker:
         entry = self._get_entry(service)
         return self._check_state(entry)
 
-    async def call(self, service: str, func: Callable, *args: Any, **kwargs: Any) -> Any:  # noqa: E501
+    async def call(
+        self, service: str, func: Callable, *args: Any, **kwargs: Any
+    ) -> Any:  # noqa: E501
         """
         通过熔断器调用异步函数。
 
@@ -103,8 +107,12 @@ class CircuitBreaker:
         async with entry.lock:
             state = self._check_state(entry)
             if state == CircuitState.OPEN:
-                remaining = self._recovery_timeout - (time.monotonic() - entry.last_failure_ts)  # noqa: E501
-                logger.warning(f"🚫 [CircuitBreaker] {service} 熔断中，剩余 {remaining:.0f}s")  # noqa: E501
+                remaining = self._recovery_timeout - (
+                    time.monotonic() - entry.last_failure_ts
+                )  # noqa: E501
+                logger.warning(
+                    f"🚫 [CircuitBreaker] {service} 熔断中，剩余 {remaining:.0f}s"
+                )  # noqa: E501
                 raise CircuitBreakerOpenError(
                     msg=f"外部 API [{service}] 熔断中，约 {max(0, int(remaining))}s 后自动恢复",  # noqa: E501
                     service=service,
@@ -164,7 +172,9 @@ class CircuitBreaker:
         # 同步版状态检查（无锁，简单判断）
         state = self._check_state(entry)
         if state == CircuitState.OPEN:
-            remaining = self._recovery_timeout - (time.monotonic() - entry.last_failure_ts)  # noqa: E501
+            remaining = self._recovery_timeout - (
+                time.monotonic() - entry.last_failure_ts
+            )  # noqa: E501
             raise CircuitBreakerOpenError(
                 msg=f"外部 API [{service}] 熔断中，约 {max(0, int(remaining))}s 后自动恢复",  # noqa: E501
                 service=service,
@@ -177,7 +187,9 @@ class CircuitBreaker:
             entry.last_failure_ts = time.monotonic()
             if entry.failures >= self._max_failures:
                 entry.state = CircuitState.OPEN
-                logger.error(f"🔴 [CircuitBreaker] {service} 连续失败 {entry.failures} 次，触发熔断！")  # noqa: E501
+                logger.error(
+                    f"🔴 [CircuitBreaker] {service} 连续失败 {entry.failures} 次，触发熔断！"
+                )  # noqa: E501
             raise
 
         entry.state = CircuitState.CLOSED
@@ -194,11 +206,14 @@ class CircuitBreaker:
             async def call_llm(prompt: str):
                 return await client.chat.completions.create(...)
         """
+
         def decorator(func: Callable) -> Callable:
             @functools.wraps(func)
             async def wrapper(*args: Any, **kwargs: Any) -> Any:
                 return await self.call(service, func, *args, **kwargs)
+
             return wrapper
+
         return decorator
 
     def reset(self, service: Optional[str] = None) -> None:

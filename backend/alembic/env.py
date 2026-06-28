@@ -3,6 +3,7 @@ Alembic 迁移环境配置（BE-07）
 
 自动从 .env 加载 DATABASE_URL，并导入所有 SQLAlchemy 模型以支持 autogenerate。
 """
+
 import os
 import sys
 from logging.config import fileConfig

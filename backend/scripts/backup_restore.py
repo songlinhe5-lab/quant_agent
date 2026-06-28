@@ -47,9 +47,9 @@ def restore_postgres(backup_path: str) -> None:
     if not path.exists():
         raise FileNotFoundError(f"备份文件不存在: {backup_path}")
 
-    print(f"\n{'='*50}")
+    print(f"\n{'=' * 50}")
     print("PostgreSQL 恢复")
-    print(f"{'='*50}")
+    print(f"{'=' * 50}")
     print(f"备份文件: {backup_path}")
     print(f"文件大小: {path.stat().st_size / 1024 / 1024:.2f} MB")
     print(f"目标数据库: {DB_NAME} @ {DB_HOST}:{DB_PORT}")
@@ -65,23 +65,45 @@ def restore_postgres(backup_path: str) -> None:
     # 断开所有连接
     print("\n[1/3] 断开现有连接...")
     subprocess.run(
-        ["psql", "-h", DB_HOST, "-p", str(DB_PORT), "-U", DB_USER,
-         "-c", f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='{DB_NAME}' AND pid <> pg_backend_pid()"],  # noqa: E501
-        capture_output=True, text=True,
-        env={"PGPASSWORD": DB_PASSWORD}
+        [
+            "psql",
+            "-h",
+            DB_HOST,
+            "-p",
+            str(DB_PORT),
+            "-U",
+            DB_USER,
+            "-c",
+            f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='{DB_NAME}' AND pid <> pg_backend_pid()",
+        ],  # noqa: E501
+        capture_output=True,
+        text=True,
+        env={"PGPASSWORD": DB_PASSWORD},
     )
 
     # 删除并重建数据库
     print("[2/3] 重建数据库...")
     subprocess.run(
-        ["dropdb", "-h", DB_HOST, "-p", str(DB_PORT), "-U", DB_USER, "--if-exists", DB_NAME],  # noqa: E501
-        capture_output=True, text=True,
-        env={"PGPASSWORD": DB_PASSWORD}
+        [
+            "dropdb",
+            "-h",
+            DB_HOST,
+            "-p",
+            str(DB_PORT),
+            "-U",
+            DB_USER,
+            "--if-exists",
+            DB_NAME,
+        ],  # noqa: E501
+        capture_output=True,
+        text=True,
+        env={"PGPASSWORD": DB_PASSWORD},
     )
     subprocess.run(
         ["createdb", "-h", DB_HOST, "-p", str(DB_PORT), "-U", DB_USER, DB_NAME],
-        capture_output=True, text=True,
-        env={"PGPASSWORD": DB_PASSWORD}
+        capture_output=True,
+        text=True,
+        env={"PGPASSWORD": DB_PASSWORD},
     )
 
     # 恢复数据
@@ -89,16 +111,42 @@ def restore_postgres(backup_path: str) -> None:
     if str(path).endswith(".gz"):
         with gzip.open(path, "rb") as f:
             result = subprocess.run(
-                ["psql", "-h", DB_HOST, "-p", str(DB_PORT), "-U", DB_USER, "-d", DB_NAME, "-q"],  # noqa: E501
-                stdin=f, capture_output=True, text=True,
-                env={"PGPASSWORD": DB_PASSWORD}
+                [
+                    "psql",
+                    "-h",
+                    DB_HOST,
+                    "-p",
+                    str(DB_PORT),
+                    "-U",
+                    DB_USER,
+                    "-d",
+                    DB_NAME,
+                    "-q",
+                ],  # noqa: E501
+                stdin=f,
+                capture_output=True,
+                text=True,
+                env={"PGPASSWORD": DB_PASSWORD},
             )
     else:
         with open(path, "rb") as f:
             result = subprocess.run(
-                ["psql", "-h", DB_HOST, "-p", str(DB_PORT), "-U", DB_USER, "-d", DB_NAME, "-q"],  # noqa: E501
-                stdin=f, capture_output=True, text=True,
-                env={"PGPASSWORD": DB_PASSWORD}
+                [
+                    "psql",
+                    "-h",
+                    DB_HOST,
+                    "-p",
+                    str(DB_PORT),
+                    "-U",
+                    DB_USER,
+                    "-d",
+                    DB_NAME,
+                    "-q",
+                ],  # noqa: E501
+                stdin=f,
+                capture_output=True,
+                text=True,
+                env={"PGPASSWORD": DB_PASSWORD},
             )
 
     elapsed = time.time() - start_time
@@ -118,9 +166,9 @@ def restore_redis(backup_path: str) -> None:
     if not path.exists():
         raise FileNotFoundError(f"备份文件不存在: {backup_path}")
 
-    print(f"\n{'='*50}")
+    print(f"\n{'=' * 50}")
     print("Redis 恢复")
-    print(f"{'='*50}")
+    print(f"{'=' * 50}")
     print(f"备份文件: {backup_path}")
     print(f"文件大小: {path.stat().st_size / 1024 / 1024:.2f} MB")
     print(f"目标: {REDIS_HOST}:{REDIS_PORT}")
@@ -146,7 +194,8 @@ def restore_redis(backup_path: str) -> None:
     print("[2/3] 复制到 Redis 容器...")
     result = subprocess.run(
         ["docker", "cp", str(rdb_path), "quant_redis:/data/dump.rdb"],
-        capture_output=True, text=True
+        capture_output=True,
+        text=True,
     )
 
     if result.returncode != 0:
@@ -160,10 +209,7 @@ def restore_redis(backup_path: str) -> None:
 
     # 重启 Redis 加载数据
     print("[3/3] 重启 Redis...")
-    subprocess.run(
-        ["docker", "restart", "quant_redis"],
-        capture_output=True, text=True
-    )
+    subprocess.run(["docker", "restart", "quant_redis"], capture_output=True, text=True)
     time.sleep(3)
 
     elapsed = time.time() - start_time
@@ -171,8 +217,19 @@ def restore_redis(backup_path: str) -> None:
     # 验证恢复
     try:
         info = subprocess.run(
-            ["redis-cli", "-h", REDIS_HOST, "-p", str(REDIS_PORT), "-a", REDIS_PASSWORD, "DBSIZE"],  # noqa: E501
-            capture_output=True, text=True, timeout=10
+            [
+                "redis-cli",
+                "-h",
+                REDIS_HOST,
+                "-p",
+                str(REDIS_PORT),
+                "-a",
+                REDIS_PASSWORD,
+                "DBSIZE",
+            ],  # noqa: E501
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         print(f"  Redis DBSIZE: {info.stdout.strip()}")
     except Exception:
@@ -185,9 +242,9 @@ def restore_redis(backup_path: str) -> None:
 # ─── 备份验证 ────────────────────────────────────────────────────────
 def verify_backups() -> None:
     """验证所有备份完整性"""
-    print(f"\n{'='*50}")
+    print(f"\n{'=' * 50}")
     print(f"备份完整性验证 - {datetime.utcnow().isoformat()}Z")
-    print(f"{'='*50}")
+    print(f"{'=' * 50}")
 
     results = []
 
@@ -205,7 +262,14 @@ def verify_backups() -> None:
                 with gzip.open(latest, "rb") as f:
                     # 读取前 1KB 验证 gzip 完整性
                     f.read(1024)
-                results.append(("PostgreSQL", "✅", f"{size/1024/1024:.1f}MB", f"{age_hours:.1f}h前"))  # noqa: E501
+                results.append(
+                    (
+                        "PostgreSQL",
+                        "✅",
+                        f"{size / 1024 / 1024:.1f}MB",
+                        f"{age_hours:.1f}h前",
+                    )
+                )  # noqa: E501
             except Exception as e:
                 results.append(("PostgreSQL", "❌", f"损坏: {e}", ""))
         else:
@@ -225,7 +289,14 @@ def verify_backups() -> None:
             try:
                 with gzip.open(latest, "rb") as f:
                     f.read(1024)
-                results.append(("Redis", "✅", f"{size/1024/1024:.1f}MB", f"{age_hours:.1f}h前"))  # noqa: E501
+                results.append(
+                    (
+                        "Redis",
+                        "✅",
+                        f"{size / 1024 / 1024:.1f}MB",
+                        f"{age_hours:.1f}h前",
+                    )
+                )  # noqa: E501
             except Exception as e:
                 results.append(("Redis", "❌", f"损坏: {e}", ""))
         else:
