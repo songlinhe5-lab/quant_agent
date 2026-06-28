@@ -1,0 +1,50 @@
+# Codecov 覆盖率门禁配置
+# 文档: https://docs.codecov.com/docs/codecov-yaml
+
+coverage:
+  status:
+    project:
+      # 后端覆盖率门禁
+      backend:
+        paths:
+          - backend/
+        target: 5%        # 当前阶段目标 5%，后续逐步提升至 70%
+        threshold: 2%     # 允许 2% 的波动
+        if_ci_failed: error
+        informational: false
+
+      # 前端覆盖率门禁
+      frontend:
+        paths:
+          - frontend/src/
+        target: 10%       # 当前阶段目标 10%，后续逐步提升至 60%
+        threshold: 2%
+        if_ci_failed: error
+        informational: false
+
+    patch:
+      # 新增代码覆盖率检查（防止新代码无测试）
+      default:
+        target: 50%       # 新增代码至少 50% 覆盖率
+        threshold: 5%
+        if_ci_failed: error
+
+# 覆盖率趋势（禁止倒退）
+comment:
+  layout: "reach,diff,flags,tree"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
+
+# 忽略测试文件和生成代码
+ignore:
+  - "backend/tests/**"
+  - "frontend/src/test/**"
+  - "frontend/src/**/*.test.ts"
+  - "frontend/src/**/*.test.tsx"
+  - "frontend/src/**/*.spec.ts"
+  - "frontend/src/**/*.spec.tsx"
+  - "backend/scripts/**"
+  - "**/*.pb.py"
+  - "**/migrations/**"

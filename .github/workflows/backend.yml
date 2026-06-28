@@ -84,13 +84,15 @@ jobs:
           EMBEDDING_MODEL: BAAI/bge-large-zh-v1.5
         run: |
           uv run pytest backend/tests/ -v \
-            --cov=backend --cov-report=xml --cov-report=term
+            --cov=backend --cov-report=xml:coverage.xml --cov-report=term-missing \
+            --cov-fail-under=5
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          file: ./coverage.xml
+          files: ./coverage.xml
           flags: backend
           fail_ci_if_error: false
+          codecov_token: ${{ secrets.CODECOV_TOKEN }}
 
   security:
     name: 🔒 Security Scan

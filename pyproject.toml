@@ -41,6 +41,9 @@ dependencies = [
     "rank-bm25>=0.2.2",
     "chromadb>=0.4.24",
     "sentence-transformers>=2.5.0",
+    "pgvector>=0.4.2",
+    "structlog>=26.1.0",
+    "vectorbt>=0.28.2",
 ]
 
 [project.optional-dependencies]
@@ -94,4 +97,32 @@ asyncio_mode = "auto"
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::UserWarning",
+]
+
+[tool.coverage.run]
+source = ["backend"]
+omit = [
+    "backend/tests/*",
+    "backend/scripts/*",
+    "*/migrations/*",
+    "*/*.pb.py",
+]
+
+[tool.coverage.report]
+fail_under = 5
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.",
+    "raise NotImplementedError",
+    "pass",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[dependency-groups]
+dev = [
+    "pytest-cov>=7.1.0",
 ]
