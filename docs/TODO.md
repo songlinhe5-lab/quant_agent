@@ -58,6 +58,7 @@ graph TD
 
     subgraph S5["阶段 5 · 工程化·可观测·质量（贯穿，集成期收口）"]
         OPS["OPS-01~05 CI/CD / Tunnel / 备份"]
+        DIST["DIST-01~10 分布式数据服务架构"]
         BE0506["BE-05·06 结构化日志 + metrics"]
         OBS["OBS-01·02 Grafana + 告警"]
         TEST["TEST-01~15 单测/契约/E2E/hooks/漏洞扫描"]
@@ -212,6 +213,21 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 - [x] **[OPS-04]** Redis AOF 持久化 + 每日自动 RDB 备份到 Cloudflare R2
 - [x] **[OPS-05]** 备份恢复演练脚本：实现 `docs/12` 灾难恢复流程，定期验证 R2 备份可恢复性（RTO < 2h 验收）
 
+### 分布式数据服务架构（北京 + 加州双节点）
+
+> **架构决策（2026-06-28）**：将海外数据源采集（yfinance / finnhub / futuopenai）迁移至加州 VPS，akshare 等国内数据源保留在北京主节点，通过服务注册表 + 动态路由实现跨节点数据融合。
+
+- [ ] **[DIST-01]** `data_subservice/` 包工程搭建：独立 FastAPI 服务，包含 yfinance / finnhub / futuopenai 三个数据源路由、健康检查端点、HMAC 签名验证
+- [ ] **[DIST-02]** 服务注册表实现：`backend/core/service_registry.py`，基于 Redis Hash + TTL 心跳续期，支持 register / heartbeat / discover / deregister
+- [ ] **[DIST-03]** 主服务 `ServiceRouter` 动态路由：`backend/core/service_router.py`，根据数据源类型（akshare → 本地 / yfinance → 加州）自动路由，支持降级回退（子服务不可用时返回 STALE 缓存）
+- [ ] **[DIST-04]** 加州子服务注册客户端：`data_subservice/registry_client.py`，启动时自动注册 IP:Port + capabilities，每 30s 心跳保活，断线自动重注册
+- [ ] **[DIST-05]** yfinance 数据源迁移：将 `backend/services/yfinance_service.py` 迁移至 `data_subservice/services/`，加州节点直连 Yahoo Finance
+- [ ] **[DIST-06]** finnhub 数据源迁移：将 `backend/services/finnhub_service.py` 迁移至 `data_subservice/services/`，加州节点直连 Finnhub API
+- [ ] **[DIST-07]** futuopenai 交易网关迁移：将 Futu OpenD 及相关服务迁移至加州节点，systemd 守护 + Watchdog
+- [ ] **[DIST-08]** 北京 ↔ 加州 Cloudflare Tunnel 跨节点通信配置：内部域名 + HMAC 签名验证 + WebSocket 保活
+- [ ] **[DIST-09]** 加州子服务 Docker Compose + ghcr.io 镜像发布：`docker-compose.node-b.yml` 完善 + GitHub Actions CI/CD 流水线
+- [ ] **[DIST-10]** 跨节点监控集成：加州子服务健康状态、数据源成功率、延迟指标接入北京 Prometheus + Grafana
+
 ---
 
 ## 🟡 P2 — 体验优化与工程质量（滚动迭代）
@@ -330,11 +346,12 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 | 2026-06 | ADR-001: 确立纯 Vite SPA (React) 替代 Next.js App Router                              |
 | 2026-06 | ADR-002: 确立 Flutter 统一三端（Android/iOS/HarmonyOS），移除 macOS Tauri                   |
 | 2026-06 | ADR-003: 确立双 VPS + Cloudflare 边缘节点分布式部署方案                                        |
+| 2026-06 | ADR-004: 架构重构——北京主节点(4C4G) + 加州数据子节点，服务注册表 + 动态路由，akshare 本地直连 |
 | 2026-06 | `docs/02` V3.0 重写：Vibe Coding 工程规范（含单文件行数约束、原子化组件、测试标准）                          |
 | 2026-06 | `docs/03` V3.0 重写：后端架构（三通道 API 隔离、JWT+HMAC、K线管道、Hermes集成）                        |
 | 2026-06 | `docs/04` V3.0 重写：前端架构（TradingDashboard Keep-Alive、零GC、StatusBar、Error Boundary） |
 | 2026-06 | `docs/05` V3.0 重写：客户端架构（Flutter 三端、AppMonitor APM、推送三通道、Phase 4 备选）              |
-| 2026-06 | `docs/06` V3.0 重写：工程化部署（Cloudflare免费资源、双VPS拓扑、Redis/pgvector规范）                  |
+| 2026-06 | `docs/06` V4.0 重写：北京主节点 + 加州数据子节点、服务注册表 + 动态路由、费用更新 |
 | 2026-06 | 新增 `docs/07` 子系统架构速查手册                                                           |
 | 2026-06 | 新增 `docs/08` 日志与可观测性规范                                                           |
 | 2026-06 | 新增 `docs/09` 性能测试规范                                                              |
@@ -404,6 +421,7 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 | 日期         | 更新说明                                                 |
 | ---------- | ---------------------------------------------------- |
+| 2026-06-28 | 新增 DIST-01~10 分布式数据服务架构任务（北京 + 加州双节点）；更新部署文档至 V4.0 |
 | 2026-06-28 | [TEST-13] 覆盖率门禁完成：codecov.yml + pytest-cov + vitest coverage，后端 24% / 前端待测 |
 | 2026-06-28 | [TEST-07/09/11] 依赖漏洞扫描纳入CI + 存量服务单测 + Agent ReAct循环单测完成 |
 | 2026-06-28 | [TEST-01/02/06/08/10] 测试覆盖完成：测试框架脚手架 / 后端核心单测 / Tool单测 / pre-commit hooks / 前端 vitest setup |
