@@ -11,7 +11,6 @@ from futu import RET_OK
 
 from backend.core.retry_utils import with_global_retry
 
-
 # ─── Futu V2 选股接口支持检测 ───────────────────────────────────
 # 在模块加载时尝试导入 V2 选股相关常量，若失败则标记不支持
 _FUTU_V2_SUPPORT = False

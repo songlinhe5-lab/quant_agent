@@ -8,8 +8,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 import json
 from unittest.mock import MagicMock, patch
 
-from backend.services.futu_service import futu_service
 from backend.services.futu.screener_handler import _FUTU_V2_SUPPORT
+from backend.services.futu_service import futu_service
 from backend.services.screener_service import screener_service
 
 # 📊 100 条全维度量化选股单测用例矩阵
@@ -1097,8 +1097,7 @@ async def test_futu_service_indicator_positional():
     futu_service.conn_mgr.status = "CONNECTED"
     futu_service.conn_mgr.quote_ctx = MagicMock()
 
-    from futu import RET_OK, Period
-    from futu.quote.stock_screen_const import Indicator, Position
+    from futu import RET_OK
 
     futu_service.conn_mgr.quote_ctx.get_stock_screen.return_value = (RET_OK, (True, []))
 
@@ -1120,7 +1119,6 @@ async def test_futu_service_indicator_positional():
 
         # 💡 修复：底层 handler 传递的是 enum 的 value（int），而非 enum 对象本身
         # 使用 ANY 匹配避免 enum 对象 vs int 值的断言失败
-        from unittest.mock import ANY
         mock_req_instance.add_indicator_positional.assert_called()
         # 验证 add_retrieve_indicator 被调用过（参数可能是 enum 对象或其 value）
         retrieve_calls = [c for c in mock_req_instance.add_retrieve_indicator.call_args_list]
