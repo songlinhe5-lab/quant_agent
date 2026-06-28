@@ -11,6 +11,7 @@ on:
 permissions:
   contents: read
   security-events: write
+  actions: read  # Required for codeql-action to read workflow run info
 
 jobs:
   security:
@@ -31,3 +32,4 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-results.sarif'
+          wait-for-processing: false  # Disable to avoid permission issues
