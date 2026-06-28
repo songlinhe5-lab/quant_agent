@@ -32,4 +32,5 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-results.sarif'
-          wait-for-processing: false  # Disable to avoid permission issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
