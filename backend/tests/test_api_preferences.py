@@ -33,7 +33,7 @@ class TestPreferencesAPI(unittest.TestCase):
 
         # 模拟前置流程：注册一个测试用户
         self.client.post(
-            "i/auth/register",
+            "/api/v1/auth/register",
             json={
                 "username": "testuser",
                 "email": "test@example.com",
@@ -42,7 +42,7 @@ class TestPreferencesAPI(unittest.TestCase):
         )
 
         # 模拟前置流程：登录并获取 Token
-        response = self.client.post("/api/auth/login", data={"username": "testuser", "password": "testpassword"})
+        response = self.client.post("/api/v1/auth/login", data={"username": "testuser", "password": "testpassword"})
         self.token = response.json()["access_token"]
         self.headers = {"Authorization": f"Bearer {self.token}"}
 
