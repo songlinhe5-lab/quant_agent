@@ -9,8 +9,22 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    # 启动时注入密码配置，优先读取 .env 中的 REDIS_PASSWORD，如果没写则默认使用 quant_redis_secret_2026
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-quant_redis_secret_2026}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-quant_redis_secret_2026}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+    networks:
+      - quant-internal
 
   postgres:
     image: pgvector/pgvector:pg15
@@ -24,59 +38,75 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-quant_admin}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+    networks:
+      - quant-internal
 
   quant-agent:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: quant_app
-    # 💡 生产级极限性能配置：安全启用多进程 (workers) 充分压榨多核 CPU 算力，吞吐量提升 4 倍
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 4 --loop uvloop --http httptools --timeout-keep-alive 65 --limit-concurrency 5000 --no-access-log
     restart: always
     ports:
       - "8000:8000"
     depends_on:
-      - redis
-      - postgres
-    # 将宿主机的 .env 文件注入到容器内
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     env_file:
       - .env
     environment:
-      # 强制覆盖环境变量，指向 Docker 内的 Redis 网络
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - QUANT_ENV=production
-      # 注入 PostgreSQL 数据库连接字符串
       - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_secret_2026}@postgres:5432/${DB_NAME:-quant_agent_db}
-      # 注意：Futu OpenD 通常需要独立部署或在宿主机运行。
-      # 如果 OpenD 运行在宿主机，请将 FUTU_HOST 设置为 host.docker.internal 
-      # (Linux 环境可能需配置 extra_hosts 或宿主机 IP)
-      # - FUTU_HOST=host.docker.internal 
     healthcheck:
-      # 使用 python 内置的 urllib 发送探测，兼容任何精简版基础镜像
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')\" || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 15s
     volumes:
-      # 将 SQLite 数据库和缓存持久化到宿主机，防止容器重启数据丢失
-      - quant_db:/app/backend/data 
+      - quant_db:/app/backend/data
       - ./reports:/app/reports
-      # 映射本地代码，支持 Docker 容器内的热更新 (避免改代码后需重新 build)
       - ./backend:/app/backend
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 512M
+    networks:
+      - quant-internal
 
   quant-worker:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: quant_worker
-    # 💡 独立的数据拉取生产节点守护进程，彻底解耦 HTTP 网关，安全防范冗余并发与 IP 封锁
     command: python backend/worker.py
     restart: always
     depends_on:
-      - redis
-      - postgres
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     env_file:
       - .env
     environment:
@@ -85,8 +115,23 @@ services:
       - QUANT_ENV=production
       - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_secret_2026}@postgres:5432/${DB_NAME:-quant_agent_db}
     volumes:
-      - quant_db:/app/backend/data 
+      - quant_db:/app/backend/data
       - ./backend:/app/backend
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+    networks:
+      - quant-internal
 
   prometheus:
     image: prom/prometheus:v2.45.0
@@ -100,6 +145,19 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+    networks:
+      - quant-internal
 
   grafana:
     image: grafana/grafana:9.5.3
@@ -111,7 +169,20 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning
       - grafana_data:/var/lib/grafana
     depends_on:
-      - prometheus
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+    networks:
+      - quant-internal
 
   frontend:
     build:
@@ -123,11 +194,27 @@ services:
       - "80:80"
       - "443:443"
     depends_on:
-      - quant-agent
+      quant-agent:
+        condition: service_healthy
     volumes:
       - ./certs:/etc/nginx/certs:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+    networks:
+      - quant-internal
 
-# 定义数据卷，实现跨容器重启的数据持久化
+networks:
+  quant-internal:
+    driver: bridge
+
 volumes:
   redis_data:
     name: quant_redis_data

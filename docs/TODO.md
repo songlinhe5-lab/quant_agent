@@ -206,11 +206,11 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 ### 部署与运维
 
-- [ ] **[OPS-01]** GitHub Actions CI/CD 流水线：质量门（lint + test + coverage ≥70%）→ 前端 Cloudflare Pages 部署 → 后端 Docker 构建推送 ghcr.io → SSH 触发 VPS 滚动更新
+- [x] **[OPS-01]** GitHub Actions CI/CD 流水线：质量门（lint + test + coverage ≥70%）→ 前端 Cloudflare Pages 部署 → 后端 Docker 构建推送 ghcr.io → SSH 触发 VPS 滚动更新
 - [ ] **[OPS-02]** Cloudflare Tunnel 替换所有公网端口暴露（禁止 VPS 暴露 80/443 以外端口）
-- [ ] **[OPS-03]** Docker Compose 生产配置：resource limits、restart policy、healthcheck 全部配置到位
-- [ ] **[OPS-04]** Redis AOF 持久化 + 每日自动 RDB 备份到 Cloudflare R2
-- [ ] **[OPS-05]** 备份恢复演练脚本：实现 `docs/12` 灾难恢复流程，定期验证 R2 备份可恢复性（RTO < 2h 验收）
+- [x] **[OPS-03]** Docker Compose 生产配置：resource limits、restart policy、healthcheck 全部配置到位
+- [x] **[OPS-04]** Redis AOF 持久化 + 每日自动 RDB 备份到 Cloudflare R2
+- [x] **[OPS-05]** 备份恢复演练脚本：实现 `docs/12` 灾难恢复流程，定期验证 R2 备份可恢复性（RTO < 2h 验收）
 
 ---
 
@@ -404,6 +404,7 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 | 日期         | 更新说明                                                 |
 | ---------- | ---------------------------------------------------- |
+| 2026-06-28 | [OPS-01/03/04/05] 部署与运维完成：CI/CD流水线 / Docker Compose加固 / Redis备份 / 恢复演练脚本 |
 | 2026-06-28 | [FE-21/22] i18n 国际化整合 + 登录页/路由守卫完成 |
 | 2026-06-28 | [FE-16/17/19/20] 前端数据层完成：API Client 三通道 / WS客户端 / IndexedDB缓存 / Web Worker指标计算 |
 | 2026-06-28 | [BE-01/02/03/16/17/18] 后端基础设施第三批完成：看门狗 / 行情正确性 / 三级缓存 / 迁移工具 / 备份脚本 / 压测工具 |
