@@ -120,6 +120,7 @@ def test_event_driven_engine_execution(mock_dataframe):
 class MockLimitStrategy:
     """
     A predictable strategy to test pending Limit Orders.
+    Engine starts processing at bar 10 (index 10), so signals before that are ignored.
     """
 
     def __init__(self):
@@ -129,22 +130,24 @@ class MockLimitStrategy:
     def on_bar(self, window_df: pd.DataFrame) -> dict:
         bar_index = len(window_df) - 1
 
-        # Bar 5: Issue a Limit Buy order at 95.0.
-        if bar_index == 5:
-            return {"action": "buy", "limit_price": 95.0, "stop_loss": 90.0}
+        # Bar 10 (first engine bar): Issue a Limit Buy order at 89.0.
+        if bar_index == 10 and self._position_size == 0:
+            return {"action": "buy", "limit_price": 89.0, "stop_loss": 80.0}
 
-        # Bar 10: Issue a Limit Sell order at 115.0
-        elif bar_index == 10:
-            return {"action": "sell", "limit_price": 115.0}
+        # Bar 12 (after buy fills at bar 11): Issue a Limit Sell order at 121.0
+        elif bar_index == 12 and self._position_size > 0:
+            return {"action": "sell", "limit_price": 121.0}
 
         return {}
 
 
 def test_limit_order_execution():
+    # 15 bars, engine processes bars 10-14
     dates = pd.date_range("2024-01-01", periods=15, freq="D")
     prices = [100.0] * 15
-    prices[7] = 90.0  # Dips low enough to trigger Buy limit
-    prices[12] = 120.0  # Surges high enough to trigger Sell limit
+    prices[11] = 90.0   # Bar 11 Close=90, Low=85 → triggers Buy limit (89.0)
+    prices[10] = 100.0  # Bar 10 Low=95, NOT <= 89.0 → no trigger
+    prices[13] = 122.0  # Bar 13 Close=122, High=127 → triggers Sell limit (121.0)
 
     df = pd.DataFrame(
         {
@@ -162,13 +165,15 @@ def test_limit_order_execution():
         df=df,
         commission_pct=0.0,
         slippage_pct=0.0,
-    )  # noqa: E501
+    )
     report = engine.run()
     trades = report["trades"]
 
-    assert len(trades) == 2, "Should execute exactly 1 buy limit and 1 sell limit"
+    assert len(trades) == 2, f"Should execute exactly 1 buy limit and 1 sell limit, got {len(trades)}: {trades}"
 
-    # Bar 7 opened at 90.0. The limit was 95.0. The order fills at 90.0 (better price due to gap)  # noqa: E501
-    assert trades[0]["price"] == 90.0
-    # Bar 12 opened at 120.0. The limit was 115.0. The order fills at 120.0 (better price due to gap)  # noqa: E501
-    assert trades[1]["price"] == 120.0
+    # Buy fills at bar 11: Low=85 <= 89.0, base_price = min(89.0, 90.0) = 89.0
+    assert trades[0]["action"] == "BUY"
+    assert trades[0]["price"] == 89.0
+    # Sell fills at bar 13: High=127 >= 121.0, base_price = max(121.0, 122.0) = 122.0
+    assert trades[1]["action"] == "SELL"
+    assert trades[1]["price"] == 122.0

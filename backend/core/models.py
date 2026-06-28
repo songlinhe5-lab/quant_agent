@@ -2,7 +2,6 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pgvector.sqlalchemy import Vector
 from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -10,6 +9,27 @@ from sqlalchemy.sql import func
 from .database import Base
 
 EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "1536"))
+
+# 💡 兼容处理：统一使用 TypeDecorator 封装 Vector 类型
+# SQLite 降级为 LargeBinary，PostgreSQL 尝试使用 pgvector.sqlalchemy.Vector
+try:
+    from pgvector.sqlalchemy import Vector as _PGVector
+
+    class Vector(_PGVector):
+        """PostgreSQL pgvector 原生向量类型"""
+        pass
+except ImportError:
+    from sqlalchemy import LargeBinary
+    from sqlalchemy.types import TypeDecorator
+
+    class Vector(TypeDecorator):
+        """SQLite 兼容：用 LargeBinary 存储向量（仅测试/开发环境）"""
+        impl = LargeBinary
+        cache_ok = True
+
+        def __init__(self, dim=None):
+            super().__init__()
+            self.dim = dim
 
 
 class User(Base):

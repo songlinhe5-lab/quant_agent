@@ -25,7 +25,9 @@ def event_loop():
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 # ─── 环境变量 Mock（必须在导入 app 之前设置）─────────────────────────
-os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
+# 💡 关键修复：测试环境强制 SQLite，避免 CI 的 PostgreSQL DATABASE_URL 导致
+# pgvector.sqlalchemy.Vector 类型在 SQLite 内存库上编译失败（no such table: users）
+os.environ["DATABASE_URL"] = "sqlite:///./test.db"
 os.environ.setdefault("REDIS_HOST", "localhost")
 os.environ.setdefault("REDIS_PORT", "6379")
 os.environ.setdefault("REDIS_PASSWORD", "test_password")

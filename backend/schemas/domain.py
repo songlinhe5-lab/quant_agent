@@ -117,7 +117,7 @@ class SymbolModel(BaseModel):
 
 
 class QuoteModel(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     symbol: str = Field(..., description="标的代码")
     last_price: float = Field(..., alias="lastPrice", description="最新价")
@@ -142,7 +142,7 @@ class QuoteModel(BaseModel):
 
 
 class KlineModel(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     timestamp: int = Field(..., description="UTC 毫秒时间戳")
     open: float = Field(..., description="开盘价")
@@ -177,7 +177,7 @@ class TickModel(BaseModel):
 
 
 class PositionModel(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: str = Field(..., description="持仓ID")
     symbol: str = Field(..., description="标的代码")
@@ -195,7 +195,7 @@ class PositionModel(BaseModel):
 
 
 class OrderModel(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: str = Field(..., description="订单ID")
     symbol: str = Field(..., description="标的代码")

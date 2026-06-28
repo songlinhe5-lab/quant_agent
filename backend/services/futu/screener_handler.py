@@ -12,6 +12,51 @@ from futu import RET_OK
 from backend.core.retry_utils import with_global_retry
 
 
+# ─── Futu V2 选股接口支持检测 ───────────────────────────────────
+# 在模块加载时尝试导入 V2 选股相关常量，若失败则标记不支持
+_FUTU_V2_SUPPORT = False
+StockScreenRequest = None
+SimpleField = None
+SimpleProperty = None
+BasicProperty = None
+FinancialProperty = None
+CumulativeProperty = None
+FeaturedProperty = None
+Indicator = None
+KlineShapeProperty = None
+OptionProperty = None
+Pattern = None
+Position = None
+BrokerProperty = None
+ScrMarket = None
+ScrSortDir = None
+Term = None
+
+try:
+    from futu import StockScreenRequest
+    from futu.quote.stock_screen_const import (  # noqa: F401
+        BasicProperty,
+        BrokerProperty,
+        CumulativeProperty,
+        FeaturedProperty,
+        FinancialProperty,
+        Indicator,
+        KlineShapeProperty,
+        OptionProperty,
+        Pattern,
+        Position,
+        ScrMarket,
+        ScrSortDir,
+        SimpleField,
+        SimpleProperty,
+        Term,
+    )
+
+    _FUTU_V2_SUPPORT = True
+except ImportError:
+    pass  # V2 选股接口不可用，screen_stocks 会返回错误提示
+
+
 class ScreenerHandler:
     """选股服务处理器"""
 
@@ -47,33 +92,16 @@ class ScreenerHandler:
         filters 示例: [{"field": "MARKET_VAL", "min": 10000000000}, ...]
         """
         print(f"👉 [ScreenerHandler] screen_stocks 被调用 -> 市场: {market}, 过滤条件: {filters}")  # noqa: E501
-        if self.conn_mgr.status != "CONNECTED" or not self.conn_mgr.quote_ctx:
-            return {"status": "error", "message": "FutuService 未连接"}
 
-        try:
-            from futu import StockScreenRequest
-            from futu.quote.stock_screen_const import (
-                BasicProperty,
-                BrokerProperty,
-                CumulativeProperty,
-                FeaturedProperty,
-                FinancialProperty,
-                Indicator,
-                KlineShapeProperty,
-                OptionProperty,
-                Pattern,
-                Position,
-                ScrMarket,
-                ScrSortDir,
-                SimpleField,
-                SimpleProperty,
-                Term,
-            )
-        except ImportError:
+        # ─── V2 接口支持检测 ─────────────────────────────────────
+        if not _FUTU_V2_SUPPORT:
             return {
                 "status": "error",
                 "message": "当前 futu-api 版本不支持 V2 选股接口 (StockScreenRequest) 相关常量，请升级 futu-api。",
             }  # noqa: E501
+
+        if self.conn_mgr.status != "CONNECTED" or not self.conn_mgr.quote_ctx:
+            return {"status": "error", "message": "FutuService 未连接"}
 
         # 💡 使用官方 V2 ScrMarket 枚举
         mkt_map = {
@@ -509,20 +537,9 @@ class ScreenerHandler:
                                 is_last_page, items = True, []
 
                             v2_rev_map = {}
+                            # 💡 修复：使用模块级已导入的枚举常量构建反向映射表
+                            # 避免函数内 from ... import 导致 Python 3.12 将模块级名称标记为局部变量（UnboundLocalError）
                             try:
-                                from futu.quote.stock_screen_const import (
-                                    BasicProperty,
-                                    BrokerProperty,
-                                    CumulativeProperty,
-                                    FeaturedProperty,
-                                    FinancialProperty,
-                                    Indicator,
-                                    KlineShapeProperty,
-                                    OptionProperty,
-                                    Pattern,
-                                    SimpleProperty,
-                                )
-
                                 for enum_class in [
                                     BasicProperty,
                                     SimpleProperty,
@@ -534,7 +551,9 @@ class ScreenerHandler:
                                     BrokerProperty,
                                     OptionProperty,
                                     Indicator,
-                                ]:  # noqa: E501
+                                ]:
+                                    if enum_class is None:
+                                        continue
                                     for member in enum_class:
                                         v2_rev_map[member.value] = member.name.lower()
                             except Exception:

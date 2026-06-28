@@ -114,26 +114,26 @@ class TestDomainSchemas:
 
         quote = QuoteModel(
             symbol="HK.00700",
-            price=400.0,
+            lastPrice=400.0,
             open=398.0,
             high=405.0,
             low=395.0,
-            prev_close=397.0,
+            prevClose=397.0,
             volume=1000000,
             turnover=400000000.0,
             change=3.0,
-            change_pct=0.76,
-            ts=1719500000,
+            changePercent=0.76,
+            timestamp=1719500000,
         )
         assert quote.symbol == "HK.00700"
-        assert quote.price == 400.0
+        assert quote.last_price == 400.0
 
     def test_kline_schema(self):
         """测试 Kline Schema"""
         from backend.schemas.domain import KlineModel
 
         kline = KlineModel(
-            ts=1719500000,
+            timestamp=1719500000,
             open=100.0,
             high=102.0,
             low=99.0,
@@ -150,33 +150,42 @@ class TestDomainSchemas:
 
         now = int(time.time() * 1000)
         order = OrderModel(
-            order_id="ORD-001",
+            id="ORD-001",
             symbol="HK.00700",
-            side="buy",
-            order_type="limit",
-            qty=100,
+            side="BUY",
+            type="LIMIT",
+            quantity=100,
             price=400.0,
-            filled_qty=0,
-            status="pending",
-            is_simulated=True,
-            created_at=now,
-            updated_at=now,
+            filledQuantity=0,
+            status="PENDING",
+            isPaper=True,
+            createdAt=now,
+            updatedAt=now,
         )
         assert order.symbol == "HK.00700"
-        assert order.qty == 100
+        assert order.quantity == 100
 
     def test_position_schema(self):
         """测试 Position Schema"""
+        import time
+
         from backend.schemas.domain import PositionModel
 
+        now = int(time.time() * 1000)
         position = PositionModel(
+            id="POS-001",
             symbol="HK.00700",
-            qty=100,
-            avg_cost=395.0,
-            current_price=400.0,
-            market_value=40000.0,
-            unrealized_pnl=500.0,
-            unrealized_pnl_pct=1.27,
+            side="LONG",
+            quantity=100,
+            avgCost=395.0,
+            currentPrice=400.0,
+            marketValue=40000.0,
+            unrealizedPnl=500.0,
+            realizedPnl=0.0,
+            unrealizedPnlPercent=1.27,
+            status="OPEN",
+            openedAt=now,
+            updatedAt=now,
         )
         assert position.symbol == "HK.00700"
         assert position.unrealized_pnl == 500.0

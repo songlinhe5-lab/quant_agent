@@ -17,10 +17,59 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 
 import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+# 💡 关键：必须导入 models 以确保所有表（含 User）被注册到 Base.metadata
+from backend.core import models  # noqa: F401
+from backend.core.database import Base, get_db
 
 
 class TestAuthRoutes:
     """认证路由测试"""
+
+    def setup_method(self):
+        """为每个测试创建内存数据库并覆盖依赖"""
+        # 创建内存数据库（使用 StaticPool 保证多线程共享同一内存库）
+        self.engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+        self.TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+        
+        # 创建所有表
+        Base.metadata.create_all(bind=self.engine)
+        
+        # 覆盖 get_db 依赖
+        def override_get_db():
+            db = self.TestingSessionLocal()
+            try:
+                yield db
+            finally:
+                db.close()
+        
+        from backend.main import app
+        app.dependency_overrides[get_db] = override_get_db
+        
+        # 创建测试客户端
+        self.client = TestClient(app)
+        
+        # 💡 修复：直接通过 ORM 创建用户（auth 模块无 /register 端点）
+        from backend.routers.auth import get_password_hash
+        db = self.TestingSessionLocal()
+        user = models.User(
+            username="testuser",
+            email="test@example.com",
+            hashed_password=get_password_hash("testpassword"),
+        )
+        db.add(user)
+        db.commit()
+        db.close()
+
+    def teardown_method(self):
+        """清理数据库"""
+        Base.metadata.drop_all(bind=self.engine)
+        from backend.main import app
+        app.dependency_overrides.clear()
 
     def test_health_endpoint(self, test_client):
         """测试健康检查端点"""
@@ -34,9 +83,9 @@ class TestAuthRoutes:
         # 应该返回 4xx 错误
         assert response.status_code in (400, 401, 422)
 
-    def test_login_wrong_credentials(self, test_client):
+    def test_login_wrong_credentials(self):
         """测试登录错误凭据"""
-        response = test_client.post(
+        response = self.client.post(
             "/api/v1/auth/login",
             data={"username": "wrong", "password": "wrong"},
         )
@@ -56,6 +105,9 @@ class TestAuthRoutes:
 
     def test_logout_without_auth(self, test_client):
         """测试未认证登出"""
+        response = test_client.post("/api/v1/auth/logout")
+        # 未认证登出应该成功或返回 401
+        assert response.status_code in (200, 401)
         response = test_client.post("/api/v1/auth/logout")
         # 未认证登出应该成功或返回 401
         assert response.status_code in (200, 401)
