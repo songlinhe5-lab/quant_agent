@@ -92,7 +92,7 @@ jobs:
           files: ./coverage.xml
           flags: backend
           fail_ci_if_error: false
-          codecov_token: ${{ secrets.CODECOV_TOKEN }}
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   security:
     name: 🔒 Security Scan

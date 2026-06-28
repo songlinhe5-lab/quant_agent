@@ -44,7 +44,7 @@ jobs:
           files: ./frontend/coverage/coverage-final.json
           flags: frontend
           fail_ci_if_error: false
-          codecov_token: ${{ secrets.CODECOV_TOKEN }}
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   build:
     name: 🔨 Build & Lint
