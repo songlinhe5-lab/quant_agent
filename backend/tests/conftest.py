@@ -5,9 +5,20 @@ TEST-08: 测试框架与脚手架搭建
 
 import os
 import sys
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+
+# 💡 修复事件循环问题：为异步测试提供事件循环
+@pytest.fixture(scope="function")
+def event_loop():
+    """为每个测试函数创建独立的事件循环"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    yield loop
+    loop.close()
 
 # 确保项目根目录在 sys.path 中
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))

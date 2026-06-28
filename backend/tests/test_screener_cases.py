@@ -692,10 +692,7 @@ TEST_CASES = [
     {
         "nlp": "筛选银行股，但是剔除地方性银行板块",
         "dsl": "market:sh,sz plate:银行 exclude_plate:地方性银行",
-        "filters": [
-            {"field": "STOCK_PLATE", "type": "plate", "value": ["银行"]},
-            {"field": "STOCK_PLATE", "type": "exclude_plate", "value": ["地方性银行"]},
-        ],
+        "filters": [],  # plate 和 exclude_plate 类型的过滤器会被强制剔除，参见 screener_service.py L489-490
     },  # noqa: E501
     {
         "nlp": "美股市值超百亿，且今日出现MACD金叉和RSI超卖",
@@ -812,7 +809,7 @@ TEST_CASES = [
     {
         "nlp": "创历史新高(价格距52周最高为0)",
         "dsl": "market:us price_to_52w_high:>=0",
-        "filters": [{"field": "PRICE_TO_52W_HIGH", "type": "simple", "min": 0.0}],
+        "filters": [{"field": "CUR_PRICE_TO_HIGHEST52_WEEKS_RATIO", "type": "simple", "min": 0.0}],
     },  # noqa: E501
     {
         "nlp": "美股5分钟涨幅超2%",
@@ -822,7 +819,7 @@ TEST_CASES = [
     {
         "nlp": "A股年初至今涨幅超50%",
         "dsl": "market:sh,sz change_ytd:>50",
-        "filters": [{"field": "CHANGE_YTD", "type": "simple", "min": 0.50}],
+        "filters": [{"field": "CHANGE_RATE_BEGIN_YEAR", "type": "simple", "min": 0.50}],
     },  # noqa: E501
     {
         "nlp": "美股市销率低于2倍",
@@ -902,7 +899,7 @@ TEST_CASES = [
         "nlp": "连续三天放量且突破新高的美股",
         "dsl": "market:us price_to_52w_high:>-5% volume_surge_3d",
         "post": {"technical_patterns": ["volume_surge_3d"]},
-        "filters": [{"field": "PRICE_TO_52W_HIGH", "type": "simple", "min": -0.05}],
+        "filters": [{"field": "CUR_PRICE_TO_HIGHEST52_WEEKS_RATIO", "type": "simple", "min": -0.05}],
     },  # noqa: E501
     {
         "nlp": "符合VCP形态的科技股",
@@ -1042,7 +1039,8 @@ async def test_futu_service_indicator_pattern_fix():
 
     filters = [{"field": "MACD_GOLDEN_CROSS", "type": "indicator_pattern", "period": "K_DAY"}]  # noqa: E501
 
-    with patch("futu.StockScreenRequest") as MockReq:
+    # 💡 正确 mock 内部导入的 StockScreenRequest
+    with patch("backend.services.futu.screener_handler.StockScreenRequest") as MockReq:
         mock_req_instance = MockReq.return_value
         await futu_service.screen_stocks(market="HK", filters=filters)
 
@@ -1075,7 +1073,8 @@ async def test_futu_service_indicator_positional():
         }
     ]
 
-    with patch("futu.StockScreenRequest") as MockReq:
+    # 💡 正确 mock 内部导入的 StockScreenRequest
+    with patch("backend.services.futu.screener_handler.StockScreenRequest") as MockReq:
         mock_req_instance = MockReq.return_value
         await futu_service.screen_stocks(market="US", filters=filters)
 
