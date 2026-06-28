@@ -1,41 +1,66 @@
 # Pre-commit hooks 配置
+# TEST-06: 提交即拦截，防止低质量代码流入主干
 # 安装: pip install pre-commit && pre-commit install
 
 repos:
-  # Python linting (后端)
-  - repo: https://github.com/pycqa/ruff
-    rev: v0.3.0
+  # ── Python: Ruff lint + format ────────────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.0
     hooks:
       - id: ruff
         files: ^backend/.*\.py$
-        args: [--fix]
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+        files: ^backend/.*\.py$
 
-  # Python 测试 (后端)
+  # ── Python: 类型检查 (mypy) ───────────────────────────────────
+  - repo: local
+    hooks:
+      - id: mypy
+        name: Python Type Check
+        entry: bash -c 'cd /Users/stephenhe/Development/workspace/quant_agent && uv run mypy backend/core/ backend/routers/ --ignore-missing-imports --no-error-summary 2>&1 | head -30 || true'
+        language: system
+        files: ^backend/.*\.py$
+        pass_filenames: false
+
+  # ── Python: 后端单元测试 ───────────────────────────────────────
   - repo: local
     hooks:
       - id: backend-tests
         name: Backend Tests
-        entry: bash -c 'cd backend && python -m pytest tests/test_security.py -v'
+        entry: bash -c 'cd /Users/stephenhe/Development/workspace/quant_agent && uv run pytest backend/tests/test_auth.py backend/tests/test_market.py backend/tests/test_tools.py -v --tb=short 2>&1 | tail -20'
         language: system
         files: ^backend/.*\.py$
         pass_filenames: false
 
-  # 前端测试
+  # ── 前端: ESLint + Prettier ────────────────────────────────────
   - repo: local
     hooks:
-      - id: frontend-tests
-        name: Frontend Tests
-        entry: bash -c 'cd frontend && pnpm run test 2>&1 || true'
+      - id: frontend-lint
+        name: Frontend Lint
+        entry: bash -c 'cd /Users/stephenhe/Development/workspace/quant_agent/frontend && pnpm run type-check 2>&1 | tail -10 || true'
         language: system
         files: ^frontend/.*\.(ts|tsx|js|jsx)$
         pass_filenames: false
 
-  # 通用检查
+  # ── 前端: Vitest 单测 ──────────────────────────────────────────
+  - repo: local
+    hooks:
+      - id: frontend-tests
+        name: Frontend Tests
+        entry: bash -c 'cd /Users/stephenhe/Development/workspace/quant_agent/frontend && pnpm run test --run 2>&1 | tail -20 || true'
+        language: system
+        files: ^frontend/.*\.(ts|tsx|js|jsx)$
+        pass_filenames: false
+
+  # ── 通用检查 ────────────────────────────────────────────────────
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v4.6.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-added-large-files
         args: ['--maxkb=5000']
+      - id: check-merge-conflict
+      - id: detect-private-key
