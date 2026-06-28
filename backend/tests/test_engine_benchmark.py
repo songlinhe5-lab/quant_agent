@@ -3,7 +3,7 @@ import time
 import pandas as pd
 import numpy as np
 
-from backend.core.backtest_engine import EventDrivenBacktestEngine, _fast_backtest_engine
+from backend.core.backtest_engine import EventDrivenBacktestEngine
 
 class BenchmarkStrategy:
     """

@@ -77,6 +77,15 @@ class OrderStatus(str, Enum):
     REJECTED = "REJECTED"
 
 
+class OrderTIF(str, Enum):
+    """订单有效时间 (Time in Force)"""
+    DAY = "DAY"
+    GTC = "GTC"  # Good Till Canceled
+    GTD = "GTD"  # Good Till Date
+    IOC = "IOC"  # Immediate or Cancel
+    FOK = "FOK"  # Fill or Kill
+
+
 class StrategyStatus(str, Enum):
     DRAFT = "DRAFT"
     ACTIVE = "ACTIVE"
@@ -88,7 +97,7 @@ class StrategyStatus(str, Enum):
 # 标的信息
 # ─────────────────────────────────────────────
 
-class Symbol(BaseModel):
+class SymbolModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     
     code: str = Field(..., description="标的代码，如 HK.00700")
@@ -103,7 +112,7 @@ class Symbol(BaseModel):
 # 行情数据
 # ─────────────────────────────────────────────
 
-class Quote(BaseModel):
+class QuoteModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     
     symbol: str = Field(..., description="标的代码")
@@ -128,7 +137,7 @@ class Quote(BaseModel):
     source: Optional[str] = Field(None, description="数据来源")
 
 
-class Kline(BaseModel):
+class KlineModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     
     timestamp: int = Field(..., description="UTC 毫秒时间戳")
@@ -140,13 +149,13 @@ class Kline(BaseModel):
     turnover: Optional[float] = Field(None, description="成交额")
 
 
-class KlineData(BaseModel):
+class KlineSeriesModel(BaseModel):
     symbol: str = Field(..., description="标的代码")
     period: KlinePeriod = Field(..., description="K线周期")
-    klines: List[Kline] = Field(..., description="K线数据列表")
+    klines: List[KlineModel] = Field(..., description="K线数据列表")
 
 
-class Tick(BaseModel):
+class TickModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     
     timestamp: int = Field(..., description="UTC 毫秒时间戳")
@@ -162,7 +171,7 @@ class Tick(BaseModel):
 # 持仓与订单
 # ─────────────────────────────────────────────
 
-class Position(BaseModel):
+class PositionModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     
     id: str = Field(..., description="持仓ID")
@@ -180,7 +189,7 @@ class Position(BaseModel):
     updated_at: int = Field(..., alias="updatedAt", description="更新时间（UTC 毫秒）")
 
 
-class Order(BaseModel):
+class OrderModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     
     id: str = Field(..., description="订单ID")
@@ -205,7 +214,7 @@ class Order(BaseModel):
 # 账户信息
 # ─────────────────────────────────────────────
 
-class Account(BaseModel):
+class AccountModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     
     account_id: str = Field(..., alias="accountId", description="账户ID")
@@ -244,7 +253,7 @@ class IndicatorParams(BaseModel):
     multiplier: Optional[float] = Field(None, description="乘数")
 
 
-class TechnicalIndicator(BaseModel):
+class TechIndicatorsModel(BaseModel):
     type: IndicatorType = Field(..., description="指标类型")
     params: IndicatorParams = Field(..., description="指标参数")
     values: List[Dict[str, float]] = Field(..., description="每个时间点的指标值")
@@ -255,7 +264,7 @@ class TechnicalIndicator(BaseModel):
 # 选股相关
 # ─────────────────────────────────────────────
 
-class ScreenerFilter(BaseModel):
+class ScreenerFilterModel(BaseModel):
     market: Optional[List[Market]] = Field(None, description="市场过滤")
     security_type: Optional[List[SecurityType]] = Field(None, alias="securityType", description="证券类型过滤")
     min_market_cap: Optional[float] = Field(None, alias="minMarketCap", description="最小市值")
@@ -270,7 +279,7 @@ class ScreenerFilter(BaseModel):
     indicators: Optional[Dict[str, Dict[str, float]]] = Field(None, description="技术指标过滤")
 
 
-class ScreenerResult(BaseModel):
+class ScreenerResultModel(BaseModel):
     symbol: str = Field(..., description="标的代码")
     name: str = Field(..., description="标的名称")
     market: Market = Field(..., description="所属市场")
@@ -287,7 +296,7 @@ class ScreenerResult(BaseModel):
 # 策略相关
 # ─────────────────────────────────────────────
 
-class Strategy(BaseModel):
+class StrategyModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     
     id: str = Field(..., description="策略ID")
@@ -304,36 +313,52 @@ class Strategy(BaseModel):
 # WebSocket 消息
 # ─────────────────────────────────────────────
 
-class WSSubscribeMessage(BaseModel):
+class WSSubscribeMessageModel(BaseModel):
     type: str = Field(..., description="消息类型")
     topic: str = Field(..., description="订阅主题")
     symbol: Optional[str] = Field(None, description="标的代码")
 
 
-class WSQuoteMessage(BaseModel):
+class WSQuoteMessageModel(BaseModel):
     type: str = Field(..., description="消息类型")
-    data: Quote = Field(..., description="行情数据")
+    data: QuoteModel = Field(..., description="行情数据")
 
 
-class WSKlineMessage(BaseModel):
+class WSKlineMessageModel(BaseModel):
     type: str = Field(..., description="消息类型")
-    data: KlineData = Field(..., description="K线数据")
+    data: KlineSeriesModel = Field(..., description="K线数据")
 
 
 # ─────────────────────────────────────────────
 # 统一 API 响应结构
 # ─────────────────────────────────────────────
 
-class ApiResponse(BaseModel):
+class ApiResponseModel(BaseModel):
     code: int = Field(..., description="业务错误码，0 表示成功")
     msg: str = Field(..., description="可读消息")
     data: Any = Field(..., description="响应数据")
     ts: int = Field(..., description="UTC 毫秒时间戳")
 
 
-class PaginatedResponse(BaseModel):
+class PaginatedResponseModel(BaseModel):
     items: List[Any] = Field(..., description="数据列表")
     total: int = Field(..., description="总数量")
     page: int = Field(..., description="当前页码")
     page_size: int = Field(..., alias="pageSize", description="每页数量")
     has_more: bool = Field(..., alias="hasMore", description="是否有更多数据")
+
+
+# ─────────────────────────────────────────────
+# 客户端 APM 心跳（BE-08）
+# ─────────────────────────────────────────────
+
+class ClientHeartbeatModel(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
+    platform: str = Field(..., description="客户端平台（flutter/web/desktop）")
+    app_version: str = Field(..., alias="appVersion", description="应用版本")
+    device_id: str = Field(..., alias="deviceId", description="设备ID")
+    fps: Optional[float] = Field(None, description="帧率")
+    memory_mb: Optional[float] = Field(None, alias="memoryMb", description="内存占用（MB）")
+    ws_latency_ms: Optional[int] = Field(None, alias="wsLatencyMs", description="WebSocket 延迟（ms）")
+    timestamp: int = Field(..., description="UTC 毫秒时间戳")
