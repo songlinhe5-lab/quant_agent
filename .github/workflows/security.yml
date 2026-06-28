@@ -11,15 +11,10 @@ on:
 permissions:
   contents: read
   security-events: write
-  actions: read  # Required for codeql-action to read workflow run info
 
 jobs:
   security:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
-      actions: read
 
     steps:
       - uses: actions/checkout@v4
@@ -29,12 +24,6 @@ jobs:
         with:
           scan-type: 'fs'
           scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: 'trivy-results.sarif'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          format: 'table'
+          exit-code: '1'  # Fail the workflow if vulnerabilities are found
+          ignore-unfixed: true  # Ignore unfixed vulnerabilities
