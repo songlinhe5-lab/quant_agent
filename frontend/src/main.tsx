@@ -6,6 +6,8 @@ import { I18nProvider } from './contexts/i18n'
 import App from './App'
 import './styles/globals.css'
 
+// Quant Agent Frontend Entry Point
+
 ReactDOM.createRoot(document.getElementById('app')!).render(
   <React.StrictMode>
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange>
