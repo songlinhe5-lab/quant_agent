@@ -1031,7 +1031,8 @@ async def test_futu_service_indicator_pattern_fix():
     """
     # 💡 运行时双重守卫：skipif 可能因模块属性缺失而未能生效
     import backend.services.futu.screener_handler as handler_module
-    if not hasattr(handler_module, 'StockScreenRequest') or handler_module.StockScreenRequest is None:
+
+    if not hasattr(handler_module, "StockScreenRequest") or handler_module.StockScreenRequest is None:
         pytest.skip("screener_handler 模块未成功加载 StockScreenRequest")
 
     # 模拟 Futu 连接状态与内部 Context
@@ -1090,7 +1091,8 @@ async def test_futu_service_indicator_positional():
     """
     # 💡 运行时双重守卫
     import backend.services.futu.screener_handler as handler_module
-    if not hasattr(handler_module, 'StockScreenRequest') or handler_module.StockScreenRequest is None:
+
+    if not hasattr(handler_module, "StockScreenRequest") or handler_module.StockScreenRequest is None:
         pytest.skip("screener_handler 模块未成功加载 StockScreenRequest")
 
     # 模拟 Futu 连接状态与内部 Context
@@ -1112,8 +1114,10 @@ async def test_futu_service_indicator_positional():
     ]
 
     # 启用 V2 支持并 mock StockScreenRequest
-    with patch("backend.services.futu.screener_handler._FUTU_V2_SUPPORT", True), \
-         patch("backend.services.futu.screener_handler.StockScreenRequest") as MockReq:
+    with (
+        patch("backend.services.futu.screener_handler._FUTU_V2_SUPPORT", True),
+        patch("backend.services.futu.screener_handler.StockScreenRequest") as MockReq,
+    ):
         mock_req_instance = MockReq.return_value
         await futu_service.screen_stocks(market="US", filters=filters)
 

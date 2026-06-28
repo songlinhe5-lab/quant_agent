@@ -40,6 +40,7 @@ class TestPreferencesAPI(unittest.TestCase):
 
         # 💡 修复：直接通过 ORM 创建用户（auth 模块无 /register 端点）
         from backend.routers.auth import get_password_hash
+
         db = TestingSessionLocal()
         user = models.User(
             username="testuser",

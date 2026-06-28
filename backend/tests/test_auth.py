@@ -33,7 +33,9 @@ class TestAuthRoutes:
     def setup_method(self):
         """为每个测试创建内存数据库并覆盖依赖"""
         # 创建内存数据库（使用 StaticPool 保证多线程共享同一内存库）
-        self.engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+        self.engine = create_engine(
+            "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
+        )
         self.TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
 
         # 创建所有表
@@ -48,6 +50,7 @@ class TestAuthRoutes:
                 db.close()
 
         from backend.main import app
+
         app.dependency_overrides[get_db] = override_get_db
 
         # 创建测试客户端
@@ -55,6 +58,7 @@ class TestAuthRoutes:
 
         # 💡 修复：直接通过 ORM 创建用户（auth 模块无 /register 端点）
         from backend.routers.auth import get_password_hash
+
         db = self.TestingSessionLocal()
         user = models.User(
             username="testuser",
@@ -69,6 +73,7 @@ class TestAuthRoutes:
         """清理数据库"""
         Base.metadata.drop_all(bind=self.engine)
         from backend.main import app
+
         app.dependency_overrides.clear()
 
     def test_health_endpoint(self, test_client):

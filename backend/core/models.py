@@ -17,6 +17,7 @@ try:
 
     class Vector(_PGVector):
         """PostgreSQL pgvector 原生向量类型"""
+
         pass
 except ImportError:
     from sqlalchemy import LargeBinary
@@ -24,6 +25,7 @@ except ImportError:
 
     class Vector(TypeDecorator):
         """SQLite 兼容：用 LargeBinary 存储向量（仅测试/开发环境）"""
+
         impl = LargeBinary
         cache_ok = True
 

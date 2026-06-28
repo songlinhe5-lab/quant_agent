@@ -145,7 +145,7 @@ def test_limit_order_execution():
     # 15 bars, engine processes bars 10-14
     dates = pd.date_range("2024-01-01", periods=15, freq="D")
     prices = [100.0] * 15
-    prices[11] = 90.0   # Bar 11 Close=90, Low=85 → triggers Buy limit (89.0)
+    prices[11] = 90.0  # Bar 11 Close=90, Low=85 → triggers Buy limit (89.0)
     prices[10] = 100.0  # Bar 10 Low=95, NOT <= 89.0 → no trigger
     prices[13] = 122.0  # Bar 13 Close=122, High=127 → triggers Sell limit (121.0)
 
