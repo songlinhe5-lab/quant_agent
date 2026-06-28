@@ -71,7 +71,7 @@ jobs:
           pnpm run type-check || true
       - name: Build
         working-directory: ./frontend
-        run: pnpm run build
+        run: NODE_OPTIONS='--max-old-space-size=4096' pnpm run build
       - name: Security audit
         working-directory: ./frontend
         run: pnpm audit 2>&1 || true
@@ -109,7 +109,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build
         working-directory: ./frontend
-        run: pnpm run build
+        run: NODE_OPTIONS='--max-old-space-size=4096' pnpm run build
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/pages-action@v1
         with:
