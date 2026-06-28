@@ -89,7 +89,7 @@ jobs:
         run: |
           uv run pytest backend/tests/ -v \
             --cov=backend --cov-report=xml:coverage.xml --cov-report=term-missing \
-            --cov-fail-under=5
+            --cov-fail-under=70
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
