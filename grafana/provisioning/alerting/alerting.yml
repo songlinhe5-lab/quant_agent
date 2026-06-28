@@ -1,0 +1,175 @@
+# Grafana Alerting Provisioning - 飞书 Webhook 告警通知
+# 文档: https://grafana.com/docs/grafana/latest/alerting/set-up/provision-alerting-resources/file-provisioning/
+#
+# 部署前需要设置环境变量:
+#   FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxxxx
+#   FEISHU_SECRET=your_feishu_sign_secret (可选, 若飞书机器人开启了签名校验)
+
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: feishu-alerts
+    receivers:
+      - uid: feishu-webhook-1
+        type: webhook
+        settings:
+          url: ${FEISHU_WEBHOOK_URL}
+          httpMethod: POST
+          # 飞书 Webhook 需要 msg_type=text 格式
+          # Grafana webhook 默认发送 alert payload, 需要通过自定义模板转换
+          maxAlerts: "5"
+        secureSettings:
+          # 如果飞书机器人开启了签名校验, 在此配置 secret
+          # Grafana 会加密存储, 不会出现在日志中
+          authorization: ${FEISHU_SECRET}
+
+  # 备用: 日志记录 (用于 Warning 级别, 不推送外部通知)
+  - orgId: 1
+    name: log-only
+    receivers:
+      - uid: log-receiver-1
+        type: grafana-oncall
+        settings:
+          url: http://localhost:3000/api/v1/grafana_oncall_stub
+
+policies:
+  - orgId: 1
+    receiver: feishu-alerts
+    group_by:
+      - grafana_folder
+      - alertname
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    routes:
+      # Critical 级别: 飞书推送 + 日志
+      - receiver: feishu-alerts
+        matchers:
+          - severity = critical
+        group_wait: 10s
+        repeat_interval: 1h
+      # Warning 级别: 仅飞书推送, 降低频率
+      - receiver: feishu-alerts
+        matchers:
+          - severity = warning
+        group_wait: 1m
+        repeat_interval: 4h
+
+groups:
+  - orgId: 1
+    name: quant-agent-alerts
+    folder: Quant Agent
+    interval: 1m
+    rules:
+      # Futu 连接状态
+      - uid: futu-disconnected
+        title: Futu OpenD 连接断开
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 60
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: futu_connected
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Futu OpenD 连接断开"
+          description: "Futu OpenD 连接状态为 0 持续超过 30 秒，交易网关不可用"
+
+      # API P95 延迟
+      - uid: api-latency-high
+        title: API P95 延迟过高
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [2]
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API P95 延迟超过 2000ms"
+          description: "当前 P95 延迟: {{ $values.C.Value }}s，请检查后端服务性能"
+
+      # Redis 内存使用
+      - uid: redis-memory-high
+        title: Redis 内存使用率过高
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: redis_memory_used_bytes / redis_memory_max_bytes * 100
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [80]
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis 内存使用率超过 80%"
+          description: "当前使用率: {{ $values.C.Value }}%，建议清理过期 Key 或扩容"
+
+      # 熔断器状态
+      - uid: circuit-breaker-open
+        title: 熔断器已打开
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 60
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: circuit_breaker_state{state="open"}
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        for: 10s
+        labels:
+          severity: critical
+        annotations:
+          summary: "熔断器已打开: {{ $labels.service }}"
+          description: "{{ $labels.service }} 的熔断器处于 open 状态，该服务已降级"

@@ -280,8 +280,9 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 ### 可观测性落地
 
 - [x] **[OBS-01]** Grafana Dashboard 配置：行情延迟分位数、WS 连接数、Redis 内存、API QPS/错误率、客户端 APM 面板（对照 `docs/08`）
-- [x] **[OBS-02]** 告警通道接入：Grafana Alerting → Bark / 微信 webhook，落地 `docs/12` §4 告警阈值表
+- [x] **[OBS-02]** 告警通道接入：后端通知服务已支持飞书 Webhook 推送（`FEISHU_WEBHOOK_URL` + `FEISHU_SECRET` 签名），落地 `docs/12` §4 告警阈值表
 - [ ] **[OBS-03]** 前后端性能监控落地：前端 Web Vitals 上报 + 后端 API 延迟分位数 Grafana 可视化
+- [ ] **[OBS-04]** Grafana Alerting → 飞书 Webhook 集成：配置 Grafana Contact Point 指向飞书机器人，告警规则触发时自动推送飞书群通知（替代 Bark/微信方案）
 
 ### 三方服务测试与监控（数据源是系统命脉）
 

@@ -109,8 +109,8 @@
   - 客户端 APM 面板
   
 - [x] **OBS-02**: 告警通道接入
-  - Grafana Alerting → Bark / 微信 webhook
-  - 落地 `docs/12` §4 告警阈值表
+  - 后端通知服务已支持飞书 Webhook（FEISHU_WEBHOOK_URL + 签名验证）
+  - 落地 `docs/12` §4 告警阈值表（通知方式统一为飞书）
 
 **验收标准**:
 - [ ] Grafana 可访问 http://localhost:3000
