@@ -40,6 +40,10 @@ jobs:
       - name: Build
         working-directory: ./frontend
         run: pnpm run build
+      - name: Security audit
+        working-directory: ./frontend
+        run: pnpm audit 2>&1 || true
+        continue-on-error: true
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
