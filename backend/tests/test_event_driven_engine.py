@@ -16,9 +16,7 @@ class MockSimpleStrategy:
 
     def on_bar(self, window_df: pd.DataFrame) -> dict:
         window_df.iloc[-1]["close"]
-        bar_index = (
-            len(window_df) - 1
-        )  # The engine passes window_df up to the current bar  # noqa: E501
+        bar_index = len(window_df) - 1  # The engine passes window_df up to the current bar  # noqa: E501
 
         # Bar 11: Buy at 110. Stop loss at 105.
         if bar_index == 11:
@@ -102,9 +100,7 @@ def test_event_driven_engine_execution(mock_dataframe):
     assert trades[3]["action"] == "SELL"  # Stop loss
 
     # 3. Verify Friction Costs (Slippage + Commission)
-    total_friction_str = (
-        metrics["total_friction_cost"].replace("$", "").replace(",", "")
-    )  # noqa: E501
+    total_friction_str = metrics["total_friction_cost"].replace("$", "").replace(",", "")  # noqa: E501
     total_friction = float(total_friction_str)
     assert total_friction > 0.0, "Friction costs (commission & slippage) should be > 0"
 

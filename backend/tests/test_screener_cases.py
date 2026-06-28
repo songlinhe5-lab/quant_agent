@@ -27,9 +27,7 @@ TEST_CASES = [
     {
         "nlp": "A股，市值在100亿到500亿之间",
         "dsl": "market:sh,sz mktcap:10B~50B",
-        "filters": [
-            {"field": "MARKET_CAP", "type": "simple", "min": 1e10, "max": 5e10}
-        ],
+        "filters": [{"field": "MARKET_CAP", "type": "simple", "min": 1e10, "max": 5e10}],
     },  # noqa: E501
     {
         "nlp": "美股最新价低于10美元的仙股",
@@ -137,9 +135,7 @@ TEST_CASES = [
     {
         "nlp": "PE历史分位在20到50之间",
         "dsl": "market:us pe_percentile:20~50",
-        "filters": [
-            {"field": "HIST_PERCENTILE_PE", "type": "featured", "min": 0.2, "max": 0.5}
-        ],
+        "filters": [{"field": "HIST_PERCENTILE_PE", "type": "featured", "min": 0.2, "max": 0.5}],
     },  # noqa: E501
     {
         "nlp": "低估值且非ST的A股",
@@ -171,16 +167,12 @@ TEST_CASES = [
     {
         "nlp": "港股成交额在1亿到5亿之间",
         "dsl": "market:hk turnover:100M~500M",
-        "filters": [
-            {"field": "AVG_TURNOVER", "type": "accumulate", "min": 1e8, "max": 5e8}
-        ],
+        "filters": [{"field": "AVG_TURNOVER", "type": "accumulate", "min": 1e8, "max": 5e8}],
     },  # noqa: E501
     {
         "nlp": "换手率在5%到10%之间的A股",
         "dsl": "market:sh,sz turnover_rate:5~10",
-        "filters": [
-            {"field": "TURNOVER_RATIO", "type": "accumulate", "min": 0.05, "max": 0.10}
-        ],
+        "filters": [{"field": "TURNOVER_RATIO", "type": "accumulate", "min": 0.05, "max": 0.10}],
     },  # noqa: E501
     {
         "nlp": "成交量小于1万的流动性枯竭股",
@@ -241,9 +233,7 @@ TEST_CASES = [
     {
         "nlp": "港股振幅在1%到3%的织布机",
         "dsl": "market:hk amplitude:1~3",
-        "filters": [
-            {"field": "AMPLITUDE", "type": "accumulate", "min": 0.01, "max": 0.03}
-        ],
+        "filters": [{"field": "AMPLITUDE", "type": "accumulate", "min": 0.01, "max": 0.03}],
     },  # noqa: E501
     {
         "nlp": "跌幅介于-5%到-2%",
@@ -272,9 +262,7 @@ TEST_CASES = [
     {
         "nlp": "涨跌幅等于0的平盘股",
         "dsl": "market:us change:=0",
-        "filters": [
-            {"field": "PRICE_CHANGE_PCT", "type": "accumulate", "min": 0.0, "max": 0.0}
-        ],
+        "filters": [{"field": "PRICE_CHANGE_PCT", "type": "accumulate", "min": 0.0, "max": 0.0}],
     },  # noqa: E501
     {
         "nlp": "振幅小于1%",
@@ -316,9 +304,7 @@ TEST_CASES = [
     {
         "nlp": "港股ROA在5%到10%",
         "dsl": "market:hk roa:5~10",
-        "filters": [
-            {"field": "ROA_TTM", "type": "financial", "min": 0.05, "max": 0.10}
-        ],
+        "filters": [{"field": "ROA_TTM", "type": "financial", "min": 0.05, "max": 0.10}],
     },  # noqa: E501
     {
         "nlp": "ROA小于2%",
@@ -378,9 +364,7 @@ TEST_CASES = [
     {
         "nlp": "美股营业利润率大于15%",
         "dsl": "market:us operating_margin:>15",
-        "filters": [
-            {"field": "OPERATING_MARGIN_TTM", "type": "financial", "min": 0.15}
-        ],
+        "filters": [{"field": "OPERATING_MARGIN_TTM", "type": "financial", "min": 0.15}],
     },  # noqa: E501
     {
         "nlp": "港股营业利润率负数",
@@ -460,9 +444,7 @@ TEST_CASES = [
     {
         "nlp": "EPS在1到2之间",
         "dsl": "market:us eps:1~2",
-        "filters": [
-            {"field": "BASIC_EPS", "type": "financial", "min": 1.0, "max": 2.0}
-        ],
+        "filters": [{"field": "BASIC_EPS", "type": "financial", "min": 1.0, "max": 2.0}],
     },  # noqa: E501
     {
         "nlp": "营收超千亿且利润超百亿",
@@ -475,9 +457,7 @@ TEST_CASES = [
     {
         "nlp": "微利公司(净利润0到1000万)",
         "dsl": "market:sh,sz net_profit:0~10M",
-        "filters": [
-            {"field": "NET_PROFIT", "type": "financial", "min": 0.0, "max": 1e7}
-        ],
+        "filters": [{"field": "NET_PROFIT", "type": "financial", "min": 0.0, "max": 1e7}],
     },  # noqa: E501
     {
         "nlp": "营收百亿但利润为负",
@@ -501,9 +481,7 @@ TEST_CASES = [
     {
         "nlp": "负债率在40%到60%之间",
         "dsl": "market:sh,sz debt_ratio:40~60",
-        "filters": [
-            {"field": "DEBT_TO_ASSETS", "type": "financial", "min": 0.40, "max": 0.60}
-        ],
+        "filters": [{"field": "DEBT_TO_ASSETS", "type": "financial", "min": 0.40, "max": 0.60}],
     },  # noqa: E501
     {
         "nlp": "美股产权比率(债务股权比)小于50%",
@@ -528,9 +506,7 @@ TEST_CASES = [
     {
         "nlp": "流动比率1.5到3",
         "dsl": "market:us current_ratio:1.5~3",
-        "filters": [
-            {"field": "CURRENT_RATIO", "type": "financial", "min": 1.5, "max": 3.0}
-        ],
+        "filters": [{"field": "CURRENT_RATIO", "type": "financial", "min": 1.5, "max": 3.0}],
     },  # noqa: E501
     {
         "nlp": "负债低且流动性充足",
@@ -552,30 +528,22 @@ TEST_CASES = [
     {
         "nlp": "美股经营现金流大于10亿美元",
         "dsl": "market:us operating_cash_flow:>1B",
-        "filters": [
-            {"field": "OPERATING_CASH_FLOW_TTM", "type": "financial", "min": 1e9}
-        ],
+        "filters": [{"field": "OPERATING_CASH_FLOW_TTM", "type": "financial", "min": 1e9}],
     },  # noqa: E501
     {
         "nlp": "港股经营现金流失血(负数)",
         "dsl": "market:hk operating_cash_flow:<0",
-        "filters": [
-            {"field": "OPERATING_CASH_FLOW_TTM", "type": "financial", "max": 0.0}
-        ],
+        "filters": [{"field": "OPERATING_CASH_FLOW_TTM", "type": "financial", "max": 0.0}],
     },  # noqa: E501
     {
         "nlp": "盈利现金覆盖率大于120%",
         "dsl": "market:us cash_cover:>120",
-        "filters": [
-            {"field": "NET_PROFIT_CASH_COVER_TTM", "type": "financial", "min": 1.20}
-        ],
+        "filters": [{"field": "NET_PROFIT_CASH_COVER_TTM", "type": "financial", "min": 1.20}],
     },  # noqa: E501
     {
         "nlp": "现金覆盖率不足50%",
         "dsl": "market:sh,sz cash_cover:<50",
-        "filters": [
-            {"field": "NET_PROFIT_CASH_COVER_TTM", "type": "financial", "max": 0.50}
-        ],
+        "filters": [{"field": "NET_PROFIT_CASH_COVER_TTM", "type": "financial", "max": 0.50}],
     },  # noqa: E501
     {
         "nlp": "港股股息率大于8%",
@@ -585,16 +553,12 @@ TEST_CASES = [
     {
         "nlp": "美股股息率在3%到6%之间",
         "dsl": "market:us div_yield:3~6",
-        "filters": [
-            {"field": "DIVIDEND_RATIO", "type": "simple", "min": 0.03, "max": 0.06}
-        ],
+        "filters": [{"field": "DIVIDEND_RATIO", "type": "simple", "min": 0.03, "max": 0.06}],
     },  # noqa: E501
     {
         "nlp": "无分红的铁公鸡(股息等于0)",
         "dsl": "market:sh,sz div_yield:=0",
-        "filters": [
-            {"field": "DIVIDEND_RATIO", "type": "simple", "min": 0.0, "max": 0.0}
-        ],
+        "filters": [{"field": "DIVIDEND_RATIO", "type": "simple", "min": 0.0, "max": 0.0}],
     },  # noqa: E501
     {
         "nlp": "高分红且现金流充足",
@@ -761,9 +725,7 @@ TEST_CASES = [
     {
         "nlp": "美股最新单季净利润大于1亿美元",
         "dsl": "market:us net_profit_latest:>100M",
-        "filters": [
-            {"field": "NET_PROFIT", "type": "financial", "min": 1e8, "term": "LATEST"}
-        ],
+        "filters": [{"field": "NET_PROFIT", "type": "financial", "min": 1e8, "term": "LATEST"}],
     },  # noqa: E501
     {
         "nlp": "港股今年中报ROE大于10%",
@@ -773,9 +735,7 @@ TEST_CASES = [
     {
         "nlp": "A股三季报营收大于50亿",
         "dsl": "market:sh,sz revenue_q9:>5B",
-        "filters": [
-            {"field": "REVENUE", "type": "financial", "min": 5e9, "term": "Q9"}
-        ],
+        "filters": [{"field": "REVENUE", "type": "financial", "min": 5e9, "term": "Q9"}],
     },
     {
         "nlp": "美股显式指定年报毛利率大于40%",
@@ -792,9 +752,7 @@ TEST_CASES = [
     {
         "nlp": "港股滚动十二个月净利润大于100亿",
         "dsl": "market:hk net_profit_ttm:>10B",
-        "filters": [
-            {"field": "NET_PROFIT", "type": "financial", "min": 1e10, "term": "TTM"}
-        ],
+        "filters": [{"field": "NET_PROFIT", "type": "financial", "min": 1e10, "term": "TTM"}],
     },  # noqa: E501
     # ================= 111-120: 特殊日历概念与常识换算 =================
     {
@@ -987,9 +945,7 @@ def test_screener_dsl_parsing(case):
 
     markets = ["US"]
     if "market:" in dsl:
-        m_part = next(
-            (part for part in dsl.split() if part.startswith("market:")), None
-        )  # noqa: E501
+        m_part = next((part for part in dsl.split() if part.startswith("market:")), None)  # noqa: E501
         if m_part:
             markets = [m.upper() for m in m_part.split(":")[1].split(",")]
 
@@ -1022,9 +978,7 @@ def test_screener_dsl_parsing(case):
     json_string = json.dumps(json_dict)
 
     try:
-        parsed_markets, futu_filters, post_filters = (
-            screener_service.parse_dsl_to_futu_filters(json_string)
-        )  # noqa: E501
+        parsed_markets, futu_filters, post_filters = screener_service.parse_dsl_to_futu_filters(json_string)  # noqa: E501
 
         # 校验内存二次过滤标识
         for k, v in expected_post.items():
@@ -1067,9 +1021,7 @@ def test_screener_dsl_parsing(case):
         if not expected_filters:
             pass
         else:
-            pytest.fail(
-                f"Unexpected ValueError for valid JSON: {json_string} | Error: {e}"
-            )  # noqa: E501
+            pytest.fail(f"Unexpected ValueError for valid JSON: {json_string} | Error: {e}")  # noqa: E501
 
 
 @pytest.mark.asyncio
@@ -1088,18 +1040,14 @@ async def test_futu_service_indicator_pattern_fix():
     # 模拟底层选股直接返回空结果，避免深入解析导致报错
     futu_service.quote_ctx.get_stock_screen.return_value = (RET_OK, (True, []))
 
-    filters = [
-        {"field": "MACD_GOLDEN_CROSS", "type": "indicator_pattern", "period": "K_DAY"}
-    ]  # noqa: E501
+    filters = [{"field": "MACD_GOLDEN_CROSS", "type": "indicator_pattern", "period": "K_DAY"}]  # noqa: E501
 
     with patch("futu.StockScreenRequest") as MockReq:
         mock_req_instance = MockReq.return_value
         await futu_service.screen_stocks(market="HK", filters=filters)
 
         # 验证枚举容错 (GOLDEN_CROSS -> GOLD_CROSS) 以及 K线周期转 Period (K_DAY -> Period.DAY) 是否生效  # noqa: E501
-        mock_req_instance.add_indicator_pattern.assert_any_call(
-            Pattern.MACD_GOLD_CROSS, Period.DAY
-        )  # noqa: E501
+        mock_req_instance.add_indicator_pattern.assert_any_call(Pattern.MACD_GOLD_CROSS, Period.DAY)  # noqa: E501
 
 
 @pytest.mark.asyncio
@@ -1137,9 +1085,5 @@ async def test_futu_service_indicator_positional():
         )  # noqa: E501
 
         # 2. 验证是否顺便组装了附加的回包取回字段 (为了能给前端展示具体的 MA 和 EMA 数值)  # noqa: E501
-        mock_req_instance.add_retrieve_indicator.assert_any_call(
-            Indicator.MA, Period.DAY
-        )  # noqa: E501
-        mock_req_instance.add_retrieve_indicator.assert_any_call(
-            Indicator.EMA, Period.DAY
-        )  # noqa: E501
+        mock_req_instance.add_retrieve_indicator.assert_any_call(Indicator.MA, Period.DAY)  # noqa: E501
+        mock_req_instance.add_retrieve_indicator.assert_any_call(Indicator.EMA, Period.DAY)  # noqa: E501

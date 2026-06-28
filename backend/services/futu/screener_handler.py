@@ -29,9 +29,7 @@ class ScreenerHandler:
         # 富途快照每次最多支持 400 只股票并发查询
         for i in range(0, len(tickers), 400):
             batch = tickers[i : i + 400]
-            ret, data = await asyncio.to_thread(
-                self.conn_mgr.quote_ctx.get_market_snapshot, batch
-            )
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_market_snapshot, batch)
             if ret == RET_OK and isinstance(data, pd.DataFrame) and not data.empty:
                 all_data.append(data)
             await asyncio.sleep(0.1)
@@ -43,16 +41,12 @@ class ScreenerHandler:
         return {"status": "success", "data": df.to_dict(orient="records")}
 
     @with_global_retry
-    async def screen_stocks(
-        self, market: str = "HK", filters: Optional[list] = None
-    ) -> Dict[str, Any]:
+    async def screen_stocks(self, market: str = "HK", filters: Optional[list] = None) -> Dict[str, Any]:
         """
         调用 Futu OpenD 的条件选股接口进行全市场在线扫盘。
         filters 示例: [{"field": "MARKET_VAL", "min": 10000000000}, ...]
         """
-        print(
-            f"👉 [ScreenerHandler] screen_stocks 被调用 -> 市场: {market}, 过滤条件: {filters}"
-        )  # noqa: E501
+        print(f"👉 [ScreenerHandler] screen_stocks 被调用 -> 市场: {market}, 过滤条件: {filters}")  # noqa: E501
         if self.conn_mgr.status != "CONNECTED" or not self.conn_mgr.quote_ctx:
             return {"status": "error", "message": "FutuService 未连接"}
 
@@ -95,9 +89,7 @@ class ScreenerHandler:
 
         req = StockScreenRequest()
 
-        has_plate = any(
-            f.get("type") == "plate" and f.get("value") for f in (filters or [])
-        )  # noqa: E501
+        has_plate = any(f.get("type") == "plate" and f.get("value") for f in (filters or []))  # noqa: E501
 
         # 1. 基础市场条件 (💡 重点：Futu 底层 Market 和 Plate 是“并集”关系，若指定了板块绝不能加 Market，否则会变回全市场)  # noqa: E501
         # if not has_plate:
@@ -118,9 +110,7 @@ class ScreenerHandler:
 
         # 💡 如果条件中包含板块筛选，提前异步拉取真实市场的全量板块映射表进行动态翻译
         if filters:
-            has_plate = any(
-                f.get("type") in ["plate", "exclude_plate"] for f in filters
-            )  # noqa: E501
+            has_plate = any(f.get("type") in ["plate", "exclude_plate"] for f in filters)  # noqa: E501
             if has_plate:
                 try:
                     from futu import Market, Plate
@@ -137,11 +127,7 @@ class ScreenerHandler:
                     ret, plate_df = await asyncio.to_thread(
                         self.conn_mgr.quote_ctx.get_plate_list, get_plate_mkt, Plate.ALL
                     )  # noqa: E501
-                    if (
-                        ret == RET_OK
-                        and isinstance(plate_df, pd.DataFrame)
-                        and not plate_df.empty
-                    ):  # noqa: E501
+                    if ret == RET_OK and isinstance(plate_df, pd.DataFrame) and not plate_df.empty:  # noqa: E501
                         for _, row in plate_df.iterrows():
                             p_name = str(row.get("plate_name", ""))
                             p_code = str(row.get("code", ""))
@@ -195,9 +181,7 @@ class ScreenerHandler:
                         "NOCF_PER_SHARE_GROWTH_RATE": "NOCF_PER_SHARE_GROWTH",
                         "OPERATING_PROFIT_TO_TOTAL_PROFIT": "OPERATING_PROFIT_TOTAL_RATIO",  # noqa: E501
                     }
-                    if name_str in legacy_map and hasattr(
-                        enum_cls, legacy_map[name_str]
-                    ):  # noqa: E501
+                    if name_str in legacy_map and hasattr(enum_cls, legacy_map[name_str]):  # noqa: E501
                         name_str = legacy_map[name_str]
 
                     if hasattr(enum_cls, name_str):
@@ -266,9 +250,7 @@ class ScreenerHandler:
                         "K_30M": getattr(__import__("futu").Period, "MIN30", 30),
                         "K_60M": getattr(__import__("futu").Period, "MIN60", 60),
                     }
-                    return period_map.get(
-                        period_str, getattr(__import__("futu").Period, "DAY", 11)
-                    )  # noqa: E501
+                    return period_map.get(period_str, getattr(__import__("futu").Period, "DAY", 11))  # noqa: E501
 
                 try:
                     # 💡 自动兜底格式化：防范 LLM 忘记输出市场前缀 (如把 US.BK2991 输出成了 BK2991)  # noqa: E501
@@ -295,18 +277,14 @@ class ScreenerHandler:
 
                     # 1.5 行业板块剔除 (收集代码盘后执行二次过滤)
                     if f_type == "exclude_plate" and f.get("value"):
-                        exclude_plate_codes.extend(
-                            [format_plate(p) for p in f.get("value")]
-                        )  # noqa: E501
+                        exclude_plate_codes.extend([format_plate(p) for p in f.get("value")])  # noqa: E501
                         continue
 
                     # 2. 简单行情属性
                     if f_type == "simple":
                         prop = get_enum(SimpleProperty, field_name)
                         if prop:
-                            print(
-                                f"👉 [ScreenerHandler] add_simple_property: {prop}, lower={lower}, upper={upper}"
-                            )  # noqa: E501
+                            print(f"👉 [ScreenerHandler] add_simple_property: {prop}, lower={lower}, upper={upper}")  # noqa: E501
                             req.add_simple_property(prop, lower=lower, upper=upper)
                             print(f"👉 [ScreenerHandler] add_retrieve_simple: {prop}")
                             req.add_retrieve_simple(prop)
@@ -332,12 +310,8 @@ class ScreenerHandler:
                             print(
                                 f"👉 [ScreenerHandler] add_financial_property: {prop}, term={term}, lower={lower}, upper={upper}, kwargs={fin_kwargs}"
                             )  # noqa: E501
-                            req.add_financial_property(
-                                prop, term=term, lower=lower, upper=upper, **fin_kwargs
-                            )  # noqa: E501
-                            print(
-                                f"👉 [ScreenerHandler] add_retrieve_financial: {prop}, term={term}"
-                            )  # noqa: E501
+                            req.add_financial_property(prop, term=term, lower=lower, upper=upper, **fin_kwargs)  # noqa: E501
+                            print(f"👉 [ScreenerHandler] add_retrieve_financial: {prop}, term={term}")  # noqa: E501
                             req.add_retrieve_financial(prop, term)
                             user_fields.add(field_name)
 
@@ -349,12 +323,8 @@ class ScreenerHandler:
                             print(
                                 f"👉 [ScreenerHandler] add_cumulative_property: {prop}, days={days}, lower={lower}, upper={upper}"
                             )  # noqa: E501
-                            req.add_cumulative_property(
-                                prop, days=days, lower=lower, upper=upper
-                            )  # noqa: E501
-                            print(
-                                f"👉 [ScreenerHandler] add_retrieve_cumulative: {prop}, days={days}"
-                            )  # noqa: E501
+                            req.add_cumulative_property(prop, days=days, lower=lower, upper=upper)  # noqa: E501
+                            print(f"👉 [ScreenerHandler] add_retrieve_cumulative: {prop}, days={days}")  # noqa: E501
                             req.add_retrieve_cumulative(prop, days)
                             user_fields.add(field_name)
 
@@ -362,12 +332,8 @@ class ScreenerHandler:
                     elif f_type == "featured":
                         prop = get_enum(FeaturedProperty, field_name)
                         if prop:
-                            fmt_intervals = format_intervals(
-                                f.get("intervals"), lower, upper
-                            )  # noqa: E501
-                            print(
-                                f"👉 [ScreenerHandler] add_featured_property: {prop}, intervals={fmt_intervals}"
-                            )  # noqa: E501
+                            fmt_intervals = format_intervals(f.get("intervals"), lower, upper)  # noqa: E501
+                            print(f"👉 [ScreenerHandler] add_featured_property: {prop}, intervals={fmt_intervals}")  # noqa: E501
                             req.add_featured_property(prop, intervals=fmt_intervals)
                             print(f"👉 [ScreenerHandler] add_retrieve_featured: {prop}")
                             req.add_retrieve_featured(prop)
@@ -378,9 +344,7 @@ class ScreenerHandler:
                         prop = get_enum(Pattern, field_name)
                         if prop:
                             period_type = get_period(f.get("period", "K_DAY"))
-                            print(
-                                f"👉 [ScreenerHandler] add_indicator_pattern: {prop}, period_type={period_type}"
-                            )  # noqa: E501
+                            print(f"👉 [ScreenerHandler] add_indicator_pattern: {prop}, period_type={period_type}")  # noqa: E501
                             req.add_indicator_pattern(prop, period_type=period_type)
 
                             # 💡 智能附加回包展示对应的具体指标 (如 RSI_BOTTOM_DIVERGE 截取 RSI)  # noqa: E501
@@ -403,9 +367,7 @@ class ScreenerHandler:
                                 f"👉 [ScreenerHandler] add_indicator_positional: pos={pos}, period_type={period_type}, prop1={prop1}, prop2={prop2}"
                             )  # noqa: E501
                             req.add_indicator_positional(pos, period_type, prop1, prop2)
-                            print(
-                                f"👉 [ScreenerHandler] add_retrieve_indicator: {prop1}, period_type={period_type}"
-                            )  # noqa: E501
+                            print(f"👉 [ScreenerHandler] add_retrieve_indicator: {prop1}, period_type={period_type}")  # noqa: E501
                             req.add_retrieve_indicator(prop1, period=period_type)
                             user_fields.add(field_name)
                             if prop2:
@@ -422,13 +384,9 @@ class ScreenerHandler:
                         prop = get_enum(KlineShapeProperty, field_name)
                         if prop:
                             period = get_enum(KLType, f.get("period"), KLType.K_DAY)
-                            print(
-                                f"👉 [ScreenerHandler] add_kline_shape: {prop}, period={period}"
-                            )  # noqa: E501
+                            print(f"👉 [ScreenerHandler] add_kline_shape: {prop}, period={period}")  # noqa: E501
                             req.add_kline_shape(prop, period=period)
-                            print(
-                                f"👉 [ScreenerHandler] add_retrieve_kline_shape: {prop}, period={period}"
-                            )  # noqa: E501
+                            print(f"👉 [ScreenerHandler] add_retrieve_kline_shape: {prop}, period={period}")  # noqa: E501
                             req.add_retrieve_kline_shape(prop, period)
 
                     # 9. 经纪商持股
@@ -436,13 +394,9 @@ class ScreenerHandler:
                         prop = get_enum(BrokerProperty, field_name)
                         if prop:
                             days = f.get("days", 1)
-                            print(
-                                f"👉 [ScreenerHandler] add_broker_holdings: {prop}, days={days}"
-                            )  # noqa: E501
+                            print(f"👉 [ScreenerHandler] add_broker_holdings: {prop}, days={days}")  # noqa: E501
                             req.add_broker_holdings(prop, days=days)
-                            print(
-                                f"👉 [ScreenerHandler] add_retrieve_broker: {prop}, days={days}"
-                            )  # noqa: E501
+                            print(f"👉 [ScreenerHandler] add_retrieve_broker: {prop}, days={days}")  # noqa: E501
                             req.add_retrieve_broker(prop, days)
 
                     # 10. 期权指标
@@ -450,16 +404,12 @@ class ScreenerHandler:
                         prop = get_enum(OptionProperty, field_name)
                         if prop:
                             period = f.get("period")
-                            fmt_intervals = format_intervals(
-                                f.get("intervals"), lower, upper
-                            )  # noqa: E501
+                            fmt_intervals = format_intervals(f.get("intervals"), lower, upper)  # noqa: E501
                             print(
                                 f"👉 [ScreenerHandler] add_option: {prop}, intervals={fmt_intervals}, period={period}"
                             )  # noqa: E501
                             req.add_option(prop, intervals=fmt_intervals, period=period)
-                            print(
-                                f"👉 [ScreenerHandler] add_retrieve_option: {prop}, period={period}"
-                            )  # noqa: E501
+                            print(f"👉 [ScreenerHandler] add_retrieve_option: {prop}, period={period}")  # noqa: E501
                             req.add_retrieve_option(prop, period)
 
                     else:
@@ -487,24 +437,16 @@ class ScreenerHandler:
             if f_name not in user_fields:
                 if f_type == "accumulate" and hasattr(CumulativeProperty, f_name):
                     prop = getattr(CumulativeProperty, f_name)
-                    print(
-                        f"👉 [ScreenerHandler] add_retrieve_cumulative (default): {prop}, days=1"
-                    )  # noqa: E501
+                    print(f"👉 [ScreenerHandler] add_retrieve_cumulative (default): {prop}, days=1")  # noqa: E501
                     req.add_retrieve_cumulative(prop, 1)
                 elif f_type == "simple" and hasattr(SimpleProperty, f_name):
                     prop = getattr(SimpleProperty, f_name)
                     print(f"👉 [ScreenerHandler] add_retrieve_simple (default): {prop}")
                     req.add_retrieve_simple(prop)
 
-                if (
-                    not filters
-                    and f_name == "PRICE"
-                    and hasattr(SimpleProperty, f_name)
-                ):  # noqa: E501
+                if not filters and f_name == "PRICE" and hasattr(SimpleProperty, f_name):  # noqa: E501
                     prop = getattr(SimpleProperty, f_name)
-                    print(
-                        f"👉 [ScreenerHandler] add_simple_property (default): {prop}, lower=0.001, upper=None"
-                    )  # noqa: E501
+                    print(f"👉 [ScreenerHandler] add_simple_property (default): {prop}, lower=0.001, upper=None")  # noqa: E501
                     req.add_simple_property(prop, lower=0.001, upper=None)
 
         # 4. 默认排序：按市值降序
@@ -540,9 +482,7 @@ class ScreenerHandler:
                             print(
                                 f"👉 [ScreenerHandler] get_stock_screen: 发起请求 (page_from={begin}, page_count={num})"
                             )  # noqa: E501
-                            futu_res = await asyncio.to_thread(
-                                self.conn_mgr.quote_ctx.get_stock_screen, req
-                            )
+                            futu_res = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_stock_screen, req)
 
                             ret, raw_data = futu_res[0], futu_res[1]  # type: ignore
                             if ret != RET_OK:
@@ -607,21 +547,14 @@ class ScreenerHandler:
                                 for item in items:
                                     row_dict = {}
                                     for res in item.get("results", []):
-                                        prop_val = res.get("property", {}).get(
-                                            "name", ""
-                                        )  # noqa: E501
+                                        prop_val = res.get("property", {}).get("name", "")  # noqa: E501
 
                                         if isinstance(prop_val, int) or (
-                                            isinstance(prop_val, str)
-                                            and prop_val.isdigit()
+                                            isinstance(prop_val, str) and prop_val.isdigit()
                                         ):  # noqa: E501
-                                            prop_name = v2_rev_map.get(
-                                                int(prop_val), str(prop_val)
-                                            )  # noqa: E501
+                                            prop_name = v2_rev_map.get(int(prop_val), str(prop_val))  # noqa: E501
                                         elif hasattr(prop_val, "name"):
-                                            prop_name = str(
-                                                getattr(prop_val, "name")
-                                            ).lower()  # noqa: E501
+                                            prop_name = str(getattr(prop_val, "name")).lower()  # noqa: E501
                                         else:
                                             prop_name = str(prop_val).lower()
 
@@ -646,9 +579,7 @@ class ScreenerHandler:
                                 begin += num
 
                             if is_last_page or not items:
-                                print(
-                                    f"  -> ✅ [Futu] {market} 市场数据拉取完毕！(已到底或无更多数据)"
-                                )  # noqa: E501
+                                print(f"  -> ✅ [Futu] {market} 市场数据拉取完毕！(已到底或无更多数据)")  # noqa: E501
                                 break
 
                             await asyncio.sleep(0.1)
@@ -694,9 +625,7 @@ class ScreenerHandler:
             for f in filters:
                 if f.get("type") == "indicator_pattern":
                     p_field = str(f.get("field")).lower()
-                    matched_patterns_zh.append(
-                        PATTERN_ZH_MAP.get(p_field, f.get("field"))
-                    )  # noqa: E501
+                    matched_patterns_zh.append(PATTERN_ZH_MAP.get(p_field, f.get("field")))  # noqa: E501
 
         results = []
         for i, row in data.head(max_total).iterrows():
@@ -732,9 +661,7 @@ class ScreenerHandler:
                         final_key = key_mapping.get(col, col)
                         # 💡 强制数值化，防范 numpy scalar 对象或大数科学计数法导致的前端类型逃逸  # noqa: E501
                         try:
-                            item_dict[final_key] = (
-                                float(val) if not isinstance(val, bool) else val
-                            )  # noqa: E501
+                            item_dict[final_key] = float(val) if not isinstance(val, bool) else val  # noqa: E501
                         except (ValueError, TypeError):
                             item_dict[final_key] = val
 
@@ -742,20 +669,12 @@ class ScreenerHandler:
 
         # 💡 执行板块剔除的二次过滤逻辑
         if exclude_plate_codes and results:
-            print(
-                f"🛡️ [ScreenerHandler] 触发板块剔除，准备拉取需排除的板块成分股: {exclude_plate_codes}"
-            )  # noqa: E501
+            print(f"🛡️ [ScreenerHandler] 触发板块剔除，准备拉取需排除的板块成分股: {exclude_plate_codes}")  # noqa: E501
             exclude_symbols = set()
             for p_code in exclude_plate_codes:
                 try:
-                    ret, p_data = await asyncio.to_thread(
-                        self.conn_mgr.quote_ctx.get_plate_stock, p_code
-                    )  # noqa: E501
-                    if (
-                        ret == RET_OK
-                        and isinstance(p_data, pd.DataFrame)
-                        and not p_data.empty
-                    ):  # noqa: E501
+                    ret, p_data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_plate_stock, p_code)  # noqa: E501
+                    if ret == RET_OK and isinstance(p_data, pd.DataFrame) and not p_data.empty:  # noqa: E501
                         exclude_symbols.update(p_data["code"].tolist())
                 except Exception as e:
                     print(f"⚠️ [ScreenerHandler] 拉取排除板块 {p_code} 失败: {e}")
@@ -791,12 +710,7 @@ class ScreenerHandler:
             for k in list(row.keys()):
                 v = row[k]
                 if isinstance(v, (int, float)):
-                    is_pct = (
-                        k in pct_keys
-                        or k.endswith("_growth")
-                        or k.endswith("_growth_rate")
-                        or "percentile" in k
-                    )  # noqa: E501
+                    is_pct = k in pct_keys or k.endswith("_growth") or k.endswith("_growth_rate") or "percentile" in k  # noqa: E501
                     # 剔除掉绝对倍数指标 (如流动比率等)
                     if is_pct and k not in {
                         "current_ratio",
@@ -833,9 +747,7 @@ class ScreenerHandler:
         mkt = mkt_map.get(market.upper(), Market.HK)
         sec = sec_map.get(sec_type.upper(), SecurityType.STOCK)
 
-        ret, data = await asyncio.to_thread(
-            self.conn_mgr.quote_ctx.get_stock_basicinfo, mkt, sec
-        )
+        ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_stock_basicinfo, mkt, sec)
         if ret != RET_OK or not isinstance(data, pd.DataFrame) or data.empty:
             return {"status": "error", "message": f"基本信息获取失败: {data}"}
 

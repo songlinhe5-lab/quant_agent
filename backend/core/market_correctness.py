@@ -88,11 +88,7 @@ class MarketSession:
             return "US"
         elif symbol.startswith("HK.") or symbol.startswith("HK_"):
             return "HK"
-        elif (
-            symbol.startswith("SH.")
-            or symbol.startswith("SZ.")
-            or symbol.startswith("CN.")
-        ):  # noqa: E501
+        elif symbol.startswith("SH.") or symbol.startswith("SZ.") or symbol.startswith("CN."):  # noqa: E501
             return "CN"
         else:
             return "US"  # 默认美股
@@ -114,9 +110,7 @@ class MarketSession:
         local_min = dt.minute
 
         # 简单判断：工作日 + 交易时段
-        local_weekday = (
-            dt.weekday() + (1 if offset < 0 and dt.hour + offset < 0 else 0)
-        ) % 7  # noqa: E501
+        local_weekday = (dt.weekday() + (1 if offset < 0 and dt.hour + offset < 0 else 0)) % 7  # noqa: E501
         if local_weekday >= 5:  # 周六日
             return False
 
@@ -213,9 +207,7 @@ def detect_suspension(kline_df: pd.DataFrame, symbol: str) -> Dict[str, Any]:
     return {
         "status": status.value,
         "suspension_days": [d.strftime("%Y-%m-%d") for d in zero_volume_days[:10]],
-        "last_trade_date": last_date.strftime("%Y-%m-%d")
-        if pd.notna(last_date)
-        else None,  # noqa: E501
+        "last_trade_date": last_date.strftime("%Y-%m-%d") if pd.notna(last_date) else None,  # noqa: E501
         "confidence": confidence,
     }
 
@@ -498,12 +490,8 @@ class DataQualityChecker:
             quality_score = 0.0
         else:
             # 每个严重异常扣 0.1，每个警告扣 0.05
-            critical_count = sum(
-                1 for a in self.anomalies if a.get("severity") == "critical"
-            )  # noqa: E501
-            warning_count = sum(
-                1 for a in self.anomalies if a.get("severity") == "warning"
-            )  # noqa: E501
+            critical_count = sum(1 for a in self.anomalies if a.get("severity") == "critical")  # noqa: E501
+            warning_count = sum(1 for a in self.anomalies if a.get("severity") == "warning")  # noqa: E501
             penalty = critical_count * 0.1 + warning_count * 0.05
             quality_score = max(0.0, 1.0 - penalty)
 

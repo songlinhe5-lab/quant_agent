@@ -55,19 +55,13 @@ def _safe_import(name, globals=None, locals=None, fromlist=(), level=0):
         "concurrent",
         "_thread",
     }
-    if name in dangerous_modules or any(
-        name.startswith(f"{m}.") for m in dangerous_modules
-    ):
-        raise ImportError(
-            f"🚨 触发风控熔断：安全沙箱已拦截高危底层模块 '{name}' 的导入行为！"
-        )
+    if name in dangerous_modules or any(name.startswith(f"{m}.") for m in dangerous_modules):
+        raise ImportError(f"🚨 触发风控熔断：安全沙箱已拦截高危底层模块 '{name}' 的导入行为！")
     return __import__(name, globals, locals, fromlist, level)
 
 
 # 💡 设定严格的沙箱文件读写目录，并自动创建
-SANDBOX_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "data", "sandbox_workspace")
-)
+SANDBOX_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data", "sandbox_workspace"))
 os.makedirs(SANDBOX_DIR, exist_ok=True)
 # 确保目录以分隔符结尾，防范前缀匹配攻击 (如 sandbox_workspace2 绕过)
 _SECURE_PREFIX = SANDBOX_DIR if SANDBOX_DIR.endswith(os.sep) else SANDBOX_DIR + os.sep
@@ -91,9 +85,7 @@ def _safe_open(
     # 核心防御：检查最终解析出的绝对物理路径，是否仍然位于隔离区内
     if not abs_path.startswith(_SECURE_PREFIX):
         raise PermissionError(
-            f"🚨 安全风控拦截：沙箱环境严禁进行目录穿越 "
-            f"(Directory Traversal) 访问越权文件！"
-            f"(尝试访问: {file})"
+            f"🚨 安全风控拦截：沙箱环境严禁进行目录穿越 (Directory Traversal) 访问越权文件！(尝试访问: {file})"
         )
 
     return open(abs_path, mode, buffering, encoding, errors, newline, closefd, opener)
@@ -101,9 +93,7 @@ def _safe_open(
 
 # 剥离读写文件 (open)、直接执行代码 (eval/exec) 及反射内存的高危内建权限
 SAFE_BUILTINS = {
-    k: v
-    for k, v in builtins.__dict__.items()
-    if k not in ("eval", "exec", "open", "compile", "globals", "locals")
+    k: v for k, v in builtins.__dict__.items() if k not in ("eval", "exec", "open", "compile", "globals", "locals")
 }
 SAFE_BUILTINS["__import__"] = _safe_import
 SAFE_BUILTINS["open"] = _safe_open
@@ -201,27 +191,15 @@ class SandboxSecurityVisitor(ast.NodeVisitor):
 
     def _check_range_iter(self, iter_node, context_name: str):
         """抽取公共逻辑：侦测危险的 range() 迭代器，防范低效运算与瞬间 OOM 内存炸弹"""
-        if (
-            isinstance(iter_node, ast.Call)
-            and isinstance(iter_node.func, ast.Name)
-            and iter_node.func.id == "range"
-        ):
+        if isinstance(iter_node, ast.Call) and isinstance(iter_node.func, ast.Name) and iter_node.func.id == "range":
             for arg in iter_node.args:
                 # 1. 封堵低效的 range(len(df))
-                if (
-                    isinstance(arg, ast.Call)
-                    and isinstance(arg.func, ast.Name)
-                    and arg.func.id == "len"
-                ):
+                if isinstance(arg, ast.Call) and isinstance(arg.func, ast.Name) and arg.func.id == "len":
                     raise ValueError(
                         f"🚨 性能风控拦截：严禁在 {context_name} 中使用 `range(len(...))` 遍历数据！请务必使用 Pandas 的矢量化运算。"  # noqa: E501
                     )
                 # 2. 封堵硬编码超大常数 (如 range(10000000))
-                elif (
-                    isinstance(arg, ast.Constant)
-                    and isinstance(arg.value, int)
-                    and arg.value > 10000
-                ):
+                elif isinstance(arg, ast.Constant) and isinstance(arg.value, int) and arg.value > 10000:
                     raise ValueError(
                         f"🚨 内存风控拦截：严禁在 {context_name} 中使用超大范围 `range({arg.value})`，存在瞬间内存溢出 (OOM) 风险！"  # noqa: E501
                     )
@@ -284,18 +262,14 @@ class SandboxSecurityVisitor(ast.NodeVisitor):
         for alias in node.names:
             base_module = alias.name.split(".")[0]
             if base_module not in self.allowed_modules:
-                raise ValueError(
-                    f"🚨 安全风控拦截：沙箱内禁止导入非白名单模块 '{alias.name}'。"
-                )
+                raise ValueError(f"🚨 安全风控拦截：沙箱内禁止导入非白名单模块 '{alias.name}'。")
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node):
         if node.module:
             base_module = node.module.split(".")[0]
             if base_module not in self.allowed_modules:
-                raise ValueError(
-                    f"🚨 安全风控拦截：沙箱内禁止从非白名单模块 '{node.module}' 导入。"
-                )
+                raise ValueError(f"🚨 安全风控拦截：沙箱内禁止从非白名单模块 '{node.module}' 导入。")
         self.generic_visit(node)
 
 
@@ -345,9 +319,7 @@ class SandboxTimeoutTracer:
     def _trace_calls(self, frame, event, arg):
         # 1. 检查执行时间
         if time.perf_counter() - self.start_time > self.timeout_seconds:
-            raise SandboxTimeoutException(
-                f"沙箱执行超时 ({self.timeout_seconds}s)！已强制阻断以保护系统资源。"
-            )
+            raise SandboxTimeoutException(f"沙箱执行超时 ({self.timeout_seconds}s)！已强制阻断以保护系统资源。")
 
         # 2. 抽样检查内存增量 (每执行 5000 步指令检查一次，将系统调用开销降至 0)
         if self.psutil_proc:
@@ -425,9 +397,7 @@ class EventDrivenBacktestEngine:
         self.pending_orders = []  # 💡 新增：挂单簿
         self.debug_logs = []  # 💡 新增：逐 K 线调试日志
 
-    def _execute_buy(
-        self, base_price: float, date_str: str, stop_loss: Optional[float] = None
-    ):
+    def _execute_buy(self, base_price: float, date_str: str, stop_loss: Optional[float] = None):
         """内部撮合：买入执行"""
         exec_price = base_price * (1 + self.slippage_pct)
         turnover = self.cash * 0.95
@@ -440,9 +410,7 @@ class EventDrivenBacktestEngine:
             real_fee = real_turnover * self.commission_pct
             self.cash -= real_turnover + real_fee
             self.position = shares
-            self.total_friction_cost += real_fee + (
-                shares * base_price * self.slippage_pct
-            )
+            self.total_friction_cost += real_fee + (shares * base_price * self.slippage_pct)
 
             if hasattr(self.strategy, "_position_size"):
                 self.strategy._position_size = shares
@@ -473,9 +441,7 @@ class EventDrivenBacktestEngine:
         profit = revenue - fee - (self.position * last_buy_price)
         self.cash += revenue - fee
 
-        self.total_friction_cost += fee + (
-            self.position * base_price * self.slippage_pct
-        )
+        self.total_friction_cost += fee + (self.position * base_price * self.slippage_pct)
 
         self.trades.append(
             {
@@ -539,15 +505,11 @@ class EventDrivenBacktestEngine:
                 sl = self.strategy._position_data.get("stop_loss")
                 # 💡 优化：根据最低价 current_low 判定是否触发止损，而非基于收盘价，大幅提高防回撤精度  # noqa: E501
                 if sl and current_low <= sl:
-                    base_price = min(
-                        sl, current_open
-                    )  # 如果开盘跳空跌破止损，按劣势的开盘价强平
+                    base_price = min(sl, current_open)  # 如果开盘跳空跌破止损，按劣势的开盘价强平
                     self._execute_sell(base_price, date_str)
 
                     # 如果触发了止损，需要清理之前可能遗留的止盈限价单
-                    self.pending_orders = [
-                        o for o in self.pending_orders if o["action"] != "sell"
-                    ]
+                    self.pending_orders = [o for o in self.pending_orders if o["action"] != "sell"]
 
             # --- 3. 策略产生新信号 ---
             signal = None
@@ -574,15 +536,11 @@ class EventDrivenBacktestEngine:
                             }
                         )
                     else:
-                        self._execute_buy(
-                            current_price, date_str, signal.get("stop_loss")
-                        )
+                        self._execute_buy(current_price, date_str, signal.get("stop_loss"))
 
                 elif action in ["sell", "close"] and self.position > 0:
                     if limit_price:
-                        self.pending_orders.append(
-                            {"action": "sell", "limit_price": float(limit_price)}
-                        )
+                        self.pending_orders.append({"action": "sell", "limit_price": float(limit_price)})
                     else:
                         self._execute_sell(current_price, date_str)
                         self.pending_orders.clear()  # 平仓后清空可能存在的止盈挂单
@@ -607,9 +565,7 @@ class EventDrivenBacktestEngine:
             )
 
         current_equity = self.cash + self.position * current_price
-        total_return_val = (
-            current_equity - self.initial_capital
-        ) / self.initial_capital
+        total_return_val = (current_equity - self.initial_capital) / self.initial_capital
 
         if len(self.equity_curve) > 0:
             equity_series = pd.Series([e["equity"] for e in self.equity_curve])
@@ -628,9 +584,7 @@ class EventDrivenBacktestEngine:
 
         sell_trades = [t for t in self.trades if t["action"] == "SELL"]
         winning_trades = [t for t in sell_trades if t["profit"] > 0]
-        win_rate = (
-            len(winning_trades) / len(sell_trades) if len(sell_trades) > 0 else 0.0
-        )
+        win_rate = len(winning_trades) / len(sell_trades) if len(sell_trades) > 0 else 0.0
 
         return {
             "metrics": {
@@ -724,14 +678,7 @@ def run_dynamic_sandbox_backtest(
         if "signal" not in res_df.columns:
             res_df["signal"] = 0
         if "atr" not in res_df.columns:
-            res_df["atr"] = (
-                res_df["Close"]
-                .diff()
-                .abs()
-                .rolling(14)
-                .mean()
-                .fillna(res_df["Close"] * 0.01)
-            )
+            res_df["atr"] = res_df["Close"].diff().abs().rolling(14).mean().fillna(res_df["Close"] * 0.01)
 
         res_df = res_df.dropna().copy()
 
@@ -788,9 +735,7 @@ def run_dynamic_sandbox_backtest(
                 {
                     "date": date_str,
                     "equity": round(eq, 2),
-                    "benchmark": round(
-                        initial_capital * (price / benchmark_start_price), 2
-                    ),
+                    "benchmark": round(initial_capital * (price / benchmark_start_price), 2),
                 }
             )
 
@@ -846,9 +791,7 @@ def run_dynamic_sandbox_backtest(
         print(
             "🐛 [Backtest Engine] 调试模式已开启，强制降级至高保真事件驱动引擎以捕获逐 K 线状态！"  # noqa: E501
         )
-    engine = EventDrivenBacktestEngine(
-        strategy_instance, df, initial_capital=initial_capital, debug_mode=debug_mode
-    )
+    engine = EventDrivenBacktestEngine(strategy_instance, df, initial_capital=initial_capital, debug_mode=debug_mode)
     with SandboxTimeoutTracer(timeout_seconds=10.0):
         return engine.run()
 
@@ -936,43 +879,17 @@ class DivergenceResonanceStrategy:
         is_new_high = (df["Close"] > df["prev_close"]) & (df["Close"] >= df["max_5"])
 
         # 💡 成交量过滤：只有在“缩量（动能衰竭）”或“放量（资金介入/出逃）”时，背离信号才算有效，过滤掉大量无量横盘的假信号  # noqa: E501
-        is_vol_confirmed = (df["Volume"] < df["vol_ma5"] * 0.8) | (
-            df["Volume"] > df["vol_ma5"] * 1.2
-        )
+        is_vol_confirmed = (df["Volume"] < df["vol_ma5"] * 0.8) | (df["Volume"] > df["vol_ma5"] * 1.2)
 
         # 买入条件组 (底背离 + 低位金叉 + 成交量确认)
-        rsi_bottom = (
-            is_new_low
-            & (df["rsi"] > df["prev_rsi"])
-            & (df["rsi"] < 40)
-            & is_vol_confirmed
-        )
-        macd_bottom = (
-            is_new_low
-            & (df["macd_hist"] < 0)
-            & (df["macd_hist"] > df["prev_hist"])
-            & is_vol_confirmed
-        )
-        kdj_golden = (
-            (df["k"] > df["d"]) & (df["prev_k"] <= df["prev_d"]) & (df["k"] < 50)
-        )
+        rsi_bottom = is_new_low & (df["rsi"] > df["prev_rsi"]) & (df["rsi"] < 40) & is_vol_confirmed
+        macd_bottom = is_new_low & (df["macd_hist"] < 0) & (df["macd_hist"] > df["prev_hist"]) & is_vol_confirmed
+        kdj_golden = (df["k"] > df["d"]) & (df["prev_k"] <= df["prev_d"]) & (df["k"] < 50)
 
         # 卖出条件组 (顶背离 + 高位死叉 + 成交量确认)
-        rsi_top = (
-            is_new_high
-            & (df["rsi"] < df["prev_rsi"])
-            & (df["rsi"] > 60)
-            & is_vol_confirmed
-        )
-        macd_top = (
-            is_new_high
-            & (df["macd_hist"] > 0)
-            & (df["macd_hist"] < df["prev_hist"])
-            & is_vol_confirmed
-        )
-        kdj_death = (
-            (df["k"] < df["d"]) & (df["prev_k"] >= df["prev_d"]) & (df["k"] > 50)
-        )
+        rsi_top = is_new_high & (df["rsi"] < df["prev_rsi"]) & (df["rsi"] > 60) & is_vol_confirmed
+        macd_top = is_new_high & (df["macd_hist"] > 0) & (df["macd_hist"] < df["prev_hist"]) & is_vol_confirmed
+        kdj_death = (df["k"] < df["d"]) & (df["prev_k"] >= df["prev_d"]) & (df["k"] > 50)
 
         # 多指标共振：至少一个背离配合 KDJ 交叉 -> 触发交易信号
         df["signal"] = 0
@@ -1054,14 +971,10 @@ class DivergenceResonanceStrategy:
 
         # 为前端图表下发重采样的数据点
         df_chart = df.copy()
-        df_chart["date"] = (
-            df_chart.index.astype(str).str.split(" ").str[0].str.split("T").str[0]
-        )
+        df_chart["date"] = df_chart.index.astype(str).str.split(" ").str[0].str.split("T").str[0]
         df_chart["price"] = df_chart["Close"]
         df_chart["equity"] = pf.value().values
-        df_chart["benchmark"] = self.initial_capital * (
-            df_chart["Close"] / df_chart["Close"].iloc[0]
-        )
+        df_chart["benchmark"] = self.initial_capital * (df_chart["Close"] / df_chart["Close"].iloc[0])
         equity_curve = (
             df_chart[["date", "equity", "benchmark", "price"]]
             .iloc[:: max(1, len(df_chart) // 200)]
@@ -1172,14 +1085,7 @@ def run_grid_search_backtest(
             if "signal" not in res_df.columns:
                 res_df["signal"] = 0
             if "atr" not in res_df.columns:
-                res_df["atr"] = (
-                    res_df["Close"]
-                    .diff()
-                    .abs()
-                    .rolling(14)
-                    .mean()
-                    .fillna(res_df["Close"] * 0.01)
-                )
+                res_df["atr"] = res_df["Close"].diff().abs().rolling(14).mean().fillna(res_df["Close"] * 0.01)
 
             res_df = res_df.dropna().copy()
             if len(res_df) < 10:
@@ -1374,9 +1280,7 @@ def run_monte_carlo_stress_test(
         # 设定成交量的波动率倍数大于价格波动率，为了保持期望值为 1.0（长期平均成交量不变），mean 设为 -0.5 * sigma^2  # noqa: E501
         vol_sigma = target_std * 2.0 * dynamic_noise_multiplier
         vol_mu = -0.5 * (vol_sigma**2)
-        volume_multiplier = np.random.lognormal(
-            mean=vol_mu, sigma=vol_sigma, size=len(noisy_df)
-        )
+        volume_multiplier = np.random.lognormal(mean=vol_mu, sigma=vol_sigma, size=len(noisy_df))
 
         noisy_df["Close"] = noisy_df["Close"] * noise_multiplier
         noisy_df["Open"] = noisy_df["Open"] * noise_multiplier
@@ -1388,8 +1292,7 @@ def run_monte_carlo_stress_test(
         with SandboxTimeoutTracer(timeout_seconds=3.0):
             strategy_instance = StrategyClass(**params)
             if not (
-                hasattr(strategy_instance, "_calculate_indicators")
-                and hasattr(strategy_instance, "_generate_signals")
+                hasattr(strategy_instance, "_calculate_indicators") and hasattr(strategy_instance, "_generate_signals")
             ):
                 raise ValueError("Monte Carlo 测试仅支持 Numba 矢量化策略。")
 
@@ -1401,14 +1304,7 @@ def run_monte_carlo_stress_test(
         if "signal" not in res_df.columns:
             res_df["signal"] = 0
         if "atr" not in res_df.columns:
-            res_df["atr"] = (
-                res_df["Close"]
-                .diff()
-                .abs()
-                .rolling(14)
-                .mean()
-                .fillna(res_df["Close"] * 0.01)
-            )
+            res_df["atr"] = res_df["Close"].diff().abs().rolling(14).mean().fillna(res_df["Close"] * 0.01)
 
         res_df = res_df.dropna().copy()
         if len(res_df) < 10:
@@ -1569,8 +1465,7 @@ def run_batch_sandbox_backtest(
         with SandboxTimeoutTracer(timeout_seconds=3.0):
             strategy_instance = StrategyClass(**params)
             if not (
-                hasattr(strategy_instance, "_calculate_indicators")
-                and hasattr(strategy_instance, "_generate_signals")
+                hasattr(strategy_instance, "_calculate_indicators") and hasattr(strategy_instance, "_generate_signals")
             ):
                 raise ValueError("批量回测仅支持纯 Pandas Numba 矢量化策略。")
 
@@ -1582,14 +1477,7 @@ def run_batch_sandbox_backtest(
         if "signal" not in res_df.columns:
             res_df["signal"] = 0
         if "atr" not in res_df.columns:
-            res_df["atr"] = (
-                res_df["Close"]
-                .diff()
-                .abs()
-                .rolling(14)
-                .mean()
-                .fillna(res_df["Close"] * 0.01)
-            )
+            res_df["atr"] = res_df["Close"].diff().abs().rolling(14).mean().fillna(res_df["Close"] * 0.01)
 
         res_df = res_df.dropna().copy()
         if len(res_df) < 10:
@@ -1654,10 +1542,7 @@ def run_batch_sandbox_backtest(
 
     # 聚合后的净值曲线
     equity_s = pf.value()
-    equity_curve = [
-        {"date": str(d).split(" ")[0].split("T")[0], "equity": round(e, 2)}
-        for d, e in equity_s.items()
-    ]
+    equity_curve = [{"date": str(d).split(" ")[0].split("T")[0], "equity": round(e, 2)} for d, e in equity_s.items()]
 
     return {
         "metrics": {

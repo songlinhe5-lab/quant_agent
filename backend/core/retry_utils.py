@@ -26,12 +26,7 @@ def is_retryable_http_error(exception: BaseException) -> bool:
         return True
 
     # 1. Futu 频率限制与底层连接异常
-    if (
-        "频繁" in err_msg
-        or "frequency" in err_msg
-        or "10041" in err_msg
-        or "timeout" in err_msg
-    ):  # noqa: E501
+    if "频繁" in err_msg or "frequency" in err_msg or "10041" in err_msg or "timeout" in err_msg:  # noqa: E501
         return True
 
     # 2. 网络请求本身的底层异常 (如连接超时、断网等)

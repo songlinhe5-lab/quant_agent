@@ -46,9 +46,7 @@ class DualMaAtrStopStrategy(BaseStrategy):
             df["short_ma"] = df["close"].rolling(window=self.short_window).mean()
             df["long_ma"] = df["close"].rolling(window=self.long_window).mean()
         else:  # EMA
-            df["short_ma"] = (
-                df["close"].ewm(span=self.short_window, adjust=False).mean()
-            )  # noqa: E501
+            df["short_ma"] = df["close"].ewm(span=self.short_window, adjust=False).mean()  # noqa: E501
             df["long_ma"] = df["close"].ewm(span=self.long_window, adjust=False).mean()
 
         # 计算 True Range

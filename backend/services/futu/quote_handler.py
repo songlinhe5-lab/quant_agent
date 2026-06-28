@@ -23,9 +23,7 @@ class QuoteHandler:
         self.cache_mgr = cache_manager
 
     @with_global_retry
-    async def get_quote(
-        self, ticker: str, format_ticker_func, is_unsupported_func
-    ) -> Dict[str, Any]:  # noqa: E501
+    async def get_quote(self, ticker: str, format_ticker_func, is_unsupported_func) -> Dict[str, Any]:  # noqa: E501
         """获取实时行情（带L1缓存）"""
         if is_unsupported_func(ticker):
             return {"status": "error", "message": "富途原生不支持该大类资产"}
@@ -33,10 +31,7 @@ class QuoteHandler:
         market_ticker = format_ticker_func(ticker)
 
         # 开发环境 Mock
-        if (
-            self.conn_mgr.status != "CONNECTED"
-            and __import__("os").getenv("QUANT_ENV") == "development"
-        ):  # noqa: E501
+        if self.conn_mgr.status != "CONNECTED" and __import__("os").getenv("QUANT_ENV") == "development":  # noqa: E501
             from .mock_provider import MockProvider
 
             return MockProvider.mock_quote(market_ticker)
@@ -62,9 +57,7 @@ class QuoteHandler:
                 return {"status": "error", "message": msg}
             self.cache_mgr.subscribed_topics.add(topic)
 
-        ret, df = await asyncio.to_thread(
-            self.conn_mgr.quote_ctx.get_stock_quote, [market_ticker]
-        )
+        ret, df = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_stock_quote, [market_ticker])
         if ret != RET_OK or not isinstance(df, pd.DataFrame) or df.empty:
             return {"status": "error", "message": f"行情获取失败: {df}"}
 
@@ -73,9 +66,7 @@ class QuoteHandler:
         return result
 
     @with_global_retry
-    async def get_history(
-        self, ticker: str, ktype: str = "K_DAY", num: int = 60
-    ) -> Dict[str, Any]:  # noqa: E501
+    async def get_history(self, ticker: str, ktype: str = "K_DAY", num: int = 60) -> Dict[str, Any]:  # noqa: E501
         """获取历史K线数据（带缓存和降级策略）"""
         from .utils import format_ticker, is_futu_unsupported
 
@@ -85,10 +76,7 @@ class QuoteHandler:
         market_ticker = format_ticker(ticker)
 
         # 开发环境 Mock
-        if (
-            self.conn_mgr.status != "CONNECTED"
-            and __import__("os").getenv("QUANT_ENV") == "development"
-        ):  # noqa: E501
+        if self.conn_mgr.status != "CONNECTED" and __import__("os").getenv("QUANT_ENV") == "development":  # noqa: E501
             from .mock_provider import MockProvider
 
             return MockProvider.mock_history(market_ticker, num)
@@ -127,9 +115,7 @@ class QuoteHandler:
             if sub_ret == RET_OK:
                 self.cache_mgr.subscribed_topics.add(topic)
 
-        ret, df = await asyncio.to_thread(
-            self.conn_mgr.quote_ctx.get_cur_kline, market_ticker, num, kt, AuType.QFQ
-        )
+        ret, df = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_cur_kline, market_ticker, num, kt, AuType.QFQ)
 
         if ret != RET_OK or not isinstance(df, pd.DataFrame) or df.empty:
             # 降级使用 request_history_kline
@@ -167,9 +153,7 @@ class QuoteHandler:
         return res
 
     @with_global_retry
-    async def unsubscribe_quote(
-        self, ticker: str, format_ticker_func
-    ) -> Dict[str, Any]:  # noqa: E501
+    async def unsubscribe_quote(self, ticker: str, format_ticker_func) -> Dict[str, Any]:  # noqa: E501
         """退订个股行情，释放 OpenD 订阅额度槽位"""
         market_ticker = format_ticker_func(ticker)
 
@@ -187,9 +171,7 @@ class QuoteHandler:
                     SubType.BROKER,
                     SubType.K_DAY,
                 ]  # noqa: E501
-                ret, data = self.conn_mgr.quote_ctx.unsubscribe(
-                    [market_ticker], sub_types
-                )  # noqa: E501
+                ret, data = self.conn_mgr.quote_ctx.unsubscribe([market_ticker], sub_types)  # noqa: E501
 
                 if ret == RET_OK:
                     # 同步清理内部的主题追踪缓存
@@ -203,9 +185,7 @@ class QuoteHandler:
             return {"status": "error", "message": str(e)}
 
     @with_global_retry
-    async def get_order_book(
-        self, ticker: str, format_ticker_func, is_unsupported_func
-    ) -> Dict[str, Any]:  # noqa: E501
+    async def get_order_book(self, ticker: str, format_ticker_func, is_unsupported_func) -> Dict[str, Any]:  # noqa: E501
         """获取实时 Level 2 盘口深度数据"""
         if is_unsupported_func(ticker):
             return {"status": "error", "message": "富途原生不支持该大类资产"}
@@ -213,10 +193,7 @@ class QuoteHandler:
         market_ticker = format_ticker_func(ticker)
 
         # 开发环境 Mock
-        if (
-            self.conn_mgr.status != "CONNECTED"
-            and __import__("os").getenv("QUANT_ENV") == "development"
-        ):  # noqa: E501
+        if self.conn_mgr.status != "CONNECTED" and __import__("os").getenv("QUANT_ENV") == "development":  # noqa: E501
             from .mock_provider import MockProvider
 
             return MockProvider.mock_order_book(market_ticker)
@@ -233,16 +210,12 @@ class QuoteHandler:
 
         topic = (market_ticker, SubType.ORDER_BOOK)
         if topic not in self.cache_mgr.subscribed_topics:
-            ret, msg = self.conn_mgr.quote_ctx.subscribe(
-                [market_ticker], [SubType.ORDER_BOOK], subscribe_push=False
-            )
+            ret, msg = self.conn_mgr.quote_ctx.subscribe([market_ticker], [SubType.ORDER_BOOK], subscribe_push=False)
             if ret != RET_OK:
                 return {"status": "error", "message": f"盘口订阅失败: {msg}"}
             self.cache_mgr.subscribed_topics.add(topic)
 
-        ret, data = await asyncio.to_thread(
-            self.conn_mgr.quote_ctx.get_order_book, market_ticker
-        )
+        ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_order_book, market_ticker)
         if ret != RET_OK or not isinstance(data, dict):
             return {"status": "error", "message": f"盘口获取失败: {data}"}
 

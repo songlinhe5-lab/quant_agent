@@ -82,9 +82,7 @@ class CircuitBreaker:
             if elapsed >= self._recovery_timeout:
                 entry.state = CircuitState.HALF_OPEN
                 CIRCUIT_BREAKER_STATE.labels(service=entry.service).set(1)
-                CIRCUIT_BREAKER_TRANSITIONS.labels(
-                    service=entry.service, from_state="open", to_state="half_open"
-                ).inc()
+                CIRCUIT_BREAKER_TRANSITIONS.labels(service=entry.service, from_state="open", to_state="half_open").inc()
                 logger.info("⏳ [CircuitBreaker] 熔断器进入半开状态 (等待探测)")
         return entry.state
 
@@ -93,9 +91,7 @@ class CircuitBreaker:
         entry = self._get_entry(service)
         return self._check_state(entry)
 
-    async def call(
-        self, service: str, func: Callable, *args: Any, **kwargs: Any
-    ) -> Any:  # noqa: E501
+    async def call(self, service: str, func: Callable, *args: Any, **kwargs: Any) -> Any:  # noqa: E501
         """
         通过熔断器调用异步函数。
 
@@ -107,12 +103,8 @@ class CircuitBreaker:
         async with entry.lock:
             state = self._check_state(entry)
             if state == CircuitState.OPEN:
-                remaining = self._recovery_timeout - (
-                    time.monotonic() - entry.last_failure_ts
-                )  # noqa: E501
-                logger.warning(
-                    f"🚫 [CircuitBreaker] {service} 熔断中，剩余 {remaining:.0f}s"
-                )  # noqa: E501
+                remaining = self._recovery_timeout - (time.monotonic() - entry.last_failure_ts)  # noqa: E501
+                logger.warning(f"🚫 [CircuitBreaker] {service} 熔断中，剩余 {remaining:.0f}s")  # noqa: E501
                 raise CircuitBreakerOpenError(
                     msg=f"外部 API [{service}] 熔断中，约 {max(0, int(remaining))}s 后自动恢复",  # noqa: E501
                     service=service,
@@ -131,9 +123,7 @@ class CircuitBreaker:
                     prev_state = entry.state.value
                     entry.state = CircuitState.OPEN
                     CIRCUIT_BREAKER_STATE.labels(service=service).set(2)
-                    CIRCUIT_BREAKER_TRANSITIONS.labels(
-                        service=service, from_state=prev_state, to_state="open"
-                    ).inc()
+                    CIRCUIT_BREAKER_TRANSITIONS.labels(service=service, from_state=prev_state, to_state="open").inc()
                     logger.error(
                         f"🔴 [CircuitBreaker] {service} 连续失败 {entry.failures} 次，触发熔断！"  # noqa: E501
                         f"将在 {self._recovery_timeout}s 后自动半开探测。"
@@ -152,9 +142,7 @@ class CircuitBreaker:
             entry.state = CircuitState.CLOSED
             CIRCUIT_BREAKER_STATE.labels(service=service).set(0)
             if prev_state != "closed":
-                CIRCUIT_BREAKER_TRANSITIONS.labels(
-                    service=service, from_state=prev_state, to_state="closed"
-                ).inc()
+                CIRCUIT_BREAKER_TRANSITIONS.labels(service=service, from_state=prev_state, to_state="closed").inc()
             entry.failures = 0
             entry.last_failure_ts = 0.0
 
@@ -172,9 +160,7 @@ class CircuitBreaker:
         # 同步版状态检查（无锁，简单判断）
         state = self._check_state(entry)
         if state == CircuitState.OPEN:
-            remaining = self._recovery_timeout - (
-                time.monotonic() - entry.last_failure_ts
-            )  # noqa: E501
+            remaining = self._recovery_timeout - (time.monotonic() - entry.last_failure_ts)  # noqa: E501
             raise CircuitBreakerOpenError(
                 msg=f"外部 API [{service}] 熔断中，约 {max(0, int(remaining))}s 后自动恢复",  # noqa: E501
                 service=service,
@@ -187,9 +173,7 @@ class CircuitBreaker:
             entry.last_failure_ts = time.monotonic()
             if entry.failures >= self._max_failures:
                 entry.state = CircuitState.OPEN
-                logger.error(
-                    f"🔴 [CircuitBreaker] {service} 连续失败 {entry.failures} 次，触发熔断！"
-                )  # noqa: E501
+                logger.error(f"🔴 [CircuitBreaker] {service} 连续失败 {entry.failures} 次，触发熔断！")  # noqa: E501
             raise
 
         entry.state = CircuitState.CLOSED

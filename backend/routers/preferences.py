@@ -131,18 +131,14 @@ async def get_watchlist(current_user: models.User = Depends(get_current_user)):
     user_set_key = f"quant:user:{current_user.username}:monitored_stocks"
     try:
         members = await redis_client.smembers(user_set_key)
-        stocks = [
-            m.decode("utf-8") if isinstance(m, bytes) else str(m) for m in members
-        ]  # noqa: E501
+        stocks = [m.decode("utf-8") if isinstance(m, bytes) else str(m) for m in members]  # noqa: E501
         return {"status": "success", "data": stocks}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"获取监控池失败: {str(e)}")
 
 
 @router.post("/watchlist/batch")
-async def batch_update_watchlist(
-    req: WatchlistBatchRequest, current_user: models.User = Depends(get_current_user)
-):  # noqa: E501
+async def batch_update_watchlist(req: WatchlistBatchRequest, current_user: models.User = Depends(get_current_user)):  # noqa: E501
     """一键批量将股票加入或移出系统级监控池，联动后台守护进程"""
     user_set_key = f"quant:user:{current_user.username}:monitored_stocks"
     global_ref_key = "quant:settings:monitored_refcounts"
@@ -162,9 +158,7 @@ async def batch_update_watchlist(
                 is_removed = await redis_client.srem(user_set_key, fmt_ticker)
                 if is_removed:
                     # 全局引用计数-1，若归零则底层彻底释放该标的的网络与内存资源
-                    new_count = await redis_client.hincrby(
-                        global_ref_key, fmt_ticker, -1
-                    )  # noqa: E501
+                    new_count = await redis_client.hincrby(global_ref_key, fmt_ticker, -1)  # noqa: E501
                     if new_count <= 0:
                         await redis_client.hdel(global_ref_key, fmt_ticker)
                     success_count += 1

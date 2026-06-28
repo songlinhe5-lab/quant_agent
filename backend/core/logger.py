@@ -131,9 +131,7 @@ def configure_logging(level: int = logging.INFO) -> logging.Logger:
     配置全局优雅且无阻塞异步持久化的日志系统
     """
     # 1. 终端 Console Handler (高颜值呈现)
-    console_handler = RichHandler(
-        rich_tracebacks=True, tracebacks_show_locals=True, markup=True, console=console
-    )
+    console_handler = RichHandler(rich_tracebacks=True, tracebacks_show_locals=True, markup=True, console=console)
     # 挂载正文颜色包裹器 (RichHandler 默认只提取 msg，因此格式设置为 %(message)s 即可)
     console_handler.setFormatter(ConsoleColorFormatter(fmt="%(message)s"))
 
@@ -162,9 +160,7 @@ def configure_logging(level: int = logging.INFO) -> logging.Logger:
     debug_handler = _create_file_handler("logs/debug.log", [logging.DEBUG])
     info_handler = _create_file_handler("logs/info.log", [logging.INFO])
     warning_handler = _create_file_handler("logs/warning.log", [logging.WARNING])
-    error_handler = _create_file_handler(
-        "logs/error.log", [logging.ERROR, logging.CRITICAL]
-    )  # noqa: E501
+    error_handler = _create_file_handler("logs/error.log", [logging.ERROR, logging.CRITICAL])  # noqa: E501
 
     # 准备好分发列表：终端显示、各级文件落盘
     handlers_for_listener = [
@@ -180,9 +176,7 @@ def configure_logging(level: int = logging.INFO) -> logging.Logger:
     webhook_url = os.getenv("ALERT_WEBHOOK_URL")
     if webhook_url:
         webhook_handler = WebhookAlertHandler(webhook_url)
-        webhook_handler.setLevel(
-            logging.ERROR
-        )  # 核心：仅拦截 ERROR 及以上的严重熔断异常  # noqa: E501
+        webhook_handler.setLevel(logging.ERROR)  # 核心：仅拦截 ERROR 及以上的严重熔断异常  # noqa: E501
         webhook_handler.setFormatter(PlainFileFormatter(fmt="%(message)s"))
         handlers_for_listener.append(webhook_handler)
 
@@ -191,9 +185,7 @@ def configure_logging(level: int = logging.INFO) -> logging.Logger:
     queue_handler = QueueHandler(log_queue)
 
     # 开启后台守护线程，一次性将队列内容分发给所有 handler
-    listener = QueueListener(
-        log_queue, *handlers_for_listener, respect_handler_level=True
-    )  # noqa: E501
+    listener = QueueListener(log_queue, *handlers_for_listener, respect_handler_level=True)  # noqa: E501
     listener.start()
     atexit.register(listener.stop)  # 保证进程退出前，内存队列中的日志能被刷入磁盘
 
@@ -207,9 +199,7 @@ def configure_logging(level: int = logging.INFO) -> logging.Logger:
     for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access", "fastapi"):
         uvicorn_logger = logging.getLogger(logger_name)
         uvicorn_logger.handlers = []  # 清空其自带的 Handler
-        uvicorn_logger.propagate = (
-            True  # 让日志向上冒泡，被我们的 RichHandler 捕获并渲染  # noqa: E501
-        )
+        uvicorn_logger.propagate = True  # 让日志向上冒泡，被我们的 RichHandler 捕获并渲染  # noqa: E501
 
     # 特殊处理：降低 SQLAlchemy 引擎在 INFO 级别下的刷屏噪音
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)

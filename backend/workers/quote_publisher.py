@@ -44,9 +44,7 @@ class QuotePublisher:
         quote_task = futu_service.get_quote(ticker)
         order_book_task = futu_service.get_order_book(ticker)
 
-        results = await asyncio.gather(
-            quote_task, order_book_task, return_exceptions=True
-        )
+        results = await asyncio.gather(quote_task, order_book_task, return_exceptions=True)
 
         quote_result, order_book_result = results
 
@@ -72,9 +70,7 @@ class QuotePublisher:
         # --- 组合数据 ---
         return {
             "ticker": ticker,
-            "last_price": float(
-                quote_result.get("last_price", quote_result.get("price", 0.0))
-            ),
+            "last_price": float(quote_result.get("last_price", quote_result.get("price", 0.0))),
             "change_pct": quote_result.get("change_pct", "0.0%"),
             "volume_str": quote_result.get("volume_str", "--"),
             "bids": bids,
@@ -108,9 +104,7 @@ class QuotePublisher:
                 err_msg = "拉取超时"
             else:
                 err_msg = f"拉取异常 {type(e).__name__}: {e}"
-            logger.error(
-                f"[{ticker}] Futu {err_msg}.系统已关闭 YFinance 兜底，使用 Mock 兜底."
-            )
+            logger.error(f"[{ticker}] Futu {err_msg}.系统已关闭 YFinance 兜底，使用 Mock 兜底.")
             # 终极兜底：防止系统死锁或前端白屏
             data = self._get_mock_data(ticker)
 
@@ -127,13 +121,9 @@ class QuotePublisher:
 
             # 组装盘口 (Bids / Asks)
             for b in data.get("bids", []):
-                quote_msg.bids.append(
-                    Order(price=b.get("price", 0.0), size=b.get("size", 0.0))
-                )
+                quote_msg.bids.append(Order(price=b.get("price", 0.0), size=b.get("size", 0.0)))
             for a in data.get("asks", []):
-                quote_msg.asks.append(
-                    Order(price=a.get("price", 0.0), size=a.get("size", 0.0))
-                )
+                quote_msg.asks.append(Order(price=a.get("price", 0.0), size=a.get("size", 0.0)))
 
             # 2. 序列化为极其紧凑的二进制 Bytes
             payload_bytes = quote_msg.SerializeToString()
@@ -145,9 +135,7 @@ class QuotePublisher:
             # B. 发布到实时总线 (PUBLISH)，供所有已建立 WebSocket 连接的用户实时跳动
             await self.redis.publish("quant:quotes:stream", payload_bytes)  # type: ignore
 
-            log_msg = (
-                f"已推送 {ticker}: {data['last_price']} ({data['source']}) [protobuf]"
-            )
+            log_msg = f"已推送 {ticker}: {data['last_price']} ({data['source']}) [protobuf]"
             if data.get("bids") or data.get("asks"):
                 bid_cnt = len(data.get("bids", []))
                 ask_cnt = len(data.get("asks", []))
@@ -196,6 +184,4 @@ if __name__ == "__main__":
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
-    asyncio.run(
-        QuotePublisher().run_daemon(["US.AAPL", "HK.00700", "US.TSLA"], interval=1.5)
-    )
+    asyncio.run(QuotePublisher().run_daemon(["US.AAPL", "HK.00700", "US.TSLA"], interval=1.5))

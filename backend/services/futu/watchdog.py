@@ -124,14 +124,12 @@ class FutuWatchdog:
                 # 超过最大连续失败次数 → 长休眠
                 delay = self.LONG_SLEEP
                 logger.warning(
-                    f"[FutuWatchdog] 🚨 连续失败 {self._consecutive_failures} 次，"
-                    f"进入长休眠 {delay}s 后重试"
+                    f"[FutuWatchdog] 🚨 连续失败 {self._consecutive_failures} 次，进入长休眠 {delay}s 后重试"
                 )
             else:
                 # 指数退避 + 随机抖动
                 delay = min(
-                    self.BASE_DELAY
-                    * (self.BACKOFF_FACTOR ** (self._consecutive_failures - 1)),  # noqa: E501
+                    self.BASE_DELAY * (self.BACKOFF_FACTOR ** (self._consecutive_failures - 1)),  # noqa: E501
                     self.MAX_DELAY,
                 )
                 # 添加 ±JITTER 随机抖动，防止多节点惊群
@@ -161,9 +159,7 @@ class FutuWatchdog:
                 FUTU_CONNECTION_STATUS.set(1)
             else:
                 FUTU_RECONNECT_FAILURES.inc()
-                logger.error(
-                    f"[FutuWatchdog] ❌ 重连失败 (第 {self._consecutive_failures} 次)"
-                )
+                logger.error(f"[FutuWatchdog] ❌ 重连失败 (第 {self._consecutive_failures} 次)")
 
     async def _health_check(self) -> bool:
         """
@@ -189,9 +185,7 @@ class FutuWatchdog:
             market_ticker = format_ticker(probe_ticker)
 
             ret, df = await asyncio.wait_for(
-                asyncio.to_thread(
-                    self._conn_mgr.quote_ctx.get_stock_quote, [market_ticker]
-                ),
+                asyncio.to_thread(self._conn_mgr.quote_ctx.get_stock_quote, [market_ticker]),
                 timeout=self.HEALTH_TIMEOUT,
             )
 

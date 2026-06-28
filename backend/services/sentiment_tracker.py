@@ -32,11 +32,7 @@ class SentimentTracker:
                         v_val = records[-1].get("Close")
                         if v_val is None:
                             v_val = next(
-                                (
-                                    v
-                                    for k, v in records[-1].items()
-                                    if str(k).startswith("('Close'")
-                                ),
+                                (v for k, v in records[-1].items() if str(k).startswith("('Close'")),
                                 None,
                             )  # noqa: E501
                         if v_val:
@@ -51,20 +47,14 @@ class SentimentTracker:
                         c_val = records[-1].get("Close")
                         if c_val is None:
                             c_val = next(
-                                (
-                                    v
-                                    for k, v in records[-1].items()
-                                    if str(k).startswith("('Close'")
-                                ),
+                                (v for k, v in records[-1].items() if str(k).startswith("('Close'")),
                                 None,
                             )  # noqa: E501
                         if c_val:
                             cpc_val = round(float(c_val), 2)
 
                 # 3. 拟合 Credit Spread (基于 VIX)
-                credit_spread = (
-                    round(2.0 + (vix_val / 10.0), 2) if vix_val is not None else None
-                )  # noqa: E501
+                credit_spread = round(2.0 + (vix_val / 10.0), 2) if vix_val is not None else None  # noqa: E501
 
                 # 4. 存入关系型数据库做持久化
                 def save_to_db():
@@ -77,12 +67,8 @@ class SentimentTracker:
                         db.add(record)
                         db.commit()
 
-                await asyncio.to_thread(
-                    save_to_db
-                )  # 数据库是同步 IO，必须用 to_thread 防止阻塞网关  # noqa: E501
-                print(
-                    f"📈 [Sentiment Tracker] 数据打点成功: VIX={vix_val}, P/C={cpc_val}, Spread={credit_spread}"
-                )  # noqa: E501
+                await asyncio.to_thread(save_to_db)  # 数据库是同步 IO，必须用 to_thread 防止阻塞网关  # noqa: E501
+                print(f"📈 [Sentiment Tracker] 数据打点成功: VIX={vix_val}, P/C={cpc_val}, Spread={credit_spread}")  # noqa: E501
 
             except Exception as e:
                 print(f"❌ [Sentiment Tracker] 记录数据失败: {e}")

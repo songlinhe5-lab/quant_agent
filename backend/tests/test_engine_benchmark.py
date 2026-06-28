@@ -70,9 +70,7 @@ def test_engine_performance_benchmark(large_dataframe, capsys):
     time_ed = time.perf_counter() - start_ed
 
     # Assert that the engine runs within a reasonable time (e.g., < 5 seconds)
-    assert time_ed < 5.0, (
-        f"EventDrivenBacktestEngine took too long: {time_ed:.4f}s"
-    )
+    assert time_ed < 5.0, f"EventDrivenBacktestEngine took too long: {time_ed:.4f}s"
 
     # Use capsys to bypass PyTest's stdout capture and print the results immediately
     with capsys.disabled():

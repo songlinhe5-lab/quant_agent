@@ -54,9 +54,7 @@ class TestCircuitBreaker:
 
         import asyncio
 
-        result = asyncio.get_event_loop().run_until_complete(
-            cb.call("test_svc", success_fn)
-        )  # noqa: E501
+        result = asyncio.get_event_loop().run_until_complete(cb.call("test_svc", success_fn))  # noqa: E501
         assert result == "ok"
         assert cb.get_state("test_svc") == CircuitState.CLOSED
 

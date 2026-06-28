@@ -82,14 +82,10 @@ try:
         if is_pg:
             # 2. 表创建完成后，挂载额外的 GIN 高性能索引
             conn.execute(
-                text(
-                    "CREATE INDEX IF NOT EXISTS trgm_idx_ticker_symbol ON tickers USING gin (symbol gin_trgm_ops);"
-                )
+                text("CREATE INDEX IF NOT EXISTS trgm_idx_ticker_symbol ON tickers USING gin (symbol gin_trgm_ops);")
             )  # noqa: E501
             conn.execute(
-                text(
-                    "CREATE INDEX IF NOT EXISTS trgm_idx_ticker_name ON tickers USING gin (name gin_trgm_ops);"
-                )
+                text("CREATE INDEX IF NOT EXISTS trgm_idx_ticker_name ON tickers USING gin (name gin_trgm_ops);")
             )  # noqa: E501
             print("✅ [System] PostgreSQL pgvector 与 pg_trgm 扩展及全局索引挂载就绪！")
 except Exception as e:
@@ -157,9 +153,7 @@ async def lifespan(app: FastAPI):  # type: ignore
     try:
         loop = asyncio.get_running_loop()
         # 限制 asyncio.to_thread() 的默认线程池大小，防止外部接口卡死时物理线程无限飙升耗尽内存  # noqa: E501
-        executor = concurrent.futures.ThreadPoolExecutor(
-            max_workers=64, thread_name_prefix="GlobalAsyncioWorker"
-        )
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=64, thread_name_prefix="GlobalAsyncioWorker")
         loop.set_default_executor(executor)
 
         # 同时限制 FastAPI (AnyIO) 底层同步路由/依赖函数的最大并发 Worker 数
@@ -175,9 +169,7 @@ async def lifespan(app: FastAPI):  # type: ignore
     print("🚀 [Startup] 正在初始化系统默认账号...")
     try:
         with SessionLocal() as db:
-            admin = (
-                db.query(models.User).filter(models.User.username == "admin").first()
-            )  # noqa: E501
+            admin = db.query(models.User).filter(models.User.username == "admin").first()  # noqa: E501
             if not admin:
                 admin_user = models.User(
                     username="admin",
@@ -214,9 +206,7 @@ async def lifespan(app: FastAPI):  # type: ignore
     # 🧠 [Agent] 初始化 AI 主脑相关服务
     print("🛠️  [Agent Startup] 装载量化 Tools 沙箱网络客户端...")
     global_registry = ToolRegistry()
-    print(
-        f"✅ [Agent Startup] 成功挂载 {len(global_registry.tools)} 个 AI Agent 核心工具！"
-    )  # noqa: E501
+    print(f"✅ [Agent Startup] 成功挂载 {len(global_registry.tools)} 个 AI Agent 核心工具！")  # noqa: E501
 
     print("🔌 [Agent Startup] 初始化全局共享的大模型连接池...")
     global_llm_client = AsyncOpenAI(
@@ -225,20 +215,14 @@ async def lifespan(app: FastAPI):  # type: ignore
     )
 
     # 🚀 启动事件循环健康监控探针
-    loop_monitor_task = asyncio.create_task(
-        system_monitor_service.event_loop_monitor_daemon()
-    )  # noqa: E501
+    loop_monitor_task = asyncio.create_task(system_monitor_service.event_loop_monitor_daemon())  # noqa: E501
 
     await manager.start_background_tasks()  # type: ignore
 
     # BE-03: 启动 Futu OpenD 看门狗守护进程
     futu_watchdog_task = asyncio.create_task(get_watchdog(futu_service).start())
 
-    asyncio.create_task(
-        notification_service.send_alert(
-            "✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！"
-        )
-    )  # noqa: E501
+    asyncio.create_task(notification_service.send_alert("✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！"))  # noqa: E501
 
     asyncio.create_task(
         finnhub_service._insider_transactions_marquee_daemon()
@@ -371,14 +355,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     errors = []
     for err in exc.errors():
         loc = " -> ".join(str(l) for l in err["loc"]) if err.get("loc") else ""  # noqa: E741
-        errors.append(
-            {"field": loc, "msg": err.get("msg", ""), "type": err.get("type", "")}
-        )  # noqa: E501
+        errors.append({"field": loc, "msg": err.get("msg", ""), "type": err.get("type", "")})  # noqa: E501
     body = {
         "code": int(ErrorCode.VALIDATION_FAILED),
-        "msg": f"请求参数校验失败: {exc.errors()[0]['msg']}"
-        if exc.errors()
-        else "请求参数校验失败",  # noqa: E501
+        "msg": f"请求参数校验失败: {exc.errors()[0]['msg']}" if exc.errors() else "请求参数校验失败",  # noqa: E501
         "data": errors,
         "ts": int(time.time() * 1000),
     }
@@ -467,9 +447,7 @@ async def response_envelope_middleware(request: Request, call_next):
 
     # 包装旧式响应
     envelope = {
-        "code": 0
-        if 200 <= response.status_code < 300
-        else int(ErrorCode.INTERNAL_ERROR),  # noqa: E501
+        "code": 0 if 200 <= response.status_code < 300 else int(ErrorCode.INTERNAL_ERROR),  # noqa: E501
         "msg": "ok"
         if 200 <= response.status_code < 300
         else (data.get("message", "error") if isinstance(data, dict) else "error"),  # noqa: E501
@@ -585,9 +563,7 @@ async def rate_limit_middleware(request: Request, call_next):
             # 使用 Redis Pipeline 保证高频操作的原子性与极致性能
             async with redis_client.pipeline() as pipe:
                 await pipe.incr(key)
-                await pipe.expire(
-                    key, RATE_WINDOW, nx=True
-                )  # 仅在键刚创建时设置过期时间 (需 Redis 7.0+)  # noqa: E501
+                await pipe.expire(key, RATE_WINDOW, nx=True)  # 仅在键刚创建时设置过期时间 (需 Redis 7.0+)  # noqa: E501
                 results = await pipe.execute()
 
             current_requests = results[0]
@@ -613,12 +589,8 @@ async def slow_request_middleware(request: Request, call_next):
     start_time = time.perf_counter()
     response = await call_next(request)
     process_time = time.perf_counter() - start_time
-    if process_time > 1.5 and not request.url.path.startswith(
-        "/api/chat"
-    ):  # 过滤掉原本就耗时的 AI 对话  # noqa: E501
-        print(
-            f"🐢 [Slow Request] {request.method} {request.url.path} 耗时: {process_time:.2f}s"
-        )  # noqa: E501
+    if process_time > 1.5 and not request.url.path.startswith("/api/chat"):  # 过滤掉原本就耗时的 AI 对话  # noqa: E501
+        print(f"🐢 [Slow Request] {request.method} {request.url.path} 耗时: {process_time:.2f}s")  # noqa: E501
         asyncio.create_task(
             asyncio.to_thread(
                 system_monitor_service._save_performance_log,
@@ -632,9 +604,7 @@ async def slow_request_middleware(request: Request, call_next):
 
 # 允许 Vite 等前端本地代理发起请求（SEC-11：CORS 白名单配置，禁止 *）
 # 生产环境应在 .env 中配置 ALLOWED_ORIGINS 环境变量，多个域名用逗号分隔
-ALLOWED_ORIGINS = os.getenv(
-    "ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000"
-).split(",")
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -708,10 +678,7 @@ def _read_file_sync(target_file: str, ext: str) -> str:
                     page_text += "\n\n[本页表格数据]:\n"
                     for table in tables:
                         for row in table:
-                            clean_row = [
-                                str(cell).replace("\n", " ").strip() if cell else ""
-                                for cell in row
-                            ]  # noqa: E501
+                            clean_row = [str(cell).replace("\n", " ").strip() if cell else "" for cell in row]  # noqa: E501
                             page_text += " | ".join(clean_row) + "\n"
                         page_text += "\n"
                 if page_text.strip():
@@ -734,9 +701,7 @@ async def get_financial_report(ticker: str, chunk_index: int = 0):
     if not safe_ticker:
         raise HTTPException(status_code=400, detail="非法的股票代码参数")
 
-    reports_dir = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "reports")
-    )  # noqa: E501
+    reports_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "reports"))  # noqa: E501
     os.makedirs(reports_dir, exist_ok=True)
     search_pattern = os.path.join(reports_dir, f"*{safe_ticker}*.*")
     matched_files = glob.glob(search_pattern)
@@ -783,9 +748,7 @@ class YFinanceToggle(BaseModel):
 @app.post("/api/v1/settings/yfinance")
 async def toggle_yfinance(payload: YFinanceToggle):
     """前端一键控制 YFinance 兜底开关"""
-    await l1_cached_redis.set(
-        "quant:settings:yfinance_enabled", "1" if payload.enabled else "0"
-    )  # noqa: E501
+    await l1_cached_redis.set("quant:settings:yfinance_enabled", "1" if payload.enabled else "0")  # noqa: E501
     return {
         "status": "success",
         "message": f"YFinance 兜底已{'开启' if payload.enabled else '关闭'}",
@@ -991,19 +954,13 @@ async def get_chat_suggestions(limit: int = 10):
                 prompt = f"请结合当前的{theme}，帮我{action}：{asset}。"
             elif template_idx == 2:
                 title = f"{indicator} {asset}策略"
-                prompt = (
-                    f"我想要针对 {asset} 交易，请结合 {indicator} 指标，帮我{action}。"  # noqa: E501
-                )
+                prompt = f"我想要针对 {asset} 交易，请结合 {indicator} 指标，帮我{action}。"  # noqa: E501
             elif template_idx == 3:
                 title = f"深挖 {asset} {theme}"
-                prompt = (
-                    f"目前 {asset} 的{theme}表现如何？结合 {indicator} 数据，{action}。"  # noqa: E501
-                )
+                prompt = f"目前 {asset} 的{theme}表现如何？结合 {indicator} 数据，{action}。"  # noqa: E501
             elif template_idx == 4:
                 title = f"量化因子: {indicator}"
-                prompt = (
-                    f"我想利用 Pandas 计算 {asset} 的 {indicator} 因子，请{action}。"  # noqa: E501
-                )
+                prompt = f"我想利用 Pandas 计算 {asset} 的 {indicator} 因子，请{action}。"  # noqa: E501
             else:
                 title = f"{asset} 风险预警"
                 prompt = f"假设我重仓了 {asset}，请从{theme}的角度，结合 {indicator}，帮我{action}。"  # noqa: E501
@@ -1030,9 +987,7 @@ class ChatRequest(BaseModel):
 
 
 @app.post("/api/v1/chat")
-async def chat_endpoint(
-    request: ChatRequest, username: str = Depends(get_current_user)
-):  # noqa: E501
+async def chat_endpoint(request: ChatRequest, username: str = Depends(get_current_user)):  # noqa: E501
     """接收前端对话并调用 Hermes Agent (流式)"""
     global global_registry, global_llm_client, redis_client
     if not global_registry:
@@ -1058,10 +1013,7 @@ async def chat_endpoint(
 
             # 🛡️ 边界防御：防范前端传入恶意超大文本引发 Token 上下文溢出
             if len(user_message) > 20000:
-                user_message = (
-                    user_message[:20000]
-                    + "\n\n...[⚠️ 用户输入过长，已被系统安全机制自动截断保护]"
-                )  # noqa: E501
+                user_message = user_message[:20000] + "\n\n...[⚠️ 用户输入过长，已被系统安全机制自动截断保护]"  # noqa: E501
 
     async def generate_response():
         try:
@@ -1117,16 +1069,10 @@ async def get_sessions(
             for r in records:
                 if r.title == "新对话" and r.messages:
                     for m in r.messages:
-                        if (
-                            isinstance(m, dict)
-                            and m.get("role") == "user"
-                            and m.get("content")
-                        ):  # noqa: E501
+                        if isinstance(m, dict) and m.get("role") == "user" and m.get("content"):  # noqa: E501
                             content_str = str(m.get("content")).strip()
                             if content_str:
-                                r.title = content_str[:20] + (
-                                    "..." if len(content_str) > 20 else ""
-                                )  # noqa: E501
+                                r.title = content_str[:20] + ("..." if len(content_str) > 20 else "")  # noqa: E501
                                 needs_commit = True
                                 break
 
@@ -1156,16 +1102,10 @@ async def get_sessions(
 
                 res_data.append(
                     {
-                        "session_id": r.session_id[len(prefix) :]
-                        if r.session_id.startswith(prefix)
-                        else r.session_id,  # noqa: E501
+                        "session_id": r.session_id[len(prefix) :] if r.session_id.startswith(prefix) else r.session_id,  # noqa: E501
                         "title": r.title,
-                        "created_at": r.created_at.isoformat()
-                        if getattr(r, "created_at", None)
-                        else "",  # noqa: E501
-                        "updated_at": r.updated_at.isoformat()
-                        if getattr(r, "updated_at", None)
-                        else "",  # noqa: E501
+                        "created_at": r.created_at.isoformat() if getattr(r, "created_at", None) else "",  # noqa: E501
+                        "updated_at": r.updated_at.isoformat() if getattr(r, "updated_at", None) else "",  # noqa: E501
                         "message_count": display_count,
                     }
                 )
@@ -1179,19 +1119,13 @@ async def get_sessions(
 
 
 @app.get("/api/v1/sessions/{session_id}")
-async def get_session_history(
-    session_id: str, username: str = Depends(get_current_user)
-):  # noqa: E501
+async def get_session_history(session_id: str, username: str = Depends(get_current_user)):  # noqa: E501
     """获取指定会话的历史详细消息"""
     safe_session_id = f"user_{username}_{session_id}"
 
     def fetch_history():
         with SessionLocal() as db:
-            record = (
-                db.query(models.AgentSession)
-                .filter(models.AgentSession.session_id == safe_session_id)
-                .first()
-            )  # noqa: E501
+            record = db.query(models.AgentSession).filter(models.AgentSession.session_id == safe_session_id).first()  # noqa: E501
             if record:
                 return record.messages
             return []
@@ -1210,11 +1144,7 @@ async def delete_all_sessions(username: str = Depends(get_current_user)):
 
     def drop_all():
         with SessionLocal() as db:
-            records = (
-                db.query(models.AgentSession)
-                .filter(models.AgentSession.session_id.startswith(prefix))
-                .all()
-            )  # noqa: E501
+            records = db.query(models.AgentSession).filter(models.AgentSession.session_id.startswith(prefix)).all()  # noqa: E501
             if not records:
                 return False
             for r in records:
@@ -1229,9 +1159,7 @@ async def delete_all_sessions(username: str = Depends(get_current_user)):
         # 2. 从 Redis 缓存中清除热数据
         cursor = 0
         while True:
-            cursor, keys = await redis_client.scan(
-                cursor=cursor, match=f"hermes:memory:{prefix}*", count=100
-            )  # noqa: E501
+            cursor, keys = await redis_client.scan(cursor=cursor, match=f"hermes:memory:{prefix}*", count=100)  # noqa: E501
             if keys:
                 await redis_client.delete(*keys)
             if cursor == 0:
@@ -1252,11 +1180,7 @@ async def delete_session(session_id: str, username: str = Depends(get_current_us
 
     def drop_session():
         with SessionLocal() as db:
-            record = (
-                db.query(models.AgentSession)
-                .filter(models.AgentSession.session_id == safe_session_id)
-                .first()
-            )  # noqa: E501
+            record = db.query(models.AgentSession).filter(models.AgentSession.session_id == safe_session_id).first()  # noqa: E501
             if not record:
                 return False
             db.delete(record)
@@ -1284,25 +1208,16 @@ async def delete_session(session_id: str, username: str = Depends(get_current_us
 # --- 系统性能监控日志 API ---
 # ==========================================
 @app.get("/api/system/performance-logs")
-async def get_performance_logs(
-    limit: int = 100, username: str = Depends(get_current_user)
-):  # noqa: E501
+async def get_performance_logs(limit: int = 100, username: str = Depends(get_current_user)):  # noqa: E501
     """获取系统性能监控日志 (慢请求与事件循环卡顿)"""
 
     def fetch_logs():
         with SessionLocal() as db:
-            logs = (
-                db.query(models.PerformanceLog)
-                .order_by(models.PerformanceLog.timestamp.desc())
-                .limit(limit)
-                .all()
-            )  # noqa: E501
+            logs = db.query(models.PerformanceLog).order_by(models.PerformanceLog.timestamp.desc()).limit(limit).all()  # noqa: E501
             return [
                 {
                     "id": log.id,
-                    "timestamp": log.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-                    if log.timestamp
-                    else "",  # noqa: E501
+                    "timestamp": log.timestamp.strftime("%Y-%m-%d %H:%M:%S") if log.timestamp else "",  # noqa: E501
                     "log_type": log.log_type,
                     "duration_ms": log.duration_ms,
                     "endpoint": log.endpoint,
@@ -1336,17 +1251,11 @@ async def mcp_sse(request: Request):
             while True:
                 try:
                     msg = await asyncio.wait_for(
-                        pubsub.get_message(
-                            ignore_subscribe_messages=True, timeout=15.0
-                        ),
+                        pubsub.get_message(ignore_subscribe_messages=True, timeout=15.0),
                         timeout=15.0,
                     )  # noqa: E501
                     if msg and msg["type"] == "message":
-                        message_str = (
-                            msg["data"].decode("utf-8")
-                            if isinstance(msg["data"], bytes)
-                            else msg["data"]
-                        )  # noqa: E501
+                        message_str = msg["data"].decode("utf-8") if isinstance(msg["data"], bytes) else msg["data"]  # noqa: E501
                         yield f"data: {message_str}\n\n"
                     elif msg is None:
                         yield ": keep-alive\n\n"
@@ -1379,22 +1288,16 @@ async def mcp_message(session_id: str, payload: dict):
     )
 
     # 💡 分布式广播：不论是哪台机器建立的 SSE 连接，都能通过 Redis 通道精准投递，完美支持负载均衡  # noqa: E501
-    receivers = await redis_client.publish(
-        f"mcp_session_{session_id}", response_payload
-    )  # noqa: E501
+    receivers = await redis_client.publish(f"mcp_session_{session_id}", response_payload)  # noqa: E501
     if receivers == 0:
-        raise HTTPException(
-            status_code=404, detail="Session not found or expired on any cluster node"
-        )  # noqa: E501
+        raise HTTPException(status_code=404, detail="Session not found or expired on any cluster node")  # noqa: E501
 
     return "Accepted"
 
 
 # 挂载 React 编译后的静态资源目录 (JS/CSS 等)
 # 注意: 如果前端使用 Create React App 构建，产物目录可能是 "build" 而不是 "dist"
-dist_dir = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
-)  # noqa: E501
+dist_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))  # noqa: E501
 assets_dir = os.path.join(dist_dir, "assets")
 if os.path.exists(assets_dir):
     app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
@@ -1405,7 +1308,5 @@ async def monitor_page():
     """代理 React 编译后的入口 index.html"""
     html_path = os.path.join(dist_dir, "index.html")
     if not os.path.exists(html_path):
-        raise HTTPException(
-            status_code=404, detail="前端编译文件不存在，请先执行 npm run build"
-        )  # noqa: E501
+        raise HTTPException(status_code=404, detail="前端编译文件不存在，请先执行 npm run build")  # noqa: E501
     return FileResponse(html_path)

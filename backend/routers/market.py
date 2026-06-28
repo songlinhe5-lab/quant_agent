@@ -96,9 +96,7 @@ async def quotes_websocket(websocket: WebSocket):
                 action = msg.get("action")
                 req_tickers = msg.get("tickers", [])
                 if isinstance(req_tickers, str):
-                    req_tickers = [
-                        t.strip() for t in req_tickers.split(",") if t.strip()
-                    ]  # noqa: E501
+                    req_tickers = [t.strip() for t in req_tickers.split(",") if t.strip()]  # noqa: E501
 
                 # 核心防御：自动格式化前端传来的各种混用格式为 Futu 官方强前缀格式
                 req_tickers = [format_ticker(t) for t in req_tickers]
@@ -118,9 +116,7 @@ async def quotes_websocket(websocket: WebSocket):
                                 "msg": "ok",
                                 "data": {
                                     "subscribed": new_tickers,
-                                    "already_subscribed": [
-                                        t for t in req_tickers if t not in new_tickers
-                                    ],
+                                    "already_subscribed": [t for t in req_tickers if t not in new_tickers],
                                 },  # noqa: E501
                                 "ts": int(time.time() * 1000),
                             }
@@ -207,20 +203,14 @@ async def get_services_health():
     health_data = []
 
     # 1. Futu OpenD
-    f_status = (
-        "healthy"
-        if getattr(futu_service, "status", "") == "CONNECTED"
-        else "disconnected"
-    )  # noqa: E501
+    f_status = "healthy" if getattr(futu_service, "status", "") == "CONNECTED" else "disconnected"  # noqa: E501
     f_msg = getattr(futu_service, "error_msg", "")
     health_data.append(
         {
             "name": "Futu OpenD",
             "status": f_status,
             "cooldown_remaining": 0,
-            "message": f_msg
-            if f_msg
-            else ("已连接" if f_status == "healthy" else "未连接"),
+            "message": f_msg if f_msg else ("已连接" if f_status == "healthy" else "未连接"),
         }
     )
 
@@ -261,9 +251,7 @@ async def get_quote(ticker: str):
             ak_res = await akshare_service.get_stock_quote(ticker)
             if ak_res.get("status") == "success":
                 return ak_res
-            print(
-                f"⚠️ [Quote] AKShare 获取 {ticker} 失败 ({ak_res.get('message')})，继续降级雅虎财经..."
-            )  # noqa: E501
+            print(f"⚠️ [Quote] AKShare 获取 {ticker} 失败 ({ak_res.get('message')})，继续降级雅虎财经...")  # noqa: E501
 
         yf_ticker = _to_yf_ticker(ticker)
         success, info, msg = await yf_service.fetch_yf_data(yf_ticker, "info", ttl=60)
@@ -295,25 +283,18 @@ async def get_quote(ticker: str):
                     "change_val": change,
                     "change_pct": change_pct,  # noqa: E501
                     "amplitude": (
-                        (
-                            info.get("regularMarketDayHigh", 0)
-                            - info.get("regularMarketDayLow", 0)
-                        )
+                        (info.get("regularMarketDayHigh", 0) - info.get("regularMarketDayLow", 0))
                         / info.get("previousClose", 1)
                         * 100
                         if info.get("previousClose")
                         else 0
                     ),  # noqa: E501
-                    "volume_str": f"{volume / 1_000_000:.2f}M"
-                    if volume > 1_000_000
-                    else f"{volume / 1_000:.2f}K",  # noqa: E501
+                    "volume_str": f"{volume / 1_000_000:.2f}M" if volume > 1_000_000 else f"{volume / 1_000:.2f}K",  # noqa: E501
                 },
                 "source": "yfinance_fallback",
             }
         else:
-            raise HTTPException(
-                status_code=400, detail=f"Futu: {res.get('message')}, YFinance: {msg}"
-            )  # noqa: E501
+            raise HTTPException(status_code=400, detail=f"Futu: {res.get('message')}, YFinance: {msg}")  # noqa: E501
     return res
 
 
@@ -331,13 +312,9 @@ async def sync_kline_warehouse(req: SyncKlineRequest):
     ktype = interval_map.get(req.interval, "K_DAY")
 
     try:
-        print(
-            f"📦 [Market API] 收到前端手动数据同步请求: {req.ticker} ({req.interval})"
-        )  # noqa: E501
+        print(f"📦 [Market API] 收到前端手动数据同步请求: {req.ticker} ({req.interval})")  # noqa: E501
         # 调用本地数仓的更新方法 (自动执行增量追加或全量降级拉取)
-        success = await kline_warehouse.update_ticker(
-            req.ticker, ktype=ktype, force_full=req.force_full
-        )  # noqa: E501
+        success = await kline_warehouse.update_ticker(req.ticker, ktype=ktype, force_full=req.force_full)  # noqa: E501
 
         if success:
             return {
@@ -345,9 +322,7 @@ async def sync_kline_warehouse(req: SyncKlineRequest):
                 "message": f"{req.ticker} ({req.interval}) 历史数据已成功同步并安全落库！可以继续回测。",
             }  # noqa: E501
         else:
-            raise HTTPException(
-                status_code=500, detail="数据同步失败，API额度可能已耗尽或标的退市。"
-            )  # noqa: E501
+            raise HTTPException(status_code=500, detail="数据同步失败，API额度可能已耗尽或标的退市。")  # noqa: E501
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -383,13 +358,7 @@ async def get_history(ticker: str, ktype: str = "K_DAY", num: int = 60):
             "K_WEEK": "1wk",
         }
         yf_interval = ktype_mapping.get(ktype, "1d")
-        period = (
-            "7d"
-            if yf_interval in ["1m", "5m"]
-            else "1mo"
-            if yf_interval in ["15m", "30m", "60m"]
-            else "1y"
-        )  # noqa: E501
+        period = "7d" if yf_interval in ["1m", "5m"] else "1mo" if yf_interval in ["15m", "30m", "60m"] else "1y"  # noqa: E501
 
         success, df_data, msg = await yf_service.fetch_yf_data(
             yf_ticker, "history", ttl=60, period=period, interval=yf_interval
@@ -406,12 +375,7 @@ async def get_history(ticker: str, ktype: str = "K_DAY", num: int = 60):
             def _format_history(df):
                 df_formatted = pd.DataFrame(
                     {
-                        "time": pd.Series(df.index)
-                        .astype(str)
-                        .str.split("+")
-                        .str[0]
-                        .str.replace("T", " ")
-                        .values,  # noqa: E501
+                        "time": pd.Series(df.index).astype(str).str.split("+").str[0].str.replace("T", " ").values,  # noqa: E501
                         "open": df["Open"].astype(float).values,
                         "high": df["High"].astype(float).values,
                         "low": df["Low"].astype(float).values,
@@ -434,9 +398,7 @@ async def get_option_chain(ticker: str, expiration_date: str = ""):
     if res.get("status") == "error":
         msg = res.get("message", "")
         if "原生不支持" not in msg:
-            print(
-                f"⚠️ [Option Chain] 券商数据获取 {ticker} 期权链失败 ({msg})，尝试降级雅虎财经..."
-            )  # noqa: E501
+            print(f"⚠️ [Option Chain] 券商数据获取 {ticker} 期权链失败 ({msg})，尝试降级雅虎财经...")  # noqa: E501
 
         yf_ticker = _to_yf_ticker(ticker)
         try:
@@ -463,9 +425,7 @@ async def get_option_chain(ticker: str, expiration_date: str = ""):
                             "option_type": "CALL",
                             "strike_price": float(row.get("strike", 0.0)),
                             "last_price": float(row.get("lastPrice", 0.0) or 0.0),
-                            "implied_volatility": float(
-                                row.get("impliedVolatility", 0.0) or 0.0
-                            ),  # noqa: E501
+                            "implied_volatility": float(row.get("impliedVolatility", 0.0) or 0.0),  # noqa: E501
                         }
                     )
                 for _, row in chain.puts.head(30).iterrows():
@@ -475,9 +435,7 @@ async def get_option_chain(ticker: str, expiration_date: str = ""):
                             "option_type": "PUT",
                             "strike_price": float(row.get("strike", 0.0)),
                             "last_price": float(row.get("lastPrice", 0.0) or 0.0),
-                            "implied_volatility": float(
-                                row.get("impliedVolatility", 0.0) or 0.0
-                            ),  # noqa: E501
+                            "implied_volatility": float(row.get("impliedVolatility", 0.0) or 0.0),  # noqa: E501
                         }
                     )
 
@@ -542,23 +500,17 @@ async def get_tech_indicators(ticker: str, lookback_days: int = 1):
                 )
                 if res.get("status") == "success":
                     return res
-                print(
-                    f"⚠️ [Tech Indicators] 券商数据指标计算返回异常: {res.get('message')}，尝试降级..."
-                )  # noqa: E501
+                print(f"⚠️ [Tech Indicators] 券商数据指标计算返回异常: {res.get('message')}，尝试降级...")  # noqa: E501
         except Exception as e:
             print(f"⚠️ [Tech Indicators] 券商数据计算异常: {e}，尝试降级雅虎财经...")
     else:
         msg = futu_res.get("message", "")
         if "原生不支持" not in msg:
-            print(
-                f"⚠️ [Tech Indicators] 券商历史数据获取受阻 ({msg})，尝试降级雅虎财经..."
-            )  # noqa: E501
+            print(f"⚠️ [Tech Indicators] 券商历史数据获取受阻 ({msg})，尝试降级雅虎财经...")  # noqa: E501
 
     # 2. 降级走雅虎财经
     yf_ticker = _to_yf_ticker(ticker)
-    res = await yf_service.get_tech_indicators(
-        ticker=yf_ticker, lookback_days=lookback_days
-    )  # noqa: E501
+    res = await yf_service.get_tech_indicators(ticker=yf_ticker, lookback_days=lookback_days)  # noqa: E501
     if res.get("status") == "error":
         raise HTTPException(status_code=400, detail=res.get("message"))
     return res
@@ -619,15 +571,11 @@ async def get_company_news(ticker: str, limit: int = 10):
                 res = await finnhub_service.get_company_news(ticker, days_back=14)
                 if res.get("status") == "success" and res.get("data"):
                     data = res.get("data", [])
-                    data = sorted(
-                        data, key=lambda x: x.get("datetime", 0), reverse=True
-                    )[:limit]  # noqa: E501
+                    data = sorted(data, key=lambda x: x.get("datetime", 0), reverse=True)[:limit]  # noqa: E501
 
                     formatted_news = []
                     for item in data:
-                        dt = datetime.fromtimestamp(item.get("datetime", 0)).strftime(
-                            "%Y-%m-%d %H:%M:%S"
-                        )  # noqa: E501
+                        dt = datetime.fromtimestamp(item.get("datetime", 0)).strftime("%Y-%m-%d %H:%M:%S")  # noqa: E501
                         formatted_news.append(
                             {
                                 "time": dt,
@@ -722,12 +670,7 @@ async def get_fundamental(ticker: str):
 
     index_indicators = ["HSI", "DJI", "800000", "800700", "SSEC", "CSI300"]
     if (
-        any(
-            idx == upper_ticker
-            or f".{idx}" in upper_ticker
-            or f"{idx}." in upper_ticker
-            for idx in index_indicators
-        )
+        any(idx == upper_ticker or f".{idx}" in upper_ticker or f"{idx}." in upper_ticker for idx in index_indicators)
         or "BK" in upper_ticker
     ):  # noqa: E501
         return {
@@ -744,9 +687,7 @@ async def get_fundamental(ticker: str):
         final_data.update(futu_res["data"])
     else:
         # Futu 获取失败，才发起 YFinance 兜底请求
-        yf_success, yf_info, yf_msg = await yf_service.fetch_yf_data(
-            yf_ticker, "info", ttl=43200, persist=True
-        )  # noqa: E501
+        yf_success, yf_info, yf_msg = await yf_service.fetch_yf_data(yf_ticker, "info", ttl=43200, persist=True)  # noqa: E501
         if not yf_success:
             raise HTTPException(
                 status_code=400,
@@ -761,15 +702,11 @@ async def get_fundamental(ticker: str):
                     "message": f"[{ticker}] 属于 ETF 基金，没有个股维度的 PE/PB/ROE 等估值指标。",  # noqa: E501
                     "data": {
                         "ticker": ticker,
-                        "company_name": yf_info.get(
-                            "shortName", yf_info.get("longName")
-                        ),  # noqa: E501
+                        "company_name": yf_info.get("shortName", yf_info.get("longName")),  # noqa: E501
                         "fund_family": yf_info.get("fundFamily"),
                         "total_assets": yf_info.get("totalAssets"),  # noqa: E501
                         "nav_price": yf_info.get("navPrice"),
-                        "yield": f"{yf_info.get('yield', 0) * 100:.2f}%"
-                        if yf_info.get("yield")
-                        else None,  # noqa: E501
+                        "yield": f"{yf_info.get('yield', 0) * 100:.2f}%" if yf_info.get("yield") else None,  # noqa: E501
                         "beta": yf_info.get("beta"),
                     },
                 }
@@ -781,9 +718,7 @@ async def get_fundamental(ticker: str):
                 "forward_PE": yf_info.get("forwardPE"),
                 "PEG_ratio": yf_info.get("pegRatio"),
                 "price_to_book": yf_info.get("priceToBook"),  # noqa: E501
-                "ROE": f"{yf_info.get('returnOnEquity', 0) * 100:.2f}%"
-                if yf_info.get("returnOnEquity")
-                else None,  # noqa: E501
+                "ROE": f"{yf_info.get('returnOnEquity', 0) * 100:.2f}%" if yf_info.get("returnOnEquity") else None,  # noqa: E501
                 "short_ratio": yf_info.get("shortRatio"),
                 "beta": yf_info.get("beta"),
             }
@@ -825,9 +760,7 @@ async def get_insider_marquee(limit: int = 10):
 
         return {"status": "success", "data": transactions}
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"获取内幕交易跑马灯数据失败: {str(e)}"
-        )  # noqa: E501
+        raise HTTPException(status_code=500, detail=f"获取内幕交易跑马灯数据失败: {str(e)}")  # noqa: E501
 
 
 @router.get("/insider-transactions")

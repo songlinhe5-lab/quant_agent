@@ -58,9 +58,7 @@ async def place_order(
             else:
                 acc_info = await futu_service.get_account_info()
                 if acc_info.get("status") == "error":
-                    raise HTTPException(
-                        status_code=500, detail="风控中断：无法获取当前账户总资产。"
-                    )  # noqa: E501
+                    raise HTTPException(status_code=500, detail="风控中断：无法获取当前账户总资产。")  # noqa: E501
                 # 将结果写入 Redis 缓存，设置 5 秒的 TTL 生命周期。
                 # 5秒内哪怕并发 1000 笔发单，也只会调用 1 次真实 Futu API！
                 await redis_client.set(ACCOUNT_CACHE_KEY, json.dumps(acc_info), ex=5)
@@ -75,12 +73,8 @@ async def place_order(
         try:
             yf_ticker = _to_yf_ticker(ticker)
             # 获取最新的技术指标 (命中本地缓存，无延迟)
-            tech_res = await yf_service.get_tech_indicators(
-                ticker=yf_ticker, lookback_days=1
-            )  # noqa: E501
-            if tech_res.get("status") == "success" and tech_res.get("data", {}).get(
-                "trend"
-            ):  # noqa: E501
+            tech_res = await yf_service.get_tech_indicators(ticker=yf_ticker, lookback_days=1)  # noqa: E501
+            if tech_res.get("status") == "success" and tech_res.get("data", {}).get("trend"):  # noqa: E501
                 latest_tech = tech_res["data"]["trend"][0]
                 atr_14 = latest_tech.get("ATR_14")
 
@@ -94,9 +88,7 @@ async def place_order(
                         )  # noqa: E501
 
                     # 规则 B: 基于 2 倍 ATR 自动计算建议止损位
-                    dynamic_sl_price = round(
-                        price - 2 * atr_14 if action == "BUY" else price + 2 * atr_14, 3
-                    )  # noqa: E501
+                    dynamic_sl_price = round(price - 2 * atr_14 if action == "BUY" else price + 2 * atr_14, 3)  # noqa: E501
         except Exception as e:
             print(f"⚠️ [Risk Control] ATR 动态风控测算异常，跳过辅助校验: {e}")
 
@@ -175,12 +167,7 @@ async def get_portfolio():
 @router.get("/trades")
 def get_trades(limit: int = 100, db: Session = Depends(get_db)):
     """从 PostgreSQL 获取最新的交易日志"""
-    logs = (
-        db.query(models.TradeLog)
-        .order_by(models.TradeLog.timestamp.desc())
-        .limit(limit)
-        .all()
-    )  # noqa: E501
+    logs = db.query(models.TradeLog).order_by(models.TradeLog.timestamp.desc()).limit(limit).all()  # noqa: E501
     return [
         {
             "id": log.id,

@@ -81,14 +81,10 @@ async def httpx_log_response(response: httpx.Response):
         method=request.method,
         http_status=response.status_code,
     ).inc()  # noqa: E501
-    EXTERNAL_API_LATENCY.labels(
-        service_name=service_name, method=request.method
-    ).observe(process_time)  # noqa: E501
+    EXTERNAL_API_LATENCY.labels(service_name=service_name, method=request.method).observe(process_time)  # noqa: E501
 
     if process_time > 3.0:
-        logger.warning(
-            f"🐢 [Slow Egress API] {service_name} ({request.method} {host}) 耗时: {process_time:.2f}s"
-        )  # noqa: E501
+        logger.warning(f"🐢 [Slow Egress API] {service_name} ({request.method} {host}) 耗时: {process_time:.2f}s")  # noqa: E501
 
 
 class AccessLogMiddleware(BaseHTTPMiddleware):
@@ -111,25 +107,13 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
             endpoint = route.path if route else "UNMATCHED_ROUTE"
 
             # 收集 Prometheus 监控数据 (纯内存操作，耗时约几百纳秒)
-            REQUEST_COUNT.labels(
-                method=method, endpoint=endpoint, http_status=status_code
-            ).inc()  # noqa: E501
-            REQUEST_LATENCY.labels(method=method, endpoint=endpoint).observe(
-                process_time
-            )  # noqa: E501
+            REQUEST_COUNT.labels(method=method, endpoint=endpoint, http_status=status_code).inc()  # noqa: E501
+            REQUEST_LATENCY.labels(method=method, endpoint=endpoint).observe(process_time)  # noqa: E501
 
             # 根据耗时动态染色：< 100ms 绿色，< 500ms 黄色，> 500ms 红色警报
-            color = (
-                "green"
-                if process_time < 0.1
-                else ("yellow" if process_time < 0.5 else "red")
-            )  # noqa: E501
+            color = "green" if process_time < 0.1 else ("yellow" if process_time < 0.5 else "red")  # noqa: E501
 
-            logger.info(
-                f"[{color}]{method}[/] {endpoint} "
-                f"- Status: {status_code} "
-                f"- [cyan]{process_time:.4f}s[/]"
-            )
+            logger.info(f"[{color}]{method}[/] {endpoint} - Status: {status_code} - [cyan]{process_time:.4f}s[/]")
             return response
 
         except Exception:
@@ -141,14 +125,8 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
             endpoint = route.path if route else "UNMATCHED_ROUTE"
 
             # 保证发生报错时，监控大盘同样能够捕捉到 500 熔断与耗时
-            REQUEST_COUNT.labels(
-                method=method, endpoint=endpoint, http_status=500
-            ).inc()  # noqa: E501
-            REQUEST_LATENCY.labels(method=method, endpoint=endpoint).observe(
-                process_time
-            )  # noqa: E501
+            REQUEST_COUNT.labels(method=method, endpoint=endpoint, http_status=500).inc()  # noqa: E501
+            REQUEST_LATENCY.labels(method=method, endpoint=endpoint).observe(process_time)  # noqa: E501
 
-            logger.exception(
-                f"[red]🔥 接口异常熔断[/] {method} {endpoint} - [cyan]{process_time:.4f}s[/]"
-            )  # noqa: E501
+            logger.exception(f"[red]🔥 接口异常熔断[/] {method} {endpoint} - [cyan]{process_time:.4f}s[/]")  # noqa: E501
             raise

@@ -71,16 +71,13 @@ class TickerService:
                                     or_(
                                         TickerItem.symbol.ilike(f"%{query_upper}%"),
                                         TickerItem.name.ilike(f"%{query_upper}%"),
-                                        sim_symbol
-                                        > 0.15,  # 相似度 > 0.15 即被召回 (容忍 APPL -> AAPL)  # noqa: E501
+                                        sim_symbol > 0.15,  # 相似度 > 0.15 即被召回 (容忍 APPL -> AAPL)  # noqa: E501
                                         sim_name > 0.15,
                                     )
                                 )
                                 .order_by(
                                     # 排序权重: 绝对等于排最前 > 代码相似度 > 名称相似度 > 字符串越短越精准  # noqa: E501
-                                    case(
-                                        (TickerItem.symbol == query_upper, 0), else_=1
-                                    ),
+                                    case((TickerItem.symbol == query_upper, 0), else_=1),
                                     sim_symbol.desc(),
                                     sim_name.desc(),
                                     func.length(TickerItem.symbol),
@@ -99,9 +96,7 @@ class TickerService:
                                     )  # noqa: E501
                                 )
                                 .order_by(
-                                    case(
-                                        (TickerItem.symbol == query_upper, 0), else_=1
-                                    ),
+                                    case((TickerItem.symbol == query_upper, 0), else_=1),
                                     case(
                                         (TickerItem.symbol.ilike(f"{query_upper}%"), 0),
                                         else_=1,
@@ -112,10 +107,7 @@ class TickerService:
                                 .all()
                             )
 
-                        return [
-                            {"symbol": r.symbol, "name": r.name, "type": r.type}
-                            for r in rows
-                        ]  # noqa: E501
+                        return [{"symbol": r.symbol, "name": r.name, "type": r.type} for r in rows]  # noqa: E501
 
                 results = await asyncio.to_thread(_db_query)
                 if results:
@@ -138,9 +130,7 @@ class TickerService:
 
                 if futu_service.status == "CONNECTED":
                     await self._fetch_and_save_from_futu()
-                    print(
-                        "✅ [Ticker Sync] 股票词库同步完成，Redis 缓存 + DB 持久化就绪！"
-                    )  # noqa: E501
+                    print("✅ [Ticker Sync] 股票词库同步完成，Redis 缓存 + DB 持久化就绪！")  # noqa: E501
                 else:
                     print("⚠️ [Ticker Sync] FutuService 未连接，跳过全市场增量同步。")
             except Exception as e:

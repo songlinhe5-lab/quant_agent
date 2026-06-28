@@ -42,12 +42,8 @@ class MaCrossAtrStrategy(BaseStrategy):
         """计算技术指标：快线、慢线均线和ATR"""
         # 均线
         if self.ma_type == "EMA":
-            self.df["ma_fast"] = (
-                self.df["close"].ewm(span=self.fast_ma, adjust=False).mean()
-            )  # noqa: E501
-            self.df["ma_slow"] = (
-                self.df["close"].ewm(span=self.slow_ma, adjust=False).mean()
-            )  # noqa: E501
+            self.df["ma_fast"] = self.df["close"].ewm(span=self.fast_ma, adjust=False).mean()  # noqa: E501
+            self.df["ma_slow"] = self.df["close"].ewm(span=self.slow_ma, adjust=False).mean()  # noqa: E501
         else:
             self.df["ma_fast"] = self.df["close"].rolling(window=self.fast_ma).mean()
             self.df["ma_slow"] = self.df["close"].rolling(window=self.slow_ma).mean()

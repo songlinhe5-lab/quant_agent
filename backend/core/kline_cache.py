@@ -153,10 +153,7 @@ class KlineCacheEngine:
         KLINE_CACHE_QUERY_LATENCY.labels(tier=hit_tier).observe(latency)
 
         if df is not None:
-            logger.debug(
-                f"[K线缓存] {symbol} {period} {days}d → {hit_tier} "
-                f"({len(df)} rows, {latency:.3f}s)"
-            )
+            logger.debug(f"[K线缓存] {symbol} {period} {days}d → {hit_tier} ({len(df)} rows, {latency:.3f}s)")
         else:
             logger.warning(f"[K线缓存] {symbol} {period} {days}d → MISS")
 
@@ -188,9 +185,7 @@ class KlineCacheEngine:
 
     # ── L1 Redis 操作 ─────────────────────────────────────────────
 
-    async def _get_l1(
-        self, symbol: str, period: str, days: int
-    ) -> Optional[pd.DataFrame]:  # noqa: E501
+    async def _get_l1(self, symbol: str, period: str, days: int) -> Optional[pd.DataFrame]:  # noqa: E501
         """从 Redis 获取 K线"""
         try:
             key = f"{L1_KEY_PREFIX}:{symbol}:{period}"
@@ -210,9 +205,7 @@ class KlineCacheEngine:
                     json_str = json_str.decode("utf-8")
 
                 try:
-                    dt = datetime.strptime(date_str, "%Y-%m-%d").replace(
-                        tzinfo=timezone.utc
-                    )  # noqa: E501
+                    dt = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)  # noqa: E501
                     if dt >= cutoff:
                         record = json.loads(json_str)
                         record["time"] = date_str
@@ -275,9 +268,7 @@ class KlineCacheEngine:
 
     # ── L2 Parquet 操作 ────────────────────────────────────────────
 
-    async def _get_l2(
-        self, symbol: str, period: str, days: int
-    ) -> Optional[pd.DataFrame]:  # noqa: E501
+    async def _get_l2(self, symbol: str, period: str, days: int) -> Optional[pd.DataFrame]:  # noqa: E501
         """从 Parquet 获取 K线"""
         try:
             df = await self._warehouse.get_history(symbol, ktype=period, num=days)
@@ -288,9 +279,7 @@ class KlineCacheEngine:
 
     # ── L3 对象存储操作（预留）────────────────────────────────────
 
-    async def _get_l3(
-        self, symbol: str, period: str, days: int
-    ) -> Optional[pd.DataFrame]:  # noqa: E501
+    async def _get_l3(self, symbol: str, period: str, days: int) -> Optional[pd.DataFrame]:  # noqa: E501
         """
         从对象存储获取 K线（预留接口）
 
@@ -318,9 +307,7 @@ class KlineCacheEngine:
                 pattern = f"{L1_KEY_PREFIX}:{symbol}:*"
                 cursor = 0
                 while True:
-                    cursor, keys = await self._redis.scan(
-                        cursor, match=pattern, count=100
-                    )  # noqa: E501
+                    cursor, keys = await self._redis.scan(cursor, match=pattern, count=100)  # noqa: E501
                     if keys:
                         await self._redis.delete(*keys)
                     if cursor == 0:

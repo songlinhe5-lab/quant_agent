@@ -80,9 +80,7 @@ class SearchService:
                 ) as client:  # noqa: E501
                     resp = await client.post(url, headers=headers, json=payload)
                     resp.raise_for_status()
-                    for item in (
-                        resp.json().get("data", {}).get("webPages", {}).get("value", [])
-                    ):  # noqa: E501
+                    for item in resp.json().get("data", {}).get("webPages", {}).get("value", []):  # noqa: E501
                         results.append(
                             {
                                 "title": item.get("name"),
@@ -111,9 +109,7 @@ class SearchService:
                     or os.getenv("http_proxy")
                 )  # noqa: E501
                 with DDGS(proxy=proxy, timeout=20) as ddgs:
-                    res = list(
-                        ddgs.text(query, max_results=max_results, region="cn-zh")
-                    )  # noqa: E501
+                    res = list(ddgs.text(query, max_results=max_results, region="cn-zh"))  # noqa: E501
                     if res:
                         return res  # noqa: E701
                     raise ValueError("DuckDuckGo 返回空数据")

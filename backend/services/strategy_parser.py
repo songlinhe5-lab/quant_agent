@@ -40,16 +40,9 @@ def parse_strategy_parameters(source_code: str) -> Dict[str, Any]:
 
             # 遍历类内部的方法，寻找 __init__
             for class_body_item in node.body:
-                if (
-                    isinstance(class_body_item, ast.FunctionDef)
-                    and class_body_item.name == "__init__"
-                ):  # noqa: E501
+                if isinstance(class_body_item, ast.FunctionDef) and class_body_item.name == "__init__":  # noqa: E501
                     # 💡 提取 Docstring 并解析参数说明
-                    docstring = (
-                        ast.get_docstring(class_body_item)
-                        or ast.get_docstring(node)
-                        or ""
-                    )  # noqa: E501
+                    docstring = ast.get_docstring(class_body_item) or ast.get_docstring(node) or ""  # noqa: E501
                     param_descs = {}
                     for line in docstring.split("\n"):
                         line = line.strip()
@@ -110,9 +103,7 @@ def parse_strategy_parameters(source_code: str) -> Dict[str, Any]:
                         params.append(param_info)
 
                     if params:
-                        strategies.append(
-                            {"class_name": node.name, "parameters": params}
-                        )
+                        strategies.append({"class_name": node.name, "parameters": params})
 
     if not strategies:
         return {

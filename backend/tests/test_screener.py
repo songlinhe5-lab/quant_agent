@@ -41,21 +41,13 @@ class TestScreenerSuggestions(unittest.IsolatedAsyncioTestCase):
                     dsl_json = await screener_service.translate_nlp_to_dsl(query)
 
                     # 2. 核心验证：DSL 能否被成功解析为 Futu API 格式
-                    markets, futu_filters, post_filters = (
-                        screener_service.parse_dsl_to_futu_filters(dsl_json)
-                    )  # noqa: E501
+                    markets, futu_filters, post_filters = screener_service.parse_dsl_to_futu_filters(dsl_json)  # noqa: E501
 
                     # 3. 断言有效性
-                    self.assertIsInstance(
-                        markets, list, f"Markets 必须是列表: {dsl_json}"
-                    )  # noqa: E501
+                    self.assertIsInstance(markets, list, f"Markets 必须是列表: {dsl_json}")  # noqa: E501
                     self.assertTrue(len(markets) > 0, f"Markets 不能为空: {dsl_json}")
-                    self.assertIsInstance(
-                        futu_filters, list, f"futu_filters 必须是列表: {dsl_json}"
-                    )  # noqa: E501
-                    self.assertIsInstance(
-                        post_filters, dict, f"post_filters 必须是字典: {dsl_json}"
-                    )  # noqa: E501
+                    self.assertIsInstance(futu_filters, list, f"futu_filters 必须是列表: {dsl_json}")  # noqa: E501
+                    self.assertIsInstance(post_filters, dict, f"post_filters 必须是字典: {dsl_json}")  # noqa: E501
 
                     print(f"✅ [{index:02d}/{total}] 验证通过: {query}")
 
@@ -71,13 +63,9 @@ class TestScreenerSuggestions(unittest.IsolatedAsyncioTestCase):
         results = await asyncio.gather(*tasks)
 
         # 将详细的转译结果和错误日志统一保存到本地文件中
-        log_path = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "screener_test_report.log")
-        )  # noqa: E501
+        log_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "screener_test_report.log"))  # noqa: E501
         with open(log_path, "w", encoding="utf-8") as f:
-            f.write(
-                f"🚀 Screener E2E Test Report\nTotal Queries: {total}\n{'=' * 60}\n\n"
-            )  # noqa: E501
+            f.write(f"🚀 Screener E2E Test Report\nTotal Queries: {total}\n{'=' * 60}\n\n")  # noqa: E501
             for success, log_msg, err_msg in results:
                 f.write(log_msg + "\n")
             if not success:

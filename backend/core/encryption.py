@@ -50,9 +50,7 @@ def get_encryption_key() -> bytes:
         # 如果是原始字符串，直接编码（不推荐，仅用于兼容）
         key_bytes = master_key.encode("utf-8")
         if len(key_bytes) < 32:
-            raise ValueError(
-                "❌ ENCRYPTION_MASTER_KEY 长度必须 >= 32 字节（AES-256 要求）"
-            )  # noqa: E501
+            raise ValueError("❌ ENCRYPTION_MASTER_KEY 长度必须 >= 32 字节（AES-256 要求）")  # noqa: E501
         return key_bytes[:32]
 
 
@@ -118,9 +116,7 @@ def decrypt_sensitive_data(ciphertext_b64: str) -> str:
 
         # 创建 AES-GCM 解密器
         key = get_encryption_key()
-        cipher = Cipher(
-            algorithms.AES(key), modes.GCM(nonce, tag), backend=default_backend()
-        )
+        cipher = Cipher(algorithms.AES(key), modes.GCM(nonce, tag), backend=default_backend())
         decryptor = cipher.decryptor()
 
         # 执行解密

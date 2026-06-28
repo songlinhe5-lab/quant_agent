@@ -128,14 +128,8 @@ class MockProvider:
         if "0700" in ticker:
             base_price = 370.0
 
-        bids = [
-            {"price": round(base_price - i * 0.1, 2), "size": 1000 * (10 - i)}
-            for i in range(10)
-        ]
-        asks = [
-            {"price": round(base_price + 0.1 + i * 0.1, 2), "size": 1000 * (10 - i)}
-            for i in range(10)
-        ]
+        bids = [{"price": round(base_price - i * 0.1, 2), "size": 1000 * (10 - i)} for i in range(10)]
+        asks = [{"price": round(base_price + 0.1 + i * 0.1, 2), "size": 1000 * (10 - i)} for i in range(10)]
 
         return {
             "status": "success",

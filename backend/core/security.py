@@ -36,9 +36,7 @@ def generate_internal_signature(
         签名字符串（格式：timestamp.signature）
     """
     if secret is None:
-        secret = getattr(
-            settings, "INTERNAL_API_SECRET", "default-internal-secret-change-me"
-        )  # noqa: E501
+        secret = getattr(settings, "INTERNAL_API_SECRET", "default-internal-secret-change-me")  # noqa: E501
 
     if timestamp is None:
         timestamp = int(time.time())
@@ -72,9 +70,7 @@ def verify_internal_signature(
         (验证是否通过, 错误信息)
     """
     if secret is None:
-        secret = getattr(
-            settings, "INTERNAL_API_SECRET", "default-internal-secret-change-me"
-        )  # noqa: E501
+        secret = getattr(settings, "INTERNAL_API_SECRET", "default-internal-secret-change-me")  # noqa: E501
 
     try:
         # 解析签名头
@@ -92,9 +88,7 @@ def verify_internal_signature(
 
         # 重新计算签名
         message = f"{method.upper()}{path}{timestamp}".encode("utf-8")
-        expected_signature = hmac.new(
-            secret.encode("utf-8"), message, hashlib.sha256
-        ).digest()
+        expected_signature = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).digest()
         expected_signature_b64 = base64.b64encode(expected_signature).decode("utf-8")
 
         # 比较签名（使用 hmac.compare_digest 防止时序攻击）
@@ -127,14 +121,10 @@ async def verify_internal_request(request: Request) -> None:
     is_valid, error_msg = verify_internal_signature(method, path, signature_header)
 
     if not is_valid:
-        raise HTTPException(
-            status_code=401, detail=f"Invalid internal signature: {error_msg}"
-        )
+        raise HTTPException(status_code=401, detail=f"Invalid internal signature: {error_msg}")
 
 
-def add_internal_signature_to_headers(
-    headers: dict, method: str, path: str, secret: Optional[str] = None
-) -> dict:
+def add_internal_signature_to_headers(headers: dict, method: str, path: str, secret: Optional[str] = None) -> dict:
     """
     为请求头添加 HMAC 签名（用于内部服务间调用）
 

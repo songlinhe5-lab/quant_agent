@@ -159,9 +159,7 @@ _VALID_FIELDS = [
 _VALID_FIELDS_SET = frozenset(_VALID_FIELDS)
 
 _TYPE_ENFORCEMENTS = {
-    "featured": frozenset(
-        ["HIST_PERCENTILE_PE", "HIST_PERCENTILE_PB", "HIST_PERCENTILE_PS"]
-    ),  # noqa: E501
+    "featured": frozenset(["HIST_PERCENTILE_PE", "HIST_PERCENTILE_PB", "HIST_PERCENTILE_PS"]),  # noqa: E501
     "financial": frozenset(
         [
             "ROE",
@@ -313,10 +311,7 @@ _TECH_ZH_MAP = {
     "insider_net_buy": "高管净买入",
 }
 
-_TECH_REGEX_MAP = {
-    re.compile(r"(?i)\b" + eng.replace("_", r"[_ ]?") + r"\b"): zh
-    for eng, zh in _TECH_ZH_MAP.items()
-}  # noqa: E501
+_TECH_REGEX_MAP = {re.compile(r"(?i)\b" + eng.replace("_", r"[_ ]?") + r"\b"): zh for eng, zh in _TECH_ZH_MAP.items()}  # noqa: E501
 _SUPPORTED_PATTERNS = frozenset(
     {
         "macd_gold_cross",
@@ -335,9 +330,7 @@ _SUPPORTED_PATTERNS = frozenset(
 
 
 class ScreenerFilter(BaseModel):
-    field: str = Field(
-        description="富途底层字段名或枚举，如 MARKET_CAP, MACD_GOLDEN_CROSS"
-    )  # noqa: E501
+    field: str = Field(description="富途底层字段名或枚举，如 MARKET_CAP, MACD_GOLDEN_CROSS")  # noqa: E501
     field_zh: Optional[str] = Field(default=None, description="字段的中文显示名称")
     type: str = Field(
         description="字段类型：simple, financial, accumulate, plate, exclude_plate, featured, indicator, indicator_pattern, indicator_positional, kline_shape, broker, option"
@@ -353,30 +346,16 @@ class ScreenerFilter(BaseModel):
         description="最大值（纯数字，百分比需转为小数如 0.05）",
         serialization_alias="max",
     )  # noqa: E501
-    value: Optional[List[str]] = Field(
-        default=None, description="用于行业板块的数组，如 ['US.BK2991']"
-    )  # noqa: E501
+    value: Optional[List[str]] = Field(default=None, description="用于行业板块的数组，如 ['US.BK2991']")  # noqa: E501
     period: Optional[str] = Field(default=None, description="K线周期，如 K_DAY, K_15M")
     days: Optional[int] = Field(default=None, description="累计天数")
-    position: Optional[str] = Field(
-        default=None, description="位置关系: ABOVE, BELOW, CROSS_UP, CROSS_DOWN"
-    )  # noqa: E501
-    second_indicator: Optional[str] = Field(
-        default=None, description="对比的第二个指标名称"
-    )  # noqa: E501
-    intervals: Optional[List[Dict[str, float]]] = Field(
-        default=None, description="特定指标/期权区间"
-    )  # noqa: E501
-    continuous_period: Optional[int] = Field(
-        default=None, description="连续满足条件的期数（如连续3年则为3）"
-    )  # noqa: E501
-    duration: Optional[int] = Field(
-        default=None, description="历史时间窗口长度，配合 period_average 等使用"
-    )  # noqa: E501
+    position: Optional[str] = Field(default=None, description="位置关系: ABOVE, BELOW, CROSS_UP, CROSS_DOWN")  # noqa: E501
+    second_indicator: Optional[str] = Field(default=None, description="对比的第二个指标名称")  # noqa: E501
+    intervals: Optional[List[Dict[str, float]]] = Field(default=None, description="特定指标/期权区间")  # noqa: E501
+    continuous_period: Optional[int] = Field(default=None, description="连续满足条件的期数（如连续3年则为3）")  # noqa: E501
+    duration: Optional[int] = Field(default=None, description="历史时间窗口长度，配合 period_average 等使用")  # noqa: E501
     period_average: Optional[bool] = Field(default=None, description="是否周期求均值")
-    future_duration: Optional[int] = Field(
-        default=None, description="未来观测期/预测窗口"
-    )  # noqa: E501
+    future_duration: Optional[int] = Field(default=None, description="未来观测期/预测窗口")  # noqa: E501
     unit: Optional[float] = Field(default=None, description="量纲/单位换算")
     lower_included: Optional[bool] = Field(default=None, description="区间下限是否包含")
     upper_included: Optional[bool] = Field(default=None, description="区间上限是否包含")
@@ -398,13 +377,9 @@ class ScreenerFilter(BaseModel):
                 "plate",
                 "exclude_plate",
             ]:  # noqa: E501
-                matches = difflib.get_close_matches(
-                    field_name, _VALID_FIELDS, n=1, cutoff=0.6
-                )  # noqa: E501
+                matches = difflib.get_close_matches(field_name, _VALID_FIELDS, n=1, cutoff=0.6)  # noqa: E501
                 if matches:
-                    print(
-                        f"🔧 [Screener] 触发模糊匹配纠错: {field_name} -> {matches[0]}"
-                    )  # noqa: E501
+                    print(f"🔧 [Screener] 触发模糊匹配纠错: {field_name} -> {matches[0]}")  # noqa: E501
                     data["field"] = matches[0]
                 else:
                     data["field"] = field_name
@@ -456,30 +431,22 @@ class ScreenerFilter(BaseModel):
 
 
 class ScreenerDecision(BaseModel):
-    dsl_display: str = Field(
-        description="用作前端 UI 展示的短句，例如: market:hk pe:10~20"
-    )  # noqa: E501
+    dsl_display: str = Field(description="用作前端 UI 展示的短句，例如: market:hk pe:10~20")  # noqa: E501
     markets: List[str] = Field(description="市场代码，如 ['US'], ['HK'], ['SH', 'SZ']")
     exclude_st: bool = Field(default=False, description="是否剔除 ST 股")
     technical_patterns: Optional[List[str]] = Field(
         default=[], description="技术形态，如 ['macd_gold_cross', 'rsi_oversold']"
     )  # noqa: E501
-    technical_patterns_zh: Optional[List[str]] = Field(
-        default=[], description="技术形态的中文显示名称"
-    )  # noqa: E501
+    technical_patterns_zh: Optional[List[str]] = Field(default=[], description="技术形态的中文显示名称")  # noqa: E501
     filters: List[ScreenerFilter] = Field(description="结构化的选股条件数组")
-    rag_rules: Optional[List[str]] = Field(
-        default=[], description="系统注入的RAG参考规则"
-    )  # noqa: E501
+    rag_rules: Optional[List[str]] = Field(default=[], description="系统注入的RAG参考规则")  # noqa: E501
 
     @field_validator("dsl_display", mode="after")
     @classmethod
     def validate_dsl_display_length(cls, v: str) -> str:
         max_len = 100  # 最长100个字符
         if len(v) > max_len:
-            print(
-                f"🔧 [Screener] dsl_display 长度超出 {max_len} 字符，已自动截断。原始: {v}"
-            )  # noqa: E501
+            print(f"🔧 [Screener] dsl_display 长度超出 {max_len} 字符，已自动截断。原始: {v}")  # noqa: E501
             return v[: max_len - 3] + "..." if max_len > 3 else v[:max_len]
         return v
 
@@ -488,13 +455,9 @@ class ScreenerDecision(BaseModel):
     def filter_supported_patterns(cls, v: Any) -> List[str]:
         if not isinstance(v, list):
             return []
-        filtered = [
-            p for p in v if isinstance(p, str) and p.lower() in _SUPPORTED_PATTERNS
-        ]  # noqa: E501
+        filtered = [p for p in v if isinstance(p, str) and p.lower() in _SUPPORTED_PATTERNS]  # noqa: E501
         if len(filtered) < len(v):
-            print(
-                f"🔧 [Screener] 优雅降级: 自动忽略不支持的技术形态 {set(v) - set(filtered)}"
-            )  # noqa: E501
+            print(f"🔧 [Screener] 优雅降级: 自动忽略不支持的技术形态 {set(v) - set(filtered)}")  # noqa: E501
         return filtered
 
     @model_validator(mode="after")
@@ -506,9 +469,7 @@ class ScreenerDecision(BaseModel):
             self.markets = ["US", "HK", "SH", "SZ"]  # , "JP", "SG", "UK"]
 
         # 💡 将大模型生成的模糊中国市场缩写统一展开为具体的沪深两市
-        if "CN" in [m.upper() for m in self.markets] or "A" in [
-            m.upper() for m in self.markets
-        ]:  # noqa: E501
+        if "CN" in [m.upper() for m in self.markets] or "A" in [m.upper() for m in self.markets]:  # noqa: E501
             self.markets = [m for m in self.markets if m.upper() not in ["CN", "A"]]
             if "SH" not in self.markets:
                 self.markets.append("SH")  # noqa: E701
@@ -526,18 +487,11 @@ class ScreenerDecision(BaseModel):
                 f.days = None  # 剥离非法的 days 参数，保留其可能的 min_value 基准线
 
         # 💡 强制全局剔除板块条件 (响应“不要再加板块条件”的指令)
-        self.filters = [
-            f for f in self.filters if f.type not in ("plate", "exclude_plate")
-        ]  # noqa: E501
+        self.filters = [f for f in self.filters if f.type not in ("plate", "exclude_plate")]  # noqa: E501
 
         # 💡 终极防线：为所有“连续增长/为正”的财务指标自动补上 min_value > 0 的兜底
         for f in self.filters:
-            if (
-                f.type == "financial"
-                and f.continuous_period
-                and f.continuous_period > 1
-                and f.min_value is None
-            ):  # noqa: E501
+            if f.type == "financial" and f.continuous_period and f.continuous_period > 1 and f.min_value is None:  # noqa: E501
                 f.min_value = 0.0
                 f.lower_included = False
 
@@ -549,13 +503,9 @@ class ScreenerDecision(BaseModel):
                 field_bounds[bound_key] = {"min": float("-inf"), "max": float("inf")}
 
             if f.min_value is not None:
-                field_bounds[bound_key]["min"] = max(
-                    field_bounds[bound_key]["min"], f.min_value
-                )  # noqa: E501
+                field_bounds[bound_key]["min"] = max(field_bounds[bound_key]["min"], f.min_value)  # noqa: E501
             if f.max_value is not None:
-                field_bounds[bound_key]["max"] = min(
-                    field_bounds[bound_key]["max"], f.max_value
-                )  # noqa: E501
+                field_bounds[bound_key]["max"] = min(field_bounds[bound_key]["max"], f.max_value)  # noqa: E501
 
             if field_bounds[bound_key]["min"] > field_bounds[bound_key]["max"]:
                 raise ValueError(
@@ -570,9 +520,7 @@ class ScreenerDecision(BaseModel):
 
         # 💡 填充中文技术形态与翻译 dsl_display
         if self.technical_patterns:
-            self.technical_patterns_zh = [
-                _TECH_ZH_MAP.get(p.lower(), p) for p in self.technical_patterns
-            ]  # noqa: E501
+            self.technical_patterns_zh = [_TECH_ZH_MAP.get(p.lower(), p) for p in self.technical_patterns]  # noqa: E501
 
         if self.dsl_display:
             for pattern, zh in _TECH_REGEX_MAP.items():
@@ -739,9 +687,7 @@ class ScreenerService:
         # 2. 尝试从本地 CSV 动态加载数百个额外指标
         import pandas as pd
 
-        csv_path = os.path.join(
-            os.path.dirname(__file__), "..", "data", "indicators.csv"
-        )  # noqa: E501
+        csv_path = os.path.join(os.path.dirname(__file__), "..", "data", "indicators.csv")  # noqa: E501
         if os.path.exists(csv_path):
             try:
                 df = pd.read_csv(csv_path)
@@ -754,9 +700,7 @@ class ScreenerService:
                                     "rule": str(row["rule"]).strip(),
                                 }
                             )  # noqa: E501
-                    print(
-                        f"✅ [Screener] 成功从 CSV 动态加载 {len(self._rag_corpus)} 条指标 RAG 规则库！"
-                    )  # noqa: E501
+                    print(f"✅ [Screener] 成功从 CSV 动态加载 {len(self._rag_corpus)} 条指标 RAG 规则库！")  # noqa: E501
             except Exception as e:
                 print(f"⚠️ [Screener] 从 CSV 加载外部指标失败，使用兜底规则: {e}")
 
@@ -769,13 +713,9 @@ class ScreenerService:
         if emb_api_key:
             import requests
 
-            emb_base_url = os.getenv(
-                "EMBEDDING_BASE_URL", "https://api.openai.com/v1"
-            ).rstrip("/")
+            emb_base_url = os.getenv("EMBEDDING_BASE_URL", "https://api.openai.com/v1").rstrip("/")
             emb_model = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
-            print(
-                f"☁️ [Screener] 检测到云端 Embedding 密钥，启用 {emb_model} 模型进行向量化"
-            )  # noqa: E501
+            print(f"☁️ [Screener] 检测到云端 Embedding 密钥，启用 {emb_model} 模型进行向量化")  # noqa: E501
 
             def get_embeddings(texts):
                 headers = {
@@ -802,9 +742,7 @@ class ScreenerService:
                 print("💻 [Screener] 启用本地 SentenceTransformer 模型进行向量化")
                 self._embed_func = lambda texts: model.encode(texts).tolist()
             except ImportError:
-                print(
-                    "⚠️ [Screener] 未安装 sentence_transformers 且未配置 API Key，将降级全量返回规则。"
-                )  # noqa: E501
+                print("⚠️ [Screener] 未安装 sentence_transformers 且未配置 API Key，将降级全量返回规则。")  # noqa: E501
                 self._embed_func = None
 
         embed_func = self._embed_func
@@ -819,15 +757,11 @@ class ScreenerService:
             with engine.begin() as conn:
                 self._pg_enabled = conn.dialect.name == "postgresql"
                 if not self._pg_enabled:
-                    print(
-                        "⚠️ [Screener] 当前非 PostgreSQL 数据库，自动降级为全量规则兜底模式。"
-                    )  # noqa: E501
+                    print("⚠️ [Screener] 当前非 PostgreSQL 数据库，自动降级为全量规则兜底模式。")  # noqa: E501
                     return {"count": len(self._rag_corpus), "warning": "not_postgres"}
 
                 # ⚠️ 极度重要：仅清理系统的公共冷启动知识库，绝对保留用户的私有规则 (user_id IS NOT NULL)  # noqa: E501
-                conn.execute(
-                    text("DELETE FROM quant_screener_rules WHERE user_id IS NULL")
-                )  # noqa: E501
+                conn.execute(text("DELETE FROM quant_screener_rules WHERE user_id IS NULL"))  # noqa: E501
 
                 docs = [doc["desc"] for doc in self._rag_corpus]
                 metadatas = [{"rule": doc["rule"]} for doc in self._rag_corpus]
@@ -854,11 +788,7 @@ class ScreenerService:
                         # pgvector 直接接受形如 '[0.1, 0.2, ...]' 的字符串格式
                         emb_str = f"[{','.join(map(str, b_embs[j]))}]"
                         # 💡 动态提取规则类型，作为标量过滤 (Scalar Filtering) 的测试字段  # noqa: E501
-                        rule_type = (
-                            "financial"
-                            if "financial" in b_metas[j]["rule"]
-                            else "simple"
-                        )  # noqa: E501
+                        rule_type = "financial" if "financial" in b_metas[j]["rule"] else "simple"  # noqa: E501
                         conn.execute(
                             text("""
                             INSERT INTO quant_screener_rules (id, desc_text, rule_text, rule_type, embedding)
@@ -878,18 +808,14 @@ class ScreenerService:
                             },
                         )  # noqa: E501
 
-            print(
-                f"✅ [Screener] PostgreSQL (pgvector) 引擎就绪！共完成 {len(self._rag_corpus)} 条规则的嵌入向量化。"
-            )  # noqa: E501
+            print(f"✅ [Screener] PostgreSQL (pgvector) 引擎就绪！共完成 {len(self._rag_corpus)} 条规则的嵌入向量化。")  # noqa: E501
             return {"count": len(self._rag_corpus)}
         except Exception as e:
             print(f"⚠️ [Screener] Postgres 向量存储初始化异常: {e}")
             self._pg_enabled = False
             return {"count": len(self._rag_corpus), "warning": "db_error"}
 
-    async def _retrieve_relevant_fields(
-        self, query: str, user_id: Optional[int] = None
-    ) -> str:  # noqa: E501
+    async def _retrieve_relevant_fields(self, query: str, user_id: Optional[int] = None) -> str:  # noqa: E501
         """
         [RAG 动态检索基座]
         """
@@ -909,9 +835,7 @@ class ScreenerService:
                 with SessionLocal() as db:
                     # ==== 💡 SQLAlchemy 混合检索 (Hybrid Search) ====
                     # pgvector 支持直接在 ORM 中调用 .cosine_distance()
-                    distance_col = models.ScreenerRule.embedding.cosine_distance(
-                        q_emb[0]
-                    )  # noqa: E501
+                    distance_col = models.ScreenerRule.embedding.cosine_distance(q_emb[0])  # noqa: E501
 
                     results = (
                         db.query(models.ScreenerRule, distance_col.label("distance"))
@@ -923,9 +847,7 @@ class ScreenerService:
                             )
                         )  # noqa: E501
                         # 1. 标量过滤 (Scalar Filter): 假设我们只关心 "financial" 和 "simple" 这两个大类的指标  # noqa: E501
-                        .filter(
-                            models.ScreenerRule.rule_type.in_(["financial", "simple"])
-                        )  # noqa: E501
+                        .filter(models.ScreenerRule.rule_type.in_(["financial", "simple"]))  # noqa: E501
                         # 2. 向量过滤 (Vector Filter): 余弦距离阈值卡控 (必须小于 0.6)
                         .filter(distance_col < 0.6)
                         # 3. 向量排序 (Vector Sort): 按相似度从高到低 (距离从低到高) 排序  # noqa: E501
@@ -938,9 +860,7 @@ class ScreenerService:
                     for rule, distance in results:
                         # 计算余弦相似度百分比：(1 - distance) * 100
                         similarity_pct = (1.0 - distance) * 100
-                        top_rules.append(
-                            f"{rule.rule_text} (匹配度: {similarity_pct:.1f}%)"
-                        )  # noqa: E501
+                        top_rules.append(f"{rule.rule_text} (匹配度: {similarity_pct:.1f}%)")  # noqa: E501
                         # print(f"🎯 [Screener RAG] 召回: {rule.id} (余弦距离: {distance:.3f}, 标量类别: {rule.rule_type})")  # noqa: E501
 
                     return top_rules
@@ -953,9 +873,7 @@ class ScreenerService:
             print(f"⚠️ [Screener RAG] 向量检索异常，已安全降级至返回全量规则兜底: {e}")
             return "\n".join([str(doc.get("rule", "")) for doc in self._rag_corpus])
 
-    async def add_custom_rule(
-        self, desc_text: str, rule_text: str, user_id: int
-    ) -> Dict[str, Any]:  # noqa: E501
+    async def add_custom_rule(self, desc_text: str, rule_text: str, user_id: int) -> Dict[str, Any]:  # noqa: E501
         """用户上传并向量化私有选股规则"""
         embed_func = getattr(self, "_embed_func", None)
         if not getattr(self, "_pg_enabled", False) or not embed_func:
@@ -1003,11 +921,7 @@ class ScreenerService:
 
         def _get():
             with SessionLocal() as db:
-                rules = (
-                    db.query(models.ScreenerRule)
-                    .filter(models.ScreenerRule.user_id == user_id)
-                    .all()
-                )  # noqa: E501
+                rules = db.query(models.ScreenerRule).filter(models.ScreenerRule.user_id == user_id).all()  # noqa: E501
                 return [
                     {
                         "id": r.id,
@@ -1060,17 +974,13 @@ class ScreenerService:
         normalized_query = query.lower()
         # 2. 移除所有非字母、数字、中文和空格的字符 (标点符号)
         # re.UNICODE 标志用于正确处理 Unicode 字符集 (如中文)
-        normalized_query = re.sub(
-            r"[^\w\s\u4e00-\u9fa5]", " ", normalized_query, flags=re.UNICODE
-        )  # noqa: E501
+        normalized_query = re.sub(r"[^\w\s\u4e00-\u9fa5]", " ", normalized_query, flags=re.UNICODE)  # noqa: E501
         # 3. 将连续的空格替换为单个空格
         normalized_query = re.sub(r"\s+", " ", normalized_query)
         # 4. 移除首尾空格
         return normalized_query.strip()
 
-    async def translate_nlp_to_dsl(
-        self, nlp_query: str, user_id: Optional[int] = None
-    ) -> str:  # noqa: E501
+    async def translate_nlp_to_dsl(self, nlp_query: str, user_id: Optional[int] = None) -> str:  # noqa: E501
         """调用大模型将自然语言智能转译为强类型的底层筛选 JSON"""
         # 1. ⚡ Redis 语义缓存：直接计算 MD5，若存在则实现毫秒级秒回
         normalized_nlp_query = self._normalize_nlp_query(nlp_query)
@@ -1081,14 +991,8 @@ class ScreenerService:
         try:
             cached_dsl = await redis_client.get(cache_key)
             if cached_dsl:
-                print(
-                    f"⚡ [Screener] NLP 语义缓存命中，直接秒回: {nlp_query} (归一化查询: {normalized_nlp_query})"
-                )  # noqa: E501
-                return (
-                    cached_dsl.decode("utf-8")
-                    if isinstance(cached_dsl, bytes)
-                    else str(cached_dsl)
-                )  # noqa: E501
+                print(f"⚡ [Screener] NLP 语义缓存命中，直接秒回: {nlp_query} (归一化查询: {normalized_nlp_query})")  # noqa: E501
+                return cached_dsl.decode("utf-8") if isinstance(cached_dsl, bytes) else str(cached_dsl)  # noqa: E501
         except Exception as e:
             print(f"⚠️ [Screener] Redis 读取 NLP 缓存失败: {e}")
 
@@ -1102,11 +1006,7 @@ class ScreenerService:
             try:
                 cached_double = await redis_client.get(cache_key)
                 if cached_double:
-                    return (
-                        cached_double.decode("utf-8")
-                        if isinstance(cached_double, bytes)
-                        else str(cached_double)
-                    )  # noqa: E501
+                    return cached_double.decode("utf-8") if isinstance(cached_double, bytes) else str(cached_double)  # noqa: E501
             except Exception:
                 pass
 
@@ -1210,9 +1110,7 @@ class ScreenerService:
                         messages=messages,
                     )
                     result_dsl = resp.choices[0].message.content or ""
-                    print(
-                        f"🤖 [Screener] LLM 原始输出 DSL JSON (Attempt {attempt + 1}):\n{result_dsl}"
-                    )  # noqa: E501
+                    print(f"🤖 [Screener] LLM 原始输出 DSL JSON (Attempt {attempt + 1}):\n{result_dsl}")  # noqa: E501
 
                     if not result_dsl or not result_dsl.strip():
                         print("⚠️ [Screener] LLM 返回空内容，重试中...")
@@ -1238,9 +1136,7 @@ class ScreenerService:
 
                         if attempt < max_retries:
                             # 将助手的不合法输出和验证报错反馈给模型进行自我修复
-                            messages.append(
-                                {"role": "assistant", "content": result_dsl}
-                            )  # noqa: E501
+                            messages.append({"role": "assistant", "content": result_dsl})  # noqa: E501
                             messages.append(
                                 {
                                     "role": "user",
@@ -1264,29 +1160,20 @@ class ScreenerService:
                 try:
                     if rag_fields_str:
                         # 截取召回内容并作为数组存入 JSON，一并写入 Redis 缓存
-                        decision.rag_rules = [
-                            r.strip() for r in rag_fields_str.split("\n") if r.strip()
-                        ]  # noqa: E501
+                        decision.rag_rules = [r.strip() for r in rag_fields_str.split("\n") if r.strip()]  # noqa: E501
 
                     # 💡 定制化 JSON 格式：让 RAG 规则展示为单行，其他结构保持树形
-                    decision_dict = decision.model_dump(
-                        by_alias=True, exclude_none=True
-                    )  # noqa: E501
+                    decision_dict = decision.model_dump(by_alias=True, exclude_none=True)  # noqa: E501
                     rag_rules_data = decision_dict.pop("rag_rules", None)
 
                     # 确保支持中文字符原样输出
                     result_dsl = json.dumps(decision_dict, indent=2, ensure_ascii=False)
 
                     if rag_rules_data is not None:
-                        rag_str = json.dumps(
-                            rag_rules_data, ensure_ascii=False
-                        )  # 默认序列化为单行  # noqa: E501
+                        rag_str = json.dumps(rag_rules_data, ensure_ascii=False)  # 默认序列化为单行  # noqa: E501
                         if decision_dict:
                             # 剥除末尾的换行和右大括号，将 rag_rules 以单行属性无缝注入
-                            result_dsl = (
-                                result_dsl.rstrip("}\n\r ")
-                                + f',\n  "rag_rules": {rag_str}\n}}'
-                            )  # noqa: E501
+                            result_dsl = result_dsl.rstrip("}\n\r ") + f',\n  "rag_rules": {rag_str}\n}}'  # noqa: E501
                         else:
                             result_dsl = f'{{\n  "rag_rules": {rag_str}\n}}'
 
@@ -1330,9 +1217,7 @@ class ScreenerService:
             # 💡 打印原始 Pydantic 错误详情到日志，方便调试
             print("❌ [Screener] Pydantic 验证失败详情:")
             for err in e.errors():
-                print(
-                    f"   - 位置: {err['loc']}, 类型: {err['type']}, 消息: {err.get('msg', '')}"
-                )  # noqa: E501
+                print(f"   - 位置: {err['loc']}, 类型: {err['type']}, 消息: {err.get('msg', '')}")  # noqa: E501
                 if "ctx" in err:
                     print(f"     上下文: {err['ctx']}")
 
@@ -1360,9 +1245,7 @@ class ScreenerService:
 
                 err_msgs.append(f"{human_loc}类型或格式不匹配")
 
-            raise ValueError(
-                f"AI 生成的筛选条件越界: {', '.join(err_msgs)}。请尝试使用主流的量化财务指标。"
-            )  # noqa: E501
+            raise ValueError(f"AI 生成的筛选条件越界: {', '.join(err_msgs)}。请尝试使用主流的量化财务指标。")  # noqa: E501
         except Exception as e:
             raise ValueError(f"大模型输出结构异常: {e}")
 
@@ -1395,9 +1278,7 @@ class ScreenerService:
         if not final_data:
             return final_data
 
-        print(
-            f"🔍 [Screener] 执行技术面二次流水线计算: {tech_patterns}，当前候选池 {len(final_data)} 只"
-        )  # noqa: E501
+        print(f"🔍 [Screener] 执行技术面二次流水线计算: {tech_patterns}，当前候选池 {len(final_data)} 只")  # noqa: E501
         from datetime import datetime, timezone
 
         today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -1429,9 +1310,7 @@ class ScreenerService:
         if miss_symbols:
             if not tech_patterns:
                 # 场景 1：用户未指定形态过滤，纯粹只是为了 UI 附加标签。直接跳过拉取，仅展示已命中缓存的！  # noqa: E501
-                print(
-                    f"⚡ [Screener] 当前未指定技术形态，主动跳过 {len(miss_symbols)} 只标的的 K 线拉取。"
-                )  # noqa: E501
+                print(f"⚡ [Screener] 当前未指定技术形态，主动跳过 {len(miss_symbols)} 只标的的 K 线拉取。")  # noqa: E501
             else:
                 # 场景 2：直接拒绝拉取大量标的历史K线，防 API 熔断及额度榨干
                 print(
@@ -1466,9 +1345,7 @@ class ScreenerService:
             # 将命中的形态转换为中文标签并作为新列加入
             pats = hit_patterns.get(sym, [])
             if pats:
-                r["matched_patterns"] = ", ".join(
-                    [str(PATTERN_ZH_MAP.get(p, p)) for p in pats]
-                )  # noqa: E501
+                r["matched_patterns"] = ", ".join([str(PATTERN_ZH_MAP.get(p, p)) for p in pats])  # noqa: E501
 
             # 💡 纯技术面放行逻辑
             if not pure_tech_patterns or all(p in pats for p in pure_tech_patterns):
@@ -1478,33 +1355,25 @@ class ScreenerService:
         # 💡 另类数据 (Alternative Data) 联邦过滤
         # ==========================================
         if "insider_net_buy" in tech_patterns and valid_tech_data:
-            print(
-                f"🕵️‍♂️ [Screener] 执行另类数据过滤: 高管净买入，当前候选池 {len(valid_tech_data)} 只"
-            )  # noqa: E501
+            print(f"🕵️‍♂️ [Screener] 执行另类数据过滤: 高管净买入，当前候选池 {len(valid_tech_data)} 只")  # noqa: E501
             from datetime import datetime, timedelta
 
             from backend.services.finnhub_service import finnhub_service
 
             async def _check_insider(row_data):
                 try:
-                    res = await finnhub_service.get_insider_transactions(
-                        row_data["symbol"], limit=30
-                    )  # noqa: E501
+                    res = await finnhub_service.get_insider_transactions(row_data["symbol"], limit=30)  # noqa: E501
                     if res.get("status") == "success" and res.get("data"):
                         txs = res.get("data", [])
                         one_month_ago = datetime.now() - timedelta(days=30)
                         net_change = sum(
                             tx.get("change", 0)
                             for tx in txs
-                            if tx.get("date")
-                            and datetime.strptime(tx.get("date"), "%Y-%m-%d")
-                            >= one_month_ago  # noqa: E501
+                            if tx.get("date") and datetime.strptime(tx.get("date"), "%Y-%m-%d") >= one_month_ago  # noqa: E501
                         )
                         if net_change > 0:
                             pats = row_data.get("matched_patterns", "")
-                            row_data["matched_patterns"] = (
-                                pats + ", 高管净买入"
-                            ).strip(", ")  # noqa: E501
+                            row_data["matched_patterns"] = (pats + ", 高管净买入").strip(", ")  # noqa: E501
                             return row_data
                 except Exception:
                     pass
@@ -1514,9 +1383,7 @@ class ScreenerService:
             results = await asyncio.gather(*tasks)
             valid_tech_data = [r for r in results if r is not None]
 
-        print(
-            f"✅ [Screener] 技术形态流水线计算完成，最终剩余 {len(valid_tech_data)} 只"
-        )  # noqa: E501
+        print(f"✅ [Screener] 技术形态流水线计算完成，最终剩余 {len(valid_tech_data)} 只")  # noqa: E501
         return valid_tech_data
 
     async def screener_subscription_daemon(self) -> None:
@@ -1532,8 +1399,7 @@ class ScreenerService:
                         db.query(models.ScreenerSubscription)
                         .filter(
                             models.ScreenerSubscription.is_active,
-                            models.ScreenerSubscription.trigger_time
-                            == current_time_str,
+                            models.ScreenerSubscription.trigger_time == current_time_str,
                         )
                         .all()
                     )
@@ -1545,19 +1411,12 @@ class ScreenerService:
 
                     for sub in subs_to_run:
                         # 核心防重触发机制：检查上次触发是否在今天
-                        if (
-                            sub.last_triggered_at
-                            and sub.last_triggered_at.date() == now.date()
-                        ):  # noqa: E501
-                            print(
-                                f"🟡 [Screener Daemon] 任务 '{sub.name}' 今日已触发过，跳过。"
-                            )  # noqa: E501
+                        if sub.last_triggered_at and sub.last_triggered_at.date() == now.date():  # noqa: E501
+                            print(f"🟡 [Screener Daemon] 任务 '{sub.name}' 今日已触发过，跳过。")  # noqa: E501
                             continue
 
                         # 💡 分布式锁防重复执行：防止多节点并发时，同一用户的同一任务被多台机器一起执行并重复推送  # noqa: E501
-                        lock_key = (
-                            f"quant:lock:screener_sub:{sub.id}:{now.strftime('%Y%m%d')}"  # noqa: E501
-                        )
+                        lock_key = f"quant:lock:screener_sub:{sub.id}:{now.strftime('%Y%m%d')}"  # noqa: E501
                         if not await redis_client.set(lock_key, "1", nx=True, ex=86400):
                             continue
 
@@ -1565,18 +1424,9 @@ class ScreenerService:
                         max_retries = 3
                         for attempt in range(max_retries):
                             try:
-                                markets, futu_filters, post_filters = (
-                                    self.parse_dsl_to_futu_filters(sub.dsl)
-                                )  # noqa: E501
-                                tasks = [
-                                    futu_service.screen_stocks(
-                                        market=m, filters=futu_filters
-                                    )
-                                    for m in markets
-                                ]  # type: ignore  # noqa: E501
-                                results = await asyncio.gather(
-                                    *tasks, return_exceptions=True
-                                )  # noqa: E501
+                                markets, futu_filters, post_filters = self.parse_dsl_to_futu_filters(sub.dsl)  # noqa: E501
+                                tasks = [futu_service.screen_stocks(market=m, filters=futu_filters) for m in markets]  # type: ignore  # noqa: E501
+                                results = await asyncio.gather(*tasks, return_exceptions=True)  # noqa: E501
 
                                 final_data = []
                                 has_error = False
@@ -1585,15 +1435,9 @@ class ScreenerService:
                                     if isinstance(res, BaseException):
                                         has_error = True
                                         error_msg = str(res)
-                                    elif (
-                                        isinstance(res, dict)
-                                        and res.get("status") == "success"
-                                    ):  # noqa: E501
+                                    elif isinstance(res, dict) and res.get("status") == "success":  # noqa: E501
                                         final_data.extend(res.get("data", []))
-                                    elif (
-                                        isinstance(res, dict)
-                                        and res.get("status") == "error"
-                                    ):  # noqa: E501
+                                    elif isinstance(res, dict) and res.get("status") == "error":  # noqa: E501
                                         has_error = True
                                         error_msg = res.get("message", "Unknown error")
 
@@ -1605,20 +1449,13 @@ class ScreenerService:
                                     final_data = [
                                         r
                                         for r in final_data
-                                        if "ST" not in r.get("name", "").upper()
-                                        and "退" not in r.get("name", "")
+                                        if "ST" not in r.get("name", "").upper() and "退" not in r.get("name", "")
                                     ]  # noqa: E501
 
                                 # 内存技术面二次过滤
-                                tech_patterns = post_filters.get(
-                                    "technical_patterns", []
-                                )  # noqa: E501
+                                tech_patterns = post_filters.get("technical_patterns", [])  # noqa: E501
                                 if final_data:
-                                    final_data = (
-                                        await self.apply_technical_pattern_filtering(
-                                            final_data, tech_patterns
-                                        )
-                                    )  # noqa: E501
+                                    final_data = await self.apply_technical_pattern_filtering(final_data, tech_patterns)  # noqa: E501
 
                                 if final_data:
                                     top_10 = final_data[:10]
@@ -1627,43 +1464,28 @@ class ScreenerService:
                                     async def _fetch_latest_news(ticker):
                                         try:
                                             is_asian = (
-                                                any(
-                                                    x in ticker.upper()
-                                                    for x in ["HK", "SH", "SZ"]
-                                                )
-                                                or ticker.isdigit()
+                                                any(x in ticker.upper() for x in ["HK", "SH", "SZ"]) or ticker.isdigit()
                                             )  # noqa: E501
                                             if is_asian:
                                                 from backend.services.akshare_service import (  # noqa: E501
                                                     akshare_service,
                                                 )
 
-                                                res = await akshare_service.get_company_news(
-                                                    ticker
-                                                )  # noqa: E501
+                                                res = await akshare_service.get_company_news(ticker)  # noqa: E501
                                             else:
                                                 from backend.services.finnhub_service import (  # noqa: E501
                                                     finnhub_service,
                                                 )
 
-                                                res = await finnhub_service.get_company_news(
-                                                    ticker, days_back=3
-                                                )  # noqa: E501
-                                            if res.get(
-                                                "status"
-                                            ) == "success" and res.get("data"):  # noqa: E501
-                                                return res["data"][0].get(
-                                                    "headline", ""
-                                                )  # noqa: E501
+                                                res = await finnhub_service.get_company_news(ticker, days_back=3)  # noqa: E501
+                                            if res.get("status") == "success" and res.get("data"):  # noqa: E501
+                                                return res["data"][0].get("headline", "")  # noqa: E501
                                         except Exception:
                                             pass
                                         return ""
 
                                     news_list = await asyncio.gather(
-                                        *[
-                                            _fetch_latest_news(r["symbol"])
-                                            for r in top_10
-                                        ],
+                                        *[_fetch_latest_news(r["symbol"]) for r in top_10],
                                         return_exceptions=True,
                                     )  # noqa: E501
 
@@ -1692,20 +1514,12 @@ class ScreenerService:
                                         resp = await llm_service.get_client().chat.completions.create(  # noqa: E501
                                             model=llm_service.get_model(),
                                             temperature=0.7,
-                                            messages=[
-                                                {"role": "user", "content": prompt}
-                                            ],  # noqa: E501
+                                            messages=[{"role": "user", "content": prompt}],  # noqa: E501
                                         )
                                         content = resp.choices[0].message.content
-                                        llm_comments = (
-                                            content.strip() if content else ""
-                                        )  # noqa: E501
-                                        llm_comments = re.sub(
-                                            r"^```[a-zA-Z]*\n", "", llm_comments
-                                        )  # noqa: E501
-                                        llm_comments = re.sub(
-                                            r"\n```$", "", llm_comments
-                                        ).strip()  # noqa: E501
+                                        llm_comments = content.strip() if content else ""  # noqa: E501
+                                        llm_comments = re.sub(r"^```[a-zA-Z]*\n", "", llm_comments)  # noqa: E501
+                                        llm_comments = re.sub(r"\n```$", "", llm_comments).strip()  # noqa: E501
                                     except Exception as e:
                                         print(f"⚠️ [Screener Daemon] LLM 点评失败: {e}")
                                         llm_comments = "\n".join(
@@ -1716,9 +1530,7 @@ class ScreenerService:
                                         )  # noqa: E501
 
                                     tech_str = (
-                                        f"\n\n⚙️ 命中技术形态: {', '.join(tech_patterns)}"
-                                        if tech_patterns
-                                        else ""
+                                        f"\n\n⚙️ 命中技术形态: {', '.join(tech_patterns)}" if tech_patterns else ""
                                     )  # noqa: E501
                                     msg = f"🔔 [智能选股日报] {sub.name}\n\nAgent 根据您的订阅条件，在全市场扫盘发现 {len(final_data)} 只符合条件的标的。{tech_str}\n\n🔥 核心金股 Top 10 点评:\n{llm_comments}"  # noqa: E501
                                     await notification_service.send_alert(msg)
@@ -1730,9 +1542,7 @@ class ScreenerService:
                                 # 💡 成功发送或无结果后，更新数据库中的 last_triggered_at 时间戳，防死循环  # noqa: E501
                                 sub.last_triggered_at = now
                                 db.commit()
-                                print(
-                                    f"  -> ✅ [Screener Daemon] 任务 '{sub.name}' 执行并推送完毕，已更新触发时间。"
-                                )  # noqa: E501
+                                print(f"  -> ✅ [Screener Daemon] 任务 '{sub.name}' 执行并推送完毕，已更新触发时间。")  # noqa: E501
                                 break  # 退出重试循环
 
                             except Exception as inner_e:
@@ -1740,17 +1550,13 @@ class ScreenerService:
                                     f"⚠️ [Screener Daemon] 执行子任务 {sub.name} 失败 (第 {attempt + 1} 次): {inner_e}"
                                 )  # noqa: E501
                                 if attempt < max_retries - 1:
-                                    await asyncio.sleep(
-                                        10 * (attempt + 1)
-                                    )  # 失败后线性退避休眠再试  # noqa: E501
+                                    await asyncio.sleep(10 * (attempt + 1))  # 失败后线性退避休眠再试  # noqa: E501
                                 else:
                                     # 彻底失败，推送到包括钉钉在内的通知渠道并更时间戳防死循环  # noqa: E501
                                     sub.last_triggered_at = now
                                     db.commit()
                                     err_msg = f"🚨 [智能选股报错] 任务 '{sub.name}' 连续 {max_retries} 次执行失败！\n\n异常详情: {inner_e}"  # noqa: E501
-                                    asyncio.create_task(
-                                        notification_service.send_alert(err_msg)
-                                    )
+                                    asyncio.create_task(notification_service.send_alert(err_msg))
 
                         await asyncio.sleep(2)  # 错峰请求
 
@@ -1807,14 +1613,9 @@ class ScreenerService:
                             ],
                         }
                     )
-                    markets, futu_filters, post_filters = (
-                        self.parse_dsl_to_futu_filters(json_payload)
-                    )  # noqa: E501
+                    markets, futu_filters, post_filters = self.parse_dsl_to_futu_filters(json_payload)  # noqa: E501
 
-                    tasks = [
-                        futu_service.screen_stocks(market=m, filters=futu_filters)
-                        for m in markets
-                    ]  # type: ignore  # noqa: E501
+                    tasks = [futu_service.screen_stocks(market=m, filters=futu_filters) for m in markets]  # type: ignore  # noqa: E501
                     results = await asyncio.gather(*tasks, return_exceptions=True)
 
                     final_data = []
@@ -1827,18 +1628,13 @@ class ScreenerService:
                         final_data = [
                             r
                             for r in final_data
-                            if "ST" not in r.get("name", "").upper()
-                            and "退" not in r.get("name", "")
+                            if "ST" not in r.get("name", "").upper() and "退" not in r.get("name", "")
                         ]  # noqa: E501
 
                     if final_data:
                         # 排序：按涨跌幅降序
                         final_data.sort(
-                            key=lambda x: (
-                                x.get("change_rate", 0)
-                                if x.get("change_rate") is not None
-                                else 0
-                            ),
+                            key=lambda x: x.get("change_rate", 0) if x.get("change_rate") is not None else 0,
                             reverse=True,
                         )  # noqa: E501
                         top_stocks = final_data[:20]  # 截取前 20 只绝对龙头
@@ -1855,18 +1651,16 @@ class ScreenerService:
                         prompt = f"""你是一个顶尖的华尔街量化分析师。以下是今天全市场（A股、港股、美股）扫描出的量价齐升、资金抢筹的最强标的 Top 20：\n\n{stocks_info}\n\n请你根据这些股票的名称、行业属性和近期的宏观/科技趋势，用毒舌且专业的风格，写一份简短的《16:00 强势股复盘报告》。\n要求：\n1. 提取出 1-2 个今天最核心的炒作概念/主线。\n2. 点评几个最具代表性的龙头股。\n3. 提示追高风险或资金接盘情况。\n4. 格式使用清晰的 Markdown，字数控制在 400 字以内。"""  # noqa: E501
 
                         try:
-                            resp = (
-                                await llm_service.get_client().chat.completions.create(
-                                    model=llm_service.get_model(),
-                                    temperature=0.7,
-                                    messages=[
-                                        {
-                                            "role": "system",
-                                            "content": "你是一个资深量化交易主脑。",
-                                        },
-                                        {"role": "user", "content": prompt},
-                                    ],
-                                )
+                            resp = await llm_service.get_client().chat.completions.create(
+                                model=llm_service.get_model(),
+                                temperature=0.7,
+                                messages=[
+                                    {
+                                        "role": "system",
+                                        "content": "你是一个资深量化交易主脑。",
+                                    },
+                                    {"role": "user", "content": prompt},
+                                ],
                             )  # noqa: E501
                             content = resp.choices[0].message.content
                             report = content.strip() if content else ""
@@ -1877,9 +1671,7 @@ class ScreenerService:
                             report = report.strip()
 
                             # 3. 通过 Notification Tool 广发放通知
-                            await notification_service.send_alert(
-                                f"🔥 [Quant Agent] 每日强势股主线复盘\n\n{report}"
-                            )  # noqa: E501
+                            await notification_service.send_alert(f"🔥 [Quant Agent] 每日强势股主线复盘\n\n{report}")  # noqa: E501
                         except Exception as e:
                             print(f"⚠️ [Screener Daemon] LLM 总结失败: {e}")
 
@@ -1910,9 +1702,7 @@ class ScreenerService:
                         await asyncio.sleep(60)
                         continue
 
-                    print(
-                        "🧹 [Knowledge Base Daemon] 开始清理 PG 知识库中超过 90 天的陈旧网页向量..."
-                    )  # noqa: E501
+                    print("🧹 [Knowledge Base Daemon] 开始清理 PG 知识库中超过 90 天的陈旧网页向量...")  # noqa: E501
 
                     def _do_clean():
                         import time
@@ -1930,9 +1720,7 @@ class ScreenerService:
                                 ).scalar()  # noqa: E501
                                 if table_exists:
                                     res = conn.execute(
-                                        text(
-                                            "DELETE FROM webpage_knowledge_base WHERE timestamp < :cutoff"
-                                        ),
+                                        text("DELETE FROM webpage_knowledge_base WHERE timestamp < :cutoff"),
                                         {"cutoff": cutoff_ts},
                                     )  # noqa: E501
                                     print(
@@ -1962,10 +1750,7 @@ class ScreenerService:
         # 💡 并发拉取这 10 只股票的最新一条新闻
         async def _fetch_latest_news(ticker):
             try:
-                is_asian = (
-                    any(x in ticker.upper() for x in ["HK", "SH", "SZ"])
-                    or ticker.isdigit()
-                )  # noqa: E501
+                is_asian = any(x in ticker.upper() for x in ["HK", "SH", "SZ"]) or ticker.isdigit()  # noqa: E501
                 if is_asian:
                     from backend.services.akshare_service import akshare_service
 
@@ -1991,9 +1776,7 @@ class ScreenerService:
                 news = ""  # noqa: E701
             chg = r.get("chg", r.get("price_change_pct", r.get("change_rate", 0)))
             news_str = f", 最新动态: {news}" if news else ""
-            stock_contexts.append(
-                f"- {r.get('name', r['symbol'])} ({r['symbol']}): 涨跌幅 {chg:.2f}%{news_str}"
-            )  # noqa: E501
+            stock_contexts.append(f"- {r.get('name', r['symbol'])} ({r['symbol']}): 涨跌幅 {chg:.2f}%{news_str}")  # noqa: E501
 
         stocks_info_str = "\n".join(stock_contexts)
 

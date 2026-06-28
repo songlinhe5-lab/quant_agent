@@ -96,9 +96,7 @@ class MacroRadarEngine:
         """
         try:
             # 在实际生产中，可以优先尝试本地 Redis 缓存或 Futu 接口，降级才走 yfinance
-            data = await asyncio.to_thread(
-                yf.download, ticker, period=period, progress=False
-            )  # noqa: E501
+            data = await asyncio.to_thread(yf.download, ticker, period=period, progress=False)  # noqa: E501
             if data is not None and not data.empty:
                 # yfinance >= 0.2.x 可能会返回 MultiIndex columns
                 if isinstance(data.columns, pd.MultiIndex):
@@ -132,10 +130,7 @@ class MacroRadarEngine:
         全量并发获取数据并生成雷达图所需的 6 象限 JSON 结构
         """
         # 1. 并发获取所有底料数据 (整合 YFinance 与 FRED)
-        yf_tasks = {
-            name: self.fetch_historical_data(ticker)
-            for name, ticker in self.TICKERS.items()
-        }  # noqa: E501
+        yf_tasks = {name: self.fetch_historical_data(ticker) for name, ticker in self.TICKERS.items()}  # noqa: E501
         fred_tasks = {
             "HY_SPREAD": self.fetch_fred_data("BAMLH0A0HYM2"),
             "T10Y2Y": self.fetch_fred_data("T10Y2Y"),
@@ -159,11 +154,7 @@ class MacroRadarEngine:
             if not series.empty and len(series) >= 5:
                 current_price = float(series.iloc[-1])
                 price_5d_ago = float(series.iloc[-5])
-                chg = (
-                    ((current_price - price_5d_ago) / price_5d_ago) * 100
-                    if price_5d_ago != 0
-                    else 0.0
-                )  # noqa: E501
+                chg = ((current_price - price_5d_ago) / price_5d_ago) * 100 if price_5d_ago != 0 else 0.0  # noqa: E501
                 diff = current_price - price_5d_ago
                 changes[name] = chg
                 diffs[name] = diff
@@ -172,14 +163,10 @@ class MacroRadarEngine:
                 diffs[name] = 0.0
 
         def get_score(name, inverse=False, multiplier=1.5):
-            return self.calculate_adaptive_score(
-                changes.get(name, 0.0), data_store.get(name), multiplier, inverse
-            )  # noqa: E501
+            return self.calculate_adaptive_score(changes.get(name, 0.0), data_store.get(name), multiplier, inverse)  # noqa: E501
 
         def get_spread_score(name, inverse=False, multiplier=1.5):
-            return self.calculate_spread_score(
-                diffs.get(name, 0.0), data_store.get(name), multiplier, inverse
-            )  # noqa: E501
+            return self.calculate_spread_score(diffs.get(name, 0.0), data_store.get(name), multiplier, inverse)  # noqa: E501
 
         def avg(*scores):
             return sum(scores) / len(scores)
@@ -198,15 +185,11 @@ class MacroRadarEngine:
             if vix_series is not None and not vix_series.empty
             else 50.0
         )  # noqa: E501
-        eq_score = avg(
-            get_score("SPX"), get_score("IXIC"), get_score("HSI"), get_score("N225")
-        )  # noqa: E501
+        eq_score = avg(get_score("SPX"), get_score("IXIC"), get_score("HSI"), get_score("N225"))  # noqa: E501
         com_score = avg(get_score("XAU"), get_score("WTI"))
 
         # 债券加入 10Y-2Y 长短端收益率倒挂程度 (T10Y2Y) 作为衰退指引
-        bond_score = avg(
-            get_score("10Y", inverse=True), get_spread_score("T10Y2Y", inverse=False)
-        )  # noqa: E501
+        bond_score = avg(get_score("10Y", inverse=True), get_spread_score("T10Y2Y", inverse=False))  # noqa: E501
 
         fx_score = get_score("DXY", inverse=True)
 

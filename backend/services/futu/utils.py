@@ -40,10 +40,7 @@ def format_ticker(ticker: str) -> str:
     if ticker.endswith(".US"):
         return f"US.{ticker.replace('.US', '')}"
 
-    if any(
-        ticker.startswith(prefix)
-        for prefix in ["US.", "SH.", "SZ.", "JP.", "SG.", "UK.", "LSE."]
-    ):  # noqa: E501
+    if any(ticker.startswith(prefix) for prefix in ["US.", "SH.", "SZ.", "JP.", "SG.", "UK.", "LSE."]):  # noqa: E501
         return ticker
 
     return f"US.{ticker}"

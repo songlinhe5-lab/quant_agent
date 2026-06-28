@@ -21,9 +21,7 @@ class FREDService:
     def __init__(self):
         self.api_key = os.getenv("FRED_API_KEY")
         if not self.api_key:
-            print(
-                "⚠️ [FREDService] 未找到 FRED_API_KEY 环境变量，宏观数据工具将不可用。"
-            )  # noqa: E501
+            print("⚠️ [FREDService] 未找到 FRED_API_KEY 环境变量，宏观数据工具将不可用。")  # noqa: E501
         self.base_url = "https://api.stlouisfed.org/fred"
         # 💡 使用共享的 AsyncClient 以复用连接，提升性能
         self.session = httpx.AsyncClient(
@@ -40,9 +38,7 @@ class FREDService:
         await self.session.aclose()
 
     @with_global_retry
-    async def get_series_observations(
-        self, series_id: str, limit: int = 100
-    ) -> Dict[str, Any]:  # noqa: E501
+    async def get_series_observations(self, series_id: str, limit: int = 100) -> Dict[str, Any]:  # noqa: E501
         """
         获取指定宏观经济序列的最新观测值。
         :param series_id: FRED 序列 ID (例如: 'DGS10' 代表10年期美债收益率)
@@ -82,9 +78,7 @@ class FREDService:
             }
 
             try:
-                response = await self.session.get(
-                    f"{self.base_url}/series/observations", params=params
-                )  # noqa: E501
+                response = await self.session.get(f"{self.base_url}/series/observations", params=params)  # noqa: E501
                 response.raise_for_status()
                 data = response.json()
 
@@ -109,9 +103,7 @@ class FREDService:
                     "data": observations,
                 }  # noqa: E501
                 ttl = 43200 + random.randint(100, 600)
-                await redis_client.set(
-                    cache_key, json.dumps(result), ex=ttl
-                )  # 缓存 12 小时 + Jitter  # noqa: E501
+                await redis_client.set(cache_key, json.dumps(result), ex=ttl)  # 缓存 12 小时 + Jitter  # noqa: E501
                 return result
             except httpx.ConnectError as e:
                 print(f"❌ [FREDService] 网络连接异常: {e}")
@@ -123,9 +115,7 @@ class FREDService:
                 if e.response.status_code == 400:
                     error_detail = "请求参数错误"
                     try:
-                        error_detail = e.response.json().get(
-                            "error_message", error_detail
-                        )  # noqa: E501, E701
+                        error_detail = e.response.json().get("error_message", error_detail)  # noqa: E501, E701
                     except json.JSONDecodeError:
                         pass  # noqa: E701
                     if "api_key" in error_detail.lower():
@@ -149,9 +139,7 @@ class FREDService:
                 }  # noqa: E501
 
     @with_global_retry
-    async def get_economic_calendar(
-        self, days_ahead: int = 7, skip_cache: bool = False
-    ) -> Dict[str, Any]:  # noqa: E501
+    async def get_economic_calendar(self, days_ahead: int = 7, skip_cache: bool = False) -> Dict[str, Any]:  # noqa: E501
         """从 FRED 获取未来的宏观经济数据发布日历"""
         if not self.api_key:
             return {"status": "error", "message": "FRED API Key 未配置"}
@@ -189,9 +177,7 @@ class FREDService:
             }
 
             try:
-                response = await self.session.get(
-                    f"{self.base_url}/releases/dates", params=params
-                )  # noqa: E501
+                response = await self.session.get(f"{self.base_url}/releases/dates", params=params)  # noqa: E501
                 response.raise_for_status()
                 data = response.json()
 
@@ -212,8 +198,7 @@ class FREDService:
 
                     events.append(
                         {
-                            "time": event_date
-                            + " 08:30:00",  # FRED 默认使用东部时间上午发布  # noqa: E501
+                            "time": event_date + " 08:30:00",  # FRED 默认使用东部时间上午发布  # noqa: E501
                             "country": "US",
                             "event": event_name,
                             "impact": "medium",

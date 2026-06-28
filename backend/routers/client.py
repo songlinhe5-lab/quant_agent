@@ -77,14 +77,10 @@ async def heartbeat_stats(
             db.query(
                 models.ClientHeartbeat.platform,
                 func.count(models.ClientHeartbeat.id).label("total_heartbeats"),
-                func.count(func.distinct(models.ClientHeartbeat.device_id)).label(
-                    "active_devices"
-                ),
+                func.count(func.distinct(models.ClientHeartbeat.device_id)).label("active_devices"),
                 func.avg(models.ClientHeartbeat.fps).label("avg_fps"),
                 func.avg(models.ClientHeartbeat.memory_mb).label("avg_memory_mb"),
-                func.avg(models.ClientHeartbeat.ws_latency_ms).label(
-                    "avg_ws_latency_ms"
-                ),
+                func.avg(models.ClientHeartbeat.ws_latency_ms).label("avg_ws_latency_ms"),
             )
             .filter(models.ClientHeartbeat.created_at >= since)
             .group_by(models.ClientHeartbeat.platform)

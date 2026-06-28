@@ -92,15 +92,8 @@ class QuoteMonitorHandler(StockQuoteHandlerBase):
         ticker = data["code"].iloc[0]
         last_price = data["last_price"].iloc[0]
 
-        if (
-            ticker == TARGET_TICKER
-            and last_price <= TARGET_BUY_PRICE
-            and not self.has_traded
-        ):
-            print(
-                f"\n🚨 [交易信号触发] {ticker} 价格 ({last_price}) "
-                f"跌破阈值 {TARGET_BUY_PRICE}！"
-            )
+        if ticker == TARGET_TICKER and last_price <= TARGET_BUY_PRICE and not self.has_traded:
+            print(f"\n🚨 [交易信号触发] {ticker} 价格 ({last_price}) 跌破阈值 {TARGET_BUY_PRICE}！")
             self.has_traded = True
 
             action_type = "BUY"

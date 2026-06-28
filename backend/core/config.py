@@ -49,9 +49,7 @@ class Settings(BaseSettings):
     openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
     embedding_api_key: str = Field(alias="EMBEDDING_API_KEY")
     embedding_base_url: str = Field(alias="EMBEDDING_BASE_URL")
-    embedding_model: str = Field(
-        default="BAAI/bge-large-zh-v1.5", alias="EMBEDDING_MODEL"
-    )  # noqa: E501
+    embedding_model: str = Field(default="BAAI/bge-large-zh-v1.5", alias="EMBEDDING_MODEL")  # noqa: E501
     embedding_dim: int = Field(default=1024, alias="EMBEDDING_DIM")
 
     # ===== 数据源 API Key =====
@@ -63,9 +61,7 @@ class Settings(BaseSettings):
     # ===== Futu OpenD 配置 =====
     futu_host: str = Field(default="127.0.0.1", alias="FUTU_HOST")
     futu_port: int = Field(default=11111, alias="FUTU_PORT")
-    futu_trd_env: Literal["SIMULATE", "REAL"] = Field(
-        default="SIMULATE", alias="FUTU_TRD_ENV"
-    )  # noqa: E501
+    futu_trd_env: Literal["SIMULATE", "REAL"] = Field(default="SIMULATE", alias="FUTU_TRD_ENV")  # noqa: E501
     futu_pwd_unlock: Optional[str] = Field(default=None, alias="FUTU_PWD_UNLOCK")
 
     # ===== 告警配置 =====
@@ -78,20 +74,14 @@ class Settings(BaseSettings):
     real_trade_execute: bool = Field(default=False, alias="REAL_TRADE_EXECUTE")
 
     # ===== 内部通信安全 =====
-    internal_api_secret: str = Field(
-        default="default-internal-secret-change-me", alias="INTERNAL_API_SECRET"
-    )
+    internal_api_secret: str = Field(default="default-internal-secret-change-me", alias="INTERNAL_API_SECRET")
 
     # ===== 敏感字段加密 =====
-    encryption_master_key: Optional[str] = Field(
-        default=None, alias="ENCRYPTION_MASTER_KEY"
-    )
+    encryption_master_key: Optional[str] = Field(default=None, alias="ENCRYPTION_MASTER_KEY")
 
     # ===== Meilisearch 配置 =====
     meilisearch_host: Optional[str] = Field(default=None, alias="MEILISEARCH_HOST")
-    meilisearch_api_key: Optional[str] = Field(
-        default=None, alias="MEILISEARCH_API_KEY"
-    )  # noqa: E501
+    meilisearch_api_key: Optional[str] = Field(default=None, alias="MEILISEARCH_API_KEY")  # noqa: E501
 
     @field_validator("database_url")
     @classmethod
@@ -116,8 +106,7 @@ class Settings(BaseSettings):
             # 实盘交易开启时，必须配置 Futu 解锁密码
             if not info.data.get("futu_pwd_unlock"):
                 raise ValueError(
-                    "❌ 实盘交易已开启 (REAL_TRADE_EXECUTE=true)，"
-                    "必须配置 FUTU_PWD_UNLOCK（Futu 交易密码）"
+                    "❌ 实盘交易已开启 (REAL_TRADE_EXECUTE=true)，必须配置 FUTU_PWD_UNLOCK（Futu 交易密码）"
                 )
         return v
 

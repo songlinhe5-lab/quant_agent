@@ -286,9 +286,7 @@ class PipelineBenchmark:
 
         for stage_name, stage_result in stages.items():
             if stage_result.get("status") == "skipped":
-                report_lines.append(
-                    f"[{stage_name}] 跳过: {stage_result.get('reason')}"
-                )  # noqa: E501
+                report_lines.append(f"[{stage_name}] 跳过: {stage_result.get('reason')}")  # noqa: E501
                 continue
 
             status = "✅ PASS" if stage_result.get("pass") else "❌ FAIL"
@@ -301,9 +299,7 @@ class PipelineBenchmark:
 
         report_lines.append("-" * 60)
         overall = "✅ PASS" if summary["overall_pass"] else "❌ FAIL"
-        report_lines.append(
-            f"总结: {overall} ({summary['stages_passed']}/{summary['stages_total']} 阶段通过)"
-        )  # noqa: E501
+        report_lines.append(f"总结: {overall} ({summary['stages_passed']}/{summary['stages_total']} 阶段通过)")  # noqa: E501
         report_lines.append("目标: P99 < 50ms")
         report_lines.append("=" * 60)
 

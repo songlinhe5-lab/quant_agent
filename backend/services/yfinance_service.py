@@ -49,9 +49,7 @@ def format_yf_ticker(ticker: str) -> str:
 
     if yf_ticker.endswith(".HK") or yf_ticker.startswith("HK."):
         code = yf_ticker.replace(".HK", "").replace("HK.", "")
-        yf_ticker = (
-            f"{code.lstrip('0').zfill(4)}.HK" if code.isdigit() else f"{code}.HK"
-        )  # noqa: E501
+        yf_ticker = f"{code.lstrip('0').zfill(4)}.HK" if code.isdigit() else f"{code}.HK"  # noqa: E501
     elif yf_ticker.startswith("SH."):
         yf_ticker = yf_ticker.replace("SH.", "") + ".SS"
     elif yf_ticker.endswith(".SH"):
@@ -63,9 +61,7 @@ def format_yf_ticker(ticker: str) -> str:
     elif yf_ticker.startswith("SG."):
         yf_ticker = yf_ticker.replace("SG.", "") + ".SI"  # 新加坡交易所后缀
     elif yf_ticker.startswith("UK.") or yf_ticker.startswith("LSE."):
-        yf_ticker = (
-            yf_ticker.replace("UK.", "").replace("LSE.", "") + ".L"
-        )  # 伦敦交易所后缀  # noqa: E501
+        yf_ticker = yf_ticker.replace("UK.", "").replace("LSE.", "") + ".L"  # 伦敦交易所后缀  # noqa: E501
 
     return yf_ticker
 
@@ -92,16 +88,12 @@ class RateLimitedSession(requests.Session):
         sleep_time = 0.0
         with self._rl_lock:
             now = time.time()
-            while (
-                self._request_times and now > self._request_times[0] + self.per_seconds
-            ):  # noqa: E501
+            while self._request_times and now > self._request_times[0] + self.per_seconds:  # noqa: E501
                 self._request_times.popleft()
 
             if len(self._request_times) >= self.max_requests:
                 # 严格按照先进先出漏桶控制，保障每 per_seconds 内最多执行 max_requests 次  # noqa: E501
-                earliest_allowed = (
-                    self._request_times[-self.max_requests] + self.per_seconds
-                )  # noqa: E501
+                earliest_allowed = self._request_times[-self.max_requests] + self.per_seconds  # noqa: E501
                 sleep_time = earliest_allowed - now
                 if sleep_time < 0:
                     sleep_time = 0
@@ -118,25 +110,15 @@ class RateLimitedSession(requests.Session):
         try:
             res = super().request(method, url, *args, **kwargs)
             process_time = time.perf_counter() - start_t
-            EXTERNAL_API_COUNT.labels(
-                service_name="yfinance", method=method, http_status=res.status_code
-            ).inc()  # noqa: E501
-            EXTERNAL_API_LATENCY.labels(service_name="yfinance", method=method).observe(
-                process_time
-            )  # noqa: E501
+            EXTERNAL_API_COUNT.labels(service_name="yfinance", method=method, http_status=res.status_code).inc()  # noqa: E501
+            EXTERNAL_API_LATENCY.labels(service_name="yfinance", method=method).observe(process_time)  # noqa: E501
             if process_time > 3.0:
-                logger.warning(
-                    f"🐢 [Slow Egress API] yfinance ({method} {url}) 耗时: {process_time:.2f}s"
-                )  # noqa: E501
+                logger.warning(f"🐢 [Slow Egress API] yfinance ({method} {url}) 耗时: {process_time:.2f}s")  # noqa: E501
             return res
         except Exception as e:
             process_time = time.perf_counter() - start_t
-            EXTERNAL_API_COUNT.labels(
-                service_name="yfinance", method=method, http_status=500
-            ).inc()  # noqa: E501
-            EXTERNAL_API_LATENCY.labels(service_name="yfinance", method=method).observe(
-                process_time
-            )  # noqa: E501
+            EXTERNAL_API_COUNT.labels(service_name="yfinance", method=method, http_status=500).inc()  # noqa: E501
+            EXTERNAL_API_LATENCY.labels(service_name="yfinance", method=method).observe(process_time)  # noqa: E501
             raise e
 
 
@@ -155,9 +137,7 @@ class YFinanceService:
 
         # 💡 隔离线程池防死锁：YFinance 的限流机制包含同步的 time.sleep()。
         # 必须使用专属隔离的线程池，防止其休眠耗尽 FastAPI/asyncio 默认的全局 to_thread 线程池，导致整个网关瘫痪！  # noqa: E501
-        self._executor = concurrent.futures.ThreadPoolExecutor(
-            max_workers=10, thread_name_prefix="YFinanceWorker"
-        )  # noqa: E501
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=10, thread_name_prefix="YFinanceWorker")  # noqa: E501
 
         self._init_session()
 
@@ -191,9 +171,7 @@ class YFinanceService:
         return {
             "name": "Yahoo Finance",
             "status": "circuit_open" if is_open else "healthy",
-            "cooldown_remaining": max(0, int(self._circuit_breaker_until - now))
-            if is_open
-            else 0,  # noqa: E501
+            "cooldown_remaining": max(0, int(self._circuit_breaker_until - now)) if is_open else 0,  # noqa: E501
             "message": "触发 429 限流熔断中" if is_open else "正常",
         }
 
@@ -226,16 +204,14 @@ class YFinanceService:
                     f"数据源限流冷却中：{yf_ticker} 请求过于频繁，请等待几分钟后重试",
                 )  # noqa: E501
             else:
-                del self._error_cache[
-                    cache_key
-                ]  # 过期则移除黑名单，给它一次重新做人的机会  # noqa: E501
+                del self._error_cache[cache_key]  # 过期则移除黑名单，给它一次重新做人的机会  # noqa: E501
 
         if cache_key in self._cache:
             ts, data = self._cache[cache_key]
             if now - ts < ttl:
-                if not (
-                    fetch_type == "history" and getattr(data, "empty", False)
-                ) and not (fetch_type == "info" and len(data) <= 1):  # noqa: E501
+                if not (fetch_type == "history" and getattr(data, "empty", False)) and not (
+                    fetch_type == "info" and len(data) <= 1
+                ):  # noqa: E501
                     return True, data, ""
 
         try:
@@ -298,11 +274,7 @@ class YFinanceService:
                     is_soft_limited = False
                     if fetch_type == "history" and getattr(data, "empty", True):
                         is_soft_limited = True
-                    elif (
-                        fetch_type == "info"
-                        and isinstance(data, dict)
-                        and len(data) <= 1
-                    ):  # noqa: E501
+                    elif fetch_type == "info" and isinstance(data, dict) and len(data) <= 1:  # noqa: E501
                         is_soft_limited = True
 
                     if not is_soft_limited:
@@ -315,18 +287,14 @@ class YFinanceService:
                     )  # noqa: E501
                 except Exception as loop_e:
                     err_str = str(loop_e)
-                    print(
-                        f"⚠️ [YFinance API] 第 {attempt + 1} 次请求异常 -> Ticker: {yf_ticker} | Error: {err_str}"
-                    )  # noqa: E501
+                    print(f"⚠️ [YFinance API] 第 {attempt + 1} 次请求异常 -> Ticker: {yf_ticker} | Error: {err_str}")  # noqa: E501
                     if (
                         "429" in err_str
                         or "Rate limit" in err_str
                         or "Too Many Requests" in err_str
                         or "YFRateLimitError" in err_str
                     ):  # noqa: E501
-                        print(
-                            "🚨 [YFinance] 触发全局限流熔断！所有雅虎请求将强制休眠 60 秒以释放压力"
-                        )  # noqa: E501
+                        print("🚨 [YFinance] 触发全局限流熔断！所有雅虎请求将强制休眠 60 秒以释放压力")  # noqa: E501
                         self._circuit_breaker_until = time.time() + 60.0
                         return (
                             False,
@@ -337,9 +305,7 @@ class YFinanceService:
                 if attempt < max_retries - 1:
                     # 指数退避 + 随机抖动
                     backoff = random.uniform(2.0, 5.0) * (2**attempt)
-                    print(
-                        f"🔄 [YFinance API] 准备第 {attempt + 2} 次重试，重置 Session 并退避休眠 {backoff:.1f} 秒..."
-                    )  # noqa: E501
+                    print(f"🔄 [YFinance API] 准备第 {attempt + 2} 次重试，重置 Session 并退避休眠 {backoff:.1f} 秒...")  # noqa: E501
                     await asyncio.sleep(backoff)
                     self._init_session()
                     kwargs["session"] = self.session
@@ -353,14 +319,10 @@ class YFinanceService:
         except Exception as e:
             self._error_cache[cache_key] = time.time()  # 记录进黑名单
             err_str = str(e)
-            print(
-                f"⚠️ [YFinance] 外层兜底异常 | ticker: {yf_ticker} | fetch_type: {fetch_type} | error: {err_str}"
-            )  # noqa: E501
+            print(f"⚠️ [YFinance] 外层兜底异常 | ticker: {yf_ticker} | fetch_type: {fetch_type} | error: {err_str}")  # noqa: E501
             return False, None, f"yfinance 未知系统异常: {err_str}"
 
-    async def get_batched_quote(
-        self, ticker: str, req_type: str = "quote", **kwargs
-    ) -> Dict[str, Any]:  # noqa: E501
+    async def get_batched_quote(self, ticker: str, req_type: str = "quote", **kwargs) -> Dict[str, Any]:  # noqa: E501
         """
         💡 革命性优化：基于微批处理 (Micro-batching) 的异步数据加载器。
         支持动态混入 "quote" (实时行情) 和 "tech" (技术指标) 类型的合并请求。
@@ -373,11 +335,7 @@ class YFinanceService:
 
         # 💡 2. 检查 L1 缓存 (按请求类型和参数强隔离)
         kwargs_str = (
-            "_".join(
-                [f"{k}_{str(v).replace(' ', '')}" for k, v in sorted(kwargs.items())]
-            )
-            if kwargs
-            else "default"
+            "_".join([f"{k}_{str(v).replace(' ', '')}" for k, v in sorted(kwargs.items())]) if kwargs else "default"
         )  # noqa: E501
         cache_key = f"yf_batch_{req_type}_{yf_ticker}_{kwargs_str}"
 
@@ -388,9 +346,7 @@ class YFinanceService:
             return self._cache[cache_key][1]
 
         # 💡 3. 检查黑名单 (5分钟冷却，防止退市/错误标的引发重复超时卡顿)
-        if cache_key in self._error_cache and (
-            now - self._error_cache[cache_key] < 300.0
-        ):  # noqa: E501
+        if cache_key in self._error_cache and (now - self._error_cache[cache_key] < 300.0):  # noqa: E501
             return {"status": "error", "message": f"{ticker} 数据拉取频繁失败，冷却中"}
 
         loop = asyncio.get_running_loop()
@@ -411,9 +367,7 @@ class YFinanceService:
 
             # 若是队列中的第一个请求，则启动一个 1 秒倒计时的发车任务
             if not self._batch_dispatch_task or self._batch_dispatch_task.done():
-                self._batch_dispatch_task = asyncio.create_task(
-                    self._dispatch_batch_quotes()
-                )  # noqa: E501
+                self._batch_dispatch_task = asyncio.create_task(self._dispatch_batch_quotes())  # noqa: E501
 
         try:
             # 业务方带着取餐号在此挂起等待 (设置 15 秒超时防止死锁)
@@ -438,9 +392,7 @@ class YFinanceService:
         tickers_str = " ".join(tickers)
 
         # 💡 动态决策拉取周期：只要队列中混入了任意技术指标请求，自动将全局历史拉长至半年 (6mo)  # noqa: E501
-        needs_tech = any(
-            req["req_type"] == "tech" for reqs in batch.values() for req in reqs
-        )  # noqa: E501
+        needs_tech = any(req["req_type"] == "tech" for reqs in batch.values() for req in reqs)  # noqa: E501
         period = "6mo" if needs_tech else "5d"
 
         def _do_batch_fetch():
@@ -480,9 +432,7 @@ class YFinanceService:
                     df = await loop.run_in_executor(self._executor, _do_batch_fetch)
                     if df is not None and not df.empty:
                         break
-                    print(
-                        f"⚠️ [YF Batcher] 第 {attempt + 1} 次获取到空数据 (疑似软限流/Cookie失效)"
-                    )  # noqa: E501
+                    print(f"⚠️ [YF Batcher] 第 {attempt + 1} 次获取到空数据 (疑似软限流/Cookie失效)")  # noqa: E501
                 except Exception as loop_e:
                     err_str = str(loop_e)
                     print(f"⚠️ [YF Batcher] 第 {attempt + 1} 次请求异常: {err_str}")
@@ -492,18 +442,14 @@ class YFinanceService:
                         or "Too Many Requests" in err_str
                         or "YFRateLimitError" in err_str
                     ):  # noqa: E501
-                        print(
-                            "🚨 [YF Batcher] 触发全局限流熔断！所有雅虎请求将强制休眠 60 秒以释放压力"
-                        )  # noqa: E501
+                        print("🚨 [YF Batcher] 触发全局限流熔断！所有雅虎请求将强制休眠 60 秒以释放压力")  # noqa: E501
                         self._circuit_breaker_until = time.time() + 60.0
                         df = None
                         break
 
                 if attempt < max_retries - 1:
                     backoff = random.uniform(2.0, 5.0) * (2**attempt)
-                    print(
-                        f"🔄 [YF Batcher] 准备第 {attempt + 2} 次重试，重置 Session 并退避休眠 {backoff:.1f} 秒..."
-                    )  # noqa: E501
+                    print(f"🔄 [YF Batcher] 准备第 {attempt + 2} 次重试，重置 Session 并退避休眠 {backoff:.1f} 秒...")  # noqa: E501
                     await asyncio.sleep(backoff)
                     self._init_session()
 
@@ -512,11 +458,7 @@ class YFinanceService:
                 results = {}
                 for t in batch.keys():
                     try:
-                        if (
-                            local_df is None
-                            or not hasattr(local_df, "empty")
-                            or local_df.empty
-                        ):  # noqa: E501
+                        if local_df is None or not hasattr(local_df, "empty") or local_df.empty:  # noqa: E501
                             results[t] = ValueError("返回空数据或连续重试失败")
                             continue
                         if isinstance(local_df.columns, pd.MultiIndex):
@@ -551,11 +493,7 @@ class YFinanceService:
                         raise ticker_res
                     ticker_df = ticker_res
 
-                    if (
-                        ticker_df is None
-                        or not hasattr(ticker_df, "empty")
-                        or ticker_df.empty
-                    ):  # noqa: E501
+                    if ticker_df is None or not hasattr(ticker_df, "empty") or ticker_df.empty:  # noqa: E501
                         raise ValueError("数据切片结果为空或非法类型")
 
                     # 💡 遍历分发给挂起的不同请求类型
@@ -574,11 +512,7 @@ class YFinanceService:
                                 if len(ticker_df) > 1
                                 else float(ticker_df["Open"].iloc[-1])
                             )  # noqa: E501
-                            change_pct = (
-                                ((last_price - prev_close) / prev_close) * 100
-                                if prev_close
-                                else 0.0
-                            )  # noqa: E501
+                            change_pct = ((last_price - prev_close) / prev_close) * 100 if prev_close else 0.0  # noqa: E501
                             res = {
                                 "status": "success",
                                 "ticker": t,
@@ -659,9 +593,7 @@ class YFinanceService:
                         bbands_period,
                         bbands_std_dev,
                     )  # noqa: E501
-                    fallback_data["message"] = (
-                        f"⚠️ {msg} (已自动降级为本地缓存/模拟数据)"  # noqa: E501
-                    )
+                    fallback_data["message"] = f"⚠️ {msg} (已自动降级为本地缓存/模拟数据)"  # noqa: E501
                     return fallback_data
                 return {"status": "error", "message": msg}
 
@@ -675,33 +607,23 @@ class YFinanceService:
                     raise ValueError("计算指标失败：输入数据为空或非法类型")
                 open_series = cast(
                     pd.Series,
-                    local_df["Open"].squeeze()
-                    if isinstance(local_df.columns, pd.MultiIndex)
-                    else local_df["Open"],
+                    local_df["Open"].squeeze() if isinstance(local_df.columns, pd.MultiIndex) else local_df["Open"],
                 )  # noqa: E501
                 close_series = cast(
                     pd.Series,
-                    local_df["Close"].squeeze()
-                    if isinstance(local_df.columns, pd.MultiIndex)
-                    else local_df["Close"],
+                    local_df["Close"].squeeze() if isinstance(local_df.columns, pd.MultiIndex) else local_df["Close"],
                 )  # noqa: E501
                 high_series = cast(
                     pd.Series,
-                    local_df["High"].squeeze()
-                    if isinstance(local_df.columns, pd.MultiIndex)
-                    else local_df["High"],
+                    local_df["High"].squeeze() if isinstance(local_df.columns, pd.MultiIndex) else local_df["High"],
                 )  # noqa: E501
                 low_series = cast(
                     pd.Series,
-                    local_df["Low"].squeeze()
-                    if isinstance(local_df.columns, pd.MultiIndex)
-                    else local_df["Low"],
+                    local_df["Low"].squeeze() if isinstance(local_df.columns, pd.MultiIndex) else local_df["Low"],
                 )  # noqa: E501
                 volume_series = cast(
                     pd.Series,
-                    local_df["Volume"].squeeze()
-                    if isinstance(local_df.columns, pd.MultiIndex)
-                    else local_df["Volume"],
+                    local_df["Volume"].squeeze() if isinstance(local_df.columns, pd.MultiIndex) else local_df["Volume"],
                 )  # noqa: E501
 
                 ma_dict = {p: close_series.rolling(window=p).mean() for p in ma_periods}
@@ -721,8 +643,7 @@ class YFinanceService:
                 macd_hist, macd_line, signal_line = None, None, None
                 if include_macd:
                     macd_line = (
-                        close_series.ewm(span=12, adjust=False).mean()
-                        - close_series.ewm(span=26, adjust=False).mean()
+                        close_series.ewm(span=12, adjust=False).mean() - close_series.ewm(span=26, adjust=False).mean()
                     )  # noqa: E501
                     signal_line = macd_line.ewm(span=9, adjust=False).mean()
                     macd_hist = macd_line - signal_line
@@ -733,9 +654,7 @@ class YFinanceService:
                     high_9 = high_series.rolling(window=9, min_periods=1).max()
                     low_9 = low_series.rolling(window=9, min_periods=1).min()
                     rsv = (close_series - low_9) / (high_9 - low_9) * 100
-                    k_series = (
-                        rsv.fillna(50).ewm(com=2, adjust=False).mean()
-                    )  # com=2 等价于 alpha=1/3  # noqa: E501
+                    k_series = rsv.fillna(50).ewm(com=2, adjust=False).mean()  # com=2 等价于 alpha=1/3  # noqa: E501
                     d_series = k_series.ewm(com=2, adjust=False).mean()
                     j_series = 3 * k_series - 2 * d_series
 
@@ -775,9 +694,7 @@ class YFinanceService:
                     for p in ma_periods:
                         day_res[f"MA_{p}"] = round(float(ma_dict[p].iloc[i]), 2)  # noqa: E501, E701
                     if rsi_series is not None:
-                        day_res[f"RSI_{rsi_period}"] = round(
-                            float(rsi_series.iloc[i]), 2
-                        )  # noqa: E501, E701
+                        day_res[f"RSI_{rsi_period}"] = round(float(rsi_series.iloc[i]), 2)  # noqa: E501, E701
                     if (
                         include_macd
                         and (macd_line is not None)
@@ -791,12 +708,7 @@ class YFinanceService:
                                 "MACD_hist": round(float(macd_hist.iloc[i]), 3),
                             }
                         )  # noqa: E501, E701
-                    if (
-                        include_kdj
-                        and (k_series is not None)
-                        and (d_series is not None)
-                        and (j_series is not None)
-                    ):
+                    if include_kdj and (k_series is not None) and (d_series is not None) and (j_series is not None):
                         day_res.update(
                             {
                                 "KDJ_K": round(float(k_series.iloc[i]), 2),
@@ -811,84 +723,54 @@ class YFinanceService:
                             day_res.update(
                                 {
                                     "trailing_stop_loss": round(
-                                        day_res[f"MA_{ma_periods[0]}"]
-                                        - stop_loss_multiplier * curr_atr,
+                                        day_res[f"MA_{ma_periods[0]}"] - stop_loss_multiplier * curr_atr,
                                         2,
                                     ),
                                     "take_profit": round(
-                                        day_res[f"MA_{ma_periods[0]}"]
-                                        + take_profit_multiplier * curr_atr,
+                                        day_res[f"MA_{ma_periods[0]}"] + take_profit_multiplier * curr_atr,
                                         2,
                                     ),
                                 }
                             )  # noqa: E501, E701
-                    if (
-                        (bb_middle is not None)
-                        and (bb_upper is not None)
-                        and (bb_lower is not None)
-                    ):
+                    if (bb_middle is not None) and (bb_upper is not None) and (bb_lower is not None):
                         day_res.update(
                             {
-                                f"BB_middle_{bbands_period}": round(
-                                    float(bb_middle.iloc[i]), 2
-                                ),
-                                f"BB_upper_{bbands_period}": round(
-                                    float(bb_upper.iloc[i]), 2
-                                ),
-                                f"BB_lower_{bbands_period}": round(
-                                    float(bb_lower.iloc[i]), 2
-                                ),
+                                f"BB_middle_{bbands_period}": round(float(bb_middle.iloc[i]), 2),
+                                f"BB_upper_{bbands_period}": round(float(bb_upper.iloc[i]), 2),
+                                f"BB_lower_{bbands_period}": round(float(bb_lower.iloc[i]), 2),
                             }
                         )  # noqa: E501, E701
 
                     actions = []
                     if i - 1 >= -len(close_series):
                         if include_macd and macd_hist is not None:
-                            actions.append("buy (MACD金叉)") if macd_hist.iloc[
-                                i
-                            ] > 0 and macd_hist.iloc[i - 1] <= 0 else actions.append(
-                                "sell (MACD死叉)"
-                            ) if macd_hist.iloc[i] < 0 and macd_hist.iloc[
+                            actions.append("buy (MACD金叉)") if macd_hist.iloc[i] > 0 and macd_hist.iloc[
+                                i - 1
+                            ] <= 0 else actions.append("sell (MACD死叉)") if macd_hist.iloc[i] < 0 and macd_hist.iloc[
                                 i - 1
                             ] >= 0 else None  # noqa: E501, E701
-                        if (
-                            include_kdj
-                            and (k_series is not None)
-                            and (d_series is not None)
-                        ):
-                            actions.append("buy (KDJ金叉)") if k_series.iloc[
+                        if include_kdj and (k_series is not None) and (d_series is not None):
+                            actions.append("buy (KDJ金叉)") if k_series.iloc[i] > d_series.iloc[i] and k_series.iloc[
+                                i - 1
+                            ] <= d_series.iloc[i - 1] else actions.append("sell (KDJ死叉)") if k_series.iloc[
                                 i
-                            ] > d_series.iloc[i] and k_series.iloc[
-                                i - 1
-                            ] <= d_series.iloc[i - 1] else actions.append(
-                                "sell (KDJ死叉)"
-                            ) if k_series.iloc[i] < d_series.iloc[i] and k_series.iloc[
-                                i - 1
-                            ] >= d_series.iloc[i - 1] else None  # noqa: E501, E701
+                            ] < d_series.iloc[i] and k_series.iloc[i - 1] >= d_series.iloc[i - 1] else None  # noqa: E501, E701
                         if ma_periods and len(ma_periods) >= 2:
-                            actions.append(
-                                f"buy (MA{ma_periods[0]}上穿MA{ma_periods[1]})"
-                            ) if ma_dict[ma_periods[0]].iloc[i] > ma_dict[
-                                ma_periods[1]
-                            ].iloc[i] and ma_dict[ma_periods[0]].iloc[i - 1] <= ma_dict[
-                                ma_periods[1]
-                            ].iloc[i - 1] else actions.append(
-                                f"sell (MA{ma_periods[0]}下穿MA{ma_periods[1]})"
-                            ) if ma_dict[ma_periods[0]].iloc[i] < ma_dict[
-                                ma_periods[1]
-                            ].iloc[i] and ma_dict[ma_periods[0]].iloc[i - 1] >= ma_dict[
-                                ma_periods[1]
-                            ].iloc[i - 1] else None  # noqa: E501, E701
-                        if (bb_upper is not None) and (bb_lower is not None):
-                            actions.append("buy (突破布林带上轨)") if close_series.iloc[
-                                i
-                            ] > bb_upper.iloc[i] and close_series.iloc[
+                            actions.append(f"buy (MA{ma_periods[0]}上穿MA{ma_periods[1]})") if ma_dict[
+                                ma_periods[0]
+                            ].iloc[i] > ma_dict[ma_periods[1]].iloc[i] and ma_dict[ma_periods[0]].iloc[
                                 i - 1
-                            ] <= bb_upper.iloc[i - 1] else actions.append(
-                                "sell (跌破布林带下轨)"
-                            ) if close_series.iloc[i] < bb_lower.iloc[
+                            ] <= ma_dict[ma_periods[1]].iloc[i - 1] else actions.append(
+                                f"sell (MA{ma_periods[0]}下穿MA{ma_periods[1]})"
+                            ) if ma_dict[ma_periods[0]].iloc[i] < ma_dict[ma_periods[1]].iloc[i] and ma_dict[
+                                ma_periods[0]
+                            ].iloc[i - 1] >= ma_dict[ma_periods[1]].iloc[i - 1] else None  # noqa: E501, E701
+                        if (bb_upper is not None) and (bb_lower is not None):
+                            actions.append("buy (突破布林带上轨)") if close_series.iloc[i] > bb_upper.iloc[
                                 i
-                            ] and close_series.iloc[i - 1] >= bb_lower.iloc[
+                            ] and close_series.iloc[i - 1] <= bb_upper.iloc[i - 1] else actions.append(
+                                "sell (跌破布林带下轨)"
+                            ) if close_series.iloc[i] < bb_lower.iloc[i] and close_series.iloc[i - 1] >= bb_lower.iloc[
                                 i - 1
                             ] else None  # noqa: E501, E701
 
@@ -903,8 +785,7 @@ class YFinanceService:
                             # 底背离 (价格创新低，但 RSI 处在超卖区反弹)
                             if (
                                 close_series.iloc[i] < close_series.iloc[i - 1]
-                                and close_series.iloc[i]
-                                <= close_series.iloc[i - 5 : i].min()
+                                and close_series.iloc[i] <= close_series.iloc[i - 5 : i].min()
                                 and rsi_series.iloc[i] > rsi_series.iloc[i - 1]
                                 and rsi_series.iloc[i] < 40
                             ):  # noqa: E501
@@ -918,8 +799,7 @@ class YFinanceService:
                             # 顶背离 (价格创新高，但 RSI 处在超买区回落)
                             elif (
                                 close_series.iloc[i] > close_series.iloc[i - 1]
-                                and close_series.iloc[i]
-                                >= close_series.iloc[i - 5 : i].max()
+                                and close_series.iloc[i] >= close_series.iloc[i - 5 : i].max()
                                 and rsi_series.iloc[i] < rsi_series.iloc[i - 1]
                                 and rsi_series.iloc[i] > 60
                             ):  # noqa: E501
@@ -1003,19 +883,13 @@ class YFinanceService:
                 "action": "buy (MACD金叉)" if i == lookback_days - 1 else "hold",
             }  # noqa: E501
             if include_macd:
-                day_data.update(
-                    {"MACD_line": 1.25, "MACD_signal": 0.85, "MACD_hist": 0.40}
-                )  # noqa: E501, E701
+                day_data.update({"MACD_line": 1.25, "MACD_signal": 0.85, "MACD_hist": 0.40})  # noqa: E501, E701
             if atr_period:
                 day_data.update(
                     {
                         f"ATR_{atr_period}": 5.94,
-                        "trailing_stop_loss": round(
-                            145.5 - (stop_loss_multiplier * 5.94), 2
-                        ),
-                        "take_profit": round(
-                            145.5 + (take_profit_multiplier * 5.94), 2
-                        ),
+                        "trailing_stop_loss": round(145.5 - (stop_loss_multiplier * 5.94), 2),
+                        "take_profit": round(145.5 + (take_profit_multiplier * 5.94), 2),
                     }
                 )  # noqa: E501, E701
             if bbands_period:
@@ -1091,9 +965,7 @@ class YFinanceService:
                         results.append(
                             {
                                 "symbol": q.get("symbol"),
-                                "name": q.get(
-                                    "shortname", q.get("longname", "Unknown")
-                                ),
+                                "name": q.get("shortname", q.get("longname", "Unknown")),
                                 "type": q.get("quoteType"),
                             }
                         )  # noqa: E501
@@ -1108,11 +980,7 @@ class YFinanceService:
                             futu_sym = f"HK.{raw_symbol.replace('.HK', '').zfill(5)}"
                         elif raw_symbol.endswith(".T"):
                             futu_sym = f"JP.{raw_symbol.replace('.T', '')}"
-                        elif (
-                            "." not in raw_symbol
-                            and "-" not in raw_symbol
-                            and "^" not in raw_symbol
-                        ):  # noqa: E501
+                        elif "." not in raw_symbol and "-" not in raw_symbol and "^" not in raw_symbol:  # noqa: E501
                             futu_sym = f"US.{raw_symbol}"
                         else:
                             futu_sym = raw_symbol
@@ -1120,9 +988,7 @@ class YFinanceService:
                         results.append(
                             {
                                 "symbol": futu_sym,
-                                "name": q.get(
-                                    "shortname", q.get("longname", "Unknown")
-                                ),
+                                "name": q.get("shortname", q.get("longname", "Unknown")),
                                 "type": q.get("quoteType"),
                             }
                         )  # noqa: E501
@@ -1139,9 +1005,7 @@ class YFinanceService:
             except Exception as e:
                 print(f"⚠️ [YFinance] 搜索异常 | query: {query} | error: {e}")
                 if "429" in str(e) or "Too Many Requests" in str(e):
-                    print(
-                        "🚨 [YFinance] 搜索触发限流熔断！接口将强制休眠 60 秒以释放压力"
-                    )  # noqa: E501
+                    print("🚨 [YFinance] 搜索触发限流熔断！接口将强制休眠 60 秒以释放压力")  # noqa: E501
                     self._circuit_breaker_until = time.time() + 60.0
                     return {
                         "status": "warning",
@@ -1191,15 +1055,11 @@ class YFinanceService:
         while True:
             # 💡 分布式锁：只允许集群中唯一一台节点 (Leader) 发起拉取，防止 N 台机器同时请求打爆雅虎限流  # noqa: E501
             lock_key = f"quant:lock:yf_daemon:{int(time.time() / base_interval)}"
-            if not await redis_client.set(
-                lock_key, "1", nx=True, ex=base_interval - 10
-            ):  # noqa: E501
+            if not await redis_client.set(lock_key, "1", nx=True, ex=base_interval - 10):  # noqa: E501
                 await asyncio.sleep(10)
                 continue
 
-            print(
-                f"🔄 [YF Daemon] 启动新一轮宏观指标批量同步 (共 {len(tickers)} 个)..."
-            )  # noqa: E501
+            print(f"🔄 [YF Daemon] 启动新一轮宏观指标批量同步 (共 {len(tickers)} 个)...")  # noqa: E501
             try:
 
                 def _do_batch_fetch():
@@ -1238,9 +1098,7 @@ class YFinanceService:
                         df = await loop.run_in_executor(self._executor, _do_batch_fetch)
                         if df is not None and not df.empty:
                             break
-                        print(
-                            f"  ⚠️ [YF Daemon] 第 {attempt + 1} 次获取到空数据 (疑似软限流/Cookie失效)"
-                        )  # noqa: E501
+                        print(f"  ⚠️ [YF Daemon] 第 {attempt + 1} 次获取到空数据 (疑似软限流/Cookie失效)")  # noqa: E501
                     except Exception as loop_e:
                         err_str = str(loop_e)
                         print(f"  ⚠️ [YF Daemon] 第 {attempt + 1} 次请求异常: {err_str}")
@@ -1269,79 +1127,49 @@ class YFinanceService:
                         daily_snap = {}
                         cache_list = []
                         alert_list = []
-                        if (
-                            local_df is None
-                            or not hasattr(local_df, "empty")
-                            or local_df.empty
-                        ):  # noqa: E501
+                        if local_df is None or not hasattr(local_df, "empty") or local_df.empty:  # noqa: E501
                             return daily_snap, cache_list, alert_list
 
                         for ticker in tickers:
                             try:
                                 if isinstance(local_df.columns, pd.MultiIndex):
-                                    if (
-                                        ticker in local_df.columns.levels[0]
-                                        or ticker in local_df
-                                    ):  # noqa: E501
+                                    if ticker in local_df.columns.levels[0] or ticker in local_df:  # noqa: E501
                                         ticker_df = local_df[ticker].dropna(how="all")
                                     elif "Close" in local_df:
                                         ticker_df = (
-                                            local_df.xs(ticker, axis=1, level=1).dropna(
-                                                how="all"
-                                            )
-                                            if ticker
-                                            in local_df.columns.get_level_values(1)
+                                            local_df.xs(ticker, axis=1, level=1).dropna(how="all")
+                                            if ticker in local_df.columns.get_level_values(1)
                                             else pd.DataFrame()
                                         )  # noqa: E501
                                     else:
                                         continue
                                 else:
-                                    ticker_df = (
-                                        local_df.dropna(how="all")
-                                        if len(tickers) == 1
-                                        else pd.DataFrame()
-                                    )  # noqa: E501
+                                    ticker_df = local_df.dropna(how="all") if len(tickers) == 1 else pd.DataFrame()  # noqa: E501
 
                                 if not ticker_df.empty:
                                     df_reset = ticker_df.reset_index()
-                                    df_reset.columns = [
-                                        str(c) for c in df_reset.columns
-                                    ]  # noqa: E501
+                                    df_reset.columns = [str(c) for c in df_reset.columns]  # noqa: E501
                                     cache_list.append(
                                         (
                                             f"yf_macro_cache_{ticker}",
-                                            df_reset.to_json(
-                                                orient="records", date_format="iso"
-                                            ),
+                                            df_reset.to_json(orient="records", date_format="iso"),
                                         )
                                     )  # noqa: E501
 
                                     try:
                                         if "Close" in ticker_df.columns:
-                                            last_price = float(
-                                                ticker_df["Close"].iloc[-1]
-                                            )  # noqa: E501
+                                            last_price = float(ticker_df["Close"].iloc[-1])  # noqa: E501
                                             last_dt = ticker_df.index[-1]
-                                            last_date = (
-                                                last_dt.date()
-                                                if hasattr(last_dt, "date")
-                                                else None
-                                            )  # noqa: E501
+                                            last_date = last_dt.date() if hasattr(last_dt, "date") else None  # noqa: E501
 
                                             if len(ticker_df) > 1:
-                                                prev_price_for_chg = float(
-                                                    ticker_df["Close"].iloc[-2]
-                                                )  # noqa: E501
+                                                prev_price_for_chg = float(ticker_df["Close"].iloc[-2])  # noqa: E501
                                             elif "Open" in ticker_df.columns:
-                                                prev_price_for_chg = float(
-                                                    ticker_df["Open"].iloc[-1]
-                                                )  # noqa: E501
+                                                prev_price_for_chg = float(ticker_df["Open"].iloc[-1])  # noqa: E501
                                             else:
                                                 prev_price_for_chg = last_price
                                             chg_pct = (
-                                                (last_price - prev_price_for_chg)
-                                                / prev_price_for_chg
-                                                * 100
+                                                (last_price - prev_price_for_chg) / prev_price_for_chg * 100
                                                 if prev_price_for_chg > 0
                                                 else 0.0
                                             )  # noqa: E501
@@ -1354,32 +1182,18 @@ class YFinanceService:
                                             if ticker in last_minute_prices:
                                                 prev_price = last_minute_prices[ticker]
                                                 if prev_price > 0:
-                                                    delta_pct = (
-                                                        (last_price - prev_price)
-                                                        / prev_price
-                                                        * 100
-                                                    )  # noqa: E501
-                                                    threshold = (
-                                                        3.0 if "BTC" in ticker else 1.5
-                                                    )  # noqa: E501
+                                                    delta_pct = (last_price - prev_price) / prev_price * 100  # noqa: E501
+                                                    threshold = 3.0 if "BTC" in ticker else 1.5  # noqa: E501
                                                     if abs(delta_pct) >= threshold:
-                                                        direction = (
-                                                            "暴力拉升 🚀"
-                                                            if delta_pct > 0
-                                                            else "高台跳水 🩸"
-                                                        )  # noqa: E501
+                                                        direction = "暴力拉升 🚀" if delta_pct > 0 else "高台跳水 🩸"  # noqa: E501
                                                         alert_list.append(
                                                             f"🚨 [宏观异动预警] {ticker} 发生分钟级 {direction}!\n\n当前价: {last_price:,.2f}\n极速变动: {delta_pct:+.2f}%\n\n请密切关注全球系统性流动性风险！"
                                                         )  # noqa: E501
                                             last_minute_prices[ticker] = last_price
                                     except Exception as e:
-                                        print(
-                                            f"  ⚠️ [YF Daemon] 价格异动监控处理异常: {e}"
-                                        )  # noqa: E501
+                                        print(f"  ⚠️ [YF Daemon] 价格异动监控处理异常: {e}")  # noqa: E501
                             except Exception as e:
-                                print(
-                                    f"  ⚠️ [YF Daemon] 处理 {ticker} 批量数据异常: {e}"
-                                )  # noqa: E501
+                                print(f"  ⚠️ [YF Daemon] 处理 {ticker} 批量数据异常: {e}")  # noqa: E501
                         return daily_snap, cache_list, alert_list
 
                     loop = asyncio.get_running_loop()
@@ -1419,11 +1233,7 @@ class YFinanceService:
                         # 💡 验证今天是否为真实交易日：提取美股大盘(^GSPC)最新K线的日期进行比对  # noqa: E501
                         is_trading_day = True
                         gspc_snap = daily_snapshot.get("^GSPC")
-                        if (
-                            gspc_snap
-                            and gspc_snap.get("date")
-                            and gspc_snap.get("date") != current_date
-                        ):  # noqa: E501
+                        if gspc_snap and gspc_snap.get("date") and gspc_snap.get("date") != current_date:  # noqa: E501
                             is_trading_day = False
 
                         # 在美东时间下午 16 点 (16:00 ~ 16:59) 触发，且为交易日，每天只发一次  # noqa: E501
@@ -1447,17 +1257,13 @@ class YFinanceService:
                                 "XLE": "能源板块",
                                 "KWEB": "中概互联",  # noqa: E501
                             }
-                            summary_lines = [
-                                "📊 [宏观收盘盘点] 全球核心大类资产今日收盘表现：\n"
-                            ]  # noqa: E501
+                            summary_lines = ["📊 [宏观收盘盘点] 全球核心大类资产今日收盘表现：\n"]  # noqa: E501
                             for t, name in core_assets.items():
                                 if t in daily_snapshot:
                                     p = daily_snapshot[t]["price"]
                                     c = daily_snapshot[t]["change"]
                                     icon = "🟢" if c > 0 else "🔴" if c < 0 else "⚪"
-                                    summary_lines.append(
-                                        f"{icon} {name}: {p:,.2f} ({'+' if c > 0 else ''}{c:.2f}%)"
-                                    )  # noqa: E501
+                                    summary_lines.append(f"{icon} {name}: {p:,.2f} ({'+' if c > 0 else ''}{c:.2f}%)")  # noqa: E501
 
                             # 💡 新增：大模型盘后一句话犀利点评
                             try:
@@ -1472,9 +1278,7 @@ class YFinanceService:
                                 # 💡 提取今天最新的 5 条宏观头条新闻喂给大模型
                                 recent_news = []
                                 try:
-                                    members = await redis_client.zrevrange(
-                                        "macro_news_stream", 0, 4
-                                    )  # noqa: E501
+                                    members = await redis_client.zrevrange("macro_news_stream", 0, 4)  # noqa: E501
                                     for m in members:
                                         if isinstance(m, (str, bytes, bytearray)):
                                             n_obj = json.loads(m)
@@ -1483,11 +1287,7 @@ class YFinanceService:
                                 except Exception as e:
                                     print(f"  ⚠️ [YF Daemon] 获取宏观新闻缓存失败: {e}")
 
-                                news_str = (
-                                    f" 今日核心新闻: {'; '.join(recent_news)}。"
-                                    if recent_news
-                                    else ""
-                                )  # noqa: E501
+                                news_str = f" 今日核心新闻: {'; '.join(recent_news)}。" if recent_news else ""  # noqa: E501
                                 prompt = f"你是顶尖华尔街量化交易主脑。以下是今日全球核心资产收盘表现：{market_data_str}。{news_str}请结合 VIX 恐慌指数的绝对水位（低于15乐观，高于25恐慌）、大类资产的背离情况及新闻事件，用一两句话（毒舌、专业，不超过80字）点评今日资金博弈及宏观风险。"  # noqa: E501
                                 resp = await llm_service.get_client().chat.completions.create(  # noqa: E501
                                     model=llm_service.get_model(),
@@ -1503,17 +1303,13 @@ class YFinanceService:
                                 ai_comment = ai_comment.strip()
 
                                 if ai_comment:
-                                    summary_lines.append(
-                                        f"\n🧠 [主脑点评] {ai_comment}"
-                                    )  # noqa: E501, E701
+                                    summary_lines.append(f"\n🧠 [主脑点评] {ai_comment}")  # noqa: E501, E701
                             except Exception as e:
                                 print(f"  ⚠️ [YF Daemon] AI 点评生成失败: {e}")
 
                             alert_msg = "\n".join(summary_lines)
                             print(alert_msg)
-                            asyncio.create_task(
-                                notification_service.send_alert(alert_msg)
-                            )
+                            asyncio.create_task(notification_service.send_alert(alert_msg))
                     except Exception as e:
                         print(f"  ⚠️ [YF Daemon] 收盘总结推送异常: {e}")
 
@@ -1526,18 +1322,14 @@ class YFinanceService:
                 else:
                     print("  ⚠️ [YF Daemon] 批量获取为空数据，疑似触发软限流")
                     base_interval = min(3600, base_interval * 2)
-                    print(
-                        f"🚨 [YF Daemon] 触发限流，下一轮休眠间隔拉长至 {base_interval} 秒"
-                    )  # noqa: E501
+                    print(f"🚨 [YF Daemon] 触发限流，下一轮休眠间隔拉长至 {base_interval} 秒")  # noqa: E501
 
             except Exception as e:
                 print(f"❌ [YF Daemon] 批量拉取异常: {e}")
                 err_str = str(e)
                 if "429" in err_str or "Too Many Requests" in err_str:
                     base_interval = min(3600, base_interval * 2)
-                    print(
-                        f"🚨 [YF Daemon] 触发限流，下一轮整体休眠间隔拉长至 {base_interval} 秒"
-                    )  # noqa: E501
+                    print(f"🚨 [YF Daemon] 触发限流，下一轮整体休眠间隔拉长至 {base_interval} 秒")  # noqa: E501
 
             await asyncio.sleep(base_interval)
 

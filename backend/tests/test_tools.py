@@ -220,9 +220,7 @@ class TestToolRegistry:
         """注册表应包含核心 Tool"""
         from hermes_agent.tool_registry import _AUTO_REGISTERED_TOOLS
 
-        tool_names = [
-            cls.name for cls in _AUTO_REGISTERED_TOOLS if hasattr(cls, "name")
-        ]  # noqa: E501
+        tool_names = [cls.name for cls in _AUTO_REGISTERED_TOOLS if hasattr(cls, "name")]  # noqa: E501
         expected = ["get_broker_market_data", "get_fundamental_data"]
         for name in expected:
             assert name in tool_names, f"核心 Tool '{name}' 未注册"
@@ -232,9 +230,7 @@ class TestToolRegistry:
         from hermes_agent.tool_registry import _AUTO_REGISTERED_TOOLS
 
         for cls in _AUTO_REGISTERED_TOOLS:
-            assert hasattr(cls, "run"), (
-                f"Tool '{getattr(cls, 'name', cls.__name__)}' 缺少 run 方法"
-            )  # noqa: E501
+            assert hasattr(cls, "run"), f"Tool '{getattr(cls, 'name', cls.__name__)}' 缺少 run 方法"  # noqa: E501
 
     def test_tool_registry_class(self):
         """ToolRegistry 类实例化测试"""

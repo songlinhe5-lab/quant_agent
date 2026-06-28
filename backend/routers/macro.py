@@ -63,9 +63,7 @@ def _fallback_mock_macro() -> dict:
     }
 
 
-async def _fetch_macro_calendar_data(
-    days_ahead: int, force_refresh: bool = False
-) -> dict:  # noqa: E501
+async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = False) -> dict:  # noqa: E501
     cache_key = f"macro_calendar_akshare_{days_ahead}"
     if not force_refresh:
         cached_data = await redis_client.get(cache_key)
@@ -84,14 +82,10 @@ async def _fetch_macro_calendar_data(
 
         today = datetime.now(timezone.utc)
         try:
-            res = await akshare_service.get_economic_calendar(
-                days_ahead, skip_cache=force_refresh
-            )  # noqa: E501
+            res = await akshare_service.get_economic_calendar(days_ahead, skip_cache=force_refresh)  # noqa: E501
             if res.get("status") == "error" or not res.get("data"):
                 print("⚠️ [Macro] 金十数据降级失败或为空，继续安全降级 (FRED)...")
-                res = await fred_service.get_economic_calendar(
-                    days_ahead, skip_cache=force_refresh
-                )  # noqa: E501
+                res = await fred_service.get_economic_calendar(days_ahead, skip_cache=force_refresh)  # noqa: E501
                 if res.get("status") == "error" or not res.get("data"):
                     print("⚠️ [Macro] FRED 降级失败，使用离线 Mock 数据")
                     return _fallback_mock_macro()
@@ -112,12 +106,8 @@ async def _fetch_macro_calendar_data(
                     try:
                         dt_ny = datetime.strptime(raw_time, "%Y-%m-%d %H:%M:%S")
                         if zoneinfo:
-                            dt_ny = dt_ny.replace(
-                                tzinfo=zoneinfo.ZoneInfo("America/New_York")
-                            )  # noqa: E501
-                            iso_time = dt_ny.astimezone(timezone.utc).strftime(
-                                "%Y-%m-%dT%H:%M:%SZ"
-                            )  # noqa: E501
+                            dt_ny = dt_ny.replace(tzinfo=zoneinfo.ZoneInfo("America/New_York"))  # noqa: E501
+                            iso_time = dt_ny.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: E501
                         else:
                             # 兜底：环境不支持 zoneinfo，直接附带美东时区后缀 -05:00
                             iso_time = raw_time.replace(" ", "T") + "-05:00"
@@ -128,22 +118,14 @@ async def _fetch_macro_calendar_data(
                         # 💡 金十数据是北京时间 (东八区)，转换为真实的 UTC 发给前端
                         dt_cn = datetime.strptime(raw_time[:19], "%Y-%m-%d %H:%M:%S")
                         if zoneinfo:
-                            dt_cn = dt_cn.replace(
-                                tzinfo=zoneinfo.ZoneInfo("Asia/Shanghai")
-                            )  # noqa: E501
-                            iso_time = dt_cn.astimezone(timezone.utc).strftime(
-                                "%Y-%m-%dT%H:%M:%SZ"
-                            )  # noqa: E501
+                            dt_cn = dt_cn.replace(tzinfo=zoneinfo.ZoneInfo("Asia/Shanghai"))  # noqa: E501
+                            iso_time = dt_cn.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: E501
                         else:
                             iso_time = raw_time.replace(" ", "T") + "+08:00"
                     except Exception:
                         iso_time = raw_time.replace(" ", "T") + "Z"
                 else:
-                    iso_time = (
-                        raw_time.replace(" ", "T") + "Z"
-                        if raw_time
-                        else today.strftime("%Y-%m-%dT%H:%M:%SZ")
-                    )  # noqa: E501
+                    iso_time = raw_time.replace(" ", "T") + "Z" if raw_time else today.strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: E501
 
                 impact = str(row.get("impact", "low")).lower()
                 # 💡 增加中文核心指标及中国央行(PBOC)专项识别，确保 LPR/MLF 及降准降息数据能被正确打上高危红色预警标签  # noqa: E501
@@ -175,9 +157,7 @@ async def _fetch_macro_calendar_data(
                     "降准",
                     "准备金",
                 ]  # noqa: E501
-                is_core_event = any(
-                    k in event_name.lower() for k in high_impact_keywords
-                )  # noqa: E501
+                is_core_event = any(k in event_name.lower() for k in high_impact_keywords)  # noqa: E501
                 if is_core_event:
                     impact = "high"  # noqa: E701
 
@@ -206,9 +186,7 @@ async def _fetch_macro_calendar_data(
                     "💡 宏观日历已降级至 FRED 数据源。受接口限制，暂不提供预期值(Estimate)与实际公布值(Actual)。"  # noqa: E501
                 )
             elif res.get("source") == "jin10":
-                result["message"] = (
-                    "💡 宏观日历已平滑降级至金十数据 (Jin10)，支持完整的预期值与中文事件解析。"  # noqa: E501
-                )
+                result["message"] = "💡 宏观日历已平滑降级至金十数据 (Jin10)，支持完整的预期值与中文事件解析。"  # noqa: E501
 
             # 💡 新增：大模型前瞻推演 (只对即将发生的高危事件进行推演)
             if compressed_events:
@@ -216,10 +194,7 @@ async def _fetch_macro_calendar_data(
                     # 提取最近的 3 个高危事件喂给大模型
                     upcoming_events = compressed_events[:3]
                     events_info = "\n".join(
-                        [
-                            f"- {e['date'][:10]}: [{e['country']}] {e['event']}"
-                            for e in upcoming_events
-                        ]
+                        [f"- {e['date'][:10]}: [{e['country']}] {e['event']}" for e in upcoming_events]
                     )  # noqa: E501
 
                     # 💡 利用哈希值对大模型推演进行独立长效缓存，防止 force_refresh=true 时反复调用 LLM 造成长达 8 秒的延迟  # noqa: E501
@@ -229,9 +204,7 @@ async def _fetch_macro_calendar_data(
                     cached_ai = await redis_client.get(ai_cache_key)
                     if cached_ai:
                         result["ai_deduction"] = (
-                            cached_ai.decode("utf-8")
-                            if isinstance(cached_ai, bytes)
-                            else cached_ai
+                            cached_ai.decode("utf-8") if isinstance(cached_ai, bytes) else cached_ai
                         )  # noqa: E501
                     else:
                         prompt = f"你是顶级宏观量化分析师。以下是未来几天即将发布的全球核心宏观经济数据：\n{events_info}\n\n请对这些事件做一次前瞻性预判。挑选最核心的事件，向交易员解释该数据对当前降息预期或经济衰退的影响，以及如果数据异常走高/走低，可能对大盘资产产生怎样的冲击？字数严格控制在150字以内，直接输出精炼的推演结论，无需多余客套话。"  # noqa: E501
@@ -247,9 +220,7 @@ async def _fetch_macro_calendar_data(
                             ai_deduction = re.sub(r"^```[a-zA-Z]*\s*", "", ai_deduction)
                             ai_deduction = re.sub(r"\s*```$", "", ai_deduction).strip()
                             result["ai_deduction"] = ai_deduction
-                            await redis_client.setex(
-                                ai_cache_key, 86400 * 3, ai_deduction
-                            )  # 缓存 3 天  # noqa: E501
+                            await redis_client.setex(ai_cache_key, 86400 * 3, ai_deduction)  # 缓存 3 天  # noqa: E501
                 except Exception as llm_e:
                     print(f"⚠️ [Macro] LLM 前瞻推演失败: {llm_e}")
                     result["ai_deduction"] = "暂无 AI 前瞻推演"
@@ -264,9 +235,7 @@ async def _fetch_macro_calendar_data(
             return {"status": "error", "message": str(e)}
 
 
-async def _fetch_earnings_calendar_data(
-    days_ahead: int, force_refresh: bool = False
-) -> dict:  # noqa: E501
+async def _fetch_earnings_calendar_data(days_ahead: int, force_refresh: bool = False) -> dict:  # noqa: E501
     """带缓存的大模型财报日历前瞻推演包装器"""
     cache_key = f"macro_earnings_calendar_with_ai_{days_ahead}"
     if not force_refresh:
@@ -284,9 +253,7 @@ async def _fetch_earnings_calendar_data(
                 return json.loads(cached_data)
 
         try:
-            res = await finnhub_service.get_earnings_calendar(
-                days_ahead, skip_cache=force_refresh
-            )  # noqa: E501
+            res = await finnhub_service.get_earnings_calendar(days_ahead, skip_cache=force_refresh)  # noqa: E501
             if res.get("status") != "success":
                 return res
 
@@ -315,9 +282,7 @@ async def _fetch_earnings_calendar_data(
                     cached_ai = await redis_client.get(ai_cache_key)
                     if cached_ai:
                         result["ai_deduction"] = (
-                            cached_ai.decode("utf-8")
-                            if isinstance(cached_ai, bytes)
-                            else cached_ai
+                            cached_ai.decode("utf-8") if isinstance(cached_ai, bytes) else cached_ai
                         )  # noqa: E501
                     else:
                         prompt = f"你是顶级美股分析师。以下是未来几天即将发布财报的核心明星公司：\n{info_str}\n\n请对这几份财报做一次前瞻推演。重点挑选最知名的一两家，预测其财报超预期或不及预期可能对同板块或纳斯达克指数带来的联动影响。字数严格控制在150字以内，语言犀利、直接，无需多余客套话。"  # noqa: E501
@@ -329,13 +294,9 @@ async def _fetch_earnings_calendar_data(
                         )
                         content = resp.choices[0].message.content
                         if content:
-                            ai_deduction = re.sub(
-                                r"^```[a-zA-Z]*\s*|\s*```$", "", content.strip()
-                            ).strip()  # noqa: E501
+                            ai_deduction = re.sub(r"^```[a-zA-Z]*\s*|\s*```$", "", content.strip()).strip()  # noqa: E501
                             result["ai_deduction"] = ai_deduction
-                            await redis_client.setex(
-                                ai_cache_key, 86400 * 3, ai_deduction
-                            )  # 缓存 3 天  # noqa: E501
+                            await redis_client.setex(ai_cache_key, 86400 * 3, ai_deduction)  # 缓存 3 天  # noqa: E501
                 except Exception as llm_e:
                     print(f"⚠️ [Macro] 财报前瞻 LLM 推演失败: {llm_e}")
                     result["ai_deduction"] = "暂无财报前瞻推演"
@@ -351,9 +312,7 @@ async def _fetch_earnings_calendar_data(
 
 @router.get("/calendar")
 async def get_macro_calendar(
-    days_ahead: int = Query(
-        7, ge=1, le=30, description="获取未来 N 天内的高影响宏观经济事件"
-    ),  # noqa: E501
+    days_ahead: int = Query(7, ge=1, le=30, description="获取未来 N 天内的高影响宏观经济事件"),  # noqa: E501
 ):
     """获取全球核心经济体的宏观日历数据"""
     try:
@@ -393,12 +352,7 @@ def get_sentiment_history(
         raise HTTPException(status_code=500, detail="SentimentRecord 数据表尚未初始化")
 
     try:
-        records = (
-            db.query(models.SentimentRecord)
-            .order_by(models.SentimentRecord.timestamp.desc())
-            .limit(limit)
-            .all()
-        )  # noqa: E501
+        records = db.query(models.SentimentRecord).order_by(models.SentimentRecord.timestamp.desc()).limit(limit).all()  # noqa: E501
         data = []
         # 倒序遍历，使其在图表上从左向右（从旧到新）排列
         for r in reversed(records):
@@ -482,24 +436,12 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
             return default_amt, 1 if default_amt >= 0 else -1, real_desc, unit
 
         # 💡 使用核心 ETF 的主买主卖差额代表板块的整体真实资金流
-        csi_amount, csi_dir, csi_desc, csi_unit = _parse_futu_flow(
-            csi300_res, 8.7, "沪深300ETF主力净流", "亿人民币"
-        )  # noqa: E501
-        spy_amount, spy_dir, spy_desc, spy_unit = _parse_futu_flow(
-            spy_res, 2.1, "标普500ETF主力净流", "亿美元"
-        )  # noqa: E501
-        qqq_amount, qqq_dir, qqq_desc, qqq_unit = _parse_futu_flow(
-            qqq_res, 3.5, "纳指科技ETF主力净流", "亿美元"
-        )  # noqa: E501
-        soxx_amount, soxx_dir, soxx_desc, soxx_unit = _parse_futu_flow(
-            soxx_res, 1.5, "半导体ETF主力净流", "亿美元"
-        )  # noqa: E501
-        tlt_amount, tlt_dir, tlt_desc, tlt_unit = _parse_futu_flow(
-            tlt_res, -1.8, "20年期美债ETF主力净流", "亿美元"
-        )  # noqa: E501
-        kweb_amount, kweb_dir, kweb_desc, kweb_unit = _parse_futu_flow(
-            kweb_res, 1.2, "中概互联ETF主力净流", "亿美元"
-        )  # noqa: E501
+        csi_amount, csi_dir, csi_desc, csi_unit = _parse_futu_flow(csi300_res, 8.7, "沪深300ETF主力净流", "亿人民币")  # noqa: E501
+        spy_amount, spy_dir, spy_desc, spy_unit = _parse_futu_flow(spy_res, 2.1, "标普500ETF主力净流", "亿美元")  # noqa: E501
+        qqq_amount, qqq_dir, qqq_desc, qqq_unit = _parse_futu_flow(qqq_res, 3.5, "纳指科技ETF主力净流", "亿美元")  # noqa: E501
+        soxx_amount, soxx_dir, soxx_desc, soxx_unit = _parse_futu_flow(soxx_res, 1.5, "半导体ETF主力净流", "亿美元")  # noqa: E501
+        tlt_amount, tlt_dir, tlt_desc, tlt_unit = _parse_futu_flow(tlt_res, -1.8, "20年期美债ETF主力净流", "亿美元")  # noqa: E501
+        kweb_amount, kweb_dir, kweb_desc, kweb_unit = _parse_futu_flow(kweb_res, 1.2, "中概互联ETF主力净流", "亿美元")  # noqa: E501
 
         flows.extend(
             [
@@ -608,9 +550,7 @@ async def _fetch_macro_news_from_stream(limit: int = 50) -> list:
         # 取出分数最高（最新）的 limit 条
         members = await redis_client.zrevrange("macro_news_stream", 0, limit - 1)
         if members:
-            return [
-                json.loads(m) for m in members if isinstance(m, (str, bytes, bytearray))
-            ]  # noqa: E501
+            return [json.loads(m) for m in members if isinstance(m, (str, bytes, bytearray))]  # noqa: E501
     except Exception as e:
         print(f"⚠️ [Macro] 从 ZSET 读取新闻异常: {e}")
     return []
@@ -618,9 +558,7 @@ async def _fetch_macro_news_from_stream(limit: int = 50) -> list:
 
 @router.get("/news")
 async def get_macro_news(
-    category: str = Query(
-        "general", description="新闻分类: general, forex, crypto, merger"
-    ),  # noqa: E501
+    category: str = Query("general", description="新闻分类: general, forex, crypto, merger"),  # noqa: E501
     limit: int = Query(50, le=200, description="返回条数限制"),
 ):
     """获取全球市场前沿新闻"""
@@ -668,9 +606,7 @@ async def websocket_live_news(websocket: WebSocket):
         listen_c_task = asyncio.create_task(listen_client())
 
         # 💡 并发监听：任何一方 (前端断连或Redis崩溃) 退出，立刻终止挂起的另一方
-        done, pending = await asyncio.wait(
-            [listen_r_task, listen_c_task], return_when=asyncio.FIRST_COMPLETED
-        )
+        done, pending = await asyncio.wait([listen_r_task, listen_c_task], return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
             task.cancel()
 
@@ -723,9 +659,7 @@ async def get_data_center_dashboard(
                 get_macro_assets(force_refresh=force_refresh),
                 _fetch_macro_calendar_data(days_ahead=7, force_refresh=force_refresh),
                 get_macro_news(category="general", limit=15),
-                _fetch_earnings_calendar_data(
-                    days_ahead=7, force_refresh=force_refresh
-                ),  # noqa: E501
+                _fetch_earnings_calendar_data(days_ahead=7, force_refresh=force_refresh),  # noqa: E501
                 return_exceptions=True,
             )
 
@@ -733,51 +667,40 @@ async def get_data_center_dashboard(
             radar_data = []
             macro_assets = []
             sentiment_indicators = {}
-            if (
-                isinstance(assets_radar_res, dict)
-                and assets_radar_res.get("status") == "success"
-            ):  # noqa: E501
+            if isinstance(assets_radar_res, dict) and assets_radar_res.get("status") == "success":  # noqa: E501
                 radar_data = assets_radar_res.get("data", {}).get("radarData", [])
                 macro_assets = assets_radar_res.get("data", {}).get("macroAssets", [])
-                sentiment_indicators = assets_radar_res.get("data", {}).get(
-                    "sentimentIndicators", {}
-                )  # noqa: E501
+                sentiment_indicators = assets_radar_res.get("data", {}).get("sentimentIndicators", {})  # noqa: E501
 
             # 💡 容错修复：允许包含警告信息的兜底 Mock 数据流向前端展示
             economic_events = (
                 events_res.get("data", [])
-                if isinstance(events_res, dict)
-                and events_res.get("status") in ("success", "warning")
+                if isinstance(events_res, dict) and events_res.get("status") in ("success", "warning")
                 else []
             )  # noqa: E501
             economic_events_msg = (
                 events_res.get("message", "")
-                if isinstance(events_res, dict)
-                and events_res.get("status") in ("success", "warning")
+                if isinstance(events_res, dict) and events_res.get("status") in ("success", "warning")
                 else ""
             )  # noqa: E501
             economic_events_deduction = (
                 events_res.get("ai_deduction", "")
-                if isinstance(events_res, dict)
-                and events_res.get("status") in ("success", "warning")
+                if isinstance(events_res, dict) and events_res.get("status") in ("success", "warning")
                 else ""
             )  # noqa: E501
             news_items = (
                 news_res.get("data", [])
-                if isinstance(news_res, dict)
-                and news_res.get("status") in ("success", "warning")
+                if isinstance(news_res, dict) and news_res.get("status") in ("success", "warning")
                 else []
             )  # noqa: E501
             earnings_calendar = (
                 earnings_res.get("data", [])
-                if isinstance(earnings_res, dict)
-                and earnings_res.get("status") in ("success", "warning")
+                if isinstance(earnings_res, dict) and earnings_res.get("status") in ("success", "warning")
                 else []
             )  # noqa: E501
             earnings_calendar_deduction = (
                 earnings_res.get("ai_deduction", "")
-                if isinstance(earnings_res, dict)
-                and earnings_res.get("status") in ("success", "warning")
+                if isinstance(earnings_res, dict) and earnings_res.get("status") in ("success", "warning")
                 else ""
             )  # noqa: E501
 
@@ -851,20 +774,12 @@ async def _fetch_macro_assets_data():
                         o_val = r.get("Open")
                         if c_val is None:
                             c_val = next(
-                                (
-                                    v
-                                    for k, v in r.items()
-                                    if str(k).startswith("('Close'")
-                                ),
+                                (v for k, v in r.items() if str(k).startswith("('Close'")),
                                 None,
                             )  # noqa: E501
                         if o_val is None:
                             o_val = next(
-                                (
-                                    v
-                                    for k, v in r.items()
-                                    if str(k).startswith("('Open'")
-                                ),
+                                (v for k, v in r.items() if str(k).startswith("('Open'")),
                                 None,
                             )  # noqa: E501
 
@@ -877,15 +792,9 @@ async def _fetch_macro_assets_data():
                         last_close = closes[-1]
                         # 计算涨跌幅，如果只有1天数据则拿昨日开盘价兜底比对
                         prev_close = (
-                            closes[-2]
-                            if len(closes) > 1
-                            else (float(open_vals[-1]) if open_vals else last_close)
+                            closes[-2] if len(closes) > 1 else (float(open_vals[-1]) if open_vals else last_close)
                         )  # noqa: E501
-                        change_pct = (
-                            ((last_close - prev_close) / prev_close) * 100
-                            if prev_close
-                            else 0.0
-                        )  # noqa: E501
+                        change_pct = ((last_close - prev_close) / prev_close) * 100 if prev_close else 0.0  # noqa: E501
                         return {
                             "symbol": symbol,
                             "name": name,
@@ -943,9 +852,7 @@ async def get_macro_assets(
             def _norm_pct(pct, neutral=0.0, scale=2.0, inverse=False):
                 if pct is None:
                     return 50  # noqa: E701
-                adjusted = (
-                    -(pct - neutral) / scale if inverse else (pct - neutral) / scale
-                )  # noqa: E501
+                adjusted = -(pct - neutral) / scale if inverse else (pct - neutral) / scale  # noqa: E501
                 import math
 
                 raw = 1.0 / (1.0 + math.exp(-adjusted))
@@ -967,11 +874,7 @@ async def get_macro_assets(
             ]  # noqa: E501
             liq_raw = sum(_liq_scores) / len(_liq_scores) if _liq_scores else 50
             vix_abs = _s("VIX")
-            vola = (
-                round(max(0, min(100, 100 - (vix_abs - 10) * 2.5)), 1)
-                if vix_abs
-                else 50
-            )  # noqa: E501, E702
+            vola = round(max(0, min(100, 100 - (vix_abs - 10) * 2.5)), 1) if vix_abs else 50  # noqa: E501, E702
             eq_chgs = [
                 c
                 for c in [
@@ -987,11 +890,7 @@ async def get_macro_assets(
             cn_chgs = [c for c in [_chg("HSI"), _chg("KWEB")] if c is not None]
             cn_strength = _norm_pct(sum(cn_chgs) / len(cn_chgs)) if cn_chgs else 50
             crypto_chgs = [c for c in [_chg("BTC"), _chg("ETH")] if c is not None]
-            crypto = (
-                _norm_pct(sum(crypto_chgs) / len(crypto_chgs), scale=4.0)
-                if crypto_chgs
-                else 50
-            )  # noqa: E501
+            crypto = _norm_pct(sum(crypto_chgs) / len(crypto_chgs), scale=4.0) if crypto_chgs else 50  # noqa: E501
             cm_chgs = [c for c in [_chg("XAU"), _chg("WTI")] if c is not None]
             commodity = _norm_pct(sum(cm_chgs) / len(cm_chgs)) if cm_chgs else 50
             tnx_chg = _chg("TNX")
@@ -1008,11 +907,7 @@ async def get_macro_assets(
                         c_val = cpc_records[-1].get("Close")
                         if c_val is None:
                             c_val = next(
-                                (
-                                    v
-                                    for k, v in cpc_records[-1].items()
-                                    if str(k).startswith("('Close'")
-                                ),
+                                (v for k, v in cpc_records[-1].items() if str(k).startswith("('Close'")),
                                 None,
                             )  # noqa: E501
                         if c_val:
@@ -1126,9 +1021,7 @@ async def websocket_macro_calendar(websocket: WebSocket):
             for event in result["data"]:
                 if event.get("date"):
                     try:
-                        d = datetime.strptime(
-                            event.get("date").split("T")[0], "%Y-%m-%d"
-                        ).date()  # noqa: E501
+                        d = datetime.strptime(event.get("date").split("T")[0], "%Y-%m-%d").date()  # noqa: E501
                         if d == current_date:
                             today_events.append(event)  # noqa: E701
                     except Exception:
@@ -1144,9 +1037,7 @@ async def websocket_macro_calendar(websocket: WebSocket):
         listen_r_task = asyncio.create_task(listen_redis())
         listen_c_task = asyncio.create_task(listen_client())
 
-        done, pending = await asyncio.wait(
-            [listen_r_task, listen_c_task], return_when=asyncio.FIRST_COMPLETED
-        )
+        done, pending = await asyncio.wait([listen_r_task, listen_c_task], return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
             task.cancel()
 

@@ -85,9 +85,7 @@ async def run_backtest(req: BacktestRequest):
             ktype = interval_map.get(req.interval, "K_DAY")
             try:
                 print(f"📡 [Backtest] 尝试从 Futu OpenD 拉取数据: {req.ticker}...")
-                futu_res = await futu_service.get_history(
-                    req.ticker, ktype=ktype, num=num_days
-                )  # noqa: E501
+                futu_res = await futu_service.get_history(req.ticker, ktype=ktype, num=num_days)  # noqa: E501
                 if futu_res.get("status") == "success" and futu_res.get("data"):
                     df = pd.DataFrame(futu_res["data"])
                     if not df.empty:
@@ -104,9 +102,7 @@ async def run_backtest(req: BacktestRequest):
                         df["time"] = pd.to_datetime(df["time"])
                         df.set_index("time", inplace=True)
                         success = True
-                        print(
-                            f"🌐 [Backtest] 成功拉取实时在线数据源 (Futu): {req.ticker} | 数量: {len(df)} 行"
-                        )  # noqa: E501
+                        print(f"🌐 [Backtest] 成功拉取实时在线数据源 (Futu): {req.ticker} | 数量: {len(df)} 行")  # noqa: E501
             except Exception as e:
                 msg = f"Futu 接口获取失败: {e}"
 
@@ -120,9 +116,7 @@ async def run_backtest(req: BacktestRequest):
                 interval=req.interval,
             )  # noqa: E501
             if success and df is not None and not df.empty:
-                print(
-                    f"🌐 [Backtest] 成功拉取实时在线数据源 (YFinance): {req.ticker} | 数量: {len(df)} 行"
-                )  # noqa: E501
+                print(f"🌐 [Backtest] 成功拉取实时在线数据源 (YFinance): {req.ticker} | 数量: {len(df)} 行")  # noqa: E501
 
         if not success or df is None or df.empty:
             raise HTTPException(status_code=400, detail=f"回测数据加载失败: {msg}")
@@ -152,9 +146,7 @@ async def run_backtest(req: BacktestRequest):
 
         safe_code = req.source_code
         safe_code = re.sub(r"^\s*import\s+talib.*$", "", safe_code, flags=re.MULTILINE)
-        safe_code = re.sub(
-            r"^\s*from\s+talib\s+import.*$", "", safe_code, flags=re.MULTILINE
-        )  # noqa: E501
+        safe_code = re.sub(r"^\s*from\s+talib\s+import.*$", "", safe_code, flags=re.MULTILINE)  # noqa: E501
         safe_code = re.sub(
             r"^\s*from\s+[\w\.]+\s+import\s+BaseStrategy.*$",
             "",

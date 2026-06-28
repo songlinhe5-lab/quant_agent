@@ -139,9 +139,7 @@ def RateLimiter(
 
                 if global_max:
                     await pipe.incr(global_key)
-                    await pipe.expire(
-                        global_key, global_window or window_seconds, nx=True
-                    )  # noqa: E501
+                    await pipe.expire(global_key, global_window or window_seconds, nx=True)  # noqa: E501
 
                 results = await pipe.execute()
 
@@ -177,9 +175,7 @@ def RateLimiter(
 
     if by_user:
 
-        async def _rate_limit_user(
-            request: Request, current_user: models.User = Depends(get_current_user)
-        ):  # noqa: E501
+        async def _rate_limit_user(request: Request, current_user: models.User = Depends(get_current_user)):  # noqa: E501
             # 基于用户 ID 进行限流 (FastAPI 会自动前置校验 JWT Token 并提取 user_id)
             await _execute_limit(request, f"user:{current_user.id}")
 
@@ -197,9 +193,7 @@ def RateLimiter(
 async def _ensure_and_load_inspirations():
     global _inspirations_cache
 
-    csv_path = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "data", "inspirations.csv")
-    )  # noqa: E501
+    csv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "inspirations.csv"))  # noqa: E501
 
     async with _inspirations_lock:
         # 判断是否需要重建 (文件不存在 或 超过 24 小时未更新以吸纳最新热点)
@@ -216,13 +210,8 @@ async def _ensure_and_load_inspirations():
 
             # 💡 动态获取热点股票池 (从 Redis 全局自选/监控池读取)
             try:
-                raw_assets = await redis_client.hkeys(
-                    "quant:settings:monitored_refcounts"
-                )  # noqa: E501
-                dynamic_assets = [
-                    t.decode("utf-8") if isinstance(t, bytes) else str(t)
-                    for t in raw_assets
-                ]  # noqa: E501
+                raw_assets = await redis_client.hkeys("quant:settings:monitored_refcounts")  # noqa: E501
+                dynamic_assets = [t.decode("utf-8") if isinstance(t, bytes) else str(t) for t in raw_assets]  # noqa: E501
             except Exception:
                 dynamic_assets = []
 
@@ -283,9 +272,7 @@ async def _ensure_and_load_inspirations():
                     with open(csv_path, "w", newline="", encoding="utf-8") as f:
                         writer = csv.writer(f)
                         writer.writerow(["prompt"])
-                        combinations = itertools.product(
-                            assets, indicators1, indicators2, actions, risk_controls
-                        )  # noqa: E501
+                        combinations = itertools.product(assets, indicators1, indicators2, actions, risk_controls)  # noqa: E501
                         count = 0
                         for combo in combinations:
                             prompt = f"针对 {combo[0]} 的 {combo[1]} 与 {combo[2]} {combo[3]}，{combo[4]}"  # noqa: E501
@@ -297,9 +284,7 @@ async def _ensure_and_load_inspirations():
                     return cache, count
 
                 _inspirations_cache, count = await asyncio.to_thread(_write_csv)
-                print(
-                    f"✅ [Strategy] 已根据最新热点股票池自动生成 {count} 条策略灵感到 {csv_path}"
-                )  # noqa: E501
+                print(f"✅ [Strategy] 已根据最新热点股票池自动生成 {count} 条策略灵感到 {csv_path}")  # noqa: E501
             except Exception as e:
                 print(f"⚠️ [Strategy] 生成 inspirations.csv 失败: {e}")
 
@@ -331,13 +316,7 @@ async def _ensure_and_load_inspirations():
 # 💡 双重风控限流：单 IP 每 10 秒限 5 次；全网所有用户总和每 10 秒限 50 次 (防分布式代理群攻击)  # noqa: E501
 @router.get(
     "/inspirations",
-    dependencies=[
-        Depends(
-            RateLimiter(
-                max_requests=5, window_seconds=10, global_max=50, global_window=10
-            )
-        )
-    ],
+    dependencies=[Depends(RateLimiter(max_requests=5, window_seconds=10, global_max=50, global_window=10))],
 )  # noqa: E501
 async def get_inspirations(limit: int = 10):
     """随机获取策略研发灵感"""
@@ -346,9 +325,7 @@ async def get_inspirations(limit: int = 10):
     return {"status": "success", "data": selected}
 
 
-async def _fetch_backtest_data(
-    ticker: str, period: str, data_source: str = "auto", interval: str = "1d"
-):  # noqa: E501
+async def _fetch_backtest_data(ticker: str, period: str, data_source: str = "auto", interval: str = "1d"):  # noqa: E501
     """为沙箱回测获取历史数据的多源聚合方法 (优先本地多周期数仓, 缺失自动拉取落库兜底)"""  # noqa: E501
     period_days_map = {
         "1mo": 22,
@@ -387,15 +364,11 @@ async def _fetch_backtest_data(
     if data_source in ["auto", "local"]:
         # 0. 优先尝试从本地 Parquet 数仓读取极速数据
         try:
-            local_df = await kline_warehouse.get_history(
-                ticker, ktype=ktype, num=num_bars
-            )  # noqa: E501
+            local_df = await kline_warehouse.get_history(ticker, ktype=ktype, num=num_bars)  # noqa: E501
 
             # 💡 核心升级：如果本地库没有数据或数据量严重不足，主动拦截并提示前端手动同步  # noqa: E501
             if local_df is None or local_df.empty or len(local_df) < num_bars * 0.8:
-                print(
-                    f"📦 [Backtest] 本地数仓数据不足 ({ticker} {ktype})，已拦截请求等待手动同步。"
-                )  # noqa: E501
+                print(f"📦 [Backtest] 本地数仓数据不足 ({ticker} {ktype})，已拦截请求等待手动同步。")  # noqa: E501
                 if data_source == "local" or num_days >= 1000:
                     return (
                         False,
@@ -474,9 +447,7 @@ async def _fetch_backtest_data(
         if (ticker.startswith("US.") or ("." not in ticker)) and interval == "1d":
             try:
                 # num_days 是交易日，换算为自然日需要乘以 1.5
-                finnhub_res = await finnhub_service.get_stock_history(
-                    ticker, days_back=int(num_days * 1.5)
-                )  # noqa: E501
+                finnhub_res = await finnhub_service.get_stock_history(ticker, days_back=int(num_days * 1.5))  # noqa: E501
                 if finnhub_res.get("status") == "success" and finnhub_res.get("data"):
                     df = pd.DataFrame(finnhub_res["data"])
                     if not df.empty:
@@ -500,9 +471,7 @@ async def _fetch_backtest_data(
         # 4. 终极兜底使用 YFinance (容易触发 429 限流)
         yf_interval_map = {"1d": "1d", "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h"}
         yf_interval = yf_interval_map.get(interval, "1d")
-        return await yf_service.fetch_yf_data(
-            ticker, "history", ttl=3600, period=period, interval=yf_interval
-        )  # noqa: E501
+        return await yf_service.fetch_yf_data(ticker, "history", ttl=3600, period=period, interval=yf_interval)  # noqa: E501
 
     return False, None, f"未匹配到支持的数据源或该数据源无法获取 {ticker} 数据。"
 
@@ -591,12 +560,7 @@ async def generate_strategy_code(payload: GeneratePayload):
                 content = content.strip()
                 content = re.sub(r"^```[a-zA-Z]*\s*", "", content)
                 content = re.sub(r"\s*```$", "", content).strip()
-                yield (
-                    json.dumps(
-                        {"status": "success", "data": content}, ensure_ascii=False
-                    ).encode("utf-8")
-                    + b"\n"
-                )  # noqa: E501
+                yield (json.dumps({"status": "success", "data": content}, ensure_ascii=False).encode("utf-8") + b"\n")  # noqa: E501
             else:
                 yield (
                     json.dumps(
@@ -606,12 +570,7 @@ async def generate_strategy_code(payload: GeneratePayload):
                     + b"\n"
                 )  # noqa: E501
         except Exception as e:
-            yield (
-                json.dumps(
-                    {"status": "error", "message": str(e)}, ensure_ascii=False
-                ).encode("utf-8")
-                + b"\n"
-            )  # noqa: E501
+            yield (json.dumps({"status": "error", "message": str(e)}, ensure_ascii=False).encode("utf-8") + b"\n")  # noqa: E501
 
     return StreamingResponse(generate_stream(), media_type="application/x-ndjson")
 
@@ -642,16 +601,12 @@ async def save_strategy(payload: SaveStrategyPayload):
             # 使用 Black 默认的 PEP 8 风格规范排版
             formatted_code = black.format_str(payload.source_code, mode=black.Mode())
         except ImportError:
-            print(
-                "⚠️ [Formatter] 未安装 black 模块，跳过自动格式化。您可以运行 pip install black 安装。"
-            )  # noqa: E501
+            print("⚠️ [Formatter] 未安装 black 模块，跳过自动格式化。您可以运行 pip install black 安装。")  # noqa: E501
         except Exception as e:
             # 如果代码存在未闭合的括号等严重语法错误，Black 会报错，此时降级使用原始代码保存  # noqa: E501
             print(f"⚠️ [Formatter] 代码存在语法异常，无法完成格式化: {e}")
 
-        strategies_dir = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "strategies", "drafts")
-        )  # noqa: E501
+        strategies_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "strategies", "drafts"))  # noqa: E501
         os.makedirs(strategies_dir, exist_ok=True)
 
         file_path = os.path.join(strategies_dir, f"{payload.class_name.lower()}.py")
@@ -670,9 +625,7 @@ async def save_strategy(payload: SaveStrategyPayload):
 @router.get("/list")
 async def list_strategies():
     """拉取已保存的策略草稿列表"""
-    strategies_dir = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "strategies", "drafts")
-    )  # noqa: E501
+    strategies_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "strategies", "drafts"))  # noqa: E501
     if not os.path.exists(strategies_dir):
         return {"status": "success", "data": []}
 
@@ -681,9 +634,7 @@ async def list_strategies():
         if file_name.endswith(".py"):
             file_path = os.path.join(strategies_dir, file_name)
             stat = os.stat(file_path)
-            modified_time = datetime.fromtimestamp(stat.st_mtime).strftime(
-                "%Y-%m-%d %H:%M"
-            )  # noqa: E501
+            modified_time = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")  # noqa: E501
             results.append(
                 {
                     "name": file_name[:-3],  # 移除 .py 后缀
@@ -700,9 +651,7 @@ async def list_strategies():
 @router.get("/draft/{name}")
 async def get_draft_strategy(name: str):
     """拉取指定策略的完整源码"""
-    strategies_dir = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "strategies", "drafts")
-    )  # noqa: E501
+    strategies_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "strategies", "drafts"))  # noqa: E501
     file_path = os.path.join(strategies_dir, f"{name}.py")
     if not os.path.exists(file_path):
         return {"status": "error", "message": "策略文件不存在"}
@@ -715,9 +664,7 @@ async def get_draft_strategy(name: str):
 @router.delete("/draft/{name}")
 async def delete_draft_strategy(name: str):
     """彻底删除指定的策略草稿"""
-    strategies_dir = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "strategies", "drafts")
-    )  # noqa: E501
+    strategies_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "strategies", "drafts"))  # noqa: E501
     file_path = os.path.join(strategies_dir, f"{name}.py")
     if not os.path.exists(file_path):
         return {"status": "error", "message": "策略文件不存在"}
@@ -731,9 +678,7 @@ async def delete_draft_strategy(name: str):
 # 💡 针对高消耗的沙箱回测接口，应用基于用户 ID 的限流：每个用户每 60 秒最多执行 10 次沙箱推演  # noqa: E501
 @router.post(
     "/run-sandbox",
-    dependencies=[
-        Depends(RateLimiter(max_requests=10, window_seconds=60, by_user=True))
-    ],
+    dependencies=[Depends(RateLimiter(max_requests=10, window_seconds=60, by_user=True))],
 )  # noqa: E501
 async def run_strategy_sandbox(payload: RunSandboxPayload):
     """
@@ -748,9 +693,7 @@ async def run_strategy_sandbox(payload: RunSandboxPayload):
         # 1. 净化源码：剔除大模型幻觉生成的虚假依赖导入，双重保险
         safe_code = payload.source_code
         safe_code = re.sub(r"^\s*import\s+talib.*$", "", safe_code, flags=re.MULTILINE)
-        safe_code = re.sub(
-            r"^\s*from\s+talib\s+import.*$", "", safe_code, flags=re.MULTILINE
-        )  # noqa: E501
+        safe_code = re.sub(r"^\s*from\s+talib\s+import.*$", "", safe_code, flags=re.MULTILINE)  # noqa: E501
         safe_code = re.sub(
             r"^\s*from\s+[\w\.]+\s+import\s+BaseStrategy.*$",
             "",
@@ -798,9 +741,7 @@ async def optimize_strategy_sandbox(payload: OptimizeSandboxPayload):
 
         safe_code = payload.source_code
         safe_code = re.sub(r"^\s*import\s+talib.*$", "", safe_code, flags=re.MULTILINE)
-        safe_code = re.sub(
-            r"^\s*from\s+talib\s+import.*$", "", safe_code, flags=re.MULTILINE
-        )  # noqa: E501
+        safe_code = re.sub(r"^\s*from\s+talib\s+import.*$", "", safe_code, flags=re.MULTILINE)  # noqa: E501
         safe_code = re.sub(
             r"^\s*from\s+[\w\.]+\s+import\s+BaseStrategy.*$",
             "",
@@ -848,14 +789,10 @@ async def run_batch_strategy_sandbox(payload: BatchRunSandboxPayload):
     try:
         safe_code = payload.source_code
         safe_code = re.sub(r"^\s*import\s+talib.*$", "", safe_code, flags=re.MULTILINE)
-        safe_code = re.sub(
-            r"^\s*from\s+talib\s+import.*$", "", safe_code, flags=re.MULTILINE
-        )  # noqa: E501
+        safe_code = re.sub(r"^\s*from\s+talib\s+import.*$", "", safe_code, flags=re.MULTILINE)  # noqa: E501
 
         async def fetch_one(t):
-            success, df, _ = await _fetch_backtest_data(
-                t, payload.period, payload.data_source, payload.interval
-            )  # noqa: E501
+            success, df, _ = await _fetch_backtest_data(t, payload.period, payload.data_source, payload.interval)  # noqa: E501
             return t, df if success else None
 
         # 并发获取所有候选池中的历史 K 线数据
@@ -898,9 +835,7 @@ async def monte_carlo_strategy_sandbox(payload: MonteCarloSandboxPayload):
 
         safe_code = payload.source_code
         safe_code = re.sub(r"^\s*import\s+talib.*$", "", safe_code, flags=re.MULTILINE)
-        safe_code = re.sub(
-            r"^\s*from\s+talib\s+import.*$", "", safe_code, flags=re.MULTILINE
-        )  # noqa: E501
+        safe_code = re.sub(r"^\s*from\s+talib\s+import.*$", "", safe_code, flags=re.MULTILINE)  # noqa: E501
         safe_code = re.sub(
             r"^\s*from\s+[\w\.]+\s+import\s+BaseStrategy.*$",
             "",
@@ -916,9 +851,7 @@ async def monte_carlo_strategy_sandbox(payload: MonteCarloSandboxPayload):
 
         # 💡 动态获取股票基本面特征（如市值、Beta等），传递给底层引擎以实现特征感知的异构噪音  # noqa: E501
         stock_features = {}
-        info_success, info_data, _ = await yf_service.fetch_yf_data(
-            payload.ticker, "info", ttl=86400
-        )  # noqa: E501
+        info_success, info_data, _ = await yf_service.fetch_yf_data(payload.ticker, "info", ttl=86400)  # noqa: E501
         if info_success and isinstance(info_data, dict):
             stock_features["market_cap"] = info_data.get("marketCap")
             stock_features["beta"] = info_data.get("beta")
@@ -951,9 +884,7 @@ async def monte_carlo_strategy_sandbox(payload: MonteCarloSandboxPayload):
 async def deploy_to_oms(payload: RunSandboxPayload):
     """将沙箱中跑通的最优策略进行物理持久化，并注册到实盘 OMS 引擎中"""
     try:
-        strategies_dir = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "strategies", "live")
-        )  # noqa: E501
+        strategies_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "strategies", "live"))  # noqa: E501
         os.makedirs(strategies_dir, exist_ok=True)
 
         # 1. 物理持久化源码
@@ -974,9 +905,7 @@ async def deploy_to_oms(payload: RunSandboxPayload):
         }
         from backend.core.redis_client import redis_client
 
-        await redis_client.hset(
-            "quant:oms:live_bots", payload.class_name, json.dumps(bot_config)
-        )  # noqa: E501
+        await redis_client.hset("quant:oms:live_bots", payload.class_name, json.dumps(bot_config))  # noqa: E501
 
         return {
             "status": "success",

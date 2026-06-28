@@ -35,14 +35,10 @@ def get_password_hash(password: str) -> str:
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return bcrypt.checkpw(
-        plain_password.encode("utf-8"), hashed_password.encode("utf-8")
-    )  # noqa: E501
+    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))  # noqa: E501
 
 
-def _create_jwt_token(
-    data: dict, expires_delta: timedelta, token_type: Optional[str] = None
-):  # noqa: E501
+def _create_jwt_token(data: dict, expires_delta: timedelta, token_type: Optional[str] = None):  # noqa: E501
     to_encode = data.copy()
     to_encode.update({"exp": datetime.utcnow() + expires_delta})
     if token_type:
@@ -51,21 +47,15 @@ def _create_jwt_token(
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    return _create_jwt_token(
-        data, expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    )  # noqa: E501
+    return _create_jwt_token(data, expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))  # noqa: E501
 
 
 def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None):
-    return _create_jwt_token(
-        data, expires_delta or timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS), "refresh"
-    )  # noqa: E501
+    return _create_jwt_token(data, expires_delta or timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS), "refresh")  # noqa: E501
 
 
 # 核心鉴权依赖：拦截并解析 Token，返回当前登录的用户对象
-def get_current_user(
-    token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
-):  # noqa: E501
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):  # noqa: E501
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="无效的鉴权凭证或 Token 已过期",
@@ -109,9 +99,7 @@ def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
-    user = (
-        db.query(models.User).filter(models.User.username == form_data.username).first()
-    )  # noqa: E501
+    user = db.query(models.User).filter(models.User.username == form_data.username).first()  # noqa: E501
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -216,9 +204,7 @@ def verify_google_token(
         # 2. 验证通过，提取用户信息
         email = idinfo.get("email")
         if not email:
-            raise HTTPException(
-                status_code=400, detail="Google Auth Failed: No email provided"
-            )  # noqa: E501
+            raise HTTPException(status_code=400, detail="Google Auth Failed: No email provided")  # noqa: E501
 
         # 兼容性处理：防止 models.User 没有 email 字段导致 500 崩溃
         has_email_column = hasattr(models.User, "email")
@@ -227,24 +213,12 @@ def verify_google_token(
         if has_email_column:
             user = db.query(models.User).filter(models.User.email == email).first()
         else:
-            user = (
-                db.query(models.User)
-                .filter(models.User.username == email.split("@")[0])
-                .first()
-            )  # noqa: E501
+            user = db.query(models.User).filter(models.User.username == email.split("@")[0]).first()  # noqa: E501
 
         if not user:
             base_username = email.split("@")[0]
-            existing_user = (
-                db.query(models.User)
-                .filter(models.User.username == base_username)
-                .first()
-            )  # noqa: E501
-            username = (
-                base_username
-                if not existing_user
-                else f"{base_username}_{str(hash(email))[-4:]}"
-            )  # noqa: E501
+            existing_user = db.query(models.User).filter(models.User.username == base_username).first()  # noqa: E501
+            username = base_username if not existing_user else f"{base_username}_{str(hash(email))[-4:]}"  # noqa: E501
 
             user_kwargs = {
                 "username": username,
@@ -312,9 +286,7 @@ def verify_google_token(
 # --- Token 刷新与注销 API ---
 # ==========================================
 @router.post("/refresh")
-async def refresh_access_token(
-    refresh_token: Optional[str] = Cookie(None), db: Session = Depends(get_db)
-):  # noqa: E501
+async def refresh_access_token(refresh_token: Optional[str] = Cookie(None), db: Session = Depends(get_db)):  # noqa: E501
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Refresh Token missing in cookies")
 
@@ -351,11 +323,7 @@ async def logout(response: Response, request: Request, db: Session = Depends(get
             payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
             username = payload.get("sub")
             if username:
-                user = (
-                    db.query(models.User)
-                    .filter(models.User.username == username)
-                    .first()
-                )  # noqa: E501
+                user = db.query(models.User).filter(models.User.username == username).first()  # noqa: E501
                 if user:
                     user_id = user.id
     except:  # noqa: E722

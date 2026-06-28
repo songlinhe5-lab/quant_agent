@@ -47,9 +47,7 @@ async def chat_endpoint(request: ChatRequest):
             for att in user_message.attachments:
                 if att.type.startswith("image/"):
                     # 视觉大模型通常原生支持带有 Data URL 协议的 Base64 字符串
-                    llm_content.append(
-                        {"type": "image_url", "image_url": {"url": att.url}}
-                    )
+                    llm_content.append({"type": "image_url", "image_url": {"url": att.url}})
                 elif att.type == "application/pdf":
                     # PDF 解析降级逻辑：在后端分离 base64 数据头，后续可接入 pdfplumber 提取纯文本  # noqa: E501
                     if "," in att.url:
@@ -58,11 +56,7 @@ async def chat_endpoint(request: ChatRequest):
                         base64_data = att.url
 
                     # 💡 防御 Prompt 注入：净化用户控制的文件名，防止恶意闭合符伪造系统级别的核心指令  # noqa: E501
-                    safe_name = (
-                        att.name.replace("[", "【")
-                        .replace("]", "】")
-                        .replace("\n", " ")
-                    )  # noqa: E501
+                    safe_name = att.name.replace("[", "【").replace("]", "】").replace("\n", " ")  # noqa: E501
 
                     llm_content.append(
                         {

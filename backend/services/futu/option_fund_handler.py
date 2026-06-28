@@ -44,10 +44,7 @@ class OptionFundHandler:
             return cached[1]
 
         # 开发环境 Mock
-        if (
-            self.conn_mgr.status != "CONNECTED"
-            and __import__("os").getenv("QUANT_ENV") == "development"
-        ):  # noqa: E501
+        if self.conn_mgr.status != "CONNECTED" and __import__("os").getenv("QUANT_ENV") == "development":  # noqa: E501
             from .mock_provider import MockProvider
 
             return MockProvider.mock_option_chain(ticker, expiration_date)
@@ -59,11 +56,7 @@ class OptionFundHandler:
             ret, raw_date_data = await asyncio.to_thread(
                 self.conn_mgr.quote_ctx.get_option_expiration_date, market_ticker
             )
-            if (
-                ret != RET_OK
-                or not isinstance(raw_date_data, pd.DataFrame)
-                or raw_date_data.empty
-            ):  # noqa: E501
+            if ret != RET_OK or not isinstance(raw_date_data, pd.DataFrame) or raw_date_data.empty:  # noqa: E501
                 return {
                     "status": "error",
                     "message": f"无法获取到期日列表: {raw_date_data}",
@@ -76,11 +69,7 @@ class OptionFundHandler:
             start=expiration_date,
             end=expiration_date,
         )
-        if (
-            ret != RET_OK
-            or not isinstance(chain_data, pd.DataFrame)
-            or chain_data.empty
-        ):  # noqa: E501
+        if ret != RET_OK or not isinstance(chain_data, pd.DataFrame) or chain_data.empty:  # noqa: E501
             return {"status": "error", "message": f"期权链获取失败: {chain_data}"}
 
         result = self.cache_mgr.compress_chain_data(chain_data, expiration_date)
@@ -89,9 +78,7 @@ class OptionFundHandler:
         return result
 
     @with_global_retry
-    async def get_fund_flow(
-        self, ticker: str, format_ticker_func=None, is_unsupported_func=None
-    ) -> Dict[str, Any]:
+    async def get_fund_flow(self, ticker: str, format_ticker_func=None, is_unsupported_func=None) -> Dict[str, Any]:
         """获取资金流向数据（带熔断机制）"""
         if is_unsupported_func and is_unsupported_func(ticker):
             return {"status": "error", "message": "富途原生不支持该大类资产"}
@@ -105,10 +92,7 @@ class OptionFundHandler:
             return cached[1]
 
         # 开发环境 Mock
-        if (
-            self.conn_mgr.status != "CONNECTED"
-            and __import__("os").getenv("QUANT_ENV") == "development"
-        ):  # noqa: E501
+        if self.conn_mgr.status != "CONNECTED" and __import__("os").getenv("QUANT_ENV") == "development":  # noqa: E501
             from .mock_provider import MockProvider
 
             return MockProvider.mock_fund_flow(ticker)
@@ -132,15 +116,11 @@ class OptionFundHandler:
                 await asyncio.sleep(0.6 - elapsed)
             self.cache_mgr.last_ff_time = time.time()
 
-            ret, data = await asyncio.to_thread(
-                self.conn_mgr.quote_ctx.get_capital_distribution, market_ticker
-            )
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_capital_distribution, market_ticker)
 
         if ret != RET_OK or not isinstance(data, pd.DataFrame) or data.empty:
             if "频率太高" in str(data) or "frequency" in str(data).lower():
-                print(
-                    f"🚨 [Futu] 资金流向触发限流熔断！接口将强制全局休眠 60 秒以释放压力 ({data})"
-                )  # noqa: E501
+                print(f"🚨 [Futu] 资金流向触发限流熔断！接口将强制全局休眠 60 秒以释放压力 ({data})")  # noqa: E501
                 self.cache_mgr.ff_circuit_breaker_until = time.time() + 60.0
                 from .mock_provider import MockProvider
 
@@ -153,12 +133,8 @@ class OptionFundHandler:
             return res
 
         row = data.iloc[0]
-        main_in = safe_float(row.get("capital_in_super", 0)) + safe_float(
-            row.get("capital_in_big", 0)
-        )  # noqa: E501
-        main_out = safe_float(row.get("capital_out_super", 0)) + safe_float(
-            row.get("capital_out_big", 0)
-        )  # noqa: E501
+        main_in = safe_float(row.get("capital_in_super", 0)) + safe_float(row.get("capital_in_big", 0))  # noqa: E501
+        main_out = safe_float(row.get("capital_out_super", 0)) + safe_float(row.get("capital_out_big", 0))  # noqa: E501
 
         broker_data, order_book_data = None, None
         if market_ticker.startswith("HK."):
@@ -171,9 +147,7 @@ class OptionFundHandler:
             if sub_ret == RET_OK:
                 for _ in range(3):
                     await asyncio.sleep(0.3)
-                    res = await asyncio.to_thread(
-                        self.conn_mgr.quote_ctx.get_broker_queue, market_ticker
-                    )
+                    res = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_broker_queue, market_ticker)
                     bid_df, ask_df = (
                         (res[1], res[2])
                         if res and res[0] == RET_OK and len(res) > 2
@@ -204,21 +178,11 @@ class OptionFundHandler:
                         "ask_brokers_queue_str": fmt_q(ask_q),
                     }
 
-                ret_ob, ob_data = await asyncio.to_thread(
-                    self.conn_mgr.quote_ctx.get_order_book, market_ticker
-                )
+                ret_ob, ob_data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_order_book, market_ticker)
                 if ret_ob == RET_OK and isinstance(ob_data, dict):
                     bids, asks = ob_data.get("Bid", []), ob_data.get("Ask", [])
-                    bid1 = (
-                        {"price": safe_float(bids[0][0]), "volume": int(bids[0][1])}
-                        if bids
-                        else None
-                    )  # noqa: E501
-                    ask1 = (
-                        {"price": safe_float(asks[0][0]), "volume": int(asks[0][1])}
-                        if asks
-                        else None
-                    )  # noqa: E501
+                    bid1 = {"price": safe_float(bids[0][0]), "volume": int(bids[0][1])} if bids else None  # noqa: E501
+                    ask1 = {"price": safe_float(asks[0][0]), "volume": int(asks[0][1])} if asks else None  # noqa: E501
                     order_book_data = {"bid1": bid1, "ask1": ask1}
 
         def _fmt_money(val: float) -> str:
@@ -240,9 +204,7 @@ class OptionFundHandler:
         return result
 
     @with_global_retry
-    async def get_fundamental(
-        self, ticker: str, format_ticker_func=None, is_unsupported_func=None
-    ) -> Dict[str, Any]:
+    async def get_fundamental(self, ticker: str, format_ticker_func=None, is_unsupported_func=None) -> Dict[str, Any]:
         """获取基本面数据"""
         if is_unsupported_func and is_unsupported_func(ticker):
             return {"status": "error", "message": "富途原生不支持该大类资产"}
@@ -256,10 +218,7 @@ class OptionFundHandler:
             return cached[1]
 
         # 开发环境 Mock
-        if (
-            self.conn_mgr.status != "CONNECTED"
-            and __import__("os").getenv("QUANT_ENV") == "development"
-        ):  # noqa: E501
+        if self.conn_mgr.status != "CONNECTED" and __import__("os").getenv("QUANT_ENV") == "development":  # noqa: E501
             from .mock_provider import MockProvider
 
             return MockProvider.mock_fundamental(ticker)
@@ -267,9 +226,7 @@ class OptionFundHandler:
         if not self.conn_mgr.quote_ctx:
             return {"status": "error", "message": "FutuService 未连接"}
 
-        ret, data = await asyncio.to_thread(
-            self.conn_mgr.quote_ctx.get_market_snapshot, [market_ticker]
-        )
+        ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_market_snapshot, [market_ticker])
         if ret != RET_OK or not isinstance(data, pd.DataFrame) or data.empty:
             res = {"status": "error", "message": f"基本面数据获取失败: {data}"}
             self.cache_mgr.set_fundamental_cache(cache_key, time.time(), res)

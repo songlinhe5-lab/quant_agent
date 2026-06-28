@@ -37,9 +37,7 @@ class TradeHandler:
 
             format_ticker_func = format_ticker
 
-        trd_ctx = self.conn_mgr.get_trade_context(
-            market=market, trd_env=TrdEnv.SIMULATE
-        )  # noqa: E501
+        trd_ctx = self.conn_mgr.get_trade_context(market=market, trd_env=TrdEnv.SIMULATE)  # noqa: E501
         await self.conn_mgr.unlock_trade_if_needed(trd_ctx)
 
         order_type = OrderType.NORMAL if price > 0 else OrderType.MARKET
@@ -56,11 +54,7 @@ class TradeHandler:
         if ret != RET_OK:
             return {"status": "error", "message": f"下单失败: {data}"}
 
-        oid = (
-            str(data["order_id"].iloc[0])
-            if isinstance(data, pd.DataFrame) and not data.empty
-            else str(data)
-        )  # noqa: E501
+        oid = str(data["order_id"].iloc[0]) if isinstance(data, pd.DataFrame) and not data.empty else str(data)  # noqa: E501
         return {
             "status": "success",
             "message": f"委托已提交(模拟盘)！订单号: {oid}",
@@ -68,18 +62,12 @@ class TradeHandler:
         }  # noqa: E501
 
     @with_global_retry
-    async def modify_order(
-        self, order_id: str, op: ModifyOrderOp, market: TrdMarket
-    ) -> Dict[str, Any]:
+    async def modify_order(self, order_id: str, op: ModifyOrderOp, market: TrdMarket) -> Dict[str, Any]:
         """改单/撤单（模拟盘）"""
-        trd_ctx = self.conn_mgr.get_trade_context(
-            market=market, trd_env=TrdEnv.SIMULATE
-        )  # noqa: E501
+        trd_ctx = self.conn_mgr.get_trade_context(market=market, trd_env=TrdEnv.SIMULATE)  # noqa: E501
         await self.conn_mgr.unlock_trade_if_needed(trd_ctx)
 
-        ret, data = await asyncio.to_thread(
-            trd_ctx.modify_order, op, str(order_id), 0, 0.0, trd_env=TrdEnv.SIMULATE
-        )
+        ret, data = await asyncio.to_thread(trd_ctx.modify_order, op, str(order_id), 0, 0.0, trd_env=TrdEnv.SIMULATE)
         if ret != RET_OK:
             return {"status": "error", "message": f"撤单失败: {data}"}
         return {
@@ -90,14 +78,10 @@ class TradeHandler:
     @with_global_retry
     async def query_order(self, order_id: str, market: TrdMarket) -> Dict[str, Any]:
         """查询订单状态"""
-        trd_ctx = self.conn_mgr.get_trade_context(
-            market=market, trd_env=TrdEnv.SIMULATE
-        )  # noqa: E501
+        trd_ctx = self.conn_mgr.get_trade_context(market=market, trd_env=TrdEnv.SIMULATE)  # noqa: E501
         await self.conn_mgr.unlock_trade_if_needed(trd_ctx)
 
-        ret, data = await asyncio.to_thread(
-            trd_ctx.order_list_query, order_id=str(order_id), trd_env=TrdEnv.SIMULATE
-        )
+        ret, data = await asyncio.to_thread(trd_ctx.order_list_query, order_id=str(order_id), trd_env=TrdEnv.SIMULATE)
         if ret != RET_OK or not isinstance(data, pd.DataFrame) or data.empty:
             return {"status": "error", "message": f"未找到指定订单: {order_id}"}
 
@@ -133,10 +117,7 @@ class TradeHandler:
         trd_market = market_map.get(market.upper(), TrdMarket.HK)
 
         # 开发环境 Mock
-        if (
-            self.conn_mgr.status != "CONNECTED"
-            and os.getenv("QUANT_ENV") == "development"
-        ):  # noqa: E501
+        if self.conn_mgr.status != "CONNECTED" and os.getenv("QUANT_ENV") == "development":  # noqa: E501
             from .mock_provider import MockProvider
 
             return MockProvider.mock_account_info(market, env_str)
@@ -153,14 +134,8 @@ class TradeHandler:
             if isinstance(data, pd.DataFrame) and not data.empty:
                 row = data.iloc[0]
                 positions = []
-                ret_pos, data_pos = await asyncio.to_thread(
-                    trd_ctx.position_list_query, trd_env=trd_env
-                )
-                if (
-                    ret_pos == RET_OK
-                    and isinstance(data_pos, pd.DataFrame)
-                    and not data_pos.empty
-                ):  # noqa: E501
+                ret_pos, data_pos = await asyncio.to_thread(trd_ctx.position_list_query, trd_env=trd_env)
+                if ret_pos == RET_OK and isinstance(data_pos, pd.DataFrame) and not data_pos.empty:  # noqa: E501
                     display_cols = [
                         "code",
                         "stock_name",
@@ -172,9 +147,9 @@ class TradeHandler:
                         "pl_val",
                         "pl_ratio",
                     ]
-                    positions = data_pos[
-                        [col for col in display_cols if col in data_pos.columns]
-                    ].to_dict(orient="records")
+                    positions = data_pos[[col for col in display_cols if col in data_pos.columns]].to_dict(
+                        orient="records"
+                    )
 
                 return {
                     "status": "success",
