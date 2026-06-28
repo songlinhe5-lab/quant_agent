@@ -78,6 +78,9 @@ from backend.services.ticker_service import ticker_service
 from backend.services.yfinance_service import yf_service
 from backend.services.finnhub_service import finnhub_service
 from backend.services.sentiment_tracker import sentiment_tracker
+
+# BE-03: Futu 看门狗
+from backend.services.futu.watchdog import get_watchdog
 from backend.services.system_monitor_service import system_monitor_service
 from backend.services.screener_service import screener_service
 from backend.services.fred_service import fred_service
@@ -187,6 +190,10 @@ async def lifespan(app: FastAPI): # type: ignore
     loop_monitor_task = asyncio.create_task(system_monitor_service.event_loop_monitor_daemon())
 
     await manager.start_background_tasks() # type: ignore
+    
+    # BE-03: 启动 Futu OpenD 看门狗守护进程
+    futu_watchdog_task = asyncio.create_task(get_watchdog(futu_service).start())
+    
     asyncio.create_task(notification_service.send_alert("✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！"))
     
     asyncio.create_task(finnhub_service._insider_transactions_marquee_daemon()) # 启动高管内幕交易跑马灯守护进程
@@ -195,6 +202,15 @@ async def lifespan(app: FastAPI): # type: ignore
     
     # === 销毁阶段 (Shutdown) ===
     print("🛑 正在关闭后端服务，释放资源...")
+    
+    # BE-03: 停止看门狗
+    try:
+        get_watchdog().stop()
+        if 'futu_watchdog_task' in locals() and not futu_watchdog_task.done():
+            futu_watchdog_task.cancel()
+    except Exception:
+        pass
+    
     try:
         tasks_to_await = []
             

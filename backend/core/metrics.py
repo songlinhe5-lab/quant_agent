@@ -140,3 +140,61 @@ AGENT_TOOL_CALLS = Counter(
     "Agent Tool 调用总数",
     ["tool", "status"],  # status: "success" | "error" | "timeout"
 )
+
+# ==========================================
+#  Futu OpenD 连接指标 (BE-03)
+# ==========================================
+
+FUTU_CONNECTION_STATUS = Gauge(
+    "quant_futu_connection_status",
+    "Futu OpenD 连接状态（0=断开, 1=正常）",
+)
+
+FUTU_RECONNECT_TOTAL = Counter(
+    "quant_futu_reconnect_total",
+    "Futu OpenD 重连尝试总次数",
+)
+
+FUTU_RECONNECT_FAILURES = Counter(
+    "quant_futu_reconnect_failures_total",
+    "Futu OpenD 重连失败次数",
+)
+
+FUTU_RECONNECT_LATENCY = Histogram(
+    "quant_futu_reconnect_latency_seconds",
+    "Futu OpenD 重连耗时（从断开到恢复的总时间）",
+    buckets=[1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, float("inf")],
+)
+
+# ==========================================
+#  K线缓存命中指标 (BE-02)
+# ==========================================
+
+KLINE_CACHE_HIT = Counter(
+    "quant_kline_cache_hit_total",
+    "K线缓存命中次数",
+    ["tier"],  # "redis" | "parquet" | "miss"
+)
+
+KLINE_CACHE_QUERY_LATENCY = Histogram(
+    "quant_kline_cache_query_seconds",
+    "K线查询延迟（含缓存路由）",
+    ["tier"],
+    buckets=[0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, float("inf")],
+)
+
+# ==========================================
+#  数据质量指标 (BE-16)
+# ==========================================
+
+MARKET_DATA_CORRECTION_TOTAL = Counter(
+    "quant_market_data_correction_total",
+    "行情数据正确性检查总次数",
+    ["symbol", "check_type"],  # check_type: "quality_check" | "adjustment" | "suspension"
+)
+
+MARKET_DATA_ANOMALY_TOTAL = Counter(
+    "quant_market_data_anomaly_total",
+    "行情数据异常检测总数",
+    ["symbol", "severity"],  # severity: "critical" | "warning"
+)
