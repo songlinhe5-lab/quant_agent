@@ -58,7 +58,7 @@ graph TD
 
     subgraph S5["阶段 5 · 工程化·可观测·质量（贯穿，集成期收口）"]
         OPS["OPS-01~05 CI/CD / Tunnel / 备份"]
-        DIST["DIST-01~10 分布式数据服务架构"]
+        DIST["DIST-01~18 分布式数据源服务"]
         BE0506["BE-05·06 结构化日志 + metrics"]
         OBS["OBS-01·02 Grafana + 告警"]
         TEST["TEST-01~15 单测/契约/E2E/hooks/漏洞扫描"]
@@ -213,20 +213,43 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 - [x] **[OPS-04]** Redis AOF 持久化 + 每日自动 RDB 备份到 Cloudflare R2
 - [x] **[OPS-05]** 备份恢复演练脚本：实现 `docs/12` 灾难恢复流程，定期验证 R2 备份可恢复性（RTO < 2h 验收）
 
-### 分布式数据服务架构（北京 + 加州双节点）
+### 分布式数据源服务架构（多 VPS 驻留 + 智能路由 + 自动 failover）
 
-> **架构决策（2026-06-28）**：将海外数据源采集（yfinance / finnhub / futuopenai）迁移至加州 VPS，akshare 等国内数据源保留在北京主节点，通过服务注册表 + 动态路由实现跨节点数据融合。
+> **架构决策（2026-06-28）**：针对 YFinance 等免授权但限流严格的数据源，设计多 VPS / 多进程驻留服务架构，通过服务注册发现 + 加权路由 + 自动 failover + STALE 降级，最大化数据源吞吐能力。详细设计见 [`docs/14. 分布式数据源服务架构.md`](./14.%20分布式数据源服务架构.md)。  
+> **核心收益**：N 个独立出口 IP = N 倍限流配额，单节点 429/宕机时透明 failover，全节点不可用时降级 STALE 缓存。
 
-- [ ] **[DIST-01]** `data_subservice/` 包工程搭建：独立 FastAPI 服务，包含 yfinance / finnhub / futuopenai 三个数据源路由、健康检查端点、HMAC 签名验证
-- [ ] **[DIST-02]** 服务注册表实现：`backend/core/service_registry.py`，基于 Redis Hash + TTL 心跳续期，支持 register / heartbeat / discover / deregister
-- [ ] **[DIST-03]** 主服务 `ServiceRouter` 动态路由：`backend/core/service_router.py`，根据数据源类型（akshare → 本地 / yfinance → 加州）自动路由，支持降级回退（子服务不可用时返回 STALE 缓存）
-- [ ] **[DIST-04]** 加州子服务注册客户端：`data_subservice/registry_client.py`，启动时自动注册 IP:Port + capabilities，每 30s 心跳保活，断线自动重注册
-- [ ] **[DIST-05]** yfinance 数据源迁移：将 `backend/services/yfinance_service.py` 迁移至 `data_subservice/services/`，加州节点直连 Yahoo Finance
-- [ ] **[DIST-06]** finnhub 数据源迁移：将 `backend/services/finnhub_service.py` 迁移至 `data_subservice/services/`，加州节点直连 Finnhub API
-- [ ] **[DIST-07]** futuopenai 交易网关迁移：将 Futu OpenD 及相关服务迁移至加州节点，systemd 守护 + Watchdog
-- [ ] **[DIST-08]** 北京 ↔ 加州 Tailscale 跨节点通信配置：Tailnet 内网 IP 直连 + HMAC 签名验证 + 子服务通过 Tailscale IP 注册
-- [ ] **[DIST-09]** 加州子服务 Docker Compose + ghcr.io 镜像发布：`docker-compose.node-b.yml` 完善 + GitHub Actions CI/CD 流水线
-- [ ] **[DIST-10]** 跨节点监控集成：加州子服务健康状态、数据源成功率、延迟指标接入北京 Prometheus + Grafana
+#### P0 · 服务注册表 + 路由器骨架（主服务侧，可独立验证）
+
+- [ ] **[DIST-01]** `ServiceRegistry` 服务注册表实现：`backend/core/service_registry.py`，基于 Redis Hash + Sorted Set + Set 三结构协同，支持 `register` / `heartbeat` / `discover` / `deregister` / `cleanup_dead_nodes` / `mark_draining`；定义 `NodeInfo` Pydantic 模型（node_id / url / weight / region / status / capabilities / last_heartbeat / 统计字段）
+- [ ] **[DIST-02]** `YFinanceRouter` 客户端路由器骨架：`backend/core/yfinance_router.py`，实现 `_refresh_nodes`（5s 本地缓存 + double-check locking）、`_select_nodes`（加权轮询 + 过滤熔断节点）、`call`（选节点 → 请求 → failover → 降级）、`_fallback_stale_cache`（Redis STALE 缓存兜底）、`_save_stale_cache`（成功响应存档）；复用 `core/circuit_breaker.py`（每节点 service key = `yf_node:{id}`）
+- [ ] **[DIST-03]** 路由器单测：mock 子服务验证 failover 链路、熔断器触发、STALE 降级、加权轮询均衡性、0 节点场景
+- [ ] **[DIST-04]** `YFinanceService` 兼容外壳改造：保留类壳与原接口签名，内部通过 `YF_ROUTER_ENABLED` 开关在 `YFinanceRouter`（新）与 `LegacyYFinanceImpl`（旧）间切换，上层调用方零改动
+
+#### P1 · 子服务工程 + yfinance 核心逻辑迁移
+
+- [ ] **[DIST-05]** `data_subservice/` 子服务工程搭建：独立 FastAPI 包，含 `main.py`（启动注册 + 心跳）、`pyproject.toml`（独立依赖）、`Dockerfile`、目录结构（routes / services / tests）
+- [ ] **[DIST-06]** 子服务 yfinance 核心逻辑迁移：将 `backend/services/yfinance_service.py` 中的 `RateLimitedSession`、缓存、微批处理、宏观守护进程迁移至 `data_subservice/services/yfinance_handler.py`；参数可按节点调整（`RATE_LIMIT_MAX_REQ` / `RATE_LIMIT_PER_SECONDS`）
+- [ ] **[DIST-07]** 子服务 HTTP 接口实现：`/v1/quote`、`/v1/history`、`/v1/batch`、`/v1/macro`、`/v1/health`；429 时返回 HTTP 429（由主服务决定 failover，子服务不自行重试跨节点）
+- [ ] **[DIST-08]** 子服务 `RegistryClient` 实现：`data_subservice/registry_client.py`，启动时 `register()`，每 10s `heartbeat()`，停机 `deregister()`，心跳失败指数退避重试 + 恢复后自动重注册
+- [ ] **[DIST-09]** 子服务单测：接口契约验证、限流 429 返回、健康检查、注册/注销流程
+
+#### P2 · 安全 + 编排 + 灰度切换
+
+- [ ] **[DIST-10]** HMAC-SHA256 签名验证：子服务 `auth.py` 中间件，复用 `INTERNAL_API_SECRET`，校验 `X-Internal-Sig` header；主服务侧 `_call_node` 自动签名
+- [ ] **[DIST-11]** Docker Compose 多节点编排：`docker-compose.dev.yml`，本机 2 节点（local-01/02）联调；`docker-compose.node-b.yml` 加州节点编排
+- [ ] **[DIST-12]** 灰度切换验证：`YF_ROUTER_ENABLED=true` 切换新逻辑，本机 2 节点联调通过，业务无感；对比新旧逻辑响应一致性
+
+#### P3 · 生产部署 + 监控
+
+- [ ] **[DIST-13]** 加州 VPS 部署：子服务 Docker 镜像发布 ghcr.io，GitHub Actions CI/CD 流水线，加州节点 systemd 守护
+- [ ] **[DIST-14]** Tailscale 跨节点组网：北京 ↔ 加州 Tailnet 内网 IP 直连，子服务注册使用 Tailscale IP
+- [ ] **[DIST-15]** Prometheus 指标埋点 + Grafana 面板：节点级成功率/延迟/熔断状态、流量分布、failover 事件流、STALE 降级监控
+- [ ] **[DIST-16]** 告警规则配置：节点熔断（>5min）、存活节点不足（<2）、全节点宕机、STALE 降级飙升，接飞书 Webhook
+
+#### 后续扩展（其他数据源迁移，P3 长期）
+
+- [ ] **[DIST-17]** finnhub 数据源迁移：将 `backend/services/finnhub_service.py` 迁移至 `data_subservice/services/`，复用注册表 + 路由器架构
+- [ ] **[DIST-18]** futuopenai 交易网关迁移：Futu OpenD 及相关服务迁移至加州节点，systemd 守护 + Watchdog
 
 ---
 
@@ -344,6 +367,8 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 | 完成日期    | 任务                                                                               |
 | ------- | -------------------------------------------------------------------------------- |
+| 2026-06-28 | 新增 `docs/14. 分布式数据源服务架构.md`：YFinance 多 VPS 驻留服务设计（注册发现 / 加权路由 / failover / STALE 降级） |
+| 2026-06-28 | 重构 DIST 任务：原 DIST-01~10 拆分为 DIST-01~18，按 P0-P3 阶段组织（注册表 / 路由器 / 子服务 / HMAC / 编排 / 部署 / 监控 / 扩展） |
 | 2026-06 | ADR-001: 确立纯 Vite SPA (React) 替代 Next.js App Router                              |
 | 2026-06 | ADR-002: 确立 Flutter 统一三端（Android/iOS/HarmonyOS），移除 macOS Tauri                   |
 | 2026-06 | ADR-003: 确立双 VPS + Cloudflare 边缘节点分布式部署方案                                        |
@@ -460,6 +485,7 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 - [docs/10. API 契约规范](./10.%20API%20契约规范.md)
 - [docs/11. 数据模型规范](./11.%20数据模型规范.md)
 - [docs/12. 运维手册与应急预案](./12.%20运维手册与应急预案.md)
+- [docs/14. 分布式数据源服务架构](./14.%20分布式数据源服务架构.md)
 
 ---
 
@@ -468,6 +494,7 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 | 日期         | 更新说明                                                 |
 | ---------- | ---------------------------------------------------- |
+| 2026-06-28 | 新增 `docs/14` 分布式数据源服务架构文档；重构 DIST-01~10 为 DIST-01~18 细粒度任务（注册表 / 路由器 / 子服务工程 / HMAC / Docker 编排 / VPS 部署 / 监控告警 / 其他数据源扩展） |
 | 2026-06-28 | 新增 DIST-01~10 分布式数据服务架构任务（北京 + 加州双节点）；更新部署文档至 V4.0 |
 | 2026-06-28 | [TEST-13] 覆盖率门禁完成：codecov.yml + pytest-cov + vitest coverage，后端 24% / 前端待测 |
 | 2026-06-28 | [TEST-07/09/11] 依赖漏洞扫描纳入CI + 存量服务单测 + Agent ReAct循环单测完成 |
