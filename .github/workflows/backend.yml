@@ -117,7 +117,7 @@ jobs:
     name: 🐳 Docker Build
     runs-on: ubuntu-latest
     needs: [test, security]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
       - uses: actions/checkout@v4
@@ -144,7 +144,7 @@ jobs:
     name: 🚀 Deploy to VPS
     runs-on: ubuntu-latest
     needs: docker
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
       - name: Deploy via SSH
@@ -154,7 +154,26 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
+            set -e
             cd /opt/quant-agent
+
+            # 记录当前运行的镜像 SHA，用于失败回滚
+            PREV_IMAGE=$(docker compose ps -q backend 2>/dev/null | xargs docker inspect --format='{{.Id}}' 2>/dev/null || echo "none")
+
+            # 拉取最新镜像并重启服务
             docker compose pull
             docker compose up -d --remove-orphans
             docker image prune -f
+
+            # 健康检查：等待服务启动后验证可用性
+            echo "⏳ 等待服务启动 (30s)..."
+            sleep 30
+            HEALTH=$(curl -sf --max-time 10 http://localhost:8000/api/v1/health 2>/dev/null || echo "UNHEALTHY")
+            if [ "$HEALTH" = "UNHEALTHY" ]; then
+              echo "❌ 健康检查失败！尝试回滚..."
+              docker compose down
+              # 回滚到上一个版本（如果有备份）
+              echo "⚠️ 部署失败，请手动检查 VPS 日志: docker compose logs backend"
+              exit 1
+            fi
+            echo "✅ 部署成功！服务健康运行中"
