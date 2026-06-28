@@ -1,239 +1,339 @@
 """
-Quant Agent Pydantic v2 领域模型（对齐 docs/11 核心领域对象）
+Pydantic v2 领域模型（BE-14）
 
-所有 API 出入参强类型校验均使用此处定义的 Schema。
-严禁在各路由文件中内联定义重复的 Pydantic 模型。
+按 docs/11 定义 Quote/Kline/Position/Order/Account/TechIndicators 等 Schema，
+作为 API 出入参强类型校验。
+
+对齐前端类型定义：frontend/src/types/domain.ts
 """
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, List, Dict, Any
+from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional
-
-from pydantic import BaseModel, ConfigDict, Field
 
 
-# ==========================================
-#  枚举类型
-# ==========================================
+# ─────────────────────────────────────────────
+# 基础枚举
+# ─────────────────────────────────────────────
 
 class Market(str, Enum):
-    """市场标识"""
     US = "US"
     HK = "HK"
     SH = "SH"
     SZ = "SZ"
+    SG = "SG"
+    JP = "JP"
+    CN = "CN"
+
+
+class SecurityType(str, Enum):
+    STOCK = "STOCK"
+    ETF = "ETF"
+    OPTION = "OPTION"
+    FUTURE = "FUTURE"
+    INDEX = "INDEX"
     CRYPTO = "CRYPTO"
 
 
 class KlinePeriod(str, Enum):
-    """K 线周期"""
-    M1 = "1m"
-    M5 = "5m"
-    M15 = "15m"
-    M30 = "30m"
-    M60 = "60m"
-    D1 = "D1"
-    W1 = "W1"
-    MO1 = "M1"
+    K_1M = "K_1M"
+    K_5M = "K_5M"
+    K_15M = "K_15M"
+    K_30M = "K_30M"
+    K_1H = "K_1H"
+    K_DAY = "K_DAY"
+    K_WEEK = "K_WEEK"
+    K_MONTH = "K_MONTH"
+
+
+class PositionSide(str, Enum):
+    LONG = "LONG"
+    SHORT = "SHORT"
+
+
+class PositionStatus(str, Enum):
+    OPEN = "OPEN"
+    CLOSED = "CLOSED"
 
 
 class OrderSide(str, Enum):
-    BUY = "buy"
-    SELL = "sell"
+    BUY = "BUY"
+    SELL = "SELL"
 
 
 class OrderType(str, Enum):
-    MARKET = "market"
-    LIMIT = "limit"
-    STOP = "stop"
-    STOP_LIMIT = "stop_limit"
+    MARKET = "MARKET"
+    LIMIT = "LIMIT"
+    STOP = "STOP"
+    STOP_LIMIT = "STOP_LIMIT"
 
 
 class OrderStatus(str, Enum):
-    PENDING = "pending"
-    PARTIAL = "partial"
-    FILLED = "filled"
-    CANCELLED = "cancelled"
-    REJECTED = "rejected"
+    PENDING = "PENDING"
+    SUBMITTED = "SUBMITTED"
+    PARTIAL = "PARTIAL"
+    FILLED = "FILLED"
+    CANCELLED = "CANCELLED"
+    REJECTED = "REJECTED"
 
 
-class OrderTIF(str, Enum):
-    """Time-In-Force（订单有效期）"""
-    DAY = "day"
-    GTC = "gtc"
-    IOC = "ioc"
-    FOK = "fok"
+class StrategyStatus(str, Enum):
+    DRAFT = "DRAFT"
+    ACTIVE = "ACTIVE"
+    PAUSED = "PAUSED"
+    ARCHIVED = "ARCHIVED"
 
 
-class BrokerType(str, Enum):
-    FUTU = "futu"
-    SIMULATION = "simulation"
+# ─────────────────────────────────────────────
+# 标的信息
+# ─────────────────────────────────────────────
 
-
-# ==========================================
-#  核心领域模型
-# ==========================================
-
-class SymbolModel(BaseModel):
-    """标的信息"""
-    model_config = ConfigDict(frozen=True)
-
-    futu_code: str = Field(..., description="Futu 格式主键，如 US.AAPL")
-    display_code: str = Field(..., description="展示用代码，如 AAPL 或 00700")
+class Symbol(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
+    code: str = Field(..., description="标的代码，如 HK.00700")
     name: str = Field(..., description="标的名称")
-    market: Market
-    currency: str = Field(..., description="货币代码，如 USD / HKD / CNY")
-    lot_size: int = Field(default=1, description="每手股数（港股 500，美股 1）")
+    market: Market = Field(..., description="所属市场")
+    security_type: SecurityType = Field(..., alias="securityType", description="证券类型")
+    lot_size: Optional[int] = Field(None, alias="lotSize", description="每手股数")
+    currency: Optional[str] = Field(None, description="计价货币")
 
 
-class QuoteModel(BaseModel):
-    """实时报价快照"""
-    symbol: str = Field(..., description="Futu 格式 symbol")
-    price: float
-    change: float = Field(default=0.0)
-    change_pct: float = Field(default=0.0, description="涨跌幅（0.0056 = 0.56%）")
-    open: float = Field(default=0.0)
-    high: float = Field(default=0.0)
-    low: float = Field(default=0.0)
-    prev_close: float = Field(default=0.0)
-    volume: int = Field(default=0, description="成交量（股）")
-    turnover: float = Field(default=0.0, description="成交额（原始货币）")
-    bid: float = Field(default=0.0, description="买一价")
-    ask: float = Field(default=0.0, description="卖一价")
-    bid_vol: int = Field(default=0, description="买一量")
-    ask_vol: int = Field(default=0, description="卖一量")
+# ─────────────────────────────────────────────
+# 行情数据
+# ─────────────────────────────────────────────
+
+class Quote(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
+    symbol: str = Field(..., description="标的代码")
+    last_price: float = Field(..., alias="lastPrice", description="最新价")
+    open: float = Field(..., description="开盘价")
+    high: float = Field(..., description="最高价")
+    low: float = Field(..., description="最低价")
+    prev_close: float = Field(..., alias="prevClose", description="昨收价")
+    volume: int = Field(..., description="成交量")
+    turnover: float = Field(..., description="成交额")
+    change: float = Field(..., description="涨跌额")
+    change_percent: float = Field(..., alias="changePercent", description="涨跌幅")
+    
+    # 盘口数据
+    bid_price: Optional[float] = Field(None, alias="bidPrice", description="买一价")
+    bid_volume: Optional[int] = Field(None, alias="bidVolume", description="买一量")
+    ask_price: Optional[float] = Field(None, alias="askPrice", description="卖一价")
+    ask_volume: Optional[int] = Field(None, alias="askVolume", description="卖一量")
+    
+    # 时间戳
+    timestamp: int = Field(..., description="UTC 毫秒时间戳")
+    source: Optional[str] = Field(None, description="数据来源")
+
+
+class Kline(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
+    timestamp: int = Field(..., description="UTC 毫秒时间戳")
+    open: float = Field(..., description="开盘价")
+    high: float = Field(..., description="最高价")
+    low: float = Field(..., description="最低价")
+    close: float = Field(..., description="收盘价")
+    volume: int = Field(..., description="成交量")
+    turnover: Optional[float] = Field(None, description="成交额")
+
+
+class KlineData(BaseModel):
+    symbol: str = Field(..., description="标的代码")
+    period: KlinePeriod = Field(..., description="K线周期")
+    klines: List[Kline] = Field(..., description="K线数据列表")
+
+
+class Tick(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
+    timestamp: int = Field(..., description="UTC 毫秒时间戳")
+    price: float = Field(..., description="成交价")
+    volume: int = Field(..., description="成交量")
+    bid: Optional[float] = Field(None, description="买一价")
+    ask: Optional[float] = Field(None, description="卖一价")
+    bid_size: Optional[int] = Field(None, alias="bidSize", description="买一量")
+    ask_size: Optional[int] = Field(None, alias="askSize", description="卖一量")
+
+
+# ─────────────────────────────────────────────
+# 持仓与订单
+# ─────────────────────────────────────────────
+
+class Position(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
+    id: str = Field(..., description="持仓ID")
+    symbol: str = Field(..., description="标的代码")
+    side: PositionSide = Field(..., description="持仓方向")
+    quantity: float = Field(..., description="持仓数量")
+    avg_cost: float = Field(..., alias="avgCost", description="持仓均价")
+    current_price: float = Field(..., alias="currentPrice", description="当前价格")
+    market_value: float = Field(..., alias="marketValue", description="持仓市值")
+    unrealized_pnl: float = Field(..., alias="unrealizedPnl", description="未实现盈亏")
+    realized_pnl: float = Field(..., alias="realizedPnl", description="已实现盈亏")
+    unrealized_pnl_percent: float = Field(..., alias="unrealizedPnlPercent", description="未实现盈亏百分比")
+    status: PositionStatus = Field(..., description="持仓状态")
+    opened_at: int = Field(..., alias="openedAt", description="开仓时间（UTC 毫秒）")
+    updated_at: int = Field(..., alias="updatedAt", description="更新时间（UTC 毫秒）")
+
+
+class Order(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
+    id: str = Field(..., description="订单ID")
+    symbol: str = Field(..., description="标的代码")
+    side: OrderSide = Field(..., description="订单方向")
+    type: OrderType = Field(..., description="订单类型")
+    quantity: float = Field(..., description="订单数量")
+    price: Optional[float] = Field(None, description="限价单价格")
+    stop_price: Optional[float] = Field(None, alias="stopPrice", description="止损单触发价")
+    filled_quantity: float = Field(..., alias="filledQuantity", description="已成交数量")
+    filled_avg_price: Optional[float] = Field(None, alias="filledAvgPrice", description="成交均价")
+    status: OrderStatus = Field(..., description="订单状态")
+    created_at: int = Field(..., alias="createdAt", description="创建时间（UTC 毫秒）")
+    updated_at: int = Field(..., alias="updatedAt", description="更新时间（UTC 毫秒）")
+    
+    # 模拟/实盘标识
+    is_paper: bool = Field(..., alias="isPaper", description="是否模拟盘")
+    strategy_id: Optional[str] = Field(None, alias="strategyId", description="策略ID")
+
+
+# ─────────────────────────────────────────────
+# 账户信息
+# ─────────────────────────────────────────────
+
+class Account(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
+    account_id: str = Field(..., alias="accountId", description="账户ID")
+    total_assets: float = Field(..., alias="totalAssets", description="总资产")
+    cash: float = Field(..., description="现金")
+    market_value: float = Field(..., alias="marketValue", description="持仓市值")
+    buying_power: float = Field(..., alias="buyingPower", description="购买力")
+    unrealized_pnl: float = Field(..., alias="unrealizedPnl", description="未实现盈亏")
+    realized_pnl: float = Field(..., alias="realizedPnl", description="已实现盈亏")
+    daily_pnl: float = Field(..., alias="dailyPnl", description="当日盈亏")
+    daily_pnl_percent: float = Field(..., alias="dailyPnlPercent", description="当日盈亏百分比")
+    currency: str = Field(..., description="货币单位")
+    updated_at: int = Field(..., alias="updatedAt", description="更新时间（UTC 毫秒）")
+
+
+# ─────────────────────────────────────────────
+# 技术指标
+# ─────────────────────────────────────────────
+
+class IndicatorType(str, Enum):
+    MA = "MA"
+    EMA = "EMA"
+    MACD = "MACD"
+    RSI = "RSI"
+    KDJ = "KDJ"
+    BOLL = "BOLL"
+    ATR = "ATR"
+    VWAP = "VWAP"
+
+
+class IndicatorParams(BaseModel):
+    period: Optional[int] = Field(None, description="周期")
+    fast_period: Optional[int] = Field(None, alias="fastPeriod", description="快线周期")
+    slow_period: Optional[int] = Field(None, alias="slowPeriod", description="慢线周期")
+    signal_period: Optional[int] = Field(None, alias="signalPeriod", description="信号周期")
+    multiplier: Optional[float] = Field(None, description="乘数")
+
+
+class TechnicalIndicator(BaseModel):
+    type: IndicatorType = Field(..., description="指标类型")
+    params: IndicatorParams = Field(..., description="指标参数")
+    values: List[Dict[str, float]] = Field(..., description="每个时间点的指标值")
+    signal: Optional[str] = Field(None, description="买卖信号")
+
+
+# ─────────────────────────────────────────────
+# 选股相关
+# ─────────────────────────────────────────────
+
+class ScreenerFilter(BaseModel):
+    market: Optional[List[Market]] = Field(None, description="市场过滤")
+    security_type: Optional[List[SecurityType]] = Field(None, alias="securityType", description="证券类型过滤")
+    min_market_cap: Optional[float] = Field(None, alias="minMarketCap", description="最小市值")
+    max_market_cap: Optional[float] = Field(None, alias="maxMarketCap", description="最大市值")
+    min_pe: Optional[float] = Field(None, alias="minPE", description="最小市盈率")
+    max_pe: Optional[float] = Field(None, alias="maxPE", description="最大市盈率")
+    min_pb: Optional[float] = Field(None, alias="minPB", description="最小市净率")
+    max_pb: Optional[float] = Field(None, alias="maxPB", description="最大市净率")
+    min_volume: Optional[float] = Field(None, alias="minVolume", description="最小成交量")
+    min_change_percent: Optional[float] = Field(None, alias="minChangePercent", description="最小涨跌幅")
+    max_change_percent: Optional[float] = Field(None, alias="maxChangePercent", description="最大涨跌幅")
+    indicators: Optional[Dict[str, Dict[str, float]]] = Field(None, description="技术指标过滤")
+
+
+class ScreenerResult(BaseModel):
+    symbol: str = Field(..., description="标的代码")
+    name: str = Field(..., description="标的名称")
+    market: Market = Field(..., description="所属市场")
+    last_price: float = Field(..., alias="lastPrice", description="最新价")
+    change_percent: float = Field(..., alias="changePercent", description="涨跌幅")
+    volume: float = Field(..., description="成交量")
+    market_cap: Optional[float] = Field(None, alias="marketCap", description="市值")
+    pe: Optional[float] = Field(None, description="市盈率")
+    pb: Optional[float] = Field(None, description="市净率")
+    indicators: Optional[Dict[str, float]] = Field(None, description="技术指标值")
+
+
+# ─────────────────────────────────────────────
+# 策略相关
+# ─────────────────────────────────────────────
+
+class Strategy(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
+    id: str = Field(..., description="策略ID")
+    name: str = Field(..., description="策略名称")
+    description: Optional[str] = Field(None, description="策略描述")
+    status: StrategyStatus = Field(..., description="策略状态")
+    code: str = Field(..., description="策略代码")
+    params: Optional[Dict[str, Any]] = Field(None, description="策略参数")
+    created_at: int = Field(..., alias="createdAt", description="创建时间（UTC 毫秒）")
+    updated_at: int = Field(..., alias="updatedAt", description="更新时间（UTC 毫秒）")
+
+
+# ─────────────────────────────────────────────
+# WebSocket 消息
+# ─────────────────────────────────────────────
+
+class WSSubscribeMessage(BaseModel):
+    type: str = Field(..., description="消息类型")
+    topic: str = Field(..., description="订阅主题")
+    symbol: Optional[str] = Field(None, description="标的代码")
+
+
+class WSQuoteMessage(BaseModel):
+    type: str = Field(..., description="消息类型")
+    data: Quote = Field(..., description="行情数据")
+
+
+class WSKlineMessage(BaseModel):
+    type: str = Field(..., description="消息类型")
+    data: KlineData = Field(..., description="K线数据")
+
+
+# ─────────────────────────────────────────────
+# 统一 API 响应结构
+# ─────────────────────────────────────────────
+
+class ApiResponse(BaseModel):
+    code: int = Field(..., description="业务错误码，0 表示成功")
+    msg: str = Field(..., description="可读消息")
+    data: Any = Field(..., description="响应数据")
     ts: int = Field(..., description="UTC 毫秒时间戳")
 
-
-class KlineModel(BaseModel):
-    """单根 K 线"""
-    ts: int = Field(..., description="K 线开始时间（UTC 毫秒）")
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: int = Field(default=0)
-    turnover: float = Field(default=0.0)
-
-
-class KlineSeriesModel(BaseModel):
-    """K 线序列"""
-    symbol: str
-    period: KlinePeriod
-    klines: List[KlineModel] = Field(default_factory=list)
-    source: Literal["redis_cache", "duckdb_cache", "futu_api", "yfinance_fallback"] = "futu_api"
-
-
-class PositionModel(BaseModel):
-    """持仓"""
-    symbol: str
-    name: str = ""
-    qty: int = Field(..., description="持仓数量")
-    avg_cost: float = Field(..., description="平均成本")
-    current_price: float = Field(default=0.0)
-    market_value: float = Field(default=0.0, description="当前市值")
-    unrealized_pnl: float = Field(default=0.0)
-    unrealized_pnl_pct: float = Field(default=0.0)
-    today_pnl: float = Field(default=0.0, description="今日盈亏")
-    cost_ratio: float = Field(default=0.0, description="仓位占比")
-    currency: str = Field(default="USD")
-
-
-class OrderModel(BaseModel):
-    """订单"""
-    order_id: str
-    symbol: str
-    side: OrderSide
-    order_type: OrderType
-    qty: int
-    filled_qty: int = Field(default=0)
-    price: Optional[float] = Field(default=None, description="limit 价，market 单为 null")
-    avg_fill_price: Optional[float] = None
-    status: OrderStatus = OrderStatus.PENDING
-    tif: OrderTIF = OrderTIF.DAY
-    note: str = ""
-    created_at: int = Field(..., description="UTC 毫秒时间戳")
-    updated_at: int = Field(..., description="UTC 毫秒时间戳")
-    is_simulated: bool = Field(default=True, description="沙箱单 or 实盘单")
-
-
-class AccountModel(BaseModel):
-    """账户概况"""
-    account_id: str
-    broker: BrokerType = BrokerType.SIMULATION
-    currency: str = Field(default="USD")
-    total_asset: float = Field(default=0.0)
-    cash: float = Field(default=0.0)
-    market_value: float = Field(default=0.0)
-    unrealized_pnl: float = Field(default=0.0)
-    unrealized_pnl_pct: float = Field(default=0.0)
-    today_pnl: float = Field(default=0.0)
-    leverage: float = Field(default=1.0, description="实际杠杆倍数")
-    buying_power: float = Field(default=0.0, description="可用购买力")
-    updated_at: int = Field(..., description="UTC 毫秒时间戳")
-
-
-# ==========================================
-#  技术指标模型
-# ==========================================
-
-class MACDResultModel(BaseModel):
-    macd: float
-    signal: float
-    histogram: float
-
-
-class BollingerBandsModel(BaseModel):
-    upper: float
-    middle: float
-    lower: float
-    bandwidth: float = Field(default=0.0)
-
-
-class KDJModel(BaseModel):
-    k: float
-    d: float
-    j: float
-
-
-class TechIndicatorsModel(BaseModel):
-    """技术指标计算结果"""
-    symbol: str
-    period: KlinePeriod
-    ts: int = Field(..., description="UTC 毫秒时间戳")
-    close: float
-    ma: Dict[str, float] = Field(default_factory=dict, description='如 {"MA5": 210.1}')
-    ema: Dict[str, float] = Field(default_factory=dict)
-    rsi: Dict[str, float] = Field(default_factory=dict, description='如 {"RSI14": 58.3}')
-    macd: MACDResultModel
-    kdj: KDJModel
-    boll: BollingerBandsModel
-    atr: float = Field(default=0.0)
-    volume_ratio: float = Field(default=1.0, description="量比")
-    signals: List[str] = Field(
-        default_factory=list,
-        description="信号列表，如 MA_GOLDEN_CROSS, MACD_BULL_DIVERGE 等",
-    )
-
-
-# ==========================================
-#  通用分页模型
-# ==========================================
 
 class PaginatedResponse(BaseModel):
-    """Cursor-based 分页响应（对齐 docs/10 §1.5）"""
-    items: List[Any] = Field(default_factory=list)
-    next_cursor: Optional[str] = None
-    has_more: bool = False
-
-
-# ==========================================
-#  客户端 APM 心跳模型
-# ==========================================
-
-class ClientHeartbeatModel(BaseModel):
-    """客户端 APM 心跳入参（对齐 docs/11 client_heartbeats 表）"""
-    platform: Literal["ios", "android", "harmonyos", "web", "desktop"]
-    app_version: Optional[str] = None
-    device_id: Optional[str] = None
-    fps: Optional[float] = None
-    memory_mb: Optional[float] = None
-    ws_latency_ms: Optional[int] = None
+    items: List[Any] = Field(..., description="数据列表")
+    total: int = Field(..., description="总数量")
+    page: int = Field(..., description="当前页码")
+    page_size: int = Field(..., alias="pageSize", description="每页数量")
+    has_more: bool = Field(..., alias="hasMore", description="是否有更多数据")
