@@ -208,7 +208,7 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 ### 部署与运维
 
 - [x] **[OPS-01]** GitHub Actions CI/CD 流水线：质量门（lint + test + coverage ≥70%）→ 前端 Cloudflare Pages 部署 → 后端 Docker 构建推送 ghcr.io → SSH 触发 VPS 滚动更新
-- [ ] **[OPS-02]** Cloudflare Tunnel 替换所有公网端口暴露（禁止 VPS 暴露 80/443 以外端口）
+- [ ] **[OPS-02]** Tailscale 零信任安全接入：北京/加州 VPS 组建 Tailnet 私有网络，所有跨节点通信走 Tailscale 内网 IP，禁止 VPS 暴露 80/443 以外端口，SSH 通过 `tailscale ssh` 替代公网 SSH
 - [x] **[OPS-03]** Docker Compose 生产配置：resource limits、restart policy、healthcheck 全部配置到位
 - [x] **[OPS-04]** Redis AOF 持久化 + 每日自动 RDB 备份到 Cloudflare R2
 - [x] **[OPS-05]** 备份恢复演练脚本：实现 `docs/12` 灾难恢复流程，定期验证 R2 备份可恢复性（RTO < 2h 验收）
@@ -224,7 +224,7 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 - [ ] **[DIST-05]** yfinance 数据源迁移：将 `backend/services/yfinance_service.py` 迁移至 `data_subservice/services/`，加州节点直连 Yahoo Finance
 - [ ] **[DIST-06]** finnhub 数据源迁移：将 `backend/services/finnhub_service.py` 迁移至 `data_subservice/services/`，加州节点直连 Finnhub API
 - [ ] **[DIST-07]** futuopenai 交易网关迁移：将 Futu OpenD 及相关服务迁移至加州节点，systemd 守护 + Watchdog
-- [ ] **[DIST-08]** 北京 ↔ 加州 Cloudflare Tunnel 跨节点通信配置：内部域名 + HMAC 签名验证 + WebSocket 保活
+- [ ] **[DIST-08]** 北京 ↔ 加州 Tailscale 跨节点通信配置：Tailnet 内网 IP 直连 + HMAC 签名验证 + 子服务通过 Tailscale IP 注册
 - [ ] **[DIST-09]** 加州子服务 Docker Compose + ghcr.io 镜像发布：`docker-compose.node-b.yml` 完善 + GitHub Actions CI/CD 流水线
 - [ ] **[DIST-10]** 跨节点监控集成：加州子服务健康状态、数据源成功率、延迟指标接入北京 Prometheus + Grafana
 
