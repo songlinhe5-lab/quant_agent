@@ -2,14 +2,14 @@ name: Backend CI
 
 on:
   push:
-    branches: [ master, develop ]
+    branches: [ main, master, develop ]
     paths:
       - 'backend/**'
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/backend.yml'
   pull_request:
-    branches: [ master, develop ]
+    branches: [ main, master, develop ]
     paths:
       - 'backend/**'
       - 'pyproject.toml'
