@@ -60,6 +60,7 @@ def large_dataframe():
 
 
 def test_engine_performance_benchmark(large_dataframe, capsys):
+    """Benchmark test for EventDrivenBacktestEngine."""
     df = large_dataframe
 
     # --- Event-Driven Execution Benchmark ---
@@ -68,14 +69,16 @@ def test_engine_performance_benchmark(large_dataframe, capsys):
     ed_engine.run()
     time_ed = time.perf_counter() - start_ed
 
-    # NOTE: Numba vectorized engine benchmark is temporarily disabled
-    # because _fast_backtest_engine is not yet implemented.
-    # TODO: Implement _fast_backtest_engine with Numba JIT compilation
-    time_nb = 0  # Placeholder
-    speedup = 0
+    # Assert that the engine runs within a reasonable time (e.g., < 5 seconds)
+    assert time_ed < 5.0, (
+        f"EventDrivenBacktestEngine took too long: {time_ed:.4f}s"
+    )
 
     # Use capsys to bypass PyTest's stdout capture and print the results immediately
     with capsys.disabled():
         print("\n🚀 === Backtest Engine Benchmark (10,000 bars) ===")
         print(f"🐢 Event-Driven Time : {time_ed:.4f} seconds")
         print("⚠️  Numba Engine: Not yet implemented (benchmark disabled)")
+
+    # Basic assertion to ensure the test passes
+    assert True

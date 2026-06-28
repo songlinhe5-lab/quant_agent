@@ -1,6 +1,7 @@
+from typing import Literal
+
 import numpy as np
 import pandas as pd
-from typing import Literal
 
 from backend.core.backtest_engine import BaseStrategySandbox as BaseStrategy
 
