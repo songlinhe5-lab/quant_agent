@@ -87,11 +87,16 @@ jobs:
           path: frontend/dist/
           retention-days: 7
 
+  # deploy:  # 暂时禁用
+  #   name: 🚀 Deploy to Cloudflare Pages
+  #   runs-on: ubuntu-latest
+  #   needs: build
+  #   if: false  # 禁用部署
   deploy:
-    name: 🚀 Deploy to Cloudflare Pages
+    name: 🚀 Deploy to Cloudflare Pages (SKIPPED)
     runs-on: ubuntu-latest
     needs: build
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop')
+    if: false  # 暂时禁用部署，待用户确认后启用
     permissions:
       contents: read
       deployments: write
