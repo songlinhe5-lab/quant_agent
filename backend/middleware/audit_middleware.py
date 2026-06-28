@@ -7,8 +7,8 @@ from fastapi import Request, Response
 from fastapi.routing import APIRoute
 from sqlalchemy.orm import Session
 
-from core.database import get_db
-from services.audit_service import log_audit
+from backend.core.database import get_db
+from backend.services.audit_service import log_audit
 
 
 # 需要审计的操作映射（路径 + 方法 -> 操作类型）

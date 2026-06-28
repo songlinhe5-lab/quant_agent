@@ -8,7 +8,7 @@ from fastapi import Request
 import uuid
 
 from sqlalchemy.orm import Session
-from core.models import AuditLog
+from backend.core.models import AuditLog
 
 
 def get_client_ip(request: Optional[Request] = None) -> Optional[str]:

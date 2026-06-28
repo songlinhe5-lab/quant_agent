@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   Bell,
   Settings,
@@ -26,7 +26,10 @@ import { RiskModule } from '@/features/trading/risk'
 import { CopilotModule } from '@/features/trading/copilot'
 import { PerformancePanel } from '@/features/system/performance-panel'
 import { ConnectionStatus, AlertBanner } from '@/components/layout/status-indicators'
+import { StatusBar } from '@/components/layout/status-bar'
+import { ModuleErrorBoundary } from '@/components/error-boundary'
 import { MOCK_HEADER_TICKERS } from '@/services/mock'
+import logger from '@/lib/logger'
 
 type ModuleId =
   | 'quotes'
@@ -40,17 +43,27 @@ type ModuleId =
   | 'settings'
   | 'apm'
 
-const moduleComponents: Record<ModuleId, React.ComponentType> = {
-  quotes: QuotesModule,
-  'data-center': DataCenterModule,
-  screener: ScreenerModule,
-  strategy: StrategyDevModule,
-  backtest: BacktestModule,
-  oms: OMSModule,
-  risk: RiskModule,
-  copilot: CopilotModule,
-  settings: () => <div className="p-10 text-center text-muted-foreground font-mono text-sm">⚙️ 全局设置模块开发中...</div>,
-  apm: PerformancePanel,
+// FE-01: Keep-Alive 模块配置
+// 高优先级模块（行情、交易）始终保持在内存
+const KEEP_ALIVE_MODULES: ModuleId[] = ['quotes', 'oms', 'copilot']
+
+interface ModuleConfig {
+  component: React.ComponentType
+  label: string
+  keepAlive: boolean
+}
+
+const moduleConfigs: Record<ModuleId, ModuleConfig> = {
+  quotes: { component: QuotesModule, label: '行情盘口', keepAlive: true },
+  'data-center': { component: DataCenterModule, label: '数据中心', keepAlive: false },
+  screener: { component: ScreenerModule, label: '选股器', keepAlive: false },
+  strategy: { component: StrategyDevModule, label: '策略研发', keepAlive: false },
+  backtest: { component: BacktestModule, label: '回测引擎', keepAlive: false },
+  oms: { component: OMSModule, label: '订单中枢', keepAlive: true },
+  risk: { component: RiskModule, label: '风控', keepAlive: false },
+  copilot: { component: CopilotModule, label: 'AI 助手', keepAlive: true },
+  settings: { component: () => <div className="p-10 text-center text-muted-foreground font-mono text-sm">⚙️ 全局设置模块开发中...</div>, label: '设置', keepAlive: false },
+  apm: { component: PerformancePanel, label: 'APM', keepAlive: false },
 }
 
 function HeaderTicker() {
@@ -90,6 +103,11 @@ export function TradingDashboard() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [isDark, setIsDark] = useState(true)
+  
+  // FE-01: Keep-Alive 模块缓存
+  // 记录已访问过的模块，这些模块会被渲染（只是可能隐藏）
+  const [visitedModules, setVisitedModules] = useState<Set<ModuleId>>(new Set(['quotes']))
+  const moduleSwitchTimeRef = useRef<number>(Date.now())
 
   // Simulate latency jitter
   useEffect(() => {
@@ -120,27 +138,86 @@ export function TradingDashboard() {
     }
   }
 
+  // FE-01: 模块切换处理（Keep-Alive）
+  const handleModuleChange = useCallback((moduleId: ModuleId) => {
+    const switchStart = performance.now()
+    
+    setActiveModule(moduleId)
+    window.location.hash = moduleId
+    
+    // 标记为已访问（触发渲染）
+    setVisitedModules(prev => {
+      if (prev.has(moduleId)) return prev
+      const next = new Set(prev)
+      next.add(moduleId)
+      return next
+    })
+    
+    // 记录切换耗时
+    requestAnimationFrame(() => {
+      const switchTime = performance.now() - switchStart
+      moduleSwitchTimeRef.current = switchTime
+      logger.debug(`[Dashboard] 模块切换: ${moduleId}`, { switchTime })
+    })
+  }, [])
+
   // 💡 监听 URL Hash 变化，实现跨模块跳转与页面刷新状态保持
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#', '')
-      if (hash && moduleComponents[hash as ModuleId]) {
-        setActiveModule(hash as ModuleId)
+      if (hash && moduleConfigs[hash as ModuleId]) {
+        handleModuleChange(hash as ModuleId)
       }
     }
 
     if (window.location.hash) handleHashChange()
     window.addEventListener('hashchange', handleHashChange)
     return () => window.removeEventListener('hashchange', handleHashChange)
-  }, [])
+  }, [handleModuleChange])
 
   const toggleConnection = useCallback(() => {
     const newState = !isConnected
     setIsConnected(newState)
-    if (!newState) setShowAlert(true)
+    if (!newState) {
+      setShowAlert(true)
+      logger.warn('[Dashboard] WebSocket 连接断开')
+    } else {
+      logger.info('[Dashboard] WebSocket 重连成功')
+    }
   }, [isConnected])
 
-  const CurrentModuleComponent = moduleComponents[activeModule]
+  // FE-01: 渲染所有已访问的模块（Keep-Alive）
+  const renderModules = () => {
+    return Object.entries(moduleConfigs).map(([moduleId, config]) => {
+      const isActive = moduleId === activeModule
+      const isVisited = visitedModules.has(moduleId as ModuleId)
+      
+      // 未访问过的模块不渲染
+      if (!isVisited) return null
+      
+      const Component = config.component
+      
+      return (
+        <div
+          key={moduleId}
+          className={cn(
+            'absolute inset-0 overflow-y-auto transition-opacity duration-150',
+            isActive ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'
+          )}
+          style={{ display: isActive ? 'block' : 'none' }}
+          role="tabpanel"
+          aria-hidden={!isActive}
+          aria-label={`${config.label}模块`}
+        >
+          <div className="p-4 md:p-5 max-w-full">
+            <ModuleErrorBoundary name={config.label}>
+              <Component />
+            </ModuleErrorBoundary>
+          </div>
+        </div>
+      )
+    })
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -255,10 +332,7 @@ export function TradingDashboard() {
         <div className="hidden lg:block flex-shrink-0">
           <Sidebar
             activeModule={activeModule}
-            onModuleChange={(id) => {
-              setActiveModule(id as ModuleId)
-              window.location.hash = id
-            }}
+            onModuleChange={(id) => handleModuleChange(id as ModuleId)}
             collapsed={sidebarCollapsed}
           />
         </div>
@@ -275,8 +349,7 @@ export function TradingDashboard() {
               <Sidebar
                 activeModule={activeModule}
                 onModuleChange={(id) => {
-                  setActiveModule(id as ModuleId)
-                  window.location.hash = id
+                  handleModuleChange(id as ModuleId)
                   setIsMobileMenuOpen(false)
                 }}
                 collapsed={false}
@@ -291,19 +364,25 @@ export function TradingDashboard() {
           </div>
         )}
 
-        {/* Module content area */}
+        {/* Module content area - FE-01: Keep-Alive 架构 */}
         <main
           className={cn(
-            'flex-1 overflow-y-auto',
+            'flex-1 overflow-hidden relative',
             !isConnected && 'stale-data'
           )}
           id="main-content"
+          role="main"
         >
-          <div className="p-4 md:p-5 max-w-full">
-            <CurrentModuleComponent />
-          </div>
+          {renderModules()}
         </main>
       </div>
+
+      {/* ── Bottom StatusBar - FE-02 ──────────────────────────────── */}
+      <StatusBar
+        wsState={isConnected ? 'connected' : 'disconnected'}
+        latency={latency}
+        onReconnect={toggleConnection}
+      />
     </div>
   )
 }

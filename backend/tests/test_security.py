@@ -14,7 +14,7 @@ os.environ.setdefault("INTERNAL_API_SECRET", "test-secret-key")
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from core.security import (
+from backend.core.security import (
     generate_internal_signature,
     verify_internal_signature,
     INTERNAL_SIG_EXPIRY,

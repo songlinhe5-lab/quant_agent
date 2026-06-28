@@ -8,8 +8,8 @@ import os
 # 将项目根目录加入 sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from core.security import generate_internal_signature
-from core.config import settings
+from backend.core.security import generate_internal_signature
+from backend.core.config import settings
 
 
 def main():

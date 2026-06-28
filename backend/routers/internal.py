@@ -5,7 +5,7 @@
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
-from core.security import verify_internal_request
+from backend.core.security import verify_internal_request
 
 router = APIRouter(prefix="/internal", tags=["Internal"])
 

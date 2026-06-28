@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from cryptography.exceptions import InvalidTag
 
-from core.config import settings
+from backend.core.config import settings
 
 
 # ==========================================

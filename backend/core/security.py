@@ -9,7 +9,7 @@ import base64
 from typing import Optional, Tuple
 from fastapi import Request, HTTPException
 
-from core.config import settings
+from backend.core.config import settings
 
 
 # HMAC 签名过期时间（秒）

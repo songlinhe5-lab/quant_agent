@@ -200,5 +200,5 @@ class ClientHeartbeat(Base):
     
     __table_args__ = (
         Index('idx_heartbeat_platform', 'platform'),
-        Index('idx_heartbeat_created', 'created_at DESC'),
+        Index('idx_heartbeat_created', 'created_at'),
     )
