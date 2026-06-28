@@ -417,6 +417,52 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 ---
 
+## 📝 会话笔记
+
+> 记录每个开发会话的关键决策、遇到的问题与解决方案，供后续会话参考。
+
+### 2026-06-28 会话 1：后端启动验证
+
+**目标**：启动后端服务，验证所有核心接口能力
+
+**遇到的问题**：
+1. `from core.` 导入路径错误 → 修复为 `from backend.core.`
+2. `from services.` 导入路径错误 → 修复为 `from backend.services.`
+
+**验证通过的接口**：
+- `/api/v1/health` - 健康检查
+- `/api/v1/auth/login` - 认证
+- `/api/v1/market/quote` - 实时行情
+- `/api/v1/market/fundamental/{ticker}` - 基本面
+- `/api/v1/market/news` - 市场新闻
+- `/api/v1/macro/sentiment-history` - 宏观情绪
+- `/api/v1/macro/calendar` - 宏观日历
+- `/api/v1/market/futu/status` - Futu 状态
+- `/api/v1/market/health/services` - 服务健康
+- `/api/v1/client/heartbeat/stats` - 客户端心跳统计
+
+**后端运行状态**：
+- PID: 33985
+- 端口: 8000
+- PostgreSQL: ✅ connected
+- Redis: ✅ connected
+- Futu OpenD: ✅ CONNECTED
+
+---
+
+### 🔗 关键文档链接
+
+- [MASTER_REVIEW.md](./MASTER_REVIEW.md) - 架构决策记录
+- [docs/02. Vibe Coding 工程规范](./02.%20Vibe%20Coding%20工程规范.md)
+- [docs/03. 后端架构](./03.%20后端架构.md)
+- [docs/04. 前端架构](./04.%20前端架构.md)
+- [docs/08. 日志与可观测性规范](./08.%20日志与可观测性规范.md)
+- [docs/10. API 契约规范](./10.%20API%20契约规范.md)
+- [docs/11. 数据模型规范](./11.%20数据模型规范.md)
+- [docs/12. 运维手册与应急预案](./12.%20运维手册与应急预案.md)
+
+---
+
 ### 📝 变更日志
 
 
