@@ -31,7 +31,7 @@ jobs:
       - name: Set up Python
         run: uv python install 3.13
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --all-extras
       - name: Ruff lint
         run: uv run ruff check backend/
       - name: Ruff format check
@@ -76,7 +76,7 @@ jobs:
       - name: Set up Python
         run: uv python install 3.13
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --all-extras
       - name: Run tests with coverage
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
@@ -114,7 +114,7 @@ jobs:
       - name: Set up Python
         run: uv python install 3.13
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --all-extras
       - name: pip-audit vulnerability scan
         run: uv run pip-audit --desc --require-hashes 2>&1 || true
         continue-on-error: true
