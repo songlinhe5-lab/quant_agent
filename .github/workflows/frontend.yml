@@ -87,7 +87,7 @@ jobs:
     name: 🚀 Deploy to Cloudflare Pages
     runs-on: ubuntu-latest
     needs: build
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop') && secrets.CLOUDFLARE_API_TOKEN != ''
     permissions:
       contents: read
       deployments: write
