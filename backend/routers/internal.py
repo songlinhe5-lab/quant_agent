@@ -3,7 +3,6 @@
 所有内部 API 都需要通过 HMAC-SHA256 签名验证
 """
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse
 
 from backend.core.security import verify_internal_request
 
@@ -17,7 +16,7 @@ async def internal_health_check(
 ):
     """
     内部健康检查接口（需要 HMAC 签名验证）
-    
+
     使用方法：
         1. 客户端生成签名：generate_internal_signature("GET", "/api/v1/internal/health")
         2. 在请求头中添加：X-Internal-Sig: <signature>

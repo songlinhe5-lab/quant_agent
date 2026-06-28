@@ -2,8 +2,8 @@
 认证路由单元测试
 TEST-01: 后端核心路径（行情管道、认证、OMS）单元测试覆盖率 ≥ 70%
 """
-import sys
 import os
+import sys
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("EMBEDDING_API_KEY", "test-key")
@@ -14,8 +14,8 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret-key-for-testing")
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
+
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
 
 
 class TestAuthRoutes:
@@ -82,7 +82,8 @@ class TestAuthJWT:
     def test_decode_token(self):
         """测试解码 Token"""
         from jose import jwt
-        from backend.routers.auth import create_access_token, SECRET_KEY, ALGORITHM
+
+        from backend.routers.auth import ALGORITHM, SECRET_KEY, create_access_token
 
         token = create_access_token(data={"sub": "test_user"})
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -90,8 +91,9 @@ class TestAuthJWT:
 
     def test_decode_invalid_token(self):
         """测试解码无效 Token"""
-        from jose import jwt, JWTError
-        from backend.routers.auth import SECRET_KEY, ALGORITHM
+        from jose import JWTError, jwt
+
+        from backend.routers.auth import ALGORITHM, SECRET_KEY
 
         with pytest.raises(JWTError):
             jwt.decode("invalid.token.here", SECRET_KEY, algorithms=[ALGORITHM])

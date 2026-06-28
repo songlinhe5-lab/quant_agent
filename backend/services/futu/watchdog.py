@@ -15,13 +15,14 @@ BE-03: Futu OpenD 看门狗守护进程
 """
 import asyncio
 import time
-import logging
 from typing import Optional
 
 import structlog
 
 from backend.core.metrics import (
-    FUTU_RECONNECT_TOTAL, FUTU_RECONNECT_FAILURES, FUTU_CONNECTION_STATUS,
+    FUTU_CONNECTION_STATUS,
+    FUTU_RECONNECT_FAILURES,
+    FUTU_RECONNECT_TOTAL,
 )
 
 logger = structlog.get_logger(__name__)
@@ -101,7 +102,7 @@ class FutuWatchdog:
                 # 连接正常，重置退避计数器
                 if self._consecutive_failures > 0:
                     logger.info(
-                        f"[FutuWatchdog] ✅ 连接恢复正常 (此前连续失败 {self._consecutive_failures} 次)"
+                        f"[FutuWatchdog] ✅ 连接恢复正常 (此前连续失败 {self._consecutive_failures} 次)"  # noqa: E501
                     )
                 self._consecutive_failures = 0
                 self._last_success_ts = time.monotonic()
@@ -128,7 +129,7 @@ class FutuWatchdog:
             else:
                 # 指数退避 + 随机抖动
                 delay = min(
-                    self.BASE_DELAY * (self.BACKOFF_FACTOR ** (self._consecutive_failures - 1)),
+                    self.BASE_DELAY * (self.BACKOFF_FACTOR ** (self._consecutive_failures - 1)),  # noqa: E501
                     self.MAX_DELAY,
                 )
                 # 添加 ±JITTER 随机抖动，防止多节点惊群
@@ -137,7 +138,7 @@ class FutuWatchdog:
                 delay = max(0.5, delay + jitter)
 
                 logger.warning(
-                    f"[FutuWatchdog] 🔌 连接断开 (连续失败 {self._consecutive_failures})，"
+                    f"[FutuWatchdog] 🔌 连接断开 (连续失败 {self._consecutive_failures})，"  # noqa: E501
                     f"{delay:.1f}s 后尝试重连..."
                 )
 

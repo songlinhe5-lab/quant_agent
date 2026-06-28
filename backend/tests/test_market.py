@@ -2,8 +2,8 @@
 行情路由 & 核心模块单元测试
 TEST-01: 行情管道、熔断器、响应封装
 """
-import sys
 import os
+import sys
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("EMBEDDING_API_KEY", "test-key")
@@ -14,8 +14,8 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret-key-for-testing")
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
+
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
 
 
 class TestMarketRoutes:
@@ -52,13 +52,17 @@ class TestCircuitBreaker:
             return "ok"
 
         import asyncio
-        result = asyncio.get_event_loop().run_until_complete(cb.call("test_svc", success_fn))
+        result = asyncio.get_event_loop().run_until_complete(cb.call("test_svc", success_fn))  # noqa: E501
         assert result == "ok"
         assert cb.get_state("test_svc") == CircuitState.CLOSED
 
     def test_circuit_breaker_open_state(self):
         """测试熔断器打开状态（熔断）"""
-        from backend.core.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError, CircuitState
+        from backend.core.circuit_breaker import (
+            CircuitBreaker,
+            CircuitBreakerOpenError,
+            CircuitState,
+        )
 
         cb = CircuitBreaker(max_failures=2, recovery_timeout=60)
 
@@ -137,8 +141,9 @@ class TestDomainSchemas:
 
     def test_order_schema(self):
         """测试 Order Schema"""
-        from backend.schemas.domain import OrderModel
         import time
+
+        from backend.schemas.domain import OrderModel
 
         now = int(time.time() * 1000)
         order = OrderModel(

@@ -1,4 +1,5 @@
-from typing import Optional, List
+from typing import List, Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -17,7 +18,7 @@ async def web_search(req: WebSearchRequest):
     """后端提供给 Agent 调用的统一网络搜索入口"""
     try:
         return await search_service.web_search(
-            query=req.query, max_results=req.max_results, 
+            query=req.query, max_results=req.max_results,
             include_domains=req.include_domains, exclude_domains=req.exclude_domains
         )
     except Exception as e:

@@ -1,24 +1,25 @@
+
 import httpx
-import asyncio
 from tenacity import (
     retry,
-    wait_random_exponential,
+    retry_if_exception,
     stop_after_attempt,
-    retry_if_exception
+    wait_random_exponential,
 )
+
 
 def is_retryable_http_error(exception: BaseException) -> bool:
     """定义哪些异常情况需要触发自动重试"""
     err_msg = str(exception).lower()
-    
+
     # 0. 外部接口限流与封禁异常 (429, 403, Rate Limit, Too Many Requests, Forbidden)
-    if any(kw in err_msg for kw in ["rate limit", "too many requests", "429", "403", "forbidden", "finnhub"]):
+    if any(kw in err_msg for kw in ["rate limit", "too many requests", "429", "403", "forbidden", "finnhub"]):  # noqa: E501
         return True
-        
+
     # 1. Futu 频率限制与底层连接异常
-    if "频繁" in err_msg or "frequency" in err_msg or "10041" in err_msg or "timeout" in err_msg:
+    if "频繁" in err_msg or "frequency" in err_msg or "10041" in err_msg or "timeout" in err_msg:  # noqa: E501
         return True
-        
+
     # 2. 网络请求本身的底层异常 (如连接超时、断网等)
     if isinstance(exception, httpx.RequestError):
         return True
@@ -31,7 +32,7 @@ def is_retryable_http_error(exception: BaseException) -> bool:
 
 def log_retry_attempt(retry_state):
     """重试钩子：支持同步与异步函数，防止 tenacity 混用报错"""
-    print(f"⏳ [Global Service Retry] 接口请求异常 ({type(retry_state.outcome.exception()).__name__})，正在进行第 {retry_state.attempt_number} 次退避重试...")
+    print(f"⏳ [Global Service Retry] 接口请求异常 ({type(retry_state.outcome.exception()).__name__})，正在进行第 {retry_state.attempt_number} 次退避重试...")  # noqa: E501
 
 # 导出的核心装饰器：支持指数退避 + 随机抖动
 with_global_retry = retry(

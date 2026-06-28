@@ -1,7 +1,9 @@
+
 import numpy as np
 import pandas as pd
-from typing import Dict, Any, Optional
+
 from backend.core.backtest_engine import BaseStrategySandbox as BaseStrategy
+
 
 class DualMaAtrStopStrategy(BaseStrategy):
     """
@@ -25,7 +27,7 @@ class DualMaAtrStopStrategy(BaseStrategy):
                  long_window: int = 30,
                  atr_window: int = 21,
                  atr_mult: float = 1.6,
-                 ma_type: Literal['SMA', 'EMA'] = 'SMA'):
+                 ma_type: Literal['SMA', 'EMA'] = 'SMA'):  # noqa: F821
         super().__init__()
         self.short_window = short_window
         self.long_window = long_window
@@ -41,7 +43,7 @@ class DualMaAtrStopStrategy(BaseStrategy):
             df['short_ma'] = df['close'].rolling(window=self.short_window).mean()
             df['long_ma'] = df['close'].rolling(window=self.long_window).mean()
         else:  # EMA
-            df['short_ma'] = df['close'].ewm(span=self.short_window, adjust=False).mean()
+            df['short_ma'] = df['close'].ewm(span=self.short_window, adjust=False).mean()  # noqa: E501
             df['long_ma'] = df['close'].ewm(span=self.long_window, adjust=False).mean()
 
         # 计算 True Range

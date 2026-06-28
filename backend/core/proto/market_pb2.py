@@ -9,6 +9,7 @@ from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import runtime_version as _runtime_version
 from google.protobuf import symbol_database as _symbol_database
 from google.protobuf.internal import builder as _builder
+
 _runtime_version.ValidateProtobufRuntimeVersion(
     _runtime_version.Domain.PUBLIC,
     5,
@@ -24,7 +25,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0cmarket.proto\x12\x06market\"$\n\x05Order\x12\r\n\x05price\x18\x01 \x01(\x02\x12\x0c\n\x04size\x18\x02 \x01(\x02\"\xb1\x01\n\tQuoteData\x12\x0e\n\x06status\x18\x01 \x01(\t\x12\x0e\n\x06ticker\x18\x02 \x01(\t\x12\x12\n\nlast_price\x18\x03 \x01(\x02\x12\x12\n\nchange_pct\x18\x04 \x01(\t\x12\x12\n\nvolume_str\x18\x05 \x01(\t\x12\x1b\n\x04\x62ids\x18\x06 \x03(\x0b\x32\r.market.Order\x12\x1b\n\x04\x61sks\x18\x07 \x03(\x0b\x32\r.market.Order\x12\x0e\n\x06source\x18\x08 \x01(\tb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0cmarket.proto\x12\x06market\"$\n\x05Order\x12\r\n\x05price\x18\x01 \x01(\x02\x12\x0c\n\x04size\x18\x02 \x01(\x02\"\xb1\x01\n\tQuoteData\x12\x0e\n\x06status\x18\x01 \x01(\t\x12\x0e\n\x06ticker\x18\x02 \x01(\t\x12\x12\n\nlast_price\x18\x03 \x01(\x02\x12\x12\n\nchange_pct\x18\x04 \x01(\t\x12\x12\n\nvolume_str\x18\x05 \x01(\t\x12\x1b\n\x04\x62ids\x18\x06 \x03(\x0b\x32\r.market.Order\x12\x1b\n\x04\x61sks\x18\x07 \x03(\x0b\x32\r.market.Order\x12\x0e\n\x06source\x18\x08 \x01(\tb\x06proto3')  # noqa: E501
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)

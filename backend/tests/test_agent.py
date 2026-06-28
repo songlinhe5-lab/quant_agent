@@ -2,8 +2,8 @@
 Hermes Agent ReAct 循环单元测试
 TEST-11: mock LLM + mock Tool，验证推理步进、Tool 路由、熔断中止、上下文裁剪逻辑
 """
-import sys
 import os
+import sys
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("EMBEDDING_API_KEY", "test-key")
@@ -16,10 +16,10 @@ os.environ.setdefault("LLM_BASE_URL", "https://api.test.com")
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-import pytest
 import asyncio
-import json
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock
+
+import pytest
 
 
 # ─── SessionTitleValidator ────────────────────────────────────────────
@@ -43,16 +43,18 @@ class TestSessionTitleValidator:
 
     def test_banned_words_rejected(self):
         """违禁词被拦截"""
-        from hermes_agent.agent import SessionTitleValidator
         from pydantic import ValidationError
+
+        from hermes_agent.agent import SessionTitleValidator
 
         with pytest.raises(ValidationError):
             SessionTitleValidator(title="测试违禁内容")
 
     def test_garbage_cleaned(self):
         """乱码清洗后为空则拒绝"""
-        from hermes_agent.agent import SessionTitleValidator
         from pydantic import ValidationError
+
+        from hermes_agent.agent import SessionTitleValidator
 
         with pytest.raises(ValidationError):
             SessionTitleValidator(title="!!!@@@###")
@@ -105,7 +107,7 @@ class TestMemoryHealing:
         agent.messages = [
             {"role": "system", "content": "system prompt"},
             {"role": "user", "content": "query AAPL"},
-            {"role": "assistant", "content": "let me check", "tool_calls": [{"id": "call_1"}]},
+            {"role": "assistant", "content": "let me check", "tool_calls": [{"id": "call_1"}]},  # noqa: E501
             # 缺少 tool 回复 → 孤立
             {"role": "user", "content": "next question"},
         ]
@@ -121,7 +123,7 @@ class TestMemoryHealing:
         agent.messages = [
             {"role": "system", "content": "system prompt"},
             {"role": "user", "content": "check price"},
-            {"role": "assistant", "content": "checking", "tool_calls": [{"id": "call_1"}]},
+            {"role": "assistant", "content": "checking", "tool_calls": [{"id": "call_1"}]},  # noqa: E501
         ]
         agent._heal_memory()
         # 末尾的 tool_calls 应被剔除
@@ -200,6 +202,7 @@ class TestAsyncTokenBucket:
     def test_rate_limiting(self):
         """超出容量后需等待"""
         import time
+
         from hermes_agent.tool_registry import AsyncTokenBucket
 
         bucket = AsyncTokenBucket(capacity=2, fill_rate=10.0)

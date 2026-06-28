@@ -3,11 +3,11 @@
 提供审计日志的查询功能
 """
 from typing import Optional
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from backend.core.database import get_db
-from backend.core import models
 from backend.services.audit_service import get_audit_logs
 
 router = APIRouter(prefix="/audit", tags=["Audit"])
@@ -23,13 +23,13 @@ def read_audit_logs(
 ):
     """
     查询审计日志
-    
+
     Args:
         action: 操作类型（'login', 'logout', 'change_password', etc.）
         user_id: 用户 ID
         skip: 跳过记录数
         limit: 返回记录数
-    
+
     Returns:
         审计日志列表
     """
@@ -40,7 +40,7 @@ def read_audit_logs(
         skip=skip,
         limit=limit
     )
-    
+
     return [
         {
             "id": log.id,

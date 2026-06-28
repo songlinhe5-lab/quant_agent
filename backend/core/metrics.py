@@ -190,7 +190,7 @@ KLINE_CACHE_QUERY_LATENCY = Histogram(
 MARKET_DATA_CORRECTION_TOTAL = Counter(
     "quant_market_data_correction_total",
     "行情数据正确性检查总次数",
-    ["symbol", "check_type"],  # check_type: "quality_check" | "adjustment" | "suspension"
+    ["symbol", "check_type"],  # check_type: "quality_check" | "adjustment" | "suspension"  # noqa: E501
 )
 
 MARKET_DATA_ANOMALY_TOTAL = Counter(

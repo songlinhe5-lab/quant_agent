@@ -19,28 +19,28 @@ def format_ticker(ticker: str) -> str:
     """格式化 ticker 为 Futu 标准格式"""
     ticker = ticker.upper()
     index_map = {
-        "HSI": "HK.800000", 
-        "HSTECH": "HK.800700", 
-        "SPX": "US.SPX", 
+        "HSI": "HK.800000",
+        "HSTECH": "HK.800700",
+        "SPX": "US.SPX",
         "NDX": "US.NDX",
-        "TSMC": "US.TSM", 
+        "TSMC": "US.TSM",
         "US.TSMC": "US.TSM"  # 智能纠正用户的惯用称呼
     }
-    if ticker in index_map: 
+    if ticker in index_map:
         return index_map[ticker]
-        
+
     if ticker.endswith(".HK") or ticker.startswith("HK."):
         code = ticker.replace(".HK", "").replace("HK.", "")
         return f"HK.{code.zfill(5) if code.isdigit() else code}"
-        
+
     if ticker.endswith(".SH") or ticker.endswith(".SS"):
         return f"SH.{ticker.replace('.SH', '').replace('.SS', '')}"
     if ticker.endswith(".SZ"):
         return f"SZ.{ticker.replace('.SZ', '')}"
     if ticker.endswith(".US"):
         return f"US.{ticker.replace('.US', '')}"
-        
-    if any(ticker.startswith(prefix) for prefix in ["US.", "SH.", "SZ.", "JP.", "SG.", "UK.", "LSE."]):
+
+    if any(ticker.startswith(prefix) for prefix in ["US.", "SH.", "SZ.", "JP.", "SG.", "UK.", "LSE."]):  # noqa: E501
         return ticker
-        
+
     return f"US.{ticker}"

@@ -9,8 +9,8 @@ INITIAL_BOTS = [
         "cpu": 12.5,
         "mem": 128.0,
         "logs": [
-            {"time": "09:30:00", "msg": "Bot started. Subscribed to market data.", "type": "info"},
-            {"time": "09:35:12", "msg": "Volume breakout detected. Scanning signals...", "type": "info"}
+            {"time": "09:30:00", "msg": "Bot started. Subscribed to market data.", "type": "info"},  # noqa: E501
+            {"time": "09:35:12", "msg": "Volume breakout detected. Scanning signals...", "type": "info"}  # noqa: E501
         ]
     },
     {
@@ -21,7 +21,7 @@ INITIAL_BOTS = [
         "cpu": 0.0,
         "mem": 64.0,
         "logs": [
-            {"time": "10:00:00", "msg": "Spread deviation too low, strategy paused.", "type": "warn"}
+            {"time": "10:00:00", "msg": "Spread deviation too low, strategy paused.", "type": "warn"}  # noqa: E501
         ]
     }
 ]

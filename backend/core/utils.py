@@ -1,6 +1,7 @@
-from typing import Any
 import os
 import zlib
+from typing import Any
+
 
 def safe_float(val: Any, default: float = 0.0) -> float:
     """
@@ -25,20 +26,20 @@ def safe_divide(numerator: Any, denominator: Any, default: float = 0.0) -> float
     except (ValueError, TypeError, ZeroDivisionError, Exception):
         return default
 
-def safe_truncate(text: str, max_length: int, suffix: str = "\n\n...[内容过长，已自适应安全截断，省略 {omitted} 字符]...") -> str:
+def safe_truncate(text: str, max_length: int, suffix: str = "\n\n...[内容过长，已自适应安全截断，省略 {omitted} 字符]...") -> str:  # noqa: E501
     """
     自适应安全截断：寻找最近的标点符号或换行符，防止将单词、URL 或 JSON/Markdown 标签从中间硬劈开
-    """
+    """  # noqa: E501
     if not isinstance(text, str) or len(text) <= max_length:
         return str(text)
-        
+
     truncate_idx = max_length
     for sep in ['\n\n', '\n', '。', '.', '！', '!', '？', '?', '}', ']', ' ']:
         idx = text.rfind(sep, max(0, max_length - 500), max_length)
         if idx != -1:
             truncate_idx = idx + len(sep)
             break
-            
+
     omitted = len(text) - truncate_idx
     return text[:truncate_idx] + suffix.format(omitted=omitted)
 

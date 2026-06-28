@@ -2,8 +2,8 @@
 Hermes Agent Tool 独立单元测试
 TEST-10: mock 外部数据源响应，校验 Tool 入参解析、出参结构、异常分支
 """
-import sys
 import os
+import sys
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("EMBEDDING_API_KEY", "test-key")
@@ -15,9 +15,8 @@ os.environ.setdefault("BACKEND_API_URL", "http://127.0.0.1:8000")
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-import pytest
 import asyncio
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 # ─── BaseTool: normalize_ticker ─────────────────────────────────────
@@ -77,6 +76,7 @@ class TestBaseToolCache:
     def test_cache_expiry(self):
         """测试缓存过期"""
         import time
+
         from hermes_agent.tools.base import BaseTool
         loop = asyncio.get_event_loop()
 
@@ -215,7 +215,7 @@ class TestToolRegistry:
         """注册表应包含核心 Tool"""
         from hermes_agent.tool_registry import _AUTO_REGISTERED_TOOLS
 
-        tool_names = [cls.name for cls in _AUTO_REGISTERED_TOOLS if hasattr(cls, 'name')]
+        tool_names = [cls.name for cls in _AUTO_REGISTERED_TOOLS if hasattr(cls, 'name')]  # noqa: E501
         expected = ["get_broker_market_data", "get_fundamental_data"]
         for name in expected:
             assert name in tool_names, f"核心 Tool '{name}' 未注册"
@@ -225,7 +225,7 @@ class TestToolRegistry:
         from hermes_agent.tool_registry import _AUTO_REGISTERED_TOOLS
 
         for cls in _AUTO_REGISTERED_TOOLS:
-            assert hasattr(cls, "run"), f"Tool '{getattr(cls, 'name', cls.__name__)}' 缺少 run 方法"
+            assert hasattr(cls, "run"), f"Tool '{getattr(cls, 'name', cls.__name__)}' 缺少 run 方法"  # noqa: E501
 
     def test_tool_registry_class(self):
         """ToolRegistry 类实例化测试"""

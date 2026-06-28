@@ -7,21 +7,19 @@
 POST /api/v1/client/heartbeat
 GET  /api/v1/client/heartbeat/stats
 """
-import asyncio
 from datetime import datetime, timedelta
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import func
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc
 
-from backend.core.database import get_db
 from backend.core import models
-from backend.core.response import success, error
+from backend.core.database import get_db
 from backend.core.error_codes import ErrorCode
 from backend.core.logger import logger
-from backend.schemas.domain import ClientHeartbeatModel
 from backend.core.metrics import CLIENT_HEARTBEAT_TOTAL
+from backend.core.response import error, success
+from backend.schemas.domain import ClientHeartbeatModel
 
 router = APIRouter(prefix="/client", tags=["Client APM"])
 

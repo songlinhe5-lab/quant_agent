@@ -81,5 +81,5 @@ class RedisUnavailableError(QuantBaseException):
 
 
 class CircuitBreakerOpenError(QuantBaseException):
-    def __init__(self, msg: str = "外部 API 熔断中，请稍后重试", service: str = "unknown", **kw):
-        super().__init__(code=ErrorCode.CIRCUIT_BREAKER_OPEN, msg=msg, data={"service": service}, **kw)
+    def __init__(self, msg: str = "外部 API 熔断中，请稍后重试", service: str = "unknown", **kw):  # noqa: E501
+        super().__init__(code=ErrorCode.CIRCUIT_BREAKER_OPEN, msg=msg, data={"service": service}, **kw)  # noqa: E501

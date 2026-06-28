@@ -7,13 +7,18 @@ import os
 import sys
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
 from alembic import context
 from dotenv import load_dotenv
+from sqlalchemy import engine_from_config, pool
 
 # 将项目根目录加入 sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 load_dotenv()
+
+# 导入所有 SQLAlchemy 模型的 Base.metadata（用于 autogenerate）
+# noqa: E402 - load_dotenv() 必须在 import 之前运行
+from backend.core import models  # noqa: F401, E402 - 确保所有模型被导入
+from backend.core.database import Base  # noqa: E402
 
 # Alembic Config 对象
 config = context.config
@@ -25,10 +30,6 @@ if config.config_file_name is not None:
 # 从环境变量动态注入数据库 URL（覆盖 alembic.ini 的占位值）
 db_url = os.getenv("DATABASE_URL", "sqlite:///./quant_agent.db")
 config.set_main_option("sqlalchemy.url", db_url)
-
-# 导入所有 SQLAlchemy 模型的 Base.metadata（用于 autogenerate）
-from backend.core.database import Base
-from backend.core import models  # noqa: F401 — 确保所有模型被导入
 
 target_metadata = Base.metadata
 

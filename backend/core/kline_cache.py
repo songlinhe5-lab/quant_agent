@@ -27,16 +27,18 @@ BE-02: 三级 K线缓存引擎
 """
 import asyncio
 import json
-import os
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Any, Dict, Optional
 
 import pandas as pd
 import structlog
 
+from backend.core.metrics import (
+    KLINE_CACHE_HIT,
+    KLINE_CACHE_QUERY_LATENCY,
+)
 from backend.core.redis_client import redis_client
-from backend.core.metrics import KLINE_CACHE_HIT, KLINE_CACHE_QUERY_LATENCY, MARKET_KLINE_FETCH_LATENCY
 from backend.services.kline_warehouse import kline_warehouse
 
 logger = structlog.get_logger(__name__)
@@ -63,24 +65,24 @@ class CacheTier:
 class KlineCacheEngine:
     """
     三级 K线缓存路由引擎
-    
+
     使用示例：
         engine = KlineCacheEngine()
-        
+
         # 获取 K线（自动路由到最优层级）
         df = await engine.get_kline("US.AAPL", "K_DAY", days=30)
-        
+
         # 强制从指定层级获取
         df = await engine.get_kline("US.AAPL", "K_DAY", days=30, tier=CacheTier.L2_PARQUET)
-        
+
         # 写入缓存（自动写入所有层级）
         await engine.put_kline("US.AAPL", "K_DAY", df)
-    """
-    
+    """  # noqa: E501
+
     def __init__(self):
         self._warehouse = kline_warehouse
         self._redis = redis_client
-    
+
     async def get_kline(
         self,
         symbol: str,
@@ -91,19 +93,19 @@ class KlineCacheEngine:
     ) -> Optional[pd.DataFrame]:
         """
         获取 K线数据（智能路由）
-        
+
         Args:
             symbol: 标的代码（如 "US.AAPL"）
             period: K线周期（"K_DAY", "K_60M" 等）
             days: 获取最近 N 天数据
             tier: 强制指定缓存层级（None=自动路由）
             fill_l1: 从 L2/L3 获取后是否回填 L1
-        
+
         Returns:
             K线 DataFrame 或 None
         """
         _t0 = time.perf_counter()
-        
+
         # 自动路由策略
         if tier is None:
             if days <= L1_TTL_DAYS:
@@ -112,10 +114,10 @@ class KlineCacheEngine:
                 tier = CacheTier.L2_PARQUET
             else:
                 tier = CacheTier.L3_OBJECT
-        
+
         df = None
         hit_tier = CacheTier.MISS
-        
+
         # L1: Redis 热缓存
         if tier == CacheTier.L1_REDIS:
             df = await self._get_l1(symbol, period, days)
@@ -128,7 +130,7 @@ class KlineCacheEngine:
                     hit_tier = CacheTier.L2_PARQUET
                     if fill_l1:
                         asyncio.create_task(self._fill_l1(symbol, period, df))
-        
+
         # L2: Parquet 温缓存
         elif tier == CacheTier.L2_PARQUET:
             df = await self._get_l2(symbol, period, days)
@@ -136,18 +138,18 @@ class KlineCacheEngine:
                 hit_tier = CacheTier.L2_PARQUET
                 if fill_l1 and days <= L1_TTL_DAYS:
                     asyncio.create_task(self._fill_l1(symbol, period, df))
-        
+
         # L3: 对象存储（预留）
         elif tier == CacheTier.L3_OBJECT:
             df = await self._get_l3(symbol, period, days)
             if df is not None:
                 hit_tier = CacheTier.L3_OBJECT
-        
+
         # 记录指标
         latency = time.perf_counter() - _t0
         KLINE_CACHE_HIT.labels(tier=hit_tier).inc()
         KLINE_CACHE_QUERY_LATENCY.labels(tier=hit_tier).observe(latency)
-        
+
         if df is not None:
             logger.debug(
                 f"[K线缓存] {symbol} {period} {days}d → {hit_tier} "
@@ -155,9 +157,9 @@ class KlineCacheEngine:
             )
         else:
             logger.warning(f"[K线缓存] {symbol} {period} {days}d → MISS")
-        
+
         return df
-    
+
     async def put_kline(
         self,
         symbol: str,
@@ -166,7 +168,7 @@ class KlineCacheEngine:
     ) -> None:
         """
         写入 K线数据到所有缓存层级
-        
+
         Args:
             symbol: 标的代码
             period: K线周期
@@ -174,27 +176,27 @@ class KlineCacheEngine:
         """
         if df is None or df.empty:
             return
-        
+
         # L1: Redis
         await self._put_l1(symbol, period, df)
-        
+
         # L2: Parquet（通过 warehouse）
         # 注意：warehouse 有自己的增量更新逻辑，这里不重复实现
         # 调用方应该在更新 warehouse 后，再调用此方法同步到 L1
-    
+
     # ── L1 Redis 操作 ─────────────────────────────────────────────
-    
-    async def _get_l1(self, symbol: str, period: str, days: int) -> Optional[pd.DataFrame]:
+
+    async def _get_l1(self, symbol: str, period: str, days: int) -> Optional[pd.DataFrame]:  # noqa: E501
         """从 Redis 获取 K线"""
         try:
             key = f"{L1_KEY_PREFIX}:{symbol}:{period}"
             cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-            
+
             # 获取 Hash 中所有字段
             data = await self._redis.hgetall(key)
             if not data:
                 return None
-            
+
             # 解析并过滤时间范围
             records = []
             for date_str, json_str in data.items():
@@ -202,43 +204,43 @@ class KlineCacheEngine:
                     date_str = date_str.decode("utf-8")
                 if isinstance(json_str, bytes):
                     json_str = json_str.decode("utf-8")
-                
+
                 try:
-                    dt = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                    dt = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)  # noqa: E501
                     if dt >= cutoff:
                         record = json.loads(json_str)
                         record["time"] = date_str
                         records.append(record)
                 except (ValueError, json.JSONDecodeError):
                     continue
-            
+
             if not records:
                 return None
-            
+
             df = pd.DataFrame(records)
             df["time"] = pd.to_datetime(df["time"])
             df = df.sort_values("time").tail(days * 2)  # 多取一些以防节假日
-            
+
             return df
-            
+
         except Exception as e:
             logger.error(f"[K线缓存 L1] 读取 {symbol} 失败: {e}")
             return None
-    
+
     async def _put_l1(self, symbol: str, period: str, df: pd.DataFrame) -> None:
         """写入 K线到 Redis"""
         try:
             key = f"{L1_KEY_PREFIX}:{symbol}:{period}"
-            
+
             # 只保留最近 L1_TTL_DAYS 天的数据
             cutoff = datetime.now(timezone.utc) - timedelta(days=L1_TTL_DAYS)
             df = df.copy()
             df["time"] = pd.to_datetime(df["time"])
             df = df[df["time"] >= cutoff]
-            
+
             if df.empty:
                 return
-            
+
             # 批量写入 Hash
             pipe = self._redis.pipeline()
             for _, row in df.iterrows():
@@ -251,23 +253,23 @@ class KlineCacheEngine:
                     "volume": float(row.get("volume", 0)),
                 }
                 pipe.hset(key, date_str, json.dumps(record))
-            
+
             # 设置 TTL
             pipe.expire(key, L1_TTL_SECONDS)
             await pipe.execute()
-            
+
             logger.debug(f"[K线缓存 L1] 写入 {symbol} {period} ({len(df)} rows)")
-            
+
         except Exception as e:
             logger.error(f"[K线缓存 L1] 写入 {symbol} 失败: {e}")
-    
+
     async def _fill_l1(self, symbol: str, period: str, df: pd.DataFrame) -> None:
         """回填 L1 缓存"""
         await self._put_l1(symbol, period, df)
-    
+
     # ── L2 Parquet 操作 ────────────────────────────────────────────
-    
-    async def _get_l2(self, symbol: str, period: str, days: int) -> Optional[pd.DataFrame]:
+
+    async def _get_l2(self, symbol: str, period: str, days: int) -> Optional[pd.DataFrame]:  # noqa: E501
         """从 Parquet 获取 K线"""
         try:
             df = await self._warehouse.get_history(symbol, ktype=period, num=days)
@@ -275,24 +277,24 @@ class KlineCacheEngine:
         except Exception as e:
             logger.error(f"[K线缓存 L2] 读取 {symbol} 失败: {e}")
             return None
-    
+
     # ── L3 对象存储操作（预留）────────────────────────────────────
-    
-    async def _get_l3(self, symbol: str, period: str, days: int) -> Optional[pd.DataFrame]:
+
+    async def _get_l3(self, symbol: str, period: str, days: int) -> Optional[pd.DataFrame]:  # noqa: E501
         """
         从对象存储获取 K线（预留接口）
-        
+
         TODO: 实现 Cloudflare R2 / S3 对接
         """
         logger.info(f"[K线缓存 L3] {symbol} {period} - 对象存储尚未实现，返回 None")
         return None
-    
+
     # ── 缓存管理 ──────────────────────────────────────────────────
-    
+
     async def invalidate(self, symbol: str, period: str = None) -> None:
         """
         清除指定标的缓存
-        
+
         Args:
             symbol: 标的代码
             period: K线周期（None=清除所有周期）
@@ -306,17 +308,17 @@ class KlineCacheEngine:
                 pattern = f"{L1_KEY_PREFIX}:{symbol}:*"
                 cursor = 0
                 while True:
-                    cursor, keys = await self._redis.scan(cursor, match=pattern, count=100)
+                    cursor, keys = await self._redis.scan(cursor, match=pattern, count=100)  # noqa: E501
                     if keys:
                         await self._redis.delete(*keys)
                     if cursor == 0:
                         break
-            
+
             logger.info(f"[K线缓存] 已清除 {symbol} 缓存")
-            
+
         except Exception as e:
             logger.error(f"[K线缓存] 清除 {symbol} 失败: {e}")
-    
+
     async def stats(self) -> Dict[str, Any]:
         """获取缓存统计信息"""
         try:
@@ -329,14 +331,14 @@ class KlineCacheEngine:
                 count += len(keys)
                 if cursor == 0:
                     break
-            
+
             return {
                 "l1_redis_keys": count,
                 "l1_ttl_days": L1_TTL_DAYS,
                 "l2_retention_days": L2_RETENTION_DAYS,
                 "l3_enabled": False,
             }
-            
+
         except Exception as e:
             logger.error(f"[K线缓存] 获取统计失败: {e}")
             return {"error": str(e)}

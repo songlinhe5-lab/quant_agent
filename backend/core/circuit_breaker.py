@@ -22,7 +22,7 @@ Quant Agent 熔断器（Circuit Breaker）
     @circuit_breaker.guard("openai_api")
     async def call_llm(prompt: str):
         ...
-"""
+"""  # noqa: E501
 import asyncio
 import functools
 import time
@@ -83,7 +83,7 @@ class CircuitBreaker:
                 CIRCUIT_BREAKER_TRANSITIONS.labels(
                     service=entry.service, from_state="open", to_state="half_open"
                 ).inc()
-                logger.info(f"⏳ [CircuitBreaker] 熔断器进入半开状态 (等待探测)")
+                logger.info("⏳ [CircuitBreaker] 熔断器进入半开状态 (等待探测)")
         return entry.state
 
     def get_state(self, service: str) -> CircuitState:
@@ -91,7 +91,7 @@ class CircuitBreaker:
         entry = self._get_entry(service)
         return self._check_state(entry)
 
-    async def call(self, service: str, func: Callable, *args: Any, **kwargs: Any) -> Any:
+    async def call(self, service: str, func: Callable, *args: Any, **kwargs: Any) -> Any:  # noqa: E501
         """
         通过熔断器调用异步函数。
 
@@ -103,10 +103,10 @@ class CircuitBreaker:
         async with entry.lock:
             state = self._check_state(entry)
             if state == CircuitState.OPEN:
-                remaining = self._recovery_timeout - (time.monotonic() - entry.last_failure_ts)
-                logger.warning(f"🚫 [CircuitBreaker] {service} 熔断中，剩余 {remaining:.0f}s")
+                remaining = self._recovery_timeout - (time.monotonic() - entry.last_failure_ts)  # noqa: E501
+                logger.warning(f"🚫 [CircuitBreaker] {service} 熔断中，剩余 {remaining:.0f}s")  # noqa: E501
                 raise CircuitBreakerOpenError(
-                    msg=f"外部 API [{service}] 熔断中，约 {max(0, int(remaining))}s 后自动恢复",
+                    msg=f"外部 API [{service}] 熔断中，约 {max(0, int(remaining))}s 后自动恢复",  # noqa: E501
                     service=service,
                 )
 
@@ -127,12 +127,12 @@ class CircuitBreaker:
                         service=service, from_state=prev_state, to_state="open"
                     ).inc()
                     logger.error(
-                        f"🔴 [CircuitBreaker] {service} 连续失败 {entry.failures} 次，触发熔断！"
+                        f"🔴 [CircuitBreaker] {service} 连续失败 {entry.failures} 次，触发熔断！"  # noqa: E501
                         f"将在 {self._recovery_timeout}s 后自动半开探测。"
                     )
                 else:
                     logger.warning(
-                        f"⚠️ [CircuitBreaker] {service} 失败 {entry.failures}/{self._max_failures}: {exc}"
+                        f"⚠️ [CircuitBreaker] {service} 失败 {entry.failures}/{self._max_failures}: {exc}"  # noqa: E501
                     )
             raise
 
@@ -158,27 +158,26 @@ class CircuitBreaker:
 
         注意：此方法使用同步锁（threading.Lock），仅在 to_thread 上下文中使用。
         """
-        import threading
 
         entry = self._get_entry(service)
 
         # 同步版状态检查（无锁，简单判断）
         state = self._check_state(entry)
         if state == CircuitState.OPEN:
-            remaining = self._recovery_timeout - (time.monotonic() - entry.last_failure_ts)
+            remaining = self._recovery_timeout - (time.monotonic() - entry.last_failure_ts)  # noqa: E501
             raise CircuitBreakerOpenError(
-                msg=f"外部 API [{service}] 熔断中，约 {max(0, int(remaining))}s 后自动恢复",
+                msg=f"外部 API [{service}] 熔断中，约 {max(0, int(remaining))}s 后自动恢复",  # noqa: E501
                 service=service,
             )
 
         try:
             result = func(*args, **kwargs)
-        except Exception as exc:
+        except Exception:
             entry.failures += 1
             entry.last_failure_ts = time.monotonic()
             if entry.failures >= self._max_failures:
                 entry.state = CircuitState.OPEN
-                logger.error(f"🔴 [CircuitBreaker] {service} 连续失败 {entry.failures} 次，触发熔断！")
+                logger.error(f"🔴 [CircuitBreaker] {service} 连续失败 {entry.failures} 次，触发熔断！")  # noqa: E501
             raise
 
         entry.state = CircuitState.CLOSED
@@ -215,7 +214,7 @@ class CircuitBreaker:
                 entry.state = CircuitState.CLOSED
                 entry.failures = 0
                 entry.last_failure_ts = 0.0
-            logger.info(f"🔄 [CircuitBreaker] 所有服务熔断器已重置")
+            logger.info("🔄 [CircuitBreaker] 所有服务熔断器已重置")
 
     def status_snapshot(self) -> dict[str, dict]:
         """获取所有服务的熔断状态快照（供 /health 或监控使用）"""

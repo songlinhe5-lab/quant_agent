@@ -1,12 +1,9 @@
-import numpy as np
-import pandas as pd
-from typing import Dict, Any, Optional
-from backend.core.backtest_engine import BaseStrategySandbox as BaseStrategy
-
 # 配对交易策略 (Pairs Trading Strategy)
 # QuantEdge Strategy Dev Workbench
+from typing import Dict, Literal, Optional
+
 import numpy as np
-from typing import Dict, Optional, Literal
+
 
 class PairsTradingBot:
     """Z-Score 均值回归配对交易策略"""

@@ -2,8 +2,8 @@
 存量服务层单元测试
 TEST-09: 对现有 services/ 核心逻辑补齐单测
 """
-import sys
 import os
+import sys
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("EMBEDDING_API_KEY", "test-key")
@@ -14,9 +14,9 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret-key-for-testing")
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, patch
-from datetime import datetime
 
 
 # ─── Audit Service ───────────────────────────────────────────────────
@@ -25,8 +25,9 @@ class TestAuditService:
 
     def test_generate_trace_id(self):
         """测试 trace_id 生成"""
-        from backend.services.audit_service import generate_trace_id
         import uuid
+
+        from backend.services.audit_service import generate_trace_id
 
         trace_id = generate_trace_id()
         # 应该是合法的 UUID
@@ -85,7 +86,7 @@ class TestAuditService:
         """测试审计日志写入"""
         from backend.services.audit_service import log_audit
 
-        result = log_audit(
+        log_audit(
             db=mock_db,
             action="login",
             detail={"username": "test"},
@@ -162,7 +163,10 @@ class TestEncryption:
 
     def test_encrypt_decrypt_roundtrip(self):
         """测试加密解密往返"""
-        from backend.core.encryption import encrypt_sensitive_data, decrypt_sensitive_data
+        from backend.core.encryption import (
+            decrypt_sensitive_data,
+            encrypt_sensitive_data,
+        )
 
         plaintext = "my-secret-api-key-12345"
         encrypted = encrypt_sensitive_data(plaintext)
@@ -185,7 +189,10 @@ class TestEncryption:
 
     def test_encrypt_empty_string(self):
         """测试空字符串加密"""
-        from backend.core.encryption import encrypt_sensitive_data, decrypt_sensitive_data
+        from backend.core.encryption import (
+            decrypt_sensitive_data,
+            encrypt_sensitive_data,
+        )
 
         encrypted = encrypt_sensitive_data("")
         decrypted = decrypt_sensitive_data(encrypted)
@@ -200,6 +207,7 @@ class TestCircuitBreakerAdvanced:
         """测试 OPEN → HALF_OPEN 状态转换"""
         import asyncio
         import time
+
         from backend.core.circuit_breaker import CircuitBreaker, CircuitState
 
         cb = CircuitBreaker(max_failures=1, recovery_timeout=0.1)
@@ -224,6 +232,7 @@ class TestCircuitBreakerAdvanced:
     def test_multiple_services_independent(self):
         """测试不同服务熔断状态独立"""
         import asyncio
+
         from backend.core.circuit_breaker import CircuitBreaker, CircuitState
 
         cb = CircuitBreaker(max_failures=2, recovery_timeout=60)

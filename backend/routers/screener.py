@@ -1,23 +1,20 @@
-import os
-import re
-import json
-import hashlib
 import asyncio
+import hashlib
+import json
 import random
-from typing import Dict, List, Optional, Any
-from fastapi import APIRouter, HTTPException, Depends
-import pandas as pd
+import re
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from backend.core.redis_client import redis_client
-from backend.services.screener_service import screener_service
-from backend.services.futu_service import futu_service
-from backend.services.yfinance_service import yf_service
-from backend.core.database import get_db
 from backend.core import models
+from backend.core.database import get_db
+from backend.core.redis_client import redis_client
 from backend.routers.auth import get_current_user
-from backend.core.utils import safe_float
+from backend.services.futu_service import futu_service
+from backend.services.screener_service import screener_service
 
 # 💡 将 SUGGESTIONS 移至模块级别，方便测试用例复用
 SUGGESTIONS = [
@@ -121,25 +118,25 @@ class ScreenerRequest(BaseModel):
 
 def _parse_human_number(val: Any) -> float:
     """将带单位的字符串解析为绝对数值"""
-    if val is None: return 0.0
-    if isinstance(val, (int, float)): return float(val)
+    if val is None: return 0.0  # noqa: E701
+    if isinstance(val, (int, float)): return float(val)  # noqa: E701
     s = str(val).upper().replace('%', '').replace('+', '').replace(',', '')
     try:
         num_val = float(re.sub(r'[A-Z\u4e00-\u9fa5]', '', s) or 0)
-        if '万亿' in s or 'T' in s: num_val *= 1e12
-        elif '亿' in s or 'B' in s: num_val *= 1e8
-        elif '万' in s: num_val *= 1e4
-        elif 'M' in s: num_val *= 1e6
-        elif 'K' in s: num_val *= 1e3
+        if '万亿' in s or 'T' in s: num_val *= 1e12  # noqa: E701
+        elif '亿' in s or 'B' in s: num_val *= 1e8  # noqa: E701
+        elif '万' in s: num_val *= 1e4  # noqa: E701
+        elif 'M' in s: num_val *= 1e6  # noqa: E701
+        elif 'K' in s: num_val *= 1e3  # noqa: E701
         return num_val
     except Exception:
         return 0.0
 
 def _clean_json_dsl(dsl: str) -> str:
     """清理 AI 输出的 JSON 字符串中的 Markdown 标记与注释"""
-    cleaned = re.sub(r'^```[A-Za-z]*\n|```$', '', dsl.strip(), flags=re.MULTILINE).strip()
+    cleaned = re.sub(r'^```[A-Za-z]*\n|```$', '', dsl.strip(), flags=re.MULTILINE).strip()  # noqa: E501
     comment_pattern = r'("(?:\\.|[^"\\])*")|(/\*.*?\*/|//[^\r\n]*)'
-    return re.sub(comment_pattern, lambda m: m.group(1) if m.group(1) else '', cleaned, flags=re.DOTALL).strip()
+    return re.sub(comment_pattern, lambda m: m.group(1) if m.group(1) else '', cleaned, flags=re.DOTALL).strip()  # noqa: E501
 
 class ScreenerSubscribeRequest(BaseModel):
     name: str
@@ -164,11 +161,11 @@ class ScreenerHistoryRequest(BaseModel):
 # This is a mock implementation. A real implementation would require a database
 # and a more sophisticated parsing and querying engine.
 MOCK_SCREENER_RESULTS = [
-    { 'rank': 1, 'symbol': 'US.NVDA', 'name': 'NVIDIA Corp', 'mktcap': '3.1T', 'price': 125.4, 'chg': 2.1, 'rsi': 28.5, 'chg30': '25.4%', 'inflow': '1.2B' },
-    { 'rank': 2, 'symbol': 'HK.0700', 'name': '腾讯控股', 'mktcap': '3.5T', 'price': 375.2, 'chg': -0.5, 'rsi': 25.1, 'chg30': '-2.1%', 'inflow': '850M' },
-    { 'rank': 3, 'symbol': 'US.TSM', 'name': '台积电', 'mktcap': '850B', 'price': 165.0, 'chg': 1.2, 'rsi': 29.9, 'chg30': '15.8%', 'inflow': '500M' },
-    { 'rank': 4, 'symbol': 'US.AVGO', 'name': '博通', 'mktcap': '750B', 'price': 1600.0, 'chg': 3.5, 'rsi': 22.1, 'chg30': '18.2%', 'inflow': '450M' },
-    { 'rank': 5, 'symbol': 'HK.01810', 'name': '小米集团-W', 'mktcap': '450B', 'price': 18.5, 'chg': -1.1, 'rsi': 27.8, 'chg30': '5.5%', 'inflow': '300M' },
+    { 'rank': 1, 'symbol': 'US.NVDA', 'name': 'NVIDIA Corp', 'mktcap': '3.1T', 'price': 125.4, 'chg': 2.1, 'rsi': 28.5, 'chg30': '25.4%', 'inflow': '1.2B' },  # noqa: E501
+    { 'rank': 2, 'symbol': 'HK.0700', 'name': '腾讯控股', 'mktcap': '3.5T', 'price': 375.2, 'chg': -0.5, 'rsi': 25.1, 'chg30': '-2.1%', 'inflow': '850M' },  # noqa: E501
+    { 'rank': 3, 'symbol': 'US.TSM', 'name': '台积电', 'mktcap': '850B', 'price': 165.0, 'chg': 1.2, 'rsi': 29.9, 'chg30': '15.8%', 'inflow': '500M' },  # noqa: E501
+    { 'rank': 4, 'symbol': 'US.AVGO', 'name': '博通', 'mktcap': '750B', 'price': 1600.0, 'chg': 3.5, 'rsi': 22.1, 'chg30': '18.2%', 'inflow': '450M' },  # noqa: E501
+    { 'rank': 5, 'symbol': 'HK.01810', 'name': '小米集团-W', 'mktcap': '450B', 'price': 18.5, 'chg': -1.1, 'rsi': 27.8, 'chg30': '5.5%', 'inflow': '300M' },  # noqa: E501
 ]
 
 @router.get("/suggestions")
@@ -177,7 +174,7 @@ async def get_screener_suggestions(limit: int = 6, db: Session = Depends(get_db)
     获取随机选股灵感提示词
     💡 未来可将此列表移入 PostgreSQL 数据库表 (如 ScreenerSuggestion)，
     通过 db.query(ScreenerSuggestion).order_by(func.random()).limit(limit).all() 实现万级数据的极速动态拉取。
-    """
+    """  # noqa: E501
     SUGGESTIONS = [
         "格雷厄姆深度价值股",
         "巴菲特护城河原则",
@@ -281,7 +278,7 @@ async def run_screener(req: ScreenerRequest):
     接收 DSL 查询，调用 Futu 接口在线筛选股票。
     """
     cache_key = f"quant:screener:dsl:{hashlib.md5(req.dsl.encode('utf-8')).hexdigest()}"
-    
+
     def _process_data(data_list: list) -> dict:
         # 0. 💡 服务端执行表头二次过滤 (因为分页了，必须在服务端对全量缓存数据过滤)
         if hasattr(req, "filters") and req.filters:
@@ -294,10 +291,10 @@ async def run_screener(req: ScreenerRequest):
                         continue
                     try:
                         num_val = _parse_human_number(val)
-                            
-                        c_min = float(bounds.get("min")) if bounds.get("min") not in [None, ""] else float('-inf')
-                        c_max = float(bounds.get("max")) if bounds.get("max") not in [None, ""] else float('inf')
-                        
+
+                        c_min = float(bounds.get("min")) if bounds.get("min") not in [None, ""] else float('-inf')  # noqa: E501
+                        c_max = float(bounds.get("max")) if bounds.get("max") not in [None, ""] else float('inf')  # noqa: E501
+
                         if not (c_min <= num_val <= c_max):
                             match = False
                             break
@@ -311,7 +308,7 @@ async def run_screener(req: ScreenerRequest):
         sort_k = req.sort_key
         is_desc = req.sort_dir == -1
         if sort_k in ["symbol", "name"]:
-            data_list = sorted(data_list, key=lambda x: str(x.get(sort_k, "")), reverse=is_desc)
+            data_list = sorted(data_list, key=lambda x: str(x.get(sort_k, "")), reverse=is_desc)  # noqa: E501
         else:
             def _get_sort_val(x):
                 val = x.get(sort_k)
@@ -323,18 +320,18 @@ async def run_screener(req: ScreenerRequest):
                 except Exception:
                     return float('-inf') if is_desc else float('inf')
             data_list = sorted(data_list, key=_get_sort_val, reverse=is_desc)
-            
+
         # 2. 重新计算全市场排名 (Rank)
         for i, r in enumerate(data_list):
             r['rank'] = i + 1
-            
+
         total = len(data_list)
-        
+
         # 3. 服务端切片分页
         if req.page_size > 0:
             start = (req.page - 1) * req.page_size
             data_list = data_list[start : start + req.page_size]
-            
+
         return {"status": "success", "data": data_list, "total": total}
 
     try:
@@ -348,7 +345,7 @@ async def run_screener(req: ScreenerRequest):
 
     if cache_key not in _screener_locks:
         _screener_locks[cache_key] = asyncio.Lock()
-        
+
     async with _screener_locks[cache_key]:
         try:
             cached_data = await redis_client.get(cache_key)
@@ -362,24 +359,24 @@ async def run_screener(req: ScreenerRequest):
         try:
             # 1. 转译 DSL 到 Futu 过滤条件
             print(f"\n🔍 [Screener] 接收到查询指令: {req.dsl}")
-            
+
             cleaned_dsl = _clean_json_dsl(req.dsl)
 
             try:
-                dsl_obj = json.loads(cleaned_dsl)
+                json.loads(cleaned_dsl)
             except json.JSONDecodeError as je:
-                raise ValueError(f"DSL 格式错误: {str(je)}。请检查 AI 生成的 JSON 是否合法。")
-            
-            markets, futu_filters, post_filters = screener_service.parse_dsl_to_futu_filters(cleaned_dsl)
-            
+                raise ValueError(f"DSL 格式错误: {str(je)}。请检查 AI 生成的 JSON 是否合法。")  # noqa: E501
+
+            markets, futu_filters, post_filters = screener_service.parse_dsl_to_futu_filters(cleaned_dsl)  # noqa: E501
+
             # 2. 并发向 Futu OpenD 发起多市场扫盘
             tasks = []
             for m in markets:
                 task = futu_service.screen_stocks(market=m, filters=futu_filters)  # type: ignore
                 tasks.append(task)
-                
+
             results = await asyncio.gather(*tasks, return_exceptions=True)
-                         
+
             final_data = []
             for m, res in zip(markets, results):
                 if isinstance(res, Exception):
@@ -390,15 +387,15 @@ async def run_screener(req: ScreenerRequest):
                 else:
                     err_msg = res.get('message') if isinstance(res, dict) else str(res)
                     raise ValueError(err_msg)
-                    
+
             # 3. 内存二次过滤
             if post_filters.get("exclude_st"):
-                final_data = [r for r in final_data if "ST" not in r.get("name", "").upper() and "退" not in r.get("name", "")]
-                    
+                final_data = [r for r in final_data if "ST" not in r.get("name", "").upper() and "退" not in r.get("name", "")]  # noqa: E501
+
             # 3.5 技术形态二次过滤
             tech_patterns = post_filters.get("technical_patterns", [])
             if final_data:
-                final_data = await screener_service.apply_technical_pattern_filtering(final_data, tech_patterns)
+                final_data = await screener_service.apply_technical_pattern_filtering(final_data, tech_patterns)  # noqa: E501
 
             # 4. 去重
             seen = set()
@@ -412,13 +409,13 @@ async def run_screener(req: ScreenerRequest):
             if not final_data:
                 if futu_service.status != "CONNECTED":
                     import copy
-                    mock_data = [r for r in MOCK_SCREENER_RESULTS if any(r['symbol'].upper().startswith(f"{m.upper()}.") for m in markets)]
+                    mock_data = [r for r in MOCK_SCREENER_RESULTS if any(r['symbol'].upper().startswith(f"{m.upper()}.") for m in markets)]  # noqa: E501
                     final_data = copy.deepcopy(mock_data if mock_data else [])
                     for r in final_data:
-                        r['price'] = round(r['price'] * (1 + (random.random() - 0.5) * 0.05), 2)
+                        r['price'] = round(r['price'] * (1 + (random.random() - 0.5) * 0.05), 2)  # noqa: E501
                         r['chg'] = round((random.random() - 0.5) * 5, 2)
             else:
-                print(" [Screener] 获取结果示例 (前 3 条):", json.dumps(final_data[:3], indent=2, ensure_ascii=False))
+                print(" [Screener] 获取结果示例 (前 3 条):", json.dumps(final_data[:3], indent=2, ensure_ascii=False))  # noqa: E501
 
             try:
                 # 💡 增加随机 Jitter 防雪崩
@@ -426,7 +423,7 @@ async def run_screener(req: ScreenerRequest):
                 await redis_client.set(cache_key, json.dumps(final_data), ex=ttl)
             except Exception as e:
                 print(f"⚠️ [Screener] Redis 写入缓存失败: {e}")
-                
+
             res = _process_data(final_data)
             res["message"] = "Futu OpenD 在线筛选成功"
             return res
@@ -448,12 +445,12 @@ async def get_screener_history(current_user: models.User = Depends(get_current_u
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/history")
-async def save_screener_history(req: ScreenerHistoryRequest, current_user: models.User = Depends(get_current_user)):
+async def save_screener_history(req: ScreenerHistoryRequest, current_user: models.User = Depends(get_current_user)):  # noqa: E501
     """保存用户的选股历史记录到云端"""
     try:
         key = f"quant:screener:history:{current_user.id}"
         # 兼容 Pydantic v1 / v2，序列化并存入 Redis
-        history_dicts = [item.model_dump() if hasattr(item, 'model_dump') else item.dict() for item in req.history]
+        history_dicts = [item.model_dump() if hasattr(item, 'model_dump') else item.dict() for item in req.history]  # noqa: E501
         await redis_client.set(key, json.dumps(history_dicts))
         return {"status": "success"}
     except Exception as e:
@@ -465,14 +462,14 @@ async def reload_indicators(current_user: models.User = Depends(get_current_user
     try:
         # 使用 to_thread 防止读取 CSV 和 jieba 分词计算时阻塞主事件循环
         res = await asyncio.to_thread(screener_service.reload_rag_corpus)
-        return {"status": "success", "message": f"指标库热更新成功，当前共 {res.get('count', 0)} 条规则"}
+        return {"status": "success", "message": f"指标库热更新成功，当前共 {res.get('count', 0)} 条规则"}  # noqa: E501
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"热更新失败: {str(e)}")
 
-async def get_subscription(sub_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)) -> models.ScreenerSubscription:
+async def get_subscription(sub_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)) -> models.ScreenerSubscription:  # noqa: E501
     """提取选股订阅验证逻辑的依赖注入"""
     sub = db.query(models.ScreenerSubscription).filter(
-        models.ScreenerSubscription.id == sub_id, 
+        models.ScreenerSubscription.id == sub_id,
         models.ScreenerSubscription.user_id == current_user.id
     ).first()
     if not sub:
@@ -498,11 +495,11 @@ async def get_dictionary(current_user: models.User = Depends(get_current_user)):
     return {"status": "success", "data": data}
 
 @router.post("/dictionary")
-async def add_dictionary_item(item: DictionaryItem, current_user: models.User = Depends(get_current_user)):
+async def add_dictionary_item(item: DictionaryItem, current_user: models.User = Depends(get_current_user)):  # noqa: E501
     """添加私有 RAG 选股规则"""
     res = await screener_service.add_custom_rule(
-        desc_text=item.desc, 
-        rule_text=item.rule, 
+        desc_text=item.desc,
+        rule_text=item.rule,
         user_id=current_user.id
     )
     if res.get("status") == "error":
@@ -510,7 +507,7 @@ async def add_dictionary_item(item: DictionaryItem, current_user: models.User = 
     return res
 
 @router.delete("/dictionary")
-async def delete_dictionary_item(item: DictionaryDeleteItem, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+async def delete_dictionary_item(item: DictionaryDeleteItem, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):  # noqa: E501
     """删除私有 RAG 选股规则 (适配前端基于内容匹配的删除逻辑)"""
     # 根据 desc_text 和 rule_text 反查出对应的 rule_id
     rule = db.query(models.ScreenerRule).filter(
@@ -518,44 +515,44 @@ async def delete_dictionary_item(item: DictionaryDeleteItem, db: Session = Depen
         models.ScreenerRule.rule_text == item.rule,
         models.ScreenerRule.user_id == current_user.id
     ).first()
-    
+
     if not rule:
         raise HTTPException(status_code=404, detail="规则不存在或您无权删除")
-        
+
     success = await screener_service.delete_custom_rule(rule.id, current_user.id)
     if not success:
         raise HTTPException(status_code=500, detail="底层删除失败")
     return {"status": "success", "message": "规则已成功删除"}
 
 @router.post("/dictionary/batch")
-async def add_dictionary_batch(req: DictionaryBatchItem, current_user: models.User = Depends(get_current_user)):
+async def add_dictionary_batch(req: DictionaryBatchItem, current_user: models.User = Depends(get_current_user)):  # noqa: E501
     """批量导入私有 RAG 选股规则 (配合前端的 CSV 导入)"""
     success_count = 0
     errors = []
-    
+
     for item in req.items:
         res = await screener_service.add_custom_rule(
-            desc_text=item.desc, 
-            rule_text=item.rule, 
+            desc_text=item.desc,
+            rule_text=item.rule,
             user_id=current_user.id
         )
         if res.get("status") == "success":
             success_count += 1
         else:
             errors.append(f"[{item.desc}] {res.get('message')}")
-            
+
     if success_count == 0 and errors:
-        raise HTTPException(status_code=500, detail="批量导入失败: " + ", ".join(errors[:3]))
-        
+        raise HTTPException(status_code=500, detail="批量导入失败: " + ", ".join(errors[:3]))  # noqa: E501
+
     return {"status": "success", "message": f"成功批量导入 {success_count} 条规则"}
 
 @router.post("/subscribe")
-async def subscribe_screener(req: ScreenerSubscribeRequest, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+async def subscribe_screener(req: ScreenerSubscribeRequest, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):  # noqa: E501
     """将选股 DSL 策略持久化为每日定时执行的订阅任务"""
     # 💡 新增：校验 trigger_time 格式
     trigger_time_str = req.trigger_time or "18:00"
     if not re.match(r'^\d{2}:\d{2}$', trigger_time_str):
-        raise HTTPException(status_code=400, detail="触发时间格式不正确，必须为 HH:MM 格式。")
+        raise HTTPException(status_code=400, detail="触发时间格式不正确，必须为 HH:MM 格式。")  # noqa: E501
 
     try:
         sub = models.ScreenerSubscription(
@@ -572,37 +569,37 @@ async def subscribe_screener(req: ScreenerSubscribeRequest, db: Session = Depend
         raise HTTPException(status_code=500, detail=f"订阅失败: {str(e)}")
 
 @router.get("/subscriptions")
-async def get_subscriptions(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+async def get_subscriptions(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):  # noqa: E501
     """获取当前用户所有的每日选股订阅任务"""
-    subs = db.query(models.ScreenerSubscription).filter(models.ScreenerSubscription.user_id == current_user.id).order_by(models.ScreenerSubscription.created_at.desc()).all()
+    subs = db.query(models.ScreenerSubscription).filter(models.ScreenerSubscription.user_id == current_user.id).order_by(models.ScreenerSubscription.created_at.desc()).all()  # noqa: E501
     return {
-        "status": "success", 
-        "data": [{"id": s.id, "name": s.name, "dsl": s.dsl, "is_active": s.is_active, "trigger_time": s.trigger_time, "created_at": s.created_at.isoformat() if s.created_at else ""} for s in subs]
+        "status": "success",
+        "data": [{"id": s.id, "name": s.name, "dsl": s.dsl, "is_active": s.is_active, "trigger_time": s.trigger_time, "created_at": s.created_at.isoformat() if s.created_at else ""} for s in subs]  # noqa: E501
     }
 
 @router.put("/subscriptions/{sub_id}/time")
-async def update_subscription_time(req: ScreenerSubscriptionTimeUpdateRequest, db: Session = Depends(get_db), sub: models.ScreenerSubscription = Depends(get_subscription)):
+async def update_subscription_time(req: ScreenerSubscriptionTimeUpdateRequest, db: Session = Depends(get_db), sub: models.ScreenerSubscription = Depends(get_subscription)):  # noqa: E501
     """更新订阅任务的触发时间"""
     if not re.match(r'^\d{2}:\d{2}$', req.trigger_time):
-        raise HTTPException(status_code=400, detail="触发时间格式不正确，必须为 HH:MM 格式。")
-        
+        raise HTTPException(status_code=400, detail="触发时间格式不正确，必须为 HH:MM 格式。")  # noqa: E501
+
     sub.trigger_time = req.trigger_time
     db.commit()
-    return {"status": "success", "message": f"订阅任务 '{sub.name}' 的触发时间已更新为 {req.trigger_time}"}
+    return {"status": "success", "message": f"订阅任务 '{sub.name}' 的触发时间已更新为 {req.trigger_time}"}  # noqa: E501
 
 @router.delete("/subscriptions/{sub_id}")
-async def delete_subscription(db: Session = Depends(get_db), sub: models.ScreenerSubscription = Depends(get_subscription)):
+async def delete_subscription(db: Session = Depends(get_db), sub: models.ScreenerSubscription = Depends(get_subscription)):  # noqa: E501
     """彻底删除某个订阅任务"""
     db.delete(sub)
     db.commit()
     return {"status": "success", "message": "订阅任务已删除"}
 
 @router.put("/subscriptions/{sub_id}/toggle")
-async def toggle_subscription(db: Session = Depends(get_db), sub: models.ScreenerSubscription = Depends(get_subscription)):
+async def toggle_subscription(db: Session = Depends(get_db), sub: models.ScreenerSubscription = Depends(get_subscription)):  # noqa: E501
     """切换订阅任务的 启动/暂停 状态"""
     sub.is_active = not sub.is_active
     db.commit()
-    return {"status": "success", "message": f"订阅任务已{'恢复' if sub.is_active else '暂停'}推送", "is_active": sub.is_active}
+    return {"status": "success", "message": f"订阅任务已{'恢复' if sub.is_active else '暂停'}推送", "is_active": sub.is_active}  # noqa: E501
 
 class SummarizePayload(BaseModel):
     stocks: List[Dict[str, Any]]

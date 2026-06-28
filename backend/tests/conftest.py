@@ -4,9 +4,9 @@ TEST-08: 测试框架与脚手架搭建
 """
 import os
 import sys
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from typing import Generator
+
+import pytest
 
 # 确保项目根目录在 sys.path 中
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
@@ -87,8 +87,9 @@ def mock_httpx():
 def test_client():
     """FastAPI 测试客户端（同步）"""
     from fastapi.testclient import TestClient
+
     from backend.main import app
-    
+
     client = TestClient(app)
     return client
 
@@ -97,8 +98,9 @@ def test_client():
 async def async_test_client():
     """FastAPI 测试客户端（异步）"""
     import httpx
+
     from backend.main import app
-    
+
     async with httpx.AsyncClient(app=app, base_url="http://test") as client:
         yield client
 
@@ -227,7 +229,7 @@ def mock_yfinance():
 # ─── 测试数据工厂 ────────────────────────────────────────────────────
 class TestDataFactory:
     """测试数据工厂，快速生成各类测试数据"""
-    
+
     @staticmethod
     def make_quote(**kwargs) -> dict:
         base = {
@@ -245,7 +247,7 @@ class TestDataFactory:
         }
         base.update(kwargs)
         return base
-    
+
     @staticmethod
     def make_kline(**kwargs) -> dict:
         base = {
@@ -258,7 +260,7 @@ class TestDataFactory:
         }
         base.update(kwargs)
         return base
-    
+
     @staticmethod
     def make_order(**kwargs) -> dict:
         base = {
@@ -274,7 +276,7 @@ class TestDataFactory:
         }
         base.update(kwargs)
         return base
-    
+
     @staticmethod
     def make_position(**kwargs) -> dict:
         base = {
@@ -291,7 +293,7 @@ class TestDataFactory:
         }
         base.update(kwargs)
         return base
-    
+
     @staticmethod
     def make_user(**kwargs) -> dict:
         base = {
