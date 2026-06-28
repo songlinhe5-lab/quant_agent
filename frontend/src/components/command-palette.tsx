@@ -4,7 +4,6 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { Command } from 'cmdk'
 import {
   Search,
   BarChart3,

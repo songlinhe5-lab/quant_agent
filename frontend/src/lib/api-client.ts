@@ -1,123 +1,339 @@
-import axios from 'axios'
+/**
+ * API Client 三通道封装 (REST / WS / SSE)
+ * FE-16: 统一 baseURL、错误码处理、请求拦截器自动用 Refresh Token 续期 Access Token
+ * SEC-07: Access Token 仅存于内存，Refresh Token 由 HttpOnly Cookie 自动携带
+ */
 
-// 暴露 API 基础路径，供 fetch 等原生请求拼接完整 URL
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api'
+import type { ApiResponse } from '@/types/domain'
+import logger from '@/lib/logger'
 
-// 创建全局 Axios 实例
-export const apiClient = axios.create({
-  baseURL: API_BASE_URL, 
-  timeout: 30000,
-  // 💡 关键点：跨域时允许携带 HttpOnly Cookie
-  withCredentials: true,
-})
+// ─── 配置 ──────────────────────────────────────────────────────────
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
-// ── 内存 Token 管理 ────────────────────────────────────────────────────────
-
-let currentAccessToken: string | null = null
-
-// 暴露设置 Token 的方法，供登录组件和 AuthContext 使用
-export const setAccessToken = (token: string | null) => {
-  currentAccessToken = token
+interface ClientConfig {
+  baseURL: string
+  timeout: number
+  withCredentials: boolean
 }
 
-// 暴露获取 Token 的方法，供原生的 fetch 或 WebSocket 使用
-export const getAccessToken = () => {
+const DEFAULT_CONFIG: ClientConfig = {
+  baseURL: API_BASE_URL,
+  timeout: 30000,
+  withCredentials: true,
+}
+
+// ─── Token 管理（内存存储，SEC-07）─────────────────────────────────
+let currentAccessToken: string | null = null
+let tokenRefreshPromise: Promise<string> | null = null
+
+/**
+ * 获取 Access Token（仅内存）
+ */
+export function getAccessToken(): string | null {
   return currentAccessToken
 }
 
-// ── 并发刷新队列管理 ────────────────────────────────────────────────────────
-// 当页面加载并发发出多个请求，遇到 401 时，防止多次触发刷新接口
-
-let isRefreshing = false
-let failedQueue: Array<{ resolve: (token: string) => void; reject: (err: any) => void }> = []
-
-const processQueue = (error: any, token: string | null = null) => {
-  failedQueue.forEach((prom) => {
-    if (error) {
-      prom.reject(error)
-    } else {
-      prom.resolve(token as string)
-    }
-  })
-  failedQueue = []
+/**
+ * 设置 Access Token
+ */
+export function setAccessToken(token: string | null): void {
+  currentAccessToken = token
 }
 
-// ── 拦截器配置 ──────────────────────────────────────────────────────────────
+/**
+ * 清除 Token
+ */
+export function clearTokens(): void {
+  currentAccessToken = null
+}
 
-apiClient.interceptors.request.use(
-  (config) => {
-    // 从 React 内存中获取短期 Access Token
-    if (currentAccessToken && config.headers) {
-      config.headers.Authorization = `Bearer ${currentAccessToken}`
-    }
-    
-    // 💡 针对大模型对话和会话管理接口，单独放宽超时限制至 2 分钟 (120000ms)，或者设为 0（不限制超时）
-    if (config.url?.includes('/chat') || config.url?.includes('/sessions')) {
-      config.timeout = 120000
-    }
-
-    return config
-  },
-  (error) => Promise.reject(error)
-)
-
-apiClient.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config
-
-    // 🚨 核心修复：如果是登录接口或刷新接口自身的 401 报错，说明是密码错误或刷新凭证彻底失效
-    // 直接抛出错误让前端业务代码（如 login.tsx）处理，绝对不要触发无限无感刷新重试
-    if (originalRequest.url?.includes('/auth/login') || originalRequest.url?.includes('/auth/refresh')) {
-      return Promise.reject(error)
-    }
-
-    // 捕获 401 未授权错误，且请求尚未重试过
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      if (isRefreshing) {
-        // 如果当前正在刷新 Token，将当前请求加入队列排队等待
-        return new Promise((resolve, reject) => {
-          failedQueue.push({ resolve, reject })
-        }).then((token) => {
-          originalRequest.headers.Authorization = `Bearer ${token}`
-          return apiClient(originalRequest)
-        }).catch((err) => Promise.reject(err))
-      }
-
-      originalRequest._retry = true
-      isRefreshing = true
-
-      try {
-        // 尝试无感刷新：向后端请求获取新的 Access Token
-        // 💡 浏览器会自动携带 HttpOnly Cookie 中的 Refresh Token
-        // 修复：原生 axios 请求必须显式拼接 API_BASE_URL，否则缺少 /api 前缀报 404
-        const { data } = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true })
-        const newAccessToken = data.access_token
-
-        setAccessToken(newAccessToken)
-        processQueue(null, newAccessToken)
-
-        // 带着新的 Token 重发原本失败的请求
-        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
-        return apiClient(originalRequest)
-      } catch (refreshError) {
-        // 刷新失败（Refresh Token 也过期了或者非法）
-        processQueue(refreshError, null)
-        setAccessToken(null)
-
-        // 避免在登录页面无限跳转
-        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-          // 携带当前完整路径和查询参数，这样登录成功后可以无缝跳转回来
-          // 临时注释掉跳转逻辑，以便在开发数据看板时忽略登录拦截
-          // const currentPath = window.location.pathname + window.location.search;
-          // window.location.href = `/login?from=${encodeURIComponent(currentPath)}`;
-        }
-        return Promise.reject(refreshError)
-      } finally {
-        isRefreshing = false
-      }
-    }
-
-    return Promise.reject(error)
+// ─── 错误类 ────────────────────────────────────────────────────────
+export class ApiError extends Error {
+  code: number
+  data?: unknown
+  
+  constructor(code: number, message: string, data?: unknown) {
+    super(message)
+    this.name = 'ApiError'
+    this.code = code
+    this.data = data
   }
-)
+}
+
+// ─── REST Client ───────────────────────────────────────────────────
+class RestClient {
+  private config: ClientConfig
+
+  constructor(config: ClientConfig) {
+    this.config = config
+  }
+
+  /**
+   * 发起 HTTP 请求
+   */
+  async request<T>(
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
+    path: string,
+    options: {
+      body?: unknown
+      params?: Record<string, string | number | boolean | undefined>
+      headers?: Record<string, string>
+      signal?: AbortSignal
+    } = {}
+  ): Promise<T> {
+    const { body, params, headers = {}, signal } = options
+
+    // 构建 URL
+    let url = `${this.config.baseURL}${path}`
+    if (params) {
+      const searchParams = new URLSearchParams()
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) searchParams.append(key, String(value))
+      })
+      const qs = searchParams.toString()
+      if (qs) url += `?${qs}`
+    }
+
+    // 构建请求头
+    const requestHeaders: HeadersInit = {
+      'Content-Type': 'application/json',
+      ...headers,
+    }
+
+    // 添加 Access Token
+    const token = getAccessToken()
+    if (token) {
+      requestHeaders['Authorization'] = `Bearer ${token}`
+    }
+
+    // 发起请求
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), this.config.timeout)
+    
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: requestHeaders,
+        body: body ? JSON.stringify(body) : undefined,
+        credentials: this.config.withCredentials ? 'include' : 'omit',
+        signal: signal || controller.signal,
+      })
+
+      clearTimeout(timeoutId)
+
+      // 处理 401 - 尝试刷新 Token
+      if (response.status === 401) {
+        const newToken = await this.refreshToken()
+        if (newToken) {
+          // 重试请求
+          requestHeaders['Authorization'] = `Bearer ${newToken}`
+          const retryResponse = await fetch(url, {
+            method,
+            headers: requestHeaders,
+            body: body ? JSON.stringify(body) : undefined,
+            credentials: this.config.withCredentials ? 'include' : 'omit',
+            signal: signal || controller.signal,
+          })
+          return this.handleResponse<T>(retryResponse)
+        }
+        // 刷新失败，跳转登录
+        window.location.href = '/login'
+        throw new ApiError(401, '认证已过期')
+      }
+
+      return this.handleResponse<T>(response)
+    } catch (error) {
+      clearTimeout(timeoutId)
+      
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw new ApiError(408, '请求超时')
+      }
+      
+      if (error instanceof ApiError) throw error
+      
+      logger.error('[API] 请求失败', error as Error, { method, path })
+      throw new ApiError(500, '网络异常')
+    }
+  }
+
+  /**
+   * 处理响应
+   */
+  private async handleResponse<T>(response: Response): Promise<T> {
+    const data = await response.json()
+    
+    // 检查统一响应结构 { code, msg, data, ts }
+    if (data && typeof data === 'object' && 'code' in data) {
+      const apiData = data as ApiResponse<T>
+      if (apiData.code !== 0 && apiData.code !== 200) {
+        throw new ApiError(apiData.code, apiData.msg || '请求失败', apiData.data)
+      }
+      return apiData.data as T
+    }
+
+    // 非标准响应，直接返回
+    if (!response.ok) {
+      throw new ApiError(response.status, `HTTP ${response.status}`)
+    }
+
+    return data as T
+  }
+
+  /**
+   * 刷新 Access Token
+   */
+  private async refreshToken(): Promise<string | null> {
+    // 防止并发刷新
+    if (tokenRefreshPromise) return tokenRefreshPromise
+
+    tokenRefreshPromise = (async () => {
+      try {
+        const response = await fetch(`${this.config.baseURL}/auth/refresh`, {
+          method: 'POST',
+          credentials: 'include', // Refresh Token 在 HttpOnly Cookie
+        })
+
+        if (!response.ok) {
+          clearTokens()
+          return null
+        }
+
+        const data = await response.json()
+        const newToken = data.data?.access_token || data.access_token
+        if (newToken) {
+          setAccessToken(newToken)
+          logger.info('[API] Token 刷新成功')
+          return newToken
+        }
+        return null
+      } catch (error) {
+        logger.error('[API] Token 刷新失败', error as Error)
+        clearTokens()
+        return null
+      } finally {
+        tokenRefreshPromise = null
+      }
+    })()
+
+    return tokenRefreshPromise
+  }
+
+  // ─── 快捷方法 ─────────────────────────────────────────────────
+  get<T>(path: string, params?: Record<string, string | number | boolean | undefined>, signal?: AbortSignal): Promise<T> {
+    return this.request<T>('GET', path, { params, signal })
+  }
+
+  post<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>('POST', path, { body })
+  }
+
+  put<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>('PUT', path, { body })
+  }
+
+  delete<T>(path: string): Promise<T> {
+    return this.request<T>('DELETE', path)
+  }
+
+  patch<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>('PATCH', path, { body })
+  }
+}
+
+// ─── SSE Client ────────────────────────────────────────────────────
+class SSEClient {
+  private config: ClientConfig
+  private connections: Map<string, EventSource> = new Map()
+
+  constructor(config: ClientConfig) {
+    this.config = config
+  }
+
+  /**
+   * 订阅 SSE 流
+   */
+  subscribe(
+    path: string,
+    onMessage: (data: unknown) => void,
+    onError?: (error: Event) => void
+  ): () => void {
+    const url = `${this.config.baseURL}${path}`
+    const key = url
+
+    // 避免重复连接
+    if (this.connections.has(key)) {
+      this.connections.get(key)!.close()
+    }
+
+    const source = new EventSource(url, { withCredentials: true })
+    this.connections.set(key, source)
+
+    source.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        onMessage(data)
+      } catch (e) {
+        logger.warn('[SSE] 消息解析失败', { raw: event.data })
+      }
+    }
+
+    source.onerror = (event) => {
+      logger.error('[SSE] 连接错误', event as unknown as Error)
+      onError?.(event)
+    }
+
+    // 返回取消订阅函数
+    return () => {
+      source.close()
+      this.connections.delete(key)
+    }
+  }
+
+  /**
+   * 关闭所有连接
+   */
+  closeAll(): void {
+    this.connections.forEach((source) => source.close())
+    this.connections.clear()
+  }
+}
+
+// ─── 统一 API Client ───────────────────────────────────────────────
+class UnifiedApiClient {
+  public rest: RestClient
+  public sse: SSEClient
+
+  constructor(config: Partial<ClientConfig> = {}) {
+    const mergedConfig = { ...DEFAULT_CONFIG, ...config }
+    this.rest = new RestClient(mergedConfig)
+    this.sse = new SSEClient(mergedConfig)
+  }
+
+  // REST 快捷方法
+  get<T>(path: string, params?: Record<string, string | number | boolean | undefined>, signal?: AbortSignal): Promise<T> {
+    return this.rest.get<T>(path, params, signal)
+  }
+
+  post<T>(path: string, body?: unknown): Promise<T> {
+    return this.rest.post<T>(path, body)
+  }
+
+  put<T>(path: string, body?: unknown): Promise<T> {
+    return this.rest.put<T>(path, body)
+  }
+
+  delete<T>(path: string): Promise<T> {
+    return this.rest.delete<T>(path)
+  }
+
+  // SSE 快捷方法
+  subscribe(path: string, onMessage: (data: unknown) => void, onError?: (error: Event) => void): () => void {
+    return this.sse.subscribe(path, onMessage, onError)
+  }
+}
+
+// ─── 导出单例 ──────────────────────────────────────────────────────
+export const apiClient = new UnifiedApiClient()
+
+// 默认导出
+export default apiClient
