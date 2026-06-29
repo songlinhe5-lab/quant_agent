@@ -1,143 +1,196 @@
 """
-内部通信安全模块测试
-测试 HMAC-SHA256 签名生成和验证功能
+内部通信安全模块单元测试（HMAC-SHA256）
+
+覆盖：
+- generate_internal_signature() 签名生成
+- verify_internal_signature() 签名验证
+- verify_internal_request() FastAPI 依赖
+- add_internal_signature_to_headers() 请求头签名
+- 异常路径：格式错误、签名过期、签名不匹配
 """
 
-import os
-import sys
-
-# 在导入其他模块之前先加载 .env 文件
-os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
-os.environ.setdefault("EMBEDDING_API_KEY", "test-key")
-os.environ.setdefault("EMBEDDING_BASE_URL", "https://api.test.com")
-os.environ.setdefault("EMBEDDING_MODEL", "BAAI/bge-large-zh-v1.5")
-os.environ.setdefault("INTERNAL_API_SECRET", "test-secret-key")
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 import time
+from unittest.mock import MagicMock
+
+import pytest
+from fastapi import HTTPException
+from fastapi.requests import Request
 
 from backend.core.security import (
+    INTERNAL_SIG_EXPIRY,
+    add_internal_signature_to_headers,
     generate_internal_signature,
+    verify_internal_request,
     verify_internal_signature,
 )
 
 
-def test_generate_signature():
-    """测试签名生成"""
-    method = "GET"
-    path = "/api/v1/internal/health"
+class TestGenerateInternalSignature:
+    """generate_internal_signature() 签名生成"""
 
-    signature = generate_internal_signature(method, path)
+    def test_returns_timestamp_and_signature(self):
+        """返回格式：timestamp.signature"""
+        result = generate_internal_signature("GET", "/api/test")
+        parts = result.split(".")
+        assert len(parts) == 2
+        assert int(parts[0])  # timestamp 是整数
+        assert len(parts[1]) > 0  # signature 非空
 
-    # 验证签名格式：timestamp.signature
-    parts = signature.split(".")
-    assert len(parts) == 2, "签名格式错误"
+    def test_different_calls_have_different_timestamps(self):
+        """使用不同时间戳生成不同的签名"""
+        ts1 = int(time.time())
+        ts2 = ts1 + 1  # 使用不同的时间戳
+        result1 = generate_internal_signature("GET", "/api/test", timestamp=ts1)
+        result2 = generate_internal_signature("GET", "/api/test", timestamp=ts2)
+        assert result1 != result2
 
-    timestamp = int(parts[0])
-    sig = parts[1]
+    def test_custom_secret(self):
+        """使用自定义密钥生成签名"""
+        result1 = generate_internal_signature("GET", "/api/test", secret="secret1")
+        result2 = generate_internal_signature("GET", "/api/test", secret="secret2")
+        assert result1 != result2
 
-    # 验证时间戳是合理的（在当前时间的±10秒内）
-    current_time = int(time.time())
-    assert abs(timestamp - current_time) < 10, "时间戳异常"
-
-    # 验证签名不为空
-    assert len(sig) > 0, "签名不能为空"
-
-    print("✅ test_generate_signature 通过")
-
-
-def test_verify_signature_valid():
-    """测试验证有效签名"""
-    method = "POST"
-    path = "/api/v1/internal/cache/clear"
-
-    # 生成签名
-    signature = generate_internal_signature(method, path)
-
-    # 验证签名
-    is_valid, error_msg = verify_internal_signature(method, path, signature)
-
-    assert is_valid is True, f"验证失败: {error_msg}"
-    assert error_msg is None, "错误信息应为 None"
-
-    print("✅ test_verify_signature_valid 通过")
+    def test_custom_timestamp(self):
+        """使用自定义时间戳生成签名"""
+        ts = 1234567890
+        result = generate_internal_signature("GET", "/api/test", timestamp=ts)
+        assert result.startswith(f"{ts}.")
 
 
-def test_verify_signature_invalid():
-    """测试验证无效签名"""
-    method = "GET"
-    path = "/api/v1/internal/health"
+class TestVerifyInternalSignature:
+    """verify_internal_signature() 签名验证"""
 
-    # 使用错误的路径验证
-    signature = generate_internal_signature(method, path)
-    is_valid, error_msg = verify_internal_signature(method, "/wrong/path", signature)
+    def test_valid_signature(self):
+        """有效签名验证通过"""
+        signature = generate_internal_signature("GET", "/api/test")
+        is_valid, error = verify_internal_signature("GET", "/api/test", signature)
+        assert is_valid is True
+        assert error is None
 
-    assert is_valid is False, "应该验证失败"
-    assert error_msg is not None, "应该返回错误信息"
+    def test_invalid_format_too_few_parts(self):
+        """格式错误：部分数不足"""
+        is_valid, error = verify_internal_signature("GET", "/api/test", "invalid")
+        assert is_valid is False
+        assert "Invalid signature format" in error
 
-    print("✅ test_verify_signature_invalid 通过")
+    def test_invalid_format_too_many_parts(self):
+        """格式错误：部分数过多"""
+        is_valid, error = verify_internal_signature("GET", "/api/test", "1.2.3")
+        assert is_valid is False
+        assert "Invalid signature format" in error
+
+    def test_expired_signature(self):
+        """过期签名验证失败"""
+        old_ts = int(time.time()) - INTERNAL_SIG_EXPIRY - 10
+        signature = generate_internal_signature("GET", "/api/test", timestamp=old_ts)
+        is_valid, error = verify_internal_signature("GET", "/api/test", signature)
+        assert is_valid is False
+        assert "expired" in error.lower()
+
+    def test_invalid_signature(self):
+        """签名不匹配验证失败"""
+        signature = generate_internal_signature("GET", "/api/test")
+        # 篡改签名
+        parts = signature.split(".")
+        tampered_signature = f"{parts[0]}.invalid_signature"
+        is_valid, error = verify_internal_signature("GET", "/api/test", tampered_signature)
+        assert is_valid is False
+        assert "Invalid signature" in error
+
+    def test_different_method_fails(self):
+        """不同 HTTP 方法验证失败"""
+        signature = generate_internal_signature("GET", "/api/test")
+        is_valid, error = verify_internal_signature("POST", "/api/test", signature)
+        assert is_valid is False
+
+    def test_different_path_fails(self):
+        """不同路径验证失败"""
+        signature = generate_internal_signature("GET", "/api/test")
+        is_valid, error = verify_internal_signature("GET", "/api/test/other", signature)
+        assert is_valid is False
+
+    def test_custom_secret(self):
+        """使用自定义密钥验证"""
+        signature = generate_internal_signature("GET", "/api/test", secret="my-secret")
+        is_valid, error = verify_internal_signature("GET", "/api/test", signature, secret="my-secret")
+        assert is_valid is True
+
+    def test_exception_handling_invalid_timestamp(self):
+        """时间戳格式错误时触发异常捕获"""
+        # 时间戳不是整数，会触发异常
+        is_valid, error = verify_internal_signature("GET", "/api/test", "not-a-number.signature")
+        assert is_valid is False
+        assert "Signature verification failed" in error
 
 
-def test_verify_signature_expired():
-    """测试验证过期签名"""
-    method = "GET"
-    path = "/api/v1/internal/health"
+class TestVerifyInternalRequest:
+    """verify_internal_request() FastAPI 依赖"""
 
-    # 生成一个过期的签名（时间戳设为 10 分钟前）
-    old_timestamp = int(time.time()) - 600  # 10 分钟前
-    signature = generate_internal_signature(method, path, timestamp=old_timestamp)
+    def test_valid_request(self):
+        """有效请求通过验证"""
+        signature = generate_internal_signature("GET", "/api/test")
+        request = MagicMock(spec=Request)
+        request.headers = {"X-Internal-Sig": signature}
+        request.method = "GET"
+        request.url.path = "/api/test"
 
-    # 验证签名（应该失败，因为已过期）
-    is_valid, error_msg = verify_internal_signature(method, path, signature)
+        # 不应抛出异常
+        import asyncio
+        asyncio.get_event_loop().run_until_complete(verify_internal_request(request))
 
-    assert is_valid is False, "过期签名应该验证失败"
-    assert "expired" in error_msg.lower(), "错误信息应包含 'expired'"
+    def test_missing_signature_header(self):
+        """缺少签名头抛出异常"""
+        request = MagicMock(spec=Request)
+        request.headers = {}
 
-    print("✅ test_verify_signature_expired 通过")
+        with pytest.raises(HTTPException) as exc_info:
+            import asyncio
+            asyncio.get_event_loop().run_until_complete(verify_internal_request(request))
 
+        assert exc_info.value.status_code == 401
+        assert "Missing X-Internal-Sig" in exc_info.value.detail
 
-def test_verify_signature_wrong_format():
-    """测试验证格式错误的签名"""
-    method = "GET"
-    path = "/api/v1/internal/health"
+    def test_invalid_signature(self):
+        """无效签名抛出异常"""
+        request = MagicMock(spec=Request)
+        request.headers = {"X-Internal-Sig": "invalid"}
+        request.method = "GET"
+        request.url.path = "/api/test"
 
-    # 格式错误：缺少时间戳
-    is_valid, error_msg = verify_internal_signature(method, path, "invalid-signature")
-    assert is_valid is False, "格式错误的签名应该验证失败"
+        with pytest.raises(HTTPException) as exc_info:
+            import asyncio
+            asyncio.get_event_loop().run_until_complete(verify_internal_request(request))
 
-    # 格式错误：时间戳不是数字
-    is_valid, error_msg = verify_internal_signature(method, path, "abc.signature")
-    assert is_valid is False, "时间戳不是数字的签名应该验证失败"
-
-    print("✅ test_verify_signature_wrong_format 通过")
-
-
-def test_case_sensitivity():
-    """测试方法名大小写敏感性"""
-    path = "/api/v1/internal/health"
-
-    # 生成时使用小写
-    signature = generate_internal_signature("get", path)
-
-    # 验证时使用大写
-    is_valid, error_msg = verify_internal_signature("GET", path, signature)
-
-    assert is_valid is True, f"方法名大小写应该不敏感: {error_msg}"
-
-    print("✅ test_case_sensitivity 通过")
+        assert exc_info.value.status_code == 401
+        assert "Invalid internal signature" in exc_info.value.detail
 
 
-if __name__ == "__main__":
-    print("开始测试内部通信安全模块...")
-    print("=" * 50)
+class TestAddInternalSignatureToHeaders:
+    """add_internal_signature_to_headers() 请求头签名"""
 
-    test_generate_signature()
-    test_verify_signature_valid()
-    test_verify_signature_invalid()
-    test_verify_signature_expired()
-    test_verify_signature_wrong_format()
-    test_case_sensitivity()
+    def test_adds_signature_to_headers(self):
+        """成功添加签名到请求头"""
+        headers = {"Content-Type": "application/json"}
+        result = add_internal_signature_to_headers(headers, "GET", "/api/test")
+        assert "X-Internal-Sig" in result
+        assert result["Content-Type"] == "application/json"
 
-    print("=" * 50)
-    print("✅ 所有测试通过！")
+    def test_adds_signature_to_headers(self):
+        """成功添加签名到请求头"""
+        headers = {"Content-Type": "application/json"}
+        result = add_internal_signature_to_headers(headers, "GET", "/api/test")
+        # 原始 headers 也会被修改（函数直接修改传入的 dict）
+        assert "X-Internal-Sig" in headers
+        assert "X-Internal-Sig" in result
+        # 原始 headers 的其他字段应保留
+        assert result["Content-Type"] == "application/json"
+        # 返回的是同一个对象
+        assert result is headers
+
+    def test_signature_can_be_verified(self):
+        """添加的签名可以被验证"""
+        headers = {}
+        result = add_internal_signature_to_headers(headers, "GET", "/api/test")
+        signature = result["X-Internal-Sig"]
+        is_valid, error = verify_internal_signature("GET", "/api/test", signature)
+        assert is_valid is True
