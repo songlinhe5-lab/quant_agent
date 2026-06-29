@@ -1,4 +1,6 @@
+import json
 import unittest
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -32,8 +34,63 @@ def override_get_db():
 app.dependency_overrides[get_db] = override_get_db
 
 
+# 💡 修复：mock Redis，本地测试无 Redis 环境
+_fake_redis_store = {}
+
+
+async def _fake_get(key):
+    return _fake_redis_store.get(key)
+
+
+async def _fake_set(key, value, ex=None):
+    _fake_redis_store[key] = value
+    return True
+
+
+async def _fake_smembers(key):
+    return _fake_redis_store.get(key, set())
+
+
+async def _fake_sadd(key, *values):
+    s = _fake_redis_store.setdefault(key, set())
+    added = 0
+    for v in values:
+        if v not in s:
+            s.add(v)
+            added += 1
+    return added
+
+
+async def _fake_srem(key, *values):
+    s = _fake_redis_store.get(key, set())
+    removed = 0
+    for v in values:
+        if v in s:
+            s.discard(v)
+            removed += 1
+    return removed
+
+
+async def _fake_hincrby(key, field, amount):
+    h = _fake_redis_store.setdefault(key, {})
+    h[field] = h.get(field, 0) + amount
+    return h[field]
+
+
+async def _fake_hdel(key, *fields):
+    h = _fake_redis_store.get(key, {})
+    removed = 0
+    for f in fields:
+        if f in h:
+            del h[f]
+            removed += 1
+    return removed
+
+
 class TestPreferencesAPI(unittest.TestCase):
     def setUp(self):
+        # 防止被其他测试文件覆盖,确保用本文件的 engine
+        app.dependency_overrides[get_db] = override_get_db
         # 每次测试前，在内存中创建所有表
         Base.metadata.create_all(bind=engine)
         self.client = TestClient(app)
@@ -57,12 +114,23 @@ class TestPreferencesAPI(unittest.TestCase):
         self.token = response.json()["data"]["access_token"]
         self.headers = {"Authorization": f"Bearer {self.token}"}
 
+        # 清空 fake redis
+        _fake_redis_store.clear()
+
     def tearDown(self):
         # 测试结束后清理表结构
         Base.metadata.drop_all(bind=engine)
 
-    def test_create_and_update_preferences(self):
+    @patch("backend.routers.preferences.l1_cached_redis")
+    @patch("backend.routers.preferences.redis_client")
+    def test_create_and_update_preferences(self, mock_redis, mock_l1):
+        mock_redis.get = AsyncMock(side_effect=_fake_get)
+        mock_redis.set = AsyncMock(side_effect=_fake_set)
+        mock_l1.get = AsyncMock(side_effect=_fake_get)
+        mock_l1.set = AsyncMock(side_effect=_fake_set)
+
         # 💡 修复：preferences router prefix="/settings" 挂载在 /api/v1 下，实际路径为 /api/v1/settings/preferences
+        # 💡 响应被 response_envelope_middleware 二次包装: {code, msg, data: {原始响应}, ts}
         payload_1 = {"macro_symbols": ["AAPL", "MSFT", "GOOGL"]}
         res_post_1 = self.client.post("/api/v1/settings/preferences", json=payload_1, headers=self.headers)  # noqa: E501
         self.assertEqual(res_post_1.status_code, 200)
@@ -73,4 +141,5 @@ class TestPreferencesAPI(unittest.TestCase):
 
         res_get = self.client.get("/api/v1/settings/preferences", headers=self.headers)
         self.assertEqual(res_get.status_code, 200, f"GET preferences failed: {res_get.json()}")
-        self.assertEqual(res_get.json()["data"]["macro_symbols"], ["TSLA", "NVDA"])
+        # 💡 响应结构: envelope.data.data.macro_symbols (middleware 包一层 + 路由自身 data 字段)
+        self.assertEqual(res_get.json()["data"]["data"]["macro_symbols"], ["TSLA", "NVDA"])
