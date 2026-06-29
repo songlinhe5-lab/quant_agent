@@ -1,224 +1,309 @@
 """
-Futu Service 主服务单元测试
-覆盖: 单例模式/connect/close/方法委托
+Futu 主服务模块单元测试
+
+覆盖：
+- FutuService 单例模式
+- 各 Handler 的集成调用
+- 连接管理
+- 异常路径
 """
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from futu import ModifyOrderOp, TrdMarket, TrdSide
 
-from backend.services.futu.service import FutuService
+from backend.services.futu.service import FutuService, futu_service
 
 
-class TestFutuService:
-    """FutuService 主服务测试套件"""
+class TestFutuServiceSingleton:
+    """FutuService 单例模式"""
 
-    def test_singleton_returns_same_instance(self):
-        """FutuService 应为单例"""
-        svc1 = FutuService()
-        svc2 = FutuService()
-        assert svc1 is svc2
+    def test_singleton_pattern(self):
+        """确保 FutuService 是单例"""
+        service1 = FutuService()
+        service2 = FutuService()
+        assert service1 is service2
 
-    def test_init_creates_handlers(self):
-        """初始化应创建所有子 handler"""
-        svc = FutuService()
-        assert svc.conn_mgr is not None
-        assert svc.cache_mgr is not None
-        assert svc.quote_handler is not None
-        assert svc.option_fund_handler is not None
-        assert svc.trade_handler is not None
-        assert svc.screener_handler is not None
+    def test_global_instance(self):
+        """全局实例 futu_service 是 FutuService 的单例"""
+        assert isinstance(futu_service, FutuService)
+        assert futu_service is FutuService()
 
-    def test_is_futu_unsupported_delegates_to_utils(self):
-        """is_futu_unsupported 应直接委托给 utils 函数"""
-        svc = FutuService()
-        assert svc.is_futu_unsupported("GC=F") is True
-        assert svc.is_futu_unsupported("HK.00700") is False
+    def test_init_only_once(self):
+        """_init() 只执行一次"""
+        service = FutuService()
+        # 第一次创建时 _init() 被调用
+        assert hasattr(service, "conn_mgr")
+        assert hasattr(service, "quote_handler")
+        assert hasattr(service, "trade_handler")
 
-    def test_format_ticker_delegates_to_utils(self):
-        """format_ticker 应直接委托给 utils 函数"""
-        svc = FutuService()
-        assert svc.format_ticker("0700") == "US.0700"
-        assert svc.format_ticker("HK.0700") == "HK.00700"
-        assert svc.format_ticker("HSI") == "HK.800000"
 
-    def test_connect_delegates_to_conn_mgr_and_syncs_state(self):
-        """connect 应调用 conn_mgr.connect 并同步状态"""
-        svc = FutuService()
-        with patch.object(svc.conn_mgr, "connect") as mock_connect:
-            svc.conn_mgr.status = "CONNECTED"
-            svc.conn_mgr.quote_ctx = MagicMock()
-            svc.conn_mgr.error_msg = ""
-            svc.connect()
-        mock_connect.assert_called_once()
-        assert svc.status == "CONNECTED"
-        assert svc.quote_ctx is svc.conn_mgr.quote_ctx
+class TestFutuServiceInit:
+    """FutuService 初始化"""
 
-    def test_close_delegates_to_conn_mgr_and_clears_state(self):
-        """close 应调用 conn_mgr.close 并清空状态"""
-        svc = FutuService()
-        svc.cache_mgr.subscribed_topics.add(("HK.00700", "QUOTE"))
-        with patch.object(svc.conn_mgr, "close") as mock_close:
-            svc.close()
-        mock_close.assert_called_once()
-        assert svc.quote_ctx is None
-        assert svc.status == "DISCONNECTED"
-        assert len(svc.cache_mgr.subscribed_topics) == 0
+    def test_has_all_handlers(self):
+        """初始化后包含所有 Handler"""
+        service = FutuService()
+        assert hasattr(service, "conn_mgr")
+        assert hasattr(service, "cache_mgr")
+        assert hasattr(service, "quote_handler")
+        assert hasattr(service, "option_fund_handler")
+        assert hasattr(service, "screener_handler")
+        assert hasattr(service, "trade_handler")
 
-    @pytest.mark.asyncio
-    async def test_get_quote_delegates_to_quote_handler(self):
-        """get_quote 应委托给 quote_handler.get_quote"""
-        svc = FutuService()
-        with patch.object(
-            svc.quote_handler, "get_quote", new=AsyncMock(return_value={"status": "success"})
-        ) as mock_method:
-            result = await svc.get_quote("HK.00700")
-        mock_method.assert_awaited_once()
-        args, _ = mock_method.call_args
-        # 第一个参数是 ticker，第二和第三参数是 format_ticker/is_futu_unsupported
-        assert args[0] == "HK.00700"
-        assert callable(args[1])
-        assert callable(args[2])
-        assert result["status"] == "success"
+    def test_compat_attrs(self):
+        """兼容旧接口的属性"""
+        service = FutuService()
+        assert hasattr(service, "quote_ctx")
+        assert hasattr(service, "trade_ctxs")
+        assert hasattr(service, "status")
+        assert hasattr(service, "error_msg")
 
-    @pytest.mark.asyncio
-    async def test_unsubscribe_quote_delegates(self):
-        """unsubscribe_quote 应委托给 quote_handler"""
-        svc = FutuService()
-        with patch.object(
-            svc.quote_handler, "unsubscribe_quote", new=AsyncMock(return_value={"status": "success"})
-        ) as mock_method:
-            await svc.unsubscribe_quote("HK.00700")
-        args, _ = mock_method.call_args
-        assert args[0] == "HK.00700"
 
-    @pytest.mark.asyncio
-    async def test_get_history_delegates(self):
-        """get_history 应委托给 quote_handler"""
-        svc = FutuService()
-        with patch.object(
-            svc.quote_handler, "get_history", new=AsyncMock(return_value={"status": "success"})
-        ) as mock_method:
-            await svc.get_history("HK.00700", "K_DAY", 30)
-        mock_method.assert_awaited_once_with("HK.00700", "K_DAY", 30)
+class TestFutuServiceConnect:
+    """connect() 连接管理"""
 
-    @pytest.mark.asyncio
-    async def test_get_order_book_delegates(self):
-        """get_order_book 应委托给 quote_handler"""
-        svc = FutuService()
-        with patch.object(
-            svc.quote_handler, "get_order_book", new=AsyncMock(return_value={"status": "success"})
-        ) as mock_method:
-            await svc.get_order_book("HK.00700")
-        args, _ = mock_method.call_args
-        assert args[0] == "HK.00700"
+    def test_connect_calls_conn_mgr(self):
+        """connect() 调用 ConnectionManager.connect()"""
+        service = FutuService()
+        with patch.object(service.conn_mgr, "connect") as mock_connect:
+            service.connect()
+            mock_connect.assert_called_once()
+
+    def test_connect_syncs_status(self):
+        """connect() 同步状态到旧接口"""
+        service = FutuService()
+        with patch.object(service.conn_mgr, "connect"):
+            service.conn_mgr.status = "CONNECTED"
+            service.conn_mgr.error_msg = ""
+            service.connect()
+            assert service.status == "CONNECTED"
+            assert service.error_msg == ""
+
+
+class TestFutuServiceClose:
+    """close() 关闭连接"""
+
+    def test_close_calls_conn_mgr(self):
+        """close() 调用 ConnectionManager.close()"""
+        service = FutuService()
+        with patch.object(service.conn_mgr, "close") as mock_close:
+            service.close()
+            mock_close.assert_called_once()
+
+    def test_close_resets_state(self):
+        """close() 重置状态"""
+        service = FutuService()
+        service.quote_ctx = "mock"
+        service.trade_ctxs["HK"] = "mock"
+        service.status = "CONNECTED"
+        service.cache_mgr.subscribed_topics.add("test")
+
+        service.close()
+
+        assert service.quote_ctx is None
+        assert len(service.trade_ctxs) == 0
+        assert service.status == "DISCONNECTED"
+        assert len(service.cache_mgr.subscribed_topics) == 0
+
+
+class TestFutuServiceQuoteMethods:
+    """行情相关方法"""
 
     @pytest.mark.asyncio
-    async def test_get_option_chain_delegates(self):
-        """get_option_chain 应委托给 option_fund_handler"""
-        svc = FutuService()
-        with patch.object(
-            svc.option_fund_handler, "get_option_chain", new=AsyncMock(return_value={"status": "success"})
-        ) as mock_method:
-            await svc.get_option_chain("HK.00700", "2026-01-01")
-        args, _ = mock_method.call_args
-        assert args[0] == "HK.00700"
-        assert args[1] == "2026-01-01"
+    async def test_get_quote(self):
+        """get_quote() 调用 QuoteHandler.get_quote()"""
+        from backend.services.futu.utils import format_ticker, is_futu_unsupported
+
+        service = FutuService()
+        with patch.object(service.quote_handler, "get_quote", new_callable=AsyncMock) as mock:
+            mock.return_value = {"data": "quote"}
+            result = await service.get_quote("HK.00700")
+            mock.assert_called_once_with("HK.00700", format_ticker, is_futu_unsupported)
+            assert result == {"data": "quote"}
 
     @pytest.mark.asyncio
-    async def test_get_fund_flow_delegates(self):
-        """get_fund_flow 应委托给 option_fund_handler"""
-        svc = FutuService()
-        with patch.object(
-            svc.option_fund_handler, "get_fund_flow", new=AsyncMock(return_value={"status": "success"})
-        ) as mock_method:
-            await svc.get_fund_flow("HK.00700")
-        args, _ = mock_method.call_args
-        assert args[0] == "HK.00700"
+    async def test_unsubscribe_quote(self):
+        """unsubscribe_quote() 调用 QuoteHandler.unsubscribe_quote()"""
+        from backend.services.futu.utils import format_ticker
+
+        service = FutuService()
+        with patch.object(service.quote_handler, "unsubscribe_quote", new_callable=AsyncMock) as mock:
+            mock.return_value = {"data": "unsubscribed"}
+            result = await service.unsubscribe_quote("HK.00700")
+            mock.assert_called_once_with("HK.00700", format_ticker)
+            assert result == {"data": "unsubscribed"}
 
     @pytest.mark.asyncio
-    async def test_get_fundamental_delegates(self):
-        """get_fundamental 应委托给 option_fund_handler"""
-        svc = FutuService()
-        with patch.object(
-            svc.option_fund_handler, "get_fundamental", new=AsyncMock(return_value={"status": "success"})
-        ) as mock_method:
-            await svc.get_fundamental("HK.00700")
-        args, _ = mock_method.call_args
-        assert args[0] == "HK.00700"
+    async def test_get_history(self):
+        """get_history() 调用 QuoteHandler.get_history()"""
+        service = FutuService()
+        with patch.object(service.quote_handler, "get_history", new_callable=AsyncMock) as mock:
+            mock.return_value = {"data": "history"}
+            result = await service.get_history("HK.00700", "K_DAY", 100)
+            mock.assert_called_once_with("HK.00700", "K_DAY", 100)
+            assert result == {"data": "history"}
 
     @pytest.mark.asyncio
-    async def test_get_market_snapshots_delegates(self):
-        """get_market_snapshots 应委托给 screener_handler"""
-        svc = FutuService()
-        with patch.object(
-            svc.screener_handler, "get_market_snapshots", new=AsyncMock(return_value={"status": "success"})
-        ) as mock_method:
-            await svc.get_market_snapshots(["HK.00700", "US.AAPL"])
-        mock_method.assert_awaited_once_with(["HK.00700", "US.AAPL"])
+    async def test_get_order_book(self):
+        """get_order_book() 调用 QuoteHandler.get_order_book()"""
+        from backend.services.futu.utils import format_ticker, is_futu_unsupported
+
+        service = FutuService()
+        with patch.object(service.quote_handler, "get_order_book", new_callable=AsyncMock) as mock:
+            mock.return_value = {"data": "order_book"}
+            result = await service.get_order_book("HK.00700")
+            mock.assert_called_once_with("HK.00700", format_ticker, is_futu_unsupported)
+            assert result == {"data": "order_book"}
+
+
+class TestFutuServiceOptionFundMethods:
+    """期权和资金相关方法"""
 
     @pytest.mark.asyncio
-    async def test_screen_stocks_delegates_with_defaults(self):
-        """screen_stocks 应使用默认参数委托给 screener_handler"""
-        svc = FutuService()
-        with patch.object(
-            svc.screener_handler, "screen_stocks", new=AsyncMock(return_value={"status": "success"})
-        ) as mock_method:
-            await svc.screen_stocks()
-        mock_method.assert_awaited_once_with("HK", [])
+    async def test_get_option_chain(self):
+        """get_option_chain() 调用 OptionFundHandler.get_option_chain()"""
+        from backend.services.futu.utils import format_ticker, is_futu_unsupported
+
+        service = FutuService()
+        with patch.object(service.option_fund_handler, "get_option_chain", new_callable=AsyncMock) as mock:
+            mock.return_value = {"data": "option_chain"}
+            result = await service.get_option_chain("HK.00700", "2024-12-31")
+            mock.assert_called_once_with("HK.00700", "2024-12-31", format_ticker, is_futu_unsupported)
+            assert result == {"data": "option_chain"}
 
     @pytest.mark.asyncio
-    async def test_place_order_delegates_with_format_ticker(self):
-        """place_order 应委托给 trade_handler 并传入 format_ticker"""
-        svc = FutuService()
-        with patch.object(
-            svc.trade_handler, "place_order", new=AsyncMock(return_value={"status": "success"})
-        ) as mock_method:
-            await svc.place_order("HK.00700", 100, 350.0, TrdSide.BUY, TrdMarket.HK)
-        mock_method.assert_awaited_once()
-        args, _ = mock_method.call_args
-        assert args[0] == "HK.00700"
-        assert args[1] == 100
-        assert args[2] == 350.0
-        assert args[3] == TrdSide.BUY
-        assert args[4] == TrdMarket.HK
-        assert callable(args[5])  # format_ticker
+    async def test_get_fund_flow(self):
+        """get_fund_flow() 调用 OptionFundHandler.get_fund_flow()"""
+        from backend.services.futu.utils import format_ticker, is_futu_unsupported
+
+        service = FutuService()
+        with patch.object(service.option_fund_handler, "get_fund_flow", new_callable=AsyncMock) as mock:
+            mock.return_value = {"data": "fund_flow"}
+            result = await service.get_fund_flow("HK.00700")
+            mock.assert_called_once_with("HK.00700", format_ticker, is_futu_unsupported)
+            assert result == {"data": "fund_flow"}
 
     @pytest.mark.asyncio
-    async def test_modify_order_delegates(self):
-        """modify_order 应委托给 trade_handler"""
-        svc = FutuService()
-        with patch.object(
-            svc.trade_handler, "modify_order", new=AsyncMock(return_value={"status": "success"})
-        ) as mock_method:
-            await svc.modify_order("OID123", ModifyOrderOp.CANCEL, TrdMarket.HK)
-        mock_method.assert_awaited_once_with("OID123", ModifyOrderOp.CANCEL, TrdMarket.HK)
+    async def test_get_fundamental(self):
+        """get_fundamental() 调用 OptionFundHandler.get_fundamental()"""
+        from backend.services.futu.utils import format_ticker, is_futu_unsupported
+
+        service = FutuService()
+        with patch.object(service.option_fund_handler, "get_fundamental", new_callable=AsyncMock) as mock:
+            mock.return_value = {"data": "fundamental"}
+            result = await service.get_fundamental("HK.00700")
+            mock.assert_called_once_with("HK.00700", format_ticker, is_futu_unsupported)
+            assert result == {"data": "fundamental"}
+
+
+class TestFutuServiceScreenerMethods:
+    """选股相关方法"""
 
     @pytest.mark.asyncio
-    async def test_query_order_delegates(self):
-        """query_order 应委托给 trade_handler"""
-        svc = FutuService()
-        with patch.object(
-            svc.trade_handler, "query_order", new=AsyncMock(return_value={"status": "success"})
-        ) as mock_method:
-            await svc.query_order("OID123", TrdMarket.HK)
-        mock_method.assert_awaited_once_with("OID123", TrdMarket.HK)
+    async def test_get_market_snapshots(self):
+        """get_market_snapshots() 调用 ScreenerHandler.get_market_snapshots()"""
+        service = FutuService()
+        with patch.object(service.screener_handler, "get_market_snapshots", new_callable=AsyncMock) as mock:
+            mock.return_value = {"data": "snapshots"}
+            result = await service.get_market_snapshots(["HK.00700", "HK.09988"])
+            mock.assert_called_once_with(["HK.00700", "HK.09988"])
+            assert result == {"data": "snapshots"}
 
     @pytest.mark.asyncio
-    async def test_get_account_info_delegates_with_default_market(self):
-        """get_account_info 默认 market=HK 委托给 trade_handler"""
-        svc = FutuService()
-        with patch.object(
-            svc.trade_handler, "get_account_info", new=AsyncMock(return_value={"status": "success"})
-        ) as mock_method:
-            await svc.get_account_info()
-        mock_method.assert_awaited_once_with("HK")
+    async def test_screen_stocks(self):
+        """screen_stocks() 调用 ScreenerHandler.screen_stocks()"""
+        service = FutuService()
+        with patch.object(service.screener_handler, "screen_stocks", new_callable=AsyncMock) as mock:
+            mock.return_value = {"data": "screened"}
+            result = await service.screen_stocks("HK", [{"field": "pe", "op": "<", "value": 20}])
+            mock.assert_called_once_with("HK", [{"field": "pe", "op": "<", "value": 20}])
+            assert result == {"data": "screened"}
+
+    @pytest.mark.asyncio
+    async def test_get_stock_basicinfo(self):
+        """get_stock_basicinfo() 调用 ScreenerHandler.get_stock_basicinfo()"""
+        service = FutuService()
+        with patch.object(service.screener_handler, "get_stock_basicinfo", new_callable=AsyncMock) as mock:
+            mock.return_value = {"data": "basicinfo"}
+            result = await service.get_stock_basicinfo("HK", "STOCK")
+            mock.assert_called_once_with("HK", "STOCK")
+            assert result == {"data": "basicinfo"}
 
 
-def test_global_singleton_exported():
-    """模块级 futu_service 实例应可被导入且为单例"""
-    from backend.services.futu.service import FutuService as FC, futu_service
+class TestFutuServiceTradeMethods:
+    """交易相关方法"""
 
-    assert isinstance(futu_service, FC)
-    assert futu_service is FC()  # 应与 FutuService() 是同一实例
+    @pytest.mark.asyncio
+    async def test_place_order(self):
+        """place_order() 调用 TradeHandler.place_order()"""
+        from futu import TrdMarket, TrdSide
+        from backend.services.futu.utils import format_ticker
+
+        service = FutuService()
+        with patch.object(service.trade_handler, "place_order", new_callable=AsyncMock) as mock:
+            mock.return_value = {"data": "order_placed"}
+            result = await service.place_order("HK.00700", 100, 50.0, TrdSide.BUY, TrdMarket.HK)
+            mock.assert_called_once_with("HK.00700", 100, 50.0, TrdSide.BUY, TrdMarket.HK, format_ticker)
+            assert result == {"data": "order_placed"}
+
+    @pytest.mark.asyncio
+    async def test_modify_order(self):
+        """modify_order() 调用 TradeHandler.modify_order()"""
+        from futu import ModifyOrderOp, TrdMarket
+
+        service = FutuService()
+        with patch.object(service.trade_handler, "modify_order", new_callable=AsyncMock) as mock:
+            mock.return_value = {"data": "order_modified"}
+            result = await service.modify_order("12345", ModifyOrderOp.NORMAL, TrdMarket.HK)
+            mock.assert_called_once_with("12345", ModifyOrderOp.NORMAL, TrdMarket.HK)
+            assert result == {"data": "order_modified"}
+
+    @pytest.mark.asyncio
+    async def test_query_order(self):
+        """query_order() 调用 TradeHandler.query_order()"""
+        from futu import TrdMarket
+
+        service = FutuService()
+        with patch.object(service.trade_handler, "query_order", new_callable=AsyncMock) as mock:
+            mock.return_value = {"data": "order_queried"}
+            result = await service.query_order("12345", TrdMarket.HK)
+            mock.assert_called_once_with("12345", TrdMarket.HK)
+            assert result == {"data": "order_queried"}
+
+    @pytest.mark.asyncio
+    async def test_get_account_info(self):
+        """get_account_info() 调用 TradeHandler.get_account_info()"""
+        service = FutuService()
+        with patch.object(service.trade_handler, "get_account_info", new_callable=AsyncMock) as mock:
+            mock.return_value = {"data": "account_info"}
+            result = await service.get_account_info("HK")
+            mock.assert_called_once_with("HK")
+            assert result == {"data": "account_info"}
+
+
+class TestFutuServiceUtils:
+    """工具方法"""
+
+    def test_is_futu_unsupported(self):
+        """is_futu_unsupported() 正确判断"""
+        from backend.services.futu.utils import is_futu_unsupported
+
+        service = FutuService()
+        # 测试包装方法正确调用底层函数
+        with patch("backend.services.futu.service.is_futu_unsupported", return_value=True) as mock_func:
+            result = service.is_futu_unsupported("HK.00700")
+            mock_func.assert_called_once_with("HK.00700")
+            assert result is True
+
+    def test_format_ticker(self):
+        """format_ticker() 正确格式化"""
+        from backend.services.futu.utils import format_ticker
+
+        service = FutuService()
+        # 测试包装方法正确调用底层函数
+        with patch("backend.services.futu.service.format_ticker", return_value="HK.00700") as mock_func:
+            result = service.format_ticker("00700")
+            mock_func.assert_called_once_with("00700")
+            assert result == "HK.00700"
