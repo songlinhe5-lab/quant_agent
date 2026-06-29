@@ -13,8 +13,7 @@ import numpy as np
 import pandas as pd
 import vectorbt as vbt
 
-from .sandbox import BaseStrategySandbox, SandboxTimeoutTracer
-from .sandbox import SAFE_BUILTINS, _safe_stat, _verify_safe_code
+from .sandbox import SAFE_BUILTINS, BaseStrategySandbox, SandboxTimeoutTracer, _safe_stat, _verify_safe_code
 
 
 class EventDrivenBacktestEngine:

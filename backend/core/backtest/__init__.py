@@ -5,6 +5,7 @@
 from .event_engine import EventDrivenBacktestEngine, run_dynamic_sandbox_backtest
 from .runners import run_batch_sandbox_backtest, run_grid_search_backtest, run_monte_carlo_stress_test
 from .sandbox import (
+    _SECURE_PREFIX,
     SAFE_BUILTINS,
     SANDBOX_DIR,
     BaseStrategySandbox,
@@ -15,7 +16,6 @@ from .sandbox import (
     _safe_import,
     _safe_open,
     _safe_stat,
-    _SECURE_PREFIX,
     _verify_safe_code,
 )
 from .strategies import DivergenceResonanceStrategy

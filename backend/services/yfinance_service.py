@@ -1302,8 +1302,8 @@ class YFinanceService:
 
                                 news_str = f" 今日核心新闻: {'; '.join(recent_news)}。" if recent_news else ""  # noqa: E501
                                 prompt = f"你是顶尖华尔街量化交易主脑。以下是今日全球核心资产收盘表现：{market_data_str}。{news_str}请结合 VIX 恐慌指数的绝对水位（低于15乐观，高于25恐慌）、大类资产的背离情况及新闻事件，用一两句话（毒舌、专业，不超过80字）点评今日资金博弈及宏观风险。"  # noqa: E501
-                                resp = await llm_service.get_client().chat.completions.create(  # noqa: E501
-                                    model=llm_service.get_model(),
+                                resp = await self.llm_service.get_client().chat.completions.create(  # noqa: E501
+                                    model=self.llm_service.get_model(),
                                     temperature=0.8,
                                     messages=[{"role": "user", "content": prompt}],
                                 )
