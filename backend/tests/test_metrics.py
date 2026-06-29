@@ -5,6 +5,7 @@ Prometheus 指标定义单元测试
 
 import os
 import sys
+
 from prometheus_client import Counter, Gauge, Histogram, Summary
 from prometheus_client.registry import REGISTRY
 
@@ -14,8 +15,6 @@ os.environ.setdefault("EMBEDDING_BASE_URL", "https://api.test.com")
 os.environ.setdefault("INTERNAL_API_SECRET", "test-secret-key")
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
-
-import pytest
 
 
 class TestMarketQuoteMetrics:
@@ -111,9 +110,7 @@ class TestCircuitBreakerMetrics:
         from backend.core.metrics import CIRCUIT_BREAKER_TRANSITIONS
 
         assert isinstance(CIRCUIT_BREAKER_TRANSITIONS, Counter)
-        CIRCUIT_BREAKER_TRANSITIONS.labels(
-            service="futu", from_state="closed", to_state="open"
-        ).inc()
+        CIRCUIT_BREAKER_TRANSITIONS.labels(service="futu", from_state="closed", to_state="open").inc()
 
 
 class TestAgentAndClientMetrics:
@@ -195,9 +192,7 @@ class TestDataQualityMetrics:
         from backend.core.metrics import MARKET_DATA_CORRECTION_TOTAL
 
         assert isinstance(MARKET_DATA_CORRECTION_TOTAL, Counter)
-        MARKET_DATA_CORRECTION_TOTAL.labels(
-            symbol="US.AAPL", check_type="quality_check"
-        ).inc()
+        MARKET_DATA_CORRECTION_TOTAL.labels(symbol="US.AAPL", check_type="quality_check").inc()
 
     def test_market_data_anomaly_total_is_counter(self):
         from backend.core.metrics import MARKET_DATA_ANOMALY_TOTAL

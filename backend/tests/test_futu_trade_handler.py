@@ -3,15 +3,13 @@ Futu TradeHandler 单元测试
 覆盖: place_order/modify_order/query_order/get_account_info
 """
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
 import pytest
-from futu import ModifyOrderOp, OrderType, TrdEnv, TrdMarket, TrdSide
+from futu import ModifyOrderOp, OrderType, TrdMarket, TrdSide
 
 from backend.services.futu.trade_handler import TradeHandler
-
 
 
 def _make_handler():
@@ -47,7 +45,6 @@ class TestTradeHandler:
     async def test_place_order_market_uses_market_type(self):
         """price=0 时 order_type=MARKET 且 price 回退为 1.0"""
         handler, conn_mgr = _make_handler()
-        trd_ctx = conn_mgr.get_trade_context.return_value
         order_df = pd.DataFrame({"order_id": ["OID456"]})
         with patch("asyncio.to_thread", new=AsyncMock(return_value=(0, order_df))) as mock_thread:
             result = await handler.place_order(
@@ -113,9 +110,7 @@ class TestTradeHandler:
     async def test_query_order_success_returns_status(self):
         """查询订单成功应返回 order_status"""
         handler, _ = _make_handler()
-        order_df = pd.DataFrame(
-            {"order_status": ["FILLED_ALL"], "dealt_avg_price": [350.5], "code": ["HK.00700"]}
-        )
+        order_df = pd.DataFrame({"order_status": ["FILLED_ALL"], "dealt_avg_price": [350.5], "code": ["HK.00700"]})
         with patch("asyncio.to_thread", new=AsyncMock(return_value=(0, order_df))):
             with patch("asyncio.create_task") as mock_create_task:
                 result = await handler.query_order("OID123", TrdMarket.HK)
@@ -129,9 +124,7 @@ class TestTradeHandler:
     async def test_query_order_cancelled_triggers_notification(self):
         """CANCELLED 状态应触发通知"""
         handler, _ = _make_handler()
-        order_df = pd.DataFrame(
-            {"order_status": ["CANCELLED"], "dealt_avg_price": [0.0], "code": ["HK.00700"]}
-        )
+        order_df = pd.DataFrame({"order_status": ["CANCELLED"], "dealt_avg_price": [0.0], "code": ["HK.00700"]})
         with patch("asyncio.to_thread", new=AsyncMock(return_value=(0, order_df))):
             with patch("asyncio.create_task") as mock_create_task:
                 result = await handler.query_order("OID", TrdMarket.HK)
@@ -142,9 +135,7 @@ class TestTradeHandler:
     async def test_query_order_pending_skips_notification(self):
         """非 FILLED/CANCELLED 状态不应触发通知"""
         handler, _ = _make_handler()
-        order_df = pd.DataFrame(
-            {"order_status": ["WAITING_SUBMIT"], "dealt_avg_price": [0.0], "code": ["HK.00700"]}
-        )
+        order_df = pd.DataFrame({"order_status": ["WAITING_SUBMIT"], "dealt_avg_price": [0.0], "code": ["HK.00700"]})
         with patch("asyncio.to_thread", new=AsyncMock(return_value=(0, order_df))):
             with patch("asyncio.create_task") as mock_create_task:
                 result = await handler.query_order("OID", TrdMarket.HK)
@@ -184,8 +175,15 @@ class TestTradeHandler:
     async def test_get_account_info_success(self):
         """成功获取应返回账户信息和持仓"""
         handler, conn_mgr = _make_handler()
-        trd_ctx = conn_mgr.get_trade_context.return_value
-        acc_df = pd.DataFrame({"total_assets": [1000000.0], "cash": [250000.0], "power": [250000.0], "market_val": [750000.0], "currency": ["HKD"]})
+        acc_df = pd.DataFrame(
+            {
+                "total_assets": [1000000.0],
+                "cash": [250000.0],
+                "power": [250000.0],
+                "market_val": [750000.0],
+                "currency": ["HKD"],
+            }
+        )
         pos_df = pd.DataFrame(
             {
                 "code": ["HK.00700"],
@@ -229,7 +227,6 @@ class TestTradeHandler:
     async def test_get_account_info_exception_returns_error(self):
         """API 抛异常应被吞下并返回错误"""
         handler, conn_mgr = _make_handler()
-        trd_ctx = conn_mgr.get_trade_context.return_value
 
         async def boom(*a, **kw):
             raise RuntimeError("network error")
@@ -243,7 +240,9 @@ class TestTradeHandler:
     async def test_get_account_info_market_mapping(self):
         """不同 market 参数应映射到正确的 TrdMarket"""
         handler, conn_mgr = _make_handler()
-        acc_df = pd.DataFrame({"total_assets": [100.0], "cash": [50.0], "power": [50.0], "market_val": [50.0], "currency": ["USD"]})
+        acc_df = pd.DataFrame(
+            {"total_assets": [100.0], "cash": [50.0], "power": [50.0], "market_val": [50.0], "currency": ["USD"]}
+        )
         empty_pos = pd.DataFrame()
 
         with patch("asyncio.to_thread", new=AsyncMock(side_effect=[(0, acc_df), (0, empty_pos)])):
@@ -256,7 +255,9 @@ class TestTradeHandler:
         """REAL 环境应调用 unlock_trade_if_needed"""
         handler, conn_mgr = _make_handler()
         with patch.dict("os.environ", {"FUTU_TRD_ENV": "REAL", "QUANT_ENV": "production"}):
-            acc_df = pd.DataFrame({"total_assets": [100.0], "cash": [50.0], "power": [50.0], "market_val": [50.0], "currency": ["HKD"]})
+            acc_df = pd.DataFrame(
+                {"total_assets": [100.0], "cash": [50.0], "power": [50.0], "market_val": [50.0], "currency": ["HKD"]}
+            )
             with patch("asyncio.to_thread", new=AsyncMock(side_effect=[(0, acc_df), (0, pd.DataFrame())])):
                 result = await handler.get_account_info("HK")
         assert result["status"] == "success"

@@ -9,13 +9,13 @@ import pandas as pd
 import pytest
 
 from backend.core.backtest import (
+    _SECURE_PREFIX,
     SAFE_BUILTINS,
     SANDBOX_DIR,
     SandboxSecurityVisitor,
     _safe_import,
     _safe_open,
     _safe_stat,
-    _SECURE_PREFIX,
     _verify_safe_code,
 )
 

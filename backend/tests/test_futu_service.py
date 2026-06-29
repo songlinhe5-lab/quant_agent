@@ -8,8 +8,7 @@ Futu 主服务模块单元测试
 - 异常路径
 """
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -239,6 +238,7 @@ class TestFutuServiceTradeMethods:
     async def test_place_order(self):
         """place_order() 调用 TradeHandler.place_order()"""
         from futu import TrdMarket, TrdSide
+
         from backend.services.futu.utils import format_ticker
 
         service = FutuService()
@@ -288,7 +288,6 @@ class TestFutuServiceUtils:
 
     def test_is_futu_unsupported(self):
         """is_futu_unsupported() 正确判断"""
-        from backend.services.futu.utils import is_futu_unsupported
 
         service = FutuService()
         # 测试包装方法正确调用底层函数
@@ -299,7 +298,6 @@ class TestFutuServiceUtils:
 
     def test_format_ticker(self):
         """format_ticker() 正确格式化"""
-        from backend.services.futu.utils import format_ticker
 
         service = FutuService()
         # 测试包装方法正确调用底层函数

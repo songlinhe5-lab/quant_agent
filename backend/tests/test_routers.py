@@ -148,16 +148,18 @@ class TestAuthPasswordHelpers:
         assert verify_password("wrongpassword", hashed) is False
 
     def test_create_access_token(self):
-        from backend.routers.auth import create_access_token
         from datetime import timedelta
+
+        from backend.routers.auth import create_access_token
 
         token = create_access_token(data={"sub": "testuser"}, expires_delta=timedelta(minutes=5))
         assert isinstance(token, str)
         assert len(token) > 0
 
     def test_create_refresh_token(self):
-        from backend.routers.auth import create_refresh_token
         from datetime import timedelta
+
+        from backend.routers.auth import create_refresh_token
 
         token = create_refresh_token(data={"sub": "testuser"}, expires_delta=timedelta(days=1))
         assert isinstance(token, str)

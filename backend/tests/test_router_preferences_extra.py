@@ -3,10 +3,11 @@
 覆盖缺口: POST /settings/preferences 路由级、GET/POST /settings/watchlist、
 watchlist batch add/remove 引用计数联动、异常路径。
 """
+
 import json
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -16,14 +17,14 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 from fastapi.testclient import TestClient
 
-from backend.main import app
 from backend.core import models
+from backend.main import app
 from backend.routers.auth import get_current_user
+
 
 # 创建模拟用户
 def _mock_user(username="testuser"):
-    return models.User(id=1, username=username, email=f"{username}@test.com",
-                       hashed_password="x")
+    return models.User(id=1, username=username, email=f"{username}@test.com", hashed_password="x")
 
 
 @pytest.fixture
@@ -43,8 +44,10 @@ class TestUpdatePreferencesRoute:
     def test_update_preferences_merges_and_syncs_yfinance_flag(self, client):
         """更新偏好时,若含 yfinanceFallbackEnabled,同步写入全局 L1 缓存"""
         existing = {"theme": "dark", "defaultLeverage": 1.0}
-        with patch("backend.routers.preferences.redis_client") as m_redis, \
-             patch("backend.routers.preferences.l1_cached_redis") as m_l1:
+        with (
+            patch("backend.routers.preferences.redis_client") as m_redis,
+            patch("backend.routers.preferences.l1_cached_redis") as m_l1,
+        ):
             m_redis.get = AsyncMock(return_value=json.dumps(existing))
             m_redis.set = AsyncMock(return_value=True)
             m_l1.set = AsyncMock(return_value=True)
@@ -65,8 +68,10 @@ class TestUpdatePreferencesRoute:
 
     def test_update_preferences_without_yfinance_flag_skips_sync(self, client):
         """更新偏好不含 yfinanceFallbackEnabled 时,不触发全局同步"""
-        with patch("backend.routers.preferences.redis_client") as m_redis, \
-             patch("backend.routers.preferences.l1_cached_redis") as m_l1:
+        with (
+            patch("backend.routers.preferences.redis_client") as m_redis,
+            patch("backend.routers.preferences.l1_cached_redis") as m_l1,
+        ):
             m_redis.get = AsyncMock(return_value=None)
             m_redis.set = AsyncMock(return_value=True)
             m_l1.set = AsyncMock(return_value=True)
@@ -79,8 +84,10 @@ class TestUpdatePreferencesRoute:
         m_l1.set.assert_not_awaited()
 
     def test_update_preferences_redis_error_returns_500(self, client):
-        with patch("backend.routers.preferences.redis_client") as m_redis, \
-             patch("backend.routers.preferences.l1_cached_redis"):
+        with (
+            patch("backend.routers.preferences.redis_client") as m_redis,
+            patch("backend.routers.preferences.l1_cached_redis"),
+        ):
             m_redis.get = AsyncMock(side_effect=RuntimeError("redis down"))
             resp = client.post(
                 "/api/v1/settings/preferences",
@@ -104,9 +111,7 @@ class TestWatchlistRoutes:
     def test_get_watchlist_decodes_bytes_members(self, client):
         """Redis 返回 bytes 列表时正确解码为 str"""
         with patch("backend.routers.preferences.redis_client") as m_redis:
-            m_redis.smembers = AsyncMock(
-                return_value=[b"US.AAPL", b"HK.00700"]
-            )
+            m_redis.smembers = AsyncMock(return_value=[b"US.AAPL", b"HK.00700"])
             resp = client.get("/api/v1/settings/watchlist")
         assert resp.status_code == 200
         # 响应被包装成统一格式，端点返回 {"status": "...", "data": [...]}
@@ -237,8 +242,9 @@ class TestNewsTagsEdgeCases:
         assert resp.status_code == 500
 
     def test_post_news_tags_success_persists_to_redis(self, client):
-        with patch("backend.routers.preferences.redis_client") as m_redis, \
-             patch("backend.routers.preferences.l1_cached_redis") as m_l1:
+        with (
+            patch("backend.routers.preferences.l1_cached_redis") as m_l1,
+        ):
             m_l1.set = AsyncMock(return_value=True)
             resp = client.post(
                 "/api/v1/settings/news-tags",
@@ -249,8 +255,10 @@ class TestNewsTagsEdgeCases:
         m_l1.set.assert_awaited_once()
 
     def test_post_news_tags_server_error_returns_500(self, client):
-        with patch("backend.routers.preferences.redis_client"), \
-             patch("backend.routers.preferences.l1_cached_redis") as m_l1:
+        with (
+            patch("backend.routers.preferences.redis_client"),
+            patch("backend.routers.preferences.l1_cached_redis") as m_l1,
+        ):
             m_l1.set = AsyncMock(side_effect=RuntimeError("redis down"))
             resp = client.post(
                 "/api/v1/settings/news-tags",

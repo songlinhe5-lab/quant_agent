@@ -91,11 +91,11 @@ class TestBot:
         assert params[0]["default"] == 14
 
     def test_parse_strategy_with_type_hints(self):
-        code = '''
+        code = """
 class MyStrategy:
     def __init__(self, threshold: float = 0.5, enabled: bool = True):
         pass
-'''
+"""
         from backend.services.strategy_parser import parse_strategy_parameters
 
         result = parse_strategy_parameters(code)
@@ -104,11 +104,11 @@ class MyStrategy:
         assert params["enabled"]["type"] == "bool"
 
     def test_parse_strategy_required_param(self):
-        code = '''
+        code = """
 class MyStrategy:
     def __init__(self, required_param, optional=10):
         pass
-'''
+"""
         from backend.services.strategy_parser import parse_strategy_parameters
 
         result = parse_strategy_parameters(code)
@@ -117,7 +117,7 @@ class MyStrategy:
         assert params["optional"]["required"] is False
 
     def test_parse_helper_class_filtered(self):
-        code = '''
+        code = """
 class HelperClass:
     def __init__(self, x=1):
         pass
@@ -125,7 +125,7 @@ class HelperClass:
 class MyStrategy:
     def __init__(self, fast=10):
         pass
-'''
+"""
         from backend.services.strategy_parser import parse_strategy_parameters
 
         result = parse_strategy_parameters(code)
@@ -198,7 +198,10 @@ class TestNotificationService:
 
             with patch.dict(
                 os.environ,
-                {"DINGTALK_WEBHOOK_URL": "https://oapi.dingtalk.com/robot?access_token=test", "DINGTALK_SECRET": "test-secret"},
+                {
+                    "DINGTALK_WEBHOOK_URL": "https://oapi.dingtalk.com/robot?access_token=test",
+                    "DINGTALK_SECRET": "test-secret",
+                },
                 clear=False,
             ):
                 await service._send_to_dingtalk("test message")

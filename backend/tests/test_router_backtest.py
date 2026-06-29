@@ -7,8 +7,6 @@ import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pandas as pd
-
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
@@ -37,9 +35,7 @@ class TestBacktestRunRoutes:
     @patch("backend.routers.backtest.futu_service")
     def test_run_backtest_data_load_fail(self, mock_futu, mock_yf):
         """异常路径：所有数据源均失败返回 400"""
-        mock_futu.get_history = AsyncMock(
-            return_value={"status": "error", "message": "连接失败"}
-        )
+        mock_futu.get_history = AsyncMock(return_value={"status": "error", "message": "连接失败"})
         mock_yf.fetch_yf_data = AsyncMock(return_value=(False, None, "YFinance 限流"))
         client = TestClient(app)
         resp = client.post(

@@ -278,7 +278,7 @@ class TestEncryptionAdvanced:
 # ─── core/config.py ─────────────────────────────────────────────────
 class TestConfig:
     def test_settings_loaded(self):
-        from backend.core.config import Settings, settings
+        from backend.core.config import settings
 
         assert settings is not None
         assert hasattr(settings, "database_url")

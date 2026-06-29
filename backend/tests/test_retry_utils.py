@@ -7,7 +7,6 @@
 """
 
 import httpx
-import pytest
 
 from backend.core.retry_utils import is_retryable_http_error, log_retry_attempt
 

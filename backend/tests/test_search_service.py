@@ -3,6 +3,7 @@
 覆盖: Tavily 成功/失败降级、Bocha 成功/失败降级、DuckDuckGo 兜底、
 全部失败返回空、include/exclude_domains 传参、无 API key 路径。
 """
+
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -37,9 +38,7 @@ class TestSearchServiceTavily:
     @pytest.mark.asyncio
     async def test_tavily_success_returns_formatted_results(self):
         with patch.dict(os.environ, {"TAVILY_API_KEY": "tav-key", "BOCHA_API_KEY": ""}):
-            resp = _mock_httpx_response(
-                items=[{"title": "T1", "url": "http://u1", "content": "C1"}]
-            )
+            resp = _mock_httpx_response(items=[{"title": "T1", "url": "http://u1", "content": "C1"}])
             with patch(
                 "backend.services.search_service.httpx.AsyncClient",
                 return_value=_mock_async_client(resp),
@@ -58,12 +57,15 @@ class TestSearchServiceTavily:
             client.__aenter__.return_value = client
             client.__aexit__.return_value = None
             client.post.side_effect = Exception("tavily down")
-            with patch(
-                "backend.services.search_service.httpx.AsyncClient",
-                return_value=client,
-            ), patch(
-                "backend.services.search_service.asyncio.to_thread",
-                return_value=[{"title": "DDG", "href": "u", "body": "b"}],
+            with (
+                patch(
+                    "backend.services.search_service.httpx.AsyncClient",
+                    return_value=client,
+                ),
+                patch(
+                    "backend.services.search_service.asyncio.to_thread",
+                    return_value=[{"title": "DDG", "href": "u", "body": "b"}],
+                ),
             ):
                 svc = SearchService()
                 result = await svc.web_search("q")
@@ -79,9 +81,7 @@ class TestSearchServiceTavily:
                 return_value=client,
             ):
                 svc = SearchService()
-                await svc.web_search(
-                    "q", include_domains=["a.com"], exclude_domains=["b.com"]
-                )
+                await svc.web_search("q", include_domains=["a.com"], exclude_domains=["b.com"])
             sent_payload = client.post.call_args.kwargs["json"]
             assert sent_payload["include_domains"] == ["a.com"]
             assert sent_payload["exclude_domains"] == ["b.com"]
@@ -112,12 +112,15 @@ class TestSearchServiceBocha:
             client.__aenter__.return_value = client
             client.__aexit__.return_value = None
             client.post.side_effect = Exception("bocha down")
-            with patch(
-                "backend.services.search_service.httpx.AsyncClient",
-                return_value=client,
-            ), patch(
-                "backend.services.search_service.asyncio.to_thread",
-                return_value=[{"title": "DDG", "href": "u", "body": "b"}],
+            with (
+                patch(
+                    "backend.services.search_service.httpx.AsyncClient",
+                    return_value=client,
+                ),
+                patch(
+                    "backend.services.search_service.asyncio.to_thread",
+                    return_value=[{"title": "DDG", "href": "u", "body": "b"}],
+                ),
             ):
                 svc = SearchService()
                 result = await svc.web_search("q")

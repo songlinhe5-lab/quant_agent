@@ -3,7 +3,6 @@
 覆盖: redis_client (RedisAsyncBatchWriter, LocalL1Cache), middleware, logger
 """
 
-import asyncio
 import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch

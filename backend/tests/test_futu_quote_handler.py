@@ -3,7 +3,6 @@ Futu QuoteHandler 单元测试
 覆盖: get_quote/get_history/unsubscribe_quote/get_order_book
 """
 
-import asyncio
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -167,7 +166,14 @@ class TestQuoteHandler:
         handler, conn_mgr, _ = _make_handler()
         conn_mgr.quote_ctx.subscribe.return_value = (RET_OK, "")
         df = pd.DataFrame(
-            {"time_key": ["2026-01-01"], "open": [100.0], "high": [105.0], "low": [95.0], "close": [102.0], "volume": [1000]}
+            {
+                "time_key": ["2026-01-01"],
+                "open": [100.0],
+                "high": [105.0],
+                "low": [95.0],
+                "close": [102.0],
+                "volume": [1000],
+            }
         )
         # 顺序：subscribe(2元) → get_cur_kline(2元) → request_history_kline(3元)
         call_results = [

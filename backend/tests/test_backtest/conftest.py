@@ -2,8 +2,6 @@
 回测引擎测试共享 fixtures
 """
 
-import os
-
 import pytest
 
 # 💡 注意：环境变量已在 backend/tests/conftest.py 中设置，此处无需重复

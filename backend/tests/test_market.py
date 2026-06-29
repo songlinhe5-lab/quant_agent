@@ -16,9 +16,6 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret-key-for-testing")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 
-import pytest
-
-
 class TestMarketRoutes:
     """行情路由测试"""
 

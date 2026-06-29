@@ -5,7 +5,7 @@
 
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import numpy as np
 import pandas as pd
@@ -76,9 +76,7 @@ class TestMacroRadarEngine:
 
     async def test_fetch_historical_data_success(self, engine):
         """yfinance 返回正常 DataFrame 时应提取 Close 列"""
-        mock_data = pd.DataFrame(
-            {"Close": [100.0, 101.0, 102.0], "Open": [99.0, 100.0, 101.0]}
-        )
+        mock_data = pd.DataFrame({"Close": [100.0, 101.0, 102.0], "Open": [99.0, 100.0, 101.0]})
         with patch("backend.services.macro_radar.yf.download", return_value=mock_data):
             result = await engine.fetch_historical_data("AAPL", period="5d")
         assert isinstance(result, pd.Series)
@@ -88,9 +86,7 @@ class TestMacroRadarEngine:
     async def test_fetch_historical_data_multiindex(self, engine):
         """yfinance 返回 MultiIndex 列时应正确解包"""
         arrays = [("Close", "AAPL"), ("Open", "AAPL")]
-        mock_data = pd.DataFrame(
-            {arrays[0]: [100.0, 101.0], arrays[1]: [99.0, 100.0]}
-        )
+        mock_data = pd.DataFrame({arrays[0]: [100.0, 101.0], arrays[1]: [99.0, 100.0]})
         with patch("backend.services.macro_radar.yf.download", return_value=mock_data):
             result = await engine.fetch_historical_data("AAPL")
         assert len(result) == 2
@@ -113,7 +109,10 @@ class TestMacroRadarEngine:
                 {"date": "2024-01-01", "value": "1.5"},
             ],
         }
-        with patch("backend.services.macro_radar.fred_service.get_series_observations", new=AsyncMock(return_value=fred_response)):
+        with patch(
+            "backend.services.macro_radar.fred_service.get_series_observations",
+            new=AsyncMock(return_value=fred_response),
+        ):
             result = await engine.fetch_fred_data("DGS10", limit=10)
         assert len(result) == 2
         # 翻转为正序，最早的应在前面
@@ -122,11 +121,17 @@ class TestMacroRadarEngine:
 
     async def test_fetch_fred_data_failure_returns_empty(self, engine):
         """FRED 服务失败或异常时应返回空 Series"""
-        with patch("backend.services.macro_radar.fred_service.get_series_observations", new=AsyncMock(return_value={"status": "error"})):
+        with patch(
+            "backend.services.macro_radar.fred_service.get_series_observations",
+            new=AsyncMock(return_value={"status": "error"}),
+        ):
             result = await engine.fetch_fred_data("DGS10")
         assert result.empty
 
-        with patch("backend.services.macro_radar.fred_service.get_series_observations", new=AsyncMock(side_effect=RuntimeError("boom"))):
+        with patch(
+            "backend.services.macro_radar.fred_service.get_series_observations",
+            new=AsyncMock(side_effect=RuntimeError("boom")),
+        ):
             result = await engine.fetch_fred_data("DGS10")
         assert result.empty
 
@@ -140,13 +145,17 @@ class TestMacroRadarEngine:
                 {"date": "2024-01-01", "value": "2.0"},
             ],
         }
-        with patch("backend.services.macro_radar.fred_service.get_series_observations", new=AsyncMock(return_value=fred_response)):
+        with patch(
+            "backend.services.macro_radar.fred_service.get_series_observations",
+            new=AsyncMock(return_value=fred_response),
+        ):
             result = await engine.fetch_fred_data("DGS10")
         assert len(result) == 1
         assert float(result.iloc[0]) == 2.0
 
     async def test_generate_radar_data_returns_six_axes(self, engine):
         """生成雷达数据应返回 6 个象限的标准结构"""
+
         async def fake_fetch_yf(ticker, period="60d"):
             return pd.Series(np.linspace(100, 110, 30))
 
@@ -170,6 +179,7 @@ class TestMacroRadarEngine:
 
     async def test_generate_radar_data_handles_exceptions(self, engine):
         """所有数据源异常时应使用兜底 0.0 变化量生成中性分数"""
+
         async def failing(*args, **kwargs):
             raise RuntimeError("network down")
 

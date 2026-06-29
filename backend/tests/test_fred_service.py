@@ -202,12 +202,15 @@ class TestFREDService:
         mock_resp.raise_for_status = MagicMock()
         service.session.get = AsyncMock(return_value=mock_resp)
 
-        with patch("backend.services.fred_service.redis_client") as mock_redis, \
-             patch("backend.services.fred_service.datetime") as mock_dt:
+        with (
+            patch("backend.services.fred_service.redis_client") as mock_redis,
+            patch("backend.services.fred_service.datetime") as mock_dt,
+        ):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
 
             from datetime import datetime, timezone
+
             fixed_now = datetime(2026, 6, 29, 12, 0, tzinfo=timezone.utc)
             mock_dt.now.return_value = fixed_now
             mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)

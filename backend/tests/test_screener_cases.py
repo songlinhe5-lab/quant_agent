@@ -1048,25 +1048,28 @@ async def test_futu_service_indicator_pattern_fix():
     filters = [{"field": "MACD_GOLDEN_CROSS", "type": "indicator_pattern", "period": "K_DAY"}]
 
     # 💡 正确 mock 所有内部导入的模块级变量（💡 必须用 MagicMock() 实例而非 MagicMock 类）
-    with patch.multiple(
-        "backend.services.futu.screener_handler",
-        StockScreenRequest=MagicMock(),
-        SimpleField=MagicMock(),
-        BasicProperty=MagicMock(),
-        SimpleProperty=MagicMock(),
-        FinancialProperty=MagicMock(),
-        CumulativeProperty=MagicMock(),
-        FeaturedProperty=MagicMock(),
-        Indicator=MagicMock(),
-        KlineShapeProperty=MagicMock(),
-        OptionProperty=MagicMock(),
-        Pattern=MagicMock(),
-        Position=MagicMock(),
-        BrokerProperty=MagicMock(),
-        ScrMarket=MagicMock(),
-        ScrSortDir=MagicMock(),
-        Term=MagicMock(),
-    ), patch("asyncio.sleep", new=AsyncMock()):
+    with (
+        patch.multiple(
+            "backend.services.futu.screener_handler",
+            StockScreenRequest=MagicMock(),
+            SimpleField=MagicMock(),
+            BasicProperty=MagicMock(),
+            SimpleProperty=MagicMock(),
+            FinancialProperty=MagicMock(),
+            CumulativeProperty=MagicMock(),
+            FeaturedProperty=MagicMock(),
+            Indicator=MagicMock(),
+            KlineShapeProperty=MagicMock(),
+            OptionProperty=MagicMock(),
+            Pattern=MagicMock(),
+            Position=MagicMock(),
+            BrokerProperty=MagicMock(),
+            ScrMarket=MagicMock(),
+            ScrSortDir=MagicMock(),
+            Term=MagicMock(),
+        ),
+        patch("asyncio.sleep", new=AsyncMock()),
+    ):
         # 配置 MagicMock 的返回值，使得 get_enum 能正常工作
         handler_module.Pattern.MACD_GOLD_CROSS = Pattern.MACD_GOLD_CROSS
         handler_module.Pattern.MACD_GOLDEN_CROSS = Pattern.MACD_GOLD_CROSS  # 容错映射

@@ -62,8 +62,10 @@ class TestTickerService:
         async def fake_to_thread(func, *args, **kwargs):
             return cached_data
 
-        with patch("backend.services.ticker_service.redis_client") as mock_redis, \
-             patch("backend.services.ticker_service.asyncio.to_thread", new=fake_to_thread):
+        with (
+            patch("backend.services.ticker_service.redis_client") as mock_redis,
+            patch("backend.services.ticker_service.asyncio.to_thread", new=fake_to_thread),
+        ):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
 
@@ -75,8 +77,10 @@ class TestTickerService:
     @pytest.mark.asyncio
     async def test_search_tickers_db_exception_returns_error(self, service):
         """数据库异常应返回 error 状态"""
-        with patch("backend.services.ticker_service.redis_client") as mock_redis, \
-             patch("backend.services.ticker_service.asyncio.to_thread", side_effect=RuntimeError("db fail")):
+        with (
+            patch("backend.services.ticker_service.redis_client") as mock_redis,
+            patch("backend.services.ticker_service.asyncio.to_thread", side_effect=RuntimeError("db fail")),
+        ):
             mock_redis.get = AsyncMock(return_value=None)
             result = await service.search_tickers("AAPL")
             assert result["status"] == "error"
@@ -98,9 +102,11 @@ class TestTickerService:
             service.sync_running = False  # 退出循环
             raise asyncio.CancelledError
 
-        with patch("backend.services.ticker_service.asyncio.to_thread", new=AsyncMock()) as mock_thread, \
-             patch("backend.services.ticker_service.asyncio.sleep", new=fake_sleep), \
-             patch("backend.services.futu.futu_service.status", "DISCONNECTED"):
+        with (
+            patch("backend.services.ticker_service.asyncio.to_thread", new=AsyncMock()) as mock_thread,
+            patch("backend.services.ticker_service.asyncio.sleep", new=fake_sleep),
+            patch("backend.services.futu.futu_service.status", "DISCONNECTED"),
+        ):
             mock_thread.return_value = []
             try:
                 await service.sync_tickers_daemon()
@@ -137,9 +143,11 @@ class TestTickerService:
             # 真实执行 _bulk_upsert 以验证 commit 行为
             return func()
 
-        with patch("backend.services.ticker_service.futu_service") as mock_futu, \
-             patch("backend.services.ticker_service.SessionLocal") as mock_session_cls, \
-             patch("backend.services.ticker_service.asyncio.to_thread", new=fake_to_thread):
+        with (
+            patch("backend.services.ticker_service.futu_service") as mock_futu,
+            patch("backend.services.ticker_service.SessionLocal") as mock_session_cls,
+            patch("backend.services.ticker_service.asyncio.to_thread", new=fake_to_thread),
+        ):
             mock_futu.get_stock_basicinfo = fake_get
             mock_db = MagicMock()
             mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
@@ -154,6 +162,7 @@ class TestTickerService:
     @pytest.mark.asyncio
     async def test_fetch_and_save_from_futu_skips_when_no_data(self, service):
         """Futu 返回非 success 时不应写入任何数据"""
+
         async def fake_get(market, sec_type):
             return {"status": "error", "data": []}
 

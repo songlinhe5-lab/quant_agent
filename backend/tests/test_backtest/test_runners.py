@@ -2,9 +2,10 @@
 回测运行器测试：run_grid_search_backtest, run_monte_carlo_stress_test, run_batch_sandbox_backtest
 """
 
+from unittest.mock import MagicMock, patch
+
 import pandas as pd
 import pytest
-from unittest.mock import MagicMock, patch
 
 from backend.core.backtest import (
     run_batch_sandbox_backtest,
@@ -19,38 +20,43 @@ from .conftest import _make_ohlc_data
 def _mock_vectorbt_portfolio():
     """创建 Mock 的 VectorBT Portfolio"""
     mock_pf = MagicMock()
-    
+
     # Mock stats() 返回值
-    mock_stats = pd.Series({
-        "Total Return [%]": 15.5,
-        "Ann. Return [%]": 12.0,
-        "Sharpe Ratio": 1.5,
-        "Max Drawdown [%]": -8.0,
-        "Win Rate [%]": 58.0,
-        "Total Trades": 25,
-        "Profit Factor": 1.8,
-        "Total Fees Paid": 150.0,
-    })
+    mock_stats = pd.Series(
+        {
+            "Total Return [%]": 15.5,
+            "Ann. Return [%]": 12.0,
+            "Sharpe Ratio": 1.5,
+            "Max Drawdown [%]": -8.0,
+            "Win Rate [%]": 58.0,
+            "Total Trades": 25,
+            "Profit Factor": 1.8,
+            "Total Fees Paid": 150.0,
+        }
+    )
     mock_pf.stats.return_value = mock_stats
-    
+
     # Mock value() 返回权益曲线
     dates = pd.date_range("2024-01-01", periods=100, freq="D")
     mock_equity = pd.Series([100000 + i * 100 for i in range(100)], index=dates)
     mock_pf.value.return_value = mock_equity
-    
+
     # Mock trades.records_readable
-    mock_trades_df = pd.DataFrame({
-        "Entry Timestamp": [dates[10], dates[30]],
-        "Exit Timestamp": [dates[20], dates[50]],
-        "Direction": ["Long", "Long"],
-        "Size": [100, -100],
-        "Avg Entry Price": [102.0, 105.0],
-        "Avg Exit Price": [108.0, 103.0],
-        "PnL": [600.0, -200.0],
-    })
+    mock_trades_df = pd.DataFrame(
+        {
+            "Entry Timestamp": [dates[10], dates[30]],
+            "Exit Timestamp": [dates[20], dates[50]],
+            "Direction": ["Long", "Long"],
+            "Size": [100, -100],
+            "Avg Entry Price": [102.0, 105.0],
+            "Avg Exit Price": [108.0, 103.0],
+            "PnL": [600.0, -200.0],
+        }
+    )
     mock_pf.trades.records_readable = mock_trades_df
-    
+
     return mock_pf
+
 
 # ─── 沙箱兼容的矢量化策略模板 ────────────────────────────────────────
 VALID_STRATEGY_CODE = """
@@ -120,7 +126,7 @@ class TestGridSearchBacktest:
     def test_basic_grid_search(self, mock_vbt):
         mock_pf = _mock_vectorbt_portfolio()
         mock_vbt.Portfolio.from_signals.return_value = mock_pf
-        
+
         df = _make_ohlc_data(100)
         results = run_grid_search_backtest(
             source_code=VALID_STRATEGY_CODE,
@@ -140,7 +146,7 @@ class TestGridSearchBacktest:
     def test_grid_search_sorted_by_target(self, mock_vbt):
         mock_pf = _mock_vectorbt_portfolio()
         mock_vbt.Portfolio.from_signals.return_value = mock_pf
-        
+
         df = _make_ohlc_data(100)
         results = run_grid_search_backtest(
             source_code=VALID_STRATEGY_CODE,
@@ -199,7 +205,7 @@ class TestMonteCarloStressTest:
     def test_basic_monte_carlo(self, mock_vbt):
         mock_pf = _mock_vectorbt_portfolio()
         mock_vbt.Portfolio.from_signals.return_value = mock_pf
-        
+
         df = _make_ohlc_data(100)
         result = run_monte_carlo_stress_test(
             source_code=VALID_STRATEGY_CODE,
@@ -220,7 +226,7 @@ class TestMonteCarloStressTest:
     def test_monte_carlo_with_stock_features(self, mock_vbt):
         mock_pf = _mock_vectorbt_portfolio()
         mock_vbt.Portfolio.from_signals.return_value = mock_pf
-        
+
         df = _make_ohlc_data(100)
         result = run_monte_carlo_stress_test(
             source_code=VALID_STRATEGY_CODE,
@@ -247,7 +253,7 @@ class TestMonteCarloStressTest:
     def test_monte_carlo_noise_distributions(self, mock_vbt):
         mock_pf = _mock_vectorbt_portfolio()
         mock_vbt.Portfolio.from_signals.return_value = mock_pf
-        
+
         df = _make_ohlc_data(100)
         for dist in ["normal", "laplace", "t"]:
             result = run_monte_carlo_stress_test(
@@ -276,7 +282,7 @@ class TestBatchSandboxBacktest:
     def test_batch_basic(self, mock_vbt):
         mock_pf = _mock_vectorbt_portfolio()
         mock_vbt.Portfolio.from_signals.return_value = mock_pf
-        
+
         dfs = {
             "AAPL": _make_ohlc_data(100),
             "GOOG": _make_ohlc_data(100),
@@ -306,7 +312,7 @@ class TestBatchSandboxBacktest:
     def test_batch_skips_short_data(self, mock_vbt):
         mock_pf = _mock_vectorbt_portfolio()
         mock_vbt.Portfolio.from_signals.return_value = mock_pf
-        
+
         dfs = {
             "LONG": _make_ohlc_data(100),
             "SHORT": _make_ohlc_data(5),

@@ -2,9 +2,8 @@ import asyncio
 import json
 import os
 import unittest
-import warnings
-
 import unittest.mock as _mock
+import warnings
 
 from backend.routers.screener import SUGGESTIONS
 from backend.services.screener_service import screener_service
@@ -16,9 +15,7 @@ class TestScreenerSuggestions(unittest.IsolatedAsyncioTestCase):
         # 忽略 asyncio 和 Pydantic 的一些无害警告
         warnings.filterwarnings("ignore", category=DeprecationWarning)
         # 💡 加速：mock reload_rag_corpus，避免真实加载 RAG 语料库（耗时）
-        cls._rag_patcher = _mock.patch.object(
-            screener_service, "reload_rag_corpus"
-        )
+        cls._rag_patcher = _mock.patch.object(screener_service, "reload_rag_corpus")
         cls._rag_patcher.start()
         screener_service.reload_rag_corpus()
 
@@ -45,22 +42,22 @@ class TestScreenerSuggestions(unittest.IsolatedAsyncioTestCase):
         semaphore = asyncio.Semaphore(5)
 
         # 一个合法的最小 DSL，能通过 ScreenerDecision 校验并被 parse_dsl_to_futu_filters 正常解析
-        _VALID_DSL = json.dumps({
-            "dsl_display": "market:US",
-            "markets": ["US"],
-            "exclude_st": False,
-            "technical_patterns": [],
-            "filters": [],
-            "rag_rules": [],
-        })
+        _VALID_DSL = json.dumps(
+            {
+                "dsl_display": "market:US",
+                "markets": ["US"],
+                "exclude_st": False,
+                "technical_patterns": [],
+                "filters": [],
+                "rag_rules": [],
+            }
+        )
 
         async def _verify_query(query: str, index: int):
             async with semaphore:
                 try:
                     dsl_json = await screener_service.translate_nlp_to_dsl(query)
-                    markets, futu_filters, post_filters = (
-                        screener_service.parse_dsl_to_futu_filters(dsl_json)
-                    )
+                    markets, futu_filters, post_filters = screener_service.parse_dsl_to_futu_filters(dsl_json)
 
                     self.assertIsInstance(markets, list, f"Markets 必须是列表: {dsl_json}")
                     self.assertTrue(len(markets) > 0, f"Markets 不能为空: {dsl_json}")
@@ -86,9 +83,7 @@ class TestScreenerSuggestions(unittest.IsolatedAsyncioTestCase):
             results = await asyncio.gather(*tasks)
 
         # 写测试报告（与原有行为保持一致）
-        log_path = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "screener_test_report.log")
-        )
+        log_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "screener_test_report.log"))
         with open(log_path, "w", encoding="utf-8") as f:
             f.write(f"🚀 Screener Unit Test Report (mocked LLM)\nTotal Queries: {total}\n{'=' * 60}\n\n")
             for success, log_msg, err_msg in results:

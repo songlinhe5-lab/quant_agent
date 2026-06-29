@@ -240,9 +240,7 @@ class TestApplyAdjustment:
         result = apply_adjustment(df, AdjustType.HFQ)
         latest_factor = 2.0
         # adj_close[2] = close[2] * (1.5 / 2.0)
-        assert result["adj_close"].iloc[2] == pytest.approx(
-            df["close"].iloc[2] * (1.5 / latest_factor)
-        )
+        assert result["adj_close"].iloc[2] == pytest.approx(df["close"].iloc[2] * (1.5 / latest_factor))
 
     def test_hfq_without_factor_falls_back_to_none(self):
         from backend.core.market_correctness import AdjustType, apply_adjustment
@@ -332,8 +330,9 @@ class TestNormalizeToUtc:
         assert result.hour == 12
 
     def test_aware_datetime_converted_to_utc(self):
-        from backend.core.market_correctness import normalize_to_utc
         from datetime import timedelta
+
+        from backend.core.market_correctness import normalize_to_utc
 
         cst = timezone(timedelta(hours=8))
         dt = datetime(2024, 1, 1, 20, 0, tzinfo=cst)  # 20:00 CST = 12:00 UTC

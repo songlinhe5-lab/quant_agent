@@ -1,7 +1,7 @@
 """main.py 全局异常处理器单元测试
 覆盖: quant_exception_handler, validation_exception_handler, global_exception_handler
 """
-import json
+
 import os
 import sys
 from unittest.mock import MagicMock
@@ -22,9 +22,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 def client():
     """创建测试客户端，并覆盖认证依赖"""
     # 使用 dependency_overrides 覆盖认证
-    app.dependency_overrides[get_current_user] = lambda: MagicMock(
-        id=1, username="testuser", email="test@test.com"
-    )
+    app.dependency_overrides[get_current_user] = lambda: MagicMock(id=1, username="testuser", email="test@test.com")
     # raise_server_exceptions=False 让 TestClient 不重新抛出异常，而是返回响应
     client = TestClient(app, raise_server_exceptions=False)
     yield client

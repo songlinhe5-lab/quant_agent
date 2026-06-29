@@ -76,9 +76,7 @@ class TestMarketFundFlowRoutes:
     @patch("backend.routers.market.futu_service")
     def test_get_fund_flow_failure(self, mock_futu):
         """异常路径：Futu 接口失败返回 400"""
-        mock_futu.get_fund_flow = AsyncMock(
-            return_value={"status": "error", "message": "标的暂不支持"}
-        )
+        mock_futu.get_fund_flow = AsyncMock(return_value={"status": "error", "message": "标的暂不支持"})
         client = TestClient(app)
         resp = client.get("/api/v1/market/fund-flow?ticker=US.AAPL")
         assert resp.status_code == 400
@@ -117,9 +115,7 @@ class TestMarketHoldersRoutes:
     @patch("backend.routers.market.akshare_service")
     def test_get_holders_hk_ticker_success(self, mock_akshare):
         """正常路径：获取港股机构持仓"""
-        mock_akshare.get_hsgt_top_holders = AsyncMock(
-            return_value={"status": "success", "data": [{"holder": "中投"}]}
-        )
+        mock_akshare.get_hsgt_top_holders = AsyncMock(return_value={"status": "success", "data": [{"holder": "中投"}]})
         client = TestClient(app)
         resp = client.get("/api/v1/market/holders/HK.00700")
         assert resp.status_code == 200
@@ -134,9 +130,7 @@ class TestMarketInsiderMarqueeRoutes:
         """正常路径：从 Redis ZSET 获取跑马灯数据"""
         import json
 
-        mock_redis.zrevrange = AsyncMock(
-            return_value=[json.dumps({"ticker": "AAPL", "owner": "CEO"})]
-        )
+        mock_redis.zrevrange = AsyncMock(return_value=[json.dumps({"ticker": "AAPL", "owner": "CEO"})])
         client = TestClient(app)
         resp = client.get("/api/v1/market/insider-marquee?limit=5")
         assert resp.status_code == 200

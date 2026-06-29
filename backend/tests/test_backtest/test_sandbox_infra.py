@@ -8,7 +8,6 @@ import pytest
 
 from backend.core.backtest import (
     BaseStrategySandbox,
-    SandboxMemoryException,
     SandboxTimeoutException,
     SandboxTimeoutTracer,
 )

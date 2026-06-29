@@ -3,6 +3,7 @@
 覆盖: 枚举完整性、alias 接受、必填校验、Optional 字段、嵌套模型、
 populate_by_name 双向兼容、from_attributes ORM 模式。
 """
+
 import pytest
 from pydantic import ValidationError
 
@@ -32,8 +33,8 @@ from backend.schemas.domain import (
     StrategyModel,
     StrategyStatus,
     SymbolModel,
-    TickModel,
     TechIndicatorsModel,
+    TickModel,
     WSKlineMessageModel,
     WSQuoteMessageModel,
     WSSubscribeMessageModel,
@@ -123,9 +124,13 @@ class TestQuoteModel:
         q = QuoteModel(
             symbol="US.AAPL",
             last_price=185.5,  # snake
-            open=184.0, high=186.0, low=183.5,
+            open=184.0,
+            high=186.0,
+            low=183.5,
             prev_close=184.0,  # snake
-            volume=1000, turnover=1e6, change=1.0,
+            volume=1000,
+            turnover=1e6,
+            change=1.0,
             change_percent=0.5,  # snake
             timestamp=1719500000000,
         )
@@ -133,8 +138,17 @@ class TestQuoteModel:
 
     def test_quote_model_optional_bid_ask_default_none(self):
         q = QuoteModel(
-            symbol="X", last_price=1, open=1, high=1, low=1, prev_close=1,
-            volume=1, turnover=1, change=0, change_percent=0, timestamp=0,
+            symbol="X",
+            last_price=1,
+            open=1,
+            high=1,
+            low=1,
+            prev_close=1,
+            volume=1,
+            turnover=1,
+            change=0,
+            change_percent=0,
+            timestamp=0,
         )
         assert q.bid_price is None and q.ask_volume is None
 
@@ -165,28 +179,53 @@ class TestPositionAndOrderModels:
 
     def test_position_model_accepts_all_aliases(self):
         p = PositionModel(
-            id="pos-1", symbol="US.AAPL", side=PositionSide.LONG, quantity=100,
-            avgCost=150.0, currentPrice=160.0, marketValue=16000.0,
-            unrealizedPnl=1000.0, realizedPnl=0.0, unrealizedPnlPercent=6.67,
-            status=PositionStatus.OPEN, openedAt=0, updatedAt=0,
+            id="pos-1",
+            symbol="US.AAPL",
+            side=PositionSide.LONG,
+            quantity=100,
+            avgCost=150.0,
+            currentPrice=160.0,
+            marketValue=16000.0,
+            unrealizedPnl=1000.0,
+            realizedPnl=0.0,
+            unrealizedPnlPercent=6.67,
+            status=PositionStatus.OPEN,
+            openedAt=0,
+            updatedAt=0,
         )
         assert p.avg_cost == 150.0
         assert p.unrealized_pnl_percent == 6.67
 
     def test_order_model_optional_price_defaults_none(self):
         o = OrderModel(
-            id="ord-1", symbol="X", side=OrderSide.BUY, type=OrderType.MARKET,
-            quantity=100, filledQuantity=100, status=OrderStatus.FILLED,
-            createdAt=0, updatedAt=0, isPaper=True,
+            id="ord-1",
+            symbol="X",
+            side=OrderSide.BUY,
+            type=OrderType.MARKET,
+            quantity=100,
+            filledQuantity=100,
+            status=OrderStatus.FILLED,
+            createdAt=0,
+            updatedAt=0,
+            isPaper=True,
         )
         assert o.price is None and o.stop_price is None
         assert o.is_paper is True
 
     def test_order_model_strategy_id_optional(self):
         o = OrderModel(
-            id="ord-2", symbol="X", side=OrderSide.SELL, type=OrderType.LIMIT,
-            quantity=10, price=100.0, filledQuantity=0, status=OrderStatus.PENDING,
-            createdAt=0, updatedAt=0, isPaper=False, strategyId="strat-1",
+            id="ord-2",
+            symbol="X",
+            side=OrderSide.SELL,
+            type=OrderType.LIMIT,
+            quantity=10,
+            price=100.0,
+            filledQuantity=0,
+            status=OrderStatus.PENDING,
+            createdAt=0,
+            updatedAt=0,
+            isPaper=False,
+            strategyId="strat-1",
         )
         assert o.strategy_id == "strat-1"
 
@@ -194,9 +233,17 @@ class TestPositionAndOrderModels:
 class TestAccountModel:
     def test_account_model_all_aliases(self):
         a = AccountModel(
-            accountId="A1", totalAssets=1e6, cash=5e5, marketValue=5e5,
-            buyingPower=5e5, unrealizedPnl=0, realizedPnl=0,
-            dailyPnl=100, dailyPnlPercent=0.01, currency="USD", updatedAt=0,
+            accountId="A1",
+            totalAssets=1e6,
+            cash=5e5,
+            marketValue=5e5,
+            buyingPower=5e5,
+            unrealizedPnl=0,
+            realizedPnl=0,
+            dailyPnl=100,
+            dailyPnlPercent=0.01,
+            currency="USD",
+            updatedAt=0,
         )
         assert a.account_id == "A1"
         assert a.total_assets == 1e6
@@ -227,8 +274,12 @@ class TestScreenerModels:
 
     def test_screener_result_model_alias(self):
         r = ScreenerResultModel(
-            symbol="US.AAPL", name="Apple", market=Market.US,
-            lastPrice=185.0, changePercent=0.5, volume=1e6,
+            symbol="US.AAPL",
+            name="Apple",
+            market=Market.US,
+            lastPrice=185.0,
+            changePercent=0.5,
+            volume=1e6,
         )
         assert r.last_price == 185.0
         assert r.pe is None
@@ -237,8 +288,12 @@ class TestScreenerModels:
 class TestStrategyModel:
     def test_strategy_model_accepts_aliases(self):
         s = StrategyModel(
-            id="s1", name="DualMA", status=StrategyStatus.ACTIVE, code="...",
-            createdAt=0, updatedAt=0,
+            id="s1",
+            name="DualMA",
+            status=StrategyStatus.ACTIVE,
+            code="...",
+            createdAt=0,
+            updatedAt=0,
         )
         assert s.created_at == 0
 
@@ -250,15 +305,25 @@ class TestWSMessageModels:
 
     def test_ws_quote_message_nests_quote(self):
         q = QuoteModel(
-            symbol="X", last_price=1, open=1, high=1, low=1, prev_close=1,
-            volume=1, turnover=1, change=0, change_percent=0, timestamp=0,
+            symbol="X",
+            last_price=1,
+            open=1,
+            high=1,
+            low=1,
+            prev_close=1,
+            volume=1,
+            turnover=1,
+            change=0,
+            change_percent=0,
+            timestamp=0,
         )
         m = WSQuoteMessageModel(type="tick", data=q)
         assert m.data.last_price == 1
 
     def test_ws_kline_message_nests_series(self):
         series = KlineSeriesModel(
-            symbol="X", period=KlinePeriod.K_1M,
+            symbol="X",
+            period=KlinePeriod.K_1M,
             klines=[KlineModel(timestamp=0, open=1, high=1, low=1, close=1, volume=1)],
         )
         m = WSKlineMessageModel(type="kline", data=series)
@@ -278,15 +343,23 @@ class TestApiResponseModels:
 class TestClientHeartbeatModel:
     def test_heartbeat_required_fields(self):
         h = ClientHeartbeatModel(
-            platform="web", appVersion="1.0", deviceId="dev-1", timestamp=0,
+            platform="web",
+            appVersion="1.0",
+            deviceId="dev-1",
+            timestamp=0,
         )
         assert h.fps is None and h.memory_mb is None
         assert h.app_version == "1.0"
 
     def test_heartbeat_optional_metrics(self):
         h = ClientHeartbeatModel(
-            platform="desktop", appVersion="2.0", deviceId="d",
-            fps=59.5, memoryMb=512.0, wsLatencyMs=12, timestamp=0,
+            platform="desktop",
+            appVersion="2.0",
+            deviceId="d",
+            fps=59.5,
+            memoryMb=512.0,
+            wsLatencyMs=12,
+            timestamp=0,
         )
         assert h.fps == 59.5
         assert h.ws_latency_ms == 12

@@ -5,7 +5,7 @@
 
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
@@ -41,9 +41,7 @@ class TestScreenerTranslateRoutes:
     @patch("backend.routers.screener.screener_service")
     def test_translate_dsl_success(self, mock_service):
         """正常路径：自然语言转 DSL 成功"""
-        mock_service.translate_nlp_to_dsl = AsyncMock(
-            return_value='{"markets": ["US"], "filters": []}'
-        )
+        mock_service.translate_nlp_to_dsl = AsyncMock(return_value='{"markets": ["US"], "filters": []}')
         client = TestClient(app)
         resp = client.post(
             "/api/v1/screener/translate",
@@ -119,9 +117,7 @@ class TestScreenerSummarizeRoutes:
     @patch("backend.routers.screener.screener_service")
     def test_summarize_results_success(self, mock_service):
         """正常路径：AI 总结成功"""
-        mock_service.summarize_results = AsyncMock(
-            return_value="整体市场情绪偏多，半导体板块领涨。"
-        )
+        mock_service.summarize_results = AsyncMock(return_value="整体市场情绪偏多，半导体板块领涨。")
         client = TestClient(app)
         resp = client.post(
             "/api/v1/screener/summarize",

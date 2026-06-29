@@ -3,15 +3,17 @@
 目标：确保测试不依赖任何外部服务（VectorBT、网络连接等）
 """
 
+from unittest.mock import MagicMock, patch
+
 import pandas as pd
 import pytest
-from unittest.mock import MagicMock, patch
 
 
 # ─── 辅助函数 ─────────────────────────────────────────────────────
 def _make_ohlc_data(n: int = 100) -> pd.DataFrame:
     """生成模拟 OHLCV 数据"""
     import numpy as np
+
     dates = pd.date_range("2024-01-01", periods=n, freq="D")
     np.random.seed(42)
     close = 100 + np.cumsum(np.random.randn(n) * 2)
@@ -54,37 +56,41 @@ class TestMACross:
 def _mock_vectorbt_portfolio():
     """创建 Mock 的 VectorBT Portfolio"""
     mock_pf = MagicMock()
-    
+
     # Mock stats() 返回值
-    mock_stats = pd.Series({
-        "Total Return [%]": 15.5,
-        "Ann. Return [%]": 12.0,
-        "Sharpe Ratio": 1.5,
-        "Max Drawdown [%]": -8.0,
-        "Win Rate [%]": 58.0,
-        "Total Trades": 25,
-        "Profit Factor": 1.8,
-        "Total Fees Paid": 150.0,
-    })
+    mock_stats = pd.Series(
+        {
+            "Total Return [%]": 15.5,
+            "Ann. Return [%]": 12.0,
+            "Sharpe Ratio": 1.5,
+            "Max Drawdown [%]": -8.0,
+            "Win Rate [%]": 58.0,
+            "Total Trades": 25,
+            "Profit Factor": 1.8,
+            "Total Fees Paid": 150.0,
+        }
+    )
     mock_pf.stats.return_value = mock_stats
-    
+
     # Mock value() 返回权益曲线
     dates = pd.date_range("2024-01-01", periods=100, freq="D")
     mock_equity = pd.Series([100000 + i * 100 for i in range(100)], index=dates)
     mock_pf.value.return_value = mock_equity
-    
+
     # Mock trades.records_readable
-    mock_trades_df = pd.DataFrame({
-        "Entry Timestamp": [dates[10], dates[30]],
-        "Exit Timestamp": [dates[20], dates[50]],
-        "Direction": ["Long", "Long"],
-        "Size": [100, -100],
-        "Avg Entry Price": [102.0, 105.0],
-        "Avg Exit Price": [108.0, 103.0],
-        "PnL": [600.0, -200.0],
-    })
+    mock_trades_df = pd.DataFrame(
+        {
+            "Entry Timestamp": [dates[10], dates[30]],
+            "Exit Timestamp": [dates[20], dates[50]],
+            "Direction": ["Long", "Long"],
+            "Size": [100, -100],
+            "Avg Entry Price": [102.0, 105.0],
+            "Avg Exit Price": [108.0, 103.0],
+            "PnL": [600.0, -200.0],
+        }
+    )
     mock_pf.trades.records_readable = mock_trades_df
-    
+
     return mock_pf
 
 
@@ -95,11 +101,11 @@ class TestGridSearchBacktestMocked:
     def test_basic_grid_search_mocked(self, mock_vbt):
         """测试基本的网格搜索（完全 Mock）"""
         from backend.core.backtest.runners import run_grid_search_backtest
-        
+
         # 设置 mock
         mock_pf = _mock_vectorbt_portfolio()
         mock_vbt.Portfolio.from_signals.return_value = mock_pf
-        
+
         df = _make_ohlc_data(100)
         results = run_grid_search_backtest(
             source_code=VALID_STRATEGY_CODE,
@@ -107,7 +113,7 @@ class TestGridSearchBacktestMocked:
             param_grid={"fast_period": [3, 5], "slow_period": [10, 15]},
             df=df,
         )
-        
+
         assert isinstance(results, list)
         assert len(results) > 0
         for r in results:
@@ -120,7 +126,7 @@ class TestGridSearchBacktestMocked:
     def test_grid_search_empty_result(self, mock_vbt):
         """测试网格搜索无结果时抛出异常"""
         from backend.core.backtest.runners import run_grid_search_backtest
-        
+
         # 让所有组合都失败
         bad_code = """
 class AlwaysFail:
@@ -143,7 +149,7 @@ class AlwaysFail:
     def test_grid_search_unsafe_code_rejected(self):
         """测试不安全的代码被拒绝"""
         from backend.core.backtest.runners import run_grid_search_backtest
-        
+
         df = _make_ohlc_data(100)
         with pytest.raises(ValueError):
             run_grid_search_backtest(
@@ -161,11 +167,11 @@ class TestMonteCarloStressTestMocked:
     def test_basic_monte_carlo_mocked(self, mock_vbt):
         """测试基本的蒙特卡洛测试（完全 Mock）"""
         from backend.core.backtest.runners import run_monte_carlo_stress_test
-        
+
         # 设置 mock
         mock_pf = _mock_vectorbt_portfolio()
         mock_vbt.Portfolio.from_signals.return_value = mock_pf
-        
+
         df = _make_ohlc_data(100)
         result = run_monte_carlo_stress_test(
             source_code=VALID_STRATEGY_CODE,
@@ -175,7 +181,7 @@ class TestMonteCarloStressTestMocked:
             iterations=5,
             noise_level=0.5,
         )
-        
+
         assert "iterations" in result
         assert result["iterations"] > 0
         assert "mean_return" in result
@@ -186,7 +192,7 @@ class TestMonteCarloStressTestMocked:
     def test_monte_carlo_class_not_found(self):
         """测试类不存在时抛出异常"""
         from backend.core.backtest.runners import run_monte_carlo_stress_test
-        
+
         df = _make_ohlc_data(100)
         with pytest.raises(ValueError, match="未在代码中找到"):
             run_monte_carlo_stress_test(
@@ -204,7 +210,7 @@ class TestBatchSandboxBacktestMocked:
     def test_empty_dfs_raises(self):
         """测试空的 DataFrame 字典抛出异常"""
         from backend.core.backtest.runners import run_batch_sandbox_backtest
-        
+
         with pytest.raises(ValueError, match="未提供任何回测数据源"):
             run_batch_sandbox_backtest(
                 source_code=VALID_STRATEGY_CODE,
@@ -217,11 +223,11 @@ class TestBatchSandboxBacktestMocked:
     def test_batch_basic_mocked(self, mock_vbt):
         """测试基本的批量回测（完全 Mock）"""
         from backend.core.backtest.runners import run_batch_sandbox_backtest
-        
+
         # 设置 mock
         mock_pf = _mock_vectorbt_portfolio()
         mock_vbt.Portfolio.from_signals.return_value = mock_pf
-        
+
         dfs = {
             "AAPL": _make_ohlc_data(100),
             "GOOG": _make_ohlc_data(100),
@@ -232,7 +238,7 @@ class TestBatchSandboxBacktestMocked:
             params={"fast_period": 5, "slow_period": 10},
             dfs=dfs,
         )
-        
+
         assert "metrics" in result
         assert "valid_tickers" in result
         assert "equity_curve" in result
@@ -241,7 +247,7 @@ class TestBatchSandboxBacktestMocked:
     def test_batch_class_not_found(self):
         """测试类不存在时抛出异常"""
         from backend.core.backtest.runners import run_batch_sandbox_backtest
-        
+
         dfs = {"AAPL": _make_ohlc_data(100)}
         with pytest.raises(ValueError, match="未在代码中找到"):
             run_batch_sandbox_backtest(
@@ -258,7 +264,7 @@ class TestRunnersHelpers:
     def test_build_sandbox_globals(self):
         """测试 _build_sandbox_globals"""
         from backend.core.backtest.runners import _build_sandbox_globals
-        
+
         g = _build_sandbox_globals()
         assert "np" in g
         assert "pd" in g
@@ -270,7 +276,7 @@ class TestRunnersHelpers:
     def test_prepare_df_basic(self):
         """测试 _prepare_df 基本功能"""
         from backend.core.backtest.runners import _prepare_df
-        
+
         df = pd.DataFrame({"Open": [1], "High": [2], "Low": [0.5], "Close": [1.5], "Volume": [100]})
         result = _prepare_df(df)
         assert "open" in result.columns
@@ -279,10 +285,10 @@ class TestRunnersHelpers:
     def test_prepare_df_with_ohlc(self):
         """测试 _prepare_df 处理 OHLC 列"""
         from backend.core.backtest.runners import _prepare_df
-        
+
         df = _make_ohlc_data(50)
         result = _prepare_df(df)
-        
+
         # 检查是否添加了小写列
         assert "open" in result.columns
         assert "high" in result.columns

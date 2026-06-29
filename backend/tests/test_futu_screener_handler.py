@@ -1,7 +1,7 @@
 """Futu ScreenerHandler 单元测试
 覆盖: get_market_snapshots / screen_stocks (9 种 filter + 错误分支) / get_stock_basicinfo
 """
-import asyncio
+
 import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -30,13 +30,15 @@ def _screen_ok(items, is_last=True):
 
 def _item(code="00700", name="Tencent", price=350.0, chg=0.05, roe=0.20):
     """构造一条选股结果 (code/name/price/price_change_pct/roe)"""
-    return {"results": [
-        {"property": {"name": 1101}, "value_type": 1, "sval": code},
-        {"property": {"name": 1102}, "value_type": 1, "sval": name},
-        {"property": {"name": 2201}, "value_type": 4, "dval": price},
-        {"property": {"name": 3102}, "value_type": 4, "dval": chg},
-        {"property": {"name": 4110}, "value_type": 4, "dval": roe},
-    ]}
+    return {
+        "results": [
+            {"property": {"name": 1101}, "value_type": 1, "sval": code},
+            {"property": {"name": 1102}, "value_type": 1, "sval": name},
+            {"property": {"name": 2201}, "value_type": 4, "dval": price},
+            {"property": {"name": 3102}, "value_type": 4, "dval": chg},
+            {"property": {"name": 4110}, "value_type": 4, "dval": roe},
+        ]
+    }
 
 
 class TestGetMarketSnapshots:
@@ -51,8 +53,10 @@ class TestGetMarketSnapshots:
     @pytest.mark.asyncio
     async def test_empty_df_returns_error(self):
         handler, _ = _make_handler()
-        with patch("asyncio.to_thread", new=AsyncMock(return_value=(RET_OK, pd.DataFrame()))), \
-             patch("asyncio.sleep", new=AsyncMock()):
+        with (
+            patch("asyncio.to_thread", new=AsyncMock(return_value=(RET_OK, pd.DataFrame()))),
+            patch("asyncio.sleep", new=AsyncMock()),
+        ):
             r = await handler.get_market_snapshots(["HK.00700"])
         assert r["status"] == "error" and "失败" in r["message"]
 
@@ -60,8 +64,10 @@ class TestGetMarketSnapshots:
     async def test_success_returns_records(self):
         handler, _ = _make_handler()
         df = pd.DataFrame({"code": ["HK.00700"], "price": [350.0]})
-        with patch("asyncio.to_thread", new=AsyncMock(return_value=(RET_OK, df))), \
-             patch("asyncio.sleep", new=AsyncMock()):
+        with (
+            patch("asyncio.to_thread", new=AsyncMock(return_value=(RET_OK, df))),
+            patch("asyncio.sleep", new=AsyncMock()),
+        ):
             r = await handler.get_market_snapshots(["HK.00700"])
         assert r["status"] == "success"
         assert r["data"][0]["code"] == "HK.00700"
@@ -98,17 +104,26 @@ class TestScreenStocks:
             r = await handler.screen_stocks("HK", [{"field": "PRICE", "type": "simple", "min": 1}])
         assert r["status"] == "error" and "异常" in r["message"]
 
-    @pytest.mark.parametrize("flt", [
-        {"field": "PRICE", "type": "simple", "min": 1, "max": 1000},
-        {"field": "ROE", "type": "financial", "min": 0.15},
-        {"field": "PRICE_CHANGE_PCT", "type": "accumulate", "min": 0.05, "days": 5},
-        {"field": "HIST_PERCENTILE_PE", "type": "featured", "max": 0.3},
-        {"field": "RSI_BOTTOM_DIVERGE", "type": "indicator_pattern", "period": "K_DAY"},
-        {"field": "MA", "type": "indicator_positional", "second_indicator": "EMA", "position": "CROSS_UP", "period": "K_DAY"},  # noqa: E501
-        {"field": "SHAPE_TYPE", "type": "kline_shape", "period": "K_DAY"},
-        {"field": "BROKER_NUM", "type": "broker", "days": 5},
-        {"field": "STOCK_IV", "type": "option", "min": 0.5, "period": "K_DAY"},
-    ])
+    @pytest.mark.parametrize(
+        "flt",
+        [
+            {"field": "PRICE", "type": "simple", "min": 1, "max": 1000},
+            {"field": "ROE", "type": "financial", "min": 0.15},
+            {"field": "PRICE_CHANGE_PCT", "type": "accumulate", "min": 0.05, "days": 5},
+            {"field": "HIST_PERCENTILE_PE", "type": "featured", "max": 0.3},
+            {"field": "RSI_BOTTOM_DIVERGE", "type": "indicator_pattern", "period": "K_DAY"},
+            {
+                "field": "MA",
+                "type": "indicator_positional",
+                "second_indicator": "EMA",
+                "position": "CROSS_UP",
+                "period": "K_DAY",
+            },  # noqa: E501
+            {"field": "SHAPE_TYPE", "type": "kline_shape", "period": "K_DAY"},
+            {"field": "BROKER_NUM", "type": "broker", "days": 5},
+            {"field": "STOCK_IV", "type": "option", "min": 0.5, "period": "K_DAY"},
+        ],
+    )
     @pytest.mark.asyncio
     async def test_filter_types_dispatched_successfully(self, flt):
         handler, conn_mgr = _make_handler()
@@ -148,7 +163,8 @@ class TestScreenStocks:
     async def test_plate_filter_translates_name_and_succeeds(self):
         handler, conn_mgr = _make_handler()
         conn_mgr.quote_ctx.get_plate_list.return_value = (
-            RET_OK, pd.DataFrame({"plate_name": ["半导体"], "code": ["HK.BK0001"]})
+            RET_OK,
+            pd.DataFrame({"plate_name": ["半导体"], "code": ["HK.BK0001"]}),
         )
         conn_mgr.quote_ctx.get_stock_screen.return_value = _screen_ok([])
         with patch("asyncio.sleep", new=AsyncMock()):
@@ -158,12 +174,8 @@ class TestScreenStocks:
     @pytest.mark.asyncio
     async def test_exclude_plate_filters_out_matching_stocks(self):
         handler, conn_mgr = _make_handler()
-        conn_mgr.quote_ctx.get_stock_screen.return_value = _screen_ok([
-            _item(code="00700"), _item(code="00001")
-        ])
-        conn_mgr.quote_ctx.get_plate_stock.return_value = (
-            RET_OK, pd.DataFrame({"code": ["HK.00001"]})
-        )
+        conn_mgr.quote_ctx.get_stock_screen.return_value = _screen_ok([_item(code="00700"), _item(code="00001")])
+        conn_mgr.quote_ctx.get_plate_stock.return_value = (RET_OK, pd.DataFrame({"code": ["HK.00001"]}))
         with patch("asyncio.sleep", new=AsyncMock()):
             r = await handler.screen_stocks("HK", [{"type": "exclude_plate", "value": ["BK0001"]}])  # noqa: E501
         assert r["status"] == "success"
@@ -198,10 +210,12 @@ class TestScreenStocks:
     @pytest.mark.asyncio
     async def test_success_deduplicates_and_formats_pct_fields(self):
         handler, conn_mgr = _make_handler()
-        conn_mgr.quote_ctx.get_stock_screen.return_value = _screen_ok([
-            _item(code="00700", price=350.0, chg=0.05, roe=0.20),
-            _item(code="00700", price=350.0, chg=0.05, roe=0.20),
-        ])
+        conn_mgr.quote_ctx.get_stock_screen.return_value = _screen_ok(
+            [
+                _item(code="00700", price=350.0, chg=0.05, roe=0.20),
+                _item(code="00700", price=350.0, chg=0.05, roe=0.20),
+            ]
+        )
         with patch("asyncio.sleep", new=AsyncMock()):
             r = await handler.screen_stocks("HK", [])
         assert r["status"] == "success"

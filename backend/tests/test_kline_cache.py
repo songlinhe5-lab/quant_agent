@@ -7,10 +7,9 @@ import json
 import os
 import sys
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pandas as pd
-import pytest
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("EMBEDDING_API_KEY", "test-key")
@@ -78,7 +77,7 @@ class TestKlineCacheEngineGet:
     """get_kline 的智能路由与降级逻辑"""
 
     def test_get_kline_routes_to_l1_for_short_days(self):
-        from backend.core.kline_cache import CacheTier, KlineCacheEngine
+        from backend.core.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         engine._redis = AsyncMock()
@@ -128,9 +127,7 @@ class TestKlineCacheEngineGet:
         engine._get_l2 = AsyncMock(return_value=df)
         engine._fill_l1 = AsyncMock()
 
-        result = asyncio_run(
-            engine.get_kline("US.AAPL", "K_DAY", days=3, fill_l1=True)
-        )
+        result = asyncio_run(engine.get_kline("US.AAPL", "K_DAY", days=3, fill_l1=True))
         assert result is not None
         engine._get_l2.assert_called_once()
 
@@ -155,11 +152,7 @@ class TestKlineCacheEngineGet:
         engine._get_l2 = AsyncMock(return_value=None)
 
         # 强制 L2，days=3 (本来应路由到 L1)
-        asyncio_run(
-            engine.get_kline(
-                "US.AAPL", "K_DAY", days=3, tier=CacheTier.L2_PARQUET
-            )
-        )
+        asyncio_run(engine.get_kline("US.AAPL", "K_DAY", days=3, tier=CacheTier.L2_PARQUET))
         engine._get_l2.assert_called_once()
         engine._get_l1.assert_not_called()
 
@@ -210,11 +203,7 @@ class TestKlineCacheEngineL1:
         engine = KlineCacheEngine()
         engine._redis = AsyncMock()
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        redis_data = {
-            today: json.dumps(
-                {"open": 100.0, "high": 102.0, "low": 99.0, "close": 101.0, "volume": 10000}
-            )
-        }
+        redis_data = {today: json.dumps({"open": 100.0, "high": 102.0, "low": 99.0, "close": 101.0, "volume": 10000})}
         engine._redis.hgetall = AsyncMock(return_value=redis_data)
 
         result = asyncio_run(engine._get_l1("US.AAPL", "K_DAY", 5))
@@ -306,9 +295,7 @@ class TestKlineCacheEngineL2L3:
 
         result = asyncio_run(engine._get_l2("US.AAPL", "K_DAY", 5))
         assert result is not None
-        engine._warehouse.get_history.assert_called_once_with(
-            "US.AAPL", ktype="K_DAY", num=5
-        )
+        engine._warehouse.get_history.assert_called_once_with("US.AAPL", ktype="K_DAY", num=5)
 
     def test_get_l2_handles_exception(self):
         from backend.core.kline_cache import KlineCacheEngine

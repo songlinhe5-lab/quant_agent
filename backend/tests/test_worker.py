@@ -3,6 +3,7 @@
 覆盖: worker_heartbeat_daemon 心跳/分片计算/动态切换,
 main 启动所有守护任务 + CancelledError 优雅退出。
 """
+
 import asyncio
 import os
 import sys
@@ -40,9 +41,12 @@ class TestWorkerHeartbeatDaemon:
 
     @pytest.mark.asyncio
     async def test_heartbeat_registers_and_cancels_after_one_iteration(self):
-        from backend.worker import worker_heartbeat_daemon, WORKER_UUID
-        with patch("backend.worker.redis_client") as m_r, \
-             patch("backend.worker.asyncio.sleep", new=_cancelling_sleep(1)):
+        from backend.worker import WORKER_UUID, worker_heartbeat_daemon
+
+        with (
+            patch("backend.worker.redis_client") as m_r,
+            patch("backend.worker.asyncio.sleep", new=_cancelling_sleep(1)),
+        ):
             m_r.set = AsyncMock(return_value=True)
             m_r.scan = AsyncMock(return_value=(0, []))
             with pytest.raises(asyncio.CancelledError):
@@ -55,14 +59,17 @@ class TestWorkerHeartbeatDaemon:
 
     @pytest.mark.asyncio
     async def test_heartbeat_computes_rank_and_updates_env_when_changed(self):
-        from backend.worker import worker_heartbeat_daemon, WORKER_UUID
+        from backend.worker import WORKER_UUID, worker_heartbeat_daemon
+
         # 构造两个 worker,other_uuid 用 "!!!" 开头(ASCII 33)确保字典序小于
         # 任何 uuid4(以十六进制数字开头,ASCII 48-57),使自身排第二(rank=1)
         other_key = b"quant:worker:heartbeat:!!!-before-my-uuid"
         my_key = f"quant:worker:heartbeat:{WORKER_UUID}".encode()
-        with patch("backend.worker.redis_client") as m_r, \
-             patch("backend.worker.asyncio.sleep", new=_cancelling_sleep(1)), \
-             patch.dict(os.environ, {"WORKER_ID": "0", "WORKER_TOTAL": "1"}, clear=False):
+        with (
+            patch("backend.worker.redis_client") as m_r,
+            patch("backend.worker.asyncio.sleep", new=_cancelling_sleep(1)),
+            patch.dict(os.environ, {"WORKER_ID": "0", "WORKER_TOTAL": "1"}, clear=False),
+        ):
             m_r.set = AsyncMock(return_value=True)
             m_r.scan = AsyncMock(return_value=(0, [other_key, my_key]))
             with pytest.raises(asyncio.CancelledError):
@@ -73,11 +80,14 @@ class TestWorkerHeartbeatDaemon:
 
     @pytest.mark.asyncio
     async def test_heartbeat_skips_env_update_when_rank_unchanged(self):
-        from backend.worker import worker_heartbeat_daemon, WORKER_UUID
+        from backend.worker import WORKER_UUID, worker_heartbeat_daemon
+
         my_key = f"quant:worker:heartbeat:{WORKER_UUID}".encode()
-        with patch("backend.worker.redis_client") as m_r, \
-             patch("backend.worker.asyncio.sleep", new=_cancelling_sleep(1)), \
-             patch.dict(os.environ, {"WORKER_ID": "0", "WORKER_TOTAL": "1"}, clear=False):
+        with (
+            patch("backend.worker.redis_client") as m_r,
+            patch("backend.worker.asyncio.sleep", new=_cancelling_sleep(1)),
+            patch.dict(os.environ, {"WORKER_ID": "0", "WORKER_TOTAL": "1"}, clear=False),
+        ):
             m_r.set = AsyncMock(return_value=True)
             m_r.scan = AsyncMock(return_value=(0, [my_key]))
             with pytest.raises(asyncio.CancelledError):
@@ -88,11 +98,14 @@ class TestWorkerHeartbeatDaemon:
 
     @pytest.mark.asyncio
     async def test_heartbeat_handles_str_keys_not_bytes(self):
-        from backend.worker import worker_heartbeat_daemon, WORKER_UUID
+        from backend.worker import WORKER_UUID, worker_heartbeat_daemon
+
         my_key = f"quant:worker:heartbeat:{WORKER_UUID}"  # str 而非 bytes
-        with patch("backend.worker.redis_client") as m_r, \
-             patch("backend.worker.asyncio.sleep", new=_cancelling_sleep(1)), \
-             patch.dict(os.environ, {"WORKER_ID": "", "WORKER_TOTAL": ""}, clear=False):
+        with (
+            patch("backend.worker.redis_client") as m_r,
+            patch("backend.worker.asyncio.sleep", new=_cancelling_sleep(1)),
+            patch.dict(os.environ, {"WORKER_ID": "", "WORKER_TOTAL": ""}, clear=False),
+        ):
             m_r.set = AsyncMock(return_value=True)
             m_r.scan = AsyncMock(return_value=(0, [my_key]))
             with pytest.raises(asyncio.CancelledError):
@@ -103,8 +116,11 @@ class TestWorkerHeartbeatDaemon:
     @pytest.mark.asyncio
     async def test_heartbeat_swallows_exception_and_continues_loop(self):
         from backend.worker import worker_heartbeat_daemon
-        with patch("backend.worker.redis_client") as m_r, \
-             patch("backend.worker.asyncio.sleep", new=_cancelling_sleep(1)):
+
+        with (
+            patch("backend.worker.redis_client") as m_r,
+            patch("backend.worker.asyncio.sleep", new=_cancelling_sleep(1)),
+        ):
             m_r.set = AsyncMock(side_effect=RuntimeError("redis down"))
             # 第一次迭代异常被吞，第二次 sleep 抛 CancelledError
             with pytest.raises(asyncio.CancelledError):
@@ -112,7 +128,8 @@ class TestWorkerHeartbeatDaemon:
 
     @pytest.mark.asyncio
     async def test_heartbeat_scan_pagination_traverses_multiple_pages(self):
-        from backend.worker import worker_heartbeat_daemon, WORKER_UUID
+        from backend.worker import WORKER_UUID, worker_heartbeat_daemon
+
         my_key = f"quant:worker:heartbeat:{WORKER_UUID}".encode()
         call_count = {"n": 0}
 
@@ -123,9 +140,11 @@ class TestWorkerHeartbeatDaemon:
             return (0, [b"quant:worker:heartbeat:zzz"])  # 终止
 
         # _cancelling_sleep(0): 第 1 次 sleep 即抛 CancelledError,只跑 1 次迭代
-        with patch("backend.worker.redis_client") as m_r, \
-             patch("backend.worker.asyncio.sleep", new=_cancelling_sleep(0)), \
-             patch.dict(os.environ, {"WORKER_ID": "", "WORKER_TOTAL": ""}, clear=False):
+        with (
+            patch("backend.worker.redis_client") as m_r,
+            patch("backend.worker.asyncio.sleep", new=_cancelling_sleep(0)),
+            patch.dict(os.environ, {"WORKER_ID": "", "WORKER_TOTAL": ""}, clear=False),
+        ):
             m_r.set = AsyncMock(return_value=True)
             m_r.scan = AsyncMock(side_effect=fake_scan)
             with pytest.raises(asyncio.CancelledError):
@@ -148,17 +167,19 @@ class TestWorkerMain:
             await asyncio.sleep(0.05)
             raise asyncio.CancelledError()
 
-        with patch("backend.worker.redis_batch_writer") as m_bw, \
-             patch("backend.worker.redis_client") as m_rc, \
-             patch("backend.worker.engine") as m_engine, \
-             patch("backend.worker.QuotePublisher") as m_pub_cls, \
-             patch("backend.worker.finnhub_service") as m_fh, \
-             patch("backend.worker.screener_service") as m_sc, \
-             patch("backend.worker.sentiment_tracker") as m_st, \
-             patch("backend.worker.ticker_service") as m_ts, \
-             patch("backend.worker.yf_service") as m_yf, \
-             patch("backend.worker.notification_service") as m_nt, \
-             patch("backend.worker.worker_heartbeat_daemon", new=_cancel_afterdelay):
+        with (
+            patch("backend.worker.redis_batch_writer") as m_bw,
+            patch("backend.worker.redis_client") as m_rc,
+            patch("backend.worker.engine") as m_engine,
+            patch("backend.worker.QuotePublisher") as m_pub_cls,
+            patch("backend.worker.finnhub_service") as m_fh,
+            patch("backend.worker.screener_service") as m_sc,
+            patch("backend.worker.sentiment_tracker") as m_st,
+            patch("backend.worker.ticker_service") as m_ts,
+            patch("backend.worker.yf_service") as m_yf,
+            patch("backend.worker.notification_service") as m_nt,
+            patch("backend.worker.worker_heartbeat_daemon", new=_cancel_afterdelay),
+        ):
             m_pub = MagicMock()
             m_pub.run_daemon = AsyncMock()
             m_pub_cls.return_value = m_pub

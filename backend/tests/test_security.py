@@ -136,6 +136,7 @@ class TestVerifyInternalRequest:
 
         # 不应抛出异常
         import asyncio
+
         asyncio.get_event_loop().run_until_complete(verify_internal_request(request))
 
     def test_missing_signature_header(self):
@@ -145,6 +146,7 @@ class TestVerifyInternalRequest:
 
         with pytest.raises(HTTPException) as exc_info:
             import asyncio
+
             asyncio.get_event_loop().run_until_complete(verify_internal_request(request))
 
         assert exc_info.value.status_code == 401
@@ -159,6 +161,7 @@ class TestVerifyInternalRequest:
 
         with pytest.raises(HTTPException) as exc_info:
             import asyncio
+
             asyncio.get_event_loop().run_until_complete(verify_internal_request(request))
 
         assert exc_info.value.status_code == 401
@@ -167,13 +170,6 @@ class TestVerifyInternalRequest:
 
 class TestAddInternalSignatureToHeaders:
     """add_internal_signature_to_headers() 请求头签名"""
-
-    def test_adds_signature_to_headers(self):
-        """成功添加签名到请求头"""
-        headers = {"Content-Type": "application/json"}
-        result = add_internal_signature_to_headers(headers, "GET", "/api/test")
-        assert "X-Internal-Sig" in result
-        assert result["Content-Type"] == "application/json"
 
     def test_adds_signature_to_headers(self):
         """成功添加签名到请求头"""

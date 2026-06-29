@@ -9,8 +9,6 @@
 - 异常路径：None、类型错误、除零错误
 """
 
-import os
-
 import pytest
 
 from backend.core.utils import is_my_shard, safe_divide, safe_float, safe_truncate

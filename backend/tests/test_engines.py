@@ -5,7 +5,6 @@
 
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("EMBEDDING_API_KEY", "test-key")
@@ -14,8 +13,6 @@ os.environ.setdefault("EMBEDDING_MODEL", "BAAI/bge-large-zh-v1.5")
 os.environ.setdefault("INTERNAL_API_SECRET", "test-secret-key")
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
-
-import pytest
 
 
 # ─── market_engine: Protobuf ────────────────────────────────────────
@@ -73,4 +70,3 @@ class TestMarketEngineHelpers:
 
         assert safe_divide(100, 0) == 0.0
         assert safe_divide(100, 200) == 0.5
-

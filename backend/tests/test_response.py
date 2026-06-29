@@ -11,7 +11,6 @@
 
 import time
 
-import pytest
 from fastapi.responses import JSONResponse
 
 from backend.core.error_codes import ErrorCode

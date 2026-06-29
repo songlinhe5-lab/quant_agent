@@ -8,7 +8,6 @@ Futu 子系统工具函数与缓存管理器单元测试
 
 import os
 import sys
-from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest

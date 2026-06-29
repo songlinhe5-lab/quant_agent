@@ -3,9 +3,10 @@
 覆盖状态机: CLOSED → OPEN → HALF_OPEN → CLOSED,
 call/call_sync/guard/reset/status_snapshot 全方法。
 """
+
 import asyncio
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -85,8 +86,10 @@ class TestCircuitBreakerCheckState:
         entry = cb._get_entry("svc")
         entry.state = CircuitState.OPEN
         entry.last_failure_ts = time.monotonic() - 1.0  # 已超时
-        with patch("backend.core.circuit_breaker.CIRCUIT_BREAKER_STATE") as m_state, \
-             patch("backend.core.circuit_breaker.CIRCUIT_BREAKER_TRANSITIONS") as m_trans:
+        with (
+            patch("backend.core.circuit_breaker.CIRCUIT_BREAKER_STATE") as m_state,
+            patch("backend.core.circuit_breaker.CIRCUIT_BREAKER_TRANSITIONS") as m_trans,
+        ):
             result = cb._check_state(entry)
         assert result == CircuitState.HALF_OPEN
         m_state.labels.assert_called_with(service="svc")
@@ -138,8 +141,10 @@ class TestCircuitBreakerCallAsync:
         cb = CircuitBreaker(max_failures=2)
         entry = cb._get_entry("svc")
         func = AsyncMock(side_effect=RuntimeError("down"))
-        with patch("backend.core.circuit_breaker.CIRCUIT_BREAKER_STATE"), \
-             patch("backend.core.circuit_breaker.CIRCUIT_BREAKER_TRANSITIONS"):
+        with (
+            patch("backend.core.circuit_breaker.CIRCUIT_BREAKER_STATE"),
+            patch("backend.core.circuit_breaker.CIRCUIT_BREAKER_TRANSITIONS"),
+        ):
             with pytest.raises(RuntimeError):
                 await cb.call("svc", func)
             with pytest.raises(RuntimeError):
@@ -165,8 +170,10 @@ class TestCircuitBreakerCallAsync:
         entry = cb._get_entry("svc")
         entry.state = CircuitState.HALF_OPEN
         func = AsyncMock(return_value="recovered")
-        with patch("backend.core.circuit_breaker.CIRCUIT_BREAKER_STATE"), \
-             patch("backend.core.circuit_breaker.CIRCUIT_BREAKER_TRANSITIONS"):
+        with (
+            patch("backend.core.circuit_breaker.CIRCUIT_BREAKER_STATE"),
+            patch("backend.core.circuit_breaker.CIRCUIT_BREAKER_TRANSITIONS"),
+        ):
             result = await cb.call("svc", func)
         assert result == "recovered"
         assert entry.state == CircuitState.CLOSED
@@ -179,8 +186,10 @@ class TestCircuitBreakerCallAsync:
         entry.state = CircuitState.HALF_OPEN
         entry.failures = 1  # 预置失败计数,使下一次失败达到 max_failures 阈值触发 OPEN
         func = AsyncMock(side_effect=RuntimeError("still down"))
-        with patch("backend.core.circuit_breaker.CIRCUIT_BREAKER_STATE"), \
-             patch("backend.core.circuit_breaker.CIRCUIT_BREAKER_TRANSITIONS"):
+        with (
+            patch("backend.core.circuit_breaker.CIRCUIT_BREAKER_STATE"),
+            patch("backend.core.circuit_breaker.CIRCUIT_BREAKER_TRANSITIONS"),
+        ):
             with pytest.raises(RuntimeError):
                 await cb.call("svc", func)
         assert entry.state == CircuitState.OPEN

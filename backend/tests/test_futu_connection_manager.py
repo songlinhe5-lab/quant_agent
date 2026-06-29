@@ -3,7 +3,6 @@ Futu ConnectionManager 单元测试
 覆盖: connect/close/get_trade_context/unlock_trade_if_needed
 """
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -53,12 +52,13 @@ class TestConnectionManager:
         """connect 应从环境变量读取 host/port"""
         mgr = ConnectionManager()
         fake_ctx = MagicMock()
-        with patch.dict(
-            "os.environ", {"FUTU_HOST": "10.0.0.5", "FUTU_PORT": "22222"}
-        ), patch(
-            "backend.services.futu.connection_manager.OpenQuoteContext",
-            return_value=fake_ctx,
-        ) as mock_open:
+        with (
+            patch.dict("os.environ", {"FUTU_HOST": "10.0.0.5", "FUTU_PORT": "22222"}),
+            patch(
+                "backend.services.futu.connection_manager.OpenQuoteContext",
+                return_value=fake_ctx,
+            ) as mock_open,
+        ):
             mgr.connect()
         mock_open.assert_called_once_with(host="10.0.0.5", port=22222)
 

@@ -115,8 +115,9 @@ class TestFutuWatchdog:
             # finally 块会先重置 _running=False
             raise asyncio.CancelledError()
 
-        with patch.object(wd, "_watchdog_loop", new=AsyncMock(side_effect=fake_loop)), patch(
-            "asyncio.sleep", new=fake_sleep
+        with (
+            patch.object(wd, "_watchdog_loop", new=AsyncMock(side_effect=fake_loop)),
+            patch("asyncio.sleep", new=fake_sleep),
         ):
             try:
                 await wd.start()
@@ -298,8 +299,9 @@ class TestFutuWatchdog:
             sleep_calls.append(secs)
             wd._running = False  # 退出循环
 
-        with patch.object(wd, "_health_check", new=AsyncMock(return_value=True)), patch(
-            "asyncio.sleep", new=fake_sleep
+        with (
+            patch.object(wd, "_health_check", new=AsyncMock(return_value=True)),
+            patch("asyncio.sleep", new=fake_sleep),
         ):
             await wd._watchdog_loop()
         assert wd._consecutive_failures == 0
@@ -316,9 +318,11 @@ class TestFutuWatchdog:
             sleep_calls.append(secs)
             wd._running = False
 
-        with patch.object(wd, "_health_check", new=AsyncMock(return_value=False)), patch.object(
-            wd, "_do_reconnect", new=AsyncMock(return_value=True)
-        ), patch("asyncio.sleep", new=fake_sleep):
+        with (
+            patch.object(wd, "_health_check", new=AsyncMock(return_value=False)),
+            patch.object(wd, "_do_reconnect", new=AsyncMock(return_value=True)),
+            patch("asyncio.sleep", new=fake_sleep),
+        ):
             await wd._watchdog_loop()
         assert wd._consecutive_failures == 1
         assert wd._total_reconnects == 1
@@ -339,9 +343,11 @@ class TestFutuWatchdog:
             sleep_calls.append(secs)
             wd._running = False
 
-        with patch.object(wd, "_health_check", new=AsyncMock(return_value=False)), patch.object(
-            wd, "_do_reconnect", new=AsyncMock(return_value=False)
-        ), patch("asyncio.sleep", new=fake_sleep):
+        with (
+            patch.object(wd, "_health_check", new=AsyncMock(return_value=False)),
+            patch.object(wd, "_do_reconnect", new=AsyncMock(return_value=False)),
+            patch("asyncio.sleep", new=fake_sleep),
+        ):
             await wd._watchdog_loop()
         # consecutive_failures 现在达到阈值，sleep 应是 LONG_SLEEP
         assert wd._consecutive_failures == wd.MAX_CONSECUTIVE_FAILURES
@@ -358,9 +364,11 @@ class TestFutuWatchdog:
             sleep_calls.append(secs)
             wd._running = False
 
-        with patch.object(wd, "_health_check", new=AsyncMock(return_value=False)), patch.object(
-            wd, "_do_reconnect", new=AsyncMock(return_value=False)
-        ), patch("asyncio.sleep", new=fake_sleep):
+        with (
+            patch.object(wd, "_health_check", new=AsyncMock(return_value=False)),
+            patch.object(wd, "_do_reconnect", new=AsyncMock(return_value=False)),
+            patch("asyncio.sleep", new=fake_sleep),
+        ):
             await wd._watchdog_loop()
         # _health_check 失败一次 -> consecutive_failures=1
         # _do_reconnect 失败但不会再次递增

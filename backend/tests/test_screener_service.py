@@ -11,25 +11,18 @@ Coverage targets:
 - _normalize_nlp_query
 - translate_nlp_to_dsl (with mocked LLM)
 """
-import asyncio
-import hashlib
+
 import json
-import re
-from typing import Any, Dict, List, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
 
 from backend.services.screener_service import (
+    _SUPPORTED_PATTERNS,
+    _VALID_FIELDS_SET,
     ScreenerDecision,
     ScreenerFilter,
-    _ALIAS_MAP,
-    _FIELD_ZH_MAP,
-    _SUPPORTED_PATTERNS,
-    _TECH_ZH_MAP,
-    _VALID_FIELDS,
-    _VALID_FIELDS_SET,
     screener_service,
 )
 
@@ -102,11 +95,7 @@ class TestScreenerFilterValidation:
 
     def test_dividend_ratio_special_case(self):
         """Test special case for DIVIDEND_RATIO with continuous_period"""
-        f = ScreenerFilter(
-            field="DIVIDEND_RATIO",
-            type="simple",
-            continuous_period=5
-        )
+        f = ScreenerFilter(field="DIVIDEND_RATIO", type="simple", continuous_period=5)
         assert f.type == "financial"
 
     def test_term_cleaning_for_non_financial(self):
@@ -225,9 +214,7 @@ class TestScreenerDecisionValidation:
         decision_data = {
             "dsl_display": "test",
             "markets": ["US"],
-            "filters": [
-                {"field": "VOLUME_MULTIPLE", "type": "simple", "min_value": 1.5, "days": 3}
-            ],
+            "filters": [{"field": "VOLUME_MULTIPLE", "type": "simple", "min_value": 1.5, "days": 3}],
         }
         d = ScreenerDecision(**decision_data)
         assert "volume_surge_3d" in d.technical_patterns
@@ -306,15 +293,17 @@ class TestParseDslToFutuFilters:
 
     def test_parse_valid_dsl(self):
         """Test parsing valid DSL JSON"""
-        json_str = json.dumps({
-            "dsl_display": "market:us pe:10~20",
-            "markets": ["US"],
-            "exclude_st": False,
-            "filters": [
-                {"field": "MARKET_CAP", "type": "simple", "min_value": 1e9},
-                {"field": "PE_TTM", "type": "simple", "min_value": 10, "max_value": 20},
-            ],
-        })
+        json_str = json.dumps(
+            {
+                "dsl_display": "market:us pe:10~20",
+                "markets": ["US"],
+                "exclude_st": False,
+                "filters": [
+                    {"field": "MARKET_CAP", "type": "simple", "min_value": 1e9},
+                    {"field": "PE_TTM", "type": "simple", "min_value": 10, "max_value": 20},
+                ],
+            }
+        )
         markets, futu_filters, post_filters = screener_service.parse_dsl_to_futu_filters(json_str)
         assert markets == ["US"]
         assert len(futu_filters) == 2
@@ -322,26 +311,30 @@ class TestParseDslToFutuFilters:
 
     def test_parse_with_technical_patterns(self):
         """Test parsing DSL with technical patterns"""
-        json_str = json.dumps({
-            "dsl_display": "test",
-            "markets": ["US"],
-            "exclude_st": False,
-            "technical_patterns": ["macd_gold_cross"],
-            "filters": [],
-        })
+        json_str = json.dumps(
+            {
+                "dsl_display": "test",
+                "markets": ["US"],
+                "exclude_st": False,
+                "technical_patterns": ["macd_gold_cross"],
+                "filters": [],
+            }
+        )
         markets, futu_filters, post_filters = screener_service.parse_dsl_to_futu_filters(json_str)
         assert "macd_gold_cross" in post_filters["technical_patterns"]
 
     def test_parse_volume_ratio_conversion(self):
         """Test that VOLUME_MULTIPLE is converted to VOLUME_RATIO"""
-        json_str = json.dumps({
-            "dsl_display": "test",
-            "markets": ["US"],
-            "exclude_st": False,
-            "filters": [
-                {"field": "VOLUME_MULTIPLE", "type": "simple", "min_value": 1.5},
-            ],
-        })
+        json_str = json.dumps(
+            {
+                "dsl_display": "test",
+                "markets": ["US"],
+                "exclude_st": False,
+                "filters": [
+                    {"field": "VOLUME_MULTIPLE", "type": "simple", "min_value": 1.5},
+                ],
+            }
+        )
         markets, futu_filters, post_filters = screener_service.parse_dsl_to_futu_filters(json_str)
         assert futu_filters[0]["field"] == "VOLUME_RATIO"
 
@@ -352,14 +345,16 @@ class TestParseDslToFutuFilters:
 
     def test_parse_invalid_field(self):
         """Test parsing JSON with invalid field - should be handled by fuzzy match"""
-        json_str = json.dumps({
-            "dsl_display": "test",
-            "markets": ["US"],
-            "exclude_st": False,
-            "filters": [
-                {"field": "INVALID_FIELD", "type": "simple"},
-            ],
-        })
+        json_str = json.dumps(
+            {
+                "dsl_display": "test",
+                "markets": ["US"],
+                "exclude_st": False,
+                "filters": [
+                    {"field": "INVALID_FIELD", "type": "simple"},
+                ],
+            }
+        )
         # Invalid field should be kept as-is (fuzzy match won't find a match)
         markets, futu_filters, post_filters = screener_service.parse_dsl_to_futu_filters(json_str)
         assert len(futu_filters) == 1
@@ -405,16 +400,18 @@ class TestScreenerServiceMethods:
     async def test_translate_nlp_to_dsl_with_cache(self):
         """Test translate_nlp_to_dsl with cached result"""
         # Mock redis cache hit
-        cache_key = f"quant:screener:nlp_cache:v8:{hashlib.md5(screener_service._normalize_nlp_query('test query').encode('utf-8')).hexdigest()}"
-        
-        with patch.object(screener_service, '_normalize_nlp_query', return_value='test query'):
-            with patch('backend.services.screener_service.redis_client') as mock_redis:
-                mock_redis.get = AsyncMock(return_value=json.dumps({
-                    "dsl_display": "cached result",
-                    "markets": ["US"],
-                    "filters": [],
-                }))
-                
+        with patch.object(screener_service, "_normalize_nlp_query", return_value="test query"):
+            with patch("backend.services.screener_service.redis_client") as mock_redis:
+                mock_redis.get = AsyncMock(
+                    return_value=json.dumps(
+                        {
+                            "dsl_display": "cached result",
+                            "markets": ["US"],
+                            "filters": [],
+                        }
+                    )
+                )
+
                 result = await screener_service.translate_nlp_to_dsl("test query")
                 assert "cached result" in result
                 mock_redis.get.assert_called_once()
@@ -422,27 +419,27 @@ class TestScreenerServiceMethods:
     @pytest.mark.asyncio
     async def test_translate_nlp_to_dsl_no_cache(self):
         """Test translate_nlp_to_dsl without cache (mocked LLM)"""
-        with patch('backend.services.screener_service.redis_client') as mock_redis:
+        with patch("backend.services.screener_service.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.setex = AsyncMock()
-            
+
             # Mock the LLM service
-            with patch('backend.services.screener_service.llm_service') as mock_llm:
+            with patch("backend.services.screener_service.llm_service") as mock_llm:
                 mock_response = MagicMock()
                 mock_response.choices = [MagicMock()]
-                mock_response.choices[0].message.content = json.dumps({
-                    "dsl_display": "market:us pe:10~20",
-                    "markets": ["US"],
-                    "exclude_st": False,
-                    "filters": [
-                        {"field": "PE_TTM", "type": "simple", "min_value": 10, "max_value": 20}
-                    ],
-                })
-                
+                mock_response.choices[0].message.content = json.dumps(
+                    {
+                        "dsl_display": "market:us pe:10~20",
+                        "markets": ["US"],
+                        "exclude_st": False,
+                        "filters": [{"field": "PE_TTM", "type": "simple", "min_value": 10, "max_value": 20}],
+                    }
+                )
+
                 mock_llm.get_client = MagicMock(return_value=MagicMock())
                 mock_llm.get_client().chat.completions.create = AsyncMock(return_value=mock_response)
                 mock_llm.get_model = MagicMock(return_value="gpt-4")
-                
+
                 result = await screener_service.translate_nlp_to_dsl("find stocks with pe 10 to 20")
                 result_dict = json.loads(result)
                 assert result_dict["markets"] == ["US"]
@@ -450,7 +447,7 @@ class TestScreenerServiceMethods:
     def test_reload_rag_corpus_no_csv(self):
         """Test reload_rag_corpus when CSV doesn't exist"""
         # This should use default corpus
-        with patch('os.path.exists', return_value=False):
+        with patch("os.path.exists", return_value=False):
             result = screener_service.reload_rag_corpus()
             # Should return something (either count or dict)
             assert result is not None
@@ -463,7 +460,18 @@ class TestEdgeCases:
         """Test ScreenerFilter with all possible fields"""
         # Test that valid fields are accepted
         # Note: Some fields may be corrected by fuzzy match or type enforcement
-        test_fields = ["MARKET_CAP", "PE_TTM", "PB", "PRICE", "ROE", "ROA_TTM", "DIVIDEND_RATIO", "GROSS_PROFIT_RATIO", "DEBT_TO_ASSETS", "CURRENT_RATIO"]
+        test_fields = [
+            "MARKET_CAP",
+            "PE_TTM",
+            "PB",
+            "PRICE",
+            "ROE",
+            "ROA_TTM",
+            "DIVIDEND_RATIO",
+            "GROSS_PROFIT_RATIO",
+            "DEBT_TO_ASSETS",
+            "CURRENT_RATIO",
+        ]
         for field in test_fields:
             filter_data = {"field": field, "type": "simple"}
             f = ScreenerFilter(**filter_data)
@@ -496,7 +504,7 @@ class TestEdgeCases:
         """Test add_custom_rule when pg is not enabled"""
         # Ensure _pg_enabled is False
         screener_service._pg_enabled = False
-        
+
         result = await screener_service.add_custom_rule(
             desc_text="Test rule",
             rule_text="Test rule text",
@@ -508,7 +516,7 @@ class TestEdgeCases:
     async def test_get_custom_rules_not_enabled(self):
         """Test get_custom_rules when pg is not enabled"""
         screener_service._pg_enabled = False
-        
+
         result = await screener_service.get_custom_rules(user_id=1)
         assert result == []
 
@@ -516,6 +524,6 @@ class TestEdgeCases:
     async def test_delete_custom_rule_not_enabled(self):
         """Test delete_custom_rule when pg is not enabled"""
         screener_service._pg_enabled = False
-        
+
         result = await screener_service.delete_custom_rule(rule_id="test_id", user_id=1)
         assert result is False

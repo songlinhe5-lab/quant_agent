@@ -11,14 +11,14 @@ import warnings
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-import asyncio
-import logging
-import logging.handlers
-import os
-import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+import asyncio  # noqa: E402
+import logging  # noqa: E402
+import logging.handlers  # noqa: E402
+import os  # noqa: E402
+import sys  # noqa: E402
+from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
 
-import pytest
+import pytest  # noqa: E402
 
 # ─── 🔧 关键修复：在导入任何模块之前 Mock redis.asyncio.Redis ─────────
 # 防止 backend.core.redis_client 模块在 import 时创建真实 Redis 连接（导致测试超时）
@@ -106,7 +106,9 @@ def _mock_redis_globals():
     mock_rc.delete = AsyncMock(side_effect=lambda *keys: sum(_fake_store.pop(k, None) or 0 for k in keys))
     mock_rc.exists = AsyncMock(side_effect=lambda k: 1 if k in _fake_store else 0)
     mock_rc.expire = AsyncMock(return_value=True)
-    mock_rc.incr = AsyncMock(side_effect=lambda k: _fake_store.update({k: int(_fake_store.get(k, 0)) + 1}) or _fake_store[k])
+    mock_rc.incr = AsyncMock(
+        side_effect=lambda k: _fake_store.update({k: int(_fake_store.get(k, 0)) + 1}) or _fake_store[k]
+    )
     mock_rc.publish = AsyncMock(return_value=0)
     mock_rc.scan = AsyncMock(return_value=("0", []))
     mock_rc.aclose = AsyncMock()
@@ -118,7 +120,9 @@ def _mock_redis_globals():
     mock_pipe = AsyncMock()
     mock_pipe.__aenter__ = AsyncMock(return_value=mock_pipe)
     mock_pipe.__aexit__ = AsyncMock(return_value=False)
-    mock_pipe.incr = AsyncMock(side_effect=lambda k: _fake_store.update({k: int(_fake_store.get(k, 0)) + 1}) or _fake_store[k])
+    mock_pipe.incr = AsyncMock(
+        side_effect=lambda k: _fake_store.update({k: int(_fake_store.get(k, 0)) + 1}) or _fake_store[k]
+    )
     mock_pipe.expire = AsyncMock(return_value=True)
     mock_pipe.execute = AsyncMock(return_value=[1, True])  # 对应 incr + expire 的返回值
     mock_rc.pipeline = MagicMock(return_value=mock_pipe)
@@ -172,7 +176,7 @@ def _mock_external_services(request):
     if os.environ.get("DISABLE_EXTERNAL_MOCK") == "1":
         yield
         return
-    
+
     # 检查测试是否标记了 no_mock_external
     marker = request.node.get_closest_marker("no_mock_external")
     if marker is not None:

@@ -3,11 +3,10 @@ K 线数据仓库服务单元测试
 覆盖: backend/services/kline_warehouse.py
 """
 
-import asyncio
 import os
 import sys
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pandas as pd
 import pytest
@@ -54,7 +53,7 @@ class TestKlineWarehouse:
     def test_get_file_path_creates_ktype_dir(self, warehouse, tmp_path):
         """应自动创建 ktype 子目录"""
         warehouse.data_dir = str(tmp_path)
-        path = warehouse._get_file_path("HK.00700", "K_DAY")
+        warehouse._get_file_path("HK.00700", "K_DAY")
         assert os.path.isdir(os.path.join(str(tmp_path), "K_DAY"))
 
     async def test_get_history_missing_file_returns_none(self, warehouse, tmp_path):
@@ -126,8 +125,13 @@ class TestKlineWarehouse:
             }
         )
         with (
-            patch("backend.services.kline_warehouse.futu_service.get_history", new=AsyncMock(return_value=futu_response)),
-            patch("backend.services.kline_warehouse.yf_service.fetch_yf_data", new=AsyncMock(return_value=(True, yf_df, "ok"))),
+            patch(
+                "backend.services.kline_warehouse.futu_service.get_history", new=AsyncMock(return_value=futu_response)
+            ),
+            patch(
+                "backend.services.kline_warehouse.yf_service.fetch_yf_data",
+                new=AsyncMock(return_value=(True, yf_df, "ok")),
+            ),
             patch("backend.services.kline_warehouse.pd.read_parquet", side_effect=FileNotFoundError),
             patch.object(pd.DataFrame, "to_parquet", fake_to_parquet),
         ):
@@ -187,8 +191,14 @@ class TestKlineWarehouse:
             saved_dfs.append(self_df.copy())
 
         with (
-            patch("backend.services.kline_warehouse.futu_service.get_history", new=AsyncMock(return_value={"status": "error"})),
-            patch("backend.services.kline_warehouse.yf_service.fetch_yf_data", new=AsyncMock(return_value=(True, yf_df, "ok"))),
+            patch(
+                "backend.services.kline_warehouse.futu_service.get_history",
+                new=AsyncMock(return_value={"status": "error"}),
+            ),
+            patch(
+                "backend.services.kline_warehouse.yf_service.fetch_yf_data",
+                new=AsyncMock(return_value=(True, yf_df, "ok")),
+            ),
             patch("backend.services.kline_warehouse.pd.read_parquet", side_effect=FileNotFoundError),
             patch.object(pd.DataFrame, "to_parquet", fake_to_parquet),
         ):
@@ -202,8 +212,14 @@ class TestKlineWarehouse:
         """futu 与 yfinance 均失败时应返回 False"""
         warehouse.data_dir = str(tmp_path)
         with (
-            patch("backend.services.kline_warehouse.futu_service.get_history", new=AsyncMock(return_value={"status": "error"})),
-            patch("backend.services.kline_warehouse.yf_service.fetch_yf_data", new=AsyncMock(return_value=(False, None, "fail"))),
+            patch(
+                "backend.services.kline_warehouse.futu_service.get_history",
+                new=AsyncMock(return_value={"status": "error"}),
+            ),
+            patch(
+                "backend.services.kline_warehouse.yf_service.fetch_yf_data",
+                new=AsyncMock(return_value=(False, None, "fail")),
+            ),
             patch("backend.services.kline_warehouse.pd.read_parquet", side_effect=FileNotFoundError),
         ):
             result = await warehouse.update_ticker("HK.00700", "K_DAY")
@@ -255,8 +271,14 @@ class TestKlineWarehouse:
             saved_dfs.append(self_df.copy())
 
         with (
-            patch("backend.services.kline_warehouse.futu_service.get_history", new=AsyncMock(return_value={"status": "success", "data": new_data})),
-            patch("backend.services.kline_warehouse.yf_service.fetch_yf_data", new=AsyncMock(return_value=(True, yf_df, "ok"))),
+            patch(
+                "backend.services.kline_warehouse.futu_service.get_history",
+                new=AsyncMock(return_value={"status": "success", "data": new_data}),
+            ),
+            patch(
+                "backend.services.kline_warehouse.yf_service.fetch_yf_data",
+                new=AsyncMock(return_value=(True, yf_df, "ok")),
+            ),
             patch("backend.services.kline_warehouse.pd.read_parquet", return_value=old_df),
             patch.object(pd.DataFrame, "to_parquet", fake_to_parquet),
         ):

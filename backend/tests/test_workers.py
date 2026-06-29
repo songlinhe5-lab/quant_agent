@@ -1,4 +1,5 @@
 """Workers 模块单元测试：quote_publisher + daemon"""
+
 import asyncio
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -17,6 +18,7 @@ class TestQuotePublisher:
             with patch("backend.workers.quote_publisher.redis.from_url") as mock_from_url:
                 mock_from_url.return_value = MagicMock()
                 from backend.workers.quote_publisher import QuotePublisher
+
                 pub = QuotePublisher()
                 assert pub.is_running is False
                 url_arg = mock_from_url.call_args[0][0]
@@ -28,17 +30,23 @@ class TestQuotePublisher:
         with patch("backend.workers.quote_publisher.redis.from_url") as mock_from_url:
             mock_from_url.return_value = MagicMock()
             from backend.workers.quote_publisher import QuotePublisher
-            pub = QuotePublisher(redis_url="redis://custom:6379")
+
+            QuotePublisher(redis_url="redis://custom:6379")
             assert mock_from_url.call_args[0][0] == "redis://custom:6379"
 
     async def test_fetch_futu_data_success_returns_combined_data(self):
         """测试 Futu 数据拉取成功返回组合行情"""
         with patch("backend.workers.quote_publisher.redis.from_url"):
             from backend.workers.quote_publisher import QuotePublisher
+
             pub = QuotePublisher()
             with patch("backend.workers.quote_publisher.futu_service") as mock_futu:
-                mock_futu.get_quote = AsyncMock(return_value={"last_price": 150.0, "change_pct": "1.5%", "volume_str": "10M"})
-                mock_futu.get_order_book = AsyncMock(return_value={"bids": [{"price": 149.5, "size": 100}], "asks": [{"price": 150.5, "size": 200}]})
+                mock_futu.get_quote = AsyncMock(
+                    return_value={"last_price": 150.0, "change_pct": "1.5%", "volume_str": "10M"}
+                )
+                mock_futu.get_order_book = AsyncMock(
+                    return_value={"bids": [{"price": 149.5, "size": 100}], "asks": [{"price": 150.5, "size": 200}]}
+                )
                 result = await pub._fetch_futu_data("US.AAPL")
                 assert result["ticker"] == "US.AAPL"
                 assert result["last_price"] == 150.0
@@ -50,6 +58,7 @@ class TestQuotePublisher:
         """测试报价拉取异常抛出 ConnectionError"""
         with patch("backend.workers.quote_publisher.redis.from_url"):
             from backend.workers.quote_publisher import QuotePublisher
+
             pub = QuotePublisher()
             with patch("backend.workers.quote_publisher.futu_service") as mock_futu:
                 mock_futu.get_quote = AsyncMock(side_effect=RuntimeError("连接失败"))
@@ -61,6 +70,7 @@ class TestQuotePublisher:
         """测试 Mock 兜底数据结构正确"""
         with patch("backend.workers.quote_publisher.redis.from_url"):
             from backend.workers.quote_publisher import QuotePublisher
+
             pub = QuotePublisher()
             data = pub._get_mock_data("US.AAPL")
             assert data["ticker"] == "US.AAPL"
@@ -71,10 +81,13 @@ class TestQuotePublisher:
         """测试成功拉取后发布 Protobuf 到 Redis"""
         with patch("backend.workers.quote_publisher.redis.from_url"):
             from backend.workers.quote_publisher import QuotePublisher
+
             pub = QuotePublisher()
             pub.redis = AsyncMock()
             with patch("backend.workers.quote_publisher.futu_service") as mock_futu:
-                mock_futu.get_quote = AsyncMock(return_value={"last_price": 150.0, "change_pct": "1.5%", "volume_str": "10M"})
+                mock_futu.get_quote = AsyncMock(
+                    return_value={"last_price": 150.0, "change_pct": "1.5%", "volume_str": "10M"}
+                )
                 mock_futu.get_order_book = AsyncMock(return_value={"bids": [{"price": 149.5, "size": 100}], "asks": []})
                 await pub.poll_and_publish("US.AAPL")
                 assert pub.redis.hset.called
@@ -84,6 +97,7 @@ class TestQuotePublisher:
         """测试 Futu 拉取失败后降级到 Mock 数据"""
         with patch("backend.workers.quote_publisher.redis.from_url"):
             from backend.workers.quote_publisher import QuotePublisher
+
             pub = QuotePublisher()
             pub.redis = AsyncMock()
             with patch.object(pub, "_fetch_futu_data", side_effect=asyncio.TimeoutError()):
@@ -94,6 +108,7 @@ class TestQuotePublisher:
         """测试 Daemon 收到取消信号后优雅退出"""
         with patch("backend.workers.quote_publisher.redis.from_url"):
             from backend.workers.quote_publisher import QuotePublisher
+
             pub = QuotePublisher()
             pub.redis = AsyncMock()
             with patch("backend.workers.quote_publisher.futu_service") as mock_futu:
@@ -115,6 +130,7 @@ class TestDaemon:
     def test_init_trade_db_is_noop(self):
         """测试 init_trade_db 为空操作"""
         from backend.workers.daemon import init_trade_db
+
         init_trade_db()
 
     def test_log_trade_success_writes_to_db(self):
@@ -124,6 +140,7 @@ class TestDaemon:
             mock_sl.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_sl.return_value.__exit__ = MagicMock(return_value=None)
             from backend.workers.daemon import log_trade
+
             log_trade("US.AAPL", "BUY", 150.0, 100, "success", "ok")
             assert mock_db.add.called
             assert mock_db.commit.called
@@ -136,11 +153,13 @@ class TestDaemon:
             mock_sl.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_sl.return_value.__exit__ = MagicMock(return_value=None)
             from backend.workers.daemon import log_trade
+
             log_trade("US.AAPL", "BUY", 150.0, 100, "success", "ok")
 
     async def test_execute_trade_success_returns_response(self):
         """测试 execute_trade 成功返回响应"""
         from backend.workers.daemon import QuoteMonitorHandler
+
         handler = QuoteMonitorHandler()
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -158,6 +177,7 @@ class TestDaemon:
     async def test_execute_trade_failure_returns_error(self):
         """测试 execute_trade 网络异常返回错误"""
         from backend.workers.daemon import QuoteMonitorHandler
+
         handler = QuoteMonitorHandler()
         with patch("backend.workers.daemon.httpx.AsyncClient") as mock_cls:
             mock_client = AsyncMock()
@@ -172,5 +192,6 @@ class TestDaemon:
         """测试 start_daemon 初始化不报错"""
         with patch("backend.workers.daemon.init_trade_db") as mock_init:
             from backend.workers.daemon import start_daemon
+
             start_daemon()
             assert mock_init.called

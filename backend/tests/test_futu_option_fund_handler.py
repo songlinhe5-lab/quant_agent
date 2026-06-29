@@ -3,7 +3,6 @@ Futu OptionFundHandler 单元测试
 覆盖: get_option_chain/get_fund_flow/get_fundamental
 """
 
-import asyncio
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -184,9 +183,12 @@ class TestOptionFundHandler:
         cache_mgr.ff_lock = None  # 确保走创建锁分支
 
         # 加速 sleep 防止真实等待
-        with patch("asyncio.sleep", new=AsyncMock(return_value=None)), patch(
-            "asyncio.to_thread",
-            new=AsyncMock(return_value=(-1, "频率太高，请稍后再试")),
+        with (
+            patch("asyncio.sleep", new=AsyncMock(return_value=None)),
+            patch(
+                "asyncio.to_thread",
+                new=AsyncMock(return_value=(-1, "频率太高，请稍后再试")),
+            ),
         ):
             result = await handler.get_fund_flow("HK.00700")
         assert result["source"] == "mock"
@@ -199,9 +201,12 @@ class TestOptionFundHandler:
         handler, _, cache_mgr = _make_handler()
         cache_mgr.ff_lock = None
 
-        with patch("asyncio.sleep", new=AsyncMock(return_value=None)), patch(
-            "asyncio.to_thread",
-            new=AsyncMock(return_value=(-1, "permission denied")),
+        with (
+            patch("asyncio.sleep", new=AsyncMock(return_value=None)),
+            patch(
+                "asyncio.to_thread",
+                new=AsyncMock(return_value=(-1, "permission denied")),
+            ),
         ):
             result = await handler.get_fund_flow("US.AAPL")  # 非 HK 不走 broker 分支
         assert result["status"] == "error"
@@ -214,7 +219,9 @@ class TestOptionFundHandler:
         handler, conn_mgr, cache_mgr = _make_handler()
         cache_mgr.ff_lock = None
 
-        capital_df = pd.DataFrame({"capital_in_super": [100], "capital_in_big": [200], "capital_out_super": [50], "capital_out_big": [30]})
+        capital_df = pd.DataFrame(
+            {"capital_in_super": [100], "capital_in_big": [200], "capital_out_super": [50], "capital_out_big": [30]}
+        )
         broker_bid_df = pd.DataFrame({"id": [1, 2], "broker_name": ["A", "B"]})
         broker_ask_df = pd.DataFrame({"id": [3], "broker_name": ["C"]})
         ob_data = {"Bid": [(350.0, 1000)], "Ask": [(350.5, 800)]}
@@ -234,9 +241,7 @@ class TestOptionFundHandler:
         async def fake_to_thread(fn, *args, **kwargs):
             return results.pop(0)
 
-        with patch("asyncio.sleep", new=AsyncMock(return_value=None)), patch(
-            "asyncio.to_thread", new=fake_to_thread
-        ):
+        with patch("asyncio.sleep", new=AsyncMock(return_value=None)), patch("asyncio.to_thread", new=fake_to_thread):
             result = await handler.get_fund_flow("HK.00700")
         assert result["status"] == "success"
         assert result["broker_queue"] is not None
@@ -249,10 +254,13 @@ class TestOptionFundHandler:
         handler, _, cache_mgr = _make_handler()
         cache_mgr.ff_lock = None
 
-        capital_df = pd.DataFrame({"capital_in_super": [100], "capital_in_big": [200], "capital_out_super": [50], "capital_out_big": [30]})
+        capital_df = pd.DataFrame(
+            {"capital_in_super": [100], "capital_in_big": [200], "capital_out_super": [50], "capital_out_big": [30]}
+        )
 
-        with patch("asyncio.sleep", new=AsyncMock(return_value=None)), patch(
-            "asyncio.to_thread", new=AsyncMock(return_value=(RET_OK, capital_df))
+        with (
+            patch("asyncio.sleep", new=AsyncMock(return_value=None)),
+            patch("asyncio.to_thread", new=AsyncMock(return_value=(RET_OK, capital_df))),
         ):
             result = await handler.get_fund_flow("US.AAPL")
         assert result["status"] == "success"

@@ -77,7 +77,16 @@ class TestDivergenceResonanceStrategyRun:
         assert "limit_orders" in result
 
         metrics = result["metrics"]
-        for key in ["total_return", "annualized_return", "sharpe_ratio", "max_drawdown", "win_rate", "total_trades", "profit_factor", "total_friction_cost"]:
+        for key in [
+            "total_return",
+            "annualized_return",
+            "sharpe_ratio",
+            "max_drawdown",
+            "win_rate",
+            "total_trades",
+            "profit_factor",
+            "total_friction_cost",
+        ]:
             assert key in metrics, f"Missing metric: {key}"
 
     def test_run_equity_curve_structure(self):

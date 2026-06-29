@@ -15,8 +15,6 @@ os.environ.setdefault("INTERNAL_API_SECRET", "test-secret-key")
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-import pytest
-
 
 class TestNewTraceId:
     """trace_id 生成测试"""

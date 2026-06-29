@@ -11,9 +11,8 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
@@ -25,9 +24,8 @@ class TestGlobalExceptionHandler:
 
     def test_quant_exception_handler_returns_unified_format(self):
         """QuantBaseException 转换为统一格式"""
-        from backend.core.exceptions import QuantBaseException
         from backend.core.error_codes import ErrorCode
-
+        from backend.core.exceptions import QuantBaseException
         from backend.main import quant_exception_handler
 
         mock_request = MagicMock(spec=Request)
