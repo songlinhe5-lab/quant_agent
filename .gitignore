@@ -275,3 +275,4 @@ data/temp/
 
 # 自定义忽略文件
 .customignore
+backend/coverage.json
