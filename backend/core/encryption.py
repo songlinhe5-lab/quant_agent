@@ -187,7 +187,7 @@ def generate_new_master_key() -> str:
     return new_key.hex()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     # 测试代码
     print("🔐 生成新的 AES-256 主密钥...")
     new_key = generate_new_master_key()

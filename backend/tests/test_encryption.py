@@ -74,6 +74,48 @@ class TestGetEncryptionKey:
         finally:
             enc_module.settings.encryption_master_key = original
 
+    def test_invalid_hex_falls_back_to_plain_string(self):
+        """64 字符非 hex 密钥被视为原始字符串并截断为 32 字节"""
+        from backend.core import encryption as enc_module
+
+        original = enc_module.settings.encryption_master_key
+        try:
+            # "zz" * 32 是 64 字符，但不是有效的 hex
+            enc_module.settings.encryption_master_key = "zz" * 32
+            key = get_encryption_key()
+            # 进入 except 分支，将 "zzzz..." 视为原始字符串
+            expected = ("zz" * 32).encode("utf-8")[:32]
+            assert key == expected
+        finally:
+            enc_module.settings.encryption_master_key = original
+
+    def test_non_ascii_key_falls_back_to_plain_string(self):
+        """包含非 ASCII 字符的密钥被视为原始字符串"""
+        from backend.core import encryption as enc_module
+
+        original = enc_module.settings.encryption_master_key
+        try:
+            # 包含中文的密钥会导致 base64 解码失败，进入 except 分支
+            enc_module.settings.encryption_master_key = "这是一个很长的密钥用于测试" * 2
+            key = get_encryption_key()
+            # 进入 except 分支，将密钥视为原始字符串并截断为 32 字节
+            assert len(key) == 32
+        finally:
+            enc_module.settings.encryption_master_key = original
+
+    def test_plain_string_key_shorter_than_32_bytes_raises(self):
+        """原始字符串短于 32 字节时抛出 ValueError"""
+        from backend.core import encryption as enc_module
+
+        original = enc_module.settings.encryption_master_key
+        try:
+            # 先设置一个会进入 except 分支的 key（包含非 ASCII 字符）
+            enc_module.settings.encryption_master_key = "短"
+            with pytest.raises(ValueError, match="长度必须 >= 32 字节"):
+                get_encryption_key()
+        finally:
+            enc_module.settings.encryption_master_key = original
+
 
 class TestEncryptSensitiveData:
     """encrypt_sensitive_data() 加密"""
