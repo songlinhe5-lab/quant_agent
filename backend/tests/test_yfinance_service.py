@@ -10,11 +10,12 @@ Coverage targets:
 - Batch processing / rate limiting / circuit breaker / fallback paths
 """
 import asyncio
+import concurrent.futures
 import json
 import os
 import sys
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pandas as pd
@@ -27,6 +28,21 @@ from backend.services.yfinance_service import (
     format_yf_ticker,
     yf_service,
 )
+
+
+class FakeExecutor:
+    """让 run_in_executor 同步执行传入的函数，返回已完成的 concurrent.futures.Future"""
+    def submit(self, fn: Callable, *args, **kwargs) -> concurrent.futures.Future:
+        fut = concurrent.futures.Future()
+        try:
+            fut.set_result(fn(*args, **kwargs))
+        except Exception as e:
+            fut.set_exception(e)
+        return fut
+
+    def shutdown(self, wait: bool = True) -> None:
+        """兼容 ThreadPoolExecutor.shutdown(wait=False) 调用"""
+        pass
 
 
 # ─── 禁用 conftest.py 中的 _mock_external_services fixture ──────────────────
@@ -177,9 +193,8 @@ class TestYFinanceService:
             # 手动初始化 session（因为 _init_session 被 mock 了）
             service.session = requests.Session()
             service.session.headers.update({"User-Agent": "Mozilla/5.0"})
-            # 正确 mock _executor.submit 返回 Future
-            service._executor = MagicMock()
-            service._executor.submit.return_value = MagicMock()
+            # 使用 FakeExecutor 替代 MagicMock，让 run_in_executor 能真正同步执行函数
+            service._executor = FakeExecutor()
             service._cache = {}
             service._error_cache = {}
             service._circuit_breaker_until = 0.0
@@ -276,7 +291,6 @@ class TestYFinanceService:
         assert "熔断" in msg
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="需要更复杂的 mock 来模拟 fetch_yf_data 的行为")
     async def test_fetch_yf_data_yf_shared_429_triggers_circuit_breaker(self, service):
         """Test fetch_yf_data when yfinance shared has 429 error"""
         errors_dict = {}
@@ -367,7 +381,6 @@ class TestYFinanceService:
         assert result["last_price"] == 150.0
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="需要更复杂的 mock 来模拟 _executor.submit 的行为")
     async def test_get_batched_quote_dispatch_returns_quote(self, service):
         """Test get_batched_quote dispatch returns quote"""
         dates = pd.date_range("2024-05-01", periods=5, freq="D")
@@ -385,7 +398,6 @@ class TestYFinanceService:
         assert r["status"] == "success" and r["last_price"] == 5.5
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="需要更复杂的 mock 来模拟 _executor.submit 的行为")
     async def test_get_batched_quote_dispatch_tech_invokes_tech_indicators(self, service):
         """Test get_batched_quote dispatch tech invokes tech_indicators"""
         dates = pd.date_range("2024-05-01", periods=30, freq="D")
@@ -401,7 +413,6 @@ class TestYFinanceService:
         assert r["status"] == "success" and len(r["data"]["trend"]) == 2
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="需要更复杂的 mock 来模拟 _executor.submit 的行为")
     async def test_get_batched_quote_dispatch_429_triggers_circuit_breaker(self, service):
         """Test get_batched_quote dispatch 429 triggers circuit breaker"""
         mock_yf = MagicMock()
@@ -460,7 +471,6 @@ class TestYFinanceService:
         assert len(result["data"]["trend"]) == 1
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="需要正确 mock yfinance.Ticker 的行为")
     async def test_get_tech_indicators_with_pre_fetched_df(self, service):
         """Test get_tech_indicators with pre-fetched DataFrame"""
         # Create a mock DataFrame
@@ -559,7 +569,6 @@ class TestYFinanceService:
             assert len(result["data"]) >= 0  # May return empty if mock doesn't work
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="需要更复杂的 mock 来模拟网络请求的行为")
     async def test_search_tickers_redis_error_allowed_continues_to_network(self, service):
         """Test search_tickers when redis error allowed continues to network"""
         # 正确初始化 session
@@ -571,7 +580,6 @@ class TestYFinanceService:
         assert r["status"] == "error" and "network boom" in r["message"]
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="需要更复杂的 mock 来模拟网络请求的行为")
     async def test_search_tickers_non_429_exception_returns_error(self, service):
         """Test search_tickers when non-429 exception returns error"""
         # 正确初始化 session
@@ -583,7 +591,6 @@ class TestYFinanceService:
         assert r["status"] == "error" and "403" in r["message"]
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="需要更复杂的 mock 来模拟网络请求的行为")
     async def test_search_tickers_writes_cache_on_success(self, service):
         """Test search_tickers writes cache on success"""
         # 正确初始化 session
