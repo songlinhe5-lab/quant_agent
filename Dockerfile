@@ -1,11 +1,11 @@
 # ==========================================
 # Stage 1: 前端 React 构建阶段
 # ==========================================
-FROM node:20-alpine AS frontend-builder
+FROM node:24-alpine AS frontend-builder
 WORKDIR /build/frontend
 
-# 安装 pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# 安装 pnpm 9.x (与 frontend CI 保持一致)
+RUN corepack enable && corepack prepare pnpm@9 --activate
 
 # 优先复制 package.json 利用 Docker 层缓存
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
