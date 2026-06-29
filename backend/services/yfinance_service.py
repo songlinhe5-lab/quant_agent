@@ -13,8 +13,10 @@ import pandas as pd
 import requests
 import yfinance as yf
 
-from backend.services.llm_service import llm_service
 from backend.services.notification_service import notification_service
+
+# llm_service 改为懒加载，仅在 macro_data_daemon 中通过 self.llm_service 访问
+# 构造函数接受 llm_service_instance 参数，测试时可注入 mock 对象
 
 
 def format_yf_ticker(ticker: str) -> str:
@@ -123,12 +125,15 @@ class RateLimitedSession(requests.Session):
 
 
 class YFinanceService:
-    def __init__(self):
+    def __init__(self, llm_service_instance=None):
         self._cache = {}  # { cache_key: (timestamp, data) }
         self._error_cache = {}  # { cache_key: timestamp } 黑名单缓存
         self._req_lock = asyncio.Lock()
         self._last_req_time = 0.0
         self._circuit_breaker_until = 0.0  # 全局熔断器：记录熔断结束的时间戳
+
+        # llm_service 支持依赖注入：测试时可传入 mock，生产环境使用全局单例
+        self._llm_service_override = llm_service_instance
 
         # 💡 微批处理队列机制 (Micro-batching Queue / DataLoader)
         self._batch_queue = {}
@@ -140,6 +145,14 @@ class YFinanceService:
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=10, thread_name_prefix="YFinanceWorker")  # noqa: E501
 
         self._init_session()
+
+    @property
+    def llm_service(self):
+        """懒加载 llm_service：优先使用注入的实例，否则导入全局单例"""
+        if self._llm_service_override is not None:
+            return self._llm_service_override
+        from backend.services.llm_service import llm_service as real_llm_service
+        return real_llm_service
 
     def _init_session(self):
         """初始化带有随机 User-Agent 的会话，防止长进程 Cookie 被封/过期"""
