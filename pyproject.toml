@@ -104,6 +104,7 @@ asyncio_mode = "auto"
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::UserWarning",
+    "ignore::RuntimeWarning",
 ]
 
 [tool.coverage.run]

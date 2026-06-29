@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -70,6 +71,8 @@ async def chat_endpoint(request: ChatRequest):
         # 3. 发起调用与流式返回 (StreamingResponse)
         async def generate_response():
             # 💡 模拟底层 Agent 执行 Tool 时的思考与纠错过程
+            # CHAT_MOCK_DELAY=0 时取消延迟（测试环境），生产环境默认 1
+            _mock_delay = float(os.environ.get("CHAT_MOCK_DELAY", "1"))
             thoughts = [
                 "调用 get_broker_market_data 获取实时行情...",
                 "⚠️ 发现参数偏离设定，正在自动纠错重试 (第 1 次)...\n拦截原因: 不支持该维度或周期 [filters->0->field]",  # noqa: E501
@@ -77,13 +80,15 @@ async def chat_endpoint(request: ChatRequest):
             ]
             for thought in thoughts:
                 yield json.dumps({"type": "thought_chunk", "content": thought}) + "\n"
-                await asyncio.sleep(0.5)  # 模拟思考耗时
+                if _mock_delay > 0:
+                    await asyncio.sleep(0.5 * _mock_delay)
 
             # 💡 思考完毕后，开始输出给用户的正式回复
             reply_text = "已收到指令。经过分析，为您筛选出以下结果..."
             for char in reply_text:
                 yield json.dumps({"type": "text_chunk", "content": char}) + "\n"
-                await asyncio.sleep(0.03)  # 模拟文字吐出延迟
+                if _mock_delay > 0:
+                    await asyncio.sleep(0.03 * _mock_delay)
 
         return StreamingResponse(generate_response(), media_type="application/x-ndjson")
 

@@ -4,8 +4,6 @@
 
 import os
 
-import numpy as np
-import pandas as pd
 import pytest
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
@@ -17,6 +15,9 @@ os.environ.setdefault("INTERNAL_API_SECRET", "test-secret-key")
 
 def _make_ohlc_data(num_days=50, start_price=100.0):
     """生成模拟的 OHLCV 数据"""
+    import numpy as np
+    import pandas as pd
+
     dates = pd.date_range("2024-01-01", periods=num_days, freq="D")
     np.random.seed(42)
     returns = np.random.normal(0.001, 0.02, num_days)
@@ -50,6 +51,8 @@ def ohlc_data_100():
 @pytest.fixture
 def mock_dataframe():
     """20 天确定性 OHLCV 数据（用于事件驱动引擎精确断言）"""
+    import pandas as pd
+
     dates = pd.date_range("2024-01-01", periods=20, freq="D")
     prices = [100.0 + i for i in range(19)] + [100.0]
     df = pd.DataFrame(

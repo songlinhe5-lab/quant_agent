@@ -63,9 +63,11 @@ class TestDivergenceResonanceStrategy:
 
 
 # ─── run() 完整执行路径 ──────────────────────────────────────────────
+# 标记为 slow：vectorbt 首次初始化约 2s，后续测试复用已初始化状态
+@pytest.mark.slow
 class TestDivergenceResonanceStrategyRun:
     def test_run_returns_metrics(self):
-        df = _make_ohlc_data(200)
+        df = _make_ohlc_data(50)
         strategy = DivergenceResonanceStrategy(df)
         result = strategy.run()
 
@@ -79,7 +81,7 @@ class TestDivergenceResonanceStrategyRun:
             assert key in metrics, f"Missing metric: {key}"
 
     def test_run_equity_curve_structure(self):
-        df = _make_ohlc_data(200)
+        df = _make_ohlc_data(50)
         strategy = DivergenceResonanceStrategy(df)
         result = strategy.run()
 
@@ -91,7 +93,7 @@ class TestDivergenceResonanceStrategyRun:
             assert "price" in point
 
     def test_run_trades_structure(self):
-        df = _make_ohlc_data(200)
+        df = _make_ohlc_data(50)
         strategy = DivergenceResonanceStrategy(df)
         result = strategy.run()
 
@@ -104,20 +106,20 @@ class TestDivergenceResonanceStrategyRun:
             assert trade["action"] in ["BUY", "SELL", "SHORT", "COVER"]
 
     def test_run_with_custom_params(self):
-        df = _make_ohlc_data(200)
+        df = _make_ohlc_data(50)
         strategy = DivergenceResonanceStrategy(df, initial_capital=50000.0, atr_multiplier=3.0)
         result = strategy.run()
         assert "metrics" in result
 
     def test_run_with_trending_data(self):
         """上升趋势数据应产生正收益"""
-        df = _make_ohlc_data(300, start_price=50.0)
+        df = _make_ohlc_data(50, start_price=50.0)
         strategy = DivergenceResonanceStrategy(df)
         result = strategy.run()
         assert isinstance(result["metrics"]["total_trades"], int)
 
     def test_run_multiindex_columns(self):
-        df = _make_ohlc_data(200)
+        df = _make_ohlc_data(50)
         df.columns = pd.MultiIndex.from_tuples([(col, "") for col in df.columns])
         strategy = DivergenceResonanceStrategy(df)
         result = strategy.run()

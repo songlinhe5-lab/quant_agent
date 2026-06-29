@@ -272,4 +272,6 @@ class TestLogger:
 
         record = logging.LogRecord("test", logging.ERROR, "", 0, "test error", (), None)
         # Should not raise even if webhook is unreachable
-        handler.emit(record)
+        # 💡 Mock urlopen 避免真实 HTTP 调用（timeout=5 会导致测试极慢）
+        with patch("urllib.request.urlopen"):
+            handler.emit(record)

@@ -265,19 +265,34 @@ class TestFetchFallbackQuote:
         assert result["status"] == "success"
 
     async def test_fetch_fallback_quote_timeout(self):
+        """验证 _fetch_fallback_quote 在 yfinance 超时后能正确返回 error 状态
+
+        原实现用 time.sleep(5) + asyncio.wait_for(timeout=4.0)，测试耗时 ~4 秒。
+        修复：patch asyncio.wait_for 使其立即抛出 TimeoutError，测试瞬间完成。
+        """
         from backend.core.market_engine import ConnectionManager
 
         cm = ConnectionManager()
 
-        def slow_call(ticker):
+        # _get_yf_fast_info 会被 asyncio.to_thread 在子线程中调用，必须是同步函数
+        # 函数体不会被执行到（因为 wait_for 被 patch 了），但签名必须匹配
+        def never_returns(ticker):
             import time
-
-            time.sleep(5)
+            time.sleep(999999)  # 永远不会返回
             return {"status": "success"}
 
-        cm._get_yf_fast_info = MagicMock(side_effect=slow_call)
-        result = await cm._fetch_fallback_quote("US.AAPL")
-        assert result["status"] == "error"
+        cm._get_yf_fast_info = never_returns
+
+        # patch asyncio.wait_for 使其立即抛 TimeoutError，
+        # 这样 _fetch_fallback_quote 的 except 分支会返回 {"status": "error"}
+        import unittest.mock as _mock
+
+        with _mock.patch(
+            "asyncio.wait_for",
+            side_effect=asyncio.TimeoutError("mocked timeout"),
+        ):
+            result = await cm._fetch_fallback_quote("US.AAPL")
+            assert result["status"] == "error"
 
 
 # ─── update_quote_to_redis 模块级函数 ─────────────────────────────

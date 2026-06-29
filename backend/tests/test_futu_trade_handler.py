@@ -13,6 +13,7 @@ from futu import ModifyOrderOp, OrderType, TrdEnv, TrdMarket, TrdSide
 from backend.services.futu.trade_handler import TradeHandler
 
 
+
 def _make_handler():
     conn_mgr = MagicMock()
     conn_mgr.status = "CONNECTED"

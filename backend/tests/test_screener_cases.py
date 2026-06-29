@@ -6,7 +6,7 @@ import pytest
 # 💡 核心修复：因为文件放在了 backend/tests 下，必须向上跳两级才能到达 quant_agent 根目录  # noqa: E501
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.services.futu.screener_handler import _FUTU_V2_SUPPORT
 from backend.services.futu_service import futu_service
@@ -1066,7 +1066,7 @@ async def test_futu_service_indicator_pattern_fix():
         ScrMarket=MagicMock(),
         ScrSortDir=MagicMock(),
         Term=MagicMock(),
-    ):
+    ), patch("asyncio.sleep", new=AsyncMock()):
         # 配置 MagicMock 的返回值，使得 get_enum 能正常工作
         handler_module.Pattern.MACD_GOLD_CROSS = Pattern.MACD_GOLD_CROSS
         handler_module.Pattern.MACD_GOLDEN_CROSS = Pattern.MACD_GOLD_CROSS  # 容错映射
@@ -1117,6 +1117,7 @@ async def test_futu_service_indicator_positional():
     with (
         patch("backend.services.futu.screener_handler._FUTU_V2_SUPPORT", True),
         patch("backend.services.futu.screener_handler.StockScreenRequest") as MockReq,
+        patch("asyncio.sleep", new=AsyncMock()),
     ):
         mock_req_instance = MockReq.return_value
         await futu_service.screen_stocks(market="US", filters=filters)

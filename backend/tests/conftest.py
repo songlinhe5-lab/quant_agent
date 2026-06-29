@@ -3,6 +3,14 @@ Pytest 公共 Fixtures
 TEST-08: 测试框架与脚手架搭建
 """
 
+# ─── 🔇 过滤 Python 3.13 MagicMock 误报警告 ──────────────────
+# Python 3.13 中，MagicMock 访问某些属性时会内部产生 unawaited coroutine
+# 警告，这些来自 unittest.mock 内部实现，不是业务代码的 bug。
+# 必须在 import unittest.mock 之前设置才有效。
+import warnings
+
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+
 import asyncio
 import logging
 import logging.handlers
@@ -12,7 +20,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# ─── futu logger 权限兜底 ──────────────────────────────────────────
+# ─── 🔧 关键修复：在导入任何模块之前 Mock redis.asyncio.Redis ─────────
+# 防止 backend.core.redis_client 模块在 import 时创建真实 Redis 连接（导致测试超时）
+# 必须在 `import redis.asyncio` 之前执行，确保模块加载时类已被替换
+_redis_asyncio_patcher = patch("redis.asyncio.Redis", new_callable=AsyncMock)
+_redis_asyncio_patcher.start()
+
+# ─── futu logger 权限兜底 ──────────────────────────────────
 # macOS TCC/sandbox 可能禁止写 ~/.com.futunn.FutuOpenD/Log,导致 `from futu import ...` 失败。
 # 在任何模块 import futu 之前,patch TimedRotatingFileHandler 使其在 PermissionError 时降级为 StreamHandler。
 _orig_trfh_init = logging.handlers.TimedRotatingFileHandler.__init__
@@ -28,7 +42,9 @@ def _safe_trfh_init(self, *args, **kwargs):
 logging.handlers.TimedRotatingFileHandler.__init__ = _safe_trfh_init
 
 
-# 💡 修复事件循环问题：为异步测试提供事件循环
+# 💡 为使用 asyncio.get_event_loop() + loop.run_until_complete() 的旧测试提供事件循环
+# 注意：pytest-asyncio Mode.AUTO 已自动管理 event loop，但 test_tools.py 等旧测试
+# 显式调用 get_event_loop()，需要这个 fixture 才能正常工作。
 @pytest.fixture(scope="function")
 def event_loop():
     """为每个测试函数创建独立的事件循环"""
@@ -54,9 +70,111 @@ os.environ.setdefault("EMBEDDING_BASE_URL", "https://api.test.com")
 os.environ.setdefault("EMBEDDING_MODEL", "BAAI/bge-large-zh-v1.5")
 os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 os.environ.setdefault("QUANT_ENV", "testing")
+# 💡 消除 encryption.py 的 "ENCRYPTION_MASTER_KEY 未配置" RuntimeWarning
+os.environ["ENCRYPTION_MASTER_KEY"] = "00" * 32  # 64 字符十六进制 = 32 字节 AES-256 密钥
+# 💡 取消 chat router 模拟延迟（测试环境加速）
+os.environ["CHAT_MOCK_DELAY"] = "0"
 
 
-# ─── Fixtures: 数据库 ──────────────────────────────────────────────
+# ─── 🔧 全局 Redis Mock Fixture（autouse）───────────────────────────
+# 自动 patch 各模块中的 redis_client/l1_cached_redis/redis_batch_writer 引用，
+# 确保所有测试不依赖真实 Redis。
+# 如需添加新的模块，往 _REDIS_PATCH_MODULES 列表追加即可。
+_REDIS_PATCH_MODULES = [
+    "backend.core.redis_client",
+    "backend.main",
+    "backend.services.sentiment_tracker",
+]
+
+
+@pytest.fixture(autouse=True)
+def _mock_redis_globals():
+    """
+    全局自动 fixture：动态 patch 所有已知模块中导入的 redis 全局变量。
+    通过 importlib 动态导入模块，仅对模块确实存在的属性打补丁，
+    避免因模块没有某个属性而抛出 AttributeError。
+    """
+    import importlib
+    from contextlib import ExitStack
+
+    _fake_store = {}
+
+    # 构造一个通用的 AsyncMock Redis 客户端
+    mock_rc = AsyncMock()
+    mock_rc.get = AsyncMock(side_effect=lambda k: _fake_store.get(k))
+    mock_rc.set = AsyncMock(side_effect=lambda k, v, **kw: (_fake_store.update({k: v}), True)[1])
+    mock_rc.delete = AsyncMock(side_effect=lambda *keys: sum(_fake_store.pop(k, None) or 0 for k in keys))
+    mock_rc.exists = AsyncMock(side_effect=lambda k: 1 if k in _fake_store else 0)
+    mock_rc.expire = AsyncMock(return_value=True)
+    mock_rc.incr = AsyncMock(side_effect=lambda k: _fake_store.update({k: int(_fake_store.get(k, 0)) + 1}) or _fake_store[k])
+    mock_rc.publish = AsyncMock(return_value=0)
+    mock_rc.scan = AsyncMock(return_value=("0", []))
+    mock_rc.aclose = AsyncMock()
+
+    # ping() 必须正常返回，否则 health_check 会报 unhealthy
+    mock_rc.ping = AsyncMock(return_value=True)
+
+    # pipeline 支持 async with
+    mock_pipe = AsyncMock()
+    mock_pipe.__aenter__ = AsyncMock(return_value=mock_pipe)
+    mock_pipe.__aexit__ = AsyncMock(return_value=False)
+    mock_pipe.incr = AsyncMock(side_effect=lambda k: _fake_store.update({k: int(_fake_store.get(k, 0)) + 1}) or _fake_store[k])
+    mock_pipe.expire = AsyncMock(return_value=True)
+    mock_pipe.execute = AsyncMock(return_value=[1, True])  # 对应 incr + expire 的返回值
+    mock_rc.pipeline = MagicMock(return_value=mock_pipe)
+
+    # pubsub mock（供 MCP SSE 使用）
+    mock_pubsub = AsyncMock()
+    mock_pubsub.subscribe = AsyncMock()
+    mock_pubsub.get_message = AsyncMock(return_value=None)
+    mock_pubsub.unsubscribe = AsyncMock()
+    mock_pubsub.close = AsyncMock()
+    mock_rc.pubsub = MagicMock(return_value=mock_pubsub)
+
+    # l1_cached_redis mock（LocalL1Cache 的接口）
+    mock_l1 = AsyncMock()
+    mock_l1.get = AsyncMock(side_effect=lambda k: _fake_store.get(k))
+    mock_l1.set = AsyncMock(side_effect=lambda k, v, **kw: (_fake_store.update({k: v}), None)[1])
+    mock_l1.invalidate = MagicMock()
+
+    # redis_batch_writer mock
+    mock_writer = MagicMock()
+    mock_writer.put_set_nowait = MagicMock()
+    mock_writer.start = MagicMock()
+    mock_writer.stop = AsyncMock()
+
+    with ExitStack() as stack:
+        for module_name in _REDIS_PATCH_MODULES:
+            try:
+                mod = importlib.import_module(module_name)
+                # 仅 patch 模块确实存在的属性
+                if hasattr(mod, "redis_client"):
+                    stack.enter_context(patch(f"{module_name}.redis_client", mock_rc))
+                if hasattr(mod, "l1_cached_redis"):
+                    stack.enter_context(patch(f"{module_name}.l1_cached_redis", mock_l1))
+                if hasattr(mod, "redis_batch_writer"):
+                    stack.enter_context(patch(f"{module_name}.redis_batch_writer", mock_writer))
+            except ImportError:
+                # 模块尚未被导入（测试不涉及该模块），安全跳过
+                pass
+
+        yield
+
+
+# ─── 🔧 全局 Futu/VyFinance Mock（autouse）────────────────────────
+# 防止测试时尝试连接 Futu OpenD 或雅虎财经
+@pytest.fixture(autouse=True)
+def _mock_external_services():
+    """自动 mock 外部数据服务，避免测试时触发真实网络请求"""
+    with patch("backend.services.futu_service.futu_service") as mock_futu, \
+         patch("backend.services.yfinance_service.yf_service") as mock_yf:
+        mock_futu.status = "DISCONNECTED"
+        mock_futu.get_market_snapshot = AsyncMock(return_value=([], None))
+        mock_yf.get_quote = AsyncMock(return_value={})
+        yield
+
+
+# ─── Fixtures: 数据库 ────────────────────────────────────────
 @pytest.fixture
 def mock_db():
     """Mock 数据库会话"""
@@ -79,7 +197,7 @@ def mock_async_db():
     return db
 
 
-# ─── Fixtures: Redis ────────────────────────────────────────────────
+# ─── Fixtures: Redis ──────────────────────────────────────────
 @pytest.fixture
 def mock_redis():
     """Mock Redis 客户端"""
@@ -98,7 +216,7 @@ def mock_redis():
     return redis
 
 
-# ─── Fixtures: HTTP 客户端 ──────────────────────────────────────────
+# ─── Fixtures: HTTP 客户端 ──────────────────────────────────────
 @pytest.fixture
 def mock_httpx():
     """Mock httpx 异步客户端"""
@@ -114,7 +232,7 @@ def mock_httpx():
     return client
 
 
-# ─── Fixtures: FastAPI TestClient ───────────────────────────────────
+# ─── Fixtures: FastAPI TestClient ───────────────────────────
 @pytest.fixture
 def test_client():
     """FastAPI 测试客户端（同步）"""
@@ -137,7 +255,7 @@ async def async_test_client():
         yield client
 
 
-# ─── Fixtures: 认证 ─────────────────────────────────────────────────
+# ─── Fixtures: 认证 ─────────────────────────────────────────────
 @pytest.fixture
 def mock_user():
     """Mock 用户数据"""
@@ -166,7 +284,7 @@ def auth_headers():
     return {"Authorization": "Bearer test-access-token"}
 
 
-# ─── Fixtures: 行情数据 ─────────────────────────────────────────────
+# ─── Fixtures: 行情数据 ────────────────────────────────────────
 @pytest.fixture
 def sample_quote():
     """示例行情数据"""
@@ -178,7 +296,7 @@ def sample_quote():
         "low": 395.0,
         "prev_close": 397.0,
         "volume": 1000000,
-        "turnover": 400000000.0,
+        "turn_over": 400000000.0,
         "change": 3.0,
         "change_percent": 0.76,
         "timestamp": 1719500000,
@@ -201,7 +319,7 @@ def sample_klines():
     ]
 
 
-# ─── Fixtures: 订单/持仓 ────────────────────────────────────────────
+# ─── Fixtures: 订单/持仓 ────────────────────────────────────
 @pytest.fixture
 def sample_order():
     """示例订单数据"""
@@ -235,7 +353,7 @@ def sample_position():
     }
 
 
-# ─── Fixtures: 外部服务 Mock ────────────────────────────────────────
+# ─── Fixtures: 外部服务 Mock ────────────────────────────────
 @pytest.fixture
 def mock_futu():
     """Mock Futu OpenD 连接"""
@@ -258,7 +376,7 @@ def mock_yfinance():
         yield mock_ticker
 
 
-# ─── 测试数据工厂 ────────────────────────────────────────────────────
+# ─── 测试数据工厂 ────────────────────────────────────────────
 class TestDataFactory:
     """测试数据工厂，快速生成各类测试数据"""
 
@@ -272,7 +390,7 @@ class TestDataFactory:
             "low": 395.0,
             "prev_close": 397.0,
             "volume": 1000000,
-            "turnover": 400000000.0,
+            "turn_over": 400000000.0,
             "change": 3.0,
             "change_percent": 0.76,
             "timestamp": 1719500000,

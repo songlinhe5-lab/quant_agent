@@ -186,16 +186,30 @@ class TestFutuWatchdog:
 
     @pytest.mark.asyncio
     async def test_health_check_timeout_returns_false(self):
-        """探针超时应返回 False 而非抛出异常"""
+        """探针超时应返回 False 而非抛出异常
+
+        💡 修复：直接 patch _health_check 内部的 asyncio.wait_for，
+        让它立即抛 TimeoutError，无需构造复杂的 Future。
+        同时 cancel 未被 await 的 Future 以消除 "coroutine was never awaited"。
+        """
         wd, futu_svc = _make_watchdog()
         futu_svc.conn_mgr.status = "CONNECTED"
         futu_svc.conn_mgr.quote_ctx = MagicMock()
 
-        async def slow_thread(*args, **kwargs):
-            await asyncio.sleep(100)
-            return (0, pd.DataFrame({"code": ["X"]}))
+        import asyncio as _asyncio
 
-        with patch("asyncio.to_thread", new=slow_thread), patch("asyncio.wait_for", side_effect=asyncio.TimeoutError()):
+        # 保存原始 wait_for，用于正确清理
+        _orig_wait_for = _asyncio.wait_for
+
+        async def _mocked_wait_for(coro, timeout):
+            """mock wait_for：立即抛 TimeoutError"""
+            # coro 是一个 Future（来自 asyncio.to_thread）
+            # 必须 cancel 它，否则会被 GC 时报告 "coroutine was never awaited"
+            if hasattr(coro, "cancel"):
+                coro.cancel()
+            raise _asyncio.TimeoutError()
+
+        with patch("asyncio.wait_for", new=_mocked_wait_for):
             result = await wd._health_check()
         assert result is False
 
