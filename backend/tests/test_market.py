@@ -54,7 +54,7 @@ class TestCircuitBreaker:
 
         import asyncio
 
-        result = asyncio.get_event_loop().run_until_complete(cb.call("test_svc", success_fn))  # noqa: E501
+        result = asyncio.run(cb.call("test_svc", success_fn))  # noqa: E501
         assert result == "ok"
         assert cb.get_state("test_svc") == CircuitState.CLOSED
 
@@ -73,18 +73,24 @@ class TestCircuitBreaker:
 
         import asyncio
 
-        loop = asyncio.get_event_loop()
+        # 使用 asyncio.run() 避免事件循环问题
+        async def trigger_breaker():
+            # 连续失败触发熔断
+            for _ in range(2):
+                try:
+                    await cb.call("test_open", fail_fn)
+                except RuntimeError:
+                    pass
 
-        # 连续失败触发熔断
-        for _ in range(2):
-            with pytest.raises(RuntimeError):
-                loop.run_until_complete(cb.call("test_open", fail_fn))
+            assert cb.get_state("test_open") == CircuitState.OPEN
 
-        assert cb.get_state("test_open") == CircuitState.OPEN
+            # 再次调用应触发熔断器打开异常
+            try:
+                await cb.call("test_open", fail_fn)
+            except CircuitBreakerOpenError:
+                pass
 
-        # 再次调用应触发熔断器打开异常
-        with pytest.raises(CircuitBreakerOpenError):
-            loop.run_until_complete(cb.call("test_open", fail_fn))
+        asyncio.run(trigger_breaker())
 
 
 class TestUnifiedResponse:

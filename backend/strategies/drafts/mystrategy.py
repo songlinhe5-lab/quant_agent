@@ -1,0 +1,2 @@
+class MyStrategy:
+    pass

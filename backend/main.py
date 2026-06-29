@@ -349,6 +349,21 @@ async def quant_exception_handler(request: Request, exc: QuantBaseException):
     return JSONResponse(status_code=http_status, content=body)
 
 
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """捕获 FastAPI 原生的 HTTPException，统一转换为 {code, msg, data, ts} 格式"""
+    # 使用 HTTP 状态码作为业务错误码（保持与测试期望一致）
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "code": exc.status_code,
+            "msg": exc.detail,
+            "data": None,
+            "ts": int(time.time() * 1000),
+        },
+    )
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """捕获 Pydantic 请求参数校验失败，转换为 code=2001 的统一格式"""

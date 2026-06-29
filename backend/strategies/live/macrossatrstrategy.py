@@ -2,7 +2,7 @@ from typing import Literal
 
 import pandas as pd
 
-from backend.core.backtest_engine import BaseStrategySandbox as BaseStrategy
+from backend.core.backtest import BaseStrategySandbox as BaseStrategy
 
 
 class MaCrossAtrStrategy(BaseStrategy):

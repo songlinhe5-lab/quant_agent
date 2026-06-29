@@ -181,3 +181,857 @@
 3. **纯静态安全渲染**：由于前端由 `DOMPurify` 严格过滤，严禁输出任何 `<script>` 标签或 `@click` 类的交互指令，仅输出用于展示的高颜值静态 HTML 视图骨架。允许在内部使用 `<style>` 定义独立动画。
 4. **嵌入交互式图表 (ECharts)**：如果需要在 UI 中展示走势、分布等数据可视化的图表，请直接在输出的 HTML 结构中或之后，穿插使用 ````echarts` 代码块包裹的严格 JSON 配置对象（如：````echarts\n{"xAxis":{...}}\n````）。前端解析引擎会自动将其拦截并渲染为真实的动态图表。注意：JSON 必须严格合法，且严禁包含 JavaScript 函数或注释。
 5. **ECharts 强制暗黑配色 (Tailwind Colors)**：图表必须与系统的暗黑玻璃态 UI 完美融合。强制要求：背景设为透明 (`"backgroundColor": "transparent"`)，坐标轴线和网格分割线使用暗石板色 (`#1e293b` 或 `#334155`)，文字标签使用冷灰色 (`#64748b` 或 `#94a3b8`)。数据线/柱体必须使用 Tailwind 现代色系：主色调优先用紫 (`#8b5cf6`) 和蓝 (`#3b82f6`)，上涨/看多用绿 (`#10b981`)，下跌/看空用红 (`#ef4444`)，渐变背景 (areaStyle) 需辅以较低透明度。严禁使用 ECharts 默认的刺眼亮色。
+
+---
+
+# 附录 A：Vibe Coding 工程规范 (V3.0)
+
+> **来源**：合并自 `docs/02. Vibe Coding与AI工程规范.md` (V3.0) 与 `.cursor/rules/vibe-coding.mdc` (V2.0)。V3.0 优先，V2.0 独有内容作为补充。
+>
+> **定位**：本附录是 AI 辅助编码的工程实践手册，是主指令的技术约束配套。前者回答"用什么"，本附录回答"怎么做"。
+>
+> **核心哲学**：够用就行（YAGNI）、简单优先（KISS）、测试同行（Test-Alongside）、日志可追（Observable-by-Default）。
+
+## A.1 反过度设计原则 (Anti-Over-Engineering)
+
+> 量化系统的最大陷阱不是功能不够，而是**把精力花在了不需要的抽象层和防御性代码上**，导致核心策略逻辑永远不稳定。
+
+### A.1.1 YAGNI — 只建当下需要的
+
+```
+❌ 错误思维：
+  "将来可能需要支持多券商，所以现在就抽象一个 BrokerInterface..."
+  "以后可能需要多租户，所以现在就设计租户隔离层..."
+
+✅ 正确思维：
+  现在只接 Futu，就直接写 FutuService，不抽象 Interface。
+  当第二个券商真的来了，再重构。重构的成本远低于过早抽象的维护成本。
+```
+
+**判断标准**：如果某个抽象在 3 个月内不会有第二个实现，就不需要这个抽象。
+
+### A.1.2 KISS — 简单是最高优先级
+
+| 场景 | ❌ 过度设计 | ✅ 够用方案 |
+|:---|:---|:---|
+| 数据验证 | 为每个字段写专属 Validator 类 | 直接用 Pydantic Field 约束 |
+| 错误处理 | 多层自定义 Exception 继承树 | 3-4 个语义清晰的领域异常 |
+| 配置管理 | 多环境配置继承体系 | 单个 `.env` + Pydantic Settings |
+| 前端状态 | 复杂的 Redux Saga / Observable | 简单 Zustand slice + useRef |
+| 缓存策略 | 多级缓存自动失效框架 | Redis TTL + 手动刷新 |
+
+### A.1.3 不过度防御性编程
+
+```python
+# ❌ 过度防御：检查永远不会发生的情况，污染可读性
+def get_price(symbol: str) -> float:
+    if symbol is None:          # Pydantic 已保证不为 None
+        raise ValueError(...)
+    if len(symbol) == 0:        # Pydantic 已保证非空
+        raise ValueError(...)
+    if not isinstance(symbol, str):  # 类型注解已保证
+        raise TypeError(...)
+    ...
+
+# ✅ 信任上游契约，只处理真实的业务异常
+def get_price(symbol: str) -> float:
+    try:
+        return futu_client.get_quote(symbol).price
+    except FutuConnectionError:
+        raise MarketDataUnavailable(f"无法获取 {symbol} 行情")
+```
+
+## A.2 测试同行工作流 (Test-Alongside Workflow)
+
+> **核心规则**：修改任何业务逻辑，必须在同一次提交中更新对应的测试。不允许"先改代码，测试以后再补"。
+
+### A.2.1 标准开发循环
+
+```
+1. 明确需求  →  写测试（先写失败的用例）
+2. 写最少的代码  →  让测试通过
+3. 重构优化  →  确保测试仍然通过
+4. 提交（代码 + 测试同时进 PR）
+```
+
+这不是严格的 TDD，而是**测试同行**——你可以先写实现，但在提交前必须补上测试。
+
+### A.2.2 测试分层与覆盖率目标
+
+| 层级 | 测试类型 | 工具 | 目标覆盖率 | 优先覆盖内容 |
+|:---|:---|:---|:---:|:---|
+| **后端 Service** | 单元测试 | pytest + AsyncMock | **≥ 80%** | 所有业务逻辑分支 |
+| **后端 Router** | 接口测试 | FastAPI TestClient | **≥ 70%** | 参数校验、错误码 |
+| **后端 Worker** | 集成测试 | pytest-asyncio | **≥ 60%** | 重连逻辑、降级路径 |
+| **Hermes Tool** | 单元测试 | pytest + AsyncMock | **≥ 90%** | 所有工具调用路径 |
+| **前端 Hook** | 单元测试 | Vitest + MSW | **≥ 70%** | 数据转换、重连逻辑 |
+| **前端 Store** | 单元测试 | Vitest | **≥ 80%** | 状态转换函数 |
+| **前端 Utils** | 单元测试 | Vitest | **≥ 90%** | 所有纯函数 |
+
+**不需要测试的内容**：
+- UI 组件的样式（不测 class 名是否包含某个 Tailwind 类）
+- 第三方库的行为（不测 AG Grid 能否渲染）
+- 简单的 getter/setter
+- 配置文件中的常量值
+
+### A.2.3 后端测试规范
+
+```python
+# tests/services/test_screener_service.py
+# 命名规范：test_<功能>_<场景>_<预期结果>
+
+class TestScreenerService:
+    """每个 Service 一个 TestClass，隔离 fixtures"""
+
+    @pytest.fixture
+    def service(self, mock_redis, mock_futu_client):
+        """只 Mock 外部依赖，不 Mock 被测对象本身"""
+        return ScreenerService(redis=mock_redis, futu=mock_futu_client)
+
+    async def test_screen_stocks_returns_filtered_results(self, service):
+        """正常路径：过滤出满足条件的标的"""
+        result = await service.screen(market="HK", max_pe=15.0)
+        assert len(result.stocks) > 0
+        assert all(s.pe < 15.0 for s in result.stocks)
+
+    async def test_screen_stocks_futu_disconnect_raises_unavailable(self, service, mock_futu_client):
+        """异常路径：Futu 断连时抛出 MarketDataUnavailable"""
+        mock_futu_client.screen.side_effect = FutuConnectionError("timeout")
+        with pytest.raises(MarketDataUnavailable):
+            await service.screen(market="HK", max_pe=15.0)
+```
+
+**Mock 规范**：只 Mock 外部依赖（网络 I/O、外部 API、时钟），不 Mock 被测 Service 内部的私有方法。
+
+### A.2.4 测试目录结构（镜像源码）
+
+```
+backend/
+└── tests/
+    ├── conftest.py              # 全局 fixtures
+    ├── services/
+    │   ├── test_screener_service.py
+    │   └── test_futu_service.py
+    ├── routers/
+    │   ├── test_market_router.py
+    │   └── test_screener_router.py
+    └── tools/                   # Hermes Agent 工具测试
+        └── test_broker_market_tool.py
+
+frontend/
+└── tests/
+    ├── setup.ts                 # Vitest + MSW 全局配置
+    ├── hooks/
+    │   └── use-market-data.test.ts
+    ├── stores/
+    │   └── market.store.test.ts
+    └── utils/
+        └── financial.test.ts
+```
+
+## A.3 完整技术栈明细 (Full Tech Stack)
+
+> 技术选型一旦确定，不允许在单个 PR 中引入替代方案。任何技术变更需经过文档评审。
+
+### A.3.1 前端 Web Terminal — 完整栈
+
+```
+核心框架    React 18.3+                   https://react.dev
+路由        React Router v6.26+           https://reactrouter.com
+构建        Vite 6+                       https://vitejs.dev
+语言        TypeScript 5.5+ (strict)      https://typescriptlang.org
+包管理      pnpm 9+                       https://pnpm.io
+
+UI 组件     shadcn/ui (latest)            https://ui.shadcn.com
+无头组件    Radix UI                      https://radix-ui.com
+图标        lucide-react                  https://lucide.dev
+样式        Tailwind CSS v4               https://tailwindcss.com
+样式工具    tailwind-merge + clsx         合并 class 名
+
+全局状态    Zustand 5+                    https://zustand-demo.pmnd.rs
+高频数据    useRef + Float64Array         绕过 VDOM，零 GC
+本地缓存    IndexedDB（idb 库）            历史 K 线离线缓存
+Worker 通信 SharedArrayBuffer             零拷贝跨线程传输
+
+K 线图表    Lightweight-Charts 5+         https://tradingview.github.io/lightweight-charts
+复杂图表    Apache ECharts 5+             https://echarts.apache.org
+盘口渲染    PixiJS v8 (WebGL)             https://pixijs.com
+数据网格    AG Grid Community 33+         https://ag-grid.com
+代码编辑    Monaco Editor (via loader)    https://microsoft.github.io/monaco-editor
+
+国际化      react-i18next                 中英文双语
+日期处理    date-fns                      轻量无副作用
+HTTP 请求   原生 fetch + ky               不引入 Axios
+WebSocket   原生 WebSocket API            封装于 hooks/websocket/
+SSE 流      原生 EventSource API          封装于 hooks/agent/
+
+测试框架    Vitest 2+                     https://vitest.dev
+测试辅助    React Testing Library         组件集成测试
+API Mock    MSW (Mock Service Worker)     拦截 HTTP + WS
+覆盖率      @vitest/coverage-v8           V8 原生覆盖率
+```
+
+**架构决策（不可推翻）**：量化看板是"长期挂机的重型客户端"，核心诉求是毫秒级 WebSocket 渲染与 Canvas/WebGL 图表，不需要 SEO 或首屏秒开。Next.js App Router 的 RSC 模型与此背道而驰。**选型已定：纯 Vite SPA。**
+
+**⛔ 严禁出现以下技术**（已废弃/架构不兼容）：
+- `Next.js`、`Nuxt`、任何 SSR/SSG 框架 — **绝对禁止**（RSC 与高频 WebSocket 架构冲突）
+- Vue 3、Pinia、Vue Router — **绝对禁止**
+- Redux Toolkit、MobX — 已被 Zustand 替代
+- Axios — 使用原生 Fetch；WebSocket 直连后端 Gateway
+- ECharts 用于 K 线主图 — 必须用 Lightweight-Charts
+- 任何 DOM/SVG 图表库处理高频数据（`recharts`、`victory`、`nivo`）
+
+### A.3.2 后端 Python — 完整栈
+
+```
+语言版本    Python 3.11.x（锁定小版本）
+包管理      uv（速度是 pip 的 10-100x）  https://docs.astral.sh/uv
+依赖锁定    uv.lock（已存在，必须提交）
+
+API 框架    FastAPI 0.115+               https://fastapi.tiangolo.com
+ASGI 服务   Uvicorn + Gunicorn（生产）   多 Worker 进程
+数据契约    Pydantic v2.9+               Schema First 原则
+ORM         SQLAlchemy 2.0 (async)       异步引擎
+数据库驱动  asyncpg (PostgreSQL)
+迁移工具    Alembic                       数据库版本管理
+
+进程间通信  ZeroMQ (pyzmq)              微秒级 IPC
+序列化      msgpack                      ZeroMQ 消息序列化（非 JSON）
+缓存/消息   Redis 7+ (redis-py asyncio)  Pub/Sub + Streams + Hash
+向量数据库  pgvector (PostgreSQL 扩展)   RAG 知识库
+列式存储    DuckDB + pyarrow/parquet     OLAP 回测引擎
+
+数据源      futu-api (Futu OpenD)        主行情源
+备用数据    yfinance                     降级数据源
+补充数据    finnhub-python               另类数据
+宏观数据    fredapi                      FRED 美联储数据
+AI 引擎     openai (GPT-4o)              主 LLM
+本地 AI     ollama (HTTP API)            离线降级 LLM
+嵌入模型    sentence-transformers        RAG 向量化
+
+日志        structlog + logging           结构化 JSON 日志
+监控        prometheus-client             指标暴露
+追踪        opentelemetry-sdk             分布式追踪（可选）
+重试        tenacity                      指数退避重试装饰器
+
+测试框架    pytest 8+                    单元 + 集成测试
+异步测试    pytest-asyncio               async def 测试支持
+Mock 工具   unittest.mock (AsyncMock)    外部依赖 Mock
+HTTP Mock   httpx + respx                HTTP 客户端测试
+测试覆盖    pytest-cov                   覆盖率报告
+
+代码规范    ruff (lint + format)         替代 flake8 + black + isort
+类型检查    mypy                         静态类型校验
+Pre-commit  pre-commit                   提交前自动检查
+```
+
+### A.3.3 Hermes Agent — 完整栈
+
+```
+框架        自研 ReAct 引擎 (hermes_agent/)
+推理循环    Plan → Tool → Verify → Output
+Tool 注册   hermes_agent/tools/ 动态加载
+
+主 LLM      OpenAI GPT-4o-mini（工具调用）
+深度分析    OpenAI GPT-4o（研报生成）
+本地降级    Ollama + Qwen2.5-Coder-7B
+流式输出    Server-Sent Events (SSE)
+向量检索    pgvector (PostgreSQL)
+
+Prompt 管理 hermes_agent/prompts/ 目录化管理
+Tool 测试   pytest（100% Tool 需有单测）
+幻觉检测    自定义 Eval 脚本（Golden Dataset）
+```
+
+### A.3.4 基础设施 — 完整栈
+
+```
+容器化      Docker + Docker Compose v2
+镜像仓库    GitHub Container Registry (GHCR)
+CI/CD       GitHub Actions
+代码质量    GitHub PR Reviews + 自动化检查
+
+数据库      PostgreSQL 16 + pgvector
+缓存/消息   Redis 7 (AOF 持久化)
+数据湖      DuckDB 1.1 + Parquet (本地 SSD)
+对象存储    MinIO / S3 兼容（备份与大文件）
+
+监控        Prometheus + Grafana（已配置）
+日志收集    结构化 JSON → 文件 + 可选 ELK
+告警通知    Telegram Bot API（主要通道）
+
+部署模式
+  本地研发   ./start.sh（热更新）
+  单机生产   docker-compose up -d
+  分布式     主服务器(Web+DB) + Worker节点(数据抓取)
+  国内 VPS   镜像源加速 + HTTP 代理配置
+```
+
+## A.4 前端铁律补充 (Frontend Laws — V2.0 独有)
+
+### A.4.1 渲染引擎分级使用（最重要的前端规则）
+
+| 场景 | 必须使用 | 禁止使用 |
+|:---|:---|:---|
+| K 线主图 / 分时图 | `Lightweight-Charts` | ECharts、Recharts |
+| Level 2 盘口挂单墙 | `PixiJS v8`（WebGL） | DOM 节点渲染 |
+| 选股结果 / OMS 订单列表（>1000行） | `AG Grid`（虚拟滚动） | 原生 table、普通列表 |
+| 多因子热力图 / AI 生成图表 / 归因双轴图 | `Apache ECharts` | PixiJS |
+| 实时数字跳动（价格、涨跌幅） | `useRef` + 直接 DOM 突变 | `useState`（禁止） |
+
+### A.4.2 高频数据的零 GC 处理（零 GC 三原则）
+
+**原则一：Tick 数据禁止进 React 状态树**
+```
+✅ 正确：const tickRef = useRef<Float64Array>()
+⛔ 错误：const [tick, setTick] = useState()
+```
+
+**原则二：高频数组使用 TypedArray**
+```
+✅ 正确：new Float64Array(bufferSize) — 栈上分配，无 GC
+⛔ 错误：prices.push(newPrice) — 持续分配，触发 GC 卡顿
+```
+
+**原则三：计算密集型任务进 Web Worker**
+- 超过 1000 条记录的过滤、排序、因子计算 → 必须在 `frontend/workers/` 下独立 Worker 文件执行
+- Worker 与主线程通信优先使用 `SharedArrayBuffer` 零拷贝传输
+
+### A.4.3 数据分层架构（MVVM Clean Architecture）
+
+```
+数据层 (Data Layer)
+  ├── WebSocket 直连后端 Gateway（双向行情推送）
+  ├── Fetch API 拉取历史 K 线（HTTP，一次性）
+  └── IndexedDB 本地缓存（历史数据离线加速，避免重复拉取）
+
+逻辑层 (Logic Layer / ViewModel)
+  ├── Zustand Store — 管理全局交易状态（持仓、订单簿、账户资金）
+  ├── Web Workers — 承接高频指标计算（MACD/RSI/布林带）和 Tick 聚合
+  └── Custom Hooks — 封装 WebSocket 生命周期、重连、背压逻辑
+
+视图层 (UI Layer)
+  ├── 纯渲染，无数据拉取，无业务逻辑
+  ├── 图表：Canvas/WebGL 库（Lightweight-Charts / PixiJS）
+  └── 列表：虚拟滚动（AG Grid）
+```
+
+**⛔ 跨层访问禁止清单**：
+- 视图组件中禁止出现 `fetch()`、`WebSocket`、复杂计算逻辑
+- Zustand Store 中禁止存储高频 Tick 数组（用 `useRef` 绕过响应式追踪）
+- Web Worker 中禁止直接操作 DOM 或调用 React API
+
+### A.4.4 Zustand Store 分层规范
+
+每个 Store 必须按以下切片（Slice）划分，严禁将高频可变数据混入 Zustand：
+
+```
+stores/
+├── useMarketStore.ts    # 仅存当前订阅状态（symbol列表），行情数据用 useRef
+├── useOmsStore.ts       # 订单状态机（OrderState），不存具体行情
+├── useChatStore.ts      # Hermes Agent 多轮对话历史与流式状态
+├── useLayoutStore.ts    # 面板折叠/展开状态、当前激活 Tab
+└── useSettingsStore.ts  # 用户配置（沙箱/实盘模式、数据源开关）
+```
+
+### A.4.5 视觉语言规范（Dark Cyberpunk HUD）
+
+**颜色语义（禁止违反）**：
+```
+涨/多/盈利/成功  → text-emerald-400  / bg-emerald-500/10
+跌/空/亏损/危险  → text-red-400      / bg-red-500/10
+警告/延迟/降级   → text-amber-500    / bg-amber-500/10
+中性/次要信息    → text-slate-400    / text-gray-400
+背景基调         → bg-gray-900 / bg-zinc-950
+玻璃态面板       → backdrop-blur-md bg-white/5 border border-white/10
+```
+
+**数据降级（STALE）显示**：当 WebSocket 断连或数据超时时，必须：
+```
+1. 立即在数字旁显示 STALE 标签（text-amber-500）
+2. 将整个数据区域降低不透明度：opacity-60 saturate-50
+3. 不得展示过期数据且不加任何标注
+```
+
+### A.4.6 组件架构规范
+
+```
+components/          ← 纯 UI 组件，无业务逻辑，无数据拉取
+features/            ← 业务功能模块，按领域划分
+  ├── market/        ← 市场感知（行情/K线/盘口）
+  ├── screener/      ← 投研选股
+  ├── trading/       ← 交易执行/OMS
+  └── risk/          ← 风控与 AI 副驾
+hooks/               ← 自定义 Hooks（数据获取、WebSocket 管理）
+stores/              ← Zustand 状态切片
+workers/             ← Web Worker 脚本（计算密集型任务）
+```
+
+**单文件不超过 300 行**：超过 300 行必须拆分，禁止出现超过 1000 行的单文件。
+
+## A.5 后端铁律补充 (Backend Laws — V2.0 独有)
+
+### A.5.1 数据流架构边界（Single Source of Truth）
+
+```
+外部 API（Futu/YFinance/Finnhub）
+    ↓ 只有 backend/workers/ 可直接访问
+Redis Pub/Sub（数据总线）
+    ↓ WebSocket Gateway 从总线订阅
+前端 / 移动端 / Hermes Agent Tools
+```
+
+**⛔ 绝对禁止**：
+- 前端直接调用 Futu API / YFinance / 任何外部数据源
+- Hermes Agent Tools 中包含直接的网络请求（必须通过内网 HTTP 调用后端接口）
+- 移动端 App 直接连接 Redis 或 PostgreSQL
+
+### A.5.2 FastAPI 并发规范
+
+```python
+# ✅ CPU 密集型任务（Pandas 计算、回测）
+result = await asyncio.to_thread(compute_heavy_task, params)
+
+# ✅ 进程隔离（大模型调用、极重计算）
+with ProcessPoolExecutor() as pool:
+    result = await loop.run_in_executor(pool, task_func, args)
+
+# ⛔ 错误：在路由函数中直接调用同步阻塞代码
+@router.get("/backtest")
+async def run_backtest():
+    df = pandas_heavy_calc()  # 🚨 这会阻塞事件循环！
+```
+
+### A.5.3 API 响应格式（统一，禁止例外）
+
+```json
+{
+  "status": "success",
+  "message": "描述信息",
+  "data": {},
+  "timestamp": "2026-06-27T10:00:00Z"
+}
+```
+
+错误响应：
+```json
+{
+  "status": "error",
+  "message": "具体错误描述",
+  "error_code": "FUTU_DISCONNECTED",
+  "data": null
+}
+```
+
+### A.5.4 Pydantic 接口契约先行
+
+**在编写任何路由或 Service 函数前，必须先定义 Pydantic 模型**：
+```python
+# ✅ 先定义契约
+class ScreenerRequest(BaseModel):
+    market: Literal["HK", "US"]
+    max_pe: float = Field(gt=0, lt=1000)
+    min_market_cap: float = Field(gt=0)
+
+# 再写路由
+@router.post("/market/screener")
+async def screener(req: ScreenerRequest) -> ScreenerResponse:
+    ...
+```
+
+### A.5.5 Futu API 特殊规范（血泪教训）
+
+**百分比参数必须传小数（不乘以100）**：
+```python
+# ✅ 正确：ROE 15% → 传 0.15
+StockScreenRequest(roe_ttm_min=0.15)
+
+# ⛔ 错误（会导致筛选结果为空或异常）
+StockScreenRequest(roe_ttm_min=15)
+```
+
+**行情订阅配额管理**：
+- 免费账户实时行情订阅有数量上限，必须在 `workers/` 中维护订阅计数器
+- 超出配额时自动降级至快照模式（拉取替代推送），并在 UI 显示降级标识
+
+### A.5.6 ZeroMQ 节点通信规范
+
+```
+Data Node (PUSH)  →  OMS Node (PULL)    # 行情推送给执行引擎
+OMS Node (PUB)    →  Risk Node (SUB)    # 风控订阅所有持仓变动
+```
+
+- 所有 ZeroMQ 消息体必须使用 `msgpack` 序列化（禁止 JSON，延迟差10倍）
+- Socket 必须设置 `LINGER = 0`，防止进程退出时消息队列阻塞
+
+## A.6 日志规范 (Logging Standards)
+
+### A.6.1 核心原则：永远不用 print()
+
+```python
+# ⛔ 绝对禁止
+print("got price:", price)
+print(f"[ERROR] connection failed")
+
+# ✅ 统一使用 structlog
+import structlog
+logger = structlog.get_logger(__name__)
+
+logger.info("quote_received", symbol="AAPL", price=165.3, latency_ms=12)
+logger.error("futu_disconnected", symbol="AAPL", retry_count=3, error=str(e))
+logger.warning("rate_limit_hit", source="yfinance", wait_seconds=60)
+```
+
+### A.6.2 日志级别语义
+
+| 级别 | 使用场景 | 示例 |
+|:---|:---|:---|
+| `DEBUG` | 开发调试，生产关闭 | WebSocket 帧内容，SQL 查询 |
+| `INFO` | 重要业务事件，生产开启 | 订单提交、策略信号触发 |
+| `WARNING` | 异常但可恢复的情况 | 数据源降级、限速触发 |
+| `ERROR` | 需要人工关注的错误 | Futu 断连、数据库写失败 |
+| `CRITICAL` | 系统级故障 | 全局熔断触发、OMS 崩溃 |
+
+### A.6.3 前端日志规范
+
+```typescript
+// frontend/src/lib/logger.ts — 统一日志接口
+type LogLevel = 'debug' | 'info' | 'warn' | 'error'
+type LogContext = Record<string, string | number | boolean>
+
+// 生产环境自动静默 debug 级别
+// 错误级别自动上报 Sentry（如已配置）
+logger.info('websocket_connected', { url: wsUrl, latency: 45 })
+logger.warn('data_stale', { symbol: 'AAPL', staleSinceMs: 6500 })
+logger.error('chart_render_failed', { symbol: 'AAPL', error: err.message })
+```
+
+## A.7 AI 辅助编码工作流 (Vibe Coding SOP)
+
+### A.7.1 启动新功能前的必备上下文
+
+在对话框中加载以下上下文，顺序不可省略：
+
+```
+1. AGENTS.md（本文件）         ← 技术约束 + 工程规范（必须）
+2. 相关子系统架构文档         ← 如 docs/subsystems/backend/architecture.md
+3. 当前要修改的文件           ← 精确定位，不要上传整个目录
+4. 相关测试文件               ← 让 AI 知道现有测试的风格
+```
+
+### A.7.2 功能开发标准 Prompt 模板
+
+**后端新接口**：
+> "在 `backend/routers/screener.py` 中新增一个 `POST /api/v1/screener/save-template` 接口，用于保存选股条件模板。请先定义 Pydantic Schema（`ScreenerTemplateCreate`），再写路由，最后在 `tests/routers/test_screener_router.py` 中补充测试用例覆盖正常保存和重复名称冲突两种场景。遵循项目的 structlog 日志规范。"
+
+**前端新组件**：
+> "在 `frontend/src/features/screener/components/` 下创建 `TemplateSelector.tsx`，用于展示已保存的选股模板列表（AG Grid，最多 50 行）。组件接受 `onSelect: (template: ScreenerTemplate) => void` 回调。同时在 `tests/features/screener/` 下创建 `TemplateSelector.test.tsx`，测试空状态和选择回调。严格遵循原子化限制，单文件不超过 150 行。"
+
+**修复 Bug**：
+> "修复 `backend/services/futu_service.py` 中 `get_quote` 在标的停牌时返回 None 导致 KeyError 的问题（见 `logs/error.log` 第 342 行）。修复后同步更新 `tests/services/test_futu_service.py`，增加停牌场景的测试用例。"
+
+### A.7.3 AI 代码审查清单（提交前自检）
+
+在接受 AI 生成的代码之前，人工执行以下检查：
+
+```
+□ 文件行数未超过对应限制（见 A.4.6 / A.8.2）
+□ 无 print() 语句，日志通过 structlog / logger 打印
+□ 无硬编码的 API Key、密码、IP 地址
+□ 有对应的测试文件，且测试已运行通过
+□ 无同步阻塞调用在 async 函数内（后端）
+□ 无 useState 存储高频数据（前端）
+□ Pydantic Schema 在 Route 之前定义（后端新接口）
+□ 错误处理使用具名异常，非裸 except:
+□ 导入顺序符合规范（stdlib → third-party → internal）
+```
+
+## A.8 代码审查与工程化规范 (Code Review & Engineering)
+
+### A.8.1 PR 大小控制
+
+- **单个 PR 不超过 400 行改动**（不含测试文件、不含生成代码）
+- 超过 400 行的需求必须拆分为多个 PR
+- 每个 PR 必须有清晰的描述：解决什么问题、涉及哪些模块、测试如何验证
+
+### A.8.2 PR 标题规范
+
+```
+feat(screener): 新增选股模板保存与复用功能
+fix(futu): 修复停牌标的行情返回 None 的 KeyError
+perf(k-line): 将 ECharts K线替换为 Lightweight-Charts
+refactor(oms): 拆分 OMS 状态机为独立 Worker
+test(screener): 补充边界值测试用例覆盖率至 80%
+docs(api): 更新选股器接口文档
+```
+
+### A.8.3 自动化质量门禁（GitHub Actions）
+
+每个 PR 必须通过以下所有检查才能合并：
+
+```yaml
+checks:
+  backend:
+    - ruff check          # Lint 检查
+    - mypy                # 类型检查（关键模块）
+    - pytest --cov        # 单元测试 + 覆盖率
+    - coverage >= 70%     # 覆盖率门槛
+
+  frontend:
+    - pnpm lint           # ESLint 检查
+    - pnpm type-check     # tsc --noEmit
+    - pnpm test           # Vitest 单元测试
+    - pnpm build          # 构建产物验证（无编译错误）
+```
+
+### A.8.4 沙箱/实盘安全锁
+
+```python
+# 所有涉及真实交易的函数必须前置检查
+REAL_TRADE_EXECUTE = os.getenv("REAL_TRADE_EXECUTE", "false").lower() == "true"
+
+if not REAL_TRADE_EXECUTE:
+    logger.warning("[SANDBOX] 沙箱模式，跳过真实交易指令")
+    return {"status": "sandbox", "message": "模拟推演，未实际发单"}
+```
+
+**UI 层强制显示当前模式**：
+- 沙箱模式：顶部导航显示橙色横幅「🟡 SANDBOX MODE — 模拟推演中，不影响真实资金」
+- 实盘模式：顶部导航显示红色横幅「🔴 LIVE TRADING — 所有操作将影响真实账户」
+
+### A.8.5 Git 提交规范
+
+- **禁止提交包含 `.env` 文件的代码**（`.env` 必须在 `.gitignore` 中）
+- **禁止 `git push --force` 到 main 分支**
+
+### A.8.6 Docker 部署规范
+
+```yaml
+# docker-compose.yml 中每个服务必须配置
+healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+
+# 禁止使用 latest tag 部署实盘
+image: quant-agent:v2026.06.27-a1b2c3d  # ✅ 精确版本
+image: quant-agent:latest                 # ⛔ 禁止
+```
+
+## A.9 文档维护规范
+
+### A.9.1 架构文档更新触发条件
+
+当以下变更发生时，**必须同步更新对应文档**：
+
+| 变更类型 | 需更新的文档 |
+|:---|:---|
+| 新增/删除 API 端点 | `docs/backend.md` 的接口汇总表 |
+| 新增/修改 Hermes Tool | `docs/subsystems/agent/architecture.md` |
+| 调整目录结构 | `AGENTS.md` 中的目录地图 |
+| 新增第三方依赖 | 本附录 §A.3 对应的技术栈列表 |
+| 修改部署配置 | `docs/06. 工程化配置与部署方案.md` |
+| 发现性能问题并优化 | `docs/09. 性能测试规范.md` 的基准数据 |
+
+### A.9.2 子系统架构文档位置
+
+```
+docs/subsystems/
+├── frontend/architecture.md     前端架构与组件关系图
+├── backend/architecture.md      后端节点架构与数据流图
+├── agent/architecture.md        Hermes Agent 推理架构
+└── deployment/architecture.md   部署拓扑与网络架构
+```
+
+## A.10 禁止事项速查表（10 条红线 + V2.0 补充）
+
+### A.10.1 10 条核心红线
+
+| # | ❌ 禁止 | ✅ 替代 |
+|:---|:---|:---|
+| 1 | `print()` 调试 | `logger.debug()` |
+| 2 | 裸 `except:` | `except SpecificError as e:` |
+| 3 | `useState` 存 Tick | `useRef` + Float64Array |
+| 4 | 前端直连外部 API | 通过后端 Gateway 代理 |
+| 5 | Router 里写业务逻辑 | 逻辑下沉至 Service 层 |
+| 6 | async 函数里同步阻塞 | `asyncio.to_thread()` |
+| 7 | 硬编码配置值 | `os.getenv()` + Pydantic Settings |
+| 8 | 提交无测试的业务代码 | 测试同行，同 PR 提交 |
+| 9 | 跳过 ReAct 的 Verify 步骤 | Plan → Tool → **Verify** → Output |
+| 10 | 生成 AI 数字不引用 Tool | 数据来源 100% 来自 Tool 返回 |
+
+### A.10.2 V2.0 补充禁止事项
+
+| 场景 | 禁止 | 替代方案 |
+|:---|:---|:---|
+| 前端高频数据 | `useState` 存 Tick | `useRef` + 直接 DOM 突变 |
+| 前端 K 线图 | ECharts | Lightweight-Charts |
+| 前端大数据列表 | 原生 `<table>` | AG Grid 虚拟滚动 |
+| 前端技术栈 | Vue/Pinia/Nuxt | React/Zustand/Next.js |
+| 后端路由函数 | 同步阻塞代码 | `asyncio.to_thread` |
+| 后端数据访问 | 各模块直连外部 API | 通过内网 Gateway 统一代理 |
+| Futu 百分比参数 | 传 `15`（ROE 15%） | 传 `0.15` |
+| Agent 数字输出 | 预训练权重中的历史数据 | 100% 来自 Tool 返回值 |
+| 实盘交易触发 | 无前置安全锁检查 | 必须检查 `REAL_TRADE_EXECUTE` |
+| Git 提交 | 包含 `.env` 文件 | `.env` 必须在 `.gitignore` |
+| 生产镜像 | `:latest` tag | 精确版本 tag |
+| ZeroMQ 消息 | JSON 序列化 | msgpack 序列化 |
+
+## A.11 Hermes Agent 铁律补充 (Agent Laws — V2.0 独有)
+
+### A.11.1 ReAct 执行约束
+
+**每次 Tool 调用必须遵循**：
+```
+1. Plan   — 明确此次调用的目的与预期返回
+2. Tool   — 执行 Tool 调用
+3. Verify — 校验返回数据的合理性（非空、数值范围、时间戳新鲜度）
+4. Output — 基于数据输出结论，禁止在数据未到位时先输出结论
+```
+
+### A.11.2 零幻觉原则（数字类）
+
+- **任何数字必须 100% 来源于 Tool 返回值**，禁止使用预训练知识中的历史数据
+- 若 Tool 调用失败，输出必须包含明确的失败说明，禁止用"估计值"填充
+- 在分析报告末尾必须附注：数据获取时间戳 + 所用 Tool 名称
+
+### A.11.3 ECharts 配置输出规范（UI 生成模式）
+
+当 Agent 需要输出动态图表时，使用以下格式（前端渲染引擎会自动拦截）：
+
+````
+```echarts
+{
+  "backgroundColor": "transparent",
+  "xAxis": { "type": "category", "axisLine": { "lineStyle": { "color": "#334155" } } },
+  "yAxis": { "splitLine": { "lineStyle": { "color": "#1e293b" } } },
+  "series": [{ "type": "line", "lineStyle": { "color": "#8b5cf6" } }]
+}
+```
+````
+
+**强制暗黑配色约束**：
+- 背景：`"backgroundColor": "transparent"` — 必须透明
+- 网格线：`#1e293b` 或 `#334155` — 暗石板色
+- 文字标签：`#64748b` 或 `#94a3b8` — 冷灰色
+- 上涨/看多数据线：`#10b981`（绿）
+- 下跌/看空数据线：`#ef4444`（红）
+- 主数据系列：`#8b5cf6`（紫）或 `#3b82f6`（蓝）
+- **禁止使用 ECharts 默认色系**（刺眼的橙红蓝）
+
+### A.11.4 工具调用熔断规则
+
+- 同一 Tool 连续失败 **3 次** → 立即中止，输出熔断报告，进入等待状态
+- 禁止在熔断后继续尝试其他 Tool 绕过（可能导致无限循环）
+- 熔断报告必须包含：失败 Tool 名、错误原因、建议用户检查的配置项
+
+---
+
+# 附录 B：AI 上下文排除规则 (Context Exclusion)
+
+> **来源**：合并自 `.aiexclude` 文件。本附录规则在 AI 思考过程中**自动生效**，无需用户每次提醒。
+
+## B.1 排除目录清单（AI 不需要关注）
+
+以下目录/文件类型在 AI 进行代码生成、审查、分析、检索时**自动排除**，不进入上下文：
+
+### B.1.1 依赖与虚拟环境
+- `node_modules/`、`.venv/`、`venv/`、`env/`
+
+### B.1.2 构建产物与缓存
+- `.next/`、`build/`、`dist/`、`out/`、`__pycache__/`、`*.py[cod]`、`*$py.class`、`*.so`、`*.dylib`
+- `.mypy_cache/`、`.ruff_cache/`、`.pytest_cache/`、`.eslintcache`、`.vite/`、`.cache/`
+- `*.tsbuildinfo`、`*.egg-info/`、`.eggs/`、`*.egg`、`.turbo/`、`.vercel/`
+- `frontend/src/lib/proto/*.js`（仅保留 .proto 与 .d.ts）
+
+### B.1.3 IDE 与操作系统文件
+- `.idea/`、`.vscode/`、`.cursor/`、`.windsurf/`、`*.swp`、`*.swo`、`*~`、`.DS_Store`、`Thumbs.db`
+
+### B.1.4 敏感信息与环境变量
+- `.env`、`.env.*`、`*.pem`、`*.key`、`*.crt`、`*.p12`、`*.pfx`
+- `*secret*.json`、`*credentials*.json`
+
+### B.1.5 日志文件
+- `*.log*`、`npm-debug.log*`、`yarn-error.log*`、`pnpm-debug.log*`
+
+### B.1.6 包管理器锁定文件
+- `package-lock.json`、`yarn.lock`、`pnpm-lock.yaml`、`poetry.lock`、`Pipfile.lock`、`uv.lock`
+
+### B.1.7 测试与覆盖率报告
+- `htmlcov/`、`.coverage`、`coverage/`、`.tox/`、`reports/`
+
+### B.1.8 大型静态资源与数据集
+- `frontend/src/assets/`、`backend/data/`、`mock_data/`
+- `*.pdf`、`*.png`、`*.jpg`、`*.jpeg`、`*.gif`、`*.svg`、`*.ico`、`*.webp`
+- `*.mp4`、`*.mp3`、`*.wav`
+- `*.db`、`*.sqlite`、`*.sqlite3`、`*.db-journal`、`*.db-wal`、`*.db-shm`
+- `*.csv`、`*.parquet`、`*.h5`、`*.hdf5`、`*.feather`、`*.csv.gz`、`*.jsonl`、`*.pkl`、`*.npy`、`*.npz`
+- `*.whl`、`dump.rdb`
+
+### B.1.9 模型权重
+- `*.pt`、`*.pth`、`*.onnx`、`*.safetensors`、`*.bin`、`*.ckpt`、`*.gguf`
+
+### B.1.10 数据科学及 Jupyter 缓存
+- `.ipynb_checkpoints/`、`wandb/`、`mlruns/`、`tb_logs/`、`runs/`
+
+### B.1.11 Python 版本管理
+- `.python-version`
+
+### B.1.12 Git
+- `.git/`
+
+### B.1.13 数据仓库与向量库
+- `data/`、`quant_data_storage/`、`backend/data/chroma_db/`
+
+### B.1.14 Hermes Agent 工具定义
+- `hermes_agent/tools/`（24 个工具文件，纯 JSON schema 注册，无业务逻辑）
+- `hermes_agent/.tools_cache.db`、`.tools_cache.db`
+- `hermes_agent/actions/`、`hermes_agent/plugins/`、`hermes_agent/skills/`
+
+### B.1.15 前端静态资源与编辑器
+- `frontend/public/`
+
+### B.1.16 运维与监控配置
+- `grafana/`、`prometheus.yml`、`docker-compose.yml`、`docker-publish.yml`
+- `Dockerfile`、`frontend/Dockerfile`、`frontend/nginx.conf`
+- `start.sh`、`Makefile`、`lint.yml`、`dashboard.yml`、`quant.conf`、`quant-agent-dashboard.json`
+
+### B.1.17 脚本与批处理
+- `scripts/`
+
+### B.1.18 文档与报告
+- `docs/`、`CHANGELOG.md`、`README.md`、`AGENTS.md`（自身作为指令加载，不作为代码分析对象）
+- `AI_INSTRUCTIONS.md`、`REFACTOR_REPORT.md`、`FUTU_API_VALUE_FORMAT_DIAGNOSIS.md`
+- `frontend/README.md`
+
+### B.1.19 GitHub CI/CD
+- `.github/`
+
+### B.1.20 杂项缓存与运行时
+- `.memory/`、`.qoder-cn/`、`*.rdb`、`*.dump`
+
+## B.2 AI 思考过程约束
+
+在 AI 进行任何代码分析、生成、审查、检索任务时，必须遵守以下思考约束：
+
+1. **文件检索过滤**：使用 Glob/Grep/SearchCodebase 检索代码时，自动应用上述排除规则，不返回排除目录中的文件。
+2. **上下文加载精简**：在为 AI 准备上下文时，禁止上传排除目录中的文件内容；遇到锁定文件（如 `pnpm-lock.yaml`、`uv.lock`）禁止完整加载。
+3. **文档优先级**：当 `docs/` 被排除时，AI 应通过 `AGENTS.md`（本文件）获取工程规范；如需查阅子系统架构文档，由用户主动引用而非 AI 自动加载。
+4. **Hermes Tool 测试豁免**：`hermes_agent/tools/` 中的工具定义文件被排除，但工具的**业务逻辑测试**仍需覆盖（测试文件位于 `backend/tests/tools/` 或 `hermes_agent/tests/`，不在此排除范围）。
+5. **敏感信息保护**：`.env`、密钥文件、credentials 文件绝不进入 AI 上下文；AI 在生成代码时禁止引用这些路径，必须通过 `os.getenv()` 读取。
+6. **大文件警示**：遇到 `*.csv`、`*.parquet`、`*.h5` 等数据集文件，AI 应提示用户使用 DuckDB/Pandas 程序化读取，禁止直接 cat/Read 工具加载原始数据。
+
+## B.3 排除规则的优先级
+
+- **B.1 排除清单**：硬性排除，AI 不得主动检索/加载。
+- **用户显式引用**：当用户在指令中明确指定排除目录中的文件路径时，AI 可以读取该特定文件（如"请读取 `pnpm-lock.yaml` 中 react 的版本"）。
+- **测试覆盖例外**：虽然 `hermes_agent/tools/` 被排除，但其测试文件不受排除；`scripts/` 中的测试文件（如 `test_*.py`）也不受排除。
+
+---
+
+## 附录变更日志
+
+| 日期 | 版本 | 变更内容 |
+|:---|:---|:---|
+| 2026-06-29 | V1.0 | 初次合并：附录 A 合并自 docs/02 V3.0 + cursor V2.0；附录 B 合并自 .aiexclude |

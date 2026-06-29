@@ -3,7 +3,7 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 
-from backend.core.backtest_engine import BaseStrategySandbox as BaseStrategy
+from backend.core.backtest import BaseStrategySandbox as BaseStrategy
 
 
 class DualMaAtrStopStrategy(BaseStrategy):

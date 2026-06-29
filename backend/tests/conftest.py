@@ -4,11 +4,28 @@ TEST-08: 测试框架与脚手架搭建
 """
 
 import asyncio
+import logging
+import logging.handlers
 import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+# ─── futu logger 权限兜底 ──────────────────────────────────────────
+# macOS TCC/sandbox 可能禁止写 ~/.com.futunn.FutuOpenD/Log,导致 `from futu import ...` 失败。
+# 在任何模块 import futu 之前,patch TimedRotatingFileHandler 使其在 PermissionError 时降级为 StreamHandler。
+_orig_trfh_init = logging.handlers.TimedRotatingFileHandler.__init__
+
+
+def _safe_trfh_init(self, *args, **kwargs):
+    try:
+        _orig_trfh_init(self, *args, **kwargs)
+    except PermissionError:
+        logging.StreamHandler.__init__(self)
+
+
+logging.handlers.TimedRotatingFileHandler.__init__ = _safe_trfh_init
 
 
 # 💡 修复事件循环问题：为异步测试提供事件循环
