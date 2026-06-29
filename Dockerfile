@@ -1,22 +1,6 @@
 # ==========================================
-# Stage 1: 前端 React 构建阶段
-# ==========================================
-FROM node:24-alpine AS frontend-builder
-WORKDIR /build/frontend
-
-# 安装 pnpm 9.x (与 frontend CI 保持一致)
-RUN corepack enable && corepack prepare pnpm@9 --activate
-
-# 优先复制 package.json 利用 Docker 层缓存
-COPY frontend/package.json frontend/pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
-
-# 复制前端源码并执行构建
-COPY frontend/ .
-RUN pnpm run build
-
-# ==========================================
-# Stage 2: Python 后端运行阶段
+# 直接构建 Python 后端
+# 前端已由 Cloudflare Pages 独立托管，不再打包进 Docker 镜像
 # ==========================================
 FROM python:3.11-slim
 WORKDIR /app
@@ -39,9 +23,6 @@ RUN uv sync --no-dev --no-install-project
 COPY backend/ ./backend/
 COPY hermes_agent/ ./hermes_agent/
 COPY AGENTS.md ./
-
-# 从第一阶段拷贝编译好的 React 产物
-COPY --from=frontend-builder /build/frontend/dist ./frontend/dist
 
 EXPOSE 8000
 
