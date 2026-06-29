@@ -6,11 +6,9 @@ import os
 
 import pytest
 
-os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
-os.environ.setdefault("EMBEDDING_API_KEY", "test-key")
-os.environ.setdefault("EMBEDDING_BASE_URL", "https://api.test.com")
-os.environ.setdefault("EMBEDDING_MODEL", "BAAI/bge-large-zh-v1.5")
-os.environ.setdefault("INTERNAL_API_SECRET", "test-secret-key")
+# 💡 注意：环境变量已在 backend/tests/conftest.py 中设置，此处无需重复
+# 如果需要在 test_backtest 子目录中使用不同的环境变量，取消下面的注释：
+# os.environ["DATABASE_URL"] = "sqlite:///./test_backtest.db"
 
 
 def _make_ohlc_data(num_days=50, start_price=100.0):

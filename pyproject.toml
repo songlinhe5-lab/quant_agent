@@ -116,9 +116,11 @@ omit = [
     "*/migrations/*",
     "*/*.pb.py",
 ]
+# 禁用并行模式，使用单个数据文件
+parallel = false
 
 [tool.coverage.report]
-fail_under = 5
+fail_under = 70
 show_missing = true
 exclude_lines = [
     "pragma: no cover",
@@ -134,4 +136,5 @@ directory = "htmlcov"
 [dependency-groups]
 dev = [
     "pytest-cov>=7.1.0",
+    "pytest-env>=1.6.0",
 ]

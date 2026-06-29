@@ -17,10 +17,13 @@ from backend.core.backtest import (
 # ─── SandboxTimeoutTracer ───────────────────────────────────────────
 class TestSandboxTimeoutTracer:
     def test_timeout_triggered(self):
+        # 💡 直接测试 _trace_calls 的超时逻辑，不依赖 sys.settrace，
+        # 避免 coverage.py 运行时被沙箱 trace 覆盖导致覆盖率统计异常。
         tracer = SandboxTimeoutTracer(timeout_seconds=0.1)
+        tracer.start_time = time.perf_counter()
+        time.sleep(0.2)
         with pytest.raises(SandboxTimeoutException, match="超时"):
-            with tracer:
-                time.sleep(0.2)
+            tracer._trace_calls(None, "call", None)
 
     def test_context_manager_enter_exit(self):
         tracer = SandboxTimeoutTracer(timeout_seconds=5.0)

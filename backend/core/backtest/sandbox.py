@@ -330,11 +330,23 @@ class SandboxTimeoutTracer:
                 self.start_memory = self.psutil_proc.memory_info().rss / (1024 * 1024)
             except Exception:
                 self.start_memory = 0.0
+
+        self._original_trace = sys.gettrace()
+        self._trace_disabled = False
+
+        # 💡 关键修复：如果检测到外部 trace 函数正在运行（如 coverage.py、pdb 等调试器），
+        # 则禁用沙箱的 sys.settrace，避免覆盖外部 trace 导致覆盖率统计异常或调试中断。
+        # sys.gettrace() 返回非 None 即表示有外部 trace 存在。
+        if self._original_trace is not None:
+            self._trace_disabled = True
+            return self
+
         sys.settrace(self._trace_calls)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        sys.settrace(None)
+        if not getattr(self, "_trace_disabled", False):
+            sys.settrace(self._original_trace)
 
 
 class BaseStrategySandbox:
