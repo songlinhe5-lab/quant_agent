@@ -17,6 +17,7 @@ os.environ.setdefault("LLM_API_KEY", "test-llm-key")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 
+@pytest.mark.no_mock_external
 class TestYFinanceServiceBatch:
     """yfinance_service 微批处理/限流器/熔断/降级等高阶路径补强测试"""
 

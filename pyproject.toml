@@ -98,6 +98,7 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
     "e2e: marks tests as end-to-end tests",
+    "no_mock_external: skip _mock_external_services fixture in conftest.py",
     "asyncio: mark test as async",
 ]
 asyncio_mode = "auto"

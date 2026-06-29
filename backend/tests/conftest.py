@@ -163,15 +163,23 @@ def _mock_redis_globals():
 
 # ─── 🔧 全局 Futu/VyFinance Mock（autouse）────────────────────────
 # 防止测试时尝试连接 Futu OpenD 或雅虎财经
+# 💡 注意：test_yfinance_service.py 和 test_yfinance_service_batch.py 会自行 mock，
+# 因此这两个文件需要在测试类中添加 `@pytest.mark.no_mock_external` 来跳过此 fixture
 @pytest.fixture(autouse=True)
-def _mock_external_services():
+def _mock_external_services(request):
     """自动 mock 外部数据服务，避免测试时触发真实网络请求"""
-    with patch("backend.services.futu_service.futu_service") as mock_futu, \
-         patch("backend.services.yfinance_service.yf_service") as mock_yf:
-        mock_futu.status = "DISCONNECTED"
-        mock_futu.get_market_snapshot = AsyncMock(return_value=([], None))
-        mock_yf.get_quote = AsyncMock(return_value={})
+    # 检查测试是否标记了 no_mock_external
+    marker = request.node.get_closest_marker("no_mock_external")
+    if marker is not None:
+        # 如果标记了 no_mock_external，则不执行 mock
         yield
+    else:
+        with patch("backend.services.futu_service.futu_service") as mock_futu, \
+             patch("backend.services.yfinance_service.yf_service") as mock_yf:
+            mock_futu.status = "DISCONNECTED"
+            mock_futu.get_market_snapshot = AsyncMock(return_value=([], None))
+            mock_yf.get_quote = AsyncMock(return_value={})
+            yield
 
 
 # ─── Fixtures: 数据库 ────────────────────────────────────────

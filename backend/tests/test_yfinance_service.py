@@ -26,6 +26,7 @@ from backend.services.yfinance_service import (
 )
 
 
+@pytest.mark.no_mock_external
 class TestFormatYfTicker:
     """Test format_yf_ticker function"""
 
@@ -80,6 +81,7 @@ class TestFormatYfTicker:
         assert format_yf_ticker("TSMC") == "TSM"
 
 
+@pytest.mark.no_mock_external
 class TestRateLimitedSession:
     """Test RateLimitedSession class"""
 
@@ -102,6 +104,7 @@ class TestRateLimitedSession:
             assert call_kwargs[1].get('timeout') == 15.0
 
 
+@pytest.mark.no_mock_external
 class TestYFinanceService:
     """Test YFinanceService class"""
 
@@ -327,6 +330,7 @@ class TestYFinanceService:
             assert "User-Agent" in service.session.headers
 
 
+@pytest.mark.no_mock_external
 class TestYFinanceServiceIntegration:
     """Integration tests for YFinanceService (with more mocking)"""
 
