@@ -10,7 +10,7 @@ import os
 import sys
 import time
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -74,7 +74,9 @@ class TestAKShareService:
             "交易日": ["2026-06-29", "2026-06-29"], "交易状态": [3, 3],
         })
         hist_df = pd.DataFrame({"当日成交净买额": [10, 12, 8]})
-        with patch("backend.services.akshare_service.redis_client") as mock_redis, \
+        fake_ak = MagicMock()
+        with patch.dict(sys.modules, {"akshare": fake_ak}), \
+             patch("backend.services.akshare_service.redis_client") as mock_redis, \
              patch("backend.services.akshare_service.asyncio.gather", new=AsyncMock(return_value=(df, hist_df))):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
@@ -102,7 +104,9 @@ class TestAKShareService:
             "交易日": ["2026-06-29", "2026-06-29"], "交易状态": [3, 3],
         })
         hist_df = pd.DataFrame({"当日成交净买额": [-1, -2, -3]})
-        with patch("backend.services.akshare_service.redis_client") as mock_redis, \
+        fake_ak = MagicMock()
+        with patch.dict(sys.modules, {"akshare": fake_ak}), \
+             patch("backend.services.akshare_service.redis_client") as mock_redis, \
              patch("backend.services.akshare_service.asyncio.gather", new=AsyncMock(return_value=(df, hist_df))):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
@@ -120,7 +124,9 @@ class TestAKShareService:
     @pytest.mark.asyncio
     async def test_get_company_news_block_index_returns_warning(self, service):
         """板块指数代码应返回 warning"""
-        with patch("backend.services.akshare_service.redis_client") as mock_redis:
+        fake_ak = MagicMock()
+        with patch.dict(sys.modules, {"akshare": fake_ak}), \
+             patch("backend.services.akshare_service.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             result = await service.get_company_news("HK.BK1118")
             assert result["status"] == "warning"
@@ -129,7 +135,9 @@ class TestAKShareService:
     async def test_get_company_news_hk_fallback_yahoo(self, service):
         """港股代码应通过 Yahoo 兜底获取新闻"""
         yahoo_news = [{"headline": "h1"}, {"headline": "h2"}]
-        with patch("backend.services.akshare_service.redis_client") as mock_redis, \
+        fake_ak = MagicMock()
+        with patch.dict(sys.modules, {"akshare": fake_ak}), \
+             patch("backend.services.akshare_service.redis_client") as mock_redis, \
              patch("backend.services.finnhub_service.finnhub_service._fallback_yahoo_news", new=AsyncMock(return_value=yahoo_news)):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
@@ -167,7 +175,9 @@ class TestAKShareService:
             "收盘": [101.0, 102.0], "成交量": [10000, 11000],
             "成交额": [1000000, 1100000], "振幅": [3.0, 3.0],
         })
-        with patch("backend.services.akshare_service.redis_client") as mock_redis, \
+        fake_ak = MagicMock()
+        with patch.dict(sys.modules, {"akshare": fake_ak}), \
+             patch("backend.services.akshare_service.redis_client") as mock_redis, \
              patch("backend.services.akshare_service.asyncio.to_thread", new=AsyncMock(return_value=df)):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
@@ -183,7 +193,9 @@ class TestAKShareService:
             "开盘": [100.0, 101.0], "最高": [102.0, 103.0], "最低": [99.0, 100.0],
             "收盘": [101.0, 102.0], "成交量": [10000, 11000],
         })
-        with patch("backend.services.akshare_service.redis_client") as mock_redis, \
+        fake_ak = MagicMock()
+        with patch.dict(sys.modules, {"akshare": fake_ak}), \
+             patch("backend.services.akshare_service.redis_client") as mock_redis, \
              patch("backend.services.akshare_service.asyncio.to_thread", new=AsyncMock(return_value=df)):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
@@ -200,7 +212,9 @@ class TestAKShareService:
             "持股数量": [1000.0, 2000.0, 1500.0],
             "持股数量占A股百分比": [1.0, 2.0, 1.5],
         })
-        with patch("backend.services.akshare_service.redis_client") as mock_redis, \
+        fake_ak = MagicMock()
+        with patch.dict(sys.modules, {"akshare": fake_ak}), \
+             patch("backend.services.akshare_service.redis_client") as mock_redis, \
              patch("backend.services.akshare_service.asyncio.to_thread", new=AsyncMock(return_value=df)):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
@@ -212,7 +226,9 @@ class TestAKShareService:
     @pytest.mark.asyncio
     async def test_get_hsgt_top_holders_empty_returns_warning(self, service):
         """空 DataFrame 应返回 warning"""
-        with patch("backend.services.akshare_service.redis_client") as mock_redis, \
+        fake_ak = MagicMock()
+        with patch.dict(sys.modules, {"akshare": fake_ak}), \
+             patch("backend.services.akshare_service.redis_client") as mock_redis, \
              patch("backend.services.akshare_service.asyncio.to_thread", new=AsyncMock(return_value=pd.DataFrame())):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
