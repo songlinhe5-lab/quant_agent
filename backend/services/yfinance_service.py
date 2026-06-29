@@ -152,6 +152,7 @@ class YFinanceService:
         if self._llm_service_override is not None:
             return self._llm_service_override
         from backend.services.llm_service import llm_service as real_llm_service
+
         return real_llm_service
 
     def _init_session(self):

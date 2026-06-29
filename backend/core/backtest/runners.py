@@ -495,4 +495,3 @@ def run_batch_sandbox_backtest(
         "valid_tickers": valid_tickers,
         "equity_curve": equity_curve,
     }
-
