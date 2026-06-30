@@ -42,9 +42,9 @@ def is_retryable_http_error(exception: BaseException) -> bool:
 
 def log_retry_attempt(retry_state):
     """重试钩子：支持同步与异步函数，防止 tenacity 混用报错"""
-    print(
-        f"⏳ [Global Service Retry] 接口请求异常 ({type(retry_state.outcome.exception()).__name__})，正在进行第 {retry_state.attempt_number} 次退避重试..."
-    )  # noqa: E501
+    exception_name = type(retry_state.outcome.exception()).__name__
+    attempt_num = retry_state.attempt_number
+    print(f"⏳ [Global Service Retry] 接口请求异常 ({exception_name})，正在进行第 {attempt_num} 次退避重试...")
 
 
 # 导出的核心装饰器：支持指数退避 + 随机抖动

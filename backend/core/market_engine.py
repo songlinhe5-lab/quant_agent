@@ -498,14 +498,17 @@ class ConnectionManager:
                             if self._futu_alert_sent:
                                 self._futu_alert_sent = False
                         elif last_futu_error and not self._futu_alert_sent:
-                            # 💡 只有在底层真正断连时才发送全局报警，过滤掉单标的“未知股票”等接口层业务报错  # noqa: E501
+                            # 💡 只有在底层真正断连时才发送全局报警，过滤掉单标的"未知股票"等接口层业务报错
                             if getattr(futu_service, "status", "") != "CONNECTED":
                                 self._futu_alert_sent = True
-                                asyncio.create_task(
-                                    notification_service.send_alert(
-                                        f"🚨 [风控报警] 富途 OpenD 行情接口意外断连！\n系统已自动平滑降级至 YFinance 轮询兜底。\n\n【断线前账户快照】\n{getattr(self, 'last_account_summary', '未知')}\n\n错误详情: {last_futu_error}"
-                                    )  # noqa: E501
+                                account_snapshot = getattr(self, "last_account_summary", "未知")
+                                alert_msg = (
+                                    f"🚨 [风控报警] 富途 OpenD 行情接口意外断连！\n"
+                                    f"系统已自动平滑降级至 YFinance 轮询兜底。\n\n"
+                                    f"【断线前账户快照】\n{account_snapshot}\n\n"
+                                    f"错误详情: {last_futu_error}"
                                 )
+                                asyncio.create_task(notification_service.send_alert(alert_msg))
 
                     # 2. 启用真实的 YFinance 兜底轮询！（仅在开关打开时执行）
                     if yf_candidates and is_yf_enabled:
