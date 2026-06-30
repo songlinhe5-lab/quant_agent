@@ -137,12 +137,18 @@ from backend.services.yfinance_service import yf_service  # noqa: E402
 global_registry = None
 global_llm_client = None
 
-# 引入自检脚本中的深度测试方法
-from scripts.test_all_services import (  # noqa: E402
-    test_fred_service,
-    test_futu_service,
-    test_notification_service,
-)
+# 引入自检脚本中的深度测试方法（可选，仅本地开发时可用）
+try:
+    from scripts.test_all_services import (  # noqa: E402
+        test_fred_service,
+        test_futu_service,
+        test_notification_service,
+    )
+except ImportError:
+    # 生产环境 Docker 镜像中不包含 scripts/ 目录，跳过自检
+    test_fred_service = None
+    test_futu_service = None
+    test_notification_service = None
 
 
 @asynccontextmanager
@@ -195,15 +201,18 @@ async def lifespan(app: FastAPI):  # type: ignore
     # 💡 增加容灾包裹：防止外部 API 或富途网关不通导致整个 Docker 容器死循环无法启动
     try:
         # 2. 运行富途测试，并保留 OpenD 连接用于后续业务路由 (close_after=False)
-        await test_futu_service(close_after=False)  # type: ignore
+        if test_futu_service is not None:
+            await test_futu_service(close_after=False)  # type: ignore
     except Exception as e:
         print(f"⚠️ [Startup] 富途 OpenD 接口测试失败，已自动降级跳过: {e}")
 
     try:
         # 3. 运行 Redis 连通性与系统通知测试
-        await test_notification_service()  # type: ignore
+        if test_notification_service is not None:
+            await test_notification_service()  # type: ignore
         # 4. 运行 FRED 宏观数据接口测试
-        await test_fred_service()  # type: ignore
+        if test_fred_service is not None:
+            await test_fred_service()  # type: ignore
     except Exception as e:
         print(f"⚠️ [Startup] 核心外部服务连通性预检失败: {e}")
 
