@@ -130,6 +130,9 @@ jobs:
             set -e
             cd /opt/quant-agent
 
+            # 解决 Git 目录权限安全检查
+            git config --global --add safe.directory /opt/quant-agent
+
             # 1. 拉取最新代码
             echo "📥 拉取最新代码..."
             git fetch origin main
