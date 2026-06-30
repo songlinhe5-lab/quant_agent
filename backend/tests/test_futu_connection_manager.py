@@ -72,7 +72,7 @@ class TestConnectionManager:
         # 先在环境变量中设置，然后创建ConnectionManager
         with patch.dict("os.environ", {"FUTU_HOST": "10.0.0.5", "FUTU_PORT": "22222"}):
             mgr = ConnectionManager()  # 这时会读取环境变量
-        
+
         fake_ctx = MagicMock()
         with (
             patch(
