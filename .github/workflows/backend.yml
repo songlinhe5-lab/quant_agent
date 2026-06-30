@@ -130,6 +130,10 @@ jobs:
             set -e
             cd /opt/quant-agent
 
+            # 修复目录权限（防止之前用 sudo 操作导致权限混乱）
+            sudo chown -R root:root /opt/quant-agent
+            sudo chmod -R u+w /opt/quant-agent/.git
+
             # 解决 Git 目录权限安全检查
             git config --global --add safe.directory /opt/quant-agent
 
