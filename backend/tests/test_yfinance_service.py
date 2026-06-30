@@ -672,7 +672,12 @@ class TestYFinanceService:
         # Mock yfinance to simulate 429 rate limit error
         mock_yf = MagicMock()
         mock_yf.shared._ERRORS = {"AAPL": "YFRateLimitError: 429 Too Many Requests"}
-        mock_yf.Ticker.return_value.info = {"symbol": "AAPL"}
+        # 💡 必须返回超过 1 个元素的 dict，否则会触发软限流检测
+        mock_yf.Ticker.return_value.info = {
+            "symbol": "AAPL",
+            "price": 155.0,
+            "marketCap": 1000000000,
+        }
         with (
             patch("backend.services.yfinance_service.yf", mock_yf),
             patch("backend.services.yfinance_service.asyncio.sleep", new=AsyncMock()),
@@ -713,7 +718,12 @@ class TestYFinanceService:
             patch("asyncio.Lock") as mock_lock_class,
         ):
             mock_yf.shared._ERRORS = {}
-            mock_yf.Ticker.return_value.info = {"symbol": "AAPL"}
+            # 💡 必须返回超过 1 个元素的 dict，否则会触发软限流检测（len(data) <= 1）
+            mock_yf.Ticker.return_value.info = {
+                "symbol": "AAPL",
+                "price": 100.0,
+                "marketCap": 1000000000,
+            }
             mock_lock = AsyncMock()
             mock_lock_class.return_value = mock_lock
 
