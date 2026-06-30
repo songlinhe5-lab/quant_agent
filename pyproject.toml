@@ -40,13 +40,16 @@ dependencies = [
     "jieba>=0.42.1",
     "rank-bm25>=0.2.2",
     "chromadb>=0.4.24",
-    "sentence-transformers>=2.5.0",
     "pgvector>=0.4.2",
     "structlog>=26.1.0",
     "vectorbt>=0.28.2",
 ]
 
 [project.optional-dependencies]
+# 本地向量化模型（可选，默认用 API 替代）
+local-embedding = [
+    "sentence-transformers>=2.5.0",
+]
 dev = [
     "ruff>=0.3.0",
     "pre-commit>=3.6.0",
