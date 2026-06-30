@@ -137,6 +137,10 @@ jobs:
             # 解决 Git 目录权限安全检查
             git config --global --add safe.directory /opt/quant-agent
 
+            # 接受 GitHub 主机密钥（首次连接用）
+            mkdir -p ~/.ssh
+            ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+
             # 1. 拉取最新代码
             echo "📥 拉取最新代码..."
             git fetch origin main
