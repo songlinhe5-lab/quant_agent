@@ -30,7 +30,9 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 def get_password_hash(password: str) -> str:
     pwd_bytes = password.encode("utf-8")
-    salt = bcrypt.gensalt()
+    # 测试环境可通过环境变量降低 bcrypt 成本（默认 12，测试用 4 加速）
+    rounds = int(os.getenv("BCRYPT_ROUNDS", "12"))
+    salt = bcrypt.gensalt(rounds=rounds)
     return bcrypt.hashpw(pwd_bytes, salt).decode("utf-8")
 
 

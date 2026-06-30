@@ -70,6 +70,9 @@ os.environ.setdefault("EMBEDDING_BASE_URL", "https://api.test.com")
 os.environ.setdefault("EMBEDDING_MODEL", "BAAI/bge-large-zh-v1.5")
 os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 os.environ.setdefault("QUANT_ENV", "testing")
+# 🚀 测试环境加速：降低 bcrypt 成本因子（默认 12 → 4，加速约 16x）
+# 注意：必须使用直接赋值而非 setdefault，防止 .env 或系统环境已设置该变量
+os.environ["BCRYPT_ROUNDS"] = "4"
 # 💡 消除 encryption.py 的 "ENCRYPTION_MASTER_KEY 未配置" RuntimeWarning
 os.environ["ENCRYPTION_MASTER_KEY"] = "00" * 32  # 64 字符十六进制 = 32 字节 AES-256 密钥
 # 💡 取消 chat router 模拟延迟（测试环境加速）

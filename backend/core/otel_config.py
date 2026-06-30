@@ -18,16 +18,58 @@ import os
 from contextlib import contextmanager
 from typing import Optional
 
-from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.logging import LoggingInstrumentor
-from opentelemetry.instrumentation.redis import RedisInstrumentor
-from opentelemetry.instrumentation.requests import RequestsInstrumentor
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
-from opentelemetry.trace import Span, Status, StatusCode
+# 💡 可选依赖：opentelemetry 可能在测试环境中未安装
+try:
+    from opentelemetry import trace
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+    from opentelemetry.trace import Span, Status, StatusCode
+
+    _OTEL_AVAILABLE = True
+except ImportError:
+    trace = None
+    Resource = None
+    TracerProvider = None
+    BatchSpanProcessor = None
+    ConsoleSpanExporter = None
+    Span = None
+    Status = None
+    StatusCode = None
+    _OTEL_AVAILABLE = False
+
+# 💡 可选依赖：instrumentation 和 exporter 可能在测试环境中未安装
+if _OTEL_AVAILABLE:
+    try:
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+    except ImportError:
+        OTLPSpanExporter = None
+
+    try:
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    except ImportError:
+        FastAPIInstrumentor = None
+
+    try:
+        from opentelemetry.instrumentation.logging import LoggingInstrumentor
+    except ImportError:
+        LoggingInstrumentor = None
+
+    try:
+        from opentelemetry.instrumentation.redis import RedisInstrumentor
+    except ImportError:
+        RedisInstrumentor = None
+
+    try:
+        from opentelemetry.instrumentation.requests import RequestsInstrumentor
+    except ImportError:
+        RequestsInstrumentor = None
+else:
+    OTLPSpanExporter = None
+    FastAPIInstrumentor = None
+    LoggingInstrumentor = None
+    RedisInstrumentor = None
+    RequestsInstrumentor = None
 
 # ─────────────────────────────────────────
 #  配置读取
@@ -105,6 +147,11 @@ def init_otel(app=None) -> None:
     应在 FastAPI 启动前调用。
     如果传入 app，会自动挂载 FastAPIInstrumentor。
     """
+    # 💡 可选依赖：opentelemetry 未安装时直接返回
+    if not _OTEL_AVAILABLE:
+        print("⚠️  [OTEL] opentelemetry 未安装，跳过初始化")
+        return
+
     if not OTEL_ENABLED:
         print("ℹ️  [OTEL] OTEL_ENABLED=false，跳过初始化")
         return
@@ -123,12 +170,14 @@ def init_otel(app=None) -> None:
 
     # 3. 配置 Span 导出器
     otlp_endpoint = OTEL_EXPORTER_OTLP_ENDPOINT
-    if otlp_endpoint and otlp_endpoint != "none":
+    if otlp_endpoint and otlp_endpoint != "none" and OTLPSpanExporter is not None:
         # 生产：导出到 OTLP Collector
         span_exporter = OTLPSpanExporter(endpoint=otlp_endpoint)
         print(f"✅ [OTEL] 已配置 OTLP 导出器: {otlp_endpoint}")
     else:
-        # 开发：打印到控制台
+        # 开发：打印到控制台（或 OTLPSpanExporter 未安装时降级）
+        if OTLPSpanExporter is None:
+            print("⚠️ [OTEL] OTLPSpanExporter 未安装，降级为 Console 导出器")
         span_exporter = ConsoleSpanExporter()
         print("✅ [OTEL] 已配置 Console 导出器 (开发模式)")
 
@@ -136,14 +185,21 @@ def init_otel(app=None) -> None:
     trace.set_tracer_provider(provider)
 
     # 4. 自动埋点：FastAPI / Redis / requests / logging
-    if app is not None:
+    if app is not None and FastAPIInstrumentor is not None:
         FastAPIInstrumentor.instrument_app(app, tracer_provider=provider)
         print("✅ [OTEL] FastAPI 自动埋点已挂载")
 
-    LoggingInstrumentor().instrument(set_logging_format=True)
-    RedisInstrumentor().instrument()
-    RequestsInstrumentor().instrument()
-    print("✅ [OTEL] Redis / requests / logging 自动埋点已挂载")
+    if LoggingInstrumentor is not None:
+        LoggingInstrumentor().instrument(set_logging_format=True)
+        print("✅ [OTEL] logging 自动埋点已挂载")
+
+    if RedisInstrumentor is not None:
+        RedisInstrumentor().instrument()
+        print("✅ [OTEL] Redis 自动埋点已挂载")
+
+    if RequestsInstrumentor is not None:
+        RequestsInstrumentor().instrument()
+        print("✅ [OTEL] requests 自动埋点已挂载")
 
     print(f"🚀 [OTEL] TracerProvider 初始化完成 (service={OTEL_SERVICE_NAME})")
 

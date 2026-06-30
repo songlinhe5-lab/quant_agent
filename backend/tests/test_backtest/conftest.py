@@ -9,6 +9,14 @@ import pytest
 # os.environ["DATABASE_URL"] = "sqlite:///./test_backtest.db"
 
 
+# 🚀 优化：提前导入 vectorbt，避免每个测试重复初始化（约 2s）
+@pytest.fixture(scope="session", autouse=True)
+def _preload_vectorbt():
+    """Session 级别 fixture：提前初始化 vectorbt，加速后续测试"""
+    import vectorbt as vbt  # noqa: F401
+    yield
+
+
 def _make_ohlc_data(num_days=50, start_price=100.0):
     """生成模拟的 OHLCV 数据"""
     import numpy as np

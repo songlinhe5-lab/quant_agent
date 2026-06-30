@@ -232,6 +232,7 @@ class TestEventDrivenEngineDeterministic:
 
 # ─── 性能基准 ───────────────────────────────────────────────────────
 class TestEventDrivenEngineBenchmark:
+    @pytest.mark.slow
     def test_10k_bars_performance(self):
         np.random.seed(42)
         n_bars = 10000
