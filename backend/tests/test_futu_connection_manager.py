@@ -29,7 +29,10 @@ class TestConnectionManager:
         with patch(
             "backend.services.futu.connection_manager.OpenQuoteContext",
             return_value=fake_ctx,
-        ) as mock_open:
+        ) as mock_open, patch(
+            "backend.services.futu.connection_manager.ConnectionManager._is_opend_reachable",
+            return_value=True,
+        ):
             mgr.connect()
         mock_open.assert_called_once_with(host="127.0.0.1", port=11111)
         assert mgr.quote_ctx is fake_ctx
@@ -39,7 +42,11 @@ class TestConnectionManager:
     def test_connect_failure_sets_error_state(self):
         """connect 抛出异常时应进入 ERROR 状态并记录错误信息"""
         mgr = ConnectionManager()
+        # 先mock socket探测返回True，这样才能测试OpenQuoteContext失败的场景
         with patch(
+            "backend.services.futu.connection_manager.ConnectionManager._is_opend_reachable",
+            return_value=True,
+        ), patch(
             "backend.services.futu.connection_manager.OpenQuoteContext",
             side_effect=ConnectionError("OpenD unreachable"),
         ):
@@ -48,16 +55,34 @@ class TestConnectionManager:
         assert "OpenD unreachable" in mgr.error_msg
         assert mgr.quote_ctx is None
 
+    def test_connect_socket_unreachable_sets_error_state(self):
+        """socket探测失败时直接返回ERROR，不调用OpenQuoteContext"""
+        mgr = ConnectionManager()
+        with patch(
+            "backend.services.futu.connection_manager.ConnectionManager._is_opend_reachable",
+            return_value=False,
+        ):
+            mgr.connect()
+        assert mgr.status == "ERROR"
+        assert "OpenD 不可达" in mgr.error_msg
+        assert mgr.quote_ctx is None
+
     def test_connect_uses_env_overrides(self):
         """connect 应从环境变量读取 host/port"""
-        mgr = ConnectionManager()
+        # 先在环境变量中设置，然后创建ConnectionManager
+        with patch.dict("os.environ", {"FUTU_HOST": "10.0.0.5", "FUTU_PORT": "22222"}):
+            mgr = ConnectionManager()  # 这时会读取环境变量
+        
         fake_ctx = MagicMock()
         with (
-            patch.dict("os.environ", {"FUTU_HOST": "10.0.0.5", "FUTU_PORT": "22222"}),
             patch(
                 "backend.services.futu.connection_manager.OpenQuoteContext",
                 return_value=fake_ctx,
             ) as mock_open,
+            patch(
+                "backend.services.futu.connection_manager.ConnectionManager._is_opend_reachable",
+                return_value=True,
+            ),
         ):
             mgr.connect()
         mock_open.assert_called_once_with(host="10.0.0.5", port=22222)
