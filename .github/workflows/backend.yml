@@ -191,7 +191,16 @@ jobs:
               exit 1
             fi
 
-            # 8. 清理旧镜像
+            # 8. 清理旧镜像与构建缓存（防止磁盘逐渐占满）
+            echo "🧹 清理旧镜像与构建缓存..."
             sudo docker image prune -f
+            # 清理超过 7 天的 Build Cache（本次 42GB 磁盘占满的元凶）
+            sudo docker builder prune -af --filter "until=168h"
+            # 清理悬空 volume（未被任何容器引用的孤立卷）
+            sudo docker volume prune -f
+
+            # 9. 输出磁盘使用概览
+            echo "💾 磁盘使用:"
+            df -h / | tail -1
 
             echo "✅ 部署成功！服务健康运行中"
