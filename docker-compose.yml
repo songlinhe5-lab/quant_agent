@@ -182,32 +182,6 @@ services:
     networks:
       - quant-internal
 
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: quant_frontend
-    restart: always
-    ports:
-      - "80:80"
-      - "443:443"
-    depends_on:
-      quant-agent:
-        condition: service_healthy
-    volumes:
-      - ./certs:/etc/nginx/certs:ro
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-    deploy:
-      resources:
-        limits:
-          memory: 128M
-          cpus: '0.25'
-    networks:
-      - quant-internal
 
 networks:
   quant-internal:
