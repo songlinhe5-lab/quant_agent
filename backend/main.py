@@ -251,9 +251,15 @@ async def lifespan(app: FastAPI):  # type: ignore
 
     asyncio.create_task(notification_service.send_alert("✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！"))  # noqa: E501
 
-    asyncio.create_task(
-        finnhub_service._insider_transactions_marquee_daemon()
-    )  # 启动高管内幕交易跑马灯守护进程  # noqa: E501
+    # 💡 Finnhub 守护进程仅在加州节点运行（北京节点设置 FINNHUB_ENABLED=false 跳过）
+    finnhub_enabled = os.getenv("FINNHUB_ENABLED", "true").lower() == "true"
+    if finnhub_enabled:
+        asyncio.create_task(
+            finnhub_service._insider_transactions_marquee_daemon()
+        )  # 启动高管内幕交易跑马灯守护进程  # noqa: E501
+        print("✅ [Startup] Finnhub 内幕交易跑马灯守护进程已启动")
+    else:
+        print("⚠️ [Startup] Finnhub 服务已禁用 (FINNHUB_ENABLED=false)，跳过守护进程")
     yield  # 挂起，此时 FastAPI 正式对外提供 HTTP 与 WS 服务
 
     # === 销毁阶段 (Shutdown) ===

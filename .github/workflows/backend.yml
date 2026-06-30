@@ -12,6 +12,18 @@ on:
       - '.github/workflows/backend.yml'
       - 'Dockerfile'
       - 'docker-compose.yml'
+  # 🔧 手动触发：可选择部署目标节点
+  workflow_dispatch:
+    inputs:
+      deploy_target:
+        description: '部署目标节点'
+        required: true
+        type: choice
+        options:
+          - all
+          - beijing
+          - overseas
+        default: all
 
 jobs:
   lint:
@@ -127,31 +139,74 @@ jobs:
         run: uv run pip-audit --desc --require-hashes 2>&1 || true
         continue-on-error: true
 
+  # ==========================================
+  # 🚀 多节点矩阵部署
+  # ==========================================
+  # push 到 main: 自动部署所有节点
+  # workflow_dispatch: 可选择部署指定节点
   deploy:
-    name: 🚀 Deploy to VPS
+    name: 🚀 Deploy (${{ matrix.node_name }})
     runs-on: ubuntu-latest
     needs: [test, security]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - node_name: beijing
+            host_secret: VPS_BEIJING_HOST
+            user_secret: VPS_BEIJING_USER
+            key_secret: VPS_BEIJING_SSH_KEY
+            compose_profiles: monitoring
+            deploy_path: /opt/quant-agent
+          - node_name: overseas
+            host_secret: VPS_OVERSEAS_HOST
+            user_secret: VPS_OVERSEAS_USER
+            key_secret: VPS_OVERSEAS_SSH_KEY
+            compose_profiles: ""
+            deploy_path: /opt/quant-agent
+    # 根据手动触发选择过滤节点
+    # workflow_dispatch 时: deploy_target=all 全部部署, beijing/overseas 只部署对应节点
+    # push 时: 全部部署
 
     steps:
-      - name: Deploy via SSH
+      - name: 🎯 判断是否部署此节点
+        id: should_deploy
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TARGET="${{ github.event.inputs.deploy_target }}"
+            if [ "$TARGET" = "all" ] || [ "$TARGET" = "${{ matrix.node_name }}" ]; then
+              echo "deploy=true" >> $GITHUB_OUTPUT
+              echo "✅ 将部署到 ${{ matrix.node_name }} 节点"
+            else
+              echo "deploy=false" >> $GITHUB_OUTPUT
+              echo "⏭️ 跳过 ${{ matrix.node_name }} 节点 (目标: $TARGET)"
+            fi
+          else
+            # push 事件: 部署所有节点
+            echo "deploy=true" >> $GITHUB_OUTPUT
+            echo "✅ push 事件，将部署到 ${{ matrix.node_name }} 节点"
+          fi
+
+      - name: 🚀 Deploy to ${{ matrix.node_name }}
+        if: steps.should_deploy.outputs.deploy == 'true'
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
+          host: ${{ secrets[matrix.host_secret] }}
+          username: ${{ secrets[matrix.user_secret] }}
+          key: ${{ secrets[matrix.key_secret] }}
           script: |
             set -e
-            cd /opt/quant-agent
+            cd ${{ matrix.deploy_path }}
 
-            # 修复目录权限（防止之前用 sudo 操作导致权限混乱）
-            sudo chown -R ubuntu:ubuntu /opt/quant-agent
-            sudo chmod -R u+w /opt/quant-agent/.git
+            # 修复目录权限
+            sudo chown -R ubuntu:ubuntu ${{ matrix.deploy_path }}
+            sudo chmod -R u+w ${{ matrix.deploy_path }}/.git
+            git config --global --add safe.directory ${{ matrix.deploy_path }}
 
-            # 解决 Git 目录权限安全检查
-            git config --global --add safe.directory /opt/quant-agent
-
-            # 接受 GitHub 主机密钥（首次连接用）
+            # 接受 GitHub 主机密钥
             mkdir -p ~/.ssh
             ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
 
@@ -161,19 +216,19 @@ jobs:
             git reset --hard origin/main
 
             # 2. 记录当前镜像 ID，用于失败回滚
-            PREV_IMAGE=$(sudo docker compose ps -q backend 2>/dev/null | head -1 | xargs -I{} sudo docker inspect --format='{{.Id}}' {} 2>/dev/null || echo "none")
+            PREV_IMAGE=$(sudo docker compose ps -q quant-agent 2>/dev/null | head -1 | xargs -I{} sudo docker inspect --format='{{.Id}}' {} 2>/dev/null || echo "none")
 
-            # 3. 停掉所有容器释放内存（VPS 内存有限，构建时需要足够空间）
+            # 3. 停掉容器释放内存
             echo "🛑 停掉容器释放内存..."
-            sudo docker compose down || true
+            COMPOSE_PROFILES=${{ matrix.compose_profiles }} sudo docker compose down || true
 
             # 4. 本地构建新镜像
             echo "🔨 本地构建 Docker 镜像..."
             sudo docker compose build --no-cache
 
-            # 5. 重启服务
-            echo "🚀 重启服务..."
-            sudo docker compose up -d --remove-orphans
+            # 5. 重启服务（带 profile 控制）
+            echo "🚀 重启服务 (profiles: ${{ matrix.compose_profiles || 'default' }})..."
+            COMPOSE_PROFILES=${{ matrix.compose_profiles }} sudo docker compose up -d --remove-orphans
 
             # 6. 等待服务启动
             echo "⏳ 等待服务启动 (30s)..."
@@ -182,25 +237,24 @@ jobs:
             # 7. 健康检查
             HEALTH=$(curl -sf --max-time 10 http://localhost:8000/api/v1/health 2>/dev/null || echo "UNHEALTHY")
             if [ "$HEALTH" = "UNHEALTHY" ]; then
-              echo "❌ 健康检查失败！正在回滚..."
-              sudo docker compose down
-              if [ "$PREV_IMAGE" != "none" ]; then
-                echo "⚠️ 回滚需手动执行: cd /opt/quant-agent && git log --oneline -2 查看上一个 commit，然后 git reset --hard <prev_commit>"
-              fi
-              echo "⚠️ 部署失败，请检查日志: sudo docker compose logs backend"
+              echo "❌ 健康检查失败！请检查日志: sudo docker compose logs quant-agent"
               exit 1
             fi
+            echo "✅ 健康检查通过"
 
-            # 8. 清理旧镜像与构建缓存（防止磁盘逐渐占满）
+            # 8. 清理旧镜像与构建缓存
             echo "🧹 清理旧镜像与构建缓存..."
             sudo docker image prune -f
-            # 清理超过 7 天的 Build Cache（本次 42GB 磁盘占满的元凶）
             sudo docker builder prune -af --filter "until=168h"
-            # 清理悬空 volume（未被任何容器引用的孤立卷）
             sudo docker volume prune -f
 
-            # 9. 输出磁盘使用概览
+            # 9. 输出部署信息
+            echo "📋 部署信息:"
+            echo "  节点: ${{ matrix.node_name }}"
+            echo "  Profiles: ${{ matrix.compose_profiles || 'default' }}"
             echo "💾 磁盘使用:"
             df -h / | tail -1
+            echo "🐳 容器状态:"
+            sudo docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 
-            echo "✅ 部署成功！服务健康运行中"
+            echo "✅ ${{ matrix.node_name }} 节点部署成功！"
