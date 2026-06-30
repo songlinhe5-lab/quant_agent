@@ -259,7 +259,7 @@ async def lifespan(app: FastAPI):  # type: ignore
         futu_enabled_shutdown = os.getenv("FUTU_ENABLED", "true").lower() == "true"
         if futu_enabled_shutdown:
             get_watchdog().stop()
-            if 'futu_watchdog_task' in locals() and futu_watchdog_task and not futu_watchdog_task.done():
+            if "futu_watchdog_task" in locals() and futu_watchdog_task and not futu_watchdog_task.done():
                 futu_watchdog_task.cancel()
     except Exception:
         pass
