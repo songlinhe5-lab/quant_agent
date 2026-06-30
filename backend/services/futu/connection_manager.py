@@ -33,15 +33,15 @@ class ConnectionManager:
     def _is_opend_reachable(self, timeout: float = 2.0) -> bool:
         """
         快速探测 OpenD 是否可连接（避免 futu-api 内部疯狂重试）
-        
+
         Args:
             timeout: 探测超时时间（秒）
-            
+
         Returns:
             bool: OpenD 可连接返回 True，否则返回 False
         """
         import socket
-        
+
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.settimeout(timeout)
@@ -56,14 +56,14 @@ class ConnectionManager:
         if not self._enabled:
             self.status = "DISABLED"
             self.error_msg = "富途服务已禁用 (FUTU_ENABLED=false)"
-            print(f"⚠️ [ConnectionManager] 富途服务已禁用，跳过连接")
+            print("⚠️ [ConnectionManager] 富途服务已禁用，跳过连接")
             return
 
         # 线程安全：防止并发连接
         with self._lock:
             # 双重检查：如果已连接，直接返回
             if self.status == "CONNECTED" and self.quote_ctx is not None:
-                print(f"✅ [ConnectionManager] 已连接，跳过重复连接")
+                print("✅ [ConnectionManager] 已连接，跳过重复连接")
                 return
 
             # 快速探测：如果 OpenD 不可达，提前返回，避免 futu-api 内部重试
