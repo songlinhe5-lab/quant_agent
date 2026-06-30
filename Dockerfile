@@ -31,7 +31,10 @@ ENV TZ=Asia/Shanghai \
     PATH="/app/.venv/bin:$PATH"
 
 # 只安装运行时必要系统库（不含编译工具）
-RUN apt-get update && \
+# 使用阿里云镜像加速 apt-get
+RUN sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources || \
+    sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sources.list && \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
         libgomp1 \
         libstdc++6 \
