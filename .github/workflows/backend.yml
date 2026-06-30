@@ -3,11 +3,6 @@ name: Backend CI
 on:
   push:
     branches: [ main, master, develop ]
-    paths:
-      - 'backend/**'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - '.github/workflows/backend.yml'
   pull_request:
     branches: [ main, master, develop ]
     paths:
@@ -15,6 +10,8 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/backend.yml'
+      - 'Dockerfile'
+      - 'docker-compose.yml'
 
 jobs:
   lint:
