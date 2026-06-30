@@ -459,7 +459,7 @@ async def response_envelope_middleware(request: Request, call_next):
     # 快速跳过不需要转换的路径
     if any(path.startswith(p) for p in _SKIP_TRANSFORM_PREFIXES):
         return response
-    if path in ("/", "/monitor", "/health", "/metrics"):
+    if path in ("/", "/monitor", "/health", "/metrics", "/openapi.json", "/docs", "/redoc", "/openapi.yaml"):
         return response
 
     # 仅转换 JSON 响应
