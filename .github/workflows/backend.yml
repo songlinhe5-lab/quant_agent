@@ -23,6 +23,7 @@ on:
           - all
           - beijing
           - overseas
+          - yfinance
         default: all
 
 jobs:
@@ -166,9 +167,19 @@ jobs:
             user_secret: VPS_OVERSEAS_USER
             key_secret: VPS_OVERSEAS_SSH_KEY
             compose_profiles: ""
+            compose_file: docker-compose.yml
+            deploy_path: /opt/quant-agent
+          # YFinance 独立采集节点 (多实例冗余)
+          # 添加新实例: 复制下方块，修改 node_name / secrets / deploy_path
+          - node_name: yfinance
+            host_secret: VPS_YFINANCE_1_HOST
+            user_secret: VPS_YFINANCE_1_USER
+            key_secret: VPS_YFINANCE_1_SSH_KEY
+            compose_profiles: ""
+            compose_file: docker-compose.yfinance.yml
             deploy_path: /opt/quant-agent
     # 根据手动触发选择过滤节点
-    # workflow_dispatch 时: deploy_target=all 全部部署, beijing/overseas 只部署对应节点
+    # workflow_dispatch 时: deploy_target=all 全部部署, beijing/overseas/yfinance 只部署对应节点
     # push 时: 全部部署
 
     steps:
@@ -177,7 +188,9 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             TARGET="${{ github.event.inputs.deploy_target }}"
-            if [ "$TARGET" = "all" ] || [ "$TARGET" = "${{ matrix.node_name }}" ]; then
+            NODE="${{ matrix.node_name }}"
+            if [ "$TARGET" = "all" ] || [ "$TARGET" = "$NODE" ] || \
+               ([ "$TARGET" = "yfinance" ] && echo "$NODE" | grep -q "^yfinance"); then
               echo "deploy=true" >> $GITHUB_OUTPUT
               echo "✅ 将部署到 ${{ matrix.node_name }} 节点"
             else
@@ -215,32 +228,46 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            # 2. 记录当前镜像 ID，用于失败回滚
-            PREV_IMAGE=$(sudo docker compose ps -q quant-agent 2>/dev/null | head -1 | xargs -I{} sudo docker inspect --format='{{.Id}}' {} 2>/dev/null || echo "none")
+            # 2. 记录当前镜像 ID
+            PREV_IMAGE=$(sudo docker compose -f ${{ matrix.compose_file }} ps -q 2>/dev/null | head -1 | xargs -I{} sudo docker inspect --format='{{.Id}}' {} 2>/dev/null || echo "none")
 
             # 3. 停掉容器释放内存
             echo "🛑 停掉容器释放内存..."
-            COMPOSE_PROFILES=${{ matrix.compose_profiles }} sudo docker compose down || true
+            COMPOSE_PROFILES=${{ matrix.compose_profiles }} sudo docker compose -f ${{ matrix.compose_file }} down || true
 
             # 4. 本地构建新镜像
             echo "🔨 本地构建 Docker 镜像..."
-            sudo docker compose build --no-cache
+            sudo docker compose -f ${{ matrix.compose_file }} build --no-cache
 
-            # 5. 重启服务（带 profile 控制）
-            echo "🚀 重启服务 (profiles: ${{ matrix.compose_profiles || 'default' }})..."
-            COMPOSE_PROFILES=${{ matrix.compose_profiles }} sudo docker compose up -d --remove-orphans
+            # 5. 重启服务
+            echo "🚀 重启服务 (file: ${{ matrix.compose_file }}, profiles: ${{ matrix.compose_profiles || 'default' }})..."
+            COMPOSE_PROFILES=${{ matrix.compose_profiles }} sudo docker compose -f ${{ matrix.compose_file }} up -d --remove-orphans
 
             # 6. 等待服务启动
             echo "⏳ 等待服务启动 (30s)..."
             sleep 30
 
             # 7. 健康检查
-            HEALTH=$(curl -sf --max-time 10 http://localhost:8000/api/v1/health 2>/dev/null || echo "UNHEALTHY")
-            if [ "$HEALTH" = "UNHEALTHY" ]; then
-              echo "❌ 健康检查失败！请检查日志: sudo docker compose logs quant-agent"
-              exit 1
+            if [ "${{ matrix.compose_file }}" = "docker-compose.yfinance.yml" ]; then
+              # YFinance 节点: 检查进程是否存活
+              sleep 15
+              if sudo docker compose -f ${{ matrix.compose_file }} ps | grep -q "running\|healthy"; then
+                echo "✅ YFinance Worker 运行正常"
+              else
+                echo "❌ YFinance Worker 启动失败！"
+                sudo docker compose -f ${{ matrix.compose_file }} logs --tail 30
+                exit 1
+              fi
+            else
+              # API 节点: HTTP 健康检查
+              HEALTH=$(curl -sf --max-time 10 http://localhost:8000/api/v1/health 2>/dev/null || echo "UNHEALTHY")
+              if [ "$HEALTH" = "UNHEALTHY" ]; then
+                echo "❌ 健康检查失败！"
+                sudo docker compose -f ${{ matrix.compose_file }} logs --tail 30
+                exit 1
+              fi
+              echo "✅ 健康检查通过"
             fi
-            echo "✅ 健康检查通过"
 
             # 8. 清理旧镜像与构建缓存
             echo "🧹 清理旧镜像与构建缓存..."
@@ -255,6 +282,6 @@ jobs:
             echo "💾 磁盘使用:"
             df -h / | tail -1
             echo "🐳 容器状态:"
-            sudo docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+            sudo docker compose -f ${{ matrix.compose_file }} ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 
             echo "✅ ${{ matrix.node_name }} 节点部署成功！"
