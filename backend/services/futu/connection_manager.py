@@ -4,6 +4,7 @@ Futu OpenD 连接管理模块
 """
 
 import os
+import threading
 from typing import Dict, Tuple
 
 from futu import (
@@ -24,20 +25,64 @@ class ConnectionManager:
         self.trade_ctxs: Dict[Tuple[TrdEnv, TrdMarket], OpenSecTradeContext] = {}
         self.status = "DISCONNECTED"
         self.error_msg = ""
+        self._host = os.getenv("FUTU_HOST", "127.0.0.1")
+        self._port = int(os.getenv("FUTU_PORT", 11111))
+        self._lock = threading.Lock()  # 防止并发连接
+        self._enabled = os.getenv("FUTU_ENABLED", "true").lower() == "true"
+
+    def _is_opend_reachable(self, timeout: float = 2.0) -> bool:
+        """
+        快速探测 OpenD 是否可连接（避免 futu-api 内部疯狂重试）
+        
+        Args:
+            timeout: 探测超时时间（秒）
+            
+        Returns:
+            bool: OpenD 可连接返回 True，否则返回 False
+        """
+        import socket
+        
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(timeout)
+                s.connect((self._host, self._port))
+            return True
+        except Exception:
+            return False
 
     def connect(self):
-        """连接到 Futu OpenD 行情网关"""
-        host = os.getenv("FUTU_HOST", "127.0.0.1")
-        port = int(os.getenv("FUTU_PORT", 11111))
-        try:
-            self.quote_ctx = OpenQuoteContext(host=host, port=port)
-            self.status = "CONNECTED"
-            self.error_msg = ""
-            print(f"✅ [ConnectionManager] 成功连接至全局 OpenD 行情网关 ({host}:{port})")  # noqa: E501
-        except Exception as e:
-            self.status = "ERROR"
-            self.error_msg = str(e)
-            print(f"❌ [ConnectionManager] 连接 OpenD 失败: {e}")
+        """连接到 Futu OpenD 行情网关（线程安全）"""
+        # 检查是否启用富途
+        if not self._enabled:
+            self.status = "DISABLED"
+            self.error_msg = "富途服务已禁用 (FUTU_ENABLED=false)"
+            print(f"⚠️ [ConnectionManager] 富途服务已禁用，跳过连接")
+            return
+
+        # 线程安全：防止并发连接
+        with self._lock:
+            # 双重检查：如果已连接，直接返回
+            if self.status == "CONNECTED" and self.quote_ctx is not None:
+                print(f"✅ [ConnectionManager] 已连接，跳过重复连接")
+                return
+
+            # 快速探测：如果 OpenD 不可达，提前返回，避免 futu-api 内部重试
+            if not self._is_opend_reachable():
+                self.status = "ERROR"
+                self.error_msg = f"OpenD 不可达 ({self._host}:{self._port})"
+                print(f"❌ [ConnectionManager] OpenD 不可达，跳过连接: {self._host}:{self._port}")
+                return
+
+            # OpenD 可连接，再创建上下文
+            try:
+                self.quote_ctx = OpenQuoteContext(host=self._host, port=self._port)
+                self.status = "CONNECTED"
+                self.error_msg = ""
+                print(f"✅ [ConnectionManager] 成功连接至全局 OpenD 行情网关 ({self._host}:{self._port})")  # noqa: E501
+            except Exception as e:
+                self.status = "ERROR"
+                self.error_msg = str(e)
+                print(f"❌ [ConnectionManager] 连接 OpenD 失败: {e}")
 
     def close(self):
         """关闭所有连接"""

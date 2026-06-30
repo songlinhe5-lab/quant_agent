@@ -234,8 +234,14 @@ async def lifespan(app: FastAPI):  # type: ignore
 
     await manager.start_background_tasks()  # type: ignore
 
-    # BE-03: 启动 Futu OpenD 看门狗守护进程
-    futu_watchdog_task = asyncio.create_task(get_watchdog(futu_service).start())
+    # BE-03: 启动 Futu OpenD 看门狗守护进程（仅当富途服务启用时）
+    futu_enabled = os.getenv("FUTU_ENABLED", "true").lower() == "true"
+    if futu_enabled:
+        futu_watchdog_task = asyncio.create_task(get_watchdog(futu_service).start())
+        print("✅ [Startup] 富途看门狗已启动")
+    else:
+        print("⚠️ [Startup] 富途服务已禁用 (FUTU_ENABLED=false)，跳过看门狗启动")
+        futu_watchdog_task = None
 
     asyncio.create_task(notification_service.send_alert("✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！"))  # noqa: E501
 
@@ -249,9 +255,12 @@ async def lifespan(app: FastAPI):  # type: ignore
 
     # BE-03: 停止看门狗
     try:
-        get_watchdog().stop()
-        if "futu_watchdog_task" in locals() and not futu_watchdog_task.done():
-            futu_watchdog_task.cancel()
+        # 重新读取环境变量（因为 futu_enabled 是启动阶段的局部变量）
+        futu_enabled_shutdown = os.getenv("FUTU_ENABLED", "true").lower() == "true"
+        if futu_enabled_shutdown:
+            get_watchdog().stop()
+            if 'futu_watchdog_task' in locals() and futu_watchdog_task and not futu_watchdog_task.done():
+                futu_watchdog_task.cancel()
     except Exception:
         pass
 
