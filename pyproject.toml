@@ -43,6 +43,16 @@ dependencies = [
     "pgvector>=0.4.2",
     "structlog>=26.1.0",
     "vectorbt>=0.28.2",
+    # OpenTelemetry
+    "opentelemetry-api>=1.0.0",
+    "opentelemetry-sdk>=1.0.0",
+    "opentelemetry-instrumentation-fastapi",
+    "opentelemetry-instrumentation-logging",
+    "opentelemetry-instrumentation-requests",
+    "opentelemetry-instrumentation-httpx",
+    "opentelemetry-instrumentation-redis",
+    "opentelemetry-instrumentation-sqlalchemy",
+    "opentelemetry-exporter-otlp-proto-http",
 ]
 
 [project.optional-dependencies]

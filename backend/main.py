@@ -39,6 +39,12 @@ from pydantic import BaseModel  # noqa: E402
 from backend.core.error_codes import ERROR_CODE_TO_HTTP_STATUS, ErrorCode  # noqa: E402
 from backend.core.exceptions import QuantBaseException  # noqa: E402
 
+# --- BE-10: OpenTelemetry Trace 接入 ---
+from backend.core.otel_config import (  # noqa: E402
+    get_current_trace_id,
+    init_otel,
+)
+
 # --- BE-05: structlog 结构化日志 ---
 from backend.core.structlog_config import (  # noqa: E402
     configure_structlog,
@@ -325,6 +331,11 @@ async def lifespan(app: FastAPI):  # type: ignore
 app = FastAPI(title="Quant Agent Data Gateway", lifespan=lifespan)
 
 # ==========================================
+# --- BE-10: OpenTelemetry Trace 初始化 ---
+# ==========================================
+init_otel(app)
+
+# ==========================================
 # --- BE-05: structlog 结构化日志初始化 ---
 # ==========================================
 configure_structlog()
@@ -516,19 +527,28 @@ RATE_WINDOW = 60  # 时间窗口 (秒)
 @app.middleware("http")
 async def trace_id_middleware(request: Request, call_next):
     """
-    BE-05: 为每个请求注入 trace_id 上下文，供 structlog 自动携带。
-    - 优先读取请求头 X-Trace-Id（支持上游网关透传）
-    - 无则自动生成 16 字符 hex
+    BE-05 + BE-10: 为每个请求注入 trace_id 上下文。
+    - OTEL 启用时：使用标准 OTEL trace_id (32-char hex)
+    - 支持 W3C Trace Context 透传（上游网关注入的 traceparent header）
     - 同时在响应头中回传 X-Trace-Id，便于前端排查问题
     """
-    tid = request.headers.get("x-trace-id") or new_trace_id()
-    token_trace = trace_id_var.set(tid)
+    # 尝试获取 OTEL 标准 trace_id（OTEL 中间件在更外层，span 已创建）
+    otel_tid = get_current_trace_id()
+
+    # 备用：从请求头读取或生成自定义 ID
+    if not otel_tid:
+        otel_tid = request.headers.get("x-trace-id", new_trace_id())
+
+    # 注入到 structlog context var（供日志自动携带）
+    token_trace = trace_id_var.set(otel_tid)
     token_symbol = symbol_var.set("-")
     token_latency = latency_ms_var.set(0.0)
 
     try:
         response = await call_next(request)
-        response.headers["X-Trace-Id"] = tid
+        # 再次尝试获取（防止 OTEL 在 call_next 过程中创建了新 span）
+        otel_tid = get_current_trace_id() or otel_tid
+        response.headers["X-Trace-Id"] = otel_tid
         return response
     finally:
         trace_id_var.reset(token_trace)
