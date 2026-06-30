@@ -157,6 +157,9 @@ jobs:
             set -e
             cd /opt/quant-agent
 
+            # 登录 ghcr.io（凭证持久化，首次登录后后续自动复用）
+            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
             # 记录当前运行的镜像 SHA，用于失败回滚
             PREV_IMAGE=$(docker compose ps -q backend 2>/dev/null | xargs docker inspect --format='{{.Id}}' 2>/dev/null || echo "none")
 
