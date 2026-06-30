@@ -8,10 +8,12 @@ FROM python:3.11-slim AS builder
 WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ \
+    UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
 
-# 安装 uv
-RUN pip install --no-cache-dir uv
+# 安装 uv（使用国内镜像加速）
+RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ uv
 
 # 复制依赖声明
 COPY pyproject.toml uv.lock ./
