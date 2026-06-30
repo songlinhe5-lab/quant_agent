@@ -32,6 +32,11 @@ redis_client = redis.Redis(
 # 💡 高频异步批量写入队列 (Redis Async Batch Writer)
 # 解决高频 set 导致的 TCP 网络带宽堵塞与 RTT 延迟问题
 # ==========================================
+
+# 💡 内存优化：L1 缓存最大容量可通过环境变量配置（默认 1000，原 5000）
+L1_CACHE_MAX_SIZE = int(os.getenv("L1_CACHE_MAX_SIZE", "1000"))
+
+
 class RedisAsyncBatchWriter:
     def __init__(self, client: redis.Redis, batch_size: int = 100, flush_interval: float = 1.0):  # noqa: E501
         self.redis = client
@@ -118,7 +123,7 @@ redis_batch_writer = RedisAsyncBatchWriter(redis_client, batch_size=200, flush_i
 # 彻底消除极高频读取 (如配置字典、系统开关) 的 Redis TCP 网络开销
 # ==========================================
 class LocalL1Cache:
-    def __init__(self, client: redis.Redis, default_ttl: float = 10.0, max_size: int = 5000):  # noqa: E501
+    def __init__(self, client: redis.Redis, default_ttl: float = 10.0, max_size: int = L1_CACHE_MAX_SIZE):
         self.redis = client
         self.default_ttl = default_ttl
         self.max_size = max_size

@@ -64,12 +64,13 @@ load_dotenv()
 # 设定全局默认超时是封堵第三方同步库“线程黑洞”的最底线安全手段。
 socket.setdefaulttimeout(15.0)
 
-from openai import AsyncOpenAI  # noqa: E402
+# 💡 性能优化：OpenAI 和 Hermes Agent 改为延迟导入，降低启动内存
+# from openai import AsyncOpenAI  # noqa: E402  # 延迟到 lifespan 中导入
+# from hermes_agent.agent import HermesAgent  # noqa: E402
+# from hermes_agent.tool_registry import ToolRegistry  # noqa: E402
 
 from backend.core import models  # noqa: E402
 from backend.core.database import Base, SessionLocal, async_engine, engine  # noqa: E402
-from hermes_agent.agent import HermesAgent  # noqa: E402
-from hermes_agent.tool_registry import ToolRegistry  # noqa: E402
 
 # 自动创建数据库表与必要扩展
 try:
@@ -219,11 +220,16 @@ async def lifespan(app: FastAPI):  # type: ignore
     print("\n🎉 [Startup] 所有后端服务自检完成，API 网关启动就绪！\n")
 
     # 🧠 [Agent] 初始化 AI 主脑相关服务
+    # 💡 性能优化：延迟导入重量级依赖，降低启动内存
     print("🛠️  [Agent Startup] 装载量化 Tools 沙箱网络客户端...")
+    from hermes_agent.tool_registry import ToolRegistry
+
     global_registry = ToolRegistry()
     print(f"✅ [Agent Startup] 成功挂载 {len(global_registry.tools)} 个 AI Agent 核心工具！")  # noqa: E501
 
     print("🔌 [Agent Startup] 初始化全局共享的大模型连接池...")
+    from openai import AsyncOpenAI
+
     global_llm_client = AsyncOpenAI(
         api_key=os.getenv("LLM_API_KEY", ""),
         base_url=os.getenv("LLM_BASE_URL", "https://api.deepseek.com"),
@@ -1045,6 +1051,9 @@ async def chat_endpoint(request: ChatRequest, username: str = Depends(get_curren
     global global_registry, global_llm_client, redis_client
     if not global_registry:
         raise HTTPException(status_code=503, detail="Tool Registry 未初始化")
+
+    # 💡 性能优化：延迟导入 HermesAgent，降低启动内存
+    from hermes_agent.agent import HermesAgent
 
     safe_session_id = f"user_{username}_{request.session_id or 'default_api_session'}"
 
