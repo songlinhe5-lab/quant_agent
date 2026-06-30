@@ -26,12 +26,15 @@ class TestConnectionManager:
         """connect 成功时应创建 quote_ctx 并切换到 CONNECTED 状态"""
         mgr = ConnectionManager()
         fake_ctx = MagicMock()
-        with patch(
-            "backend.services.futu.connection_manager.OpenQuoteContext",
-            return_value=fake_ctx,
-        ) as mock_open, patch(
-            "backend.services.futu.connection_manager.ConnectionManager._is_opend_reachable",
-            return_value=True,
+        with (
+            patch(
+                "backend.services.futu.connection_manager.OpenQuoteContext",
+                return_value=fake_ctx,
+            ) as mock_open,
+            patch(
+                "backend.services.futu.connection_manager.ConnectionManager._is_opend_reachable",
+                return_value=True,
+            ),
         ):
             mgr.connect()
         mock_open.assert_called_once_with(host="127.0.0.1", port=11111)
@@ -43,12 +46,15 @@ class TestConnectionManager:
         """connect 抛出异常时应进入 ERROR 状态并记录错误信息"""
         mgr = ConnectionManager()
         # 先mock socket探测返回True，这样才能测试OpenQuoteContext失败的场景
-        with patch(
-            "backend.services.futu.connection_manager.ConnectionManager._is_opend_reachable",
-            return_value=True,
-        ), patch(
-            "backend.services.futu.connection_manager.OpenQuoteContext",
-            side_effect=ConnectionError("OpenD unreachable"),
+        with (
+            patch(
+                "backend.services.futu.connection_manager.ConnectionManager._is_opend_reachable",
+                return_value=True,
+            ),
+            patch(
+                "backend.services.futu.connection_manager.OpenQuoteContext",
+                side_effect=ConnectionError("OpenD unreachable"),
+            ),
         ):
             mgr.connect()
         assert mgr.status == "ERROR"
