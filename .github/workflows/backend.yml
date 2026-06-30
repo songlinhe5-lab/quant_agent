@@ -146,19 +146,23 @@ jobs:
             # 2. 记录当前镜像 ID，用于失败回滚
             PREV_IMAGE=$(sudo docker compose ps -q backend 2>/dev/null | head -1 | xargs -I{} sudo docker inspect --format='{{.Id}}' {} 2>/dev/null || echo "none")
 
-            # 3. 本地构建新镜像
+            # 3. 停掉所有容器释放内存（VPS 内存有限，构建时需要足够空间）
+            echo "🛑 停掉容器释放内存..."
+            sudo docker compose down || true
+
+            # 4. 本地构建新镜像
             echo "🔨 本地构建 Docker 镜像..."
             sudo docker compose build --no-cache
 
-            # 4. 重启服务
+            # 5. 重启服务
             echo "🚀 重启服务..."
             sudo docker compose up -d --remove-orphans
 
-            # 5. 等待服务启动
+            # 6. 等待服务启动
             echo "⏳ 等待服务启动 (30s)..."
             sleep 30
 
-            # 6. 健康检查
+            # 7. 健康检查
             HEALTH=$(curl -sf --max-time 10 http://localhost:8000/api/v1/health 2>/dev/null || echo "UNHEALTHY")
             if [ "$HEALTH" = "UNHEALTHY" ]; then
               echo "❌ 健康检查失败！正在回滚..."
@@ -170,7 +174,7 @@ jobs:
               exit 1
             fi
 
-            # 7. 清理旧镜像
+            # 8. 清理旧镜像
             sudo docker image prune -f
 
             echo "✅ 部署成功！服务健康运行中"
