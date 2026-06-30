@@ -29,9 +29,10 @@ contactPoints:
     name: log-only
     receivers:
       - uid: log-receiver-1
-        type: grafana-oncall
+        type: webhook
         settings:
           url: http://localhost:3000/api/v1/grafana_oncall_stub
+          httpMethod: POST
 
 policies:
   - orgId: 1
