@@ -83,6 +83,23 @@ jobs:
           uv run pytest backend/tests/ -v \
             --cov=backend --cov-report=xml:coverage.xml --cov-report=term-missing \
             --cov-fail-under=25
+      - name: 🐢 Detect slow tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          INTERNAL_API_SECRET: test-secret-key
+          EMBEDDING_API_KEY: test-key
+          EMBEDDING_BASE_URL: https://api.test.com
+          EMBEDDING_MODEL: BAAI/bge-large-zh-v1.5
+        run: |
+          echo "## 🐢 Slow Tests Report (Top 20)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          uv run pytest backend/tests/ --durations=20 --tb=no -q 2>&1 | tee /tmp/slow_tests.txt
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat /tmp/slow_tests.txt | grep -A 30 "slowest" >> $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
+        if: always()
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
