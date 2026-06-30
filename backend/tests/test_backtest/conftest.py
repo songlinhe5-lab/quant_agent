@@ -14,6 +14,7 @@ import pytest
 def _preload_vectorbt():
     """Session 级别 fixture：提前初始化 vectorbt，加速后续测试"""
     import vectorbt as vbt  # noqa: F401
+
     yield
 
 
