@@ -11,8 +11,7 @@ RUN pnpm install --frozen-lockfile
 
 # 复制源码并执行打包（加大 Node.js 堆内存限制，避免 OOM）
 COPY . .
-ENV NODE_OPTIONS="--max-old-space-size=4096"
-RUN pnpm run build
+RUN NODE_OPTIONS="--max-old-space-size=4096" pnpm run build
 
 # 第二阶段：Nginx 部署
 FROM nginx:alpine
