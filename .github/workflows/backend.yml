@@ -1,10 +1,12 @@
 name: Backend CI
 
 on:
+  # develop 分支: 仅跑 CI (lint + test + security)，不部署
   push:
-    branches: [ main, master, develop ]
+    branches: [ main, develop ]
+  # PR 到 main: 跑 CI 作为质量门禁 (merge 前必须通过)
   pull_request:
-    branches: [ main, master, develop ]
+    branches: [ main ]
     paths:
       - 'backend/**'
       - 'pyproject.toml'
@@ -12,19 +14,8 @@ on:
       - '.github/workflows/backend.yml'
       - 'Dockerfile'
       - 'docker-compose.yml'
-  # 🔧 手动触发：可选择部署目标节点
+  # 手动触发: 部署所有节点
   workflow_dispatch:
-    inputs:
-      deploy_target:
-        description: '部署目标节点'
-        required: true
-        type: choice
-        options:
-          - all
-          - beijing
-          - overseas
-          - yfinance
-        default: all
 
 jobs:
   lint:
@@ -141,147 +132,319 @@ jobs:
         continue-on-error: true
 
   # ==========================================
-  # 🚀 多节点矩阵部署
+  # 🚀 多节点部署 (Tailscale 集群)
   # ==========================================
-  # push 到 main: 自动部署所有节点
-  # workflow_dispatch: 可选择部署指定节点
+  # 节点拓扑:
+  #   Master  → API + Worker + Redis + PostgreSQL + 监控 + akshare + yfinance
+  #   Slave-1 → finnhub + yfinance
+  #   Slave-2 → yfinance only
+  #   Slave-3 → yfinance only
+  #   Slave-4 → yfinance only
+  #
+  # GitHub Secrets 仅存 SSH 连接信息，应用配置在各 VPS 的 .env 中预置。
+  #
+  # 容错策略:
+  #   - 主节点部署失败 → 整体失败
+  #   - 从节点部署失败 → 仅记录日志, 不阻断
   deploy:
-    name: 🚀 Deploy (${{ matrix.node_name }})
+    name: 🚀 Deploy Multi-Node
     runs-on: ubuntu-latest
     needs: [test, security]
     if: |
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       github.event_name == 'workflow_dispatch'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - node_name: beijing
-            host_secret: VPS_BEIJING_HOST
-            user_secret: VPS_BEIJING_USER
-            key_secret: VPS_BEIJING_SSH_KEY
-            compose_profiles: monitoring
-            deploy_path: /opt/quant-agent
-          - node_name: overseas
-            host_secret: VPS_OVERSEAS_HOST
-            user_secret: VPS_OVERSEAS_USER
-            key_secret: VPS_OVERSEAS_SSH_KEY
-            compose_profiles: ""
-            compose_file: docker-compose.yml
-            deploy_path: /opt/quant-agent
-          # YFinance 独立采集节点 (多实例冗余)
-          # 添加新实例: 复制下方块，修改 node_name / secrets / deploy_path
-          - node_name: yfinance
-            host_secret: VPS_YFINANCE_1_HOST
-            user_secret: VPS_YFINANCE_1_USER
-            key_secret: VPS_YFINANCE_1_SSH_KEY
-            compose_profiles: ""
-            compose_file: docker-compose.yfinance.yml
-            deploy_path: /opt/quant-agent
-    # 根据手动触发选择过滤节点
-    # workflow_dispatch 时: deploy_target=all 全部部署, beijing/overseas/yfinance 只部署对应节点
-    # push 时: 全部部署
 
     steps:
-      - name: 🎯 判断是否部署此节点
-        id: should_deploy
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TARGET="${{ github.event.inputs.deploy_target }}"
-            NODE="${{ matrix.node_name }}"
-            if [ "$TARGET" = "all" ] || [ "$TARGET" = "$NODE" ] || \
-               ([ "$TARGET" = "yfinance" ] && echo "$NODE" | grep -q "^yfinance"); then
-              echo "deploy=true" >> $GITHUB_OUTPUT
-              echo "✅ 将部署到 ${{ matrix.node_name }} 节点"
-            else
-              echo "deploy=false" >> $GITHUB_OUTPUT
-              echo "⏭️ 跳过 ${{ matrix.node_name }} 节点 (目标: $TARGET)"
-            fi
-          else
-            # push 事件: 部署所有节点
-            echo "deploy=true" >> $GITHUB_OUTPUT
-            echo "✅ push 事件，将部署到 ${{ matrix.node_name }} 节点"
-          fi
+      - uses: actions/checkout@v4
 
-      - name: 🚀 Deploy to ${{ matrix.node_name }}
-        if: steps.should_deploy.outputs.deploy == 'true'
+      # ==========================================
+      # 主节点 (master + monitoring)
+      # ==========================================
+      - name: 🚀 Deploy → Master
+        id: deploy_master
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets[matrix.host_secret] }}
-          username: ${{ secrets[matrix.user_secret] }}
-          key: ${{ secrets[matrix.key_secret] }}
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -e
-            cd ${{ matrix.deploy_path }}
+            DEPLOY_PATH=/opt/quant-agent
+            PROFILES="master,monitoring"
 
-            # 修复目录权限
-            sudo chown -R ubuntu:ubuntu ${{ matrix.deploy_path }}
-            sudo chmod -R u+w ${{ matrix.deploy_path }}/.git
-            git config --global --add safe.directory ${{ matrix.deploy_path }}
+            sudo chown -R ubuntu:ubuntu $DEPLOY_PATH
+            sudo chmod -R u+w $DEPLOY_PATH/.git
+            git config --global --add safe.directory $DEPLOY_PATH
+            mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
 
-            # 接受 GitHub 主机密钥
-            mkdir -p ~/.ssh
-            ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-
-            # 1. 拉取最新代码
             echo "📥 拉取最新代码..."
-            git fetch origin main
-            git reset --hard origin/main
+            cd $DEPLOY_PATH
+            git fetch origin main && git reset --hard origin/main
 
-            # 2. 记录当前镜像 ID
-            PREV_IMAGE=$(sudo docker compose -f ${{ matrix.compose_file }} ps -q 2>/dev/null | head -1 | xargs -I{} sudo docker inspect --format='{{.Id}}' {} 2>/dev/null || echo "none")
+            echo "🛑 停止容器..."
+            COMPOSE_PROFILES=$PROFILES sudo docker compose down || true
 
-            # 3. 停掉容器释放内存
-            echo "🛑 停掉容器释放内存..."
-            COMPOSE_PROFILES=${{ matrix.compose_profiles }} sudo docker compose -f ${{ matrix.compose_file }} down || true
+            echo "🔨 构建镜像..."
+            sudo docker compose build --no-cache
 
-            # 4. 本地构建新镜像
-            echo "🔨 本地构建 Docker 镜像..."
-            sudo docker compose -f ${{ matrix.compose_file }} build --no-cache
+            echo "🚀 启动服务..."
+            COMPOSE_PROFILES=$PROFILES sudo docker compose up -d --remove-orphans
 
-            # 5. 重启服务
-            echo "🚀 重启服务 (file: ${{ matrix.compose_file }}, profiles: ${{ matrix.compose_profiles || 'default' }})..."
-            COMPOSE_PROFILES=${{ matrix.compose_profiles }} sudo docker compose -f ${{ matrix.compose_file }} up -d --remove-orphans
-
-            # 6. 等待服务启动
-            echo "⏳ 等待服务启动 (30s)..."
+            echo "⏳ 等待启动 (30s)..."
             sleep 30
 
-            # 7. 健康检查
-            if [ "${{ matrix.compose_file }}" = "docker-compose.yfinance.yml" ]; then
-              # YFinance 节点: 检查进程是否存活
-              sleep 15
-              if sudo docker compose -f ${{ matrix.compose_file }} ps | grep -q "running\|healthy"; then
-                echo "✅ YFinance Worker 运行正常"
-              else
-                echo "❌ YFinance Worker 启动失败！"
-                sudo docker compose -f ${{ matrix.compose_file }} logs --tail 30
-                exit 1
-              fi
-            else
-              # API 节点: HTTP 健康检查
-              HEALTH=$(curl -sf --max-time 10 http://localhost:8000/api/v1/health 2>/dev/null || echo "UNHEALTHY")
-              if [ "$HEALTH" = "UNHEALTHY" ]; then
-                echo "❌ 健康检查失败！"
-                sudo docker compose -f ${{ matrix.compose_file }} logs --tail 30
-                exit 1
-              fi
-              echo "✅ 健康检查通过"
+            HEALTH=$(curl -sf --max-time 10 http://localhost:8000/api/v1/health 2>/dev/null || echo "UNHEALTHY")
+            if [ "$HEALTH" = "UNHEALTHY" ]; then
+              echo "❌ 健康检查失败!"
+              COMPOSE_PROFILES=$PROFILES sudo docker compose logs --tail 30
+              exit 1
             fi
+            echo "✅ Master 节点健康检查通过"
 
-            # 8. 清理旧镜像与构建缓存
-            echo "🧹 清理旧镜像与构建缓存..."
             sudo docker image prune -f
             sudo docker builder prune -af --filter "until=168h"
-            sudo docker volume prune -f
+            echo "✅ Master 节点部署完成"
 
-            # 9. 输出部署信息
-            echo "📋 部署信息:"
-            echo "  节点: ${{ matrix.node_name }}"
-            echo "  Profiles: ${{ matrix.compose_profiles || 'default' }}"
-            echo "💾 磁盘使用:"
-            df -h / | tail -1
-            echo "🐳 容器状态:"
-            sudo docker compose -f ${{ matrix.compose_file }} ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+      # ==========================================
+      # Slave-1 (finnhub + yfinance)
+      # ==========================================
+      - name: 📡 Deploy → Slave-1 (finnhub+yf)
+        id: deploy_s1
+        if: always() && steps.deploy_master.outcome == 'success'
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_S1_HOST }}
+          username: ${{ secrets.VPS_S1_USER }}
+          key: ${{ secrets.VPS_S1_SSH_KEY }}
+          script: |
+            set -e
+            DEPLOY_PATH=/opt/quant-agent
+            PROFILES="slave"
 
-            echo "✅ ${{ matrix.node_name }} 节点部署成功！"
+            sudo chown -R ubuntu:ubuntu $DEPLOY_PATH
+            sudo chmod -R u+w $DEPLOY_PATH/.git
+            git config --global --add safe.directory $DEPLOY_PATH
+            mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+
+            echo "📥 拉取最新代码..."
+            cd $DEPLOY_PATH
+            git fetch origin main && git reset --hard origin/main
+
+            echo "🛑 停止容器..."
+            COMPOSE_PROFILES=$PROFILES sudo docker compose down || true
+
+            echo "🔨 构建镜像..."
+            sudo docker compose build --no-cache
+
+            echo "🚀 启动服务..."
+            COMPOSE_PROFILES=$PROFILES sudo docker compose up -d --remove-orphans
+
+            echo "⏳ 等待启动 (30s)..."
+            sleep 30
+
+            HEALTH=$(curl -sf --max-time 10 http://localhost:8001/health 2>/dev/null || echo "UNHEALTHY")
+            if [ "$HEALTH" = "UNHEALTHY" ]; then
+              echo "❌ Slave-1 健康检查失败 (非致命)"
+              COMPOSE_PROFILES=$PROFILES sudo docker compose logs --tail 30
+              exit 1
+            fi
+            echo "✅ Slave-1 健康检查通过"
+
+            sudo docker image prune -f
+            sudo docker builder prune -af --filter "until=168h"
+            echo "✅ Slave-1 部署完成"
+
+      # ==========================================
+      # Slave-2 (yfinance only)
+      # ==========================================
+      - name: 📡 Deploy → Slave-2 (yf)
+        id: deploy_s2
+        if: always() && steps.deploy_master.outcome == 'success'
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_S2_HOST }}
+          username: ${{ secrets.VPS_S2_USER }}
+          key: ${{ secrets.VPS_S2_SSH_KEY }}
+          script: |
+            set -e
+            DEPLOY_PATH=/opt/quant-agent
+            PROFILES="slave"
+
+            sudo chown -R ubuntu:ubuntu $DEPLOY_PATH
+            sudo chmod -R u+w $DEPLOY_PATH/.git
+            git config --global --add safe.directory $DEPLOY_PATH
+            mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+
+            echo "📥 拉取最新代码..."
+            cd $DEPLOY_PATH
+            git fetch origin main && git reset --hard origin/main
+
+            echo "🛑 停止容器..."
+            COMPOSE_PROFILES=$PROFILES sudo docker compose down || true
+
+            echo "🔨 构建镜像..."
+            sudo docker compose build --no-cache
+
+            echo "🚀 启动服务..."
+            COMPOSE_PROFILES=$PROFILES sudo docker compose up -d --remove-orphans
+
+            echo "⏳ 等待启动 (30s)..."
+            sleep 30
+
+            HEALTH=$(curl -sf --max-time 10 http://localhost:8001/health 2>/dev/null || echo "UNHEALTHY")
+            if [ "$HEALTH" = "UNHEALTHY" ]; then
+              echo "❌ Slave-2 健康检查失败 (非致命)"
+              COMPOSE_PROFILES=$PROFILES sudo docker compose logs --tail 30
+              exit 1
+            fi
+            echo "✅ Slave-2 健康检查通过"
+
+            sudo docker image prune -f
+            sudo docker builder prune -af --filter "until=168h"
+            echo "✅ Slave-2 部署完成"
+
+      # ==========================================
+      # Slave-3 (yfinance only)
+      # ==========================================
+      - name: 📡 Deploy → Slave-3 (yf)
+        id: deploy_s3
+        if: always() && steps.deploy_master.outcome == 'success'
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_S3_HOST }}
+          username: ${{ secrets.VPS_S3_USER }}
+          key: ${{ secrets.VPS_S3_SSH_KEY }}
+          script: |
+            set -e
+            DEPLOY_PATH=/opt/quant-agent
+            PROFILES="slave"
+
+            sudo chown -R ubuntu:ubuntu $DEPLOY_PATH
+            sudo chmod -R u+w $DEPLOY_PATH/.git
+            git config --global --add safe.directory $DEPLOY_PATH
+            mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+
+            echo "📥 拉取最新代码..."
+            cd $DEPLOY_PATH
+            git fetch origin main && git reset --hard origin/main
+
+            echo "🛑 停止容器..."
+            COMPOSE_PROFILES=$PROFILES sudo docker compose down || true
+
+            echo "🔨 构建镜像..."
+            sudo docker compose build --no-cache
+
+            echo "🚀 启动服务..."
+            COMPOSE_PROFILES=$PROFILES sudo docker compose up -d --remove-orphans
+
+            echo "⏳ 等待启动 (30s)..."
+            sleep 30
+
+            HEALTH=$(curl -sf --max-time 10 http://localhost:8001/health 2>/dev/null || echo "UNHEALTHY")
+            if [ "$HEALTH" = "UNHEALTHY" ]; then
+              echo "❌ Slave-3 健康检查失败 (非致命)"
+              COMPOSE_PROFILES=$PROFILES sudo docker compose logs --tail 30
+              exit 1
+            fi
+            echo "✅ Slave-3 健康检查通过"
+
+            sudo docker image prune -f
+            sudo docker builder prune -af --filter "until=168h"
+            echo "✅ Slave-3 部署完成"
+
+      # ==========================================
+      # Slave-4 (yfinance only)
+      # ==========================================
+      - name: 📡 Deploy → Slave-4 (yf)
+        id: deploy_s4
+        if: always() && steps.deploy_master.outcome == 'success'
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_S4_HOST }}
+          username: ${{ secrets.VPS_S4_USER }}
+          key: ${{ secrets.VPS_S4_SSH_KEY }}
+          script: |
+            set -e
+            DEPLOY_PATH=/opt/quant-agent
+            PROFILES="slave"
+
+            sudo chown -R ubuntu:ubuntu $DEPLOY_PATH
+            sudo chmod -R u+w $DEPLOY_PATH/.git
+            git config --global --add safe.directory $DEPLOY_PATH
+            mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+
+            echo "📥 拉取最新代码..."
+            cd $DEPLOY_PATH
+            git fetch origin main && git reset --hard origin/main
+
+            echo "🛑 停止容器..."
+            COMPOSE_PROFILES=$PROFILES sudo docker compose down || true
+
+            echo "🔨 构建镜像..."
+            sudo docker compose build --no-cache
+
+            echo "🚀 启动服务..."
+            COMPOSE_PROFILES=$PROFILES sudo docker compose up -d --remove-orphans
+
+            echo "⏳ 等待启动 (30s)..."
+            sleep 30
+
+            HEALTH=$(curl -sf --max-time 10 http://localhost:8001/health 2>/dev/null || echo "UNHEALTHY")
+            if [ "$HEALTH" = "UNHEALTHY" ]; then
+              echo "❌ Slave-4 健康检查失败 (非致命)"
+              COMPOSE_PROFILES=$PROFILES sudo docker compose logs --tail 30
+              exit 1
+            fi
+            echo "✅ Slave-4 健康检查通过"
+
+            sudo docker image prune -f
+            sudo docker builder prune -af --filter "until=168h"
+            echo "✅ Slave-4 部署完成"
+
+      # ==========================================
+      # 部署总结
+      # ==========================================
+      - name: 📋 部署总结
+        if: always()
+        run: |
+          echo "## 🚀 部署结果" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| 节点 | 角色 | 采集器 | 状态 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|--------|------|" >> $GITHUB_STEP_SUMMARY
+
+          M="${{ steps.deploy_master.outcome }}"
+          S1="${{ steps.deploy_s1.outcome }}"
+          S2="${{ steps.deploy_s2.outcome }}"
+          S3="${{ steps.deploy_s3.outcome }}"
+          S4="${{ steps.deploy_s4.outcome }}"
+
+          echo "| Master | master+monitoring | akshare,yf | ${M} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Slave-1 | slave | finnhub,yf | ${S1} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Slave-2 | slave | yf | ${S2} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Slave-3 | slave | yf | ${S3} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Slave-4 | slave | yf | ${S4} |" >> $GITHUB_STEP_SUMMARY
+
+          # 主节点失败则整体失败
+          if [ "$M" = "failure" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **主节点部署失败，请检查日志**" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          # 从节点失败仅警告
+          SLAVE_FAIL=""
+          [ "$S1" = "failure" ] && SLAVE_FAIL="${SLAVE_FAIL} Slave-1"
+          [ "$S2" = "failure" ] && SLAVE_FAIL="${SLAVE_FAIL} Slave-2"
+          [ "$S3" = "failure" ] && SLAVE_FAIL="${SLAVE_FAIL} Slave-3"
+          [ "$S4" = "failure" ] && SLAVE_FAIL="${SLAVE_FAIL} Slave-4"
+          if [ -n "$SLAVE_FAIL" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **从节点部署失败 (不影响主服务):${SLAVE_FAIL}**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ 部署流程完成"

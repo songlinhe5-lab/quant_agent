@@ -2,16 +2,16 @@ name: Frontend CI
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [ main, develop ]
     paths:
       - 'frontend/**'
       - '.github/workflows/frontend.yml'
   pull_request:
-    branches: [ main, master, develop ]
+    branches: [ main ]
     paths:
       - 'frontend/**'
       - '.github/workflows/frontend.yml'
-  workflow_dispatch:  # 支持手动触发
+  workflow_dispatch:
 
 jobs:
   test:

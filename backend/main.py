@@ -260,6 +260,15 @@ async def lifespan(app: FastAPI):  # type: ignore
         print("✅ [Startup] Finnhub 内幕交易跑马灯守护进程已启动")
     else:
         print("⚠️ [Startup] Finnhub 服务已禁用 (FINNHUB_ENABLED=false)，跳过守护进程")
+
+    # 🚀 主节点: 启动 ClusterManager 发现从节点 + 服务池
+    node_role = os.getenv("NODE_ROLE", "master")
+    if node_role == "master":
+        from backend.workers.cluster_manager import cluster_manager
+
+        await cluster_manager.start()
+        print("✅ [Startup] ClusterManager 已启动 - 从节点服务池发现")
+
     yield  # 挂起，此时 FastAPI 正式对外提供 HTTP 与 WS 服务
 
     # === 销毁阶段 (Shutdown) ===
@@ -299,6 +308,15 @@ async def lifespan(app: FastAPI):  # type: ignore
             await asyncio.gather(*tasks_to_await, return_exceptions=True)
     except Exception as e:
         print(f"⚠️ 取消后台任务时发生异常: {e}")
+
+    # ClusterManager 清理
+    try:
+        if os.getenv("NODE_ROLE", "master") == "master":
+            from backend.workers.cluster_manager import cluster_manager
+
+            await cluster_manager.stop()
+    except Exception:
+        pass
 
     try:
         # 🛑 优雅释放我们在 Startup 阶段分配的全局物理线程池
@@ -880,6 +898,17 @@ async def health_check():
     if status_code != 200:
         raise HTTPException(status_code=status_code, detail=response_data)
     return response_data
+
+
+@app.get("/api/v1/cluster")
+async def cluster_status():
+    """集群拓扑状态 (主节点发现从节点，服务池状态)"""
+    try:
+        from backend.workers.cluster_manager import cluster_manager
+
+        return cluster_manager.get_cluster_status()
+    except Exception as e:
+        return {"error": str(e), "master": {"collectors": []}, "slaves": [], "pools": {}}
 
 
 @app.get("/mcp")
