@@ -10,7 +10,8 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ \
-    UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+    UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ \
+    UV_HTTP_TIMEOUT=300
 
 # 安装 uv（使用国内镜像加速）
 RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ uv
@@ -18,8 +19,12 @@ RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ uv
 # 复制依赖声明
 COPY pyproject.toml uv.lock ./
 
-# 安装生产依赖（不含 local-embedding 和 dev）
-RUN uv sync --no-dev --no-install-project
+# 安装生产依赖（不含 local-embedding 和 dev），带重试
+RUN for i in 1 2 3; do \
+      uv sync --no-dev --no-install-project && break; \
+      echo "uv sync failed (attempt $i), retrying..."; \
+      sleep 5; \
+    done
 
 # ── 阶段 2：运行镜像（只复制生产依赖）──
 FROM python:3.11-slim

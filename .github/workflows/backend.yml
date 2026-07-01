@@ -21,6 +21,7 @@ on:
 
 env:
   GHCR_IMAGE: ghcr.io/songlinhe5-lab/quant-agent
+  UV_HTTP_TIMEOUT: 300
 
 permissions:
   contents: read
@@ -39,10 +40,17 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           version: 'latest'
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
       - name: Set up Python
         run: uv python install 3.13
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: |
+          for i in 1 2 3; do
+            uv sync --all-extras && break
+            echo "uv sync failed (attempt $i), retrying in 10s..."
+            sleep 10
+          done
       - name: Ruff lint
         run: uv run ruff check backend/
       - name: Ruff format check
@@ -82,10 +90,17 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           version: 'latest'
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
       - name: Set up Python
         run: uv python install 3.13
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: |
+          for i in 1 2 3; do
+            uv sync --all-extras && break
+            echo "uv sync failed (attempt $i), retrying in 10s..."
+            sleep 10
+          done
       - name: Run tests with coverage
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
@@ -134,10 +149,17 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           version: 'latest'
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
       - name: Set up Python
         run: uv python install 3.13
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: |
+          for i in 1 2 3; do
+            uv sync --all-extras && break
+            echo "uv sync failed (attempt $i), retrying in 10s..."
+            sleep 10
+          done
       - name: pip-audit vulnerability scan
         run: uv run pip-audit --desc --require-hashes 2>&1 || true
         continue-on-error: true
