@@ -225,10 +225,7 @@ class ClusterManager:
                 await self._refresh_from_redis()
                 # 清理超时未心跳的节点 (TTL=15s, 容忍 60s)
                 now = time.time()
-                stale = [
-                    nid for nid, n in self._nodes.items()
-                    if n.last_seen > 0 and (now - n.last_seen) > 60
-                ]
+                stale = [nid for nid, n in self._nodes.items() if n.last_seen > 0 and (now - n.last_seen) > 60]
                 for nid in stale:
                     logger.info(f"[ClusterManager] Node {nid} timed out (no heartbeat for >60s)")
                     del self._nodes[nid]

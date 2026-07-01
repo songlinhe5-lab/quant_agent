@@ -62,20 +62,13 @@ async def worker_heartbeat_daemon() -> None:
             cursor = 0
             active_workers = []
             while True:
-                cursor, keys = await redis_client.scan(
-                    cursor=cursor, match="quant:worker:heartbeat:*", count=100
-                )
+                cursor, keys = await redis_client.scan(cursor=cursor, match="quant:worker:heartbeat:*", count=100)
                 active_workers.extend(keys)
                 if cursor == 0:
                     break
 
             active_uuids = sorted(
-                [
-                    k.decode("utf-8").split(":")[-1]
-                    if isinstance(k, bytes)
-                    else k.split(":")[-1]
-                    for k in active_workers
-                ]
+                [k.decode("utf-8").split(":")[-1] if isinstance(k, bytes) else k.split(":")[-1] for k in active_workers]
             )
 
             if WORKER_UUID in active_uuids:
@@ -84,16 +77,10 @@ async def worker_heartbeat_daemon() -> None:
 
                 env_worker_id = os.getenv("WORKER_ID")
                 env_worker_total = os.getenv("WORKER_TOTAL")
-                if (
-                    str(new_worker_id) != env_worker_id
-                    or str(new_worker_total) != env_worker_total
-                ):
+                if str(new_worker_id) != env_worker_id or str(new_worker_total) != env_worker_total:
                     os.environ["WORKER_ID"] = str(new_worker_id)
                     os.environ["WORKER_TOTAL"] = str(new_worker_total)
-                    print(
-                        f"[HA] cluster changed: Rank {new_worker_id}"
-                        f" / Total {new_worker_total}"
-                    )
+                    print(f"[HA] cluster changed: Rank {new_worker_id} / Total {new_worker_total}")
         except Exception:
             pass
         await asyncio.sleep(5)
@@ -132,25 +119,14 @@ async def main():
 
         tasks.append(asyncio.create_task(ticker_service.sync_tickers_daemon()))
         tasks.append(asyncio.create_task(sentiment_tracker.track_daemon()))
-        tasks.append(
-            asyncio.create_task(screener_service.screener_subscription_daemon())
-        )
-        tasks.append(
-            asyncio.create_task(screener_service.daily_market_summary_daemon())
-        )
-        tasks.append(
-            asyncio.create_task(
-                screener_service.clean_obsolete_knowledge_base_daemon()
-            )
-        )
+        tasks.append(asyncio.create_task(screener_service.screener_subscription_daemon()))
+        tasks.append(asyncio.create_task(screener_service.daily_market_summary_daemon()))
+        tasks.append(asyncio.create_task(screener_service.clean_obsolete_knowledge_base_daemon()))
         print("  [master] core daemons started (ticker/sentiment/screener)")
 
     print(f"\n  All {len(tasks)} tasks running!")
     asyncio.create_task(
-        notification_service.send_alert(
-            f"  [Worker {NODE_ID}] role={NODE_ROLE}, "
-            f"collectors={ENABLED_COLLECTORS}"
-        )
+        notification_service.send_alert(f"  [Worker {NODE_ID}] role={NODE_ROLE}, collectors={ENABLED_COLLECTORS}")
     )
 
     # 挂起主线程

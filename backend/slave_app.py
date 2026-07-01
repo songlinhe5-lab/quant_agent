@@ -256,6 +256,7 @@ class CollectRequest(BaseModel):
     新格式: {"ticker": "AAPL", "params": {"period": "3mo"}, "callback_redis": {...}}
     旧格式: {"ticker": "AAPL", "period": "3mo", "callback_redis": {...}}  (参数平铺在顶层)
     """
+
     ticker: str | None = None
     params: Dict[str, Any] | None = None
     # Master 回调信息: slave 将结果写入此 Redis

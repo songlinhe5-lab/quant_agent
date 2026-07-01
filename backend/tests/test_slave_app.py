@@ -10,11 +10,9 @@ Slave Collector API 测试
 - /collect/{action} 端点: 400 缺少 ticker, 500 采集失败
 """
 
-import asyncio
 import json
 import os
-import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -28,7 +26,6 @@ from backend.slave_app import (
     app,
     multi_redis,
 )
-
 
 # ==========================================
 # Fixtures
@@ -66,10 +63,12 @@ class TestMultiRedisManager:
         assert len(redis_manager.all_clients) == 0
 
     def test_parse_valid_json(self, redis_manager):
-        masters = json.dumps([
-            {"id": "beijing", "host": "10.0.0.1", "port": 6379, "password": "pwd1"},
-            {"id": "shanghai", "host": "10.0.0.2", "port": 6380, "password": "pwd2"},
-        ])
+        masters = json.dumps(
+            [
+                {"id": "beijing", "host": "10.0.0.1", "port": 6379, "password": "pwd1"},
+                {"id": "shanghai", "host": "10.0.0.2", "port": 6380, "password": "pwd2"},
+            ]
+        )
         with patch.dict(os.environ, {"MASTER_NODES": masters}):
             redis_manager.parse_masters()
         assert len(redis_manager.all_clients) == 2
@@ -132,7 +131,7 @@ class TestMultiRedisManager:
 
     def test_get_or_create_client_new(self, redis_manager):
         """动态创建新连接"""
-        client = redis_manager.get_or_create_client({"host": "10.0.0.99", "port": 6379, "password": None})
+        redis_manager.get_or_create_client({"host": "10.0.0.99", "port": 6379, "password": None})
         # 在测试环境中连接会失败，返回 None
         # 关键是不抛异常
 
@@ -229,7 +228,7 @@ class TestDispatchCollect:
 
         with patch("backend.slave_app.ENABLED_COLLECTORS", ["yfinance"]):
             with patch("backend.services.yfinance_service.yf_service", mock_yf, create=True):
-                result = await _dispatch_collect("fetch_quote", "AAPL", {})
+                await _dispatch_collect("fetch_quote", "AAPL", {})
         mock_yf.fetch_yf_data.assert_called_once_with("AAPL", "quote")
 
     @pytest.mark.asyncio
@@ -384,11 +383,13 @@ class TestCollectRequestCompat:
 
     def test_old_format_extra_fields(self):
         """旧格式: 额外字段通过 model_extra 访问"""
-        req = CollectRequest.model_validate({
-            "ticker": "AAPL",
-            "period": "3mo",
-            "interval": "1d",
-        })
+        req = CollectRequest.model_validate(
+            {
+                "ticker": "AAPL",
+                "period": "3mo",
+                "interval": "1d",
+            }
+        )
         assert req.ticker == "AAPL"
         assert req.params is None
         assert req.model_extra.get("period") == "3mo"

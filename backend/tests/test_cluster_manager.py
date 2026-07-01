@@ -11,7 +11,6 @@ ClusterManager 集成测试
 - get_available_nodes: 过滤不健康节点
 """
 
-import asyncio
 import json
 import os
 import time
@@ -20,12 +19,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.workers.cluster_manager import (
-    FAILURE_THRESHOLD,
     RECOVERY_INTERVAL,
     ClusterManager,
     SlaveNode,
 )
-
 
 # ==========================================
 # Fixtures
@@ -80,14 +77,21 @@ class TestSlaveNode:
 
     def test_is_available_unhealthy_recent(self):
         node = SlaveNode(
-            node_id="test", host="h", port=1, collectors=[],
-            status="unhealthy", last_failure_time=time.time(),
+            node_id="test",
+            host="h",
+            port=1,
+            collectors=[],
+            status="unhealthy",
+            last_failure_time=time.time(),
         )
         assert node.is_available is False
 
     def test_is_available_unhealthy_recovered(self):
         node = SlaveNode(
-            node_id="test", host="h", port=1, collectors=[],
+            node_id="test",
+            host="h",
+            port=1,
+            collectors=[],
             status="unhealthy",
             last_failure_time=time.time() - RECOVERY_INTERVAL - 1,
         )
@@ -236,8 +240,12 @@ class TestHealthTracking:
 
     def test_mark_healthy_recovery(self, manager):
         node = SlaveNode(
-            node_id="test", host="h", port=1, collectors=[],
-            status="unhealthy", consecutive_failures=5,
+            node_id="test",
+            host="h",
+            port=1,
+            collectors=[],
+            status="unhealthy",
+            consecutive_failures=5,
         )
         manager._mark_healthy(node)
         assert node.status == "healthy"
@@ -261,20 +269,24 @@ class TestRefreshFromRedis:
     @pytest.mark.asyncio
     async def test_discover_nodes(self, manager):
         """模拟 Redis scan 返回节点数据"""
-        node_data = json.dumps({
-            "node_id": "discovered-1",
-            "role": "slave",
-            "host": "10.0.0.5",
-            "port": 8001,
-            "collectors": ["yfinance"],
-        })
+        node_data = json.dumps(
+            {
+                "node_id": "discovered-1",
+                "role": "slave",
+                "host": "10.0.0.5",
+                "port": 8001,
+                "collectors": ["yfinance"],
+            }
+        )
 
         mock_redis = AsyncMock()
         # scan 返回: (cursor, keys) - 第一次返回 key, 第二次 cursor=0 结束
-        mock_redis.scan = AsyncMock(side_effect=[
-            (1, [b"quant:node:discovered-1"]),
-            (0, []),
-        ])
+        mock_redis.scan = AsyncMock(
+            side_effect=[
+                (1, [b"quant:node:discovered-1"]),
+                (0, []),
+            ]
+        )
         mock_redis.get = AsyncMock(return_value=node_data)
 
         with patch("backend.workers.cluster_manager.redis_client", mock_redis, create=True):
@@ -290,19 +302,23 @@ class TestRefreshFromRedis:
     @pytest.mark.asyncio
     async def test_skip_master_nodes(self, manager):
         """跳过 role=master 的节点"""
-        master_data = json.dumps({
-            "node_id": "master-1",
-            "role": "master",
-            "host": "10.0.0.1",
-            "port": 8000,
-            "collectors": [],
-        })
+        master_data = json.dumps(
+            {
+                "node_id": "master-1",
+                "role": "master",
+                "host": "10.0.0.1",
+                "port": 8000,
+                "collectors": [],
+            }
+        )
 
         mock_redis = AsyncMock()
-        mock_redis.scan = AsyncMock(side_effect=[
-            (1, [b"quant:node:master-1"]),
-            (0, []),
-        ])
+        mock_redis.scan = AsyncMock(
+            side_effect=[
+                (1, [b"quant:node:master-1"]),
+                (0, []),
+            ]
+        )
         mock_redis.get = AsyncMock(return_value=master_data)
 
         with patch("backend.workers.cluster_manager.redis_client", mock_redis, create=True):
@@ -315,10 +331,12 @@ class TestRefreshFromRedis:
     async def test_skip_invalid_json(self, manager):
         """跳过无效 JSON 数据"""
         mock_redis = AsyncMock()
-        mock_redis.scan = AsyncMock(side_effect=[
-            (1, [b"quant:node:bad-node"]),
-            (0, []),
-        ])
+        mock_redis.scan = AsyncMock(
+            side_effect=[
+                (1, [b"quant:node:bad-node"]),
+                (0, []),
+            ]
+        )
         mock_redis.get = AsyncMock(return_value="not-valid-json")
 
         with patch("backend.workers.cluster_manager.redis_client", mock_redis, create=True):
@@ -357,8 +375,12 @@ class TestCallCollector:
         """第一个节点失败, 自动切换到第二个"""
         # 添加第二个 yfinance 节点
         sample_nodes["slave-3"] = SlaveNode(
-            node_id="slave-3", host="10.0.0.3", port=8001,
-            collectors=["yfinance"], status="healthy", last_seen=time.time(),
+            node_id="slave-3",
+            host="10.0.0.3",
+            port=8001,
+            collectors=["yfinance"],
+            status="healthy",
+            last_seen=time.time(),
         )
         manager._nodes = sample_nodes
         manager._rebuild_pools()
