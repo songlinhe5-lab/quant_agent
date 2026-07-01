@@ -213,19 +213,33 @@ jobs:
         if: always() && steps.deploy_master.outcome == 'success'
         continue-on-error: true
         uses: appleboy/ssh-action@v1
+        env:
+          S1_HOST: ${{ secrets.VPS_S1_HOST }}
+          S1_USER: ${{ secrets.VPS_S1_USER }}
+          S1_KEY: ${{ secrets.VPS_S1_SSH_KEY }}
+          S2_HOST: ${{ secrets.VPS_S2_HOST }}
+          S2_USER: ${{ secrets.VPS_S2_USER }}
+          S2_KEY: ${{ secrets.VPS_S2_SSH_KEY }}
+          S3_HOST: ${{ secrets.VPS_S3_HOST }}
+          S3_USER: ${{ secrets.VPS_S3_USER }}
+          S3_KEY: ${{ secrets.VPS_S3_SSH_KEY }}
+          S4_HOST: ${{ secrets.VPS_S4_HOST }}
+          S4_USER: ${{ secrets.VPS_S4_USER }}
+          S4_KEY: ${{ secrets.VPS_S4_SSH_KEY }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          env: S1_HOST,S1_USER,S1_KEY,S2_HOST,S2_USER,S2_KEY,S3_HOST,S3_USER,S3_KEY,S4_HOST,S4_USER,S4_KEY
           script: |
             set -e
 
-            # 写入从节点 SSH 密钥到主节点
+            # 写入从节点 SSH 密钥
             mkdir -p ~/.ssh
-            cat > ~/.ssh/slave_1 <<< "${{ secrets.VPS_S1_SSH_KEY }}"
-            cat > ~/.ssh/slave_2 <<< "${{ secrets.VPS_S2_SSH_KEY }}"
-            cat > ~/.ssh/slave_3 <<< "${{ secrets.VPS_S3_SSH_KEY }}"
-            cat > ~/.ssh/slave_4 <<< "${{ secrets.VPS_S4_SSH_KEY }}"
+            echo "$S1_KEY" > ~/.ssh/slave_1
+            echo "$S2_KEY" > ~/.ssh/slave_2
+            echo "$S3_KEY" > ~/.ssh/slave_3
+            echo "$S4_KEY" > ~/.ssh/slave_4
             chmod 600 ~/.ssh/slave_*
 
             # 从节点部署函数
@@ -234,56 +248,37 @@ jobs:
               echo ""
               echo "========== 部署 $SLAVE_ID ($SLAVE_IP) =========="
 
-              ssh -i ~/.ssh/$SLAVE_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 $SLAVE_USER@$SLAVE_IP << 'SLAVE_EOF'
-                set -e
-                DEPLOY_PATH=/opt/quant-agent
-                PROFILES="slave"
+              ssh -i ~/.ssh/$SLAVE_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 $SLAVE_USER@$SLAVE_IP \
+                "set -e && \
+                DEPLOY_PATH=/opt/quant-agent && \
+                PROFILES=slave && \
+                git config --global --add safe.directory \$DEPLOY_PATH 2>/dev/null || true && \
+                mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null && \
+                echo '📥 拉取最新代码...' && \
+                cd \$DEPLOY_PATH && \
+                git fetch origin main && git reset --hard origin/main && \
+                echo '🛑 停止容器...' && \
+                sudo COMPOSE_PROFILES=\$PROFILES docker compose down || true && \
+                echo '🔨 构建镜像...' && \
+                sudo docker compose build --no-cache && \
+                echo '🚀 启动服务...' && \
+                sudo COMPOSE_PROFILES=\$PROFILES docker compose up -d --remove-orphans && \
+                echo '⏳ 等待启动 (30s)...' && \
+                sleep 30 && \
+                HEALTH=\$(curl -sf --max-time 10 http://localhost:8001/health 2>/dev/null || echo UNHEALTHY) && \
+                if [ \"\$HEALTH\" = 'UNHEALTHY' ]; then echo '❌ 健康检查失败'; sudo COMPOSE_PROFILES=\$PROFILES docker compose logs --tail 20; exit 1; fi && \
+                echo '✅ $SLAVE_ID 部署完成' && \
+                sudo docker image prune -f && \
+                sudo docker builder prune -af --filter 'until=168h'" || echo "❌ $SLAVE_ID 部署失败 (非致命)"
 
-                sudo chown -R $(whoami):$(whoami) $DEPLOY_PATH 2>/dev/null || true
-                git config --global --add safe.directory $DEPLOY_PATH 2>/dev/null || true
-                mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-
-                echo "📥 拉取最新代码..."
-                cd $DEPLOY_PATH
-                git fetch origin main && git reset --hard origin/main
-
-                echo "🛑 停止容器..."
-                sudo COMPOSE_PROFILES=$PROFILES docker compose down || true
-
-                echo "🔨 构建镜像..."
-                sudo docker compose build --no-cache
-
-                echo "🚀 启动服务..."
-                sudo COMPOSE_PROFILES=$PROFILES docker compose up -d --remove-orphans
-
-                echo "⏳ 等待启动 (30s)..."
-                sleep 30
-
-                HEALTH=$(curl -sf --max-time 10 http://localhost:8001/health 2>/dev/null || echo "UNHEALTHY")
-                if [ "$HEALTH" = "UNHEALTHY" ]; then
-                  echo "❌ $SLAVE_ID 健康检查失败"
-                  sudo COMPOSE_PROFILES=$PROFILES docker compose logs --tail 20
-                  exit 1
-                fi
-                echo "✅ $SLAVE_ID 健康检查通过"
-
-                sudo docker image prune -f
-                sudo docker builder prune -af --filter "until=168h"
-                echo "✅ $SLAVE_ID 部署完成"
-SLAVE_EOF
-
-              if [ $? -eq 0 ]; then
-                echo "✅ $SLAVE_ID 部署成功"
-              else
-                echo "❌ $SLAVE_ID 部署失败 (非致命)"
-              fi
+              echo "✅ $SLAVE_ID 步骤完成"
             }
 
-            # 部署 4 个从节点 (每个独立, 失败不中断)
-            deploy_slave "Slave-1" "${{ secrets.VPS_S1_HOST }}" "${{ secrets.VPS_S1_USER }}" "slave_1" || true
-            deploy_slave "Slave-2" "${{ secrets.VPS_S2_HOST }}" "${{ secrets.VPS_S2_USER }}" "slave_2" || true
-            deploy_slave "Slave-3" "${{ secrets.VPS_S3_HOST }}" "${{ secrets.VPS_S3_USER }}" "slave_3" || true
-            deploy_slave "Slave-4" "${{ secrets.VPS_S4_HOST }}" "${{ secrets.VPS_S4_USER }}" "slave_4" || true
+            # 部署 4 个从节点
+            deploy_slave "Slave-1" "$S1_HOST" "$S1_USER" "slave_1"
+            deploy_slave "Slave-2" "$S2_HOST" "$S2_USER" "slave_2"
+            deploy_slave "Slave-3" "$S3_HOST" "$S3_USER" "slave_3"
+            deploy_slave "Slave-4" "$S4_HOST" "$S4_USER" "slave_4"
 
             # 清理密钥
             rm -f ~/.ssh/slave_*
