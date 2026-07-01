@@ -53,11 +53,14 @@ class TestWorkerHeartbeatDaemon:
                 await worker_heartbeat_daemon()
         # 验证心跳 key 被注册 (现在有两轮 set: heartbeat key + node key)
         m_r.set.assert_awaited()
-        # 检查所有 set 调用中包含 heartbeat key
-        all_calls = m_r.set.call_args_list
-        heartbeat_calls = [c for c in all_calls if "quant:worker:heartbeat:" in str(c.args[0])]
-        assert len(heartbeat_calls) >= 1
-        assert heartbeat_calls[0].kwargs.get("ex") == 15
+        # 找到 heartbeat key 的调用并验证 TTL
+        heartbeat_call = None
+        for c in m_r.set.call_args_list:
+            if "quant:worker:heartbeat:" in str(c.args[0]):
+                heartbeat_call = c
+                break
+        assert heartbeat_call is not None, "heartbeat key 未被设置"
+        assert heartbeat_call.kwargs.get("ex") == 15
 
     @pytest.mark.asyncio
     async def test_heartbeat_computes_rank_and_updates_env_when_changed(self):
