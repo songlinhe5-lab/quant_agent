@@ -266,11 +266,14 @@ jobs:
 
       - name: Deploy Master
         uses: appleboy/ssh-action@v1
+        env:
+          TRANSIT_USER: ${{ secrets.VPS_S1_USER }}
+          TRANSIT_SSH_KEY: ${{ secrets.VPS_S1_SSH_KEY }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          envs: GITHUB_ACTOR
+          envs: GITHUB_ACTOR, TRANSIT_USER, TRANSIT_SSH_KEY
           command_timeout: 30m
           script: |
             set -e
@@ -286,30 +289,36 @@ jobs:
             echo '${{ steps.prepare_compose.outputs.b64 }}' | base64 -d > docker-compose.yml
             sudo sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:.*|ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG}|g" docker-compose.yml
 
+            # Write transit VPS SSH key to temp file (reuses VPS_S1_SSH_KEY)
+            TRANSIT_KEY_FILE=$(mktemp)
+            echo "$TRANSIT_SSH_KEY" > $TRANSIT_KEY_FILE
+            chmod 600 $TRANSIT_KEY_FILE
+
             # GHCR login (use GITHUB_TOKEN from runner env)
             echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
 
             # Pull image via transit VPS (38.60.126.42) for faster download to domestic Master
             echo "Pulling image ${TARGET_TAG} via transit VPS (38.60.126.42)..."
-            ssh -o StrictHostKeyChecking=no ${{ secrets.TRANSIT_VPS_USER }}@38.60.126.42 <<'TRANSIT'
+            ssh -o StrictHostKeyChecking=no -i $TRANSIT_KEY_FILE ${TRANSIT_USER}@38.60.126.42 "
               set -e
-              echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+              echo '${{ secrets.GITHUB_TOKEN }}' | sudo docker login ghcr.io -u '${GITHUB_ACTOR}' --password-stdin
               sudo docker pull ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG}
               sudo docker save ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG} | gzip > /tmp/${TARGET_TAG}.tar.gz
               sudo docker logout ghcr.io
-            TRANSIT
+            "
 
             # SCP tarball from transit VPS to Master
             echo "Transferring image from transit VPS..."
-            scp -o StrictHostKeyChecking=no ${{ secrets.TRANSIT_VPS_USER }}@38.60.126.42:/tmp/${TARGET_TAG}.tar.gz /tmp/
+            scp -o StrictHostKeyChecking=no -i $TRANSIT_KEY_FILE ${TRANSIT_USER}@38.60.126.42:/tmp/${TARGET_TAG}.tar.gz /tmp/
 
             # Load and tag the image
             echo "Loading image on Master..."
             gunzip -c /tmp/${TARGET_TAG}.tar.gz | sudo docker load
             sudo docker tag ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG} ghcr.io/songlinhe5-lab/quant-agent:latest
 
-            # Cleanup transit VPS
-            ssh -o StrictHostKeyChecking=no ${{ secrets.TRANSIT_VPS_USER }}@38.60.126.42 "rm -f /tmp/${TARGET_TAG}.tar.gz"
+            # Cleanup transit VPS temp file
+            ssh -o StrictHostKeyChecking=no -i $TRANSIT_KEY_FILE ${TRANSIT_USER}@38.60.126.42 "rm -f /tmp/${TARGET_TAG}.tar.gz"
+            rm -f $TRANSIT_KEY_FILE
 
             echo "Starting services..."
             sudo COMPOSE_PROFILES=$PROFILES docker compose up -d --remove-orphans
