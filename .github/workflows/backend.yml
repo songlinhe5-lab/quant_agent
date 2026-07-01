@@ -289,8 +289,12 @@ jobs:
             # GHCR login (use GITHUB_TOKEN from runner env)
             echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
 
-            echo "Pulling image ${TARGET_TAG}..."
+            echo "Pulling image ${TARGET_TAG} from GHCR..."
             sudo COMPOSE_PROFILES=$PROFILES docker compose pull
+
+            # Save image to /tmp for distribution to slaves
+            echo "Saving image to /tmp/${TARGET_TAG}.tar.gz..."
+            sudo docker save ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG} | gzip > /tmp/${TARGET_TAG}.tar.gz
 
             echo "Starting services..."
             sudo COMPOSE_PROFILES=$PROFILES docker compose up -d --remove-orphans
@@ -307,7 +311,7 @@ jobs:
 
             echo "$TARGET_TAG" > $DEPLOY_PATH/.deployed_sha
             sudo docker logout ghcr.io
-            sudo docker image prune -f
+            # Keep the tarball in /tmp for slave distribution, don't prune yet
             echo "Master deploy OK (tag: $TARGET_TAG)"
 
   # ==========================================
@@ -376,19 +380,17 @@ jobs:
               echo ""
               echo "========== Deploying $NAME ($IP) =========="
 
-              # SCP compose file
+              # SCP compose file and image tarball from Master's /tmp
+              echo "Transferring files to $NAME..."
               scp -i ~/.ssh/$KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
-                /tmp/docker-compose.yml $USER@$IP:/tmp/docker-compose.yml || { echo "SCP failed"; return 1; }
+                /tmp/docker-compose.yml /tmp/${TARGET_TAG}.tar.gz $USER@$IP:/tmp/ || { echo "SCP failed"; return 1; }
 
-              # Remote deploy
+              # Remote deploy (load image from tarball instead of pulling from GHCR)
               ssh -i ~/.ssh/$KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 $USER@$IP bash -s <<REMOTE
             set -e
             DEPLOY_PATH=/opt/quant-agent
             mkdir -p \$DEPLOY_PATH
             cd \$DEPLOY_PATH
-
-            # GHCR login
-            echo "${GHCR_TOKEN}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin 2>/dev/null
 
             # Write compose file (from /tmp, preserves .env-safe dollar syntax)
             cp docker-compose.yml docker-compose.yml.bak 2>/dev/null || true
@@ -396,8 +398,10 @@ jobs:
             sudo chown \$(whoami):\$(whoami) docker-compose.yml
             rm -f /tmp/docker-compose.yml
 
-            echo "Pulling image ${TARGET_TAG}..."
-            sudo COMPOSE_PROFILES=slave docker compose pull
+            # Load image from tarball (no need to pull from GHCR)
+            echo "Loading image ${TARGET_TAG} from tarball..."
+            gunzip -c /tmp/${TARGET_TAG}.tar.gz | sudo docker load
+            rm -f /tmp/${TARGET_TAG}.tar.gz
 
             echo "Starting slave..."
             sudo COMPOSE_PROFILES=slave docker compose up -d --remove-orphans
@@ -422,7 +426,8 @@ jobs:
             deploy_slave "Slave-3" "$S3_HOST" "$S3_USER" "slave_3"
             deploy_slave "Slave-4" "$S4_HOST" "$S4_USER" "slave_4"
 
-            rm -f ~/.ssh/slave_* /tmp/docker-compose.yml
+            # Cleanup Master's temporary files
+            rm -f ~/.ssh/slave_* /tmp/docker-compose.yml /tmp/${TARGET_TAG}.tar.gz
             echo "All slaves deployed"
 
   # ==========================================
