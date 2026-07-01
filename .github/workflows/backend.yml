@@ -22,6 +22,10 @@ on:
 env:
   GHCR_IMAGE: ghcr.io/songlinhe5-lab/quant-agent
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   # ==========================================
   # Stage 1: CI Quality Gates
