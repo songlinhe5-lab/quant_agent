@@ -271,6 +271,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           envs: GITHUB_ACTOR
+          command_timeout: 30m
           script: |
             set -e
             DEPLOY_PATH=/opt/quant-agent
@@ -288,8 +289,27 @@ jobs:
             # GHCR login (use GITHUB_TOKEN from runner env)
             echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
 
-            echo "Pulling image ${TARGET_TAG}..."
-            sudo COMPOSE_PROFILES=$PROFILES docker compose pull
+            # Pull image via transit VPS (38.60.126.42) for faster download to domestic Master
+            echo "Pulling image ${TARGET_TAG} via transit VPS (38.60.126.42)..."
+            ssh -o StrictHostKeyChecking=no ${{ secrets.TRANSIT_VPS_USER }}@38.60.126.42 <<'TRANSIT'
+              set -e
+              echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+              sudo docker pull ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG}
+              sudo docker save ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG} | gzip > /tmp/${TARGET_TAG}.tar.gz
+              sudo docker logout ghcr.io
+            TRANSIT
+
+            # SCP tarball from transit VPS to Master
+            echo "Transferring image from transit VPS..."
+            scp -o StrictHostKeyChecking=no ${{ secrets.TRANSIT_VPS_USER }}@38.60.126.42:/tmp/${TARGET_TAG}.tar.gz /tmp/
+
+            # Load and tag the image
+            echo "Loading image on Master..."
+            gunzip -c /tmp/${TARGET_TAG}.tar.gz | sudo docker load
+            sudo docker tag ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG} ghcr.io/songlinhe5-lab/quant-agent:latest
+
+            # Cleanup transit VPS
+            ssh -o StrictHostKeyChecking=no ${{ secrets.TRANSIT_VPS_USER }}@38.60.126.42 "rm -f /tmp/${TARGET_TAG}.tar.gz"
 
             echo "Starting services..."
             sudo COMPOSE_PROFILES=$PROFILES docker compose up -d --remove-orphans
@@ -350,6 +370,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           envs: S1_HOST,S1_USER,S1_KEY,S2_HOST,S2_USER,S2_KEY,S3_HOST,S3_USER,S3_KEY,S4_HOST,S4_USER,S4_KEY,GITHUB_ACTOR
+          command_timeout: 60m
           script: |
             set -e
             DEPLOY_PATH=/opt/quant-agent
@@ -374,19 +395,17 @@ jobs:
               echo ""
               echo "========== Deploying $NAME ($IP) =========="
 
-              # SCP compose file
+              # SCP compose file only (slaves pull from GHCR directly)
+              echo "Transferring compose file to $NAME..."
               scp -i ~/.ssh/$KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
                 /tmp/docker-compose.yml $USER@$IP:/tmp/docker-compose.yml || { echo "SCP failed"; return 1; }
 
-              # Remote deploy
+              # Remote deploy (pull from GHCR directly for overseas slaves)
               ssh -i ~/.ssh/$KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 $USER@$IP bash -s <<REMOTE
             set -e
             DEPLOY_PATH=/opt/quant-agent
             mkdir -p \$DEPLOY_PATH
             cd \$DEPLOY_PATH
-
-            # GHCR login
-            echo "${GHCR_TOKEN}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin 2>/dev/null
 
             # Write compose file (from /tmp, preserves .env-safe dollar syntax)
             cp docker-compose.yml docker-compose.yml.bak 2>/dev/null || true
@@ -394,7 +413,9 @@ jobs:
             sudo chown \$(whoami):\$(whoami) docker-compose.yml
             rm -f /tmp/docker-compose.yml
 
-            echo "Pulling image ${TARGET_TAG}..."
+            # GHCR login and pull (overseas slaves have fast access to GHCR)
+            echo "${GHCR_TOKEN}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin 2>/dev/null
+            echo "Pulling image ${TARGET_TAG} from GHCR..."
             sudo COMPOSE_PROFILES=slave docker compose pull
 
             echo "Starting slave..."
@@ -420,6 +441,7 @@ jobs:
             deploy_slave "Slave-3" "$S3_HOST" "$S3_USER" "slave_3"
             deploy_slave "Slave-4" "$S4_HOST" "$S4_USER" "slave_4"
 
+            # Cleanup temporary files
             rm -f ~/.ssh/slave_* /tmp/docker-compose.yml
             echo "All slaves deployed"
 
