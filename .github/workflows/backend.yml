@@ -5,13 +5,6 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main ]
-    paths:
-      - 'backend/**'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - '.github/workflows/backend.yml'
-      - 'Dockerfile'
-      - 'docker-compose.yml'
   workflow_dispatch:
     inputs:
       rollback_sha:
