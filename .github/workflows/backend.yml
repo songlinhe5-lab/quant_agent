@@ -237,7 +237,7 @@ jobs:
       always() &&
       ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
        github.event_name == 'workflow_dispatch') &&
-      (needs.build.result == 'success' || needs.build.result == 'skipped')
+      needs.build.result == 'success'
     outputs:
       image_tag: ${{ steps.set_tag.outputs.tag }}
 
