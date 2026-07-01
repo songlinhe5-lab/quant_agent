@@ -82,9 +82,8 @@ services:
   # ==========================================
   quant-agent:
     profiles: [master]
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/songlinhe5-lab/quant-agent:latest
+    pull_policy: always
     container_name: quant_app
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1 --loop uvloop --http httptools --timeout-keep-alive 65 --limit-concurrency 5000 --no-access-log
     restart: always
@@ -111,7 +110,6 @@ services:
     volumes:
       - quant_db:/app/backend/data
       - ./reports:/app/reports
-      - ./backend:/app/backend
     deploy:
       resources:
         limits:
@@ -124,9 +122,8 @@ services:
 
   quant-worker:
     profiles: [master]
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/songlinhe5-lab/quant-agent:latest
+    pull_policy: always
     container_name: quant_worker
     command: python backend/worker.py
     restart: always
@@ -144,7 +141,6 @@ services:
       - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_secret_2026}@postgres:5432/${DB_NAME:-quant_agent_db}
     volumes:
       - quant_db:/app/backend/data
-      - ./backend:/app/backend
     deploy:
       resources:
         limits:
@@ -160,9 +156,8 @@ services:
   # ==========================================
   slave-collector:
     profiles: [slave]
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/songlinhe5-lab/quant-agent:latest
+    pull_policy: always
     container_name: quant_slave
     command: uvicorn backend.slave_app:app --host 0.0.0.0 --port 8001 --loop uvloop --http httptools --timeout-keep-alive 65 --no-access-log
     restart: always
@@ -173,8 +168,6 @@ services:
     environment:
       - QUANT_ENV=production
       # 不设置 REDIS_HOST: slave 通过 MASTER_NODES 连接各 master 的 Redis
-    volumes:
-      - ./backend:/app/backend
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${NODE_PORT:-8001}/health')\" || exit 1"]
       interval: 30s

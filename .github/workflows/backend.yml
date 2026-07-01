@@ -1,10 +1,8 @@
 name: Backend CI
 
 on:
-  # develop 分支: 仅跑 CI (lint + test + security)，不部署
   push:
     branches: [ main, develop ]
-  # PR 到 main: 跑 CI 作为质量门禁 (merge 前必须通过)
   pull_request:
     branches: [ main ]
     paths:
@@ -14,12 +12,22 @@ on:
       - '.github/workflows/backend.yml'
       - 'Dockerfile'
       - 'docker-compose.yml'
-  # 手动触发: 部署所有节点
   workflow_dispatch:
+    inputs:
+      rollback_sha:
+        description: 'Commit SHA to rollback to (leave empty for normal deploy)'
+        required: false
+        type: string
+
+env:
+  GHCR_IMAGE: ghcr.io/songlinhe5-lab/quant-agent
 
 jobs:
+  # ==========================================
+  # Stage 1: CI Quality Gates
+  # ==========================================
   lint:
-    name: 🔍 Lint & Type Check
+    name: Lint & Type Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,7 +45,7 @@ jobs:
         run: uv run ruff format --check backend/
 
   test:
-    name: 🧪 Test & Coverage
+    name: Test & Coverage
     runs-on: ubuntu-latest
     needs: lint
 
@@ -87,7 +95,7 @@ jobs:
           uv run pytest backend/tests/ -v \
             --cov=backend --cov-report=xml:coverage.xml --cov-report=term-missing \
             --cov-fail-under=70
-      - name: 🐢 Detect slow tests
+      - name: Detect slow tests
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
           REDIS_HOST: localhost
@@ -97,7 +105,7 @@ jobs:
           EMBEDDING_BASE_URL: https://api.test.com
           EMBEDDING_MODEL: BAAI/bge-large-zh-v1.5
         run: |
-          echo "## 🐢 Slow Tests Report (Top 20)" >> $GITHUB_STEP_SUMMARY
+          echo "## Slow Tests Report (Top 20)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           uv run pytest backend/tests/ --durations=20 --tb=no -q 2>&1 | tee /tmp/slow_tests.txt
           echo '```' >> $GITHUB_STEP_SUMMARY
@@ -113,10 +121,9 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
   security:
-    name: 🔒 Security Scan
+    name: Security Scan
     runs-on: ubuntu-latest
     needs: test
-
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
@@ -132,113 +139,177 @@ jobs:
         continue-on-error: true
 
   # ==========================================
-  # 🚀 多节点部署 (Tailscale 集群)
+  # Stage 2: Build & Push to GHCR
   # ==========================================
-  # 节点拓扑:
-  #   Master  → API + Worker + Redis + PostgreSQL + 监控 + akshare + yfinance
-  #   Slave-1 → finnhub + yfinance
-  #   Slave-2 → yfinance only
-  #   Slave-3 → yfinance only
-  #   Slave-4 → yfinance only
-  #
-  # GitHub Secrets 仅存 SSH 连接信息，应用配置在各 VPS 的 .env 中预置。
-  #
-  # 容错策略:
-  #   - 主节点部署失败 → 整体失败
-  #   - 从节点部署失败 → 仅记录日志, 不阻断
-  deploy:
-    name: 🚀 Deploy Multi-Node
+  build:
+    name: Build & Push Image
     runs-on: ubuntu-latest
     needs: [test, security]
     if: |
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      github.event_name == 'workflow_dispatch'
+      (github.event_name == 'workflow_dispatch' && !inputs.rollback_sha)
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.GHCR_IMAGE }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ==========================================
+  # Stage 3: Deploy Master
+  # ==========================================
+  deploy_master:
+    name: Deploy Master
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: |
+      always() &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+       github.event_name == 'workflow_dispatch') &&
+      (needs.build.result == 'success' || needs.build.result == 'skipped')
+    outputs:
+      image_tag: ${{ steps.set_tag.outputs.tag }}
 
     steps:
       - uses: actions/checkout@v4
 
-      # ==========================================
-      # 主节点 (master + monitoring)
-      # ==========================================
-      - name: 🚀 Deploy → Master
-        id: deploy_master
+      - name: Set target image tag
+        id: set_tag
+        run: |
+          if [ -n "${{ inputs.rollback_sha }}" ]; then
+            TAG="sha-${{ inputs.rollback_sha }}"
+          else
+            TAG="sha-$(echo ${{ github.sha }} | cut -c1-7)"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Deploying image tag: $TAG"
+
+      # Encode compose file on runner so we can write it on VPS
+      - name: Prepare compose file (base64)
+        id: prepare_compose
+        run: |
+          echo "b64=$(base64 -w0 docker-compose.yml)" >> $GITHUB_OUTPUT
+
+      - name: Deploy Master
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          envs: GITHUB_ACTOR
           script: |
             set -e
             DEPLOY_PATH=/opt/quant-agent
             PROFILES="master,monitoring"
+            TARGET_TAG="${{ steps.set_tag.outputs.tag }}"
 
-            sudo chown -R ubuntu:ubuntu $DEPLOY_PATH
-            sudo chmod -R u+w $DEPLOY_PATH/.git
-            git config --global --add safe.directory $DEPLOY_PATH
-            mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-
-            echo "📥 拉取最新代码..."
+            mkdir -p $DEPLOY_PATH
             cd $DEPLOY_PATH
-            git fetch origin main && git reset --hard origin/main
 
-            echo "🛑 停止容器..."
-            sudo COMPOSE_PROFILES=$PROFILES docker compose down || true
+            # Write docker-compose.yml (base64 from runner avoids all quoting issues)
+            cp docker-compose.yml docker-compose.yml.bak 2>/dev/null || true
+            echo '${{ steps.prepare_compose.outputs.b64 }}' | base64 -d > docker-compose.yml
+            sudo sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:.*|ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG}|g" docker-compose.yml
 
-            echo "🔨 构建镜像..."
-            sudo docker compose build --no-cache
+            # GHCR login (use GITHUB_TOKEN from runner env)
+            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
 
-            echo "🚀 启动服务..."
+            echo "Pulling image ${TARGET_TAG}..."
+            sudo COMPOSE_PROFILES=$PROFILES docker compose pull
+
+            echo "Starting services..."
             sudo COMPOSE_PROFILES=$PROFILES docker compose up -d --remove-orphans
 
-            echo "⏳ 等待启动 (30s)..."
+            echo "Waiting for health check (30s)..."
             sleep 30
 
             HEALTH=$(curl -sf --max-time 10 http://localhost:8000/api/v1/health 2>/dev/null || echo "UNHEALTHY")
             if [ "$HEALTH" = "UNHEALTHY" ]; then
-              echo "❌ 健康检查失败!"
+              echo "Health check FAILED"
               sudo COMPOSE_PROFILES=$PROFILES docker compose logs --tail 30
               exit 1
             fi
-            echo "✅ Master 节点健康检查通过"
 
+            echo "$TARGET_TAG" > $DEPLOY_PATH/.deployed_sha
+            sudo docker logout ghcr.io
             sudo docker image prune -f
-            sudo docker builder prune -af --filter "until=168h"
-            echo "✅ Master 节点部署完成"
+            echo "Master deploy OK (tag: $TARGET_TAG)"
 
-      # ==========================================
-      # 从节点部署 (通过主节点跳转 Tailscale)
-      # ==========================================
-      - name: 📡 Deploy → All Slaves (via Master)
-        id: deploy_slaves
-        if: always() && steps.deploy_master.outcome == 'success'
-        continue-on-error: true
+  # ==========================================
+  # Stage 4: Deploy Slaves (via Master jump host)
+  # ==========================================
+  deploy_slaves:
+    name: Deploy Slaves
+    runs-on: ubuntu-latest
+    needs: [deploy_master]
+    if: |
+      always() &&
+      needs.deploy_master.result == 'success'
+    continue-on-error: true
+    env:
+      S1_HOST: ${{ secrets.VPS_S1_HOST }}
+      S1_USER: ${{ secrets.VPS_S1_USER }}
+      S1_KEY: ${{ secrets.VPS_S1_SSH_KEY }}
+      S2_HOST: ${{ secrets.VPS_S2_HOST }}
+      S2_USER: ${{ secrets.VPS_S2_USER }}
+      S2_KEY: ${{ secrets.VPS_S2_SSH_KEY }}
+      S3_HOST: ${{ secrets.VPS_S3_HOST }}
+      S3_USER: ${{ secrets.VPS_S3_USER }}
+      S3_KEY: ${{ secrets.VPS_S3_SSH_KEY }}
+      S4_HOST: ${{ secrets.VPS_S4_HOST }}
+      S4_USER: ${{ secrets.VPS_S4_USER }}
+      S4_KEY: ${{ secrets.VPS_S4_SSH_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Encode compose file once for all slaves
+      - name: Prepare compose file (base64)
+        id: prepare_compose
+        run: |
+          echo "b64=$(base64 -w0 docker-compose.yml)" >> $GITHUB_OUTPUT
+
+      - name: Deploy all slaves via Master
         uses: appleboy/ssh-action@v1
-        env:
-          S1_HOST: ${{ secrets.VPS_S1_HOST }}
-          S1_USER: ${{ secrets.VPS_S1_USER }}
-          S1_KEY: ${{ secrets.VPS_S1_SSH_KEY }}
-          S1_ENV: ${{ secrets.VPS_S1_ENV }}
-          S2_HOST: ${{ secrets.VPS_S2_HOST }}
-          S2_USER: ${{ secrets.VPS_S2_USER }}
-          S2_KEY: ${{ secrets.VPS_S2_SSH_KEY }}
-          S2_ENV: ${{ secrets.VPS_S2_ENV }}
-          S3_HOST: ${{ secrets.VPS_S3_HOST }}
-          S3_USER: ${{ secrets.VPS_S3_USER }}
-          S3_KEY: ${{ secrets.VPS_S3_SSH_KEY }}
-          S3_ENV: ${{ secrets.VPS_S3_ENV }}
-          S4_HOST: ${{ secrets.VPS_S4_HOST }}
-          S4_USER: ${{ secrets.VPS_S4_USER }}
-          S4_KEY: ${{ secrets.VPS_S4_SSH_KEY }}
-          S4_ENV: ${{ secrets.VPS_S4_ENV }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          envs: S1_HOST,S1_USER,S1_KEY,S1_ENV,S2_HOST,S2_USER,S2_KEY,S2_ENV,S3_HOST,S3_USER,S3_KEY,S3_ENV,S4_HOST,S4_USER,S4_KEY,S4_ENV
+          envs: S1_HOST,S1_USER,S1_KEY,S2_HOST,S2_USER,S2_KEY,S3_HOST,S3_USER,S3_KEY,S4_HOST,S4_USER,S4_KEY,GITHUB_ACTOR
           script: |
             set -e
+            DEPLOY_PATH=/opt/quant-agent
+            TARGET_TAG="${{ needs.deploy_master.outputs.image_tag }}"
+            COMPOSE_B64='${{ steps.prepare_compose.outputs.b64 }}'
+            GHCR_TOKEN='${{ secrets.GITHUB_TOKEN }}'
 
-            # 写入从节点 SSH 密钥
+            # Write slave SSH keys
             mkdir -p ~/.ssh
             echo "$S1_KEY" > ~/.ssh/slave_1
             echo "$S2_KEY" > ~/.ssh/slave_2
@@ -246,78 +317,88 @@ jobs:
             echo "$S4_KEY" > ~/.ssh/slave_4
             chmod 600 ~/.ssh/slave_*
 
-            # 打包主节点代码 (避免从节点需要 GitHub 认证)
-            REPO_PATH=$(find /opt /home /root -maxdepth 3 -name ".git" -type d 2>/dev/null | head -1 | xargs dirname 2>/dev/null || echo "")
-            if [ -z "$REPO_PATH" ] || [ ! -d "$REPO_PATH/.git" ]; then
-              echo "ERROR: Cannot find repo on master"
+            # Write compose file to /tmp for SCP to slaves
+            echo "$COMPOSE_B64" | base64 -d > /tmp/docker-compose.yml
+            sudo sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:.*|ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG}|g" /tmp/docker-compose.yml
+
+            deploy_slave() {
+              local NAME=$1 IP=$2 USER=$3 KEY=$4
+              echo ""
+              echo "========== Deploying $NAME ($IP) =========="
+
+              # SCP compose file
+              scp -i ~/.ssh/$KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+                /tmp/docker-compose.yml $USER@$IP:/tmp/docker-compose.yml || { echo "SCP failed"; return 1; }
+
+              # Remote deploy
+              ssh -i ~/.ssh/$KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 $USER@$IP bash -s <<REMOTE
+            set -e
+            DEPLOY_PATH=/opt/quant-agent
+            mkdir -p \$DEPLOY_PATH
+            cd \$DEPLOY_PATH
+
+            # GHCR login
+            echo "${GHCR_TOKEN}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin 2>/dev/null
+
+            # Write compose file (from /tmp, preserves .env-safe dollar syntax)
+            cp docker-compose.yml docker-compose.yml.bak 2>/dev/null || true
+            sudo cp /tmp/docker-compose.yml docker-compose.yml
+            sudo chown \$(whoami):\$(whoami) docker-compose.yml
+            rm -f /tmp/docker-compose.yml
+
+            echo "Pulling image ${TARGET_TAG}..."
+            sudo COMPOSE_PROFILES=slave docker compose pull
+
+            echo "Starting slave..."
+            sudo COMPOSE_PROFILES=slave docker compose up -d --remove-orphans
+
+            sleep 15
+            HEALTH=\$(curl -sf --max-time 10 http://localhost:8001/health 2>/dev/null || echo UNHEALTHY)
+            if [ "\$HEALTH" = "UNHEALTHY" ]; then
+              echo "Health check failed"
+              sudo COMPOSE_PROFILES=slave docker compose logs --tail 20
               exit 1
             fi
-            echo "Found repo at: $REPO_PATH"
-            tar czf /tmp/quant-agent-code.tar.gz --exclude='.env' -C "$(dirname $REPO_PATH)" "$(basename $REPO_PATH)"
-            echo "Code tarball ready ($(du -h /tmp/quant-agent-code.tar.gz | cut -f1))"
-
-            # 写入从节点部署脚本 (base64 编码避免 YAML 解析问题)
-            echo 'IyEvYmluL2Jhc2gKc2V0IC1lCkRFUExPWV9QQVRIPS9vcHQvcXVhbnQtYWdlbnQKUFJPRklMRVM9c2xhdmUKQ09ERV9UQVJCQUxMPS90bXAvcXVhbnQtYWdlbnQtY29kZS50YXIuZ3oKRU5WX0ZJTEU9L3RtcC9zbGF2ZV9lbnZfZmlsZQojIFdyaXRlIC5lbnYgZmlyc3QgKGJlZm9yZSBjb2RlIGV4dHJhY3Rpb24sIHNpbmNlIHRhciBleGNsdWRlcyAuZW52KQppZiBbIC1mICIkRU5WX0ZJTEUiIF07IHRoZW4KICBlY2hvICJ3cml0aW5nIC5lbnYuLi4iCiAgWyAtZCAiJERFUExPWV9QQVRIIiBdIHx8IHN1ZG8gbWtkaXIgLXAgIiRERVBMT1lfUEFUSCIKICBzdWRvIGNwICIkRU5WX0ZJTEUiICIkREVQTE9ZX1BBVEgvLmVudiIKICBzdWRvIGNob3duICQod2hvYW1pKTokKHdob2FtaSkgIiRERVBMT1lfUEFUSC8uZW52IgogIHJtIC1mICIkRU5WX0ZJTEUiCmVsc2UKICBlY2hvICJXQVJOSU5HOiBubyAuZW52IGZpbGUgcHJvdmlkZWQiCmZpCiMgRXh0cmFjdCBjb2RlICh0YXIgZXhjbHVkZXMgLmVudiwgc28gZXhpc3RpbmcgLmVudiBpcyBwcmVzZXJ2ZWQpCmlmIFsgLWYgIiRDT0RFX1RBUkJBTEwiIF07IHRoZW4KICBlY2hvICJleHRyYWN0aW5nIGNvZGUgZnJvbSBtYXN0ZXIuLi4iCiAgdGFyIHh6ZiAiJENPREVfVEFSQkFMTCIgLUMgL29wdC8gLS1leGNsdWRlPScuZW52JwogIHN1ZG8gY2hvd24gLVIgJCh3aG9hbWkpOiQod2hvYW1pKSAkREVQTE9ZX1BBVEgKICBybSAtZiAiJENPREVfVEFSQkFMTCIKZWxzZQogIGVjaG8gIkVSUk9SOiBjb2RlIHRhcmJhbGwgbm90IGZvdW5kIgogIGV4aXQgMQpmaQpnaXQgY29uZmlnIC0tZ2xvYmFsIC0tYWRkIHNhZmUuZGlyZWN0b3J5ICRERVBMT1lfUEFUSCAyPi9kZXYvbnVsbCB8fCB0cnVlCmVjaG8gInN0b3BwaW5nIGNvbnRhaW5lcnMuLi4iCnN1ZG8gQ09NUE9TRV9QUk9GSUxFUz0kUFJPRklMRVMgZG9ja2VyIGNvbXBvc2UgZG93biB8fCB0cnVlCmVjaG8gImJ1aWxkaW5nIGltYWdlLi4uIgpzdWRvIGRvY2tlciBjb21wb3NlIGJ1aWxkIC0tbm8tY2FjaGUKZWNobyAic3RhcnRpbmcgc2VydmljZXMuLi4iCnN1ZG8gQ09NUE9TRV9QUk9GSUxFUz0kUFJPRklMRVMgZG9ja2VyIGNvbXBvc2UgdXAgLWQgLS1yZW1vdmUtb3JwaGFucwplY2hvICJ3YWl0aW5nIDMwcy4uLiIKc2xlZXAgMzAKSEVBTFRIPSQoY3VybCAtc2YgLS1tYXgtdGltZSAxMCBodHRwOi8vbG9jYWxob3N0OjgwMDEvaGVhbHRoIDI+L2Rldi9udWxsIHx8IGVjaG8gVU5IRUFMVEhZKQppZiBbICIkSEVBTFRIIiA9ICJVTkhFQUxUSFkiIF07IHRoZW4KICBlY2hvICJoZWFsdGggY2hlY2sgZmFpbGVkIgogIHN1ZG8gQ09NUE9TRV9QUk9GSUxFUz0kUFJPRklMRVMgZG9ja2VyIGNvbXBvc2UgbG9ncyAtLXRhaWwgMjAKICBleGl0IDEKZmkKZWNobyAiZGVwbG95IGNvbXBsZXRlIgpzdWRvIGRvY2tlciBpbWFnZSBwcnVuZSAtZgpzdWRvIGRvY2tlciBidWlsZGVyIHBydW5lIC1hZiAtLWZpbHRlciAidW50aWw9MTY4aCIK' | base64 -d > /tmp/deploy_slave.sh
-            chmod +x /tmp/deploy_slave.sh
-
-            # 从节点部署函数
-            deploy_slave() {
-              local SLAVE_ID=$1 SLAVE_IP=$2 SLAVE_USER=$3 SLAVE_KEY=$4 SLAVE_ENV_B64=$5
-              echo ""
-              echo "========== 部署 $SLAVE_ID ($SLAVE_IP) =========="
-              # 写入从节点 .env (base64 解码)
-              if [ -n "$SLAVE_ENV_B64" ]; then
-                echo "$SLAVE_ENV_B64" | base64 -d > /tmp/slave_env_file
-                scp -i ~/.ssh/$SLAVE_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 /tmp/slave_env_file $SLAVE_USER@$SLAVE_IP:/tmp/slave_env_file || { echo "❌ $SLAVE_ID SCP .env 失败"; return 1; }
-                rm -f /tmp/slave_env_file
-              else
-                echo "WARNING: no .env for $SLAVE_ID"
-              fi
-              scp -i ~/.ssh/$SLAVE_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 /tmp/quant-agent-code.tar.gz $SLAVE_USER@$SLAVE_IP:/tmp/quant-agent-code.tar.gz || { echo "❌ $SLAVE_ID SCP code 失败"; return 1; }
-              scp -i ~/.ssh/$SLAVE_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 /tmp/deploy_slave.sh $SLAVE_USER@$SLAVE_IP:/tmp/deploy.sh || { echo "❌ $SLAVE_ID SCP script 失败"; return 1; }
-              ssh -i ~/.ssh/$SLAVE_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 $SLAVE_USER@$SLAVE_IP "bash /tmp/deploy.sh" || { echo "❌ $SLAVE_ID 部署失败 (非致命)"; return 1; }
-              echo "✅ $SLAVE_ID 部署成功"
+            echo "${TARGET_TAG}" > \$DEPLOY_PATH/.deployed_sha
+            sudo docker logout ghcr.io 2>/dev/null || true
+            sudo docker image prune -f
+            echo "Deploy OK"
+            REMOTE
+              echo "$NAME done"
             }
 
-            # 部署 4 个从节点
-            deploy_slave "Slave-1" "$S1_HOST" "$S1_USER" "slave_1" "$S1_ENV"
-            deploy_slave "Slave-2" "$S2_HOST" "$S2_USER" "slave_2" "$S2_ENV"
-            deploy_slave "Slave-3" "$S3_HOST" "$S3_USER" "slave_3" "$S3_ENV"
-            deploy_slave "Slave-4" "$S4_HOST" "$S4_USER" "slave_4" "$S4_ENV"
+            deploy_slave "Slave-1" "$S1_HOST" "$S1_USER" "slave_1"
+            deploy_slave "Slave-2" "$S2_HOST" "$S2_USER" "slave_2"
+            deploy_slave "Slave-3" "$S3_HOST" "$S3_USER" "slave_3"
+            deploy_slave "Slave-4" "$S4_HOST" "$S4_USER" "slave_4"
 
-            # 清理
-            rm -f ~/.ssh/slave_* /tmp/quant-agent-code.tar.gz
-            echo "✅ 从节点部署流程完成"
+            rm -f ~/.ssh/slave_* /tmp/docker-compose.yml
+            echo "All slaves deployed"
 
-      # ==========================================
-      # 部署总结
-      # ==========================================
-      - name: 📋 部署总结
-        if: always()
+  # ==========================================
+  # Deploy Summary
+  # ==========================================
+  deploy_summary:
+    name: Deploy Summary
+    runs-on: ubuntu-latest
+    needs: [deploy_master, deploy_slaves]
+    if: always() && needs.deploy_master.result != 'skipped'
+    steps:
+      - name: Generate summary
         run: |
-          echo "## 🚀 部署结果" >> $GITHUB_STEP_SUMMARY
+          echo "## Deploy Result" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| 节点 | 角色 | 采集器 | 状态 |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|------|--------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Node | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Master | ${{ needs.deploy_master.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Slaves | ${{ needs.deploy_slaves.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
 
-          M="${{ steps.deploy_master.outcome }}"
-          SLAVES="${{ steps.deploy_slaves.outcome }}"
+          if [ "${{ github.event.inputs.rollback_sha }}" != "" ]; then
+            echo "**Rollback** to SHA: ${{ github.event.inputs.rollback_sha }}" >> $GITHUB_STEP_SUMMARY
+          fi
 
-          echo "| Master | master+monitoring | akshare,yf | ${M} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Slaves (1-4) | slave | finnhub,yf | ${SLAVES} |" >> $GITHUB_STEP_SUMMARY
-
-          # 主节点失败则整体失败
-          if [ "$M" = "failure" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "❌ **主节点部署失败，请检查日志**" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.deploy_master.result }}" = "failure" ]; then
+            echo "Master deploy failed - check logs"
             exit 1
           fi
-
-          # 从节点失败仅警告
-          if [ "$SLAVES" = "failure" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "⚠️ **部分从节点部署失败 (不影响主服务)**" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ 部署流程完成"
