@@ -86,7 +86,7 @@ jobs:
         run: |
           uv run pytest backend/tests/ -v \
             --cov=backend --cov-report=xml:coverage.xml --cov-report=term-missing \
-            --cov-fail-under=25
+            --cov-fail-under=70
       - name: 🐢 Detect slow tests
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
@@ -230,7 +230,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          env: S1_HOST,S1_USER,S1_KEY,S2_HOST,S2_USER,S2_KEY,S3_HOST,S3_USER,S3_KEY,S4_HOST,S4_USER,S4_KEY
+          envs: S1_HOST,S1_USER,S1_KEY,S2_HOST,S2_USER,S2_KEY,S3_HOST,S3_USER,S3_KEY,S4_HOST,S4_USER,S4_KEY
           script: |
             set -e
 
@@ -242,36 +242,18 @@ jobs:
             echo "$S4_KEY" > ~/.ssh/slave_4
             chmod 600 ~/.ssh/slave_*
 
+            # 写入从节点部署脚本 (base64 编码避免 YAML 解析问题)
+            echo 'IyEvYmluL2Jhc2gKc2V0IC1lCkRFUExPWV9QQVRIPS9vcHQvcXVhbnQtYWdlbnQKUFJPRklMRVM9c2xhdmUKZ2l0IGNvbmZpZyAtLWdsb2JhbCAtLWFkZCBzYWZlLmRpcmVjdG9yeSAkREVQTE9ZX1BBVEggMj4vZGV2L251bGwgfHwgdHJ1ZQpta2RpciAtcCB+Ly5zc2ggJiYgc3NoLWtleXNjYW4gZ2l0aHViLmNvbSA+PiB+Ly5zc2gva25vd25faG9zdHMgMj4vZGV2L251bGwKZWNobyAicHVsbGluZyBsYXRlc3QgY29kZS4uLiIKY2QgJERFUExPWV9QQVRICmdpdCBmZXRjaCBvcmlnaW4gbWFpbiAmJiBnaXQgcmVzZXQgLS1oYXJkIG9yaWdpbi9tYWluCmVjaG8gInN0b3BwaW5nIGNvbnRhaW5lcnMuLi4iCnN1ZG8gQ09NUE9TRV9QUk9GSUxFUz0kUFJPRklMRVMgZG9ja2VyIGNvbXBvc2UgZG93biB8fCB0cnVlCmVjaG8gImJ1aWxkaW5nIGltYWdlLi4uIgpzdWRvIGRvY2tlciBjb21wb3NlIGJ1aWxkIC0tbm8tY2FjaGUKZWNobyAic3RhcnRpbmcgc2VydmljZXMuLi4iCnN1ZG8gQ09NUE9TRV9QUk9GSUxFUz0kUFJPRklMRVMgZG9ja2VyIGNvbXBvc2UgdXAgLWQgLS1yZW1vdmUtb3JwaGFucwplY2hvICJ3YWl0aW5nIDMwcy4uLiIKc2xlZXAgMzAKSEVBTFRIPSQoY3VybCAtc2YgLS1tYXgtdGltZSAxMCBodHRwOi8vbG9jYWxob3N0OjgwMDEvaGVhbHRoIDI+L2Rldi9udWxsIHx8IGVjaG8gVU5IRUFMVEhZKQppZiBbICIkSEVBTFRIIiA9ICJVTkhFQUxUSFkiIF07IHRoZW4KICBlY2hvICJoZWFsdGggY2hlY2sgZmFpbGVkIgogIHN1ZG8gQ09NUE9TRV9QUk9GSUxFUz0kUFJPRklMRVMgZG9ja2VyIGNvbXBvc2UgbG9ncyAtLXRhaWwgMjAKICBleGl0IDEKZmkKZWNobyAiZGVwbG95IGNvbXBsZXRlIgpzdWRvIGRvY2tlciBpbWFnZSBwcnVuZSAtZgpzdWRvIGRvY2tlciBidWlsZGVyIHBydW5lIC1hZiAtLWZpbHRlciAidW50aWw9MTY4aCIK' | base64 -d > /tmp/deploy_slave.sh
+            chmod +x /tmp/deploy_slave.sh
+
             # 从节点部署函数
             deploy_slave() {
               local SLAVE_ID=$1 SLAVE_IP=$2 SLAVE_USER=$3 SLAVE_KEY=$4
               echo ""
               echo "========== 部署 $SLAVE_ID ($SLAVE_IP) =========="
-
-              ssh -i ~/.ssh/$SLAVE_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 $SLAVE_USER@$SLAVE_IP \
-                "set -e && \
-                DEPLOY_PATH=/opt/quant-agent && \
-                PROFILES=slave && \
-                git config --global --add safe.directory \$DEPLOY_PATH 2>/dev/null || true && \
-                mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null && \
-                echo '📥 拉取最新代码...' && \
-                cd \$DEPLOY_PATH && \
-                git fetch origin main && git reset --hard origin/main && \
-                echo '🛑 停止容器...' && \
-                sudo COMPOSE_PROFILES=\$PROFILES docker compose down || true && \
-                echo '🔨 构建镜像...' && \
-                sudo docker compose build --no-cache && \
-                echo '🚀 启动服务...' && \
-                sudo COMPOSE_PROFILES=\$PROFILES docker compose up -d --remove-orphans && \
-                echo '⏳ 等待启动 (30s)...' && \
-                sleep 30 && \
-                HEALTH=\$(curl -sf --max-time 10 http://localhost:8001/health 2>/dev/null || echo UNHEALTHY) && \
-                if [ \"\$HEALTH\" = 'UNHEALTHY' ]; then echo '❌ 健康检查失败'; sudo COMPOSE_PROFILES=\$PROFILES docker compose logs --tail 20; exit 1; fi && \
-                echo '✅ $SLAVE_ID 部署完成' && \
-                sudo docker image prune -f && \
-                sudo docker builder prune -af --filter 'until=168h'" || echo "❌ $SLAVE_ID 部署失败 (非致命)"
-
-              echo "✅ $SLAVE_ID 步骤完成"
+              scp -i ~/.ssh/$SLAVE_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 /tmp/deploy_slave.sh $SLAVE_USER@$SLAVE_IP:/tmp/deploy.sh || { echo "❌ $SLAVE_ID SCP 失败"; return 1; }
+              ssh -i ~/.ssh/$SLAVE_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 $SLAVE_USER@$SLAVE_IP "bash /tmp/deploy.sh" || { echo "❌ $SLAVE_ID 部署失败 (非致命)"; return 1; }
+              echo "✅ $SLAVE_ID 部署成功"
             }
 
             # 部署 4 个从节点
