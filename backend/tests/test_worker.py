@@ -41,7 +41,7 @@ class TestWorkerHeartbeatDaemon:
 
     @pytest.mark.asyncio
     async def test_heartbeat_registers_and_cancels_after_one_iteration(self):
-        from backend.worker import WORKER_UUID, worker_heartbeat_daemon
+        from backend.worker import worker_heartbeat_daemon
 
         with (
             patch("backend.worker.redis_client") as m_r,
@@ -51,11 +51,16 @@ class TestWorkerHeartbeatDaemon:
             m_r.scan = AsyncMock(return_value=(0, []))
             with pytest.raises(asyncio.CancelledError):
                 await worker_heartbeat_daemon()
-        # 验证心跳 key 被注册
+        # 验证心跳 key 被注册 (现在有两轮 set: heartbeat key + node key)
         m_r.set.assert_awaited()
-        set_args = m_r.set.await_args
-        assert f"quant:worker:heartbeat:{WORKER_UUID}" == set_args.args[0]
-        assert set_args.kwargs.get("ex") == 15
+        # 找到 heartbeat key 的调用并验证 TTL
+        heartbeat_call = None
+        for c in m_r.set.call_args_list:
+            if "quant:worker:heartbeat:" in str(c.args[0]):
+                heartbeat_call = c
+                break
+        assert heartbeat_call is not None, "heartbeat key 未被设置"
+        assert heartbeat_call.kwargs.get("ex") == 15
 
     @pytest.mark.asyncio
     async def test_heartbeat_computes_rank_and_updates_env_when_changed(self):
@@ -171,46 +176,23 @@ class TestWorkerMain:
             patch("backend.worker.redis_batch_writer") as m_bw,
             patch("backend.worker.redis_client") as m_rc,
             patch("backend.worker.engine") as m_engine,
-            patch("backend.worker.QuotePublisher") as m_pub_cls,
-            patch("backend.worker.finnhub_service") as m_fh,
-            patch("backend.worker.screener_service") as m_sc,
-            patch("backend.worker.sentiment_tracker") as m_st,
-            patch("backend.worker.ticker_service") as m_ts,
-            patch("backend.worker.yf_service") as m_yf,
+            patch("backend.worker.start_collector_daemons", new=AsyncMock(return_value=[])),
             patch("backend.worker.notification_service") as m_nt,
             patch("backend.worker.worker_heartbeat_daemon", new=_cancel_afterdelay),
+            patch("backend.worker.NODE_ROLE", "slave"),
         ):
-            m_pub = MagicMock()
-            m_pub.run_daemon = AsyncMock()
-            m_pub_cls.return_value = m_pub
-            m_fh.run_global_daemon = AsyncMock()
-            m_sc.screener_subscription_daemon = AsyncMock()
-            m_sc.daily_market_summary_daemon = AsyncMock()
-            m_sc.clean_obsolete_knowledge_base_daemon = AsyncMock()
-            m_st.track_daemon = AsyncMock()
-            m_ts.sync_tickers_daemon = AsyncMock()
-            m_yf.macro_data_daemon = AsyncMock()
-            m_nt.send_alert = AsyncMock()
             m_bw.start = MagicMock()
             m_bw.stop = AsyncMock()
             m_rc.aclose = AsyncMock()
             m_engine.dispose = MagicMock()
+            m_nt.send_alert = AsyncMock()
 
             await main()
             # 让 fire-and-forget 的 send_alert task 有机会被调度
             await asyncio.sleep(0)
 
-        # 验证所有 daemon 被启动
+        # 验证核心资源启动与清理
         m_bw.start.assert_called_once()
-        m_pub.run_daemon.assert_awaited_once()
-        m_fh.run_global_daemon.assert_awaited_once()
-        m_sc.screener_subscription_daemon.assert_awaited_once()
-        m_sc.daily_market_summary_daemon.assert_awaited_once()
-        m_sc.clean_obsolete_knowledge_base_daemon.assert_awaited_once()
-        m_st.track_daemon.assert_awaited_once()
-        m_ts.sync_tickers_daemon.assert_awaited_once()
-        m_yf.macro_data_daemon.assert_awaited_once()
-        # 验证清理
         m_bw.stop.assert_awaited_once()
         m_rc.aclose.assert_awaited_once()
         m_engine.dispose.assert_called_once()

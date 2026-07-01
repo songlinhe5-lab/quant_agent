@@ -182,6 +182,109 @@
 4. **嵌入交互式图表 (ECharts)**：如果需要在 UI 中展示走势、分布等数据可视化的图表，请直接在输出的 HTML 结构中或之后，穿插使用 ````echarts` 代码块包裹的严格 JSON 配置对象（如：````echarts\n{"xAxis":{...}}\n````）。前端解析引擎会自动将其拦截并渲染为真实的动态图表。注意：JSON 必须严格合法，且严禁包含 JavaScript 函数或注释。
 5. **ECharts 强制暗黑配色 (Tailwind Colors)**：图表必须与系统的暗黑玻璃态 UI 完美融合。强制要求：背景设为透明 (`"backgroundColor": "transparent"`)，坐标轴线和网格分割线使用暗石板色 (`#1e293b` 或 `#334155`)，文字标签使用冷灰色 (`#64748b` 或 `#94a3b8`)。数据线/柱体必须使用 Tailwind 现代色系：主色调优先用紫 (`#8b5cf6`) 和蓝 (`#3b82f6`)，上涨/看多用绿 (`#10b981`)，下跌/看空用红 (`#ef4444`)，渐变背景 (areaStyle) 需辅以较低透明度。严禁使用 ECharts 默认的刺眼亮色。
 
+## 9. 主从采集集群架构 (Master-Slave Collector Cluster)
+
+系统采用**主从节点 + 服务池 + 故障自动切换**的分布式数据采集架构。所有数据源接入统一收口在 backend，通过 `COLLECTOR_*` 环境变量在每个节点独立配置启用哪些采集器。
+
+### 9.1 节点角色与职责
+
+| 角色 | Compose Profile | 职责 | 典型采集器 |
+|:---|:---|:---|:---|
+| **Master (主节点)** | `master` | API 网关 + PostgreSQL + Redis + ClusterManager + 可配置采集器 + 监控 | akshare, yfinance |
+| **Slave (从节点)** | `slave` | 轻量 API (port 8001) + 可配置采集器 + 多 Master 心跳注册 | futu, finnhub, yfinance |
+
+**多 Master 支持**: Slave 可同时注册到多个 Master 节点，每个 Master 有自己的 Redis。哪个 Master 发起数据请求，Slave 就将结果写入该 Master 的 Redis。
+
+### 9.2 数据流模式
+
+```
+[实时查询 - Master 主动调用 Slave，Slave 写入调用方 Master 的 Redis]
+Master-A 用户请求 → ClusterManager.call_collector("yfinance", "fetch_quote")
+  → 从 yfinance 服务池选择可用 Slave 节点
+  → HTTP POST http://slave:8001/collect/fetch_quote {callback_redis: {host:A-redis, port:6379}}
+  → Slave 采集数据 → 写入 Master-A 的 Redis (quant:cache:fetch_quote:AAPL)
+  → 返回 Master-A → 返回用户
+
+Master-B 同样调用 Slave → Slave 写入 Master-B 的 Redis
+
+[后台推送 - Slave daemon 写入所有 Master 的 Redis]
+Slave yfinance daemon → 拉取宏观数据 → 写入每个 Master 的 Redis
+任意 Master 用户请求 → 读本地 Redis 缓存 → 直接返回
+```
+
+**Redis 角色定位**: 纯缓存 + 节点发现注册表。每个 Master 拥有独立的 Redis 实例。Slave 通过 `MASTER_NODES` 配置连接多个 Master 的 Redis。
+
+### 9.3 服务池与 Failover 机制
+
+- **多 Master 注册**: Slave 启动时向每个 Master 的 Redis 写入 `quant:node:{slave_id}` (JSON, TTL=15s)
+- **服务池构建**: 每个 Master 的 `ClusterManager` 扫描本地 Redis，按采集器类型构建 `collector → [slave_nodes]` 映射
+- **Failover**: 调用时自动跳过不健康节点，连续失败 3 次标记 unhealthy，30s 后尝试恢复
+- **回调写入**: Master 调用 Slave 时携带 `callback_redis` (host/port/password)，Slave 将结果写入该 Redis
+- **静态兜底**: `SLAVE_NODES` 环境变量配置静态节点列表，冷启动时立即可用
+
+### 9.4 部署方式 (统一 Compose 文件 + .env + profiles)
+
+单一 `docker-compose.yml`，通过 `COMPOSE_PROFILES` 环境变量控制启动哪些服务：
+
+```bash
+# 主节点: 编辑 .env 设置 COMPOSE_PROFILES=master
+docker compose up -d                              # API + PG + Redis + Worker
+
+# 主节点 + 监控: 编辑 .env 设置 COMPOSE_PROFILES=master,monitoring
+docker compose up -d                              # 上述 + Prometheus + Grafana
+
+# 从节点: 编辑 .env 设置 COMPOSE_PROFILES=slave
+docker compose up -d                              # 轻量采集 API
+```
+
+代码拉取到 VPS 后 `docker compose build && docker compose up -d` 即可编译运行。
+
+每个节点的 `.env` 独立配置：
+
+```bash
+# 主节点 A (北京) .env
+NODE_ROLE=master
+COLLECTOR_AKSHARE=true
+COLLECTOR_YFINANCE=true
+SLAVE_NODES=http://overseas-1:8001,http://yf-node-1:8001
+COMPOSE_PROFILES=master,monitoring
+
+# 主节点 B (东京) .env
+NODE_ROLE=master
+COLLECTOR_YFINANCE=true
+SLAVE_NODES=http://overseas-1:8001
+
+# 海外从节点 .env (注册到多个 Master)
+NODE_ROLE=slave
+SLAVE_ID=overseas-1
+NODE_HOST=your-public-ip
+NODE_PORT=8001
+COLLECTOR_FUTU=true
+COLLECTOR_FINNHUB=true
+MASTER_NODES=[{"id":"beijing","redis_host":"120.53.84.116","redis_port":6379,"redis_password":"pwd-a"},{"id":"tokyo","redis_host":"x.x.x.x","redis_port":6379,"redis_password":"pwd-b"}]
+```
+
+### 9.5 核心文件映射
+
+| 文件 | 职责 |
+|:---|:---|
+| `backend/workers/collector_registry.py` | 采集器注册表：定义 4 个采集器元数据 + `get_enabled_collectors()` + `start_collector_daemons()` |
+| `backend/workers/cluster_manager.py` | 集群管理器：Redis 节点发现 + 服务池 + failover HTTP 代理 + 健康追踪 |
+| `backend/slave_app.py` | 从节点轻量 FastAPI：`/health` + `POST /collect/{action}` + 心跳注册 |
+| `backend/worker.py` | 主 Worker：按 `NODE_ROLE` 启动 ClusterManager + 采集器 daemon + 通用后台任务 |
+| `backend/main.py` | 主 API：lifespan 启动 ClusterManager + `GET /api/v1/cluster` 集群状态端点 |
+| `docker-compose.yml` | 统一 Compose：master/slave/monitoring profiles 控制服务启停 |
+| `.github/workflows/backend.yml` | CI/CD：矩阵部署 (beijing + overseas + slave-N)，`workflow_dispatch` 选择目标 |
+
+### 9.6 开发约束
+
+- **新增采集器**: 只需在 `collector_registry.py` 的 `COLLECTORS` 字典中添加定义，实现对应的 daemon 函数，并在 `slave_app.py` 的 `_dispatch_collect()` 中添加路由
+- **Slave API 契约**: `POST /collect/{action}` 接受 `{ticker, params}` 返回 `{code, data, source_node}`，Master 通过 `ClusterManager.call_collector()` 调用
+- **禁止绕过服务池**: Master 获取数据时禁止直接硬编码 Slave 地址，必须通过 `ClusterManager` 的服务池 + failover
+- **Redis 键空间约定**:
+  - `quant:node:{node_id}` — 节点注册信息 (JSON, TTL=15s)
+  - `quant:worker:heartbeat:{uuid}` — Worker 存活心跳 (TTL=15s)
+
 ---
 
 # 附录 A：Vibe Coding 工程规范 (V3.0)
@@ -463,7 +566,9 @@ CI/CD       GitHub Actions
 部署模式
   本地研发   ./start.sh（热更新）
   单机生产   docker-compose up -d
-  分布式     主服务器(Web+DB) + Worker节点(数据抓取)
+  分布式集群   Master(Web+DB+Redis) + Slave节点(数据采集, 可配置采集器组合)
+  主节点部署   COMPOSE_PROFILES=master docker compose up -d
+  从节点部署   COMPOSE_PROFILES=slave docker compose up -d
   国内 VPS   镜像源加速 + HTTP 代理配置
 ```
 
@@ -1035,3 +1140,4 @@ docs/subsystems/
 | 日期 | 版本 | 变更内容 |
 |:---|:---|:---|
 | 2026-06-29 | V1.0 | 初次合并：附录 A 合并自 docs/02 V3.0 + cursor V2.0；附录 B 合并自 .aiexclude |
+| 2026-06-28 | V1.1 | 新增 §9 主从采集集群架构 (Master-Slave Collector Cluster)；更新 §A.3.4 部署模式；更新 .env.example 采集器配置 |

@@ -362,11 +362,50 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 ---
 
+## 🚀 当前 Sprint — 主从采集集群开发与部署
+
+> 架构设计已完成 (ClusterManager + slave_app + CollectorRegistry)，统一 Compose + Profiles。  
+> 以下任务按优先级排序，聚焦实际部署和功能验证。
+
+### Sprint 1: 核心集群通信 (本周)
+
+- [x] **[CL-01]** Master ClusterManager 集成测试：服务池刷新、failover 切换、健康追踪、本地降级、payload 格式验证 (32 tests)
+- [x] **[CL-02]** Slave 心跳稳定性测试：多 Master Redis 多写、TTL 过期、断连恢复、连接状态追踪 (28 tests)
+- [x] **[CL-03]** 采集回调链路验证：Master 调用 Slave /collect/{action} → 数据写入 callback_redis、新旧 payload 兼容
+- [x] **[CL-04]** 本地开发环境模拟主从：docker-compose.local.yml 双 Compose profiles 同时启动验证
+
+### Sprint 2: VPS 实际部署 (下周)
+
+- [ ] **[CL-05]** 北京 VPS 部署 Master (COMPOSE_PROFILES=master,monitoring) — 部署模板已就绪: `scripts/deploy/env.beijing.example`
+- [ ] **[CL-06]** 加州 VPS 部署 Slave (COMPOSE_PROFILES=slave)，配置 MASTER_NODES — 一键脚本已就绪: `scripts/deploy/init_slave.sh`
+- [ ] **[CL-07]** Tailscale 跨节点通信验证：Slave → Master Redis 心跳写入
+- [ ] **[CL-08]** CI/CD 矩阵部署验证：backend.yml 三矩阵 (beijing/overseas/slave-1) — .env 自动生成已实现
+
+### Sprint 3: 采集器功能验证
+
+- [ ] **[CL-09]** yfinance 采集器在 Slave 节点运行验证
+- [ ] **[CL-10]** finnhub 采集器在 Slave 节点运行验证
+- [ ] **[CL-11]** futu 采集器在 Slave 节点运行验证 (需 Futu OpenD 加州 systemd)
+- [ ] **[CL-12]** akshare 采集器在 Master 节点验证 (国内直连)
+
+### Sprint 4: 稳定性与监控
+
+- [ ] **[CL-13]** Slave 断连降级测试：Master 返回 STALE 数据而非报错
+- [ ] **[CL-14]** Grafana 监控面板添加集群指标：节点心跳状态、采集成功率、failover 次数
+- [ ] **[CL-15]** 日志规范化：集群日志统一格式 + 告警通道接入
+
+---
+
 ## ✅ 已完成归档
 
 
 | 完成日期    | 任务                                                                               |
 | ------- | -------------------------------------------------------------------------------- |
+| 2026-06-28 | [CL-01~04] 核心集群通信完成: payload 格式修复 + 本地降级 + Prometheus 指标 + 心跳增强 + 新旧 payload 兼容 + 60 个测试全通过 |
+| 2026-06-28 | 新增 VPS 部署配置: `scripts/deploy/env.beijing.example` + `env.slave.example` + `init_slave.sh` 一键初始化脚本 |
+| 2026-06-28 | CI/CD 部署流程增强: 首次部署时自动从 GitHub Secrets 生成 .env，支持 beijing/overseas/slave-1 三节点矩阵 |
+| 2026-06-28 | 本地集群验证脚本: `scripts/test_cluster_local.py`，12 项端到端验证全部通过 (无需 Docker) |
+| 2026-06-28 | 新增「当前 Sprint — 主从采集集群开发与部署」：CL-01~15 分 4 个 Sprint，覆盖集群通信/VPS部署/采集器验证/稳定性监控 |
 | 2026-06-28 | 新增 `docs/14. 分布式数据源服务架构.md`：YFinance 多 VPS 驻留服务设计（注册发现 / 加权路由 / failover / STALE 降级） |
 | 2026-06-28 | 重构 DIST 任务：原 DIST-01~10 拆分为 DIST-01~18，按 P0-P3 阶段组织（注册表 / 路由器 / 子服务 / HMAC / 编排 / 部署 / 监控 / 扩展） |
 | 2026-06 | ADR-001: 确立纯 Vite SPA (React) 替代 Next.js App Router                              |
