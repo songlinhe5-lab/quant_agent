@@ -217,20 +217,24 @@ jobs:
           S1_HOST: ${{ secrets.VPS_S1_HOST }}
           S1_USER: ${{ secrets.VPS_S1_USER }}
           S1_KEY: ${{ secrets.VPS_S1_SSH_KEY }}
+          S1_ENV: ${{ secrets.VPS_S1_ENV }}
           S2_HOST: ${{ secrets.VPS_S2_HOST }}
           S2_USER: ${{ secrets.VPS_S2_USER }}
           S2_KEY: ${{ secrets.VPS_S2_SSH_KEY }}
+          S2_ENV: ${{ secrets.VPS_S2_ENV }}
           S3_HOST: ${{ secrets.VPS_S3_HOST }}
           S3_USER: ${{ secrets.VPS_S3_USER }}
           S3_KEY: ${{ secrets.VPS_S3_SSH_KEY }}
+          S3_ENV: ${{ secrets.VPS_S3_ENV }}
           S4_HOST: ${{ secrets.VPS_S4_HOST }}
           S4_USER: ${{ secrets.VPS_S4_USER }}
           S4_KEY: ${{ secrets.VPS_S4_SSH_KEY }}
+          S4_ENV: ${{ secrets.VPS_S4_ENV }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          envs: S1_HOST,S1_USER,S1_KEY,S2_HOST,S2_USER,S2_KEY,S3_HOST,S3_USER,S3_KEY,S4_HOST,S4_USER,S4_KEY
+          envs: S1_HOST,S1_USER,S1_KEY,S1_ENV,S2_HOST,S2_USER,S2_KEY,S2_ENV,S3_HOST,S3_USER,S3_KEY,S3_ENV,S4_HOST,S4_USER,S4_KEY,S4_ENV
           script: |
             set -e
 
@@ -249,18 +253,26 @@ jobs:
               exit 1
             fi
             echo "Found repo at: $REPO_PATH"
-            tar czf /tmp/quant-agent-code.tar.gz -C "$(dirname $REPO_PATH)" "$(basename $REPO_PATH)"
+            tar czf /tmp/quant-agent-code.tar.gz --exclude='.env' -C "$(dirname $REPO_PATH)" "$(basename $REPO_PATH)"
             echo "Code tarball ready ($(du -h /tmp/quant-agent-code.tar.gz | cut -f1))"
 
             # 写入从节点部署脚本 (base64 编码避免 YAML 解析问题)
-            echo 'IyEvYmluL2Jhc2gKc2V0IC1lCkRFUExPWV9QQVRIPS9vcHQvcXVhbnQtYWdlbnQKUFJPRklMRVM9c2xhdmUKQ09ERV9UQVJCQUxMPS90bXAvcXVhbnQtYWdlbnQtY29kZS50YXIuZ3oKaWYgWyAtZiAiJENPREVfVEFSQkFMTCIgXTsgdGhlbgogIGVjaG8gImV4dHJhY3RpbmcgY29kZSBmcm9tIG1hc3Rlci4uLiIKICBbIC1kICIkREVQTE9ZX1BBVEgiIF0gJiYgc3VkbyBybSAtcmYgIiRERVBMT1lfUEFUSCIKICB0YXIgeHpmICIkQ09ERV9UQVJCQUxMIiAtQyAvb3B0LwogIHN1ZG8gY2hvd24gLVIgJCh3aG9hbWkpOiQod2hvYW1pKSAkREVQTE9ZX1BBVEgKICBybSAtZiAiJENPREVfVEFSQkFMTCIKZWxzZQogIGVjaG8gIkVSUk9SOiBjb2RlIHRhcmJhbGwgbm90IGZvdW5kIGF0ICRDT0RFX1RBUkJBTEwiCiAgZXhpdCAxCmZpCmdpdCBjb25maWcgLS1nbG9iYWwgLS1hZGQgc2FmZS5kaXJlY3RvcnkgJERFUExPWV9QQVRIIDI+L2Rldi9udWxsIHx8IHRydWUKZWNobyAic3RvcHBpbmcgY29udGFpbmVycy4uLiIKc3VkbyBDT01QT1NFX1BST0ZJTEVTPSRQUk9GSUxFUyBkb2NrZXIgY29tcG9zZSBkb3duIHx8IHRydWUKZWNobyAiYnVpbGRpbmcgaW1hZ2UuLi4iCnN1ZG8gZG9ja2VyIGNvbXBvc2UgYnVpbGQgLS1uby1jYWNoZQplY2hvICJzdGFydGluZyBzZXJ2aWNlcy4uLiIKc3VkbyBDT01QT1NFX1BST0ZJTEVTPSRQUk9GSUxFUyBkb2NrZXIgY29tcG9zZSB1cCAtZCAtLXJlbW92ZS1vcnBoYW5zCmVjaG8gIndhaXRpbmcgMzBzLi4uIgpzbGVlcCAzMApIRUFMVEg9JChjdXJsIC1zZiAtLW1heC10aW1lIDEwIGh0dHA6Ly9sb2NhbGhvc3Q6ODAwMS9oZWFsdGggMj4vZGV2L251bGwgfHwgZWNobyBVTkhFQUxUSFkpCmlmIFsgIiRIRUFMVEgiID0gIlVOSEVBTFRIWSIgXTsgdGhlbgogIGVjaG8gImhlYWx0aCBjaGVjayBmYWlsZWQiCiAgc3VkbyBDT01QT1NFX1BST0ZJTEVTPSRQUk9GSUxFUyBkb2NrZXIgY29tcG9zZSBsb2dzIC0tdGFpbCAyMAogIGV4aXQgMQpmaQplY2hvICJkZXBsb3kgY29tcGxldGUiCnN1ZG8gZG9ja2VyIGltYWdlIHBydW5lIC1mCnN1ZG8gZG9ja2VyIGJ1aWxkZXIgcHJ1bmUgLWFmIC0tZmlsdGVyICJ1bnRpbD0xNjhoIgo=' | base64 -d > /tmp/deploy_slave.sh
+            echo 'IyEvYmluL2Jhc2gKc2V0IC1lCkRFUExPWV9QQVRIPS9vcHQvcXVhbnQtYWdlbnQKUFJPRklMRVM9c2xhdmUKQ09ERV9UQVJCQUxMPS90bXAvcXVhbnQtYWdlbnQtY29kZS50YXIuZ3oKRU5WX0ZJTEU9L3RtcC9zbGF2ZV9lbnZfZmlsZQojIFdyaXRlIC5lbnYgZmlyc3QgKGJlZm9yZSBjb2RlIGV4dHJhY3Rpb24sIHNpbmNlIHRhciBleGNsdWRlcyAuZW52KQppZiBbIC1mICIkRU5WX0ZJTEUiIF07IHRoZW4KICBlY2hvICJ3cml0aW5nIC5lbnYuLi4iCiAgWyAtZCAiJERFUExPWV9QQVRIIiBdIHx8IHN1ZG8gbWtkaXIgLXAgIiRERVBMT1lfUEFUSCIKICBzdWRvIGNwICIkRU5WX0ZJTEUiICIkREVQTE9ZX1BBVEgvLmVudiIKICBzdWRvIGNob3duICQod2hvYW1pKTokKHdob2FtaSkgIiRERVBMT1lfUEFUSC8uZW52IgogIHJtIC1mICIkRU5WX0ZJTEUiCmVsc2UKICBlY2hvICJXQVJOSU5HOiBubyAuZW52IGZpbGUgcHJvdmlkZWQiCmZpCiMgRXh0cmFjdCBjb2RlICh0YXIgZXhjbHVkZXMgLmVudiwgc28gZXhpc3RpbmcgLmVudiBpcyBwcmVzZXJ2ZWQpCmlmIFsgLWYgIiRDT0RFX1RBUkJBTEwiIF07IHRoZW4KICBlY2hvICJleHRyYWN0aW5nIGNvZGUgZnJvbSBtYXN0ZXIuLi4iCiAgdGFyIHh6ZiAiJENPREVfVEFSQkFMTCIgLUMgL29wdC8gLS1leGNsdWRlPScuZW52JwogIHN1ZG8gY2hvd24gLVIgJCh3aG9hbWkpOiQod2hvYW1pKSAkREVQTE9ZX1BBVEgKICBybSAtZiAiJENPREVfVEFSQkFMTCIKZWxzZQogIGVjaG8gIkVSUk9SOiBjb2RlIHRhcmJhbGwgbm90IGZvdW5kIgogIGV4aXQgMQpmaQpnaXQgY29uZmlnIC0tZ2xvYmFsIC0tYWRkIHNhZmUuZGlyZWN0b3J5ICRERVBMT1lfUEFUSCAyPi9kZXYvbnVsbCB8fCB0cnVlCmVjaG8gInN0b3BwaW5nIGNvbnRhaW5lcnMuLi4iCnN1ZG8gQ09NUE9TRV9QUk9GSUxFUz0kUFJPRklMRVMgZG9ja2VyIGNvbXBvc2UgZG93biB8fCB0cnVlCmVjaG8gImJ1aWxkaW5nIGltYWdlLi4uIgpzdWRvIGRvY2tlciBjb21wb3NlIGJ1aWxkIC0tbm8tY2FjaGUKZWNobyAic3RhcnRpbmcgc2VydmljZXMuLi4iCnN1ZG8gQ09NUE9TRV9QUk9GSUxFUz0kUFJPRklMRVMgZG9ja2VyIGNvbXBvc2UgdXAgLWQgLS1yZW1vdmUtb3JwaGFucwplY2hvICJ3YWl0aW5nIDMwcy4uLiIKc2xlZXAgMzAKSEVBTFRIPSQoY3VybCAtc2YgLS1tYXgtdGltZSAxMCBodHRwOi8vbG9jYWxob3N0OjgwMDEvaGVhbHRoIDI+L2Rldi9udWxsIHx8IGVjaG8gVU5IRUFMVEhZKQppZiBbICIkSEVBTFRIIiA9ICJVTkhFQUxUSFkiIF07IHRoZW4KICBlY2hvICJoZWFsdGggY2hlY2sgZmFpbGVkIgogIHN1ZG8gQ09NUE9TRV9QUk9GSUxFUz0kUFJPRklMRVMgZG9ja2VyIGNvbXBvc2UgbG9ncyAtLXRhaWwgMjAKICBleGl0IDEKZmkKZWNobyAiZGVwbG95IGNvbXBsZXRlIgpzdWRvIGRvY2tlciBpbWFnZSBwcnVuZSAtZgpzdWRvIGRvY2tlciBidWlsZGVyIHBydW5lIC1hZiAtLWZpbHRlciAidW50aWw9MTY4aCIK' | base64 -d > /tmp/deploy_slave.sh
             chmod +x /tmp/deploy_slave.sh
 
             # 从节点部署函数
             deploy_slave() {
-              local SLAVE_ID=$1 SLAVE_IP=$2 SLAVE_USER=$3 SLAVE_KEY=$4
+              local SLAVE_ID=$1 SLAVE_IP=$2 SLAVE_USER=$3 SLAVE_KEY=$4 SLAVE_ENV_B64=$5
               echo ""
               echo "========== 部署 $SLAVE_ID ($SLAVE_IP) =========="
+              # 写入从节点 .env (base64 解码)
+              if [ -n "$SLAVE_ENV_B64" ]; then
+                echo "$SLAVE_ENV_B64" | base64 -d > /tmp/slave_env_file
+                scp -i ~/.ssh/$SLAVE_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 /tmp/slave_env_file $SLAVE_USER@$SLAVE_IP:/tmp/slave_env_file || { echo "❌ $SLAVE_ID SCP .env 失败"; return 1; }
+                rm -f /tmp/slave_env_file
+              else
+                echo "WARNING: no .env for $SLAVE_ID"
+              fi
               scp -i ~/.ssh/$SLAVE_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 /tmp/quant-agent-code.tar.gz $SLAVE_USER@$SLAVE_IP:/tmp/quant-agent-code.tar.gz || { echo "❌ $SLAVE_ID SCP code 失败"; return 1; }
               scp -i ~/.ssh/$SLAVE_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 /tmp/deploy_slave.sh $SLAVE_USER@$SLAVE_IP:/tmp/deploy.sh || { echo "❌ $SLAVE_ID SCP script 失败"; return 1; }
               ssh -i ~/.ssh/$SLAVE_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 $SLAVE_USER@$SLAVE_IP "bash /tmp/deploy.sh" || { echo "❌ $SLAVE_ID 部署失败 (非致命)"; return 1; }
@@ -268,10 +280,10 @@ jobs:
             }
 
             # 部署 4 个从节点
-            deploy_slave "Slave-1" "$S1_HOST" "$S1_USER" "slave_1"
-            deploy_slave "Slave-2" "$S2_HOST" "$S2_USER" "slave_2"
-            deploy_slave "Slave-3" "$S3_HOST" "$S3_USER" "slave_3"
-            deploy_slave "Slave-4" "$S4_HOST" "$S4_USER" "slave_4"
+            deploy_slave "Slave-1" "$S1_HOST" "$S1_USER" "slave_1" "$S1_ENV"
+            deploy_slave "Slave-2" "$S2_HOST" "$S2_USER" "slave_2" "$S2_ENV"
+            deploy_slave "Slave-3" "$S3_HOST" "$S3_USER" "slave_3" "$S3_ENV"
+            deploy_slave "Slave-4" "$S4_HOST" "$S4_USER" "slave_4" "$S4_ENV"
 
             # 清理
             rm -f ~/.ssh/slave_* /tmp/quant-agent-code.tar.gz
