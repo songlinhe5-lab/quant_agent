@@ -416,7 +416,7 @@ jobs:
               scp -i ~/.ssh/$KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
                 /tmp/docker-compose.yml $USER@$IP:/tmp/ || { echo "SCP failed"; return 1; }
 
-              # Remote deploy (pull from GHCR directly for overseas slaves)
+              # Remote deploy
               ssh -i ~/.ssh/$KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 $USER@$IP bash -s <<REMOTE
             set -e
             DEPLOY_PATH=/opt/quant-agent
@@ -449,11 +449,33 @@ jobs:
             fi
             echo "Docker preflight OK: \$(docker --version) | \$(docker compose version --short)"
 
-            # GHCR login and pull (overseas slaves have fast access to GHCR)
+            # GHCR login and pull with retries
             echo "Logging in to GHCR..."
-            echo "${GHCR_TOKEN}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin || { echo "GHCR login failed"; exit 1; }
+            for attempt in 1 2 3; do
+              if echo "${GHCR_TOKEN}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin 2>/dev/null; then
+                echo "GHCR login OK"
+                break
+              fi
+              echo "GHCR login attempt \$attempt/3 failed, retrying in 10s..."
+              sleep 10
+              if [ "\$attempt" = "3" ]; then
+                echo "GHCR login failed after 3 attempts"
+                exit 1
+              fi
+            done
             echo "Pulling image ${TARGET_TAG} from GHCR..."
-            sudo COMPOSE_PROFILES=slave docker compose pull || { echo "Image pull failed"; exit 1; }
+            for attempt in 1 2 3; do
+              if sudo COMPOSE_PROFILES=slave docker compose pull 2>/dev/null; then
+                echo "Image pulled successfully"
+                break
+              fi
+              echo "Pull attempt \$attempt/3 failed, retrying in 10s..."
+              sleep 10
+              if [ "\$attempt" = "3" ]; then
+                echo "Image pull failed after 3 attempts"
+                exit 1
+              fi
+            done
 
             echo "Starting slave..."
             sudo COMPOSE_PROFILES=slave docker compose up -d --remove-orphans
