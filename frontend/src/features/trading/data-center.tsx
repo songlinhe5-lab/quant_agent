@@ -39,7 +39,7 @@ export function DataCenterModule() {
     // 初始化时从 LocalStorage 恢复日历的筛选偏好
     const savedImpacts = localStorage.getItem('quant_macro_filter_impacts')
     if (savedImpacts !== null) {
-      try { setSelectedImpacts(JSON.parse(savedImpacts)) } catch (e) {}
+      try { setSelectedImpacts(JSON.parse(savedImpacts)) } catch (e) { /* ignore parse error */ }
     } else {
       // 兼容旧的单一开关偏好设定
       const savedPref = localStorage.getItem('quant_macro_filter_high_impact')

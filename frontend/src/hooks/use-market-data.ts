@@ -146,7 +146,7 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
               staleTimerRef.current = setTimeout(() => setIsStale(true), 15000)
             }
           }
-        } catch (e) {}
+        } catch (e) { /* ignore decode error */ }
       }
     }
 

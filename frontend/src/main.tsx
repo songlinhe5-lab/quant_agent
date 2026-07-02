@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
 import { ThemeProvider } from './components/layout/theme-provider'
 import { AuthProvider } from './contexts/auth-context'
 import { I18nProvider } from './contexts/i18n'
@@ -10,6 +11,7 @@ import './styles/globals.css'
 
 ReactDOM.createRoot(document.getElementById('app')!).render(
   <React.StrictMode>
+    <BrowserRouter>
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange>
       <I18nProvider>
         <AuthProvider>
@@ -17,5 +19,6 @@ ReactDOM.createRoot(document.getElementById('app')!).render(
         </AuthProvider>
       </I18nProvider>
     </ThemeProvider>
+    </BrowserRouter>
   </React.StrictMode>
 )

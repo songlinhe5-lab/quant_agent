@@ -39,7 +39,7 @@ export function useApi<T = any>() {
         const isUnauthorized = err instanceof ApiError && err.code === 401
 
         // 从 Axios 错误中提取后端返回的详细错误信息
-        let errorMessage = e.message
+        const errorMessage = e.message
 
         // 统一的错误拦截与提示（如果是 401 则静默处理，交由 apiClient 去跳转页面）
         if (showToastOnError && !isUnauthorized) {
