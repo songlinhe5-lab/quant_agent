@@ -450,9 +450,10 @@ jobs:
             echo "Docker preflight OK: \$(docker --version) | \$(docker compose version --short)"
 
             # GHCR login and pull (overseas slaves have fast access to GHCR)
-            echo "${GHCR_TOKEN}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin 2>/dev/null
+            echo "Logging in to GHCR..."
+            echo "${GHCR_TOKEN}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin || { echo "GHCR login failed"; exit 1; }
             echo "Pulling image ${TARGET_TAG} from GHCR..."
-            sudo COMPOSE_PROFILES=slave docker compose pull
+            sudo COMPOSE_PROFILES=slave docker compose pull || { echo "Image pull failed"; exit 1; }
 
             echo "Starting slave..."
             sudo COMPOSE_PROFILES=slave docker compose up -d --remove-orphans
