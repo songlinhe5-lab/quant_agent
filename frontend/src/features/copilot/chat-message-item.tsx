@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react'
-import { User, Bot, Loader2, Sparkles, ChevronRight, ChevronDown, ChevronUp, Search, Globe, Database, FileText, Code2, Check, Copy, RotateCcw, AlertTriangle } from 'lucide-react'
+import { User, Bot, Loader2, Sparkles, ChevronRight, ChevronDown, ChevronUp, Search, Globe, Database, FileText, Code2, Check, Copy, RotateCcw, AlertTriangle, Rocket } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ThinkTimer } from '@/features/copilot/think-timer'
 import ReactMarkdown from 'react-markdown'
@@ -150,8 +150,8 @@ export const ChatMessageItem = React.memo(({
   const navigate = useNavigate();
 
   const content = msg.content || ''
-  const thinkContent = ''
-  const finalContent = content
+  let thinkContent = ''
+  let finalContent = content
 
   const thinkStart = content.indexOf('<think>')
   const thinkEnd = content.indexOf('</think>')
@@ -468,6 +468,40 @@ export const ChatMessageItem = React.memo(({
                   {finalContent}
                 </ReactMarkdown>
               </MarkdownErrorBoundary>
+              
+              {/* 💡 策略部署卡片：渲染后端标记的策略代码块，附带一键部署按钮 */}
+              {msg.strategyBlocks && msg.strategyBlocks.length > 0 && (
+                <div className="mt-4 space-y-3">
+                  {msg.strategyBlocks.map((block, bIdx) => (
+                    <div key={bIdx} className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 dark:bg-emerald-500/10 overflow-hidden shadow-sm">
+                      <div className="flex items-center justify-between px-4 py-2.5 bg-emerald-500/10 border-b border-emerald-500/20">
+                        <div className="flex items-center gap-2">
+                          <Rocket className="h-4 w-4 text-emerald-500" />
+                          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">策略代码 (Strategy Block)</span>
+                          <span className="text-[10px] text-muted-foreground font-mono">{block.code.split('\n').length} 行</span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            sessionStorage.setItem('quant_strategy_initial_code', block.code)
+                            window.dispatchEvent(new CustomEvent('quant_strategy_code_invoke', { detail: { code: block.code } }))
+                            const tabTrigger = document.querySelector('[role="tab"][value="strategy"], [data-value="strategy"], a[href="/strategy"], a[href="#strategy"]') as HTMLElement
+                            if (tabTrigger) { tabTrigger.click() }
+                            else if (navigate) { navigate('/strategy') }
+                            else { window.location.href = '/strategy' }
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold shadow-sm hover:shadow-md transition-all"
+                        >
+                          <Rocket className="h-3 w-3" />
+                          一键部署
+                        </button>
+                      </div>
+                      <div className="overflow-x-auto custom-scrollbar text-[11px] leading-relaxed max-h-64">
+                        <pre className="p-3 font-mono text-slate-700 dark:text-slate-300 whitespace-pre">{block.code}</pre>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               
               {isGenerating && isLast && !isThinkingState && (
                 <span className="inline-block w-1.5 h-4 mt-2 align-middle bg-emerald-400 animate-pulse" />

@@ -654,6 +654,15 @@ class HermesAgent:
                                 continue # 继续下一轮循环，直接将补充内容流式推送给前端
                             
                     await self._save_session()
+                    
+                    # 💡 策略代码块检测：扫描完整回复中的 Python 代码块，识别包含 backtest/deploy 关键字的策略代码
+                    if collected_content:
+                        strategy_pattern = re.compile(r'```python\s*\n(.*?)```', re.DOTALL)
+                        for match in strategy_pattern.finditer(collected_content):
+                            code = match.group(1).strip()
+                            if any(kw in code for kw in ['backtest', 'deploy', 'Backtest', 'Deploy']):
+                                yield {"type": "strategy_code", "code": code}
+                    
                     return
             except Exception as e:
                 import traceback
