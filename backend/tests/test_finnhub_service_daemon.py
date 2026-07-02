@@ -177,7 +177,10 @@ class TestFinnhubServiceDaemon:
     # ─── _insider_transactions_marquee_daemon ───────────────────
     @pytest.mark.asyncio
     async def test_insider_marquee_daemon_significant_txn_added_to_zset(self, service):
-        tx = {"change": 20000, "transaction_price": 100.0, "date": "2026-06-28", "name": "CEO Cook"}
+        from datetime import datetime as _dt
+
+        today_str = _dt.now().strftime("%Y-%m-%d")
+        tx = {"change": 20000, "transaction_price": 100.0, "date": today_str, "name": "CEO Cook"}
         with (
             patch("backend.services.finnhub_service.asyncio.sleep", new=_make_cancelling_sleep(1)),
             patch.object(
