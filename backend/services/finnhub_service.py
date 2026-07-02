@@ -437,5 +437,4 @@ class FinnhubService:
             return []
 
 
-
 finnhub_service = FinnhubService()

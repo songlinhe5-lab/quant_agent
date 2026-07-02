@@ -57,9 +57,26 @@ async def _earnings_alert_daemon(finnhub_service):
     print("🚀 [Finnhub Daemon] 启动核心财报发布监控守护进程...")
 
     core_symbols = {
-        "AAPL", "MSFT", "NVDA", "GOOG", "GOOGL", "AMZN", "META", "TSLA",
-        "AVGO", "TSM", "AMD", "NFLX", "INTC", "QCOM", "ASML",
-        "BABA", "PDD", "JD", "BIDU", "NTES",
+        "AAPL",
+        "MSFT",
+        "NVDA",
+        "GOOG",
+        "GOOGL",
+        "AMZN",
+        "META",
+        "TSLA",
+        "AVGO",
+        "TSM",
+        "AMD",
+        "NFLX",
+        "INTC",
+        "QCOM",
+        "ASML",
+        "BABA",
+        "PDD",
+        "JD",
+        "BIDU",
+        "NTES",
     }
 
     while True:
@@ -390,10 +407,32 @@ async def _macro_alert_daemon() -> None:
                 impact = str(row.get("impact", "low")).lower()
 
                 high_impact_keywords = [
-                    "rate", "cpi", "gdp", "payroll", "employment", "nfp",
-                    "fed", "ecb", "boj", "fomc", "pmi", "ism", "claims",
-                    "利率", "决议", "非农", "失业", "通胀", "国内生产总值",
-                    "pce", "lpr", "mlf", "pboc", "降息", "降准", "准备金",
+                    "rate",
+                    "cpi",
+                    "gdp",
+                    "payroll",
+                    "employment",
+                    "nfp",
+                    "fed",
+                    "ecb",
+                    "boj",
+                    "fomc",
+                    "pmi",
+                    "ism",
+                    "claims",
+                    "利率",
+                    "决议",
+                    "非农",
+                    "失业",
+                    "通胀",
+                    "国内生产总值",
+                    "pce",
+                    "lpr",
+                    "mlf",
+                    "pboc",
+                    "降息",
+                    "降准",
+                    "准备金",
                 ]
                 if any(k in event_name.lower() for k in high_impact_keywords):
                     impact = "high"
@@ -407,9 +446,7 @@ async def _macro_alert_daemon() -> None:
                     previous_val = row.get("previous", "--")
                     country = row.get("country", "Global")
 
-                    event_date = (
-                        str(row.get("time", "")).split(" ")[0] if " " in str(row.get("time", "")) else "today"
-                    )
+                    event_date = str(row.get("time", "")).split(" ")[0] if " " in str(row.get("time", "")) else "today"
                     dedup_key = (
                         f"quant:macro:notified:{event_date}:{hashlib.md5(event_name.encode('utf-8')).hexdigest()}"
                     )
@@ -447,8 +484,17 @@ async def _insider_transactions_marquee_daemon(finnhub_service) -> None:
     print("🚀 [Finnhub Daemon] 启动高管内幕交易跑马灯守护进程...")
 
     MAJOR_TICKERS = [
-        "US.AAPL", "US.MSFT", "US.NVDA", "US.GOOG", "US.AMZN", "US.META",
-        "US.TSLA", "HK.00700", "HK.09988", "US.AMD", "US.INTC",
+        "US.AAPL",
+        "US.MSFT",
+        "US.NVDA",
+        "US.GOOG",
+        "US.AMZN",
+        "US.META",
+        "US.TSLA",
+        "HK.00700",
+        "HK.09988",
+        "US.AMD",
+        "US.INTC",
     ]
     MARQUEE_KEY = "quant:insider_marquee"
     DEDUP_KEY = "quant:insider_dedup"
@@ -476,9 +522,7 @@ async def _insider_transactions_marquee_daemon(finnhub_service) -> None:
                                 "change": tx.get("change"),
                                 "price": tx.get("transaction_price"),
                             }
-                            tx_hash = hashlib.md5(
-                                json.dumps(tx_hash_data, sort_keys=True).encode("utf-8")
-                            ).hexdigest()
+                            tx_hash = hashlib.md5(json.dumps(tx_hash_data, sort_keys=True).encode("utf-8")).hexdigest()
 
                             tx_date_str = tx.get("date", "")
                             if not tx_date_str:
@@ -492,9 +536,7 @@ async def _insider_transactions_marquee_daemon(finnhub_service) -> None:
                             except ValueError:
                                 continue
 
-                            is_new = await redis_client.set(
-                                f"{DEDUP_KEY}:{tx_hash}", "1", nx=True, ex=86400 * 7
-                            )
+                            is_new = await redis_client.set(f"{DEDUP_KEY}:{tx_hash}", "1", nx=True, ex=86400 * 7)
                             if is_new:
                                 await redis_client.zadd(
                                     MARQUEE_KEY,
@@ -503,9 +545,7 @@ async def _insider_transactions_marquee_daemon(finnhub_service) -> None:
                             new_transactions_count += 1
 
             if new_transactions_count > 0:
-                print(
-                    f"✨ [Finnhub Daemon] 检测到 {new_transactions_count} 条新的显著高管交易，已推送到跑马灯队列。"
-                )
+                print(f"✨ [Finnhub Daemon] 检测到 {new_transactions_count} 条新的显著高管交易，已推送到跑马灯队列。")
                 await redis_client.zremrangebyrank(MARQUEE_KEY, 0, -101)
 
         except Exception as e:
