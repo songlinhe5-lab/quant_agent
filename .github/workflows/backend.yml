@@ -436,6 +436,19 @@ jobs:
             fi
             echo ".env found, using manual per-node config"
 
+            # Pre-flight checks: Docker + Compose V2
+            if ! command -v docker &> /dev/null; then
+              echo "ERROR: docker is not installed on this node!"
+              echo "Please install: curl -fsSL https://get.docker.com | sudo sh"
+              exit 1
+            fi
+            if ! docker compose version &> /dev/null; then
+              echo "ERROR: docker compose (V2 plugin) is not installed!"
+              echo "Please install: sudo apt-get install -y docker-compose-plugin"
+              exit 1
+            fi
+            echo "Docker preflight OK: \$(docker --version) | \$(docker compose version --short)"
+
             # GHCR login and pull (overseas slaves have fast access to GHCR)
             echo "${GHCR_TOKEN}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin 2>/dev/null
             echo "Pulling image ${TARGET_TAG} from GHCR..."
@@ -450,17 +463,17 @@ jobs:
               sleep 15
               HEALTH=\$(curl -sf --max-time 10 http://localhost:8001/health 2>/dev/null || echo UNHEALTHY)
               if [ "\$HEALTH" != "UNHEALTHY" ]; then
-                echo "Health check passed on attempt $i"
+                echo "Health check passed on attempt \$i"
                 break
               fi
-              echo "Attempt $i/6 failed, retrying..."
+              echo "Attempt \$i/6 failed, retrying..."
               if [ "\$i" = "6" ]; then
                 echo "Health check failed after 6 attempts (90s)"
                 sudo COMPOSE_PROFILES=slave docker compose logs --tail 30
                 exit 1
               fi
             done
-            echo "${TARGET_TAG}" > \$DEPLOY_PATH/.deployed_sha
+            echo "${TARGET_TAG}" | sudo tee \$DEPLOY_PATH/.deployed_sha > /dev/null
             sudo docker logout ghcr.io 2>/dev/null || true
             sudo docker image prune -f
             echo "Deploy OK"
