@@ -276,7 +276,7 @@ class IndicatorWorker {
 
   private initWorker(): void {
     if (typeof Worker === 'undefined') {
-      logger.warn('[IndicatorWorker] Web Worker 不可用，将使用主线程计算')
+      console.warn('[IndicatorWorker] Web Worker 不可用，将使用主线程计算')
       return
     }
 
@@ -302,12 +302,12 @@ class IndicatorWorker {
       }
 
       this.worker.onerror = (error) => {
-        logger.error('[IndicatorWorker] Worker 错误', error as unknown as Error)
+        console.error('[IndicatorWorker] Worker 错误', error as unknown as Error)
       }
 
-      logger.debug('[IndicatorWorker] Worker 初始化成功')
+      console.debug('[IndicatorWorker] Worker 初始化成功')
     } catch (e) {
-      logger.warn('[IndicatorWorker] Worker 创建失败', { error: (e as Error).message })
+      console.warn('[IndicatorWorker] Worker 创建失败', { error: (e as Error).message })
     }
   }
 
@@ -371,7 +371,7 @@ class IndicatorWorker {
             values.push({ ma: sum / period })
           }
         }
-        return { values }
+        return { values: values as Record<string, number>[] }
       }
       default:
         throw new Error(`主线程降级不支持 ${indicator} 计算`)
