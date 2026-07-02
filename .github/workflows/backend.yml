@@ -369,6 +369,8 @@ jobs:
       S4_HOST: ${{ secrets.VPS_S4_HOST }}
       S4_USER: ${{ secrets.VPS_S4_USER }}
       S4_KEY: ${{ secrets.VPS_S4_SSH_KEY }}
+      TRANSIT_USER: ${{ secrets.VPS_S1_USER }}
+      TRANSIT_SSH_KEY: ${{ secrets.VPS_S1_SSH_KEY }}
 
     steps:
       - uses: actions/checkout@v4
@@ -385,7 +387,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          envs: S1_HOST,S1_USER,S1_KEY,S2_HOST,S2_USER,S2_KEY,S3_HOST,S3_USER,S3_KEY,S4_HOST,S4_USER,S4_KEY,GITHUB_ACTOR
+          envs: S1_HOST,S1_USER,S1_KEY,S2_HOST,S2_USER,S2_KEY,S3_HOST,S3_USER,S3_KEY,S4_HOST,S4_USER,S4_KEY,GITHUB_ACTOR,TRANSIT_USER,TRANSIT_SSH_KEY
           command_timeout: 60m
           script: |
             set -e
@@ -416,7 +418,27 @@ jobs:
               scp -i ~/.ssh/$KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
                 /tmp/docker-compose.yml $USER@$IP:/tmp/ || { echo "SCP failed"; return 1; }
 
-              # Remote deploy (pull from GHCR directly for overseas slaves)
+              # Test GHCR connectivity from slave (5s timeout)
+              USE_TRANSIT=0
+              echo "Testing GHCR connectivity from $NAME..."
+              if ! ssh -i ~/.ssh/$KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 $USER@$IP \
+                "curl -sf --max-time 5 https://ghcr.io/v2/ >/dev/null 2>&1" 2>/dev/null; then
+                echo "$NAME cannot reach GHCR, will use transit VPS"
+                USE_TRANSIT=1
+              fi
+
+              # If slave can't reach GHCR, prepare image tarball from transit and SCP to slave
+              if [ "\$USE_TRANSIT" = "1" ]; then
+                echo "Pulling image via transit VPS for $NAME..."
+                ssh -o StrictHostKeyChecking=no -i ~/.ssh/slave_1 ${TRANSIT_USER}@38.60.126.42 "sudo docker save ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG} | gzip > /tmp/${TARGET_TAG}.tar.gz" || { echo "Transit VPS image save failed"; return 1; }
+                scp -o StrictHostKeyChecking=no -i ~/.ssh/slave_1 ${TRANSIT_USER}@38.60.126.42:/tmp/${TARGET_TAG}.tar.gz /tmp/ || { echo "SCP from transit to Master failed"; return 1; }
+                scp -i ~/.ssh/$KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 /tmp/${TARGET_TAG}.tar.gz $USER@$IP:/tmp/ || { echo "SCP from Master to $NAME failed"; return 1; }
+                rm -f /tmp/${TARGET_TAG}.tar.gz
+                ssh -o StrictHostKeyChecking=no -i ~/.ssh/slave_1 ${TRANSIT_USER}@38.60.126.42 "rm -f /tmp/${TARGET_TAG}.tar.gz" || true
+                echo "Image tarball transferred to $NAME"
+              fi
+
+              # Remote deploy
               ssh -i ~/.ssh/$KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 $USER@$IP bash -s <<REMOTE
             set -e
             DEPLOY_PATH=/opt/quant-agent
@@ -449,11 +471,18 @@ jobs:
             fi
             echo "Docker preflight OK: \$(docker --version) | \$(docker compose version --short)"
 
-            # GHCR login and pull (overseas slaves have fast access to GHCR)
-            echo "Logging in to GHCR..."
-            echo "${GHCR_TOKEN}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin || { echo "GHCR login failed"; exit 1; }
-            echo "Pulling image ${TARGET_TAG} from GHCR..."
-            sudo COMPOSE_PROFILES=slave docker compose pull || { echo "Image pull failed"; exit 1; }
+            # Load image from transit or pull from GHCR
+            if [ -f /tmp/${TARGET_TAG}.tar.gz ]; then
+              echo "Loading image from transit tarball..."
+              sudo docker load < /tmp/${TARGET_TAG}.tar.gz
+              rm -f /tmp/${TARGET_TAG}.tar.gz
+              echo "Image loaded from transit successfully"
+            else
+              echo "Logging in to GHCR..."
+              echo "${GHCR_TOKEN}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin || { echo "GHCR login failed"; exit 1; }
+              echo "Pulling image ${TARGET_TAG} from GHCR..."
+              sudo COMPOSE_PROFILES=slave docker compose pull || { echo "Image pull failed"; exit 1; }
+            fi
 
             echo "Starting slave..."
             sudo COMPOSE_PROFILES=slave docker compose up -d --remove-orphans
