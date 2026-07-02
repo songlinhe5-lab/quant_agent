@@ -353,6 +353,18 @@ class ConnectionManager:
                     # 更新当前活跃的富途订阅池
                     self._futu_active_subs.update(current_futu_needs)
 
+                    # 💡 内存安全防御：清理已不在监控列表中的缓存条目
+                    stale_tech = [t for t in self.tech_cache if t not in all_tickers]
+                    for t in stale_tech:
+                        del self.tech_cache[t]
+                    stale_flow = [t for t in self.flow_cache if t not in all_tickers]
+                    for t in stale_flow:
+                        del self.flow_cache[t]
+
+                    # 💡 内存安全防御：清理 Futu 缓存过期条目
+                    if hasattr(futu_service, "cache_mgr"):
+                        futu_service.cache_mgr.evict_stale_cache()
+
                     # 💡 优化 1: 定时刷新技术面指标缓存
                     # 技术指标(日线级)无需每 3 秒全量并发刷新。设定为 1 小时更新一次，或发现新标的时触发  # noqa: E501
                     current_time = time.time()

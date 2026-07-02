@@ -258,21 +258,11 @@ jobs:
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "Deploying image tag: $TAG"
 
-      # Encode compose file and .env file on runner so we can write them on VPS
+      # Encode compose file on runner so we can write it on VPS
       - name: Prepare compose file (base64)
         id: prepare_compose
         run: |
           echo "b64=$(base64 -w0 docker-compose.yml)" >> $GITHUB_OUTPUT
-
-      - name: Prepare env file (base64)
-        id: prepare_env
-        run: |
-          if [ -f ".env" ]; then
-            echo "b64=$(base64 -w0 .env)" >> $GITHUB_OUTPUT
-          else
-            echo "No .env file found, using empty"
-            echo "b64=" >> $GITHUB_OUTPUT
-          fi
 
       - name: Deploy Master
         uses: appleboy/ssh-action@v1
@@ -299,15 +289,12 @@ jobs:
             echo '${{ steps.prepare_compose.outputs.b64 }}' | base64 -d > docker-compose.yml
             sudo sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:.*|ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG}|g" docker-compose.yml
 
-            # Write .env file if provided
-            ENV_B64='${{ steps.prepare_env.outputs.b64 }}'
-            if [ -n "$ENV_B64" ]; then
-              echo "Writing .env file..."
-              echo "$ENV_B64" | base64 -d > .env
-              chmod 600 .env
-            else
-              echo "No .env file provided, skipping"
+            # .env is manually configured on Master, CI does not touch it
+            if [ ! -f .env ]; then
+              echo "ERROR: .env not found! Please manually create /opt/quant-agent/.env"
+              exit 1
             fi
+            echo ".env found, using manual config"
 
             # Write transit VPS SSH key to temp file (reuses VPS_S1_SSH_KEY)
             TRANSIT_KEY_FILE=$(mktemp)
@@ -386,21 +373,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Encode compose file and .env file once for all slaves
+      # Encode compose file once for all slaves
       - name: Prepare compose file (base64)
         id: prepare_compose
         run: |
           echo "b64=$(base64 -w0 docker-compose.yml)" >> $GITHUB_OUTPUT
-
-      - name: Prepare env file (base64)
-        id: prepare_env
-        run: |
-          if [ -f ".env" ]; then
-            echo "b64=$(base64 -w0 .env)" >> $GITHUB_OUTPUT
-          else
-            echo "No .env file found, using empty"
-            echo "b64=" >> $GITHUB_OUTPUT
-          fi
 
       - name: Deploy all slaves via Master
         uses: appleboy/ssh-action@v1
@@ -415,7 +392,6 @@ jobs:
             DEPLOY_PATH=/opt/quant-agent
             TARGET_TAG="${{ needs.deploy_master.outputs.image_tag }}"
             COMPOSE_B64='${{ steps.prepare_compose.outputs.b64 }}'
-            ENV_B64='${{ steps.prepare_env.outputs.b64 }}'
             GHCR_TOKEN='${{ secrets.GITHUB_TOKEN }}'
 
             # Write slave SSH keys
@@ -435,10 +411,10 @@ jobs:
               echo ""
               echo "========== Deploying $NAME ($IP) =========="
 
-              # SCP compose file and .env to slave
-              echo "Transferring files to $NAME..."
+              # SCP compose file to slave (.env is manually configured on each slave)
+              echo "Transferring compose file to $NAME..."
               scp -i ~/.ssh/$KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
-                /tmp/docker-compose.yml /tmp/.env $USER@$IP:/tmp/ || { echo "SCP failed"; return 1; }
+                /tmp/docker-compose.yml $USER@$IP:/tmp/ || { echo "SCP failed"; return 1; }
 
               # Remote deploy (pull from GHCR directly for overseas slaves)
               ssh -i ~/.ssh/$KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 $USER@$IP bash -s <<REMOTE
@@ -453,19 +429,12 @@ jobs:
             sudo chown \$(whoami):\$(whoami) docker-compose.yml
             rm -f /tmp/docker-compose.yml
 
-            # Write .env file only if it doesn't exist (preserve per-node config)
+            # .env is manually configured on each slave, CI does not touch it
             if [ ! -f .env ]; then
-              if [ -n "$ENV_B64" ]; then
-                echo "First deploy: writing .env file..."
-                echo "$ENV_B64" | base64 -d > .env
-                chmod 600 .env
-              else
-                echo "ERROR: No .env file found and no template provided!"
-                exit 1
-              fi
-            else
-              echo ".env already exists, preserving (manual per-node config)"
+              echo "ERROR: .env not found! Please manually create /opt/quant-agent/.env"
+              exit 1
             fi
+            echo ".env found, using manual per-node config"
 
             # GHCR login and pull (overseas slaves have fast access to GHCR)
             echo "${GHCR_TOKEN}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin 2>/dev/null

@@ -124,6 +124,12 @@ class RateLimitedSession(requests.Session):
             raise e
 
 
+# 💡 内存安全防御：缓存容量上限 + TTL 清理
+_YF_CACHE_MAX_SIZE = 500  # 最多缓存 500 个条目
+_YF_CACHE_TTL = 600  # 缓存 TTL 10 分钟
+_YF_ERROR_CACHE_TTL = 300  # 错误黑名单 TTL 5 分钟
+
+
 class YFinanceService:
     def __init__(self, llm_service_instance=None):
         self._cache = {}  # { cache_key: (timestamp, data) }
@@ -145,6 +151,23 @@ class YFinanceService:
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=10, thread_name_prefix="YFinanceWorker")  # noqa: E501
 
         self._init_session()
+
+    def _evict_stale_cache(self):
+        """内存安全防御：清理过期缓存，防止无界字典无限增长导致 OOM"""
+        now = time.time()
+        # 1. 清理主缓存：超过 TTL 的条目
+        stale_keys = [k for k, (ts, _) in self._cache.items() if now - ts > _YF_CACHE_TTL]
+        for k in stale_keys:
+            del self._cache[k]
+        # 2. 容量熔断：如果清理后仍超过上限，直接清空最旧的一半
+        if len(self._cache) > _YF_CACHE_MAX_SIZE:
+            sorted_keys = sorted(self._cache, key=lambda k: self._cache[k][0])
+            for k in sorted_keys[: len(sorted_keys) // 2]:
+                del self._cache[k]
+        # 3. 清理错误黑名单：超过 TTL 的条目
+        error_stale = [k for k, ts in self._error_cache.items() if now - ts > _YF_ERROR_CACHE_TTL]
+        for k in error_stale:
+            del self._error_cache[k]
 
     @property
     def llm_service(self):
@@ -292,6 +315,7 @@ class YFinanceService:
                         is_soft_limited = True
 
                     if not is_soft_limited:
+                        self._evict_stale_cache()
                         self._cache[cache_key] = (time.time(), data)
                         self._error_cache.pop(cache_key, None)  # 成功获取则移除黑名单
                         return True, data, ""
@@ -544,6 +568,7 @@ class YFinanceService:
 
                         # 结果缓存与黑名单维护
                         if res and res.get("status") == "success":
+                            self._evict_stale_cache()
                             self._cache[req["cache_key"]] = (time.time(), res)
                             self._error_cache.pop(req["cache_key"], None)
                         else:

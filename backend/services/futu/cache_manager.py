@@ -4,7 +4,17 @@ Futu 缓存管理模块
 """
 
 import asyncio
+import time
 from typing import Any, Dict, Optional, Tuple
+
+# 💡 内存安全防御：各缓存 TTL (秒)
+_QUOTE_TTL = 30  # 行情快照 30 秒
+_HISTORY_TTL = 3600  # K线 1 小时
+_OPTION_TTL = 300  # 期权链 5 分钟
+_FUND_FLOW_TTL = 120  # 资金流向 2 分钟
+_ORDER_BOOK_TTL = 30  # 盘口 30 秒
+_FUNDAMENTAL_TTL = 86400  # 基本面 24 小时
+_MAX_CACHE_SIZE = 200  # 单类缓存最大条目数
 
 
 class CacheManager:
@@ -26,6 +36,28 @@ class CacheManager:
         self.ff_lock: Optional[asyncio.Lock] = None
         self.last_ff_time = 0.0
         self.ff_circuit_breaker_until = 0.0
+
+    def evict_stale_cache(self):
+        """内存安全防御：清理所有过期缓存，防止无界字典无限增长"""
+        now = time.time()
+        cache_configs = [
+            (self._quote_cache, _QUOTE_TTL),
+            (self._history_cache, _HISTORY_TTL),
+            (self._option_chain_cache, _OPTION_TTL),
+            (self._fund_flow_cache, _FUND_FLOW_TTL),
+            (self._order_book_cache, _ORDER_BOOK_TTL),
+            (self._fundamental_cache, _FUNDAMENTAL_TTL),
+        ]
+        for cache_dict, ttl in cache_configs:
+            # 1. 清理过期条目
+            stale = [k for k, (ts, _) in cache_dict.items() if now - ts > ttl]
+            for k in stale:
+                del cache_dict[k]
+            # 2. 容量熔断：超过上限则清空最旧的一半
+            if len(cache_dict) > _MAX_CACHE_SIZE:
+                sorted_keys = sorted(cache_dict, key=lambda k: cache_dict[k][0])
+                for k in sorted_keys[: len(sorted_keys) // 2]:
+                    del cache_dict[k]
 
     # ── Quote Cache ───────────────────────────────────────────────
 
