@@ -149,9 +149,9 @@ export const ChatMessageItem = React.memo(({
   // 获取 React Router 实例，用于跨页面/模块平滑跳转
   const navigate = useNavigate();
 
-  let content = msg.content || ''
-  let thinkContent = ''
-  let finalContent = content
+  const content = msg.content || ''
+  const thinkContent = ''
+  const finalContent = content
 
   const thinkStart = content.indexOf('<think>')
   const thinkEnd = content.indexOf('</think>')
@@ -274,7 +274,7 @@ export const ChatMessageItem = React.memo(({
                           const parsed = JSON.parse(tool.input);
                           const key = ['query', 'q', 'ticker', 'keyword', 'url'].find(k => parsed[k]);
                           if (key && typeof parsed[key] === 'string') queryDesc = parsed[key];
-                        } catch(e) {}
+                        } catch(e) { /* ignore parse error */ }
 
                         let resultList: any[] | null = null;
                         try {
@@ -284,7 +284,7 @@ export const ChatMessageItem = React.memo(({
                             else if (parsed && Array.isArray(parsed.data)) resultList = parsed.data;
                             else if (parsed && Array.isArray(parsed.results)) resultList = parsed.results;
                           }
-                        } catch(e) {}
+                        } catch(e) { /* ignore parse error */ }
 
                         return (
                           <div key={tIdx} className="border border-border/30 rounded-md p-2 bg-slate-100/50 dark:bg-zinc-900/50">
