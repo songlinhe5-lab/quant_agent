@@ -230,10 +230,16 @@ async def lifespan(app: FastAPI):  # type: ignore
     print("🔌 [Agent Startup] 初始化全局共享的大模型连接池...")
     from openai import AsyncOpenAI
 
-    global_llm_client = AsyncOpenAI(
-        api_key=os.getenv("LLM_API_KEY", ""),
-        base_url=os.getenv("LLM_BASE_URL", "https://api.deepseek.com"),
-    )
+    llm_api_key = os.getenv("LLM_API_KEY", "")
+    if llm_api_key:
+        global_llm_client = AsyncOpenAI(
+            api_key=llm_api_key,
+            base_url=os.getenv("LLM_BASE_URL", "https://api.deepseek.com"),
+        )
+        print("✅ [Agent Startup] LLM 连接池已初始化")
+    else:
+        global_llm_client = None
+        print("⚠️ [Agent Startup] LLM_API_KEY 未配置，跳过 LLM 客户端初始化")
 
     # 🚀 启动事件循环健康监控探针
     loop_monitor_task = asyncio.create_task(system_monitor_service.event_loop_monitor_daemon())  # noqa: E501
@@ -254,8 +260,10 @@ async def lifespan(app: FastAPI):  # type: ignore
     # 💡 Finnhub 守护进程仅在加州节点运行（北京节点设置 FINNHUB_ENABLED=false 跳过）
     finnhub_enabled = os.getenv("FINNHUB_ENABLED", "true").lower() == "true"
     if finnhub_enabled:
+        from backend.services.finnhub_daemon import _insider_transactions_marquee_daemon
+
         asyncio.create_task(
-            finnhub_service._insider_transactions_marquee_daemon()
+            _insider_transactions_marquee_daemon(finnhub_service)
         )  # 启动高管内幕交易跑马灯守护进程  # noqa: E501
         print("✅ [Startup] Finnhub 内幕交易跑马灯守护进程已启动")
     else:
