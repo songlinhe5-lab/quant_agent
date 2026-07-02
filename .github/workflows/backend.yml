@@ -430,15 +430,30 @@ jobs:
             echo "$COMPOSE_B64" | base64 -d > /tmp/docker-compose.yml
             sudo sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:.*|ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG}|g" /tmp/docker-compose.yml
 
+            # Write .env to /tmp only if provided (slaves have manual .env)
+            HAS_ENV=false
+            if [ -n "$ENV_B64" ]; then
+              echo "$ENV_B64" | base64 -d > /tmp/.env
+              HAS_ENV=true
+              echo ".env template prepared for slaves"
+            else
+              echo "No .env template available, slaves will use existing manual config"
+            fi
+
             deploy_slave() {
               local NAME=$1 IP=$2 USER=$3 KEY=$4
               echo ""
               echo "========== Deploying $NAME ($IP) =========="
 
-              # SCP compose file and .env to slave
+              # SCP compose file (and .env if available) to slave
               echo "Transferring files to $NAME..."
-              scp -i ~/.ssh/$KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
-                /tmp/docker-compose.yml /tmp/.env $USER@$IP:/tmp/ || { echo "SCP failed"; return 1; }
+              if [ "$HAS_ENV" = true ]; then
+                scp -i ~/.ssh/$KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+                  /tmp/docker-compose.yml /tmp/.env $USER@$IP:/tmp/ || { echo "SCP failed"; return 1; }
+              else
+                scp -i ~/.ssh/$KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+                  /tmp/docker-compose.yml $USER@$IP:/tmp/ || { echo "SCP failed"; return 1; }
+              fi
 
               # Remote deploy (pull from GHCR directly for overseas slaves)
               ssh -i ~/.ssh/$KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 $USER@$IP bash -s <<REMOTE
@@ -455,17 +470,19 @@ jobs:
 
             # Write .env file only if it doesn't exist (preserve per-node config)
             if [ ! -f .env ]; then
-              if [ -n "$ENV_B64" ]; then
-                echo "First deploy: writing .env file..."
-                echo "$ENV_B64" | base64 -d > .env
+              if [ -f /tmp/.env ]; then
+                echo "First deploy: writing .env file from template..."
+                cp /tmp/.env .env
                 chmod 600 .env
               else
-                echo "ERROR: No .env file found and no template provided!"
+                echo "ERROR: No .env file exists and no template was transferred!"
+                echo "Please manually create /opt/quant-agent/.env on this slave node."
                 exit 1
               fi
             else
               echo ".env already exists, preserving (manual per-node config)"
             fi
+            rm -f /tmp/.env 2>/dev/null || true
 
             # GHCR login and pull (overseas slaves have fast access to GHCR)
             echo "${GHCR_TOKEN}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin 2>/dev/null
