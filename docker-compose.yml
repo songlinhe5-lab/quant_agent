@@ -83,7 +83,7 @@ services:
   quant-agent:
     profiles: [master]
     image: ghcr.io/songlinhe5-lab/quant-agent:latest
-    pull_policy: always
+    pull_policy: missing
     container_name: quant_app
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1 --loop uvloop --http httptools --timeout-keep-alive 65 --limit-concurrency 5000 --no-access-log
     restart: always
@@ -123,7 +123,7 @@ services:
   quant-worker:
     profiles: [master]
     image: ghcr.io/songlinhe5-lab/quant-agent:latest
-    pull_policy: always
+    pull_policy: missing
     container_name: quant_worker
     command: python backend/worker.py
     restart: always
@@ -157,7 +157,7 @@ services:
   slave-collector:
     profiles: [slave]
     image: ghcr.io/songlinhe5-lab/quant-agent:latest
-    pull_policy: always
+    pull_policy: missing
     container_name: quant_slave
     command: uvicorn backend.slave_app:app --host 0.0.0.0 --port 8001 --loop uvloop --http httptools --timeout-keep-alive 65 --no-access-log
     restart: always
