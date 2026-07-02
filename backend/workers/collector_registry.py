@@ -73,7 +73,6 @@ async def start_collector_daemons(
     """为启用的采集器启动后台守护进程，返回 asyncio.Task 列表"""
     import asyncio
 
-    from backend.services.finnhub_service import finnhub_service
     from backend.services.yfinance_service import yf_service
 
     tasks = []
@@ -88,9 +87,14 @@ async def start_collector_daemons(
             print("  [futu] watchdog daemon started")
 
         elif name == "finnhub":
-            # Finnhub global daemon
-            tasks.append(asyncio.create_task(finnhub_service.run_global_daemon()))
-            print("  [finnhub] global daemon started")
+            # 💡 Finnhub 守护进程（新闻/财报/宏观监控）仅在 Master 运行，Slave 只做数据采集
+            if os.getenv("NODE_ROLE", "master") == "master":
+                from backend.services.finnhub_daemon import run_global_daemon
+
+                tasks.append(asyncio.create_task(run_global_daemon()))
+                print("  [finnhub] global daemon started (master only)")
+            else:
+                print("  [finnhub] slave mode: data fetching only, no daemon")
 
         elif name == "yfinance":
             # YFinance macro data daemon (built-in distributed lock)
