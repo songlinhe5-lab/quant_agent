@@ -13,8 +13,9 @@ import httpx
 from backend.core.middleware import httpx_log_request, httpx_log_response
 from backend.core.redis_client import l1_cached_redis, redis_client
 from backend.core.utils import is_my_shard
-from backend.services.llm_service import llm_service
-from backend.services.sentiment_service import sentiment_service
+# 💡 llm_service 和 sentiment_service 改为懒加载，避免 Slave 节点启动时因缺少 LLM 配置而崩溃
+# from backend.services.llm_service import llm_service
+# from backend.services.sentiment_service import sentiment_service
 
 
 class FinnhubService:
@@ -457,6 +458,8 @@ class FinnhubService:
                             ai_comment = ""
                             try:
                                 prompt = f"作为华尔街顶级科技股分析师，请用一句毒舌、专业的金融黑话点评【{symbol}】刚刚发布的财报：\n实际 EPS: {eps_actual} (预期: {eps_est})\n实际营收: {rev_actual} (预期: {rev_est})\n\n请直接对比实际与预期，判断是超预期还是暴雷，并指明对产业链或纳斯达克指数的潜在影响。字数控制在80字以内，不许输出多余的解释与Markdown格式。"  # noqa: E501
+                                from backend.services.llm_service import llm_service
+
                                 resp = await llm_service.get_client().chat.completions.create(  # noqa: E501
                                     model=llm_service.get_model(),
                                     temperature=0.5,
@@ -617,6 +620,8 @@ class FinnhubService:
 
                 if new_items:
                     print(f"🧠 [Finnhub Daemon] 正在调用 LLM 对 {len(new_items)} 条初始新闻进行情感分析与摘要生成...")  # noqa: E501
+                    from backend.services.sentiment_service import sentiment_service
+
                     scored_items = await sentiment_service.batch_analyze_news(new_items)
                     for news_item in scored_items:
                         headline = news_item.get("headline", "")
@@ -658,6 +663,8 @@ class FinnhubService:
                         print(f"📡 [Finnhub Daemon] 轮询到 {len(new_incoming)} 条新新闻，交由 LLM 处理...")  # noqa: E501
                         # 控制单批次数量防大模型限流
                         for chunk in [new_incoming[i : i + 5] for i in range(0, len(new_incoming), 5)]:  # noqa: E501
+                            from backend.services.sentiment_service import sentiment_service
+
                             scored_items = await sentiment_service.batch_analyze_news(chunk)  # noqa: E501
                             for news_item in scored_items:
                                 headline = news_item.get("headline", "")
@@ -940,6 +947,8 @@ class FinnhubService:
                             ai_comment = ""
                             try:
                                 prompt = f"作为华尔街顶级宏观分析师，请用一句话解读以下刚刚发布的宏观数据：\n事件: {event_name}\n国家: {country}\n公布值: {actual_val}\n预期值: {estimate_val}\n前值: {previous_val}\n\n请直接对比公布值与预期值，判断是超预期还是不及预期，并明确指出对该国股市及货币是利空还是利多，说明理由。字数限制在60字以内，不许输出多余的解释与Markdown格式。"  # noqa: E501
+                                from backend.services.llm_service import llm_service
+
                                 resp = await llm_service.get_client().chat.completions.create(  # noqa: E501
                                     model=llm_service.get_model(),
                                     temperature=0.4,
