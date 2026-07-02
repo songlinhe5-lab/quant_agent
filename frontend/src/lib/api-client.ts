@@ -71,12 +71,12 @@ class RestClient {
   /**
    * 发起 HTTP 请求
    */
-  async request<T>(
+  async request<T = any>(
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
     path: string,
     options: {
       body?: unknown
-      params?: Record<string, string | number | boolean | undefined>
+      params?: Record<string, any>
       headers?: Record<string, string>
       signal?: AbortSignal
     } = {}
@@ -219,23 +219,23 @@ class RestClient {
   }
 
   // ─── 快捷方法 ─────────────────────────────────────────────────
-  get<T>(path: string, params?: Record<string, string | number | boolean | undefined>, signal?: AbortSignal): Promise<T> {
+  get<T = any>(path: string, params?: Record<string, any>, signal?: AbortSignal): Promise<T> {
     return this.request<T>('GET', path, { params, signal })
   }
 
-  post<T>(path: string, body?: unknown): Promise<T> {
-    return this.request<T>('POST', path, { body })
+  post<T = any>(path: string, body?: unknown, config?: { headers?: Record<string, string>; signal?: AbortSignal; timeout?: number }): Promise<T> {
+    return this.request<T>('POST', path, { body, ...config })
   }
 
-  put<T>(path: string, body?: unknown): Promise<T> {
+  put<T = any>(path: string, body?: unknown): Promise<T> {
     return this.request<T>('PUT', path, { body })
   }
 
-  delete<T>(path: string): Promise<T> {
-    return this.request<T>('DELETE', path)
+  delete<T = any>(path: string, config?: { data?: unknown; signal?: AbortSignal }): Promise<T> {
+    return this.request<T>('DELETE', path, { ...config })
   }
 
-  patch<T>(path: string, body?: unknown): Promise<T> {
+  patch<T = any>(path: string, body?: unknown): Promise<T> {
     return this.request<T>('PATCH', path, { body })
   }
 }
@@ -310,20 +310,20 @@ class UnifiedApiClient {
   }
 
   // REST 快捷方法
-  get<T>(path: string, params?: Record<string, string | number | boolean | undefined>, signal?: AbortSignal): Promise<T> {
+  get<T = any>(path: string, params?: Record<string, any>, signal?: AbortSignal): Promise<T> {
     return this.rest.get<T>(path, params, signal)
   }
 
-  post<T>(path: string, body?: unknown): Promise<T> {
-    return this.rest.post<T>(path, body)
+  post<T = any>(path: string, body?: unknown, config?: { headers?: Record<string, string>; signal?: AbortSignal; timeout?: number }): Promise<T> {
+    return this.rest.post<T>(path, body, config)
   }
 
-  put<T>(path: string, body?: unknown): Promise<T> {
+  put<T = any>(path: string, body?: unknown): Promise<T> {
     return this.rest.put<T>(path, body)
   }
 
-  delete<T>(path: string): Promise<T> {
-    return this.rest.delete<T>(path)
+  delete<T = any>(path: string, config?: { data?: unknown; signal?: AbortSignal }): Promise<T> {
+    return this.rest.delete<T>(path, config)
   }
 
   // SSE 快捷方法

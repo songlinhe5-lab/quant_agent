@@ -11,7 +11,7 @@ import DOMPurify, { type Config as PurifyConfig } from 'dompurify'
 // - FORBID_TAGS: 绝对禁止的标签（脚本、表单等危险元素）
 // - FORBID_ATTR: 绝对禁止的属性（事件处理器等）
 const PURIFY_CONFIG: PurifyConfig = {
-  ALLOW_TAGS: [
+  ALLOWED_TAGS: [
     // 标准文本标签
     'div', 'span', 'p', 'a', 'b', 'i', 'u', 'em', 'strong', 'sub', 'sup',
     'br', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
@@ -25,7 +25,7 @@ const PURIFY_CONFIG: PurifyConfig = {
     // 代码块
     'code', 'pre', 'blockquote',
   ],
-  ALLOW_ATTR: [
+  ALLOWED_ATTR: [
     // 通用属性
     'class', 'id', 'style', 'title', 'role', 'tabindex', 'dir', 'lang',
     // SVG 属性
