@@ -178,6 +178,7 @@ class TestFinnhubServiceDaemon:
     @pytest.mark.asyncio
     async def test_insider_marquee_daemon_significant_txn_added_to_zset(self, service):
         from datetime import datetime as _dt
+
         today_str = _dt.now().strftime("%Y-%m-%d")
         tx = {"change": 20000, "transaction_price": 100.0, "date": today_str, "name": "CEO Cook"}
         with (
