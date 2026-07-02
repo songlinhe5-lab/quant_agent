@@ -453,13 +453,18 @@ jobs:
             sudo chown \$(whoami):\$(whoami) docker-compose.yml
             rm -f /tmp/docker-compose.yml
 
-            # Write .env file if provided
-            if [ -n "$ENV_B64" ]; then
-              echo "Writing .env file..."
-              echo "$ENV_B64" | base64 -d > .env
-              chmod 600 .env
+            # Write .env file only if it doesn't exist (preserve per-node config)
+            if [ ! -f .env ]; then
+              if [ -n "$ENV_B64" ]; then
+                echo "First deploy: writing .env file..."
+                echo "$ENV_B64" | base64 -d > .env
+                chmod 600 .env
+              else
+                echo "ERROR: No .env file found and no template provided!"
+                exit 1
+              fi
             else
-              echo "No .env file provided, skipping"
+              echo ".env already exists, preserving (manual per-node config)"
             fi
 
             # GHCR login and pull (overseas slaves have fast access to GHCR)
