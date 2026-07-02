@@ -80,7 +80,7 @@ async def start_collector_daemons(
     for name in enabled_collectors:
         if name == "futu":
             # Futu watchdog daemon
-            from backend.services.futu import get_watchdog
+            from backend.services.futu.watchdog import get_watchdog
             from backend.services.futu_service import futu_service
 
             tasks.append(asyncio.create_task(get_watchdog(futu_service).start()))
