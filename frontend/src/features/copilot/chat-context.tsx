@@ -178,7 +178,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const handleSend = useCallback(async (text: string, sendAttachments: ChatAttachment[] = []) => {
     if (isGeneratingRef.current) return
 
-    let finalContent = text.trim()
+    const finalContent = text.trim()
     if (!finalContent && sendAttachments.length === 0) return
 
     const userMsg: ChatMessage = { 
@@ -190,7 +190,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setMessages(prev => [...prev, userMsg])
     setIsGenerating(true)
 
-    let currentAssistantMsg: ChatMessage = { role: 'assistant', content: '', tools: [], startTime: Date.now() }
+    const currentAssistantMsg: ChatMessage = { role: 'assistant', content: '', tools: [], startTime: Date.now() }
 
     try {
       abortControllerRef.current = new AbortController()

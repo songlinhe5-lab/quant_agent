@@ -65,7 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     // 可选：通知后端注销（清除服务端的 Refresh Token Cookie）
-    try { await apiClient.post('/auth/logout'); } catch (e) {}
+    try { await apiClient.post('/auth/logout'); } catch (e) { /* ignore logout error */ }
     
     setAccessToken(null);
     setUser(null);

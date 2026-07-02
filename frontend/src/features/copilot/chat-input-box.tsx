@@ -29,7 +29,7 @@ export function ChatInputBox() {
     setInput(val)
     const cursor = e.target.selectionStart
     const textBeforeCursor = val.substring(0, cursor)
-    const match = textBeforeCursor.match(/(?:^|\s)@([a-zA-Z0-9\.]*)$/)
+    const match = textBeforeCursor.match(/(?:^|\s)@([a-zA-Z0-9.]*)$/)
     
     if (match) { setMentionQuery(match[1]); setMentionIndex(0) } 
     else setMentionQuery(null)
@@ -40,7 +40,7 @@ export function ChatInputBox() {
     const cursor = textareaRef.current.selectionStart
     const textBeforeCursor = input.substring(0, cursor)
     const textAfterCursor = input.substring(cursor)
-    const match = textBeforeCursor.match(/(^|\s)@([a-zA-Z0-9\.]*)$/)
+    const match = textBeforeCursor.match(/(^|\s)@([a-zA-Z0-9.]*)$/)
     if (match) {
       const prefix = textBeforeCursor.substring(0, match.index! + match[1].length)
       setInput(prefix + symbol + ' ' + textAfterCursor)

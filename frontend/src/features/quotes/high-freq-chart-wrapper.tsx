@@ -1,6 +1,5 @@
 'use client'
 
-// @ts-ignore
 import { useEffect, useRef } from 'react'
 import { createChart, IChartApi, ISeriesApi, LineSeries } from 'lightweight-charts'
 
