@@ -444,13 +444,22 @@ jobs:
             echo "Starting slave..."
             sudo COMPOSE_PROFILES=slave docker compose up -d --remove-orphans
 
-            sleep 15
-            HEALTH=\$(curl -sf --max-time 10 http://localhost:8001/health 2>/dev/null || echo UNHEALTHY)
-            if [ "\$HEALTH" = "UNHEALTHY" ]; then
-              echo "Health check failed"
-              sudo COMPOSE_PROFILES=slave docker compose logs --tail 20
-              exit 1
-            fi
+            # Wait for healthy with retries (up to 90 seconds)
+            echo "Waiting for health check..."
+            for i in 1 2 3 4 5 6; do
+              sleep 15
+              HEALTH=\$(curl -sf --max-time 10 http://localhost:8001/health 2>/dev/null || echo UNHEALTHY)
+              if [ "\$HEALTH" != "UNHEALTHY" ]; then
+                echo "Health check passed on attempt $i"
+                break
+              fi
+              echo "Attempt $i/6 failed, retrying..."
+              if [ "\$i" = "6" ]; then
+                echo "Health check failed after 6 attempts (90s)"
+                sudo COMPOSE_PROFILES=slave docker compose logs --tail 30
+                exit 1
+              fi
+            done
             echo "${TARGET_TAG}" > \$DEPLOY_PATH/.deployed_sha
             sudo docker logout ghcr.io 2>/dev/null || true
             sudo docker image prune -f
