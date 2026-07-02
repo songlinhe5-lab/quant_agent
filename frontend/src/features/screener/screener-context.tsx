@@ -140,7 +140,7 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
   const fetchPageData = async (dsl: string, page: number, size: number, sKey: string, sDir: number, filters: Record<string, any> = {}) => {
     setIsLoading(true);
     setScanStatus('从云端获取中...');
-    let validDsl = dsl;
+    const validDsl = dsl;
     try {
       JSON.parse(dsl);
     } catch (e) {
@@ -180,7 +180,7 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
     try {
       const h = localStorage.getItem('quant_screener_history')
       if (h) setHistory(JSON.parse(h))
-    } catch (e) {}
+    } catch (e) { /* ignore parse error */ }
     try {
       const latestStateStr = localStorage.getItem('quant_screener_latest_state')
       if (latestStateStr) {
@@ -196,7 +196,7 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
           }
         }
       }
-    } catch (e) {}
+    } catch (e) { /* ignore parse error */ }
     const fetchCloudHistory = async () => {
       try {
         const res = await apiClient.get('/screener/history')
@@ -204,7 +204,7 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
           setHistory(res.data.data)
           localStorage.setItem('quant_screener_history', JSON.stringify(res.data.data))
         }
-      } catch (e) {}
+      } catch (e) { /* ignore network error */ }
     }
     fetchCloudHistory()
   }, [])
@@ -278,7 +278,7 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
             const q = market.QuoteData.decode(new Uint8Array(event.data));
             window.dispatchEvent(new CustomEvent('screener_quote_update', { detail: { ticker: q.ticker, last_price: q.lastPrice ?? (q as any).last_price ?? 0, change_pct: q.changePct ?? (q as any).change_pct ?? "0.0%" } }));
           }
-        } catch (e) {}
+        } catch (e) { /* ignore decode error */ }
       };
       wsRef.current.onclose = () => { if (isMountedRef.current) reconnectTimer = setTimeout(connectWS, 1000); };
     };
@@ -334,7 +334,7 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
     try {
       const transRes = await apiClient.post('/screener/translate', { query: currentQuery });
       if (transRes.data?.status === 'success' && transRes.data?.data) finalDsl = transRes.data.data;
-    } catch (e: any) {}
+    } catch (e: any) { /* ignore translate error */ }
     setDslQuery(finalDsl); setShowRawDsl(true); setProgress(10); setScanStatus('正在扫描...');
     const newItem = { nlp: currentQuery, dsl: finalDsl, time: Date.now() };
     const newHistory = [newItem, ...history.filter(item => item.nlp !== currentQuery)].slice(0, 20);
@@ -345,7 +345,7 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
       setProgress(100); setScanStatus('拉取完成，正在渲染...'); await new Promise(resolve => setTimeout(resolve, 400));
       if (res.data?.status === 'success' && res.data.data) {
         setResults(res.data.data); setTotalItems(res.data.total || res.data.data.length); setCurrentPage(1);
-        try { localStorage.setItem('quant_screener_latest_state', JSON.stringify({ nlpQuery: currentQuery, dslQuery: finalDsl, results: res.data.data, totalItems: res.data.total || res.data.data.length })); } catch (e) {}
+        try { localStorage.setItem('quant_screener_latest_state', JSON.stringify({ nlpQuery: currentQuery, dslQuery: finalDsl, results: res.data.data, totalItems: res.data.total || res.data.data.length })); } catch (e) { /* ignore storage error */ }
       } else {
         toast({ variant: 'destructive', title: '筛选失败', description: res.data?.message || '无法从后端获取筛选结果。' });
       }
@@ -353,7 +353,7 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
       setProgress(100); setScanStatus('请求中断'); await new Promise(resolve => setTimeout(resolve, 400));
       let errMsg = error.response?.data?.detail || error.message || '连接到筛选器服务时发生错误。';
       if (Array.isArray(errMsg)) errMsg = errMsg.map((e: any) => `${e.loc?.slice(1)?.join('.') || '参数'}: ${e.msg}`).join('\n');
-      let descriptionContent: React.ReactNode = <span className="whitespace-pre-wrap leading-relaxed">{errMsg}</span>;
+      const descriptionContent = <span className="whitespace-pre-wrap leading-relaxed">{errMsg}</span>;
       toast({ variant: 'destructive', title: '请求异常', description: descriptionContent });
     } finally {
       setIsLoading(false); setTimeout(() => { setProgress(0); setScanStatus(''); }, 300); refreshPrompts();

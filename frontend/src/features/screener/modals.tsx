@@ -35,7 +35,7 @@ export function SubscriptionManagerPanel({ onClose }: { onClose: () => void }) {
         setSubs(prev => prev.map(s => s.id === id ? { ...s, is_active: res.data.is_active } : s))
         toast({ title: '状态已更新', description: res.data.message })
       }
-    } catch (e) {}
+    } catch (e) { /* ignore toggle error */ }
   }
 
   const handleDelete = async (id: number) => {
@@ -47,7 +47,7 @@ export function SubscriptionManagerPanel({ onClose }: { onClose: () => void }) {
         setSubs(prev => prev.filter(s => s.id !== id))
         toast({ title: '已删除', description: res.data.message })
       }
-    } catch (e) {}
+    } catch (e) { /* ignore delete error */ }
   }
 
   return (
@@ -111,7 +111,7 @@ export function RagDictionaryPanel({ onClose }: { onClose: () => void }) {
     try {
       const res = await apiClient.get('/screener/dictionary')
       if (res.data?.status === 'success') setItems(res.data.data)
-    } catch (e) {} finally { setLoading(false) }
+    } catch (e) { /* ignore fetch error */ } finally { setLoading(false) }
   }
   useEffect(() => { fetchDict() }, [])
 

@@ -337,6 +337,7 @@ jobs:
             if [ "$HEALTH" = "UNHEALTHY" ]; then
               echo "Health check FAILED"
               sudo COMPOSE_PROFILES=$PROFILES docker compose logs --tail 30
+              sudo docker logout ghcr.io
               exit 1
             fi
 

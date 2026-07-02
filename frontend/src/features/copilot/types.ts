@@ -12,6 +12,10 @@ export interface ChatAttachment {
   type: string
 }
 
+export interface StrategyBlock {
+  code: string
+}
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: string
@@ -19,4 +23,5 @@ export interface ChatMessage {
   startTime?: number
   thinkEndTime?: number
   attachments?: ChatAttachment[]
+  strategyBlocks?: StrategyBlock[]
 }

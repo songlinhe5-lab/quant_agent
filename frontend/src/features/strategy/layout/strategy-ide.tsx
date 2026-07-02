@@ -1,13 +1,41 @@
 'use client'
 
+import { useEffect } from 'react'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { Topbar } from './topbar'
 import { LeftSidebar } from './left-sidebar'
 import { RightSidebar } from './right-sidebar'
 import { BottomTerminal } from './bottom-terminal'
 import { MainTabs } from '../workspace/main-tabs'
+import { useStrategyStore } from '../stores/useStrategyStore'
 
 export function StrategyIDE() {
+  const setCode = useStrategyStore(s => s.setCode)
+  const setWorkspaceTab = useStrategyStore(s => s.setWorkspaceTab)
+
+  // 💡 监听来自 Copilot 的策略代码部署事件
+  useEffect(() => {
+    // 1. 监听自定义事件（SPA 内无刷新跳转）
+    const handleStrategyCodeInvoke = (e: Event) => {
+      const customEvent = e as CustomEvent<{ code: string }>
+      if (customEvent.detail?.code) {
+        setCode(customEvent.detail.code)
+        setWorkspaceTab('code')
+      }
+    }
+    window.addEventListener('quant_strategy_code_invoke', handleStrategyCodeInvoke)
+
+    // 2. 检查 sessionStorage（兼容直接页面跳转场景）
+    const savedCode = sessionStorage.getItem('quant_strategy_initial_code')
+    if (savedCode) {
+      setCode(savedCode)
+      setWorkspaceTab('code')
+      sessionStorage.removeItem('quant_strategy_initial_code')
+    }
+
+    return () => window.removeEventListener('quant_strategy_code_invoke', handleStrategyCodeInvoke)
+  }, [setCode, setWorkspaceTab])
+
   return (
     <div className="flex flex-col h-[calc(100vh-100px)] w-full rounded-xl overflow-hidden border border-border/40 shadow-sm bg-background transition-colors duration-300">
       {/* Top Global Actions */}

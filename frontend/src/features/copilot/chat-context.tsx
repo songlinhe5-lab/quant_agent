@@ -3,7 +3,21 @@ import { getAccessToken, apiClient, API_BASE_URL } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
 import { useConfirmDialog } from '@/components/confirm-dialog'
 import { SessionSidebarRef } from '@/features/copilot/session-sidebar'
-import { ChatMessage, ToolStep, ChatAttachment } from './types'
+import { ChatMessage, ToolStep, ChatAttachment, StrategyBlock } from './types'
+
+// 💡 从 assistant 消息内容中提取策略代码块（用于历史记录恢复）
+function extractStrategyBlocks(content: string): StrategyBlock[] {
+  const blocks: StrategyBlock[] = []
+  const pattern = /```python\s*\n([\s\S]*?)```/g
+  let match
+  while ((match = pattern.exec(content)) !== null) {
+    const code = match[1].trim()
+    if (code && /backtest|deploy|Backtest|Deploy/.test(code)) {
+      blocks.push({ code })
+    }
+  }
+  return blocks
+}
 
 export interface ChatState {
   messages: ChatMessage[];
@@ -92,6 +106,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                   lastMsg.tools!.push({ id: tc.id, name: tc.function?.name || 'unknown', input: tc.function?.arguments || '{}', status: 'done' })
                 })
               }
+              // 💡 合并后重新提取策略代码块
+              lastMsg.strategyBlocks = extractStrategyBlocks(lastMsg.content)
             } else {
               const tools: ToolStep[] = []
               if (m.tool_calls && Array.isArray(m.tool_calls)) {
@@ -99,7 +115,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                   tools.push({ id: tc.id, name: tc.function?.name || 'unknown', input: tc.function?.arguments || '{}', status: 'done' })
                 })
               }
-              displayMsgs.push({ role: 'assistant', content: m.content || '', tools: tools.length > 0 ? tools : [] })
+              displayMsgs.push({ role: 'assistant', content: m.content || '', tools: tools.length > 0 ? tools : [], strategyBlocks: extractStrategyBlocks(m.content || '') })
             }
           } else if (m.role === 'tool') {
             // 💡 将后端的 tool 执行结果，精准挂载回上一条 assistant 消息对应的思考步骤中
@@ -274,11 +290,15 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               }
             } else if (data.type === 'error') {
               currentAssistantMsg.content += data.content
+            } else if (data.type === 'strategy_code') {
+              // 💡 后端识别的策略代码块：将其挂载到当前 assistant 消息的 strategyBlocks 数组
+              if (!currentAssistantMsg.strategyBlocks) currentAssistantMsg.strategyBlocks = []
+              currentAssistantMsg.strategyBlocks.push({ code: data.code })
             }
 
-            // 💡 触发 React 重新渲染：仅在关键事件 (Tool) 或距离上次渲染超过 50ms 时触发
+            // 💡 触发 React 重新渲染：仅在关键事件 (Tool/Strategy) 或距离上次渲染超过 50ms 时触发
             const now = Date.now()
-            const isToolEvent = data.type === 'tool_start' || data.type === 'tool_result' || data.type === 'error'
+            const isToolEvent = data.type === 'tool_start' || data.type === 'tool_result' || data.type === 'error' || data.type === 'strategy_code'
             
             if (isToolEvent || now - lastUpdateTime > 50) {
               setMessages(prev => {
