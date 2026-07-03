@@ -275,6 +275,4 @@ class NavSnapshot(Base):
     market_val: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # 持仓市值
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)  # noqa: E501
 
-    __table_args__ = (
-        Index("idx_nav_snapshot_market_time", "market", "created_at"),
-    )
+    __table_args__ = (Index("idx_nav_snapshot_market_time", "market", "created_at"),)

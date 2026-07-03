@@ -1388,6 +1388,7 @@ class ScreenerService:
 
     async def screener_subscription_daemon(self) -> None:
         """后台任务：每天 18:00 自动执行订阅的选股条件，并通过通知渠道推送"""
+
         # 💡 同步 DB 操作隔离：将 SQLAlchemy 查询/提交封装为独立函数，通过 to_thread 执行，防止阻塞事件循环
         def _fetch_due_subscriptions(time_str: str):
             """线程安全：查询到达触发时间的活跃订阅"""
@@ -1545,15 +1546,10 @@ class ScreenerService:
                                 except Exception as e:
                                     print(f"⚠️ [Screener Daemon] LLM 点评失败: {e}")
                                     llm_comments = "\n".join(
-                                        [
-                                            f"- **{r.get('name', r['symbol'])}**: 暂无点评 (LLM 解析失败)"
-                                            for r in top_10
-                                        ]
+                                        [f"- **{r.get('name', r['symbol'])}**: 暂无点评 (LLM 解析失败)" for r in top_10]
                                     )  # noqa: E501
 
-                                tech_str = (
-                                    f"\n\n⚙️ 命中技术形态: {', '.join(tech_patterns)}" if tech_patterns else ""
-                                )  # noqa: E501
+                                tech_str = f"\n\n⚙️ 命中技术形态: {', '.join(tech_patterns)}" if tech_patterns else ""  # noqa: E501
                                 msg = f"🔔 [智能选股日报] {sub['name']}\n\nAgent 根据您的订阅条件，在全市场扫盘发现 {len(final_data)} 只符合条件的标的。{tech_str}\n\n🔥 核心金股 Top 10 点评:\n{llm_comments}"  # noqa: E501
                                 await notification_service.send_alert(msg)
                             else:
@@ -1567,9 +1563,7 @@ class ScreenerService:
                             break  # 退出重试循环
 
                         except Exception as inner_e:
-                            print(
-                                f"⚠️ [Screener Daemon] 执行子任务 {sub['name']} 失败 (第 {attempt + 1} 次): {inner_e}"
-                            )  # noqa: E501
+                            print(f"⚠️ [Screener Daemon] 执行子任务 {sub['name']} 失败 (第 {attempt + 1} 次): {inner_e}")  # noqa: E501
                             if attempt < max_retries - 1:
                                 await asyncio.sleep(10 * (attempt + 1))  # 失败后线性退避休眠再试  # noqa: E501
                             else:

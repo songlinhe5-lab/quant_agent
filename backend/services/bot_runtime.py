@@ -225,15 +225,9 @@ class BotRuntimeManager:
                     quote = await self._fetch_latest_quote(bot.ticker)
                     if quote and quote.get("status") == "success":
                         price = quote.get("data", {}).get("last_price", 0)
-                        await self._push_log(
-                            bot, "info",
-                            f"[#{loop_count}] {bot.ticker} 最新价: {price:.2f}"
-                        )
+                        await self._push_log(bot, "info", f"[#{loop_count}] {bot.ticker} 最新价: {price:.2f}")
                     else:
-                        await self._push_log(
-                            bot, "info",
-                            f"[#{loop_count}] 行情获取中... ({bot.ticker})"
-                        )
+                        await self._push_log(bot, "info", f"[#{loop_count}] 行情获取中... ({bot.ticker})")
 
                     # 2. 尝试加载并执行策略
                     strategy_result = await self._execute_strategy(bot, quote)
@@ -267,6 +261,7 @@ class BotRuntimeManager:
         """从 Futu 获取最新行情"""
         try:
             from backend.services.futu_service import futu_service
+
             return await futu_service.get_quote(ticker)
         except Exception as e:
             logger.debug(f"[BotRuntime] 行情获取失败 ({ticker}): {e}")
@@ -414,9 +409,7 @@ class BotRuntimeManager:
                 try:
                     meta = json.loads(raw_meta)
                     if meta.get("status") in ("running", "paused"):
-                        strategy_file = os.path.join(
-                            _STRATEGIES_DIR, f"{meta['class_name'].lower()}.py"
-                        )
+                        strategy_file = os.path.join(_STRATEGIES_DIR, f"{meta['class_name'].lower()}.py")
                         if os.path.exists(strategy_file):
                             await self.start_bot(
                                 bot_id=bot_id,

@@ -47,15 +47,13 @@ async def get_performance_logs(
                 except ValueError:
                     pass  # 忽略无效时间格式
 
-            logs = (
-                query.order_by(PerformanceLog.timestamp.desc())
-                .limit(limit)
-                .all()
-            )
+            logs = query.order_by(PerformanceLog.timestamp.desc()).limit(limit).all()
             return [
                 {
                     "id": log.id,
-                    "timestamp": log.timestamp.astimezone(_BEIJING_TZ).strftime("%Y-%m-%d %H:%M:%S") if log.timestamp else "",
+                    "timestamp": log.timestamp.astimezone(_BEIJING_TZ).strftime("%Y-%m-%d %H:%M:%S")
+                    if log.timestamp
+                    else "",
                     "log_type": log.log_type,
                     "duration_ms": log.duration_ms,
                     "endpoint": log.endpoint,
@@ -164,6 +162,7 @@ async def apm_dashboard(username: str = Depends(get_current_user)):
 
 # ---- 内部辅助函数 ----
 
+
 async def _build_health_snapshot() -> dict:
     """复用 health_check 逻辑，返回组件状态"""
     components: dict = {}
@@ -178,6 +177,7 @@ async def _build_health_snapshot() -> dict:
 
     try:
         from backend.services.futu import futu_service
+
         components["futu"] = futu_service.status
         if futu_service.status != "CONNECTED" and overall == "healthy":
             overall = "degraded"
@@ -199,6 +199,7 @@ async def _build_health_snapshot() -> dict:
 
     try:
         from anyio.to_thread import current_default_thread_limiter
+
         limiter = current_default_thread_limiter()
         components["fastapi_thread_pool"] = {
             "max_workers": limiter.total_tokens,
@@ -215,6 +216,7 @@ async def _build_cluster_snapshot() -> dict:
     """复用 cluster_manager 逻辑"""
     try:
         from backend.workers.cluster_manager import cluster_manager
+
         return cluster_manager.get_cluster_status()
     except Exception as e:
         return {"error": str(e), "master": {"collectors": []}, "slaves": [], "pools": {}}
@@ -333,4 +335,10 @@ async def _build_perf_stats() -> dict:
         return result
     except Exception as e:
         logger.warning("获取性能统计失败: %s", e)
-        return {"slow_request_count": 0, "event_loop_block_count": 0, "avg_duration_ms": 0.0, "max_duration_ms": 0.0, "total_count": 0}
+        return {
+            "slow_request_count": 0,
+            "event_loop_block_count": 0,
+            "avg_duration_ms": 0.0,
+            "max_duration_ms": 0.0,
+            "total_count": 0,
+        }

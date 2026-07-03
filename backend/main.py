@@ -342,6 +342,7 @@ async def lifespan(app: FastAPI):  # type: ignore
 
     # 🚀 OMS-05: 启动 BotRuntimeManager — 恢复之前运行的 Bot 算力节点
     from backend.services.bot_runtime import bot_runtime
+
     try:
         restored = await bot_runtime.restore_bots_from_redis()
         print(f"✅ [Startup] BotRuntimeManager 已启动 (恢复 {restored} 个 Bot)")
@@ -350,6 +351,7 @@ async def lifespan(app: FastAPI):  # type: ignore
 
     # 🚀 OMS-08: 启动 AlgoEngine — 恢复之前运行中的算法拆单
     from backend.services.algo_engine import algo_engine
+
     try:
         algo_restored = await algo_engine.restore_from_redis()
         print(f"✅ [Startup] AlgoEngine 已启动 (恢复 {algo_restored} 个算法订单)")
@@ -388,6 +390,7 @@ async def lifespan(app: FastAPI):  # type: ignore
         # OMS-05: 优雅关停所有 Bot 算力节点
         try:
             from backend.services.bot_runtime import bot_runtime
+
             await bot_runtime.shutdown()
         except Exception:
             pass
@@ -395,6 +398,7 @@ async def lifespan(app: FastAPI):  # type: ignore
         # OMS-08: 优雅关停所有算法拆单
         try:
             from backend.services.algo_engine import algo_engine
+
             await algo_engine.shutdown()
         except Exception:
             pass

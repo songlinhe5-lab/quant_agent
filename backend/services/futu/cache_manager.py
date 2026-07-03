@@ -211,10 +211,11 @@ class CacheManager:
         import logging
 
         from backend.core.utils import safe_divide, safe_float
+
         logger = logging.getLogger(__name__)
 
         # 调试: 打印所有可用字段 (仅首次)
-        if not hasattr(CacheManager, '_lot_size_logged'):
+        if not hasattr(CacheManager, "_lot_size_logged"):
             logger.info(f"[CacheManager] quote row keys: {list(row.keys()) if hasattr(row, 'keys') else 'N/A'}")
             CacheManager._lot_size_logged = True
 
@@ -236,9 +237,9 @@ class CacheManager:
         # 尝试多种可能的 lot_size 字段名
         lot_size_raw = row.get("lot_size") or row.get("lotsize") or row.get("lot_Size") or 0
         lot_size = int(safe_float(lot_size_raw) or 0)
-        if lot_size > 0 and not hasattr(CacheManager, f'_lot_size_logged_{row.get("code", "")}'):
+        if lot_size > 0 and not hasattr(CacheManager, f"_lot_size_logged_{row.get('code', '')}"):
             logger.info(f"[CacheManager] {row.get('code', 'unknown')} lot_size={lot_size} (raw={lot_size_raw})")
-            setattr(CacheManager, f'_lot_size_logged_{row.get("code", "")}', True)
+            setattr(CacheManager, f"_lot_size_logged_{row.get('code', '')}", True)
 
         data = {
             "status": "success",

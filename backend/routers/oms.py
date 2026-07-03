@@ -311,10 +311,18 @@ async def start_algo_order(request: Request, req: AlgoOrderReq):
         db_session = None
         try:
             from backend.core.database import SessionLocal
+
             db_session = SessionLocal()
             log_audit(
-                db_session, action="algo_start",
-                detail={"algo_id": order.algo_id, "algo_type": req.algo_type, "symbol": req.symbol, "side": req.side, "target_qty": req.target_qty},
+                db_session,
+                action="algo_start",
+                detail={
+                    "algo_id": order.algo_id,
+                    "algo_type": req.algo_type,
+                    "symbol": req.symbol,
+                    "side": req.side,
+                    "target_qty": req.target_qty,
+                },
                 request=request,
             )
         finally:

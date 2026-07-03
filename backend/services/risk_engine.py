@@ -119,7 +119,11 @@ class RiskEngine:
         return result
 
     def _calc_kpi(
-        self, total_assets: float, cash: float, market_val: float, positions: List[Dict],
+        self,
+        total_assets: float,
+        cash: float,
+        market_val: float,
+        positions: List[Dict],
         currency: str = "HKD",
     ) -> Dict[str, Any]:
         """计算 KPI 指标 (分账户独立)"""
@@ -149,8 +153,12 @@ class RiskEngine:
         self, total_assets: float, cash: float, market_val: float, positions: List[Dict]
     ) -> List[Dict[str, Any]]:
         """计算敞口分布"""
-        long_val = sum(float(p.get("market_val", 0)) for p in positions if "LONG" in str(p.get("position_side", "")).upper())
-        short_val = sum(float(p.get("market_val", 0)) for p in positions if "SHORT" in str(p.get("position_side", "")).upper())
+        long_val = sum(
+            float(p.get("market_val", 0)) for p in positions if "LONG" in str(p.get("position_side", "")).upper()
+        )
+        short_val = sum(
+            float(p.get("market_val", 0)) for p in positions if "SHORT" in str(p.get("position_side", "")).upper()
+        )
 
         long_pct = (long_val / total_assets * 100) if total_assets > 0 else 0
         short_pct = (short_val / total_assets * 100) if total_assets > 0 else 0
@@ -158,7 +166,13 @@ class RiskEngine:
 
         return [
             {"name": "多头", "value": long_val, "pct": round(long_pct, 1), "color": "#34d399", "lightColor": "#059669"},
-            {"name": "空头", "value": short_val, "pct": round(short_pct, 1), "color": "#f87171", "lightColor": "#dc2626"},
+            {
+                "name": "空头",
+                "value": short_val,
+                "pct": round(short_pct, 1),
+                "color": "#f87171",
+                "lightColor": "#dc2626",
+            },
             {"name": "现金", "value": cash, "pct": round(cash_pct, 1), "color": "#f59e0b", "lightColor": "#d97706"},
         ]
 

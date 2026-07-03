@@ -26,8 +26,8 @@ from backend.core.redis_client import redis_client
 logger = logging.getLogger("OMS.AlgoEngine")
 
 # Redis 键空间
-_ALGO_ACTIVE_KEY = "quant:oms:algo:active"       # Hash: algo_id → JSON
-_ALGO_HISTORY_KEY = "quant:oms:algo:history"      # List: 已完成任务 JSON
+_ALGO_ACTIVE_KEY = "quant:oms:algo:active"  # Hash: algo_id → JSON
+_ALGO_HISTORY_KEY = "quant:oms:algo:history"  # List: 已完成任务 JSON
 _ALGO_STREAM_CHANNEL = "oms:algo_executions:update"  # PubSub 广播
 
 # 港股每手股数硬编码映射 (常用标的，作为 Futu API 无 lot_size 时的兜底)
@@ -38,14 +38,14 @@ _HK_LOT_SIZE_MAP: Dict[str, int] = {
     "03690.HK": 100,  # 美团
     "09999.HK": 100,  # 网易
     "01024.HK": 100,  # 快手
-    "09618.HK": 50,   # 京东
+    "09618.HK": 50,  # 京东
     "02015.HK": 100,  # 理想汽车
     "09868.HK": 100,  # 小鹏汽车
     "00005.HK": 500,  # 汇丰控股
-    "00939.HK": 1000, # 建设银行
-    "01398.HK": 1000, # 工商银行
-    "03988.HK": 1000, # 中国银行
-    "02628.HK": 1000, # 中国人寿
+    "00939.HK": 1000,  # 建设银行
+    "01398.HK": 1000,  # 工商银行
+    "03988.HK": 1000,  # 中国银行
+    "02628.HK": 1000,  # 中国人寿
     "02318.HK": 500,  # 中国平安
 }
 
@@ -59,6 +59,7 @@ async def _get_lot_size(symbol: str) -> int:
     # 尝试从 market_snapshot 获取 (包含 lot_size)
     try:
         from backend.services.futu_service import futu_service
+
         snapshot = await futu_service.get_market_snapshots([symbol])
         if snapshot.get("status") == "success":
             data_list = snapshot.get("data", [])
@@ -73,6 +74,7 @@ async def _get_lot_size(symbol: str) -> int:
     # 尝试从行情获取 (备用)
     try:
         from backend.services.futu_service import futu_service
+
         quote = await futu_service.get_quote(symbol)
         lot = quote.get("lot_size", 0)
         if lot and lot > 0:
@@ -428,12 +430,14 @@ class AlgoEngine:
         # SANDBOX 模式: 模拟成交
         try:
             from backend.services.futu_service import futu_service
+
             quote = await futu_service.get_quote(symbol)
             if quote and quote.get("status") == "success":
                 # compress_quote_data 返回格式: last_price 在顶层
                 last_price = quote.get("last_price", 0)
                 if last_price > 0:
                     import random
+
                     slippage = random.uniform(0.0001, 0.0005)
                     if side == "BUY":
                         return last_price * (1 + slippage)
@@ -508,10 +512,12 @@ class AlgoEngine:
         if order.status not in ("COMPLETED", "CANCELLED", "ERROR"):
             return
         try:
-            data = json.dumps({
-                **order.to_api_dict(),
-                "completed_at": datetime.now().isoformat(),
-            })
+            data = json.dumps(
+                {
+                    **order.to_api_dict(),
+                    "completed_at": datetime.now().isoformat(),
+                }
+            )
             await redis_client.lpush(_ALGO_HISTORY_KEY, data)
             await redis_client.ltrim(_ALGO_HISTORY_KEY, 0, 99)
             await redis_client.expire(_ALGO_HISTORY_KEY, 86400 * 7)  # 7 天 TTL

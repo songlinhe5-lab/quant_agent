@@ -37,9 +37,7 @@ async def _execute_unsubscriptions(conn_mgr, cache_mgr: CacheManager, evicted: l
             if not futu_sub_types:
                 continue
 
-            ret, _ = await asyncio.to_thread(
-                conn_mgr.quote_ctx.unsubscribe, [ticker], futu_sub_types
-            )
+            ret, _ = await asyncio.to_thread(conn_mgr.quote_ctx.unsubscribe, [ticker], futu_sub_types)
             if ret == RET_OK:
                 for st in sub_types:
                     cache_mgr.remove_topic(ticker, st)

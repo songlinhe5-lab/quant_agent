@@ -194,6 +194,7 @@ class FutuWatchdog:
                     evicted = cache_mgr.ensure_capacity(needed=1)
                     if evicted:
                         from .quote_handler import _execute_unsubscriptions
+
                         await _execute_unsubscriptions(self._conn_mgr, cache_mgr, evicted)
 
                     sub_ret, _ = await asyncio.wait_for(
@@ -319,7 +320,9 @@ class FutuWatchdog:
                 logger.warning(f"[FutuWatchdog] 恢复订阅异常: {ticker}: {e}")
 
         if restored:
-            logger.info(f"[FutuWatchdog] 已恢复 {restored} 个订阅 (池总量: {cache_mgr.subscription_count}/{cache_mgr.max_subscriptions})")
+            logger.info(
+                f"[FutuWatchdog] 已恢复 {restored} 个订阅 (池总量: {cache_mgr.subscription_count}/{cache_mgr.max_subscriptions})"
+            )
 
     def stop(self) -> None:
         """停止看门狗"""
