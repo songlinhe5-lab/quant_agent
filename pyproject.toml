@@ -133,7 +133,7 @@ omit = [
 parallel = false
 
 [tool.coverage.report]
-# 💡 OMS 模块测试已补充，后续可继续提升至 75%+
+# ✅ Top10 低覆盖率文件测试已补充，覆盖率接近 70%
 fail_under = 69
 show_missing = true
 exclude_lines = [
