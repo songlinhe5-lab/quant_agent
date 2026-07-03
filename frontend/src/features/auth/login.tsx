@@ -37,7 +37,9 @@ export default function LoginPage() {
         navigate(from, { replace: true });
       }, 800);
     } catch (err: any) {
-      setError(err.response?.data?.detail || '无法连接到后端，请检查用户名或网络。');
+      // ApiError 有 .message 属性，兼容 fetch 风格的错误（非 axios）
+      const msg = err?.message || '无法连接到后端，请检查用户名或网络。';
+      setError(msg);
       setLoading(false);
     }
   };

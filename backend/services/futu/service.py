@@ -65,7 +65,7 @@ class FutuService:
         self.quote_ctx = None
         self.trade_ctxs.clear()
         self.status = "DISCONNECTED"
-        self.cache_mgr.subscribed_topics.clear()
+        self.cache_mgr.clear_all_subscriptions()
 
     # ── 对外接口（保持与原接口完全兼容）──────────────────────────────
 

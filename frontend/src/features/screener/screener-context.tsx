@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useToast } from '@/hooks/use-toast'
 import { useWatchlist } from '@/stores/use-watchlist'
-import { apiClient } from '@/lib/api-client'
+import { apiClient, getAccessToken } from '@/lib/api-client'
 import { market } from '@/lib/proto/market'
 import { getZhLabel, formatDisplaySymbol, type SortKey } from '@/features/screener/shared'
 
@@ -264,7 +264,9 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
     isMountedRef.current = true;
     let reconnectTimer: NodeJS.Timeout;
     const connectWS = () => {
-      wsRef.current = new WebSocket(`ws://${window.location.host}/market/quotes/ws`);
+      const token = getAccessToken();
+      if (!token) { console.warn('[Screener WS] 无认证 token，跳过连接'); return; }
+      wsRef.current = new WebSocket(`ws://${window.location.host}/market/quotes/ws?token=${token}`);
       wsRef.current.binaryType = "arraybuffer";
       wsRef.current.onopen = () => {
         if (!isMountedRef.current) return;

@@ -274,10 +274,12 @@ export function ChartPreviewModal({ symbol, price, change, onClose }: { symbol: 
 
     const initChart = async () => {
       try {
-        const res = await apiClient.get('/market/history', { params: { ticker: symbol, ktype: 'K_DAY', num: 100 } })
+        const res = await apiClient.get('/market/history', { ticker: symbol, ktype: 'K_DAY', num: 100 })
         if (!isMounted) return
         
-        if (res.data?.status === 'success' && res.data.data) {
+        // 兼容两种响应格式
+        const data = res?.status === 'success' ? res.data : (res?.data?.status === 'success' ? res.data.data : null)
+        if (data) {
            if (chartContainerRef.current) {
              chart = createChart(chartContainerRef.current, {
                layout: {

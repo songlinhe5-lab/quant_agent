@@ -10,13 +10,11 @@ import { ProtectedRoute } from '@/components/layout/protected-route';
 
 /**
  * 路由配置说明：
- * 
+ *
  * 1. 使用 TradingDashboard 作为主布局（模块切换模式）
  * 2. 所有功能模块作为 TradingDashboard 的子组件
- * 3. 通过 URL 参数 ?module=xxx 或 hash #xxx 来标识当前模块
- * 4. 不使用 React Router 的页面路由，避免组件卸载导致状态丢失
- * 
- * 参考：docs/04. 前端架构与零GC渲染.md §二
+ * 3. market/:ticker 也直接渲染 TradingDashboard，内部通过 useParams 读取 ticker 处理跳转
+ * 4. 不使用页面级路由切换，避免组件卸载导致状态丢失
  */
 
 const router = createBrowserRouter([
@@ -27,8 +25,11 @@ const router = createBrowserRouter([
       {
         path: '',
         element: <TradingDashboard />,
-        // 所有模块在 TradingDashboard 内部通过 state 切换
-        // 不需要在这里配置子路由
+      },
+      {
+        // 市场详情页：直接渲染 TradingDashboard，内部通过 useParams 读取 ticker
+        path: 'market/:ticker',
+        element: <TradingDashboard />,
       },
     ],
   },

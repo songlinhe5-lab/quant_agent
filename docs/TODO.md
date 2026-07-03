@@ -325,6 +325,50 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 - [ ] **[DOC-02]** 各子系统性能基准数据补充（当前 `docs/09. 性能测试规范.md` 中标注 TBD 的部分）
 - [ ] **[DOC-03]** 废弃 `docs/backend.md` 和 `docs/frontend.md`（已标注 Deprecated），后续清理
 
+### Risk 风控模块进阶能力 (v0.2+)
+
+> 设计文档: `docs/subsystems/risk-module.md`  
+> 已完成: 分账户独立风控计算 (HK/US) · 六维风险雷达 · 因子监控 · 净值曲线持久化 (Redis+DB) · 行业级版面布局
+
+- [ ] **[RISK-01]** 板块暴露分析：获取每只持仓行业分类 (Futu `get_stock_basicinfo`)，按 GICS 聚合，前端横向柱状图展示板块集中度
+- [ ] **[RISK-02]** Beta/Alpha 归因：多因子归因 (Market / Size / Value / Momentum)，超额收益分解，净值曲线叠加基准对比
+- [ ] **[RISK-03]** 相关性矩阵：计算持仓间 60 日收益率相关系数矩阵，前端热力图可视化，高相关性 (>0.8) 预警
+- [ ] **[RISK-04]** 压力测试：历史情景回放 (2008/2020/2022) + 假设情景 (利率+1% / 汇率-5% / 波动率翻倍)，展示压力后 NAV 变化
+- [ ] **[RISK-05]** CVaR 分解：Conditional VaR (Expected Shortfall)，按持仓分解 CVaR 贡献度，边际 VaR 分析
+- [ ] **[RISK-06]** 流动性风险评估：持仓日均成交额 vs 市值 → 流动性覆盖率，大额持仓预警 (>10% NAV)，流动性评分 (0-100)
+- [ ] **[RISK-07]** 风险雷达真实数据增强：Liq/Corr/Mom 当前为占位值，需接入真实流动性/相关性/动量计算
+- [ ] **[RISK-08]** Beta 基准对接：当前 Beta 为占位值 0.85，需获取真实基准指数 K 线 (^GSPC / ^HSI) 计算 OLS 斜率
+
+### OMS 订单中枢与算力节点 (v0.2+)
+
+> 设计文档: `docs/subsystems/oms-module.md`  
+> 已完成: Mock Bot卡片/挂单/成交/算法UI · WebSocket实时推送 · KillSwitch熔断 · 幂等性撤单 · 真实Futu下单+ATR风控 · **OMS-01~04 核心闭环 (订单持久化/成交打通/状态同步/持仓同步)**  
+> 核心问题: OMS面板与真实交易链路完全脱节，全量 Mock 数据
+
+#### P1 - 核心闭环 (真实数据接入) ✅
+
+- [x] ~~**[OMS-01]** 订单持久化~~：PostgreSQL `orders` 表 + `oms_service.create_order()` + 撤单/改单同步
+- [x] ~~**[OMS-02]** 成交记录打通~~：OMS 面板从 `trade_logs` 表读取真实成交记录
+- [x] ~~**[OMS-03]** 真实订单状态同步~~：Futu 下单后写入 DB + Redis PubSub 广播 + 撤单/改单同步
+- [x] ~~**[OMS-04]** 持仓实时同步~~：30秒定时守护进程从 Futu 拉取真实持仓写入 Redis 缓存
+
+#### P2 - 算力节点 (策略运行时)
+
+- [x] **[OMS-05]** 策略运行时引擎：`/deploy-to-oms` 升级为真实 Python 多进程执行器，管理策略生命周期 (启动/暂停/恢复/终止)
+- [x] **[OMS-06]** Bot 真实资源监控：`psutil.Process` 采集真实 CPU/MEM，替代 Mock 随机数
+- [x] **[OMS-07]** Bot 日志持久化：策略运行日志写入 Redis List + 定期归档 PostgreSQL
+
+#### P2 - 算法拆单引擎
+
+- [x] **[OMS-08]** TWAP/VWAP 真实执行引擎：基于定时器的拆单逻辑 (按时间/成交量切片)，通过 `trade.py` 真实下单
+- [x] **[OMS-09]** 算法执行进度持久化：Redis Hash 存储执行进度 + DB 归档已完成任务
+
+#### P2 - 安全与体验
+
+- [x] **[OMS-10]** Kill Switch 安全加固：替换 `window.confirm` 为全局 ConfirmDialog (SEC-09)，输入 "CLOSE ALL" 二次确认
+- [x] **[OMS-11]** 沙箱/实盘模式切换：顶部模式标识 (SANDBOX/LIVE)，切换时全局横幅颜色变化 + 二次确认
+- [x] **[OMS-12]** 订单审计日志：所有发单/撤单/改单/熔断操作写入 `audit_logs` 表 (SEC-12)，携带 trace_id + IP
+
 ---
 
 ## 🔵 P3 — 功能扩展与探索（长期规划）
@@ -401,6 +445,7 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 | 完成日期    | 任务                                                                               |
 | ------- | -------------------------------------------------------------------------------- |
+| 2026-07-02 | [RISK-MVP] Risk 模块真实数据接入完成：RiskEngine 风控引擎 (risk_engine.py) · 分账户独立计算 (HK/US) · 六维风险雷达 · 因子监控 (Beta/VaR/Sharpe/MaxDD) · NAV 快照持久化 (Redis+DB 分层存储) · 行业级版面布局重构 · 风险雷达/因子监控说明入口 · 净值曲线时间范围查询 (?days=7/30) |
 | 2026-06-28 | [CL-01~04] 核心集群通信完成: payload 格式修复 + 本地降级 + Prometheus 指标 + 心跳增强 + 新旧 payload 兼容 + 60 个测试全通过 |
 | 2026-06-28 | 新增 VPS 部署配置: `scripts/deploy/env.beijing.example` + `env.slave.example` + `init_slave.sh` 一键初始化脚本 |
 | 2026-06-28 | CI/CD 部署流程增强: 首次部署时自动从 GitHub Secrets 生成 .env，支持 beijing/overseas/slave-1 三节点矩阵 |
@@ -533,6 +578,11 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 | 日期         | 更新说明                                                 |
 | ---------- | ---------------------------------------------------- |
+| 2026-07-02 | OMS-08~12 全部完成：算法拆单引擎 (algo_engine.py TWAP/VWAP/ICEBERG) + Redis 进度持久化 + Kill Switch CLOSE ALL 文字确认 + SANDBOX/LIVE 模式横幅 + 全端点审计日志 |
+| 2026-07-02 | OMS-05~07 算力节点完成：`bot_runtime.py` BotRuntimeManager (asyncio.Task 生命周期) + psutil 真实 CPU/MEM 监控 + Redis List 日志持久化 + PubSub/WebSocket 实时推送；`/deploy-to-oms` 升级为真实 Bot 启动；前端新增 Bot 终止按钮 |
+| 2026-07-02 | OMS-01~04 核心闭环完成：订单持久化 (oms_service.py) + 成交打通 + 真实订单状态同步 + 持仓 30秒同步守护进程；新增前端「真实持仓」Tab |
+| 2026-07-02 | 新增「OMS 订单中枢与算力节点」OMS-01~12 (订单持久化/真实同步/算力节点/算法拆单/KillSwitch加固/审计日志)；新建 `docs/subsystems/oms-module.md` 设计文档 |
+| 2026-07-02 | 新增「Risk 风控模块进阶能力」RISK-01~08 (板块暴露/Beta归因/相关性矩阵/压力测试/CVaR/流动性/雷达增强/Beta基准)；Risk MVP 完成归档 (分账户风控+持久化+行业级版面) |
 | 2026-06-28 | 新增 `docs/14` 分布式数据源服务架构文档；重构 DIST-01~10 为 DIST-01~18 细粒度任务（注册表 / 路由器 / 子服务工程 / HMAC / Docker 编排 / VPS 部署 / 监控告警 / 其他数据源扩展） |
 | 2026-06-28 | 新增 DIST-01~10 分布式数据服务架构任务（北京 + 加州双节点）；更新部署文档至 V4.0 |
 | 2026-06-28 | [TEST-13] 覆盖率门禁完成：codecov.yml + pytest-cov + vitest coverage，后端 24% / 前端待测 |

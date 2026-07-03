@@ -167,7 +167,7 @@ class FutuWatchdog:
 
         策略：
         1. 首先检查 status 标志
-        2. 如果 status 显示连接，尝试获取一个探针标的的快照
+        2. 如果 status 显示连接，先确保探针标的已订阅，再获取快照
         3. 快照超时或异常 → 判定为不健康
         """
         # 快速路径：状态不是 CONNECTED
@@ -179,17 +179,45 @@ class FutuWatchdog:
 
         # 深度检查：尝试获取探针标的快照
         try:
-            probe_ticker = self.HEALTH_PROBE_SYMBOL
+            from futu import RET_OK, SubType
             from backend.services.futu.utils import format_ticker
 
+            probe_ticker = self.HEALTH_PROBE_SYMBOL
             market_ticker = format_ticker(probe_ticker)
+
+            # 先订阅 QUOTE（get_stock_quote 的前置条件）
+            try:
+                # LRU 订阅池管理
+                cache_mgr = self._futu.cache_mgr
+                if not cache_mgr.has_topic(market_ticker, SubType.QUOTE):
+                    evicted = cache_mgr.ensure_capacity(needed=1)
+                    if evicted:
+                        from .quote_handler import _execute_unsubscriptions
+                        await _execute_unsubscriptions(self._conn_mgr, cache_mgr, evicted)
+
+                    sub_ret, _ = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            self._conn_mgr.quote_ctx.subscribe,
+                            [market_ticker],
+                            [SubType.QUOTE],
+                            subscribe_push=False,
+                        ),
+                        timeout=3.0,
+                    )
+                    if sub_ret == RET_OK:
+                        cache_mgr.touch_topic(market_ticker, SubType.QUOTE)
+                    else:
+                        logger.debug(f"[FutuWatchdog] 探针订阅失败")
+                        return False
+            except Exception:
+                return False
 
             ret, df = await asyncio.wait_for(
                 asyncio.to_thread(self._conn_mgr.quote_ctx.get_stock_quote, [market_ticker]),
                 timeout=self.HEALTH_TIMEOUT,
             )
 
-            if ret != 0:  # RET_OK = 0
+            if ret != RET_OK:
                 logger.debug(f"[FutuWatchdog] 健康探针失败: ret={ret}")
                 return False
 
@@ -232,6 +260,8 @@ class FutuWatchdog:
             # 3. 验证连接结果
             if self._conn_mgr.status == "CONNECTED":
                 logger.info("[FutuWatchdog] 重连验证通过")
+                # 4. 恢复断连前的订阅（新 OpenQuoteContext 不继承旧订阅）
+                await self._restore_subscriptions()
                 return True
             else:
                 error_msg = self._conn_mgr.error_msg or "未知错误"
@@ -244,6 +274,51 @@ class FutuWatchdog:
         except Exception as e:
             logger.error(f"[FutuWatchdog] 重连异常: {e}")
             return False
+
+    async def _restore_subscriptions(self) -> None:
+        """重连后恢复之前丢失的订阅"""
+        from futu import RET_OK, SubType
+
+        cache_mgr = self._futu.cache_mgr
+        subscribed = cache_mgr.subscribed_topics  # 返回 set((ticker, sub_type_str))
+        if not subscribed:
+            return
+
+        # 按 ticker 分组，批量订阅
+        ticker_subs: dict = {}
+        for ticker, sub_type_str in subscribed:
+            ticker_subs.setdefault(ticker, []).append(sub_type_str)
+
+        restored = 0
+        for ticker, sub_type_strs in ticker_subs.items():
+            try:
+                # 将字符串转回 SubType 枚举
+                futu_sub_types = [getattr(SubType, st, None) for st in sub_type_strs]
+                futu_sub_types = [s for s in futu_sub_types if s is not None]
+                if not futu_sub_types:
+                    continue
+
+                ret, _ = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self._conn_mgr.quote_ctx.subscribe,
+                        [ticker],
+                        futu_sub_types,
+                        subscribe_push=False,
+                    ),
+                    timeout=5.0,
+                )
+                if ret == RET_OK:
+                    # 恢复成功后刷新 LRU 时间戳
+                    for st in sub_type_strs:
+                        cache_mgr.touch_topic(ticker, st)
+                    restored += len(sub_type_strs)
+                else:
+                    logger.warning(f"[FutuWatchdog] 恢复订阅失败: {ticker} {sub_type_strs}")
+            except Exception as e:
+                logger.warning(f"[FutuWatchdog] 恢复订阅异常: {ticker}: {e}")
+
+        if restored:
+            logger.info(f"[FutuWatchdog] 已恢复 {restored} 个订阅 (池总量: {cache_mgr.subscription_count}/{cache_mgr.max_subscriptions})")
 
     def stop(self) -> None:
         """停止看门狗"""

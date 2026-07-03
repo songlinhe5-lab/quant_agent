@@ -261,3 +261,20 @@ class ClientHeartbeat(Base):
         Index("idx_heartbeat_platform", "platform"),
         Index("idx_heartbeat_created", "created_at"),
     )
+
+
+class NavSnapshot(Base):
+    """净值快照持久化表 (分账户独立记录，用于历史净值曲线与回撤分析)"""
+
+    __tablename__ = "nav_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    market: Mapped[str] = mapped_column(String(8), index=True)  # 'HK' | 'US'
+    nav: Mapped[float] = mapped_column(Float)  # 总净值 (total_assets)
+    cash: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # 可用现金
+    market_val: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # 持仓市值
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)  # noqa: E501
+
+    __table_args__ = (
+        Index("idx_nav_snapshot_market_time", "market", "created_at"),
+    )

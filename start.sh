@@ -1,133 +1,290 @@
 #!/bin/bash
+# ==========================================
+# Quant Agent 本地开发环境一键启动脚本
+# ==========================================
+# 用法:
+#   ./start.sh          # 开发模式 (Docker 基建 + 本地后端/前端)
+#   ./start.sh -d       # Docker 全栈模式 (全部容器化)
+#   ./start.sh --infra  # 仅启动基础设施 (Redis + PostgreSQL)
+#   ./start.sh --stop   # 停止所有本地服务 (后端/前端/Worker)
+# ==========================================
 
-# Quant Agent 一键启动脚本
-# 提供本地开发环境混合启动与纯 Docker 生产环境启动的支持
+set -e
 
-function cleanup() {
-    echo -e "\n🛑 [System] 收到退出信号，正在安全关闭本地业务进程与 Docker 基建..."
-    kill $(jobs -p) 2>/dev/null
-    if [ "$DOCKER_AVAILABLE" = true ]; then
-        echo "🐳 正在停止 Redis, Postgres 等中间件容器..."
-        $DOCKER_CMD stop redis postgres prometheus grafana
+# 锁定工作目录为脚本所在目录
+cd "$(dirname "$0")" || exit 1
+
+# 颜色定义
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+log_info()  { echo -e "${GREEN}✅ $1${NC}"; }
+log_warn()  { echo -e "${YELLOW}⚠️  $1${NC}"; }
+log_error() { echo -e "${RED}❌ $1${NC}"; }
+log_step()  { echo -e "${BLUE}🚀 $1${NC}"; }
+
+# ==========================================
+# 模式: 停止所有服务
+# ==========================================
+if [ "$1" = "--stop" ]; then
+    log_step "正在停止所有本地服务..."
+    STOPPED=0
+
+    # 停止后端 uvicorn 进程
+    BACKEND_PIDS=$(ps aux | grep "uvicorn backend.main:app" | grep -v grep | awk '{print $2}')
+    if [ -n "$BACKEND_PIDS" ]; then
+        echo $BACKEND_PIDS | xargs kill -9 2>/dev/null || true
+        log_info "已停止后端 API (uvicorn)"
+        STOPPED=$((STOPPED + 1))
+    fi
+
+    # 停止 Worker 进程
+    WORKER_PIDS=$(ps aux | grep "python backend/worker.py" | grep -v grep | awk '{print $2}')
+    if [ -n "$WORKER_PIDS" ]; then
+        echo $WORKER_PIDS | xargs kill -9 2>/dev/null || true
+        log_info "已停止 Worker"
+        STOPPED=$((STOPPED + 1))
+    fi
+
+    # 停止前端 Vite 进程
+    FRONTEND_PIDS=$(ps aux | grep "vite.js" | grep "quant_agent" | grep -v grep | awk '{print $2}')
+    if [ -n "$FRONTEND_PIDS" ]; then
+        echo $FRONTEND_PIDS | xargs kill -9 2>/dev/null || true
+        log_info "已停止前端 (Vite)"
+        STOPPED=$((STOPPED + 1))
+    fi
+
+    # 停止 Docker 基础设施
+    if command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
+        docker compose stop redis postgres 2>/dev/null && log_info "已停止 Docker 基础设施 (Redis + PostgreSQL)" || true
+    fi
+
+    # 清理端口占用
+    lsof -ti:8000 | xargs kill -9 2>/dev/null || true
+    lsof -ti:3000 | xargs kill -9 2>/dev/null || true
+
+    if [ $STOPPED -eq 0 ]; then
+        log_warn "未发现运行中的服务"
+    else
+        log_info "已停止 $STOPPED 个服务"
+    fi
+    exit 0
+fi
+
+# 优雅退出：捕获 Ctrl+C，清理所有子进程
+cleanup() {
+    echo -e "\n${YELLOW}🛑 正在安全关闭本地服务...${NC}"
+    kill $(jobs -p) 2>/dev/null || true
+    # 可选：停止 Docker 基建
+    if [ "$STOP_INFRA" = "true" ]; then
+        echo "🐳 正在停止基础设施容器..."
+        docker compose stop redis postgres 2>/dev/null || true
     fi
     exit 0
 }
-
-# 捕获 Ctrl+C 中断信号，确保退出时清理由该脚本启动的后台任务
 trap cleanup SIGINT SIGTERM
 
-# 💡 确保工作目录强制锁定为脚本所在目录，避免在其他路径下执行导致相对路径失效或污染
-cd "$(dirname "$0")" || exit 1
+STOP_INFRA="false"
 
-echo "====================================================="
-echo "🚀 欢迎使用 Hermes Quant Agent 一键启动脚本"
-echo "====================================================="
-
+# ==========================================
+# Docker 检测
+# ==========================================
 DOCKER_AVAILABLE=false
-if command -v docker-compose &> /dev/null; then
-    DOCKER_CMD="docker-compose"
-    DOCKER_AVAILABLE=true
-elif command -v docker &> /dev/null && docker compose version &> /dev/null; then
-    DOCKER_CMD="docker compose"
+if command -v docker &>/dev/null && docker compose version &>/dev/null; then
     DOCKER_AVAILABLE=true
 fi
 
-# 检查 Docker 守护进程是否正常运行（仅在生产模式或需要中间件时检查）
-if [ "$DOCKER_AVAILABLE" = true ] && ! docker info &> /dev/null; then
-    echo "⚠️ 警告: Docker 已安装但守护进程未运行。"
+if [ "$DOCKER_AVAILABLE" = true ] && ! docker info &>/dev/null 2>&1; then
+    log_warn "Docker 已安装但守护进程未运行"
     DOCKER_AVAILABLE=false
 fi
 
-if [ "$1" == "--docker" ] || [ "$1" == "-d" ]; then
+# ==========================================
+# 模式: Docker 全栈
+# ==========================================
+if [ "$1" = "--docker" ] || [ "$1" = "-d" ]; then
     if [ "$DOCKER_AVAILABLE" = false ]; then
-        echo "❌ 错误: 生产模式需要 Docker 支持，请先启动 Docker Desktop 或 Docker 服务。"
+        log_error "Docker 全栈模式需要 Docker 支持"
         exit 1
     fi
-    echo "🐳 [生产模式] 正在通过 Docker 启动全栈服务..."
-    $DOCKER_CMD up -d --build
-    echo "✅ 全栈服务已在后台运行！可以使用 '$DOCKER_CMD logs -f quant-agent' 查看日志。"
+    log_step "[Docker 模式] 启动全栈服务..."
+    docker compose up -d --build
+    log_info "全栈服务已在后台运行！"
+    echo "   查看日志: docker compose logs -f quant-agent"
     exit 0
 fi
 
-echo "🛠️ [开发模式] 准备启动本地调试环境..."
-
-echo " 正在激活 Python 虚拟环境..."
-
-if [ -d "venv" ]; then
-    source venv/bin/activate
-elif [ -d ".venv" ]; then
-    source .venv/bin/activate
-else
-    echo "⚠️ 警告: 未找到 venv 或 .venv 虚拟环境，将尝试使用全局 Python 环境。"
+# ==========================================
+# 模式: 仅基础设施
+# ==========================================
+if [ "$1" = "--infra" ]; then
+    if [ "$DOCKER_AVAILABLE" = false ]; then
+        log_error "需要 Docker 来启动基础设施"
+        exit 1
+    fi
+    log_step "启动基础设施 (Redis + PostgreSQL)..."
+    docker compose up -d redis postgres
+    log_info "基础设施已启动"
+    echo "   Redis:      localhost:6379"
+    echo "   PostgreSQL: localhost:5432"
+    exit 0
 fi
 
-# 检查依赖是否完整
-if ! python -c "import meilisearch_python_async" &> /dev/null; then
-    echo "📦 正在补充安装新引入的核心依赖 (meilisearch-python-async)..."
-    pip install meilisearch-python-async
-fi
+# ==========================================
+# 模式: 本地开发 (默认)
+# ==========================================
+echo "====================================================="
+echo "🚀 Quant Agent 本地开发环境"
+echo "====================================================="
+echo ""
 
-# 检查 RAG 服务核心依赖
-if ! python -c "import chromadb" &> /dev/null; then
-    echo "📦 正在补充安装 RAG 向量检索依赖 (chromadb, sentence-transformers)..."
-    pip install chromadb sentence-transformers
-fi
-
-# 创建必需的日志与数据存储目录
-mkdir -p logs
-mkdir -p data/chroma_db
-
-echo "🚀 正在按混合启动模式 (Docker 基建 + 本地业务) 启动开发环境..."
-
+# ------------------------------------------
+# [1/4] 基础设施 (Docker)
+# ------------------------------------------
 if [ "$DOCKER_AVAILABLE" = true ]; then
-    echo "🐳 [1/3] 启动底层数据基建 (Redis + Postgres + 监控)..."
-    $DOCKER_CMD up -d redis postgres prometheus grafana
-    echo "⏳ 等待数据基建 (Postgres & Redis) 就绪 (最长约等待 15 秒)..."
-    
-    # 💡 增加智能轮询，使用 Python 真实检查 PostgreSQL 是否完全就绪 (绕过 Docker 端口欺骗)
-    for i in {1..15}; do
-        if python -c "from dotenv import load_dotenv; load_dotenv(); import os; from sqlalchemy import create_engine; user = os.getenv('DB_USER', 'quant_admin'); pw = os.getenv('DB_PASSWORD', 'quant_pg_secret_2026'); db = os.getenv('DB_NAME', 'quant_agent_db'); engine = create_engine(f'postgresql://{user}:{pw}@127.0.0.1:5432/{db}'); engine.connect().close()" &>/dev/null; then
-            echo "✅ PostgreSQL 数据库已完全就绪！"
-            break
-        fi
-        echo "⏳ 数据库仍在启动初始化中 ($i/15)..."
-        sleep 2
-    done
+    log_step "[1/4] 启动基础设施 (Redis + PostgreSQL)..."
 
-    # 💡 同样增加智能轮询，使用 Python 真实检查 Redis 是否完全就绪
-    for i in {1..15}; do
-        if python -c "from dotenv import load_dotenv; load_dotenv(); import os, redis; pw = os.getenv('REDIS_PASSWORD', 'quant_redis_secret_2026'); r = redis.Redis(host='127.0.0.1', port=6379, password=pw); r.ping()" &>/dev/null; then
-            echo "✅ Redis 缓存服务已完全就绪！"
+    # 检查是否已经在运行
+    if docker compose ps redis postgres 2>/dev/null | grep -q "Up"; then
+        log_info "基础设施已在运行中，跳过启动"
+    else
+        docker compose up -d redis postgres
+        STOP_INFRA="true"
+    fi
+
+    # 等待 PostgreSQL 就绪
+    echo -n "   等待 PostgreSQL 就绪"
+    for i in {1..20}; do
+        if docker compose exec -T postgres pg_isready -U quant_admin &>/dev/null; then
+            echo ""
+            log_info "PostgreSQL 已就绪"
             break
         fi
-        echo "⏳ Redis 仍在启动初始化中 ($i/15)..."
+        echo -n "."
         sleep 1
     done
+    echo ""
+
+    # 等待 Redis 就绪
+    echo -n "   等待 Redis 就绪"
+    for i in {1..10}; do
+        if docker compose exec -T redis redis-cli -a "${REDIS_PASSWORD:-tradingagents123}" ping &>/dev/null; then
+            echo ""
+            log_info "Redis 已就绪"
+            break
+        fi
+        echo -n "."
+        sleep 1
+    done
+    echo ""
 else
-    echo "⚠️ 警告: 未检测到 Docker，跳过基建启动，请确保本地已运行 Redis 和 Postgres。"
+    log_warn "未检测到 Docker，请确保本地已运行 Redis (6379) 和 PostgreSQL (5432)"
 fi
 
-echo "🧹 清理可能遗留的占用 8000 端口的僵尸进程..."
-# 检查 8000 端口是否被占用，如果有则安全杀掉
-if command -v lsof &> /dev/null; then
+# ------------------------------------------
+# [2/4] Python 虚拟环境
+# ------------------------------------------
+log_step "[2/4] 激活 Python 虚拟环境..."
+
+if [ -d ".venv" ]; then
+    source .venv/bin/activate
+    log_info "已激活 .venv (Python $(python --version 2>&1 | cut -d' ' -f2))"
+elif [ -d "venv" ]; then
+    source venv/bin/activate
+    log_info "已激活 venv"
+else
+    log_error "未找到虚拟环境，请先运行: uv venv && uv sync"
+    exit 1
+fi
+
+# ------------------------------------------
+# [3/4] 后端 API + Worker
+# ------------------------------------------
+log_step "[3/4] 启动后端服务..."
+
+# 清理可能占用端口的僵尸进程
+if command -v lsof &>/dev/null; then
     lsof -ti:8000 | xargs kill -9 2>/dev/null || true
 fi
 
-echo "🐍 [2/4] 启动独立数据生产与守护进程 (Worker)..."
+# 启动 Worker (后台)
 export SKIP_YF_TEST=1
 python backend/worker.py &
+WORKER_PID=$!
+log_info "Worker 已启动 (PID: $WORKER_PID)"
 
-echo "🐍 [3/4] 启动 FastAPI 后端网关 (热重载模式)..."
-# 💡 本地开发依然保留 --reload，但显式启用高性能的 uvloop 与 httptools 引擎
-python -m uvicorn backend.main:app --port 8000 --reload --loop uvloop --http httptools --no-access-log &
+# 启动 FastAPI 后端 (后台，热重载)
+python -m uvicorn backend.main:app \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --reload \
+    --reload-dir backend \
+    --reload-dir hermes_agent \
+    --loop uvloop \
+    --http httptools \
+    --no-access-log &
+BACKEND_PID=$!
+log_info "后端 API 已启动 (PID: $BACKEND_PID, http://localhost:8000)"
 
-echo "🖥️  [4/4] 启动 React 前端..."
-# 💡 增加目录容错，并使用子 Shell () 运行，防止意外改变主进程的当前目录
+# 等待后端就绪
+echo -n "   等待后端就绪"
+for i in {1..30}; do
+    if curl -sf http://localhost:8000/api/v1/health &>/dev/null; then
+        echo ""
+        log_info "后端 API 已就绪"
+        break
+    fi
+    echo -n "."
+    sleep 1
+done
+echo ""
+
+# ------------------------------------------
+# [4/4] 前端 Dev Server
+# ------------------------------------------
+log_step "[4/4] 启动前端开发服务器..."
+
 if [ -d "frontend" ]; then
-    (cd frontend && npm run dev) &
+    # 检查前端依赖
+    if [ ! -d "frontend/node_modules" ]; then
+        log_warn "前端依赖未安装，正在安装..."
+        (cd frontend && pnpm install)
+    fi
+
+    # 清理可能占用 3000 端口的进程
+    if command -v lsof &>/dev/null; then
+        lsof -ti:3000 | xargs kill -9 2>/dev/null || true
+    fi
+
+    (cd frontend && pnpm dev) &
+    FRONTEND_PID=$!
+    log_info "前端已启动 (PID: $FRONTEND_PID, http://localhost:3000)"
 else
-    echo "⚠️ 警告: 未找到 frontend 目录，前端跳过启动。"
+    log_warn "未找到 frontend 目录，前端跳过启动"
 fi
 
-echo "✅ 开发环境已全面启动！按 Ctrl+C 即可安全停机并释放端口。"
+# ==========================================
+# 启动完成
+# ==========================================
+echo ""
+echo "====================================================="
+echo "🎉 本地开发环境已全面启动！"
+echo "====================================================="
+echo ""
+echo "  📊 服务状态:"
+echo "     • Redis:       localhost:6379"
+echo "     • PostgreSQL:  localhost:5432"
+echo "     • 后端 API:    http://localhost:8000"
+echo "     • 前端:        http://localhost:3000"
+echo ""
+echo "  🔑 默认账号: admin / admin"
+echo ""
+echo "  按 Ctrl+C 安全停机"
+echo "====================================================="
+echo ""
+
+# 等待所有后台进程
 wait

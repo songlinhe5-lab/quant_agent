@@ -43,11 +43,13 @@ export const OmniSearch: React.FC<OmniSearchProps> = ({ onSelect }) => {
       setIsLoading(true);
       setIsOpen(true);
       try {
-        const response = await apiClient.get('/market/search', {
-          params: { q: debouncedQuery }
-        });
+        // apiClient.get 签名: get(path, params) — 直接传 params 对象
+        const response = await apiClient.get('/market/search', { q: debouncedQuery });
         
-        if (response.data && response.data.status === 'success') {
+        // apiClient 返回的是 response.data 包装后的结果
+        if (response && response.status === 'success') {
+          setResults(response.data || []);
+        } else if (response?.data && response.data.status === 'success') {
           setResults(response.data.data || []);
         } else {
           setResults([]);

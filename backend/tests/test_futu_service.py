@@ -97,7 +97,7 @@ class TestFutuServiceClose:
         service.quote_ctx = "mock"
         service.trade_ctxs["HK"] = "mock"
         service.status = "CONNECTED"
-        service.cache_mgr.subscribed_topics.add("test")
+        service.cache_mgr.touch_topic("HK.00700", "QUOTE")
 
         service.close()
 

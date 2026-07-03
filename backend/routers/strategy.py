@@ -8,7 +8,7 @@ import re
 import sys
 import time
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 from unittest.mock import MagicMock
 
@@ -882,7 +882,7 @@ async def monte_carlo_strategy_sandbox(payload: MonteCarloSandboxPayload):
 
 @router.post("/deploy-to-oms")
 async def deploy_to_oms(payload: RunSandboxPayload):
-    """将沙箱中跑通的最优策略进行物理持久化，并注册到实盘 OMS 引擎中"""
+    """将沙箱中跑通的最优策略进行物理持久化，并通过 BotRuntimeManager 启动真实 Bot 算力节点 (OMS-05)"""
     try:
         strategies_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "strategies", "live"))  # noqa: E501
         os.makedirs(strategies_dir, exist_ok=True)
@@ -894,22 +894,22 @@ async def deploy_to_oms(payload: RunSandboxPayload):
             header = "from __future__ import annotations\nimport numpy as np\nimport pandas as pd\nfrom typing import Dict, Any, Optional\nfrom backend.core.backtest import BaseStrategySandbox as BaseStrategy\n\n"  # noqa: E501
             f.write(header + payload.source_code)
 
-        # 2. 将最优参数写入 Redis，作为 OMS 守护进程下一次实例化的启动参数
-        bot_config = {
-            "class_name": payload.class_name,
-            "ticker": payload.ticker,
-            "params": payload.params,  # noqa: E501
-            "capital": payload.initial_capital,
-            "status": "running",
-            "deployed_at": datetime.now(timezone.utc).isoformat(),  # noqa: E501
-        }
-        from backend.core.redis_client import redis_client
+        # 2. OMS-05: 通过 BotRuntimeManager 启动真实 Bot 算力节点
+        from backend.services.bot_runtime import bot_runtime
 
-        await redis_client.hset("quant:oms:live_bots", payload.class_name, json.dumps(bot_config))  # noqa: E501
+        bot_id = f"bot_{payload.class_name.lower()}_{int(time.time())}"
+        await bot_runtime.start_bot(
+            bot_id=bot_id,
+            name=payload.class_name,
+            ticker=payload.ticker,
+            class_name=payload.class_name,
+            params=payload.params or {},
+        )
 
         return {
             "status": "success",
-            "message": f"策略已物理挂载至 {file_path}，OMS 进程将自动热加载！",
+            "message": f"策略已物理挂载至 {file_path}，Bot 算力节点 {bot_id} 已启动！",
+            "data": {"bot_id": bot_id, "file": file_path},
         }  # noqa: E501
     except Exception as e:
         return {"status": "error", "message": f"部署失败: {str(e)}"}

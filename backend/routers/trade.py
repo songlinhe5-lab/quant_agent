@@ -1,5 +1,7 @@
 import asyncio
 import json
+import logging
+import os
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -10,8 +12,11 @@ from backend.core.database import get_db
 # 引入全局 Redis 客户端
 from backend.core.redis_client import redis_client
 from backend.services.futu_service import futu_service
+from backend.services.oms_service import oms_service
 from backend.services.yfinance_service import format_yf_ticker as _to_yf_ticker
 from backend.services.yfinance_service import yf_service
+
+logger = logging.getLogger("OMS")
 
 router = APIRouter(prefix="/trade", tags=["OMS"])
 
@@ -121,6 +126,50 @@ async def place_order(
 
     if result.get("status") == "error":
         raise HTTPException(status_code=400, detail=result.get("message"))
+
+    # ==========================================
+    # 6. OMS-01: 持久化订单到 PostgreSQL + Redis PubSub 广播
+    # ==========================================
+    futu_order_id = result.get("order_id", "")
+    if futu_order_id:
+        try:
+            # 使用独立的 DB session 避免依赖注入生命周期冲突
+            from backend.core.database import SessionLocal
+
+            db_session = SessionLocal()
+            try:
+                # 优先读 Redis 热切换值，降级读环境变量
+                try:
+                    _mode = await redis_client.get("quant:oms:trading_mode")
+                    is_sim = _mode != "LIVE"
+                except Exception:
+                    is_sim = os.getenv("FUTU_TRD_ENV", "SIMULATE").upper() != "REAL"
+                await oms_service.create_order(
+                    db=db_session,
+                    order_id=str(futu_order_id),
+                    symbol=ticker,
+                    side=action,
+                    order_type="MARKET" if price <= 0 else "LIMIT",
+                    qty=qty,
+                    price=price,
+                    is_simulated=is_sim,
+                    note=f"stop_loss={dynamic_sl_price}" if dynamic_sl_price else None,
+                )
+                # 同时写入 trade_logs 留痕
+                trade_log = models.TradeLog(
+                    ticker=ticker,
+                    action=action,
+                    price=price,
+                    qty=qty,
+                    status="SUBMITTED",
+                    message=result.get("message", ""),
+                )
+                db_session.add(trade_log)
+                db_session.commit()
+            finally:
+                db_session.close()
+        except Exception as e:
+            logger.warning(f"[OMS] 订单持久化异常 (非阻断): {e}")
 
     response_data = {
         "status": "success",
