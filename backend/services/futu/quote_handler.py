@@ -10,10 +10,10 @@ from typing import Any, Dict
 import pandas as pd
 from futu import RET_OK, AuType, KLType, SubType
 
+from backend.core.logger import logger
 from backend.core.retry_utils import with_global_retry
 
 from .cache_manager import CacheManager
-from backend.core.logger import logger
 
 
 async def _execute_unsubscriptions(conn_mgr, cache_mgr: CacheManager, evicted: list) -> None:
@@ -80,7 +80,6 @@ class QuoteHandler:
         if cached and now - cached[0] < 3.0:
             return cached[1]
 
-        topic = (market_ticker, SubType.QUOTE)
         if not self.cache_mgr.has_topic(market_ticker, SubType.QUOTE):
             # LRU 容量检查：超限时淘汰最久未用的订阅
             evicted = self.cache_mgr.ensure_capacity(needed=1)
@@ -250,7 +249,6 @@ class QuoteHandler:
         if cached and now - cached[0] < 1.0:
             return cached[1]
 
-        topic = (market_ticker, SubType.ORDER_BOOK)
         if not self.cache_mgr.has_topic(market_ticker, SubType.ORDER_BOOK):
             # LRU 容量检查
             evicted = self.cache_mgr.ensure_capacity(needed=1)

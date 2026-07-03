@@ -680,8 +680,7 @@ def metrics(username: str = Depends(verify_metrics_auth)):
 # 全局 API 限流中间件 (Rate Limiter)
 # ==========================================
 # 开发环境放宽限制，避免前端热重载/轮询触发 429
-import os as _os
-_is_dev = _os.getenv("QUANT_ENV", "production") == "development"
+_is_dev = os.getenv("QUANT_ENV", "production") == "development"
 RATE_LIMIT = 1000 if _is_dev else 100  # 开发环境 1000 次/窗口，生产环境 100 次/窗口
 RATE_WINDOW = 60  # 时间窗口 (秒)
 

@@ -180,6 +180,7 @@ class FutuWatchdog:
         # 深度检查：尝试获取探针标的快照
         try:
             from futu import RET_OK, SubType
+
             from backend.services.futu.utils import format_ticker
 
             probe_ticker = self.HEALTH_PROBE_SYMBOL
@@ -207,7 +208,7 @@ class FutuWatchdog:
                     if sub_ret == RET_OK:
                         cache_mgr.touch_topic(market_ticker, SubType.QUOTE)
                     else:
-                        logger.debug(f"[FutuWatchdog] 探针订阅失败")
+                        logger.debug("[FutuWatchdog] 探针订阅失败")
                         return False
             except Exception:
                 return False

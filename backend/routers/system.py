@@ -11,9 +11,9 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
 
 from backend.core.database import SessionLocal
+from backend.core.logger import logger
 from backend.core.models import PerformanceLog
 from backend.core.redis_client import redis_client
-from backend.core.logger import logger
 from backend.routers.auth import get_current_user
 
 _BEIJING_TZ = ZoneInfo("Asia/Shanghai")
@@ -224,13 +224,13 @@ def _build_metrics_snapshot() -> dict:
     """从 Prometheus registry 读取关键指标快照"""
     try:
         from backend.core.metrics import (
-            WS_ACTIVE_CONNECTIONS,
-            WS_MESSAGES_SENT,
-            WS_MESSAGES_DROPPED,
-            WS_SUBSCRIPTIONS,
-            REDIS_QUEUE_DEPTH,
             CIRCUIT_BREAKER_STATE,
             MARKET_QUOTE_TOTAL,
+            REDIS_QUEUE_DEPTH,
+            WS_ACTIVE_CONNECTIONS,
+            WS_MESSAGES_DROPPED,
+            WS_MESSAGES_SENT,
+            WS_SUBSCRIPTIONS,
         )
 
         def _gauge_val(metric):
