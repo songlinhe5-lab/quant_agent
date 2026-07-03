@@ -44,8 +44,17 @@ def _unwrap(resp):
 class TestOmsStateRoutes:
     """OMS 初始状态查询路由测试"""
 
-    def test_get_oms_state_success(self):
+    @patch("backend.routers.oms.redis_client")
+    @patch("backend.routers.oms.bot_runtime")
+    @patch("backend.routers.oms.algo_engine")
+    @patch("backend.routers.oms.oms_service")
+    def test_get_oms_state_success(self, mock_oms, mock_algo, mock_bot, mock_redis):
         """正常路径：获取 OMS 初始状态"""
+        mock_oms.get_active_orders = AsyncMock(return_value=[])
+        mock_oms.get_historical_trades = AsyncMock(return_value=[])
+        mock_bot.get_all_bots = AsyncMock(return_value=[])
+        mock_algo.get_all_algo_orders = AsyncMock(return_value=[])
+        mock_redis.get = AsyncMock(return_value=None)
         client = TestClient(app)
         resp = client.get("/api/v1/oms/state")
         assert resp.status_code == 200
@@ -181,13 +190,26 @@ class TestOmsEmergencyLiquidation:
         _restore_oms_mock_data()
 
     @patch("backend.routers.oms.redis_client")
+    @patch("backend.routers.oms.bot_runtime")
+    @patch("backend.routers.oms.algo_engine")
+    @patch("backend.routers.oms.oms_service")
     @patch("backend.services.futu_service.futu_service")
-    async def test_execute_emergency_liquidation_no_trade_ctx(self, mock_futu, mock_redis):
+    async def test_execute_emergency_liquidation_no_trade_ctx(
+        self, mock_futu, mock_oms, mock_algo, mock_bot, mock_redis
+    ):
         """降级路径：无 trade_ctx 时走沙箱 Mock 强平"""
+        from unittest.mock import MagicMock
+
+        mock_db = MagicMock()
         mock_futu.trade_ctx = None
+        mock_bot.stop_all_bots = AsyncMock()
+        mock_algo.cancel_all = AsyncMock()
+        mock_oms.mark_all_orders_cancelled = AsyncMock()
         mock_redis.publish = AsyncMock()
         from backend.routers.oms import execute_emergency_liquidation
 
-        await execute_emergency_liquidation()
-        # 应至少调用一次 publish 通知前端
-        assert mock_redis.publish.await_count >= 1
+        await execute_emergency_liquidation(mock_db)
+        # trade_ctx 为 None 时应走降级路径: 终止所有 Bot + 取消算法拆单 + 标记订单取消
+        mock_bot.stop_all_bots.assert_awaited_once()
+        mock_algo.cancel_all.assert_awaited_once()
+        mock_oms.mark_all_orders_cancelled.assert_awaited_once()
