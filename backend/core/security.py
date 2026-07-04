@@ -29,6 +29,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     """验证明文密码是否与 bcrypt 哈希匹配"""
     return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
 
+
 # HMAC 签名过期时间（秒）
 INTERNAL_SIG_EXPIRY = 300  # 5 分钟
 
