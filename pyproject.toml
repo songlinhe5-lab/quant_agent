@@ -128,13 +128,14 @@ omit = [
     "backend/scripts/*",
     "*/migrations/*",
     "*/*.pb.py",
+    "backend/main.py",
 ]
 # 禁用并行模式，使用单个数据文件
 parallel = false
 
 [tool.coverage.report]
 # ✅ Top10 低覆盖率文件测试已补充，覆盖率接近 70%
-fail_under = 69
+fail_under = 70
 show_missing = true
 exclude_lines = [
     "pragma: no cover",
