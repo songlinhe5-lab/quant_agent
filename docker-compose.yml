@@ -100,6 +100,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - QUANT_ENV=production
+      - OTEL_ENABLED=false
       - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_secret_2026}@postgres:5432/${DB_NAME:-quant_agent_db}
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')\" || exit 1"]
@@ -138,6 +139,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - QUANT_ENV=production
+      - OTEL_ENABLED=false
       - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_secret_2026}@postgres:5432/${DB_NAME:-quant_agent_db}
     volumes:
       - quant_db:/app/backend/data
@@ -167,6 +169,7 @@ services:
       - .env
     environment:
       - QUANT_ENV=production
+      - OTEL_ENABLED=false
       # 不设置 REDIS_HOST: slave 通过 MASTER_NODES 连接各 master 的 Redis
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${NODE_PORT:-8001}/health')\" || exit 1"]
