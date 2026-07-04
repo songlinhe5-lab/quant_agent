@@ -3,7 +3,6 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Optional
 
-import bcrypt
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from google.auth.transport import requests as google_requests
