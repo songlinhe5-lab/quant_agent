@@ -1,17 +1,33 @@
 """
 内部通信安全模块
 提供 HMAC-SHA256 签名生成和验证功能，防止内网横向渗透
+同时提供密码哈希与验证工具函数
 """
 
 import base64
 import hashlib
 import hmac
+import os
 import time
 from typing import Optional, Tuple
 
+import bcrypt
 from fastapi import HTTPException, Request
 
 from backend.core.config import settings
+
+
+def get_password_hash(password: str) -> str:
+    """对明文密码进行 bcrypt 哈希，返回存储用的哈希字符串"""
+    pwd_bytes = password.encode("utf-8")
+    rounds = int(os.getenv("BCRYPT_ROUNDS", "12"))
+    salt = bcrypt.gensalt(rounds=rounds)
+    return bcrypt.hashpw(pwd_bytes, salt).decode("utf-8")
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """验证明文密码是否与 bcrypt 哈希匹配"""
+    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
 
 # HMAC 签名过期时间（秒）
 INTERNAL_SIG_EXPIRY = 300  # 5 分钟
