@@ -14,7 +14,7 @@ contactPoints:
       - uid: feishu-webhook-1
         type: webhook
         settings:
-          url: https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9
+          url: "https://open.feishu.cn/open-apis/bot/v2/hook/576d1283-156d-4eed-bf25-d3caa2d2a8d9"
           httpMethod: POST
           # 飞书 Webhook 需要 msg_type=text 格式
           # Grafana webhook 默认发送 alert payload, 需要通过自定义模板转换
