@@ -64,3 +64,74 @@ class TestWebSocketAuth:
             # 应该收到响应
             data = ws.receive_json()
             assert data["code"] == 0
+
+
+class TestWebSocketMessageHandling:
+    """测试 WebSocket 消息处理分支（非 dict payload、未知 action、ping、unsubscribe）"""
+
+    @pytest.fixture
+    def ws_token(self):
+        from jose import jwt as _jwt
+        return _jwt.encode({"sub": "testuser"}, "test-secret-key", algorithm="HS256")
+
+    def test_non_dict_payload(self, ws_token):
+        """发送非 dict payload，应返回 2001"""
+        with client.websocket_connect(f"/market/quotes/ws?token={ws_token}", timeout=2) as ws:
+            ws.send_text("not a json object")
+            data = ws.receive_json()
+            assert data["code"] == 2001
+            assert "JSON" in data["msg"]
+
+    def test_unknown_action(self, ws_token):
+        """发送未知 action，应返回 2001"""
+        with client.websocket_connect(f"/market/quotes/ws?token={ws_token}", timeout=2) as ws:
+            ws.send_text(json.dumps({"action": "unknown_action", "tickers": []}))
+            data = ws.receive_json()
+            assert data["code"] == 2001
+            assert "Unknown action" in data["msg"]
+
+    def test_ping(self, ws_token):
+        """发送 ping，应返回 pong"""
+        with client.websocket_connect(f"/market/quotes/ws?token={ws_token}", timeout=2) as ws:
+            ws.send_text(json.dumps({"action": "ping", "ts": 1234567890}))
+            data = ws.receive_json()
+            assert data["code"] == 0
+            assert data["type"] == "pong"
+            assert data["data"]["client_ts"] == 1234567890
+
+    def test_subscribe_and_unsubscribe(self, ws_token):
+        """订阅然后取消订阅"""
+        with client.websocket_connect(f"/market/quotes/ws?token={ws_token}", timeout=2) as ws:
+            # 订阅
+            ws.send_text(json.dumps({"action": "subscribe", "tickers": ["US.AAPL"]}))
+            data = ws.receive_json()
+            assert data["code"] == 0
+            assert "US.AAPL" in data["data"]["subscribed"]
+
+            # 取消订阅
+            ws.send_text(json.dumps({"action": "unsubscribe", "tickers": ["US.AAPL"]}))
+            data = ws.receive_json()
+            assert data["code"] == 0
+            assert "US.AAPL" in data["data"]["unsubscribed"]
+
+    def test_subscribe_duplicate(self, ws_token):
+        """重复订阅同一 ticker，应返回 already_subscribed"""
+        with client.websocket_connect(f"/market/quotes/ws?token={ws_token}", timeout=2) as ws:
+            ws.send_text(json.dumps({"action": "subscribe", "tickers": ["US.AAPL"]}))
+            data = ws.receive_json()
+            assert data["code"] == 0
+            assert "US.AAPL" in data["data"]["subscribed"]
+
+            # 重复订阅
+            ws.send_text(json.dumps({"action": "subscribe", "tickers": ["US.AAPL"]}))
+            data = ws.receive_json()
+            assert data["code"] == 0
+            assert "US.AAPL" in data["data"]["already_subscribed"]
+
+    def test_invalid_json(self, ws_token):
+        """发送非法 JSON，应返回 2001"""
+        with client.websocket_connect(f"/market/quotes/ws?token={ws_token}", timeout=2) as ws:
+            ws.send_text("{invalid json}")
+            data = ws.receive_json()
+            assert data["code"] == 2001
+            assert "Invalid JSON" in data["msg"]
