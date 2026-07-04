@@ -288,3 +288,313 @@ class TestGlobalManager:
 
     def test_manager_type(self):
         assert isinstance(manager, ConnectionManager)
+
+
+# ─── update_quote_to_redis alert 分支 ────────────────────────────────
+class TestUpdateQuoteToRedisAlerts:
+    @patch("backend.core.market_engine.redis_client")
+    def test_alert_lower_triggered(self, mock_redis):
+        import backend.core.market_engine as me
+        me.manager.raw_redis = AsyncMock()
+        rules_json = json.dumps({"lower": 140.0})
+        mock_redis.hgetall = AsyncMock(return_value={"user1": rules_json})
+        mock_redis.hdel = AsyncMock()
+        quote_data = {
+            "ticker": "US.AAPL",
+            "last_price": 135.0,
+            "change_pct": "-3.0%",
+            "volume_str": "1M",
+            "source": "futu",
+        }
+        send_alert_mock = AsyncMock()
+        with patch("backend.core.market_engine.notification_service") as mock_notify:
+            mock_notify.send_alert = send_alert_mock
+            asyncio.get_event_loop().run_until_complete(
+                update_quote_to_redis("US.AAPL", quote_data)
+            )
+            asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.05))
+            send_alert_mock.assert_called_once()
+
+    @patch("backend.core.market_engine.redis_client")
+    def test_alert_pct_change_triggered_bullish(self, mock_redis):
+        import backend.core.market_engine as me
+        me.manager.raw_redis = AsyncMock()
+        rules_json = json.dumps({"pct_change": 2.0})
+        mock_redis.hgetall = AsyncMock(return_value={"user1": rules_json})
+        mock_redis.hdel = AsyncMock()
+        quote_data = {
+            "ticker": "US.AAPL",
+            "last_price": 155.0,
+            "change_pct": "+3.5%",
+            "volume_str": "1M",
+            "source": "futu",
+        }
+        send_alert_mock = AsyncMock()
+        with patch("backend.core.market_engine.notification_service") as mock_notify:
+            mock_notify.send_alert = send_alert_mock
+            asyncio.get_event_loop().run_until_complete(
+                update_quote_to_redis("US.AAPL", quote_data)
+            )
+            asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.05))
+            send_alert_mock.assert_called_once()
+
+    @patch("backend.core.market_engine.redis_client")
+    def test_alert_pct_change_triggered_bearish(self, mock_redis):
+        import backend.core.market_engine as me
+        me.manager.raw_redis = AsyncMock()
+        rules_json = json.dumps({"pct_change": 2.0})
+        mock_redis.hgetall = AsyncMock(return_value={"user1": rules_json})
+        mock_redis.hdel = AsyncMock()
+        quote_data = {
+            "ticker": "US.AAPL",
+            "last_price": 145.0,
+            "change_pct": "-3.5%",
+            "volume_str": "1M",
+            "source": "futu",
+        }
+        send_alert_mock = AsyncMock()
+        with patch("backend.core.market_engine.notification_service") as mock_notify:
+            mock_notify.send_alert = send_alert_mock
+            asyncio.get_event_loop().run_until_complete(
+                update_quote_to_redis("US.AAPL", quote_data)
+            )
+            asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.05))
+            send_alert_mock.assert_called_once()
+
+    @patch("backend.core.market_engine.redis_client")
+    def test_alert_pct_change_value_error(self, mock_redis):
+        """change_pct 格式非法时触发 ValueError 分支"""
+        import backend.core.market_engine as me
+        me.manager.raw_redis = AsyncMock()
+        rules_json = json.dumps({"pct_change": 2.0})
+        mock_redis.hgetall = AsyncMock(return_value={"user1": rules_json})
+        mock_redis.hdel = AsyncMock()
+        quote_data = {
+            "ticker": "US.AAPL",
+            "last_price": 150.0,
+            "change_pct": "N/A",  # 无法解析为 float
+            "volume_str": "1M",
+            "source": "futu",
+        }
+        # ValueError 被 except 捕获，不应抛异常
+        asyncio.get_event_loop().run_until_complete(
+            update_quote_to_redis("US.AAPL", quote_data)
+        )
+        assert True
+
+    @patch("backend.core.market_engine.redis_client")
+    def test_no_alert_when_price_between_bounds(self, mock_redis):
+        import backend.core.market_engine as me
+        me.manager.raw_redis = AsyncMock()
+        rules_json = json.dumps({"upper": 160.0, "lower": 140.0})
+        mock_redis.hgetall = AsyncMock(return_value={"user1": rules_json})
+        mock_redis.hdel = AsyncMock()
+        quote_data = {
+            "ticker": "US.AAPL",
+            "last_price": 150.0,  # 在区间内
+            "change_pct": "+0.5%",
+            "volume_str": "1M",
+            "source": "futu",
+        }
+        send_alert_mock = AsyncMock()
+        with patch("backend.core.market_engine.notification_service") as mock_notify:
+            mock_notify.send_alert = send_alert_mock
+            asyncio.get_event_loop().run_until_complete(
+                update_quote_to_redis("US.AAPL", quote_data)
+            )
+            asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.05))
+            send_alert_mock.assert_not_called()
+
+
+# ─── update_trade_to_redis ────────────────────────────────────────────
+class TestUpdateTradeToRedis:
+    def test_writes_to_stream_and_publishes(self):
+        from backend.core.market_engine import update_trade_to_redis
+        fake_redis = AsyncMock()
+        mgr = ConnectionManager()
+        mgr.raw_redis = fake_redis
+        import backend.core.market_engine as me
+        original_raw_redis = me.manager.raw_redis
+        me.manager.raw_redis = fake_redis
+        try:
+            fake_trade_data = b"\x08\x01"
+            asyncio.get_event_loop().run_until_complete(
+                update_trade_to_redis("US.AAPL", fake_trade_data)
+            )
+            fake_redis.xadd.assert_awaited_once()
+            fake_redis.publish.assert_awaited_once()
+        finally:
+            me.manager.raw_redis = original_raw_redis
+
+    def test_exception_handling(self):
+        from backend.core.market_engine import update_trade_to_redis
+        fake_redis = AsyncMock()
+        fake_redis.xadd = AsyncMock(side_effect=Exception("Redis down"))
+        import backend.core.market_engine as me
+        original_raw_redis = me.manager.raw_redis
+        me.manager.raw_redis = fake_redis
+        try:
+            # 异常被捕获，不应抛出
+            asyncio.get_event_loop().run_until_complete(
+                update_trade_to_redis("US.AAPL", b"\x08\x01")
+            )
+            assert True
+        finally:
+            me.manager.raw_redis = original_raw_redis
+
+
+# ─── _catch_up_or_snapshot 批量压缩路径 ───────────────────────────────
+class TestCatchUpBatchCompress:
+    async def test_batch_compress_when_over_100_messages(self):
+        mgr = ConnectionManager()
+        mgr.raw_redis = AsyncMock()
+        ws = MagicMock()
+        mgr.active_connections = [ws]
+        # 构造 101 条消息
+        fake_messages = []
+        fake_payload = b"\x08\x01\x12\x05AAPL"
+        for i in range(101):
+            fake_messages.append((f"id_{i}", {b"payload": fake_payload}))
+        mgr.raw_redis.xrange = AsyncMock(return_value=fake_messages)
+        await mgr._catch_up_or_snapshot(ws, ["US.AAPL"], {"US.AAPL": "0"})
+        # 应该调用压缩发送（send_bytes 被调用）
+        ws.send_bytes.assert_called_once()
+        sent_data = ws.send_bytes.call_args[0][0]
+        assert isinstance(sent_data, bytes)
+        assert sent_data[0] == 0x01  # zlib 压缩模式标志
+
+    async def test_small_batch_no_compress(self):
+        mgr = ConnectionManager()
+        mgr.raw_redis = AsyncMock()
+        ws = MagicMock()
+        ws.send_bytes = AsyncMock()
+        mgr.active_connections = [ws]
+        # 构造 2 条消息
+        fake_messages = [
+            ("id_0", {b"payload": b"\x08\x01"}),
+            ("id_1", {b"payload": b"\x08\x02"}),
+        ]
+        mgr.raw_redis.xrange = AsyncMock(return_value=fake_messages)
+        await mgr._catch_up_or_snapshot(ws, ["US.AAPL"], {"US.AAPL": "0"})
+        # 应该调用 2 次 send_bytes（每条单独发送）
+        assert ws.send_bytes.call_count == 2
+
+    async def test_skip_if_ws_not_in_active_connections(self):
+        mgr = ConnectionManager()
+        mgr.raw_redis = AsyncMock()
+        ws = MagicMock()
+        # ws 不在 active_connections 中
+        mgr.active_connections = []
+        fake_messages = [("id_0", {b"payload": b"\x08\x01"})]
+        mgr.raw_redis.xrange = AsyncMock(return_value=fake_messages)
+        await mgr._catch_up_or_snapshot(ws, ["US.AAPL"], {"US.AAPL": "0"})
+        ws.send_bytes.assert_not_called()
+
+
+# ─── redis_pubsub_listener ────────────────────────────────────────────
+class TestRedisPubSubListener:
+    async def test_listener_sends_to_subscribed_ws(self):
+        mgr = ConnectionManager()
+        ws = MagicMock()
+        mgr.subscriptions[ws] = {"US.AAPL"}
+        mgr.active_connections = [ws]
+
+        import backend.core.market_engine as me
+        original_raw_redis = mgr.raw_redis
+        fake_redis = AsyncMock()
+        mgr.raw_redis = fake_redis
+
+        # 构造 QuoteData protobuf
+        from backend.core.proto.market_pb2 import QuoteData
+        q = QuoteData()
+        q.ticker = "US.AAPL"
+        q.last_price = 150.0
+        payload = q.SerializeToString()
+
+        async def mock_listen():
+            yield {"type": "message", "data": payload}
+            raise asyncio.CancelledError()  # 立即退出
+
+        fake_pubsub = AsyncMock()
+        fake_pubsub.listen = MagicMock(return_value=mock_listen())
+        fake_redis.pubsub = MagicMock(return_value=fake_pubsub)
+
+        # 用 timeout 防止无限阻塞
+        try:
+            await asyncio.wait_for(mgr.redis_pubsub_listener(), timeout=0.5)
+        except (asyncio.TimeoutError, asyncio.CancelledError, StopAsyncIteration):
+            pass
+
+        ws.send_bytes.assert_called_once()
+
+    async def test_listener_skips_non_bytes_data(self):
+        mgr = ConnectionManager()
+        ws = MagicMock()
+        mgr.subscriptions[ws] = {"US.AAPL"}
+        mgr.active_connections = [ws]
+
+        fake_redis = AsyncMock()
+        mgr.raw_redis = fake_redis
+
+        async def mock_listen():
+            yield {"type": "message", "data": 12345}  # 非 bytes
+            raise asyncio.CancelledError()
+
+        fake_pubsub = AsyncMock()
+        fake_pubsub.listen = MagicMock(return_value=mock_listen())
+        fake_redis.pubsub = MagicMock(return_value=fake_pubsub)
+
+        try:
+            await asyncio.wait_for(mgr.redis_pubsub_listener(), timeout=0.5)
+        except (asyncio.TimeoutError, asyncio.CancelledError, StopAsyncIteration):
+            pass
+
+        ws.send_bytes.assert_not_called()
+
+    async def test_listener_cancelled_error(self):
+        mgr = ConnectionManager()
+        # 直接抛 CancelledError，测试 except asyncio.CancelledError 分支
+        fake_redis = AsyncMock()
+        mgr.raw_redis = fake_redis
+
+        async def mock_listen():
+            raise asyncio.CancelledError()
+
+        fake_pubsub = AsyncMock()
+        fake_pubsub.listen = MagicMock(return_value=mock_listen())
+        fake_redis.pubsub = MagicMock(return_value=fake_pubsub)
+
+        # 不应抛异常
+        await mgr.redis_pubsub_listener()
+        assert True
+
+    async def test_listener_generic_exception(self):
+        mgr = ConnectionManager()
+        fake_redis = AsyncMock()
+        mgr.raw_redis = fake_redis
+
+        async def mock_listen():
+            raise Exception("PubSub connection lost")
+
+        fake_pubsub = AsyncMock()
+        fake_pubsub.listen = MagicMock(return_value=mock_listen())
+        fake_redis.pubsub = MagicMock(return_value=fake_pubsub)
+
+        # 不应抛异常
+        await mgr.redis_pubsub_listener()
+        assert True
+
+
+# ─── _fetch_fallback_quote ────────────────────────────────────────────
+class TestFetchFallbackQuote:
+    async def test_timeout_returns_error(self):
+        mgr = ConnectionManager()
+        with patch("backend.core.market_engine.asyncio.wait_for", side_effect=asyncio.TimeoutError()):
+            result = await mgr._fetch_fallback_quote("US.AAPL")
+            assert result["status"] == "error"
+
+    async def test_exception_returns_error(self):
+        mgr = ConnectionManager()
+        with patch("backend.core.market_engine.asyncio.to_thread", side_effect=Exception("YF down")):
+            result = await mgr._fetch_fallback_quote("US.AAPL")
+            assert result["status"] == "error"
