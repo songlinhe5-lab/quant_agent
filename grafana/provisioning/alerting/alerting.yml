@@ -1,9 +1,9 @@
 # Grafana Alerting Provisioning - 飞书 Webhook 告警通知
 # 文档: https://grafana.com/docs/grafana/latest/alerting/set-up/provision-alerting-resources/file-provisioning/
 #
-# 部署前需要设置环境变量:
-#   FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxxxx
-#   FEISHU_SECRET=your_feishu_sign_secret (可选, 若飞书机器人开启了签名校验)
+# ⚠️ 注意: Grafana 9.5.x provisioning 文件不支持 ${VAR} 环境变量替换
+# 部署后请通过 Grafana UI (Alerting → Contact Points) 修改为真实的飞书 Webhook URL
+# 或通过 GF_ALERTING 环境变量覆盖 (需 Grafana 10+)
 
 apiVersion: 1
 
@@ -14,7 +14,7 @@ contactPoints:
       - uid: feishu-webhook-1
         type: webhook
         settings:
-          url: ${FEISHU_WEBHOOK_URL}
+          url: http://localhost:3000/api/v1/grafana_oncall_stub
           httpMethod: POST
           # 飞书 Webhook 需要 msg_type=text 格式
           # Grafana webhook 默认发送 alert payload, 需要通过自定义模板转换
@@ -22,7 +22,7 @@ contactPoints:
         secureSettings:
           # 如果飞书机器人开启了签名校验, 在此配置 secret
           # Grafana 会加密存储, 不会出现在日志中
-          authorization: ${FEISHU_SECRET}
+          # authorization: ""  # 如需飞书签名校验, 通过 Grafana UI 配置
 
   # 备用: 日志记录 (用于 Warning 级别, 不推送外部通知)
   - orgId: 1

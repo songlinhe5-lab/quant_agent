@@ -5,27 +5,28 @@ venv/
 env/
 
 # 2. 构建产物与缓存 (Build Artifacts & Caches)
-.next/
-build/
-dist/
-out/
-__pycache__/
+# 使用 **/ 前缀确保匹配所有子目录
+**/.next/
+**/build/
+**/dist/
+**/out/
+**/__pycache__/
 *.py[cod]
 *$py.class
 *.so
 *.dylib
-.mypy_cache/
-.ruff_cache/
-.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.pytest_cache/
 .eslintcache
-.vite/
-.cache/
+**/.vite/
+**/.cache/
 *.tsbuildinfo
 *.egg-info/
 .eggs/
 *.egg
-.turbo/
-.vercel/
+**/.turbo/
+**/.vercel/
 
 # 排除编译后极度冗长的 Protobuf JS 产物 (仅保留 .proto 源码与 .d.ts 类型声明)
 frontend/src/lib/proto/*.js
@@ -53,6 +54,7 @@ Thumbs.db
 *credentials*.json
 
 # 5. 日志文件 (Log Files)
+**/logs/
 *.log*
 npm-debug.log*
 yarn-error.log*
@@ -68,11 +70,12 @@ Pipfile.lock
 uv.lock
 
 # 7. 测试与覆盖率报告 (Test & Coverage Reports)
-htmlcov/
-.coverage
-coverage/
-.tox/
-reports/
+**/htmlcov/
+**/.coverage
+**/coverage/
+**/.tox/
+**/cov_annotate/
+backend/coverage.json
 
 # 8. 大型静态资源与数据集 (Large Static Assets & Datasets)
 frontend/src/assets/
@@ -146,11 +149,13 @@ hermes_agent/skills/
 
 # 15. 前端静态资源与编辑器 (Frontend Static Assets & Editor)
 frontend/public/
+frontend/coverage/
 
 # 16. 运维与监控配置 (Ops & Monitoring Configs)
 grafana/
 prometheus.yml
 docker-compose.yml
+docker-compose.local.yml
 docker-publish.yml
 Dockerfile
 frontend/Dockerfile
@@ -161,6 +166,8 @@ lint.yml
 dashboard.yml
 quant.conf
 quant-agent-dashboard.json
+codecov.yml
+.pre-commit-config.yaml
 
 # 17. 脚本与批处理 (Scripts & Batch Jobs)
 scripts/
@@ -181,6 +188,7 @@ frontend/README.md
 
 # 20. 杂项缓存与运行时 (Misc Cache & Runtime)
 .memory/
+.qoder/
 .qoder-cn/
 *.rdb
 *.dump
