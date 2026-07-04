@@ -4,8 +4,10 @@ Futu 缓存管理模块
 """
 
 import asyncio
+import os
 import time
-from typing import Any, Dict, Optional, Tuple
+from collections import OrderedDict
+from typing import Any, Dict, Optional, Set, Tuple
 
 # 💡 内存安全防御：各缓存 TTL (秒)
 _QUOTE_TTL = 30  # 行情快照 30 秒
@@ -18,11 +20,16 @@ _MAX_CACHE_SIZE = 200  # 单类缓存最大条目数
 
 
 class CacheManager:
-    """缓存管理器 - 统一管理所有 Futu 数据缓存"""
+    """缓存管理器 - 统一管理所有 Futu 数据缓存 + LRU 订阅池"""
 
     def __init__(self):
-        # 订阅主题追踪
-        self.subscribed_topics = set()
+        # LRU 订阅池: OrderedDict[(ticker, sub_type_str)] → last_access_time
+        # 尾部 = 最近访问，头部 = 最久未访问
+        self._sub_pool: OrderedDict[Tuple[str, str], float] = OrderedDict()
+        self.max_subscriptions = int(os.getenv("FUTU_MAX_SUBSCRIPTIONS", "100"))
+
+        # 待退订队列：LRU 淘汰后放入，由调用方异步执行实际退订
+        self._pending_unsub: Set[Tuple[str, str]] = set()
 
         # 各类数据缓存 {cache_key: (timestamp, data)}
         self._quote_cache: Dict[str, Tuple[float, Dict]] = {}
@@ -36,6 +43,73 @@ class CacheManager:
         self.ff_lock: Optional[asyncio.Lock] = None
         self.last_ff_time = 0.0
         self.ff_circuit_breaker_until = 0.0
+
+    # ── LRU 订阅池管理 ─────────────────────────────────────────────
+
+    @property
+    def subscribed_topics(self) -> Set[Tuple[str, str]]:
+        """兼容旧接口：返回当前所有已订阅的 (ticker, sub_type) 集合"""
+        return set(self._sub_pool.keys())
+
+    def touch_topic(self, ticker: str, sub_type: str) -> None:
+        """标记订阅为最近访问（LRU 提升）"""
+        key = (ticker, sub_type)
+        if key in self._sub_pool:
+            self._sub_pool.move_to_end(key)
+        else:
+            self._sub_pool[key] = time.time()
+
+    def has_topic(self, ticker: str, sub_type: str) -> bool:
+        """检查订阅是否存在并刷新 LRU"""
+        key = (ticker, sub_type)
+        if key in self._sub_pool:
+            self._sub_pool.move_to_end(key)
+            return True
+        return False
+
+    def remove_topic(self, ticker: str, sub_type: str) -> None:
+        """手动移除订阅记录（退订后调用）"""
+        self._sub_pool.pop((ticker, sub_type), None)
+
+    def evict_lru(self, count: int = 1) -> list:
+        """
+        LRU 淘汰：弹出最久未使用的 count 个订阅。
+        返回被剔除的 [(ticker, sub_type_str), ...] 列表，调用方需执行实际退订。
+        """
+        evicted = []
+        for _ in range(count):
+            if not self._sub_pool:
+                break
+            oldest_key, _ = self._sub_pool.popitem(last=False)
+            evicted.append(oldest_key)
+        return evicted
+
+    def drain_pending_unsub(self) -> Set[Tuple[str, str]]:
+        """取出并清空待退订队列"""
+        result = self._pending_unsub.copy()
+        self._pending_unsub.clear()
+        return result
+
+    def ensure_capacity(self, needed: int = 1) -> list:
+        """
+        确保订阅池有足够空间。如果当前数量 + needed > max，
+        则淘汰最久未用的订阅，返回需要实际退订的列表。
+        """
+        evicted = []
+        while len(self._sub_pool) + needed > self.max_subscriptions and self._sub_pool:
+            oldest_key, _ = self._sub_pool.popitem(last=False)
+            evicted.append(oldest_key)
+            self._pending_unsub.add(oldest_key)
+        return evicted
+
+    @property
+    def subscription_count(self) -> int:
+        return len(self._sub_pool)
+
+    def clear_all_subscriptions(self) -> None:
+        """清空所有订阅记录（关闭连接时调用）"""
+        self._sub_pool.clear()
+        self._pending_unsub.clear()
 
     def evict_stale_cache(self):
         """内存安全防御：清理所有过期缓存，防止无界字典无限增长"""
@@ -134,7 +208,16 @@ class CacheManager:
     @staticmethod
     def compress_quote_data(row) -> Dict[str, Any]:
         """压缩行情数据，提取核心字段"""
+        import logging
+
         from backend.core.utils import safe_divide, safe_float
+
+        logger = logging.getLogger(__name__)
+
+        # 调试: 打印所有可用字段 (仅首次)
+        if not hasattr(CacheManager, "_lot_size_logged"):
+            logger.info(f"[CacheManager] quote row keys: {list(row.keys()) if hasattr(row, 'keys') else 'N/A'}")
+            CacheManager._lot_size_logged = True
 
         last_price = safe_float(row.get("last_price", 0.0))
         prev_close = safe_float(row.get("prev_close_price", 0.0))
@@ -151,6 +234,13 @@ class CacheManager:
             else str(volume)
         )
 
+        # 尝试多种可能的 lot_size 字段名
+        lot_size_raw = row.get("lot_size") or row.get("lotsize") or row.get("lot_Size") or 0
+        lot_size = int(safe_float(lot_size_raw) or 0)
+        if lot_size > 0 and not hasattr(CacheManager, f"_lot_size_logged_{row.get('code', '')}"):
+            logger.info(f"[CacheManager] {row.get('code', 'unknown')} lot_size={lot_size} (raw={lot_size_raw})")
+            setattr(CacheManager, f"_lot_size_logged_{row.get('code', '')}", True)
+
         data = {
             "status": "success",
             "source": "futu",
@@ -160,6 +250,7 @@ class CacheManager:
             "volume": volume,
             "volume_str": vol_str,
             "turnover_rate": f"{safe_float(row.get('turnover_rate', 0.0)):.2f}%",
+            "lot_size": lot_size,
         }
 
         # 动态提取期权特有字段

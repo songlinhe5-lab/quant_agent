@@ -10,9 +10,42 @@ from typing import Any, Dict
 import pandas as pd
 from futu import RET_OK, AuType, KLType, SubType
 
+from backend.core.logger import logger
 from backend.core.retry_utils import with_global_retry
 
 from .cache_manager import CacheManager
+
+
+async def _execute_unsubscriptions(conn_mgr, cache_mgr: CacheManager, evicted: list) -> None:
+    """
+    执行 LRU 淘汰后的实际退订操作。
+    按 ticker 分组批量退订，避免频繁调用 OpenD API。
+    """
+    if not evicted:
+        return
+
+    # 按 ticker 分组: {ticker: [sub_type_str, ...]}
+    ticker_groups: dict = {}
+    for ticker, sub_type_str in evicted:
+        ticker_groups.setdefault(ticker, []).append(sub_type_str)
+
+    for ticker, sub_types in ticker_groups.items():
+        try:
+            # 将字符串转回 SubType 枚举
+            futu_sub_types = [getattr(SubType, st, None) for st in sub_types]
+            futu_sub_types = [s for s in futu_sub_types if s is not None]
+            if not futu_sub_types:
+                continue
+
+            ret, _ = await asyncio.to_thread(conn_mgr.quote_ctx.unsubscribe, [ticker], futu_sub_types)
+            if ret == RET_OK:
+                for st in sub_types:
+                    cache_mgr.remove_topic(ticker, st)
+                logger.info(f"[Futu LRU] 退订 {ticker} {sub_types}")
+            else:
+                logger.warning(f"[Futu LRU] 退订失败 {ticker}: {ret}")
+        except Exception as e:
+            logger.warning(f"[Futu LRU] 退订异常 {ticker}: {e}")
 
 
 class QuoteHandler:
@@ -45,8 +78,11 @@ class QuoteHandler:
         if cached and now - cached[0] < 3.0:
             return cached[1]
 
-        topic = (market_ticker, SubType.QUOTE)
-        if topic not in self.cache_mgr.subscribed_topics:
+        if not self.cache_mgr.has_topic(market_ticker, SubType.QUOTE):
+            # LRU 容量检查：超限时淘汰最久未用的订阅
+            evicted = self.cache_mgr.ensure_capacity(needed=1)
+            await _execute_unsubscriptions(self.conn_mgr, self.cache_mgr, evicted)
+
             ret, msg = self.conn_mgr.quote_ctx.subscribe(
                 [market_ticker],
                 [SubType.QUOTE],
@@ -55,7 +91,7 @@ class QuoteHandler:
             )
             if ret != RET_OK:
                 return {"status": "error", "message": msg}
-            self.cache_mgr.subscribed_topics.add(topic)
+            self.cache_mgr.touch_topic(market_ticker, SubType.QUOTE)
 
         ret, df = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_stock_quote, [market_ticker])
         if ret != RET_OK or not isinstance(df, pd.DataFrame) or df.empty:
@@ -104,8 +140,11 @@ class QuoteHandler:
         st = getattr(SubType, ktype.upper(), SubType.K_DAY)
 
         # 优化：优先使用 get_cur_kline (消耗订阅额度，比历史额度更宽松)
-        topic = (market_ticker, st)
-        if topic not in self.cache_mgr.subscribed_topics:
+        if not self.cache_mgr.has_topic(market_ticker, st):
+            # LRU 容量检查
+            evicted = self.cache_mgr.ensure_capacity(needed=1)
+            await _execute_unsubscriptions(self.conn_mgr, self.cache_mgr, evicted)
+
             sub_ret, _ = await asyncio.to_thread(
                 self.conn_mgr.quote_ctx.subscribe,
                 [market_ticker],
@@ -113,7 +152,7 @@ class QuoteHandler:
                 subscribe_push=False,  # noqa: E501
             )
             if sub_ret == RET_OK:
-                self.cache_mgr.subscribed_topics.add(topic)
+                self.cache_mgr.touch_topic(market_ticker, st)
 
         ret, df = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_cur_kline, market_ticker, num, kt, AuType.QFQ)
 
@@ -176,7 +215,7 @@ class QuoteHandler:
                 if ret == RET_OK:
                     # 同步清理内部的主题追踪缓存
                     for st in sub_types:
-                        self.cache_mgr.subscribed_topics.discard((market_ticker, st))
+                        self.cache_mgr.remove_topic(market_ticker, st)
                     return {"status": "success", "message": f"成功退订 {market_ticker}"}
                 return {"status": "error", "message": str(data)}
 
@@ -208,12 +247,15 @@ class QuoteHandler:
         if cached and now - cached[0] < 1.0:
             return cached[1]
 
-        topic = (market_ticker, SubType.ORDER_BOOK)
-        if topic not in self.cache_mgr.subscribed_topics:
+        if not self.cache_mgr.has_topic(market_ticker, SubType.ORDER_BOOK):
+            # LRU 容量检查
+            evicted = self.cache_mgr.ensure_capacity(needed=1)
+            await _execute_unsubscriptions(self.conn_mgr, self.cache_mgr, evicted)
+
             ret, msg = self.conn_mgr.quote_ctx.subscribe([market_ticker], [SubType.ORDER_BOOK], subscribe_push=False)
             if ret != RET_OK:
                 return {"status": "error", "message": f"盘口订阅失败: {msg}"}
-            self.cache_mgr.subscribed_topics.add(topic)
+            self.cache_mgr.touch_topic(market_ticker, SubType.ORDER_BOOK)
 
         ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_order_book, market_ticker)
         if ret != RET_OK or not isinstance(data, dict):

@@ -22,30 +22,39 @@ const DEFAULT_CONFIG: ClientConfig = {
   withCredentials: true,
 }
 
-// ─── Token 管理（内存存储，SEC-07）─────────────────────────────────
-let currentAccessToken: string | null = null
-let tokenRefreshPromise: Promise<string> | null = null
+// ─── Token 管理（localStorage 持久化）─────────────────────────────────
+const TOKEN_KEY = 'quant_access_token'
 
 /**
- * 获取 Access Token（仅内存）
+ * 获取 Access Token（从 localStorage）
  */
 export function getAccessToken(): string | null {
-  return currentAccessToken
+  if (typeof window === 'undefined') return null
+  return window.localStorage.getItem(TOKEN_KEY)
 }
 
 /**
- * 设置 Access Token
+ * 设置 Access Token（写入 localStorage）
  */
 export function setAccessToken(token: string | null): void {
-  currentAccessToken = token
+  if (typeof window === 'undefined') return
+  if (token) {
+    window.localStorage.setItem(TOKEN_KEY, token)
+  } else {
+    window.localStorage.removeItem(TOKEN_KEY)
+  }
 }
 
 /**
  * 清除 Token
  */
 export function clearTokens(): void {
-  currentAccessToken = null
+  if (typeof window === 'undefined') return
+  window.localStorage.removeItem(TOKEN_KEY)
 }
+
+// 防止并发刷新
+let tokenRefreshPromise: Promise<string | null> | null = null
 
 // ─── 错误类 ────────────────────────────────────────────────────────
 export class ApiError extends Error {
@@ -114,7 +123,11 @@ class RestClient {
       const response = await fetch(url, {
         method,
         headers: requestHeaders,
-        body: body ? JSON.stringify(body) : undefined,
+        body: body instanceof URLSearchParams
+          ? body
+          : body
+            ? JSON.stringify(body)
+            : undefined,
         credentials: this.config.withCredentials ? 'include' : 'omit',
         signal: signal || controller.signal,
       })
@@ -123,6 +136,15 @@ class RestClient {
 
       // 处理 401 - 尝试刷新 Token
       if (response.status === 401) {
+        // 认证接口本身返回 401 → 清除 token 并跳转登录页
+        if (path === '/auth/me' || path === '/auth/refresh' || path === '/auth/login') {
+          clearTokens()
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login'
+          }
+          throw new ApiError(401, '认证失败')
+        }
+
         const newToken = await this.refreshToken()
         if (newToken) {
           // 重试请求
@@ -130,14 +152,20 @@ class RestClient {
           const retryResponse = await fetch(url, {
             method,
             headers: requestHeaders,
-            body: body ? JSON.stringify(body) : undefined,
+            body: body instanceof URLSearchParams
+              ? body
+              : body
+                ? JSON.stringify(body)
+                : undefined,
             credentials: this.config.withCredentials ? 'include' : 'omit',
             signal: signal || controller.signal,
           })
           return this.handleResponse<T>(retryResponse)
         }
-        // 刷新失败，跳转登录
-        window.location.href = '/login'
+        // 刷新失败 → token 已在 refreshToken() 中清除，跳转登录页
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login'
+        }
         throw new ApiError(401, '认证已过期')
       }
 
@@ -157,26 +185,32 @@ class RestClient {
   }
 
   /**
-   * 处理响应
+   * 处理响应 — 返回 axios 兼容格式 `{ data, status }`
+   * - 标准格式 `{code, msg, data, ts}` → `res.data` = `apiData.data`（解包一层）
+   * - 非标准格式 → `res.data` = 原始 JSON body
+   * 前端统一通过 `res.data` 访问，与 axios 行为一致。
+   * 注意：401/403 的 refresh 逻辑统一在 request() 中处理，此处仅抛错。
    */
   private async handleResponse<T>(response: Response): Promise<T> {
-    const data = await response.json()
-    
+    const rawBody = await response.json()
+
     // 检查统一响应结构 { code, msg, data, ts }
-    if (data && typeof data === 'object' && 'code' in data) {
-      const apiData = data as ApiResponse<T>
+    if (rawBody && typeof rawBody === 'object' && 'code' in rawBody) {
+      const apiData = rawBody as ApiResponse<unknown>
       if (apiData.code !== 0 && apiData.code !== 200) {
         throw new ApiError(apiData.code, apiData.msg || '请求失败', apiData.data)
       }
-      return apiData.data as T
+      // 标准格式：解包 {code, data} → res.data = apiData.data
+      return { data: apiData.data, status: response.status } as unknown as T
     }
 
-    // 非标准响应，直接返回
+    // 非标准响应
     if (!response.ok) {
       throw new ApiError(response.status, `HTTP ${response.status}`)
     }
 
-    return data as T
+    // 非标准格式：res.data = 原始 JSON body
+    return { data: rawBody, status: response.status } as unknown as T
   }
 
   /**

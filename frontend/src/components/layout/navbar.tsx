@@ -45,7 +45,7 @@ function TickerTape() {
     let isMounted = true;
     const fetchAssets = async () => {
       try {
-        const res = await apiClient.get('/macro/assets');
+        const res = await apiClient.get('/macro/assets') as any;
         if (isMounted && res.data?.status === 'success') {
           setAssets(res.data.data.macroAssets || []);
         }
@@ -71,7 +71,7 @@ function TickerTape() {
       `}} />
       <div className="flex animate-ticker items-center w-max">
         {displayAssets.map((asset, i) => (
-          <div key={i} onClick={() => navigate(`/market/${asset.symbol}`)} className="flex items-center gap-2 px-4 border-r border-slate-300 dark:border-slate-700 last:border-0 cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors h-9 whitespace-nowrap">
+          <div key={i} onClick={() => navigate(`/market/${normalizeSymbol(asset.symbol)}`)} className="flex items-center gap-2 px-4 border-r border-slate-300 dark:border-slate-700 last:border-0 cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors h-9 whitespace-nowrap">
             <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">{asset.symbol}</span>
             <span className={cn("text-[11px] font-mono tabular-nums", asset.change >= 0 ? "text-[#059669] dark:text-[#0ecb81]" : "text-[#e11d48] dark:text-[#f6465d]")}>{asset.value.toFixed(2)}</span>
             <span className={cn("text-[10px] font-mono font-bold tabular-nums", asset.change >= 0 ? "text-[#059669] dark:text-[#0ecb81]" : "text-[#e11d48] dark:text-[#f6465d]")}>{asset.change >= 0 ? '+' : ''}{asset.change.toFixed(2)}%</span>
@@ -113,6 +113,19 @@ function SystemMetrics() {
   );
 }
 
+/**
+ * 统一股票代码格式
+ * 搜索引擎返回 HK.00772 格式，内部组件使用 00772.HK 格式
+ */
+function normalizeSymbol(symbol: string): string {
+  // HK.00772 → 00772.HK
+  const prefixMatch = symbol.match(/^(US|HK|SH|SZ|JP|SG|UK)\.(.+)$/i);
+  if (prefixMatch) {
+    return `${prefixMatch[2]}.${prefixMatch[1].toUpperCase()}`;
+  }
+  return symbol;
+}
+
 export const Navbar: React.FC = () => {
   const navigate = useNavigate();
   const setCurrentTicker = useMarketStore((state: any) => state.setCurrentTicker);
@@ -139,11 +152,17 @@ export const Navbar: React.FC = () => {
   }, []);
 
   const handleSearchSelect = (symbol: string, name: string, type: string) => {
-    // 1. 同步更新 Zustand 全局状态
-    setCurrentTicker(symbol, name, type);
+    // 统一 symbol 格式: 搜索返回 HK.00772 格式，内部使用 00772.HK 格式
+    const normalized = normalizeSymbol(symbol);
 
-    // 2. 强制路由跳转到行情仪表盘页面 (无论当前在哪个页面)
-    navigate(`/market/${symbol}`);
+    // 1. 同步更新 Zustand 全局状态（QuotesModule 会监听并自动切换）
+    setCurrentTicker(normalized, name, type);
+
+    // 2. 写入 sessionStorage 供路由重定向组件读取
+    sessionStorage.setItem('quant_target_symbol', normalized);
+
+    // 3. 路由跳转到行情仪表盘
+    navigate(`/market/${normalized}`);
   };
 
   return (

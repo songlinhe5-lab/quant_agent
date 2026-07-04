@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { TrendingUp, Loader2, Clock } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { apiClient, API_BASE_URL } from '@/lib/api-client'
+import { apiClient, API_BASE_URL, getAccessToken } from '@/lib/api-client'
 import type { CapitalFlowItem } from '@/services/mock'
 import { useSystemStore } from '@/stores/useSystemStore'
 import { useToast } from '@/hooks/use-toast'
@@ -170,9 +170,10 @@ export function DataCenterModule() {
 
       // 动态构建 WebSocket URL (安全替换 http 为 ws，适配环境变量)
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const token = getAccessToken()
       const wsUrl = API_BASE_URL.startsWith('http')
-        ? API_BASE_URL.replace(/^http/, 'ws') + '/macro/news/ws'
-        : `${protocol}//${window.location.host}${API_BASE_URL}/macro/news/ws`
+        ? API_BASE_URL.replace(/^http/, 'ws') + '/macro/news/ws' + (token ? `?token=${token}` : '')
+        : `${protocol}//${window.location.host}${API_BASE_URL}/macro/news/ws` + (token ? `?token=${token}` : '')
 
       ws = new WebSocket(wsUrl)
 

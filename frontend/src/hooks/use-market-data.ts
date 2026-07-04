@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useToast } from '@/hooks/use-toast'
-import { apiClient, API_BASE_URL } from '@/lib/api-client'
+import { apiClient, API_BASE_URL, getAccessToken } from '@/lib/api-client'
 import { market } from '@/lib/proto/market'
 import { WatchlistItem } from '@/stores/use-watchlist'
 
@@ -22,6 +22,8 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
   const lastWsUpdateTime = useRef<number>(0)
   const staleTimerRef = useRef<NodeJS.Timeout | null>(null)
   const syncErrorToastShown = useRef(false)
+  const wsRef = useRef<WebSocket | null>(null)
+  const wsConnectedRef = useRef(false)
 
   // ⏳ 1. 拉取低频 K 线图历史与底层运行状态
   useEffect(() => {
@@ -44,7 +46,7 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
         
         const [statusRes, histRes] = await Promise.all([
           apiClient.get('/market/futu/status').catch(() => null),
-          apiClient.get('/market/history', { params: { ticker: sym, ktype, num: 300 } }).catch(() => null)
+          apiClient.get('/market/history', { ticker: sym, ktype, num: 300 }).catch(() => null)
         ])
 
         if (isMounted && statusRes?.data) {
@@ -92,23 +94,54 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
   // 🚀 2. 建立高频 WebSocket 行情订阅 (Protobuf 解码)
   useEffect(() => {
     let isMounted = true
-    let ws: WebSocket | null = null
 
     function connectWS() {
       if (watchlist.length === 0) return
 
+      // 无 token 时不建立连接，避免 403 无限重连
+      const token = getAccessToken()
+      if (!token) {
+        console.warn('[WS] 无认证 token，跳过 WebSocket 连接')
+        return
+      }
+
+      // Close existing connection
+      if (wsRef.current) {
+        wsRef.current.close()
+        wsRef.current = null
+      }
+
       const sym = selectedSymbol.replace('/', '')
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       const wsUrl = API_BASE_URL.startsWith('http') 
-        ? API_BASE_URL.replace(/^http/, 'ws') + '/market/quotes/ws'
-        : `${protocol}//${window.location.host}${API_BASE_URL}/market/quotes/ws`
-      ws = new WebSocket(wsUrl)
+        ? API_BASE_URL.replace(/^http/, 'ws') + '/market/quotes/ws?token=' + token
+        : `${protocol}//${window.location.host}${API_BASE_URL}/market/quotes/ws?token=` + token
+      
+      const ws = new WebSocket(wsUrl)
       ws.binaryType = "arraybuffer"
+      wsRef.current = ws
 
       ws.onopen = () => {
+        wsConnectedRef.current = true
         if (isMounted) {
           const allTickers = Array.from(new Set([sym, ...watchlist.map(w => w.symbol.replace('/', ''))]))
-          ws?.send(JSON.stringify({ action: 'subscribe', tickers: allTickers }))
+          ws.send(JSON.stringify({ action: 'subscribe', tickers: allTickers }))
+        }
+      }
+
+      ws.onerror = () => {
+        // Connection error - will trigger onclose
+      }
+
+      ws.onclose = () => {
+        wsConnectedRef.current = false
+        // Auto-reconnect after 3 seconds if still mounted
+        if (isMounted && watchlist.length > 0) {
+          setTimeout(() => {
+            if (isMounted && !wsConnectedRef.current) {
+              connectWS()
+            }
+          }, 3000)
         }
       }
 
@@ -151,18 +184,25 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
     }
 
     connectWS()
-    const handleOnlineWS = () => { if (ws) ws.close(); setTimeout(() => { if (isMounted) connectWS() }, 500) }
+    const handleOnlineWS = () => { 
+      if (wsRef.current) wsRef.current.close()
+      setTimeout(() => { if (isMounted) connectWS() }, 500) 
+    }
     window.addEventListener('online', handleOnlineWS)
 
     return () => {
       isMounted = false
-      if (ws && ws.readyState === WebSocket.OPEN) {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         const sym = selectedSymbol.replace('/', '')
-        ws.send(JSON.stringify({ action: 'unsubscribe', tickers: [sym] }))
+        wsRef.current.send(JSON.stringify({ action: 'unsubscribe', tickers: [sym] }))
       }
       if (staleTimerRef.current) clearTimeout(staleTimerRef.current)
       window.removeEventListener('online', handleOnlineWS)
-      ws?.close()
+      // Only close if OPEN - let CONNECTING sockets finish or fail naturally
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.close()
+      }
+      wsRef.current = null
     }
   }, [selectedSymbol, watchlist.length])
 

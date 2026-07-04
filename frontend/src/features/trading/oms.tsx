@@ -1,12 +1,13 @@
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
-import { ShieldAlert, Cpu, MemoryStick, Activity, Terminal, ListOrdered, History, GitPullRequest, X, ChevronUp, ChevronDown, Bot, Play, Pause, PowerOff } from 'lucide-react'
+import { ShieldAlert, Cpu, MemoryStick, Activity, Terminal, ListOrdered, History, GitPullRequest, X, ChevronUp, ChevronDown, Bot, Play, Pause, PowerOff, MapPin, ShieldCheck, ShieldOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
-import { apiClient, API_BASE_URL } from '@/lib/api-client'
+import { apiClient, API_BASE_URL, getAccessToken } from '@/lib/api-client'
+import { confirmDanger } from '@/components/confirm-dialog'
 
 // ── Type Definitions ───────────────────────────────────────────────────────
 interface BotLog {
@@ -19,7 +20,7 @@ interface LiveBot {
   id: string;
   name: string;
   ticker: string;
-  status: 'running' | 'paused' | 'error';
+  status: 'running' | 'paused' | 'stopped' | 'error';
   cpu: number;
   mem: number;
   logs: BotLog[];
@@ -56,6 +57,18 @@ interface AlgoExecution {
   progress: number;
   status: 'RUNNING' | 'PAUSED' | 'COMPLETED' | 'ERROR';
   message?: string;
+}
+
+interface Position {
+  code: string;
+  stock_name?: string;
+  position_side: string;
+  qty: number;
+  can_sell_qty?: number;
+  cost_price: number;
+  market_val: number;
+  pl_val: number;
+  pl_ratio: number;
 }
 
 // ── 算法拆单表单组件 ────────────────────────────────────────────────────────
@@ -240,12 +253,14 @@ export function OMSModule() {
   const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([])
   const [historicalTrades, setHistoricalTrades] = useState<HistoricalTrade[]>([])
   const [algoExecutions, setAlgoExecutions] = useState<AlgoExecution[]>([])
+  const [positions, setPositions] = useState<Position[]>([])
   const [cancelingOrders, setCancelingOrders] = useState<Set<string>>(new Set())
   const [showAlgoModal, setShowAlgoModal] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<ActiveOrder | null>(null)
   const [isConsoleOpen, setIsConsoleOpen] = useState(true)
   const [isKilled, setIsKilled] = useState(false)
   const [isStale, setIsStale] = useState(false)
+  const [tradingMode, setTradingMode] = useState<'SANDBOX' | 'LIVE'>('SANDBOX')
   const logsEndRefs = useRef<{ [key: string]: HTMLDivElement | null }>({})
 
   // 💡 接入真实 WebSocket 数据流
@@ -259,11 +274,19 @@ export function OMSModule() {
       try {
         const res = await apiClient.get('/oms/state')
         if (isMounted && res.data?.status === 'success') {
-          const { bots, active_orders, historical_trades, algo_executions } = res.data.data
-          setBots(bots || [])
+          const { bots: botsData, active_orders, historical_trades, algo_executions, trading_mode } = res.data.data
+          setBots(botsData || [])
           setActiveOrders(active_orders || [])
           setHistoricalTrades(historical_trades || [])
           setAlgoExecutions(algo_executions || [])
+          if (trading_mode) setTradingMode(trading_mode)
+        }
+        // OMS-04: 拉取真实持仓
+        const posRes = await apiClient.get('/oms/positions', { market: 'HK' })
+        if (isMounted && posRes?.status === 'success') {
+          setPositions(posRes.data || [])
+        } else if (isMounted && posRes?.data?.status === 'success') {
+          setPositions(posRes.data.data || [])
         }
       } catch (error) {
         console.error("Failed to fetch initial OMS state:", error)
@@ -281,9 +304,10 @@ export function OMSModule() {
       
       // 💡 动态构建 WebSocket URL，适配 HTTPS (wss) 与跨域环境变量
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const wsUrl = API_BASE_URL.startsWith('http') 
-        ? API_BASE_URL.replace(/^http/, 'ws') + '/oms/ws'
-        : `${protocol}//${window.location.host}${API_BASE_URL}/oms/ws`
+      const token = getAccessToken()
+      const wsUrl = API_BASE_URL.startsWith('http')
+        ? API_BASE_URL.replace(/^http/, 'ws') + '/oms/ws' + (token ? `?token=${token}` : '')
+        : `${protocol}//${window.location.host}${API_BASE_URL}/oms/ws` + (token ? `?token=${token}` : '')
       ws = new WebSocket(wsUrl)
 
       ws.onopen = () => {
@@ -317,6 +341,12 @@ export function OMSModule() {
               break
             case 'algo_executions_update':
               setAlgoExecutions(msg.data)
+              break
+            case 'positions_update':
+              if (msg.data?.market === 'HK') setPositions(msg.data.positions || [])
+              break
+            case 'mode_change':
+              if (msg.data?.mode) setTradingMode(msg.data.mode)
               break
             default:
               break
@@ -370,24 +400,51 @@ export function OMSModule() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  // 🛑 全局熔断逻辑
+  // 🚨 全局熔断逻辑 (OMS-10: 使用 ConfirmDialog + CLOSE ALL 文字确认)
   const handleKillSwitch = async () => {
     if (isKilled) return
-    if (confirm("⚠️ 警告：您正在触发全局物理熔断！\n这将会立刻切断所有机器人的执行，并以市价平掉所有多空仓位。\n确认执行吗？")) {
-      setIsKilled(true)
-      try {
-        await apiClient.post('/oms/kill_switch', { timestamp: Date.now() })
-        toast({ variant: 'destructive', title: '🚨 全局熔断已触发', description: '所有算力节点已强行下线，市价清仓指令已下达！' })
-        setBots(prev => prev.map(b => ({
-          ...b, 
-          status: 'error', 
-          cpu: 0, 
-          logs: [...b.logs, { time: new Date().toLocaleTimeString('zh-CN', { hour12: false }), msg: '🚨 KILL SWITCH ENGAGED. FORCE CLOSE ALL POSITIONS.', type: 'warn' }] 
-        })))
-      } catch (error) {
-        toast({ variant: 'destructive', title: '熔断指令发送失败', description: '请立即检查网络或登录券商 APP 强制平仓！' })
-        setIsKilled(false)
+    const confirmed = await confirmDanger(
+      '⚠️ 全局物理熔断 (KILL SWITCH)',
+      '将立刻切断所有算力节点，撤销全部挂单，并以市价平掉所有多空仓位。此操作不可撤销！',
+      { confirmLabel: '执行熔断', cancelLabel: '取消', requireInputConfirm: 'CLOSE ALL' }
+    )
+    if (!confirmed) return
+    setIsKilled(true)
+    try {
+      await apiClient.post('/oms/kill_switch', { timestamp: Date.now() })
+      toast({ variant: 'destructive', title: '🚨 全局熔断已触发', description: '所有算力节点已强行下线，市价清仓指令已下达！' })
+      setBots(prev => prev.map(b => ({
+        ...b, 
+        status: 'error' as const, 
+        cpu: 0, 
+        logs: [...b.logs, { time: new Date().toLocaleTimeString('zh-CN', { hour12: false }), msg: '🚨 KILL SWITCH ENGAGED. FORCE CLOSE ALL POSITIONS.', type: 'warn' as const }] 
+      })))
+    } catch (error) {
+      toast({ variant: 'destructive', title: '熔断指令发送失败', description: '请立即检查网络或登录券商 APP 强制平仓！' })
+      setIsKilled(false)
+    }
+  }
+  
+  // 🔄 模式切换确认 (OMS-11) — 热切换，立即生效
+  const handleModeSwitch = async () => {
+    const targetMode = tradingMode === 'SANDBOX' ? 'LIVE' : 'SANDBOX'
+    const confirmed = await confirmDanger(
+      `切换交易模式: ${tradingMode} → ${targetMode}`,
+      targetMode === 'LIVE'
+        ? '即将进入实盘模式，所有交易将使用真实资金。请确认您已充分了解风险。'
+        : '即将切换到沙箱模式，所有交易将在模拟环境中执行。',
+      { confirmLabel: '确认切换', cancelLabel: '取消' }
+    )
+    if (!confirmed) return
+    try {
+      const res = await apiClient.post('/oms/mode/switch', { mode: targetMode })
+      if (res.data?.status === 'success') {
+        // 立即更新本地状态 (WebSocket 也会广播，双保险)
+        setTradingMode(targetMode)
+        toast({ title: '模式已切换', description: res.data.message })
       }
+    } catch (error) {
+      toast({ variant: 'destructive', title: '切换失败', description: '网络异常' })
     }
   }
 
@@ -428,6 +485,18 @@ export function OMSModule() {
     }
   }
 
+  // 🛑 终止单个 Bot 算力节点 (OMS-05)
+  const handleStopBot = async (botId: string) => {
+    if (!confirm(`⚠️ 确认终止 Bot ${botId}？此操作不可逆。`)) return
+    try {
+      setBots(prev => prev.map(b => b.id === botId ? { ...b, status: 'stopped' } : b))
+      await apiClient.post(`/oms/bots/${botId}/stop`)
+      toast({ title: 'Bot 已终止', description: `算力节点 ${botId} 已安全下线` })
+    } catch (error) {
+      toast({ variant: 'destructive', title: '终止失败', description: '网络异常或节点已离线' })
+    }
+  }
+
   return (
     <div className="relative h-[calc(100vh-80px)] w-full flex flex-col overflow-hidden">
       
@@ -442,6 +511,23 @@ export function OMSModule() {
           <p className="text-sm text-muted-foreground mt-1">正在尝试重新连接订单总线，页面状态已挂起...</p>
         </div>
       )}
+
+      {/* ── OMS-11: 交易模式横幅 ─────────────────────────────────────────── */}
+      <div className={cn(
+        "flex-shrink-0 px-4 py-1.5 flex items-center justify-between border rounded-md mb-2 text-xs font-bold transition-colors",
+        tradingMode === 'LIVE'
+          ? "bg-red-500/10 border-red-500/30 text-red-500"
+          : "bg-emerald-500/10 border-emerald-500/30 text-emerald-500"
+      )}>
+        <div className="flex items-center gap-2">
+          {tradingMode === 'LIVE' ? <ShieldOff className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+          <span>{tradingMode === 'LIVE' ? '实盘模式 (LIVE)' : '沙箱模式 (SANDBOX)'}</span>
+          <span className="text-[10px] font-normal opacity-70">— {tradingMode === 'LIVE' ? '真实资金交易' : '模拟环境，无真实资金风险'}</span>
+        </div>
+        <button onClick={handleModeSwitch} className="px-2 py-0.5 rounded border border-current/30 hover:bg-current/10 transition-colors text-[10px]">
+          切换模式
+        </button>
+      </div>
 
       {/* ── Top Bar & Kill Switch ─────────────────────────────────────────── */}
       <div className="flex-shrink-0 mb-4 flex items-center justify-between">
@@ -512,12 +598,21 @@ export function OMSModule() {
                   </span>
                   <button 
                     onClick={() => handleToggleBotStatus(bot.id, bot.status)}
-                    disabled={bot.status === 'error'}
+                    disabled={bot.status === 'error' || bot.status === 'stopped'}
                     className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed" 
                     title={bot.status === 'running' ? '暂停执行' : bot.status === 'paused' ? '恢复执行' : '节点已终止'}
                   >
                     {bot.status === 'running' ? <Pause className="w-3.5 h-3.5" /> : bot.status === 'paused' ? <Play className="w-3.5 h-3.5" /> : <PowerOff className="w-3.5 h-3.5" />}
                   </button>
+                  {(bot.status === 'running' || bot.status === 'paused') && (
+                    <button 
+                      onClick={() => handleStopBot(bot.id)}
+                      className="p-1 rounded text-red-500/70 hover:text-red-400 hover:bg-red-500/10 transition-colors" 
+                      title="终止 Bot"
+                    >
+                      <PowerOff className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
               
@@ -597,6 +692,9 @@ export function OMSModule() {
                 </TabsTrigger>
                 <TabsTrigger value="algo" className="text-xs data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-10 px-4">
                   <GitPullRequest className="w-3.5 h-3.5 mr-1.5" /> 算法拆单进度
+                </TabsTrigger>
+                <TabsTrigger value="positions" className="text-xs data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-10 px-4">
+                  <MapPin className="w-3.5 h-3.5 mr-1.5" /> 真实持仓 ({positions.length})
                 </TabsTrigger>
               </TabsList>
 
@@ -694,7 +792,7 @@ export function OMSModule() {
               </TabsContent>
 
               {/* Algo Execution Grid */}
-              <TabsContent value="algo" className="flex-1 m-0 p-4 overflow-auto custom-scrollbar flex flex-col gap-4">
+              <TabsContent value="algo" className="flex-1 m-0 overflow-auto custom-scrollbar p-4 flex flex-col gap-4">
                 {algoExecutions.map(algo => (
                   <div key={algo.id} className="border border-border/40 rounded-lg p-4 bg-secondary/10 flex flex-col gap-3">
                     <div className="flex items-center justify-between">
@@ -722,6 +820,53 @@ export function OMSModule() {
                     <p className="text-sm">暂无运行中的算法拆单任务</p>
                   </div>
                 )}
+              </TabsContent>
+
+              {/* Real Positions (OMS-04) */}
+              <TabsContent value="positions" className="flex-1 m-0 overflow-auto custom-scrollbar">
+                <table className="w-full text-xs text-left whitespace-nowrap">
+                  <thead className="bg-secondary/30 text-muted-foreground sticky top-0 z-10 backdrop-blur-sm">
+                    <tr>
+                      <th className="px-4 py-2.5 font-medium">代码</th>
+                      <th className="px-4 py-2.5 font-medium">名称</th>
+                      <th className="px-4 py-2.5 font-medium">方向</th>
+                      <th className="px-4 py-2.5 font-medium text-right">数量</th>
+                      <th className="px-4 py-2.5 font-medium text-right">成本价</th>
+                      <th className="px-4 py-2.5 font-medium text-right">市值</th>
+                      <th className="px-4 py-2.5 font-medium text-right">盈亏</th>
+                      <th className="px-4 py-2.5 font-medium text-right">盈亏比</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/20 font-mono">
+                    {positions.map((pos, idx) => (
+                      <tr key={`${pos.code}-${idx}`} className="hover:bg-secondary/10 transition-colors">
+                        <td className="px-4 py-2 font-bold text-foreground">{pos.code}</td>
+                        <td className="px-4 py-2 text-muted-foreground">{pos.stock_name || '-'}</td>
+                        <td className="px-4 py-2">
+                          <span className={cn("px-1.5 py-0.5 rounded font-bold text-[10px]",
+                            pos.position_side === 'LONG' ? 'bg-emerald-500/15 text-emerald-500' : 'bg-red-500/15 text-red-500'
+                          )}>
+                            {pos.position_side}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 text-right">{pos.qty}</td>
+                        <td className="px-4 py-2 text-right">{pos.cost_price?.toFixed(2)}</td>
+                        <td className="px-4 py-2 text-right">{pos.market_val?.toFixed(0)}</td>
+                        <td className={cn("px-4 py-2 text-right font-bold", pos.pl_val > 0 ? "text-emerald-500" : pos.pl_val < 0 ? "text-red-500" : "text-muted-foreground")}>
+                          {pos.pl_val > 0 ? '+' : ''}{pos.pl_val?.toFixed(2) || '0.00'}
+                        </td>
+                        <td className={cn("px-4 py-2 text-right font-bold",
+                          pos.pl_ratio > 0 ? "text-emerald-500" : pos.pl_ratio < 0 ? "text-red-500" : "text-muted-foreground"
+                        )}>
+                          {pos.pl_ratio > 0 ? '+' : ''}{pos.pl_ratio != null ? (pos.pl_ratio * 100).toFixed(2) + '%' : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                    {positions.length === 0 && (
+                      <tr><td colSpan={8} className="text-center py-8 text-muted-foreground">暂无持仓数据 (等待 Futu 同步...)</td></tr>
+                    )}
+                  </tbody>
+                </table>
               </TabsContent>
             </Tabs>
           </div>

@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { useWatchlist } from '@/stores/use-watchlist'
+import { useMarketStore } from '@/stores/marketStore'
 import { useTheme } from 'next-themes'
 import { OrderBookWebGL } from '@/features/quotes/order-book-webgl'
 import { TradeHistory } from '@/features/quotes/trade-history'
@@ -31,19 +32,40 @@ export function QuotesModule() {
     })
   }
 
-  useEffect(() => {
-    setMounted(true)
-    
-    // 💡 检查是否有通过跨模块跳转传过来的特定标的
-    const target = sessionStorage.getItem('quant_target_symbol')
-    if (target) {
-      setSelectedSymbol(target)
-      sessionStorage.removeItem('quant_target_symbol')
-    }
-  }, [])
-
   const [selectedSymbol, setSelectedSymbol] = useState('00700.HK')
   const [selectedPeriod, setSelectedPeriod] = useState('1h')
+
+  useEffect(() => { setMounted(true) }, [])
+
+  // 💡 监听 Zustand 全局 ticker 变化（navbar 搜索跳转）
+  const globalTicker = useMarketStore((s: any) => s.currentTicker)
+  useEffect(() => {
+    if (globalTicker && globalTicker !== selectedSymbol) {
+      setSelectedSymbol(globalTicker)
+      // 如果标的不在自选列表中，自动添加以确保 WebSocket 订阅和图表展示
+      if (!watchlist.some(w => w.symbol === globalTicker)) {
+        addTicker(globalTicker)
+      }
+    }
+  }, [globalTicker])
+
+  // 💡 监听 hash 变化（/market/:ticker 路由重定向触发）
+  useEffect(() => {
+    const checkTarget = () => {
+      const target = sessionStorage.getItem('quant_target_symbol')
+      if (target) {
+        setSelectedSymbol(target)
+        // 自动添加到自选列表
+        if (!watchlist.some(w => w.symbol === target)) {
+          addTicker(target)
+        }
+        sessionStorage.removeItem('quant_target_symbol')
+      }
+    }
+    checkTarget()
+    window.addEventListener('hashchange', checkTarget)
+    return () => window.removeEventListener('hashchange', checkTarget)
+  }, [])
 
   const { watchlist, addTicker, removeTicker, updateTicker, reorderWatchlist } = useWatchlist()
 

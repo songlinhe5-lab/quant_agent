@@ -70,7 +70,7 @@ socket.setdefaulttimeout(15.0)
 # from hermes_agent.tool_registry import ToolRegistry  # noqa: E402
 
 from backend.core import models  # noqa: E402
-from backend.core.database import Base, SessionLocal, async_engine, engine  # noqa: E402
+from backend.core.database import AsyncSessionLocal, Base, SessionLocal, async_engine, engine  # noqa: E402
 
 # 自动创建数据库表与必要扩展
 try:
@@ -119,9 +119,11 @@ from backend.routers.macro import router as macro_router  # noqa: E402
 from backend.routers.market import router as market_router  # noqa: E402
 from backend.routers.oms import router as oms_router  # noqa: E402
 from backend.routers.preferences import router as preferences_router  # noqa: E402
+from backend.routers.risk import router as risk_router  # noqa: E402
 from backend.routers.screener import router as screener_router  # noqa: E402
 from backend.routers.search import router as search_router  # noqa: E402
 from backend.routers.strategy import router as strategy_router  # noqa: E402
+from backend.routers.system import router as system_router  # noqa: E402
 from backend.routers.trade import router as trade_router  # noqa: E402
 from backend.services.finnhub_service import finnhub_service  # noqa: E402
 from backend.services.fred_service import fred_service  # noqa: E402
@@ -277,6 +279,85 @@ async def lifespan(app: FastAPI):  # type: ignore
         await cluster_manager.start()
         print("✅ [Startup] ClusterManager 已启动 - 从节点服务池发现")
 
+    # 🚀 启动 NAV 快照守护进程 (每 5 分钟分账户记录 HK/US 净值到 Redis + DB)
+    async def _nav_snapshot_daemon():
+        """每 5 分钟分账户记录 NAV 快照到 Redis List + 持久化到数据库"""
+        while True:
+            try:
+                # 并发获取 HK + US 账户
+                hk_acc, us_acc = await asyncio.gather(
+                    futu_service.get_account_info("HK"),
+                    futu_service.get_account_info("US"),
+                    return_exceptions=True,
+                )
+                for market, acc in [("HK", hk_acc), ("US", us_acc)]:
+                    if isinstance(acc, dict) and acc.get("status") == "success":
+                        nav = float(acc.get("total_assets", 0))
+                        cash = float(acc.get("cash", 0))
+                        market_val = float(acc.get("market_val", 0))
+                        if nav > 0:
+                            # 1. 写入 Redis (最近 24h 快速查询)
+                            key = f"quant:risk:nav_snapshots:{market}"
+                            await redis_client.lpush(key, json.dumps({"ts": time.time(), "nav": nav}))
+                            await redis_client.ltrim(key, 0, 287)
+
+                            # 2. 持久化到数据库 (长期历史存储)
+                            try:
+                                async with AsyncSessionLocal() as db:
+                                    snapshot = models.NavSnapshot(
+                                        market=market,
+                                        nav=nav,
+                                        cash=cash,
+                                        market_val=market_val,
+                                    )
+                                    db.add(snapshot)
+                                    await db.commit()
+                            except Exception as db_err:
+                                logger.warning(f"[NAV Daemon] DB 写入失败 ({market}): {db_err}")
+            except Exception as e:
+                logger.warning(f"[NAV Daemon] 快照记录失败: {e}")
+            await asyncio.sleep(300)  # 5 分钟
+
+    nav_snapshot_task = asyncio.create_task(_nav_snapshot_daemon())
+    print("✅ [Startup] NAV 快照守护进程已启动 (每 5 分钟)")
+
+    # 🚀 OMS-04: 启动持仓实时同步守护进程 (每 30 秒从 Futu 拉取真实持仓写入 Redis)
+    async def _oms_position_sync_daemon():
+        """每 30 秒从 Futu 拉取 HK/US 真实持仓列表，写入 Redis 缓存"""
+        from backend.services.oms_service import oms_service
+
+        while True:
+            try:
+                await asyncio.gather(
+                    oms_service.sync_positions_from_futu("HK"),
+                    oms_service.sync_positions_from_futu("US"),
+                    return_exceptions=True,
+                )
+            except Exception as e:
+                logger.warning(f"[OMS Position Daemon] 同步失败: {e}")
+            await asyncio.sleep(30)  # 30 秒
+
+    oms_position_task = asyncio.create_task(_oms_position_sync_daemon())
+    print("✅ [Startup] OMS 持仓同步守护进程已启动 (每 30 秒)")
+
+    # 🚀 OMS-05: 启动 BotRuntimeManager — 恢复之前运行的 Bot 算力节点
+    from backend.services.bot_runtime import bot_runtime
+
+    try:
+        restored = await bot_runtime.restore_bots_from_redis()
+        print(f"✅ [Startup] BotRuntimeManager 已启动 (恢复 {restored} 个 Bot)")
+    except Exception as e:
+        logger.warning(f"[Startup] BotRuntimeManager 恢复失败: {e}")
+
+    # 🚀 OMS-08: 启动 AlgoEngine — 恢复之前运行中的算法拆单
+    from backend.services.algo_engine import algo_engine
+
+    try:
+        algo_restored = await algo_engine.restore_from_redis()
+        print(f"✅ [Startup] AlgoEngine 已启动 (恢复 {algo_restored} 个算法订单)")
+    except Exception as e:
+        logger.warning(f"[Startup] AlgoEngine 恢复失败: {e}")
+
     yield  # 挂起，此时 FastAPI 正式对外提供 HTTP 与 WS 服务
 
     # === 销毁阶段 (Shutdown) ===
@@ -295,6 +376,32 @@ async def lifespan(app: FastAPI):  # type: ignore
 
     try:
         tasks_to_await = []
+
+        # 停止 NAV 快照守护进程
+        if "nav_snapshot_task" in locals() and not nav_snapshot_task.done():
+            nav_snapshot_task.cancel()
+            tasks_to_await.append(nav_snapshot_task)
+
+        # 停止 OMS 持仓同步守护进程
+        if "oms_position_task" in locals() and not oms_position_task.done():
+            oms_position_task.cancel()
+            tasks_to_await.append(oms_position_task)
+
+        # OMS-05: 优雅关停所有 Bot 算力节点
+        try:
+            from backend.services.bot_runtime import bot_runtime
+
+            await bot_runtime.shutdown()
+        except Exception:
+            pass
+
+        # OMS-08: 优雅关停所有算法拆单
+        try:
+            from backend.services.algo_engine import algo_engine
+
+            await algo_engine.shutdown()
+        except Exception:
+            pass
 
         if "loop_monitor_task" in locals() and not loop_monitor_task.done():
             loop_monitor_task.cancel()
@@ -576,7 +683,9 @@ def metrics(username: str = Depends(verify_metrics_auth)):
 # ==========================================
 # 全局 API 限流中间件 (Rate Limiter)
 # ==========================================
-RATE_LIMIT = 100  # 每个 IP 在时间窗口内的最大请求数
+# 开发环境放宽限制，避免前端热重载/轮询触发 429
+_is_dev = os.getenv("QUANT_ENV", "production") == "development"
+RATE_LIMIT = 1000 if _is_dev else 100  # 开发环境 1000 次/窗口，生产环境 100 次/窗口
 RATE_WINDOW = 60  # 时间窗口 (秒)
 
 
@@ -720,6 +829,8 @@ app.include_router(strategy_router, prefix="/api/v1")
 app.include_router(oms_router, prefix="/api/v1")
 app.include_router(audit_router, prefix="/api/v1")
 app.include_router(client_router, prefix="/api/v1")  # BE-08
+app.include_router(system_router, prefix="/api/v1")  # System APM
+app.include_router(risk_router, prefix="/api/v1")  # Risk 风控面板
 
 # 挂载内部 API 路由（需要 HMAC 签名验证，符合 SEC-03 安全规范）
 app.include_router(internal_router, prefix="/api/v1")
@@ -1305,35 +1416,6 @@ async def delete_session(session_id: str, username: str = Depends(get_current_us
         return {"status": "success", "message": f"会话 {session_id} 已彻底删除"}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ==========================================
-# --- 系统性能监控日志 API ---
-# ==========================================
-@app.get("/api/system/performance-logs")
-async def get_performance_logs(limit: int = 100, username: str = Depends(get_current_user)):  # noqa: E501
-    """获取系统性能监控日志 (慢请求与事件循环卡顿)"""
-
-    def fetch_logs():
-        with SessionLocal() as db:
-            logs = db.query(models.PerformanceLog).order_by(models.PerformanceLog.timestamp.desc()).limit(limit).all()  # noqa: E501
-            return [
-                {
-                    "id": log.id,
-                    "timestamp": log.timestamp.strftime("%Y-%m-%d %H:%M:%S") if log.timestamp else "",  # noqa: E501
-                    "log_type": log.log_type,
-                    "duration_ms": log.duration_ms,
-                    "endpoint": log.endpoint,
-                    "details": log.details,
-                }
-                for log in logs
-            ]
-
-    try:
-        data = await asyncio.to_thread(fetch_logs)
-        return {"status": "success", "data": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

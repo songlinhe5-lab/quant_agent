@@ -213,14 +213,16 @@ class TestStrategySandboxRoutes:
 class TestStrategyDeployRoutes:
     """策略部署到 OMS 路由测试"""
 
+    @patch("backend.services.bot_runtime.bot_runtime")
     @patch("backend.core.redis_client.redis_client")
-    def test_deploy_to_oms_success(self, mock_redis):
+    def test_deploy_to_oms_success(self, mock_redis, mock_bot_rt):
         """正常路径：策略成功部署到 OMS
 
         注：deploy-to-oms 内部使用 from ... import redis_client 局部导入，
         故需 patch 源头 backend.core.redis_client.redis_client。
         """
         mock_redis.hset = AsyncMock(return_value=1)
+        mock_bot_rt.start_bot = AsyncMock(return_value="bot_test_001")
         client = TestClient(app)
         resp = client.post(
             "/api/v1/strategy/deploy-to-oms",
@@ -233,4 +235,4 @@ class TestStrategyDeployRoutes:
         assert resp.status_code == 200
         data = _unwrap(resp)
         assert data["status"] == "success"
-        assert "OMS" in data["message"]
+        assert "OMS" in data["message"] or "Bot" in data["message"]

@@ -25,6 +25,8 @@ interface ConfirmState {
   confirmLabel: string
   cancelLabel: string
   destructive: boolean
+  requireInputConfirm: string | null
+  inputValue: string
 }
 
 const DEFAULT_STATE: ConfirmState = {
@@ -34,6 +36,8 @@ const DEFAULT_STATE: ConfirmState = {
   confirmLabel: '确认',
   cancelLabel: '取消',
   destructive: true,
+  requireInputConfirm: null,
+  inputValue: '',
 }
 
 interface ConfirmContextValue {
@@ -43,6 +47,7 @@ interface ConfirmContextValue {
     confirmLabel?: string
     cancelLabel?: string
     destructive?: boolean
+    requireInputConfirm?: string
   }) => Promise<boolean>
 }
 
@@ -70,6 +75,7 @@ export function ConfirmDialogProvider({ children }: { children: React.ReactNode 
     confirmLabel?: string
     cancelLabel?: string
     destructive?: boolean
+    requireInputConfirm?: string
   }) => {
     return new Promise<boolean>((resolve) => {
       resolveRef.current = resolve
@@ -80,6 +86,8 @@ export function ConfirmDialogProvider({ children }: { children: React.ReactNode 
         confirmLabel: opts.confirmLabel || '确认',
         cancelLabel: opts.cancelLabel || '取消',
         destructive: opts.destructive !== false,
+        requireInputConfirm: opts.requireInputConfirm || null,
+        inputValue: '',
       })
     })
   }, [])
@@ -113,10 +121,26 @@ export function ConfirmDialogProvider({ children }: { children: React.ReactNode 
             </AlertDialogTitle>
             <AlertDialogDescription>{state.description}</AlertDialogDescription>
           </AlertDialogHeader>
+          {state.requireInputConfirm && (
+            <div className="py-2">
+              <label className="text-xs text-muted-foreground mb-1.5 block">
+                请输入 <span className="font-mono font-bold text-foreground">{state.requireInputConfirm}</span> 以确认操作
+              </label>
+              <input
+                type="text"
+                value={state.inputValue}
+                onChange={(e) => setState(prev => ({ ...prev, inputValue: e.target.value }))}
+                className="w-full bg-background border border-border/50 rounded-md px-3 py-2 text-sm font-mono outline-none focus:border-red-500 transition-colors"
+                placeholder={state.requireInputConfirm}
+                autoFocus
+              />
+            </div>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel onClick={handleCancel}>{state.cancelLabel}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirm}
+              disabled={state.requireInputConfirm !== null && state.inputValue !== state.requireInputConfirm}
               className={state.destructive ? 'bg-red-600 hover:bg-red-700 text-white' : ''}
             >
               {state.confirmLabel}
@@ -147,7 +171,7 @@ export function registerGlobalConfirm(fn: ConfirmContextValue['confirm']) {
 export async function confirmDanger(
   title: string,
   description: string,
-  opts?: { confirmLabel?: string; cancelLabel?: string }
+  opts?: { confirmLabel?: string; cancelLabel?: string; requireInputConfirm?: string }
 ): Promise<boolean> {
   if (!globalConfirm) {
     // 降级：如果 Provider 未挂载，回退到原生 confirm
@@ -159,5 +183,6 @@ export async function confirmDanger(
     confirmLabel: opts?.confirmLabel || '确认',
     cancelLabel: opts?.cancelLabel || '取消',
     destructive: true,
+    requireInputConfirm: opts?.requireInputConfirm,
   })
 }

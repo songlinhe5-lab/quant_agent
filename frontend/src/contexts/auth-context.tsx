@@ -28,12 +28,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        // 如果内存中没有 access_token，但有 httpOnly 的 refresh_token
-        // 这里的请求触发 401 后，你的 api-client 会自动帮我们调用 /auth/refresh
-        const res = await apiClient.get('/auth/me');
+        const res = await apiClient.get('/auth/me') as any;
         if (res.data) setUser(res.data);
-      } catch (error) {
-        // 会话确实过期或未登录
+      } catch {
+        // 未登录或会话过期，保持在当前页面（登录页或公开页）
         setUser(null);
       } finally {
         setIsLoading(false);
@@ -51,15 +49,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // 如果你的后端接收 JSON，可直接改成 apiClient.post('/auth/login', { username, password })
     const res = await apiClient.post('/auth/login', formData, {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-    });
+    }) as any;
 
     const { access_token } = res.data;
     
-    // 1. 将 Token 注入到全局 Axios 实例的内存中，供后续请求使用
+    // 1. 将 Token 注入到全局内存中，供后续请求使用
     setAccessToken(access_token);
 
     // 2. 登录成功后，立即拉取当前用户信息
-    const userRes = await apiClient.get('/auth/me');
+    const userRes = await apiClient.get('/auth/me') as any;
     setUser(userRes.data);
   };
 

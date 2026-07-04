@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { Toaster } from '@/components/ui/toaster'
 import { ConfirmDialogProvider } from '@/components/confirm-dialog'
 import { ProtectedRoute } from '@/components/layout/protected-route'
@@ -16,9 +16,18 @@ const BacktestModule = lazy(() => import('@/features/trading/backtest').then(m =
 const OMSModule = lazy(() => import('@/features/trading/oms').then(m => ({ default: m.OMSModule })))
 const RiskModule = lazy(() => import('@/features/trading/risk').then(m => ({ default: m.RiskModule })))
 const CopilotModule = lazy(() => import('@/features/trading/copilot').then(m => ({ default: m.CopilotModule })))
-// TODO: 创建 @/features/system/apm 模块
-// const ApmPanel = lazy(() => import('@/features/system/apm').then(m => ({ default: m.ApmPanel })))
+const ApmModule = lazy(() => import('@/features/system/performance-panel').then(m => ({ default: m.PerformancePanel })))
 const SettingsPage = lazy(() => import('@/features/settings/settings'))
+
+// /market/:ticker 跳转组件：将 URL 中的 ticker 存入 sessionStorage，然后重定向到 /quotes
+function MarketTickerRedirect() {
+  const { ticker } = useParams<{ ticker: string }>()
+  // 同步设置 sessionStorage（在 render 阶段，确保 <Navigate> 触发前已写入）
+  if (ticker) {
+    sessionStorage.setItem('quant_target_symbol', decodeURIComponent(ticker))
+  }
+  return <Navigate to="/quotes" replace />
+}
 
 function LoadingFallback() {
   return (
@@ -46,6 +55,7 @@ export default function App() {
           {/* 临时：不使用认证保护 */}
           <Route element={<DashboardLayout />}>
             <Route index element={<Navigate to="/data-center" replace />} />
+            <Route path="/market/:ticker" element={<MarketTickerRedirect />} />
             <Route path="/data-center" element={<Suspense fallback={<LoadingFallback />}><DataCenterModule /></Suspense>} />
             <Route path="/quotes" element={<Suspense fallback={<LoadingFallback />}><QuotesModule /></Suspense>} />
             <Route path="/screener" element={<Suspense fallback={<LoadingFallback />}><ScreenerModule /></Suspense>} />
@@ -54,8 +64,7 @@ export default function App() {
             <Route path="/oms" element={<Suspense fallback={<LoadingFallback />}><OMSModule /></Suspense>} />
             <Route path="/risk" element={<Suspense fallback={<LoadingFallback />}><RiskModule /></Suspense>} />
             <Route path="/copilot" element={<Suspense fallback={<LoadingFallback />}><CopilotModule /></Suspense>} />
-            {/* TODO: 启用 APM 路由 after creating @/features/system/apm module */}
-            {/* <Route path="/apm" element={<Suspense fallback={<LoadingFallback />}><ApmPanel /></Suspense>} /> */}
+            <Route path="/apm" element={<Suspense fallback={<LoadingFallback />}><ApmModule /></Suspense>} />
             <Route path="/settings" element={<Suspense fallback={<LoadingFallback />}><SettingsPage /></Suspense>} />
           </Route>
         </Routes>

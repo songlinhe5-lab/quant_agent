@@ -14,6 +14,7 @@ from backend.core.retry_utils import with_global_retry
 from backend.core.utils import safe_float
 
 from .cache_manager import CacheManager
+from .quote_handler import _execute_unsubscriptions
 
 
 class OptionFundHandler:
@@ -138,12 +139,28 @@ class OptionFundHandler:
 
         broker_data, order_book_data = None, None
         if market_ticker.startswith("HK."):
-            sub_ret, sub_err = await asyncio.to_thread(
-                self.conn_mgr.quote_ctx.subscribe,
-                [market_ticker],
-                [SubType.BROKER, SubType.ORDER_BOOK],
-                subscribe_push=False,  # noqa: E501
-            )
+            # LRU 订阅池管理：检查并确保容量
+            need_sub = []
+            for st in [SubType.BROKER, SubType.ORDER_BOOK]:
+                if not self.cache_mgr.has_topic(market_ticker, st):
+                    need_sub.append(st)
+
+            if need_sub:
+                evicted = self.cache_mgr.ensure_capacity(needed=len(need_sub))
+                await _execute_unsubscriptions(self.conn_mgr, self.cache_mgr, evicted)
+
+                sub_ret, sub_err = await asyncio.to_thread(
+                    self.conn_mgr.quote_ctx.subscribe,
+                    [market_ticker],
+                    need_sub,
+                    subscribe_push=False,  # noqa: E501
+                )
+                if sub_ret == RET_OK:
+                    for st in need_sub:
+                        self.cache_mgr.touch_topic(market_ticker, st)
+            else:
+                sub_ret = RET_OK  # 已订阅，跳过
+
             if sub_ret == RET_OK:
                 for _ in range(3):
                     await asyncio.sleep(0.3)

@@ -1,92 +1,30 @@
 import asyncio
 import json
 import logging
-import random
-import time
-from datetime import datetime
-from typing import Optional
+import os
 
 from fastapi import (
     APIRouter,
     BackgroundTasks,
+    Depends,
     HTTPException,
+    Request,
     WebSocket,
     WebSocketDisconnect,
 )
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
+from backend.core import models
+from backend.core.database import get_db
 from backend.core.redis_client import redis_client
+from backend.services.algo_engine import algo_engine
+from backend.services.audit_service import log_audit
+from backend.services.bot_runtime import bot_runtime
+from backend.services.oms_service import oms_service
 
 router = APIRouter(prefix="/oms", tags=["OMS & Live Bots"])
-
-# 💡 在真实的系统中，这些初始数据应该从数据库或 OMS 引擎的持久化状态中读取。
-# 此处我们暂时使用之前的 Mock 数据作为首次加载的快照。
-try:
-    from backend.services.oms_mock_data import (
-        ACTIVE_ORDERS,
-        ALGO_EXECUTIONS,
-        HISTORICAL_TRADES,
-        INITIAL_BOTS,
-    )
-except ImportError:
-    INITIAL_BOTS = []
-    ACTIVE_ORDERS = []
-    HISTORICAL_TRADES = []
-    ALGO_EXECUTIONS = []
-
-# --- 💡 新增：后台模拟日志生成器，让机器人终端看起来更真实 ---
-
-# 全局任务句柄，确保日志生成器只运行一个实例
-_log_generator_task: Optional[asyncio.Task] = None
-
-
-async def mock_bot_log_generator():
-    """
-    后台模拟任务：为正在运行的 Bot 动态生成日志并推送到 Redis
-    """
-    while True:
-        try:
-            # 💡 只为处于 'running' 状态的机器人生成日志
-            running_bots = [bot for bot in INITIAL_BOTS if bot.get("status") == "running"]  # noqa: E501
-            if not running_bots:
-                await asyncio.sleep(5)
-                continue
-
-            # 随机挑选一个正在运行的 bot
-            bot_to_log = random.choice(running_bots)
-
-            # 模拟生成不同类型的日志
-            log_type = random.choices(["info", "success", "warn"], weights=[0.7, 0.2, 0.1], k=1)[0]  # noqa: E501
-
-            if log_type == "info":
-                msg = random.choice(
-                    [
-                        "Scanning market for entry signals...",
-                        f"Current position size: {random.randint(100, 500)} shares.",
-                        "ATR(14) is stable, maintaining trailing stop.",
-                        "Market volume is low, holding position.",
-                    ]
-                )  # noqa: E501
-            elif log_type == "success":
-                msg = f"✅ Trade executed: BOUGHT {random.randint(1, 5) * 100} shares of {bot_to_log['ticker']} @ {random.uniform(150, 160):.2f}"  # noqa: E501
-            else:  # warn
-                msg = f"⚠️ High volatility detected! VIX spiked by {random.uniform(5, 15):.1f}%. Tightening stop loss."  # noqa: E501
-
-            log_entry = {
-                "time": datetime.now().strftime("%H:%M:%S"),
-                "msg": msg,
-                "type": log_type,
-            }  # noqa: E501
-
-            payload = {"bot_id": bot_to_log["id"], "log": log_entry}
-
-            await redis_client.publish("oms:bot_log:stream", json.dumps(payload))
-
-        except Exception as e:
-            print(f"Error in mock log generator: {e}")
-
-        # 随机休眠 2-8 秒
-        await asyncio.sleep(random.uniform(2, 8))
+logger = logging.getLogger("OMS")
 
 
 class CancelOrderReq(BaseModel):
@@ -109,26 +47,48 @@ class ModifyOrderReq(BaseModel):
     price: float
 
 
+class ModeSwitchReq(BaseModel):
+    mode: str  # "SANDBOX" or "LIVE"
+
+
 @router.get("/state")
-async def get_oms_initial_state():
-    """获取 OMS 模块的初始状态 (Bots, Orders, Trades)"""
+async def get_oms_initial_state(db: Session = Depends(get_db)):
+    """
+    获取 OMS 模块初始状态。
+    OMS-01~04: 活动挂单与历史成交从 DB/Redis 读取真实数据。
+    OMS-05~07: Bot 算力节点从 BotRuntimeManager 读取真实 CPU/MEM/日志。
+    """
+    # 活动挂单: 从 Redis 缓存 / PostgreSQL 读取真实订单
+    active_orders = await oms_service.get_active_orders(db)
+    # 历史成交: 从 trade_logs 表读取真实记录
+    historical_trades = await oms_service.get_historical_trades(db, limit=50)
+    # Bot 算力节点: 从 BotRuntimeManager 获取真实运行状态 (OMS-05~07)
+    bots = await bot_runtime.get_all_bots()
+
+    # OMS-08~09: 算法拆单从 algo_engine 读取真实执行状态
+    algo_executions = await algo_engine.get_all_algo_orders()
+    # OMS-11: 当前交易模式 (从 Redis 热读取)
+    trading_mode = await _get_trading_mode()
+
     return {
         "status": "success",
         "data": {
-            "bots": INITIAL_BOTS,
-            "active_orders": ACTIVE_ORDERS,
-            "historical_trades": HISTORICAL_TRADES,
-            "algo_executions": ALGO_EXECUTIONS,
+            "bots": bots,
+            "active_orders": active_orders,
+            "historical_trades": historical_trades,
+            "algo_executions": algo_executions,
+            "trading_mode": trading_mode,
         },
     }
 
 
-async def execute_emergency_liquidation():
+async def execute_emergency_liquidation(db: Session):
     """
     执行物理级熔断清仓逻辑：
     1. 撤销所有未成交挂单
     2. 获取所有当前持仓
     3. 以市价平掉所有多空仓位
+    4. OMS-03: 将所有活动订单标记为 CANCELLED
     """
     logger = logging.getLogger("OMS")
     logger.warning("🚨 [KILL SWITCH] 正在执行全网物理熔断清仓...")
@@ -142,27 +102,12 @@ async def execute_emergency_liquidation():
         if not ctx:
             logger.error("🚨 [KILL SWITCH] 未检测到有效的底层交易网关上下文 (trade_ctx)，降级为仅阻断新订单流。")  # noqa: E501
 
-            # 💡 本地沙箱体验补充：如果没有连接真实券商，则在内存中模拟强平并广播，完成前端视觉闭环  # noqa: E501
-            ACTIVE_ORDERS.clear()
-            for bot in INITIAL_BOTS:
-                if bot.get("status") != "error":
-                    bot["status"] = "error"
-                    bot["logs"].append(
-                        {
-                            "time": datetime.now().strftime("%H:%M:%S"),
-                            "msg": "🚨 物理熔断触发，进程已强杀 (Mock)",
-                            "type": "warn",
-                        }
-                    )  # noqa: E501
-
-            for algo in ALGO_EXECUTIONS:
-                if algo.get("status") in ["RUNNING", "PAUSED"]:
-                    algo["status"] = "ERROR"
-                    algo["message"] = "风控拦截：全局物理熔断已触发"
-
-            await redis_client.publish("oms:orders:update", json.dumps(ACTIVE_ORDERS))
-            await redis_client.publish("oms:bots:update", json.dumps(INITIAL_BOTS))
-            await redis_client.publish("oms:algo_executions:update", json.dumps(ALGO_EXECUTIONS))  # noqa: E501
+            # 💡 OMS-05: 终止所有运行中的 Bot 算力节点
+            await bot_runtime.stop_all_bots()
+            # OMS-08: 取消所有运行中的算法拆单
+            await algo_engine.cancel_all()
+            # OMS-03: 持久化层熔断 —— 将所有活动订单标记为 CANCELLED
+            await oms_service.mark_all_orders_cancelled(db)
             return
 
         # 💡 1. 撤销所有活跃订单 (防并发：在独立的线程中执行同步的底层 SDK 调用)
@@ -209,13 +154,24 @@ async def execute_emergency_liquidation():
         await asyncio.to_thread(close_all_positions)
 
         logger.warning("✅ [KILL SWITCH] 物理清仓程序全部下达完毕。")
+        # OMS-03: 持久化层熔断
+        await oms_service.mark_all_orders_cancelled(db)
+        # OMS-05: 终止所有 Bot 算力节点
+        await bot_runtime.stop_all_bots()
+        # OMS-08: 取消所有算法拆单
+        await algo_engine.cancel_all()
 
     except Exception as e:
         logger.error(f"🚨 [KILL SWITCH] 物理清仓执行异常: {str(e)}")
 
 
 @router.post("/kill_switch")
-async def trigger_kill_switch(background_tasks: BackgroundTasks, req: KillSwitchReq):
+async def trigger_kill_switch(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    req: KillSwitchReq,
+    db: Session = Depends(get_db),
+):
     """
     【全局熔断 Kill Switch】
     瞬间阻断所有实盘 Bot 的进程信号并下达市价全平指令给券商网关
@@ -227,7 +183,10 @@ async def trigger_kill_switch(background_tasks: BackgroundTasks, req: KillSwitch
         await redis_client.set("oms:status", "KILLED", ex=3600)
 
         # 💡 将物理级清仓逻辑委托给后台任务，保证 API 的极速响应
-        background_tasks.add_task(execute_emergency_liquidation)
+        background_tasks.add_task(execute_emergency_liquidation, db)
+
+        # OMS-12: 审计日志
+        log_audit(db, action="kill_switch", detail={"timestamp": req.timestamp}, request=request)
 
         return {
             "status": "success",
@@ -238,9 +197,14 @@ async def trigger_kill_switch(background_tasks: BackgroundTasks, req: KillSwitch
 
 
 @router.post("/orders/{order_id}/cancel")
-async def cancel_order(order_id: str, req: CancelOrderReq):
+async def cancel_order(
+    request: Request,
+    order_id: str,
+    req: CancelOrderReq,
+    db: Session = Depends(get_db),
+):
     """
-    带【防并发幂等性锁】的撤单接口
+    带【防并发幂等性锁】的撤单接口 (OMS-03: 同步更新 DB 状态, OMS-12: 审计日志)
     """
     lock_key = f"oms:cancel_lock:{req.idempotency_key}"
 
@@ -251,6 +215,10 @@ async def cancel_order(order_id: str, req: CancelOrderReq):
 
     try:
         await redis_client.publish("oms:order_cancel", json.dumps({"order_id": order_id}))  # noqa: E501
+        # OMS-03: 同步更新 DB 订单状态为 CANCELLED
+        await oms_service.update_order_status(db, order_id, "CANCELLED")
+        # OMS-12: 审计日志
+        log_audit(db, action="order_cancel", detail={"order_id": order_id}, request=request)
         return {"status": "success", "message": "Cancel requested"}
     except Exception:
         await redis_client.delete(lock_key)
@@ -258,65 +226,195 @@ async def cancel_order(order_id: str, req: CancelOrderReq):
 
 
 @router.post("/orders/{order_id}/modify")
-async def modify_order(order_id: str, req: ModifyOrderReq):
+async def modify_order(
+    request: Request,
+    order_id: str,
+    req: ModifyOrderReq,
+    db: Session = Depends(get_db),
+):
     """
-    修改订单价格 (改单) 接口
+    修改订单价格 (改单) 接口 (OMS-03: 同步更新 DB, OMS-12: 审计日志)
     """
     try:
-        # 1. 模拟派发改单指令给底层交易网关
+        # 1. 派发改单指令给底层交易网关
         payload = {"order_id": order_id, "new_price": req.price}
         await redis_client.publish("oms:order_modify", json.dumps(payload))
 
-        # 2. 💡 本地沙箱闭环体验：直接修改内存数据并通过 WebSocket 广播给前端
-        for order in ACTIVE_ORDERS:
-            if order.get("id") == order_id:
-                # 将修改后的浮点价格转为字符串以匹配前端渲染格式
-                order["price"] = f"{req.price:.2f}"
-                await redis_client.publish("oms:orders:update", json.dumps(ACTIVE_ORDERS))  # noqa: E501
-                break
+        # 2. OMS-03: 同步更新 DB 中的订单价格
+        order = db.query(models.Order).filter(models.Order.order_id == order_id).first()
+        if order:
+            order.price = req.price
+            db.commit()
+            await oms_service._sync_order_to_redis(order)
+            await oms_service._publish_orders_update(db)
+
+        # OMS-12: 审计日志
+        log_audit(db, action="order_modify", detail={"order_id": order_id, "new_price": req.price}, request=request)
 
         return {"status": "success", "message": "改单指令已下发"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Modification dispatch failed: {str(e)}")  # noqa: E501
 
 
+@router.get("/positions")
+async def get_real_positions(market: str = "HK"):
+    """OMS-04: 获取 Redis 缓存中的真实持仓列表"""
+    positions = await oms_service.get_cached_positions(market)
+    return {"status": "success", "data": positions, "market": market}
+
+
+# ── Bot 算力节点控制接口 (OMS-05) ─────────────────────────────────────────
+
+
+@router.post("/bots/{bot_id}/pause")
+async def pause_bot(bot_id: str):
+    """OMS-05: 暂停 Bot 算力节点"""
+    success = await bot_runtime.pause_bot(bot_id)
+    if not success:
+        raise HTTPException(status_code=400, detail=f"无法暂停 Bot {bot_id}，可能未在运行中")
+    return {"status": "success", "message": f"Bot {bot_id} 已暂停"}
+
+
+@router.post("/bots/{bot_id}/resume")
+async def resume_bot(bot_id: str):
+    """OMS-05: 恢复 Bot 算力节点"""
+    success = await bot_runtime.resume_bot(bot_id)
+    if not success:
+        raise HTTPException(status_code=400, detail=f"无法恢复 Bot {bot_id}，可能未处于暂停状态")
+    return {"status": "success", "message": f"Bot {bot_id} 已恢复"}
+
+
+@router.post("/bots/{bot_id}/stop")
+async def stop_bot(bot_id: str):
+    """OMS-05: 终止 Bot 算力节点"""
+    success = await bot_runtime.stop_bot(bot_id)
+    if not success:
+        raise HTTPException(status_code=400, detail=f"Bot {bot_id} 不存在")
+    return {"status": "success", "message": f"Bot {bot_id} 已终止"}
+
+
 @router.post("/algo/start")
-async def start_algo_order(req: AlgoOrderReq):
+async def start_algo_order(request: Request, req: AlgoOrderReq):
     """
-    接收并启动前端下发的算法拆单任务 (TWAP/VWAP/ICEBERG)
+    OMS-08: 接收并启动前端下发的算法拆单任务 (TWAP/VWAP/ICEBERG)
+    通过 algo_engine 真实执行拆单逻辑
     """
     try:
-        algo_id = f"algo_{req.algo_type.lower()}_{int(time.time())}"
-        algo_task = {
-            "id": algo_id,
-            "algo_type": req.algo_type,
-            "symbol": req.symbol,
-            "target_qty": req.target_qty,
-            "filled_qty": 0,
-            "avg_price": "0.00",
-            "progress": 0,
-            "status": "RUNNING",
-            "message": f"算法启动，准备拆分 {req.side} 订单",
-        }
-        # 💡 在真实环境中，这里会将任务通过 ZeroMQ/Redis 发送给底层的 C++/Rust 拆单网关
-        ALGO_EXECUTIONS.insert(0, algo_task)  # 此处将任务写回模块全局模拟状态中
-        # 通过 WebSocket 广播这一条最新的执行状态回滚给前端
-        await redis_client.publish("oms:algo_executions:update", json.dumps(ALGO_EXECUTIONS))  # noqa: E501
-        return {"status": "success", "message": "算法任务下达成功", "data": algo_task}
+        order = await algo_engine.start_algo(
+            algo_type=req.algo_type,
+            symbol=req.symbol,
+            side=req.side,
+            target_qty=req.target_qty,
+            duration_minutes=req.duration_minutes,
+        )
+        # OMS-12: 审计日志
+        db_session = None
+        try:
+            from backend.core.database import SessionLocal
+
+            db_session = SessionLocal()
+            log_audit(
+                db_session,
+                action="algo_start",
+                detail={
+                    "algo_id": order.algo_id,
+                    "algo_type": req.algo_type,
+                    "symbol": req.symbol,
+                    "side": req.side,
+                    "target_qty": req.target_qty,
+                },
+                request=request,
+            )
+        finally:
+            if db_session:
+                db_session.close()
+
+        return {"status": "success", "message": "算法任务下达成功", "data": order.to_api_dict()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/algo/{algo_id}/pause")
+async def pause_algo_order(algo_id: str):
+    """OMS-08: 暂停算法拆单"""
+    success = await algo_engine.pause_algo(algo_id)
+    if not success:
+        raise HTTPException(status_code=400, detail=f"无法暂停算法 {algo_id}")
+    return {"status": "success", "message": f"算法 {algo_id} 已暂停"}
+
+
+@router.post("/algo/{algo_id}/resume")
+async def resume_algo_order(algo_id: str):
+    """OMS-08: 恢复算法拆单"""
+    success = await algo_engine.resume_algo(algo_id)
+    if not success:
+        raise HTTPException(status_code=400, detail=f"无法恢复算法 {algo_id}")
+    return {"status": "success", "message": f"算法 {algo_id} 已恢复"}
+
+
+@router.post("/algo/{algo_id}/cancel")
+async def cancel_algo_order(algo_id: str):
+    """OMS-08: 取消算法拆单"""
+    success = await algo_engine.cancel_algo(algo_id)
+    if not success:
+        raise HTTPException(status_code=400, detail=f"算法 {algo_id} 不存在")
+    return {"status": "success", "message": f"算法 {algo_id} 已取消"}
+
+
+# ── 交易模式 (OMS-11) ─────────────────────────────────────────────────────
+
+_TRADING_MODE_KEY = "quant:oms:trading_mode"  # Redis 键: 运行时交易模式
+
+
+async def _get_trading_mode() -> str:
+    """获取当前交易模式: 优先读 Redis 热切换值，降级读环境变量"""
+    try:
+        mode = await redis_client.get(_TRADING_MODE_KEY)
+        if mode in ("SANDBOX", "LIVE"):
+            return mode
+    except Exception:
+        pass
+    return "LIVE" if os.getenv("FUTU_TRD_ENV", "SIMULATE").upper() == "REAL" else "SANDBOX"
+
+
+@router.get("/mode")
+async def get_trading_mode():
+    """OMS-11: 获取当前交易模式 (SANDBOX/LIVE) — 支持热切换"""
+    mode = await _get_trading_mode()
+    return {"status": "success", "data": {"mode": mode}}
+
+
+@router.post("/mode/switch")
+async def switch_trading_mode(request: Request, req: ModeSwitchReq, db: Session = Depends(get_db)):
+    """
+    OMS-11: 热切换交易模式 (SANDBOX/LIVE)
+    写入 Redis 后立即生效，所有交易逻辑实时读取新模式
+    """
+    if req.mode not in ("SANDBOX", "LIVE"):
+        raise HTTPException(status_code=400, detail="模式必须为 SANDBOX 或 LIVE")
+
+    current = await _get_trading_mode()
+
+    # 写入 Redis — 立即生效
+    await redis_client.set(_TRADING_MODE_KEY, req.mode)
+
+    # PubSub 广播模式变更，前端 WebSocket 实时更新
+    await redis_client.publish("oms:mode_change", json.dumps({"mode": req.mode, "previous": current}))
+
+    # OMS-12: 审计日志
+    log_audit(db, action="mode_switch", detail={"from": current, "to": req.mode}, request=request)
+
+    return {
+        "status": "success",
+        "message": f"交易模式已切换: {current} → {req.mode}，立即生效。",
+        "data": {"mode": req.mode, "previous": current},
+    }
 
 
 @router.websocket("/ws")
 async def websocket_oms_updates(websocket: WebSocket):
     """Websocket 接口：实时推送 OMS 订单、成交与机器人状态"""
-    global _log_generator_task
     await websocket.accept()
-
-    # 💡 启动后台模拟日志生成器 (如果尚未运行)
-    if _log_generator_task is None or _log_generator_task.done():
-        print("🚀 [OMS Mock] Starting background bot log generator...")
-        _log_generator_task = asyncio.create_task(mock_bot_log_generator())
 
     pubsub = redis_client.pubsub()
 
@@ -327,6 +425,8 @@ async def websocket_oms_updates(websocket: WebSocket):
         "oms:trades:new",
         "oms:bot_log:stream",
         "oms:algo_executions:update",
+        "oms:positions:update",
+        "oms:mode_change",
     ]  # noqa: E501
 
     async def listen_redis():
@@ -348,6 +448,10 @@ async def websocket_oms_updates(websocket: WebSocket):
                     await websocket.send_json({"type": "bot_log", "data": data})
                 elif channel == "oms:algo_executions:update":
                     await websocket.send_json({"type": "algo_executions_update", "data": data})  # noqa: E501
+                elif channel == "oms:positions:update":
+                    await websocket.send_json({"type": "positions_update", "data": data})  # noqa: E501
+                elif channel == "oms:mode_change":
+                    await websocket.send_json({"type": "mode_change", "data": data})  # noqa: E501
 
     async def listen_client():
         try:

@@ -226,8 +226,8 @@ class TestQuoteHandler:
         conn_mgr.quote_ctx.unsubscribe.return_value = (RET_OK, "")
         from futu import SubType
 
-        cache_mgr.subscribed_topics.add(("HK.00700", SubType.QUOTE))
-        cache_mgr.subscribed_topics.add(("HK.00700", SubType.ORDER_BOOK))
+        cache_mgr.touch_topic("HK.00700", SubType.QUOTE)
+        cache_mgr.touch_topic("HK.00700", SubType.ORDER_BOOK)
 
         with patch("asyncio.to_thread", new=AsyncMock(side_effect=lambda fn, *a, **kw: fn())):
             result = await handler.unsubscribe_quote("HK.00700", _fmt)

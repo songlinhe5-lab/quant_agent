@@ -45,13 +45,9 @@ export default function DashboardLayout() {
   const pathname = location.pathname;
 
   return (
-    <SidebarProvider className="flex-col h-screen overflow-hidden">
-      {/* 顶部全局导航栏横跨 100% 宽度 */}
-      <Navbar />
-
-      <div className="flex flex-1 overflow-hidden w-full relative">
+    <SidebarProvider className="h-screen overflow-hidden">
       {/* 侧边栏主体 */}
-      <Sidebar className="border-r border-border/40 md:!top-14 md:!h-[calc(100svh-56px)]">
+      <Sidebar className="border-r border-border/40 md:!top-14 md:!h-[calc(100svh-3.5rem)]" style={{ width: '16rem' } as React.CSSProperties}>
         <SidebarContent>
           {domainOrder.map((domain) => {
             const items = modules.filter((m) => m.domain === domain)
@@ -60,12 +56,12 @@ export default function DashboardLayout() {
 
             return (
               <SidebarGroup key={domain} className="py-1">
-                  <SidebarGroupLabel className="flex items-center gap-2 px-3 text-sidebar-foreground/70">
-                    <span className={cn('h-1.5 w-1.5 rounded-full flex-shrink-0 transition-colors duration-300', meta.dot)} aria-hidden="true" />
-                    <span className={cn('text-[10px] font-bold tracking-widest uppercase transition-colors duration-300', meta.color)}>
-                      {meta.label}
-                    </span>
-                  </SidebarGroupLabel>
+                <SidebarGroupLabel className="flex items-center gap-2 px-3 text-sidebar-foreground/70">
+                  <span className={cn('h-1.5 w-1.5 rounded-full flex-shrink-0 transition-colors duration-300', meta.dot)} aria-hidden="true" />
+                  <span className={cn('text-[10px] font-bold tracking-widest uppercase transition-colors duration-300', meta.color)}>
+                    {meta.label}
+                  </span>
+                </SidebarGroupLabel>
                 <SidebarGroupContent>
                   <SidebarMenu>
                     {items.map((item) => {
@@ -74,20 +70,17 @@ export default function DashboardLayout() {
                         <SidebarMenuItem key={item.url}>
                           <SidebarMenuButton asChild isActive={isActive} tooltip={item.name} className="h-[42px] transition-all duration-300 hover:bg-primary/10 data-[active=true]:bg-primary/15 data-[active=true]:text-primary data-[active=true]:font-bold relative">
                             <Link to={item.url} className="flex items-center w-full gap-2">
-                              {/* 侧边活动状态指示条 */}
                               {isActive && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full bg-primary" aria-hidden="true" />}
                               <item.icon className="h-[18px] w-[18px] shrink-0" />
                               <div className="flex-1 flex flex-col min-w-0 overflow-hidden group-data-[collapsible=icon]:hidden">
                                 <span className="text-[13px] font-semibold leading-tight truncate mb-0.5">{item.label}</span>
                                 <span className="text-[10px] text-muted-foreground leading-none truncate font-normal">{item.name}</span>
                               </div>
-                              {/* 展开状态的 Badge */}
                               {item.badge && (
                                 <span className="ml-auto shrink-0 h-4 min-w-[1rem] rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[9px] font-bold flex items-center justify-center px-1 tabular-nums group-data-[collapsible=icon]:hidden transition-colors duration-300">
                                   {item.badge}
                                 </span>
                               )}
-                              {/* 折叠状态的 Badge 提示点 */}
                               {item.badge && (
                                 <span className="absolute top-2 right-2 h-1.5 w-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 hidden group-data-[collapsible=icon]:block transition-colors duration-300" aria-label={`${item.badge} notifications`} />
                               )}
@@ -104,10 +97,9 @@ export default function DashboardLayout() {
         </SidebarContent>
       </Sidebar>
 
-      </div>
-
-      {/* 右侧主内容区域 */}
-      <SidebarInset className="flex-1 h-full min-h-0 overflow-hidden bg-background">
+      {/* 右侧主内容区域（含顶部导航栏） */}
+      <SidebarInset className="h-full min-h-0 overflow-hidden bg-background md:ml-[16rem] peer-data-[state=collapsed]:md:ml-[3rem]">
+        <Navbar />
         <main className="flex-1 p-4 overflow-y-auto">
           <Outlet />
         </main>
