@@ -31,7 +31,7 @@ contactPoints:
       - uid: log-receiver-1
         type: webhook
         settings:
-          url: http://localhost:3000/api/v1/grafana_oncall_stub
+          url: "http://localhost:3000/api/v1/grafana_oncall_stub"
           httpMethod: POST
 
 policies:
