@@ -264,6 +264,12 @@ jobs:
         run: |
           echo "b64=$(base64 -w0 docker-compose.yml)" >> $GITHUB_OUTPUT
 
+      - name: Prepare provisioning files (base64)
+        id: prepare_provisioning
+        run: |
+          echo "dashboard_b64=$(base64 -w0 grafana/provisioning/dashboards/dashboard.yml)" >> $GITHUB_OUTPUT
+          echo "json_b64=$(base64 -w0 grafana/provisioning/dashboards/quant-agent-dashboard.json)" >> $GITHUB_OUTPUT
+
       - name: Deploy Master
         uses: appleboy/ssh-action@v1
         env:
@@ -288,6 +294,13 @@ jobs:
             cp docker-compose.yml docker-compose.yml.bak 2>/dev/null || true
             echo '${{ steps.prepare_compose.outputs.b64 }}' | base64 -d > docker-compose.yml
             sudo sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:.*|ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG}|g" docker-compose.yml
+
+            # Sync Grafana provisioning files (fix Dashboard name conflict)
+            echo "Syncing Grafana provisioning files..."
+            mkdir -p grafana/provisioning/dashboards
+            echo '${{ steps.prepare_provisioning.outputs.dashboard_b64 }}' | base64 -d > grafana/provisioning/dashboards/dashboard.yml
+            echo '${{ steps.prepare_provisioning.outputs.json_b64 }}' | base64 -d > grafana/provisioning/dashboards/quant-agent-dashboard.json
+            echo "Grafana provisioning files updated"
 
             # .env is manually configured on Master, CI does not touch it
             if [ ! -f .env ]; then
@@ -330,16 +343,23 @@ jobs:
             echo "Starting services..."
             sudo COMPOSE_PROFILES=$PROFILES docker compose up -d --remove-orphans
 
-            echo "Waiting for health check (30s)..."
-            sleep 30
-
-            HEALTH=$(curl -sf --max-time 10 http://localhost:8000/api/v1/health 2>/dev/null || echo "UNHEALTHY")
-            if [ "$HEALTH" = "UNHEALTHY" ]; then
-              echo "Health check FAILED"
-              sudo COMPOSE_PROFILES=$PROFILES docker compose logs --tail 30
-              sudo docker logout ghcr.io
-              exit 1
-            fi
+            # Wait for healthy with retries (up to 90 seconds)
+            echo "Waiting for health check..."
+            for i in 1 2 3 4 5 6; do
+              sleep 15
+              HEALTH=$(curl -sf --max-time 10 http://localhost:8000/api/v1/health 2>/dev/null || echo "UNHEALTHY")
+              if [ "$HEALTH" != "UNHEALTHY" ]; then
+                echo "Health check passed on attempt $i"
+                break
+              fi
+              echo "Attempt $i/6 failed, retrying..."
+              if [ "$i" = "6" ]; then
+                echo "Health check FAILED after 6 attempts (90s)"
+                sudo COMPOSE_PROFILES=$PROFILES docker compose logs --tail 50
+                sudo docker logout ghcr.io
+                exit 1
+              fi
+            done
 
             echo "$TARGET_TAG" > $DEPLOY_PATH/.deployed_sha
             sudo docker logout ghcr.io
