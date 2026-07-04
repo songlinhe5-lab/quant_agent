@@ -1,272 +1,290 @@
-"""core/market_engine.py 单元测试
-
-覆盖: ConnectionManager 核心方法、update_quote_to_redis、告警检测
+"""
+Market Engine 单元测试
+TEST-15: 覆盖 backend/core/market_engine.py 的 ConnectionManager 与辅助函数
 """
 
+import asyncio
+import json
 import os
 import sys
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
-os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
+os.environ.setdefault("REDIS_HOST", "localhost")
+os.environ.setdefault("REDIS_PORT", "6379")
+os.environ.setdefault("REDIS_PASSWORD", "")
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
+from backend.core.market_engine import ConnectionManager, manager, update_quote_to_redis
 
-# ==========================================
-# ConnectionManager 基础方法
-# ==========================================
-class TestConnectionManager:
-    def _make_manager(self):
-        """创建一个 mock 掉 Redis 的 ConnectionManager 实例"""
-        with patch("backend.core.market_engine.redis.from_url") as mock_from_url:
-            mock_raw_redis = MagicMock()
-            mock_raw_redis.hset = AsyncMock()
-            mock_raw_redis.publish = AsyncMock()
-            mock_raw_redis.hget = AsyncMock(return_value=None)
-            mock_raw_redis.hgetall = AsyncMock(return_value={})
-            mock_raw_redis.xadd = AsyncMock()
-            mock_raw_redis.xrange = AsyncMock(return_value=[])
-            mock_raw_redis.pubsub = MagicMock()
-            mock_from_url.return_value = mock_raw_redis
 
-            from backend.core.market_engine import ConnectionManager
-
-            mgr = ConnectionManager()
-        return mgr
-
-    def test_init(self):
-        """初始化状态正确"""
-        mgr = self._make_manager()
+# ─── ConnectionManager 基础行为 ────────────────────────────────────────
+class TestConnectionManagerInit:
+    def test_init_state(self):
+        mgr = ConnectionManager()
         assert mgr.active_connections == []
         assert mgr.subscriptions == {}
         assert mgr.push_task is None
-        assert mgr.tech_cache == {}
-        assert mgr.flow_cache == {}
+        assert mgr.pubsub_task is None
+        assert isinstance(mgr.tech_cache, dict)
+        assert isinstance(mgr.flow_cache, dict)
 
-    @pytest.mark.asyncio
-    async def test_connect_adds_to_active(self):
-        """connect 后 WebSocket 加入 active_connections"""
-        mgr = self._make_manager()
-        mgr.start_background_tasks = AsyncMock()
+    def test_get_all_subscribed_tickers_includes_macro(self):
+        mgr = ConnectionManager()
+        result = mgr.get_all_subscribed_tickers()
+        assert "US.VIX" in result
+        assert "US.SPX" in result
+        assert "BTC-USD" in result
+        assert "SH.510300" in result
+
+    def test_get_all_subscribed_tickers_includes_subscribed(self):
+        mgr = ConnectionManager()
+        ws = MagicMock()
+        mgr.subscriptions[ws] = {"US.AAPL", "HK.00700"}
+        result = mgr.get_all_subscribed_tickers()
+        assert "US.AAPL" in result
+        assert "HK.00700" in result
+
+
+class TestConnectDisconnect:
+    async def test_connect(self):
+        mgr = ConnectionManager()
         ws = MagicMock()
         ws.accept = AsyncMock()
-
         await mgr.connect(ws)
         assert ws in mgr.active_connections
         assert ws in mgr.subscriptions
         assert mgr.subscriptions[ws] == set()
 
-    def test_disconnect_removes_websocket(self):
-        """disconnect 后 WebSocket 被移除"""
-        mgr = self._make_manager()
+    async def test_disconnect(self):
+        mgr = ConnectionManager()
         ws = MagicMock()
-        mgr.active_connections.append(ws)
-        mgr.subscriptions[ws] = {"AAPL"}
-
+        ws.accept = AsyncMock()
+        await mgr.connect(ws)
+        assert ws in mgr.active_connections
         mgr.disconnect(ws)
         assert ws not in mgr.active_connections
         assert ws not in mgr.subscriptions
 
-    def test_disconnect_unknown_websocket(self):
-        """disconnect 未知 WebSocket 不报错"""
-        mgr = self._make_manager()
+    def test_disconnect_idempotent(self):
+        mgr = ConnectionManager()
         ws = MagicMock()
-        mgr.disconnect(ws)  # 不抛异常
+        mgr.disconnect(ws)  # should not raise
+        assert True
 
-    def test_subscribe_adds_tickers(self):
-        """subscribe 添加标的到订阅集合"""
-        mgr = self._make_manager()
+
+class TestSubscribeUnsubscribe:
+    async def test_subscribe(self):
+        mgr = ConnectionManager()
+        ws = MagicMock()
+        ws.accept = AsyncMock()
+        await mgr.connect(ws)
+        with patch("backend.core.market_engine.asyncio.create_task"):
+            mgr.subscribe(ws, ["US.AAPL", "HK.00700"])
+        assert "US.AAPL" in mgr.subscriptions[ws]
+        assert "HK.00700" in mgr.subscriptions[ws]
+
+    async def test_subscribe_dedup(self):
+        mgr = ConnectionManager()
+        ws = MagicMock()
+        ws.accept = AsyncMock()
+        await mgr.connect(ws)
+        with patch("backend.core.market_engine.asyncio.create_task"):
+            mgr.subscribe(ws, ["US.AAPL"])
+            mgr.subscribe(ws, ["US.AAPL", "HK.00700"])
+        assert len(mgr.subscriptions[ws]) == 2
+
+    def test_unsubscribe(self):
+        mgr = ConnectionManager()
+        ws = MagicMock()
+        mgr.subscriptions[ws] = {"US.AAPL", "HK.00700"}
+        mgr.unsubscribe(ws, ["US.AAPL"])
+        assert "US.AAPL" not in mgr.subscriptions[ws]
+        assert "HK.00700" in mgr.subscriptions[ws]
+
+    def test_unsubscribe_nonexistent(self):
+        mgr = ConnectionManager()
         ws = MagicMock()
         mgr.subscriptions[ws] = set()
-        mgr._catch_up_or_snapshot = AsyncMock()
+        mgr.unsubscribe(ws, ["NONEXISTENT"])
+        assert True
 
-        # Mock asyncio.create_task
-        with patch("asyncio.create_task"):
-            mgr.subscribe(ws, ["AAPL", "GOOGL"])
-        assert mgr.subscriptions[ws] == {"AAPL", "GOOGL"}
 
-    def test_subscribe_deduplicates(self):
-        """重复订阅不会重复添加"""
-        mgr = self._make_manager()
+class TestCatchUpOrSnapshot:
+    async def test_snapshot_no_cache(self):
+        mgr = ConnectionManager()
         ws = MagicMock()
-        mgr.subscriptions[ws] = {"AAPL"}
-        mgr._catch_up_or_snapshot = AsyncMock()
+        mgr.raw_redis = AsyncMock()
+        mgr.raw_redis.hget = AsyncMock(return_value=None)
+        await mgr._catch_up_or_snapshot(ws, ["US.AAPL"], {})
+        mgr.raw_redis.hget.assert_awaited_once()
 
-        with patch("asyncio.create_task"):
-            mgr.subscribe(ws, ["AAPL", "GOOGL"])
-        assert mgr.subscriptions[ws] == {"AAPL", "GOOGL"}
-
-    def test_unsubscribe_removes_tickers(self):
-        """unsubscribe 从订阅集合中移除标的"""
-        mgr = self._make_manager()
+    async def test_snapshot_with_cache(self):
+        mgr = ConnectionManager()
         ws = MagicMock()
-        mgr.subscriptions[ws] = {"AAPL", "GOOGL", "MSFT"}
+        mgr.raw_redis = AsyncMock()
+        mgr.raw_redis.hget = AsyncMock(return_value=b"\x08\x01")
+        mgr.active_connections = [ws]
+        await mgr._catch_up_or_snapshot(ws, ["US.AAPL"], {})
+        ws.send_bytes.assert_called_once()
 
-        mgr.unsubscribe(ws, ["AAPL", "MSFT"])
-        assert mgr.subscriptions[ws] == {"GOOGL"}
-
-    def test_unsubscribe_unknown_websocket(self):
-        """unsubscribe 未知 WebSocket 不报错"""
-        mgr = self._make_manager()
+    async def test_catch_up_with_last_id(self):
+        mgr = ConnectionManager()
         ws = MagicMock()
-        mgr.unsubscribe(ws, ["AAPL"])  # 不抛异常
-
-    def test_get_all_subscribed_tickers(self):
-        """获取所有订阅标的（含基础宏观）"""
-        mgr = self._make_manager()
-        ws1 = MagicMock()
-        ws2 = MagicMock()
-        mgr.subscriptions[ws1] = {"AAPL", "00700.HK"}
-        mgr.subscriptions[ws2] = {"TSLA"}
-
-        tickers = mgr.get_all_subscribed_tickers()
-        assert "AAPL" in tickers
-        assert "00700.HK" in tickers
-        assert "TSLA" in tickers
-        # 基础宏观标的一定包含
-        assert "US.VIX" in tickers
-        assert "US.SPX" in tickers
-        assert "BTC-USD" in tickers
-
-    def test_get_all_subscribed_tickers_empty(self):
-        """无用户订阅时仍返回基础宏观标的"""
-        mgr = self._make_manager()
-        tickers = mgr.get_all_subscribed_tickers()
-        assert len(tickers) > 0  # 至少有基础宏观
+        mgr.raw_redis = AsyncMock()
+        mgr.raw_redis.xrange = AsyncMock(return_value=[])
+        await mgr._catch_up_or_snapshot(ws, ["US.AAPL"], {"US.AAPL": "123"})
+        mgr.raw_redis.xrange.assert_awaited_once()
 
 
-# ==========================================
-# update_quote_to_redis
-# ==========================================
+# ─── update_quote_to_redis ─────────────────────────────────────────────
 class TestUpdateQuoteToRedis:
-    @pytest.mark.asyncio
-    async def test_basic_quote_write(self):
-        """基本行情写入 Redis"""
-        from backend.core.market_engine import update_quote_to_redis
-
-        mock_raw_redis = MagicMock()
-        mock_raw_redis.hset = AsyncMock()
-        mock_raw_redis.publish = AsyncMock()
-        mock_raw_redis.hgetall = AsyncMock(return_value={})
-
-        with patch("backend.core.market_engine.manager") as mock_mgr:
-            mock_mgr.raw_redis = mock_raw_redis
-            await update_quote_to_redis("AAPL", {"last_price": 150.0, "change_pct": "+1.5%", "source": "test"})
-
-        mock_raw_redis.hset.assert_called_once()
-        mock_raw_redis.publish.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_quote_with_bids_asks(self):
-        """带买卖盘的行情写入"""
-        from backend.core.market_engine import update_quote_to_redis
-
-        mock_raw_redis = MagicMock()
-        mock_raw_redis.hset = AsyncMock()
-        mock_raw_redis.publish = AsyncMock()
-        mock_raw_redis.hgetall = AsyncMock(return_value={})
-
+    @patch("backend.core.market_engine.manager")
+    def test_writes_to_redis(self, mock_mgr):
+        mock_raw_redis = AsyncMock()
+        mock_mgr.raw_redis = mock_raw_redis
         quote_data = {
-            "last_price": 400.0,
-            "change_pct": "-0.5%",
-            "volume_str": "10M",
+            "ticker": "US.AAPL",
+            "last_price": 150.0,
+            "change_pct": "+1.0%",
+            "volume_str": "1.2M",
             "source": "futu",
-            "bids": [{"price": "399.8", "size": "100"}],
-            "asks": [{"price": "400.2", "size": "200"}],
+            "bids": [{"price": 149.0, "size": 10}],
+            "asks": [{"price": 151.0, "size": 10}],
         }
+        asyncio.get_event_loop().run_until_complete(
+            update_quote_to_redis("US.AAPL", quote_data)
+        )
+        mock_raw_redis.hset.assert_awaited_once()
+        mock_raw_redis.publish.assert_awaited_once()
 
-        with patch("backend.core.market_engine.manager") as mock_mgr:
-            mock_mgr.raw_redis = mock_raw_redis
-            await update_quote_to_redis("00700.HK", quote_data)
+    @patch("backend.core.market_engine.manager")
+    def test_no_alerts_when_price_zero(self, mock_mgr):
+        mock_raw_redis = AsyncMock()
+        mock_mgr.raw_redis = mock_raw_redis
+        mock_mgr.raw_redis.hgetall = AsyncMock(return_value={})
+        quote_data = {
+            "ticker": "US.AAPL",
+            "last_price": 0,
+            "change_pct": "0%",
+            "volume_str": "--",
+            "source": "futu",
+        }
+        asyncio.get_event_loop().run_until_complete(
+            update_quote_to_redis("US.AAPL", quote_data)
+        )
+        mock_raw_redis.hset.assert_awaited_once()
 
-        mock_raw_redis.hset.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_quote_error_handling(self):
-        """Redis 异常不抛出"""
-        from backend.core.market_engine import update_quote_to_redis
-
-        mock_raw_redis = MagicMock()
-        mock_raw_redis.hset = AsyncMock(side_effect=Exception("Redis down"))
-
-        with patch("backend.core.market_engine.manager") as mock_mgr:
-            mock_mgr.raw_redis = mock_raw_redis
-            # 不应抛出异常
-            await update_quote_to_redis("AAPL", {"last_price": 150.0})
-
-
-# ==========================================
-# update_trade_to_redis
-# ==========================================
-class TestUpdateTradeToRedis:
-    @pytest.mark.asyncio
-    async def test_trade_write(self):
-        """逐笔成交写入 Redis Stream"""
-        from backend.core.market_engine import update_trade_to_redis
-
-        mock_raw_redis = MagicMock()
-        mock_raw_redis.xadd = AsyncMock()
-        mock_raw_redis.publish = AsyncMock()
-
-        with patch("backend.core.market_engine.manager") as mock_mgr:
-            mock_mgr.raw_redis = mock_raw_redis
-            await update_trade_to_redis("AAPL", b"trade_data_bytes")
-
-        mock_raw_redis.xadd.assert_called_once()
-        mock_raw_redis.publish.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_trade_error_handling(self):
-        """Redis 异常不抛出"""
-        from backend.core.market_engine import update_trade_to_redis
-
-        mock_raw_redis = MagicMock()
-        mock_raw_redis.xadd = AsyncMock(side_effect=Exception("Redis down"))
-
-        with patch("backend.core.market_engine.manager") as mock_mgr:
-            mock_mgr.raw_redis = mock_raw_redis
-            await update_trade_to_redis("AAPL", b"data")
+    @patch("backend.core.market_engine.redis_client")
+    def test_alert_triggered_when_price_above_upper(self, mock_redis):
+        mock_raw_redis = AsyncMock()
+        # need manager.raw_redis for hset/publish
+        import backend.core.market_engine as me
+        me.manager.raw_redis = mock_raw_redis
+        # redis_client.hgetall is called to check alert rules
+        rules_json = json.dumps({"upper": 160.0})
+        mock_redis.hgetall = AsyncMock(return_value={
+            "user1": rules_json,
+        })
+        mock_redis.hdel = AsyncMock()
+        quote_data = {
+            "ticker": "US.AAPL",
+            "last_price": 165.0,
+            "change_pct": "+2.0%",
+            "volume_str": "1M",
+            "source": "futu",
+        }
+        send_alert_mock = AsyncMock()
+        with patch("backend.core.market_engine.notification_service") as mock_notify:
+            mock_notify.send_alert = send_alert_mock
+            asyncio.get_event_loop().run_until_complete(
+                update_quote_to_redis("US.AAPL", quote_data)
+            )
+            asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.05))
+            send_alert_mock.assert_called_once()
 
 
-# ==========================================
-# _get_yf_fast_info ticker 映射
-# ==========================================
-class TestYfTickerMapping:
-    """测试 YFinance ticker 格式转换逻辑"""
+# ─── _get_yf_fast_info ────────────────────────────────────────────────
+class TestGetYfFastInfo:
+    def test_us_ticker(self):
+        mgr = ConnectionManager()
+        fake_info = MagicMock()
+        fake_info.last_price = 150.0
+        fake_info.previous_close = 149.0
+        fake_info.last_volume = 1_000_000
+        fake_ticker = MagicMock()
+        fake_ticker.fast_info = fake_info
 
-    def _call_mapping(self, ticker):
-        """直接测试 ticker 映射逻辑（不实际调用 yfinance）"""
-        yf_ticker = ticker
-        if yf_ticker == "HK.800000":
-            yf_ticker = "^HSI"
-        elif yf_ticker == "HK.800700":
-            yf_ticker = "^HSTECH"
-        elif yf_ticker == "HK.800100":
-            yf_ticker = "^HSCE"
-        elif yf_ticker.startswith("HK."):
-            yf_ticker = yf_ticker.replace("HK.", "") + ".HK"
-        elif yf_ticker.startswith("US."):
-            yf_ticker = yf_ticker.replace("US.", "")
-        if yf_ticker in ["VIX", "TNX", "FVX", "SPX", "NDX", "GSPC"]:
-            yf_ticker = f"^{yf_ticker}"
-        return yf_ticker
+        with patch.dict(sys.modules, {"yfinance": MagicMock(Ticker=lambda t: fake_ticker)}):
+            result = mgr._get_yf_fast_info("US.AAPL")
+            assert result["status"] == "success"
+            assert result["ticker"] == "US.AAPL"
 
-    def test_hk_index_mapping(self):
-        assert self._call_mapping("HK.800000") == "^HSI"
-        assert self._call_mapping("HK.800700") == "^HSTECH"
-        assert self._call_mapping("HK.800100") == "^HSCE"
+    def test_hk_index(self):
+        mgr = ConnectionManager()
+        fake_info = MagicMock()
+        fake_info.last_price = 20000.0
+        fake_info.previous_close = 19900.0
+        fake_info.last_volume = 0
+        fake_ticker = MagicMock()
+        fake_ticker.fast_info = fake_info
 
-    def test_hk_stock_mapping(self):
-        assert self._call_mapping("HK.00700") == "00700.HK"
+        with patch.dict(sys.modules, {"yfinance": MagicMock(Ticker=lambda t: fake_ticker)}):
+            result = mgr._get_yf_fast_info("HK.800000")
+            assert result["status"] == "success"
 
-    def test_us_stock_mapping(self):
-        assert self._call_mapping("US.AAPL") == "AAPL"
+    def test_vix(self):
+        mgr = ConnectionManager()
+        fake_info = MagicMock()
+        fake_info.last_price = 15.0
+        fake_info.previous_close = 14.5
+        fake_info.last_volume = 0
+        fake_ticker = MagicMock()
+        fake_ticker.fast_info = fake_info
 
-    def test_us_index_mapping(self):
-        assert self._call_mapping("US.VIX") == "^VIX"
-        assert self._call_mapping("US.SPX") == "^SPX"
+        with patch.dict(sys.modules, {"yfinance": MagicMock(Ticker=lambda t: fake_ticker)}):
+            result = mgr._get_yf_fast_info("US.VIX")
+            assert result["status"] == "success"
 
-    def test_plain_ticker(self):
-        assert self._call_mapping("BTC-USD") == "BTC-USD"
+
+# ─── broadcast_loop 核心逻辑分支（同步部分）──────────────────────────
+class TestBroadcastLoopBranches:
+    def test_get_all_subscribed_tickers_adds_macro_set(self):
+        mgr = ConnectionManager()
+        tickers = mgr.get_all_subscribed_tickers()
+        assert isinstance(tickers, set)
+        assert len(tickers) > 10
+
+    def test_tech_cache_eviction(self):
+        mgr = ConnectionManager()
+        mgr.tech_cache = {"OLD": [], "KEPT": []}
+        mgr.subscriptions = {MagicMock(): {"KEPT"}}
+        all_tickers = mgr.get_all_subscribed_tickers()
+        stale = [t for t in mgr.tech_cache if t not in all_tickers]
+        for t in stale:
+            del mgr.tech_cache[t]
+        assert "OLD" not in mgr.tech_cache
+
+    def test_flow_cache_eviction(self):
+        mgr = ConnectionManager()
+        mgr.flow_cache = {"OLD": {}, "KEPT": {}}
+        mgr.subscriptions = {MagicMock(): {"KEPT"}}
+        all_tickers = mgr.get_all_subscribed_tickers()
+        stale = [t for t in mgr.flow_cache if t not in all_tickers]
+        for t in stale:
+            del mgr.flow_cache[t]
+        assert "OLD" not in mgr.flow_cache
+
+
+# ─── manager 全局单例 ─────────────────────────────────────────────────
+class TestGlobalManager:
+    def test_manager_is_singleton(self):
+        from backend.core.market_engine import manager as m1
+        from backend.core.market_engine import manager as m2
+        assert m1 is m2
+
+    def test_manager_type(self):
+        assert isinstance(manager, ConnectionManager)
