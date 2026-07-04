@@ -25,6 +25,7 @@ class TestConnectionManager:
     def test_connect_success_sets_connected(self):
         """connect 成功时应创建 quote_ctx 并切换到 CONNECTED 状态"""
         mgr = ConnectionManager()
+        mgr._enabled = True  # 启用 futu，绕过 DISABLED 提前返回
         fake_ctx = MagicMock()
         with (
             patch(
@@ -45,6 +46,7 @@ class TestConnectionManager:
     def test_connect_failure_sets_error_state(self):
         """connect 抛出异常时应进入 ERROR 状态并记录错误信息"""
         mgr = ConnectionManager()
+        mgr._enabled = True  # 启用 futu，绕过 DISABLED 提前返回
         # 先mock socket探测返回True，这样才能测试OpenQuoteContext失败的场景
         with (
             patch(
@@ -64,6 +66,7 @@ class TestConnectionManager:
     def test_connect_socket_unreachable_sets_error_state(self):
         """socket探测失败时直接返回ERROR，不调用OpenQuoteContext"""
         mgr = ConnectionManager()
+        mgr._enabled = True  # 启用 futu，绕过 DISABLED 提前返回
         with patch(
             "backend.services.futu.connection_manager.ConnectionManager._is_opend_reachable",
             return_value=False,
@@ -78,6 +81,7 @@ class TestConnectionManager:
         # 先在环境变量中设置，然后创建ConnectionManager
         with patch.dict("os.environ", {"FUTU_HOST": "10.0.0.5", "FUTU_PORT": "22222"}):
             mgr = ConnectionManager()  # 这时会读取环境变量
+        mgr._enabled = True  # 启用 futu，绕过 DISABLED 提前返回
 
         fake_ctx = MagicMock()
         with (
