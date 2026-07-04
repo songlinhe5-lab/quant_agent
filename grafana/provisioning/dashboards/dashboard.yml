@@ -3,7 +3,7 @@ apiVersion: 1
 providers:
   - name: 'default'
     orgId: 1
-    folder: 'Quant Agent'
+    folder: 'Quant Agent 监控'
     type: file
     disableDeletion: false
     updateIntervalSeconds: 30
