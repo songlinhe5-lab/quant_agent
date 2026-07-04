@@ -126,11 +126,7 @@ from backend.routers.search import router as search_router  # noqa: E402
 from backend.routers.strategy import router as strategy_router  # noqa: E402
 from backend.routers.system import router as system_router  # noqa: E402
 from backend.routers.trade import router as trade_router  # noqa: E402
-from backend.services.finnhub_service import finnhub_service  # noqa: E402
 from backend.services.fred_service import fred_service  # noqa: E402
-
-# BE-03: Futu 看门狗
-from backend.services.futu.watchdog import get_watchdog  # noqa: E402
 from backend.services.futu_service import futu_service  # noqa: E402
 from backend.services.llm_service import llm_service  # noqa: E402
 from backend.services.notification_service import notification_service  # noqa: E402
@@ -249,28 +245,7 @@ async def lifespan(app: FastAPI):  # type: ignore
 
     await manager.start_background_tasks()  # type: ignore
 
-    # BE-03: 启动 Futu OpenD 看门狗守护进程（仅当富途服务启用时）
-    futu_enabled = os.getenv("FUTU_ENABLED", "true").lower() == "true"
-    if futu_enabled:
-        futu_watchdog_task = asyncio.create_task(get_watchdog(futu_service).start())
-        print("✅ [Startup] 富途看门狗已启动")
-    else:
-        print("⚠️ [Startup] 富途服务已禁用 (FUTU_ENABLED=false)，跳过看门狗启动")
-        futu_watchdog_task = None
-
     asyncio.create_task(notification_service.send_alert("✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！"))  # noqa: E501
-
-    # 💡 Finnhub 守护进程仅在加州节点运行（北京节点设置 FINNHUB_ENABLED=false 跳过）
-    finnhub_enabled = os.getenv("FINNHUB_ENABLED", "true").lower() == "true"
-    if finnhub_enabled:
-        from backend.services.finnhub_daemon import _insider_transactions_marquee_daemon
-
-        asyncio.create_task(
-            _insider_transactions_marquee_daemon(finnhub_service)
-        )  # 启动高管内幕交易跑马灯守护进程  # noqa: E501
-        print("✅ [Startup] Finnhub 内幕交易跑马灯守护进程已启动")
-    else:
-        print("⚠️ [Startup] Finnhub 服务已禁用 (FINNHUB_ENABLED=false)，跳过守护进程")
 
     # 🚀 主节点: 启动 ClusterManager 发现从节点 + 服务池
     node_role = os.getenv("NODE_ROLE", "master")
@@ -363,17 +338,6 @@ async def lifespan(app: FastAPI):  # type: ignore
 
     # === 销毁阶段 (Shutdown) ===
     print("🛑 正在关闭后端服务，释放资源...")
-
-    # BE-03: 停止看门狗
-    try:
-        # 重新读取环境变量（因为 futu_enabled 是启动阶段的局部变量）
-        futu_enabled_shutdown = os.getenv("FUTU_ENABLED", "true").lower() == "true"
-        if futu_enabled_shutdown:
-            get_watchdog().stop()
-            if "futu_watchdog_task" in locals() and futu_watchdog_task and not futu_watchdog_task.done():
-                futu_watchdog_task.cancel()
-    except Exception:
-        pass
 
     try:
         tasks_to_await = []
