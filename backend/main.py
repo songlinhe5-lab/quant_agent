@@ -74,7 +74,8 @@ from backend.core.database import AsyncSessionLocal, Base, SessionLocal, async_e
 from backend.core.security import get_password_hash  # noqa: E402
 
 # 导入 TickerItem 模型，确保数据库表被创建
-from backend.services.ticker_service import TickerItem  # noqa: E402
+# F401: 此导入看似未使用，但实际是为了让 SQLAlchemy 注册该模型，请勿删除
+from backend.services.ticker_service import TickerItem  # noqa: E402, F401
 
 # 自动创建数据库表与必要扩展
 try:
