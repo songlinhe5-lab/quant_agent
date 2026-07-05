@@ -82,8 +82,7 @@ class TestRedisAsyncBatchWriter:
 
         await batch_writer.stop()
 
-        # 等待一小段时间让 task 完成
-        await asyncio.sleep(0.1)
+        # stop() 已确保 task 完成，无需额外 sleep
         assert task.done()
 
     @pytest.mark.asyncio
