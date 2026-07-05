@@ -8,8 +8,7 @@
 - start_daemon() 守护进程启动
 """
 
-import os
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -17,8 +16,6 @@ from futu import RET_OK
 
 from backend.workers.daemon import (
     QuoteMonitorHandler,
-    TARGET_BUY_PRICE,
-    TARGET_TICKER,
     init_trade_db,
     log_trade,
     start_daemon,
@@ -126,23 +123,23 @@ class TestQuoteMonitorHandler:
         """测试无效数据处理"""
         # 模拟非 DataFrame 数据
         rsp_pb = MagicMock()
-        
+
         # 模拟 super().on_recv_rsp 返回非 OK 状态
         with patch.object(handler.__class__.__bases__[0], "on_recv_rsp") as mock_super:
             mock_super.return_value = (1, "Error data")  # ret_code != RET_OK
             ret_code, data = handler.on_recv_rsp(rsp_pb)
-            
+
             assert ret_code == RET_OK
             assert data == "Error data"
 
     def test_on_recv_rsp_non_dataframe(self, handler, capsys):
         """测试非 DataFrame 类型数据"""
         rsp_pb = MagicMock()
-        
+
         with patch.object(handler.__class__.__bases__[0], "on_recv_rsp") as mock_super:
             mock_super.return_value = (RET_OK, "raw_string_data")
             ret_code, data = handler.on_recv_rsp(rsp_pb)
-            
+
             assert ret_code == RET_OK
             assert data == "raw_string_data"
             captured = capsys.readouterr()
@@ -158,21 +155,21 @@ class TestQuoteMonitorHandler:
         })
 
         rsp_pb = MagicMock()
-        
+
         with patch.object(handler.__class__.__bases__[0], "on_recv_rsp") as mock_super:
             mock_super.return_value = (RET_OK, test_data)
-            
+
             # 模拟 execute_trade 返回成功
             mock_asyncio_run.return_value = {"status": "success", "message": "Order placed"}
-            
+
             with patch("backend.workers.daemon.notification_service") as mock_notification:
                 mock_notification.send_alert = MagicMock()
-                
+
                 ret_code, data = handler.on_recv_rsp(rsp_pb)
-                
+
                 assert ret_code == RET_OK
                 assert handler.has_traded is True
-                
+
                 # 验证 execute_trade 被调用
                 mock_asyncio_run.assert_called()
 
@@ -186,15 +183,15 @@ class TestQuoteMonitorHandler:
         })
 
         rsp_pb = MagicMock()
-        
+
         with patch.object(handler.__class__.__bases__[0], "on_recv_rsp") as mock_super:
             mock_super.return_value = (RET_OK, test_data)
-            
+
             ret_code, data = handler.on_recv_rsp(rsp_pb)
-            
+
             assert ret_code == RET_OK
             assert handler.has_traded is False
-            
+
             # 验证 execute_trade 未被调用
             mock_asyncio_run.assert_not_called()
 
@@ -207,16 +204,16 @@ class TestQuoteMonitorHandler:
         })
 
         rsp_pb = MagicMock()
-        
+
         with patch.object(handler.__class__.__bases__[0], "on_recv_rsp") as mock_super:
             mock_super.return_value = (RET_OK, test_data)
-            
+
             # 模拟 execute_trade 返回失败
             mock_asyncio_run.return_value = {"status": "error", "message": "Insufficient funds"}
-            
+
             with patch("backend.workers.daemon.notification_service"):
                 ret_code, data = handler.on_recv_rsp(rsp_pb)
-                
+
                 assert ret_code == RET_OK
                 assert handler.has_traded is True
 
@@ -228,13 +225,13 @@ class TestQuoteMonitorHandler:
         })
 
         rsp_pb = MagicMock()
-        
+
         with patch.object(handler.__class__.__bases__[0], "on_recv_rsp") as mock_super:
             mock_super.return_value = (RET_OK, test_data)
-            
+
             with patch("backend.workers.daemon.asyncio.run") as mock_asyncio_run:
                 ret_code, data = handler.on_recv_rsp(rsp_pb)
-                
+
                 assert ret_code == RET_OK
                 assert handler.has_traded is False
                 mock_asyncio_run.assert_not_called()
@@ -249,13 +246,13 @@ class TestQuoteMonitorHandler:
             mock_response.status_code = 200
             mock_response.json.return_value = {"status": "success"}
             mock_client.post = AsyncMock(return_value=mock_response)
-            
+
             # 设置 __aenter__ 和 __aexit__
             mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client_class.return_value.__aexit__ = AsyncMock(return_value=False)
-            
+
             result = await handler.execute_trade("US.AAPL", "BUY", 1, 150.0)
-            
+
             assert result["status"] == "success"
             mock_client.post.assert_called_once()
 
@@ -266,13 +263,13 @@ class TestQuoteMonitorHandler:
             # 创建正确的 async mock
             mock_client = AsyncMock()
             mock_client.post = AsyncMock(side_effect=Exception("Network error"))
-            
+
             # 设置 __aenter__ 和 __aexit__
             mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client_class.return_value.__aexit__ = AsyncMock(return_value=False)
-            
+
             result = await handler.execute_trade("US.AAPL", "BUY", 1, 150.0)
-            
+
             assert result["status"] == "error"
             assert "API 异常" in result["message"]
 
@@ -293,7 +290,7 @@ class TestStartDaemon:
         # start_daemon 当前实现只是打印消息，不会真正连接 Futu API
         # 只是确保不抛出异常
         start_daemon()
-        
+
         # 验证打印被调用
         mock_print.assert_called()
 

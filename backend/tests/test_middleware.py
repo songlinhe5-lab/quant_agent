@@ -9,19 +9,14 @@ HTTP 中间件单元测试
 """
 
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-from fastapi import FastAPI, Request
+from fastapi import Request
 from fastapi.responses import JSONResponse
-from starlette.types import ASGIApp, Receive, Scope, Send
 
 from backend.core.middleware import (
-    EXTERNAL_API_COUNT,
-    EXTERNAL_API_LATENCY,
-    REQUEST_COUNT,
-    REQUEST_LATENCY,
     AccessLogMiddleware,
     httpx_log_request,
     httpx_log_response,
@@ -110,7 +105,7 @@ class TestAccessLogMiddleware:
             raise ValueError("Test error")
 
         with patch("backend.core.middleware.REQUEST_COUNT") as mock_counter, \
-             patch("backend.core.middleware.REQUEST_LATENCY") as mock_histogram:
+             patch("backend.core.middleware.REQUEST_LATENCY"):
             with pytest.raises(ValueError):
                 await middleware.dispatch(mock_request, call_next_with_error)
 
@@ -125,15 +120,15 @@ class TestHttpxMonitoring:
     def test_httpx_log_request(self):
         """测试请求时间记录"""
         mock_request = httpx.Request("GET", "https://api.test.com")
-        
+
         # 调用前确保字典为空
         from backend.core.middleware import _request_timers
         _request_timers.clear()
-        
+
         # 直接调用异步函数
         import asyncio
         asyncio.get_event_loop().run_until_complete(httpx_log_request(mock_request))
-        
+
         # 验证时间被记录
         assert id(mock_request) in _request_timers
 
@@ -142,11 +137,11 @@ class TestHttpxMonitoring:
         mock_request = MagicMock()
         mock_request.url.host = "finnhub.io"
         mock_request.method = "GET"
-        
+
         mock_response = MagicMock()
         mock_response.request = mock_request
         mock_response.status_code = 200
-        
+
         import asyncio
         asyncio.get_event_loop().run_until_complete(httpx_log_response(mock_response))
 
@@ -155,11 +150,11 @@ class TestHttpxMonitoring:
         mock_request = MagicMock()
         mock_request.url.host = "stlouisfed.org"
         mock_request.method = "GET"
-        
+
         mock_response = MagicMock()
         mock_response.request = mock_request
         mock_response.status_code = 200
-        
+
         import asyncio
         asyncio.get_event_loop().run_until_complete(httpx_log_response(mock_response))
 
@@ -168,11 +163,11 @@ class TestHttpxMonitoring:
         mock_request = MagicMock()
         mock_request.url.host = "yahoo.com"
         mock_request.method = "GET"
-        
+
         mock_response = MagicMock()
         mock_response.request = mock_request
         mock_response.status_code = 200
-        
+
         import asyncio
         asyncio.get_event_loop().run_until_complete(httpx_log_response(mock_response))
 
@@ -181,11 +176,11 @@ class TestHttpxMonitoring:
         mock_request = MagicMock()
         mock_request.url.host = "api.openai.com"
         mock_request.method = "POST"
-        
+
         mock_response = MagicMock()
         mock_response.request = mock_request
         mock_response.status_code = 200
-        
+
         import asyncio
         asyncio.get_event_loop().run_until_complete(httpx_log_response(mock_response))
 
@@ -194,11 +189,11 @@ class TestHttpxMonitoring:
         mock_request = MagicMock()
         mock_request.url.host = "unknown-service.com"
         mock_request.method = "GET"
-        
+
         mock_response = MagicMock()
         mock_response.request = mock_request
         mock_response.status_code = 200
-        
+
         import asyncio
         asyncio.get_event_loop().run_until_complete(httpx_log_response(mock_response))
 
@@ -207,18 +202,18 @@ class TestHttpxMonitoring:
         mock_request = MagicMock()
         mock_request.url.host = "finnhub.io"
         mock_request.method = "GET"
-        
+
         mock_response = MagicMock()
         mock_response.request = mock_request
         mock_response.status_code = 200
-        
+
         # 模拟慢请求（> 3秒）
         from backend.core.middleware import _request_timers
         # 创建一个真实的 httpx.Request 对象
         real_request = httpx.Request("GET", "https://finnhub.io/api/test")
         mock_response.request = real_request
         _request_timers[id(real_request)] = time.perf_counter() - 4.0  # 4秒前
-        
+
         import asyncio
         with patch("backend.core.middleware.logger") as mock_logger:
             asyncio.get_event_loop().run_until_complete(httpx_log_response(mock_response))
@@ -230,17 +225,17 @@ class TestHttpxMonitoring:
         mock_request = MagicMock()
         mock_request.url.host = "finnhub.io"
         mock_request.method = "GET"
-        
+
         mock_response = MagicMock()
         mock_response.request = mock_request
         mock_response.status_code = 200
-        
+
         # 模拟快速请求（< 3秒）
         from backend.core.middleware import _request_timers
         real_request = httpx.Request("GET", "https://finnhub.io/api/test")
         mock_response.request = real_request
         _request_timers[id(real_request)] = time.perf_counter() - 1.0  # 1秒前
-        
+
         import asyncio
         with patch("backend.core.middleware.logger") as mock_logger:
             asyncio.get_event_loop().run_until_complete(httpx_log_response(mock_response))

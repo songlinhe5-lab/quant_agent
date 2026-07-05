@@ -9,10 +9,9 @@ Redis 客户端单元测试
 
 import asyncio
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-import redis.asyncio as redis
 
 from backend.core.redis_client import (
     L1_CACHE_MAX_SIZE,
@@ -63,7 +62,7 @@ class TestRedisAsyncBatchWriter:
     async def test_start(self, batch_writer):
         """测试启动后台消费协程"""
         batch_writer.start()
-        
+
         assert batch_writer._task is not None
         assert not batch_writer._task.done()
 
@@ -72,9 +71,9 @@ class TestRedisAsyncBatchWriter:
         """测试优雅停机"""
         batch_writer.start()
         task = batch_writer._task
-        
+
         await batch_writer.stop()
-        
+
         # 等待一小段时间让 task 完成
         await asyncio.sleep(0.1)
         assert task.done()
@@ -89,9 +88,9 @@ class TestRedisAsyncBatchWriter:
     def test_put_set_nowait(self, batch_writer):
         """测试 fire-and-forget 写入接口"""
         batch_writer.put_set_nowait("test_key", "test_value", ex=60)
-        
+
         assert not batch_writer.queue.empty()
-        
+
         # 验证队列中的数据格式
         item = batch_writer.queue.get_nowait()
         assert item == ("set", "test_key", "test_value", 60)
@@ -99,7 +98,7 @@ class TestRedisAsyncBatchWriter:
     def test_put_set_nowait_without_expiry(self, batch_writer):
         """测试不带过期时间的写入"""
         batch_writer.put_set_nowait("test_key", "test_value")
-        
+
         item = batch_writer.queue.get_nowait()
         assert item == ("set", "test_key", "test_value", None)
 
@@ -147,7 +146,7 @@ class TestRedisAsyncBatchWriter:
         """测试队列满时触发刷新"""
         # 启动 worker
         batch_writer.start()
-        
+
         # 创建 mock pipeline
         mock_pipe = AsyncMock()
         mock_pipe.execute = AsyncMock()
@@ -211,7 +210,7 @@ class TestRedisAsyncBatchWriter:
     async def test_worker_cancelled(self, batch_writer, mock_redis):
         """测试 worker 被取消时刷新剩余数据"""
         batch_writer.start()
-        
+
         # 创建 mock pipeline
         mock_pipe = AsyncMock()
         mock_pipe.execute = AsyncMock()
@@ -223,7 +222,7 @@ class TestRedisAsyncBatchWriter:
 
         # 取消 task
         batch_writer._task.cancel()
-        
+
         try:
             await batch_writer._task
         except asyncio.CancelledError:
@@ -269,18 +268,18 @@ class TestLocalL1Cache:
         """测试缓存命中"""
         # 手动放入缓存
         l1_cache._cache["test_key"] = ("test_value", time.time() + 10)
-        
+
         value = await l1_cache.get("test_key")
-        
+
         assert value == "test_value"
 
     @pytest.mark.asyncio
     async def test_get_cache_miss(self, l1_cache, mock_redis):
         """测试缓存未命中，查询 Redis"""
         mock_redis.get.return_value = "redis_value"
-        
+
         value = await l1_cache.get("test_key")
-        
+
         assert value == "redis_value"
         # 验证值被写入 L1 缓存
         assert "test_key" in l1_cache._cache
@@ -289,9 +288,9 @@ class TestLocalL1Cache:
     async def test_get_cache_miss_and_redis_miss(self, l1_cache, mock_redis):
         """测试缓存和 Redis 都未命中"""
         mock_redis.get.return_value = None
-        
+
         value = await l1_cache.get("test_key")
-        
+
         assert value is None
 
     @pytest.mark.asyncio
@@ -300,9 +299,9 @@ class TestLocalL1Cache:
         # 放入过期缓存
         l1_cache._cache["test_key"] = ("old_value", time.time() - 10)
         mock_redis.get.return_value = "new_value"
-        
+
         value = await l1_cache.get("test_key")
-        
+
         assert value == "new_value"
         # 验证旧值被删除
         assert "test_key" not in l1_cache._cache or l1_cache._cache["test_key"][0] == "new_value"
@@ -311,10 +310,10 @@ class TestLocalL1Cache:
     async def test_set(self, l1_cache, mock_redis):
         """测试写入缓存"""
         await l1_cache.set("test_key", "test_value", ex=60)
-        
+
         # 验证 Redis 被调用
         mock_redis.set.assert_called_once_with("test_key", "test_value", ex=60)
-        
+
         # 验证 L1 缓存被更新
         assert "test_key" in l1_cache._cache
         assert l1_cache._cache["test_key"][0] == "test_value"
@@ -323,7 +322,7 @@ class TestLocalL1Cache:
     async def test_set_without_expiry(self, l1_cache, mock_redis):
         """测试不带过期时间写入"""
         await l1_cache.set("test_key", "test_value")
-        
+
         mock_redis.set.assert_called_once_with("test_key", "test_value", ex=None)
 
     @pytest.mark.asyncio
@@ -332,13 +331,13 @@ class TestLocalL1Cache:
         # 填满缓存
         for i in range(l1_cache.max_size):
             l1_cache._cache[f"key{i}"] = ("value", time.time() + 10)
-        
+
         # 再次写入，触发清空
         await l1_cache.set("new_key", "new_value")
-        
+
         # 验证缓存被清空
         assert len(l1_cache._cache) <= 1
-        
+
         # 验证警告被打印
         captured = capsys.readouterr()
         assert "字典容量触及上限" in captured.out
@@ -347,9 +346,9 @@ class TestLocalL1Cache:
     async def test_invalidate(self, l1_cache):
         """测试删除缓存"""
         l1_cache._cache["test_key"] = ("value", time.time() + 10)
-        
+
         l1_cache.invalidate("test_key")
-        
+
         assert "test_key" not in l1_cache._cache
 
     @pytest.mark.asyncio
@@ -365,13 +364,13 @@ class TestLocalL1Cache:
         # 放入一些过期数据
         l1_cache._cache["expired_key"] = ("value", time.time() - 10)
         l1_cache._cache["valid_key"] = ("value", time.time() + 10)
-        
+
         # 手动调用清理逻辑
         now = time.time()
         expired_keys = [k for k, (v, exp) in l1_cache._cache.items() if now > exp]
         for k in expired_keys:
             l1_cache._cache.pop(k, None)
-        
+
         # 验证过期键被删除
         assert "expired_key" not in l1_cache._cache
         assert "valid_key" in l1_cache._cache
@@ -380,7 +379,7 @@ class TestLocalL1Cache:
     async def test_get_triggers_cleanup_task(self, l1_cache):
         """测试 get 方法触发清理任务"""
         await l1_cache.get("test_key")
-        
+
         # 验证清理任务被创建
         assert l1_cache._cleanup_task is not None
 
@@ -388,7 +387,7 @@ class TestLocalL1Cache:
     async def test_set_triggers_cleanup_task(self, l1_cache, mock_redis):
         """测试 set 方法触发清理任务"""
         await l1_cache.set("test_key", "test_value")
-        
+
         # 验证清理任务被创建
         assert l1_cache._cleanup_task is not None
 
@@ -408,7 +407,7 @@ class TestGlobalInstances:
     def test_l1_cached_redis_initialized(self):
         """测试 L1 缓存已初始化"""
         from backend.core.redis_client import l1_cached_redis
-        
+
         assert l1_cached_redis is not None
 
 

@@ -8,7 +8,7 @@ from unittest import mock
 
 import pytest
 from openai import AsyncOpenAI
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from backend.services.llm_service import LLMService
 
@@ -28,7 +28,7 @@ class TestLLMServiceInit:
         monkeypatch.setenv("LLM_API_KEY", "test-key")
         monkeypatch.setenv("LLM_BASE_URL", "https://test.com/v1")
         monkeypatch.setenv("LLM_MODEL", "test-model")
-        
+
         service = LLMService()
         assert service.api_key == "test-key"
         assert service.base_url == "https://test.com/v1"
@@ -39,7 +39,7 @@ class TestLLMServiceInit:
         monkeypatch.delenv("LLM_API_KEY", raising=False)
         monkeypatch.delenv("LLM_BASE_URL", raising=False)
         monkeypatch.delenv("LLM_MODEL", raising=False)
-        
+
         service = LLMService()
         assert service.api_key == ""
         assert service.base_url == "https://api.deepseek.com"

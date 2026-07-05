@@ -9,7 +9,7 @@ from unittest import mock
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 
 class TestDatabaseURLLogic:
@@ -52,7 +52,6 @@ class TestEngineCreationLogic:
 
     def test_postgresql_engine_creation(self):
         """测试 PostgreSQL 引擎创建参数"""
-        test_url = "postgresql://user:pass@localhost/testdb"
         pool_size = 10
         max_overflow = 10
 

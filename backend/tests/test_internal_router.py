@@ -139,7 +139,7 @@ class TestInternalHealthCheck:
         method = "GET"
         path = "/api/v1/internal/health"
         timestamp = int(time.time())
-        
+
         # 生成签名
         signature = generate_internal_signature(method, path, timestamp, internal_secret)
 
@@ -172,7 +172,7 @@ class TestInternalCacheClear:
         method = "POST"
         path = "/api/v1/internal/cache/clear"
         timestamp = int(time.time())
-        
+
         # 生成签名
         signature = generate_internal_signature(method, path, timestamp, internal_secret)
 

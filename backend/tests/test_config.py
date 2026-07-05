@@ -3,11 +3,9 @@
 测试 Pydantic Settings 的配置加载和校验逻辑
 """
 
-import os
 from unittest import mock
 
 import pytest
-from pydantic import ValidationError
 
 from backend.core.config import QuantEnv, Settings
 
@@ -118,7 +116,7 @@ class TestEnvironmentVariableMapping:
     def test_field_aliases(self):
         """测试字段别名（环境变量名）"""
         fields = Settings.model_fields
-        
+
         # 检查别名
         assert fields["database_url"].validation_alias == "DATABASE_URL"
         assert fields["embedding_api_key"].validation_alias == "EMBEDDING_API_KEY"

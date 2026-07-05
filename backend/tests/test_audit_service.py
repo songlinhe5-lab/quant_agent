@@ -5,7 +5,6 @@
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Optional
 from unittest import mock
 
 import pytest
@@ -123,7 +122,7 @@ class TestLogAudit:
         mock_db.refresh.side_effect = mock_refresh
 
         # 直接传递 ip 参数，而不是依赖 request 对象
-        result = log_audit(
+        log_audit(
             db=mock_db,
             action="login",
             detail={"user": "test"},
@@ -149,7 +148,7 @@ class TestLogAudit:
 
     def test_log_audit_generates_trace_id(self, mock_db):
         """测试未提供 trace_id 时自动生成"""
-        result = log_audit(
+        log_audit(
             db=mock_db,
             action="logout",
             detail={"reason": "timeout"},
@@ -162,7 +161,7 @@ class TestLogAudit:
 
     def test_log_audit_without_request(self, mock_db):
         """测试无 Request 对象时记录审计日志"""
-        result = log_audit(
+        log_audit(
             db=mock_db,
             action="order_simulate",
             detail={"order_id": "123"},
@@ -175,7 +174,7 @@ class TestLogAudit:
 
     def test_log_audit_empty_detail(self, mock_db):
         """测试无详情时记录审计日志"""
-        result = log_audit(
+        log_audit(
             db=mock_db,
             action="settings_change",
         )
@@ -213,7 +212,7 @@ class TestGetAuditLogs:
         mock_filter = mock_query.filter.return_value
         mock_filter.order_by.return_value.offset.return_value.limit.return_value.all.return_value = mock_logs
 
-        result = get_audit_logs(db=mock_db, action="login")
+        get_audit_logs(db=mock_db, action="login")
 
         # 验证调用了 filter
         mock_query.filter.assert_called_once()
@@ -225,7 +224,7 @@ class TestGetAuditLogs:
         mock_filter = mock_query.filter.return_value
         mock_filter.order_by.return_value.offset.return_value.limit.return_value.all.return_value = mock_logs
 
-        result = get_audit_logs(db=mock_db, user_id=1)
+        get_audit_logs(db=mock_db, user_id=1)
 
         # 验证调用了 filter
         mock_query.filter.assert_called_once()

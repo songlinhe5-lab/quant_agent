@@ -8,8 +8,7 @@ from unittest import mock
 
 import pytest
 
-from backend.workers.collector_registry import COLLECTORS, CollectorDef, get_enabled_collectors
-from backend.workers.collector_registry import start_collector_daemons
+from backend.workers.collector_registry import COLLECTORS, CollectorDef, get_enabled_collectors, start_collector_daemons
 
 
 class TestCollectorDef:
