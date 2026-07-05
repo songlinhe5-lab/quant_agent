@@ -39,9 +39,17 @@ class TestRedisAsyncBatchWriter:
         return mock
 
     @pytest.fixture
-    def batch_writer(self, mock_redis):
+    async def batch_writer(self, mock_redis):
         """创建 RedisAsyncBatchWriter 实例"""
-        return RedisAsyncBatchWriter(mock_redis, batch_size=10, flush_interval=0.1)
+        writer = RedisAsyncBatchWriter(mock_redis, batch_size=10, flush_interval=0.1)
+        yield writer
+        # teardown: 确保 worker 被清理，防止跨测试泄漏
+        if writer._task and not writer._task.done():
+            writer._task.cancel()
+            try:
+                await writer._task
+            except (asyncio.CancelledError, Exception):
+                pass
 
     def test_initialization(self, mock_redis):
         """测试初始化"""
@@ -219,6 +227,9 @@ class TestRedisAsyncBatchWriter:
 
         # 放入数据
         batch_writer.put_set_nowait("key1", "value1")
+
+        # 给 worker 一个 tick 来取数据（但不触发 flush_interval 超时）
+        await asyncio.sleep(0)
 
         # 取消 task
         batch_writer._task.cancel()
