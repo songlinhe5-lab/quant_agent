@@ -101,7 +101,7 @@ services:
       - REDIS_PORT=6379
       - QUANT_ENV=production
       - OTEL_ENABLED=false
-      - FUTU_ENABLED=false
+      - COLLECTOR_FUTU=false
       - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_secret_2026}@postgres:5432/${DB_NAME:-quant_agent_db}
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')\" || exit 1"]
@@ -141,7 +141,7 @@ services:
       - REDIS_PORT=6379
       - QUANT_ENV=production
       - OTEL_ENABLED=false
-      - FUTU_ENABLED=false
+      - COLLECTOR_FUTU=false
       - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_secret_2026}@postgres:5432/${DB_NAME:-quant_agent_db}
     volumes:
       - quant_db:/app/backend/data

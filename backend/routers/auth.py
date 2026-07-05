@@ -3,7 +3,6 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Optional
 
-import bcrypt
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from google.auth.transport import requests as google_requests
@@ -14,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from backend.core import models
 from backend.core.database import get_db
+from backend.core.security import get_password_hash, verify_password
 from backend.services.audit_service import log_audit
 
 # ==========================================
@@ -26,18 +26,6 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7  # Refresh Token 有效期设为 7 天
 
 # tokenUrl 指明了 Swagger UI 等工具要去哪个接口获取 Token
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
-
-
-def get_password_hash(password: str) -> str:
-    pwd_bytes = password.encode("utf-8")
-    # 测试环境可通过环境变量降低 bcrypt 成本（默认 12，测试用 4 加速）
-    rounds = int(os.getenv("BCRYPT_ROUNDS", "12"))
-    salt = bcrypt.gensalt(rounds=rounds)
-    return bcrypt.hashpw(pwd_bytes, salt).decode("utf-8")
-
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))  # noqa: E501
 
 
 def _create_jwt_token(data: dict, expires_delta: timedelta, token_type: Optional[str] = None):  # noqa: E501

@@ -61,7 +61,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: quant_local_app
-    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1 --loop uvloop --http httptools --reload
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1 --loop uvloop --http httptools
     restart: always
     ports:
       - "8000:8000"
@@ -127,7 +127,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: quant_local_slave
-    command: uvicorn backend.slave_app:app --host 0.0.0.0 --port 8001 --loop uvloop --http httptools --reload
+    command: uvicorn backend.slave_app:app --host 0.0.0.0 --port 8001 --loop uvloop --http httptools
     restart: always
     ports:
       - "8001:8001"

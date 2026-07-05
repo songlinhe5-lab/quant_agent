@@ -1,194 +1,155 @@
-# 1. 依赖与虚拟环境 (Dependencies & Virtual Environments)
-node_modules/
-.venv/
-venv/
-env/
+# ============================================
+# Quant Agent - AI 上下文排除配置
+# 减少 AI 读取的无关上下文，提升响应质量与速度
+# ============================================
 
-# 2. 构建产物与缓存 (Build Artifacts & Caches)
-# 使用 **/ 前缀确保匹配所有子目录
-**/.next/
-**/build/
-**/dist/
-**/out/
-**/__pycache__/
-*.py[cod]
-*$py.class
-*.so
-*.dylib
-**/.mypy_cache/
-**/.ruff_cache/
-**/.pytest_cache/
-.eslintcache
-**/.vite/
-**/.cache/
-*.tsbuildinfo
-*.egg-info/
-.eggs/
-*.egg
-**/.turbo/
-**/.vercel/
+# ────────────────────────────────────────────
+# 1. 依赖目录 (最大体积优先排除)
+# ────────────────────────────────────────────
+node_modules/**
+frontend/node_modules/**
+.venv/**
+venv/**
+env/**
+ENV/**
 
-# 排除编译后极度冗长的 Protobuf JS 产物 (仅保留 .proto 源码与 .d.ts 类型声明)
-frontend/src/lib/proto/*.js
+# ────────────────────────────────────────────
+# 2. Git 内部对象
+# ────────────────────────────────────────────
+.git/**
 
-# 3. IDE 与操作系统文件 (IDE & OS Files)
-.idea/
-.vscode/
-.cursor/
-.windsurf/
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
+# ────────────────────────────────────────────
+# 3. 编译产物与二进制缓存
+# ────────────────────────────────────────────
+**/__pycache__/**
+**/*.py[cod]
+**/*.pyo
+**/*.pyd
+**/*.so
+**/*.dll
+**/*.dylib
+**/*.tsbuildinfo
 
-# 4. 敏感信息与环境变量 (Secrets & Environment Variables)
-.env
-.env.*
-*.pem
-*.key
-*.crt
-*.p12
-*.pfx
-*secret*.json
-*credentials*.json
+# ────────────────────────────────────────────
+# 4. 前端构建产物
+# ────────────────────────────────────────────
+frontend/dist/**
+frontend/build/**
+frontend/.vite/**
+frontend/coverage/**
 
-# 5. 日志文件 (Log Files)
-**/logs/
-*.log*
-npm-debug.log*
-yarn-error.log*
-pnpm-debug.log*
+# ────────────────────────────────────────────
+# 5. 日志文件 (含 259MB error.log)
+# ────────────────────────────────────────────
+**/logs/**
+**/*.log
+**/*.log.*
 
-# 6. 包管理器锁定文件 (Package Manager Lock Files)
-# 极其耗费 Token 且无业务逻辑
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
-poetry.lock
-Pipfile.lock
+# ────────────────────────────────────────────
+# 6. 数据库与持久化文件
+# ────────────────────────────────────────────
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*.sqlite
+**/*.sqlite3
+dump.rdb
+quant_data_storage/**
+
+# ────────────────────────────────────────────
+# 7. Lock 文件 (纯依赖锁定，无逻辑价值)
+# ────────────────────────────────────────────
 uv.lock
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
 
-# 7. 测试与覆盖率报告 (Test & Coverage Reports)
-**/htmlcov/
-**/.coverage
-**/coverage/
-**/.tox/
-**/cov_annotate/
-backend/coverage.json
+# ────────────────────────────────────────────
+# 8. 测试覆盖率报告与缓存
+# ────────────────────────────────────────────
+htmlcov/**
+.coverage
+.coverage.*
+**/coverage/**
+**/coverage.json
+**/cov_annotate/**
+.pytest_cache/**
+**/.pytest_cache/**
+.tox/**
+reports/**
 
-# 8. 大型静态资源与数据集 (Large Static Assets & Datasets)
-frontend/src/assets/
-backend/data/
-mock_data/
-*.pdf
+# ────────────────────────────────────────────
+# 9. 类型检查与 Lint 缓存
+# ────────────────────────────────────────────
+.mypy_cache/**
+**/.mypy_cache/**
+.ruff_cache/**
+.flake8_cache/**
+.dmypy.json
+dmypy.json
+
+# ────────────────────────────────────────────
+# 10. AI 工具缓存与临时状态
+# ────────────────────────────────────────────
+.qoder/**
+.qoder-cn/**
+.memory/**
+.tools_cache.db
+**/.tools_cache.db
+
+# ────────────────────────────────────────────
+# 11. 截图与图片 (根目录调试截图)
+# ────────────────────────────────────────────
 *.png
 *.jpg
 *.jpeg
 *.gif
-*.svg
-*.ico
 *.webp
-*.mp4
-*.mp3
-*.wav
-*.db
-*.sqlite
-*.sqlite3
-*.db-journal
-*.db-wal
-*.db-shm
-*.csv
-*.parquet
-*.h5
-*.hdf5
-*.feather
-*.csv.gz
-*.jsonl
-*.pkl
-*.npy
-*.npz
-*.whl
-dump.rdb
+*.ico
+*.bmp
+*.svg
 
-# 9. 模型权重 (Model Weights)
-*.pt
-*.pth
-*.onnx
-*.safetensors
-*.bin
-*.ckpt
-*.gguf
+# ────────────────────────────────────────────
+# 12. 大型静态文档与二进制附件
+# ────────────────────────────────────────────
+**/*.pdf
+**/*.xlsx
+**/*.pptx
+**/*.zip
+**/*.tar
+**/*.tar.gz
+**/*.rar
+**/*.7z
 
-# 10. 数据科学及 Jupyter 缓存 (Data Science & Jupyter Caches)
-.ipynb_checkpoints/
-wandb/
-mlruns/
-tb_logs/
-runs/
+# ────────────────────────────────────────────
+# 13. 临时文件、备份与编辑器交换文件
+# ────────────────────────────────────────────
+**/*.bak
+**/*.backup
+**/*.tmp
+**/*.temp
+**/*.swp
+**/*.swo
+**/*.prof
+**/*.pid
+**/*.pid.lock
 
-# 11. Python 版本管理
-.python-version
+# ────────────────────────────────────────────
+# 14. IDE 与编辑器配置
+# ────────────────────────────────────────────
+.vscode/**
+.idea/**
+*.iml
+*.iws
+*.ipr
+.eslintcache
 
-# 12. Git
-.git/
+# ────────────────────────────────────────────
+# 15. 数据目录 (行情仓库 & 沙箱数据)
+# ────────────────────────────────────────────
+data/**
 
-# 13. 数据仓库与向量库 (Data Warehouses & Vector DBs)
-data/
-quant_data_storage/
-backend/data/chroma_db/
-
-# 14. Hermes Agent 工具定义 (Hermes Agent Tool Definitions)
-# 24 个工具文件，纯 JSON schema 注册，无业务逻辑
-hermes_agent/tools/
-hermes_agent/.tools_cache.db
-.tools_cache.db
-hermes_agent/actions/
-hermes_agent/plugins/
-hermes_agent/skills/
-
-# 15. 前端静态资源与编辑器 (Frontend Static Assets & Editor)
-frontend/public/
-frontend/coverage/
-
-# 16. 运维与监控配置 (Ops & Monitoring Configs)
-grafana/
-prometheus.yml
-docker-compose.yml
-docker-compose.local.yml
-docker-publish.yml
-Dockerfile
-frontend/Dockerfile
-frontend/nginx.conf
-start.sh
-Makefile
-lint.yml
-dashboard.yml
-quant.conf
-quant-agent-dashboard.json
-codecov.yml
-.pre-commit-config.yaml
-
-# 17. 脚本与批处理 (Scripts & Batch Jobs)
-scripts/
-
-# 18. 文档与报告 (Documentation & Reports)
-# 纯参考文档，不参与代码生成
-docs/
-CHANGELOG.md
-README.md
-AGENTS.md
-AI_INSTRUCTIONS.md
-REFACTOR_REPORT.md
-FUTU_API_VALUE_FORMAT_DIAGNOSIS.md
-frontend/README.md
-
-# 19. GitHub CI/CD
-.github/
-
-# 20. 杂项缓存与运行时 (Misc Cache & Runtime)
-.memory/
-.qoder/
-.qoder-cn/
-*.rdb
-*.dump
+# ────────────────────────────────────────────
+# 16. Protobuf 编译产物 (保留 .proto 源文件)
+# ────────────────────────────────────────────
+shared/proto/*.js
