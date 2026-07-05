@@ -47,8 +47,8 @@ class TestRedisAsyncBatchWriter:
         if writer._task and not writer._task.done():
             writer._task.cancel()
             try:
-                await writer._task
-            except (asyncio.CancelledError, Exception):
+                await asyncio.wait_for(writer._task, timeout=2.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
                 pass
 
     def test_initialization(self, mock_redis):

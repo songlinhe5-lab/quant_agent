@@ -55,8 +55,8 @@ class RedisAsyncBatchWriter:
         if self._task and not self._task.done():
             self._task.cancel()
             try:
-                await self._task
-            except asyncio.CancelledError:
+                await asyncio.wait_for(self._task, timeout=5.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
         await self._flush_all()
 

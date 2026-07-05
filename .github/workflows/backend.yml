@@ -130,6 +130,7 @@ jobs:
           EMBEDDING_MODEL: BAAI/bge-large-zh-v1.5
         run: |
           uv run pytest backend/tests/ -v \
+            --timeout=60 --timeout-method=thread \
             --cov=backend --cov-report=xml:coverage.xml --cov-report=term-missing \
             --cov-fail-under=70
       - name: Detect slow tests
