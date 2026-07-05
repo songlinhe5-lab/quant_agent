@@ -120,6 +120,7 @@ class TradeHandler:
         if self.conn_mgr.status != "CONNECTED":
             if os.getenv("QUANT_ENV") == "development":
                 from .mock_provider import MockProvider
+
                 return MockProvider.mock_account_info(market, env_str)
             return {"status": "error", "message": f"Futu OpenD 未连接 (status={self.conn_mgr.status})"}
 
