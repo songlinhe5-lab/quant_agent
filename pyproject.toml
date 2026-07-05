@@ -152,4 +152,5 @@ directory = "htmlcov"
 dev = [
     "pytest-cov>=7.1.0",
     "pytest-asyncio>=0.26.0,<1.0.0",
+    "pytest-timeout>=2.3.0",
 ]
