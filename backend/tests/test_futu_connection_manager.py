@@ -127,10 +127,16 @@ class TestConnectionManager:
         """相同 (trd_env, market) 组合应复用同一个 trade_ctx"""
         mgr = ConnectionManager()
         fake_ctx = MagicMock()
-        with patch(
-            "backend.services.futu.connection_manager.OpenSecTradeContext",
-            return_value=fake_ctx,
-        ) as mock_open:
+        with (
+            patch(
+                "backend.services.futu.connection_manager.ConnectionManager._is_opend_reachable",
+                return_value=True,
+            ),
+            patch(
+                "backend.services.futu.connection_manager.OpenSecTradeContext",
+                return_value=fake_ctx,
+            ) as mock_open,
+        ):
             ctx1 = mgr.get_trade_context(TrdMarket.HK, TrdEnv.SIMULATE)
             ctx2 = mgr.get_trade_context(TrdMarket.HK, TrdEnv.SIMULATE)
         assert ctx1 is fake_ctx
@@ -147,10 +153,16 @@ class TestConnectionManager:
         mgr = ConnectionManager()
         fake_hk = MagicMock()
         fake_us = MagicMock()
-        with patch(
-            "backend.services.futu.connection_manager.OpenSecTradeContext",
-            side_effect=[fake_hk, fake_us],
-        ) as mock_open:
+        with (
+            patch(
+                "backend.services.futu.connection_manager.ConnectionManager._is_opend_reachable",
+                return_value=True,
+            ),
+            patch(
+                "backend.services.futu.connection_manager.OpenSecTradeContext",
+                side_effect=[fake_hk, fake_us],
+            ) as mock_open,
+        ):
             ctx_hk = mgr.get_trade_context(TrdMarket.HK, TrdEnv.SIMULATE)
             ctx_us = mgr.get_trade_context(TrdMarket.US, TrdEnv.REAL)
         assert ctx_hk is fake_hk
