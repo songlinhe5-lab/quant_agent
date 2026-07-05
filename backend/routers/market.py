@@ -138,6 +138,7 @@ async def quotes_websocket(websocket: WebSocket):
                 elif action == "ping":
                     # BE-15: 增强型心跳响应
                     WS_MESSAGES_SENT.labels(type="system").inc()
+                    _subs = manager.subscriptions.get(websocket, set())
                     await websocket.send_text(
                         json.dumps(
                             {
@@ -146,7 +147,7 @@ async def quotes_websocket(websocket: WebSocket):
                                 "data": {
                                     "client_ts": msg.get("ts"),
                                     "server_ts": int(time.time() * 1000),
-                                    "subscriptions": len(current_subs),
+                                    "subscriptions": len(_subs),
                                 },
                                 "ts": int(time.time() * 1000),
                             }

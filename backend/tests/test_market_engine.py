@@ -601,6 +601,9 @@ class TestFetchFallbackQuote:
 
 
 # ─── broadcast_loop 主循环（异步）────────────────────────────────────
+_real_sleep = asyncio.sleep  # 保存原始引用，避免 mock 后递归
+
+
 class TestBroadcastLoop:
     """测试 broadcast_loop 主循环，通过 mock asyncio.sleep 让循环在第一次迭代后退出"""
 
@@ -608,9 +611,9 @@ class TestBroadcastLoop:
         """测试 broadcast_loop 完成一次迭代"""
         mgr = ConnectionManager()
         
-        # Mock asyncio.sleep 立即返回，加速测试
+        # Mock asyncio.sleep 让出控制权（使用 _real_sleep 避免递归）
         async def fast_sleep(delay):
-            return
+            await _real_sleep(0)
         
         with patch("backend.core.market_engine.asyncio.sleep", side_effect=fast_sleep):
             with patch("backend.core.market_engine.l1_cached_redis.get", return_value="1"):
@@ -626,9 +629,9 @@ class TestBroadcastLoop:
                         ws = MagicMock()
                         mgr.subscriptions[ws] = {"US.AAPL"}
                         
-                        # 使用 timeout 让循环在 1 秒后退出
+                        # 使用 timeout 让循环快速退出（fast_sleep 使循环飞速迭代，0.1s 足够）
                         try:
-                            await asyncio.wait_for(mgr.broadcast_loop(), timeout=1.0)
+                            await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
                         except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
                             pass
 
@@ -644,9 +647,9 @@ class TestBroadcastLoop:
             get_quote_called = True
             return {"status": "success", "last_price": 150.0, "change_pct": "+1.0%"}
         
-        # Mock asyncio.sleep 立即返回，加速测试
+        # Mock asyncio.sleep 让出控制权（使用 _real_sleep 避免递归）
         async def fast_sleep(delay):
-            return
+            await _real_sleep(0)
         
         # Mock time.time 返回一个固定值，并确保 last_futu_update 足够旧
         fixed_time = 100.0
@@ -668,9 +671,9 @@ class TestBroadcastLoop:
                             ws = MagicMock()
                             mgr.subscriptions[ws] = {"US.AAPL"}
                             
-                            # 使用 timeout 让循环在 1 秒后退出
+                            # 使用 timeout 让循环快速退出（fast_sleep 使循环飞速迭代，0.1s 足够）
                             try:
-                                await asyncio.wait_for(mgr.broadcast_loop(), timeout=1.0)
+                                await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
                             except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
                                 pass
                             
@@ -678,12 +681,12 @@ class TestBroadcastLoop:
                             assert get_quote_called, "get_quote was not called"
 
     async def test_broadcast_loop_yfinance_disabled(self):
-        """测试当 YFinance 被禁用时"""
+        """测试 broadcast_loop 当 yfinance 禁用时"""
         mgr = ConnectionManager()
         
-        # Mock asyncio.sleep 立即返回，加速测试
+        # Mock asyncio.sleep 让出控制权（使用 _real_sleep 避免递归）
         async def fast_sleep(delay):
-            return
+            await _real_sleep(0)
         
         with patch("backend.core.market_engine.asyncio.sleep", side_effect=fast_sleep):
             with patch("backend.core.market_engine.l1_cached_redis.get", return_value="0"):  # YF 禁用
@@ -696,7 +699,7 @@ class TestBroadcastLoop:
                         mgr.subscriptions[ws] = {"US.AAPL"}
                         
                         try:
-                            await asyncio.wait_for(mgr.broadcast_loop(), timeout=1.0)
+                            await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
                         except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
                             pass
                         
@@ -707,9 +710,9 @@ class TestBroadcastLoop:
         """测试 broadcast_loop 的异常处理分支"""
         mgr = ConnectionManager()
         
-        # Mock asyncio.sleep 立即返回，加速测试
+        # Mock asyncio.sleep 让出控制权（使用 _real_sleep 避免递归）
         async def fast_sleep(delay):
-            return
+            await _real_sleep(0)
         
         # Mock l1_cached_redis.get 抛出异常
         with patch("backend.core.market_engine.asyncio.sleep", side_effect=fast_sleep):
@@ -722,9 +725,9 @@ class TestBroadcastLoop:
                         ws = MagicMock()
                         mgr.subscriptions[ws] = {"US.AAPL"}
                         
-                        # 使用 timeout 让循环在 1 秒后退出
+                        # 使用 timeout 让循环快速退出（fast_sleep 使循环飞速迭代，0.1s 足够）
                         try:
-                            await asyncio.wait_for(mgr.broadcast_loop(), timeout=1.0)
+                            await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
                         except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
                             pass
                         
@@ -734,9 +737,9 @@ class TestBroadcastLoop:
         """测试 Futu GC 机制：清理废弃订阅"""
         mgr = ConnectionManager()
         
-        # Mock asyncio.sleep 立即返回，加速测试
+        # Mock asyncio.sleep 让出控制权（使用 _real_sleep 避免递归）
         async def fast_sleep(delay):
-            return
+            await _real_sleep(0)
         
         with patch("backend.core.market_engine.asyncio.sleep", side_effect=fast_sleep):
             with patch("backend.core.market_engine.l1_cached_redis.get", return_value="1"):
@@ -756,7 +759,7 @@ class TestBroadcastLoop:
                         mgr.subscriptions[ws] = {"US.AAPL"}  # 只订阅了 AAPL
                         
                         try:
-                            await asyncio.wait_for(mgr.broadcast_loop(), timeout=1.0)
+                            await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
                         except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
                             pass
                         
