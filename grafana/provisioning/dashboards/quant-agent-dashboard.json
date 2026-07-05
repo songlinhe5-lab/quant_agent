@@ -392,7 +392,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "Quant Agent - 全局监控大盘",
+  "title": "Quant Agent - 系统监控总览 v1.0",
   "uid": "quant-agent-dashboard",
   "version": 1
 }
