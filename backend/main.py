@@ -203,20 +203,25 @@ async def lifespan(app: FastAPI):  # type: ignore
     #     await test_yfinance_service()
 
     # 💡 增加容灾包裹：防止外部 API 或富途网关不通导致整个 Docker 容器死循环无法启动
+    # 🚨 关键修复：为每个预检添加超时，防止单个服务卡住阻塞整个 API 启动
     try:
         # 2. 运行富途测试，并保留 OpenD 连接用于后续业务路由 (close_after=False)
         if test_futu_service is not None:
-            await test_futu_service(close_after=False)  # type: ignore
+            await asyncio.wait_for(test_futu_service(close_after=False), timeout=15.0)  # type: ignore
+    except asyncio.TimeoutError:
+        print("⚠️ [Startup] 富途 OpenD 接口预检超时 (15s)，已自动降级跳过")
     except Exception as e:
         print(f"⚠️ [Startup] 富途 OpenD 接口测试失败，已自动降级跳过: {e}")
 
     try:
         # 3. 运行 Redis 连通性与系统通知测试
         if test_notification_service is not None:
-            await test_notification_service()  # type: ignore
+            await asyncio.wait_for(test_notification_service(), timeout=10.0)  # type: ignore
         # 4. 运行 FRED 宏观数据接口测试
         if test_fred_service is not None:
-            await test_fred_service()  # type: ignore
+            await asyncio.wait_for(test_fred_service(), timeout=10.0)  # type: ignore
+    except asyncio.TimeoutError:
+        print("⚠️ [Startup] 核心外部服务预检超时 (10s)，已自动降级跳过")
     except Exception as e:
         print(f"⚠️ [Startup] 核心外部服务连通性预检失败: {e}")
 
