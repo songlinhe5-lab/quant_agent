@@ -21,6 +21,9 @@ load_dotenv()
 from backend.core import models  # noqa: F401, E402 - 确保所有模型被导入
 from backend.core.database import Base  # noqa: E402
 
+# 导入 TickerItem 模型，确保 Alembic 可以识别并生成迁移脚本
+from backend.services.ticker_service import TickerItem  # noqa: E402, F401
+
 # Alembic Config 对象
 config = context.config
 
