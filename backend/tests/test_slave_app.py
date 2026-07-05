@@ -229,7 +229,7 @@ class TestDispatchCollect:
         with patch("backend.slave_app.ENABLED_COLLECTORS", ["yfinance"]):
             with patch("backend.services.yfinance_service.yf_service", mock_yf, create=True):
                 await _dispatch_collect("fetch_quote", "AAPL", {})
-        mock_yf.fetch_yf_data.assert_called_once_with("AAPL", "quote")
+        mock_yf.fetch_yf_data.assert_called_once_with("AAPL", "quote", ttl=300)
 
     @pytest.mark.asyncio
     async def test_unsupported_action(self):

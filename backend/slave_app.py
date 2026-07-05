@@ -375,24 +375,18 @@ async def _write_to_master_redis(
 
 
 async def _dispatch_collect(action: str, ticker: str | None, params: Dict[str, Any]) -> Any:
-    """根据 action 分发到对应的采集服务"""
+    """根据 action 分发到对应的采集服务
 
-    # === YFinance ===
-    if "yfinance" in ENABLED_COLLECTORS:
-        from backend.services.yfinance_service import yf_service
+    路由优先级:
+    1. Futu: 港美股行情 (HK.xxx, US.xxx) - 实时、准确
+    2. YFinance: 宏观指标、大盘指数等 - 备用
+    3. Finnhub: 内幕交易、新闻
+    4. AKShare: 港股通、南向资金
+    """
 
-        if action == "fetch_quote":
-            return await yf_service.fetch_yf_data(ticker, "quote")
-        elif action == "fetch_history":
-            period = params.get("period", "3mo")
-            interval = params.get("interval", "1d")
-            return await yf_service.fetch_yf_data(ticker, "history", period=period, interval=interval)
-        elif action == "fetch_info":
-            return await yf_service.fetch_yf_data(ticker, "info")
-
-    # === Futu ===
+    # === Futu (优先处理港美股) ===
     if "futu" in ENABLED_COLLECTORS:
-        from backend.services.futu_service import futu_service
+        from backend.services.futu import futu_service
 
         if action == "fetch_quote":
             return await futu_service.get_quote(ticker)
@@ -402,6 +396,24 @@ async def _dispatch_collect(action: str, ticker: str | None, params: Dict[str, A
             return await futu_service.get_history(ticker, ktype=ktype, num=num)
         elif action == "fetch_fund_flow":
             return await futu_service.get_fund_flow(ticker)
+        elif action == "fetch_option_chain":
+            expiration_date = params.get("expiration_date", "")
+            return await futu_service.get_option_chain(ticker, expiration_date)
+        elif action == "fetch_fundamental":
+            return await futu_service.get_fundamental(ticker)
+
+    # === YFinance (宏观指标、大盘等) ===
+    if "yfinance" in ENABLED_COLLECTORS:
+        from backend.services.yfinance_service import yf_service
+
+        if action == "fetch_quote":
+            return await yf_service.fetch_yf_data(ticker, "quote", ttl=300)
+        elif action == "fetch_history":
+            period = params.get("period", "3mo")
+            interval = params.get("interval", "1d")
+            return await yf_service.fetch_yf_data(ticker, "history", ttl=3600, period=period, interval=interval)
+        elif action == "fetch_info":
+            return await yf_service.fetch_yf_data(ticker, "info", ttl=3600)
 
     # === Finnhub ===
     if "finnhub" in ENABLED_COLLECTORS:
