@@ -89,11 +89,7 @@ class TestLLMServiceGeneratePydantic:
         # Mock OpenAI 响应
         mock_response = mock.MagicMock()
         mock_response.choices = [
-            mock.MagicMock(
-                message=mock.MagicMock(
-                    content=json.dumps({"message": "Hello", "score": 0.95})
-                )
-            )
+            mock.MagicMock(message=mock.MagicMock(content=json.dumps({"message": "Hello", "score": 0.95})))
         ]
         service.client.chat.completions.create = mock.AsyncMock(return_value=mock_response)
 
@@ -115,9 +111,7 @@ class TestLLMServiceGeneratePydantic:
         mock_response = mock.MagicMock()
         mock_response.choices = [
             mock.MagicMock(
-                message=mock.MagicMock(
-                    content="```json\n" + json.dumps({"message": "Hello", "score": 0.8}) + "\n```"
-                )
+                message=mock.MagicMock(content="```json\n" + json.dumps({"message": "Hello", "score": 0.8}) + "\n```")
             )
         ]
         service.client.chat.completions.create = mock.AsyncMock(return_value=mock_response)
@@ -136,13 +130,7 @@ class TestLLMServiceGeneratePydantic:
         mock_get_model.return_value = "test-model"
 
         mock_response = mock.MagicMock()
-        mock_response.choices = [
-            mock.MagicMock(
-                message=mock.MagicMock(
-                    content=json.dumps({"invalid": "data"})
-                )
-            )
-        ]
+        mock_response.choices = [mock.MagicMock(message=mock.MagicMock(content=json.dumps({"invalid": "data"})))]
         service.client.chat.completions.create = mock.AsyncMock(return_value=mock_response)
 
         with pytest.raises(ValueError, match="LLM 输出未通过 Pydantic 校验"):
@@ -157,11 +145,7 @@ class TestLLMServiceGeneratePydantic:
         mock_get_model.return_value = "test-model"
 
         mock_response = mock.MagicMock()
-        mock_response.choices = [
-            mock.MagicMock(
-                message=mock.MagicMock(content=None)
-            )
-        ]
+        mock_response.choices = [mock.MagicMock(message=mock.MagicMock(content=None))]
         service.client.chat.completions.create = mock.AsyncMock(return_value=mock_response)
 
         # 空内容会导致 ValidationError，然后被捕获并重新抛出为 ValueError

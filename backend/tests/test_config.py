@@ -33,6 +33,7 @@ class TestSettingsClass:
     def test_settings_is_basicsettings(self):
         """测试 Settings 是 BaseSettings 的子类"""
         from pydantic_settings import BaseSettings
+
         assert issubclass(Settings, BaseSettings)
 
     def test_settings_has_model_config(self):

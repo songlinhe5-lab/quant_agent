@@ -43,8 +43,10 @@ class TestAccessLogMiddleware:
     @pytest.fixture
     def mock_call_next(self):
         """创建 mock call_next 函数"""
+
         async def call_next(request: Request):
             return JSONResponse(content={"status": "ok"}, status_code=200)
+
         return call_next
 
     @pytest.mark.asyncio
@@ -78,6 +80,7 @@ class TestAccessLogMiddleware:
     @pytest.mark.asyncio
     async def test_dispatch_exception(self, middleware, mock_request):
         """测试请求处理异常"""
+
         async def call_next_with_error(request: Request):
             raise ValueError("Test error")
 
@@ -87,8 +90,10 @@ class TestAccessLogMiddleware:
     @pytest.mark.asyncio
     async def test_dispatch_calls_prometheus_metrics(self, middleware, mock_request, mock_call_next):
         """测试 Prometheus 指标被调用"""
-        with patch("backend.core.middleware.REQUEST_COUNT") as mock_counter, \
-             patch("backend.core.middleware.REQUEST_LATENCY") as mock_histogram:
+        with (
+            patch("backend.core.middleware.REQUEST_COUNT") as mock_counter,
+            patch("backend.core.middleware.REQUEST_LATENCY") as mock_histogram,
+        ):
             response = await middleware.dispatch(mock_request, mock_call_next)
 
             assert response.status_code == 200
@@ -101,11 +106,14 @@ class TestAccessLogMiddleware:
     @pytest.mark.asyncio
     async def test_dispatch_exception_calls_prometheus_metrics(self, middleware, mock_request):
         """测试异常时 Prometheus 指标被调用"""
+
         async def call_next_with_error(request: Request):
             raise ValueError("Test error")
 
-        with patch("backend.core.middleware.REQUEST_COUNT") as mock_counter, \
-             patch("backend.core.middleware.REQUEST_LATENCY"):
+        with (
+            patch("backend.core.middleware.REQUEST_COUNT") as mock_counter,
+            patch("backend.core.middleware.REQUEST_LATENCY"),
+        ):
             with pytest.raises(ValueError):
                 await middleware.dispatch(mock_request, call_next_with_error)
 
@@ -123,10 +131,12 @@ class TestHttpxMonitoring:
 
         # 调用前确保字典为空
         from backend.core.middleware import _request_timers
+
         _request_timers.clear()
 
         # 直接调用异步函数
         import asyncio
+
         asyncio.get_event_loop().run_until_complete(httpx_log_request(mock_request))
 
         # 验证时间被记录
@@ -143,6 +153,7 @@ class TestHttpxMonitoring:
         mock_response.status_code = 200
 
         import asyncio
+
         asyncio.get_event_loop().run_until_complete(httpx_log_response(mock_response))
 
     def test_httpx_log_response_fred(self):
@@ -156,6 +167,7 @@ class TestHttpxMonitoring:
         mock_response.status_code = 200
 
         import asyncio
+
         asyncio.get_event_loop().run_until_complete(httpx_log_response(mock_response))
 
     def test_httpx_log_response_yahoo(self):
@@ -169,6 +181,7 @@ class TestHttpxMonitoring:
         mock_response.status_code = 200
 
         import asyncio
+
         asyncio.get_event_loop().run_until_complete(httpx_log_response(mock_response))
 
     def test_httpx_log_response_llm(self):
@@ -182,6 +195,7 @@ class TestHttpxMonitoring:
         mock_response.status_code = 200
 
         import asyncio
+
         asyncio.get_event_loop().run_until_complete(httpx_log_response(mock_response))
 
     def test_httpx_log_response_unknown_service(self):
@@ -195,6 +209,7 @@ class TestHttpxMonitoring:
         mock_response.status_code = 200
 
         import asyncio
+
         asyncio.get_event_loop().run_until_complete(httpx_log_response(mock_response))
 
     def test_httpx_log_response_slow_api(self):
@@ -209,12 +224,14 @@ class TestHttpxMonitoring:
 
         # 模拟慢请求（> 3秒）
         from backend.core.middleware import _request_timers
+
         # 创建一个真实的 httpx.Request 对象
         real_request = httpx.Request("GET", "https://finnhub.io/api/test")
         mock_response.request = real_request
         _request_timers[id(real_request)] = time.perf_counter() - 4.0  # 4秒前
 
         import asyncio
+
         with patch("backend.core.middleware.logger") as mock_logger:
             asyncio.get_event_loop().run_until_complete(httpx_log_response(mock_response))
             # 验证警告日志被调用
@@ -232,11 +249,13 @@ class TestHttpxMonitoring:
 
         # 模拟快速请求（< 3秒）
         from backend.core.middleware import _request_timers
+
         real_request = httpx.Request("GET", "https://finnhub.io/api/test")
         mock_response.request = real_request
         _request_timers[id(real_request)] = time.perf_counter() - 1.0  # 1秒前
 
         import asyncio
+
         with patch("backend.core.middleware.logger") as mock_logger:
             asyncio.get_event_loop().run_until_complete(httpx_log_response(mock_response))
             # 验证警告日志未被调用

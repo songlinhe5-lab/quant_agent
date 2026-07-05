@@ -198,7 +198,9 @@ class TestGetAuditLogs:
             AuditLog(id=1, action="login"),
             AuditLog(id=2, action="logout"),
         ]
-        mock_db.query.return_value.order_by.return_value.offset.return_value.limit.return_value.all.return_value = mock_logs
+        mock_db.query.return_value.order_by.return_value.offset.return_value.limit.return_value.all.return_value = (
+            mock_logs
+        )
 
         result = get_audit_logs(db=mock_db)
 

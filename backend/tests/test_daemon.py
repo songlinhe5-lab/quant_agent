@@ -149,10 +149,12 @@ class TestQuoteMonitorHandler:
     def test_on_recv_rsp_trade_signal(self, mock_asyncio_run, handler):
         """测试交易信号触发"""
         # 创建模拟的 DataFrame 数据
-        test_data = pd.DataFrame({
-            "code": ["US.AAPL"],
-            "last_price": [100.0],  # 低于 TARGET_BUY_PRICE (9990.0)
-        })
+        test_data = pd.DataFrame(
+            {
+                "code": ["US.AAPL"],
+                "last_price": [100.0],  # 低于 TARGET_BUY_PRICE (9990.0)
+            }
+        )
 
         rsp_pb = MagicMock()
 
@@ -177,10 +179,12 @@ class TestQuoteMonitorHandler:
     def test_on_recv_rsp_no_trade_signal(self, mock_asyncio_run, handler):
         """测试不触发交易信号（价格高于阈值）"""
         # 创建模拟的 DataFrame 数据（价格高于阈值）
-        test_data = pd.DataFrame({
-            "code": ["US.AAPL"],
-            "last_price": [10000.0],  # 高于 TARGET_BUY_PRICE (9990.0)
-        })
+        test_data = pd.DataFrame(
+            {
+                "code": ["US.AAPL"],
+                "last_price": [10000.0],  # 高于 TARGET_BUY_PRICE (9990.0)
+            }
+        )
 
         rsp_pb = MagicMock()
 
@@ -198,10 +202,12 @@ class TestQuoteMonitorHandler:
     @patch("backend.workers.daemon.asyncio.run")
     def test_on_recv_rsp_trade_failure(self, mock_asyncio_run, handler):
         """测试交易执行失败"""
-        test_data = pd.DataFrame({
-            "code": ["US.AAPL"],
-            "last_price": [100.0],
-        })
+        test_data = pd.DataFrame(
+            {
+                "code": ["US.AAPL"],
+                "last_price": [100.0],
+            }
+        )
 
         rsp_pb = MagicMock()
 
@@ -219,10 +225,12 @@ class TestQuoteMonitorHandler:
 
     def test_on_recv_rsp_wrong_ticker(self, handler):
         """测试错误的股票代码不触发交易"""
-        test_data = pd.DataFrame({
-            "code": ["US.TSLA"],  # 不是 TARGET_TICKER
-            "last_price": [100.0],
-        })
+        test_data = pd.DataFrame(
+            {
+                "code": ["US.TSLA"],  # 不是 TARGET_TICKER
+                "last_price": [100.0],
+            }
+        )
 
         rsp_pb = MagicMock()
 

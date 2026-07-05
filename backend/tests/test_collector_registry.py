@@ -138,9 +138,11 @@ class TestStartCollectorDaemons:
 
     async def test_futu_starts_watchdog(self):
         """测试 Futu 启动 watchdog 守护进程"""
-        with mock.patch("asyncio.create_task") as mock_create_task, \
-             mock.patch("backend.services.futu.watchdog.get_watchdog"), \
-             mock.patch("backend.services.futu_service.futu_service"):
+        with (
+            mock.patch("asyncio.create_task") as mock_create_task,
+            mock.patch("backend.services.futu.watchdog.get_watchdog"),
+            mock.patch("backend.services.futu_service.futu_service"),
+        ):
             mock_create_task.return_value = mock.MagicMock()
             tasks = await start_collector_daemons(["futu"])
 
@@ -149,9 +151,11 @@ class TestStartCollectorDaemons:
 
     async def test_finnhub_master_starts_daemon(self):
         """测试 Finnhub 在 Master 节点启动守护进程"""
-        with mock.patch("os.getenv", return_value="master"), \
-             mock.patch("asyncio.create_task") as mock_create_task, \
-             mock.patch("backend.services.finnhub_daemon.run_global_daemon"):
+        with (
+            mock.patch("os.getenv", return_value="master"),
+            mock.patch("asyncio.create_task") as mock_create_task,
+            mock.patch("backend.services.finnhub_daemon.run_global_daemon"),
+        ):
             mock_create_task.return_value = mock.MagicMock()
             tasks = await start_collector_daemons(["finnhub"])
 
@@ -160,8 +164,10 @@ class TestStartCollectorDaemons:
 
     async def test_finnhub_slave_no_daemon(self):
         """测试 Finnhub 在 Slave 节点不启动守护进程"""
-        with mock.patch("os.getenv", return_value="slave"), \
-             mock.patch("backend.workers.collector_registry.print") as mock_print:
+        with (
+            mock.patch("os.getenv", return_value="slave"),
+            mock.patch("backend.workers.collector_registry.print") as mock_print,
+        ):
             tasks = await start_collector_daemons(["finnhub"])
 
             assert tasks == []
@@ -169,8 +175,10 @@ class TestStartCollectorDaemons:
 
     async def test_yfinance_starts_daemon(self):
         """测试 YFinance 启动宏数据守护进程"""
-        with mock.patch("asyncio.create_task") as mock_create_task, \
-             mock.patch("backend.services.yfinance_service.yf_service") as mock_service:
+        with (
+            mock.patch("asyncio.create_task") as mock_create_task,
+            mock.patch("backend.services.yfinance_service.yf_service") as mock_service,
+        ):
             mock_create_task.return_value = mock.MagicMock()
             mock_service.macro_data_daemon = mock.AsyncMock()
             tasks = await start_collector_daemons(["yfinance"])

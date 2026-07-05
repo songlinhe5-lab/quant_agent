@@ -84,9 +84,7 @@ class TestSessionFactory:
     def test_async_sessionmaker_configuration(self):
         """测试异步 sessionmaker 配置"""
         test_async_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-        AsyncSessionLocal = async_sessionmaker(
-            bind=test_async_engine, class_=AsyncSession, expire_on_commit=False
-        )
+        AsyncSessionLocal = async_sessionmaker(bind=test_async_engine, class_=AsyncSession, expire_on_commit=False)
 
         # 验证配置
         assert AsyncSessionLocal.kw["expire_on_commit"] is False
@@ -120,9 +118,7 @@ class TestGetDBGenerator:
 
         # 使用内存数据库进行测试
         test_async_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-        AsyncSessionLocal = async_sessionmaker(
-            bind=test_async_engine, class_=AsyncSession, expire_on_commit=False
-        )
+        AsyncSessionLocal = async_sessionmaker(bind=test_async_engine, class_=AsyncSession, expire_on_commit=False)
 
         # Mock get_async_db 以使用测试会话
         with mock.patch("backend.core.database.AsyncSessionLocal", AsyncSessionLocal):

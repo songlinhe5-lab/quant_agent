@@ -119,6 +119,7 @@ class TestSignatureGenerationAndVerification:
 
         # 验证签名是有效的 Base64 字符串
         import base64
+
         try:
             base64.b64decode(parts[1])
         except Exception:
