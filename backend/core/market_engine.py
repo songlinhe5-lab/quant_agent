@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import struct
 import time
@@ -25,11 +26,49 @@ from backend.core.proto.market_pb2 import Order, QuoteData  # type: ignore
 from backend.core.redis_client import l1_cached_redis, redis_client
 from backend.core.utils import safe_divide, safe_float
 
-# 引入现有的 Tools
+# 引入现有的 Tools (本地 futu_service 作为 ClusterManager 不可用时的兜底)
 from backend.services.futu import futu_service
 from backend.services.kline_warehouse import kline_warehouse
 from backend.services.notification_service import notification_service
 from backend.services.yfinance_service import yf_service
+
+logger = logging.getLogger(__name__)
+
+
+async def _cluster_futu_call(action: str, ticker: str, params: dict | None = None) -> dict:
+    """
+    通过 ClusterManager 调用远程 futu 采集器，失败时降级到本地 futu_service。
+    用于 master 节点本身没有 Futu OpenD 但 slave 节点有的场景。
+    """
+    _params = {"ticker": ticker, **(params or {})}
+    try:
+        from backend.workers.cluster_manager import cluster_manager
+
+        result = await cluster_manager.call_collector("futu", action, _params)
+        # call_collector 返回 slave 的原始响应格式: {"code": 0, "data": {...}, "source_node": "..."}
+        if isinstance(result, dict):
+            data = result.get("data", result)
+            if isinstance(data, dict):
+                if "status" not in data:
+                    data["status"] = "success"
+                return data
+            return data
+        return {"status": "error", "message": "ClusterManager 返回异常格式"}
+    except Exception as e:
+        # ClusterManager 不可用或所有 slave 失败，降级到本地 futu_service
+        logger.debug(f"[ClusterFutu] {action}({ticker}) 集群调用失败: {e}，降级本地")
+        if action == "fetch_quote":
+            return await futu_service.get_quote(ticker)
+        elif action == "fetch_history":
+            ktype = params.get("ktype", "K_DAY") if params else "K_DAY"
+            num = params.get("num", 100) if params else 100
+            return await futu_service.get_history(ticker, ktype=ktype, num=num)
+        elif action == "fetch_fund_flow":
+            return await futu_service.get_fund_flow(ticker)
+        elif action == "fetch_order_book":
+            return await futu_service.get_order_book(ticker)
+        else:
+            return {"status": "error", "message": f"未知的 futu action: {action}"}
 
 
 async def update_quote_to_redis(ticker: str, quote_data: dict):
@@ -375,7 +414,7 @@ class ConnectionManager:
                         for t in tickers_to_update:
                             try:
                                 # 优先尝试利用 Futu 获取 120 日历史，完全免除外部网络请求  # noqa: E501
-                                futu_res = await futu_service.get_history(t, ktype="K_DAY", num=120)  # noqa: E501
+                                futu_res = await _cluster_futu_call("fetch_history", t, {"ktype": "K_DAY", "num": 120})  # noqa: E501
                                 if futu_res.get("status") == "success" and futu_res.get("data"):  # noqa: E501
                                     df = pd.DataFrame(futu_res["data"])
                                     if len(df) >= 30:
@@ -413,7 +452,7 @@ class ConnectionManager:
                             self.last_tech_update = current_time
 
                     # 💡 定时拉取资金流与席位 (Futu 内部已有 0.6s 排队锁，使用 gather 并发安全)  # noqa: E501
-                    flow_tasks = [futu_service.get_fund_flow(ticker=t) for t in all_tickers]  # noqa: E501
+                    flow_tasks = [_cluster_futu_call("fetch_fund_flow", t) for t in all_tickers]  # noqa: E501
                     flow_results = await asyncio.gather(*flow_tasks, return_exceptions=True)  # noqa: E501
 
                     for ticker, f_res in zip(all_tickers, flow_results):
@@ -469,7 +508,7 @@ class ConnectionManager:
 
                         for t in futu_check_tickers:
                             try:
-                                res = await futu_service.get_quote(t)
+                                res = await _cluster_futu_call("fetch_quote", t)
                                 if res.get("status") == "success":
                                     batch_success = True
 

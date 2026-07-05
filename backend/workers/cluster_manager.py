@@ -106,6 +106,8 @@ class ClusterManager:
         }
         # 从 .env 解析静态配置的从节点 (兜底)
         self._parse_static_slaves()
+        # 探测静态从节点的 /health 端点，填充 collectors 列表
+        await self._probe_static_slaves()
         # 启动定期刷新
         self._refresh_task = asyncio.create_task(self._refresh_loop())
         # 立即刷新一次
@@ -140,11 +142,30 @@ class ClusterManager:
                     node_id=node_id,
                     host=host,
                     port=port,
-                    collectors=[],  # 静态配置不知道 collectors，等 Redis 刷新填充
+                    collectors=[],  # 静态配置不知道 collectors，等 health 探测或 Redis 刷新填充
                     status="unknown",
                 )
             except Exception as e:
                 logger.warning(f"[ClusterManager] Failed to parse slave URL: {url}: {e}")
+
+    async def _probe_static_slaves(self):
+        """探测所有静态配置的从节点 /health 端点，填充 collectors 和状态"""
+        for node_id, node in list(self._nodes.items()):
+            if node.collectors or node.status == "healthy":
+                continue  # 已通过 Redis 心跳获取过信息
+            try:
+                url = f"{node.base_url}/health"
+                resp = await self._http_client.get(url, timeout=5.0)
+                resp.raise_for_status()
+                data = resp.json().get("data", {})
+                node.collectors = data.get("collectors", [])
+                node.status = "healthy"
+                node.last_seen = time.time()
+                logger.info(f"[ClusterManager] Probed {node_id}: collectors={node.collectors}")
+            except Exception as e:
+                logger.warning(f"[ClusterManager] Probe {node_id} failed: {e}")
+        # 探测完成后重建服务池
+        self._rebuild_pools()
 
     async def _refresh_from_redis(self):
         """从 Redis 扫描已注册的从节点，更新服务池并发布指标"""
