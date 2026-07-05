@@ -954,14 +954,9 @@ async def health_check():
         overall_status = "unhealthy"
         status_code = 503
 
-    # 2. 检查 Futu OpenD 连接状态 (业务依赖，断开则标记为降级 degraded)
-    #    若 COLLECTOR_FUTU=false，则跳过检查，标记为 disabled
-    if os.getenv("COLLECTOR_FUTU", "false").lower() == "true":
-        components["futu"] = futu_service.status
-        if futu_service.status != "CONNECTED" and overall_status == "healthy":
-            overall_status = "degraded"
-    else:
-        components["futu"] = "disabled (COLLECTOR_FUTU=false)"
+    # 2. Futu OpenD 可能在远程 VPS 上运行，Master 不一定有本地 OpenD 实例
+    #    不在此检测 futu_service.status，避免触发后台线程阻塞事件循环
+    components["futu"] = "skipped (may run on remote slave nodes)"
 
     # 3. YFinance 属于外部高频受限 API，防止 Docker 轮询导致 IP 被封，做跳过处理
     components["yfinance"] = "skipped (prevent rate limits)"
