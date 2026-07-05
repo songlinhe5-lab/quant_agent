@@ -173,6 +173,8 @@ services:
       - QUANT_ENV=production
       - OTEL_ENABLED=false
       # 不设置 REDIS_HOST: slave 通过 MASTER_NODES 连接各 master 的 Redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${NODE_PORT:-8001}/health')\" || exit 1"]
       interval: 30s
