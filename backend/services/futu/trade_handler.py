@@ -116,11 +116,13 @@ class TradeHandler:
         }
         trd_market = market_map.get(market.upper(), TrdMarket.HK)
 
-        # 开发环境 Mock
-        if self.conn_mgr.status != "CONNECTED" and os.getenv("QUANT_ENV") == "development":  # noqa: E501
-            from .mock_provider import MockProvider
+        # 未连接时直接返回错误，避免触发 Futu SDK 后台线程无限重试
+        if self.conn_mgr.status != "CONNECTED":
+            if os.getenv("QUANT_ENV") == "development":
+                from .mock_provider import MockProvider
 
-            return MockProvider.mock_account_info(market, env_str)
+                return MockProvider.mock_account_info(market, env_str)
+            return {"status": "error", "message": f"Futu OpenD 未连接 (status={self.conn_mgr.status})"}
 
         trd_ctx = self.conn_mgr.get_trade_context(market=trd_market, trd_env=trd_env)
         try:

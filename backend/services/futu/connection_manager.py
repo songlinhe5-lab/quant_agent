@@ -103,6 +103,9 @@ class ConnectionManager:
         """获取或创建交易上下文（单例模式）"""
         key = (trd_env, market)
         if key not in self.trade_ctxs:
+            # 快速探测：OpenD 不可达时拒绝创建，防止 Futu SDK 后台线程无限重试
+            if not self._is_opend_reachable():
+                raise ConnectionError(f"OpenD 不可达 ({self._host}:{self._port})，拒绝创建交易上下文")
             host = os.getenv("FUTU_HOST", "127.0.0.1")
             port = int(os.getenv("FUTU_PORT", 11111))
             self.trade_ctxs[key] = OpenSecTradeContext(
