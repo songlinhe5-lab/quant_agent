@@ -73,6 +73,9 @@ from backend.core import models  # noqa: E402
 from backend.core.database import AsyncSessionLocal, Base, SessionLocal, async_engine, engine  # noqa: E402
 from backend.core.security import get_password_hash  # noqa: E402
 
+# 导入 TickerItem 模型，确保数据库表被创建
+from backend.services.ticker_service import TickerItem  # noqa: E402
+
 # 自动创建数据库表与必要扩展
 try:
     from sqlalchemy import text
