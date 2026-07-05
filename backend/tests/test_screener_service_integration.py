@@ -3,8 +3,10 @@ Screener Service 集成测试
 验证所有内置的选股灵感提示词都能被大模型成功转译为合法的 DSL JSON。
 注意：此测试依赖外部 LLM 服务和 Redis，在无外部服务环境中自动跳过。
 """
+
 import asyncio
 import json
+
 import pytest
 
 from backend.routers.screener import SUGGESTIONS

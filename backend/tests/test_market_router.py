@@ -5,10 +5,8 @@ TEST-14: 覆盖 backend/routers/market.py 所有 REST 端点与 WebSocket 处理
 
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-import pytest
-from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
 
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
@@ -17,8 +15,9 @@ os.environ.setdefault("FRED_API_KEY", "test-fred-key")
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from backend.routers.market import router
 from fastapi import FastAPI
+
+from backend.routers.market import router
 
 app = FastAPI()
 app.include_router(router)
@@ -80,9 +79,9 @@ class TestServicesHealth:
 class TestGetQuote:
     @patch("backend.routers.market.futu_service")
     def test_futu_success(self, mock_futu):
-        mock_futu.get_quote = AsyncMock(return_value={
-            "status": "success", "data": {"ticker": "US.AAPL", "last_price": 150.0}
-        })
+        mock_futu.get_quote = AsyncMock(
+            return_value={"status": "success", "data": {"ticker": "US.AAPL", "last_price": 150.0}}
+        )
         resp = client.get("/market/quote?ticker=US.AAPL")
         assert resp.status_code == 200
         assert resp.json()["status"] == "success"
@@ -91,16 +90,24 @@ class TestGetQuote:
     @patch("backend.routers.market._to_yf_ticker")
     @patch("backend.routers.market.yf_service")
     def test_futu_error_yf_fallback(self, mock_yf, mock_fmt, mock_futu):
-        mock_futu.get_quote = AsyncMock(return_value={
-            "status": "error", "message": "原生不支持"
-        })
+        mock_futu.get_quote = AsyncMock(return_value={"status": "error", "message": "原生不支持"})
         mock_fmt.return_value = "AAPL"
-        mock_yf.fetch_yf_data = AsyncMock(return_value=(
-            True, {"regularMarketPrice": 150.0, "regularMarketChange": 1.0,
-                   "regularMarketChangePercent": 0.5, "regularMarketOpen": 149.0,
-                   "regularMarketDayHigh": 152.0, "regularMarketDayLow": 148.0,
-                   "previousClose": 149.0, "regularMarketVolume": 1000000}, None
-        ))
+        mock_yf.fetch_yf_data = AsyncMock(
+            return_value=(
+                True,
+                {
+                    "regularMarketPrice": 150.0,
+                    "regularMarketChange": 1.0,
+                    "regularMarketChangePercent": 0.5,
+                    "regularMarketOpen": 149.0,
+                    "regularMarketDayHigh": 152.0,
+                    "regularMarketDayLow": 148.0,
+                    "previousClose": 149.0,
+                    "regularMarketVolume": 1000000,
+                },
+                None,
+            )
+        )
         resp = client.get("/market/quote?ticker=US.AAPL")
         assert resp.status_code == 200
         assert resp.json()["status"] == "success"
@@ -109,9 +116,7 @@ class TestGetQuote:
     @patch("backend.routers.market._to_yf_ticker")
     @patch("backend.routers.market.yf_service")
     def test_both_fail_returns_400(self, mock_yf, mock_fmt, mock_futu):
-        mock_futu.get_quote = AsyncMock(return_value={
-            "status": "error", "message": "futu error"
-        })
+        mock_futu.get_quote = AsyncMock(return_value={"status": "error", "message": "futu error"})
         mock_fmt.return_value = "AAPL"
         mock_yf.fetch_yf_data = AsyncMock(return_value=(False, None, "yf error"))
         resp = client.get("/market/quote?ticker=US.AAPL")
@@ -122,9 +127,9 @@ class TestGetQuote:
 class TestGetFundamental:
     @patch("backend.routers.market.fred_service")
     def test_macro_ticker_routes_to_fred(self, mock_fred):
-        mock_fred.get_series_observations = AsyncMock(return_value={
-            "status": "success", "data": [{"date": "2024-01-01", "value": "5000"}]
-        })
+        mock_fred.get_series_observations = AsyncMock(
+            return_value={"status": "success", "data": [{"date": "2024-01-01", "value": "5000"}]}
+        )
         resp = client.get("/market/fundamental/SPX")
         assert resp.status_code == 200
         data = resp.json()
@@ -134,9 +139,7 @@ class TestGetFundamental:
     @patch("backend.routers.market.futu_service")
     @patch("backend.routers.market.yf_service")
     def test_futu_success(self, mock_yf, mock_futu):
-        mock_futu.get_fundamental = AsyncMock(return_value={
-            "status": "success", "data": {"trailing_PE": 20.0}
-        })
+        mock_futu.get_fundamental = AsyncMock(return_value={"status": "success", "data": {"trailing_PE": 20.0}})
         resp = client.get("/market/fundamental/US.AAPL")
         assert resp.status_code == 200
         assert resp.json()["data"]["trailing_PE"] == 20.0
@@ -145,9 +148,7 @@ class TestGetFundamental:
     @patch("backend.routers.market.yf_service")
     def test_etf_returns_warning(self, mock_yf, mock_futu):
         mock_futu.get_fundamental = AsyncMock(return_value={"status": "error"})
-        mock_yf.fetch_yf_data = AsyncMock(return_value=(
-            True, {"quoteType": "ETF", "shortName": "SPY ETF"}, None
-        ))
+        mock_yf.fetch_yf_data = AsyncMock(return_value=(True, {"quoteType": "ETF", "shortName": "SPY ETF"}, None))
         resp = client.get("/market/fundamental/US.SPY")
         assert resp.status_code == 200
         data = resp.json()
@@ -161,6 +162,7 @@ class TestGetCompanyNews:
     @patch("backend.routers.market.finnhub_service")
     def test_cached_result(self, mock_finhub, mock_redis):
         import json
+
         cached = json.dumps({"status": "success", "data": [{"headline": "Cached"}]})
         mock_redis.get = AsyncMock(return_value=cached)
         resp = client.get("/market/news?ticker=AAPL&limit=5")
@@ -171,10 +173,12 @@ class TestGetCompanyNews:
     @patch("backend.routers.market.finnhub_service")
     def test_fetch_from_finnhub(self, mock_finhub, mock_redis):
         mock_redis.get = AsyncMock(return_value=None)
-        mock_finhub.get_company_news = AsyncMock(return_value={
-            "status": "success",
-            "data": [{"datetime": 1700000000, "headline": "News", "summary": "Summary"}]
-        })
+        mock_finhub.get_company_news = AsyncMock(
+            return_value={
+                "status": "success",
+                "data": [{"datetime": 1700000000, "headline": "News", "summary": "Summary"}],
+            }
+        )
         mock_redis.setex = AsyncMock()
         resp = client.get("/market/news?ticker=AAPL&limit=5")
         assert resp.status_code == 200
@@ -191,9 +195,9 @@ class TestGetCompanyNews:
 class TestSearchTickers:
     @patch("backend.routers.market.ticker_service")
     def test_local_search_success(self, mock_ticker_svc):
-        mock_ticker_svc.search_tickers = AsyncMock(return_value={
-            "status": "success", "data": [{"ticker": "AAPL", "name": "Apple"}]
-        })
+        mock_ticker_svc.search_tickers = AsyncMock(
+            return_value={"status": "success", "data": [{"ticker": "AAPL", "name": "Apple"}]}
+        )
         resp = client.get("/market/search?q=apple")
         assert resp.status_code == 200
         assert resp.json()["status"] == "success"
@@ -226,9 +230,8 @@ class TestInsiderMarquee:
     @patch("backend.routers.market.redis_client")
     def test_returns_success(self, mock_redis):
         import json
-        mock_redis.zrevrange = AsyncMock(return_value=[
-            json.dumps({"ticker": "AAPL", "transaction": "BUY"})
-        ])
+
+        mock_redis.zrevrange = AsyncMock(return_value=[json.dumps({"ticker": "AAPL", "transaction": "BUY"})])
         resp = client.get("/market/insider-marquee?limit=5")
         assert resp.status_code == 200
         assert resp.json()["status"] == "success"

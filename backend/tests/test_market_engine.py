@@ -7,10 +7,7 @@ import asyncio
 import json
 import os
 import sys
-import time
 from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
 
 os.environ.setdefault("REDIS_HOST", "localhost")
 os.environ.setdefault("REDIS_PORT", "6379")
@@ -155,9 +152,7 @@ class TestUpdateQuoteToRedis:
             "bids": [{"price": 149.0, "size": 10}],
             "asks": [{"price": 151.0, "size": 10}],
         }
-        asyncio.get_event_loop().run_until_complete(
-            update_quote_to_redis("US.AAPL", quote_data)
-        )
+        asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
         mock_raw_redis.hset.assert_awaited_once()
         mock_raw_redis.publish.assert_awaited_once()
 
@@ -173,9 +168,7 @@ class TestUpdateQuoteToRedis:
             "volume_str": "--",
             "source": "futu",
         }
-        asyncio.get_event_loop().run_until_complete(
-            update_quote_to_redis("US.AAPL", quote_data)
-        )
+        asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
         mock_raw_redis.hset.assert_awaited_once()
 
     @patch("backend.core.market_engine.redis_client")
@@ -183,12 +176,15 @@ class TestUpdateQuoteToRedis:
         mock_raw_redis = AsyncMock()
         # need manager.raw_redis for hset/publish
         import backend.core.market_engine as me
+
         me.manager.raw_redis = mock_raw_redis
         # redis_client.hgetall is called to check alert rules
         rules_json = json.dumps({"upper": 160.0})
-        mock_redis.hgetall = AsyncMock(return_value={
-            "user1": rules_json,
-        })
+        mock_redis.hgetall = AsyncMock(
+            return_value={
+                "user1": rules_json,
+            }
+        )
         mock_redis.hdel = AsyncMock()
         quote_data = {
             "ticker": "US.AAPL",
@@ -200,9 +196,7 @@ class TestUpdateQuoteToRedis:
         send_alert_mock = AsyncMock()
         with patch("backend.core.market_engine.notification_service") as mock_notify:
             mock_notify.send_alert = send_alert_mock
-            asyncio.get_event_loop().run_until_complete(
-                update_quote_to_redis("US.AAPL", quote_data)
-            )
+            asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
             asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.05))
             send_alert_mock.assert_called_once()
 
@@ -284,6 +278,7 @@ class TestGlobalManager:
     def test_manager_is_singleton(self):
         from backend.core.market_engine import manager as m1
         from backend.core.market_engine import manager as m2
+
         assert m1 is m2
 
     def test_manager_type(self):
@@ -295,6 +290,7 @@ class TestUpdateQuoteToRedisAlerts:
     @patch("backend.core.market_engine.redis_client")
     def test_alert_lower_triggered(self, mock_redis):
         import backend.core.market_engine as me
+
         me.manager.raw_redis = AsyncMock()
         rules_json = json.dumps({"lower": 140.0})
         mock_redis.hgetall = AsyncMock(return_value={"user1": rules_json})
@@ -309,15 +305,14 @@ class TestUpdateQuoteToRedisAlerts:
         send_alert_mock = AsyncMock()
         with patch("backend.core.market_engine.notification_service") as mock_notify:
             mock_notify.send_alert = send_alert_mock
-            asyncio.get_event_loop().run_until_complete(
-                update_quote_to_redis("US.AAPL", quote_data)
-            )
+            asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
             asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.05))
             send_alert_mock.assert_called_once()
 
     @patch("backend.core.market_engine.redis_client")
     def test_alert_pct_change_triggered_bullish(self, mock_redis):
         import backend.core.market_engine as me
+
         me.manager.raw_redis = AsyncMock()
         rules_json = json.dumps({"pct_change": 2.0})
         mock_redis.hgetall = AsyncMock(return_value={"user1": rules_json})
@@ -332,15 +327,14 @@ class TestUpdateQuoteToRedisAlerts:
         send_alert_mock = AsyncMock()
         with patch("backend.core.market_engine.notification_service") as mock_notify:
             mock_notify.send_alert = send_alert_mock
-            asyncio.get_event_loop().run_until_complete(
-                update_quote_to_redis("US.AAPL", quote_data)
-            )
+            asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
             asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.05))
             send_alert_mock.assert_called_once()
 
     @patch("backend.core.market_engine.redis_client")
     def test_alert_pct_change_triggered_bearish(self, mock_redis):
         import backend.core.market_engine as me
+
         me.manager.raw_redis = AsyncMock()
         rules_json = json.dumps({"pct_change": 2.0})
         mock_redis.hgetall = AsyncMock(return_value={"user1": rules_json})
@@ -355,9 +349,7 @@ class TestUpdateQuoteToRedisAlerts:
         send_alert_mock = AsyncMock()
         with patch("backend.core.market_engine.notification_service") as mock_notify:
             mock_notify.send_alert = send_alert_mock
-            asyncio.get_event_loop().run_until_complete(
-                update_quote_to_redis("US.AAPL", quote_data)
-            )
+            asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
             asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.05))
             send_alert_mock.assert_called_once()
 
@@ -365,6 +357,7 @@ class TestUpdateQuoteToRedisAlerts:
     def test_alert_pct_change_value_error(self, mock_redis):
         """change_pct 格式非法时触发 ValueError 分支"""
         import backend.core.market_engine as me
+
         me.manager.raw_redis = AsyncMock()
         rules_json = json.dumps({"pct_change": 2.0})
         mock_redis.hgetall = AsyncMock(return_value={"user1": rules_json})
@@ -377,14 +370,13 @@ class TestUpdateQuoteToRedisAlerts:
             "source": "futu",
         }
         # ValueError 被 except 捕获，不应抛异常
-        asyncio.get_event_loop().run_until_complete(
-            update_quote_to_redis("US.AAPL", quote_data)
-        )
+        asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
         assert True
 
     @patch("backend.core.market_engine.redis_client")
     def test_no_alert_when_price_between_bounds(self, mock_redis):
         import backend.core.market_engine as me
+
         me.manager.raw_redis = AsyncMock()
         rules_json = json.dumps({"upper": 160.0, "lower": 140.0})
         mock_redis.hgetall = AsyncMock(return_value={"user1": rules_json})
@@ -399,9 +391,7 @@ class TestUpdateQuoteToRedisAlerts:
         send_alert_mock = AsyncMock()
         with patch("backend.core.market_engine.notification_service") as mock_notify:
             mock_notify.send_alert = send_alert_mock
-            asyncio.get_event_loop().run_until_complete(
-                update_quote_to_redis("US.AAPL", quote_data)
-            )
+            asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
             asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.05))
             send_alert_mock.assert_not_called()
 
@@ -410,17 +400,17 @@ class TestUpdateQuoteToRedisAlerts:
 class TestUpdateTradeToRedis:
     def test_writes_to_stream_and_publishes(self):
         from backend.core.market_engine import update_trade_to_redis
+
         fake_redis = AsyncMock()
         mgr = ConnectionManager()
         mgr.raw_redis = fake_redis
         import backend.core.market_engine as me
+
         original_raw_redis = me.manager.raw_redis
         me.manager.raw_redis = fake_redis
         try:
             fake_trade_data = b"\x08\x01"
-            asyncio.get_event_loop().run_until_complete(
-                update_trade_to_redis("US.AAPL", fake_trade_data)
-            )
+            asyncio.get_event_loop().run_until_complete(update_trade_to_redis("US.AAPL", fake_trade_data))
             fake_redis.xadd.assert_awaited_once()
             fake_redis.publish.assert_awaited_once()
         finally:
@@ -428,16 +418,16 @@ class TestUpdateTradeToRedis:
 
     def test_exception_handling(self):
         from backend.core.market_engine import update_trade_to_redis
+
         fake_redis = AsyncMock()
         fake_redis.xadd = AsyncMock(side_effect=Exception("Redis down"))
         import backend.core.market_engine as me
+
         original_raw_redis = me.manager.raw_redis
         me.manager.raw_redis = fake_redis
         try:
             # 异常被捕获，不应抛出
-            asyncio.get_event_loop().run_until_complete(
-                update_trade_to_redis("US.AAPL", b"\x08\x01")
-            )
+            asyncio.get_event_loop().run_until_complete(update_trade_to_redis("US.AAPL", b"\x08\x01"))
             assert True
         finally:
             me.manager.raw_redis = original_raw_redis
@@ -499,13 +489,12 @@ class TestRedisPubSubListener:
         mgr.subscriptions[ws] = {"US.AAPL"}
         mgr.active_connections = [ws]
 
-        import backend.core.market_engine as me
-        original_raw_redis = mgr.raw_redis
         fake_redis = AsyncMock()
         mgr.raw_redis = fake_redis
 
         # 构造 QuoteData protobuf
         from backend.core.proto.market_pb2 import QuoteData
+
         q = QuoteData()
         q.ticker = "US.AAPL"
         q.last_price = 150.0
@@ -610,25 +599,31 @@ class TestBroadcastLoop:
     async def test_broadcast_loop_single_iteration(self):
         """测试 broadcast_loop 完成一次迭代"""
         mgr = ConnectionManager()
-        
+
         # Mock asyncio.sleep 让出控制权（使用 _real_sleep 避免递归）
         async def fast_sleep(delay):
             await _real_sleep(0)
-        
+
         with patch("backend.core.market_engine.asyncio.sleep", side_effect=fast_sleep):
             with patch("backend.core.market_engine.l1_cached_redis.get", return_value="1"):
                 with patch("backend.core.market_engine.futu_service") as mock_futu:
                     with patch("backend.core.market_engine.yf_service") as mock_yf:
                         # 配置 mock
                         mock_futu.is_futu_unsupported.return_value = True  # 所有标的都不支持富途
-                        mock_yf.get_tech_indicators = AsyncMock(return_value={"status": "success", "data": {"trend": []}})
-                        mock_yf.get_batched_quote = AsyncMock(return_value={"status": "success", "ticker": "US.AAPL", "last_price": 150.0})
-                        mock_futu.get_fund_flow = AsyncMock(return_value={"status": "success", "data": {"main_fund_net_inflow": 0}})
-                        
+                        mock_yf.get_tech_indicators = AsyncMock(
+                            return_value={"status": "success", "data": {"trend": []}}
+                        )
+                        mock_yf.get_batched_quote = AsyncMock(
+                            return_value={"status": "success", "ticker": "US.AAPL", "last_price": 150.0}
+                        )
+                        mock_futu.get_fund_flow = AsyncMock(
+                            return_value={"status": "success", "data": {"main_fund_net_inflow": 0}}
+                        )
+
                         # 添加一个订阅
                         ws = MagicMock()
                         mgr.subscriptions[ws] = {"US.AAPL"}
-                        
+
                         # 使用 timeout 让循环快速退出（fast_sleep 使循环飞速迭代，0.1s 足够）
                         try:
                             await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
@@ -638,24 +633,24 @@ class TestBroadcastLoop:
     async def test_broadcast_loop_with_futu_support(self):
         """测试 broadcast_loop 当标的支持富途时"""
         mgr = ConnectionManager()
-        
+
         # 用于跟踪 get_quote 是否被调用
         get_quote_called = False
-        
+
         async def track_get_quote(t):
             nonlocal get_quote_called
             get_quote_called = True
             return {"status": "success", "last_price": 150.0, "change_pct": "+1.0%"}
-        
+
         # Mock asyncio.sleep 让出控制权（使用 _real_sleep 避免递归）
         async def fast_sleep(delay):
             await _real_sleep(0)
-        
+
         # Mock time.time 返回一个固定值，并确保 last_futu_update 足够旧
         fixed_time = 100.0
         with patch("time.time", return_value=fixed_time):
             mgr.last_futu_update["US.AAPL"] = fixed_time - 20  # 20 秒前更新，超过 10 秒阈值
-            
+
             with patch("backend.core.market_engine.asyncio.sleep", side_effect=fast_sleep):
                 with patch("backend.core.market_engine.l1_cached_redis.get", return_value="1"):
                     with patch("backend.core.market_engine.futu_service") as mock_futu:
@@ -664,83 +659,91 @@ class TestBroadcastLoop:
                             mock_futu.is_futu_unsupported.return_value = False
                             mock_futu.get_quote = AsyncMock(side_effect=track_get_quote)
                             mock_futu.get_history = AsyncMock(return_value={"status": "success", "data": []})
-                            mock_futu.get_fund_flow = AsyncMock(return_value={"status": "success", "data": {"main_fund_net_inflow": 0}})
-                            mock_yf.get_tech_indicators = AsyncMock(return_value={"status": "success", "data": {"trend": []}})
-                            
+                            mock_futu.get_fund_flow = AsyncMock(
+                                return_value={"status": "success", "data": {"main_fund_net_inflow": 0}}
+                            )
+                            mock_yf.get_tech_indicators = AsyncMock(
+                                return_value={"status": "success", "data": {"trend": []}}
+                            )
+
                             # 添加一个订阅
                             ws = MagicMock()
                             mgr.subscriptions[ws] = {"US.AAPL"}
-                            
+
                             # 使用 timeout 让循环快速退出（fast_sleep 使循环飞速迭代，0.1s 足够）
                             try:
                                 await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
                             except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
                                 pass
-                            
+
                             # 验证富途get_quote被调用
                             assert get_quote_called, "get_quote was not called"
 
     async def test_broadcast_loop_yfinance_disabled(self):
         """测试 broadcast_loop 当 yfinance 禁用时"""
         mgr = ConnectionManager()
-        
+
         # Mock asyncio.sleep 让出控制权（使用 _real_sleep 避免递归）
         async def fast_sleep(delay):
             await _real_sleep(0)
-        
+
         with patch("backend.core.market_engine.asyncio.sleep", side_effect=fast_sleep):
             with patch("backend.core.market_engine.l1_cached_redis.get", return_value="0"):  # YF 禁用
                 with patch("backend.core.market_engine.futu_service") as mock_futu:
                     with patch("backend.core.market_engine.yf_service") as mock_yf:
                         mock_futu.is_futu_unsupported.return_value = True  # 不支持富途
-                        mock_futu.get_fund_flow = AsyncMock(return_value={"status": "success", "data": {"main_fund_net_inflow": 0}})
-                        
+                        mock_futu.get_fund_flow = AsyncMock(
+                            return_value={"status": "success", "data": {"main_fund_net_inflow": 0}}
+                        )
+
                         ws = MagicMock()
                         mgr.subscriptions[ws] = {"US.AAPL"}
-                        
+
                         try:
                             await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
                         except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
                             pass
-                        
+
                         # 验证 YF 的 get_batched_quote 未被调用
                         mock_yf.get_batched_quote.assert_not_called()
 
     async def test_broadcast_loop_exception_handling(self):
         """测试 broadcast_loop 的异常处理分支"""
         mgr = ConnectionManager()
-        
+
         # Mock asyncio.sleep 让出控制权（使用 _real_sleep 避免递归）
         async def fast_sleep(delay):
             await _real_sleep(0)
-        
+
         # Mock l1_cached_redis.get 抛出异常
         with patch("backend.core.market_engine.asyncio.sleep", side_effect=fast_sleep):
             with patch("backend.core.market_engine.l1_cached_redis.get", side_effect=Exception("Redis error")):
                 with patch("backend.core.market_engine.futu_service") as mock_futu:
-                    with patch("backend.core.market_engine.yf_service") as mock_yf:
+                    with patch("backend.core.market_engine.yf_service"):
                         mock_futu.is_futu_unsupported.return_value = True
-                        mock_futu.get_fund_flow = AsyncMock(return_value={"status": "success", "data": {"main_fund_net_inflow": 0}})
-                        
+                        mock_futu.get_fund_flow = AsyncMock(
+                            return_value={"status": "success", "data": {"main_fund_net_inflow": 0}}
+                        )
+
                         ws = MagicMock()
                         mgr.subscriptions[ws] = {"US.AAPL"}
-                        
+
                         # 使用 timeout 让循环快速退出（fast_sleep 使循环飞速迭代，0.1s 足够）
                         try:
                             await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
                         except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
                             pass
-                        
+
                         # 如果到达这里，说明异常被捕获，循环继续了
 
     async def test_broadcast_loop_futu_gc_mechanism(self):
         """测试 Futu GC 机制：清理废弃订阅"""
         mgr = ConnectionManager()
-        
+
         # Mock asyncio.sleep 让出控制权（使用 _real_sleep 避免递归）
         async def fast_sleep(delay):
             await _real_sleep(0)
-        
+
         with patch("backend.core.market_engine.asyncio.sleep", side_effect=fast_sleep):
             with patch("backend.core.market_engine.l1_cached_redis.get", return_value="1"):
                 with patch("backend.core.market_engine.futu_service") as mock_futu:
@@ -749,19 +752,23 @@ class TestBroadcastLoop:
                         mock_futu.is_futu_unsupported.return_value = False
                         mock_futu.get_quote = AsyncMock(return_value={"status": "success", "last_price": 150.0})
                         mock_futu.get_history = AsyncMock(return_value={"status": "error"})
-                        mock_futu.get_fund_flow = AsyncMock(return_value={"status": "success", "data": {"main_fund_net_inflow": 0}})
+                        mock_futu.get_fund_flow = AsyncMock(
+                            return_value={"status": "success", "data": {"main_fund_net_inflow": 0}}
+                        )
                         mock_futu.unsubscribe_quote = AsyncMock()
-                        mock_yf.get_tech_indicators = AsyncMock(return_value={"status": "success", "data": {"trend": []}})
-                        
+                        mock_yf.get_tech_indicators = AsyncMock(
+                            return_value={"status": "success", "data": {"trend": []}}
+                        )
+
                         # 模拟有旧的 Futu 订阅
                         mgr._futu_active_subs = {"US.OLD_TICKER"}
                         ws = MagicMock()
                         mgr.subscriptions[ws] = {"US.AAPL"}  # 只订阅了 AAPL
-                        
+
                         try:
                             await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
                         except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
                             pass
-                        
+
                         # 验证旧订阅被清理
                         assert "US.OLD_TICKER" not in mgr._futu_active_subs

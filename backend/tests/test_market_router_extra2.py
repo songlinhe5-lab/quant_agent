@@ -32,10 +32,12 @@ class TestHistoryAKShareFallback:
     @patch("backend.routers.market.akshare_service")
     def test_a_share_akshare_success(self, mock_ak, mock_futu):
         mock_futu.get_history = AsyncMock(return_value={"status": "error", "message": "原生不支持"})
-        mock_ak.get_stock_history = AsyncMock(return_value={
-            "status": "success",
-            "data": [{"time": "2024-01-01", "open": 10, "high": 11, "low": 10, "close": 10.5, "volume": 1000000}]
-        })
+        mock_ak.get_stock_history = AsyncMock(
+            return_value={
+                "status": "success",
+                "data": [{"time": "2024-01-01", "open": 10, "high": 11, "low": 10, "close": 10.5, "volume": 1000000}],
+            }
+        )
         resp = client.get("/market/history?ticker=SH.600000&ktype=K_DAY")
         assert resp.status_code == 200
         assert resp.json()["status"] == "success"
@@ -85,9 +87,9 @@ class TestTechIndicatorsFallback:
     @patch("backend.routers.market.yf_service")
     def test_futu_fail_yf_success(self, mock_yf, mock_futu):
         mock_futu.get_history = AsyncMock(return_value={"status": "error", "message": "原生不支持"})
-        mock_yf.get_tech_indicators = AsyncMock(return_value={
-            "status": "success", "data": {"ticker": "AAPL", "trend": []}
-        })
+        mock_yf.get_tech_indicators = AsyncMock(
+            return_value={"status": "success", "data": {"ticker": "AAPL", "trend": []}}
+        )
         resp = client.get("/market/tech-indicators?ticker=US.AAPL")
         assert resp.status_code == 200
         assert resp.json()["status"] == "success"
@@ -107,13 +109,22 @@ class TestFundamentalYFinanceFallback:
     @patch("backend.routers.market.yf_service")
     def test_futu_fail_yf_success(self, mock_yf, mock_futu):
         mock_futu.get_fundamental = AsyncMock(return_value={"status": "error"})
-        mock_yf.fetch_yf_data = AsyncMock(return_value=(
-            True,
-            {"shortName": "Apple", "trailingPE": 25.0, "forwardPE": 24.0,
-             "pegRatio": 1.5, "priceToBook": 10.0, "returnOnEquity": 0.5,
-             "shortRatio": 1.0, "beta": 1.2},
-            None
-        ))
+        mock_yf.fetch_yf_data = AsyncMock(
+            return_value=(
+                True,
+                {
+                    "shortName": "Apple",
+                    "trailingPE": 25.0,
+                    "forwardPE": 24.0,
+                    "pegRatio": 1.5,
+                    "priceToBook": 10.0,
+                    "returnOnEquity": 0.5,
+                    "shortRatio": 1.0,
+                    "beta": 1.2,
+                },
+                None,
+            )
+        )
         resp = client.get("/market/fundamental/US.AAPL")
         assert resp.status_code == 200
         data = resp.json()
@@ -145,10 +156,12 @@ class TestNewsErrorPaths:
     def test_redis_exception_continues_to_finnhub(self, mock_redis):
         mock_redis.get = AsyncMock(side_effect=Exception("Redis down"))
         with patch("backend.routers.market.finnhub_service") as mock_finhub:
-            mock_finhub.get_company_news = AsyncMock(return_value={
-                "status": "success",
-                "data": [{"datetime": 1700000000, "headline": "News", "summary": "Summary"}]
-            })
+            mock_finhub.get_company_news = AsyncMock(
+                return_value={
+                    "status": "success",
+                    "data": [{"datetime": 1700000000, "headline": "News", "summary": "Summary"}],
+                }
+            )
             resp = client.get("/market/news?ticker=AAPL&limit=5")
             assert resp.status_code == 200
             assert resp.json()["status"] == "success"

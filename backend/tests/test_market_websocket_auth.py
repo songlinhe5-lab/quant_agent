@@ -5,10 +5,11 @@ TEST-19: 覆盖 market.py WebSocket 端点的鉴权失败分支
 策略：直接测试 WebSocket handler 函数的鉴权逻辑，
 通过 mock WebSocket 对象避免 TestClient 线程管理问题。
 """
+
+import json
 import os
 import sys
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -38,6 +39,7 @@ def _make_mock_ws(token=None, query_params=None):
 def reset_market_module_state():
     """每个测试前重置 market 模块的关键状态"""
     from backend.routers import market as market_module
+
     market_module._SECRET_KEY = "test-secret-key"
     mock_manager = MagicMock()
     mock_manager.subscriptions = {}
@@ -56,6 +58,7 @@ class TestWebSocketAuth:
     async def test_no_token(self):
         """无 token，应返回 4001"""
         from backend.routers.market import quotes_websocket
+
         ws = _make_mock_ws()
         await quotes_websocket(ws)
         ws.close.assert_called_once()
@@ -65,6 +68,7 @@ class TestWebSocketAuth:
     async def test_invalid_token(self):
         """无效 token，应返回 4002"""
         from backend.routers.market import quotes_websocket
+
         ws = _make_mock_ws(token="invalid")
         await quotes_websocket(ws)
         ws.close.assert_called_once()
@@ -75,7 +79,9 @@ class TestWebSocketAuth:
     async def test_token_no_sub(self):
         """token payload 无 sub，应返回 4003"""
         from jose import jwt as _jwt
+
         from backend.routers.market import quotes_websocket
+
         token = _jwt.encode({}, "test-secret-key", algorithm="HS256")
         ws = _make_mock_ws(token=token)
         await quotes_websocket(ws)
@@ -87,7 +93,9 @@ class TestWebSocketAuth:
     async def test_valid_token(self):
         """有效 token，应成功连接并处理订阅"""
         from jose import jwt as _jwt
+
         from backend.routers.market import quotes_websocket
+
         token = _jwt.encode({"sub": "testuser"}, "test-secret-key", algorithm="HS256")
         ws = _make_mock_ws(token=token)
         # 模拟收到一条订阅消息后断开
@@ -109,7 +117,9 @@ class TestWebSocketMessageHandling:
     async def test_non_dict_payload(self):
         """发送非 dict payload，应返回 2001"""
         from jose import jwt as _jwt
+
         from backend.routers.market import quotes_websocket
+
         token = _jwt.encode({"sub": "testuser"}, "test-secret-key", algorithm="HS256")
         ws = _make_mock_ws(token=token)
         ws.receive_text.side_effect = [
@@ -125,7 +135,9 @@ class TestWebSocketMessageHandling:
     async def test_unknown_action(self):
         """发送未知 action，应返回 2001"""
         from jose import jwt as _jwt
+
         from backend.routers.market import quotes_websocket
+
         token = _jwt.encode({"sub": "testuser"}, "test-secret-key", algorithm="HS256")
         ws = _make_mock_ws(token=token)
         ws.receive_text.side_effect = [
@@ -141,7 +153,9 @@ class TestWebSocketMessageHandling:
     async def test_ping(self):
         """发送 ping，应返回 pong"""
         from jose import jwt as _jwt
+
         from backend.routers.market import quotes_websocket
+
         token = _jwt.encode({"sub": "testuser"}, "test-secret-key", algorithm="HS256")
         ws = _make_mock_ws(token=token)
         ws.receive_text.side_effect = [
@@ -158,7 +172,9 @@ class TestWebSocketMessageHandling:
     async def test_subscribe_and_unsubscribe(self):
         """订阅然后取消订阅"""
         from jose import jwt as _jwt
+
         from backend.routers.market import quotes_websocket
+
         token = _jwt.encode({"sub": "testuser"}, "test-secret-key", algorithm="HS256")
         ws = _make_mock_ws(token=token)
         ws.receive_text.side_effect = [
@@ -180,11 +196,14 @@ class TestWebSocketMessageHandling:
     async def test_subscribe_duplicate(self):
         """重复订阅同一 ticker，应返回 already_subscribed"""
         from jose import jwt as _jwt
+
         from backend.routers.market import quotes_websocket
+
         token = _jwt.encode({"sub": "testuser"}, "test-secret-key", algorithm="HS256")
         ws = _make_mock_ws(token=token)
         # 模拟 manager.subscriptions 已有 US.AAPL
         from backend.routers import market as market_module
+
         market_module.manager.subscriptions = {ws: {"US.AAPL"}}
         ws.receive_text.side_effect = [
             json.dumps({"action": "subscribe", "tickers": ["US.AAPL"]}),
@@ -199,7 +218,9 @@ class TestWebSocketMessageHandling:
     async def test_invalid_json(self):
         """发送非法 JSON，应返回 2001"""
         from jose import jwt as _jwt
+
         from backend.routers.market import quotes_websocket
+
         token = _jwt.encode({"sub": "testuser"}, "test-secret-key", algorithm="HS256")
         ws = _make_mock_ws(token=token)
         ws.receive_text.side_effect = [
