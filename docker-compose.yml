@@ -165,16 +165,13 @@ services:
     container_name: quant_slave
     command: uvicorn backend.slave_app:app --host 0.0.0.0 --port 8001 --loop uvloop --http httptools --timeout-keep-alive 65 --no-access-log
     restart: always
-    ports:
-      - "${NODE_PORT:-8001}:${NODE_PORT:-8001}"
+    network_mode: host
     env_file:
       - .env
     environment:
       - QUANT_ENV=production
       - OTEL_ENABLED=false
       # 不设置 REDIS_HOST: slave 通过 MASTER_NODES 连接各 master 的 Redis
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${NODE_PORT:-8001}/health')\" || exit 1"]
       interval: 30s
