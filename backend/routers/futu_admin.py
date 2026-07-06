@@ -82,7 +82,16 @@ async def diagnose_futu_chain(ticker: str = "HK.00700"):
 
     from backend.workers.cluster_manager import cluster_manager
 
-    diag = {"steps": []}
+    diag = {"steps": [], "router_state": {}}
+
+    # Step 0: SourceRouter 内部状态
+    router_obj = futu_service.source_router
+    diag["router_state"] = {
+        "mode": router_obj.current_mode,
+        "local_is_available": router_obj._local.is_available,
+        "futu_service_status": futu_service.status,
+        "conn_mgr_status": futu_service.conn_mgr.status,
+    }
 
     # Step 1: ClusterManager 状态
     try:
@@ -141,6 +150,38 @@ async def diagnose_futu_chain(ticker: str = "HK.00700"):
             }
         )
 
+    # Step 3.5: 手动模拟 _route_auto 逻辑，逐步追踪
+    try:
+        local_available = router_obj._local.is_available
+        diag["steps"].append(
+            {
+                "step": "route_auto_trace",
+                "local_is_available": local_available,
+                "action": "will_skip_local" if not local_available else "will_try_local",
+            }
+        )
+        if not local_available:
+            # 直接测试 remote fetch
+            remote_result = await router_obj._remote.fetch("fetch_quote", {"ticker": ticker})
+            diag["steps"].append(
+                {
+                    "step": "route_auto_remote_fetch",
+                    "ok": remote_result is not None,
+                    "result_is_none": remote_result is None,
+                    "result_type": type(remote_result).__name__ if remote_result else "None",
+                    "result_str": str(remote_result)[:200] if remote_result else "None",
+                }
+            )
+    except Exception as e:
+        diag["steps"].append(
+            {
+                "step": "route_auto_trace",
+                "ok": False,
+                "error": f"{type(e).__name__}: {e}",
+                "traceback": traceback.format_exc()[-500:],
+            }
+        )
+
     # Step 4: FutuService.get_quote 端到端
     try:
         quote_result = await futu_service.get_quote(ticker)
@@ -150,6 +191,7 @@ async def diagnose_futu_chain(ticker: str = "HK.00700"):
                 "ok": quote_result.get("status") == "success",
                 "result_status": quote_result.get("status"),
                 "message": quote_result.get("message", ""),
+                "result_keys": list(quote_result.keys()) if isinstance(quote_result, dict) else "N/A",
             }
         )
     except Exception as e:

@@ -128,19 +128,28 @@ class FutuSourceRouter:
         优先级: 本地 OpenD → slave-1 → slave-2 → ... → 错误
         行为等同于改造前的 FutuService._route。
         """
+        local_available = self._local.is_available
+        logger.info(f"[SourceRouter._route_auto] action={action}, local_available={local_available}")
+
         # 1. 本地可用 → 直接走 handler
-        if self._local.is_available:
+        if local_available:
             result = await self._local.fetch(action, params, local_handler=local_handler, **handler_kwargs)
             if result is not None:
+                logger.info(f"[SourceRouter._route_auto] local {action} succeeded")
                 return result
-            logger.warning(f"[SourceRouter] local {action} failed, falling back to remote...")
+            logger.warning(f"[SourceRouter._route_auto] local {action} failed, falling back to remote...")
 
         # 2. 降级到远程 slave
+        logger.info(f"[SourceRouter._route_auto] trying remote {action}...")
         result = await self._remote.fetch(action, params)
+        logger.info(
+            f"[SourceRouter._route_auto] remote {action} returned: is_none={result is None}, type={type(result).__name__ if result else 'None'}"
+        )
         if result is not None:
             return result
 
         # 3. 全链路失败
+        logger.warning(f"[SourceRouter._route_auto] ALL FAILED for {action}, returning unavailable")
         return self._unavailable("auto")
 
     # ── 诊断 ──────────────────────────────────────────────────────
