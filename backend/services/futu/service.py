@@ -129,6 +129,8 @@ class FutuService:
 
         优先级: 本地连接 -> slave-1 -> slave-2 -> ... -> slave-n -> 错误
         """
+        print(f"[FutuService-DEBUG] _route {action}: status={self.status}, _in_cluster_dispatch={self._in_cluster_dispatch}", flush=True)
+        
         # 1. 本地连接可用 -> 直接走本地 handler
         if self.status == "CONNECTED":
             try:
@@ -139,6 +141,7 @@ class FutuService:
         # 2. 防递归重入: slave 节点的 _dispatch_collect 调用 futu_service 时
         #    如果本地也断了，不能再走 cluster_call -> _try_local_fallback -> _dispatch_collect 死循环
         if self._in_cluster_dispatch:
+            print(f"[FutuService-DEBUG] _route {action}: _in_cluster_dispatch=True, returning unavailable", flush=True)
             return self._unavailable()
 
         # 3. 本地不可用 -> 路由到远程 slave 链
