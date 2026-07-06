@@ -1,6 +1,12 @@
 """
 Futu 主服务模块
 整合所有子模块，提供统一的 FutuService 接口
+
+数据源路由:
+  通过 FutuSourceRouter 编排 Local / Remote 数据源的切换策略。
+  - local:  直连 Futu OpenD (ConnectionManager → FUTU_HOST:FUTU_PORT)
+  - remote: 通过 ClusterManager HTTP 代理调用远程 slave 节点
+  - auto:   本地优先，本地不可用时自动降级到 remote (默认)
 """
 
 import logging
@@ -14,6 +20,7 @@ from .connection_manager import ConnectionManager
 from .option_fund_handler import OptionFundHandler
 from .quote_handler import QuoteHandler
 from .screener_handler import ScreenerHandler
+from .source_router import FutuSourceRouter
 from .trade_handler import TradeHandler
 from .utils import format_ticker, is_futu_unsupported
 
@@ -48,12 +55,14 @@ class FutuService:
         self.screener_handler = ScreenerHandler(self.conn_mgr)
         self.trade_handler = TradeHandler(self.conn_mgr)
 
+        # 数据源路由器 (local / remote / auto)
+        self.source_router = FutuSourceRouter(self)
+
         # 兼容旧接口的属性映射
         self.quote_ctx = None
         self.trade_ctxs = {}
         self.status = "DISCONNECTED"
         self.error_msg = ""
-        self._in_cluster_dispatch = False  # 防递归重入标记
 
     def connect(self):
         """连接到 Futu OpenD"""
@@ -73,51 +82,6 @@ class FutuService:
 
     # ── 对外接口（保持与原接口完全兼容）──────────────────────────────
 
-    async def _cluster_call(self, action: str, params: dict) -> dict | None:
-        """尝试通过 ClusterManager 调用远程 futu 采集器。
-
-        返回值：
-        - dict: slave 返回的数据（可能是成功或业务错误）
-        - None: 连接失败或节点不可达，触发 failover
-
-        master 端负责判断是否需要切换数据源：
-        - 连接失败（Futu OpenD 未连接）→ 返回 None，触发 failover
-        - 业务错误（不支持的标的等）→ 返回错误响应，不触发 failover
-        """
-        try:
-            from backend.workers.cluster_manager import cluster_manager
-        except ImportError as e:
-            print(f"[FutuService-DEBUG] cluster_manager import failed: {e}", flush=True)
-            return None
-
-        try:
-            result = await cluster_manager.call_collector("futu", action, params)
-            if isinstance(result, dict):
-                data = result.get("data", result)
-                if isinstance(data, dict):
-                    # 检查是否是业务错误（不触发 failover）
-                    if data.get("status") == "error":
-                        err_msg = data.get("message", "")
-                        # 连接失败类错误 → 返回 None 触发 failover
-                        if "未连接" in err_msg or "DISCONNECTED" in err_msg or "连接失败" in err_msg:
-                            print(
-                                f"[FutuService-DEBUG] cluster_call {action}: connection error, triggering failover",
-                                flush=True,
-                            )
-                            return None
-                        # 业务错误（不支持的标的等）→ 返回错误响应
-                        print(f"[FutuService-DEBUG] cluster_call {action}: business error: {err_msg}", flush=True)
-                        return data
-                    # 成功响应
-                    if "status" not in data:
-                        data["status"] = "success"
-                return data
-            print(f"[FutuService-DEBUG] cluster_call {action}: non-dict result={type(result)}", flush=True)
-            return None
-        except Exception as e:
-            print(f"[FutuService-DEBUG] cluster_call {action} failed: {type(e).__name__}: {e}", flush=True)
-            return None
-
     async def _route(
         self,
         action: str,
@@ -125,39 +89,14 @@ class FutuService:
         local_handler,
         **handler_kwargs,
     ) -> Dict[str, Any]:
-        """统一数据路由: 本地 OpenD 优先 -> 远程 slave 降级链。
+        """统一数据路由: 委托给 FutuSourceRouter 编排。
 
-        优先级: 本地连接 -> slave-1 -> slave-2 -> ... -> slave-n -> 错误
+        优先级由 source_router.mode 决定:
+        - local:  仅走本地 OpenD
+        - remote: 仅走远程 slave 代理
+        - auto:   本地 OpenD 优先 → 远程 slave 降级 (默认)
         """
-        print(
-            f"[FutuService-DEBUG] _route {action}: status={self.status}, _in_cluster_dispatch={self._in_cluster_dispatch}",
-            flush=True,
-        )
-
-        # 1. 本地连接可用 -> 直接走本地 handler
-        if self.status == "CONNECTED":
-            try:
-                return await local_handler(**handler_kwargs)
-            except Exception as e:
-                logger.warning(f"[FutuService] local {action} failed: {e}, trying cluster...")
-
-        # 2. 防递归重入: slave 节点的 _dispatch_collect 调用 futu_service 时
-        #    如果本地也断了，不能再走 cluster_call -> _try_local_fallback -> _dispatch_collect 死循环
-        if self._in_cluster_dispatch:
-            print(f"[FutuService-DEBUG] _route {action}: _in_cluster_dispatch=True, returning unavailable", flush=True)
-            return self._unavailable()
-
-        # 3. 本地不可用 -> 路由到远程 slave 链
-        self._in_cluster_dispatch = True
-        try:
-            result = await self._cluster_call(action, params)
-            if result is not None:
-                return result
-        finally:
-            self._in_cluster_dispatch = False
-
-        # 4. 全链路失败
-        return self._unavailable()
+        return await self.source_router.route(action, params, local_handler=local_handler, **handler_kwargs)
 
     def _unavailable(self) -> Dict[str, Any]:
         return {"status": "error", "message": "Futu OpenD 未连接且无可用远程节点"}

@@ -1,8 +1,13 @@
 """
 Futu OpenD 连接管理模块
 负责行情和交易上下文的初始化、连接管理和解锁逻辑
+
+支持运行时切换连接目标 (switch_host):
+- 本地开发: FUTU_HOST=127.0.0.1 (默认)
+- 远程直连: FUTU_HOST=<香港VPS_IP> (master 直连远程 OpenD)
 """
 
+import logging
 import os
 import threading
 from typing import Dict, Tuple
@@ -15,6 +20,8 @@ from futu import (
     TrdEnv,
     TrdMarket,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ConnectionManager:
@@ -106,12 +113,10 @@ class ConnectionManager:
             # 快速探测：OpenD 不可达时拒绝创建，防止 Futu SDK 后台线程无限重试
             if not self._is_opend_reachable():
                 raise ConnectionError(f"OpenD 不可达 ({self._host}:{self._port})，拒绝创建交易上下文")
-            host = os.getenv("FUTU_HOST", "127.0.0.1")
-            port = int(os.getenv("FUTU_PORT", 11111))
             self.trade_ctxs[key] = OpenSecTradeContext(
                 filter_trdmarket=str(market),
-                host=host,
-                port=port,
+                host=self._host,
+                port=self._port,
                 security_firm=SecurityFirm.FUTUSECURITIES,
             )
         return self.trade_ctxs[key]
@@ -123,3 +128,55 @@ class ConnectionManager:
             ret, data = await __import__("asyncio").to_thread(trd_ctx.unlock_trade, pwd_unlock, is_unlock=True)
             if ret != RET_OK:
                 print(f"⚠️ [ConnectionManager] 自动解锁接口被拦截或失败: {data}。请确保已在 OpenD 界面手动解锁。")  # noqa: E501
+
+    # ── 运行时切换连接目标 ──────────────────────────────────────────
+
+    def switch_host(self, host: str, port: int = 11111) -> Dict[str, str]:
+        """
+        运行时切换 OpenD 连接目标。
+
+        典型场景:
+        - master (北京) 直连香港 VPS 的 OpenD:
+            switch_host("1.2.3.4", 11111)
+        - 切回本地:
+            switch_host("127.0.0.1", 11111)
+
+        Args:
+            host: OpenD 主机地址 (IP 或域名)
+            port: OpenD 端口 (默认 11111)
+
+        Returns:
+            切换结果 dict
+        """
+        old_host, old_port = self._host, self._port
+
+        if host == old_host and port == old_port:
+            return {"status": "unchanged", "host": host, "port": port}
+
+        # 1. 关闭现有连接
+        was_connected = self.status == "CONNECTED"
+        if was_connected:
+            self.close()
+
+        # 2. 更新目标地址
+        self._host = host
+        self._port = port
+
+        logger.info(f"[ConnectionManager] 连接目标切换: {old_host}:{old_port} → {host}:{port}")
+
+        # 3. 尝试重新连接
+        self.connect()
+
+        return {
+            "status": self.status,
+            "old_host": old_host,
+            "old_port": old_port,
+            "new_host": host,
+            "new_port": port,
+            "reconnected": self.status == "CONNECTED",
+        }
+
+    @property
+    def target(self) -> str:
+        """当前连接目标地址"""
+        return f"{self._host}:{self._port}"

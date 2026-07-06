@@ -127,14 +127,13 @@ class TestFutuServiceQuoteMethods:
 
     @pytest.mark.asyncio
     async def test_get_quote_cluster_fallback(self):
-        """get_quote() 本地未连接时通过 ClusterManager 路由"""
+        """get_quote() 本地未连接时通过 SourceRouter 路由到远程"""
         service = FutuService()
         service.status = "DISCONNECTED"
-        with patch.object(service, "_cluster_call", new_callable=AsyncMock) as mock:
-            mock.return_value = {"status": "success", "data": "cluster_quote"}
-            result = await service.get_quote("HK.00700")
-            mock.assert_called_once_with("fetch_quote", {"ticker": "HK.00700"})
-            assert result == {"status": "success", "data": "cluster_quote"}
+        # 模拟 source_router 返回远程数据
+        service.source_router._remote.fetch = AsyncMock(return_value={"status": "success", "data": "cluster_quote"})
+        result = await service.get_quote("HK.00700")
+        assert result == {"status": "success", "data": "cluster_quote"}
 
     @pytest.mark.asyncio
     async def test_unsubscribe_quote(self):
@@ -343,109 +342,90 @@ class TestFutuServiceUtils:
 
 
 class TestFutuServiceRoute:
-    """_route() 统一路由逻辑"""
+    """_route() 统一路由逻辑 (通过 SourceRouter)"""
 
     @pytest.mark.asyncio
     async def test_route_local_connected_uses_local(self):
-        """本地连接时直接走 handler，不调用 cluster"""
+        """本地连接时直接走 handler"""
         service = FutuService()
         service.status = "CONNECTED"
         mock_handler = AsyncMock(return_value={"status": "success", "data": "local"})
 
-        with patch.object(service, "_cluster_call", new_callable=AsyncMock) as mock_cluster:
-            result = await service._route("fetch_quote", {"ticker": "HK.00700"}, mock_handler, ticker="HK.00700")
+        result = await service._route("fetch_quote", {"ticker": "HK.00700"}, mock_handler, ticker="HK.00700")
 
         mock_handler.assert_called_once_with(ticker="HK.00700")
-        mock_cluster.assert_not_called()
         assert result == {"status": "success", "data": "local"}
 
     @pytest.mark.asyncio
     async def test_route_local_handler_exception_falls_to_cluster(self):
-        """本地 handler 抛异常后降级到 cluster"""
+        """本地 handler 抛异常后降级到远程"""
         service = FutuService()
         service.status = "CONNECTED"
         mock_handler = AsyncMock(side_effect=RuntimeError("OpenD timeout"))
+        service.source_router._remote.fetch = AsyncMock(return_value={"status": "success", "data": "from_slave"})
 
-        with patch.object(service, "_cluster_call", new_callable=AsyncMock) as mock_cluster:
-            mock_cluster.return_value = {"status": "success", "data": "from_slave"}
-            result = await service._route("fetch_quote", {"ticker": "HK.00700"}, mock_handler, ticker="HK.00700")
+        result = await service._route("fetch_quote", {"ticker": "HK.00700"}, mock_handler, ticker="HK.00700")
 
         mock_handler.assert_called_once()
-        mock_cluster.assert_called_once_with("fetch_quote", {"ticker": "HK.00700"})
         assert result == {"status": "success", "data": "from_slave"}
 
     @pytest.mark.asyncio
-    async def test_route_local_disconnected_uses_cluster(self):
-        """本地未连接时走 cluster_call"""
+    async def test_route_local_disconnected_uses_remote(self):
+        """本地未连接时走远程数据源"""
         service = FutuService()
         service.status = "DISCONNECTED"
         mock_handler = AsyncMock()
+        service.source_router._remote.fetch = AsyncMock(return_value={"status": "success", "data": "slave_data"})
 
-        with patch.object(service, "_cluster_call", new_callable=AsyncMock) as mock_cluster:
-            mock_cluster.return_value = {"status": "success", "data": "slave_data"}
-            result = await service._route("fetch_history", {"ticker": "US.AAPL"}, mock_handler, ticker="US.AAPL")
+        result = await service._route("fetch_history", {"ticker": "US.AAPL"}, mock_handler, ticker="US.AAPL")
 
         mock_handler.assert_not_called()
-        mock_cluster.assert_called_once_with("fetch_history", {"ticker": "US.AAPL"})
         assert result == {"status": "success", "data": "slave_data"}
 
     @pytest.mark.asyncio
     async def test_route_all_failed_returns_unavailable(self):
-        """本地和 cluster 都失败返回 error"""
+        """本地和远程都失败返回 error"""
         service = FutuService()
         service.status = "DISCONNECTED"
         mock_handler = AsyncMock()
+        service.source_router._remote.fetch = AsyncMock(return_value=None)
 
-        with patch.object(service, "_cluster_call", new_callable=AsyncMock) as mock_cluster:
-            mock_cluster.return_value = None
-            result = await service._route("fetch_quote", {"ticker": "HK.00700"}, mock_handler, ticker="HK.00700")
+        result = await service._route("fetch_quote", {"ticker": "HK.00700"}, mock_handler, ticker="HK.00700")
 
         assert result["status"] == "error"
-        assert "无可用远程节点" in result["message"]
 
     @pytest.mark.asyncio
-    async def test_route_no_recursive_dispatch(self):
-        """防递归重入: _in_cluster_dispatch=True 时不再调用 _cluster_call"""
+    async def test_route_remote_mode_skips_local(self):
+        """remote 模式下跳过本地 handler"""
         service = FutuService()
-        service.status = "DISCONNECTED"
-        service._in_cluster_dispatch = True  # 模拟已在 cluster dispatch 中
+        service.status = "CONNECTED"
+        service.source_router.switch_mode("remote")
         mock_handler = AsyncMock()
+        service.source_router._remote.fetch = AsyncMock(return_value={"status": "success", "data": "remote_only"})
 
-        with patch.object(service, "_cluster_call", new_callable=AsyncMock) as mock_cluster:
-            result = await service._route("fetch_quote", {"ticker": "HK.00700"}, mock_handler, ticker="HK.00700")
+        result = await service._route("fetch_quote", {"ticker": "HK.00700"}, mock_handler, ticker="HK.00700")
 
         mock_handler.assert_not_called()
-        mock_cluster.assert_not_called()  # 应该被拦截，不再调用
-        assert result["status"] == "error"
-        # 清理
-        service._in_cluster_dispatch = False
+        assert result == {"status": "success", "data": "remote_only"}
+        # 恢复模式
+        service.source_router.switch_mode("auto")
 
 
-class TestFutuServiceClusterCall:
-    """_cluster_call() 集群路由"""
+class TestFutuServiceSourceRouter:
+    """SourceRouter 集成测试"""
 
-    @pytest.mark.asyncio
-    async def test_cluster_call_success(self):
-        """cluster_call 正常返回"""
+    def test_service_has_source_router(self):
+        """FutuService 初始化后包含 source_router"""
         service = FutuService()
-        mock_cm = AsyncMock()
-        mock_cm.call_collector = AsyncMock(return_value={"code": 0, "data": {"price": 100}})
+        assert hasattr(service, "source_router")
+        assert service.source_router.current_mode == "auto"
 
-        with patch("backend.services.futu.service.cluster_manager", mock_cm, create=True):
-            with patch("backend.workers.cluster_manager.cluster_manager", mock_cm, create=True):
-                result = await service._cluster_call("fetch_quote", {"ticker": "HK.00700"})
-
-        assert result is not None
-        assert result["status"] == "success"
-        assert result["price"] == 100
-
-    @pytest.mark.asyncio
-    async def test_cluster_call_no_cluster_manager(self):
-        """ClusterManager 不可用时返回 None"""
+    def test_switch_source_mode(self):
+        """运行时切换数据源模式"""
         service = FutuService()
-
-        with patch("backend.workers.cluster_manager.cluster_manager") as mock_cm:
-            mock_cm.call_collector = AsyncMock(side_effect=RuntimeError("no cluster"))
-            result = await service._cluster_call("fetch_quote", {"ticker": "HK.00700"})
-
-        assert result is None
+        service.source_router.switch_mode("local")
+        assert service.source_router.current_mode == "local"
+        service.source_router.switch_mode("remote")
+        assert service.source_router.current_mode == "remote"
+        service.source_router.switch_mode("auto")
+        assert service.source_router.current_mode == "auto"
