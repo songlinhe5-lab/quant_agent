@@ -75,6 +75,83 @@ async def switch_source_mode(req: SwitchSourceRequest):
         return {"code": 400, "message": str(e)}
 
 
+@router.get("/diagnose")
+async def diagnose_futu_chain(ticker: str = "HK.00700"):
+    """诊断 Futu 数据源全链路 — 定位 master→slave→OpenD 哪一步断裂"""
+    import traceback
+
+    from backend.workers.cluster_manager import cluster_manager
+
+    diag = {"steps": []}
+
+    # Step 1: ClusterManager 状态
+    try:
+        pool = cluster_manager.get_pool("futu")
+        diag["steps"].append({
+            "step": "cluster_pool",
+            "ok": len(pool) > 0,
+            "nodes": [{"id": n.node_id, "status": n.status, "host": n.host} for n in pool],
+        })
+    except Exception as e:
+        diag["steps"].append({"step": "cluster_pool", "ok": False, "error": str(e)})
+
+    # Step 2: call_collector 直接测试
+    try:
+        result = await cluster_manager.call_collector(
+            "futu", "fetch_quote", {"ticker": ticker}
+        )
+        diag["steps"].append({
+            "step": "call_collector_fetch_quote",
+            "ok": True,
+            "result_type": type(result).__name__,
+            "result_keys": list(result.keys()) if isinstance(result, dict) else str(result)[:200],
+        })
+    except Exception as e:
+        diag["steps"].append({
+            "step": "call_collector_fetch_quote",
+            "ok": False,
+            "error": f"{type(e).__name__}: {e}",
+            "traceback": traceback.format_exc()[-500:],
+        })
+
+    # Step 3: RemoteDataSource.fetch 测试
+    try:
+        from backend.services.futu.data_source import RemoteDataSource
+
+        remote = RemoteDataSource()
+        fetch_result = await remote.fetch("fetch_quote", {"ticker": ticker})
+        diag["steps"].append({
+            "step": "remote_datasource_fetch",
+            "ok": fetch_result is not None,
+            "result": str(fetch_result)[:300] if fetch_result else "None",
+        })
+    except Exception as e:
+        diag["steps"].append({
+            "step": "remote_datasource_fetch",
+            "ok": False,
+            "error": f"{type(e).__name__}: {e}",
+            "traceback": traceback.format_exc()[-500:],
+        })
+
+    # Step 4: FutuService.get_quote 端到端
+    try:
+        quote_result = await futu_service.get_quote(ticker)
+        diag["steps"].append({
+            "step": "futu_service_get_quote",
+            "ok": quote_result.get("status") == "success",
+            "result_status": quote_result.get("status"),
+            "message": quote_result.get("message", ""),
+        })
+    except Exception as e:
+        diag["steps"].append({
+            "step": "futu_service_get_quote",
+            "ok": False,
+            "error": f"{type(e).__name__}: {e}",
+        })
+
+    return {"code": 0, "data": diag}
+
+
 @router.put("/host")
 async def switch_opend_host(req: SwitchHostRequest):
     """
