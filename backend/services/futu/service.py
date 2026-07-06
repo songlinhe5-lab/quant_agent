@@ -120,9 +120,7 @@ class FutuService:
             return await self.option_fund_handler.get_option_chain(
                 ticker, expiration_date, format_ticker, is_futu_unsupported
             )
-        result = await self._cluster_call(
-            "fetch_option_chain", {"ticker": ticker, "expiration_date": expiration_date}
-        )
+        result = await self._cluster_call("fetch_option_chain", {"ticker": ticker, "expiration_date": expiration_date})
         return result or self._unavailable()
 
     async def get_fund_flow(self, ticker: str) -> Dict[str, Any]:
