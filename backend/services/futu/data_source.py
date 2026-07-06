@@ -126,7 +126,7 @@ class RemoteDataSource:
     """
 
     def __init__(self):
-        self._in_dispatch = False  # 防递归重入
+        pass
 
     @property
     def is_available(self) -> bool:
@@ -144,10 +144,6 @@ class RemoteDataSource:
 
     async def fetch(self, action: str, params: dict) -> Optional[Dict[str, Any]]:
         """通过 ClusterManager 调用远程 futu 采集器"""
-        if self._in_dispatch:
-            return None  # 防递归
-
-        self._in_dispatch = True
         try:
             from backend.workers.cluster_manager import cluster_manager
 
@@ -175,8 +171,6 @@ class RemoteDataSource:
         except Exception as e:
             logger.warning(f"[RemoteDataSource] {action} failed: {type(e).__name__}: {e}")
             return None
-        finally:
-            self._in_dispatch = False
 
     def status(self) -> Dict[str, Any]:
         try:
