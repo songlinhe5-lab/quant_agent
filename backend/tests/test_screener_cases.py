@@ -1100,6 +1100,7 @@ async def test_futu_service_indicator_positional():
 
     # 模拟 Futu 连接状态与内部 Context
     futu_service.conn_mgr.status = "CONNECTED"
+    futu_service.status = "CONNECTED"  # _route() 读取 self.status
     futu_service.conn_mgr.quote_ctx = MagicMock()
 
     from futu import RET_OK
