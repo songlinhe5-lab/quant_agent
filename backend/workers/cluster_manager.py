@@ -97,7 +97,8 @@ class ClusterManager:
 
     async def start(self):
         """启动集群管理器"""
-        self._http_client = httpx.AsyncClient(timeout=REQUEST_TIMEOUT)
+        # trust_env=False: 集群内部通信不走系统代理 (避免 macOS 代理工具导致内网 IP ReadTimeout)
+        self._http_client = httpx.AsyncClient(timeout=REQUEST_TIMEOUT, trust_env=False)
         # 构建本 master 的 Redis 回调信息 (供 slave 写入缓存)
         self._callback_redis = {
             "host": os.getenv("REDIS_HOST", "localhost"),
@@ -155,7 +156,7 @@ class ClusterManager:
                 continue  # 已通过 Redis 心跳获取过信息
             try:
                 url = f"{node.base_url}/health"
-                resp = await self._http_client.get(url, timeout=5.0)
+                resp = await self._http_client.get(url, timeout=20.0)
                 resp.raise_for_status()
                 data = resp.json().get("data", {})
                 node.collectors = data.get("collectors", [])
