@@ -434,6 +434,7 @@ async def _dispatch_collect(action: str, ticker: str | None, params: Dict[str, A
             futu_result = await futu_service.get_account_info(market)
 
         if futu_result is not None:
+            # slave 只负责返回数据（成功或错误），failover 决策由 master 端负责
             if isinstance(futu_result, dict) and futu_result.get("status") == "error":
                 err_msg = futu_result.get("message", "unknown")
                 import logging
@@ -441,13 +442,6 @@ async def _dispatch_collect(action: str, ticker: str | None, params: Dict[str, A
                 logging.getLogger(__name__).warning(
                     f"[slave_app] Futu {action} returned error: {err_msg}, status={futu_service.status}"
                 )
-                # 区分「不支持的标的」和「连接失败」
-                # 不支持的标的（Unknown stock / No permission）直接返回 error，不触发 failover
-                unsupported_keywords = ["Unknown stock", "No permission", "不支持"]
-                if any(kw in err_msg for kw in unsupported_keywords):
-                    return futu_result  # 返回 error 响应，不抛异常
-                # 连接失败等严重错误才抛异常触发 failover
-                raise RuntimeError(f"Futu local failed: {err_msg}")
             return futu_result
 
     # === YFinance (宏观指标、大盘等) ===
