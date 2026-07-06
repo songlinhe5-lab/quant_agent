@@ -78,15 +78,21 @@ class FutuService:
         用于 master 节点无本地 OpenD 时自动路由到 slave 节点。"""
         try:
             from backend.workers.cluster_manager import cluster_manager
+        except ImportError as e:
+            logger.warning(f"[FutuService] cluster_manager import failed: {e}")
+            return None
 
+        try:
             result = await cluster_manager.call_collector("futu", action, params)
             if isinstance(result, dict):
                 data = result.get("data", result)
                 if isinstance(data, dict) and "status" not in data:
                     data["status"] = "success"
                 return data
+            logger.warning(f"[FutuService] cluster_call {action}: non-dict result={type(result)}")
             return None
-        except Exception:
+        except Exception as e:
+            logger.warning(f"[FutuService] cluster_call {action} failed: {e}")
             return None
 
     async def _route(
