@@ -69,6 +69,25 @@ class FutuService:
 
     # ── 对外接口（保持与原接口完全兼容）──────────────────────────────
 
+    async def _cluster_call(self, action: str, params: dict) -> dict | None:
+        """尝试通过 ClusterManager 调用远程 futu 采集器，失败返回 None。
+        用于 master 节点无本地 OpenD 时自动路由到 slave 节点。"""
+        try:
+            from backend.workers.cluster_manager import cluster_manager
+
+            result = await cluster_manager.call_collector("futu", action, params)
+            if isinstance(result, dict):
+                data = result.get("data", result)
+                if isinstance(data, dict) and "status" not in data:
+                    data["status"] = "success"
+                return data
+            return None
+        except Exception:
+            return None
+
+    def _unavailable(self) -> Dict[str, Any]:
+        return {"status": "error", "message": "Futu OpenD 未连接且无可用远程节点"}
+
     def is_futu_unsupported(self, ticker: str) -> bool:
         return is_futu_unsupported(ticker)
 
@@ -76,27 +95,45 @@ class FutuService:
         return format_ticker(ticker)
 
     async def get_quote(self, ticker: str) -> Dict[str, Any]:
-        return await self.quote_handler.get_quote(ticker, format_ticker, is_futu_unsupported)
+        if self.status == "CONNECTED":
+            return await self.quote_handler.get_quote(ticker, format_ticker, is_futu_unsupported)
+        result = await self._cluster_call("fetch_quote", {"ticker": ticker})
+        return result or self._unavailable()
 
     async def unsubscribe_quote(self, ticker: str) -> Dict[str, Any]:
         return await self.quote_handler.unsubscribe_quote(ticker, format_ticker)
 
     async def get_history(self, ticker: str, ktype: str = "K_DAY", num: int = 60) -> Dict[str, Any]:  # noqa: E501
-        return await self.quote_handler.get_history(ticker, ktype, num)
+        if self.status == "CONNECTED":
+            return await self.quote_handler.get_history(ticker, ktype, num)
+        result = await self._cluster_call("fetch_history", {"ticker": ticker, "ktype": ktype, "num": num})
+        return result or self._unavailable()
 
     async def get_order_book(self, ticker: str) -> Dict[str, Any]:
-        return await self.quote_handler.get_order_book(ticker, format_ticker, is_futu_unsupported)
+        if self.status == "CONNECTED":
+            return await self.quote_handler.get_order_book(ticker, format_ticker, is_futu_unsupported)
+        result = await self._cluster_call("fetch_order_book", {"ticker": ticker})
+        return result or self._unavailable()
 
     async def get_option_chain(self, ticker: str, expiration_date: str = "") -> Dict[str, Any]:  # noqa: E501
-        return await self.option_fund_handler.get_option_chain(
-            ticker, expiration_date, format_ticker, is_futu_unsupported
-        )
+        if self.status == "CONNECTED":
+            return await self.option_fund_handler.get_option_chain(
+                ticker, expiration_date, format_ticker, is_futu_unsupported
+            )
+        result = await self._cluster_call("fetch_option_chain", {"ticker": ticker, "expiration_date": expiration_date})
+        return result or self._unavailable()
 
     async def get_fund_flow(self, ticker: str) -> Dict[str, Any]:
-        return await self.option_fund_handler.get_fund_flow(ticker, format_ticker, is_futu_unsupported)
+        if self.status == "CONNECTED":
+            return await self.option_fund_handler.get_fund_flow(ticker, format_ticker, is_futu_unsupported)
+        result = await self._cluster_call("fetch_fund_flow", {"ticker": ticker})
+        return result or self._unavailable()
 
     async def get_fundamental(self, ticker: str) -> Dict[str, Any]:
-        return await self.option_fund_handler.get_fundamental(ticker, format_ticker, is_futu_unsupported)
+        if self.status == "CONNECTED":
+            return await self.option_fund_handler.get_fundamental(ticker, format_ticker, is_futu_unsupported)
+        result = await self._cluster_call("fetch_fundamental", {"ticker": ticker})
+        return result or self._unavailable()
 
     async def get_market_snapshots(self, tickers: list) -> Dict[str, Any]:
         return await self.screener_handler.get_market_snapshots(tickers)
