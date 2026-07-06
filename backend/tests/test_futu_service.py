@@ -112,15 +112,27 @@ class TestFutuServiceQuoteMethods:
 
     @pytest.mark.asyncio
     async def test_get_quote(self):
-        """get_quote() 调用 QuoteHandler.get_quote()"""
+        """get_quote() 本地连接时调用 QuoteHandler.get_quote()"""
         from backend.services.futu.utils import format_ticker, is_futu_unsupported
 
         service = FutuService()
+        service.status = "CONNECTED"
         with patch.object(service.quote_handler, "get_quote", new_callable=AsyncMock) as mock:
             mock.return_value = {"data": "quote"}
             result = await service.get_quote("HK.00700")
             mock.assert_called_once_with("HK.00700", format_ticker, is_futu_unsupported)
             assert result == {"data": "quote"}
+
+    @pytest.mark.asyncio
+    async def test_get_quote_cluster_fallback(self):
+        """get_quote() 本地未连接时通过 ClusterManager 路由"""
+        service = FutuService()
+        service.status = "DISCONNECTED"
+        with patch.object(service, "_cluster_call", new_callable=AsyncMock) as mock:
+            mock.return_value = {"status": "success", "data": "cluster_quote"}
+            result = await service.get_quote("HK.00700")
+            mock.assert_called_once_with("fetch_quote", {"ticker": "HK.00700"})
+            assert result == {"status": "success", "data": "cluster_quote"}
 
     @pytest.mark.asyncio
     async def test_unsubscribe_quote(self):
@@ -136,8 +148,9 @@ class TestFutuServiceQuoteMethods:
 
     @pytest.mark.asyncio
     async def test_get_history(self):
-        """get_history() 调用 QuoteHandler.get_history()"""
+        """get_history() 本地连接时调用 QuoteHandler.get_history()"""
         service = FutuService()
+        service.status = "CONNECTED"
         with patch.object(service.quote_handler, "get_history", new_callable=AsyncMock) as mock:
             mock.return_value = {"data": "history"}
             result = await service.get_history("HK.00700", "K_DAY", 100)
@@ -146,10 +159,11 @@ class TestFutuServiceQuoteMethods:
 
     @pytest.mark.asyncio
     async def test_get_order_book(self):
-        """get_order_book() 调用 QuoteHandler.get_order_book()"""
+        """get_order_book() 本地连接时调用 QuoteHandler.get_order_book()"""
         from backend.services.futu.utils import format_ticker, is_futu_unsupported
 
         service = FutuService()
+        service.status = "CONNECTED"
         with patch.object(service.quote_handler, "get_order_book", new_callable=AsyncMock) as mock:
             mock.return_value = {"data": "order_book"}
             result = await service.get_order_book("HK.00700")
@@ -162,10 +176,11 @@ class TestFutuServiceOptionFundMethods:
 
     @pytest.mark.asyncio
     async def test_get_option_chain(self):
-        """get_option_chain() 调用 OptionFundHandler.get_option_chain()"""
+        """get_option_chain() 本地连接时调用 OptionFundHandler.get_option_chain()"""
         from backend.services.futu.utils import format_ticker, is_futu_unsupported
 
         service = FutuService()
+        service.status = "CONNECTED"
         with patch.object(service.option_fund_handler, "get_option_chain", new_callable=AsyncMock) as mock:
             mock.return_value = {"data": "option_chain"}
             result = await service.get_option_chain("HK.00700", "2024-12-31")
@@ -174,10 +189,11 @@ class TestFutuServiceOptionFundMethods:
 
     @pytest.mark.asyncio
     async def test_get_fund_flow(self):
-        """get_fund_flow() 调用 OptionFundHandler.get_fund_flow()"""
+        """get_fund_flow() 本地连接时调用 OptionFundHandler.get_fund_flow()"""
         from backend.services.futu.utils import format_ticker, is_futu_unsupported
 
         service = FutuService()
+        service.status = "CONNECTED"
         with patch.object(service.option_fund_handler, "get_fund_flow", new_callable=AsyncMock) as mock:
             mock.return_value = {"data": "fund_flow"}
             result = await service.get_fund_flow("HK.00700")
@@ -186,10 +202,11 @@ class TestFutuServiceOptionFundMethods:
 
     @pytest.mark.asyncio
     async def test_get_fundamental(self):
-        """get_fundamental() 调用 OptionFundHandler.get_fundamental()"""
+        """get_fundamental() 本地连接时调用 OptionFundHandler.get_fundamental()"""
         from backend.services.futu.utils import format_ticker, is_futu_unsupported
 
         service = FutuService()
+        service.status = "CONNECTED"
         with patch.object(service.option_fund_handler, "get_fundamental", new_callable=AsyncMock) as mock:
             mock.return_value = {"data": "fundamental"}
             result = await service.get_fundamental("HK.00700")
