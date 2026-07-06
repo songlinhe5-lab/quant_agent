@@ -129,7 +129,10 @@ class FutuService:
 
         优先级: 本地连接 -> slave-1 -> slave-2 -> ... -> slave-n -> 错误
         """
-        print(f"[FutuService-DEBUG] _route {action}: status={self.status}, _in_cluster_dispatch={self._in_cluster_dispatch}", flush=True)
+        print(
+            f"[FutuService-DEBUG] _route {action}: status={self.status}, _in_cluster_dispatch={self._in_cluster_dispatch}",
+            flush=True,
+        )
 
         # 1. 本地连接可用 -> 直接走本地 handler
         if self.status == "CONNECTED":
