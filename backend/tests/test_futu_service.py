@@ -131,9 +131,7 @@ class TestFutuServiceQuoteMethods:
         service = FutuService()
         service.status = "DISCONNECTED"
         # 模拟 source_router 返回远程数据
-        service.source_router._remote.fetch = AsyncMock(
-            return_value={"status": "success", "data": "cluster_quote"}
-        )
+        service.source_router._remote.fetch = AsyncMock(return_value={"status": "success", "data": "cluster_quote"})
         result = await service.get_quote("HK.00700")
         assert result == {"status": "success", "data": "cluster_quote"}
 
@@ -364,9 +362,7 @@ class TestFutuServiceRoute:
         service = FutuService()
         service.status = "CONNECTED"
         mock_handler = AsyncMock(side_effect=RuntimeError("OpenD timeout"))
-        service.source_router._remote.fetch = AsyncMock(
-            return_value={"status": "success", "data": "from_slave"}
-        )
+        service.source_router._remote.fetch = AsyncMock(return_value={"status": "success", "data": "from_slave"})
 
         result = await service._route("fetch_quote", {"ticker": "HK.00700"}, mock_handler, ticker="HK.00700")
 
@@ -379,9 +375,7 @@ class TestFutuServiceRoute:
         service = FutuService()
         service.status = "DISCONNECTED"
         mock_handler = AsyncMock()
-        service.source_router._remote.fetch = AsyncMock(
-            return_value={"status": "success", "data": "slave_data"}
-        )
+        service.source_router._remote.fetch = AsyncMock(return_value={"status": "success", "data": "slave_data"})
 
         result = await service._route("fetch_history", {"ticker": "US.AAPL"}, mock_handler, ticker="US.AAPL")
 
@@ -407,9 +401,7 @@ class TestFutuServiceRoute:
         service.status = "CONNECTED"
         service.source_router.switch_mode("remote")
         mock_handler = AsyncMock()
-        service.source_router._remote.fetch = AsyncMock(
-            return_value={"status": "success", "data": "remote_only"}
-        )
+        service.source_router._remote.fetch = AsyncMock(return_value={"status": "success", "data": "remote_only"})
 
         result = await service._route("fetch_quote", {"ticker": "HK.00700"}, mock_handler, ticker="HK.00700")
 

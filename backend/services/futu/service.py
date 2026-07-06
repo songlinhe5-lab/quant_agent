@@ -96,9 +96,7 @@ class FutuService:
         - remote: 仅走远程 slave 代理
         - auto:   本地 OpenD 优先 → 远程 slave 降级 (默认)
         """
-        return await self.source_router.route(
-            action, params, local_handler=local_handler, **handler_kwargs
-        )
+        return await self.source_router.route(action, params, local_handler=local_handler, **handler_kwargs)
 
     def _unavailable(self) -> Dict[str, Any]:
         return {"status": "error", "message": "Futu OpenD 未连接且无可用远程节点"}
