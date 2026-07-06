@@ -153,7 +153,9 @@ class RemoteDataSource:
 
             logger.info(f"[RemoteDataSource] call_collector(futu, {action}, params_keys={list(params.keys())})")
             result = await cluster_manager.call_collector("futu", action, params)
-            logger.info(f"[RemoteDataSource] call_collector returned: type={type(result).__name__}, keys={list(result.keys()) if isinstance(result, dict) else 'N/A'}")
+            logger.info(
+                f"[RemoteDataSource] call_collector returned: type={type(result).__name__}, keys={list(result.keys()) if isinstance(result, dict) else 'N/A'}"
+            )
             if isinstance(result, dict):
                 data = result.get("data", result)
                 if isinstance(data, dict):

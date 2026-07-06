@@ -787,7 +787,8 @@ async def slow_request_middleware(request: Request, call_next):
 # 允许 Vite 等前端本地代理发起请求（SEC-11：CORS 白名单配置，禁止 *）
 # 生产环境应在 .env 中配置 ALLOWED_ORIGINS 环境变量，多个域名用逗号分隔
 ALLOWED_ORIGINS = os.getenv(
-    "ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000,https://quant-agent.pages.dev,https://quant.stephenhe.com"
+    "ALLOWED_ORIGINS",
+    "http://localhost:5173,http://localhost:3000,https://quant-agent.pages.dev,https://quant.stephenhe.com",
 ).split(",")
 app.add_middleware(
     CORSMiddleware,

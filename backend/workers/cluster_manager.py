@@ -422,7 +422,9 @@ class ClusterManager:
             response = await self._http_client.post(url, json=payload)
             response.raise_for_status()
             result = response.json()
-            logger.info(f"[ClusterManager] {action} OK from {node.node_id}: keys={list(result.keys()) if isinstance(result, dict) else type(result).__name__}")
+            logger.info(
+                f"[ClusterManager] {action} OK from {node.node_id}: keys={list(result.keys()) if isinstance(result, dict) else type(result).__name__}"
+            )
             return result
         except httpx.TimeoutException as e:
             logger.warning(f"[ClusterManager] {action} TIMEOUT on {node.node_id} ({url}): {e}")
