@@ -74,8 +74,16 @@ class FutuService:
     # ── 对外接口（保持与原接口完全兼容）──────────────────────────────
 
     async def _cluster_call(self, action: str, params: dict) -> dict | None:
-        """尝试通过 ClusterManager 调用远程 futu 采集器，失败返回 None。
-        用于 master 节点无本地 OpenD 时自动路由到 slave 节点。"""
+        """尝试通过 ClusterManager 调用远程 futu 采集器。
+
+        返回值：
+        - dict: slave 返回的数据（可能是成功或业务错误）
+        - None: 连接失败或节点不可达，触发 failover
+
+        master 端负责判断是否需要切换数据源：
+        - 连接失败（Futu OpenD 未连接）→ 返回 None，触发 failover
+        - 业务错误（不支持的标的等）→ 返回错误响应，不触发 failover
+        """
         try:
             from backend.workers.cluster_manager import cluster_manager
         except ImportError as e:
@@ -86,8 +94,23 @@ class FutuService:
             result = await cluster_manager.call_collector("futu", action, params)
             if isinstance(result, dict):
                 data = result.get("data", result)
-                if isinstance(data, dict) and "status" not in data:
-                    data["status"] = "success"
+                if isinstance(data, dict):
+                    # 检查是否是业务错误（不触发 failover）
+                    if data.get("status") == "error":
+                        err_msg = data.get("message", "")
+                        # 连接失败类错误 → 返回 None 触发 failover
+                        if "未连接" in err_msg or "DISCONNECTED" in err_msg or "连接失败" in err_msg:
+                            print(
+                                f"[FutuService-DEBUG] cluster_call {action}: connection error, triggering failover",
+                                flush=True,
+                            )
+                            return None
+                        # 业务错误（不支持的标的等）→ 返回错误响应
+                        print(f"[FutuService-DEBUG] cluster_call {action}: business error: {err_msg}", flush=True)
+                        return data
+                    # 成功响应
+                    if "status" not in data:
+                        data["status"] = "success"
                 return data
             print(f"[FutuService-DEBUG] cluster_call {action}: non-dict result={type(result)}", flush=True)
             return None
