@@ -472,34 +472,39 @@ class ConnectionManager:
                         # 监控 SPY(标普500), QQQ(纳指100), HK.800000(恒指)
                         monitor_targets = ["US.SPY", "US.QQQ", "HK.800000"]
                         if t in monitor_targets:
-                            flow_data = self.flow_cache.get(t, {})
-                            if flow_data:
-                                fund_data = flow_data.get("data", flow_data)
-                                net_inflow = fund_data.get("main_fund_net_inflow", 0)
+                            flow_data = self.flow_cache.get(t) or {}
+                            if flow_data and isinstance(flow_data, dict):
+                                fund_data = flow_data.get("data") or flow_data
+                                if not isinstance(fund_data, dict):
+                                    fund_data = {}
+                                net_inflow = fund_data.get("main_fund_net_inflow") or 0
                                 OUTFLOW_THRESHOLD = -500_000_000  # 阈值：主力净流出超过 5 亿  # noqa: E501
                                 if net_inflow < OUTFLOW_THRESHOLD:
                                     # 💡 升级为分布式防抖锁，防止集群多台服务器同时发出报警轰炸  # noqa: E501
                                     lock_key = f"quant:lock:outflow_alert:{t}:{int(current_time / 3600)}"  # noqa: E501
                                     if await redis_client.set(lock_key, "1", nx=True, ex=3600):  # noqa: E501
+                                        net_inflow_str = fund_data.get("main_fund_net_inflow_str", str(net_inflow))
                                         alert_msg = (
                                             f"🚨 [宏观风控预警] 宽基指数主力资金疯狂出逃！\n\n"  # noqa: E501
-                                            f"标的: {t}\n今日主力净流出: {fund_data.get('main_fund_net_inflow_str')}\n\n"  # noqa: E501
+                                            f"标的: {t}\n今日主力净流出: {net_inflow_str}\n\n"  # noqa: E501
                                             f"请警惕系统性流动性抽离风险，并考虑收紧多头敞口！"
-                                        )
+                                        )  # noqa: E501
                                         asyncio.create_task(notification_service.send_alert(alert_msg))
 
                     # 💡 每 10 秒异步拉取一次账户真实资产快照，用于断连报警与缓存
+                    # 💡 Master 节点无本地 Futu OpenD，跳过账户快照拉取避免无效报错
                     if current_time - getattr(self, "last_acc_update", 0) > 10:
                         self.last_acc_update = current_time
-                        try:
-                            acc_res = await futu_service.get_account_info()
-                            if acc_res.get("status") == "success":
-                                total_assets = acc_res.get("total_assets", 0)
-                                positions = acc_res.get("positions", [])
-                                total_pnl = sum(p.get("pl_val", 0) for p in positions)
-                                self.last_account_summary = f"总资产: {total_assets:,.2f} | 浮动盈亏: {total_pnl:+,.2f}"  # noqa: E501
-                        except Exception:
-                            pass
+                        if getattr(futu_service, "status", "") == "CONNECTED":
+                            try:
+                                acc_res = await futu_service.get_account_info()
+                                if acc_res.get("status") == "success":
+                                    total_assets = acc_res.get("total_assets", 0)
+                                    positions = acc_res.get("positions", [])
+                                    total_pnl = sum(p.get("pl_val", 0) for p in positions)
+                                    self.last_account_summary = f"总资产: {total_assets:,.2f} | 浮动盈亏: {total_pnl:+,.2f}"  # noqa: E501
+                            except Exception:
+                                pass
 
                     # 1. 优先执行富途快照补漏 (直接使用解耦的 futu_service)
                     if futu_check_tickers:
