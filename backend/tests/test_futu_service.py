@@ -120,7 +120,9 @@ class TestFutuServiceQuoteMethods:
         with patch.object(service.quote_handler, "get_quote", new_callable=AsyncMock) as mock:
             mock.return_value = {"data": "quote"}
             result = await service.get_quote("HK.00700")
-            mock.assert_called_once_with("HK.00700", format_ticker, is_futu_unsupported)
+            mock.assert_called_once_with(
+                ticker="HK.00700", format_ticker_func=format_ticker, is_unsupported_func=is_futu_unsupported
+            )
             assert result == {"data": "quote"}
 
     @pytest.mark.asyncio
@@ -155,7 +157,7 @@ class TestFutuServiceQuoteMethods:
         with patch.object(service.quote_handler, "get_history", new_callable=AsyncMock) as mock:
             mock.return_value = {"data": "history"}
             result = await service.get_history("HK.00700", "K_DAY", 100)
-            mock.assert_called_once_with("HK.00700", "K_DAY", 100)
+            mock.assert_called_once_with(ticker="HK.00700", ktype="K_DAY", num=100)
             assert result == {"data": "history"}
 
     @pytest.mark.asyncio
@@ -168,7 +170,9 @@ class TestFutuServiceQuoteMethods:
         with patch.object(service.quote_handler, "get_order_book", new_callable=AsyncMock) as mock:
             mock.return_value = {"data": "order_book"}
             result = await service.get_order_book("HK.00700")
-            mock.assert_called_once_with("HK.00700", format_ticker, is_futu_unsupported)
+            mock.assert_called_once_with(
+                ticker="HK.00700", format_ticker_func=format_ticker, is_unsupported_func=is_futu_unsupported
+            )
             assert result == {"data": "order_book"}
 
 
@@ -185,7 +189,12 @@ class TestFutuServiceOptionFundMethods:
         with patch.object(service.option_fund_handler, "get_option_chain", new_callable=AsyncMock) as mock:
             mock.return_value = {"data": "option_chain"}
             result = await service.get_option_chain("HK.00700", "2024-12-31")
-            mock.assert_called_once_with("HK.00700", "2024-12-31", format_ticker, is_futu_unsupported)
+            mock.assert_called_once_with(
+                ticker="HK.00700",
+                expiration_date="2024-12-31",
+                format_ticker_func=format_ticker,
+                is_unsupported_func=is_futu_unsupported,
+            )
             assert result == {"data": "option_chain"}
 
     @pytest.mark.asyncio
@@ -198,7 +207,9 @@ class TestFutuServiceOptionFundMethods:
         with patch.object(service.option_fund_handler, "get_fund_flow", new_callable=AsyncMock) as mock:
             mock.return_value = {"data": "fund_flow"}
             result = await service.get_fund_flow("HK.00700")
-            mock.assert_called_once_with("HK.00700", format_ticker, is_futu_unsupported)
+            mock.assert_called_once_with(
+                ticker="HK.00700", format_ticker_func=format_ticker, is_unsupported_func=is_futu_unsupported
+            )
             assert result == {"data": "fund_flow"}
 
     @pytest.mark.asyncio
@@ -211,7 +222,9 @@ class TestFutuServiceOptionFundMethods:
         with patch.object(service.option_fund_handler, "get_fundamental", new_callable=AsyncMock) as mock:
             mock.return_value = {"data": "fundamental"}
             result = await service.get_fundamental("HK.00700")
-            mock.assert_called_once_with("HK.00700", format_ticker, is_futu_unsupported)
+            mock.assert_called_once_with(
+                ticker="HK.00700", format_ticker_func=format_ticker, is_unsupported_func=is_futu_unsupported
+            )
             assert result == {"data": "fundamental"}
 
 
@@ -220,32 +233,35 @@ class TestFutuServiceScreenerMethods:
 
     @pytest.mark.asyncio
     async def test_get_market_snapshots(self):
-        """get_market_snapshots() 调用 ScreenerHandler.get_market_snapshots()"""
+        """get_market_snapshots() 本地连接时调用 ScreenerHandler.get_market_snapshots()"""
         service = FutuService()
+        service.status = "CONNECTED"
         with patch.object(service.screener_handler, "get_market_snapshots", new_callable=AsyncMock) as mock:
             mock.return_value = {"data": "snapshots"}
             result = await service.get_market_snapshots(["HK.00700", "HK.09988"])
-            mock.assert_called_once_with(["HK.00700", "HK.09988"])
+            mock.assert_called_once_with(tickers=["HK.00700", "HK.09988"])
             assert result == {"data": "snapshots"}
 
     @pytest.mark.asyncio
     async def test_screen_stocks(self):
-        """screen_stocks() 调用 ScreenerHandler.screen_stocks()"""
+        """screen_stocks() 本地连接时调用 ScreenerHandler.screen_stocks()"""
         service = FutuService()
+        service.status = "CONNECTED"
         with patch.object(service.screener_handler, "screen_stocks", new_callable=AsyncMock) as mock:
             mock.return_value = {"data": "screened"}
             result = await service.screen_stocks("HK", [{"field": "pe", "op": "<", "value": 20}])
-            mock.assert_called_once_with("HK", [{"field": "pe", "op": "<", "value": 20}])
+            mock.assert_called_once_with(market="HK", filters=[{"field": "pe", "op": "<", "value": 20}])
             assert result == {"data": "screened"}
 
     @pytest.mark.asyncio
     async def test_get_stock_basicinfo(self):
-        """get_stock_basicinfo() 调用 ScreenerHandler.get_stock_basicinfo()"""
+        """get_stock_basicinfo() 本地连接时调用 ScreenerHandler.get_stock_basicinfo()"""
         service = FutuService()
+        service.status = "CONNECTED"
         with patch.object(service.screener_handler, "get_stock_basicinfo", new_callable=AsyncMock) as mock:
             mock.return_value = {"data": "basicinfo"}
             result = await service.get_stock_basicinfo("HK", "STOCK")
-            mock.assert_called_once_with("HK", "STOCK")
+            mock.assert_called_once_with(market="HK", sec_type="STOCK")
             assert result == {"data": "basicinfo"}
 
 
@@ -292,12 +308,13 @@ class TestFutuServiceTradeMethods:
 
     @pytest.mark.asyncio
     async def test_get_account_info(self):
-        """get_account_info() 调用 TradeHandler.get_account_info()"""
+        """get_account_info() 本地连接时调用 TradeHandler.get_account_info()"""
         service = FutuService()
+        service.status = "CONNECTED"
         with patch.object(service.trade_handler, "get_account_info", new_callable=AsyncMock) as mock:
             mock.return_value = {"data": "account_info"}
             result = await service.get_account_info("HK")
-            mock.assert_called_once_with("HK")
+            mock.assert_called_once_with(market="HK")
             assert result == {"data": "account_info"}
 
 
@@ -323,3 +340,112 @@ class TestFutuServiceUtils:
             result = service.format_ticker("00700")
             mock_func.assert_called_once_with("00700")
             assert result == "HK.00700"
+
+
+class TestFutuServiceRoute:
+    """_route() 统一路由逻辑"""
+
+    @pytest.mark.asyncio
+    async def test_route_local_connected_uses_local(self):
+        """本地连接时直接走 handler，不调用 cluster"""
+        service = FutuService()
+        service.status = "CONNECTED"
+        mock_handler = AsyncMock(return_value={"status": "success", "data": "local"})
+
+        with patch.object(service, "_cluster_call", new_callable=AsyncMock) as mock_cluster:
+            result = await service._route("fetch_quote", {"ticker": "HK.00700"}, mock_handler, ticker="HK.00700")
+
+        mock_handler.assert_called_once_with(ticker="HK.00700")
+        mock_cluster.assert_not_called()
+        assert result == {"status": "success", "data": "local"}
+
+    @pytest.mark.asyncio
+    async def test_route_local_handler_exception_falls_to_cluster(self):
+        """本地 handler 抛异常后降级到 cluster"""
+        service = FutuService()
+        service.status = "CONNECTED"
+        mock_handler = AsyncMock(side_effect=RuntimeError("OpenD timeout"))
+
+        with patch.object(service, "_cluster_call", new_callable=AsyncMock) as mock_cluster:
+            mock_cluster.return_value = {"status": "success", "data": "from_slave"}
+            result = await service._route("fetch_quote", {"ticker": "HK.00700"}, mock_handler, ticker="HK.00700")
+
+        mock_handler.assert_called_once()
+        mock_cluster.assert_called_once_with("fetch_quote", {"ticker": "HK.00700"})
+        assert result == {"status": "success", "data": "from_slave"}
+
+    @pytest.mark.asyncio
+    async def test_route_local_disconnected_uses_cluster(self):
+        """本地未连接时走 cluster_call"""
+        service = FutuService()
+        service.status = "DISCONNECTED"
+        mock_handler = AsyncMock()
+
+        with patch.object(service, "_cluster_call", new_callable=AsyncMock) as mock_cluster:
+            mock_cluster.return_value = {"status": "success", "data": "slave_data"}
+            result = await service._route("fetch_history", {"ticker": "US.AAPL"}, mock_handler, ticker="US.AAPL")
+
+        mock_handler.assert_not_called()
+        mock_cluster.assert_called_once_with("fetch_history", {"ticker": "US.AAPL"})
+        assert result == {"status": "success", "data": "slave_data"}
+
+    @pytest.mark.asyncio
+    async def test_route_all_failed_returns_unavailable(self):
+        """本地和 cluster 都失败返回 error"""
+        service = FutuService()
+        service.status = "DISCONNECTED"
+        mock_handler = AsyncMock()
+
+        with patch.object(service, "_cluster_call", new_callable=AsyncMock) as mock_cluster:
+            mock_cluster.return_value = None
+            result = await service._route("fetch_quote", {"ticker": "HK.00700"}, mock_handler, ticker="HK.00700")
+
+        assert result["status"] == "error"
+        assert "无可用远程节点" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_route_no_recursive_dispatch(self):
+        """防递归重入: _in_cluster_dispatch=True 时不再调用 _cluster_call"""
+        service = FutuService()
+        service.status = "DISCONNECTED"
+        service._in_cluster_dispatch = True  # 模拟已在 cluster dispatch 中
+        mock_handler = AsyncMock()
+
+        with patch.object(service, "_cluster_call", new_callable=AsyncMock) as mock_cluster:
+            result = await service._route("fetch_quote", {"ticker": "HK.00700"}, mock_handler, ticker="HK.00700")
+
+        mock_handler.assert_not_called()
+        mock_cluster.assert_not_called()  # 应该被拦截，不再调用
+        assert result["status"] == "error"
+        # 清理
+        service._in_cluster_dispatch = False
+
+
+class TestFutuServiceClusterCall:
+    """_cluster_call() 集群路由"""
+
+    @pytest.mark.asyncio
+    async def test_cluster_call_success(self):
+        """cluster_call 正常返回"""
+        service = FutuService()
+        mock_cm = AsyncMock()
+        mock_cm.call_collector = AsyncMock(return_value={"code": 0, "data": {"price": 100}})
+
+        with patch("backend.services.futu.service.cluster_manager", mock_cm, create=True):
+            with patch("backend.workers.cluster_manager.cluster_manager", mock_cm, create=True):
+                result = await service._cluster_call("fetch_quote", {"ticker": "HK.00700"})
+
+        assert result is not None
+        assert result["status"] == "success"
+        assert result["price"] == 100
+
+    @pytest.mark.asyncio
+    async def test_cluster_call_no_cluster_manager(self):
+        """ClusterManager 不可用时返回 None"""
+        service = FutuService()
+
+        with patch("backend.workers.cluster_manager.cluster_manager") as mock_cm:
+            mock_cm.call_collector = AsyncMock(side_effect=RuntimeError("no cluster"))
+            result = await service._cluster_call("fetch_quote", {"ticker": "HK.00700"})
+
+        assert result is None

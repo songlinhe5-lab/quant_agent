@@ -331,7 +331,15 @@ async def collect(action: str, req: CollectRequest):
         # 旧版格式: 所有非 ticker/callback_redis 的字段都作为 params
         params = {k: v for k, v in req.model_extra.items() if k not in ("ticker", "callback_redis")}
 
-    if not ticker and action not in ("fetch_fund_flow",):
+    # 不需要 ticker 的 action 白名单
+    _NO_TICKER_ACTIONS = {
+        "fetch_fund_flow",
+        "fetch_market_snapshots",
+        "fetch_screen_stocks",
+        "fetch_stock_basicinfo",
+        "fetch_account_info",
+    }
+    if not ticker and action not in _NO_TICKER_ACTIONS:
         raise HTTPException(status_code=400, detail="ticker is required")
 
     try:
@@ -388,19 +396,42 @@ async def _dispatch_collect(action: str, ticker: str | None, params: Dict[str, A
     if "futu" in ENABLED_COLLECTORS:
         from backend.services.futu import futu_service
 
+        futu_result = None
         if action == "fetch_quote":
-            return await futu_service.get_quote(ticker)
+            futu_result = await futu_service.get_quote(ticker)
         elif action == "fetch_history":
             ktype = params.get("ktype", "K_DAY")
             num = params.get("num", 100)
-            return await futu_service.get_history(ticker, ktype=ktype, num=num)
+            futu_result = await futu_service.get_history(ticker, ktype=ktype, num=num)
         elif action == "fetch_fund_flow":
-            return await futu_service.get_fund_flow(ticker)
+            futu_result = await futu_service.get_fund_flow(ticker)
+        elif action == "fetch_order_book":
+            futu_result = await futu_service.get_order_book(ticker)
         elif action == "fetch_option_chain":
             expiration_date = params.get("expiration_date", "")
-            return await futu_service.get_option_chain(ticker, expiration_date)
+            futu_result = await futu_service.get_option_chain(ticker, expiration_date)
         elif action == "fetch_fundamental":
-            return await futu_service.get_fundamental(ticker)
+            futu_result = await futu_service.get_fundamental(ticker)
+        elif action == "fetch_market_snapshots":
+            tickers = params.get("tickers", [])
+            futu_result = await futu_service.get_market_snapshots(tickers)
+        elif action == "fetch_screen_stocks":
+            market = params.get("market", "HK")
+            filters = params.get("filters", [])
+            futu_result = await futu_service.screen_stocks(market, filters)
+        elif action == "fetch_stock_basicinfo":
+            market = params.get("market", "HK")
+            sec_type = params.get("sec_type", "STOCK")
+            futu_result = await futu_service.get_stock_basicinfo(market, sec_type)
+        elif action == "fetch_account_info":
+            market = params.get("market", "HK")
+            futu_result = await futu_service.get_account_info(market)
+
+        if futu_result is not None:
+            # 本地 Futu 返回 error 时抛异常，让 ClusterManager failover 到下一个 slave
+            if isinstance(futu_result, dict) and futu_result.get("status") == "error":
+                raise RuntimeError(f"Futu local failed: {futu_result.get('message', 'unknown')}")
+            return futu_result
 
     # === YFinance (宏观指标、大盘等) ===
     if "yfinance" in ENABLED_COLLECTORS:
