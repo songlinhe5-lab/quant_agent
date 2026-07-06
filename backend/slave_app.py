@@ -394,7 +394,13 @@ async def _dispatch_collect(action: str, ticker: str | None, params: Dict[str, A
 
     # === Futu (优先处理港美股) ===
     if "futu" in ENABLED_COLLECTORS:
+        import logging
+
         from backend.services.futu import futu_service
+
+        logging.getLogger(__name__).info(
+            f"[slave_app] Futu dispatch: action={action}, ticker={ticker}, futu_status={futu_service.status}"
+        )
 
         futu_result = None
         if action == "fetch_quote":
@@ -430,7 +436,13 @@ async def _dispatch_collect(action: str, ticker: str | None, params: Dict[str, A
         if futu_result is not None:
             # 本地 Futu 返回 error 时抛异常，让 ClusterManager failover 到下一个 slave
             if isinstance(futu_result, dict) and futu_result.get("status") == "error":
-                raise RuntimeError(f"Futu local failed: {futu_result.get('message', 'unknown')}")
+                err_msg = futu_result.get("message", "unknown")
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    f"[slave_app] Futu {action} returned error: {err_msg}, status={futu_service.status}"
+                )
+                raise RuntimeError(f"Futu local failed: {err_msg}")
             return futu_result
 
     # === YFinance (宏观指标、大盘等) ===
