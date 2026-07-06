@@ -121,6 +121,7 @@ from backend.routers.internal import router as internal_router  # noqa: E402
 from backend.routers.macro import router as macro_router  # noqa: E402
 
 # --- 业务模块路由 ---
+from backend.routers.futu_admin import router as futu_admin_router  # noqa: E402
 from backend.routers.market import router as market_router  # noqa: E402
 from backend.routers.oms import router as oms_router  # noqa: E402
 from backend.routers.preferences import router as preferences_router  # noqa: E402
@@ -812,6 +813,7 @@ app.include_router(audit_router, prefix="/api/v1")
 app.include_router(client_router, prefix="/api/v1")  # BE-08
 app.include_router(system_router, prefix="/api/v1")  # System APM
 app.include_router(risk_router, prefix="/api/v1")  # Risk 风控面板
+app.include_router(futu_admin_router)  # Futu 数据源管理 (prefix 已含 /api/v1/futu)
 
 # 挂载内部 API 路由（需要 HMAC 签名验证，符合 SEC-03 安全规范）
 app.include_router(internal_router, prefix="/api/v1")
