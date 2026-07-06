@@ -394,8 +394,9 @@ async def _dispatch_collect(action: str, ticker: str | None, params: Dict[str, A
 
     # === Futu (优先处理港美股) ===
     if "futu" in ENABLED_COLLECTORS:
-        from backend.services.futu import futu_service
         import logging
+
+        from backend.services.futu import futu_service
 
         logging.getLogger(__name__).info(
             f"[slave_app] Futu dispatch: action={action}, ticker={ticker}, futu_status={futu_service.status}"
