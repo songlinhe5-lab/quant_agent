@@ -79,7 +79,7 @@ class FutuService:
         try:
             from backend.workers.cluster_manager import cluster_manager
         except ImportError as e:
-            logger.warning(f"[FutuService] cluster_manager import failed: {e}")
+            print(f"[FutuService-DEBUG] cluster_manager import failed: {e}", flush=True)
             return None
 
         try:
@@ -89,10 +89,10 @@ class FutuService:
                 if isinstance(data, dict) and "status" not in data:
                     data["status"] = "success"
                 return data
-            logger.warning(f"[FutuService] cluster_call {action}: non-dict result={type(result)}")
+            print(f"[FutuService-DEBUG] cluster_call {action}: non-dict result={type(result)}", flush=True)
             return None
         except Exception as e:
-            logger.warning(f"[FutuService] cluster_call {action} failed: {e}")
+            print(f"[FutuService-DEBUG] cluster_call {action} failed: {type(e).__name__}: {e}", flush=True)
             return None
 
     async def _route(
