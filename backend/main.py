@@ -343,6 +343,13 @@ async def lifespan(app: FastAPI):  # type: ignore
     except Exception as e:
         logger.warning(f"[Startup] AlgoEngine 恢复失败: {e}")
 
+    # 🚀 MARKET-01: 启动 broadcast_loop — 应用启动即运行，无需等待 WebSocket 连接
+    try:
+        await manager.start_background_tasks()
+        print("✅ [Startup] MarketEngine broadcast_loop 已启动")
+    except Exception as e:
+        logger.warning(f"[Startup] MarketEngine 启动失败: {e}")
+
     yield  # 挂起，此时 FastAPI 正式对外提供 HTTP 与 WS 服务
 
     # === 销毁阶段 (Shutdown) ===
