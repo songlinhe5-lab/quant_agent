@@ -151,7 +151,11 @@ class RemoteDataSource:
         try:
             from backend.workers.cluster_manager import cluster_manager
 
+            logger.info(f"[RemoteDataSource] call_collector(futu, {action}, params_keys={list(params.keys())})")
             result = await cluster_manager.call_collector("futu", action, params)
+            logger.info(
+                f"[RemoteDataSource] call_collector returned: type={type(result).__name__}, keys={list(result.keys()) if isinstance(result, dict) else 'N/A'}"
+            )
             if isinstance(result, dict):
                 data = result.get("data", result)
                 if isinstance(data, dict):
@@ -166,9 +170,10 @@ class RemoteDataSource:
                     if "status" not in data:
                         data["status"] = "success"
                 return data
+            logger.warning(f"[RemoteDataSource] {action}: result is not dict, type={type(result)}")
             return None
         except Exception as e:
-            logger.debug(f"[RemoteDataSource] {action} failed: {type(e).__name__}: {e}")
+            logger.warning(f"[RemoteDataSource] {action} failed: {type(e).__name__}: {e}")
             return None
         finally:
             self._in_dispatch = False

@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 HEALTH_CHECK_INTERVAL = 10  # 秒
 FAILURE_THRESHOLD = 3  # 连续失败次数后标记不健康
 RECOVERY_INTERVAL = 30  # 不健康后多久尝试恢复 (秒)
-REQUEST_TIMEOUT = 15  # HTTP 调用超时 (秒)
+REQUEST_TIMEOUT = 30  # HTTP 调用超时 (秒)
 
 # ==========================================
 # Prometheus 指标 (集群通信)
@@ -417,9 +417,24 @@ class ClusterManager:
             "callback_redis": self._callback_redis,
         }
 
-        response = await self._http_client.post(url, json=payload)
-        response.raise_for_status()
-        return response.json()
+        logger.info(f"[ClusterManager] POST {url} ticker={ticker} action={action}")
+        try:
+            response = await self._http_client.post(url, json=payload)
+            response.raise_for_status()
+            result = response.json()
+            logger.info(
+                f"[ClusterManager] {action} OK from {node.node_id}: keys={list(result.keys()) if isinstance(result, dict) else type(result).__name__}"
+            )
+            return result
+        except httpx.TimeoutException as e:
+            logger.warning(f"[ClusterManager] {action} TIMEOUT on {node.node_id} ({url}): {e}")
+            raise
+        except httpx.ConnectError as e:
+            logger.warning(f"[ClusterManager] {action} CONNECT_ERROR on {node.node_id} ({url}): {e}")
+            raise
+        except Exception as e:
+            logger.warning(f"[ClusterManager] {action} FAILED on {node.node_id} ({url}): {type(e).__name__}: {e}")
+            raise
 
     def _mark_healthy(self, node: SlaveNode):
         """标记节点健康"""
