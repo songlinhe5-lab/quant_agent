@@ -138,12 +138,18 @@ class FutuService:
         return result or self._unavailable()
 
     async def get_market_snapshots(self, tickers: list) -> Dict[str, Any]:
+        if self.status != "CONNECTED":
+            return {"status": "error", "message": "Futu OpenD 未连接，跳过快照"}
         return await self.screener_handler.get_market_snapshots(tickers)
 
     async def screen_stocks(self, market: str = "HK", filters: list = []) -> Dict[str, Any]:  # noqa: E501
+        if self.status != "CONNECTED":
+            return {"status": "error", "message": "Futu OpenD 未连接，跳过选股"}
         return await self.screener_handler.screen_stocks(market, filters)
 
     async def get_stock_basicinfo(self, market: str, sec_type: str) -> Dict[str, Any]:
+        if self.status != "CONNECTED":
+            return {"status": "error", "message": "Futu OpenD 未连接，跳过基本信息"}
         return await self.screener_handler.get_stock_basicinfo(market, sec_type)
 
     async def place_order(
