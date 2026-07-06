@@ -101,6 +101,8 @@ class FutuService:
         return result or self._unavailable()
 
     async def unsubscribe_quote(self, ticker: str) -> Dict[str, Any]:
+        if self.status != "CONNECTED":
+            return {"status": "error", "message": "Futu OpenD 未连接，跳过退订"}
         return await self.quote_handler.unsubscribe_quote(ticker, format_ticker)
 
     async def get_history(self, ticker: str, ktype: str = "K_DAY", num: int = 60) -> Dict[str, Any]:  # noqa: E501
@@ -156,6 +158,8 @@ class FutuService:
         return await self.trade_handler.query_order(order_id, market)
 
     async def get_account_info(self, market: str = "HK") -> Dict[str, Any]:
+        if self.status != "CONNECTED":
+            return {"status": "error", "message": "Futu OpenD 未连接，跳过账户快照"}
         return await self.trade_handler.get_account_info(market)
 
 

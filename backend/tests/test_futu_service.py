@@ -136,10 +136,11 @@ class TestFutuServiceQuoteMethods:
 
     @pytest.mark.asyncio
     async def test_unsubscribe_quote(self):
-        """unsubscribe_quote() 调用 QuoteHandler.unsubscribe_quote()"""
+        """unsubscribe_quote() 本地连接时调用 QuoteHandler.unsubscribe_quote()"""
         from backend.services.futu.utils import format_ticker
 
         service = FutuService()
+        service.status = "CONNECTED"
         with patch.object(service.quote_handler, "unsubscribe_quote", new_callable=AsyncMock) as mock:
             mock.return_value = {"data": "unsubscribed"}
             result = await service.unsubscribe_quote("HK.00700")
