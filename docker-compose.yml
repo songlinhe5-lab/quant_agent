@@ -111,6 +111,8 @@ services:
     volumes:
       - quant_db:/app/backend/data
       - ./reports:/app/reports
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     deploy:
       resources:
         limits:
@@ -150,6 +152,8 @@ services:
           cpus: '1.0'
         reservations:
           memory: 256M
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - quant-internal
 
