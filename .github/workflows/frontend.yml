@@ -142,11 +142,15 @@ jobs:
       - name: Build
         if: steps.check.outputs.skip == 'false'
         working-directory: ./frontend
+        env:
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
         run: NODE_OPTIONS='--max-old-space-size=4096' pnpm run build
       - name: Deploy to Cloudflare Pages
         if: steps.check.outputs.skip == 'false'
-        working-directory: ./frontend
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ env.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx wrangler pages deploy dist --project-name quant-agent --branch ${{ github.ref_name }}
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: quant-agent
+          directory: frontend/dist
+          branch: ${{ github.ref_name }}
