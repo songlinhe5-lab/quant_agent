@@ -11,8 +11,5 @@ Agent Tools 自动扫描挂载中心
 package_dir = os.path.dirname(__file__)
 
 for _, module_name, _ in pkgutil.iter_modules([package_dir]):
-    # 跳过测试文件 (test_*.py)
-    if module_name.startswith("test_"):
-        continue
     # 动态导入当前包下的所有模块
     importlib.import_module(f"{__name__}.{module_name}")

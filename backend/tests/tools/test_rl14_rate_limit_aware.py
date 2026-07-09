@@ -9,7 +9,6 @@ RL-14: Hermes Agent Tool 限流感知智能重试单测
 - 集成 BrokerMarketTool: 限流场景端到端
 """
 
-import asyncio
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -17,10 +16,10 @@ import pytest
 
 from hermes_agent.tools.base import BaseTool
 
-
 # ─────────────────────────────────────────
 # Fixtures
 # ─────────────────────────────────────────
+
 
 @pytest.fixture
 def tool():
@@ -43,6 +42,7 @@ def _make_response(status_code=200, json_data=None, headers=None, text=""):
 # ─────────────────────────────────────────
 # _is_rate_limit_response
 # ─────────────────────────────────────────
+
 
 class TestIsRateLimitResponse:
     def test_http_429_detected(self, tool):
@@ -77,6 +77,7 @@ class TestIsRateLimitResponse:
 # ─────────────────────────────────────────
 # _extract_retry_after
 # ─────────────────────────────────────────
+
 
 class TestExtractRetryAfter:
     def test_retry_after_header(self, tool):
@@ -132,6 +133,7 @@ class TestExtractRetryAfter:
 # rate_limit_aware_request
 # ─────────────────────────────────────────
 
+
 class TestRateLimitAwareRequest:
     @pytest.mark.asyncio
     async def test_success_returns_json(self, tool):
@@ -174,9 +176,7 @@ class TestRateLimitAwareRequest:
         client.request.return_value = rate_limit_resp
 
         with patch("hermes_agent.tools.base.asyncio.sleep", new_callable=AsyncMock):
-            result = await tool.rate_limit_aware_request(
-                client, "GET", "http://test/api", max_retries=2
-            )
+            result = await tool.rate_limit_aware_request(client, "GET", "http://test/api", max_retries=2)
 
         assert result["status"] == "rate_limited"
         assert "retry_after_seconds" in result
@@ -222,9 +222,7 @@ class TestRateLimitAwareRequest:
         client.request.side_effect = ConnectionError("Connection refused")
 
         with patch("hermes_agent.tools.base.asyncio.sleep", new_callable=AsyncMock):
-            result = await tool.rate_limit_aware_request(
-                client, "GET", "http://test/api", max_retries=1
-            )
+            result = await tool.rate_limit_aware_request(client, "GET", "http://test/api", max_retries=1)
 
         assert result["status"] == "error"
         assert "重试 1 次" in result["message"]
@@ -256,9 +254,7 @@ class TestRateLimitAwareRequest:
         rate_limit_resp = _make_response(status_code=429, headers={"Retry-After": "10"})
         client.request.return_value = rate_limit_resp
 
-        result = await tool.rate_limit_aware_request(
-            client, "GET", "http://test/api", max_retries=0
-        )
+        result = await tool.rate_limit_aware_request(client, "GET", "http://test/api", max_retries=0)
 
         assert result["status"] == "rate_limited"
         assert client.request.call_count == 1
@@ -267,6 +263,7 @@ class TestRateLimitAwareRequest:
 # ─────────────────────────────────────────
 # BrokerMarketTool 集成测试
 # ─────────────────────────────────────────
+
 
 class TestBrokerMarketToolIntegration:
     @pytest.mark.asyncio
