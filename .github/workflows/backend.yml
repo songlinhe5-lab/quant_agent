@@ -347,8 +347,7 @@ jobs:
       always() &&
       ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
        github.event_name == 'workflow_dispatch') &&
-      needs.build.result == 'success' &&
-      secrets.VPS_HOST != ''
+      needs.build.result == 'success'
 
     steps:
       - uses: actions/checkout@v4
