@@ -129,6 +129,7 @@ class CircuitBreaker:
         category = getattr(exc, "_error_category", None)
         if category is not None:
             from backend.services.datasource import ErrorCategory
+
             try:
                 if isinstance(category, ErrorCategory):
                     return category != ErrorCategory.NORMAL
@@ -139,7 +140,10 @@ class CircuitBreaker:
         return False
 
     async def call(
-        self, service: str, func: Callable, *args: Any,
+        self,
+        service: str,
+        func: Callable,
+        *args: Any,
         error_classifier: Optional[Callable] = None,
         **kwargs: Any,
     ) -> Any:  # noqa: E501
@@ -173,9 +177,7 @@ class CircuitBreaker:
             async with entry.lock:
                 # RL-03: 限流类错误不计入熔断器失败计数
                 if self._should_skip_failure(exc, error_classifier):
-                    logger.debug(
-                        f"⚡ [CircuitBreaker] {service} 限流类错误，跳过失败计数: {exc}"
-                    )
+                    logger.debug(f"⚡ [CircuitBreaker] {service} 限流类错误，跳过失败计数: {exc}")
                 else:
                     entry.failures += 1
                     entry.last_failure_ts = time.monotonic()
@@ -183,7 +185,9 @@ class CircuitBreaker:
                         prev_state = entry.state.value
                         entry.state = CircuitState.OPEN
                         CIRCUIT_BREAKER_STATE.labels(service=service).set(2)
-                        CIRCUIT_BREAKER_TRANSITIONS.labels(service=service, from_state=prev_state, to_state="open").inc()
+                        CIRCUIT_BREAKER_TRANSITIONS.labels(
+                            service=service, from_state=prev_state, to_state="open"
+                        ).inc()
                         logger.error(
                             f"🔴 [CircuitBreaker] {service} 连续失败 {entry.failures} 次，触发熔断！"  # noqa: E501
                             f"将在 {self._recovery_timeout}s 后自动半开探测。"
@@ -209,7 +213,10 @@ class CircuitBreaker:
         return result
 
     def call_sync(
-        self, service: str, func: Callable, *args: Any,
+        self,
+        service: str,
+        func: Callable,
+        *args: Any,
         error_classifier: Optional[Callable] = None,
         **kwargs: Any,
     ) -> Any:
@@ -238,9 +245,7 @@ class CircuitBreaker:
         except Exception as exc:
             # RL-03: 限流类错误不计入熔断器失败计数
             if self._should_skip_failure(exc, error_classifier):
-                logger.debug(
-                    f"⚡ [CircuitBreaker] {service} 限流类错误，跳过失败计数: {exc}"
-                )
+                logger.debug(f"⚡ [CircuitBreaker] {service} 限流类错误，跳过失败计数: {exc}")
             else:
                 entry.failures += 1
                 entry.last_failure_ts = time.monotonic()
@@ -298,9 +303,7 @@ class CircuitBreaker:
                 f"将在 {self._recovery_timeout}s 后自动半开探测。"
             )
         else:
-            logger.warning(
-                f"⚠️ [CircuitBreaker] {service} 失败 {entry.failures}/{self._max_failures}"
-            )
+            logger.warning(f"⚠️ [CircuitBreaker] {service} 失败 {entry.failures}/{self._max_failures}")
 
     def record_success(self, service: str) -> None:
         """外部调用者手动记录成功（重置失败计数）"""

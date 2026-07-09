@@ -20,16 +20,20 @@ import pytest
 #  1. YFinanceWorker 初始化
 # ─────────────────────────────────────────
 
+
 class TestYFinanceWorkerInit:
     """验证 YFinanceWorker 初始化"""
 
     def test_forces_router_disabled(self):
         """初始化时应强制 YF_ROUTER_ENABLED=false"""
-        with patch.dict(os.environ, {"YF_ROUTER_ENABLED": "true"}), \
-             patch("data_subservice.yfinance_worker.YFinanceService") as mock_cls:
+        with (
+            patch.dict(os.environ, {"YF_ROUTER_ENABLED": "true"}),
+            patch("data_subservice.yfinance_worker.YFinanceService") as mock_cls,
+        ):
             mock_cls.return_value = MagicMock()
 
             from data_subservice.yfinance_worker import YFinanceWorker
+
             YFinanceWorker()
 
             assert os.environ["YF_ROUTER_ENABLED"] == "false"
@@ -42,6 +46,7 @@ class TestYFinanceWorkerInit:
             mock_cls.return_value = mock_svc
 
             from data_subservice.yfinance_worker import YFinanceWorker
+
             worker = YFinanceWorker()
 
             assert worker.service is mock_svc
@@ -52,6 +57,7 @@ class TestYFinanceWorkerInit:
 # ─────────────────────────────────────────
 #  2. start/stop 生命周期
 # ─────────────────────────────────────────
+
 
 class TestYFinanceWorkerLifecycle:
     """验证 worker 启动/停止流程"""
@@ -65,6 +71,7 @@ class TestYFinanceWorkerLifecycle:
             mock_cls.return_value = mock_svc
 
             from data_subservice.yfinance_worker import YFinanceWorker
+
             worker = YFinanceWorker()
             await worker.start()
 
@@ -88,6 +95,7 @@ class TestYFinanceWorkerLifecycle:
             mock_cls.return_value = mock_svc
 
             from data_subservice.yfinance_worker import YFinanceWorker
+
             worker = YFinanceWorker()
 
             await worker.start()
@@ -113,6 +121,7 @@ class TestYFinanceWorkerLifecycle:
             mock_cls.return_value = mock_svc
 
             from data_subservice.yfinance_worker import YFinanceWorker
+
             worker = YFinanceWorker()
             await worker.start()
 
@@ -137,6 +146,7 @@ class TestYFinanceWorkerLifecycle:
             mock_cls.return_value = mock_svc
 
             from data_subservice.yfinance_worker import YFinanceWorker
+
             worker = YFinanceWorker()
 
             await worker.stop()  # 不应抛异常
@@ -146,6 +156,7 @@ class TestYFinanceWorkerLifecycle:
 # ─────────────────────────────────────────
 #  3. 健康检查
 # ─────────────────────────────────────────
+
 
 class TestYFinanceWorkerHealth:
     """验证 worker 健康检查"""
@@ -163,6 +174,7 @@ class TestYFinanceWorkerHealth:
             mock_cls.return_value = mock_svc
 
             from data_subservice.yfinance_worker import YFinanceWorker
+
             worker = YFinanceWorker()
 
             health = worker.get_health()
@@ -180,6 +192,7 @@ class TestYFinanceWorkerHealth:
             mock_cls.return_value = mock_svc
 
             from data_subservice.yfinance_worker import YFinanceWorker
+
             worker = YFinanceWorker()
             await worker.start()
 
@@ -202,6 +215,7 @@ class TestYFinanceWorkerHealth:
             mock_cls.return_value = mock_svc
 
             from data_subservice.yfinance_worker import YFinanceWorker
+
             worker = YFinanceWorker()
 
             assert worker.is_daemon_running is False
@@ -220,6 +234,7 @@ class TestYFinanceWorkerHealth:
 #  4. 数据接口代理
 # ─────────────────────────────────────────
 
+
 class TestYFinanceWorkerDataAPI:
     """验证 worker 数据接口正确代理到 YFinanceService"""
 
@@ -232,6 +247,7 @@ class TestYFinanceWorkerDataAPI:
             mock_cls.return_value = mock_svc
 
             from data_subservice.yfinance_worker import YFinanceWorker
+
             worker = YFinanceWorker()
 
             result = await worker.fetch("AAPL", "history", ttl=600, period="5d")
@@ -248,6 +264,7 @@ class TestYFinanceWorkerDataAPI:
             mock_cls.return_value = mock_svc
 
             from data_subservice.yfinance_worker import YFinanceWorker
+
             worker = YFinanceWorker()
 
             result = await worker.batched_quote("AAPL", req_type="quote")
@@ -263,6 +280,7 @@ class TestYFinanceWorkerDataAPI:
             mock_cls.return_value = mock_svc
 
             from data_subservice.yfinance_worker import YFinanceWorker
+
             worker = YFinanceWorker()
 
             result = await worker.tech_indicators("AAPL", rsi_period=14)
@@ -278,6 +296,7 @@ class TestYFinanceWorkerDataAPI:
             mock_cls.return_value = mock_svc
 
             from data_subservice.yfinance_worker import YFinanceWorker
+
             worker = YFinanceWorker()
 
             result = await worker.search("Apple")
@@ -289,6 +308,7 @@ class TestYFinanceWorkerDataAPI:
 # ─────────────────────────────────────────
 #  5. main.py 集成测试
 # ─────────────────────────────────────────
+
 
 class TestMainIntegration:
     """验证 main.py 中 worker 集成"""
@@ -315,12 +335,13 @@ class TestMainIntegration:
         mock_worker.is_daemon_running = True
         mock_worker.get_health.return_value = {"status": "healthy", "daemon_running": True}
 
-        with patch.object(mod, "aioredis", mock_aioredis), \
-             patch.object(mod, "ServiceRegistry", return_value=mock_registry), \
-             patch.object(mod, "DS_NODE_ID", "test-node-01"), \
-             patch.object(mod, "DS_CAPABILITIES", ["yfinance"]), \
-             patch.object(mod, "YFinanceWorker", return_value=mock_worker):
-
+        with (
+            patch.object(mod, "aioredis", mock_aioredis),
+            patch.object(mod, "ServiceRegistry", return_value=mock_registry),
+            patch.object(mod, "DS_NODE_ID", "test-node-01"),
+            patch.object(mod, "DS_CAPABILITIES", ["yfinance"]),
+            patch.object(mod, "YFinanceWorker", return_value=mock_worker),
+        ):
             async with mod.lifespan(mod.app):
                 # worker 应已启动
                 mock_worker.start.assert_awaited_once()
@@ -347,11 +368,12 @@ class TestMainIntegration:
         mock_aioredis = MagicMock()
         mock_aioredis.Redis = MagicMock(return_value=fake_redis)
 
-        with patch.object(mod, "aioredis", mock_aioredis), \
-             patch.object(mod, "ServiceRegistry", return_value=mock_registry), \
-             patch.object(mod, "DS_NODE_ID", "test-node-01"), \
-             patch.object(mod, "DS_CAPABILITIES", ["akshare"]):
-
+        with (
+            patch.object(mod, "aioredis", mock_aioredis),
+            patch.object(mod, "ServiceRegistry", return_value=mock_registry),
+            patch.object(mod, "DS_NODE_ID", "test-node-01"),
+            patch.object(mod, "DS_CAPABILITIES", ["akshare"]),
+        ):
             async with mod.lifespan(mod.app):
                 assert mod._yf_worker is None
 
@@ -362,15 +384,17 @@ class TestMainIntegration:
         mock_worker = MagicMock()
         mock_worker.is_daemon_running = True
 
-        with patch.object(mod, "_yf_worker", mock_worker), \
-             patch.object(mod, "_start_time", 1000.0), \
-             patch.object(mod, "DS_NODE_ID", "test-node-01"), \
-             patch.object(mod, "DS_REGION", "us-west"), \
-             patch.object(mod, "DS_CAPABILITIES", ["yfinance"]):
-
+        with (
+            patch.object(mod, "_yf_worker", mock_worker),
+            patch.object(mod, "_start_time", 1000.0),
+            patch.object(mod, "DS_NODE_ID", "test-node-01"),
+            patch.object(mod, "DS_REGION", "us-west"),
+            patch.object(mod, "DS_CAPABILITIES", ["yfinance"]),
+        ):
             from fastapi.testclient import TestClient
 
             from data_subservice.main import app
+
             client = TestClient(app, raise_server_exceptions=False)
             resp = client.get("/health")
 
@@ -391,15 +415,17 @@ class TestMainIntegration:
             "daemon_running": True,
         }
 
-        with patch.object(mod, "_yf_worker", mock_worker), \
-             patch.object(mod, "_start_time", 1000.0), \
-             patch.object(mod, "DS_NODE_ID", "test-node-01"), \
-             patch.object(mod, "DS_REGION", "us-west"), \
-             patch.object(mod, "DS_CAPABILITIES", ["yfinance"]):
-
+        with (
+            patch.object(mod, "_yf_worker", mock_worker),
+            patch.object(mod, "_start_time", 1000.0),
+            patch.object(mod, "DS_NODE_ID", "test-node-01"),
+            patch.object(mod, "DS_REGION", "us-west"),
+            patch.object(mod, "DS_CAPABILITIES", ["yfinance"]),
+        ):
             from fastapi.testclient import TestClient
 
             from data_subservice.main import app
+
             client = TestClient(app, raise_server_exceptions=False)
             resp = client.get("/ds/health")
 
@@ -425,15 +451,17 @@ class TestMainIntegration:
             "daemon_running": True,
         }
 
-        with patch.object(mod, "_yf_worker", mock_worker), \
-             patch.object(mod, "_start_time", 1000.0), \
-             patch.object(mod, "DS_NODE_ID", "test-node-01"), \
-             patch.object(mod, "DS_REGION", "us-west"), \
-             patch.object(mod, "DS_CAPABILITIES", ["yfinance"]):
-
+        with (
+            patch.object(mod, "_yf_worker", mock_worker),
+            patch.object(mod, "_start_time", 1000.0),
+            patch.object(mod, "DS_NODE_ID", "test-node-01"),
+            patch.object(mod, "DS_REGION", "us-west"),
+            patch.object(mod, "DS_CAPABILITIES", ["yfinance"]),
+        ):
             from fastapi.testclient import TestClient
 
             from data_subservice.main import app
+
             client = TestClient(app, raise_server_exceptions=False)
             resp = client.get("/ds/health")
 
@@ -457,12 +485,13 @@ class TestMainIntegration:
         mock_aioredis = MagicMock()
         mock_aioredis.Redis = MagicMock(return_value=fake_redis)
 
-        with patch.object(mod, "aioredis", mock_aioredis), \
-             patch.object(mod, "ServiceRegistry", return_value=mock_registry), \
-             patch.object(mod, "DS_NODE_ID", "test-node-01"), \
-             patch.object(mod, "DS_CAPABILITIES", ["yfinance"]), \
-             patch.object(mod, "YFinanceWorker", side_effect=RuntimeError("yfinance 依赖缺失")):
-
+        with (
+            patch.object(mod, "aioredis", mock_aioredis),
+            patch.object(mod, "ServiceRegistry", return_value=mock_registry),
+            patch.object(mod, "DS_NODE_ID", "test-node-01"),
+            patch.object(mod, "DS_CAPABILITIES", ["yfinance"]),
+            patch.object(mod, "YFinanceWorker", side_effect=RuntimeError("yfinance 依赖缺失")),
+        ):
             # 不应抛异常
             async with mod.lifespan(mod.app):
                 pass

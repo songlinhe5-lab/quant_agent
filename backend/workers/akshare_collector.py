@@ -32,13 +32,14 @@ from backend.core.logger import logger
 #  采集任务定义
 # ─────────────────────────────────────────
 
+
 class CollectorTask:
     """采集任务定义"""
 
     def __init__(self, name: str, interval_trading: int, interval_closed: int, description: str = ""):
         self.name = name
         self.interval_trading = interval_trading  # 盘中采集间隔 (秒)
-        self.interval_closed = interval_closed    # 收盘后采集间隔 (秒)
+        self.interval_closed = interval_closed  # 收盘后采集间隔 (秒)
         self.description = description
 
 
@@ -46,8 +47,8 @@ class CollectorTask:
 COLLECTOR_TASKS: Dict[str, CollectorTask] = {
     "southbound": CollectorTask(
         name="southbound",
-        interval_trading=300,     # 盘中 5 分钟
-        interval_closed=7200,     # 收盘后 2 小时
+        interval_trading=300,  # 盘中 5 分钟
+        interval_closed=7200,  # 收盘后 2 小时
         description="南向资金 (港股通净买入)",
     ),
     "northbound": CollectorTask(
@@ -58,7 +59,7 @@ COLLECTOR_TASKS: Dict[str, CollectorTask] = {
     ),
     "economic_calendar": CollectorTask(
         name="economic_calendar",
-        interval_trading=43200,   # 12 小时
+        interval_trading=43200,  # 12 小时
         interval_closed=43200,
         description="宏观经济日历",
     ),
@@ -120,6 +121,7 @@ _TASK_HANDLERS = {
 # ─────────────────────────────────────────
 #  采集 daemon 主循环
 # ─────────────────────────────────────────
+
 
 async def akshare_collector_daemon(
     enabled_tasks: List[str] | None = None,

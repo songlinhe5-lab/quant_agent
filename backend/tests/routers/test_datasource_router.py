@@ -43,6 +43,7 @@ def client():
 #  _parse_window_seconds 参数解析
 # ─────────────────────────────────────────
 
+
 class TestParseWindow:
     def test_none_returns_none(self):
         assert _parse_window_seconds(None) is None
@@ -77,6 +78,7 @@ class TestParseWindow:
 # ─────────────────────────────────────────
 #  GET /rate-limit-analysis
 # ─────────────────────────────────────────
+
 
 class TestRateLimitAnalysisEndpoint:
     def test_empty_analysis(self, client):
@@ -129,6 +131,7 @@ class TestRateLimitAnalysisEndpoint:
 #  GET /rate-limit-status
 # ─────────────────────────────────────────
 
+
 class TestRateLimitStatusEndpoint:
     def test_status_default(self, client):
         """默认状态（无限流）"""
@@ -162,6 +165,7 @@ class TestRateLimitStatusEndpoint:
 # ─────────────────────────────────────────
 #  GET /rate-limit-overview
 # ─────────────────────────────────────────
+
 
 class TestRateLimitOverviewEndpoint:
     def test_overview_empty(self, client):
@@ -205,6 +209,7 @@ class TestRateLimitOverviewEndpoint:
 # ─────────────────────────────────────────
 #  路由优先级：overview 必须在 {name} 之前
 # ─────────────────────────────────────────
+
 
 class TestRoutePriority:
     def test_overview_not_matched_as_name(self, client):

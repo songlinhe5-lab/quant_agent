@@ -252,7 +252,9 @@ class QuoteHandler:
             evicted = self.cache_mgr.ensure_capacity(needed=1)
             await _execute_unsubscriptions(self.conn_mgr, self.cache_mgr, evicted)
 
-            ret, msg = self.conn_mgr.quote_ctx.subscribe([market_ticker], [SubType.ORDER_BOOK], subscribe_push=True)  # 开启推送，盘口深度实时推送
+            ret, msg = self.conn_mgr.quote_ctx.subscribe(
+                [market_ticker], [SubType.ORDER_BOOK], subscribe_push=True
+            )  # 开启推送，盘口深度实时推送
             if ret != RET_OK:
                 return {"status": "error", "message": f"盘口订阅失败: {msg}"}
             self.cache_mgr.touch_topic(market_ticker, SubType.ORDER_BOOK)

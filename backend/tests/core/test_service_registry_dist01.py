@@ -107,11 +107,7 @@ class FakeRedis:
             min_score = float("-inf")
         if max_score == "+inf":
             max_score = float("inf")
-        return [
-            member
-            for member, score in self._zset[key].items()
-            if min_score <= score <= max_score
-        ]
+        return [member for member, score in self._zset[key].items() if min_score <= score <= max_score]
 
     async def sadd(self, key, *members):
         self._ensure_set(key)

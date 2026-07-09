@@ -29,6 +29,7 @@ from backend.core.logger import logger
 @dataclass
 class RateLimitAlertEvent:
     """限流告警事件"""
+
     source: str
     category: str  # "rate_limit" | "quota_exhausted" | "ip_blocked"
     wait_seconds: float
@@ -63,6 +64,7 @@ class RateLimitAlertMonitor:
         if self._notification_service is None:
             try:
                 from backend.services.notification_service import notification_service
+
                 self._notification_service = notification_service
             except ImportError:
                 pass
@@ -96,16 +98,15 @@ class RateLimitAlertMonitor:
         self._rate_counts[source].append(now)
         # 清理过期时间戳
         cutoff = now - self.SPIKE_WINDOW_SECONDS
-        self._rate_counts[source] = [
-            ts for ts in self._rate_counts[source] if ts > cutoff
-        ]
+        self._rate_counts[source] = [ts for ts in self._rate_counts[source] if ts > cutoff]
 
         # 2. 检测告警场景 (按优先级)
 
         # 场景 A: IP 封禁 (最严重，立即告警)
         if category == "ip_blocked":
             alert = self._try_create_alert(
-                source, "ip_blocked",
+                source,
+                "ip_blocked",
                 severity="critical",
                 message=f"🚨 数据源 [{source}] IP 被封禁！退避 {wait_seconds:.0f}s，请立即检查 IP 状态",
             )
@@ -113,7 +114,8 @@ class RateLimitAlertMonitor:
         # 场景 B: 配额耗尽
         elif category == "quota_exhausted":
             alert = self._try_create_alert(
-                source, "quota_exhausted",
+                source,
+                "quota_exhausted",
                 severity="critical",
                 message=f"🚨 数据源 [{source}] API 配额已耗尽！退避 {wait_seconds:.0f}s，请检查 API Key 配额",
             )
@@ -121,7 +123,8 @@ class RateLimitAlertMonitor:
         # 场景 C: 长时间退避 (>2min)
         elif wait_seconds > self.LONG_BACKOFF_THRESHOLD:
             alert = self._try_create_alert(
-                source, "long_backoff",
+                source,
+                "long_backoff",
                 severity="warning",
                 message=f"⚠️ 数据源 [{source}] 退避时间过长: {wait_seconds:.0f}s (>2min)，数据源可能已被长时间封禁",
             )
@@ -129,7 +132,8 @@ class RateLimitAlertMonitor:
         # 场景 D: 限流频率飙升 (5min >10 次)
         elif len(self._rate_counts[source]) > self.SPIKE_THRESHOLD:
             alert = self._try_create_alert(
-                source, "rate_limit_spike",
+                source,
+                "rate_limit_spike",
                 severity="critical",
                 message=(
                     f"🚨 数据源 [{source}] 限流频率飙升: "
@@ -145,7 +149,11 @@ class RateLimitAlertMonitor:
         return alert
 
     def _try_create_alert(
-        self, source: str, alert_type: str, severity: str, message: str,
+        self,
+        source: str,
+        alert_type: str,
+        severity: str,
+        message: str,
     ) -> Optional[RateLimitAlertEvent]:
         """尝试创建告警事件（去重冷却检查）"""
         now = time.time()
@@ -193,15 +201,11 @@ class RateLimitAlertMonitor:
     def get_status(self) -> dict:
         """获取监控器当前状态（用于调试/可观测性）"""
         active_spike_sources = [
-            source for source, timestamps in self._rate_counts.items()
-            if len(timestamps) > self.SPIKE_THRESHOLD
+            source for source, timestamps in self._rate_counts.items() if len(timestamps) > self.SPIKE_THRESHOLD
         ]
         return {
             "active_spike_sources": active_spike_sources,
-            "recent_rate_counts": {
-                source: len(timestamps)
-                for source, timestamps in self._rate_counts.items()
-            },
+            "recent_rate_counts": {source: len(timestamps) for source, timestamps in self._rate_counts.items()},
             "cooldown_keys": list(self._last_alert.keys()),
         }
 

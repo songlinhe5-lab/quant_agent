@@ -26,6 +26,7 @@ from backend.services.datasource.throttler import BackoffStrategy, RateLimitThro
 #  BackoffStrategy 枚举
 # ─────────────────────────────────────────
 
+
 class TestBackoffStrategy:
     def test_enum_values(self):
         assert BackoffStrategy.NONE == "none"
@@ -41,6 +42,7 @@ class TestBackoffStrategy:
 # ─────────────────────────────────────────
 #  初始化与配置
 # ─────────────────────────────────────────
+
 
 class TestThrottlerInit:
     def test_default_strategy_is_adaptive(self):
@@ -80,6 +82,7 @@ class TestThrottlerInit:
 #  退避策略计算
 # ─────────────────────────────────────────
 
+
 class TestBackoffStrategies:
     def test_none_strategy_no_throttle(self):
         t = RateLimitThrottler("test", strategy=BackoffStrategy.NONE)
@@ -89,8 +92,10 @@ class TestBackoffStrategies:
 
     def test_linear_strategy(self):
         t = RateLimitThrottler(
-            "test", strategy=BackoffStrategy.LINEAR,
-            base_delay=2.0, jitter=False,
+            "test",
+            strategy=BackoffStrategy.LINEAR,
+            base_delay=2.0,
+            jitter=False,
         )
         # 第1次: base + step*1 = 2 + 2 = 4
         w1 = t.on_rate_limit()
@@ -106,8 +111,10 @@ class TestBackoffStrategies:
 
     def test_exponential_strategy(self):
         t = RateLimitThrottler(
-            "test", strategy=BackoffStrategy.EXPONENTIAL,
-            base_delay=2.0, jitter=False,
+            "test",
+            strategy=BackoffStrategy.EXPONENTIAL,
+            base_delay=2.0,
+            jitter=False,
         )
         # 第1次: 2 * 2^1 = 4
         w1 = t.on_rate_limit()
@@ -123,8 +130,11 @@ class TestBackoffStrategies:
 
     def test_exponential_caps_at_max_delay(self):
         t = RateLimitThrottler(
-            "test", strategy=BackoffStrategy.EXPONENTIAL,
-            base_delay=2.0, max_delay=10.0, jitter=False,
+            "test",
+            strategy=BackoffStrategy.EXPONENTIAL,
+            base_delay=2.0,
+            max_delay=10.0,
+            jitter=False,
         )
         # 连续触发，最终应被 cap 在 max_delay
         for _ in range(10):
@@ -133,8 +143,10 @@ class TestBackoffStrategies:
 
     def test_adaptive_strategy(self):
         t = RateLimitThrottler(
-            "test", strategy=BackoffStrategy.ADAPTIVE,
-            base_delay=2.0, jitter=False,
+            "test",
+            strategy=BackoffStrategy.ADAPTIVE,
+            base_delay=2.0,
+            jitter=False,
         )
         # 自适应策略：指数退避 + 动态调整
         w1 = t.on_rate_limit()
@@ -145,8 +157,10 @@ class TestBackoffStrategies:
 
     def test_jitter_adds_randomness(self):
         t = RateLimitThrottler(
-            "test", strategy=BackoffStrategy.LINEAR,
-            base_delay=2.0, jitter=True,
+            "test",
+            strategy=BackoffStrategy.LINEAR,
+            base_delay=2.0,
+            jitter=True,
         )
         # 多次触发，收集退避时间
         waits = [t.on_rate_limit() for _ in range(5)]
@@ -162,11 +176,14 @@ class TestBackoffStrategies:
 #  Retry-After 优先采纳
 # ─────────────────────────────────────────
 
+
 class TestRetryAfter:
     def test_retry_after_overrides_strategy(self):
         t = RateLimitThrottler(
-            "test", strategy=BackoffStrategy.EXPONENTIAL,
-            base_delay=2.0, jitter=False,
+            "test",
+            strategy=BackoffStrategy.EXPONENTIAL,
+            base_delay=2.0,
+            jitter=False,
         )
         error = ErrorInfo.rate_limited(retry_after=30.0)
         wait = t.on_rate_limit(error)
@@ -175,8 +192,11 @@ class TestRetryAfter:
 
     def test_retry_after_capped_by_max_delay(self):
         t = RateLimitThrottler(
-            "test", strategy=BackoffStrategy.LINEAR,
-            base_delay=2.0, max_delay=20.0, jitter=False,
+            "test",
+            strategy=BackoffStrategy.LINEAR,
+            base_delay=2.0,
+            max_delay=20.0,
+            jitter=False,
         )
         error = ErrorInfo.rate_limited(retry_after=60.0)
         wait = t.on_rate_limit(error)
@@ -188,11 +208,14 @@ class TestRetryAfter:
 #  退避期拦截
 # ─────────────────────────────────────────
 
+
 class TestThrottleBlocking:
     def test_should_throttle_after_rate_limit(self):
         t = RateLimitThrottler(
-            "test", strategy=BackoffStrategy.LINEAR,
-            base_delay=10.0, jitter=False,
+            "test",
+            strategy=BackoffStrategy.LINEAR,
+            base_delay=10.0,
+            jitter=False,
         )
         assert not t.should_throttle()
 
@@ -208,8 +231,10 @@ class TestThrottleBlocking:
 
     def test_throttle_expires(self):
         t = RateLimitThrottler(
-            "test", strategy=BackoffStrategy.LINEAR,
-            base_delay=0.05, jitter=False,
+            "test",
+            strategy=BackoffStrategy.LINEAR,
+            base_delay=0.05,
+            jitter=False,
         )
         t.on_rate_limit()
         assert t.should_throttle()
@@ -227,11 +252,14 @@ class TestThrottleBlocking:
 #  恢复机制
 # ─────────────────────────────────────────
 
+
 class TestRecovery:
     def test_adaptive_recovery_after_successes(self):
         t = RateLimitThrottler(
-            "test", strategy=BackoffStrategy.ADAPTIVE,
-            base_delay=2.0, jitter=False,
+            "test",
+            strategy=BackoffStrategy.ADAPTIVE,
+            base_delay=2.0,
+            jitter=False,
         )
         # 触发限流
         t.on_rate_limit()
@@ -247,8 +275,10 @@ class TestRecovery:
 
     def test_full_recovery_resets_state(self):
         t = RateLimitThrottler(
-            "test", strategy=BackoffStrategy.ADAPTIVE,
-            base_delay=2.0, jitter=False,
+            "test",
+            strategy=BackoffStrategy.ADAPTIVE,
+            base_delay=2.0,
+            jitter=False,
         )
         # 触发一次限流
         t.on_rate_limit()
@@ -274,6 +304,7 @@ class TestRecovery:
 #  状态查询
 # ─────────────────────────────────────────
 
+
 class TestStatus:
     def test_initial_status(self):
         t = RateLimitThrottler("test", strategy=BackoffStrategy.ADAPTIVE)
@@ -286,8 +317,10 @@ class TestStatus:
 
     def test_status_after_rate_limit(self):
         t = RateLimitThrottler(
-            "test", strategy=BackoffStrategy.LINEAR,
-            base_delay=10.0, jitter=False,
+            "test",
+            strategy=BackoffStrategy.LINEAR,
+            base_delay=10.0,
+            jitter=False,
         )
         t.on_rate_limit()
         status = t.get_status()
@@ -298,8 +331,10 @@ class TestStatus:
 
     def test_status_estimated_rpm(self):
         t = RateLimitThrottler(
-            "test", strategy=BackoffStrategy.LINEAR,
-            base_delay=2.0, jitter=False,
+            "test",
+            strategy=BackoffStrategy.LINEAR,
+            base_delay=2.0,
+            jitter=False,
         )
         t.on_rate_limit()
         status = t.get_status()
@@ -308,8 +343,10 @@ class TestStatus:
 
     def test_status_total_1h_counts_multiple_events(self):
         t = RateLimitThrottler(
-            "test", strategy=BackoffStrategy.LINEAR,
-            base_delay=0.01, jitter=False,
+            "test",
+            strategy=BackoffStrategy.LINEAR,
+            base_delay=0.01,
+            jitter=False,
         )
         for _ in range(5):
             t.on_rate_limit()
@@ -323,11 +360,14 @@ class TestStatus:
 #  重置
 # ─────────────────────────────────────────
 
+
 class TestReset:
     def test_reset_clears_all_state(self):
         t = RateLimitThrottler(
-            "test", strategy=BackoffStrategy.LINEAR,
-            base_delay=10.0, jitter=False,
+            "test",
+            strategy=BackoffStrategy.LINEAR,
+            base_delay=10.0,
+            jitter=False,
         )
         t.on_rate_limit()
         t.on_rate_limit()
@@ -344,12 +384,15 @@ class TestReset:
 #  并发安全
 # ─────────────────────────────────────────
 
+
 class TestConcurrency:
     def test_concurrent_rate_limits(self):
         """多线程并发触发限流不应导致异常"""
         t = RateLimitThrottler(
-            "test", strategy=BackoffStrategy.EXPONENTIAL,
-            base_delay=1.0, jitter=False,
+            "test",
+            strategy=BackoffStrategy.EXPONENTIAL,
+            base_delay=1.0,
+            jitter=False,
         )
         errors = []
 
@@ -373,8 +416,10 @@ class TestConcurrency:
     def test_concurrent_mixed_operations(self):
         """并发混合操作（限流 + 成功 + 状态查询 + 重置）"""
         t = RateLimitThrottler(
-            "test", strategy=BackoffStrategy.ADAPTIVE,
-            base_delay=0.1, jitter=False,
+            "test",
+            strategy=BackoffStrategy.ADAPTIVE,
+            base_delay=0.1,
+            jitter=False,
         )
         errors = []
 
@@ -416,6 +461,7 @@ class TestConcurrency:
 # ─────────────────────────────────────────
 #  repr
 # ─────────────────────────────────────────
+
 
 class TestRepr:
     def test_repr_contains_source_name(self):

@@ -61,6 +61,7 @@ async def _get_update_quote_fn():
     global _update_quote_to_redis
     if _update_quote_to_redis is None:
         from backend.services.market_engine import update_quote_to_redis
+
         _update_quote_to_redis = update_quote_to_redis
     return _update_quote_to_redis
 
@@ -69,6 +70,7 @@ async def _get_redis():
     global _redis_client
     if _redis_client is None:
         from backend.core.redis_client import redis_client
+
         _redis_client = redis_client
     return _redis_client
 
@@ -177,12 +179,14 @@ def _make_order_book_handler():
 
                 async def _publish():
                     redis = await _get_redis()
-                    payload = json.dumps({
-                        "ticker": ticker,
-                        "bids": bids,
-                        "asks": asks,
-                        "source": "futu_push",
-                    })
+                    payload = json.dumps(
+                        {
+                            "ticker": ticker,
+                            "bids": bids,
+                            "asks": asks,
+                            "source": "futu_push",
+                        }
+                    )
                     await redis.publish(f"futu:push:orderbook:{ticker}", payload)
 
                 _schedule_coroutine(_publish())
@@ -264,12 +268,14 @@ def _make_broker_handler():
 
                 async def _publish():
                     redis = await _get_redis()
-                    payload = json.dumps({
-                        "ticker": ticker,
-                        "bid_brokers": [str(b) for b in bid_brokers[:10]],
-                        "ask_brokers": [str(b) for b in ask_brokers[:10]],
-                        "source": "futu_push",
-                    })
+                    payload = json.dumps(
+                        {
+                            "ticker": ticker,
+                            "bid_brokers": [str(b) for b in bid_brokers[:10]],
+                            "ask_brokers": [str(b) for b in ask_brokers[:10]],
+                            "source": "futu_push",
+                        }
+                    )
                     await redis.publish(f"futu:push:broker:{ticker}", payload)
 
                 _schedule_coroutine(_publish())

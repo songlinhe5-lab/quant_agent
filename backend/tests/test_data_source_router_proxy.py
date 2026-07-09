@@ -34,15 +34,11 @@ def _generate_signature(secret: str, payload: dict, timestamp: str) -> str:
 
 
 class TestProxyYFinance:
-
     @patch("backend.services.yfinance_service.yf_service")
     def test_proxy_yfinance_quote(self, mock_yf):
         mock_yf.get_batched_quote = AsyncMock(return_value={"success": True, "data": {"AAPL": 165.0}})
 
-        response = client.post(
-            "/api/v1/data-source/proxy/yfinance",
-            json={"ticker": "AAPL", "fetch_type": "quote"}
-        )
+        response = client.post("/api/v1/data-source/proxy/yfinance", json={"ticker": "AAPL", "fetch_type": "quote"})
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["success"] is True
@@ -53,7 +49,7 @@ class TestProxyYFinance:
 
         response = client.post(
             "/api/v1/data-source/proxy/yfinance",
-            json={"ticker": "AAPL", "fetch_type": "history", "kwargs": {"period": "1d"}}
+            json={"ticker": "AAPL", "fetch_type": "history", "kwargs": {"period": "1d"}},
         )
         assert response.status_code == 200
         data = response.json()["data"]
@@ -65,15 +61,12 @@ class TestProxyYFinance:
 
         response = client.post(
             "/api/v1/data-source/proxy/yfinance",
-            json={"ticker": "AAPL", "fetch_type": "tech", "kwargs": {"lookback_days": 60}}
+            json={"ticker": "AAPL", "fetch_type": "tech", "kwargs": {"lookback_days": 60}},
         )
         assert response.status_code == 200
 
     def test_proxy_yfinance_unknown_type(self):
-        response = client.post(
-            "/api/v1/data-source/proxy/yfinance",
-            json={"ticker": "AAPL", "fetch_type": "unknown"}
-        )
+        response = client.post("/api/v1/data-source/proxy/yfinance", json={"ticker": "AAPL", "fetch_type": "unknown"})
         assert response.status_code == 200
         data = response.json()["data"]
         assert "success" in data
@@ -81,15 +74,11 @@ class TestProxyYFinance:
 
 
 class TestProxyAKShare:
-
     @patch("backend.services.akshare_service.akshare_service")
     def test_proxy_akshare_southbound(self, mock_ak):
         mock_ak.get_southbound_flow = AsyncMock(return_value={"status": "success", "data": {}})
 
-        response = client.post(
-            "/api/v1/data-source/proxy/akshare",
-            json={"action": "southbound"}
-        )
+        response = client.post("/api/v1/data-source/proxy/akshare", json={"action": "southbound"})
         assert response.status_code == 200
         data = response.json()["data"]
         assert "status" in data
@@ -100,16 +89,12 @@ class TestProxyAKShare:
         mock_ak.get_hsgt_top_holders = AsyncMock(return_value={"status": "success", "data": {}})
 
         response = client.post(
-            "/api/v1/data-source/proxy/akshare",
-            json={"action": "hsgt_holders", "kwargs": {"symbol": "00700"}}
+            "/api/v1/data-source/proxy/akshare", json={"action": "hsgt_holders", "kwargs": {"symbol": "00700"}}
         )
         assert response.status_code == 200
 
     def test_proxy_akshare_unknown_action(self):
-        response = client.post(
-            "/api/v1/data-source/proxy/akshare",
-            json={"action": "unknown"}
-        )
+        response = client.post("/api/v1/data-source/proxy/akshare", json={"action": "unknown"})
         assert response.status_code == 200
         data = response.json()["data"]
         assert "status" in data
@@ -117,7 +102,6 @@ class TestProxyAKShare:
 
 
 class TestDataSourceHealth:
-
     @patch("backend.services.yfinance_service.yf_service")
     @patch("backend.services.akshare_service.akshare_service")
     def test_data_source_health(self, mock_ak, mock_yf):
@@ -132,7 +116,6 @@ class TestDataSourceHealth:
 
 
 class TestSecurity:
-
     @patch("backend.routers.data_source._HMAC_SECRET", "test-secret-123")
     @patch("backend.routers.data_source._allowed_ip_set", set())
     @patch("backend.services.yfinance_service.yf_service")
@@ -145,10 +128,7 @@ class TestSecurity:
         response = client.post(
             "/api/v1/data-source/proxy/yfinance",
             json=payload,
-            headers={
-                "X-Data-Source-Signature": signature,
-                "X-Data-Source-Timestamp": timestamp
-            }
+            headers={"X-Data-Source-Signature": signature, "X-Data-Source-Timestamp": timestamp},
         )
         assert response.status_code == 200
         data = response.json()["data"]
@@ -163,10 +143,7 @@ class TestSecurity:
         response = client.post(
             "/api/v1/data-source/proxy/yfinance",
             json=payload,
-            headers={
-                "X-Data-Source-Signature": "invalid-signature",
-                "X-Data-Source-Timestamp": timestamp
-            }
+            headers={"X-Data-Source-Signature": "invalid-signature", "X-Data-Source-Timestamp": timestamp},
         )
         assert response.status_code == 401
         assert "Invalid signature" in response.json()["msg"]
@@ -178,9 +155,7 @@ class TestSecurity:
         timestamp = str(int(time.time()))
 
         response = client.post(
-            "/api/v1/data-source/proxy/yfinance",
-            json=payload,
-            headers={"X-Data-Source-Timestamp": timestamp}
+            "/api/v1/data-source/proxy/yfinance", json=payload, headers={"X-Data-Source-Timestamp": timestamp}
         )
         assert response.status_code == 401
         assert "Invalid signature" in response.json()["msg"]
@@ -195,10 +170,7 @@ class TestSecurity:
         response = client.post(
             "/api/v1/data-source/proxy/yfinance",
             json=payload,
-            headers={
-                "X-Data-Source-Signature": signature,
-                "X-Data-Source-Timestamp": expired_timestamp
-            }
+            headers={"X-Data-Source-Signature": signature, "X-Data-Source-Timestamp": expired_timestamp},
         )
         assert response.status_code == 401
         assert "Invalid signature" in response.json()["msg"]
@@ -206,8 +178,5 @@ class TestSecurity:
     @patch("backend.routers.data_source._HMAC_SECRET", "")
     @patch("backend.routers.data_source._allowed_ip_set", set())
     def test_proxy_no_secret_bypasses_verification(self):
-        response = client.post(
-            "/api/v1/data-source/proxy/yfinance",
-            json={"ticker": "AAPL", "fetch_type": "unknown"}
-        )
+        response = client.post("/api/v1/data-source/proxy/yfinance", json={"ticker": "AAPL", "fetch_type": "unknown"})
         assert response.status_code == 200

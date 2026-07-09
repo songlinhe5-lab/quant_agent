@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 #  分析结果数据结构
 # ─────────────────────────────────────────
 
+
 @dataclass(slots=True)
 class HourlyBucket:
     """
@@ -87,14 +88,10 @@ class RateLimitAnalysis:
             "total_rate_limits_window": self.total_rate_limits_window,
             "peak_hours": self.peak_hours,
             "avg_recovery_seconds": (
-                round(self.avg_recovery_seconds, 2)
-                if self.avg_recovery_seconds is not None
-                else None
+                round(self.avg_recovery_seconds, 2) if self.avg_recovery_seconds is not None else None
             ),
             "recommended_interval_seconds": (
-                round(self.recommended_interval_seconds, 2)
-                if self.recommended_interval_seconds is not None
-                else None
+                round(self.recommended_interval_seconds, 2) if self.recommended_interval_seconds is not None else None
             ),
             "confidence": round(self.confidence, 3),
             "history": self.history,
@@ -105,9 +102,11 @@ class RateLimitAnalysis:
 #  请求事件记录
 # ─────────────────────────────────────────
 
+
 @dataclass(slots=True)
 class _RequestEvent:
     """单条请求事件记录（内部使用）"""
+
     timestamp: float  # time.time() 绝对时间戳
     is_rate_limit: bool  # True=限流, False=成功请求
     is_error: bool = False  # True=普通错误（不计入限流分析）
@@ -372,12 +371,14 @@ class RateLimitAnalyzer:
         history: list[dict[str, Any]] = []
 
         for bucket in sorted_hours:
-            history.append({
-                "hour": bucket.hour_label,
-                "requests": bucket.requests,
-                "rate_limits": bucket.rate_limits,
-                "limit_ratio": round(bucket.limit_ratio, 4),
-            })
+            history.append(
+                {
+                    "hour": bucket.hour_label,
+                    "requests": bucket.requests,
+                    "rate_limits": bucket.rate_limits,
+                    "limit_ratio": round(bucket.limit_ratio, 4),
+                }
+            )
             if bucket.limit_ratio > _PEAK_HOUR_RATIO_THRESHOLD:
                 peak_hours.append(bucket.hour_label)
 
@@ -474,9 +475,7 @@ class RateLimitAnalyzer:
                 self._events.popleft()
             removed = before - len(self._events)
             if removed > 0:
-                logger.debug(
-                    f"[Analyzer:{self._source_name}] 清理 {removed} 条过期事件"
-                )
+                logger.debug(f"[Analyzer:{self._source_name}] 清理 {removed} 条过期事件")
             return removed
 
     def get_event_count(self) -> int:

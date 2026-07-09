@@ -156,7 +156,9 @@ class YFinanceService:
         # YF_ROUTER_ENABLED=true 时，通过 YFinanceRouter 将请求代理到远程数据源节点，
         # 上层调用方 (data_source_router / market router / collector) 零改动。
         self._router_enabled: bool = os.getenv("YF_ROUTER_ENABLED", "false").lower() in (
-            "true", "1", "yes",
+            "true",
+            "1",
+            "yes",
         )
         self._router = None  # 懒初始化 (需要 async 上下文)
         self._router_init_lock = asyncio.Lock()
@@ -278,7 +280,9 @@ class YFinanceService:
                 **kwargs,
             }
             result = await self._router.call(
-                "yfinance", payload, cache_key=cache_key_r,
+                "yfinance",
+                payload,
+                cache_key=cache_key_r,
             )
             if result.get("status") == "success" and "data" in result:
                 return True, result["data"], ""
@@ -435,7 +439,9 @@ class YFinanceService:
             payload = {"ticker": ticker, "req_type": req_type, **kwargs}
             cache_key_r = f"batch:{ticker}:{req_type}"
             result = await self._router.call(
-                "batch_quote", payload, cache_key=cache_key_r,
+                "batch_quote",
+                payload,
+                cache_key=cache_key_r,
             )
             if result.get("status") == "success":
                 return result
@@ -1134,6 +1140,7 @@ class YFinanceService:
         # ── DIST-04: 路由器模式下由远程数据源节点负责采集，本地不启动 daemon ──
         if self._router_enabled:
             from backend.core.logger import logger
+
             logger.info("[YF Daemon] 路由器模式已启用，宏观数据采集由远程节点负责，本地 daemon 休眠中")
             await asyncio.sleep(3600)
             return

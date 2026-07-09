@@ -31,18 +31,20 @@ def router_disabled():
 
 @pytest.fixture
 def router_enabled():
-    with patch.dict(os.environ, {
-        "DATA_SOURCE_ROUTER_ENABLED": "true",
-        "YF_PRIMARY_NODE_URL": "http://localhost:8000",
-        "YF_BACKUP_NODE_URL": "http://10.0.0.2:8000",
-        "AKSHARE_REMOTE_URL": "http://10.0.0.3:8000",
-        "DATA_SOURCE_HMAC_SECRET": "test_secret_123",
-    }):
+    with patch.dict(
+        os.environ,
+        {
+            "DATA_SOURCE_ROUTER_ENABLED": "true",
+            "YF_PRIMARY_NODE_URL": "http://localhost:8000",
+            "YF_BACKUP_NODE_URL": "http://10.0.0.2:8000",
+            "AKSHARE_REMOTE_URL": "http://10.0.0.3:8000",
+            "DATA_SOURCE_HMAC_SECRET": "test_secret_123",
+        },
+    ):
         yield DataSourceRouter()
 
 
 class TestDataSourceNode:
-
     def test_node_initialization(self):
         node = DataSourceNode(name="test", url="http://localhost:8000")
         assert node.name == "test"
@@ -64,7 +66,6 @@ class TestDataSourceNode:
 
 
 class TestDataSourceRouterInit:
-
     def test_router_disabled_by_default(self, router_disabled):
         assert router_disabled._enabled is False
 
@@ -85,7 +86,6 @@ class TestDataSourceRouterInit:
 
 
 class TestHmacSignature:
-
     def test_sign_request_with_secret(self, router_enabled):
         payload = {"ticker": "AAPL", "fetch_type": "quote"}
         timestamp = "1234567890"
@@ -113,7 +113,6 @@ class TestHmacSignature:
 
 
 class TestHttpClientLazyLoading:
-
     def test_http_client_none_initially(self, router_enabled):
         assert router_enabled._http_client is None
 
@@ -123,7 +122,6 @@ class TestHttpClientLazyLoading:
 
 
 class TestNodeHealthFiltering:
-
     def test_get_healthy_nodes(self, router_enabled):
         nodes = router_enabled._get_healthy_nodes("yfinance")
         assert len(nodes) >= 1
@@ -146,7 +144,6 @@ class TestNodeHealthFiltering:
 
 
 class TestCircuitBreaker:
-
     def test_update_node_status_success(self, router_enabled):
         asyncio.run(router_enabled._update_node_status("yf_primary", success=True))
         node = router_enabled._nodes["yf_primary"]
@@ -170,7 +167,6 @@ class TestCircuitBreaker:
 
 
 class TestFetchYFinance:
-
     @patch("backend.services.yfinance_service.YFinanceService.get_batched_quote")
     def test_fetch_yfinance_disabled_router(self, mock_method, router_disabled):
         mock_method.return_value = {"success": True, "data": {}}
@@ -205,7 +201,6 @@ class TestFetchYFinance:
 
 
 class TestFetchAKShare:
-
     @patch("backend.services.akshare_service.AKShareService.get_southbound_flow")
     def test_fetch_akshare_disabled_router(self, mock_method, router_disabled):
         mock_method.return_value = {"status": "success", "data": {}}
@@ -228,7 +223,6 @@ class TestFetchAKShare:
 
 
 class TestHealthStatus:
-
     def test_get_health_status(self, router_enabled):
         status = asyncio.run(router_enabled.get_health_status())
         assert status["router_enabled"] is True
@@ -237,7 +231,6 @@ class TestHealthStatus:
 
 
 class TestClose:
-
     def test_close_http_client(self, router_enabled):
         router_enabled._ensure_http_client()
         assert router_enabled._http_client is not None

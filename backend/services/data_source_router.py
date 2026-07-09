@@ -106,9 +106,7 @@ class DataSourceRouter:
                 limits=httpx.Limits(max_connections=20),
             )
 
-    async def _send_request(
-        self, node: DataSourceNode, endpoint: str, payload: dict
-    ) -> Dict[str, Any]:
+    async def _send_request(self, node: DataSourceNode, endpoint: str, payload: dict) -> Dict[str, Any]:
 
         self._ensure_http_client()
         url = f"{node.url}/api/v1/data-source/proxy/{endpoint}"
@@ -221,7 +219,10 @@ class DataSourceRouter:
         return healthy
 
     async def _update_node_status(
-        self, node_name: str, success: bool, error: str = "",
+        self,
+        node_name: str,
+        success: bool,
+        error: str = "",
         error_category: ErrorCategory = ErrorCategory.NORMAL,
     ):
         """
@@ -272,9 +273,7 @@ class DataSourceRouter:
         healthy.sort(key=lambda n: (n.is_throttled, -n.weight, n.consecutive_rate_limits))
         return healthy[0]
 
-    async def fetch_yfinance(
-        self, ticker: str, fetch_type: str, **kwargs
-    ) -> Dict[str, Any]:
+    async def fetch_yfinance(self, ticker: str, fetch_type: str, **kwargs) -> Dict[str, Any]:
         if not self._enabled:
             from backend.services.yfinance_service import yf_service
 
@@ -283,9 +282,7 @@ class DataSourceRouter:
             elif fetch_type == "tech":
                 return await yf_service.get_tech_indicators(ticker, **kwargs)
             elif fetch_type == "history":
-                success, data, msg = await yf_service.fetch_yf_data(
-                    ticker, "history", ttl=3600, **kwargs
-                )
+                success, data, msg = await yf_service.fetch_yf_data(ticker, "history", ttl=3600, **kwargs)
                 return {"success": success, "data": data, "message": msg}
             return {"success": False, "message": f"Unknown fetch_type: {fetch_type}"}
 
@@ -312,33 +309,35 @@ class DataSourceRouter:
 
                 # 限流类错误：不计入熔断器，触发 failover 到下一节点
                 if error_category != ErrorCategory.NORMAL:
-                    logger.warning(
-                        f"[YFinance] 节点 {node.name} 限流 ({error_category.value}): {ticker}"
-                    )
+                    logger.warning(f"[YFinance] 节点 {node.name} 限流 ({error_category.value}): {ticker}")
                     await self._update_node_status(
-                        node.name, success=False, error="rate_limit",
+                        node.name,
+                        success=False,
+                        error="rate_limit",
                         error_category=error_category,
                     )
                     continue
 
                 await self._update_node_status(
-                    node.name, success=False, error=str(result.get("message")),
+                    node.name,
+                    success=False,
+                    error=str(result.get("message")),
                     error_category=ErrorCategory.NORMAL,
                 )
 
             except Exception as e:
                 logger.warning(f"[YFinance] 节点 {node.name} 失败: {ticker}, {str(e)}")
                 await self._update_node_status(
-                    node.name, success=False, error=str(e),
+                    node.name,
+                    success=False,
+                    error=str(e),
                     error_category=ErrorCategory.NORMAL,
                 )
 
         logger.warning("[YFinance] 所有节点失败，降级本地数据源")
         return await self.fetch_yfinance_local(ticker, fetch_type, **kwargs)
 
-    async def fetch_yfinance_local(
-        self, ticker: str, fetch_type: str, **kwargs
-    ) -> Dict[str, Any]:
+    async def fetch_yfinance_local(self, ticker: str, fetch_type: str, **kwargs) -> Dict[str, Any]:
         from backend.services.yfinance_service import yf_service
 
         try:
@@ -347,9 +346,7 @@ class DataSourceRouter:
             elif fetch_type == "tech":
                 return await yf_service.get_tech_indicators(ticker, **kwargs)
             elif fetch_type == "history":
-                success, data, msg = await yf_service.fetch_yf_data(
-                    ticker, "history", ttl=3600, **kwargs
-                )
+                success, data, msg = await yf_service.fetch_yf_data(ticker, "history", ttl=3600, **kwargs)
                 return {"success": success, "data": data, "message": msg}
             return {"success": False, "message": f"Unknown fetch_type: {fetch_type}"}
         except Exception as e:
@@ -370,9 +367,7 @@ class DataSourceRouter:
                 await self._update_node_status(remote_node.name, success=True)
                 return result
 
-            await self._update_node_status(
-                remote_node.name, success=False, error=str(result.get("message"))
-            )
+            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
 
         except Exception as e:
             logger.warning(f"[AKShare] 远程节点失败: {remote_node.name}, {action}, {str(e)}")
@@ -381,22 +376,16 @@ class DataSourceRouter:
         logger.warning("[AKShare] 远程节点不可用，降级本地数据源")
         return await self._call_local_akshare(action, akshare_service, **kwargs)
 
-    async def _call_local_akshare(
-        self, action: str, akshare_service, **kwargs
-    ) -> Dict[str, Any]:
+    async def _call_local_akshare(self, action: str, akshare_service, **kwargs) -> Dict[str, Any]:
         try:
             if action == "southbound":
                 return await akshare_service.get_southbound_flow()
             elif action == "northbound":
                 return await akshare_service.get_northbound_flow()
             elif action == "hsgt_holders":
-                return await akshare_service.get_hsgt_top_holders(
-                    symbol=kwargs.get("symbol", "00700")
-                )
+                return await akshare_service.get_hsgt_top_holders(symbol=kwargs.get("symbol", "00700"))
             elif action == "company_news":
-                return await akshare_service.get_company_news(
-                    ticker=kwargs.get("ticker", "")
-                )
+                return await akshare_service.get_company_news(ticker=kwargs.get("ticker", ""))
             elif action == "stock_quote":
                 return await akshare_service.get_stock_quote(ticker=kwargs.get("ticker", ""))
             elif action == "stock_history":
@@ -404,9 +393,7 @@ class DataSourceRouter:
                     ticker=kwargs.get("ticker", ""), num=kwargs.get("num", 60)
                 )
             elif action == "economic_calendar":
-                return await akshare_service.get_economic_calendar(
-                    days_ahead=kwargs.get("days_ahead", 7)
-                )
+                return await akshare_service.get_economic_calendar(days_ahead=kwargs.get("days_ahead", 7))
             return {"status": "error", "message": f"Unknown akshare action: {action}"}
         except Exception as e:
             return {"status": "error", "message": f"Local akshare failed: {str(e)}"}

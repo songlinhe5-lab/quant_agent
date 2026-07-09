@@ -29,6 +29,7 @@ import pytest
 #  Mock 基础设施
 # ─────────────────────────────────────────
 
+
 class FakeRouterResult:
     """模拟 YFinanceRouter.call() 返回值"""
 
@@ -77,20 +78,24 @@ def make_service(router_enabled: bool = False):
 #  1. 构造函数: 环境变量解析
 # ─────────────────────────────────────────
 
+
 class TestRouterEnabledParsing:
     """YF_ROUTER_ENABLED 环境变量解析"""
 
-    @pytest.mark.parametrize("value,expected", [
-        ("true", True),
-        ("True", True),
-        ("TRUE", True),
-        ("1", True),
-        ("yes", True),
-        ("false", False),
-        ("0", False),
-        ("no", False),
-        ("", False),
-    ])
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            ("true", True),
+            ("True", True),
+            ("TRUE", True),
+            ("1", True),
+            ("yes", True),
+            ("false", False),
+            ("0", False),
+            ("no", False),
+            ("", False),
+        ],
+    )
     def test_env_var_parsing(self, value, expected):
         """各种环境变量值应正确解析为布尔值"""
         with patch.dict(os.environ, {"YF_ROUTER_ENABLED": value}):
@@ -102,6 +107,7 @@ class TestRouterEnabledParsing:
 #  2. _ensure_router: 懒初始化
 # ─────────────────────────────────────────
 
+
 class TestEnsureRouter:
     """_ensure_router 懒初始化 + double-check locking"""
 
@@ -111,10 +117,11 @@ class TestEnsureRouter:
         svc = make_service(router_enabled=True)
         mock_router = MagicMock()
 
-        with patch("backend.core.service_registry.ServiceRegistry"), \
-             patch("backend.core.yfinance_router.YFinanceRouter", return_value=mock_router) as mock_router_cls, \
-             patch("backend.core.redis_client.redis_client", MagicMock()):
-
+        with (
+            patch("backend.core.service_registry.ServiceRegistry"),
+            patch("backend.core.yfinance_router.YFinanceRouter", return_value=mock_router) as mock_router_cls,
+            patch("backend.core.redis_client.redis_client", MagicMock()),
+        ):
             await svc._ensure_router()
             assert svc._router is mock_router
             assert mock_router_cls.call_count == 1
@@ -128,11 +135,12 @@ class TestEnsureRouter:
         """_ensure_router 应传递 DATA_SOURCE_HMAC_SECRET"""
         svc = make_service(router_enabled=True)
 
-        with patch("backend.core.service_registry.ServiceRegistry"), \
-             patch("backend.core.yfinance_router.YFinanceRouter") as mock_router_cls, \
-             patch("backend.core.redis_client.redis_client", MagicMock()), \
-             patch.dict(os.environ, {"DATA_SOURCE_HMAC_SECRET": "test-secret"}):
-
+        with (
+            patch("backend.core.service_registry.ServiceRegistry"),
+            patch("backend.core.yfinance_router.YFinanceRouter") as mock_router_cls,
+            patch("backend.core.redis_client.redis_client", MagicMock()),
+            patch.dict(os.environ, {"DATA_SOURCE_HMAC_SECRET": "test-secret"}),
+        ):
             await svc._ensure_router()
             call_kwargs = mock_router_cls.call_args[1]
             assert call_kwargs["hmac_secret"] == "test-secret"
@@ -141,6 +149,7 @@ class TestEnsureRouter:
 # ─────────────────────────────────────────
 #  3-4. fetch_yf_data: 路由器模式拦截
 # ─────────────────────────────────────────
+
 
 class TestFetchYfDataRouterMode:
     """fetch_yf_data 路由器模式拦截"""
@@ -210,6 +219,7 @@ class TestFetchYfDataRouterMode:
 #  5-6. get_batched_quote: 路由器模式拦截
 # ─────────────────────────────────────────
 
+
 class TestGetBatchedQuoteRouterMode:
     """get_batched_quote 路由器模式拦截"""
 
@@ -248,6 +258,7 @@ class TestGetBatchedQuoteRouterMode:
 #  7. macro_data_daemon: 路由器模式跳过
 # ─────────────────────────────────────────
 
+
 class TestMacroDataDaemonRouterMode:
     """macro_data_daemon 路由器模式跳过采集"""
 
@@ -265,6 +276,7 @@ class TestMacroDataDaemonRouterMode:
 # ─────────────────────────────────────────
 #  8. get_health_status: 路由器模式标注
 # ─────────────────────────────────────────
+
 
 class TestGetHealthStatusRouterMode:
     """get_health_status 路由器模式标注"""
@@ -286,6 +298,7 @@ class TestGetHealthStatusRouterMode:
 # ─────────────────────────────────────────
 #  9. close: 路由器关闭
 # ─────────────────────────────────────────
+
 
 class TestCloseRouterMode:
     """close 路由器清理"""
@@ -312,6 +325,7 @@ class TestCloseRouterMode:
 #  10. get_tech_indicators: 路由器模式穿透
 # ─────────────────────────────────────────
 
+
 class TestGetTechIndicatorsRouterMode:
     """get_tech_indicators 路由器模式下通过 fetch_yf_data 拦截"""
 
@@ -336,6 +350,7 @@ class TestGetTechIndicatorsRouterMode:
 # ─────────────────────────────────────────
 #  11. 集成: 上层调用方零改动验证
 # ─────────────────────────────────────────
+
 
 class TestUpstreamCompatibility:
     """验证上层调用方在路由器模式下零改动"""

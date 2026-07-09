@@ -32,9 +32,7 @@ def _sign(body: dict, secret: str = _HMAC_SECRET, timestamp: str | None = None) 
         timestamp = str(int(time.time()))
     body_with_ts = body.copy()
     body_with_ts["__timestamp"] = timestamp
-    sig = hashlib.sha256(
-        secret.encode("utf-8") + json.dumps(body_with_ts, sort_keys=True).encode("utf-8")
-    ).hexdigest()
+    sig = hashlib.sha256(secret.encode("utf-8") + json.dumps(body_with_ts, sort_keys=True).encode("utf-8")).hexdigest()
     return {
         "X-Data-Source-Signature": sig,
         "X-Data-Source-Timestamp": timestamp,
@@ -45,10 +43,12 @@ def _sign(body: dict, secret: str = _HMAC_SECRET, timestamp: str | None = None) 
 #  Fixtures
 # ─────────────────────────────────────────
 
+
 @pytest.fixture(autouse=True)
 def _reset_routes_state():
     """每个测试前重置 routes 模块的全局状态"""
     import data_subservice.routes as routes_mod
+
     routes_mod._request_timestamps.clear()
     yield
 
@@ -79,10 +79,13 @@ def client_no_auth(mock_worker, mock_redis):
     import data_subservice.main as main_mod
     import data_subservice.routes as routes_mod
 
-    with patch.object(routes_mod, "_HMAC_SECRET", ""), \
-         patch.object(main_mod, "_yf_worker", mock_worker), \
-         patch.object(main_mod, "_redis_client", mock_redis):
+    with (
+        patch.object(routes_mod, "_HMAC_SECRET", ""),
+        patch.object(main_mod, "_yf_worker", mock_worker),
+        patch.object(main_mod, "_redis_client", mock_redis),
+    ):
         from data_subservice.main import app
+
         yield TestClient(app)
 
 
@@ -92,11 +95,14 @@ def client_with_auth(mock_worker, mock_redis):
     import data_subservice.main as main_mod
     import data_subservice.routes as routes_mod
 
-    with patch.object(routes_mod, "_HMAC_SECRET", _HMAC_SECRET), \
-         patch.object(routes_mod, "_allowed_ip_set", set()), \
-         patch.object(main_mod, "_yf_worker", mock_worker), \
-         patch.object(main_mod, "_redis_client", mock_redis):
+    with (
+        patch.object(routes_mod, "_HMAC_SECRET", _HMAC_SECRET),
+        patch.object(routes_mod, "_allowed_ip_set", set()),
+        patch.object(main_mod, "_yf_worker", mock_worker),
+        patch.object(main_mod, "_redis_client", mock_redis),
+    ):
         from data_subservice.main import app
+
         yield TestClient(app)
 
 
@@ -104,36 +110,43 @@ def client_with_auth(mock_worker, mock_redis):
 #  1. 限流错误检测
 # ─────────────────────────────────────────
 
+
 class TestDetectErrorCategory:
     """验证 _detect_error_category 限流关键词注入"""
 
     def test_rate_limit_429(self):
         from data_subservice.routes import _detect_error_category
+
         result = _detect_error_category({"status": "error", "message": "429 Too Many Requests"})
         assert result["error_category"] == "rate_limit"
 
     def test_rate_limit_chinese_keyword(self):
         from data_subservice.routes import _detect_error_category
+
         result = _detect_error_category({"status": "error", "message": "限流冷却中：yfinance 触发了 429"})
         assert result["error_category"] == "rate_limit"
 
     def test_rate_limit_yf_error(self):
         from data_subservice.routes import _detect_error_category
+
         result = _detect_error_category({"status": "error", "message": "YFRateLimitError: something"})
         assert result["error_category"] == "rate_limit"
 
     def test_normal_error_no_category(self):
         from data_subservice.routes import _detect_error_category
+
         result = _detect_error_category({"status": "error", "message": "connection timeout"})
         assert "error_category" not in result
 
     def test_success_no_category(self):
         from data_subservice.routes import _detect_error_category
+
         result = _detect_error_category({"status": "success", "data": {"price": 150}})
         assert "error_category" not in result
 
     def test_empty_message(self):
         from data_subservice.routes import _detect_error_category
+
         result = _detect_error_category({"status": "error", "message": ""})
         assert "error_category" not in result
 
@@ -141,6 +154,7 @@ class TestDetectErrorCategory:
 # ─────────────────────────────────────────
 #  2. HMAC 签名验证
 # ─────────────────────────────────────────
+
 
 class TestHMACVerification:
     """验证 HMAC 签名校验逻辑"""
@@ -185,6 +199,7 @@ class TestHMACVerification:
 #  3. /v1/quote 端点
 # ─────────────────────────────────────────
 
+
 class TestV1Quote:
     """验证 /v1/quote 端点"""
 
@@ -202,14 +217,13 @@ class TestV1Quote:
 
     def test_worker_unavailable_returns_503(self, client_no_auth):
         import data_subservice.main as main_mod
+
         with patch.object(main_mod, "_yf_worker", None):
             resp = client_no_auth.post("/v1/quote", json={"ticker": "AAPL"})
             assert resp.status_code == 503
 
     def test_rate_limit_injects_error_category(self, client_no_auth, mock_worker):
-        mock_worker.batched_quote.return_value = {
-            "status": "error", "message": "限流冷却中：429 保护"
-        }
+        mock_worker.batched_quote.return_value = {"status": "error", "message": "限流冷却中：429 保护"}
         resp = client_no_auth.post("/v1/quote", json={"ticker": "AAPL"})
         assert resp.status_code == 200
         assert resp.json()["error_category"] == "rate_limit"
@@ -218,6 +232,7 @@ class TestV1Quote:
 # ─────────────────────────────────────────
 #  4. /v1/history 端点
 # ─────────────────────────────────────────
+
 
 class TestV1History:
     """验证 /v1/history 端点"""
@@ -235,6 +250,7 @@ class TestV1History:
 # ─────────────────────────────────────────
 #  5. /v1/batch 端点
 # ─────────────────────────────────────────
+
 
 class TestV1Batch:
     """验证 /v1/batch 端点"""
@@ -254,6 +270,7 @@ class TestV1Batch:
 #  6. /v1/indicators 端点
 # ─────────────────────────────────────────
 
+
 class TestV1Indicators:
     """验证 /v1/indicators 端点"""
 
@@ -266,6 +283,7 @@ class TestV1Indicators:
 # ─────────────────────────────────────────
 #  7. /v1/search 端点
 # ─────────────────────────────────────────
+
 
 class TestV1Search:
     """验证 /v1/search 端点"""
@@ -283,6 +301,7 @@ class TestV1Search:
 # ─────────────────────────────────────────
 #  8. /v1/macro 端点
 # ─────────────────────────────────────────
+
 
 class TestV1Macro:
     """验证 /v1/macro 端点"""
@@ -305,6 +324,7 @@ class TestV1Macro:
 
     def test_redis_unavailable_returns_503(self, client_no_auth):
         import data_subservice.main as main_mod
+
         with patch.object(main_mod, "_redis_client", None):
             resp = client_no_auth.get("/v1/macro")
             assert resp.status_code == 503
@@ -313,6 +333,7 @@ class TestV1Macro:
 # ─────────────────────────────────────────
 #  9. /v1/health 端点
 # ─────────────────────────────────────────
+
 
 class TestV1Health:
     """验证 /v1/health 端点"""
@@ -327,6 +348,7 @@ class TestV1Health:
 
     def test_worker_unavailable_returns_degraded(self, client_no_auth):
         import data_subservice.main as main_mod
+
         with patch.object(main_mod, "_yf_worker", None):
             resp = client_no_auth.get("/v1/health")
             assert resp.status_code == 200
@@ -337,6 +359,7 @@ class TestV1Health:
 # ─────────────────────────────────────────
 #  10. 路由器兼容端点
 # ─────────────────────────────────────────
+
 
 class TestProxyEndpoints:
     """验证 /api/v1/data-source/proxy/* 路由器兼容端点"""
@@ -370,9 +393,7 @@ class TestProxyEndpoints:
 
     def test_proxy_yfinance_rate_limit(self, client_no_auth, mock_worker):
         """proxy/yfinance 限流时应注入 error_category"""
-        mock_worker.fetch.return_value = {
-            "success": False, "data": None, "message": "YFRateLimitError: 429"
-        }
+        mock_worker.fetch.return_value = {"success": False, "data": None, "message": "YFRateLimitError: 429"}
         resp = client_no_auth.post(
             "/api/v1/data-source/proxy/yfinance",
             json={"ticker": "AAPL", "fetch_type": "history"},
@@ -391,6 +412,7 @@ class TestProxyEndpoints:
     def test_proxy_worker_unavailable(self, client_no_auth):
         """worker 未初始化时 proxy 端点返回 503"""
         import data_subservice.main as main_mod
+
         with patch.object(main_mod, "_yf_worker", None):
             resp = client_no_auth.post(
                 "/api/v1/data-source/proxy/yfinance",

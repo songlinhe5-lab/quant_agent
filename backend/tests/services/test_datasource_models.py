@@ -31,6 +31,7 @@ from backend.services.datasource import (
 #  ErrorCategory 枚举
 # ─────────────────────────────────────────
 
+
 class TestErrorCategory:
     def test_enum_values(self):
         assert ErrorCategory.NORMAL.value == "normal"
@@ -52,6 +53,7 @@ class TestErrorCategory:
 # ─────────────────────────────────────────
 #  RateLimitInfo
 # ─────────────────────────────────────────
+
 
 class TestRateLimitInfo:
     def test_default_values(self):
@@ -95,6 +97,7 @@ class TestRateLimitInfo:
 # ─────────────────────────────────────────
 #  ErrorInfo
 # ─────────────────────────────────────────
+
 
 class TestErrorInfo:
     def test_default_category_is_normal(self):
@@ -184,6 +187,7 @@ class TestErrorInfo:
 #  Result
 # ─────────────────────────────────────────
 
+
 class TestResult:
     def test_success_factory(self):
         r = Result.make_success(data={"price": 100.0}, source="futu-local", latency_ms=12.5)
@@ -233,6 +237,7 @@ class TestResult:
 #  classify_http_error
 # ─────────────────────────────────────────
 
+
 class TestClassifyHttpError:
     def test_429_is_rate_limit(self):
         assert classify_http_error(429) == ErrorCategory.RATE_LIMIT
@@ -267,6 +272,7 @@ class TestClassifyHttpError:
 #  parse_retry_after
 # ─────────────────────────────────────────
 
+
 class TestParseRetryAfter:
     def test_numeric_value(self):
         assert parse_retry_after({"Retry-After": "30"}) == 30.0
@@ -287,6 +293,7 @@ class TestParseRetryAfter:
 # ─────────────────────────────────────────
 #  RateLimitStatus / HealthInfo
 # ─────────────────────────────────────────
+
 
 class TestRateLimitStatus:
     def test_default_values(self):
@@ -331,16 +338,21 @@ class TestHealthInfo:
 #  DataSourceRouter 集成测试
 # ─────────────────────────────────────────
 
+
 class TestDataSourceRouterIntegration:
     """验证 DataSourceRouter 中限流错误不计入熔断器"""
 
     @pytest.fixture
     def router(self):
-        with patch.dict("os.environ", {
-            "DATA_SOURCE_ROUTER_ENABLED": "true",
-            "YF_PRIMARY_NODE_URL": "http://test-node:8000",
-        }):
+        with patch.dict(
+            "os.environ",
+            {
+                "DATA_SOURCE_ROUTER_ENABLED": "true",
+                "YF_PRIMARY_NODE_URL": "http://test-node:8000",
+            },
+        ):
             from backend.services.data_source_router import DataSourceRouter
+
             return DataSourceRouter()
 
     @pytest.mark.asyncio
@@ -351,7 +363,9 @@ class TestDataSourceRouterIntegration:
         # 模拟 5 次限流错误（超过熔断阈值 3）
         for _ in range(5):
             await router._update_node_status(
-                node_name, success=False, error="rate_limit",
+                node_name,
+                success=False,
+                error="rate_limit",
                 error_category=ErrorCategory.RATE_LIMIT,
             )
 
@@ -367,7 +381,9 @@ class TestDataSourceRouterIntegration:
 
         for _ in range(3):
             await router._update_node_status(
-                node_name, success=False, error="timeout",
+                node_name,
+                success=False,
+                error="timeout",
                 error_category=ErrorCategory.NORMAL,
             )
 

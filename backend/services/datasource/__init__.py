@@ -19,6 +19,7 @@ from typing import Any, Optional
 #  错误分类体系 (ErrorCategory)
 # ─────────────────────────────────────────
 
+
 class ErrorCategory(str, Enum):
     """
     数据源错误分类。
@@ -44,6 +45,7 @@ class ErrorCategory(str, Enum):
 # ─────────────────────────────────────────
 #  限流详情 (RateLimitInfo)
 # ─────────────────────────────────────────
+
 
 @dataclass(frozen=True, slots=True)
 class RateLimitInfo:
@@ -89,6 +91,7 @@ class RateLimitInfo:
 # ─────────────────────────────────────────
 #  错误详情 (ErrorInfo)
 # ─────────────────────────────────────────
+
 
 @dataclass(frozen=True, slots=True)
 class ErrorInfo:
@@ -207,6 +210,7 @@ class ErrorInfo:
 #  统一返回结构 (Result)
 # ─────────────────────────────────────────
 
+
 class ResultStatus(str, Enum):
     """Result 状态枚举"""
 
@@ -299,6 +303,7 @@ class Result:
 #  限流状态感知 (RateLimitStatus)
 # ─────────────────────────────────────────
 
+
 @dataclass(slots=True)
 class RateLimitStatus:
     """
@@ -329,6 +334,7 @@ class RateLimitStatus:
 #  健康信息 (HealthInfo)
 # ─────────────────────────────────────────
 
+
 @dataclass(slots=True)
 class HealthInfo:
     """
@@ -358,6 +364,7 @@ class HealthInfo:
 # ─────────────────────────────────────────
 #  错误分类工具函数
 # ─────────────────────────────────────────
+
 
 def classify_http_error(status_code: int, response_headers: Optional[dict] = None) -> ErrorCategory:
     """

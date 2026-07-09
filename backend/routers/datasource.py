@@ -125,14 +125,16 @@ async def get_rate_limit_overview():
     sources = []
     for name, entry in entries.items():
         throttler_status = entry.throttler.get_status()
-        sources.append({
-            "source": name,
-            "is_throttled": throttler_status.is_throttled,
-            "consecutive_rate_limits": throttler_status.consecutive_rate_limits,
-            "total_rate_limits_1h": throttler_status.total_rate_limits_1h,
-            "estimated_limit_rpm": throttler_status.estimated_limit_rpm,
-            "backoff_strategy": throttler_status.backoff_strategy,
-        })
+        sources.append(
+            {
+                "source": name,
+                "is_throttled": throttler_status.is_throttled,
+                "consecutive_rate_limits": throttler_status.consecutive_rate_limits,
+                "total_rate_limits_1h": throttler_status.total_rate_limits_1h,
+                "estimated_limit_rpm": throttler_status.estimated_limit_rpm,
+                "backoff_strategy": throttler_status.backoff_strategy,
+            }
+        )
 
     return {
         "sources": sources,

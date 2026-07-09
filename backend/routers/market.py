@@ -224,11 +224,13 @@ async def get_services_health():
 
     # 4. 数据源路由服务 (跨节点路由)
     router_status = await data_source_router.get_health_status()
-    health_data.append({
-        "name": "DataSourceRouter",
-        "status": "healthy" if router_status.get("router_enabled") else "disabled",
-        "message": f"路由状态: {'enabled' if router_status.get('router_enabled') else 'disabled'}, 节点数: {len(router_status.get('nodes', {}))}",
-    })
+    health_data.append(
+        {
+            "name": "DataSourceRouter",
+            "status": "healthy" if router_status.get("router_enabled") else "disabled",
+            "message": f"路由状态: {'enabled' if router_status.get('router_enabled') else 'disabled'}, 节点数: {len(router_status.get('nodes', {}))}",
+        }
+    )
 
     # 5. 其他外部 API
     for name, key_env in [("Finnhub", "FINNHUB_API_KEY"), ("FRED", "FRED_API_KEY")]:
@@ -373,9 +375,7 @@ async def get_history(ticker: str, ktype: str = "K_DAY", num: int = 60):
         yf_interval = ktype_mapping.get(ktype, "1d")
         period = "7d" if yf_interval in ["1m", "5m"] else "1mo" if yf_interval in ["15m", "30m", "60m"] else "1y"  # noqa: E501
 
-        yf_result = await data_source_router.fetch_yfinance(
-            yf_ticker, "history", period=period, interval=yf_interval
-        )
+        yf_result = await data_source_router.fetch_yfinance(yf_ticker, "history", period=period, interval=yf_interval)
         success = yf_result.get("success", False)
         df_data = yf_result.get("data")
         msg = yf_result.get("message", "")

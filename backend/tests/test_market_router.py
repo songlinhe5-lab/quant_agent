@@ -148,7 +148,9 @@ class TestGetFundamental:
     @patch("backend.routers.market.data_source_router")
     def test_etf_returns_warning(self, mock_router, mock_futu):
         mock_futu.get_fundamental = AsyncMock(return_value={"status": "error"})
-        mock_router.fetch_yfinance = AsyncMock(return_value={"success": True, "data": {"quoteType": "ETF", "shortName": "SPY ETF"}, "message": None})
+        mock_router.fetch_yfinance = AsyncMock(
+            return_value={"success": True, "data": {"quoteType": "ETF", "shortName": "SPY ETF"}, "message": None}
+        )
         resp = client.get("/market/fundamental/US.SPY")
         assert resp.status_code == 200
         data = resp.json()
@@ -206,7 +208,13 @@ class TestSearchTickers:
     @patch("backend.routers.market.data_source_router")
     def test_local_empty_fallback_to_yf(self, mock_router, mock_ticker_svc):
         mock_ticker_svc.search_tickers = AsyncMock(return_value={"status": "success", "data": []})
-        mock_router.fetch_yfinance = AsyncMock(return_value={"success": True, "data": {"status": "success", "data": [{"symbol": "AAPL", "name": "Apple"}]}, "message": ""})
+        mock_router.fetch_yfinance = AsyncMock(
+            return_value={
+                "success": True,
+                "data": {"status": "success", "data": [{"symbol": "AAPL", "name": "Apple"}]},
+                "message": "",
+            }
+        )
         resp = client.get("/market/search?q=AAPL")
         assert resp.status_code == 200
 

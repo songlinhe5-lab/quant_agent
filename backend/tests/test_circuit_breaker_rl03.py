@@ -23,8 +23,10 @@ from backend.services.datasource import ErrorCategory
 #  辅助工具
 # ─────────────────────────────────────────
 
+
 class RateLimitError(Exception):
     """模拟限流异常（携带 _error_category 属性）"""
+
     def __init__(self, msg="rate limited"):
         super().__init__(msg)
         self._error_category = ErrorCategory.RATE_LIMIT
@@ -32,6 +34,7 @@ class RateLimitError(Exception):
 
 class NormalError(Exception):
     """模拟普通错误（携带 _error_category 属性）"""
+
     def __init__(self, msg="normal error"):
         super().__init__(msg)
         self._error_category = ErrorCategory.NORMAL
@@ -39,12 +42,14 @@ class NormalError(Exception):
 
 class PlainError(Exception):
     """模拟无 category 标记的普通异常"""
+
     pass
 
 
 # ─────────────────────────────────────────
 #  is_rate_limit_error 钩子
 # ─────────────────────────────────────────
+
 
 class TestIsRateLimitError:
     def test_rate_limit_category_returns_true(self):
@@ -79,6 +84,7 @@ class TestIsRateLimitError:
 #  error_classifier 回调
 # ─────────────────────────────────────────
 
+
 class TestErrorClassifier:
     def test_classifier_overrides_default(self):
         """error_classifier 回调优先于 is_rate_limit_error"""
@@ -91,6 +97,7 @@ class TestErrorClassifier:
         # 通过 classifier 识别
         def classifier(e):
             return "custom" in str(e)
+
         assert cb._should_skip_failure(exc, classifier) is True
 
     def test_classifier_returning_false_counts_normally(self):
@@ -100,12 +107,14 @@ class TestErrorClassifier:
         # classifier 强制返回 False → 计入失败
         def classifier(e):
             return False
+
         assert cb._should_skip_failure(exc, classifier) is False
 
 
 # ─────────────────────────────────────────
 #  async call() 限流不计入
 # ─────────────────────────────────────────
+
 
 class TestAsyncCallRateLimitDecoupling:
     @pytest.mark.asyncio
@@ -171,6 +180,7 @@ class TestAsyncCallRateLimitDecoupling:
 #  sync call_sync() 限流不计入
 # ─────────────────────────────────────────
 
+
 class TestSyncCallRateLimitDecoupling:
     def test_rate_limit_errors_do_not_increment_failures_sync(self):
         cb = CircuitBreaker(max_failures=2)
@@ -206,6 +216,7 @@ class TestSyncCallRateLimitDecoupling:
 # ─────────────────────────────────────────
 #  record_failure / record_success
 # ─────────────────────────────────────────
+
 
 class TestRecordMethods:
     def test_record_failure_increments_count(self):
@@ -288,6 +299,7 @@ class TestRecordMethods:
 #  混合场景
 # ─────────────────────────────────────────
 
+
 class TestMixedScenarios:
     @pytest.mark.asyncio
     async def test_interleaved_rate_limit_and_normal_errors(self):
@@ -297,12 +309,12 @@ class TestMixedScenarios:
 
         # 模式: 限流 → 普通 → 限流 → 普通 → 限流 → 普通(触发)
         funcs = [
-            (AsyncMock(side_effect=RateLimitError()), True),   # 限流
-            (AsyncMock(side_effect=NormalError()), False),     # 普通 #1
-            (AsyncMock(side_effect=RateLimitError()), True),   # 限流
-            (AsyncMock(side_effect=NormalError()), False),     # 普通 #2
-            (AsyncMock(side_effect=RateLimitError()), True),   # 限流
-            (AsyncMock(side_effect=NormalError()), False),     # 普通 #3 → 触发
+            (AsyncMock(side_effect=RateLimitError()), True),  # 限流
+            (AsyncMock(side_effect=NormalError()), False),  # 普通 #1
+            (AsyncMock(side_effect=RateLimitError()), True),  # 限流
+            (AsyncMock(side_effect=NormalError()), False),  # 普通 #2
+            (AsyncMock(side_effect=RateLimitError()), True),  # 限流
+            (AsyncMock(side_effect=NormalError()), False),  # 普通 #3 → 触发
         ]
 
         with (

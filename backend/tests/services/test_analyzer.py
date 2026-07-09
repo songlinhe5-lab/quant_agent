@@ -28,6 +28,7 @@ from backend.services.datasource.analyzer import (
 #  HourlyBucket
 # ─────────────────────────────────────────
 
+
 class TestHourlyBucket:
     def test_limit_ratio_zero_requests(self):
         bucket = HourlyBucket(hour_label="09:00", requests=0, rate_limits=0)
@@ -45,6 +46,7 @@ class TestHourlyBucket:
 # ─────────────────────────────────────────
 #  RateLimitAnalysis
 # ─────────────────────────────────────────
+
 
 class TestRateLimitAnalysis:
     def test_to_dict_basic(self):
@@ -86,6 +88,7 @@ class TestRateLimitAnalysis:
 # ─────────────────────────────────────────
 #  RateLimitAnalyzer 基础功能
 # ─────────────────────────────────────────
+
 
 class TestAnalyzerBasic:
     def test_init_defaults(self):
@@ -129,6 +132,7 @@ class TestAnalyzerBasic:
 #  空数据分析
 # ─────────────────────────────────────────
 
+
 class TestAnalyzerEmpty:
     def test_analyze_empty(self):
         analyzer = RateLimitAnalyzer("test")
@@ -148,6 +152,7 @@ class TestAnalyzerEmpty:
 #  推测限流 RPM（P75 算法）
 # ─────────────────────────────────────────
 
+
 class TestEstimateLimitRPM:
     def test_estimate_rpm_with_uniform_traffic(self):
         """均匀流量：每分钟约 5 次成功请求"""
@@ -156,10 +161,12 @@ class TestEstimateLimitRPM:
         # 模拟 10 分钟，每分钟 5 次成功请求
         for minute in range(10):
             for _ in range(5):
-                analyzer._events.append(_RequestEvent(
-                    timestamp=now - (10 - minute) * 60 + 1,
-                    is_rate_limit=False,
-                ))
+                analyzer._events.append(
+                    _RequestEvent(
+                        timestamp=now - (10 - minute) * 60 + 1,
+                        is_rate_limit=False,
+                    )
+                )
         result = analyzer.analyze()
         # P75 应该接近 5
         assert result.estimated_limit_rpm is not None
@@ -172,16 +179,20 @@ class TestEstimateLimitRPM:
         # 20 分钟：15 分钟每分钟 2 次，5 分钟每分钟 20 次
         for minute in range(15):
             for _ in range(2):
-                analyzer._events.append(_RequestEvent(
-                    timestamp=now - (20 - minute) * 60 + 1,
-                    is_rate_limit=False,
-                ))
+                analyzer._events.append(
+                    _RequestEvent(
+                        timestamp=now - (20 - minute) * 60 + 1,
+                        is_rate_limit=False,
+                    )
+                )
         for minute in range(15, 20):
             for _ in range(20):
-                analyzer._events.append(_RequestEvent(
-                    timestamp=now - (20 - minute) * 60 + 1,
-                    is_rate_limit=False,
-                ))
+                analyzer._events.append(
+                    _RequestEvent(
+                        timestamp=now - (20 - minute) * 60 + 1,
+                        is_rate_limit=False,
+                    )
+                )
         result = analyzer.analyze()
         # P75 应该更接近低流量（因为 75% 的分钟是低流量）
         assert result.estimated_limit_rpm is not None
@@ -192,10 +203,12 @@ class TestEstimateLimitRPM:
         analyzer = RateLimitAnalyzer("test")
         now = time.time()
         for _ in range(10):
-            analyzer._events.append(_RequestEvent(
-                timestamp=now - 60,
-                is_rate_limit=True,
-            ))
+            analyzer._events.append(
+                _RequestEvent(
+                    timestamp=now - 60,
+                    is_rate_limit=True,
+                )
+            )
         result = analyzer.analyze()
         assert result.estimated_limit_rpm is None
 
@@ -203,6 +216,7 @@ class TestEstimateLimitRPM:
 # ─────────────────────────────────────────
 #  推荐安全间隔
 # ─────────────────────────────────────────
+
 
 class TestRecommendedInterval:
     def test_recommended_interval_calculation(self):
@@ -230,6 +244,7 @@ class TestRecommendedInterval:
 #  高峰时段识别
 # ─────────────────────────────────────────
 
+
 class TestPeakHours:
     def test_identify_peak_hours_with_high_ratio(self):
         """限流率 > 5% 的小时标记为高峰"""
@@ -242,25 +257,33 @@ class TestPeakHours:
         prev_hour_ts = now - 3600
 
         for i in range(90):
-            analyzer._events.append(_RequestEvent(
-                timestamp=current_hour_ts - i,
-                is_rate_limit=False,
-            ))
+            analyzer._events.append(
+                _RequestEvent(
+                    timestamp=current_hour_ts - i,
+                    is_rate_limit=False,
+                )
+            )
         for i in range(10):
-            analyzer._events.append(_RequestEvent(
-                timestamp=current_hour_ts - i,
-                is_rate_limit=True,
-            ))
+            analyzer._events.append(
+                _RequestEvent(
+                    timestamp=current_hour_ts - i,
+                    is_rate_limit=True,
+                )
+            )
         for i in range(98):
-            analyzer._events.append(_RequestEvent(
-                timestamp=prev_hour_ts - i,
-                is_rate_limit=False,
-            ))
+            analyzer._events.append(
+                _RequestEvent(
+                    timestamp=prev_hour_ts - i,
+                    is_rate_limit=False,
+                )
+            )
         for i in range(2):
-            analyzer._events.append(_RequestEvent(
-                timestamp=prev_hour_ts - i,
-                is_rate_limit=True,
-            ))
+            analyzer._events.append(
+                _RequestEvent(
+                    timestamp=prev_hour_ts - i,
+                    is_rate_limit=True,
+                )
+            )
 
         result = analyzer.analyze()
         assert len(result.peak_hours) >= 1
@@ -272,15 +295,19 @@ class TestPeakHours:
         now = time.time()
         # 100 请求，2 限流 (2% < 5%)
         for i in range(98):
-            analyzer._events.append(_RequestEvent(
-                timestamp=now - i,
-                is_rate_limit=False,
-            ))
+            analyzer._events.append(
+                _RequestEvent(
+                    timestamp=now - i,
+                    is_rate_limit=False,
+                )
+            )
         for i in range(2):
-            analyzer._events.append(_RequestEvent(
-                timestamp=now - i,
-                is_rate_limit=True,
-            ))
+            analyzer._events.append(
+                _RequestEvent(
+                    timestamp=now - i,
+                    is_rate_limit=True,
+                )
+            )
         result = analyzer.analyze()
         assert result.peak_hours == []
 
@@ -311,6 +338,7 @@ class TestPeakHours:
 #  平均恢复时间
 # ─────────────────────────────────────────
 
+
 class TestAvgRecovery:
     def test_avg_recovery_basic(self):
         """限流后 30s 恢复"""
@@ -330,7 +358,7 @@ class TestAvgRecovery:
         ]
         success_events = [
             _RequestEvent(timestamp=now - 170, is_rate_limit=False),  # 恢复 30s
-            _RequestEvent(timestamp=now - 60, is_rate_limit=False),   # 恢复 40s
+            _RequestEvent(timestamp=now - 60, is_rate_limit=False),  # 恢复 40s
         ]
         avg = RateLimitAnalyzer._calculate_avg_recovery(rl_events, success_events)
         assert avg is not None
@@ -359,6 +387,7 @@ class TestAvgRecovery:
 #  可信度计算
 # ─────────────────────────────────────────
 
+
 class TestConfidence:
     def test_confidence_zero_events(self):
         analyzer = RateLimitAnalyzer("test")
@@ -370,10 +399,12 @@ class TestConfidence:
         analyzer = RateLimitAnalyzer("test")
         now = time.time()
         for i in range(50):
-            analyzer._events.append(_RequestEvent(
-                timestamp=now - i,
-                is_rate_limit=False,
-            ))
+            analyzer._events.append(
+                _RequestEvent(
+                    timestamp=now - i,
+                    is_rate_limit=False,
+                )
+            )
         result = analyzer.analyze()
         assert abs(result.confidence - 0.5) < 0.01
 
@@ -382,10 +413,12 @@ class TestConfidence:
         analyzer = RateLimitAnalyzer("test")
         now = time.time()
         for i in range(150):
-            analyzer._events.append(_RequestEvent(
-                timestamp=now - i,
-                is_rate_limit=False,
-            ))
+            analyzer._events.append(
+                _RequestEvent(
+                    timestamp=now - i,
+                    is_rate_limit=False,
+                )
+            )
         result = analyzer.analyze()
         assert result.confidence == 1.0
 
@@ -394,6 +427,7 @@ class TestConfidence:
 #  滑动窗口与过期清理
 # ─────────────────────────────────────────
 
+
 class TestSlidingWindow:
     def test_events_outside_window_excluded(self):
         """窗口外的事件不参与分析"""
@@ -401,16 +435,20 @@ class TestSlidingWindow:
         now = time.time()
         # 窗口内：50 个成功
         for i in range(50):
-            analyzer._events.append(_RequestEvent(
-                timestamp=now - i,
-                is_rate_limit=False,
-            ))
+            analyzer._events.append(
+                _RequestEvent(
+                    timestamp=now - i,
+                    is_rate_limit=False,
+                )
+            )
         # 窗口外：100 个限流
         for i in range(100):
-            analyzer._events.append(_RequestEvent(
-                timestamp=now - 7200 - i,  # 2h 前
-                is_rate_limit=True,
-            ))
+            analyzer._events.append(
+                _RequestEvent(
+                    timestamp=now - 7200 - i,  # 2h 前
+                    is_rate_limit=True,
+                )
+            )
         result = analyzer.analyze()
         assert result.total_rate_limits_window == 0  # 窗口内无限流
         assert result.confidence == 0.5  # 50 个样本
@@ -425,10 +463,12 @@ class TestSlidingWindow:
         # 手动添加过期事件（在锁内操作）
         with analyzer._lock:
             for i in range(20):
-                analyzer._events.appendleft(_RequestEvent(
-                    timestamp=now - 7200 - i,
-                    is_rate_limit=True,
-                ))
+                analyzer._events.appendleft(
+                    _RequestEvent(
+                        timestamp=now - 7200 - i,
+                        is_rate_limit=True,
+                    )
+                )
 
         assert analyzer.get_event_count() == 30
         removed = analyzer.cleanup()
@@ -440,16 +480,19 @@ class TestSlidingWindow:
         analyzer = RateLimitAnalyzer("test", max_events=10)
         now = time.time()
         for i in range(20):
-            analyzer._events.append(_RequestEvent(
-                timestamp=now - i,
-                is_rate_limit=False,
-            ))
+            analyzer._events.append(
+                _RequestEvent(
+                    timestamp=now - i,
+                    is_rate_limit=False,
+                )
+            )
         assert analyzer.get_event_count() == 10
 
 
 # ─────────────────────────────────────────
 #  当前有效 RPM
 # ─────────────────────────────────────────
+
 
 class TestEffectiveRPM:
     def test_effective_rpm_recent_traffic(self):
@@ -458,10 +501,12 @@ class TestEffectiveRPM:
         now = time.time()
         # 最近 30 分钟 60 个请求 → 2 RPM
         for i in range(60):
-            analyzer._events.append(_RequestEvent(
-                timestamp=now - i * 30,  # 每 30s 一个
-                is_rate_limit=False,
-            ))
+            analyzer._events.append(
+                _RequestEvent(
+                    timestamp=now - i * 30,  # 每 30s 一个
+                    is_rate_limit=False,
+                )
+            )
         result = analyzer.analyze()
         assert result.current_effective_rpm is not None
         assert result.current_effective_rpm >= 1
@@ -472,10 +517,12 @@ class TestEffectiveRPM:
         now = time.time()
         # 2h 前的请求
         for i in range(10):
-            analyzer._events.append(_RequestEvent(
-                timestamp=now - 7200 - i,
-                is_rate_limit=False,
-            ))
+            analyzer._events.append(
+                _RequestEvent(
+                    timestamp=now - 7200 - i,
+                    is_rate_limit=False,
+                )
+            )
         result = analyzer.analyze()
         assert result.current_effective_rpm is None
 
@@ -484,16 +531,19 @@ class TestEffectiveRPM:
 #  自定义分析窗口
 # ─────────────────────────────────────────
 
+
 class TestCustomWindow:
     def test_analyze_with_7d_window(self):
         """传入 7 天窗口"""
         analyzer = RateLimitAnalyzer("test", window_seconds=7 * 86400)
         now = time.time()
         for i in range(100):
-            analyzer._events.append(_RequestEvent(
-                timestamp=now - i * 3600,  # 每小时一个
-                is_rate_limit=False,
-            ))
+            analyzer._events.append(
+                _RequestEvent(
+                    timestamp=now - i * 3600,  # 每小时一个
+                    is_rate_limit=False,
+                )
+            )
         result = analyzer.analyze(window_seconds=7 * 86400)
         assert result.analysis_window == "7d"
 
@@ -502,10 +552,12 @@ class TestCustomWindow:
         analyzer = RateLimitAnalyzer("test")
         now = time.time()
         for i in range(50):
-            analyzer._events.append(_RequestEvent(
-                timestamp=now - i * 60,
-                is_rate_limit=False,
-            ))
+            analyzer._events.append(
+                _RequestEvent(
+                    timestamp=now - i * 60,
+                    is_rate_limit=False,
+                )
+            )
         result = analyzer.analyze(window_seconds=7200)
         assert result.analysis_window == "2h"
 
@@ -513,6 +565,7 @@ class TestCustomWindow:
 # ─────────────────────────────────────────
 #  线程安全性
 # ─────────────────────────────────────────
+
 
 class TestConcurrency:
     def test_concurrent_record_and_analyze(self):
@@ -553,10 +606,12 @@ class TestConcurrency:
         analyzer = RateLimitAnalyzer("test", window_seconds=1)
         now = time.time()
         for i in range(100):
-            analyzer._events.append(_RequestEvent(
-                timestamp=now - 10 - i,  # 已过期
-                is_rate_limit=False,
-            ))
+            analyzer._events.append(
+                _RequestEvent(
+                    timestamp=now - 10 - i,  # 已过期
+                    is_rate_limit=False,
+                )
+            )
 
         errors = []
 
@@ -580,6 +635,7 @@ class TestConcurrency:
 #  完整集成场景
 # ─────────────────────────────────────────
 
+
 class TestIntegrationScenario:
     def test_realistic_scenario(self):
         """模拟真实场景：正常流量 → 限流 → 恢复 → 再限流"""
@@ -589,40 +645,52 @@ class TestIntegrationScenario:
         # 阶段 1: 正常流量 (1h 前, 每分钟 5 次)
         for minute in range(30):
             for _ in range(5):
-                analyzer._events.append(_RequestEvent(
-                    timestamp=now - 3600 - (30 - minute) * 60,
-                    is_rate_limit=False,
-                ))
+                analyzer._events.append(
+                    _RequestEvent(
+                        timestamp=now - 3600 - (30 - minute) * 60,
+                        is_rate_limit=False,
+                    )
+                )
 
         # 阶段 2: 触发限流 (40min 前)
-        analyzer._events.append(_RequestEvent(
-            timestamp=now - 2400,
-            is_rate_limit=True,
-        ))
-        analyzer._events.append(_RequestEvent(
-            timestamp=now - 2370,
-            is_rate_limit=True,
-        ))
+        analyzer._events.append(
+            _RequestEvent(
+                timestamp=now - 2400,
+                is_rate_limit=True,
+            )
+        )
+        analyzer._events.append(
+            _RequestEvent(
+                timestamp=now - 2370,
+                is_rate_limit=True,
+            )
+        )
 
         # 阶段 3: 恢复 (30min 前)
         for _ in range(10):
-            analyzer._events.append(_RequestEvent(
-                timestamp=now - 1800 + 1,
-                is_rate_limit=False,
-            ))
+            analyzer._events.append(
+                _RequestEvent(
+                    timestamp=now - 1800 + 1,
+                    is_rate_limit=False,
+                )
+            )
 
         # 阶段 4: 再次限流 (10min 前)
-        analyzer._events.append(_RequestEvent(
-            timestamp=now - 600,
-            is_rate_limit=True,
-        ))
+        analyzer._events.append(
+            _RequestEvent(
+                timestamp=now - 600,
+                is_rate_limit=True,
+            )
+        )
 
         # 阶段 5: 再次恢复 (5min 前)
         for _ in range(20):
-            analyzer._events.append(_RequestEvent(
-                timestamp=now - 300,
-                is_rate_limit=False,
-            ))
+            analyzer._events.append(
+                _RequestEvent(
+                    timestamp=now - 300,
+                    is_rate_limit=False,
+                )
+            )
 
         result = analyzer.analyze()
 

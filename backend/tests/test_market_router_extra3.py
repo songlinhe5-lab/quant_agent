@@ -41,7 +41,11 @@ class TestSearchTickers:
     def test_local_empty_yf_fallback(self, mock_router, mock_ts):
         mock_ts.search_tickers = AsyncMock(return_value={"status": "success", "data": []})
         mock_router.fetch_yfinance = AsyncMock(
-            return_value={"success": True, "data": {"status": "success", "data": [{"symbol": "AAPL", "name": "Apple"}]}, "message": ""}
+            return_value={
+                "success": True,
+                "data": {"status": "success", "data": [{"symbol": "AAPL", "name": "Apple"}]},
+                "message": "",
+            }
         )
         resp = client.get("/market/search?q=apple")
         assert resp.status_code == 200
@@ -111,7 +115,9 @@ class TestGetFundamental:
     @patch("backend.routers.market.data_source_router")
     def test_futu_fail_yf_success(self, mock_router, mock_futu):
         mock_futu.get_fundamental = AsyncMock(return_value={"status": "error", "message": "失败"})
-        mock_router.fetch_yfinance = AsyncMock(return_value={"success": True, "data": {"shortName": "Apple", "trailingPE": 20.0}, "message": "ok"})
+        mock_router.fetch_yfinance = AsyncMock(
+            return_value={"success": True, "data": {"shortName": "Apple", "trailingPE": 20.0}, "message": "ok"}
+        )
         resp = client.get("/market/fundamental/US.AAPL")
         assert resp.status_code == 200
 

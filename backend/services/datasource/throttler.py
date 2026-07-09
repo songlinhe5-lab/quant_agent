@@ -51,6 +51,7 @@ def _init_metrics():
             DS_RATE_LIMIT_THROTTLED_SECONDS,
             DS_RATE_LIMIT_TOTAL,
         )
+
         _DS_RATE_LIMIT_TOTAL = DS_RATE_LIMIT_TOTAL
         _DS_RATE_LIMIT_THROTTLED = DS_RATE_LIMIT_THROTTLED_SECONDS
         _DS_RATE_LIMIT_ESTIMATED_RPM = DS_RATE_LIMIT_ESTIMATED_RPM
@@ -73,8 +74,10 @@ _BACKOFF_STATE_MAP = {
 #  退避策略枚举
 # ─────────────────────────────────────────
 
+
 class BackoffStrategy(str, Enum):
     """退避策略"""
+
     NONE = "none"
     LINEAR = "linear"
     EXPONENTIAL = "exponential"
@@ -84,6 +87,7 @@ class BackoffStrategy(str, Enum):
 # ─────────────────────────────────────────
 #  配置解析
 # ─────────────────────────────────────────
+
 
 def _env_float(name: str, default: float) -> float:
     val = os.getenv(name)
@@ -115,6 +119,7 @@ def _env_strategy(name: str, default: BackoffStrategy) -> BackoffStrategy:
 # ─────────────────────────────────────────
 #  RateLimitThrottler
 # ─────────────────────────────────────────
+
 
 class RateLimitThrottler:
     """
@@ -165,18 +170,12 @@ class RateLimitThrottler:
         prefix = f"DATASOURCE_{source_name.upper()}"
 
         self._source_name = source_name
-        self._strategy = strategy if strategy is not None else _env_strategy(
-            f"{prefix}_BACKOFF_STRATEGY", BackoffStrategy.ADAPTIVE
+        self._strategy = (
+            strategy if strategy is not None else _env_strategy(f"{prefix}_BACKOFF_STRATEGY", BackoffStrategy.ADAPTIVE)
         )
-        self._base_delay = base_delay if base_delay is not None else _env_float(
-            f"{prefix}_BACKOFF_BASE_DELAY", 2.0
-        )
-        self._max_delay = max_delay if max_delay is not None else _env_float(
-            f"{prefix}_BACKOFF_MAX_DELAY", 300.0
-        )
-        self._jitter = jitter if jitter is not None else _env_bool(
-            f"{prefix}_BACKOFF_JITTER", True
-        )
+        self._base_delay = base_delay if base_delay is not None else _env_float(f"{prefix}_BACKOFF_BASE_DELAY", 2.0)
+        self._max_delay = max_delay if max_delay is not None else _env_float(f"{prefix}_BACKOFF_MAX_DELAY", 300.0)
+        self._jitter = jitter if jitter is not None else _env_bool(f"{prefix}_BACKOFF_JITTER", True)
 
         # ── 内部状态（均受 _lock 保护）──
         self._lock = threading.Lock()
@@ -263,9 +262,7 @@ class RateLimitThrottler:
             if _DS_RATE_LIMIT_ESTIMATED_RPM is not None and self._estimated_limit_rpm:
                 _DS_RATE_LIMIT_ESTIMATED_RPM.labels(source=self._source_name).set(self._estimated_limit_rpm)
             if _DS_BACKOFF_STATE is not None:
-                _DS_BACKOFF_STATE.labels(source=self._source_name).set(
-                    _BACKOFF_STATE_MAP.get(self._strategy.value, 0)
-                )
+                _DS_BACKOFF_STATE.labels(source=self._source_name).set(_BACKOFF_STATE_MAP.get(self._strategy.value, 0))
 
             logger.info(
                 f"[Throttler:{self._source_name}] 限流触发，进入退避: "
@@ -276,6 +273,7 @@ class RateLimitThrottler:
             # RL-11: 通知告警监控器
             try:
                 from backend.services.datasource.alert_monitor import rate_limit_alert_monitor
+
                 error_category = error.category.value if error and error.category else "rate_limit"
                 rate_limit_alert_monitor.on_rate_limit_event(
                     source=self._source_name,
@@ -313,9 +311,7 @@ class RateLimitThrottler:
                     self._request_interval = 0.0
                     self._consecutive_limits = 0
                     self._estimated_limit_rpm = None
-                    logger.debug(
-                        f"[Throttler:{self._source_name}] 退避归零，恢复正常速率"
-                    )
+                    logger.debug(f"[Throttler:{self._source_name}] 退避归零，恢复正常速率")
 
     def reset(self) -> None:
         """手动重置所有状态"""
@@ -331,10 +327,7 @@ class RateLimitThrottler:
         """获取当前限流状态快照"""
         with self._lock:
             now = time.monotonic()
-            is_throttled = (
-                self._strategy != BackoffStrategy.NONE
-                and now < self._throttle_until
-            )
+            is_throttled = self._strategy != BackoffStrategy.NONE and now < self._throttle_until
 
             # 统计过去 1 小时内的限流次数
             one_hour_ago = now - 3600.0
@@ -347,11 +340,7 @@ class RateLimitThrottler:
 
             status = RateLimitStatus(
                 is_throttled=is_throttled,
-                throttle_until=(
-                    time.time() + (self._throttle_until - now)
-                    if is_throttled
-                    else None
-                ),
+                throttle_until=(time.time() + (self._throttle_until - now) if is_throttled else None),
                 estimated_rpm=effective_rpm,
                 estimated_limit_rpm=self._estimated_limit_rpm,
                 consecutive_rate_limits=self._consecutive_limits,
@@ -365,9 +354,7 @@ class RateLimitThrottler:
                 remaining = max(0.0, self._throttle_until - now) if is_throttled else 0.0
                 _DS_RATE_LIMIT_THROTTLED.labels(source=self._source_name).set(remaining)
             if _DS_RATE_LIMIT_EFFECTIVE_RPM is not None:
-                _DS_RATE_LIMIT_EFFECTIVE_RPM.labels(source=self._source_name).set(
-                    effective_rpm if effective_rpm else 0
-                )
+                _DS_RATE_LIMIT_EFFECTIVE_RPM.labels(source=self._source_name).set(effective_rpm if effective_rpm else 0)
 
             return status
 
@@ -401,11 +388,11 @@ class RateLimitThrottler:
 
         elif self._strategy == BackoffStrategy.EXPONENTIAL:
             # wait = base_delay * 2^consecutive_count
-            wait = self._base_delay * (2 ** n)
+            wait = self._base_delay * (2**n)
 
         elif self._strategy == BackoffStrategy.ADAPTIVE:
             # 自适应：指数退避 + 动态调整
-            wait = self._base_delay * (2 ** n)
+            wait = self._base_delay * (2**n)
             # 如果有历史 request_interval，作为下限参考
             if self._request_interval > 0:
                 wait = max(wait, self._request_interval)

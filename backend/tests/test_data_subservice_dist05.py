@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 #  Mock 基础设施
 # ─────────────────────────────────────────
 
+
 class FakeRedis:
     """模拟 Redis 客户端"""
 
@@ -190,6 +191,7 @@ class FakePipeline:
 #  Fixtures
 # ─────────────────────────────────────────
 
+
 @pytest.fixture
 def env_vars():
     """设置子服务所需的环境变量"""
@@ -215,19 +217,22 @@ def fake_redis():
 #  1. 环境变量解析与 NodeInfo 构造
 # ─────────────────────────────────────────
 
+
 class TestNodeInfoBuild:
     """验证从环境变量构造 NodeInfo"""
 
     def test_build_node_info(self, env_vars, fake_redis):
         """NodeInfo 应正确反映环境变量"""
         # 需要重新导入以获取更新后的环境变量
-        with patch("data_subservice.main.DS_NODE_ID", "test-node-01"), \
-             patch("data_subservice.main.DS_NODE_PORT", 8001), \
-             patch("data_subservice.main.DS_REGION", "us-west"), \
-             patch("data_subservice.main.DS_WEIGHT", 10), \
-             patch("data_subservice.main.DS_CAPABILITIES", ["yfinance", "akshare"]):
-
+        with (
+            patch("data_subservice.main.DS_NODE_ID", "test-node-01"),
+            patch("data_subservice.main.DS_NODE_PORT", 8001),
+            patch("data_subservice.main.DS_REGION", "us-west"),
+            patch("data_subservice.main.DS_WEIGHT", 10),
+            patch("data_subservice.main.DS_CAPABILITIES", ["yfinance", "akshare"]),
+        ):
             from data_subservice.main import _build_node_info
+
             node = _build_node_info()
 
             assert node.node_id == "test-node-01"
@@ -240,6 +245,7 @@ class TestNodeInfoBuild:
         """URL 应包含端口"""
         with patch("data_subservice.main.DS_NODE_PORT", 9999):
             from data_subservice.main import _build_node_url
+
             url = _build_node_url()
             assert "9999" in url
 
@@ -247,6 +253,7 @@ class TestNodeInfoBuild:
 # ─────────────────────────────────────────
 #  2. Startup: 注册到 ServiceRegistry
 # ─────────────────────────────────────────
+
 
 class TestStartupRegistration:
     """验证启动时注册流程"""
@@ -262,10 +269,11 @@ class TestStartupRegistration:
         mock_aioredis = MagicMock()
         mock_aioredis.Redis = MagicMock(return_value=fake_redis)
 
-        with patch.object(mod, "aioredis", mock_aioredis), \
-             patch.object(mod, "ServiceRegistry", return_value=mock_registry), \
-             patch.object(mod, "DS_NODE_ID", "test-node-01"):
-
+        with (
+            patch.object(mod, "aioredis", mock_aioredis),
+            patch.object(mod, "ServiceRegistry", return_value=mock_registry),
+            patch.object(mod, "DS_NODE_ID", "test-node-01"),
+        ):
             async with mod.lifespan(mod.app):
                 mock_registry.register.assert_awaited_once()
 
@@ -274,6 +282,7 @@ class TestStartupRegistration:
         """缺少 DS_NODE_ID 应抛出 RuntimeError"""
         with patch("data_subservice.main.DS_NODE_ID", ""):
             from data_subservice.main import app, lifespan
+
             with pytest.raises(RuntimeError, match="DS_NODE_ID"):
                 async with lifespan(app):
                     pass
@@ -282,6 +291,7 @@ class TestStartupRegistration:
 # ─────────────────────────────────────────
 #  3. 心跳后台任务
 # ─────────────────────────────────────────
+
 
 class TestHeartbeat:
     """验证心跳后台任务"""
@@ -318,6 +328,7 @@ class TestHeartbeat:
 #  4. Shutdown: 注销 + 关闭
 # ─────────────────────────────────────────
 
+
 class TestShutdown:
     """验证关闭流程"""
 
@@ -333,10 +344,11 @@ class TestShutdown:
         mock_aioredis = MagicMock()
         mock_aioredis.Redis = MagicMock(return_value=fake_redis)
 
-        with patch.object(mod, "aioredis", mock_aioredis), \
-             patch.object(mod, "ServiceRegistry", return_value=mock_registry), \
-             patch.object(mod, "DS_NODE_ID", "test-node-01"):
-
+        with (
+            patch.object(mod, "aioredis", mock_aioredis),
+            patch.object(mod, "ServiceRegistry", return_value=mock_registry),
+            patch.object(mod, "DS_NODE_ID", "test-node-01"),
+        ):
             async with mod.lifespan(mod.app):
                 pass  # 启动后立即关闭
 
@@ -354,9 +366,10 @@ class TestShutdown:
         mock_aioredis = MagicMock()
         mock_aioredis.Redis = MagicMock(return_value=fake_redis)
 
-        with patch.object(mod, "aioredis", mock_aioredis), \
-             patch.object(mod, "ServiceRegistry", return_value=mock_registry):
-
+        with (
+            patch.object(mod, "aioredis", mock_aioredis),
+            patch.object(mod, "ServiceRegistry", return_value=mock_registry),
+        ):
             async with mod.lifespan(mod.app):
                 pass
 
@@ -367,19 +380,23 @@ class TestShutdown:
 #  5. 端点测试
 # ─────────────────────────────────────────
 
+
 class TestEndpoints:
     """验证 HTTP 端点"""
 
     def test_health_endpoint(self, env_vars):
         """/health 应返回节点信息"""
         import data_subservice.main as mod
+
         mod._start_time = 1000.0
 
-        with patch("data_subservice.main.DS_NODE_ID", "test-node-01"), \
-             patch("data_subservice.main.DS_REGION", "us-west"), \
-             patch("data_subservice.main.DS_CAPABILITIES", ["yfinance"]):
-
+        with (
+            patch("data_subservice.main.DS_NODE_ID", "test-node-01"),
+            patch("data_subservice.main.DS_REGION", "us-west"),
+            patch("data_subservice.main.DS_CAPABILITIES", ["yfinance"]),
+        ):
             from data_subservice.main import app
+
             client = TestClient(app, raise_server_exceptions=False)
             resp = client.get("/health")
 
@@ -392,13 +409,16 @@ class TestEndpoints:
     def test_datasource_health_endpoint(self, env_vars):
         """/ds/health 应返回数据源健康总览"""
         import data_subservice.main as mod
+
         mod._start_time = 1000.0
 
-        with patch("data_subservice.main.DS_NODE_ID", "test-node-01"), \
-             patch("data_subservice.main.DS_REGION", "us-west"), \
-             patch("data_subservice.main.DS_CAPABILITIES", ["yfinance", "akshare"]):
-
+        with (
+            patch("data_subservice.main.DS_NODE_ID", "test-node-01"),
+            patch("data_subservice.main.DS_REGION", "us-west"),
+            patch("data_subservice.main.DS_CAPABILITIES", ["yfinance", "akshare"]),
+        ):
             from data_subservice.main import app
+
             client = TestClient(app, raise_server_exceptions=False)
             resp = client.get("/ds/health")
 
@@ -412,6 +432,7 @@ class TestEndpoints:
         """/ds/{source}/{action} 已被 DIST-07 路由替代，返回 404"""
         with patch("data_subservice.main.DS_NODE_ID", "test-node-01"):
             from data_subservice.main import app
+
             client = TestClient(app, raise_server_exceptions=False)
             resp = client.post("/ds/yfinance/quote", json={"ticker": "AAPL"})
 

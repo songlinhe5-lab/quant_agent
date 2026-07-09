@@ -21,6 +21,7 @@ import pytest
 #  1. AKShareService cache 模式
 # ─────────────────────────────────────────
 
+
 class TestAKShareServiceCacheMode:
     """验证 AKShareService 在 cache 模式下的行为"""
 
@@ -33,6 +34,7 @@ class TestAKShareServiceCacheMode:
             mock_redis.lock = MagicMock()
 
             from backend.services.akshare_service import AKShareService
+
             svc = AKShareService()
             svc._cache_mode = True  # 强制 cache 模式
             svc._redis = mock_redis
@@ -121,6 +123,7 @@ class TestAKShareServiceCacheMode:
 #  2. AKShareService health_status
 # ─────────────────────────────────────────
 
+
 class TestAKShareServiceHealthStatus:
     """验证健康状态反映运行模式"""
 
@@ -129,6 +132,7 @@ class TestAKShareServiceHealthStatus:
         with patch("backend.services.akshare_service.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             from backend.services.akshare_service import AKShareService
+
             svc = AKShareService()
             svc._cache_mode = True
 
@@ -141,6 +145,7 @@ class TestAKShareServiceHealthStatus:
         with patch("backend.services.akshare_service.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             from backend.services.akshare_service import AKShareService
+
             svc = AKShareService()
             svc._cache_mode = False
 
@@ -152,6 +157,7 @@ class TestAKShareServiceHealthStatus:
 # ─────────────────────────────────────────
 #  3. AKShareCollector 任务定义
 # ─────────────────────────────────────────
+
 
 class TestAKShareCollectorTasks:
     """验证采集任务定义"""
@@ -184,6 +190,7 @@ class TestAKShareCollectorTasks:
 #  4. 交易时段判断
 # ─────────────────────────────────────────
 
+
 class TestIsTradingHours:
     """验证交易时段判断逻辑"""
 
@@ -214,6 +221,7 @@ class TestIsTradingHours:
 #  5. AKShareCollector daemon 生命周期
 # ─────────────────────────────────────────
 
+
 class TestAKShareCollectorDaemon:
     """验证采集 daemon 的启停"""
 
@@ -223,18 +231,14 @@ class TestAKShareCollectorDaemon:
         from backend.workers.akshare_collector import akshare_collector_daemon
 
         mock_service = MagicMock()
-        mock_service.get_southbound_flow = AsyncMock(
-            return_value={"status": "success", "data": {"net_inflow": 12.8}}
-        )
-        mock_service.get_northbound_flow = AsyncMock(
-            return_value={"status": "success", "data": {"net_inflow": -5.3}}
-        )
-        mock_service.get_economic_calendar = AsyncMock(
-            return_value={"status": "success", "data": []}
-        )
+        mock_service.get_southbound_flow = AsyncMock(return_value={"status": "success", "data": {"net_inflow": 12.8}})
+        mock_service.get_northbound_flow = AsyncMock(return_value={"status": "success", "data": {"net_inflow": -5.3}})
+        mock_service.get_economic_calendar = AsyncMock(return_value={"status": "success", "data": []})
 
-        with patch("backend.services.akshare_service.AKShareService", return_value=mock_service), \
-             patch("backend.workers.akshare_collector.asyncio.sleep", side_effect=[None, asyncio.CancelledError]):
+        with (
+            patch("backend.services.akshare_service.AKShareService", return_value=mock_service),
+            patch("backend.workers.akshare_collector.asyncio.sleep", side_effect=[None, asyncio.CancelledError]),
+        ):
             task = asyncio.create_task(akshare_collector_daemon(enabled_tasks=["southbound"]))
             await asyncio.sleep(0.1)
 
@@ -253,9 +257,7 @@ class TestAKShareCollectorDaemon:
         from backend.workers.akshare_collector import akshare_collector_daemon
 
         mock_service = MagicMock()
-        mock_service.get_southbound_flow = AsyncMock(
-            return_value={"status": "success", "data": {"net_inflow": 12.8}}
-        )
+        mock_service.get_southbound_flow = AsyncMock(return_value={"status": "success", "data": {"net_inflow": 12.8}})
 
         call_count = 0
 
@@ -265,8 +267,10 @@ class TestAKShareCollectorDaemon:
             if call_count > 1:
                 raise asyncio.CancelledError
 
-        with patch("backend.services.akshare_service.AKShareService", return_value=mock_service), \
-             patch("backend.workers.akshare_collector.asyncio.sleep", side_effect=mock_sleep):
+        with (
+            patch("backend.services.akshare_service.AKShareService", return_value=mock_service),
+            patch("backend.workers.akshare_collector.asyncio.sleep", side_effect=mock_sleep),
+        ):
             task = asyncio.create_task(akshare_collector_daemon(enabled_tasks=["southbound"]))
             try:
                 await task
@@ -280,6 +284,7 @@ class TestAKShareCollectorDaemon:
 #  6. collector_registry 集成
 # ─────────────────────────────────────────
 
+
 class TestCollectorRegistryIntegration:
     """验证 collector_registry 中 akshare 采集器的注册"""
 
@@ -291,8 +296,10 @@ class TestCollectorRegistryIntegration:
         mock_task = MagicMock()
         mock_task.done.return_value = False
 
-        with patch("backend.workers.akshare_collector.akshare_collector_daemon", new_callable=AsyncMock), \
-             patch("asyncio.create_task", return_value=mock_task) as mock_create:
+        with (
+            patch("backend.workers.akshare_collector.akshare_collector_daemon", new_callable=AsyncMock),
+            patch("asyncio.create_task", return_value=mock_task) as mock_create,
+        ):
             tasks = await start_collector_daemons(["akshare"])
 
             mock_create.assert_called_once()

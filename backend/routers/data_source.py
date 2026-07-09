@@ -125,9 +125,7 @@ async def proxy_yfinance(request: Request):
         elif fetch_type == "tech":
             return await yf_service.get_tech_indicators(ticker, **kwargs)
         elif fetch_type == "history":
-            success, data, msg = await yf_service.fetch_yf_data(
-                ticker, "history", ttl=3600, **kwargs
-            )
+            success, data, msg = await yf_service.fetch_yf_data(ticker, "history", ttl=3600, **kwargs)
             return {"success": success, "data": data, "message": msg}
         return {"success": False, "message": f"Unknown fetch_type: {fetch_type}"}
     except Exception as e:
@@ -161,21 +159,15 @@ async def proxy_akshare(request: Request):
         elif action == "northbound":
             return await akshare_service.get_northbound_flow()
         elif action == "hsgt_holders":
-            return await akshare_service.get_hsgt_top_holders(
-                symbol=kwargs.get("symbol", "00700")
-            )
+            return await akshare_service.get_hsgt_top_holders(symbol=kwargs.get("symbol", "00700"))
         elif action == "company_news":
             return await akshare_service.get_company_news(ticker=kwargs.get("ticker", ""))
         elif action == "stock_quote":
             return await akshare_service.get_stock_quote(ticker=kwargs.get("ticker", ""))
         elif action == "stock_history":
-            return await akshare_service.get_stock_history(
-                ticker=kwargs.get("ticker", ""), num=kwargs.get("num", 60)
-            )
+            return await akshare_service.get_stock_history(ticker=kwargs.get("ticker", ""), num=kwargs.get("num", 60))
         elif action == "economic_calendar":
-            return await akshare_service.get_economic_calendar(
-                days_ahead=kwargs.get("days_ahead", 7)
-            )
+            return await akshare_service.get_economic_calendar(days_ahead=kwargs.get("days_ahead", 7))
         return {"status": "error", "message": f"Unknown akshare action: {action}"}
     except Exception as e:
         logger.error(f"[Proxy] AKShare 错误: {action}, {str(e)}")

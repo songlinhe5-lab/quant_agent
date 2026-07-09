@@ -332,9 +332,7 @@ class ServiceRegistry:
 
         try:
             # 找到所有心跳超时的节点
-            dead_ids = await self._redis.zrangebyscore(
-                _KEY_HEARTBEATS, "-inf", cutoff
-            )
+            dead_ids = await self._redis.zrangebyscore(_KEY_HEARTBEATS, "-inf", cutoff)
 
             if not dead_ids:
                 return []
@@ -348,9 +346,7 @@ class ServiceRegistry:
                     pipe.delete(f"{_KEY_STATS_PREFIX}:{node_id}")
                 await pipe.execute()
 
-            logger.warning(
-                f"[ServiceRegistry] 清理 {len(dead_ids)} 个死节点: {dead_ids}"
-            )
+            logger.warning(f"[ServiceRegistry] 清理 {len(dead_ids)} 个死节点: {dead_ids}")
             return dead_ids
         except Exception as e:
             logger.error(f"[ServiceRegistry] 清理死节点失败: error={e}")

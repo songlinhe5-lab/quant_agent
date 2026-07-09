@@ -793,8 +793,12 @@ class TestBroadcastLoop:
                         mock_futu.get_fund_flow = AsyncMock(return_value={"status": "error"})
                         mock_futu.get_history = AsyncMock(return_value={"status": "error"})
                         mock_futu.get_account_info = AsyncMock(return_value={"status": "error"})
-                        mock_yf.get_tech_indicators = AsyncMock(return_value={"status": "success", "data": {"trend": []}})
-                        mock_yf.get_batched_quote = AsyncMock(return_value={"status": "success", "ticker": "US.AAPL", "last_price": 150.0})
+                        mock_yf.get_tech_indicators = AsyncMock(
+                            return_value={"status": "success", "data": {"trend": []}}
+                        )
+                        mock_yf.get_batched_quote = AsyncMock(
+                            return_value={"status": "success", "ticker": "US.AAPL", "last_price": 150.0}
+                        )
 
                         ws = MagicMock()
                         mgr.subscriptions[ws] = {"US.AAPL"}

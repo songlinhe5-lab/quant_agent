@@ -34,6 +34,7 @@ def monitor():
 # IP 封禁告警
 # ─────────────────────────────────────────
 
+
 class TestIPBlockedAlert:
     def test_ip_blocked_triggers_critical_alert(self, monitor):
         """IP 封禁立即触发 critical 告警"""
@@ -61,6 +62,7 @@ class TestIPBlockedAlert:
 # 配额耗尽告警
 # ─────────────────────────────────────────
 
+
 class TestQuotaExhaustedAlert:
     def test_quota_exhausted_triggers_critical_alert(self, monitor):
         """配额耗尽触发 critical 告警"""
@@ -86,6 +88,7 @@ class TestQuotaExhaustedAlert:
 # ─────────────────────────────────────────
 # 长时间退避告警
 # ─────────────────────────────────────────
+
 
 class TestLongBackoffAlert:
     def test_long_backoff_triggers_warning(self, monitor):
@@ -115,13 +118,14 @@ class TestLongBackoffAlert:
 # 限流频率飙升告警
 # ─────────────────────────────────────────
 
+
 class TestRateLimitSpikeAlert:
     def test_spike_triggers_critical_alert(self, monitor):
         """5 分钟内 >10 次限流触发 critical 告警"""
         # 前 10 次不触发 (阈值 = 10)
         for i in range(10):
             alert = monitor.on_rate_limit_event("yahoo", "rate_limit", 10, i + 1)
-            assert alert is None, f"第 {i+1} 次不应触发告警"
+            assert alert is None, f"第 {i + 1} 次不应触发告警"
 
         # 第 11 次触发
         alert = monitor.on_rate_limit_event("yahoo", "rate_limit", 10, 11)
@@ -147,6 +151,7 @@ class TestRateLimitSpikeAlert:
 # ─────────────────────────────────────────
 # 去重冷却机制
 # ─────────────────────────────────────────
+
 
 class TestCooldown:
     def test_same_source_same_type_cooldown(self, monitor):
@@ -184,6 +189,7 @@ class TestCooldown:
 # get_status / reset
 # ─────────────────────────────────────────
 
+
 class TestMonitorStatus:
     def test_get_status_empty(self, monitor):
         """空状态"""
@@ -215,6 +221,7 @@ class TestMonitorStatus:
 # Throttler 集成
 # ─────────────────────────────────────────
 
+
 class TestThrottlerIntegration:
     def test_throttler_calls_alert_monitor(self):
         """Throttler.on_rate_limit 自动调用告警监控器"""
@@ -227,9 +234,7 @@ class TestThrottlerIntegration:
             base_delay=10,
         )
 
-        with patch(
-            "backend.services.datasource.alert_monitor.rate_limit_alert_monitor"
-        ) as mock_monitor:
+        with patch("backend.services.datasource.alert_monitor.rate_limit_alert_monitor") as mock_monitor:
             error = ErrorInfo.rate_limited()
             throttler.on_rate_limit(error)
             mock_monitor.on_rate_limit_event.assert_called_once()

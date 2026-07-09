@@ -11,7 +11,6 @@ RL-09/10: Prometheus 限流指标埋点单测
 - HealthInfo 包含 RateLimitStatus
 """
 
-
 from backend.core.metrics import (
     DS_BACKOFF_STATE,
     DS_RATE_LIMIT_EFFECTIVE_RPM,
@@ -33,6 +32,7 @@ from backend.services.datasource.throttler import (
 # ─────────────────────────────────────────
 #  Prometheus 指标定义
 # ─────────────────────────────────────────
+
 
 class TestMetricsDefinition:
     def test_ds_rate_limit_total_is_counter(self):
@@ -60,6 +60,7 @@ class TestMetricsDefinition:
 #  退避策略状态映射
 # ─────────────────────────────────────────
 
+
 class TestBackoffStateMap:
     def test_none_maps_to_0(self):
         assert _BACKOFF_STATE_MAP["none"] == 0
@@ -77,6 +78,7 @@ class TestBackoffStateMap:
 # ─────────────────────────────────────────
 #  Prometheus 埋点集成
 # ─────────────────────────────────────────
+
 
 class TestMetricsIntegration:
     def test_on_rate_limit_increments_counter(self):
@@ -125,6 +127,7 @@ class TestMetricsIntegration:
 #  HealthInfo 包含 RateLimitStatus
 # ─────────────────────────────────────────
 
+
 class TestHealthInfoRateLimit:
     def test_health_info_has_rate_limit_status(self):
         """HealthInfo 包含 rate_limit_status 字段"""
@@ -158,6 +161,7 @@ class TestHealthInfoRateLimit:
 # ─────────────────────────────────────────
 #  环境变量配置 (RL-12)
 # ─────────────────────────────────────────
+
 
 class TestEnvConfig:
     def test_default_strategy_is_adaptive(self):

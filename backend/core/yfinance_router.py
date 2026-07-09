@@ -198,10 +198,7 @@ class YFinanceRouter:
                 # 限流类错误: 不计入熔断，触发 failover
                 error_category = result.get("error_category", "normal")
                 if error_category != "normal":
-                    logger.warning(
-                        f"[YFinanceRouter] 节点 {node.node_id} 限流 ({error_category}): "
-                        f"endpoint={endpoint}"
-                    )
+                    logger.warning(f"[YFinanceRouter] 节点 {node.node_id} 限流 ({error_category}): endpoint={endpoint}")
                     # 限流不计入熔断失败计数，但记录日志
                     continue
 
@@ -229,9 +226,7 @@ class YFinanceRouter:
                 limits=httpx.Limits(max_connections=20),
             )
 
-    async def _send_request(
-        self, node: NodeInfo, endpoint: str, payload: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    async def _send_request(self, node: NodeInfo, endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         """向指定节点发送 HTTP 请求"""
         self._ensure_http_client()
         url = f"{node.url}/api/v1/data-source/proxy/{endpoint}"
@@ -269,10 +264,7 @@ class YFinanceRouter:
 
         if count >= 3:
             self._node_circuit_until[node_id] = time.time() + 30.0
-            logger.warning(
-                f"[YFinanceRouter] 节点 {node_id} 连续失败 {count} 次，"
-                f"触发内存熔断 (30s 冷却)"
-            )
+            logger.warning(f"[YFinanceRouter] 节点 {node_id} 连续失败 {count} 次，触发内存熔断 (30s 冷却)")
 
     def _record_success(self, node_id: str):
         """重置节点失败计数"""
@@ -331,15 +323,17 @@ class YFinanceRouter:
         for node in nodes:
             fail_count = self._node_fail_counts.get(node.node_id, 0)
             circuit_until = self._node_circuit_until.get(node.node_id, 0)
-            node_details.append({
-                "node_id": node.node_id,
-                "url": node.url,
-                "weight": node.weight,
-                "region": node.region,
-                "fail_count": fail_count,
-                "circuit_remaining": max(0, int(circuit_until - now)),
-                "is_circuit_open": now < circuit_until,
-            })
+            node_details.append(
+                {
+                    "node_id": node.node_id,
+                    "url": node.url,
+                    "weight": node.weight,
+                    "region": node.region,
+                    "fail_count": fail_count,
+                    "circuit_remaining": max(0, int(circuit_until - now)),
+                    "is_circuit_open": now < circuit_until,
+                }
+            )
 
         return {
             "enabled": True,
