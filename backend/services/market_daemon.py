@@ -1,8 +1,11 @@
 """
 ==========================================
-Finnhub Daemon - 仅 Master 运行的守护进程集合
+Market Daemon - 仅 Master 运行的守护进程集合
 ==========================================
-将 Finnhub 的后台守护进程逻辑从 finnhub_service 中拆分出来，
+市场守护进程集合，包含多种数据源的后台监控任务：
+- Finnhub: 新闻、财报、宏观、内幕交易
+- AKShare: A股新闻、经济日历（通过跨节点路由）
+
 确保 Slave 节点只负责数据采集，不启动任何 LLM/情感分析相关的守护进程。
 
 守护进程列表:
@@ -28,7 +31,7 @@ from backend.core.utils import is_my_shard
 
 async def run_global_daemon() -> None:
     """
-    统一入口：合并启动与守护 Finnhub 的长短链接。
+    统一入口：合并启动与守护市场守护进程。
     利用并发同时运行 [市场新闻轮询]、[个股新闻轮询] 与 [WebSocket 实时行情订阅]。
     """
     from backend.services.finnhub_service import finnhub_service
@@ -253,9 +256,9 @@ async def _company_news_daemon(finnhub_service) -> None:
 
                 is_asian_stock = any(x in ticker.upper() for x in ["HK", "SH", "SZ"]) or ticker.isdigit()
                 if is_asian_stock:
-                    from backend.services.akshare_service import akshare_service
+                    from backend.services.data_source_router import data_source_router
 
-                    res = await akshare_service.get_company_news(ticker)
+                    res = await data_source_router.fetch_akshare("news", ticker=ticker)
                 else:
                     res = await finnhub_service.get_company_news(ticker, days_back=3, skip_cache=True)
 
@@ -390,9 +393,9 @@ async def _macro_alert_daemon() -> None:
     while True:
         await asyncio.sleep(60)
         try:
-            from backend.services.akshare_service import akshare_service
+            from backend.services.data_source_router import data_source_router
 
-            res = await akshare_service.get_economic_calendar(days_ahead=1)
+            res = await data_source_router.fetch_akshare("economic_calendar", days_ahead=1)
             if res.get("status") == "error" or not res.get("data"):
                 from backend.services.fred_service import fred_service
 

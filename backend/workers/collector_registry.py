@@ -3,7 +3,7 @@
 Collector Registry - 数据采集器注册表
 ==========================================
 定义所有数据采集器的元数据、后台守护进程工厂和能力声明。
-worker.py 和 slave_app.py 通过此注册表按需启动配置的采集器。
+worker.py 通过此注册表按需启动配置的采集器。
 
 环境变量控制:
   COLLECTOR_AKSHARE=true|false
@@ -87,12 +87,13 @@ async def start_collector_daemons(
             print("  [futu] watchdog daemon started")
 
         elif name == "finnhub":
-            # 💡 Finnhub 守护进程（新闻/财报/宏观监控）仅在 Master 运行，Slave 只做数据采集
-            if os.getenv("NODE_ROLE", "master") == "master":
-                from backend.services.finnhub_daemon import run_global_daemon
+            # 市场守护进程（新闻/财报/宏观监控，含 Finnhub + AKShare 路由）
+            node_type = os.getenv("NODE_TYPE", "master")
+            if node_type == "master":
+                from backend.services.market_daemon import run_global_daemon
 
                 tasks.append(asyncio.create_task(run_global_daemon()))
-                print("  [finnhub] global daemon started (master only)")
+                print("  [market-daemon] global daemon started")
             else:
                 print("  [finnhub] slave mode: data fetching only, no daemon")
 
@@ -102,7 +103,10 @@ async def start_collector_daemons(
             print("  [yfinance] macro_data_daemon started")
 
         elif name == "akshare":
-            # AKShare is request-based, no daemon needed
-            print("  [akshare] enabled (request-based, no daemon)")
+            # AKShare collector daemon (北京 VPS Redis 中继模式)
+            from backend.workers.akshare_collector import akshare_collector_daemon
+
+            tasks.append(asyncio.create_task(akshare_collector_daemon()))
+            print("  [akshare] collector daemon started (Redis 中继模式)")
 
     return tasks

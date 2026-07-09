@@ -55,8 +55,8 @@ class RedisAsyncBatchWriter:
         if self._task and not self._task.done():
             self._task.cancel()
             try:
-                await self._task
-            except asyncio.CancelledError:
+                await asyncio.wait_for(self._task, timeout=5.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
         await self._flush_all()
 
@@ -87,11 +87,21 @@ class RedisAsyncBatchWriter:
             except asyncio.TimeoutError:
                 continue  # 超时说明没数据，继续等
             except asyncio.CancelledError:
+                # 排空队列中尚未取出的数据，确保不丢
+                while not self.queue.empty():
+                    try:
+                        batch.append(self.queue.get_nowait())
+                        self.queue.task_done()
+                    except asyncio.QueueEmpty:
+                        break
                 if batch:
                     await self._flush_batch(batch)
                 break
             except Exception as e:
                 print(f"⚠️ [RedisBatchWriter] 队列消费异常: {e}")
+                # 事件循环已销毁等致命错误，继续循环只会无限报错，直接退出
+                if isinstance(e, RuntimeError) and "event loop" in str(e):
+                    break
 
     async def _flush_batch(self, batch):
         if not batch:

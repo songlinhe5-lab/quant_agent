@@ -13,6 +13,7 @@ frontend/dist/
 *.db
 *.sqlite3
 .env
+.env.slave
 *.pem
 *.key
 .DS_Store

@@ -1,45 +1,192 @@
 # 后端子系统架构文档
 
-> 最后更新：2026-06-27 | 版本：V1.0
+> 最后更新：2026-07-07 | 版本：V3.0  
+> **架构变更**：升级为三节点高可用架构（海外主节点 + 海外备用节点 + 国内 AKShare 节点），支持 YFinance 多源切换和 AKShare 远程获取。
 
-## 一、架构图
+## 一、架构图（三节点高可用方案）
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  backend/main.py  ← FastAPI 唯一入口，路由注册 + 中间件挂载        │
-├─────────────────────────────────────────────────────────────────┤
-│  routers/         ← HTTP 路由层，只做参数校验与 Service 调用       │
-│  ├── auth.py       /api/v1/auth/*                               │
-│  ├── market.py     /api/v1/market/*  /ws/v1/quotes              │
-│  ├── screener.py   /api/v1/screener                             │
-│  ├── oms.py        /api/v1/oms/*     /ws/v1/oms-stream          │
-│  ├── backtest.py   /api/v1/backtest                             │
-│  ├── chat.py       /sse/v1/agent                                │
-│  └── ...                                                        │
-├─────────────────────────────────────────────────────────────────┤
-│  services/        ← 业务逻辑层，编排 Worker/外部数据              │
-│  ├── futu/         Futu OpenD SDK 封装（行情 + 交易）             │
-│  ├── screener_service.py   选股逻辑（Filter Engine）             │
-│  ├── llm_service.py        LLM 调用封装                          │
-│  ├── kline_warehouse.py    K线历史本地缓存                        │
-│  └── ...                                                        │
-├─────────────────────────────────────────────────────────────────┤
-│  workers/         ← 长驻后台任务（独立生命周期）                   │
-│  ├── quote_publisher.py   Futu → Redis Pub/Sub 数据桥接          │
-│  └── daemon.py            Worker 守护进程管理                    │
-├─────────────────────────────────────────────────────────────────┤
-│  core/            ← 基础设施（无业务逻辑）                         │
-│  ├── config.py         环境变量 + Pydantic Settings              │
-│  ├── database.py       SQLAlchemy 异步引擎 + Session 工厂        │
-│  ├── redis_client.py   Redis 连接池单例                          │
-│  ├── logger.py         structlog 统一日志配置                    │
-│  ├── backtest_engine.py VectorBT 向量化回测引擎                  │
-│  ├── market_engine.py  行情处理核心                              │
-│  ├── middleware.py      FastAPI 中间件（Trace ID / CORS / 限流） │
-│  ├── models.py         SQLAlchemy ORM 模型                      │
-│  └── retry_utils.py    tenacity 重试装饰器                      │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                        三节点高可用架构                                  │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  海外主节点 (Master)                      海外备用节点 (YFinance Backup) │
+│  ┌─────────────────────────────────────┐  ┌───────────────────────────┐ │
+│  │  backend/main.py  ← FastAPI 入口     │  │  backend/main.py          │ │
+│  ├─────────────────────────────────────┤  ├───────────────────────────┤ │
+│  │  routers/                           │  │  routers/                 │ │
+│  │  ├── auth.py / market.py / oms.py   │  │  └── data_source.py       │ │
+│  │  ├── screener.py / backtest.py      │  │      (代理接口)           │ │
+│  │  ├── chat.py                        │  ├───────────────────────────┤ │
+│  │  └── data_source.py                 │  │  services/                │ │
+│  ├─────────────────────────────────────┤  │  └── yfinance_service.py  │ │
+│  │  services/                          │  ├───────────────────────────┤ │
+│  │  ├── futu/                          │  │  COLLECTOR_YFINANCE=true  │ │
+│  │  ├── screener_service.py            │  │  DATA_SOURCE_ROUTER=off   │ │
+│  │  ├── llm_service.py                 │  └───────────────────────────┘ │
+│  │  ├── data_source_router.py ←核心    │                                  │
+│  │  │   (多源切换 + 远程调用)           │  国内 AKShare 节点 (CN Node)     │
+│  │  ├── yfinance_service.py            │  ┌───────────────────────────┐ │
+│  │  └── akshare_service.py             │  │  backend/main.py          │ │
+│  ├─────────────────────────────────────┤  ├───────────────────────────┤ │
+│  │  workers/                           │  │  routers/                 │ │
+│  │  ├── quote_publisher.py             │  │  └── data_source.py       │ │
+│  │  └── collector_registry.py          │  │      (代理接口)           │ │
+│  ├─────────────────────────────────────┤  ├───────────────────────────┤ │
+│  │  core/                              │  │  services/                │ │
+│  │  ├── redis_client.py                │  │  └── akshare_service.py   │ │
+│  │  ├── database.py                    │  ├───────────────────────────┤ │
+│  │  └── logger.py                      │  │  COLLECTOR_AKSHARE=true   │ │
+│  ├─────────────────────────────────────┤  │  DATA_SOURCE_ROUTER=off   │ │
+│  │  Redis / PostgreSQL / Futu OpenD    │  └───────────────────────────┘ │
+│  └─────────────────────┬───────────────┘                                  │
+│                        │                                                  │
+│                        │ Tailscale 内网通信 (HMAC 签名验证)                 │
+│                        │                                                  │
+│                        └──────────────────────────────────────────────────┘
+│                                                                          │
+│  数据流:                                                                  │
+│  ├── YFinance请求 → data_source_router → 主节点本地 → 失败/限流 → 备用节点  │
+│  └── AKShare请求 → data_source_router → 国内节点 → 失败 → 本地降级         │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
+
+### 1.1 节点职责矩阵
+
+| 节点 | 定位 | 核心服务 | 数据源 |
+|:---|:---|:---|:---|
+| **海外主节点** | 核心业务 | Redis, PostgreSQL, quant-agent, quant-worker | Futu OpenD(本地), YFinance(本地+远程), AKShare(远程) |
+| **海外备用节点** | YFinance 备用 | 仅 quant-agent | YFinance(本地) |
+| **国内 AKShare 节点** | 国内数据源 | 仅 quant-agent | AKShare(本地) |
+
+### 1.2 数据源路由核心流程
+
+```python
+# data_source_router.py — 核心路由逻辑
+
+async def fetch_yfinance(self, ticker, fetch_type, **kwargs):
+    # 1. 遍历健康节点（按权重排序）
+    for node in self._get_healthy_nodes("yfinance"):
+        try:
+            result = await self._send_request(node, "yfinance", payload)
+            if result.get("success"):
+                return result
+            # 2. 限流检测：429/rate limit 时标记节点并尝试下一个
+            if "429" in str(result.get("message", "")):
+                await self._update_node_status(node.name, False, "rate_limit")
+                continue
+        except Exception:
+            await self._update_node_status(node.name, False)
+    # 3. 全部失败时降级到本地
+    return await self._fetch_local(ticker, fetch_type, **kwargs)
+
+async def fetch_akshare(self, action, **kwargs):
+    # 1. 优先调用远程 AKShare 节点
+    remote_node = self._nodes.get("akshare_remote")
+    if remote_node and remote_node.status == "healthy":
+        try:
+            result = await self._send_request(remote_node, "akshare", payload)
+            if result.get("status") == "success":
+                return result
+            await self._update_node_status(remote_node.name, False)
+        except Exception:
+            await self._update_node_status(remote_node.name, False)
+    # 2. 远程失败时降级到本地
+    return await self._call_local_akshare(action, **kwargs)
+```
+
+## 一之一、跨节点数据源路由架构
+
+当需要多源切换（YFinance 限流）或远程数据源（AKShare 国内 VPS）时，启用跨节点路由模式：
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                        数据源路由架构（多节点模式）                        │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  海外主节点                          海外备用节点                        国内节点
+│  ┌──────────────┐                   ┌──────────────┐                   ┌──────────────┐
+│  │ quant-agent  │                   │ quant-agent  │                   │ quant-agent  │
+│  │ 主服务       │                   │ 备用服务     │                   │ AKShare服务  │
+│  └──────┬───────┘                   └──────┬───────┘                   └──────┬───────┘
+│         │                                  │                                  │
+│         │  HTTP请求 (HMAC签名)             │                                  │
+│         │  YF_PRIMARY_NODE_URL            │                                  │
+│         ├────────────────────────────────→│                                  │
+│         │                                  │  YFinance本地调用                  │
+│         │←────────────────────────────────┤                                  │
+│         │                                  │                                  │
+│         │  限流/失败                        │                                  │
+│         ├────────────────────────────────────────────────────────────────→│
+│         │                                  │                                  │  AKShare本地调用
+│         │←────────────────────────────────────────────────────────────────┤
+│         │                                  │                                  │
+│         │  AKSHARE_REMOTE_URL              │                                  │
+│         ├────────────────────────────────────────────────────────────────→│
+│         │                                  │                                  │
+│         │←────────────────────────────────────────────────────────────────┤
+│         │                                  │                                  │
+│         │  fallback to local              │                                  │
+│         └──────────────────────────────────────────────────────────────────┘
+│                                                                          │
+│  核心组件:                                                               │
+│  ├── data_source_router.py  ← 路由服务，管理节点状态与切换逻辑            │
+│  ├── data_source.py (router) ← 代理接口，接收跨节点请求                  │
+│  ├── HMAC签名                ← 节点间通信安全验证                        │
+│  └── 熔断器机制               ← 节点失败自动标记，防止雪崩                │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+### 1.1 数据源路由服务（data_source_router.py）
+
+| 组件 | 职责 | 关键特性 |
+|:---|:---|:---|
+| DataSourceNode | 节点定义 | name, url, weight, capabilities, status, circuit_breaker_until |
+| fetch_yfinance() | YFinance 多源获取 | 按权重遍历健康节点，限流时切换，全部失败则降级本地 |
+| fetch_akshare() | AKShare 远程获取 | 优先调用远程节点，失败则降级本地 |
+| get_health_status() | 健康状态查询 | 返回所有节点状态与冷却剩余时间 |
+| _update_node_status() | 节点状态更新 | 成功清零错误计数，失败累计，连续3次触发熔断 |
+
+### 1.2 节点间通信安全
+
+```python
+# HMAC 签名验证流程
+
+# 请求方（主节点）
+payload = {"ticker": "AAPL", "fetch_type": "quote"}
+signature = sha256(HMAC_SECRET + json.dumps(payload, sort_keys=True))
+headers["X-Data-Source-Signature"] = signature
+
+# 接收方（代理节点）
+received_signature = request.headers.get("X-Data-Source-Signature")
+expected_signature = sha256(HMAC_SECRET + json.dumps(body, sort_keys=True))
+if received_signature != expected_signature:
+    raise HTTPException(status_code=401, detail="Invalid signature")
+```
+
+### 1.3 熔断与切换机制
+
+```
+节点状态机:
+  healthy ←──────┐
+    │            │ 成功请求
+    │ 失败       │
+    ↓            │
+  unhealthy      │
+    │            │
+    │ 冷却结束    │
+    ↓            │
+  circuit_breaker_until 到期
+    │
+    ↓
+  自动恢复为 healthy
+```
+
+**熔断规则**：
+- 连续失败 3 次 → 标记为 unhealthy
+- unhealthy 节点进入 60 秒冷却期（circuit_breaker_until）
+- 冷却期内跳过该节点，尝试其他健康节点
+- 冷却期结束后自动恢复为 healthy
 
 ## 二、数据流示意
 
@@ -131,4 +278,5 @@ class WsMessage(BaseModel, Generic[T]):
 
 | 日期 | 变更 |
 |:---|:---|
-| 2026-06-27 | 初始版本 |
+| 2026-07-06 | V2.0 架构重构：移除主从集群，改为单一 VPS 本地采集模式；更新架构图、workers 层描述、外部数据源访问方式 |
+| 2026-06-27 | V1.0 初始版本 |

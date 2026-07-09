@@ -153,7 +153,7 @@ class OptionFundHandler:
                     self.conn_mgr.quote_ctx.subscribe,
                     [market_ticker],
                     need_sub,
-                    subscribe_push=False,  # noqa: E501
+                    subscribe_push=True,  # 开启推送，盘口/经纪商变动实时推送  # noqa: E501
                 )
                 if sub_ret == RET_OK:
                     for st in need_sub:

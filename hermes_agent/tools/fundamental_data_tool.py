@@ -30,10 +30,6 @@ class FundamentalDataTool(BaseTool):
         # 强制格式化 ticker
         ticker = self.normalize_ticker(ticker)
         url = f"{backend_url}/market/fundamental/{ticker}"
-        try:
-            async with SecureAsyncClient(timeout=30.0) as client:
-                response = await client.get(url, timeout=30.0)
-                response.raise_for_status()
-                return response.json()
-        except Exception as e:
-            return {"status": "error", "message": f"请求后端接口失败: {str(e)}"}
+        # RL-14: 限流感知智能重试
+        async with SecureAsyncClient(timeout=30.0) as client:
+            return await self.rate_limit_aware_request(client, "GET", url, timeout=30.0)

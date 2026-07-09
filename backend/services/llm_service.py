@@ -23,7 +23,14 @@ class LLMService:
         self.base_url = os.getenv("LLM_BASE_URL", "https://api.deepseek.com")
         self.model_name = os.getenv("LLM_MODEL", "deepseek-chat")
 
-        self.client = AsyncOpenAI(
+        # 延迟初始化客户端：无凭证时跳过，避免模块导入时崩溃
+        self._client = None
+        if self.api_key:
+            self._init_client()
+
+    def _init_client(self):
+        """初始化 OpenAI 客户端（需要已设置 api_key）"""
+        self._client = AsyncOpenAI(
             api_key=self.api_key,
             base_url=self.base_url,
             # 🚨 致命隐患修复：OpenAI SDK 默认 timeout 高达 10 分钟 (600秒)！
@@ -37,6 +44,18 @@ class LLMService:
                 }
             ),  # noqa: E501
         )
+
+    @property
+    def client(self) -> AsyncOpenAI:
+        """懒加载客户端：首次访问时若未初始化则尝试初始化"""
+        if self._client is None:
+            if self.api_key:
+                self._init_client()
+            else:
+                # 兜底：用占位 key 初始化，真正调用时 SDK 会报错
+                self.api_key = "sk-not-configured"
+                self._init_client()
+        return self._client
 
     def get_client(self) -> AsyncOpenAI:
         """获取异步的大模型客户端实例"""

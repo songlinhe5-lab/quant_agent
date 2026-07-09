@@ -194,9 +194,11 @@ log/
 .env.production
 .env.test
 .env.staging
+.env.slave
 
 # 保留示例文件
 !.env.example
+!.env.slave.example
 
 # 密钥与证书
 *.pem

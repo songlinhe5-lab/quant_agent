@@ -12,10 +12,11 @@ from pydantic import BaseModel
 from backend.core.logger import logger
 
 # 引入核心市场引擎和工具实例
-from backend.core.market_engine import manager
+from backend.services.market_engine import manager
 from backend.core.metrics import WS_MESSAGES_SENT
 from backend.core.redis_client import redis_client
 from backend.services.akshare_service import akshare_service
+from backend.services.data_source_router import data_source_router
 from backend.services.finnhub_service import finnhub_service
 from backend.services.fred_service import fred_service
 from backend.services.futu.utils import format_ticker
@@ -138,6 +139,7 @@ async def quotes_websocket(websocket: WebSocket):
                 elif action == "ping":
                     # BE-15: 增强型心跳响应
                     WS_MESSAGES_SENT.labels(type="system").inc()
+                    _subs = manager.subscriptions.get(websocket, set())
                     await websocket.send_text(
                         json.dumps(
                             {
@@ -146,7 +148,7 @@ async def quotes_websocket(websocket: WebSocket):
                                 "data": {
                                     "client_ts": msg.get("ts"),
                                     "server_ts": int(time.time() * 1000),
-                                    "subscriptions": len(current_subs),
+                                    "subscriptions": len(_subs),
                                 },
                                 "ts": int(time.time() * 1000),
                             }
@@ -220,7 +222,15 @@ async def get_services_health():
     # 3. YFinance (雅虎财经)
     health_data.append(yf_service.get_health_status())
 
-    # 4. 其他外部 API
+    # 4. 数据源路由服务 (跨节点路由)
+    router_status = await data_source_router.get_health_status()
+    health_data.append({
+        "name": "DataSourceRouter",
+        "status": "healthy" if router_status.get("router_enabled") else "disabled",
+        "message": f"路由状态: {'enabled' if router_status.get('router_enabled') else 'disabled'}, 节点数: {len(router_status.get('nodes', {}))}",
+    })
+
+    # 5. 其他外部 API
     for name, key_env in [("Finnhub", "FINNHUB_API_KEY"), ("FRED", "FRED_API_KEY")]:
         has_key = bool(os.getenv(key_env))
         health_data.append(
@@ -245,16 +255,19 @@ async def get_quote(ticker: str):
         if "原生不支持" not in msg:
             print(f"⚠️ [Quote] 券商数据获取 {ticker} 失败 ({msg})，准备降级...")
 
-        # 💡 架构增强：针对 A 股，优先使用本土高可用实时数据源 AKShare
+        # 💡 架构增强：针对 A 股，优先使用本土高可用实时数据源 AKShare（通过路由服务）
         is_a_share = ticker.startswith("SH.") or ticker.startswith("SZ.")
         if is_a_share:
-            ak_res = await akshare_service.get_stock_quote(ticker)
+            ak_res = await data_source_router.fetch_akshare("stock_quote", ticker=ticker)
             if ak_res.get("status") == "success":
                 return ak_res
             print(f"⚠️ [Quote] AKShare 获取 {ticker} 失败 ({ak_res.get('message')})，继续降级雅虎财经...")  # noqa: E501
 
         yf_ticker = _to_yf_ticker(ticker)
-        success, info, msg = await yf_service.fetch_yf_data(yf_ticker, "info", ttl=60)
+        yf_result = await data_source_router.fetch_yfinance(yf_ticker, "history", period="1d")
+        success = yf_result.get("success", False)
+        info = yf_result.get("data")
+        msg = yf_result.get("message", "")
 
         if success and info and info.get("regularMarketPrice") is not None:
             change = info.get("regularMarketChange", 0.0)
@@ -340,7 +353,7 @@ async def get_history(ticker: str, ktype: str = "K_DAY", num: int = 60):
         # 💡 架构增强：针对 A 股日 K 线，优先使用 AKShare (规避 YFinance A股前复权异常问题)  # noqa: E501
         is_a_share = ticker.startswith("SH.") or ticker.startswith("SZ.")
         if is_a_share and ktype == "K_DAY":
-            ak_res = await akshare_service.get_stock_history(ticker, num)
+            ak_res = await data_source_router.fetch_akshare("stock_history", ticker=ticker, num=num)
             if ak_res.get("status") == "success":
                 return ak_res
             print(f"⚠️ [History] AKShare 获取 {ticker} K线受阻，继续降级雅虎财经...")
@@ -360,9 +373,12 @@ async def get_history(ticker: str, ktype: str = "K_DAY", num: int = 60):
         yf_interval = ktype_mapping.get(ktype, "1d")
         period = "7d" if yf_interval in ["1m", "5m"] else "1mo" if yf_interval in ["15m", "30m", "60m"] else "1y"  # noqa: E501
 
-        success, df_data, msg = await yf_service.fetch_yf_data(
-            yf_ticker, "history", ttl=60, period=period, interval=yf_interval
-        )  # noqa: E501
+        yf_result = await data_source_router.fetch_yfinance(
+            yf_ticker, "history", period=period, interval=yf_interval
+        )
+        success = yf_result.get("success", False)
+        df_data = yf_result.get("data")
+        msg = yf_result.get("message", "")
 
         if success and df_data is not None and not df_data.empty:
             # 💡 兼容 yfinance >= 0.2.40 返回的多级列索引 (MultiIndex) 结构
@@ -508,10 +524,10 @@ async def get_tech_indicators(ticker: str, lookback_days: int = 1):
         if "原生不支持" not in msg:
             print(f"⚠️ [Tech Indicators] 券商历史数据获取受阻 ({msg})，尝试降级雅虎财经...")  # noqa: E501
 
-    # 2. 降级走雅虎财经
+    # 2. 降级走雅虎财经（通过路由服务）
     yf_ticker = _to_yf_ticker(ticker)
-    res = await yf_service.get_tech_indicators(ticker=yf_ticker, lookback_days=lookback_days)  # noqa: E501
-    if res.get("status") == "error":
+    res = await data_source_router.fetch_yfinance(yf_ticker, "tech", lookback_days=lookback_days)  # noqa: E501
+    if res.get("status") == "error" or not res.get("success", True):
         raise HTTPException(status_code=400, detail=res.get("message"))
     return res
 
@@ -522,10 +538,11 @@ async def search_tickers(q: str):
     # 1. 优先在本地词库中极速检索
     res = await ticker_service.search_tickers(q)
 
-    # 2. 如果本地词库为空 (如初次启动还在后台拉取中)，则平滑降级给 YFinance
+    # 2. 如果本地词库为空 (如初次启动还在后台拉取中)，则平滑降级给 YFinance（通过路由服务）
     if res.get("status") == "success" and not res.get("data"):
         print(f"⚠️ [Search] 本地词库暂无 '{q}'，降级使用 YFinance 搜索...")
-        res = await yf_service.search_tickers(q)
+        yf_result = await data_source_router.fetch_yfinance(q, "quote")
+        res = yf_result if yf_result.get("success") else res
 
     if res.get("status") == "error":
         raise HTTPException(status_code=400, detail=res.get("message"))
@@ -686,8 +703,11 @@ async def get_fundamental(ticker: str):
     if futu_res.get("status") == "success" and futu_res.get("data"):
         final_data.update(futu_res["data"])
     else:
-        # Futu 获取失败，才发起 YFinance 兜底请求
-        yf_success, yf_info, yf_msg = await yf_service.fetch_yf_data(yf_ticker, "info", ttl=43200, persist=True)  # noqa: E501
+        # Futu 获取失败，才发起 YFinance 兜底请求（通过路由服务）
+        yf_result = await data_source_router.fetch_yfinance(yf_ticker, "history", period="1d")
+        yf_success = yf_result.get("success", False)
+        yf_info = yf_result.get("data")
+        yf_msg = yf_result.get("message", "")
         if not yf_success:
             raise HTTPException(
                 status_code=400,
@@ -735,7 +755,7 @@ async def get_top_holders(ticker: str):
         return {"status": "warning", "message": "美股暂不支持沪深港通机构持仓明细查询"}
 
     symbol = ticker.split(".")[-1] if "." in ticker else ticker
-    res = await akshare_service.get_hsgt_top_holders(symbol=symbol)
+    res = await data_source_router.fetch_akshare("hsgt_holders", symbol=symbol)
     if res.get("status") == "error":
         raise HTTPException(status_code=400, detail=res.get("message"))
     return res

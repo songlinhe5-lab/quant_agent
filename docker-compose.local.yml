@@ -1,20 +1,16 @@
 # ==========================================
-# 本地开发: Master + Slave 同时运行
+# 本地开发: 所有服务同时运行
 # ==========================================
 # 用法:
 #   docker compose -f docker-compose.local.yml up -d
 #
-# 此文件在 docker-compose.yml 基础上叠加一个 slave-collector，
-# 使 master 和 slave 在同一 Docker 网络中通信。
-#
-# Master Redis 地址: redis:6379 (Docker 内部)
-# Slave 通过 MASTER_NODES 注册到 Master 的 Redis
-# Master ClusterManager 通过 slave-collector:8001 调用 Slave
+# 此文件为本地开发环境提供完整的独立部署配置，
+# 所有服务运行在同一 Docker 网络中。
 # ==========================================
 
 services:
   # ==========================================
-  # 基础设施层 (本地 master)
+  # 基础设施层
   # ==========================================
   redis:
     image: redis:7-alpine
@@ -54,14 +50,14 @@ services:
       - quant-local
 
   # ==========================================
-  # 应用层 (本地 master)
+  # 应用层
   # ==========================================
   quant-agent:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: quant_local_app
-    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1 --loop uvloop --http httptools --reload
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1 --loop uvloop --http httptools
     restart: always
     ports:
       - "8000:8000"
@@ -77,12 +73,9 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-quant_local_dev}
       - QUANT_ENV=development
-      - NODE_ROLE=master
       - COLLECTOR_AKSHARE=true
       - COLLECTOR_YFINANCE=true
       - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_dev}@postgres:5432/${DB_NAME:-quant_agent_db}
-      # 静态从节点 (冷启动兜底，运行时通过 Redis 自动发现)
-      - SLAVE_NODES=http://slave-collector:8001
     volumes:
       - ./backend:/app/backend
       - quant_db:/app/backend/data
@@ -109,51 +102,12 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-quant_local_dev}
       - QUANT_ENV=development
-      - NODE_ROLE=master
       - COLLECTOR_AKSHARE=true
       - COLLECTOR_YFINANCE=true
       - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_dev}@postgres:5432/${DB_NAME:-quant_agent_db}
     volumes:
       - ./backend:/app/backend
       - quant_db:/app/backend/data
-    networks:
-      - quant-local
-
-  # ==========================================
-  # 从节点采集器 (本地 slave)
-  # ==========================================
-  slave-collector:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: quant_local_slave
-    command: uvicorn backend.slave_app:app --host 0.0.0.0 --port 8001 --loop uvloop --http httptools --reload
-    restart: always
-    ports:
-      - "8001:8001"
-    env_file:
-      - .env
-    environment:
-      - QUANT_ENV=development
-      - NODE_ROLE=slave
-      - SLAVE_ID=local-slave-1
-      - NODE_HOST=slave-collector
-      - NODE_PORT=8001
-      # 注册到本地 master 的 Redis
-      - MASTER_NODES=[{"id":"local-master","host":"redis","port":6379,"password":"${REDIS_PASSWORD:-quant_local_dev}"}]
-      # 启用 yfinance 采集器用于测试
-      - COLLECTOR_YFINANCE=true
-      - COLLECTOR_FINNHUB=false
-      - COLLECTOR_FUTU=false
-      - COLLECTOR_AKSHARE=false
-    volumes:
-      - ./backend:/app/backend
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')\" || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
     networks:
       - quant-local
 
@@ -170,3 +124,4 @@ volumes:
     name: quant_local_postgres_data
   quant_db:
     name: quant_local_sqlite_data
+

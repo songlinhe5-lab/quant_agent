@@ -71,6 +71,11 @@ socket.setdefaulttimeout(15.0)
 
 from backend.core import models  # noqa: E402
 from backend.core.database import AsyncSessionLocal, Base, SessionLocal, async_engine, engine  # noqa: E402
+from backend.core.security import get_password_hash  # noqa: E402
+
+# 导入 TickerItem 模型，确保数据库表被创建
+# F401: 此导入看似未使用，但实际是为了让 SQLAlchemy 注册该模型，请勿删除
+from backend.services.ticker_service import TickerItem  # noqa: E402, F401
 
 # 自动创建数据库表与必要扩展
 try:
@@ -99,7 +104,7 @@ except Exception as e:
     print(f"⚠️ [System] 自动创建数据库表失败 (请确认数据库服务已启动): {e}")
 
 from backend.core.logger import logger  # noqa: E402, I001
-from backend.core.market_engine import manager  # noqa: E402, I001
+from backend.services.market_engine import manager  # noqa: E402, I001
 from backend.core.middleware import AccessLogMiddleware  # noqa: E402
 from backend.core.redis_client import (  # noqa: E402
     l1_cached_redis,
@@ -116,6 +121,7 @@ from backend.routers.internal import router as internal_router  # noqa: E402
 from backend.routers.macro import router as macro_router  # noqa: E402
 
 # --- 业务模块路由 ---
+from backend.routers.futu_admin import router as futu_admin_router  # noqa: E402
 from backend.routers.market import router as market_router  # noqa: E402
 from backend.routers.oms import router as oms_router  # noqa: E402
 from backend.routers.preferences import router as preferences_router  # noqa: E402
@@ -125,11 +131,9 @@ from backend.routers.search import router as search_router  # noqa: E402
 from backend.routers.strategy import router as strategy_router  # noqa: E402
 from backend.routers.system import router as system_router  # noqa: E402
 from backend.routers.trade import router as trade_router  # noqa: E402
-from backend.services.finnhub_service import finnhub_service  # noqa: E402
+from backend.routers.data_source import router as data_source_router  # noqa: E402
+from backend.routers.datasource import router as datasource_rl_router  # noqa: E402
 from backend.services.fred_service import fred_service  # noqa: E402
-
-# BE-03: Futu 看门狗
-from backend.services.futu.watchdog import get_watchdog  # noqa: E402
 from backend.services.futu_service import futu_service  # noqa: E402
 from backend.services.llm_service import llm_service  # noqa: E402
 from backend.services.notification_service import notification_service  # noqa: E402
@@ -202,20 +206,25 @@ async def lifespan(app: FastAPI):  # type: ignore
     #     await test_yfinance_service()
 
     # 💡 增加容灾包裹：防止外部 API 或富途网关不通导致整个 Docker 容器死循环无法启动
+    # 🚨 关键修复：为每个预检添加超时，防止单个服务卡住阻塞整个 API 启动
     try:
         # 2. 运行富途测试，并保留 OpenD 连接用于后续业务路由 (close_after=False)
         if test_futu_service is not None:
-            await test_futu_service(close_after=False)  # type: ignore
+            await asyncio.wait_for(test_futu_service(close_after=False), timeout=15.0)  # type: ignore
+    except asyncio.TimeoutError:
+        print("⚠️ [Startup] 富途 OpenD 接口预检超时 (15s)，已自动降级跳过")
     except Exception as e:
         print(f"⚠️ [Startup] 富途 OpenD 接口测试失败，已自动降级跳过: {e}")
 
     try:
         # 3. 运行 Redis 连通性与系统通知测试
         if test_notification_service is not None:
-            await test_notification_service()  # type: ignore
+            await asyncio.wait_for(test_notification_service(), timeout=10.0)  # type: ignore
         # 4. 运行 FRED 宏观数据接口测试
         if test_fred_service is not None:
-            await test_fred_service()  # type: ignore
+            await asyncio.wait_for(test_fred_service(), timeout=10.0)  # type: ignore
+    except asyncio.TimeoutError:
+        print("⚠️ [Startup] 核心外部服务预检超时 (10s)，已自动降级跳过")
     except Exception as e:
         print(f"⚠️ [Startup] 核心外部服务连通性预检失败: {e}")
 
@@ -248,36 +257,7 @@ async def lifespan(app: FastAPI):  # type: ignore
 
     await manager.start_background_tasks()  # type: ignore
 
-    # BE-03: 启动 Futu OpenD 看门狗守护进程（仅当富途服务启用时）
-    futu_enabled = os.getenv("FUTU_ENABLED", "true").lower() == "true"
-    if futu_enabled:
-        futu_watchdog_task = asyncio.create_task(get_watchdog(futu_service).start())
-        print("✅ [Startup] 富途看门狗已启动")
-    else:
-        print("⚠️ [Startup] 富途服务已禁用 (FUTU_ENABLED=false)，跳过看门狗启动")
-        futu_watchdog_task = None
-
     asyncio.create_task(notification_service.send_alert("✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！"))  # noqa: E501
-
-    # 💡 Finnhub 守护进程仅在加州节点运行（北京节点设置 FINNHUB_ENABLED=false 跳过）
-    finnhub_enabled = os.getenv("FINNHUB_ENABLED", "true").lower() == "true"
-    if finnhub_enabled:
-        from backend.services.finnhub_daemon import _insider_transactions_marquee_daemon
-
-        asyncio.create_task(
-            _insider_transactions_marquee_daemon(finnhub_service)
-        )  # 启动高管内幕交易跑马灯守护进程  # noqa: E501
-        print("✅ [Startup] Finnhub 内幕交易跑马灯守护进程已启动")
-    else:
-        print("⚠️ [Startup] Finnhub 服务已禁用 (FINNHUB_ENABLED=false)，跳过守护进程")
-
-    # 🚀 主节点: 启动 ClusterManager 发现从节点 + 服务池
-    node_role = os.getenv("NODE_ROLE", "master")
-    if node_role == "master":
-        from backend.workers.cluster_manager import cluster_manager
-
-        await cluster_manager.start()
-        print("✅ [Startup] ClusterManager 已启动 - 从节点服务池发现")
 
     # 🚀 启动 NAV 快照守护进程 (每 5 分钟分账户记录 HK/US 净值到 Redis + DB)
     async def _nav_snapshot_daemon():
@@ -358,21 +338,17 @@ async def lifespan(app: FastAPI):  # type: ignore
     except Exception as e:
         logger.warning(f"[Startup] AlgoEngine 恢复失败: {e}")
 
+    # 🚀 MARKET-01: 启动 broadcast_loop — 应用启动即运行，无需等待 WebSocket 连接
+    try:
+        await manager.start_background_tasks()
+        print("✅ [Startup] MarketEngine broadcast_loop 已启动")
+    except Exception as e:
+        logger.warning(f"[Startup] MarketEngine 启动失败: {e}")
+
     yield  # 挂起，此时 FastAPI 正式对外提供 HTTP 与 WS 服务
 
     # === 销毁阶段 (Shutdown) ===
     print("🛑 正在关闭后端服务，释放资源...")
-
-    # BE-03: 停止看门狗
-    try:
-        # 重新读取环境变量（因为 futu_enabled 是启动阶段的局部变量）
-        futu_enabled_shutdown = os.getenv("FUTU_ENABLED", "true").lower() == "true"
-        if futu_enabled_shutdown:
-            get_watchdog().stop()
-            if "futu_watchdog_task" in locals() and futu_watchdog_task and not futu_watchdog_task.done():
-                futu_watchdog_task.cancel()
-    except Exception:
-        pass
 
     try:
         tasks_to_await = []
@@ -423,15 +399,6 @@ async def lifespan(app: FastAPI):  # type: ignore
             await asyncio.gather(*tasks_to_await, return_exceptions=True)
     except Exception as e:
         print(f"⚠️ 取消后台任务时发生异常: {e}")
-
-    # ClusterManager 清理
-    try:
-        if os.getenv("NODE_ROLE", "master") == "master":
-            from backend.workers.cluster_manager import cluster_manager
-
-            await cluster_manager.stop()
-    except Exception:
-        pass
 
     try:
         # 🛑 优雅释放我们在 Startup 阶段分配的全局物理线程池
@@ -804,7 +771,10 @@ async def slow_request_middleware(request: Request, call_next):
 
 # 允许 Vite 等前端本地代理发起请求（SEC-11：CORS 白名单配置，禁止 *）
 # 生产环境应在 .env 中配置 ALLOWED_ORIGINS 环境变量，多个域名用逗号分隔
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:5173,http://localhost:3000,https://quant-agent.pages.dev,https://quant.stephenhe.com",
+).split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -831,9 +801,16 @@ app.include_router(audit_router, prefix="/api/v1")
 app.include_router(client_router, prefix="/api/v1")  # BE-08
 app.include_router(system_router, prefix="/api/v1")  # System APM
 app.include_router(risk_router, prefix="/api/v1")  # Risk 风控面板
+app.include_router(futu_admin_router)  # Futu 数据源管理 (prefix 已含 /api/v1/futu)
 
 # 挂载内部 API 路由（需要 HMAC 签名验证，符合 SEC-03 安全规范）
 app.include_router(internal_router, prefix="/api/v1")
+
+# 挂载数据源代理路由（支持跨节点数据源调用）
+app.include_router(data_source_router, prefix="/api/v1")
+
+# 挂载数据源限流查询路由 (RL-06)
+app.include_router(datasource_rl_router, prefix="/api/v1")
 
 # ==========================================
 # --- JWT 鉴权依赖 (SSR & Client 兼容) ---
@@ -980,10 +957,9 @@ async def health_check():
         overall_status = "unhealthy"
         status_code = 503
 
-    # 2. 检查 Futu OpenD 连接状态 (业务依赖，断开则标记为降级 degraded)
-    components["futu"] = futu_service.status
-    if futu_service.status != "CONNECTED" and overall_status == "healthy":
-        overall_status = "degraded"
+    # 2. Futu OpenD 可能在远程 VPS 上运行，Master 不一定有本地 OpenD 实例
+    #    不在此检测 futu_service.status，避免触发后台线程阻塞事件循环
+    components["futu"] = "skipped (may run on remote slave nodes)"
 
     # 3. YFinance 属于外部高频受限 API，防止 Docker 轮询导致 IP 被封，做跳过处理
     components["yfinance"] = "skipped (prevent rate limits)"
@@ -1021,13 +997,13 @@ async def health_check():
 
 @app.get("/api/v1/cluster")
 async def cluster_status():
-    """集群拓扑状态 (主节点发现从节点，服务池状态)"""
-    try:
-        from backend.workers.cluster_manager import cluster_manager
+    """节点状态概览"""
+    from backend.workers.collector_registry import get_enabled_collectors
 
-        return cluster_manager.get_cluster_status()
-    except Exception as e:
-        return {"error": str(e), "master": {"collectors": []}, "slaves": [], "pools": {}}
+    return {
+        "mode": "standalone",
+        "collectors": get_enabled_collectors(),
+    }
 
 
 @app.get("/mcp")

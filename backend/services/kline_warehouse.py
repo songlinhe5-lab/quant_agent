@@ -6,8 +6,9 @@ from typing import Optional
 import pandas as pd
 
 from backend.core.redis_client import redis_client
+from backend.services.data_source_router import data_source_router
 from backend.services.futu_service import futu_service
-from backend.services.yfinance_service import format_yf_ticker, yf_service
+from backend.services.yfinance_service import format_yf_ticker
 
 # 💡 将数仓建立在根目录的 data/kline_warehouse 下，与代码库隔离
 DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data", "kline_warehouse"))  # noqa: E501
@@ -111,9 +112,11 @@ class KlineWarehouse:
                 }
                 yf_interval = ktype_mapping.get(ktype, "1d")
 
-                success, yf_df, _ = await yf_service.fetch_yf_data(
-                    yf_ticker, "history", ttl=0, period=period, interval=yf_interval
-                )  # noqa: E501
+                yf_result = await data_source_router.fetch_yfinance(
+                    yf_ticker, "history", period=period, interval=yf_interval
+                )
+                success = yf_result.get("success", False)
+                yf_df = yf_result.get("data")
 
                 if success and yf_df is not None and not yf_df.empty:
                     if isinstance(yf_df.columns, pd.MultiIndex):

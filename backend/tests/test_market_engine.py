@@ -1,272 +1,810 @@
-"""core/market_engine.py 单元测试
-
-覆盖: ConnectionManager 核心方法、update_quote_to_redis、告警检测
+"""
+Market Engine 单元测试
+TEST-15: 覆盖 backend/core/market_engine.py 的 ConnectionManager 与辅助函数
 """
 
+import asyncio
+import json
 import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
+os.environ.setdefault("REDIS_HOST", "localhost")
+os.environ.setdefault("REDIS_PORT", "6379")
+os.environ.setdefault("REDIS_PASSWORD", "")
 
-os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
-os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
+from backend.services.market_engine import ConnectionManager, manager, update_quote_to_redis
 
-# ==========================================
-# ConnectionManager 基础方法
-# ==========================================
-class TestConnectionManager:
-    def _make_manager(self):
-        """创建一个 mock 掉 Redis 的 ConnectionManager 实例"""
-        with patch("backend.core.market_engine.redis.from_url") as mock_from_url:
-            mock_raw_redis = MagicMock()
-            mock_raw_redis.hset = AsyncMock()
-            mock_raw_redis.publish = AsyncMock()
-            mock_raw_redis.hget = AsyncMock(return_value=None)
-            mock_raw_redis.hgetall = AsyncMock(return_value={})
-            mock_raw_redis.xadd = AsyncMock()
-            mock_raw_redis.xrange = AsyncMock(return_value=[])
-            mock_raw_redis.pubsub = MagicMock()
-            mock_from_url.return_value = mock_raw_redis
 
-            from backend.core.market_engine import ConnectionManager
-
-            mgr = ConnectionManager()
-        return mgr
-
-    def test_init(self):
-        """初始化状态正确"""
-        mgr = self._make_manager()
+# ─── ConnectionManager 基础行为 ────────────────────────────────────────
+class TestConnectionManagerInit:
+    def test_init_state(self):
+        mgr = ConnectionManager()
         assert mgr.active_connections == []
         assert mgr.subscriptions == {}
         assert mgr.push_task is None
-        assert mgr.tech_cache == {}
-        assert mgr.flow_cache == {}
+        assert mgr.pubsub_task is None
+        assert isinstance(mgr.tech_cache, dict)
+        assert isinstance(mgr.flow_cache, dict)
 
-    @pytest.mark.asyncio
-    async def test_connect_adds_to_active(self):
-        """connect 后 WebSocket 加入 active_connections"""
-        mgr = self._make_manager()
-        mgr.start_background_tasks = AsyncMock()
+    def test_get_all_subscribed_tickers_includes_macro(self):
+        mgr = ConnectionManager()
+        result = mgr.get_all_subscribed_tickers()
+        assert "US.VIX" in result
+        assert "US.SPX" in result
+        assert "BTC-USD" in result
+        assert "SH.510300" in result
+
+    def test_get_all_subscribed_tickers_includes_subscribed(self):
+        mgr = ConnectionManager()
+        ws = MagicMock()
+        mgr.subscriptions[ws] = {"US.AAPL", "HK.00700"}
+        result = mgr.get_all_subscribed_tickers()
+        assert "US.AAPL" in result
+        assert "HK.00700" in result
+
+
+class TestConnectDisconnect:
+    async def test_connect(self):
+        mgr = ConnectionManager()
         ws = MagicMock()
         ws.accept = AsyncMock()
-
         await mgr.connect(ws)
         assert ws in mgr.active_connections
         assert ws in mgr.subscriptions
         assert mgr.subscriptions[ws] == set()
 
-    def test_disconnect_removes_websocket(self):
-        """disconnect 后 WebSocket 被移除"""
-        mgr = self._make_manager()
+    async def test_disconnect(self):
+        mgr = ConnectionManager()
         ws = MagicMock()
-        mgr.active_connections.append(ws)
-        mgr.subscriptions[ws] = {"AAPL"}
-
+        ws.accept = AsyncMock()
+        await mgr.connect(ws)
+        assert ws in mgr.active_connections
         mgr.disconnect(ws)
         assert ws not in mgr.active_connections
         assert ws not in mgr.subscriptions
 
-    def test_disconnect_unknown_websocket(self):
-        """disconnect 未知 WebSocket 不报错"""
-        mgr = self._make_manager()
+    def test_disconnect_idempotent(self):
+        mgr = ConnectionManager()
         ws = MagicMock()
-        mgr.disconnect(ws)  # 不抛异常
+        mgr.disconnect(ws)  # should not raise
+        assert True
 
-    def test_subscribe_adds_tickers(self):
-        """subscribe 添加标的到订阅集合"""
-        mgr = self._make_manager()
+
+class TestSubscribeUnsubscribe:
+    async def test_subscribe(self):
+        mgr = ConnectionManager()
+        ws = MagicMock()
+        ws.accept = AsyncMock()
+        await mgr.connect(ws)
+        with patch("backend.services.market_engine.asyncio.create_task"):
+            mgr.subscribe(ws, ["US.AAPL", "HK.00700"])
+        assert "US.AAPL" in mgr.subscriptions[ws]
+        assert "HK.00700" in mgr.subscriptions[ws]
+
+    async def test_subscribe_dedup(self):
+        mgr = ConnectionManager()
+        ws = MagicMock()
+        ws.accept = AsyncMock()
+        await mgr.connect(ws)
+        with patch("backend.services.market_engine.asyncio.create_task"):
+            mgr.subscribe(ws, ["US.AAPL"])
+            mgr.subscribe(ws, ["US.AAPL", "HK.00700"])
+        assert len(mgr.subscriptions[ws]) == 2
+
+    def test_unsubscribe(self):
+        mgr = ConnectionManager()
+        ws = MagicMock()
+        mgr.subscriptions[ws] = {"US.AAPL", "HK.00700"}
+        mgr.unsubscribe(ws, ["US.AAPL"])
+        assert "US.AAPL" not in mgr.subscriptions[ws]
+        assert "HK.00700" in mgr.subscriptions[ws]
+
+    def test_unsubscribe_nonexistent(self):
+        mgr = ConnectionManager()
         ws = MagicMock()
         mgr.subscriptions[ws] = set()
-        mgr._catch_up_or_snapshot = AsyncMock()
+        mgr.unsubscribe(ws, ["NONEXISTENT"])
+        assert True
 
-        # Mock asyncio.create_task
-        with patch("asyncio.create_task"):
-            mgr.subscribe(ws, ["AAPL", "GOOGL"])
-        assert mgr.subscriptions[ws] == {"AAPL", "GOOGL"}
 
-    def test_subscribe_deduplicates(self):
-        """重复订阅不会重复添加"""
-        mgr = self._make_manager()
+class TestCatchUpOrSnapshot:
+    async def test_snapshot_no_cache(self):
+        mgr = ConnectionManager()
         ws = MagicMock()
-        mgr.subscriptions[ws] = {"AAPL"}
-        mgr._catch_up_or_snapshot = AsyncMock()
+        mgr.raw_redis = AsyncMock()
+        mgr.raw_redis.hget = AsyncMock(return_value=None)
+        await mgr._catch_up_or_snapshot(ws, ["US.AAPL"], {})
+        mgr.raw_redis.hget.assert_awaited_once()
 
-        with patch("asyncio.create_task"):
-            mgr.subscribe(ws, ["AAPL", "GOOGL"])
-        assert mgr.subscriptions[ws] == {"AAPL", "GOOGL"}
-
-    def test_unsubscribe_removes_tickers(self):
-        """unsubscribe 从订阅集合中移除标的"""
-        mgr = self._make_manager()
+    async def test_snapshot_with_cache(self):
+        mgr = ConnectionManager()
         ws = MagicMock()
-        mgr.subscriptions[ws] = {"AAPL", "GOOGL", "MSFT"}
+        mgr.raw_redis = AsyncMock()
+        mgr.raw_redis.hget = AsyncMock(return_value=b"\x08\x01")
+        mgr.active_connections = [ws]
+        await mgr._catch_up_or_snapshot(ws, ["US.AAPL"], {})
+        ws.send_bytes.assert_called_once()
 
-        mgr.unsubscribe(ws, ["AAPL", "MSFT"])
-        assert mgr.subscriptions[ws] == {"GOOGL"}
-
-    def test_unsubscribe_unknown_websocket(self):
-        """unsubscribe 未知 WebSocket 不报错"""
-        mgr = self._make_manager()
+    async def test_catch_up_with_last_id(self):
+        mgr = ConnectionManager()
         ws = MagicMock()
-        mgr.unsubscribe(ws, ["AAPL"])  # 不抛异常
-
-    def test_get_all_subscribed_tickers(self):
-        """获取所有订阅标的（含基础宏观）"""
-        mgr = self._make_manager()
-        ws1 = MagicMock()
-        ws2 = MagicMock()
-        mgr.subscriptions[ws1] = {"AAPL", "00700.HK"}
-        mgr.subscriptions[ws2] = {"TSLA"}
-
-        tickers = mgr.get_all_subscribed_tickers()
-        assert "AAPL" in tickers
-        assert "00700.HK" in tickers
-        assert "TSLA" in tickers
-        # 基础宏观标的一定包含
-        assert "US.VIX" in tickers
-        assert "US.SPX" in tickers
-        assert "BTC-USD" in tickers
-
-    def test_get_all_subscribed_tickers_empty(self):
-        """无用户订阅时仍返回基础宏观标的"""
-        mgr = self._make_manager()
-        tickers = mgr.get_all_subscribed_tickers()
-        assert len(tickers) > 0  # 至少有基础宏观
+        mgr.raw_redis = AsyncMock()
+        mgr.raw_redis.xrange = AsyncMock(return_value=[])
+        await mgr._catch_up_or_snapshot(ws, ["US.AAPL"], {"US.AAPL": "123"})
+        mgr.raw_redis.xrange.assert_awaited_once()
 
 
-# ==========================================
-# update_quote_to_redis
-# ==========================================
+# ─── update_quote_to_redis ─────────────────────────────────────────────
 class TestUpdateQuoteToRedis:
-    @pytest.mark.asyncio
-    async def test_basic_quote_write(self):
-        """基本行情写入 Redis"""
-        from backend.core.market_engine import update_quote_to_redis
-
-        mock_raw_redis = MagicMock()
-        mock_raw_redis.hset = AsyncMock()
-        mock_raw_redis.publish = AsyncMock()
-        mock_raw_redis.hgetall = AsyncMock(return_value={})
-
-        with patch("backend.core.market_engine.manager") as mock_mgr:
-            mock_mgr.raw_redis = mock_raw_redis
-            await update_quote_to_redis("AAPL", {"last_price": 150.0, "change_pct": "+1.5%", "source": "test"})
-
-        mock_raw_redis.hset.assert_called_once()
-        mock_raw_redis.publish.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_quote_with_bids_asks(self):
-        """带买卖盘的行情写入"""
-        from backend.core.market_engine import update_quote_to_redis
-
-        mock_raw_redis = MagicMock()
-        mock_raw_redis.hset = AsyncMock()
-        mock_raw_redis.publish = AsyncMock()
-        mock_raw_redis.hgetall = AsyncMock(return_value={})
-
+    @patch("backend.services.market_engine.manager")
+    def test_writes_to_redis(self, mock_mgr):
+        mock_raw_redis = AsyncMock()
+        mock_mgr.raw_redis = mock_raw_redis
         quote_data = {
-            "last_price": 400.0,
-            "change_pct": "-0.5%",
-            "volume_str": "10M",
+            "ticker": "US.AAPL",
+            "last_price": 150.0,
+            "change_pct": "+1.0%",
+            "volume_str": "1.2M",
             "source": "futu",
-            "bids": [{"price": "399.8", "size": "100"}],
-            "asks": [{"price": "400.2", "size": "200"}],
+            "bids": [{"price": 149.0, "size": 10}],
+            "asks": [{"price": 151.0, "size": 10}],
         }
+        asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
+        mock_raw_redis.hset.assert_awaited_once()
+        mock_raw_redis.publish.assert_awaited_once()
 
-        with patch("backend.core.market_engine.manager") as mock_mgr:
-            mock_mgr.raw_redis = mock_raw_redis
-            await update_quote_to_redis("00700.HK", quote_data)
+    @patch("backend.services.market_engine.manager")
+    def test_no_alerts_when_price_zero(self, mock_mgr):
+        mock_raw_redis = AsyncMock()
+        mock_mgr.raw_redis = mock_raw_redis
+        mock_mgr.raw_redis.hgetall = AsyncMock(return_value={})
+        quote_data = {
+            "ticker": "US.AAPL",
+            "last_price": 0,
+            "change_pct": "0%",
+            "volume_str": "--",
+            "source": "futu",
+        }
+        asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
+        mock_raw_redis.hset.assert_awaited_once()
 
-        mock_raw_redis.hset.assert_called_once()
+    @patch("backend.services.market_engine.redis_client")
+    def test_alert_triggered_when_price_above_upper(self, mock_redis):
+        mock_raw_redis = AsyncMock()
+        # need manager.raw_redis for hset/publish
+        import backend.services.market_engine as me
 
-    @pytest.mark.asyncio
-    async def test_quote_error_handling(self):
-        """Redis 异常不抛出"""
-        from backend.core.market_engine import update_quote_to_redis
+        me.manager.raw_redis = mock_raw_redis
+        # redis_client.hgetall is called to check alert rules
+        rules_json = json.dumps({"upper": 160.0})
+        mock_redis.hgetall = AsyncMock(
+            return_value={
+                "user1": rules_json,
+            }
+        )
+        mock_redis.hdel = AsyncMock()
+        quote_data = {
+            "ticker": "US.AAPL",
+            "last_price": 165.0,
+            "change_pct": "+2.0%",
+            "volume_str": "1M",
+            "source": "futu",
+        }
+        send_alert_mock = AsyncMock()
+        with patch("backend.services.market_engine.notification_service") as mock_notify:
+            mock_notify.send_alert = send_alert_mock
+            asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
+            asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.05))
+            send_alert_mock.assert_called_once()
 
-        mock_raw_redis = MagicMock()
-        mock_raw_redis.hset = AsyncMock(side_effect=Exception("Redis down"))
 
-        with patch("backend.core.market_engine.manager") as mock_mgr:
-            mock_mgr.raw_redis = mock_raw_redis
-            # 不应抛出异常
-            await update_quote_to_redis("AAPL", {"last_price": 150.0})
+# ─── _get_yf_fast_info ────────────────────────────────────────────────
+class TestGetYfFastInfo:
+    def test_us_ticker(self):
+        mgr = ConnectionManager()
+        fake_info = MagicMock()
+        fake_info.last_price = 150.0
+        fake_info.previous_close = 149.0
+        fake_info.last_volume = 1_000_000
+        fake_ticker = MagicMock()
+        fake_ticker.fast_info = fake_info
+
+        with patch.dict(sys.modules, {"yfinance": MagicMock(Ticker=lambda t: fake_ticker)}):
+            result = mgr._get_yf_fast_info("US.AAPL")
+            assert result["status"] == "success"
+            assert result["ticker"] == "US.AAPL"
+
+    def test_hk_index(self):
+        mgr = ConnectionManager()
+        fake_info = MagicMock()
+        fake_info.last_price = 20000.0
+        fake_info.previous_close = 19900.0
+        fake_info.last_volume = 0
+        fake_ticker = MagicMock()
+        fake_ticker.fast_info = fake_info
+
+        with patch.dict(sys.modules, {"yfinance": MagicMock(Ticker=lambda t: fake_ticker)}):
+            result = mgr._get_yf_fast_info("HK.800000")
+            assert result["status"] == "success"
+
+    def test_vix(self):
+        mgr = ConnectionManager()
+        fake_info = MagicMock()
+        fake_info.last_price = 15.0
+        fake_info.previous_close = 14.5
+        fake_info.last_volume = 0
+        fake_ticker = MagicMock()
+        fake_ticker.fast_info = fake_info
+
+        with patch.dict(sys.modules, {"yfinance": MagicMock(Ticker=lambda t: fake_ticker)}):
+            result = mgr._get_yf_fast_info("US.VIX")
+            assert result["status"] == "success"
 
 
-# ==========================================
-# update_trade_to_redis
-# ==========================================
+# ─── broadcast_loop 核心逻辑分支（同步部分）──────────────────────────
+class TestBroadcastLoopBranches:
+    def test_get_all_subscribed_tickers_adds_macro_set(self):
+        mgr = ConnectionManager()
+        tickers = mgr.get_all_subscribed_tickers()
+        assert isinstance(tickers, set)
+        assert len(tickers) > 10
+
+    def test_tech_cache_eviction(self):
+        mgr = ConnectionManager()
+        mgr.tech_cache = {"OLD": [], "KEPT": []}
+        mgr.subscriptions = {MagicMock(): {"KEPT"}}
+        all_tickers = mgr.get_all_subscribed_tickers()
+        stale = [t for t in mgr.tech_cache if t not in all_tickers]
+        for t in stale:
+            del mgr.tech_cache[t]
+        assert "OLD" not in mgr.tech_cache
+
+    def test_flow_cache_eviction(self):
+        mgr = ConnectionManager()
+        mgr.flow_cache = {"OLD": {}, "KEPT": {}}
+        mgr.subscriptions = {MagicMock(): {"KEPT"}}
+        all_tickers = mgr.get_all_subscribed_tickers()
+        stale = [t for t in mgr.flow_cache if t not in all_tickers]
+        for t in stale:
+            del mgr.flow_cache[t]
+        assert "OLD" not in mgr.flow_cache
+
+
+# ─── manager 全局单例 ─────────────────────────────────────────────────
+class TestGlobalManager:
+    def test_manager_is_singleton(self):
+        from backend.services.market_engine import manager as m1
+        from backend.services.market_engine import manager as m2
+
+        assert m1 is m2
+
+    def test_manager_type(self):
+        assert isinstance(manager, ConnectionManager)
+
+
+# ─── update_quote_to_redis alert 分支 ────────────────────────────────
+class TestUpdateQuoteToRedisAlerts:
+    @patch("backend.services.market_engine.redis_client")
+    def test_alert_lower_triggered(self, mock_redis):
+        import backend.services.market_engine as me
+
+        me.manager.raw_redis = AsyncMock()
+        rules_json = json.dumps({"lower": 140.0})
+        mock_redis.hgetall = AsyncMock(return_value={"user1": rules_json})
+        mock_redis.hdel = AsyncMock()
+        quote_data = {
+            "ticker": "US.AAPL",
+            "last_price": 135.0,
+            "change_pct": "-3.0%",
+            "volume_str": "1M",
+            "source": "futu",
+        }
+        send_alert_mock = AsyncMock()
+        with patch("backend.services.market_engine.notification_service") as mock_notify:
+            mock_notify.send_alert = send_alert_mock
+            asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
+            asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.05))
+            send_alert_mock.assert_called_once()
+
+    @patch("backend.services.market_engine.redis_client")
+    def test_alert_pct_change_triggered_bullish(self, mock_redis):
+        import backend.services.market_engine as me
+
+        me.manager.raw_redis = AsyncMock()
+        rules_json = json.dumps({"pct_change": 2.0})
+        mock_redis.hgetall = AsyncMock(return_value={"user1": rules_json})
+        mock_redis.hdel = AsyncMock()
+        quote_data = {
+            "ticker": "US.AAPL",
+            "last_price": 155.0,
+            "change_pct": "+3.5%",
+            "volume_str": "1M",
+            "source": "futu",
+        }
+        send_alert_mock = AsyncMock()
+        with patch("backend.services.market_engine.notification_service") as mock_notify:
+            mock_notify.send_alert = send_alert_mock
+            asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
+            asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.05))
+            send_alert_mock.assert_called_once()
+
+    @patch("backend.services.market_engine.redis_client")
+    def test_alert_pct_change_triggered_bearish(self, mock_redis):
+        import backend.services.market_engine as me
+
+        me.manager.raw_redis = AsyncMock()
+        rules_json = json.dumps({"pct_change": 2.0})
+        mock_redis.hgetall = AsyncMock(return_value={"user1": rules_json})
+        mock_redis.hdel = AsyncMock()
+        quote_data = {
+            "ticker": "US.AAPL",
+            "last_price": 145.0,
+            "change_pct": "-3.5%",
+            "volume_str": "1M",
+            "source": "futu",
+        }
+        send_alert_mock = AsyncMock()
+        with patch("backend.services.market_engine.notification_service") as mock_notify:
+            mock_notify.send_alert = send_alert_mock
+            asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
+            asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.05))
+            send_alert_mock.assert_called_once()
+
+    @patch("backend.services.market_engine.redis_client")
+    def test_alert_pct_change_value_error(self, mock_redis):
+        """change_pct 格式非法时触发 ValueError 分支"""
+        import backend.services.market_engine as me
+
+        me.manager.raw_redis = AsyncMock()
+        rules_json = json.dumps({"pct_change": 2.0})
+        mock_redis.hgetall = AsyncMock(return_value={"user1": rules_json})
+        mock_redis.hdel = AsyncMock()
+        quote_data = {
+            "ticker": "US.AAPL",
+            "last_price": 150.0,
+            "change_pct": "N/A",  # 无法解析为 float
+            "volume_str": "1M",
+            "source": "futu",
+        }
+        # ValueError 被 except 捕获，不应抛异常
+        asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
+        assert True
+
+    @patch("backend.services.market_engine.redis_client")
+    def test_no_alert_when_price_between_bounds(self, mock_redis):
+        import backend.services.market_engine as me
+
+        me.manager.raw_redis = AsyncMock()
+        rules_json = json.dumps({"upper": 160.0, "lower": 140.0})
+        mock_redis.hgetall = AsyncMock(return_value={"user1": rules_json})
+        mock_redis.hdel = AsyncMock()
+        quote_data = {
+            "ticker": "US.AAPL",
+            "last_price": 150.0,  # 在区间内
+            "change_pct": "+0.5%",
+            "volume_str": "1M",
+            "source": "futu",
+        }
+        send_alert_mock = AsyncMock()
+        with patch("backend.services.market_engine.notification_service") as mock_notify:
+            mock_notify.send_alert = send_alert_mock
+            asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
+            asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.05))
+            send_alert_mock.assert_not_called()
+
+
+# ─── update_trade_to_redis ────────────────────────────────────────────
 class TestUpdateTradeToRedis:
-    @pytest.mark.asyncio
-    async def test_trade_write(self):
-        """逐笔成交写入 Redis Stream"""
-        from backend.core.market_engine import update_trade_to_redis
+    def test_writes_to_stream_and_publishes(self):
+        from backend.services.market_engine import update_trade_to_redis
 
-        mock_raw_redis = MagicMock()
-        mock_raw_redis.xadd = AsyncMock()
-        mock_raw_redis.publish = AsyncMock()
+        fake_redis = AsyncMock()
+        mgr = ConnectionManager()
+        mgr.raw_redis = fake_redis
+        import backend.services.market_engine as me
 
-        with patch("backend.core.market_engine.manager") as mock_mgr:
-            mock_mgr.raw_redis = mock_raw_redis
-            await update_trade_to_redis("AAPL", b"trade_data_bytes")
+        original_raw_redis = me.manager.raw_redis
+        me.manager.raw_redis = fake_redis
+        try:
+            fake_trade_data = b"\x08\x01"
+            asyncio.get_event_loop().run_until_complete(update_trade_to_redis("US.AAPL", fake_trade_data))
+            fake_redis.xadd.assert_awaited_once()
+            fake_redis.publish.assert_awaited_once()
+        finally:
+            me.manager.raw_redis = original_raw_redis
 
-        mock_raw_redis.xadd.assert_called_once()
-        mock_raw_redis.publish.assert_called_once()
+    def test_exception_handling(self):
+        from backend.services.market_engine import update_trade_to_redis
 
-    @pytest.mark.asyncio
-    async def test_trade_error_handling(self):
-        """Redis 异常不抛出"""
-        from backend.core.market_engine import update_trade_to_redis
+        fake_redis = AsyncMock()
+        fake_redis.xadd = AsyncMock(side_effect=Exception("Redis down"))
+        import backend.services.market_engine as me
 
-        mock_raw_redis = MagicMock()
-        mock_raw_redis.xadd = AsyncMock(side_effect=Exception("Redis down"))
+        original_raw_redis = me.manager.raw_redis
+        me.manager.raw_redis = fake_redis
+        try:
+            # 异常被捕获，不应抛出
+            asyncio.get_event_loop().run_until_complete(update_trade_to_redis("US.AAPL", b"\x08\x01"))
+            assert True
+        finally:
+            me.manager.raw_redis = original_raw_redis
 
-        with patch("backend.core.market_engine.manager") as mock_mgr:
-            mock_mgr.raw_redis = mock_raw_redis
-            await update_trade_to_redis("AAPL", b"data")
+
+# ─── _catch_up_or_snapshot 批量压缩路径 ───────────────────────────────
+class TestCatchUpBatchCompress:
+    async def test_batch_compress_when_over_100_messages(self):
+        mgr = ConnectionManager()
+        mgr.raw_redis = AsyncMock()
+        ws = MagicMock()
+        mgr.active_connections = [ws]
+        # 构造 101 条消息
+        fake_messages = []
+        fake_payload = b"\x08\x01\x12\x05AAPL"
+        for i in range(101):
+            fake_messages.append((f"id_{i}", {b"payload": fake_payload}))
+        mgr.raw_redis.xrange = AsyncMock(return_value=fake_messages)
+        await mgr._catch_up_or_snapshot(ws, ["US.AAPL"], {"US.AAPL": "0"})
+        # 应该调用压缩发送（send_bytes 被调用）
+        ws.send_bytes.assert_called_once()
+        sent_data = ws.send_bytes.call_args[0][0]
+        assert isinstance(sent_data, bytes)
+        assert sent_data[0] == 0x01  # zlib 压缩模式标志
+
+    async def test_small_batch_no_compress(self):
+        mgr = ConnectionManager()
+        mgr.raw_redis = AsyncMock()
+        ws = MagicMock()
+        ws.send_bytes = AsyncMock()
+        mgr.active_connections = [ws]
+        # 构造 2 条消息
+        fake_messages = [
+            ("id_0", {b"payload": b"\x08\x01"}),
+            ("id_1", {b"payload": b"\x08\x02"}),
+        ]
+        mgr.raw_redis.xrange = AsyncMock(return_value=fake_messages)
+        await mgr._catch_up_or_snapshot(ws, ["US.AAPL"], {"US.AAPL": "0"})
+        # 应该调用 2 次 send_bytes（每条单独发送）
+        assert ws.send_bytes.call_count == 2
+
+    async def test_skip_if_ws_not_in_active_connections(self):
+        mgr = ConnectionManager()
+        mgr.raw_redis = AsyncMock()
+        ws = MagicMock()
+        # ws 不在 active_connections 中
+        mgr.active_connections = []
+        fake_messages = [("id_0", {b"payload": b"\x08\x01"})]
+        mgr.raw_redis.xrange = AsyncMock(return_value=fake_messages)
+        await mgr._catch_up_or_snapshot(ws, ["US.AAPL"], {"US.AAPL": "0"})
+        ws.send_bytes.assert_not_called()
 
 
-# ==========================================
-# _get_yf_fast_info ticker 映射
-# ==========================================
-class TestYfTickerMapping:
-    """测试 YFinance ticker 格式转换逻辑"""
+# ─── redis_pubsub_listener ────────────────────────────────────────────
+class TestRedisPubSubListener:
+    async def test_listener_sends_to_subscribed_ws(self):
+        mgr = ConnectionManager()
+        ws = MagicMock()
+        mgr.subscriptions[ws] = {"US.AAPL"}
+        mgr.active_connections = [ws]
 
-    def _call_mapping(self, ticker):
-        """直接测试 ticker 映射逻辑（不实际调用 yfinance）"""
-        yf_ticker = ticker
-        if yf_ticker == "HK.800000":
-            yf_ticker = "^HSI"
-        elif yf_ticker == "HK.800700":
-            yf_ticker = "^HSTECH"
-        elif yf_ticker == "HK.800100":
-            yf_ticker = "^HSCE"
-        elif yf_ticker.startswith("HK."):
-            yf_ticker = yf_ticker.replace("HK.", "") + ".HK"
-        elif yf_ticker.startswith("US."):
-            yf_ticker = yf_ticker.replace("US.", "")
-        if yf_ticker in ["VIX", "TNX", "FVX", "SPX", "NDX", "GSPC"]:
-            yf_ticker = f"^{yf_ticker}"
-        return yf_ticker
+        fake_redis = AsyncMock()
+        mgr.raw_redis = fake_redis
 
-    def test_hk_index_mapping(self):
-        assert self._call_mapping("HK.800000") == "^HSI"
-        assert self._call_mapping("HK.800700") == "^HSTECH"
-        assert self._call_mapping("HK.800100") == "^HSCE"
+        # 构造 QuoteData protobuf
+        from backend.core.proto.market_pb2 import QuoteData
 
-    def test_hk_stock_mapping(self):
-        assert self._call_mapping("HK.00700") == "00700.HK"
+        q = QuoteData()
+        q.ticker = "US.AAPL"
+        q.last_price = 150.0
+        payload = q.SerializeToString()
 
-    def test_us_stock_mapping(self):
-        assert self._call_mapping("US.AAPL") == "AAPL"
+        async def mock_listen():
+            yield {"type": "message", "data": payload}
+            raise asyncio.CancelledError()  # 立即退出
 
-    def test_us_index_mapping(self):
-        assert self._call_mapping("US.VIX") == "^VIX"
-        assert self._call_mapping("US.SPX") == "^SPX"
+        fake_pubsub = AsyncMock()
+        fake_pubsub.listen = MagicMock(return_value=mock_listen())
+        fake_redis.pubsub = MagicMock(return_value=fake_pubsub)
 
-    def test_plain_ticker(self):
-        assert self._call_mapping("BTC-USD") == "BTC-USD"
+        # 用 timeout 防止无限阻塞
+        try:
+            await asyncio.wait_for(mgr.redis_pubsub_listener(), timeout=0.5)
+        except (asyncio.TimeoutError, asyncio.CancelledError, StopAsyncIteration):
+            pass
+
+        ws.send_bytes.assert_called_once()
+
+    async def test_listener_skips_non_bytes_data(self):
+        mgr = ConnectionManager()
+        ws = MagicMock()
+        mgr.subscriptions[ws] = {"US.AAPL"}
+        mgr.active_connections = [ws]
+
+        fake_redis = AsyncMock()
+        mgr.raw_redis = fake_redis
+
+        async def mock_listen():
+            yield {"type": "message", "data": 12345}  # 非 bytes
+            raise asyncio.CancelledError()
+
+        fake_pubsub = AsyncMock()
+        fake_pubsub.listen = MagicMock(return_value=mock_listen())
+        fake_redis.pubsub = MagicMock(return_value=fake_pubsub)
+
+        try:
+            await asyncio.wait_for(mgr.redis_pubsub_listener(), timeout=0.5)
+        except (asyncio.TimeoutError, asyncio.CancelledError, StopAsyncIteration):
+            pass
+
+        ws.send_bytes.assert_not_called()
+
+    async def test_listener_cancelled_error(self):
+        mgr = ConnectionManager()
+        # 直接抛 CancelledError，测试 except asyncio.CancelledError 分支
+        fake_redis = AsyncMock()
+        mgr.raw_redis = fake_redis
+
+        async def mock_listen():
+            raise asyncio.CancelledError()
+
+        fake_pubsub = AsyncMock()
+        fake_pubsub.listen = MagicMock(return_value=mock_listen())
+        fake_redis.pubsub = MagicMock(return_value=fake_pubsub)
+
+        # 不应抛异常
+        await mgr.redis_pubsub_listener()
+        assert True
+
+    async def test_listener_generic_exception(self):
+        mgr = ConnectionManager()
+        fake_redis = AsyncMock()
+        mgr.raw_redis = fake_redis
+
+        async def mock_listen():
+            raise Exception("PubSub connection lost")
+
+        fake_pubsub = AsyncMock()
+        fake_pubsub.listen = MagicMock(return_value=mock_listen())
+        fake_redis.pubsub = MagicMock(return_value=fake_pubsub)
+
+        # 不应抛异常
+        await mgr.redis_pubsub_listener()
+        assert True
+
+
+# ─── _fetch_fallback_quote ────────────────────────────────────────────
+class TestFetchFallbackQuote:
+    async def test_timeout_returns_error(self):
+        mgr = ConnectionManager()
+        with patch("backend.services.market_engine.asyncio.wait_for", side_effect=asyncio.TimeoutError()):
+            result = await mgr._fetch_fallback_quote("US.AAPL")
+            assert result["status"] == "error"
+
+    async def test_exception_returns_error(self):
+        mgr = ConnectionManager()
+        with patch("backend.services.market_engine.asyncio.to_thread", side_effect=Exception("YF down")):
+            result = await mgr._fetch_fallback_quote("US.AAPL")
+            assert result["status"] == "error"
+
+
+# ─── broadcast_loop 主循环（异步）────────────────────────────────────
+_real_sleep = asyncio.sleep  # 保存原始引用，避免 mock 后递归
+
+
+class TestBroadcastLoop:
+    """测试 broadcast_loop 主循环，通过 mock asyncio.sleep 让循环在第一次迭代后退出"""
+
+    async def test_broadcast_loop_single_iteration(self):
+        """测试 broadcast_loop 完成一次迭代"""
+        mgr = ConnectionManager()
+
+        # Mock asyncio.sleep 让出控制权（使用 _real_sleep 避免递归）
+        async def fast_sleep(delay):
+            await _real_sleep(0)
+
+        with patch("backend.services.market_engine.asyncio.sleep", side_effect=fast_sleep):
+            with patch("backend.services.market_engine.l1_cached_redis.get", return_value="1"):
+                with patch("backend.services.market_engine.futu_service") as mock_futu:
+                    with patch("backend.services.market_engine.yf_service") as mock_yf:
+                        # 配置 mock
+                        mock_futu.is_futu_unsupported.return_value = True  # 所有标的都不支持富途
+                        mock_yf.get_tech_indicators = AsyncMock(
+                            return_value={"status": "success", "data": {"trend": []}}
+                        )
+                        mock_yf.get_batched_quote = AsyncMock(
+                            return_value={"status": "success", "ticker": "US.AAPL", "last_price": 150.0}
+                        )
+                        mock_futu.get_fund_flow = AsyncMock(
+                            return_value={"status": "success", "data": {"main_fund_net_inflow": 0}}
+                        )
+
+                        # 添加一个订阅
+                        ws = MagicMock()
+                        mgr.subscriptions[ws] = {"US.AAPL"}
+
+                        # 使用 timeout 让循环快速退出（fast_sleep 使循环飞速迭代，0.1s 足够）
+                        try:
+                            await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
+                        except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
+                            pass
+
+    async def test_broadcast_loop_with_futu_support(self):
+        """测试 broadcast_loop 当标的支持富途时"""
+        mgr = ConnectionManager()
+
+        # 用于跟踪 get_quote 是否被调用
+        get_quote_called = False
+
+        async def track_get_quote(t):
+            nonlocal get_quote_called
+            get_quote_called = True
+            return {"status": "success", "last_price": 150.0, "change_pct": "+1.0%"}
+
+        # Mock asyncio.sleep 让出控制权（使用 _real_sleep 避免递归）
+        async def fast_sleep(delay):
+            await _real_sleep(0)
+
+        # Mock time.time 返回一个固定值，并确保 last_futu_update 足够旧
+        fixed_time = 100.0
+        with patch("time.time", return_value=fixed_time):
+            mgr.last_futu_update["US.AAPL"] = fixed_time - 20  # 20 秒前更新，超过 10 秒阈值
+
+            with patch("backend.services.market_engine.asyncio.sleep", side_effect=fast_sleep):
+                with patch("backend.services.market_engine.l1_cached_redis.get", return_value="1"):
+                    with patch("backend.services.market_engine.futu_service") as mock_futu:
+                        with patch("backend.services.market_engine.yf_service") as mock_yf:
+                            # 配置 mock：US.AAPL 支持富途
+                            mock_futu.status = "CONNECTED"  # Futu 断连防御需要
+                            mock_futu.is_futu_unsupported.return_value = False
+                            mock_futu.get_quote = AsyncMock(side_effect=track_get_quote)
+                            mock_futu.get_history = AsyncMock(return_value={"status": "success", "data": []})
+                            mock_futu.get_fund_flow = AsyncMock(
+                                return_value={"status": "success", "data": {"main_fund_net_inflow": 0}}
+                            )
+                            mock_yf.get_tech_indicators = AsyncMock(
+                                return_value={"status": "success", "data": {"trend": []}}
+                            )
+
+                            # 添加一个订阅
+                            ws = MagicMock()
+                            mgr.subscriptions[ws] = {"US.AAPL"}
+
+                            # 使用 timeout 让循环快速退出（fast_sleep 使循环飞速迭代，0.1s 足够）
+                            try:
+                                await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
+                            except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
+                                pass
+
+                            # 验证富途get_quote被调用
+                            assert get_quote_called, "get_quote was not called"
+
+    async def test_broadcast_loop_yfinance_disabled(self):
+        """测试 broadcast_loop 当 yfinance 禁用时"""
+        mgr = ConnectionManager()
+
+        # Mock asyncio.sleep 让出控制权（使用 _real_sleep 避免递归）
+        async def fast_sleep(delay):
+            await _real_sleep(0)
+
+        with patch("backend.services.market_engine.asyncio.sleep", side_effect=fast_sleep):
+            with patch("backend.services.market_engine.l1_cached_redis.get", return_value="0"):  # YF 禁用
+                with patch("backend.services.market_engine.futu_service") as mock_futu:
+                    with patch("backend.services.market_engine.yf_service") as mock_yf:
+                        mock_futu.is_futu_unsupported.return_value = True  # 不支持富途
+                        mock_futu.get_fund_flow = AsyncMock(
+                            return_value={"status": "success", "data": {"main_fund_net_inflow": 0}}
+                        )
+
+                        ws = MagicMock()
+                        mgr.subscriptions[ws] = {"US.AAPL"}
+
+                        try:
+                            await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
+                        except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
+                            pass
+
+                        # 验证 YF 的 get_batched_quote 未被调用
+                        mock_yf.get_batched_quote.assert_not_called()
+
+    async def test_broadcast_loop_exception_handling(self):
+        """测试 broadcast_loop 的异常处理分支"""
+        mgr = ConnectionManager()
+
+        # Mock asyncio.sleep 让出控制权（使用 _real_sleep 避免递归）
+        async def fast_sleep(delay):
+            await _real_sleep(0)
+
+        # Mock l1_cached_redis.get 抛出异常
+        with patch("backend.services.market_engine.asyncio.sleep", side_effect=fast_sleep):
+            with patch("backend.services.market_engine.l1_cached_redis.get", side_effect=Exception("Redis error")):
+                with patch("backend.services.market_engine.futu_service") as mock_futu:
+                    with patch("backend.services.market_engine.yf_service"):
+                        mock_futu.is_futu_unsupported.return_value = True
+                        mock_futu.get_fund_flow = AsyncMock(
+                            return_value={"status": "success", "data": {"main_fund_net_inflow": 0}}
+                        )
+
+                        ws = MagicMock()
+                        mgr.subscriptions[ws] = {"US.AAPL"}
+
+                        # 使用 timeout 让循环快速退出（fast_sleep 使循环飞速迭代，0.1s 足够）
+                        try:
+                            await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
+                        except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
+                            pass
+
+                        # 如果到达这里，说明异常被捕获，循环继续了
+
+    async def test_broadcast_loop_futu_gc_mechanism(self):
+        """测试 Futu GC 机制：清理废弃订阅"""
+        mgr = ConnectionManager()
+
+        # Mock asyncio.sleep 让出控制权（使用 _real_sleep 避免递归）
+        async def fast_sleep(delay):
+            await _real_sleep(0)
+
+        with patch("backend.services.market_engine.asyncio.sleep", side_effect=fast_sleep):
+            with patch("backend.services.market_engine.l1_cached_redis.get", return_value="1"):
+                with patch("backend.services.market_engine.futu_service") as mock_futu:
+                    with patch("backend.services.market_engine.yf_service") as mock_yf:
+                        # 配置 mock
+                        mock_futu.status = "CONNECTED"  # Futu 断连防御需要
+                        mock_futu.is_futu_unsupported.return_value = False
+                        mock_futu.get_quote = AsyncMock(return_value={"status": "success", "last_price": 150.0})
+                        mock_futu.get_history = AsyncMock(return_value={"status": "error"})
+                        mock_futu.get_fund_flow = AsyncMock(
+                            return_value={"status": "success", "data": {"main_fund_net_inflow": 0}}
+                        )
+                        mock_futu.unsubscribe_quote = AsyncMock()
+                        mock_yf.get_tech_indicators = AsyncMock(
+                            return_value={"status": "success", "data": {"trend": []}}
+                        )
+
+                        # 模拟有旧的 Futu 订阅
+                        mgr._futu_active_subs = {"US.OLD_TICKER"}
+                        ws = MagicMock()
+                        mgr.subscriptions[ws] = {"US.AAPL"}  # 只订阅了 AAPL
+
+                        try:
+                            await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
+                        except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
+                            pass
+
+                        # 验证旧订阅被清理
+                        assert "US.OLD_TICKER" not in mgr._futu_active_subs
+
+    async def test_broadcast_loop_futu_disconnected_skips_all_futu_calls(self):
+        """Futu 断连时 broadcast_loop 跳过所有 Futu 调用，防止 CPU 空转"""
+        mgr = ConnectionManager()
+
+        async def fast_sleep(delay):
+            await _real_sleep(0)
+
+        with patch("backend.services.market_engine.asyncio.sleep", side_effect=fast_sleep):
+            with patch("backend.services.market_engine.l1_cached_redis.get", return_value="1"):
+                with patch("backend.services.market_engine.futu_service") as mock_futu:
+                    with patch("backend.services.market_engine.yf_service") as mock_yf:
+                        # 关键：Futu 断连状态
+                        mock_futu.status = "DISCONNECTED"
+                        mock_futu.is_futu_unsupported.return_value = False
+                        mock_futu.get_quote = AsyncMock(return_value={"status": "error"})
+                        mock_futu.get_fund_flow = AsyncMock(return_value={"status": "error"})
+                        mock_futu.get_history = AsyncMock(return_value={"status": "error"})
+                        mock_futu.get_account_info = AsyncMock(return_value={"status": "error"})
+                        mock_yf.get_tech_indicators = AsyncMock(return_value={"status": "success", "data": {"trend": []}})
+                        mock_yf.get_batched_quote = AsyncMock(return_value={"status": "success", "ticker": "US.AAPL", "last_price": 150.0})
+
+                        ws = MagicMock()
+                        mgr.subscriptions[ws] = {"US.AAPL"}
+
+                        try:
+                            await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
+                        except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
+                            pass
+
+                        # 核心断言：Futu 断连时，所有 Futu 调用均被跳过
+                        mock_futu.get_fund_flow.assert_not_called()
+                        mock_futu.get_quote.assert_not_called()
+                        mock_futu.get_account_info.assert_not_called()

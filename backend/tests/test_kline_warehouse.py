@@ -129,8 +129,8 @@ class TestKlineWarehouse:
                 "backend.services.kline_warehouse.futu_service.get_history", new=AsyncMock(return_value=futu_response)
             ),
             patch(
-                "backend.services.kline_warehouse.yf_service.fetch_yf_data",
-                new=AsyncMock(return_value=(True, yf_df, "ok")),
+                "backend.services.kline_warehouse.data_source_router.fetch_yfinance",
+                new=AsyncMock(return_value={"success": True, "data": yf_df, "message": "ok"}),
             ),
             patch("backend.services.kline_warehouse.pd.read_parquet", side_effect=FileNotFoundError),
             patch.object(pd.DataFrame, "to_parquet", fake_to_parquet),
@@ -196,8 +196,8 @@ class TestKlineWarehouse:
                 new=AsyncMock(return_value={"status": "error"}),
             ),
             patch(
-                "backend.services.kline_warehouse.yf_service.fetch_yf_data",
-                new=AsyncMock(return_value=(True, yf_df, "ok")),
+                "backend.services.kline_warehouse.data_source_router.fetch_yfinance",
+                new=AsyncMock(return_value={"success": True, "data": yf_df, "message": "ok"}),
             ),
             patch("backend.services.kline_warehouse.pd.read_parquet", side_effect=FileNotFoundError),
             patch.object(pd.DataFrame, "to_parquet", fake_to_parquet),
@@ -217,8 +217,8 @@ class TestKlineWarehouse:
                 new=AsyncMock(return_value={"status": "error"}),
             ),
             patch(
-                "backend.services.kline_warehouse.yf_service.fetch_yf_data",
-                new=AsyncMock(return_value=(False, None, "fail")),
+                "backend.services.kline_warehouse.data_source_router.fetch_yfinance",
+                new=AsyncMock(return_value={"success": False, "data": None, "message": "fail"}),
             ),
             patch("backend.services.kline_warehouse.pd.read_parquet", side_effect=FileNotFoundError),
         ):
@@ -276,8 +276,8 @@ class TestKlineWarehouse:
                 new=AsyncMock(return_value={"status": "success", "data": new_data}),
             ),
             patch(
-                "backend.services.kline_warehouse.yf_service.fetch_yf_data",
-                new=AsyncMock(return_value=(True, yf_df, "ok")),
+                "backend.services.kline_warehouse.data_source_router.fetch_yfinance",
+                new=AsyncMock(return_value={"success": True, "data": yf_df, "message": "ok"}),
             ),
             patch("backend.services.kline_warehouse.pd.read_parquet", return_value=old_df),
             patch.object(pd.DataFrame, "to_parquet", fake_to_parquet),

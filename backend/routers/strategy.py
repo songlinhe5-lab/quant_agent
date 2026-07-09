@@ -18,7 +18,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.core import models
-from backend.core.backtest import (
+from backend.backtest import (
     run_batch_sandbox_backtest,
     run_dynamic_sandbox_backtest,
     run_grid_search_backtest,
@@ -891,7 +891,7 @@ async def deploy_to_oms(payload: RunSandboxPayload):
         file_path = os.path.join(strategies_dir, f"{payload.class_name.lower()}.py")
         with open(file_path, "w", encoding="utf-8") as f:
             # 自动注入必要的头部依赖，保障实盘引擎能够独立 import 运行
-            header = "from __future__ import annotations\nimport numpy as np\nimport pandas as pd\nfrom typing import Dict, Any, Optional\nfrom backend.core.backtest import BaseStrategySandbox as BaseStrategy\n\n"  # noqa: E501
+            header = "from __future__ import annotations\nimport numpy as np\nimport pandas as pd\nfrom typing import Dict, Any, Optional\nfrom backend.backtest import BaseStrategySandbox as BaseStrategy\n\n"  # noqa: E501
             f.write(header + payload.source_code)
 
         # 2. OMS-05: 通过 BotRuntimeManager 启动真实 Bot 算力节点

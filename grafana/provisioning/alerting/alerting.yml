@@ -174,3 +174,117 @@ groups:
         annotations:
           summary: "熔断器已打开: {{ $labels.service }}"
           description: "{{ $labels.service }} 的熔断器处于 open 状态，该服务已降级"
+
+      # ─── RL-11: 数据源限流告警规则 ─────────────────────────────
+
+      # 限流频率飙升: 5 分钟内限流触发 >10 次
+      - uid: ds-rate-limit-spike
+        title: 数据源限流频率飙升
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: sum by (source) (rate(ds_rate_limit_total[5m])) * 300
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [10]
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "数据源 {{ $labels.source }} 限流频率飙升"
+          description: "过去 5 分钟内限流触发 {{ $values.C.Value }} 次 (>10)，请检查数据源配额或降低请求频率"
+
+      # 长时间退避: 退避剩余时间 >2 分钟
+      - uid: ds-long-backoff
+        title: 数据源长时间退避
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 60
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: ds_rate_limit_throttled_seconds
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [120]
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "数据源 {{ $labels.source }} 退避时间过长"
+          description: "当前退避剩余 {{ $values.C.Value }}s (>2min)，数据源可能已被长时间封禁"
+
+      # 配额耗尽
+      - uid: ds-quota-exhausted
+        title: 数据源配额耗尽
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: sum by (source) (increase(ds_rate_limit_total{category="quota_exhausted"}[5m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        for: 10s
+        labels:
+          severity: critical
+        annotations:
+          summary: "数据源 {{ $labels.source }} 配额已耗尽"
+          description: "过去 5 分钟内检测到 {{ $values.C.Value }} 次配额耗尽事件，请检查 API Key 配额或升级套餐"
+
+      # IP 封禁
+      - uid: ds-ip-blocked
+        title: 数据源 IP 被封禁
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: sum by (source) (increase(ds_rate_limit_total{category="ip_blocked"}[5m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        for: 10s
+        labels:
+          severity: critical
+        annotations:
+          summary: "数据源 {{ $labels.source }} IP 被封禁"
+          description: "过去 5 分钟内检测到 {{ $values.C.Value }} 次 IP 封禁事件，请立即检查 IP 状态并联系数据源解封"

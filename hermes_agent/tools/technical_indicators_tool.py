@@ -77,14 +77,14 @@ class TechnicalIndicatorsTool(BaseTool):
         backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000")
         # 强制格式化 ticker
         ticker = self.normalize_ticker(ticker)
-        try:
-            async with SecureAsyncClient(timeout=20.0) as client:
-                params = {"ticker": ticker, "lookback_days": lookback_days}
-                resp = await client.get(f"{backend_url}/market/tech-indicators", params=params, timeout=20.0)
-                resp.raise_for_status()
-                return resp.json()
-        except Exception as e:
-            return {"status": "error", "message": f"请求后端接口失败: {str(e)}"}
+        url = f"{backend_url}/market/tech-indicators"
+        # RL-14: 限流感知智能重试
+        async with SecureAsyncClient(timeout=20.0) as client:
+            return await self.rate_limit_aware_request(
+                client, "GET", url,
+                params={"ticker": ticker, "lookback_days": lookback_days},
+                timeout=20.0,
+            )
 
 class TestTechnicalIndicatorsTool(unittest.TestCase):
     def test_missing_ticker(self):

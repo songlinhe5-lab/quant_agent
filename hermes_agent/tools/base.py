@@ -1,7 +1,8 @@
 import os
 import time
 import json
-from typing import Dict, Any, Tuple
+import asyncio
+from typing import Dict, Any, Tuple, Optional
 
 from backend.core.redis_client import redis_client
 
@@ -49,6 +50,157 @@ class BaseTool:
             return f"HK.{ticker.zfill(5)}"
             
         return f"US.{ticker}"
+
+    # ─────────────────────────────────────────
+    # RL-14: 限流感知智能重试
+    # ─────────────────────────────────────────
+    _RATE_LIMIT_STATUS_CODES = {429, 503}
+    _RATE_LIMIT_BODY_KEYS = {"rate_limited", "rate_limit", "throttled"}
+    _MAX_RETRIES = 3
+    _DEFAULT_RETRY_DELAY = 5.0
+    _MAX_RETRY_DELAY = 60.0
+
+    async def rate_limit_aware_request(
+        self,
+        client,
+        method: str,
+        url: str,
+        *,
+        max_retries: int = _MAX_RETRIES,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        RL-14: 限流感知智能重试请求。
+
+        检测后端返回的限流信号 (HTTP 429/503 或响应体中含 rate_limited 状态)，
+        解析 retry_after_seconds 后智能等待再重试，而非立即报错或死循环。
+
+        Args:
+            client: SecureAsyncClient 实例
+            method: HTTP 方法 ("GET" / "POST")
+            url: 请求 URL
+            max_retries: 最大重试次数 (默认 3)
+            **kwargs: 传递给 client.request 的额外参数
+
+        Returns:
+            成功时返回响应 JSON；重试耗尽时返回结构化限流错误。
+        """
+        last_error = None
+        for attempt in range(max_retries + 1):
+            try:
+                resp = await client.request(method, url, **kwargs)
+
+                # 成功响应
+                if resp.status_code == 200:
+                    return resp.json()
+
+                # 检测限流信号
+                if self._is_rate_limit_response(resp):
+                    retry_after = self._extract_retry_after(resp)
+                    last_error = resp
+
+                    if attempt < max_retries:
+                        capped_delay = min(retry_after, self._MAX_RETRY_DELAY)
+                        print(
+                            f"⏳ [RL-14] 触发限流退避: {method} {url} "
+                            f"| HTTP {resp.status_code} | "
+                            f"retry_after={capped_delay:.1f}s | "
+                            f"attempt={attempt + 1}/{max_retries + 1}"
+                        )
+                        await asyncio.sleep(capped_delay)
+                        continue
+                    else:
+                        # 重试耗尽，返回结构化限流错误
+                        return {
+                            "status": "rate_limited",
+                            "message": (
+                                f"数据源限流，已重试 {max_retries} 次仍未恢复。"
+                                f"建议稍后 ({retry_after:.0f}s) 再试。"
+                            ),
+                            "retry_after_seconds": retry_after,
+                            "attempts": max_retries + 1,
+                        }
+
+                # 非限流类 HTTP 错误，直接返回
+                err_msg = resp.text
+                try:
+                    err_msg = resp.json().get("detail", resp.text)
+                except Exception:
+                    pass
+                return {
+                    "status": "error",
+                    "message": f"后端网关报错 (HTTP {resp.status_code}): {err_msg}",
+                }
+
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries:
+                    delay = self._DEFAULT_RETRY_DELAY * (2 ** attempt)
+                    capped_delay = min(delay, self._MAX_RETRY_DELAY)
+                    print(
+                        f"⏳ [RL-14] 请求异常退避: {method} {url} "
+                        f"| error={str(e)[:80]} | "
+                        f"delay={capped_delay:.1f}s | "
+                        f"attempt={attempt + 1}/{max_retries + 1}"
+                    )
+                    await asyncio.sleep(capped_delay)
+                    continue
+                return {
+                    "status": "error",
+                    "message": f"请求后端接口失败 (重试 {max_retries} 次): {str(last_error)}",
+                }
+
+        # 兜底 (理论上不会到这里)
+        return {"status": "error", "message": "请求异常: 重试逻辑耗尽"}
+
+    def _is_rate_limit_response(self, resp) -> bool:
+        """检测响应是否为限流信号"""
+        # 1. HTTP 状态码检测
+        if resp.status_code in self._RATE_LIMIT_STATUS_CODES:
+            return True
+        # 2. 响应体关键词检测 (后端可能返回 200 但 status="rate_limited")
+        try:
+            body = resp.json()
+            status_val = str(body.get("status", "")).lower()
+            if any(key in status_val for key in self._RATE_LIMIT_BODY_KEYS):
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _extract_retry_after(self, resp) -> float:
+        """从响应中提取重试等待秒数"""
+        # 1. 优先从 Retry-After 响应头提取
+        retry_header = resp.headers.get("Retry-After")
+        if retry_header:
+            try:
+                return float(retry_header)
+            except (ValueError, TypeError):
+                pass
+
+        # 2. 从 X-RateLimit-Reset 响应头推算
+        reset_header = resp.headers.get("X-RateLimit-Reset")
+        if reset_header:
+            try:
+                reset_ts = float(reset_header)
+                remaining = reset_ts - time.time()
+                if remaining > 0:
+                    return remaining
+            except (ValueError, TypeError):
+                pass
+
+        # 3. 从响应体 JSON 提取
+        try:
+            body = resp.json()
+            for key in ("retry_after_seconds", "retry_after", "retry_in"):
+                val = body.get(key)
+                if val is not None:
+                    return float(val)
+        except Exception:
+            pass
+
+        # 4. 默认退避延迟
+        return self._DEFAULT_RETRY_DELAY
 
     async def get_cached_data(self, key: str, ttl: int) -> Any:
         """

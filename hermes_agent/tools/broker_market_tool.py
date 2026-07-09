@@ -37,27 +37,18 @@ class BrokerMarketTool(BaseTool):
         # 强制格式化 ticker
         ticker = self.normalize_ticker(ticker)
         
-        try:
-            async with SecureAsyncClient(timeout=15.0) as client:
-                if action == "QUOTE":
-                    resp = await client.get(f"{backend_url}/market/quote", params={"ticker": ticker})
-                elif action == "HISTORY":
-                    resp = await client.get(f"{backend_url}/market/history", params={"ticker": ticker, "ktype": ktype, "num": num})
-                elif action == "OPTION_CHAIN":
-                    resp = await client.get(f"{backend_url}/market/option-chain", params={"ticker": ticker, "expiration_date": expiration_date})
-                elif action == "FUND_FLOW":
-                    resp = await client.get(f"{backend_url}/market/fund-flow", params={"ticker": ticker})
-                else:
-                    return {"status": "error", "message": f"不支持的操作: {action}"}
-                
-                if resp.status_code != 200:
-                    err_msg = resp.text
-                    try:
-                        err_msg = resp.json().get("detail", resp.text)
-                    except:
-                        pass
-                    return {"status": "error", "message": f"后端网关报错 (HTTP {resp.status_code}): {err_msg}"}
-                    
-                return resp.json()
-        except Exception as e:
-            return {"status": "error", "message": f"请求后端接口失败: {str(e)}"}
+        # RL-14: 构建请求参数
+        if action == "QUOTE":
+            url, method, kwargs = f"{backend_url}/market/quote", "GET", {"params": {"ticker": ticker}}
+        elif action == "HISTORY":
+            url, method, kwargs = f"{backend_url}/market/history", "GET", {"params": {"ticker": ticker, "ktype": ktype, "num": num}}
+        elif action == "OPTION_CHAIN":
+            url, method, kwargs = f"{backend_url}/market/option-chain", "GET", {"params": {"ticker": ticker, "expiration_date": expiration_date}}
+        elif action == "FUND_FLOW":
+            url, method, kwargs = f"{backend_url}/market/fund-flow", "GET", {"params": {"ticker": ticker}}
+        else:
+            return {"status": "error", "message": f"不支持的操作: {action}"}
+
+        # RL-14: 限流感知智能重试
+        async with SecureAsyncClient(timeout=15.0) as client:
+            return await self.rate_limit_aware_request(client, method, url, **kwargs)

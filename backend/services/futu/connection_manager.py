@@ -1,8 +1,13 @@
 """
 Futu OpenD 连接管理模块
 负责行情和交易上下文的初始化、连接管理和解锁逻辑
+
+支持运行时切换连接目标 (switch_host):
+- 本地开发: FUTU_HOST=127.0.0.1 (默认)
+- 远程直连: FUTU_HOST=<香港VPS_IP> (master 直连远程 OpenD)
 """
 
+import logging
 import os
 import threading
 from typing import Dict, Tuple
@@ -16,6 +21,8 @@ from futu import (
     TrdMarket,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class ConnectionManager:
     """Futu OpenD 连接管理器"""
@@ -28,7 +35,12 @@ class ConnectionManager:
         self._host = os.getenv("FUTU_HOST", "127.0.0.1")
         self._port = int(os.getenv("FUTU_PORT", 11111))
         self._lock = threading.Lock()  # 防止并发连接
-        self._enabled = os.getenv("FUTU_ENABLED", "true").lower() == "true"
+        # 联动 COLLECTOR_FUTU (新) 并保留 FUTU_ENABLED (旧) 向后兼容
+        _futu_env = os.getenv("FUTU_ENABLED")
+        if _futu_env is not None:
+            self._enabled = _futu_env.lower() == "true"
+        else:
+            self._enabled = os.getenv("COLLECTOR_FUTU", "false").lower() == "true"
 
     def _is_opend_reachable(self, timeout: float = 2.0) -> bool:
         """
@@ -55,7 +67,7 @@ class ConnectionManager:
         # 检查是否启用富途
         if not self._enabled:
             self.status = "DISABLED"
-            self.error_msg = "富途服务已禁用 (FUTU_ENABLED=false)"
+            self.error_msg = "富途服务已禁用 (COLLECTOR_FUTU=false)"
             print("⚠️ [ConnectionManager] 富途服务已禁用，跳过连接")
             return
 
@@ -79,10 +91,43 @@ class ConnectionManager:
                 self.status = "CONNECTED"
                 self.error_msg = ""
                 print(f"✅ [ConnectionManager] 成功连接至全局 OpenD 行情网关 ({self._host}:{self._port})")  # noqa: E501
+
+                # 注册推送回调处理器（将 Futu 实时推送桥接到 Redis PubSub）
+                self._register_push_handlers()
             except Exception as e:
                 self.status = "ERROR"
                 self.error_msg = str(e)
                 print(f"❌ [ConnectionManager] 连接 OpenD 失败: {e}")
+
+    def _register_push_handlers(self):
+        """连接成功后注册所有推送回调处理器，并捕获主事件循环引用"""
+        if not self.quote_ctx:
+            return
+        try:
+            # 捕获当前事件循环，供推送回调跨线程桥接使用
+            import asyncio
+            from . import push_handler
+
+            try:
+                loop = asyncio.get_running_loop()
+                push_handler.set_main_loop(loop)
+            except RuntimeError:
+                logger.warning("[ConnectionManager] 无法获取事件循环，推送桥接将不可用")
+
+            # 检查是否启用推送模式（默认开启）
+            push_enabled = os.getenv("FUTU_PUSH_ENABLED", "true").lower() == "true"
+            if not push_enabled:
+                print("ℹ️ [ConnectionManager] 推送模式已禁用 (FUTU_PUSH_ENABLED=false)")
+                return
+
+            results = push_handler.register_all_handlers(self.quote_ctx)
+            success = sum(1 for v in results.values() if v)
+            if success > 0:
+                print(f"📡 [ConnectionManager] 推送模式已激活 ({success} 个处理器)")
+            else:
+                print("⚠️ [ConnectionManager] 无推送处理器注册成功，退化为拉取模式")
+        except Exception as e:
+            logger.warning(f"[ConnectionManager] 注册推送处理器异常: {e}")
 
     def close(self):
         """关闭所有连接"""
@@ -98,12 +143,13 @@ class ConnectionManager:
         """获取或创建交易上下文（单例模式）"""
         key = (trd_env, market)
         if key not in self.trade_ctxs:
-            host = os.getenv("FUTU_HOST", "127.0.0.1")
-            port = int(os.getenv("FUTU_PORT", 11111))
+            # 快速探测：OpenD 不可达时拒绝创建，防止 Futu SDK 后台线程无限重试
+            if not self._is_opend_reachable():
+                raise ConnectionError(f"OpenD 不可达 ({self._host}:{self._port})，拒绝创建交易上下文")
             self.trade_ctxs[key] = OpenSecTradeContext(
                 filter_trdmarket=str(market),
-                host=host,
-                port=port,
+                host=self._host,
+                port=self._port,
                 security_firm=SecurityFirm.FUTUSECURITIES,
             )
         return self.trade_ctxs[key]
@@ -115,3 +161,55 @@ class ConnectionManager:
             ret, data = await __import__("asyncio").to_thread(trd_ctx.unlock_trade, pwd_unlock, is_unlock=True)
             if ret != RET_OK:
                 print(f"⚠️ [ConnectionManager] 自动解锁接口被拦截或失败: {data}。请确保已在 OpenD 界面手动解锁。")  # noqa: E501
+
+    # ── 运行时切换连接目标 ──────────────────────────────────────────
+
+    def switch_host(self, host: str, port: int = 11111) -> Dict[str, str]:
+        """
+        运行时切换 OpenD 连接目标。
+
+        典型场景:
+        - master (北京) 直连香港 VPS 的 OpenD:
+            switch_host("1.2.3.4", 11111)
+        - 切回本地:
+            switch_host("127.0.0.1", 11111)
+
+        Args:
+            host: OpenD 主机地址 (IP 或域名)
+            port: OpenD 端口 (默认 11111)
+
+        Returns:
+            切换结果 dict
+        """
+        old_host, old_port = self._host, self._port
+
+        if host == old_host and port == old_port:
+            return {"status": "unchanged", "host": host, "port": port}
+
+        # 1. 关闭现有连接
+        was_connected = self.status == "CONNECTED"
+        if was_connected:
+            self.close()
+
+        # 2. 更新目标地址
+        self._host = host
+        self._port = port
+
+        logger.info(f"[ConnectionManager] 连接目标切换: {old_host}:{old_port} → {host}:{port}")
+
+        # 3. 尝试重新连接
+        self.connect()
+
+        return {
+            "status": self.status,
+            "old_host": old_host,
+            "old_port": old_port,
+            "new_host": host,
+            "new_port": port,
+            "reconnected": self.status == "CONNECTED",
+        }
+
+    @property
+    def target(self) -> str:
+        """当前连接目标地址"""
+        return f"{self._host}:{self._port}"

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import struct
 import time
@@ -25,11 +26,13 @@ from backend.core.proto.market_pb2 import Order, QuoteData  # type: ignore
 from backend.core.redis_client import l1_cached_redis, redis_client
 from backend.core.utils import safe_divide, safe_float
 
-# 引入现有的 Tools
+# 引入现有的 Tools (本地 futu_service 作为 ClusterManager 不可用时的兜底)
 from backend.services.futu import futu_service
 from backend.services.kline_warehouse import kline_warehouse
 from backend.services.notification_service import notification_service
 from backend.services.yfinance_service import yf_service
+
+logger = logging.getLogger(__name__)
 
 
 async def update_quote_to_redis(ticker: str, quote_data: dict):
@@ -140,7 +143,10 @@ class ConnectionManager:
         if self.pubsub_task is None or self.pubsub_task.done():
             self.pubsub_task = asyncio.create_task(self.redis_pubsub_listener())
 
-        asyncio.create_task(kline_warehouse.daemon_sync_task())
+        # 💡 防御：kline_warehouse daemon 只需启动一次，防止 WebSocket 重连导致重复创建
+        if not getattr(self, "_kline_daemon_started", False):
+            asyncio.create_task(kline_warehouse.daemon_sync_task())
+            self._kline_daemon_started = True
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
@@ -332,6 +338,9 @@ class ConnectionManager:
                     yf_enabled_val = await l1_cached_redis.get("quant:settings:yfinance_enabled")  # noqa: E501
                     is_yf_enabled = yf_enabled_val != "0"
 
+                    # 💡 Futu 断连防御：检测连接状态，断连时跳过所有 Futu 调用防止 CPU 空转
+                    futu_connected = futu_service.status == "CONNECTED"
+
                     # 💡 [额度释放 GC 机制]：对比当前真实需要的标的与已订阅的标的，自动剔除无人观看的废弃订阅  # noqa: E501
                     current_futu_needs = {t for t in all_tickers if not futu_service.is_futu_unsupported(t)}  # noqa: E501
                     stale_subs = self._futu_active_subs - current_futu_needs
@@ -365,13 +374,13 @@ class ConnectionManager:
                     if hasattr(futu_service, "cache_mgr"):
                         futu_service.cache_mgr.evict_stale_cache()
 
-                    # 💡 优化 1: 定时刷新技术面指标缓存
+                    # 💡 优化 1: 定时刷新技术面指标缓存 (仅在 Futu 连接时执行)
                     # 技术指标(日线级)无需每 3 秒全量并发刷新。设定为 1 小时更新一次，或发现新标的时触发  # noqa: E501
                     current_time = time.time()
                     need_global_tech_update = current_time - getattr(self, "last_tech_update", 0) > 3600  # noqa: E501
                     tickers_to_update = [t for t in all_tickers if t not in self.tech_cache or need_global_tech_update]  # noqa: E501
 
-                    if tickers_to_update:
+                    if tickers_to_update and futu_connected:
                         for t in tickers_to_update:
                             try:
                                 # 优先尝试利用 Futu 获取 120 日历史，完全免除外部网络请求  # noqa: E501
@@ -412,13 +421,14 @@ class ConnectionManager:
                         if need_global_tech_update:
                             self.last_tech_update = current_time
 
-                    # 💡 定时拉取资金流与席位 (Futu 内部已有 0.6s 排队锁，使用 gather 并发安全)  # noqa: E501
-                    flow_tasks = [futu_service.get_fund_flow(ticker=t) for t in all_tickers]  # noqa: E501
-                    flow_results = await asyncio.gather(*flow_tasks, return_exceptions=True)  # noqa: E501
+                    # 💡 定时拉取资金流与席位 (仅在 Futu 连接时执行，断连时跳过防止 CPU 空转)  # noqa: E501
+                    if futu_connected:
+                        flow_tasks = [futu_service.get_fund_flow(t) for t in all_tickers]  # noqa: E501
+                        flow_results = await asyncio.gather(*flow_tasks, return_exceptions=True)  # noqa: E501
 
-                    for ticker, f_res in zip(all_tickers, flow_results):
-                        if isinstance(f_res, dict) and f_res.get("status") == "success":
-                            self.flow_cache[ticker] = f_res
+                        for ticker, f_res in zip(all_tickers, flow_results):
+                            if isinstance(f_res, dict) and f_res.get("status") == "success":
+                                self.flow_cache[ticker] = f_res
 
                     yf_candidates = []
                     futu_check_tickers = []
@@ -433,24 +443,27 @@ class ConnectionManager:
                         # 监控 SPY(标普500), QQQ(纳指100), HK.800000(恒指)
                         monitor_targets = ["US.SPY", "US.QQQ", "HK.800000"]
                         if t in monitor_targets:
-                            flow_data = self.flow_cache.get(t, {})
-                            if flow_data:
-                                fund_data = flow_data.get("data", flow_data)
-                                net_inflow = fund_data.get("main_fund_net_inflow", 0)
+                            flow_data = self.flow_cache.get(t) or {}
+                            if flow_data and isinstance(flow_data, dict):
+                                fund_data = flow_data.get("data") or flow_data
+                                if not isinstance(fund_data, dict):
+                                    fund_data = {}
+                                net_inflow = fund_data.get("main_fund_net_inflow") or 0
                                 OUTFLOW_THRESHOLD = -500_000_000  # 阈值：主力净流出超过 5 亿  # noqa: E501
                                 if net_inflow < OUTFLOW_THRESHOLD:
                                     # 💡 升级为分布式防抖锁，防止集群多台服务器同时发出报警轰炸  # noqa: E501
                                     lock_key = f"quant:lock:outflow_alert:{t}:{int(current_time / 3600)}"  # noqa: E501
                                     if await redis_client.set(lock_key, "1", nx=True, ex=3600):  # noqa: E501
+                                        net_inflow_str = fund_data.get("main_fund_net_inflow_str", str(net_inflow))
                                         alert_msg = (
                                             f"🚨 [宏观风控预警] 宽基指数主力资金疯狂出逃！\n\n"  # noqa: E501
-                                            f"标的: {t}\n今日主力净流出: {fund_data.get('main_fund_net_inflow_str')}\n\n"  # noqa: E501
+                                            f"标的: {t}\n今日主力净流出: {net_inflow_str}\n\n"  # noqa: E501
                                             f"请警惕系统性流动性抽离风险，并考虑收紧多头敞口！"
-                                        )
+                                        )  # noqa: E501
                                         asyncio.create_task(notification_service.send_alert(alert_msg))
 
-                    # 💡 每 10 秒异步拉取一次账户真实资产快照，用于断连报警与缓存
-                    if current_time - getattr(self, "last_acc_update", 0) > 10:
+                    # 💡 每 10 秒异步拉取一次账户真实资产快照 (仅在 Futu 连接时执行)
+                    if futu_connected and current_time - getattr(self, "last_acc_update", 0) > 10:
                         self.last_acc_update = current_time
                         try:
                             acc_res = await futu_service.get_account_info()
@@ -462,8 +475,8 @@ class ConnectionManager:
                         except Exception:
                             pass
 
-                    # 1. 优先执行富途快照补漏 (直接使用解耦的 futu_service)
-                    if futu_check_tickers:
+                    # 1. 优先执行富途快照补漏 (仅在 Futu 连接时执行)
+                    if futu_connected and futu_check_tickers:
                         batch_success = False
                         last_futu_error = None
 
@@ -510,17 +523,16 @@ class ConnectionManager:
                             if self._futu_alert_sent:
                                 self._futu_alert_sent = False
                         elif last_futu_error and not self._futu_alert_sent:
-                            # 💡 只有在底层真正断连时才发送全局报警，过滤掉单标的"未知股票"等接口层业务报错
-                            if getattr(futu_service, "status", "") != "CONNECTED":
-                                self._futu_alert_sent = True
-                                account_snapshot = getattr(self, "last_account_summary", "未知")
-                                alert_msg = (
-                                    f"🚨 [风控报警] 富途 OpenD 行情接口意外断连！\n"
-                                    f"系统已自动平滑降级至 YFinance 轮询兜底。\n\n"
-                                    f"【断线前账户快照】\n{account_snapshot}\n\n"
-                                    f"错误详情: {last_futu_error}"
-                                )
-                                asyncio.create_task(notification_service.send_alert(alert_msg))
+                            # 💡 futu_service 内部已集成多源路由，所有源均失败时才报警
+                            self._futu_alert_sent = True
+                            account_snapshot = getattr(self, "last_account_summary", "未知")
+                            alert_msg = (
+                                f"🚨 [风控报警] 富途行情接口全面断连（本地 + 集群均失败）！\n"
+                                f"系统已自动平滑降级至 YFinance 轮询兜底。\n\n"
+                                f"【断线前账户快照】\n{account_snapshot}\n\n"
+                                f"错误详情: {last_futu_error}"
+                            )  # noqa: E501
+                            asyncio.create_task(notification_service.send_alert(alert_msg))
 
                     # 2. 启用真实的 YFinance 兜底轮询！（仅在开关打开时执行）
                     if yf_candidates and is_yf_enabled:

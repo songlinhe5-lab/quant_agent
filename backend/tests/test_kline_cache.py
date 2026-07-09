@@ -41,7 +41,7 @@ def make_test_kline_df(rows: int = 10) -> pd.DataFrame:
 # ─── CacheTier 枚举 ───────────────────────────────────────────────
 class TestCacheTier:
     def test_tier_values(self):
-        from backend.core.kline_cache import CacheTier
+        from backend.services.kline_cache import CacheTier
 
         assert CacheTier.L1_REDIS == "redis"
         assert CacheTier.L2_PARQUET == "parquet"
@@ -52,22 +52,22 @@ class TestCacheTier:
 # ─── 模块级常量 ───────────────────────────────────────────────────
 class TestModuleConstants:
     def test_l1_ttl_days_value(self):
-        from backend.core.kline_cache import L1_TTL_DAYS
+        from backend.services.kline_cache import L1_TTL_DAYS
 
         assert L1_TTL_DAYS == 5
 
     def test_l1_ttl_seconds_value(self):
-        from backend.core.kline_cache import L1_TTL_DAYS, L1_TTL_SECONDS
+        from backend.services.kline_cache import L1_TTL_DAYS, L1_TTL_SECONDS
 
         assert L1_TTL_SECONDS == L1_TTL_DAYS * 86400
 
     def test_l2_retention_days_value(self):
-        from backend.core.kline_cache import L2_RETENTION_DAYS
+        from backend.services.kline_cache import L2_RETENTION_DAYS
 
         assert L2_RETENTION_DAYS == 365
 
     def test_l1_key_prefix(self):
-        from backend.core.kline_cache import L1_KEY_PREFIX
+        from backend.services.kline_cache import L1_KEY_PREFIX
 
         assert L1_KEY_PREFIX == "quant:kline"
 
@@ -77,7 +77,7 @@ class TestKlineCacheEngineGet:
     """get_kline 的智能路由与降级逻辑"""
 
     def test_get_kline_routes_to_l1_for_short_days(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         engine._redis = AsyncMock()
@@ -91,7 +91,7 @@ class TestKlineCacheEngineGet:
         engine._get_l1.assert_called_once()
 
     def test_get_kline_routes_to_l2_for_medium_days(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         engine._redis = AsyncMock()
@@ -105,7 +105,7 @@ class TestKlineCacheEngineGet:
         engine._get_l2.assert_called_once()
 
     def test_get_kline_routes_to_l3_for_long_days(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         engine._redis = AsyncMock()
@@ -117,7 +117,7 @@ class TestKlineCacheEngineGet:
         engine._get_l3.assert_called_once()
 
     def test_get_kline_l1_miss_fallback_to_l2(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         engine._redis = AsyncMock()
@@ -132,7 +132,7 @@ class TestKlineCacheEngineGet:
         engine._get_l2.assert_called_once()
 
     def test_get_kline_l1_miss_l2_miss_returns_none(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         engine._redis = AsyncMock()
@@ -143,7 +143,7 @@ class TestKlineCacheEngineGet:
         assert result is None
 
     def test_get_kline_explicit_tier_overrides_auto(self):
-        from backend.core.kline_cache import CacheTier, KlineCacheEngine
+        from backend.services.kline_cache import CacheTier, KlineCacheEngine
 
         engine = KlineCacheEngine()
         engine._redis = AsyncMock()
@@ -160,7 +160,7 @@ class TestKlineCacheEngineGet:
 # ─── KlineCacheEngine: put_kline 写入 ─────────────────────────────
 class TestKlineCacheEnginePut:
     def test_put_kline_none_df_skipped(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         engine._put_l1 = AsyncMock()
@@ -168,7 +168,7 @@ class TestKlineCacheEnginePut:
         engine._put_l1.assert_not_called()
 
     def test_put_kline_empty_df_skipped(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         engine._put_l1 = AsyncMock()
@@ -176,7 +176,7 @@ class TestKlineCacheEnginePut:
         engine._put_l1.assert_not_called()
 
     def test_put_kline_writes_to_l1(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         engine._put_l1 = AsyncMock()
@@ -188,7 +188,7 @@ class TestKlineCacheEnginePut:
 # ─── KlineCacheEngine: L1 Redis 操作 ──────────────────────────────
 class TestKlineCacheEngineL1:
     def test_get_l1_empty_redis_returns_none(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         engine._redis = AsyncMock()
@@ -198,7 +198,7 @@ class TestKlineCacheEngineL1:
         assert result is None
 
     def test_get_l1_with_data_returns_df(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         engine._redis = AsyncMock()
@@ -212,7 +212,7 @@ class TestKlineCacheEngineL1:
         assert "close" in result.columns
 
     def test_get_l1_handles_invalid_json(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         engine._redis = AsyncMock()
@@ -230,7 +230,7 @@ class TestKlineCacheEngineL1:
         assert result is None or len(result) >= 0
 
     def test_get_l1_handles_redis_exception(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         engine._redis = AsyncMock()
@@ -240,7 +240,7 @@ class TestKlineCacheEngineL1:
         assert result is None
 
     def test_put_l1_writes_pipeline(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         mock_pipe = MagicMock()
@@ -256,7 +256,7 @@ class TestKlineCacheEngineL1:
         mock_pipe.expire.assert_called_once()
 
     def test_put_l1_empty_after_filter_returns(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         mock_pipe = MagicMock()
@@ -286,7 +286,7 @@ class TestKlineCacheEngineL1:
 # ─── KlineCacheEngine: L2/L3 操作 ─────────────────────────────────
 class TestKlineCacheEngineL2L3:
     def test_get_l2_calls_warehouse(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         engine._warehouse = AsyncMock()
@@ -298,7 +298,7 @@ class TestKlineCacheEngineL2L3:
         engine._warehouse.get_history.assert_called_once_with("US.AAPL", ktype="K_DAY", num=5)
 
     def test_get_l2_handles_exception(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         engine._warehouse = AsyncMock()
@@ -308,7 +308,7 @@ class TestKlineCacheEngineL2L3:
         assert result is None
 
     def test_get_l3_always_returns_none(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         result = asyncio_run(engine._get_l3("US.AAPL", "K_DAY", 1000))
@@ -318,7 +318,7 @@ class TestKlineCacheEngineL2L3:
 # ─── KlineCacheEngine: invalidate / stats ─────────────────────────
 class TestKlineCacheEngineManage:
     def test_invalidate_with_period_deletes_key(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         engine._redis = AsyncMock()
@@ -326,7 +326,7 @@ class TestKlineCacheEngineManage:
         engine._redis.delete.assert_called_once()
 
     def test_invalidate_without_period_uses_scan(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         engine._redis = AsyncMock()
@@ -338,7 +338,7 @@ class TestKlineCacheEngineManage:
         engine._redis.delete.assert_called_once_with("key1", "key2")
 
     def test_invalidate_handles_exception(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         engine._redis = AsyncMock()
@@ -347,7 +347,7 @@ class TestKlineCacheEngineManage:
         asyncio_run(engine.invalidate("US.AAPL", "K_DAY"))
 
     def test_stats_returns_dict(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         engine._redis = AsyncMock()
@@ -360,7 +360,7 @@ class TestKlineCacheEngineManage:
         assert result["l3_enabled"] is False
 
     def test_stats_handles_exception(self):
-        from backend.core.kline_cache import KlineCacheEngine
+        from backend.services.kline_cache import KlineCacheEngine
 
         engine = KlineCacheEngine()
         engine._redis = AsyncMock()
@@ -373,14 +373,14 @@ class TestKlineCacheEngineManage:
 # ─── 全局单例 get_kline_cache_engine ──────────────────────────────
 class TestGetKlineCacheEngine:
     def test_singleton_returns_same_instance(self):
-        from backend.core.kline_cache import get_kline_cache_engine
+        from backend.services.kline_cache import get_kline_cache_engine
 
         e1 = get_kline_cache_engine()
         e2 = get_kline_cache_engine()
         assert e1 is e2
 
     def test_singleton_is_kline_cache_engine(self):
-        from backend.core.kline_cache import KlineCacheEngine, get_kline_cache_engine
+        from backend.services.kline_cache import KlineCacheEngine, get_kline_cache_engine
 
         engine = get_kline_cache_engine()
         assert isinstance(engine, KlineCacheEngine)
