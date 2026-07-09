@@ -104,7 +104,7 @@ except Exception as e:
     print(f"⚠️ [System] 自动创建数据库表失败 (请确认数据库服务已启动): {e}")
 
 from backend.core.logger import logger  # noqa: E402, I001
-from backend.core.market_engine import manager  # noqa: E402, I001
+from backend.services.market_engine import manager  # noqa: E402, I001
 from backend.core.middleware import AccessLogMiddleware  # noqa: E402
 from backend.core.redis_client import (  # noqa: E402
     l1_cached_redis,
@@ -131,6 +131,8 @@ from backend.routers.search import router as search_router  # noqa: E402
 from backend.routers.strategy import router as strategy_router  # noqa: E402
 from backend.routers.system import router as system_router  # noqa: E402
 from backend.routers.trade import router as trade_router  # noqa: E402
+from backend.routers.data_source import router as data_source_router  # noqa: E402
+from backend.routers.datasource import router as datasource_rl_router  # noqa: E402
 from backend.services.fred_service import fred_service  # noqa: E402
 from backend.services.futu_service import futu_service  # noqa: E402
 from backend.services.llm_service import llm_service  # noqa: E402
@@ -256,14 +258,6 @@ async def lifespan(app: FastAPI):  # type: ignore
     await manager.start_background_tasks()  # type: ignore
 
     asyncio.create_task(notification_service.send_alert("✅ [Quant Agent] 量化引擎数据网关已成功连接并启动！"))  # noqa: E501
-
-    # 🚀 主节点: 启动 ClusterManager 发现从节点 + 服务池
-    node_role = os.getenv("NODE_ROLE", "master")
-    if node_role == "master":
-        from backend.workers.cluster_manager import cluster_manager
-
-        await cluster_manager.start()
-        print("✅ [Startup] ClusterManager 已启动 - 从节点服务池发现")
 
     # 🚀 启动 NAV 快照守护进程 (每 5 分钟分账户记录 HK/US 净值到 Redis + DB)
     async def _nav_snapshot_daemon():
@@ -405,15 +399,6 @@ async def lifespan(app: FastAPI):  # type: ignore
             await asyncio.gather(*tasks_to_await, return_exceptions=True)
     except Exception as e:
         print(f"⚠️ 取消后台任务时发生异常: {e}")
-
-    # ClusterManager 清理
-    try:
-        if os.getenv("NODE_ROLE", "master") == "master":
-            from backend.workers.cluster_manager import cluster_manager
-
-            await cluster_manager.stop()
-    except Exception:
-        pass
 
     try:
         # 🛑 优雅释放我们在 Startup 阶段分配的全局物理线程池
@@ -821,6 +806,12 @@ app.include_router(futu_admin_router)  # Futu 数据源管理 (prefix 已含 /ap
 # 挂载内部 API 路由（需要 HMAC 签名验证，符合 SEC-03 安全规范）
 app.include_router(internal_router, prefix="/api/v1")
 
+# 挂载数据源代理路由（支持跨节点数据源调用）
+app.include_router(data_source_router, prefix="/api/v1")
+
+# 挂载数据源限流查询路由 (RL-06)
+app.include_router(datasource_rl_router, prefix="/api/v1")
+
 # ==========================================
 # --- JWT 鉴权依赖 (SSR & Client 兼容) ---
 # ==========================================
@@ -1006,13 +997,13 @@ async def health_check():
 
 @app.get("/api/v1/cluster")
 async def cluster_status():
-    """集群拓扑状态 (主节点发现从节点，服务池状态)"""
-    try:
-        from backend.workers.cluster_manager import cluster_manager
+    """节点状态概览"""
+    from backend.workers.collector_registry import get_enabled_collectors
 
-        return cluster_manager.get_cluster_status()
-    except Exception as e:
-        return {"error": str(e), "master": {"collectors": []}, "slaves": [], "pools": {}}
+    return {
+        "mode": "standalone",
+        "collectors": get_enabled_collectors(),
+    }
 
 
 @app.get("/mcp")

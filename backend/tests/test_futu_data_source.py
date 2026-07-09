@@ -2,17 +2,16 @@
 Futu 数据源抽象层单元测试
 
 覆盖：
-- LocalDataSource / RemoteDataSource 基本行为
-- FutuSourceRouter 三种模式路由
+- LocalDataSource 基本行为
+- FutuSourceRouter 本地路由
 - ConnectionManager.switch_host 运行时切换
-- FutuAdmin API 端点
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.services.futu.data_source import LocalDataSource, RemoteDataSource
+from backend.services.futu.data_source import LocalDataSource
 from backend.services.futu.source_router import FutuSourceRouter
 
 
@@ -93,69 +92,12 @@ class TestLocalDataSource:
 
 
 # ---------------------------------------------------------------------------
-# RemoteDataSource
-# ---------------------------------------------------------------------------
-class TestRemoteDataSource:
-    """RemoteDataSource 测试"""
-
-    def test_source_type(self):
-        """类型标识为 remote"""
-        ds = RemoteDataSource()
-        assert ds.source_type == "remote"
-
-    @pytest.mark.asyncio
-    async def test_fetch_success(self):
-        """fetch 通过 ClusterManager 获取数据"""
-        ds = RemoteDataSource()
-        mock_result = {
-            "data": {"status": "success", "price": 100.0},
-            "source_node": "slave-1",
-        }
-
-        with patch(
-            "backend.services.futu.data_source.RemoteDataSource._RemoteDataSource__class__",
-            create=True,
-        ):
-            mock_cm = MagicMock()
-            mock_cm.call_collector = AsyncMock(return_value=mock_result)
-            mock_cm.get_available_nodes = MagicMock(return_value=[MagicMock()])
-
-            with patch("backend.workers.cluster_manager.cluster_manager", mock_cm):
-                result = await ds.fetch("fetch_quote", {"ticker": "HK.00700"})
-                assert result is not None
-                assert result["price"] == 100.0
-
-    @pytest.mark.asyncio
-    async def test_fetch_connection_error_returns_none(self):
-        """连接失败类错误返回 None (触发降级)"""
-        ds = RemoteDataSource()
-        mock_result = {
-            "data": {"status": "error", "message": "Futu OpenD 未连接"},
-        }
-
-        mock_cm = MagicMock()
-        mock_cm.call_collector = AsyncMock(return_value=mock_result)
-
-        with patch("backend.workers.cluster_manager.cluster_manager", mock_cm):
-            result = await ds.fetch("fetch_quote", {"ticker": "HK.00700"})
-            assert result is None
-
-    @pytest.mark.asyncio
-    async def test_fetch_prevents_recursion(self):
-        """防递归重入: _in_dispatch 时直接返回 None"""
-        ds = RemoteDataSource()
-        ds._in_dispatch = True
-        result = await ds.fetch("fetch_quote", {"ticker": "HK.00700"})
-        assert result is None
-
-
-# ---------------------------------------------------------------------------
 # FutuSourceRouter
 # ---------------------------------------------------------------------------
 class TestFutuSourceRouter:
     """FutuSourceRouter 路由器测试"""
 
-    def _make_router(self, mode="auto"):
+    def _make_router(self):
         """创建测试用路由器"""
         svc = MagicMock()
         svc.status = "DISCONNECTED"
@@ -163,49 +105,23 @@ class TestFutuSourceRouter:
         svc.conn_mgr._port = 11111
         svc.conn_mgr.status = "DISCONNECTED"
         svc.conn_mgr.error_msg = ""
+        return FutuSourceRouter(svc)
 
-        with patch.dict("os.environ", {"FUTU_SOURCE_MODE": mode}):
-            router = FutuSourceRouter(svc)
-        return router
-
-    def test_default_mode(self):
-        """默认模式为 auto"""
+    def test_mode_is_local(self):
+        """模式始终为 local"""
         router = self._make_router()
-        assert router.current_mode == "auto"
-
-    def test_invalid_mode_fallback(self):
-        """无效模式回退到 auto"""
-        svc = MagicMock()
-        svc.status = "DISCONNECTED"
-        svc.conn_mgr._host = "127.0.0.1"
-        svc.conn_mgr._port = 11111
-        svc.conn_mgr.status = "DISCONNECTED"
-        svc.conn_mgr.error_msg = ""
-        with patch.dict("os.environ", {"FUTU_SOURCE_MODE": "invalid"}):
-            router = FutuSourceRouter(svc)
-        assert router.current_mode == "auto"
-
-    def test_switch_mode(self):
-        """运行时切换模式"""
-        router = self._make_router()
-        assert router.current_mode == "auto"
-
-        router.switch_mode("local")
         assert router.current_mode == "local"
 
-        router.switch_mode("remote")
-        assert router.current_mode == "remote"
-
-    def test_switch_mode_invalid(self):
-        """切换到无效模式抛异常"""
+    def test_switch_mode_returns_local(self):
+        """switch_mode 始终返回 local"""
         router = self._make_router()
-        with pytest.raises(ValueError, match="无效模式"):
-            router.switch_mode("bogus")
+        assert router.switch_mode("remote") == "local"
+        assert router.switch_mode("auto") == "local"
 
     @pytest.mark.asyncio
-    async def test_local_mode_uses_local_handler(self):
-        """local 模式下调用本地 handler"""
-        router = self._make_router("local")
+    async def test_local_handler_called(self):
+        """本地可用时调用 handler"""
+        router = self._make_router()
         router._local._svc.status = "CONNECTED"
 
         handler = AsyncMock(return_value={"status": "success", "data": "test"})
@@ -213,54 +129,21 @@ class TestFutuSourceRouter:
         assert result["status"] == "success"
 
     @pytest.mark.asyncio
-    async def test_local_mode_unavailable(self):
-        """local 模式下本地不可用返回错误"""
-        router = self._make_router("local")
+    async def test_local_unavailable(self):
+        """本地不可用时返回错误"""
+        router = self._make_router()
         router._local._svc.status = "DISCONNECTED"
 
         handler = AsyncMock()
         result = await router.route("fetch_quote", {}, local_handler=handler)
         assert result["status"] == "error"
 
-    @pytest.mark.asyncio
-    async def test_remote_mode_uses_remote(self):
-        """remote 模式下调用远程数据源"""
-        router = self._make_router("remote")
-
-        router._remote.fetch = AsyncMock(return_value={"status": "success", "data": "remote"})
-        result = await router.route("fetch_quote", {"ticker": "HK.00700"})
-        assert result["status"] == "success"
-        assert result["data"] == "remote"
-
-    @pytest.mark.asyncio
-    async def test_auto_mode_local_first(self):
-        """auto 模式下本地优先"""
-        router = self._make_router("auto")
-        router._local._svc.status = "CONNECTED"
-
-        handler = AsyncMock(return_value={"status": "success", "source": "local"})
-        result = await router.route("fetch_quote", {"ticker": "HK.00700"}, local_handler=handler, ticker="HK.00700")
-        assert result["source"] == "local"
-
-    @pytest.mark.asyncio
-    async def test_auto_mode_fallback_to_remote(self):
-        """auto 模式下本地失败降级到远程"""
-        router = self._make_router("auto")
-        router._local._svc.status = "DISCONNECTED"
-
-        router._remote.fetch = AsyncMock(return_value={"status": "success", "source": "remote"})
-        handler = AsyncMock()
-        result = await router.route("fetch_quote", {"ticker": "HK.00700"}, local_handler=handler)
-        assert result["source"] == "remote"
-
     def test_status(self):
         """status 返回完整状态"""
-        router = self._make_router("auto")
+        router = self._make_router()
         s = router.status()
-        assert "mode" in s
+        assert s["mode"] == "local"
         assert "local" in s
-        assert "remote" in s
-        assert s["mode"] == "auto"
 
 
 # ---------------------------------------------------------------------------

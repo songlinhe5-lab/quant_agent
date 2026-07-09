@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from backend.core import models
 from backend.core.database import get_db
-from backend.core.market_engine import manager
+from backend.services.market_engine import manager
 from backend.core.redis_client import redis_client
 from backend.services.akshare_service import akshare_service
 from backend.services.finnhub_service import finnhub_service

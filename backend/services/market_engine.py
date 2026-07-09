@@ -143,7 +143,10 @@ class ConnectionManager:
         if self.pubsub_task is None or self.pubsub_task.done():
             self.pubsub_task = asyncio.create_task(self.redis_pubsub_listener())
 
-        asyncio.create_task(kline_warehouse.daemon_sync_task())
+        # 💡 防御：kline_warehouse daemon 只需启动一次，防止 WebSocket 重连导致重复创建
+        if not getattr(self, "_kline_daemon_started", False):
+            asyncio.create_task(kline_warehouse.daemon_sync_task())
+            self._kline_daemon_started = True
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
@@ -335,6 +338,9 @@ class ConnectionManager:
                     yf_enabled_val = await l1_cached_redis.get("quant:settings:yfinance_enabled")  # noqa: E501
                     is_yf_enabled = yf_enabled_val != "0"
 
+                    # 💡 Futu 断连防御：检测连接状态，断连时跳过所有 Futu 调用防止 CPU 空转
+                    futu_connected = futu_service.status == "CONNECTED"
+
                     # 💡 [额度释放 GC 机制]：对比当前真实需要的标的与已订阅的标的，自动剔除无人观看的废弃订阅  # noqa: E501
                     current_futu_needs = {t for t in all_tickers if not futu_service.is_futu_unsupported(t)}  # noqa: E501
                     stale_subs = self._futu_active_subs - current_futu_needs
@@ -368,13 +374,13 @@ class ConnectionManager:
                     if hasattr(futu_service, "cache_mgr"):
                         futu_service.cache_mgr.evict_stale_cache()
 
-                    # 💡 优化 1: 定时刷新技术面指标缓存
+                    # 💡 优化 1: 定时刷新技术面指标缓存 (仅在 Futu 连接时执行)
                     # 技术指标(日线级)无需每 3 秒全量并发刷新。设定为 1 小时更新一次，或发现新标的时触发  # noqa: E501
                     current_time = time.time()
                     need_global_tech_update = current_time - getattr(self, "last_tech_update", 0) > 3600  # noqa: E501
                     tickers_to_update = [t for t in all_tickers if t not in self.tech_cache or need_global_tech_update]  # noqa: E501
 
-                    if tickers_to_update:
+                    if tickers_to_update and futu_connected:
                         for t in tickers_to_update:
                             try:
                                 # 优先尝试利用 Futu 获取 120 日历史，完全免除外部网络请求  # noqa: E501
@@ -415,13 +421,14 @@ class ConnectionManager:
                         if need_global_tech_update:
                             self.last_tech_update = current_time
 
-                    # 💡 定时拉取资金流与席位 (Futu 内部已有 0.6s 排队锁，使用 gather 并发安全)  # noqa: E501
-                    flow_tasks = [futu_service.get_fund_flow(t) for t in all_tickers]  # noqa: E501
-                    flow_results = await asyncio.gather(*flow_tasks, return_exceptions=True)  # noqa: E501
+                    # 💡 定时拉取资金流与席位 (仅在 Futu 连接时执行，断连时跳过防止 CPU 空转)  # noqa: E501
+                    if futu_connected:
+                        flow_tasks = [futu_service.get_fund_flow(t) for t in all_tickers]  # noqa: E501
+                        flow_results = await asyncio.gather(*flow_tasks, return_exceptions=True)  # noqa: E501
 
-                    for ticker, f_res in zip(all_tickers, flow_results):
-                        if isinstance(f_res, dict) and f_res.get("status") == "success":
-                            self.flow_cache[ticker] = f_res
+                        for ticker, f_res in zip(all_tickers, flow_results):
+                            if isinstance(f_res, dict) and f_res.get("status") == "success":
+                                self.flow_cache[ticker] = f_res
 
                     yf_candidates = []
                     futu_check_tickers = []
@@ -455,9 +462,8 @@ class ConnectionManager:
                                         )  # noqa: E501
                                         asyncio.create_task(notification_service.send_alert(alert_msg))
 
-                    # 💡 每 10 秒异步拉取一次账户真实资产快照，用于断连报警与缓存
-                    # 💡 futu_service 内部已集成多源路由，本地/远程自动切换
-                    if current_time - getattr(self, "last_acc_update", 0) > 10:
+                    # 💡 每 10 秒异步拉取一次账户真实资产快照 (仅在 Futu 连接时执行)
+                    if futu_connected and current_time - getattr(self, "last_acc_update", 0) > 10:
                         self.last_acc_update = current_time
                         try:
                             acc_res = await futu_service.get_account_info()
@@ -469,8 +475,8 @@ class ConnectionManager:
                         except Exception:
                             pass
 
-                    # 1. 优先执行富途快照补漏 (直接使用解耦的 futu_service)
-                    if futu_check_tickers:
+                    # 1. 优先执行富途快照补漏 (仅在 Futu 连接时执行)
+                    if futu_connected and futu_check_tickers:
                         batch_success = False
                         last_futu_error = None
 

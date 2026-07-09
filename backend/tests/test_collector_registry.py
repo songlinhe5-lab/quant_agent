@@ -129,12 +129,16 @@ class TestGetEnabledCollectors:
 class TestStartCollectorDaemons:
     """测试启动采集器守护进程"""
 
-    async def test_akshare_no_daemon(self):
-        """测试 AKShare 不需要启动守护进程"""
-        with mock.patch("backend.workers.collector_registry.print") as mock_print:
+    async def test_akshare_starts_collector_daemon(self):
+        """测试 AKShare 启动采集守护进程 (DIST-07 方案A: Redis 中继)"""
+        with (
+            mock.patch("asyncio.create_task") as mock_create_task,
+            mock.patch("backend.workers.akshare_collector.akshare_collector_daemon"),
+        ):
+            mock_create_task.return_value = mock.MagicMock()
             tasks = await start_collector_daemons(["akshare"])
-            assert tasks == []
-            mock_print.assert_called_with("  [akshare] enabled (request-based, no daemon)")
+            assert len(tasks) == 1
+            mock_create_task.assert_called_once()
 
     async def test_futu_starts_watchdog(self):
         """测试 Futu 启动 watchdog 守护进程"""
@@ -154,7 +158,7 @@ class TestStartCollectorDaemons:
         with (
             mock.patch("os.getenv", return_value="master"),
             mock.patch("asyncio.create_task") as mock_create_task,
-            mock.patch("backend.services.finnhub_daemon.run_global_daemon"),
+            mock.patch("backend.services.market_daemon.run_global_daemon"),
         ):
             mock_create_task.return_value = mock.MagicMock()
             tasks = await start_collector_daemons(["finnhub"])

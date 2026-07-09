@@ -145,11 +145,11 @@ class TestFundamentalDataTool:
         from hermes_agent.tools.fundamental_data_tool import FundamentalDataTool
 
         mock_response = MagicMock()
+        mock_response.status_code = 200
         mock_response.json.return_value = {"pe": 15.0, "pb": 2.5, "roe": 0.18}
-        mock_response.raise_for_status = MagicMock()
 
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.request = AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
         mock_client_class.return_value = mock_client
@@ -166,7 +166,7 @@ class TestFundamentalDataTool:
         from hermes_agent.tools.fundamental_data_tool import FundamentalDataTool
 
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(side_effect=Exception("Connection refused"))
+        mock_client.request = AsyncMock(side_effect=Exception("Connection refused"))
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
         mock_client_class.return_value = mock_client

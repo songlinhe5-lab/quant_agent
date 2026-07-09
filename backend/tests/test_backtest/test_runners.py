@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from backend.core.backtest import (
+from backend.backtest import (
     run_batch_sandbox_backtest,
     run_grid_search_backtest,
     run_monte_carlo_stress_test,
@@ -84,7 +84,7 @@ class TestMACross:
 # ─── 辅助函数 ───────────────────────────────────────────────────────
 class TestRunnerHelpers:
     def test_build_sandbox_globals(self):
-        from backend.core.backtest.runners import _build_sandbox_globals
+        from backend.backtest.runners import _build_sandbox_globals
 
         g = _build_sandbox_globals()
         assert "np" in g
@@ -95,7 +95,7 @@ class TestRunnerHelpers:
         assert "Series" in g
 
     def test_prepare_df_basic(self):
-        from backend.core.backtest.runners import _prepare_df
+        from backend.backtest.runners import _prepare_df
 
         df = pd.DataFrame({"Open": [1], "High": [2], "Low": [0.5], "Close": [1.5], "Volume": [100]})
         result = _prepare_df(df)
@@ -103,7 +103,7 @@ class TestRunnerHelpers:
         assert "close" in result.columns
 
     def test_prepare_df_multiindex(self):
-        from backend.core.backtest.runners import _prepare_df
+        from backend.backtest.runners import _prepare_df
 
         df = pd.DataFrame({"Open": [1], "High": [2], "Low": [0.5], "Close": [1.5], "Volume": [100]})
         df.columns = pd.MultiIndex.from_tuples([(c, "") for c in df.columns])
@@ -111,7 +111,7 @@ class TestRunnerHelpers:
         assert "open" in result.columns
 
     def test_prepare_df_duplicate_columns(self):
-        from backend.core.backtest.runners import _prepare_df
+        from backend.backtest.runners import _prepare_df
 
         df = pd.DataFrame({"Open": [1], "High": [2], "Low": [0.5], "Close": [1.5], "Volume": [100]})
         df["Close_dup"] = df["Close"]
@@ -122,7 +122,7 @@ class TestRunnerHelpers:
 
 # ─── run_grid_search_backtest ───────────────────────────────────────
 class TestGridSearchBacktest:
-    @patch("backend.core.backtest.runners.vbt")
+    @patch("backend.backtest.runners.vbt")
     def test_basic_grid_search(self, mock_vbt):
         mock_pf = _mock_vectorbt_portfolio()
         mock_vbt.Portfolio.from_signals.return_value = mock_pf
@@ -142,7 +142,7 @@ class TestGridSearchBacktest:
             assert "sharpe_ratio" in r["metrics"]
             assert "total_return" in r["metrics"]
 
-    @patch("backend.core.backtest.runners.vbt")
+    @patch("backend.backtest.runners.vbt")
     def test_grid_search_sorted_by_target(self, mock_vbt):
         mock_pf = _mock_vectorbt_portfolio()
         mock_vbt.Portfolio.from_signals.return_value = mock_pf
@@ -201,7 +201,7 @@ class AlwaysFail:
 
 # ─── run_monte_carlo_stress_test ────────────────────────────────────
 class TestMonteCarloStressTest:
-    @patch("backend.core.backtest.runners.vbt")
+    @patch("backend.backtest.runners.vbt")
     def test_basic_monte_carlo(self, mock_vbt):
         mock_pf = _mock_vectorbt_portfolio()
         mock_vbt.Portfolio.from_signals.return_value = mock_pf
@@ -222,7 +222,7 @@ class TestMonteCarloStressTest:
         assert "worst_max_drawdown" in result
         assert "raw_returns" in result
 
-    @patch("backend.core.backtest.runners.vbt")
+    @patch("backend.backtest.runners.vbt")
     def test_monte_carlo_with_stock_features(self, mock_vbt):
         mock_pf = _mock_vectorbt_portfolio()
         mock_vbt.Portfolio.from_signals.return_value = mock_pf
@@ -249,7 +249,7 @@ class TestMonteCarloStressTest:
                 iterations=3,
             )
 
-    @patch("backend.core.backtest.runners.vbt")
+    @patch("backend.backtest.runners.vbt")
     def test_monte_carlo_noise_distributions(self, mock_vbt):
         mock_pf = _mock_vectorbt_portfolio()
         mock_vbt.Portfolio.from_signals.return_value = mock_pf
@@ -278,7 +278,7 @@ class TestBatchSandboxBacktest:
                 dfs={},
             )
 
-    @patch("backend.core.backtest.runners.vbt")
+    @patch("backend.backtest.runners.vbt")
     def test_batch_basic(self, mock_vbt):
         mock_pf = _mock_vectorbt_portfolio()
         mock_vbt.Portfolio.from_signals.return_value = mock_pf
@@ -308,7 +308,7 @@ class TestBatchSandboxBacktest:
                 dfs=dfs,
             )
 
-    @patch("backend.core.backtest.runners.vbt")
+    @patch("backend.backtest.runners.vbt")
     def test_batch_skips_short_data(self, mock_vbt):
         mock_pf = _mock_vectorbt_portfolio()
         mock_vbt.Portfolio.from_signals.return_value = mock_pf

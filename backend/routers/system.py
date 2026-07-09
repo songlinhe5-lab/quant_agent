@@ -213,13 +213,13 @@ async def _build_health_snapshot() -> dict:
 
 
 async def _build_cluster_snapshot() -> dict:
-    """复用 cluster_manager 逻辑"""
-    try:
-        from backend.workers.cluster_manager import cluster_manager
+    """节点状态快照"""
+    from backend.workers.collector_registry import get_enabled_collectors
 
-        return cluster_manager.get_cluster_status()
-    except Exception as e:
-        return {"error": str(e), "master": {"collectors": []}, "slaves": [], "pools": {}}
+    return {
+        "mode": "standalone",
+        "collectors": get_enabled_collectors(),
+    }
 
 
 def _build_metrics_snapshot() -> dict:

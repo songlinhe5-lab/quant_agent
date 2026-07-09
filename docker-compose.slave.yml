@@ -1,0 +1,60 @@
+# ==========================================
+# Quant Agent - 数据节点 (Slave Data Node)
+# ==========================================
+# 定位: 数据源专用采集节点，AKShare + YFinance 守护进程
+# 部署: 数据节点 VPS (如北京 VPS，国内网络直连东方财富)
+#
+# 架构:
+#   - 仅运行 worker.py (采集器 daemon)，无 API/Postgres/Redis
+#   - 通过 Tailscale 内网写入主节点 Redis (100.102.223.44:6379)
+#   - 主服务 (AKSHARE_MODE=cache) 从 Redis 读取采集数据
+#
+# 启动: docker compose -f docker-compose.slave.yml up -d
+#
+# 前置条件:
+#   1. Tailscale 已安装并加入 tailnet
+#   2. .env.slave 已配置 (REDIS_HOST=100.102.223.44)
+#   3. 主节点 Redis 已暴露 6379 端口 (Tailscale ACL 放行)
+# ==========================================
+
+services:
+  data-worker:
+    image: ghcr.io/songlinhe5-lab/quant-agent:latest
+    pull_policy: missing
+    container_name: quant_data_worker
+    command: python backend/worker.py
+    restart: always
+    env_file:
+      - .env.slave
+    environment:
+      - QUANT_ENV=production
+      - OTEL_ENABLED=false
+      - DATA_NODE=true
+      # 💡 数据节点仅运行 AKShare + YFinance 采集器
+      - COLLECTOR_AKSHARE=true
+      - COLLECTOR_YFINANCE=true
+      - COLLECTOR_FUTU=false
+      - COLLECTOR_FINNHUB=false
+      # 💡 AKShare 直连模式：数据节点直接采集写入 Redis
+      - AKSHARE_MODE=direct
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'python backend/worker.py' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./reports:/app/reports
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+    networks:
+      - quant-data
+
+networks:
+  quant-data:
+    driver: bridge

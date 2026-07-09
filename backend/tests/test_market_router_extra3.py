@@ -37,11 +37,11 @@ class TestSearchTickers:
         assert data["status"] == "success"
 
     @patch("backend.routers.market.ticker_service")
-    @patch("backend.routers.market.yf_service")
-    def test_local_empty_yf_fallback(self, mock_yf, mock_ts):
+    @patch("backend.routers.market.data_source_router")
+    def test_local_empty_yf_fallback(self, mock_router, mock_ts):
         mock_ts.search_tickers = AsyncMock(return_value={"status": "success", "data": []})
-        mock_yf.search_tickers = AsyncMock(
-            return_value={"status": "success", "data": [{"symbol": "AAPL", "name": "Apple"}]}
+        mock_router.fetch_yfinance = AsyncMock(
+            return_value={"success": True, "data": {"status": "success", "data": [{"symbol": "AAPL", "name": "Apple"}]}, "message": ""}
         )
         resp = client.get("/market/search?q=apple")
         assert resp.status_code == 200
@@ -108,19 +108,19 @@ class TestGetFundamental:
         assert data["status"] == "success"
 
     @patch("backend.routers.market.futu_service")
-    @patch("backend.routers.market.yf_service")
-    def test_futu_fail_yf_success(self, mock_yf, mock_futu):
+    @patch("backend.routers.market.data_source_router")
+    def test_futu_fail_yf_success(self, mock_router, mock_futu):
         mock_futu.get_fundamental = AsyncMock(return_value={"status": "error", "message": "失败"})
-        mock_yf.fetch_yf_data = AsyncMock(return_value=(True, {"shortName": "Apple", "trailingPE": 20.0}, "ok"))
+        mock_router.fetch_yfinance = AsyncMock(return_value={"success": True, "data": {"shortName": "Apple", "trailingPE": 20.0}, "message": "ok"})
         resp = client.get("/market/fundamental/US.AAPL")
         assert resp.status_code == 200
 
 
 # ─── /market/holders/{ticker} ─────────────────────────────────────
 class TestGetTopHolders:
-    @patch("backend.routers.market.akshare_service")
-    def test_success(self, mock_ak):
-        mock_ak.get_hsgt_top_holders = AsyncMock(
+    @patch("backend.routers.market.data_source_router")
+    def test_success(self, mock_router):
+        mock_router.fetch_akshare = AsyncMock(
             return_value={"status": "success", "data": [{"holder": "Test", "shares": 1000}]}
         )
         resp = client.get("/market/holders/HK.00700")
@@ -128,9 +128,9 @@ class TestGetTopHolders:
         data = resp.json()
         assert data["status"] == "success"
 
-    @patch("backend.routers.market.akshare_service")
-    def test_error(self, mock_ak):
-        mock_ak.get_hsgt_top_holders = AsyncMock(return_value={"status": "error", "message": "失败"})
+    @patch("backend.routers.market.data_source_router")
+    def test_error(self, mock_router):
+        mock_router.fetch_akshare = AsyncMock(return_value={"status": "error", "message": "失败"})
         resp = client.get("/market/holders/HK.00700")
         assert resp.status_code == 400
 

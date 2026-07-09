@@ -88,14 +88,14 @@ class TestGetQuote:
 
     @patch("backend.routers.market.futu_service")
     @patch("backend.routers.market._to_yf_ticker")
-    @patch("backend.routers.market.yf_service")
-    def test_futu_error_yf_fallback(self, mock_yf, mock_fmt, mock_futu):
+    @patch("backend.routers.market.data_source_router")
+    def test_futu_error_yf_fallback(self, mock_router, mock_fmt, mock_futu):
         mock_futu.get_quote = AsyncMock(return_value={"status": "error", "message": "原生不支持"})
         mock_fmt.return_value = "AAPL"
-        mock_yf.fetch_yf_data = AsyncMock(
-            return_value=(
-                True,
-                {
+        mock_router.fetch_yfinance = AsyncMock(
+            return_value={
+                "success": True,
+                "data": {
                     "regularMarketPrice": 150.0,
                     "regularMarketChange": 1.0,
                     "regularMarketChangePercent": 0.5,
@@ -105,8 +105,8 @@ class TestGetQuote:
                     "previousClose": 149.0,
                     "regularMarketVolume": 1000000,
                 },
-                None,
-            )
+                "message": None,
+            }
         )
         resp = client.get("/market/quote?ticker=US.AAPL")
         assert resp.status_code == 200
@@ -114,11 +114,11 @@ class TestGetQuote:
 
     @patch("backend.routers.market.futu_service")
     @patch("backend.routers.market._to_yf_ticker")
-    @patch("backend.routers.market.yf_service")
-    def test_both_fail_returns_400(self, mock_yf, mock_fmt, mock_futu):
+    @patch("backend.routers.market.data_source_router")
+    def test_both_fail_returns_400(self, mock_router, mock_fmt, mock_futu):
         mock_futu.get_quote = AsyncMock(return_value={"status": "error", "message": "futu error"})
         mock_fmt.return_value = "AAPL"
-        mock_yf.fetch_yf_data = AsyncMock(return_value=(False, None, "yf error"))
+        mock_router.fetch_yfinance = AsyncMock(return_value={"success": False, "data": None, "message": "yf error"})
         resp = client.get("/market/quote?ticker=US.AAPL")
         assert resp.status_code == 400
 
@@ -145,10 +145,10 @@ class TestGetFundamental:
         assert resp.json()["data"]["trailing_PE"] == 20.0
 
     @patch("backend.routers.market.futu_service")
-    @patch("backend.routers.market.yf_service")
-    def test_etf_returns_warning(self, mock_yf, mock_futu):
+    @patch("backend.routers.market.data_source_router")
+    def test_etf_returns_warning(self, mock_router, mock_futu):
         mock_futu.get_fundamental = AsyncMock(return_value={"status": "error"})
-        mock_yf.fetch_yf_data = AsyncMock(return_value=(True, {"quoteType": "ETF", "shortName": "SPY ETF"}, None))
+        mock_router.fetch_yfinance = AsyncMock(return_value={"success": True, "data": {"quoteType": "ETF", "shortName": "SPY ETF"}, "message": None})
         resp = client.get("/market/fundamental/US.SPY")
         assert resp.status_code == 200
         data = resp.json()
@@ -203,10 +203,10 @@ class TestSearchTickers:
         assert resp.json()["status"] == "success"
 
     @patch("backend.routers.market.ticker_service")
-    @patch("backend.routers.market.yf_service")
-    def test_local_empty_fallback_to_yf(self, mock_yf, mock_ticker_svc):
+    @patch("backend.routers.market.data_source_router")
+    def test_local_empty_fallback_to_yf(self, mock_router, mock_ticker_svc):
         mock_ticker_svc.search_tickers = AsyncMock(return_value={"status": "success", "data": []})
-        mock_yf.search_tickers = AsyncMock(return_value={"status": "success", "data": [{"ticker": "AAPL"}]})
+        mock_router.fetch_yfinance = AsyncMock(return_value={"success": True, "data": {"status": "success", "data": [{"symbol": "AAPL", "name": "Apple"}]}, "message": ""})
         resp = client.get("/market/search?q=AAPL")
         assert resp.status_code == 200
 
@@ -218,9 +218,9 @@ class TestGetTopHolders:
         assert resp.status_code == 200
         assert resp.json()["status"] == "warning"
 
-    @patch("backend.routers.market.akshare_service")
-    def test_hk_ticker_calls_akshare(self, mock_ak):
-        mock_ak.get_hsgt_top_holders = AsyncMock(return_value={"status": "success", "data": []})
+    @patch("backend.routers.market.data_source_router")
+    def test_hk_ticker_calls_akshare(self, mock_router):
+        mock_router.fetch_akshare = AsyncMock(return_value={"status": "success", "data": []})
         resp = client.get("/market/holders/HK.00700")
         assert resp.status_code == 200
 

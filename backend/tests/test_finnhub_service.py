@@ -226,24 +226,24 @@ class TestFinnhubService:
     @pytest.mark.asyncio
     async def test_get_news_tags_rules_cache_hit_returns_cached(self, service):
         rules = {"FED": r"\bfed\b"}
-        with patch("backend.services.finnhub_daemon.l1_cached_redis") as m:
+        with patch("backend.services.market_daemon.l1_cached_redis") as m:
             m.get = AsyncMock(return_value=json.dumps(rules))
-            from backend.services.finnhub_daemon import _get_news_tags_rules
+            from backend.services.market_daemon import _get_news_tags_rules
 
             assert await _get_news_tags_rules() == rules
 
     @pytest.mark.asyncio
     async def test_get_news_tags_rules_default_returns_default(self, service):
-        with patch("backend.services.finnhub_daemon.l1_cached_redis") as m:
+        with patch("backend.services.market_daemon.l1_cached_redis") as m:
             m.get = AsyncMock(return_value=None)
-            from backend.services.finnhub_daemon import _get_news_tags_rules
+            from backend.services.market_daemon import _get_news_tags_rules
 
             result = await _get_news_tags_rules()
             assert "FED" in result and "ECB" in result
 
     def test_generate_news_tags_matches_rules_and_skips_invalid_regex(self, service):
         rules = {"FED": r"\bfed\b", "CRYPTO": r"\bbitcoin\b", "BAD": "[invalid"}
-        from backend.services.finnhub_daemon import _generate_news_tags
+        from backend.services.market_daemon import _generate_news_tags
 
         tags = _generate_news_tags("the fed cut rates. bitcoin soared.", rules)
         assert "FED" in tags and "CRYPTO" in tags and "BAD" not in tags

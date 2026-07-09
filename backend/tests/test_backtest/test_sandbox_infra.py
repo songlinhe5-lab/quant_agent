@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from backend.core.backtest import (
+from backend.backtest import (
     BaseStrategySandbox,
     SandboxTimeoutException,
     SandboxTimeoutTracer,

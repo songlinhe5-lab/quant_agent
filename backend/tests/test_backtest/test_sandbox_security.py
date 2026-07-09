@@ -8,7 +8,7 @@ import os
 import pandas as pd
 import pytest
 
-from backend.core.backtest import (
+from backend.backtest import (
     _SECURE_PREFIX,
     SAFE_BUILTINS,
     SANDBOX_DIR,

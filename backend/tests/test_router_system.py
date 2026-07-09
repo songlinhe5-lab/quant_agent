@@ -212,16 +212,14 @@ class TestInternalHelpers:
         assert result["components"]["redis"] == "connected"
 
     @pytest.mark.asyncio
-    async def test_build_cluster_snapshot_error(self):
-        """集群快照异常时返回 error"""
+    async def test_build_cluster_snapshot(self):
+        """节点状态快照返回 standalone 模式"""
         from backend.routers.system import _build_cluster_snapshot
 
-        # 模拟 cluster_manager 导入后调用抛异常
-        with patch("backend.workers.cluster_manager.cluster_manager") as mock_cm:
-            mock_cm.get_cluster_status = MagicMock(side_effect=Exception("Cluster down"))
+        with patch("backend.workers.collector_registry.get_enabled_collectors", return_value=["futu", "yfinance"]):
             result = await _build_cluster_snapshot()
-        # 异常被捕获，返回 error 或 master
-        assert "error" in result or "master" in result
+        assert result["mode"] == "standalone"
+        assert "futu" in result["collectors"]
 
     def test_build_metrics_snapshot_success(self):
         """Prometheus 指标快照正常路径"""

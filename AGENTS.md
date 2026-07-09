@@ -182,108 +182,94 @@
 4. **嵌入交互式图表 (ECharts)**：如果需要在 UI 中展示走势、分布等数据可视化的图表，请直接在输出的 HTML 结构中或之后，穿插使用 ````echarts` 代码块包裹的严格 JSON 配置对象（如：````echarts\n{"xAxis":{...}}\n````）。前端解析引擎会自动将其拦截并渲染为真实的动态图表。注意：JSON 必须严格合法，且严禁包含 JavaScript 函数或注释。
 5. **ECharts 强制暗黑配色 (Tailwind Colors)**：图表必须与系统的暗黑玻璃态 UI 完美融合。强制要求：背景设为透明 (`"backgroundColor": "transparent"`)，坐标轴线和网格分割线使用暗石板色 (`#1e293b` 或 `#334155`)，文字标签使用冷灰色 (`#64748b` 或 `#94a3b8`)。数据线/柱体必须使用 Tailwind 现代色系：主色调优先用紫 (`#8b5cf6`) 和蓝 (`#3b82f6`)，上涨/看多用绿 (`#10b981`)，下跌/看空用红 (`#ef4444`)，渐变背景 (areaStyle) 需辅以较低透明度。严禁使用 ECharts 默认的刺眼亮色。
 
-## 9. 主从采集集群架构 (Master-Slave Collector Cluster)
+## 9. 数据采集架构 (主节点本地采集 + 辅助节点)
 
-系统采用**主从节点 + 服务池 + 故障自动切换**的分布式数据采集架构。所有数据源接入统一收口在 backend，通过 `COLLECTOR_*` 环境变量在每个节点独立配置启用哪些采集器。
+系统采用**主节点 + 辅助节点**部署。主节点 (加州 VPS: 38.60.126.42) 承载所有核心服务和境外数据源，北京 VPS 仅作为 AKShare 国内数据源辅助采集节点。
 
-### 9.1 节点角色与职责
+### 9.1 架构概述
 
-| 角色 | Compose Profile | 职责 | 典型采集器 |
-|:---|:---|:---|:---|
-| **Master (主节点)** | `master` | API 网关 + PostgreSQL + Redis + ClusterManager + 可配置采集器 + 监控 | akshare, yfinance |
-| **Slave (从节点)** | `slave` | 轻量 API (port 8001) + 可配置采集器 + 多 Master 心跳注册 | futu, finnhub, yfinance |
+- 主节点 (加州 VPS): API + Worker + Redis + PostgreSQL + 境外数据源 (YFinance/Finnhub/FRED/Futu)
+- 辅助节点 (北京 VPS): 仅运行 AKShare 采集器 (国内直连优势)，通过 Tailscale 内网与主节点通信
+- 前端 (Cloudflare Pages) → 加州主节点 API，链路最优（无跨境延迟）
+- Futu OpenD 在宿主机本地启动，监听 `127.0.0.1:11111`
+- 无主从区分，无集群管理器，无远程节点调用
 
-**多 Master 支持**: Slave 可同时注册到多个 Master 节点，每个 Master 有自己的 Redis。哪个 Master 发起数据请求，Slave 就将结果写入该 Master 的 Redis。
+### 9.2 采集器配置
 
-### 9.2 数据流模式
-
-```
-[实时查询 - Master 主动调用 Slave，Slave 写入调用方 Master 的 Redis]
-Master-A 用户请求 → ClusterManager.call_collector("yfinance", "fetch_quote")
-  → 从 yfinance 服务池选择可用 Slave 节点
-  → HTTP POST http://slave:8001/collect/fetch_quote {callback_redis: {host:A-redis, port:6379}}
-  → Slave 采集数据 → 写入 Master-A 的 Redis (quant:cache:fetch_quote:AAPL)
-  → 返回 Master-A → 返回用户
-
-Master-B 同样调用 Slave → Slave 写入 Master-B 的 Redis
-
-[后台推送 - Slave daemon 写入所有 Master 的 Redis]
-Slave yfinance daemon → 拉取宏观数据 → 写入每个 Master 的 Redis
-任意 Master 用户请求 → 读本地 Redis 缓存 → 直接返回
-```
-
-**Redis 角色定位**: 纯缓存 + 节点发现注册表。每个 Master 拥有独立的 Redis 实例。Slave 通过 `MASTER_NODES` 配置连接多个 Master 的 Redis。
-
-### 9.3 服务池与 Failover 机制
-
-- **多 Master 注册**: Slave 启动时向每个 Master 的 Redis 写入 `quant:node:{slave_id}` (JSON, TTL=15s)
-- **服务池构建**: 每个 Master 的 `ClusterManager` 扫描本地 Redis，按采集器类型构建 `collector → [slave_nodes]` 映射
-- **Failover**: 调用时自动跳过不健康节点，连续失败 3 次标记 unhealthy，30s 后尝试恢复
-- **回调写入**: Master 调用 Slave 时携带 `callback_redis` (host/port/password)，Slave 将结果写入该 Redis
-- **静态兜底**: `SLAVE_NODES` 环境变量配置静态节点列表，冷启动时立即可用
-
-### 9.4 部署方式 (统一 Compose 文件 + .env + profiles)
-
-单一 `docker-compose.yml`，通过 `COMPOSE_PROFILES` 环境变量控制启动哪些服务：
+通过 `COLLECTOR_*` 环境变量控制启用哪些采集器：
 
 ```bash
-# 主节点: 编辑 .env 设置 COMPOSE_PROFILES=master
-docker compose up -d                              # API + PG + Redis + Worker
-
-# 主节点 + 监控: 编辑 .env 设置 COMPOSE_PROFILES=master,monitoring
-docker compose up -d                              # 上述 + Prometheus + Grafana
-
-# 从节点: 编辑 .env 设置 COMPOSE_PROFILES=slave
-docker compose up -d                              # 轻量采集 API
+COLLECTOR_FUTU=true        # 港美股 Level 2 (Futu OpenD)
+COLLECTOR_YFINANCE=true    # 宏观指标/大盘
+COLLECTOR_FINNHUB=false    # 全球内幕交易/新闻
+COLLECTOR_AKSHARE=false    # 港股通/南向资金
 ```
 
-代码拉取到 VPS 后 `docker compose build && docker compose up -d` 即可编译运行。
-
-每个节点的 `.env` 独立配置：
-
-```bash
-# 主节点 A (北京) .env
-NODE_ROLE=master
-COLLECTOR_AKSHARE=true
-COLLECTOR_YFINANCE=true
-SLAVE_NODES=http://overseas-1:8001,http://yf-node-1:8001
-COMPOSE_PROFILES=master,monitoring
-
-# 主节点 B (东京) .env
-NODE_ROLE=master
-COLLECTOR_YFINANCE=true
-SLAVE_NODES=http://overseas-1:8001
-
-# 海外从节点 .env (注册到多个 Master)
-NODE_ROLE=slave
-SLAVE_ID=overseas-1
-NODE_HOST=your-public-ip
-NODE_PORT=8001
-COLLECTOR_FUTU=true
-COLLECTOR_FINNHUB=true
-MASTER_NODES=[{"id":"beijing","redis_host":"120.53.84.116","redis_port":6379,"redis_password":"pwd-a"},{"id":"tokyo","redis_host":"x.x.x.x","redis_port":6379,"redis_password":"pwd-b"}]
-```
-
-### 9.5 核心文件映射
+### 9.3 核心文件映射
 
 | 文件 | 职责 |
 |:---|:---|
-| `backend/workers/collector_registry.py` | 采集器注册表：定义 4 个采集器元数据 + `get_enabled_collectors()` + `start_collector_daemons()` |
-| `backend/workers/cluster_manager.py` | 集群管理器：Redis 节点发现 + 服务池 + failover HTTP 代理 + 健康追踪 |
-| `backend/slave_app.py` | 从节点轻量 FastAPI：`/health` + `POST /collect/{action}` + 心跳注册 |
-| `backend/worker.py` | 主 Worker：按 `NODE_ROLE` 启动 ClusterManager + 采集器 daemon + 通用后台任务 |
-| `backend/main.py` | 主 API：lifespan 启动 ClusterManager + `GET /api/v1/cluster` 集群状态端点 |
-| `docker-compose.yml` | 统一 Compose：master/slave/monitoring profiles 控制服务启停 |
-| `.github/workflows/backend.yml` | CI/CD：矩阵部署 (beijing + overseas + slave-N)，`workflow_dispatch` 选择目标 |
+| `backend/workers/collector_registry.py` | 采集器注册表：定义采集器元数据 + `get_enabled_collectors()` + `start_collector_daemons()` |
+| `backend/worker.py` | Worker 进程：启动采集器 daemon + 后台服务任务 |
+| `backend/main.py` | 主 API：`GET /api/v1/cluster` 节点状态端点 |
+| `docker-compose.yml` | 统一 Compose：主节点全量部署 |
+| `.github/workflows/backend.yml` | CI/CD：构建镜像 + 部署到加州主节点 (VPS_S1) |
 
-### 9.6 开发约束
+### 9.4 开发约束
 
-- **新增采集器**: 只需在 `collector_registry.py` 的 `COLLECTORS` 字典中添加定义，实现对应的 daemon 函数，并在 `slave_app.py` 的 `_dispatch_collect()` 中添加路由
-- **Slave API 契约**: `POST /collect/{action}` 接受 `{ticker, params}` 返回 `{code, data, source_node}`，Master 通过 `ClusterManager.call_collector()` 调用
-- **禁止绕过服务池**: Master 获取数据时禁止直接硬编码 Slave 地址，必须通过 `ClusterManager` 的服务池 + failover
+- **新增采集器**: 在 `collector_registry.py` 的 `COLLECTORS` 字典中添加定义，实现对应的 daemon 函数
+- **数据源本地化**: 境外数据源在主节点直接访问，AKShare 通过辅助节点国内直连
 - **Redis 键空间约定**:
-  - `quant:node:{node_id}` — 节点注册信息 (JSON, TTL=15s)
-  - `quant:worker:heartbeat:{uuid}` — Worker 存活心跳 (TTL=15s)
+  - `quant:cache:{action}:{ticker}` — 采集结果缓存
+
+---
+
+## 10. 数据源架构约束 (DataSource Architecture Constraints)
+
+> **关联文档**：`docs/14. 分布式数据源服务架构.md` (通用框架设计规范)
+
+所有数据源（Futu / YFinance / AKShare / Finnhub 及未来新增）必须严格遵守以下架构约束：
+
+### 10.1 接口统一性
+- **所有数据源必须实现 `DataSourceInterface` Protocol**（定义于 `docs/14` §二）。禁止绕过统一接口直接调用数据源内部方法或底层库。
+- `fetch(action, params) -> Result` 是唯一的数据获取入口。禁止在业务代码中直接调用 `yf.Ticker()`、`futu_client.get_quote()` 等底层 API。
+
+### 10.2 Registry 访问原则
+- **主 app 只通过 `DataSourceRegistry` 访问数据源**。禁止在 router/service 层直接 import 具体数据源实现类（如 `FutuService`、`YFinanceService`）。
+- Registry 负责数据源实例的生命周期管理、健康探针、熔断降级和请求路由。
+
+### 10.3 双模运行能力
+- **每个数据源必须支持 external 模式**，即能作为独立 HTTP 服务运行在远程 VPS。主 app 通过 HTTP + HMAC 签名访问远程节点，与 internal 模式接口完全一致。
+- 运行模式通过 `DATASOURCE_{NAME}_MODE` 环境变量控制（`internal` / `external` / `hybrid`），禁止硬编码。
+
+### 10.4 健康检查隔离
+- **`/api/v1/health` 不得依赖数据源可用性**。主 app 健康检查只验证自身基础设施（Redis 连通性、线程池状态）。
+- 即使所有数据源均不可用，只要主 app 能正常响应 HTTP 请求，`/api/v1/health` 必须返回 `200 healthy`。
+- 数据源健康状态通过独立的 `/api/v1/datasource/{name}/health` 端点暴露。
+
+### 10.5 零侵入扩展
+- **新增数据源无需修改主 app 现有代码**。标准流程：
+  1. 实现 `DataSourceInterface` Protocol
+  2. 在 Registry 注册（配置声明或运行时 API）
+  3. 配置 `DATASOURCE_{NAME}_*` 环境变量
+  4. 更新 `docs/14` §八 能力矩阵
+
+### 10.6 配置驱动
+- 数据源的启用/禁用、运行模式、远程节点地址、限流策略**全部通过环境变量控制**。
+- 禁止在代码中硬编码任何数据源的 IP 地址、端口、API Key 或运行模式。
+- 所有敏感配置（HMAC 密钥、API Key）通过环境变量注入，不得落盘到代码仓库。
+
+### 10.7 错误处理规范
+- 数据源错误必须返回标准 `Result(status="error", error=ErrorInfo)` 结构，禁止抛出裸异常。
+- `ErrorInfo.retryable` 必须准确标注：限流/网络错误 = 可重试，参数错误/标的不存在 = 不可重试。
+- 所有数据源操作必须输出结构化日志（见 `docs/14` §十一）。
+
+### 10.8 限流感知与退避规范
+- **限流错误必须与普通错误区分处理**：`ErrorInfo.category` 必须标注 `normal` / `rate_limit` / `quota_exhausted` / `ip_blocked` 四种类型。
+- **限流错误不计入熔断器失败计数**：避免数据源因限流被不必要地熔断。限流触发独立的退避机制（`RateLimitThrottler`），与熔断器并行运作。
+- **数据源内部必须实现自适应退避**：限流触发后主动降速，退避期间直接返回 STALE 缓存而非发起真实请求。退避策略可通过 `DATASOURCE_{NAME}_BACKOFF_STRATEGY` 环境变量配置。
+- **限流状态必须对外可感知**：通过 `HealthInfo.rate_limit_status` 字段暴露实时限流状态，通过 `/api/v1/datasource/{name}/rate-limit-status` 和 `rate-limit-analysis` 端点提供查询。
+- **禁止在限流退避期间继续发起真实请求**：退避期内的请求必须直接返回 STALE 缓存或 `rate_limited` 状态，严禁“硬重试”加剧限流。
 
 ---
 
@@ -566,9 +552,9 @@ CI/CD       GitHub Actions
 部署模式
   本地研发   ./start.sh（热更新）
   单机生产   docker-compose up -d
-  分布式集群   Master(Web+DB+Redis) + Slave节点(数据采集, 可配置采集器组合)
-  主节点部署   COMPOSE_PROFILES=master docker compose up -d
-  从节点部署   COMPOSE_PROFILES=slave docker compose up -d
+  分布式集群   主节点(加州 VPS: API+DB+Redis+数据源) + 辅助节点(北京 VPS: AKShare 采集)
+  主节点部署   COMPOSE_PROFILES=master docker compose up -d  # 加州 VPS (38.60.126.42)
+  辅助节点部署   COMPOSE_PROFILES=slave docker compose up -d    # 北京 VPS (仅 AKShare)
   国内 VPS   镜像源加速 + HTTP 代理配置
 ```
 
@@ -1139,5 +1125,8 @@ docs/subsystems/
 
 | 日期 | 版本 | 变更内容 |
 |:---|:---|:---|
+| 2026-07-08 | V2.3 | §9 架构更新：主节点迁移至加州 VPS (38.60.126.42)，北京 VPS 降级为辅助节点 (仅 AKShare)；原因：Cloudflare Pages 跨境延迟 |
+| 2026-07-08 | V2.2 | §10 新增 §10.8 限流感知与退避规范；对齐 docs/14 §十二 自适应退避与限流感知架构 |
+| 2026-07-08 | V2.1 | 新增 §10 数据源架构约束；对齐通用数据源框架 V2.0（DataSourceInterface / Registry / 双模运行） |
+| 2026-07-06 | V2.0 | 架构重构：移除主从集群架构，改为单一 VPS 本地采集；废弃 ClusterManager/slave_app；简化 CI/CD |
 | 2026-06-29 | V1.0 | 初次合并：附录 A 合并自 docs/02 V3.0 + cursor V2.0；附录 B 合并自 .aiexclude |
-| 2026-06-28 | V1.1 | 新增 §9 主从采集集群架构 (Master-Slave Collector Cluster)；更新 §A.3.4 部署模式；更新 .env.example 采集器配置 |

@@ -32,19 +32,9 @@ class FredMacroTool(BaseTool):
             return {"status": "error", "message": "缺失宏观序列ID (series_id) 参数。"}
             
         backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000")
-        try:
-            async with SecureAsyncClient(timeout=30.0) as client:
-                response = await client.get(f"{backend_url}/macro/series", params={"series_id": series_id, "limit": limit})
-                
-                # 💡 精准捕获非 200 状态，提取 FastApi 后端返回的具体错误详情
-                if response.status_code != 200:
-                    err_msg = response.text
-                    try:
-                        err_msg = response.json().get("detail", response.text)
-                    except:
-                        pass
-                    return {"status": "error", "message": f"后端网关报错 (HTTP {response.status_code}): {err_msg}"}
-                    
-                return response.json()
-        except Exception as e:
-            return {"status": "error", "message": f"请求后端宏观接口失败: {str(e)}"}
+        url = f"{backend_url}/macro/series"
+        # RL-14: 限流感知智能重试
+        async with SecureAsyncClient(timeout=30.0) as client:
+            return await self.rate_limit_aware_request(
+                client, "GET", url, params={"series_id": series_id, "limit": limit}
+            )

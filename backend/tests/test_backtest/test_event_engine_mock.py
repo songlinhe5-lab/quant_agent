@@ -35,7 +35,7 @@ class TestEventDrivenBacktestEngine:
 
     def test_init_basic(self):
         """测试初始化"""
-        from backend.core.backtest.event_engine import EventDrivenBacktestEngine
+        from backend.backtest.event_engine import EventDrivenBacktestEngine
 
         class SimpleStrategy:
             def on_bar(self, window_df):
@@ -53,7 +53,7 @@ class TestEventDrivenBacktestEngine:
 
     def test_init_with_custom_params(self):
         """测试自定义参数初始化"""
-        from backend.core.backtest.event_engine import EventDrivenBacktestEngine
+        from backend.backtest.event_engine import EventDrivenBacktestEngine
 
         class SimpleStrategy:
             def on_bar(self, window_df):
@@ -76,7 +76,7 @@ class TestEventDrivenBacktestEngine:
 
     def test_run_buy_and_sell(self):
         """测试基本的买入和卖出"""
-        from backend.core.backtest.event_engine import EventDrivenBacktestEngine
+        from backend.backtest.event_engine import EventDrivenBacktestEngine
 
         class BuyAndSellStrategy:
             def __init__(self):
@@ -102,7 +102,7 @@ class TestEventDrivenBacktestEngine:
 
     def test_run_with_limit_order(self):
         """测试限价单"""
-        from backend.core.backtest.event_engine import EventDrivenBacktestEngine
+        from backend.backtest.event_engine import EventDrivenBacktestEngine
 
         class LimitOrderStrategy:
             def __init__(self):
@@ -127,7 +127,7 @@ class TestEventDrivenBacktestEngine:
 
     def test_run_with_stop_loss(self):
         """测试止损"""
-        from backend.core.backtest.event_engine import EventDrivenBacktestEngine
+        from backend.backtest.event_engine import EventDrivenBacktestEngine
 
         class StopLossStrategy:
             def __init__(self):
@@ -149,7 +149,7 @@ class TestEventDrivenBacktestEngine:
 
     def test_run_with_short_selling(self):
         """测试做空"""
-        from backend.core.backtest.event_engine import EventDrivenBacktestEngine
+        from backend.backtest.event_engine import EventDrivenBacktestEngine
 
         class ShortSellStrategy:
             def __init__(self):
@@ -172,7 +172,7 @@ class TestEventDrivenBacktestEngine:
 
     def test_run_with_cancel(self):
         """测试取消订单"""
-        from backend.core.backtest.event_engine import EventDrivenBacktestEngine
+        from backend.backtest.event_engine import EventDrivenBacktestEngine
 
         class CancelOrderStrategy:
             def __init__(self):
@@ -196,7 +196,7 @@ class TestEventDrivenBacktestEngine:
 
     def test_run_with_insufficient_data(self):
         """测试数据不足时抛出异常"""
-        from backend.core.backtest.event_engine import EventDrivenBacktestEngine
+        from backend.backtest.event_engine import EventDrivenBacktestEngine
 
         class SimpleStrategy:
             def on_bar(self, window_df):
@@ -210,7 +210,7 @@ class TestEventDrivenBacktestEngine:
 
     def test_run_with_debug_mode(self):
         """测试调试模式"""
-        from backend.core.backtest.event_engine import EventDrivenBacktestEngine
+        from backend.backtest.event_engine import EventDrivenBacktestEngine
 
         class SimpleStrategy:
             def on_bar(self, window_df):
@@ -225,7 +225,7 @@ class TestEventDrivenBacktestEngine:
 
     def test_run_with_on_tick(self):
         """测试 on_tick 方法"""
-        from backend.core.backtest.event_engine import EventDrivenBacktestEngine
+        from backend.backtest.event_engine import EventDrivenBacktestEngine
 
         class TickStrategy:
             def __init__(self):
@@ -249,7 +249,7 @@ class TestEventDrivenBacktestEngine:
 
     def test_execute_buy_and_sell_internal(self):
         """测试内部的买入和卖出执行"""
-        from backend.core.backtest.event_engine import EventDrivenBacktestEngine
+        from backend.backtest.event_engine import EventDrivenBacktestEngine
 
         class SimpleStrategy:
             def on_bar(self, window_df):
@@ -274,10 +274,10 @@ class TestRunDynamicSandboxBacktestMocked:
     """测试 run_dynamic_sandbox_backtest（Mock VectorBT）"""
 
     @pytest.mark.skip(reason="矢量化策略测试需要复杂的 VectorBT mock，暂时跳过")
-    @patch("backend.core.backtest.event_engine.vbt")
+    @patch("backend.backtest.event_engine.vbt")
     def test_run_with_vectorized_strategy(self, mock_vbt):
         """测试运行矢量化策略（Mock VectorBT）"""
-        from backend.core.backtest.event_engine import run_dynamic_sandbox_backtest
+        from backend.backtest.event_engine import run_dynamic_sandbox_backtest
 
         # 矢量化策略代码
         vectorized_code = """
@@ -316,7 +316,7 @@ class TestMACross:
 
     def test_run_with_event_driven_strategy(self):
         """测试运行事件驱动策略（不 Mock，因为不使用 VectorBT）"""
-        from backend.core.backtest.event_engine import run_dynamic_sandbox_backtest
+        from backend.backtest.event_engine import run_dynamic_sandbox_backtest
 
         # 事件驱动策略代码
         event_driven_code = """
@@ -348,7 +348,7 @@ class SimpleEventStrategy:
 
     def test_run_unsafe_code_rejected(self):
         """测试不安全的代码被拒绝"""
-        from backend.core.backtest.event_engine import run_dynamic_sandbox_backtest
+        from backend.backtest.event_engine import run_dynamic_sandbox_backtest
 
         unsafe_code = "import os\nclass Bad:\n    pass"
 
@@ -363,7 +363,7 @@ class SimpleEventStrategy:
 
     def test_run_class_not_found(self):
         """测试类不存在时抛出异常"""
-        from backend.core.backtest.event_engine import run_dynamic_sandbox_backtest
+        from backend.backtest.event_engine import run_dynamic_sandbox_backtest
 
         code = """
 class MyStrategy:
@@ -381,7 +381,7 @@ class MyStrategy:
 
     def test_run_with_debug_mode(self):
         """测试调试模式"""
-        from backend.core.backtest.event_engine import run_dynamic_sandbox_backtest
+        from backend.backtest.event_engine import run_dynamic_sandbox_backtest
 
         event_driven_code = """
 from __future__ import annotations

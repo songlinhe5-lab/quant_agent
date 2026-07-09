@@ -29,10 +29,10 @@ client = TestClient(app, raise_server_exceptions=False)
 # ─── /market/history AKShare 降级 ───────────────────────────────────
 class TestHistoryAKShareFallback:
     @patch("backend.routers.market.futu_service")
-    @patch("backend.routers.market.akshare_service")
-    def test_a_share_akshare_success(self, mock_ak, mock_futu):
+    @patch("backend.routers.market.data_source_router")
+    def test_a_share_akshare_success(self, mock_router, mock_futu):
         mock_futu.get_history = AsyncMock(return_value={"status": "error", "message": "原生不支持"})
-        mock_ak.get_stock_history = AsyncMock(
+        mock_router.fetch_akshare = AsyncMock(
             return_value={
                 "status": "success",
                 "data": [{"time": "2024-01-01", "open": 10, "high": 11, "low": 10, "close": 10.5, "volume": 1000000}],
@@ -84,10 +84,10 @@ class TestOptionChainYFinanceFallback:
 # ─── /market/tech-indicators 降级 ───────────────────────────────────
 class TestTechIndicatorsFallback:
     @patch("backend.routers.market.futu_service")
-    @patch("backend.routers.market.yf_service")
-    def test_futu_fail_yf_success(self, mock_yf, mock_futu):
+    @patch("backend.routers.market.data_source_router")
+    def test_futu_fail_yf_success(self, mock_router, mock_futu):
         mock_futu.get_history = AsyncMock(return_value={"status": "error", "message": "原生不支持"})
-        mock_yf.get_tech_indicators = AsyncMock(
+        mock_router.fetch_yfinance = AsyncMock(
             return_value={"status": "success", "data": {"ticker": "AAPL", "trend": []}}
         )
         resp = client.get("/market/tech-indicators?ticker=US.AAPL")
@@ -95,10 +95,10 @@ class TestTechIndicatorsFallback:
         assert resp.json()["status"] == "success"
 
     @patch("backend.routers.market.futu_service")
-    @patch("backend.routers.market.yf_service")
-    def test_both_fail_returns_400(self, mock_yf, mock_futu):
+    @patch("backend.routers.market.data_source_router")
+    def test_both_fail_returns_400(self, mock_router, mock_futu):
         mock_futu.get_history = AsyncMock(return_value={"status": "error", "message": "futu error"})
-        mock_yf.get_tech_indicators = AsyncMock(return_value={"status": "error", "message": "yf error"})
+        mock_router.fetch_yfinance = AsyncMock(return_value={"status": "error", "message": "yf error"})
         resp = client.get("/market/tech-indicators?ticker=US.AAPL")
         assert resp.status_code == 400
 
@@ -106,13 +106,13 @@ class TestTechIndicatorsFallback:
 # ─── /market/fundamental YFinance 兜底 ──────────────────────────────
 class TestFundamentalYFinanceFallback:
     @patch("backend.routers.market.futu_service")
-    @patch("backend.routers.market.yf_service")
-    def test_futu_fail_yf_success(self, mock_yf, mock_futu):
+    @patch("backend.routers.market.data_source_router")
+    def test_futu_fail_yf_success(self, mock_router, mock_futu):
         mock_futu.get_fundamental = AsyncMock(return_value={"status": "error"})
-        mock_yf.fetch_yf_data = AsyncMock(
-            return_value=(
-                True,
-                {
+        mock_router.fetch_yfinance = AsyncMock(
+            return_value={
+                "success": True,
+                "data": {
                     "shortName": "Apple",
                     "trailingPE": 25.0,
                     "forwardPE": 24.0,
@@ -122,8 +122,8 @@ class TestFundamentalYFinanceFallback:
                     "shortRatio": 1.0,
                     "beta": 1.2,
                 },
-                None,
-            )
+                "message": None,
+            }
         )
         resp = client.get("/market/fundamental/US.AAPL")
         assert resp.status_code == 200
@@ -132,10 +132,10 @@ class TestFundamentalYFinanceFallback:
         assert "trailing_PE" in data["data"]
 
     @patch("backend.routers.market.futu_service")
-    @patch("backend.routers.market.yf_service")
-    def test_both_fail_returns_400(self, mock_yf, mock_futu):
+    @patch("backend.routers.market.data_source_router")
+    def test_both_fail_returns_400(self, mock_router, mock_futu):
         mock_futu.get_fundamental = AsyncMock(return_value={"status": "error"})
-        mock_yf.fetch_yf_data = AsyncMock(return_value=(False, None, "yf error"))
+        mock_router.fetch_yfinance = AsyncMock(return_value={"success": False, "data": None, "message": "yf error"})
         resp = client.get("/market/fundamental/US.AAPL")
         assert resp.status_code == 400
 

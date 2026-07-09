@@ -159,7 +159,7 @@ class PipelineBenchmark:
         latencies = []
 
         try:
-            from backend.core.market_engine import update_quote_to_redis
+            from backend.services.market_engine import update_quote_to_redis
 
             test_quote = {
                 "ticker": "US.BENCHMARK",
@@ -192,7 +192,7 @@ class PipelineBenchmark:
         latencies = []
 
         try:
-            from backend.core.market_engine import update_quote_to_redis
+            from backend.services.market_engine import update_quote_to_redis
             from backend.core.redis_client import redis_client
             from backend.services.futu import futu_service
 
