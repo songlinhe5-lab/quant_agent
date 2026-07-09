@@ -1,14 +1,10 @@
 """
-Futu 数据源抽象层 — Protocol + Local / Remote 实现
+Futu 数据源抽象层 — Protocol + Local 实现
 
-两种数据源:
+数据源:
 - LocalDataSource:  直连 Futu OpenD (通过 ConnectionManager + 各 Handler)
-- RemoteDataSource: 通过 ClusterManager HTTP 代理调用远程 slave 节点
 
-适用场景:
-- Master (北京) 直连香港 VPS 的 OpenD  → LocalDataSource (host=HK_VPS_IP)
-- Master 通过 ClusterManager 调 slave    → RemoteDataSource
-- auto 模式下两者自动切换               → 由 SourceRouter 编排
+所有数据源本地化采集，Futu OpenD 在同一 VPS 上运行。
 """
 
 from __future__ import annotations
@@ -30,7 +26,7 @@ class FutuDataSource(Protocol):
 
     @property
     def source_type(self) -> str:
-        """数据源类型标识: 'local' | 'remote'"""
+        """数据源类型标识: 'local'"""
         ...
 
     async def fetch(self, action: str, params: dict) -> Optional[Dict[str, Any]]:
@@ -59,8 +55,7 @@ class LocalDataSource:
     本地直连 Futu OpenD 数据源。
 
     委托给现有的 ConnectionManager + 各 Handler。
-    当 master 节点通过 FUTU_HOST 指向香港 VPS 的 OpenD 时，
-    也属于 "local" 模式（直连 OpenD，不经过 slave HTTP 中转）。
+    Futu OpenD 在同一 VPS 上运行，通过 FUTU_HOST:FUTU_PORT 直连。
     """
 
     def __init__(self, futu_service):
@@ -112,83 +107,3 @@ class LocalDataSource:
             "status": conn.status,
             "error_msg": conn.error_msg,
         }
-
-
-# ---------------------------------------------------------------------------
-# RemoteDataSource — 通过 ClusterManager 代理
-# ---------------------------------------------------------------------------
-class RemoteDataSource:
-    """
-    远程代理数据源。
-
-    通过 ClusterManager.call_collector("futu", ...) 路由至 slave 节点，
-    slave 节点再调用其本地的 Futu OpenD。
-    """
-
-    def __init__(self):
-        pass
-
-    @property
-    def is_available(self) -> bool:
-        try:
-            from backend.workers.cluster_manager import cluster_manager
-
-            nodes = cluster_manager.get_available_nodes("futu")
-            return len(nodes) > 0
-        except Exception:
-            return False
-
-    @property
-    def source_type(self) -> str:
-        return "remote"
-
-    async def fetch(self, action: str, params: dict) -> Optional[Dict[str, Any]]:
-        """通过 ClusterManager 调用远程 futu 采集器"""
-        try:
-            from backend.workers.cluster_manager import cluster_manager
-
-            logger.info(f"[RemoteDataSource] call_collector(futu, {action}, params_keys={list(params.keys())})")
-            result = await cluster_manager.call_collector("futu", action, params)
-            logger.info(
-                f"[RemoteDataSource] call_collector returned: type={type(result).__name__}, keys={list(result.keys()) if isinstance(result, dict) else 'N/A'}"
-            )
-            if isinstance(result, dict):
-                data = result.get("data", result)
-                if isinstance(data, dict):
-                    # 连接失败类错误 → 返回 None 触发上层降级
-                    err_msg = data.get("message", "")
-                    if data.get("status") == "error" and (
-                        "未连接" in err_msg or "DISCONNECTED" in err_msg or "连接失败" in err_msg
-                    ):
-                        logger.debug(f"[RemoteDataSource] {action}: connection error on slave")
-                        return None
-                    # 业务错误（不支持的标的等）→ 原样返回
-                    if "status" not in data:
-                        data["status"] = "success"
-                return data
-            logger.warning(f"[RemoteDataSource] {action}: result is not dict, type={type(result)}")
-            return None
-        except Exception as e:
-            logger.warning(f"[RemoteDataSource] {action} failed: {type(e).__name__}: {e}")
-            return None
-
-    def status(self) -> Dict[str, Any]:
-        try:
-            from backend.workers.cluster_manager import cluster_manager
-
-            nodes = cluster_manager.get_pool("futu")
-            return {
-                "type": "remote",
-                "available_nodes": len([n for n in nodes if n.is_available]),
-                "total_nodes": len(nodes),
-                "nodes": [
-                    {
-                        "node_id": n.node_id,
-                        "host": n.host,
-                        "status": n.status,
-                    }
-                    for n in nodes
-                ],
-            }
-        except Exception as e:
-            return {"type": "remote", "error": str(e)}

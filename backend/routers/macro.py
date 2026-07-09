@@ -22,13 +22,13 @@ from sqlalchemy.orm import Session
 
 from backend.core import models
 from backend.core.database import get_db
-from backend.core.market_engine import manager
 from backend.core.redis_client import redis_client
 from backend.services.akshare_service import akshare_service
 from backend.services.finnhub_service import finnhub_service
 from backend.services.fred_service import fred_service
 from backend.services.futu_service import futu_service
 from backend.services.llm_service import llm_service
+from backend.services.market_engine import manager
 
 router = APIRouter(prefix="/macro", tags=["Macro Calendar"])
 

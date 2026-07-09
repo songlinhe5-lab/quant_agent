@@ -31,26 +31,24 @@ class MacroNewsTool(BaseTool):
         backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000")
         url = f"{backend_url}/macro/news"
         
-        try:
-            async with SecureAsyncClient(timeout=15.0) as client:
-                response = await client.get(url, params={"limit": limit, "category": category})
-                response.raise_for_status()
-                result = response.json()
-                
-                if result.get("status") == "success":
-                    # 核心机制：压缩返回的数据结构，剥离无用的图片URL和ID，极大节省大模型阅读的 Token 成本
-                    compressed_news = []
-                    for item in result.get("data", []):
-                        dt = datetime.fromtimestamp(item.get("datetime", 0)).strftime('%Y-%m-%d %H:%M:%S')
-                        news_obj = {
-                            "time": dt,
-                            "headline": item.get("headline"),
-                            "summary": item.get("summary")
-                        }
-                        if item.get("tags"):
-                            news_obj["tags"] = item.get("tags")
-                        compressed_news.append(news_obj)
-                    return {"status": "success", "count": len(compressed_news), "data": compressed_news}
-                return result
-        except Exception as e:
-            return {"status": "error", "message": f"请求后端新闻接口失败: {str(e)}"}
+        # RL-14: 限流感知智能重试
+        async with SecureAsyncClient(timeout=15.0) as client:
+            result = await self.rate_limit_aware_request(
+                client, "GET", url, params={"limit": limit, "category": category}
+            )
+            
+            if result.get("status") == "success":
+                # 核心机制：压缩返回的数据结构，剥离无用的图片URL和ID，极大节省大模型阅读的 Token 成本
+                compressed_news = []
+                for item in result.get("data", []):
+                    dt = datetime.fromtimestamp(item.get("datetime", 0)).strftime('%Y-%m-%d %H:%M:%S')
+                    news_obj = {
+                        "time": dt,
+                        "headline": item.get("headline"),
+                        "summary": item.get("summary")
+                    }
+                    if item.get("tags"):
+                        news_obj["tags"] = item.get("tags")
+                    compressed_news.append(news_obj)
+                return {"status": "success", "count": len(compressed_news), "data": compressed_news}
+            return result

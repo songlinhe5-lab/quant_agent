@@ -202,3 +202,37 @@ MARKET_DATA_ANOMALY_TOTAL = Counter(
     "行情数据异常检测总数",
     ["symbol", "severity"],  # severity: "critical" | "warning"
 )
+
+# ==========================================
+#  数据源限流指标 (RL-10)
+# ==========================================
+
+DS_RATE_LIMIT_TOTAL = Counter(
+    "ds_rate_limit_total",
+    "数据源限流触发总次数",
+    ["source", "category"],  # category: "rate_limit" | "quota_exhausted" | "ip_blocked"
+)
+
+DS_RATE_LIMIT_THROTTLED_SECONDS = Gauge(
+    "ds_rate_limit_throttled_seconds",
+    "数据源当前退避剩余秒数（0=无限流）",
+    ["source"],
+)
+
+DS_RATE_LIMIT_ESTIMATED_RPM = Gauge(
+    "ds_rate_limit_estimated_rpm",
+    "数据源推测的限流阈值 RPM",
+    ["source"],
+)
+
+DS_RATE_LIMIT_EFFECTIVE_RPM = Gauge(
+    "ds_rate_limit_effective_rpm",
+    "数据源当前实际有效 RPM",
+    ["source"],
+)
+
+DS_BACKOFF_STATE = Gauge(
+    "ds_backoff_state",
+    "数据源退避策略状态 (0=none, 1=linear, 2=exponential, 3=adaptive)",
+    ["source"],
+)

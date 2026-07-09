@@ -31,16 +31,13 @@ jobs:
     steps:
       - name: Block direct push to main
         run: |
-          echo " ERROR: Direct push to main is NOT allowed!"
+          echo "ERROR: Direct push to main is NOT allowed!"
           echo ""
           echo "Please follow the correct workflow:"
           echo "  1. Push your changes to the 'develop' branch"
           echo "  2. Create a Pull Request: develop → main"
           echo "  3. Wait for CI checks to pass"
           echo "  4. Merge the PR into main"
-          echo ""
-          echo "This repository uses GitHub Free tier, which does not support branch protection rules."
-          echo "This check enforces the develop→main workflow manually."
           exit 1
 
   # ==========================================
@@ -231,10 +228,13 @@ jobs:
           cache-to: type=gha,mode=max
 
   # ==========================================
-  # Stage 3: Deploy Master
+  # Stage 3: Deploy to VPS (美国主节点 + 北京数据节点)
   # ==========================================
-  deploy_master:
-    name: Deploy Master
+  # Secrets: VPS_S1_HOST / VPS_S1_USER / VPS_S1_SSH_KEY (美国主节点)
+  # Secrets: VPS_HOST / VPS_USER / VPS_SSH_KEY (北京数据节点)
+  # ==========================================
+  deploy:
+    name: Deploy to VPS
     runs-on: ubuntu-latest
     needs: [build]
     if: |
@@ -242,8 +242,6 @@ jobs:
       ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
        github.event_name == 'workflow_dispatch') &&
       needs.build.result == 'success'
-    outputs:
-      image_tag: ${{ steps.set_tag.outputs.tag }}
 
     steps:
       - uses: actions/checkout@v4
@@ -259,93 +257,45 @@ jobs:
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "Deploying image tag: $TAG"
 
-      # Encode compose file on runner so we can write it on VPS
       - name: Prepare compose file (base64)
         id: prepare_compose
         run: |
-          echo "b64=$(base64 -w0 docker-compose.yml)" >> $GITHUB_OUTPUT
+          echo "compose_b64=$(base64 -w0 docker-compose.yml)" >> $GITHUB_OUTPUT
 
-      - name: Prepare provisioning files (base64)
-        id: prepare_provisioning
-        run: |
-          echo "dashboard_b64=$(base64 -w0 grafana/provisioning/dashboards/dashboard.yml)" >> $GITHUB_OUTPUT
-          echo "json_b64=$(base64 -w0 grafana/provisioning/dashboards/quant-agent-dashboard.json)" >> $GITHUB_OUTPUT
-
-      - name: Deploy Master
+      - name: Deploy to VPS
         uses: appleboy/ssh-action@v1
-        env:
-          TRANSIT_USER: ${{ secrets.VPS_S1_USER }}
-          TRANSIT_SSH_KEY: ${{ secrets.VPS_S1_SSH_KEY }}
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          envs: GITHUB_ACTOR, TRANSIT_USER, TRANSIT_SSH_KEY
+          host: ${{ secrets.VPS_S1_HOST }}
+          username: ${{ secrets.VPS_S1_USER }}
+          key: ${{ secrets.VPS_S1_SSH_KEY }}
+          envs: GITHUB_ACTOR
           command_timeout: 30m
           script: |
             set -e
             DEPLOY_PATH=/opt/quant-agent
-            PROFILES="master,monitoring"
             TARGET_TAG="${{ steps.set_tag.outputs.tag }}"
 
             mkdir -p $DEPLOY_PATH
             cd $DEPLOY_PATH
 
-            # Write docker-compose.yml (base64 from runner avoids all quoting issues)
-            cp docker-compose.yml docker-compose.yml.bak 2>/dev/null || true
-            echo '${{ steps.prepare_compose.outputs.b64 }}' | base64 -d > docker-compose.yml
-            sudo sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:.*|ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG}|g" docker-compose.yml
+            # 更新 compose 文件中的镜像 tag
+            echo '${{ steps.prepare_compose.outputs.compose_b64 }}' | base64 -d > docker-compose.yml
+            sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:.*|ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG}|g" docker-compose.yml
 
-            # Sync Grafana provisioning files (fix Dashboard name conflict)
-            echo "Syncing Grafana provisioning files..."
-            mkdir -p grafana/provisioning/dashboards
-            echo '${{ steps.prepare_provisioning.outputs.dashboard_b64 }}' | base64 -d > grafana/provisioning/dashboards/dashboard.yml
-            echo '${{ steps.prepare_provisioning.outputs.json_b64 }}' | base64 -d > grafana/provisioning/dashboards/quant-agent-dashboard.json
-            echo "Grafana provisioning files updated"
-
-            # .env is manually configured on Master, CI does not touch it
+            # 检查 .env 存在
             if [ ! -f .env ]; then
-              echo "ERROR: .env not found! Please manually create /opt/quant-agent/.env"
+              echo "ERROR: .env not found! Please create /opt/quant-agent/.env"
               exit 1
             fi
-            echo ".env found, using manual config"
 
-            # Write transit VPS SSH key to temp file (reuses VPS_S1_SSH_KEY)
-            TRANSIT_KEY_FILE=$(mktemp)
-            echo "$TRANSIT_SSH_KEY" > $TRANSIT_KEY_FILE
-            chmod 600 $TRANSIT_KEY_FILE
+            # 拉取新镜像
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+            docker pull ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG}
 
-            # GHCR login (use GITHUB_TOKEN from runner env)
-            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+            # 启动服务
+            docker compose -f docker-compose.yml up -d --remove-orphans
 
-            # Pull image via transit VPS (38.60.126.42) for faster download to domestic Master
-            echo "Pulling image ${TARGET_TAG} via transit VPS (38.60.126.42)..."
-            ssh -o StrictHostKeyChecking=no -i $TRANSIT_KEY_FILE ${TRANSIT_USER}@38.60.126.42 "
-              set -e
-              echo '${{ secrets.GITHUB_TOKEN }}' | sudo docker login ghcr.io -u '${GITHUB_ACTOR}' --password-stdin
-              sudo docker pull ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG}
-              sudo docker save ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG} | gzip > /tmp/${TARGET_TAG}.tar.gz
-              sudo docker logout ghcr.io
-            "
-
-            # SCP tarball from transit VPS to Master
-            echo "Transferring image from transit VPS..."
-            scp -o StrictHostKeyChecking=no -i $TRANSIT_KEY_FILE ${TRANSIT_USER}@38.60.126.42:/tmp/${TARGET_TAG}.tar.gz /tmp/
-
-            # Load and tag the image
-            echo "Loading image on Master..."
-            gunzip -c /tmp/${TARGET_TAG}.tar.gz | sudo docker load
-            sudo docker tag ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG} ghcr.io/songlinhe5-lab/quant-agent:latest
-
-            # Cleanup transit VPS temp file
-            ssh -o StrictHostKeyChecking=no -i $TRANSIT_KEY_FILE ${TRANSIT_USER}@38.60.126.42 "rm -f /tmp/${TARGET_TAG}.tar.gz"
-            rm -f $TRANSIT_KEY_FILE
-
-            echo "Starting services..."
-            sudo COMPOSE_PROFILES=$PROFILES docker compose up -d --remove-orphans
-
-            # Wait for healthy with retries (up to 90 seconds)
-            echo "Waiting for health check..."
+            # 健康检查 (最多 90s)
             for i in 1 2 3 4 5 6; do
               sleep 15
               HEALTH=$(curl -sf --max-time 10 http://localhost:8000/api/v1/health 2>/dev/null || echo "UNHEALTHY")
@@ -356,209 +306,131 @@ jobs:
               echo "Attempt $i/6 failed, retrying..."
               if [ "$i" = "6" ]; then
                 echo "Health check FAILED after 6 attempts (90s)"
-                sudo COMPOSE_PROFILES=$PROFILES docker compose logs --tail 50
-                sudo docker logout ghcr.io
+                docker compose -f docker-compose.yml logs --tail 50
+                docker logout ghcr.io
                 exit 1
               fi
             done
 
+            # 清理
             echo "$TARGET_TAG" > $DEPLOY_PATH/.deployed_sha
-            sudo docker logout ghcr.io
-            sudo docker image prune -f
-            echo "Master deploy OK (tag: $TARGET_TAG)"
+            docker logout ghcr.io
+            docker image prune -f
+            echo "Deploy OK (tag: $TARGET_TAG)"
+
+      - name: Deploy summary
+        if: always()
+        run: |
+          echo "## Deploy Result" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | ${{ needs.deploy.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | ${{ env.GHCR_IMAGE }}:${{ steps.set_tag.outputs.tag }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Target | ${{ secrets.VPS_S1_HOST }} |" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.rollback_sha }}" != "" ]; then
+            echo "| Rollback | ${{ inputs.rollback_sha }} |" >> $GITHUB_STEP_SUMMARY
+          fi
 
   # ==========================================
-  # Stage 4: Deploy Slaves (via Master jump host)
+  # Stage 4: Deploy to Beijing VPS (数据节点)
   # ==========================================
-  deploy_slaves:
-    name: Deploy Slaves
+  # 北京 VPS 仅运行 AKShare + YFinance 采集器
+  # Secrets: VPS_S2_HOST / VPS_S2_USER / VPS_S2_SSH_KEY
+  # Compose: docker-compose.slave.yml
+  # ==========================================
+  deploy_beijing:
+    name: Deploy to Beijing VPS (Data Node)
     runs-on: ubuntu-latest
-    needs: [deploy_master]
+    needs: [build]
     if: |
       always() &&
-      needs.deploy_master.result == 'success'
-    continue-on-error: true
-    env:
-      S1_HOST: ${{ secrets.VPS_S1_HOST }}
-      S1_USER: ${{ secrets.VPS_S1_USER }}
-      S1_KEY: ${{ secrets.VPS_S1_SSH_KEY }}
-      S2_HOST: ${{ secrets.VPS_S2_HOST }}
-      S2_USER: ${{ secrets.VPS_S2_USER }}
-      S2_KEY: ${{ secrets.VPS_S2_SSH_KEY }}
-      S3_HOST: ${{ secrets.VPS_S3_HOST }}
-      S3_USER: ${{ secrets.VPS_S3_USER }}
-      S3_KEY: ${{ secrets.VPS_S3_SSH_KEY }}
-      S4_HOST: ${{ secrets.VPS_S4_HOST }}
-      S4_USER: ${{ secrets.VPS_S4_USER }}
-      S4_KEY: ${{ secrets.VPS_S4_SSH_KEY }}
+      ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+       github.event_name == 'workflow_dispatch') &&
+      needs.build.result == 'success'
 
     steps:
       - uses: actions/checkout@v4
 
-      # Encode compose file once for all slaves
+      - name: Set target image tag
+        id: set_tag
+        run: |
+          if [ -n "${{ inputs.rollback_sha }}" ]; then
+            TAG="sha-${{ inputs.rollback_sha }}"
+          else
+            TAG="sha-$(echo ${{ github.sha }} | cut -c1-7)"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Deploying image tag: $TAG to Beijing VPS"
+
       - name: Prepare compose file (base64)
         id: prepare_compose
         run: |
-          echo "b64=$(base64 -w0 docker-compose.yml)" >> $GITHUB_OUTPUT
+          echo "compose_b64=$(base64 -w0 docker-compose.slave.yml)" >> $GITHUB_OUTPUT
 
-      - name: Deploy all slaves via Master
+      - name: Deploy to Beijing VPS
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          envs: S1_HOST,S1_USER,S1_KEY,S2_HOST,S2_USER,S2_KEY,S3_HOST,S3_USER,S3_KEY,S4_HOST,S4_USER,S4_KEY,GITHUB_ACTOR
-          command_timeout: 60m
+          envs: GITHUB_ACTOR
+          command_timeout: 15m
           script: |
             set -e
             DEPLOY_PATH=/opt/quant-agent
-            TARGET_TAG="${{ needs.deploy_master.outputs.image_tag }}"
-            COMPOSE_B64='${{ steps.prepare_compose.outputs.b64 }}'
-            GHCR_TOKEN='${{ secrets.GITHUB_TOKEN }}'
+            TARGET_TAG="${{ steps.set_tag.outputs.tag }}"
 
-            # Write slave SSH keys
-            mkdir -p ~/.ssh
-            echo "$S1_KEY" > ~/.ssh/slave_1
-            echo "$S2_KEY" > ~/.ssh/slave_2
-            echo "$S3_KEY" > ~/.ssh/slave_3
-            echo "$S4_KEY" > ~/.ssh/slave_4
-            chmod 600 ~/.ssh/slave_*
+            mkdir -p $DEPLOY_PATH
+            cd $DEPLOY_PATH
 
-            # Write compose file to /tmp for SCP to slaves
-            echo "$COMPOSE_B64" | base64 -d > /tmp/docker-compose.yml
-            sudo sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:.*|ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG}|g" /tmp/docker-compose.yml
+            # 更新 compose 文件中的镜像 tag
+            echo '${{ steps.prepare_compose.outputs.compose_b64 }}' | base64 -d > docker-compose.slave.yml
+            sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:.*|ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG}|g" docker-compose.slave.yml
 
-            deploy_slave() {
-              local NAME=$1 IP=$2 USER=$3 KEY=$4
-              echo ""
-              echo "========== Deploying $NAME ($IP) =========="
-
-              # SCP compose file to slave (.env is manually configured on each slave)
-              echo "Transferring compose file to $NAME..."
-              scp -i ~/.ssh/$KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
-                /tmp/docker-compose.yml $USER@$IP:/tmp/ || { echo "SCP failed"; return 1; }
-
-              # Remote deploy
-              ssh -i ~/.ssh/$KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 $USER@$IP bash -s <<REMOTE
-            set -e
-            DEPLOY_PATH=/opt/quant-agent
-            mkdir -p \$DEPLOY_PATH
-            cd \$DEPLOY_PATH
-
-            # Write compose file (from /tmp, preserves .env-safe dollar syntax)
-            cp docker-compose.yml docker-compose.yml.bak 2>/dev/null || true
-            sudo cp /tmp/docker-compose.yml docker-compose.yml
-            sudo chown \$(whoami):\$(whoami) docker-compose.yml
-            rm -f /tmp/docker-compose.yml
-
-            # .env is manually configured on each slave, CI does not touch it
-            if [ ! -f .env ]; then
-              echo "ERROR: .env not found! Please manually create /opt/quant-agent/.env"
+            # 检查 .env.slave 存在
+            if [ ! -f .env.slave ]; then
+              echo "ERROR: .env.slave not found! Please create /opt/quant-agent/.env.slave"
               exit 1
             fi
-            echo ".env found, using manual per-node config"
 
-            # Pre-flight checks: Docker + Compose V2
-            if ! command -v docker &> /dev/null; then
-              echo "ERROR: docker is not installed on this node!"
-              echo "Please install: curl -fsSL https://get.docker.com | sudo sh"
-              exit 1
-            fi
-            if ! docker compose version &> /dev/null; then
-              echo "ERROR: docker compose (V2 plugin) is not installed!"
-              echo "Please install: sudo apt-get install -y docker-compose-plugin"
-              exit 1
-            fi
-            echo "Docker preflight OK: \$(docker --version) | \$(docker compose version --short)"
+            # 拉取新镜像
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+            docker pull ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG}
 
-            # GHCR login and pull with retries
-            echo "Logging in to GHCR..."
-            for attempt in 1 2 3; do
-              if echo "${GHCR_TOKEN}" | sudo docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin 2>/dev/null; then
-                echo "GHCR login OK"
-                break
-              fi
-              echo "GHCR login attempt \$attempt/3 failed, retrying in 10s..."
-              sleep 10
-              if [ "\$attempt" = "3" ]; then
-                echo "GHCR login failed after 3 attempts"
-                exit 1
-              fi
-            done
-            echo "Pulling image ${TARGET_TAG} from GHCR..."
-            for attempt in 1 2 3; do
-              if sudo COMPOSE_PROFILES=slave docker compose pull 2>/dev/null; then
-                echo "Image pulled successfully"
-                break
-              fi
-              echo "Pull attempt \$attempt/3 failed, retrying in 10s..."
-              sleep 10
-              if [ "\$attempt" = "3" ]; then
-                echo "Image pull failed after 3 attempts"
-                exit 1
-              fi
-            done
+            # 启动数据节点
+            docker compose -f docker-compose.slave.yml up -d --remove-orphans
 
-            echo "Starting slave..."
-            sudo COMPOSE_PROFILES=slave docker compose up -d --remove-orphans
-
-            # Wait for healthy with retries (up to 90 seconds)
-            echo "Waiting for health check..."
-            for i in 1 2 3 4 5 6; do
+            # 健康检查 (进程存活，最多 60s)
+            for i in 1 2 3 4; do
               sleep 15
-              HEALTH=\$(curl -sf --max-time 10 http://localhost:8001/health 2>/dev/null || echo UNHEALTHY)
-              if [ "\$HEALTH" != "UNHEALTHY" ]; then
-                echo "Health check passed on attempt \$i"
+              if docker ps --filter name=quant_data_worker --filter status=running | grep -q quant_data_worker; then
+                echo "Data worker is running (attempt $i)"
                 break
               fi
-              echo "Attempt \$i/6 failed, retrying..."
-              if [ "\$i" = "6" ]; then
-                echo "Health check failed after 6 attempts (90s)"
-                sudo COMPOSE_PROFILES=slave docker compose logs --tail 30
+              echo "Attempt $i/4: data worker not running yet..."
+              if [ "$i" = "4" ]; then
+                echo "Data worker FAILED to start"
+                docker compose -f docker-compose.slave.yml logs --tail 50
+                docker logout ghcr.io
                 exit 1
               fi
             done
-            echo "${TARGET_TAG}" | sudo tee \$DEPLOY_PATH/.deployed_sha > /dev/null
-            sudo docker logout ghcr.io 2>/dev/null || true
-            sudo docker image prune -f
-            echo "Deploy OK"
-            REMOTE
-              echo "$NAME done"
-            }
 
-            deploy_slave "Slave-1" "$S1_HOST" "$S1_USER" "slave_1"
-            deploy_slave "Slave-2" "$S2_HOST" "$S2_USER" "slave_2"
-            deploy_slave "Slave-3" "$S3_HOST" "$S3_USER" "slave_3"
-            deploy_slave "Slave-4" "$S4_HOST" "$S4_USER" "slave_4"
+            # 清理
+            echo "$TARGET_TAG" > $DEPLOY_PATH/.deployed_sha
+            docker logout ghcr.io
+            docker image prune -f
+            echo "Beijing Deploy OK (tag: $TARGET_TAG)"
 
-            # Cleanup temporary files
-            rm -f ~/.ssh/slave_* /tmp/docker-compose.yml
-            echo "All slaves deployed"
-
-  # ==========================================
-  # Deploy Summary
-  # ==========================================
-  deploy_summary:
-    name: Deploy Summary
-    runs-on: ubuntu-latest
-    needs: [deploy_master, deploy_slaves]
-    if: always() && needs.deploy_master.result != 'skipped'
-    steps:
-      - name: Generate summary
+      - name: Deploy summary
+        if: always()
         run: |
-          echo "## Deploy Result" >> $GITHUB_STEP_SUMMARY
+          echo "## Beijing VPS Deploy Result" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Node | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Master | ${{ needs.deploy_master.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Slaves | ${{ needs.deploy_slaves.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          if [ "${{ github.event.inputs.rollback_sha }}" != "" ]; then
-            echo "**Rollback** to SHA: ${{ github.event.inputs.rollback_sha }}" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ "${{ needs.deploy_master.result }}" = "failure" ]; then
-            echo "Master deploy failed - check logs"
-            exit 1
-          fi
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | ${{ needs.deploy_beijing.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | ${{ env.GHCR_IMAGE }}:${{ steps.set_tag.outputs.tag }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Target | Beijing VPS (${{ secrets.VPS_HOST }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Role | Data Node (AKShare + YFinance) |" >> $GITHUB_STEP_SUMMARY

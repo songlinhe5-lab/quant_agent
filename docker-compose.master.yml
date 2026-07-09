@@ -1,0 +1,209 @@
+# ==========================================
+# Quant Agent - 海外主节点配置 (Master Node)
+# ==========================================
+# 定位: 核心业务节点，承载所有业务功能
+# 包含: Redis + PostgreSQL + quant-agent + quant-worker + 监控
+# 数据源: Futu OpenD(宿主机) + YFinance(本地+远程切换) + AKShare(远程)
+#
+# 启动: docker-compose -f docker-compose.master.yml up -d
+# 含监控: docker-compose -f docker-compose.master.yml --profile monitoring up -d
+# ==========================================
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: quant_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-quant_redis_secret_2026}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-quant_redis_secret_2026}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+    networks:
+      - quant-internal
+
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: quant_postgres
+    restart: always
+    environment:
+      - POSTGRES_USER=${DB_USER:-quant_admin}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-quant_pg_secret_2026}
+      - POSTGRES_DB=${DB_NAME:-quant_agent_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-quant_admin} -d ${DB_NAME:-quant_agent_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+    networks:
+      - quant-internal
+
+  quant-agent:
+    image: ghcr.io/songlinhe5-lab/quant-agent:latest
+    pull_policy: missing
+    container_name: quant_app
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1 --loop uvloop --http httptools --timeout-keep-alive 65 --limit-concurrency 5000 --no-access-log
+    restart: always
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - QUANT_ENV=production
+      - OTEL_ENABLED=false
+      - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_secret_2026}@postgres:5432/${DB_NAME:-quant_agent_db}
+      - DATA_SOURCE_ROUTER_ENABLED=true
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    volumes:
+      - quant_db:/app/backend/data
+      - ./reports:/app/reports
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+    networks:
+      - quant-internal
+
+  quant-worker:
+    image: ghcr.io/songlinhe5-lab/quant-agent:latest
+    pull_policy: missing
+    container_name: quant_worker
+    command: python backend/worker.py
+    restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - QUANT_ENV=production
+      - OTEL_ENABLED=false
+      - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_secret_2026}@postgres:5432/${DB_NAME:-quant_agent_db}
+    volumes:
+      - quant_db:/app/backend/data
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - quant-internal
+
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: quant_prometheus
+    restart: always
+    profiles: [monitoring]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+    networks:
+      - quant-internal
+
+  grafana:
+    image: grafana/grafana:9.5.3
+    container_name: quant_grafana
+    restart: always
+    profiles: [monitoring]
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+    networks:
+      - quant-internal
+
+networks:
+  quant-internal:
+    driver: bridge
+
+volumes:
+  redis_data:
+    name: quant_master_redis_data
+  quant_db:
+    name: quant_master_db
+  postgres_data:
+    name: quant_master_postgres_data
+  prometheus_data:
+    name: quant_master_prometheus_data
+  grafana_data:
+    name: quant_master_grafana_data

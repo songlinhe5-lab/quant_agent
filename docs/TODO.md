@@ -58,7 +58,8 @@ graph TD
 
     subgraph S5["阶段 5 · 工程化·可观测·质量（贯穿，集成期收口）"]
         OPS["OPS-01~05 CI/CD / Tunnel / 备份"]
-        DIST["DIST-01~18 分布式数据源服务"]
+        DIST["DIST-01~23 分布式数据源集群"]
+        RL["RL-01~14 限流感知与自适应退避 ✅"]
         BE0506["BE-05·06 结构化日志 + metrics"]
         OBS["OBS-01·02 Grafana + 告警"]
         TEST["TEST-01~15 单测/契约/E2E/hooks/漏洞扫描"]
@@ -213,43 +214,51 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 - [x] **[OPS-04]** Redis AOF 持久化 + 每日自动 RDB 备份到 Cloudflare R2
 - [x] **[OPS-05]** 备份恢复演练脚本：实现 `docs/12` 灾难恢复流程，定期验证 R2 备份可恢复性（RTO < 2h 验收）
 
-### 分布式数据源服务架构（多 VPS 驻留 + 智能路由 + 自动 failover）
+### 分布式数据源集群（多 VPS + 智能路由 + 采集器 + 监控）
 
-> **架构决策（2026-06-28）**：针对 YFinance 等免授权但限流严格的数据源，设计多 VPS / 多进程驻留服务架构，通过服务注册发现 + 加权路由 + 自动 failover + STALE 降级，最大化数据源吞吐能力。详细设计见 [`docs/14. 分布式数据源服务架构.md`](./14.%20分布式数据源服务架构.md)。  
-> **核心收益**：N 个独立出口 IP = N 倍限流配额，单节点 429/宕机时透明 failover，全节点不可用时降级 STALE 缓存。
+> **架构决策（2026-07-08）**：主服务部署于加州 VPS (38.60.126.42)，北京 VPS 降级为辅助节点（仅 AKShare 采集）。  
+> 原因：Cloudflare Pages 前端访问北京 VPS 存在跨境延迟 (200-300ms) + GFW 反向干扰，加州 VPS 与 Cloudflare 链路最优且境外数据源直连。  
+> 以下任务按执行顺序排列：骨架先行 → 子服务工程 → 部署验证 → 监控收口。
 
-#### P0 · 服务注册表 + 路由器骨架（主服务侧，可独立验证）
+#### Phase 1 · 服务注册表 + 路由器骨架（主服务侧，可独立验证）
 
-- [ ] **[DIST-01]** `ServiceRegistry` 服务注册表实现：`backend/core/service_registry.py`，基于 Redis Hash + Sorted Set + Set 三结构协同，支持 `register` / `heartbeat` / `discover` / `deregister` / `cleanup_dead_nodes` / `mark_draining`；定义 `NodeInfo` Pydantic 模型（node_id / url / weight / region / status / capabilities / last_heartbeat / 统计字段）
-- [ ] **[DIST-02]** `YFinanceRouter` 客户端路由器骨架：`backend/core/yfinance_router.py`，实现 `_refresh_nodes`（5s 本地缓存 + double-check locking）、`_select_nodes`（加权轮询 + 过滤熔断节点）、`call`（选节点 → 请求 → failover → 降级）、`_fallback_stale_cache`（Redis STALE 缓存兜底）、`_save_stale_cache`（成功响应存档）；复用 `core/circuit_breaker.py`（每节点 service key = `yf_node:{id}`）
-- [ ] **[DIST-03]** 路由器单测：mock 子服务验证 failover 链路、熔断器触发、STALE 降级、加权轮询均衡性、0 节点场景
-- [ ] **[DIST-04]** `YFinanceService` 兼容外壳改造：保留类壳与原接口签名，内部通过 `YF_ROUTER_ENABLED` 开关在 `YFinanceRouter`（新）与 `LegacyYFinanceImpl`（旧）间切换，上层调用方零改动
+- [x] **[DIST-01]** `ServiceRegistry` 服务注册表实现：`backend/core/service_registry.py`，基于 Redis Hash + Sorted Set + Set 三结构协同，支持 `register` / `heartbeat` / `discover` / `deregister` / `cleanup_dead_nodes` / `mark_draining`；定义 `NodeInfo` Pydantic 模型
+- [x] **[DIST-02]** `YFinanceRouter` 客户端路由器骨架：加权轮询 + 过滤熔断节点 + failover + STALE 缓存降级；复用 `core/circuit_breaker.py`
+- [x] **[DIST-03]** 路由器单测：mock 子服务验证 failover 链路、熔断器触发、STALE 降级、加权轮询均衡性 (已在 DIST-02 测试中覆盖: 25 tests)
+- [x] **[DIST-04]** `YFinanceService` 兼容外壳改造：通过 `YF_ROUTER_ENABLED` 开关在新/旧逻辑间切换，上层调用方零改动 ✅
 
-#### P1 · 子服务工程 + yfinance 核心逻辑迁移
+#### Phase 2 · 子服务工程 + yfinance 核心逻辑迁移
 
-- [ ] **[DIST-05]** `data_subservice/` 子服务工程搭建：独立 FastAPI 包，含 `main.py`（启动注册 + 心跳）、`pyproject.toml`（独立依赖）、`Dockerfile`、目录结构（routes / services / tests）
-- [ ] **[DIST-06]** 子服务 yfinance 核心逻辑迁移：将 `backend/services/yfinance_service.py` 中的 `RateLimitedSession`、缓存、微批处理、宏观守护进程迁移至 `data_subservice/services/yfinance_handler.py`；参数可按节点调整（`RATE_LIMIT_MAX_REQ` / `RATE_LIMIT_PER_SECONDS`）
-- [ ] **[DIST-07]** 子服务 HTTP 接口实现：`/v1/quote`、`/v1/history`、`/v1/batch`、`/v1/macro`、`/v1/health`；429 时返回 HTTP 429（由主服务决定 failover，子服务不自行重试跨节点）
-- [ ] **[DIST-08]** 子服务 `RegistryClient` 实现：`data_subservice/registry_client.py`，启动时 `register()`，每 10s `heartbeat()`，停机 `deregister()`，心跳失败指数退避重试 + 恢复后自动重注册
+- [x] **[DIST-05]** `data_subservice/` 子服务工程搭建：独立 FastAPI 包，含 `main.py`（启动注册 + 心跳）、`pyproject.toml`、`Dockerfile`
+- [x] **[DIST-06]** 子服务 yfinance 核心逻辑迁移：`RateLimitedSession`、缓存、微批处理、宏观守护进程迁移至子服务
+- [x] **[DIST-07]** 子服务 HTTP 接口：`/v1/quote`、`/v1/history`、`/v1/batch`、`/v1/macro`、`/v1/health`；429 时返回由主服务决定 failover
+- [ ] **[DIST-08]** 子服务 `RegistryClient`：启动注册 + 10s 心跳 + 停机注销 + 指数退避重试
 - [ ] **[DIST-09]** 子服务单测：接口契约验证、限流 429 返回、健康检查、注册/注销流程
 
-#### P2 · 安全 + 编排 + 灰度切换
+#### Phase 3 · 集群通信 + 采集器验证
 
-- [ ] **[DIST-10]** HMAC-SHA256 签名验证：子服务 `auth.py` 中间件，复用 `INTERNAL_API_SECRET`，校验 `X-Internal-Sig` header；主服务侧 `_call_node` 自动签名
-- [ ] **[DIST-11]** Docker Compose 多节点编排：`docker-compose.dev.yml`，本机 2 节点（local-01/02）联调；`docker-compose.node-b.yml` 加州节点编排
-- [ ] **[DIST-12]** 灰度切换验证：`YF_ROUTER_ENABLED=true` 切换新逻辑，本机 2 节点联调通过，业务无感；对比新旧逻辑响应一致性
+- [ ] **[DIST-10]** HMAC-SHA256 签名验证：子服务 auth 中间件 + 主服务侧自动签名
+- [ ] **[DIST-11]** Docker Compose 多节点编排：本机 2 节点联调 + 加州节点编排
+- [ ] **[DIST-12]** 灰度切换验证：`YF_ROUTER_ENABLED=true` 切换新逻辑，对比新旧响应一致性
+- [ ] **[DIST-13]** 加州 VPS (38.60.126.42) 部署主节点 (COMPOSE_PROFILES=master,monitoring) — CI/CD 已指向 VPS_S1
+- [ ] **[DIST-14]** 北京 VPS 部署辅助节点 (COMPOSE_PROFILES=slave)，仅运行 AKShare 采集器
+- [ ] **[DIST-15]** Tailscale 跨节点通信验证：北京辅助节点 → 加州主节点 Redis 心跳写入
+- [ ] **[DIST-16]** CI/CD 矩阵部署验证：主节点 (加州) + 辅助节点 (北京)
+- [ ] **[DIST-17]** yfinance / finnhub / futu 采集器在加州主节点运行验证 (境外数据源直连)
+- [ ] **[DIST-18]** akshare 采集器在北京辅助节点运行验证 (国内直连)
 
-#### P3 · 生产部署 + 监控
+#### Phase 4 · 稳定性 + 监控 + 扩展
 
-- [ ] **[DIST-13]** 加州 VPS 部署：子服务 Docker 镜像发布 ghcr.io，GitHub Actions CI/CD 流水线，加州节点 systemd 守护
-- [ ] **[DIST-14]** Tailscale 跨节点组网：北京 ↔ 加州 Tailnet 内网 IP 直连，子服务注册使用 Tailscale IP
-- [ ] **[DIST-15]** Prometheus 指标埋点 + Grafana 面板：节点级成功率/延迟/熔断状态、流量分布、failover 事件流、STALE 降级监控
-- [ ] **[DIST-16]** 告警规则配置：节点熔断（>5min）、存活节点不足（<2）、全节点宕机、STALE 降级飙升，接飞书 Webhook
+- [ ] **[DIST-19]** 北京辅助节点断连降级测试：加州主节点返回 STALE 数据而非报错
+- [ ] **[DIST-20]** Grafana 集群监控面板：节点心跳、采集成功率、failover 次数、STALE 降级监控
+- [ ] **[DIST-21]** 告警规则：节点熔断 (>5min)、存活节点不足 (<2)、全节点宕机，接飞书 Webhook
+- [ ] **[DIST-22]** finnhub 数据源迁移至子服务，复用注册表 + 路由器架构
+- [ ] **[DIST-23]** futu/trade 交易网关迁移至加州节点，systemd 守护 + Watchdog
 
-#### 后续扩展（其他数据源迁移，P3 长期）
+### ~~数据源限流感知与自适应退避~~ ✅ 全部完成
 
-- [ ] **[DIST-17]** finnhub 数据源迁移：将 `backend/services/finnhub_service.py` 迁移至 `data_subservice/services/`，复用注册表 + 路由器架构
-- [ ] **[DIST-18]** futuopenai 交易网关迁移：Futu OpenD 及相关服务迁移至加州节点，systemd 守护 + Watchdog
+> RL-01~14 已全部完成并归档，详见下方「已完成归档」。  
+> 核心能力：错误分类体系 (ErrorCategory) + 退避引擎 (RateLimitThrottler) + 频率分析器 (RateLimitAnalyzer) + Prometheus 指标 + Grafana 告警 + Agent Tool 智能重试 + 路由感知限流。
 
 ---
 
@@ -298,14 +307,14 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 - [x] **[BE-11]** `/api/v1/health` 健康检查端点：包含 Redis ping、DB ping、Futu 连接状态三项
 - [ ] **[BE-12]** Hermes Agent Tool 调用结果统一缓存（Redis Hash，TTL 可配置），避免重复打外部 API
 - [ ] **[BE-19]** OpenAPI/Swagger 文档完善：所有接口补全 summary/example，导出 schema 与 `docs/10` 互校
-- [ ] **[BE-20]** Agent Tool 调用健壮性：统一超时控制 + 失败重试（对接 BE-04 熔断器），防止单 Tool 卡死整个 ReAct 循环
+- [x] **[BE-20]** Agent Tool 调用健壮性：RL-14 已实现 `rate_limit_aware_request` 限流感知智能重试 (HTTP 429/503 + 指数退避 + 最大 3 次重试)，超时控制由 SecureAsyncClient 统一处理
 
 ### 可观测性落地
 
 - [x] **[OBS-01]** Grafana Dashboard 配置：行情延迟分位数、WS 连接数、Redis 内存、API QPS/错误率、客户端 APM 面板（对照 `docs/08`）
 - [x] **[OBS-02]** 告警通道接入：后端通知服务已支持飞书 Webhook 推送（`FEISHU_WEBHOOK_URL` + `FEISHU_SECRET` 签名），落地 `docs/12` §4 告警阈值表
 - [ ] **[OBS-03]** 前后端性能监控落地：前端 Web Vitals 上报 + 后端 API 延迟分位数 Grafana 可视化
-- [ ] **[OBS-04]** Grafana Alerting → 飞书 Webhook 集成：配置 Grafana Contact Point 指向飞书机器人，告警规则触发时自动推送飞书群通知（替代 Bark/微信方案）
+- [x] **[OBS-04]** Grafana Alerting → 飞书 Webhook 集成：Contact Point 已配置 (`alerting.yml` feishu-alerts)，RL-11 新增 4 条限流告警规则已接入飞书推送；待补充：非限流类告警 (如 SVC 数据源 Down) 的 Contact Point 配置
 
 ### 三方服务测试与监控（数据源是系统命脉）
 
@@ -406,37 +415,22 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 ---
 
-## 🚀 当前 Sprint — 主从采集集群开发与部署
+## 🚀 当前执行焦点：分布式数据源集群 Phase 3~4
 
-> 架构设计已完成 (ClusterManager + slave_app + CollectorRegistry)，统一 Compose + Profiles。  
-> 以下任务按优先级排序，聚焦实际部署和功能验证。
+> CL-01~04 核心集群通信已完成 (60 tests)。  
+> 当前焦点：VPS 实际部署 → 采集器验证 → 稳定性监控。  
+> 已合并至上方「分布式数据源集群」模块，此处仅列出近期可执行任务。
 
-### Sprint 1: 核心集群通信 (本周)
+### 近期可执行 (Phase 3)
 
-- [x] **[CL-01]** Master ClusterManager 集成测试：服务池刷新、failover 切换、健康追踪、本地降级、payload 格式验证 (32 tests)
-- [x] **[CL-02]** Slave 心跳稳定性测试：多 Master Redis 多写、TTL 过期、断连恢复、连接状态追踪 (28 tests)
-- [x] **[CL-03]** 采集回调链路验证：Master 调用 Slave /collect/{action} → 数据写入 callback_redis、新旧 payload 兼容
-- [x] **[CL-04]** 本地开发环境模拟主从：docker-compose.local.yml 双 Compose profiles 同时启动验证
-
-### Sprint 2: VPS 实际部署 (下周)
-
-- [ ] **[CL-05]** 北京 VPS 部署 Master (COMPOSE_PROFILES=master,monitoring) — 部署模板已就绪: `scripts/deploy/env.beijing.example`
-- [ ] **[CL-06]** 加州 VPS 部署 Slave (COMPOSE_PROFILES=slave)，配置 MASTER_NODES — 一键脚本已就绪: `scripts/deploy/init_slave.sh`
-- [ ] **[CL-07]** Tailscale 跨节点通信验证：Slave → Master Redis 心跳写入
-- [ ] **[CL-08]** CI/CD 矩阵部署验证：backend.yml 三矩阵 (beijing/overseas/slave-1) — .env 自动生成已实现
-
-### Sprint 3: 采集器功能验证
-
-- [ ] **[CL-09]** yfinance 采集器在 Slave 节点运行验证
-- [ ] **[CL-10]** finnhub 采集器在 Slave 节点运行验证
-- [ ] **[CL-11]** futu 采集器在 Slave 节点运行验证 (需 Futu OpenD 加州 systemd)
-- [ ] **[CL-12]** akshare 采集器在 Master 节点验证 (国内直连)
-
-### Sprint 4: 稳定性与监控
-
-- [ ] **[CL-13]** Slave 断连降级测试：Master 返回 STALE 数据而非报错
-- [ ] **[CL-14]** Grafana 监控面板添加集群指标：节点心跳状态、采集成功率、failover 次数
-- [ ] **[CL-15]** 日志规范化：集群日志统一格式 + 告警通道接入
+- [x] ~~**[CL-01]** Master ClusterManager 集成测试 (32 tests)~~ ✅
+- [x] ~~**[CL-02]** Slave 心跳稳定性测试 (28 tests)~~ ✅
+- [x] ~~**[CL-03]** 采集回调链路验证~~ ✅
+- [x] ~~**[CL-04]** 本地开发环境模拟主从~~ ✅
+- [ ] **[→ DIST-13]** 加州 VPS (38.60.126.42) 部署主节点 — CI/CD 已指向 VPS_S1
+- [ ] **[→ DIST-14]** 北京 VPS 部署辅助节点 (仅 AKShare) — 一键脚本已就绪
+- [ ] **[→ DIST-15]** Tailscale 跨节点通信验证 (依赖 OPS-02)
+- [ ] **[→ DIST-16]** CI/CD 矩阵部署验证
 
 ---
 
@@ -445,8 +439,13 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 | 完成日期    | 任务                                                                               |
 | ------- | -------------------------------------------------------------------------------- |
-| 2026-07-02 | [RISK-MVP] Risk 模块真实数据接入完成：RiskEngine 风控引擎 (risk_engine.py) · 分账户独立计算 (HK/US) · 六维风险雷达 · 因子监控 (Beta/VaR/Sharpe/MaxDD) · NAV 快照持久化 (Redis+DB 分层存储) · 行业级版面布局重构 · 风险雷达/因子监控说明入口 · 净值曲线时间范围查询 (?days=7/30) |
-| 2026-06-28 | [CL-01~04] 核心集群通信完成: payload 格式修复 + 本地降级 + Prometheus 指标 + 心跳增强 + 新旧 payload 兼容 + 60 个测试全通过 |
+| 2026-07-08 | [TODO.md 结构调整] RL-01~14 归档 + DIST+CL 合并为统一「分布式数据源集群」模块 (23 任务) + OBS-04/BE-20 标记完成 + Sprint 重排为执行焦点 |
+| 2026-07-08 | [DIST-02] YFinanceRouter 客户端路由器骨架完成：ServiceRegistry 动态节点发现 (5s 缓存) + 加权轮询 + 熔断过滤 + 内存级快速熔断 (3次/30s) + failover + STALE 缓存降级 (Redis 24h TTL) + HMAC 签名；25 个单测全通过 |
+| 2026-07-08 | [DIST-01] ServiceRegistry 服务注册表实现完成：NodeInfo 模型 + Redis Hash/ZSet/Set 三结构协同 + 全套 API (register/heartbeat/discover/deregister/cleanup_dead_nodes/mark_draining) + 集群总览 + 统计指标；31 个单测全通过 |
+| 2026-07-08 | [架构决策] 主服务确认迁移至加州 VPS (38.60.126.42)，北京 VPS 降级为辅助节点 (仅 AKShare)；原因：Cloudflare Pages 跨境延迟 + GFW 干扰；CI/CD 已指向 VPS_S1 |
+| 2026-07-08 | [RL-01~14] 数据源限流感知与自适应退避全部完成：错误分类体系 + 退避引擎 (4策略) + 熔断器解耦 + 频率分析器 (P75 RPM) + 推测频率 API + Prometheus 5指标 + Grafana 4告警规则 + 飞书 Webhook + 路由感知限流 + Agent Tool 智能重试；152 个单测全通过 |
+| 2026-06-28 | [CL-01~04] 核心集群通信完成 (已合并至 DIST 模块): ClusterManager + Slave 心跳 + 采集回调 + 本地双 Compose 验证; 60 个测试全通过 |
+| 2026-07-02 | [RISK-MVP] Risk 模块真实数据接入完成：RiskEngine 风控引擎 · 分账户独立计算 · 六维风险雷达 · 因子监控 · NAV 持久化 · 行业级版面 |
 | 2026-06-28 | 新增 VPS 部署配置: `scripts/deploy/env.beijing.example` + `env.slave.example` + `init_slave.sh` 一键初始化脚本 |
 | 2026-06-28 | CI/CD 部署流程增强: 首次部署时自动从 GitHub Secrets 生成 .env，支持 beijing/overseas/slave-1 三节点矩阵 |
 | 2026-06-28 | 本地集群验证脚本: `scripts/test_cluster_local.py`，12 项端到端验证全部通过 (无需 Docker) |
@@ -578,7 +577,26 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 | 日期         | 更新说明                                                 |
 | ---------- | ---------------------------------------------------- |
-| 2026-07-02 | OMS-08~12 全部完成：算法拆单引擎 (algo_engine.py TWAP/VWAP/ICEBERG) + Redis 进度持久化 + Kill Switch CLOSE ALL 文字确认 + SANDBOX/LIVE 模式横幅 + 全端点审计日志 |
+| 2026-07-09 | [DIST-07 方案A] AKShare Redis 中继实现：AKShareService 新增 AKSHARE_MODE=cache\|direct 模式开关 (cache 模式仅读 Redis 不直连 akshare) + AKShareCollector 北京 VPS 采集 daemon (南向/北向资金 5min + 宏观日历 12h + 交易时段自适应) + collector_registry 集成；18 个单测全通过，全量 2156 passed |
+| 2026-07-09 | [DIST-07] 子服务 HTTP 接口完成：7 个 /v1/* 端点 (quote/history/batch/indicators/search/macro/health) + 2 个路由器兼容端点 (/api/v1/data-source/proxy/yfinance + batch_quote) + HMAC-SHA256 签名验证 + 时间戳防重放 + 429 限流错误分类 (error_category=rate_limit) + IP 白名单；34 个单测全通过，全量 2138 passed |
+| 2026-07-09 | [DIST-06] 子服务 yfinance 核心逻辑迁移完成：YFinanceWorker 适配层封装 YFinanceService 生命周期 + macro_data_daemon 后台任务集成 + 数据接口代理 (fetch/batched_quote/tech_indicators/search) + /ds/health 真实健康状态 + Dockerfile 环境变量；19 个单测全通过，全量 2104 passed |
+| 2026-07-09 | [DIST-05] data_subservice/ 子服务工程搭建完成：独立 FastAPI 应用 + lifespan 生命周期管理（Redis 连接 → ServiceRegistry 注册 → 心跳后台任务 → 关闭注销）+ /health、/ds/health、/ds/{source}/{action} 端点 + 多阶段 Dockerfile；10 个单测全通过，全量 2085 passed |
+| 2026-07-08 | [DIST-04] YFinanceService 兼容外壳改造完成：YF_ROUTER_ENABLED 环境变量开关 + 懒初始化 YFinanceRouter + fetch_yf_data/get_batched_quote/macro_data_daemon 路由器模式拦截 + get_health_status 标注 + close 清理；26 个单测全通过，全量 2075 passed |
+| 2026-07-08 | [DIST-01] ServiceRegistry 服务注册表实现完成：NodeInfo Pydantic 模型 + Redis Hash/ZSet/Set 三结构协同 + register/heartbeat/discover/deregister/cleanup_dead_nodes/mark_draining 全套 API + 集群总览 + 统计指标；31 个单测全通过 |
+| 2026-07-08 | [DIST-02] YFinanceRouter 客户端路由器骨架完成：动态节点发现 + 加权轮询 + 熔断过滤 + failover + STALE 缓存降级；25 个单测全通过 |
+| 2026-07-08 | [DIST-01] ServiceRegistry 服务注册表实现完成：NodeInfo 模型 + Redis Hash/ZSet/Set 三结构协同 + 全套 API；31 个单测全通过 |
+| 2026-07-08 | [架构决策] 主服务确认迁移至加州 VPS (38.60.126.42)，北京 VPS 降级为辅助节点；更新 TODO.md DIST 任务 + AGENTS.md §9 部署架构 |
+| 2026-07-08 | [TODO.md 结构调整] RL-01~14 归档 + DIST+CL 合并为统一「分布式数据源集群」模块 (23 任务) + OBS-04/BE-20 标记完成 + Sprint 重排为执行焦点 |
+| 2026-07-08 | [RL-11] 限流告警规则配置完成：Grafana 新增 4 条告警规则 (限流频率飙升>10/5min + 长时间退避>2min + 配额耗尽 + IP封禁) + 后端 RateLimitAlertMonitor 代码层主动推送飞书 Webhook (去重冷却 15min + 4 场景检测) + Throttler 集成自动触发；15 个单测全通过 |
+| 2026-07-08 | [RL-14] Hermes Agent Tool 限流感知智能重试完成：BaseTool 新增 rate_limit_aware_request (HTTP 429/503 + 响应体关键词检测 + Retry-After/X-RateLimit-Reset/Body 三级提取 + 指数退避重试 + MAX_RETRY_DELAY=60s 上限) + BrokerMarketTool/FundamentalDataTool/MacroNewsTool/FredMacroTool/MacroCalendarTool/TechnicalIndicatorsTool 全面集成；25 个单测全通过 |
+| 2026-07-08 | [RL-13] Registry 路由感知限流状态完成：DataSourceNode 新增限流压力字段 (is_throttled/consecutive_rate_limits/estimated_limit_rpm) + _get_healthy_nodes 同步 registry 限流状态 + _select_node 三级排序 (未限流优先→weight降序→限流次数升序) + get_health_status 暴露限流压力信息；10 个单测全通过 |
+| 2026-07-08 | [RL-09/10/12] Prometheus 限流指标 + 可观测性完成：5 个指标 (ds_rate_limit_total/throttled_seconds/estimated_rpm/effective_rpm/backoff_state) + Throttler 埋点 + HealthInfo.rate_limit_status 落地 + 环境变量配置化退避策略 (DATASOURCE_{NAME}_BACKOFF_*)；22 个单测全通过 |
+| 2026-07-08 | [RL-06] 推测频率查询 API 完成：DataSourceRegistry 全局注册表 (Throttler+Analyzer 实例管理) + GET /datasource/{name}/rate-limit-analysis (限流分析+window参数) + GET /datasource/{name}/rate-limit-status (实时退避状态) + GET /datasource/rate-limit-overview (全源总览)；20 个单测全通过 |
+| 2026-07-08 | [RL-05] RateLimitAnalyzer 频率分析器完成：滑动窗口事件序列 (deque maxlen=10000 ≈ 200KB) + P75 推测限流 RPM + 推荐安全间隔 (20% 裕度) + 高峰时段识别 (限流率>5%) + 相邻时段合并 + 平均恢复时间 + 可信度计算 + 自定义窗口 (?window=7d) + 过期清理 + 线程安全；45 个单测全通过 |
+| 2026-07-08 | [RL-03] CircuitBreaker 限流解耦完成：is_rate_limit_error 过滤钩子 (识别异常携带的 ErrorCategory) + error_classifier 动态回调 (per-call 最终决定权) + record_failure(is_rate_limit=True) 手动记录接口 + call()/call_sync() 限流不计入失败计数；20 个单测全通过 |
+| 2026-07-08 | [RL-02/04] RateLimitThrottler 退避引擎完成：4 种策略 (none/linear/exponential/adaptive) + Retry-After 优先采纳 + 自适应恢复机制 (连续 10 次成功降速) + 抖动防雷群 + 线程安全 + 环境变量配置 (DATASOURCE_{NAME}_BACKOFF_*)；31 个单测全通过 |
+| 2026-07-08 | [RL-01] ErrorInfo 结构扩展完成：ErrorCategory 枚举 (normal/rate_limit/quota_exhausted/ip_blocked) + RateLimitInfo 嵌套结构 + Result 统一返回结构 + classify_http_error 自动分类 + DataSourceRouter 集成 (限流不计入熔断器)；44 个单测全通过 |
+| 2026-07-08 | 新增「数据源限流感知与自适应退避」RL-01~14：限流错误分类 / RateLimitThrottler 退避引擎 / 频率动态分析 / 推测频率查询 API / Prometheus 限流指标 / 限流告警 / Registry 路由感知 / Agent Tool 限流感知；docs/14 新增 §十二；AGENTS.md 新增 §10.8 |
 | 2026-07-02 | OMS-05~07 算力节点完成：`bot_runtime.py` BotRuntimeManager (asyncio.Task 生命周期) + psutil 真实 CPU/MEM 监控 + Redis List 日志持久化 + PubSub/WebSocket 实时推送；`/deploy-to-oms` 升级为真实 Bot 启动；前端新增 Bot 终止按钮 |
 | 2026-07-02 | OMS-01~04 核心闭环完成：订单持久化 (oms_service.py) + 成交打通 + 真实订单状态同步 + 持仓 30秒同步守护进程；新增前端「真实持仓」Tab |
 | 2026-07-02 | 新增「OMS 订单中枢与算力节点」OMS-01~12 (订单持久化/真实同步/算力节点/算法拆单/KillSwitch加固/审计日志)；新建 `docs/subsystems/oms-module.md` 设计文档 |

@@ -1,10 +1,7 @@
 import asyncio
-import json
 import os
 import socket
 import sys
-import time
-import uuid
 import warnings
 
 from dotenv import load_dotenv
@@ -30,66 +27,15 @@ from backend.workers.collector_registry import (  # noqa: E402
     start_collector_daemons,
 )
 
-WORKER_UUID = str(uuid.uuid4())
-NODE_ROLE = os.getenv("NODE_ROLE", "master")
-NODE_ID = os.getenv("SLAVE_ID", socket.gethostname())
 ENABLED_COLLECTORS = get_enabled_collectors()
-
-
-async def worker_heartbeat_daemon() -> None:
-    """后台任务：维持集群节点心跳，并动态计算一致性哈希分片排名 (HA 高可用)"""
-    while True:
-        try:
-            # 1. 注册存活心跳 (TTL=15秒) - 兼容旧版分片逻辑
-            heartbeat_key = f"quant:worker:heartbeat:{WORKER_UUID}"
-            await redis_client.set(heartbeat_key, "alive", ex=15)
-
-            # 2. 注册节点能力到 Redis (供 ClusterManager 发现)
-            node_key = f"quant:node:{NODE_ID}"
-            node_info = {
-                "uuid": WORKER_UUID,
-                "node_id": NODE_ID,
-                "role": NODE_ROLE,
-                "host": os.getenv("NODE_HOST", socket.gethostname()),
-                "port": int(os.getenv("NODE_PORT", "8000")),
-                "collectors": ENABLED_COLLECTORS,
-                "started_at": time.time(),
-                "status": "healthy",
-            }
-            await redis_client.set(node_key, json.dumps(node_info), ex=15)
-
-            # 3. 扫描所有存活的 Worker (分片排名)
-            cursor = 0
-            active_workers = []
-            while True:
-                cursor, keys = await redis_client.scan(cursor=cursor, match="quant:worker:heartbeat:*", count=100)
-                active_workers.extend(keys)
-                if cursor == 0:
-                    break
-
-            active_uuids = sorted(
-                [k.decode("utf-8").split(":")[-1] if isinstance(k, bytes) else k.split(":")[-1] for k in active_workers]
-            )
-
-            if WORKER_UUID in active_uuids:
-                new_worker_id = active_uuids.index(WORKER_UUID)
-                new_worker_total = len(active_uuids)
-
-                env_worker_id = os.getenv("WORKER_ID")
-                env_worker_total = os.getenv("WORKER_TOTAL")
-                if str(new_worker_id) != env_worker_id or str(new_worker_total) != env_worker_total:
-                    os.environ["WORKER_ID"] = str(new_worker_id)
-                    os.environ["WORKER_TOTAL"] = str(new_worker_total)
-                    print(f"[HA] cluster changed: Rank {new_worker_id} / Total {new_worker_total}")
-        except Exception:
-            pass
-        await asyncio.sleep(5)
+IS_DATA_NODE = os.getenv("DATA_NODE", "false").lower() == "true"
 
 
 async def main():
+    node_role = "数据节点 (Data Node)" if IS_DATA_NODE else "主节点 (Master)"
     print("\n=====================================================")
-    print(f"  [Quant Worker] Role: {NODE_ROLE} | ID: {NODE_ID}")
-    print(f"  Collectors: {ENABLED_COLLECTORS}")
+    print(f"  [Quant Worker] Role: {node_role}")
+    print(f"  [Quant Worker] Collectors: {ENABLED_COLLECTORS}")
     print("=====================================================\n")
 
     # 1. 启动 Redis 批量写入队列
@@ -97,23 +43,13 @@ async def main():
 
     tasks = []
 
-    # 2. 心跳 + 能力注册 daemon
-    tasks.append(asyncio.create_task(worker_heartbeat_daemon()))
-
-    # 3. Master 节点: 启动 ClusterManager 发现从节点
-    if NODE_ROLE == "master":
-        from backend.workers.cluster_manager import cluster_manager
-
-        await cluster_manager.start()
-        print("  [master] ClusterManager started - discovering slave nodes")
-
-    # 4. 按配置启动采集器守护进程
+    # 2. 按配置启动采集器守护进程
     print("  Starting collector daemons:")
     collector_tasks = await start_collector_daemons(ENABLED_COLLECTORS)
     tasks.extend(collector_tasks)
 
-    # 5. 通用后台任务 (仅 master)
-    if NODE_ROLE == "master":
+    # 3. 后台服务任务 (数据节点不需要 DB 依赖的核心服务)
+    if not IS_DATA_NODE:
         from backend.services.screener_service import screener_service
         from backend.services.sentiment_tracker import sentiment_tracker
 
@@ -122,12 +58,12 @@ async def main():
         tasks.append(asyncio.create_task(screener_service.screener_subscription_daemon()))
         tasks.append(asyncio.create_task(screener_service.daily_market_summary_daemon()))
         tasks.append(asyncio.create_task(screener_service.clean_obsolete_knowledge_base_daemon()))
-        print("  [master] core daemons started (ticker/sentiment/screener)")
+        print("  Core daemons started (ticker/sentiment/screener)")
+    else:
+        print("  [Data Node] 跳过 DB 依赖服务 (ticker/sentiment/screener)")
 
     print(f"\n  All {len(tasks)} tasks running!")
-    asyncio.create_task(
-        notification_service.send_alert(f"  [Worker {NODE_ID}] role={NODE_ROLE}, collectors={ENABLED_COLLECTORS}")
-    )
+    asyncio.create_task(notification_service.send_alert(f"[Worker] role={node_role} collectors={ENABLED_COLLECTORS}"))
 
     # 挂起主线程
     try:
@@ -135,11 +71,6 @@ async def main():
     except asyncio.CancelledError:
         print("\n  [Worker] shutting down...")
     finally:
-        # 清理 ClusterManager
-        if NODE_ROLE == "master":
-            from backend.workers.cluster_manager import cluster_manager
-
-            await cluster_manager.stop()
         await redis_batch_writer.stop()
         await redis_client.aclose()
         engine.dispose()

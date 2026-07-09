@@ -5,7 +5,7 @@
 import pandas as pd
 import pytest
 
-from backend.core.backtest import DivergenceResonanceStrategy
+from backend.backtest import DivergenceResonanceStrategy
 
 from .conftest import _make_ohlc_data
 

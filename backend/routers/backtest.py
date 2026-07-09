@@ -10,7 +10,7 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from backend.core.backtest import (
+from backend.backtest import (
     DivergenceResonanceStrategy,
     run_dynamic_sandbox_backtest,
 )

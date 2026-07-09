@@ -62,6 +62,11 @@ class CircuitBreaker:
 
     - max_failures:     连续失败次数阈值，达到后触发 OPEN（默认 3）
     - recovery_timeout: OPEN 状态持续时间（秒），超时自动转 HALF_OPEN（默认 60）
+
+    RL-03 限流退避解耦:
+    - is_rate_limit_error: 可覆盖的过滤钩子，返回 True 时不计入失败计数
+    - error_classifier:    call()/call_sync() 可选参数，按异常实例动态判定
+    - record_failure():    外部调用者手动记录失败（支持 is_rate_limit 标记）
     """
 
     def __init__(self, max_failures: int = 3, recovery_timeout: float = 60.0):
@@ -91,9 +96,62 @@ class CircuitBreaker:
         entry = self._get_entry(service)
         return self._check_state(entry)
 
-    async def call(self, service: str, func: Callable, *args: Any, **kwargs: Any) -> Any:  # noqa: E501
+    def _should_skip_failure(self, exc: Exception, error_classifier: Optional[Callable] = None) -> bool:
+        """
+        判断异常是否应跳过失败计数（限流类错误）。
+
+        判定优先级:
+        1. error_classifier 回调（per-call 动态判定，结果具有最终决定权）
+        2. is_rate_limit_error 方法（全局/可覆盖钩子，仅当无 classifier 时使用）
+        """
+        # 1. per-call 动态判定（最终决定权）
+        if error_classifier is not None:
+            try:
+                return bool(error_classifier(exc))
+            except Exception:
+                pass
+
+        # 2. 全局钩子（仅当无 classifier 时）
+        return self.is_rate_limit_error(exc)
+
+    def is_rate_limit_error(self, exc: Exception) -> bool:
+        """
+        限流错误过滤钩子（可覆盖）。
+
+        默认实现：检查异常是否携带 ErrorCategory 标记。
+        子类或外部可覆盖此方法以自定义判定逻辑。
+
+        Returns:
+            True → 限流类错误，不计入熔断器失败计数
+            False → 普通错误，正常计入
+        """
+        # 检查异常是否携带 error_category 属性（由 data_source_router 注入）
+        category = getattr(exc, "_error_category", None)
+        if category is not None:
+            from backend.services.datasource import ErrorCategory
+
+            try:
+                if isinstance(category, ErrorCategory):
+                    return category != ErrorCategory.NORMAL
+                # 字符串形式
+                return str(category) != "normal"
+            except (ImportError, ValueError):
+                pass
+        return False
+
+    async def call(
+        self,
+        service: str,
+        func: Callable,
+        *args: Any,
+        error_classifier: Optional[Callable] = None,
+        **kwargs: Any,
+    ) -> Any:  # noqa: E501
         """
         通过熔断器调用异步函数。
+
+        Args:
+            error_classifier: 可选回调，接收异常实例，返回 True 表示限流错误（不计入熔断）
 
         Raises:
             CircuitBreakerOpenError: 熔断器处于 OPEN 状态时
@@ -117,21 +175,27 @@ class CircuitBreaker:
                 result = func(*args, **kwargs)
         except Exception as exc:
             async with entry.lock:
-                entry.failures += 1
-                entry.last_failure_ts = time.monotonic()
-                if entry.failures >= self._max_failures:
-                    prev_state = entry.state.value
-                    entry.state = CircuitState.OPEN
-                    CIRCUIT_BREAKER_STATE.labels(service=service).set(2)
-                    CIRCUIT_BREAKER_TRANSITIONS.labels(service=service, from_state=prev_state, to_state="open").inc()
-                    logger.error(
-                        f"🔴 [CircuitBreaker] {service} 连续失败 {entry.failures} 次，触发熔断！"  # noqa: E501
-                        f"将在 {self._recovery_timeout}s 后自动半开探测。"
-                    )
+                # RL-03: 限流类错误不计入熔断器失败计数
+                if self._should_skip_failure(exc, error_classifier):
+                    logger.debug(f"⚡ [CircuitBreaker] {service} 限流类错误，跳过失败计数: {exc}")
                 else:
-                    logger.warning(
-                        f"⚠️ [CircuitBreaker] {service} 失败 {entry.failures}/{self._max_failures}: {exc}"  # noqa: E501
-                    )
+                    entry.failures += 1
+                    entry.last_failure_ts = time.monotonic()
+                    if entry.failures >= self._max_failures:
+                        prev_state = entry.state.value
+                        entry.state = CircuitState.OPEN
+                        CIRCUIT_BREAKER_STATE.labels(service=service).set(2)
+                        CIRCUIT_BREAKER_TRANSITIONS.labels(
+                            service=service, from_state=prev_state, to_state="open"
+                        ).inc()
+                        logger.error(
+                            f"🔴 [CircuitBreaker] {service} 连续失败 {entry.failures} 次，触发熔断！"  # noqa: E501
+                            f"将在 {self._recovery_timeout}s 后自动半开探测。"
+                        )
+                    else:
+                        logger.warning(
+                            f"⚠️ [CircuitBreaker] {service} 失败 {entry.failures}/{self._max_failures}: {exc}"  # noqa: E501
+                        )
             raise
 
         # 调用成功 → 重置计数
@@ -148,9 +212,19 @@ class CircuitBreaker:
 
         return result
 
-    def call_sync(self, service: str, func: Callable, *args: Any, **kwargs: Any) -> Any:
+    def call_sync(
+        self,
+        service: str,
+        func: Callable,
+        *args: Any,
+        error_classifier: Optional[Callable] = None,
+        **kwargs: Any,
+    ) -> Any:
         """
         通过熔断器调用同步函数（供 asyncio.to_thread 使用）。
+
+        Args:
+            error_classifier: 可选回调，接收异常实例，返回 True 表示限流错误
 
         注意：此方法使用同步锁（threading.Lock），仅在 to_thread 上下文中使用。
         """
@@ -168,12 +242,16 @@ class CircuitBreaker:
 
         try:
             result = func(*args, **kwargs)
-        except Exception:
-            entry.failures += 1
-            entry.last_failure_ts = time.monotonic()
-            if entry.failures >= self._max_failures:
-                entry.state = CircuitState.OPEN
-                logger.error(f"🔴 [CircuitBreaker] {service} 连续失败 {entry.failures} 次，触发熔断！")  # noqa: E501
+        except Exception as exc:
+            # RL-03: 限流类错误不计入熔断器失败计数
+            if self._should_skip_failure(exc, error_classifier):
+                logger.debug(f"⚡ [CircuitBreaker] {service} 限流类错误，跳过失败计数: {exc}")
+            else:
+                entry.failures += 1
+                entry.last_failure_ts = time.monotonic()
+                if entry.failures >= self._max_failures:
+                    entry.state = CircuitState.OPEN
+                    logger.error(f"🔴 [CircuitBreaker] {service} 连续失败 {entry.failures} 次，触发熔断！")  # noqa: E501
             raise
 
         entry.state = CircuitState.CLOSED
@@ -199,6 +277,46 @@ class CircuitBreaker:
             return wrapper
 
         return decorator
+
+    def record_failure(self, service: str, is_rate_limit: bool = False) -> None:
+        """
+        外部调用者手动记录失败（供 data_source_router 等使用）。
+
+        Args:
+            service: 服务名称
+            is_rate_limit: 是否为限流类错误（True 时不计入失败计数）
+        """
+        entry = self._get_entry(service)
+        if is_rate_limit:
+            logger.debug(f"⚡ [CircuitBreaker] {service} 限流类错误，跳过失败计数")
+            return
+
+        entry.failures += 1
+        entry.last_failure_ts = time.monotonic()
+        if entry.failures >= self._max_failures:
+            prev_state = entry.state.value
+            entry.state = CircuitState.OPEN
+            CIRCUIT_BREAKER_STATE.labels(service=service).set(2)
+            CIRCUIT_BREAKER_TRANSITIONS.labels(service=service, from_state=prev_state, to_state="open").inc()
+            logger.error(
+                f"🔴 [CircuitBreaker] {service} 连续失败 {entry.failures} 次，触发熔断！"
+                f"将在 {self._recovery_timeout}s 后自动半开探测。"
+            )
+        else:
+            logger.warning(f"⚠️ [CircuitBreaker] {service} 失败 {entry.failures}/{self._max_failures}")
+
+    def record_success(self, service: str) -> None:
+        """外部调用者手动记录成功（重置失败计数）"""
+        entry = self._get_entry(service)
+        if entry.state == CircuitState.HALF_OPEN:
+            logger.info(f"✅ [CircuitBreaker] {service} 半开探测成功，恢复正常！")
+        prev_state = entry.state.value
+        entry.state = CircuitState.CLOSED
+        CIRCUIT_BREAKER_STATE.labels(service=service).set(0)
+        if prev_state != "closed":
+            CIRCUIT_BREAKER_TRANSITIONS.labels(service=service, from_state=prev_state, to_state="closed").inc()
+        entry.failures = 0
+        entry.last_failure_ts = 0.0
 
     def reset(self, service: Optional[str] = None) -> None:
         """手动重置熔断器（用于测试或运维恢复）"""

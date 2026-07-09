@@ -97,10 +97,10 @@ def _mock_vectorbt_portfolio():
 class TestGridSearchBacktestMocked:
     """测试 run_grid_search_backtest（Mock VectorBT）"""
 
-    @patch("backend.core.backtest.runners.vbt")
+    @patch("backend.backtest.runners.vbt")
     def test_basic_grid_search_mocked(self, mock_vbt):
         """测试基本的网格搜索（完全 Mock）"""
-        from backend.core.backtest.runners import run_grid_search_backtest
+        from backend.backtest.runners import run_grid_search_backtest
 
         # 设置 mock
         mock_pf = _mock_vectorbt_portfolio()
@@ -122,10 +122,10 @@ class TestGridSearchBacktestMocked:
             assert "sharpe_ratio" in r["metrics"]
             assert "total_return" in r["metrics"]
 
-    @patch("backend.core.backtest.runners.vbt")
+    @patch("backend.backtest.runners.vbt")
     def test_grid_search_empty_result(self, mock_vbt):
         """测试网格搜索无结果时抛出异常"""
-        from backend.core.backtest.runners import run_grid_search_backtest
+        from backend.backtest.runners import run_grid_search_backtest
 
         # 让所有组合都失败
         bad_code = """
@@ -148,7 +148,7 @@ class AlwaysFail:
 
     def test_grid_search_unsafe_code_rejected(self):
         """测试不安全的代码被拒绝"""
-        from backend.core.backtest.runners import run_grid_search_backtest
+        from backend.backtest.runners import run_grid_search_backtest
 
         df = _make_ohlc_data(100)
         with pytest.raises(ValueError):
@@ -163,10 +163,10 @@ class AlwaysFail:
 class TestMonteCarloStressTestMocked:
     """测试 run_monte_carlo_stress_test（Mock VectorBT）"""
 
-    @patch("backend.core.backtest.runners.vbt")
+    @patch("backend.backtest.runners.vbt")
     def test_basic_monte_carlo_mocked(self, mock_vbt):
         """测试基本的蒙特卡洛测试（完全 Mock）"""
-        from backend.core.backtest.runners import run_monte_carlo_stress_test
+        from backend.backtest.runners import run_monte_carlo_stress_test
 
         # 设置 mock
         mock_pf = _mock_vectorbt_portfolio()
@@ -191,7 +191,7 @@ class TestMonteCarloStressTestMocked:
 
     def test_monte_carlo_class_not_found(self):
         """测试类不存在时抛出异常"""
-        from backend.core.backtest.runners import run_monte_carlo_stress_test
+        from backend.backtest.runners import run_monte_carlo_stress_test
 
         df = _make_ohlc_data(100)
         with pytest.raises(ValueError, match="未在代码中找到"):
@@ -209,7 +209,7 @@ class TestBatchSandboxBacktestMocked:
 
     def test_empty_dfs_raises(self):
         """测试空的 DataFrame 字典抛出异常"""
-        from backend.core.backtest.runners import run_batch_sandbox_backtest
+        from backend.backtest.runners import run_batch_sandbox_backtest
 
         with pytest.raises(ValueError, match="未提供任何回测数据源"):
             run_batch_sandbox_backtest(
@@ -219,10 +219,10 @@ class TestBatchSandboxBacktestMocked:
                 dfs={},
             )
 
-    @patch("backend.core.backtest.runners.vbt")
+    @patch("backend.backtest.runners.vbt")
     def test_batch_basic_mocked(self, mock_vbt):
         """测试基本的批量回测（完全 Mock）"""
-        from backend.core.backtest.runners import run_batch_sandbox_backtest
+        from backend.backtest.runners import run_batch_sandbox_backtest
 
         # 设置 mock
         mock_pf = _mock_vectorbt_portfolio()
@@ -246,7 +246,7 @@ class TestBatchSandboxBacktestMocked:
 
     def test_batch_class_not_found(self):
         """测试类不存在时抛出异常"""
-        from backend.core.backtest.runners import run_batch_sandbox_backtest
+        from backend.backtest.runners import run_batch_sandbox_backtest
 
         dfs = {"AAPL": _make_ohlc_data(100)}
         with pytest.raises(ValueError, match="未在代码中找到"):
@@ -263,7 +263,7 @@ class TestRunnersHelpers:
 
     def test_build_sandbox_globals(self):
         """测试 _build_sandbox_globals"""
-        from backend.core.backtest.runners import _build_sandbox_globals
+        from backend.backtest.runners import _build_sandbox_globals
 
         g = _build_sandbox_globals()
         assert "np" in g
@@ -275,7 +275,7 @@ class TestRunnersHelpers:
 
     def test_prepare_df_basic(self):
         """测试 _prepare_df 基本功能"""
-        from backend.core.backtest.runners import _prepare_df
+        from backend.backtest.runners import _prepare_df
 
         df = pd.DataFrame({"Open": [1], "High": [2], "Low": [0.5], "Close": [1.5], "Volume": [100]})
         result = _prepare_df(df)
@@ -284,7 +284,7 @@ class TestRunnersHelpers:
 
     def test_prepare_df_with_ohlc(self):
         """测试 _prepare_df 处理 OHLC 列"""
-        from backend.core.backtest.runners import _prepare_df
+        from backend.backtest.runners import _prepare_df
 
         df = _make_ohlc_data(50)
         result = _prepare_df(df)

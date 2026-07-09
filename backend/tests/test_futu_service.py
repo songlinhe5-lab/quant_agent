@@ -94,7 +94,7 @@ class TestFutuServiceClose:
     def test_close_resets_state(self):
         """close() 重置状态"""
         service = FutuService()
-        service.quote_ctx = "mock"
+        service.quote_ctx = "mock"  # type: ignore[assignment]
         service.trade_ctxs["HK"] = "mock"
         service.status = "CONNECTED"
         service.cache_mgr.touch_topic("HK.00700", "QUOTE")
@@ -126,14 +126,12 @@ class TestFutuServiceQuoteMethods:
             assert result == {"data": "quote"}
 
     @pytest.mark.asyncio
-    async def test_get_quote_cluster_fallback(self):
-        """get_quote() 本地未连接时通过 SourceRouter 路由到远程"""
+    async def test_get_quote_disconnected_returns_error(self):
+        """get_quote() 本地未连接时返回错误"""
         service = FutuService()
         service.status = "DISCONNECTED"
-        # 模拟 source_router 返回远程数据
-        service.source_router._remote.fetch = AsyncMock(return_value={"status": "success", "data": "cluster_quote"})
         result = await service.get_quote("HK.00700")
-        assert result == {"status": "success", "data": "cluster_quote"}
+        assert result["status"] == "error"
 
     @pytest.mark.asyncio
     async def test_unsubscribe_quote(self):
@@ -277,7 +275,7 @@ class TestFutuServiceTradeMethods:
         service = FutuService()
         with patch.object(service.trade_handler, "place_order", new_callable=AsyncMock) as mock:
             mock.return_value = {"data": "order_placed"}
-            result = await service.place_order("HK.00700", 100, 50.0, TrdSide.BUY, TrdMarket.HK)
+            result = await service.place_order("HK.00700", 100, 50.0, TrdSide.BUY, TrdMarket.HK)  # type: ignore[arg-type]
             mock.assert_called_once_with("HK.00700", 100, 50.0, TrdSide.BUY, TrdMarket.HK, format_ticker)
             assert result == {"data": "order_placed"}
 
@@ -289,7 +287,7 @@ class TestFutuServiceTradeMethods:
         service = FutuService()
         with patch.object(service.trade_handler, "modify_order", new_callable=AsyncMock) as mock:
             mock.return_value = {"data": "order_modified"}
-            result = await service.modify_order("12345", ModifyOrderOp.NORMAL, TrdMarket.HK)
+            result = await service.modify_order("12345", ModifyOrderOp.NORMAL, TrdMarket.HK)  # type: ignore[arg-type]
             mock.assert_called_once_with("12345", ModifyOrderOp.NORMAL, TrdMarket.HK)
             assert result == {"data": "order_modified"}
 
@@ -301,7 +299,7 @@ class TestFutuServiceTradeMethods:
         service = FutuService()
         with patch.object(service.trade_handler, "query_order", new_callable=AsyncMock) as mock:
             mock.return_value = {"data": "order_queried"}
-            result = await service.query_order("12345", TrdMarket.HK)
+            result = await service.query_order("12345", TrdMarket.HK)  # type: ignore[arg-type]
             mock.assert_called_once_with("12345", TrdMarket.HK)
             assert result == {"data": "order_queried"}
 
@@ -357,75 +355,71 @@ class TestFutuServiceRoute:
         assert result == {"status": "success", "data": "local"}
 
     @pytest.mark.asyncio
-    async def test_route_local_handler_exception_falls_to_cluster(self):
-        """本地 handler 抛异常后降级到远程"""
+    async def test_route_local_handler_exception_returns_error(self):
+        """本地 handler 抛异常后返回错误 (单一节点模式)"""
         service = FutuService()
         service.status = "CONNECTED"
         mock_handler = AsyncMock(side_effect=RuntimeError("OpenD timeout"))
-        service.source_router._remote.fetch = AsyncMock(return_value={"status": "success", "data": "from_slave"})
 
         result = await service._route("fetch_quote", {"ticker": "HK.00700"}, mock_handler, ticker="HK.00700")
 
         mock_handler.assert_called_once()
-        assert result == {"status": "success", "data": "from_slave"}
+        assert result["status"] == "error"
 
     @pytest.mark.asyncio
-    async def test_route_local_disconnected_uses_remote(self):
-        """本地未连接时走远程数据源"""
+    async def test_route_local_disconnected_returns_error(self):
+        """本地未连接时返回错误 (单一节点模式)"""
         service = FutuService()
         service.status = "DISCONNECTED"
         mock_handler = AsyncMock()
-        service.source_router._remote.fetch = AsyncMock(return_value={"status": "success", "data": "slave_data"})
 
         result = await service._route("fetch_history", {"ticker": "US.AAPL"}, mock_handler, ticker="US.AAPL")
 
         mock_handler.assert_not_called()
-        assert result == {"status": "success", "data": "slave_data"}
+        assert result["status"] == "error"
 
     @pytest.mark.asyncio
     async def test_route_all_failed_returns_unavailable(self):
-        """本地和远程都失败返回 error"""
+        """本地失败返回 error"""
         service = FutuService()
         service.status = "DISCONNECTED"
         mock_handler = AsyncMock()
-        service.source_router._remote.fetch = AsyncMock(return_value=None)
 
         result = await service._route("fetch_quote", {"ticker": "HK.00700"}, mock_handler, ticker="HK.00700")
 
         assert result["status"] == "error"
 
     @pytest.mark.asyncio
-    async def test_route_remote_mode_skips_local(self):
-        """remote 模式下跳过本地 handler"""
+    async def test_route_switch_mode_always_local(self):
+        """switch_mode 始终返回 local (单一节点模式)"""
         service = FutuService()
         service.status = "CONNECTED"
-        service.source_router.switch_mode("remote")
-        mock_handler = AsyncMock()
-        service.source_router._remote.fetch = AsyncMock(return_value={"status": "success", "data": "remote_only"})
+        mock_handler = AsyncMock(return_value={"status": "success", "data": "local_data"})
+
+        mode = service.source_router.switch_mode("remote")
+        assert mode == "local"
 
         result = await service._route("fetch_quote", {"ticker": "HK.00700"}, mock_handler, ticker="HK.00700")
 
-        mock_handler.assert_not_called()
-        assert result == {"status": "success", "data": "remote_only"}
-        # 恢复模式
-        service.source_router.switch_mode("auto")
+        mock_handler.assert_called_once()
+        assert result == {"status": "success", "data": "local_data"}
 
 
 class TestFutuServiceSourceRouter:
-    """SourceRouter 集成测试"""
+    """SourceRouter 集成测试 (单一节点模式)"""
 
     def test_service_has_source_router(self):
         """FutuService 初始化后包含 source_router"""
         service = FutuService()
         assert hasattr(service, "source_router")
-        assert service.source_router.current_mode == "auto"
+        assert service.source_router.current_mode == "local"
 
-    def test_switch_source_mode(self):
-        """运行时切换数据源模式"""
+    def test_switch_source_mode_always_local(self):
+        """运行时切换数据源模式，单一节点模式始终返回 local"""
         service = FutuService()
         service.source_router.switch_mode("local")
         assert service.source_router.current_mode == "local"
         service.source_router.switch_mode("remote")
-        assert service.source_router.current_mode == "remote"
+        assert service.source_router.current_mode == "local"
         service.source_router.switch_mode("auto")
-        assert service.source_router.current_mode == "auto"
+        assert service.source_router.current_mode == "local"

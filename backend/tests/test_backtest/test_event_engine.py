@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from backend.core.backtest import (
+from backend.backtest import (
     BaseStrategySandbox,
     EventDrivenBacktestEngine,
     run_dynamic_sandbox_backtest,
@@ -310,7 +310,7 @@ class MyEventStrategy(BaseStrategy):
 
 class TestRunDynamicSandboxBacktest:
     @pytest.mark.skip(reason="矢量化策略测试需要复杂的 VectorBT mock，暂时跳过")
-    @patch("backend.core.backtest.event_engine.vbt")
+    @patch("backend.backtest.event_engine.vbt")
     def test_vectorized_strategy(self, mock_vbt, ohlc_data):
         """测试矢量化策略（Mock VectorBT）"""
         result = run_dynamic_sandbox_backtest(

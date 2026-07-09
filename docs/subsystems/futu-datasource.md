@@ -1,158 +1,179 @@
-# Futu 数据源可切换架构 (V1.0)
+# Futu 数据源架构 (V2.0)
 
-> **文档定位**：Futu OpenD 数据源的抽象层设计，支持本地直连与远程 slave 代理两种模式的平行切换。
-> **最后更新**：2026-07-06 | **版本**：V1.0
-> **关联文档**：`docs/14. 分布式数据源服务架构.md` | `docs/03. 后端架构与执行引擎.md`
+> **文档定位**：Futu OpenD 数据源的接入设计，基于通用数据源框架 (`docs/14`) 的 Futu 特化实现。
+> **最后更新**：2026-07-08 | **版本**：V2.0
+> **关联文档**：`docs/14. 分布式数据源服务架构.md` | `AGENTS.md §10` | `docs/03. 后端架构与执行引擎.md`
 
 ---
 
-## 一、背景与动机
+## 一、概述
 
-### 1.1 部署拓扑
+### 1.1 定位
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  北京 VPS (Master)                                           │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │  FutuService (行情中心)                               │    │
-│  │  ┌──────────────────────────────────────────────┐   │    │
-│  │  │  SourceRouter (local/remote/auto)             │   │    │
-│  │  │  ┌──────────────┐  ┌───────────────────┐    │   │    │
-│  │  │  │ LocalDataSource│  │ RemoteDataSource   │    │   │    │
-│  │  │  │ (直连 OpenD)   │  │ (ClusterManager    │    │   │    │
-│  │  │  │               │  │  → slave HTTP)     │    │   │    │
-│  │  │  └──────┬───────┘  └────────┬──────────┘    │   │    │
-│  │  └─────────┼───────────────────┼───────────────┘   │    │
-│  └────────────┼───────────────────┼───────────────────┘    │
-│               │                   │                         │
-└───────────────┼───────────────────┼─────────────────────────┘
-                │                   │
-    ┌───────────┘                   └──────────┐
-    │ 模式A: local                             │ 模式B: remote
-    │ FUTU_HOST=<HK_VPS_IP>                    │ ClusterManager HTTP
-    │ 直连香港 VPS 的 OpenD                     │ → slave /collect/{action}
-    │ (跳过 slave HTTP 中转)                    │ → slave 本地 OpenD
-    ▼                                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│  香港 VPS (Slave-1)                                          │
-│                                                             │
-│  ┌──────────────┐     ┌──────────────────────────────┐     │
-│  │ Futu OpenD   │◄────│ slave_app (port 8001)         │     │
-│  │ (本地 11111)  │     │ COLLECTOR_FUTU=true           │     │
-│  └──────────────┘     └──────────────────────────────┘     │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
+Futu 是系统的核心实时行情数据源，通过 Futu OpenD 网关提供 Level 2 港美股行情。在通用数据源框架中，Futu 作为 `futu` 数据源注册到 `DataSourceRegistry`，支持 internal（直连 OpenD）和 external（HTTP 代理）两种运行模式。
 
-### 1.2 问题
+### 1.2 能力声明
 
-改造前，master 获取 Futu 数据的唯一路径是：
+| capability | 说明 | 是否支持订阅 |
+|:---|:---|:---:|
+| `quote` | 实时行情快照（价格、涨跌幅、成交量） | ✅ |
+| `history` | 历史 K 线（日/周/月/分钟级） | ❌ |
+| `fund_flow` | 主力资金净流入、经纪商买卖盘席位 | ❌ |
+| `option_chain` | 期权链及 OCC 合约代码 | ❌ |
+| `subscribe_quote` | 实时行情推送（长连接订阅） | ✅ |
 
-```
-Master → ClusterManager HTTP → slave /collect/{action} → slave 本地 OpenD
-```
+### 1.3 底层依赖
 
-这条链路存在两个问题：
-
-| 问题 | 影响 |
-|:---|:---|
-| **HTTP 中转开销** | 每次请求都要经过 HTTP 序列化/反序列化，增加延迟 |
-| **单点依赖 slave** | slave 进程挂了 = 整个 Futu 数据断供，即使 OpenD 本身正常运行 |
-
-### 1.3 目标
-
-| 目标 | 指标 |
-|:---|:---|
-| **直连能力** | master 可配置 `FUTU_HOST` 直连香港 VPS 的 OpenD，跳过 slave HTTP 中转 |
-| **模式可切换** | 支持 `local` / `remote` / `auto` 三种模式，运行时热切换 |
-| **向后兼容** | 默认 `auto` 模式，行为等同于改造前 |
-| **零侵入** | 上层调用方 (routers / tools / workers) 接口签名不变 |
+- **Futu OpenD 进程**：独立的 TCP 服务，监听 `127.0.0.1:11111`
+- **连接管理**：`ConnectionManager` 负责 TCP 连接建立、心跳、断线重连
+- **systemd 服务**：OpenD 通过 `futu.service` 管理，支持自动重启
 
 ---
 
 ## 二、架构设计
 
-### 2.1 核心组件
+### 2.1 在通用框架中的位置
+
+```
+DataSourceRegistry
+├── futu (本文档)
+│   ├── internal 模式 → FutuInternalDataSource (直连 OpenD)
+│   └── external 模式 → FutuExternalDataSource (HTTP → 远程节点)
+├── yfinance → ...
+├── akshare → ...
+└── finnhub → ...
+```
+
+### 2.2 核心组件
 
 | 组件 | 文件 | 职责 |
 |:---|:---|:---|
-| `FutuDataSource` Protocol | `services/futu/data_source.py` | 数据源统一接口定义 |
-| `LocalDataSource` | 同上 | 直连 OpenD，委托 ConnectionManager + Handler |
-| `RemoteDataSource` | 同上 | 通过 ClusterManager HTTP 代理调用 slave |
-| `FutuSourceRouter` | `services/futu/source_router.py` | 编排 local/remote 的优先级与降级 |
-| `ConnectionManager` | `services/futu/connection_manager.py` | OpenD 连接管理 + `switch_host()` |
-| `FutuService` | `services/futu/service.py` | 对外统一接口，`_route()` 委托给 SourceRouter |
+| `DataSourceInterface` Protocol | `docs/14` §二 | 通用数据源接口定义 |
+| `FutuInternalDataSource` | `services/futu/data_source.py` | internal 模式实现，直连 OpenD |
+| `FutuExternalDataSource` | (待实现) | external 模式实现，HTTP 调用远程节点 |
+| `ConnectionManager` | `services/futu/connection_manager.py` | OpenD TCP 连接管理 + `switch_host()` |
+| `FutuService` | `services/futu/service.py` | 对外统一接口，委托 Registry |
 | Futu Admin API | `routers/futu_admin.py` | 运行时切换模式/连接目标的 HTTP 端点 |
 
-### 2.2 数据源 Protocol
+### 2.3 调用链路
 
-```python
-class FutuDataSource(Protocol):
-    @property
-    def is_available(self) -> bool: ...
-
-    @property
-    def source_type(self) -> str: ...  # 'local' | 'remote'
-
-    async def fetch(self, action: str, params: dict) -> Optional[dict]: ...
-
-    def status(self) -> dict: ...
 ```
-
-使用 Python Protocol (structural typing) 而非 ABC，避免强制继承。
-
-### 2.3 路由模式
-
-| 模式 | 行为 | 适用场景 |
-|:---|:---|:---|
-| `local` | 仅走本地直连 OpenD | master 已配置 `FUTU_HOST` 指向远程 OpenD |
-| `remote` | 仅走 ClusterManager → slave HTTP | slave 有 OpenD 但 master 无法直连 |
-| `auto` (默认) | 本地优先 → 本地失败降级到 remote | 通用场景，向后兼容 |
+上层调用 (routers / tools / workers)
+    │
+    ▼
+FutuService.get_quote(ticker)
+    │
+    ▼
+DataSourceRegistry.get("futu", "quote")
+    │
+    ├── internal 模式
+    │   └── FutuInternalDataSource.fetch("quote", {"ticker": ticker})
+    │       └── ConnectionManager → Futu OpenD (TCP 11111)
+    │
+    ├── external 模式
+    │   └── FutuExternalDataSource.fetch("quote", {"ticker": ticker})
+    │       └── HTTP POST → 远程节点 /ds/futu/quote → 节点本地 OpenD
+    │
+    └── hybrid 模式
+        └── 先尝试 internal → 失败降级到 external
+```
 
 ---
 
-## 三、配置项
+## 三、运行模式
+
+### 3.1 模式定义（对齐通用框架）
+
+| 模式 | 标识 | 行为 | 适用场景 |
+|:---|:---|:---|:---|
+| **内部模式** | `internal` | 主 app 进程内直连 Futu OpenD（TCP） | OpenD 在同一 VPS 或可达网络 |
+| **外部模式** | `external` | 主 app 通过 HTTP 调用远程数据源节点，节点本地连接 OpenD | OpenD 在远程 VPS，主 app 无法直连 |
+| **混合模式** | `hybrid` | 优先 internal 直连，失败自动降级到 external 节点 | 高可用生产环境 |
+
+> **V1.0 术语映射**：`local` → `internal`，`remote` → `external`，`auto` → `hybrid`
+
+### 3.2 配置项
 
 | 环境变量 | 默认值 | 说明 |
 |:---|:---|:---|
-| `FUTU_SOURCE_MODE` | `auto` | 数据源模式: `local` / `remote` / `auto` |
-| `FUTU_HOST` | `127.0.0.1` | OpenD 主机地址 (local 模式下使用) |
+| `DATASOURCE_FUTU_ENABLED` | `true` | 是否启用 Futu 数据源 |
+| `DATASOURCE_FUTU_MODE` | `internal` | 运行模式: `internal` / `external` / `hybrid` |
+| `DATASOURCE_FUTU_NODES` | — | external/hybrid 模式的远程节点地址（逗号分隔） |
+| `FUTU_HOST` | `127.0.0.1` | OpenD 主机地址 (internal 模式) |
 | `FUTU_PORT` | `11111` | OpenD 端口 |
-| `COLLECTOR_FUTU` | `false` | 是否启用 Futu 采集器 |
+| `COLLECTOR_FUTU` | `false` | 是否启用 Futu 采集器（后台定时任务） |
 
-### 3.1 典型配置
+### 3.3 典型配置
 
-**Master 直连香港 VPS (推荐)**:
+**主 app 与 OpenD 在同一 VPS (推荐)**:
 ```bash
-# master .env
-FUTU_SOURCE_MODE=local
-FUTU_HOST=<香港VPS公网IP>
+DATASOURCE_FUTU_MODE=internal
+FUTU_HOST=127.0.0.1
 FUTU_PORT=11111
-COLLECTOR_FUTU=true
 ```
 
-**Master 通过 slave 代理**:
+**主 app 与 OpenD 在不同 VPS (external 模式)**:
 ```bash
-# master .env
-FUTU_SOURCE_MODE=remote
-SLAVE_NODES=http://<香港VPS_IP>:8001
+DATASOURCE_FUTU_MODE=external
+DATASOURCE_FUTU_NODES=http://<OpenD_VPS_IP>:8000
 ```
 
-**自动降级 (默认)**:
+**高可用混合模式**:
 ```bash
-# master .env
-FUTU_SOURCE_MODE=auto
-FUTU_HOST=<香港VPS公网IP>    # 尝试直连
-FUTU_PORT=11111
-SLAVE_NODES=http://<香港VPS_IP>:8001  # 直连失败时降级
+DATASOURCE_FUTU_MODE=hybrid
+FUTU_HOST=127.0.0.1              # 先尝试直连
+DATASOURCE_FUTU_NODES=http://<backup_VPS>:8000  # 直连失败降级
 ```
 
 ---
 
-## 四、运行时 API
+## 四、External 模式 HTTP 协议
 
-### 4.1 查询数据源状态
+当 Futu 以 external 模式运行时，远程数据源节点暴露以下 HTTP 接口：
+
+### 4.1 数据获取
+
+```
+POST /ds/futu/{action}
+Headers: X-DS-Sig, X-DS-Timestamp
+Body: { "params": { "ticker": "00700.HK" } }
+
+Response:
+{
+  "status": "success",
+  "data": { "price": 388.2, "change": +2.1, ... },
+  "source": "futu-node-hk-01",
+  "latency_ms": 12.5,
+  "cached": false
+}
+```
+
+支持的 `{action}`：`quote`, `history`, `fund_flow`, `option_chain`
+
+### 4.2 节点健康
+
+```
+GET /ds/futu/health
+
+Response:
+{
+  "healthy": true,
+  "mode": "internal",
+  "connected": true,
+  "uptime_seconds": 86400,
+  "stats": {
+    "total_requests": 15234,
+    "total_errors": 23,
+    "current_subscriptions": 50
+  }
+}
+```
+
+---
+
+## 五、运行时 API
+
+### 5.1 查询数据源状态
 
 ```
 GET /api/v1/futu/source
@@ -163,35 +184,29 @@ GET /api/v1/futu/source
 {
   "code": 0,
   "data": {
-    "mode": "auto",
-    "local": {
-      "type": "local",
+    "mode": "internal",
+    "available": true,
+    "instance": {
+      "type": "internal",
       "connected": true,
-      "host": "1.2.3.4",
+      "host": "127.0.0.1",
       "port": 11111,
-      "status": "CONNECTED",
-      "error_msg": ""
-    },
-    "remote": {
-      "type": "remote",
-      "available_nodes": 1,
-      "total_nodes": 1,
-      "nodes": [{"node_id": "slave-1", "host": "1.2.3.4", "status": "healthy"}]
+      "uptime_seconds": 86400
     }
   }
 }
 ```
 
-### 4.2 切换数据源模式
+### 5.2 切换运行模式
 
 ```
 PUT /api/v1/futu/source
 Content-Type: application/json
 
-{"mode": "local"}
+{"mode": "external", "nodes": ["http://hk-vps:8000"]}
 ```
 
-### 4.3 切换 OpenD 连接目标
+### 5.3 切换 OpenD 连接目标
 
 ```
 PUT /api/v1/futu/host
@@ -204,41 +219,79 @@ Content-Type: application/json
 
 ---
 
-## 五、与 ClusterManager 的协作
+## 六、OpenD 部署与运维
+
+### 6.1 systemd 管理
+
+Futu OpenD 通过 systemd 服务管理：
+
+```ini
+[Unit]
+Description=Futu OpenD Gateway
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/futu/opend -cfg /opt/futu/FutuOpenD.xml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### 6.2 Docker 容器访问 OpenD
+
+当主 app 运行在 Docker 容器中，通过 `extra_hosts` 映射访问宿主机的 OpenD：
+
+```yaml
+# docker-compose.yml
+services:
+  quant-agent:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      FUTU_HOST: host.docker.internal
+      FUTU_PORT: 11111
+```
+
+> **注意**：`host.docker.internal` 在 Linux 上需要显式配置 `host-gateway`，否则无法解析。
+
+### 6.3 网络拓扑
 
 ```
-FutuService._route()
+Docker 容器 (quant-agent)
     │
+    │ FUTU_HOST=host.docker.internal
+    │ FUTU_PORT=11111
     ▼
-FutuSourceRouter.route()
+宿主机 (VPS)
     │
-    ├── mode=local  → LocalDataSource.fetch()
-    │                   └── ConnectionManager → OpenD (FUTU_HOST:FUTU_PORT)
-    │
-    ├── mode=remote → RemoteDataSource.fetch()
-    │                   └── ClusterManager.call_collector("futu", ...)
-    │                       └── slave HTTP → slave 本地 OpenD
-    │
-    └── mode=auto   → 先 LocalDataSource
-                       ├── 成功 → 返回
-                       └── 失败 → RemoteDataSource (降级)
+    ├── Futu OpenD (127.0.0.1:11111)
+    │       ↑
+    │       │ TCP 连接
+    │       │
+    └── host.docker.internal → 宿主机网关 IP
 ```
-
-关键点:
-- `LocalDataSource` 和 `RemoteDataSource` 是**平行**的两个数据源实现
-- `FutuSourceRouter` 负责编排优先级，不涉及具体数据采集逻辑
-- `RemoteDataSource` 内部复用现有的 `ClusterManager.call_collector()` 带 failover
-- 防递归重入逻辑收口在 `RemoteDataSource._in_dispatch` 中
 
 ---
 
-## 六、文件清单
+## 七、文件清单
 
-| 文件 | 变更类型 | 说明 |
+| 文件 | 说明 |
+|:---|:---|
+| `backend/services/futu/data_source.py` | FutuDataSource Protocol + Internal 实现 |
+| `backend/services/futu/source_router.py` | 数据源路由器（internal/external 编排） |
+| `backend/services/futu/service.py` | 对外统一接口，`_route()` 委托 Registry |
+| `backend/services/futu/connection_manager.py` | OpenD TCP 连接管理 |
+| `backend/routers/futu_admin.py` | 运行时切换 API |
+| `backend/main.py` | 注册 futu_admin 路由 |
+
+---
+
+## 附录：变更记录
+
+| 日期 | 版本 | 变更内容 |
 |:---|:---|:---|
-| `backend/services/futu/data_source.py` | 新增 | Protocol + Local/Remote 实现 |
-| `backend/services/futu/source_router.py` | 新增 | 数据源路由器 |
-| `backend/services/futu/service.py` | 修改 | `_route()` 委托给 SourceRouter |
-| `backend/services/futu/connection_manager.py` | 修改 | 新增 `switch_host()` |
-| `backend/routers/futu_admin.py` | 新增 | 运行时切换 API |
-| `backend/main.py` | 修改 | 注册 futu_admin 路由 |
+| 2026-07-08 | V2.0 | 对齐通用数据源框架 V2.0：模式术语 local/remote/auto → internal/external/hybrid；统一 Result 返回结构；纳入 DataSourceRegistry 管理 |
+| 2026-07-06 | V1.0 | 初版：Futu 数据源 local/remote/auto 三种模式设计 |

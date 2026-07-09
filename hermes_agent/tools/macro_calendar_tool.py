@@ -31,10 +31,8 @@ class MacroCalendarTool(BaseTool):
 
         backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000")
         url = f"{backend_url}/macro/calendar"
-        try:
-            async with SecureAsyncClient(timeout=15.0) as client:
-                response = await client.get(url, params={"days_ahead": days_ahead}, timeout=15.0)
-                response.raise_for_status()
-                return response.json()
-        except Exception as e:
-            return {"status": "error", "message": f"请求后端接口失败: {str(e)}"}
+        # RL-14: 限流感知智能重试
+        async with SecureAsyncClient(timeout=15.0) as client:
+            return await self.rate_limit_aware_request(
+                client, "GET", url, params={"days_ahead": days_ahead}, timeout=15.0
+            )

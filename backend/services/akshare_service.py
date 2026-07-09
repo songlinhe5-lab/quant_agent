@@ -4,10 +4,16 @@ AKShare 数据源服务 — 港股通资金流向 (南向/北向)
 负责从东方财富/沪深港通获取跨市场资金净买卖数据。
 数据来源: akshare stock_hsgt_* 系列接口
 缓存策略: Redis 60s TTL，避免频繁请求触发限流
+
+运行模式 (环境变量 AKSHARE_MODE):
+  - direct: 直连 akshare 库获取数据 (默认，主服务本地模式)
+  - cache:  仅读取 Redis 缓存，不直连 akshare (加州主服务 + 北京 VPS 中继模式)
+            数据由北京 VPS 的 AKShareCollector 定时采集写入 Redis
 """
 
 import asyncio
 import json
+import os
 import random
 import time
 from contextlib import asynccontextmanager
@@ -16,8 +22,12 @@ from typing import Any, Dict
 
 from redis.exceptions import LockError
 
+from backend.core.logger import logger
 from backend.core.redis_client import redis_client
 from backend.core.retry_utils import with_global_retry
+
+# AKShare 运行模式: direct (直连 akshare) | cache (仅读 Redis 缓存)
+_AKSHARE_MODE = os.getenv("AKSHARE_MODE", "direct").lower()
 
 
 class AKShareService:
@@ -30,6 +40,9 @@ class AKShareService:
         self._circuit_breaker_until = 0.0  # 熔断器冷却结束的时间戳
         self._error_count = 0  # 连续错误计数器
         self._max_errors = 3  # 触发熔断的阈值
+        self._cache_mode = _AKSHARE_MODE == "cache"
+        if self._cache_mode:
+            logger.info("[AKShare] 运行模式: cache (仅读取 Redis 缓存，数据由北京 VPS 中继)")
 
     def get_health_status(self) -> Dict[str, Any]:
         """获取东方财富 (AKShare) 接口的熔断与健康状态"""
@@ -37,8 +50,10 @@ class AKShareService:
 
         now = time.time()
         is_open = now < self._circuit_breaker_until
+        mode_label = "cache (北京VPS中继)" if self._cache_mode else "direct (直连akshare)"
         return {
             "name": "AKShare (东方财富)",
+            "mode": mode_label,
             "status": "circuit_open" if is_open else ("warning" if self._error_count > 0 else "healthy"),  # noqa: E501
             "cooldown_remaining": max(0, int(self._circuit_breaker_until - now)) if is_open else 0,  # noqa: E501
             "message": "触发反爬限流熔断中"
@@ -88,6 +103,14 @@ class AKShareService:
         cached = await redis_client.get(cache_key)
         if cached:
             return json.loads(cached)
+
+        # DIST-07 方案A: cache 模式下不直连 akshare，数据由北京 VPS 中继写入 Redis
+        if self._cache_mode:
+            return {
+                "status": "no_data",
+                "message": "cache 模式: 南向资金缓存未命中，等待北京 VPS 采集器写入",
+                "data": None,
+            }
 
         try:
             import akshare as ak
@@ -180,6 +203,13 @@ class AKShareService:
         cached = await redis_client.get(cache_key)
         if cached:
             return json.loads(cached)
+
+        if self._cache_mode:
+            return {
+                "status": "no_data",
+                "message": "cache 模式: 北向资金缓存未命中，等待北京 VPS 采集器写入",
+                "data": None,
+            }
 
         try:
             import akshare as ak
@@ -277,6 +307,13 @@ class AKShareService:
         cached = await redis_client.get(cache_key)
         if cached:
             return json.loads(cached)
+
+        if self._cache_mode:
+            return {
+                "status": "no_data",
+                "message": f"cache 模式: {symbol} 持股明细缓存未命中",
+                "data": None,
+            }
 
         try:
             import akshare as ak
@@ -397,6 +434,13 @@ class AKShareService:
         cached = await redis_client.get(cache_key)
         if cached:
             return json.loads(cached)
+
+        if self._cache_mode:
+            return {
+                "status": "no_data",
+                "message": f"cache 模式: {ticker} 新闻缓存未命中",
+                "data": [],
+            }
 
         try:
             import re
@@ -524,6 +568,13 @@ class AKShareService:
         if cached:
             return json.loads(cached)
 
+        if self._cache_mode:
+            return {
+                "status": "no_data",
+                "message": f"cache 模式: {ticker} 行情缓存未命中",
+                "data": None,
+            }
+
         import re
 
         match = re.search(r"\d+", ticker)
@@ -599,6 +650,13 @@ class AKShareService:
         cached = await redis_client.get(cache_key)
         if cached:
             return json.loads(cached)
+
+        if self._cache_mode:
+            return {
+                "status": "no_data",
+                "message": f"cache 模式: {ticker} 历史K线缓存未命中",
+                "data": None,
+            }
 
         import re
 
@@ -691,6 +749,13 @@ class AKShareService:
             cached = await redis_client.get(cache_key)
             if cached:
                 return json.loads(cached)
+
+            if self._cache_mode:
+                return {
+                    "status": "no_data",
+                    "message": "cache 模式: 宏观日历缓存未命中，等待北京 VPS 采集器写入",
+                    "data": [],
+                }
 
         # 国内数据源使用北京时间 (东八区)
         tz_cn = timezone(timedelta(hours=8))

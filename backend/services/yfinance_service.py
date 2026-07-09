@@ -152,6 +152,36 @@ class YFinanceService:
 
         self._init_session()
 
+        # ── DIST-04: 路由器兼容外壳 ──
+        # YF_ROUTER_ENABLED=true 时，通过 YFinanceRouter 将请求代理到远程数据源节点，
+        # 上层调用方 (data_source_router / market router / collector) 零改动。
+        self._router_enabled: bool = os.getenv("YF_ROUTER_ENABLED", "false").lower() in (
+            "true",
+            "1",
+            "yes",
+        )
+        self._router = None  # 懒初始化 (需要 async 上下文)
+        self._router_init_lock = asyncio.Lock()
+
+    async def _ensure_router(self):
+        """懒初始化 YFinanceRouter (首次异步调用时触发)"""
+        if self._router is not None:
+            return
+        async with self._router_init_lock:
+            if self._router is not None:
+                return
+            from backend.core.redis_client import redis_client
+            from backend.core.service_registry import ServiceRegistry
+            from backend.core.yfinance_router import YFinanceRouter
+
+            registry = ServiceRegistry(redis_client)
+            hmac_secret = os.getenv("DATA_SOURCE_HMAC_SECRET", "")
+            self._router = YFinanceRouter(
+                service_registry=registry,
+                redis_client=redis_client,
+                hmac_secret=hmac_secret,
+            )
+
     def _evict_stale_cache(self):
         """内存安全防御：清理过期缓存，防止无界字典无限增长导致 OOM"""
         now = time.time()
@@ -200,17 +230,33 @@ class YFinanceService:
             self.session.close()
         if hasattr(self, "_executor") and self._executor:
             self._executor.shutdown(wait=False)
+        # DIST-04: 关闭路由器 HTTP 客户端
+        if self._router is not None:
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(self._router.close())
+                else:
+                    loop.run_until_complete(self._router.close())
+            except Exception:
+                pass
+            self._router = None
 
     def get_health_status(self) -> Dict[str, Any]:
         """获取当前雅虎财经接口的熔断与健康状态"""
         now = time.time()
         is_open = now < self._circuit_breaker_until
-        return {
+        status = {
             "name": "Yahoo Finance",
             "status": "circuit_open" if is_open else "healthy",
             "cooldown_remaining": max(0, int(self._circuit_breaker_until - now)) if is_open else 0,  # noqa: E501
             "message": "触发 429 限流熔断中" if is_open else "正常",
         }
+        # DIST-04: 标注路由器模式
+        if self._router_enabled:
+            status["router_mode"] = True
+            status["message"] = "路由器模式 (请求代理到远程数据源节点)"
+        return status
 
     async def fetch_yf_data(
         self, ticker: str, fetch_type: str, ttl: int, persist: bool = False, **kwargs
@@ -219,6 +265,28 @@ class YFinanceService:
             return False, None, "development_mock"
         if yf is None:
             return False, None, "环境缺失 yfinance 依赖"
+
+        # ── DIST-04: 路由器模式拦截 ──
+        if self._router_enabled:
+            await self._ensure_router()
+            cache_key_r = f"yf_{fetch_type}_{ticker}" + (
+                "_" + "_".join([f"{k}_{v}" for k, v in kwargs.items()]) if kwargs else ""
+            )
+            payload = {
+                "ticker": ticker,
+                "fetch_type": fetch_type,
+                "ttl": ttl,
+                "persist": persist,
+                **kwargs,
+            }
+            result = await self._router.call(
+                "yfinance",
+                payload,
+                cache_key=cache_key_r,
+            )
+            if result.get("status") == "success" and "data" in result:
+                return True, result["data"], ""
+            return False, None, result.get("message", "路由器: 数据获取失败")
 
         yf_ticker = format_yf_ticker(ticker)
 
@@ -365,6 +433,20 @@ class YFinanceService:
         💡 革命性优化：基于微批处理 (Micro-batching) 的异步数据加载器。
         支持动态混入 "quote" (实时行情) 和 "tech" (技术指标) 类型的合并请求。
         """
+        # ── DIST-04: 路由器模式拦截 ──
+        if self._router_enabled:
+            await self._ensure_router()
+            payload = {"ticker": ticker, "req_type": req_type, **kwargs}
+            cache_key_r = f"batch:{ticker}:{req_type}"
+            result = await self._router.call(
+                "batch_quote",
+                payload,
+                cache_key=cache_key_r,
+            )
+            if result.get("status") == "success":
+                return result
+            return {"status": "error", "message": result.get("message", "路由器: 批量行情获取失败")}
+
         yf_ticker = format_yf_ticker(ticker)
 
         # 💡 1. 检查全局熔断器
@@ -1055,6 +1137,14 @@ class YFinanceService:
 
     async def macro_data_daemon(self) -> None:
         """后台守护进程：定时批量拉取宏观指标，彻底解决 YFinance 429 封控"""
+        # ── DIST-04: 路由器模式下由远程数据源节点负责采集，本地不启动 daemon ──
+        if self._router_enabled:
+            from backend.core.logger import logger
+
+            logger.info("[YF Daemon] 路由器模式已启用，宏观数据采集由远程节点负责，本地 daemon 休眠中")
+            await asyncio.sleep(3600)
+            return
+
         from backend.core.redis_client import redis_client
 
         # 需要高频守护的全球宏观指标与大盘代码 (严格对齐数据中心面板的 12 大资产)

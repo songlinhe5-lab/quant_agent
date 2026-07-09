@@ -91,10 +91,44 @@ class ConnectionManager:
                 self.status = "CONNECTED"
                 self.error_msg = ""
                 print(f"✅ [ConnectionManager] 成功连接至全局 OpenD 行情网关 ({self._host}:{self._port})")  # noqa: E501
+
+                # 注册推送回调处理器（将 Futu 实时推送桥接到 Redis PubSub）
+                self._register_push_handlers()
             except Exception as e:
                 self.status = "ERROR"
                 self.error_msg = str(e)
                 print(f"❌ [ConnectionManager] 连接 OpenD 失败: {e}")
+
+    def _register_push_handlers(self):
+        """连接成功后注册所有推送回调处理器，并捕获主事件循环引用"""
+        if not self.quote_ctx:
+            return
+        try:
+            # 捕获当前事件循环，供推送回调跨线程桥接使用
+            import asyncio
+
+            from . import push_handler
+
+            try:
+                loop = asyncio.get_running_loop()
+                push_handler.set_main_loop(loop)
+            except RuntimeError:
+                logger.warning("[ConnectionManager] 无法获取事件循环，推送桥接将不可用")
+
+            # 检查是否启用推送模式（默认开启）
+            push_enabled = os.getenv("FUTU_PUSH_ENABLED", "true").lower() == "true"
+            if not push_enabled:
+                print("ℹ️ [ConnectionManager] 推送模式已禁用 (FUTU_PUSH_ENABLED=false)")
+                return
+
+            results = push_handler.register_all_handlers(self.quote_ctx)
+            success = sum(1 for v in results.values() if v)
+            if success > 0:
+                print(f"📡 [ConnectionManager] 推送模式已激活 ({success} 个处理器)")
+            else:
+                print("⚠️ [ConnectionManager] 无推送处理器注册成功，退化为拉取模式")
+        except Exception as e:
+            logger.warning(f"[ConnectionManager] 注册推送处理器异常: {e}")
 
     def close(self):
         """关闭所有连接"""

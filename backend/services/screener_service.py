@@ -1490,11 +1490,11 @@ class ScreenerService:
                                             any(x in ticker.upper() for x in ["HK", "SH", "SZ"]) or ticker.isdigit()
                                         )  # noqa: E501
                                         if is_asian:
-                                            from backend.services.akshare_service import (  # noqa: E501
-                                                akshare_service,
+                                            from backend.services.data_source_router import (  # noqa: E501
+                                                data_source_router,
                                             )
 
-                                            res = await akshare_service.get_company_news(ticker)  # noqa: E501
+                                            res = await data_source_router.fetch_akshare("news", ticker=ticker)  # noqa: E501
                                         else:
                                             from backend.services.finnhub_service import (  # noqa: E501
                                                 finnhub_service,
@@ -1766,9 +1766,9 @@ class ScreenerService:
             try:
                 is_asian = any(x in ticker.upper() for x in ["HK", "SH", "SZ"]) or ticker.isdigit()  # noqa: E501
                 if is_asian:
-                    from backend.services.akshare_service import akshare_service
+                    from backend.services.data_source_router import data_source_router
 
-                    res = await akshare_service.get_company_news(ticker)
+                    res = await data_source_router.fetch_akshare("news", ticker=ticker)
                 else:
                     from backend.services.finnhub_service import finnhub_service
 
