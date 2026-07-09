@@ -31,6 +31,7 @@ def clean_registry():
 def client():
     """创建测试客户端（仅挂载目标路由）"""
     from fastapi import FastAPI
+
     from backend.routers.datasource import router as datasource_router
 
     app = FastAPI()
@@ -92,8 +93,6 @@ class TestRateLimitAnalysisEndpoint:
         """有数据时返回分析结果"""
         # 先记录一些请求
         analyzer = datasource_registry.get_analyzer("yfinance")
-        import time
-        now = time.time()
         for i in range(50):
             analyzer.record_success()
         for i in range(5):

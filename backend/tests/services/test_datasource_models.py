@@ -12,7 +12,7 @@ RL-01: ErrorInfo / RateLimitInfo / Result 模型单测
 """
 
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -23,11 +23,9 @@ from backend.services.datasource import (
     RateLimitInfo,
     RateLimitStatus,
     Result,
-    ResultStatus,
     classify_http_error,
     parse_retry_after,
 )
-
 
 # ─────────────────────────────────────────
 #  ErrorCategory 枚举

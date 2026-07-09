@@ -16,7 +16,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ─────────────────────────────────────────
 #  1. YFinanceWorker 初始化
 # ─────────────────────────────────────────
@@ -31,7 +30,7 @@ class TestYFinanceWorkerInit:
             mock_cls.return_value = MagicMock()
 
             from data_subservice.yfinance_worker import YFinanceWorker
-            worker = YFinanceWorker()
+            YFinanceWorker()
 
             assert os.environ["YF_ROUTER_ENABLED"] == "false"
             mock_cls.assert_called_once()
@@ -370,6 +369,7 @@ class TestMainIntegration:
              patch.object(mod, "DS_CAPABILITIES", ["yfinance"]):
 
             from fastapi.testclient import TestClient
+
             from data_subservice.main import app
             client = TestClient(app, raise_server_exceptions=False)
             resp = client.get("/health")
@@ -398,6 +398,7 @@ class TestMainIntegration:
              patch.object(mod, "DS_CAPABILITIES", ["yfinance"]):
 
             from fastapi.testclient import TestClient
+
             from data_subservice.main import app
             client = TestClient(app, raise_server_exceptions=False)
             resp = client.get("/ds/health")
@@ -431,6 +432,7 @@ class TestMainIntegration:
              patch.object(mod, "DS_CAPABILITIES", ["yfinance"]):
 
             from fastapi.testclient import TestClient
+
             from data_subservice.main import app
             client = TestClient(app, raise_server_exceptions=False)
             resp = client.get("/ds/health")

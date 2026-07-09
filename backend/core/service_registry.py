@@ -203,7 +203,6 @@ class ServiceRegistry:
             符合条件的活跃节点列表 (已排除 dead 节点)
         """
         all_nodes = await self.get_all_nodes()
-        now = time.time()
 
         result = []
         for node in all_nodes:

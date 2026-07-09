@@ -28,7 +28,6 @@ from typing import Any, Dict, List
 
 from backend.core.logger import logger
 
-
 # ─────────────────────────────────────────
 #  采集任务定义
 # ─────────────────────────────────────────
@@ -71,7 +70,7 @@ def _is_trading_hours() -> bool:
     判断当前是否为港股/A股交易时段 (北京时间 9:15-16:15)。
     简化判断：仅检查小时，不处理节假日。
     """
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta, timezone
 
     tz_cn = timezone(timedelta(hours=8))
     now = datetime.now(tz_cn)

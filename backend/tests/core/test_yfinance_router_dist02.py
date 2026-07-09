@@ -12,21 +12,18 @@ DIST-02: YFinanceRouter 客户端路由器单测
   - 0 节点场景
 """
 
-import asyncio
 import json
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from backend.core.service_registry import NodeInfo, NodeStatus
 from backend.core.yfinance_router import (
     _NODE_CACHE_TTL,
-    _STALE_CACHE_TTL,
     _STALE_KEY_PREFIX,
     YFinanceRouter,
 )
-
 
 # ─────────────────────────────────────────
 #  Helpers

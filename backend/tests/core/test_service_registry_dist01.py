@@ -17,21 +17,18 @@ DIST-01: ServiceRegistry 服务注册表单测
 import asyncio
 import json
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from backend.core.service_registry import (
-    DEFAULT_HEARTBEAT_TTL,
-    NodeInfo,
-    NodeStatus,
-    ServiceRegistry,
     _KEY_DRAINING,
     _KEY_HEARTBEATS,
     _KEY_NODES,
-    _KEY_STATS_PREFIX,
+    NodeInfo,
+    NodeStatus,
+    ServiceRegistry,
 )
-
 
 # ─────────────────────────────────────────
 #  Fixtures

@@ -12,16 +12,12 @@ RL-03: 熔断器与限流退避解耦 单测
 - 混合场景：限流 + 普通错误交替出现
 """
 
-import asyncio
-import time
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from backend.core.circuit_breaker import CircuitBreaker, CircuitState
-from backend.core.exceptions import CircuitBreakerOpenError
-from backend.services.datasource import ErrorCategory, ErrorInfo
-
+from backend.services.datasource import ErrorCategory
 
 # ─────────────────────────────────────────
 #  辅助工具
@@ -93,7 +89,8 @@ class TestErrorClassifier:
         assert cb.is_rate_limit_error(exc) is False
 
         # 通过 classifier 识别
-        classifier = lambda e: "custom" in str(e)
+        def classifier(e):
+            return "custom" in str(e)
         assert cb._should_skip_failure(exc, classifier) is True
 
     def test_classifier_returning_false_counts_normally(self):
@@ -101,7 +98,8 @@ class TestErrorClassifier:
         exc = RateLimitError()  # 默认是限流
 
         # classifier 强制返回 False → 计入失败
-        classifier = lambda e: False
+        def classifier(e):
+            return False
         assert cb._should_skip_failure(exc, classifier) is False
 
 
@@ -157,7 +155,9 @@ class TestAsyncCallRateLimitDecoupling:
 
         # 使用 classifier 将 PlainError 标记为限流
         func = AsyncMock(side_effect=PlainError("custom 429"))
-        classifier = lambda e: "429" in str(e)
+
+        def classifier(e):
+            return "429" in str(e)
 
         for _ in range(5):
             with pytest.raises(PlainError):
@@ -193,7 +193,8 @@ class TestSyncCallRateLimitDecoupling:
         def boom():
             raise PlainError("throttled")
 
-        classifier = lambda e: "throttled" in str(e)
+        def classifier(e):
+            return "throttled" in str(e)
 
         for _ in range(5):
             with pytest.raises(PlainError):

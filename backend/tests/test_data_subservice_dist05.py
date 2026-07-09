@@ -17,7 +17,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-
 # ─────────────────────────────────────────
 #  Mock 基础设施
 # ─────────────────────────────────────────
@@ -274,7 +273,7 @@ class TestStartupRegistration:
     async def test_startup_fails_without_node_id(self):
         """缺少 DS_NODE_ID 应抛出 RuntimeError"""
         with patch("data_subservice.main.DS_NODE_ID", ""):
-            from data_subservice.main import lifespan, app
+            from data_subservice.main import app, lifespan
             with pytest.raises(RuntimeError, match="DS_NODE_ID"):
                 async with lifespan(app):
                     pass
@@ -290,8 +289,8 @@ class TestHeartbeat:
     @pytest.mark.asyncio
     async def test_heartbeat_sends_metrics(self, env_vars, fake_redis):
         """心跳应附带 uptime_seconds 指标"""
-        from data_subservice.main import _heartbeat_loop, _start_time
         import data_subservice.main as mod
+        from data_subservice.main import _heartbeat_loop
 
         mock_registry = AsyncMock()
         mock_registry.heartbeat = AsyncMock(return_value=True)

@@ -10,7 +10,6 @@ DataSourceRegistry — 数据源全局注册表
 from __future__ import annotations
 
 import threading
-from typing import Optional
 
 from .analyzer import RateLimitAnalyzer
 from .throttler import RateLimitThrottler

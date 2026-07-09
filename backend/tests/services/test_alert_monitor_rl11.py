@@ -14,14 +14,12 @@ RL-11: 限流告警监控器单测
 """
 
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from backend.services.datasource.alert_monitor import (
-    RateLimitAlertEvent,
     RateLimitAlertMonitor,
-    rate_limit_alert_monitor,
 )
 
 
@@ -220,8 +218,8 @@ class TestMonitorStatus:
 class TestThrottlerIntegration:
     def test_throttler_calls_alert_monitor(self):
         """Throttler.on_rate_limit 自动调用告警监控器"""
-        from backend.services.datasource.throttler import RateLimitThrottler, BackoffStrategy
         from backend.services.datasource import ErrorInfo
+        from backend.services.datasource.throttler import BackoffStrategy, RateLimitThrottler
 
         throttler = RateLimitThrottler(
             source_name="test_source",

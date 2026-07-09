@@ -15,7 +15,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
 
-
 # ─────────────────────────────────────────
 #  错误分类体系 (ErrorCategory)
 # ─────────────────────────────────────────
@@ -411,19 +410,16 @@ def parse_retry_after(response_headers: Optional[dict]) -> Optional[float]:
 #  退避引擎 (RateLimitThrottler)
 # ─────────────────────────────────────────
 
-from .throttler import BackoffStrategy, RateLimitThrottler  # noqa: E402
-
 # ─────────────────────────────────────────
 #  频率分析器 (RateLimitAnalyzer)
 # ─────────────────────────────────────────
-
 from .analyzer import RateLimitAnalysis, RateLimitAnalyzer  # noqa: E402
 
 # ─────────────────────────────────────────
 #  全局注册表 (DataSourceRegistry)
 # ─────────────────────────────────────────
-
 from .registry import DataSourceRegistry, datasource_registry  # noqa: E402
+from .throttler import BackoffStrategy, RateLimitThrottler  # noqa: E402
 
 __all__ = [
     # 错误分类

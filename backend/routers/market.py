@@ -10,9 +10,6 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from backend.core.logger import logger
-
-# 引入核心市场引擎和工具实例
-from backend.services.market_engine import manager
 from backend.core.metrics import WS_MESSAGES_SENT
 from backend.core.redis_client import redis_client
 from backend.services.akshare_service import akshare_service
@@ -22,6 +19,9 @@ from backend.services.fred_service import fred_service
 from backend.services.futu.utils import format_ticker
 from backend.services.futu_service import futu_service
 from backend.services.kline_warehouse import kline_warehouse
+
+# 引入核心市场引擎和工具实例
+from backend.services.market_engine import manager
 from backend.services.ticker_service import ticker_service
 from backend.services.yfinance_service import format_yf_ticker as _to_yf_ticker
 from backend.services.yfinance_service import yf_service

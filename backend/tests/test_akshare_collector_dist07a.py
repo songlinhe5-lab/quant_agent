@@ -13,11 +13,9 @@ DIST-07 方案A: AKShare Redis 中继 — 单元测试
 
 import asyncio
 import json
-import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ─────────────────────────────────────────
 #  1. AKShareService cache 模式
@@ -176,7 +174,7 @@ class TestAKShareCollectorTasks:
 
     def test_task_handlers_complete(self):
         """所有任务应有对应的 handler"""
-        from backend.workers.akshare_collector import COLLECTOR_TASKS, _TASK_HANDLERS
+        from backend.workers.akshare_collector import _TASK_HANDLERS, COLLECTOR_TASKS
 
         for name in COLLECTOR_TASKS:
             assert name in _TASK_HANDLERS, f"任务 {name} 缺少 handler"
@@ -191,7 +189,7 @@ class TestIsTradingHours:
 
     def test_weekday_trading_hours_logic(self):
         """工作日交易时段 (北京时间 10:00) 应返回 True"""
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta, timezone
 
         tz_cn = timezone(timedelta(hours=8))
         mock_now = datetime(2026, 7, 8, 10, 0, 0, tzinfo=tz_cn)  # 周三 10:00
@@ -293,7 +291,7 @@ class TestCollectorRegistryIntegration:
         mock_task = MagicMock()
         mock_task.done.return_value = False
 
-        with patch("backend.workers.akshare_collector.akshare_collector_daemon", new_callable=AsyncMock) as mock_daemon, \
+        with patch("backend.workers.akshare_collector.akshare_collector_daemon", new_callable=AsyncMock), \
              patch("asyncio.create_task", return_value=mock_task) as mock_create:
             tasks = await start_collector_daemons(["akshare"])
 

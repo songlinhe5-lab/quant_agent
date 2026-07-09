@@ -11,12 +11,11 @@ RL-09/10: Prometheus 限流指标埋点单测
 - HealthInfo 包含 RateLimitStatus
 """
 
-import pytest
 
 from backend.core.metrics import (
     DS_BACKOFF_STATE,
-    DS_RATE_LIMIT_ESTIMATED_RPM,
     DS_RATE_LIMIT_EFFECTIVE_RPM,
+    DS_RATE_LIMIT_ESTIMATED_RPM,
     DS_RATE_LIMIT_THROTTLED_SECONDS,
     DS_RATE_LIMIT_TOTAL,
 )
@@ -26,11 +25,10 @@ from backend.services.datasource import (
     RateLimitStatus,
 )
 from backend.services.datasource.throttler import (
+    _BACKOFF_STATE_MAP,
     BackoffStrategy,
     RateLimitThrottler,
-    _BACKOFF_STATE_MAP,
 )
-
 
 # ─────────────────────────────────────────
 #  Prometheus 指标定义

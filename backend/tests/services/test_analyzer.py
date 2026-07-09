@@ -17,17 +17,12 @@ RL-05: RateLimitAnalyzer 频率分析器单测
 
 import threading
 import time
-from unittest.mock import patch
-
-import pytest
 
 from backend.services.datasource import RateLimitAnalysis, RateLimitAnalyzer
 from backend.services.datasource.analyzer import (
     HourlyBucket,
     _RequestEvent,
-    _PEAK_HOUR_RATIO_THRESHOLD,
 )
-
 
 # ─────────────────────────────────────────
 #  HourlyBucket
@@ -212,7 +207,6 @@ class TestEstimateLimitRPM:
 class TestRecommendedInterval:
     def test_recommended_interval_calculation(self):
         """推荐间隔 = 60 / (RPM * 0.8)"""
-        analyzer = RateLimitAnalyzer("test")
         # 直接测试静态方法
         interval = RateLimitAnalyzer._calculate_recommended_interval(30)
         # 60 / (30 * 0.8) = 60 / 24 = 2.5

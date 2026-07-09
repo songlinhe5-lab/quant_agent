@@ -16,15 +16,11 @@ import threading
 import time
 from unittest.mock import patch
 
-import pytest
-
 from backend.services.datasource import (
     ErrorInfo,
-    RateLimitInfo,
     RateLimitStatus,
 )
 from backend.services.datasource.throttler import BackoffStrategy, RateLimitThrottler
-
 
 # ─────────────────────────────────────────
 #  BackoffStrategy 枚举

@@ -168,9 +168,9 @@ class YFinanceService:
         async with self._router_init_lock:
             if self._router is not None:
                 return
+            from backend.core.redis_client import redis_client
             from backend.core.service_registry import ServiceRegistry
             from backend.core.yfinance_router import YFinanceRouter
-            from backend.core.redis_client import redis_client
 
             registry = ServiceRegistry(redis_client)
             hmac_secret = os.getenv("DATA_SOURCE_HMAC_SECRET", "")

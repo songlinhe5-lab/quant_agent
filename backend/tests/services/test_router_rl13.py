@@ -11,8 +11,7 @@ RL-13: Registry 路由感知限流状态单测
 """
 
 import asyncio
-import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 

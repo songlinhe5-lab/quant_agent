@@ -20,11 +20,10 @@ DIST-04: YFinanceService 兼容外壳改造 — 单元测试
 
 import asyncio
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ─────────────────────────────────────────
 #  Mock 基础设施
@@ -112,7 +111,7 @@ class TestEnsureRouter:
         svc = make_service(router_enabled=True)
         mock_router = MagicMock()
 
-        with patch("backend.core.service_registry.ServiceRegistry") as mock_registry_cls, \
+        with patch("backend.core.service_registry.ServiceRegistry"), \
              patch("backend.core.yfinance_router.YFinanceRouter", return_value=mock_router) as mock_router_cls, \
              patch("backend.core.redis_client.redis_client", MagicMock()):
 
@@ -129,7 +128,7 @@ class TestEnsureRouter:
         """_ensure_router 应传递 DATA_SOURCE_HMAC_SECRET"""
         svc = make_service(router_enabled=True)
 
-        with patch("backend.core.service_registry.ServiceRegistry") as mock_registry_cls, \
+        with patch("backend.core.service_registry.ServiceRegistry"), \
              patch("backend.core.yfinance_router.YFinanceRouter") as mock_router_cls, \
              patch("backend.core.redis_client.redis_client", MagicMock()), \
              patch.dict(os.environ, {"DATA_SOURCE_HMAC_SECRET": "test-secret"}):

@@ -192,9 +192,9 @@ class PipelineBenchmark:
         latencies = []
 
         try:
-            from backend.services.market_engine import update_quote_to_redis
             from backend.core.redis_client import redis_client
             from backend.services.futu import futu_service
+            from backend.services.market_engine import update_quote_to_redis
 
             for symbol in self.symbols[:1]:  # 只测第一个标的
                 for _ in range(self.iterations):

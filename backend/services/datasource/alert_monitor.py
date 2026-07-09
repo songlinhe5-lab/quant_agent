@@ -192,7 +192,6 @@ class RateLimitAlertMonitor:
 
     def get_status(self) -> dict:
         """获取监控器当前状态（用于调试/可观测性）"""
-        now = time.time()
         active_spike_sources = [
             source for source, timestamps in self._rate_counts.items()
             if len(timestamps) > self.SPIKE_THRESHOLD

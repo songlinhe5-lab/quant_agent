@@ -29,8 +29,6 @@ from backend.core.logger import logger
 from backend.services.datasource import (
     ErrorCategory,
     ErrorInfo,
-    Result,
-    ResultStatus,
     classify_http_error,
     datasource_registry,
     parse_retry_after,
@@ -111,7 +109,7 @@ class DataSourceRouter:
     async def _send_request(
         self, node: DataSourceNode, endpoint: str, payload: dict
     ) -> Dict[str, Any]:
-        
+
         self._ensure_http_client()
         url = f"{node.url}/api/v1/data-source/proxy/{endpoint}"
         headers = {"Content-Type": "application/json"}
@@ -121,7 +119,7 @@ class DataSourceRouter:
             signature = self._sign_request(payload, timestamp)
             headers["X-Data-Source-Signature"] = signature
             headers["X-Data-Source-Timestamp"] = timestamp
-            
+
         if self._http_client is None:
             return {}
 
@@ -132,11 +130,11 @@ class DataSourceRouter:
         except httpx.HTTPStatusError as e:
             status_code = e.response.status_code
             resp_headers = dict(e.response.headers)
-            
+
             # 根据 HTTP 状态码推断错误分类
             category = classify_http_error(status_code, resp_headers)
             retry_after = parse_retry_after(resp_headers)
-            
+
             # 构建错误信息，填充 category
             error_info = self._build_error_info_from_http(
                 status_code=status_code,
@@ -145,12 +143,12 @@ class DataSourceRouter:
                 response_headers=resp_headers,
                 message=str(e),
             )
-            
+
             logger.error(
                 f"[Router] 请求错误: node={node.name}, endpoint={endpoint}, "
                 f"status={status_code}, category={category.value}, error={str(e)}"
             )
-            
+
             # 将错误分类信息附加到返回值中，供上层使用
             return {
                 "status": "error",
@@ -171,8 +169,7 @@ class DataSourceRouter:
         message: str,
     ) -> ErrorInfo:
         """根据 HTTP 响应构建 ErrorInfo，正确填充 category"""
-        from backend.services.datasource import RateLimitInfo
-        
+
         if category == ErrorCategory.RATE_LIMIT:
             return ErrorInfo.rate_limited(
                 code=f"HTTP_{status_code}",

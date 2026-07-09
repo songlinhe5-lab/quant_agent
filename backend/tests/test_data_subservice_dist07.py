@@ -14,13 +14,11 @@ DIST-07: data_subservice HTTP 接口 — 单元测试
 
 import hashlib
 import json
-import os
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-
 
 # ─────────────────────────────────────────
 #  HMAC 签名辅助
@@ -78,8 +76,8 @@ def mock_redis():
 @pytest.fixture()
 def client_no_auth(mock_worker, mock_redis):
     """无 HMAC 密钥模式下的 TestClient (开发模式，签名验证跳过)"""
-    import data_subservice.routes as routes_mod
     import data_subservice.main as main_mod
+    import data_subservice.routes as routes_mod
 
     with patch.object(routes_mod, "_HMAC_SECRET", ""), \
          patch.object(main_mod, "_yf_worker", mock_worker), \
@@ -91,8 +89,8 @@ def client_no_auth(mock_worker, mock_redis):
 @pytest.fixture()
 def client_with_auth(mock_worker, mock_redis):
     """启用 HMAC 签名验证的 TestClient"""
-    import data_subservice.routes as routes_mod
     import data_subservice.main as main_mod
+    import data_subservice.routes as routes_mod
 
     with patch.object(routes_mod, "_HMAC_SECRET", _HMAC_SECRET), \
          patch.object(routes_mod, "_allowed_ip_set", set()), \

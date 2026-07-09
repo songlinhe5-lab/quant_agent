@@ -23,9 +23,9 @@ import threading
 import time
 from collections import deque
 from enum import Enum
-from typing import Any, Optional
+from typing import Optional
 
-from . import ErrorCategory, ErrorInfo, RateLimitInfo, RateLimitStatus
+from . import ErrorInfo, RateLimitStatus
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +45,11 @@ def _init_metrics():
         return
     try:
         from backend.core.metrics import (
-            DS_RATE_LIMIT_TOTAL,
-            DS_RATE_LIMIT_THROTTLED_SECONDS,
-            DS_RATE_LIMIT_ESTIMATED_RPM,
-            DS_RATE_LIMIT_EFFECTIVE_RPM,
             DS_BACKOFF_STATE,
+            DS_RATE_LIMIT_EFFECTIVE_RPM,
+            DS_RATE_LIMIT_ESTIMATED_RPM,
+            DS_RATE_LIMIT_THROTTLED_SECONDS,
+            DS_RATE_LIMIT_TOTAL,
         )
         _DS_RATE_LIMIT_TOTAL = DS_RATE_LIMIT_TOTAL
         _DS_RATE_LIMIT_THROTTLED = DS_RATE_LIMIT_THROTTLED_SECONDS
