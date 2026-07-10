@@ -125,7 +125,9 @@ class QuoteHandler:
         cache_key = f"futu_history_{market_ticker}_{ktype}"
         now = time.time()
         cached = self.cache_mgr.get_history_cache(cache_key)
-        if cached and now - cached[0] < 60.0:
+        # 💡 日线及以上周期使用更长缓存TTL（1小时），分时线使用短缓存（60秒）
+        cache_ttl = 3600.0 if ktype.upper() in ["K_DAY", "K_1D", "K_WEEK", "K_1W", "K_MON", "K_1M"] else 60.0  # noqa: E501
+        if cached and now - cached[0] < cache_ttl:
             data = cached[1]
             # 如果缓存的数据量足够，直接切片返回
             if data.get("status") == "success" and "data" in data:
