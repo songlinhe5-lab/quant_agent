@@ -105,9 +105,10 @@ class TestTickerService:
         with (
             patch("backend.services.ticker_service.asyncio.to_thread", new=AsyncMock()) as mock_thread,
             patch("backend.services.ticker_service.asyncio.sleep", new=fake_sleep),
-            patch("backend.services.futu.futu_service.status", "DISCONNECTED"),
+            patch("backend.services.ticker_service.futu_service") as mock_futu,
         ):
             mock_thread.return_value = []
+            mock_futu.status = "CONNECTED"  # 💡 模拟 Futu 已连接，跳过等待
             try:
                 await service.sync_tickers_daemon()
             except asyncio.CancelledError:
