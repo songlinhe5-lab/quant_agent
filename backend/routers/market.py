@@ -193,8 +193,28 @@ async def quotes_websocket(websocket: WebSocket):
 
 @router.get("/futu/status")
 async def get_futu_status():
-    """供前端面板感知底层 OpenD 核心连接状态"""
-    return {"status": futu_service.status, "error": futu_service.error_msg}
+    """供前端面板感知底层 OpenD 核心连接状态
+    💡 实时探测 OpenD 端口，而非仅依赖内存中的状态标记
+    """
+    # 💡 实时探测 OpenD 是否可连接（2秒超时）
+    is_reachable = futu_service.conn_mgr._is_opend_reachable(timeout=2.0)
+    
+    # 💡 如果探测失败但状态仍显示 CONNECTED，说明连接已断开，需要更新状态
+    if not is_reachable and futu_service.status == "CONNECTED":
+        futu_service.status = "DISCONNECTED"
+        futu_service.error_msg = "OpenD 连接已断开"
+        print("⚠️ [Market API] OpenD 实时探测失败，状态已更新为 DISCONNECTED")
+    
+    # 💡 如果探测成功但状态显示 DISCONNECTED/ERROR，尝试重新连接
+    if is_reachable and futu_service.status != "CONNECTED":
+        print("ℹ️ [Market API] OpenD 实时探测成功，尝试重新连接...")
+        futu_service.connect()
+    
+    return {
+        "status": futu_service.status, 
+        "error": futu_service.error_msg,
+        "reachable": is_reachable,  # 💡 新增：实际探测结果
+    }
 
 
 @router.get("/health/services")
@@ -204,15 +224,27 @@ async def get_services_health():
 
     health_data = []
 
-    # 1. Futu OpenD
-    f_status = "healthy" if getattr(futu_service, "status", "") == "CONNECTED" else "disconnected"  # noqa: E501
-    f_msg = getattr(futu_service, "error_msg", "")
+    # 1. Futu OpenD - 💡 实时探测而非仅依赖内存状态
+    is_opend_reachable = futu_service.conn_mgr._is_opend_reachable(timeout=2.0)
+    f_status = "healthy" if is_opend_reachable else "disconnected"
+    f_msg = futu_service.error_msg if not is_opend_reachable else "已连接"
+    
+    # 💡 同步更新内存状态
+    if not is_opend_reachable and futu_service.status == "CONNECTED":
+        futu_service.status = "DISCONNECTED"
+        futu_service.error_msg = "OpenD 连接已断开"
+    if is_opend_reachable and futu_service.status != "CONNECTED":
+        futu_service.connect()
+        f_status = "healthy" if futu_service.status == "CONNECTED" else "disconnected"
+        f_msg = "已连接" if futu_service.status == "CONNECTED" else futu_service.error_msg
+    
     health_data.append(
         {
             "name": "Futu OpenD",
             "status": f_status,
             "cooldown_remaining": 0,
-            "message": f_msg if f_msg else ("已连接" if f_status == "healthy" else "未连接"),
+            "message": f_msg,
+            "reachable": is_opend_reachable,  # 💡 实际探测结果
         }
     )
 
