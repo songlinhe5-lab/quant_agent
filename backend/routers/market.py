@@ -713,6 +713,89 @@ async def get_company_news(ticker: str, limit: int = 10):
         }  # noqa: E501
 
 
+@router.get("/events/{ticker}")
+async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 30):
+    """💡 获取个股相关事件（财报、分红、重大新闻）用于 K 线图事件标记
+    
+    返回格式:
+    [
+        {"date": "2024-01-15", "type": "earnings", "label": "Q4 财报", "impact": "high"},
+        {"date": "2024-01-20", "type": "dividend", "label": "除权除息", "impact": "medium"},
+        {"date": "2024-01-25", "type": "news", "label": "重大新闻标题...", "impact": "low"}
+    ]
+    """
+    from datetime import datetime, timedelta, timezone
+    
+    # 💡 净化输入
+    safe_ticker = re.sub(r"[^A-Za-z0-9_.-]", "", str(ticker))[:20].upper()
+    if not safe_ticker:
+        return {"status": "error", "message": "非法的股票代码参数"}
+    
+    events = []
+    today = datetime.now(timezone.utc)
+    
+    # 1. 获取财报日历事件
+    try:
+        yf_ticker = _to_yf_ticker(safe_ticker)
+        # 💡 从 Finnhub 获取财报日历
+        res = await finnhub_service.get_earnings_calendar(
+            days_ahead=days_ahead, 
+            days_back=days_back
+        )
+        if res.get("status") == "success":
+            earnings_list = res.get("data", [])
+            for item in earnings_list:
+                if item.get("symbol") == yf_ticker or item.get("symbol") == safe_ticker:
+                    events.append({
+                        "date": item.get("date"),
+                        "type": "earnings",
+                        "label": f"Q{item.get('quarter', '?')} 财报",
+                        "impact": "high",
+                        "data": {
+                            "epsEstimate": item.get("epsEstimate"),
+                            "epsActual": item.get("epsActual"),
+                        }
+                    })
+    except Exception as e:
+        print(f"⚠️ [Events] 获取 {safe_ticker} 财报日历失败: {e}")
+    
+    # 2. 获取个股新闻（作为重大事件）
+    try:
+        news_res = await finnhub_service.get_company_news(safe_ticker, days_back=days_back)
+        if news_res.get("status") == "success":
+            news_list = news_res.get("data", [])
+            # 💡 只取影响较大的新闻（根据关键词判断）
+            high_impact_keywords = ["earnings", "revenue", "profit", "loss", "dividend", "split", 
+                                    "acquisition", "merger", "lawsuit", "sec", "fda", "approval"]
+            for item in news_list[:5]:  # 最多取 5 条
+                headline = item.get("headline", "")
+                # 💡 判断是否为高影响新闻
+                is_high_impact = any(kw in headline.lower() for kw in high_impact_keywords)
+                dt = datetime.fromtimestamp(item.get("datetime", 0), tz=timezone.utc)
+                events.append({
+                    "date": dt.strftime("%Y-%m-%d"),
+                    "type": "news",
+                    "label": headline[:50] + "..." if len(headline) > 50 else headline,
+                    "impact": "high" if is_high_impact else "medium",
+                    "data": {
+                        "source": item.get("source"),
+                        "url": item.get("url"),
+                    }
+                })
+    except Exception as e:
+        print(f"⚠️ [Events] 获取 {safe_ticker} 新闻失败: {e}")
+    
+    # 💡 按日期排序
+    events.sort(key=lambda x: x.get("date", ""))
+    
+    return {
+        "status": "success",
+        "ticker": safe_ticker,
+        "count": len(events),
+        "data": events,
+    }
+
+
 @router.get("/fundamental/{ticker}")
 async def get_fundamental(ticker: str):
     yf_ticker = _to_yf_ticker(ticker)
