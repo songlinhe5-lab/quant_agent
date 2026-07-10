@@ -795,12 +795,16 @@ async def _fetch_macro_assets_data():
                             closes[-2] if len(closes) > 1 else (float(open_vals[-1]) if open_vals else last_close)
                         )  # noqa: E501
                         change_pct = ((last_close - prev_close) / prev_close) * 100 if prev_close else 0.0  # noqa: E501
+                        # 💡 获取数据更新时间
+                        updated_at = records[-1].get("Date") or records[-1].get("date")
                         return {
                             "symbol": symbol,
                             "name": name,
                             "value": round(last_close, 2),
                             "change": round(change_pct, 2),
                             "sparkline": closes,
+                            "data_source": "YFinance",
+                            "updated_at": str(updated_at) if updated_at else None,
                         }  # noqa: E501
         except Exception as e:
             print(f"⚠️ [Macro] 从 Redis 解析 {symbol} 失败: {e}")
@@ -810,6 +814,8 @@ async def _fetch_macro_assets_data():
             "value": 0.0,
             "change": 0.0,
             "sparkline": [0, 0],
+            "data_source": "N/A",
+            "updated_at": None,
         }  # noqa: E501
 
     tasks = [fetch_single_asset(cfg) for cfg in assets_config]

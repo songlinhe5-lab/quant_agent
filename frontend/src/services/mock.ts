@@ -145,6 +145,8 @@ export interface AssetTrendItem {
     dir: number
   }
   desc30d?: string
+  data_source?: string  // 💡 数据来源
+  updated_at?: string   // 💡 更新时间
 }
 
 export const MOCK_ASSET_TRENDS: AssetTrendItem[] = [
