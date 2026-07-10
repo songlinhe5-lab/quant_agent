@@ -165,13 +165,13 @@ class TestFundamentalDataTool:
         """网络错误应返回优雅错误而非崩溃"""
         from hermes_agent.tools.fundamental_data_tool import FundamentalDataTool
 
-        mock_client = AsyncMock()
-        mock_client.request = AsyncMock(side_effect=Exception("Connection refused"))
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client_class.return_value = mock_client
-
+        # Mock rate_limit_aware_request 直接返回错误，避免真实超时等待
         tool = FundamentalDataTool()
+        tool.rate_limit_aware_request = AsyncMock(return_value={
+            "status": "error",
+            "message": "请求后端接口失败 (重试 3 次): Connection refused"
+        })
+
         loop = asyncio.get_event_loop()
         result = loop.run_until_complete(tool.run(ticker="AAPL"))
 
