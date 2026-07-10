@@ -41,7 +41,16 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
 
       try {
         const sym = selectedSymbol.replace('/', '')
-        const ktypeMap: Record<string, string> = { '1m': 'K_1M', '5m': 'K_5M', '15m': 'K_15M', '1h': 'K_60M', '4h': 'K_60M', '1d': 'K_DAY', '1w': 'K_WEEK' }
+        const ktypeMap: Record<string, string> = { 
+          '1m': 'K_1M',    // 分时图
+          '5m': 'K_5M',    // 5日图
+          '15m': 'K_15M',  // 15分钟
+          '1h': 'K_60M',   // 1小时
+          '4h': 'K_60M',   // 4小时
+          '1d': 'K_DAY',   // 日K
+          '1w': 'K_WEEK',  // 周K
+          '1M': 'K_MONTH', // 月K (如果后端支持)
+        }
         const ktype = ktypeMap[selectedPeriod] || 'K_60M'
         
         const [statusRes, histRes] = await Promise.all([

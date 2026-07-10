@@ -8,7 +8,14 @@ import { MOCK_PRICE_EVENTS } from '@/services/mock'
 import { useIndicatorWorker } from '@/hooks/use-indicator-worker'
 import type { WatchlistItem } from '@/stores/use-watchlist'
 
-const periods = ['1m','5m','15m','1h','4h','1d','1w']
+// 💡 图表周期配置：分时图、5日图、日K图，后续可扩展周K/月K/季K/年K
+const periods = [
+  { id: '1m', label: '分时' },
+  { id: '5m', label: '5日' },
+  { id: '1d', label: '日K' },
+  { id: '1w', label: '周K' },
+  { id: '1M', label: '月K' },
+]
 
 class TrendLineRenderer {
   _p1: any; _p2: any; _color: string;
@@ -392,7 +399,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
           <button onClick={() => setShowKDJ(!showKDJ)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium flex items-center gap-1', showKDJ ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} title="KDJ (随机指标)"><span className={cn("h-1.5 w-1.5 rounded-full bg-[#f472b6]", !showKDJ && "opacity-50")} />KDJ</button>
         </div>
         <div className="flex items-center gap-0.5 bg-background border border-border/50 p-0.5 rounded-md shadow-sm" role="group" aria-label="K线周期">
-          {periods.map((p, idx) => (<button key={p} onClick={() => setSelectedPeriod(p)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium', selectedPeriod === p ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} aria-pressed={selectedPeriod === p} title={`切换至 ${p} 周期 (快捷键: ${idx + 1})`}>{p}</button>))}
+          {periods.map((p, idx) => (<button key={p.id} onClick={() => setSelectedPeriod(p.id)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium', selectedPeriod === p.id ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} aria-pressed={selectedPeriod === p.id} title={`切换至${p.label}周期 (快捷键: ${idx + 1})`}>{p.label}</button>))}
         </div>
         <Button variant={isDrawMode ? "default" : "outline"} size="sm" onClick={() => setIsDrawMode(!isDrawMode)} className={cn("h-7 px-2.5 gap-1.5 text-[10px]", isDrawMode ? "bg-primary text-primary-foreground shadow-sm shadow-primary/30" : "border-border/50 bg-background")} title={isDrawMode ? '取消画线 (点击两点连线)' : '自由画线 (趋势线)'}><Pencil className="h-3.5 w-3.5" /></Button>
         <Button variant="outline" size="sm" onClick={() => setShowEvents(!showEvents)} className="h-7 px-2.5 gap-1.5 text-[10px] border-border/50 bg-background" title={showEvents ? '隐藏事件' : '显示事件'}>{showEvents ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}</Button>
