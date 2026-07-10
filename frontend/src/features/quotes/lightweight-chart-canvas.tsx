@@ -211,6 +211,10 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     if (!chartContainerRef.current) return
     if (chartRef.current) chartRef.current.remove()
     
+    // 💡 日线及以上周期使用固定缩放值，确保长期趋势展示一致性
+    const isDailyOrAbove = ['1d', '1w', '1M'].includes(selectedPeriod)
+    const fixedBarSpacing = isDailyOrAbove ? 6 : 10  // 日线及以上使用更小的固定间距以展示更多数据
+    
     const chart = createChart(chartContainerRef.current, {
       layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: theme === 'dark' ? '#94a3b8' : '#64748b' },
       grid: { vertLines: { color: theme === 'dark' ? '#334155' : '#e2e8f0' }, horzLines: { color: theme === 'dark' ? '#334155' : '#e2e8f0' } },
@@ -223,9 +227,9 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
         fixLeftEdge: true,      // 固定左边界，不允许拖动超过数据起点
         fixRightEdge: true,     // 固定右边界，不允许拖动超过数据终点
         rightOffset: 0,         // 右侧偏移量，0表示紧贴右边界
-        barSpacing: 10,         // 默认K线间距
-        minBarSpacing: 0.5,     // 最小K线间距（放大时的极限）
-        maxBarSpacing: 40,      // 最大K线间距（缩小时的极限）
+        barSpacing: fixedBarSpacing,         // 日线及以上使用固定间距
+        minBarSpacing: isDailyOrAbove ? fixedBarSpacing : 0.5,     // 日线及以上禁止缩放
+        maxBarSpacing: isDailyOrAbove ? fixedBarSpacing : 40,      // 日线及以上禁止缩放
       },
     })
 
@@ -257,7 +261,10 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       requestAnimationFrame(() => {
         if (chartRef.current) {
           chartRef.current.applyOptions({ width: newRect.width, height: newRect.height })
-          if (dataLengthRef.current > 0) chartRef.current.timeScale().applyOptions({ minBarSpacing: Math.max(0.1, newRect.width / dataLengthRef.current) })
+          // 💡 日线及以上周期保持固定缩放值，不随窗口大小调整
+          if (dataLengthRef.current > 0 && !isDailyOrAbove) {
+            chartRef.current.timeScale().applyOptions({ minBarSpacing: Math.max(0.1, newRect.width / dataLengthRef.current) })
+          }
         }
       })
     }
@@ -383,7 +390,11 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       if (ma20Ref.current) ma20Ref.current.setData(ma20Data); if (ma50Ref.current) ma50Ref.current.setData(ma50Data); if (ma200Ref.current) ma200Ref.current.setData(ma200Data); if (bbUpperRef.current) bbUpperRef.current.setData(bbUpperData); if (bbLowerRef.current) bbLowerRef.current.setData(bbLowerData); if (volumeRef.current) volumeRef.current.setData(volumeData); if (macdDiffRef.current) macdDiffRef.current.setData(macdDiffData); if (macdDeaRef.current) macdDeaRef.current.setData(macdDeaData); if (macdHistRef.current) macdHistRef.current.setData(macdHistData); if (rsiLineRef.current) rsiLineRef.current.setData(rsiData); if (rsiHistRef.current) rsiHistRef.current.setData(rsiHistData); if (kdjKRef.current) kdjKRef.current.setData(kdjKData); if (kdjDRef.current) kdjDRef.current.setData(kdjDData); if (kdjJRef.current) kdjJRef.current.setData(kdjJData);
       if (!isFirstLoadFittedRef.current && chartRef.current && lwData.length > 0) { requestAnimationFrame(() => { chartRef.current?.timeScale().fitContent() }); isFirstLoadFittedRef.current = true; }
       dataLengthRef.current = lwData.length;
-      if (chartContainerRef.current && chartRef.current && lwData.length > 0) chartRef.current.timeScale().applyOptions({ minBarSpacing: Math.max(0.1, chartContainerRef.current.clientWidth / lwData.length) });
+      // 💡 日线及以上周期保持固定缩放值，不随数据长度调整
+      const isDailyOrAbove = ['1d', '1w', '1M'].includes(selectedPeriod);
+      if (chartContainerRef.current && chartRef.current && lwData.length > 0 && !isDailyOrAbove) {
+        chartRef.current.timeScale().applyOptions({ minBarSpacing: Math.max(0.1, chartContainerRef.current.clientWidth / lwData.length) });
+      }
       if (lwData.length > 0) {
         lastCandleRef.current = { ...lwData[lwData.length - 1] }
         if (currentPriceLineRef.current) currentPriceLineRef.current.applyOptions({ price: lwData[lwData.length - 1].close })
