@@ -63,8 +63,8 @@ def _fallback_mock_macro() -> dict:
     }
 
 
-async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = False) -> dict:  # noqa: E501
-    cache_key = f"macro_calendar_akshare_{days_ahead}"
+async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = False, days_back: int = 0) -> dict:  # noqa: E501
+    cache_key = f"macro_calendar_akshare_{days_ahead}_{days_back}"
     if not force_refresh:
         cached_data = await redis_client.get(cache_key)
         if cached_data:
@@ -82,10 +82,10 @@ async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = Fals
 
         today = datetime.now(timezone.utc)
         try:
-            res = await akshare_service.get_economic_calendar(days_ahead, skip_cache=force_refresh)  # noqa: E501
+            res = await akshare_service.get_economic_calendar(days_ahead, days_back=days_back, skip_cache=force_refresh)  # noqa: E501
             if res.get("status") == "error" or not res.get("data"):
                 print("⚠️ [Macro] 金十数据降级失败或为空，继续安全降级 (FRED)...")
-                res = await fred_service.get_economic_calendar(days_ahead, skip_cache=force_refresh)  # noqa: E501
+                res = await fred_service.get_economic_calendar(days_ahead, days_back=days_back, skip_cache=force_refresh)  # noqa: E501
                 if res.get("status") == "error" or not res.get("data"):
                     print("⚠️ [Macro] FRED 降级失败，使用离线 Mock 数据")
                     return _fallback_mock_macro()
@@ -312,11 +312,12 @@ async def _fetch_earnings_calendar_data(days_ahead: int, force_refresh: bool = F
 
 @router.get("/calendar")
 async def get_macro_calendar(
-    days_ahead: int = Query(7, ge=1, le=30, description="获取未来 N 天内的高影响宏观经济事件"),  # noqa: E501
+    days_ahead: int = Query(7, ge=0, le=30, description="获取未来 N 天内的高影响宏观经济事件"),  # noqa: E501
+    days_back: int = Query(0, ge=0, le=30, description="获取过去 N 天内已公布的宏观经济事件"),  # noqa: E501
 ):
-    """获取全球核心经济体的宏观日历数据"""
+    """获取全球核心经济体的宏观日历数据 (支持过去和未来)"""
     try:
-        result = await _fetch_macro_calendar_data(days_ahead=days_ahead)
+        result = await _fetch_macro_calendar_data(days_ahead=days_ahead, days_back=days_back)
         if result.get("status") == "error":
             raise HTTPException(status_code=500, detail=result.get("message"))
         return result
@@ -631,9 +632,10 @@ async def websocket_live_news(websocket: WebSocket):
 @router.get("/dashboard")
 async def get_data_center_dashboard(
     force_refresh: bool = Query(False, description="强制绕过缓存拉取最新数据"),
+    days_back: int = Query(3, ge=0, le=30, description="获取过去 N 天内已公布的宏观经济事件"),  # noqa: E501
 ):  # noqa: E501
     """聚合大盘看板所需的所有核心数据"""
-    cache_key = "macro_dashboard_aggregate"
+    cache_key = f"macro_dashboard_aggregate_{days_back}"
     try:
         if not force_refresh:
             cached = await redis_client.get(cache_key)
@@ -657,7 +659,7 @@ async def get_data_center_dashboard(
                 earnings_res,
             ) = await asyncio.gather(
                 get_macro_assets(force_refresh=force_refresh),
-                _fetch_macro_calendar_data(days_ahead=7, force_refresh=force_refresh),
+                _fetch_macro_calendar_data(days_ahead=7, days_back=days_back, force_refresh=force_refresh),
                 get_macro_news(category="general", limit=15),
                 _fetch_earnings_calendar_data(days_ahead=7, force_refresh=force_refresh),  # noqa: E501
                 return_exceptions=True,

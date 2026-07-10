@@ -739,12 +739,13 @@ class AKShareService:
         }
 
     @with_global_retry
-    async def get_economic_calendar(self, days_ahead: int = 7, skip_cache: bool = False) -> Dict[str, Any]:  # noqa: E501
+    async def get_economic_calendar(self, days_ahead: int = 7, days_back: int = 0, skip_cache: bool = False) -> Dict[str, Any]:  # noqa: E501
         """
         通过 百度股市通 / 新浪财经 / 金十数据 (Jin10) 三重接口聚合获取宏观经济日历。
         构建三级容灾架构，彻底解决单一接口被封控导致的无数据问题。
+        💡 支持 days_back 参数获取过去已公布的数据
         """
-        cache_key = f"akshare_jin10_calendar_{days_ahead}"
+        cache_key = f"akshare_jin10_calendar_{days_ahead}_{days_back}"
         if not skip_cache:
             cached = await redis_client.get(cache_key)
             if cached:
@@ -762,6 +763,11 @@ class AKShareService:
         today = datetime.now(tz_cn)
 
         dates_to_fetch = []
+        # 💡 先添加过去的日期 (从 days_back 天前到今天前一天)
+        for i in range(days_back, 0, -1):
+            dt = today - timedelta(days=i)
+            dates_to_fetch.append((dt.strftime("%Y-%m-%d"), dt.strftime("%Y%m%d")))
+        # 再添加今天和未来日期
         for i in range(days_ahead + 1):
             dt = today + timedelta(days=i)
             dates_to_fetch.append((dt.strftime("%Y-%m-%d"), dt.strftime("%Y%m%d")))

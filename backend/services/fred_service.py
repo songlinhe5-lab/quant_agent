@@ -139,13 +139,16 @@ class FREDService:
                 }  # noqa: E501
 
     @with_global_retry
-    async def get_economic_calendar(self, days_ahead: int = 7, skip_cache: bool = False) -> Dict[str, Any]:  # noqa: E501
-        """从 FRED 获取未来的宏观经济数据发布日历"""
+    async def get_economic_calendar(self, days_ahead: int = 7, days_back: int = 0, skip_cache: bool = False) -> Dict[str, Any]:  # noqa: E501
+        """从 FRED 获取未来的宏观经济数据发布日历
+        💡 支持 days_back 参数获取过去已公布的数据
+        """
         if not self.api_key:
             return {"status": "error", "message": "FRED API Key 未配置"}
 
         today = datetime.now(timezone.utc)
-        start_date = today.strftime("%Y-%m-%d")
+        # 💡 如果有 days_back，起始日期从过去开始
+        start_date = (today - timedelta(days=days_back)).strftime("%Y-%m-%d")
         end_date = (today + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
 
         cache_key = f"fred_calendar_{start_date}_{end_date}"
