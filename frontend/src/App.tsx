@@ -49,11 +49,8 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
 
           {/* 主应用布局（带认证保护） */}
-          {/* TODO: 修复 ProtectedRoute children prop 类型错误
-          <Route element={<ProtectedRoute children={<DashboardLayout />} />}>
-          */}
-          {/* 临时：不使用认证保护 */}
-          <Route element={<DashboardLayout />}>
+          <Route element={<ProtectedRoute />}>
+            <Route element={<DashboardLayout />}>
             <Route index element={<Navigate to="/data-center" replace />} />
             <Route path="/market/:ticker" element={<MarketTickerRedirect />} />
             <Route path="/data-center" element={<Suspense fallback={<LoadingFallback />}><DataCenterModule /></Suspense>} />
@@ -66,6 +63,7 @@ export default function App() {
             <Route path="/copilot" element={<Suspense fallback={<LoadingFallback />}><CopilotModule /></Suspense>} />
             <Route path="/apm" element={<Suspense fallback={<LoadingFallback />}><ApmModule /></Suspense>} />
             <Route path="/settings" element={<Suspense fallback={<LoadingFallback />}><SettingsPage /></Suspense>} />
+            </Route>
           </Route>
         </Routes>
 
