@@ -5,10 +5,18 @@ import { createChart, IChartApi, ISeriesApi, LineSeries } from 'lightweight-char
 
 export function HighFreqChartWrapper({ symbol }: { symbol: string }) {
   const chartContainerRef = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<IChartApi | null>(null)
   const lineSeriesRef = useRef<ISeriesApi<"Line"> | null>(null)
 
   useEffect(() => {
     if (!chartContainerRef.current) return
+
+    // 💡 计算全天交易时间范围（9:30 开盘 - 16:00 收盘）
+    const now = new Date()
+    const todayStart = new Date(now)
+    todayStart.setHours(9, 30, 0, 0)
+    const todayEnd = new Date(now)
+    todayEnd.setHours(16, 0, 0, 0)
 
     // 1. 初始化纯 Canvas 图表 (零 DOM 开销)
     const chart = createChart(chartContainerRef.current, {
@@ -18,16 +26,23 @@ export function HighFreqChartWrapper({ symbol }: { symbol: string }) {
         borderColor: '#475569',
         timeVisible: true,
         fixLeftEdge: true,
-        fixRightEdge: true,
-        rightOffset: 0,
+        fixRightEdge: false,  // 💡 不固定右边界，允许右侧空白展示未交易时间
+        rightOffset: 10,      // 💡 右侧留空
         barSpacing: 3,
         minBarSpacing: 3,
         maxBarSpacing: 3,
       },
     })
+    chartRef.current = chart
 
     const lineSeries = chart.addSeries(LineSeries, { color: '#10b981', lineWidth: 2 })
     lineSeriesRef.current = lineSeries
+
+    // 💡 设置可见范围为全天交易时间
+    chart.timeScale().setVisibleRange({
+      from: (todayStart.getTime() / 1000) as any,
+      to: (todayEnd.getTime() / 1000) as any,
+    })
 
     // 2. 监听底层 WebSocket Event Bus
     const handleTick = (e: Event) => {

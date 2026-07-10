@@ -236,8 +236,8 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
         borderColor: theme === 'dark' ? '#475569' : '#cbd5e1', 
         timeVisible: true, 
         fixLeftEdge: true,      // 固定左边界，不允许拖动超过数据起点
-        fixRightEdge: true,     // 固定右边界，不允许拖动超过数据终点
-        rightOffset: 0,         // 右侧偏移量，0表示紧贴右边界
+        fixRightEdge: !isIntraday,     // 分时线不固定右边界，允许右侧空白
+        rightOffset: isIntraday ? 10 : 0,         // 分时线右侧留空
         barSpacing: fixedBarSpacing,         // 分时/日K及以上使用固定间距
         minBarSpacing: minBarSpacing,        // 缩放下限
         maxBarSpacing: maxBarSpacing,        // 缩放上限
@@ -360,7 +360,15 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       if (oRef.current) oRef.current.textContent = '--'; if (hRef.current) hRef.current.textContent = '--'; if (lRef.current) lRef.current.textContent = '--'; if (cRef.current) cRef.current.textContent = '--'; if (vRef.current) vRef.current.textContent = '--'; lastCandleRef.current = null; return
     }
     
-    const sortedHistory = [...realHistory].sort((a, b) => new Date(a.time.replace(/-/g, '/')).getTime() - new Date(b.time.replace(/-/g, '/')).getTime())
+    const sortedHistoryAll = [...realHistory].sort((a, b) => new Date(a.time.replace(/-/g, '/')).getTime() - new Date(b.time.replace(/-/g, '/')).getTime())
+    // 💡 分时线只展示当日数据，左侧从开盘开始，右侧到收盘
+    const isIntradayPeriod = ['1m'].includes(selectedPeriod)
+    const sortedHistory = isIntradayPeriod ? (() => {
+      const now = new Date()
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      return sortedHistoryAll.filter(k => k.time.startsWith(todayStr))
+    })() : sortedHistoryAll
+    
     if (!workerRef.current) return
     const reqId = Date.now() + Math.random()
     
@@ -399,7 +407,31 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       }
       seriesRef.current?.setData(lwData); markersRef.current = markers;
       if (ma20Ref.current) ma20Ref.current.setData(ma20Data); if (ma50Ref.current) ma50Ref.current.setData(ma50Data); if (ma200Ref.current) ma200Ref.current.setData(ma200Data); if (bbUpperRef.current) bbUpperRef.current.setData(bbUpperData); if (bbLowerRef.current) bbLowerRef.current.setData(bbLowerData); if (volumeRef.current) volumeRef.current.setData(volumeData); if (macdDiffRef.current) macdDiffRef.current.setData(macdDiffData); if (macdDeaRef.current) macdDeaRef.current.setData(macdDeaData); if (macdHistRef.current) macdHistRef.current.setData(macdHistData); if (rsiLineRef.current) rsiLineRef.current.setData(rsiData); if (rsiHistRef.current) rsiHistRef.current.setData(rsiHistData); if (kdjKRef.current) kdjKRef.current.setData(kdjKData); if (kdjDRef.current) kdjDRef.current.setData(kdjDData); if (kdjJRef.current) kdjJRef.current.setData(kdjJData);
-      if (!isFirstLoadFittedRef.current && chartRef.current && lwData.length > 0) { requestAnimationFrame(() => { chartRef.current?.timeScale().fitContent() }); isFirstLoadFittedRef.current = true; }
+      if (!isFirstLoadFittedRef.current && chartRef.current && lwData.length > 0) { 
+        requestAnimationFrame(() => { 
+          if (chartRef.current) {
+            // 💡 分时线设置可见范围为全天交易时间
+            if (isIntradayPeriod && lwData.length > 0) {
+              // 获取数据的时间范围
+              const firstTime = lwData[0].time as number
+              const lastTime = lwData[lwData.length - 1].time as number
+              // 计算全天交易时间（假设 9:30 开盘，16:00 收盘）
+              const startDate = new Date(firstTime * 1000)
+              startDate.setHours(9, 30, 0, 0)
+              const endDate = new Date(lastTime * 1000)
+              endDate.setHours(16, 0, 0, 0)
+              // 设置可见范围
+              chartRef.current!.timeScale().setVisibleRange({
+                from: startDate.getTime() / 1000 as UTCTimestamp,
+                to: endDate.getTime() / 1000 as UTCTimestamp,
+              })
+            } else {
+              chartRef.current?.timeScale().fitContent() 
+            }
+          }
+        })
+        isFirstLoadFittedRef.current = true 
+      }
       dataLengthRef.current = lwData.length;
       // 💡 分时线/五日线保持固定缩放值，不随数据长度调整
       const isIntraday = ['1m', '5m'].includes(selectedPeriod);
