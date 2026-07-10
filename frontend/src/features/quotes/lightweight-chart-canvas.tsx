@@ -217,11 +217,14 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       return
     }
     
-    // 💡 分时线/五日线禁止缩放，日K及以上周期允许缩放
+    // 💡 分时线/五日线禁止缩放，日K及以上周期允许缩放（限制缩放范围）
     const isIntraday = ['1m', '5m'].includes(selectedPeriod)
     const disableZoom = isIntraday
     // 分时/5日使用较小间距以展示全天刻度，日K及以上使用默认间距
     const fixedBarSpacing = isIntraday ? 3 : 10
+    // 💡 日K及以上周期缩放范围限制：最小2（放大），最大20（缩小）
+    const minBarSpacing = disableZoom ? fixedBarSpacing : 2
+    const maxBarSpacing = disableZoom ? fixedBarSpacing : 20
     
     const chart = createChart(chartContainerRef.current, {
       layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: theme === 'dark' ? '#94a3b8' : '#64748b' },
@@ -236,8 +239,8 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
         fixRightEdge: true,     // 固定右边界，不允许拖动超过数据终点
         rightOffset: 0,         // 右侧偏移量，0表示紧贴右边界
         barSpacing: fixedBarSpacing,         // 分时/日K及以上使用固定间距
-        minBarSpacing: disableZoom ? fixedBarSpacing : 0.5,     // 禁止缩放
-        maxBarSpacing: disableZoom ? fixedBarSpacing : 40,      // 禁止缩放
+        minBarSpacing: minBarSpacing,        // 缩放下限
+        maxBarSpacing: maxBarSpacing,        // 缩放上限
       },
     })
 
