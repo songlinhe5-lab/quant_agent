@@ -179,6 +179,7 @@ def _make_order_book_handler():
 
                 async def _publish():
                     from backend.core.proto.market_pb2 import Order, QuoteData
+
                     redis = await _get_redis()
 
                     # 💡 关键修复：读取最新的报价数据，合并盘口深度后重新发布到主流

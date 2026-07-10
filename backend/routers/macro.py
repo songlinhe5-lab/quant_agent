@@ -85,7 +85,9 @@ async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = Fals
             res = await akshare_service.get_economic_calendar(days_ahead, days_back=days_back, skip_cache=force_refresh)  # noqa: E501
             if res.get("status") == "error" or not res.get("data"):
                 print("⚠️ [Macro] 金十数据降级失败或为空，继续安全降级 (FRED)...")
-                res = await fred_service.get_economic_calendar(days_ahead, days_back=days_back, skip_cache=force_refresh)  # noqa: E501
+                res = await fred_service.get_economic_calendar(
+                    days_ahead, days_back=days_back, skip_cache=force_refresh
+                )  # noqa: E501
                 if res.get("status") == "error" or not res.get("data"):
                     print("⚠️ [Macro] FRED 降级失败，使用离线 Mock 数据")
                     return _fallback_mock_macro()
@@ -261,22 +263,67 @@ async def _fetch_earnings_calendar_data(days_ahead: int, force_refresh: bool = F
 
             # 💡 添加中文名称映射
             ticker_name_map = {
-                "AAPL": "苹果", "MSFT": "微软", "GOOGL": "谷歌", "GOOG": "谷歌",
-                "AMZN": "亚马逊", "META": "Meta", "TSLA": "特斯拉", "NVDA": "英伟达",
-                "AMD": "AMD", "INTC": "英特尔", "NFLX": "奈飞", "DIS": "迪士尼",
-                "BA": "波音", "JPM": "摩根大通", "V": "Visa", "MA": "万事达",
-                "WMT": "沃尔玛", "COST": "好市多", "PYPL": "PayPal", "SQ": "Square",
-                "UBER": "优步", "LYFT": "Lyft", "ABNB": "爱彼迎", "BABA": "阿里巴巴",
-                "JD": "京东", "PDD": "拼多多", "BIDU": "百度", "NIO": "蔚来",
-                "XPEV": "小鹏", "LI": "理想", "TSM": "台积电", "ASML": "阿斯麦",
-                "AVGO": "博通", "QCOM": "高通", "TXN": "德州仪器", "MU": "美光",
-                "CRM": "Salesforce", "ADBE": "Adobe", "ORCL": "甲骨文", "IBM": "IBM",
-                "KO": "可口可乐", "PEP": "百事可乐", "MCD": "麦当劳", "SBUX": "星巴克",
-                "NKE": "耐克", "LULU": "lululemon", "TGT": "塔吉特", "HD": "家得宝",
-                "LLY": "礼来", "JNJ": "强生", "PFE": "辉瑞", "MRNA": "Moderna",
-                "XOM": "埃克森美孚", "CVX": "雪佛龙", "COP": "康菲石油",
-                "GS": "高盛", "MS": "摩根士丹利", "BLK": "贝莱德",
-                "BRK.B": "伯克希尔", "SPY": "标普500ETF", "QQQ": "纳指ETF",
+                "AAPL": "苹果",
+                "MSFT": "微软",
+                "GOOGL": "谷歌",
+                "GOOG": "谷歌",
+                "AMZN": "亚马逊",
+                "META": "Meta",
+                "TSLA": "特斯拉",
+                "NVDA": "英伟达",
+                "AMD": "AMD",
+                "INTC": "英特尔",
+                "NFLX": "奈飞",
+                "DIS": "迪士尼",
+                "BA": "波音",
+                "JPM": "摩根大通",
+                "V": "Visa",
+                "MA": "万事达",
+                "WMT": "沃尔玛",
+                "COST": "好市多",
+                "PYPL": "PayPal",
+                "SQ": "Square",
+                "UBER": "优步",
+                "LYFT": "Lyft",
+                "ABNB": "爱彼迎",
+                "BABA": "阿里巴巴",
+                "JD": "京东",
+                "PDD": "拼多多",
+                "BIDU": "百度",
+                "NIO": "蔚来",
+                "XPEV": "小鹏",
+                "LI": "理想",
+                "TSM": "台积电",
+                "ASML": "阿斯麦",
+                "AVGO": "博通",
+                "QCOM": "高通",
+                "TXN": "德州仪器",
+                "MU": "美光",
+                "CRM": "Salesforce",
+                "ADBE": "Adobe",
+                "ORCL": "甲骨文",
+                "IBM": "IBM",
+                "KO": "可口可乐",
+                "PEP": "百事可乐",
+                "MCD": "麦当劳",
+                "SBUX": "星巴克",
+                "NKE": "耐克",
+                "LULU": "lululemon",
+                "TGT": "塔吉特",
+                "HD": "家得宝",
+                "LLY": "礼来",
+                "JNJ": "强生",
+                "PFE": "辉瑞",
+                "MRNA": "Moderna",
+                "XOM": "埃克森美孚",
+                "CVX": "雪佛龙",
+                "COP": "康菲石油",
+                "GS": "高盛",
+                "MS": "摩根士丹利",
+                "BLK": "贝莱德",
+                "BRK.B": "伯克希尔",
+                "SPY": "标普500ETF",
+                "QQQ": "纳指ETF",
             }
             for item in earnings_list:
                 symbol = item.get("symbol", "")
@@ -464,12 +511,24 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
             return default_amt, 1 if default_amt >= 0 else -1, real_desc, unit, "N/A", None
 
         # 💡 使用核心 ETF 的主买主卖差额代表板块的整体真实资金流
-        csi_amount, csi_dir, csi_desc, csi_unit, csi_source, csi_updated = _parse_futu_flow(csi300_res, 8.7, "沪深300ETF主力净流", "亿人民币")  # noqa: E501
-        spy_amount, spy_dir, spy_desc, spy_unit, spy_source, spy_updated = _parse_futu_flow(spy_res, 2.1, "标普500ETF主力净流", "亿美元")  # noqa: E501
-        qqq_amount, qqq_dir, qqq_desc, qqq_unit, qqq_source, qqq_updated = _parse_futu_flow(qqq_res, 3.5, "纳指科技ETF主力净流", "亿美元")  # noqa: E501
-        soxx_amount, soxx_dir, soxx_desc, soxx_unit, soxx_source, soxx_updated = _parse_futu_flow(soxx_res, 1.5, "半导体ETF主力净流", "亿美元")  # noqa: E501
-        tlt_amount, tlt_dir, tlt_desc, tlt_unit, tlt_source, tlt_updated = _parse_futu_flow(tlt_res, -1.8, "20年期美债ETF主力净流", "亿美元")  # noqa: E501
-        kweb_amount, kweb_dir, kweb_desc, kweb_unit, kweb_source, kweb_updated = _parse_futu_flow(kweb_res, 1.2, "中概互联ETF主力净流", "亿美元")  # noqa: E501
+        csi_amount, csi_dir, csi_desc, csi_unit, csi_source, csi_updated = _parse_futu_flow(
+            csi300_res, 8.7, "沪深300ETF主力净流", "亿人民币"
+        )  # noqa: E501
+        spy_amount, spy_dir, spy_desc, spy_unit, spy_source, spy_updated = _parse_futu_flow(
+            spy_res, 2.1, "标普500ETF主力净流", "亿美元"
+        )  # noqa: E501
+        qqq_amount, qqq_dir, qqq_desc, qqq_unit, qqq_source, qqq_updated = _parse_futu_flow(
+            qqq_res, 3.5, "纳指科技ETF主力净流", "亿美元"
+        )  # noqa: E501
+        soxx_amount, soxx_dir, soxx_desc, soxx_unit, soxx_source, soxx_updated = _parse_futu_flow(
+            soxx_res, 1.5, "半导体ETF主力净流", "亿美元"
+        )  # noqa: E501
+        tlt_amount, tlt_dir, tlt_desc, tlt_unit, tlt_source, tlt_updated = _parse_futu_flow(
+            tlt_res, -1.8, "20年期美债ETF主力净流", "亿美元"
+        )  # noqa: E501
+        kweb_amount, kweb_dir, kweb_desc, kweb_unit, kweb_source, kweb_updated = _parse_futu_flow(
+            kweb_res, 1.2, "中概互联ETF主力净流", "亿美元"
+        )  # noqa: E501
 
         flows.extend(
             [

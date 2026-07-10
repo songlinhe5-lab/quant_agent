@@ -34,7 +34,9 @@ class FinnhubService:
                 return random.choice(proxies)
         return None
 
-    async def get_earnings_calendar(self, days_ahead: int = 7, days_back: int = 0, skip_cache: bool = False) -> Dict[str, Any]:  # noqa: E501
+    async def get_earnings_calendar(
+        self, days_ahead: int = 7, days_back: int = 0, skip_cache: bool = False
+    ) -> Dict[str, Any]:  # noqa: E501
         """获取近期财报日历
         💡 支持 days_back 参数获取过去已发布的财报
         """

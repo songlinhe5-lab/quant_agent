@@ -139,7 +139,9 @@ class FREDService:
                 }  # noqa: E501
 
     @with_global_retry
-    async def get_economic_calendar(self, days_ahead: int = 7, days_back: int = 0, skip_cache: bool = False) -> Dict[str, Any]:  # noqa: E501
+    async def get_economic_calendar(
+        self, days_ahead: int = 7, days_back: int = 0, skip_cache: bool = False
+    ) -> Dict[str, Any]:  # noqa: E501
         """从 FRED 获取未来的宏观经济数据发布日历
         💡 支持 days_back 参数获取过去已公布的数据
         """

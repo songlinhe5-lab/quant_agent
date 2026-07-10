@@ -737,24 +737,23 @@ async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 3
     try:
         yf_ticker = _to_yf_ticker(safe_ticker)
         # 💡 从 Finnhub 获取财报日历
-        res = await finnhub_service.get_earnings_calendar(
-            days_ahead=days_ahead,
-            days_back=days_back
-        )
+        res = await finnhub_service.get_earnings_calendar(days_ahead=days_ahead, days_back=days_back)
         if res.get("status") == "success":
             earnings_list = res.get("data", [])
             for item in earnings_list:
                 if item.get("symbol") == yf_ticker or item.get("symbol") == safe_ticker:
-                    events.append({
-                        "date": item.get("date"),
-                        "type": "earnings",
-                        "label": f"Q{item.get('quarter', '?')} 财报",
-                        "impact": "high",
-                        "data": {
-                            "epsEstimate": item.get("epsEstimate"),
-                            "epsActual": item.get("epsActual"),
+                    events.append(
+                        {
+                            "date": item.get("date"),
+                            "type": "earnings",
+                            "label": f"Q{item.get('quarter', '?')} 财报",
+                            "impact": "high",
+                            "data": {
+                                "epsEstimate": item.get("epsEstimate"),
+                                "epsActual": item.get("epsActual"),
+                            },
                         }
-                    })
+                    )
     except Exception as e:
         print(f"⚠️ [Events] 获取 {safe_ticker} 财报日历失败: {e}")
 
@@ -764,23 +763,37 @@ async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 3
         if news_res.get("status") == "success":
             news_list = news_res.get("data", [])
             # 💡 只取影响较大的新闻（根据关键词判断）
-            high_impact_keywords = ["earnings", "revenue", "profit", "loss", "dividend", "split",
-                                    "acquisition", "merger", "lawsuit", "sec", "fda", "approval"]
+            high_impact_keywords = [
+                "earnings",
+                "revenue",
+                "profit",
+                "loss",
+                "dividend",
+                "split",
+                "acquisition",
+                "merger",
+                "lawsuit",
+                "sec",
+                "fda",
+                "approval",
+            ]
             for item in news_list[:5]:  # 最多取 5 条
                 headline = item.get("headline", "")
                 # 💡 判断是否为高影响新闻
                 is_high_impact = any(kw in headline.lower() for kw in high_impact_keywords)
                 dt = datetime.fromtimestamp(item.get("datetime", 0), tz=timezone.utc)
-                events.append({
-                    "date": dt.strftime("%Y-%m-%d"),
-                    "type": "news",
-                    "label": headline[:50] + "..." if len(headline) > 50 else headline,
-                    "impact": "high" if is_high_impact else "medium",
-                    "data": {
-                        "source": item.get("source"),
-                        "url": item.get("url"),
+                events.append(
+                    {
+                        "date": dt.strftime("%Y-%m-%d"),
+                        "type": "news",
+                        "label": headline[:50] + "..." if len(headline) > 50 else headline,
+                        "impact": "high" if is_high_impact else "medium",
+                        "data": {
+                            "source": item.get("source"),
+                            "url": item.get("url"),
+                        },
                     }
-                })
+                )
     except Exception as e:
         print(f"⚠️ [Events] 获取 {safe_ticker} 新闻失败: {e}")
 
