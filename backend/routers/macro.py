@@ -63,8 +63,8 @@ def _fallback_mock_macro() -> dict:
     }
 
 
-async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = False) -> dict:  # noqa: E501
-    cache_key = f"macro_calendar_akshare_{days_ahead}"
+async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = False, days_back: int = 0) -> dict:  # noqa: E501
+    cache_key = f"macro_calendar_akshare_{days_ahead}_{days_back}"
     if not force_refresh:
         cached_data = await redis_client.get(cache_key)
         if cached_data:
@@ -82,10 +82,12 @@ async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = Fals
 
         today = datetime.now(timezone.utc)
         try:
-            res = await akshare_service.get_economic_calendar(days_ahead, skip_cache=force_refresh)  # noqa: E501
+            res = await akshare_service.get_economic_calendar(days_ahead, days_back=days_back, skip_cache=force_refresh)  # noqa: E501
             if res.get("status") == "error" or not res.get("data"):
                 print("⚠️ [Macro] 金十数据降级失败或为空，继续安全降级 (FRED)...")
-                res = await fred_service.get_economic_calendar(days_ahead, skip_cache=force_refresh)  # noqa: E501
+                res = await fred_service.get_economic_calendar(
+                    days_ahead, days_back=days_back, skip_cache=force_refresh
+                )  # noqa: E501
                 if res.get("status") == "error" or not res.get("data"):
                     print("⚠️ [Macro] FRED 降级失败，使用离线 Mock 数据")
                     return _fallback_mock_macro()
@@ -235,9 +237,9 @@ async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = Fals
             return {"status": "error", "message": str(e)}
 
 
-async def _fetch_earnings_calendar_data(days_ahead: int, force_refresh: bool = False) -> dict:  # noqa: E501
+async def _fetch_earnings_calendar_data(days_ahead: int, force_refresh: bool = False, days_back: int = 0) -> dict:  # noqa: E501
     """带缓存的大模型财报日历前瞻推演包装器"""
-    cache_key = f"macro_earnings_calendar_with_ai_{days_ahead}"
+    cache_key = f"macro_earnings_calendar_with_ai_{days_ahead}_{days_back}"
     if not force_refresh:
         cached_data = await redis_client.get(cache_key)
         if cached_data:
@@ -253,11 +255,80 @@ async def _fetch_earnings_calendar_data(days_ahead: int, force_refresh: bool = F
                 return json.loads(cached_data)
 
         try:
-            res = await finnhub_service.get_earnings_calendar(days_ahead, skip_cache=force_refresh)  # noqa: E501
+            res = await finnhub_service.get_earnings_calendar(days_ahead, days_back=days_back, skip_cache=force_refresh)  # noqa: E501
             if res.get("status") != "success":
                 return res
 
             earnings_list = res.get("data", [])
+
+            # 💡 添加中文名称映射
+            ticker_name_map = {
+                "AAPL": "苹果",
+                "MSFT": "微软",
+                "GOOGL": "谷歌",
+                "GOOG": "谷歌",
+                "AMZN": "亚马逊",
+                "META": "Meta",
+                "TSLA": "特斯拉",
+                "NVDA": "英伟达",
+                "AMD": "AMD",
+                "INTC": "英特尔",
+                "NFLX": "奈飞",
+                "DIS": "迪士尼",
+                "BA": "波音",
+                "JPM": "摩根大通",
+                "V": "Visa",
+                "MA": "万事达",
+                "WMT": "沃尔玛",
+                "COST": "好市多",
+                "PYPL": "PayPal",
+                "SQ": "Square",
+                "UBER": "优步",
+                "LYFT": "Lyft",
+                "ABNB": "爱彼迎",
+                "BABA": "阿里巴巴",
+                "JD": "京东",
+                "PDD": "拼多多",
+                "BIDU": "百度",
+                "NIO": "蔚来",
+                "XPEV": "小鹏",
+                "LI": "理想",
+                "TSM": "台积电",
+                "ASML": "阿斯麦",
+                "AVGO": "博通",
+                "QCOM": "高通",
+                "TXN": "德州仪器",
+                "MU": "美光",
+                "CRM": "Salesforce",
+                "ADBE": "Adobe",
+                "ORCL": "甲骨文",
+                "IBM": "IBM",
+                "KO": "可口可乐",
+                "PEP": "百事可乐",
+                "MCD": "麦当劳",
+                "SBUX": "星巴克",
+                "NKE": "耐克",
+                "LULU": "lululemon",
+                "TGT": "塔吉特",
+                "HD": "家得宝",
+                "LLY": "礼来",
+                "JNJ": "强生",
+                "PFE": "辉瑞",
+                "MRNA": "Moderna",
+                "XOM": "埃克森美孚",
+                "CVX": "雪佛龙",
+                "COP": "康菲石油",
+                "GS": "高盛",
+                "MS": "摩根士丹利",
+                "BLK": "贝莱德",
+                "BRK.B": "伯克希尔",
+                "SPY": "标普500ETF",
+                "QQQ": "纳指ETF",
+            }
+            for item in earnings_list:
+                symbol = item.get("symbol", "")
+                item["name_cn"] = ticker_name_map.get(symbol, "")
+
             result = {
                 "status": "success",
                 "data": earnings_list,
@@ -312,11 +383,12 @@ async def _fetch_earnings_calendar_data(days_ahead: int, force_refresh: bool = F
 
 @router.get("/calendar")
 async def get_macro_calendar(
-    days_ahead: int = Query(7, ge=1, le=30, description="获取未来 N 天内的高影响宏观经济事件"),  # noqa: E501
+    days_ahead: int = Query(7, ge=0, le=30, description="获取未来 N 天内的高影响宏观经济事件"),  # noqa: E501
+    days_back: int = Query(0, ge=0, le=30, description="获取过去 N 天内已公布的宏观经济事件"),  # noqa: E501
 ):
-    """获取全球核心经济体的宏观日历数据"""
+    """获取全球核心经济体的宏观日历数据 (支持过去和未来)"""
     try:
-        result = await _fetch_macro_calendar_data(days_ahead=days_ahead)
+        result = await _fetch_macro_calendar_data(days_ahead=days_ahead, days_back=days_back)
         if result.get("status") == "error":
             raise HTTPException(status_code=500, detail=result.get("message"))
         return result
@@ -424,6 +496,8 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
                     "dir": 1 if sd.get("net_inflow", 0) >= 0 else -1,
                     "desc": "沪深港通净买入港股",
                     "sparkDirs": sd.get("sparkline", [1, 1, -1, 1, 1, 1, -1, 1]),
+                    "data_source": "AKShare",  # 💡 数据来源
+                    "updated_at": sd.get("updated_at") or datetime.now(timezone.utc).isoformat(),  # 💡 更新时间
                 }
             )
 
@@ -432,16 +506,29 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
                 fund_data = res.get("data", res)
                 val = fund_data.get("main_fund_net_inflow", 0.0) / 100_000_000.0
                 amt = round(val, 2)
-                return amt, 1 if amt >= 0 else -1, real_desc, unit
-            return default_amt, 1 if default_amt >= 0 else -1, real_desc, unit
+                updated_at = fund_data.get("updated_at") or datetime.now(timezone.utc).isoformat()
+                return amt, 1 if amt >= 0 else -1, real_desc, unit, "Futu", updated_at
+            return default_amt, 1 if default_amt >= 0 else -1, real_desc, unit, "N/A", None
 
         # 💡 使用核心 ETF 的主买主卖差额代表板块的整体真实资金流
-        csi_amount, csi_dir, csi_desc, csi_unit = _parse_futu_flow(csi300_res, 8.7, "沪深300ETF主力净流", "亿人民币")  # noqa: E501
-        spy_amount, spy_dir, spy_desc, spy_unit = _parse_futu_flow(spy_res, 2.1, "标普500ETF主力净流", "亿美元")  # noqa: E501
-        qqq_amount, qqq_dir, qqq_desc, qqq_unit = _parse_futu_flow(qqq_res, 3.5, "纳指科技ETF主力净流", "亿美元")  # noqa: E501
-        soxx_amount, soxx_dir, soxx_desc, soxx_unit = _parse_futu_flow(soxx_res, 1.5, "半导体ETF主力净流", "亿美元")  # noqa: E501
-        tlt_amount, tlt_dir, tlt_desc, tlt_unit = _parse_futu_flow(tlt_res, -1.8, "20年期美债ETF主力净流", "亿美元")  # noqa: E501
-        kweb_amount, kweb_dir, kweb_desc, kweb_unit = _parse_futu_flow(kweb_res, 1.2, "中概互联ETF主力净流", "亿美元")  # noqa: E501
+        csi_amount, csi_dir, csi_desc, csi_unit, csi_source, csi_updated = _parse_futu_flow(
+            csi300_res, 8.7, "沪深300ETF主力净流", "亿人民币"
+        )  # noqa: E501
+        spy_amount, spy_dir, spy_desc, spy_unit, spy_source, spy_updated = _parse_futu_flow(
+            spy_res, 2.1, "标普500ETF主力净流", "亿美元"
+        )  # noqa: E501
+        qqq_amount, qqq_dir, qqq_desc, qqq_unit, qqq_source, qqq_updated = _parse_futu_flow(
+            qqq_res, 3.5, "纳指科技ETF主力净流", "亿美元"
+        )  # noqa: E501
+        soxx_amount, soxx_dir, soxx_desc, soxx_unit, soxx_source, soxx_updated = _parse_futu_flow(
+            soxx_res, 1.5, "半导体ETF主力净流", "亿美元"
+        )  # noqa: E501
+        tlt_amount, tlt_dir, tlt_desc, tlt_unit, tlt_source, tlt_updated = _parse_futu_flow(
+            tlt_res, -1.8, "20年期美债ETF主力净流", "亿美元"
+        )  # noqa: E501
+        kweb_amount, kweb_dir, kweb_desc, kweb_unit, kweb_source, kweb_updated = _parse_futu_flow(
+            kweb_res, 1.2, "中概互联ETF主力净流", "亿美元"
+        )  # noqa: E501
 
         flows.extend(
             [
@@ -453,6 +540,8 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
                     "dir": csi_dir,
                     "desc": csi_desc,
                     "sparkDirs": [1, 1, 1, 1, -1, 1, 1, 1],
+                    "data_source": csi_source,
+                    "updated_at": csi_updated,
                 },  # noqa: E501
                 {
                     "market": "US",
@@ -462,6 +551,8 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
                     "dir": spy_dir,
                     "desc": spy_desc,
                     "sparkDirs": [1, 1, 1, -1, 1, 1, 1, 1],
+                    "data_source": spy_source,
+                    "updated_at": spy_updated,
                 },  # noqa: E501
                 {
                     "market": "US",
@@ -471,6 +562,8 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
                     "dir": qqq_dir,
                     "desc": qqq_desc,
                     "sparkDirs": [-1, 1, 1, 1, 1, 1, -1, 1],
+                    "data_source": qqq_source,
+                    "updated_at": qqq_updated,
                 },  # noqa: E501
                 {
                     "market": "US",
@@ -480,6 +573,8 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
                     "dir": soxx_dir,
                     "desc": soxx_desc,
                     "sparkDirs": [1, -1, 1, 1, 1, -1, 1, 1],
+                    "data_source": soxx_source,
+                    "updated_at": soxx_updated,
                 },  # noqa: E501
                 {
                     "market": "US",
@@ -489,6 +584,8 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
                     "dir": tlt_dir,
                     "desc": tlt_desc,
                     "sparkDirs": [-1, -1, -1, 1, -1, -1, -1, -1],
+                    "data_source": tlt_source,
+                    "updated_at": tlt_updated,
                 },  # noqa: E501
                 {
                     "market": "CN",
@@ -498,6 +595,8 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
                     "dir": kweb_dir,
                     "desc": kweb_desc,
                     "sparkDirs": [1, -1, 1, -1, 1, -1, 1, 1],
+                    "data_source": kweb_source,
+                    "updated_at": kweb_updated,
                 },  # noqa: E501
             ]
         )
@@ -631,9 +730,10 @@ async def websocket_live_news(websocket: WebSocket):
 @router.get("/dashboard")
 async def get_data_center_dashboard(
     force_refresh: bool = Query(False, description="强制绕过缓存拉取最新数据"),
+    days_back: int = Query(3, ge=0, le=30, description="获取过去 N 天内已公布的宏观经济事件"),  # noqa: E501
 ):  # noqa: E501
     """聚合大盘看板所需的所有核心数据"""
-    cache_key = "macro_dashboard_aggregate"
+    cache_key = f"macro_dashboard_aggregate_{days_back}"
     try:
         if not force_refresh:
             cached = await redis_client.get(cache_key)
@@ -657,9 +757,9 @@ async def get_data_center_dashboard(
                 earnings_res,
             ) = await asyncio.gather(
                 get_macro_assets(force_refresh=force_refresh),
-                _fetch_macro_calendar_data(days_ahead=7, force_refresh=force_refresh),
+                _fetch_macro_calendar_data(days_ahead=7, days_back=days_back, force_refresh=force_refresh),
                 get_macro_news(category="general", limit=15),
-                _fetch_earnings_calendar_data(days_ahead=7, force_refresh=force_refresh),  # noqa: E501
+                _fetch_earnings_calendar_data(days_ahead=7, days_back=days_back, force_refresh=force_refresh),  # noqa: E501
                 return_exceptions=True,
             )
 
@@ -738,11 +838,11 @@ async def _fetch_macro_assets_data():
         {"symbol": "IXIC", "name": "NASDAQ 综合", "yf": "^IXIC"},
         {"symbol": "NQ", "name": "纳指期货", "yf": "NQ=F"},
         {"symbol": "HSI", "name": "恒生指数", "yf": "^HSI"},
-        {"symbol": "HSTECH", "name": "恒生科技", "yf": "800700.HK"},
+        {"symbol": "HSTECH", "name": "恒生科技", "yf": "^HSTECH"},  # 💡 修复: 正确 YFinance 代码
         {"symbol": "TNX", "name": "10Y 美债收益率", "yf": "^TNX"},
         {"symbol": "JPY=X", "name": "USD/JPY", "yf": "JPY=X"},
         {"symbol": "DX-Y", "name": "美元指数", "yf": "DX-Y.NYB"},
-        {"symbol": "USDCNH", "name": "USD/CNH", "yf": "CNH=X"},
+        {"symbol": "USDCNH", "name": "USD/CNH", "yf": "USDCNH=X"},  # 💡 修复: 正确 YFinance 代码
         {"symbol": "BTC", "name": "比特币 (BTC)", "yf": "BTC-USD"},
         {"symbol": "XAU", "name": "黄金 (XAU)", "yf": "GC=F"},
         {"symbol": "WTI", "name": "WTI 原油", "yf": "CL=F"},
@@ -795,12 +895,16 @@ async def _fetch_macro_assets_data():
                             closes[-2] if len(closes) > 1 else (float(open_vals[-1]) if open_vals else last_close)
                         )  # noqa: E501
                         change_pct = ((last_close - prev_close) / prev_close) * 100 if prev_close else 0.0  # noqa: E501
+                        # 💡 获取数据更新时间
+                        updated_at = records[-1].get("Date") or records[-1].get("date")
                         return {
                             "symbol": symbol,
                             "name": name,
                             "value": round(last_close, 2),
                             "change": round(change_pct, 2),
                             "sparkline": closes,
+                            "data_source": "YFinance",
+                            "updated_at": str(updated_at) if updated_at else None,
                         }  # noqa: E501
         except Exception as e:
             print(f"⚠️ [Macro] 从 Redis 解析 {symbol} 失败: {e}")
@@ -810,6 +914,8 @@ async def _fetch_macro_assets_data():
             "value": 0.0,
             "change": 0.0,
             "sparkline": [0, 0],
+            "data_source": "N/A",
+            "updated_at": None,
         }  # noqa: E501
 
     tasks = [fetch_single_asset(cfg) for cfg in assets_config]

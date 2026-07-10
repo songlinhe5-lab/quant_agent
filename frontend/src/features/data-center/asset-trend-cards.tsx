@@ -137,6 +137,21 @@ function AssetCard({ item }: { item: AssetTrendItem }) {
         </div>
       )}
 
+      {/* 💡 数据来源与更新时间 */}
+      <div className="mt-1.5 pt-1.5 border-t border-border/10">
+        <div className="flex items-center justify-between text-[9px] text-muted-foreground/60">
+          <span className="flex items-center gap-0.5">
+            <span className="inline-block w-1 h-1 rounded-full bg-emerald-400/60"></span>
+            {item.data_source || 'YFinance'}
+          </span>
+          <span className="font-mono tabular-nums">
+            {item.updated_at
+              ? new Date(item.updated_at).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
+              : '--'}
+          </span>
+        </div>
+      </div>
+
       {/* 悬浮行情解读遮罩 (Hover Tooltip Overlay) */}
       {item.desc30d && (
         <div className="absolute inset-0 z-10 bg-background/95 dark:bg-slate-900/95 backdrop-blur-md p-4 flex flex-col justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-4 group-hover:translate-y-0">

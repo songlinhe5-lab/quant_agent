@@ -28,7 +28,7 @@ export function DataCenterModule() {
   const [visibleNewsCount, setVisibleNewsCount] = useState(5)
   const [selectedImpacts, setSelectedImpacts] = useState<string[]>(['high', 'medium', 'low'])
   const [selectedCountry, setSelectedCountry] = useState('all')
-  const [selectedDateFilter, setSelectedDateFilter] = useState<'all' | 'today' | 'tomorrow'>('all')
+  const [selectedDateFilter, setSelectedDateFilter] = useState<'past' | 'all' | 'today' | 'tomorrow'>('all')
   const [selectedEvent, setSelectedEvent] = useState<any>(null)
   const lastAlertedHeadline = useRef<string>('')
   const { toast } = useToast()

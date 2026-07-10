@@ -25,8 +25,8 @@ def format_yf_ticker(ticker: str) -> str:
         "HSI": "^HSI",
         "HK.800000": "^HSI",
         "HK.HSI": "^HSI",
-        "HSTECH": "800700.HK",
-        "HK.800700": "800700.HK",
+        "HSTECH": "^HSTECH",  # 💡 修复: 恒生科技指数正确代码
+        "HK.800700": "^HSTECH",  # 💡 修复: 恒生科技指数正确代码
         "SPX": "^GSPC",
         "IXIC": "^IXIC",
         "DJI": "^DJI",
@@ -43,6 +43,7 @@ def format_yf_ticker(ticker: str) -> str:
         "GC=F": "GC=F",
         "JGB10Y": "^JN09T",
         "USDCNH": "USDCNH=X",
+        "CNH=X": "USDCNH=X",  # 💡 兼容旧代码
         "BTC": "BTC-USD",
         "CL=F": "CL=F",
     }
@@ -1152,10 +1153,11 @@ class YFinanceService:
             "^GSPC",
             "^IXIC",
             "^HSI",
+            "^HSTECH",  # 💡 新增: 恒生科技指数
             "^TNX",
             "JPY=X",
             "DX-Y.NYB",
-            "CNH=X",
+            "USDCNH=X",  # 💡 修复: USD/CNH 正确代码
             "BTC-USD",
             "GC=F",
             "CL=F",

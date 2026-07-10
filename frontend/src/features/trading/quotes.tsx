@@ -33,7 +33,7 @@ export function QuotesModule() {
   }
 
   const [selectedSymbol, setSelectedSymbol] = useState('00700.HK')
-  const [selectedPeriod, setSelectedPeriod] = useState('1h')
+  const [selectedPeriod, setSelectedPeriod] = useState('1m')  // 💡 默认显示分时图
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -94,9 +94,14 @@ export function QuotesModule() {
         }
       }
       
-      // 💡 数字键 1-7 快速切换 K 线周期
+      // 💡 数字键 1-6 快速切换 K 线周期
       const periodMap: Record<string, string> = {
-        '1': '1m', '2': '5m', '3': '15m', '4': '1h', '5': '4h', '6': '1d', '7': '1w'
+        '1': '1m',   // 分时
+        '2': 'tick', // Tick
+        '3': '5m',   // 5日
+        '4': '1d',   // 日K
+        '5': '1w',   // 周K
+        '6': '1M',   // 月K
       };
       if (periodMap[e.key]) {
         e.preventDefault();

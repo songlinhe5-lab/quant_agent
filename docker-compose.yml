@@ -2,7 +2,12 @@
 # Quant Agent - 统一 Compose (单一 VPS 部署)
 # ==========================================
 # 所有服务部署在同一海外 VPS 上，所有数据源本地化采集。
-# Futu OpenD 在宿主机本地运行，容器通过 host-gateway 访问。
+#
+# 📌 Futu OpenD 连接配置 (FUTU_HOST):
+#   - 本地部署 (Futu 与主服务同 VPS): FUTU_HOST=<docker网络网关IP>
+#     查看网关: docker network inspect quant-agent_quant-internal | grep Gateway
+#     通常为: 172.18.0.1
+#   - 远程部署 (Futu 在不同 VPS): FUTU_HOST=<远程VPS_IP>
 #
 # 启动方式:
 #   docker compose up -d                    # 默认启动核心服务

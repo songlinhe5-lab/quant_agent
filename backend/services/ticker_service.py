@@ -123,6 +123,12 @@ class TickerService:
             return
         self.sync_running = True
 
+        # 💡 首次同步等待 Futu 连接就绪 (最多等待 30 秒)
+        initial_wait = 0
+        while futu_service.status != "CONNECTED" and initial_wait < 30:
+            await asyncio.sleep(2)
+            initial_wait += 2
+
         while True:
             try:
                 print("🔄 [Ticker Sync] 正在同步全市场股票词库至数据库...")
@@ -131,13 +137,15 @@ class TickerService:
                 if futu_service.status == "CONNECTED":
                     await self._fetch_and_save_from_futu()
                     print("✅ [Ticker Sync] 股票词库同步完成，Redis 缓存 + DB 持久化就绪！")  # noqa: E501
+                    # 同步成功，每天执行一次 (86400 秒)
+                    await asyncio.sleep(86400)
                 else:
                     print("⚠️ [Ticker Sync] FutuService 未连接，跳过全市场增量同步。")
+                    # Futu 未连接，5 分钟后重试
+                    await asyncio.sleep(300)
             except Exception as e:
                 print(f"⚠️ [Ticker Sync] 词库同步暂不可用 (将在后台定期重试): {e}")
-
-            # 每天执行一次全量同步更新 (86400 秒)
-            await asyncio.sleep(86400)
+                await asyncio.sleep(300)
 
     def _write_base_tickers(self) -> List[Dict[str, Any]]:
         base_tickers = [

@@ -193,8 +193,28 @@ async def quotes_websocket(websocket: WebSocket):
 
 @router.get("/futu/status")
 async def get_futu_status():
-    """供前端面板感知底层 OpenD 核心连接状态"""
-    return {"status": futu_service.status, "error": futu_service.error_msg}
+    """供前端面板感知底层 OpenD 核心连接状态
+    💡 实时探测 OpenD 端口，而非仅依赖内存中的状态标记
+    """
+    # 💡 实时探测 OpenD 是否可连接（2秒超时）
+    is_reachable = futu_service.conn_mgr._is_opend_reachable(timeout=2.0)
+
+    # 💡 如果探测失败但状态仍显示 CONNECTED，说明连接已断开，需要更新状态
+    if not is_reachable and futu_service.status == "CONNECTED":
+        futu_service.status = "DISCONNECTED"
+        futu_service.error_msg = "OpenD 连接已断开"
+        print("⚠️ [Market API] OpenD 实时探测失败，状态已更新为 DISCONNECTED")
+
+    # 💡 如果探测成功但状态显示 DISCONNECTED/ERROR，尝试重新连接
+    if is_reachable and futu_service.status != "CONNECTED":
+        print("ℹ️ [Market API] OpenD 实时探测成功，尝试重新连接...")
+        futu_service.connect()
+
+    return {
+        "status": futu_service.status,
+        "error": futu_service.error_msg,
+        "reachable": is_reachable,  # 💡 新增：实际探测结果
+    }
 
 
 @router.get("/health/services")
@@ -204,15 +224,27 @@ async def get_services_health():
 
     health_data = []
 
-    # 1. Futu OpenD
-    f_status = "healthy" if getattr(futu_service, "status", "") == "CONNECTED" else "disconnected"  # noqa: E501
-    f_msg = getattr(futu_service, "error_msg", "")
+    # 1. Futu OpenD - 💡 实时探测而非仅依赖内存状态
+    is_opend_reachable = futu_service.conn_mgr._is_opend_reachable(timeout=2.0)
+    f_status = "healthy" if is_opend_reachable else "disconnected"
+    f_msg = futu_service.error_msg if not is_opend_reachable else "已连接"
+
+    # 💡 同步更新内存状态
+    if not is_opend_reachable and futu_service.status == "CONNECTED":
+        futu_service.status = "DISCONNECTED"
+        futu_service.error_msg = "OpenD 连接已断开"
+    if is_opend_reachable and futu_service.status != "CONNECTED":
+        futu_service.connect()
+        f_status = "healthy" if futu_service.status == "CONNECTED" else "disconnected"
+        f_msg = "已连接" if futu_service.status == "CONNECTED" else futu_service.error_msg
+
     health_data.append(
         {
             "name": "Futu OpenD",
             "status": f_status,
             "cooldown_remaining": 0,
-            "message": f_msg if f_msg else ("已连接" if f_status == "healthy" else "未连接"),
+            "message": f_msg,
+            "reachable": is_opend_reachable,  # 💡 实际探测结果
         }
     )
 
@@ -311,6 +343,47 @@ async def get_quote(ticker: str):
         else:
             raise HTTPException(status_code=400, detail=f"Futu: {res.get('message')}, YFinance: {msg}")  # noqa: E501
     return res
+
+
+class BatchQuoteRequest(BaseModel):
+    tickers: list[str]
+
+
+@router.post("/quotes/batch")
+async def get_batch_quotes_from_cache(req: BatchQuoteRequest):
+    """💡 从 Redis 缓存批量获取自选列表行情数据（非聚焦 ticker 使用）"""
+    results = {}
+    for ticker in req.tickers:
+        # 💡 优先从 Redis 缓存获取（yf_macro_cache 由 macro_data_daemon 定期更新）
+        yf_code = _to_yf_ticker(ticker)
+        cache_key = f"yf_macro_cache_{yf_code}"
+        try:
+            cached = await redis_client.get(cache_key)
+            if cached:
+                data = json.loads(cached)
+                results[ticker] = {
+                    "ticker": ticker,
+                    "last_price": data.get("last_price") or data.get("close", 0),
+                    "change_pct": data.get("change_pct", "0.0%"),
+                    "volume_str": data.get("volume_str", "--"),
+                    "source": "redis_cache",
+                    "status": "CACHED",
+                }
+                continue
+        except Exception:
+            pass
+
+        # 💡 缓存未命中，标记为需要实时获取
+        results[ticker] = {
+            "ticker": ticker,
+            "last_price": 0,
+            "change_pct": "0.0%",
+            "volume_str": "--",
+            "source": "none",
+            "status": "NO_DATA",
+        }
+
+    return {"status": "success", "data": results}
 
 
 @router.post("/kline/sync")
@@ -638,6 +711,101 @@ async def get_company_news(ticker: str, limit: int = 10):
             "source": "error",
             "message": f"个股新闻源受限: {err_msg}",
         }  # noqa: E501
+
+
+@router.get("/events/{ticker}")
+async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 30):
+    """💡 获取个股相关事件（财报、分红、重大新闻）用于 K 线图事件标记
+
+    返回格式:
+    [
+        {"date": "2024-01-15", "type": "earnings", "label": "Q4 财报", "impact": "high"},
+        {"date": "2024-01-20", "type": "dividend", "label": "除权除息", "impact": "medium"},
+        {"date": "2024-01-25", "type": "news", "label": "重大新闻标题...", "impact": "low"}
+    ]
+    """
+    from datetime import datetime, timezone
+
+    # 💡 净化输入
+    safe_ticker = re.sub(r"[^A-Za-z0-9_.-]", "", str(ticker))[:20].upper()
+    if not safe_ticker:
+        return {"status": "error", "message": "非法的股票代码参数"}
+
+    events = []
+
+    # 1. 获取财报日历事件
+    try:
+        yf_ticker = _to_yf_ticker(safe_ticker)
+        # 💡 从 Finnhub 获取财报日历
+        res = await finnhub_service.get_earnings_calendar(days_ahead=days_ahead, days_back=days_back)
+        if res.get("status") == "success":
+            earnings_list = res.get("data", [])
+            for item in earnings_list:
+                if item.get("symbol") == yf_ticker or item.get("symbol") == safe_ticker:
+                    events.append(
+                        {
+                            "date": item.get("date"),
+                            "type": "earnings",
+                            "label": f"Q{item.get('quarter', '?')} 财报",
+                            "impact": "high",
+                            "data": {
+                                "epsEstimate": item.get("epsEstimate"),
+                                "epsActual": item.get("epsActual"),
+                            },
+                        }
+                    )
+    except Exception as e:
+        print(f"⚠️ [Events] 获取 {safe_ticker} 财报日历失败: {e}")
+
+    # 2. 获取个股新闻（作为重大事件）
+    try:
+        news_res = await finnhub_service.get_company_news(safe_ticker, days_back=days_back)
+        if news_res.get("status") == "success":
+            news_list = news_res.get("data", [])
+            # 💡 只取影响较大的新闻（根据关键词判断）
+            high_impact_keywords = [
+                "earnings",
+                "revenue",
+                "profit",
+                "loss",
+                "dividend",
+                "split",
+                "acquisition",
+                "merger",
+                "lawsuit",
+                "sec",
+                "fda",
+                "approval",
+            ]
+            for item in news_list[:5]:  # 最多取 5 条
+                headline = item.get("headline", "")
+                # 💡 判断是否为高影响新闻
+                is_high_impact = any(kw in headline.lower() for kw in high_impact_keywords)
+                dt = datetime.fromtimestamp(item.get("datetime", 0), tz=timezone.utc)
+                events.append(
+                    {
+                        "date": dt.strftime("%Y-%m-%d"),
+                        "type": "news",
+                        "label": headline[:50] + "..." if len(headline) > 50 else headline,
+                        "impact": "high" if is_high_impact else "medium",
+                        "data": {
+                            "source": item.get("source"),
+                            "url": item.get("url"),
+                        },
+                    }
+                )
+    except Exception as e:
+        print(f"⚠️ [Events] 获取 {safe_ticker} 新闻失败: {e}")
+
+    # 💡 按日期排序
+    events.sort(key=lambda x: x.get("date", ""))
+
+    return {
+        "status": "success",
+        "ticker": safe_ticker,
+        "count": len(events),
+        "data": events,
+    }
 
 
 @router.get("/fundamental/{ticker}")

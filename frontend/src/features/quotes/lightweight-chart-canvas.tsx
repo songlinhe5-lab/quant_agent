@@ -4,11 +4,34 @@ import { AlertTriangle, TrendingUp, TrendingDown, Eye, EyeOff, Pencil, Globe, Ch
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
-import { MOCK_PRICE_EVENTS } from '@/services/mock'
+import { apiClient } from '@/lib/api-client'
 import { useIndicatorWorker } from '@/hooks/use-indicator-worker'
+import { HighFreqChartWrapper } from '@/features/quotes/high-freq-chart-wrapper'
 import type { WatchlistItem } from '@/stores/use-watchlist'
 
-const periods = ['1m','5m','15m','1h','4h','1d','1w']
+// 💡 个股事件类型定义
+interface StockEvent {
+  date: string
+  type: 'earnings' | 'dividend' | 'news'
+  label: string
+  impact: 'high' | 'medium' | 'low'
+  data?: {
+    epsEstimate?: number
+    epsActual?: number
+    source?: string
+    url?: string
+  }
+}
+
+// 💡 图表周期配置：分时图、Tick图、5日图、日K图，后续可扩展周K/月K/季K/年K
+const periods = [
+  { id: '1m', label: '分时' },
+  { id: 'tick', label: 'Tick' },
+  { id: '5m', label: '5日' },
+  { id: '1d', label: '日K' },
+  { id: '1w', label: '周K' },
+  { id: '1M', label: '月K' },
+]
 
 class TrendLineRenderer {
   _p1: any; _p2: any; _color: string;
@@ -77,6 +100,32 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
   const [isDrawMode, setIsDrawMode] = useState(false)
   const isDrawModeRef = useRef(false)
   useEffect(() => { isDrawModeRef.current = isDrawMode }, [isDrawMode])
+
+  // 💡 个股事件状态（从后端获取）
+  const [stockEvents, setStockEvents] = useState<StockEvent[]>([])
+  
+  // 💡 获取个股相关事件（财报、分红、重大新闻）
+  useEffect(() => {
+    let isMounted = true
+    
+    async function fetchStockEvents() {
+      if (!selectedSymbol) return
+      
+      try {
+        const sym = selectedSymbol.replace('/', '')
+        const res = await apiClient.get(`/market/events/${sym}`, { days_back: 30, days_ahead: 30 })
+        if (isMounted && res.data?.status === 'success' && res.data.data) {
+          setStockEvents(res.data.data)
+        }
+      } catch (e) {
+        console.error('Failed to fetch stock events:', e)
+      }
+    }
+    
+    fetchStockEvents()
+    
+    return () => { isMounted = false }
+  }, [selectedSymbol])
 
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -167,7 +216,17 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       grid: { vertLines: { color: theme === 'dark' ? '#334155' : '#e2e8f0' }, horzLines: { color: theme === 'dark' ? '#334155' : '#e2e8f0' } },
       crosshair: { mode: CrosshairMode.Magnet },
       rightPriceScale: { borderColor: theme === 'dark' ? '#475569' : '#cbd5e1', autoScale: true, scaleMargins: { top: 0.1, bottom: 0.40 } },
-      timeScale: { borderColor: theme === 'dark' ? '#475569' : '#cbd5e1', timeVisible: true, fixLeftEdge: true, fixRightEdge: true },
+      // 💡 K线图左右拖动配置：允许拖动但不超过K线数据最大最小值
+      timeScale: { 
+        borderColor: theme === 'dark' ? '#475569' : '#cbd5e1', 
+        timeVisible: true, 
+        fixLeftEdge: true,      // 固定左边界，不允许拖动超过数据起点
+        fixRightEdge: true,     // 固定右边界，不允许拖动超过数据终点
+        rightOffset: 0,         // 右侧偏移量，0表示紧贴右边界
+        barSpacing: 10,         // 默认K线间距
+        minBarSpacing: 0.5,     // 最小K线间距（放大时的极限）
+        maxBarSpacing: 40,      // 最大K线间距（缩小时的极限）
+      },
     })
 
     const bbUpperLine = chart.addSeries(AreaSeries, { lineColor: theme === 'dark' ? 'rgba(251, 191, 36, 0.4)' : 'rgba(217, 119, 6, 0.4)', topColor: theme === 'dark' ? 'rgba(251, 191, 36, 0.15)' : 'rgba(217, 119, 6, 0.15)', bottomColor: 'rgba(0, 0, 0, 0)', lineWidth: 1, lineStyle: LineStyle.Dashed, crosshairMarkerVisible: false })
@@ -392,7 +451,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
           <button onClick={() => setShowKDJ(!showKDJ)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium flex items-center gap-1', showKDJ ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} title="KDJ (随机指标)"><span className={cn("h-1.5 w-1.5 rounded-full bg-[#f472b6]", !showKDJ && "opacity-50")} />KDJ</button>
         </div>
         <div className="flex items-center gap-0.5 bg-background border border-border/50 p-0.5 rounded-md shadow-sm" role="group" aria-label="K线周期">
-          {periods.map((p, idx) => (<button key={p} onClick={() => setSelectedPeriod(p)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium', selectedPeriod === p ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} aria-pressed={selectedPeriod === p} title={`切换至 ${p} 周期 (快捷键: ${idx + 1})`}>{p}</button>))}
+          {periods.map((p, idx) => (<button key={p.id} onClick={() => setSelectedPeriod(p.id)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium', selectedPeriod === p.id ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} aria-pressed={selectedPeriod === p.id} title={`切换至${p.label}周期 (快捷键: ${idx + 1})`}>{p.label}</button>))}
         </div>
         <Button variant={isDrawMode ? "default" : "outline"} size="sm" onClick={() => setIsDrawMode(!isDrawMode)} className={cn("h-7 px-2.5 gap-1.5 text-[10px]", isDrawMode ? "bg-primary text-primary-foreground shadow-sm shadow-primary/30" : "border-border/50 bg-background")} title={isDrawMode ? '取消画线 (点击两点连线)' : '自由画线 (趋势线)'}><Pencil className="h-3.5 w-3.5" /></Button>
         <Button variant="outline" size="sm" onClick={() => setShowEvents(!showEvents)} className="h-7 px-2.5 gap-1.5 text-[10px] border-border/50 bg-background" title={showEvents ? '隐藏事件' : '显示事件'}>{showEvents ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}</Button>
@@ -405,22 +464,50 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
         <span className="flex items-center gap-1.5"><span className="font-semibold opacity-50">V</span> <span ref={vRef} className="text-foreground font-medium tabular-nums">--</span></span>
       </div>
       <div ref={chartContainerRef} className="flex-1 relative transition-colors duration-300 overflow-hidden">
+        {/* 💡 Tick 图模式：使用高频实时折线图 */}
+        {selectedPeriod === 'tick' && <HighFreqChartWrapper symbol={selectedSymbol} />}
         <div ref={measureBoxRef} className="absolute pointer-events-none border border-primary/50 bg-primary/10 hidden z-10" />
         <div ref={measureInfoRef} className="absolute pointer-events-none hidden z-20 flex-col items-center justify-center bg-popover/90 backdrop-blur-sm border border-border/50 rounded shadow-lg p-1.5 text-[10px] font-mono tabular-nums whitespace-nowrap transition-none">
           <div ref={measurePriceRef} className="font-bold" />
           <div ref={measurePctRef} />
         </div>
-        {showEvents && MOCK_PRICE_EVENTS.slice(0,2).map((ev, i) => (
-          <div key={i} className="absolute bottom-4 flex flex-col items-center gap-0.5" style={{ left: `${25 + i * 35}%` }}>
-            <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-red-500/20 dark:bg-red-400/20 border border-red-500/40 dark:border-red-400/40 text-red-600 dark:text-red-300">{ev.label}</span>
-            <div className="w-px h-3 bg-red-500/50 dark:bg-red-400/50" /><div className="h-1 w-1 rounded-full bg-red-500 dark:bg-red-400" />
-          </div>
-        ))}
+        {showEvents && stockEvents.slice(0, 3).map((ev: StockEvent, i: number) => {
+          // 💡 根据事件类型和重要性设置不同颜色
+          const colorMap = {
+            earnings: { bg: 'bg-blue-500/20 dark:bg-blue-400/20', border: 'border-blue-500/40 dark:border-blue-400/40', text: 'text-blue-600 dark:text-blue-300', line: 'bg-blue-500/50 dark:bg-blue-400/50', dot: 'bg-blue-500 dark:bg-blue-400' },
+            dividend: { bg: 'bg-green-500/20 dark:bg-green-400/20', border: 'border-green-500/40 dark:border-green-400/40', text: 'text-green-600 dark:text-green-300', line: 'bg-green-500/50 dark:bg-green-400/50', dot: 'bg-green-500 dark:bg-green-400' },
+            news: { bg: 'bg-amber-500/20 dark:bg-amber-400/20', border: 'border-amber-500/40 dark:border-amber-400/40', text: 'text-amber-600 dark:text-amber-300', line: 'bg-amber-500/50 dark:bg-amber-400/50', dot: 'bg-amber-500 dark:bg-amber-400' },
+          }
+          const colors = colorMap[ev.type] || colorMap.news
+          return (
+            <div key={i} className="absolute bottom-4 flex flex-col items-center gap-0.5" style={{ left: `${20 + i * 30}%` }}>
+              <span className={cn('text-[8px] font-bold px-1 py-0.5 rounded border', colors.bg, colors.border, colors.text)} title={ev.label}>
+                {ev.type === 'earnings' ? '📊' : ev.type === 'dividend' ? '💰' : '📰'} {ev.label.slice(0, 15)}
+              </span>
+              <div className={cn('w-px h-3', colors.line)} />
+              <div className={cn('h-1 w-1 rounded-full', colors.dot)} />
+            </div>
+          )
+        })}
       </div>
-      {showEvents && (
-        <div className="border-t border-border/30 px-3 py-1.5 flex items-center gap-2 shrink-0">
-          <span className="text-[9px] font-semibold text-muted-foreground uppercase">事件</span>
-          {MOCK_PRICE_EVENTS.map((ev) => (<span key={ev.date} className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 dark:bg-red-400/10 border border-red-500/30 dark:border-red-400/30 text-red-600 dark:text-red-300 font-mono">{ev.date} {ev.label}</span>))}
+      {showEvents && stockEvents.length > 0 && (
+        <div className="border-t border-border/30 px-3 py-1.5 flex items-center gap-2 shrink-0 overflow-x-auto">
+          <span className="text-[9px] font-semibold text-muted-foreground uppercase flex-shrink-0">个股事件</span>
+          {stockEvents.map((ev: StockEvent) => {
+            // 💡 根据事件类型设置不同颜色
+            const typeColors = {
+              earnings: 'bg-blue-500/10 dark:bg-blue-400/10 border-blue-500/30 dark:border-blue-400/30 text-blue-600 dark:text-blue-300',
+              dividend: 'bg-green-500/10 dark:bg-green-400/10 border-green-500/30 dark:border-green-400/30 text-green-600 dark:text-green-300',
+              news: 'bg-amber-500/10 dark:bg-amber-400/10 border-amber-500/30 dark:border-amber-400/30 text-amber-600 dark:text-amber-300',
+            }
+            const colorClass = typeColors[ev.type] || typeColors.news
+            const icon = ev.type === 'earnings' ? '📊' : ev.type === 'dividend' ? '💰' : '📰'
+            return (
+              <span key={ev.date + ev.type} className={cn('text-[9px] px-1.5 py-0.5 rounded border font-mono flex-shrink-0', colorClass)} title={ev.label}>
+                {ev.date.slice(5)} {icon} {ev.label.slice(0, 20)}
+              </span>
+            )
+          })}
         </div>
       )}
     </div>

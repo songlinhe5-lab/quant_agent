@@ -40,6 +40,7 @@ export function EconomicCalendar({
           </button>
           <div className="flex items-center bg-secondary/30 rounded-full p-0.5 border border-border/20">
             {[
+              { id: 'past', label: '过去' },
               { id: 'all', label: '全部' },
               { id: 'today', label: '今日' },
               { id: 'tomorrow', label: '明日' },
@@ -50,7 +51,7 @@ export function EconomicCalendar({
                   key={df.id}
                   onClick={() => setSelectedDateFilter(df.id as any)}
                   className={cn("flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full transition-colors", active ? `bg-primary/10 text-primary font-bold` : "text-muted-foreground hover:text-foreground")}
-                  title={`仅显示${df.label}事件`}
+                  title={df.id === 'past' ? '显示过去已公布的数据' : `仅显示${df.label}事件`}
                 >
                   {df.label}
                 </button>
@@ -118,6 +119,8 @@ export function EconomicCalendar({
                 const eventDate = ev.date?.split('T')[0];
                 if (selectedDateFilter === 'today') return eventDate === todayStr;
                 if (selectedDateFilter === 'tomorrow') return eventDate === tomorrowStr;
+                // 💡 过去：显示今天之前的事件
+                if (selectedDateFilter === 'past') return eventDate && eventDate < todayStr;
                 return false;
               })
               .filter((ev: any) => selectedImpacts.includes(ev.impact?.toLowerCase() || 'medium'))

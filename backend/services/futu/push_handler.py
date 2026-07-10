@@ -158,7 +158,7 @@ def _make_order_book_handler():
         return None
 
     class FutuOrderBookPushHandler(OrderBookHandlerBase):
-        """盘口深度推送 → 更新 L1 缓存 + Redis PubSub"""
+        """盘口深度推送 → 合并到主行情流 → Redis PubSub → 前端 WebSocket"""
 
         def on_recv_rsp(self, rsp_pb):
             ret_code, data = super().on_recv_rsp(rsp_pb)
@@ -178,16 +178,40 @@ def _make_order_book_handler():
                 asks = [{"price": float(p), "size": float(v)} for p, v, *_ in asks_raw[:10]]
 
                 async def _publish():
+                    from backend.core.proto.market_pb2 import Order, QuoteData
+
                     redis = await _get_redis()
-                    payload = json.dumps(
-                        {
-                            "ticker": ticker,
-                            "bids": bids,
-                            "asks": asks,
-                            "source": "futu_push",
-                        }
-                    )
-                    await redis.publish(f"futu:push:orderbook:{ticker}", payload)
+
+                    # 💡 关键修复：读取最新的报价数据，合并盘口深度后重新发布到主流
+                    existing_data = await redis.hget("quant:quotes:latest", ticker)
+
+                    if existing_data:
+                        # 解析现有的 Protobuf 数据
+                        existing_quote = QuoteData()
+                        existing_quote.ParseFromString(existing_data)
+
+                        # 合并盘口数据
+                        existing_quote.ClearField("bids")
+                        existing_quote.ClearField("asks")
+                        for b in bids:
+                            existing_quote.bids.append(Order(price=b["price"], size=b["size"]))
+                        for a in asks:
+                            existing_quote.asks.append(Order(price=a["price"], size=a["size"]))
+
+                        # 重新序列化并发布到主流
+                        merged_payload = existing_quote.SerializeToString()
+                        await redis.publish("quant:quotes:stream", merged_payload)
+                    else:
+                        # 如果没有现有报价数据，只发布盘口数据
+                        payload = json.dumps(
+                            {
+                                "ticker": ticker,
+                                "bids": bids,
+                                "asks": asks,
+                                "source": "futu_push",
+                            }
+                        )
+                        await redis.publish(f"futu:push:orderbook:{ticker}", payload)
 
                 _schedule_coroutine(_publish())
             except Exception as e:

@@ -29,6 +29,7 @@ export function EarningsCalendar({ earnings, earnDed, handleManualRefresh }: { e
             <tr>
               <th className="text-left px-3 py-1.5 text-muted-foreground font-medium">日期 (UTC)</th>
               <th className="text-left px-2 py-1.5 text-muted-foreground font-medium">标的</th>
+              <th className="text-left px-2 py-1.5 text-muted-foreground font-medium">中文名称</th>
               <th className="text-center px-2 py-1.5 text-muted-foreground font-medium">财报季度</th>
               <th className="text-right px-3 py-1.5 text-muted-foreground font-medium">华尔街预期 EPS</th>
             </tr>
@@ -39,7 +40,9 @@ export function EarningsCalendar({ earnings, earnDed, handleManualRefresh }: { e
               return (
                 <tr key={i} className="hover:bg-slate-50 dark:hover:bg-secondary/30 transition-colors">
                   <td className="px-3 py-2 whitespace-nowrap"><div className="font-mono text-[10px] text-muted-foreground mb-1.5">{ea.date}</div><EventCountdown dateIso={isoTime} actual={ea.epsActual} onRefresh={handleManualRefresh} /></td>
-                  <td className="px-2 py-2 font-bold font-mono text-[11px] text-foreground">{ea.symbol}</td><td className="px-2 py-2 text-center font-mono text-[10px] text-muted-foreground">Q{ea.quarter}</td><td className="px-3 py-2 text-right font-mono text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">{ea.epsEstimate ? `$${ea.epsEstimate}` : '-'}</td>
+                  <td className="px-2 py-2 font-bold font-mono text-[11px] text-foreground">{ea.symbol}</td>
+                  <td className="px-2 py-2 text-[10px] text-muted-foreground">{ea.name_cn || '-'}</td>
+                  <td className="px-2 py-2 text-center font-mono text-[10px] text-muted-foreground">Q{ea.quarter}</td><td className="px-3 py-2 text-right font-mono text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">{ea.epsEstimate ? `$${ea.epsEstimate}` : '-'}</td>
                 </tr>
               )
             })}

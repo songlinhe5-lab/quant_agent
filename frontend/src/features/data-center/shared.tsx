@@ -99,6 +99,18 @@ export function AssetButton({ asset }: { asset: any }) {
     prev.current = asset.value
     const t = setTimeout(() => setFlash(null), 800); return () => clearTimeout(t)
   }, [asset.value])
+
+  // 💡 格式化更新时间
+  const formatUpdateTime = (dateStr: string | null) => {
+    if (!dateStr) return '--'
+    try {
+      const date = new Date(dateStr)
+      return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
+    } catch {
+      return '--'
+    }
+  }
+
   return (
     <button onClick={() => navigate(`/market/${asset.symbol}`)}
       className={cn('relative flex flex-col text-left p-2 rounded-xl border border-border/50', 'bg-white dark:bg-secondary/20 hover:bg-secondary/50 dark:hover:bg-secondary/40', 'transition-all outline-none focus-visible:ring-2 focus-visible:ring-primary', 'group shadow-xs hover:shadow-sm overflow-hidden', flash === 'up' && 'animate-flash-green', flash === 'down' && 'animate-flash-red')} title={`查看 ${asset.name} 详情`}>
@@ -121,6 +133,18 @@ export function AssetButton({ asset }: { asset: any }) {
           {asset.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
         {asset.sparkline && <div className="opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0"><MiniTrendLine data={asset.sparkline} isPositive={asset.change >= 0} /></div>}
+      </div>
+      {/* 💡 数据来源与更新时间 */}
+      <div className="mt-1.5 pt-1 border-t border-border/10">
+        <div className="flex items-center justify-between text-[8px] text-muted-foreground/50">
+          <span className="flex items-center gap-0.5">
+            <span className="inline-block w-1 h-1 rounded-full bg-emerald-400/60"></span>
+            {asset.data_source || 'YFinance'}
+          </span>
+          <span className="font-mono tabular-nums">
+            {formatUpdateTime(asset.updated_at)}
+          </span>
+        </div>
       </div>
     </button>
   )

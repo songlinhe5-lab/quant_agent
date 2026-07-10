@@ -266,7 +266,14 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
     const connectWS = () => {
       const token = getAccessToken();
       if (!token) { console.warn('[Screener WS] 无认证 token，跳过连接'); return; }
-      wsRef.current = new WebSocket(`ws://${window.location.host}/market/quotes/ws?token=${token}`);
+      // 💡 动态协议检测：HTTPS 页面必须使用 WSS
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      try {
+        wsRef.current = new WebSocket(`${wsProtocol}//${window.location.host}/market/quotes/ws?token=${token}`);
+      } catch (err) {
+        console.error('[Screener WS] WebSocket 连接失败:', err);
+        return;
+      }
       wsRef.current.binaryType = "arraybuffer";
       wsRef.current.onopen = () => {
         if (!isMountedRef.current) return;

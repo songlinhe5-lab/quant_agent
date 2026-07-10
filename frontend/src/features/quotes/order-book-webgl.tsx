@@ -207,8 +207,9 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
     // 4. 原生事件监听：绕过 React，直接变更 WebGL 内存对象
     const handleTick = (e: Event) => {
       const data = (e as CustomEvent).detail
-      // 如果不是当前标的，则忽略（移除对空盘口的拦截，因为空盘口就是休市的信号）
-      if (data.ticker !== symbol || !appRef.current) return
+      // 💡 修复：标准化 ticker 格式进行匹配（后端可能是 HK.00700，前端可能是 00700 或 00700.HK）
+      const cleanTicker = (s: string) => s.replace(/^(US|HK|SH|SZ|JP|SG|UK)\./i, '').replace(/\.(HK|SH|SZ|SS)$/i, '')
+      if (cleanTicker(data.ticker) !== cleanTicker(symbol) || !appRef.current) return
 
       const isClosed = (!data.asks || data.asks.length === 0) && (!data.bids || data.bids.length === 0)
       
