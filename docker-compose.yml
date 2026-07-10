@@ -136,9 +136,10 @@ services:
       - QUANT_ENV=production
       - OTEL_ENABLED=false
       - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_secret_2026}@postgres:5432/${DB_NAME:-quant_agent_db}
-      # 💡 美国 VPS 主节点：Futu/Finnhub 本地采集，AKShare/YFinance 交由北京 VPS 数据节点
+      # 💡 美国 VPS 主节点：YFinance + Finnhub 本地采集
+      - COLLECTOR_YFINANCE=true
+      - COLLECTOR_FINNHUB=true
       - COLLECTOR_AKSHARE=false
-      - COLLECTOR_YFINANCE=false
       - AKSHARE_MODE=cache
     volumes:
       - quant_db:/app/backend/data
