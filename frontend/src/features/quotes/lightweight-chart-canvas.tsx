@@ -410,12 +410,13 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       if (!isFirstLoadFittedRef.current && chartRef.current && lwData.length > 0) { 
         requestAnimationFrame(() => { 
           if (chartRef.current) {
-            // 💡 分时线设置可见范围为全天交易时间
-            if (isIntradayPeriod && lwData.length > 0) {
+            // 💡 分时线/五日线设置可见范围，右侧到收盘时间
+            const isIntradayForRange = ['1m', '5m'].includes(selectedPeriod)
+            if (isIntradayForRange && lwData.length > 0) {
               // 获取数据的时间范围
               const firstTime = lwData[0].time as number
               const lastTime = lwData[lwData.length - 1].time as number
-              // 计算全天交易时间（假设 9:30 开盘，16:00 收盘）
+              // 计算交易时间（9:30 开盘，16:00 收盘）
               const startDate = new Date(firstTime * 1000)
               startDate.setHours(9, 30, 0, 0)
               const endDate = new Date(lastTime * 1000)
