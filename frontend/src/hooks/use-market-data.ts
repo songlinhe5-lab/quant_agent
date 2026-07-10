@@ -91,6 +91,61 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
     }
   }, [selectedSymbol, selectedPeriod, watchlist.length, updateTicker, toast])
 
+  // 💡 3. 从 Redis 缓存批量获取自选列表行情（非聚焦 ticker 使用）
+  useEffect(() => {
+    let isMounted = true
+
+    async function fetchWatchlistQuotes() {
+      if (watchlist.length === 0) return
+
+      // 💡 排除当前聚焦的 ticker（它通过 WebSocket 获取实时数据）
+      const nonFocusedTickers = watchlist
+        .map(w => w.symbol.replace('/', ''))
+        .filter(s => s !== selectedSymbol.replace('/', ''))
+
+      if (nonFocusedTickers.length === 0) return
+
+      try {
+        const res = await apiClient.post('/market/quotes/batch', { tickers: nonFocusedTickers })
+        if (isMounted && res.data?.status === 'success' && res.data.data) {
+          // 💡 更新 latestStatsRef 用于排序和显示
+          Object.entries(res.data.data).forEach(([ticker, data]: [string, any]) => {
+            if (data.status === 'CACHED') {
+              const cleanSym = ticker.replace(/^(US|HK|SH|SZ|JP|SG|UK)\./i, '').replace(/\.(HK|SH|SZ|SS)$/i, '')
+              const changePct = parseFloat(String(data.change_pct).replace('%', '')) || 0
+              latestStatsRef.current[cleanSym] = {
+                change: changePct,
+                vol: 0  // Redis 缓存中可能没有成交量数据
+              }
+              // 💡 触发自定义事件更新 watchlist 显示
+              window.dispatchEvent(new CustomEvent('quote_update', {
+                detail: {
+                  ticker,
+                  last_price: data.last_price,
+                  change_pct: data.change_pct,
+                  volume_str: data.volume_str,
+                  source: 'redis_cache',
+                  status: 'CACHED'
+                }
+              }))
+            }
+          })
+        }
+      } catch (e) {
+        console.error('Watchlist batch fetch error:', e)
+      }
+    }
+
+    fetchWatchlistQuotes()
+    // 💡 每 30 秒刷新一次自选列表缓存数据
+    const iv = setInterval(fetchWatchlistQuotes, 30000)
+
+    return () => {
+      isMounted = false
+      clearInterval(iv)
+    }
+  }, [selectedSymbol, watchlist.length])
+
   // 🚀 2. 建立高频 WebSocket 行情订阅 (Protobuf 解码)
   useEffect(() => {
     let isMounted = true
@@ -124,8 +179,8 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
       ws.onopen = () => {
         wsConnectedRef.current = true
         if (isMounted) {
-          const allTickers = Array.from(new Set([sym, ...watchlist.map(w => w.symbol.replace('/', ''))]))
-          ws.send(JSON.stringify({ action: 'subscribe', tickers: allTickers }))
+          // 💡 只订阅当前聚焦的 ticker，非聚焦的 ticker 不订阅
+          ws.send(JSON.stringify({ action: 'subscribe', tickers: [sym] }))
         }
       }
 
@@ -194,6 +249,7 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
       isMounted = false
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         const sym = selectedSymbol.replace('/', '')
+        // 💡 取消订阅当前聚焦的 ticker
         wsRef.current.send(JSON.stringify({ action: 'unsubscribe', tickers: [sym] }))
       }
       if (staleTimerRef.current) clearTimeout(staleTimerRef.current)

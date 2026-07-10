@@ -313,6 +313,47 @@ async def get_quote(ticker: str):
     return res
 
 
+class BatchQuoteRequest(BaseModel):
+    tickers: list[str]
+
+
+@router.post("/quotes/batch")
+async def get_batch_quotes_from_cache(req: BatchQuoteRequest):
+    """💡 从 Redis 缓存批量获取自选列表行情数据（非聚焦 ticker 使用）"""
+    results = {}
+    for ticker in req.tickers:
+        # 💡 优先从 Redis 缓存获取（yf_macro_cache 由 macro_data_daemon 定期更新）
+        yf_code = _to_yf_ticker(ticker)
+        cache_key = f"yf_macro_cache_{yf_code}"
+        try:
+            cached = await redis_client.get(cache_key)
+            if cached:
+                data = json.loads(cached)
+                results[ticker] = {
+                    "ticker": ticker,
+                    "last_price": data.get("last_price") or data.get("close", 0),
+                    "change_pct": data.get("change_pct", "0.0%"),
+                    "volume_str": data.get("volume_str", "--"),
+                    "source": "redis_cache",
+                    "status": "CACHED",
+                }
+                continue
+        except Exception:
+            pass
+
+        # 💡 缓存未命中，标记为需要实时获取
+        results[ticker] = {
+            "ticker": ticker,
+            "last_price": 0,
+            "change_pct": "0.0%",
+            "volume_str": "--",
+            "source": "none",
+            "status": "NO_DATA",
+        }
+
+    return {"status": "success", "data": results}
+
+
 @router.post("/kline/sync")
 async def sync_kline_warehouse(req: SyncKlineRequest):
     """前端手动触发：强制拉取/补全本地 K 线数仓数据"""
