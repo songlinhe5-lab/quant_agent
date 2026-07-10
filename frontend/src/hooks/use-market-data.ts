@@ -43,6 +43,7 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
         const sym = selectedSymbol.replace('/', '')
         const ktypeMap: Record<string, string> = { 
           '1m': 'K_1M',    // 分时图
+          'tick': 'K_1M',  // Tick图 (实时折线图，不需要历史数据)
           '5m': 'K_5M',    // 5日图
           '15m': 'K_15M',  // 15分钟
           '1h': 'K_60M',   // 1小时

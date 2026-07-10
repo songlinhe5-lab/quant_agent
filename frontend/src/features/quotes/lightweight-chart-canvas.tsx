@@ -6,11 +6,13 @@ import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { MOCK_PRICE_EVENTS } from '@/services/mock'
 import { useIndicatorWorker } from '@/hooks/use-indicator-worker'
+import { HighFreqChartWrapper } from '@/features/quotes/high-freq-chart-wrapper'
 import type { WatchlistItem } from '@/stores/use-watchlist'
 
-// 💡 图表周期配置：分时图、5日图、日K图，后续可扩展周K/月K/季K/年K
+// 💡 图表周期配置：分时图、Tick图、5日图、日K图，后续可扩展周K/月K/季K/年K
 const periods = [
   { id: '1m', label: '分时' },
+  { id: 'tick', label: 'Tick' },
   { id: '5m', label: '5日' },
   { id: '1d', label: '日K' },
   { id: '1w', label: '周K' },
@@ -412,6 +414,8 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
         <span className="flex items-center gap-1.5"><span className="font-semibold opacity-50">V</span> <span ref={vRef} className="text-foreground font-medium tabular-nums">--</span></span>
       </div>
       <div ref={chartContainerRef} className="flex-1 relative transition-colors duration-300 overflow-hidden">
+        {/* 💡 Tick 图模式：使用高频实时折线图 */}
+        {selectedPeriod === 'tick' && <HighFreqChartWrapper symbol={selectedSymbol} />}
         <div ref={measureBoxRef} className="absolute pointer-events-none border border-primary/50 bg-primary/10 hidden z-10" />
         <div ref={measureInfoRef} className="absolute pointer-events-none hidden z-20 flex-col items-center justify-center bg-popover/90 backdrop-blur-sm border border-border/50 rounded shadow-lg p-1.5 text-[10px] font-mono tabular-nums whitespace-nowrap transition-none">
           <div ref={measurePriceRef} className="font-bold" />

@@ -94,13 +94,14 @@ export function QuotesModule() {
         }
       }
       
-      // 💡 数字键 1-5 快速切换 K 线周期
+      // 💡 数字键 1-6 快速切换 K 线周期
       const periodMap: Record<string, string> = {
-        '1': '1m',  // 分时
-        '2': '5m',  // 5日
-        '3': '1d',  // 日K
-        '4': '1w',  // 周K
-        '5': '1M',  // 月K
+        '1': '1m',   // 分时
+        '2': 'tick', // Tick
+        '3': '5m',   // 5日
+        '4': '1d',   // 日K
+        '5': '1w',   // 周K
+        '6': '1M',   // 月K
       };
       if (periodMap[e.key]) {
         e.preventDefault();
