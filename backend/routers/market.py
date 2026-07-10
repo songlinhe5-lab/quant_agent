@@ -198,20 +198,20 @@ async def get_futu_status():
     """
     # 💡 实时探测 OpenD 是否可连接（2秒超时）
     is_reachable = futu_service.conn_mgr._is_opend_reachable(timeout=2.0)
-    
+
     # 💡 如果探测失败但状态仍显示 CONNECTED，说明连接已断开，需要更新状态
     if not is_reachable and futu_service.status == "CONNECTED":
         futu_service.status = "DISCONNECTED"
         futu_service.error_msg = "OpenD 连接已断开"
         print("⚠️ [Market API] OpenD 实时探测失败，状态已更新为 DISCONNECTED")
-    
+
     # 💡 如果探测成功但状态显示 DISCONNECTED/ERROR，尝试重新连接
     if is_reachable and futu_service.status != "CONNECTED":
         print("ℹ️ [Market API] OpenD 实时探测成功，尝试重新连接...")
         futu_service.connect()
-    
+
     return {
-        "status": futu_service.status, 
+        "status": futu_service.status,
         "error": futu_service.error_msg,
         "reachable": is_reachable,  # 💡 新增：实际探测结果
     }
@@ -228,7 +228,7 @@ async def get_services_health():
     is_opend_reachable = futu_service.conn_mgr._is_opend_reachable(timeout=2.0)
     f_status = "healthy" if is_opend_reachable else "disconnected"
     f_msg = futu_service.error_msg if not is_opend_reachable else "已连接"
-    
+
     # 💡 同步更新内存状态
     if not is_opend_reachable and futu_service.status == "CONNECTED":
         futu_service.status = "DISCONNECTED"
@@ -237,7 +237,7 @@ async def get_services_health():
         futu_service.connect()
         f_status = "healthy" if futu_service.status == "CONNECTED" else "disconnected"
         f_msg = "已连接" if futu_service.status == "CONNECTED" else futu_service.error_msg
-    
+
     health_data.append(
         {
             "name": "Futu OpenD",
@@ -716,7 +716,7 @@ async def get_company_news(ticker: str, limit: int = 10):
 @router.get("/events/{ticker}")
 async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 30):
     """💡 获取个股相关事件（财报、分红、重大新闻）用于 K 线图事件标记
-    
+
     返回格式:
     [
         {"date": "2024-01-15", "type": "earnings", "label": "Q4 财报", "impact": "high"},
@@ -724,22 +724,21 @@ async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 3
         {"date": "2024-01-25", "type": "news", "label": "重大新闻标题...", "impact": "low"}
     ]
     """
-    from datetime import datetime, timedelta, timezone
-    
+    from datetime import datetime, timezone
+
     # 💡 净化输入
     safe_ticker = re.sub(r"[^A-Za-z0-9_.-]", "", str(ticker))[:20].upper()
     if not safe_ticker:
         return {"status": "error", "message": "非法的股票代码参数"}
-    
+
     events = []
-    today = datetime.now(timezone.utc)
-    
+
     # 1. 获取财报日历事件
     try:
         yf_ticker = _to_yf_ticker(safe_ticker)
         # 💡 从 Finnhub 获取财报日历
         res = await finnhub_service.get_earnings_calendar(
-            days_ahead=days_ahead, 
+            days_ahead=days_ahead,
             days_back=days_back
         )
         if res.get("status") == "success":
@@ -758,14 +757,14 @@ async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 3
                     })
     except Exception as e:
         print(f"⚠️ [Events] 获取 {safe_ticker} 财报日历失败: {e}")
-    
+
     # 2. 获取个股新闻（作为重大事件）
     try:
         news_res = await finnhub_service.get_company_news(safe_ticker, days_back=days_back)
         if news_res.get("status") == "success":
             news_list = news_res.get("data", [])
             # 💡 只取影响较大的新闻（根据关键词判断）
-            high_impact_keywords = ["earnings", "revenue", "profit", "loss", "dividend", "split", 
+            high_impact_keywords = ["earnings", "revenue", "profit", "loss", "dividend", "split",
                                     "acquisition", "merger", "lawsuit", "sec", "fda", "approval"]
             for item in news_list[:5]:  # 最多取 5 条
                 headline = item.get("headline", "")
@@ -784,10 +783,10 @@ async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 3
                 })
     except Exception as e:
         print(f"⚠️ [Events] 获取 {safe_ticker} 新闻失败: {e}")
-    
+
     # 💡 按日期排序
     events.sort(key=lambda x: x.get("date", ""))
-    
+
     return {
         "status": "success",
         "ticker": safe_ticker,

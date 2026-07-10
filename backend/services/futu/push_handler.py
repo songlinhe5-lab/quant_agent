@@ -178,17 +178,17 @@ def _make_order_book_handler():
                 asks = [{"price": float(p), "size": float(v)} for p, v, *_ in asks_raw[:10]]
 
                 async def _publish():
-                    from backend.core.proto.market_pb2 import QuoteData, Order
+                    from backend.core.proto.market_pb2 import Order, QuoteData
                     redis = await _get_redis()
-                    
+
                     # 💡 关键修复：读取最新的报价数据，合并盘口深度后重新发布到主流
                     existing_data = await redis.hget("quant:quotes:latest", ticker)
-                    
+
                     if existing_data:
                         # 解析现有的 Protobuf 数据
                         existing_quote = QuoteData()
                         existing_quote.ParseFromString(existing_data)
-                        
+
                         # 合并盘口数据
                         existing_quote.ClearField("bids")
                         existing_quote.ClearField("asks")
@@ -196,7 +196,7 @@ def _make_order_book_handler():
                             existing_quote.bids.append(Order(price=b["price"], size=b["size"]))
                         for a in asks:
                             existing_quote.asks.append(Order(price=a["price"], size=a["size"]))
-                        
+
                         # 重新序列化并发布到主流
                         merged_payload = existing_quote.SerializeToString()
                         await redis.publish("quant:quotes:stream", merged_payload)
