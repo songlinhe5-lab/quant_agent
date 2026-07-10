@@ -388,6 +388,13 @@ jobs:
             echo '${{ steps.prepare_compose.outputs.compose_b64 }}' | base64 -d > docker-compose.slave.yml
             sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:.*|ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG}|g" docker-compose.slave.yml
 
+            # 调试: 显示当前目录和文件
+            echo "=== Debug Info ==="
+            echo "Current dir: $(pwd)"
+            echo "Files in $DEPLOY_PATH:"
+            ls -la $DEPLOY_PATH/
+            echo "=================="
+
             # 检查 .env.slave 存在
             if [ ! -f .env.slave ]; then
               echo "ERROR: .env.slave not found! Please create /opt/quant-agent/.env.slave"
