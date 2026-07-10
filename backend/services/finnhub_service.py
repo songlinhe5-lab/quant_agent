@@ -34,14 +34,17 @@ class FinnhubService:
                 return random.choice(proxies)
         return None
 
-    async def get_earnings_calendar(self, days_ahead: int = 7, skip_cache: bool = False) -> Dict[str, Any]:  # noqa: E501
-        """获取近期财报日历"""
+    async def get_earnings_calendar(self, days_ahead: int = 7, days_back: int = 0, skip_cache: bool = False) -> Dict[str, Any]:  # noqa: E501
+        """获取近期财报日历
+        💡 支持 days_back 参数获取过去已发布的财报
+        """
         api_key = self._get_api_key()
         if not api_key:
             return {"status": "error", "message": "系统未配置 FINNHUB_API_KEY"}
 
         today = datetime.now(timezone.utc)
-        start_date = today.strftime("%Y-%m-%d")
+        # 💡 如果有 days_back，起始日期从过去开始
+        start_date = (today - timedelta(days=days_back)).strftime("%Y-%m-%d")
         end_date = (today + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
 
         cache_key = f"quant:macro:earnings_calendar:{start_date}_{end_date}"

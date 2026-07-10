@@ -235,9 +235,9 @@ async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = Fals
             return {"status": "error", "message": str(e)}
 
 
-async def _fetch_earnings_calendar_data(days_ahead: int, force_refresh: bool = False) -> dict:  # noqa: E501
+async def _fetch_earnings_calendar_data(days_ahead: int, force_refresh: bool = False, days_back: int = 0) -> dict:  # noqa: E501
     """带缓存的大模型财报日历前瞻推演包装器"""
-    cache_key = f"macro_earnings_calendar_with_ai_{days_ahead}"
+    cache_key = f"macro_earnings_calendar_with_ai_{days_ahead}_{days_back}"
     if not force_refresh:
         cached_data = await redis_client.get(cache_key)
         if cached_data:
@@ -253,11 +253,35 @@ async def _fetch_earnings_calendar_data(days_ahead: int, force_refresh: bool = F
                 return json.loads(cached_data)
 
         try:
-            res = await finnhub_service.get_earnings_calendar(days_ahead, skip_cache=force_refresh)  # noqa: E501
+            res = await finnhub_service.get_earnings_calendar(days_ahead, days_back=days_back, skip_cache=force_refresh)  # noqa: E501
             if res.get("status") != "success":
                 return res
 
             earnings_list = res.get("data", [])
+
+            # 💡 添加中文名称映射
+            ticker_name_map = {
+                "AAPL": "苹果", "MSFT": "微软", "GOOGL": "谷歌", "GOOG": "谷歌",
+                "AMZN": "亚马逊", "META": "Meta", "TSLA": "特斯拉", "NVDA": "英伟达",
+                "AMD": "AMD", "INTC": "英特尔", "NFLX": "奈飞", "DIS": "迪士尼",
+                "BA": "波音", "JPM": "摩根大通", "V": "Visa", "MA": "万事达",
+                "WMT": "沃尔玛", "COST": "好市多", "PYPL": "PayPal", "SQ": "Square",
+                "UBER": "优步", "LYFT": "Lyft", "ABNB": "爱彼迎", "BABA": "阿里巴巴",
+                "JD": "京东", "PDD": "拼多多", "BIDU": "百度", "NIO": "蔚来",
+                "XPEV": "小鹏", "LI": "理想", "TSM": "台积电", "ASML": "阿斯麦",
+                "AVGO": "博通", "QCOM": "高通", "TXN": "德州仪器", "MU": "美光",
+                "CRM": "Salesforce", "ADBE": "Adobe", "ORCL": "甲骨文", "IBM": "IBM",
+                "KO": "可口可乐", "PEP": "百事可乐", "MCD": "麦当劳", "SBUX": "星巴克",
+                "NKE": "耐克", "LULU": "lululemon", "TGT": "塔吉特", "HD": "家得宝",
+                "LLY": "礼来", "JNJ": "强生", "PFE": "辉瑞", "MRNA": "Moderna",
+                "XOM": "埃克森美孚", "CVX": "雪佛龙", "COP": "康菲石油",
+                "GS": "高盛", "MS": "摩根士丹利", "BLK": "贝莱德",
+                "BRK.B": "伯克希尔", "SPY": "标普500ETF", "QQQ": "纳指ETF",
+            }
+            for item in earnings_list:
+                symbol = item.get("symbol", "")
+                item["name_cn"] = ticker_name_map.get(symbol, "")
+
             result = {
                 "status": "success",
                 "data": earnings_list,
@@ -676,7 +700,7 @@ async def get_data_center_dashboard(
                 get_macro_assets(force_refresh=force_refresh),
                 _fetch_macro_calendar_data(days_ahead=7, days_back=days_back, force_refresh=force_refresh),
                 get_macro_news(category="general", limit=15),
-                _fetch_earnings_calendar_data(days_ahead=7, force_refresh=force_refresh),  # noqa: E501
+                _fetch_earnings_calendar_data(days_ahead=7, days_back=days_back, force_refresh=force_refresh),  # noqa: E501
                 return_exceptions=True,
             )
 
