@@ -176,7 +176,17 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       grid: { vertLines: { color: theme === 'dark' ? '#334155' : '#e2e8f0' }, horzLines: { color: theme === 'dark' ? '#334155' : '#e2e8f0' } },
       crosshair: { mode: CrosshairMode.Magnet },
       rightPriceScale: { borderColor: theme === 'dark' ? '#475569' : '#cbd5e1', autoScale: true, scaleMargins: { top: 0.1, bottom: 0.40 } },
-      timeScale: { borderColor: theme === 'dark' ? '#475569' : '#cbd5e1', timeVisible: true, fixLeftEdge: true, fixRightEdge: true },
+      // 💡 K线图左右拖动配置：允许拖动但不超过K线数据最大最小值
+      timeScale: { 
+        borderColor: theme === 'dark' ? '#475569' : '#cbd5e1', 
+        timeVisible: true, 
+        fixLeftEdge: true,      // 固定左边界，不允许拖动超过数据起点
+        fixRightEdge: true,     // 固定右边界，不允许拖动超过数据终点
+        rightOffset: 0,         // 右侧偏移量，0表示紧贴右边界
+        barSpacing: 10,         // 默认K线间距
+        minBarSpacing: 0.5,     // 最小K线间距（放大时的极限）
+        maxBarSpacing: 40,      // 最大K线间距（缩小时的极限）
+      },
     })
 
     const bbUpperLine = chart.addSeries(AreaSeries, { lineColor: theme === 'dark' ? 'rgba(251, 191, 36, 0.4)' : 'rgba(217, 119, 6, 0.4)', topColor: theme === 'dark' ? 'rgba(251, 191, 36, 0.15)' : 'rgba(217, 119, 6, 0.15)', bottomColor: 'rgba(0, 0, 0, 0)', lineWidth: 1, lineStyle: LineStyle.Dashed, crosshairMarkerVisible: false })
