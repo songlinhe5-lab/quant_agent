@@ -740,11 +740,11 @@ async def _fetch_macro_assets_data():
         {"symbol": "IXIC", "name": "NASDAQ 综合", "yf": "^IXIC"},
         {"symbol": "NQ", "name": "纳指期货", "yf": "NQ=F"},
         {"symbol": "HSI", "name": "恒生指数", "yf": "^HSI"},
-        {"symbol": "HSTECH", "name": "恒生科技", "yf": "800700.HK"},
+        {"symbol": "HSTECH", "name": "恒生科技", "yf": "^HSTECH"},  # 💡 修复: 正确 YFinance 代码
         {"symbol": "TNX", "name": "10Y 美债收益率", "yf": "^TNX"},
         {"symbol": "JPY=X", "name": "USD/JPY", "yf": "JPY=X"},
         {"symbol": "DX-Y", "name": "美元指数", "yf": "DX-Y.NYB"},
-        {"symbol": "USDCNH", "name": "USD/CNH", "yf": "CNH=X"},
+        {"symbol": "USDCNH", "name": "USD/CNH", "yf": "USDCNH=X"},  # 💡 修复: 正确 YFinance 代码
         {"symbol": "BTC", "name": "比特币 (BTC)", "yf": "BTC-USD"},
         {"symbol": "XAU", "name": "黄金 (XAU)", "yf": "GC=F"},
         {"symbol": "WTI", "name": "WTI 原油", "yf": "CL=F"},
