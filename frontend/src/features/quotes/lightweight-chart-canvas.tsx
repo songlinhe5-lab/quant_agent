@@ -211,8 +211,14 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     if (!chartContainerRef.current) return
     if (chartRef.current) chartRef.current.remove()
     
-    // 💡 分时线/Tick线/五日线/日K及以上周期均使用固定缩放值，禁止滚轮缩放
-    const isIntraday = ['1m', 'tick', '5m'].includes(selectedPeriod)
+    // 💡 Tick 图模式使用独立的 HighFreqChartWrapper 组件，不创建主图表
+    if (selectedPeriod === 'tick') {
+      chartRef.current = null
+      return
+    }
+    
+    // 💡 分时线/五日线/日K及以上周期均使用固定缩放值，禁止滚轮缩放
+    const isIntraday = ['1m', '5m'].includes(selectedPeriod)
     const isDailyOrAbove = ['1d', '1w', '1M'].includes(selectedPeriod)
     const disableZoom = isIntraday || isDailyOrAbove
     // 分时/5日使用较小间距以展示全天刻度，日K及以上使用固定间距展示长期趋势
