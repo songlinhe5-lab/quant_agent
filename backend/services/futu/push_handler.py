@@ -202,16 +202,21 @@ def _make_order_book_handler():
                         merged_payload = existing_quote.SerializeToString()
                         await redis.publish("quant:quotes:stream", merged_payload)
                     else:
-                        # 如果没有现有报价数据，只发布盘口数据
-                        payload = json.dumps(
-                            {
-                                "ticker": ticker,
-                                "bids": bids,
-                                "asks": asks,
-                                "source": "futu_push",
-                            }
+                        # 💡 如果没有现有报价数据，创建新的 QuoteData 只包含盘口数据
+                        # 确保盘口数据始终发布到主流，而不是独立频道
+                        new_quote = QuoteData(
+                            ticker=ticker,
+                            status="realtime",
+                            source="futu_push_orderbook",
                         )
-                        await redis.publish(f"futu:push:orderbook:{ticker}", payload)
+                        for b in bids:
+                            new_quote.bids.append(Order(price=b["price"], size=b["size"]))
+                        for a in asks:
+                            new_quote.asks.append(Order(price=a["price"], size=a["size"]))
+                        
+                        payload = new_quote.SerializeToString()
+                        await redis.publish("quant:quotes:stream", payload)
+                        logger.debug(f"[PushHandler] 盘口数据发布到主流: {ticker} bids={len(bids)} asks={len(asks)}")
 
                 _schedule_coroutine(_publish())
             except Exception as e:
