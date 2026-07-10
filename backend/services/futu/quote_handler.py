@@ -80,18 +80,20 @@ class QuoteHandler:
 
         if not self.cache_mgr.has_topic(market_ticker, SubType.QUOTE):
             # LRU 容量检查：超限时淘汰最久未用的订阅
-            evicted = self.cache_mgr.ensure_capacity(needed=1)
+            evicted = self.cache_mgr.ensure_capacity(needed=2)  # 💡 需要2个槽位：QUOTE + ORDER_BOOK
             await _execute_unsubscriptions(self.conn_mgr, self.cache_mgr, evicted)
 
+            # 💡 同时订阅报价和盘口深度，确保 Level 2 DOM 数据实时推送
             ret, msg = self.conn_mgr.quote_ctx.subscribe(
                 [market_ticker],
-                [SubType.QUOTE],
-                subscribe_push=True,  # 开启推送，实时报价通过 PushHandler 桥接到 Redis
+                [SubType.QUOTE, SubType.ORDER_BOOK],
+                subscribe_push=True,  # 开启推送，实时报价 + 盘口深度通过 PushHandler 桥接到 Redis
                 extended_time=True,  # noqa: E501
             )
             if ret != RET_OK:
                 return {"status": "error", "message": msg}
             self.cache_mgr.touch_topic(market_ticker, SubType.QUOTE)
+            self.cache_mgr.touch_topic(market_ticker, SubType.ORDER_BOOK)
 
         ret, df = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_stock_quote, [market_ticker])
         if ret != RET_OK or not isinstance(df, pd.DataFrame) or df.empty:

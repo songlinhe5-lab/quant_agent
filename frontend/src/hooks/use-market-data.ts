@@ -50,13 +50,26 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
           '4h': 'K_60M',   // 4小时
           '1d': 'K_DAY',   // 日K
           '1w': 'K_WEEK',  // 周K
-          '1M': 'K_MONTH', // 月K (如果后端支持)
+          '1M': 'K_MONTH', // 月K
+        }
+        // 💡 日线及以上周期拉取最长历史数据，用于充分展示长期趋势
+        const historyNumMap: Record<string, number> = {
+          '1m': 300,
+          'tick': 300,
+          '5m': 300,
+          '15m': 300,
+          '1h': 300,
+          '4h': 300,
+          '1d': 1000,  // 日K: 约4年数据
+          '1w': 500,   // 周K: 约10年数据
+          '1M': 300,   // 月K: 约25年数据
         }
         const ktype = ktypeMap[selectedPeriod] || 'K_60M'
+        const num = historyNumMap[selectedPeriod] || 300
         
         const [statusRes, histRes] = await Promise.all([
           apiClient.get('/market/futu/status').catch(() => null),
-          apiClient.get('/market/history', { ticker: sym, ktype, num: 300 }).catch(() => null)
+          apiClient.get('/market/history', { ticker: sym, ktype, num }).catch(() => null)
         ])
 
         if (isMounted && statusRes?.data) {
