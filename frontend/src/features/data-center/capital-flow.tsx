@@ -30,6 +30,18 @@ export function FlowItem({ item, onClick }: { item: CapitalFlowItem; onClick?: (
   }, [item.amount])
 
   const inflow = item.amount >= 0
+
+  // 💡 格式化更新时间
+  const formatUpdateTime = (dateStr: string | null | undefined) => {
+    if (!dateStr) return '--'
+    try {
+      const date = new Date(dateStr)
+      return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
+    } catch {
+      return '--'
+    }
+  }
+
   return (
     <div onClick={onClick} role="button" tabIndex={0} className={cn('flex flex-col justify-center gap-1 px-2.5 py-1.5 rounded-lg border border-border/20 overflow-hidden transition-colors cursor-pointer', 'bg-slate-50 dark:bg-secondary/10 hover:bg-slate-100 dark:hover:bg-secondary/30 focus:outline-none focus:ring-1 focus:ring-primary/50', 'border-l-2', item.market === 'HK' ? 'border-l-[#f6465d]/50' : item.market === 'CN' ? 'border-l-amber-500/50' : 'border-l-blue-500/50', flash === 'up' && 'animate-flash-green', flash === 'down' && 'animate-flash-red')}>
       <div className="flex items-center gap-1.5 w-full">
@@ -43,7 +55,19 @@ export function FlowItem({ item, onClick }: { item: CapitalFlowItem; onClick?: (
           />
         </svg>
       </div>
-      <div className="text-[9px] text-muted-foreground/60 truncate w-full">{item.desc}</div>
+      <div className="flex items-center justify-between w-full">
+        <div className="text-[9px] text-muted-foreground/60 truncate flex-1">{item.desc}</div>
+        {/* 💡 数据来源与更新时间 */}
+        <div className="flex items-center gap-1 text-[8px] text-muted-foreground/50 flex-shrink-0 ml-1">
+          <span className="flex items-center gap-0.5">
+            <span className="inline-block w-1 h-1 rounded-full bg-emerald-400/60"></span>
+            {item.data_source || 'N/A'}
+          </span>
+          <span className="font-mono tabular-nums">
+            {formatUpdateTime(item.updated_at)}
+          </span>
+        </div>
+      </div>
     </div>
   )
 }

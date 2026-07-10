@@ -425,6 +425,8 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
                     "dir": 1 if sd.get("net_inflow", 0) >= 0 else -1,
                     "desc": "沪深港通净买入港股",
                     "sparkDirs": sd.get("sparkline", [1, 1, -1, 1, 1, 1, -1, 1]),
+                    "data_source": "AKShare",  # 💡 数据来源
+                    "updated_at": sd.get("updated_at") or datetime.now(timezone.utc).isoformat(),  # 💡 更新时间
                 }
             )
 
@@ -433,16 +435,17 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
                 fund_data = res.get("data", res)
                 val = fund_data.get("main_fund_net_inflow", 0.0) / 100_000_000.0
                 amt = round(val, 2)
-                return amt, 1 if amt >= 0 else -1, real_desc, unit
-            return default_amt, 1 if default_amt >= 0 else -1, real_desc, unit
+                updated_at = fund_data.get("updated_at") or datetime.now(timezone.utc).isoformat()
+                return amt, 1 if amt >= 0 else -1, real_desc, unit, "Futu", updated_at
+            return default_amt, 1 if default_amt >= 0 else -1, real_desc, unit, "N/A", None
 
         # 💡 使用核心 ETF 的主买主卖差额代表板块的整体真实资金流
-        csi_amount, csi_dir, csi_desc, csi_unit = _parse_futu_flow(csi300_res, 8.7, "沪深300ETF主力净流", "亿人民币")  # noqa: E501
-        spy_amount, spy_dir, spy_desc, spy_unit = _parse_futu_flow(spy_res, 2.1, "标普500ETF主力净流", "亿美元")  # noqa: E501
-        qqq_amount, qqq_dir, qqq_desc, qqq_unit = _parse_futu_flow(qqq_res, 3.5, "纳指科技ETF主力净流", "亿美元")  # noqa: E501
-        soxx_amount, soxx_dir, soxx_desc, soxx_unit = _parse_futu_flow(soxx_res, 1.5, "半导体ETF主力净流", "亿美元")  # noqa: E501
-        tlt_amount, tlt_dir, tlt_desc, tlt_unit = _parse_futu_flow(tlt_res, -1.8, "20年期美债ETF主力净流", "亿美元")  # noqa: E501
-        kweb_amount, kweb_dir, kweb_desc, kweb_unit = _parse_futu_flow(kweb_res, 1.2, "中概互联ETF主力净流", "亿美元")  # noqa: E501
+        csi_amount, csi_dir, csi_desc, csi_unit, csi_source, csi_updated = _parse_futu_flow(csi300_res, 8.7, "沪深300ETF主力净流", "亿人民币")  # noqa: E501
+        spy_amount, spy_dir, spy_desc, spy_unit, spy_source, spy_updated = _parse_futu_flow(spy_res, 2.1, "标普500ETF主力净流", "亿美元")  # noqa: E501
+        qqq_amount, qqq_dir, qqq_desc, qqq_unit, qqq_source, qqq_updated = _parse_futu_flow(qqq_res, 3.5, "纳指科技ETF主力净流", "亿美元")  # noqa: E501
+        soxx_amount, soxx_dir, soxx_desc, soxx_unit, soxx_source, soxx_updated = _parse_futu_flow(soxx_res, 1.5, "半导体ETF主力净流", "亿美元")  # noqa: E501
+        tlt_amount, tlt_dir, tlt_desc, tlt_unit, tlt_source, tlt_updated = _parse_futu_flow(tlt_res, -1.8, "20年期美债ETF主力净流", "亿美元")  # noqa: E501
+        kweb_amount, kweb_dir, kweb_desc, kweb_unit, kweb_source, kweb_updated = _parse_futu_flow(kweb_res, 1.2, "中概互联ETF主力净流", "亿美元")  # noqa: E501
 
         flows.extend(
             [
@@ -454,6 +457,8 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
                     "dir": csi_dir,
                     "desc": csi_desc,
                     "sparkDirs": [1, 1, 1, 1, -1, 1, 1, 1],
+                    "data_source": csi_source,
+                    "updated_at": csi_updated,
                 },  # noqa: E501
                 {
                     "market": "US",
@@ -463,6 +468,8 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
                     "dir": spy_dir,
                     "desc": spy_desc,
                     "sparkDirs": [1, 1, 1, -1, 1, 1, 1, 1],
+                    "data_source": spy_source,
+                    "updated_at": spy_updated,
                 },  # noqa: E501
                 {
                     "market": "US",
@@ -472,6 +479,8 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
                     "dir": qqq_dir,
                     "desc": qqq_desc,
                     "sparkDirs": [-1, 1, 1, 1, 1, 1, -1, 1],
+                    "data_source": qqq_source,
+                    "updated_at": qqq_updated,
                 },  # noqa: E501
                 {
                     "market": "US",
@@ -481,6 +490,8 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
                     "dir": soxx_dir,
                     "desc": soxx_desc,
                     "sparkDirs": [1, -1, 1, 1, 1, -1, 1, 1],
+                    "data_source": soxx_source,
+                    "updated_at": soxx_updated,
                 },  # noqa: E501
                 {
                     "market": "US",
@@ -490,6 +501,8 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
                     "dir": tlt_dir,
                     "desc": tlt_desc,
                     "sparkDirs": [-1, -1, -1, 1, -1, -1, -1, -1],
+                    "data_source": tlt_source,
+                    "updated_at": tlt_updated,
                 },  # noqa: E501
                 {
                     "market": "CN",
@@ -499,6 +512,8 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
                     "dir": kweb_dir,
                     "desc": kweb_desc,
                     "sparkDirs": [1, -1, 1, -1, 1, -1, 1, 1],
+                    "data_source": kweb_source,
+                    "updated_at": kweb_updated,
                 },  # noqa: E501
             ]
         )
