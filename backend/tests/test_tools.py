@@ -167,10 +167,9 @@ class TestFundamentalDataTool:
 
         # Mock rate_limit_aware_request 直接返回错误，避免真实超时等待
         tool = FundamentalDataTool()
-        tool.rate_limit_aware_request = AsyncMock(return_value={
-            "status": "error",
-            "message": "请求后端接口失败 (重试 3 次): Connection refused"
-        })
+        tool.rate_limit_aware_request = AsyncMock(
+            return_value={"status": "error", "message": "请求后端接口失败 (重试 3 次): Connection refused"}
+        )
 
         loop = asyncio.get_event_loop()
         result = loop.run_until_complete(tool.run(ticker="AAPL"))
