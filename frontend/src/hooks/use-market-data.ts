@@ -60,9 +60,9 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
           '15m': 300,
           '1h': 300,
           '4h': 300,
-          '1d': 1000,  // 日K: 约4年数据
-          '1w': 500,   // 周K: 约10年数据
-          '1M': 300,   // 月K: 约25年数据
+          '1d': 1000,  // 日K: 约4年数据 (Futu API 最大1000条)
+          '1w': 1000,  // 周K: 约20年数据
+          '1M': 1000,  // 月K: 约80年数据
         }
         const ktype = ktypeMap[selectedPeriod] || 'K_60M'
         const num = historyNumMap[selectedPeriod] || 300
