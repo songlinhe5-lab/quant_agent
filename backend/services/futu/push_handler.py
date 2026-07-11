@@ -213,7 +213,7 @@ def _make_order_book_handler():
                             new_quote.bids.append(Order(price=b["price"], size=b["size"]))
                         for a in asks:
                             new_quote.asks.append(Order(price=a["price"], size=a["size"]))
-                        
+
                         payload = new_quote.SerializeToString()
                         await redis.publish("quant:quotes:stream", payload)
                         logger.debug(f"[PushHandler] 盘口数据发布到主流: {ticker} bids={len(bids)} asks={len(asks)}")
