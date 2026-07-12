@@ -147,10 +147,14 @@ class ConnectionManager:
             # 快速探测：OpenD 不可达时拒绝创建，防止 Futu SDK 后台线程无限重试
             if not self._is_opend_reachable():
                 raise ConnectionError(f"OpenD 不可达 ({self._host}:{self._port})，拒绝创建交易上下文")
+            # 💡 跨网络连接必须启用加密（Futu 安全要求）
+            # 当 host 不是 127.0.0.1 时，视为跨网络连接
+            is_cross_network = self._host not in ["127.0.0.1", "localhost", "::1"]
             self.trade_ctxs[key] = OpenSecTradeContext(
                 filter_trdmarket=str(market),
                 host=self._host,
                 port=self._port,
+                is_encrypt=is_cross_network,  # 跨网络启用加密，本地不加密
                 security_firm=SecurityFirm.FUTUSECURITIES,
             )
         return self.trade_ctxs[key]
