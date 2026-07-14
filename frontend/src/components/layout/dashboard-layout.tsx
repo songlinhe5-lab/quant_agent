@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { KeepAliveOutlet } from './keep-alive-outlet'
-import { Globe, BarChart3, ScanSearch, Code2, FlaskConical, Bot, ShieldAlert, Brain, Settings, Server, Bell } from 'lucide-react'
+import { Globe, BarChart3, ScanSearch, Code2, FlaskConical, Bot, ShieldAlert, Brain, Server, Bell } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -56,7 +56,6 @@ const modules: NavItem[] = [
   { url: '/risk', name: '资产风控与高级归因', label: 'Risk', icon: ShieldAlert, domain: 'risk' },
   { url: '/alerts', name: '告警中心与推送', label: 'Alert Center', icon: Bell, domain: 'risk' },
   { url: '/copilot', name: 'AI 投研大脑', label: 'AI Copilot', icon: Brain, domain: 'risk', action: 'copilot' },
-  { url: '/settings', name: '系统全局设置', label: 'Settings', icon: Settings, domain: 'system', action: 'settings' },
   { url: '/apm', name: '系统性能监控', label: 'System APM', icon: Server, domain: 'system' },
 ]
 
