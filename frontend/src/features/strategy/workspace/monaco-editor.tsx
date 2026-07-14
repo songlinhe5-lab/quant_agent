@@ -129,7 +129,7 @@ export function MonacoEditorTab() {
           const line = match ? parseInt(match[1], 10) : 0
           setSyntaxError({ line, msg: res.data.message })
         }
-      } catch (e) {}
+      } catch (e) { /* ignore */ }
     }, 800)
     return () => clearTimeout(timer)
   }, [store.code])
@@ -216,7 +216,7 @@ export function MonacoEditorTab() {
               } else if (data.status === 'error') {
                 store.updateMessage(assistantMsgId, { content: `❌ 修复失败: ${data.message}`, status: 'error' })
               }
-            } catch (e) { }
+            } catch (e) { /* ignore */ }
           }
         }
       }
