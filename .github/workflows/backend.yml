@@ -22,33 +22,14 @@ permissions:
 
 jobs:
   # ==========================================
-  # Stage 0: Branch Protection Check (Free Tier Workaround)
-  # ==========================================
-  enforce_branch_policy:
-    name: Enforce develop→main Flow
-    runs-on: ubuntu-latest
-    # 允许: merge commit ("Merge pull request") 或 squash merge ("(#XX)")
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, 'Merge pull request') && !contains(github.event.head_commit.message, '(#')
-    steps:
-      - name: Block direct push to main
-        run: |
-          echo "ERROR: Direct push to main is NOT allowed!"
-          echo ""
-          echo "Please follow the correct workflow:"
-          echo "  1. Push your changes to the 'develop' branch"
-          echo "  2. Create a Pull Request: develop → main"
-          echo "  3. Wait for CI checks to pass"
-          echo "  4. Merge the PR into main"
-          exit 1
-
-  # ==========================================
   # Stage 1: CI Quality Gates
+  # ==========================================
+  # 分支保护由 GitHub Branch Protection Rules 处理，不再需要手动检查
   # ==========================================
   lint:
     name: Lint & Type Check
     runs-on: ubuntu-latest
-    needs: [enforce_branch_policy]
-    if: always() && needs.enforce_branch_policy.result == 'skipped'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
@@ -74,7 +55,7 @@ jobs:
   test:
     name: Test & Coverage
     runs-on: ubuntu-latest
-    needs: [lint, enforce_branch_policy]
+    needs: [lint]
     if: always() && (needs.lint.result == 'success' || needs.lint.result == 'skipped')
 
     services:
@@ -159,7 +140,7 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
-    needs: [test, enforce_branch_policy]
+    needs: [test]
     if: always() && (needs.test.result == 'success' || needs.test.result == 'skipped')
     steps:
       - uses: actions/checkout@v4
