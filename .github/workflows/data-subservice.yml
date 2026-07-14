@@ -140,12 +140,12 @@ jobs:
         node: [yf-a, yf-b]
         include:
           - node: yf-a
-            host_secret: VPS_YF_A_HOST
-            ssh_key_secret: VPS_YF_A_SSH_KEY
+            host_secret: VPS_S1_HOST
+            ssh_key_secret: VPS_S1_SSH_KEY
             node_id: us-yf-a
           - node: yf-b
-            host_secret: VPS_YF_B_HOST
-            ssh_key_secret: VPS_YF_B_SSH_KEY
+            host_secret: VPS_S2_HOST
+            ssh_key_secret: VPS_S2_SSH_KEY
             node_id: us-yf-b
     steps:
       - uses: actions/checkout@v4
