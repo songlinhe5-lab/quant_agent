@@ -1,6 +1,6 @@
 /**
  * 前端日志系统
- * FE-05: level 过滤 + 生产环境上报 /api/v1/logs/frontend
+ * FE-05: level 过滤 + 生产环境上报 /api/v1/logs
  */
 
 import { API_BASE_URL } from './constants'
@@ -39,8 +39,8 @@ interface LoggerConfig {
 const DEFAULT_CONFIG: LoggerConfig = {
   minLevel: LogLevel.DEBUG,
   enableConsole: true,
-  enableRemote: false, // 后端未实现 /api/v1/logs/frontend 端点，暂时禁用
-  remoteEndpoint: `${API_BASE_URL}/logs/frontend`,
+  enableRemote: false, // 后端未实现 /api/v1/logs 端点，暂时禁用
+  remoteEndpoint: `${API_BASE_URL}/logs`,
   batchSize: 20,
   flushInterval: 5000,
 }
