@@ -226,7 +226,7 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 - [x] **[FE-03]** WebSocket 断线5步处理流程：断线 → 状态灯变红 → 图表 STALE overlay → 指数退避重连 → 重连成功后重订阅
 - [x] **[FE-04]** 三级 Error Boundary：Module 级 / Panel 级 / Chart 级，分别隔离崩溃影响范围
 - [x] **[FE-05]** `frontend/src/lib/logger.ts` 实现：level 过滤 + 生产环境上报 `/api/v1/logs`（前端侧完成，后端端点待实现）
-- [ ] **[FE-05b]** 前端日志后端端点 + APM 面板集成：
+- [x] **[FE-05b]** 前端日志后端端点 + APM 面板集成：
   - 后端：`POST /api/v1/logs` 接收前端日志（level/message/timestamp/context），写入 PostgreSQL `frontend_logs` 表
   - 后端：`GET /api/v1/logs` 查询接口（支持 level 筛选、时间范围、分页）
   - 前端：APM 面板增加“浏览器日志”Tab，展示前端错误、警告、性能指标
