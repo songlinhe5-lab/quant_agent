@@ -156,13 +156,15 @@ class AlgoAnalytics:
             avg_price = data["cost"] / qty if qty > 0 else 0
             pct = qty / total_qty if total_qty > 0 else 0
 
-            result.append({
-                "bucket": i,
-                "time_range": f"{i * bucket_size}-{(i + 1) * bucket_size}min",
-                "qty": qty,
-                "avg_price": round(avg_price, 2),
-                "pct_of_total": round(pct * 100, 2),
-            })
+            result.append(
+                {
+                    "bucket": i,
+                    "time_range": f"{i * bucket_size}-{(i + 1) * bucket_size}min",
+                    "qty": qty,
+                    "avg_price": round(avg_price, 2),
+                    "pct_of_total": round(pct * 100, 2),
+                }
+            )
 
         return result
 

@@ -65,9 +65,7 @@ class TestRiskParity:
         target = 100.0 / len(rc_values)
 
         for i, rc in enumerate(rc_values):
-            assert abs(rc - target) < 15, (
-                f"风险贡献 {rc:.1f}% 偏离目标 {target:.1f}% 过多"
-            )
+            assert abs(rc - target) < 15, f"风险贡献 {rc:.1f}% 偏离目标 {target:.1f}% 过多"
 
     def test_weights_sum_to_one(self):
         """权重之和应为 1"""
@@ -105,7 +103,7 @@ class TestEfficientFrontier:
         assert len(frontier) == 10
         for i in range(1, len(frontier)):
             assert frontier[i]["expected_return"] >= frontier[i - 1]["expected_return"] - 0.01, (
-                f"有效前沿收益不单调: {frontier[i-1]['expected_return']} -> {frontier[i]['expected_return']}"
+                f"有效前沿收益不单调: {frontier[i - 1]['expected_return']} -> {frontier[i]['expected_return']}"
             )
 
     def test_frontier_has_weights(self):

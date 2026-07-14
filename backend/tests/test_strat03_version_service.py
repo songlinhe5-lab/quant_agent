@@ -1,6 +1,7 @@
 """
 STRAT-03a: 策略版本服务测试
 """
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -151,7 +152,7 @@ def test_restore_version(mock_db):
     mock_db.query.return_value.filter.return_value.first.return_value = source_version
 
     # Mock: save_version 返回
-    with patch.object(strategy_version_service, 'save_version') as mock_save:
+    with patch.object(strategy_version_service, "save_version") as mock_save:
         mock_save.return_value = {
             "version_id": "v2",
             "seq": 2,

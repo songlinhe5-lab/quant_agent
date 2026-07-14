@@ -62,9 +62,7 @@ class TestParamCliffs:
             {"params": {"period": 20}, "sharpe": 2.0, "ok": True},  # best spike
             {"params": {"period": 30}, "sharpe": 0.3, "ok": True},
         ]
-        sens = detect_param_cliffs(
-            results, grid, cliff_abs=0.5, cliff_rel=0.3, around_best_only=True
-        )
+        sens = detect_param_cliffs(results, grid, cliff_abs=0.5, cliff_rel=0.3, around_best_only=True)
         assert sens.cliff_detected is True
         assert sens.best_params == {"period": 20}
         assert sens.max_cliff_drop >= 1.5
@@ -77,9 +75,7 @@ class TestParamCliffs:
             {"params": {"period": 20}, "sharpe": 1.1, "ok": True},
             {"params": {"period": 30}, "sharpe": 1.05, "ok": True},
         ]
-        sens = detect_param_cliffs(
-            results, grid, cliff_abs=0.5, cliff_rel=0.35, around_best_only=True
-        )
+        sens = detect_param_cliffs(results, grid, cliff_abs=0.5, cliff_rel=0.35, around_best_only=True)
         assert sens.cliff_detected is False
 
 
@@ -128,9 +124,7 @@ class TestOverfitEndpoint:
             new=AsyncMock(side_effect=OverfitError("need grid")),
         ):
             with pytest.raises(HTTPException) as ei:
-                await overfit_endpoint(
-                    OverfitRequest(ticker="US.AAPL", param_grid={"period": [10]})
-                )
+                await overfit_endpoint(OverfitRequest(ticker="US.AAPL", param_grid={"period": [10]}))
             assert ei.value.status_code == 400
             assert "need grid" in ei.value.detail
 

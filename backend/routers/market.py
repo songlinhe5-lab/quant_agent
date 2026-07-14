@@ -486,7 +486,6 @@ async def get_option_chain(ticker: str, expiration_date: str = ""):
     return res
 
 
-
 @router.get("/fund-flow")
 async def get_fund_flow(ticker: str):
     res = await market_data.get_fund_flow(ticker)

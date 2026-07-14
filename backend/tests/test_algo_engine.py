@@ -27,9 +27,7 @@ class TestMarketImpactModel:
     def test_estimate_slippage_basic(self):
         """测试滑点估计基本正确性"""
         # 10% ADV 参与率, 20% 波动率
-        slippage = MarketImpactModel.estimate_slippage(
-            qty=10000, adv=100000, volatility=0.20
-        )
+        slippage = MarketImpactModel.estimate_slippage(qty=10000, adv=100000, volatility=0.20)
         # slippage = 0.5 * 0.20 * sqrt(0.1) * 10000 = 0.5 * 0.20 * 0.316 * 10000 = 316 bps
         assert 200 < slippage < 400, f"滑点估计异常: {slippage}"
 

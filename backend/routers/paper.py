@@ -12,6 +12,7 @@ POST   /api/v1/paper/portfolios/{pid}/pause  暂停
 POST   /api/v1/paper/portfolios/{pid}/resume 恢复
 POST   /api/v1/paper/portfolios/{pid}/close  关闭
 """
+
 from typing import Optional
 
 import pandas as pd

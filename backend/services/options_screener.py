@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 class OptionFilter(BaseModel):
     """期权筛选条件"""
+
     ticker: str
     iv_rank_min: Optional[float] = Field(None, ge=0, le=100)
     iv_rank_max: Optional[float] = Field(None, ge=0, le=100)

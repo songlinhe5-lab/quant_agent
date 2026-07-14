@@ -50,9 +50,7 @@ def ensure_heartbeat_vitals_columns(bind=None) -> None:
         if missing:
             with target.begin() as conn:
                 for col in missing:
-                    conn.execute(
-                        text(f"ALTER TABLE client_heartbeats ADD COLUMN {col} FLOAT")
-                    )
+                    conn.execute(text(f"ALTER TABLE client_heartbeats ADD COLUMN {col} FLOAT"))
             logger.info(f"[Heartbeat] Web Vitals columns added: {missing}")
         _VITALS_COLUMNS_ENSURED = True
     except Exception as e:
@@ -126,9 +124,7 @@ async def heartbeat_stats(
             db.query(
                 models.ClientHeartbeat.platform,
                 func.count(models.ClientHeartbeat.id).label("total_heartbeats"),
-                func.count(func.distinct(models.ClientHeartbeat.device_id)).label(
-                    "active_devices"
-                ),
+                func.count(func.distinct(models.ClientHeartbeat.device_id)).label("active_devices"),
                 func.avg(models.ClientHeartbeat.fps).label("avg_fps"),
                 func.avg(models.ClientHeartbeat.memory_mb).label("avg_memory_mb"),
                 func.avg(models.ClientHeartbeat.ws_latency_ms).label("avg_ws_latency_ms"),

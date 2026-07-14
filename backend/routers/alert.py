@@ -294,6 +294,7 @@ async def engine_status():
     dispatcher_health = None
     try:
         from backend.services.alert_dispatcher import get_alert_dispatcher
+
         dispatcher = get_alert_dispatcher()
         dispatcher_health = await dispatcher.health()
     except Exception:
@@ -319,6 +320,7 @@ async def get_event_deliveries(event_id: str):
     """查询事件的投递记录（运维可观测 + 前端投递详情）"""
     try:
         from backend.services.alert_dispatcher import get_alert_dispatcher
+
         dispatcher = get_alert_dispatcher()
         records = dispatcher.get_delivery_records(event_id)
         return [
@@ -364,6 +366,7 @@ async def alert_websocket(websocket: WebSocket):
         redis_task = None
         try:
             from backend.core.redis_client import redis_client
+
             pubsub = redis_client.pubsub()
             await pubsub.subscribe("quant:alerts:push")
 

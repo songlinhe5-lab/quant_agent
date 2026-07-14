@@ -42,9 +42,7 @@ GICS_SECTOR_MAP = {
 class SectorAnalyzer:
     """板块暴露分析器"""
 
-    async def get_sector_exposure(
-        self, positions: List[Dict], market: str = "HK"
-    ) -> Dict[str, Any]:
+    async def get_sector_exposure(self, positions: List[Dict], market: str = "HK") -> Dict[str, Any]:
         """
         获取持仓的板块暴露分布
 
@@ -76,18 +74,18 @@ class SectorAnalyzer:
         sectors = []
         for sector_name, data in sorted(sector_agg.items(), key=lambda x: -x[1]["market_val"]):
             pct = (data["market_val"] / total_nav * 100) if total_nav > 0 else 0
-            sectors.append({
-                "sector": sector_name,
-                "market_val": round(data["market_val"], 2),
-                "pct": round(pct, 2),
-                "symbols": data["symbols"],
-            })
+            sectors.append(
+                {
+                    "sector": sector_name,
+                    "market_val": round(data["market_val"], 2),
+                    "pct": round(pct, 2),
+                    "symbols": data["symbols"],
+                }
+            )
 
         return {"sectors": sectors, "ts": time.time()}
 
-    async def _get_sector_map(
-        self, positions: List[Dict], market: str
-    ) -> Dict[str, str]:
+    async def _get_sector_map(self, positions: List[Dict], market: str) -> Dict[str, str]:
         """获取 code → sector 映射，优先 Redis 缓存"""
         codes = [p.get("code", "") for p in positions if p.get("code")]
         if not codes:

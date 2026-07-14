@@ -54,9 +54,7 @@ class WalkForwardRequest(BaseModel):
     data_snapshot_id: Optional[str] = None
     strategy_key: str = Field(default="sma_cross", description="内置策略键，如 sma_cross")
     params: Dict = Field(default_factory=dict)
-    param_grid: Optional[Dict[str, List]] = Field(
-        default=None, description="可选：样本内网格寻优（笛卡尔积上限 48）"
-    )
+    param_grid: Optional[Dict[str, List]] = Field(default=None, description="可选：样本内网格寻优（笛卡尔积上限 48）")
     train_bars: int = Field(default=120, ge=10)
     test_bars: int = Field(default=40, ge=5)
     step_bars: Optional[int] = Field(default=None, ge=1)
@@ -89,9 +87,7 @@ class GridSearchRequest(BaseModel):
     """BT-05 参数网格搜索 + 夏普热力图矩阵。"""
 
     ticker: str
-    param_grid: Dict[str, List] = Field(
-        ..., description='例如 {"period": [10, 20, 30], "slow": [40, 60]}'
-    )
+    param_grid: Dict[str, List] = Field(..., description='例如 {"period": [10, 20, 30], "slow": [40, 60]}')
     period: str = "2y"
     interval: str = "1d"
     initial_capital: float = 100000.0
@@ -101,9 +97,7 @@ class GridSearchRequest(BaseModel):
     data_snapshot_id: Optional[str] = None
     strategy_key: str = "sma_cross"
     base_params: Dict = Field(default_factory=dict)
-    target_metric: str = Field(
-        default="sharpe", pattern="^(sharpe|total_return|max_drawdown)$"
-    )
+    target_metric: str = Field(default="sharpe", pattern="^(sharpe|total_return|max_drawdown)$")
     max_workers: int = Field(default=0, ge=0, le=16, description="0=自动；1=串行")
     heatmap_x: Optional[str] = None
     heatmap_y: Optional[str] = None
@@ -113,9 +107,7 @@ class OverfitRequest(BaseModel):
     """BT-06 过拟合检测：Deflated Sharpe + 参数悬崖。"""
 
     ticker: str
-    param_grid: Dict[str, List] = Field(
-        ..., description="多重试炼参数网格（与 grid-search 同形）"
-    )
+    param_grid: Dict[str, List] = Field(..., description="多重试炼参数网格（与 grid-search 同形）")
     period: str = "2y"
     interval: str = "1d"
     initial_capital: float = 100000.0

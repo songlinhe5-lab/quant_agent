@@ -233,20 +233,15 @@ class BacktestDriver:
         code_hash = RunManifest.compute_code_hash(source_code or "")
         data_mode = self.config.data_mode or (
             "snapshot"
-            if self.config.manifest_hash or (
-                self.config.data_snapshot_id
-                and self.config.data_snapshot_id not in ("live", "unbound", None)
-            )
+            if self.config.manifest_hash
+            or (self.config.data_snapshot_id and self.config.data_snapshot_id not in ("live", "unbound", None))
             else "unbound"
         )
         if self.config.data_snapshot_id == "live":
             data_mode = "live"
         manifest_hash = self.config.manifest_hash
         reproducible = (
-            data_mode == "snapshot"
-            and bool(code_hash)
-            and bool(manifest_hash)
-            and self.config.random_seed is not None
+            data_mode == "snapshot" and bool(code_hash) and bool(manifest_hash) and self.config.random_seed is not None
         )
         manifest = RunManifest(
             run_id=str(uuid.uuid4()),
@@ -325,12 +320,14 @@ class BacktestDriver:
             current_equity = ctx.equity
             current_price = float(row.get("close", 0.0))
             date_str = str(bar_dt).split(" ")[0].split("T")[0]
-            equity_curve.append({
-                "date": date_str,
-                "equity": round(current_equity, 2),
-                "benchmark": round(self.config.initial_capital * (current_price / benchmark_start), 2),
-                "price": round(current_price, 2),
-            })
+            equity_curve.append(
+                {
+                    "date": date_str,
+                    "equity": round(current_equity, 2),
+                    "benchmark": round(self.config.initial_capital * (current_price / benchmark_start), 2),
+                    "price": round(current_price, 2),
+                }
+            )
 
         # 8. 策略结束钩子
         strategy.on_stop(ctx)

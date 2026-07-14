@@ -55,6 +55,7 @@ router = APIRouter(tags=["Data Subservice API"])
 #  安全验证
 # ─────────────────────────────────────────
 
+
 def _verify_ip(request: Request) -> bool:
     """IP 白名单验证。未配置白名单时放行所有请求。"""
     if not _allowed_ip_set:
@@ -110,8 +111,7 @@ def _verify_signature(request: Request, body: dict) -> bool:
     body_with_ts = body.copy()
     body_with_ts["__timestamp"] = timestamp
     expected = hashlib.sha256(
-        _HMAC_SECRET.encode("utf-8")
-        + json.dumps(body_with_ts, sort_keys=True).encode("utf-8")
+        _HMAC_SECRET.encode("utf-8") + json.dumps(body_with_ts, sort_keys=True).encode("utf-8")
     ).hexdigest()
     return signature == expected
 
@@ -149,15 +149,18 @@ def _detect_error_category(result: dict) -> dict:
 #  辅助函数
 # ─────────────────────────────────────────
 
+
 def _get_worker():
     """获取全局 YFinanceWorker 实例，不可用时返回 None"""
     from data_subservice.main import _yf_worker
+
     return _yf_worker
 
 
 def _get_redis():
     """获取全局 Redis 客户端实例"""
     from data_subservice.main import _redis_client
+
     return _redis_client
 
 
@@ -194,6 +197,7 @@ def _worker_unavailable() -> JSONResponse:
 # ─────────────────────────────────────────
 #  /v1/* 端点
 # ─────────────────────────────────────────
+
 
 @router.post("/v1/quote")
 async def v1_quote(request: Request):
@@ -380,8 +384,18 @@ async def v1_macro(request: Request):
 
     # 默认宏观指标列表 (与 macro_data_daemon 保持一致)
     default_tickers = [
-        "^GSPC", "^IXIC", "^HSI", "^TNX", "JPY=X", "DX-Y.NYB",
-        "CNH=X", "BTC-USD", "GC=F", "CL=F", "^VIX", "^N225",
+        "^GSPC",
+        "^IXIC",
+        "^HSI",
+        "^TNX",
+        "JPY=X",
+        "DX-Y.NYB",
+        "CNH=X",
+        "BTC-USD",
+        "GC=F",
+        "CL=F",
+        "^VIX",
+        "^N225",
     ]
 
     ticker_param = request.query_params.get("ticker", "")
@@ -425,6 +439,7 @@ async def v1_health():
 # ─────────────────────────────────────────
 #  路由器兼容路径 (YFinanceRouter URL 适配)
 # ─────────────────────────────────────────
+
 
 @router.post("/api/v1/data-source/proxy/yfinance")
 async def proxy_yfinance(request: Request):

@@ -65,9 +65,7 @@ def _align_kline_frames(kline_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     return result
 
 
-def _compute_rebalance_dates(
-    dates: pd.DatetimeIndex, freq: str
-) -> set:
+def _compute_rebalance_dates(dates: pd.DatetimeIndex, freq: str) -> set:
     """
     根据再平衡频率计算再平衡日期。
 
@@ -181,12 +179,14 @@ def run_portfolio_backtest(
     for sym in actual_symbols:
         sym_returns = returns_table[sym]
         sym_nav = initial_capital / n * (1 + sym_returns).cumprod()
-        per_symbol.append({
-            "symbol": sym,
-            "total_return": round(float((sym_nav.iloc[-1] / (initial_capital / n) - 1) * 100), 2),
-            "max_dd": round(float(max_drawdown(sym_nav) * 100), 2),
-            "sharpe": round(float(sharpe(sym_returns)), 2),
-        })
+        per_symbol.append(
+            {
+                "symbol": sym,
+                "total_return": round(float((sym_nav.iloc[-1] / (initial_capital / n) - 1) * 100), 2),
+                "max_dd": round(float(max_drawdown(sym_nav) * 100), 2),
+                "sharpe": round(float(sharpe(sym_returns)), 2),
+            }
+        )
     per_symbol.sort(key=lambda x: x["total_return"], reverse=True)
 
     # 7. 月度收益热力图
@@ -200,11 +200,13 @@ def run_portfolio_backtest(
     cummax = nav_series.cummax()
     for dt, eq in nav_series.items():
         dd = (eq - cummax.loc[dt]) / cummax.loc[dt] if cummax.loc[dt] > 0 else 0
-        equity_data.append({
-            "date": dt.strftime("%Y-%m-%d"),
-            "equity": round(float(eq), 2),
-            "drawdown": round(float(dd * 100), 2),
-        })
+        equity_data.append(
+            {
+                "date": dt.strftime("%Y-%m-%d"),
+                "equity": round(float(eq), 2),
+                "drawdown": round(float(dd * 100), 2),
+            }
+        )
 
     return {
         "metrics": {

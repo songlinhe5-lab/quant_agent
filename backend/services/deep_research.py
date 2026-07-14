@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ResearchFinding:
     """单条研究发现"""
+
     theme: str
     summary: str
     source: str = ""
@@ -28,6 +29,7 @@ class ResearchFinding:
 @dataclass
 class ResearchReport:
     """深度研报"""
+
     topic: str
     symbols: List[str]
     executive_summary: str = ""
@@ -113,9 +115,7 @@ class DataDeepDiveAgent:
 
     async def run(self, topic: str, findings: List[ResearchFinding]) -> str:
         """执行数据深挖"""
-        findings_text = "\n".join(
-            f"- [{f.theme}] {f.summary}" for f in findings
-        )
+        findings_text = "\n".join(f"- [{f.theme}] {f.summary}" for f in findings)
 
         prompt = f"""基于以下聚类发现，请进行深入分析：
 

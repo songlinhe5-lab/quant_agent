@@ -42,17 +42,13 @@ class MarketDataGateway:
     async def get_quote(self, ticker: str, **kwargs: Any) -> dict[str, Any]:
         return await self._futu.get_quote(ticker=ticker, **kwargs)
 
-    async def get_history(
-        self, ticker: str, ktype: str = "K_DAY", num: int = 100, **kwargs: Any
-    ) -> dict[str, Any]:
+    async def get_history(self, ticker: str, ktype: str = "K_DAY", num: int = 100, **kwargs: Any) -> dict[str, Any]:
         return await self._futu.get_history(ticker=ticker, ktype=ktype, num=num, **kwargs)
 
     async def get_fund_flow(self, ticker: str) -> dict[str, Any]:
         return await self._futu.get_fund_flow(ticker)
 
-    async def get_option_chain(
-        self, ticker: str, expiration_date: str = ""
-    ) -> dict[str, Any]:
+    async def get_option_chain(self, ticker: str, expiration_date: str = "") -> dict[str, Any]:
         res = await self._futu.get_option_chain(ticker, expiration_date)
         if res.get("status") == "error":
             msg = res.get("message", "")
@@ -63,9 +59,7 @@ class MarketDataGateway:
                 return yf_fallback
         return res
 
-    async def _option_chain_yfinance(
-        self, ticker: str, expiration_date: str
-    ) -> Optional[dict[str, Any]]:
+    async def _option_chain_yfinance(self, ticker: str, expiration_date: str) -> Optional[dict[str, Any]]:
         import asyncio
 
         import yfinance as yf
@@ -90,9 +84,7 @@ class MarketDataGateway:
                         "option_type": "CALL",
                         "strike_price": float(row.get("strike", 0.0)),
                         "last_price": float(row.get("lastPrice", 0.0) or 0.0),
-                        "implied_volatility": float(
-                            row.get("impliedVolatility", 0.0) or 0.0
-                        ),
+                        "implied_volatility": float(row.get("impliedVolatility", 0.0) or 0.0),
                     }
                 )
             for _, row in chain.puts.head(30).iterrows():
@@ -102,9 +94,7 @@ class MarketDataGateway:
                         "option_type": "PUT",
                         "strike_price": float(row.get("strike", 0.0)),
                         "last_price": float(row.get("lastPrice", 0.0) or 0.0),
-                        "implied_volatility": float(
-                            row.get("impliedVolatility", 0.0) or 0.0
-                        ),
+                        "implied_volatility": float(row.get("impliedVolatility", 0.0) or 0.0),
                     }
                 )
             return {
@@ -254,18 +244,14 @@ class MarketDataGateway:
     async def get_economic_calendar_fred(self, *args: Any, **kwargs: Any) -> Any:
         return await self._fred.get_economic_calendar(*args, **kwargs)
 
-    async def proxy_yfinance(
-        self, ticker: str, fetch_type: str, kwargs: Optional[dict] = None
-    ) -> Any:
+    async def proxy_yfinance(self, ticker: str, fetch_type: str, kwargs: Optional[dict] = None) -> Any:
         kwargs = kwargs or {}
         if fetch_type == "quote":
             return await self.get_batched_quote(ticker, req_type="quote")
         if fetch_type == "tech":
             return await self.get_tech_indicators(ticker, **kwargs)
         if fetch_type == "history":
-            success, data, msg = await self.fetch_yf_data(
-                ticker, "history", ttl=3600, **kwargs
-            )
+            success, data, msg = await self.fetch_yf_data(ticker, "history", ttl=3600, **kwargs)
             return {"success": success, "data": data, "message": msg}
         return {"success": False, "message": f"Unknown fetch_type: {fetch_type}"}
 
@@ -274,21 +260,13 @@ class MarketDataGateway:
         mapping = {
             "southbound": self.get_southbound_flow,
             "northbound": self.get_northbound_flow,
-            "hsgt_holders": lambda: self.get_hsgt_top_holders(
-                symbol=kwargs.get("symbol", "00700")
-            ),
-            "company_news": lambda: self.get_company_news_ak(
-                ticker=kwargs.get("ticker", "")
-            ),
-            "stock_quote": lambda: self.get_stock_quote_ak(
-                ticker=kwargs.get("ticker", "")
-            ),
+            "hsgt_holders": lambda: self.get_hsgt_top_holders(symbol=kwargs.get("symbol", "00700")),
+            "company_news": lambda: self.get_company_news_ak(ticker=kwargs.get("ticker", "")),
+            "stock_quote": lambda: self.get_stock_quote_ak(ticker=kwargs.get("ticker", "")),
             "stock_history": lambda: self.get_stock_history_ak(
                 ticker=kwargs.get("ticker", ""), num=kwargs.get("num", 60)
             ),
-            "economic_calendar": lambda: self.get_economic_calendar_ak(
-                days_ahead=kwargs.get("days_ahead", 7)
-            ),
+            "economic_calendar": lambda: self.get_economic_calendar_ak(days_ahead=kwargs.get("days_ahead", 7)),
         }
         fn = mapping.get(action)
         if not fn:

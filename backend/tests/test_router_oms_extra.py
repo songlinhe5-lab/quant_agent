@@ -223,7 +223,6 @@ class TestOmsTradingMode:
         assert resp.status_code in (400, 422)
 
 
-
 # ==========================================
 # GET /api/v1/oms/positions
 # ==========================================

@@ -43,14 +43,8 @@ class TestCollectorPluginBoundary:
     def test_start_daemons_has_no_concrete_service_imports(self):
         tree = ast.parse(REGISTRY.read_text(encoding="utf-8"), filename=str(REGISTRY))
         imports = _imports_in_function(tree, "start_collector_daemons")
-        offenders = [
-            mod
-            for mod in imports
-            if any(bad in mod for bad in FORBIDDEN_IMPORT_SUBSTRINGS)
-        ]
-        assert not offenders, (
-            "start_collector_daemons 禁止硬编码数据源 import: " + ", ".join(offenders)
-        )
+        offenders = [mod for mod in imports if any(bad in mod for bad in FORBIDDEN_IMPORT_SUBSTRINGS)]
+        assert not offenders, "start_collector_daemons 禁止硬编码数据源 import: " + ", ".join(offenders)
 
     def test_registry_module_body_has_no_concrete_service_imports(self):
         """模块顶层也不得直接 import yf_service 等（只允许 collectors 包）。"""

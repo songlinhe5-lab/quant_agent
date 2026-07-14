@@ -50,7 +50,9 @@ class IsomorphismReport:
     def summary(self) -> str:
         """生成摘要"""
         if self.is_consistent:
-            return f"✅ 同构校验通过：收益差异 {self.max_return_diff_pct:.4f}%, 回撤差异 {self.max_drawdown_diff_pct:.4f}%"
+            return (
+                f"✅ 同构校验通过：收益差异 {self.max_return_diff_pct:.4f}%, 回撤差异 {self.max_drawdown_diff_pct:.4f}%"
+            )
         else:
             reasons = [d.reason for d in self.divergence_points[:3]]
             return f"❌ 同构校验失败：{', '.join(reasons)}"
@@ -136,15 +138,17 @@ class IsomorphismVerifier:
                 max_return_diff_pct=float("inf"),
                 max_drawdown_diff_pct=float("inf"),
                 trade_count_diff=-1,
-                divergence_points=[DivergencePoint(
-                    bar_index=0,
-                    bar_date="N/A",
-                    event_price=0,
-                    vector_price=0,
-                    event_position=0,
-                    vector_position=0,
-                    reason=f"Vector execution failed: {e}",
-                )],
+                divergence_points=[
+                    DivergencePoint(
+                        bar_index=0,
+                        bar_date="N/A",
+                        event_price=0,
+                        vector_price=0,
+                        event_position=0,
+                        vector_position=0,
+                        reason=f"Vector execution failed: {e}",
+                    )
+                ],
                 event_metrics=event_result.metrics,
                 vector_metrics={},
             )
@@ -211,15 +215,17 @@ class IsomorphismVerifier:
         for i, date in enumerate(sorted(common_dates)):
             eq_diff = abs(event_equity[date] - vector_equity[date])
             if eq_diff > 1.0:  # 差异超过 1 元
-                points.append(DivergencePoint(
-                    bar_index=i,
-                    bar_date=date,
-                    event_price=event_equity[date],
-                    vector_price=vector_equity[date],
-                    event_position=0,  # 简化
-                    vector_position=0,
-                    reason=f"Equity divergenceence at {date}: {eq_diff:.2f}",
-                ))
+                points.append(
+                    DivergencePoint(
+                        bar_index=i,
+                        bar_date=date,
+                        event_price=event_equity[date],
+                        vector_price=vector_equity[date],
+                        event_position=0,  # 简化
+                        vector_position=0,
+                        reason=f"Equity divergenceence at {date}: {eq_diff:.2f}",
+                    )
+                )
                 if len(points) >= 5:  # 最多记录 5 个分歧点
                     break
 

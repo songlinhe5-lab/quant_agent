@@ -173,11 +173,13 @@ class VectorExecutor:
         for date, eq in equity_s.items():
             date_str = str(date).split(" ")[0].split("T")[0]
             price = df.loc[date, "close"] if date in df.index else 0
-            result.append({
-                "date": date_str,
-                "equity": round(eq, 2),
-                "benchmark": round(initial * (price / benchmark_start), 2),
-            })
+            result.append(
+                {
+                    "date": date_str,
+                    "equity": round(eq, 2),
+                    "benchmark": round(initial * (price / benchmark_start), 2),
+                }
+            )
         return result
 
     def _extract_trades(self, pf) -> list:
@@ -189,22 +191,26 @@ class VectorExecutor:
         for _, tr in pf.trades.records_readable.iterrows():
             entry_date = str(tr["Entry Timestamp"]).split(" ")[0].split("T")[0]
             entry_action = "BUY" if tr["Direction"] == "Long" else "SHORT"
-            trades.append({
-                "date": entry_date,
-                "action": entry_action,
-                "price": round(tr.get("Avg Entry Price", tr.get("Entry Price", 0)), 4),
-                "shares": abs(int(tr["Size"])),
-            })
+            trades.append(
+                {
+                    "date": entry_date,
+                    "action": entry_action,
+                    "price": round(tr.get("Avg Entry Price", tr.get("Entry Price", 0)), 4),
+                    "shares": abs(int(tr["Size"])),
+                }
+            )
 
             exit_date = str(tr["Exit Timestamp"]).split(" ")[0].split("T")[0]
             exit_action = "SELL" if tr["Direction"] == "Long" else "COVER"
-            trades.append({
-                "date": exit_date,
-                "action": exit_action,
-                "price": round(tr.get("Avg Exit Price", tr.get("Exit Price", 0)), 4),
-                "shares": abs(int(tr["Size"])),
-                "profit": round(tr["PnL"], 4),
-            })
+            trades.append(
+                {
+                    "date": exit_date,
+                    "action": exit_action,
+                    "price": round(tr.get("Avg Exit Price", tr.get("Exit Price", 0)), 4),
+                    "shares": abs(int(tr["Size"])),
+                    "profit": round(tr["PnL"], 4),
+                }
+            )
 
         trades.sort(key=lambda x: x["date"])
         return trades
@@ -232,31 +238,37 @@ class VectorExecutor:
                     cost = shares * exec_price * (1 + self.config.commission_pct)
                     cash -= cost
                     position = shares
-                    trades.append({
-                        "date": str(date).split("T")[0],
-                        "action": "BUY",
-                        "price": round(exec_price, 4),
-                        "shares": shares,
-                    })
+                    trades.append(
+                        {
+                            "date": str(date).split("T")[0],
+                            "action": "BUY",
+                            "price": round(exec_price, 4),
+                            "shares": shares,
+                        }
+                    )
 
             elif signal == -1 and position > 0:
                 # 卖出
                 exec_price = price * (1 - self.config.slippage_pct)
                 revenue = position * exec_price * (1 - self.config.commission_pct)
                 cash += revenue
-                trades.append({
-                    "date": str(date).split("T")[0],
-                    "action": "SELL",
-                    "price": round(exec_price, 4),
-                    "shares": position,
-                })
+                trades.append(
+                    {
+                        "date": str(date).split("T")[0],
+                        "action": "SELL",
+                        "price": round(exec_price, 4),
+                        "shares": position,
+                    }
+                )
                 position = 0
 
             equity = cash + position * price
-            equity_curve.append({
-                "date": str(date).split("T")[0],
-                "equity": round(equity, 2),
-            })
+            equity_curve.append(
+                {
+                    "date": str(date).split("T")[0],
+                    "equity": round(equity, 2),
+                }
+            )
 
         final_equity = equity_curve[-1]["equity"] if equity_curve else self.config.initial_capital
         total_return = (final_equity - self.config.initial_capital) / self.config.initial_capital

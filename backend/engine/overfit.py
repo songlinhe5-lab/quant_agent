@@ -67,9 +67,8 @@ def norm_ppf(p: float) -> float:
     phigh = 1 - plow
     if p < plow:
         q = math.sqrt(-2 * math.log(p))
-        return (
-            (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5])
-            / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+        return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / (
+            (((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1
         )
     if p > phigh:
         q = math.sqrt(-2 * math.log(1 - p))
@@ -348,14 +347,10 @@ class OverfitAnalyzer:
         warnings: List[str] = []
         if dsr["dsr"] < cfg.dsr_warn_below:
             warnings.append(
-                f"Deflated Sharpe={dsr['dsr']:.3f} < {cfg.dsr_warn_below} "
-                f"(SR*={dsr['sr_star']:.3f}, trials={n_trials})"
+                f"Deflated Sharpe={dsr['dsr']:.3f} < {cfg.dsr_warn_below} (SR*={dsr['sr_star']:.3f}, trials={n_trials})"
             )
         if sens.cliff_detected:
-            warnings.append(
-                f"最优参数邻域存在性能悬崖 max_drop={sens.max_cliff_drop:.3f} "
-                f"({len(sens.cliffs)} 处)"
-            )
+            warnings.append(f"最优参数邻域存在性能悬崖 max_drop={sens.max_cliff_drop:.3f} ({len(sens.cliffs)} 处)")
 
         return OverfitReport(
             dsr=dsr,

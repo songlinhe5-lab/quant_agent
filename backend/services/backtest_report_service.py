@@ -52,12 +52,7 @@ def is_reproducible(
     data_mode: str,
 ) -> bool:
     """正式可复现：快照模式 + 非空数据指纹 + 固定种子 + 非空代码 hash。"""
-    return (
-        data_mode == "snapshot"
-        and bool(code_hash)
-        and bool(manifest_hash)
-        and random_seed is not None
-    )
+    return data_mode == "snapshot" and bool(code_hash) and bool(manifest_hash) and random_seed is not None
 
 
 class BacktestReportService:
@@ -95,11 +90,7 @@ class BacktestReportService:
             if sid and str(sid).startswith("snap_") and sid not in ("snap_live", "snap_unbound"):
                 from backend.core.datalake_models import DataSnapshot
 
-                exists = (
-                    self._db.query(DataSnapshot.snapshot_id)
-                    .filter(DataSnapshot.snapshot_id == sid)
-                    .first()
-                )
+                exists = self._db.query(DataSnapshot.snapshot_id).filter(DataSnapshot.snapshot_id == sid).first()
                 if exists:
                     snapshot_fk = sid
 

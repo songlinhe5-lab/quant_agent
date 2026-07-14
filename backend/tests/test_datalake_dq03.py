@@ -153,8 +153,7 @@ def test_retention_marks_anchor_and_deletes_t2(tmp_lake, db_session):
     ret = SnapshotRetention(db_session, snapshots_root=snaps)
     summary = ret.run(as_of=today)
     assert "snap_20250110" in [a["id"] for a in summary["archived"]] or (
-        db_session.query(DataSnapshot).filter_by(snapshot_id="snap_20250110").one().storage_tier
-        in ("r2", "deleted")
+        db_session.query(DataSnapshot).filter_by(snapshot_id="snap_20250110").one().storage_tier in ("r2", "deleted")
     )
 
 

@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 class CEPRule(BaseModel):
     """CEP 规则定义"""
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
     name: str = Field(description="规则名称")
     expression: str = Field(description="指标表达式，复用 QUANT-03 语法")
@@ -39,6 +40,7 @@ class CEPRule(BaseModel):
 
 class CEPMatch(BaseModel):
     """CEP 匹配事件"""
+
     rule_id: str
     rule_name: str
     symbol: str
@@ -70,9 +72,7 @@ class CEPEngine:
     def __init__(self) -> None:
         self._rules: Dict[str, CEPRule] = {}
         # {ticker: deque of recent bar dicts}
-        self._bar_buffers: Dict[str, Deque[Dict[str, float]]] = defaultdict(
-            lambda: deque(maxlen=self.WINDOW_SIZE)
-        )
+        self._bar_buffers: Dict[str, Deque[Dict[str, float]]] = defaultdict(lambda: deque(maxlen=self.WINDOW_SIZE))
         # {(rule_id, symbol): last_trigger_timestamp}
         self._cooldown_map: Dict[tuple, float] = {}
         # 最近匹配事件列表 (供 SSE 推送)
@@ -109,8 +109,16 @@ class CEPEngine:
 
     # ── 行情数据摄入 ──
 
-    def on_bar(self, ticker: str, open_price: float, high: float, low: float,
-               close: float, volume: float, timestamp: Optional[float] = None) -> List[CEPMatch]:
+    def on_bar(
+        self,
+        ticker: str,
+        open_price: float,
+        high: float,
+        low: float,
+        close: float,
+        volume: float,
+        timestamp: Optional[float] = None,
+    ) -> List[CEPMatch]:
         """
         接收一根 K 线 (或 tick 近似为 bar)，更新缓冲区并评估规则。
 
@@ -134,8 +142,7 @@ class CEPEngine:
 
         return self._evaluate_all_rules(ticker, ts)
 
-    def on_quote(self, ticker: str, price: float, volume: float,
-                 timestamp: Optional[float] = None) -> List[CEPMatch]:
+    def on_quote(self, ticker: str, price: float, volume: float, timestamp: Optional[float] = None) -> List[CEPMatch]:
         """
         接收实时报价 (tick)，简化为 bar 追加。
         高频场景下，同一根 bar 周期内只保留最新价 (OHLC 聚合)。
@@ -240,7 +247,13 @@ class CEPEngine:
                     quote.ParseFromString(message["data"])
                     ticker = quote.ticker
                     price = quote.last_price
-                    volume = float(quote.volume_str.replace(",", "").replace("万", "0000").replace("亿", "00000000").split()[0]) if quote.volume_str else 0
+                    volume = (
+                        float(
+                            quote.volume_str.replace(",", "").replace("万", "0000").replace("亿", "00000000").split()[0]
+                        )
+                        if quote.volume_str
+                        else 0
+                    )
 
                     if price > 0:
                         self.on_quote(ticker, price, volume)

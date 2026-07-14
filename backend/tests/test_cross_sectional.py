@@ -30,13 +30,16 @@ def _make_kline(n: int = 100, trend: float = 0.0, seed: int = 42) -> pd.DataFram
     volume = rng.randint(1000, 10000, n).astype(float)
 
     dates = pd.date_range("2024-01-01", periods=n, freq="B")
-    return pd.DataFrame({
-        "open": open_price,
-        "high": high,
-        "low": low,
-        "close": close,
-        "volume": volume,
-    }, index=dates)
+    return pd.DataFrame(
+        {
+            "open": open_price,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": volume,
+        },
+        index=dates,
+    )
 
 
 class TestRSIComputation:

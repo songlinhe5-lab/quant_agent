@@ -49,17 +49,14 @@ class LegacyStrategyAdapter(Strategy):
         self._signal_cache: Dict[str, int] = {}  # symbol → signal
 
         # 检测旧策略类型
-        self._has_vectorized = (
-            hasattr(legacy_instance, "_calculate_indicators")
-            and hasattr(legacy_instance, "_generate_signals")
+        self._has_vectorized = hasattr(legacy_instance, "_calculate_indicators") and hasattr(
+            legacy_instance, "_generate_signals"
         )
         self._has_on_bar = hasattr(legacy_instance, "on_bar")
         self._has_on_tick = hasattr(legacy_instance, "on_tick")
 
         if not any([self._has_vectorized, self._has_on_bar, self._has_on_tick]):
-            raise ValueError(
-                f"Legacy strategy {type(legacy_instance).__name__} has no recognized interface"
-            )
+            raise ValueError(f"Legacy strategy {type(legacy_instance).__name__} has no recognized interface")
 
     def on_init(self, ctx: "StrategyContext") -> None:
         """初始化：设置 legacy 实例的 df 属性（如果支持矢量化）"""
@@ -102,13 +99,18 @@ class LegacyStrategyAdapter(Strategy):
             # 矢量化策略：更新 df 并检查最新信号
             if hasattr(self._legacy, "df") and not self._legacy.df.empty:
                 # 追加新 bar
-                new_row = pd.DataFrame([{
-                    "Open": bar.open,
-                    "High": bar.high,
-                    "Low": bar.low,
-                    "Close": bar.close,
-                    "Volume": bar.volume,
-                }], index=[bar.dt])
+                new_row = pd.DataFrame(
+                    [
+                        {
+                            "Open": bar.open,
+                            "High": bar.high,
+                            "Low": bar.low,
+                            "Close": bar.close,
+                            "Volume": bar.volume,
+                        }
+                    ],
+                    index=[bar.dt],
+                )
                 self._legacy.df = pd.concat([self._legacy.df, new_row])
 
                 # 检查最新信号

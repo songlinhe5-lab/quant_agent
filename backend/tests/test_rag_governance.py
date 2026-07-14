@@ -19,6 +19,7 @@ class TestCategoryTTL:
 
     def test_ttl_values(self):
         from backend.services.screener_service import ScreenerService
+
         ttl = ScreenerService.CATEGORY_TTL
         assert ttl["financial_report"] == 90 * 24 * 3600
         assert ttl["news"] == 7 * 24 * 3600
@@ -27,6 +28,7 @@ class TestCategoryTTL:
 
     def test_ttl_has_all_categories(self):
         from backend.services.screener_service import ScreenerService
+
         expected = {"financial_report", "news", "macro", "general"}
         assert set(ScreenerService.CATEGORY_TTL.keys()) == expected
 
@@ -36,6 +38,7 @@ class TestRetrievalQualityMonitor:
 
     def test_low_similarity_increments_streak(self):
         from backend.services.rag_governance import RAGGovernanceService
+
         svc = RAGGovernanceService()
         # 连续低相似度
         for _ in range(5):
@@ -45,6 +48,7 @@ class TestRetrievalQualityMonitor:
 
     def test_alert_triggered_at_threshold(self):
         from backend.services.rag_governance import LOW_QUALITY_STREAK, RAGGovernanceService
+
         svc = RAGGovernanceService()
         result = False
         for _ in range(LOW_QUALITY_STREAK):
@@ -53,6 +57,7 @@ class TestRetrievalQualityMonitor:
 
     def test_high_similarity_resets_streak(self):
         from backend.services.rag_governance import RAGGovernanceService
+
         svc = RAGGovernanceService()
         # 先积累一些低相似度
         for _ in range(5):
@@ -64,6 +69,7 @@ class TestRetrievalQualityMonitor:
 
     def test_quality_stats(self):
         from backend.services.rag_governance import RAGGovernanceService
+
         svc = RAGGovernanceService()
         svc.record_retrieval_similarity(0.3)
         svc.record_retrieval_similarity(0.8)
@@ -75,6 +81,7 @@ class TestRetrievalQualityMonitor:
 
     def test_empty_stats(self):
         from backend.services.rag_governance import RAGGovernanceService
+
         svc = RAGGovernanceService()
         stats = svc.get_quality_stats()
         assert stats["total_retrievals"] == 0
@@ -129,8 +136,10 @@ class TestWebpageKnowledgeBaseModel:
 
     def test_model_has_category_field(self):
         from backend.core.models import WebpageKnowledgeBase
+
         assert hasattr(WebpageKnowledgeBase, "category")
 
     def test_model_has_embedding_model_version_field(self):
         from backend.core.models import WebpageKnowledgeBase
+
         assert hasattr(WebpageKnowledgeBase, "embedding_model_version")

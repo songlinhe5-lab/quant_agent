@@ -27,10 +27,7 @@ async def generate_deep_report(req: DeepReportRequest):
         "topic": report.topic,
         "symbols": report.symbols,
         "executive_summary": report.executive_summary,
-        "findings": [
-            {"theme": f.theme, "summary": f.summary, "relevance": f.relevance}
-            for f in report.findings
-        ],
+        "findings": [{"theme": f.theme, "summary": f.summary, "relevance": f.relevance} for f in report.findings],
         "deep_analysis": report.deep_analysis,
         "markdown_content": report.markdown_content,
         "chart_configs": report.chart_configs,

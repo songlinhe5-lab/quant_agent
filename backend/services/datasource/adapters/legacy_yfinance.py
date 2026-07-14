@@ -74,25 +74,13 @@ class LegacyYFinanceDataSource:
 
     async def fetch(self, action: str, params: dict[str, Any]) -> Result:
         ticker = str(params.get("ticker", "") or "")
-        fetch_type = str(
-            params.get("fetch_type")
-            or (action if action in ("history", "info", "quote") else "history")
-        )
-        passthrough = {
-            k: v
-            for k, v in params.items()
-            if k not in ("ticker", "fetch_type", "action")
-        }
+        fetch_type = str(params.get("fetch_type") or (action if action in ("history", "info", "quote") else "history"))
+        passthrough = {k: v for k, v in params.items() if k not in ("ticker", "fetch_type", "action")}
         try:
-            success, data, msg = await self._svc().fetch_yf_data(
-                ticker, fetch_type, **passthrough
-            )
+            success, data, msg = await self._svc().fetch_yf_data(ticker, fetch_type, **passthrough)
         except Exception as e:
             err_str = str(e)
-            if any(
-                x in err_str
-                for x in ("429", "Rate limit", "Too Many Requests", "YFRateLimitError")
-            ):
+            if any(x in err_str for x in ("429", "Rate limit", "Too Many Requests", "YFRateLimitError")):
                 return Result.make_rate_limited(
                     ErrorInfo.rate_limited(message=err_str),
                     source=self.name,
@@ -104,9 +92,7 @@ class LegacyYFinanceDataSource:
 
         if success:
             return Result.make_success(data, source=self.name)
-        if msg and any(
-            x in msg for x in ("限流", "429", "冷却", "熔断", "Rate limit")
-        ):
+        if msg and any(x in msg for x in ("限流", "429", "冷却", "熔断", "Rate limit")):
             return Result.make_rate_limited(
                 ErrorInfo.rate_limited(message=msg or "yfinance rate limited"),
                 source=self.name,

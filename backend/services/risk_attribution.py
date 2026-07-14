@@ -32,8 +32,11 @@ def calc_attribution(
     """
     if len(portfolio_returns) < 10 or len(benchmark_returns) < 10:
         return {
-            "alpha": 0.0, "beta": 0.0, "r_squared": 0.0,
-            "beta_contrib": 0.0, "total_return": 0.0,
+            "alpha": 0.0,
+            "beta": 0.0,
+            "r_squared": 0.0,
+            "beta_contrib": 0.0,
+            "total_return": 0.0,
             "attribution": {"alpha_pct": 0, "beta_pct": 0, "residual_pct": 0},
             "ts": time.time(),
         }

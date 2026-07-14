@@ -117,11 +117,27 @@ class TestPriceAnomalies:
     def test_price_jump_detected(self, monitor):
         """价格跳变检测"""
         # 第一条正常
-        quote1 = {"ticker": "AAPL", "open": 100, "high": 105, "low": 99, "close": 103, "volume": 1000, "timestamp": time.time()}
+        quote1 = {
+            "ticker": "AAPL",
+            "open": 100,
+            "high": 105,
+            "low": 99,
+            "close": 103,
+            "volume": 1000,
+            "timestamp": time.time(),
+        }
         monitor.validate_quote(quote1)
 
         # 第二条跳变 60%
-        quote2 = {"ticker": "AAPL", "open": 165, "high": 170, "low": 160, "close": 168, "volume": 1000, "timestamp": time.time()}
+        quote2 = {
+            "ticker": "AAPL",
+            "open": 165,
+            "high": 170,
+            "low": 160,
+            "close": 168,
+            "volume": 1000,
+            "timestamp": time.time(),
+        }
         result = monitor.validate_quote(quote2)
         jump_anomalies = [a for a in result["anomalies"] if a["type"] == AnomalyType.PRICE_JUMP.value]
         assert len(jump_anomalies) > 0

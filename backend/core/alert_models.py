@@ -28,51 +28,51 @@ from pydantic import BaseModel, Field
 class AlertRuleType(str, Enum):
     """告警规则类型"""
 
-    PRICE_CROSS = "price_cross"      # 价格穿越
-    PRICE_ABOVE = "price_above"      # 价格高于
-    PRICE_BELOW = "price_below"      # 价格低于
-    PCT_CHANGE = "pct_change"        # 涨跌幅
-    VOLUME_SURGE = "volume_surge"    # 成交量突增
+    PRICE_CROSS = "price_cross"  # 价格穿越
+    PRICE_ABOVE = "price_above"  # 价格高于
+    PRICE_BELOW = "price_below"  # 价格低于
+    PCT_CHANGE = "pct_change"  # 涨跌幅
+    VOLUME_SURGE = "volume_surge"  # 成交量突增
     # ALERT-05: 技术指标告警
     RSI_THRESHOLD = "rsi_threshold"  # RSI 超买/超卖 (threshold=30 表示 RSI<30 触发, threshold=70 表示 RSI>70 触发)
-    MACD_CROSS = "macd_cross"        # MACD 金叉/死叉 (threshold>0 金叉, threshold<0 死叉, 用 metadata.direction 区分)
-    MA_CROSS = "ma_cross"            # 均线穿越 (metadata.short_period/metadata.long_period, threshold 无用)
+    MACD_CROSS = "macd_cross"  # MACD 金叉/死叉 (threshold>0 金叉, threshold<0 死叉, 用 metadata.direction 区分)
+    MA_CROSS = "ma_cross"  # 均线穿越 (metadata.short_period/metadata.long_period, threshold 无用)
     # PT-02a: 纸面组合漂移告警
-    PAPER_DRIFT = "paper_drift"      # 纸面 vs 回测偏离超阈值 (threshold=TE年化阈值, 默认 0.15)
+    PAPER_DRIFT = "paper_drift"  # 纸面 vs 回测偏离超阈值 (threshold=TE年化阈值, 默认 0.15)
 
 
 class AlertSeverity(str, Enum):
     """告警严重程度"""
 
-    INFO = "info"          # 信息
-    WARNING = "warning"    # 警告
+    INFO = "info"  # 信息
+    WARNING = "warning"  # 警告
     CRITICAL = "critical"  # 紧急
 
 
 class AlertStatus(str, Enum):
     """告警状态"""
 
-    ACTIVE = "active"        # 活跃（规则已启用）
-    PAUSED = "paused"        # 暂停
+    ACTIVE = "active"  # 活跃（规则已启用）
+    PAUSED = "paused"  # 暂停
     TRIGGERED = "triggered"  # 已触发（冷却中）
-    EXPIRED = "expired"      # 已过期
+    EXPIRED = "expired"  # 已过期
 
 
 class NotificationPriority(str, Enum):
     """通知优先级（ALERT-03 路由矩阵）"""
 
-    P0 = "p0"   # 紧急：止损/熔断/IP封禁
-    P1 = "p1"   # 高：策略信号/配额耗尽/CRITICAL 用户规则
-    P2 = "p2"   # 中：委托成交/WARNING 用户规则/限流飙升
-    P3 = "p3"   # 低：AI 完成/INFO/选股匹配
+    P0 = "p0"  # 紧急：止损/熔断/IP封禁
+    P1 = "p1"  # 高：策略信号/配额耗尽/CRITICAL 用户规则
+    P2 = "p2"  # 中：委托成交/WARNING 用户规则/限流飙升
+    P3 = "p3"  # 低：AI 完成/INFO/选股匹配
 
 
 class AlertChannel(str, Enum):
     """告警推送通道"""
 
-    IN_APP = "in_app"        # 应用内（WebSocket 推送）
-    FEISHU = "feishu"        # 飞书 Webhook
-    TELEGRAM = "telegram"    # Telegram Bot
+    IN_APP = "in_app"  # 应用内（WebSocket 推送）
+    FEISHU = "feishu"  # 飞书 Webhook
+    TELEGRAM = "telegram"  # Telegram Bot
 
 
 class AlertRule(BaseModel):
@@ -128,8 +128,13 @@ class AlertEvent(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
     # ALERT-03 扩展字段
-    source: str = Field(default="user_rule", description="事件来源: user_rule|rate_limit|system|paper_drift|trade_fill|kill_switch|agent")
-    priority: Optional[NotificationPriority] = Field(default=None, description="通知优先级（为空时由 PriorityResolver 计算）")
+    source: str = Field(
+        default="user_rule",
+        description="事件来源: user_rule|rate_limit|system|paper_drift|trade_fill|kill_switch|agent",
+    )
+    priority: Optional[NotificationPriority] = Field(
+        default=None, description="通知优先级（为空时由 PriorityResolver 计算）"
+    )
     ui_hint: Dict[str, Any] = Field(default_factory=dict, description="前端行为提示: {mode, flash, sound, duration}")
 
 

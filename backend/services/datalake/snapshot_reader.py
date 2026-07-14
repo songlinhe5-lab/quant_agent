@@ -69,11 +69,7 @@ class SnapshotReader:
             if self._db is not None:
                 from backend.core.datalake_models import DataSnapshot
 
-                row = (
-                    self._db.query(DataSnapshot)
-                    .filter(DataSnapshot.snapshot_id == snapshot_id)
-                    .first()
-                )
+                row = self._db.query(DataSnapshot).filter(DataSnapshot.snapshot_id == snapshot_id).first()
                 if row:
                     return dict(row.manifest_json)
             return None

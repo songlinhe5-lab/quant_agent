@@ -110,9 +110,7 @@ if _OTEL_AVAILABLE:
 # ─────────────────────────────────────────
 OTEL_ENABLED = os.getenv("OTEL_ENABLED", "true").lower() == "true"
 OTEL_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "quant-agent")
-OTEL_EXPORTER_OTLP_ENDPOINT = os.getenv(
-    "OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318/v1/traces"
-)
+OTEL_EXPORTER_OTLP_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318/v1/traces")
 try:
     OTEL_SAMPLING_RATE = float(os.getenv("OTEL_SAMPLING_RATE", "1.0"))
 except ValueError:
@@ -196,9 +194,7 @@ class _NoopTracer:
 
 
 @contextmanager
-def traced_span(
-    name: str, attributes: Optional[dict] = None
-) -> Generator[Any, None, None]:
+def traced_span(name: str, attributes: Optional[dict] = None) -> Generator[Any, None, None]:
     """业务代码子 span；OTEL 关闭时为 no-op。"""
     tracer = get_tracer()
     with tracer.start_as_current_span(name) as span:

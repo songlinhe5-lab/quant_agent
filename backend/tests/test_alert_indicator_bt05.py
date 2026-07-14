@@ -293,10 +293,12 @@ class TestAlertEngineIndicatorIntegration:
     @pytest.fixture
     def mock_market_data(self):
         md = AsyncMock()
-        md.get_tech_indicators = AsyncMock(return_value={
-            "status": "success",
-            "data": {"trend": [{"RSI_14": 25.0, "MACD_12_26_9": 0.5, "MACDs_12_26_9": 0.3}]},
-        })
+        md.get_tech_indicators = AsyncMock(
+            return_value={
+                "status": "success",
+                "data": {"trend": [{"RSI_14": 25.0, "MACD_12_26_9": 0.5, "MACDs_12_26_9": 0.3}]},
+            }
+        )
         return md
 
     @pytest.mark.asyncio
@@ -369,9 +371,7 @@ class TestAlertEngineIndicatorIntegration:
 
         engine = AlertEngine(mock_redis)
         rule = _make_rule(AlertRuleType.MACD_CROSS, metadata={"direction": "golden"})
-        event = engine._create_indicator_event(
-            rule, "AAPL", {"macd_line": 0.5, "signal_line": 0.3}, time.time()
-        )
+        event = engine._create_indicator_event(rule, "AAPL", {"macd_line": 0.5, "signal_line": 0.3}, time.time())
 
         assert "金叉" in event.message
         assert event.source == "indicator"
@@ -386,9 +386,7 @@ class TestAlertEngineIndicatorIntegration:
             AlertRuleType.MA_CROSS,
             metadata={"direction": "golden", "short_period": 10, "long_period": 20},
         )
-        event = engine._create_indicator_event(
-            rule, "AAPL", {"ma_10": 155.0, "ma_20": 150.0}, time.time()
-        )
+        event = engine._create_indicator_event(rule, "AAPL", {"ma_10": 155.0, "ma_20": 150.0}, time.time())
 
         assert "上穿" in event.message
         assert event.source == "indicator"

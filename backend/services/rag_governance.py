@@ -100,9 +100,7 @@ class RAGGovernanceService:
                         {"current": current_version},
                     )
                     deleted = result.rowcount
-                logger.info(
-                    f"[RAGGovernance] Embedding 重建完成，删除 {deleted} 条旧版本记录"
-                )
+                logger.info(f"[RAGGovernance] Embedding 重建完成，删除 {deleted} 条旧版本记录")
                 return {"status": "success", "deleted_count": deleted, "new_version": current_version}
             except Exception as e:
                 logger.error(f"[RAGGovernance] Embedding 重建失败: {e}")
@@ -156,11 +154,7 @@ class RAGGovernanceService:
 
     def get_quality_stats(self) -> Dict[str, Any]:
         """返回检索质量统计信息"""
-        low_rate = (
-            self._low_similarity_count / self._total_retrievals
-            if self._total_retrievals > 0
-            else 0.0
-        )
+        low_rate = self._low_similarity_count / self._total_retrievals if self._total_retrievals > 0 else 0.0
         return {
             "total_retrievals": self._total_retrievals,
             "low_similarity_count": self._low_similarity_count,

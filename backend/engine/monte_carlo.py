@@ -57,12 +57,8 @@ class MonteCarloReport:
             "n_steps": self.n_steps,
             "percentile_curves": self.percentile_curves,
             "worst_drawdown": round(self.worst_drawdown, 6),
-            "drawdown_percentiles": {
-                k: round(v, 6) for k, v in self.drawdown_percentiles.items()
-            },
-            "final_return_percentiles": {
-                k: round(v, 6) for k, v in self.final_return_percentiles.items()
-            },
+            "drawdown_percentiles": {k: round(v, 6) for k, v in self.drawdown_percentiles.items()},
+            "final_return_percentiles": {k: round(v, 6) for k, v in self.final_return_percentiles.items()},
             "baseline": self.baseline,
             "config": self.config,
         }
@@ -146,9 +142,7 @@ def percentile_curves_from_paths(
     for p in percentiles:
         key = f"p{int(p)}" if float(p).is_integer() else f"p{p}"
         qs = np.percentile(equity_paths, p, axis=0)
-        curves[key] = [
-            {"step": int(i), "equity": round(float(qs[i]), 2)} for i in range(n_steps)
-        ]
+        curves[key] = [{"step": int(i), "equity": round(float(qs[i]), 2)} for i in range(n_steps)]
     return curves
 
 
@@ -171,9 +165,7 @@ class MonteCarloRunner:
         baseline: Optional[VectorResult] = None,
     ) -> MonteCarloReport:
         if not strategy_cls.is_vectorizable():
-            raise ValueError(
-                f"{strategy_cls.__name__} 不支持矢量化；蒙特卡洛须实现 signals()"
-            )
+            raise ValueError(f"{strategy_cls.__name__} 不支持矢量化；蒙特卡洛须实现 signals()")
 
         cfg = config or MonteCarloConfig()
         params = dict(params or {})
@@ -208,9 +200,7 @@ class MonteCarloRunner:
         if series.size < 2:
             raise ValueError("基线路径过短，无法进行蒙特卡洛抽样")
 
-        sim_method: Method = (
-            "return_bootstrap" if method_used == "return_bootstrap" else requested
-        )
+        sim_method: Method = "return_bootstrap" if method_used == "return_bootstrap" else requested
 
         equity_paths = simulate_paths(
             series,

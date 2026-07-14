@@ -45,8 +45,7 @@ class SnapshotRetention:
             .filter(
                 DataSnapshot.status == "published",
                 DataSnapshot.as_of_date >= date(year, month, 1),
-                DataSnapshot.as_of_date
-                < (date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)),
+                DataSnapshot.as_of_date < (date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)),
             )
             .order_by(DataSnapshot.as_of_date.desc())
             .all()
@@ -70,11 +69,7 @@ class SnapshotRetention:
         prev = today.replace(day=1) - timedelta(days=1)
         summary["anchors"].append(self.mark_monthly_anchors(prev.year, prev.month))
 
-        rows = (
-            self._db.query(DataSnapshot)
-            .filter(DataSnapshot.status == "published")
-            .all()
-        )
+        rows = self._db.query(DataSnapshot).filter(DataSnapshot.status == "published").all()
         for row in rows:
             age = (today - row.as_of_date).days
             if age <= T1_DAYS:

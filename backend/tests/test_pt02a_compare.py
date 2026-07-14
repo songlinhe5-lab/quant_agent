@@ -3,6 +3,7 @@ PT-02a: 对比 API 测试
 ======================
 覆盖: 序号对齐 / TE 计算一致 / benchmark 双轨切换
 """
+
 from datetime import date
 from unittest.mock import MagicMock, patch
 
@@ -23,16 +24,18 @@ def _make_nav_rows(n: int, start_nav: float = 100000.0, daily_pct: float = 0.001
     nav = start_nav
     for i in range(n):
         d = date(2026, 7, 1 + i) if 1 + i <= 28 else date(2026, 8, 1 + i - 31)
-        rows.append({
-            "portfolio_id": "p1",
-            "trade_date": d.isoformat(),
-            "nav": nav,
-            "cash": nav * 0.5,
-            "market_value": nav * 0.5,
-            "daily_return": daily_pct if i > 0 else 0.0,
-            "stale_symbols": None,
-        })
-        nav *= (1 + daily_pct)
+        rows.append(
+            {
+                "portfolio_id": "p1",
+                "trade_date": d.isoformat(),
+                "nav": nav,
+                "cash": nav * 0.5,
+                "market_value": nav * 0.5,
+                "daily_return": daily_pct if i > 0 else 0.0,
+                "stale_symbols": None,
+            }
+        )
+        nav *= 1 + daily_pct
     return rows
 
 

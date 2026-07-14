@@ -176,9 +176,7 @@ async def build_perf_stats() -> dict[str, Any]:
             if row.max_ms is not None and row.max_ms > result["max_duration_ms"]:
                 result["max_duration_ms"] = row.max_ms
         if all_durations:
-            result["avg_duration_ms"] = round(
-                sum(all_durations) / len(all_durations), 2
-            )
+            result["avg_duration_ms"] = round(sum(all_durations) / len(all_durations), 2)
         return result
     except Exception as e:
         logger.warning("获取性能统计失败: %s", e)

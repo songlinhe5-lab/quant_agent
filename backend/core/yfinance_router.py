@@ -302,6 +302,7 @@ class YFinanceRouter:
                 # DIST-20: 记录 STALE 降级指标
                 try:
                     from backend.core.metrics import DIST_YF_STALE_TOTAL
+
                     DIST_YF_STALE_TOTAL.labels(cache_key=cache_key[:64]).inc()
                 except Exception:
                     pass

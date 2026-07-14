@@ -405,6 +405,7 @@ class TestStrategyABC:
 
     def test_on_bar_required(self):
         """on_bar 是必须实现的方法"""
+
         # 没有实现 on_bar 的类无法实例化
         class IncompleteStrategy(Strategy):
             pass
@@ -414,6 +415,7 @@ class TestStrategyABC:
 
     def test_on_init_optional(self):
         """on_init 是可选的"""
+
         class MinimalStrategy(Strategy):
             def on_bar(self, ctx, bar):
                 pass
@@ -424,6 +426,7 @@ class TestStrategyABC:
 
     def test_on_stop_optional(self):
         """on_stop 是可选的"""
+
         class MinimalStrategy(Strategy):
             def on_bar(self, ctx, bar):
                 pass
@@ -434,6 +437,7 @@ class TestStrategyABC:
 
     def test_on_order_update_optional(self):
         """on_order_update 是可选的"""
+
         class MinimalStrategy(Strategy):
             def on_bar(self, ctx, bar):
                 pass
@@ -460,9 +464,12 @@ class TestStrategySignals:
 
     def test_vectorizable_strategy_signals(self):
         """可矢量化策略的 signals 方法"""
-        df = pd.DataFrame({
-            "close": [1.0] * 30,
-        }, index=pd.date_range("2024-01-01", periods=30))
+        df = pd.DataFrame(
+            {
+                "close": [1.0] * 30,
+            },
+            index=pd.date_range("2024-01-01", periods=30),
+        )
         result = VectorizableStrategy.signals(df, {})
         assert result is not None
         assert len(result) == 30
@@ -549,6 +556,7 @@ class TestStrategyContextProtocol:
 
             def quote(self, symbol):
                 from backend.engine.contracts import QuoteSnapshot
+
                 return QuoteSnapshot(symbol=symbol, dt=self.now, price=0.0)
 
             def financial(self, symbol, field):
@@ -620,6 +628,7 @@ class TestExampleStrategyIntegration:
 
     def test_strategy_can_access_ctx(self):
         """策略可以通过 ctx 访问元信息"""
+
         class InspectingStrategy(Strategy):
             def __init__(self):
                 self.observed_mode = None

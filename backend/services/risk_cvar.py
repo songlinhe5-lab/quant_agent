@@ -93,12 +93,14 @@ def decompose_cvar(
         cvar_contrib = w * avg_tail_ret
         marginal_var = avg_tail_ret  # 边际 VaR = 尾部条件均值
 
-        decompositions.append({
-            "symbol": ticker,
-            "weight": round(w, 4),
-            "cvar_contrib": round(cvar_contrib, 6),
-            "marginal_var": round(marginal_var, 6),
-        })
+        decompositions.append(
+            {
+                "symbol": ticker,
+                "weight": round(w, 4),
+                "cvar_contrib": round(cvar_contrib, 6),
+                "marginal_var": round(marginal_var, 6),
+            }
+        )
 
     # 按贡献度绝对值降序
     decompositions.sort(key=lambda x: -abs(x["cvar_contrib"]))

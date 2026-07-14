@@ -43,15 +43,11 @@ class DataSnapshot(Base):
     is_monthly_anchor: Mapped[bool] = mapped_column(Boolean, default=False)
     storage_tier: Mapped[str] = mapped_column(String(8), default="local")
     r2_key: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    __table_args__ = (
-        Index("idx_data_snapshots_published", "status", "published_at"),
-    )
+    __table_args__ = (Index("idx_data_snapshots_published", "status", "published_at"),)
 
 
 class BacktestReport(Base):
@@ -80,10 +76,6 @@ class BacktestReport(Base):
     result_digest: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     symbol: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), index=True
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
-    __table_args__ = (
-        Index("idx_backtest_reports_repro_key", "reproducibility_key"),
-    )
+    __table_args__ = (Index("idx_backtest_reports_repro_key", "reproducibility_key"),)

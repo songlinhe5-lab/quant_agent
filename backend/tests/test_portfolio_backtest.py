@@ -52,12 +52,8 @@ class TestPortfolioBacktest:
         """周度再平衡应产生交易成本"""
         k1 = _make_kline(100, seed=1)
         k2 = _make_kline(100, seed=2)
-        run_portfolio_backtest(
-            ["A", "B"], {"A": k1, "B": k2}, rebalance_freq="buy_and_hold"
-        )
-        result_w = run_portfolio_backtest(
-            ["A", "B"], {"A": k1, "B": k2}, rebalance_freq="weekly"
-        )
+        run_portfolio_backtest(["A", "B"], {"A": k1, "B": k2}, rebalance_freq="buy_and_hold")
+        result_w = run_portfolio_backtest(["A", "B"], {"A": k1, "B": k2}, rebalance_freq="weekly")
         # 再平衡会产生交易成本，净值应略低于买入持有 (在相同收益下)
         assert result_w["metrics"]["rebalance_freq"] == "weekly"
         assert len(result_w["equity_curve"]) > 0

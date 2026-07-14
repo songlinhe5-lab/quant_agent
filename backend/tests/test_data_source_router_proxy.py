@@ -38,7 +38,9 @@ class TestProxyYFinance:
     def test_proxy_yfinance_quote(self, mock_yf):
         from backend.app.market_data import market_data
 
-        with patch.object(market_data._yf, "get_batched_quote", new=AsyncMock(return_value={"success": True, "data": {"AAPL": 165.0}})):
+        with patch.object(
+            market_data._yf, "get_batched_quote", new=AsyncMock(return_value={"success": True, "data": {"AAPL": 165.0}})
+        ):
             response = client.post("/api/v1/data-source/proxy/yfinance", json={"ticker": "AAPL", "fetch_type": "quote"})
             assert response.status_code == 200
             data = response.json()["data"]
@@ -60,7 +62,9 @@ class TestProxyYFinance:
     def test_proxy_yfinance_tech(self, mock_yf):
         from backend.app.market_data import market_data
 
-        with patch.object(market_data._yf, "get_tech_indicators", new=AsyncMock(return_value={"status": "success", "data": {}})):
+        with patch.object(
+            market_data._yf, "get_tech_indicators", new=AsyncMock(return_value={"status": "success", "data": {}})
+        ):
             response = client.post(
                 "/api/v1/data-source/proxy/yfinance",
                 json={"ticker": "AAPL", "fetch_type": "tech", "kwargs": {"lookback_days": 60}},
@@ -124,7 +128,9 @@ class TestSecurity:
     def test_proxy_with_valid_signature(self, mock_yf):
         from backend.app.market_data import market_data
 
-        with patch.object(market_data._yf, "get_batched_quote", new=AsyncMock(return_value={"success": True, "data": {"AAPL": 165.0}})):
+        with patch.object(
+            market_data._yf, "get_batched_quote", new=AsyncMock(return_value={"success": True, "data": {"AAPL": 165.0}})
+        ):
             payload = {"ticker": "AAPL", "fetch_type": "quote"}
             timestamp = str(int(time.time()))
             signature = _generate_signature("test-secret-123", payload, timestamp)

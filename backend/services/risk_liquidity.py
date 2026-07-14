@@ -57,13 +57,15 @@ class LiquidityAssessor:
             score = min(coverage * 10 * 100, 100)
             score = max(0, round(score))
 
-            assessments.append({
-                "symbol": code,
-                "market_val": round(mv, 2),
-                "avg_turnover": round(avg_turnover, 2),
-                "coverage_ratio": round(coverage, 4),
-                "score": score,
-            })
+            assessments.append(
+                {
+                    "symbol": code,
+                    "market_val": round(mv, 2),
+                    "avg_turnover": round(avg_turnover, 2),
+                    "coverage_ratio": round(coverage, 4),
+                    "score": score,
+                }
+            )
 
             # 市值加权
             weighted_score_sum += score * mv
@@ -71,19 +73,23 @@ class LiquidityAssessor:
 
             # 大额持仓预警 (>10% NAV)
             if total_nav > 0 and (mv / total_nav) > 0.10:
-                warnings.append({
-                    "symbol": code,
-                    "reason": f"大额持仓占 NAV {mv / total_nav * 100:.1f}% (>10%)",
-                    "nav_pct": round(mv / total_nav * 100, 2),
-                })
+                warnings.append(
+                    {
+                        "symbol": code,
+                        "reason": f"大额持仓占 NAV {mv / total_nav * 100:.1f}% (>10%)",
+                        "nav_pct": round(mv / total_nav * 100, 2),
+                    }
+                )
 
             # 低流动性预警 (score < 30)
             if score < 30:
-                warnings.append({
-                    "symbol": code,
-                    "reason": f"流动性评分 {score} (<30)，变现困难",
-                    "score": score,
-                })
+                warnings.append(
+                    {
+                        "symbol": code,
+                        "reason": f"流动性评分 {score} (<30)，变现困难",
+                        "score": score,
+                    }
+                )
 
         # 组合整体流动性评分 (市值加权)
         portfolio_score = round(weighted_score_sum / total_weight, 1) if total_weight > 0 else 0.0

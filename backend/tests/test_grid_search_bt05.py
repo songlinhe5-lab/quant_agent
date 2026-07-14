@@ -197,9 +197,7 @@ class TestGridSearchEndpoint:
             new=AsyncMock(side_effect=GridSearchError("empty grid")),
         ):
             with pytest.raises(HTTPException) as ei:
-                await grid_search_endpoint(
-                    GridSearchRequest(ticker="US.AAPL", param_grid={"period": [10]})
-                )
+                await grid_search_endpoint(GridSearchRequest(ticker="US.AAPL", param_grid={"period": [10]}))
             assert ei.value.status_code == 400
             assert "empty grid" in ei.value.detail
 
@@ -207,6 +205,4 @@ class TestGridSearchEndpoint:
 @pytest.mark.asyncio
 async def test_app_rejects_empty_grid():
     with pytest.raises(GridSearchError):
-        await run_grid_search(
-            GridSearchParams(ticker="US.AAPL", param_grid={})
-        )
+        await run_grid_search(GridSearchParams(ticker="US.AAPL", param_grid={}))

@@ -25,13 +25,16 @@ def sample_kline():
     n = 100
     dates = pd.date_range("2024-01-01", periods=n, freq="B")
     close = 100 + np.cumsum(np.random.randn(n) * 0.5)
-    return pd.DataFrame({
-        "open": close + np.random.randn(n) * 0.2,
-        "high": close + abs(np.random.randn(n) * 0.5),
-        "low": close - abs(np.random.randn(n) * 0.5),
-        "close": close,
-        "volume": np.random.randint(1000, 10000, n).astype(float),
-    }, index=dates)
+    return pd.DataFrame(
+        {
+            "open": close + np.random.randn(n) * 0.2,
+            "high": close + abs(np.random.randn(n) * 0.5),
+            "low": close - abs(np.random.randn(n) * 0.5),
+            "close": close,
+            "volume": np.random.randint(1000, 10000, n).astype(float),
+        },
+        index=dates,
+    )
 
 
 # ===== suggest_factors =====
@@ -56,9 +59,7 @@ async def test_suggest_factors_success():
         },
     ]
 
-    with patch(
-        "backend.services.factor_miner.llm_service"
-    ) as mock_llm:
+    with patch("backend.services.factor_miner.llm_service") as mock_llm:
         mock_llm.generate_pydantic = AsyncMock(return_value=mock_response)
         miner = FactorMiner()
         suggestions = await miner.suggest_factors("AAPL", "maximize_sharpe")
@@ -72,9 +73,7 @@ async def test_suggest_factors_success():
 @pytest.mark.asyncio
 async def test_suggest_factors_llm_failure_fallback():
     """测试 LLM 失败时返回默认因子"""
-    with patch(
-        "backend.services.factor_miner.llm_service"
-    ) as mock_llm:
+    with patch("backend.services.factor_miner.llm_service") as mock_llm:
         mock_llm.generate_pydantic = AsyncMock(side_effect=Exception("LLM error"))
         miner = FactorMiner()
         suggestions = await miner.suggest_factors("AAPL")

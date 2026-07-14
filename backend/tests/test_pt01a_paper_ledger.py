@@ -1,6 +1,7 @@
 """
 PT-01a: 纸面组合账本服务测试
 """
+
 from unittest.mock import MagicMock
 
 import pytest
@@ -188,9 +189,7 @@ class TestRebuildAndReconcile:
         fill2.price = 360.0
         fill2.fill_seq = 2
 
-        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
-            fill1, fill2
-        ]
+        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [fill1, fill2]
 
         result = svc.rebuild_positions(mock_db, "pid-1")
         assert result["HK.00700"]["qty"] == 70  # 100 - 30
@@ -211,9 +210,7 @@ class TestRebuildAndReconcile:
         fill2.price = 360.0
         fill2.fill_seq = 2
 
-        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
-            fill1, fill2
-        ]
+        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [fill1, fill2]
 
         result = svc.rebuild_positions(mock_db, "pid-1")
         assert "HK.00700" not in result

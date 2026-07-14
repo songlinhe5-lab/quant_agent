@@ -111,9 +111,7 @@ class TestAppDirectoryLanded:
                         if alias.name == "fastapi" or alias.name.startswith("fastapi."):
                             offenders.append(f"{path.name}: import {alias.name}")
                 elif isinstance(node, ast.ImportFrom):
-                    if node.module and (
-                        node.module == "fastapi" or node.module.startswith("fastapi.")
-                    ):
+                    if node.module and (node.module == "fastapi" or node.module.startswith("fastapi.")):
                         offenders.append(f"{path.name}: from {node.module}")
         assert not offenders, "Application 层禁止依赖 FastAPI:\n" + "\n".join(offenders)
 
@@ -144,8 +142,7 @@ class TestServicesFlatFreeze:
         present = _top_level_py(SERVICES_DIR)
         unexpected = present - ALLOWED_FLAT_SERVICES
         assert not unexpected, (
-            "检测到新增扁平 services/*.py（请放到 backend/app/ 或 services 子包）: "
-            f"{sorted(unexpected)}"
+            f"检测到新增扁平 services/*.py（请放到 backend/app/ 或 services 子包）: {sorted(unexpected)}"
         )
 
     def test_allowlist_not_silently_shrunk(self):

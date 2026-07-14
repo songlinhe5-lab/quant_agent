@@ -87,10 +87,11 @@ class SimBroker:
         # PT-01b: paper 模式前置检查
         if self.config.paper_mode:
             # stale 行情拒单
-            if hasattr(current_bar, 'stale') and current_bar.stale:
+            if hasattr(current_bar, "stale") and current_bar.stale:
                 return "REJECTED_STALE"
             # 交易时段检查
             from backend.services.market_correctness import MarketSession
+
             if not MarketSession.is_trading_hours(intent.symbol, current_bar.dt):
                 return "REJECTED_MARKET_CLOSED"
 
@@ -227,37 +228,43 @@ class SimBroker:
         self.state.avg_costs[intent.symbol] = new_cost
 
         # 记录成交
-        self.state.trades.append({
-            "date": dt.isoformat(),
-            "symbol": intent.symbol,
-            "action": "BUY",
-            "price": round(exec_price, 4),
-            "shares": intent.qty,
-            "fee": round(fee, 4),
-        })
+        self.state.trades.append(
+            {
+                "date": dt.isoformat(),
+                "symbol": intent.symbol,
+                "action": "BUY",
+                "price": round(exec_price, 4),
+                "shares": intent.qty,
+                "fee": round(fee, 4),
+            }
+        )
 
         # 生成交割回报
-        self._pending_fills.append(OrderUpdate(
-            order_id=order_id,
-            intent_tag=intent.tag,
-            status=OrderStatus.FILLED,
-            filled_qty=intent.qty,
-            avg_fill_price=exec_price,
-        ))
+        self._pending_fills.append(
+            OrderUpdate(
+                order_id=order_id,
+                intent_tag=intent.tag,
+                status=OrderStatus.FILLED,
+                filled_qty=intent.qty,
+                avg_fill_price=exec_price,
+            )
+        )
 
         # PT-01b: paper 模式成交回调
         if self.config.paper_mode and self._fill_callback:
-            self._fill_callback({
-                "order_id": order_id,
-                "symbol": intent.symbol,
-                "side": "BUY",
-                "qty": intent.qty,
-                "price": exec_price,
-                "commission": fee,
-                "slippage": intent.qty * exec_price * self.config.slippage_pct,
-                "intent_tag": intent.tag,
-                "dt": dt,
-            })
+            self._fill_callback(
+                {
+                    "order_id": order_id,
+                    "symbol": intent.symbol,
+                    "side": "BUY",
+                    "qty": intent.qty,
+                    "price": exec_price,
+                    "commission": fee,
+                    "slippage": intent.qty * exec_price * self.config.slippage_pct,
+                    "intent_tag": intent.tag,
+                    "dt": dt,
+                }
+            )
 
     def _fill_sell(self, intent: OrderIntent, exec_price: float, dt: datetime, order_id: str) -> None:
         """卖出成交"""
@@ -282,38 +289,44 @@ class SimBroker:
         profit = (exec_price - avg_cost) * sell_qty - fee
 
         # 记录成交
-        self.state.trades.append({
-            "date": dt.isoformat(),
-            "symbol": intent.symbol,
-            "action": "SELL",
-            "price": round(exec_price, 4),
-            "shares": sell_qty,
-            "fee": round(fee, 4),
-            "profit": round(profit, 4),
-        })
+        self.state.trades.append(
+            {
+                "date": dt.isoformat(),
+                "symbol": intent.symbol,
+                "action": "SELL",
+                "price": round(exec_price, 4),
+                "shares": sell_qty,
+                "fee": round(fee, 4),
+                "profit": round(profit, 4),
+            }
+        )
 
         # 生成交割回报
-        self._pending_fills.append(OrderUpdate(
-            order_id=order_id,
-            intent_tag=intent.tag,
-            status=OrderStatus.FILLED,
-            filled_qty=sell_qty,
-            avg_fill_price=exec_price,
-        ))
+        self._pending_fills.append(
+            OrderUpdate(
+                order_id=order_id,
+                intent_tag=intent.tag,
+                status=OrderStatus.FILLED,
+                filled_qty=sell_qty,
+                avg_fill_price=exec_price,
+            )
+        )
 
         # PT-01b: paper 模式成交回调
         if self.config.paper_mode and self._fill_callback:
-            self._fill_callback({
-                "order_id": order_id,
-                "symbol": intent.symbol,
-                "side": "SELL",
-                "qty": sell_qty,
-                "price": exec_price,
-                "commission": fee,
-                "slippage": sell_qty * exec_price * self.config.slippage_pct,
-                "intent_tag": intent.tag,
-                "dt": dt,
-            })
+            self._fill_callback(
+                {
+                    "order_id": order_id,
+                    "symbol": intent.symbol,
+                    "side": "SELL",
+                    "qty": sell_qty,
+                    "price": exec_price,
+                    "commission": fee,
+                    "slippage": sell_qty * exec_price * self.config.slippage_pct,
+                    "intent_tag": intent.tag,
+                    "dt": dt,
+                }
+            )
 
     def cancel(self, order_id: str) -> bool:
         """取消挂单"""

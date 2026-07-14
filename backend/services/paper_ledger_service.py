@@ -4,6 +4,7 @@ PT-01a: 纸面组合账本服务
 PG 流水账本 SSOT：paper_fills 只增不改，paper_positions 是流水的投影。
 核心函数：record_fill / rebuild_positions / reconcile / create_portfolio。
 """
+
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -103,11 +104,7 @@ class PaperLedgerService:
             dt = datetime.utcnow()
 
         # 分配 fill_seq: SELECT MAX(fill_seq) + 1
-        max_seq = (
-            db.query(sa_func.max(PaperFill.fill_seq))
-            .filter(PaperFill.portfolio_id == portfolio_id)
-            .scalar()
-        )
+        max_seq = db.query(sa_func.max(PaperFill.fill_seq)).filter(PaperFill.portfolio_id == portfolio_id).scalar()
         next_seq = (max_seq or 0) + 1
 
         fill = PaperFill(
@@ -195,10 +192,7 @@ class PaperLedgerService:
         返回格式: {symbol: {qty, avg_cost, last_fill_seq}}
         """
         fills = (
-            db.query(PaperFill)
-            .filter(PaperFill.portfolio_id == portfolio_id)
-            .order_by(PaperFill.fill_seq.asc())
-            .all()
+            db.query(PaperFill).filter(PaperFill.portfolio_id == portfolio_id).order_by(PaperFill.fill_seq.asc()).all()
         )
 
         positions: Dict[str, Dict[str, Any]] = {}
@@ -228,14 +222,9 @@ class PaperLedgerService:
         返回 {consistent: bool, projected: {...}, replayed: {...}}
         """
         # 投影
-        projected_rows = (
-            db.query(PaperPosition)
-            .filter(PaperPosition.portfolio_id == portfolio_id)
-            .all()
-        )
+        projected_rows = db.query(PaperPosition).filter(PaperPosition.portfolio_id == portfolio_id).all()
         projected = {
-            p.symbol: {"qty": p.qty, "avg_cost": p.avg_cost, "last_fill_seq": p.last_fill_seq}
-            for p in projected_rows
+            p.symbol: {"qty": p.qty, "avg_cost": p.avg_cost, "last_fill_seq": p.last_fill_seq} for p in projected_rows
         }
 
         # 重放
@@ -261,9 +250,7 @@ class PaperLedgerService:
     #  查询
     # ─────────────────────────────────────────
 
-    def get_fills(
-        self, db: Session, portfolio_id: str, limit: int = 50, offset: int = 0
-    ) -> List[Dict[str, Any]]:
+    def get_fills(self, db: Session, portfolio_id: str, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
         """成交流水分页"""
         fills = (
             db.query(PaperFill)
@@ -292,11 +279,7 @@ class PaperLedgerService:
 
     def get_positions(self, db: Session, portfolio_id: str) -> List[Dict[str, Any]]:
         """当前持仓"""
-        positions = (
-            db.query(PaperPosition)
-            .filter(PaperPosition.portfolio_id == portfolio_id)
-            .all()
-        )
+        positions = db.query(PaperPosition).filter(PaperPosition.portfolio_id == portfolio_id).all()
         return [
             {
                 "portfolio_id": p.portfolio_id,
@@ -308,9 +291,7 @@ class PaperLedgerService:
             for p in positions
         ]
 
-    def get_nav_daily(
-        self, db: Session, portfolio_id: str, days: int = 30
-    ) -> List[Dict[str, Any]]:
+    def get_nav_daily(self, db: Session, portfolio_id: str, days: int = 30) -> List[Dict[str, Any]]:
         """日终净值序列"""
         rows = (
             db.query(PaperNavDaily)

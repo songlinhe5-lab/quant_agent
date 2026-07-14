@@ -26,21 +26,21 @@ from backend.core.logger import logger
 class QualityLevel(str, Enum):
     """数据质量等级"""
 
-    GOOD = "good"          # 完全正常
+    GOOD = "good"  # 完全正常
     DEGRADED = "degraded"  # 轻微异常（个别字段缺失）
-    POOR = "poor"          # 严重异常（价格错误/大幅延迟）
+    POOR = "poor"  # 严重异常（价格错误/大幅延迟）
     UNUSABLE = "unusable"  # 不可用（完全无数据/全部字段缺失）
 
 
 class AnomalyType(str, Enum):
     """异常类型"""
 
-    MISSING_FIELD = "missing_field"          # 必填字段缺失
-    ZERO_PRICE = "zero_price"                # 零价
-    NEGATIVE_PRICE = "negative_price"        # 负价
-    PRICE_JUMP = "price_jump"                # 价格跳变（>阈值）
-    NEGATIVE_VOLUME = "negative_volume"      # 负成交量
-    STALE_TIMESTAMP = "stale_timestamp"      # 时间戳过期
+    MISSING_FIELD = "missing_field"  # 必填字段缺失
+    ZERO_PRICE = "zero_price"  # 零价
+    NEGATIVE_PRICE = "negative_price"  # 负价
+    PRICE_JUMP = "price_jump"  # 价格跳变（>阈值）
+    NEGATIVE_VOLUME = "negative_volume"  # 负成交量
+    STALE_TIMESTAMP = "stale_timestamp"  # 时间戳过期
     OHLC_INCONSISTENCY = "ohlc_inconsistency"  # OHLC 逻辑错误 (high < low)
     DUPLICATE_TIMESTAMP = "duplicate_timestamp"  # 重复时间戳
 
@@ -49,16 +49,16 @@ class AnomalyType(str, Enum):
 class QualityMetrics:
     """数据质量指标（按数据源维度聚合）"""
 
-    source: str                                # 数据源名称 (futu/yfinance/finnhub)
-    total_records: int = 0                     # 总记录数
-    valid_records: int = 0                     # 有效记录数
-    anomaly_count: int = 0                     # 异常记录数
-    missing_field_count: int = 0               # 字段缺失次数
-    price_anomaly_count: int = 0               # 价格异常次数
-    stale_count: int = 0                       # 过期数据次数
-    avg_latency_ms: float = 0.0                # 平均数据延迟 (ms)
-    max_latency_ms: float = 0.0                # 最大数据延迟 (ms)
-    last_check_at: float = 0.0                 # 最后检查时间戳
+    source: str  # 数据源名称 (futu/yfinance/finnhub)
+    total_records: int = 0  # 总记录数
+    valid_records: int = 0  # 有效记录数
+    anomaly_count: int = 0  # 异常记录数
+    missing_field_count: int = 0  # 字段缺失次数
+    price_anomaly_count: int = 0  # 价格异常次数
+    stale_count: int = 0  # 过期数据次数
+    avg_latency_ms: float = 0.0  # 平均数据延迟 (ms)
+    max_latency_ms: float = 0.0  # 最大数据延迟 (ms)
+    last_check_at: float = 0.0  # 最后检查时间戳
     quality_level: QualityLevel = QualityLevel.GOOD
     anomalies: List[Dict[str, Any]] = field(default_factory=list)
 
@@ -81,10 +81,10 @@ class QualityMetrics:
 #  配置常量
 # ─────────────────────────────────────────
 REQUIRED_FIELDS = ["open", "high", "low", "close", "volume"]
-MAX_PRICE_JUMP_PCT = 0.5       # 单次价格跳变阈值 50%
-STALE_THRESHOLD_SECONDS = 60   # 数据过期阈值 60 秒
+MAX_PRICE_JUMP_PCT = 0.5  # 单次价格跳变阈值 50%
+STALE_THRESHOLD_SECONDS = 60  # 数据过期阈值 60 秒
 ALERT_DIRTY_RATE_THRESHOLD = 0.05  # 脏数据率告警阈值 5%
-ALERT_STALE_COUNT_THRESHOLD = 10   # 连续过期数据告警阈值
+ALERT_STALE_COUNT_THRESHOLD = 10  # 连续过期数据告警阈值
 
 
 class DataQualityMonitor:
@@ -125,12 +125,14 @@ class DataQualityMonitor:
         # 1. 字段完整性检查
         missing = [f for f in REQUIRED_FIELDS if f not in quote or quote[f] is None]
         if missing:
-            anomalies.append({
-                "type": AnomalyType.MISSING_FIELD.value,
-                "ticker": ticker,
-                "fields": missing,
-                "severity": "warning",
-            })
+            anomalies.append(
+                {
+                    "type": AnomalyType.MISSING_FIELD.value,
+                    "ticker": ticker,
+                    "fields": missing,
+                    "severity": "warning",
+                }
+            )
             self._metrics.missing_field_count += len(missing)
 
         # 2. 价格异常检测
@@ -140,27 +142,31 @@ class DataQualityMonitor:
                 continue
             if price <= 0:
                 anomaly_type = AnomalyType.ZERO_PRICE if price == 0 else AnomalyType.NEGATIVE_PRICE
-                anomalies.append({
-                    "type": anomaly_type.value,
-                    "ticker": ticker,
-                    "field": price_field,
-                    "value": price,
-                    "severity": "critical",
-                })
+                anomalies.append(
+                    {
+                        "type": anomaly_type.value,
+                        "ticker": ticker,
+                        "field": price_field,
+                        "value": price,
+                        "severity": "critical",
+                    }
+                )
                 self._metrics.price_anomaly_count += 1
             elif ticker in self._last_prices and self._last_prices[ticker] > 0:
                 # 价格跳变检测
                 jump_pct = abs(price - self._last_prices[ticker]) / self._last_prices[ticker]
                 if jump_pct > MAX_PRICE_JUMP_PCT:
-                    anomalies.append({
-                        "type": AnomalyType.PRICE_JUMP.value,
-                        "ticker": ticker,
-                        "field": price_field,
-                        "value": price,
-                        "prev_value": self._last_prices[ticker],
-                        "jump_pct": round(jump_pct * 100, 2),
-                        "severity": "warning",
-                    })
+                    anomalies.append(
+                        {
+                            "type": AnomalyType.PRICE_JUMP.value,
+                            "ticker": ticker,
+                            "field": price_field,
+                            "value": price,
+                            "prev_value": self._last_prices[ticker],
+                            "jump_pct": round(jump_pct * 100, 2),
+                            "severity": "warning",
+                        }
+                    )
                     self._metrics.price_anomaly_count += 1
 
         # 更新最后价格（用收盘价）
@@ -171,24 +177,28 @@ class DataQualityMonitor:
         # 3. 成交量检查
         volume = quote.get("volume")
         if volume is not None and volume < 0:
-            anomalies.append({
-                "type": AnomalyType.NEGATIVE_VOLUME.value,
-                "ticker": ticker,
-                "value": volume,
-                "severity": "critical",
-            })
+            anomalies.append(
+                {
+                    "type": AnomalyType.NEGATIVE_VOLUME.value,
+                    "ticker": ticker,
+                    "value": volume,
+                    "severity": "critical",
+                }
+            )
             self._metrics.price_anomaly_count += 1
 
         # 4. OHLC 一致性检查
         ohlc = {f: quote.get(f) for f in ["open", "high", "low", "close"]}
         if all(v is not None and v > 0 for v in ohlc.values()):
             if ohlc["high"] < ohlc["low"]:
-                anomalies.append({
-                    "type": AnomalyType.OHLC_INCONSISTENCY.value,
-                    "ticker": ticker,
-                    "detail": f"high({ohlc['high']}) < low({ohlc['low']})",
-                    "severity": "critical",
-                })
+                anomalies.append(
+                    {
+                        "type": AnomalyType.OHLC_INCONSISTENCY.value,
+                        "ticker": ticker,
+                        "detail": f"high({ohlc['high']}) < low({ohlc['low']})",
+                        "severity": "critical",
+                    }
+                )
                 self._metrics.price_anomaly_count += 1
 
         # 5. 时间戳新鲜度检查
@@ -198,19 +208,20 @@ class DataQualityMonitor:
                 data_time = float(ts)
                 latency_ms = (time.time() - data_time) * 1000
                 self._metrics.avg_latency_ms = (
-                    (self._metrics.avg_latency_ms * (self._metrics.total_records - 1) + latency_ms)
-                    / self._metrics.total_records
-                )
+                    self._metrics.avg_latency_ms * (self._metrics.total_records - 1) + latency_ms
+                ) / self._metrics.total_records
                 self._metrics.max_latency_ms = max(self._metrics.max_latency_ms, latency_ms)
 
                 if latency_ms > STALE_THRESHOLD_SECONDS * 1000:
-                    anomalies.append({
-                        "type": AnomalyType.STALE_TIMESTAMP.value,
-                        "ticker": ticker,
-                        "latency_ms": round(latency_ms, 1),
-                        "threshold_ms": STALE_THRESHOLD_SECONDS * 1000,
-                        "severity": "warning",
-                    })
+                    anomalies.append(
+                        {
+                            "type": AnomalyType.STALE_TIMESTAMP.value,
+                            "ticker": ticker,
+                            "latency_ms": round(latency_ms, 1),
+                            "threshold_ms": STALE_THRESHOLD_SECONDS * 1000,
+                            "severity": "warning",
+                        }
+                    )
                     self._metrics.stale_count += 1
                     self._consecutive_stale += 1
                 else:
@@ -270,10 +281,8 @@ class DataQualityMonitor:
             reasons.append(f"连续 {self._consecutive_stale} 条数据过期")
 
         if should_alert:
-            alert_msg = (
-                f"[数据质量告警] 源={self.source} "
-                f"质量等级={self._metrics.quality_level.value} | "
-                + " | ".join(reasons)
+            alert_msg = f"[数据质量告警] 源={self.source} 质量等级={self._metrics.quality_level.value} | " + " | ".join(
+                reasons
             )
             logger.warning(alert_msg)
             try:

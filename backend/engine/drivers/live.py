@@ -253,7 +253,7 @@ class LiveDriver:
                 initial_cash=self.config.initial_capital,
             )
             # PT-01b: Fill→Ledger 同步钩子（可选，由外部注入 ledger_service）
-            if hasattr(self, '_paper_fill_callback') and self._paper_fill_callback:
+            if hasattr(self, "_paper_fill_callback") and self._paper_fill_callback:
                 broker.set_fill_callback(self._paper_fill_callback)
             sim_executor = SimBrokerExecutor(broker)
             gateway = ExecutionGateway(mode=GatewayMode.PAPER, sim_executor=sim_executor)
@@ -276,9 +276,7 @@ class LiveDriver:
 
         # 启动主循环
         self._running = True
-        self._task = asyncio.create_task(
-            self._run_loop(strategy, ctx, symbol, run_id)
-        )
+        self._task = asyncio.create_task(self._run_loop(strategy, ctx, symbol, run_id))
 
         logger.info(f"[LiveDriver] Started: run_id={run_id}, mode={self.config.mode}, symbol={symbol}")
         return run_id

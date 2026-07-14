@@ -59,7 +59,7 @@ class FakeRedis:
 
     async def ltrim(self, name, start, end):
         if name in self._lists:
-            self._lists[name] = self._lists[name][start:end + 1]
+            self._lists[name] = self._lists[name][start : end + 1]
 
     async def pubsub(self):
         return MagicMock()
@@ -114,8 +114,8 @@ class TestEvaluatePriceRule:
 
     def test_price_cross_up(self):
         rule = make_rule(rule_type=AlertRuleType.PRICE_CROSS, threshold=150)
-        assert evaluate_price_rule(rule, 155.0, prev_price=145.0) is True   # 上穿
-        assert evaluate_price_rule(rule, 145.0, prev_price=155.0) is True   # 下穿
+        assert evaluate_price_rule(rule, 155.0, prev_price=145.0) is True  # 上穿
+        assert evaluate_price_rule(rule, 145.0, prev_price=155.0) is True  # 下穿
         assert evaluate_price_rule(rule, 155.0, prev_price=155.0) is False  # 未穿越
 
     def test_price_cross_no_prev(self):
@@ -124,7 +124,7 @@ class TestEvaluatePriceRule:
 
     def test_pct_change_trigger(self):
         rule = make_rule(rule_type=AlertRuleType.PCT_CHANGE, threshold=5)  # 5%
-        assert evaluate_price_rule(rule, 106.0, prev_price=100.0) is True   # 6% > 5%
+        assert evaluate_price_rule(rule, 106.0, prev_price=100.0) is True  # 6% > 5%
         assert evaluate_price_rule(rule, 103.0, prev_price=100.0) is False  # 3% < 5%
 
     def test_volume_surge_trigger(self):

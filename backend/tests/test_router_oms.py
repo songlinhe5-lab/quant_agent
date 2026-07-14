@@ -176,9 +176,7 @@ class TestOmsEmergencyLiquidation:
         from unittest.mock import MagicMock
 
         mock_db = MagicMock()
-        mock_broker.execute_emergency_liquidation = AsyncMock(
-            return_value={"ok": False, "reason": "no_trade_ctx"}
-        )
+        mock_broker.execute_emergency_liquidation = AsyncMock(return_value={"ok": False, "reason": "no_trade_ctx"})
         mock_bot.stop_all_bots = AsyncMock()
         mock_algo.cancel_all = AsyncMock()
         mock_oms.mark_all_orders_cancelled = AsyncMock()

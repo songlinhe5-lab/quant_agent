@@ -10,6 +10,7 @@ PT-01c: 纸面组合结算守护进程
 数据驱动交易日判定：基准标的是否有当日 K_DAY bar。
 停牌前收兜底：取不到收盘价的标的用前收 + stale_symbols 标记。
 """
+
 import asyncio
 import json
 import logging
@@ -120,9 +121,7 @@ class PaperSettlementDaemon:
         finally:
             db.close()
 
-    async def _settle_portfolio(
-        self, db: Session, portfolio: PaperPortfolio, trade_date: date
-    ) -> None:
+    async def _settle_portfolio(self, db: Session, portfolio: PaperPortfolio, trade_date: date) -> None:
         """单组合结算：取收盘价 -> 计算 NAV -> 写 paper_nav_daily"""
         pid = portfolio.id
 
@@ -137,11 +136,7 @@ class PaperSettlementDaemon:
         )
 
         # 获取当前持仓
-        positions = (
-            db.query(PaperPosition)
-            .filter(PaperPosition.portfolio_id == pid)
-            .all()
-        )
+        positions = db.query(PaperPosition).filter(PaperPosition.portfolio_id == pid).all()
 
         # 计算现金 = initial_capital + 卖出收入 - 买入支出 - 总手续费
         cash = self._compute_cash(db, pid, portfolio.initial_capital)
@@ -216,11 +211,7 @@ class PaperSettlementDaemon:
 
     def _compute_cash(self, db: Session, portfolio_id: str, initial_capital: float) -> float:
         """从 fills 推算现金 = initial_capital + Σ卖 - Σ买 - Σ手续费"""
-        fills = (
-            db.query(PaperFill)
-            .filter(PaperFill.portfolio_id == portfolio_id)
-            .all()
-        )
+        fills = db.query(PaperFill).filter(PaperFill.portfolio_id == portfolio_id).all()
         cash = initial_capital
         for f in fills:
             turnover = f.qty * f.price
@@ -259,11 +250,7 @@ class PaperSettlementDaemon:
             portfolios = self._get_running_portfolios(db, market)
             for p in portfolios:
                 pid = p.id
-                positions = (
-                    db.query(PaperPosition)
-                    .filter(PaperPosition.portfolio_id == pid)
-                    .all()
-                )
+                positions = db.query(PaperPosition).filter(PaperPosition.portfolio_id == pid).all()
                 cash = self._compute_cash(db, pid, p.initial_capital)
                 mv = 0.0
                 for pos in positions:
@@ -271,12 +258,14 @@ class PaperSettlementDaemon:
                     if price is not None:
                         mv += pos.qty * price
                 nav = cash + mv
-                point = json.dumps({
-                    "ts": datetime.now(timezone.utc).isoformat(),
-                    "nav": round(nav, 4),
-                    "cash": round(cash, 4),
-                    "mv": round(mv, 4),
-                })
+                point = json.dumps(
+                    {
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                        "nav": round(nav, 4),
+                        "cash": round(cash, 4),
+                        "mv": round(mv, 4),
+                    }
+                )
                 key = f"quant:paper:{pid}:nav_intraday"
                 await redis_client.lpush(key, point)
                 await redis_client.ltrim(key, 0, INTRADAY_MAX_POINTS - 1)
@@ -294,11 +283,7 @@ class PaperSettlementDaemon:
         today = date.today()
         db = SessionLocal()
         try:
-            portfolios = (
-                db.query(PaperPortfolio)
-                .filter(PaperPortfolio.status == "running")
-                .all()
-            )
+            portfolios = db.query(PaperPortfolio).filter(PaperPortfolio.status == "running").all()
             for p in portfolios:
                 # 找到最新结算日
                 latest = (
@@ -346,25 +331,19 @@ class PaperSettlementDaemon:
         db = SessionLocal()
         results: Dict[str, Any] = {}
         try:
-            portfolios = (
-                db.query(PaperPortfolio)
-                .filter(PaperPortfolio.status.in_(["running", "paused"]))
-                .all()
-            )
+            portfolios = db.query(PaperPortfolio).filter(PaperPortfolio.status.in_(["running", "paused"])).all()
             for p in portfolios:
                 rc = paper_ledger_service.reconcile(db, p.id)
                 results[p.id] = rc
                 if not rc["consistent"]:
                     logger.warning(
-                        f"[PaperSettlement] 对账不一致 {p.id}: "
-                        f"projected={rc['projected']} replayed={rc['replayed']}"
+                        f"[PaperSettlement] 对账不一致 {p.id}: projected={rc['projected']} replayed={rc['replayed']}"
                     )
         except Exception as e:
             logger.error(f"[PaperSettlement] weekly_reconcile 异常: {e}")
         finally:
             db.close()
         return results
-
 
     # ─────────────────────────────────────────
     #  漂移检测 (PT-02a)
@@ -386,7 +365,7 @@ class PaperSettlementDaemon:
 
         # 简化：与等权基准（0 收益）比较，即 TE = volatility of returns
         # 有 benchmark 时与 benchmark 比较
-        benchmark_ref = portfolio.benchmark_backtest_ref if hasattr(portfolio, 'benchmark_backtest_ref') else None
+        benchmark_ref = portfolio.benchmark_backtest_ref if hasattr(portfolio, "benchmark_backtest_ref") else None
         if benchmark_ref:
             bench_nav = _load_benchmark_nav_sync(benchmark_ref, 21)
             if bench_nav is not None and len(bench_nav) > 1:
@@ -400,14 +379,14 @@ class PaperSettlementDaemon:
         # 默认阈值: TE 年化 15%
         te_threshold = 0.15
         if te > te_threshold:
-            logger.warning(
-                f"[PaperSettlement] paper_drift 告警: {pid} TE={te:.4f} > {te_threshold}"
-            )
+            logger.warning(f"[PaperSettlement] paper_drift 告警: {pid} TE={te:.4f} > {te_threshold}")
             # 写入 Redis 告警键，前端轮询读取
             alert_key = f"quant:paper:{pid}:drift_alert"
             await redis_client.set(
                 alert_key,
-                json.dumps({"te": round(te, 6), "threshold": te_threshold, "ts": datetime.now(timezone.utc).isoformat()}),
+                json.dumps(
+                    {"te": round(te, 6), "threshold": te_threshold, "ts": datetime.now(timezone.utc).isoformat()}
+                ),
                 ex=86400,
             )
 

@@ -26,13 +26,16 @@ def sample_ohlcv():
     close = 100 + np.cumsum(np.random.randn(n) * 0.5)
     high = close + abs(np.random.randn(n) * 0.5)
     low = close - abs(np.random.randn(n) * 0.5)
-    return pd.DataFrame({
-        "open": close + np.random.randn(n) * 0.2,
-        "high": high,
-        "low": low,
-        "close": close,
-        "volume": np.random.randint(1000, 10000, n).astype(float),
-    }, index=dates)
+    return pd.DataFrame(
+        {
+            "open": close + np.random.randn(n) * 0.2,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": np.random.randint(1000, 10000, n).astype(float),
+        },
+        index=dates,
+    )
 
 
 # ===== 动量类 =====
@@ -64,14 +67,18 @@ def test_rsi_oversold_overbought():
     # 构造持续下跌数据 (需要足够长以满足 min_periods)
     n = 100
     falling_close = pd.Series(200 - np.arange(n) * 1.0)
-    df = pd.DataFrame({"close": falling_close, "high": falling_close + 1, "low": falling_close - 1, "volume": np.ones(n) * 1000})
+    df = pd.DataFrame(
+        {"close": falling_close, "high": falling_close + 1, "low": falling_close - 1, "volume": np.ones(n) * 1000}
+    )
     rsi = Alpha158.rsi(df, period=14)
     # 持续下跌后 RSI 应该很低
     assert rsi.dropna().iloc[-1] < 30
 
     # 构造持续上涨数据
     rising_close = pd.Series(100 + np.arange(n) * 1.0)
-    df2 = pd.DataFrame({"close": rising_close, "high": rising_close + 1, "low": rising_close - 1, "volume": np.ones(n) * 1000})
+    df2 = pd.DataFrame(
+        {"close": rising_close, "high": rising_close + 1, "low": rising_close - 1, "volume": np.ones(n) * 1000}
+    )
     rsi2 = Alpha158.rsi(df2, period=14)
     # 持续上涨后 RSI 应该很高
     assert rsi2.dropna().iloc[-1] > 70

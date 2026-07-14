@@ -236,16 +236,12 @@ class GridSearchRunner:
         strategy_cls: Optional[Type[Strategy]] = None,
     ) -> GridSearchReport:
         if strategy_cls is not None and not strategy_cls.is_vectorizable():
-            raise ValueError(
-                f"{strategy_cls.__name__} 不支持矢量化；网格搜索须实现 signals()"
-            )
+            raise ValueError(f"{strategy_cls.__name__} 不支持矢量化；网格搜索须实现 signals()")
         if strategy_cls is not None:
             # 校验通过即可；进程池仍按 strategy_key 解析（需可 pickle 的注册表键）
             pass
 
-        combos = expand_param_grid(
-            config.base_params, dict(config.param_grid), config.max_combos
-        )
+        combos = expand_param_grid(config.base_params, dict(config.param_grid), config.max_combos)
         vcfg = {
             "initial_capital": self.vector_config.initial_capital,
             "commission_pct": self.vector_config.commission_pct,
@@ -258,9 +254,7 @@ class GridSearchRunner:
         workers = max(1, min(workers, len(combos)))
 
         if workers == 1:
-            raw = [
-                _eval_one(self.strategy_key, p, df, vcfg) for p in combos
-            ]
+            raw = [_eval_one(self.strategy_key, p, df, vcfg) for p in combos]
         else:
             with ProcessPoolExecutor(
                 max_workers=workers,

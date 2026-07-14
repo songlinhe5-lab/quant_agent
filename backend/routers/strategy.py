@@ -736,9 +736,7 @@ async def list_strategies():
 
 
 @router.get("/{name}/versions")
-async def get_strategy_versions(
-    name: str, limit: int = 50, db: Session = Depends(get_db)
-):
+async def get_strategy_versions(name: str, limit: int = 50, db: Session = Depends(get_db)):
     """获取策略版本时间线 (STRAT-03a)"""
     versions = strategy_version_service.get_versions(db, name, limit=limit)
     return {"status": "success", "data": versions}
@@ -754,9 +752,7 @@ async def get_strategy_version(version_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{name}/restore")
-async def restore_strategy_version(
-    name: str, payload: dict, db: Session = Depends(get_db)
-):
+async def restore_strategy_version(name: str, payload: dict, db: Session = Depends(get_db)):
     """恢复指定版本，创建新的 restore 版本 (STRAT-03a)"""
     version_id = payload.get("version_id")
     if not version_id:
@@ -862,9 +858,7 @@ async def run_strategy_sandbox(payload: RunSandboxPayload):
         db = SessionLocal()
         try:
             try:
-                ref = SnapshotResolver(db).resolve(
-                    snapshot_id, manifest_hash=None
-                )
+                ref = SnapshotResolver(db).resolve(snapshot_id, manifest_hash=None)
                 snapshot_id = ref.snapshot_id
                 manifest_hash = ref.manifest_hash or None
                 data_mode = ref.data_mode

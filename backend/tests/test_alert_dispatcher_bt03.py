@@ -265,15 +265,11 @@ class TestCooldownGate:
         loop = asyncio.get_event_loop()
 
         # 第一次：不阻断
-        blocked1 = loop.run_until_complete(
-            gate.is_blocked(AlertChannel.FEISHU, event, NotificationPriority.P2)
-        )
+        blocked1 = loop.run_until_complete(gate.is_blocked(AlertChannel.FEISHU, event, NotificationPriority.P2))
         assert not blocked1
 
         # 第二次：被阻断（冷却期内）
-        blocked2 = loop.run_until_complete(
-            gate.is_blocked(AlertChannel.FEISHU, event, NotificationPriority.P2)
-        )
+        blocked2 = loop.run_until_complete(gate.is_blocked(AlertChannel.FEISHU, event, NotificationPriority.P2))
         assert blocked2
 
 
@@ -644,9 +640,7 @@ class TestRetryQueue:
         adapter = MockAdapter(AlertChannel.FEISHU, should_succeed=False)
         event = make_event()
 
-        result = await queue.schedule_retry(
-            adapter, event, NotificationPriority.P3, attempt=1, error="failed"
-        )
+        result = await queue.schedule_retry(adapter, event, NotificationPriority.P3, attempt=1, error="failed")
         assert result is False  # 已达上限
 
     @pytest.mark.asyncio
@@ -656,9 +650,7 @@ class TestRetryQueue:
         adapter = MockAdapter(AlertChannel.FEISHU, should_succeed=False)
         event = make_event()
 
-        result = await queue.schedule_retry(
-            adapter, event, NotificationPriority.P1, attempt=1, error="failed"
-        )
+        result = await queue.schedule_retry(adapter, event, NotificationPriority.P1, attempt=1, error="failed")
         assert result is True  # 已安排
         assert len(queue._pending_retries) == 1
 

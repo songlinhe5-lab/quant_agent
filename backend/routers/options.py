@@ -184,7 +184,8 @@ async def get_iv_rank(ticker: str):
         # 找 ATM 期权的 IV
         enriched = compute_option_chain_greeks(spot_price, 0.05, options_data)
         atm_options = [
-            o for o in enriched
+            o
+            for o in enriched
             if o.get("iv") and abs(o["moneyness"] - 1.0) < 0.05  # 接近 ATM
         ]
 
@@ -195,6 +196,7 @@ async def get_iv_rank(ticker: str):
 
         # 生成模拟的 IV 历史 (实际应从 Redis/DB 获取)
         import random
+
         random.seed(hash(ticker) % 2**32)
         iv_history = [current_iv * (0.7 + random.random() * 0.6) for _ in range(252)]
 

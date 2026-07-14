@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class OptionGreeks:
     """期权 Greeks"""
+
     delta: float
     gamma: float
     vega: float
@@ -38,6 +39,7 @@ class OptionGreeks:
 @dataclass
 class OptionScreenResult:
     """期权筛选结果"""
+
     symbol: str
     strike: float
     expiry: str
@@ -55,9 +57,7 @@ class OptionScreenResult:
 # ===== Black-Scholes 定价 =====
 
 
-def bs_price(
-    S: float, K: float, T: float, r: float, sigma: float, option_type: str
-) -> float:
+def bs_price(S: float, K: float, T: float, r: float, sigma: float, option_type: str) -> float:
     """
     Black-Scholes 期权定价。
 
@@ -95,9 +95,7 @@ def bs_price(
 # ===== Greeks 计算 =====
 
 
-def bs_greeks(
-    S: float, K: float, T: float, r: float, sigma: float, option_type: str
-) -> OptionGreeks:
+def bs_greeks(S: float, K: float, T: float, r: float, sigma: float, option_type: str) -> OptionGreeks:
     """
     计算期权 Greeks。
 
@@ -126,17 +124,11 @@ def bs_greeks(
 
     if option_type.lower() == "call":
         delta = norm.cdf(d1)
-        theta = (
-            -(S * norm.pdf(d1) * sigma) / (2 * sqrt_T)
-            - r * K * math.exp(-r * T) * norm.cdf(d2)
-        ) / 365  # 每日
+        theta = (-(S * norm.pdf(d1) * sigma) / (2 * sqrt_T) - r * K * math.exp(-r * T) * norm.cdf(d2)) / 365  # 每日
         rho = K * T * math.exp(-r * T) * norm.cdf(d2) / 100  # 每 1% 利率变化
     else:
         delta = norm.cdf(d1) - 1
-        theta = (
-            -(S * norm.pdf(d1) * sigma) / (2 * sqrt_T)
-            + r * K * math.exp(-r * T) * norm.cdf(-d2)
-        ) / 365
+        theta = (-(S * norm.pdf(d1) * sigma) / (2 * sqrt_T) + r * K * math.exp(-r * T) * norm.cdf(-d2)) / 365
         rho = -K * T * math.exp(-r * T) * norm.cdf(-d2) / 100
 
     return OptionGreeks(delta=delta, gamma=gamma, vega=vega, theta=theta, rho=rho)
@@ -297,12 +289,14 @@ def vol_smile_analysis(options_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         call_iv = data["call_iv"]
         put_iv = data["put_iv"]
         avg_iv = (call_iv + put_iv) / 2 if call_iv > 0 and put_iv > 0 else max(call_iv, put_iv)
-        smile.append({
-            "strike": strike,
-            "call_iv": round(call_iv * 100, 2),
-            "put_iv": round(put_iv * 100, 2),
-            "avg_iv": round(avg_iv * 100, 2),
-        })
+        smile.append(
+            {
+                "strike": strike,
+                "call_iv": round(call_iv * 100, 2),
+                "put_iv": round(put_iv * 100, 2),
+                "avg_iv": round(avg_iv * 100, 2),
+            }
+        )
 
     # ATM IV (中间 strike)
     if smile:
@@ -380,19 +374,21 @@ def compute_option_chain_greeks(
         sigma = iv if iv and iv > 0 else 0.30
         greeks = bs_greeks(spot_price, strike, T, risk_free_rate, sigma, opt_type)
 
-        results.append({
-            "strike": strike,
-            "expiry": expiry,
-            "option_type": opt_type,
-            "bid": round(bid, 2),
-            "ask": round(ask, 2),
-            "mid": round(mid_price, 2),
-            "volume": volume,
-            "open_interest": oi,
-            "days_to_expiry": dte,
-            "iv": round(iv * 100, 2) if iv else None,
-            "greeks": greeks.to_dict(),
-            "moneyness": round(spot_price / strike, 4) if strike > 0 else 0,
-        })
+        results.append(
+            {
+                "strike": strike,
+                "expiry": expiry,
+                "option_type": opt_type,
+                "bid": round(bid, 2),
+                "ask": round(ask, 2),
+                "mid": round(mid_price, 2),
+                "volume": volume,
+                "open_interest": oi,
+                "days_to_expiry": dte,
+                "iv": round(iv * 100, 2) if iv else None,
+                "greeks": greeks.to_dict(),
+                "moneyness": round(spot_price / strike, 4) if strike > 0 else 0,
+            }
+        )
 
     return results

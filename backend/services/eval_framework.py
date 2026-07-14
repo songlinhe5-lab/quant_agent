@@ -172,11 +172,7 @@ class EvalReport:
             self.failed_cases += 1
 
     def to_dict(self) -> Dict:
-        avg_score = (
-            sum(r.score for r in self.results) / len(self.results)
-            if self.results
-            else 0.0
-        )
+        avg_score = sum(r.score for r in self.results) / len(self.results) if self.results else 0.0
         return {
             "total_cases": self.total_cases,
             "passed_cases": self.passed_cases,

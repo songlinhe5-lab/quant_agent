@@ -217,14 +217,9 @@ class KlineWarehouse:
                             as_of = _date.today()  # daemon 03:00 口径：日历日
                             db = SessionLocal()
                             try:
-                                pub = SnapshotPublisher(
-                                    db, universe_exporter=default_universe_exporter
-                                )
+                                pub = SnapshotPublisher(db, universe_exporter=default_universe_exporter)
                                 result = await pub.create_daily_snapshot(as_of)
-                                print(
-                                    f"📸 [DataLake] 日快照 {result.snapshot_id} → {result.status}"
-                                    f" ({result.message})"
-                                )
+                                print(f"📸 [DataLake] 日快照 {result.snapshot_id} → {result.status} ({result.message})")
                             finally:
                                 db.close()
                         except Exception as snap_err:

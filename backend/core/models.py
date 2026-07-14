@@ -302,21 +302,15 @@ class Strategy(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)  # 策略名称作为主键
     display_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    head_version_id: Mapped[Optional[str]] = mapped_column(
-        String(64), nullable=True
-    )  # 指向最新版本
-    deployed_version_id: Mapped[Optional[str]] = mapped_column(
-        String(64), nullable=True
-    )  # 指向已部署版本
+    head_version_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # 指向最新版本
+    deployed_version_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # 指向已部署版本
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
     is_archived: Mapped[bool] = mapped_column(default=False)
 
-    versions: Mapped[List["StrategyVersion"]] = relationship(
-        back_populates="strategy", cascade="all, delete-orphan"
-    )
+    versions: Mapped[List["StrategyVersion"]] = relationship(back_populates="strategy", cascade="all, delete-orphan")
 
 
 class StrategyVersion(Base):
@@ -325,22 +319,16 @@ class StrategyVersion(Base):
     __tablename__ = "strategy_versions"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)  # UUID
-    strategy_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("strategies.id"), index=True
-    )
+    strategy_id: Mapped[str] = mapped_column(String(64), ForeignKey("strategies.id"), index=True)
     seq: Mapped[int] = mapped_column(Integer, index=True)  # 版本序号，递增
     code: Mapped[str] = mapped_column(Text)  # 完整源码
     code_hash: Mapped[str] = mapped_column(String(64), index=True)  # sha256(code)
-    params_schema: Mapped[Optional[Dict[str, Any]]] = mapped_column(
-        JSON, nullable=True
-    )  # 参数 schema
+    params_schema: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)  # 参数 schema
     source: Mapped[str] = mapped_column(
         String(32), index=True
     )  # 'manual' | 'ai-apply' | 'auto-fix' | 'ast-fix' | 'restore'
     message: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)  # 用户备注
-    parent_id: Mapped[Optional[str]] = mapped_column(
-        String(64), nullable=True
-    )  # 父版本 ID (用于 restore 溯源)
+    parent_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # 父版本 ID (用于 restore 溯源)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     strategy: Mapped["Strategy"] = relationship(back_populates="versions")
@@ -387,9 +375,7 @@ class PaperFill(Base):
     __tablename__ = "paper_fills"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)  # UUID
-    portfolio_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("paper_portfolios.id"), index=True
-    )
+    portfolio_id: Mapped[str] = mapped_column(String(36), ForeignKey("paper_portfolios.id"), index=True)
     fill_seq: Mapped[int] = mapped_column(BigInteger)  # 组合内单调序号
     dt: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # 成交时间 UTC
     symbol: Mapped[str] = mapped_column(String(32))
@@ -402,9 +388,7 @@ class PaperFill(Base):
 
     portfolio: Mapped["PaperPortfolio"] = relationship(back_populates="fills")
 
-    __table_args__ = (
-        Index("idx_paper_fill_unique_seq", "portfolio_id", "fill_seq", unique=True),
-    )
+    __table_args__ = (Index("idx_paper_fill_unique_seq", "portfolio_id", "fill_seq", unique=True),)
 
 
 class PaperPosition(Base):
@@ -412,9 +396,7 @@ class PaperPosition(Base):
 
     __tablename__ = "paper_positions"
 
-    portfolio_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("paper_portfolios.id"), primary_key=True
-    )
+    portfolio_id: Mapped[str] = mapped_column(String(36), ForeignKey("paper_portfolios.id"), primary_key=True)
     symbol: Mapped[str] = mapped_column(String(32), primary_key=True)
     qty: Mapped[int] = mapped_column(Integer, default=0)
     avg_cost: Mapped[float] = mapped_column(Float, default=0.0)
@@ -431,9 +413,7 @@ class PaperNavDaily(Base):
 
     __tablename__ = "paper_nav_daily"
 
-    portfolio_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("paper_portfolios.id"), primary_key=True
-    )
+    portfolio_id: Mapped[str] = mapped_column(String(36), ForeignKey("paper_portfolios.id"), primary_key=True)
     trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
     nav: Mapped[float] = mapped_column(Float)  # 现金 + Σ(持仓×收盘价)
     cash: Mapped[float] = mapped_column(Float)

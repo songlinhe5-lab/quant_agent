@@ -25,6 +25,7 @@ T = TypeVar("T", bound=BaseModel)
 
 class ModelTier(str, Enum):
     """模型分级：轻量任务 / 标准 / 旗舰"""
+
     LIGHTWEIGHT = "lightweight"
     STANDARD = "standard"
     FLAGSHIP = "flagship"
@@ -122,9 +123,7 @@ class LLMRouter:
         self._failure_counts[tier] += 1
         if self._failure_counts[tier] >= self.fallback_threshold:
             if self.fallback_enabled and not self._in_fallback:
-                logger.warning(
-                    f"[LLMRouter] 主供应商连续失败 {self._failure_counts[tier]} 次，降级至 Ollama"
-                )
+                logger.warning(f"[LLMRouter] 主供应商连续失败 {self._failure_counts[tier]} 次，降级至 Ollama")
                 self._in_fallback = True
 
     async def health_check(self) -> Dict[str, bool]:
@@ -287,4 +286,3 @@ class LLMService:
 
 # 导出全局单例
 llm_service = LLMService()
-

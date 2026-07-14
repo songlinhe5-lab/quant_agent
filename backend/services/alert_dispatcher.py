@@ -519,11 +519,11 @@ class AlertDispatcher:
 
         except Exception as e:
             latency = (time.time() - start) * 1000
-            retry_scheduled = await self._retry_queue.schedule_retry(
-                adapter, event, priority, attempt=1, error=str(e)
-            )
+            retry_scheduled = await self._retry_queue.schedule_retry(adapter, event, priority, attempt=1, error=str(e))
             status = "pending" if retry_scheduled else "failed"
-            self._record_delivery(event.event_id, channel.value, priority.value, status, latency_ms=latency, error=str(e))
+            self._record_delivery(
+                event.event_id, channel.value, priority.value, status, latency_ms=latency, error=str(e)
+            )
             return status
 
     def _record_delivery(
@@ -559,10 +559,7 @@ class AlertDispatcher:
         """各适配器状态"""
         return {
             "started": self._started,
-            "adapters": {
-                ch.value: {"enabled": adapter.enabled}
-                for ch, adapter in self._adapters.items()
-            },
+            "adapters": {ch.value: {"enabled": adapter.enabled} for ch, adapter in self._adapters.items()},
             "pending_retries": len(self._retry_queue._pending_retries),
         }
 

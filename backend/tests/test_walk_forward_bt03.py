@@ -49,7 +49,7 @@ def make_df(n: int = 300, seed: int = 0) -> pd.DataFrame:
 
 def _fake_result(initial: float, end_mult: float, n: int = 20) -> VectorResult:
     eqs = [initial * (1 + (end_mult - 1) * i / max(n - 1, 1)) for i in range(n)]
-    curve = [{"date": f"2020-01-{i+1:02d}", "equity": e} for i, e in enumerate(eqs)]
+    curve = [{"date": f"2020-01-{i + 1:02d}", "equity": e} for i, e in enumerate(eqs)]
     return VectorResult(
         metrics={},
         equity_curve=curve,
@@ -116,9 +116,7 @@ class TestDriftDetection:
 
     def test_is_oos_gap_flags_drift(self):
         folds = [self._fold(i, 2.0, 0.2) for i in range(3)]
-        drift, reasons = detect_performance_drift(
-            folds, WalkForwardConfig(is_oos_sharpe_gap=0.5)
-        )
+        drift, reasons = detect_performance_drift(folds, WalkForwardConfig(is_oos_sharpe_gap=0.5))
         assert drift is True
         assert any("缺口" in r for r in reasons)
 
@@ -129,9 +127,7 @@ class TestDriftDetection:
             self._fold(2, 1.0, -0.5),
             self._fold(3, 1.0, -1.0),
         ]
-        drift, reasons = detect_performance_drift(
-            folds, WalkForwardConfig(oos_sharpe_slope_warn=-0.1)
-        )
+        drift, reasons = detect_performance_drift(folds, WalkForwardConfig(oos_sharpe_slope_warn=-0.1))
         assert drift is True
         assert any("恶化" in r for r in reasons)
 
@@ -193,9 +189,7 @@ class TestWalkForwardRunner:
         assert all(f.params.get("period") == 15 for f in report.folds)
 
     def test_insufficient_folds_raises(self):
-        runner = WalkForwardRunner(
-            executor=MagicMock(config=VectorConfig(), run=MagicMock())
-        )
+        runner = WalkForwardRunner(executor=MagicMock(config=VectorConfig(), run=MagicMock()))
         with pytest.raises(ValueError, match="不足以"):
             runner.run(
                 SmaCrossStrategy,
@@ -228,8 +222,6 @@ class TestWalkForwardEndpoint:
             new=AsyncMock(side_effect=WalkForwardError("bad window")),
         ):
             with pytest.raises(HTTPException) as ei:
-                await walk_forward_endpoint(
-                    WalkForwardRequest(ticker="US.AAPL", train_bars=50, test_bars=20)
-                )
+                await walk_forward_endpoint(WalkForwardRequest(ticker="US.AAPL", train_bars=50, test_bars=20))
             assert ei.value.status_code == 400
             assert "bad window" in ei.value.detail

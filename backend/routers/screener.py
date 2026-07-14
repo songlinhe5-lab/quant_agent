@@ -862,6 +862,7 @@ class CEPRuleCreate(BaseModel):
 async def create_cep_rule(req: CEPRuleCreate):
     """QUANT-04: 创建 CEP 异动规则"""
     from backend.services.cep_engine import cep_engine
+
     rule = cep_engine.add_rule(name=req.name, expression=req.expression, watchlist=req.watchlist)
     return {"status": "success", "data": rule.model_dump()}
 
@@ -870,6 +871,7 @@ async def create_cep_rule(req: CEPRuleCreate):
 async def list_cep_rules():
     """QUANT-04: 列出所有 CEP 规则"""
     from backend.services.cep_engine import cep_engine
+
     rules = [r.model_dump() for r in cep_engine.list_rules()]
     return {"status": "success", "data": rules}
 
@@ -878,6 +880,7 @@ async def list_cep_rules():
 async def delete_cep_rule(rule_id: str):
     """QUANT-04: 删除 CEP 规则"""
     from backend.services.cep_engine import cep_engine
+
     if cep_engine.remove_rule(rule_id):
         return {"status": "success", "message": f"规则 {rule_id} 已删除"}
     raise HTTPException(status_code=404, detail=f"规则 {rule_id} 不存在")
@@ -887,6 +890,7 @@ async def delete_cep_rule(rule_id: str):
 async def cep_matches_sse(since: Optional[float] = None):
     """QUANT-04: 获取最近的 CEP 匹配事件 (轮询模式)"""
     from backend.services.cep_engine import cep_engine
+
     matches = cep_engine.get_recent_matches(since=since)
     return {
         "status": "success",

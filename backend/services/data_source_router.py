@@ -407,6 +407,7 @@ class DataSourceRouter:
         """将 AKShare 成功响应存档到 Redis，供 CN 断连时降级"""
         try:
             from backend.core.redis_client import redis_client
+
             cache_key = f"{_AK_STALE_PREFIX}:{action}:{json.dumps(kwargs, sort_keys=True)}"
             await redis_client.set(cache_key, json.dumps(data, ensure_ascii=False), ex=_AK_STALE_TTL)
         except Exception as e:
@@ -416,6 +417,7 @@ class DataSourceRouter:
         """从 Redis 获取 AKShare STALE 缓存，CN 断连时返回降级数据"""
         try:
             from backend.core.redis_client import redis_client
+
             cache_key = f"{_AK_STALE_PREFIX}:{action}:{json.dumps(kwargs, sort_keys=True)}"
             cached = await redis_client.get(cache_key)
             if cached:
@@ -425,6 +427,7 @@ class DataSourceRouter:
                 # DIST-20: 记录 AKShare STALE 降级指标
                 try:
                     from backend.core.metrics import DIST_AK_STALE_TOTAL
+
                     DIST_AK_STALE_TOTAL.labels(action=action).inc()
                 except Exception:
                     pass

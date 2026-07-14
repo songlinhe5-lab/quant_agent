@@ -7,12 +7,8 @@ from pathlib import Path
 
 _REPO_DATA = Path(__file__).resolve().parents[3] / "data"
 
-LIVE_ROOT = Path(
-    os.getenv("DATALAKE_LIVE_ROOT", str(_REPO_DATA / "kline_warehouse"))
-).resolve()
-SNAPSHOTS_ROOT = Path(
-    os.getenv("DATALAKE_SNAPSHOTS_ROOT", str(_REPO_DATA / "snapshots"))
-).resolve()
+LIVE_ROOT = Path(os.getenv("DATALAKE_LIVE_ROOT", str(_REPO_DATA / "kline_warehouse"))).resolve()
+SNAPSHOTS_ROOT = Path(os.getenv("DATALAKE_SNAPSHOTS_ROOT", str(_REPO_DATA / "snapshots"))).resolve()
 
 KTYPES_V1 = ("K_DAY", "K_60M")
 

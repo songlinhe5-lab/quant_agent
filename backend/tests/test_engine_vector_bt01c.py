@@ -84,11 +84,13 @@ class TestVectorExecutor:
 
     @pytest.fixture
     def executor(self):
-        return VectorExecutor(VectorConfig(
-            initial_capital=100000.0,
-            commission_pct=0.001,
-            slippage_pct=0.001,
-        ))
+        return VectorExecutor(
+            VectorConfig(
+                initial_capital=100000.0,
+                commission_pct=0.001,
+                slippage_pct=0.001,
+            )
+        )
 
     def test_run_vectorizable_strategy(self, executor):
         """运行可矢量化策略"""

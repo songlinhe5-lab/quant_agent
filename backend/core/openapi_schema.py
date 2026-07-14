@@ -184,8 +184,7 @@ def _ensure_request_example(operation: dict[str, Any]) -> None:
             props = schema.get("properties") or {}
             if props:
                 media["example"] = {
-                    k: (v.get("default") if isinstance(v, dict) else None)
-                    for k, v in list(props.items())[:8]
+                    k: (v.get("default") if isinstance(v, dict) else None) for k, v in list(props.items())[:8]
                 }
 
 

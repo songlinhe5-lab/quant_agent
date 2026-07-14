@@ -3,6 +3,7 @@ PT-02a: 共享绩效指标库测试
 ==========================
 覆盖: sharpe / max_drawdown / annualized_return / tracking_error / signal_consistency
 """
+
 import numpy as np
 import pandas as pd
 import pytest

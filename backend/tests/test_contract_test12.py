@@ -135,9 +135,7 @@ class TestEnumAlignment:
         # 这是已知差异（前端合并 SH/SZ 为 CN），验证核心值存在
         backend_values = {m.value for m in Market}
         core_values = {"US", "HK", "CN", "SG", "JP"}
-        assert core_values.issubset(ts_values), (
-            f"前端 Market 缺少核心值: {core_values - ts_values}"
-        )
+        assert core_values.issubset(ts_values), f"前端 Market 缺少核心值: {core_values - ts_values}"
         # 后端的 SH/SZ 是内部标识，不需要在前端出现
         assert {"US", "HK"}.issubset(backend_values)
 

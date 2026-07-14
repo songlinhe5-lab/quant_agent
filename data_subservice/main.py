@@ -94,6 +94,7 @@ def _build_node_info() -> NodeInfo:
 #  心跳后台任务
 # ─────────────────────────────────────────
 
+
 async def _heartbeat_loop():
     """
     定时向 ServiceRegistry 发送心跳。
@@ -143,6 +144,7 @@ async def _heartbeat_loop():
 #  Lifespan: Startup / Shutdown
 # ─────────────────────────────────────────
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI 生命周期管理：启动注册 + 心跳，关闭注销 + 清理"""
@@ -183,7 +185,9 @@ async def lifespan(app: FastAPI):
             logger.info(f"[DataSubservice] 节点注册成功: {DS_NODE_ID} -> {node.url}")
             break
         if attempt < max_register_retries:
-            logger.warning(f"[DataSubservice] 节点注册失败 (第 {attempt}/{max_register_retries} 次)，{retry_delay}s 后重试...")
+            logger.warning(
+                f"[DataSubservice] 节点注册失败 (第 {attempt}/{max_register_retries} 次)，{retry_delay}s 后重试..."
+            )
             await asyncio.sleep(retry_delay)
             retry_delay = min(retry_delay * 2, MAX_RETRY_DELAY)
     else:
@@ -274,6 +278,7 @@ app.include_router(ds_router)
 #  端点
 # ─────────────────────────────────────────
 
+
 @app.get("/health")
 async def health():
     """
@@ -333,6 +338,7 @@ async def datasource_health():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
         "data_subservice.main:app",
         host="0.0.0.0",

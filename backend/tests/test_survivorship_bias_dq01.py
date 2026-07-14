@@ -42,31 +42,58 @@ def tracker_with_data():
     """预填充数据的 tracker"""
     t = SurvivorshipBiasTracker()
     # 正常存续标的
-    t.add_ticker(TickerLifecycle(
-        symbol="US.AAPL", name="Apple Inc", market="US",
-        list_date=date(1980, 12, 12), status=ListingStatus.LISTED,
-    ))
-    t.add_ticker(TickerLifecycle(
-        symbol="US.MSFT", name="Microsoft", market="US",
-        list_date=date(1986, 3, 13), status=ListingStatus.LISTED,
-    ))
+    t.add_ticker(
+        TickerLifecycle(
+            symbol="US.AAPL",
+            name="Apple Inc",
+            market="US",
+            list_date=date(1980, 12, 12),
+            status=ListingStatus.LISTED,
+        )
+    )
+    t.add_ticker(
+        TickerLifecycle(
+            symbol="US.MSFT",
+            name="Microsoft",
+            market="US",
+            list_date=date(1986, 3, 13),
+            status=ListingStatus.LISTED,
+        )
+    )
     # 已退市标的
-    t.add_ticker(TickerLifecycle(
-        symbol="US.LEH", name="Lehman Brothers", market="US",
-        list_date=date(1850, 1, 1), delist_date=date(2008, 9, 15),
-        status=ListingStatus.DELISTED, delist_reason="bankruptcy",
-    ))
-    t.add_ticker(TickerLifecycle(
-        symbol="US.ENRN", name="Enron", market="US",
-        list_date=date(1985, 1, 1), delist_date=date(2001, 11, 28),
-        status=ListingStatus.DELISTED, delist_reason="fraud",
-    ))
+    t.add_ticker(
+        TickerLifecycle(
+            symbol="US.LEH",
+            name="Lehman Brothers",
+            market="US",
+            list_date=date(1850, 1, 1),
+            delist_date=date(2008, 9, 15),
+            status=ListingStatus.DELISTED,
+            delist_reason="bankruptcy",
+        )
+    )
+    t.add_ticker(
+        TickerLifecycle(
+            symbol="US.ENRN",
+            name="Enron",
+            market="US",
+            list_date=date(1985, 1, 1),
+            delist_date=date(2001, 11, 28),
+            status=ListingStatus.DELISTED,
+            delist_reason="fraud",
+        )
+    )
     # 港股退市标的
-    t.add_ticker(TickerLifecycle(
-        symbol="HK.00045", name="Test Delisted HK", market="HK",
-        list_date=date(2010, 1, 1), delist_date=date(2023, 6, 30),
-        status=ListingStatus.DELISTED,
-    ))
+    t.add_ticker(
+        TickerLifecycle(
+            symbol="HK.00045",
+            name="Test Delisted HK",
+            market="HK",
+            list_date=date(2010, 1, 1),
+            delist_date=date(2023, 6, 30),
+            status=ListingStatus.DELISTED,
+        )
+    )
     return t
 
 
@@ -80,7 +107,8 @@ class TestTickerLifecycle:
 
     def test_listed_stock_is_alive(self):
         lc = TickerLifecycle(
-            symbol="US.AAPL", list_date=date(1980, 12, 12),
+            symbol="US.AAPL",
+            list_date=date(1980, 12, 12),
             status=ListingStatus.LISTED,
         )
         assert lc.is_alive_on(date(2020, 1, 1)) is True
@@ -88,29 +116,36 @@ class TestTickerLifecycle:
 
     def test_listed_stock_not_alive_before_listing(self):
         lc = TickerLifecycle(
-            symbol="US.AAPL", list_date=date(1980, 12, 12),
+            symbol="US.AAPL",
+            list_date=date(1980, 12, 12),
             status=ListingStatus.LISTED,
         )
         assert lc.is_alive_on(date(1980, 12, 11)) is False
 
     def test_delisted_stock_alive_before_delist(self):
         lc = TickerLifecycle(
-            symbol="US.LEH", list_date=date(1850, 1, 1),
-            delist_date=date(2008, 9, 15), status=ListingStatus.DELISTED,
+            symbol="US.LEH",
+            list_date=date(1850, 1, 1),
+            delist_date=date(2008, 9, 15),
+            status=ListingStatus.DELISTED,
         )
         assert lc.is_alive_on(date(2008, 9, 14)) is True  # 退市前一日
 
     def test_delisted_stock_not_alive_on_delist_date(self):
         lc = TickerLifecycle(
-            symbol="US.LEH", list_date=date(1850, 1, 1),
-            delist_date=date(2008, 9, 15), status=ListingStatus.DELISTED,
+            symbol="US.LEH",
+            list_date=date(1850, 1, 1),
+            delist_date=date(2008, 9, 15),
+            status=ListingStatus.DELISTED,
         )
         assert lc.is_alive_on(date(2008, 9, 15)) is False  # 退市当日不算
 
     def test_delisted_stock_not_alive_after_delist(self):
         lc = TickerLifecycle(
-            symbol="US.LEH", list_date=date(1850, 1, 1),
-            delist_date=date(2008, 9, 15), status=ListingStatus.DELISTED,
+            symbol="US.LEH",
+            list_date=date(1850, 1, 1),
+            delist_date=date(2008, 9, 15),
+            status=ListingStatus.DELISTED,
         )
         assert lc.is_alive_on(date(2020, 1, 1)) is False
 
@@ -121,7 +156,8 @@ class TestTickerLifecycle:
 
     def test_was_alive_on_alias(self):
         lc = TickerLifecycle(
-            symbol="US.AAPL", list_date=date(1980, 12, 12),
+            symbol="US.AAPL",
+            list_date=date(1980, 12, 12),
             status=ListingStatus.LISTED,
         )
         assert lc.was_alive_on(date(2020, 1, 1)) == lc.is_alive_on(date(2020, 1, 1))
@@ -180,16 +216,12 @@ class TestUniverseDiff:
     """DQ-01: 标的池变动"""
 
     def test_universe_diff_detects_delisting(self, tracker_with_data):
-        diff = tracker_with_data.get_universe_diff(
-            date(2008, 9, 1), date(2008, 10, 1)
-        )
+        diff = tracker_with_data.get_universe_diff(date(2008, 9, 1), date(2008, 10, 1))
         assert "US.LEH" in diff["removed"]
         assert diff["net_change"] < 0
 
     def test_universe_diff_no_change(self, tracker_with_data):
-        diff = tracker_with_data.get_universe_diff(
-            date(2020, 1, 1), date(2020, 2, 1)
-        )
+        diff = tracker_with_data.get_universe_diff(date(2020, 1, 1), date(2020, 2, 1))
         assert diff["added"] == []
         assert diff["removed"] == []
         assert diff["net_change"] == 0
@@ -260,16 +292,28 @@ class TestCSVIO:
                 fieldnames=["symbol", "name", "market", "list_date", "delist_date", "status", "delist_reason"],
             )
             writer.writeheader()
-            writer.writerow({
-                "symbol": "US.LEH", "name": "Lehman", "market": "US",
-                "list_date": "1850-01-01", "delist_date": "2008-09-15",
-                "status": "delisted", "delist_reason": "bankruptcy",
-            })
-            writer.writerow({
-                "symbol": "US.AAPL", "name": "Apple", "market": "US",
-                "list_date": "1980-12-12", "delist_date": "",
-                "status": "listed", "delist_reason": "",
-            })
+            writer.writerow(
+                {
+                    "symbol": "US.LEH",
+                    "name": "Lehman",
+                    "market": "US",
+                    "list_date": "1850-01-01",
+                    "delist_date": "2008-09-15",
+                    "status": "delisted",
+                    "delist_reason": "bankruptcy",
+                }
+            )
+            writer.writerow(
+                {
+                    "symbol": "US.AAPL",
+                    "name": "Apple",
+                    "market": "US",
+                    "list_date": "1980-12-12",
+                    "delist_date": "",
+                    "status": "listed",
+                    "delist_reason": "",
+                }
+            )
             f.flush()
 
             count = tracker.load_from_csv(f.name)
@@ -360,10 +404,7 @@ class TestEdgeCases:
         assert tracker.total_records == 1  # 不重复计数
 
     def test_batch_add(self, tracker):
-        lifecycles = [
-            TickerLifecycle(symbol=f"US.STOCK{i}", status=ListingStatus.LISTED)
-            for i in range(100)
-        ]
+        lifecycles = [TickerLifecycle(symbol=f"US.STOCK{i}", status=ListingStatus.LISTED) for i in range(100)]
         count = tracker.add_batch(lifecycles)
         assert count == 100
         assert tracker.total_records == 100

@@ -221,9 +221,7 @@ class TestStartCollectorDaemons:
             mock_wd.return_value.start = mock.AsyncMock()
             mock_yf.macro_data_daemon = mock.AsyncMock()
 
-            tasks = await start_collector_daemons(
-                ["akshare", "futu", "finnhub", "yfinance"]
-            )
+            tasks = await start_collector_daemons(["akshare", "futu", "finnhub", "yfinance"])
             assert len(tasks) == 4
             assert mock_create.call_count == 4
 

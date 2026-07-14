@@ -536,6 +536,7 @@ class AlgoEngine:
             # 模拟获取当前时段的成交量 (实际应从行情获取)
             # 简化: 假设每 30 秒市场成交 1000-5000 股
             import random
+
             market_volume_slice = random.randint(1000, 5000)
 
             # 按参与率计算本时段下单量
@@ -553,7 +554,7 @@ class AlgoEngine:
             order.filled_qty += actual_qty
             order.total_cost += fill_price * actual_qty
 
-            order.message = f"POV 执行中 (参与率 {participation_rate*100:.0f}%)，进度 {order.progress}%"
+            order.message = f"POV 执行中 (参与率 {participation_rate * 100:.0f}%)，进度 {order.progress}%"
             await self._save_algo_state(order)
             await self._broadcast_update()
 
@@ -603,9 +604,7 @@ class AlgoEngine:
             order.total_cost += fill_price * actual_qty
 
             # 估计市场冲击
-            impact_bps = MarketImpactModel.estimate_slippage(
-                actual_qty, sum(adv_curve) / n_slices, 0.20
-            )
+            impact_bps = MarketImpactModel.estimate_slippage(actual_qty, sum(adv_curve) / n_slices, 0.20)
             order.message = f"IS 执行中 (冲击估计 {impact_bps:.1f}bps)，进度 {order.progress}%"
             await self._save_algo_state(order)
             await self._broadcast_update()

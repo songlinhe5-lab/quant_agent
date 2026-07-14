@@ -3,6 +3,7 @@ PT-01c: 结算 daemon 测试
 ========================
 覆盖：交易日判定 / 结算幂等 / 停牌前收兜底 / 补结算 / NX 锁互斥 / 周度对账
 """
+
 from datetime import date, datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -132,11 +133,13 @@ class TestSettlePortfolio:
 
         # 配置 query 的多次调用
         db.query.side_effect = lambda model: MagicMock(
-            filter=MagicMock(return_value=MagicMock(
-                all=MagicMock(return_value=[pos] if model.__name__ == "PaperPosition" else []),
-                first=MagicMock(return_value=None),
-                order_by=MagicMock(return_value=MagicMock(first=MagicMock(return_value=None))),
-            ))
+            filter=MagicMock(
+                return_value=MagicMock(
+                    all=MagicMock(return_value=[pos] if model.__name__ == "PaperPosition" else []),
+                    first=MagicMock(return_value=None),
+                    order_by=MagicMock(return_value=MagicMock(first=MagicMock(return_value=None))),
+                )
+            )
         )
 
         today = date.today()
@@ -161,6 +164,7 @@ class TestSettlePortfolio:
 
         # query 返回持仓 + 已有 NAV
         call_count = [0]
+
         def query_side_effect(model):
             call_count[0] += 1
             m = MagicMock()
@@ -169,9 +173,7 @@ class TestSettlePortfolio:
                 # 第二次 filter: prev_nav 查询 → 返回 existing
                 m.filter.return_value = MagicMock(
                     first=MagicMock(return_value=existing_nav),
-                    order_by=MagicMock(return_value=MagicMock(
-                        first=MagicMock(return_value=existing_nav)
-                    )),
+                    order_by=MagicMock(return_value=MagicMock(first=MagicMock(return_value=existing_nav))),
                 )
             elif model.__name__ == "PaperPosition":
                 m.filter.return_value = MagicMock(all=MagicMock(return_value=[pos]))
@@ -223,9 +225,7 @@ class TestStaleFallback:
                 else:
                     # 查前日 NAV
                     m.filter.return_value = MagicMock(
-                        order_by=MagicMock(return_value=MagicMock(
-                            first=MagicMock(return_value=prev_nav)
-                        ))
+                        order_by=MagicMock(return_value=MagicMock(first=MagicMock(return_value=prev_nav)))
                     )
             elif model.__name__ == "PaperPosition":
                 m.filter.return_value = MagicMock(all=MagicMock(return_value=[pos]))

@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class FactorSuggestion:
     """LLM 建议的因子"""
+
     name: str
     expression: str
     param_range: Dict[str, List[Any]] = field(default_factory=dict)
@@ -28,6 +29,7 @@ class FactorSuggestion:
 @dataclass
 class FactorSearchResult:
     """因子搜索结果"""
+
     factor_name: str
     best_params: Dict[str, Any]
     best_sharpe: float
@@ -39,9 +41,7 @@ class FactorSearchResult:
 class FactorMiner:
     """AI 驱动因子挖掘器"""
 
-    async def suggest_factors(
-        self, symbol: str, objective: str = "maximize_sharpe"
-    ) -> List[FactorSuggestion]:
+    async def suggest_factors(self, symbol: str, objective: str = "maximize_sharpe") -> List[FactorSuggestion]:
         """
         LLM 生成因子表达式 + 参数范围建议。
 
@@ -156,12 +156,14 @@ class FactorMiner:
             # 模拟绩效指标
             mock_sharpe = 1.5 - i * 0.1
             mock_return = 0.15 - i * 0.01
-            top_results.append({
-                "params": params,
-                "sharpe": round(mock_sharpe, 2),
-                "annualized_return": round(mock_return, 4),
-                "max_drawdown": round(-0.1 - i * 0.02, 4),
-            })
+            top_results.append(
+                {
+                    "params": params,
+                    "sharpe": round(mock_sharpe, 2),
+                    "annualized_return": round(mock_return, 4),
+                    "max_drawdown": round(-0.1 - i * 0.02, 4),
+                }
+            )
 
         best = top_results[0] if top_results else None
 

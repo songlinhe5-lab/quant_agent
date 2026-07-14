@@ -337,6 +337,7 @@ class TestChatRoutes:
         assert len(req.messages) == 1
         assert req.session_id == "s1"
 
+
 class TestTradeRoutes:
     @patch("backend.routers.trade.broker")
     @patch("backend.routers.trade.redis_client")

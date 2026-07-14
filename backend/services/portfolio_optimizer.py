@@ -163,6 +163,7 @@ class PortfolioOptimizer:
         w_prev = w_min.copy()  # 热启动: 用前一个解作为初始猜测
 
         for target in target_returns:
+
             def objective(w):
                 return float(w @ cov @ w)
 
@@ -189,12 +190,14 @@ class PortfolioOptimizer:
             port_vol = float(np.sqrt(w @ cov @ w))
             sharpe = (port_ret - risk_free_rate) / port_vol if port_vol > 0 else 0
 
-            frontier.append({
-                "expected_return": round(port_ret * self.ANNUALIZATION_FACTOR, 4),
-                "expected_volatility": round(port_vol * np.sqrt(self.ANNUALIZATION_FACTOR), 4),
-                "sharpe_ratio": round(sharpe, 4),
-                "weights": {s: round(float(w[i]), 4) for i, s in enumerate(symbols)},
-            })
+            frontier.append(
+                {
+                    "expected_return": round(port_ret * self.ANNUALIZATION_FACTOR, 4),
+                    "expected_volatility": round(port_vol * np.sqrt(self.ANNUALIZATION_FACTOR), 4),
+                    "sharpe_ratio": round(sharpe, 4),
+                    "weights": {s: round(float(w[i]), 4) for i, s in enumerate(symbols)},
+                }
+            )
 
         return frontier
 
@@ -260,6 +263,7 @@ class PortfolioOptimizer:
 
     def _max_sharpe_solve(self, mu, cov, n, max_weight, risk_free_rate):
         """求解最大 Sharpe 权重向量。"""
+
         def neg_sharpe(w):
             port_ret = float(mu @ w)
             port_vol = float(np.sqrt(w @ cov @ w))
@@ -281,6 +285,7 @@ class PortfolioOptimizer:
 
     def _min_variance_solve(self, cov, n, max_weight):
         """求解最小方差权重向量。"""
+
         def objective(w):
             return float(w @ cov @ w)
 
@@ -315,7 +320,7 @@ class PortfolioOptimizer:
         rc_pct = (rc / rc_total * 100) if rc_total > 0 else np.zeros(len(w))
 
         # 有效持仓数 1 / sum(w²)
-        w_sq_sum = float(np.sum(w ** 2))
+        w_sq_sum = float(np.sum(w**2))
         effective_n = 1 / w_sq_sum if w_sq_sum > 0 else 0
 
         return OptimizationResult(

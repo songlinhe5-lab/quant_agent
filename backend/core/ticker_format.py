@@ -30,10 +30,7 @@ def format_ticker(ticker: str) -> str:
     if ticker.endswith(".US"):
         return f"US.{ticker.replace('.US', '')}"
 
-    if any(
-        ticker.startswith(prefix)
-        for prefix in ["US.", "SH.", "SZ.", "JP.", "SG.", "UK.", "LSE."]
-    ):
+    if any(ticker.startswith(prefix) for prefix in ["US.", "SH.", "SZ.", "JP.", "SG.", "UK.", "LSE."]):
         return ticker
 
     return f"US.{ticker}"
@@ -73,9 +70,7 @@ def format_yf_ticker(ticker: str) -> str:
 
     if yf_ticker.endswith(".HK") or yf_ticker.startswith("HK."):
         code = yf_ticker.replace(".HK", "").replace("HK.", "")
-        yf_ticker = (
-            f"{code.lstrip('0').zfill(4)}.HK" if code.isdigit() else f"{code}.HK"
-        )
+        yf_ticker = f"{code.lstrip('0').zfill(4)}.HK" if code.isdigit() else f"{code}.HK"
     elif yf_ticker.startswith("SH."):
         yf_ticker = yf_ticker.replace("SH.", "") + ".SS"
     elif yf_ticker.endswith(".SH"):

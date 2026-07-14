@@ -2,6 +2,7 @@
 STRAT-03a: 策略版本管理服务
 提供版本创建、查询、恢复等功能
 """
+
 import hashlib
 import uuid
 from datetime import datetime
@@ -223,11 +224,7 @@ def import_drafts(db: Session, drafts_dir: str) -> int:
             code = f.read()
 
         # 检查是否已存在
-        existing = (
-            db.query(StrategyVersion)
-            .filter(StrategyVersion.strategy_id == strategy_name)
-            .first()
-        )
+        existing = db.query(StrategyVersion).filter(StrategyVersion.strategy_id == strategy_name).first()
         if existing:
             continue
 

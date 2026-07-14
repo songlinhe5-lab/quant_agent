@@ -61,6 +61,7 @@ async def main():
 
         # PT-01c: 纸面组合结算守护进程
         from backend.services.paper_settlement_daemon import paper_settlement_daemon
+
         tasks.append(asyncio.create_task(paper_settlement_daemon.run()))
         print("  Core daemons started (ticker/sentiment/screener/paper_settlement)")
     else:

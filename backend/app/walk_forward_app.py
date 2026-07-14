@@ -53,9 +53,7 @@ class WalkForwardError(Exception):
 def resolve_strategy(strategy_key: str) -> Type[Strategy]:
     key = (strategy_key or "sma_cross").lower()
     if key not in STRATEGY_REGISTRY:
-        raise WalkForwardError(
-            f"未知 strategy_key={strategy_key!r}，可选: {sorted(STRATEGY_REGISTRY)}"
-        )
+        raise WalkForwardError(f"未知 strategy_key={strategy_key!r}，可选: {sorted(STRATEGY_REGISTRY)}")
     return STRATEGY_REGISTRY[key]
 
 

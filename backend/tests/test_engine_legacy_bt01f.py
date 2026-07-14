@@ -75,6 +75,7 @@ class LegacyVectorizedStrategy:
 
 class InvalidStrategy:
     """无效策略（无可识别接口）"""
+
     pass
 
 
@@ -127,13 +128,16 @@ class TestLegacyStrategyAdapter:
         # 准备数据：最后一根 bar 价格比前一根高 2%
         dates = pd.date_range("2024-01-01", periods=10, freq="D", tz="UTC")
         prices = [100.0] * 8 + [100.0, 102.0]
-        df = pd.DataFrame({
-            "open": prices,
-            "high": [p * 1.01 for p in prices],
-            "low": [p * 0.99 for p in prices],
-            "close": prices,
-            "volume": [1000000.0] * 10,
-        }, index=dates)
+        df = pd.DataFrame(
+            {
+                "open": prices,
+                "high": [p * 1.01 for p in prices],
+                "low": [p * 0.99 for p in prices],
+                "close": prices,
+                "volume": [1000000.0] * 10,
+            },
+            index=dates,
+        )
 
         ctx = BacktestContext(
             run_id="test",
@@ -198,11 +202,13 @@ class TestLegacyStrategyAdapter:
         )
 
         # 设置低价行情（低于阈值 100）
-        ctx.set_latest_quote(QuoteSnapshot(
-            symbol="TEST.001",
-            dt=datetime.now(timezone.utc),
-            price=95.0,
-        ))
+        ctx.set_latest_quote(
+            QuoteSnapshot(
+                symbol="TEST.001",
+                dt=datetime.now(timezone.utc),
+                price=95.0,
+            )
+        )
 
         bar = Bar(
             symbol="TEST.001",

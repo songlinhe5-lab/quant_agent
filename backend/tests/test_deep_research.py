@@ -30,9 +30,7 @@ async def test_cluster_discovery_success():
         {"theme": "供应链", "summary": "台积电产能紧张", "relevance": 0.7},
     ]
 
-    with patch(
-        "backend.services.deep_research.llm_service"
-    ) as mock_llm:
+    with patch("backend.services.deep_research.llm_service") as mock_llm:
         mock_llm.generate_pydantic = AsyncMock(return_value=mock_response)
         agent = ClusterDiscoveryAgent()
         findings = await agent.run("AI 半导体趋势", ["NVDA", "TSM"])
@@ -46,9 +44,7 @@ async def test_cluster_discovery_success():
 @pytest.mark.asyncio
 async def test_cluster_discovery_llm_failure():
     """测试聚类发现 Agent LLM 失败降级"""
-    with patch(
-        "backend.services.deep_research.llm_service"
-    ) as mock_llm:
+    with patch("backend.services.deep_research.llm_service") as mock_llm:
         mock_llm.generate_pydantic = AsyncMock(side_effect=Exception("LLM timeout"))
         agent = ClusterDiscoveryAgent()
         findings = await agent.run("测试主题", ["AAPL"])
@@ -73,9 +69,7 @@ async def test_data_deepdive_success():
     mock_response = MagicMock()
     mock_response.choices = [mock_choice]
 
-    with patch(
-        "backend.services.deep_research.llm_service"
-    ) as mock_llm:
+    with patch("backend.services.deep_research.llm_service") as mock_llm:
         mock_client = AsyncMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
         mock_llm.get_client.return_value = mock_client
@@ -93,9 +87,7 @@ async def test_data_deepdive_llm_failure():
     """测试数据深挖 Agent LLM 失败降级"""
     findings = [ResearchFinding(theme="测试", summary="测试")]
 
-    with patch(
-        "backend.services.deep_research.llm_service"
-    ) as mock_llm:
+    with patch("backend.services.deep_research.llm_service") as mock_llm:
         mock_client = AsyncMock()
         mock_client.chat.completions.create = AsyncMock(side_effect=Exception("timeout"))
         mock_llm.get_client.return_value = mock_client
@@ -152,10 +144,11 @@ async def test_pipeline_full_flow():
         ResearchFinding(theme="趋势", summary="上涨趋势", relevance=0.8),
     ]
 
-    with patch.object(ClusterDiscoveryAgent, "run", new_callable=AsyncMock, return_value=mock_findings), \
-         patch.object(DataDeepDiveAgent, "run", new_callable=AsyncMock, return_value="深度分析文本"), \
-         patch.object(ChartDeliveryAgent, "run", new_callable=AsyncMock) as mock_delivery:
-
+    with (
+        patch.object(ClusterDiscoveryAgent, "run", new_callable=AsyncMock, return_value=mock_findings),
+        patch.object(DataDeepDiveAgent, "run", new_callable=AsyncMock, return_value="深度分析文本"),
+        patch.object(ChartDeliveryAgent, "run", new_callable=AsyncMock) as mock_delivery,
+    ):
         mock_delivery.return_value = ResearchReport(
             topic="测试",
             symbols=["AAPL"],

@@ -49,9 +49,9 @@ class TestBlackScholes:
         """测试边界条件"""
         # T = 0 (到期)
         assert bs_price(110, 100, 0, 0.05, 0.2, "call") == 10  # ITM call
-        assert bs_price(90, 100, 0, 0.05, 0.2, "call") == 0   # OTM call
-        assert bs_price(90, 100, 0, 0.05, 0.2, "put") == 10   # ITM put
-        assert bs_price(110, 100, 0, 0.05, 0.2, "put") == 0   # OTM put
+        assert bs_price(90, 100, 0, 0.05, 0.2, "call") == 0  # OTM call
+        assert bs_price(90, 100, 0, 0.05, 0.2, "put") == 10  # ITM put
+        assert bs_price(110, 100, 0, 0.05, 0.2, "put") == 0  # OTM put
 
 
 class TestGreeks:

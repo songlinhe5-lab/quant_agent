@@ -77,9 +77,7 @@ class TestSourceRegistryFetchPath:
         mock_svc.fetch_yf_data = AsyncMock(return_value=(True, {"Close": [1]}, ""))
         ensure_yfinance_registered(mock_svc)
 
-        result = await datasource_registry.fetch(
-            "yfinance", "history", {"ticker": "AAPL", "period": "5d"}
-        )
+        result = await datasource_registry.fetch("yfinance", "history", {"ticker": "AAPL", "period": "5d"})
         assert result.is_success
         assert result.data == {"Close": [1]}
         mock_svc.fetch_yf_data.assert_awaited_once()

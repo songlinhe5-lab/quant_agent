@@ -25,7 +25,6 @@ pytest-benchmark: K线聚合 / 技术指标 / 告警评估 / 指标评估器 bas
   - K线序列化 (1000 bars): < 5ms
 """
 
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -182,9 +181,7 @@ class TestTechIndicatorBenchmark:
             delta = close.diff()
             gain = delta.where(delta > 0, 0.0)
             loss = -delta.where(delta < 0, 0.0)
-            rs = gain.ewm(alpha=1 / 14, adjust=False).mean() / loss.ewm(
-                alpha=1 / 14, adjust=False
-            ).mean()
+            rs = gain.ewm(alpha=1 / 14, adjust=False).mean() / loss.ewm(alpha=1 / 14, adjust=False).mean()
             return 100 - (100 / (1 + rs))
 
         result = benchmark(compute)
@@ -244,10 +241,7 @@ class TestAlertEvaluationBenchmark:
         prev_indicators = {k: v * 0.98 for k, v in indicators.items()}
 
         def evaluate_all():
-            return [
-                evaluate_indicator_rule(r, indicators, prev_indicators)
-                for r in indicator_rules
-            ]
+            return [evaluate_indicator_rule(r, indicators, prev_indicators) for r in indicator_rules]
 
         results = benchmark(evaluate_all)
         assert isinstance(results, list)

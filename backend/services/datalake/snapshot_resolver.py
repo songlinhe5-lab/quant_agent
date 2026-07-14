@@ -58,9 +58,7 @@ class SnapshotResolver:
 
         if sid == self.LIVE_ID:
             if not self.allow_live_data():
-                raise SnapshotResolveError(
-                    "data_snapshot_id=live 仅允许开发环境（ENGINE_ALLOW_LIVE_DATA=true）"
-                )
+                raise SnapshotResolveError("data_snapshot_id=live 仅允许开发环境（ENGINE_ALLOW_LIVE_DATA=true）")
             return SnapshotRef(
                 snapshot_id=self.LIVE_ID,
                 manifest_hash=manifest_hash or "",

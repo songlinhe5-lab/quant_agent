@@ -39,23 +39,23 @@ logger = structlog.get_logger(__name__)
 class FinancialDataType(str, Enum):
     """财务数据类型"""
 
-    INCOME_STATEMENT = "income_statement"    # 利润表
-    BALANCE_SHEET = "balance_sheet"          # 资产负债表
-    CASH_FLOW = "cash_flow"                  # 现金流量表
-    KEY_METRICS = "key_metrics"              # 关键指标 (PE/PB/ROE 等)
-    EARNINGS = "earnings"                    # 每股收益
-    REVENUE = "revenue"                      # 营收
-    GUIDANCE = "guidance"                    # 业绩指引
+    INCOME_STATEMENT = "income_statement"  # 利润表
+    BALANCE_SHEET = "balance_sheet"  # 资产负债表
+    CASH_FLOW = "cash_flow"  # 现金流量表
+    KEY_METRICS = "key_metrics"  # 关键指标 (PE/PB/ROE 等)
+    EARNINGS = "earnings"  # 每股收益
+    REVENUE = "revenue"  # 营收
+    GUIDANCE = "guidance"  # 业绩指引
 
 
 class FiscalPeriod(str, Enum):
     """财年周期"""
 
-    Q1 = "Q1"    # 第一季度
-    Q2 = "Q2"    # 第二季度
-    Q3 = "Q3"    # 第三季度
-    Q4 = "Q4"    # 第四季度 (年报)
-    FY = "FY"    # 全年
+    Q1 = "Q1"  # 第一季度
+    Q2 = "Q2"  # 第二季度
+    Q3 = "Q3"  # 第三季度
+    Q4 = "Q4"  # 第四季度 (年报)
+    FY = "FY"  # 全年
     TTM = "TTM"  # 滚动 12 个月
 
 
@@ -76,23 +76,20 @@ class FinancialDataPoint:
 
     symbol: str
     data_type: FinancialDataType
-    fiscal_year: int                          # 财年
-    fiscal_period: FiscalPeriod               # 季度
-    period_end_date: date                     # 报告期截止日
-    announce_date: date                       # 实际公布日期
+    fiscal_year: int  # 财年
+    fiscal_period: FiscalPeriod  # 季度
+    period_end_date: date  # 报告期截止日
+    announce_date: date  # 实际公布日期
     values: Dict[str, Any] = field(default_factory=dict)  # 具体财务指标
-    source: str = "unknown"                   # 数据来源
-    restated: bool = False                    # 是否为重述数据
-    restated_from: Optional[str] = None       # 重述来源 ID
+    source: str = "unknown"  # 数据来源
+    restated: bool = False  # 是否为重述数据
+    restated_from: Optional[str] = None  # 重述来源 ID
     created_at: Optional[datetime] = None
 
     def __post_init__(self):
         """验证不变量"""
         if self.announce_date < self.period_end_date:
-            raise ValueError(
-                f"announce_date ({self.announce_date}) 不能早于 "
-                f"period_end_date ({self.period_end_date})"
-            )
+            raise ValueError(f"announce_date ({self.announce_date}) 不能早于 period_end_date ({self.period_end_date})")
 
     def is_available_on(self, check_date: date) -> bool:
         """判断该数据在指定日期是否已公布"""
@@ -109,11 +106,11 @@ class PITQuery:
     """Point-in-Time 查询参数"""
 
     symbol: str
-    as_of_date: date                              # 回测日期
+    as_of_date: date  # 回测日期
     data_type: Optional[FinancialDataType] = None  # 限定类型
-    fiscal_year: Optional[int] = None             # 限定财年
+    fiscal_year: Optional[int] = None  # 限定财年
     fiscal_period: Optional[FiscalPeriod] = None  # 限定季度
-    include_restatements: bool = False            # 是否包含重述数据
+    include_restatements: bool = False  # 是否包含重述数据
 
 
 # ─────────────────────────────────────────
@@ -219,11 +216,13 @@ class PointInTimeStore:
 
         典型用法：回测引擎获取"当时最新"的财报。
         """
-        points = self.query_as_of(PITQuery(
-            symbol=symbol,
-            as_of_date=as_of_date,
-            data_type=data_type,
-        ))
+        points = self.query_as_of(
+            PITQuery(
+                symbol=symbol,
+                as_of_date=as_of_date,
+                data_type=data_type,
+            )
+        )
         if not points:
             return None
         # 返回 announce_date 最晚的（即最新的）
@@ -379,11 +378,13 @@ def is_data_available(
     if store is None:
         store = get_pit_store()
 
-    points = store.query_as_of(PITQuery(
-        symbol=symbol,
-        as_of_date=as_of_date,
-        data_type=data_type,
-        fiscal_year=fiscal_year,
-        fiscal_period=fiscal_period,
-    ))
+    points = store.query_as_of(
+        PITQuery(
+            symbol=symbol,
+            as_of_date=as_of_date,
+            data_type=data_type,
+            fiscal_year=fiscal_year,
+            fiscal_period=fiscal_period,
+        )
+    )
     return len(points) > 0

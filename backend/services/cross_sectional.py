@@ -47,9 +47,7 @@ def _kdj(
     return k, d, j
 
 
-def _macd(
-    close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9
-) -> tuple[pd.Series, pd.Series, pd.Series]:
+def _macd(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> tuple[pd.Series, pd.Series, pd.Series]:
     """MACD — 返回 (DIF, DEA, histogram)"""
     ema_fast = close.ewm(span=fast, adjust=False).mean()
     ema_slow = close.ewm(span=slow, adjust=False).mean()
@@ -59,9 +57,7 @@ def _macd(
     return dif, dea, histogram
 
 
-def _bollinger(
-    close: pd.Series, period: int = 20, num_std: float = 2.0
-) -> tuple[pd.Series, pd.Series, pd.Series]:
+def _bollinger(close: pd.Series, period: int = 20, num_std: float = 2.0) -> tuple[pd.Series, pd.Series, pd.Series]:
     """布林带 — 返回 (upper, mid, lower)"""
     mid = close.rolling(period, min_periods=period).mean()
     std = close.rolling(period, min_periods=period).std()
@@ -73,9 +69,7 @@ def _bollinger(
 def _atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
     """ATR — Average True Range"""
     prev_close = close.shift(1)
-    tr = pd.concat(
-        [high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1
-    ).max(axis=1)
+    tr = pd.concat([high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1).max(axis=1)
     return tr.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
 
 
@@ -99,7 +93,9 @@ def _register(name: str, func, output_cols: List[str]):
 
 _register("RSI", lambda df, p=14: _rsi(df["close"], p), ["rsi"])
 _register("KDJ", lambda df, n=9: _kdj(df["high"], df["low"], df["close"], n), ["kdj_k", "kdj_d", "kdj_j"])
-_register("MACD", lambda df, f=12, s=26, sig=9: _macd(df["close"], f, s, sig), ["macd_dif", "macd_dea", "macd_histogram"])
+_register(
+    "MACD", lambda df, f=12, s=26, sig=9: _macd(df["close"], f, s, sig), ["macd_dif", "macd_dea", "macd_histogram"]
+)
 _register("BOLL", lambda df, p=20: _bollinger(df["close"], p), ["boll_upper", "boll_mid", "boll_lower"])
 _register("ATR", lambda df, p=14: _atr(df["high"], df["low"], df["close"], p), ["atr"])
 _register("VOL_RATIO", lambda df, p=5: _volume_ratio(df["volume"], p), ["vol_ratio"])
@@ -147,23 +143,44 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
 # 允许的指标引用: RSI, KDJ.K, KDJ.D, KDJ.J, MACD.dif, MACD.dea, MACD.histogram,
 # BOLL.upper, BOLL.mid, BOLL.lower, ATR, VOL_RATIO, SMA_5, SMA_10, SMA_20, SMA_60, EMA_12, EMA_26
-_ALLOWED_INDICATORS = frozenset({
-    "rsi", "kdj_k", "kdj_d", "kdj_j",
-    "macd_dif", "macd_dea", "macd_histogram",
-    "boll_upper", "boll_mid", "boll_lower",
-    "atr", "vol_ratio",
-    "sma_5", "sma_10", "sma_20", "sma_60",
-    "ema_12", "ema_26",
-})
+_ALLOWED_INDICATORS = frozenset(
+    {
+        "rsi",
+        "kdj_k",
+        "kdj_d",
+        "kdj_j",
+        "macd_dif",
+        "macd_dea",
+        "macd_histogram",
+        "boll_upper",
+        "boll_mid",
+        "boll_lower",
+        "atr",
+        "vol_ratio",
+        "sma_5",
+        "sma_10",
+        "sma_20",
+        "sma_60",
+        "ema_12",
+        "ema_26",
+    }
+)
 
 # 表达式中允许的用户友好名称 → DataFrame 列名映射
 _EXPR_COL_MAP = {
     "RSI": "rsi",
-    "KDJ.K": "kdj_k", "KDJ.D": "kdj_d", "KDJ.J": "kdj_j",
-    "MACD.DIF": "macd_dif", "MACD.DEA": "macd_dea", "MACD.HISTOGRAM": "macd_histogram",
+    "KDJ.K": "kdj_k",
+    "KDJ.D": "kdj_d",
+    "KDJ.J": "kdj_j",
+    "MACD.DIF": "macd_dif",
+    "MACD.DEA": "macd_dea",
+    "MACD.HISTOGRAM": "macd_histogram",
     "MACD.HIST": "macd_histogram",
-    "BOLL.UPPER": "boll_upper", "BOLL.MID": "boll_mid", "BOLL.LOWER": "boll_lower",
-    "ATR": "atr", "VOL_RATIO": "vol_ratio",
+    "BOLL.UPPER": "boll_upper",
+    "BOLL.MID": "boll_mid",
+    "BOLL.LOWER": "boll_lower",
+    "ATR": "atr",
+    "VOL_RATIO": "vol_ratio",
 }
 
 # 安全 token 白名单正则
@@ -192,9 +209,7 @@ def _normalize_expr(expr: str) -> str:
 
     # 替换带参数的指标调用: RSI(14) → rsi (忽略参数，使用默认)
     for ind_name in ["RSI", "KDJ", "MACD", "BOLL", "ATR", "VOL_RATIO"]:
-        normalized = re.sub(
-            rf"\b{ind_name}\(\d+\)", ind_name, normalized, flags=re.IGNORECASE
-        )
+        normalized = re.sub(rf"\b{ind_name}\(\d+\)", ind_name, normalized, flags=re.IGNORECASE)
 
     # 替换 SMA(n) / EMA(n) → sma_n / ema_n
     normalized = re.sub(r"\bSMA\((\d+)\)", r"sma_\1", normalized, flags=re.IGNORECASE)

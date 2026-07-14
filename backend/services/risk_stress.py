@@ -35,8 +35,12 @@ HYPOTHETICAL_SCENARIOS = {
     "rate_plus_1": {
         "desc": "利率上升 1%",
         "sector_impact": {
-            "科技": -0.08, "金融": 0.03, "房地产": -0.12,
-            "公用事业": -0.06, "医疗": -0.03, "默认": -0.05,
+            "科技": -0.08,
+            "金融": 0.03,
+            "房地产": -0.12,
+            "公用事业": -0.06,
+            "医疗": -0.03,
+            "默认": -0.05,
         },
     },
     "vol_double": {
@@ -117,22 +121,21 @@ class StressTester:
                 impact = shock
 
             loss = mv * impact
-            position_impacts.append({
-                "symbol": code,
-                "market_val": mv,
-                "loss": loss,
-                "loss_pct": impact * 100,
-            })
+            position_impacts.append(
+                {
+                    "symbol": code,
+                    "market_val": mv,
+                    "loss": loss,
+                    "loss_pct": impact * 100,
+                }
+            )
 
         total_loss = sum(pi["loss"] for pi in position_impacts)
         nav_after = total_nav + total_loss
 
         # Top 5 亏损
         position_impacts.sort(key=lambda x: x["loss"])
-        top_losers = [
-            {"symbol": pi["symbol"], "loss_pct": round(pi["loss_pct"], 2)}
-            for pi in position_impacts[:5]
-        ]
+        top_losers = [{"symbol": pi["symbol"], "loss_pct": round(pi["loss_pct"], 2)} for pi in position_impacts[:5]]
 
         return {
             "scenario": scenario,
@@ -186,21 +189,20 @@ class StressTester:
                 impact = 0.0
 
             loss = mv * impact
-            position_impacts.append({
-                "symbol": code,
-                "market_val": mv,
-                "loss": loss,
-                "loss_pct": impact * 100,
-            })
+            position_impacts.append(
+                {
+                    "symbol": code,
+                    "market_val": mv,
+                    "loss": loss,
+                    "loss_pct": impact * 100,
+                }
+            )
 
         total_loss = sum(pi["loss"] for pi in position_impacts)
         nav_after = total_nav + total_loss
 
         position_impacts.sort(key=lambda x: x["loss"])
-        top_losers = [
-            {"symbol": pi["symbol"], "loss_pct": round(pi["loss_pct"], 2)}
-            for pi in position_impacts[:5]
-        ]
+        top_losers = [{"symbol": pi["symbol"], "loss_pct": round(pi["loss_pct"], 2)} for pi in position_impacts[:5]]
 
         return {
             "scenario": scenario,
@@ -235,10 +237,7 @@ class StressTester:
                 {"id": k, "desc": v["desc"], "start": v["start"], "end": v["end"]}
                 for k, v in HISTORICAL_SCENARIOS.items()
             ],
-            "hypothetical": [
-                {"id": k, "desc": v["desc"]}
-                for k, v in HYPOTHETICAL_SCENARIOS.items()
-            ],
+            "hypothetical": [{"id": k, "desc": v["desc"]} for k, v in HYPOTHETICAL_SCENARIOS.items()],
         }
 
 

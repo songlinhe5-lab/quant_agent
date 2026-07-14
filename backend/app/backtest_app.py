@@ -88,9 +88,7 @@ async def load_backtest_frame(req: BacktestParams) -> tuple[pd.DataFrame, str]:
                 reader = SnapshotReader(db)
                 resolved = await reader.resolve_snapshot_id(sid)
                 if resolved != "live":
-                    snap_df = await reader.get_history(
-                        resolved, req.ticker, ktype=ktype, num=num_days
-                    )
+                    snap_df = await reader.get_history(resolved, req.ticker, ktype=ktype, num=num_days)
                     if snap_df is not None and not snap_df.empty:
                         df = snap_df
                         success = True
@@ -104,9 +102,7 @@ async def load_backtest_frame(req: BacktestParams) -> tuple[pd.DataFrame, str]:
         if req.data_source in ["auto", "futu"]:
             try:
                 print(f"📡 [Backtest] 尝试从 Futu OpenD 拉取数据: {req.ticker}...")
-                futu_res = await market_data.get_history(
-                    req.ticker, ktype=ktype, num=num_days
-                )
+                futu_res = await market_data.get_history(req.ticker, ktype=ktype, num=num_days)
                 if futu_res.get("status") == "success" and futu_res.get("data"):
                     df = pd.DataFrame(futu_res["data"])
                     if not df.empty:
@@ -123,10 +119,7 @@ async def load_backtest_frame(req: BacktestParams) -> tuple[pd.DataFrame, str]:
                         df["time"] = pd.to_datetime(df["time"])
                         df.set_index("time", inplace=True)
                         success = True
-                        print(
-                            f"🌐 [Backtest] 成功拉取实时在线数据源 (Futu): "
-                            f"{req.ticker} | 数量: {len(df)} 行"
-                        )
+                        print(f"🌐 [Backtest] 成功拉取实时在线数据源 (Futu): {req.ticker} | 数量: {len(df)} 行")
             except Exception as e:
                 msg = f"Futu 接口获取失败: {e}"
 
@@ -140,10 +133,7 @@ async def load_backtest_frame(req: BacktestParams) -> tuple[pd.DataFrame, str]:
                 interval=req.interval,
             )
             if success and df is not None and not df.empty:
-                print(
-                    f"🌐 [Backtest] 成功拉取实时在线数据源 (YFinance): "
-                    f"{req.ticker} | 数量: {len(df)} 行"
-                )
+                print(f"🌐 [Backtest] 成功拉取实时在线数据源 (YFinance): {req.ticker} | 数量: {len(df)} 行")
 
         if not success or df is None or df.empty:
             raise BacktestDataError(f"回测数据加载失败: {msg}")
@@ -176,8 +166,7 @@ def _load_backtest_engine():
 async def execute_backtest(req: BacktestParams, df: pd.DataFrame) -> dict[str, Any]:
     """运行动态沙箱或内置底背离策略。"""
     print(
-        f"\n📊 [Backtest Debug] 准备进入回测引擎推演 | 标的: {req.ticker} | "
-        f"周期: {req.period} | 级别: {req.interval}"
+        f"\n📊 [Backtest Debug] 准备进入回测引擎推演 | 标的: {req.ticker} | 周期: {req.period} | 级别: {req.interval}"
     )
     print(f"   - 数据规模 (Shape): {df.shape}")
     print(f"   - 数据列名 (Columns): {df.columns.tolist()}")
@@ -191,9 +180,7 @@ async def execute_backtest(req: BacktestParams, df: pd.DataFrame) -> dict[str, A
 
         safe_code = req.source_code
         safe_code = re.sub(r"^\s*import\s+talib.*$", "", safe_code, flags=re.MULTILINE)
-        safe_code = re.sub(
-            r"^\s*from\s+talib\s+import.*$", "", safe_code, flags=re.MULTILINE
-        )
+        safe_code = re.sub(r"^\s*from\s+talib\s+import.*$", "", safe_code, flags=re.MULTILINE)
         safe_code = re.sub(
             r"^\s*from\s+[\w\.]+\s+import\s+BaseStrategy.*$",
             "",
@@ -215,10 +202,7 @@ async def execute_backtest(req: BacktestParams, df: pd.DataFrame) -> dict[str, A
             tb_str = safe_truncate(traceback.format_exc(), max_length=1500)
             return {
                 "status": "error",
-                "message": (
-                    f"大模型策略执行期间发生异常: {type(e).__name__}: {str(e)}"
-                    f"\n\n追踪详情:\n{tb_str}"
-                ),
+                "message": (f"大模型策略执行期间发生异常: {type(e).__name__}: {str(e)}\n\n追踪详情:\n{tb_str}"),
             }
 
     try:

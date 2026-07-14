@@ -44,9 +44,9 @@ from backend.services.indicator_evaluator import (
 # ─────────────────────────────────────────
 #  Redis 键空间
 # ─────────────────────────────────────────
-RULES_KEY = "quant:alerts:rules"           # Hash: {rule_id: AlertRule JSON}
-EVENTS_KEY = "quant:alerts:events"         # List: AlertEvent JSON (最近 1000 条)
-LAST_PRICES_KEY = "quant:alerts:prices"    # Hash: {ticker: last_price}
+RULES_KEY = "quant:alerts:rules"  # Hash: {rule_id: AlertRule JSON}
+EVENTS_KEY = "quant:alerts:events"  # List: AlertEvent JSON (最近 1000 条)
+LAST_PRICES_KEY = "quant:alerts:prices"  # Hash: {ticker: last_price}
 
 
 class AlertEngine:
@@ -199,16 +199,12 @@ class AlertEngine:
 
         # ── 指标类规则评估 (ALERT-05) ──
         if indicator_rules:
-            indicator_events = await self._evaluate_indicator_rules(
-                ticker, indicator_rules, now
-            )
+            indicator_events = await self._evaluate_indicator_rules(ticker, indicator_rules, now)
             triggered_events.extend(indicator_events)
 
         return triggered_events
 
-    async def _evaluate_indicator_rules(
-        self, ticker: str, rules: List[AlertRule], now: float
-    ) -> List[AlertEvent]:
+    async def _evaluate_indicator_rules(self, ticker: str, rules: List[AlertRule], now: float) -> List[AlertEvent]:
         """
         评估指标类规则（ALERT-05）。
 
@@ -270,9 +266,7 @@ class AlertEngine:
             return None
 
         try:
-            tech_data = await self._market_data.get_tech_indicators(
-                ticker=ticker, lookback_days=1
-            )
+            tech_data = await self._market_data.get_tech_indicators(ticker=ticker, lookback_days=1)
             if tech_data.get("status") == "success":
                 return extract_indicators_from_tech_data(tech_data)
             logger.debug(f"[AlertEngine] 指标获取失败: {tech_data.get('message')}")

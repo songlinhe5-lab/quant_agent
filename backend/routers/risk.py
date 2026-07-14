@@ -44,6 +44,7 @@ async def _get_market_data(market: str):
             continue
         try:
             from backend.app.market_data import market_data
+
             hist = await market_data.get_history(ticker, ktype="K_DAY", num=60)
             if hist.get("status") == "success" and hist.get("data"):
                 closes = [float(k["close"]) for k in hist["data"] if k.get("close")]
@@ -161,8 +162,11 @@ async def get_attribution(
     positions, kline_data, _ = await _get_market_data(market)
     if positions is None or not kline_data:
         return {
-            "alpha": 0.0, "beta": 0.0, "r_squared": 0.0,
-            "beta_contrib": 0.0, "total_return": 0.0,
+            "alpha": 0.0,
+            "beta": 0.0,
+            "r_squared": 0.0,
+            "beta_contrib": 0.0,
+            "total_return": 0.0,
             "attribution": {"alpha_pct": 0, "beta_pct": 0, "residual_pct": 0},
             "ts": 0,
         }

@@ -63,9 +63,7 @@ class FeishuAdapter:
         if self._secret:
             timestamp = str(int(time.time()))
             string_to_sign = f"{timestamp}\n{self._secret}"
-            hmac_code = hmac.new(
-                string_to_sign.encode("utf-8"), b"", digestmod=hashlib.sha256
-            ).digest()
+            hmac_code = hmac.new(string_to_sign.encode("utf-8"), b"", digestmod=hashlib.sha256).digest()
             sign = base64.b64encode(hmac_code).decode("utf-8")
             payload["timestamp"] = timestamp
             payload["sign"] = sign
@@ -74,9 +72,7 @@ class FeishuAdapter:
 
         try:
             async with httpx.AsyncClient() as client:
-                resp = await client.post(
-                    self._webhook_url, json=payload, headers=headers, timeout=5.0
-                )
+                resp = await client.post(self._webhook_url, json=payload, headers=headers, timeout=5.0)
                 if resp.status_code == 200:
                     data = resp.json()
                     if data.get("code") == 0:

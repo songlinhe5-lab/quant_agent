@@ -58,9 +58,7 @@ class DataSourceRegistry:
         rate_limit_registry.get_or_create(source.name)
         return iid
 
-    def unregister(
-        self, source_name: str, instance_id: Optional[str] = None
-    ) -> bool:
+    def unregister(self, source_name: str, instance_id: Optional[str] = None) -> bool:
         """注销实例；未指定 instance_id 则移除该源全部实例。"""
         with self._lock:
             if source_name not in self._sources:
@@ -69,9 +67,7 @@ class DataSourceRegistry:
                 del self._sources[source_name]
                 return True
             before = len(self._sources[source_name])
-            self._sources[source_name] = [
-                e for e in self._sources[source_name] if e.instance_id != instance_id
-            ]
+            self._sources[source_name] = [e for e in self._sources[source_name] if e.instance_id != instance_id]
             removed = len(self._sources[source_name]) < before
             if not self._sources[source_name]:
                 del self._sources[source_name]
@@ -85,9 +81,7 @@ class DataSourceRegistry:
         with self._lock:
             return list(self._sources.keys())
 
-    def get(
-        self, source_name: str, action: Optional[str] = None
-    ) -> Optional[DataSourceInterface]:
+    def get(self, source_name: str, action: Optional[str] = None) -> Optional[DataSourceInterface]:
         """按名称取首个可用实例；可选按 capability 过滤。"""
         with self._lock:
             entries = list(self._sources.get(source_name, []))
@@ -109,9 +103,7 @@ class DataSourceRegistry:
         with self._lock:
             self._sources.clear()
 
-    async def fetch(
-        self, source_name: str, action: str, params: Optional[dict[str, Any]] = None
-    ) -> Result:
+    async def fetch(self, source_name: str, action: str, params: Optional[dict[str, Any]] = None) -> Result:
         """
         主路径：限流检查 → Interface.fetch。
 
@@ -146,9 +138,7 @@ class DataSourceRegistry:
         if result.latency_ms <= 0:
             result.latency_ms = latency
 
-        if result.status == ResultStatus.RATE_LIMITED or (
-            result.error and result.error.is_rate_limit_type
-        ):
+        if result.status == ResultStatus.RATE_LIMITED or (result.error and result.error.is_rate_limit_type):
             throttler.on_rate_limit(result.error)
             analyzer = rate_limit_registry.get_analyzer(source_name)
             analyzer.record_rate_limit()

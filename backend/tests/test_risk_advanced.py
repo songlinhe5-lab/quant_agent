@@ -218,11 +218,15 @@ class TestSectorExposure:
         """板块聚合正确"""
         from backend.services.risk_sector import SectorAnalyzer
 
-        mock_redis.get = AsyncMock(return_value=json.dumps({
-            "HK.00700": "Technology",
-            "HK.09988": "Technology",
-            "HK.00005": "Financials",
-        }))
+        mock_redis.get = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "HK.00700": "Technology",
+                    "HK.09988": "Technology",
+                    "HK.00005": "Financials",
+                }
+            )
+        )
 
         analyzer = SectorAnalyzer()
         positions = SAMPLE_POSITIONS
@@ -414,9 +418,7 @@ class TestStressTest:
         from backend.services.risk_stress import StressTester
 
         tester = StressTester()
-        result = tester.run_stress(
-            SAMPLE_POSITIONS, SAMPLE_KLINE, "vol_double", market="HK"
-        )
+        result = tester.run_stress(SAMPLE_POSITIONS, SAMPLE_KLINE, "vol_double", market="HK")
 
         assert result["type"] == "hypothetical"
         assert result["change_pct"] < 0  # 波动率翻倍 → 亏损

@@ -217,9 +217,7 @@ class RiskEngine:
             returns_dict[ticker] = returns
 
         # 按市值加权计算组合收益率
-        total_market_val = sum(
-            float(p.get("market_val", 0)) for p in positions if p.get("code") in kline_data
-        )
+        total_market_val = sum(float(p.get("market_val", 0)) for p in positions if p.get("code") in kline_data)
         if total_market_val == 0:
             return {"vol": 0, "var_95": 0, "beta": 0, "sharpe": 0}, {}
 
@@ -334,9 +332,7 @@ class RiskEngine:
 
         return -max_dd * 100  # 返回百分比
 
-    def _calc_correlation_matrix(
-        self, kline_data: Dict[str, np.ndarray]
-    ) -> Dict[str, Any]:
+    def _calc_correlation_matrix(self, kline_data: Dict[str, np.ndarray]) -> Dict[str, Any]:
         """RISK-03: 持仓间 60 日收益率相关系数矩阵"""
         if len(kline_data) < 2:
             return {"labels": list(kline_data.keys()), "matrix": [[1.0]], "warnings": []}

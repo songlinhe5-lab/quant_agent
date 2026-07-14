@@ -124,9 +124,7 @@ class SnapshotPublisher:
     ) -> PublishResult:
         ensure_roots()
         snapshot_id = f"snap_{as_of_date.strftime('%Y%m%d')}"
-        existing = (
-            self._db.query(DataSnapshot).filter(DataSnapshot.snapshot_id == snapshot_id).first()
-        )
+        existing = self._db.query(DataSnapshot).filter(DataSnapshot.snapshot_id == snapshot_id).first()
         if existing and existing.status == "published" and not force:
             return PublishResult(
                 snapshot_id=snapshot_id,
@@ -204,9 +202,7 @@ class SnapshotPublisher:
         )
         manifest["copy_mode"] = copy_mode
         manifest["manifest_hash"] = compute_manifest_hash(manifest)
-        (dest / "manifest.json").write_text(
-            json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
+        (dest / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
 
         # 只读保护（尽力而为；部分 FS 忽略）
         try:

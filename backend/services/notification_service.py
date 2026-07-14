@@ -30,10 +30,13 @@ class NotificationService:
         """延迟导入 AlertDispatcher（避免循环依赖）"""
         if self._dispatcher is None:
             from backend.services.alert_dispatcher import get_alert_dispatcher
+
             self._dispatcher = get_alert_dispatcher()
         return self._dispatcher
 
-    async def send_alert(self, message: str, priority: NotificationPriority = NotificationPriority.P2, source: str = "system"):
+    async def send_alert(
+        self, message: str, priority: NotificationPriority = NotificationPriority.P2, source: str = "system"
+    ):
         """发送系统通知（经 AlertDispatcher 统一路由）"""
         logger.info(f"🔔 [System Notification] {message}")
 

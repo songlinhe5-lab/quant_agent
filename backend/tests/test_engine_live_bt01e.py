@@ -234,10 +234,12 @@ class TestLiveDriver:
             def on_bar(self, ctx, bar):
                 pass
 
-        driver = LiveDriver(LiveDriverConfig(
-            mode="paper",
-            poll_interval_seconds=0.1,  # 快速轮询用于测试
-        ))
+        driver = LiveDriver(
+            LiveDriverConfig(
+                mode="paper",
+                poll_interval_seconds=0.1,  # 快速轮询用于测试
+            )
+        )
 
         strategy = TestStrategy()
         run_id = await driver.start(strategy, "TEST.001", {})

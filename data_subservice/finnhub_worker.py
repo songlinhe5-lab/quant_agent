@@ -49,6 +49,7 @@ class FinnhubWorker:
         """获取公司新闻"""
         try:
             import httpx
+
             from_date = None
             to_date = None
 

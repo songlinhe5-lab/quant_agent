@@ -17,6 +17,7 @@ class TestModelTier:
 
     def test_tier_values(self):
         from backend.services.llm_service import ModelTier
+
         assert ModelTier.LIGHTWEIGHT.value == "lightweight"
         assert ModelTier.STANDARD.value == "standard"
         assert ModelTier.FLAGSHIP.value == "flagship"
@@ -27,6 +28,7 @@ class TestLLMRouter:
 
     def _make_router(self, **kwargs):
         from backend.services.llm_service import LLMRouter
+
         defaults = dict(
             api_key="test-key",
             base_url="https://api.test.com",
@@ -42,6 +44,7 @@ class TestLLMRouter:
 
     def test_get_model_returns_pinned_version(self):
         from backend.services.llm_service import ModelTier
+
         router = self._make_router()
         assert router.get_model(ModelTier.LIGHTWEIGHT) == "light-model"
         assert router.get_model(ModelTier.STANDARD) == "std-model"
@@ -56,6 +59,7 @@ class TestLLMRouter:
 
     def test_record_failure_triggers_fallback_after_threshold(self):
         from backend.services.llm_service import ModelTier
+
         router = self._make_router(fallback_threshold=3)
         assert not router.is_fallback_active
 
@@ -71,6 +75,7 @@ class TestLLMRouter:
 
     def test_fallback_returns_ollama_client(self):
         from backend.services.llm_service import ModelTier
+
         router = self._make_router(fallback_threshold=2)
 
         # 触发降级
@@ -86,6 +91,7 @@ class TestLLMRouter:
 
     def test_record_success_resets_fallback(self):
         from backend.services.llm_service import ModelTier
+
         router = self._make_router(fallback_threshold=2)
 
         router.record_failure(ModelTier.STANDARD)
@@ -98,6 +104,7 @@ class TestLLMRouter:
 
     def test_failure_count_reset_on_success(self):
         from backend.services.llm_service import ModelTier
+
         router = self._make_router(fallback_threshold=3)
 
         router.record_failure(ModelTier.STANDARD)
@@ -111,6 +118,7 @@ class TestLLMRouter:
 
     def test_fallback_disabled(self):
         from backend.services.llm_service import ModelTier
+
         router = self._make_router(fallback_enabled=False, fallback_threshold=1)
         router.record_failure(ModelTier.STANDARD)
         # fallback 禁用时不应降级
@@ -119,6 +127,7 @@ class TestLLMRouter:
     def test_health_check(self):
         """health_check 应返回 primary 和 ollama 状态"""
         import asyncio
+
         router = self._make_router()
 
         # Mock 客户端的 models.list() 方法
@@ -142,18 +151,21 @@ class TestLLMServiceBackwardCompat:
         """不传 tier 时返回默认模型"""
         with patch.dict("os.environ", {"LLM_API_KEY": "test", "LLM_MODEL": "deepseek-chat"}):
             from backend.services.llm_service import LLMService
+
             svc = LLMService()
             assert svc.get_model() == "deepseek-chat"
 
     def test_get_model_with_tier(self):
         """传入 tier 时返回对应模型"""
         from backend.services.llm_service import LLMService, ModelTier
+
         svc = LLMService()
         assert svc.get_model(ModelTier.LIGHTWEIGHT) == svc.router.get_model(ModelTier.LIGHTWEIGHT)
 
     def test_router_attribute_exists(self):
         """LLMService 应有 router 属性"""
         from backend.services.llm_service import LLMService
+
         svc = LLMService()
         assert hasattr(svc, "router")
         assert svc.router is not None

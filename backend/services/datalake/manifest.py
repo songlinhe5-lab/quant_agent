@@ -58,8 +58,7 @@ def build_manifest(
         "total_bytes": total_bytes,
         "files": files,
         "sidecars": sidecars or {"universe": None, "pit_store": None},
-        "quality_gate": quality_gate
-        or {"passed": True, "dirty_rate_max": 0.02, "sources_checked": []},
+        "quality_gate": quality_gate or {"passed": True, "dirty_rate_max": 0.02, "sources_checked": []},
     }
     if source_sync_lock:
         body["source_sync_lock"] = source_sync_lock

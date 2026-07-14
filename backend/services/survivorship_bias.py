@@ -43,24 +43,24 @@ logger = structlog.get_logger(__name__)
 class ListingStatus(str, Enum):
     """标的上市状态"""
 
-    LISTED = "listed"          # 当前存续
-    DELISTED = "delisted"      # 已退市/摘牌
-    SUSPENDED = "suspended"    # 停牌中
-    UNKNOWN = "unknown"        # 未知
+    LISTED = "listed"  # 当前存续
+    DELISTED = "delisted"  # 已退市/摘牌
+    SUSPENDED = "suspended"  # 停牌中
+    UNKNOWN = "unknown"  # 未知
 
 
 @dataclass
 class TickerLifecycle:
     """标的生命周期记录"""
 
-    symbol: str                         # 标的代码 (如 US.AAPL, HK.00700)
-    name: str = ""                      # 名称
-    market: str = ""                    # 市场 (US/HK/SH/SZ)
-    list_date: Optional[date] = None    # 上市日期
+    symbol: str  # 标的代码 (如 US.AAPL, HK.00700)
+    name: str = ""  # 名称
+    market: str = ""  # 市场 (US/HK/SH/SZ)
+    list_date: Optional[date] = None  # 上市日期
     delist_date: Optional[date] = None  # 退市日期
     status: ListingStatus = ListingStatus.UNKNOWN
-    delist_reason: str = ""             # 退市原因
-    source: str = "manual"              # 数据来源 (futu/yfinance/manual)
+    delist_reason: str = ""  # 退市原因
+    source: str = "manual"  # 数据来源 (futu/yfinance/manual)
     updated_at: Optional[datetime] = None
 
     def is_alive_on(self, check_date: date) -> bool:
@@ -86,8 +86,8 @@ class UniverseSnapshot:
     as_of_date: date
     tickers: List[str] = field(default_factory=list)
     total_universe: int = 0
-    delisted_count: int = 0          # 在该日期已退市的数量
-    newly_listed_count: int = 0      # 在该日期新上市的数量
+    delisted_count: int = 0  # 在该日期已退市的数量
+    newly_listed_count: int = 0  # 在该日期新上市的数量
     generated_at: Optional[datetime] = None
 
 
@@ -184,10 +184,7 @@ class SurvivorshipBiasTracker:
             generated_at=datetime.utcnow(),
         )
 
-        logger.debug(
-            f"[DQ-01] 标的池快照 {check_date}: "
-            f"存续={snapshot.total_universe}, 已退市={delisted_count}"
-        )
+        logger.debug(f"[DQ-01] 标的池快照 {check_date}: 存续={snapshot.total_universe}, 已退市={delisted_count}")
         return snapshot
 
     def get_universe_diff(self, from_date: date, to_date: date) -> Dict[str, Any]:
@@ -232,10 +229,13 @@ class SurvivorshipBiasTracker:
         """获取截至指定日期已退市的所有标的"""
         if as_of is None:
             as_of = date.today()
-        return sorted([
-            symbol for symbol, lc in self._lifecycles.items()
-            if lc.status == ListingStatus.DELISTED and lc.delist_date and lc.delist_date <= as_of
-        ])
+        return sorted(
+            [
+                symbol
+                for symbol, lc in self._lifecycles.items()
+                if lc.status == ListingStatus.DELISTED and lc.delist_date and lc.delist_date <= as_of
+            ]
+        )
 
     def get_survivorship_stats(self, check_date: Optional[date] = None) -> Dict[str, Any]:
         """获取幸存者偏差统计信息"""
@@ -244,14 +244,8 @@ class SurvivorshipBiasTracker:
 
         total = len(self._lifecycles)
         alive = sum(1 for lc in self._lifecycles.values() if lc.is_alive_on(check_date))
-        delisted = sum(
-            1 for lc in self._lifecycles.values()
-            if lc.status == ListingStatus.DELISTED
-        )
-        suspended = sum(
-            1 for lc in self._lifecycles.values()
-            if lc.status == ListingStatus.SUSPENDED
-        )
+        delisted = sum(1 for lc in self._lifecycles.values() if lc.status == ListingStatus.DELISTED)
+        suspended = sum(1 for lc in self._lifecycles.values() if lc.status == ListingStatus.SUSPENDED)
 
         return {
             "as_of_date": check_date.isoformat(),
@@ -337,15 +331,17 @@ class SurvivorshipBiasTracker:
             )
             writer.writeheader()
             for lc in self._lifecycles.values():
-                writer.writerow({
-                    "symbol": lc.symbol,
-                    "name": lc.name,
-                    "market": lc.market,
-                    "list_date": lc.list_date.isoformat() if lc.list_date else "",
-                    "delist_date": lc.delist_date.isoformat() if lc.delist_date else "",
-                    "status": lc.status.value,
-                    "delist_reason": lc.delist_reason,
-                })
+                writer.writerow(
+                    {
+                        "symbol": lc.symbol,
+                        "name": lc.name,
+                        "market": lc.market,
+                        "list_date": lc.list_date.isoformat() if lc.list_date else "",
+                        "delist_date": lc.delist_date.isoformat() if lc.delist_date else "",
+                        "status": lc.status.value,
+                        "delist_reason": lc.delist_reason,
+                    }
+                )
                 count += 1
 
         logger.info(f"[DQ-01] 导出 {count} 条标的记录到: {filepath}")
@@ -386,6 +382,7 @@ class SurvivorshipBiasTracker:
         """
         if futu_service_instance is None:
             from backend.services.futu import futu_service
+
             futu_service_instance = futu_service
 
         count = 0

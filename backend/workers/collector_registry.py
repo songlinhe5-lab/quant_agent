@@ -25,9 +25,7 @@ from typing import Any, Dict, List, Optional
 
 from backend.workers.collectors import akshare, finnhub, futu, yfinance
 
-CollectorFactory = Callable[
-    [], Awaitable[Sequence[Coroutine[Any, Any, Any] | Awaitable[Any]]]
-]
+CollectorFactory = Callable[[], Awaitable[Sequence[Coroutine[Any, Any, Any] | Awaitable[Any]]]]
 
 
 @dataclass

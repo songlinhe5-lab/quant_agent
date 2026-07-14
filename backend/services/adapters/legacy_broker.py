@@ -47,17 +47,13 @@ class BrokerGateway:
         trd_side = TrdSide.BUY if side.upper() == "BUY" else TrdSide.SELL
         return await self._futu.place_order(ticker, qty, price, trd_side, trd_market)
 
-    async def cancel_order(
-        self, order_id: str, market: Optional[str] = None
-    ) -> dict[str, Any]:
+    async def cancel_order(self, order_id: str, market: Optional[str] = None) -> dict[str, Any]:
         from futu import ModifyOrderOp
 
         trd_market = self._resolve_market(None, market)
         return await self._futu.modify_order(order_id, ModifyOrderOp.CANCEL, trd_market)
 
-    async def query_order(
-        self, order_id: str, market: Optional[str] = None
-    ) -> dict[str, Any]:
+    async def query_order(self, order_id: str, market: Optional[str] = None) -> dict[str, Any]:
         trd_market = self._resolve_market(None, market)
         return await self._futu.query_order(order_id, trd_market)
 
@@ -78,15 +74,11 @@ class BrokerGateway:
 
         ctx = getattr(self._futu, "trade_ctx", None)
         if not ctx:
-            logger.error(
-                "🚨 [KILL SWITCH] 未检测到有效的底层交易网关上下文 (trade_ctx)"
-            )
+            logger.error("🚨 [KILL SWITCH] 未检测到有效的底层交易网关上下文 (trade_ctx)")
             return {"ok": False, "reason": "no_trade_ctx"}
 
         def cancel_all_orders() -> None:
-            ret, data = ctx.order_list_query(
-                status_filter_list=["SUBMITTED", "WAITING_SUBMIT"]
-            )
+            ret, data = ctx.order_list_query(status_filter_list=["SUBMITTED", "WAITING_SUBMIT"])
             if ret == 0 and not data.empty:
                 for _, row in data.iterrows():
                     ctx.modify_order(
@@ -96,9 +88,7 @@ class BrokerGateway:
                         0,
                         trd_env=row["trd_env"],
                     )
-                    logger.warning(
-                        f"🛑 [KILL SWITCH] 撤单指令已发送: {row['order_id']}"
-                    )
+                    logger.warning(f"🛑 [KILL SWITCH] 撤单指令已发送: {row['order_id']}")
 
         def close_all_positions() -> None:
             ret_pos, pos_data = ctx.position_list_query()
@@ -110,9 +100,7 @@ class BrokerGateway:
                     symbol = row["code"]
                     pos_side = row.get("position_side", "LONG")
                     trd_side = TrdSide.SELL if pos_side == "LONG" else TrdSide.BUY
-                    logger.warning(
-                        f"💥 [KILL SWITCH] 正在市价平仓: {symbol} 数量 {abs(qty)} 方向 {trd_side}"
-                    )
+                    logger.warning(f"💥 [KILL SWITCH] 正在市价平仓: {symbol} 数量 {abs(qty)} 方向 {trd_side}")
                     ctx.place_order(
                         price=0.0,
                         qty=abs(qty),

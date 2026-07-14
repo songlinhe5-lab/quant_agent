@@ -123,9 +123,7 @@ class TestPercentileCurves:
 
 class TestMonteCarloRunner:
     def _baseline_with_trades(self, n_trades: int = 12) -> VectorResult:
-        pnls = [10.0, -4.0, 6.0, -2.0, 8.0, -5.0, 3.0, -1.0, 7.0, -3.0, 2.0, -6.0][
-            :n_trades
-        ]
+        pnls = [10.0, -4.0, 6.0, -2.0, 8.0, -5.0, 3.0, -1.0, 7.0, -3.0, 2.0, -6.0][:n_trades]
         equity = 100000.0
         curve = [{"date": "2020-01-01", "equity": equity}]
         trades = []
@@ -133,9 +131,7 @@ class TestMonteCarloRunner:
             equity += p
             trades.append({"action": "SELL", "profit": p})
             curve.append({"date": f"2020-01-{i + 2:02d}", "equity": equity})
-        return VectorResult(
-            metrics={}, equity_curve=curve, trades=trades, signals=pd.Series()
-        )
+        return VectorResult(metrics={}, equity_curve=curve, trades=trades, signals=pd.Series())
 
     def test_trade_bootstrap_report(self):
         from unittest.mock import MagicMock
@@ -182,9 +178,7 @@ class TestMonteCarloRunner:
         report = runner.run(
             SmaCrossStrategy,
             pd.DataFrame({"close": [1]}),
-            config=MonteCarloConfig(
-                iterations=40, method="trade_bootstrap", seed=2, min_trades=20
-            ),
+            config=MonteCarloConfig(iterations=40, method="trade_bootstrap", seed=2, min_trades=20),
             baseline=self._baseline_with_trades(3),
         )
         assert report.method_used == "return_bootstrap"

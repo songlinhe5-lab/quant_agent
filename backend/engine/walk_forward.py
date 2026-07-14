@@ -100,9 +100,7 @@ def _metrics_to_dict(m: FoldMetrics) -> Dict[str, Any]:
     }
 
 
-def metrics_from_equity(
-    equity_curve: list, initial_capital: float, periods_per_year: float = 252.0
-) -> FoldMetrics:
+def metrics_from_equity(equity_curve: list, initial_capital: float, periods_per_year: float = 252.0) -> FoldMetrics:
     """从权益曲线计算可比较的数值指标（不依赖 VectorBT 字符串 metrics）。"""
     if not equity_curve:
         return FoldMetrics(0.0, 0.0, 0.0, 0)
@@ -125,9 +123,7 @@ def metrics_from_equity(
     return FoldMetrics(total_return, sharpe, max_dd, n)
 
 
-def generate_windows(
-    n_bars: int, cfg: WalkForwardConfig
-) -> List[tuple[int, int, int, int]]:
+def generate_windows(n_bars: int, cfg: WalkForwardConfig) -> List[tuple[int, int, int, int]]:
     """生成 (train_start, train_end, test_start, test_end) 窗口列表。"""
     if cfg.train_bars < 10 or cfg.test_bars < 5:
         raise ValueError("train_bars>=10 and test_bars>=5 required")
@@ -195,9 +191,7 @@ class WalkForwardRunner:
         config: Optional[WalkForwardConfig] = None,
     ) -> WalkForwardReport:
         if not strategy_cls.is_vectorizable():
-            raise ValueError(
-                f"{strategy_cls.__name__} 不支持矢量化；Walk-Forward 必须实现 signals()"
-            )
+            raise ValueError(f"{strategy_cls.__name__} 不支持矢量化；Walk-Forward 必须实现 signals()")
 
         cfg = config or WalkForwardConfig()
         base_params = dict(params or {})
@@ -215,9 +209,7 @@ class WalkForwardRunner:
             test_df = df.iloc[vs:ve]
             best_params, is_m = self._select_params(strategy_cls, train_df, base_params, cfg)
             oos_result = self.executor.run(strategy_cls, best_params, test_df)
-            oos_m = metrics_from_equity(
-                oos_result.equity_curve, self.executor.config.initial_capital
-            )
+            oos_m = metrics_from_equity(oos_result.equity_curve, self.executor.config.initial_capital)
             folds.append(
                 WalkForwardFold(
                     fold_index=i,
@@ -264,9 +256,7 @@ class WalkForwardRunner:
 
         for cand in candidates:
             result = self.executor.run(strategy_cls, cand, train_df)
-            m = metrics_from_equity(
-                result.equity_curve, self.executor.config.initial_capital
-            )
+            m = metrics_from_equity(result.equity_curve, self.executor.config.initial_capital)
             score = _score(m, cfg.target_metric)
             if score > best_score:
                 best_score = score
@@ -275,9 +265,7 @@ class WalkForwardRunner:
         return best_params, best_metrics
 
 
-def detect_performance_drift(
-    folds: Sequence[WalkForwardFold], cfg: WalkForwardConfig
-) -> tuple[bool, List[str]]:
+def detect_performance_drift(folds: Sequence[WalkForwardFold], cfg: WalkForwardConfig) -> tuple[bool, List[str]]:
     """检测 OOS 性能漂移。"""
     reasons: List[str] = []
     if len(folds) < 2:
@@ -291,9 +279,7 @@ def detect_performance_drift(
     mean_oos = float(np.mean(oos_sharpes))
     gap = mean_is - mean_oos
     if gap > cfg.is_oos_sharpe_gap:
-        reasons.append(
-            f"IS/OOS 夏普缺口过大: IS={mean_is:.3f} OOS={mean_oos:.3f} gap={gap:.3f}"
-        )
+        reasons.append(f"IS/OOS 夏普缺口过大: IS={mean_is:.3f} OOS={mean_oos:.3f} gap={gap:.3f}")
 
     # 折间 OOS 夏普趋势（简单线性斜率）
     x = np.arange(len(oos_sharpes), dtype=float)
@@ -306,15 +292,11 @@ def detect_performance_drift(
     is_pos = sum(1 for f in folds if f.is_metrics.total_return > 0)
     oos_neg = sum(1 for f in folds if f.oos_metrics.total_return < 0)
     if is_pos >= len(folds) * 0.6 and oos_neg >= len(folds) * 0.6:
-        reasons.append(
-            f"样本内多数盈利({is_pos}/{len(folds)}) 但样本外多数亏损({oos_neg}/{len(folds)})"
-        )
+        reasons.append(f"样本内多数盈利({is_pos}/{len(folds)}) 但样本外多数亏损({oos_neg}/{len(folds)})")
 
     # 末期相对初期显著变差
     if len(oos_rets) >= 3 and oos_rets[-1] < oos_rets[0] - 0.05:
-        reasons.append(
-            f"末折 OOS 收益相对首折下滑: {oos_rets[0]:.3f} → {oos_rets[-1]:.3f}"
-        )
+        reasons.append(f"末折 OOS 收益相对首折下滑: {oos_rets[0]:.3f} → {oos_rets[-1]:.3f}")
 
     return bool(reasons), reasons
 
@@ -330,12 +312,8 @@ def _summarize(folds: Sequence[WalkForwardFold]) -> Dict[str, Any]:
         "oos_sharpe_mean": round(float(np.mean(oos_sharpes)), 4),
         "oos_sharpe_std": round(float(np.std(oos_sharpes)), 4),
         "is_sharpe_mean": round(float(np.mean(is_sharpes)), 4),
-        "is_oos_sharpe_gap": round(
-            float(np.mean(is_sharpes) - np.mean(oos_sharpes)), 4
-        ),
-        "oos_positive_fold_ratio": round(
-            sum(1 for r in oos_rets if r > 0) / max(len(oos_rets), 1), 4
-        ),
+        "is_oos_sharpe_gap": round(float(np.mean(is_sharpes) - np.mean(oos_sharpes)), 4),
+        "oos_positive_fold_ratio": round(sum(1 for r in oos_rets if r > 0) / max(len(oos_rets), 1), 4),
     }
 
 

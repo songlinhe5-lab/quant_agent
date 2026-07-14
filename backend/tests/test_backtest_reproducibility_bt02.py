@@ -181,9 +181,7 @@ class TestReproducibleBacktest:
         assert r1.manifest.code_hash == r2.manifest.code_hash
         assert r1.manifest.manifest_hash == r2.manifest.manifest_hash
         assert r1.metrics == r2.metrics
-        assert compute_result_digest(r1.metrics, r1.equity_curve) == compute_result_digest(
-            r2.metrics, r2.equity_curve
-        )
+        assert compute_result_digest(r1.metrics, r1.equity_curve) == compute_result_digest(r2.metrics, r2.equity_curve)
 
     def test_different_seed_diverges(self):
         df = make_sample_df()
@@ -194,9 +192,7 @@ class TestReproducibleBacktest:
         r2 = BacktestDriver(
             BacktestConfig(random_seed=2, manifest_hash="a" * 64, data_mode="snapshot", data_snapshot_id="snap_x")
         ).run(SeedAwareStrategy, {}, df, "TEST", source_code=source)
-        assert compute_result_digest(r1.metrics, r1.equity_curve) != compute_result_digest(
-            r2.metrics, r2.equity_curve
-        )
+        assert compute_result_digest(r1.metrics, r1.equity_curve) != compute_result_digest(r2.metrics, r2.equity_curve)
 
     def test_unbound_not_reproducible(self):
         df = make_sample_df(n=40)
@@ -297,15 +293,9 @@ class TestBacktestReportPersistence:
         assert a.result_digest == b.result_digest
 
     def test_is_reproducible_helper(self):
-        assert is_reproducible(
-            code_hash="c" * 64, manifest_hash="m" * 64, random_seed=1, data_mode="snapshot"
-        )
-        assert not is_reproducible(
-            code_hash="c" * 64, manifest_hash="m" * 64, random_seed=None, data_mode="snapshot"
-        )
-        assert not is_reproducible(
-            code_hash="c" * 64, manifest_hash="m" * 64, random_seed=1, data_mode="live"
-        )
+        assert is_reproducible(code_hash="c" * 64, manifest_hash="m" * 64, random_seed=1, data_mode="snapshot")
+        assert not is_reproducible(code_hash="c" * 64, manifest_hash="m" * 64, random_seed=None, data_mode="snapshot")
+        assert not is_reproducible(code_hash="c" * 64, manifest_hash="m" * 64, random_seed=1, data_mode="live")
 
 
 class TestRunManifestSummary:
