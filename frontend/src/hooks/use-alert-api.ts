@@ -194,24 +194,18 @@ export function useAlertWebSocket(
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1'
     
-    // 处理 VITE_API_BASE_URL 可能是完整 URL 或路径的情况
-    let wsPath: string
+    // 构建 WebSocket URL
+    let wsUrl: string
     if (baseUrl.startsWith('http://') || baseUrl.startsWith('https://')) {
-      // 完整 URL，提取路径部分
-      try {
-        const url = new URL(baseUrl)
-        wsPath = url.pathname
-      } catch {
-        wsPath = '/api/v1'
-      }
+      // 完整 URL，直接替换 http 为 ws
+      wsUrl = baseUrl.replace(/^http/, 'ws') + '/alert/ws'
     } else {
-      wsPath = baseUrl
+      // 相对路径，使用当前域名
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      wsUrl = `${protocol}//${window.location.host}${baseUrl}/alert/ws`
     }
-    
-    const wsUrl = `${protocol}//${window.location.host}${wsPath}/alert/ws`
 
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
