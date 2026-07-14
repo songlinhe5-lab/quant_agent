@@ -221,13 +221,13 @@ async def lifespan(app: FastAPI):  # type: ignore
     # 💡 增加容灾包裹：防止外部 API 或富途网关不通导致整个 Docker 容器死循环无法启动
     # 🚨 关键修复：为每个预检添加超时，防止单个服务卡住阻塞整个 API 启动
     try:
-        # 2. 运行富途测试，并保留 OpenD 连接用于后续业务路由 (close_after=False)
-        if test_futu_service is not None:
-            await asyncio.wait_for(test_futu_service(close_after=False), timeout=15.0)  # type: ignore
+        # 2. 连接 Futu OpenD (生产环境必须连接，不依赖 scripts/ 目录)
+        await asyncio.wait_for(asyncio.to_thread(futu_service.connect), timeout=15.0)
+        print(f"✅ [Startup] Futu OpenD 连接状态: {futu_service.status}")
     except asyncio.TimeoutError:
-        print("⚠️ [Startup] 富途 OpenD 接口预检超时 (15s)，已自动降级跳过")
+        print("⚠️ [Startup] 富途 OpenD 连接超时 (15s)，已自动降级跳过")
     except Exception as e:
-        print(f"⚠️ [Startup] 富途 OpenD 接口测试失败，已自动降级跳过: {e}")
+        print(f"⚠️ [Startup] 富途 OpenD 连接失败，已自动降级跳过: {e}")
 
     try:
         # 3. 运行 Redis 连通性与系统通知测试
