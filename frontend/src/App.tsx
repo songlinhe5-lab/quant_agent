@@ -4,6 +4,7 @@ import { ConfirmDialogProvider } from '@/components/confirm-dialog'
 import { ProtectedRoute } from '@/components/layout/protected-route'
 import DashboardLayout from '@/components/layout/dashboard-layout'
 import LoginPage from '@/features/auth/login'
+import { ModuleErrorBoundary } from '@/components/error-boundary'
 
 // 懒加载各功能模块（按需加载，减少首屏体积）
 import { lazy, Suspense } from 'react'
@@ -55,18 +56,18 @@ export default function App() {
             <Route element={<DashboardLayout />}>
             <Route index element={<Navigate to="/data-center" replace />} />
             <Route path="/market/:ticker" element={<MarketTickerRedirect />} />
-            <Route path="/data-center" element={<Suspense fallback={<LoadingFallback />}><DataCenterModule /></Suspense>} />
-            <Route path="/quotes" element={<Suspense fallback={<LoadingFallback />}><QuotesModule /></Suspense>} />
-            <Route path="/screener" element={<Suspense fallback={<LoadingFallback />}><ScreenerModule /></Suspense>} />
-            <Route path="/strategy" element={<Suspense fallback={<LoadingFallback />}><StrategyDevModule /></Suspense>} />
-            <Route path="/backtest" element={<Suspense fallback={<LoadingFallback />}><BacktestModule /></Suspense>} />
-            <Route path="/oms" element={<Suspense fallback={<LoadingFallback />}><OMSModule /></Suspense>} />
-            <Route path="/risk" element={<Suspense fallback={<LoadingFallback />}><RiskModule /></Suspense>} />
-            <Route path="/copilot" element={<Suspense fallback={<LoadingFallback />}><CopilotModule /></Suspense>} />
-            <Route path="/apm" element={<Suspense fallback={<LoadingFallback />}><ApmModule /></Suspense>} />
-            <Route path="/alerts" element={<Suspense fallback={<LoadingFallback />}><AlertCenterModule /></Suspense>} />
-            <Route path="/paper" element={<Suspense fallback={<LoadingFallback />}><PaperModule /></Suspense>} />
-            <Route path="/settings" element={<Suspense fallback={<LoadingFallback />}><SettingsPage /></Suspense>} />
+            <Route path="/data-center" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="DataCenter"><DataCenterModule /></ModuleErrorBoundary></Suspense>} />
+            <Route path="/quotes" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Quotes"><QuotesModule /></ModuleErrorBoundary></Suspense>} />
+            <Route path="/screener" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Screener"><ScreenerModule /></ModuleErrorBoundary></Suspense>} />
+            <Route path="/strategy" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Strategy"><StrategyDevModule /></ModuleErrorBoundary></Suspense>} />
+            <Route path="/backtest" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Backtest"><BacktestModule /></ModuleErrorBoundary></Suspense>} />
+            <Route path="/oms" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="OMS"><OMSModule /></ModuleErrorBoundary></Suspense>} />
+            <Route path="/risk" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Risk"><RiskModule /></ModuleErrorBoundary></Suspense>} />
+            <Route path="/copilot" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Copilot"><CopilotModule /></ModuleErrorBoundary></Suspense>} />
+            <Route path="/apm" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="APM"><ApmModule /></ModuleErrorBoundary></Suspense>} />
+            <Route path="/alerts" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Alerts"><AlertCenterModule /></ModuleErrorBoundary></Suspense>} />
+            <Route path="/paper" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Paper"><PaperModule /></ModuleErrorBoundary></Suspense>} />
+            <Route path="/settings" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Settings"><SettingsPage /></ModuleErrorBoundary></Suspense>} />
             </Route>
           </Route>
         </Routes>
