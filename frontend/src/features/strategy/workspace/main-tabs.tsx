@@ -1,11 +1,17 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Code2, LineChart } from 'lucide-react'
-import { useStrategyStore } from '../stores/useStrategyStore'
+import { useStrategyStore } from '../stores'
 import { BacktestReport } from './backtest-report'
 import { MonacoEditorTab } from './monaco-editor'
+import { DiffOverlay } from './diff-overlay'
 
 export function MainTabs() {
-  const { activeWorkspaceTab, setWorkspaceTab } = useStrategyStore()
+  const { activeWorkspaceTab, setWorkspaceTab, diff } = useStrategyStore()
+
+  // STRAT-02: When diff is pending, show DiffOverlay instead of regular editor
+  if (diff.status === 'pendingDiff') {
+    return <DiffOverlay />
+  }
 
   return (
     <div className="h-full flex flex-col bg-slate-50 dark:bg-[oklch(0.09_0.005_270)]">

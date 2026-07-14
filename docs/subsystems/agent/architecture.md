@@ -76,6 +76,173 @@ class ToolExecutionError(Exception):
         super().__init__(message)
 ```
 
+### 3.1 入参规范（parameters JSON Schema）
+
+每个 Tool 的 `parameters` 必须遵循以下 JSON Schema 结构：
+
+```python
+parameters = {
+    "type": "object",
+    "properties": {
+        "param_name": {
+            "type": "string",              # 类型：string / integer / number / boolean / array / object
+            "description": "参数说明",       # 必填：LLM 依赖此说明理解参数含义
+            "enum": [...],                  # 可选：枚举值约束
+            "default": "default_value",     # 可选：默认值
+        },
+        # ... 更多参数
+    },
+    "required": ["param_a", "param_b"],    # 必填：列出所有必填参数名
+}
+```
+
+**规则**：
+- 所有参数必须有 `description`，LLM 依赖此生成正确调用
+- 枚举类参数必须用 `enum` 约束，防止 LLM 幻觉
+- 可选参数必须标注 `default` 值
+- `ticker` 类参数由 `BaseTool.normalize_ticker()` 统一格式化，Tool 内部无需重复处理
+
+### 3.2 出参规范（统一响应协议）
+
+所有 Tool 返回值必须是 `Dict[str, Any]`，遵循以下统一协议：
+
+**成功响应**：
+```python
+{
+    "status": "success",           # 必填："success" | "error" | "rate_limited"
+    "data": { ... },               # 成功时必填：业务数据
+    "message": "可选提示",          # 可选：给 LLM 的额外上下文
+}
+```
+
+**失败响应**：
+```python
+{
+    "status": "error",             # "error" | "rate_limited"
+    "message": "错误描述",          # 必填：人类可读的错误说明
+    "error_code": "ERR_CODE",      # 可选：结构化错误码（见 §3.3）
+}
+```
+
+**限流响应**（RL-14）：
+```python
+{
+    "status": "rate_limited",
+    "message": "数据源限流，已重试 3 次仍未恢复。",
+    "retry_after_seconds": 30.0,
+    "attempts": 3,
+}
+```
+
+### 3.3 错误码枚举
+
+| 错误码 | 含义 | 触发场景 |
+|:---|:---|:---|
+| `MISSING_PARAM` | 缺失必要参数 | `required` 参数未提供 |
+| `INVALID_PARAM` | 参数值非法 | 枚举值不匹配 / 类型错误 |
+| `DATA_NOT_FOUND` | 数据不存在 | 后端返回空结果 |
+| `BACKEND_ERROR` | 后端网关报错 | HTTP 5xx |
+| `RATE_LIMITED` | 数据源限流 | HTTP 429/503 |
+| `TIMEOUT` | 请求超时 | 网络超时 |
+| `UNSUPPORTED_ACTION` | 不支持的操作 | action 枚举值无效 |
+| `AUTH_FAILED` | 认证失败 | Token 过期 / 无效 |
+
+### 3.4 Tool 开发骨架模板
+
+```python
+# hermes_agent/tools/example_tool.py
+import os
+from typing import Dict, Any
+from .base import BaseTool
+from .secure_client import SecureAsyncClient
+from hermes_agent.tool_registry import register_tool
+
+@register_tool
+class ExampleTool(BaseTool):
+    """工具功能说明（LLM 可读的描述）"""
+    name = "example_tool"
+    description = "一句话说明工具用途，供 LLM 决策调用时机。"
+    parameters = {
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["QUERY", "DETAIL"],
+                "description": "操作类型",
+            },
+            "ticker": {
+                "type": "string",
+                "description": "股票代码，如 AAPL, 0700.HK",
+            },
+        },
+        "required": ["action", "ticker"],
+    }
+
+    async def run(self, action: str, ticker: str) -> Dict[str, Any]:
+        backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000")
+        ticker = self.normalize_ticker(ticker)
+
+        # 1. 参数校验
+        if action not in ("QUERY", "DETAIL"):
+            return {"status": "error", "message": f"不支持的操作: {action}", "error_code": "UNSUPPORTED_ACTION"}
+
+        # 2. 构建请求
+        url = f"{backend_url}/api/v1/example"
+        params = {"action": action, "ticker": ticker}
+
+        # 3. 限流感知请求（RL-14）
+        async with SecureAsyncClient(timeout=15.0) as client:
+            result = await self.rate_limit_aware_request(client, "GET", url, params=params)
+
+        # 4. 结果校验
+        if result.get("status") == "error":
+            return result
+        if not result.get("data"):
+            return {"status": "error", "message": f"未找到 {ticker} 的数据", "error_code": "DATA_NOT_FOUND"}
+
+        return {"status": "success", "data": result["data"]}
+```
+
+### 3.5 测试模板
+
+```python
+# backend/tests/tools/test_example_tool.py
+import pytest
+from hermes_agent.tools.example_tool import ExampleTool
+
+@pytest.fixture
+def tool():
+    return ExampleTool()
+
+class TestExampleTool:
+    @pytest.mark.asyncio
+    async def test_success_path(self, tool):
+        """正常调用路径"""
+        result = await tool.run(action="QUERY", ticker="AAPL")
+        assert result["status"] == "success"
+        assert "data" in result
+
+    @pytest.mark.asyncio
+    async def test_missing_param(self, tool):
+        """缺失必要参数"""
+        result = await tool.run(action="QUERY", ticker="")
+        assert result["status"] == "error"
+
+    @pytest.mark.asyncio
+    async def test_unsupported_action(self, tool):
+        """不支持的操作类型"""
+        result = await tool.run(action="INVALID", ticker="AAPL")
+        assert result["status"] == "error"
+        assert result.get("error_code") == "UNSUPPORTED_ACTION"
+
+    @pytest.mark.asyncio
+    async def test_data_not_found(self, tool):
+        """数据不存在路径"""
+        result = await tool.run(action="QUERY", ticker="NONEXISTENT")
+        assert result["status"] == "error"
+        assert result.get("error_code") == "DATA_NOT_FOUND"
+```
+
 ## 四、新增 Tool 标准流程
 
 ```
@@ -122,4 +289,5 @@ class ToolExecutionError(Exception):
 
 | 日期 | 变更 |
 |:---|:---|
+| 2026-07-13 | [DOC-01] 补充 §3.1~3.5 Tool 开发模板：入参 JSON Schema 规范 + 出参统一响应协议 + 错误码枚举 + 骨架模板 + 测试模板 |
 | 2026-06-27 | 初始版本，14个 Tool 清单、ReAct 循环说明 |

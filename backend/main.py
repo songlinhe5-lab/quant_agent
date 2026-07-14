@@ -69,7 +69,10 @@ socket.setdefaulttimeout(15.0)
 # from hermes_agent.agent import HermesAgent  # noqa: E402
 # from hermes_agent.tool_registry import ToolRegistry  # noqa: E402
 
-from backend.core import models  # noqa: E402
+from backend.core import (  # noqa: E402
+    datalake_models,  # noqa: F401
+    models,  # noqa: F401
+)
 from backend.core.database import AsyncSessionLocal, Base, SessionLocal, async_engine, engine  # noqa: E402
 from backend.core.security import get_password_hash  # noqa: E402
 
@@ -111,9 +114,12 @@ from backend.core.redis_client import (  # noqa: E402
     redis_batch_writer,
     redis_client,
 )
+from backend.routers.alert import router as alert_router  # noqa: E402
 from backend.routers.audit import router as audit_router  # noqa: E402
 from backend.routers.auth import router as auth_router  # noqa: E402
 from backend.routers.backtest import router as backtest_router  # noqa: E402
+from backend.routers.backtest_reports import router as backtest_reports_router  # noqa: E402
+from backend.routers.datalake import router as datalake_router  # noqa: E402
 from backend.routers.client import (  # noqa: E402
     router as client_router,  # BE-08: 客户端 APM 心跳
 )
@@ -129,10 +135,17 @@ from backend.routers.risk import router as risk_router  # noqa: E402
 from backend.routers.screener import router as screener_router  # noqa: E402
 from backend.routers.search import router as search_router  # noqa: E402
 from backend.routers.strategy import router as strategy_router  # noqa: E402
+from backend.routers.paper import router as paper_router  # noqa: E402, PT-01b
 from backend.routers.system import router as system_router  # noqa: E402
 from backend.routers.trade import router as trade_router  # noqa: E402
 from backend.routers.data_source import router as data_source_router  # noqa: E402
 from backend.routers.datasource import router as datasource_rl_router  # noqa: E402
+from backend.routers.eval import router as eval_router  # noqa: E402, AI-03 eval
+from backend.routers.research import router as research_router  # noqa: E402, AI-01 研报
+from backend.routers.factor import router as factor_router  # noqa: E402, AI-02 因子挖掘
+from backend.routers.alpha158 import router as alpha158_router  # noqa: E402, AI-03 因子库
+from backend.routers.options import router as options_router  # noqa: E402, TRADE-01 期权筛选
+from backend.routers.portfolio import router as portfolio_router  # noqa: E402, TRADE-03 组合优化
 from backend.services.fred_service import fred_service  # noqa: E402
 from backend.services.futu_service import futu_service  # noqa: E402
 from backend.services.llm_service import llm_service  # noqa: E402
@@ -458,7 +471,22 @@ async def lifespan(app: FastAPI):  # type: ignore
         print(f"⚠️ 关闭数据库连接池异常: {e}")
 
 
-app = FastAPI(title="Quant Agent Data Gateway", lifespan=lifespan)
+from backend.core.openapi_schema import (  # noqa: E402
+    API_VERSION,
+    OPENAPI_DESCRIPTION,
+    OPENAPI_TAGS,
+    OPENAPI_TITLE,
+    install_custom_openapi,
+)
+
+app = FastAPI(
+    title=OPENAPI_TITLE,
+    description=OPENAPI_DESCRIPTION.strip(),
+    version=API_VERSION,
+    openapi_tags=OPENAPI_TAGS,
+    lifespan=lifespan,
+)
+install_custom_openapi(app)
 
 # ==========================================
 # --- BE-10: OpenTelemetry Trace 初始化 ---
@@ -793,6 +821,8 @@ app.include_router(macro_router, prefix="/api/v1")
 app.include_router(preferences_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(backtest_router, prefix="/api/v1")
+app.include_router(backtest_reports_router, prefix="/api/v1")  # BT-02 报告持久化
+app.include_router(datalake_router, prefix="/api/v1")  # DQ-03e 数据湖快照
 app.include_router(screener_router, prefix="/api/v1")
 app.include_router(search_router, prefix="/api/v1")
 app.include_router(strategy_router, prefix="/api/v1")
@@ -801,7 +831,15 @@ app.include_router(audit_router, prefix="/api/v1")
 app.include_router(client_router, prefix="/api/v1")  # BE-08
 app.include_router(system_router, prefix="/api/v1")  # System APM
 app.include_router(risk_router, prefix="/api/v1")  # Risk 风控面板
+app.include_router(paper_router, prefix="/api/v1")  # PT-01b 纸面组合
 app.include_router(futu_admin_router)  # Futu 数据源管理 (prefix 已含 /api/v1/futu)
+app.include_router(alert_router)  # ALERT-02: 告警中心 (prefix 已含 /api/v1/alert)
+app.include_router(eval_router, prefix="/api/v1")  # AI-03: Eval 评估框架
+app.include_router(research_router, prefix="/api/v1")  # AI-01: 深度研报
+app.include_router(factor_router, prefix="/api/v1")  # AI-02: 因子挖掘
+app.include_router(alpha158_router, prefix="/api/v1")  # AI-03: Alpha158 因子库
+app.include_router(options_router, prefix="/api/v1")  # TRADE-01: 期权筛选
+app.include_router(portfolio_router, prefix="/api/v1")  # TRADE-03: 组合优化
 
 # 挂载内部 API 路由（需要 HMAC 签名验证，符合 SEC-03 安全规范）
 app.include_router(internal_router, prefix="/api/v1")

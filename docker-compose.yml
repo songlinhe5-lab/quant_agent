@@ -24,8 +24,10 @@ services:
     image: redis:7-alpine
     container_name: quant_redis
     restart: always
-    ports:
-      - "6379:6379"
+    # 💡 SEC-14: Redis 不暴露公网端口，仅通过 quant-internal 网络访问
+    # 如需本地调试，使用: docker compose exec redis redis-cli -a <password>
+    expose:
+      - "6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-quant_redis_secret_2026}
@@ -53,8 +55,10 @@ services:
       - POSTGRES_USER=${DB_USER:-quant_admin}
       - POSTGRES_PASSWORD=${DB_PASSWORD:-quant_pg_secret_2026}
       - POSTGRES_DB=${DB_NAME:-quant_agent_db}
-    ports:
-      - "5432:5432"
+    # 💡 SEC-15: PostgreSQL 不暴露公网端口，仅通过 quant-internal 网络访问
+    # 如需本地调试，使用: docker compose exec postgres psql -U <user> -d <db>
+    expose:
+      - "5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -96,6 +100,8 @@ services:
       - REDIS_PORT=6379
       - QUANT_ENV=production
       - OTEL_ENABLED=false
+      # monitoring profile 启动 Tempo 后改为 true，endpoint 指向 quant_tempo
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
       - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_secret_2026}@postgres:5432/${DB_NAME:-quant_agent_db}
       # 💡 AKShare 数据从北京 VPS Redis 中继读取
       - AKSHARE_MODE=cache
@@ -140,6 +146,8 @@ services:
       - REDIS_PORT=6379
       - QUANT_ENV=production
       - OTEL_ENABLED=false
+      # monitoring profile 启动 Tempo 后改为 true，endpoint 指向 quant_tempo
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
       - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_secret_2026}@postgres:5432/${DB_NAME:-quant_agent_db}
       # 💡 美国 VPS 主节点：YFinance + Finnhub 本地采集
       - COLLECTOR_YFINANCE=true
@@ -190,6 +198,34 @@ services:
     networks:
       - quant-internal
 
+  # BE-10: OTLP → Tempo，Grafana Explore 可按 trace_id 查全链路
+  tempo:
+    image: grafana/tempo:2.3.1
+    container_name: quant_tempo
+    restart: always
+    profiles: [monitoring]
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    ports:
+      - "3200:3200"   # Tempo query API
+      - "4318:4318"   # OTLP HTTP
+      - "4317:4317"   # OTLP gRPC
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3200/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+    networks:
+      - quant-internal
+
   grafana:
     image: grafana/grafana:9.5.3
     container_name: quant_grafana
@@ -203,6 +239,8 @@ services:
     depends_on:
       prometheus:
         condition: service_healthy
+      tempo:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
       interval: 15s
@@ -232,5 +270,7 @@ volumes:
     name: quant_prometheus_data
   grafana_data:
     name: quant_grafana_data
+  tempo_data:
+    name: quant_tempo_data
   hermes_data:
     name: quant_hermes_data

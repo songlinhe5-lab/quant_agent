@@ -7,6 +7,17 @@ export default {
   ],
   theme: {
     extend: {
+      // FE-29: 产品分辨率档位
+      screens: {
+        sm: '640px',
+        md: '768px',
+        lg: '1024px',
+        desktop: '1280px',
+        wide: '1440px',
+        ultrawide: '1920px',
+        xl: '1280px',
+        '2xl': '1536px',
+      },
       colors: {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
@@ -41,11 +52,20 @@ export default {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+        bull: 'hsl(var(--color-bull))',
+        bear: 'hsl(var(--color-bear))',
+        warn: 'hsl(var(--color-warn))',
+        info: 'hsl(var(--color-info))',
       },
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
+      },
+      transitionDuration: {
+        fast: '150ms',
+        base: '200ms',
+        slow: '300ms',
       },
     },
   },

@@ -74,7 +74,7 @@ class TestScreenerRunRoutes:
 
     @patch("backend.routers.screener.redis_client")
     @patch("backend.routers.screener.screener_service")
-    @patch("backend.routers.screener.futu_service")
+    @patch("backend.routers.screener.market_data")
     def test_run_screener_cache_hit(self, mock_futu, mock_service, mock_redis):
         """缓存命中：直接返回 Redis 中的选股结果"""
         import json
@@ -92,7 +92,7 @@ class TestScreenerRunRoutes:
 
     @patch("backend.routers.screener.redis_client")
     @patch("backend.routers.screener.screener_service")
-    @patch("backend.routers.screener.futu_service")
+    @patch("backend.routers.screener.market_data")
     def test_run_screener_invalid_dsl(self, mock_futu, mock_service, mock_redis):
         """异常路径：DSL 不是合法 JSON 返回 400"""
         mock_redis.get = AsyncMock(return_value=None)

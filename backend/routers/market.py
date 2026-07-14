@@ -9,22 +9,18 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
+from backend.app.market_data import market_data
 from backend.core.logger import logger
 from backend.core.metrics import WS_MESSAGES_SENT
 from backend.core.redis_client import redis_client
-from backend.services.akshare_service import akshare_service
+from backend.core.ticker_format import format_ticker
+from backend.core.ticker_format import format_yf_ticker as _to_yf_ticker
 from backend.services.data_source_router import data_source_router
-from backend.services.finnhub_service import finnhub_service
-from backend.services.fred_service import fred_service
-from backend.services.futu.utils import format_ticker
-from backend.services.futu_service import futu_service
 from backend.services.kline_warehouse import kline_warehouse
 
 # 引入核心市场引擎和工具实例
 from backend.services.market_engine import manager
 from backend.services.ticker_service import ticker_service
-from backend.services.yfinance_service import format_yf_ticker as _to_yf_ticker
-from backend.services.yfinance_service import yf_service
 
 # BE-15: JWT 鉴权配置
 _SECRET_KEY = os.getenv("SECRET_KEY", "your-super-secret-key-keep-it-safe")
@@ -197,22 +193,22 @@ async def get_futu_status():
     💡 实时探测 OpenD 端口，而非仅依赖内存中的状态标记
     """
     # 💡 实时探测 OpenD 是否可连接（2秒超时）
-    is_reachable = futu_service.conn_mgr._is_opend_reachable(timeout=2.0)
+    is_reachable = market_data.is_opend_reachable(timeout=2.0)
 
     # 💡 如果探测失败但状态仍显示 CONNECTED，说明连接已断开，需要更新状态
-    if not is_reachable and futu_service.status == "CONNECTED":
-        futu_service.status = "DISCONNECTED"
-        futu_service.error_msg = "OpenD 连接已断开"
+    if not is_reachable and market_data.status == "CONNECTED":
+        market_data.status = "DISCONNECTED"
+        market_data.error_msg = "OpenD 连接已断开"
         print("⚠️ [Market API] OpenD 实时探测失败，状态已更新为 DISCONNECTED")
 
     # 💡 如果探测成功但状态显示 DISCONNECTED/ERROR，尝试重新连接
-    if is_reachable and futu_service.status != "CONNECTED":
+    if is_reachable and market_data.status != "CONNECTED":
         print("ℹ️ [Market API] OpenD 实时探测成功，尝试重新连接...")
-        futu_service.connect()
+        market_data.connect()
 
     return {
-        "status": futu_service.status,
-        "error": futu_service.error_msg,
+        "status": market_data.status,
+        "error": market_data.error_msg,
         "reachable": is_reachable,  # 💡 新增：实际探测结果
     }
 
@@ -225,18 +221,18 @@ async def get_services_health():
     health_data = []
 
     # 1. Futu OpenD - 💡 实时探测而非仅依赖内存状态
-    is_opend_reachable = futu_service.conn_mgr._is_opend_reachable(timeout=2.0)
+    is_opend_reachable = market_data.is_opend_reachable(timeout=2.0)
     f_status = "healthy" if is_opend_reachable else "disconnected"
-    f_msg = futu_service.error_msg if not is_opend_reachable else "已连接"
+    f_msg = market_data.error_msg if not is_opend_reachable else "已连接"
 
     # 💡 同步更新内存状态
-    if not is_opend_reachable and futu_service.status == "CONNECTED":
-        futu_service.status = "DISCONNECTED"
-        futu_service.error_msg = "OpenD 连接已断开"
-    if is_opend_reachable and futu_service.status != "CONNECTED":
-        futu_service.connect()
-        f_status = "healthy" if futu_service.status == "CONNECTED" else "disconnected"
-        f_msg = "已连接" if futu_service.status == "CONNECTED" else futu_service.error_msg
+    if not is_opend_reachable and market_data.status == "CONNECTED":
+        market_data.status = "DISCONNECTED"
+        market_data.error_msg = "OpenD 连接已断开"
+    if is_opend_reachable and market_data.status != "CONNECTED":
+        market_data.connect()
+        f_status = "healthy" if market_data.status == "CONNECTED" else "disconnected"
+        f_msg = "已连接" if market_data.status == "CONNECTED" else market_data.error_msg
 
     health_data.append(
         {
@@ -249,10 +245,10 @@ async def get_services_health():
     )
 
     # 2. AKShare (东方财富)
-    health_data.append(akshare_service.get_health_status())
+    health_data.append(market_data.ak_health_status())
 
     # 3. YFinance (雅虎财经)
-    health_data.append(yf_service.get_health_status())
+    health_data.append(market_data.yf_health_status())
 
     # 4. 数据源路由服务 (跨节点路由)
     router_status = await data_source_router.get_health_status()
@@ -282,7 +278,7 @@ async def get_services_health():
 @router.get("/quote")
 async def get_quote(ticker: str):
     """提供给前端的高频统一行情接口（直接过服务高速缓存，不再调用 Tool）"""
-    res = await futu_service.get_quote(ticker=ticker)
+    res = await market_data.get_quote(ticker=ticker)
     # 💡 如果富途获取失败（例如美股、加密货币、外汇等无权限标的），平滑降级至雅虎财经
     if res.get("status") == "error":
         msg = res.get("message", "")
@@ -418,7 +414,7 @@ async def sync_kline_warehouse(req: SyncKlineRequest):
 @router.get("/history")
 async def get_history(ticker: str, ktype: str = "K_DAY", num: int = 60):
     """提供给前端的 K 线图历史趋势接口（优先 Futu，平滑降级 YFinance）"""
-    res = await futu_service.get_history(ticker=ticker, ktype=ktype, num=num)
+    res = await market_data.get_history(ticker=ticker, ktype=ktype, num=num)
 
     if res.get("status") == "error":
         msg = res.get("message", "")
@@ -483,80 +479,16 @@ async def get_history(ticker: str, ktype: str = "K_DAY", num: int = 60):
 
 @router.get("/option-chain")
 async def get_option_chain(ticker: str, expiration_date: str = ""):
-    res = await futu_service.get_option_chain(ticker, expiration_date)
-    if res.get("status") == "error":
-        msg = res.get("message", "")
-        if "原生不支持" not in msg:
-            print(f"⚠️ [Option Chain] 券商数据获取 {ticker} 期权链失败 ({msg})，尝试降级雅虎财经...")  # noqa: E501
-
-        yf_ticker = _to_yf_ticker(ticker)
-        try:
-            import yfinance as yf
-
-            def fetch_yf_options():
-                tk = yf.Ticker(yf_ticker)
-                dates = tk.options
-                if not dates:
-                    return {
-                        "status": "error",
-                        "message": f"{yf_ticker} 没有可用的期权链数据",
-                    }  # noqa: E501
-
-                target_date = expiration_date if expiration_date in dates else dates[0]
-                chain = tk.option_chain(target_date)
-
-                compressed = []
-                # 提取 Call 和 Put 各前 30 条防止大模型上下文溢出
-                for _, row in chain.calls.head(30).iterrows():
-                    compressed.append(
-                        {
-                            "option_code": str(row.get("contractSymbol", "")),
-                            "option_type": "CALL",
-                            "strike_price": float(row.get("strike", 0.0)),
-                            "last_price": float(row.get("lastPrice", 0.0) or 0.0),
-                            "implied_volatility": float(row.get("impliedVolatility", 0.0) or 0.0),  # noqa: E501
-                        }
-                    )
-                for _, row in chain.puts.head(30).iterrows():
-                    compressed.append(
-                        {
-                            "option_code": str(row.get("contractSymbol", "")),
-                            "option_type": "PUT",
-                            "strike_price": float(row.get("strike", 0.0)),
-                            "last_price": float(row.get("lastPrice", 0.0) or 0.0),
-                            "implied_volatility": float(row.get("impliedVolatility", 0.0) or 0.0),  # noqa: E501
-                        }
-                    )
-
-                return {
-                    "status": "success",
-                    "expiration_date": target_date,
-                    "count": len(compressed),
-                    "options": compressed,
-                    "source": "yfinance_fallback",
-                    "message": "已通过 YFinance 返回截断后的期权链兜底数据。",
-                }  # noqa: E501
-
-            yf_res = await asyncio.to_thread(fetch_yf_options)
-            if yf_res.get("status") == "success":
-                return yf_res  # noqa: E701
-            raise HTTPException(
-                status_code=400,
-                detail=f"Futu: {res.get('message')}, YFinance: {yf_res.get('message')}",
-            )  # noqa: E501
-        except Exception as e:
-            if isinstance(e, HTTPException):
-                raise e  # noqa: E701
-            raise HTTPException(
-                status_code=400,
-                detail=f"Futu: {res.get('message')}, YFinance 兜底异常: {str(e)}",
-            )  # noqa: E501
+    """期权链：经 MarketDataGateway（Futu → YFinance 降级）。"""
+    res = await market_data.get_option_chain(ticker, expiration_date)
+    if isinstance(res, dict) and res.get("status") == "error":
+        raise HTTPException(status_code=400, detail=res.get("message"))
     return res
 
 
 @router.get("/fund-flow")
 async def get_fund_flow(ticker: str):
-    res = await futu_service.get_fund_flow(ticker)
+    res = await market_data.get_fund_flow(ticker)
     if res.get("status") == "error":
         raise HTTPException(status_code=400, detail=res.get("message"))
     return res
@@ -565,7 +497,7 @@ async def get_fund_flow(ticker: str):
 @router.get("/tech-indicators")
 async def get_tech_indicators(ticker: str, lookback_days: int = 1):
     # 1. 优先尝试从券商 (Futu) 获取历史数据计算指标
-    futu_res = await futu_service.get_history(ticker=ticker, ktype="K_DAY", num=120)
+    futu_res = await market_data.get_history(ticker=ticker, ktype="K_DAY", num=120)
     if futu_res.get("status") == "success" and futu_res.get("data"):
         try:
             df = pd.DataFrame(futu_res["data"])
@@ -584,7 +516,7 @@ async def get_tech_indicators(ticker: str, lookback_days: int = 1):
                 df.set_index("time", inplace=True)
 
                 # 将券商数据喂给底层运算引擎
-                res = await yf_service.get_tech_indicators(
+                res = await market_data.get_tech_indicators(
                     ticker=ticker, lookback_days=lookback_days, pre_fetched_df=df
                 )
                 if res.get("status") == "success":
@@ -658,7 +590,7 @@ async def get_company_news(ticker: str, limit: int = 10):
                     pass
 
                 # 4. 确认缓存确实为空，执行真实的高耗时网络请求
-                res = await finnhub_service.get_company_news(ticker, days_back=14)
+                res = await market_data.get_company_news_fh(ticker, days_back=14)
                 if res.get("status") == "success" and res.get("data"):
                     data = res.get("data", [])
                     data = sorted(data, key=lambda x: x.get("datetime", 0), reverse=True)[:limit]  # noqa: E501
@@ -737,7 +669,7 @@ async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 3
     try:
         yf_ticker = _to_yf_ticker(safe_ticker)
         # 💡 从 Finnhub 获取财报日历
-        res = await finnhub_service.get_earnings_calendar(days_ahead=days_ahead, days_back=days_back)
+        res = await market_data.get_earnings_calendar(days_ahead=days_ahead, days_back=days_back)
         if res.get("status") == "success":
             earnings_list = res.get("data", [])
             for item in earnings_list:
@@ -759,7 +691,7 @@ async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 3
 
     # 2. 获取个股新闻（作为重大事件）
     try:
-        news_res = await finnhub_service.get_company_news(safe_ticker, days_back=days_back)
+        news_res = await market_data.get_company_news_fh(safe_ticker, days_back=days_back)
         if news_res.get("status") == "success":
             news_list = news_res.get("data", [])
             # 💡 只取影响较大的新闻（根据关键词判断）
@@ -842,7 +774,7 @@ async def get_fundamental(ticker: str):
     # 1. 智能拦截：如果是宏观资产/指数，自动无缝路由给 fred_service 获取其特有的“基本面” (宏观序列)  # noqa: E501
     for key, fred_id in fred_macro_map.items():
         if key == upper_ticker or key in upper_ticker:
-            res = await fred_service.get_series_observations(fred_id, limit=5)
+            res = await market_data.get_series_observations(fred_id, limit=5)
             if res.get("status") == "success":
                 return {
                     "status": "success",
@@ -866,7 +798,7 @@ async def get_fundamental(ticker: str):
     # 💡 优先获取 Futu 的高质量数据，失败时再使用 YFinance 兜底，避免同时请求双数据源浪费资源  # noqa: E501
     # 组装最终结果
     final_data = {}
-    futu_res = await futu_service.get_fundamental(ticker)
+    futu_res = await market_data.get_fundamental(ticker)
 
     if futu_res.get("status") == "success" and futu_res.get("data"):
         final_data.update(futu_res["data"])
@@ -955,7 +887,7 @@ async def get_insider_marquee(limit: int = 10):
 async def get_insider_transactions(ticker: str, limit: int = 50):
     """获取个股高管内幕交易记录，供前端气泡图渲染"""
     # 格式化 ticker (如 US.AAPL -> AAPL, 内部 service 已处理)
-    res = await finnhub_service.get_insider_transactions(ticker, limit)
+    res = await market_data.get_insider_transactions(ticker, limit)
     if res.get("status") == "error":
         raise HTTPException(status_code=400, detail=res.get("message"))
     return res

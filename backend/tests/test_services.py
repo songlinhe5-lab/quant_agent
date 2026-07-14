@@ -107,57 +107,6 @@ class TestAuditService:
         mock_db.query.assert_called()
 
 
-# ─── OMS Mock Data ───────────────────────────────────────────────────
-class TestOmsMockData:
-    """OMS 模拟数据测试"""
-
-    def test_initial_bots_structure(self):
-        """测试初始机器人数据结构"""
-        from backend.services.oms_mock_data import INITIAL_BOTS
-
-        assert len(INITIAL_BOTS) > 0
-        for bot in INITIAL_BOTS:
-            assert "id" in bot
-            assert "name" in bot
-            assert "status" in bot
-            assert bot["status"] in ("running", "paused", "stopped")
-
-    def test_active_orders_structure(self):
-        """测试活跃订单数据结构"""
-        from backend.services.oms_mock_data import ACTIVE_ORDERS
-
-        assert len(ACTIVE_ORDERS) > 0
-        for order in ACTIVE_ORDERS:
-            assert "id" in order
-            assert "symbol" in order
-            assert "side" in order
-            assert order["side"] in ("BUY", "SELL")
-            assert "qty" in order
-            assert order["qty"] > 0
-
-    def test_historical_trades_structure(self):
-        """测试历史成交数据结构"""
-        from backend.services.oms_mock_data import HISTORICAL_TRADES
-
-        assert len(HISTORICAL_TRADES) > 0
-        for trade in HISTORICAL_TRADES:
-            assert "id" in trade
-            assert "symbol" in trade
-            assert "pnl" in trade
-
-    def test_algo_executions_structure(self):
-        """测试算法执行数据结构"""
-        from backend.services.oms_mock_data import ALGO_EXECUTIONS
-
-        assert len(ALGO_EXECUTIONS) > 0
-        for algo in ALGO_EXECUTIONS:
-            assert "id" in algo
-            assert "algo_type" in algo
-            assert algo["algo_type"] in ("TWAP", "VWAP", "ICEBERG")
-            assert "progress" in algo
-            assert 0 <= algo["progress"] <= 100
-
-
 # ─── Encryption Utils ────────────────────────────────────────────────
 class TestEncryption:
     """加密工具测试"""

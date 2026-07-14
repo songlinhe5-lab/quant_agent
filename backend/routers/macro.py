@@ -20,13 +20,10 @@ from fastapi import (
 )
 from sqlalchemy.orm import Session
 
+from backend.app.market_data import market_data
 from backend.core import models
 from backend.core.database import get_db
 from backend.core.redis_client import redis_client
-from backend.services.akshare_service import akshare_service
-from backend.services.finnhub_service import finnhub_service
-from backend.services.fred_service import fred_service
-from backend.services.futu_service import futu_service
 from backend.services.llm_service import llm_service
 from backend.services.market_engine import manager
 
@@ -82,10 +79,10 @@ async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = Fals
 
         today = datetime.now(timezone.utc)
         try:
-            res = await akshare_service.get_economic_calendar(days_ahead, days_back=days_back, skip_cache=force_refresh)  # noqa: E501
+            res = await market_data.get_economic_calendar_ak(days_ahead, days_back=days_back, skip_cache=force_refresh)  # noqa: E501
             if res.get("status") == "error" or not res.get("data"):
                 print("⚠️ [Macro] 金十数据降级失败或为空，继续安全降级 (FRED)...")
-                res = await fred_service.get_economic_calendar(
+                res = await market_data.get_economic_calendar_fred(
                     days_ahead, days_back=days_back, skip_cache=force_refresh
                 )  # noqa: E501
                 if res.get("status") == "error" or not res.get("data"):
@@ -255,7 +252,7 @@ async def _fetch_earnings_calendar_data(days_ahead: int, force_refresh: bool = F
                 return json.loads(cached_data)
 
         try:
-            res = await finnhub_service.get_earnings_calendar(days_ahead, days_back=days_back, skip_cache=force_refresh)  # noqa: E501
+            res = await market_data.get_earnings_calendar(days_ahead, days_back=days_back, skip_cache=force_refresh)  # noqa: E501
             if res.get("status") != "success":
                 return res
 
@@ -405,7 +402,7 @@ async def get_macro_series(
     limit: int = Query(100, le=1000, description="返回的数据点数量"),
 ):
     """获取 FRED 宏观经济时间序列数据"""
-    res = await fred_service.get_series_observations(series_id, limit)
+    res = await market_data.get_series_observations(series_id, limit)
     if res.get("status") == "error":
         raise HTTPException(status_code=400, detail=res.get("message"))
     return res
@@ -447,13 +444,13 @@ def get_sentiment_history(
 async def _fetch_capital_flows() -> tuple[list, bool]:
     """获取跨市场资金流向数据（港股南向/北向使用 AKShare，其余 Mock 兜底）"""
     try:
-        south_task = akshare_service.get_southbound_flow()
+        south_task = market_data.get_southbound_flow()
 
         # 💡 从后台实时引擎直接读取资金流缓存，避免每次用户请求都被 Futu 的串行限流阻塞 4 秒！  # noqa: E501
         async def _get_flow(ticker: str):
             if ticker in manager.flow_cache:
                 return manager.flow_cache[ticker]
-            return await futu_service.get_fund_flow(ticker)
+            return await market_data.get_fund_flow(ticker)
 
         csi300_task = _get_flow("SH.510300")
         spy_task = _get_flow("US.SPY")
@@ -663,13 +660,13 @@ async def get_macro_news(
     """获取全球市场前沿新闻"""
     if category != "general":
         # 其它非主流分类降级为直接拉取
-        return await finnhub_service.get_market_news(category=category)
+        return await market_data.get_market_news(category=category)
 
     try:
         news_list = await _fetch_macro_news_from_stream(limit)
         # 如果 Redis 是空的（初次启动），主动拉取一次
         if not news_list:
-            res = await finnhub_service.get_market_news(category="general")
+            res = await market_data.get_market_news(category="general")
             if res.get("status") == "success":
                 news_list = res.get("data", [])[:limit]
         return {"status": "success", "data": news_list}

@@ -1,0 +1,88 @@
+{
+  "$schema": "https://quant-agent.local/figma-variables-sync.schema.json",
+  "version": "1.0.0",
+  "updated": "2026-07-13",
+  "figmaFile": "QuantEdge Mobile DS",
+  "collection": "Color/Semantic",
+  "mode": "Dark",
+  "sourceOfTruth": "lib/presentation/theme/color_tokens.dart",
+  "webAlign": "docs/04 §视觉 · docs/05 §7.1",
+  "tokens": [
+    {
+      "figma": "Color/Semantic/bull",
+      "dart": "AppColors.bull",
+      "hex": "#10B981",
+      "web": "emerald-500 / text-emerald-400",
+      "usage": "涨 / 多 / 盈利"
+    },
+    {
+      "figma": "Color/Semantic/bear",
+      "dart": "AppColors.bear",
+      "hex": "#EF4444",
+      "web": "red-500 / text-red-400",
+      "usage": "跌 / 空 / 亏损"
+    },
+    {
+      "figma": "Color/Semantic/warn",
+      "dart": "AppColors.warn",
+      "hex": "#F59E0B",
+      "web": "amber-500",
+      "usage": "警告 / STALE / 延迟"
+    },
+    {
+      "figma": "Color/Semantic/primary",
+      "dart": "AppColors.primary",
+      "hex": "#8B5CF6",
+      "web": "violet-500",
+      "usage": "主交互 / 焦点"
+    },
+    {
+      "figma": "Color/Semantic/bgPrimary",
+      "dart": "AppColors.bgPrimary",
+      "hex": "#09090B",
+      "web": "zinc-950",
+      "usage": "背景基调"
+    },
+    {
+      "figma": "Color/Semantic/bgCard",
+      "dart": "AppColors.bgCard",
+      "hex": "#18181B",
+      "web": "zinc-900",
+      "usage": "卡片 / 面板"
+    },
+    {
+      "figma": "Color/Semantic/label",
+      "dart": "AppColors.label",
+      "hex": "#94A3B8",
+      "web": "slate-400",
+      "usage": "次要文字"
+    },
+    {
+      "figma": "Color/Semantic/onSurface",
+      "dart": "AppColors.onSurface",
+      "hex": "#F8FAFC",
+      "web": "slate-50",
+      "usage": "主文字"
+    },
+    {
+      "figma": "Color/Semantic/border",
+      "dart": "AppColors.border",
+      "hex": "#FFFFFF",
+      "alpha": 0.1,
+      "web": "white/10",
+      "usage": "低对比边框"
+    }
+  ],
+  "space": [
+    { "figma": "Space/1", "dart": "AppSpace.s1", "px": 4 },
+    { "figma": "Space/2", "dart": "AppSpace.s2", "px": 8 },
+    { "figma": "Space/3", "dart": "AppSpace.s3", "px": 12 },
+    { "figma": "Space/4", "dart": "AppSpace.s4", "px": 16 },
+    { "figma": "Space/6", "dart": "AppSpace.s6", "px": 24 }
+  ],
+  "radius": [
+    { "figma": "Radius/sm", "dart": "AppRadius.sm", "px": 8 },
+    { "figma": "Radius/md", "dart": "AppRadius.md", "px": 12 },
+    { "figma": "Radius/lg", "dart": "AppRadius.lg", "px": 16 }
+  ]
+}

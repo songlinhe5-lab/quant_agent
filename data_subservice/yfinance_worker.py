@@ -84,22 +84,16 @@ class YFinanceWorker:
     #  数据接口 (DIST-07 HTTP 端点将调用这些方法)
     # ─────────────────────────────────────────
 
-    async def fetch(
-        self, ticker: str, fetch_type: str, ttl: int = 3600, **kwargs
-    ) -> Dict[str, Any]:
+    async def fetch(self, ticker: str, fetch_type: str, ttl: int = 3600, **kwargs) -> Dict[str, Any]:
         """
         获取 yfinance 数据 (history / info)。
 
         返回格式: {"success": bool, "data": Any, "message": str}
         """
-        success, data, message = await self._service.fetch_yf_data(
-            ticker, fetch_type, ttl=ttl, **kwargs
-        )
+        success, data, message = await self._service.fetch_yf_data(ticker, fetch_type, ttl=ttl, **kwargs)
         return {"success": success, "data": data, "message": message}
 
-    async def batched_quote(
-        self, ticker: str, req_type: str = "quote", **kwargs
-    ) -> Dict[str, Any]:
+    async def batched_quote(self, ticker: str, req_type: str = "quote", **kwargs) -> Dict[str, Any]:
         """
         微批处理行情/技术指标请求。
 

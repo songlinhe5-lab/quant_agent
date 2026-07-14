@@ -1,23 +1,37 @@
 # Codecov 覆盖率门禁配置
 # 文档: https://docs.codecov.com/docs/codecov-yaml
+#
+# 📌 覆盖率爬坡计划 (GOV-01, 2026-07-12 起)
+#   后端: 39% → 70% (每月 +5%, 目标 2026-12 达标)
+#   前端: 15% → 60% (每月 +5%, 目标 2026-12 达标)
+#   变更门禁必须走 ADR 流程 (GOV-02)，记录于 MASTER_REVIEW.md
+#
+# | 月份   | 后端目标 | 前端目标 |
+# |:------|:------:|:------:|
+# | 2026-07 | 40% | 15% |
+# | 2026-08 | 45% | 20% |
+# | 2026-09 | 50% | 25% |
+# | 2026-10 | 55% | 35% |
+# | 2026-11 | 60% | 45% |
+# | 2026-12 | 70% | 60% |
 
 coverage:
   status:
     project:
-      # 后端覆盖率门禁
+      # 后端覆盖率门禁 (2026-07 月目标: 40%)
       backend:
         paths:
           - backend/
-        target: 5%        # 当前阶段目标 5%，后续逐步提升至 70%
+        target: 40%       # 爬坡: 39% → 70% (每月 +5%)
         threshold: 2%     # 允许 2% 的波动
         if_ci_failed: error
         informational: false
 
-      # 前端覆盖率门禁
+      # 前端覆盖率门禁 (2026-07 月目标: 15%)
       frontend:
         paths:
           - frontend/src/
-        target: 10%       # 当前阶段目标 10%，后续逐步提升至 60%
+        target: 15%       # 爬坡: 15% → 60% (每月 +5%)
         threshold: 2%
         if_ci_failed: error
         informational: false
@@ -25,7 +39,7 @@ coverage:
     patch:
       # 新增代码覆盖率检查（防止新代码无测试）
       default:
-        target: 50%       # 新增代码至少 50% 覆盖率
+        target: 60%       # 新增代码至少 60% 覆盖率（从 50% 提升）
         threshold: 5%
         if_ci_failed: error
 

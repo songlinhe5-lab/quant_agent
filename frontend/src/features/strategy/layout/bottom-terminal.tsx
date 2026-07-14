@@ -1,5 +1,5 @@
 import { TerminalSquare, AlertCircle, Bot, Loader2 } from 'lucide-react'
-import { useStrategyStore } from '../stores/useStrategyStore'
+import { useStrategyStore } from '../stores'
 import { Button } from '@/components/ui/button'
 import { useState } from 'react'
 import { API_BASE_URL, getAccessToken } from '@/lib/api-client'
@@ -55,13 +55,13 @@ export function BottomTerminal() {
                   status: 'reasoning'
                 })
               } else if (data.status === 'success') {
-                store.setCode(data.data)
+                store.enterDiff(data.data, 'auto-fix')
                 store.setRuntimeError(null)
                 store.updateMessage(assistantMsgId, { 
-                  content: '✨ Agent 已经自动修复了运行时错误！代码已同步到主工作区，您可以再次尝试运行沙箱。',
+                  content: '✨ Agent 已经自动修复了运行时错误！请在 Diff 编辑器中审查并确认变更。',
                   status: 'done'
                 })
-                toast({ title: '🔧 AI 自动修复成功', description: '源码已更新。' })
+                toast({ title: '🔧 AI 自动修复成功', description: '请在 Diff 视图中审查修复。' })
               } else if (data.status === 'error') {
                 store.updateMessage(assistantMsgId, { content: `❌ 修复失败: ${data.message}`, status: 'error' })
               }

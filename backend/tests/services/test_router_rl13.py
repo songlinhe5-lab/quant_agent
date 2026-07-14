@@ -16,15 +16,15 @@ from unittest.mock import patch
 import pytest
 
 from backend.services.data_source_router import DataSourceNode, DataSourceRouter
-from backend.services.datasource import datasource_registry
+from backend.services.datasource import rate_limit_registry
 
 
 @pytest.fixture(autouse=True)
 def clean_registry():
     """每个测试前重置全局注册表"""
-    datasource_registry.clear()
+    rate_limit_registry.clear()
     yield
-    datasource_registry.clear()
+    rate_limit_registry.clear()
 
 
 @pytest.fixture
@@ -69,7 +69,7 @@ class TestGetHealthyNodes:
             capabilities=["test_cap"],
         )
         # 在 registry 中触发限流
-        throttler = datasource_registry.get_throttler("test_node")
+        throttler = rate_limit_registry.get_throttler("test_node")
         throttler.on_rate_limit()
 
         # 获取健康节点
@@ -115,7 +115,7 @@ class TestSelectNode:
             capabilities=["cap"],
         )
         # 限流节点 A
-        datasource_registry.get_throttler("node_a").on_rate_limit()
+        rate_limit_registry.get_throttler("node_a").on_rate_limit()
 
         selected = asyncio.get_event_loop().run_until_complete(router._select_node("cap"))
         # 应该选择未限流的 B（即使 weight 更低）
@@ -155,11 +155,11 @@ class TestSelectNode:
             capabilities=["cap"],
         )
         # 两个都被限流，但 A 限流次数更多
-        throttler_a = datasource_registry.get_throttler("node_a")
+        throttler_a = rate_limit_registry.get_throttler("node_a")
         throttler_a.on_rate_limit()
         throttler_a.on_rate_limit()
         throttler_a.on_rate_limit()
-        throttler_b = datasource_registry.get_throttler("node_b")
+        throttler_b = rate_limit_registry.get_throttler("node_b")
         throttler_b.on_rate_limit()
 
         selected = asyncio.get_event_loop().run_until_complete(router._select_node("cap"))
@@ -186,7 +186,7 @@ class TestHealthStatus:
             capabilities=["cap"],
         )
         # 触发限流
-        datasource_registry.get_throttler("test_node").on_rate_limit()
+        rate_limit_registry.get_throttler("test_node").on_rate_limit()
 
         health = asyncio.get_event_loop().run_until_complete(router.get_health_status())
         node_info = health["nodes"]["test_node"]

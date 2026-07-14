@@ -1,14 +1,17 @@
 """
-算法拆单引擎 (OMS-08~09)
+算法拆单引擎 (OMS-08~09 + TRADE-02)
 
 职责:
-- OMS-08: TWAP/VWAP/ICEBERG 真实拆单执行，通过 oms_service 下单
+- OMS-08: TWAP/VWAP/ICEBERG/POV/IS 真实拆单执行，通过 oms_service 下单
 - OMS-09: 算法执行进度 Redis Hash 持久化 + DB 归档已完成任务
+- TRADE-02: 市场冲击模型 + 高级算法 (POV/IS)
 
 算法策略:
 - TWAP: 等时间切片，每 interval 秒下固定数量
 - VWAP: 模拟成交量加权切片 (简化版: 前密后疏的指数衰减权重)
 - ICEBERG: 每次仅显示 iceberg_qty，成交后自动补下一笔
+- POV: 按市场成交量百分比参与 (TRADE-02)
+- IS: Implementation Shortfall 最优执行 (TRADE-02)
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ import logging
 import math
 import time
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from backend.core.redis_client import redis_client
 
@@ -92,6 +95,100 @@ async def _get_lot_size(symbol: str) -> int:
     # 最终默认值
     logger.warning(f"[AlgoEngine] {symbol} lot_size 未知，使用默认 100 (港股)")
     return 100
+
+
+# ===== 市场冲击模型 (TRADE-02) =====
+
+
+class MarketImpactModel:
+    """
+    Almgren-Chriss 简化市场冲击模型。
+
+    用于估计大单执行的市场冲击成本，优化执行策略。
+    """
+
+    @staticmethod
+    def estimate_slippage(
+        qty: int,
+        adv: float,
+        volatility: float,
+        eta: float = 0.5,
+    ) -> float:
+        """
+        估计市场冲击滑点 (bps)。
+
+        公式: slippage = eta * sigma * sqrt(qty / ADV)
+
+        Args:
+            qty: 订单数量
+            adv: 日均成交量 (Average Daily Volume)
+            volatility: 标的波动率 (年化)
+            eta: 冲击系数 (默认 0.5)
+
+        Returns:
+            估计滑点 (bps)
+        """
+        if adv <= 0 or qty <= 0:
+            return 0.0
+
+        participation = qty / adv
+        slippage = eta * volatility * math.sqrt(participation) * 10000
+        return round(slippage, 2)
+
+    @staticmethod
+    def optimal_schedule(
+        target_qty: int,
+        adv_curve: List[float],
+        volatility: float,
+        risk_aversion: float = 1.0,
+    ) -> List[int]:
+        """
+        IS (Implementation Shortfall) 最优执行计划。
+
+        基于 Almgren-Chriss 模型，在风险厌恶和冲击成本间权衡。
+
+        Args:
+            target_qty: 目标总数量
+            adv_curve: 各时段的预期成交量分布 (ADV curve)
+            volatility: 标的波动率
+            risk_aversion: 风险厌恶系数 (越大越激进)
+
+        Returns:
+            各时段建议执行数量
+        """
+        if not adv_curve or target_qty <= 0:
+            return []
+
+        n = len(adv_curve)
+        total_adv = sum(adv_curve)
+
+        if total_adv <= 0:
+            return [target_qty // n] * n
+
+        # Almgren-Chriss 最优执行:
+        # 风险厌恶高 -> 前期加速执行 (减少价格风险)
+        # 风险厌恶低 -> 均匀执行 (减少冲击成本)
+        weights = []
+        for i, adv_i in enumerate(adv_curve):
+            # 基础权重: 按 ADV 分布
+            w = adv_i / total_adv
+            # 风险厌恶调整: 前期权重增加
+            risk_adj = math.exp(-risk_aversion * i / n)
+            weights.append(w * (1 + risk_adj))
+
+        # 归一化
+        total_w = sum(weights)
+        weights = [w / total_w for w in weights]
+
+        # 分配数量
+        schedule = [int(target_qty * w) for w in weights]
+
+        # 修正舍入误差
+        diff = target_qty - sum(schedule)
+        if schedule and diff != 0:
+            schedule[0] += diff
+
+        return schedule
 
 
 class AlgoOrder:
@@ -278,6 +375,10 @@ class AlgoEngine:
                 await self._run_vwap(order)
             elif order.algo_type == "ICEBERG":
                 await self._run_iceberg(order)
+            elif order.algo_type == "POV":
+                await self._run_pov(order)
+            elif order.algo_type == "IS":
+                await self._run_is(order)
             else:
                 order.status = "ERROR"
                 order.message = f"不支持的算法类型: {order.algo_type}"
@@ -412,6 +513,106 @@ class AlgoEngine:
 
             # 冰山间隔: 15 秒 (比 TWAP 更频繁，因为每笔量小)
             await asyncio.sleep(15)
+
+    async def _run_pov(self, order: AlgoOrder) -> None:
+        """
+        POV (Percentage of Volume): 按市场成交量百分比参与。
+
+        跟踪实时市场成交量，按固定比例 (如 10%) 下单，
+        确保执行节奏与市场流动性匹配。
+        """
+        remaining = order.target_qty - order.filled_qty
+        if remaining <= 0:
+            return
+
+        # 默认参与率 10%
+        participation_rate = 0.10
+
+        while not order._stop_requested and order.filled_qty < order.target_qty:
+            await order._pause_event.wait()
+            if order._stop_requested:
+                break
+
+            # 模拟获取当前时段的成交量 (实际应从行情获取)
+            # 简化: 假设每 30 秒市场成交 1000-5000 股
+            import random
+
+            market_volume_slice = random.randint(1000, 5000)
+
+            # 按参与率计算本时段下单量
+            slice_qty = int(market_volume_slice * participation_rate)
+            slice_qty = max(order.lot_size, slice_qty)
+            slice_qty = (slice_qty // order.lot_size) * order.lot_size
+
+            # 不超过剩余量
+            actual_qty = min(slice_qty, order.target_qty - order.filled_qty)
+            if actual_qty < order.lot_size and actual_qty < order.target_qty - order.filled_qty:
+                actual_qty = order.lot_size
+            actual_qty = min(actual_qty, order.target_qty - order.filled_qty)
+
+            fill_price = await self._simulate_fill(order.symbol, actual_qty, order.side)
+            order.filled_qty += actual_qty
+            order.total_cost += fill_price * actual_qty
+
+            order.message = f"POV 执行中 (参与率 {participation_rate * 100:.0f}%)，进度 {order.progress}%"
+            await self._save_algo_state(order)
+            await self._broadcast_update()
+
+            if order.filled_qty >= order.target_qty:
+                break
+
+            await asyncio.sleep(30)
+
+    async def _run_is(self, order: AlgoOrder) -> None:
+        """
+        IS (Implementation Shortfall): 最小化市场冲击成本。
+
+        使用 Almgren-Chriss 模型计算最优执行计划，
+        在风险厌恶和冲击成本间权衡。
+        """
+        remaining = order.target_qty - order.filled_qty
+        if remaining <= 0:
+            return
+
+        # 生成模拟的 ADV 曲线 (实际应从历史数据获取)
+        # 简化: 假设 12 个时段，前密后疏
+        n_slices = 12
+        adv_curve = [10000 * math.exp(-0.1 * i) for i in range(n_slices)]
+
+        # 计算最优执行计划
+        schedule = MarketImpactModel.optimal_schedule(
+            target_qty=remaining,
+            adv_curve=adv_curve,
+            volatility=0.20,  # 20% 年化波动率
+            risk_aversion=1.0,
+        )
+
+        for slice_qty in schedule:
+            if order._stop_requested or order.filled_qty >= order.target_qty:
+                break
+            await order._pause_event.wait()
+            if order._stop_requested:
+                break
+
+            # 对齐到整手
+            actual_qty = (slice_qty // order.lot_size) * order.lot_size
+            actual_qty = max(order.lot_size, actual_qty)
+            actual_qty = min(actual_qty, order.target_qty - order.filled_qty)
+
+            fill_price = await self._simulate_fill(order.symbol, actual_qty, order.side)
+            order.filled_qty += actual_qty
+            order.total_cost += fill_price * actual_qty
+
+            # 估计市场冲击
+            impact_bps = MarketImpactModel.estimate_slippage(actual_qty, sum(adv_curve) / n_slices, 0.20)
+            order.message = f"IS 执行中 (冲击估计 {impact_bps:.1f}bps)，进度 {order.progress}%"
+            await self._save_algo_state(order)
+            await self._broadcast_update()
+
+            if order.filled_qty >= order.target_qty:
+                break
+
+            await asyncio.sleep(30)
 
     async def _simulate_fill(self, symbol: str, qty: int, side: str) -> float:
         """

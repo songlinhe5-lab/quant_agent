@@ -188,11 +188,11 @@ class TestInternalHelpers:
         from backend.routers.system import _build_health_snapshot
 
         with (
-            patch("backend.routers.system.redis_client") as mock_redis,
-            patch("backend.routers.system.futu_service", create=True) as mock_futu,
+            patch("backend.app.system_app.redis_client") as mock_redis,
+            patch("backend.app.market_data.market_data") as mock_market,
         ):
             mock_redis.ping = AsyncMock(side_effect=Exception("Connection refused"))
-            mock_futu.status = "CONNECTED"
+            mock_market.status = "CONNECTED"
             result = await _build_health_snapshot()
         assert result["status"] == "unhealthy"
         assert "disconnected" in result["components"]["redis"]
@@ -203,10 +203,11 @@ class TestInternalHelpers:
         from backend.routers.system import _build_health_snapshot
 
         with (
-            patch("backend.routers.system.redis_client") as mock_redis,
-            patch.dict("sys.modules", {"backend.services.futu": MagicMock(futu_service=MagicMock(status="CONNECTED"))}),  # noqa: E501
+            patch("backend.app.system_app.redis_client") as mock_redis,
+            patch("backend.app.market_data.market_data") as mock_market,
         ):
             mock_redis.ping = AsyncMock()
+            mock_market.status = "CONNECTED"
             result = await _build_health_snapshot()
         assert result["status"] == "healthy"
         assert result["components"]["redis"] == "connected"
@@ -263,7 +264,7 @@ class TestInternalHelpers:
         from backend.routers.system import _build_perf_stats
 
         mock_row = MagicMock(log_type="slow_request", cnt=10, avg_ms=50.0, max_ms=150.0)
-        with patch("backend.routers.system.SessionLocal") as mock_session:
+        with patch("backend.app.system_app.SessionLocal") as mock_session:
             mock_db = MagicMock()
             mock_session.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session.return_value.__exit__ = MagicMock(return_value=False)
@@ -277,6 +278,6 @@ class TestInternalHelpers:
         """性能统计异常时返回降级数据"""
         from backend.routers.system import _build_perf_stats
 
-        with patch("backend.routers.system.SessionLocal", side_effect=Exception("DB error")):
+        with patch("backend.app.system_app.SessionLocal", side_effect=Exception("DB error")):
             result = await _build_perf_stats()
         assert result["total_count"] == 0

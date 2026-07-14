@@ -52,6 +52,8 @@ interface StrategyState {
   setBacktestPeriod: (period: string) => void
   dataSource: string
   setDataSource: (source: string) => void
+  dataSnapshotId: string
+  setDataSnapshotId: (id: string) => void
   isDebugMode: boolean
   setIsDebugMode: (debug: boolean) => void
   savedPresets: Record<string, Record<string, any>>
@@ -139,6 +141,8 @@ export const useStrategyStore = create<StrategyState>((set) => ({
   setBacktestPeriod: (backtestPeriod) => set({ backtestPeriod }),
   dataSource: 'auto',
   setDataSource: (dataSource) => set({ dataSource }),
+  dataSnapshotId: 'latest_published',
+  setDataSnapshotId: (dataSnapshotId) => set({ dataSnapshotId }),
   isDebugMode: false,
   setIsDebugMode: (isDebugMode) => set({ isDebugMode }),
   savedPresets: {},

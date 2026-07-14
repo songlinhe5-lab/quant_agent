@@ -5,15 +5,16 @@ import random
 import re
 from typing import Any, Dict, List, Optional
 
+import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from backend.app.market_data import market_data
 from backend.core import models
 from backend.core.database import get_db
 from backend.core.redis_client import redis_client
 from backend.routers.auth import get_current_user
-from backend.services.futu_service import futu_service
 from backend.services.screener_service import screener_service
 
 # 💡 将 SUGGESTIONS 移至模块级别，方便测试用例复用
@@ -447,7 +448,7 @@ async def run_screener(req: ScreenerRequest):
             # 2. 并发向 Futu OpenD 发起多市场扫盘
             tasks = []
             for m in markets:
-                task = futu_service.screen_stocks(market=m, filters=futu_filters)  # type: ignore
+                task = market_data.screen_stocks(market=m, filters=futu_filters)  # type: ignore
                 tasks.append(task)
 
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -484,7 +485,7 @@ async def run_screener(req: ScreenerRequest):
             final_data = dedup_data
 
             if not final_data:
-                if futu_service.status != "CONNECTED":
+                if market_data.status != "CONNECTED":
                     import copy
 
                     mock_data = [
@@ -761,3 +762,137 @@ async def summarize_screener_results(payload: SummarizePayload):
         return {"status": "success", "data": summary}
     except Exception as e:
         return {"status": "error", "message": f"AI 总结失败: {str(e)}"}
+
+
+# ==========================================
+# QUANT-03: 复杂横截面选股
+# ==========================================
+
+
+class CrossSectionRequest(BaseModel):
+    symbols: List[str]
+    expression: str = Field(..., description="跨指标表达式，如 RSI(14) < 30 AND MACD.histogram > 0")
+
+
+@router.post("/cross-section")
+async def cross_sectional_screen(req: CrossSectionRequest):
+    """QUANT-03: 复杂横截面选股 — 基于 Pandas 内存引擎的跨指标表达式筛选"""
+    try:
+        from backend.services.cross_sectional import screen as cs_screen
+        from backend.services.kline_warehouse import kline_warehouse
+
+        # 批量获取 K 线
+        kline_data = {}
+        for sym in req.symbols:
+            df = await kline_warehouse.get_history(sym, "K_DAY", num=120)
+            if df is not None and not df.empty:
+                # 统一列名为小写
+                col_map = {"open": "open", "high": "high", "low": "low", "close": "close", "volume": "volume"}
+                df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
+                if "time" in df.columns:
+                    df["date"] = pd.to_datetime(df["time"])
+                    df = df.set_index("date")
+                kline_data[sym] = df
+
+        result = cs_screen(req.symbols, req.expression, kline_data)
+        return {"status": "success", "data": result}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"横截面筛选失败: {str(e)}")
+
+
+# ==========================================
+# QUANT-02: Screen-to-Backtest 一键流程
+# ==========================================
+
+
+class PortfolioBacktestRequest(BaseModel):
+    symbols: List[str]
+    period: str = "1y"
+    initial_capital: float = 100000.0
+    rebalance_freq: str = Field(default="monthly", pattern="^(buy_and_hold|weekly|monthly)$")
+    commission_pct: float = 0.001
+
+
+@router.post("/portfolio-backtest")
+async def portfolio_backtest(req: PortfolioBacktestRequest):
+    """QUANT-02: 选股结果一键组合回测 — 等权组合 + Tear Sheet"""
+    try:
+        from backend.services.kline_warehouse import kline_warehouse
+        from backend.services.portfolio_backtest import run_portfolio_backtest
+
+        period_days = {"1mo": 22, "3mo": 65, "6mo": 130, "1y": 252, "2y": 504, "5y": 1260}
+        num_days = period_days.get(req.period, 252)
+
+        # 批量获取 K 线
+        kline_data = {}
+        for sym in req.symbols:
+            df = await kline_warehouse.get_history(sym, "K_DAY", num=num_days)
+            if df is not None and not df.empty:
+                if "time" in df.columns:
+                    df["date"] = pd.to_datetime(df["time"])
+                    df = df.set_index("date")
+                kline_data[sym] = df
+
+        result = run_portfolio_backtest(
+            symbols=req.symbols,
+            kline_dict=kline_data,
+            initial_capital=req.initial_capital,
+            rebalance_freq=req.rebalance_freq,
+            commission_pct=req.commission_pct,
+        )
+        return {"status": "success", "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"组合回测失败: {str(e)}")
+
+
+# ==========================================
+# QUANT-04: 盘中实时 CEP 异动筛选
+# ==========================================
+
+
+class CEPRuleCreate(BaseModel):
+    name: str
+    expression: str
+    watchlist: List[str]
+
+
+@router.post("/cep/rules")
+async def create_cep_rule(req: CEPRuleCreate):
+    """QUANT-04: 创建 CEP 异动规则"""
+    from backend.services.cep_engine import cep_engine
+
+    rule = cep_engine.add_rule(name=req.name, expression=req.expression, watchlist=req.watchlist)
+    return {"status": "success", "data": rule.model_dump()}
+
+
+@router.get("/cep/rules")
+async def list_cep_rules():
+    """QUANT-04: 列出所有 CEP 规则"""
+    from backend.services.cep_engine import cep_engine
+
+    rules = [r.model_dump() for r in cep_engine.list_rules()]
+    return {"status": "success", "data": rules}
+
+
+@router.delete("/cep/rules/{rule_id}")
+async def delete_cep_rule(rule_id: str):
+    """QUANT-04: 删除 CEP 规则"""
+    from backend.services.cep_engine import cep_engine
+
+    if cep_engine.remove_rule(rule_id):
+        return {"status": "success", "message": f"规则 {rule_id} 已删除"}
+    raise HTTPException(status_code=404, detail=f"规则 {rule_id} 不存在")
+
+
+@router.get("/cep/matches")
+async def cep_matches_sse(since: Optional[float] = None):
+    """QUANT-04: 获取最近的 CEP 匹配事件 (轮询模式)"""
+    from backend.services.cep_engine import cep_engine
+
+    matches = cep_engine.get_recent_matches(since=since)
+    return {
+        "status": "success",
+        "data": [m.model_dump() for m in matches],
+    }

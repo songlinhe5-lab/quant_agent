@@ -68,6 +68,11 @@ class TestCollectorsDict:
         assert yfinance.env_var == "COLLECTOR_YFINANCE"
         assert "宏观指标" in yfinance.description
 
+    def test_every_collector_has_factory(self):
+        """BE-ARCH-03：插件表必须挂载 factory"""
+        for name, cdef in COLLECTORS.items():
+            assert callable(cdef.factory), f"{name} missing factory"
+
 
 class TestGetEnabledCollectors:
     """测试获取启用的采集器列表"""
@@ -170,7 +175,7 @@ class TestStartCollectorDaemons:
         """测试 Finnhub 在 Slave 节点不启动守护进程"""
         with (
             mock.patch("os.getenv", return_value="slave"),
-            mock.patch("backend.workers.collector_registry.print") as mock_print,
+            mock.patch("backend.workers.collectors.finnhub.print") as mock_print,
         ):
             tasks = await start_collector_daemons(["finnhub"])
 
@@ -189,3 +194,36 @@ class TestStartCollectorDaemons:
 
             mock_create_task.assert_called_once()
             assert len(tasks) == 1
+
+    async def test_unknown_collector_skipped(self):
+        """未知采集器名静默跳过"""
+        tasks = await start_collector_daemons(["not_a_real_collector"])
+        assert tasks == []
+
+    async def test_start_stop_matrix_all_enabled(self):
+        """启停矩阵：四个采集器同时启 → stop 全部 cancel"""
+        from backend.workers.collector_registry import stop_collector_daemons
+
+        mock_task = mock.MagicMock()
+        mock_task.done.return_value = False
+        mock_task.cancel = mock.MagicMock()
+
+        with (
+            mock.patch("asyncio.create_task", return_value=mock_task) as mock_create,
+            mock.patch("asyncio.gather", new=mock.AsyncMock(return_value=[])),
+            mock.patch("backend.workers.akshare_collector.akshare_collector_daemon"),
+            mock.patch("backend.services.futu.watchdog.get_watchdog") as mock_wd,
+            mock.patch("backend.services.futu_service.futu_service"),
+            mock.patch("backend.services.market_daemon.run_global_daemon"),
+            mock.patch("backend.services.yfinance_service.yf_service") as mock_yf,
+            mock.patch.dict(os.environ, {"NODE_TYPE": "master"}, clear=False),
+        ):
+            mock_wd.return_value.start = mock.AsyncMock()
+            mock_yf.macro_data_daemon = mock.AsyncMock()
+
+            tasks = await start_collector_daemons(["akshare", "futu", "finnhub", "yfinance"])
+            assert len(tasks) == 4
+            assert mock_create.call_count == 4
+
+            await stop_collector_daemons(tasks)
+            assert mock_task.cancel.call_count == 4

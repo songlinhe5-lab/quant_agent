@@ -9,6 +9,9 @@ import { SidebarTrigger } from '@/components/ui/sidebar';
 import { apiClient } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { useI18n, type DictionaryKey } from '@/contexts/i18n';
+import { useLayoutStore } from '@/stores/useLayoutStore';
+import { TradingModeSwitcher } from './trading-mode-switcher';
+import { useAlertOverlayStore } from '@/stores/useAlertOverlayStore';
 
 /* ── 动态科幻 SVG Logo 组件 ─────────────────────────────────────── */
 const SciFiLogo = () => (
@@ -133,6 +136,7 @@ export const Navbar: React.FC = () => {
   const [mounted, setMounted] = useState(false);
   const { user, logout } = useAuth();
   const { locale, setLocale, t } = useI18n();
+  const badgeCount = useAlertOverlayStore((s) => s.badgeCount);
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -198,6 +202,8 @@ export const Navbar: React.FC = () => {
 
         <SystemMetrics />
 
+        <TradingModeSwitcher />
+
         {mounted && (
           <>
             {/* 语言切换按钮 */}
@@ -219,6 +225,34 @@ export const Navbar: React.FC = () => {
               ) : (
                 <Moon className="w-5 h-5 hover:text-blue-500 transition-colors" />
               )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate('/alerts')}
+              className="relative p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus:outline-none"
+              title="告警中心"
+              aria-label="打开告警中心"
+            >
+              <Bell className="w-5 h-5 hover:text-amber-400 transition-colors" />
+              {badgeCount > 0 && (
+                <span
+                  data-testid="navbar-alert-badge"
+                  className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 rounded-full bg-red-500 text-[9px] font-bold text-white flex items-center justify-center tabular-nums"
+                >
+                  {badgeCount > 99 ? '99+' : badgeCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => useLayoutStore.getState().openSettings()}
+              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus:outline-none"
+              title="系统设置"
+              aria-label="打开系统设置"
+            >
+              <Settings className="w-5 h-5 hover:text-slate-900 dark:hover:text-slate-100 transition-colors" />
             </button>
           </>
         )}
@@ -255,7 +289,10 @@ export const Navbar: React.FC = () => {
                     <Bell className="h-4 w-4" />{t('userMenu.notifications' as DictionaryKey) || '消息通知'}
                   </button>
                   <button
-                    onClick={() => { setIsUserMenuOpen(false); navigate('/settings'); }}
+                    onClick={() => {
+                      setIsUserMenuOpen(false)
+                      useLayoutStore.getState().openSettings()
+                    }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
                   >
                     <Settings className="h-4 w-4" />{t('userMenu.settings' as DictionaryKey) || '系统设置'}

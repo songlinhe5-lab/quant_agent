@@ -30,9 +30,13 @@ from backend.services.datasource import (
     ErrorCategory,
     ErrorInfo,
     classify_http_error,
-    datasource_registry,
     parse_retry_after,
+    rate_limit_registry,
 )
+
+# DIST-19: AKShare STALE 缓存配置
+_AK_STALE_PREFIX = "quant:akshare:stale"
+_AK_STALE_TTL = int(os.getenv("AKSHARE_STALE_TTL", "86400"))  # 默认 24h
 
 
 @dataclass
@@ -211,7 +215,7 @@ class DataSourceRouter:
         ]
         # 同步限流状态到节点（从本地 registry 获取）
         for node in healthy:
-            throttler = datasource_registry.get_throttler(node.name)
+            throttler = rate_limit_registry.get_throttler(node.name)
             status = throttler.get_status()
             node.is_throttled = status.is_throttled
             node.consecutive_rate_limits = status.consecutive_rate_limits
@@ -357,7 +361,16 @@ class DataSourceRouter:
 
         remote_node = self._nodes.get("akshare_remote")
         if not self._enabled or not remote_node or remote_node.status != "healthy":
-            return await self._call_local_akshare(action, akshare_service, **kwargs)
+            result = await self._call_local_akshare(action, akshare_service, **kwargs)
+            # DIST-19: 本地也失败时，尝试 STALE 缓存降级
+            if result.get("status") == "error":
+                stale = await self._get_akshare_stale(action, kwargs)
+                if stale:
+                    return stale
+            else:
+                # 成功时存档 STALE 缓存
+                await self._save_akshare_stale(action, kwargs, result)
+            return result
 
         try:
             payload = {"action": action, "kwargs": kwargs}
@@ -365,6 +378,8 @@ class DataSourceRouter:
 
             if result.get("status") == "success":
                 await self._update_node_status(remote_node.name, success=True)
+                # DIST-19: 成功响应存档，供 CN 断连时降级
+                await self._save_akshare_stale(action, kwargs, result)
                 return result
 
             await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
@@ -373,8 +388,54 @@ class DataSourceRouter:
             logger.warning(f"[AKShare] 远程节点失败: {remote_node.name}, {action}, {str(e)}")
             await self._update_node_status(remote_node.name, success=False, error=str(e))
 
+        # DIST-19: 远程节点不可用，先尝试本地，再 STALE
         logger.warning("[AKShare] 远程节点不可用，降级本地数据源")
-        return await self._call_local_akshare(action, akshare_service, **kwargs)
+        result = await self._call_local_akshare(action, akshare_service, **kwargs)
+        if result.get("status") == "error":
+            stale = await self._get_akshare_stale(action, kwargs)
+            if stale:
+                return stale
+        else:
+            await self._save_akshare_stale(action, kwargs, result)
+        return result
+
+    # ─────────────────────────────────────────
+    #  DIST-19: AKShare STALE 缓存降级
+    # ─────────────────────────────────────────
+
+    async def _save_akshare_stale(self, action: str, kwargs: dict, data: Dict[str, Any]) -> None:
+        """将 AKShare 成功响应存档到 Redis，供 CN 断连时降级"""
+        try:
+            from backend.core.redis_client import redis_client
+
+            cache_key = f"{_AK_STALE_PREFIX}:{action}:{json.dumps(kwargs, sort_keys=True)}"
+            await redis_client.set(cache_key, json.dumps(data, ensure_ascii=False), ex=_AK_STALE_TTL)
+        except Exception as e:
+            logger.debug(f"[AKShare] STALE 缓存存档失败: {e}")
+
+    async def _get_akshare_stale(self, action: str, kwargs: dict) -> Optional[Dict[str, Any]]:
+        """从 Redis 获取 AKShare STALE 缓存，CN 断连时返回降级数据"""
+        try:
+            from backend.core.redis_client import redis_client
+
+            cache_key = f"{_AK_STALE_PREFIX}:{action}:{json.dumps(kwargs, sort_keys=True)}"
+            cached = await redis_client.get(cache_key)
+            if cached:
+                data = json.loads(cached)
+                data["degraded"] = True
+                data["stale_source"] = True
+                # DIST-20: 记录 AKShare STALE 降级指标
+                try:
+                    from backend.core.metrics import DIST_AK_STALE_TOTAL
+
+                    DIST_AK_STALE_TOTAL.labels(action=action).inc()
+                except Exception:
+                    pass
+                logger.warning(f"[AKShare] CN 断连，降级返回 STALE 缓存: {action}")
+                return data
+        except Exception as e:
+            logger.debug(f"[AKShare] STALE 缓存读取失败: {e}")
+        return None
 
     async def _call_local_akshare(self, action: str, akshare_service, **kwargs) -> Dict[str, Any]:
         try:
@@ -404,7 +465,7 @@ class DataSourceRouter:
 
         for name, node in self._nodes.items():
             # RL-13: 从 registry 获取实时限流状态
-            throttler = datasource_registry.get_throttler(name)
+            throttler = rate_limit_registry.get_throttler(name)
             throttle_status = throttler.get_status()
 
             status["nodes"][name] = {

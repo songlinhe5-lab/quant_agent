@@ -1703,20 +1703,26 @@ class ScreenerService:
                 print(f"⚠️ [Screener Daemon] 强势股盘点任务异常: {e}")
                 await asyncio.sleep(30)
 
+    # AI-04: 分类 TTL 映射 (秒)
+    CATEGORY_TTL = {
+        "financial_report": 90 * 24 * 3600,
+        "news": 7 * 24 * 3600,
+        "macro": 30 * 24 * 3600,
+        "general": 90 * 24 * 3600,
+    }
+
     async def clean_obsolete_knowledge_base_daemon(self) -> None:
-        """后台任务：每天凌晨 00:00 自动清理 PostgreSQL 中超过 90 天的陈旧网页向量数据"""  # noqa: E501
+        """后台任务：每天凌晨 00:00 按分类 TTL 清理 PG 知识库中的陈旧网页向量"""  # noqa: E501
         while True:
             try:
                 now = datetime.now()
-                # 每天凌晨 00:00 准时执行
                 if now.hour == 0 and now.minute == 0:
-                    # 💡 分布式锁：选出唯一 Leader 节点执行清理，防止数据库并发死锁
                     lock_key = f"quant:lock:clean_kb:{now.strftime('%Y%m%d')}"
                     if not await redis_client.set(lock_key, "1", nx=True, ex=3600):
                         await asyncio.sleep(60)
                         continue
 
-                    print("🧹 [Knowledge Base Daemon] 开始清理 PG 知识库中超过 90 天的陈旧网页向量...")  # noqa: E501
+                    print("🧹 [Knowledge Base Daemon] 开始按分类 TTL 清理 PG 知识库...")
 
                     def _do_clean():
                         import time
@@ -1724,27 +1730,45 @@ class ScreenerService:
                         from sqlalchemy import text
 
                         try:
-                            cutoff_ts = int(time.time()) - (90 * 24 * 3600)
+                            now_ts = int(time.time())
+                            total_deleted = 0
                             with engine.begin() as conn:
-                                # 检查表是否存在以防首次启动时报错
                                 table_exists = conn.execute(
                                     text(
                                         "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'webpage_knowledge_base')"
                                     )
-                                ).scalar()  # noqa: E501
-                                if table_exists:
+                                ).scalar()
+                                if not table_exists:
+                                    return
+                                # 按分类分别清理
+                                for category, ttl_seconds in self.CATEGORY_TTL.items():
+                                    cutoff_ts = now_ts - ttl_seconds
                                     res = conn.execute(
-                                        text("DELETE FROM webpage_knowledge_base WHERE timestamp < :cutoff"),
-                                        {"cutoff": cutoff_ts},
-                                    )  # noqa: E501
-                                    print(
-                                        f"✅ [Knowledge Base Daemon] 清理成功！共删除 {res.rowcount} 个陈旧网页碎片块。"
-                                    )  # noqa: E501
+                                        text(
+                                            "DELETE FROM webpage_knowledge_base "
+                                            "WHERE category = :cat AND timestamp < :cutoff"
+                                        ),
+                                        {"cat": category, "cutoff": cutoff_ts},
+                                    )
+                                    total_deleted += res.rowcount
+                                # 兜底：category 为 NULL 的记录按 general TTL 清理
+                                cutoff_general = now_ts - self.CATEGORY_TTL["general"]
+                                res = conn.execute(
+                                    text(
+                                        "DELETE FROM webpage_knowledge_base "
+                                        "WHERE category IS NULL AND timestamp < :cutoff"
+                                    ),
+                                    {"cutoff": cutoff_general},
+                                )
+                                total_deleted += res.rowcount
+                            print(
+                                f"✅ [Knowledge Base Daemon] 分类 TTL 清理完成！共删除 {total_deleted} 个陈旧网页碎片块。"
+                            )
                         except Exception as e:
                             print(f"⚠️ [Knowledge Base Daemon] 知识库清理失败: {e}")
 
                     await asyncio.to_thread(_do_clean)
-                    await asyncio.sleep(60)  # 错峰，确保同一分钟内不重复触发
+                    await asyncio.sleep(60)
                 else:
                     await asyncio.sleep(30)
             except asyncio.CancelledError:

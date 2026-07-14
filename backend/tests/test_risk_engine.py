@@ -327,9 +327,10 @@ class TestRiskEngine:
 
         engine = RiskEngine()
 
-        result = asyncio.run(engine._calc_risk_metrics([]))
+        result, kline_data = asyncio.run(engine._calc_risk_metrics([]))
 
         assert result["vol"] == 0
         assert result["var_95"] == 0
         assert result["beta"] == 0
         assert result["sharpe"] == 0
+        assert kline_data == {}

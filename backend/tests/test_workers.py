@@ -1,4 +1,4 @@
-"""Workers 模块单元测试：quote_publisher + daemon"""
+"""Workers 模块单元测试：quote_publisher（daemon.py 已移除）"""
 
 import asyncio
 import os
@@ -122,76 +122,3 @@ class TestQuotePublisher:
                 except asyncio.CancelledError:
                     pass
                 assert pub.is_running is False
-
-
-class TestDaemon:
-    """daemon.py Worker 测试"""
-
-    def test_init_trade_db_is_noop(self):
-        """测试 init_trade_db 为空操作"""
-        from backend.workers.daemon import init_trade_db
-
-        init_trade_db()
-
-    def test_log_trade_success_writes_to_db(self):
-        """测试 log_trade 成功写入数据库"""
-        mock_db = MagicMock()
-        with patch("backend.workers.daemon.SessionLocal") as mock_sl:
-            mock_sl.return_value.__enter__ = MagicMock(return_value=mock_db)
-            mock_sl.return_value.__exit__ = MagicMock(return_value=None)
-            from backend.workers.daemon import log_trade
-
-            log_trade("US.AAPL", "BUY", 150.0, 100, "success", "ok")
-            assert mock_db.add.called
-            assert mock_db.commit.called
-
-    def test_log_trade_failure_does_not_raise(self):
-        """测试 log_trade 数据库异常时不抛出"""
-        mock_db = MagicMock()
-        mock_db.add.side_effect = Exception("DB error")
-        with patch("backend.workers.daemon.SessionLocal") as mock_sl:
-            mock_sl.return_value.__enter__ = MagicMock(return_value=mock_db)
-            mock_sl.return_value.__exit__ = MagicMock(return_value=None)
-            from backend.workers.daemon import log_trade
-
-            log_trade("US.AAPL", "BUY", 150.0, 100, "success", "ok")
-
-    async def test_execute_trade_success_returns_response(self):
-        """测试 execute_trade 成功返回响应"""
-        from backend.workers.daemon import QuoteMonitorHandler
-
-        handler = QuoteMonitorHandler()
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"status": "success"}
-        mock_resp.raise_for_status = MagicMock()
-        with patch("backend.workers.daemon.httpx.AsyncClient") as mock_cls:
-            mock_client = AsyncMock()
-            mock_client.post = AsyncMock(return_value=mock_resp)
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
-            mock_cls.return_value = mock_client
-            result = await handler.execute_trade("US.AAPL", "BUY", 1, 150.0)
-            assert result["status"] == "success"
-
-    async def test_execute_trade_failure_returns_error(self):
-        """测试 execute_trade 网络异常返回错误"""
-        from backend.workers.daemon import QuoteMonitorHandler
-
-        handler = QuoteMonitorHandler()
-        with patch("backend.workers.daemon.httpx.AsyncClient") as mock_cls:
-            mock_client = AsyncMock()
-            mock_client.post = AsyncMock(side_effect=Exception("Network error"))
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
-            mock_cls.return_value = mock_client
-            result = await handler.execute_trade("US.AAPL", "BUY", 1, 150.0)
-            assert result["status"] == "error"
-
-    def test_start_daemon_runs_without_error(self):
-        """测试 start_daemon 初始化不报错"""
-        with patch("backend.workers.daemon.init_trade_db") as mock_init:
-            from backend.workers.daemon import start_daemon
-
-            start_daemon()
-            assert mock_init.called

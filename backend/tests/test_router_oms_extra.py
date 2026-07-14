@@ -199,11 +199,27 @@ class TestOmsTradingMode:
         assert data["data"]["mode"] == "LIVE"
         assert data["data"]["previous"] == "SANDBOX"
 
+    @patch("backend.routers.oms.log_audit")
+    @patch("backend.routers.oms.redis_client")
+    def test_switch_mode_to_paper(self, mock_redis, mock_audit):
+        mock_redis.get = AsyncMock(return_value="SANDBOX")
+        mock_redis.set = AsyncMock()
+        mock_redis.publish = AsyncMock()
+
+        with patch("backend.routers.oms.get_db") as mock_get_db:
+            mock_db = MagicMock()
+            mock_get_db.return_value = mock_db
+            client = TestClient(app)
+            resp = client.post("/api/v1/oms/mode/switch", json={"mode": "PAPER"})
+        assert resp.status_code == 200
+        data = _unwrap(resp)
+        assert data["data"]["mode"] == "PAPER"
+        assert data["data"]["previous"] == "SANDBOX"
+
     @patch("backend.routers.oms.redis_client")
     def test_switch_mode_invalid(self, mock_redis):
         client = TestClient(app)
         resp = client.post("/api/v1/oms/mode/switch", json={"mode": "INVALID"})
-        # 400 或 422 均可接受（取决于验证逻辑）
         assert resp.status_code in (400, 422)
 
 

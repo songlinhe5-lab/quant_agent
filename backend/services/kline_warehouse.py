@@ -204,6 +204,45 @@ class KlineWarehouse:
 
                         print("✅ [Kline Warehouse] 每日 K 线数仓增量同步大动作完成！")
 
+                        # DQ-03b：同步成功后发布日快照
+                        try:
+                            from datetime import date as _date
+
+                            from backend.core.database import SessionLocal
+                            from backend.services.datalake.snapshot_publisher import (
+                                SnapshotPublisher,
+                                default_universe_exporter,
+                            )
+
+                            as_of = _date.today()  # daemon 03:00 口径：日历日
+                            db = SessionLocal()
+                            try:
+                                pub = SnapshotPublisher(db, universe_exporter=default_universe_exporter)
+                                result = await pub.create_daily_snapshot(as_of)
+                                print(f"📸 [DataLake] 日快照 {result.snapshot_id} → {result.status} ({result.message})")
+                            finally:
+                                db.close()
+                        except Exception as snap_err:
+                            print(f"⚠️ [DataLake] 日快照发布失败: {snap_err}")
+
+                        # DQ-03d：周日或月初跑保留
+                        try:
+                            if now.weekday() == 6 or now.day == 1:
+                                from backend.core.database import SessionLocal
+                                from backend.services.datalake.snapshot_retention import (
+                                    run_retention_with_lock,
+                                )
+
+                                db2 = SessionLocal()
+                                try:
+                                    summary = await run_retention_with_lock(db2)
+                                    if summary:
+                                        print(f"🧹 [DataLake] 保留策略: {summary}")
+                                finally:
+                                    db2.close()
+                        except Exception as ret_err:
+                            print(f"⚠️ [DataLake] 保留任务失败: {ret_err}")
+
                 await asyncio.sleep(60)
             except asyncio.CancelledError:
                 break

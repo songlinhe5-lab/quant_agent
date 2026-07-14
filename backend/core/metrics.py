@@ -119,6 +119,35 @@ CLIENT_HEARTBEAT_TOTAL = Counter(
     ["platform"],
 )
 
+# OBS-03: Web Vitals（单位见 metric 名；CLS 无量纲用 float）
+CLIENT_WEB_VITAL_LCP = Histogram(
+    "quant_client_web_vital_lcp_seconds",
+    "客户端 LCP（Largest Contentful Paint）",
+    ["platform"],
+    buckets=[0.1, 0.25, 0.5, 1.0, 1.5, 2.5, 4.0, 8.0, float("inf")],
+)
+
+CLIENT_WEB_VITAL_CLS = Histogram(
+    "quant_client_web_vital_cls",
+    "客户端 CLS（Cumulative Layout Shift）",
+    ["platform"],
+    buckets=[0.01, 0.05, 0.1, 0.15, 0.25, 0.5, 1.0, float("inf")],
+)
+
+CLIENT_WEB_VITAL_INP = Histogram(
+    "quant_client_web_vital_inp_seconds",
+    "客户端 INP（Interaction to Next Paint）",
+    ["platform"],
+    buckets=[0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, float("inf")],
+)
+
+CLIENT_WEB_VITAL_TTFB = Histogram(
+    "quant_client_web_vital_ttfb_seconds",
+    "客户端 TTFB（Time to First Byte）",
+    ["platform"],
+    buckets=[0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, float("inf")],
+)
+
 # ==========================================
 #  Agent / LLM 指标
 # ==========================================
@@ -235,4 +264,140 @@ DS_BACKOFF_STATE = Gauge(
     "ds_backoff_state",
     "数据源退避策略状态 (0=none, 1=linear, 2=exponential, 3=adaptive)",
     ["source"],
+)
+
+# ==========================================
+#  数据湖快照（DQ-03）
+# ==========================================
+
+DATALAKE_SNAPSHOT_CREATED = Counter(
+    "datalake_snapshot_created_total",
+    "数据湖日快照创建次数",
+    ["status"],
+)
+
+DATALAKE_SNAPSHOT_READ = Counter(
+    "datalake_snapshot_read_total",
+    "快照 K 线读取次数",
+    ["result"],
+)
+
+DATALAKE_RETENTION_RUNS = Counter(
+    "datalake_retention_runs_total",
+    "快照保留任务执行次数",
+)
+
+DATALAKE_LATEST_AGE_DAYS = Gauge(
+    "datalake_latest_snapshot_age_days",
+    "最新 published 快照距今天数（告警用）",
+)
+
+# ==========================================
+#  数据质量（SVC-04 / DQ-04）
+# ==========================================
+
+DATA_QUALITY_DIRTY_RATE = Gauge(
+    "quant_data_quality_dirty_rate",
+    "数据源脏数据率（异常记录/总记录）",
+    ["source"],
+)
+
+DATA_QUALITY_COMPLETENESS = Gauge(
+    "quant_data_quality_completeness_rate",
+    "数据源字段完整率（有效记录/总记录）",
+    ["source"],
+)
+
+DATA_QUALITY_TOTAL_RECORDS = Gauge(
+    "quant_data_quality_total_records",
+    "数据源累计校验记录数",
+    ["source"],
+)
+
+DATA_QUALITY_ANOMALY_COUNT = Gauge(
+    "quant_data_quality_anomaly_count",
+    "数据源累计异常记录数",
+    ["source"],
+)
+
+DATA_QUALITY_MISSING_FIELDS = Gauge(
+    "quant_data_quality_missing_field_count",
+    "字段缺失累计次数",
+    ["source"],
+)
+
+DATA_QUALITY_PRICE_ANOMALY = Gauge(
+    "quant_data_quality_price_anomaly_count",
+    "价格异常（零价/跳变/负值）累计次数",
+    ["source"],
+)
+
+DATA_QUALITY_STALE_COUNT = Gauge(
+    "quant_data_quality_stale_count",
+    "时间戳过期累计次数",
+    ["source"],
+)
+
+DATA_QUALITY_LATENCY_MS = Gauge(
+    "quant_data_quality_avg_latency_ms",
+    "数据平均延迟（毫秒）",
+    ["source"],
+)
+
+DATA_QUALITY_LEVEL = Gauge(
+    "quant_data_quality_level",
+    "质量等级 (0=good 1=degraded 2=poor 3=unusable)",
+    ["source"],
+)
+
+DATA_QUALITY_CHECKS = Counter(
+    "quant_data_quality_checks_total",
+    "质量校验的次数",
+    ["source", "result"],
+)
+
+# ==========================================
+#  分布式节点指标 (DIST-20)
+# ==========================================
+
+DIST_NODE_HEARTBEAT = Gauge(
+    "quant_dist_node_heartbeat_timestamp",
+    "节点最后心跳时间戳 (Unix epoch)",
+    ["node_id", "region"],
+)
+
+DIST_NODE_STATUS = Gauge(
+    "quant_dist_node_status",
+    "节点状态 (0=dead, 1=draining, 2=active)",
+    ["node_id", "region"],
+)
+
+DIST_NODE_ALIVE = Gauge(
+    "quant_dist_node_alive_count",
+    "当前存活的节点数量",
+    ["capability"],
+)
+
+DIST_YF_FAILOVER_TOTAL = Counter(
+    "quant_dist_yf_failover_total",
+    "YF 路由器 failover 事件总数",
+    ["from_node", "to_node", "reason"],
+)
+
+DIST_YF_429_TOTAL = Counter(
+    "quant_dist_yf_429_total",
+    "YF 节点 429 限流响应总数",
+    ["node_id"],
+)
+
+DIST_YF_STALE_TOTAL = Counter(
+    "quant_dist_yf_stale_fallback_total",
+    "YF STALE 缓存降级返回总数",
+    ["cache_key"],
+)
+
+DIST_AK_STALE_TOTAL = Counter(
+    "quant_dist_ak_stale_fallback_total",
+    "AKShare STALE 缓存降级返回总数 (CN 断连)",
+    ["action"],
 )

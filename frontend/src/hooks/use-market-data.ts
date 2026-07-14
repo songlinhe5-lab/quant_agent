@@ -254,7 +254,7 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
               if (now - lastWsUpdateTime.current > 300 && !document.hidden) { setRealQuote(detail); lastWsUpdateTime.current = now }
               if (staleTimerRef.current) clearTimeout(staleTimerRef.current)
               setIsStale(false)
-              staleTimerRef.current = setTimeout(() => setIsStale(true), 15000)
+              staleTimerRef.current = setTimeout(() => setIsStale(true), 30000)
             }
           }
         } catch (e) { /* ignore decode error */ }

@@ -6,7 +6,7 @@ import { useToast } from '@/hooks/use-toast'
 import { Loader2, Play, Save, AlertCircle, Bot } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { apiClient, API_BASE_URL, getAccessToken } from '@/lib/api-client'
-import { useStrategyStore } from '../stores/useStrategyStore'
+import { useStrategyStore } from '../stores'
 
 // 💡 终极离线方案 (ESM Bundling)：直接让打包工具自动提取并构建依赖
 if (typeof window !== 'undefined') {
@@ -208,9 +208,11 @@ export function MonacoEditorTab() {
             try {
               const data = JSON.parse(line)
               if (data.status === 'success') {
-                store.setCode(data.data); store.setLastSavedCode(data.data); setSyntaxError(null)
-                store.updateMessage(assistantMsgId, { content: '✨ Agent 已经自动修复了 AST 语法错误！', status: 'done' })
-                toast({ title: '🔧 AI 自动修复成功', description: 'AST 解析正常。' })
+                store.enterDiff(data.data, 'ast-fix')
+                store.setLastSavedCode(data.data)
+                setSyntaxError(null)
+                store.updateMessage(assistantMsgId, { content: '✨ Agent 已经自动修复了 AST 语法错误！请在 Diff 编辑器中审查。', status: 'done' })
+                toast({ title: '🔧 AI 自动修复成功', description: '请在 Diff 视图中审查修复。' })
               } else if (data.status === 'error') {
                 store.updateMessage(assistantMsgId, { content: `❌ 修复失败: ${data.message}`, status: 'error' })
               }

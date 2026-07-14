@@ -326,21 +326,20 @@ class TestSearchRoutes:
 
 class TestChatRoutes:
     def test_chat_data_models(self):
-        from backend.routers.chat import ChatAttachment, ChatMessage, ChatRequest
+        """聊天请求模型以 main.py 内联定义为准（孤儿 routers/chat.py 已移除）"""
+        from backend.main import ChatMessage, ChatRequest
 
-        att = ChatAttachment(name="test.pdf", url="data:application/pdf;base64,abc", type="application/pdf")
-        assert att.name == "test.pdf"
-
-        msg = ChatMessage(role="user", content="hello", attachments=[att])
+        msg = ChatMessage(role="user", content="hello")
         assert msg.role == "user"
-        assert len(msg.attachments) == 1
+        assert msg.content == "hello"
 
         req = ChatRequest(session_id="s1", messages=[msg])
         assert len(req.messages) == 1
+        assert req.session_id == "s1"
 
 
 class TestTradeRoutes:
-    @patch("backend.routers.trade.futu_service")
+    @patch("backend.routers.trade.broker")
     @patch("backend.routers.trade.redis_client")
     def test_get_portfolio(self, mock_redis, mock_futu):
         mock_futu.get_account_info = AsyncMock(return_value={"status": "success", "total_assets": 1000000})
