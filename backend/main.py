@@ -222,6 +222,10 @@ async def lifespan(app: FastAPI):  # type: ignore
     # 🚨 关键修复：为每个预检添加超时，防止单个服务卡住阻塞整个 API 启动
     try:
         # 2. 连接 Futu OpenD (生产环境必须连接，不依赖 scripts/ 目录)
+        # 💡 关键：在调用 to_thread 前先注册主事件循环，供推送回调跨线程桥接使用
+        from backend.services.futu import push_handler
+
+        push_handler.set_main_loop(asyncio.get_running_loop())
         await asyncio.wait_for(asyncio.to_thread(futu_service.connect), timeout=15.0)
         print(f"✅ [Startup] Futu OpenD 连接状态: {futu_service.status}")
     except asyncio.TimeoutError:
