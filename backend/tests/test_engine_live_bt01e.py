@@ -12,12 +12,10 @@ BT-01e · LiveDriver 测试
 
 import asyncio
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.engine import Bar, OrderIntent, Strategy
+from backend.engine import Strategy
 from backend.engine.clock import WallClock
 from backend.engine.contracts import Position, QuoteSnapshot
 from backend.engine.drivers.live import (
@@ -27,7 +25,6 @@ from backend.engine.drivers.live import (
     TickAccumulator,
 )
 from backend.engine.gateway import ExecutionGateway, GatewayMode
-
 
 # ─────────────────────────────────────────────
 # TickAccumulator 测试

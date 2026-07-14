@@ -7,14 +7,13 @@ import sys
 
 import numpy as np
 import pandas as pd
-import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from backend.services.portfolio_backtest import (
-    run_portfolio_backtest,
     _align_kline_frames,
     _compute_rebalance_dates,
+    run_portfolio_backtest,
 )
 
 
@@ -53,7 +52,7 @@ class TestPortfolioBacktest:
         """周度再平衡应产生交易成本"""
         k1 = _make_kline(100, seed=1)
         k2 = _make_kline(100, seed=2)
-        result_bh = run_portfolio_backtest(
+        run_portfolio_backtest(
             ["A", "B"], {"A": k1, "B": k2}, rebalance_freq="buy_and_hold"
         )
         result_w = run_portfolio_backtest(

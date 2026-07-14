@@ -19,19 +19,17 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from backend.core.alert_models import (
+    AlertChannel,
+    AlertEvent,
+    AlertRuleType,
+    AlertSeverity,
+)
 from backend.routers.alert import (
     _events_store,
     _rules_store,
     router,
 )
-from backend.core.alert_models import (
-    AlertChannel,
-    AlertEvent,
-    AlertRule,
-    AlertRuleType,
-    AlertSeverity,
-)
-
 
 # ─────────────────────────────────────────
 #  Fixtures

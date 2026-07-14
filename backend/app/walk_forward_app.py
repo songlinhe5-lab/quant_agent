@@ -8,7 +8,7 @@ Router 只做校验与 HTTP 映射。
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence, Type
+from typing import Any, Dict, List, Optional, Type
 
 from backend.app.backtest_app import BacktestDataError, BacktestParams, load_backtest_frame
 from backend.engine.drivers.vector import VectorConfig

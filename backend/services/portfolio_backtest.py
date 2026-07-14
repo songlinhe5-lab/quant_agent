@@ -8,7 +8,7 @@ QUANT-02: 组合回测服务 (Screen-to-Backtest)
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import numpy as np
 import pandas as pd
@@ -18,7 +18,6 @@ from backend.services.performance import (
     max_drawdown,
     sharpe,
     volatility,
-    win_rate,
 )
 
 logger = logging.getLogger(__name__)

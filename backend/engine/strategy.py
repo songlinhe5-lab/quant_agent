@@ -17,8 +17,8 @@ from typing import TYPE_CHECKING, Any, ClassVar, Dict, Optional
 import pandas as pd
 
 if TYPE_CHECKING:
-    from .contracts import Bar, OrderUpdate
     from .context import StrategyContext
+    from .contracts import Bar, OrderUpdate
 
 
 class Strategy(ABC):

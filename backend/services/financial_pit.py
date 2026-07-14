@@ -21,11 +21,10 @@ DQ-02: 财务数据 Point-in-Time (PIT)
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import structlog
 

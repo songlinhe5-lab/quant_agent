@@ -9,9 +9,8 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-import numpy as np
 from scipy.stats import norm
 
 logger = logging.getLogger(__name__)
@@ -107,8 +106,8 @@ def bs_greeks(
     """
     if T <= 0 or sigma <= 0 or S <= 0 or K <= 0:
         # 到期时 Greeks
-        intrinsic_call = max(S - K, 0)
-        intrinsic_put = max(K - S, 0)
+        max(S - K, 0)
+        max(K - S, 0)
         if option_type.lower() == "call":
             delta = 1.0 if S > K else 0.0
         else:

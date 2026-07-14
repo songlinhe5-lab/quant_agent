@@ -12,18 +12,16 @@ POST   /api/v1/paper/portfolios/{pid}/pause  暂停
 POST   /api/v1/paper/portfolios/{pid}/resume 恢复
 POST   /api/v1/paper/portfolios/{pid}/close  关闭
 """
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
-import numpy as np
 import pandas as pd
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.core.database import get_db
-from backend.core.models import PaperNavDaily
-from backend.services.paper_ledger_service import paper_ledger_service
 from backend.services import performance as perf
+from backend.services.paper_ledger_service import paper_ledger_service
 
 router = APIRouter(prefix="/paper", tags=["Paper Trading"])
 
@@ -199,14 +197,14 @@ def _load_benchmark_nav(benchmark_ref: Optional[str], days: int) -> Optional[pd.
     if not benchmark_ref:
         return None
     try:
-        from backend.core.redis_client import redis_client
-        import json
         import asyncio
+
+        from backend.core.redis_client import redis_client
 
         # 尝试从 Redis 获取回测报告快照
         key = f"backtest:{benchmark_ref}:nav"
-        loop = asyncio.get_event_loop()
-        raw = asyncio.ensure_future(redis_client.get(key))
+        asyncio.get_event_loop()
+        asyncio.ensure_future(redis_client.get(key))
         # 同步兼容：使用 run_until_complete 或降级
         # 简化处理：直接返回 None，由前端后续通过异步 API 获取
         return None

@@ -9,21 +9,16 @@ BT-01b · BacktestDriver + SimBroker 测试
 测试要求：≥80% 覆盖率
 """
 
-import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from backend.engine import Bar, OrderIntent, Position, Strategy
+from backend.engine import Bar, OrderIntent, Strategy
 from backend.engine.clock import SimClock
-from backend.engine.contracts import OrderUpdate, QuoteSnapshot
-from backend.engine.context import BaseContext
 from backend.engine.drivers.backtest import BacktestConfig, BacktestContext, BacktestDriver
 from backend.engine.drivers.sim_broker import SimBroker, SimBrokerConfig
-
 
 # ─────────────────────────────────────────────
 # 测试辅助

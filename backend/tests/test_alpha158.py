@@ -4,15 +4,15 @@
 纯 pandas 因子计算正确性
 """
 
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
 
 from backend.services.alpha158 import (
-    Alpha158,
     FACTOR_REGISTRY,
-    compute_factor,
+    Alpha158,
     compute_all_factors,
+    compute_factor,
     list_factors,
 )
 

@@ -152,8 +152,8 @@ class TestNotificationService:
 
     @pytest.mark.asyncio
     async def test_send_alert_with_priority(self):
-        from backend.services.notification_service import NotificationService
         from backend.core.alert_models import NotificationPriority
+        from backend.services.notification_service import NotificationService
 
         service = NotificationService()
         mock_dispatcher = AsyncMock()
@@ -168,8 +168,8 @@ class TestNotificationService:
 
     @pytest.mark.asyncio
     async def test_priority_to_severity_mapping(self):
+        from backend.core.alert_models import AlertSeverity, NotificationPriority
         from backend.services.notification_service import NotificationService
-        from backend.core.alert_models import NotificationPriority, AlertSeverity
 
         assert NotificationService._priority_to_severity(NotificationPriority.P0) == AlertSeverity.CRITICAL
         assert NotificationService._priority_to_severity(NotificationPriority.P1) == AlertSeverity.CRITICAL

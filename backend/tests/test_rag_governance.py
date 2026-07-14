@@ -9,8 +9,9 @@ AI-04 · RAG 知识库治理单元测试
 - 质量统计信息
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 class TestCategoryTTL:
@@ -43,7 +44,7 @@ class TestRetrievalQualityMonitor:
         assert svc._low_similarity_streak == 5
 
     def test_alert_triggered_at_threshold(self):
-        from backend.services.rag_governance import RAGGovernanceService, LOW_QUALITY_STREAK
+        from backend.services.rag_governance import LOW_QUALITY_STREAK, RAGGovernanceService
         svc = RAGGovernanceService()
         result = False
         for _ in range(LOW_QUALITY_STREAK):

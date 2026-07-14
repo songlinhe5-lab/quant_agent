@@ -85,7 +85,6 @@ class TestParamCliffs:
 
 class TestOverfitAnalyzer:
     def test_warning_when_dsr_low_or_cliff(self):
-        grid = {"a": [1, 2, 3]}
         # 制造大量虚假高夏普试验：多格低夏普 + 一格尖峰
         results = [{"params": {"a": i}, "sharpe": 0.1, "ok": True} for i in (1, 3)]
         results.append({"params": {"a": 2}, "sharpe": 1.2, "ok": True})

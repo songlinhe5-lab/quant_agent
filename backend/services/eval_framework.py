@@ -6,7 +6,7 @@ AI-03 · Agent Eval 评估框架
 """
 
 import re
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Set
 
 
 class EvalMetrics:

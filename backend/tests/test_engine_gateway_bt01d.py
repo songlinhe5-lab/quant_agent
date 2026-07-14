@@ -23,8 +23,6 @@ from backend.engine.gateway import (
     SafetyLockStatus,
     SimBrokerExecutor,
 )
-from backend.schemas.domain import OrderStatus
-
 
 # ─────────────────────────────────────────────
 # SafetyLockStatus 测试
@@ -222,7 +220,7 @@ class TestExecutionGateway:
             order_type="LIMIT",
             limit_price=95.0,
         )
-        order_id = backtest_gateway.submit(intent, run_id="run-1")
+        backtest_gateway.submit(intent, run_id="run-1")
         # 注意：SimBrokerExecutor.cancel 需要 order_id 在 broker 中
         # 这里只是测试 gateway.cancel 的路由
 

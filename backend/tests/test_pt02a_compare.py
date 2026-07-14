@@ -3,14 +3,10 @@ PT-02a: 对比 API 测试
 ======================
 覆盖: 序号对齐 / TE 计算一致 / benchmark 双轨切换
 """
-import pytest
-from datetime import date, datetime, timezone
+from datetime import date
 from unittest.mock import MagicMock, patch
 
-import pandas as pd
-
 from backend.routers.paper import get_compare, get_nav_series
-
 
 # ─────────────────────────────────────────
 #  Fixtures

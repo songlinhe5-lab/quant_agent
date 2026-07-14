@@ -4,7 +4,7 @@ PT-02a: 共享绩效指标库
 纯函数、矢量化（NumPy/Pandas）、无 I/O。
 供纸面组合对比、回测报告、风控模块复用。
 """
-from typing import List, Optional
+from typing import List
 
 import numpy as np
 import pandas as pd

@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import pandas as pd
 
-from backend.engine.contracts import Bar, OrderIntent, OrderUpdate
+from backend.engine.contracts import Bar, OrderIntent
 from backend.engine.strategy import Strategy
 
 if TYPE_CHECKING:

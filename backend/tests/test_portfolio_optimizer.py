@@ -6,10 +6,8 @@ TRADE-03 · 投资组合优化测试
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from backend.services.portfolio_optimizer import PortfolioOptimizer, portfolio_optimizer
-
 
 # ── 测试数据生成 ──────────────────────────────────────────────────────────────
 

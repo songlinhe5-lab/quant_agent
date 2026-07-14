@@ -18,13 +18,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from backend.services.data_quality_monitor import (
-    ALERT_DIRTY_RATE_THRESHOLD,
     AnomalyType,
     DataQualityMonitor,
     QualityLevel,
-    QualityMetrics,
 )
-
 
 # ─────────────────────────────────────────
 #  Fixtures

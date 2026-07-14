@@ -12,10 +12,9 @@ BT-01c · VectorBT 快路径执行器
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Type
+from dataclasses import dataclass
+from typing import Any, Dict, Type
 
-import numpy as np
 import pandas as pd
 
 from backend.engine.strategy import Strategy

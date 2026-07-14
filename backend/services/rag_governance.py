@@ -7,8 +7,7 @@ AI-04 · RAG 知识库治理服务
 """
 
 import logging
-import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 

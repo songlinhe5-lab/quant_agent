@@ -16,9 +16,7 @@ from backend.services.performance import (
     tracking_error,
     volatility,
     win_rate,
-    active_return,
 )
-
 
 # ─────────────────────────────────────────
 #  Sharpe
@@ -171,7 +169,7 @@ class TestTrackingError:
         r_b = pd.Series([0.01, 0.02])
         te = tracking_error(r_a, r_b)
         # 应只比较前 2 个
-        diff = pd.Series([0.0, 0.0])
+        pd.Series([0.0, 0.0])
         assert te == 0.0  # 差值全为 0
 
 

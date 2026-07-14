@@ -16,7 +16,7 @@ import hashlib
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Literal, Optional, Protocol
+from typing import TYPE_CHECKING, Optional, Protocol
 
 from backend.engine.contracts import OrderIntent, OrderUpdate
 from backend.schemas.domain import OrderStatus

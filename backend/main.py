@@ -69,8 +69,10 @@ socket.setdefaulttimeout(15.0)
 # from hermes_agent.agent import HermesAgent  # noqa: E402
 # from hermes_agent.tool_registry import ToolRegistry  # noqa: E402
 
-from backend.core import models  # noqa: E402
-from backend.core import datalake_models  # noqa: E402, F401 — DQ-03a/BT-02 表注册
+from backend.core import (  # noqa: E402
+    datalake_models,  # noqa: F401
+    models,  # noqa: F401
+)
 from backend.core.database import AsyncSessionLocal, Base, SessionLocal, async_engine, engine  # noqa: E402
 from backend.core.security import get_password_hash  # noqa: E402
 

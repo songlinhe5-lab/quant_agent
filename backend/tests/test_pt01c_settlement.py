@@ -3,16 +3,13 @@ PT-01c: 结算 daemon 测试
 ========================
 覆盖：交易日判定 / 结算幂等 / 停牌前收兜底 / 补结算 / NX 锁互斥 / 周度对账
 """
-import asyncio
-import json
-import pytest
 from datetime import date, datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
+import pytest
 
 from backend.services.paper_settlement_daemon import PaperSettlementDaemon
-
 
 # ─────────────────────────────────────────
 #  Fixtures
@@ -440,7 +437,7 @@ class TestBackfillSettlement:
         mock_db.query.return_value.filter.return_value.order_by.return_value.first.return_value = latest_nav
 
         with patch("backend.services.paper_settlement_daemon.SessionLocal", return_value=mock_db):
-            with patch("backend.services.paper_settlement_daemon.redis_client") as mock_redis:
+            with patch("backend.services.paper_settlement_daemon.redis_client"):
                 with patch.object(daemon, "_settle_portfolio", new_callable=AsyncMock) as mock_settle:
                     await daemon.backfill_settlement(max_days=7)
                     mock_settle.assert_not_called()

@@ -20,7 +20,6 @@ from backend.services.datalake.paths import (
     REDIS_LATEST_KEY,
     SNAPSHOTS_ROOT,
     filename_to_ticker,
-    snapshot_dir,
     ticker_to_filename,
 )
 from backend.services.datalake.snapshot_resolver import SnapshotResolveError, SnapshotResolver

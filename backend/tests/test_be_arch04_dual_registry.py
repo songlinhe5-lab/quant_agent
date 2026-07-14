@@ -18,7 +18,6 @@ from backend.services.datasource import (
     DataSourceRegistry,
     ErrorInfo,
     RateLimitRegistry,
-    Result,
     ResultStatus,
     datasource_registry,
     rate_limit_registry,
@@ -126,7 +125,7 @@ class TestMarketDataUsesSourceRegistry:
         # Build gateway but swap yf after init registration
         with pytest.MonkeyPatch.context() as mp:
             # Avoid real service imports where possible by patching modules used in __init__
-            fake = MagicMock()
+            MagicMock()
             mp.setattr(
                 "backend.services.adapters.legacy_market_data.MarketDataGateway.__init__",
                 lambda self: None,

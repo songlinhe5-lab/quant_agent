@@ -4,17 +4,16 @@ TRADE-01 · 期权定价引擎测试
 5 tests: BS 定价精度 / Greeks 计算 / IV 反推 / IV Rank / 波动率微笑
 """
 
-import pytest
 import math
 
 from backend.services.options_engine import (
-    bs_price,
     bs_greeks,
-    implied_vol,
-    iv_rank,
-    iv_percentile,
-    vol_smile_analysis,
+    bs_price,
     compute_option_chain_greeks,
+    implied_vol,
+    iv_percentile,
+    iv_rank,
+    vol_smile_analysis,
 )
 
 
@@ -36,7 +35,7 @@ class TestBlackScholes:
 
     def test_bs_price_itm_otm(self):
         """测试 ITM/OTM 期权价格合理性"""
-        S, K, T, r, sigma = 100, 100, 0.5, 0.05, 0.20
+        _S, _K, T, r, sigma = 100, 100, 0.5, 0.05, 0.20
 
         # ITM Call (S > K)
         itm_call = bs_price(110, 100, T, r, sigma, "call")

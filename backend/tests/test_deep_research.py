@@ -4,8 +4,9 @@
 mock LLM + tools, 测试 pipeline 流程
 """
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 
 from backend.services.deep_research import (
     ChartDeliveryAgent,
@@ -16,7 +17,6 @@ from backend.services.deep_research import (
     ResearchReport,
     deep_research_pipeline,
 )
-
 
 # ===== ClusterDiscoveryAgent =====
 

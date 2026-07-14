@@ -16,7 +16,6 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import func as sa_func
 from sqlalchemy.orm import Session
 
 from backend.core.database import SessionLocal
@@ -374,6 +373,7 @@ class PaperSettlementDaemon:
     async def _check_drift(self, db: Session, portfolio: PaperPortfolio) -> None:
         """EOD 结算钩子：计算滚动 20 交易日 TE，超阈值触发 paper_drift 告警"""
         import pandas as pd
+
         from backend.services import performance as perf
 
         pid = portfolio.id

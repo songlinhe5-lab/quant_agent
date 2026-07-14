@@ -15,8 +15,6 @@ from backend.services.cross_sectional import (
     compute_indicators,
     evaluate_expression,
     screen,
-    _normalize_expr,
-    _validate_expression,
 )
 
 
@@ -139,7 +137,7 @@ class TestScreenFunction:
     def test_screen_passes_matching(self):
         """通过筛选的标的应在结果中"""
         df = _make_kline(100, trend=0.3)
-        enriched = compute_indicators(df)
+        compute_indicators(df)
         # 构造一个一定能通过的表达式
         kline_data = {"TEST.001": df}
         result = screen(["TEST.001"], "RSI > 0", kline_data)

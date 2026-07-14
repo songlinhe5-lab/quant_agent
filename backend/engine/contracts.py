@@ -21,7 +21,6 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.schemas.domain import OrderStatus
 
-
 # ─────────────────────────────────────────────
 # 行情数据契约
 # ─────────────────────────────────────────────

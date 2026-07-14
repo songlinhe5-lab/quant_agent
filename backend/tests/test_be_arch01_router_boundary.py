@@ -10,8 +10,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
-
 ROUTERS_DIR = Path(__file__).resolve().parents[1] / "routers"
 
 FORBIDDEN_IMPORT = re.compile(

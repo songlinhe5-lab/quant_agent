@@ -8,8 +8,6 @@ from typing import Any, Dict, List
 
 import numpy as np
 
-from backend.core.logger import logger
-
 
 def calc_cvar(returns: np.ndarray, alpha: float = 0.05) -> float:
     """

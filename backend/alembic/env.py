@@ -18,8 +18,10 @@ load_dotenv()
 
 # 导入所有 SQLAlchemy 模型的 Base.metadata（用于 autogenerate）
 # noqa: E402 - load_dotenv() 必须在 import 之前运行
-from backend.core import models  # noqa: F401, E402 - 确保所有模型被导入
-from backend.core import datalake_models  # noqa: F401, E402 - DQ-03a/BT-02
+from backend.core import (  # noqa: E402
+    datalake_models,  # noqa: F401
+    models,  # noqa: F401
+)
 from backend.core.database import Base  # noqa: E402
 
 # 导入 TickerItem 模型，确保 Alembic 可以识别并生成迁移脚本

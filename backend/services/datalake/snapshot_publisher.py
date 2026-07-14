@@ -30,7 +30,6 @@ from backend.services.datalake.paths import (
     REDIS_LATEST_KEY,
     SNAPSHOTS_ROOT,
     ensure_roots,
-    snapshot_dir,
 )
 
 logger = logging.getLogger(__name__)

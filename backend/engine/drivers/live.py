@@ -17,15 +17,15 @@ import asyncio
 import json
 import logging
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Type
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional
 
 import pandas as pd
 
 from backend.engine.clock import WallClock
 from backend.engine.context import BaseContext
-from backend.engine.contracts import Bar, OrderIntent, OrderUpdate, Position, QuoteSnapshot, RunManifest
+from backend.engine.contracts import Bar, OrderIntent, OrderUpdate, Position, QuoteSnapshot
 from backend.engine.drivers.sim_broker import SimBroker, SimBrokerConfig
 from backend.engine.gateway import ExecutionGateway, GatewayMode, SimBrokerExecutor
 from backend.engine.strategy import Strategy

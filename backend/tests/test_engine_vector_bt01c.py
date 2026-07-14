@@ -8,7 +8,6 @@ BT-01c · VectorBT 快路径 + 同构校验器测试
 测试要求：≥80% 覆盖率
 """
 
-from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 import numpy as np
@@ -18,7 +17,6 @@ import pytest
 from backend.engine import Bar, Strategy
 from backend.engine.drivers.vector import VectorConfig, VectorExecutor, VectorResult
 from backend.engine.verify import IsomorphismReport, IsomorphismVerifier
-
 
 # ─────────────────────────────────────────────
 # 测试辅助

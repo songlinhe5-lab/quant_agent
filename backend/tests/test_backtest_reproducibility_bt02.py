@@ -20,7 +20,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from backend.core.database import Base
-from backend.core.datalake_models import BacktestReport, DataSnapshot
+from backend.core.datalake_models import DataSnapshot
 from backend.engine import Bar, OrderIntent, Strategy
 from backend.engine.contracts import RunManifest
 from backend.engine.drivers.backtest import BacktestConfig, BacktestDriver

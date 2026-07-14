@@ -10,7 +10,7 @@ TRADE-03 · 投资组合优化 API
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -89,7 +89,7 @@ def _generate_mock_returns(symbols: List[str], period: str) -> pd.DataFrame:
     """生成模拟日收益率 (开发环境兜底)。"""
     n_days = {"1y": 252, "3y": 756, "5y": 1260}.get(period, 252)
     np.random.seed(42)
-    n = len(symbols)
+    len(symbols)
 
     # 生成带相关性的随机收益率
     # 基础因子

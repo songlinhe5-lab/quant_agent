@@ -8,10 +8,10 @@ TRADE-01 · 期权 API 端点
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from backend.app.market_data import market_data
 from backend.services.options_engine import compute_option_chain_greeks

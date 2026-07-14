@@ -4,21 +4,19 @@ TRADE-02 · 算法拆单增强测试
 5 tests: 市场冲击模型 / POV 算法 / IS 算法 / VWAP ADV 曲线 / 执行分析
 """
 
-import pytest
-import math
-from unittest.mock import AsyncMock, patch, MagicMock
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
+from backend.services.algo_analytics import (
+    AlgoAnalytics,
+    algo_analytics,
+)
 from backend.services.algo_engine import (
     AlgoEngine,
     AlgoOrder,
     MarketImpactModel,
     algo_engine,
 )
-from backend.services.algo_analytics import (
-    AlgoAnalytics,
-    algo_analytics,
-)
-
 
 # ===== MarketImpactModel =====
 
@@ -173,7 +171,7 @@ class TestAlgoEngineNewAlgorithms:
 
     def test_pov_algorithm_type(self):
         """测试 POV 算法类型支持"""
-        engine = AlgoEngine()
+        AlgoEngine()
         # 验证 POV 被识别
         order = AlgoOrder(
             algo_id="test_pov",
@@ -204,19 +202,6 @@ class TestAlgoEngineNewAlgorithms:
         """测试分析单例"""
         assert algo_analytics is not None
         assert isinstance(algo_analytics, AlgoAnalytics)
-"""
-Algo Engine 单元测试
-覆盖: backend/services/algo_engine.py
-"""
-
-import asyncio
-import os
-import sys
-from unittest.mock import AsyncMock, MagicMock, patch
-
-os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
-os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 
 # ─── AlgoOrder 单元测试 ────────────────────────────────────────────────────────

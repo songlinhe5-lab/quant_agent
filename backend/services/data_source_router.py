@@ -30,8 +30,8 @@ from backend.services.datasource import (
     ErrorCategory,
     ErrorInfo,
     classify_http_error,
-    rate_limit_registry,
     parse_retry_after,
+    rate_limit_registry,
 )
 
 # DIST-19: AKShare STALE 缓存配置

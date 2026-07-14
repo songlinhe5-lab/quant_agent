@@ -10,22 +10,22 @@
 """
 
 import time
+from unittest.mock import AsyncMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.core.alert_models import (
+    AlertChannel,
     AlertRule,
     AlertRuleType,
     AlertSeverity,
-    AlertChannel,
     evaluate_indicator_rule,
 )
 from backend.services.indicator_evaluator import (
+    INDICATOR_RULE_TYPES,
     IndicatorEvaluator,
     extract_indicators_from_tech_data,
-    INDICATOR_RULE_TYPES,
 )
-
 
 # ─── Fixtures ──────────────────────────────────────────────────────
 

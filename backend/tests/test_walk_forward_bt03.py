@@ -13,6 +13,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from backend.app.walk_forward_app import (
+    STRATEGY_REGISTRY,
+    WalkForwardError,
+    resolve_strategy,
+)
 from backend.engine.drivers.vector import VectorConfig, VectorResult
 from backend.engine.strategy import Strategy
 from backend.engine.walk_forward import (
@@ -23,11 +28,6 @@ from backend.engine.walk_forward import (
     detect_performance_drift,
     generate_windows,
     metrics_from_equity,
-)
-from backend.app.walk_forward_app import (
-    STRATEGY_REGISTRY,
-    WalkForwardError,
-    resolve_strategy,
 )
 
 

@@ -23,7 +23,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Protocol
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol
 
 from backend.core.alert_models import (
     AlertChannel,
