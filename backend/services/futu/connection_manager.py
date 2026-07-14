@@ -148,8 +148,8 @@ class ConnectionManager:
             if not self._is_opend_reachable():
                 raise ConnectionError(f"OpenD 不可达 ({self._host}:{self._port})，拒绝创建交易上下文")
             # 💡 跨网络连接必须启用加密（Futu 安全要求）
-            # 当 host 不是 localhost 或 host.docker.internal 时，视为跨网络连接
-            is_cross_network = self._host not in ["127.0.0.1", "localhost", "::1", "host.docker.internal"]
+            # 当 host 是 localhost/127.0.0.1 时，视为本地连接，不启用加密
+            is_cross_network = self._host not in ["127.0.0.1", "localhost", "::1"]
             self.trade_ctxs[key] = OpenSecTradeContext(
                 filter_trdmarket=str(market),
                 host=self._host,

@@ -24,10 +24,9 @@ services:
     image: redis:7-alpine
     container_name: quant_redis
     restart: always
-    # 💡 SEC-14: Redis 不暴露公网端口，仅通过 quant-internal 网络访问
-    # 如需本地调试，使用: docker compose exec redis redis-cli -a <password>
-    expose:
-      - "6379"
+    # 💡 SEC-14: Redis 暴露端口到宿主机 localhost，供 host 网络模式的容器访问
+    ports:
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-quant_redis_secret_2026}
@@ -55,10 +54,9 @@ services:
       - POSTGRES_USER=${DB_USER:-quant_admin}
       - POSTGRES_PASSWORD=${DB_PASSWORD:-quant_pg_secret_2026}
       - POSTGRES_DB=${DB_NAME:-quant_agent_db}
-    # 💡 SEC-15: PostgreSQL 不暴露公网端口，仅通过 quant-internal 网络访问
-    # 如需本地调试，使用: docker compose exec postgres psql -U <user> -d <db>
-    expose:
-      - "5432"
+    # 💡 SEC-15: PostgreSQL 暴露端口到宿主机 localhost，供 host 网络模式的容器访问
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -86,8 +84,9 @@ services:
     container_name: quant_app
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1 --loop uvloop --http httptools --timeout-keep-alive 65 --limit-concurrency 5000 --no-access-log
     restart: always
-    ports:
-      - "8000:8000"
+    # 💡 使用 host 网络模式，直接共享宿主机网络命名空间
+    # 这样 127.0.0.1 可以直通 Futu OpenD，避免跨网络加密要求
+    network_mode: host
     depends_on:
       redis:
         condition: service_healthy
@@ -96,20 +95,21 @@ services:
     env_file:
       - .env
     environment:
-      - REDIS_HOST=redis
+      # 💡 host 网络模式下，使用 localhost 访问 Redis/Postgres
+      - REDIS_HOST=127.0.0.1
       - REDIS_PORT=6379
       - QUANT_ENV=production
       - OTEL_ENABLED=false
       # monitoring profile 启动 Tempo 后改为 true，endpoint 指向 quant_tempo
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318/v1/traces
-      - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_secret_2026}@postgres:5432/${DB_NAME:-quant_agent_db}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318/v1/traces
+      - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_secret_2026}@127.0.0.1:5432/${DB_NAME:-quant_agent_db}
       # 💡 AKShare 数据从北京 VPS Redis 中继读取
       - AKSHARE_MODE=cache
       - COLLECTOR_AKSHARE=false
       - COLLECTOR_YFINANCE=false
-      # 💡 Futu OpenD 在宿主机运行，容器通过 host.docker.internal 访问
-      # 避免使用 IP 地址触发跨网络加密，host.docker.internal 被视为本地连接
-      - FUTU_HOST=host.docker.internal
+      # 💡 host 网络模式下，直接使用 127.0.0.1 访问宿主机 Futu OpenD
+      # 被视为本地连接，不触发跨网络加密
+      - FUTU_HOST=127.0.0.1
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')\" || exit 1"]
       interval: 30s
@@ -119,8 +119,6 @@ services:
     volumes:
       - quant_db:/app/backend/data
       - ./reports:/app/reports
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     deploy:
       resources:
         limits:
@@ -128,8 +126,6 @@ services:
           cpus: '2.0'
         reservations:
           memory: 1G
-    networks:
-      - quant-internal
 
   quant-worker:
     image: ghcr.io/songlinhe5-lab/quant-agent:latest
