@@ -118,6 +118,7 @@ from backend.routers.alert import router as alert_router  # noqa: E402
 from backend.routers.audit import router as audit_router  # noqa: E402
 from backend.routers.auth import router as auth_router  # noqa: E402
 from backend.routers.backtest import router as backtest_router  # noqa: E402
+from backend.routers.logs import router as logs_router  # noqa: E402
 from backend.routers.backtest_reports import router as backtest_reports_router  # noqa: E402
 from backend.routers.datalake import router as datalake_router  # noqa: E402
 from backend.routers.client import (  # noqa: E402
@@ -838,6 +839,7 @@ app.include_router(risk_router, prefix="/api/v1")  # Risk 风控面板
 app.include_router(paper_router, prefix="/api/v1")  # PT-01b 纸面组合
 app.include_router(futu_admin_router)  # Futu 数据源管理 (prefix 已含 /api/v1/futu)
 app.include_router(alert_router)  # ALERT-02: 告警中心 (prefix 已含 /api/v1/alert)
+app.include_router(logs_router, prefix="/api/v1")  # FE-05b: 前端日志采集
 app.include_router(eval_router, prefix="/api/v1")  # AI-03: Eval 评估框架
 app.include_router(research_router, prefix="/api/v1")  # AI-01: 深度研报
 app.include_router(factor_router, prefix="/api/v1")  # AI-02: 因子挖掘

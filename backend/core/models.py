@@ -423,3 +423,23 @@ class PaperNavDaily(Base):
     settled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     portfolio: Mapped["PaperPortfolio"] = relationship(back_populates="nav_daily")
+
+
+class FrontendLog(Base):
+    """前端日志表 (FE-05b: 浏览器端日志采集)"""
+
+    __tablename__ = "frontend_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    level: Mapped[str] = mapped_column(String(16), index=True)  # DEBUG / INFO / WARN / ERROR
+    message: Mapped[str] = mapped_column(String(2048))
+    context: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    page_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

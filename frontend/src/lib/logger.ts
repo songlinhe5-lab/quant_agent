@@ -39,7 +39,7 @@ interface LoggerConfig {
 const DEFAULT_CONFIG: LoggerConfig = {
   minLevel: LogLevel.DEBUG,
   enableConsole: true,
-  enableRemote: false, // 后端未实现 /api/v1/logs 端点，暂时禁用
+  enableRemote: import.meta.env.PROD, // FE-05b: 后端已实现 /api/v1/logs 端点
   remoteEndpoint: `${API_BASE_URL}/logs`,
   batchSize: 20,
   flushInterval: 5000,
