@@ -27,7 +27,8 @@ jobs:
   enforce_branch_policy:
     name: Enforce develop→main Flow
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, 'Merge pull request')
+    # 允许: merge commit ("Merge pull request") 或 squash merge ("(#XX)")
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, 'Merge pull request') && !contains(github.event.head_commit.message, '(#')
     steps:
       - name: Block direct push to main
         run: |
