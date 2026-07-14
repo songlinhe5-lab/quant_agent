@@ -7,20 +7,35 @@ import LoginPage from '@/features/auth/login'
 import { ModuleErrorBoundary } from '@/components/error-boundary'
 
 // 懒加载各功能模块（按需加载，减少首屏体积）
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, type ComponentType } from 'react'
 
-const DataCenterModule = lazy(() => import('@/features/trading/data-center').then(m => ({ default: m.DataCenterModule })))
-const QuotesModule = lazy(() => import('@/features/trading/quotes').then(m => ({ default: m.QuotesModule })))
-const ScreenerModule = lazy(() => import('@/features/trading/screener').then(m => ({ default: m.ScreenerModule })))
-const StrategyDevModule = lazy(() => import('@/features/trading/strategy').then(m => ({ default: m.StrategyDevModule })))
-const BacktestModule = lazy(() => import('@/features/trading/backtest').then(m => ({ default: m.BacktestModule })))
-const OMSModule = lazy(() => import('@/features/trading/oms').then(m => ({ default: m.OMSModule })))
-const RiskModule = lazy(() => import('@/features/trading/risk').then(m => ({ default: m.RiskModule })))
-const CopilotModule = lazy(() => import('@/features/trading/copilot').then(m => ({ default: m.CopilotModule })))
-const ApmModule = lazy(() => import('@/features/system/performance-panel').then(m => ({ default: m.PerformancePanel })))
-const AlertCenterModule = lazy(() => import('@/features/trading/alert-center').then(m => ({ default: m.AlertCenterModule })))
-const PaperModule = lazy(() => import('@/features/paper/module').then(m => ({ default: m.PaperModule })))
-const SettingsPage = lazy(() => import('@/features/settings/settings'))
+/**
+ * 带错误处理的 lazy loader
+ * 捕获 chunk 加载失败（如 404、网络错误），重新抛出以便 ErrorBoundary 捕获
+ */
+function lazyWithRetry<T extends ComponentType<any>>(
+  importFn: () => Promise<{ default: T }>,
+): ComponentType<any> {
+  return lazy(() =>
+    importFn().catch((err) => {
+      // ChunkLoadError 或网络错误时，重新抛出以便 ErrorBoundary 显示错误页面
+      throw new Error(`模块加载失败：${err.message || '未知错误'}`)
+    }),
+  )
+}
+
+const DataCenterModule = lazyWithRetry(() => import('@/features/trading/data-center').then(m => ({ default: m.DataCenterModule })))
+const QuotesModule = lazyWithRetry(() => import('@/features/trading/quotes').then(m => ({ default: m.QuotesModule })))
+const ScreenerModule = lazyWithRetry(() => import('@/features/trading/screener').then(m => ({ default: m.ScreenerModule })))
+const StrategyDevModule = lazyWithRetry(() => import('@/features/trading/strategy').then(m => ({ default: m.StrategyDevModule })))
+const BacktestModule = lazyWithRetry(() => import('@/features/trading/backtest').then(m => ({ default: m.BacktestModule })))
+const OMSModule = lazyWithRetry(() => import('@/features/trading/oms').then(m => ({ default: m.OMSModule })))
+const RiskModule = lazyWithRetry(() => import('@/features/trading/risk').then(m => ({ default: m.RiskModule })))
+const CopilotModule = lazyWithRetry(() => import('@/features/trading/copilot').then(m => ({ default: m.CopilotModule })))
+const ApmModule = lazyWithRetry(() => import('@/features/system/performance-panel').then(m => ({ default: m.PerformancePanel })))
+const AlertCenterModule = lazyWithRetry(() => import('@/features/trading/alert-center').then(m => ({ default: m.AlertCenterModule })))
+const PaperModule = lazyWithRetry(() => import('@/features/paper/module').then(m => ({ default: m.PaperModule })))
+const SettingsPage = lazyWithRetry(() => import('@/features/settings/settings'))
 
 // /market/:ticker 跳转组件：将 URL 中的 ticker 存入 sessionStorage，然后重定向到 /quotes
 function MarketTickerRedirect() {
