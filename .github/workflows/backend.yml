@@ -363,7 +363,10 @@ jobs:
             # 验证 Redis 不对公网暴露
             PUBLIC_IP=$(curl -s ifconfig.me 2>/dev/null || echo "")
             if [ -n "$PUBLIC_IP" ]; then
-              if ss -tlnp | grep -q ":6379.*0\.0\.0\.0"; then
+              # 💡 检查 Local Address 列 (第4列) 是否为 0.0.0.0:6379
+              # ss 输出格式: State Recv-Q Send-Q Local_Addr Foreign_Addr Process
+              # Foreign Address 列的 0.0.0.0:* 是正常的 (表示接受所有来源)
+              if ss -tlnp | awk 'NR>1 {print $4}' | grep -q '^0\.0\.0\.0:6379$'; then
                 echo "ERROR: Redis 绑定到 0.0.0.0 (公网可访问)!"
                 exit 1
               fi
