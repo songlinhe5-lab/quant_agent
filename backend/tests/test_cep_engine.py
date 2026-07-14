@@ -4,15 +4,12 @@ QUANT-04: CEP 异动筛选引擎测试
 
 import os
 import sys
-import time
 
 import numpy as np
-import pandas as pd
-import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from backend.services.cep_engine import CEPEngine, CEPRule, CEPMatch
+from backend.services.cep_engine import CEPEngine
 
 
 def _feed_bars(engine: CEPEngine, ticker: str, n: int, seed: int = 42):
@@ -31,7 +28,7 @@ class TestCEPRuleCRUD:
     def test_add_and_list_rule(self):
         """创建规则后应出现在列表中"""
         engine = CEPEngine()
-        rule = engine.add_rule("RSI 超卖", "RSI < 30", ["US.AAPL"])
+        engine.add_rule("RSI 超卖", "RSI < 30", ["US.AAPL"])
         rules = engine.list_rules()
         assert len(rules) == 1
         assert rules[0].name == "RSI 超卖"

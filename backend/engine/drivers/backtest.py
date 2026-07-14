@@ -14,8 +14,8 @@ BT-01b · BacktestDriver 回测驱动
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import timezone
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type
 
 import numpy as np

@@ -12,8 +12,8 @@ BT-01a · 同构引擎契约层测试
 
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
 
 import pandas as pd
 import pytest
@@ -33,7 +33,6 @@ from backend.engine import (
     WallClock,
 )
 from backend.schemas.domain import OrderStatus
-
 
 # ─────────────────────────────────────────────
 # contracts.py 测试

@@ -31,13 +31,15 @@ from backend.core.alert_models import (
     AlertEvent,
     AlertRule,
     AlertRuleType,
-    AlertSeverity,
     evaluate_price_rule,
-    evaluate_indicator_rule,
 )
 from backend.core.logger import logger
 from backend.services.alert_dispatcher import AlertDispatcher
-from backend.services.indicator_evaluator import IndicatorEvaluator, extract_indicators_from_tech_data, INDICATOR_RULE_TYPES
+from backend.services.indicator_evaluator import (
+    INDICATOR_RULE_TYPES,
+    IndicatorEvaluator,
+    extract_indicators_from_tech_data,
+)
 
 # ─────────────────────────────────────────
 #  Redis 键空间

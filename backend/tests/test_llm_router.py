@@ -9,8 +9,7 @@ AI-02 · LLM 多模型路由单元测试
 - LLMService 向后兼容
 """
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 
 class TestModelTier:

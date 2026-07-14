@@ -11,7 +11,7 @@ import logging
 import time
 import uuid
 
-from backend.core.alert_models import AlertChannel, AlertEvent, AlertSeverity, NotificationPriority
+from backend.core.alert_models import AlertEvent, AlertSeverity, NotificationPriority
 
 logger = logging.getLogger(__name__)
 

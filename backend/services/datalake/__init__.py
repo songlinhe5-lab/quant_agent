@@ -9,7 +9,7 @@ from backend.services.datalake.manifest import (
 )
 from backend.services.datalake.snapshot_publisher import PublishResult, SnapshotPublisher
 from backend.services.datalake.snapshot_reader import SnapshotReader
-from backend.services.datalake.snapshot_resolver import SnapshotResolver, SnapshotRef
+from backend.services.datalake.snapshot_resolver import SnapshotRef, SnapshotResolver
 from backend.services.datalake.snapshot_retention import SnapshotRetention
 
 __all__ = [

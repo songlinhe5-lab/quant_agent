@@ -16,9 +16,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 from backend.services.options_engine import (
-    bs_greeks,
     compute_option_chain_greeks,
-    implied_vol,
     iv_percentile,
     iv_rank,
     vol_smile_analysis,

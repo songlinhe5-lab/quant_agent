@@ -4,11 +4,9 @@ Jensen's Alpha + Beta 贡献分解 + 超额收益归因
 """
 
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import numpy as np
-
-from backend.core.logger import logger
 
 
 def calc_attribution(

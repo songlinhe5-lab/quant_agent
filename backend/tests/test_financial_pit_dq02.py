@@ -11,7 +11,7 @@ DQ-02: 财务数据 Point-in-Time — 单元测试
   6. 便捷函数
 """
 
-from datetime import date, datetime
+from datetime import date
 
 import pytest
 
@@ -25,7 +25,6 @@ from backend.services.financial_pit import (
     get_pit_store,
     is_data_available,
 )
-
 
 # ─────────────────────────────────────────
 #  Fixtures

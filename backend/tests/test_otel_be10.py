@@ -39,8 +39,8 @@ class TestOtelConfigDisabled:
         with patch("backend.core.otel_config.OTEL_ENABLED", False):
             with patch("backend.core.otel_config._OTEL_AVAILABLE", True):
                 with patch("backend.core.otel_config._initialized", False):
-                    from backend.core.otel_config import init_otel
                     from backend.core import otel_config as oc
+                    from backend.core.otel_config import init_otel
 
                     init_otel(app=None)
                     assert oc._initialized is False

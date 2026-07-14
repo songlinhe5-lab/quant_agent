@@ -5,7 +5,7 @@ RISK-01: 板块暴露分析
 
 import json
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from backend.core.logger import logger
 from backend.core.redis_client import redis_client

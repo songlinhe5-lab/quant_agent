@@ -12,7 +12,7 @@ TRADE-03 · 投资组合优化引擎
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -252,7 +252,6 @@ class PortfolioOptimizer:
 
     def _prepare_inputs(self, returns_df):
         """从 returns DataFrame 提取 mu, cov, symbols。"""
-        import pandas as pd
 
         symbols = list(returns_df.columns)
         mu = returns_df.mean().values * self.ANNUALIZATION_FACTOR

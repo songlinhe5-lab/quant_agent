@@ -20,10 +20,10 @@ from fastapi import (
 )
 from sqlalchemy.orm import Session
 
+from backend.app.market_data import market_data
 from backend.core import models
 from backend.core.database import get_db
 from backend.core.redis_client import redis_client
-from backend.app.market_data import market_data
 from backend.services.llm_service import llm_service
 from backend.services.market_engine import manager
 

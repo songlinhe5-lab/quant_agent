@@ -16,7 +16,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from backend.engine.contracts import Bar, OrderIntent, OrderUpdate, Position
 from backend.schemas.domain import OrderStatus

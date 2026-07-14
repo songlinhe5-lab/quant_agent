@@ -25,8 +25,6 @@ pytest-benchmark: K线聚合 / 技术指标 / 告警评估 / 指标评估器 bas
   - K线序列化 (1000 bars): < 5ms
 """
 
-import time
-from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
@@ -44,7 +42,6 @@ from backend.services.indicator_evaluator import (
     IndicatorEvaluator,
     extract_indicators_from_tech_data,
 )
-
 
 # ─── Fixtures ──────────────────────────────────────────────────────
 

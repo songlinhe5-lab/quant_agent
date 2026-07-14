@@ -14,14 +14,12 @@ from typing import Any, Dict, Optional
 import pandas as pd
 import pytest
 
-from backend.engine import Bar, OrderIntent, Strategy
+from backend.engine import Bar, Strategy
 from backend.engine.adapters.legacy import LegacyStrategyAdapter, wrap_legacy_strategy
 from backend.engine.clock import SimClock
-from backend.engine.context import BaseContext
-from backend.engine.contracts import Position, QuoteSnapshot
-from backend.engine.drivers.sim_broker import SimBroker, SimBrokerConfig
+from backend.engine.contracts import QuoteSnapshot
 from backend.engine.drivers.backtest import BacktestContext
-
+from backend.engine.drivers.sim_broker import SimBroker, SimBrokerConfig
 
 # ─────────────────────────────────────────────
 # 旧策略模拟
@@ -170,15 +168,14 @@ class TestLegacyStrategyAdapter:
         adapter = LegacyStrategyAdapter(legacy, params={"threshold": 100})
 
         # 创建模拟 context（使用 LiveContext + 完整 gateway 配置）
-        from backend.engine.drivers.live import LiveContext
         from backend.engine.clock import WallClock
-        from backend.engine.gateway import ExecutionGateway, GatewayMode, SimBrokerExecutor
+        from backend.engine.drivers.live import LiveContext
         from backend.engine.drivers.sim_broker import SimBroker, SimBrokerConfig
+        from backend.engine.gateway import ExecutionGateway, GatewayMode, SimBrokerExecutor
 
         clock = WallClock()
         broker = SimBroker(SimBrokerConfig(), initial_cash=100000.0)
         # 设置一个当前 bar 给 executor
-        from datetime import datetime, timezone
         bar_for_executor = Bar(
             symbol="TEST.001",
             dt=datetime.now(timezone.utc),

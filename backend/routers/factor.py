@@ -5,7 +5,7 @@ AI-02 (能力) · 因子挖掘 API 端点
 - POST /factor/search — 因子参数网格搜索
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from fastapi import APIRouter
 from pydantic import BaseModel

@@ -263,7 +263,7 @@ class LLMService:
             )
             if tier is not None:
                 self.router.record_success(tier)
-        except Exception as e:
+        except Exception:
             if tier is not None:
                 self.router.record_failure(tier)
             raise

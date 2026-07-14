@@ -8,8 +8,6 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from backend.core.logger import logger
-
 # 历史情景定义: 名称 → (开始日期, 结束日期, 描述, 基准冲击)
 HISTORICAL_SCENARIOS = {
     "2008_crash": {

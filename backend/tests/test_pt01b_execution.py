@@ -2,13 +2,11 @@
 PT-01b: 执行接线测试
 SimBroker paper 差异行为 + fill_callback + 组合 API
 """
-import pytest
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 from backend.engine.contracts import Bar, OrderIntent
 from backend.engine.drivers.sim_broker import SimBroker, SimBrokerConfig
-
 
 # ─────────────────────────────────────────
 #  SimBroker paper_mode 差异行为

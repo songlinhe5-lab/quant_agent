@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, Literal, Optional
 
 from backend.app.backtest_app import BacktestDataError, BacktestParams, load_backtest_frame
 from backend.app.walk_forward_app import (

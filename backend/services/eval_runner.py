@@ -6,7 +6,6 @@ AI-03 · Eval Runner
 
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 

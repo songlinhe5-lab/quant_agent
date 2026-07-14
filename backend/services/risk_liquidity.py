@@ -8,8 +8,6 @@ from typing import Any, Dict, List
 
 import numpy as np
 
-from backend.core.logger import logger
-
 
 class LiquidityAssessor:
     """流动性风险评估器"""

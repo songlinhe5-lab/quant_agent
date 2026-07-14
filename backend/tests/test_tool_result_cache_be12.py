@@ -6,7 +6,6 @@ Mock Redis Hash：命中 / 未命中 / 错误不缓存 / TTL 配置 / Registry �
 
 from __future__ import annotations
 
-import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest

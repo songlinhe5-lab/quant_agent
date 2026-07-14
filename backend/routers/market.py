@@ -9,10 +9,10 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
+from backend.app.market_data import market_data
 from backend.core.logger import logger
 from backend.core.metrics import WS_MESSAGES_SENT
 from backend.core.redis_client import redis_client
-from backend.app.market_data import market_data
 from backend.core.ticker_format import format_ticker
 from backend.core.ticker_format import format_yf_ticker as _to_yf_ticker
 from backend.services.data_source_router import data_source_router

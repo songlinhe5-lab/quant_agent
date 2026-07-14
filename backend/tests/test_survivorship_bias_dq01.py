@@ -14,7 +14,7 @@ DQ-01: 幸存者偏差处理 — 单元测试
 
 import csv
 import tempfile
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -23,11 +23,9 @@ from backend.services.survivorship_bias import (
     ListingStatus,
     SurvivorshipBiasTracker,
     TickerLifecycle,
-    UniverseSnapshot,
     get_survivorship_tracker,
     get_universe_for_backtest,
 )
-
 
 # ─────────────────────────────────────────
 #  Fixtures

@@ -4,15 +4,16 @@
 mock LLM, 测试 grid search 集成
 """
 
-import pytest
-import pandas as pd
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import numpy as np
-from unittest.mock import AsyncMock, patch, MagicMock
+import pandas as pd
+import pytest
 
 from backend.services.factor_miner import (
     FactorMiner,
-    FactorSuggestion,
     FactorSearchResult,
+    FactorSuggestion,
     factor_miner,
 )
 

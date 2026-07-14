@@ -17,7 +17,9 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
+from backend.app.market_data import market_data
 from backend.backtest import (
     run_batch_sandbox_backtest,
     run_dynamic_sandbox_backtest,
@@ -25,16 +27,14 @@ from backend.backtest import (
     run_monte_carlo_stress_test,
 )
 from backend.core import models
+from backend.core.database import get_db
 from backend.core.redis_client import redis_client
 from backend.core.utils import safe_truncate
 from backend.routers.auth import get_current_user
-from backend.app.market_data import market_data
+from backend.services import strategy_version_service
 from backend.services.kline_warehouse import kline_warehouse
 from backend.services.llm_service import llm_service
 from backend.services.strategy_parser import parse_strategy_parameters
-from backend.services import strategy_version_service
-from backend.core.database import get_db
-from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/strategy", tags=["Strategy Dev"])
 
@@ -850,10 +850,10 @@ async def run_strategy_sandbox(payload: RunSandboxPayload):
         )
 
         # BT-02：附加可复现性摘要（完整 SnapshotReader 装载仍属 DQ-03c）
+        from backend.core.database import SessionLocal
         from backend.engine.contracts import RunManifest
         from backend.services.backtest_report_service import is_reproducible
         from backend.services.datalake.snapshot_resolver import SnapshotResolveError, SnapshotResolver
-        from backend.core.database import SessionLocal
 
         code_hash = RunManifest.compute_code_hash(safe_code)
         data_mode = "unbound"
@@ -933,7 +933,6 @@ async def run_strategy_sandbox(payload: RunSandboxPayload):
         exc_type = "UnknownError"
         exc_message = ""
         try:
-            import sys
             exc_type, exc_value, exc_tb = sys.exc_info()
             if exc_tb:
                 # Find the last frame in user code
@@ -946,7 +945,7 @@ async def run_strategy_sandbox(payload: RunSandboxPayload):
             exc_message = str(exc_value) if exc_value else ""
         except Exception:
             pass
-        
+
         return {
             "status": "error",
             "error_code": "SANDBOX_RUNTIME_ERROR",

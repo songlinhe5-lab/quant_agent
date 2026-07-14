@@ -1,13 +1,12 @@
 """add strategy version tables
 
 Revision ID: strat03a
-Revises: 
+Revises:
 Create Date: 2025-01-13
 
 """
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = 'strat03a'
@@ -28,7 +27,7 @@ def upgrade() -> None:
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column('is_archived', sa.Boolean(), default=False),
     )
-    
+
     # Create strategy_versions table
     op.create_table(
         'strategy_versions',
@@ -43,7 +42,7 @@ def upgrade() -> None:
         sa.Column('parent_id', sa.String(64), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
-    
+
     # Create unique index for idempotency
     op.create_index(
         'idx_strategy_version_unique_hash',
@@ -51,7 +50,7 @@ def upgrade() -> None:
         ['strategy_id', 'code_hash'],
         unique=True
     )
-    
+
     # Create index for version sequence
     op.create_index(
         'idx_strategy_version_seq',

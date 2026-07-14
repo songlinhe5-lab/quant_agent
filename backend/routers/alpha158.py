@@ -5,12 +5,12 @@ AI-03 (能力) · Alpha158 因子 API 端点
 - GET /alpha158/factors — 列出可用因子
 """
 
-from typing import List, Optional
+from typing import List
 
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from backend.services.alpha158 import compute_factor, compute_all_factors, list_factors
+from backend.services.alpha158 import compute_all_factors, compute_factor, list_factors
 
 router = APIRouter(prefix="/alpha158", tags=["alpha158"])
 

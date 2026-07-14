@@ -13,7 +13,6 @@ from sqlalchemy import func
 from backend.core.database import SessionLocal
 from backend.core.logger import logger
 from backend.core.models import PerformanceLog
-from backend.core.redis_client import redis_client
 from backend.routers.auth import get_current_user
 
 _BEIJING_TZ = ZoneInfo("Asia/Shanghai")

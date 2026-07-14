@@ -161,6 +161,8 @@ def _load_backtest_engine():
     if need_divergence or need_sandbox:
         from backend.backtest import (  # noqa: WPS433
             DivergenceResonanceStrategy as _DRS,
+        )
+        from backend.backtest import (
             run_dynamic_sandbox_backtest as _rdsb,
         )
 

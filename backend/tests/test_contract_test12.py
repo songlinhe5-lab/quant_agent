@@ -20,7 +20,7 @@
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Set
+from typing import Dict, Set
 
 import pytest
 
@@ -28,11 +28,8 @@ from backend.schemas.domain import (
     AccountModel,
     ApiResponseModel,
     ClientHeartbeatModel,
-    IndicatorParams,
-    IndicatorType,
     KlineModel,
     KlinePeriod,
-    KlineSeriesModel,
     Market,
     OrderModel,
     OrderSide,
@@ -41,21 +38,14 @@ from backend.schemas.domain import (
     PaginatedResponseModel,
     PositionModel,
     PositionSide,
-    PositionStatus,
     QuoteModel,
-    ScreenerFilterModel,
     ScreenerResultModel,
     SecurityType,
-    StrategyModel,
     StrategyStatus,
-    SymbolModel,
-    TechIndicatorsModel,
-    TickModel,
     WSKlineMessageModel,
     WSQuoteMessageModel,
     WSSubscribeMessageModel,
 )
-
 
 # ─── 辅助工具 ──────────────────────────────────────────────────────
 

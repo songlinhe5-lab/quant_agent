@@ -1726,6 +1726,7 @@ class ScreenerService:
 
                     def _do_clean():
                         import time
+
                         from sqlalchemy import text
 
                         try:

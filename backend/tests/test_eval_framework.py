@@ -7,7 +7,6 @@ AI-03 · Eval 评估框架单元测试
 - EvalRunner 流程
 """
 
-import pytest
 
 
 class TestEvalMetricsNumericAccuracy:

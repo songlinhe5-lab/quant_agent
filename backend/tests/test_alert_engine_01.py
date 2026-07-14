@@ -11,22 +11,17 @@ ALERT-01: 告警引擎 Worker — 单元测试
   6. 引擎统计
 """
 
-import asyncio
-import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from backend.core.alert_models import (
     AlertChannel,
-    AlertEvent,
     AlertRule,
     AlertRuleType,
-    AlertSeverity,
     evaluate_price_rule,
 )
 from backend.workers.alert_engine import AlertEngine
-
 
 # ─────────────────────────────────────────
 #  Fixtures

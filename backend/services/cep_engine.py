@@ -8,14 +8,12 @@ QUANT-04: 盘中实时 CEP (Complex Event Processing) 异动筛选引擎
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import time
 import uuid
 from collections import defaultdict, deque
-from typing import Any, Deque, Dict, List, Optional, Set
+from typing import Any, Deque, Dict, List, Optional
 
-import numpy as np
 import pandas as pd
 from pydantic import BaseModel, Field
 
@@ -143,7 +141,7 @@ class CEPEngine:
         高频场景下，同一根 bar 周期内只保留最新价 (OHLC 聚合)。
         """
         ts = timestamp or time.time()
-        buf = self._bar_buffers[ticker]
+        self._bar_buffers[ticker]
 
         # 简化处理: 每次 quote 直接作为一根 bar 追加
         # (对于日内 tick 级数据，可在此实现 bar 聚合逻辑)
@@ -227,8 +225,8 @@ class CEPEngine:
         生产环境由 worker.py 启动。
         """
         try:
-            from backend.core.redis_client import redis_client
             from backend.core.proto.market_pb2 import QuoteData  # type: ignore
+            from backend.core.redis_client import redis_client
 
             pubsub = redis_client.pubsub()
             await pubsub.subscribe("quant:quotes:stream")

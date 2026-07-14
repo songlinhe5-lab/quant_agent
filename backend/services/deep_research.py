@@ -7,10 +7,9 @@ AI-01 (能力) · Multi-Agent 深度研报流水线
 3. ChartDeliveryAgent — 图表交付: 生成最终 Markdown 研报 + ECharts 配置
 """
 
-import json
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from backend.services.llm_service import ModelTier, llm_service
 
@@ -222,7 +221,7 @@ class DeepResearchPipeline:
 
         # Stage 3: 图表交付
         report = await self.delivery_agent.run(topic, symbols, findings, deep_analysis)
-        logger.info(f"[DeepResearch] Stage 3 完成: 研报生成")
+        logger.info("[DeepResearch] Stage 3 完成: 研报生成")
 
         return report
 

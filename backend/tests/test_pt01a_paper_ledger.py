@@ -1,18 +1,18 @@
 """
 PT-01a: 纸面组合账本服务测试
 """
+from unittest.mock import MagicMock
+
 import pytest
-from datetime import datetime
-from unittest.mock import MagicMock, call
 from sqlalchemy.orm import Session
 
-from backend.services.paper_ledger_service import PaperLedgerService
 from backend.core.models import (
-    PaperPortfolio,
     PaperFill,
-    PaperPosition,
     PaperNavDaily,
+    PaperPortfolio,
+    PaperPosition,
 )
+from backend.services.paper_ledger_service import PaperLedgerService
 
 
 @pytest.fixture

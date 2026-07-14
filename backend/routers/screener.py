@@ -10,11 +10,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from backend.app.market_data import market_data
 from backend.core import models
 from backend.core.database import get_db
 from backend.core.redis_client import redis_client
 from backend.routers.auth import get_current_user
-from backend.app.market_data import market_data
 from backend.services.screener_service import screener_service
 
 # 💡 将 SUGGESTIONS 移至模块级别，方便测试用例复用
@@ -819,8 +819,8 @@ class PortfolioBacktestRequest(BaseModel):
 async def portfolio_backtest(req: PortfolioBacktestRequest):
     """QUANT-02: 选股结果一键组合回测 — 等权组合 + Tear Sheet"""
     try:
-        from backend.services.portfolio_backtest import run_portfolio_backtest
         from backend.services.kline_warehouse import kline_warehouse
+        from backend.services.portfolio_backtest import run_portfolio_backtest
 
         period_days = {"1mo": 22, "3mo": 65, "6mo": 130, "1y": 252, "2y": 504, "5y": 1260}
         num_days = period_days.get(req.period, 252)
