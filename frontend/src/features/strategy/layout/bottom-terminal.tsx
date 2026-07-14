@@ -65,7 +65,7 @@ export function BottomTerminal() {
               } else if (data.status === 'error') {
                 store.updateMessage(assistantMsgId, { content: `❌ 修复失败: ${data.message}`, status: 'error' })
               }
-            } catch (e) { }
+            } catch (e) { /* ignore */ }
           }
         }
       }

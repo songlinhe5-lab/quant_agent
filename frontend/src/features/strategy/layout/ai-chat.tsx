@@ -101,7 +101,7 @@ export function AIChat() {
               } else if (data.status === 'error') {
                 updateMessage(assistantMsgId, { content: `生成失败: ${data.message}`, status: 'error' })
               }
-            } catch (e) { }
+            } catch (e) { /* ignore */ }
           }
         }
       }

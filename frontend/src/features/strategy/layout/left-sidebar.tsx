@@ -18,7 +18,7 @@ export function LeftSidebar() {
     try {
       const f = localStorage.getItem('quant_strategy_favorites')
       if (f) store.setFavorites(JSON.parse(f))
-    } catch (e) {}
+    } catch (e) { /* ignore */ }
   }, [])
 
   const handleToggleFavorite = (name: string, e: React.MouseEvent) => {
