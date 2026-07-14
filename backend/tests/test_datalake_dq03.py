@@ -14,6 +14,12 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+# 检查 pyarrow 是否可用，若不可用则跳过整个模块
+try:
+    import pyarrow  # noqa: F401
+except ImportError:
+    pytest.skip("pyarrow 未安装，跳过数据湖测试", allow_module_level=True)
+
 from backend.core.database import Base
 from backend.core.datalake_models import DataSnapshot
 from backend.services.datalake.manifest import validate_manifest
