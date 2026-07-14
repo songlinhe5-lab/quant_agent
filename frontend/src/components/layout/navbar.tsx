@@ -52,7 +52,7 @@ function TickerTape() {
         if (isMounted && res.data?.status === 'success') {
           setAssets(res.data.data.macroAssets || []);
         }
-      } catch (e) { /* ignore network error */ }
+      } catch { /* ignore network error */ }
     };
     fetchAssets();
     const iv = setInterval(fetchAssets, 60000); // 1分钟轮询，紧跟后台 Redis 缓存节奏

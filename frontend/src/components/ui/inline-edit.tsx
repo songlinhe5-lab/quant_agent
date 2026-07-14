@@ -43,7 +43,7 @@ export function InlineEdit({
       try {
         const len = inputRef.current.value.length
         inputRef.current.setSelectionRange(len, len)
-      } catch (e) {
+      } catch {
         // type="number" 在部分浏览器下不支持 setSelectionRange，利用 focus() 兜底即可
       }
     }

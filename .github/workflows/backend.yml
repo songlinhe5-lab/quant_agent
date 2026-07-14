@@ -3,6 +3,13 @@ name: Backend CI
 on:
   push:
     branches: [ main, develop ]
+    paths:
+      - 'backend/**'
+      - 'hermes_agent/**'
+      - 'shared/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/backend.yml'
   workflow_dispatch:
     inputs:
       rollback_sha:
