@@ -3,6 +3,8 @@
  * FE-05: level 过滤 + 生产环境上报 /api/v1/logs/frontend
  */
 
+import { API_BASE_URL } from './constants'
+
 // 日志级别
 export enum LogLevel {
   DEBUG = 0,
@@ -38,7 +40,7 @@ const DEFAULT_CONFIG: LoggerConfig = {
   minLevel: LogLevel.DEBUG,
   enableConsole: true,
   enableRemote: import.meta.env.PROD,
-  remoteEndpoint: '/api/v1/logs/frontend',
+  remoteEndpoint: `${API_BASE_URL}/logs/frontend`,
   batchSize: 20,
   flushInterval: 5000,
 }
