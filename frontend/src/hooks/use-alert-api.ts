@@ -196,7 +196,22 @@ export function useAlertWebSocket(
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1'
-    const wsUrl = `${protocol}//${window.location.host}${baseUrl}/alert/ws`
+    
+    // 处理 VITE_API_BASE_URL 可能是完整 URL 或路径的情况
+    let wsPath: string
+    if (baseUrl.startsWith('http://') || baseUrl.startsWith('https://')) {
+      // 完整 URL，提取路径部分
+      try {
+        const url = new URL(baseUrl)
+        wsPath = url.pathname
+      } catch {
+        wsPath = '/api/v1'
+      }
+    } else {
+      wsPath = baseUrl
+    }
+    
+    const wsUrl = `${protocol}//${window.location.host}${wsPath}/alert/ws`
 
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
