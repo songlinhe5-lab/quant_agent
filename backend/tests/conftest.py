@@ -35,7 +35,9 @@ _orig_trfh_init = logging.handlers.TimedRotatingFileHandler.__init__
 def _safe_trfh_init(self, *args, **kwargs):
     try:
         _orig_trfh_init(self, *args, **kwargs)
-    except PermissionError:
+    except (PermissionError, FileExistsError):
+        # PermissionError: macOS TCC/sandbox 禁止写入
+        # FileExistsError: pytest-xdist 并行测试时多个 worker 同时创建目录
         logging.StreamHandler.__init__(self)
 
 
