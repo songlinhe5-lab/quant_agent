@@ -107,6 +107,9 @@ services:
       - AKSHARE_MODE=cache
       - COLLECTOR_AKSHARE=false
       - COLLECTOR_YFINANCE=false
+      # 💡 Futu OpenD 在宿主机运行，容器通过 host.docker.internal 访问
+      # 避免使用 IP 地址触发跨网络加密，host.docker.internal 被视为本地连接
+      - FUTU_HOST=host.docker.internal
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')\" || exit 1"]
       interval: 30s
