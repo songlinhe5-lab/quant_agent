@@ -85,9 +85,10 @@ jobs:
     name: Build & Push Image
     runs-on: ubuntu-latest
     needs: [test]
+    # 💡 develop 和 main push 时都构建镜像，方便提前验证
     if: |
       always() &&
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') &&
+      github.event_name == 'push' &&
       (needs.test.result == 'success' || needs.test.result == 'skipped')
     outputs:
       image_tag: ${{ steps.meta.outputs.version }}
