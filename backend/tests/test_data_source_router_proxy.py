@@ -46,17 +46,17 @@ class TestProxyYFinance:
             data = response.json()["data"]
             assert data["success"] is True
 
-    @patch("backend.services.yfinance_service.yf_service")
-    def test_proxy_yfinance_history(self, mock_yf):
-        mock_yf.fetch_yf_data = AsyncMock(return_value=(True, {"price": 165.0}, ""))
+    def test_proxy_yfinance_history(self):
+        from backend.app.market_data import market_data
 
-        response = client.post(
-            "/api/v1/data-source/proxy/yfinance",
-            json={"ticker": "AAPL", "fetch_type": "history", "kwargs": {"period": "1d"}},
-        )
-        assert response.status_code == 200
-        data = response.json()["data"]
-        assert data["success"] is True
+        with patch.object(market_data._yf, "fetch_yf_data", new=AsyncMock(return_value=(True, {"price": 165.0}, ""))):
+            response = client.post(
+                "/api/v1/data-source/proxy/yfinance",
+                json={"ticker": "AAPL", "fetch_type": "history", "kwargs": {"period": "1d"}},
+            )
+            assert response.status_code == 200
+            data = response.json()["data"]
+            assert data["success"] is True
 
     @patch("backend.services.yfinance_service.yf_service")
     def test_proxy_yfinance_tech(self, mock_yf):
@@ -80,15 +80,17 @@ class TestProxyYFinance:
 
 
 class TestProxyAKShare:
-    @patch("backend.services.akshare_service.akshare_service")
-    def test_proxy_akshare_southbound(self, mock_ak):
-        mock_ak.get_southbound_flow = AsyncMock(return_value={"status": "success", "data": {}})
+    def test_proxy_akshare_southbound(self):
+        from backend.app.market_data import market_data
 
-        response = client.post("/api/v1/data-source/proxy/akshare", json={"action": "southbound"})
-        assert response.status_code == 200
-        data = response.json()["data"]
-        assert "status" in data
-        assert data["status"] == "success"
+        with patch.object(
+            market_data._ak, "get_southbound_flow", new=AsyncMock(return_value={"status": "success", "data": {}})
+        ):
+            response = client.post("/api/v1/data-source/proxy/akshare", json={"action": "southbound"})
+            assert response.status_code == 200
+            data = response.json()["data"]
+            assert "status" in data
+            assert data["status"] == "success"
 
     @patch("backend.services.akshare_service.akshare_service")
     def test_proxy_akshare_hsgt_holders(self, mock_ak):

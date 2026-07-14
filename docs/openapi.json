@@ -304,6 +304,7 @@
           "Market & Portfolio"
         ],
         "summary": "期权链",
+        "description": "期权链：经 MarketDataGateway（Futu → YFinance 降级）。",
         "operationId": "get_option_chain_api_v1_market_option_chain_get",
         "parameters": [
           {
@@ -358,8 +359,7 @@
               }
             }
           }
-        },
-        "description": "期权链\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
+        }
       }
     },
     "/api/v1/market/fund-flow": {
@@ -2089,14 +2089,238 @@
         "tags": [
           "Backtesting Engine"
         ],
-        "summary": "Run Backtest",
-        "description": "接收前端触发指令，拉取历史数据并运行高频回测（DQ-03c：弃用 parquet_db）",
-        "operationId": "run_backtest_api_v1_backtest_run_post",
+        "summary": "Run Backtest Endpoint",
+        "description": "接收前端触发指令，拉取历史数据并运行高频回测（编排在 backtest_app）。",
+        "operationId": "run_backtest_endpoint_api_v1_backtest_run_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/BacktestRequest"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtest/walk-forward": {
+      "post": {
+        "tags": [
+          "Backtesting Engine"
+        ],
+        "summary": "Walk Forward Endpoint",
+        "description": "BT-03：滚动窗口训练/验证 + 性能漂移检测（VectorBT 快路径）。",
+        "operationId": "walk_forward_endpoint_api_v1_backtest_walk_forward_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WalkForwardRequest"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtest/monte-carlo": {
+      "post": {
+        "tags": [
+          "Backtesting Engine"
+        ],
+        "summary": "Monte Carlo Endpoint",
+        "description": "BT-04：交易序列重排/自助抽样，输出 5/50/95 分位曲线与最坏回撤。",
+        "operationId": "monte_carlo_endpoint_api_v1_backtest_monte_carlo_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MonteCarloRequest"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtest/grid-search": {
+      "post": {
+        "tags": [
+          "Backtesting Engine"
+        ],
+        "summary": "Grid Search Endpoint",
+        "description": "BT-05：参数网格并发回测 + 夏普热力图（ECharts heatmap 数据）。",
+        "operationId": "grid_search_endpoint_api_v1_backtest_grid_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GridSearchRequest"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtest/overfit": {
+      "post": {
+        "tags": [
+          "Backtesting Engine"
+        ],
+        "summary": "Overfit Endpoint",
+        "description": "BT-06：Deflated Sharpe Ratio + 相邻参数格性能悬崖检测。",
+        "operationId": "overfit_endpoint_api_v1_backtest_overfit_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OverfitRequest"
               },
               "example": {
                 "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
@@ -3478,6 +3702,313 @@
         }
       }
     },
+    "/api/v1/screener/cross-section": {
+      "post": {
+        "tags": [
+          "Screener"
+        ],
+        "summary": "Cross Sectional Screen",
+        "description": "QUANT-03: 复杂横截面选股 — 基于 Pandas 内存引擎的跨指标表达式筛选",
+        "operationId": "cross_sectional_screen_api_v1_screener_cross_section_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CrossSectionRequest"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/screener/portfolio-backtest": {
+      "post": {
+        "tags": [
+          "Screener"
+        ],
+        "summary": "Portfolio Backtest",
+        "description": "QUANT-02: 选股结果一键组合回测 — 等权组合 + Tear Sheet",
+        "operationId": "portfolio_backtest_api_v1_screener_portfolio_backtest_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortfolioBacktestRequest"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/screener/cep/rules": {
+      "get": {
+        "tags": [
+          "Screener"
+        ],
+        "summary": "List Cep Rules",
+        "description": "QUANT-04: 列出所有 CEP 规则",
+        "operationId": "list_cep_rules_api_v1_screener_cep_rules_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Screener"
+        ],
+        "summary": "Create Cep Rule",
+        "description": "QUANT-04: 创建 CEP 异动规则",
+        "operationId": "create_cep_rule_api_v1_screener_cep_rules_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CEPRuleCreate"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/screener/cep/rules/{rule_id}": {
+      "delete": {
+        "tags": [
+          "Screener"
+        ],
+        "summary": "Delete Cep Rule",
+        "description": "QUANT-04: 删除 CEP 规则",
+        "operationId": "delete_cep_rule_api_v1_screener_cep_rules__rule_id__delete",
+        "parameters": [
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rule Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/screener/cep/matches": {
+      "get": {
+        "tags": [
+          "Screener"
+        ],
+        "summary": "Cep Matches Sse",
+        "description": "QUANT-04: 获取最近的 CEP 匹配事件 (轮询模式)",
+        "operationId": "cep_matches_sse_api_v1_screener_cep_matches_get",
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/search/web": {
       "post": {
         "tags": [
@@ -3763,7 +4294,7 @@
           "Strategy Dev"
         ],
         "summary": "Save Strategy",
-        "description": "保存策略源码到本地文件系统（草稿/工作区）",
+        "description": "保存策略源码到本地文件系统（草稿/工作区）+ 创建版本记录 (STRAT-03a)",
         "operationId": "save_strategy_api_v1_strategy_save_post",
         "requestBody": {
           "content": {
@@ -3832,6 +4363,193 @@
                   "msg": "ok",
                   "data": {},
                   "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/strategy/{name}/versions": {
+      "get": {
+        "tags": [
+          "Strategy Dev"
+        ],
+        "summary": "Get Strategy Versions",
+        "description": "获取策略版本时间线 (STRAT-03a)",
+        "operationId": "get_strategy_versions_api_v1_strategy__name__versions_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/strategy/versions/{version_id}": {
+      "get": {
+        "tags": [
+          "Strategy Dev"
+        ],
+        "summary": "Get Strategy Version",
+        "description": "获取单个版本的完整信息（含代码）(STRAT-03a)",
+        "operationId": "get_strategy_version_api_v1_strategy_versions__version_id__get",
+        "parameters": [
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/strategy/{name}/restore": {
+      "post": {
+        "tags": [
+          "Strategy Dev"
+        ],
+        "summary": "Restore Strategy Version",
+        "description": "恢复指定版本，创建新的 restore 版本 (STRAT-03a)",
+        "operationId": "restore_strategy_version_api_v1_strategy__name__restore_post",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
                 }
               }
             }
@@ -4881,13 +5599,80 @@
         }
       }
     },
+    "/api/v1/oms/algo/analytics/{algo_id}": {
+      "post": {
+        "tags": [
+          "OMS & Live Bots"
+        ],
+        "summary": "Get Algo Analytics",
+        "description": "TRADE-02: 算法执行分析报告。\n\n返回滑点、VWAP 偏离、参与率、Implementation Shortfall 等指标。",
+        "operationId": "get_algo_analytics_api_v1_oms_algo_analytics__algo_id__post",
+        "parameters": [
+          {
+            "name": "algo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Algo Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlgoAnalyticsReq"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/oms/mode": {
       "get": {
         "tags": [
           "OMS & Live Bots"
         ],
         "summary": "Get Trading Mode",
-        "description": "OMS-11: 获取当前交易模式 (SANDBOX/LIVE) — 支持热切换",
+        "description": "OMS-11 / FE-PROD-02: 获取当前交易模式 (SANDBOX/PAPER/LIVE)",
         "operationId": "get_trading_mode_api_v1_oms_mode_get",
         "responses": {
           "200": {
@@ -4913,7 +5698,7 @@
           "OMS & Live Bots"
         ],
         "summary": "Switch Trading Mode",
-        "description": "OMS-11: 热切换交易模式 (SANDBOX/LIVE)\n写入 Redis 后立即生效，所有交易逻辑实时读取新模式",
+        "description": "OMS-11 / FE-PROD-02: 热切换交易模式 (SANDBOX/PAPER/LIVE)\n写入 Redis 后立即生效；非 LIVE 均不走真实资金（PAPER = 纸面账本语义）。",
         "operationId": "switch_trading_mode_api_v1_oms_mode_switch_post",
         "requestBody": {
           "content": {
@@ -5077,7 +5862,7 @@
           "Client APM"
         ],
         "summary": "客户端 APM 心跳",
-        "description": "接收客户端 APM 心跳并写入 PostgreSQL。\n\n客户端应每 30 秒上报一次心跳，Dashboard 可据此展示：\n- 在线设备数\n- 平均 FPS\n- 平均内存占用\n- WebSocket 延迟分布",
+        "description": "接收客户端 APM 心跳并写入 PostgreSQL。\n\n客户端应每 30 秒上报一次心跳，Dashboard 可据此展示：\n- 在线设备数 / 平均 FPS / 内存 / WS 延迟\n- Web 端额外：LCP / CLS / INP / TTFB（OBS-03）",
         "operationId": "receive_heartbeat_api_v1_client_heartbeat_post",
         "requestBody": {
           "content": {
@@ -5133,7 +5918,7 @@
           "Client APM"
         ],
         "summary": "Heartbeat Stats",
-        "description": "获取最近 N 分钟的客户端 APM 统计摘要。\n\n返回各平台的平均 FPS、内存、WS 延迟和活跃设备数。",
+        "description": "获取最近 N 分钟的客户端 APM 统计摘要。\n\n返回各平台的平均 FPS、内存、WS 延迟、Web Vitals 和活跃设备数。",
         "operationId": "heartbeat_stats_api_v1_client_heartbeat_stats_get",
         "parameters": [
           {
@@ -5381,7 +6166,7 @@
           "system"
         ],
         "summary": "Apm Dashboard",
-        "description": "一次请求返回 APM 面板所需的全部数据：\n- health: 组件健康状态\n- cluster: 集群拓扑\n- metrics: Prometheus 指标快照\n- performance_stats: 24h 性能统计",
+        "description": "一次请求返回 APM 面板所需的全部数据：\n- health / cluster / metrics / performance_stats",
         "operationId": "apm_dashboard_api_v1_system_apm_dashboard_get",
         "responses": {
           "200": {
@@ -5412,7 +6197,7 @@
           "Risk"
         ],
         "summary": "Get Risk Dashboard",
-        "description": "风控面板全量数据\n包含: KPI / 敞口 / 风险雷达 / 因子监控 / NAV 快照 / 持仓明细\n- days=1: 从 Redis 读取最近 24h 净值快照\n- days>1: 从数据库读取历史净值快照",
+        "description": "风控面板全量数据\n包含: KPI / 敞口 / 风险雷达 / 因子监控 / NAV 快照 / 持仓明细 / 相关性矩阵",
         "operationId": "get_risk_dashboard_api_v1_risk_dashboard_get",
         "parameters": [
           {
@@ -5471,7 +6256,7 @@
           "Risk"
         ],
         "summary": "Get Positions Breakdown",
-        "description": "持仓明细 + 个股风控指标\n返回每只持仓的详细信息和独立风控指标",
+        "description": "持仓明细 + 个股风控指标",
         "operationId": "get_positions_breakdown_api_v1_risk_positions_breakdown_get",
         "responses": {
           "200": {
@@ -5484,6 +6269,920 @@
                   "msg": "ok",
                   "data": {},
                   "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/risk/sector-exposure": {
+      "get": {
+        "tags": [
+          "Risk"
+        ],
+        "summary": "Get Sector Exposure",
+        "description": "RISK-01: 板块暴露分析 (GICS 聚合)",
+        "operationId": "get_sector_exposure_api_v1_risk_sector_exposure_get",
+        "parameters": [
+          {
+            "name": "market",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "市场 (HK/US)",
+              "default": "HK",
+              "title": "Market"
+            },
+            "description": "市场 (HK/US)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/risk/correlation": {
+      "get": {
+        "tags": [
+          "Risk"
+        ],
+        "summary": "Get Correlation",
+        "description": "RISK-03: 持仓间 60 日收益率相关系数矩阵",
+        "operationId": "get_correlation_api_v1_risk_correlation_get",
+        "parameters": [
+          {
+            "name": "market",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "市场 (HK/US)",
+              "default": "HK",
+              "title": "Market"
+            },
+            "description": "市场 (HK/US)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/risk/cvar": {
+      "get": {
+        "tags": [
+          "Risk"
+        ],
+        "summary": "Get Cvar",
+        "description": "RISK-05: CVaR (Expected Shortfall) + 按持仓分解贡献度",
+        "operationId": "get_cvar_api_v1_risk_cvar_get",
+        "parameters": [
+          {
+            "name": "market",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "市场 (HK/US)",
+              "default": "HK",
+              "title": "Market"
+            },
+            "description": "市场 (HK/US)"
+          },
+          {
+            "name": "alpha",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "exclusiveMaximum": 1,
+              "exclusiveMinimum": 0,
+              "description": "显著性水平",
+              "default": 0.05,
+              "title": "Alpha"
+            },
+            "description": "显著性水平"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/risk/liquidity": {
+      "get": {
+        "tags": [
+          "Risk"
+        ],
+        "summary": "Get Liquidity",
+        "description": "RISK-06: 流动性风险评估 (覆盖率 + 评分 + 大额预警)",
+        "operationId": "get_liquidity_api_v1_risk_liquidity_get",
+        "parameters": [
+          {
+            "name": "market",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "市场 (HK/US)",
+              "default": "HK",
+              "title": "Market"
+            },
+            "description": "市场 (HK/US)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/risk/attribution": {
+      "get": {
+        "tags": [
+          "Risk"
+        ],
+        "summary": "Get Attribution",
+        "description": "RISK-02: Jensen's Alpha 归因 (Market 因子)",
+        "operationId": "get_attribution_api_v1_risk_attribution_get",
+        "parameters": [
+          {
+            "name": "market",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "市场 (HK/US)",
+              "default": "HK",
+              "title": "Market"
+            },
+            "description": "市场 (HK/US)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/risk/stress-test": {
+      "post": {
+        "tags": [
+          "Risk"
+        ],
+        "summary": "Post Stress Test",
+        "description": "RISK-04: 压力测试 (历史情景 / 假设情景)",
+        "operationId": "post_stress_test_api_v1_risk_stress_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StressTestRequest"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/risk/stress-test/scenarios": {
+      "get": {
+        "tags": [
+          "Risk"
+        ],
+        "summary": "Get Stress Scenarios",
+        "description": "列出所有可用压力测试情景",
+        "operationId": "get_stress_scenarios_api_v1_risk_stress_test_scenarios_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/paper/portfolios": {
+      "post": {
+        "tags": [
+          "Paper Trading"
+        ],
+        "summary": "Create Portfolio",
+        "description": "创建纸面组合",
+        "operationId": "create_portfolio_api_v1_paper_portfolios_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePortfolioPayload"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Paper Trading"
+        ],
+        "summary": "List Portfolios",
+        "description": "列出纸面组合",
+        "operationId": "list_portfolios_api_v1_paper_portfolios_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/paper/portfolios/{portfolio_id}": {
+      "get": {
+        "tags": [
+          "Paper Trading"
+        ],
+        "summary": "Get Portfolio",
+        "description": "组合详情",
+        "operationId": "get_portfolio_api_v1_paper_portfolios__portfolio_id__get",
+        "parameters": [
+          {
+            "name": "portfolio_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Portfolio Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/paper/portfolios/{portfolio_id}/fills": {
+      "get": {
+        "tags": [
+          "Paper Trading"
+        ],
+        "summary": "Get Fills",
+        "description": "成交流水分页",
+        "operationId": "get_fills_api_v1_paper_portfolios__portfolio_id__fills_get",
+        "parameters": [
+          {
+            "name": "portfolio_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Portfolio Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/paper/portfolios/{portfolio_id}/pause": {
+      "post": {
+        "tags": [
+          "Paper Trading"
+        ],
+        "summary": "Pause Portfolio",
+        "description": "暂停组合",
+        "operationId": "pause_portfolio_api_v1_paper_portfolios__portfolio_id__pause_post",
+        "parameters": [
+          {
+            "name": "portfolio_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Portfolio Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/paper/portfolios/{portfolio_id}/resume": {
+      "post": {
+        "tags": [
+          "Paper Trading"
+        ],
+        "summary": "Resume Portfolio",
+        "description": "恢复组合",
+        "operationId": "resume_portfolio_api_v1_paper_portfolios__portfolio_id__resume_post",
+        "parameters": [
+          {
+            "name": "portfolio_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Portfolio Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/paper/portfolios/{portfolio_id}/close": {
+      "post": {
+        "tags": [
+          "Paper Trading"
+        ],
+        "summary": "Close Portfolio",
+        "description": "关闭组合",
+        "operationId": "close_portfolio_api_v1_paper_portfolios__portfolio_id__close_post",
+        "parameters": [
+          {
+            "name": "portfolio_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Portfolio Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/paper/portfolios/{portfolio_id}/nav": {
+      "get": {
+        "tags": [
+          "Paper Trading"
+        ],
+        "summary": "Get Nav Series",
+        "description": "日终净值序列",
+        "operationId": "get_nav_series_api_v1_paper_portfolios__portfolio_id__nav_get",
+        "parameters": [
+          {
+            "name": "portfolio_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Portfolio Id"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 30,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/paper/portfolios/{portfolio_id}/compare": {
+      "get": {
+        "tags": [
+          "Paper Trading"
+        ],
+        "summary": "Get Compare",
+        "description": "对比数据：纸面 vs 回测基准\n返回: TE / 累计偏离 / 信号一致率 / 归一化双曲线数据",
+        "operationId": "get_compare_api_v1_paper_portfolios__portfolio_id__compare_get",
+        "parameters": [
+          {
+            "name": "portfolio_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Portfolio Id"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 30,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
                 }
               }
             }
@@ -6010,7 +7709,7 @@
           "Alert Center"
         ],
         "summary": "List Events",
-        "description": "查询告警事件历史",
+        "description": "查询告警事件历史（支持 since 参数用于 WS 断连补拉）",
         "operationId": "list_events_api_v1_alert_events_get",
         "parameters": [
           {
@@ -6044,6 +7743,24 @@
               ],
               "title": "Severity"
             }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "返回 triggered_at > since 的事件（WS 断连补拉）",
+              "title": "Since"
+            },
+            "description": "返回 triggered_at > since 的事件（WS 断连补拉）"
           },
           {
             "name": "limit",
@@ -6161,7 +7878,7 @@
           "Alert Center"
         ],
         "summary": "Engine Status",
-        "description": "查询告警引擎状态",
+        "description": "查询告警引擎状态（含 dispatcher health）",
         "operationId": "engine_status_api_v1_alert_engine_status_get",
         "responses": {
           "200": {
@@ -6176,6 +7893,818 @@
                   "msg": "ok",
                   "data": {},
                   "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/alert/events/{event_id}/deliveries": {
+      "get": {
+        "tags": [
+          "Alert Center"
+        ],
+        "summary": "Get Event Deliveries",
+        "description": "查询事件的投递记录（运维可观测 + 前端投递详情）",
+        "operationId": "get_event_deliveries_api_v1_alert_events__event_id__deliveries_get",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeliveryRecordResponse"
+                  },
+                  "title": "Response Get Event Deliveries Api V1 Alert Events  Event Id  Deliveries Get"
+                },
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/eval/run": {
+      "post": {
+        "tags": [
+          "eval"
+        ],
+        "summary": "Run Eval",
+        "description": "触发全量 eval 运行",
+        "operationId": "run_eval_api_v1_eval_run_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/eval/results": {
+      "get": {
+        "tags": [
+          "eval"
+        ],
+        "summary": "Get Eval Results",
+        "description": "获取最新 eval 报告",
+        "operationId": "get_eval_results_api_v1_eval_results_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/eval/dataset": {
+      "get": {
+        "tags": [
+          "eval"
+        ],
+        "summary": "Get Dataset Summary",
+        "description": "查看 golden dataset 摘要",
+        "operationId": "get_dataset_summary_api_v1_eval_dataset_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/research/deep-report": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Generate Deep Report",
+        "description": "触发深度研报生成 (SSE 流式返回进度)",
+        "operationId": "generate_deep_report_api_v1_research_deep_report_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeepReportRequest"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/factor/suggest": {
+      "post": {
+        "tags": [
+          "factor"
+        ],
+        "summary": "Suggest Factors",
+        "description": "LLM 建议因子",
+        "operationId": "suggest_factors_api_v1_factor_suggest_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactorSuggestRequest"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/factor/search": {
+      "post": {
+        "tags": [
+          "factor"
+        ],
+        "summary": "Search Factors",
+        "description": "因子参数网格搜索",
+        "operationId": "search_factors_api_v1_factor_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactorSearchRequest"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/alpha158/factors": {
+      "get": {
+        "tags": [
+          "alpha158"
+        ],
+        "summary": "Get Factors",
+        "description": "列出所有可用因子",
+        "operationId": "get_factors_api_v1_alpha158_factors_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/alpha158/compute": {
+      "post": {
+        "tags": [
+          "alpha158"
+        ],
+        "summary": "Compute Factors",
+        "description": "计算指定因子。\n\nBody:\n```json\n{\n    \"factor_names\": [\"rsi_14\", \"macd_dif\", \"sma_20\"],\n    \"kline_data\": {\"open\": [...], \"high\": [...], \"low\": [...], \"close\": [...], \"volume\": [...]}\n}\n```",
+        "operationId": "compute_factors_api_v1_alpha158_compute_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Request"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/options/greeks/{ticker}": {
+      "get": {
+        "tags": [
+          "options"
+        ],
+        "summary": "Get Option Greeks",
+        "description": "获取指定期权标的 Greeks",
+        "operationId": "get_option_greeks_api_v1_options_greeks__ticker__get",
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ticker"
+            }
+          },
+          {
+            "name": "expiry",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "到期日 (YYYY-MM-DD)",
+              "title": "Expiry"
+            },
+            "description": "到期日 (YYYY-MM-DD)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/options/screen": {
+      "post": {
+        "tags": [
+          "options"
+        ],
+        "summary": "Screen Options",
+        "description": "期权高级筛选",
+        "operationId": "screen_options_api_v1_options_screen_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScreenRequest"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/options/vol-smile/{ticker}": {
+      "get": {
+        "tags": [
+          "options"
+        ],
+        "summary": "Get Vol Smile",
+        "description": "波动率微笑曲线分析",
+        "operationId": "get_vol_smile_api_v1_options_vol_smile__ticker__get",
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ticker"
+            }
+          },
+          {
+            "name": "expiry",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "到期日",
+              "title": "Expiry"
+            },
+            "description": "到期日"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/options/iv-rank/{ticker}": {
+      "get": {
+        "tags": [
+          "options"
+        ],
+        "summary": "Get Iv Rank",
+        "description": "IV Rank 和 IV Percentile 分析",
+        "operationId": "get_iv_rank_api_v1_options_iv_rank__ticker__get",
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ticker"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/portfolio/optimize": {
+      "post": {
+        "tags": [
+          "Portfolio Optimization"
+        ],
+        "summary": "Optimize Portfolio",
+        "description": "TRADE-03: 组合优化。\n\n支持模型: markowitz / risk_parity / max_sharpe / equal_weight",
+        "operationId": "optimize_portfolio_api_v1_portfolio_optimize_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OptimizeReq"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/portfolio/efficient-frontier": {
+      "post": {
+        "tags": [
+          "Portfolio Optimization"
+        ],
+        "summary": "Get Efficient Frontier",
+        "description": "TRADE-03: 有效前沿数据。",
+        "operationId": "get_efficient_frontier_api_v1_portfolio_efficient_frontier_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FrontierReq"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/portfolio/compare": {
+      "post": {
+        "tags": [
+          "Portfolio Optimization"
+        ],
+        "summary": "Compare Models",
+        "description": "TRADE-03: 多模型对比 (等权 vs Markowitz vs 风险平价 vs MaxSharpe)。",
+        "operationId": "compare_models_api_v1_portfolio_compare_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompareReq"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
                 }
               }
             }
@@ -7344,7 +9873,11 @@
           "price_above",
           "price_below",
           "pct_change",
-          "volume_surge"
+          "volume_surge",
+          "rsi_threshold",
+          "macd_cross",
+          "ma_cross",
+          "paper_drift"
         ],
         "title": "AlertRuleType",
         "description": "告警规则类型"
@@ -7358,6 +9891,35 @@
         ],
         "title": "AlertSeverity",
         "description": "告警严重程度"
+      },
+      "AlgoAnalyticsReq": {
+        "properties": {
+          "benchmark_price": {
+            "type": "number",
+            "title": "Benchmark Price"
+          },
+          "market_volume": {
+            "type": "integer",
+            "title": "Market Volume",
+            "default": 0
+          },
+          "market_vwap": {
+            "type": "number",
+            "title": "Market Vwap",
+            "default": 0
+          },
+          "fills": {
+            "items": {},
+            "type": "array",
+            "title": "Fills",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "benchmark_price"
+        ],
+        "title": "AlgoAnalyticsReq"
       },
       "AlgoOrderReq": {
         "properties": {
@@ -7448,6 +10010,18 @@
               }
             ],
             "title": "Data Snapshot Id"
+          },
+          "random_seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Random Seed",
+            "default": 42
           },
           "source_code": {
             "anyOf": [
@@ -7652,6 +10226,32 @@
         ],
         "title": "Body_place_order_api_v1_trade_order_post"
       },
+      "CEPRuleCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "expression": {
+            "type": "string",
+            "title": "Expression"
+          },
+          "watchlist": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Watchlist"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "expression",
+          "watchlist"
+        ],
+        "title": "CEPRuleCreate"
+      },
       "CancelOrderReq": {
         "properties": {
           "idempotency_key": {
@@ -7817,6 +10417,54 @@
             "title": "Wslatencyms",
             "description": "WebSocket 延迟（ms）"
           },
+          "lcpMs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lcpms",
+            "description": "Largest Contentful Paint (ms)"
+          },
+          "cls": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cls",
+            "description": "Cumulative Layout Shift（无量纲）"
+          },
+          "inpMs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inpms",
+            "description": "Interaction to Next Paint (ms)"
+          },
+          "ttfbMs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttfbms",
+            "description": "Time to First Byte (ms)"
+          },
           "timestamp": {
             "type": "integer",
             "title": "Timestamp",
@@ -7844,6 +10492,109 @@
           "source_code"
         ],
         "title": "CodePayload"
+      },
+      "CompareReq": {
+        "properties": {
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Symbols"
+          },
+          "max_weight": {
+            "type": "number",
+            "title": "Max Weight",
+            "default": 0.3
+          },
+          "risk_free_rate": {
+            "type": "number",
+            "title": "Risk Free Rate",
+            "default": 0.02
+          },
+          "period": {
+            "type": "string",
+            "title": "Period",
+            "default": "1y"
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbols"
+        ],
+        "title": "CompareReq"
+      },
+      "CreatePortfolioPayload": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Name"
+          },
+          "strategy_name": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Strategy Name"
+          },
+          "code_hash": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Code Hash"
+          },
+          "market": {
+            "type": "string",
+            "maxLength": 4,
+            "title": "Market",
+            "description": "HK | US"
+          },
+          "initial_capital": {
+            "type": "number",
+            "title": "Initial Capital",
+            "default": 100000.0
+          },
+          "params": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Params"
+          },
+          "strategy_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy Version Id"
+          },
+          "benchmark_backtest_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Backtest Ref"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "strategy_name",
+          "code_hash",
+          "market"
+        ],
+        "title": "CreatePortfolioPayload"
       },
       "CreateRuleRequest": {
         "properties": {
@@ -7898,6 +10649,115 @@
         ],
         "title": "CreateRuleRequest",
         "description": "创建告警规则请求"
+      },
+      "CrossSectionRequest": {
+        "properties": {
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Symbols"
+          },
+          "expression": {
+            "type": "string",
+            "title": "Expression",
+            "description": "跨指标表达式，如 RSI(14) < 30 AND MACD.histogram > 0"
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbols",
+          "expression"
+        ],
+        "title": "CrossSectionRequest"
+      },
+      "DeepReportRequest": {
+        "properties": {
+          "topic": {
+            "type": "string",
+            "title": "Topic"
+          },
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Symbols",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "topic"
+        ],
+        "title": "DeepReportRequest"
+      },
+      "DeliveryRecordResponse": {
+        "properties": {
+          "delivery_id": {
+            "type": "string",
+            "title": "Delivery Id"
+          },
+          "event_id": {
+            "type": "string",
+            "title": "Event Id"
+          },
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "priority": {
+            "type": "string",
+            "title": "Priority"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "attempt": {
+            "type": "integer",
+            "title": "Attempt",
+            "default": 1
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "created_at": {
+            "type": "number",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "delivery_id",
+          "event_id",
+          "channel",
+          "priority",
+          "status",
+          "created_at"
+        ],
+        "title": "DeliveryRecordResponse",
+        "description": "投递记录响应 (ALERT-03d)"
       },
       "DictionaryBatchItem": {
         "properties": {
@@ -7972,6 +10832,18 @@
           "tracked_tickers": {
             "type": "integer",
             "title": "Tracked Tickers"
+          },
+          "dispatcher": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dispatcher"
           }
         },
         "type": "object",
@@ -7983,7 +10855,7 @@
           "tracked_tickers"
         ],
         "title": "EngineStatusResponse",
-        "description": "引擎状态响应"
+        "description": "引擎状态响应（ALERT-03c 扩展 dispatcher health）"
       },
       "EventResponse": {
         "properties": {
@@ -7993,28 +10865,53 @@
           },
           "rule_id": {
             "type": "string",
-            "title": "Rule Id"
+            "title": "Rule Id",
+            "default": ""
           },
           "ticker": {
             "type": "string",
-            "title": "Ticker"
+            "title": "Ticker",
+            "default": ""
           },
           "rule_type": {
-            "$ref": "#/components/schemas/AlertRuleType"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AlertRuleType"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "severity": {
-            "$ref": "#/components/schemas/AlertSeverity"
+            "$ref": "#/components/schemas/AlertSeverity",
+            "default": "info"
           },
           "message": {
             "type": "string",
-            "title": "Message"
+            "title": "Message",
+            "default": ""
           },
           "trigger_value": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Trigger Value"
           },
           "threshold": {
-            "type": "number",
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Threshold"
           },
           "triggered_at": {
@@ -8023,24 +10920,77 @@
           },
           "acknowledged": {
             "type": "boolean",
-            "title": "Acknowledged"
+            "title": "Acknowledged",
+            "default": false
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "user_rule"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NotificationPriority"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ui_hint": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Ui Hint"
           }
         },
         "type": "object",
         "required": [
           "event_id",
-          "rule_id",
-          "ticker",
-          "rule_type",
-          "severity",
-          "message",
-          "trigger_value",
-          "threshold",
-          "triggered_at",
-          "acknowledged"
+          "triggered_at"
         ],
         "title": "EventResponse",
         "description": "事件响应"
+      },
+      "FactorSearchRequest": {
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "factors": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Factors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbol",
+          "factors"
+        ],
+        "title": "FactorSearchRequest"
+      },
+      "FactorSuggestRequest": {
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "objective": {
+            "type": "string",
+            "title": "Objective",
+            "default": "maximize_sharpe"
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbol"
+        ],
+        "title": "FactorSuggestRequest"
       },
       "FormatPayload": {
         "properties": {
@@ -8054,6 +11004,42 @@
           "source_code"
         ],
         "title": "FormatPayload"
+      },
+      "FrontierReq": {
+        "properties": {
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Symbols"
+          },
+          "n_points": {
+            "type": "integer",
+            "title": "N Points",
+            "default": 20
+          },
+          "max_weight": {
+            "type": "number",
+            "title": "Max Weight",
+            "default": 0.3
+          },
+          "risk_free_rate": {
+            "type": "number",
+            "title": "Risk Free Rate",
+            "default": 0.02
+          },
+          "period": {
+            "type": "string",
+            "title": "Period",
+            "default": "1y"
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbols"
+        ],
+        "title": "FrontierReq"
       },
       "GeneratePayload": {
         "properties": {
@@ -8080,6 +11066,117 @@
           "credential"
         ],
         "title": "GoogleTokenRequest"
+      },
+      "GridSearchRequest": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "param_grid": {
+            "additionalProperties": {
+              "items": {},
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Param Grid",
+            "description": "例如 {\"period\": [10, 20, 30], \"slow\": [40, 60]}"
+          },
+          "period": {
+            "type": "string",
+            "title": "Period",
+            "default": "2y"
+          },
+          "interval": {
+            "type": "string",
+            "title": "Interval",
+            "default": "1d"
+          },
+          "initial_capital": {
+            "type": "number",
+            "title": "Initial Capital",
+            "default": 100000.0
+          },
+          "commission_pct": {
+            "type": "number",
+            "title": "Commission Pct",
+            "default": 0.0005
+          },
+          "slippage_pct": {
+            "type": "number",
+            "title": "Slippage Pct",
+            "default": 0.001
+          },
+          "data_source": {
+            "type": "string",
+            "title": "Data Source",
+            "default": "auto"
+          },
+          "data_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Snapshot Id"
+          },
+          "strategy_key": {
+            "type": "string",
+            "title": "Strategy Key",
+            "default": "sma_cross"
+          },
+          "base_params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Base Params"
+          },
+          "target_metric": {
+            "type": "string",
+            "pattern": "^(sharpe|total_return|max_drawdown)$",
+            "title": "Target Metric",
+            "default": "sharpe"
+          },
+          "max_workers": {
+            "type": "integer",
+            "maximum": 16.0,
+            "minimum": 0.0,
+            "title": "Max Workers",
+            "description": "0=自动；1=串行",
+            "default": 0
+          },
+          "heatmap_x": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heatmap X"
+          },
+          "heatmap_y": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heatmap Y"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticker",
+          "param_grid"
+        ],
+        "title": "GridSearchRequest",
+        "description": "BT-05 参数网格搜索 + 夏普热力图矩阵。"
       },
       "HTTPValidationError": {
         "properties": {
@@ -8132,6 +11229,96 @@
           "price"
         ],
         "title": "ModifyOrderReq"
+      },
+      "MonteCarloRequest": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "period": {
+            "type": "string",
+            "title": "Period",
+            "default": "2y"
+          },
+          "interval": {
+            "type": "string",
+            "title": "Interval",
+            "default": "1d"
+          },
+          "initial_capital": {
+            "type": "number",
+            "title": "Initial Capital",
+            "default": 100000.0
+          },
+          "commission_pct": {
+            "type": "number",
+            "title": "Commission Pct",
+            "default": 0.0005
+          },
+          "slippage_pct": {
+            "type": "number",
+            "title": "Slippage Pct",
+            "default": 0.001
+          },
+          "data_source": {
+            "type": "string",
+            "title": "Data Source",
+            "default": "auto"
+          },
+          "data_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Snapshot Id"
+          },
+          "strategy_key": {
+            "type": "string",
+            "title": "Strategy Key",
+            "default": "sma_cross"
+          },
+          "params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params"
+          },
+          "iterations": {
+            "type": "integer",
+            "maximum": 5000.0,
+            "minimum": 10.0,
+            "title": "Iterations",
+            "default": 1000
+          },
+          "method": {
+            "type": "string",
+            "pattern": "^(trade_reshuffle|trade_bootstrap|return_bootstrap)$",
+            "title": "Method",
+            "default": "trade_bootstrap"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed",
+            "default": 42
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticker"
+        ],
+        "title": "MonteCarloRequest",
+        "description": "BT-04 蒙特卡洛压测：交易重排/自助抽样 + 分位曲线。"
       },
       "MonteCarloSandboxPayload": {
         "properties": {
@@ -8197,6 +11384,64 @@
         ],
         "title": "MonteCarloSandboxPayload"
       },
+      "NotificationPriority": {
+        "type": "string",
+        "enum": [
+          "p0",
+          "p1",
+          "p2",
+          "p3"
+        ],
+        "title": "NotificationPriority",
+        "description": "通知优先级（ALERT-03 路由矩阵）"
+      },
+      "OptimizeReq": {
+        "properties": {
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Symbols"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "default": "markowitz"
+          },
+          "max_weight": {
+            "type": "number",
+            "title": "Max Weight",
+            "default": 0.3
+          },
+          "target_return": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Return"
+          },
+          "risk_free_rate": {
+            "type": "number",
+            "title": "Risk Free Rate",
+            "default": 0.02
+          },
+          "period": {
+            "type": "string",
+            "title": "Period",
+            "default": "1y"
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbols"
+        ],
+        "title": "OptimizeReq"
+      },
       "OptimizeSandboxPayload": {
         "properties": {
           "source_code": {
@@ -8250,6 +11495,108 @@
           "param_grid"
         ],
         "title": "OptimizeSandboxPayload"
+      },
+      "OverfitRequest": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "param_grid": {
+            "additionalProperties": {
+              "items": {},
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Param Grid",
+            "description": "多重试炼参数网格（与 grid-search 同形）"
+          },
+          "period": {
+            "type": "string",
+            "title": "Period",
+            "default": "2y"
+          },
+          "interval": {
+            "type": "string",
+            "title": "Interval",
+            "default": "1d"
+          },
+          "initial_capital": {
+            "type": "number",
+            "title": "Initial Capital",
+            "default": 100000.0
+          },
+          "commission_pct": {
+            "type": "number",
+            "title": "Commission Pct",
+            "default": 0.0005
+          },
+          "slippage_pct": {
+            "type": "number",
+            "title": "Slippage Pct",
+            "default": 0.001
+          },
+          "data_source": {
+            "type": "string",
+            "title": "Data Source",
+            "default": "auto"
+          },
+          "data_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Snapshot Id"
+          },
+          "strategy_key": {
+            "type": "string",
+            "title": "Strategy Key",
+            "default": "sma_cross"
+          },
+          "base_params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Base Params"
+          },
+          "max_workers": {
+            "type": "integer",
+            "maximum": 16.0,
+            "minimum": 0.0,
+            "title": "Max Workers",
+            "default": 1
+          },
+          "dsr_warn_below": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Dsr Warn Below",
+            "default": 0.95
+          },
+          "cliff_abs": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Cliff Abs",
+            "default": 0.5
+          },
+          "cliff_rel": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Cliff Rel",
+            "default": 0.35
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticker",
+          "param_grid"
+        ],
+        "title": "OverfitRequest",
+        "description": "BT-06 过拟合检测：Deflated Sharpe + 参数悬崖。"
       },
       "PersistReportRequest": {
         "properties": {
@@ -8326,6 +11673,43 @@
           "metrics"
         ],
         "title": "PersistReportRequest"
+      },
+      "PortfolioBacktestRequest": {
+        "properties": {
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Symbols"
+          },
+          "period": {
+            "type": "string",
+            "title": "Period",
+            "default": "1y"
+          },
+          "initial_capital": {
+            "type": "number",
+            "title": "Initial Capital",
+            "default": 100000.0
+          },
+          "rebalance_freq": {
+            "type": "string",
+            "pattern": "^(buy_and_hold|weekly|monthly)$",
+            "title": "Rebalance Freq",
+            "default": "monthly"
+          },
+          "commission_pct": {
+            "type": "number",
+            "title": "Commission Pct",
+            "default": 0.001
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbols"
+        ],
+        "title": "PortfolioBacktestRequest"
       },
       "RebuildRequest": {
         "properties": {
@@ -8633,6 +12017,17 @@
           "class_name": {
             "type": "string",
             "title": "Class Name"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
           }
         },
         "type": "object",
@@ -8641,6 +12036,107 @@
           "class_name"
         ],
         "title": "SaveStrategyPayload"
+      },
+      "ScreenRequest": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "iv_rank_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iv Rank Min"
+          },
+          "iv_rank_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iv Rank Max"
+          },
+          "delta_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Min"
+          },
+          "delta_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Max"
+          },
+          "min_volume": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Volume"
+          },
+          "min_open_interest": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Open Interest"
+          },
+          "option_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Option Type"
+          },
+          "expiry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticker"
+        ],
+        "title": "ScreenRequest"
       },
       "ScreenerHistoryItem": {
         "properties": {
@@ -8775,6 +12271,24 @@
           "query"
         ],
         "title": "ScreenerTranslateRequest"
+      },
+      "StressTestRequest": {
+        "properties": {
+          "scenario": {
+            "type": "string",
+            "title": "Scenario"
+          },
+          "market": {
+            "type": "string",
+            "title": "Market",
+            "default": "HK"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scenario"
+        ],
+        "title": "StressTestRequest"
       },
       "SummarizePayload": {
         "properties": {
@@ -8953,6 +12467,123 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WalkForwardRequest": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "period": {
+            "type": "string",
+            "title": "Period",
+            "default": "2y"
+          },
+          "interval": {
+            "type": "string",
+            "title": "Interval",
+            "default": "1d"
+          },
+          "initial_capital": {
+            "type": "number",
+            "title": "Initial Capital",
+            "default": 100000.0
+          },
+          "commission_pct": {
+            "type": "number",
+            "title": "Commission Pct",
+            "default": 0.0005
+          },
+          "slippage_pct": {
+            "type": "number",
+            "title": "Slippage Pct",
+            "default": 0.001
+          },
+          "data_source": {
+            "type": "string",
+            "title": "Data Source",
+            "default": "auto"
+          },
+          "data_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Snapshot Id"
+          },
+          "strategy_key": {
+            "type": "string",
+            "title": "Strategy Key",
+            "description": "内置策略键，如 sma_cross",
+            "default": "sma_cross"
+          },
+          "params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params"
+          },
+          "param_grid": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {},
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Param Grid",
+            "description": "可选：样本内网格寻优（笛卡尔积上限 48）"
+          },
+          "train_bars": {
+            "type": "integer",
+            "minimum": 10.0,
+            "title": "Train Bars",
+            "default": 120
+          },
+          "test_bars": {
+            "type": "integer",
+            "minimum": 5.0,
+            "title": "Test Bars",
+            "default": 40
+          },
+          "step_bars": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Bars"
+          },
+          "anchored": {
+            "type": "boolean",
+            "title": "Anchored",
+            "default": false
+          },
+          "target_metric": {
+            "type": "string",
+            "pattern": "^(sharpe|total_return)$",
+            "title": "Target Metric",
+            "default": "sharpe"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticker"
+        ],
+        "title": "WalkForwardRequest",
+        "description": "BT-03 Walk-Forward 滚动验证请求。"
       },
       "WatchlistBatchRequest": {
         "properties": {
