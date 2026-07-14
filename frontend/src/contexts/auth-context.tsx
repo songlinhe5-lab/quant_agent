@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { apiClient, setAccessToken } from '@/lib/api-client';
 
 interface User {
@@ -22,7 +21,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const navigate = useNavigate();
 
   // 初始化：应用加载时检查用户是否已登录（结合 api-client 的无感刷新机制）
   useEffect(() => {
@@ -63,7 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     // 可选：通知后端注销（清除服务端的 Refresh Token Cookie）
-    try { await apiClient.post('/auth/logout'); } catch (e) { /* ignore logout error */ }
+    try { await apiClient.post('/auth/logout'); } catch { /* ignore logout error */ }
     
     setAccessToken(null);
     setUser(null);
