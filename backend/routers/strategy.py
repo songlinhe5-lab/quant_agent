@@ -8,6 +8,7 @@ import re
 import sys
 import time
 import traceback
+import uuid
 from datetime import datetime
 from typing import Optional
 from unittest.mock import MagicMock
@@ -27,13 +28,13 @@ from backend.core import models
 from backend.core.redis_client import redis_client
 from backend.core.utils import safe_truncate
 from backend.routers.auth import get_current_user
-from backend.services.akshare_service import akshare_service
-from backend.services.finnhub_service import finnhub_service
-from backend.services.futu import futu_service
+from backend.app.market_data import market_data
 from backend.services.kline_warehouse import kline_warehouse
 from backend.services.llm_service import llm_service
 from backend.services.strategy_parser import parse_strategy_parameters
-from backend.services.yfinance_service import yf_service
+from backend.services import strategy_version_service
+from backend.core.database import get_db
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/strategy", tags=["Strategy Dev"])
 
@@ -49,6 +50,7 @@ class GeneratePayload(BaseModel):
 class SaveStrategyPayload(BaseModel):
     source_code: str
     class_name: str
+    message: Optional[str] = None  # STRAT-03a: 用户备注
 
 
 class FormatPayload(BaseModel):
@@ -65,6 +67,10 @@ class RunSandboxPayload(BaseModel):
     initial_capital: float = 100000.0
     data_source: str = "auto"
     debug_mode: bool = False
+    # BT-02 / DQ-03c 插座：完整 SnapshotReader 装载见 DQ-03c；此处先收参数并回传摘要
+    data_snapshot_id: Optional[str] = None
+    random_seed: Optional[int] = 42
+    persist_report: bool = False
 
 
 class OptimizeSandboxPayload(BaseModel):
@@ -325,8 +331,18 @@ async def get_inspirations(limit: int = 10):
     return {"status": "success", "data": selected}
 
 
-async def _fetch_backtest_data(ticker: str, period: str, data_source: str = "auto", interval: str = "1d"):  # noqa: E501
-    """为沙箱回测获取历史数据的多源聚合方法 (优先本地多周期数仓, 缺失自动拉取落库兜底)"""  # noqa: E501
+async def _fetch_backtest_data(
+    ticker: str,
+    period: str,
+    data_source: str = "auto",
+    interval: str = "1d",
+    snapshot_id: Optional[str] = None,
+):  # noqa: E501
+    """为沙箱回测获取历史数据。
+
+    DQ-03c：默认优先 SnapshotReader(latest_published)；
+    live 仅 ENGINE_ALLOW_LIVE_DATA 或显式 snapshot_id=live / 无快照时降级。
+    """
     period_days_map = {
         "1mo": 22,
         "3mo": 65,
@@ -360,6 +376,58 @@ async def _fetch_backtest_data(ticker: str, period: str, data_source: str = "aut
     elif interval == "1h":
         multiplier = 7  # noqa: E701
     num_bars = num_days * multiplier
+
+    sid = snapshot_id if snapshot_id is not None else "latest_published"
+    allow_live = os.getenv("ENGINE_ALLOW_LIVE_DATA", "false").lower() == "true"
+
+    def _normalize_df(df: pd.DataFrame) -> pd.DataFrame:
+        out = df.copy()
+        if "time" in out.columns:
+            out["time"] = pd.to_datetime(out["time"])
+            out.set_index("time", inplace=True)
+        out.rename(
+            columns={
+                "open": "Open",
+                "high": "High",
+                "low": "Low",
+                "close": "Close",
+                "volume": "Volume",
+            },
+            inplace=True,
+        )
+        return out
+
+    # DQ-03c：快照优先（非 live）
+    if sid != "live" and data_source in ["auto", "local", "snapshot"]:
+        try:
+            from backend.core.database import SessionLocal
+            from backend.services.datalake.snapshot_reader import SnapshotReader
+            from backend.services.datalake.snapshot_resolver import SnapshotResolveError
+
+            db = SessionLocal()
+            try:
+                reader = SnapshotReader(db)
+                resolved = await reader.resolve_snapshot_id(sid)
+                if resolved != "live":
+                    snap_df = await reader.get_history(resolved, ticker, ktype=ktype, num=num_bars)
+                    if snap_df is not None and not snap_df.empty:
+                        try:
+                            from backend.core.metrics import DATALAKE_SNAPSHOT_READ
+
+                            DATALAKE_SNAPSHOT_READ.labels(result="hit").inc()
+                        except Exception:
+                            pass
+                        return True, _normalize_df(snap_df), f"Snapshot:{resolved}"
+            except SnapshotResolveError as e:
+                if data_source == "snapshot" or (not allow_live and sid != "latest_published"):
+                    return False, None, f"DATA_SNAPSHOT_MISSING:{e}"
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"⚠️ [Backtest] 快照读取失败，尝试 live 降级: {e}")
+
+    if sid == "live" and not allow_live:
+        return False, None, "DATA_SNAPSHOT_LIVE_FORBIDDEN:设置 ENGINE_ALLOW_LIVE_DATA=true 以允许 live"
 
     if data_source in ["auto", "local"]:
         # 0. 优先尝试从本地 Parquet 数仓读取极速数据
@@ -397,7 +465,7 @@ async def _fetch_backtest_data(ticker: str, period: str, data_source: str = "aut
     if data_source in ["auto", "futu"]:
         # 1. 尝试使用 Futu 获取历史数据 (无被封禁风险)
         try:
-            futu_res = await futu_service.get_history(ticker, ktype=ktype, num=num_bars)
+            futu_res = await market_data.get_history(ticker, ktype=ktype, num=num_bars)
             if futu_res.get("status") == "success" and futu_res.get("data"):
                 df = pd.DataFrame(futu_res["data"])
                 if not df.empty:
@@ -423,7 +491,7 @@ async def _fetch_backtest_data(ticker: str, period: str, data_source: str = "aut
         # 2. 尝试 AKShare (仅针对 A 股日线)
         if (ticker.startswith("SH.") or ticker.startswith("SZ.")) and interval == "1d":
             try:
-                ak_res = await akshare_service.get_stock_history(ticker, num=num_bars)
+                ak_res = await market_data.get_stock_history_ak(ticker, num=num_bars)
                 if ak_res.get("status") == "success" and ak_res.get("data"):
                     df = pd.DataFrame(ak_res["data"])
                     if not df.empty:
@@ -447,7 +515,7 @@ async def _fetch_backtest_data(ticker: str, period: str, data_source: str = "aut
         if (ticker.startswith("US.") or ("." not in ticker)) and interval == "1d":
             try:
                 # num_days 是交易日，换算为自然日需要乘以 1.5
-                finnhub_res = await finnhub_service.get_stock_history(ticker, days_back=int(num_days * 1.5))  # noqa: E501
+                finnhub_res = await market_data.get_stock_history_fh(ticker, days_back=int(num_days * 1.5))  # noqa: E501
                 if finnhub_res.get("status") == "success" and finnhub_res.get("data"):
                     df = pd.DataFrame(finnhub_res["data"])
                     if not df.empty:
@@ -471,7 +539,7 @@ async def _fetch_backtest_data(ticker: str, period: str, data_source: str = "aut
         # 4. 终极兜底使用 YFinance (容易触发 429 限流)
         yf_interval_map = {"1d": "1d", "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h"}
         yf_interval = yf_interval_map.get(interval, "1d")
-        return await yf_service.fetch_yf_data(ticker, "history", ttl=3600, period=period, interval=yf_interval)  # noqa: E501
+        return await market_data.fetch_yf_data(ticker, "history", ttl=3600, period=period, interval=yf_interval)  # noqa: E501
 
     return False, None, f"未匹配到支持的数据源或该数据源无法获取 {ticker} 数据。"
 
@@ -590,8 +658,8 @@ async def format_strategy_code(payload: FormatPayload):
 
 
 @router.post("/save")
-async def save_strategy(payload: SaveStrategyPayload):
-    """保存策略源码到本地文件系统（草稿/工作区）"""
+async def save_strategy(payload: SaveStrategyPayload, db: Session = Depends(get_db)):
+    """保存策略源码到本地文件系统（草稿/工作区）+ 创建版本记录 (STRAT-03a)"""
     try:
         formatted_code = payload.source_code
         # 💡 尝试使用 Black 自动格式化 Python 代码
@@ -613,10 +681,24 @@ async def save_strategy(payload: SaveStrategyPayload):
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(formatted_code)
 
+        # STRAT-03a: 创建版本记录
+        version_result = strategy_version_service.save_version(
+            db=db,
+            strategy_name=payload.class_name,
+            code=formatted_code,
+            source="manual",
+            message=payload.message,
+        )
+
         return {
             "status": "success",
             "message": f"策略已成功保存至 {file_path}",
-            "data": {"formatted_code": formatted_code},
+            "data": {
+                "formatted_code": formatted_code,
+                "version_id": version_result["version_id"],
+                "seq": version_result["seq"],
+                "code_hash": version_result["code_hash"][:8],
+            },
         }  # noqa: E501
     except Exception as e:
         return {"status": "error", "message": f"保存失败: {str(e)}"}
@@ -646,6 +728,49 @@ async def list_strategies():
             )
     results.sort(key=lambda x: x["modified"], reverse=True)
     return {"status": "success", "data": results}
+
+
+# ─────────────────────────────────────────────────────────────
+# STRAT-03a: 策略版本管理端点
+# ─────────────────────────────────────────────────────────────
+
+
+@router.get("/{name}/versions")
+async def get_strategy_versions(
+    name: str, limit: int = 50, db: Session = Depends(get_db)
+):
+    """获取策略版本时间线 (STRAT-03a)"""
+    versions = strategy_version_service.get_versions(db, name, limit=limit)
+    return {"status": "success", "data": versions}
+
+
+@router.get("/versions/{version_id}")
+async def get_strategy_version(version_id: str, db: Session = Depends(get_db)):
+    """获取单个版本的完整信息（含代码）(STRAT-03a)"""
+    version = strategy_version_service.get_version(db, version_id)
+    if not version:
+        return {"status": "error", "message": f"版本 {version_id} 不存在"}
+    return {"status": "success", "data": version}
+
+
+@router.post("/{name}/restore")
+async def restore_strategy_version(
+    name: str, payload: dict, db: Session = Depends(get_db)
+):
+    """恢复指定版本，创建新的 restore 版本 (STRAT-03a)"""
+    version_id = payload.get("version_id")
+    if not version_id:
+        return {"status": "error", "message": "缺少 version_id 参数"}
+
+    result = strategy_version_service.restore_version(db, name, version_id)
+    if not result:
+        return {"status": "error", "message": f"源版本 {version_id} 不存在"}
+
+    return {
+        "status": "success",
+        "message": f"已恢复至版本 {version_id[:8]}",
+        "data": result,
+    }
 
 
 @router.get("/draft/{name}")
@@ -701,9 +826,13 @@ async def run_strategy_sandbox(payload: RunSandboxPayload):
             flags=re.MULTILINE,
         )  # noqa: E501
 
-        # 2. 拉取真实的 K 线数据 (多重数据源容灾)
+        # 2. 拉取真实的 K 线数据 (多重数据源容灾 · DQ-03c 快照优先)
         success, df, msg = await _fetch_backtest_data(
-            payload.ticker, payload.period, payload.data_source, payload.interval
+            payload.ticker,
+            payload.period,
+            payload.data_source,
+            payload.interval,
+            snapshot_id=payload.data_snapshot_id,
         )  # noqa: E501
         if not success or df is None or df.empty:
             return {"status": "error", "message": f"回测数据加载失败: {msg}"}
@@ -720,14 +849,117 @@ async def run_strategy_sandbox(payload: RunSandboxPayload):
             payload.debug_mode,  # noqa: E501
         )
 
+        # BT-02：附加可复现性摘要（完整 SnapshotReader 装载仍属 DQ-03c）
+        from backend.engine.contracts import RunManifest
+        from backend.services.backtest_report_service import is_reproducible
+        from backend.services.datalake.snapshot_resolver import SnapshotResolveError, SnapshotResolver
+        from backend.core.database import SessionLocal
+
+        code_hash = RunManifest.compute_code_hash(safe_code)
+        data_mode = "unbound"
+        manifest_hash = None
+        snapshot_id = payload.data_snapshot_id
+        db = SessionLocal()
+        try:
+            try:
+                ref = SnapshotResolver(db).resolve(
+                    snapshot_id, manifest_hash=None
+                )
+                snapshot_id = ref.snapshot_id
+                manifest_hash = ref.manifest_hash or None
+                data_mode = ref.data_mode
+            except SnapshotResolveError:
+                data_mode = "unbound"
+            except Exception:
+                data_mode = "unbound"
+
+            reproducible = is_reproducible(
+                code_hash=code_hash,
+                manifest_hash=manifest_hash,
+                random_seed=payload.random_seed,
+                data_mode=data_mode,
+            )
+            manifest = RunManifest(
+                run_id=str(uuid.uuid4()),
+                mode="backtest",
+                code_hash=code_hash,
+                params=payload.params or {},
+                data_snapshot_id=snapshot_id,
+                manifest_hash=manifest_hash,
+                random_seed=payload.random_seed,
+                data_mode=data_mode,  # type: ignore[arg-type]
+                reproducible=reproducible,
+            )
+            if isinstance(report, dict):
+                report = {**report, "manifest": manifest.to_summary()}
+
+            if payload.persist_report and isinstance(report, dict):
+                from backend.services.backtest_report_service import BacktestReportService
+
+                svc = BacktestReportService(db)
+                row = svc.save(
+                    manifest,
+                    metrics=report.get("metrics") or report.get("stats") or {},
+                    equity_curve=report.get("equity_curve"),
+                    trades=report.get("trades"),
+                    symbol=payload.ticker,
+                )
+                report["persisted_run_id"] = row.run_id
+                report["badge"] = svc.to_public_dict(row)["badge"]
+        finally:
+            db.close()
+
         return {"status": "success", "message": "真实历史推演完成", "data": report}
 
     except ValueError as ve:
-        return {"status": "error", "message": str(ve)}
-    except Exception:
         return {
             "status": "error",
-            "message": f"沙箱运行崩溃:\n{safe_truncate(traceback.format_exc(), max_length=1500)}",
+            "error_code": "SANDBOX_RUNTIME_ERROR",
+            "message": str(ve),
+            "data": {
+                "error_detail": {
+                    "exc_type": "ValueError",
+                    "exc_message": str(ve),
+                    "lineno": None,
+                    "traceback": traceback.format_exc(),
+                    "debug_tail": [],
+                }
+            },
+        }
+    except Exception:
+        tb = traceback.format_exc()
+        # Extract lineno from traceback if possible
+        lineno = None
+        exc_type = "UnknownError"
+        exc_message = ""
+        try:
+            import sys
+            exc_type, exc_value, exc_tb = sys.exc_info()
+            if exc_tb:
+                # Find the last frame in user code
+                tb_frames = traceback.extract_tb(exc_tb)
+                for frame in reversed(tb_frames):
+                    if frame.filename and "<string>" in frame.filename:
+                        lineno = frame.lineno
+                        break
+            exc_type = exc_type.__name__ if exc_type else "UnknownError"
+            exc_message = str(exc_value) if exc_value else ""
+        except Exception:
+            pass
+        
+        return {
+            "status": "error",
+            "error_code": "SANDBOX_RUNTIME_ERROR",
+            "message": f"沙箱运行崩溃:\n{safe_truncate(tb, max_length=1500)}",
+            "data": {
+                "error_detail": {
+                    "exc_type": exc_type,
+                    "exc_message": exc_message,
+                    "lineno": lineno,
+                    "traceback": tb,
+                    "debug_tail": [],
+                }
+            },
         }  # noqa: E501
 
 
@@ -851,7 +1083,7 @@ async def monte_carlo_strategy_sandbox(payload: MonteCarloSandboxPayload):
 
         # 💡 动态获取股票基本面特征（如市值、Beta等），传递给底层引擎以实现特征感知的异构噪音  # noqa: E501
         stock_features = {}
-        info_success, info_data, _ = await yf_service.fetch_yf_data(payload.ticker, "info", ttl=86400)  # noqa: E501
+        info_success, info_data, _ = await market_data.fetch_yf_data(payload.ticker, "info", ttl=86400)  # noqa: E501
         if info_success and isinstance(info_data, dict):
             stock_features["market_cap"] = info_data.get("marketCap")
             stock_features["beta"] = info_data.get("beta")

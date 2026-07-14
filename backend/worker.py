@@ -58,7 +58,11 @@ async def main():
         tasks.append(asyncio.create_task(screener_service.screener_subscription_daemon()))
         tasks.append(asyncio.create_task(screener_service.daily_market_summary_daemon()))
         tasks.append(asyncio.create_task(screener_service.clean_obsolete_knowledge_base_daemon()))
-        print("  Core daemons started (ticker/sentiment/screener)")
+
+        # PT-01c: 纸面组合结算守护进程
+        from backend.services.paper_settlement_daemon import paper_settlement_daemon
+        tasks.append(asyncio.create_task(paper_settlement_daemon.run()))
+        print("  Core daemons started (ticker/sentiment/screener/paper_settlement)")
     else:
         print("  [Data Node] 跳过 DB 依赖服务 (ticker/sentiment/screener)")
 

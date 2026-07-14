@@ -2,12 +2,12 @@ import React, { useState, useRef, useEffect } from 'react'
 import { Bot, Send, Loader2, Sparkles, RefreshCw, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { useStrategyStore } from '../stores/useStrategyStore'
+import { useStrategyStore } from '../stores'
 import { API_BASE_URL, getAccessToken, apiClient } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
 
 export function AIChat() {
-  const { messages, addMessage, updateMessage, setCode } = useStrategyStore()
+  const { messages, addMessage, updateMessage, enterDiff } = useStrategyStore()
   const [prompt, setPrompt] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [vibeExamples, setVibeExamples] = useState<string[]>([])
@@ -95,9 +95,9 @@ export function AIChat() {
                 const cleanReasoning = accumulatedReasoning.replace(/<\/?think>/gi, '').trimStart()
                 updateMessage(assistantMsgId, { reasoning: cleanReasoning })
               } else if (data.status === 'success') {
-                setCode(data.data)
-                updateMessage(assistantMsgId, { content: '✨ 策略代码已生成并应用到主编辑器中，你可以进行审查或继续提出修改建议。', status: 'done' })
-                toast({ title: '✨ 策略生成成功', description: '代码已就绪。' })
+                enterDiff(data.data, 'ai-chat')
+                updateMessage(assistantMsgId, { content: '✨ 策略代码已生成，请在 Diff 编辑器中审查并确认变更。', status: 'done' })
+                toast({ title: '✨ 策略生成成功', description: '代码已就绪，请在 Diff 视图中审查。' })
               } else if (data.status === 'error') {
                 updateMessage(assistantMsgId, { content: `生成失败: ${data.message}`, status: 'error' })
               }

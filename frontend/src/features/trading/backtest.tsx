@@ -5,14 +5,17 @@ import { FlaskConical, Play, AlertTriangle, TrendingDown, BarChart3, CheckCircle
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
-import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, ComposedChart, Area,
-  Tooltip, ResponsiveContainer, ReferenceLine, Cell
-} from 'recharts'
 import { useTheme } from 'next-themes'
 import { useToast } from '@/hooks/use-toast'
 import { apiClient } from '@/lib/api-client'
 import { DynamicStrategyForm } from '@/features/strategy/dynamic-strategy-form'
+import { BacktestEquityChart, BacktestUnderwaterChart, BacktestReturnsHistogram } from './backtest-charts'
+import { SnapshotPicker } from '@/features/backtest/snapshot-picker'
+import {
+  ReproducibilityBadgeView,
+  extractReproducibilityBadge,
+} from '@/features/backtest/reproducibility-badge'
+import { LATEST_PUBLISHED } from '@/types/datalake'
 
 // ── Mock Data ───────────────────────────────────────────────────────────────
 
@@ -78,24 +81,6 @@ const tearSheetMetrics = [
   { label: 'Omega',      value: '1.72',   dir: 1,  note: '>1.0 为正期望' },
 ]
 
-// 💡 K 线主图上的交易信号 Marker 渲染组件
-const CustomTradeMarker = (props: any) => {
-  const { cx, cy, payload } = props;
-  if (!payload.tradeAction) return <circle cx={cx} cy={cy} r={0} fill="transparent" />;
-  
-  const isBuy = payload.tradeAction === 'BUY';
-  const color = isBuy ? '#10b981' : '#ef4444';
-  
-  return (
-    <g>
-      <circle cx={cx} cy={cy} r={3} fill={color} stroke="var(--background)" strokeWidth={1.5} />
-      <text x={cx} y={cy - 8} textAnchor="middle" fill={color} fontSize="9px" fontWeight="bold" fontFamily="monospace">
-        {isBuy ? 'B' : 'S'}
-      </text>
-    </g>
-  );
-};
-
 // ── Main Component ──────────────────────────────────────────────────────────
 
 export function BacktestModule() {
@@ -112,6 +97,7 @@ export function BacktestModule() {
   const [backtestResult, setBacktestResult] = useState<any>(null)
   const [dataSource, setDataSource] = useState('auto')
   const [isDebugMode, setIsDebugMode] = useState(false)
+  const [dataSnapshotId, setDataSnapshotId] = useState(LATEST_PUBLISHED)
   
   // 💡 动态策略引入状态
   const [strategies, setStrategies] = useState<any[]>([])
@@ -221,6 +207,8 @@ export function BacktestModule() {
         slippage_pct: 0.001,
         data_source: dataSource,
         debug_mode: isDebugMode,
+        data_snapshot_id: dataSnapshotId,
+        random_seed: 42,
         source_code: sourceCode || undefined,
         class_name: strategyClassName || undefined,
         params: Object.keys(sanitizedParams).length > 0 ? sanitizedParams : undefined
@@ -303,6 +291,7 @@ export function BacktestModule() {
   const isDark = theme === 'dark'
 
   const metrics = backtestResult?.metrics || {}
+  const reproBadge = extractReproducibilityBadge(backtestResult)
 
   const currentTearSheet = backtestResult ? [
     { label: '总收益率',   value: metrics.total_return,  dir: parseFloat(metrics.total_return) > 0 ? 1 : -1,  note: '相对初始本金' },
@@ -400,6 +389,14 @@ export function BacktestModule() {
             </div>
           </div>
 
+          <div className="mb-4 max-w-md">
+            <SnapshotPicker
+              value={dataSnapshotId}
+              onChange={setDataSnapshotId}
+              disabled={running || done}
+            />
+          </div>
+
           {running && (
             <div className="mb-4 p-3 rounded-lg bg-secondary/40 border border-border/30">
               <div className="flex items-center justify-between mb-2">
@@ -475,9 +472,12 @@ export function BacktestModule() {
 
       {/* Tear Sheet KPIs */}
       <div className="glass-card rounded-lg overflow-hidden transition-colors duration-300">
-        <div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2">
-          <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Tear Sheet · 核心指标</span>
+        <div className="px-4 py-2.5 border-b border-border/30 flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Tear Sheet · 核心指标</span>
+          </div>
+          <ReproducibilityBadgeView badge={reproBadge} />
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y divide-border/20">
           {currentTearSheet.map((m, i) => (
@@ -508,35 +508,7 @@ export function BacktestModule() {
 
           <TabsContent value="equity" className="m-0 p-4">
             <div className="h-52">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={curve}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)"} />
-                  <XAxis dataKey="t" hide />
-                  <YAxis domain={['auto','auto']} hide />
-                  <Tooltip
-                    contentStyle={{ background: isDark ? 'oklch(0.18 0.01 270)' : 'rgba(255, 255, 255, 0.95)', border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)', borderRadius: '6px', fontSize: 11, color: isDark ? '#f8fafc' : '#0f172a' }}
-                    labelFormatter={(label, payload) => {
-                      if (payload && payload.length > 0 && payload[0].payload.date) return payload[0].payload.date;
-                      return label;
-                    }}
-                    formatter={(v: any, name: any, props: any) => {
-                      if (name === 'drawdownRange') {
-                        const dd = ((v[0] - v[1]) / v[1]) * 100;
-                        return [`${dd.toFixed(2)}%`, '实时回撤'];
-                      }
-                      if (name === '策略' && props.payload.tradeAction) {
-                        const actionStr = props.payload.tradeAction === 'BUY' ? '买入 (Buy)' : '平仓 (Sell)';
-                        const pnl = props.payload.tradeProfit ? ` (单日平仓盈亏: ${props.payload.tradeProfit > 0 ? '+' : ''}${props.payload.tradeProfit.toFixed(2)})` : '';
-                        return [`$${Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 })} [${actionStr}${pnl}]`, name];
-                      }
-                      return [`$${Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 })}`, name]
-                    }}
-                  />
-                  <Area type="monotone" dataKey="drawdownRange" name="drawdownRange" stroke="none" fill={isDark ? "#f6465d" : "#e11d48"} fillOpacity={0.15} isAnimationActive={true} activeDot={false} />
-                  <Line type="monotone" dataKey="strategy" stroke={isDark ? "#34d399" : "#059669"} strokeWidth={1.5} dot={<CustomTradeMarker />} activeDot={{ r: 4 }} name="策略" />
-                  <Line type="monotone" dataKey="benchmark" stroke={isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.2)"} strokeWidth={1} dot={false} strokeDasharray="4 2" name="基准" />
-                </ComposedChart>
-              </ResponsiveContainer>
+              <BacktestEquityChart data={curve} />
             </div>
             <div className="flex gap-4 mt-2 text-[10px]">
               <span className="flex items-center gap-1.5"><span className="inline-block h-0.5 w-4 bg-emerald-500 dark:bg-emerald-400 rounded transition-colors duration-300" />策略净值</span>
@@ -546,39 +518,13 @@ export function BacktestModule() {
 
           <TabsContent value="drawdown" className="m-0 p-4">
             <div className="h-52">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={underwaterDataComputed}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)"} />
-                  <XAxis dataKey="t" hide />
-                  <YAxis domain={[-20, 0]} tickFormatter={(v) => `${v}%`} tick={{ fill: isDark ? 'rgba(156,163,175,0.7)' : 'rgba(100,116,139,0.7)', fontSize: 10 }} />
-                  <Tooltip
-                    contentStyle={{ background: isDark ? 'oklch(0.18 0.01 270)' : 'rgba(255, 255, 255, 0.95)', border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)', borderRadius: '6px', fontSize: 11, color: isDark ? '#f8fafc' : '#0f172a' }}
-                    formatter={(v: any) => [`${Number(v).toFixed(2)}%`, '回撤']}
-                  />
-                  <ReferenceLine y={parseFloat(metrics.max_drawdown || '-12.3')} stroke={isDark ? "rgba(248,113,113,0.4)" : "rgba(220,38,38,0.4)"} strokeDasharray="4 2" label={{ value: `Max DD ${metrics.max_drawdown || '-12.3%'}`, fill: isDark ? 'rgba(248,113,113,0.7)' : 'rgba(220,38,38,0.7)', fontSize: 10, position: 'insideTopRight' }} />
-                  <Line type="monotone" dataKey="dd" stroke={isDark ? "#f87171" : "#dc2626"} strokeWidth={1.5} dot={false} fill={isDark ? "#f87171" : "#dc2626"} fillOpacity={0.1} name="回撤" />
-                </LineChart>
-              </ResponsiveContainer>
+              <BacktestUnderwaterChart data={underwaterDataComputed} maxDrawdown={metrics.max_drawdown} />
             </div>
           </TabsContent>
 
           <TabsContent value="returns" className="m-0 p-4">
             <div className="h-52">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={histogramData} margin={{ left: 0, right: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)"} />
-                  <XAxis dataKey="range" tick={{ fill: isDark ? 'rgba(156,163,175,0.7)' : 'rgba(100,116,139,0.7)', fontSize: 9 }} minTickGap={20} />
-                  <YAxis tick={{ fill: isDark ? 'rgba(156,163,175,0.7)' : 'rgba(100,116,139,0.7)', fontSize: 10 }} />
-                  <Tooltip
-                    contentStyle={{ background: isDark ? 'oklch(0.18 0.01 270)' : 'rgba(255, 255, 255, 0.95)', border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)', borderRadius: '6px', fontSize: 11, color: isDark ? '#f8fafc' : '#0f172a' }}
-                    formatter={(v: any) => [`${v} 次`, '频次']}
-                    cursor={{ fill: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}
-                  />
-                  <Bar dataKey="count" radius={[2, 2, 0, 0]} isAnimationActive={true}>
-                    {histogramData.map((d, i) => <Cell key={i} fill={isDark ? d.color : d.lightColor} fillOpacity={0.8} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <BacktestReturnsHistogram data={histogramData} />
             </div>
           </TabsContent>
 

@@ -136,75 +136,45 @@ class MyStrategy:
 
 # ─── notification_service.py ────────────────────────────────────────
 class TestNotificationService:
+    """ALERT-03 收敛后 NotificationService 改为 dispatcher 薄包装"""
+
     @pytest.mark.asyncio
-    async def test_send_alert(self):
+    async def test_send_alert_delegates_to_dispatcher(self):
         from backend.services.notification_service import NotificationService
 
         service = NotificationService()
-        with patch("backend.services.notification_service.redis_client") as mock_redis:
-            mock_redis.publish = AsyncMock()
-            await service.send_alert("Test alert message")
-            mock_redis.publish.assert_called_once()
+        mock_dispatcher = AsyncMock()
+        mock_dispatcher.dispatch = AsyncMock()
+        service._dispatcher = mock_dispatcher
+
+        await service.send_alert("Test alert message")
+        mock_dispatcher.dispatch.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_send_to_dingtalk_no_config(self):
+    async def test_send_alert_with_priority(self):
         from backend.services.notification_service import NotificationService
+        from backend.core.alert_models import NotificationPriority
 
         service = NotificationService()
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("DINGTALK_WEBHOOK_URL", None)
-            await service._send_to_dingtalk("test")
+        mock_dispatcher = AsyncMock()
+        mock_dispatcher.dispatch = AsyncMock()
+        service._dispatcher = mock_dispatcher
+
+        await service.send_alert("Critical!", priority=NotificationPriority.P0, source="kill_switch")
+        call_args = mock_dispatcher.dispatch.call_args
+        event = call_args[0][0]
+        assert event.priority == NotificationPriority.P0
+        assert event.source == "kill_switch"
 
     @pytest.mark.asyncio
-    async def test_send_to_wecom_no_config(self):
+    async def test_priority_to_severity_mapping(self):
         from backend.services.notification_service import NotificationService
+        from backend.core.alert_models import NotificationPriority, AlertSeverity
 
-        service = NotificationService()
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("WECOM_WEBHOOK_URL", None)
-            await service._send_to_wecom("test")
-
-    @pytest.mark.asyncio
-    async def test_send_to_feishu_no_config(self):
-        from backend.services.notification_service import NotificationService
-
-        service = NotificationService()
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("FEISHU_WEBHOOK_URL", None)
-            await service._send_to_feishu("test")
-
-    @pytest.mark.asyncio
-    async def test_send_to_feishu_invalid_url(self):
-        from backend.services.notification_service import NotificationService
-
-        service = NotificationService()
-        with patch.dict(os.environ, {"FEISHU_WEBHOOK_URL": "not-a-url"}, clear=False):
-            await service._send_to_feishu("test")
-
-    @pytest.mark.asyncio
-    async def test_send_to_dingtalk_with_signing(self):
-        from backend.services.notification_service import NotificationService
-
-        service = NotificationService()
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_resp = MagicMock()
-            mock_resp.status_code = 200
-            mock_resp.json.return_value = {"errcode": 0}
-            mock_client.post = AsyncMock(return_value=mock_resp)
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=None)
-            mock_client_class.return_value = mock_client
-
-            with patch.dict(
-                os.environ,
-                {
-                    "DINGTALK_WEBHOOK_URL": "https://oapi.dingtalk.com/robot?access_token=test",
-                    "DINGTALK_SECRET": "test-secret",
-                },
-                clear=False,
-            ):
-                await service._send_to_dingtalk("test message")
+        assert NotificationService._priority_to_severity(NotificationPriority.P0) == AlertSeverity.CRITICAL
+        assert NotificationService._priority_to_severity(NotificationPriority.P1) == AlertSeverity.CRITICAL
+        assert NotificationService._priority_to_severity(NotificationPriority.P2) == AlertSeverity.WARNING
+        assert NotificationService._priority_to_severity(NotificationPriority.P3) == AlertSeverity.INFO
 
 
 # ─── search_service.py ──────────────────────────────────────────────

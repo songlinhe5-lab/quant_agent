@@ -17,6 +17,7 @@ from backend.core.logger import logger
 from backend.core.models import NavSnapshot
 from backend.core.redis_client import redis_client
 from backend.services.futu_service import futu_service
+from backend.services.kline_warehouse import kline_warehouse
 
 
 class RiskEngine:
@@ -81,13 +82,16 @@ class RiskEngine:
             # 独立计算该账户的 KPI / 敞口 / 风控指标
             kpi = self._calc_kpi(acc_total, acc_cash, acc_market_val, positions, currency)
             exposure = self._calc_exposure(acc_total, acc_cash, acc_market_val, positions)
-            risk_metrics = await self._calc_risk_metrics(positions)
+            risk_metrics, kline_data = await self._calc_risk_metrics(positions, market)
 
             # 分账户 NAV 快照 (从 DB 读取历史数据)
             nav_snapshots = await self._get_nav_snapshots(market, days)
             max_dd = self._calc_max_dd_from_snapshots(nav_snapshots)
 
-            risk_radar = self._build_risk_radar(risk_metrics, max_dd)
+            # RISK-03: 相关性矩阵
+            corr_result = self._calc_correlation_matrix(kline_data)
+
+            risk_radar = self._build_risk_radar(risk_metrics, max_dd, kline_data, corr_result)
             risk_factors = self._build_risk_factors(risk_metrics, max_dd)
 
             accounts[market] = {
@@ -97,6 +101,7 @@ class RiskEngine:
                 "risk_factors": risk_factors,
                 "nav_snapshots": nav_snapshots,
                 "positions": positions,
+                "correlation": corr_result,
                 "currency": currency,
                 "position_count": len(positions),
             }
@@ -176,10 +181,16 @@ class RiskEngine:
             {"name": "现金", "value": cash, "pct": round(cash_pct, 1), "color": "#f59e0b", "lightColor": "#d97706"},
         ]
 
-    async def _calc_risk_metrics(self, positions: List[Dict]) -> Dict[str, Any]:
-        """基于持仓 K 线计算风控指标"""
+    async def _calc_risk_metrics(
+        self, positions: List[Dict], market: str = "HK"
+    ) -> tuple[Dict[str, Any], Dict[str, np.ndarray]]:
+        """基于持仓 K 线计算风控指标 + RISK-08 真实 Beta
+
+        Returns:
+            (metrics_dict, kline_data_dict) — kline_data 供下游相关性/雷达复用
+        """
         if not positions:
-            return {"vol": 0, "var_95": 0, "beta": 0, "sharpe": 0}
+            return {"vol": 0, "var_95": 0, "beta": 0, "sharpe": 0}, {}
 
         # 获取每只持仓的 60 日 K 线
         kline_data = {}
@@ -197,7 +208,7 @@ class RiskEngine:
                 logger.warning(f"[RiskEngine] 获取 {ticker} K线失败: {e}")
 
         if not kline_data:
-            return {"vol": 0, "var_95": 0, "beta": 0, "sharpe": 0}
+            return {"vol": 0, "var_95": 0, "beta": 0, "sharpe": 0}, {}
 
         # 计算每只股票的日收益率
         returns_dict = {}
@@ -206,9 +217,11 @@ class RiskEngine:
             returns_dict[ticker] = returns
 
         # 按市值加权计算组合收益率
-        total_market_val = sum(float(p.get("market_val", 0)) for p in positions if p.get("code") in kline_data)
+        total_market_val = sum(
+            float(p.get("market_val", 0)) for p in positions if p.get("code") in kline_data
+        )
         if total_market_val == 0:
-            return {"vol": 0, "var_95": 0, "beta": 0, "sharpe": 0}
+            return {"vol": 0, "var_95": 0, "beta": 0, "sharpe": 0}, {}
 
         # 对齐收益率序列 (取最短长度)
         min_len = min(len(r) for r in returns_dict.values())
@@ -229,9 +242,22 @@ class RiskEngine:
         # VaR (95%, 历史模拟法)
         var_95 = float(np.percentile(portfolio_returns, 5))
 
-        # Beta (vs 基准，简化处理：假设基准收益率为 0)
-        # TODO: 获取真实基准指数 K 线
-        beta = 0.85  # 临时占位
+        # RISK-08: 真实 Beta (OLS vs 基准指数)
+        benchmark = "^HSI" if market == "HK" else "^GSPC"
+        beta = 0.0
+        try:
+            bench_df = await kline_warehouse.get_history(benchmark, "K_DAY", num=60)
+            if bench_df is not None and len(bench_df) >= 10:
+                bench_closes = bench_df["close"].values.astype(float)
+                bench_returns = np.diff(np.log(bench_closes))
+                # 对齐长度
+                align_len = min(len(bench_returns), len(portfolio_returns))
+                br = bench_returns[-align_len:]
+                pr = portfolio_returns[-align_len:]
+                if np.std(br) > 0:
+                    beta = float(np.polyfit(br, pr, 1)[0])
+        except Exception as e:
+            logger.warning(f"[RiskEngine] 基准 {benchmark} K线获取失败: {e}")
 
         # Sharpe (无风险利率假设 4%)
         risk_free_rate = 0.04
@@ -243,7 +269,7 @@ class RiskEngine:
             "var_95": var_95,
             "beta": beta,
             "sharpe": sharpe,
-        }
+        }, kline_data
 
     async def _get_nav_snapshots(self, market: str = "HK", days: int = 1) -> List[Dict[str, Any]]:
         """
@@ -308,15 +334,78 @@ class RiskEngine:
 
         return -max_dd * 100  # 返回百分比
 
-    def _build_risk_radar(self, metrics: Dict[str, Any], max_dd: float) -> List[Dict[str, float]]:
-        """构建六维风险雷达"""
-        # 归一化到 0-100 分
+    def _calc_correlation_matrix(
+        self, kline_data: Dict[str, np.ndarray]
+    ) -> Dict[str, Any]:
+        """RISK-03: 持仓间 60 日收益率相关系数矩阵"""
+        if len(kline_data) < 2:
+            return {"labels": list(kline_data.keys()), "matrix": [[1.0]], "warnings": []}
+
+        # 计算每只股票的对数收益率并对齐长度
+        returns_dict = {}
+        for ticker, closes in kline_data.items():
+            returns_dict[ticker] = np.diff(np.log(closes))
+
+        min_len = min(len(r) for r in returns_dict.values())
+        labels = list(returns_dict.keys())
+        aligned = np.array([returns_dict[t][-min_len:] for t in labels])
+
+        # 相关系数矩阵
+        corr = np.corrcoef(aligned)
+        matrix = [[round(float(corr[i, j]), 4) for j in range(len(labels))] for i in range(len(labels))]
+
+        # 高相关性预警 (|corr| > 0.8, 非对角线)
+        warnings = []
+        for i in range(len(labels)):
+            for j in range(i + 1, len(labels)):
+                val = float(corr[i, j])
+                if abs(val) > 0.8:
+                    warnings.append({"i": i, "j": j, "a": labels[i], "b": labels[j], "val": round(val, 4)})
+
+        return {"labels": labels, "matrix": matrix, "warnings": warnings}
+
+    def _build_risk_radar(
+        self,
+        metrics: Dict[str, Any],
+        max_dd: float,
+        kline_data: Dict[str, np.ndarray] | None = None,
+        corr_result: Dict[str, Any] | None = None,
+    ) -> List[Dict[str, float]]:
+        """构建六维风险雷达 — RISK-07 真实数据增强"""
         beta_score = min(abs(metrics.get("beta", 0)) * 100, 100)
         vol_score = min(metrics.get("vol", 0) * 100, 100)
-        liq_score = 72  # TODO: 基于持仓流动性计算
-        corr_score = 58  # TODO: 基于相关性矩阵计算
-        mom_score = 81  # TODO: 基于动量因子计算
-        dd_score = min(abs(max_dd) * 5, 100)  # -20% → 100 分
+        dd_score = min(abs(max_dd) * 5, 100)
+
+        # RISK-07: 真实流动性评分 (基于成交量/市值代理)
+        liq_score = 50  # 默认中位
+        if kline_data:
+            # 简化: 用收益率波动的倒数作为流动性代理 (波动越低流动性越好)
+            avg_vol = np.mean([np.std(np.diff(np.log(c))) for c in kline_data.values() if len(c) > 5])
+            liq_score = max(0, min(100, round(100 - avg_vol * 500)))
+
+        # RISK-07: 真实相关性评分
+        corr_score = 50  # 默认中位
+        if corr_result and corr_result.get("matrix"):
+            mat = corr_result["matrix"]
+            n = len(mat)
+            if n > 1:
+                # 取非对角线元素均值
+                off_diag = [mat[i][j] for i in range(n) for j in range(n) if i != j]
+                avg_corr = np.mean(off_diag) if off_diag else 0
+                corr_score = max(0, min(100, round(abs(avg_corr) * 100)))
+
+        # RISK-07: 真实动量评分
+        mom_score = 50  # 默认中位
+        if kline_data:
+            momentums = []
+            for closes in kline_data.values():
+                if len(closes) >= 20:
+                    mom = np.log(closes[-1] / closes[-20])  # 20 日对数动量
+                    momentums.append(mom)
+            if momentums:
+                avg_mom = np.mean(momentums)
+                # 映射到 0-100: 强正动量 → 高分 (趋势风险)
+                mom_score = max(0, min(100, round(50 + avg_mom * 200)))
 
         return [
             {"axis": "Beta", "current": round(beta_score, 0), "limit": 100},

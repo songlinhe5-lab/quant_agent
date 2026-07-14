@@ -2,13 +2,13 @@ import asyncio
 import json
 from typing import Any, Dict, List
 
-from backend.services.llm_service import llm_service
+from backend.services.llm_service import ModelTier, llm_service
 
 
 class SentimentService:
     def __init__(self):
-        # 统一使用全局的 LLM 客户端
-        self.client = llm_service.get_client()
+        # AI-02: 情感分析属于轻量任务，路由至小模型节省成本
+        self._tier = ModelTier.LIGHTWEIGHT
 
         # 设定系统 Prompt，强制要求 JSON 输出
         self.system_prompt = """
@@ -38,8 +38,9 @@ class SentimentService:
                 f"<summary>\n{safe_summary}\n</summary>"
             )
 
-            response = await self.client.chat.completions.create(
-                model=llm_service.get_model(),
+            client = llm_service.get_client(self._tier)
+            response = await client.chat.completions.create(
+                model=llm_service.get_model(self._tier),
                 temperature=0.0,  # 设置为 0 保证 JSON 输出的绝对稳定性
                 response_format={"type": "json_object"},  # DeepSeek 已原生支持强制 JSON
                 messages=[
@@ -47,6 +48,7 @@ class SentimentService:
                     {"role": "user", "content": content_to_analyze},
                 ],
             )
+            llm_service.router.record_success(self._tier)
 
             raw_json = response.choices[0].message.content
             if not raw_json:
@@ -73,6 +75,7 @@ class SentimentService:
                 "summary_zh": result.get("summary_zh", "无摘要"),
             }
         except Exception as e:
+            llm_service.router.record_failure(self._tier)
             print(f"⚠️ [Sentiment] LLM 打分失败: {e}")
             return {
                 "status": "error",
@@ -122,12 +125,14 @@ Now, analyze this list of news headlines (strictly enclosed in XML tags):
 </news_list>
 """  # noqa: E501
         try:
-            response = await self.client.chat.completions.create(
-                model=llm_service.get_model(),
+            client = llm_service.get_client(self._tier)
+            response = await client.chat.completions.create(
+                model=llm_service.get_model(self._tier),
                 temperature=0.0,
                 response_format={"type": "json_object"},
                 messages=[{"role": "user", "content": filtering_prompt}],
             )
+            llm_service.router.record_success(self._tier)
             raw_json = response.choices[0].message.content
             if not raw_json:
                 raise ValueError("LLM returned empty content for filtering")  # noqa: E501, E701

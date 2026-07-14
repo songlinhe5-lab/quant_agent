@@ -14,7 +14,7 @@
 # 前置条件:
 #   1. Tailscale 已安装并加入 tailnet
 #   2. .env.slave 已配置 (REDIS_HOST=100.102.223.44)
-#   3. 主节点 Redis 已暴露 6379 端口 (Tailscale ACL 放行)
+#   3. 主节点 Redis 绑定 Tailscale IP (TAILSCALE_IP=100.x.x.x)，Tailscale ACL 放行
 # ==========================================
 
 services:

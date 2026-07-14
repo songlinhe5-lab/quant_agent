@@ -5,7 +5,7 @@ TEST-14: 覆盖 backend/routers/market.py 所有 REST 端点与 WebSocket 处理
 
 import os
 import sys
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -26,8 +26,9 @@ client = TestClient(app, raise_server_exceptions=False)
 
 # ─── /market/futu/status ────────────────────────────────────────────────
 class TestFutuStatus:
-    @patch("backend.routers.market.futu_service")
+    @patch("backend.routers.market.market_data")
     def test_returns_status_and_error(self, mock_futu):
+        mock_futu.is_opend_reachable = MagicMock(return_value=True)
         mock_futu.status = "CONNECTED"
         mock_futu.error_msg = ""
         resp = client.get("/market/futu/status")
@@ -35,8 +36,9 @@ class TestFutuStatus:
         data = resp.json()
         assert data["status"] == "CONNECTED"
 
-    @patch("backend.routers.market.futu_service")
+    @patch("backend.routers.market.market_data")
     def test_disconnected_status(self, mock_futu):
+        mock_futu.is_opend_reachable = MagicMock(return_value=False)
         mock_futu.status = "DISCONNECTED"
         mock_futu.error_msg = "OpenD unreachable"
         resp = client.get("/market/futu/status")
@@ -46,14 +48,15 @@ class TestFutuStatus:
 
 # ─── /market/health/services ───────────────────────────────────────────
 class TestServicesHealth:
-    @patch("backend.routers.market.futu_service")
-    @patch("backend.routers.market.akshare_service")
-    @patch("backend.routers.market.yf_service")
-    def test_health_all_healthy(self, mock_yf, mock_ak, mock_futu):
-        mock_futu.status = "CONNECTED"
-        mock_futu.error_msg = ""
-        mock_ak.get_health_status.return_value = {"name": "AKShare", "status": "healthy"}
-        mock_yf.get_health_status.return_value = {"name": "YFinance", "status": "healthy"}
+    @patch("backend.routers.market.data_source_router")
+    @patch("backend.routers.market.market_data")
+    def test_health_all_healthy(self, mock_md, mock_ds):
+        mock_md.is_opend_reachable = MagicMock(return_value=True)
+        mock_md.status = "CONNECTED"
+        mock_md.error_msg = ""
+        mock_md.ak_health_status = MagicMock(return_value={"name": "AKShare", "status": "healthy"})
+        mock_md.yf_health_status = MagicMock(return_value={"name": "YFinance", "status": "healthy"})
+        mock_ds.get_health_status = AsyncMock(return_value={"status": "healthy"})
 
         resp = client.get("/market/health/services")
         assert resp.status_code == 200
@@ -64,10 +67,15 @@ class TestServicesHealth:
         assert "AKShare" in names
         assert "YFinance" in names
 
-    @patch("backend.routers.market.futu_service")
-    def test_futu_disconnected(self, mock_futu):
-        mock_futu.status = "ERROR"
-        mock_futu.error_msg = "connection refused"
+    @patch("backend.routers.market.data_source_router")
+    @patch("backend.routers.market.market_data")
+    def test_futu_disconnected(self, mock_md, mock_ds):
+        mock_md.is_opend_reachable = MagicMock(return_value=False)
+        mock_md.status = "ERROR"
+        mock_md.error_msg = "connection refused"
+        mock_md.ak_health_status = MagicMock(return_value={"name": "AKShare", "status": "healthy"})
+        mock_md.yf_health_status = MagicMock(return_value={"name": "YFinance", "status": "healthy"})
+        mock_ds.get_health_status = AsyncMock(return_value={"status": "healthy"})
         resp = client.get("/market/health/services")
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -77,7 +85,7 @@ class TestServicesHealth:
 
 # ─── /market/quote ─────────────────────────────────────────────────────
 class TestGetQuote:
-    @patch("backend.routers.market.futu_service")
+    @patch("backend.routers.market.market_data")
     def test_futu_success(self, mock_futu):
         mock_futu.get_quote = AsyncMock(
             return_value={"status": "success", "data": {"ticker": "US.AAPL", "last_price": 150.0}}
@@ -86,7 +94,7 @@ class TestGetQuote:
         assert resp.status_code == 200
         assert resp.json()["status"] == "success"
 
-    @patch("backend.routers.market.futu_service")
+    @patch("backend.routers.market.market_data")
     @patch("backend.routers.market._to_yf_ticker")
     @patch("backend.routers.market.data_source_router")
     def test_futu_error_yf_fallback(self, mock_router, mock_fmt, mock_futu):
@@ -112,7 +120,7 @@ class TestGetQuote:
         assert resp.status_code == 200
         assert resp.json()["status"] == "success"
 
-    @patch("backend.routers.market.futu_service")
+    @patch("backend.routers.market.market_data")
     @patch("backend.routers.market._to_yf_ticker")
     @patch("backend.routers.market.data_source_router")
     def test_both_fail_returns_400(self, mock_router, mock_fmt, mock_futu):
@@ -125,7 +133,7 @@ class TestGetQuote:
 
 # ─── /market/fundamental/{ticker} ─────────────────────────────────────
 class TestGetFundamental:
-    @patch("backend.routers.market.fred_service")
+    @patch("backend.routers.market.market_data")
     def test_macro_ticker_routes_to_fred(self, mock_fred):
         mock_fred.get_series_observations = AsyncMock(
             return_value={"status": "success", "data": [{"date": "2024-01-01", "value": "5000"}]}
@@ -136,15 +144,15 @@ class TestGetFundamental:
         assert data["status"] == "success"
         assert "fred_series_id" in data["data"]
 
-    @patch("backend.routers.market.futu_service")
-    @patch("backend.routers.market.yf_service")
+    @patch("backend.routers.market.market_data")
+    @patch("backend.routers.market.market_data")
     def test_futu_success(self, mock_yf, mock_futu):
         mock_futu.get_fundamental = AsyncMock(return_value={"status": "success", "data": {"trailing_PE": 20.0}})
         resp = client.get("/market/fundamental/US.AAPL")
         assert resp.status_code == 200
         assert resp.json()["data"]["trailing_PE"] == 20.0
 
-    @patch("backend.routers.market.futu_service")
+    @patch("backend.routers.market.market_data")
     @patch("backend.routers.market.data_source_router")
     def test_etf_returns_warning(self, mock_router, mock_futu):
         mock_futu.get_fundamental = AsyncMock(return_value={"status": "error"})
@@ -161,7 +169,7 @@ class TestGetFundamental:
 # ─── /market/news ───────────────────────────────────────────────────────
 class TestGetCompanyNews:
     @patch("backend.routers.market.redis_client")
-    @patch("backend.routers.market.finnhub_service")
+    @patch("backend.routers.market.market_data")
     def test_cached_result(self, mock_finhub, mock_redis):
         import json
 
@@ -172,7 +180,7 @@ class TestGetCompanyNews:
         assert resp.json()["data"][0]["headline"] == "Cached"
 
     @patch("backend.routers.market.redis_client")
-    @patch("backend.routers.market.finnhub_service")
+    @patch("backend.routers.market.market_data")
     def test_fetch_from_finnhub(self, mock_finhub, mock_redis):
         mock_redis.get = AsyncMock(return_value=None)
         mock_finhub.get_company_news = AsyncMock(

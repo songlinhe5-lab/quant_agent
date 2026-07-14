@@ -16,15 +16,15 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from backend.routers.datasource import _parse_window_seconds
-from backend.services.datasource import datasource_registry
+from backend.services.datasource import rate_limit_registry
 
 
 @pytest.fixture(autouse=True)
 def clean_registry():
     """每个测试前重置全局注册表"""
-    datasource_registry.clear()
+    rate_limit_registry.clear()
     yield
-    datasource_registry.clear()
+    rate_limit_registry.clear()
 
 
 @pytest.fixture
@@ -94,7 +94,7 @@ class TestRateLimitAnalysisEndpoint:
     def test_analysis_with_data(self, client):
         """有数据时返回分析结果"""
         # 先记录一些请求
-        analyzer = datasource_registry.get_analyzer("yfinance")
+        analyzer = rate_limit_registry.get_analyzer("yfinance")
         for i in range(50):
             analyzer.record_success()
         for i in range(5):
@@ -121,10 +121,10 @@ class TestRateLimitAnalysisEndpoint:
 
     def test_analysis_auto_creates_source(self, client):
         """查询不存在的数据源时自动创建"""
-        assert not datasource_registry.has("new_source")
+        assert not rate_limit_registry.has("new_source")
         resp = client.get("/api/v1/datasource/new_source/rate-limit-analysis")
         assert resp.status_code == 200
-        assert datasource_registry.has("new_source")
+        assert rate_limit_registry.has("new_source")
 
 
 # ─────────────────────────────────────────
@@ -145,7 +145,7 @@ class TestRateLimitStatusEndpoint:
 
     def test_status_after_rate_limit(self, client):
         """限流后状态"""
-        throttler = datasource_registry.get_throttler("yfinance")
+        throttler = rate_limit_registry.get_throttler("yfinance")
         throttler.on_rate_limit()
 
         resp = client.get("/api/v1/datasource/yfinance/rate-limit-status")
@@ -179,9 +179,9 @@ class TestRateLimitOverviewEndpoint:
     def test_overview_with_sources(self, client):
         """有多个数据源时返回总览"""
         # 触发几个数据源的创建
-        datasource_registry.get_throttler("yfinance")
-        datasource_registry.get_throttler("futu")
-        datasource_registry.get_throttler("finnhub")
+        rate_limit_registry.get_throttler("yfinance")
+        rate_limit_registry.get_throttler("futu")
+        rate_limit_registry.get_throttler("finnhub")
 
         resp = client.get("/api/v1/datasource/rate-limit-overview")
         assert resp.status_code == 200
@@ -195,7 +195,7 @@ class TestRateLimitOverviewEndpoint:
 
     def test_overview_includes_throttle_status(self, client):
         """总览包含退避状态"""
-        throttler = datasource_registry.get_throttler("yfinance")
+        throttler = rate_limit_registry.get_throttler("yfinance")
         throttler.on_rate_limit()
 
         resp = client.get("/api/v1/datasource/rate-limit-overview")

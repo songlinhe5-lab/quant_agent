@@ -6,15 +6,15 @@ import os
 from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from backend.app.broker import broker
+from backend.app.market_data import market_data
 from backend.core import models
 from backend.core.database import get_db
 
 # 引入全局 Redis 客户端
 from backend.core.redis_client import redis_client
-from backend.services.futu_service import futu_service
+from backend.core.ticker_format import format_yf_ticker as _to_yf_ticker
 from backend.services.oms_service import oms_service
-from backend.services.yfinance_service import format_yf_ticker as _to_yf_ticker
-from backend.services.yfinance_service import yf_service
 
 logger = logging.getLogger("OMS")
 
@@ -61,7 +61,7 @@ async def place_order(
             if cached_double:
                 acc_info = json.loads(cached_double)
             else:
-                acc_info = await futu_service.get_account_info()
+                acc_info = await broker.get_account_info()
                 if acc_info.get("status") == "error":
                     raise HTTPException(status_code=500, detail="风控中断：无法获取当前账户总资产。")  # noqa: E501
                 # 将结果写入 Redis 缓存，设置 5 秒的 TTL 生命周期。
@@ -78,7 +78,7 @@ async def place_order(
         try:
             yf_ticker = _to_yf_ticker(ticker)
             # 获取最新的技术指标 (命中本地缓存，无延迟)
-            tech_res = await yf_service.get_tech_indicators(ticker=yf_ticker, lookback_days=1)  # noqa: E501
+            tech_res = await market_data.get_tech_indicators(ticker=yf_ticker, lookback_days=1)  # noqa: E501
             if tech_res.get("status") == "success" and tech_res.get("data", {}).get("trend"):  # noqa: E501
                 latest_tech = tech_res["data"]["trend"][0]
                 atr_14 = latest_tech.get("ATR_14")
@@ -110,19 +110,16 @@ async def place_order(
         )
 
     # ==========================================
-    # 5. 校验通过，放行给底层引擎 (FutuTradeTool) 执行交易
+    # 5. 校验通过，放行给底层引擎 (BrokerGateway) 执行交易
     # ==========================================
-    from futu import ModifyOrderOp, TrdMarket, TrdSide
-
-    market = TrdMarket.HK if ticker and ("HK" in ticker.upper()) else TrdMarket.US
+    market = "HK" if ticker and ("HK" in ticker.upper()) else "US"
 
     if action == "STATUS":
-        result = await futu_service.query_order(order_id, market)  # type: ignore
+        result = await broker.query_order(order_id, market)
     elif action == "CANCEL":
-        result = await futu_service.modify_order(order_id, ModifyOrderOp.CANCEL, market)  # type: ignore
+        result = await broker.cancel_order(order_id, market)
     else:
-        trd_side = TrdSide.BUY if action == "BUY" else TrdSide.SELL
-        result = await futu_service.place_order(ticker, qty, price, trd_side, market)  # type: ignore
+        result = await broker.place_order(ticker, qty, price, action, market)
 
     if result.get("status") == "error":
         raise HTTPException(status_code=400, detail=result.get("message"))
@@ -187,7 +184,7 @@ async def place_order(
 
 @router.get("/account")
 async def get_account_info(market: str = "HK"):
-    res = await futu_service.get_account_info(market)
+    res = await broker.get_account_info(market)
     if res.get("status") == "error":
         raise HTTPException(status_code=400, detail=res.get("message"))
     return res
@@ -196,7 +193,7 @@ async def get_account_info(market: str = "HK"):
 @router.get("/portfolio")
 async def get_portfolio():
     """获取账户核心资产与风控指标"""
-    acc_res = await futu_service.get_account_info()
+    acc_res = await broker.get_account_info()
     base_nav = 12450890.50
     if acc_res.get("status") == "success":
         base_nav = acc_res.get("total_assets", base_nav)

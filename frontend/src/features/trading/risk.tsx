@@ -4,11 +4,8 @@ import { useState, useEffect, useMemo } from 'react'
 import { ShieldAlert, TrendingUp, AlertTriangle, Loader2, Info, X, Activity, PieChart, BarChart3, ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiClient } from '@/lib/api-client'
-import {
-  RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer,
-  LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, Area, AreaChart,
-} from 'recharts'
 import { useTheme } from 'next-themes'
+import { NavAreaChart, RiskRadarChart, SectorBarChart, CorrelationHeatmap, CVarWaterfallChart } from './risk-charts'
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -31,12 +28,17 @@ interface RiskFactorData { label: string; value: number; threshold: number; unit
 interface NavSnapshot { ts: number; nav: number }
 interface PositionData { code: string; stock_name?: string; position_side?: string; qty?: number; market_val?: number; pl_val?: number; pl_ratio?: number; market?: string }
 
+interface CorrelationData { labels: string[]; matrix: number[][]; warnings: { a: string; b: string; val: number }[] }
+interface SectorData { sector: string; pct: number; market_val: number; symbols: string[] }
+interface CVarData { symbol: string; cvar_contrib: number; weight: number; marginal_var: number }
+
 interface AccountDetail {
   kpi: KpiData
   exposure: ExposureData[]
   risk_radar: RiskRadarData[]
   risk_factors: RiskFactorData[]
   nav_snapshots: NavSnapshot[]
+  correlation?: CorrelationData
   positions: PositionData[]
   currency: string
   position_count: number
@@ -130,12 +132,41 @@ function AccountSection({ market, account, isDark, loading }: {
   market: string; account: AccountDetail; isDark: boolean; loading: boolean
 }) {
   const meta = MARKET_LABELS[market] || { name: market, flag: '🌐', currency: '' }
-  const { kpi, exposure, risk_radar, risk_factors, nav_snapshots, positions } = account
+  const { kpi, exposure, risk_radar, risk_factors, nav_snapshots, positions, correlation } = account
   const [showRadarHelp, setShowRadarHelp] = useState(false)
   const [showFactorHelp, setShowFactorHelp] = useState(false)
   const [positionsExpanded, setPositionsExpanded] = useState(true)
+  const [advancedTab, setAdvancedTab] = useState<'sector' | 'corr' | 'cvar' | 'stress' | null>(null)
+  const [sectorData, setSectorData] = useState<SectorData[]>([])
+  const [cvarData, setCvarData] = useState<CVarData[]>([])
+  const [stressResult, setStressResult] = useState<any>(null)
+  const [stressScenario, setStressScenario] = useState('2008_crash')
   const sym = kpi.currency === 'HKD' ? 'HK$' : '$'
   const plDir = kpi.today_pl >= 0 ? 1 : -1
+
+  // 加载进阶数据
+  useEffect(() => {
+    if (advancedTab === 'sector' && sectorData.length === 0) {
+      apiClient.get<any>(`/risk/sector-exposure?market=${market}`).then(res => {
+        const d = res.data?.data || res.data
+        if (d?.sectors) setSectorData(d.sectors)
+      }).catch(() => {})
+    }
+    if (advancedTab === 'cvar' && cvarData.length === 0) {
+      apiClient.get<any>(`/risk/cvar?market=${market}`).then(res => {
+        const d = res.data?.data || res.data
+        if (d?.decompositions) setCvarData(d.decompositions)
+      }).catch(() => {})
+    }
+  }, [advancedTab, market])
+
+  function runStressTest(scenario: string) {
+    setStressScenario(scenario)
+    apiClient.post<any>(`/risk/stress-test`, { scenario, market }).then(res => {
+      const d = res.data?.data || res.data
+      setStressResult(d)
+    }).catch(() => {})
+  }
 
   const navCurve = useMemo(() =>
     nav_snapshots.slice().reverse().map((s, i) => ({ t: i, nav: s.nav })),
@@ -232,24 +263,7 @@ function AccountSection({ market, account, isDark, loading }: {
         </div>
         <div className="p-1.5 h-28">
           {navCurve.length > 1 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={navCurve}>
-                <defs>
-                  <linearGradient id={`navGrad-${market}`} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={isDark ? '#34d399' : '#059669'} stopOpacity={0.15} />
-                    <stop offset="95%" stopColor={isDark ? '#34d399' : '#059669'} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)'} />
-                <XAxis dataKey="t" hide />
-                <YAxis domain={['auto', 'auto']} hide />
-                <Tooltip
-                  contentStyle={{ background: isDark ? 'rgba(15,23,42,0.95)' : 'rgba(255,255,255,0.95)', border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, borderRadius: '8px', fontSize: 11, color: isDark ? '#f8fafc' : '#0f172a', padding: '6px 10px' }}
-                  formatter={(v: any) => [`${sym}${Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 })}`, 'NAV']}
-                />
-                <Area type="monotone" dataKey="nav" stroke={isDark ? '#34d399' : '#059669'} strokeWidth={2} fill={`url(#navGrad-${market})`} dot={false} animationDuration={1000} />
-              </AreaChart>
-            </ResponsiveContainer>
+            <NavAreaChart data={navCurve} currencySym={sym} />
           ) : (
             <div className="h-full flex items-center justify-center text-[11px] text-muted-foreground">
               {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
@@ -277,14 +291,7 @@ function AccountSection({ market, account, isDark, loading }: {
             <RiskScoreGauge radar={risk_radar} isDark={isDark} />
             <div className="flex-1 h-24 pr-0.5">
               {risk_radar.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart data={risk_radar}>
-                    <PolarGrid stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} />
-                    <PolarAngleAxis dataKey="axis" tick={{ fill: isDark ? 'rgba(156,163,175,0.7)' : 'rgba(100,116,139,0.7)', fontSize: 8 }} />
-                    <Radar dataKey="current" stroke={isDark ? '#34d399' : '#059669'} fill={isDark ? '#34d399' : '#059669'} fillOpacity={0.12} strokeWidth={1.5} />
-                    <Radar dataKey="limit" stroke={isDark ? 'rgba(239,68,68,0.4)' : 'rgba(220,38,38,0.4)'} fill="none" strokeWidth={1} strokeDasharray="3 2" />
-                  </RadarChart>
-                </ResponsiveContainer>
+                <RiskRadarChart data={risk_radar} />
               ) : (
                 <div className="h-full flex items-center justify-center text-[10px] text-muted-foreground">
                   {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : '暂无'}
@@ -428,6 +435,112 @@ function AccountSection({ market, account, isDark, loading }: {
                 {loading ? <Loader2 className="h-3 w-3 animate-spin mx-auto mb-1" /> : null}
                 {loading ? '加载中...' : '暂无持仓'}
               </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Row 5: 进阶风控 (板块/相关性/CVaR/压力测试) ── */}
+      <div className="glass-card rounded-lg overflow-hidden">
+        <div className="px-3 py-1 border-b border-border/20 flex items-center gap-1.5">
+          {(['sector', 'corr', 'cvar', 'stress'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setAdvancedTab(advancedTab === tab ? null : tab)}
+              className={cn(
+                'text-[8px] px-1.5 py-0.5 rounded font-semibold transition-colors',
+                advancedTab === tab ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {{ sector: '板块', corr: '相关性', cvar: 'CVaR', stress: '压力测试' }[tab]}
+            </button>
+          ))}
+        </div>
+        {advancedTab === 'sector' && (
+          <div className="p-1.5 h-36">
+            {sectorData.length > 0 ? (
+              <SectorBarChart data={sectorData} />
+            ) : (
+              <div className="h-full flex items-center justify-center text-[10px] text-muted-foreground">加载中...</div>
+            )}
+          </div>
+        )}
+        {advancedTab === 'corr' && correlation && correlation.labels.length > 1 && (
+          <div className="p-1.5 h-44">
+            <CorrelationHeatmap labels={correlation.labels} matrix={correlation.matrix} />
+            {correlation.warnings.length > 0 && (
+              <div className="px-2 py-1 text-[8px] text-amber-500">
+                ⚠ 高相关性预警: {correlation.warnings.map(w => `${w.a}↔${w.b}(${w.val.toFixed(2)})`).join(', ')}
+              </div>
+            )}
+          </div>
+        )}
+        {advancedTab === 'corr' && (!correlation || correlation.labels.length <= 1) && (
+          <div className="p-3 text-center text-[9px] text-muted-foreground">持仓不足 2 只，无法计算相关性</div>
+        )}
+        {advancedTab === 'cvar' && (
+          <div className="p-1.5 space-y-1.5">
+            {cvarData.length > 0 ? (
+              <>
+                <div className="h-28"><CVarWaterfallChart data={cvarData} /></div>
+                <div className="grid grid-cols-2 gap-1 text-[8px]">
+                  {cvarData.map(d => (
+                    <div key={d.symbol} className="flex justify-between px-1.5 py-0.5 bg-muted/20 rounded">
+                      <span className="font-mono font-semibold">{d.symbol}</span>
+                      <span className="font-mono tabular-nums text-muted-foreground">{(d.cvar_contrib * 100).toFixed(3)}%</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="py-4 text-center text-[9px] text-muted-foreground">加载中...</div>
+            )}
+          </div>
+        )}
+        {advancedTab === 'stress' && (
+          <div className="p-2 space-y-1.5">
+            <div className="flex flex-wrap gap-1">
+              {[
+                { id: '2008_crash', label: '🏦 2008 金融危机' },
+                { id: '2020_covid', label: '🦠 2020 新冠' },
+                { id: '2022_hike', label: '📈 2022 加息' },
+                { id: 'vol_double', label: '🌊 波动率翻倍' },
+                { id: 'rate_plus_1', label: '💰 利率+1%' },
+                { id: 'fx_depreciation', label: '💱 汇率-5%' },
+              ].map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => runStressTest(s.id)}
+                  className={cn(
+                    'text-[8px] px-1.5 py-0.5 rounded border transition-colors',
+                    stressScenario === s.id ? 'border-primary text-primary bg-primary/10' : 'border-border/30 text-muted-foreground hover:border-primary/50'
+                  )}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            {stressResult ? (
+              <div className="grid grid-cols-3 gap-1.5 text-[9px]">
+                <div className="bg-muted/20 rounded px-2 py-1">
+                  <p className="text-muted-foreground text-[8px]">冲击前 NAV</p>
+                  <p className="font-mono font-bold tabular-nums">${(stressResult.nav_before / 1000).toFixed(1)}K</p>
+                </div>
+                <div className="bg-muted/20 rounded px-2 py-1">
+                  <p className="text-muted-foreground text-[8px]">冲击后 NAV</p>
+                  <p className={cn('font-mono font-bold tabular-nums', stressResult.change_pct < 0 ? 'text-red-500' : 'text-emerald-500')}>
+                    ${(stressResult.nav_after / 1000).toFixed(1)}K
+                  </p>
+                </div>
+                <div className="bg-muted/20 rounded px-2 py-1">
+                  <p className="text-muted-foreground text-[8px]">变化</p>
+                  <p className={cn('font-mono font-bold tabular-nums', stressResult.change_pct < 0 ? 'text-red-500' : 'text-emerald-500')}>
+                    {stressResult.change_pct > 0 ? '+' : ''}{stressResult.change_pct}%
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="py-2 text-center text-[9px] text-muted-foreground">选择情景执行压力测试</div>
             )}
           </div>
         )}

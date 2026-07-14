@@ -1,22 +1,30 @@
 'use client'
 
 import React from 'react'
-import { Filter, Loader2, ScanSearch, Plus } from 'lucide-react'
+import { Filter, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SortableTh, ScreenerRow } from './table-components'
 import { getZhLabel } from './shared'
 import { useScreenerContext } from './screener-context'
+import { DataState, resolveDataStatus } from '@/components/data-state'
+import { ScreenerAgGrid } from './screener-ag-grid'
 
 export function ScreenerResultsTable() {
   const {
     realDataLength, columnFilters, setColumnFilters, setCurrentPage, dslQuery, fetchPageData, pageSize, sortKey, sortDir,
     handleExportCSV, isAllCurrentPageSelected, toggleAll, handleSort, dynamicCols, handleApplyFilter, handleClearFilter,
-    isLoading, scanStatus, paginatedData, selected, toggleOne, handleAddAndOpen, handleAddSingle, setPreviewData,
+    isLoading, paginatedData, selected, toggleOne, handleAddAndOpen, handleAddSingle, setPreviewData,
     handleSendToCopilot, handleSendToBacktest, currentPage, totalPages, setPageSize, setSelected, handleAddBatch
   } = useScreenerContext()
 
+  const viewStatus = resolveDataStatus({
+    loading: isLoading,
+    empty: !isLoading && paginatedData.length === 0,
+  })
+  const useAgGrid = pageSize >= 50 && paginatedData.length > 0
+
   return (
-    <div className="glass-card rounded-xl overflow-hidden transition-colors duration-300 border border-border/40 shadow-sm relative flex flex-col h-[500px]">
+    <div className="glass-card rounded-xl overflow-hidden transition-colors duration-base border border-border/40 shadow-sm relative flex flex-col h-[500px]">
       <div className="px-4 py-2.5 border-b border-border/30 flex items-center justify-between bg-secondary/30 shrink-0">
         <div className="flex items-center gap-2">
           <Filter className="h-3.5 w-3.5 text-muted-foreground" />
@@ -24,6 +32,9 @@ export function ScreenerResultsTable() {
             筛选结果
             <span className="ml-2 bg-primary/10 text-primary px-1.5 py-0.5 rounded-md font-mono">{realDataLength}</span>
           </span>
+          {useAgGrid && (
+            <span className="text-[10px] text-muted-foreground font-mono">AG Grid</span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {Object.keys(columnFilters).length > 0 && (
@@ -33,7 +44,25 @@ export function ScreenerResultsTable() {
         </div>
       </div>
 
-      <div className="overflow-auto flex-1 custom-scrollbar">
+      {useAgGrid ? (
+        <div className="flex-1 min-h-0">
+          <ScreenerAgGrid
+            rows={paginatedData as Record<string, unknown>[]}
+            dynamicCols={dynamicCols}
+            selected={selected}
+            onToggleOne={toggleOne}
+            onPreview={setPreviewData}
+          />
+        </div>
+      ) : (
+      <DataState
+        status={viewStatus}
+        skeletonRows={8}
+        emptyTitle={dslQuery ? '未能匹配到标的' : '开始选股'}
+        emptyDescription={dslQuery ? '请尝试放宽筛选条件' : '在上方输入自然语言，或点击灵感快捷键开始选股'}
+        className="flex-1"
+      >
+      <div className="overflow-auto flex-1 custom-scrollbar h-full">
         <table className="w-full text-xs" role="table" aria-label="选股结果数据网格">
           <thead className="sticky top-0 z-10 bg-slate-50/90 dark:bg-zinc-900/90 backdrop-blur-md shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
             <tr className="border-b border-border/40">
@@ -46,18 +75,14 @@ export function ScreenerResultsTable() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border/15">
-            {isLoading ? (
-              <tr><td colSpan={dynamicCols.length + 5} className="h-[300px] text-center"><div className="flex flex-col items-center justify-center text-primary/60 space-y-3"><Loader2 className="h-8 w-8 animate-spin" /><p className="text-xs font-mono animate-pulse">{scanStatus || '正在全市场检索...'}</p></div></td></tr>
-            ) : paginatedData.length > 0 ? (
-              paginatedData.map((r) => (
+            {paginatedData.map((r) => (
               <ScreenerRow key={r.symbol} r={r} isSelected={selected.includes(r.symbol)} dynamicCols={dynamicCols} toggleOne={toggleOne} handleAddAndOpen={handleAddAndOpen} handleAddSingle={handleAddSingle} onPreview={setPreviewData} onSendToCopilot={handleSendToCopilot} onSendToBacktest={handleSendToBacktest} />
-              ))
-            ) : (
-              <tr><td colSpan={dynamicCols.length + 5} className="h-[300px] text-center"><div className="flex flex-col items-center justify-center text-muted-foreground space-y-3"><ScanSearch className="h-8 w-8 opacity-20" /><p className="text-xs">{dslQuery ? '未能匹配到任何符合条件的标的，请尝试放宽筛选条件' : '在上方输入自然语言，或点击灵感快捷键开始选股...'}</p></div></td></tr>
-            )}
+            ))}
           </tbody>
         </table>
       </div>
+      </DataState>
+      )}
 
       {paginatedData.length > 0 && (
         <div className="px-4 py-2.5 border-t border-border/30 bg-secondary/10 flex items-center justify-between shrink-0">

@@ -25,9 +25,10 @@ def _unwrap(resp):
 class TestMarketFutuStatusRoutes:
     """Futu 连接状态路由测试"""
 
-    @patch("backend.routers.market.futu_service")
+    @patch("backend.routers.market.market_data")
     def test_get_futu_status_success(self, mock_futu):
         """正常路径：获取 Futu 连接状态"""
+        mock_futu.is_opend_reachable = MagicMock(return_value=True)
         mock_futu.status = "CONNECTED"
         mock_futu.error_msg = ""
         client = TestClient(app)
@@ -40,16 +41,20 @@ class TestMarketFutuStatusRoutes:
 class TestMarketServicesHealthRoutes:
     """数据源健康检查路由测试"""
 
-    @patch("backend.routers.market.yf_service")
-    @patch("backend.routers.market.akshare_service")
-    def test_get_services_health_success(self, mock_akshare, mock_yf):
+    @patch("backend.routers.market.data_source_router")
+    @patch("backend.routers.market.market_data")
+    def test_get_services_health_success(self, mock_md, mock_ds):
         """正常路径：获取所有数据源健康状态"""
-        mock_akshare.get_health_status = MagicMock(
+        mock_md.is_opend_reachable = MagicMock(return_value=True)
+        mock_md.status = "CONNECTED"
+        mock_md.error_msg = ""
+        mock_md.ak_health_status = MagicMock(
             return_value={"name": "AKShare", "status": "healthy", "cooldown_remaining": 0, "message": "正常"}
         )
-        mock_yf.get_health_status = MagicMock(
+        mock_md.yf_health_status = MagicMock(
             return_value={"name": "YFinance", "status": "healthy", "cooldown_remaining": 0, "message": "正常"}
         )
+        mock_ds.get_health_status = AsyncMock(return_value={"status": "healthy"})
         client = TestClient(app)
         resp = client.get("/api/v1/market/health/services")
         assert resp.status_code == 200
@@ -62,7 +67,7 @@ class TestMarketServicesHealthRoutes:
 class TestMarketFundFlowRoutes:
     """资金流路由测试"""
 
-    @patch("backend.routers.market.futu_service")
+    @patch("backend.routers.market.market_data")
     def test_get_fund_flow_success(self, mock_futu):
         """正常路径：获取资金流数据"""
         mock_futu.get_fund_flow = AsyncMock(
@@ -73,7 +78,7 @@ class TestMarketFundFlowRoutes:
         assert resp.status_code == 200
         assert _unwrap(resp)["status"] == "success"
 
-    @patch("backend.routers.market.futu_service")
+    @patch("backend.routers.market.market_data")
     def test_get_fund_flow_failure(self, mock_futu):
         """异常路径：Futu 接口失败返回 400"""
         mock_futu.get_fund_flow = AsyncMock(return_value={"status": "error", "message": "标的暂不支持"})
@@ -103,7 +108,7 @@ class TestMarketSearchRoutes:
 class TestMarketHoldersRoutes:
     """机构持仓路由测试"""
 
-    @patch("backend.routers.market.akshare_service")
+    @patch("backend.routers.market.market_data")
     def test_get_holders_us_ticker_warning(self, mock_akshare):
         """参数路径：美股标的直接返回 warning"""
         client = TestClient(app)

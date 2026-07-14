@@ -299,6 +299,12 @@ class YFinanceRouter:
                 # 标记为降级数据
                 data["degraded"] = True
                 data["stale_source"] = True
+                # DIST-20: 记录 STALE 降级指标
+                try:
+                    from backend.core.metrics import DIST_YF_STALE_TOTAL
+                    DIST_YF_STALE_TOTAL.labels(cache_key=cache_key[:64]).inc()
+                except Exception:
+                    pass
                 logger.warning(f"[YFinanceRouter] 降级返回 STALE 缓存: {cache_key}")
                 return data
         except Exception as e:

@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo } from 'react'
-import { FolderGit2, Plus, Star, GitBranch, Trash2 } from 'lucide-react'
-import { useStrategyStore } from '../stores/useStrategyStore'
+import React, { useEffect, useMemo, useState } from 'react'
+import { FolderGit2, Plus, Star, GitBranch, Trash2, Clock } from 'lucide-react'
+import { useStrategyStore } from '../stores'
 import { apiClient } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
 import { useConfirmDialog } from '@/components/confirm-dialog'
 import { cn } from '@/lib/utils'
+import { VersionTimeline } from './version-timeline'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 export function LeftSidebar() {
   const store = useStrategyStore()
@@ -92,62 +94,76 @@ export function LeftSidebar() {
 
   return (
     <div className="h-full flex flex-col bg-background/50">
-      <div className="h-9 px-3 border-b border-border/30 flex items-center justify-between shrink-0 bg-secondary/10">
-        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-          <FolderGit2 className="h-3.5 w-3.5"/> 策略草稿库
-        </span>
-        <button onClick={handleNewStrategy} className="text-muted-foreground hover:text-foreground transition-colors" title="新建策略草稿">
-          <Plus className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      <ul className="flex-1 overflow-y-auto p-1.5 custom-scrollbar divide-y divide-border/10">
-        {displayStrategies.length > 0 ? displayStrategies.map((s) => (
-          <li key={s.name} className="relative group rounded-md mb-0.5">
-            <div
-              onClick={() => handleSelectStrategy(s.name)}
-              className={cn(
-                'px-2 py-2.5 text-left transition-colors border-l-2 cursor-pointer rounded-r-md',
-                store.activeStrategy === s.name
-                  ? 'bg-primary/10 border-primary'
-                  : 'hover:bg-secondary/40 border-transparent'
-              )}
-            >
-              <div className="flex items-start justify-between gap-1 mb-1.5 pr-6">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <button onClick={(e) => handleToggleFavorite(s.name, e)} className="shrink-0 text-muted-foreground hover:text-amber-500 transition-colors">
-                    <Star className={cn("h-3 w-3", store.favorites.includes(s.name) && "fill-amber-500 text-amber-500")} />
-                  </button>
-                  <span className={cn("text-xs font-semibold truncate", store.activeStrategy === s.name ? "text-primary" : "text-foreground")}>{s.name}</span>
+      <Tabs defaultValue="drafts" className="flex flex-col h-full">
+        <div className="h-9 px-3 border-b border-border/30 flex items-center justify-between shrink-0 bg-secondary/10">
+          <TabsList className="bg-transparent p-0 h-7 gap-0">
+            <TabsTrigger value="drafts" className="text-[10px] px-3 h-7 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-1">
+              <FolderGit2 className="h-3 w-3"/> 草稿库
+            </TabsTrigger>
+            <TabsTrigger value="versions" className="text-[10px] px-3 h-7 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-1">
+              <Clock className="h-3 w-3"/> 版本
+            </TabsTrigger>
+          </TabsList>
+          <button onClick={handleNewStrategy} className="text-muted-foreground hover:text-foreground transition-colors" title="新建策略草稿">
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        
+        <TabsContent value="drafts" className="m-0 flex-1 overflow-hidden">
+          <ul className="flex-1 overflow-y-auto p-1.5 custom-scrollbar divide-y divide-border/10 h-full">
+            {displayStrategies.length > 0 ? displayStrategies.map((s) => (
+              <li key={s.name} className="relative group rounded-md mb-0.5">
+                <div
+                  onClick={() => handleSelectStrategy(s.name)}
+                  className={cn(
+                    'px-2 py-2.5 text-left transition-colors border-l-2 cursor-pointer rounded-r-md',
+                    store.activeStrategy === s.name
+                      ? 'bg-primary/10 border-primary'
+                      : 'hover:bg-secondary/40 border-transparent'
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-1 mb-1.5 pr-6">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <button onClick={(e) => handleToggleFavorite(s.name, e)} className="shrink-0 text-muted-foreground hover:text-amber-500 transition-colors">
+                        <Star className={cn("h-3 w-3", store.favorites.includes(s.name) && "fill-amber-500 text-amber-500")} />
+                      </button>
+                      <span className={cn("text-xs font-semibold truncate", store.activeStrategy === s.name ? "text-primary" : "text-foreground")}>{s.name}</span>
+                    </div>
+                    <span className={cn(
+                      'text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0',
+                      s.status === 'active'   ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' :
+                      s.status === 'testing'  ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' :
+                                                'bg-secondary text-muted-foreground'
+                    )}>
+                      {s.status === 'active' ? '运行' : s.status === 'testing' ? '测试' : '停用'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-[9px] text-muted-foreground pl-4">
+                    <span className="font-mono">{s.lang || 'Python'} · {s.version || 'v1.0'}</span>
+                    <span className="font-mono">{s.modified ? new Date(s.modified).toLocaleDateString() : ''}</span>
+                  </div>
                 </div>
-                <span className={cn(
-                  'text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0',
-                  s.status === 'active'   ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' :
-                  s.status === 'testing'  ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' :
-                                            'bg-secondary text-muted-foreground'
-                )}>
-                  {s.status === 'active' ? '运行' : s.status === 'testing' ? '测试' : '停用'}
-                </span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDeleteStrategy(s.name); }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1.5 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-all duration-200 z-10"
+                  title="删除策略"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </li>
+            )) : (
+              <div className="p-4 mt-4 text-center flex flex-col items-center gap-2 text-muted-foreground opacity-60">
+                <GitBranch className="h-5 w-5" />
+                <span className="text-[10px] font-mono">暂无策略记录</span>
               </div>
-              <div className="flex items-center justify-between text-[9px] text-muted-foreground pl-4">
-                <span className="font-mono">{s.lang || 'Python'} · {s.version || 'v1.0'}</span>
-                <span className="font-mono">{s.modified ? new Date(s.modified).toLocaleDateString() : ''}</span>
-              </div>
-            </div>
-            <button
-              onClick={(e) => { e.stopPropagation(); handleDeleteStrategy(s.name); }}
-              className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1.5 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-all duration-200 z-10"
-              title="删除策略"
-            >
-              <Trash2 className="h-3 w-3" />
-            </button>
-          </li>
-        )) : (
-          <div className="p-4 mt-4 text-center flex flex-col items-center gap-2 text-muted-foreground opacity-60">
-            <GitBranch className="h-5 w-5" />
-            <span className="text-[10px] font-mono">暂无策略记录</span>
-          </div>
-        )}
-      </ul>
+            )}
+          </ul>
+        </TabsContent>
+        
+        <TabsContent value="versions" className="m-0 flex-1 overflow-hidden">
+          <VersionTimeline />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

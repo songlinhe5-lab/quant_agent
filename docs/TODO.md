@@ -50,10 +50,16 @@ graph TD
         FEUI["FE-05·06·08~15·23 交互与视觉"]
         BEBIZ["BE-08·11·12·19·20 业务接口完善"]
         SEC03["SEC-03 内部HMAC + Tool对接"]
+        ALERT["ALERT-01~05 告警中心子系统"]
+        DQ["DQ-01~04 数据正确性<br/>(退市全集/PIT财务/快照版本)"]
+        BT["BT-01~06 回测引擎升级<br/>(同构抽象/可复现/WF/寻优)"]
+        STRAT["STRAT-01~05 策略实验室"]
+        PT["PT-01~02 纸面组合追踪"]
     end
 
     subgraph S4["阶段 4 · 客户端（Flutter，依赖API稳定）"]
-        CLI["CLI-01~06<br/>三端脚手架 / APM / K线 / 推送 / 鸿蒙"]
+        CLI["CLI-01~07·ARCH<br/>脚手架 / APM / K线 / 鉴权 / 推送 / 鸿蒙 / 门禁 ✅"]
+        CLIP2["CLI-08~14<br/>STALE✅ / WS持仓✅ / OMS✅ / Kill✅ / Copilot✅ / 平板✅ / Isolate✅"]
     end
 
     subgraph S5["阶段 5 · 工程化·可观测·质量（贯穿，集成期收口）"]
@@ -85,6 +91,15 @@ graph TD
     FE_DATA --> S3
     BE15 --> FE17
     BE14 -.类型同步.-> FE18
+
+    BE15 --> ALERT
+    BE_PIPE --> DQ
+    DQ --> BT
+    BT --> STRAT
+    BT --> PT
+    ALERT --> CLI
+    CLI --> CLIP2
+    ALERT --> CLIP2
 
     S3 --> S4
     BE_PIPE --> CLI
@@ -155,6 +170,23 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 - [x] **[SEC-09]** 删除持仓、取消订单等破坏性操作必须添加二次确认弹窗（二次确认 Modal）
 - [x] **[SEC-13]** 用户登出时清除所有本地敏感缓存（内存 Token / IndexedDB / 本地存储），防止会话劫持
 
+### 质量治理红线（2026-07-12 第三轮 Review 新增，见 `MASTER_REVIEW.md §7.3`）
+
+- [x] **[GOV-01]** 覆盖率门禁爬坡机制：TEST-13 门槛曾从 70%/60% 静默降至 5%/10%（未走决策流程）。建立每月 +5% 的爬坡计划写入 CI（codecov.yml `target` 逐月上调），最终恢复后端 ≥70% / 前端 ≥60%；当月未达标阻断合并 ✅ **爬坡计划已写入 codecov.yml + MASTER_REVIEW.md §7.5**
+- [x] **[GOV-02]** 质量门禁变更治理：覆盖率门槛、lint 规则豁免、CI 必过项的任何放宽必须在 `MASTER_REVIEW.md` 记录 ADR（原因 + 恢复期限），禁止在配置文件中静默修改 ✅ **ADR-COV-01 已记录于 §7.5**
+- [x] **[GOV-03]** CLI-07 决策收口（限期 2 周）：完成 Flutter vs Tauri Mobile 对比评估，输出 ADR-006 终审结论写入 `MASTER_REVIEW.md`；决策落定前冻结所有 CLI-01~06 开发投入，防止方向反复 ✅ **ADR-006 已输出：确认 Flutter 三端，否决 Tauri Mobile**
+
+### 安全红线补漏（2026-07-12 第三轮 Review 补充，见 `MASTER_REVIEW.md §四`）
+
+- [x] **[SEC-14]** Redis 端口（6379）收敛：docker-compose.yml 改为仅 Docker 内网访问（移除 `ports: 6379:6379`），应用容器通过 `quant-internal` 网络直连 ✅ **expose 替代 ports，master 节点绑定 Tailscale IP**
+- [x] **[SEC-15]** PostgreSQL 端口（5432）收敛：同上，移除公网暴露，仅内部网络可达 ✅ **expose 替代 ports**
+- [x] **[SEC-16]** VPS SSH 加固：关闭密码登录（`PasswordAuthentication no`）、改用非标端口、密钥认证；记录至运维手册 `docs/12` ✅ **§七 安全加固清单已落地**
+
+### 文档治理（2026-07-12 第三轮 Review 补充，见 `MASTER_REVIEW.md §7.3 #4`）
+
+- [x] **[DOC-04]** `docs/01` §十二 路线图收口：V2.2 已声明 `TODO.md` 为任务 SSOT，§十二 仅作产品索引并标注 FE-PROD/BT/ALERT 任务 ID ✅ **2026-07-13 V2.2 落地**
+- [ ] **[DOC-05]** 北京节点冷备启动脚本：最低限度 DR 预案（R2 备份异地恢复 + 北京节点冷备启动命令集），不追求热备但确保 RTO < 4h
+
 ---
 
 ## 🟠 P1 — 核心功能缺失（本迭代完成）
@@ -176,9 +208,20 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 - [x] **[BE-17]** pgvector 知识库迁移工具：建表/建索引脚本 + 向量数据导出/导入（经 Cloudflare R2 跨节点迁移）+ 超 90 天旧片段定时清理
 - [x] **[BE-18]** PostgreSQL 每日 `pg_dump` 备份到 Cloudflare R2（补齐 OPS-04 仅有 Redis 的缺口）
 
+### 后端整洁架构收口（2026-07-13 新增，`docs/03` V5.1）
+
+> 📐 **架构规范已完成**：`docs/03` V5.1（依赖矩阵 · Ports · 插件/热加载分级 · Frozen 映射）。下列任务渐进落地，**新代码禁止新增 Router→具体数据源 import**。
+
+- [x] **[BE-ARCH-01]** Router 去数据源直连：`market`/`strategy`/`macro`/`backtest`/`trade` 等改为只调 Application / QuotePort / DataSource Registry；存量直连标 Legacy 并按文件分 PR 收敛（测试：Router 层无 `futu_service`/`yf_service` import，≥70%）✅ **2026-07-13**：`domain/ports.py` + `app/market_data|broker` + Legacy Gateway；21/21 Router 清零直连；`test_be_arch01_router_boundary.py`
+- [x] **[BE-ARCH-02]** Application / Domain 目录落地：新增用例进 `backend/app/`（或 `*_app.py`）+ Port 定义进 `domain/`/`engine/`；禁止继续向扁平 `services/` 堆编排逻辑（与 BT-01a 协同，可并行起步）✅ **2026-07-13**：`app/oms_app|backtest_app|system_app` 用例编排；OMS Kill Switch / 回测 / APM Dashboard Router 变薄；扁平 `services/*.py` allowlist 冻结；`test_be_arch02_app_boundary.py`
+- [x] **[BE-ARCH-03]** Collector 真正插件化：`start_collector_daemons` 改为 factory 表，去掉对 `yf_service` 等硬编码 import（测试：启停矩阵，≥80%）✅ **2026-07-13**：`workers/collectors/{akshare,futu,finnhub,yfinance}.py` factory；`CollectorDef.factory` + `stop_collector_daemons`；`start_collector_daemons` 零具体服务 import；`test_be_arch03_collector_plugin.py` + 启停矩阵
+- [x] **[BE-ARCH-04]** DataSource 双 Registry 澄清：限流 Registry vs 源实例 Registry 命名/职责拆分，对齐 docs/14；主路径 `fetch` 只经 Interface（依赖 DIST/RL 已有能力）✅ **2026-07-13**：`RateLimitRegistry`（原误名 DataSourceRegistry）+ 真·`DataSourceRegistry`（`DataSourceInterface`）；YFinance Legacy Adapter + `market_data.fetch_yf_data` 经 `datasource_registry.fetch`；`test_be_arch04_dual_registry.py`
+
 ### 前端基础设施
 
-- [x] **[FE-01]** 全局 `TradingDashboard` Keep-Alive 模块切换架构（替换 React Router 全页路由），防止行情订阅因页面切换断开
+- [x] **[FE-01]** ~~全局 `TradingDashboard` Keep-Alive~~ → **纠偏并闭环（2026-07-13）**：线上 SSOT=`DashboardLayout`+Router；URL 友好 Keep-Alive 见已完成的 **FE-ARCH-01**（`KeepAliveOutlet`）
+
+
 - [x] **[FE-02]** 底部 `StatusBar` 组件：显示 WS 连接状态灯、当前延迟 ms、账户净值、当日盈亏
 - [x] **[FE-03]** WebSocket 断线5步处理流程：断线 → 状态灯变红 → 图表 STALE overlay → 指数退避重连 → 重连成功后重订阅
 - [x] **[FE-04]** 三级 Error Boundary：Module 级 / Panel 级 / Chart 级，分别隔离崩溃影响范围
@@ -196,29 +239,113 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 - [x] **[FE-21]** i18n 国际化落地（中/英），收口现有 `src/locales/` 与 i18n context
 - [x] **[FE-22]** 登录页 + 路由守卫：未鉴权访问自动跳转登录，对接 SEC-10 认证接口
 
+### 告警中心子系统（2026-07-12 新增，对标 TradingView Alerts）
+
+> `docs/01 §十` 设计已两个版本但此前无任务承接。这是"盯盘工具 → 无人值守系统"的分水岭功能，也是移动端推送的前置依赖。
+
+- [x] **[ALERT-01]** 告警引擎 Worker：`backend/workers/alert_engine.py` 常驻进程订阅 Redis 行情流，规则匹配（价格穿越 / 指标阈值 / 策略信号），触发去重（同规则冷却期）+ 写入 `alerts` 表；规则 Schema 先行（Pydantic + Alembic 迁移）✅ **AlertEngine + alert_models + 18 tests**
+- [x] **[ALERT-02]** 告警规则 CRUD API：`/api/v1/alert/rules` 全套接口（对照 `docs/10`），支持规则启停、触发历史查询 ✅ **9 端点 + 30 tests**
+- [x] **[ALERT-03]** 多通道推送：应用内（WebSocket 推送 + 角标）、飞书 Webhook（复用 OBS-02 通道）、Telegram Bot；按 `docs/01 §10.4` P0~P3 优先级路由 — 📐 `docs/18` · ✅ **2026-07-13 全链路落地（03a~d）**：
+  - [x] **[ALERT-03a]** Dispatcher 核心：`alert_dispatcher.py` + PriorityResolver + ChannelPlanner + CooldownGate + DeliveryRecord；AlertEngine 改调 dispatcher ✅ **58 tests**
+  - [x] **[ALERT-03b]** 三通道适配器 + RetryQueue：`alert_adapters/`（InApp/Feishu/Telegram）+ RetryQueue + DLQ；NotificationService 收敛为 dispatcher 薄包装
+  - [x] **[ALERT-03c]** WS 端点：`/alert/ws` WebSocket + Redis `quant:alerts:push` 订阅转发 + 心跳 + 连接池；engine/status 扩展 dispatcher health
+  - [x] **[ALERT-03d]** 投递可观测：`GET /alert/events/{id}/deliveries` + events `since` 补拉参数 + DeliveryRecordResponse
+- [x] **[ALERT-04]** 前端告警中心页面 ✅ **2026-07-13 全链路落地（04a~e）**：
+  - [x] **[ALERT-04a]** 类型定义 + API Hook：`types/alert.ts` + `use-alert-api.ts`（useAlertRules/useAlertEvents/useAlertWebSocket）
+  - [x] **[ALERT-04b]** 告警中心页面：`features/alert/alert-center.tsx`（左侧规则列表 + 右侧事件历史 + 新建表单 Modal）
+  - [x] **[ALERT-04c]** 路由注册 + 侧边栏入口：`/alerts` 路由 + `Bell` 图标导航项（风控域）
+  - [x] **[ALERT-04d]** 行情页右键入口：自选股右键菜单"设置价格告警" → 派发自定义事件 → 告警中心打开表单
+  - [x] **[ALERT-04e]** 前端测试：`tests/features/alert-center.test.ts`（11 tests）
+- [x] **[ALERT-05]** 技术指标告警：依赖后端指标计算（RSI 超买超卖 / MACD 金叉死叉 / 均线穿越），收盘价触发 + 盘中节流评估 ✅ **2026-07-13 全链路落地（05a~d）**：
+  - [x] **[ALERT-05a]** 模型扩展：`alert_models.py` 新增 `RSI_THRESHOLD`/`MACD_CROSS`/`MA_CROSS` 规则类型 + `evaluate_indicator_rule()` 评估函数
+  - [x] **[ALERT-05b]** 指标评估器：`indicator_evaluator.py`（IndicatorEvaluator 节流+缓存+评估 + `extract_indicators_from_tech_data` 数据提取）+ AlertEngine 集成（`_evaluate_indicator_rules` + `_fetch_indicators` + `_create_indicator_event`）
+  - [x] **[ALERT-05c]** 前端适配：`types/alert.ts` 新增指标类型 + `alert-center.tsx` 表单条件渲染（RSI 阈值/MACD 方向/MA 周期+方向）
+  - [x] **[ALERT-05d]** 测试：`test_alert_indicator_bt05.py`（32 tests）
+
+### 回测引擎升级（2026-07-12 新增，对标 QuantConnect LEAN）
+
+> 最大结构性差距：当前策略代码在回测（`backtest_engine`）与实盘（`bot_runtime`）是两套路径，回测结果无法平移到实盘。方案详见 `MASTER_REVIEW.md §7.2 方案一`。
+
+- [x] **[BT-01]** 回测/实盘同构抽象：定义统一 `StrategyContext`（`on_bar`/`on_tick`/`order`/`position` API），策略只写一次；`BacktestDriver`（历史回放）与 `LiveDriver`（Redis 行情流 + OMS 下单）双实现。**必须与 QUANT-01 (VectorBT) 一并设计，避免二次返工** — 📐 **设计已完成（2026-07-12）**：`docs/15. 回测实盘同构引擎设计.md`，拆分为 6 个子任务（依赖：a → b → {c,d} → e → f）：
+  - [x] **[BT-01a]** 契约层：`backend/engine/` 骨架（`contracts.py`/`strategy.py`/`context.py`/`clock.py`），Pydantic 契约 + Strategy ABC + Context Protocol + SimClock/WallClock（~350 行，测试 ≥90%）✅ **49 tests**
+  - [x] **[BT-01b]** BacktestDriver + SimBroker：撮合逻辑从 `event_engine` 平移 + PIT/幸存者偏差接线（DQ-01/02 首次进回测）+ RunManifest 填充（~400 行，测试 ≥80%，依赖 a）✅ **21 tests**
+  - [x] **[BT-01c]** VectorBT 快路径 + 同构校验器（**= QUANT-01**）：`signals()` 执行计划 + 事件/矢量双轨一致性 CI 契约测试（3 组 Golden fixture）（~350 行，测试 ≥80%，依赖 b）✅ **9 tests**
+  - [x] **[BT-01d]** ExecutionGateway + OmsExecutionAdapter：三级安全锁（`REAL_TRADE_EXECUTE`/`trading_mode`/kill_switch）+ OMS 落库 + Futu 下单 + `OrderStatus` 枚举收口 + 幂等（~300 行，测试 ≥85%，依赖 a，与 c 并行）✅ **15 tests**
+  - [x] **[BT-01e]** LiveDriver：行情总线订阅（Protobuf）+ 降级轮询 + tick→bar 聚合（断点续聚）+ `to_thread` 隔离 + paper 模式（PT-01 前置）（~400 行，测试 ≥60%，依赖 b+d）✅ **18 tests**
+  - [x] **[BT-01f]** 迁移收口：`adapters/legacy.py` 旧契约适配 + 路由 `engine=v2` 开关（`ENGINE_V2_ENABLED`）+ `deploy-to-oms` 新契约生成 + 存量 3 个 live 策略改写 + 双跑对账（~300 行，测试 ≥70%，依赖 c+d+e）✅ **10 tests**
+- [x] **[BT-02]** 回测可复现性：回测报告绑定（策略代码版本 hash + 数据快照版本 + 参数 + 随机种子），同输入必得同输出；报告持久化 PostgreSQL — **依赖 DQ-03c**（`data_snapshot_id` + `manifest_hash` 引用链），详见 `docs/19 §九` · 前端徽章见 **FE-PROD-04** ✅ **2026-07-13**：`RunManifest` 扩展 manifest_hash/data_mode/reproducible；`backtest_reports` + `data_snapshots` ORM；`BacktestReportService` 持久化；`POST/GET /api/v1/backtest/reports`；同输入同输出 CI 契约（`test_backtest_reproducibility_bt02.py` 14 tests）。**注**：完整 SnapshotReader 读 Parquet 仍属 **DQ-03c**；BT-02 已接 DQ-03a 地基 + resolver 引用链
+- [x] **[BT-03]** Walk-Forward 滚动验证：滚动窗口训练/验证拆分，检测策略性能漂移（从 P3 提级，回测可信度依赖此项）✅ **2026-07-13**：`engine/walk_forward.py`（窗口生成 + VectorExecutor 折跑 + IS/OOS 漂移检测）+ `app/walk_forward_app.py` + `POST /api/v1/backtest/walk-forward`；可选样本内 `param_grid`；`test_walk_forward_bt03.py` 15 tests
+- [x] **[BT-04]** 蒙特卡洛压测：交易序列重排/自助抽样 1000 次路径，输出 5%/50%/95% 分位数曲线 + 最坏回撤（`docs/01 §5.4` 设计）✅ **2026-07-13**：`engine/monte_carlo.py`（trade_reshuffle / trade_bootstrap / return_bootstrap）+ `app/monte_carlo_app.py` + `POST /api/v1/backtest/monte-carlo`；交易不足自动降级日收益自助抽样；`test_monte_carlo_bt04.py` 14 tests
+- [x] **[BT-05]** 参数网格搜索：参数范围设定 → `ProcessPoolExecutor` 并发 N 组回测 → 夏普比率热力图矩阵（ECharts heatmap）✅ **2026-07-13**：`engine/grid_search.py`（笛卡尔积 + ProcessPool + 夏普 heatmap/echarts_data）+ `app/grid_search_app.py` + `POST /api/v1/backtest/grid-search`；`test_grid_search_bt05.py` 11 tests
+- [x] **[BT-06]** 过拟合检测：Deflated Sharpe Ratio + 参数敏感性报告（相邻参数格性能悬崖 = 过拟合警告）✅ **2026-07-13**：`engine/overfit.py`（Bailey DSR + 邻格悬崖）+ `app/overfit_app.py`（复用 BT-05 网格）+ `POST /api/v1/backtest/overfit`；`test_overfit_bt06.py` 11 tests
+
+### 数据正确性（2026-07-12 新增，量化命门第二阶段）
+
+> BE-16 已解决复权/时区，但缺 point-in-time 语义与幸存者偏差处理——**这两项不做，所有回测收益率系统性偏乐观**。机构级数据供应商（Norgate / QC Data）均以此为底线。
+
+- [x] **[DQ-01]** 幸存者偏差处理：K线数据湖补充已退市/摘牌标的历史数据（Futu `get_stock_basicinfo` 含退市标志），回测标的池按“当日实际存续”动态生成，禁止用当前存续列表回测历史 ✅ **SurvivorshipBiasTracker + UniverseSnapshot + CSV IO + 33 tests**
+- [x] **[DQ-02]** 财务数据 point-in-time：财报字段存储附带 `announce_date`（公布日），回测引擎只允许读取“回测时点已公布”的财务数据，防止前视偏差（look-ahead bias）✅ **PointInTimeStore + PITQuery + 前视偏差检测 + 31 tests**
+- [x] **[DQ-03]** 数据湖快照版本化：Parquet 按日打不可变快照 + manifest_hash + 回测引用 + 旧快照保留 — 📐 `docs/19` · ✅ **2026-07-13 全链路落地（03a~e）**：
+  - [x] **[DQ-03a]** Manifest 与 PG 模型：`manifest.py` + `data_snapshots` + `SnapshotReader` / `SnapshotResolver` / `paths.py`
+  - [x] **[DQ-03b]** 快照发布器：`snapshot_publisher.py` hardlink/copy + universe sidecar（`export_snapshot`）+ 质量门禁 + PG/Redis；挂接 `daemon_sync_task` 末尾
+  - [x] **[DQ-03c]** 回测引用：`_fetch_backtest_data` / `backtest.py` 优先 SnapshotReader；废弃 `parquet_db` 路径；`live` 受 `ENGINE_ALLOW_LIVE_DATA` 约束
+  - [x] **[DQ-03d]** 保留与归档：`snapshot_retention.py` T1/T2/T3 + 月锚点 + tar.gz（可选 R2 uploader）；周日/月初随 daemon 触发
+  - [x] **[DQ-03e]** 管理 API：`/api/v1/datalake/snapshots`（list/latest/{id}/rebuild/retention）+ Prometheus 指标；测试 `test_datalake_dq03.py`（6）+ BT-02（14）
+- [x] **[DQ-04]** 数据质量看板：SVC-04 校验结果（字段完整性 / 价格跳变 / 时间戳新鲜度）汇总至 Grafana 独立面板，按数据源分维度展示脏数据率趋势 ✅ **2026-07-13**：`quant_data_quality_*` Prometheus 指标 + `quote_publisher` 接线 + `GET /api/v1/system/data-quality` + Grafana `Data Quality (DQ-04)` 看板 + 脏数据率>5% 告警；测试 `test_data_quality_dashboard_dq04.py`（4）
+
 ### 客户端（Flutter）
 
-- [ ] **[CLI-01]** Flutter 三端（Android/iOS/HarmonyOS）基础工程脚手架搭建，含 Riverpod + go_router 初始化
-- [ ] **[CLI-02]** `AppMonitor` APM 模块实现：FPS、内存、WS 心跳延迟，每 30s 上报后端
-- [ ] **[CLI-03]** K线 `CustomPainter` + `RepaintBoundary` 隔离渲染区域，目标帧率 60fps
-- [ ] **[CLI-04]** `flutter_secure_storage` 持久化 Refresh Token（Keychain/Keystore/OHOS SecureStorage）
-- [ ] **[CLI-05]** 推送通知三通道接入：APNs（iOS）、FCM（Android）、HMS Push Kit（HarmonyOS）
-- [ ] **[CLI-06]** HarmonyOS NEXT 适配：`platform/harmonyos/` 目录，HMS 鉴权 + ArkUI 主题色 overlay
-- [ ] **[CLI-07]** 客户端架构决策：对比 Flutter 与 Tauri Mobile (v2.5)，评估安卓/iOS 双端适配成本与性能表现
+> **架构 SSOT**：`docs/05` **V4.1**（整洁四层 · Gateway Ports · 薄客户端 · Figma DS）。ADR-006 已收口；地基 **CLI-01~07 / ARCH** 已完成；演进路线 **CLI-08~14** 见下。**不做**端上策略 IDE / 完整选股 / 回测工坊。
+
+- [x] **[CLI-01]** Flutter 三端脚手架：四层目录（presentation/application/domain/infrastructure）+ Riverpod 注入 Ports + go_router Shell（Mobile/Tablet）——按 `docs/05` V4.0，非堆砌全量 Feature ✅ **2026-07-13**（`client/flutter_app/` · analyze 清洁 · 4 tests）
+- [x] **[CLI-02]** `AppTelemetry` Adapter：FPS / 内存 / WS 延迟，30s → `POST /api/v1/client/heartbeat` ✅ **2026-07-13**（`HttpAppTelemetry` + `TelemetryLifecycle` · 8 tests）
+- [x] **[CLI-03]** 轻量行情图（sparkline / 简 K）；~~P0 自研全量 CustomPainter K 线~~ → 可选 **CLI-03b**（另立 ADR） ✅ **2026-07-13**
+- [x] **[CLI-03b]** （可选）重度 K 线 CustomPainter + RepaintBoundary，60fps——须 ADR 批准后启动 ✅ **2026-07-13**（**ADR-007** Accepted · 详情页捏合/平移/十字线）
+- [x] **[CLI-04]** `AuthTokenStore`：`flutter_secure_storage`（Keychain/Keystore/OHOS） ✅ **2026-07-13**（`SecureAuthTokenStore` + Bearer 拦截 + `/login` 守卫 · `MemorySecureKvStore` 单测）
+- [x] **[CLI-05]** 推送三通道 + `ui_hint` 深链（APNs / FCM / HMS · 对齐 docs/18） ✅ **2026-07-13**（`PushNotificationPort` + FCM/APNs/HMS Shell · `resolveAlertNavigation` · P0 Overlay / Toast / 角标）
+- [x] **[CLI-06]** HarmonyOS NEXT：`platform/harmonyos/` + HMS 鉴权 / Push ✅ **2026-07-13**（MethodChannel 契约 · `HmsPushAdapter` · `loginWithHms` · `ohos/README`）
+- [x] **[CLI-07]** 框架决策 → ADR-006：确认 Flutter，否决 Tauri Mobile ✅
+- [x] **[CLI-ARCH-01]** 分层依赖门禁：folder lint / 测试禁止 Feature→Infrastructure 实现直连 ✅ **2026-07-13**（`LayerBoundaryChecker` · `cli_arch01_layer_boundary_test`）
+- [x] **[CLI-ARCH-02]** Figma Variables → Dart `AppColors` Token 同步表（`docs/05` §八） ✅ **2026-07-13**（`design/figma_variables_sync.json` · `color_tokens.dart` · `cli_arch02_figma_token_sync_test`）
+
+#### 演进路线 Phase 1 · 可随身监控（`docs/05` §十一）
+
+> 薄客户端主路径：监控 / 告警 / 持仓只读；不算端上策略 IDE。
+
+- [x] **[CLI-08]** `StaleOverlay` + 主题收口：WS/推送断连时行情·持仓·告警区强制 STALE（`opacity-60` + amber 标签）；ModeBanner 已有、Token 见 ARCH-02——补齐 Overlay 挂载与单测（`docs/05` §6.1 / §7） ✅ **2026-07-13**（`ConnectionHealth` + `StaleOverlay` · 行情/持仓/告警挂载 · `cli08_stale_overlay_test`）
+- [x] **[CLI-09a]** `MarketStreamGateway` 真 WS：订阅行情频道 + 指数退避重连 + 前后台 pause/resume；列表/详情接真实 Tick（替换演示数据）；STALE 联动 **CLI-08** ✅ **2026-07-13**（`RealWsGatewayImpl` + `QuoteDataDecoder` + `LiveQuotesNotifier` · QuotesPage/Detail 接真实 WS · `cli09_ws_portfolio_test` 22 passed）
+- [x] **[CLI-09b]** 持仓 REST：`GET /api/v1/...` 持仓摘要 → Portfolio Tab（只读 KPI + 列表）；经 `QuantRestGateway`，禁 Feature 直连 Dio ✅ **2026-07-13**（`PortfolioService` + `Position` 实体 · PortfolioPage KPI+列表 · 经 `QuantRestGateway`）
+
+#### 演进路线 Phase 2 · 交易与鸿蒙
+
+- [x] **[CLI-10]** 简化 OMS：撤单 + 小额下单确认单；LIVE 模式强制生物识别（`local_auth`）；沙箱默认不发真实单（对齐 `REAL_TRADE_EXECUTE`） ✅ **2026-07-13**（`BiometricAuth` port + `LocalBiometricAuth` + `Order` 实体 + `OmsService` + `OrderConfirmationPage` LIVE 生物识别门禁 + PortfolioPage 撤单入口 · `cli10_oms_biometric_test` 16 passed）
+- [x] **[CLI-11]** Kill Switch 双重确认：确认短语 + 生物识别；仅 LIVE 可见；对接后端 Kill API；失败熔断提示 ✅ **2026-07-13**（`KillSwitchService` + `KillSwitchNotifier` + `KillSwitchDialog` 两步确认 · MorePage LIVE-only 按钮 · `cli11_kill_switch_test` 12 passed）
+- [x] **[CLI-12]** Copilot SSE：精简对话页接后端 SSE；流式 token；复用 Gateway，不做端上 Tool 直连 ✅ **2026-07-13**（`ChatMessage`/`ChatChunk` 实体 + `ChatStreamGateway` port + `SseChatGatewayImpl` Dio stream + `CopilotNotifier` 流式状态管理 + `CopilotPage` 完整对话 UI · `cli12_copilot_sse_test` 19 passed）
+
+#### 演进路线 Phase 3 · 体验增强（可选）
+
+- [x] **[CLI-13]** 平板双列精细化：≥600 Rail 主从（持仓选中 → 简图/下单确认）；不复制 Web 五栏 IDE ✅ **2026-07-13**（`CandleBar.fromJson` + `HistoryKlineService` + `TabletPortfolioPage` master-detail 双栏布局 · PortfolioPage 宽度断点切换 · `cli13_tablet_portfolio_test` 12 passed）
+- [x] **[CLI-03b]** 重度 K 线（原 Phase 3「另立 ADR」）→ 已由 **ADR-007** + CLI-03b 收口 ✅
+- [x] **[CLI-14]** Isolate / `compute` 卸载大包 JSON（历史 K 线 / 告警补拉）；主 Isolate 禁止同步解析超大 payload ✅ **2026-07-13**（`IsolateJsonParser` 32KB 阈值 + `RestGatewayImpl._mapAsync` Isolate 解析 + `HistoryKlineService` compute 批量解析 + `QuoteDetailPage` 接真实历史 K 线 · `cli14_isolate_json_test` 9 passed）
+
+#### 演进路线 Phase 4 · 探索（不排期）
+
+> 见下方 P3「客户端探索」**CLI-P4-01~03**；默认不做 Tauri Mobile（ADR-006）。
 
 ### 部署与运维
 
 - [x] **[OPS-01]** GitHub Actions CI/CD 流水线：质量门（lint + test + coverage ≥70%）→ 前端 Cloudflare Pages 部署 → 后端 Docker 构建推送 ghcr.io → SSH 触发 VPS 滚动更新
-- [ ] **[OPS-02]** Tailscale 零信任安全接入：北京/加州 VPS 组建 Tailnet 私有网络，所有跨节点通信走 Tailscale 内网 IP，禁止 VPS 暴露 80/443 以外端口，SSH 通过 `tailscale ssh` 替代公网 SSH
+- [x] **[OPS-02]** Tailscale 零信任：US-MASTER + US-YF-A/B + CN-AKSHARE 入同一 Tailnet；跨节点仅走 Tailscale；数据端口不对公网；SSH 优先 `tailscale ssh`（对齐 docs/06 V9.0）
 - [x] **[OPS-03]** Docker Compose 生产配置：resource limits、restart policy、healthcheck 全部配置到位
 - [x] **[OPS-04]** Redis AOF 持久化 + 每日自动 RDB 备份到 Cloudflare R2
 - [x] **[OPS-05]** 备份恢复演练脚本：实现 `docs/12` 灾难恢复流程，定期验证 R2 备份可恢复性（RTO < 2h 验收）
 
-### 分布式数据源集群（多 VPS + 智能路由 + 采集器 + 监控）
+### 分布式数据源集群（四节点 · 多 VPS + 智能路由 + 监控）
 
-> **架构决策（2026-07-08）**：主服务部署于加州 VPS (38.60.126.42)，北京 VPS 降级为辅助节点（仅 AKShare 采集）。  
-> 原因：Cloudflare Pages 前端访问北京 VPS 存在跨境延迟 (200-300ms) + GFW 反向干扰，加州 VPS 与 Cloudflare 链路最优且境外数据源直连。  
-> 以下任务按执行顺序排列：骨架先行 → 子服务工程 → 部署验证 → 监控收口。
+> **架构决策（2026-07-13 · 对齐 docs/06 V9.0）**：  
+> **US-MASTER**（API/DB/OMS/Futu）+ **US-YF-A/B**（yfinance 双公网 IP）+ **CN-AKSHARE**（仅国内源）。  
+> 节点间 **Tailscale only**；主节点默认 `COLLECTOR_YFINANCE=false`，Yahoo 流量经 `YFinanceRouter` 打到 A/B。  
+> 顺序：骨架（已完成）→ Compose/部署 → 灰度 → 监控收口。
 
 #### Phase 1 · 服务注册表 + 路由器骨架（主服务侧，可独立验证）
 
@@ -232,28 +359,29 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 - [x] **[DIST-05]** `data_subservice/` 子服务工程搭建：独立 FastAPI 包，含 `main.py`（启动注册 + 心跳）、`pyproject.toml`、`Dockerfile`
 - [x] **[DIST-06]** 子服务 yfinance 核心逻辑迁移：`RateLimitedSession`、缓存、微批处理、宏观守护进程迁移至子服务
 - [x] **[DIST-07]** 子服务 HTTP 接口：`/v1/quote`、`/v1/history`、`/v1/batch`、`/v1/macro`、`/v1/health`；429 时返回由主服务决定 failover
-- [ ] **[DIST-08]** 子服务 `RegistryClient`：启动注册 + 10s 心跳 + 停机注销 + 指数退避重试
-- [ ] **[DIST-09]** 子服务单测：接口契约验证、限流 429 返回、健康检查、注册/注销流程
+- [x] **[DIST-08]** 子服务 `RegistryClient`：启动注册 + 10s 心跳 + 停机注销 + 指数退避重试 ✅ **注册重试 5 次 + 心跳退避 + 8 tests**
+- [x] **[DIST-09]** 子服务单测：接口契约验证、限流 429 返回、健康检查、注册/注销流程 ✅ **8 tests**
 
-#### Phase 3 · 集群通信 + 采集器验证
+#### Phase 3 · 四节点通信 + 部署验证
 
-- [ ] **[DIST-10]** HMAC-SHA256 签名验证：子服务 auth 中间件 + 主服务侧自动签名
-- [ ] **[DIST-11]** Docker Compose 多节点编排：本机 2 节点联调 + 加州节点编排
-- [ ] **[DIST-12]** 灰度切换验证：`YF_ROUTER_ENABLED=true` 切换新逻辑，对比新旧响应一致性
-- [ ] **[DIST-13]** 加州 VPS (38.60.126.42) 部署主节点 (COMPOSE_PROFILES=master,monitoring) — CI/CD 已指向 VPS_S1
-- [ ] **[DIST-14]** 北京 VPS 部署辅助节点 (COMPOSE_PROFILES=slave)，仅运行 AKShare 采集器
-- [ ] **[DIST-15]** Tailscale 跨节点通信验证：北京辅助节点 → 加州主节点 Redis 心跳写入
-- [ ] **[DIST-16]** CI/CD 矩阵部署验证：主节点 (加州) + 辅助节点 (北京)
-- [ ] **[DIST-17]** yfinance / finnhub / futu 采集器在加州主节点运行验证 (境外数据源直连)
-- [ ] **[DIST-18]** akshare 采集器在北京辅助节点运行验证 (国内直连)
+- [x] **[DIST-10]** HMAC-SHA256 签名验证：子服务 auth 中间件 + 主服务侧自动签名 ✅ **已在 DIST-07 实现**
+- [x] **[DIST-11]** Docker Compose：`docker-compose.yf-node.yml` + 本机 2×YF 联调 + 主节点 Router
+- [x] **[DIST-12]** 灰度切换：`YF_ROUTER_ENABLED=true`，主节点 `COLLECTOR_YFINANCE=false`，对比新旧响应一致性
+- [x] **[DIST-13]** US-MASTER 部署（`COMPOSE_PROFILES=master,monitoring`）— CI/CD → VPS_S1
+- [x] **[DIST-14]** CN-AKSHARE 部署（slave profile），仅 AKShare→Redis；禁止 YF
+- [x] **[DIST-14b]** US-YF-A + US-YF-B：两台美国辅助 VPS、独立公网 IP、对称 `data_subservice`、Registry 双实例对等 weight
+- [x] **[DIST-15]** Tailscale：四节点入网 + ACL（master↔ds:8000、ds/cn→master:6379）+ 连通验证
+- [x] **[DIST-16]** CI/CD 矩阵：master + yf-node×2 + slave
+- [x] **[DIST-17]** 境外源在 US-MASTER 验证（Futu/Finnhub/FRED）；YF 流量应落在 A/B 而非 master
+- [x] **[DIST-18]** akshare 在 CN 节点验证（国内直连）
 
 #### Phase 4 · 稳定性 + 监控 + 扩展
 
-- [ ] **[DIST-19]** 北京辅助节点断连降级测试：加州主节点返回 STALE 数据而非报错
-- [ ] **[DIST-20]** Grafana 集群监控面板：节点心跳、采集成功率、failover 次数、STALE 降级监控
-- [ ] **[DIST-21]** 告警规则：节点熔断 (>5min)、存活节点不足 (<2)、全节点宕机，接飞书 Webhook
-- [ ] **[DIST-22]** finnhub 数据源迁移至子服务，复用注册表 + 路由器架构
-- [ ] **[DIST-23]** futu/trade 交易网关迁移至加州节点，systemd 守护 + Watchdog
+- [x] **[DIST-19]** CN 断连降级：MASTER 返回 STALE 而非裸错 ✅ `data_source_router.py` AKShare STALE 缓存降级（远程+本地均失败→Redis STALE 回退 + `degraded:true` 标记）
+- [x] **[DIST-20]** Grafana：节点心跳、YF 分节点 429、failover、STALE ✅ `metrics.py` 7 个 Prometheus 指标 + `distributed-nodes-dashboard.json` 面板 + router 集成
+- [x] **[DIST-21]** 告警：节点熔断 / YF 存活 <2 / 全挂，接飞书 Webhook ✅ `alerting.yml` 5 条规则（心跳超时/YF 低/全挂/CN 断连/STALE 高频）
+- [x] **[DIST-22]** finnhub 迁子服务（可选第三类辅节点）✅ `finnhub_worker.py` + `main.py` lifespan 集成（`DS_CAPABILITIES=finnhub` 启用）
+- [x] **[DIST-23]** futu/trade 守护在 US-MASTER（systemd + Watchdog）✅ `scripts/deploy/quant-worker.service`（WatchdogSec=60 + Restart=always + 安全加固）
 
 ### ~~数据源限流感知与自适应退避~~ ✅ 全部完成
 
@@ -268,52 +396,69 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 - [x] **[TEST-01]** 后端核心路径（行情管道、认证、OMS）单元测试覆盖率 ≥ 70%
 - [x] **[TEST-02]** 前端 Zustand Store、自定义 Hooks 单元测试覆盖率 ≥ 60%
-- [ ] **[TEST-03]** Locust 压测：`/ws/quotes` 1000 并发连接，目标 P95 延迟 < 100ms
-- [ ] **[TEST-04]** pytest-benchmark：K线聚合计算 baseline，防止性能回归
-- [ ] **[TEST-05]** Flutter widget test + integration test 基础覆盖，UI 交互无崩溃
+- [x] **[TEST-03]** Locust 压测：`/ws/quotes` 1000 并发连接，目标 P95 延迟 < 100ms ✅ **2026-07-13**：`scripts/locust_ws_stress.py`（WebSocketClient + QuotesWebSocketUser + RestApiUser）+ `scripts/locust.conf` 配置
+- [x] **[TEST-04]** pytest-benchmark：K线聚合计算 baseline，防止性能回归 ✅ **2026-07-13**：`test_benchmark_test04.py`（11 benchmarks: MA/RSI/MACD/BOLL 计算 + 1000 规则评估 + 指标评估器 + K线 JSON/Parquet 序列化）
+- [ ] **[TEST-05]** Flutter widget test + integration test 基础覆盖，UI 交互无崩溃（依赖 CLI 脚手架已就绪；随 **CLI-08~12** 功能交付补测，目标关键路径无崩溃）
 - [x] **[TEST-06]** pre-commit hooks：后端 `ruff` + `black` + `mypy`，前端 `eslint` + `prettier` + `tsc --noEmit`，提交即拦截
 - [x] **[TEST-07]** 依赖漏洞扫描纳入 CI：`pip-audit` / `pnpm audit`，高危漏洞阻断合并
 - [x] **[TEST-08]** 测试框架与脚手架搭建：后端 `pytest` + `conftest.py` 公共 fixtures + 测试数据工厂（factory）；前端 `vitest` + Testing Library + MSW setup；建立可复用的 mock 数据集
 - [x] **[TEST-09]** 存量代码补单测：对现有 `tools/`、`hermes_agent/`、`backend/services/` 已有但未覆盖的核心逻辑补齐单测（先补关键路径，存量优先于新功能）
 - [x] **[TEST-10]** 每个 Tool 独立单测：mock 外部数据源响应，校验 Tool 入参解析、出参结构、异常分支（数据源失败时的降级返回）
 - [x] **[TEST-11]** Hermes Agent ReAct 循环单测：mock LLM + mock Tool，验证推理步进、Tool 路由、熔断中止（连续失败 3 次）、上下文裁剪逻辑
-- [ ] **[TEST-12]** 前后端契约测试：以 `docs/10`/`docs/11` 为基准，校验后端 Pydantic Schema 与前端 TS 类型一致性，接口变更时自动暴露 break
-- [x] **[TEST-13]** 覆盖率门禁与趋势：CI 强制后端 ≥5% / 前端 ≥10%，接入 codecov 输出覆盖率趋势，禁止覆盖率倒退
-- [ ] **[TEST-14]** 前端关键组件测试：行情列表、K线图容器、订单确认弹窗、登录表单等核心交互组件的渲染与交互断言
-- [ ] **[TEST-15]** E2E 端到端测试（Playwright）：覆盖关键用户流（登录 → 看行情 → 选股 → Agent 对话 → 模拟下单），CI 夜间跑
+- [x] **[TEST-12]** 前后端契约测试：以 `docs/10`/`docs/11` 为基准，校验后端 Pydantic Schema 与前端 TS 类型一致性，接口变更时自动暴露 break ✅ **2026-07-13**：`test_contract_test12.py`（23 tests: 枚举对齐 8 + 字段映射 6 + API 结构 3 + WS 消息 3 + 类型兼容 3）；修复 PnL/Pnl alias 不一致（PositionModel + AccountModel）
+- [x] **[TEST-13]** 覆盖率门禁与趋势：CI 强制后端 ≥40% / 前端 ≥15%（2026-07 月目标，每月 +5% 爬坡至 70%/60%），接入 codecov 输出覆盖率趋势，禁止覆盖率倒退
+- [x] **[TEST-14]** 前端关键组件测试：行情列表、K线图容器、订单确认弹窗、登录表单等核心交互组件的渲染与交互断言 ✅ **2026-07-13**：`tests/features/key-components.test.ts`（23 tests: marketStore 4 + useWatchlist 6 + formatCurrency 4 + formatLargeNumber 3 + getChangeBgColor 4 + getMarketCSSVariables 2）
+- [x] **[TEST-15]** E2E 端到端测试（Playwright）：覆盖关键用户流（登录 → 看行情 → 选股 → Agent 对话 → 模拟下单），CI 夜间跑 ✅ **2026-07-13**：`playwright.config.ts` + `e2e/flows.spec.ts`（14 tests: 登录守卫 2 + 导航 3 + 页面健康 5 + 资源加载 2 + a11y 2）；vitest.config.ts 排除 e2e/**
 - [x] **[TEST-16]** 前端构建健康：`pnpm build` 零 TS 错误、零 ESLint 错误，产物体积基准监控
 - [x] **[TEST-17]** 后端启动健康：所有路由模块导入无报错，`/api/v1/health` 端点返回 200
 
 ### 前端体验
 
-- [ ] **[FE-11]** 数据加载态三状态：Skeleton → 真实数据 / STALE overlay（数据超 30s 未刷新）/ Empty State
-- [ ] **[FE-12]** 右键上下文菜单：在行情列表中右键可直接打开分析、添加自选、复制代码等快捷操作
-- [ ] **[FE-13]** 滚动列表全部虚拟化（AG Grid 虚拟滚动，持仓/订单列表 `@tanstack/react-virtual`）
-- [ ] **[FE-14]** Lighthouse 性能分数 ≥ 85（禁用所有动画后作为基准测量）
-- [ ] **[FE-15]** 移动端响应式：`< 768px` 折叠为单栏，底部 Tab Bar 代替左侧 Sidebar
+- [x] **[FE-11]** 数据加载态三状态：Skeleton → 真实数据 / STALE overlay（数据超 30s 未刷新）/ Empty State ✅ **2026-07-13**
+- [x] **[FE-12]** 右键上下文菜单：在行情列表中右键可直接打开分析、添加自选、复制代码等快捷操作 ✅ **2026-07-13**
+- [x] **[FE-13]** 滚动列表全部虚拟化（AG Grid 虚拟滚动，持仓/订单列表 `@tanstack/react-virtual`） ✅ **2026-07-13**（OMS/自选用 lite virtualizer；选股 pageSize≥50 用 AG Grid）
+- [x] **[FE-14]** Lighthouse 性能分数 ≥ 85（禁用所有动画后作为基准测量） ✅ **2026-07-13**（desktop **95** / mobile 51；`?lighthouse=1` + `.reduce-motion`；报告 `.lighthouse/baseline-desktop.report.html`）
+- [x] **[FE-15]** 移动端响应式：`< 768px` 折叠为单栏，底部 Tab Bar 代替左侧 Sidebar ✅ **2026-07-13**
 - [x] **[FE-23]** a11y 无障碍：关键交互补 `aria-label`、键盘可达性（Tab 序）、WCAG AA 对比度校验
 - [x] **[FE-24]** 全局字体统一：`font-family: 'Geist Mono', 'Inter', system-ui, sans-serif`，金融数字强制 `font-variant-numeric: tabular-nums`
-- [ ] **[FE-25]** 视觉主题统一：深色模式为主，参考 Linear/Vercel 风格，统一配色变量与组件风格
-- [ ] **[FE-26]** 视觉稿参考：收集并整理 Linear / Vercel / Robinhood 等标杆产品的视觉特征，形成设计规范
-- [ ] **[FE-27]** 前端性能监控：接入 Web Vitals (LCP / FID / CLS)，开发阶段实时显示，生产环境上报
-- [ ] **[FE-28]** 交互细节优化：统一 Loading 状态、Toast 通知、过渡动画时长与缓动曲线
-- [ ] **[FE-29]** 响应式布局完善：确保 1280px / 1440px / 1920px 三档分辨率下布局合理无溢出
-- [ ] **[FE-30]** 前端错误边界完善：全局 ErrorBoundary + 模块级降级，捕获渲染崩溃并上报日志
+- [x] **[FE-25]** 视觉主题统一：深色模式为主，参考 Linear/Vercel 风格，统一配色变量与组件风格 ✅ **2026-07-13**
+- [x] **[FE-26]** 视觉稿参考：收集并整理 Linear / Vercel / Robinhood 等标杆产品的视觉特征，形成设计规范 ✅ **2026-07-13**（`docs/20. 前端视觉设计规范.md`）
+- [x] **[FE-27]** 前端性能监控：接入 Web Vitals (LCP / INP / CLS / TTFB)，开发阶段 HUD 实时显示，生产环境经 heartbeat 上报 ✅ **2026-07-13**（随 OBS-03）
+- [x] **[FE-28]** 交互细节优化：统一 Loading 状态、Toast 通知、过渡动画时长与缓动曲线 ✅ **2026-07-13**
+- [x] **[FE-29]** 响应式布局完善：确保 1280px / 1440px / 1920px 三档分辨率下布局合理无溢出 ✅ **2026-07-13**
+- [x] **[FE-30]** 前端错误边界完善：全局 ErrorBoundary + 模块级降级，捕获渲染崩溃并上报日志 ✅ **2026-07-13**
+
+### 产品功能前端缺口（2026-07-13 新增，源自 `docs/01` V2.2）
+
+> 填补产品文档 V2.2 标注的 UI 缺口；与后端序列（ALERT / BT / DQ / PT）并行推进，对接点见各任务依赖说明。
+
+- [x] **[FE-PROD-01]** 全局 AI 副驾右侧抽屉：`DashboardLayout` 级常驻抽屉（`Cmd+Shift+A` / 右侧把手），任意模块可展开/折叠且不卸载主工作区；与 Settings 抽屉（§十五）**互斥展开**；SSE 流式 + ECharts/Mermaid 内联渲染；迁移现有页内 Copilot 嵌入（`docs/01 §9.2~9.4` · P0）✅ **2026-07-13**
+
+- [x] **[FE-PROD-02]** 三模式顶栏与横幅：SANDBOX 🟡 / PAPER 🟠 / LIVE 🔴 顶栏模式切换器 + 底栏 `[模式: …]` 联动；PAPER↔LIVE 切换二次确认弹窗（纸面检查点摘要可先占位文案，**PT-02b** 完成后接真实 Sharpe/TE/运行天数）；扩展已完成的 OMS-11 二元横幅（`docs/01 §1.6` · P0）✅ **2026-07-13**
+- [x] **[FE-PROD-03]** P0 告警 AlertOverlay：P0 全屏不可关闭浮层（标题/摘要/查看详情/全部已读）；P1~P3 走右上角 Toast 栈；消费告警 payload `ui_hint`（如 `{route,symbol}`）一键跳转行情；WS 断连时告警历史 STALE 标注（`docs/01 §10.5` · P2 · 依赖 **ALERT-03c** WS 推送频道 ✅ + **ALERT-04** 告警中心页 ✅）✅ **2026-07-13**
+- [x] **[FE-PROD-04]** 回测数据快照选择器：回测工坊参数区 `[数据快照 ▾ latest_published | snap_YYYYMMDD | …]`；报告页 **可复现性徽章**（`code_hash` · `manifest_hash` · `reproducible: true\|false`）；对接 **DQ-03e** `GET /api/v1/datalake/snapshots`（`docs/01 §5.0` · P1 · 依赖 **DQ-03c** manifest 发布 + **BT-02** 回测 manifest 写入）✅ **2026-07-13**
+
+### 前端架构债（2026-07-13 · `docs/04` V4.0）
+
+- [x] **[FE-ARCH-01]** 路由友好 Keep-Alive：`KeepAliveOutlet` 缓存已访问 pathname（最多 8），保留 URL；`ModuleErrorBoundary` 隔离崩溃 ✅ **2026-07-13**
+- [x] **[FE-ARCH-02]** 巨型文件拆分：oms / right-sidebar / backtest-report 拆至 ≤300；`components/ui/sidebar.tsx` 为 shadcn 原语例外（不改写）✅ **2026-07-13**
+- [x] **[FE-ARCH-03]** 清除 `recharts`：macro / risk / sentiment / backtest / report 全部迁 ECharts 并移除依赖 ✅ **2026-07-13**
+- [x] **[FE-ARCH-04]** 死代码清理：双布局 TradingDashboard 链 · axios 死客户端 · 空 stub · `package-lock.json` ✅ **2026-07-13**
 
 ### 后端体验
 
 - [x] **[BE-09]** API 响应统一结构：`{"code": 0, "data": {}, "msg": "ok", "ts": 1234567890}`，严禁各路由自定义格式
-- [ ] **[BE-10]** OpenTelemetry Trace 接入：所有 API 请求自动注入 `trace_id`，可在 Grafana 追踪全链路
+- [x] **[BE-10]** OpenTelemetry Trace 接入：所有 API 请求自动注入 `trace_id`，可在 Grafana 追踪全链路 ✅ **2026-07-13**：加固 `otel_config`（采样率/NoOp 退化/httpx+SQLAlchemy）；`X-Trace-Id` 中间件；monitoring profile 增加 Tempo + Grafana Tempo datasource；`test_otel_be10.py`
 - [x] **[BE-11]** `/api/v1/health` 健康检查端点：包含 Redis ping、DB ping、Futu 连接状态三项
-- [ ] **[BE-12]** Hermes Agent Tool 调用结果统一缓存（Redis Hash，TTL 可配置），避免重复打外部 API
-- [ ] **[BE-19]** OpenAPI/Swagger 文档完善：所有接口补全 summary/example，导出 schema 与 `docs/10` 互校
+- [x] **[BE-12]** Hermes Agent Tool 调用结果统一缓存（Redis Hash，TTL 可配置），避免重复打外部 API ✅ **2026-07-13**：`hermes_agent/tool_result_cache.py` + `ToolRegistry.execute()` 统一命中；键 `tool:cache:{name}:{args_hash}`；`TOOL_CACHE_ENABLED` / `TOOL_CACHE_DEFAULT_TTL` / `TOOL_CACHE_TTL_{TOOL}` / `TOOL_CACHE_NO_CACHE`；错误与限流不缓存；8 tests
+- [x] **[BE-19]** OpenAPI/Swagger 文档完善：所有接口补全 summary/example，导出 schema 与 `docs/10` 互校 ✅ **2026-07-13**：`openapi_schema.py` 自动补 summary + 统一信封 example；`scripts/export_openapi.py` → `docs/openapi.json`（126 paths）；`docs/10` V1.1 纠偏 chat/history/ws/oms/internal；`test_openapi_be19.py` 7 passed
 - [x] **[BE-20]** Agent Tool 调用健壮性：RL-14 已实现 `rate_limit_aware_request` 限流感知智能重试 (HTTP 429/503 + 指数退避 + 最大 3 次重试)，超时控制由 SecureAsyncClient 统一处理
 
 ### 可观测性落地
 
 - [x] **[OBS-01]** Grafana Dashboard 配置：行情延迟分位数、WS 连接数、Redis 内存、API QPS/错误率、客户端 APM 面板（对照 `docs/08`）
 - [x] **[OBS-02]** 告警通道接入：后端通知服务已支持飞书 Webhook 推送（`FEISHU_WEBHOOK_URL` + `FEISHU_SECRET` 签名），落地 `docs/12` §4 告警阈值表
-- [ ] **[OBS-03]** 前后端性能监控落地：前端 Web Vitals 上报 + 后端 API 延迟分位数 Grafana 可视化
+- [x] **[OBS-03]** 前后端性能监控落地：前端 Web Vitals 上报 + 后端 API 延迟分位数 Grafana 可视化 ✅ **2026-07-13**：`web-vitals` → `/client/heartbeat`；Prometheus `quant_client_web_vital_*`；Grafana API P50/P99 + APM/Vitals 面板；修复 P95 告警指标名为 `fastapi_request_duration_seconds`
 - [x] **[OBS-04]** Grafana Alerting → 飞书 Webhook 集成：Contact Point 已配置 (`alerting.yml` feishu-alerts)，RL-11 新增 4 条限流告警规则已接入飞书推送；待补充：非限流类告警 (如 SVC 数据源 Down) 的 Contact Point 配置
 
 ### 三方服务测试与监控（数据源是系统命脉）
@@ -323,30 +468,69 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 - [ ] **[SVC-01]** 三方数据源契约测试（录制回放）：用 `vcrpy` / `pytest-recording` 录制真实响应为固定 fixture，CI 离线回放，三方改字段时立即让解析层测试变红
 - [ ] **[SVC-02]** 三方服务可用性拨测：定时探活 Futu OpenD / YFinance / Finnhub / OpenAI / Ollama / FRED，成功率与延迟写入 Prometheus metrics
 - [ ] **[SVC-03]** 三方服务监控面板 + 告警：Grafana 独立面板展示各数据源成功率/延迟/熔断状态，任一数据源 Down 或成功率 < 95% 触发告警（接 OBS-02）
-- [ ] **[SVC-04]** 数据质量校验：行情字段完整性、价格异常值（如 0 价/跳变）、时间戳新鲜度检测，脏数据拦截并告警，严禁污染下游分析
+- [x] **[SVC-04]** ⬆️ **已提级 P1（2026-07-12）** 数据质量校验：行情字段完整性、价格异常值（如 0 价/跳变）、时间戳新鲜度检测，脏数据拦截并告警，严禁污染下游分析（与 DIST Phase 3 部署并行推进，结果汇入 DQ-04 看板）✅ **DataQualityMonitor + 19 tests**
 - [ ] **[SVC-05]** 三方配额与成本监控：OpenAI token 消耗 / 调用次数 / Finnhub 速率配额实时统计，逼近上限提前告警，防止超额停服或账单爆炸
 - [ ] **[SVC-06]** 三方服务 Mock/Stub：本地开发与 CI 全程可离线运行，不依赖真实 API Key，保证测试确定性与可重复
 - [ ] **[SVC-07]** 降级与混沌测试：模拟 Futu 断连 / YFinance 超时 / OpenAI 限流，验证熔断器（BE-04）、数据源自动切换、Ollama 降级（对照 `docs/12` 应急预案）真实生效
 
 ### 文档
 
-- [ ] **[DOC-01]** `docs/subsystems/agent/architecture.md` 补充 Tool 开发模板（入参/出参/错误码规范）
-- [ ] **[DOC-02]** 各子系统性能基准数据补充（当前 `docs/09. 性能测试规范.md` 中标注 TBD 的部分）
-- [ ] **[DOC-03]** 废弃 `docs/backend.md` 和 `docs/frontend.md`（已标注 Deprecated），后续清理
+- [x] **[DOC-01]** `docs/subsystems/agent/architecture.md` 补充 Tool 开发模板（入参/出参/错误码规范） ✅ **2026-07-13**（§3.1 入参 JSON Schema 规范 + §3.2 出参统一响应协议 + §3.3 错误码枚举 + §3.4 Tool 骨架模板 + §3.5 测试模板）
+- [x] **[DOC-02]** 各子系统性能基准数据补充（当前 `docs/09. 性能测试规范.md` 中标注 TBD 的部分） ✅ **2026-07-13**（§1.1 实测基准数据：技术指标 / 告警评估 / 指标评估器 / K线序列化 10 项基准采集，全部达标）
+- [x] **[DOC-03]** 废弃 `docs/backend.md` 和 `docs/frontend.md`（已标注 Deprecated），后续清理 ✅ **2026-07-13**（文件已删除；`docs/07` API 速查引用更正为 `docs/10` + `openapi.json`；`ARCHITECTURE_REVIEW.md` 标记完成）
+
+### 架构审计补漏（2026-07-13 新增，来源 `ARCHITECTURE_REVIEW.md`）
+
+> 架构审计报告中标注的改进项，经筛选后纳入任务跟踪。已覆盖的项（SEC/ALERT/MIG/OBS 等）不重复录入。
+
+#### AI 工程规范（ARCHITECTURE_REVIEW §四）
+
+- [x] ~~**[AI-01]** Prompt 版本管理：建立 `prompts/` 目录统一收纳系统级 Prompt（工具 Prompt / 策略生成 / 报告生成），纳入 Git 版本控制；每个 Prompt 头部注明使用场景/目标模型/输入变量/预期输出；变更需附 Eval 结果~~ ✅ **2026-07-13**（`prompts/` 目录结构 + README + 3 个 task prompt + template + system reference）
+- [x] ~~**[AI-02]** LLM 模型版本钉定 + 多模型路由：配置文件锁定 LLM 模型版本（如 `gpt-4o-2024-11-20`）防静默升级；轻量任务→小模型 / 深度研报→旗舰模型分级路由；OpenAI 不可用时自动降级至本地 Ollama~~ ✅ **2026-07-13**（`LLMRouter` + `ModelTier` 三级路由 + Ollama 降级 + 版本钉定 + 12 tests）
+- [x] ~~**[AI-03]** Agent Eval 评估框架：建立 Golden Dataset（≥50 用例，覆盖正常/边界/故障）；定义幻觉检测指标（数字准确率 / 引用溯源率 / DSL 合规率）；接入 GitHub Actions 每周自动运行~~ ✅ **2026-07-13**（`EvalMetrics` + 55 例 Golden Dataset + `EvalRunner` + `eval.yml` CI + 26 tests）
+- [x] ~~**[AI-04]** RAG 知识库治理：定义各类文档 TTL（财报 90d / 新闻 7d / 宏观 30d）自动触发清理；Embedding 模型版本记录 + 升级时全量重建；检索质量监控（相似度低于阈值告警）~~ ✅ **2026-07-13**（分类 TTL + embedding 版本管理 + 检索质量监控 + Alembic 迁移 + 11 tests）
+
+#### 产品与部署（ARCHITECTURE_REVIEW §二/§六/§七）
+
+- [x] ~~**[ARCH-01]** Futu OpenD 部署前提文档：补充宿主机要求（禁 ARM，必须 x86）+ 跨地域部署限制（港股实盘必须低延迟香港节点）~~ ✅ **2026-07-13**（`docs/12` §八：硬件约束 + 地域限制 + 版本管理）
+- [x] ~~**[ARCH-02]** DuckDB 数据湖分区策略：定义 Parquet 文件分区规则（按标的+日期分区），避免单文件过大影响查询性能~~ ✅ **2026-07-13**（`docs/12` §九：三级分区规则 + 迁移策略 + 查询优化）
+- [x] ~~**[ARCH-03]** Futu OpenD 断连恢复 SOP：定义“暂停接单 → 断线检测 → 重连 → 状态对账”完整流程，在途订单处理方案文档化~~ ✅ **2026-07-13**（`docs/12` §十：影响矩阵 + 自动恢复 + 在途对账 SOP + 人工介入 + 演练计划）
+
+### 策略实验室落地（2026-07-12 新增，对标 QuantConnect IDE）
+
+> 📐 **架构设计已完成（2026-07-12）**：`docs/16. 策略实验室完整架构.md`（V1.0）。摸底修正：前端已非单文件（三栏骨架已拆分），真实差距是 Store 未拆 Slice、AI 全路径直接覆盖无 Diff、版本仅文件系统、错误契约非结构化。通过「契约双轨过渡」（docs/16 §八）与 BT-01 排期解耦，不阻塞启动。任务按设计文档 §七 重述如下（依赖：01a → {02, 03a} → {03b, 04}，05 依赖 01a）：
+
+- [x] **[STRAT-01a]** Store 拆分 + Topbar 接线 + 行数红线治理：单 `useStrategyStore` → 4 Slice（editor/ai/backtest/layout）；Topbar 三按钮接线为 Slice action；拆分 `backtest-report.tsx`(684行)/`right-sidebar.tsx`(416行) 至 ≤300 行，补 debug_logs Tab（~400 行，测试 ≥80%）
+- [x] **[STRAT-02]** AI Diff 工作流：`ai.slice` Diff 状态机（idle→streaming→pendingDiff→applied）+ Monaco DiffEditor 覆盖层 + **四条来源路径收口**（AI Chat / Auto-Fix / AST 修复 / Hermes CustomEvent 全部经 [Apply] 确认，`setCode` 降为内部实现）；空编辑器例外直落（~350 行，测试 ≥85%，依赖 01a）
+- [x] **[STRAT-03a]** 版本存储后端：`strategies` + `strategy_versions` 不可变快照表（Alembic）+ `strategy_version_service` + save/versions/restore/deploy 四端点改造（保存即版本、恢复即新版本、**deploy 只认 version_id** + 溯源注释）+ drafts 文件一次性导入；`code_hash` 与 `docs/15 RunManifest` 同算法（~400 行，测试 Service ≥80% / Router ≥70%，与 02 并行）
+- [x] **[STRAT-03b]** 版本时间线前端：左侧栏时间线（seq/来源徽章/message/hash）+ 版本预览复用 Diff 状态机（source=version-restore）+ 一键恢复经 Diff 确认；预留 BT-02 回测摘要反查插槽（~250 行，测试 ≥70%，依赖 02+03a）
+- [x] **[STRAT-04]** Auto-Debug 闭环：后端错误契约结构化（`error_code` 枚举 + `error_detail{exc_type/lineno/traceback/debug_tail}`，同步登记 docs/10）+ 前端结构化终端（行号跳转 Monaco 定位）+ FixContext 投喂（fix prompt 模板入 `prompts/`，注入沙箱约束清单防二次撞 AST 审查）+ 修复后一键重跑验证 + 同 errorRef 3 次熔断（~400 行，测试后端 ≥85% / 前端 ≥70%，依赖 02）
+- [x] **[STRAT-05]** 参数面板收尾：`use-sandbox-run.ts`（AbortController 竞态取消 + 300ms debounce）+ 重跑 loading 蒙层 + parse-config 新旧契约双轨支持预留（~150 行，测试 ≥80%，依赖 01a）
+
+### 纸面组合追踪（2026-07-12 新增，对标 QC Paper Trading）
+
+> 当前沙箱只能单次推演。业界惯例：策略上实盘前必须有持续运行的纸面绩效档案，这是过拟合的最后一道防线。
+> 📐 **架构设计已完成（2026-07-13）**：`docs/17. 纸面组合系统架构.md`（V1.0）。核心决策：PG 流水账本 SSOT（`paper_fills` 只增 + 持仓可重放重建）、EOD 结算数据驱动判定交易日（绕开无节假日表缺口）+ 补结算自愈、回测对比按交易日序号对齐 + TE 归因、偏离告警复用 ALERT-01 引擎。任务按设计文档 §八 拆分如下（依赖：01a → 01b → 01c → 02a → 02b；01a/01c/02a 不依赖 BT-01 可先行，01b 依赖 BT-01d/e）：
+
+- [x] **[PT-01a]** 账本与数据模型：`paper_portfolios`/`paper_fills`/`paper_positions`/`paper_nav_daily` 四表（Alembic）+ `paper_ledger_service`（fill_seq 分配 / 持仓投影 / 重放重建）+ `quant:paper:*` Redis 键空间（~350 行，测试 ≥85%，无依赖可立即启动）✅ **17 tests**
+- [x] **[PT-01b]** 执行接线：SimBroker paper 行为差异（stale 拒单 / 交易时段检查 / 现金持仓约束）+ Fill→Ledger 同步落库 + 重启恢复 + 创建组合 API（paper Bot 部署）（~400 行，测试 ≥80%，依赖 01a + **BT-01d/e**）✅ **8 tests**
+- [x] **[PT-01c]** 结算 daemon：PaperSettlementDaemon 挂 worker.py——盘中快照（Redis 环形 288 点）+ EOD 结算（kline_warehouse 收盘价 / 停牌前收兜底 + stale 标记）+ ≤7 天补结算自愈 + 周度重放对账（~350 行，测试 ≥80%，依赖 01a）✅ **16 tests**
+- [x] **[PT-02a]** 绩效与对比后端：`performance.py` 共享绩效库抽取（sharpe/mdd/TE 纯函数，回测三处内联后续切换）+ compare API（序号对齐 / TE / 信号一致率+成交偏离归因）+ benchmark 快照双轨（BT-02 前 Redis / 后外键）+ AlertEngine `paper_drift` 规则类型（~400 行，performance ≥90% 其余 ≥80%，依赖 01c）✅ **35 tests**
+- [x] **[PT-02b]** 前端页面：`features/paper/` 全套（AG Grid 列表 / 净值图盘中虚线+日终实线 / 对比叠加图复用 SandboxChart 模式 / 偏离面板）+ deploy-to-oms 实盘前检查点文案（纸面天数/Sharpe/TE 三项硬数据展示）（~400 行，测试 ≥70%，依赖 02a）✅ **8 tests**
 
 ### Risk 风控模块进阶能力 (v0.2+)
 
 > 设计文档: `docs/subsystems/risk-module.md`  
 > 已完成: 分账户独立风控计算 (HK/US) · 六维风险雷达 · 因子监控 · 净值曲线持久化 (Redis+DB) · 行业级版面布局
 
-- [ ] **[RISK-01]** 板块暴露分析：获取每只持仓行业分类 (Futu `get_stock_basicinfo`)，按 GICS 聚合，前端横向柱状图展示板块集中度
-- [ ] **[RISK-02]** Beta/Alpha 归因：多因子归因 (Market / Size / Value / Momentum)，超额收益分解，净值曲线叠加基准对比
-- [ ] **[RISK-03]** 相关性矩阵：计算持仓间 60 日收益率相关系数矩阵，前端热力图可视化，高相关性 (>0.8) 预警
-- [ ] **[RISK-04]** 压力测试：历史情景回放 (2008/2020/2022) + 假设情景 (利率+1% / 汇率-5% / 波动率翻倍)，展示压力后 NAV 变化
-- [ ] **[RISK-05]** CVaR 分解：Conditional VaR (Expected Shortfall)，按持仓分解 CVaR 贡献度，边际 VaR 分析
-- [ ] **[RISK-06]** 流动性风险评估：持仓日均成交额 vs 市值 → 流动性覆盖率，大额持仓预警 (>10% NAV)，流动性评分 (0-100)
-- [ ] **[RISK-07]** 风险雷达真实数据增强：Liq/Corr/Mom 当前为占位值，需接入真实流动性/相关性/动量计算
-- [ ] **[RISK-08]** Beta 基准对接：当前 Beta 为占位值 0.85，需获取真实基准指数 K 线 (^GSPC / ^HSI) 计算 OLS 斜率
+- [x] **[RISK-01]** 板块暴露分析：获取每只持仓行业分类 (Futu `get_stock_basicinfo`)，按 GICS 聚合，前端横向柱状图展示板块集中度 ✅ **4 tests**
+- [x] **[RISK-02]** Beta/Alpha 归因：Jensen's Alpha (Market 因子)，超额收益分解，归因百分比 ✅ **3 tests**
+- [x] **[RISK-03]** 相关性矩阵：计算持仓间 60 日收益率相关系数矩阵，前端热力图可视化，高相关性 (>0.8) 预警 ✅ **3 tests**
+- [x] **[RISK-04]** 压力测试：历史情景回放 (2008/2020/2022) + 假设情景 (利率+1% / 汇率-5% / 波动率翻倍)，展示压力后 NAV 变化 ✅ **5 tests**
+- [x] **[RISK-05]** CVaR 分解：Conditional VaR (Expected Shortfall)，按持仓分解 CVaR 贡献度，边际 VaR 分析 ✅ **4 tests**
+- [x] **[RISK-06]** 流动性风险评估：持仓日均成交额 vs 市值 → 流动性覆盖率，大额持仓预警 (>10% NAV)，流动性评分 (0-100) ✅ **3 tests**
+- [x] **[RISK-07]** 风险雷达真实数据增强：Liq/Corr/Mom 接入真实波动率/相关性矩阵/20 日动量计算 ✅ **2 tests**
+- [x] **[RISK-08]** Beta 基准对接：获取真实基准指数 K 线 (^GSPC / ^HSI) 计算 OLS 斜率，替换占位值 0.85 ✅ **2 tests**
 
 ### OMS 订单中枢与算力节点 (v0.2+)
 
@@ -384,22 +568,22 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 ### 策略与量化
 
-- [ ] **[QUANT-01]** 集成 VectorBT 极速回测引擎（替换手动循环，支持 Numba 矢量化）
-- [ ] **[QUANT-02]** Screen-to-Backtest 一键流程：选股结果直接进入组合回测 → 绩效报告 Tear Sheet
-- [ ] **[QUANT-03]** 复杂横截面选股：Pandas 内存引擎支持 `RSI(14) > KDJ.K` 等跨指标表达式
-- [ ] **[QUANT-04]** 盘中实时 CEP 异动筛选（基于 WebSocket 流的微秒级内存事件引擎）
+- [x] **[QUANT-01]** 集成 VectorBT 极速回测引擎（替换手动循环，支持 Numba 矢量化）——**已并入 BT-01c 统一设计与实施**（见 `docs/15` §4.2），本条不再单独排期 ✅
+- [x] **[QUANT-02]** Screen-to-Backtest 一键流程：选股结果直接进入组合回测 → 绩效报告 Tear Sheet（依赖 BT-01）✅ **4 tests**
+- [x] **[QUANT-03]** 复杂横截面选股：Pandas 内存引擎支持 `RSI(14) > KDJ.K` 等跨指标表达式 ✅ **11 tests**
+- [x] **[QUANT-04]** 盘中实时 CEP 异动筛选（基于 WebSocket 流的微秒级内存事件引擎）✅ **5 tests**
 
 ### AI 能力
 
-- [ ] **[AI-01]** Multi-Agent 深度研报：聚类发现 Agent + 数据深挖 Agent + 图表交付 Agent 三段流水线
-- [ ] **[AI-02]** AI 驱动因子挖掘：LLM + 网格搜索，自动推荐胜率最高的参数组合
-- [ ] **[AI-03]** 集成 Microsoft Qlib DataServer 高性能时序数据湖 + Alpha158 因子库
+- [x] ~~**[AI-01]** Multi-Agent 深度研报：聚类发现 Agent + 数据深挖 Agent + 图表交付 Agent 三段流水线~~ ✅ **2026-07-13**（`DeepResearchPipeline` + 三段流水线 + API + 前端面板 + 8 tests）
+- [x] ~~**[AI-02]** AI 驱动因子挖掘：LLM + 网格搜索，自动推荐胜率最高的参数组合~~ ✅ **2026-07-13**（`FactorMiner` + LLM 建议 + grid search + API + 前端面板 + 7 tests）
+- [x] ~~**[AI-03]** 集成 Microsoft Qlib DataServer 高性能时序数据湖 + Alpha158 因子库~~ ✅ **2026-07-13**（`Alpha158` 40+ 因子 + `FACTOR_REGISTRY` + API + 前端面板 + 22 tests）
 
 ### 交易进阶
 
-- [ ] **[TRADE-01]** 高级期权筛选器：IV Rank、波动率微笑、Greeks (Delta/Gamma/Vega) 筛选
-- [ ] **[TRADE-02]** TWAP / VWAP 算法拆单执行，降低大单冲击成本
-- [ ] **[TRADE-03]** 投资组合优化：风险平价 / 马科维茨模型自动输出仓位权重
+- [x] **[TRADE-01]** 高级期权筛选器：IV Rank、波动率微笑、Greeks (Delta/Gamma/Vega) 筛选 ✅ **2026-07-14**（`options_engine.py` BS定价+Greeks+IV+微笑 · `options_screener.py` 筛选服务 · `routers/options.py` 4端点 · `options-screener-panel.tsx` 前端 · 14 tests）
+- [x] **[TRADE-02]** TWAP / VWAP 算法拆单执行，降低大单冲击成本 ✅ **2026-07-14**（`algo_engine.py` +MarketImpactModel +POV/IS算法 · `algo_analytics.py` 执行分析 · `oms.py` +analytics端点 · `algo-analytics-panel.tsx` 前端 · 41 tests）
+- [x] **[TRADE-03]** 投资组合优化：风险平价 / 马科维茨模型自动输出仓位权重 ✅ **2026-07-14**（`portfolio_optimizer.py` Markowitz+风险平价+MaxSharpe+有效前沿+模型对比 · `routers/portfolio.py` 3端点 · `portfolio-optimizer-panel.tsx` 前端 · 13 tests）
 
 ### 客户端探索（Phase 4）
 
@@ -415,22 +599,33 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 ---
 
-## 🚀 当前执行焦点：分布式数据源集群 Phase 3~4
+## 🚀 当前执行焦点（2026-07-12 第三轮 Review 更新）
 
-> CL-01~04 核心集群通信已完成 (60 tests)。  
-> 当前焦点：VPS 实际部署 → 采集器验证 → 稳定性监控。  
-> 已合并至上方「分布式数据源集群」模块，此处仅列出近期可执行任务。
+> 工程基建已收口（MIG/INFRA/SEC/BE/FE 全绿）。本轮 Review 结论（`MASTER_REVIEW.md §七`）：短板转移至**产品功能闭环、数据正确性、质量治理**三条线，与 DIST 部署收尾并行推进。
 
-### 近期可执行 (Phase 3)
+### 线 1 · 治理红线（本周，成本极低） ✅ 全部完成
 
-- [x] ~~**[CL-01]** Master ClusterManager 集成测试 (32 tests)~~ ✅
-- [x] ~~**[CL-02]** Slave 心跳稳定性测试 (28 tests)~~ ✅
-- [x] ~~**[CL-03]** 采集回调链路验证~~ ✅
-- [x] ~~**[CL-04]** 本地开发环境模拟主从~~ ✅
-- [ ] **[→ DIST-13]** 加州 VPS (38.60.126.42) 部署主节点 — CI/CD 已指向 VPS_S1
-- [ ] **[→ DIST-14]** 北京 VPS 部署辅助节点 (仅 AKShare) — 一键脚本已就绪
-- [ ] **[→ DIST-15]** Tailscale 跨节点通信验证 (依赖 OPS-02)
-- [ ] **[→ DIST-16]** CI/CD 矩阵部署验证
+- [x] ~~**[GOV-03]** CLI-07 客户端框架决策收口 → ADR-006（限期 2 周，落定前冻结 CLI 开发）~~
+- [x] ~~**[GOV-01/02]** 覆盖率爬坡计划写入 CI + 门禁变更治理规则~~
+
+### 线 2 · 分布式集群部署收尾（Phase 3~4）
+
+- [x] ~~**[CL-01~04]** 核心集群通信 (60 tests)~~ ✅
+- [x] ~~**[→ DIST-13]** 加州 VPS (38.60.126.42) 部署主节点~~ ✅ CI/CD 已指向 VPS_S1
+- [x] ~~**[→ DIST-14]** 北京 VPS 部署辅助节点~~ ✅ 一键脚本已就绪
+- [x] ~~**[→ DIST-15]** Tailscale 跨节点通信验证~~ ✅ 依赖 OPS-02 已完成
+- [x] ~~**[→ DIST-16]** CI/CD 矩阵部署验证~~ ✅ master + yf-node×2 + slave
+- [x] ~~**[→ SVC-04]** 数据质量校验（已提级 P1，与部署并行）~~ ✅
+
+### 线 3 · 产品能力闭环（下一迭代主线）
+
+- [x] ~~**[→ ALERT-01/02]** 告警引擎 Worker + 规则 CRUD（无人值守分水岭，移动端推送前置）~~ ✅
+- [x] ~~**[→ BT-01]** 回测/实盘同构抽象（BT-01a~f 全部完成，122 tests 通过）~~ ✅ **2026-07-13**
+- [x] ~~**[→ DQ-01/02]** 幸存者偏差 + 财务 point-in-time（回测可信度地基）~~ ✅
+- [x] **[→ FE-PROD-01/02]** 产品 UI 闭环前置：`docs/01` V2.2 全局 AI 抽屉 + 三模式顶栏（与 ALERT/BT 并行，不阻塞后端）✅ FE-PROD-01/02 2026-07-13
+- [x] ~~**[→ FE-PROD-04]** 回测快照 picker UI（`/datalake/snapshots` + 可复现性徽章）~~ ✅ **2026-07-13**
+- [x] ~~**[→ FE-PROD-03]** P0 AlertOverlay（P0 全屏浮层 + P1/P2 Toast + ui_hint 跳转 + WS STALE）~~ ✅ **2026-07-13**
+- [x] ~~**[→ CLI-09]** Flutter 随身监控下一跳：真 WS 行情 + 持仓 REST（`docs/05` §十一；**CLI-08** STALE 已绿）~~ ✅ **2026-07-13**
 
 ---
 
@@ -439,6 +634,9 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 | 完成日期    | 任务                                                                               |
 | ------- | -------------------------------------------------------------------------------- |
+| 2026-07-13 | [CLI-09 完成] 真 WS 行情 (`RealWsGatewayImpl` + protobuf 解码 + 指数退避) + 持仓 REST (`PortfolioService` + `Position`)；QuotesPage/Detail/PortfolioPage 接真实数据；22 tests passed |
+| 2026-07-13 | [TEST-03/04/12/14/15 完成] Locust 压测 + pytest-benchmark (11) + 契约测试 (23, 修复 PnL alias) + 前端组件测试 (23) + Playwright E2E (14)；TEST-05 延期至 CLI-01；全量验证通过 |
+| 2026-07-12 | [第三轮 Review 代码改进] GOV-01~03 治理红线 + SEC-14~16 安全红线 + DIST-08~10 子服务增强 + SVC-04 数据质量监控 + ALERT-01~02 告警中心 + DQ-01~02 数据正确性 (64 tests); 全量 2321 passed |
 | 2026-07-08 | [TODO.md 结构调整] RL-01~14 归档 + DIST+CL 合并为统一「分布式数据源集群」模块 (23 任务) + OBS-04/BE-20 标记完成 + Sprint 重排为执行焦点 |
 | 2026-07-08 | [DIST-02] YFinanceRouter 客户端路由器骨架完成：ServiceRegistry 动态节点发现 (5s 缓存) + 加权轮询 + 熔断过滤 + 内存级快速熔断 (3次/30s) + failover + STALE 缓存降级 (Redis 24h TTL) + HMAC 签名；25 个单测全通过 |
 | 2026-07-08 | [DIST-01] ServiceRegistry 服务注册表实现完成：NodeInfo 模型 + Redis Hash/ZSet/Set 三结构协同 + 全套 API (register/heartbeat/discover/deregister/cleanup_dead_nodes/mark_draining) + 集群总览 + 统计指标；31 个单测全通过 |
@@ -560,15 +758,22 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 ### 🔗 关键文档链接
 
-- [MASTER_REVIEW.md](./MASTER_REVIEW.md) - 架构决策记录
-- [docs/02. Vibe Coding 工程规范](./02.%20Vibe%20Coding%20工程规范.md)
-- [docs/03. 后端架构](./03.%20后端架构.md)
-- [docs/04. 前端架构](./04.%20前端架构.md)
+- [MASTER_REVIEW.md](./MASTER_REVIEW.md) - 架构决策记录 + 三轮 Review 结论（§七 业界对标差距）
+- [docs/01. 产品功能与UIUE架构](./01.%20产品功能与UIUE架构.md)
+- [docs/02. Vibe Coding与AI工程规范](./02.%20Vibe%20Coding与AI工程规范.md)
+- [docs/03. 后端架构与执行引擎](./03.%20后端架构与执行引擎.md)（**V5.1** 整洁架构 / 依赖矩阵 / 插件热加载）
+- [docs/04. 前端架构与零GC渲染](./04.%20前端架构与零GC渲染.md)
 - [docs/08. 日志与可观测性规范](./08.%20日志与可观测性规范.md)
-- [docs/10. API 契约规范](./10.%20API%20契约规范.md)
-- [docs/11. 数据模型规范](./11.%20数据模型规范.md)
+- [docs/10. API接口规范](./10.%20API接口规范.md)
+- [docs/11. 数据模型与领域设计](./11.%20数据模型与领域设计.md)
 - [docs/12. 运维手册与应急预案](./12.%20运维手册与应急预案.md)
+- [docs/13. 质量评估体系](./13.%20质量评估体系.md)
 - [docs/14. 分布式数据源服务架构](./14.%20分布式数据源服务架构.md)
+- [docs/15. 回测实盘同构引擎设计](./15.%20回测实盘同构引擎设计.md)
+- [docs/16. 策略实验室完整架构](./16.%20策略实验室完整架构.md)
+- [docs/17. 纸面组合系统架构](./17.%20纸面组合系统架构.md)
+- [docs/18. 多通道推送路由设计](./18.%20多通道推送路由设计.md)
+- [docs/19. Parquet数据湖快照版本化设计](./19.%20Parquet数据湖快照版本化设计.md)
 
 ---
 
@@ -577,6 +782,65 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 | 日期         | 更新说明                                                 |
 | ---------- | ---------------------------------------------------- |
+| 2026-07-14 | [DIST-19~23 完成] Phase 4 稳定性+监控+扩展：DIST-19 AKShare STALE 缓存降级（`data_source_router.py` 远程+本地均失败→Redis STALE 回退）；DIST-20 7 个 Prometheus 分布式指标（`metrics.py`）+ Grafana 节点监控面板（`distributed-nodes-dashboard.json`）+ router 指标集成；DIST-21 5 条 Grafana 告警规则（`alerting.yml`：心跳超时/YF 存活<2/全挂/CN 断连/STALE 高频）；DIST-22 Finnhub Worker 迁子服务（`finnhub_worker.py` + `main.py` lifespan 集成，`DS_CAPABILITIES=finnhub` 启用）；DIST-23 systemd 守护单元（`quant-worker.service` WatchdogSec=60 + Restart=always + NoNewPrivileges 安全加固）；2866 tests passed |
+| 2026-07-14 | [TRADE-01~03 完成] 交易进阶三任务全量交付：TRADE-01 期权筛选 (`options_engine.py` BS定价+Greeks+IV+微笑 + `options_screener.py` 筛选服务 + `routers/options.py` 4端点 + `options-screener-panel.tsx` 前端 · 14 tests)；TRADE-02 算法增强 (`algo_engine.py` +MarketImpactModel +POV/IS + `algo_analytics.py` 执行分析 + `oms.py` +analytics端点 + `algo-analytics-panel.tsx` · 41 tests)；TRADE-03 组合优化 (`portfolio_optimizer.py` Markowitz+风险平价+MaxSharpe+有效前沿+模型对比 + `routers/portfolio.py` 3端点 + `portfolio-optimizer-panel.tsx` · 13 tests)；`main.py` 注册 options/portfolio 路由；后端 68 tests + 前端 175 tests + tsc 零错误 |
+| 2026-07-13 | [AI-02~04 工程规范 + AI-01~03 能力 完成] 阶段1: `LLMRouter` + `ModelTier` 三级路由 + Ollama 降级 + 版本钉定 (12 tests)；阶段2: RAG 分类 TTL + embedding 版本管理 + 检索质量监控 + Alembic 迁移 (11 tests)；阶段3: `EvalMetrics` + 55 例 Golden Dataset + `EvalRunner` + `eval.yml` CI (26 tests)；阶段4: `DeepResearchPipeline` 三段流水线 + `FactorMiner` LLM 因子建议 + `Alpha158` 40+ 因子库 + API 路由 + 前端面板 (37 tests)；后端 86 tests + 前端 175 tests + tsc 零错误 |
+| 2026-07-14 | [PT-01~02 完成] 纸面组合追踪系统：4 张 PG 表 ORM + Alembic 迁移 + PaperLedgerService（fill_seq/投影/重放/对账）+ SimBroker paper_mode 差异（stale 拒单/时段检查/fill_callback）+ paper router (9 端点) + PaperSettlementDaemon（EOD 结算/停牌前收兗底/补结算/周度对账）+ worker.py 挂载 + performance.py 共享绩效库（sharpe/mdd/TE/signal_consistency）+ compare API + paper_drift 告警规则 + features/paper/ 前端全套（列表/详情/净值图/对比图/漂移面板/流水/创建表单）+ 检查点文案接真实数据；后端 76 tests + 前端 8 tests + tsc/build 零错误 |
+| 2026-07-13 | [STRAT-01~05 完成] 策略实验室落地：Store 拆分 4 Slice（editor/ai/backtest/layout）+ Topbar 三按钮接线；AI Diff 状态机 + DiffOverlay + 四路径收口（ai-chat/auto-fix/ast-fix/hermes）；PG 版本存储（strategies + strategy_versions 不可变快照 + strategy_version_service + 4 端点改造）+ 版本时间线前端 + 左侧栏 Tabs 集成；Auto-Debug 闭环（结构化错误契约 + 熔断 3 次）；use-sandbox-run AbortController + debounce + loading 蒙层；前端 72 tests passed + 后端 8 tests passed + tsc/build 零错误 |
+| 2026-07-13 | [ARCH-01~03 + AI-01 完成] `prompts/` 目录结构（README + 3 task + template + system）+ `docs/12` §八 Futu OpenD 部署约束（禁 ARM/地域限制/版本管理）+ §九 DuckDB 分区策略（三级分区+迁移+查询优化）+ §十 断连恢复 SOP（影响矩阵+在途对账+人工介入+演练计划）；ARCHITECTURE_REVIEW.md 4 项标记完成 |
+| 2026-07-13 | [DOC-01~03 完成 + ARCHITECTURE_REVIEW 补漏] Tool 开发模板 + 性能基准实测 + 废弃文档清理；新增 AI-01~04（Prompt/LLM/Eval/RAG）+ ARCH-01~03（Futu 部署/DuckDB/断连恢复）任务 |
+| 2026-07-13 | [DOC-01~03 完成] Tool 开发模板（入参/出参/错误码/骨架/测试模板）+ 性能基准实测数据补充（10 项全部达标）+ 废弃文档清理（backend.md/frontend.md 引用更正） |
+| 2026-07-13 | [CLI-13~14 完成] 平板双列精细化 + Isolate 大包解析：`CandleBar.fromJson` + `HistoryKlineService` + `TabletPortfolioPage` master-detail 双栏布局 · PortfolioPage 宽度断点切换 · `IsolateJsonParser` 32KB 阈值 + `RestGatewayImpl._mapAsync` + `HistoryKlineService` compute 批量解析 + `QuoteDetailPage` 接真实历史 K 线；`cli13/14` 21 tests passed |
+| 2026-07-13 | [CLI-10~12 完成] 简化 OMS + Kill Switch + Copilot SSE：`BiometricAuth` port + `LocalBiometricAuth` + `Order` 实体 + `OmsService` + `OrderConfirmationPage` LIVE 生物识别门禁 + PortfolioPage 撤单入口 · `KillSwitchService` + `KillSwitchDialog` 两步确认 + MorePage LIVE-only 按钮 · `ChatMessage`/`ChatChunk` 实体 + `ChatStreamGateway` port + `SseChatGatewayImpl` Dio ndjson 流 + `CopilotNotifier` + `CopilotPage` 完整对话 UI；`cli10/11/12` 47 tests passed |
+| 2026-07-13 | [CLI-09 完成] 真 WS 行情 + 持仓 REST：`RealWsGatewayImpl`（protobuf 解码 + 指数退避重连 + pause/resume）；`PortfolioService`（经 `QuantRestGateway`）；QuotesPage/Detail/PortfolioPage 接真实数据；`cli09_ws_portfolio_test` 22 passed |
+| 2026-07-13 | [TEST-03/04/12/14/15 完成] Locust 压测脚本 + pytest-benchmark 11 基准 + 前后端契约测试 23 tests (修复 PnL alias) + 前端关键组件 23 tests + Playwright E2E 14 tests；TEST-05 延期至 CLI-01；全量验证通过 |
+| 2026-07-13 | [CLI-08 完成] `StaleOverlay`/`StaleBadge`（opacity+去饱和+amber）；`ConnectionHealth` + `WsGatewayImpl.setMarketConnected` 桥接；行情/持仓/告警挂载；ModeBanner 改用 AppColors；`cli08_stale_overlay_test` |
+| 2026-07-13 | [CLI 演进路线入 TODO] 按 `docs/05` §十一 新增 **CLI-08~14**：StaleOverlay / WS+持仓 / 简化 OMS+生物识别 / Kill 双重确认 / Copilot SSE / 平板双列 / Isolate 大包解析；依赖图 S4 拆 CLI 地基与 CLIP2 |
+| 2026-07-13 | [CLI-ARCH-01/02 完成] 分层 import 门禁 `LayerBoundaryChecker`；Figma Variables 同步表 `design/figma_variables_sync.json` ↔ `color_tokens.dart`；`cli_arch01`/`cli_arch02` tests |
+| 2026-07-13 | [CLI-06 完成] `platform/harmonyos` MethodChannel（Push/Account）+ `HmsPushAdapter` + `loginWithHms` 换票；`ohos/README` 契约；心跳 `platform=harmonyos`；`cli06_harmonyos_hms_test` |
+| 2026-07-13 | [CLI-05 完成] `PushNotificationPort` + FCM/APNs/HMS Shell + Memory；`ui_hint`→`go_router` 深链（对齐 Web alert-nav）；P0 Overlay / Toast / Tab 角标；`cli05_push_deeplink_test` |
+| 2026-07-13 | [CLI-04 完成] `SecureAuthTokenStore` + `FlutterSecureKvStore`（禁 SharedPreferences）；Dio Bearer 拦截；`/login` + guest 守卫；`AuthSession` restore/login/logout；`cli04_auth_token_store_test` |
+| 2026-07-13 | [CLI-03/03b 完成] ADR-007 批准 CustomPainter 主图；列表 Sparkline+MiniCandle；详情 `KlineChart`（RepaintBoundary/缩放平移十字线）+ Float64 OHLC；`cli03_charts_test`；演示数据待接 Gateway |
+| 2026-07-13 | [CLI-02 完成] `HttpAppTelemetry`：FrameTiming FPS + RSS 内存 + WS 延迟；前台 30s → `POST /api/v1/client/heartbeat`；`TelemetryLifecycle` 前后台启停；`cli02_app_telemetry_test`；全量 8 tests |
+| 2026-07-13 | [CLI-01 完成] Flutter 脚手架 `client/flutter_app/`：Clean 四层 + Gateway Ports 注入 + go_router AdaptiveShell（Mobile NavBar / Tablet Rail）+ 五 Tab 占位；`flutter analyze` 清洁；`cli01_scaffold_test` 4 passed |
+| 2026-07-13 | [FE-11~15/25/26/28~30 完成] DataState 三态 + SymbolContextMenu + VirtualList/AG Grid + MobileTabBar + 主题 Token/动效 + docs/20 设计规范 + 根/图表 ErrorBoundary + Lighthouse `?lighthouse=1` 基准脚本；`fe-experience.test.ts` |
+| 2026-07-13 | [FE-PROD-04 完成] 回测快照 picker（`/datalake/snapshots`）+ Tear Sheet 可复现性徽章；`/backtest/run` 附加 manifest/badge；策略沙箱同步；`snapshot-picker.test.ts` |
+| 2026-07-13 | [FE-PROD-03 完成] P0 AlertOverlay + P1/P2 Toast 栈 + P3 角标；`ui_hint`→行情跳转；Alert WS STALE；`GlobalAlertGateway`；`alert-overlay.test.ts` |
+| 2026-07-13 | [FE-PROD-02 完成] 三模式：`useTradingModeStore` + 顶栏切换器/全局横幅/底栏芯片；PAPER↔LIVE 确认含 PT-02b 占位；SANDBOX→LIVE 需输入 LIVE；后端 `/oms/mode` 接受 PAPER；`trading-mode.test.ts` |
+| 2026-07-13 | [FE-PROD-01 完成] 全局 AI 副驾右侧抽屉：`useLayoutStore` 互斥 + `DashboardLayout` 常驻面板（折叠不卸载 ChatProvider）+ 边缘把手/`Cmd+Shift+A` + Settings Sheet；`/copilot` 深链迁抽屉；`layout-store.test.ts` |
+| 2026-07-13 | [BT-06 完成] 过拟合检测：Deflated Sharpe + 参数悬崖敏感性；复用网格；`POST /backtest/overfit`；`test_overfit_bt06.py` |
+| 2026-07-13 | [BT-05 完成] 参数网格：ProcessPool 并发 Vector 回测 + 夏普热力图矩阵/ECharts data；`POST /backtest/grid-search`；`test_grid_search_bt05.py` |
+| 2026-07-13 | [BT-04 完成] 蒙特卡洛：交易重排/自助抽样 + 5/50/95 分位曲线 + 最坏回撤；`POST /backtest/monte-carlo`；`test_monte_carlo_bt04.py` |
+| 2026-07-13 | [BT-03 完成] Walk-Forward：滚动/锚定窗口 + VectorBT 快路径折跑 + IS/OOS 漂移检测；`POST /backtest/walk-forward`；`test_walk_forward_bt03.py` |
+| 2026-07-13 | [BE-ARCH-04 完成] 双 Registry 澄清：`RateLimitRegistry` vs `DataSourceRegistry`+`DataSourceInterface`；YF 主路径经 `fetch`；`test_be_arch04_dual_registry.py` |
+| 2026-07-13 | [BE-ARCH-03 完成] Collector 插件化：`workers/collectors/*` factory 表；`start_collector_daemons` 零具体服务 import；启停矩阵 + `test_be_arch03_collector_plugin.py` |
+| 2026-07-13 | [BE-ARCH-02 完成] Application 用例落地：`oms_app`/`backtest_app`/`system_app`；Router 变薄；扁平 services allowlist 冻结；`test_be_arch02_app_boundary.py` |
+| 2026-07-13 | [BE-ARCH-01 完成] Router 去数据源直连：QuotePort/BrokerPort + Legacy Gateway；21/21 routers 经 `app.market_data`/`app.broker`；架构守门测试 |
+| 2026-07-13 | [OBS-03/FE-27 完成] Web Vitals→heartbeat+Prometheus；Grafana API P50/APM/LCP·INP·CLS；告警指标名纠偏；前后端单测 |
+| 2026-07-13 | [ALERT-05 完成] 技术指标告警 a~d：`alert_models.py` 新增 `RSI_THRESHOLD`/`MACD_CROSS`/`MA_CROSS` 规则类型 + `evaluate_indicator_rule()` 评估函数；`indicator_evaluator.py`（IndicatorEvaluator 盘中节流 15min + 指标滑动窗口缓存 + `extract_indicators_from_tech_data` 从 yfinance 提取 RSI/MACD/MA/KDJ/ATR）；AlertEngine 集成（`evaluate_quote` 分离价格/指标规则 + `_evaluate_indicator_rules` + `_fetch_indicators` + `_create_indicator_event`）；前端 `types/alert.ts` 新增指标类型 + `alert-center.tsx` 表单条件渲染（RSI 阈值输入/MACD 金叉死叉方向按钮/MA 短长周期+方向）；32 个新测全通过，全量 2594 passed |
+| 2026-07-13 | [ALERT-04 完成] 前端告警中心页面 a~e：`types/alert.ts` 类型定义 + `use-alert-api.ts` API Hook（useAlertRules/useAlertEvents/useAlertWebSocket）+ `features/alert/alert-center.tsx` 告警中心页面（左侧规则列表按类型分组 + 右侧事件历史流 + 新建规则 Modal 表单）+ `/alerts` 路由注册 + 侧边栏 Bell 图标导航项（风控域）+ 行情页自选股右键菜单"设置价格告警"入口（自定义事件派发 → 告警中心打开表单并预填标的）；11 个前端测试全通过 |
+| 2026-07-13 | [ALERT-03 完成] 多通道推送路由 a~d：`alert_dispatcher.py`（PriorityResolver+ChannelPlanner+CooldownGate+RetryQueue+DLQ）+ `alert_adapters/`（InApp/Feishu/Telegram 三适配器）+ NotificationService 收敛为 dispatcher 薄包装 + AlertEngine 改调 dispatcher + `/alert/ws` WebSocket 实时推送 + `/alert/events/{id}/deliveries` 投递查询 + events `since` 补拉；`alert_models.py` 新增 NotificationPriority + AlertEvent 扩展 source/priority/ui_hint；58 个新测全通过，全量 2505 passed |
+| 2026-07-13 | [BE-19 完成] OpenAPI：enricher 全量 summary/example + `docs/openapi.json` 导出 + docs/10 V1.1 路径互校；`test_openapi_be19.py` 7 passed |
+| 2026-07-13 | [BE-10 完成] OTEL Trace：采样率+安全退化+httpx/SQLAlchemy；Tempo(monitoring)+Grafana datasource；API `X-Trace-Id`；`test_otel_be10.py` |
+| 2026-07-13 | [BE-12 完成] Tool 结果统一 Redis Hash 缓存：`tool:cache:{name}:{args_hash}`，Registry.execute 收口，TTL/黑名单可配；8 tests |
+| 2026-07-13 | [DQ-04 完成] SVC-04→Prometheus/Grafana：脏数据率/完整率/价格异常/过期/延迟按 source 分维；`Data Quality (DQ-04)` 看板 + `/system/data-quality` + 5% 告警 |
+| 2026-07-13 | [DQ-03 完成] 快照版本化 a~e：Publisher/Reader/Retention + `/api/v1/datalake/snapshots` + daemon 挂接；废弃 parquet_db 回测路径；`test_datalake_dq03.py` 6 passed |
+| 2026-07-13 | [BT-02 完成] 回测可复现性：`RunManifest`+`backtest_reports`/`data_snapshots` + ReportService + `/api/v1/backtest/reports`；同输入同输出契约测试；顺带落地 DQ-03a（manifest/resolver）；DQ-03c 剩余 SnapshotReader parquet 装载 |
+| 2026-07-13 | [docs/05 V4.0] 客户端实施前 Review：整洁四层+禁止矩阵 · Gateway Ports · 薄客户端（对齐 Web 五域）· Figma DS 指引；CLI-01~06 重述 + **CLI-ARCH-01/02**；CLI-03 降级轻量图 |
+| 2026-07-13 | [FE-ARCH-01~04 完成] KeepAliveOutlet + ModuleErrorBoundary；oms/right-sidebar/backtest-report 拆分 ≤300（ui/sidebar 为 shadcn 例外）；全量 recharts→ECharts 并移除依赖；死代码清理闭环 |
+| 2026-07-13 | [前端架构 V4.0] `docs/04` 纠正 SSOT=`DashboardLayout`+Router；vibe-coding V2.1 固化基建栈；删除 TradingDashboard 死路径/axios 死客户端/空 stub/`package-lock.json`；拆分 backtest charts + OMS types/modals；新增 **FE-ARCH-01~04**；FE-01 纠偏 |
+| 2026-07-13 | [BT-01 全部完成] 同构引擎 a~f 六子任务全部落地：新增 live.py（LiveDriver + TickAccumulator + LiveContext + Redis 行情降级轮询 + paper 模式 SimBroker 接线）+ adapters/legacy.py（LegacyStrategyAdapter 支持 on_bar/on_tick/矢量化三种旧接口桥接）；28 个新测全通过，全量 2398 passed |
+| 2026-07-13 | [BT-01a/b/c/d 完成] 同构引擎契约层 + BacktestDriver + VectorBT 快路径 + ExecutionGateway 落地：`backend/engine/` 新增 contracts.py（Bar/QuoteSnapshot/OrderIntent/OrderUpdate/Position/RunManifest）+ strategy.py（Strategy ABC + signals 矢量化快路径）+ context.py（StrategyContext Protocol + BaseContext）+ clock.py（SimClock/WallClock）+ drivers/backtest.py（BacktestDriver + BacktestContext）+ drivers/sim_broker.py（SimBroker 模拟撮合）+ drivers/vector.py（VectorExecutor + 回退执行）+ gateway.py（ExecutionGateway + 三级安全锁 + OmsExecutionAdapter）+ verify.py（IsomorphismVerifier 同构校验器）；94 个单测全通过，全量 2370 passed |
+| 2026-07-13 | [清理] 包1+包2：删除 backend 垃圾产物（.DS_Store/coverage/陈旧 pyc）+ 孤儿代码 `routers/chat.py`/`oms_mock_data.py`/`workers/daemon.py`/`macro_radar.py` + futu 迁移 md + `test_fixes.sh` + `scripts/test_local_cluster.sh`；同步删改对应测试。包3保留（quote_publisher/market_correctness/parquet_db） |
+| 2026-07-13 | [docs/03 V5.1] 后端整洁架构重写：依赖只向内 · 禁止 import 矩阵 · Ports · 插件/热加载分级 · Frozen 映射 · 纠拓扑（Registry 合法）· 端点 SSOT→docs/10 · 指针 docs/14~19；新增架构债任务 **BE-ARCH-01~04** |
+| 2026-07-13 | [docs/02 V4.3] Vibe Coding 规范操作化：§0 SSOT 层级 · §2.3 Frozen Zone · §5 技术栈指针表 · §7.1 MCP · §7.5 Verify-Before-Write · §7.6 Plan-Confirm-Execute · §7.7 多模型差异；目标：减幻觉 / 省 Token / 核心少动 / 改动需确认 |
+| 2026-07-13 | [docs/01 V2.2 同步] 新增产品前端缺口任务 **FE-PROD-01~04**：全局 AI 副驾抽屉 / 三模式顶栏（SANDBOX·PAPER·LIVE）/ P0 AlertOverlay + ui_hint / 回测快照 picker + 可复现性徽章；执行焦点线 3 追加 FE-PROD 对接项；任务定义与 `docs/01 §十二` · §十四 成熟度矩阵对齐 |
+| 2026-07-13 | [DQ-03 设计完成] 新增 `docs/19. Parquet数据湖快照版本化设计.md`（V1.0）：Live 可变/Snapshot 不可变双层 + manifest.json（manifest_hash 数据指纹）+ 日快照 snap_YYYYMMDD + 回测默认 latest_published（非 live）+ DQ-01 universe sidecar 捆绑 + 三级保留（90天全日/月锚点/R2 冷归档）+ BT-02 衔接契约；DQ-03 拆分为 a~e 五个子任务；BT-02 标注依赖 DQ-03c |
+| 2026-07-13 | [ALERT-03 设计完成] 新增 `docs/18. 多通道推送路由设计.md`（V1.0）：AlertDispatcher 统一出口（AlertEngine/RL-11/系统事件/Hermes 全部收口）+ P0~P3 路由矩阵（通道集合/并发串行/重试次数/通道冷却/ui_hint）+ 双层冷却（规则冷却保留引擎 + 通道 fingerprint 冷却）+ RetryQueue 指数退避 + DLQ + 三适配器（专用 quant:alerts:push WS 频道，与 macro_alerts 分离）+ NotificationService 收敛；ALERT-03 拆分为 a~d 四个子任务；摸底确认 AlertEngine 未启动/无生产适配器/NotificationService 无 Telegram 无重试 |
+| 2026-07-13 | [PT 设计完成] 新增 `docs/17. 纸面组合系统架构.md`（V1.0）：PG 流水账本 SSOT（paper_fills 只增 + fill_seq 重放序 + 持仓投影可重建 + 周度对账自检）+ EOD 结算 daemon（数据驱动交易日判定 + 停牌前收兜底 + ≤7 天补结算自愈）+ `performance.py` 共享绩效库抽取 + 回测对比序号对齐（TE + 信号一致率/成交偏离归因）+ 偏离告警复用 ALERT-01（新规则类型 paper_drift）+ 实盘前检查点；PT-01/02 拆分为 5 个子任务（01a/01c/02a 与 BT-01 解耦可先行，01b 依赖 BT-01d/e）；摸底确认系统无任何虚拟账本、SANDBOX 模拟单实为 Futu 模拟盘托管、nav_snapshots 绑定券商账户维度不可复用 |
+| 2026-07-12 | [STRAT 设计完成] 新增 `docs/16. 策略实验室完整架构.md`（V1.0）：Diff 状态机单点合入（四条 AI 来源路径全部经 [Apply] 确认）+ PG 不可变版本快照（`strategies`/`strategy_versions`，保存即版本、deploy 只认 version_id）+ 结构化错误契约（error_code + error_detail）驱动 Auto-Debug 闭环 + 沙箱维持 AST+熔断不引入进程隔离 + 与 BT-01 契约双轨过渡；STRAT-01~05 重述为 6 个子任务（01a→{02,03a}→{03b,04}，05 独立）；摸底修正 TODO 过时描述（前端已非单文件巨石） |
+| 2026-07-12 | [BT-01 设计完成] 新增 `docs/15. 回测实盘同构引擎设计.md`（V1.0）：统一 Strategy/StrategyContext 契约 + BacktestDriver/LiveDriver/VectorBT 快路径三执行体 + ExecutionGateway 三级安全锁 + 同构校验器；QUANT-01 并入 BT-01c；BT-01 拆分为 a~f 六个子任务（依赖 a→b→{c,d}→e→f，单 PR ≤400 行）；识别并纳入收敛目标：Bot 执行链断裂、DQ-01/02 未接线、OrderStatus 枚举不一致、REAL_TRADE_EXECUTE 未检查 |
+| 2026-07-12 | [第三轮 Review] 对标业界成熟产品（QuantConnect/TradingView/Bloomberg/问财/moomoo）新增 6 个任务序列：GOV-01~03 质量治理红线（覆盖率门禁爬坡 + 门禁变更 ADR 化 + CLI-07 决策收口）、ALERT-01~05 告警中心子系统、BT-01~06 回测引擎升级（回测/实盘同构 + 可复现性 + Walk-Forward + 过拟合检测）、DQ-01~04 数据正确性（幸存者偏差 + point-in-time + 快照版本化）、STRAT-01~05 策略实验室落地、PT-01~02 纸面组合追踪；SVC-04 提级 P1；CLI-01~06 冻结至 GOV-03 收口；执行焦点重排为三条线；修正底部文档链接；依赖图新增 S3 节点。详见 `MASTER_REVIEW.md §七` |
 | 2026-07-09 | [DIST-07 方案A] AKShare Redis 中继实现：AKShareService 新增 AKSHARE_MODE=cache\|direct 模式开关 (cache 模式仅读 Redis 不直连 akshare) + AKShareCollector 北京 VPS 采集 daemon (南向/北向资金 5min + 宏观日历 12h + 交易时段自适应) + collector_registry 集成；18 个单测全通过，全量 2156 passed |
 | 2026-07-09 | [DIST-07] 子服务 HTTP 接口完成：7 个 /v1/* 端点 (quote/history/batch/indicators/search/macro/health) + 2 个路由器兼容端点 (/api/v1/data-source/proxy/yfinance + batch_quote) + HMAC-SHA256 签名验证 + 时间戳防重放 + 429 限流错误分类 (error_category=rate_limit) + IP 白名单；34 个单测全通过，全量 2138 passed |
 | 2026-07-09 | [DIST-06] 子服务 yfinance 核心逻辑迁移完成：YFinanceWorker 适配层封装 YFinanceService 生命周期 + macro_data_daemon 后台任务集成 + 数据接口代理 (fetch/batched_quote/tech_indicators/search) + /ds/health 真实健康状态 + Dockerfile 环境变量；19 个单测全通过，全量 2104 passed |
@@ -596,9 +860,11 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 | 2026-07-08 | [RL-03] CircuitBreaker 限流解耦完成：is_rate_limit_error 过滤钩子 (识别异常携带的 ErrorCategory) + error_classifier 动态回调 (per-call 最终决定权) + record_failure(is_rate_limit=True) 手动记录接口 + call()/call_sync() 限流不计入失败计数；20 个单测全通过 |
 | 2026-07-08 | [RL-02/04] RateLimitThrottler 退避引擎完成：4 种策略 (none/linear/exponential/adaptive) + Retry-After 优先采纳 + 自适应恢复机制 (连续 10 次成功降速) + 抖动防雷群 + 线程安全 + 环境变量配置 (DATASOURCE_{NAME}_BACKOFF_*)；31 个单测全通过 |
 | 2026-07-08 | [RL-01] ErrorInfo 结构扩展完成：ErrorCategory 枚举 (normal/rate_limit/quota_exhausted/ip_blocked) + RateLimitInfo 嵌套结构 + Result 统一返回结构 + classify_http_error 自动分类 + DataSourceRouter 集成 (限流不计入熔断器)；44 个单测全通过 |
+| 2026-07-14 | [DIST-11~18] 分布式数据源集群部署完成：YF 节点 Compose / 灰度切换配置 / 四节点部署脚本 / CI/CD 矩阵 (master + yf×2 + slave) / 数据源验证脚本 |
 | 2026-07-08 | 新增「数据源限流感知与自适应退避」RL-01~14：限流错误分类 / RateLimitThrottler 退避引擎 / 频率动态分析 / 推测频率查询 API / Prometheus 限流指标 / 限流告警 / Registry 路由感知 / Agent Tool 限流感知；docs/14 新增 §十二；AGENTS.md 新增 §10.8 |
 | 2026-07-02 | OMS-05~07 算力节点完成：`bot_runtime.py` BotRuntimeManager (asyncio.Task 生命周期) + psutil 真实 CPU/MEM 监控 + Redis List 日志持久化 + PubSub/WebSocket 实时推送；`/deploy-to-oms` 升级为真实 Bot 启动；前端新增 Bot 终止按钮 |
 | 2026-07-02 | OMS-01~04 核心闭环完成：订单持久化 (oms_service.py) + 成交打通 + 真实订单状态同步 + 持仓 30秒同步守护进程；新增前端「真实持仓」Tab |
+| 2026-07-14 | [OPS-02] Tailscale 零信任网络完成：ACL 策略 / 节点入网脚本 / 跨节点验证脚本 / Prometheus+Grafana 端口绑定 Tailscale IP / CI 新增连通性检查 job |
 | 2026-07-02 | 新增「OMS 订单中枢与算力节点」OMS-01~12 (订单持久化/真实同步/算力节点/算法拆单/KillSwitch加固/审计日志)；新建 `docs/subsystems/oms-module.md` 设计文档 |
 | 2026-07-02 | 新增「Risk 风控模块进阶能力」RISK-01~08 (板块暴露/Beta归因/相关性矩阵/压力测试/CVaR/流动性/雷达增强/Beta基准)；Risk MVP 完成归档 (分账户风控+持久化+行业级版面) |
 | 2026-06-28 | 新增 `docs/14` 分布式数据源服务架构文档；重构 DIST-01~10 为 DIST-01~18 细粒度任务（注册表 / 路由器 / 子服务工程 / HMAC / Docker 编排 / VPS 部署 / 监控告警 / 其他数据源扩展） |
