@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Activity, AlertTriangle, RefreshCw, Timer, Server, Wifi,
   Database, Zap, Cpu, Network, ShieldCheck, ShieldAlert, ShieldOff,
+  Globe, MonitorSmartphone,
 } from 'lucide-react'
 import { apiClient } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
@@ -49,6 +50,16 @@ interface PerfLog {
   details: string | null
 }
 
+interface FrontendLog {
+  id: number
+  timestamp: string
+  level: string
+  message: string
+  context: Record<string, any> | null
+  page_url: string | null
+  user_agent: string | null
+}
+
 // ─── 主组件 ──────────────────────────────────────────────────────────
 export function PerformancePanel() {
   const [health, setHealth] = useState<HealthData | null>(null)
@@ -60,6 +71,9 @@ export function PerformancePanel() {
   const [loadingDash, setLoadingDash] = useState(true)
   const [loadingLogs, setLoadingLogs] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [frontendLogs, setFrontendLogs] = useState<FrontendLog[]>([])
+  const [frontendLogFilter, setFrontendLogFilter] = useState<string>('')
+  const [loadingFrontendLogs, setLoadingFrontendLogs] = useState(true)
 
   // 仪表盘聚合数据
   const fetchDashboard = useCallback(async () => {
@@ -96,18 +110,36 @@ export function PerformancePanel() {
     }
   }, [logFilter])
 
+  // 前端日志
+  const fetchFrontendLogs = useCallback(async () => {
+    try {
+      const params: Record<string, any> = { limit: 200 }
+      if (frontendLogFilter) params.level = frontendLogFilter
+      const res = await apiClient.get('/logs', params) as any
+      if (res.data?.status === 'success') {
+        setFrontendLogs(res.data.data?.items ?? [])
+      }
+    } catch (e) {
+      console.error('Frontend logs fetch error:', e)
+    } finally {
+      setLoadingFrontendLogs(false)
+    }
+  }, [frontendLogFilter])
+
   // 初始加载 + 自动轮询
   useEffect(() => {
     fetchDashboard()
     fetchLogs()
+    fetchFrontendLogs()
     const dashInterval = setInterval(fetchDashboard, 30000)
     const logInterval = setInterval(fetchLogs, 60000)
-    return () => { clearInterval(dashInterval); clearInterval(logInterval) }
-  }, [fetchDashboard, fetchLogs])
+    const feLogInterval = setInterval(fetchFrontendLogs, 60000)
+    return () => { clearInterval(dashInterval); clearInterval(logInterval); clearInterval(feLogInterval) }
+  }, [fetchDashboard, fetchLogs, fetchFrontendLogs])
 
   const handleRefreshAll = async () => {
     setIsRefreshing(true)
-    await Promise.all([fetchDashboard(), fetchLogs()])
+    await Promise.all([fetchDashboard(), fetchLogs(), fetchFrontendLogs()])
     setTimeout(() => setIsRefreshing(false), 500)
   }
 
@@ -206,6 +238,86 @@ export function PerformancePanel() {
                     </td>
                     <td className="px-4 py-3 text-[11px] text-muted-foreground leading-relaxed break-words max-w-md">
                       {log.details || '-'}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* [5] 浏览器日志 (FE-05b) */}
+      <div className="glass-card rounded-xl overflow-hidden border border-border/40 shadow-sm relative flex flex-col min-h-[400px] h-[calc(100vh-580px)]">
+        <div className="px-4 py-2.5 border-b border-border/30 flex items-center justify-between bg-secondary/30 shrink-0">
+          <div className="flex items-center gap-2">
+            <MonitorSmartphone className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              浏览器日志
+              <span className="ml-2 bg-primary/10 text-primary px-1.5 py-0.5 rounded-md font-mono">{frontendLogs.length}</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {['', 'ERROR', 'WARN', 'INFO', 'DEBUG'].map((t) => (
+              <button
+                key={t}
+                onClick={() => setFrontendLogFilter(t)}
+                className={cn(
+                  'text-[10px] px-2 py-0.5 rounded border transition-colors',
+                  frontendLogFilter === t
+                    ? 'bg-primary/15 text-primary border-primary/30'
+                    : 'text-muted-foreground border-border/40 hover:bg-muted/50'
+                )}
+              >
+                {t === '' ? '全部' : t}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="overflow-auto flex-1 custom-scrollbar">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 z-10 bg-slate-50/90 dark:bg-zinc-900/90 backdrop-blur-md shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+              <tr className="border-b border-border/40">
+                <th className="px-4 py-3 text-left text-muted-foreground font-medium whitespace-nowrap">时间</th>
+                <th className="px-4 py-3 text-left text-muted-foreground font-medium whitespace-nowrap">级别</th>
+                <th className="px-4 py-3 text-left text-muted-foreground font-medium">消息</th>
+                <th className="px-4 py-3 text-left text-muted-foreground font-medium whitespace-nowrap">页面</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/15">
+              {loadingFrontendLogs ? (
+                <tr><td colSpan={4} className="py-10 text-center text-muted-foreground"><RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 opacity-50" />加载中...</td></tr>
+              ) : frontendLogs.length === 0 ? (
+                <tr><td colSpan={4} className="py-10 text-center text-muted-foreground">暂无浏览器日志</td></tr>
+              ) : frontendLogs.map((log) => {
+                const levelColors: Record<string, string> = {
+                  ERROR: 'text-[#e11d48] dark:text-[#f6465d] bg-[#f6465d]/10 border-[#f6465d]/20',
+                  WARN: 'text-amber-600 dark:text-amber-500 bg-amber-500/10 border-amber-500/20',
+                  INFO: 'text-blue-500 bg-blue-500/10 border-blue-500/20',
+                  DEBUG: 'text-slate-500 bg-slate-500/10 border-slate-500/20',
+                }
+                const levelColor = levelColors[log.level] || levelColors.INFO
+                return (
+                  <tr key={log.id} className="hover:bg-muted/50 transition-colors group">
+                    <td className="px-4 py-3 font-mono text-[10px] text-muted-foreground whitespace-nowrap">
+                      {new Date(log.timestamp).toLocaleString('zh-CN', { hour12: false })}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className={cn('inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded border', levelColor)}>
+                        {log.level}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-[11px] text-foreground leading-relaxed break-words max-w-lg">
+                      {log.message}
+                      {log.context && (
+                        <pre className="mt-1 text-[9px] text-muted-foreground bg-muted/30 rounded p-1 overflow-x-auto">
+                          {JSON.stringify(log.context, null, 2)}
+                        </pre>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-[10px] text-muted-foreground font-mono whitespace-nowrap max-w-[200px] truncate" title={log.page_url || ''}>
+                      {log.page_url ? (() => { try { return new URL(log.page_url).pathname } catch { return log.page_url } })() : '-'}
                     </td>
                   </tr>
                 )
