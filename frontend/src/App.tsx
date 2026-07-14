@@ -17,6 +17,8 @@ const OMSModule = lazy(() => import('@/features/trading/oms').then(m => ({ defau
 const RiskModule = lazy(() => import('@/features/trading/risk').then(m => ({ default: m.RiskModule })))
 const CopilotModule = lazy(() => import('@/features/trading/copilot').then(m => ({ default: m.CopilotModule })))
 const ApmModule = lazy(() => import('@/features/system/performance-panel').then(m => ({ default: m.PerformancePanel })))
+const AlertCenterModule = lazy(() => import('@/features/trading/alert-center').then(m => ({ default: m.AlertCenterModule })))
+const PaperModule = lazy(() => import('@/features/paper/module').then(m => ({ default: m.PaperModule })))
 const SettingsPage = lazy(() => import('@/features/settings/settings'))
 
 // /market/:ticker 跳转组件：将 URL 中的 ticker 存入 sessionStorage，然后重定向到 /quotes
@@ -62,6 +64,8 @@ export default function App() {
             <Route path="/risk" element={<Suspense fallback={<LoadingFallback />}><RiskModule /></Suspense>} />
             <Route path="/copilot" element={<Suspense fallback={<LoadingFallback />}><CopilotModule /></Suspense>} />
             <Route path="/apm" element={<Suspense fallback={<LoadingFallback />}><ApmModule /></Suspense>} />
+            <Route path="/alerts" element={<Suspense fallback={<LoadingFallback />}><AlertCenterModule /></Suspense>} />
+            <Route path="/paper" element={<Suspense fallback={<LoadingFallback />}><PaperModule /></Suspense>} />
             <Route path="/settings" element={<Suspense fallback={<LoadingFallback />}><SettingsPage /></Suspense>} />
             </Route>
           </Route>

@@ -1,0 +1,65 @@
+name: Agent Eval (Weekly)
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'  # 每周一 UTC 02:00
+  workflow_dispatch:
+
+env:
+  UV_HTTP_TIMEOUT: 300
+
+permissions:
+  contents: read
+
+jobs:
+  eval:
+    name: Agent Eval Framework
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run Eval Framework
+        env:
+          DATABASE_URL: "sqlite:///./test.db"
+          EMBEDDING_API_KEY: "test-key"
+          EMBEDDING_BASE_URL: "http://localhost:8080"
+          LLM_API_KEY: "test-key"
+          LLM_BASE_URL: "http://localhost:8080"
+        run: |
+          uv run pytest backend/tests/test_eval_framework.py -v --tb=short 2>&1 | tee eval_report.txt
+
+      - name: Run Golden Dataset Eval
+        env:
+          DATABASE_URL: "sqlite:///./test.db"
+          EMBEDDING_API_KEY: "test-key"
+          EMBEDDING_BASE_URL: "http://localhost:8080"
+        run: |
+          uv run python -c "
+          from backend.services.eval_runner import eval_runner
+          report = eval_runner.run_all()
+          import json
+          print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
+          " > eval_results.json
+
+      - name: Upload Eval Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: |
+            eval_report.txt
+            eval_results.json
+          retention-days: 30

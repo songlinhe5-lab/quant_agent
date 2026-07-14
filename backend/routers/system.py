@@ -22,6 +22,35 @@ router = APIRouter(prefix="/system", tags=["system"])
 
 
 # ==========================================
+#  0. 数据质量看板（DQ-04 · SVC-04 汇总）
+# ==========================================
+@router.get("/data-quality")
+async def get_data_quality(username: str = Depends(get_current_user)):
+    """
+    SVC-04 校验结果汇总：按数据源展示脏数据率 / 完整率 / 价格异常 / 过期计数。
+    Grafana 独立面板订阅 Prometheus 同名指标；本接口供前端/运维即时查看。
+    """
+    from backend.services.data_quality_monitor import quality_overview
+
+    return {
+        "status": "success",
+        "message": "data quality overview",
+        "data": quality_overview(),
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "grafana": {
+            "dashboard": "Data Quality (DQ-04)",
+            "folder": "Quant Agent 监控",
+            "metrics": [
+                "quant_data_quality_dirty_rate",
+                "quant_data_quality_completeness_rate",
+                "quant_data_quality_price_anomaly_count",
+                "quant_data_quality_stale_count",
+            ],
+        },
+    }
+
+
+# ==========================================
 #  1. 性能日志列表（带筛选 + 分页）
 # ==========================================
 @router.get("/performance-logs")
@@ -139,206 +168,36 @@ async def get_performance_stats(
 async def apm_dashboard(username: str = Depends(get_current_user)):
     """
     一次请求返回 APM 面板所需的全部数据：
-    - health: 组件健康状态
-    - cluster: 集群拓扑
-    - metrics: Prometheus 指标快照
-    - performance_stats: 24h 性能统计
+    - health / cluster / metrics / performance_stats
     """
-    health_data = await _build_health_snapshot()
-    cluster_data = await _build_cluster_snapshot()
-    metrics_data = _build_metrics_snapshot()
-    perf_stats = await _build_perf_stats()
+    from backend.app.system_app import build_apm_dashboard
 
-    return {
-        "status": "success",
-        "data": {
-            "health": health_data,
-            "cluster": cluster_data,
-            "metrics": metrics_data,
-            "performance_stats": perf_stats,
-        },
-    }
+    data = await build_apm_dashboard()
+    return {"status": "success", "data": data}
 
 
-# ---- 内部辅助函数 ----
+# ---- 兼容旧内部调用（转发至 system_app）----
 
 
 async def _build_health_snapshot() -> dict:
-    """复用 health_check 逻辑，返回组件状态"""
-    components: dict = {}
-    overall = "healthy"
+    from backend.app.system_app import build_health_snapshot
 
-    try:
-        await redis_client.ping()
-        components["redis"] = "connected"
-    except Exception as e:
-        components["redis"] = f"disconnected ({e})"
-        overall = "unhealthy"
-
-    try:
-        from backend.services.futu import futu_service
-
-        components["futu"] = futu_service.status
-        if futu_service.status != "CONNECTED" and overall == "healthy":
-            overall = "degraded"
-    except Exception:
-        components["futu"] = "unknown"
-
-    components["yfinance"] = "skipped (prevent rate limits)"
-
-    loop = asyncio.get_running_loop()
-    executor = getattr(loop, "_default_executor", None)
-    if executor is not None and hasattr(executor, "_max_workers"):
-        components["asyncio_thread_pool"] = {
-            "max_workers": executor._max_workers,
-            "spawned_threads": len(executor._threads),
-            "pending_tasks": executor._work_queue.qsize(),
-        }
-    else:
-        components["asyncio_thread_pool"] = "idle"
-
-    try:
-        from anyio.to_thread import current_default_thread_limiter
-
-        limiter = current_default_thread_limiter()
-        components["fastapi_thread_pool"] = {
-            "max_workers": limiter.total_tokens,
-            "idle_workers": limiter.available_tokens,
-            "busy_workers": limiter.total_tokens - limiter.available_tokens,
-        }
-    except Exception:
-        components["fastapi_thread_pool"] = "unknown"
-
-    return {"status": overall, "components": components}
+    return await build_health_snapshot()
 
 
 async def _build_cluster_snapshot() -> dict:
-    """节点状态快照"""
-    from backend.workers.collector_registry import get_enabled_collectors
+    from backend.app.system_app import build_cluster_snapshot
 
-    return {
-        "mode": "standalone",
-        "collectors": get_enabled_collectors(),
-    }
+    return await build_cluster_snapshot()
 
 
 def _build_metrics_snapshot() -> dict:
-    """从 Prometheus registry 读取关键指标快照"""
-    try:
-        from backend.core.metrics import (
-            CIRCUIT_BREAKER_STATE,
-            MARKET_QUOTE_TOTAL,
-            REDIS_QUEUE_DEPTH,
-            WS_ACTIVE_CONNECTIONS,
-            WS_MESSAGES_DROPPED,
-            WS_MESSAGES_SENT,
-            WS_SUBSCRIPTIONS,
-        )
+    from backend.app.system_app import build_metrics_snapshot
 
-        def _gauge_val(metric):
-            try:
-                # 取所有 label 组合中的第一个值
-                samples = metric.collect()[0].samples
-                for s in samples:
-                    if s.name.endswith("_total") or not s.name.endswith("_created"):
-                        return s.value
-                return 0
-            except Exception:
-                return 0
-
-        def _counter_val(metric):
-            try:
-                total = 0
-                for s in metric.collect()[0].samples:
-                    if s.name.endswith("_total"):
-                        total += s.value
-                return int(total)
-            except Exception:
-                return 0
-
-        # Redis 队列深度 — 按 queue label 分组
-        redis_depth: dict = {}
-        try:
-            for sample in REDIS_QUEUE_DEPTH.collect()[0].samples:
-                if "queue" in sample.labels:
-                    redis_depth[sample.labels["queue"]] = sample.value
-        except Exception:
-            pass
-
-        # 熔断器状态 — 按 service label 分组
-        cb_states: dict = {}
-        try:
-            for sample in CIRCUIT_BREAKER_STATE.collect()[0].samples:
-                if "service" in sample.labels:
-                    cb_states[sample.labels["service"]] = int(sample.value)
-        except Exception:
-            pass
-
-        return {
-            "ws_connections": _gauge_val(WS_ACTIVE_CONNECTIONS),
-            "ws_messages_sent": _counter_val(WS_MESSAGES_SENT),
-            "ws_messages_dropped": _counter_val(WS_MESSAGES_DROPPED),
-            "ws_subscriptions": _gauge_val(WS_SUBSCRIPTIONS),
-            "redis_queue_depth": redis_depth,
-            "circuit_breaker_states": cb_states,
-            "market_quote_total": _counter_val(MARKET_QUOTE_TOTAL),
-        }
-    except Exception as e:
-        logger.warning("读取 Prometheus 指标快照失败: %s", e)
-        return {}
+    return build_metrics_snapshot()
 
 
 async def _build_perf_stats() -> dict:
-    """24h 性能统计"""
-    try:
-        since_dt = datetime.now(timezone.utc) - timedelta(hours=24)
+    from backend.app.system_app import build_perf_stats
 
-        def fetch():
-            with SessionLocal() as db:
-                rows = (
-                    db.query(
-                        PerformanceLog.log_type,
-                        func.count(PerformanceLog.id).label("cnt"),
-                        func.avg(PerformanceLog.duration_ms).label("avg_ms"),
-                        func.max(PerformanceLog.duration_ms).label("max_ms"),
-                    )
-                    .filter(PerformanceLog.timestamp >= since_dt)
-                    .group_by(PerformanceLog.log_type)
-                    .all()
-                )
-                return rows
-
-        rows = await asyncio.to_thread(fetch)
-
-        result = {
-            "slow_request_count": 0,
-            "event_loop_block_count": 0,
-            "avg_duration_ms": 0.0,
-            "max_duration_ms": 0.0,
-            "total_count": 0,
-        }
-        all_durations: list[float] = []
-        for row in rows:
-            result["total_count"] += row.cnt
-            if row.log_type == "slow_request":
-                result["slow_request_count"] = row.cnt
-            elif row.log_type == "event_loop_block":
-                result["event_loop_block_count"] = row.cnt
-            if row.avg_ms is not None:
-                all_durations.extend([row.avg_ms] * row.cnt)
-            if row.max_ms is not None and row.max_ms > result["max_duration_ms"]:
-                result["max_duration_ms"] = row.max_ms
-
-        if all_durations:
-            result["avg_duration_ms"] = round(sum(all_durations) / len(all_durations), 2)
-
-        return result
-    except Exception as e:
-        logger.warning("获取性能统计失败: %s", e)
-        return {
-            "slow_request_count": 0,
-            "event_loop_block_count": 0,
-            "avg_duration_ms": 0.0,
-            "max_duration_ms": 0.0,
-            "total_count": 0,
-        }
+    return await build_perf_stats()

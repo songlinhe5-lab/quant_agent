@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { Search, Loader2, LineChart as LineChartIcon } from 'lucide-react'
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { apiClient } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { useTheme } from 'next-themes'
+import { useEChart, ECHART_DARK } from '@/hooks/use-echart'
 
 export function MacroChartPanel() {
   const [seriesId, setSeriesId] = useState('DGS10')
@@ -15,7 +15,7 @@ export function MacroChartPanel() {
   const isDark = theme === 'dark'
 
   const fetchSeries = async (id: string) => {
-    if (!id) return;
+    if (!id) return
     setLoading(true)
     setError('')
     try {
@@ -23,14 +23,14 @@ export function MacroChartPanel() {
       if (res.data?.status === 'success' && res.data?.data) {
         const chartData = [...res.data.data].reverse().map(d => ({
           ...d,
-          date: d.date.split(' ')[0]
+          date: d.date.split(' ')[0],
         }))
         setData(chartData)
       } else {
         setError(res.data?.message || '获取失败')
         setData([])
       }
-    } catch(e: any) {
+    } catch (e: any) {
       setError(e.message || '网络请求失败')
       setData([])
     } finally {
@@ -44,9 +44,7 @@ export function MacroChartPanel() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
-    if (inputValue.trim()) {
-      setSeriesId(inputValue.trim().toUpperCase())
-    }
+    if (inputValue.trim()) setSeriesId(inputValue.trim().toUpperCase())
   }
 
   const quickTags = [
@@ -55,20 +53,61 @@ export function MacroChartPanel() {
     { label: '非农就业 (PAYEMS)', id: 'PAYEMS' },
     { label: '失业率 (UNRATE)', id: 'UNRATE' },
     { label: '美联储资产 (WALCL)', id: 'WALCL' },
-    { label: 'M2货币 (WM2NS)', id: 'WM2NS' }
+    { label: 'M2货币 (WM2NS)', id: 'WM2NS' },
   ]
+
+  const chartRef = useEChart(
+    () => {
+      if (!data.length) return null
+      const text = isDark ? ECHART_DARK.text : '#64748b'
+      const split = isDark ? ECHART_DARK.split : 'rgba(0,0,0,0.06)'
+      return {
+        backgroundColor: 'transparent',
+        grid: { top: 16, right: 16, bottom: 28, left: 48 },
+        tooltip: {
+          trigger: 'axis',
+          backgroundColor: isDark ? ECHART_DARK.tooltipBg : '#fff',
+          borderColor: isDark ? 'rgba(139, 92, 246, 0.2)' : 'rgba(0,0,0,0.1)',
+          textStyle: { color: isDark ? '#e2e8f0' : '#0f172a', fontSize: 11 },
+        },
+        xAxis: {
+          type: 'category',
+          data: data.map((d) => d.date),
+          axisLabel: { color: text, fontSize: 9 },
+          axisLine: { show: false },
+          axisTick: { show: false },
+        },
+        yAxis: {
+          type: 'value',
+          scale: true,
+          axisLabel: { color: text, fontSize: 9 },
+          splitLine: { lineStyle: { color: split } },
+          axisLine: { show: false },
+          axisTick: { show: false },
+        },
+        series: [{
+          name: seriesId,
+          type: 'line',
+          data: data.map((d) => d.value),
+          showSymbol: false,
+          lineStyle: { color: ECHART_DARK.primary, width: 2 },
+          itemStyle: { color: ECHART_DARK.primary },
+        }],
+      }
+    },
+    [data, isDark, seriesId],
+  )
 
   return (
     <div className="glass-card rounded-lg overflow-hidden flex flex-col h-[350px]">
       <div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2 flex-shrink-0">
         <LineChartIcon className="h-3.5 w-3.5 text-indigo-500 dark:text-indigo-400" />
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">FRED 宏观图表自由查</span>
-        
         <form onSubmit={handleSearch} className="ml-auto flex items-center gap-1.5">
           <div className="relative flex items-center">
             <Search className="absolute left-2.5 h-3 w-3 text-muted-foreground" />
-            <input 
-              type="text" 
+            <input
+              type="text"
               value={inputValue}
               onChange={e => setInputValue(e.target.value)}
               placeholder="输入 FRED 序列 ID..."
@@ -80,31 +119,23 @@ export function MacroChartPanel() {
           </button>
         </form>
       </div>
-      
+
       <div className="px-4 py-2 bg-secondary/10 border-b border-border/20 flex flex-wrap gap-2">
-         {quickTags.map(tag => (
-           <button key={tag.id} onClick={() => { setInputValue(tag.id); setSeriesId(tag.id); }} className={cn("text-[9px] px-2 py-0.5 rounded-full border transition-colors", seriesId === tag.id ? "bg-indigo-500/15 border-indigo-500/30 text-indigo-600 dark:text-indigo-400 font-bold" : "bg-background border-border/50 text-muted-foreground hover:text-foreground")}>
-             {tag.label}
-           </button>
-         ))}
+        {quickTags.map(tag => (
+          <button key={tag.id} onClick={() => { setInputValue(tag.id); setSeriesId(tag.id) }} className={cn('text-[9px] px-2 py-0.5 rounded-full border transition-colors', seriesId === tag.id ? 'bg-indigo-500/15 border-indigo-500/30 text-indigo-600 dark:text-indigo-400 font-bold' : 'bg-background border-border/50 text-muted-foreground hover:text-foreground')}>
+            {tag.label}
+          </button>
+        ))}
       </div>
 
       <div className="flex-1 p-4 relative min-h-0 bg-slate-50/30 dark:bg-black/10">
-         {error ? (<div className="flex items-center justify-center h-full text-xs text-red-500 font-mono bg-red-500/5 rounded-lg border border-red-500/10 p-4 text-center">⚠️ {error}</div>) : data.length > 0 ? (
-           <ResponsiveContainer width="100%" height="100%">
-             <LineChart data={data}>
-               <XAxis dataKey="date" tick={{fontSize: 9, fill: isDark ? '#9ca3af' : '#64748b'}} tickMargin={8} minTickGap={40} axisLine={false} tickLine={false} />
-               <YAxis domain={['auto', 'auto']} tick={{fontSize: 9, fill: isDark ? '#9ca3af' : '#64748b'}} tickMargin={8} axisLine={false} tickLine={false} width={40} />
-               <Tooltip 
-                 contentStyle={{ backgroundColor: isDark ? 'oklch(0.18 0.01 270)' : '#fff', border: isDark ? '1px solid rgba(139, 92, 246, 0.2)' : '1px solid rgba(0,0,0,0.1)', borderRadius: '8px', fontSize: '11px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                 itemStyle={{ color: isDark ? '#e2e8f0' : '#0f172a', fontWeight: 'bold' }}
-                 labelStyle={{ color: isDark ? '#94a3b8' : '#64748b', marginBottom: '4px' }}
-                 formatter={(val: any) => [val, seriesId]}
-               />
-               <Line type="monotone" dataKey="value" stroke="#8b5cf6" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: "#8b5cf6", stroke: isDark ? "#000" : "#fff", strokeWidth: 2 }} isAnimationActive={true} animationDuration={1000} />
-             </LineChart>
-           </ResponsiveContainer>
-         ) : (<div className="flex items-center justify-center h-full text-xs text-muted-foreground">暂无数据</div>)}
+        {error ? (
+          <div className="flex items-center justify-center h-full text-xs text-red-500 font-mono bg-red-500/5 rounded-lg border border-red-500/10 p-4 text-center">⚠️ {error}</div>
+        ) : data.length > 0 ? (
+          <div ref={chartRef} className="w-full h-full" />
+        ) : (
+          <div className="flex items-center justify-center h-full text-xs text-muted-foreground">暂无数据</div>
+        )}
       </div>
     </div>
   )

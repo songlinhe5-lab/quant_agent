@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     llm_model: Optional[str] = Field(default=None, alias="LLM_MODEL")
     llm_pro_model: Optional[str] = Field(default=None, alias="LLM_PRO_MODEL")
 
+    # ===== LLM 多模型路由 (AI-02) =====
+    llm_lightweight_model: Optional[str] = Field(default="gpt-4o-mini-2024-11-20", alias="LLM_LIGHTWEIGHT_MODEL")  # noqa: E501
+    llm_ollama_base_url: Optional[str] = Field(default="http://localhost:11434/v1", alias="LLM_OLLAMA_BASE_URL")  # noqa: E501
+    llm_fallback_enabled: bool = Field(default=True, alias="LLM_FALLBACK_ENABLED")
+    llm_fallback_threshold: int = Field(default=3, alias="LLM_FALLBACK_THRESHOLD")
+
     # ===== OpenAI / Embedding 配置 =====
     openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
     embedding_api_key: str = Field(alias="EMBEDDING_API_KEY")

@@ -278,3 +278,22 @@ data/temp/
 # 自定义忽略文件
 .customignore
 backend/coverage.json
+
+# ============================================
+# 11. Flutter 客户端
+# ============================================
+client/flutter_app/.dart_tool/
+client/flutter_app/.flutter-plugins-dependencies
+client/flutter_app/.packages
+client/flutter_app/build/
+client/flutter_app/.idea/
+client/flutter_app/**/*.iml
+client/flutter_app/ios/Pods/
+client/flutter_app/ios/.symlinks/
+client/flutter_app/ios/Flutter/Flutter.framework
+client/flutter_app/ios/Flutter/Flutter.podspec
+client/flutter_app/android/.gradle/
+client/flutter_app/android/local.properties
+client/flutter_app/android/app/debug
+client/flutter_app/android/app/profile
+client/flutter_app/android/app/release

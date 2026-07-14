@@ -186,9 +186,9 @@ class TestPositionAndOrderModels:
             avgCost=150.0,
             currentPrice=160.0,
             marketValue=16000.0,
-            unrealizedPnl=1000.0,
-            realizedPnl=0.0,
-            unrealizedPnlPercent=6.67,
+            unrealizedPnL=1000.0,
+            realizedPnL=0.0,
+            unrealizedPnLPercent=6.67,
             status=PositionStatus.OPEN,
             openedAt=0,
             updatedAt=0,
@@ -238,10 +238,10 @@ class TestAccountModel:
             cash=5e5,
             marketValue=5e5,
             buyingPower=5e5,
-            unrealizedPnl=0,
-            realizedPnl=0,
-            dailyPnl=100,
-            dailyPnlPercent=0.01,
+            unrealizedPnL=0,
+            realizedPnL=0,
+            dailyPnL=100,
+            dailyPnLPercent=0.01,
             currency="USD",
             updatedAt=0,
         )
@@ -363,3 +363,19 @@ class TestClientHeartbeatModel:
         )
         assert h.fps == 59.5
         assert h.ws_latency_ms == 12
+
+    def test_heartbeat_web_vitals_optional(self):
+        h = ClientHeartbeatModel(
+            platform="web",
+            appVersion="0.1.0",
+            deviceId="browser-1",
+            lcpMs=1450.0,
+            cls=0.04,
+            inpMs=120.0,
+            ttfbMs=90.0,
+            timestamp=1719500000000,
+        )
+        assert h.lcp_ms == 1450.0
+        assert h.cls == 0.04
+        assert h.inp_ms == 120.0
+        assert h.ttfb_ms == 90.0

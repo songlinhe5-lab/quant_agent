@@ -50,6 +50,9 @@ class TestClientHeartbeatRoutes:
 
     def setup_method(self):
         app.dependency_overrides[get_db] = override_get_db  # 防止被其他测试文件覆盖
+        import backend.routers.client as client_mod
+
+        client_mod._VITALS_COLUMNS_ENSURED = False
         Base.metadata.create_all(bind=engine)
 
     def teardown_method(self):
@@ -74,14 +77,33 @@ class TestClientHeartbeatRoutes:
         data = _unwrap(resp)
         assert "received_at" in data
 
-    def test_receive_heartbeat_invalid_payload(self):
-        """参数校验：缺少 platform 返回 422"""
+    def test_receive_heartbeat_with_web_vitals(self):
+        """OBS-03: Web 端心跳携带 LCP/CLS/INP/TTFB"""
         client = TestClient(app)
         resp = client.post(
             "/api/v1/client/heartbeat",
-            json={"appVersion": "1.0.0", "deviceId": "dev-001", "timestamp": 1},
+            json={
+                "platform": "web",
+                "appVersion": "0.1.0",
+                "deviceId": "web-dev-001",
+                "lcpMs": 1320.5,
+                "cls": 0.03,
+                "inpMs": 88.0,
+                "ttfbMs": 110.0,
+                "timestamp": 1719500000000,
+            },
         )
-        assert resp.status_code == 422
+        assert resp.status_code == 200
+        data = _unwrap(resp)
+        assert "received_at" in data
+
+        db = TestingSessionLocal()
+        row = db.query(models.ClientHeartbeat).filter_by(device_id="web-dev-001").one()
+        assert row.lcp_ms == 1320.5
+        assert row.cls == 0.03
+        assert row.inp_ms == 88.0
+        assert row.ttfb_ms == 110.0
+        db.close()
 
     def test_heartbeat_stats_success(self):
         """正常路径：获取心跳统计摘要"""

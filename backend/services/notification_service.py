@@ -1,115 +1,69 @@
-import base64
-import hashlib
-import hmac
-import json
+"""
+系统通知服务（ALERT-03 收敛）
+
+ALERT-03 后，NotificationService 改为 AlertDispatcher 的薄包装。
+所有系统级通知经 dispatcher 统一路由，禁止直连 Webhook。
+
+向后兼容：保留 send_alert(message) 接口，内部转为 AlertEvent 派发。
+"""
+
 import logging
-import os
 import time
-import urllib.parse
+import uuid
 
-import httpx
-
-from backend.core.redis_client import redis_client
+from backend.core.alert_models import AlertChannel, AlertEvent, AlertSeverity, NotificationPriority
 
 logger = logging.getLogger(__name__)
 
 
 class NotificationService:
-    """后端原生通知服务，负责将系统级报警广播给前端或外部渠道 (支持 DingTalk/WeCom/Feishu/Telegram 等)"""  # noqa: E501
+    """后端原生通知服务（ALERT-03 薄包装）
 
-    async def send_alert(self, message: str):
+    所有系统级报警经 AlertDispatcher 统一路由。
+    保留原有 send_alert(message) 接口向后兼容。
+    """
+
+    def __init__(self):
+        self._dispatcher = None  # 延迟导入
+
+    def _get_dispatcher(self):
+        """延迟导入 AlertDispatcher（避免循环依赖）"""
+        if self._dispatcher is None:
+            from backend.services.alert_dispatcher import get_alert_dispatcher
+            self._dispatcher = get_alert_dispatcher()
+        return self._dispatcher
+
+    async def send_alert(self, message: str, priority: NotificationPriority = NotificationPriority.P2, source: str = "system"):
+        """发送系统通知（经 AlertDispatcher 统一路由）"""
         logger.info(f"🔔 [System Notification] {message}")
+
+        dispatcher = self._get_dispatcher()
+
+        # 构造 AlertEvent
+        event = AlertEvent(
+            event_id=str(uuid.uuid4()),
+            message=message,
+            severity=self._priority_to_severity(priority),
+            source=source,
+            priority=priority,
+            triggered_at=time.time(),
+        )
+
         try:
-            # 1. 推送到现有的 WebSocket Redis PubSub 通道 (前端会在全局监听到)
-            payload = json.dumps({"type": "notification", "message": message, "channel": "system_alerts"})  # noqa: E501
-            await redis_client.publish("macro_alerts", payload)
+            await dispatcher.dispatch(event)
         except Exception as e:
             logger.error(f"发送系统通知失败: {e}")
 
-        # 2. 推送到企业钉钉机器人 (如果配置了环境变量)
-        await self._send_to_dingtalk(message)
-
-        # 3. 推送到企业微信机器人 (如果配置了环境变量)
-        await self._send_to_wecom(message)
-
-        # 4. 推送到飞书机器人 (如果配置了环境变量)
-        await self._send_to_feishu(message)
-
-    async def _send_to_dingtalk(self, message: str):
-        webhook_url = os.getenv("DINGTALK_WEBHOOK_URL")
-        if not webhook_url:
-            return
-
-        secret = os.getenv("DINGTALK_SECRET")
-        if secret:
-            # 钉钉签名计算规则
-            timestamp = str(round(time.time() * 1000))
-            secret_enc = secret.encode("utf-8")
-            string_to_sign = f"{timestamp}\n{secret}"
-            string_to_sign_enc = string_to_sign.encode("utf-8")
-            hmac_code = hmac.new(secret_enc, string_to_sign_enc, digestmod=hashlib.sha256).digest()  # noqa: E501
-            sign = urllib.parse.quote_plus(base64.b64encode(hmac_code))
-            webhook_url = f"{webhook_url}&timestamp={timestamp}&sign={sign}"
-
-        headers = {"Content-Type": "application/json"}
-        payload = {"msgtype": "text", "text": {"content": message}}
-
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(webhook_url, json=payload, headers=headers, timeout=5.0)  # noqa: E501
-                if resp.status_code != 200 or resp.json().get("errcode", 0) != 0:
-                    logger.error(f"钉钉推送失败，返回信息: {resp.text}")
-        except Exception as e:
-            logger.error(f"钉钉推送接口异常: {e}")
-
-    async def _send_to_wecom(self, message: str):
-        webhook_url = os.getenv("WECOM_WEBHOOK_URL")
-        if not webhook_url:
-            return
-
-        headers = {"Content-Type": "application/json"}
-        payload = {"msgtype": "text", "text": {"content": message}}
-
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(webhook_url, json=payload, headers=headers, timeout=5.0)  # noqa: E501
-                if resp.status_code != 200 or resp.json().get("errcode", 0) != 0:
-                    logger.error(f"企业微信推送失败，返回信息: {resp.text}")
-        except Exception as e:
-            logger.error(f"企业微信推送接口异常: {e}")
-
-    async def _send_to_feishu(self, message: str):
-        webhook_url = os.getenv("FEISHU_WEBHOOK_URL")
-        if not webhook_url:
-            return
-
-        # 💡 健壮性修复：校验 webhook_url 合法性，防止 httpx 因缺失协议头而崩溃
-        if not webhook_url.startswith(("http://", "https://")):
-            logger.error(f"飞书推送失败: 无效的 Webhook URL (必须以 http:// 或 https:// 开头): {webhook_url}")  # noqa: E501
-            return
-
-        payload = {"msg_type": "text", "content": {"text": message}}
-
-        secret = os.getenv("FEISHU_SECRET")
-        if secret:
-            # 飞书签名计算规则 (注意：飞书使用秒级时间戳，且算法与钉钉不同)
-            timestamp = str(int(time.time()))
-            string_to_sign = f"{timestamp}\n{secret}"
-            hmac_code = hmac.new(string_to_sign.encode("utf-8"), b"", digestmod=hashlib.sha256).digest()  # noqa: E501
-            sign = base64.b64encode(hmac_code).decode("utf-8")
-
-            payload["timestamp"] = timestamp
-            payload["sign"] = sign
-
-        headers = {"Content-Type": "application/json"}
-
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(webhook_url, json=payload, headers=headers, timeout=5.0)  # noqa: E501
-                if resp.status_code != 200 or resp.json().get("code", 0) != 0:
-                    logger.error(f"飞书推送失败，返回信息: {resp.text}")
-        except Exception as e:
-            logger.error(f"飞书推送接口异常: {e}")
+    @staticmethod
+    def _priority_to_severity(priority: NotificationPriority) -> AlertSeverity:
+        """优先级 → 严重程度映射"""
+        mapping = {
+            NotificationPriority.P0: AlertSeverity.CRITICAL,
+            NotificationPriority.P1: AlertSeverity.CRITICAL,
+            NotificationPriority.P2: AlertSeverity.WARNING,
+            NotificationPriority.P3: AlertSeverity.INFO,
+        }
+        return mapping.get(priority, AlertSeverity.INFO)
 
 
 notification_service = NotificationService()

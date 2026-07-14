@@ -1,0 +1,12 @@
+# This file configures the analyzer, which statically analyzes Dart code to
+# check for errors, warnings, and lints.
+#
+# Layer import matrix (CLI-ARCH-01) is enforced by
+# `test/cli_arch01_layer_boundary_test.dart` — not by analyzer plugins.
+# Figma token sync (CLI-ARCH-02): `design/figma_variables_sync.json`.
+
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    # prefer_single_quotes: true

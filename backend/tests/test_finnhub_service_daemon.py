@@ -158,7 +158,7 @@ class TestMarketDaemon:
             patch("backend.services.akshare_service.akshare_service") as m_ak,
             patch("backend.services.fred_service.fred_service") as m_fr,
         ):
-            m_ak.get_economic_calendar = AsyncMock(return_value={"status": "error"})
+            m_ak.get_economic_calendar_ak = AsyncMock(return_value={"status": "error"})
             m_fr.get_economic_calendar = AsyncMock(return_value={"status": "error"})
             with pytest.raises(asyncio.CancelledError):
                 await _macro_alert_daemon()
@@ -183,7 +183,7 @@ class TestMarketDaemon:
             patch("backend.services.notification_service.notification_service") as m_n,
             patch("backend.services.llm_service.llm_service") as m_llm,
         ):
-            m_ak.get_economic_calendar = AsyncMock(return_value={"status": "success", "data": [event]})
+            m_ak.get_economic_calendar_ak = AsyncMock(return_value={"status": "success", "data": [event]})
             m_r.set = AsyncMock(return_value=True)
             m_llm.get_client.return_value.chat.completions.create = AsyncMock(
                 return_value=MagicMock(choices=[MagicMock(message=MagicMock(content="hawkish"))])

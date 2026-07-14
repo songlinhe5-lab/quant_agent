@@ -3,12 +3,12 @@
 Datasource Rate Limit Router - 数据源限流查询路由
 ==========================================
 
-提供数据源限流频率分析查询 API：
+提供数据源限流频率分析查询 API（读 RateLimitRegistry，非源实例表）：
   - GET /datasource/{name}/rate-limit-analysis  限流频率分析
   - GET /datasource/{name}/rate-limit-status    实时退避状态
   - GET /datasource/rate-limit-overview         所有数据源限流总览
 
-设计文档: docs/14 §12.3, §12.4
+设计文档: docs/14 §12.3, §12.4 · BE-ARCH-04
 """
 
 import re
@@ -17,7 +17,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 
 from backend.core.logger import logger
-from backend.services.datasource import datasource_registry
+from backend.services.datasource import rate_limit_registry
 
 router = APIRouter(prefix="/datasource", tags=["DataSource Rate Limit"])
 
@@ -72,7 +72,7 @@ async def get_rate_limit_analysis(
     - confidence:               推测可信度 (0~1)
     - history:                  每小时统计明细
     """
-    analyzer = datasource_registry.get_analyzer(name)
+    analyzer = rate_limit_registry.get_analyzer(name)
     window_seconds = _parse_window_seconds(window)
     analysis = analyzer.analyze(window_seconds=window_seconds)
 
@@ -93,11 +93,11 @@ async def get_rate_limit_status(name: str):
     - estimated_rpm:          当前有效 RPM
     - backoff_strategy:       退避策略
     """
-    if not datasource_registry.has(name):
+    if not rate_limit_registry.has(name):
         # 即使未注册也返回默认状态（不报错）
-        throttler = datasource_registry.get_throttler(name)
+        throttler = rate_limit_registry.get_throttler(name)
     else:
-        throttler = datasource_registry.get_throttler(name)
+        throttler = rate_limit_registry.get_throttler(name)
 
     status = throttler.get_status()
     return {
@@ -117,7 +117,7 @@ async def get_rate_limit_overview():
     - 过去 1h 限流次数
     - 推测 RPM
     """
-    entries = datasource_registry.list_all()
+    entries = rate_limit_registry.list_all()
 
     if not entries:
         return {"sources": [], "total": 0}

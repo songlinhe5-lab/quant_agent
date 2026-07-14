@@ -1,0 +1,63 @@
+# ==========================================
+# quant-worker.service — systemd 服务单元
+# ==========================================
+# DIST-23: Futu/Trade 进程守护 (systemd + Watchdog)
+#
+# 安装:
+#   sudo cp scripts/deploy/quant-worker.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now quant-worker
+#
+# 功能:
+#   - 自动重启 worker.py (采集 daemon + 后台任务)
+#   - systemd watchdog 健康检查 (60s)
+#   - 资源限制 + 日志持久化
+# ==========================================
+
+[Unit]
+Description=Quant Agent Worker (Collector Daemon + Background Tasks)
+Documentation=https://github.com/stephenhatch/quant_agent
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/quant-agent
+ExecStart=/usr/bin/docker compose exec -T quant-worker python backend/worker.py
+ExecStop=/usr/bin/docker compose exec -T quant-worker python -c "import signal; signal.raise_signal(signal.SIGTERM)"
+
+# 自动重启策略
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Watchdog: 60 秒内必须响应，否则 systemd 认为进程卡死并重启
+WatchdogSec=60
+
+# 环境变量
+Environment=QUANT_ENV=production
+Environment=COLLECTOR_FUTU=true
+Environment=COLLECTOR_FINNHUB=true
+Environment=COLLECTOR_YFINANCE=false
+Environment=COLLECTOR_AKSHARE=false
+
+# 资源限制
+MemoryMax=1G
+CPUQuota=100%
+
+# 日志
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=quant-worker
+
+# 安全加固
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/quant-agent/backend/data /opt/quant-agent/logs
+ProtectKernelTunables=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

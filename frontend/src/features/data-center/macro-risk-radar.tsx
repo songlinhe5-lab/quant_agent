@@ -1,13 +1,72 @@
-import React from 'react';
-import { Radio, Info } from 'lucide-react';
-import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip } from 'recharts';
-import { useTheme } from 'next-themes';
-import { RadarInfoPanel } from './event-panels';
+import { useMemo } from 'react'
+import { Radio, Info } from 'lucide-react'
+import { useTheme } from 'next-themes'
+import { RadarInfoPanel } from './event-panels'
+import { useEChart, ECHART_DARK } from '@/hooks/use-echart'
 
-export function MacroRiskRadar({ radar, radarInfo, setRadarInfo }: { radar: any[], radarInfo: boolean, setRadarInfo: (v: boolean) => void }) {
-  const { theme } = useTheme();
-  const isDark = theme === 'dark';
-  
+export function MacroRiskRadar({
+  radar,
+  radarInfo,
+  setRadarInfo,
+}: {
+  radar: any[]
+  radarInfo: boolean
+  setRadarInfo: (v: boolean) => void
+}) {
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
+  const indicators = useMemo(
+    () => (radar || []).map((d) => ({ name: d.axis, max: 100 })),
+    [radar],
+  )
+  const current = useMemo(() => (radar || []).map((d) => d.current), [radar])
+  const benchmark = useMemo(() => (radar || []).map((d) => d.benchmark), [radar])
+
+  const chartRef = useEChart(
+    () => {
+      if (!indicators.length) return null
+      const text = isDark ? ECHART_DARK.text : '#64748b'
+      const split = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'
+      const cur = isDark ? '#0ecb81' : '#059669'
+      return {
+        backgroundColor: 'transparent',
+        tooltip: {
+          backgroundColor: isDark ? ECHART_DARK.tooltipBg : 'rgba(255,255,255,0.95)',
+          borderColor: split,
+          textStyle: { color: isDark ? '#f8fafc' : '#0f172a', fontSize: 11 },
+        },
+        radar: {
+          indicator: indicators,
+          splitLine: { lineStyle: { color: split } },
+          axisName: { color: text, fontSize: 10 },
+          splitArea: { show: false },
+        },
+        series: [
+          {
+            type: 'radar',
+            data: [
+              {
+                name: '当前',
+                value: current,
+                lineStyle: { color: cur, width: 1.5 },
+                areaStyle: { color: cur, opacity: 0.15 },
+                itemStyle: { color: cur },
+              },
+              {
+                name: '基准',
+                value: benchmark,
+                lineStyle: { color: isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)', type: 'dashed', width: 1 },
+                areaStyle: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' },
+                itemStyle: { color: text },
+              },
+            ],
+          },
+        ],
+      }
+    },
+    [indicators, current, benchmark, isDark],
+  )
+
   return (
     <div className="glass-card rounded-lg overflow-hidden relative">
       <div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2">
@@ -19,15 +78,7 @@ export function MacroRiskRadar({ radar, radarInfo, setRadarInfo }: { radar: any[
       </div>
       {radarInfo && <RadarInfoPanel radarData={radar} onClose={() => setRadarInfo(false)} />}
       <div className="p-1 h-44">
-        <ResponsiveContainer width="100%" height="100%">
-          <RadarChart data={radar}>
-            <PolarGrid stroke={isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"} />
-            <PolarAngleAxis dataKey="axis" tick={{ fill: isDark ? 'rgba(156,163,175,0.8)' : 'rgba(100,116,139,0.8)', fontSize: 10 }} />
-            <Radar name="当前" dataKey="current" stroke={isDark ? "#0ecb81" : "#059669"} fill={isDark ? "#0ecb81" : "#059669"} fillOpacity={0.15} strokeWidth={1.5} isAnimationActive={true} animationDuration={1200} animationEasing="ease-out" />
-            <Radar name="基准" dataKey="benchmark" stroke={isDark ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.25)"} fill={isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)"} strokeWidth={1} strokeDasharray="4 2" isAnimationActive={true} animationDuration={1200} animationEasing="ease-out" />
-            <Tooltip contentStyle={{ background: isDark ? 'oklch(0.18 0.01 270)' : 'rgba(255, 255, 255, 0.95)', border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)', borderRadius: '6px', fontSize: 11 }} labelStyle={{ color: isDark ? 'rgba(156,163,175,1)' : 'rgba(100,116,139,1)' }} itemStyle={{ color: isDark ? 'white' : 'black' }} />
-          </RadarChart>
-        </ResponsiveContainer>
+        <div ref={chartRef} className="w-full h-full" />
       </div>
       <div className="px-4 py-1.5 border-t border-border/20 flex items-center gap-4 text-[10px]">
         <span className="flex items-center gap-1.5"><span className="inline-block h-0.5 w-4 bg-[#059669] dark:bg-[#0ecb81] rounded" />当前</span>
@@ -35,5 +86,5 @@ export function MacroRiskRadar({ radar, radarInfo, setRadarInfo }: { radar: any[
         <span className="ml-auto text-[9px] text-muted-foreground italic">{'>'}70=乐观</span>
       </div>
     </div>
-  );
+  )
 }

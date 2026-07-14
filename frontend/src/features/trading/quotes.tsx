@@ -14,6 +14,7 @@ import { TradeHistory } from '@/features/quotes/trade-history'
 import { useMarketData } from '@/hooks/use-market-data'
 import { WatchlistSidebar } from '@/features/quotes/watchlist-sidebar'
 import { LightweightChartCanvas } from '@/features/quotes/lightweight-chart-canvas'
+import { ChartErrorBoundary, PanelErrorBoundary } from '@/components/error-boundary'
 
 export function QuotesModule() {
   const { theme } = useTheme()
@@ -147,14 +148,16 @@ export function QuotesModule() {
 
         {/* ── Middle: Chart (Main Focus) ───────────────────────── */}
         <Panel defaultSize={60} minSize={40} className="flex flex-col">
-          <LightweightChartCanvas selectedSymbol={selectedSymbol} selectedPeriod={selectedPeriod} setSelectedPeriod={setSelectedPeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={isWatchlistExpanded} toggleWatchlist={toggleWatchlist} selectedItem={selected} hasData={hasData} />
+          <ChartErrorBoundary name="KlineChart">
+            <LightweightChartCanvas selectedSymbol={selectedSymbol} selectedPeriod={selectedPeriod} setSelectedPeriod={setSelectedPeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={isWatchlistExpanded} toggleWatchlist={toggleWatchlist} selectedItem={selected} hasData={hasData} />
+          </ChartErrorBoundary>
         </Panel>
 
         <PanelResizeHandle className="w-1 mx-1 rounded-full bg-border/40 hover:bg-primary/50 hover:shadow-[0_0_8px_rgba(var(--primary),0.5)] transition-all cursor-col-resize" />
 
         {/* ── Right: DOM + Recent Trades ────────────────────────────── */}
         <Panel defaultSize={20} minSize={15} className="flex flex-col gap-2.5">
-          
+          <PanelErrorBoundary name="OrderBookPanel">
           {isMobile ? (
             <div className="glass-card rounded-xl overflow-hidden flex flex-col h-full shadow-sm border-border/40">
               <Tabs defaultValue="dom" className="flex flex-col h-full">
@@ -187,6 +190,7 @@ export function QuotesModule() {
               </div>
             </>
           )}
+          </PanelErrorBoundary>
         </Panel>
       </PanelGroup>
     </div>

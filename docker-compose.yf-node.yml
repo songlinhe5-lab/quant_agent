@@ -1,0 +1,73 @@
+# ==========================================
+# Quant Agent - YFinance 数据子服务节点
+# ==========================================
+# 定位: YFinance 专用数据节点，独立公网 IP 抗限流
+# 架构: 仅运行 data_subservice (yfinance)，无 Redis/PG/API
+#
+# 部署: US-YF-A / US-YF-B (两台独立公网 IP 的辅助 VPS)
+#
+# 启动:
+#   NODE_ID=us-yf-a docker compose -f docker-compose.yf-node.yml up -d
+#   NODE_ID=us-yf-b docker compose -f docker-compose.yf-node.yml up -d
+#
+# 前置条件:
+#   1. Tailscale 已安装并加入 tailnet (tag:quant-yf)
+#   2. .env.yf 已配置 (REDIS_HOST=100.102.223.44)
+#   3. 主节点 Redis 绑定 Tailscale IP
+#
+# 流量边界:
+#   - 8000 端口仅 Tailscale 内网可达 (不对公网)
+#   - 主节点通过 Tailscale → data_subservice:8000 调用
+# ==========================================
+
+services:
+  data-subservice:
+    image: ghcr.io/songlinhe5-lab/quant-data-subservice:latest
+    pull_policy: missing
+    build:
+      context: .
+      dockerfile: data_subservice/Dockerfile
+    container_name: quant_ds_${NODE_ID:-yf-node}
+    command: uvicorn data_subservice.main:app --host 0.0.0.0 --port 8000 --workers 1 --loop uvloop --http httptools --timeout-keep-alive 65
+    restart: always
+    # 💡 DIST-11: 仅 Tailscale 内网可达，不对公网暴露
+    ports:
+      - "${TAILSCALE_IP:-127.0.0.1}:8000:8000"
+    # env_file 仅在文件存在时加载
+    # 本地开发可省略，生产部署时创建 .env.yf
+    environment:
+      # 节点标识 (必填)
+      - DS_NODE_ID=${NODE_ID:-us-yf-a}
+      - DS_NODE_PORT=8000
+      - DS_REGION=us-west
+      - DS_WEIGHT=${DS_WEIGHT:-10}
+      - DS_CAPABILITIES=yfinance
+      # Redis 连接 (主节点，通过 Tailscale)
+      - REDIS_HOST=${REDIS_HOST:-100.102.223.44}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-quant_redis_secret_2026}
+      # 心跳配置
+      - DS_HEARTBEAT_INTERVAL=10
+      - DS_MAX_RETRY_DELAY=60
+      # 生产环境
+      - QUANT_ENV=production
+      - OTEL_ENABLED=false
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+    networks:
+      - quant-data
+
+networks:
+  quant-data:
+    driver: bridge

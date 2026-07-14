@@ -36,12 +36,13 @@ def _generate_signature(secret: str, payload: dict, timestamp: str) -> str:
 class TestProxyYFinance:
     @patch("backend.services.yfinance_service.yf_service")
     def test_proxy_yfinance_quote(self, mock_yf):
-        mock_yf.get_batched_quote = AsyncMock(return_value={"success": True, "data": {"AAPL": 165.0}})
+        from backend.app.market_data import market_data
 
-        response = client.post("/api/v1/data-source/proxy/yfinance", json={"ticker": "AAPL", "fetch_type": "quote"})
-        assert response.status_code == 200
-        data = response.json()["data"]
-        assert data["success"] is True
+        with patch.object(market_data._yf, "get_batched_quote", new=AsyncMock(return_value={"success": True, "data": {"AAPL": 165.0}})):
+            response = client.post("/api/v1/data-source/proxy/yfinance", json={"ticker": "AAPL", "fetch_type": "quote"})
+            assert response.status_code == 200
+            data = response.json()["data"]
+            assert data["success"] is True
 
     @patch("backend.services.yfinance_service.yf_service")
     def test_proxy_yfinance_history(self, mock_yf):
@@ -57,13 +58,14 @@ class TestProxyYFinance:
 
     @patch("backend.services.yfinance_service.yf_service")
     def test_proxy_yfinance_tech(self, mock_yf):
-        mock_yf.get_tech_indicators = AsyncMock(return_value={"status": "success", "data": {}})
+        from backend.app.market_data import market_data
 
-        response = client.post(
-            "/api/v1/data-source/proxy/yfinance",
-            json={"ticker": "AAPL", "fetch_type": "tech", "kwargs": {"lookback_days": 60}},
-        )
-        assert response.status_code == 200
+        with patch.object(market_data._yf, "get_tech_indicators", new=AsyncMock(return_value={"status": "success", "data": {}})):
+            response = client.post(
+                "/api/v1/data-source/proxy/yfinance",
+                json={"ticker": "AAPL", "fetch_type": "tech", "kwargs": {"lookback_days": 60}},
+            )
+            assert response.status_code == 200
 
     def test_proxy_yfinance_unknown_type(self):
         response = client.post("/api/v1/data-source/proxy/yfinance", json={"ticker": "AAPL", "fetch_type": "unknown"})
@@ -105,7 +107,7 @@ class TestDataSourceHealth:
     @patch("backend.services.yfinance_service.yf_service")
     @patch("backend.services.akshare_service.akshare_service")
     def test_data_source_health(self, mock_ak, mock_yf):
-        mock_yf.get_health_status = MagicMock(return_value={"status": "healthy"})
+        mock_yf.yf_health_status = MagicMock(return_value={"status": "healthy"})
         mock_ak.get_health_status = MagicMock(return_value={"status": "healthy"})
 
         response = client.get("/api/v1/data-source/health")
@@ -120,19 +122,21 @@ class TestSecurity:
     @patch("backend.routers.data_source._allowed_ip_set", set())
     @patch("backend.services.yfinance_service.yf_service")
     def test_proxy_with_valid_signature(self, mock_yf):
-        mock_yf.get_batched_quote = AsyncMock(return_value={"success": True, "data": {"AAPL": 165.0}})
-        payload = {"ticker": "AAPL", "fetch_type": "quote"}
-        timestamp = str(int(time.time()))
-        signature = _generate_signature("test-secret-123", payload, timestamp)
+        from backend.app.market_data import market_data
 
-        response = client.post(
-            "/api/v1/data-source/proxy/yfinance",
-            json=payload,
-            headers={"X-Data-Source-Signature": signature, "X-Data-Source-Timestamp": timestamp},
-        )
-        assert response.status_code == 200
-        data = response.json()["data"]
-        assert data["success"] is True
+        with patch.object(market_data._yf, "get_batched_quote", new=AsyncMock(return_value={"success": True, "data": {"AAPL": 165.0}})):
+            payload = {"ticker": "AAPL", "fetch_type": "quote"}
+            timestamp = str(int(time.time()))
+            signature = _generate_signature("test-secret-123", payload, timestamp)
+
+            response = client.post(
+                "/api/v1/data-source/proxy/yfinance",
+                json=payload,
+                headers={"X-Data-Source-Signature": signature, "X-Data-Source-Timestamp": timestamp},
+            )
+            assert response.status_code == 200
+            data = response.json()["data"]
+            assert data["success"] is True
 
     @patch("backend.routers.data_source._HMAC_SECRET", "test-secret-123")
     @patch("backend.routers.data_source._allowed_ip_set", set())

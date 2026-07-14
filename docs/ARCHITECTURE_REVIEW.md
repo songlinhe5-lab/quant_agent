@@ -47,12 +47,12 @@
 - [ ] **立即将 `AI_INSTRUCTIONS.md` 的前端技术栈全面更正为 React 18 + Next.js + TypeScript**
 - [ ] **确认前端框架最终选型**（纯 Vite SPA 还是 Next.js App Router），并在 README、docs/04、AI_INSTRUCTIONS.md 三处保持一致
 - [ ] **在所有文档中删除对 Vue 的引用**（包括 `docs/04` 中误写的「Vue 的响应式追踪系统」）
-- [ ] **更新 `docs/frontend.md`** 反映真实的目录结构与框架版本
+- [x] ~~**更新 `docs/frontend.md`** 反映真实的目录结构与框架版本~~ → 该文件已废弃删除 (DOC-03)
 
 ### 2.2 Futu OpenD 部署前提缺失文档
 
-- [ ] **补充 Futu OpenD 的宿主机要求文档**（不能运行在 ARM 架构 Linux 上，必须 x86）
-- [ ] **明确 OpenD 的跨地域部署限制**（港股实盘必须低延迟香港节点，不同于数据抓取节点）
+- [x] ~~**补充 Futu OpenD 的宿主机要求文档**（不能运行在 ARM 架构 Linux 上，必须 x86）~~ → ✅ `docs/12` §八
+- [x] ~~**明确 OpenD 的跨地域部署限制**（港股实盘必须低延迟香港节点，不同于数据抓取节点）~~ → ✅ `docs/12` §八
 
 ---
 
@@ -180,11 +180,11 @@
 - [ ] **引入 Alembic 数据库迁移**：建立 `backend/migrations/` 目录，所有 Schema 变更必须通过 Alembic 版本化管理，禁止手动执行 DDL
 - [ ] **PostgreSQL 连接池规范**：明确最大连接数配置（与 Docker 内存限制挂钩），避免高并发时 PG 连接耗尽
 - [ ] **Redis 内存淘汰策略文档化**：明确 `maxmemory-policy` 配置（推荐 `allkeys-lru`），防止 Redis 内存满后随机删除关键状态数据
-- [ ] **DuckDB 数据湖分区策略**：定义 Parquet 文件的分区规则（按标的+日期分区），避免单文件过大影响查询性能
+- [x] ~~**DuckDB 数据湖分区策略**：定义 Parquet 文件的分区规则（按标的+日期分区），避免单文件过大影响查询性能~~ → ✅ `docs/12` §九
 
 ### 6.4 故障恢复与熔断（当前：原则有，实现缺文档）
 
-- [ ] **Futu OpenD 断连恢复流程文档化**：OpenD 断线时，OMS 节点的在途订单如何处理？需定义"暂停接单 → 断线检测 → 重连 → 状态对账"的完整 SOP
+- [x] ~~**Futu OpenD 断连恢复流程文档化**：OpenD 断线时，OMS 节点的在途订单如何处理？需定义“暂停接单 → 断线检测 → 重连 → 状态对账”的完整 SOP~~ → ✅ `docs/12` §十
 - [ ] **Redis 主从或持久化策略**：当前使用单机 Redis（存在 `dump.rdb`），需明确 RDB/AOF 持久化配置，防止重启后行情缓存全丢
 - [ ] **数据源降级链路测试**：建立定期演练机制，手动触发 YFinance 429 / Futu 断连，验证降级切换是否如预期工作
 

@@ -31,12 +31,11 @@ class TestBacktestRunRoutes:
         resp = client.post("/api/v1/backtest/run", json={})
         assert resp.status_code == 422
 
-    @patch("backend.routers.backtest.yf_service")
-    @patch("backend.routers.backtest.futu_service")
-    def test_run_backtest_data_load_fail(self, mock_futu, mock_yf):
+    @patch("backend.app.backtest_app.market_data")
+    def test_run_backtest_data_load_fail(self, mock_md):
         """异常路径：所有数据源均失败返回 400"""
-        mock_futu.get_history = AsyncMock(return_value={"status": "error", "message": "连接失败"})
-        mock_yf.fetch_yf_data = AsyncMock(return_value=(False, None, "YFinance 限流"))
+        mock_md.get_history = AsyncMock(return_value={"status": "error", "message": "连接失败"})
+        mock_md.fetch_yf_data = AsyncMock(return_value=(False, None, "YFinance 限流"))
         client = TestClient(app)
         resp = client.post(
             "/api/v1/backtest/run",
@@ -47,8 +46,8 @@ class TestBacktestRunRoutes:
         body = resp.json()
         assert "回测数据加载失败" in body["msg"]
 
-    @patch("backend.routers.backtest.DivergenceResonanceStrategy")
-    @patch("backend.routers.backtest.futu_service")
+    @patch("backend.app.backtest_app.DivergenceResonanceStrategy")
+    @patch("backend.app.backtest_app.market_data")
     def test_run_backtest_builtin_strategy_success(self, mock_futu, mock_strategy_cls):
         """正常路径：内置底背离共振策略回测成功"""
         mock_futu.get_history = AsyncMock(
@@ -79,8 +78,8 @@ class TestBacktestRunRoutes:
         assert data["status"] == "success"
         assert "data" in data
 
-    @patch("backend.routers.backtest.run_dynamic_sandbox_backtest")
-    @patch("backend.routers.backtest.futu_service")
+    @patch("backend.app.backtest_app.run_dynamic_sandbox_backtest")
+    @patch("backend.app.backtest_app.market_data")
     def test_run_backtest_dynamic_strategy_success(self, mock_futu, mock_run):
         """正常路径：动态策略代码回测成功"""
         mock_futu.get_history = AsyncMock(
@@ -115,8 +114,8 @@ class TestBacktestRunRoutes:
         data = _unwrap(resp)
         assert data["status"] == "success"
 
-    @patch("backend.routers.backtest.run_dynamic_sandbox_backtest")
-    @patch("backend.routers.backtest.futu_service")
+    @patch("backend.app.backtest_app.run_dynamic_sandbox_backtest")
+    @patch("backend.app.backtest_app.market_data")
     def test_run_backtest_dynamic_strategy_exception(self, mock_futu, mock_run):
         """异常路径：动态策略执行抛异常时返回 error"""
         mock_futu.get_history = AsyncMock(

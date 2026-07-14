@@ -46,13 +46,13 @@ class TestMacroCalendar:
         """AkShare 正常返回:时区转换 + 高危关键词识别"""
         with (
             patch("backend.routers.macro.redis_client") as m_redis,
-            patch("backend.routers.macro.akshare_service") as m_ak,
+            patch("backend.routers.macro.market_data") as m_ak,
             patch("backend.routers.macro.llm_service") as m_llm,
         ):
             m_redis.get = AsyncMock(return_value=None)
             m_redis.set = AsyncMock(return_value=True)
             m_redis.setex = AsyncMock(return_value=True)
-            m_ak.get_economic_calendar = AsyncMock(
+            m_ak.get_economic_calendar_ak = AsyncMock(
                 return_value={
                     "status": "success",
                     "source": "jin10",
@@ -88,12 +88,12 @@ class TestMacroCalendar:
         """所有数据源失败:降级到离线 Mock"""
         with (
             patch("backend.routers.macro.redis_client") as m_redis,
-            patch("backend.routers.macro.akshare_service") as m_ak,
-            patch("backend.routers.macro.fred_service") as m_fred,
+            patch("backend.routers.macro.market_data") as m_ak,
+            patch("backend.routers.macro.market_data") as m_fred,
         ):
             m_redis.get = AsyncMock(return_value=None)
             m_redis.set = AsyncMock(return_value=True)
-            m_ak.get_economic_calendar = AsyncMock(return_value={"status": "error"})
+            m_ak.get_economic_calendar_ak = AsyncMock(return_value={"status": "error"})
             m_fred.get_economic_calendar = AsyncMock(return_value={"status": "error"})
             resp = client.get("/api/v1/macro/calendar?days_ahead=7")
         assert resp.status_code == 200
@@ -114,7 +114,7 @@ class TestMacroCalendar:
 
 class TestMacroSeries:
     def test_series_success(self, client):
-        with patch("backend.routers.macro.fred_service") as m_fred:
+        with patch("backend.routers.macro.market_data") as m_fred:
             m_fred.get_series_observations = AsyncMock(
                 return_value={
                     "status": "success",
@@ -125,7 +125,7 @@ class TestMacroSeries:
         assert resp.status_code == 200
 
     def test_series_error_returns_400(self, client):
-        with patch("backend.routers.macro.fred_service") as m_fred:
+        with patch("backend.routers.macro.market_data") as m_fred:
             m_fred.get_series_observations = AsyncMock(
                 return_value={
                     "status": "error",
@@ -193,8 +193,8 @@ class TestCapitalFlow:
         """缓存未命中:从 AkShare + Futu 聚合"""
         with (
             patch("backend.routers.macro.redis_client") as m_redis,
-            patch("backend.routers.macro.akshare_service") as m_ak,
-            patch("backend.routers.macro.futu_service") as m_futu,
+            patch("backend.routers.macro.market_data") as m_ak,
+            patch("backend.routers.macro.market_data") as m_futu,
             patch("backend.routers.macro.manager") as m_manager,
         ):
             m_redis.get = AsyncMock(return_value=None)
@@ -239,7 +239,7 @@ class TestMacroNews:
 
     def test_news_non_general_delegates_to_finnhub(self, client):
         """非 general 分类:直接走 Finnhub"""
-        with patch("backend.routers.macro.finnhub_service") as m_finnhub:
+        with patch("backend.routers.macro.market_data") as m_finnhub:
             m_finnhub.get_market_news = AsyncMock(
                 return_value={
                     "status": "success",
@@ -254,7 +254,7 @@ class TestMacroNews:
         """Redis 空时回退 Finnhub"""
         with (
             patch("backend.routers.macro.redis_client") as m_redis,
-            patch("backend.routers.macro.finnhub_service") as m_finnhub,
+            patch("backend.routers.macro.market_data") as m_finnhub,
         ):
             m_redis.zrevrange = AsyncMock(return_value=[])
             m_finnhub.get_market_news = AsyncMock(

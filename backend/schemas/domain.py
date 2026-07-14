@@ -186,9 +186,9 @@ class PositionModel(BaseModel):
     avg_cost: float = Field(..., alias="avgCost", description="持仓均价")
     current_price: float = Field(..., alias="currentPrice", description="当前价格")
     market_value: float = Field(..., alias="marketValue", description="持仓市值")
-    unrealized_pnl: float = Field(..., alias="unrealizedPnl", description="未实现盈亏")
-    realized_pnl: float = Field(..., alias="realizedPnl", description="已实现盈亏")
-    unrealized_pnl_percent: float = Field(..., alias="unrealizedPnlPercent", description="未实现盈亏百分比")  # noqa: E501
+    unrealized_pnl: float = Field(..., alias="unrealizedPnL", description="未实现盈亏")
+    realized_pnl: float = Field(..., alias="realizedPnL", description="已实现盈亏")
+    unrealized_pnl_percent: float = Field(..., alias="unrealizedPnLPercent", description="未实现盈亏百分比")  # noqa: E501
     status: PositionStatus = Field(..., description="持仓状态")
     opened_at: int = Field(..., alias="openedAt", description="开仓时间（UTC 毫秒）")
     updated_at: int = Field(..., alias="updatedAt", description="更新时间（UTC 毫秒）")
@@ -228,10 +228,10 @@ class AccountModel(BaseModel):
     cash: float = Field(..., description="现金")
     market_value: float = Field(..., alias="marketValue", description="持仓市值")
     buying_power: float = Field(..., alias="buyingPower", description="购买力")
-    unrealized_pnl: float = Field(..., alias="unrealizedPnl", description="未实现盈亏")
-    realized_pnl: float = Field(..., alias="realizedPnl", description="已实现盈亏")
-    daily_pnl: float = Field(..., alias="dailyPnl", description="当日盈亏")
-    daily_pnl_percent: float = Field(..., alias="dailyPnlPercent", description="当日盈亏百分比")  # noqa: E501
+    unrealized_pnl: float = Field(..., alias="unrealizedPnL", description="未实现盈亏")
+    realized_pnl: float = Field(..., alias="realizedPnL", description="已实现盈亏")
+    daily_pnl: float = Field(..., alias="dailyPnL", description="当日盈亏")
+    daily_pnl_percent: float = Field(..., alias="dailyPnLPercent", description="当日盈亏百分比")  # noqa: E501
     currency: str = Field(..., description="货币单位")
     updated_at: int = Field(..., alias="updatedAt", description="更新时间（UTC 毫秒）")
 
@@ -365,7 +365,7 @@ class PaginatedResponseModel(BaseModel):
 
 
 class ClientHeartbeatModel(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     platform: str = Field(..., description="客户端平台（flutter/web/desktop）")
     app_version: str = Field(..., alias="appVersion", description="应用版本")
@@ -373,4 +373,9 @@ class ClientHeartbeatModel(BaseModel):
     fps: Optional[float] = Field(None, description="帧率")
     memory_mb: Optional[float] = Field(None, alias="memoryMb", description="内存占用（MB）")  # noqa: E501
     ws_latency_ms: Optional[int] = Field(None, alias="wsLatencyMs", description="WebSocket 延迟（ms）")  # noqa: E501
+    # OBS-03 / FE-27: Web Vitals（可选，Web 端上报）
+    lcp_ms: Optional[float] = Field(None, alias="lcpMs", description="Largest Contentful Paint (ms)")
+    cls: Optional[float] = Field(None, description="Cumulative Layout Shift（无量纲）")
+    inp_ms: Optional[float] = Field(None, alias="inpMs", description="Interaction to Next Paint (ms)")
+    ttfb_ms: Optional[float] = Field(None, alias="ttfbMs", description="Time to First Byte (ms)")
     timestamp: int = Field(..., description="UTC 毫秒时间戳")

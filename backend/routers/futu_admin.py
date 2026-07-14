@@ -11,7 +11,7 @@ import logging
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from backend.services.futu_service import futu_service
+from backend.app.market_data import market_data
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ async def get_source_status():
     - mode: 当前模式 (始终为 local)
     - local: 本地直连 OpenD 状态
     """
-    return {"code": 0, "data": futu_service.source_router.status()}
+    return {"code": 0, "data": market_data.source_router.status()}
 
 
 @router.get("/diagnose")
@@ -51,17 +51,17 @@ async def diagnose_futu_chain(ticker: str = "HK.00700"):
     diag = {"steps": [], "router_state": {}}
 
     # Step 0: SourceRouter 内部状态
-    router_obj = futu_service.source_router
+    router_obj = market_data.source_router
     diag["router_state"] = {
         "mode": router_obj.current_mode,
         "local_is_available": router_obj._local.is_available,
-        "futu_service_status": futu_service.status,
-        "conn_mgr_status": futu_service.conn_mgr.status,
+        "futu_service_status": market_data.status,
+        "conn_mgr_status": market_data.conn_mgr.status,
     }
 
     # Step 1: FutuService.get_quote 端到端
     try:
-        quote_result = await futu_service.get_quote(ticker)
+        quote_result = await market_data.get_quote(ticker)
         diag["steps"].append(
             {
                 "step": "futu_service_get_quote",
@@ -94,11 +94,7 @@ async def switch_opend_host(req: SwitchHostRequest):
 
     注意: 切换会断开现有连接并尝试重新连接到新目标。
     """
-    result = futu_service.conn_mgr.switch_host(req.host, req.port)
-    # 同步 FutuService 的状态
-    futu_service.status = futu_service.conn_mgr.status
-    futu_service.error_msg = futu_service.conn_mgr.error_msg
-    futu_service.quote_ctx = futu_service.conn_mgr.quote_ctx
+    result = market_data.switch_opend_host(req.host, req.port)
 
     logger.info(f"[FutuAdmin] OpenD 连接目标切换: {result}")
     return {"code": 0, "data": result}

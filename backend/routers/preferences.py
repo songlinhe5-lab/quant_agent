@@ -142,7 +142,7 @@ async def batch_update_watchlist(req: WatchlistBatchRequest, current_user: model
     """一键批量将股票加入或移出系统级监控池，联动后台守护进程"""
     user_set_key = f"quant:user:{current_user.username}:monitored_stocks"
     global_ref_key = "quant:settings:monitored_refcounts"
-    from backend.services.futu.utils import format_ticker
+    from backend.core.ticker_format import format_ticker
 
     try:
         success_count = 0

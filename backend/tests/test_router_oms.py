@@ -11,28 +11,9 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-import copy  # noqa: E402
-
 from fastapi.testclient import TestClient
 
 from backend.main import app
-from backend.services.oms_mock_data import (  # noqa: E402
-    ACTIVE_ORDERS,
-    ALGO_EXECUTIONS,
-    INITIAL_BOTS,
-)
-
-# 保存原始 mock 数据深拷贝,防止 kill_switch 测试污染全局 mutable 状态
-_ORIGINAL_BOTS = copy.deepcopy(INITIAL_BOTS)
-_ORIGINAL_ORDERS = copy.deepcopy(ACTIVE_ORDERS)
-_ORIGINAL_ALGOS = copy.deepcopy(ALGO_EXECUTIONS)
-
-
-def _restore_oms_mock_data():
-    """恢复 OMS mock 数据到原始状态(供 kill_switch 测试后调用)"""
-    INITIAL_BOTS[:] = copy.deepcopy(_ORIGINAL_BOTS)
-    ACTIVE_ORDERS[:] = copy.deepcopy(_ORIGINAL_ORDERS)
-    ALGO_EXECUTIONS[:] = copy.deepcopy(_ORIGINAL_ALGOS)
 
 
 def _unwrap(resp):
@@ -68,9 +49,6 @@ class TestOmsStateRoutes:
 
 class TestOmsKillSwitchRoutes:
     """全局熔断 Kill Switch 路由测试"""
-
-    def teardown_method(self):
-        _restore_oms_mock_data()
 
     @patch("backend.routers.oms.redis_client")
     def test_trigger_kill_switch_success(self, mock_redis):
@@ -186,30 +164,28 @@ class TestOmsAlgoStartRoutes:
 class TestOmsEmergencyLiquidation:
     """物理级熔断清仓逻辑测试"""
 
-    def teardown_method(self):
-        _restore_oms_mock_data()
-
-    @patch("backend.routers.oms.redis_client")
-    @patch("backend.routers.oms.bot_runtime")
-    @patch("backend.routers.oms.algo_engine")
-    @patch("backend.routers.oms.oms_service")
-    @patch("backend.services.futu_service.futu_service")
+    @patch("backend.app.oms_app.redis_client")
+    @patch("backend.app.oms_app.bot_runtime")
+    @patch("backend.app.oms_app.algo_engine")
+    @patch("backend.app.oms_app.oms_service")
+    @patch("backend.app.oms_app.broker")
     async def test_execute_emergency_liquidation_no_trade_ctx(
-        self, mock_futu, mock_oms, mock_algo, mock_bot, mock_redis
+        self, mock_broker, mock_oms, mock_algo, mock_bot, mock_redis
     ):
         """降级路径：无 trade_ctx 时走沙箱 Mock 强平"""
         from unittest.mock import MagicMock
 
         mock_db = MagicMock()
-        mock_futu.trade_ctx = None
+        mock_broker.execute_emergency_liquidation = AsyncMock(
+            return_value={"ok": False, "reason": "no_trade_ctx"}
+        )
         mock_bot.stop_all_bots = AsyncMock()
         mock_algo.cancel_all = AsyncMock()
         mock_oms.mark_all_orders_cancelled = AsyncMock()
         mock_redis.publish = AsyncMock()
-        from backend.routers.oms import execute_emergency_liquidation
+        from backend.app.oms_app import run_emergency_liquidation
 
-        await execute_emergency_liquidation(mock_db)
-        # trade_ctx 为 None 时应走降级路径: 终止所有 Bot + 取消算法拆单 + 标记订单取消
+        await run_emergency_liquidation(mock_db)
         mock_bot.stop_all_bots.assert_awaited_once()
         mock_algo.cancel_all.assert_awaited_once()
         mock_oms.mark_all_orders_cancelled.assert_awaited_once()

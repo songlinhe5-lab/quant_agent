@@ -182,45 +182,46 @@
 4. **嵌入交互式图表 (ECharts)**：如果需要在 UI 中展示走势、分布等数据可视化的图表，请直接在输出的 HTML 结构中或之后，穿插使用 ````echarts` 代码块包裹的严格 JSON 配置对象（如：````echarts\n{"xAxis":{...}}\n````）。前端解析引擎会自动将其拦截并渲染为真实的动态图表。注意：JSON 必须严格合法，且严禁包含 JavaScript 函数或注释。
 5. **ECharts 强制暗黑配色 (Tailwind Colors)**：图表必须与系统的暗黑玻璃态 UI 完美融合。强制要求：背景设为透明 (`"backgroundColor": "transparent"`)，坐标轴线和网格分割线使用暗石板色 (`#1e293b` 或 `#334155`)，文字标签使用冷灰色 (`#64748b` 或 `#94a3b8`)。数据线/柱体必须使用 Tailwind 现代色系：主色调优先用紫 (`#8b5cf6`) 和蓝 (`#3b82f6`)，上涨/看多用绿 (`#10b981`)，下跌/看空用红 (`#ef4444`)，渐变背景 (areaStyle) 需辅以较低透明度。严禁使用 ECharts 默认的刺眼亮色。
 
-## 9. 数据采集架构 (主节点本地采集 + 辅助节点)
+## 9. 数据采集架构（四节点 · 数据源分 VPS）
 
-系统采用**主节点 + 辅助节点**部署。主节点 (加州 VPS: 38.60.126.42) 承载所有核心服务和境外数据源，北京 VPS 仅作为 AKShare 国内数据源辅助采集节点。
+系统采用 **US-MASTER ×1 + US-YF-A/B ×2 + CN-AKSHARE ×1**。节点间 **Tailscale 虚拟网**；Yahoo 流量不得集中在主节点单 IP。细则见 `docs/06` V9.0。
 
 ### 9.1 架构概述
 
-- 主节点 (加州 VPS): API + Worker + Redis + PostgreSQL + 境外数据源 (YFinance/Finnhub/FRED/Futu)
-- 辅助节点 (北京 VPS): 仅运行 AKShare 采集器 (国内直连优势)，通过 Tailscale 内网与主节点通信
-- 前端 (Cloudflare Pages) → 加州主节点 API，链路最优（无跨境延迟）
-- Futu OpenD 在宿主机本地启动，监听 `127.0.0.1:11111`
-- 无主从区分，无集群管理器，无远程节点调用
+- **US-MASTER**（加州主 VPS）：API + Worker + Redis + PostgreSQL + Futu OpenD；Finnhub/FRED 可本地；**YFinance 经 `YFinanceRouter` 调辅助节点**
+- **US-YF-A / US-YF-B**（美国辅助 ×2）：仅 `data_subservice`（yfinance），**独立公网 IP** → Yahoo；心跳写主 Redis Registry
+- **CN-AKSHARE**（中国辅助）：仅 AKShare → 主 Redis；**禁止** YFinance / Futu
+- 前端（Cloudflare Pages）→ 仅 US-MASTER API
+- Futu OpenD 仅主宿主机 `127.0.0.1:11111`
+- 跨节点：Tailscale only；子服务 HMAC；不对公网暴露 6379/5432/ds:8000
 
-### 9.2 采集器配置
-
-通过 `COLLECTOR_*` 环境变量控制启用哪些采集器：
+### 9.2 采集器配置（US-MASTER 推荐）
 
 ```bash
-COLLECTOR_FUTU=true        # 港美股 Level 2 (Futu OpenD)
-COLLECTOR_YFINANCE=true    # 宏观指标/大盘
-COLLECTOR_FINNHUB=false    # 全球内幕交易/新闻
-COLLECTOR_AKSHARE=false    # 港股通/南向资金
+COLLECTOR_FUTU=true
+COLLECTOR_FINNHUB=true
+COLLECTOR_YFINANCE=false   # 推荐关本地 Yahoo，走 Router → US-YF-A/B
+COLLECTOR_AKSHARE=false    # AKShare 在 CN 节点
+YF_ROUTER_ENABLED=true
 ```
 
 ### 9.3 核心文件映射
 
 | 文件 | 职责 |
 |:---|:---|
-| `backend/workers/collector_registry.py` | 采集器注册表：定义采集器元数据 + `get_enabled_collectors()` + `start_collector_daemons()` |
-| `backend/worker.py` | Worker 进程：启动采集器 daemon + 后台服务任务 |
-| `backend/main.py` | 主 API：`GET /api/v1/cluster` 节点状态端点 |
-| `docker-compose.yml` | 统一 Compose：主节点全量部署 |
-| `.github/workflows/backend.yml` | CI/CD：构建镜像 + 部署到加州主节点 (VPS_S1) |
+| `backend/workers/collector_registry.py` | 采集器注册表（`CollectorDef.factory`） |
+| `backend/workers/collectors/` | 各采集器启动工厂（BE-ARCH-03） |
+| `backend/core/service_registry.py` / YFinanceRouter | 多节点发现 + 抗限流路由 |
+| `data_subservice/` | YF 辅节点独立服务 |
+| `docker-compose.master.yml` / `yf-node.yml` / `slave.yml` | 四节点 Compose（见 docs/06 §八） |
+| `.github/workflows/backend.yml` | CI/CD → US-MASTER（矩阵扩 yf/slave） |
 
 ### 9.4 开发约束
 
-- **新增采集器**: 在 `collector_registry.py` 的 `COLLECTORS` 字典中添加定义，实现对应的 daemon 函数
-- **数据源本地化**: 境外数据源在主节点直接访问，AKShare 通过辅助节点国内直连
-- **Redis 键空间约定**:
-  - `quant:cache:{action}:{ticker}` — 采集结果缓存
+- **新增采集器**: 实现 `workers/collectors/<name>.py` 的 `async start()` → 在 `collector_registry.COLLECTORS` 注册 + `COLLECTOR_*` env；限流敏感源优先独立辅节点出口；**禁止**在 `start_collector_daemons` 内硬编码服务 import
+- **YFinance**: 至少 2 个不同公网 IP 热流量（weight 对等）；429 不计熔断失败计数，failover 下一节点
+- **CN 节点**: 禁止启用 YF/Futu collector
+- **Redis 键空间**: `quant:cache:{action}:{ticker}`
 
 ---
 
@@ -235,8 +236,9 @@ COLLECTOR_AKSHARE=false    # 港股通/南向资金
 - `fetch(action, params) -> Result` 是唯一的数据获取入口。禁止在业务代码中直接调用 `yf.Ticker()`、`futu_client.get_quote()` 等底层 API。
 
 ### 10.2 Registry 访问原则
-- **主 app 只通过 `DataSourceRegistry` 访问数据源**。禁止在 router/service 层直接 import 具体数据源实现类（如 `FutuService`、`YFinanceService`）。
-- Registry 负责数据源实例的生命周期管理、健康探针、熔断降级和请求路由。
+- **主 app 只通过 `DataSourceRegistry`（源实例表）访问数据源**。禁止在 router/service 层直接 import 具体数据源实现类（如 `FutuService`、`YFinanceService`）。
+- **限流状态走 `RateLimitRegistry`**（`rate_limit_registry`）：只持有 Throttler/Analyzer，**不是**源实例表。二者命名勿混淆（BE-ARCH-04）。
+- Registry 负责数据源实例的生命周期管理、健康探针、熔断降级和请求路由；主路径 `fetch(source, action, params)` 只经 `DataSourceInterface`。
 
 ### 10.3 双模运行能力
 - **每个数据源必须支持 external 模式**，即能作为独立 HTTP 服务运行在远程 VPS。主 app 通过 HTTP + HMAC 签名访问远程节点，与 internal 模式接口完全一致。
@@ -552,9 +554,10 @@ CI/CD       GitHub Actions
 部署模式
   本地研发   ./start.sh（热更新）
   单机生产   docker-compose up -d
-  分布式集群   主节点(加州 VPS: API+DB+Redis+数据源) + 辅助节点(北京 VPS: AKShare 采集)
-  主节点部署   COMPOSE_PROFILES=master docker compose up -d  # 加州 VPS (38.60.126.42)
-  辅助节点部署   COMPOSE_PROFILES=slave docker compose up -d    # 北京 VPS (仅 AKShare)
+  四节点生产 US-MASTER + US-YF-A/B + CN-AKSHARE（Tailscale；详见 docs/06 V9.0）
+  主节点     COMPOSE_PROFILES=master docker compose up -d
+  YF 辅节点  docker compose -f docker-compose.yf-node.yml up -d
+  CN 辅节点  COMPOSE_PROFILES=slave docker compose up -d
   国内 VPS   镜像源加速 + HTTP 代理配置
 ```
 
@@ -1125,6 +1128,7 @@ docs/subsystems/
 
 | 日期 | 版本 | 变更内容 |
 |:---|:---|:---|
+| 2026-07-13 | V2.4 | §9 四节点：US-MASTER + US-YF-A/B + CN-AKSHARE；YF 多 IP 抗限流；主节点默认关本地 YF |
 | 2026-07-08 | V2.3 | §9 架构更新：主节点迁移至加州 VPS (38.60.126.42)，北京 VPS 降级为辅助节点 (仅 AKShare)；原因：Cloudflare Pages 跨境延迟 |
 | 2026-07-08 | V2.2 | §10 新增 §10.8 限流感知与退避规范；对齐 docs/14 §十二 自适应退避与限流感知架构 |
 | 2026-07-08 | V2.1 | 新增 §10 数据源架构约束；对齐通用数据源框架 V2.0（DataSourceInterface / Registry / 双模运行） |

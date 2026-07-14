@@ -8,9 +8,10 @@ globs:
 alwaysApply: true
 ---
 
-# Quant Agent — Vibe Coding 铁律规范 (V2.0)
+# Quant Agent — Vibe Coding 铁律规范 (V2.1)
 
-> 本规范是量化终端的"代码宪法"。违反任何一条铁律，生成的代码一律视为无效，必须重写。
+> 本规范是量化终端的"代码宪法"。违反任何一条铁律，生成的代码一律视为无效，必须重写。  
+> 前端子系统细节 SSOT：`docs/04. 前端架构与零GC渲染.md`（V4.0+）。
 
 ---
 
@@ -18,28 +19,43 @@ alwaysApply: true
 
 ### 1.1 前端（Web Terminal）
 
-> **架构决策（不可推翻）**：量化看板是"长期挂机的重型客户端"，核心诉求是毫秒级 WebSocket 渲染与 Canvas/WebGL 图表，不需要 SEO 或首屏秒开。Next.js App Router 的 RSC 模型与此背道而驰：所有涉及 `window`/`document`/WebSocket 的组件都必须加 `'use client'`，RSC 优势全部丧失，反而引入网络边界序列化开销与 Node.js 运行时部署成本。**选型已定：纯 Vite SPA。**
+> **架构决策（不可推翻）**：量化看板是"长期挂机的重型客户端"，核心诉求是毫秒级 WebSocket 渲染与 Canvas/WebGL 图表，不需要 SEO 或首屏秒开。Next.js App Router 的 RSC 模型与此背道而驰。**选型已定：纯 Vite SPA。**
 
 ```
 框架    : React 18+ (Hooks) — 纯 Vite SPA，禁止引入 Next.js
-路由    : React Router v6（客户端路由，无服务端渲染）
+路由    : React Router v6 — 路由 SSOT 在 App.tsx（禁止平行 router/index 第二套入口）
+布局壳  : DashboardLayout（Navbar + Sidebar + Outlet）— 线上唯一布局
 语言    : TypeScript (严格模式, strict: true)
 构建    : Vite（开发 + 生产，打包为纯静态 HTML/CSS/JS）
 部署    : Nginx 静态服务 / Cloudflare Pages — 零 Node.js 运行时依赖
-样式    : Tailwind CSS v4 + tailwind-merge
+样式    : Tailwind CSS + tailwind-merge
 组件库  : shadcn/ui + Radix UI + lucide-react
-状态管理: Zustand（全局）+ useRef（高频可变数据，绕过 VDOM）
-本地缓存: IndexedDB（历史 K 线离线缓存，避免重复拉取）
-包管理  : pnpm（唯一锁文件：pnpm-lock.yaml，禁止混用 yarn/npm）
+HTTP    : lib/api-client.ts（原生 Fetch）— 唯一 HTTP 入口
+实时    : 原生 WebSocket（行情）+ SSE（Hermes 思维链）
+状态管理: Zustand（全局低频）+ useRef / TypedArray（高频 Tick）
+本地缓存: IndexedDB（历史 K 线离线缓存）
+包管理  : pnpm（唯一锁文件：pnpm-lock.yaml，禁止 package-lock.json / yarn.lock）
 ```
 
 **⛔ 严禁出现以下技术**（已废弃/架构不兼容）：
-- `Next.js`、`Nuxt`、任何 SSR/SSG 框架 — **绝对禁止**（RSC 与高频 WebSocket 架构冲突）
+- `Next.js`、`Nuxt`、任何 SSR/SSG 框架 — **绝对禁止**
 - Vue 3、Pinia、Vue Router — **绝对禁止**
 - Redux Toolkit、MobX — 已被 Zustand 替代
-- Axios — 使用原生 Fetch；WebSocket 直连后端 Gateway
+- Axios / 第二套 HTTP 客户端 — 只用 `@/lib/api-client`
 - ECharts 用于 K 线主图 — 必须用 Lightweight-Charts
-- 任何 DOM/SVG 图表库处理高频数据（`recharts`、`victory`、`nivo`）
+- 新代码使用 `recharts` / `victory` / `nivo` — 分析图用 ECharts；存量 recharts 仅允许迁移删除
+- 未接线的平行布局壳（如历史 TradingDashboard）— 禁止复活双布局
+
+### 1.1.1 前端运行时拓扑（必须遵守）
+
+```
+main.tsx → AuthProvider → App.tsx Routes
+  /login
+  ProtectedRoute → DashboardLayout → Outlet → features/*（lazy）
+```
+
+- Keep-Alive（切换不卸载）是 **FE-ARCH-01 增强**，不得以删除 URL 路由为代价。
+- Feature 页面放 `features/`；布局与跨模块壳放 `components/layout/`；禁止在 `components/ui/` 写业务逻辑。
 
 ### 1.2 后端（FastAPI Execution Engine）
 
@@ -161,18 +177,17 @@ stores/
 ### 2.5 组件架构规范
 
 ```
-components/          ← 纯 UI 组件，无业务逻辑，无数据拉取
-features/            ← 业务功能模块，按领域划分
-  ├── market/        ← 市场感知（行情/K线/盘口）
-  ├── screener/      ← 投研选股
-  ├── trading/       ← 交易执行/OMS
-  └── risk/          ← 风控与 AI 副驾
-hooks/               ← 自定义 Hooks（数据获取、WebSocket 管理）
-stores/              ← Zustand 状态切片
-workers/             ← Web Worker 脚本（计算密集型任务）
+components/
+  ├── layout/        ← DashboardLayout / Navbar / OmniSearch（壳层）
+  └── ui/            ← shadcn 原子组件（无业务、无空 stub）
+features/            ← 业务域：auth · quotes · screener · strategy · trading · …
+hooks/ · stores/ · contexts/
+lib/api-client.ts    ← HTTP 唯一入口
+workers/             ← 计算密集型 Web Worker
 ```
 
-**单文件不超过 300 行**：超过 300 行必须拆分，禁止出现超过 1000 行的单文件。
+**单文件不超过 300 行**：超过 300 行必须拆分，禁止出现超过 1000 行的单文件。  
+巨型文件债跟踪：`docs/TODO.md` **FE-ARCH-02**。
 
 ---
 

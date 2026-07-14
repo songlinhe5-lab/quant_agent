@@ -109,6 +109,31 @@ class QuotePublisher:
             data = self._get_mock_data(ticker)
 
         if data:
+            # DQ-04 / SVC-04：按数据源维度做质量校验并暴露 Prometheus
+            try:
+                import time as _time
+
+                from backend.services.data_quality_monitor import get_quality_monitor
+
+                px = float(data.get("last_price") or 0.0)
+                vol_raw = data.get("volume_str", "0")
+                try:
+                    vol = float(str(vol_raw).replace(",", "").replace("--", "0") or 0)
+                except ValueError:
+                    vol = 0.0
+                dq_quote = {
+                    "ticker": data.get("ticker", ticker),
+                    "open": px,
+                    "high": px,
+                    "low": px,
+                    "close": px,
+                    "volume": vol,
+                    "timestamp": _time.time(),
+                }
+                get_quality_monitor(data.get("source", "futu")).validate_quote(dq_quote)
+            except Exception as dq_err:
+                logger.debug("data_quality_check_skipped: %s", dq_err)
+
             # 1. 组装 Protobuf 对象
             quote_msg = QuoteData(
                 status="success",

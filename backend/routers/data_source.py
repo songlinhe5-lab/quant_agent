@@ -117,17 +117,10 @@ async def proxy_yfinance(request: Request):
 
     logger.info(f"[Proxy] YFinance 请求: {ticker}, {fetch_type}")
 
-    from backend.services.yfinance_service import yf_service
+    from backend.app.market_data import market_data
 
     try:
-        if fetch_type == "quote":
-            return await yf_service.get_batched_quote(ticker, req_type="quote")
-        elif fetch_type == "tech":
-            return await yf_service.get_tech_indicators(ticker, **kwargs)
-        elif fetch_type == "history":
-            success, data, msg = await yf_service.fetch_yf_data(ticker, "history", ttl=3600, **kwargs)
-            return {"success": success, "data": data, "message": msg}
-        return {"success": False, "message": f"Unknown fetch_type: {fetch_type}"}
+        return await market_data.proxy_yfinance(ticker, fetch_type, kwargs)
     except Exception as e:
         logger.error(f"[Proxy] YFinance 错误: {ticker}, {str(e)}")
         return {"success": False, "message": str(e)}
@@ -151,24 +144,10 @@ async def proxy_akshare(request: Request):
 
     logger.info(f"[Proxy] AKShare 请求: {action}")
 
-    from backend.services.akshare_service import akshare_service
+    from backend.app.market_data import market_data
 
     try:
-        if action == "southbound":
-            return await akshare_service.get_southbound_flow()
-        elif action == "northbound":
-            return await akshare_service.get_northbound_flow()
-        elif action == "hsgt_holders":
-            return await akshare_service.get_hsgt_top_holders(symbol=kwargs.get("symbol", "00700"))
-        elif action == "company_news":
-            return await akshare_service.get_company_news(ticker=kwargs.get("ticker", ""))
-        elif action == "stock_quote":
-            return await akshare_service.get_stock_quote(ticker=kwargs.get("ticker", ""))
-        elif action == "stock_history":
-            return await akshare_service.get_stock_history(ticker=kwargs.get("ticker", ""), num=kwargs.get("num", 60))
-        elif action == "economic_calendar":
-            return await akshare_service.get_economic_calendar(days_ahead=kwargs.get("days_ahead", 7))
-        return {"status": "error", "message": f"Unknown akshare action: {action}"}
+        return await market_data.proxy_akshare(action, kwargs)
     except Exception as e:
         logger.error(f"[Proxy] AKShare 错误: {action}, {str(e)}")
         return {"status": "error", "message": str(e)}
@@ -177,11 +156,10 @@ async def proxy_akshare(request: Request):
 @router.get("/health")
 async def data_source_health():
     """数据源健康检查"""
-    from backend.services.akshare_service import akshare_service
-    from backend.services.yfinance_service import yf_service
+    from backend.app.market_data import market_data
 
     return {
         "status": "healthy",
-        "yfinance": yf_service.get_health_status(),
-        "akshare": akshare_service.get_health_status(),
+        "yfinance": market_data.yf_health_status(),
+        "akshare": market_data.ak_health_status(),
     }

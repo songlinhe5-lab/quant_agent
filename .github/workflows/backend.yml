@@ -331,3 +331,82 @@ jobs:
           if [ "${{ inputs.rollback_sha }}" != "" ]; then
             echo "| Rollback | ${{ inputs.rollback_sha }} |" >> $GITHUB_STEP_SUMMARY
           fi
+
+  # ==========================================
+  # Stage 4: Tailscale 跨节点连通性验证 (OPS-02)
+  # ==========================================
+  verify_tailscale:
+    name: Verify Tailscale Connectivity
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    if: always() && needs.deploy.result == 'success'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Tailscale cross-node connectivity
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_S1_HOST }}
+          username: ${{ secrets.VPS_S1_USER }}
+          key: ${{ secrets.VPS_S1_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -e
+            echo "=== Tailscale 状态检查 ==="
+            
+            # 检查 Tailscale 服务
+            if ! command -v tailscale &> /dev/null; then
+              echo "ERROR: Tailscale 未安装"
+              exit 1
+            fi
+            
+            # 显示 Tailnet 状态
+            echo "Tailnet 节点:"
+            tailscale status
+            
+            # 获取本机 Tailscale IP
+            TS_IP=$(tailscale ip -4)
+            echo "本机 Tailscale IP: $TS_IP"
+            
+            # 检查关键端口绑定
+            echo ""
+            echo "=== 端口绑定检查 ==="
+            echo "Redis 绑定:"
+            ss -tlnp | grep ':6379' || echo "Redis 未监听"
+            
+            echo "Postgres 绑定:"
+            ss -tlnp | grep ':5432' || echo "Postgres 未监听"
+            
+            # 验证 Redis 不对公网暴露
+            PUBLIC_IP=$(curl -s ifconfig.me 2>/dev/null || echo "")
+            if [ -n "$PUBLIC_IP" ]; then
+              if ss -tlnp | grep -q ":6379.*0\.0\.0\.0"; then
+                echo "ERROR: Redis 绑定到 0.0.0.0 (公网可访问)!"
+                exit 1
+              fi
+              echo "✓ Redis 未对公网暴露"
+            fi
+            
+            # 测试跨节点连通性 (如果 CN-AKSHARE 在线)
+            CN_IP="${{ secrets.CN_VPS_TAILSCALE_IP }}"
+            if [ -n "$CN_IP" ]; then
+              echo ""
+              echo "=== CN-AKSHARE 连通性测试 ==="
+              if ping -c 1 -W 3 "$CN_IP" &> /dev/null; then
+                echo "✓ CN-AKSHARE ($CN_IP) 可达"
+              else
+                echo "⚠ CN-AKSHARE ($CN_IP) 不可达 (可能离线)"
+              fi
+            fi
+            
+            echo ""
+            echo "=== Tailscale 验证完成 ==="
+
+      - name: Tailscale verification summary
+        if: always()
+        run: |
+          echo "## Tailscale Verification" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | ${{ needs.verify_tailscale.result }} |" >> $GITHUB_STEP_SUMMARY

@@ -102,7 +102,7 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
-              expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+              expr: histogram_quantile(0.95, sum(rate(fastapi_request_duration_seconds_bucket[5m])) by (le))
               instant: true
           - refId: C
             datasourceUid: __expr__
@@ -288,3 +288,175 @@ groups:
         annotations:
           summary: "数据源 {{ $labels.source }} IP 被封禁"
           description: "过去 5 分钟内检测到 {{ $values.C.Value }} 次 IP 封禁事件，请立即检查 IP 状态并联系数据源解封"
+
+      # DQ-04: 脏数据率超阈值（SVC-04 ALERT_DIRTY_RATE_THRESHOLD=5%）
+      - uid: data-quality-dirty-rate-high
+        title: 数据质量脏数据率过高
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: quant_data_quality_dirty_rate
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.05]
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "数据源 {{ $labels.source }} 脏数据率超过 5%"
+          description: "SVC-04 校验脏数据率 {{ $values.A.Value }} 持续超过阈值，请检查字段完整性 / 价格跳变 / 时间戳新鲜度（看板 Data Quality DQ-04）"
+
+      # ==========================================
+      # DIST-21: 分布式节点告警
+      # ==========================================
+
+      # DIST-21a: 节点心跳超时 (dead)
+      - uid: dist-node-heartbeat-dead
+        title: 分布式节点心跳超时
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: time() - quant_dist_node_heartbeat_timestamp > 60
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [1]
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "节点 {{ $labels.node_id }} 心跳超时 (>60s)"
+          description: "分布式节点 {{ $labels.node_id }} ({{ $labels.region }}) 已超过 60 秒未发送心跳，可能已断连"
+
+      # DIST-21b: YF 存活节点 < 2
+      - uid: dist-yf-nodes-low
+        title: YF 存活节点不足 2 个
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: quant_dist_node_alive_count{capability="yfinance"} < 2
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "YF 存活节点不足 2 个"
+          description: "当前 YF 存活节点数 {{ $values.A.Value }}，低于安全阈值 2，限流容灾能力下降"
+
+      # DIST-21c: 所有 YF 节点宕机
+      - uid: dist-yf-all-down
+        title: 所有 YF 数据节点宕机
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: quant_dist_node_alive_count{capability="yfinance"} == 0
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "所有 YF 数据节点宕机!"
+          description: "所有 YFinance 数据节点已宕机，YF 请求将全部降级到 STALE 缓存或返回错误"
+
+      # DIST-21d: CN 节点断连
+      - uid: dist-cn-node-down
+        title: CN-AKShare 节点断连
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: quant_dist_node_status{node_id=~"cn-.*"} == 0
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CN-AKShare 节点断连"
+          description: "CN-AKShare 节点已断连，AKShare 数据将降级到 STALE 缓存（DIST-19）"
+
+      # DIST-21e: STALE 降级频率过高
+      - uid: dist-stale-fallback-high
+        title: STALE 缓存降级频率过高
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: rate(quant_dist_yf_stale_fallback_total[5m]) + rate(quant_dist_ak_stale_fallback_total[5m]) > 0.1
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "STALE 缓存降级频率过高"
+          description: "过去 5 分钟 STALE 缓存降级频率超过 0.1/s，数据新鲜度下降，请检查节点健康状态"

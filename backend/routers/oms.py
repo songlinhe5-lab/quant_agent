@@ -19,6 +19,7 @@ from backend.core import models
 from backend.core.database import get_db
 from backend.core.redis_client import redis_client
 from backend.services.algo_engine import algo_engine
+from backend.services.algo_analytics import algo_analytics
 from backend.services.audit_service import log_audit
 from backend.services.bot_runtime import bot_runtime
 from backend.services.oms_service import oms_service
@@ -48,7 +49,7 @@ class ModifyOrderReq(BaseModel):
 
 
 class ModeSwitchReq(BaseModel):
-    mode: str  # "SANDBOX" or "LIVE"
+    mode: str  # "SANDBOX" | "PAPER" | "LIVE"
 
 
 @router.get("/state")
@@ -83,86 +84,10 @@ async def get_oms_initial_state(db: Session = Depends(get_db)):
 
 
 async def execute_emergency_liquidation(db: Session):
-    """
-    执行物理级熔断清仓逻辑：
-    1. 撤销所有未成交挂单
-    2. 获取所有当前持仓
-    3. 以市价平掉所有多空仓位
-    4. OMS-03: 将所有活动订单标记为 CANCELLED
-    """
-    logger = logging.getLogger("OMS")
-    logger.warning("🚨 [KILL SWITCH] 正在执行全网物理熔断清仓...")
+    """兼容旧 import：转发至 oms_app（BE-ARCH-02）。"""
+    from backend.app.oms_app import run_emergency_liquidation
 
-    try:
-        from futu import ModifyOrderOp, OrderType, TrdSide
-
-        from backend.services.futu_service import futu_service
-
-        ctx = getattr(futu_service, "trade_ctx", None)
-        if not ctx:
-            logger.error("🚨 [KILL SWITCH] 未检测到有效的底层交易网关上下文 (trade_ctx)，降级为仅阻断新订单流。")  # noqa: E501
-
-            # 💡 OMS-05: 终止所有运行中的 Bot 算力节点
-            await bot_runtime.stop_all_bots()
-            # OMS-08: 取消所有运行中的算法拆单
-            await algo_engine.cancel_all()
-            # OMS-03: 持久化层熔断 —— 将所有活动订单标记为 CANCELLED
-            await oms_service.mark_all_orders_cancelled(db)
-            return
-
-        # 💡 1. 撤销所有活跃订单 (防并发：在独立的线程中执行同步的底层 SDK 调用)
-        def cancel_all_orders():
-            ret, data = ctx.order_list_query(status_filter_list=["SUBMITTED", "WAITING_SUBMIT"])  # noqa: E501
-            if ret == 0 and not data.empty:
-                for _, row in data.iterrows():
-                    ctx.modify_order(
-                        ModifyOrderOp.CANCEL,
-                        row["order_id"],
-                        0,
-                        0,
-                        trd_env=row["trd_env"],
-                    )  # noqa: E501
-                    logger.warning(f"🛑 [KILL SWITCH] 撤单指令已发送: {row['order_id']}")  # noqa: E501
-
-        # 💡 2. 遍历持仓并下达市价平仓指令
-        def close_all_positions():
-            ret_pos, pos_data = ctx.position_list_query()
-            if ret_pos == 0 and not pos_data.empty:
-                for _, row in pos_data.iterrows():
-                    qty = float(row.get("qty", 0))
-                    if qty == 0:
-                        continue
-
-                    symbol = row["code"]
-                    pos_side = row.get("position_side", "LONG")  # 兼容不同账户类型
-
-                    trd_side = TrdSide.SELL if pos_side == "LONG" else TrdSide.BUY
-
-                    logger.warning(f"💥 [KILL SWITCH] 正在市价平仓: {symbol} 数量 {abs(qty)} 方向 {trd_side}")  # noqa: E501
-                    ctx.place_order(
-                        price=0.0,
-                        qty=abs(qty),
-                        code=symbol,
-                        trd_side=trd_side,
-                        order_type=OrderType.MARKET,
-                        trd_env=row["trd_env"],
-                    )
-
-        # 由于 Futu API 大部分为同步阻塞调用，将其包装进线程池中运行，避免阻塞 FastAPI 事件循环  # noqa: E501
-        await asyncio.to_thread(cancel_all_orders)
-        await asyncio.sleep(0.5)  # 💡 给交易所撤单确认时间，释放冻结的持仓资产
-        await asyncio.to_thread(close_all_positions)
-
-        logger.warning("✅ [KILL SWITCH] 物理清仓程序全部下达完毕。")
-        # OMS-03: 持久化层熔断
-        await oms_service.mark_all_orders_cancelled(db)
-        # OMS-05: 终止所有 Bot 算力节点
-        await bot_runtime.stop_all_bots()
-        # OMS-08: 取消所有算法拆单
-        await algo_engine.cancel_all()
-
-    except Exception as e:
-        logger.error(f"🚨 [KILL SWITCH] 物理清仓执行异常: {str(e)}")
+    await run_emergency_liquidation(db)
 
 
 @router.post("/kill_switch")
@@ -177,15 +102,10 @@ async def trigger_kill_switch(
     瞬间阻断所有实盘 Bot 的进程信号并下达市价全平指令给券商网关
     """
     try:
-        # 发布高优 PubSub 事件，由底层 C++/Rust 网关或者守护进程拦截并紧急市价平仓
-        await redis_client.publish("oms:kill_switch", "ENGAGE")
-        # 记录持久化状态 (进入风控审核期前禁止新订单)
-        await redis_client.set("oms:status", "KILLED", ex=3600)
+        from backend.app.oms_app import engage_kill_switch_flags, run_emergency_liquidation
 
-        # 💡 将物理级清仓逻辑委托给后台任务，保证 API 的极速响应
-        background_tasks.add_task(execute_emergency_liquidation, db)
-
-        # OMS-12: 审计日志
+        await engage_kill_switch_flags()
+        background_tasks.add_task(run_emergency_liquidation, db)
         log_audit(db, action="kill_switch", detail={"timestamp": req.timestamp}, request=request)
 
         return {
@@ -361,16 +281,55 @@ async def cancel_algo_order(algo_id: str):
     return {"status": "success", "message": f"算法 {algo_id} 已取消"}
 
 
+class AlgoAnalyticsReq(BaseModel):
+    benchmark_price: float
+    market_volume: int = 0
+    market_vwap: float = 0
+    fills: list = []
+
+
+@router.post("/algo/analytics/{algo_id}")
+async def get_algo_analytics(algo_id: str, req: AlgoAnalyticsReq):
+    """
+    TRADE-02: 算法执行分析报告。
+
+    返回滑点、VWAP 偏离、参与率、Implementation Shortfall 等指标。
+    """
+    order = algo_engine._orders.get(algo_id)
+    if not order:
+        raise HTTPException(status_code=404, detail=f"算法 {algo_id} 不存在")
+
+    report = algo_analytics.execution_report(
+        algo_id=order.algo_id,
+        algo_type=order.algo_type,
+        symbol=order.symbol,
+        side=order.side,
+        target_qty=order.target_qty,
+        filled_qty=order.filled_qty,
+        total_cost=order.total_cost,
+        benchmark_price=req.benchmark_price,
+        market_volume=req.market_volume,
+        market_vwap=req.market_vwap,
+        fills=req.fills,
+        duration_minutes=order.duration_minutes,
+    )
+
+    return {"status": "success", "data": report}
+
+
 # ── 交易模式 (OMS-11) ─────────────────────────────────────────────────────
 
 _TRADING_MODE_KEY = "quant:oms:trading_mode"  # Redis 键: 运行时交易模式
+
+
+_VALID_TRADING_MODES = frozenset({"SANDBOX", "PAPER", "LIVE"})
 
 
 async def _get_trading_mode() -> str:
     """获取当前交易模式: 优先读 Redis 热切换值，降级读环境变量"""
     try:
         mode = await redis_client.get(_TRADING_MODE_KEY)
-        if mode in ("SANDBOX", "LIVE"):
+        if mode in _VALID_TRADING_MODES:
             return mode
     except Exception:
         pass
@@ -379,7 +338,7 @@ async def _get_trading_mode() -> str:
 
 @router.get("/mode")
 async def get_trading_mode():
-    """OMS-11: 获取当前交易模式 (SANDBOX/LIVE) — 支持热切换"""
+    """OMS-11 / FE-PROD-02: 获取当前交易模式 (SANDBOX/PAPER/LIVE)"""
     mode = await _get_trading_mode()
     return {"status": "success", "data": {"mode": mode}}
 
@@ -387,11 +346,11 @@ async def get_trading_mode():
 @router.post("/mode/switch")
 async def switch_trading_mode(request: Request, req: ModeSwitchReq, db: Session = Depends(get_db)):
     """
-    OMS-11: 热切换交易模式 (SANDBOX/LIVE)
-    写入 Redis 后立即生效，所有交易逻辑实时读取新模式
+    OMS-11 / FE-PROD-02: 热切换交易模式 (SANDBOX/PAPER/LIVE)
+    写入 Redis 后立即生效；非 LIVE 均不走真实资金（PAPER = 纸面账本语义）。
     """
-    if req.mode not in ("SANDBOX", "LIVE"):
-        raise HTTPException(status_code=400, detail="模式必须为 SANDBOX 或 LIVE")
+    if req.mode not in _VALID_TRADING_MODES:
+        raise HTTPException(status_code=400, detail="模式必须为 SANDBOX、PAPER 或 LIVE")
 
     current = await _get_trading_mode()
 
