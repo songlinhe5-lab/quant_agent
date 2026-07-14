@@ -25,7 +25,7 @@ import os
 import sys
 import time
 from contextlib import asynccontextmanager
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import redis.asyncio as aioredis
 from dotenv import load_dotenv
@@ -35,10 +35,10 @@ from fastapi import FastAPI
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 load_dotenv()
 
-from backend.core.logger import logger
-from backend.core.service_registry import NodeInfo, ServiceRegistry
-from data_subservice.routes import router as ds_router
-from data_subservice.yfinance_worker import YFinanceWorker
+from backend.core.logger import logger  # noqa: E402
+from backend.core.service_registry import NodeInfo, ServiceRegistry  # noqa: E402
+from data_subservice.routes import router as ds_router  # noqa: E402
+from data_subservice.yfinance_worker import YFinanceWorker  # noqa: E402
 
 # DIST-22: 可选 Finnhub Worker
 try:
