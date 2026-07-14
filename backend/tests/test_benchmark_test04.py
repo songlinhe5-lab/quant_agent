@@ -29,11 +29,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-# 检查 pytest-benchmark 是否可用，若不可用则跳过整个模块
+# 检查 pytest-benchmark 是否已安装且插件可用，否则跳过整个模块
 try:
-    import pytest_benchmark  # noqa: F401
-except ImportError:
-    pytest.skip("pytest-benchmark 未安装，跳过性能基准测试", allow_module_level=True)
+    from importlib.metadata import version
+
+    version("pytest-benchmark")
+    import pytest_benchmark.plugin  # noqa: F401
+except Exception:
+    pytest.skip("pytest-benchmark 插件不可用，跳过性能基准测试", allow_module_level=True)
 
 from backend.core.alert_models import (
     AlertChannel,
