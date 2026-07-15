@@ -21,6 +21,8 @@ export function useOms() {
   const [historicalTrades, setHistoricalTrades] = useState<HistoricalTrade[]>([])
   const [algoExecutions, setAlgoExecutions] = useState<AlgoExecution[]>([])
   const [positions, setPositions] = useState<Position[]>([])
+  // 💡 Futu OpenD 连接状态：区分"未连接"与"真·0 持仓"，避免误导用户
+  const [futuStatus, setFutuStatus] = useState<{ connected: boolean; status: string; error_msg?: string } | null>(null)
   const [cancelingOrders, setCancelingOrders] = useState<Set<string>>(new Set())
   const [showAlgoModal, setShowAlgoModal] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<ActiveOrder | null>(null)
@@ -31,6 +33,23 @@ export function useOms() {
   const setTradingMode = useTradingModeStore((s) => s.setMode)
   const logsEndRefs = useRef<{ [key: string]: HTMLDivElement | null }>({})
   const keepAliveActive = useKeepAliveActive()
+
+  // 💡 探测 Futu OpenD 连接状态（供持仓空态区分"未连接" vs "真·0 仓"）
+  const fetchFutuStatus = async () => {
+    try {
+      const res = await apiClient.get('/api/v1/futu/source')
+      const local = res?.data?.local
+      if (local) {
+        setFutuStatus({
+          connected: !!local.connected,
+          status: local.status || '',
+          error_msg: local.error_msg,
+        })
+      }
+    } catch {
+      // 状态探测失败不阻断主流程，保持上一次的状态
+    }
+  }
 
   // 💡 接入真实 WebSocket 数据流
   useEffect(() => {
@@ -59,6 +78,8 @@ export function useOms() {
         } else if (isMounted && posRes?.data?.status === 'success') {
           setPositions(posRes.data.data || [])
         }
+        // OMS-04.1: 同步拉取 Futu 连接状态，区分"未连接"与"真·0 仓"
+        if (isMounted) await fetchFutuStatus()
       } catch (error) {
         console.error("Failed to fetch initial OMS state:", error)
         toast({
@@ -155,6 +176,9 @@ export function useOms() {
     fetchInitialState()
     connect()
 
+    // 💡 每 30s 轮询 Futu 连接状态（与持仓同步守护进程同频），连接恢复时实时反映
+    const futuStatusTimer = setInterval(fetchFutuStatus, 30000)
+
     // 💡 页面可见性 / keep-alive 激活态变化
     const handleVisibilityOrActive = () => {
       if (!isMounted) return
@@ -169,6 +193,7 @@ export function useOms() {
     return () => {
       isMounted = false
       clearTimeout(reconnectTimer)
+      clearInterval(futuStatusTimer)
       document.removeEventListener('visibilitychange', handleVisibilityOrActive)
       ws?.close()
     }
@@ -286,6 +311,7 @@ export function useOms() {
     algoExecutions,
     positions,
     cancelingOrders,
+    futuStatus,
     showAlgoModal,
     setShowAlgoModal,
     selectedOrder,
