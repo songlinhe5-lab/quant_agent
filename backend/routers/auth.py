@@ -26,6 +26,7 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7  # Refresh Token 有效期设为 7 天
 
 # tokenUrl 指明了 Swagger UI 等工具要去哪个接口获取 Token
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
 def _create_jwt_token(data: dict, expires_delta: timedelta, token_type: Optional[str] = None):  # noqa: E501
@@ -66,7 +67,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 
 def get_current_user_optional(
-    token: Optional[str] = Depends(oauth2_scheme),
+    token: Optional[str] = Depends(oauth2_scheme_optional),
     db: Session = Depends(get_db),
 ) -> Optional[str]:
     """可选认证：有 token 就解析返回 username，没有就返回 None"""
