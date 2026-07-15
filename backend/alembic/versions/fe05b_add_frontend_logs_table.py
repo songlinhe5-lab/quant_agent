@@ -8,9 +8,8 @@ FE-05b: 前端日志采集表
 """
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "fe05b_frontend_logs"
