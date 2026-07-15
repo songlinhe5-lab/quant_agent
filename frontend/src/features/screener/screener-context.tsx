@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useToast } from '@/hooks/use-toast'
 import { useWatchlist } from '@/stores/use-watchlist'
-import { apiClient, getAccessToken } from '@/lib/api-client'
+import { apiClient, getAccessToken, refreshAccessToken, isTokenExpired } from '@/lib/api-client'
 import { market } from '@/lib/proto/market'
 import { getZhLabel, formatDisplaySymbol, type SortKey } from '@/features/screener/shared'
 
@@ -263,9 +263,15 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     isMountedRef.current = true;
     let reconnectTimer: NodeJS.Timeout;
-    const connectWS = () => {
-      const token = getAccessToken();
+    const connectWS = async () => {
+      let token = getAccessToken();
       if (!token) { console.warn('[Screener WS] 无认证 token，跳过连接'); return; }
+      // 💡 WS 层无 401 拦截器，需主动续期即将过期/已过期的 token（后端 TTL 仅 15 分钟）
+      if (isTokenExpired(token)) {
+        const refreshed = await refreshAccessToken();
+        if (!refreshed) { console.warn('[Screener WS] Token 刷新失败，停止重连，请重新登录'); return; }
+        token = refreshed;
+      }
       // 💡 动态协议检测：HTTPS 页面必须使用 WSS
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       try {
