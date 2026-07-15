@@ -63,10 +63,19 @@ def format_yf_ticker(ticker: str) -> str:
         "USDCNH": "USDCNH=X",
         "CNH=X": "USDCNH=X",
         "BTC": "BTC-USD",
+        "BTCUSD": "BTC-USD",
+        "ETH": "ETH-USD",
+        "ETHUSD": "ETH-USD",
         "CL=F": "CL=F",
     }
     if yf_ticker in index_map:
         return index_map[yf_ticker]
+
+    # 💡 加密货币裸符号防御：BTCUSD/ETHUSD 等无分隔符形式统一转为 YFinance 的 *-USD 格式
+    if yf_ticker.endswith("USD") and yf_ticker not in ("USDCUSD", "USDTUSD"):
+        base = yf_ticker[:-3]
+        if base.isalpha():
+            return f"{base}-USD"
 
     if yf_ticker.endswith(".HK") or yf_ticker.startswith("HK."):
         code = yf_ticker.replace(".HK", "").replace("HK.", "")
