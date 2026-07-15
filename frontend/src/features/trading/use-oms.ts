@@ -6,6 +6,7 @@ import { apiClient, API_BASE_URL, getAccessToken } from '@/lib/api-client'
 import { confirmDanger } from '@/components/confirm-dialog'
 import type { LiveBot, ActiveOrder, HistoricalTrade, AlgoExecution, Position } from './oms-types'
 import { useTradingModeStore } from '@/stores/useTradingModeStore'
+import { useBackendStatusStore } from '@/stores/useBackendStatusStore'
 import {
   applyTradingModeFromWs,
   requestTradingModeSwitch,
@@ -83,7 +84,11 @@ export function useOms() {
       ws = new WebSocket(wsUrl)
 
       ws.onopen = () => {
-        if (isMounted) setIsStale(false)
+        if (isMounted) {
+          setIsStale(false)
+        }
+        // WS 握手成功 = 后端在线（覆盖"REST 正常但 WS 故障"的纯 WS 不可达场景）
+        useBackendStatusStore.getState().registerSuccess()
         console.log('[OMS WS] Connected.')
       }
 
@@ -138,9 +143,12 @@ export function useOms() {
         }
       }
 
-      ws.onerror = (err) => {
-        console.error('[OMS WS] Error:', err)
-        ws?.close()
+      ws.onerror = () => {
+        // WebSocket 的 error 事件规范上不携带可读错误信息（仅 type:'error' 的 Event 空壳），
+        // 连接级错误统一视为后端不可达，计入离线检测；重连交由 onclose 处理。
+        useBackendStatusStore.getState().registerFailure('OMS WebSocket 连接失败')
+        console.warn('[OMS WS] 连接错误，等待 onclose 触发重连（后端可能不可达）')
+        // 不在此显式 close()：error 后浏览器必定自动触发 onclose，重复 close 可能引发重连风暴
       }
     }
 
