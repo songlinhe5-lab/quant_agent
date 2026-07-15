@@ -365,9 +365,10 @@ def compute_option_chain_greeks(
         # 中间价
         mid_price = (bid + ask) / 2 if bid > 0 and ask > 0 else max(bid, ask)
 
-        # 计算 IV
-        iv = None
-        if mid_price > 0:
+        # 计算 IV：优先使用数据源已提供的 iv(YFinance 直接给出，最权威)，
+        # 否则用中间价反解 BS 隐含波动率
+        iv = opt.get("iv")
+        if not iv and mid_price > 0:
             iv = implied_vol(mid_price, spot_price, strike, T, risk_free_rate, opt_type)
 
         # 计算 Greeks (使用 IV 或默认 30%)

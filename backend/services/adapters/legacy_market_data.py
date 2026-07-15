@@ -50,17 +50,29 @@ class MarketDataGateway:
 
     async def get_option_chain(self, ticker: str, expiration_date: str = "") -> dict[str, Any]:
         res = await self._futu.get_option_chain(ticker, expiration_date)
-        if res.get("status") == "error":
-            msg = res.get("message", "")
-            if "原生不支持" not in msg:
-                pass  # 继续尝试 YF 降级
+        # 💡 Futu 快照期权链常只含 option_code/strike_price 而无定价字段(bid/ask/IV)，
+        # 此时虽 status=success 却无法用于 Greeks/IV 计算 → 降级到 YFinance 补全定价数据。
+        if res.get("status") == "error" or self._option_chain_lacks_pricing(res):
             yf_fallback = await self._option_chain_yfinance(ticker, expiration_date)
-            if yf_fallback is not None:
+            if yf_fallback is not None and yf_fallback.get("status") == "success":
                 return yf_fallback
         return res
 
+    @staticmethod
+    def _option_chain_lacks_pricing(res: dict) -> bool:
+        """判断 Futu 期权链是否缺少定价字段(无法计算 Greeks/IV 即视为残缺)"""
+        opts = (res.get("data") or {}).get("options") or []
+        if not opts:
+            return False
+        pricing_keys = ("last_price", "bid", "ask", "implied_volatility")
+        for o in opts[:5]:
+            if any(k in o for k in pricing_keys):
+                return False
+        return True
+
     async def _option_chain_yfinance(self, ticker: str, expiration_date: str) -> Optional[dict[str, Any]]:
         import asyncio
+        from datetime import datetime
 
         import yfinance as yf
 
@@ -76,27 +88,35 @@ class MarketDataGateway:
                 }
             target_date = expiration_date if expiration_date in dates else dates[0]
             chain = tk.option_chain(target_date)
-            compressed = []
-            for _, row in chain.calls.head(30).iterrows():
-                compressed.append(
-                    {
-                        "option_code": str(row.get("contractSymbol", "")),
-                        "option_type": "CALL",
-                        "strike_price": float(row.get("strike", 0.0)),
-                        "last_price": float(row.get("lastPrice", 0.0) or 0.0),
-                        "implied_volatility": float(row.get("impliedVolatility", 0.0) or 0.0),
-                    }
-                )
-            for _, row in chain.puts.head(30).iterrows():
-                compressed.append(
-                    {
-                        "option_code": str(row.get("contractSymbol", "")),
-                        "option_type": "PUT",
-                        "strike_price": float(row.get("strike", 0.0)),
-                        "last_price": float(row.get("lastPrice", 0.0) or 0.0),
-                        "implied_volatility": float(row.get("impliedVolatility", 0.0) or 0.0),
-                    }
-                )
+            # 到期天数(供 Greeks 计算)
+            try:
+                dte = max((datetime.strptime(target_date, "%Y-%m-%d") - datetime.now()).days, 1)
+            except Exception:
+                dte = 30
+
+            def _norm(row, opt_type: str) -> dict[str, Any]:
+                strike = float(row.get("strike", 0.0) or 0.0)
+                last = float(row.get("lastPrice", 0.0) or 0.0)
+                iv = float(row.get("impliedVolatility", 0.0) or 0.0)
+                # 💡 归一化为引擎统一 schema:
+                # - strike 别名(strike_price 同时保留，向后兼容)
+                # - bid/ask 由 last_price 推导(供 compute_option_chain_greeks 反解 IV)
+                # - iv 别名(供 vol_smile_analysis 直接使用 YF 的 IV)
+                return {
+                    "option_code": str(row.get("contractSymbol", "")),
+                    "option_type": opt_type,
+                    "strike_price": strike,
+                    "strike": strike,
+                    "last_price": last,
+                    "bid": last,
+                    "ask": last,
+                    "implied_volatility": iv,
+                    "iv": iv,
+                    "days_to_expiry": dte,
+                }
+
+            compressed = [(_norm(row, "CALL")) for _, row in chain.calls.head(30).iterrows()]
+            compressed += [(_norm(row, "PUT")) for _, row in chain.puts.head(30).iterrows()]
             return {
                 "status": "success",
                 "data": {
