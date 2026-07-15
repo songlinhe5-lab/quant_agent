@@ -41,7 +41,11 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
       }
 
       try {
-        const sym = selectedSymbol.replace('/', '')
+        // 💡 加密货币规范化：BTC/USD -> BTC-USD（与系统 YFinance 约定对齐，避免后端 format_yf_ticker 不识别 BTCUSD 而 400）
+        const rawSym = selectedSymbol.replace('/', '')
+        const sym = /^(BTC|ETH|SOL|BNB|USDC?|USDT|XRP|DOGE|ADA|AVAX|TON|TRX|DOT|MATIC|LTC|LINK|NEAR|APT|ARB|OP|INJ|SUI|STX|IMX|FIL|ETC|ATOM|UNI|LDO|CRV|MKR|SAND|AXS|MANA|THETA|EGLD|FTM|ALGO|HBAR|VET|ICP|FLOW|CHZ|ENJ|GALA|SUSHI|COMP|AAVE|SNX|YFI|1INCH|BCH|EOS|XLM|XMR|ZEC|DASH|WAVES|KAVA|RUNE|KSM|CELO|FLOW)USD$/i.test(rawSym)
+          ? rawSym.slice(0, -3) + '-USD'
+          : rawSym
         const ktypeMap: Record<string, string> = { 
           '1m': 'K_1M',    // 分时图
           'tick': 'K_1M',  // Tick图 (实时折线图，不需要历史数据)
