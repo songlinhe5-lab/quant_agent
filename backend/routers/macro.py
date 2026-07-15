@@ -252,7 +252,9 @@ async def _fetch_earnings_calendar_data(days_ahead: int, force_refresh: bool = F
                 return json.loads(cached_data)
 
         try:
-            res = await market_data.get_earnings_calendar(days_ahead, days_back=days_back, skip_cache=force_refresh)  # noqa: E501
+            # 💡 用关键字传参：生产 market_data 实际是 MarketDataGateway 适配器
+            # (get_earnings_calendar(self, **kwargs))，位置参数 days_ahead 会触发 TypeError 被静默吞成空
+            res = await market_data.get_earnings_calendar(days_ahead=days_ahead, days_back=days_back, skip_cache=force_refresh)  # noqa: E501
             if res.get("status") != "success":
                 return res
 
