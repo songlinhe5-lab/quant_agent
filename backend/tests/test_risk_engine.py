@@ -249,7 +249,7 @@ class TestRiskEngine:
         engine = RiskEngine()
         result = engine._fallback_data("测试降级")
 
-        assert result["status"] == "error"
+        assert result["status"] == "empty"
         assert result["message"] == "测试降级"
         assert result["kpi"]["nav"] == 0
         assert result["exposure"] == []
@@ -286,7 +286,7 @@ class TestRiskEngine:
 
         result = asyncio.run(engine.get_portfolio_risk(days=1))
 
-        assert result["status"] == "error"
+        assert result["status"] == "empty"
         assert "均获取失败" in result["message"]
 
     @patch("backend.services.risk_engine.redis_client")

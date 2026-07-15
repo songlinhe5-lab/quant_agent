@@ -4,7 +4,7 @@ import os
 import random
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -138,6 +138,107 @@ class FREDService:
                     "message": f"获取 FRED 数据时发生未知异常: {str(e)}",
                 }  # noqa: E501
 
+    # 💡 事件关键词 -> FRED 权威序列映射 (美国核心 + 国际序列尝试)
+    # 用于 actual 回填：当 AKShare/Finnhub/FRED 日历事件 actual 为空时，按映射查 FRED 最新观测回填。
+    EVENT_TO_FRED_SERIES: Dict[str, str] = {
+        # 美国核心
+        "core pce": "PCEPILFE",
+        "pce": "PCEPI",
+        "core cpi": "CPILFESL",
+        "cpi": "CPIAUCSL",
+        "inflation": "CPIAUCSL",
+        "unemployment": "UNRATE",
+        "nonfarm": "PAYEMS",
+        "non-farm": "PAYEMS",
+        "payroll": "PAYEMS",
+        "gdp": "GDP",
+        "fed funds": "FEDFUNDS",
+        "federal funds": "FEDFUNDS",
+        "initial jobless": "ICSA",
+        "jobless claims": "ICSA",
+        "retail sales": "RSAFS",
+        "industrial production": "INDPRO",
+        # 国际序列尝试 (FRED 国际序列不齐，查不到则优雅跳过)
+        "india cpi": "INDCPALTT01IXNBM",
+        "india inflation": "INDCPALTT01IXNBM",
+    }
+
+    @staticmethod
+    def _parse_date(s: str) -> Optional[datetime]:
+        s = (s or "").strip()
+        if not s:
+            return None
+        for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+            try:
+                return datetime.strptime(s[:19], fmt)
+            except ValueError:
+                continue
+        return None
+
+    def _match_fred_series(self, event: Dict[str, Any]) -> Optional[str]:
+        """按事件文本与国家匹配 FRED 序列 (美国核心 + 印度国际序列尝试)。"""
+        text = f"{event.get('event', '')} {event.get('country', '')}".lower()
+        is_us = event.get("country") == "US" or "us" in text or "united states" in text or "美国" in text
+        is_india = "india" in text
+        if is_india and not is_us:
+            for kw, sid in self.EVENT_TO_FRED_SERIES.items():
+                if kw.startswith("india") and kw in text:
+                    return sid
+            return None
+        if not is_us:
+            return None
+        for kw, sid in self.EVENT_TO_FRED_SERIES.items():
+            if not kw.startswith("india") and kw in text:
+                return sid
+        return None
+
+    async def backfill_actuals(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """用 FRED 权威序列回填事件的 actual（美国核心 + 尝试国际序列）。
+
+        - 仅对 actual 为空、且能匹配到 FRED 序列的事件回填。
+        - 取观测日期 <= 事件日期的最新观测值写入 actual。
+        - 各序列仅查一次（get_series_observations 自带 12h 缓存）。
+        """
+        if not self.api_key:
+            return events
+
+        need: Dict[str, List[int]] = {}
+        for idx, ev in enumerate(events):
+            if ev.get("actual"):
+                continue
+            sid = self._match_fred_series(ev)
+            if sid:
+                need.setdefault(sid, []).append(idx)
+        if not need:
+            return events
+
+        series_cache: Dict[str, List[Dict[str, Any]]] = {}
+        for sid in need:
+            try:
+                res = await self.get_series_observations(sid, limit=24)
+                if res.get("status") == "success":
+                    series_cache[sid] = res.get("data", [])
+            except Exception as e:
+                print(f"⚠️ [FRED] 回填序列 {sid} 查询失败: {e}")
+
+        for sid, idxs in need.items():
+            obs = series_cache.get(sid, [])
+            for idx in idxs:
+                ev_date = self._parse_date(events[idx].get("time", ""))
+                if not ev_date:
+                    continue
+                # 取日期 <= 事件日期的最新观测 (与序列返回顺序无关)
+                best_obs = None
+                for o in obs:
+                    odate = self._parse_date(o.get("date", ""))
+                    if odate is None or o.get("value") is None:
+                        continue
+                    if odate <= ev_date and (best_obs is None or odate > self._parse_date(best_obs.get("date", ""))):
+                        best_obs = o
+                if best_obs is not None:
+                    events[idx]["actual"] = str(best_obs["value"])
+        return events
+
     @with_global_retry
     async def get_economic_calendar(
         self, days_ahead: int = 7, days_back: int = 0, skip_cache: bool = False
@@ -215,6 +316,12 @@ class FREDService:
 
                 # 💡 恢复为符合日历显示的正序 (时间从小到大)
                 events.reverse()
+
+                # 💡 FRED 降级路径就地回填 actual，使降级不再丢失实际公布值
+                try:
+                    events = await self.backfill_actuals(events)
+                except Exception as e:
+                    print(f"⚠️ [FRED] 日历 actual 回填异常: {e}")
 
                 result = {"status": "success", "data": events, "source": "fred"}
                 ttl = 43200 + random.randint(100, 600)

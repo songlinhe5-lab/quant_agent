@@ -43,30 +43,31 @@ class TestMacroCalendar:
         assert data["status"] == "success"
 
     def test_calendar_akshare_success(self, client):
-        """AkShare 正常返回:时区转换 + 高危关键词识别"""
+        """聚合器正常返回:高危关键词识别 + AI 推演 + 多源贡献透传"""
         with (
             patch("backend.routers.macro.redis_client") as m_redis,
-            patch("backend.routers.macro.market_data") as m_ak,
+            patch("backend.services.macro_calendar_service.macro_calendar_aggregator") as m_agg,
             patch("backend.routers.macro.llm_service") as m_llm,
         ):
             m_redis.get = AsyncMock(return_value=None)
             m_redis.set = AsyncMock(return_value=True)
             m_redis.setex = AsyncMock(return_value=True)
-            m_ak.get_economic_calendar_ak = AsyncMock(
+            m_agg.aggregate = AsyncMock(
                 return_value={
                     "status": "success",
-                    "source": "jin10",
                     "data": [
                         {
-                            "event": "FOMC Rate Decision",
-                            "time": "2026-06-29 02:00:00",
+                            "date": "2026-06-29T06:00:00Z",
                             "country": "US",
+                            "event": "FOMC Rate Decision",
                             "impact": "medium",
                             "previous": "4.5",
                             "estimate": "4.5",
                             "actual": "",
                         }
                     ],
+                    "sources_contributed": ["akshare", "finnhub", "dbnomics"],
+                    "message": "聚合完成",
                 }
             )
             # LLM 推演 mock
@@ -83,19 +84,29 @@ class TestMacroCalendar:
         assert len(data["data"]) == 1
         # FOMC 关键词应被识别为 high
         assert data["data"][0]["impact"] == "high"
+        # 聚合器多源贡献透传
+        assert data["sources_contributed"] == ["akshare", "finnhub", "dbnomics"]
 
     def test_calendar_fallback_to_mock_when_all_sources_fail(self, client):
-        """所有数据源失败:返回 500 错误"""
+        """聚合器无数据:降级返回离线 Mock (status=warning, HTTP 200)"""
         with (
             patch("backend.routers.macro.redis_client") as m_redis,
-            patch("backend.routers.macro.market_data") as m_ak,
+            patch("backend.services.macro_calendar_service.macro_calendar_aggregator") as m_agg,
         ):
             m_redis.get = AsyncMock(return_value=None)
             m_redis.set = AsyncMock(return_value=True)
-            m_ak.get_economic_calendar_ak = AsyncMock(return_value={"status": "error"})
-            m_ak.get_economic_calendar = AsyncMock(return_value={"status": "error"})
+            m_agg.aggregate = AsyncMock(
+                return_value={
+                    "status": "warning",
+                    "data": [],
+                    "sources_contributed": [],
+                    "message": "无数据",
+                }
+            )
             resp = client.get("/api/v1/macro/calendar?days_ahead=7")
-        assert resp.status_code == 500
+        assert resp.status_code == 200
+        data = resp.json().get("data", resp.json())
+        assert data["status"] == "warning"
 
     def test_calendar_invalid_days_param_returns_422(self, client):
         """参数校验:days_ahead 超出 [1,30] 范围返回 422"""

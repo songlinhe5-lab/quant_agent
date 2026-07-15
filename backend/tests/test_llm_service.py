@@ -43,7 +43,7 @@ class TestLLMServiceInit:
         service = LLMService()
         assert service.api_key == ""
         assert service.base_url == "https://api.deepseek.com"
-        assert service.model_name == "deepseek-chat"
+        assert service.model_name == "deepseek-v4-flash"
 
     def test_client_timeout(self):
         """测试客户端超时设置"""
