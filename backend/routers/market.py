@@ -887,7 +887,9 @@ async def get_insider_marquee(limit: int = 10):
 async def get_insider_transactions(ticker: str, limit: int = 50):
     """获取个股高管内幕交易记录，供前端气泡图渲染"""
     # 格式化 ticker (如 US.AAPL -> AAPL, 内部 service 已处理)
-    res = await market_data.get_insider_transactions(ticker, limit)
+    # 💡 用关键字传参：market_data 是 MarketDataGateway 适配器 (get_insider_transactions(self, ticker, **kwargs))，
+    # limit 作为位置参数会触发 TypeError 未被捕获导致 500（与 earnings 同类地雷）。
+    res = await market_data.get_insider_transactions(ticker, limit=limit)
     if res.get("status") == "error":
         raise HTTPException(status_code=400, detail=res.get("message"))
     return res
