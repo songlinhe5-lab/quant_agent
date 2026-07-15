@@ -26,6 +26,7 @@ router = APIRouter(prefix="/logs", tags=["Frontend Logs"])
 
 class LogEntrySchema(BaseModel):
     """单条前端日志"""
+
     timestamp: str = Field(description="ISO 8601 时间戳")
     level: int = Field(description="日志级别: 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR")
     message: str = Field(max_length=2048)
@@ -35,11 +36,13 @@ class LogEntrySchema(BaseModel):
 
 class LogBatchSchema(BaseModel):
     """批量日志请求体"""
+
     logs: List[LogEntrySchema] = Field(min_length=1, max_length=100)
 
 
 class LogResponseSchema(BaseModel):
     """日志响应"""
+
     id: int
     timestamp: str
     level: str
@@ -147,12 +150,7 @@ async def query_frontend_logs(
                     pass
 
             total = q.count()
-            logs = (
-                q.order_by(FrontendLog.timestamp.desc())
-                .offset(offset)
-                .limit(limit)
-                .all()
-            )
+            logs = q.order_by(FrontendLog.timestamp.desc()).offset(offset).limit(limit).all()
 
             return {
                 "total": total,

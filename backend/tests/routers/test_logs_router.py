@@ -152,7 +152,5 @@ class TestLogsRouterGet:
         from backend.routers.logs import query_frontend_logs
 
         with pytest.raises(HTTPException) as exc_info:
-            await query_frontend_logs(
-                level="INVALID", since=None, until=None, limit=100, offset=0, username=None
-            )
+            await query_frontend_logs(level="INVALID", since=None, until=None, limit=100, offset=0, username=None)
         assert exc_info.value.status_code == 400

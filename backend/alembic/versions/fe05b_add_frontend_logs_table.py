@@ -6,6 +6,7 @@ Create Date: 2026-07-14
 
 FE-05b: 前端日志采集表
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
@@ -30,7 +31,10 @@ def upgrade() -> None:
         sa.Column("page_url", sa.String(length=512), nullable=True),
         sa.Column("user_id", sa.Integer(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
-        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ),
+        sa.ForeignKeyConstraint(
+            ["user_id"],
+            ["users.id"],
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_frontend_logs_id"), "frontend_logs", ["id"], unique=False)
