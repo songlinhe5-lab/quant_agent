@@ -3,6 +3,7 @@ import { useToast } from '@/hooks/use-toast'
 import { apiClient, API_BASE_URL, getAccessToken, refreshAccessToken, isTokenExpired } from '@/lib/api-client'
 import { market } from '@/lib/proto/market'
 import { WatchlistItem } from '@/stores/use-watchlist'
+import { useKeepAliveActive } from '@/components/layout/keep-alive-outlet'
 
 interface UseMarketDataProps {
   selectedSymbol: string;
@@ -170,11 +171,15 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
   }, [selectedSymbol, watchlist.length])
 
   // 🚀 2. 建立高频 WebSocket 行情订阅 (Protobuf 解码)
+  const keepAliveActive = useKeepAliveActive()
   useEffect(() => {
     let isMounted = true
 
     async function connectWS() {
       if (watchlist.length === 0) return
+
+      // 💡 keep-alive 后台模块 / 页面隐藏时不建立 WS，避免多模块 WS 并发重连风暴
+      if (!keepAliveActive || document.visibilityState !== 'visible') return
 
       // 无 token 时不建立连接，避免 403 无限重连
       let token = getAccessToken()
@@ -284,10 +289,21 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
 
     connectWS()
     const handleOnlineWS = () => { 
+      if (!keepAliveActive || document.visibilityState !== 'visible') return
       if (wsRef.current) wsRef.current.close()
       setTimeout(() => { if (isMounted) connectWS() }, 500) 
     }
     window.addEventListener('online', handleOnlineWS)
+    // 💡 页面可见性 / keep-alive 激活态变化：隐藏或后台时断 WS，恢复时重连
+    const handleVisibilityOrActive = () => {
+      if (!isMounted) return
+      if (!keepAliveActive || document.visibilityState !== 'visible') {
+        if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); wsRef.current = null }
+      } else {
+        connectWS()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityOrActive)
 
     return () => {
       isMounted = false
@@ -298,13 +314,14 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
       }
       if (staleTimerRef.current) clearTimeout(staleTimerRef.current)
       window.removeEventListener('online', handleOnlineWS)
+      document.removeEventListener('visibilitychange', handleVisibilityOrActive)
       // Only close if OPEN - let CONNECTING sockets finish or fail naturally
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.close()
       }
       wsRef.current = null
     }
-  }, [selectedSymbol, watchlist.length])
+  }, [selectedSymbol, watchlist.length, keepAliveActive])
 
   return { realQuote, realHistory, setRealHistory, gatewayStatus, isStale, latestStatsRef }
 }

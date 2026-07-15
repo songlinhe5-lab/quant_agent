@@ -5,6 +5,7 @@ import { apiClient, API_BASE_URL, getAccessToken } from '@/lib/api-client'
 import type { CapitalFlowItem } from '@/services/mock'
 import { useSystemStore } from '@/stores/useSystemStore'
 import { useToast } from '@/hooks/use-toast'
+import { useKeepAliveActive } from '@/components/layout/keep-alive-outlet'
 import { MarketClocks, AssetButton, playAlertSound } from '@/features/data-center/shared'
 import { CapitalFlowPanel } from '@/features/data-center/capital-flow'
 import { MarketSentimentPanel } from '@/features/data-center/market-sentiment'
@@ -17,6 +18,7 @@ import { GlobalStyle } from '@/features/data-center/global-style'
 
 export function DataCenterModule() {
   const setWsStatus = useSystemStore((state) => state.setWsStatus)
+  const keepAliveActive = useKeepAliveActive()
   const [m, setM] = useState(false); const [fetching, setFetching] = useState(false); const [last, setLast] = useState(''); const [radarInfo, setRadarInfo] = useState(false); const [calendarInfo, setCalendarInfo] = useState(false); const navigate = useNavigate();
   const [assets, setAssets] = useState<any[]>([]); const [radar, setRadar] = useState<any[]>([]); const [events, setEvents] = useState<any[]>([]); const [news, setNews] = useState<any[]>([])
   const [capitalFlows, setCapitalFlows] = useState<CapitalFlowItem[]>([])
@@ -166,6 +168,8 @@ export function DataCenterModule() {
 
     const connect = () => {
       if (isUnmounted) return
+      // 💡 keep-alive 后台模块 / 页面隐藏时不建立 WS，避免多模块 WS 并发重连风暴
+      if (!keepAliveActive || document.visibilityState !== 'visible') return
       setWsStatus('CONNECTING')
 
       // 动态构建 WebSocket URL (安全替换 http 为 ws，适配环境变量)
@@ -220,16 +224,29 @@ export function DataCenterModule() {
 
     // 💡 断网恢复时主动重连 WebSocket
     const handleOnlineWS = () => {
+      if (!keepAliveActive || document.visibilityState !== 'visible') return
       if (ws) ws.close()
       setTimeout(() => { if (!isUnmounted) connect() }, 500)
     }
     window.addEventListener('online', handleOnlineWS)
+    // 💡 页面可见性 / keep-alive 激活态变化
+    const handleVisibilityOrActive = () => {
+      if (isUnmounted) return
+      if (!keepAliveActive || document.visibilityState !== 'visible') {
+        if (ws) { ws.onclose = null; ws.close(); ws = null }
+      } else {
+        connect()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityOrActive)
 
     return () => {
       clearTimeout(t); isUnmounted = true
-      window.removeEventListener('online', handleOnlineWS); ws?.close()
+      window.removeEventListener('online', handleOnlineWS)
+      document.removeEventListener('visibilitychange', handleVisibilityOrActive)
+      ws?.close()
     }
-  }, [])
+  }, [keepAliveActive])
 
   if (!m) return null
   return (<div className="space-y-2.5">

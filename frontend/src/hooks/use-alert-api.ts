@@ -6,6 +6,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
 import logger from '@/lib/logger'
+import { useKeepAliveActive } from '@/components/layout/keep-alive-outlet'
 import type {
   AlertRule,
   AlertEvent,
@@ -188,11 +189,14 @@ export function useAlertWebSocket(
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const onEventRef = useRef(onEvent)
   const onStatusRef = useRef(onStatus)
+  const keepAliveActive = useKeepAliveActive()
   onEventRef.current = onEvent
   onStatusRef.current = onStatus
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
+    // 💡 keep-alive 后台模块 / 页面隐藏时不建立 WS，避免多模块 WS 并发重连风暴
+    if (!keepAliveActive || document.visibilityState !== 'visible') return
 
     const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1'
     
@@ -232,13 +236,15 @@ export function useAlertWebSocket(
     ws.onclose = () => {
       logger.info('[AlertWS] 连接断开，5s 后重连')
       onStatusRef.current?.(false)
+      // 💡 后台/隐藏模块不重连，交由可见性/激活态恢复时统一重连
+      if (!keepAliveActive || document.visibilityState !== 'visible') return
       reconnectTimerRef.current = setTimeout(connect, 5000)
     }
 
     ws.onerror = () => {
       ws.close()
     }
-  }, [])
+  }, [keepAliveActive])
 
   const disconnect = useCallback(() => {
     if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
