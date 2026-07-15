@@ -2,11 +2,11 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from backend.services.macro_calendar_service import MacroCalendarAggregator
 import backend.services.macro_calendar_service as mcs
 from backend.services.dbnomics_service import dbnomics_service
-from backend.services.fred_service import fred_service
 from backend.services.finnhub_service import finnhub_service
+from backend.services.fred_service import fred_service
+from backend.services.macro_calendar_service import MacroCalendarAggregator
 from backend.services.rbi_service import rbi_service
 
 

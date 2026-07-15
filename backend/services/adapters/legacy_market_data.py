@@ -20,8 +20,8 @@ class MarketDataGateway:
 
     def __init__(self) -> None:
         from backend.services.akshare_service import akshare_service
-        from backend.services.finnhub_service import finnhub_service
         from backend.services.dbnomics_service import dbnomics_service
+        from backend.services.finnhub_service import finnhub_service
         from backend.services.fred_service import fred_service
         from backend.services.futu_service import futu_service
         from backend.services.rbi_service import rbi_service
