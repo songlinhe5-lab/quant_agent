@@ -6,6 +6,7 @@
 
 import type { ApiResponse } from '@/types/domain'
 import logger from '@/lib/logger'
+import { useBackendStatusStore } from '@/stores/useBackendStatusStore'
 
 // ─── 配置 ──────────────────────────────────────────────────────────
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
@@ -203,6 +204,9 @@ class RestClient {
 
       clearTimeout(timeoutId)
 
+      // 拿到任意 HTTP 响应（含 4xx/5xx）均说明后端在线 → 复位可达性状态、隐藏离线横幅
+      useBackendStatusStore.getState().registerSuccess()
+
       // 处理 401 - 尝试刷新 Token
       if (response.status === 401) {
         // 认证接口本身返回 401 → 清除 token 并跳转登录页
@@ -241,13 +245,18 @@ class RestClient {
       return this.handleResponse<T>(response)
     } catch (error) {
       clearTimeout(timeoutId)
-      
+
       if (error instanceof DOMException && error.name === 'AbortError') {
+        // 超时 = 后端无响应，计入网络层失败
+        useBackendStatusStore.getState().registerFailure('请求超时')
         throw new ApiError(408, '请求超时')
       }
-      
+
       if (error instanceof ApiError) throw error
-      
+
+      // 其余（TypeError: Failed to fetch / 代理连接失败 / 网络断开）均视为后端不可达
+      const msg = (error as Error)?.message || '网络异常'
+      useBackendStatusStore.getState().registerFailure(msg)
       logger.error('[API] 请求失败', error as Error, { method, path })
       throw new ApiError(500, '网络异常')
     }

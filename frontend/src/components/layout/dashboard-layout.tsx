@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { KeepAliveOutlet } from './keep-alive-outlet'
-import { Globe, BarChart3, ScanSearch, Code2, FlaskConical, Bot, ShieldAlert, Brain, Server, Bell } from 'lucide-react'
+import { Globe, BarChart3, ScanSearch, Code2, FlaskConical, Bot, ShieldAlert, Server, Bell } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -21,6 +21,7 @@ import { TradingModeBanner } from './trading-mode-banner'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { GlobalCopilotDrawer, CopilotEdgeHandle } from '@/features/copilot/global-copilot-drawer'
 import { GlobalSettingsDrawer } from '@/features/settings/settings-drawer'
+import { BackendStatusBanner } from './backend-status-banner'
 import { GlobalAlertGateway } from '@/features/alert/global-alert-gateway'
 import { hydrateTradingMode } from '@/features/trading/trading-mode-actions'
 import { MobileTabBar } from '@/components/layout/mobile-tab-bar'
@@ -55,7 +56,6 @@ const modules: NavItem[] = [
   { url: '/oms', name: '订单中枢与算力节点', label: 'OMS & Bots', icon: Bot, domain: 'trading', badge: '3' },
   { url: '/risk', name: '资产风控与高级归因', label: 'Risk', icon: ShieldAlert, domain: 'risk' },
   { url: '/alerts', name: '告警中心与推送', label: 'Alert Center', icon: Bell, domain: 'risk' },
-  { url: '/copilot', name: 'AI 投研大脑', label: 'AI Copilot', icon: Brain, domain: 'risk', action: 'copilot' },
   { url: '/apm', name: '系统性能监控', label: 'System APM', icon: Server, domain: 'system' },
 ]
 
@@ -170,6 +170,7 @@ export default function DashboardLayout() {
 
       <SidebarInset className="h-full min-h-0 overflow-hidden bg-background md:ml-[16rem] peer-data-[state=collapsed]:md:ml-[3rem]">
         <Navbar />
+        <BackendStatusBanner />
         <TradingModeBanner />
         <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* FE-29: desktop/wide/ultrawide 内容区；移动端预留 Tab Bar */}
