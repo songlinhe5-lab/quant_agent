@@ -53,7 +53,8 @@ export function HighlightedText({ text }: { text: string }) {
 export function MiniTrendLine({ data, isPositive }: { data: number[], isPositive: boolean }) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
-  if (!data || data.length === 0) return null
+  // 💡 至少需要 2 个点才能计算折线坐标；单点会因 (i/(length-1)) 除零得到 NaN，生成非法 "M NaN,20"
+  if (!data || data.length < 2) return null
   const min = Math.min(...data), max = Math.max(...data), range = max - min || 1
   const pts = data.map((d, i) => `${(i / (data.length - 1)) * 48},${20 - ((d - min) / range) * 16}`).join(' L ')
   return (

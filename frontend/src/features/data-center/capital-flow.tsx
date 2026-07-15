@@ -49,10 +49,13 @@ export function FlowItem({ item, onClick }: { item: CapitalFlowItem; onClick?: (
         <span className={cn('text-xs font-bold font-mono tabular-nums whitespace-nowrap transition-colors duration-500', inflow ? 'text-[#059669] dark:text-[#0ecb81]' : 'text-[#e11d48] dark:text-[#f6465d]')}>{inflow ? '+' : ''}{item.amount.toFixed(1)}<span className="text-[8px] ml-0.5 opacity-60">{item.unit}</span></span>
         <span className={cn('text-[9px] font-mono font-bold px-1.5 py-0.5 rounded flex-shrink-0 transition-colors duration-300 ml-auto', inflow ? 'bg-[#0ecb81]/15 text-[#059669] dark:text-[#0ecb81]' : 'bg-[#f6465d]/15 text-[#e11d48] dark:text-[#f6465d]')}>{inflow ? '流入' : '流出'}</span>
         <svg width="36" height="14" viewBox="0 0 36 14" aria-hidden="true" className="flex-shrink-0 opacity-60 ml-1.5">
-          <path
-            d={`M ${item.sparkDirs.reduce<{x:number;y:number}[]>((a,d,i)=>{const pY=a.length>0?a[a.length-1].y:7;a.push({x:(i/(item.sparkDirs.length-1))*32+2,y:Math.max(1.5,Math.min(12.5,pY-d*2))});return a},[]).map((p,i)=>`${i===0?'M':'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}`}
-            fill="none" stroke={inflow ? (isDark ? '#0ecb81' : '#059669') : (isDark ? '#f6465d' : '#e11d48')} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-          />
+          {/* 💡 sparkDirs 至少需 2 个点才能画出折线；map 已为首点加 M 前缀，外层不可再加，否则生成非法 "M Mx,y" */}
+          {item.sparkDirs && item.sparkDirs.length >= 2 && (
+            <path
+              d={item.sparkDirs.reduce<{x:number;y:number}[]>((a,d,i)=>{const pY=a.length>0?a[a.length-1].y:7;a.push({x:(i/(item.sparkDirs.length-1))*32+2,y:Math.max(1.5,Math.min(12.5,pY-d*2))});return a},[]).map((p,i)=>`${i===0?'M':'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}
+              fill="none" stroke={inflow ? (isDark ? '#0ecb81' : '#059669') : (isDark ? '#f6465d' : '#e11d48')} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+            />
+          )}
         </svg>
       </div>
       <div className="flex items-center justify-between w-full">
