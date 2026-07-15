@@ -323,7 +323,60 @@ jobs:
           fi
 
   # ==========================================
-  # Stage 4: Tailscale 跨节点连通性验证 (OPS-02)
+  # Stage 4: 部署后接口冒烟探针 (Smoke Probe)
+  # ==========================================
+  smoke_probe:
+    name: Smoke Probe Backend API
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    # 💡 仅 main 推送 / 手动触发且 deploy 成功时运行 (探针针对线上域名)
+    if: |
+      always() &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+       github.event_name == 'workflow_dispatch') &&
+      needs.deploy.result == 'success'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: 'latest'
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Set up Python
+        run: uv python install 3.13
+      # 部署后给容器 + Cloudflare 边缘一点就绪时间
+      - name: Wait for service rollout
+        run: sleep 30
+      - name: Smoke probe backend endpoints
+        env:
+          BACKEND_API_URL: https://quant-api.stephenhe.com/api/v1
+        run: |
+          for i in 1 2 3; do
+            echo "=== probe attempt $i/3 ==="
+            if uv run --no-sync --with httpx python scripts/probe_backend_health.py --strict; then
+              echo "SMOKE PROBE PASSED"
+              exit 0
+            fi
+            echo "probe attempt $i failed, retrying in 30s..."
+            sleep 30
+          done
+          echo "SMOKE PROBE FAILED after 3 attempts"
+          exit 1
+      - name: Smoke probe summary
+        if: always()
+        env:
+          BACKEND_API_URL: https://quant-api.stephenhe.com/api/v1
+        run: |
+          echo "## Smoke Probe (Backend API)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Target | ${{ env.BACKEND_API_URL }} |" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================
+  # Stage 5: Tailscale 跨节点连通性验证 (OPS-02)
   # ==========================================
   verify_tailscale:
     name: Verify Tailscale Connectivity
