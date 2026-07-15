@@ -66,11 +66,20 @@ class FinnhubService:
         url = f"{self.base_url}/calendar/earnings"
         params = {"from": start_date, "to": end_date, "token": api_key}
 
+        # 💡 财报日历端点对代理敏感：Finnhub 免费 key 经 PROXY_POOL 转发时易被限流返回空数组
+        # （HTTP 200 但 earningsCalendar=[]），导致前端误报"无财报"。默认直连以验证代理是否元凶，
+        # 如需恢复走代理可设 FINNHUB_EARNINGS_USE_PROXY=true。
+        earnings_proxy = (
+            self._get_proxy()
+            if os.getenv("FINNHUB_EARNINGS_USE_PROXY", "false").lower() == "true"
+            else None
+        )
+
         try:
             async with httpx.AsyncClient(
                 timeout=10.0,
                 verify=False,
-                proxy=self._get_proxy(),
+                proxy=earnings_proxy,
                 event_hooks={
                     "request": [httpx_log_request],
                     "response": [httpx_log_response],
