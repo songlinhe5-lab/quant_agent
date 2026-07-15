@@ -264,7 +264,7 @@ export const Navbar: React.FC = () => {
               className="flex items-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-800 p-1.5 rounded-lg transition-colors focus:outline-none"
             >
               <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-sm flex-shrink-0">
-                {user.username.charAt(0).toUpperCase()}
+                {user.username?.charAt(0)?.toUpperCase() ?? 'U'}
               </div>
               <span className="font-semibold text-slate-800 dark:text-slate-200">
                 {user.username}
