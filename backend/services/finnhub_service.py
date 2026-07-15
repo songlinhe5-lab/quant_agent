@@ -70,9 +70,7 @@ class FinnhubService:
         # （HTTP 200 但 earningsCalendar=[]），导致前端误报"无财报"。默认直连以验证代理是否元凶，
         # 如需恢复走代理可设 FINNHUB_EARNINGS_USE_PROXY=true。
         earnings_proxy = (
-            self._get_proxy()
-            if os.getenv("FINNHUB_EARNINGS_USE_PROXY", "false").lower() == "true"
-            else None
+            self._get_proxy() if os.getenv("FINNHUB_EARNINGS_USE_PROXY", "false").lower() == "true" else None
         )
 
         try:
