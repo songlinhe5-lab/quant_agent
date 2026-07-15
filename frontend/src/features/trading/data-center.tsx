@@ -280,7 +280,7 @@ export function DataCenterModule() {
         handleManualRefresh={handleManualRefresh}
       />
       {/* 财报日历 */}
-      <EarningsCalendar earnings={earnings} earnDed={earnDed} handleManualRefresh={handleManualRefresh} />
+      <EarningsCalendar earnings={earnings} earnDed={earnDed} handleManualRefresh={handleManualRefresh} loading={fetching} />
       {/* 新闻情绪 */}
       <NewsStream news={news} visibleNewsCount={visibleNewsCount} setVisibleNewsCount={setVisibleNewsCount} />
       {/* FRED 宏观图表查询 */}

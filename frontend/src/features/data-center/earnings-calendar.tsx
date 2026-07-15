@@ -2,7 +2,7 @@ import React from 'react';
 import { LineChartIcon, Sparkles } from 'lucide-react';
 import EventCountdown from '@/components/ui/event-countdown';
 
-export function EarningsCalendar({ earnings, earnDed, handleManualRefresh }: { earnings: any[], earnDed: string, handleManualRefresh: () => void }) {
+export function EarningsCalendar({ earnings, earnDed, handleManualRefresh, loading }: { earnings: any[], earnDed: string, handleManualRefresh: () => void, loading?: boolean }) {
   return (
     <div className="glass-card rounded-lg overflow-hidden flex flex-col h-[350px] relative">
       <div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2 flex-shrink-0">
@@ -48,7 +48,7 @@ export function EarningsCalendar({ earnings, earnDed, handleManualRefresh }: { e
             })}
           </tbody>
         </table>
-        {earnings.length === 0 && <div className="p-4 text-center text-[10px] text-muted-foreground">本周暂无明星公司财报</div>}
+        {earnings.length === 0 && <div className="p-4 text-center text-[10px] text-muted-foreground">{loading ? '数据加载中…' : '暂无数据'}</div>}
       </div>
     </div>
   );
