@@ -11,6 +11,7 @@ import {
   requestTradingModeSwitch,
 } from './trading-mode-actions'
 import { formatModeLabel, type TradingMode, TRADING_MODES } from './trading-mode-types'
+import { useKeepAliveActive } from '@/components/layout/keep-alive-outlet'
 
 export function useOms() {
   const { toast } = useToast()
@@ -28,6 +29,7 @@ export function useOms() {
   const tradingMode = useTradingModeStore((s) => s.mode)
   const setTradingMode = useTradingModeStore((s) => s.setMode)
   const logsEndRefs = useRef<{ [key: string]: HTMLDivElement | null }>({})
+  const keepAliveActive = useKeepAliveActive()
 
   // 💡 接入真实 WebSocket 数据流
   useEffect(() => {
@@ -69,7 +71,9 @@ export function useOms() {
     // 2. Connect to WebSocket for real-time updates
     const connect = () => {
       if (!isMounted) return
-      
+      // 💡 keep-alive 后台模块 / 页面隐藏时不建立 WS，避免多模块 WS 并发重连风暴
+      if (!keepAliveActive || document.visibilityState !== 'visible') return
+
       // 💡 动态构建 WebSocket URL，适配 HTTPS (wss) 与跨域环境变量
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       const token = getAccessToken()
@@ -128,6 +132,8 @@ export function useOms() {
         if (isMounted) {
           setIsStale(true)
           console.warn('[OMS WS] Disconnected. Reconnecting in 3s...')
+          // 💡 后台/隐藏模块不重连，交由可见性/激活态恢复时统一重连
+          if (!keepAliveActive || document.visibilityState !== 'visible') return
           reconnectTimer = setTimeout(connect, 3000)
         }
       }
@@ -141,12 +147,24 @@ export function useOms() {
     fetchInitialState()
     connect()
 
+    // 💡 页面可见性 / keep-alive 激活态变化
+    const handleVisibilityOrActive = () => {
+      if (!isMounted) return
+      if (!keepAliveActive || document.visibilityState !== 'visible') {
+        if (ws) { ws.onclose = null; ws.close(); ws = null }
+      } else {
+        connect()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityOrActive)
+
     return () => {
       isMounted = false
       clearTimeout(reconnectTimer)
+      document.removeEventListener('visibilitychange', handleVisibilityOrActive)
       ws?.close()
     }
-  }, [toast])
+  }, [toast, keepAliveActive])
 
   // 💡 自动滚动日志到底部
   useEffect(() => {

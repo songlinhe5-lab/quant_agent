@@ -5,6 +5,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useWatchlist } from '@/stores/use-watchlist'
 import { apiClient, getAccessToken, refreshAccessToken, isTokenExpired } from '@/lib/api-client'
 import { market } from '@/lib/proto/market'
+import { useKeepAliveActive } from '@/components/layout/keep-alive-outlet'
 import { getZhLabel, formatDisplaySymbol, type SortKey } from '@/features/screener/shared'
 
 export interface ScreenerHistory {
@@ -260,11 +261,14 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
   const prevSymbolsRef = useRef<string[]>([]);
   const isMountedRef = useRef(true);
   const wsOpenedRef = useRef(false);
+  const keepAliveActive = useKeepAliveActive();
 
   useEffect(() => {
     isMountedRef.current = true;
     let reconnectTimer: NodeJS.Timeout;
     const connectWS = async () => {
+      // 💡 keep-alive 后台模块 / 页面隐藏时不建立 WS，避免多模块 WS 并发重连风暴
+      if (!keepAliveActive || document.visibilityState !== 'visible') return;
       let token = getAccessToken();
       if (!token) { console.warn('[Screener WS] 无认证 token，跳过连接'); return; }
       // 💡 WS 层无 401 拦截器，需主动续期即将过期/已过期的 token（后端 TTL 仅 15 分钟）
@@ -275,8 +279,10 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
       }
       // 💡 动态协议检测：HTTPS 页面必须使用 WSS
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      // ⚠️ 后端路由为 /api/v1/market/quotes/ws（main.py include_router prefix=/api/v1 + market_router prefix=/market）
+      //    必须带 /api/v1 前缀，否则握手 404/失败
       try {
-        wsRef.current = new WebSocket(`${wsProtocol}//${window.location.host}/market/quotes/ws?token=${token}`);
+        wsRef.current = new WebSocket(`${wsProtocol}//${window.location.host}/api/v1/market/quotes/ws?token=${token}`);
       } catch (err) {
         console.error('[Screener WS] WebSocket 连接失败:', err);
         return;
@@ -317,8 +323,18 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
     connectWS();
     const handleOnlineWS = () => { if (wsRef.current) wsRef.current.close(); };
     window.addEventListener('online', handleOnlineWS);
-    return () => { isMountedRef.current = false; clearTimeout(reconnectTimer); window.removeEventListener('online', handleOnlineWS); if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); } };
-  }, []);
+    // 💡 页面可见性 / keep-alive 激活态变化：隐藏或后台时断 WS，恢复时重连
+    const handleVisibilityOrActive = () => {
+      if (!isMountedRef.current) return
+      if (!keepAliveActive || document.visibilityState !== 'visible') {
+        if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); wsRef.current = null }
+      } else {
+        connectWS()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityOrActive)
+    return () => { isMountedRef.current = false; clearTimeout(reconnectTimer); window.removeEventListener('online', handleOnlineWS); document.removeEventListener('visibilitychange', handleVisibilityOrActive); if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); } };
+  }, [keepAliveActive]);
 
   useEffect(() => {
     const currentSymbols = pageSymbols;
