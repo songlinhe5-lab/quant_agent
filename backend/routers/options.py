@@ -57,7 +57,7 @@ async def get_option_greeks(
             raise HTTPException(status_code=404, detail=f"无法获取 {ticker} 现价")
 
         # 提取期权数据
-        options_data = chain_res.get("data", {}).get("options", [])
+        options_data = chain_res.get("options") or chain_res.get("data", {}).get("options", [])
         if not options_data:
             return {"status": "success", "ticker": ticker, "spot_price": spot_price, "options": []}
 
@@ -99,7 +99,7 @@ async def screen_options(req: ScreenRequest):
         if spot_price <= 0:
             raise HTTPException(status_code=404, detail=f"无法获取 {req.ticker} 现价")
 
-        options_data = chain_res.get("data", {}).get("options", [])
+        options_data = chain_res.get("options") or chain_res.get("data", {}).get("options", [])
 
         # 构建筛选条件
         filters = OptionFilter(
@@ -147,7 +147,7 @@ async def get_vol_smile(
         if spot_price <= 0:
             raise HTTPException(status_code=404, detail=f"无法获取 {ticker} 现价")
 
-        options_data = chain_res.get("data", {}).get("options", [])
+        options_data = chain_res.get("options") or chain_res.get("data", {}).get("options", [])
 
         result = await options_screener.analyze_vol_smile(
             ticker=ticker,
@@ -179,7 +179,7 @@ async def get_iv_rank(ticker: str):
         if spot_price <= 0:
             raise HTTPException(status_code=404, detail=f"无法获取 {ticker} 现价")
 
-        options_data = chain_res.get("data", {}).get("options", [])
+        options_data = chain_res.get("options") or chain_res.get("data", {}).get("options", [])
 
         # 找 ATM 期权的 IV
         enriched = compute_option_chain_greeks(spot_price, 0.05, options_data)
