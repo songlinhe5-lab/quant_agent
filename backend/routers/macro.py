@@ -80,9 +80,7 @@ async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = Fals
         try:
             from backend.services.macro_calendar_service import macro_calendar_aggregator
 
-            agg = await macro_calendar_aggregator.aggregate(
-                days_ahead, days_back=days_back, skip_cache=force_refresh
-            )
+            agg = await macro_calendar_aggregator.aggregate(days_ahead, days_back=days_back, skip_cache=force_refresh)
             events = agg.get("data", [])
             if not events:
                 print("⚠️ [Macro] 多源聚合无数据，使用离线 Mock 数据")
@@ -93,9 +91,7 @@ async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = Fals
             for row in events:
                 event_name = str(row.get("event", ""))
                 # 💡 聚合器已输出 UTC ISO 时间，前端直接消费，无需再做 per-source 时区转换
-                iso_time = str(row.get("date", "")) or datetime.now(
-                    timezone.utc
-                ).strftime("%Y-%m-%dT%H:%M:%SZ")
+                iso_time = str(row.get("date", "")) or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                 impact = str(row.get("impact", "low")).lower()
                 # 💡 增加中文核心指标及中国央行(PBOC)专项识别，确保 LPR/MLF 及降准降息数据能被正确打上高危红色预警标签  # noqa: E501
                 high_impact_keywords = [

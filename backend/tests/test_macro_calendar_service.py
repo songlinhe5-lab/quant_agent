@@ -1,4 +1,5 @@
 """macro_calendar_service 聚合器 + 新兴市场双源 + FRED 回填 单元测试"""
+
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,28 +15,71 @@ def test_normalize_timezones():
     a = MacroCalendarAggregator()
     # 北京时间 08:30 -> UTC 00:30
     cn = a._normalize(
-        {"time": "2024-05-15 08:30:00", "country": "CN", "event": "CPI", "impact": "high",
-         "previous": "", "estimate": "", "actual": ""}, "akshare")
+        {
+            "time": "2024-05-15 08:30:00",
+            "country": "CN",
+            "event": "CPI",
+            "impact": "high",
+            "previous": "",
+            "estimate": "",
+            "actual": "",
+        },
+        "akshare",
+    )
     assert cn["date"] == "2024-05-15T00:30:00Z"
     # UTC 不变
     us = a._normalize(
-        {"time": "2024-05-15 12:30:00", "country": "US", "event": "CPI", "impact": "medium",
-         "previous": "", "estimate": "", "actual": ""}, "finnhub")
+        {
+            "time": "2024-05-15 12:30:00",
+            "country": "US",
+            "event": "CPI",
+            "impact": "medium",
+            "previous": "",
+            "estimate": "",
+            "actual": "",
+        },
+        "finnhub",
+    )
     assert us["date"] == "2024-05-15T12:30:00Z"
     # 美东 08:30 -> UTC 12:30
     fred = a._normalize(
-        {"time": "2024-05-15 08:30:00", "country": "US", "event": "CPI", "impact": "high",
-         "previous": "", "estimate": "", "actual": ""}, "fred")
+        {
+            "time": "2024-05-15 08:30:00",
+            "country": "US",
+            "event": "CPI",
+            "impact": "high",
+            "previous": "",
+            "estimate": "",
+            "actual": "",
+        },
+        "fred",
+    )
     assert fred["date"] == "2024-05-15T12:30:00Z"
 
 
 def test_merge_prefers_complete():
     a = MacroCalendarAggregator()
     events = [
-        {"date": "2024-05-15T00:00:00Z", "country": "US", "event": "CPI", "impact": "high",
-         "previous": "", "estimate": "", "actual": "", "_src": "fred"},
-        {"date": "2024-05-15T00:00:00Z", "country": "US", "event": "CPI", "impact": "high",
-         "previous": "2.0", "estimate": "2.1", "actual": "2.3", "_src": "akshare"},
+        {
+            "date": "2024-05-15T00:00:00Z",
+            "country": "US",
+            "event": "CPI",
+            "impact": "high",
+            "previous": "",
+            "estimate": "",
+            "actual": "",
+            "_src": "fred",
+        },
+        {
+            "date": "2024-05-15T00:00:00Z",
+            "country": "US",
+            "event": "CPI",
+            "impact": "high",
+            "previous": "2.0",
+            "estimate": "2.1",
+            "actual": "2.3",
+            "_src": "akshare",
+        },
     ]
     merged = a._merge(events)
     assert len(merged) == 1
@@ -46,25 +90,62 @@ def test_merge_prefers_complete():
 def test_aggregate_merges_sources():
     """主源 AKShare 有数据时, Finnhub 仅作兜底不应被调用。"""
     a = MacroCalendarAggregator()
-    with patch.object(
-        mcs.market_data, "get_economic_calendar_ak",
-        new=AsyncMock(return_value={"status": "success", "data": [
-            {"time": "2024-06-01 08:30:00", "country": "CN", "event": "CPI", "impact": "high",
-             "previous": "", "estimate": "", "actual": ""}]}),
-    ), patch.object(
-        mcs.market_data, "get_economic_calendar_dbnomics",
-        new=AsyncMock(return_value={"status": "skipped", "data": []}),
-    ), patch.object(
-        mcs.market_data, "get_economic_calendar_rbi",
-        new=AsyncMock(return_value={"status": "skipped", "data": []}),
-    ), patch.object(
-        mcs.market_data, "get_economic_calendar_finnhub",
-        new=AsyncMock(return_value={"status": "success", "data": [
-            {"time": "2024-06-01 12:30:00", "country": "US", "event": "CPI", "impact": "medium",
-             "previous": "", "estimate": "", "actual": ""}]}),
-    ) as m_fh, patch.object(
-        mcs.market_data, "backfill_fred_actuals",
-        new=AsyncMock(side_effect=lambda e, *args, **kwargs: e),
+    with (
+        patch.object(
+            mcs.market_data,
+            "get_economic_calendar_ak",
+            new=AsyncMock(
+                return_value={
+                    "status": "success",
+                    "data": [
+                        {
+                            "time": "2024-06-01 08:30:00",
+                            "country": "CN",
+                            "event": "CPI",
+                            "impact": "high",
+                            "previous": "",
+                            "estimate": "",
+                            "actual": "",
+                        }
+                    ],
+                }
+            ),
+        ),
+        patch.object(
+            mcs.market_data,
+            "get_economic_calendar_dbnomics",
+            new=AsyncMock(return_value={"status": "skipped", "data": []}),
+        ),
+        patch.object(
+            mcs.market_data,
+            "get_economic_calendar_rbi",
+            new=AsyncMock(return_value={"status": "skipped", "data": []}),
+        ),
+        patch.object(
+            mcs.market_data,
+            "get_economic_calendar_finnhub",
+            new=AsyncMock(
+                return_value={
+                    "status": "success",
+                    "data": [
+                        {
+                            "time": "2024-06-01 12:30:00",
+                            "country": "US",
+                            "event": "CPI",
+                            "impact": "medium",
+                            "previous": "",
+                            "estimate": "",
+                            "actual": "",
+                        }
+                    ],
+                }
+            ),
+        ) as m_fh,
+        patch.object(
+            mcs.market_data,
+            "backfill_fred_actuals",
+            new=AsyncMock(side_effect=lambda e, *args, **kwargs: e),
+        ),
     ):
         res = asyncio.run(a.aggregate(days_ahead=7))
     assert res["status"] == "success"
@@ -78,26 +159,52 @@ def test_aggregate_merges_sources():
 def test_aggregate_finnhub_fallback_when_empty():
     """主源 AKShare 全空时, Finnhub 作为兜底前瞻日历被调用。"""
     a = MacroCalendarAggregator()
-    with patch.object(
-        mcs.market_data, "get_economic_calendar_ak",
-        new=AsyncMock(return_value={"status": "success", "data": []}),
-    ), patch.object(
-        mcs.market_data, "get_economic_calendar_dbnomics",
-        new=AsyncMock(return_value={"status": "skipped", "data": []}),
-    ), patch.object(
-        mcs.market_data, "get_economic_calendar_rbi",
-        new=AsyncMock(return_value={"status": "skipped", "data": []}),
-    ), patch.object(
-        mcs.market_data, "get_economic_calendar_finnhub",
-        new=AsyncMock(return_value={"status": "success", "data": [
-            {"time": "2024-06-01 12:30:00", "country": "US", "event": "CPI", "impact": "medium",
-             "previous": "", "estimate": "", "actual": ""}]}),
-    ), patch.object(
-        mcs.market_data, "get_economic_calendar_fred",
-        new=AsyncMock(return_value={"status": "skipped", "data": []}),
-    ), patch.object(
-        mcs.market_data, "backfill_fred_actuals",
-        new=AsyncMock(side_effect=lambda e, *args, **kwargs: e),
+    with (
+        patch.object(
+            mcs.market_data,
+            "get_economic_calendar_ak",
+            new=AsyncMock(return_value={"status": "success", "data": []}),
+        ),
+        patch.object(
+            mcs.market_data,
+            "get_economic_calendar_dbnomics",
+            new=AsyncMock(return_value={"status": "skipped", "data": []}),
+        ),
+        patch.object(
+            mcs.market_data,
+            "get_economic_calendar_rbi",
+            new=AsyncMock(return_value={"status": "skipped", "data": []}),
+        ),
+        patch.object(
+            mcs.market_data,
+            "get_economic_calendar_finnhub",
+            new=AsyncMock(
+                return_value={
+                    "status": "success",
+                    "data": [
+                        {
+                            "time": "2024-06-01 12:30:00",
+                            "country": "US",
+                            "event": "CPI",
+                            "impact": "medium",
+                            "previous": "",
+                            "estimate": "",
+                            "actual": "",
+                        }
+                    ],
+                }
+            ),
+        ),
+        patch.object(
+            mcs.market_data,
+            "get_economic_calendar_fred",
+            new=AsyncMock(return_value={"status": "skipped", "data": []}),
+        ),
+        patch.object(
+            mcs.market_data,
+            "backfill_fred_actuals",
+            new=AsyncMock(side_effect=lambda e, *args, **kwargs: e),
+        ),
     ):
         res = asyncio.run(a.aggregate(days_ahead=7))
     assert res["status"] == "success"
@@ -106,19 +213,38 @@ def test_aggregate_finnhub_fallback_when_empty():
 
 
 def test_fred_backfill_fills_actual():
-    events = [{"time": "2024-06-12 08:30:00", "country": "US", "event": "CPI", "impact": "high",
-               "previous": "", "estimate": "", "actual": ""}]
-    series = {"status": "success", "data": [
-        {"date": "2024-05-01", "value": 3.3}, {"date": "2024-06-01", "value": 3.4}]}
+    events = [
+        {
+            "time": "2024-06-12 08:30:00",
+            "country": "US",
+            "event": "CPI",
+            "impact": "high",
+            "previous": "",
+            "estimate": "",
+            "actual": "",
+        }
+    ]
+    series = {"status": "success", "data": [{"date": "2024-05-01", "value": 3.3}, {"date": "2024-06-01", "value": 3.4}]}
     with patch.object(fred_service, "get_series_observations", new=AsyncMock(return_value=series)):
         out = asyncio.run(fred_service.backfill_actuals(events))
     assert out[0]["actual"] == "3.4"
 
 
 def test_fred_backfill_skips_when_actual_present():
-    events = [{"time": "2024-06-12 08:30:00", "country": "US", "event": "CPI", "impact": "high",
-               "previous": "", "estimate": "", "actual": "3.4"}]
-    with patch.object(fred_service, "get_series_observations", new=AsyncMock(return_value={"status": "success", "data": []})) as m:
+    events = [
+        {
+            "time": "2024-06-12 08:30:00",
+            "country": "US",
+            "event": "CPI",
+            "impact": "high",
+            "previous": "",
+            "estimate": "",
+            "actual": "3.4",
+        }
+    ]
+    with patch.object(
+        fred_service, "get_series_observations", new=AsyncMock(return_value={"status": "success", "data": []})
+    ) as m:
         out = asyncio.run(fred_service.backfill_actuals(events))
     assert out[0]["actual"] == "3.4"
     m.assert_not_called()
@@ -154,8 +280,10 @@ def test_dbnomics_parses_g20_cpi():
             ]
         }
     }
-    with patch("backend.services.dbnomics_service.redis_client") as m_redis, \
-         patch("backend.services.dbnomics_service.httpx.AsyncClient") as m_client:
+    with (
+        patch("backend.services.dbnomics_service.redis_client") as m_redis,
+        patch("backend.services.dbnomics_service.httpx.AsyncClient") as m_client,
+    ):
         m_redis.get.return_value = None
         resp = MagicMock()
         resp.json.return_value = payload
@@ -172,8 +300,10 @@ def test_dbnomics_parses_g20_cpi():
 
 def test_rbi_parses_worldbank():
     payload = [{"page": 1}, [{"date": "2023", "value": 5.5}, {"date": "2022", "value": 6.7}]]
-    with patch("backend.services.rbi_service.redis_client") as m_redis, \
-         patch("backend.services.rbi_service.httpx.AsyncClient") as m_client:
+    with (
+        patch("backend.services.rbi_service.redis_client") as m_redis,
+        patch("backend.services.rbi_service.httpx.AsyncClient") as m_client,
+    ):
         m_redis.get.return_value = None
         resp = MagicMock()
         resp.json.return_value = payload
@@ -188,11 +318,23 @@ def test_rbi_parses_worldbank():
 
 
 def test_finnhub_parse_calendar():
-    raw = {"economicCalendar": [{"event": "CPI", "country": "US", "impact": "3",
-                                 "prev": "0.2%", "consensus": "0.3%", "actual": "0.4%",
-                                 "date": "2024-05-15 12:30:00"}]}
-    with patch("backend.services.finnhub_service.redis_client") as m_redis, \
-         patch("backend.services.finnhub_service.httpx.AsyncClient") as m_client:
+    raw = {
+        "economicCalendar": [
+            {
+                "event": "CPI",
+                "country": "US",
+                "impact": "3",
+                "prev": "0.2%",
+                "consensus": "0.3%",
+                "actual": "0.4%",
+                "date": "2024-05-15 12:30:00",
+            }
+        ]
+    }
+    with (
+        patch("backend.services.finnhub_service.redis_client") as m_redis,
+        patch("backend.services.finnhub_service.httpx.AsyncClient") as m_client,
+    ):
         m_redis.get.return_value = None
         resp = MagicMock()
         resp.json.return_value = raw

@@ -178,12 +178,7 @@ class FREDService:
     def _match_fred_series(self, event: Dict[str, Any]) -> Optional[str]:
         """按事件文本与国家匹配 FRED 序列 (美国核心 + 印度国际序列尝试)。"""
         text = f"{event.get('event', '')} {event.get('country', '')}".lower()
-        is_us = (
-            event.get("country") == "US"
-            or "us" in text
-            or "united states" in text
-            or "美国" in text
-        )
+        is_us = event.get("country") == "US" or "us" in text or "united states" in text or "美国" in text
         is_india = "india" in text
         if is_india and not is_us:
             for kw, sid in self.EVENT_TO_FRED_SERIES.items():
@@ -238,10 +233,7 @@ class FREDService:
                     odate = self._parse_date(o.get("date", ""))
                     if odate is None or o.get("value") is None:
                         continue
-                    if odate <= ev_date and (
-                        best_obs is None
-                        or odate > self._parse_date(best_obs.get("date", ""))
-                    ):
+                    if odate <= ev_date and (best_obs is None or odate > self._parse_date(best_obs.get("date", ""))):
                         best_obs = o
                 if best_obs is not None:
                     events[idx]["actual"] = str(best_obs["value"])

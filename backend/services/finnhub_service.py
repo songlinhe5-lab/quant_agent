@@ -448,7 +448,6 @@ class FinnhubService:
             print(f"⚠️ [Yahoo Fallback] 兜底获取 {symbol} 新闻失败: {e}")
             return []
 
-
     async def get_economic_calendar(
         self, days_ahead: int = 7, days_back: int = 0, skip_cache: bool = False
     ) -> Dict[str, Any]:  # noqa: E501
@@ -496,7 +495,8 @@ class FinnhubService:
                 for item in raw:
                     impact_raw = str(item.get("impact", ""))
                     impact = (
-                        "high" if impact_raw == "3"
+                        "high"
+                        if impact_raw == "3"
                         else ("medium" if impact_raw == "2" else ("low" if impact_raw == "1" else "low"))
                     )
                     event_date = str(item.get("date", ""))

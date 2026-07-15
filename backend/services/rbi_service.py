@@ -52,11 +52,7 @@ class RBIService:
                 resp.raise_for_status()
                 payload = resp.json()
                 rows = payload[1] if isinstance(payload, list) and len(payload) > 1 else []
-                series = [
-                    (int(x["date"]), float(x["value"]))
-                    for x in rows
-                    if x.get("value") is not None
-                ]
+                series = [(int(x["date"]), float(x["value"])) for x in rows if x.get("value") is not None]
                 series.sort(key=lambda t: t[0])
                 if not series:
                     return {

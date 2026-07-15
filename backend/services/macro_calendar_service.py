@@ -5,6 +5,7 @@
 全空时 Finnhub(免费档全球) 兜底前瞻日历, 仍空则降级 FRED 发布日历(自带回填)。
 已彻底移除收费的 TradingEconomics(TE_API_KEY)。
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -33,14 +34,10 @@ class MacroCalendarAggregator:
         "rbi": "UTC",
     }
 
-    async def aggregate(
-        self, days_ahead: int = 7, days_back: int = 0, skip_cache: bool = False
-    ) -> Dict[str, Any]:
+    async def aggregate(self, days_ahead: int = 7, days_back: int = 0, skip_cache: bool = False) -> Dict[str, Any]:
         # 1. 主源: AKShare (中国+全球前瞻日历)
         ak_res = await self._safe(
-            market_data.get_economic_calendar_ak(
-                days_ahead, days_back=days_back, skip_cache=skip_cache
-            )
+            market_data.get_economic_calendar_ak(days_ahead, days_back=days_back, skip_cache=skip_cache)
         )
         normalized: List[Dict[str, Any]] = []
         ak_events = self._extract(ak_res, "akshare")
@@ -66,9 +63,7 @@ class MacroCalendarAggregator:
         # 5. 全空 -> Finnhub 兜底 (免费档全球前瞻日历)
         if not merged:
             fh_res = await self._safe(
-                market_data.get_economic_calendar_finnhub(
-                    days_ahead, days_back=days_back, skip_cache=skip_cache
-                )
+                market_data.get_economic_calendar_finnhub(days_ahead, days_back=days_back, skip_cache=skip_cache)
             )
             fh_events = self._extract(fh_res, "finnhub")
             if fh_events:
@@ -77,9 +72,7 @@ class MacroCalendarAggregator:
         # 6. 仍空 -> FRED 发布日历兜底 (自带回填)
         if not merged:
             fred_res = await self._safe(
-                market_data.get_economic_calendar_fred(
-                    days_ahead, days_back=days_back, skip_cache=skip_cache
-                )
+                market_data.get_economic_calendar_fred(days_ahead, days_back=days_back, skip_cache=skip_cache)
             )
             fred_events = self._extract(fred_res, "fred")
             if fred_events:
@@ -101,30 +94,20 @@ class MacroCalendarAggregator:
             print(f"⚠️ [MacroAggregator] 子源拉取异常: {e}")
             return None
 
-    async def _fetch_em(
-        self, days_ahead: int, days_back: int, skip_cache: bool
-    ) -> Dict[str, Any]:
+    async def _fetch_em(self, days_ahead: int, days_back: int, skip_cache: bool) -> Dict[str, Any]:
         """按 EM_SOURCE_PRIORITY 串联 DBnomics -> RBI (免费, 无 Key 优雅跳过)。"""
-        priority = [
-            p.strip().lower()
-            for p in settings.em_source_priority.split(",")
-            if p.strip()
-        ]
+        priority = [p.strip().lower() for p in settings.em_source_priority.split(",") if p.strip()]
         out_events: List[Dict[str, Any]] = []
         out_sources: List[str] = []
         for src in priority:
             if src == "dbnomics":
                 res = await self._safe(
-                    market_data.get_economic_calendar_dbnomics(
-                        days_ahead, days_back=days_back, skip_cache=skip_cache
-                    )
+                    market_data.get_economic_calendar_dbnomics(days_ahead, days_back=days_back, skip_cache=skip_cache)
                 )
                 events = self._extract(res, "dbnomics")
             elif src == "rbi":
                 res = await self._safe(
-                    market_data.get_economic_calendar_rbi(
-                        days_ahead, days_back=days_back, skip_cache=skip_cache
-                    )
+                    market_data.get_economic_calendar_rbi(days_ahead, days_back=days_back, skip_cache=skip_cache)
                 )
                 events = self._extract(res, "rbi")
             else:

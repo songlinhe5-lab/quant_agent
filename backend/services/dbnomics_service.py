@@ -88,11 +88,7 @@ class DbnomicsService:
                 if not periods or not values or len(periods) != len(values):
                     continue
                 # 💡 过滤掉-null 观测, 按索引对齐
-                paired = [
-                    (str(periods[i]), values[i])
-                    for i in range(len(periods))
-                    if values[i] is not None
-                ]
+                paired = [(str(periods[i]), values[i]) for i in range(len(periods)) if values[i] is not None]
                 if not paired:
                     continue
 
