@@ -368,6 +368,28 @@ refactor(oms): 拆分 OMS 状态机为独立 Worker 节点
 - **禁止提交包含 `.env` 文件的代码**（`.env` 必须在 `.gitignore` 中）
 - **禁止 `git push --force` 到 main 分支**
 
+### 5.2.1 分支工作流铁律（Branch Workflow — 强制）
+
+```
+主干模型：develop（开发主干）  ←  main（生产发布，仅接受来自 develop 的 PR）
+```
+
+**⛔ 绝对规则（违反即视为无效操作）**：
+
+1. **所有开发必须在 `develop` 分支上进行** —— 新建功能/修复分支统一从 `develop` 切出（如 `fix/xxx`、`feat/xxx`），提交、推送。
+2. **`main` 是生产发布分支，只能从 `develop` 通过 PR 合并进去**。禁止：
+   - 直接对 `main` 分支提交代码（无论本地还是远程）；
+   - 从其他任何分支（如 `fix/xxx` 直接）向 `main` 提 PR；
+   - 把 `main` 合并回工作分支时绕过 `develop`。
+3. **`main` 落后于 `develop` 时**：先 `git checkout develop && git merge main`（保持 develop 含 main 全部提交），再在 develop 上继续开发。即 develop 必须始终包含 main 的最新状态。
+4. **发布流程**：在 `develop` 验证通过后，从 `develop` 向 `main` 提 PR（如 `gh pr create --base main --head develop`），合并后触发生产部署。
+5. 任何修复若已误提交到 `main` 分支，必须 cherry-pick / 重新在 `develop` 上提交，再走 PR 流程，**绝不允许反向把 develop 直接 reset 到 main**。
+
+**AI 操作自检清单**（每次涉及 git 前确认）：
+- [ ] 当前是否在 `develop`（或其派生分支）上？若是 `main`，立即切回 `develop`。
+- [ ] 目标 PR 的 `--base` 是否必为 `main` 且 `--head` 来自 `develop` 链？
+- [ ] 是否避免了 `git push --force` / 直接提交到 `main`？
+
 ### 5.3 测试覆盖要求
 
 | 层级 | 必须覆盖 | 工具 |
