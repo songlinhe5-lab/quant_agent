@@ -212,7 +212,9 @@ def test_aggregate_finnhub_fallback_when_empty():
     assert res["sources_contributed"] == ["finnhub"]
 
 
-def test_fred_backfill_fills_actual():
+def test_fred_backfill_fills_actual(monkeypatch):
+    # 💡 backfill_actuals 在无 FRED_API_KEY 时直接跳过；测试需注入 key 以验证逻辑
+    monkeypatch.setattr(fred_service, "api_key", "test-key")
     events = [
         {
             "time": "2024-06-12 08:30:00",
