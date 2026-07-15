@@ -26,6 +26,7 @@ export function DataCenterModule() {
   const [earnings, setEarnings] = useState<any[]>([])
   const [ecoMsg, setEcoMsg] = useState('')
   const [ecoDed, setEcoDed] = useState('')
+  const [ecoSources, setEcoSources] = useState<string[]>([])
   const [earnDed, setEarnDed] = useState('')
   const [visibleNewsCount, setVisibleNewsCount] = useState(5)
   const [selectedImpacts, setSelectedImpacts] = useState<string[]>(['high', 'medium', 'low'])
@@ -79,6 +80,7 @@ export function DataCenterModule() {
 
           setEcoMsg(d.economicEventsMessage || '')
           setEcoDed(d.economicEventsDeduction || '')
+          setEcoSources(d.economicEventsSources || [])
           setEarnDed(d.earningsCalendarDeduction || '')
 
           if (dashRes.value.data.updated_at) {
@@ -136,6 +138,7 @@ export function DataCenterModule() {
       if (dashRes.data?.status === 'success') {
         const d = dashRes.data.data
         if (d.economicEvents) setEvents(d.economicEvents)
+        if (d.economicEventsSources) setEcoSources(d.economicEventsSources)
         if (d.earningsCalendar) setEarnings(d.earningsCalendar)
         if (dashRes.data.updated_at) {
           setLast(new Date(dashRes.data.updated_at).toLocaleTimeString('zh-CN', { hour12: false }))
@@ -277,6 +280,7 @@ export function DataCenterModule() {
         uniqueCountries={uniqueCountries}
         ecoMsg={ecoMsg}
         ecoDed={ecoDed}
+        sources={ecoSources}
         handleManualRefresh={handleManualRefresh}
       />
       {/* 财报日历 */}

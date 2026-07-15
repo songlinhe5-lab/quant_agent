@@ -2,7 +2,7 @@ import React from 'react';
 import { AlertTriangle, Info, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import EventCountdown from '@/components/ui/event-countdown';
-import { CalendarInfoPanel, EventDetailPanel } from './event-panels';
+import { CalendarInfoPanel, EventDetailPanel, macroSourceMeta } from './event-panels';
 
 export function EconomicCalendar({
   events,
@@ -19,6 +19,7 @@ export function EconomicCalendar({
   uniqueCountries,
   ecoMsg,
   ecoDed,
+  sources,
   handleManualRefresh
 }: any) {
   const today = new Date();
@@ -90,6 +91,18 @@ export function EconomicCalendar({
           </div>
         </div>
       </div>
+      {/* 💡 数据来源图例 */}
+      <div className="flex items-center gap-1 px-3 py-1 border-b border-border/20 bg-secondary/10 flex-shrink-0">
+        <span className="text-[9px] text-muted-foreground mr-0.5">来源</span>
+        {(sources && sources.length ? sources : ['akshare']).map((s: string) => {
+          const m = macroSourceMeta(s)
+          return (
+            <span key={s} className={cn("text-[9px] font-medium px-1.5 py-0.5 rounded", m.cls)}>
+              {m.label}
+            </span>
+          )
+        })}
+      </div>
       <div className="flex-1 overflow-y-auto custom-scrollbar">
         {ecoMsg && (
           <div className="m-2 p-2 flex items-center gap-2 rounded-md bg-amber-500/10 text-[10px] text-amber-600 dark:text-amber-500 border border-amber-500/20">
@@ -154,7 +167,10 @@ export function EconomicCalendar({
                     <div className="font-mono text-[9px] text-muted-foreground mb-1.5">{dt}</div>
                     <EventCountdown dateIso={ev.date} actual={ev.actual} onRefresh={handleManualRefresh} />
                   </td>
-                  <td className="px-2 py-2"><span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded", isHigh ? "bg-[#f6465d]/15 text-[#e11d48] dark:text-[#f6465d]" : "bg-secondary/60 text-muted-foreground")}>{ev.country}</span></td>
+                  <td className="px-2 py-2">
+                    <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded", isHigh ? "bg-[#f6465d]/15 text-[#e11d48] dark:text-[#f6465d]" : "bg-secondary/60 text-muted-foreground")}>{ev.country}</span>
+                    {(() => { const m = macroSourceMeta(ev.source); return <span className={cn("mt-1 block text-[8px] font-medium px-1 py-0.5 rounded w-fit", m.cls)}>{m.label}</span> })()}
+                  </td>
                   <td className={cn("px-2 py-2 leading-tight", isHigh ? "font-bold text-foreground" : "font-medium text-muted-foreground text-[10px]")}>{ev.event_zh || ev.event_cn || ev.title_zh || ev.event}</td>
                   <td className="px-2 py-2 text-center"><span className={cn('inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold tracking-widest', isHigh ? 'text-[#e11d48] dark:text-[#f6465d]' : isLow ? 'text-sky-600/70 dark:text-sky-400/70' : 'text-amber-500/70 dark:text-amber-400/70')}>{isHigh ? '●●●' : isLow ? '●' : '●●'}</span></td>
                   <td className={cn("px-2 py-2 text-right font-mono text-[10px] whitespace-nowrap", ev.actual && "font-bold", actualColor)}>

@@ -21,8 +21,10 @@ class MarketDataGateway:
     def __init__(self) -> None:
         from backend.services.akshare_service import akshare_service
         from backend.services.finnhub_service import finnhub_service
+        from backend.services.dbnomics_service import dbnomics_service
         from backend.services.fred_service import fred_service
         from backend.services.futu_service import futu_service
+        from backend.services.rbi_service import rbi_service
         from backend.services.yfinance_service import yf_service
 
         self._futu = futu_service
@@ -30,6 +32,8 @@ class MarketDataGateway:
         self._ak = akshare_service
         self._fh = finnhub_service
         self._fred = fred_service
+        self._dbnomics = dbnomics_service
+        self._rbi = rbi_service
 
         from backend.services.datasource.adapters.legacy_yfinance import (
             ensure_yfinance_registered,
@@ -281,6 +285,18 @@ class MarketDataGateway:
 
     async def get_economic_calendar_fred(self, *args: Any, **kwargs: Any) -> Any:
         return await self._fred.get_economic_calendar(*args, **kwargs)
+
+    async def get_economic_calendar_finnhub(self, *args: Any, **kwargs: Any) -> Any:
+        return await self._fh.get_economic_calendar(*args, **kwargs)
+
+    async def get_economic_calendar_dbnomics(self, *args: Any, **kwargs: Any) -> Any:
+        return await self._dbnomics.get_economic_calendar(*args, **kwargs)
+
+    async def get_economic_calendar_rbi(self, *args: Any, **kwargs: Any) -> Any:
+        return await self._rbi.get_economic_calendar(*args, **kwargs)
+
+    async def backfill_fred_actuals(self, events: Any, *args: Any, **kwargs: Any) -> Any:
+        return await self._fred.backfill_actuals(events, *args, **kwargs)
 
     async def proxy_yfinance(self, ticker: str, fetch_type: str, kwargs: Optional[dict] = None) -> Any:
         kwargs = kwargs or {}

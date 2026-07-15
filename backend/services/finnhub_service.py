@@ -449,4 +449,86 @@ class FinnhubService:
             return []
 
 
+    async def get_economic_calendar(
+        self, days_ahead: int = 7, days_back: int = 0, skip_cache: bool = False
+    ) -> Dict[str, Any]:  # noqa: E501
+        """获取宏观经济日历 (Finnhub 免费档 /calendar/economic)
+
+        💡 Finnhub 经济日历覆盖全球主要经济体 (US/CN/JP/DE/GB/...)，事件含
+        prev/consensus/actual（部分历史事件带实际公布值），可作为 AKShare 之外的
+        交叉验证与补充源。返回时间均为 UTC。
+        """
+        api_key = self._get_api_key()
+        if not api_key:
+            return {"status": "skipped", "message": "系统未配置 FINNHUB_API_KEY", "data": []}
+
+        today = datetime.now(timezone.utc)
+        start_date = (today - timedelta(days=days_back)).strftime("%Y-%m-%d")
+        end_date = (today + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
+
+        cache_key = f"quant:macro:finnhub_calendar:{start_date}_{end_date}"
+        if not skip_cache:
+            try:
+                cached = await redis_client.get(cache_key)
+                if cached:
+                    return {"status": "success", "data": json.loads(cached), "source": "redis_cache"}
+            except Exception:
+                pass
+
+        url = f"{self.base_url}/calendar/economic"
+        params = {"from": start_date, "to": end_date, "token": api_key}
+
+        try:
+            async with httpx.AsyncClient(
+                timeout=10.0,
+                verify=False,
+                proxy=self._get_proxy(),
+                event_hooks={
+                    "request": [httpx_log_request],
+                    "response": [httpx_log_response],
+                },
+            ) as client:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                raw = response.json().get("economicCalendar", [])
+
+                events = []
+                for item in raw:
+                    impact_raw = str(item.get("impact", ""))
+                    impact = (
+                        "high" if impact_raw == "3"
+                        else ("medium" if impact_raw == "2" else ("low" if impact_raw == "1" else "low"))
+                    )
+                    event_date = str(item.get("date", ""))
+                    events.append(
+                        {
+                            "time": event_date if event_date else f"{start_date} 00:00:00",
+                            "country": str(item.get("country", "")).upper(),
+                            "event": str(item.get("event", "")),
+                            "impact": impact,
+                            "previous": str(item.get("prev", "")),
+                            "estimate": str(item.get("consensus", "")),
+                            "actual": str(item.get("actual", "")),
+                            "tz": "UTC",
+                        }
+                    )
+
+                events.sort(key=lambda x: x["time"])
+                try:
+                    ttl = 43200 + random.randint(100, 600)
+                    await redis_client.set(cache_key, json.dumps(events), ex=ttl)
+                except Exception as e:
+                    print(f"⚠️ [Finnhub] Redis 经济日历缓存写入异常: {e}")
+
+                return {"status": "success", "data": events, "source": "finnhub"}
+        except httpx.HTTPStatusError as e:
+            return {
+                "status": "error",
+                "message": f"Finnhub 经济日历请求异常: HTTP {e.response.status_code}",
+                "data": [],
+            }  # noqa: E501
+        except Exception as e:
+            return {"status": "error", "message": f"Finnhub 经济日历请求异常: {str(e)}", "data": []}
+
+
 finnhub_service = FinnhubService()

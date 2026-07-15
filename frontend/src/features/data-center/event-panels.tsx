@@ -3,6 +3,20 @@ import { X, AlertTriangle, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from 'next-themes'
 
+// 💡 宏观事件数据来源元数据 (与后端聚合器 _src 对齐): 标签 + 暗黑玻璃态配色
+export const MACRO_SOURCE_META: Record<string, { label: string; cls: string }> = {
+  akshare:  { label: 'AKShare',  cls: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' },
+  finnhub:  { label: 'Finnhub',  cls: 'bg-sky-500/15 text-sky-600 dark:text-sky-400' },
+  dbnomics: { label: 'DBnomics', cls: 'bg-violet-500/15 text-violet-600 dark:text-violet-400' },
+  rbi:      { label: 'RBI',      cls: 'bg-amber-500/15 text-amber-600 dark:text-amber-400' },
+  fred:     { label: 'FRED',     cls: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400' },
+}
+export const MACRO_SOURCE_FALLBACK = { label: '离线Mock', cls: 'bg-slate-500/15 text-slate-500 dark:text-slate-400' }
+
+export function macroSourceMeta(src?: string) {
+  return (src && MACRO_SOURCE_META[src]) || MACRO_SOURCE_FALLBACK
+}
+
 export const RADAR_AXIS_INFO = [
   { key: '流动性', desc: '衡量全球离岸美元流动性充裕度', calc: 'USD/JPY 涨跌幅 × VIX 涨跌幅 等权反向 Sigmoid 合成', range: '0 (枯竭) → 100 (极度充裕)', phenomenon: (<ul className="space-y-1 mt-1"><li><span className="text-emerald-400 font-bold">高分 {'>'}70</span>：Carry Trade 活跃</li><li><span className="text-amber-400 font-bold">中分 40–60</span>：中性震荡</li><li><span className="text-red-400 font-bold">低分 {'<'}30</span>：流动性骤紧</li></ul>) },
   { key: '波动率', desc: '市场恐慌水位', calc: '100 − (VIX − 10) × 2.5，截断 [0,100]', range: '0 (恐慌) → 100 (舒适)', phenomenon: (<ul className="space-y-1 mt-1"><li><span className="text-emerald-400 font-bold">高分 {'>'}70</span>：VIX {'<'}15</li><li><span className="text-amber-400 font-bold">中分 40–60</span>：VIX 15–25</li><li><span className="text-red-400 font-bold">低分 {'<'}30</span>：VIX {'>'}30</li></ul>) },
@@ -83,8 +97,9 @@ export function EventDetailPanel({ event, onClose }: { event: any; onClose: () =
           <button onClick={onClose} className="p-1 rounded hover:bg-secondary/50 text-muted-foreground hover:text-foreground shrink-0" aria-label="关闭"><X className="h-3.5 w-3.5" /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded", isHigh ? "bg-[#f6465d]/15 text-[#e11d48] dark:text-[#f6465d]" : "bg-secondary text-muted-foreground")}>{event.country}</span>
+            <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", macroSourceMeta(event.source).cls)}>{macroSourceMeta(event.source).label}</span>
             <span className="text-[10px] text-muted-foreground font-mono bg-secondary/40 px-2 py-0.5 rounded">{dd} {dt}</span>
             <span className={cn('inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold tracking-widest', isHigh ? 'text-[#e11d48] dark:text-[#f6465d]' : isLow ? 'text-sky-600/70 dark:text-sky-400/70' : 'text-amber-500/70 dark:text-amber-400/70')}>{isHigh ? '●●●' : isLow ? '●' : '●●'}</span>
           </div>

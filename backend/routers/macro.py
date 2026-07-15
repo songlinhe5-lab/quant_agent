@@ -36,7 +36,7 @@ _macro_locks = {}
 def _fallback_mock_macro() -> dict:
     return {
         "status": "warning",
-        "message": "宏观日历获取失败 (请检查 FINNHUB_API_KEY)，使用离线 Mock 数据",
+        "message": "宏观日历多源聚合无数据 (AKShare/DBnomics/FRED/Finnhub 均不可用)，使用离线 Mock 数据",
         "data": [
             {
                 "date": "2026-05-27T18:00:00Z",
@@ -77,55 +77,25 @@ async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = Fals
             if cached_data:
                 return json.loads(cached_data)
 
-        today = datetime.now(timezone.utc)
         try:
-            res = await market_data.get_economic_calendar_ak(days_ahead, days_back=days_back, skip_cache=force_refresh)  # noqa: E501
-            if res.get("status") == "error" or not res.get("data"):
-                print("⚠️ [Macro] 金十数据降级失败或为空，继续安全降级 (FRED)...")
-                res = await market_data.get_economic_calendar_fred(
-                    days_ahead, days_back=days_back, skip_cache=force_refresh
-                )  # noqa: E501
-                if res.get("status") == "error" or not res.get("data"):
-                    print("⚠️ [Macro] FRED 降级失败，使用离线 Mock 数据")
-                    return _fallback_mock_macro()
+            from backend.services.macro_calendar_service import macro_calendar_aggregator
 
-            events = res.get("data", [])
+            agg = await macro_calendar_aggregator.aggregate(
+                days_ahead, days_back=days_back, skip_cache=force_refresh
+            )
+            events = agg.get("data", [])
+            if not events:
+                print("⚠️ [Macro] 多源聚合无数据，使用离线 Mock 数据")
+                return _fallback_mock_macro()
+
             compressed_events = []
-            is_fred = res.get("source") == "fred"
-            is_jin10 = res.get("source") == "jin10"
 
             for row in events:
                 event_name = str(row.get("event", ""))
-                raw_time = str(row.get("time", ""))
-                if len(raw_time) == 10:  # 处理只有日期没有时间的情况
-                    raw_time += " 08:30:00"
-
-                # 💡 时区修复：FRED 数据是美东时间，需要借助 zoneinfo (自动处理夏令时) 转换为真实的 UTC 发给前端  # noqa: E501
-                if is_fred and raw_time and len(raw_time) == 19:
-                    try:
-                        dt_ny = datetime.strptime(raw_time, "%Y-%m-%d %H:%M:%S")
-                        if zoneinfo:
-                            dt_ny = dt_ny.replace(tzinfo=zoneinfo.ZoneInfo("America/New_York"))  # noqa: E501
-                            iso_time = dt_ny.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: E501
-                        else:
-                            # 兜底：环境不支持 zoneinfo，直接附带美东时区后缀 -05:00
-                            iso_time = raw_time.replace(" ", "T") + "-05:00"
-                    except Exception:
-                        iso_time = raw_time.replace(" ", "T") + "Z"
-                elif is_jin10 and raw_time and len(raw_time) >= 16:
-                    try:
-                        # 💡 金十数据是北京时间 (东八区)，转换为真实的 UTC 发给前端
-                        dt_cn = datetime.strptime(raw_time[:19], "%Y-%m-%d %H:%M:%S")
-                        if zoneinfo:
-                            dt_cn = dt_cn.replace(tzinfo=zoneinfo.ZoneInfo("Asia/Shanghai"))  # noqa: E501
-                            iso_time = dt_cn.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: E501
-                        else:
-                            iso_time = raw_time.replace(" ", "T") + "+08:00"
-                    except Exception:
-                        iso_time = raw_time.replace(" ", "T") + "Z"
-                else:
-                    iso_time = raw_time.replace(" ", "T") + "Z" if raw_time else today.strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: E501
-
+                # 💡 聚合器已输出 UTC ISO 时间，前端直接消费，无需再做 per-source 时区转换
+                iso_time = str(row.get("date", "")) or datetime.now(
+                    timezone.utc
+                ).strftime("%Y-%m-%dT%H:%M:%SZ")
                 impact = str(row.get("impact", "low")).lower()
                 # 💡 增加中文核心指标及中国央行(PBOC)专项识别，确保 LPR/MLF 及降准降息数据能被正确打上高危红色预警标签  # noqa: E501
                 high_impact_keywords = [
@@ -170,6 +140,8 @@ async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = Fals
                         "previous": str(row.get("previous", "")),
                         "estimate": str(row.get("estimate", "")),
                         "actual": str(row.get("actual", "")),
+                        # 💡 透传聚合器标注的数据来源 (_src)，供前端展示"央行事件·数据来源"
+                        "source": str(row.get("_src", "")),
                     }
                 )  # noqa: E501
 
@@ -177,15 +149,12 @@ async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = Fals
                 "status": "success",
                 "time_window": f"Next {len(compressed_events)} High-Impact Events",
                 "data": compressed_events,
+                "sources_contributed": agg.get("sources_contributed", []),
             }
 
-            # 💡 增加 FRED 数据源的专属前端降级提示
-            if res.get("source") == "fred":
-                result["message"] = (
-                    "💡 宏观日历已降级至 FRED 数据源。受接口限制，暂不提供预期值(Estimate)与实际公布值(Actual)。"  # noqa: E501
-                )
-            elif res.get("source") == "jin10":
-                result["message"] = "💡 宏观日历已平滑降级至金十数据 (Jin10)，支持完整的预期值与中文事件解析。"  # noqa: E501
+            # 💡 多源聚合说明 (FRED 已回填 actual，新兴市场 CPI 盲区已覆盖)
+            if agg.get("message"):
+                result["message"] = agg["message"]
 
             # 💡 新增：大模型前瞻推演 (只对即将发生的高危事件进行推演)
             if compressed_events:
@@ -812,6 +781,12 @@ async def get_data_center_dashboard(
                     "economicEvents": economic_events,
                     "economicEventsMessage": economic_events_msg,
                     "economicEventsDeduction": economic_events_deduction,
+                    # 💡 透传多源聚合的贡献源清单，供前端图例展示
+                    "economicEventsSources": (
+                        events_res.get("sources_contributed", [])
+                        if isinstance(events_res, dict) and events_res.get("status") in ("success", "warning")
+                        else []
+                    ),
                     "newsItems": news_items,
                     "earningsCalendar": earnings_calendar,
                     "earningsCalendarDeduction": earnings_calendar_deduction,

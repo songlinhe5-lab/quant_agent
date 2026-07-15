@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     finnhub_api_key: Optional[str] = Field(default=None, alias="FINNHUB_API_KEY")
     akshare_api_key: Optional[str] = Field(default=None, alias="AKSHARE_API_KEY")
     fred_api_key: Optional[str] = Field(default=None, alias="FRED_API_KEY")
+    # 💡 新兴市场源优先级 (免费栈): dbnomics(OECD G20 CPI) -> rbi(WorldBank 印度 CPI)。
+    # 已彻底移除收费的 TE_API_KEY (TradingEconomics)。
+    em_source_priority: str = Field(default="dbnomics,rbi", alias="EM_SOURCE_PRIORITY")
 
     # ===== Futu OpenD 配置 =====
     futu_host: str = Field(default="127.0.0.1", alias="FUTU_HOST")
