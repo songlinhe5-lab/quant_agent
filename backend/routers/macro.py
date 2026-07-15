@@ -790,14 +790,19 @@ async def get_data_center_dashboard(
                 if isinstance(news_res, dict) and news_res.get("status") in ("success", "warning")
                 else []
             )  # noqa: E501
-            earnings_calendar = (
-                earnings_res.get("data", [])
-                if isinstance(earnings_res, dict) and earnings_res.get("status") in ("success", "warning")
-                else []
+            earnings_ok = (
+                isinstance(earnings_res, dict)
+                and earnings_res.get("status") in ("success", "warning")
             )  # noqa: E501
-            earnings_calendar_deduction = (
-                earnings_res.get("ai_deduction", "")
-                if isinstance(earnings_res, dict) and earnings_res.get("status") in ("success", "warning")
+            earnings_calendar = earnings_res.get("data", []) if earnings_ok else []
+            earnings_calendar_deduction = earnings_res.get("ai_deduction", "") if earnings_ok else ""
+            # 💡 透传 Finnhub 真实状态，区分「真无数据」与「接口报错」，避免前端误报
+            earnings_status = (
+                earnings_res.get("status") if isinstance(earnings_res, dict) else "unknown"
+            )
+            earnings_message = (
+                earnings_res.get("message", "")
+                if isinstance(earnings_res, dict) and not earnings_ok
                 else ""
             )  # noqa: E501
 
@@ -813,6 +818,8 @@ async def get_data_center_dashboard(
                     "newsItems": news_items,
                     "earningsCalendar": earnings_calendar,
                     "earningsCalendarDeduction": earnings_calendar_deduction,
+                    "earningsStatus": earnings_status,
+                    "earningsMessage": earnings_message,
                 },
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }
