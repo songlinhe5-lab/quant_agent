@@ -2,8 +2,9 @@
 FE-05b: 前端日志路由单元测试
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 class TestLogsRouterPost:
@@ -110,9 +111,10 @@ class TestLogsRouterGet:
     @pytest.mark.asyncio
     async def test_query_logs_success(self, mock_db_session):
         """正常路径：查询日志并返回分页结果"""
-        from backend.routers.logs import query_frontend_logs
-        from backend.core.models import FrontendLog
         from datetime import datetime, timezone
+
+        from backend.core.models import FrontendLog
+        from backend.routers.logs import query_frontend_logs
 
         mock_log = MagicMock(spec=FrontendLog)
         mock_log.id = 1
@@ -145,8 +147,9 @@ class TestLogsRouterGet:
     @pytest.mark.asyncio
     async def test_query_logs_invalid_level(self):
         """无效 level 参数返回 400"""
-        from backend.routers.logs import query_frontend_logs
         from fastapi import HTTPException
+
+        from backend.routers.logs import query_frontend_logs
 
         with pytest.raises(HTTPException) as exc_info:
             await query_frontend_logs(

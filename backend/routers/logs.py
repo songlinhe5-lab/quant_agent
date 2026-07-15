@@ -9,7 +9,7 @@ GET  /api/v1/logs — 查询前端日志（支持 level 筛选、时间范围、
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
