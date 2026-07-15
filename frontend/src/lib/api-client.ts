@@ -56,6 +56,75 @@ export function clearTokens(): void {
 // 防止并发刷新
 let tokenRefreshPromise: Promise<string | null> | null = null
 
+/**
+ * 底层刷新 Access Token（模块级，供 REST 拦截器与 WebSocket 复用）
+ * - Refresh Token 通过 HttpOnly Cookie 自动携带（credentials: 'include'）
+ * - 返回新 token；失败则清除本地 token 并返回 null
+ */
+async function doRefreshToken(config: ClientConfig): Promise<string | null> {
+  if (tokenRefreshPromise) return tokenRefreshPromise
+
+  tokenRefreshPromise = (async () => {
+    try {
+      const response = await fetch(`${config.baseURL}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include', // Refresh Token 在 HttpOnly Cookie
+      })
+
+      if (!response.ok) {
+        clearTokens()
+        return null
+      }
+
+      const data = await response.json()
+      const newToken = data.data?.access_token || data.access_token
+      if (newToken) {
+        setAccessToken(newToken)
+        logger.info('[API] Token 刷新成功')
+        return newToken
+      }
+      return null
+    } catch (error) {
+      logger.error('[API] Token 刷新失败', error as Error)
+      clearTokens()
+      return null
+    } finally {
+      tokenRefreshPromise = null
+    }
+  })()
+
+  return tokenRefreshPromise
+}
+
+/**
+ * 解析 JWT 的 exp（秒级时间戳）；解析失败返回 null
+ */
+export function getTokenExp(token: string | null): number | null {
+  if (!token) return null
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return typeof payload.exp === 'number' ? payload.exp : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 判断 token 是否已过期或将在 skew 秒内过期（默认提前 60s 续期）
+ */
+export function isTokenExpired(token: string | null, skew = 60): boolean {
+  const exp = getTokenExp(token)
+  if (exp === null) return true
+  return Math.floor(Date.now() / 1000) >= exp - skew
+}
+
+/**
+ * 公共刷新入口：供 WebSocket 等无 401 拦截器的场景主动续期 Access Token
+ */
+export async function refreshAccessToken(): Promise<string | null> {
+  return doRefreshToken(DEFAULT_CONFIG)
+}
+
 // ─── 错误类 ────────────────────────────────────────────────────────
 export class ApiError extends Error {
   code: number
@@ -214,42 +283,10 @@ class RestClient {
   }
 
   /**
-   * 刷新 Access Token
+   * 刷新 Access Token（委托给模块级 doRefreshToken）
    */
   private async refreshToken(): Promise<string | null> {
-    // 防止并发刷新
-    if (tokenRefreshPromise) return tokenRefreshPromise
-
-    tokenRefreshPromise = (async () => {
-      try {
-        const response = await fetch(`${this.config.baseURL}/auth/refresh`, {
-          method: 'POST',
-          credentials: 'include', // Refresh Token 在 HttpOnly Cookie
-        })
-
-        if (!response.ok) {
-          clearTokens()
-          return null
-        }
-
-        const data = await response.json()
-        const newToken = data.data?.access_token || data.access_token
-        if (newToken) {
-          setAccessToken(newToken)
-          logger.info('[API] Token 刷新成功')
-          return newToken
-        }
-        return null
-      } catch (error) {
-        logger.error('[API] Token 刷新失败', error as Error)
-        clearTokens()
-        return null
-      } finally {
-        tokenRefreshPromise = null
-      }
-    })()
-
-    return tokenRefreshPromise
+    return doRefreshToken(this.config)
   }
 
   // ─── 快捷方法 ─────────────────────────────────────────────────

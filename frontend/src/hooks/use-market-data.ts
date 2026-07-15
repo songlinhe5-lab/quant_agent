@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useToast } from '@/hooks/use-toast'
-import { apiClient, API_BASE_URL, getAccessToken } from '@/lib/api-client'
+import { apiClient, API_BASE_URL, getAccessToken, refreshAccessToken, isTokenExpired } from '@/lib/api-client'
 import { market } from '@/lib/proto/market'
 import { WatchlistItem } from '@/stores/use-watchlist'
 
@@ -173,14 +173,24 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
   useEffect(() => {
     let isMounted = true
 
-    function connectWS() {
+    async function connectWS() {
       if (watchlist.length === 0) return
 
       // 无 token 时不建立连接，避免 403 无限重连
-      const token = getAccessToken()
+      let token = getAccessToken()
       if (!token) {
         console.warn('[WS] 无认证 token，跳过 WebSocket 连接')
         return
+      }
+
+      // 💡 WS 层无 401 拦截器，需主动续期即将过期/已过期的 token（后端 TTL 仅 15 分钟）
+      if (isTokenExpired(token)) {
+        const refreshed = await refreshAccessToken()
+        if (!refreshed) {
+          console.warn('[WS] Token 刷新失败，停止重连，请重新登录')
+          return
+        }
+        token = refreshed
       }
 
       // Close existing connection
