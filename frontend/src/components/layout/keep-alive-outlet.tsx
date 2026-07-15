@@ -12,13 +12,18 @@ export function KeepAliveOutlet() {
   const outlet = useOutlet()
   const { pathname } = useLocation()
   const cacheRef = useRef(new Map<string, ReactElement>())
+  // useOutlet() 每次渲染都会返回一个新的 element 引用，若直接放进 effect 依赖数组会
+  // 触发 "Maximum update depth exceeded" 无限渲染循环（effect -> bump -> 重渲染 -> 新 outlet -> effect）。
+  // 改用 ref 读取最新 outlet，effect 仅在 pathname 变化时执行。
+  const outletRef = useRef(outlet)
+  outletRef.current = outlet
   const [, bump] = useState(0)
 
   useEffect(() => {
-    if (!outlet) return
+    if (!outletRef.current) return
 
     const cache = cacheRef.current
-    cache.set(pathname, outlet)
+    cache.set(pathname, outletRef.current)
 
     if (cache.size > MAX_CACHED) {
       for (const key of cache.keys()) {
@@ -29,7 +34,7 @@ export function KeepAliveOutlet() {
     }
 
     bump((n) => n + 1)
-  }, [pathname, outlet])
+  }, [pathname])
 
   const entries = Array.from(cacheRef.current.entries())
 
