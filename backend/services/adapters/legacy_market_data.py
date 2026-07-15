@@ -60,8 +60,12 @@ class MarketDataGateway:
 
     @staticmethod
     def _option_chain_lacks_pricing(res: dict) -> bool:
-        """判断 Futu 期权链是否缺少定价字段(无法计算 Greeks/IV 即视为残缺)"""
-        opts = (res.get("data") or {}).get("options") or []
+        """判断 Futu 期权链是否缺少定价字段(无法计算 Greeks/IV 即视为残缺)
+
+        ⚠️ Futu 期权链 options 在顶层(res.options)，YF 在 res.data.options，
+        两种结构都要兼容。
+        """
+        opts = res.get("options") or (res.get("data") or {}).get("options") or []
         if not opts:
             return False
         pricing_keys = ("last_price", "bid", "ask", "implied_volatility")
@@ -117,14 +121,15 @@ class MarketDataGateway:
 
             compressed = [(_norm(row, "CALL")) for _, row in chain.calls.head(30).iterrows()]
             compressed += [(_norm(row, "PUT")) for _, row in chain.puts.head(30).iterrows()]
+            # 💡 统一为顶层 options 结构(Futu 也是顶层)，避免 consumers 因 data.options 嵌套差异拿到空列表
             return {
                 "status": "success",
-                "data": {
-                    "ticker": yf_ticker,
-                    "expiration_date": target_date,
-                    "options": compressed,
-                    "source": "yfinance",
-                },
+                "options": compressed,
+                "expiration_date": target_date,
+                "source": "yfinance",
+                "count": len(compressed),
+                "ticker": yf_ticker,
+                "message": "yfinance 期权链(含 IV/定价字段)",
             }
 
         try:
