@@ -221,14 +221,25 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
         // Connection error - will trigger onclose
       }
 
-      ws.onclose = () => {
+      ws.onclose = (ev?: CloseEvent) => {
+        const wasConnected = wsConnectedRef.current
         wsConnectedRef.current = false
+        if (ev) console.warn(`[WS] 连接关闭 code=${ev.code} reason=${ev.reason || '(空)'}`)
         // Auto-reconnect after 3 seconds if still mounted
         if (isMounted && watchlist.length > 0) {
           setTimeout(() => {
-            if (isMounted && !wsConnectedRef.current) {
-              connectWS()
+            if (!isMounted || wsConnectedRef.current) return
+            // 💡 自愈：若从未成功认证即被关闭（多半 token 过期被后端 4002 拒绝），
+            //    先刷新 Access Token 再重连；刷新失败则停止重连，避免死循环用死 token。
+            const t = getAccessToken()
+            if (!wasConnected && t && isTokenExpired(t)) {
+              refreshAccessToken().then((refreshed) => {
+                if (!refreshed) { console.warn('[WS] Token 刷新失败，停止重连，请重新登录'); return }
+                connectWS()
+              })
+              return
             }
+            connectWS()
           }, 3000)
         }
       }
