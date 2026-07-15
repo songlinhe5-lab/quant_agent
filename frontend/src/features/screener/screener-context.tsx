@@ -259,6 +259,7 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
   const wsRef = useRef<WebSocket | null>(null);
   const prevSymbolsRef = useRef<string[]>([]);
   const isMountedRef = useRef(true);
+  const wsOpenedRef = useRef(false);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -283,6 +284,7 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
       wsRef.current.binaryType = "arraybuffer";
       wsRef.current.onopen = () => {
         if (!isMountedRef.current) return;
+        wsOpenedRef.current = true;
         const pureTickers = prevSymbolsRef.current.map((s: string) => s.replace(/^(US|HK|SH|SZ)\./, ''));
         if (pureTickers.length > 0) wsRef.current!.send(JSON.stringify({ action: 'subscribe', tickers: pureTickers }));
       };
@@ -295,7 +297,22 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
           }
         } catch (e) { /* ignore decode error */ }
       };
-      wsRef.current.onclose = () => { if (isMountedRef.current) reconnectTimer = setTimeout(connectWS, 1000); };
+      wsRef.current.onclose = (ev?: CloseEvent) => {
+        wsOpenedRef.current = false;
+        if (!isMountedRef.current) return;
+        if (ev) console.warn(`[Screener WS] 连接关闭 code=${ev.code} reason=${ev.reason || '(空)'}`);
+        // 💡 自愈：若关闭时 token 已过期（多半是后端 4002 鉴权拒绝），先刷新再重连；
+        //    刷新失败则说明 Refresh Token 也失效，停止重连避免死循环，提示重新登录。
+        const t = getAccessToken();
+        if (t && isTokenExpired(t)) {
+          refreshAccessToken().then((refreshed) => {
+            if (!refreshed) { console.warn('[Screener WS] Token 刷新失败，停止重连，请重新登录'); return; }
+            reconnectTimer = setTimeout(connectWS, 1000);
+          });
+          return;
+        }
+        reconnectTimer = setTimeout(connectWS, 1000);
+      };
     };
     connectWS();
     const handleOnlineWS = () => { if (wsRef.current) wsRef.current.close(); };
