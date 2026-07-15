@@ -7,6 +7,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { apiClient } from '@/lib/api-client'
 import logger from '@/lib/logger'
 import { useKeepAliveActive } from '@/components/layout/keep-alive-outlet'
+import { useBackendStatusStore } from '@/stores/useBackendStatusStore'
 import type {
   AlertRule,
   AlertEvent,
@@ -217,6 +218,8 @@ export function useAlertWebSocket(
     ws.onopen = () => {
       logger.info('[AlertWS] 连接成功')
       onStatusRef.current?.(true)
+      // WS 握手成功 = 后端在线（覆盖“REST 正常但 WS 故障”场景）
+      useBackendStatusStore.getState().registerSuccess()
       const heartbeat = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) ws.send('ping')
       }, 30000)
@@ -242,7 +245,10 @@ export function useAlertWebSocket(
     }
 
     ws.onerror = () => {
-      ws.close()
+      // WebSocket 的 error 事件规范上不携带可读错误信息（仅 type:'error' 的 Event 空壳），
+      // 连接级错误统一视为后端不可达，计入离线检测；重连交由 onclose 处理（不在此显式 close）。
+      useBackendStatusStore.getState().registerFailure('Alert WebSocket 连接失败')
+      logger.warn('[AlertWS] 连接错误，等待 onclose 触发重连（后端可能不可达）')
     }
   }, [keepAliveActive])
 

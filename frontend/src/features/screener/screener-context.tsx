@@ -6,6 +6,7 @@ import { useWatchlist } from '@/stores/use-watchlist'
 import { apiClient, getAccessToken, refreshAccessToken, isTokenExpired } from '@/lib/api-client'
 import { market } from '@/lib/proto/market'
 import { useKeepAliveActive } from '@/components/layout/keep-alive-outlet'
+import { useBackendStatusStore } from '@/stores/useBackendStatusStore'
 import { getZhLabel, formatDisplaySymbol, type SortKey } from '@/features/screener/shared'
 
 export interface ScreenerHistory {
@@ -284,13 +285,17 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
       try {
         wsRef.current = new WebSocket(`${wsProtocol}//${window.location.host}/api/v1/market/quotes/ws?token=${token}`);
       } catch (err) {
-        console.error('[Screener WS] WebSocket 连接失败:', err);
+        // 同步异常（极少触发，WS 连接失败走的是异步 error/close 事件）
+        useBackendStatusStore.getState().registerFailure('Market WebSocket 连接失败')
+        console.error('[Screener WS] WebSocket 构造失败:', err);
         return;
       }
       wsRef.current.binaryType = "arraybuffer";
       wsRef.current.onopen = () => {
         if (!isMountedRef.current) return;
         wsOpenedRef.current = true;
+        // WS 握手成功 = 后端在线（覆盖“REST 正常但 WS 故障”场景）
+        useBackendStatusStore.getState().registerSuccess()
         const pureTickers = prevSymbolsRef.current.map((s: string) => s.replace(/^(US|HK|SH|SZ)\./, ''));
         if (pureTickers.length > 0) wsRef.current!.send(JSON.stringify({ action: 'subscribe', tickers: pureTickers }));
       };
@@ -302,6 +307,12 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
             window.dispatchEvent(new CustomEvent('screener_quote_update', { detail: { ticker: q.ticker, last_price: q.lastPrice ?? (q as any).last_price ?? 0, change_pct: q.changePct ?? (q as any).change_pct ?? "0.0%" } }));
           }
         } catch (e) { /* ignore decode error */ }
+      };
+      wsRef.current.onerror = () => {
+        // WebSocket 的 error 事件规范上不携带可读错误信息（仅 type:'error' 的 Event 空壳），
+        // 连接级错误统一视为后端不可达，计入离线检测；重连交由 onclose 处理（不在此显式 close）。
+        useBackendStatusStore.getState().registerFailure('Market WebSocket 连接失败')
+        console.warn('[Screener WS] 连接错误，等待 onclose 触发重连（后端可能不可达）')
       };
       wsRef.current.onclose = (ev?: CloseEvent) => {
         wsOpenedRef.current = false;
