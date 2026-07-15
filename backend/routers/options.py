@@ -183,14 +183,16 @@ async def get_iv_rank(ticker: str):
 
         # 找 ATM 期权的 IV
         enriched = compute_option_chain_greeks(spot_price, 0.05, options_data)
-        atm_options = [
-            o
-            for o in enriched
-            if o.get("iv") and abs(o["moneyness"] - 1.0) < 0.05  # 接近 ATM
-        ]
+        valid = [o for o in enriched if o.get("iv") and o.get("moneyness")]
+        # 优先严格 ATM (moneyness 偏离 <5%)
+        atm_options = [o for o in valid if abs(o["moneyness"] - 1.0) < 0.05]
+        # 💡 降级：无严格 ATM 时，取最接近平值的若干合约(避免因行权价间隔过大直接 404)
+        if not atm_options and valid:
+            valid.sort(key=lambda o: abs(o["moneyness"] - 1.0))
+            atm_options = valid[: min(3, len(valid))]
 
         if not atm_options:
-            raise HTTPException(status_code=404, detail="无 ATM 期权可计算 IV")
+            raise HTTPException(status_code=404, detail="期权链无有效 IV 数据可计算")
 
         current_iv = sum(o["iv"] for o in atm_options) / len(atm_options) / 100
 
