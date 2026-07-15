@@ -7,6 +7,7 @@ export function HighFreqChartWrapper({ symbol }: { symbol: string }) {
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const lineSeriesRef = useRef<ISeriesApi<"Line"> | null>(null)
+  const hasSetRangeRef = useRef(false)
 
   useEffect(() => {
     if (!chartContainerRef.current) return
@@ -37,12 +38,11 @@ export function HighFreqChartWrapper({ symbol }: { symbol: string }) {
 
     const lineSeries = chart.addSeries(LineSeries, { color: '#10b981', lineWidth: 2 })
     lineSeriesRef.current = lineSeries
+    hasSetRangeRef.current = false
 
-    // 💡 设置可见范围为全天交易时间
-    chart.timeScale().setVisibleRange({
-      from: (todayStart.getTime() / 1000) as any,
-      to: (todayEnd.getTime() / 1000) as any,
-    })
+    // 💡 注意：此处不能立即调用 setVisibleRange —— series 尚无任何数据点，
+    //    lightweight-charts 无法建立“时间→坐标”映射，会抛出 "Value is null"。
+    //    改为在首个真实 tick 到达（series 有数据锚点）后再设置一次全天范围。
 
     // 2. 监听底层 WebSocket Event Bus
     const handleTick = (e: Event) => {
@@ -56,6 +56,18 @@ export function HighFreqChartWrapper({ symbol }: { symbol: string }) {
             time: Math.floor(Date.now() / 1000) as any,
             value: lastPrice
           })
+          // 💡 首个数据点到达后设置全天可见范围（此时时间轴已有锚点，不会 null）
+          if (!hasSetRangeRef.current && chartRef.current) {
+            hasSetRangeRef.current = true
+            try {
+              chartRef.current.timeScale().setVisibleRange({
+                from: (todayStart.getTime() / 1000) as any,
+                to: (todayEnd.getTime() / 1000) as any,
+              })
+            } catch {
+              // 数据不足以映射到目标范围时静默忽略，交由图表自动缩放
+            }
+          }
         }
       }
     }
