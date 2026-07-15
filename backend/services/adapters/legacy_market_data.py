@@ -211,32 +211,45 @@ class MarketDataGateway:
     async def get_northbound_flow(self) -> Any:
         return await self._ak.get_northbound_flow()
 
-    async def get_hsgt_top_holders(self, **kwargs: Any) -> Any:
-        return await self._ak.get_hsgt_top_holders(**kwargs)
+    async def get_hsgt_top_holders(self, symbol: str = "00700", **kwargs: Any) -> Any:
+        return await self._ak.get_hsgt_top_holders(symbol=symbol, **kwargs)
 
-    async def get_company_news_ak(self, **kwargs: Any) -> Any:
-        return await self._ak.get_company_news(**kwargs)
+    async def get_company_news_ak(self, ticker: str = "", **kwargs: Any) -> Any:
+        return await self._ak.get_company_news(ticker=ticker, **kwargs)
 
-    async def get_stock_quote_ak(self, **kwargs: Any) -> Any:
-        return await self._ak.get_stock_quote(**kwargs)
+    async def get_stock_quote_ak(self, ticker: str = "", **kwargs: Any) -> Any:
+        return await self._ak.get_stock_quote(ticker=ticker, **kwargs)
 
     async def get_stock_history_ak(self, ticker: str, num: int = 60) -> Any:
         return await self._ak.get_stock_history(ticker, num=num)
 
-    async def get_company_news_fh(self, ticker: str, **kwargs: Any) -> Any:
-        return await self._fh.get_company_news(ticker, **kwargs)
+    async def get_company_news_fh(
+        self, ticker: str, days_back: int = 3, skip_cache: bool = False, **kwargs: Any
+    ) -> Any:
+        return await self._fh.get_company_news(ticker, days_back=days_back, skip_cache=skip_cache, **kwargs)
 
-    async def get_earnings_calendar(self, **kwargs: Any) -> Any:
-        return await self._fh.get_earnings_calendar(**kwargs)
+    async def get_earnings_calendar(
+        self,
+        days_ahead: int = 7,
+        days_back: int = 0,
+        skip_cache: bool = False,
+        **kwargs: Any,
+    ) -> Any:
+        return await self._fh.get_earnings_calendar(
+            days_ahead=days_ahead,
+            days_back=days_back,
+            skip_cache=skip_cache,
+            **kwargs,
+        )
 
-    async def get_insider_transactions(self, ticker: str, **kwargs: Any) -> Any:
-        return await self._fh.get_insider_transactions(ticker, **kwargs)
+    async def get_insider_transactions(self, ticker: str, limit: int = 30, **kwargs: Any) -> Any:
+        return await self._fh.get_insider_transactions(ticker, limit=limit, **kwargs)
 
-    async def get_market_news(self, **kwargs: Any) -> Any:
-        return await self._fh.get_market_news(**kwargs)
+    async def get_market_news(self, category: str = "general", **kwargs: Any) -> Any:
+        return await self._fh.get_market_news(category=category, **kwargs)
 
-    async def get_stock_history_fh(self, ticker: str, **kwargs: Any) -> Any:
-        return await self._fh.get_stock_history(ticker, **kwargs)
+    async def get_stock_history_fh(self, ticker: str, days_back: int = 365, **kwargs: Any) -> Any:
+        return await self._fh.get_stock_history(ticker, days_back=days_back, **kwargs)
 
     async def get_series_observations(self, series_id: str, limit: int = 5) -> Any:
         return await self._fred.get_series_observations(series_id, limit)
