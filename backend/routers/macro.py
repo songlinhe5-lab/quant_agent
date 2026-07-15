@@ -254,7 +254,9 @@ async def _fetch_earnings_calendar_data(days_ahead: int, force_refresh: bool = F
         try:
             # 💡 用关键字传参：生产 market_data 实际是 MarketDataGateway 适配器
             # (get_earnings_calendar(self, **kwargs))，位置参数 days_ahead 会触发 TypeError 被静默吞成空
-            res = await market_data.get_earnings_calendar(days_ahead=days_ahead, days_back=days_back, skip_cache=force_refresh)  # noqa: E501
+            res = await market_data.get_earnings_calendar(
+                days_ahead=days_ahead, days_back=days_back, skip_cache=force_refresh
+            )  # noqa: E501
             if res.get("status") != "success":
                 return res
 
@@ -792,20 +794,13 @@ async def get_data_center_dashboard(
                 if isinstance(news_res, dict) and news_res.get("status") in ("success", "warning")
                 else []
             )  # noqa: E501
-            earnings_ok = (
-                isinstance(earnings_res, dict)
-                and earnings_res.get("status") in ("success", "warning")
-            )  # noqa: E501
+            earnings_ok = isinstance(earnings_res, dict) and earnings_res.get("status") in ("success", "warning")  # noqa: E501
             earnings_calendar = earnings_res.get("data", []) if earnings_ok else []
             earnings_calendar_deduction = earnings_res.get("ai_deduction", "") if earnings_ok else ""
             # 💡 透传 Finnhub 真实状态，区分「真无数据」与「接口报错」，避免前端误报
-            earnings_status = (
-                earnings_res.get("status") if isinstance(earnings_res, dict) else "unknown"
-            )
+            earnings_status = earnings_res.get("status") if isinstance(earnings_res, dict) else "unknown"
             earnings_message = (
-                earnings_res.get("message", "")
-                if isinstance(earnings_res, dict) and not earnings_ok
-                else ""
+                earnings_res.get("message", "") if isinstance(earnings_res, dict) and not earnings_ok else ""
             )  # noqa: E501
 
             result = {
