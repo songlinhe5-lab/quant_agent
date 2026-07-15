@@ -44,9 +44,9 @@ class LLMRouter:
         self,
         api_key: str = "",
         base_url: str = "https://api.deepseek.com",
-        standard_model: str = "deepseek-chat",
-        lightweight_model: str = "gpt-4o-mini-2024-11-20",
-        flagship_model: str = "gpt-4o-2024-11-20",
+        standard_model: str = "deepseek-v4-flash",
+        lightweight_model: str = "deepseek-v4-flash",
+        flagship_model: str = "deepseek-v4-pro",
         ollama_base_url: str = "http://localhost:11434/v1",
         fallback_enabled: bool = True,
         fallback_threshold: int = 3,
@@ -164,15 +164,15 @@ class LLMService:
     def __init__(self):
         self.api_key = os.getenv("LLM_API_KEY", "")
         self.base_url = os.getenv("LLM_BASE_URL", "https://api.deepseek.com")
-        self.model_name = os.getenv("LLM_MODEL", "deepseek-chat")
+        self.model_name = os.getenv("LLM_MODEL", "deepseek-v4-flash")
 
         # AI-02: 初始化路由器
         self.router = LLMRouter(
             api_key=self.api_key,
             base_url=self.base_url,
             standard_model=self.model_name,
-            lightweight_model=os.getenv("LLM_LIGHTWEIGHT_MODEL", "gpt-4o-mini-2024-11-20"),
-            flagship_model=os.getenv("LLM_PRO_MODEL", "gpt-4o-2024-11-20"),
+            lightweight_model=os.getenv("LLM_LIGHTWEIGHT_MODEL", "deepseek-v4-flash"),
+            flagship_model=os.getenv("LLM_PRO_MODEL", "deepseek-v4-pro"),
             ollama_base_url=os.getenv("LLM_OLLAMA_BASE_URL", "http://localhost:11434/v1"),
             fallback_enabled=os.getenv("LLM_FALLBACK_ENABLED", "true").lower() == "true",
             fallback_threshold=int(os.getenv("LLM_FALLBACK_THRESHOLD", "3")),
