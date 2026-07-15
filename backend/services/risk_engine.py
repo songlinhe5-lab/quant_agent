@@ -459,9 +459,14 @@ class RiskEngine:
         ]
 
     def _fallback_data(self, reason: str) -> Dict[str, Any]:
-        """降级数据"""
+        """降级数据（空态）
+
+        💡 无 Futu 实盘账户连接 / 无持仓属于正常业务空态，而非系统错误。
+        返回 status="empty" 让 router 层以 200 + 空态返回，避免误报 HTTP 500。
+        """
         return {
-            "status": "error",
+            "status": "empty",
+            "accounts": {},
             "message": reason,
             "kpi": {
                 "nav": 0,

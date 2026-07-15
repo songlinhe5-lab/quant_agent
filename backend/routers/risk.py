@@ -25,7 +25,8 @@ router = APIRouter(prefix="/risk", tags=["Risk"])
 async def _get_market_data(market: str):
     """获取指定市场的持仓和 K 线数据，供进阶端点复用"""
     result = await risk_engine.get_portfolio_risk()
-    if result.get("status") == "error":
+    # empty(无账户空态) 与 error(系统错误) 均返回空数据，交由调用方兜底
+    if result.get("status") in ("error", "empty"):
         return None, None, None
 
     accounts = result.get("accounts", {})
@@ -68,6 +69,8 @@ async def get_risk_dashboard(
     包含: KPI / 敞口 / 风险雷达 / 因子监控 / NAV 快照 / 持仓明细 / 相关性矩阵
     """
     result = await risk_engine.get_portfolio_risk(days=days)
+    # 💡 无账户空态(empty)以 200 + 空 accounts 返回，前端展示"暂无账户数据"；
+    #    仅真正的系统错误(error)才抛 500。
     if result.get("status") == "error":
         raise HTTPException(status_code=500, detail=result.get("message"))
     return result
@@ -77,6 +80,7 @@ async def get_risk_dashboard(
 async def get_positions_breakdown():
     """持仓明细 + 个股风控指标"""
     result = await risk_engine.get_portfolio_risk()
+    # 空态(empty)返回空持仓列表(200)，仅系统错误抛 500
     if result.get("status") == "error":
         raise HTTPException(status_code=500, detail=result.get("message"))
 
@@ -112,6 +116,7 @@ async def get_correlation(
     """RISK-03: 持仓间 60 日收益率相关系数矩阵"""
     # 优先从 dashboard 缓存读取
     result = await risk_engine.get_portfolio_risk()
+    # 空态(empty)返回空矩阵(200)，仅系统错误抛 500
     if result.get("status") == "error":
         raise HTTPException(status_code=500, detail=result.get("message"))
 
