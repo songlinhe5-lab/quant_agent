@@ -78,3 +78,7 @@ class TestRouterNoDatasourceDirectImport:
 
         assert format_ticker("00700.HK") == "HK.00700"
         assert format_yf_ticker("HK.00700") == "0700.HK"
+        # 💡 锁定 consolidated 映射（与 yfinance_service 副本保持一致）
+        assert format_yf_ticker("HSTECH") == "HSTECH.HK"
+        assert format_yf_ticker("HK.800700") == "HSTECH.HK"
+        assert format_yf_ticker("HK.800100") == "^HSCE"

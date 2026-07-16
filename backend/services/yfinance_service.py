@@ -25,8 +25,9 @@ def format_yf_ticker(ticker: str) -> str:
         "HSI": "^HSI",
         "HK.800000": "^HSI",
         "HK.HSI": "^HSI",
-        "HSTECH": "^HSTECH",  # 💡 修复: 恒生科技指数正确代码
-        "HK.800700": "^HSTECH",  # 💡 修复: 恒生科技指数正确代码
+        "HSTECH": "HSTECH.HK",  # 💡 恒生科技指数 Yahoo 代码
+        "HK.800700": "HSTECH.HK",  # 💡 恒生科技指数 Yahoo 代码
+        "HK.800100": "^HSCE",  # 💡 恒生国企指数 Yahoo 代码
         "SPX": "^GSPC",
         "IXIC": "^IXIC",
         "DJI": "^DJI",
@@ -1153,7 +1154,7 @@ class YFinanceService:
             "^GSPC",
             "^IXIC",
             "^HSI",
-            "^HSTECH",  # 💡 新增: 恒生科技指数
+            "HSTECH.HK",  # 💡 恒生科技指数 Yahoo 代码
             "^TNX",
             "JPY=X",
             "DX-Y.NYB",

@@ -18,6 +18,7 @@ export function OMSModule() {
     algoExecutions,
     positions,
     cancelingOrders,
+    futuStatus,
     showAlgoModal,
     setShowAlgoModal,
     selectedOrder,
@@ -116,6 +117,7 @@ export function OMSModule() {
         algoExecutions={algoExecutions}
         positions={positions}
         cancelingOrders={cancelingOrders}
+        futuStatus={futuStatus}
         onSelectOrder={setSelectedOrder}
         onCancelOrder={handleCancelOrder}
       />

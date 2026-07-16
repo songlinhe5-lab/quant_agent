@@ -30,7 +30,7 @@ from backend.core.utils import safe_divide, safe_float
 from backend.services.futu import futu_service
 from backend.services.kline_warehouse import kline_warehouse
 from backend.services.notification_service import notification_service
-from backend.services.yfinance_service import yf_service
+from backend.services.yfinance_service import format_yf_ticker, yf_service
 
 logger = logging.getLogger(__name__)
 
@@ -287,21 +287,8 @@ class ConnectionManager:
     def _get_yf_fast_info(self, ticker: str):
         import yfinance as yf
 
-        yf_ticker = ticker
-
-        # 💡 增加港股核心指数的 YFinance 代码映射，解决恒生科技等指数拉取失败的问题
-        if yf_ticker == "HK.800000":
-            yf_ticker = "^HSI"
-        elif yf_ticker == "HK.800700":
-            yf_ticker = "^HSTECH"
-        elif yf_ticker == "HK.800100":
-            yf_ticker = "^HSCE"
-        elif yf_ticker.startswith("HK."):
-            yf_ticker = yf_ticker.replace("HK.", "") + ".HK"
-        elif yf_ticker.startswith("US."):
-            yf_ticker = yf_ticker.replace("US.", "")
-        if yf_ticker in ["VIX", "TNX", "FVX", "SPX", "NDX", "GSPC"]:
-            yf_ticker = f"^{yf_ticker}"
+        # 💡 统一走 format_yf_ticker 通用转换（不再手写 HK/US 指数映射，避免重复）
+        yf_ticker = format_yf_ticker(ticker)
 
         info = yf.Ticker(yf_ticker).fast_info
 

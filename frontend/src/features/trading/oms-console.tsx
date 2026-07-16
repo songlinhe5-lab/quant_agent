@@ -14,6 +14,7 @@ interface OmsConsoleProps {
   algoExecutions: AlgoExecution[]
   positions: Position[]
   cancelingOrders: Set<string>
+  futuStatus: { connected: boolean; status: string; error_msg?: string } | null
   onSelectOrder: (order: ActiveOrder) => void
   onCancelOrder: (orderId: string) => void
 }
@@ -26,6 +27,7 @@ export function OmsConsole({
   algoExecutions,
   positions,
   cancelingOrders,
+  futuStatus,
   onSelectOrder,
   onCancelOrder,
 }: OmsConsoleProps) {
@@ -232,7 +234,22 @@ export function OmsConsole({
                     </tr>
                   ))}
                   {positions.length === 0 && (
-                    <tr><td colSpan={8} className="text-center py-8 text-muted-foreground">暂无持仓数据 (等待 Futu 同步...)</td></tr>
+                    <tr>
+                      <td colSpan={8} className="text-center py-8">
+                        {futuStatus === null ? (
+                          <span className="text-muted-foreground">正在同步 Futu 持仓...</span>
+                        ) : futuStatus.connected ? (
+                          <span className="text-muted-foreground">当前无持仓</span>
+                        ) : (
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="text-red-400 font-medium">🔴 Futu OpenD 未连接（持仓不可用）</span>
+                            {futuStatus.error_msg && (
+                              <span className="text-[11px] text-muted-foreground font-mono">{futuStatus.error_msg}</span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>

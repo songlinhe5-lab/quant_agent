@@ -126,6 +126,7 @@ from backend.routers.client import (  # noqa: E402
 )
 from backend.routers.internal import router as internal_router  # noqa: E402
 from backend.routers.macro import router as macro_router  # noqa: E402
+from backend.routers.calendars import router as calendars_router  # noqa: E402  FE-PROD-05
 
 # --- 业务模块路由 ---
 from backend.routers.futu_admin import router as futu_admin_router  # noqa: E402
@@ -823,6 +824,7 @@ app.add_middleware(AccessLogMiddleware)
 app.include_router(market_router, prefix="/api/v1")
 app.include_router(trade_router, prefix="/api/v1")
 app.include_router(macro_router, prefix="/api/v1")
+app.include_router(calendars_router, prefix="/api/v1")  # FE-PROD-05 全球市场日历
 app.include_router(preferences_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(backtest_router, prefix="/api/v1")

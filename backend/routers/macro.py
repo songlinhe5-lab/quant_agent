@@ -810,7 +810,7 @@ async def _fetch_macro_assets_data():
         {"symbol": "IXIC", "name": "NASDAQ 综合", "yf": "^IXIC"},
         {"symbol": "NQ", "name": "纳指期货", "yf": "NQ=F"},
         {"symbol": "HSI", "name": "恒生指数", "yf": "^HSI"},
-        {"symbol": "HSTECH", "name": "恒生科技", "yf": "^HSTECH"},  # 💡 修复: 正确 YFinance 代码
+        {"symbol": "HSTECH", "name": "恒生科技", "yf": "HSTECH.HK"},  # 💡 恒生科技指数 Yahoo 代码
         {"symbol": "TNX", "name": "10Y 美债收益率", "yf": "^TNX"},
         {"symbol": "JPY=X", "name": "USD/JPY", "yf": "JPY=X"},
         {"symbol": "DX-Y", "name": "美元指数", "yf": "DX-Y.NYB"},
@@ -896,6 +896,16 @@ async def _fetch_macro_assets_data():
 
 
 # ── 大类资产与雷达 (独立高频接口) ──────────────────────────────────────────
+
+
+@router.get("/earnings")
+async def get_earnings_calendar(
+    days_ahead: int = Query(7, ge=1, le=30, description="向后展望天数"),
+    days_back: int = Query(0, ge=0, le=30, description="向前回溯天数（含已发布）"),
+    force_refresh: bool = Query(False, description="强制绕过缓存"),
+):
+    """财报日历（供 Calendars Earnings Tab 复用，复用既有聚合逻辑）"""
+    return await _fetch_earnings_calendar_data(days_ahead=days_ahead, days_back=days_back, force_refresh=force_refresh)
 
 
 @router.get("/assets")
