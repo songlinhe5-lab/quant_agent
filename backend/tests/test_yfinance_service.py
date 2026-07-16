@@ -107,6 +107,10 @@ class TestFormatYfTicker:
         """Test index ticker mapping"""
         assert format_yf_ticker("HSI") == "^HSI"
         assert format_yf_ticker("HK.800000") == "^HSI"
+        # 💡 锁定 consolidated 映射：恒生科技 / 恒生国企已在通用 index_map 中
+        assert format_yf_ticker("HSTECH") == "HSTECH.HK"
+        assert format_yf_ticker("HK.800700") == "HSTECH.HK"
+        assert format_yf_ticker("HK.800100") == "^HSCE"
         assert format_yf_ticker("SPX") == "^GSPC"
         assert format_yf_ticker("IXIC") == "^IXIC"
         assert format_yf_ticker("DJI") == "^DJI"
