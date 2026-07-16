@@ -34,6 +34,7 @@ const RiskModule = lazyWithRetry(() => import('@/features/trading/risk').then(m 
 const CopilotModule = lazyWithRetry(() => import('@/features/trading/copilot').then(m => ({ default: m.CopilotModule })))
 const ApmModule = lazyWithRetry(() => import('@/features/system/performance-panel').then(m => ({ default: m.PerformancePanel })))
 const AlertCenterModule = lazyWithRetry(() => import('@/features/trading/alert-center').then(m => ({ default: m.AlertCenterModule })))
+const CalendarsModule = lazyWithRetry(() => import('@/features/calendars/module').then(m => ({ default: m.CalendarsModule })))
 const PaperModule = lazyWithRetry(() => import('@/features/paper/module').then(m => ({ default: m.PaperModule })))
 const SettingsPage = lazyWithRetry(() => import('@/features/settings/settings'))
 
@@ -81,6 +82,7 @@ export default function App() {
             <Route path="/copilot" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Copilot"><CopilotModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/apm" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="APM"><ApmModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/alerts" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Alerts"><AlertCenterModule /></ModuleErrorBoundary></Suspense>} />
+            <Route path="/calendars" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Calendars"><CalendarsModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/paper" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Paper"><PaperModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/settings" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Settings"><SettingsPage /></ModuleErrorBoundary></Suspense>} />
             </Route>

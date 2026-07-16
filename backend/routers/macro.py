@@ -8,7 +8,7 @@ try:
     import zoneinfo
 except ImportError:
     zoneinfo = None
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import (
     APIRouter,
@@ -896,6 +896,18 @@ async def _fetch_macro_assets_data():
 
 
 # ── 大类资产与雷达 (独立高频接口) ──────────────────────────────────────────
+
+
+@router.get("/earnings")
+async def get_earnings_calendar(
+    days_ahead: int = Query(7, ge=1, le=30, description="向后展望天数"),
+    days_back: int = Query(0, ge=0, le=30, description="向前回溯天数（含已发布）"),
+    force_refresh: bool = Query(False, description="强制绕过缓存"),
+):
+    """财报日历（供 Calendars Earnings Tab 复用，复用既有聚合逻辑）"""
+    return await _fetch_earnings_calendar_data(
+        days_ahead=days_ahead, days_back=days_back, force_refresh=force_refresh
+    )
 
 
 @router.get("/assets")
