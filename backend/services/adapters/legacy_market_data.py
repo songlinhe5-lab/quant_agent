@@ -41,6 +41,12 @@ class MarketDataGateway:
 
         ensure_yfinance_registered(self._yf)
 
+        from backend.services.datasource.adapters.finnhub import (
+            ensure_finnhub_registered,
+        )
+
+        ensure_finnhub_registered(self._fh)
+
     # ── QuotePort ──────────────────────────────────────────
 
     async def get_quote(self, ticker: str, **kwargs: Any) -> dict[str, Any]:
