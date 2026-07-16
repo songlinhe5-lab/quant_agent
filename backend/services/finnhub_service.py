@@ -10,6 +10,7 @@ import httpx
 
 from backend.core.middleware import httpx_log_request, httpx_log_response
 from backend.core.redis_client import redis_client
+from backend.services.datasource import rate_limit_registry  # SVC-08 限流感知
 
 
 class FinnhubService:
@@ -21,9 +22,35 @@ class FinnhubService:
     def __init__(self):
         self.base_url = "https://finnhub.io/api/v1"
         self._locks = {}
+        # SVC-08: 接入全局限流退避引擎（docs/14 §12），Finnhub 免费档 60 req/min 极易触发 429
+        self._throttler = rate_limit_registry.get_throttler("finnhub")
 
     def _get_api_key(self) -> str:
         return os.getenv("FINNHUB_API_KEY", "")
+
+    # ── SVC-08: 限流感知钩子 ───────────────────────────────────────────────
+    def _record_rate_limit(self, status_code: int, message: str = "") -> None:
+        """通知 Finnhub 限流/封禁退避引擎（限流类错误不计入熔断器失败计数）。"""
+        from backend.services.datasource import ErrorCategory, ErrorInfo
+
+        if status_code == 403:
+            category = ErrorCategory.IP_BLOCKED
+        elif status_code == 402:
+            category = ErrorCategory.QUOTA_EXHAUSTED
+        else:
+            category = ErrorCategory.RATE_LIMIT
+        self._throttler.on_rate_limit(
+            ErrorInfo(
+                code=f"FINNHUB_{status_code}",
+                message=message or f"Finnhub HTTP {status_code}",
+                retryable=True,
+                category=category,
+            )
+        )
+
+    def _record_success(self) -> None:
+        """真实请求成功，推进自适应退避恢复（连续成功 N 次后逐步降速）。"""
+        self._throttler.on_success()
 
     def _get_proxy(self) -> Optional[str]:
         """从环境变量获取代理 IP 池并进行随机轮换"""
@@ -100,8 +127,11 @@ class FinnhubService:
                 except Exception as e:
                     print(f"⚠️ [Finnhub] Redis 财报日历缓存写入异常: {e}")
 
+                self._record_success()
                 return {"status": "success", "data": cleaned_data, "source": "http_api"}
         except httpx.HTTPStatusError as e:
+            if e.response.status_code in (429, 403):
+                self._record_rate_limit(e.response.status_code, "Finnhub 财报日历限流/封禁")
             return {
                 "status": "error",
                 "message": f"Finnhub 财报日历请求异常: HTTP {e.response.status_code}",
@@ -181,6 +211,7 @@ class FinnhubService:
                     )  # 缓存 1 小时，彻底防范频控  # noqa: E501
                 except Exception:
                     pass
+                self._record_success()
                 return {"status": "success", "data": df_data, "source": "finnhub"}
         except Exception as e:
             return {"status": "error", "message": str(e)}
@@ -246,8 +277,11 @@ class FinnhubService:
                 except Exception as e:
                     print(f"⚠️ [Finnhub] Redis 内幕交易缓存写入异常: {e}")
 
+                self._record_success()
                 return {"status": "success", "data": cleaned_data, "source": "http_api"}
         except httpx.HTTPStatusError as e:
+            if e.response.status_code in (429, 403):
+                self._record_rate_limit(e.response.status_code, "Finnhub 内幕交易限流/封禁")
             return {
                 "status": "error",
                 "message": f"Finnhub 内幕交易请求异常: HTTP {e.response.status_code}",
@@ -280,9 +314,11 @@ class FinnhubService:
             ) as client:  # noqa: E501
                 response = await client.get(url, params=params)
                 response.raise_for_status()
+                self._record_success()
                 return {"status": "success", "data": response.json()}
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 429:
+                self._record_rate_limit(429, "Finnhub 新闻触发 60次/分钟 限流")
                 return {
                     "status": "error",
                     "message": "Finnhub 免费版 API 触发 60次/分钟 限流 (429 Too Many Requests)，请稍后重试。",
@@ -361,6 +397,7 @@ class FinnhubService:
                     response = await client.get(url, params=params)
                     response.raise_for_status()
                     data = response.json()
+                    self._record_success()
 
                     try:
                         ttl = 86400 + random.randint(600, 3600)
@@ -373,6 +410,7 @@ class FinnhubService:
                 if e.response.status_code in (403, 429):
                     reason = "403 权限拒绝" if e.response.status_code == 403 else "429 触发限流"  # noqa: E501
                     print(f"⚠️ [Finnhub] {reason}，正在尝试使用 Yahoo Finance 兜底获取 {symbol} 新闻...")  # noqa: E501
+                    self._record_rate_limit(e.response.status_code, f"Finnhub 个股新闻{reason}")
                     fallback_data = await self._fallback_yahoo_news(symbol)
                     if fallback_data:
                         try:
@@ -520,8 +558,11 @@ class FinnhubService:
                 except Exception as e:
                     print(f"⚠️ [Finnhub] Redis 经济日历缓存写入异常: {e}")
 
+                self._record_success()
                 return {"status": "success", "data": events, "source": "finnhub"}
         except httpx.HTTPStatusError as e:
+            if e.response.status_code in (429, 403):
+                self._record_rate_limit(e.response.status_code, "Finnhub 经济日历限流/封禁")
             return {
                 "status": "error",
                 "message": f"Finnhub 经济日历请求异常: HTTP {e.response.status_code}",

@@ -29,6 +29,7 @@ except ImportError:  # pragma: no cover
     zoneinfo = None
 
 from backend.core.redis_client import redis_client
+from backend.services.datasource import rate_limit_registry, ErrorInfo  # SVC-08 限流感知
 
 router = APIRouter(prefix="/calendars", tags=["Calendars"])
 
@@ -52,6 +53,7 @@ CALENDAR_CATEGORIES: list[dict] = [
             {"symbol": "VIX", "name": "VIX 恐慌指数", "yf": "^VIX"},
             {"symbol": "SPY", "name": "SPDR 标普 ETF", "yf": "SPY"},
             {"symbol": "QQQ", "name": "纳指 100 ETF", "yf": "QQQ"},
+            {"symbol": "IWM", "name": "罗素 2000 ETF", "yf": "IWM"},
         ],
     },
     {
@@ -77,6 +79,7 @@ CALENDAR_CATEGORIES: list[dict] = [
             {"symbol": "KWEB", "name": "中概互联", "yf": "KWEB"},
             {"symbol": "SSE", "name": "上证指数", "yf": "000001.SS"},
             {"symbol": "SENSEX", "name": "印度 SENSEX", "yf": "^BSESN"},
+            {"symbol": "TWII", "name": "台湾加权", "yf": "^TWII"},
         ],
     },
     {
@@ -114,6 +117,7 @@ CALENDAR_CATEGORIES: list[dict] = [
             {"symbol": "HG", "name": "伦铜", "yf": "HG=F"},
             {"symbol": "NG", "name": "天然气", "yf": "NG=F"},
             {"symbol": "PL", "name": "铂金", "yf": "PL=F"},
+            {"symbol": "PA", "name": "钯金", "yf": "PA=F"},
         ],
     },
     {
@@ -127,6 +131,7 @@ CALENDAR_CATEGORIES: list[dict] = [
             {"symbol": "USDCNH", "name": "USD/CNH", "yf": "USDCNH=X"},
             {"symbol": "AUDUSD", "name": "AUD/USD", "yf": "AUDUSD=X"},
             {"symbol": "USDCAD", "name": "USD/CAD", "yf": "USDCAD=X"},
+            {"symbol": "USDCHF", "name": "USD/CHF", "yf": "USDCHF=X"},
         ],
     },
 ]
@@ -361,7 +366,7 @@ def _finnhub_key() -> str:
 async def get_calendars_dividends(
     symbol: Optional[str] = Query(None, description="可选：指定标的代码（如 AAPL）"),
 ):
-    """分红日历（优先 Finnhub，未配置 API Key 时优雅降级返回 unavailable）。"""
+    """分红日历（优先 Finnhub，未配置 API Key 时优雅降级返回 unavailable）。SVC-08: 接入限流退避。"""
     api_key = _finnhub_key()
     if not api_key:
         return {
@@ -377,15 +382,40 @@ async def get_calendars_dividends(
             return json.loads(cached)
     except Exception:  # noqa: BLE001
         pass
+
+    # SVC-08: 限流退避期内不硬重试，直接返回降级信号（429 不计入熔断失败计数）
+    throttler = rate_limit_registry.get_throttler("finnhub")
+    if throttler.should_throttle():
+        return {
+            "status": "degraded",
+            "data": [],
+            "message": "Finnhub 限流退避中，请稍后重试",
+            "source": "finnhub_throttled",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
     try:
         params = {"token": api_key, "symbol": symbol} if symbol else {"token": api_key}
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get("https://finnhub.io/api/v1/calendar/dividend", params=params)
+            resp.raise_for_status()
             payload = resp.json()
             items = payload.get("dividendCalendar", []) if isinstance(payload, dict) else []
+            throttler.on_success()
             data = {"status": "success", "data": items, "source": "finnhub"}
             await redis_client.set(cache_key, json.dumps(data), ex=21600)
             return data
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code in (429, 403):
+            throttler.on_rate_limit(
+                ErrorInfo.rate_limited(code="FINNHUB_429", message="Finnhub 分红日历限流")
+            )
+        return {
+            "status": "error",
+            "data": [],
+            "message": f"Finnhub 分红日历请求异常: HTTP {e.response.status_code}",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
     except Exception as e:  # noqa: BLE001
         return {
             "status": "error",
@@ -397,7 +427,7 @@ async def get_calendars_dividends(
 
 @router.get("/ipos")
 async def get_calendars_ipos():
-    """IPO 日历（优先 Finnhub，未配置 API Key 时优雅降级返回 unavailable）。"""
+    """IPO 日历（优先 Finnhub，未配置 API Key 时优雅降级返回 unavailable）。SVC-08: 接入限流退避。"""
     api_key = _finnhub_key()
     if not api_key:
         return {
@@ -413,16 +443,41 @@ async def get_calendars_ipos():
             return json.loads(cached)
     except Exception:  # noqa: BLE001
         pass
+
+    # SVC-08: 限流退避期内不硬重试，直接返回降级信号
+    throttler = rate_limit_registry.get_throttler("finnhub")
+    if throttler.should_throttle():
+        return {
+            "status": "degraded",
+            "data": [],
+            "message": "Finnhub 限流退避中，请稍后重试",
+            "source": "finnhub_throttled",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
                 "https://finnhub.io/api/v1/calendar/ipo", params={"token": api_key}
             )
+            resp.raise_for_status()
             payload = resp.json()
             items = payload.get("ipoCalendar", []) if isinstance(payload, dict) else []
+            throttler.on_success()
             data = {"status": "success", "data": items, "source": "finnhub"}
             await redis_client.set(cache_key, json.dumps(data), ex=21600)
             return data
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code in (429, 403):
+            throttler.on_rate_limit(
+                ErrorInfo.rate_limited(code="FINNHUB_429", message="Finnhub IPO 日历限流")
+            )
+        return {
+            "status": "error",
+            "data": [],
+            "message": f"Finnhub IPO 日历请求异常: HTTP {e.response.status_code}",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
     except Exception as e:  # noqa: BLE001
         return {
             "status": "error",

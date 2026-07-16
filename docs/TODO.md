@@ -447,15 +447,15 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 > 对标 yfinance 顶部 Markets 横向滚动条：左侧类目侧栏 + 右侧水平滚动行情卡片（含 Sparkline）；6 大类目（US/EU/Asia/Crypto/Rates/Commodities/Currencies）+ 4 个日程 Tab（Economic/Earnings/Dividends/IPOs）+ Hours Tab。复用 `_fetch_macro_assets_data` 扩至 50+ 标的。详细设计见 `docs/01 §十六`。
 
-- [x] **[FE-PROD-05a]** 后端：`/api/v1/calendars/snapshot` 端点，扩 `macro/assets` 至 50+ 标的 + 类目聚合（`CalendarCategory`：us/eu/asia/crypto/rates/commodities/currencies）+ Sparkline 字段（60 点分钟级）；复用 `yf_macro_cache_*` Redis 缓存（P1 · ✅ 2026-07-16 · 7 大类目 52 标的）
-- [x] **[FE-PROD-05b]** 后端：新增 `/api/v1/calendars/dividends` `/api/v1/calendars/ipos` `/api/v1/calendars/hours` 三个端点；hours 完整实现（五时区世界时钟矩阵）；dividends/ipos 优先 Finnhub，未配置 `FINNHUB_API_KEY` 时优雅降级返回 `unavailable`（P1 · ✅ 2026-07-16）
+- [x] **[FE-PROD-05a]** 后端：`/api/v1/calendars/snapshot` 端点，扩 `macro/assets` 至 50+ 标的 + 类目聚合（`CalendarCategory`：us/eu/asia/crypto/rates/commodities/currencies）+ Sparkline 字段（60 点分钟级）；复用 `yf_macro_cache_*` Redis 缓存（P1 · ✅ 2026-07-16 · 7 大类目 **实际 52 标的 ✅ 达 50+** · ⚠️ Sparkline 取 `yf_macro_cache_*` **日线**非分钟级）
+- [x] **[FE-PROD-05b]** 后端：新增 `/api/v1/calendars/dividends` `/api/v1/calendars/ipos` `/api/v1/calendars/hours` 三个端点；hours 完整实现（五时区世界时钟矩阵）；dividends/ipos 优先 Finnhub，未配置 `FINNHUB_API_KEY` 时优雅降级返回 `unavailable`（P1 · ✅ 2026-07-16 · ⚠️ 仅 Finnhub，缺失原始要求的 **Futu 港股分红 + AKShare IPO**）
 - [x] **[FE-PROD-05c]** 前端：`CalendarsModule` 一级路由（`/calendars`）+ 顶部 6 Tab 切换（Markets/Economic/Earnings/Dividends/IPOs/Hours）+ 时区切换器；接入 §1.2 IA 侧边栏导航（`📅 Calendars`）（P1 · ✅ 2026-07-16）
 - [x] **[FE-PROD-05d]** 前端：类目侧栏（sticky 176px，7 类目 + 自定义可见性入口）+ 横向滚动卡片行（复用 `AssetButton`/`MiniTrendLine` SVG Sparkline，对齐 `docs/20` 视觉规范）+ 滚动按钮（P1 · ✅ 2026-07-16 · ⚠️ Sparkline 用 SVG 复用既有组件，Canvas 批量绘制优化见下方备注）
 - [x] **[FE-PROD-05e]** 前端：Earnings（复用 `/macro/earnings`）/Dividends/IPOs/Hours Tab；Economic/Earnings/Dividends/IPOs 用统一 `ScheduleTable`，Hours 为五时区世界时钟 + 市场时段矩阵（P2 · ✅ 2026-07-16 · ⚠️ Hours 24h 热力网格简化为市场时段矩阵表）
 - [x] **[FE-PROD-05f]** 前端：自定义类目（类目可见性开关 + localStorage 持久化，侧栏"自定义类目"面板）✅ 2026-07-16 · ⚠️ 仅做显隐，拖拽建组/命名未做（P3 简化）
 - [ ] **[FE-PROD-05g]** Flutter 移动端适配：横向滚动 → 纵向卡片堆叠；类目侧栏 → 折叠面板（Accordion）；复用 `docs/05 §4.2` `DataTile` + `§4.5` `SparklinePainter`（P2，依赖 05d · ~300 行 · ⏸️ 待 `client/` Flutter 仓库单独 PR，Web 端响应式布局已覆盖 <768px）
 - [x] **[FE-PROD-05h]** 测试：Pytest（snapshot 缓存/聚合/STALE · hours · dividends/ipos 降级 · /macro/earnings 复用，7 用例）+ Vitest（模块渲染/Tab 切换/STALE 角标/utils 纯函数，10 用例）（P1 · ✅ 2026-07-16）
-- [ ] **[SVC-08]** Finnhub 限流感知与健康检查：复用 `docs/14 §12` 限流退避体系；`/api/v1/datasource/finnhub/health` + `/rate-limit-status` 端点（P2，依赖 RL-01~14 已落地 ✅）
+- [x] **[SVC-08]** Finnhub 限流感知与健康检查：复用 `docs/14 §12` 限流退避体系；`/api/v1/datasource/finnhub/health`（新增被动健康端点）+ `/rate-limit-status`（通用路由 `routers/datasource.py` 已覆盖 name=finnhub）；`FinnhubService` 全方法 429/403 → `on_rate_limit`、成功 → `on_success`，calendars dividends/ipos 接入 `should_throttle` 退避（P2 · ✅ 2026-07-16 · 8 用例）
 - [ ] **[BE-ARCH-05]** DataSource 新增 Finnhub Source：实现 `DataSourceInterface` Protocol + 注册到 `DataSourceRegistry`；配置 `DATASOURCE_FINNHUB_MODE` env；更新 `docs/14 §八` 能力矩阵（P2，对齐 `docs/14 §10` + AGENTS §10 零侵入扩展规范；接续 BE-ARCH-01~04）
 
 **依赖图**：
@@ -664,6 +664,7 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 | 完成日期    | 任务                                                                               |
 | ------- | -------------------------------------------------------------------------------- |
+| 2026-07-16 | [SVC-08 执行] Finnhub 限流感知：后端 `finnhub_service.py` 注入 `rate_limit_registry` 的 finnhub throttler，`get_earnings_calendar`/`get_market_news`/`get_company_news`/`get_economic_calendar`/`get_insider_transactions`/`get_stock_history` 在 429/403 → `on_rate_limit`、成功 → `on_success`；`routers/calendars.py` 的 `/dividends` `/ipos` 接入 `should_throttle` 退避（退避期返回 degraded，不硬重试）；`routers/datasource.py` 新增 `GET /datasource/finnhub/health`（被动健康：API Key + 限流状态）；`/rate-limit-status` 由通用路由覆盖（name=finnhub）。Pytest 8 全绿。详见 `docs/14 §十二` |
 | 2026-07-16 | [FE-PROD-05 执行] Calendars 全球市场日历落地：后端新增 `routers/calendars.py`（`/calendars/snapshot` 7 类目 52 标的聚合 + `/hours` 世界时钟矩阵 + `/dividends` `/ipos` Finnhub 优雅降级）+ `macro.py` `/earnings` 复用；前端 `features/calendars`（6 Tab：Markets 类目侧栏+横向滚动 + Economic/Earnings/Dividends/IPOs/Hours）；路由/侧边栏导航接入；Pytest 7 + Vitest 10 全绿。05f 仅类目显隐（拖拽分组未做）、05g Flutter 待 `client/` 仓库 PR。详见 `docs/01 §十六` |
 | 2026-07-16 | [docs/01 V2.3 同步] 新增产品前端缺口任务 **FE-PROD-05a~h**（Calendars 全球市场日历）：对标 yfinance 顶部 Markets 横向滚动条；左侧类目侧栏 + 右侧水平滚动卡片含 Sparkline；6 大类目（US/EU/Asia/Crypto/Rates/Commodities/Currencies）+ 4 日程 Tab（Economic/Earnings/Dividends/IPOs）+ Hours Tab；复用 `_fetch_macro_assets_data` 扩至 50+ 标的；与 §8 Macro Hub 边界澄清（横向广度 vs 纵向深度）；同步新增 **SVC-08**（Finnhub 限流感知）+ **BE-ARCH-05**（Finnhub DataSource 接入，接续 BE-ARCH-01~04）；任务定义与 `docs/01 §十六` · §十四 成熟度矩阵对齐 |
 | 2026-07-13 | [CLI-09 完成] 真 WS 行情 (`RealWsGatewayImpl` + protobuf 解码 + 指数退避) + 持仓 REST (`PortfolioService` + `Position`)；QuotesPage/Detail/PortfolioPage 接真实数据；22 tests passed |

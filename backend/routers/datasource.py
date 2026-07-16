@@ -140,3 +140,36 @@ async def get_rate_limit_overview():
         "sources": sources,
         "total": len(sources),
     }
+
+
+@router.get("/finnhub/health")
+async def get_finnhub_health():
+    """
+    Finnhub 数据源健康检查（限流感知，SVC-08）。
+
+    被动探测：基于 API Key 配置 + 限流退避状态，不主动消耗免费配额。
+    返回结构对齐 docs/14 §12 的 HealthInfo（含 rate_limit_status）。
+    限流实时状态另见 GET /datasource/finnhub/rate-limit-status（通用路由已覆盖）。
+    """
+    from backend.services.datasource import HealthInfo
+    from backend.services.finnhub_service import finnhub_service
+
+    api_key = finnhub_service._get_api_key()
+    throttler = rate_limit_registry.get_throttler("finnhub")
+    rl_status = throttler.get_status()
+
+    healthy = bool(api_key) and not rl_status.is_throttled
+    last_error = None
+    if not api_key:
+        last_error = "FINNHUB_API_KEY 未配置"
+    elif rl_status.is_throttled:
+        last_error = "Finnhub 处于限流退避期"
+
+    info = HealthInfo(
+        healthy=healthy,
+        mode="external_rest",
+        connected=bool(api_key),
+        last_error=last_error,
+        rate_limit_status=rl_status,
+    )
+    return {"source": "finnhub", **info.to_dict()}
