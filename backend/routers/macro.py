@@ -8,7 +8,7 @@ try:
     import zoneinfo
 except ImportError:
     zoneinfo = None
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from fastapi import (
     APIRouter,

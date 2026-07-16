@@ -30,7 +30,7 @@ from backend.core.utils import safe_divide, safe_float
 from backend.services.futu import futu_service
 from backend.services.kline_warehouse import kline_warehouse
 from backend.services.notification_service import notification_service
-from backend.services.yfinance_service import yf_service, format_yf_ticker
+from backend.services.yfinance_service import format_yf_ticker, yf_service
 
 logger = logging.getLogger(__name__)
 

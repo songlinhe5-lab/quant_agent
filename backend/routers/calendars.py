@@ -29,7 +29,7 @@ except ImportError:  # pragma: no cover
     zoneinfo = None
 
 from backend.core.redis_client import redis_client
-from backend.services.datasource import rate_limit_registry, ErrorInfo  # SVC-08 限流感知
+from backend.services.datasource import ErrorInfo, rate_limit_registry  # SVC-08 限流感知
 
 router = APIRouter(prefix="/calendars", tags=["Calendars"])
 

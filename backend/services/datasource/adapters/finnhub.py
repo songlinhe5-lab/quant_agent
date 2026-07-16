@@ -16,12 +16,10 @@ import time
 from typing import Any, Optional
 
 from backend.services.datasource import (
-    ErrorCategory,
     ErrorInfo,
     HealthInfo,
     RateLimitStatus,
     Result,
-    ResultStatus,
 )
 
 

@@ -9,7 +9,6 @@ SVC-08: Finnhub 限流感知测试
 4. /api/v1/datasource/finnhub/health 健康端点（被动探测 + 限流状态）
 """
 
-import json
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -132,9 +131,10 @@ async def test_earnings_success_records_success():
 
 def test_calendars_dividends_429_records_throttler():
     """SVC-08: calendars /dividends 遇 429 返回 error 且记录限流。"""
+    from fastapi.testclient import TestClient
+
     from backend.main import app
     from backend.services.datasource import rate_limit_registry
-    from fastapi.testclient import TestClient
 
     with (
         patch("backend.routers.calendars.redis_client") as m,
@@ -154,9 +154,10 @@ def test_calendars_dividends_429_records_throttler():
 
 def test_calendars_ipos_429_records_throttler():
     """SVC-08: calendars /ipos 遇 429 返回 error 且记录限流。"""
+    from fastapi.testclient import TestClient
+
     from backend.main import app
     from backend.services.datasource import rate_limit_registry
-    from fastapi.testclient import TestClient
 
     with (
         patch("backend.routers.calendars.redis_client") as m,
@@ -175,9 +176,10 @@ def test_calendars_ipos_429_records_throttler():
 
 def test_calendars_dividends_throttled_returns_degraded():
     """SVC-08: 退避期内 calendars /dividends 不硬重试，返回 degraded。"""
+    from fastapi.testclient import TestClient
+
     from backend.main import app
     from backend.services.datasource import rate_limit_registry
-    from fastapi.testclient import TestClient
 
     # 1) 先触发一次 429 让 throttler 进入退避期
     with (
@@ -209,8 +211,9 @@ def test_calendars_dividends_throttled_returns_degraded():
 
 def test_finnhub_health_endpoint_connected():
     """SVC-08: /datasource/finnhub/health 被动健康探测返回限流状态。"""
-    from backend.main import app
     from fastapi.testclient import TestClient
+
+    from backend.main import app
 
     with patch.dict(os.environ, {"FINNHUB_API_KEY": "x"}, clear=False):
         r = TestClient(app).get("/api/v1/datasource/finnhub/health")
@@ -224,8 +227,9 @@ def test_finnhub_health_endpoint_connected():
 
 def test_finnhub_health_endpoint_no_api_key():
     """SVC-08: 未配置 API Key 时健康端点标记未连接。"""
-    from backend.main import app
     from fastapi.testclient import TestClient
+
+    from backend.main import app
 
     with patch.dict(os.environ, {"FINNHUB_API_KEY": ""}, clear=False):
         r = TestClient(app).get("/api/v1/datasource/finnhub/health")
