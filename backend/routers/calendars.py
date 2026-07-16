@@ -41,8 +41,11 @@ _cal_locks: dict[str, asyncio.Lock] = {}
 # 每个 tile: {symbol 内部代码, name 中文名, yf Yahoo 代码}
 CALENDAR_CATEGORIES: list[dict] = [
     {
-        "key": "us_markets", "display_name": "US Markets",
-        "tz": "America/New_York", "open": (9, 30), "close": (16, 0),
+        "key": "us_markets",
+        "display_name": "US Markets",
+        "tz": "America/New_York",
+        "open": (9, 30),
+        "close": (16, 0),
         "tiles": [
             {"symbol": "SPX", "name": "S&P 500", "yf": "^GSPC"},
             {"symbol": "ES", "name": "S&P 500 期指", "yf": "ES=F"},
@@ -57,8 +60,11 @@ CALENDAR_CATEGORIES: list[dict] = [
         ],
     },
     {
-        "key": "eu_markets", "display_name": "Europe Markets",
-        "tz": "Europe/London", "open": (8, 0), "close": (16, 30),
+        "key": "eu_markets",
+        "display_name": "Europe Markets",
+        "tz": "Europe/London",
+        "open": (8, 0),
+        "close": (16, 30),
         "tiles": [
             {"symbol": "UKX", "name": "富时 100", "yf": "^FTSE"},
             {"symbol": "PX1", "name": "CAC 40", "yf": "^FCHI"},
@@ -69,8 +75,11 @@ CALENDAR_CATEGORIES: list[dict] = [
         ],
     },
     {
-        "key": "asia_markets", "display_name": "Asia Markets",
-        "tz": "Asia/Hong_Kong", "open": (9, 30), "close": (16, 0),
+        "key": "asia_markets",
+        "display_name": "Asia Markets",
+        "tz": "Asia/Hong_Kong",
+        "open": (9, 30),
+        "close": (16, 0),
         "tiles": [
             {"symbol": "HSI", "name": "恒生指数", "yf": "^HSI"},
             {"symbol": "HSTECH", "name": "恒生科技", "yf": "HSTECH.HK"},
@@ -83,8 +92,11 @@ CALENDAR_CATEGORIES: list[dict] = [
         ],
     },
     {
-        "key": "crypto", "display_name": "Crypto",
-        "tz": None, "open": None, "close": None,  # 7x24 全天候交易
+        "key": "crypto",
+        "display_name": "Crypto",
+        "tz": None,
+        "open": None,
+        "close": None,  # 7x24 全天候交易
         "tiles": [
             {"symbol": "BTC", "name": "比特币", "yf": "BTC-USD"},
             {"symbol": "ETH", "name": "以太坊", "yf": "ETH-USD"},
@@ -95,8 +107,11 @@ CALENDAR_CATEGORIES: list[dict] = [
         ],
     },
     {
-        "key": "rates", "display_name": "Rates & Bonds",
-        "tz": "America/New_York", "open": (8, 0), "close": (17, 0),
+        "key": "rates",
+        "display_name": "Rates & Bonds",
+        "tz": "America/New_York",
+        "open": (8, 0),
+        "close": (17, 0),
         "tiles": [
             {"symbol": "TNX", "name": "10Y 美债收益率", "yf": "^TNX"},
             {"symbol": "TYX", "name": "30Y 美债收益率", "yf": "^TYX"},
@@ -107,8 +122,11 @@ CALENDAR_CATEGORIES: list[dict] = [
         ],
     },
     {
-        "key": "commodities", "display_name": "Commodities",
-        "tz": "America/New_York", "open": (8, 0), "close": (17, 0),
+        "key": "commodities",
+        "display_name": "Commodities",
+        "tz": "America/New_York",
+        "open": (8, 0),
+        "close": (17, 0),
         "tiles": [
             {"symbol": "XAU", "name": "黄金", "yf": "GC=F"},
             {"symbol": "XAG", "name": "白银", "yf": "SI=F"},
@@ -121,8 +139,11 @@ CALENDAR_CATEGORIES: list[dict] = [
         ],
     },
     {
-        "key": "currencies", "display_name": "Currencies",
-        "tz": "America/New_York", "open": (8, 0), "close": (17, 0),
+        "key": "currencies",
+        "display_name": "Currencies",
+        "tz": "America/New_York",
+        "open": (8, 0),
+        "close": (17, 0),
         "tiles": [
             {"symbol": "DXY", "name": "美元指数", "yf": "DX-Y.NYB"},
             {"symbol": "EURUSD", "name": "EUR/USD", "yf": "EURUSD=X"},
@@ -195,9 +216,7 @@ def _market_session_state(
         if now_min < open_min:
             nxt = now.replace(hour=open_hm[0], minute=open_hm[1], second=0, microsecond=0)
         else:
-            nxt = (now + timedelta(days=1)).replace(
-                hour=open_hm[0], minute=open_hm[1], second=0, microsecond=0
-            )
+            nxt = (now + timedelta(days=1)).replace(hour=open_hm[0], minute=open_hm[1], second=0, microsecond=0)
         return False, nxt.isoformat()
     except Exception:
         return True, None
@@ -271,17 +290,17 @@ async def _fetch_calendar_snapshot() -> dict:
     """聚合所有类目的行情快照。"""
     categories = []
     for cat in CALENDAR_CATEGORIES:
-        tiles = await asyncio.gather(
-            *[_fetch_calendar_tile(t, cat["key"]) for t in cat["tiles"]]
-        )
+        tiles = await asyncio.gather(*[_fetch_calendar_tile(t, cat["key"]) for t in cat["tiles"]])
         is_open, next_change = _market_session_state(cat.get("tz"), cat.get("open"), cat.get("close"))
-        categories.append({
-            "category": cat["key"],
-            "display_name": cat["display_name"],
-            "is_market_open": is_open,
-            "next_session_change": next_change,
-            "tiles": [t for t in tiles if t is not None],
-        })
+        categories.append(
+            {
+                "category": cat["key"],
+                "display_name": cat["display_name"],
+                "is_market_open": is_open,
+                "next_session_change": next_change,
+                "tiles": [t for t in tiles if t is not None],
+            }
+        )
     return {
         "timezone": "Asia/Hong_Kong",
         "server_time": datetime.now(timezone.utc).isoformat(),
@@ -342,14 +361,16 @@ async def get_calendars_hours():
         markets = []
         for m in _CALENDAR_MARKETS:
             is_open, next_change = _market_session_state(m["tz"], m.get("open"), m.get("close"))
-            markets.append({
-                "name": m["name"],
-                "tz": m["tz"],
-                "open": f"{m['open'][0]:02d}:{m['open'][1]:02d}" if m.get("open") else None,
-                "close": f"{m['close'][0]:02d}:{m['close'][1]:02d}" if m.get("close") else None,
-                "is_open": is_open,
-                "next_session_change": next_change,
-            })
+            markets.append(
+                {
+                    "name": m["name"],
+                    "tz": m["tz"],
+                    "open": f"{m['open'][0]:02d}:{m['open'][1]:02d}" if m.get("open") else None,
+                    "close": f"{m['close'][0]:02d}:{m['close'][1]:02d}" if m.get("close") else None,
+                    "is_open": is_open,
+                    "next_session_change": next_change,
+                }
+            )
 
         data = {"timezones": zones, "markets": markets}
         return {"status": "success", "data": data, "updated_at": datetime.now(timezone.utc).isoformat()}
@@ -407,9 +428,7 @@ async def get_calendars_dividends(
             return data
     except httpx.HTTPStatusError as e:
         if e.response.status_code in (429, 403):
-            throttler.on_rate_limit(
-                ErrorInfo.rate_limited(code="FINNHUB_429", message="Finnhub 分红日历限流")
-            )
+            throttler.on_rate_limit(ErrorInfo.rate_limited(code="FINNHUB_429", message="Finnhub 分红日历限流"))
         return {
             "status": "error",
             "data": [],
@@ -457,9 +476,7 @@ async def get_calendars_ipos():
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                "https://finnhub.io/api/v1/calendar/ipo", params={"token": api_key}
-            )
+            resp = await client.get("https://finnhub.io/api/v1/calendar/ipo", params={"token": api_key})
             resp.raise_for_status()
             payload = resp.json()
             items = payload.get("ipoCalendar", []) if isinstance(payload, dict) else []
@@ -469,9 +486,7 @@ async def get_calendars_ipos():
             return data
     except httpx.HTTPStatusError as e:
         if e.response.status_code in (429, 403):
-            throttler.on_rate_limit(
-                ErrorInfo.rate_limited(code="FINNHUB_429", message="Finnhub IPO 日历限流")
-            )
+            throttler.on_rate_limit(ErrorInfo.rate_limited(code="FINNHUB_429", message="Finnhub IPO 日历限流"))
         return {
             "status": "error",
             "data": [],

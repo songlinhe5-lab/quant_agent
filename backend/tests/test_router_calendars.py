@@ -44,14 +44,17 @@ class TestCalendarsSnapshot:
 
     def test_snapshot_force_refresh_bypasses_cache_and_aggregates(self, client):
         """force_refresh 跳过缓存，按类目聚合行情；SPX tile 来自 yf Redis 缓存"""
+
         def fake_get(key: str):
             if key == "calendars_snapshot":
                 return None
             if key == "yf_macro_cache_^GSPC":
-                return json.dumps([
-                    {"Date": "2026-07-15", "Close": 4900.0},
-                    {"Date": "2026-07-16", "Close": 5000.0},
-                ])
+                return json.dumps(
+                    [
+                        {"Date": "2026-07-15", "Close": 4900.0},
+                        {"Date": "2026-07-16", "Close": 5000.0},
+                    ]
+                )
             return None
 
         with patch("backend.routers.calendars.redis_client") as m_redis:

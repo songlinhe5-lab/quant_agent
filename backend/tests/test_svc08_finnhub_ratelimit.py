@@ -28,9 +28,7 @@ def _resp(json_data=None, err_code=None):
     r.json.return_value = json_data or {}
     r.status_code = err_code or 200
     if err_code:
-        err = httpx.HTTPStatusError(
-            "err", request=MagicMock(), response=MagicMock(status_code=err_code)
-        )
+        err = httpx.HTTPStatusError("err", request=MagicMock(), response=MagicMock(status_code=err_code))
         r.raise_for_status = MagicMock(side_effect=err)
     else:
         r.raise_for_status = MagicMock()

@@ -75,24 +75,18 @@ class TestFinnhubFetchRouting:
     async def test_fetch_earnings(self):
         svc = MagicMock()
         svc._get_api_key = MagicMock(return_value="k")
-        svc.get_earnings_calendar = AsyncMock(
-            return_value={"status": "success", "data": [{"symbol": "AAPL"}]}
-        )
+        svc.get_earnings_calendar = AsyncMock(return_value={"status": "success", "data": [{"symbol": "AAPL"}]})
         src = FinnhubDataSource(service=svc)
         result = await src.fetch("earnings", {"days_ahead": 14})
         assert result.is_success
         assert result.data == [{"symbol": "AAPL"}]
-        svc.get_earnings_calendar.assert_awaited_once_with(
-            days_ahead=14, days_back=0, skip_cache=False
-        )
+        svc.get_earnings_calendar.assert_awaited_once_with(days_ahead=14, days_back=0, skip_cache=False)
 
     @pytest.mark.asyncio
     async def test_fetch_company_news(self):
         svc = MagicMock()
         svc._get_api_key = MagicMock(return_value="k")
-        svc.get_company_news = AsyncMock(
-            return_value={"status": "success", "data": [{"headline": "x"}]}
-        )
+        svc.get_company_news = AsyncMock(return_value={"status": "success", "data": [{"headline": "x"}]})
         src = FinnhubDataSource(service=svc)
         result = await src.fetch("company_news", {"ticker": "TSLA", "days_back": 5})
         assert result.is_success
@@ -207,9 +201,7 @@ class TestFinnhubViaRegistry:
     async def test_registry_fetch_routes_to_finnhub(self):
         svc = MagicMock()
         svc._get_api_key = MagicMock(return_value="k")
-        svc.get_company_news = AsyncMock(
-            return_value={"status": "success", "data": [{"h": "x"}]}
-        )
+        svc.get_company_news = AsyncMock(return_value={"status": "success", "data": [{"h": "x"}]})
         ensure_finnhub_registered(svc)
         result = await datasource_registry.fetch("finnhub", "company_news", {"ticker": "AAPL"})
         assert result.is_success

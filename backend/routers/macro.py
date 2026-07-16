@@ -905,9 +905,7 @@ async def get_earnings_calendar(
     force_refresh: bool = Query(False, description="强制绕过缓存"),
 ):
     """财报日历（供 Calendars Earnings Tab 复用，复用既有聚合逻辑）"""
-    return await _fetch_earnings_calendar_data(
-        days_ahead=days_ahead, days_back=days_back, force_refresh=force_refresh
-    )
+    return await _fetch_earnings_calendar_data(days_ahead=days_ahead, days_back=days_back, force_refresh=force_refresh)
 
 
 @router.get("/assets")
