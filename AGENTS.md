@@ -496,8 +496,9 @@ ORM         SQLAlchemy 2.0 (async)       异步引擎
 备用数据    yfinance                     降级数据源
 补充数据    finnhub-python               另类数据
 宏观数据    fredapi                      FRED 美联储数据
-AI 引擎     openai (GPT-4o)              主 LLM
-本地 AI     ollama (HTTP API)            离线降级 LLM
+AI 引擎     openai (DeepSeek SDK 封装)    主 LLM 客户端（OpenAI 兼容协议）
+主推理模型  deepseek-v4-flash             工具调用、ReAct 循环（低延迟高效率）
+深度分析    deepseek-v4-pro               复杂研报生成、多轮数据交叉验证
 嵌入模型    sentence-transformers        RAG 向量化
 
 日志        structlog + logging           结构化 JSON 日志
@@ -523,10 +524,9 @@ Pre-commit  pre-commit                   提交前自动检查
 推理循环    Plan → Tool → Verify → Output
 Tool 注册   hermes_agent/tools/ 动态加载
 
-主 LLM      OpenAI GPT-4o-mini（工具调用）
-深度分析    OpenAI GPT-4o（研报生成）
-本地降级    Ollama + Qwen2.5-Coder-7B
-流式输出    Server-Sent Events (SSE)
+主推理引擎  deepseek-v4-flash（工具调用、ReAct 循环）
+深度分析    deepseek-v4-pro（复杂研报、多轮交叉验证）
+流式输出    Server-Sent Events (SSE) + NDJSON
 向量检索    pgvector (PostgreSQL)
 
 Prompt 管理 hermes_agent/prompts/ 目录化管理

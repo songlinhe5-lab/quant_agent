@@ -134,8 +134,8 @@ class HermesAgent:
                 print("⚠️ 警告: 未找到 LLM_API_KEY 环境变量，请在 .env 中配置。")
             api_base_url = os.getenv("LLM_BASE_URL", "https://api.deepseek.com")
             self.client = AsyncOpenAI(api_key=api_key, base_url=api_base_url)
-        self.model = os.getenv("LLM_MODEL", "deepseek-chat")
-        self.vision_model = os.getenv("LLM_VISION_MODEL", "gpt-4o")  # 保留配置，但暂时禁用
+        self.model = os.getenv("LLM_MODEL", "deepseek-v4-flash")
+        self.vision_model = os.getenv("LLM_VISION_MODEL", "deepseek-v4-pro")  # 保留配置，但暂时禁用
         # print(f"👁️  [Agent Brain] 视觉多模态模型已配置: {self.vision_model}") # 暂时注释掉打印
 
         # 1. 加载系统指令 (AGENTS.md)
