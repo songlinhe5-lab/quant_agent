@@ -143,6 +143,7 @@ from backend.routers.trade import router as trade_router  # noqa: E402
 from backend.routers.data_source import router as data_source_router  # noqa: E402
 from backend.routers.datasource import router as datasource_rl_router  # noqa: E402
 from backend.routers.eval import router as eval_router  # noqa: E402, AI-03 eval
+from backend.routers.earnings_router import router as earnings_router  # noqa: E402
 from backend.routers.research import router as research_router  # noqa: E402, AI-01 研报
 from backend.routers.factor import router as factor_router  # noqa: E402, AI-02 因子挖掘
 from backend.routers.alpha158 import router as alpha158_router  # noqa: E402, AI-03 因子库
@@ -847,6 +848,7 @@ app.include_router(futu_admin_router, prefix=API_PREFIX)  # Futu 数据源管理
 app.include_router(alert_router, prefix=API_PREFIX)  # ALERT-02: 告警中心
 app.include_router(logs_router, prefix=API_PREFIX)  # FE-05b: 前端日志采集
 app.include_router(eval_router, prefix=API_PREFIX)  # AI-03: Eval 评估框架
+app.include_router(earnings_router, prefix=API_PREFIX)  # 财报预期对比
 app.include_router(research_router, prefix=API_PREFIX)  # AI-01: 深度研报
 app.include_router(factor_router, prefix=API_PREFIX)  # AI-02: 因子挖掘
 app.include_router(alpha158_router, prefix=API_PREFIX)  # AI-03: Alpha158 因子库
