@@ -101,22 +101,22 @@ sudo chown -R "$USER:$USER" "$DEPLOY_DIR"
 chmod -R u+w "$DEPLOY_DIR"
 
 # ==========================================
-# Step 3: 配置 .env.yf
+# Step 3: 配置 .env
 # ==========================================
 log_info "Step 3: 配置环境变量..."
 
-if [ -f "$DEPLOY_DIR/.env.yf" ]; then
-    log_warn ".env.yf 已存在，跳过覆盖 (请手动检查配置)"
+if [ -f "$DEPLOY_DIR/.env" ]; then
+    log_warn ".env 已存在，跳过覆盖 (请手动检查配置)"
 else
-    if [ -f "$DEPLOY_DIR/scripts/deploy/env.yf.example" ]; then
-        cp "$DEPLOY_DIR/scripts/deploy/env.yf.example" "$DEPLOY_DIR/.env.yf"
+    if [ -f "$DEPLOY_DIR/scripts/deploy/env.yf-node.example" ]; then
+        cp "$DEPLOY_DIR/scripts/deploy/env.yf-node.example" "$DEPLOY_DIR/.env"
         # 自动填充 NODE_ID
-        sed -i "s/NODE_ID=us-yf-a/NODE_ID=$NODE_ID/" "$DEPLOY_DIR/.env.yf"
+        sed -i "s/NODE_ID=us-yf-a/NODE_ID=$NODE_ID/" "$DEPLOY_DIR/.env"
         # 自动填充 Tailscale IP
         if [ "$TS_IP" != "unknown" ]; then
-            sed -i "s/TAILSCALE_IP=100.x.x.x/TAILSCALE_IP=$TS_IP/" "$DEPLOY_DIR/.env.yf"
+            sed -i "s/TAILSCALE_IP=100.x.x.x/TAILSCALE_IP=$TS_IP/" "$DEPLOY_DIR/.env"
         fi
-        log_warn ".env.yf 已从模板创建，请修改以下关键配置:"
+        log_warn ".env 已从模板创建，请修改以下关键配置:"
         echo ""
         echo "  ⚠️  必须修改的配置:"
         echo "  1. REDIS_HOST=<Master Tailscale IP> (默认 100.102.223.44)"
@@ -124,11 +124,11 @@ else
         echo "  3. DATA_SOURCE_HMAC_SECRET=<与主节点一致>"
         echo "  4. INTERNAL_API_SECRET=<与主节点一致>"
         echo ""
-        echo "  编辑: nano $DEPLOY_DIR/.env.yf"
+        echo "  编辑: nano $DEPLOY_DIR/.env"
         echo ""
         read -p "配置完成后按 Enter 继续..."
     else
-        log_error "模板文件不存在: scripts/deploy/env.yf.example"
+        log_error "模板文件不存在: scripts/deploy/env.yf-node.example"
         exit 1
     fi
 fi
