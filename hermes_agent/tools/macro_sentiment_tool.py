@@ -47,10 +47,13 @@ class MacroSentimentTool(BaseTool):
                 return {"status": "error", "message": f"获取情绪历史失败 (HTTP {resp.status_code}): {err_msg}"}
 
             data = resp.json()
-            if data.get("status") != "success":
+            # 后端统一响应格式: {"code": 0, "msg": "ok", "data": {"status": "success", "data": [...]}}
+            if data.get("code") != 0 and data.get("status") != "success":
                 return {"status": "error", "message": f"情绪数据异常: {data}"}
 
-            records = data.get("data", [])
+            # 提取内层实际数据
+            inner = data.get("data", {})
+            records = inner.get("data", []) if isinstance(inner, dict) else inner
             if not records:
                 return {"status": "success", "message": "暂无情绪历史数据，SentimentRecord 表可能为空。"}
 
