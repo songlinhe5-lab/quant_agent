@@ -15,7 +15,7 @@ from backend.app.market_data import market_data
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/futu", tags=["futu-admin"])
+router = APIRouter(prefix="/futu", tags=["futu-admin"])
 
 
 # ── 请求模型 ──────────────────────────────────────────────────────

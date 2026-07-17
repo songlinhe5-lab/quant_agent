@@ -346,7 +346,6 @@ async def _fetch_calendar_tile(cfg: dict, category_key: str) -> dict:
     if ondemand is not None:
         return ondemand
 
-
     return {
         "symbol": symbol,
         "display_name": name,

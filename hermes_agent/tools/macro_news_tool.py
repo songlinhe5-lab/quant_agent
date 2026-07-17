@@ -1,10 +1,9 @@
-import os
 from datetime import datetime
 from typing import Any, Dict
 
 from hermes_agent.tool_registry import register_tool
 
-from .base import BaseTool
+from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
@@ -13,6 +12,7 @@ class MacroNewsTool(BaseTool):
     """
     获取市场实时新闻与宏观舆情，用于撰写早报或大盘情绪分析。
     """
+
     name = "get_macro_news"
     description = "获取过去 24 小时内的全球宏观经济与金融市场新闻，用于新闻摘要、情绪分析与热点提取。"
     parameters = {
@@ -20,17 +20,17 @@ class MacroNewsTool(BaseTool):
         "properties": {
             "limit": {
                 "type": "integer",
-                "description": "需要获取的新闻条数。如果要查阅全天的新闻撰写全景早报，可设为 100 甚至 200。默认 50。"
+                "description": "需要获取的新闻条数。如果要查阅全天的新闻撰写全景早报，可设为 100 甚至 200。默认 50。",
             },
             "category": {
                 "type": "string",
-                "description": "新闻分类，默认为 general。可选：general, forex, crypto, merger"
-            }
-        }
+                "description": "新闻分类，默认为 general。可选：general, forex, crypto, merger",
+            },
+        },
     }
 
     async def run(self, limit: int = 50, category: str = "general") -> Dict[str, Any]:
-        backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/api/v1")
+        backend_url = get_backend_api_url()
         url = f"{backend_url}/macro/news"
 
         # RL-14: 限流感知智能重试
@@ -43,12 +43,8 @@ class MacroNewsTool(BaseTool):
                 # 核心机制：压缩返回的数据结构，剥离无用的图片URL和ID，极大节省大模型阅读的 Token 成本
                 compressed_news = []
                 for item in result.get("data", []):
-                    dt = datetime.fromtimestamp(item.get("datetime", 0)).strftime('%Y-%m-%d %H:%M:%S')
-                    news_obj = {
-                        "time": dt,
-                        "headline": item.get("headline"),
-                        "summary": item.get("summary")
-                    }
+                    dt = datetime.fromtimestamp(item.get("datetime", 0)).strftime("%Y-%m-%d %H:%M:%S")
+                    news_obj = {"time": dt, "headline": item.get("headline"), "summary": item.get("summary")}
                     if item.get("tags"):
                         news_obj["tags"] = item.get("tags")
                     compressed_news.append(news_obj)

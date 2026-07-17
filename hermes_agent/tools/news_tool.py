@@ -1,9 +1,8 @@
-import os
 from typing import Any, Dict
 
 from hermes_agent.tool_registry import register_tool
 
-from .base import BaseTool
+from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
@@ -15,16 +14,16 @@ class GetCompanyNewsTool(BaseTool):
         "type": "object",
         "properties": {
             "ticker": {"type": "string", "description": "股票代码，如 AAPL, HK.00700"},
-            "limit": {"type": "integer", "description": "返回的新闻数量限制，最大 20，默认 10"}
+            "limit": {"type": "integer", "description": "返回的新闻数量限制，最大 20，默认 10"},
         },
-        "required": ["ticker"]
+        "required": ["ticker"],
     }
 
     async def run(self, ticker: str, limit: int = 10) -> Dict[str, Any]:
         if not ticker:
             return {"status": "error", "message": "股票代码 ticker 不能为空"}
 
-        backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/api/v1")
+        backend_url = get_backend_api_url()
         try:
             async with SecureAsyncClient(timeout=15.0) as client:
                 resp = await client.get(f"{backend_url}/market/news", params={"ticker": ticker, "limit": limit})

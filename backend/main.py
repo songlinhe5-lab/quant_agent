@@ -574,6 +574,10 @@ async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content=body)
 
 
+# ─── API 版本前缀（升级时只改此处 + 环境变量） ─────────────────────
+API_URL_VERSION = os.getenv("API_URL_VERSION", "v1")
+API_PREFIX = f"/api/{API_URL_VERSION}"
+
 # ==========================================
 # --- BE-13: 响应格式转换中间件 ---
 # ==========================================
@@ -581,9 +585,9 @@ async def global_exception_handler(request: Request, exc: Exception):
 # 已使用 success()/error() 的新路由不受影响（检测到 code 字段即放行）。
 
 _SKIP_TRANSFORM_PREFIXES = (
-    "/api/v1/chat",  # SSE 流式响应
-    "/api/v1/sse",  # SSE 端点
-    "/api/v1/ws",  # WebSocket
+    f"{API_PREFIX}/chat",  # SSE 流式响应
+    f"{API_PREFIX}/sse",  # SSE 端点
+    f"{API_PREFIX}/ws",  # WebSocket
     "/ws/",  # WebSocket
     "/assets",  # 静态资源
     "/metrics",  # Prometheus（非 JSON）
@@ -820,43 +824,43 @@ app.add_middleware(
 # 挂载全局请求访问与 Prometheus 性能监控中间件
 app.add_middleware(AccessLogMiddleware)
 
-# 挂载所有重构至 routers 目录下的纯净业务路由（添加 /api/v1/ 版本前缀，符合 SEC-01 安全规范）  # noqa: E501
-app.include_router(market_router, prefix="/api/v1")
-app.include_router(trade_router, prefix="/api/v1")
-app.include_router(macro_router, prefix="/api/v1")
-app.include_router(calendars_router, prefix="/api/v1")  # FE-PROD-05 全球市场日历
-app.include_router(preferences_router, prefix="/api/v1")
-app.include_router(auth_router, prefix="/api/v1")
-app.include_router(backtest_router, prefix="/api/v1")
-app.include_router(backtest_reports_router, prefix="/api/v1")  # BT-02 报告持久化
-app.include_router(datalake_router, prefix="/api/v1")  # DQ-03e 数据湖快照
-app.include_router(screener_router, prefix="/api/v1")
-app.include_router(search_router, prefix="/api/v1")
-app.include_router(strategy_router, prefix="/api/v1")
-app.include_router(oms_router, prefix="/api/v1")
-app.include_router(audit_router, prefix="/api/v1")
-app.include_router(client_router, prefix="/api/v1")  # BE-08
-app.include_router(system_router, prefix="/api/v1")  # System APM
-app.include_router(risk_router, prefix="/api/v1")  # Risk 风控面板
-app.include_router(paper_router, prefix="/api/v1")  # PT-01b 纸面组合
-app.include_router(futu_admin_router)  # Futu 数据源管理 (prefix 已含 /api/v1/futu)
-app.include_router(alert_router)  # ALERT-02: 告警中心 (prefix 已含 /api/v1/alert)
-app.include_router(logs_router, prefix="/api/v1")  # FE-05b: 前端日志采集
-app.include_router(eval_router, prefix="/api/v1")  # AI-03: Eval 评估框架
-app.include_router(research_router, prefix="/api/v1")  # AI-01: 深度研报
-app.include_router(factor_router, prefix="/api/v1")  # AI-02: 因子挖掘
-app.include_router(alpha158_router, prefix="/api/v1")  # AI-03: Alpha158 因子库
-app.include_router(options_router, prefix="/api/v1")  # TRADE-01: 期权筛选
-app.include_router(portfolio_router, prefix="/api/v1")  # TRADE-03: 组合优化
+# 挂载所有重构至 routers 目录下的纯净业务路由（统一使用 API_PREFIX，升级版本只改此处）
+app.include_router(market_router, prefix=API_PREFIX)
+app.include_router(trade_router, prefix=API_PREFIX)
+app.include_router(macro_router, prefix=API_PREFIX)
+app.include_router(calendars_router, prefix=API_PREFIX)  # FE-PROD-05 全球市场日历
+app.include_router(preferences_router, prefix=API_PREFIX)
+app.include_router(auth_router, prefix=API_PREFIX)
+app.include_router(backtest_router, prefix=API_PREFIX)
+app.include_router(backtest_reports_router, prefix=API_PREFIX)  # BT-02 报告持久化
+app.include_router(datalake_router, prefix=API_PREFIX)  # DQ-03e 数据湖快照
+app.include_router(screener_router, prefix=API_PREFIX)
+app.include_router(search_router, prefix=API_PREFIX)
+app.include_router(strategy_router, prefix=API_PREFIX)
+app.include_router(oms_router, prefix=API_PREFIX)
+app.include_router(audit_router, prefix=API_PREFIX)
+app.include_router(client_router, prefix=API_PREFIX)  # BE-08
+app.include_router(system_router, prefix=API_PREFIX)  # System APM
+app.include_router(risk_router, prefix=API_PREFIX)  # Risk 风控面板
+app.include_router(paper_router, prefix=API_PREFIX)  # PT-01b 纸面组合
+app.include_router(futu_admin_router, prefix=API_PREFIX)  # Futu 数据源管理
+app.include_router(alert_router, prefix=API_PREFIX)  # ALERT-02: 告警中心
+app.include_router(logs_router, prefix=API_PREFIX)  # FE-05b: 前端日志采集
+app.include_router(eval_router, prefix=API_PREFIX)  # AI-03: Eval 评估框架
+app.include_router(research_router, prefix=API_PREFIX)  # AI-01: 深度研报
+app.include_router(factor_router, prefix=API_PREFIX)  # AI-02: 因子挖掘
+app.include_router(alpha158_router, prefix=API_PREFIX)  # AI-03: Alpha158 因子库
+app.include_router(options_router, prefix=API_PREFIX)  # TRADE-01: 期权筛选
+app.include_router(portfolio_router, prefix=API_PREFIX)  # TRADE-03: 组合优化
 
 # 挂载内部 API 路由（需要 HMAC 签名验证，符合 SEC-03 安全规范）
-app.include_router(internal_router, prefix="/api/v1")
+app.include_router(internal_router, prefix=API_PREFIX)
 
 # 挂载数据源代理路由（支持跨节点数据源调用）
-app.include_router(data_source_router, prefix="/api/v1")
+app.include_router(data_source_router, prefix=API_PREFIX)
 
 # 挂载数据源限流查询路由 (RL-06)
-app.include_router(datasource_rl_router, prefix="/api/v1")
+app.include_router(datasource_rl_router, prefix=API_PREFIX)
 
 # ==========================================
 # --- JWT 鉴权依赖 (SSR & Client 兼容) ---

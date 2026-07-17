@@ -13,17 +13,13 @@ class NotificationTool(BaseTool):
     """
     负责向用户的 Telegram、飞书或微信发送重要通知。
     """
+
     name = "send_notification"
     description = "通过 Telegram、飞书或微信向人类发送重要的报警信息或交易结果通知。"
     parameters = {
         "type": "object",
-        "properties": {
-            "message": {
-                "type": "string",
-                "description": "要发送的通知文本内容"
-            }
-        },
-        "required": ["message"]
+        "properties": {"message": {"type": "string", "description": "要发送的通知文本内容"}},
+        "required": ["message"],
     }
 
     async def run(self, message: str = "") -> Dict[str, Any]:
@@ -72,9 +68,13 @@ class NotificationTool(BaseTool):
                     errors.append(f"WeChat失败: {repr(e)}")
 
         if not success_channels and not errors:
-            return {"status": "warning", "message": "未配置任何通知渠道环境变量 (Telegram/Feishu/ServerChan)。请在 .env 中配置。"}
+            return {
+                "status": "warning",
+                "message": "未配置任何通知渠道环境变量 (Telegram/Feishu/ServerChan)。请在 .env 中配置。",
+            }
 
         return {
             "status": "success" if success_channels else "error",
-            "message": f"成功发送至: {','.join(success_channels)}。" + (f" 失败信息: {'; '.join(errors)}" if errors else "")
+            "message": f"成功发送至: {','.join(success_channels)}。"
+            + (f" 失败信息: {'; '.join(errors)}" if errors else ""),
         }

@@ -12,17 +12,13 @@ class DeleteKnowledgeTool(BaseTool):
     全局知识库清理工具。
     根据特定的 URL 从 ChromaDB 中永久删除相关的网页碎片。
     """
+
     name = "delete_global_knowledge"
     description = "从全局知识库中删除指定 URL 的所有相关网页片段。当你在检索时发现某些网页数据（如旧财报、过时的指引）已经过期，并对当前的分析产生干扰时，主动调用此工具将其从向量数据库中永久清理。"
     parameters = {
         "type": "object",
-        "properties": {
-            "url": {
-                "type": "string",
-                "description": "需要从知识库中删除的具体网页 URL 链接"
-            }
-        },
-        "required": ["url"]
+        "properties": {"url": {"type": "string", "description": "需要从知识库中删除的具体网页 URL 链接"}},
+        "required": ["url"],
     }
 
     async def run(self, url: str) -> Dict[str, Any]:

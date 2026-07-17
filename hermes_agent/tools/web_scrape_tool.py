@@ -20,15 +20,19 @@ class WebScrapeTool(BaseTool):
     """
     网页正文提取工具，利用 Jina Reader API 直接抓取网页并提取纯文本 Markdown。
     """
+
     name = "fetch_webpage"
     description = "获取指定 URL 网页的正文内容（以 Markdown 格式返回）。当你在搜索结果中看到感兴趣的链接，需要深入阅读完整的研报或新闻原文时调用此工具。"
     parameters = {
         "type": "object",
         "properties": {
             "url": {"type": "string", "description": "需要读取正文的具体网页 URL 链接"},
-            "query": {"type": "string", "description": "可选：由于网页可能极长，强烈建议提供此参数以触发 RAG 语义检索。请务必输入极其具体的问题或事实细节（例如：'高管对下个季度的营收和毛利率指引是多少？' 或 '该研报提到的三大看多逻辑和目标价'）。严禁输入诸如'总结'、'财报'、'核心内容'等宽泛废话。"}
+            "query": {
+                "type": "string",
+                "description": "可选：由于网页可能极长，强烈建议提供此参数以触发 RAG 语义检索。请务必输入极其具体的问题或事实细节（例如：'高管对下个季度的营收和毛利率指引是多少？' 或 '该研报提到的三大看多逻辑和目标价'）。严禁输入诸如'总结'、'财报'、'核心内容'等宽泛废话。",
+            },
         },
-        "required": ["url"]
+        "required": ["url"],
     }
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
@@ -43,20 +47,31 @@ class WebScrapeTool(BaseTool):
 
         # 使用 Jina Reader API，免费且专门为大模型优化的网页转 Markdown 接口
         jina_url = f"https://r.jina.ai/{url}"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
 
         try:
-            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True, event_hooks={'request': [httpx_log_request], 'response': [httpx_log_response]}) as client:
+            async with httpx.AsyncClient(
+                timeout=15.0,
+                follow_redirects=True,
+                event_hooks={"request": [httpx_log_request], "response": [httpx_log_response]},
+            ) as client:
                 resp = await client.get(jina_url, headers=headers)
                 resp.raise_for_status()
                 content = resp.text
 
                 # 💡 利用正则清洗 Markdown 中的冗余图片和超链接，极大节省大模型 Token
-                content = re.sub(r'!\[[^\]]*\]\([^\)]+\)', '', content)  # 完全移除图片及图片链接
-                content = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', content)  # 超链接“剥壳”：仅保留链接文字，移除 URL
+                content = re.sub(r"!\[[^\]]*\]\([^\)]+\)", "", content)  # 完全移除图片及图片链接
+                content = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", content)  # 超链接“剥壳”：仅保留链接文字，移除 URL
 
                 # 💡 拦截动态反爬与 JS 护盾：如果字数过少或包含反爬特征，主动抛出异常走降级
-                if len(content) < 200 or "Please enable JS" in content or "访问受限" in content or "Just a moment" in content:
+                if (
+                    len(content) < 200
+                    or "Please enable JS" in content
+                    or "访问受限" in content
+                    or "Just a moment" in content
+                ):
                     raise ValueError("触发目标网站反爬屏蔽或遇到了 SPA 动态渲染页")
 
                 return await self._format_response(url, content, query)
@@ -67,10 +82,12 @@ class WebScrapeTool(BaseTool):
     async def _format_response(self, url: str, content: str, query: str = "") -> Dict[str, Any]:
         """格式化输出，防止撑爆大模型 Token 上限"""
         # 💡 移除常见的无用页脚与声明，进一步提纯文本
-        content = re.sub(r'(?im)^.*(Copyright|版权所有)\s*[©©]?\s*20\d{2}.*$', '', content)
-        content = re.sub(r'(?im)^.*(All Rights Reserved|保留所有权利).*$', '', content)
+        content = re.sub(r"(?im)^.*(Copyright|版权所有)\s*[©©]?\s*20\d{2}.*$", "", content)
+        content = re.sub(r"(?im)^.*(All Rights Reserved|保留所有权利).*$", "", content)
         # 💡 绝大部分免责声明位于文末，匹配到该标题后直接截断，丢弃后续全部万字废话
-        content = re.sub(r'\n+\s*(免责声明|Disclaimer|投资风险提示)[：:\s].*', '', content, flags=re.IGNORECASE | re.DOTALL)
+        content = re.sub(
+            r"\n+\s*(免责声明|Disclaimer|投资风险提示)[：:\s].*", "", content, flags=re.IGNORECASE | re.DOTALL
+        )
 
         if query:
             try:
@@ -108,9 +125,11 @@ class WebScrapeTool(BaseTool):
 
                 # 💡 放弃传统的 co.headless()，改用 Chrome 最新的 --headless=new 模式
                 # 它使用的是真实的浏览器渲染管线，极难被网站的风控系统（如 Cloudflare）识别
-                co.set_argument('--headless=new')
-                co.set_argument('--disable-blink-features=AutomationControlled') # 隐藏 WebDriver 特征
-                co.set_user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
+                co.set_argument("--headless=new")
+                co.set_argument("--disable-blink-features=AutomationControlled")  # 隐藏 WebDriver 特征
+                co.set_user_agent(
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+                )
 
                 page = ChromiumPage(addr_or_opts=co)
                 try:
@@ -118,7 +137,7 @@ class WebScrapeTool(BaseTool):
                     time.sleep(3)  # 留出 3 秒等待页面的 JS、AJAX 请求和 Vue/React 组件完全挂载
 
                     # 提取 <body> 下的所有纯文本 (自动屏蔽 HTML 和脚本标签，等效于 innerText)
-                    body = page.ele('tag:body')
+                    body = page.ele("tag:body")
                     # 💡 增加显式的 str() 强转保护
                     return str(body.text) if body else ""
                 finally:
@@ -144,7 +163,9 @@ class WebScrapeTool(BaseTool):
                 RecursiveCharacterTextSplitter,
             )
         except ImportError:
-            return "⚠️ 缺少 langchain-text-splitters 或 chromadb 依赖，无法进行 RAG 检索。\n\n" + safe_truncate(content, 5000)
+            return "⚠️ 缺少 langchain-text-splitters 或 chromadb 依赖，无法进行 RAG 检索。\n\n" + safe_truncate(
+                content, 5000
+            )
 
         # 1. 标题切分 (保留文档父子层级关系)
         headers_to_split_on = [
@@ -161,7 +182,7 @@ class WebScrapeTool(BaseTool):
             chunk_overlap=400,
             # 💡 核心优化：将句号优先级置于单换行符 \n 之前。
             # 财报 Markdown 表格按 \n 换行但通常没有句号，这样能最大程度保证普通段落按句子切分，大表格尽量作为一个整体，逼不得已时才按表行切分
-            separators=["\n\n", "。", "！", "？", ".", "!", "?", "\n", "；", ";", "，", ",", " ", ""]
+            separators=["\n\n", "。", "！", "？", ".", "!", "?", "\n", "；", ";", "，", ",", " ", ""],
         )
         splits = text_splitter.split_documents(md_splits)
 
@@ -177,20 +198,28 @@ class WebScrapeTool(BaseTool):
             emb_base_url = os.getenv("EMBEDDING_BASE_URL")
             emb_model = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
             emb_fn = embedding_functions.OpenAIEmbeddingFunction(
-                api_key=emb_api_key,
-                model_name=emb_model,
-                api_base=emb_base_url
+                api_key=emb_api_key, model_name=emb_model, api_base=emb_base_url
             )
         else:
-            emb_fn = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="paraphrase-multilingual-MiniLM-L12-v2")
+            emb_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+                model_name="paraphrase-multilingual-MiniLM-L12-v2"
+            )
 
         # 💡 使用 get_or_create_collection 建立长效独立的网页知识库 Collection
         collection = client.get_or_create_collection(name="webpage_knowledge_base", embedding_function=emb_fn)  # type: ignore
 
-        url_hash = hashlib.md5(url.encode('utf-8')).hexdigest()
+        url_hash = hashlib.md5(url.encode("utf-8")).hexdigest()
         current_ts = int(time.time())
         docs = [s.page_content for s in splits]
-        metadatas = [{**(s.metadata if s.metadata else {"source": "webpage"}), "url": url, "length": len(s.page_content), "timestamp": current_ts} for s in splits]
+        metadatas = [
+            {
+                **(s.metadata if s.metadata else {"source": "webpage"}),
+                "url": url,
+                "length": len(s.page_content),
+                "timestamp": current_ts,
+            }
+            for s in splits
+        ]
         ids = [f"web_{url_hash}_{i}" for i in range(len(splits))]
 
         # 💡 修复：分批与指数退避重试，防范第三方 Embedding API 单次输入越界与并发限流
@@ -200,11 +229,7 @@ class WebScrapeTool(BaseTool):
 
         batch_size = 60
         for i in range(0, len(docs), batch_size):
-            _upsert_with_retry(
-                docs[i:i+batch_size],
-                metadatas[i:i+batch_size],
-                ids[i:i+batch_size]
-            )
+            _upsert_with_retry(docs[i : i + batch_size], metadatas[i : i + batch_size], ids[i : i + batch_size])
 
         # 4. 根据 Query 语义检索 Top 3 最相关片段
         results = collection.query(query_texts=[query], n_results=min(3, len(splits)))
@@ -222,7 +247,7 @@ class WebScrapeTool(BaseTool):
         for i, (doc, meta) in enumerate(zip(docs[0], safe_metas)):
             meta = meta or {}
             headers = " > ".join([str(v) for k, v in meta.items() if str(k).startswith("Header")])
-            title = f"[{i+1}] 【章节: {headers}】" if headers else f"[{i+1}] 【无标题片段】"
+            title = f"[{i + 1}] 【章节: {headers}】" if headers else f"[{i + 1}] 【无标题片段】"
             summary += f"{title}\n{doc}\n\n"
 
         summary += f"\n(💡 RAG 系统提示：1. 如果以上片段存在数据矛盾，请明确指出冲突并自行推断，严禁强行掩盖。 2. 绝对禁止在你的回答中大段复制粘贴或复述原始的 Markdown/JSON 内容，必须自行提炼核心结论！ 3. 在组织回答时，必须像学术论文一样，在你陈述的事实或数据后，严格使用对应的序号进行内联引用标注（例如：'苹果预计资本开支为150亿美元 [1] 。'），并在回答的最后附上「📚 参考文献」列表展示所有被引用的片段序号和对应标题。 4. 请务必在参考文献列表下方，单独附上该网页的原文链接：{url} ，以供用户点击阅读原文。)"

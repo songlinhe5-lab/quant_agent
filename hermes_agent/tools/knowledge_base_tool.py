@@ -14,6 +14,7 @@ class KnowledgeBaseTool(BaseTool):
     全局知识库检索工具。
     在不提供具体 URL 的情况下，根据查询词检索系统已经读取并持久化在 ChromaDB 里的所有历史网页/研报碎片。
     """
+
     name = "search_global_knowledge"
     description = "全局知识库检索。当用户问及'你之前读过的某篇研报'或'提取历史资料中关于某某的信息'时调用。该工具会在系统已经持久化的所有网页碎片中进行语义搜索，并返回最相关的段落及其原文出处(URL)。"
     parameters = {
@@ -21,20 +22,16 @@ class KnowledgeBaseTool(BaseTool):
         "properties": {
             "query": {
                 "type": "string",
-                "description": "需要在全局知识库中语义检索的查询问题，越详细越好（例如：'苹果对于大中华区营收的最新指引是多少？'）"
+                "description": "需要在全局知识库中语义检索的查询问题，越详细越好（例如：'苹果对于大中华区营收的最新指引是多少？'）",
             },
-            "limit": {
-                "type": "integer",
-                "description": "返回的最多相关片段数量，默认为 5",
-                "default": 5
-            },
+            "limit": {"type": "integer", "description": "返回的最多相关片段数量，默认为 5", "default": 5},
             "days_back": {
                 "type": "integer",
                 "description": "可选参数：时间过滤。指定检索过去 N 天内的数据（例如 30 表示只检索最近 30 天抓取的文献）。如果不填或为 0，则检索所有历史数据。",
-                "default": 0
-            }
+                "default": 0,
+            },
         },
-        "required": ["query"]
+        "required": ["query"],
     }
 
     async def run(self, query: str, limit: int = 5, days_back: int = 0) -> Dict[str, Any]:
@@ -68,7 +65,9 @@ class KnowledgeBaseTool(BaseTool):
                 api_key=emb_api_key, model_name=emb_model, api_base=emb_base_url
             )
         else:
-            emb_fn = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="paraphrase-multilingual-MiniLM-L12-v2")
+            emb_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+                model_name="paraphrase-multilingual-MiniLM-L12-v2"
+            )
 
         try:
             collection = client.get_collection(name="webpage_knowledge_base", embedding_function=emb_fn)  # type: ignore
@@ -96,7 +95,7 @@ class KnowledgeBaseTool(BaseTool):
         for i, (doc, meta) in enumerate(zip(docs[0], safe_metas)):
             meta = meta or {}
             headers = " > ".join([str(v) for k, v in meta.items() if str(k).startswith("Header")])
-            title = f"[{i+1}] 【章节: {headers}】" if headers else f"[{i+1}] 【无标题片段】"
+            title = f"[{i + 1}] 【章节: {headers}】" if headers else f"[{i + 1}] 【无标题片段】"
             url = meta.get("url", "未知来源")
             # 在每一段的下方显式附上其 URL 来源出处
             summary += f"{title}\n{doc}\n(🔗 来源链接: {url})\n\n"

@@ -199,7 +199,8 @@ export function useAlertWebSocket(
     // 💡 keep-alive 后台模块 / 页面隐藏时不建立 WS，避免多模块 WS 并发重连风暴
     if (!keepAliveActive || document.visibilityState !== 'visible') return
 
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+    const apiVersion = import.meta.env.VITE_API_URL_VERSION || 'v1'
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || `/api/${apiVersion}`
     
     // 构建 WebSocket URL
     let wsUrl: string

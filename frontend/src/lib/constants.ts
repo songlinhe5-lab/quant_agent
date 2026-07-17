@@ -4,7 +4,8 @@
  */
 
 // API 相关
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+const API_VERSION = import.meta.env.VITE_API_URL_VERSION || 'v1';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || `/api/${API_VERSION}`;
 export const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws';
 
 // 行情相关
