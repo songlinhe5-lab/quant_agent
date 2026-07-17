@@ -135,8 +135,8 @@ class HermesAgent:
             api_base_url = os.getenv("LLM_BASE_URL", "https://api.deepseek.com")
             self.client = AsyncOpenAI(api_key=api_key, base_url=api_base_url)
         self.model = os.getenv("LLM_MODEL", "deepseek-v4-flash")
+        self.pro_model = os.getenv("LLM_PRO_MODEL", "deepseek-v4-pro")
         self.vision_model = os.getenv("LLM_VISION_MODEL", "deepseek-v4-pro")  # 保留配置，但暂时禁用
-        # print(f"👁️  [Agent Brain] 视觉多模态模型已配置: {self.vision_model}") # 暂时注释掉打印
 
         # 1. 加载系统指令 (AGENTS.md)
         self.system_prompt = self._load_system_prompt()
@@ -144,7 +144,7 @@ class HermesAgent:
         # 2. 初始化对话记忆 (Context Window)
         self.messages: List[Dict[str, Any]] = [{"role": "system", "content": self.system_prompt}]
 
-        print(f"🧠 [Agent Brain] 初始化完成，系统纪律 (AGENTS.md) 已烙印。当前加载模型: {self.model}")
+        print(f"🧠 [Agent Brain] 初始化完成。主推理: {self.model} | 深度分析: {self.pro_model}")
 
     async def initialize(self):
         """异步初始化：从 Redis 加载历史记忆"""
@@ -523,8 +523,9 @@ class HermesAgent:
             )
 
             # 进行最后一次无 Tools 的 API 请求，强制剥夺模型的工具使用权
+            # 💡 使用 pro 模型进行深度分析总结，提升最终结论质量
             response = await self.client.chat.completions.create(
-                model=self.model, messages=cast(Any, self.messages), temperature=0.0
+                model=self.pro_model, messages=cast(Any, self.messages), temperature=0.0
             )
             final_msg = response.choices[0].message
             self.messages.append(final_msg.model_dump(exclude_none=True))
@@ -772,8 +773,9 @@ class HermesAgent:
             )
 
             final_content = ""
+            # 💡 使用 pro 模型进行深度分析总结，提升最终结论质量
             response = await self.client.chat.completions.create(
-                model=self.model, messages=cast(Any, self.messages), temperature=0.0, stream=True
+                model=self.pro_model, messages=cast(Any, self.messages), temperature=0.0, stream=True
             )
 
             async for chunk in response:
