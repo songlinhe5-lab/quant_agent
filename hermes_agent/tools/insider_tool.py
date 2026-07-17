@@ -7,7 +7,7 @@ from hermes_agent.tool_registry import register_tool
 
 
 class InsiderTransactionsInput(BaseModel):
-    ticker: str = Field(..., description="股票代码，例如 US.AAPL, HK.00700")
+    ticker: str = Field(..., description="股票代码，仅支持美股，例如 US.AAPL, US.TSLA。港股暂不支持，请使用 web_search 搜索 'HK.00700 insider transactions HKEX' 获取信息。")
     limit: int = Field(default=20, description="返回的交易记录条数，默认 20")
 
 
@@ -27,6 +27,13 @@ class InsiderTransactionsTool:
         return self.args_schema.model_json_schema()
 
     async def run(self, ticker: str, limit: int = 20) -> str:
+        # 💡 提前拦截港股，引导使用 web_search
+        if ticker.startswith("HK."):
+            return (
+                f"⚠️ 港股内幕交易数据暂不支持直接查询。\n\n"
+                f"💡 建议操作：使用 web_search 搜索 '{ticker} insider transactions HKEX 披露易' 获取相关信息。\n"
+                f"或访问 HKEX 披露易网站: https://www.hkexnews.hk 查询该股票的高管交易记录。"
+            )
         try:
             res = await finnhub_service.get_insider_transactions(ticker=ticker, limit=limit)
             if res.get("status") == "success":
