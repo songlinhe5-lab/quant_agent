@@ -54,7 +54,9 @@ def with_agent_self_correction(max_retries: int = 2, query_param: str = "query")
                             "message": f"多次纠错尝试均失败，请更换指令重试。最后一次报错: {last_error}",
                         }
                 except Exception as e:
-                    return {"status": "error", "message": f"工具执行发生未知异常: {str(e)}"}
+                    err_detail = f"{type(e).__name__}: {str(e)}" if str(e) else type(e).__name__
+                    print(f"❌ [{func.__name__}] 未知异常: {err_detail}")
+                    return {"status": "error", "message": f"工具执行发生未知异常: {err_detail}"}
 
         return wrapper
 
