@@ -178,6 +178,24 @@ export const ChatMessageItem = React.memo(({
   const isThinkingState = isGenerating && isLast && thinkStart !== -1 && thinkEnd === -1;
   const hasRunningTools = msg.tools?.some(t => t.status === 'running');
   const isExpanded = isThinkingState || hasRunningTools;
+
+  // 💡 思考过程面板：用户手动展开后，不再因生成结束/工具完成而自动关闭
+  const detailsRef = useRef<HTMLDetailsElement>(null)
+  const userToggledRef = useRef(false)
+  const prevExpandedRef = useRef(isExpanded)
+
+  useEffect(() => {
+    // 当 isExpanded 变为 true 时自动展开（仅当用户未手动操作过）
+    if (isExpanded && !userToggledRef.current && detailsRef.current) {
+      detailsRef.current.open = true
+    }
+    prevExpandedRef.current = isExpanded
+  }, [isExpanded])
+
+  const handleThinkToggle = useCallback(() => {
+    // 标记用户已手动交互，后续不再自动控制展开状态
+    userToggledRef.current = true
+  }, [])
   
   // 💡 针对深度思考内容过长导致的页面伸缩跳动，为其设置独立滚动条，并在生成时自动将其内部滚动到底部
   const thinkContentRef = useRef<HTMLDivElement>(null)
@@ -230,6 +248,8 @@ export const ChatMessageItem = React.memo(({
           <div className="flex flex-col">
             {(hasThinking || hasTools) && (
               <details 
+                ref={detailsRef}
+                onToggle={handleThinkToggle}
                 className="group border border-border/30 rounded-lg overflow-hidden bg-slate-50/50 dark:bg-black/20 text-xs transition-colors mb-3" 
                 open={isExpanded}
               >
