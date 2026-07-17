@@ -108,8 +108,12 @@ class SearchService:
                     or os.getenv("HTTP_PROXY")
                     or os.getenv("http_proxy")
                 )  # noqa: E501
+                # 💡 根据查询语言自动选择区域：英文查询用 wt-wt（全球），中文查询用 cn-zh
+                import re
+                is_mostly_english = bool(re.match(r'^[\x00-\x7F]+$', query))
+                region = "wt-wt" if is_mostly_english else "cn-zh"
                 with DDGS(proxy=proxy, timeout=20) as ddgs:
-                    res = list(ddgs.text(query, max_results=max_results, region="cn-zh"))  # noqa: E501
+                    res = list(ddgs.text(query, max_results=max_results, region=region))  # noqa: E501
                     if res:
                         return res  # noqa: E701
                     raise ValueError("DuckDuckGo 返回空数据")
