@@ -431,7 +431,7 @@ class HermesAgent:
         """
         核心 ReAct 执行循环 (Plan -> Tool -> Verify -> Output)
         """
-        max_iterations = 5
+        max_iterations = 8
         for i in range(max_iterations):
             print(f"🤖 [Agent] 思考中 (第 {i + 1} 轮)...")
             try:
@@ -561,7 +561,7 @@ class HermesAgent:
             self.console.print("⚠️ [Agent Stream] 上下文为空 (或仅含 System 指令)，拒绝发起大模型请求。")
             return  # 仅有 system prompt 时不触发大模型请求
 
-        max_iterations = 5
+        max_iterations = 8
         for i in range(max_iterations):
             self.console.print(f"🤖 [Agent Stream] 流式思考中 (第 {i + 1} 轮)...")
             try:
