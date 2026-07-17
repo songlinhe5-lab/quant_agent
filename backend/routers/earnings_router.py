@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
-from backend.core.database import redis_client
+from backend.core.redis_client import redis_client
 
 router = APIRouter(prefix="/earnings", tags=["earnings"])
 
