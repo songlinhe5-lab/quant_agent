@@ -1,7 +1,8 @@
 import json
-import os
 
 import httpx
+
+from .base import get_backend_api_url
 
 
 class SecureAsyncClient(httpx.AsyncClient):
@@ -9,15 +10,16 @@ class SecureAsyncClient(httpx.AsyncClient):
     Agent 工具专属的安全沙箱 HTTP 客户端。
     强制限制 Tool 只能请求内部 Backend 网关，严禁绕过网关直连外部数据源 (如 Yahoo, Futu, Finnhub 等)。
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/api/v1")
+        self.backend_url = get_backend_api_url()
         # 允许的内部白名单前缀
         self.allowed_prefixes = (
             self.backend_url,
             "http://127.0.0.1",
             "http://localhost",
-            "http://quant_app"  # Docker 内部网络名
+            "http://quant_app",  # Docker 内部网络名
         )
 
     def _verify_url(self, url):
@@ -30,7 +32,9 @@ class SecureAsyncClient(httpx.AsyncClient):
     async def request(self, method, url, *args, **kwargs):
         self._verify_url(url)
 
-        print(f"🌐 [Secure Client] 发起请求: {method} {url} | Payload: {kwargs.get('params') or kwargs.get('json') or {}}")
+        print(
+            f"🌐 [Secure Client] 发起请求: {method} {url} | Payload: {kwargs.get('params') or kwargs.get('json') or {}}"
+        )
         response = await super().request(method, url, *args, **kwargs)
         print(f"🌐 [Secure Client] 收到响应: HTTP {response.status_code}")
 
@@ -41,11 +45,14 @@ class SecureAsyncClient(httpx.AsyncClient):
         if len(response.content) > 15000:
             try:
                 data = response.json()
+
                 # 智能递归截断：保留 JSON 结构完整性，仅对过长的数组进行高位截断
                 def truncate_lists(obj):
                     if isinstance(obj, list):
                         if len(obj) > 30:
-                            return [truncate_lists(item) for item in obj[:30]] + [{"_notice": "⚠️ 为防止大模型上下文 Token 溢出，后续海量数据已被安全截断！"}]
+                            return [truncate_lists(item) for item in obj[:30]] + [
+                                {"_notice": "⚠️ 为防止大模型上下文 Token 溢出，后续海量数据已被安全截断！"}
+                            ]
                         return [truncate_lists(item) for item in obj]
                     elif isinstance(obj, dict):
                         return {k: truncate_lists(v) for k, v in obj.items()}

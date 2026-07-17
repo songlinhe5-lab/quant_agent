@@ -17,10 +17,13 @@ class ScreenerToolInput(BaseModel):
     query: str = Field(..., description="自然语言选股条件，例如：'美股市值大于100亿，PE小于20，MACD金叉'")
     limit: int = Field(default=10, description="返回的标的数量上限，默认 10只")
 
+
 @register_tool
 class ScreenerTool:
     name = "screen_stocks"
-    description = "全市场智能条件选股器。向它发送自然语言条件，它将从全市场为你选出符合技术面、财务面特征的优质股票备选池。"
+    description = (
+        "全市场智能条件选股器。向它发送自然语言条件，它将从全市场为你选出符合技术面、财务面特征的优质股票备选池。"
+    )
     args_schema: Type[BaseModel] = ScreenerToolInput
 
     @property
@@ -41,7 +44,9 @@ class ScreenerTool:
                     final_data.extend(res.get("data", []))
 
             if post_filters.get("exclude_st"):
-                final_data = [r for r in final_data if "ST" not in r.get("name", "").upper() and "退" not in r.get("name", "")]
+                final_data = [
+                    r for r in final_data if "ST" not in r.get("name", "").upper() and "退" not in r.get("name", "")
+                ]
 
             tech_patterns = post_filters.get("technical_patterns", [])
             if final_data and tech_patterns:
@@ -52,16 +57,27 @@ class ScreenerTool:
 
             top_stocks = final_data[:limit]
             stock_list = [f"{r['symbol']} ({r['name']})" for r in top_stocks]
-            tickers_only = [r['symbol'] for r in top_stocks]
+            tickers_only = [r["symbol"] for r in top_stocks]
 
-            return "✅ 选股成功！符合条件的备选股票池如下：\n" + "\n".join(stock_list) + f"\n\n请提取以下代码数组进入下一步的批量回测：{json.dumps(tickers_only)}"
+            return (
+                "✅ 选股成功！符合条件的备选股票池如下：\n"
+                + "\n".join(stock_list)
+                + f"\n\n请提取以下代码数组进入下一步的批量回测：{json.dumps(tickers_only)}"
+            )
         except Exception as e:
             return f"选股工具执行失败: {str(e)}"
 
+
 class BatchBacktestInput(BaseModel):
     tickers: List[str] = Field(..., description="要回测的股票代码列表数组，例如 ['US.AAPL', 'US.MSFT']")
-    strategy_name: str = Field(..., description="保存在你工作区的策略草稿名称（不带.py后缀），例如 'divergenceresonancestrategy'")
-    period: str = Field(default="max", description="回测时间跨度，支持 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, 20y, max。默认使用 max 获取所有可用历史以保证回测深度。")
+    strategy_name: str = Field(
+        ..., description="保存在你工作区的策略草稿名称（不带.py后缀），例如 'divergenceresonancestrategy'"
+    )
+    period: str = Field(
+        default="max",
+        description="回测时间跨度，支持 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, 20y, max。默认使用 max 获取所有可用历史以保证回测深度。",
+    )
+
 
 @register_tool
 class BatchBacktestTool:
@@ -75,7 +91,9 @@ class BatchBacktestTool:
 
     async def run(self, tickers: List[str], strategy_name: str, period: str = "max") -> str:
         try:
-            strategies_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "strategies", "drafts"))
+            strategies_dir = os.path.abspath(
+                os.path.join(os.path.dirname(__file__), "..", "..", "strategies", "drafts")
+            )
             file_path = os.path.join(strategies_dir, f"{strategy_name.lower()}.py")
             if not os.path.exists(file_path):
                 return f"找不到名为 '{strategy_name}' 的策略草稿。请确保策略名正确。"
@@ -83,7 +101,7 @@ class BatchBacktestTool:
             with open(file_path, "r", encoding="utf-8") as f:
                 source_code = f.read()
 
-            match = re.search(r'class\s+([A-Za-z0-9_]+)\s*\(BaseStrategy', source_code)
+            match = re.search(r"class\s+([A-Za-z0-9_]+)\s*\(BaseStrategy", source_code)
             if not match:
                 return "策略源码未找到合法的基类继承定义。"
             class_name = match.group(1)
@@ -99,19 +117,19 @@ class BatchBacktestTool:
             if not dfs:
                 return "所有选定标的均无法获取历史数据，批量回测终止。"
 
-            report = await asyncio.to_thread(
-                run_batch_sandbox_backtest, source_code, class_name, {}, dfs, 100000.0
-            )
+            report = await asyncio.to_thread(run_batch_sandbox_backtest, source_code, class_name, {}, dfs, 100000.0)
 
             metrics = report["metrics"]
             valid_tickers = report["valid_tickers"]
 
-            return f"✅ 批量横截面回测完成！\n成功参测有效标的数: {len(valid_tickers)}/{len(tickers)}\n" \
-                   f"策略组合总收益率: {metrics['total_return']}\n" \
-                   f"组合夏普比率: {metrics['sharpe_ratio']}\n" \
-                   f"组合最大回撤: {metrics['max_drawdown']}\n" \
-                   f"组合总体胜率: {metrics['win_rate']}\n" \
-                   f"总交易撮合次数: {metrics['total_trades']}\n\n" \
-                   f"请作为顶级分析师，结合这些数据向用户输出最终的投资交易建议与评级。"
+            return (
+                f"✅ 批量横截面回测完成！\n成功参测有效标的数: {len(valid_tickers)}/{len(tickers)}\n"
+                f"策略组合总收益率: {metrics['total_return']}\n"
+                f"组合夏普比率: {metrics['sharpe_ratio']}\n"
+                f"组合最大回撤: {metrics['max_drawdown']}\n"
+                f"组合总体胜率: {metrics['win_rate']}\n"
+                f"总交易撮合次数: {metrics['total_trades']}\n\n"
+                f"请作为顶级分析师，结合这些数据向用户输出最终的投资交易建议与评级。"
+            )
         except Exception as e:
             return f"批量回测引擎执行失败: {str(e)}"

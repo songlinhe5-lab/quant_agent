@@ -16,15 +16,15 @@ class GetCompanyNewsTool:
         "properties": {
             "ticker": {
                 "type": "string",
-                "description": "股票代码，必须包含市场前缀以明确区分，例如 'US.AAPL', 'HK.0700', 'SH.600519'"
+                "description": "股票代码，必须包含市场前缀以明确区分，例如 'US.AAPL', 'HK.0700', 'SH.600519'",
             },
             "days_back": {
                 "type": "integer",
                 "description": "回溯天数，默认 3 天。可根据需要分析的时间跨度调整，例如 1, 3, 7",
-                "default": 3
-            }
+                "default": 3,
+            },
         },
-        "required": ["ticker"]
+        "required": ["ticker"],
     }
 
     async def run(self, ticker: str, days_back: int = 3) -> Dict[str, Any]:
@@ -68,11 +68,13 @@ class GetCompanyNewsTool:
                         date_str = dt.strftime("%Y-%m-%d %H:%M:%S")
                     except Exception:
                         date_str = item.get("date", str(dt_val))
-                    compressed_news.append({
-                        "date": item.get("date", date_str),
-                        "headline": item.get("headline", ""),
-                        "summary": item.get("summary", "")
-                    })
+                    compressed_news.append(
+                        {
+                            "date": item.get("date", date_str),
+                            "headline": item.get("headline", ""),
+                            "summary": item.get("summary", ""),
+                        }
+                    )
 
                 # 💡 并发调用大模型，给提取出的每条精简新闻打上情感分和中文翻译
                 scored_news = await sentiment_service.batch_analyze_news(compressed_news)

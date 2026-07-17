@@ -9,7 +9,8 @@ import logger from '@/lib/logger'
 import { useBackendStatusStore } from '@/stores/useBackendStatusStore'
 
 // ─── 配置 ──────────────────────────────────────────────────────────
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+const API_VERSION = import.meta.env.VITE_API_URL_VERSION || 'v1';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || `/api/${API_VERSION}`
 
 interface ClientConfig {
   baseURL: string

@@ -1,9 +1,21 @@
 import asyncio
 import json
+import os
 import time
 from typing import Any, Dict, Tuple
 
 from backend.core.redis_client import redis_client
+
+
+def get_backend_api_url() -> str:
+    """
+    统一构建后端 API 基础 URL。
+    读取 BACKEND_API_URL + API_URL_VERSION 环境变量，拼接为完整路径。
+    升级 API 版本时只需修改 API_URL_VERSION 环境变量即可。
+    """
+    base = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000").rstrip("/")
+    version = os.getenv("API_URL_VERSION", "v1")
+    return f"{base}/api/{version}"
 
 
 class BaseTool:
@@ -11,6 +23,7 @@ class BaseTool:
     所有 Tool 的基类，提供统一的全局共享缓存能力。
     支持 L1 (进程内存字典) 与 L2 (全局 Redis 持久化) 双级缓存。
     """
+
     _shared_cache: Dict[str, Tuple[float, Any]] = {}
     _max_cache_size: int = 256
 
@@ -28,7 +41,8 @@ class BaseTool:
             return f"US.{ticker}"
 
         import re
-        match = re.search(r'\d+', ticker)
+
+        match = re.search(r"\d+", ticker)
 
         if "HK" in ticker:
             code = match.group() if match else ticker.replace(".HK", "").replace("HK.", "")
@@ -114,8 +128,7 @@ class BaseTool:
                         return {
                             "status": "rate_limited",
                             "message": (
-                                f"数据源限流，已重试 {max_retries} 次仍未恢复。"
-                                f"建议稍后 ({retry_after:.0f}s) 再试。"
+                                f"数据源限流，已重试 {max_retries} 次仍未恢复。建议稍后 ({retry_after:.0f}s) 再试。"
                             ),
                             "retry_after_seconds": retry_after,
                             "attempts": max_retries + 1,
@@ -135,7 +148,7 @@ class BaseTool:
             except Exception as e:
                 last_error = e
                 if attempt < max_retries:
-                    delay = self._DEFAULT_RETRY_DELAY * (2 ** attempt)
+                    delay = self._DEFAULT_RETRY_DELAY * (2**attempt)
                     capped_delay = min(delay, self._MAX_RETRY_DELAY)
                     print(
                         f"⏳ [RL-14] 请求异常退避: {method} {url} "
@@ -214,7 +227,7 @@ class BaseTool:
             if current_time - cache_time < ttl:
                 return data
             else:
-                del self._shared_cache[key] # L1 过期清理
+                del self._shared_cache[key]  # L1 过期清理
 
         # 2. 尝试从 L2 Redis 全局缓存获取跨进程留存的数据
         try:

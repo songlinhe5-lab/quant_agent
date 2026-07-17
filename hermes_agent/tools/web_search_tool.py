@@ -1,9 +1,8 @@
-import os
 from typing import Any, Dict, List, Optional
 
 from hermes_agent.tool_registry import register_tool
 
-from .base import BaseTool
+from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
@@ -12,6 +11,7 @@ class WebSearchTool(BaseTool):
     """
     DuckDuckGo 互联网搜索工具
     """
+
     name = "web_search"
     description = "使用 DuckDuckGo 搜索引擎在互联网上获取最新资讯。当用户询问最新新闻、业绩预告、研报或底层 API 无法提供的实时信息时，必须调用此工具。"
 
@@ -23,18 +23,24 @@ class WebSearchTool(BaseTool):
             "include_domains": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "可选：指定要限制搜索的特定网站域名列表，例如 ['bloomberg.com', 'wsj.com', 'sec.gov']。如果不填则在全网搜索。"
+                "description": "可选：指定要限制搜索的特定网站域名列表，例如 ['bloomberg.com', 'wsj.com', 'sec.gov']。如果不填则在全网搜索。",
             },
             "exclude_domains": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "可选：指定要排除的特定网站域名列表，屏蔽内容农场或特定平台，例如 ['reddit.com', 'zhihu.com']。"
-            }
+                "description": "可选：指定要排除的特定网站域名列表，屏蔽内容农场或特定平台，例如 ['reddit.com', 'zhihu.com']。",
+            },
         },
-        "required": ["query"]
+        "required": ["query"],
     }
 
-    async def run(self, query: str, max_results: int = 5, include_domains: Optional[List[str]] = None, exclude_domains: Optional[List[str]] = None) -> Dict[str, Any]:
+    async def run(
+        self,
+        query: str,
+        max_results: int = 5,
+        include_domains: Optional[List[str]] = None,
+        exclude_domains: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
         # 利用 BaseTool 提供的方法设定搜索结果的缓存（1 小时），防止重复搜索浪费网络与触发限流
         domains_str = "_".join(include_domains) if include_domains else "all"
         exclude_str = "_".join(exclude_domains) if exclude_domains else "none"
@@ -43,14 +49,14 @@ class WebSearchTool(BaseTool):
         if cached:
             return cached
 
-        base_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/api/v1").rstrip('/')
+        base_url = get_backend_api_url()
 
         url = f"{base_url}/search/web"
         payload = {
             "query": query,
             "max_results": max_results,
             "include_domains": include_domains,
-            "exclude_domains": exclude_domains
+            "exclude_domains": exclude_domains,
         }
 
         try:

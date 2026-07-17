@@ -41,7 +41,7 @@ from backend.core.alert_models import (
 )
 from backend.core.logger import logger
 
-router = APIRouter(prefix="/api/v1/alert", tags=["Alert Center"])
+router = APIRouter(prefix="/alert", tags=["Alert Center"])
 
 
 # ─────────────────────────────────────────

@@ -127,6 +127,7 @@ class TestCalendarsSnapshot:
         assert spx["source"] == "YFinance"
         assert spx["is_stale"] is False
 
+
 # ==========================================
 # GET /api/v1/calendars/hours
 # ==========================================
