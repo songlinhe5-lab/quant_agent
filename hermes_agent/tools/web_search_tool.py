@@ -63,10 +63,18 @@ class WebSearchTool(BaseTool):
             # 使用受限的内网安全客户端，保证 Tool 的架构纯洁性
             async with SecureAsyncClient(timeout=30.0) as client:
                 resp = await client.post(url, json=payload)
-                resp.raise_for_status()
+                # 💡 提取后端返回的详细错误信息，而非仅抛出 HTTP 状态码
+                if resp.status_code != 200:
+                    err_msg = resp.text
+                    try:
+                        body = resp.json()
+                        err_msg = body.get("msg") or body.get("detail") or resp.text
+                    except Exception:
+                        pass
+                    return {"status": "error", "message": f"搜索服务失败 (HTTP {resp.status_code}): {err_msg}"}
                 res = resp.json()
                 if res.get("status") == "success" and res.get("data"):
                     await self.set_cached_data(cache_key, res, persist=True, ttl=3600)
                 return res
         except Exception as e:
-            return {"status": "error", "message": f"请求后端搜索网关失败: {str(e)}"}
+            return {"status": "error", "message": f"请求后端搜索网关异常: {str(e)}"}
