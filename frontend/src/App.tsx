@@ -11,14 +11,34 @@ import { lazy, Suspense, type ComponentType } from 'react'
 
 /**
  * 带错误处理的 lazy loader
- * 捕获 chunk 加载失败（如 404、网络错误），重新抛出以便 ErrorBoundary 捕获
+ * 部署后旧 chunk hash 失效时，自动硬刷新页面获取最新资源（防止白屏）。
+ * 使用 sessionStorage 防止无限刷新循环（同一会话内最多自动刷新 1 次）。
  */
+const CHUNK_RELOAD_KEY = 'quant_chunk_reload_ts'
+
 function lazyWithRetry<T extends ComponentType<any>>(
   importFn: () => Promise<{ default: T }>,
 ): ComponentType<any> {
   return lazy(() =>
     importFn().catch((err) => {
-      // ChunkLoadError 或网络错误时，重新抛出以便 ErrorBoundary 显示错误页面
+      const isChunkError =
+        err?.name === 'ChunkLoadError' ||
+        /Loading chunk|Loading CSS|Failed to fetch dynamically imported module|module/i.test(
+          err?.message || '',
+        )
+
+      if (isChunkError) {
+        const lastReload = Number(sessionStorage.getItem(CHUNK_RELOAD_KEY) || '0')
+        const now = Date.now()
+        // 60 秒内不重复刷新，防止死循环
+        if (now - lastReload > 60_000) {
+          sessionStorage.setItem(CHUNK_RELOAD_KEY, String(now))
+          window.location.reload()
+          // 返回一个永不 resolve 的 Promise，避免渲染闪烁
+          return new Promise(() => {})
+        }
+      }
+
       throw new Error(`模块加载失败：${err.message || '未知错误'}`)
     }),
   )
