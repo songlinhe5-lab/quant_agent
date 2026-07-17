@@ -183,10 +183,9 @@ jobs:
             echo '${{ steps.prepare_compose.outputs.compose_b64 }}' | base64 -d > docker-compose.yf-node.yml
             sed -i "s|ghcr.io/songlinhe5-lab/quant-data-subservice:.*|ghcr.io/songlinhe5-lab/quant-data-subservice:${TARGET_TAG}|g" docker-compose.yf-node.yml
 
-            # 检查 .env.yf 存在
-            if [ ! -f .env.yf ]; then
-              echo "ERROR: .env.yf not found! Please create /opt/quant-agent/.env.yf"
-              exit 1
+            # 数据源配置统一走标准 .env（docker compose 自动加载，缺失则用 compose 默认值）
+            if [ ! -f .env ]; then
+              echo "WARN: .env 未找到，将使用 docker-compose.yf-node.yml 中的默认值 (REDIS_HOST=100.102.223.44, REDIS_PASSWORD=quant_redis_secret_2026)"
             fi
 
             # 拉取新镜像

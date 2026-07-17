@@ -12,7 +12,7 @@
 #
 # 前置条件:
 #   1. Tailscale 已安装并加入 tailnet (tag:quant-yf)
-#   2. .env.yf 已配置 (REDIS_HOST=100.102.223.44)
+#   2. .env 已配置 (REDIS_HOST=100.102.223.44)
 #   3. 主节点 Redis 绑定 Tailscale IP
 #
 # 流量边界:
@@ -34,7 +34,7 @@ services:
     ports:
       - "${TAILSCALE_IP:-127.0.0.1}:8000:8000"
     # env_file 仅在文件存在时加载
-    # 本地开发可省略，生产部署时创建 .env.yf
+    # 本地开发可省略，生产部署时创建 .env
     environment:
       # 节点标识 (必填)
       - DS_NODE_ID=${NODE_ID:-us-yf-a}
