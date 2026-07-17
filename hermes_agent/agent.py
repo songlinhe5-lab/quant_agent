@@ -667,10 +667,25 @@ class HermesAgent:
                         except Exception as e:
                             return {"status": "error", "message": f"工具执行异常: {str(e)}"}
 
-                    results = await asyncio.gather(
-                        *[safe_execute(tc) for tc in msg_dict["tool_calls"]], return_exceptions=True
-                    )
-                    for tc, res in zip(msg_dict["tool_calls"], results):
+                    # 💡 心跳保活：工具执行期间定期发送 heartbeat，防止 Cloudflare 100s 空闲超时掐断连接
+                    result_queue: asyncio.Queue = asyncio.Queue()
+
+                    async def run_and_queue(tc):
+                        res = await safe_execute(tc)
+                        await result_queue.put((tc, res))
+
+                    tool_tasks = [asyncio.create_task(run_and_queue(tc)) for tc in msg_dict["tool_calls"]]
+                    heartbeat_count = 0
+
+                    while tool_tasks:
+                        try:
+                            tc, res = await asyncio.wait_for(result_queue.get(), timeout=15.0)
+                        except asyncio.TimeoutError:
+                            # 发送心跳保活，防止 Cloudflare/Nginx 空闲断连
+                            heartbeat_count += 1
+                            yield {"type": "heartbeat", "tick": heartbeat_count}
+                            continue
+
                         final_res = {"status": "error", "message": str(res)} if isinstance(res, Exception) else res
                         self.messages.append(
                             {
@@ -682,6 +697,8 @@ class HermesAgent:
                         )
                         # 抛出执行结果给前端或 CLI 终端展示
                         yield {"type": "tool_result", "name": tc["function"]["name"], "result": final_res}
+                        tool_tasks = [t for t in tool_tasks if not t.done()]
+
                     await self._save_session()
                 else:
                     # 💡 流式输出时的自愈拦截
