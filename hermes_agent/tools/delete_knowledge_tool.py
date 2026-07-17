@@ -1,9 +1,10 @@
-import os
 import asyncio
-from typing import Dict, Any
+from typing import Any, Dict
+
+from hermes_agent.tool_registry import register_tool
 
 from .base import BaseTool
-from hermes_agent.tool_registry import register_tool
+
 
 @register_tool
 class DeleteKnowledgeTool(BaseTool):
@@ -37,12 +38,12 @@ class DeleteKnowledgeTool(BaseTool):
     def _delete_chroma(self, url: str) -> str:
         from backend.core.database import SessionLocal
         from backend.core.models import WebpageKnowledgeBase
-        
+
         with SessionLocal() as db:
             # 💡 直接通过关系型数据库进行精准的行级删除，彻底摆脱单机文件存储限制
             deleted_count = db.query(WebpageKnowledgeBase).filter(WebpageKnowledgeBase.url == url).delete()
             db.commit()
-            
+
             if deleted_count > 0:
                 return f"成功从全局云端知识库(PGVector)中删除了 {deleted_count} 个与 {url} 相关的片段缓存。"
             return "知识库中未找到需要清理的数据。"

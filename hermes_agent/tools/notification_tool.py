@@ -1,10 +1,12 @@
 import os
-import json
+from typing import Any, Dict
+
 import httpx
-from typing import Dict, Any
+
+from hermes_agent.tool_registry import register_tool
 
 from .base import BaseTool
-from hermes_agent.tool_registry import register_tool
+
 
 @register_tool
 class NotificationTool(BaseTool):

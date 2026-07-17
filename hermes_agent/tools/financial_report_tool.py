@@ -1,9 +1,11 @@
 import os
-from typing import Dict, Any
+from typing import Any, Dict
+
+from hermes_agent.tool_registry import register_tool
 
 from .base import BaseTool
 from .secure_client import SecureAsyncClient
-from hermes_agent.tool_registry import register_tool
+
 
 @register_tool
 class FinancialReportTool(BaseTool):
@@ -30,8 +32,8 @@ class FinancialReportTool(BaseTool):
     async def run(self, ticker: str = "", chunk_index: int = 0) -> Dict[str, Any]:
         if not ticker:
             return {"status": "error", "message": "缺失股票代码参数。"}
-            
-        backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000")
+
+        backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/api/v1")
         url = f"{backend_url}/financial-report"
         try:
             async with SecureAsyncClient(timeout=60.0) as client:

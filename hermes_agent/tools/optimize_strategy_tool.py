@@ -1,8 +1,11 @@
 import os
-from typing import Dict, Any
+from typing import Any, Dict
+
+from hermes_agent.tool_registry import register_tool
+
 from .base import BaseTool
 from .secure_client import SecureAsyncClient
-from hermes_agent.tool_registry import register_tool
+
 
 @register_tool
 class OptimizeStrategyTool(BaseTool):
@@ -36,8 +39,8 @@ class OptimizeStrategyTool(BaseTool):
     }
 
     async def run(self, source_code: str, class_name: str, param_grid: dict, target_metric: str = "sharpe_ratio") -> Dict[str, Any]:
-        backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000")
-        
+        backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/api/v1")
+
         payload = {
             "source_code": source_code,
             "class_name": class_name,

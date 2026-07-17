@@ -1,8 +1,11 @@
 import os
-from typing import Dict, Any
+from typing import Any, Dict
+
+from hermes_agent.tool_registry import register_tool
+
 from .base import BaseTool
 from .secure_client import SecureAsyncClient
-from hermes_agent.tool_registry import register_tool
+
 
 @register_tool
 class FundamentalDataTool(BaseTool):
@@ -25,8 +28,8 @@ class FundamentalDataTool(BaseTool):
     async def run(self, ticker: str = "") -> Dict[str, Any]:
         if not ticker:
             return {"status": "error", "message": "缺少必要的股票代码(ticker)参数。"}
-            
-        backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000")
+
+        backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/api/v1")
         # 强制格式化 ticker
         ticker = self.normalize_ticker(ticker)
         url = f"{backend_url}/market/fundamental/{ticker}"

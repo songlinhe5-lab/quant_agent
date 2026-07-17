@@ -1,10 +1,12 @@
 import json
-from typing import Type, Literal, Optional
+from typing import Literal, Optional, Type
+
 from pydantic import BaseModel, Field
 
 from backend.core.redis_client import redis_client
 from backend.services.futu.utils import format_ticker
 from hermes_agent.tool_registry import register_tool
+
 
 class StockTrackingInput(BaseModel):
     ticker: str = Field(default="", description="股票代码，例如 US.AAPL, HK.00700。如果 action 是 list，可以传空字符串。")
@@ -34,39 +36,39 @@ class StockTrackingTool:
             user_set_key = f"quant:user:{user_id}:monitored_stocks"
             # 2. 全局底层数据抓取池 (引用计数)
             global_ref_key = "quant:settings:monitored_refcounts"
-            
+
             if action == "list":
                 members = await redis_client.smembers(user_set_key)
                 if not members:
                     return "当前系统没有正在长期监控的股票，也没有设置价格报警。"
-                    
+
                 stocks = [m.decode('utf-8') if isinstance(m, bytes) else str(m) for m in members]
-                
+
                 # 组装展示个人的报警规则
                 alerts_info = []
                 for t in stocks:
                     rules = await redis_client.hget(f"quant:alerts:by_ticker:{t}", user_id)
                     if rules:
                         alerts_info.append(f"{t}: {rules}")
-                        
+
                 return f"您的自选监控池：{', '.join(stocks)}\n您的活跃价格报警：{', '.join(alerts_info) if alerts_info else '无'}"
-                
+
             if not ticker:
                 return "操作 add 或 remove 必须提供具体的股票代码 (ticker)。"
-                
+
             fmt_ticker = format_ticker(ticker)
             alert_key = f"quant:alerts:by_ticker:{fmt_ticker}"
-            
+
             if action == "add":
                 # 往个人池加入标的
                 is_new_for_user = await redis_client.sadd(user_set_key, fmt_ticker)
-                
+
                 # 如果是该用户新加的，增加全局引用计数（告诉底层 C++ 网关有 1 个人需要这个数据）
                 if is_new_for_user:
                     await redis_client.hincrby(global_ref_key, fmt_ticker, 1)
-                    
+
                 msg = f"✅ 成功将 {fmt_ticker} 加入长期监控池！系统现已在后台开启实时数据监听。"
-                
+
                 if upper_threshold is not None or lower_threshold is not None or pct_change_threshold is not None:
                     rules = {}
                     if upper_threshold: rules["upper"] = upper_threshold
@@ -76,11 +78,11 @@ class StockTrackingTool:
                     await redis_client.hset(alert_key, user_id, json.dumps(rules))
                     msg += f"\n🔔 已为您挂载报警：上限 {upper_threshold or '未设'}, 下限 {lower_threshold or '未设'}, 振幅阈值 ±{pct_change_threshold or '未设'}%。触发后将自动通知并解除。"
                 return msg
-                
+
             elif action == "remove":
                 res = await redis_client.srem(user_set_key, fmt_ticker)
                 await redis_client.hdel(alert_key, user_id)
-                
+
                 if res:
                     # 减少全局引用计数，若降到 0 则底层网关会自动退订该标的，释放内存
                     new_count = await redis_client.hincrby(global_ref_key, fmt_ticker, -1)
@@ -88,7 +90,7 @@ class StockTrackingTool:
                         await redis_client.hdel(global_ref_key, fmt_ticker)
                     return f"✅ 成功将 {fmt_ticker} 从监控池中移除，并清除了相关的报警规则。"
                 return f"⚠️ {fmt_ticker} 本不在监控池中。"
-                
+
             return f"⚠️ 未知的操作类型: {action}。支持的操作仅限: add, remove, list。"
         except Exception as e:
             return f"执行监控池管理异常: {str(e)}"

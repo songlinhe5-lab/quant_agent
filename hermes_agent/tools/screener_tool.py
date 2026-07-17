@@ -1,9 +1,12 @@
 import os
-from typing import Dict, Any, Optional
-from .base import BaseTool
-from .secure_client import SecureAsyncClient
+from typing import Any, Dict
+
 from hermes_agent.tool_registry import register_tool
-from .decorators import with_agent_self_correction, ToolCorrectionError
+
+from .base import BaseTool
+from .decorators import ToolCorrectionError, with_agent_self_correction
+from .secure_client import SecureAsyncClient
+
 
 @register_tool
 class ScreenerTool(BaseTool):
@@ -27,10 +30,8 @@ class ScreenerTool(BaseTool):
     async def run(self, query: str = "") -> Dict[str, Any]:
         if not query:
             return {"status": "error", "message": "缺失必要的查询语句"}
-            
-        base_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/api").rstrip('/')
-        if not base_url.endswith("/api"):
-            base_url += "/api"
+
+        base_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/api/v1").rstrip('/')
 
         async with SecureAsyncClient(timeout=45.0) as client:
             # 1. 前置翻译流程，将 NLP 转化为强类型的后端 JSON 筛选协议
@@ -40,24 +41,24 @@ class ScreenerTool(BaseTool):
                 try: err_msg = trans_resp.json().get("detail", trans_resp.text)
                 except: pass
                 return {"status": "error", "message": f"转译选股条件失败: {err_msg}"}
-            
+
             json_dsl = trans_resp.json().get("data")
-            
+
             # 2. 执行选股
             payload = {"dsl": json_dsl, "page": 1, "page_size": 15}
             resp = await client.post(f"{base_url}/screener/run", json=payload)
-            
+
             if resp.status_code != 200:
                 err_msg = resp.text
                 try: err_msg = resp.json().get("detail", resp.text)
                 except: pass
-                
+
                 # 💡 抛出自定义异常，交由 @with_agent_self_correction 装饰器拦截并触发大模型重试
                 if resp.status_code == 400:
                     raise ToolCorrectionError(err_msg)
-                    
+
                 return {"status": "error", "message": f"后端筛选网关报错 (HTTP {resp.status_code}): {err_msg}"}
-            
+
             data = resp.json()
             # 后端已完成分页，这里只需提取真实全量数值补充提示信息
             if data.get("status") == "success":

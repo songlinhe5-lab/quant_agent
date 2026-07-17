@@ -1,8 +1,11 @@
 import os
-from typing import Dict, Any
+from typing import Any, Dict
+
+from hermes_agent.tool_registry import register_tool
+
 from .base import BaseTool
 from .secure_client import SecureAsyncClient
-from hermes_agent.tool_registry import register_tool
+
 
 @register_tool
 class MacroCalendarTool(BaseTool):
@@ -29,7 +32,7 @@ class MacroCalendarTool(BaseTool):
         except (ValueError, TypeError):
             days_ahead = 7
 
-        backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000")
+        backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/api/v1")
         url = f"{backend_url}/macro/calendar"
         # RL-14: 限流感知智能重试
         async with SecureAsyncClient(timeout=15.0) as client:
