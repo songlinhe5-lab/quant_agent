@@ -110,7 +110,8 @@ class SearchService:
                 )  # noqa: E501
                 # 💡 根据查询语言自动选择区域：英文查询用 wt-wt（全球），中文查询用 cn-zh
                 import re
-                is_mostly_english = bool(re.match(r'^[\x00-\x7F]+$', query))
+
+                is_mostly_english = bool(re.match(r"^[\x00-\x7F]+$", query))
                 region = "wt-wt" if is_mostly_english else "cn-zh"
                 with DDGS(proxy=proxy, timeout=20) as ddgs:
                     res = list(ddgs.text(query, max_results=max_results, region=region))  # noqa: E501
