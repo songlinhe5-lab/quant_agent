@@ -1,9 +1,11 @@
 import os
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
+
+from hermes_agent.tool_registry import register_tool
 
 from .base import BaseTool
 from .secure_client import SecureAsyncClient
-from hermes_agent.tool_registry import register_tool
+
 
 @register_tool
 class WebSearchTool(BaseTool):
@@ -12,7 +14,7 @@ class WebSearchTool(BaseTool):
     """
     name = "web_search"
     description = "使用 DuckDuckGo 搜索引擎在互联网上获取最新资讯。当用户询问最新新闻、业绩预告、研报或底层 API 无法提供的实时信息时，必须调用此工具。"
-    
+
     parameters = {
         "type": "object",
         "properties": {
@@ -41,10 +43,8 @@ class WebSearchTool(BaseTool):
         if cached:
             return cached
 
-        base_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/api").rstrip('/')
-        if not base_url.endswith("/api"):
-            base_url += "/api"
-            
+        base_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/api/v1").rstrip('/')
+
         url = f"{base_url}/search/web"
         payload = {
             "query": query,
@@ -52,7 +52,7 @@ class WebSearchTool(BaseTool):
             "include_domains": include_domains,
             "exclude_domains": exclude_domains
         }
-        
+
         try:
             # 使用受限的内网安全客户端，保证 Tool 的架构纯洁性
             async with SecureAsyncClient(timeout=30.0) as client:

@@ -1,8 +1,11 @@
 import os
-from typing import Dict, Any
+from typing import Any, Dict
+
+from hermes_agent.tool_registry import register_tool
+
 from .base import BaseTool
 from .secure_client import SecureAsyncClient
-from hermes_agent.tool_registry import register_tool
+
 
 @register_tool
 # 工具类名必须与 __init__.py 中导入的一致 (FredMacroTool)
@@ -30,8 +33,8 @@ class FredMacroTool(BaseTool):
     async def run(self, series_id: str, limit: int = 100) -> Dict[str, Any]:
         if not series_id:
             return {"status": "error", "message": "缺失宏观序列ID (series_id) 参数。"}
-            
-        backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000")
+
+        backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/api/v1")
         url = f"{backend_url}/macro/series"
         # RL-14: 限流感知智能重试
         async with SecureAsyncClient(timeout=30.0) as client:

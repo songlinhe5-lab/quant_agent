@@ -1,8 +1,11 @@
 import os
-from typing import Dict, Any
+from typing import Any, Dict
+
+from hermes_agent.tool_registry import register_tool
+
 from .base import BaseTool
 from .secure_client import SecureAsyncClient
-from hermes_agent.tool_registry import register_tool
+
 
 @register_tool
 class BrokerTradeTool(BaseTool):
@@ -31,13 +34,13 @@ class BrokerTradeTool(BaseTool):
 
     async def run(self, action: str, ticker: str = "", qty: Any = 0, price: Any = 0.0, order_id: str = "", market: str = "HK") -> Dict[str, Any]:
         action = action.upper()
-        backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000")
-        
+        backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/api/v1")
+
         if action in ["BUY", "SELL"] and (not ticker or not qty):
             return {"status": "error", "message": f"{action} 操作必须提供 ticker 和 qty"}
         if action in ["CANCEL", "STATUS"] and not order_id:
             return {"status": "error", "message": f"{action} 操作必须提供 order_id"}
-            
+
         try:
             async with SecureAsyncClient(timeout=15.0) as client:
                 if action == "ACCOUNT":

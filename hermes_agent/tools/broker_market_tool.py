@@ -1,8 +1,11 @@
 import os
-from typing import Dict, Any
+from typing import Any, Dict
+
+from hermes_agent.tool_registry import register_tool
+
 from .base import BaseTool
 from .secure_client import SecureAsyncClient
-from hermes_agent.tool_registry import register_tool
+
 
 @register_tool
 class BrokerMarketTool(BaseTool):
@@ -16,12 +19,12 @@ class BrokerMarketTool(BaseTool):
         "type": "object",
         "properties": {
             "action": {
-                "type": "string", 
-                "enum": ["QUOTE", "HISTORY", "OPTION_CHAIN", "FUND_FLOW"], 
+                "type": "string",
+                "enum": ["QUOTE", "HISTORY", "OPTION_CHAIN", "FUND_FLOW"],
                 "description": "必须指定要获取的数据类型。QUOTE(实时快照), HISTORY(历史K线), OPTION_CHAIN(期权链), FUND_FLOW(主力资金流与席位)"
             },
             "ticker": {
-                "type": "string", 
+                "type": "string",
                 "description": "股票或期权代码, 例如 AAPL, 0700.HK"
             },
             "ktype": {"type": "string", "description": "(仅HISTORY可用) K线类型，如 K_DAY, K_1M", "default": "K_DAY"},
@@ -32,11 +35,11 @@ class BrokerMarketTool(BaseTool):
     }
 
     async def run(self, action: str, ticker: str, ktype: str = "K_DAY", num: int = 60, expiration_date: str = "") -> Dict[str, Any]:
-        backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000")
+        backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/api/v1")
         action = action.upper()
         # 强制格式化 ticker
         ticker = self.normalize_ticker(ticker)
-        
+
         # RL-14: 构建请求参数
         if action == "QUOTE":
             url, method, kwargs = f"{backend_url}/market/quote", "GET", {"params": {"ticker": ticker}}

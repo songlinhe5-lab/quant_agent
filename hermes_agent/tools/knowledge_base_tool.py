@@ -1,10 +1,12 @@
-import os
 import asyncio
+import os
 import time
-from typing import Dict, Any
+from typing import Any, Dict
+
+from hermes_agent.tool_registry import register_tool
 
 from .base import BaseTool
-from hermes_agent.tool_registry import register_tool
+
 
 @register_tool
 class KnowledgeBaseTool(BaseTool):
@@ -18,7 +20,7 @@ class KnowledgeBaseTool(BaseTool):
         "type": "object",
         "properties": {
             "query": {
-                "type": "string", 
+                "type": "string",
                 "description": "需要在全局知识库中语义检索的查询问题，越详细越好（例如：'苹果对于大中华区营收的最新指引是多少？'）"
             },
             "limit": {
@@ -57,7 +59,7 @@ class KnowledgeBaseTool(BaseTool):
             return "本地知识库为空，暂无持久化的历史网页数据。"
 
         client = chromadb.PersistentClient(path=db_path)
-        
+
         emb_api_key = os.getenv("EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY", "")
         if emb_api_key:
             emb_base_url = os.getenv("EMBEDDING_BASE_URL")
@@ -67,7 +69,7 @@ class KnowledgeBaseTool(BaseTool):
             )
         else:
             emb_fn = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="paraphrase-multilingual-MiniLM-L12-v2")
-            
+
         try:
             collection = client.get_collection(name="webpage_knowledge_base", embedding_function=emb_fn)  # type: ignore
         except Exception:
@@ -81,16 +83,16 @@ class KnowledgeBaseTool(BaseTool):
 
         # 根据 Query 和 时间条件 进行全局语义检索
         results = collection.query(query_texts=[query], n_results=limit, where=where_filter)
-        
+
         docs = results.get("documents")
         metas = results.get("metadatas")
-        
+
         if not docs or not docs[0]:
             return f"未能在全局知识库中检索到与 '{query}' 高度相关的内容。"
-            
+
         summary = f"🎯 根据查询 '{query}'，在全局历史知识库中跨文档检索到以下 {len(docs[0])} 个相关片段：\n\n"
         safe_metas = metas[0] if metas and metas[0] else [{}] * len(docs[0])
-        
+
         for i, (doc, meta) in enumerate(zip(docs[0], safe_metas)):
             meta = meta or {}
             headers = " > ".join([str(v) for k, v in meta.items() if str(k).startswith("Header")])
@@ -98,6 +100,6 @@ class KnowledgeBaseTool(BaseTool):
             url = meta.get("url", "未知来源")
             # 在每一段的下方显式附上其 URL 来源出处
             summary += f"{title}\n{doc}\n(🔗 来源链接: {url})\n\n"
-            
+
         summary += "(💡 RAG 知识库提示：1. 如果以上片段存在数据矛盾，请明确指出冲突并自行推断，严禁强行掩盖。 2. 在组织回答时，必须像学术论文一样，在你陈述的事实或数据后，严格使用对应的序号进行内联引用标注，并在回答的最后附上「📚 参考文献」列表展示所有被引用的片段序号、对应标题和来源链接。)"
         return summary.strip()

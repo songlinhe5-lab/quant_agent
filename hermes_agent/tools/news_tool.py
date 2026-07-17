@@ -1,8 +1,11 @@
 import os
-from typing import Dict, Any
+from typing import Any, Dict
+
+from hermes_agent.tool_registry import register_tool
+
 from .base import BaseTool
 from .secure_client import SecureAsyncClient
-from hermes_agent.tool_registry import register_tool
+
 
 @register_tool
 class GetCompanyNewsTool(BaseTool):
@@ -20,12 +23,12 @@ class GetCompanyNewsTool(BaseTool):
     async def run(self, ticker: str, limit: int = 10) -> Dict[str, Any]:
         if not ticker:
             return {"status": "error", "message": "股票代码 ticker 不能为空"}
-            
-        backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000")
+
+        backend_url = os.getenv("BACKEND_API_URL", "http://127.0.0.1:8000/api/v1")
         try:
             async with SecureAsyncClient(timeout=15.0) as client:
                 resp = await client.get(f"{backend_url}/market/news", params={"ticker": ticker, "limit": limit})
-                
+
                 # 💡 精准捕获非 200 状态，提取 FastApi 后端返回的具体错误详情
                 if resp.status_code != 200:
                     err_msg = resp.text
@@ -34,7 +37,7 @@ class GetCompanyNewsTool(BaseTool):
                     except:
                         pass
                     return {"status": "error", "message": f"网关接口返回错误 (HTTP {resp.status_code}): {err_msg}"}
-                    
+
                 return resp.json()
         except Exception as e:
             return {"status": "error", "message": f"请求后端网关异常: {str(e)}"}

@@ -1,8 +1,10 @@
-import json
 from typing import Type
+
 from pydantic import BaseModel, Field
+
 from backend.services.finnhub_service import finnhub_service
 from hermes_agent.tool_registry import register_tool
+
 
 class InsiderTransactionsInput(BaseModel):
     ticker: str = Field(..., description="股票代码，例如 US.AAPL, HK.00700")
@@ -29,13 +31,13 @@ class InsiderTransactionsTool:
                 data = res.get("data", [])
                 if not data:
                     return f"未查询到 {ticker} 近期的高管内幕交易记录。"
-                
+
                 # 格式化输出为紧凑的字符串，节省大模型 Token 上下文
                 output = []
                 for item in data:
                     action_icon = "🟢" if item['action'] == "BUY" else "🔴"
                     output.append(f"- {item['date']} | {item['name'][:15]:<15} | {action_icon}{item['action']} {item['change']:+,} 股 @ ${item['transaction_price']}")
-                    
+
                 return f"【{ticker} 近期高管内幕交易记录】\n" + "\n".join(output)
             else:
                 return f"获取失败: {res.get('message')}"

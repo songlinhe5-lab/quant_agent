@@ -1,15 +1,17 @@
-import os
-import json
 import asyncio
+import json
+import os
 import re
-from typing import Type, List
+from typing import List, Type
+
 from pydantic import BaseModel, Field
 
-from backend.services.screener_service import screener_service
-from backend.services.futu import futu_service
-from backend.routers.strategy import _fetch_backtest_data
 from backend.backtest import run_batch_sandbox_backtest
+from backend.routers.strategy import _fetch_backtest_data
+from backend.services.futu import futu_service
+from backend.services.screener_service import screener_service
 from hermes_agent.tool_registry import register_tool
+
 
 class ScreenerToolInput(BaseModel):
     query: str = Field(..., description="自然语言选股条件，例如：'美股市值大于100亿，PE小于20，MACD金叉'")
@@ -29,30 +31,30 @@ class ScreenerTool:
         try:
             dsl = await screener_service.translate_nlp_to_dsl(query)
             markets, futu_filters, post_filters = screener_service.parse_dsl_to_futu_filters(dsl)
-            
+
             tasks = [futu_service.screen_stocks(market=m, filters=futu_filters) for m in markets]
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            
+
             final_data = []
             for res in results:
                 if isinstance(res, dict) and res.get("status") == "success":
                     final_data.extend(res.get("data", []))
-                    
+
             if post_filters.get("exclude_st"):
                 final_data = [r for r in final_data if "ST" not in r.get("name", "").upper() and "退" not in r.get("name", "")]
-                
+
             tech_patterns = post_filters.get("technical_patterns", [])
             if final_data and tech_patterns:
                 final_data = await screener_service.apply_technical_pattern_filtering(final_data, tech_patterns)
-                
+
             if not final_data:
                 return f"根据条件 '{query}' 未能筛选出任何股票。"
-                
+
             top_stocks = final_data[:limit]
             stock_list = [f"{r['symbol']} ({r['name']})" for r in top_stocks]
             tickers_only = [r['symbol'] for r in top_stocks]
-            
-            return f"✅ 选股成功！符合条件的备选股票池如下：\n" + "\n".join(stock_list) + f"\n\n请提取以下代码数组进入下一步的批量回测：{json.dumps(tickers_only)}"
+
+            return "✅ 选股成功！符合条件的备选股票池如下：\n" + "\n".join(stock_list) + f"\n\n请提取以下代码数组进入下一步的批量回测：{json.dumps(tickers_only)}"
         except Exception as e:
             return f"选股工具执行失败: {str(e)}"
 
@@ -60,7 +62,7 @@ class BatchBacktestInput(BaseModel):
     tickers: List[str] = Field(..., description="要回测的股票代码列表数组，例如 ['US.AAPL', 'US.MSFT']")
     strategy_name: str = Field(..., description="保存在你工作区的策略草稿名称（不带.py后缀），例如 'divergenceresonancestrategy'")
     period: str = Field(default="max", description="回测时间跨度，支持 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, 20y, max。默认使用 max 获取所有可用历史以保证回测深度。")
-    
+
 @register_tool
 class BatchBacktestTool:
     name = "batch_backtest_strategy"
@@ -77,15 +79,15 @@ class BatchBacktestTool:
             file_path = os.path.join(strategies_dir, f"{strategy_name.lower()}.py")
             if not os.path.exists(file_path):
                 return f"找不到名为 '{strategy_name}' 的策略草稿。请确保策略名正确。"
-                
+
             with open(file_path, "r", encoding="utf-8") as f:
                 source_code = f.read()
-                
+
             match = re.search(r'class\s+([A-Za-z0-9_]+)\s*\(BaseStrategy', source_code)
             if not match:
                 return "策略源码未找到合法的基类继承定义。"
             class_name = match.group(1)
-            
+
             async def fetch_one(t):
                 success, df, _ = await _fetch_backtest_data(t, period, "auto", "1d")
                 return t, df if success else None
@@ -93,17 +95,17 @@ class BatchBacktestTool:
             fetch_tasks = [fetch_one(t) for t in tickers]
             results = await asyncio.gather(*fetch_tasks)
             dfs = {t: df for t, df in results if df is not None and not df.empty}
-            
+
             if not dfs:
                 return "所有选定标的均无法获取历史数据，批量回测终止。"
-                
+
             report = await asyncio.to_thread(
                 run_batch_sandbox_backtest, source_code, class_name, {}, dfs, 100000.0
             )
-            
+
             metrics = report["metrics"]
             valid_tickers = report["valid_tickers"]
-            
+
             return f"✅ 批量横截面回测完成！\n成功参测有效标的数: {len(valid_tickers)}/{len(tickers)}\n" \
                    f"策略组合总收益率: {metrics['total_return']}\n" \
                    f"组合夏普比率: {metrics['sharpe_ratio']}\n" \
