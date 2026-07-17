@@ -157,7 +157,9 @@ class BaseTool:
                 # 非限流类 HTTP 错误，直接返回
                 err_msg = resp.text
                 try:
-                    err_msg = resp.json().get("detail", resp.text)
+                    body = resp.json()
+                    # 优先提取 FastAPI 标准 detail 字段，其次提取自定义 msg 字段
+                    err_msg = body.get("detail") or body.get("msg") or resp.text
                 except Exception:
                     pass
                 return {
