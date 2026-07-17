@@ -9,7 +9,7 @@ import { ChatSidebarWrapper } from '@/features/copilot/chat-sidebar-wrapper'
 import { MessageListArea } from '@/features/copilot/message-list-area'
 import { ChatInputBox } from '@/features/copilot/chat-input-box'
 
-const DRAWER_WIDTH = 420
+const DRAWER_WIDTH = 480
 
 function CopilotDrawerChrome() {
   const closeCopilot = useLayoutStore((s) => s.closeCopilot)
