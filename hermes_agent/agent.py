@@ -212,11 +212,52 @@ class HermesAgent:
             self.console.print("[dim red]🐛 [Memory] 检测到末尾残留未闭环的 tool_calls，已剔除。[/dim red]")
             healed.pop()
 
-        if len(healed) != len(self.messages):
+        # 💡 进阶修复：检查每个 assistant tool_calls 是否有完整对应的 tool 响应
+        final_healed = []
+        i = 0
+        while i < len(healed):
+            msg = healed[i]
+            final_healed.append(msg)
+
+            # 如果这条消息有 tool_calls，检查后续是否有完整的 tool 响应
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                tool_call_ids = {tc["id"] for tc in msg["tool_calls"]}
+                received_tool_ids = set()
+
+                # 收集后续的 tool 响应
+                j = i + 1
+                while j < len(healed) and healed[j].get("role") == "tool":
+                    received_tool_ids.add(healed[j].get("tool_call_id"))
+                    j += 1
+
+                # 如果有缺失的 tool 响应，补充错误占位符
+                missing_ids = tool_call_ids - received_tool_ids
+                for missing_id in missing_ids:
+                    # 找到对应的 tool_call 名称
+                    tool_name = "unknown"
+                    for tc in msg["tool_calls"]:
+                        if tc["id"] == missing_id:
+                            tool_name = tc.get("function", {}).get("name", "unknown")
+                            break
+                    self.console.print(
+                        f"[dim yellow]🩹 [Memory] 补充缺失的 tool 响应: {tool_name} ({missing_id[:8]}...)[/dim yellow]"
+                    )
+                    final_healed.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": missing_id,
+                            "name": tool_name,
+                            "content": '{"status": "error", "message": "工具执行中断，未获取到结果"}',
+                        }
+                    )
+
+            i += 1
+
+        if len(final_healed) != len(self.messages):
             self.console.print(
                 "\n[dim yellow]🩹 [Memory] 检测到破损的工具调用上下文，已自动完成记忆修复！[/dim yellow]"
             )
-            self.messages = healed
+            self.messages = final_healed
 
         self._compress_memory()
 
