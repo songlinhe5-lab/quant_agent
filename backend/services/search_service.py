@@ -117,8 +117,16 @@ class SearchService:
             try:
                 results = await asyncio.to_thread(_do_duckduckgo_search)
             except Exception as e:
-                print(f"❌ [SearchService] 所有搜索引擎均失败: Tavily/Bocha/DuckDuckGo。DuckDuckGo 最终异常: {repr(e)}")
-                raise
+                # 💡 提取可读的错误信息，而非抛出 RetryError 包装对象
+                err_str = str(e)
+                if "ValueError" in err_str and "DuckDuckGo" in err_str:
+                    err_msg = "DuckDuckGo 返回空数据（可能需要代理或网络不通）"
+                elif "RetryError" in err_str:
+                    err_msg = "DuckDuckGo 多次重试失败（网络问题或被墙）"
+                else:
+                    err_msg = err_str[:200]
+                print(f"❌ [SearchService] 所有搜索引擎均失败: Tavily/Bocha/DuckDuckGo。最终异常: {err_msg}")
+                raise ValueError(f"搜索服务不可用: {err_msg}") from e
 
         return (
             {"status": "success", "data": results}
