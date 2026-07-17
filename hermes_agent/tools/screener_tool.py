@@ -39,7 +39,12 @@ class ScreenerTool(BaseTool):
                     pass
                 return {"status": "error", "message": f"转译选股条件失败: {err_msg}"}
 
-            json_dsl = trans_resp.json().get("data")
+            trans_data = trans_resp.json().get("data", {})
+            # translate 接口返回 {"status":"success","data":"<JSON DSL string>"}，需取内层 data
+            json_dsl = trans_data.get("data") if isinstance(trans_data, dict) else trans_data
+
+            if not json_dsl or not isinstance(json_dsl, str):
+                return {"status": "error", "message": f"转译结果异常: {trans_data}"}
 
             # 2. 执行选股
             payload = {"dsl": json_dsl, "page": 1, "page_size": 15}
