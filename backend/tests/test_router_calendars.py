@@ -57,7 +57,11 @@ class TestCalendarsSnapshot:
                 )
             return None
 
-        with patch("backend.routers.calendars.redis_client") as m_redis:
+        # on-demand 兜底在生产才触发真实 Yahoo，单测中隔离，避免 52 次网络请求
+        with (
+            patch("backend.routers.calendars.redis_client") as m_redis,
+            patch("backend.routers.calendars._fetch_calendar_tile_ondemand", new=AsyncMock(return_value=None)),
+        ):
             m_redis.get = AsyncMock(side_effect=fake_get)
             m_redis.set = AsyncMock(return_value=True)
             resp = client.get("/api/v1/calendars/snapshot?force_refresh=true")
@@ -75,8 +79,11 @@ class TestCalendarsSnapshot:
         m_redis.set.assert_awaited()
 
     def test_snapshot_missing_yf_cache_marks_tile_stale(self, client):
-        """yf 缓存缺失：该 tile 标记 is_stale=True 且 source=N/A，不影响其他类目"""
-        with patch("backend.routers.calendars.redis_client") as m_redis:
+        """yf 缓存缺失且 on-demand 兜底也失败：该 tile 标记 is_stale=True 且 source=N/A"""
+        with (
+            patch("backend.routers.calendars.redis_client") as m_redis,
+            patch("backend.routers.calendars._fetch_calendar_tile_ondemand", new=AsyncMock(return_value=None)),
+        ):
             m_redis.get = AsyncMock(return_value=None)
             m_redis.set = AsyncMock(return_value=True)
             resp = client.get("/api/v1/calendars/snapshot")
@@ -88,6 +95,37 @@ class TestCalendarsSnapshot:
         assert btc["source"] == "N/A"
         # 类目维度仍存在
         assert crypto["display_name"] == "Crypto"
+
+    def test_snapshot_ondemand_fills_tile_when_cache_missing(self, client):
+        """cache miss 时经 DataSourceRegistry on-demand 兜底抓取成功，tile 不再全空"""
+        filled = {
+            "symbol": "SPX",
+            "display_name": "S&P 500",
+            "yf_ticker": "^GSPC",
+            "price": 5555.0,
+            "change_abs": 55.0,
+            "change_pct": 1.0,
+            "sparkline": [5500.0, 5555.0],
+            "updated_at": "2026-07-16",
+            "is_stale": False,
+            "source": "YFinance",
+            "category": "us_markets",
+        }
+        with (
+            patch("backend.routers.calendars.redis_client") as m_redis,
+            patch("backend.routers.calendars._fetch_calendar_tile_ondemand", new=AsyncMock(return_value=filled)),
+        ):
+            m_redis.get = AsyncMock(return_value=None)
+            m_redis.set = AsyncMock(return_value=True)
+            resp = client.get("/api/v1/calendars/snapshot")
+        assert resp.status_code == 200
+        data = resp.json()["data"]["data"]
+        us = next(c for c in data["categories"] if c["category"] == "us_markets")
+        spx = next((t for t in us["tiles"] if t["symbol"] == "SPX"), None)
+        assert spx is not None
+        assert spx["price"] == 5555.0
+        assert spx["source"] == "YFinance"
+        assert spx["is_stale"] is False
 
 
 # ==========================================

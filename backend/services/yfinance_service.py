@@ -70,7 +70,18 @@ def format_yf_ticker(ticker: str) -> str:
     return yf_ticker
 
 
-class RateLimitedSession(requests.Session):
+try:
+    # yfinance >= ~0.2.50 将 session 基类切换为 curl_cffi.requests.Session，
+    # 自定义限流 session 必须继承它，否则触发
+    # "Yahoo API requires curl_cffi session" 导致全量抓取失败（影响 macro daemon / on-demand）。
+    from curl_cffi import requests as _cffi_requests
+
+    _SessionBase = _cffi_requests.Session
+except Exception:  # pragma: no cover - 旧版 yfinance 仍用标准库 requests.Session
+    _SessionBase = requests.Session
+
+
+class RateLimitedSession(_SessionBase):
     """
     带有线程安全限流器的 requests.Session。
     防止 yfinance 在开启并发下载或大批量请求时被 Yahoo 封锁 (429)。

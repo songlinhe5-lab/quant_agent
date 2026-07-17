@@ -20,11 +20,11 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pandas as pd
 import pytest
-import requests
 
 from backend.services.yfinance_service import (
     RateLimitedSession,
     YFinanceService,
+    _SessionBase,
     format_yf_ticker,
 )
 
@@ -140,7 +140,7 @@ class TestRateLimitedSession:
         session = RateLimitedSession()
 
         # Mock the super().request method
-        with patch.object(requests.Session, "request", return_value=MagicMock(status_code=200)) as mock_request:
+        with patch.object(_SessionBase, "request", return_value=MagicMock(status_code=200)) as mock_request:
             session.request("GET", "http://example.com")
             # Check that timeout was set
             call_kwargs = mock_request.call_args
@@ -156,7 +156,7 @@ class TestRateLimitedSession:
             return MagicMock(status_code=200)
 
         with (
-            patch("backend.services.yfinance_service.requests.Session.request", side_effect=fake_request),
+            patch("backend.services.yfinance_service._SessionBase.request", side_effect=fake_request),
             patch("backend.core.middleware.EXTERNAL_API_COUNT") as m_cnt,
             patch("backend.core.middleware.EXTERNAL_API_LATENCY") as m_lat,
         ):
@@ -171,7 +171,7 @@ class TestRateLimitedSession:
         """Test that request exception increments 500 metric"""
         s = RateLimitedSession(max_requests=5, per_seconds=0.01)
         with (
-            patch("backend.services.yfinance_service.requests.Session.request", side_effect=RuntimeError("boom")),
+            patch("backend.services.yfinance_service._SessionBase.request", side_effect=RuntimeError("boom")),
             patch("backend.core.middleware.EXTERNAL_API_COUNT") as m_cnt,
             patch("backend.core.middleware.EXTERNAL_API_LATENCY"),
         ):
@@ -185,9 +185,7 @@ class TestRateLimitedSession:
         s._request_times.append(time.time())
         with (
             patch("backend.services.yfinance_service.time.sleep") as m_sleep,
-            patch(
-                "backend.services.yfinance_service.requests.Session.request", return_value=MagicMock(status_code=200)
-            ),
+            patch("backend.services.yfinance_service._SessionBase.request", return_value=MagicMock(status_code=200)),
             patch("backend.core.middleware.EXTERNAL_API_COUNT"),
             patch("backend.core.middleware.EXTERNAL_API_LATENCY"),
         ):
@@ -203,9 +201,7 @@ class TestRateLimitedSession:
         s._request_times.append(old_time)
         s._request_times.append(time.time())  # 当前请求
         with (
-            patch(
-                "backend.services.yfinance_service.requests.Session.request", return_value=MagicMock(status_code=200)
-            ),
+            patch("backend.services.yfinance_service._SessionBase.request", return_value=MagicMock(status_code=200)),
             patch("backend.core.middleware.EXTERNAL_API_COUNT"),
             patch("backend.core.middleware.EXTERNAL_API_LATENCY"),
         ):
@@ -220,9 +216,7 @@ class TestRateLimitedSession:
         s._request_times.append(time.time() - 100)  # 100秒前
         with (
             patch("backend.services.yfinance_service.time.sleep") as m_sleep,
-            patch(
-                "backend.services.yfinance_service.requests.Session.request", return_value=MagicMock(status_code=200)
-            ),
+            patch("backend.services.yfinance_service._SessionBase.request", return_value=MagicMock(status_code=200)),
             patch("backend.core.middleware.EXTERNAL_API_COUNT"),
             patch("backend.core.middleware.EXTERNAL_API_LATENCY"),
         ):
@@ -236,7 +230,7 @@ class TestRateLimitedSession:
         s = RateLimitedSession()
         mock_resp = MagicMock(status_code=200)
         with (
-            patch("backend.services.yfinance_service.requests.Session.request", return_value=mock_resp),
+            patch("backend.services.yfinance_service._SessionBase.request", return_value=mock_resp),
             patch("backend.services.yfinance_service.time.perf_counter", side_effect=[0, 4.0]),
             patch("backend.core.middleware.EXTERNAL_API_COUNT"),
             patch("backend.core.middleware.EXTERNAL_API_LATENCY"),
@@ -277,7 +271,8 @@ class TestYFinanceService:
         with patch.object(YFinanceService, "_init_session"):
             service = YFinanceService(llm_service_instance=mock_llm)
             # 手动初始化 session（因为 _init_session 被 mock 了）
-            service.session = requests.Session()
+            # 需用 curl_cffi 兼容基类，否则 yfinance >=0.2.50 会因 session 类型不匹配报错
+            service.session = _SessionBase()
             service.session.headers.update({"User-Agent": "Mozilla/5.0"})
             # 使用 FakeExecutor 替代 MagicMock，让 run_in_executor 能真正同步执行函数
             service._executor = FakeExecutor()

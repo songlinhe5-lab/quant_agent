@@ -222,55 +222,130 @@ def _market_session_state(
         return True, None
 
 
-async def _fetch_calendar_tile(cfg: dict, category_key: str) -> dict:
-    """从 yf 守护进程写入的 Redis 缓存读取单个标的，组装 CalendarTile 契约。"""
+def _extract_closes_from_records(records: list) -> list[float]:
+    """从 yf 记录（含 Close 或 ('Close', ticker) 多级列名）提取收盘价序列。"""
+    closes: list[float] = []
+    for r in records:
+        if not isinstance(r, dict):
+            continue
+        c_val = r.get("Close")
+        if c_val is None:
+            c_val = next((v for k, v in r.items() if str(k).startswith("('Close'")), None)
+        if c_val is not None:
+            try:
+                closes.append(float(c_val))
+            except (TypeError, ValueError):
+                pass
+    return closes
+
+
+def _build_tile_from_records(records: list, cfg: dict, category_key: str) -> Optional[dict]:
+    """将 yf 记录列表组装为 CalendarTile 契约；记录为空/无效时返回 None。"""
+    if not records:
+        return None
     symbol = cfg["symbol"]
     name = cfg["name"]
     yf_code = cfg["yf"]
-    stale_ttl = _STALE_TTL_SECONDS
+    closes = _extract_closes_from_records(records)
+    if not closes:
+        return None
+    last_close = closes[-1]
+    prev_close = closes[-2] if len(closes) > 1 else last_close
+    change_abs = round(last_close - prev_close, 4)
+    change_pct = ((last_close - prev_close) / prev_close) * 100 if prev_close else 0.0
+    updated_raw = records[-1].get("Date") or records[-1].get("date")
+    updated_at = str(updated_raw) if updated_raw else None
+    is_stale = False
+    if updated_at:
+        dt = _parse_updated_at(updated_at)
+        if dt:
+            is_stale = (datetime.now(timezone.utc) - dt).total_seconds() > _STALE_TTL_SECONDS
+    return {
+        "symbol": symbol,
+        "display_name": name,
+        "yf_ticker": yf_code,
+        "price": round(last_close, 4),
+        "change_abs": change_abs,
+        "change_pct": round(change_pct, 2),
+        "sparkline": closes[-60:],
+        "updated_at": updated_at,
+        "is_stale": is_stale,
+        "source": "YFinance",
+        "category": category_key,
+    }
+
+
+async def _fetch_calendar_tile_ondemand(cfg: dict, category_key: str) -> Optional[dict]:
+    """cache miss 兜底：经 DataSourceRegistry 取 yfinance history（BE-ARCH-04/05）。
+
+    路由模式(DATASOURCE_YFINANCE_MODE=external/hybrid)下会经 YFinanceRouter 落到
+    US-YF-A/B 辅助节点，避免主节点单 IP 直连 Yahoo（对齐 AGENTS §9.2）。
+    抓到后写回 yf_macro_cache_{yf} 同一 key，与 macro_data_daemon 缓存形态兼容。
+    限流退避期内 registry.fetch 直接返回 rate_limited，本函数优雅降级为 None。
+    """
     try:
-        cache_key = f"yf_macro_cache_{yf_code}"
+        from backend.services.datasource import datasource_registry
+        from backend.services.datasource.adapters.legacy_yfinance import ensure_yfinance_registered
+
+        ensure_yfinance_registered()
+        source = datasource_registry.get("yfinance", "history")
+        if source is None:
+            return None
+        result = await datasource_registry.fetch(
+            "yfinance",
+            "history",
+            {"ticker": cfg["yf"], "ttl": _STALE_TTL_SECONDS, "period": "3mo", "interval": "1d"},
+        )
+        if not result.is_success or result.data is None:
+            return None
+        data = result.data
+        # 内部模式返回 DataFrame；路由模式返回 list[dict] / dict
+        import pandas as pd
+
+        if isinstance(data, pd.DataFrame) and not data.empty:
+            df_reset = data.reset_index()
+            df_reset.columns = [str(c) for c in df_reset.columns]
+            records = df_reset.to_dict(orient="records")
+        elif isinstance(data, (list, tuple)):
+            records = list(data)
+        else:
+            records = []
+        tile = _build_tile_from_records(records, cfg, category_key)
+        if tile is not None:
+            cache_key = f"yf_macro_cache_{cfg['yf']}"
+            try:
+                await redis_client.set(cache_key, json.dumps(records), ex=_STALE_TTL_SECONDS)
+            except Exception:  # noqa: BLE001
+                pass
+        return tile
+    except Exception as e:  # noqa: BLE001
+        print(f"⚠️ [Calendars] on-demand {cfg['yf']} 兜底抓取失败: {e}")
+        return None
+
+
+async def _fetch_calendar_tile(cfg: dict, category_key: str) -> dict:
+    """组装单个 CalendarTile：优先读 yf 守护进程写入的 Redis 缓存；
+
+    cache miss 时经 DataSourceRegistry on-demand 兜底抓取（自愈），避免快照全空。
+    """
+    symbol = cfg["symbol"]
+    name = cfg["name"]
+    yf_code = cfg["yf"]
+    cache_key = f"yf_macro_cache_{yf_code}"
+    try:
         cached_data = await redis_client.get(cache_key)
         if cached_data:
-            records = json.loads(cached_data)
-            if records and len(records) > 0:
-                closes: list[float] = []
-                for r in records:
-                    c_val = r.get("Close")
-                    if c_val is None:
-                        c_val = next(
-                            (v for k, v in r.items() if str(k).startswith("('Close'")),
-                            None,
-                        )
-                    if c_val is not None:
-                        closes.append(float(c_val))
-                if len(closes) > 0:
-                    last_close = closes[-1]
-                    prev_close = closes[-2] if len(closes) > 1 else last_close
-                    change_abs = round(last_close - prev_close, 4)
-                    change_pct = ((last_close - prev_close) / prev_close) * 100 if prev_close else 0.0
-                    updated_raw = records[-1].get("Date") or records[-1].get("date")
-                    updated_at = str(updated_raw) if updated_raw else None
-                    is_stale = False
-                    if updated_at:
-                        dt = _parse_updated_at(updated_at)
-                        if dt:
-                            is_stale = (datetime.now(timezone.utc) - dt).total_seconds() > stale_ttl
-                    return {
-                        "symbol": symbol,
-                        "display_name": name,
-                        "yf_ticker": yf_code,
-                        "price": round(last_close, 4),
-                        "change_abs": change_abs,
-                        "change_pct": round(change_pct, 2),
-                        "sparkline": closes[-60:],
-                        "updated_at": updated_at,
-                        "is_stale": is_stale,
-                        "source": "YFinance",
-                        "category": category_key,
-                    }
+            tile = _build_tile_from_records(json.loads(cached_data), cfg, category_key)
+            if tile is not None:
+                return tile
     except Exception as e:  # noqa: BLE001
-        print(f"⚠️ [Calendars] 解析 {symbol} 失败: {e}")
+        print(f"⚠️ [Calendars] 解析 {symbol} 缓存失败: {e}")
+
+    # cache miss / 无效 → on-demand 兜底
+    ondemand = await _fetch_calendar_tile_ondemand(cfg, category_key)
+    if ondemand is not None:
+        return ondemand
+
     return {
         "symbol": symbol,
         "display_name": name,
