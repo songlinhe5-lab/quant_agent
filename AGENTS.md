@@ -524,8 +524,8 @@ Pre-commit  pre-commit                   提交前自动检查
 推理循环    Plan → Tool → Verify → Output
 Tool 注册   hermes_agent/tools/ 动态加载
 
-主推理引擎  deepseek-v4-flash（工具调用、ReAct 循环）
-深度分析    deepseek-v4-pro（复杂研报、多轮交叉验证）
+主推理引擎  deepseek-v4-flash（工具调用、ReAct 循环，`LLM_MODEL`）
+深度分析    deepseek-v4-pro（强制总结、复杂研报，`LLM_PRO_MODEL`）
 流式输出    Server-Sent Events (SSE) + NDJSON
 向量检索    pgvector (PostgreSQL)
 
