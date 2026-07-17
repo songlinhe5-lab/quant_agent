@@ -10,7 +10,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     # Quant & API
     "futu-api>=10.7.0",
-    "yfinance>=0.2.36",
+    "yfinance==1.4.1",
     "pandas>=2.0.0",
     "httpx>=0.27.0",
     "tenacity>=8.2.0",
