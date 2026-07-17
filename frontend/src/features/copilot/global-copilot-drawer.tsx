@@ -79,7 +79,8 @@ function CopilotDrawerChrome() {
 }
 
 /**
- * DashboardLayout 常驻：折叠时 width→0，DOM/ChatProvider 不卸载，会话与 SSE 状态保留。
+ * 浮层覆盖式 AI Copilot 面板：fixed 定位，不挤压右侧主内容区宽度。
+ * 折叠时 width→0，DOM/ChatProvider 不卸载，会话与 SSE 状态保留。
  */
 export function GlobalCopilotDrawer() {
   const copilotOpen = useLayoutStore((s) => s.copilotOpen)
@@ -89,8 +90,9 @@ export function GlobalCopilotDrawer() {
       data-testid="global-copilot-drawer"
       aria-hidden={!copilotOpen}
       className={cn(
-        'shrink-0 h-full overflow-hidden transition-[width] duration-300 ease-out',
-        copilotOpen ? 'border-l border-border/40' : 'border-0 pointer-events-none',
+        'fixed right-0 top-0 z-30 h-full overflow-hidden transition-[width] duration-300 ease-out',
+        'border-l border-border/40 shadow-2xl shadow-black/40',
+        !copilotOpen && 'pointer-events-none',
       )}
       style={{ width: copilotOpen ? DRAWER_WIDTH : 0 }}
     >
