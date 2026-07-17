@@ -76,8 +76,19 @@ class WebScrapeTool(BaseTool):
 
                 return await self._format_response(url, content, query)
         except Exception as e:
-            print(f"⚠️ [WebScrape] Jina API 提取受阻 ({repr(e)})，正在唤起本地无头浏览器兜底...")
-            return await self._scrape_with_browser(url, query, original_error=repr(e))
+            # 💡 方案 2：不依赖 DrissionPage，引导 Agent 使用 web_search 换源
+            error_detail = repr(e)
+            print(f"⚠️ [WebScrape] Jina API 提取受阻 ({error_detail})")
+            return {
+                "status": "error",
+                "message": (
+                    f"无法抓取该网页: {error_detail}\n\n"
+                    "💡 建议操作:\n"
+                    "1. 使用 web_search 搜索该主题的替代数据源\n"
+                    "2. 尝试从搜索结果中选择其他可访问的链接\n"
+                    "3. 或告知用户该网页暂时无法访问"
+                ),
+            }
 
     async def _format_response(self, url: str, content: str, query: str = "") -> Dict[str, Any]:
         """格式化输出，防止撑爆大模型 Token 上限"""
@@ -103,67 +114,6 @@ class WebScrapeTool(BaseTool):
 
         content += "\n\n(💡 系统护栏提示：这是网页的原始内容。绝对禁止在你的输出中大段复制粘贴这些原文或打印整个 JSON/Markdown 结构！你必须消化后使用专业简练的语言进行总结。)"
         return {"status": "success", "data": {"url": url, "content": content}}
-
-    async def _scrape_with_browser(self, url: str, query: str, original_error: str = "") -> Dict[str, Any]:
-        """自建 DrissionPage 无头浏览器降级提取 (对抗动态 JS 与高强度反爬)"""
-        try:
-            from DrissionPage import ChromiumOptions, ChromiumPage  # type: ignore
-        except ImportError:
-            # 💡 提供更详细的错误信息和建议
-            error_detail = f"主方法失败: {original_error}\n\n" if original_error else ""
-            return {
-                "status": "error",
-                "message": (
-                    f"{error_detail}"
-                    "降级方案 DrissionPage 未安装。该网站可能需要无头浏览器才能抓取。\n\n"
-                    "解决方案:\n"
-                    "1. 安装 DrissionPage: pip install DrissionPage\n"
-                    "2. 或尝试使用其他搜索引擎/数据源\n"
-                    "3. 或手动访问该网页并复制内容"
-                ),
-            }
-
-        try:
-            # 💡 增加显式的 -> str 类型注解，消除 Pylance 将其误判为 MethodType 的报错
-            def _scrape() -> str:
-                import time
-
-                co = ChromiumOptions()
-
-                # 💡 挂载本地 Chrome 用户数据目录，继承真实登录态和 Cookie 突破付费墙 (Paywall)
-                user_data_dir = os.getenv("CHROME_USER_DATA_DIR")
-                if user_data_dir:
-                    co.set_user_data_path(user_data_dir)
-
-                # 💡 放弃传统的 co.headless()，改用 Chrome 最新的 --headless=new 模式
-                # 它使用的是真实的浏览器渲染管线，极难被网站的风控系统（如 Cloudflare）识别
-                co.set_argument("--headless=new")
-                co.set_argument("--disable-blink-features=AutomationControlled")  # 隐藏 WebDriver 特征
-                co.set_user_agent(
-                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-                )
-
-                page = ChromiumPage(addr_or_opts=co)
-                try:
-                    page.get(url, retry=2, timeout=30)
-                    time.sleep(3)  # 留出 3 秒等待页面的 JS、AJAX 请求和 Vue/React 组件完全挂载
-
-                    # 提取 <body> 下的所有纯文本 (自动屏蔽 HTML 和脚本标签，等效于 innerText)
-                    body = page.ele("tag:body")
-                    # 💡 增加显式的 str() 强转保护
-                    return str(body.text) if body else ""
-                finally:
-                    page.quit()
-
-            # DrissionPage 核心为同步，必须通过 asyncio.to_thread 防止阻塞 FastAPI 主事件循环
-            content = await asyncio.to_thread(_scrape)
-
-            if not content or len(content.strip()) < 50:
-                return {"status": "error", "message": "无头浏览器提取的内容为空，对方网站可能存在极强的风控系统。"}
-
-            return await self._format_response(url, content.strip(), query)
-        except Exception as e:
-            return {"status": "error", "message": f"无头浏览器渲染失败: {str(e)}"}
 
     def _process_rag(self, content: str, query: str, url: str) -> str:
         """执行本地 RAG 切分与检索"""
