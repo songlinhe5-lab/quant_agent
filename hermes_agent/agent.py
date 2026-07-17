@@ -564,6 +564,8 @@ class HermesAgent:
 
         max_iterations = 8
         for i in range(max_iterations):
+            # 💡 每轮 ReAct 开始前发送心跳，防止工具完成后到下一轮 LLM 响应前的空白期被 Cloudflare 掐断
+            yield {"type": "heartbeat", "tick": i + 1}
             self.console.print(f"🤖 [Agent Stream] 流式思考中 (第 {i + 1} 轮)...")
             try:
                 # 💡 动态模型切换：如果最新一条用户消息包含图片，自动切换至多模态视觉模型
