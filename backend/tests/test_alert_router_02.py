@@ -39,7 +39,9 @@ from backend.routers.alert import (
 @pytest.fixture
 def app():
     test_app = FastAPI()
-    test_app.include_router(router)
+    # 💡 路由前缀需与 main.py 中保持一致: /api/v1 + /alert
+    api_prefix = "/api/v1"
+    test_app.include_router(router, prefix=api_prefix)
     return test_app
 
 
