@@ -63,6 +63,26 @@ class BaseTool:
                 return f"SH.{ticker}" if ticker.startswith("60") or ticker.startswith("68") else f"SZ.{ticker}"
             return f"HK.{ticker.zfill(5)}"
 
+        # 已知大盘指数代码：直接透传给后端，由 format_yf_ticker 统一映射
+        _INDEX_TICKERS = {
+            "HSI",
+            "HSTECH",
+            "DJI",
+            "IXIC",
+            "SPX",
+            "VIX",
+            "SSEC",
+            "CSI300",
+            "N225",
+            "KS11",
+            "KWEB",
+            "SENSEX",
+            "BTC",
+            "ETH",
+        }
+        if ticker in _INDEX_TICKERS:
+            return ticker
+
         return f"US.{ticker}"
 
     # ─────────────────────────────────────────
