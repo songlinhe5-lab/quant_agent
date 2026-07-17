@@ -114,7 +114,11 @@ class SearchService:
                         return res  # noqa: E701
                     raise ValueError("DuckDuckGo 返回空数据")
 
-            results = await asyncio.to_thread(_do_duckduckgo_search)
+            try:
+                results = await asyncio.to_thread(_do_duckduckgo_search)
+            except Exception as e:
+                print(f"❌ [SearchService] 所有搜索引擎均失败: Tavily/Bocha/DuckDuckGo。DuckDuckGo 最终异常: {repr(e)}")
+                raise
 
         return (
             {"status": "success", "data": results}
