@@ -28,7 +28,7 @@ class ScreenerTool(BaseTool):
 
         base_url = get_backend_api_url()
 
-        async with SecureAsyncClient(timeout=45.0) as client:
+        async with SecureAsyncClient(timeout=90.0) as client:
             # 1. 前置翻译流程，将 NLP 转化为强类型的后端 JSON 筛选协议
             trans_resp = await client.post(f"{base_url}/screener/translate", json={"query": query})
             if trans_resp.status_code != 200:
