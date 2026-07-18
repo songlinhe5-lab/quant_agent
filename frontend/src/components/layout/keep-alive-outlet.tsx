@@ -52,7 +52,7 @@ export function KeepAliveOutlet() {
         return (
           <div
             key={path}
-            className={active ? 'h-full' : 'hidden'}
+            className={active ? 'min-h-0' : 'hidden'}
             aria-hidden={!active}
             data-keep-alive-path={path}
           >
