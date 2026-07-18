@@ -60,7 +60,7 @@ export function ScreenerResultsTable() {
         skeletonRows={8}
         emptyTitle={dslQuery ? '未能匹配到标的' : '开始选股'}
         emptyDescription={dslQuery ? '请尝试放宽筛选条件' : '在上方输入自然语言，或点击灵感快捷键开始选股'}
-        className="flex-1"
+        className="flex-1 min-h-0"
       >
       <div className="overflow-auto flex-1 custom-scrollbar h-full">
         <table className="w-full text-xs" role="table" aria-label="选股结果数据网格">
