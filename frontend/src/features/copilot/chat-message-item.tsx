@@ -177,20 +177,20 @@ export const ChatMessageItem = React.memo(({
   const hasThinking = !!thinkContent;
   const isThinkingState = isGenerating && isLast && thinkStart !== -1 && thinkEnd === -1;
   const hasRunningTools = msg.tools?.some(t => t.status === 'running');
-  const isExpanded = isThinkingState || hasRunningTools;
+  const shouldAutoExpand = isThinkingState || hasRunningTools;
 
-  // 💡 思考过程面板：用户手动展开后，不再因生成结束/工具完成而自动关闭
+  // 💡 思考过程面板：默认不自动展开，用户手动操作后保持用户选择
   const detailsRef = useRef<HTMLDetailsElement>(null)
   const userToggledRef = useRef(false)
-  const prevExpandedRef = useRef(isExpanded)
+  const hasAutoExpandedRef = useRef(false)
 
   useEffect(() => {
-    // 当 isExpanded 变为 true 时自动展开（仅当用户未手动操作过）
-    if (isExpanded && !userToggledRef.current && detailsRef.current) {
+    // 💡 仅在用户未手动操作过时，首次进入思考状态才自动展开
+    if (shouldAutoExpand && !userToggledRef.current && !hasAutoExpandedRef.current && detailsRef.current) {
       detailsRef.current.open = true
+      hasAutoExpandedRef.current = true
     }
-    prevExpandedRef.current = isExpanded
-  }, [isExpanded])
+  }, [shouldAutoExpand])
 
   const handleThinkToggle = useCallback(() => {
     // 标记用户已手动交互，后续不再自动控制展开状态
@@ -251,7 +251,6 @@ export const ChatMessageItem = React.memo(({
                 ref={detailsRef}
                 onToggle={handleThinkToggle}
                 className="group border border-border/30 rounded-lg overflow-hidden bg-slate-50/50 dark:bg-black/20 text-xs transition-colors mb-3" 
-                open={isExpanded}
               >
                 <summary className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-white/5 font-semibold select-none list-none transition-colors [&::-webkit-details-marker]:hidden">
                   {(isThinkingState || hasRunningTools) ? <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> : <Sparkles className="h-3.5 w-3.5 text-slate-500" />}
