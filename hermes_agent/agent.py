@@ -630,7 +630,34 @@ class HermesAgent:
                     self.console.print("[dim cyan]----------------------------------------------[/dim cyan]\n")
 
                 self.console.print("🌐 [Chat API] 正在向大模型发起流式请求 (等待首个 Token)...")
-                response = await self.client.chat.completions.create(**request_kwargs)
+
+                # 💡 心跳保活：LLM 推理期间定期发送 heartbeat，防止 Cloudflare 100s 空闲超时掐断连接
+                llm_response_queue: asyncio.Queue = asyncio.Queue()
+
+                async def do_llm_inference():
+                    try:
+                        resp = await self.client.chat.completions.create(**request_kwargs)
+                        await llm_response_queue.put(("ok", resp))
+                    except Exception as e:
+                        await llm_response_queue.put(("error", e))
+
+                inference_task = asyncio.create_task(do_llm_inference())
+                llm_heartbeat_count = 0
+
+                while not inference_task.done():
+                    try:
+                        await asyncio.wait_for(llm_response_queue.get(), timeout=15.0)
+                        break  # 推理完成，跳出心跳循环
+                    except asyncio.TimeoutError:
+                        llm_heartbeat_count += 1
+                        yield {"type": "heartbeat", "tick": f"llm-{llm_heartbeat_count}"}
+                        self.console.print(f"💓 [Heartbeat] LLM 推理中... 已等待 {llm_heartbeat_count * 15}s")
+
+                status, response_or_error = await llm_response_queue.get()
+                if status == "error":
+                    raise response_or_error
+                response = response_or_error
+
                 self.console.print("✅ [Chat API] 已接收到大模型流式响应，开始处理数据流...")
 
                 collected_content = ""
