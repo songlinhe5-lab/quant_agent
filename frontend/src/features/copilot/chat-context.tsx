@@ -226,6 +226,25 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         signal: abortControllerRef.current.signal
       })
 
+      // 💡 防御性状态检查：在尝试读取流之前，先确认 HTTP 响应状态码
+      if (!res.ok) {
+        const statusText = res.statusText || 'Unknown'
+        let detail = ''
+        try {
+          // 尝试读取错误响应体，提取后端返回的错误信息
+          const errorBody = await res.text()
+          try {
+            const errorJson = JSON.parse(errorBody)
+            detail = errorJson.detail || errorJson.msg || errorJson.message || errorBody
+          } catch {
+            detail = errorBody.slice(0, 200)
+          }
+        } catch {
+          detail = '无法读取响应体'
+        }
+        throw new Error(`HTTP ${res.status} (${statusText}): ${detail}`)
+      }
+
       if (!res.body) throw new Error('网络响应异常 (No Body)')
 
       const reader = res.body.getReader()
@@ -324,7 +343,17 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         return
       }
       console.error('流式请求异常:', error)
-      currentAssistantMsg.content += '\n\n> ❌ **网络/打断异常**: 无法连接到大模型后端网关或请求被意外中断。'
+      const errMsg = error?.message || String(error)
+      // 💡 精确诊断：根据错误类型给出不同的提示
+      if (errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError') || errMsg.includes('fetch')) {
+        currentAssistantMsg.content += `\n\n> ❌ **网络连接失败**: 无法连接到后端服务，请检查后端是否正在运行。\n> \n> 技术详情: \`${errMsg}\``
+      } else if (errMsg.includes('HTTP')) {
+        currentAssistantMsg.content += `\n\n> ❌ **后端响应异常**: ${errMsg}`
+      } else if (errMsg.includes('stream') || errMsg.includes('reader') || errMsg.includes('decode')) {
+        currentAssistantMsg.content += `\n\n> ❌ **数据流中断**: 流式传输过程中连接被意外切断。\n> \n> 技术详情: \`${errMsg}\``
+      } else {
+        currentAssistantMsg.content += `\n\n> ❌ **网络/打断异常**: 请求被意外中断。\n> \n> 技术详情: \`${errMsg}\``
+      }
     } finally {
       setIsGenerating(false)
       abortControllerRef.current = null
