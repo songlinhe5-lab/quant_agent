@@ -227,7 +227,8 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
     return Array.from(keys).sort()
   }, [results])
 
-  const paginatedData = [...results]
+  const startIndex = (currentPage - 1) * pageSize
+  const paginatedData = results.slice(startIndex, startIndex + pageSize)
   const realDataLength = totalItems
   const totalPages = Math.ceil(totalItems / pageSize)
   const pageSymbols = paginatedData.map(r => r.symbol)
