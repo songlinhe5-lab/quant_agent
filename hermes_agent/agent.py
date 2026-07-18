@@ -643,17 +643,21 @@ class HermesAgent:
 
                 inference_task = asyncio.create_task(do_llm_inference())
                 llm_heartbeat_count = 0
+                status, response_or_error = None, None
 
                 while not inference_task.done():
                     try:
-                        await asyncio.wait_for(llm_response_queue.get(), timeout=15.0)
+                        status, response_or_error = await asyncio.wait_for(llm_response_queue.get(), timeout=15.0)
                         break  # 推理完成，跳出心跳循环
                     except asyncio.TimeoutError:
                         llm_heartbeat_count += 1
                         yield {"type": "heartbeat", "tick": f"llm-{llm_heartbeat_count}"}
                         self.console.print(f"💓 [Heartbeat] LLM 推理中... 已等待 {llm_heartbeat_count * 15}s")
 
-                status, response_or_error = await llm_response_queue.get()
+                # 💡 兜底：如果循环因 task 完成而退出但还没拿到结果，再等一次
+                if status is None:
+                    status, response_or_error = await llm_response_queue.get()
+
                 if status == "error":
                     raise response_or_error
                 response = response_or_error
