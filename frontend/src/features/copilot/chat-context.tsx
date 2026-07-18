@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, createContext, useCallback, useMemo } from 'react'
-import { getAccessToken, apiClient, API_BASE_URL } from '@/lib/api-client'
+import { getAccessToken, apiClient, API_BASE_URL, refreshAccessToken } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
 import { useConfirmDialog } from '@/components/confirm-dialog'
 import { SessionSidebarRef } from '@/features/copilot/session-sidebar'
@@ -212,19 +212,55 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       abortControllerRef.current = new AbortController()
       setMessages(prev => [...prev, currentAssistantMsg])
 
-      const res = await fetch(`${API_BASE_URL}/chat`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAccessToken()}`
-        },
-        body: JSON.stringify({
-          messages: [userMsg],
-          session_id: sessionIdRef.current
-        }),
-        credentials: 'include',
-        signal: abortControllerRef.current.signal
-      })
+      // 💡 封装 fetch 为可重试函数，支持 401 Token 过期自动刷新
+      const doChatFetch = async (token: string | null) => {
+        return fetch(`${API_BASE_URL}/chat`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            messages: [userMsg],
+            session_id: sessionIdRef.current
+          }),
+          credentials: 'include',
+          signal: abortControllerRef.current!.signal
+        })
+      }
+
+      let res = await doChatFetch(getAccessToken())
+
+      // 💡 401 Token 过期 → 自动刷新 Token 并重试一次
+      if (res.status === 401) {
+        console.warn('[Chat] Token 已过期，尝试自动刷新...')
+        const newToken = await refreshAccessToken()
+        if (newToken) {
+          console.log('[Chat] Token 刷新成功，重试请求')
+          res = await doChatFetch(newToken)
+        } else {
+          throw new Error('登录已过期，请重新登录后再试')
+        }
+      }
+
+      // 💡 防御性状态检查：在尝试读取流之前，先确认 HTTP 响应状态码
+      if (!res.ok) {
+        const statusText = res.statusText || 'Unknown'
+        let detail = ''
+        try {
+          // 尝试读取错误响应体，提取后端返回的错误信息
+          const errorBody = await res.text()
+          try {
+            const errorJson = JSON.parse(errorBody)
+            detail = errorJson.detail || errorJson.msg || errorJson.message || errorBody
+          } catch {
+            detail = errorBody.slice(0, 200)
+          }
+        } catch {
+          detail = '无法读取响应体'
+        }
+        throw new Error(`HTTP ${res.status} (${statusText}): ${detail}`)
+      }
 
       if (!res.body) throw new Error('网络响应异常 (No Body)')
 
@@ -324,7 +360,17 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         return
       }
       console.error('流式请求异常:', error)
-      currentAssistantMsg.content += '\n\n> ❌ **网络/打断异常**: 无法连接到大模型后端网关或请求被意外中断。'
+      const errMsg = error?.message || String(error)
+      // 💡 精确诊断：根据错误类型给出不同的提示
+      if (errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError') || errMsg.includes('fetch')) {
+        currentAssistantMsg.content += `\n\n> ❌ **网络连接失败**: 无法连接到后端服务，请检查后端是否正在运行。\n> \n> 技术详情: \`${errMsg}\``
+      } else if (errMsg.includes('HTTP')) {
+        currentAssistantMsg.content += `\n\n> ❌ **后端响应异常**: ${errMsg}`
+      } else if (errMsg.includes('stream') || errMsg.includes('reader') || errMsg.includes('decode')) {
+        currentAssistantMsg.content += `\n\n> ❌ **数据流中断**: 流式传输过程中连接被意外切断。\n> \n> 技术详情: \`${errMsg}\``
+      } else {
+        currentAssistantMsg.content += `\n\n> ❌ **网络/打断异常**: 请求被意外中断。\n> \n> 技术详情: \`${errMsg}\``
+      }
     } finally {
       setIsGenerating(false)
       abortControllerRef.current = null
