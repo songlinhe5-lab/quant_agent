@@ -227,8 +227,8 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
     return Array.from(keys).sort()
   }, [results])
 
-  const startIndex = (currentPage - 1) * pageSize
-  const paginatedData = results.slice(startIndex, startIndex + pageSize)
+  // API 已按 page/page_size 分页返回，results 即为当前页数据
+  const paginatedData = results
   const realDataLength = totalItems
   const totalPages = Math.ceil(totalItems / pageSize)
   const pageSymbols = paginatedData.map(r => r.symbol)
