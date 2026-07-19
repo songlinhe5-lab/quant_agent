@@ -39,17 +39,54 @@ class WebScrapeTool(BaseTool):
     async def run(self, url: str, query: str = "") -> Dict[str, Any]:
         if not url:
             return {"status": "error", "message": "URL 不能为空"}
-
+    
         # 💡 安全防线：防范 SSRF 与本地文件读取 (Local File Inclusion) 漏洞
-        # 如果不限制 scheme，黑客可以通过 Prompt 注入让无头浏览器读取 file:///etc/passwd 或 file:///app/.env
         if not url.lower().startswith(("http://", "https://")):
             return {"status": "error", "message": "非法的 URL 协议。出于安全风控原因，仅允许访问 http(s) 标准网页。"}
+    
+        # 💡 拦截 PDF/文档链接，Jina 和 httpx 都无法解析二进制文件
+        if url.lower().endswith((".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx")):
+            return {
+                "status": "error",
+                "message": (
+                    f"该链接是文档文件 ({url.split('.')[-1].upper()})，网页抓取工具无法解析二进制文档。\n\n"
+                    "💡 建议操作:\n"
+                    "1. 使用 web_search 搜索该文档的网页版或摘要\n"
+                    "2. 手动下载文档后使用 analyze_financial_report 工具分析本地文件"
+                ),
+            }
+    
+        # 方案 1: 使用 Jina Reader API (优先，专门为大模型优化)
+        content = await self._fetch_via_jina(url)
+            
+        # 方案 2: Jina 失败时降级到直接 HTTP 抓取
+        if content is None:
+            content = await self._fetch_via_httpx(url)
+            
+        if content is None:
+            return {
+                "status": "error",
+                "message": (
+                    f"无法抓取该网页：Jina API 和直接 HTTP 抓取均失败\n\n"
+                    "💡 建议操作:\n"
+                    "1. 使用 web_search 搜索该主题的替代数据源\n"
+                    "2. 尝试从搜索结果中选择其他可访问的链接\n"
+                    "3. 或告知用户该网页暂时无法访问"
+                ),
+            }
+    
+        return await self._format_response(url, content, query)
 
-        # 使用 Jina Reader API，免费且专门为大模型优化的网页转 Markdown 接口
+    async def _fetch_via_jina(self, url: str) -> str | None:
+        """方案 1: Jina Reader API (优先，专门为大模型优化的网页转 Markdown)"""
         jina_url = f"https://r.jina.ai/{url}"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
+        # 💡 如果配置了 Jina API Key，使用认证请求
+        jina_api_key = os.getenv("JINA_API_KEY")
+        if jina_api_key:
+            headers["Authorization"] = f"Bearer {jina_api_key}"
 
         try:
             async with httpx.AsyncClient(
@@ -61,34 +98,81 @@ class WebScrapeTool(BaseTool):
                 resp.raise_for_status()
                 content = resp.text
 
-                # 💡 利用正则清洗 Markdown 中的冗余图片和超链接，极大节省大模型 Token
-                content = re.sub(r"!\[[^\]]*\]\([^\)]+\)", "", content)  # 完全移除图片及图片链接
-                content = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", content)  # 超链接“剥壳”：仅保留链接文字，移除 URL
+                # 💡 利用正则清洗 Markdown 中的冗余图片和超链接
+                content = re.sub(r"!\[[^\]]*\]\([^\)]+\)", "", content)
+                content = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", content)
 
-                # 💡 拦截动态反爬与 JS 护盾：如果字数过少或包含反爬特征，主动抛出异常走降级
+                # 💡 拦截动态反爬与 JS 护盾
                 if (
                     len(content) < 200
                     or "Please enable JS" in content
                     or "访问受限" in content
                     or "Just a moment" in content
                 ):
-                    raise ValueError("触发目标网站反爬屏蔽或遇到了 SPA 动态渲染页")
+                    print(f"⚠️ [WebScrape] Jina 触发反爬屏蔽")
+                    return None
 
-                return await self._format_response(url, content, query)
+                return content
         except Exception as e:
-            # 💡 方案 2：不依赖 DrissionPage，引导 Agent 使用 web_search 换源
-            error_detail = repr(e)
-            print(f"⚠️ [WebScrape] Jina API 提取受阻 ({error_detail})")
-            return {
-                "status": "error",
-                "message": (
-                    f"无法抓取该网页: {error_detail}\n\n"
-                    "💡 建议操作:\n"
-                    "1. 使用 web_search 搜索该主题的替代数据源\n"
-                    "2. 尝试从搜索结果中选择其他可访问的链接\n"
-                    "3. 或告知用户该网页暂时无法访问"
-                ),
-            }
+            print(f"⚠️ [WebScrape] Jina API 提取受阻 ({repr(e)})，降级到直接 HTTP 抓取")
+            return None
+
+    async def _fetch_via_httpx(self, url: str) -> str | None:
+        """方案 2: 直接 HTTP 抓取 (降级方案，适用于 Jina 失败时)"""
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        }
+
+        try:
+            async with httpx.AsyncClient(
+                timeout=15.0,
+                follow_redirects=True,
+                event_hooks={"request": [httpx_log_request], "response": [httpx_log_response]},
+            ) as client:
+                resp = await client.get(url, headers=headers)
+                resp.raise_for_status()
+                html_content = resp.text
+
+                # 💡 简单 HTML 转文本：移除脚本、样式、标签
+                from html.parser import HTMLParser
+
+                class HTMLToText(HTMLParser):
+                    def __init__(self):
+                        super().__init__()
+                        self.text = []
+                        self.skip = False
+
+                    def handle_starttag(self, tag, attrs):
+                        if tag in ("script", "style", "nav", "footer"):
+                            self.skip = True
+                        if tag in ("p", "div", "br", "h1", "h2", "h3", "h4", "h5", "h6", "li", "tr"):
+                            self.text.append("\n")
+
+                    def handle_endtag(self, tag):
+                        if tag in ("script", "style", "nav", "footer"):
+                            self.skip = False
+                        if tag in ("p", "div", "br", "h1", "h2", "h3", "h4", "h5", "h6", "li", "tr"):
+                            self.text.append("\n")
+
+                    def handle_data(self, data):
+                        if not self.skip:
+                            self.text.append(data)
+
+                parser = HTMLToText()
+                parser.feed(html_content)
+                content = "\n".join(line.strip() for line in "".join(parser.text).split("\n") if line.strip())
+
+                # 💡 检查内容质量
+                if len(content) < 200:
+                    print(f"⚠️ [WebScrape] HTTP 直接抓取内容过少 ({len(content)} chars)")
+                    return None
+
+                return content
+        except Exception as e:
+            print(f"⚠️ [WebScrape] HTTP 直接抓取失败 ({repr(e)})")
+            return None
 
     async def _format_response(self, url: str, content: str, query: str = "") -> Dict[str, Any]:
         """格式化输出，防止撑爆大模型 Token 上限"""
