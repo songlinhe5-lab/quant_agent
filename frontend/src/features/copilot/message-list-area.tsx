@@ -1,12 +1,12 @@
 import React, { useContext, useRef, useEffect } from 'react'
 import { Sparkles, RefreshCw } from 'lucide-react'
-import { ChatMessagesContext, ChatActionContext } from './chat-context'
+import { ChatMessagesContext, ChatActionContext, STOCK_QUICK_COMMANDS } from './chat-context'
 import { ChatMessageItem } from './chat-message-item'
 import { getIconForTitle } from './shared'
 
 export function MessageListArea() {
   const { messages, isGenerating, copiedIndex, quickPrompts } = useContext(ChatMessagesContext)
-  const { handleCopy, handleRetry, handleSend, refreshPrompts } = useContext(ChatActionContext)
+  const { handleCopy, handleRetry, handleSend, refreshPrompts, inputSetterRef } = useContext(ChatActionContext)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const userScrolledUpRef = useRef(false)
 
@@ -52,6 +52,28 @@ export function MessageListArea() {
                     </div>
                   </button>
                 ))}
+              </div>
+
+              {/* 个股深度研判快捷指令 */}
+              <div className="w-full mt-6">
+                <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3 text-center">
+                  个股深度研判 · 快捷指令
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {STOCK_QUICK_COMMANDS.map((cmd) => (
+                    <button
+                      key={cmd.label}
+                      onClick={() => inputSetterRef?.current?.(cmd.template)}
+                      className="flex items-center gap-3 bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 hover:bg-blue-500/20 cursor-pointer transition-colors text-left group"
+                    >
+                      <span className="text-lg shrink-0">{cmd.emoji}</span>
+                      <div>
+                        <h5 className="text-sm font-semibold text-slate-200 group-hover:text-white transition-colors">{cmd.label}</h5>
+                        <p className="text-[10px] text-slate-400 line-clamp-1 mt-0.5">{cmd.template}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           ) : (

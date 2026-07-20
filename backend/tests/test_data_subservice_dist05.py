@@ -308,7 +308,10 @@ class TestHeartbeat:
         mod._start_time = 1000.0  # 固定起始时间
 
         # 运行一次心跳 (通过缩短 sleep 时间)
-        with patch("data_subservice.main.HEARTBEAT_INTERVAL", 0):
+        with (
+            patch("data_subservice.main.HEARTBEAT_INTERVAL", 0),
+            patch.object(mod, "DS_NODE_ID", "test-node-01"),
+        ):
             task = asyncio.create_task(_heartbeat_loop())
             await asyncio.sleep(0.1)
             task.cancel()
@@ -369,6 +372,7 @@ class TestShutdown:
         with (
             patch.object(mod, "aioredis", mock_aioredis),
             patch.object(mod, "ServiceRegistry", return_value=mock_registry),
+            patch.object(mod, "DS_NODE_ID", "test-node-01"),
         ):
             async with mod.lifespan(mod.app):
                 pass

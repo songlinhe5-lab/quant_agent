@@ -8,7 +8,7 @@ import time
 from typing import Any, Dict
 
 import pandas as pd
-from futu import RET_OK, SubType
+from futu import RET_OK, SortField, SubType, WarrantRequest
 
 from backend.core.retry_utils import with_global_retry
 from backend.core.utils import safe_float
@@ -273,3 +273,178 @@ class OptionFundHandler:
         result["data"] = {k: v for k, v in result["data"].items() if v is not None}
         self.cache_mgr.set_fundamental_cache(cache_key, time.time(), result)
         return result
+
+    @with_global_retry
+    async def get_warrant_chain(
+        self,
+        ticker: str,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """获取港股窝轮/牛熊证链数据（用于市场多空情绪分析）"""
+        if is_unsupported_func and is_unsupported_func(ticker):
+            return {"status": "error", "message": "富途原生不支持该大类资产"}
+
+        market_ticker = format_ticker_func(ticker) if format_ticker_func else ticker
+
+        # 仅港股支持窝轮
+        if not market_ticker.startswith("HK."):
+            return {"status": "error", "message": f"窝轮/牛熊证仅支持港股标的，当前: {ticker}"}
+
+        cache_key = f"futu_warrant_chain_{market_ticker}"
+        now = time.time()
+
+        cached = self.cache_mgr.get_option_chain_cache(cache_key)
+        if cached and now - cached[0] < 300.0:  # 5分钟缓存
+            return cached[1]
+
+        # 开发环境 Mock
+        if self.conn_mgr.status != "CONNECTED" and __import__("os").getenv("QUANT_ENV") == "development":  # noqa: E501
+            return self._mock_warrant_chain(ticker)
+
+        if not self.conn_mgr.quote_ctx:
+            return {"status": "error", "message": "FutuService 未连接"}
+
+        # 按成交额降序，拉取最活跃的窝轮/牛熊证
+        req = WarrantRequest()
+        req.sort_field = SortField.TURNOVER
+        req.ascend = False
+        req.num = 200
+
+        ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_warrant, market_ticker, req)
+        if ret != RET_OK:
+            return {"status": "error", "message": f"窝轮数据获取失败: {data}"}
+
+        warrant_df, last_page, all_count = data
+        if not isinstance(warrant_df, pd.DataFrame) or warrant_df.empty:
+            return {"status": "error", "message": f"{ticker} 无可用窝轮/牛熊证数据"}
+
+        result = self._compress_warrant_data(warrant_df, ticker, all_count)
+        self.cache_mgr.set_option_chain_cache(cache_key, time.time(), result)
+        return result
+
+    def _compress_warrant_data(self, df: pd.DataFrame, ticker: str, all_count: int) -> Dict[str, Any]:
+        """将窝轮 DataFrame 压缩为结构化摘要 + 情绪统计"""
+        warrants = []
+        call_count, put_count, bull_count, bear_count = 0, 0, 0, 0
+        call_turnover, put_turnover = 0.0, 0.0
+
+        for _, row in df.iterrows():
+            wrt_type = str(row.get("type", ""))
+            turnover = safe_float(row.get("turnover", 0))
+
+            # 统计多空分布
+            if wrt_type == "CALL":
+                call_count += 1
+                call_turnover += turnover
+            elif wrt_type == "PUT":
+                put_count += 1
+                put_turnover += turnover
+            elif wrt_type == "BULL":
+                bull_count += 1
+            elif wrt_type == "BEAR":
+                bear_count += 1
+
+            warrants.append(
+                {
+                    "code": str(row.get("stock", "")),
+                    "name": str(row.get("name", "")),
+                    "type": wrt_type,
+                    "issuer": str(row.get("issuer", "")),
+                    "strike_price": safe_float(row.get("strike_price", 0)),
+                    "cur_price": safe_float(row.get("cur_price", 0)),
+                    "premium": safe_float(row.get("premium", 0)),
+                    "leverage": safe_float(row.get("leverage", 0)),
+                    "delta": safe_float(row.get("delta", 0)),
+                    "implied_volatility": safe_float(row.get("implied_volatility", 0)),
+                    "turnover": turnover,
+                    "volume": int(safe_float(row.get("volume", 0))),
+                    "maturity_time": str(row.get("maturity_time", "")),
+                    "street_rate": safe_float(row.get("street_rate", 0)),
+                    "recovery_price": safe_float(row.get("recovery_price", 0)),
+                }
+            )
+
+        # 情绪摘要
+        total_call_put = call_count + put_count
+        call_ratio = round(call_count / total_call_put * 100, 1) if total_call_put > 0 else 50.0
+        total_bull_bear = bull_count + bear_count
+        bull_ratio = round(bull_count / total_bull_bear * 100, 1) if total_bull_bear > 0 else 50.0
+
+        sentiment = (
+            "偏多" if call_ratio > 60 and bull_ratio > 60 else "偏空" if call_ratio < 40 and bull_ratio < 40 else "中性"
+        )
+
+        return {
+            "status": "success",
+            "ticker": ticker,
+            "total_count": all_count,
+            "sentiment_summary": {
+                "call_count": call_count,
+                "put_count": put_count,
+                "bull_count": bull_count,
+                "bear_count": bear_count,
+                "call_ratio_pct": call_ratio,
+                "bull_ratio_pct": bull_ratio,
+                "call_turnover": call_turnover,
+                "put_turnover": put_turnover,
+                "sentiment": sentiment,
+            },
+            "warrants": warrants[:50],  # 返回前50只最活跃的
+        }
+
+    @staticmethod
+    def _mock_warrant_chain(ticker: str) -> Dict[str, Any]:
+        """开发环境 Mock 窝轮数据"""
+        return {
+            "status": "success",
+            "ticker": ticker,
+            "total_count": 4,
+            "sentiment_summary": {
+                "call_count": 2,
+                "put_count": 1,
+                "bull_count": 1,
+                "bear_count": 0,
+                "call_ratio_pct": 66.7,
+                "bull_ratio_pct": 100.0,
+                "call_turnover": 5_000_000.0,
+                "put_turnover": 2_000_000.0,
+                "sentiment": "偏多",
+            },
+            "warrants": [
+                {
+                    "code": "HK.19001",
+                    "name": "MOCK_CALL@EC2612",
+                    "type": "CALL",
+                    "issuer": "MB",
+                    "strike_price": 40.0,
+                    "cur_price": 0.15,
+                    "premium": 12.5,
+                    "leverage": 8.2,
+                    "delta": 0.45,
+                    "implied_volatility": 42.0,
+                    "turnover": 3_000_000.0,
+                    "volume": 20_000_000,
+                    "maturity_time": "2026-12-01",
+                    "street_rate": 15.0,
+                    "recovery_price": 0,
+                },
+                {
+                    "code": "HK.19002",
+                    "name": "MOCK_PUT@EC2612",
+                    "type": "PUT",
+                    "issuer": "SG",
+                    "strike_price": 35.0,
+                    "cur_price": 0.08,
+                    "premium": 8.3,
+                    "leverage": 6.5,
+                    "delta": -0.35,
+                    "implied_volatility": 38.0,
+                    "turnover": 2_000_000.0,
+                    "volume": 15_000_000,
+                    "maturity_time": "2026-12-01",
+                    "street_rate": 8.0,
+                    "recovery_price": 0,
+                },
+            ],
+        }

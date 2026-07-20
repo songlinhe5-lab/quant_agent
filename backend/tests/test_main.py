@@ -25,8 +25,8 @@ class TestGlobalExceptionHandler:
     def test_quant_exception_handler_returns_unified_format(self):
         """QuantBaseException 转换为统一格式"""
         from backend.core.error_codes import ErrorCode
+        from backend.core.exception_handlers import quant_exception_handler
         from backend.core.exceptions import QuantBaseException
-        from backend.main import quant_exception_handler
 
         mock_request = MagicMock(spec=Request)
         exc = QuantBaseException(
@@ -46,7 +46,7 @@ class TestGlobalExceptionHandler:
         from fastapi.exceptions import RequestValidationError
         from pydantic import BaseModel, ValidationError
 
-        from backend.main import validation_exception_handler
+        from backend.core.exception_handlers import validation_exception_handler
 
         class Req(BaseModel):
             ticker: str
@@ -64,7 +64,7 @@ class TestGlobalExceptionHandler:
 
     def test_global_exception_handler_returns_500(self):
         """兜底异常返回 500"""
-        from backend.main import global_exception_handler
+        from backend.core.exception_handlers import global_exception_handler
 
         mock_request = MagicMock(spec=Request)
         mock_request.method = "GET"

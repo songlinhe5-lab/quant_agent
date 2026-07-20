@@ -36,6 +36,10 @@
   --motion-slow: 300ms;
   --motion-flash: 400ms;
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  /* PROD-04: 场景模式 */
+  --density-scale: 1;
+  --scene-accent: 38 92% 50%;
 }
 
 .dark {
@@ -114,6 +118,12 @@ body {
     animation: tick-flash-down var(--motion-flash) var(--ease-standard);
   }
 }
+
+/* PROD-04: 场景模式 CSS 变量覆盖 */
+[data-scene-mode="watch"]       { --density-scale: 1.2; --scene-accent: 160 84% 45%; }
+[data-scene-mode="research"]    { --density-scale: 0.9; --scene-accent: 270 70% 60%; }
+[data-scene-mode="monitor"]     { --density-scale: 1.0; --scene-accent: 38 92% 50%; }
+[data-scene-mode="ai-analysis"] { --density-scale: 1.0; --scene-accent: 217 91% 60%; }
 
 @keyframes tick-flash-up {
   0% { background-color: hsl(var(--color-bull) / 0.25); }
