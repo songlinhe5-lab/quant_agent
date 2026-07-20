@@ -173,6 +173,16 @@ class FutuService:
             is_unsupported_func=is_futu_unsupported,
         )
 
+    async def get_warrant_chain(self, ticker: str) -> Dict[str, Any]:
+        return await self._route(
+            "fetch_warrant_chain",
+            {"ticker": ticker},
+            self.option_fund_handler.get_warrant_chain,
+            ticker=ticker,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
     async def get_market_snapshots(self, tickers: list) -> Dict[str, Any]:
         return await self._route(
             "fetch_market_snapshots",

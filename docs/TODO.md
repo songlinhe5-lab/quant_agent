@@ -888,6 +888,15 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 - [ ] **[MRKT-04]** 引用接口：`get_market_review(date, market)` 查询 API + Expert Team data_collector 新增 `market_review` 数据类型 + Hermes Agent 工具注册
 - [ ] **[MRKT-05]** 判因集成：个股/微观分析时自动拉取近 3 日 MarketDailyReview 作为上下文，输出判因链（大盘→板块→个股）
 
+### 线 5 · 港股窝轮/牛熊证数据接入（WRNT）
+
+> 港股小市值标的无挂牌个股期权，通过 Futu OpenD 窝轮/牛熊证 API 替代，提供市场多空情绪分析能力。
+
+- [ ] **[WRNT-01]** Futu Handler 新增 `get_warrant_chain(ticker)` 方法：调用 `get_warrant` API，返回 Call/Put 窝轮 + 牛熊证列表（行使价/溢价/杠杆/delta/发行人/到期日）
+- [ ] **[WRNT-02]** Router 新增 `GET /market/warrant-chain?ticker=0772.HK` 端点 + LegacyMarketData 适配器透传
+- [ ] **[WRNT-03]** Hermes Tool `get_broker_market_data` 新增 `action="WARRANT_CHAIN"` 路由
+- [ ] **[WRNT-04]** 港股期权链降级逻辑：`get_option_chain` 对港股标的失败时自动降级到 `get_warrant_chain`，Agent 无感知
+
 ---
 
 ## ✅ 已完成归档

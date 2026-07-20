@@ -494,6 +494,15 @@ async def get_fund_flow(ticker: str):
     return res
 
 
+@router.get("/warrant-chain")
+async def get_warrant_chain(ticker: str):
+    """港股窝轮/牛熊证链：市场多空情绪分析（仅 HK 标的）。"""
+    res = await market_data.get_warrant_chain(ticker)
+    if isinstance(res, dict) and res.get("status") == "error":
+        raise HTTPException(status_code=400, detail=res.get("message"))
+    return res
+
+
 @router.get("/tech-indicators")
 async def get_tech_indicators(ticker: str, lookback_days: int = 1):
     # 1. 优先尝试从券商 (Futu) 获取历史数据计算指标

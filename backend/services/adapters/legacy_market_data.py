@@ -58,6 +58,10 @@ class MarketDataGateway:
     async def get_fund_flow(self, ticker: str) -> dict[str, Any]:
         return await self._futu.get_fund_flow(ticker)
 
+    async def get_warrant_chain(self, ticker: str) -> dict[str, Any]:
+        """港股窝轮/牛熊证链（仅 HK 标的可用）"""
+        return await self._futu.get_warrant_chain(ticker)
+
     async def get_option_chain(self, ticker: str, expiration_date: str = "") -> dict[str, Any]:
         res = await self._futu.get_option_chain(ticker, expiration_date)
         # 💡 Futu 快照期权链常只含 option_code/strike_price 而无定价字段(bid/ask/IV)，
@@ -66,7 +70,20 @@ class MarketDataGateway:
             yf_fallback = await self._option_chain_yfinance(ticker, expiration_date)
             if yf_fallback is not None and yf_fallback.get("status") == "success":
                 return yf_fallback
+            # 💡 港股标的无挂牌个股期权时，降级到窝轮/牛熊证链（WRNT-04）
+            if self._is_hk_ticker(ticker):
+                warrant_res = await self.get_warrant_chain(ticker)
+                if warrant_res.get("status") == "success":
+                    warrant_res["_fallback"] = "warrant_chain"
+                    warrant_res["_note"] = "该港股无挂牌个股期权，已降级为窝轮/牛熊证数据（市场多空情绪替代）"
+                    return warrant_res
         return res
+
+    @staticmethod
+    def _is_hk_ticker(ticker: str) -> bool:
+        """判断是否为港股标的"""
+        t = ticker.upper()
+        return t.endswith(".HK") or (t.isdigit() and len(t) <= 5)
 
     @staticmethod
     def _option_chain_lacks_pricing(res: dict) -> bool:

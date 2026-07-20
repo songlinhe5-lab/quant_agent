@@ -20,8 +20,8 @@ class BrokerMarketTool(BaseTool):
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["QUOTE", "HISTORY", "OPTION_CHAIN", "FUND_FLOW"],
-                "description": "必须指定要获取的数据类型。QUOTE(实时快照), HISTORY(历史K线), OPTION_CHAIN(期权链), FUND_FLOW(主力资金流与席位)",
+                "enum": ["QUOTE", "HISTORY", "OPTION_CHAIN", "FUND_FLOW", "WARRANT_CHAIN"],
+                "description": "必须指定要获取的数据类型。QUOTE(实时快照), HISTORY(历史K线), OPTION_CHAIN(期权链), FUND_FLOW(主力资金流与席位), WARRANT_CHAIN(港股窝轮/牛熊证链，用于市场多空情绪分析)",
             },
             "ticker": {"type": "string", "description": "股票或期权代码, 例如 AAPL, 0700.HK"},
             "ktype": {"type": "string", "description": "(仅HISTORY可用) K线类型，如 K_DAY, K_1M", "default": "K_DAY"},
@@ -56,6 +56,8 @@ class BrokerMarketTool(BaseTool):
             )
         elif action == "FUND_FLOW":
             url, method, kwargs = f"{backend_url}/market/fund-flow", "GET", {"params": {"ticker": ticker}}
+        elif action == "WARRANT_CHAIN":
+            url, method, kwargs = f"{backend_url}/market/warrant-chain", "GET", {"params": {"ticker": ticker}}
         else:
             return {"status": "error", "message": f"不支持的操作: {action}"}
 
