@@ -605,11 +605,11 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
   - `backend/services/akshare_service.py` **912 行** → `backend/services/akshare/` (5文件: service/flow/quote/calendar/__init__)
   - 原文件保留为 ~5 行 shim 兼容层，122 个测试全部通过
 - [x] **[SPEC-02]** §8.0 部署拓扑对齐：将“三节点矩阵部署”修正为四节点架构（US-MASTER + US-YF-A/B + CN-AKSHARE），与 `AGENTS.md §9` 保持一致。✅ **2026-07-20**：已完成
-- [ ] **[SPEC-03]** 前端超限文件治理（第一批）：
-  - `frontend/src/features/trading/backtest.tsx` **626 行**（限 300）→ 拆子组件 + hooks
-  - `frontend/src/features/alert/alert-center.tsx` **623 行**（限 300）→ 拆子组件
-  - `frontend/src/features/trading/risk.tsx` **593 行**（限 300）→ 拆子组件 + hooks
-  - `frontend/src/features/screener/screener-context.tsx` **450 行**（限 200）→ 拆分为 pagination hook + filter hook + context
+- [x] **[SPEC-03]** 前端超限文件治理（第一批）。✅ **2026-07-20**：拆分完成
+  - `backtest.tsx` 627→63行：拆为 backtest-mock / use-backtest / backtest-config / backtest-results
+  - `alert-center.tsx` 624→171行：拆为 alert-lists / create-rule-form
+  - `risk.tsx` 594→51行：拆为 risk-types / risk-account-section / risk-advanced-panel
+  - `screener-context.tsx` 451→337行：提取 use-screener-ws hook
 
 #### P1 — 规范文档修正
 
