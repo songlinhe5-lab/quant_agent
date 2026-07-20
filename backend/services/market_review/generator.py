@@ -196,7 +196,9 @@ async def _collect_sentiment(registry: ToolRegistry) -> Optional[dict[str, Any]]
     return None
 
 
-async def _collect_sectors(registry: ToolRegistry, market: MarketType) -> tuple[list[SectorPerformance], list[SectorPerformance]]:
+async def _collect_sectors(
+    registry: ToolRegistry, market: MarketType
+) -> tuple[list[SectorPerformance], list[SectorPerformance]]:
     """并行采集板块涨跌（以行业 ETF 行情作代理），返回 (领涨板块, 领跌板块) 各至多 5 个。"""
     etfs = _SECTOR_ETFS.get(market, [])
     if not etfs:

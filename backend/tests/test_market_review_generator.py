@@ -138,9 +138,7 @@ class TestGenerateMarketReview:
         )
 
         with (
-            patch(
-                "backend.services.market_review.generator.llm_service"
-            ) as mock_llm,
+            patch("backend.services.market_review.generator.llm_service") as mock_llm,
             patch(
                 "backend.services.market_review.generator.save_market_review",
                 new_callable=AsyncMock,
@@ -181,9 +179,7 @@ class TestGenerateMarketReview:
         mock_registry.execute = mock_execute
 
         with (
-            patch(
-                "backend.services.market_review.generator.llm_service"
-            ) as mock_llm,
+            patch("backend.services.market_review.generator.llm_service") as mock_llm,
             patch(
                 "backend.services.market_review.generator.save_market_review",
                 new_callable=AsyncMock,
@@ -208,7 +204,7 @@ async def test_collect_sectors_populates_top_and_bottom():
     """板块涨跌采集：行业 ETF 作代理，按涨跌幅排序填充领涨/领跌。"""
     # 港股板块 ETF 代理代码（与 generator._SECTOR_ETFS 对应）
     sector_quotes = {
-        "HK.03033": 2.5,   # 恒生科技 领涨
+        "HK.03033": 2.5,  # 恒生科技 领涨
         "HK.02800": -1.2,  # 蓝筹 领跌
         "HK.03067": 0.8,
         "HK.02828": -0.5,
@@ -220,7 +216,9 @@ async def test_collect_sectors_populates_top_and_bottom():
     mock_registry.execute = AsyncMock(
         side_effect=lambda name, **kwargs: (
             {"status": "success", "data": {"last_price": 100.0, "change_pct": sector_quotes[kwargs["ticker"]]}}
-            if name == "get_broker_market_data" and kwargs.get("action") == "QUOTE" and kwargs.get("ticker") in sector_quotes
+            if name == "get_broker_market_data"
+            and kwargs.get("action") == "QUOTE"
+            and kwargs.get("ticker") in sector_quotes
             else {"status": "error", "message": "unavailable"}
         )
     )
