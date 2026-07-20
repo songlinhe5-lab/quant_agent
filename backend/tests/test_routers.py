@@ -326,8 +326,8 @@ class TestSearchRoutes:
 
 class TestChatRoutes:
     def test_chat_data_models(self):
-        """聊天请求模型以 main.py 内联定义为准（孤儿 routers/chat.py 已移除）"""
-        from backend.main import ChatMessage, ChatRequest
+        """聊天请求模型定义在 routers/chat.py (ARCH-01 迁出)"""
+        from backend.routers.chat import ChatMessage, ChatRequest
 
         msg = ChatMessage(role="user", content="hello")
         assert msg.role == "user"

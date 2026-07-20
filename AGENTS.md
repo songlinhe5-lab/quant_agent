@@ -825,7 +825,45 @@ logger.error('chart_render_failed', { symbol: 'AAPL', error: err.message })
 **修复 Bug**：
 > "修复 `backend/services/futu_service.py` 中 `get_quote` 在标的停牌时返回 None 导致 KeyError 的问题（见 `logs/error.log` 第 342 行）。修复后同步更新 `tests/services/test_futu_service.py`，增加停牌场景的测试用例。"
 
-### A.7.3 AI 代码审查清单（提交前自检）
+### A.7.3 Loop Engineering 执行范式（强制）
+
+> **核心原则**：所有非平凡任务（≥3 步或涉及多文件修改）**必须**以 Loop Engineering 方式执行。禁止“一口气写完所有代码再测试”的瀑布式开发。
+
+**Loop Engineering 五要素**：
+
+| 要素 | 说明 | 示例 |
+|:---|:---|:---|
+| **有界循环** | 每个 Loop 有明确的起点和终点，禁止无限循环 | “Loop 1: 提取 chat 端点 → routers/chat.py” |
+| **验证条件** | 每个 Loop 结束时必须有可执行的验证 | `pytest`, `tsc --noEmit`, `ruff check` |
+| **短周期迭代** | 单个 Loop 控制在 5-15 分钟内可完成 | 拆分大任务为多个小 Loop |
+| **自动反馈** | 验证失败时立即修复，不累积到下一个 Loop | 测试失败 → 立即修复 → 重新验证 |
+| **熔断机制** | 同一问题连续失败 3 次后停止，重新评估方案 | 避免死循环耗尽资源 |
+
+**标准执行流程**：
+
+```
+1. Plan   — 将任务拆解为 N 个有界 Loop，明确每个 Loop 的交付物和验证条件
+2. Loop i — 执行单个 Loop：
+   a. 实现最小可用变更
+   b. 运行验证 (test/lint/type-check)
+   c. 验证通过 → 进入 Loop i+1
+   d. 验证失败 → 立即修复，不累积
+3. Verify — 所有 Loop 完成后运行全量测试，确认零回归
+4. Output — 更新任务追踪 (TODO.md)，输出变更摘要
+```
+
+**适用场景**：
+- 大型重构（如 main.py 瘦身：拆分为 9 个 Loop，每个 Loop 提取一个模块）
+- 多文件功能开发（如四场景模式：types → store → component → layout → test）
+- Bug 修复链（如 CI 失败：定位 → 修复 → 验证 → 下一个失败）
+
+**禁止事项**：
+- ❌ 禁止写完所有代码后才运行测试
+- ❌ 禁止单个 Loop 修改超过 5 个文件（必须拆分）
+- ❌ 禁止跳过验证直接进入下一个 Loop
+- ❌ 禁止在验证失败时继续累积变更
+
+### A.7.4 AI 代码审查清单（提交前自检）
 
 在接受 AI 生成的代码之前，人工执行以下检查：
 
@@ -1129,6 +1167,7 @@ docs/subsystems/
 
 | 日期 | 版本 | 变更内容 |
 |:---|:---|:---|
+| 2026-07-08 | V2.5 | §A.7.3 新增 Loop Engineering 执行范式（强制）：有界循环 + 验证条件 + 短周期迭代 + 自动反馈 + 熔断机制 |
 | 2026-07-13 | V2.4 | §9 四节点：US-MASTER + US-YF-A/B + CN-AKSHARE；YF 多 IP 抗限流；主节点默认关本地 YF |
 | 2026-07-08 | V2.3 | §9 架构更新：主节点迁移至加州 VPS (38.60.126.42)，北京 VPS 降级为辅助节点 (仅 AKShare)；原因：Cloudflare Pages 跨境延迟 |
 | 2026-07-08 | V2.2 | §10 新增 §10.8 限流感知与退避规范；对齐 docs/14 §十二 自适应退避与限流感知架构 |

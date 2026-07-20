@@ -592,6 +592,227 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 - [x] **[OMS-11]** 沙箱/实盘模式切换：顶部模式标识 (SANDBOX/LIVE)，切换时全局横幅颜色变化 + 二次确认
 - [x] **[OMS-12]** 订单审计日志：所有发单/撤单/改单/熔断操作写入 `audit_logs` 表 (SEC-12)，携带 trace_id + IP
 
+### 工程规范治理（2026-07-08 Review 新增，源自 `docs/02` V4.3 合规审查）
+
+> 规范与现实脱节治理：存量超限文件逐步拆分 + 规范文档自身修正。  
+> 原则：**新增代码严格执行 §3.2 行数限制**；存量文件按优先级滚动治理，禁止"下次再拆"。
+
+#### P0 — 规范公信力修复
+
+- [ ] **[SPEC-01]** §3.2 存量豁免清单：在 `docs/02 §3.2` 增加「存量超限文件豁免表」，列出当前超限文件及计划拆分时间线，避免规范沦为空文。当前严重超限：
+  - `backend/services/screener_service.py` **1838 行**（限 400）→ 按职责拆为 screener/ 目录（query_handler / dsl_parser / cache_manager / export_handler）
+  - `backend/services/yfinance_service.py` **1480 行**（限 400）→ 按功能域拆分（macro / quote / history / calendar）
+  - `backend/services/akshare_service.py` **912 行**（限 400）→ 按市场拆分（hk / cn / macro）
+- [ ] **[SPEC-02]** §8.0 部署拓扑对齐：将"三节点矩阵部署"修正为实际架构「单 VPS（API+Worker+Redis）+ 北京辅助节点（AKShare）」，与 `AGENTS.md §9` 保持一致
+- [ ] **[SPEC-03]** 前端超限文件治理（第一批）：
+  - `frontend/src/features/trading/backtest.tsx` **626 行**（限 300）→ 拆子组件 + hooks
+  - `frontend/src/features/alert/alert-center.tsx` **623 行**（限 300）→ 拆子组件
+  - `frontend/src/features/trading/risk.tsx` **593 行**（限 300）→ 拆子组件 + hooks
+  - `frontend/src/features/screener/screener-context.tsx` **450 行**（限 200）→ 拆分为 pagination hook + filter hook + context
+
+#### P1 — 规范文档修正
+
+- [ ] **[SPEC-04]** §2.2 SOLID 章节精简：删除 LSP/ISP 通用教科书示例（~60 行），保留项目特有判断标准（如"无第二实现时禁止 Interface"），压缩为一张表 + 3 条规则
+- [ ] **[SPEC-05]** §0.1 L0 版本对齐：`.cursor/rules/vibe-coding.mdc` 当前为 V2.1，在 §0.1 表格增加「最后更新日期」列，消除 L0(V2.1) vs L2(V4.3) 版本号歧义
+- [ ] **[SPEC-06]** §7.6 PCE 分级确认：L0 冻结区必须 Confirm；L2 开放区可自主执行无需逐一确认；增加「批量任务模式」说明
+- [ ] **[SPEC-07]** §5.1 技术栈指针修正：
+  - "移动端 Flutter 三端" → 标注「已搁置」或删除（项目中无 Flutter 代码）
+  - "DuckDB/Parquet" → 确认是否仍在规划中，否则删除
+- [ ] **[SPEC-08]** §6.1 print() 豁免或代码修复：`hermes_agent/tools/web_scrape_tool.py` 中大量使用 `print()` 做降级日志，二选一：(a) 改用 structlog (b) 在规范中豁免 Tool 层 CLI 输出
+- [ ] **[SPEC-09]** §4.2 覆盖率目标校准：Hermes Tool ≥90% 实际不可达（`hermes_agent/tools/` 几乎无测试），降为 ≥70% 或标注为「目标」而非「门禁」
+
+#### P2 — 规范缺失补充
+
+- [ ] **[SPEC-10]** 新增「环境变量管理规范」章节：`.env` 已有 50+ 变量，需定义分组命名约定（`COLLECTOR_*` / `FUTU_*` / `LLM_*`）、必填/可选标注、`.env.example` 同步规则
+- [ ] **[SPEC-11]** 新增「错误码分配规则」：后端已有 `error_codes.py`，规范中补充错误码段位分配（如 1xxx=认证 / 2xxx=行情 / 3xxx=交易）
+- [ ] **[SPEC-12]** 新增「数据库迁移规范」：Alembic 迁移脚本命名规则（`{rev}_{scope}_{desc}.py`）、审查要求（禁止 DROP COLUMN 无确认）、回滚脚本必备
+- [ ] **[SPEC-13]** 新增「前端性能预算」：Bundle Size 门禁（主包 ≤500KB gzip）、Lighthouse Desktop ≥90、路由级 code-splitting 规则
+
+### 后端架构治理（2026-07-08 Review 新增，源自 `docs/03` V5.1 架构审查）
+
+> 核心问题：文档设计意图优秀（整洁分层/Port隔离/插件化），但落地现实与文档存在显著鸿沟。  
+> 原则：**新增代码严格走 app/ 编排层**；存量按优先级渐进收口。
+
+#### P0 — 架构硬伤修复
+
+- [x] ~~**[ARCH-01]** `main.py` 瘦身（原 **1527 行** → **194 行**，仅保留 `create_app()` + 路由挂载）~~ ✅ **2026-07-08**
+  - 端点迁出: `routers/chat.py` (343行) + `routers/settings.py` (121行) + `routers/system_health.py` (175行) + `routers/mcp.py` (74行)
+  - 启动逻辑拆至 `bootstrap/lifecycle.py` (314行)
+  - 中间件拆至 `middleware/stack.py` (176行)
+  - 异常处理拆至 `core/exception_handlers.py` (83行)
+  - 全量测试 2958 passed, 0 regression
+- [ ] **[ARCH-02]** 统一熔断器使用：当前 `akshare_service`/`futu/cache_manager` 手写时间戳熔断，`core/circuit_breaker.py`(351行) 形同摆设：
+  - 所有数据源 Adapter 统一使用 `core/circuit_breaker.py`
+  - `DataSourceInterface.fetch` 主路径内置熔断（半开探测 + 失败计数 + 滑动窗口）
+  - 冷却时间配置化（env `CIRCUIT_BREAKER_COOLDOWN_S`），禁止硬编码 60s
+- [ ] **[ARCH-03]** Graceful Shutdown 完整化（当前仅关闭 bot_runtime + algo_engine）：
+  - 停止接受新请求 → 等待 in-flight 完成（max 30s）→ 关闭 WebSocket 连接（发送 close frame）
+  - 停止所有后台 Task（collector daemons）→ 取消 Redis Pub/Sub 订阅
+  - 断开 Futu / Redis / PG 连接 → 关闭线程池（wait=True, timeout=10）
+
+#### P1 — 性能与稳定性增强
+
+- [ ] **[ARCH-04]** 连接池参数配置化 + 文档化：
+  - PostgreSQL: `pool_size=20, max_overflow=40, pool_timeout=10`（当前默认 5 连接，行情高峰可能打满）
+  - Redis: `max_connections=50`（Pub/Sub + 缓存 + 限流共用未设上限）
+  - 在 `docs/03 §7.3` 或 `docs/02` 补充连接池配置规范
+- [ ] **[ARCH-05]** 健康检查分级：
+  - `GET /health/live` → 进程存活（200 即可）
+  - `GET /health/ready` → 依赖就绪（Redis + PG + 至少一个数据源连通）
+  - `GET /health/deep` → 全链路诊断（采集器心跳、WS 连接数、线程池使用率、事件循环 lag）
+- [ ] **[ARCH-06]** 请求级超时与取消传播：
+  - 单 API 请求最大执行时间（screener 90s / market 30s / 默认 60s）
+  - 客户端断开后取消下游任务（`Request.is_disconnected()` 检查）
+  - SSE/长轮询心跳间隔 ≤15s（对齐 Cloudflare 100s 超时）
+- [ ] **[ARCH-07]** `asyncio.to_thread` 使用分级（当前全项目 113 处）：
+  - I/O 密集（文件读写、HTTP）→ 优先 `aiohttp`/`aiofiles` 纯异步
+  - CPU 密集（指标计算、回测）→ `ProcessPoolExecutor`
+  - 在 `docs/03 §7.6` 补充分级策略文档
+
+#### P2 — 架构债渐进收口
+
+- [ ] **[ARCH-08]** `services/` 按领域分子目录（参照 `services/futu/` 成功模式）：
+  - `services/risk/` ← 6 个 risk_*.py 合并
+  - `services/screener/` ← 拆分 1838 行巨石（query_handler / dsl_parser / cache_manager / export_handler）
+  - `services/macro/` ← fred + macro_calendar + sentiment
+- [ ] **[ARCH-09]** `app/` 编排层扩展（当前仅 5/31 Router 经 app/ 编排）：
+  - 优先补：screener_app / trade_app / macro_app / alert_app
+  - 修正 `docs/03` BE-ARCH-01 状态为「部分收口（21/31 Router）」
+- [ ] **[ARCH-10]** Domain 层实体沉淀（当前仅 `ports.py` 2 个 Protocol）：
+  - 随 BT-01 落地沉淀 `Strategy`、`Order` 领域对象
+  - 随 ALERT-03 落地沉淀 `AlertRule` 领域对象
+  - 在 `docs/03` 标注当前状态：「Domain 层仅含 Ports，领域实体待演进」
+- [ ] **[ARCH-11]** 启动阶段 print() 全面替换为 structlog（`main.py` lifespan 中 ~20 处 print）
+
+### 产品与 UI/UE 治理（2026-07-08 Review 新增，源自 `docs/01` V2.3 产品审查）
+
+> 核心评价：AI 集成深度（ReAct Agent + NLP 选股 + 三模式门禁）业界领先，但图表交互深度、布局灵活性、AI 上下文感知与 TradingView/QuantConnect 仍有代差。  
+> 原则：**强化 AI 差异化护城河** + **补齐图表交互短板** + **布局从“常规 SaaS”升级为“量化工作台”**。
+
+#### P0 — 核心差异化释放
+
+- [ ] **[PROD-01]** AI 副驾页面上下文自动注入：
+  - 在选股器打开 AI 时自动携带当前筛选条件/结果摘要
+  - 在 K 线页打开时自动携带当前标的 + 周期 + 技术指标
+  - 在风控页打开时自动携带当前组合摘要
+  - 目标：从“通用 ChatBot”升级为“场景感知助手”
+- [ ] **[PROD-02]** AI 分析结果内联标注：AI 输出的买卖信号/支撑压力位直接标注在 K 线图上（箭头/区域高亮），而非仅在对话框中输出文字
+
+#### P1 — 图表交互与布局升级
+
+- [ ] **[PROD-03]** K 线图画线工具（第一批）：趋势线 / 水平线 / 斐波那契回撤 / 矩形区域，对标 TradingView 基础画图能力
+- [x] **[PROD-04]** 四场景模式系统（布局 + 密度 + 焦点色 + AI 角色）✅ **2026-07-19**：
+  - `scene-mode-types.ts`（四模式元数据）+ `useSceneModeStore.ts`（Zustand + localStorage）
+  - `globals.css` `--density-scale` / `--scene-accent` CSS 变量 + `[data-scene-mode]` 选择器
+  - `scene-mode-switcher.tsx` 顶栏分段切换器 + `use-scene-hotkey.ts` Cmd+Shift+M
+  - `dashboard-layout.tsx` data 属性 + Sidebar 显隐 + AI 分析全屏 + 研究模式自动展开 Copilot
+  - `fullscreen-copilot.tsx` AI 分析模式全宽对话工作台
+  - `global-copilot-drawer.tsx` 盯盘模式隐藏 EdgeHandle
+  - 12 tests passed + tsc 零错误 + 全量 197 tests 零回归
+  - 待后续迭代：盯盘 K线全屏/研究多面板拖拽/监控专属布局/AI快捷指令栏
+- [ ] **[PROD-04a]** 盯盘模式专属布局（K线全屏 + 盘口悬浮 + 异动高对比）
+  - Quotes 模块判断 sceneMode='watch' 时切换全屏 K 线布局
+  - 自选列表改为可拖拽悬浮球样式
+  - 盘口异动 > 2% 时高对比闪烁动画
+  - 强调色 `hsl(var(--scene-accent))` 应用于异动 UI
+  - 依赖：无（可立即开始）
+- [ ] **[PROD-04b]** AI 分析模式快捷指令栏与上下文感知
+  - FullscreenCopilot 补充快捷指令栏：[今日早报][对比分析][期权链][宏观雷达][选股]
+  - 从其他模式切换至 AI 分析时自动携带当前标的 ticker
+  - 内联图表/数据卡片自动生成（对接 Hermes 工具调用）
+  - 依赖：无（可立即开始）
+- [ ] **[PROD-04c]** 强调色全局动态应用 + 模式切换过渡动画
+  - Alert、Focus Ring、AI Badge 等关键 UI 应用 `hsl(var(--scene-accent))`
+  - 模式切换时 `transition: all 200ms` 平滑过渡
+  - 依赖：无（可立即开始）
+- [ ] **[PROD-04d]** 信息密度系统扩展（间距/圆角/行高响应式）
+  - 扩展 CSS 变量：`--density-gap`、`--density-pad`、`--density-radius`
+  - 表格 / Grid 组件按密度调整列宽、行高
+  - 极密模式设最小 fontSize 11px 下限
+  - 依赖：PROD-04c
+- [ ] **[PROD-04e]** 研究模式多面板拖拽布局
+  - 启用 ResizablePanelGroup 三栏拖拽（代码/回测/AI）
+  - 底部 Terminal 面板
+  - 键盘优先交互（Cmd+1/2/3 快速跳转面板）
+  - 依赖：STRAT-01~05（策略实验室核心）
+- [ ] **[PROD-04f]** 监控模式专属布局（告警流 + Bot矩阵 + 风控仪表盘）
+  - 监控模式下告警流自动升格为主视图
+  - Bot 状态矩阵 + 风控仪表盘优先级布局
+  - 依赖：ALERT-03~05, RISK-01~08
+- [ ] **[PROD-04g]** 移动端场景模式适配
+  - 移动 TabBar 补充模式圆盘或底部菜单
+  - 小屏幕 (<768px) 强制 density-scale=1.0，禁用极密
+  - 依赖：PROD-05（多分辨率适配规范）
+- [ ] **[PROD-05]** 多分辨率适配规范：
+  - 1280px：AI 抽屉改为 overlay（不挤压主工作区）
+  - 1920px+：自动展开更多面板（盘口+新闻流默认可见）
+  - 超宽屏 21:9：支持三栏并排（行情+策略+AI）
+- [ ] **[PROD-06]** 风控面板 Tab 分组（当前 7 个图表区域平铺，一屏放不下）：
+  - Tab 1「概览」：雷达图 + 集中度 + Beta
+  - Tab 2「因子」：因子暴露 + 归因 + 相关性矩阵
+  - Tab 3「压测」：VaR + CVaR + 历史场景 + 流动性
+
+#### P2 — 产品结构优化
+
+- [ ] **[PROD-07]** Calendars 降级为 Macro Hub 子 Tab：
+  - 当前为独立一级模块（§16 占文档 24%），与 §8 Macro Hub 功能重叠
+  - 调整为 Macro Hub 内「全球市场」 Tab，减少一级导航膨胀（12→11 个模块）
+  - 保留横向滚动卡片布局，但不再作为独立路由
+- [ ] **[PROD-08]** 纸面组合状态透明化：
+  - 在 §1.6 三模式说明中加醒目提示「⚠️ PAPER 模式依赖 PT-01~02，当前未实现」
+  - 前端 PAPER 模式切换时显示「功能开发中」引导
+- [ ] **[PROD-09]** 图表内下单（拖拽式）：
+  - K 线图上拖拽设置止损线/限价线，松手即触发下单确认弹窗
+  - 持仓线直接在图表上显示，拖拽调整止损/止盈
+- [ ] **[PROD-10]** 策略实验室回测报告布局优化：
+  - 当前：回测报告与代码共享 Tab，切换丢失代码滚动位置
+  - 改为：回测报告用底部面板上推或右侧分屏，代码始终可见
+
+#### P3 — 长期差异化
+
+- [ ] **[PROD-11]** 自定义指标脚本（对标 TradingView Pine Script）：用户可写简单表达式指标（如 `RSI(14) > KDJ.K`），前端实时计算并叠加到 K 线图
+- [ ] **[PROD-12]** 多图表同步十字线：分屏模式下多个 K 线图共享十字线位置（同一标的不同周期，或不同标的同一时间）
+
+#### AI 全模块渗透（三层架构：主动推送 / 嵌入式辅助 / 按需调用）
+
+> 设计原则：可关闭（每模块独立开关）/ 有阈值（异动>2%才触发）/ 可折叠（默认一行摘要）/ 不阻断（P0风控除外）/ 有溯源（数据来源+置信度）
+
+- [ ] **[AI-01]** 市场指挥中心 · 异动解说员（P1）：
+  - 价格异动 >2% 时 K 线上方浮动气泡："📰 财报 miss 预期，营收低于共识 8%"
+  - 形态识别（头肩顶/双底/三角收敛）→ K 线叠加虚线标注 + 历史胜率
+  - 盘口解读：大单集中检测 → 盘口面板底部一行提示
+- [ ] **[AI-02]** 智能选股器 · 因子顾问（P1）：
+  - 条件构建时主动建议："加 ROE>10% 可排除价值陷阱，历史胜率 +12%"
+  - 结果异常标记：PE 异常低 → "⚠️ 疑似一次性收益扭曲，建议查看扣非 PE"
+  - 结果摘要卡：行业集中度/因子偏向/建议补充约束
+- [ ] **[AI-03]** 回测工坊 · 报告解读员（P1）：
+  - Tear Sheet 顶部 AI 摘要："年化 23% 但 Sharpe 仅 0.9，收益主要来自杠杆而非 Alpha"
+  - 过拟合预警：参数敏感性差异 >40% 时主动提示
+  - [🤖 AI 优化建议] 按钮：加波动率过滤 / ATR 动态止损 / 行业中性约束
+- [ ] **[AI-04]** OMS · 执行风控官（P1）：
+  - 下单确认弹窗内 AI 预检："⚠️ VIX=28（高波动），建议减半仓位或改用限价单"
+  - 持仓健康诊断（每日）："AAPL 已偏离入场逻辑，原策略信号失效，建议止盈"
+  - Bot 异常诊断：连续止损 → 分析原因 + 建议暂停/切换策略
+- [ ] **[AI-05]** 风控面板 · 风险预警员（P1）：
+  - 雷达图维度变红时主动推送："集中度 82/100，若纳指回调 5%，组合预计 -3.4%"
+  - 压测情景推荐：基于当前持仓推荐最相关的 3 个历史情景
+  - 对冲建议：因子暴露 >0.8 时建议具体对冲操作
+- [ ] **[AI-06]** 告警中心 · 分诊员（P2）：
+  - 告警触发时关联分析："AAPL 突破 + 同日 3 只科技股突破 → 板块性行情"
+  - 多告警同时触发时智能排序：止损优先，价格突破可延后
+  - 新建告警时规则建议："加 RSI>75 过滤假突破？历史假突破率 34%"
+- [ ] **[AI-07]** 纸面组合 · 实盘教练（P2）：
+  - deploy 前 AI 就绪评估：运行天数/Sharpe/样本量/偏差分析
+  - 纸面 vs 回测偏差预警："纸面 Sharpe 0.8 vs 回测 1.6，主因滑点未计入"
+  - 周度绩效归因自动生成：选股贡献/择时贡献/行业贡献
+- [ ] **[AI-08]** 宏观数据中心 · 事件推演（P2）：
+  - 高危事件旁 AI 推演卡："FOMC 若加息 25bp → 港股科技预计 -2~3%"
+  - 指标与持仓关联：VIX hover → "你的组合 Beta 1.1，VIX 每升 5 点日波动 +¥8,200"
+- [ ] **[AI-09]** AI 推送偏好设置（P2）：
+  - Settings 中每模块独立开关（市场异动/选股建议/回测解读/风控预警/告警分诊）
+  - 触发阈值可调（异动 1%/2%/5%）
+  - 自然语言配置："把告警推到 Telegram，只推 P0 和 P1"
+
 ---
 
 ## 🔵 P3 — 功能扩展与探索（长期规划）
@@ -664,6 +885,7 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 | 完成日期    | 任务                                                                               |
 | ------- | -------------------------------------------------------------------------------- |
+| 2026-07-19 | [PROD-04 完成] 四场景模式系统：盯盘/研究/监控/AI分析四模式切换基础设施 + 布局骨架适配（12 tests + 197 全量零回归） |
 | 2026-07-16 | [BE-ARCH-05 执行] Finnhub DataSource 接入：`backend/services/datasource/adapters/finnhub.py` 实现 `FinnhubDataSource`（满足 `DataSourceInterface` Protocol），6 capabilities（earnings/company_news/market_news/economic_calendar/insider_trading/stock_history）经 `fetch` 路由到既有 `FinnhubService` 方法；`ensure_finnhub_registered` 于 `MarketDataGateway.__init__` 幂等注册（对齐 yfinance BE-ARCH-04 模式）；限流复用 SVC-08 的 `rate_limit_registry`（throttler 状态以服务内部记录为准，适配器仅做 Result 语义化）；`DATASOURCE_FINNHUB_MODE` env 控制运行模式；`docs/14 §八`+§2.4 能力矩阵更新。Pytest 17 全绿。详见 `docs/14 §二`/`§八` |\n| 2026-07-16 | [SVC-08 执行] Finnhub 限流感知：后端 `finnhub_service.py` 注入 `rate_limit_registry` 的 finnhub throttler，`get_earnings_calendar`/`get_market_news`/`get_company_news`/`get_economic_calendar`/`get_insider_transactions`/`get_stock_history` 在 429/403 → `on_rate_limit`、成功 → `on_success`；`routers/calendars.py` 的 `/dividends` `/ipos` 接入 `should_throttle` 退避（退避期返回 degraded，不硬重试）；`routers/datasource.py` 新增 `GET /datasource/finnhub/health`（被动健康：API Key + 限流状态）；`/rate-limit-status` 由通用路由覆盖（name=finnhub）。Pytest 8 全绿。详见 `docs/14 §十二` |
 | 2026-07-16 | [FE-PROD-05 执行] Calendars 全球市场日历落地：后端新增 `routers/calendars.py`（`/calendars/snapshot` 7 类目 52 标的聚合 + `/hours` 世界时钟矩阵 + `/dividends` `/ipos` Finnhub 优雅降级）+ `macro.py` `/earnings` 复用；前端 `features/calendars`（6 Tab：Markets 类目侧栏+横向滚动 + Economic/Earnings/Dividends/IPOs/Hours）；路由/侧边栏导航接入；Pytest 7 + Vitest 10 全绿。05f 仅类目显隐（拖拽分组未做）、05g Flutter 待 `client/` 仓库 PR。详见 `docs/01 §十六` |
 | 2026-07-16 | [docs/01 V2.3 同步] 新增产品前端缺口任务 **FE-PROD-05a~h**（Calendars 全球市场日历）：对标 yfinance 顶部 Markets 横向滚动条；左侧类目侧栏 + 右侧水平滚动卡片含 Sparkline；6 大类目（US/EU/Asia/Crypto/Rates/Commodities/Currencies）+ 4 日程 Tab（Economic/Earnings/Dividends/IPOs）+ Hours Tab；复用 `_fetch_macro_assets_data` 扩至 50+ 标的；与 §8 Macro Hub 边界澄清（横向广度 vs 纵向深度）；同步新增 **SVC-08**（Finnhub 限流感知）+ **BE-ARCH-05**（Finnhub DataSource 接入，接续 BE-ARCH-01~04）；任务定义与 `docs/01 §十六` · §十四 成熟度矩阵对齐 |
@@ -815,6 +1037,8 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 | 日期         | 更新说明                                                 |
 | ---------- | ---------------------------------------------------- |
+| 2026-07-19 | [PROD-04 完成] 四场景模式系统落地：`scene-mode-types.ts` + `useSceneModeStore.ts`（Zustand+localStorage）+ `globals.css` CSS 变量 + `scene-mode-switcher.tsx` 顶栏切换器 + `use-scene-hotkey.ts` Cmd+Shift+M + `dashboard-layout.tsx` 布局适配（data-scene-mode/Sidebar显隐/AI全屏/研究自动展开）+ `fullscreen-copilot.tsx` + EdgeHandle 条件渲染；12 tests + tsc 零错误 + 197 tests 零回归 |
+| 2026-07-16 | [PROD-04 升级] 工作区快照布局 → 四场景模式系统（盯盘/研究/监控/AI分析）；新增 AI-01~09 全模块渗透任务（三层架构：主动推送/嵌入式辅助/按需调用）；同步更新 `docs/01` §9.6~9.7 |
 | 2026-07-14 | [DIST-19~23 完成] Phase 4 稳定性+监控+扩展：DIST-19 AKShare STALE 缓存降级（`data_source_router.py` 远程+本地均失败→Redis STALE 回退）；DIST-20 7 个 Prometheus 分布式指标（`metrics.py`）+ Grafana 节点监控面板（`distributed-nodes-dashboard.json`）+ router 指标集成；DIST-21 5 条 Grafana 告警规则（`alerting.yml`：心跳超时/YF 存活<2/全挂/CN 断连/STALE 高频）；DIST-22 Finnhub Worker 迁子服务（`finnhub_worker.py` + `main.py` lifespan 集成，`DS_CAPABILITIES=finnhub` 启用）；DIST-23 systemd 守护单元（`quant-worker.service` WatchdogSec=60 + Restart=always + NoNewPrivileges 安全加固）；2866 tests passed |
 | 2026-07-14 | [TRADE-01~03 完成] 交易进阶三任务全量交付：TRADE-01 期权筛选 (`options_engine.py` BS定价+Greeks+IV+微笑 + `options_screener.py` 筛选服务 + `routers/options.py` 4端点 + `options-screener-panel.tsx` 前端 · 14 tests)；TRADE-02 算法增强 (`algo_engine.py` +MarketImpactModel +POV/IS + `algo_analytics.py` 执行分析 + `oms.py` +analytics端点 + `algo-analytics-panel.tsx` · 41 tests)；TRADE-03 组合优化 (`portfolio_optimizer.py` Markowitz+风险平价+MaxSharpe+有效前沿+模型对比 + `routers/portfolio.py` 3端点 + `portfolio-optimizer-panel.tsx` · 13 tests)；`main.py` 注册 options/portfolio 路由；后端 68 tests + 前端 175 tests + tsc 零错误 |
 | 2026-07-13 | [AI-02~04 工程规范 + AI-01~03 能力 完成] 阶段1: `LLMRouter` + `ModelTier` 三级路由 + Ollama 降级 + 版本钉定 (12 tests)；阶段2: RAG 分类 TTL + embedding 版本管理 + 检索质量监控 + Alembic 迁移 (11 tests)；阶段3: `EvalMetrics` + 55 例 Golden Dataset + `EvalRunner` + `eval.yml` CI (26 tests)；阶段4: `DeepResearchPipeline` 三段流水线 + `FactorMiner` LLM 因子建议 + `Alpha158` 40+ 因子库 + API 路由 + 前端面板 (37 tests)；后端 86 tests + 前端 175 tests + tsc 零错误 |
@@ -897,6 +1121,9 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 | 2026-07-08 | 新增「数据源限流感知与自适应退避」RL-01~14：限流错误分类 / RateLimitThrottler 退避引擎 / 频率动态分析 / 推测频率查询 API / Prometheus 限流指标 / 限流告警 / Registry 路由感知 / Agent Tool 限流感知；docs/14 新增 §十二；AGENTS.md 新增 §10.8 |
 | 2026-07-02 | OMS-05~07 算力节点完成：`bot_runtime.py` BotRuntimeManager (asyncio.Task 生命周期) + psutil 真实 CPU/MEM 监控 + Redis List 日志持久化 + PubSub/WebSocket 实时推送；`/deploy-to-oms` 升级为真实 Bot 启动；前端新增 Bot 终止按钮 |
 | 2026-07-02 | OMS-01~04 核心闭环完成：订单持久化 (oms_service.py) + 成交打通 + 真实订单状态同步 + 持仓 30秒同步守护进程；新增前端「真实持仓」Tab |
+| 2026-07-08 | 新增「工程规范治理」SPEC-01~13（源自 docs/02 V4.3 合规审查）：存量超限文件拆分计划 + 规范文档修正 + 缺失章节补充 |
+| 2026-07-08 | 新增「后端架构治理」ARCH-01~11（源自 docs/03 V5.1 架构审查）：main.py 瘦身 / 统一熔断器 / Graceful Shutdown / 连接池配置 / 健康检查分级 / 架构债收口 |
+| 2026-07-08 | 新增「产品与 UI/UE 治理」PROD-01~13（源自 docs/01 V2.3 产品审查）：AI 上下文注入 / 画线工具 / 工作区快照 / 多分辨率适配 / Calendars 降级 / 图表内下单 |
 | 2026-07-14 | [OPS-02] Tailscale 零信任网络完成：ACL 策略 / 节点入网脚本 / 跨节点验证脚本 / Prometheus+Grafana 端口绑定 Tailscale IP / CI 新增连通性检查 job |
 | 2026-07-02 | 新增「OMS 订单中枢与算力节点」OMS-01~12 (订单持久化/真实同步/算力节点/算法拆单/KillSwitch加固/审计日志)；新建 `docs/subsystems/oms-module.md` 设计文档 |
 | 2026-07-02 | 新增「Risk 风控模块进阶能力」RISK-01~08 (板块暴露/Beta归因/相关性矩阵/压力测试/CVaR/流动性/雷达增强/Beta基准)；Risk MVP 完成归档 (分账户风控+持久化+行业级版面) |
