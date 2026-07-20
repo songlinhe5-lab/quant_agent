@@ -597,6 +597,18 @@ class HermesAgent:
             # 只发送文本内容
             if user_input.strip():
                 self.messages.append({"role": "user", "content": user_input.strip()})
+
+        # MRKT-05: 个股分析时自动注入宏观判因上下文
+        if user_input.strip():
+            try:
+                from backend.services.market_review.context_injector import try_inject_market_context
+
+                market_ctx = await try_inject_market_context(user_input.strip())
+                if market_ctx:
+                    self.messages.append({"role": "system", "content": market_ctx})
+            except Exception:
+                pass  # 判因注入失败不阻断主流程
+
         await self._save_session()
 
         if len(self.messages) <= 1:
