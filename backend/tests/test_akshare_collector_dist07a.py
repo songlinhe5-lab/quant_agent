@@ -13,6 +13,7 @@ DIST-07 方案A: AKShare Redis 中继 — 单元测试
 
 import asyncio
 import json
+from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -28,16 +29,19 @@ class TestAKShareServiceCacheMode:
     @pytest.fixture
     def cache_mode_service(self):
         """创建 cache 模式的 AKShareService (mock Redis)"""
-        with patch("backend.services.akshare_service.redis_client") as mock_redis:
-            mock_redis.get = AsyncMock(return_value=None)
-            mock_redis.set = AsyncMock()
-            mock_redis.lock = MagicMock()
+        mock_redis = MagicMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.set = AsyncMock()
+        mock_redis.lock = MagicMock()
 
+        # SPEC-01 拆分后 redis_client 分布在各子模块，需逐一 patch
+        with ExitStack() as stack:
+            for mod in ("flow", "quote", "calendar"):
+                stack.enter_context(patch(f"backend.services.akshare.{mod}.redis_client", mock_redis))
             from backend.services.akshare_service import AKShareService
 
             svc = AKShareService()
             svc._cache_mode = True  # 强制 cache 模式
-            svc._redis = mock_redis
             yield svc, mock_redis
 
     @pytest.mark.asyncio
@@ -129,29 +133,25 @@ class TestAKShareServiceHealthStatus:
 
     def test_cache_mode_shows_relay(self):
         """cache 模式健康状态应标注 '北京VPS中继'"""
-        with patch("backend.services.akshare_service.redis_client") as mock_redis:
-            mock_redis.get = AsyncMock(return_value=None)
-            from backend.services.akshare_service import AKShareService
+        from backend.services.akshare_service import AKShareService
 
-            svc = AKShareService()
-            svc._cache_mode = True
+        svc = AKShareService()
+        svc._cache_mode = True
 
-            health = svc.get_health_status()
-            assert "cache" in health["mode"]
-            assert "北京VPS中继" in health["mode"]
+        health = svc.get_health_status()
+        assert "cache" in health["mode"]
+        assert "北京VPS中继" in health["mode"]
 
     def test_direct_mode_shows_direct(self):
         """direct 模式健康状态应标注 '直连akshare'"""
-        with patch("backend.services.akshare_service.redis_client") as mock_redis:
-            mock_redis.get = AsyncMock(return_value=None)
-            from backend.services.akshare_service import AKShareService
+        from backend.services.akshare_service import AKShareService
 
-            svc = AKShareService()
-            svc._cache_mode = False
+        svc = AKShareService()
+        svc._cache_mode = False
 
-            health = svc.get_health_status()
-            assert "direct" in health["mode"]
-            assert "直连akshare" in health["mode"]
+        health = svc.get_health_status()
+        assert "direct" in health["mode"]
+        assert "直连akshare" in health["mode"]
 
 
 # ─────────────────────────────────────────

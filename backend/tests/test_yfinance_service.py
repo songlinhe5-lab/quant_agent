@@ -156,7 +156,7 @@ class TestRateLimitedSession:
             return MagicMock(status_code=200)
 
         with (
-            patch("backend.services.yfinance_service._SessionBase.request", side_effect=fake_request),
+            patch("backend.services.yfinance.utils._SessionBase.request", side_effect=fake_request),
             patch("backend.core.middleware.EXTERNAL_API_COUNT") as m_cnt,
             patch("backend.core.middleware.EXTERNAL_API_LATENCY") as m_lat,
         ):
@@ -171,7 +171,7 @@ class TestRateLimitedSession:
         """Test that request exception increments 500 metric"""
         s = RateLimitedSession(max_requests=5, per_seconds=0.01)
         with (
-            patch("backend.services.yfinance_service._SessionBase.request", side_effect=RuntimeError("boom")),
+            patch("backend.services.yfinance.utils._SessionBase.request", side_effect=RuntimeError("boom")),
             patch("backend.core.middleware.EXTERNAL_API_COUNT") as m_cnt,
             patch("backend.core.middleware.EXTERNAL_API_LATENCY"),
         ):
@@ -184,8 +184,8 @@ class TestRateLimitedSession:
         s = RateLimitedSession(max_requests=1, per_seconds=2.0)
         s._request_times.append(time.time())
         with (
-            patch("backend.services.yfinance_service.time.sleep") as m_sleep,
-            patch("backend.services.yfinance_service._SessionBase.request", return_value=MagicMock(status_code=200)),
+            patch("backend.services.yfinance.utils.time.sleep") as m_sleep,
+            patch("backend.services.yfinance.utils._SessionBase.request", return_value=MagicMock(status_code=200)),
             patch("backend.core.middleware.EXTERNAL_API_COUNT"),
             patch("backend.core.middleware.EXTERNAL_API_LATENCY"),
         ):
@@ -201,7 +201,7 @@ class TestRateLimitedSession:
         s._request_times.append(old_time)
         s._request_times.append(time.time())  # 当前请求
         with (
-            patch("backend.services.yfinance_service._SessionBase.request", return_value=MagicMock(status_code=200)),
+            patch("backend.services.yfinance.utils._SessionBase.request", return_value=MagicMock(status_code=200)),
             patch("backend.core.middleware.EXTERNAL_API_COUNT"),
             patch("backend.core.middleware.EXTERNAL_API_LATENCY"),
         ):
@@ -215,8 +215,8 @@ class TestRateLimitedSession:
         # 添加一个很久以前的时间，使得 earliest_allowed < now
         s._request_times.append(time.time() - 100)  # 100秒前
         with (
-            patch("backend.services.yfinance_service.time.sleep") as m_sleep,
-            patch("backend.services.yfinance_service._SessionBase.request", return_value=MagicMock(status_code=200)),
+            patch("backend.services.yfinance.utils.time.sleep") as m_sleep,
+            patch("backend.services.yfinance.utils._SessionBase.request", return_value=MagicMock(status_code=200)),
             patch("backend.core.middleware.EXTERNAL_API_COUNT"),
             patch("backend.core.middleware.EXTERNAL_API_LATENCY"),
         ):
@@ -230,8 +230,8 @@ class TestRateLimitedSession:
         s = RateLimitedSession()
         mock_resp = MagicMock(status_code=200)
         with (
-            patch("backend.services.yfinance_service._SessionBase.request", return_value=mock_resp),
-            patch("backend.services.yfinance_service.time.perf_counter", side_effect=[0, 4.0]),
+            patch("backend.services.yfinance.utils._SessionBase.request", return_value=mock_resp),
+            patch("backend.services.yfinance.utils.time.perf_counter", side_effect=[0, 4.0]),
             patch("backend.core.middleware.EXTERNAL_API_COUNT"),
             patch("backend.core.middleware.EXTERNAL_API_LATENCY"),
             patch("backend.core.logger.logger") as m_logger,
@@ -406,8 +406,8 @@ class TestYFinanceService:
         mock_info = PropertyMock(side_effect=_populate_errors)
         type(mock_yf.Ticker.return_value).info = mock_info
         with (
-            patch("backend.services.yfinance_service.yf", mock_yf),
-            patch("backend.services.yfinance_service.asyncio.sleep", new=AsyncMock()),
+            patch("backend.services.yfinance.service.yf", mock_yf),
+            patch("backend.services.yfinance.service.asyncio.sleep", new=AsyncMock()),
         ):
             ok, _, msg = await service.fetch_yf_data("AAPL", "info", 60)
         assert not ok and "限流" in msg
@@ -428,8 +428,8 @@ class TestYFinanceService:
         mock_info = PropertyMock(side_effect=_populate_errors)
         type(mock_yf.Ticker.return_value).info = mock_info
         with (
-            patch("backend.services.yfinance_service.yf", mock_yf),
-            patch("backend.services.yfinance_service.asyncio.sleep", new=AsyncMock()),
+            patch("backend.services.yfinance.service.yf", mock_yf),
+            patch("backend.services.yfinance.service.asyncio.sleep", new=AsyncMock()),
         ):
             ok, _, msg = await service.fetch_yf_data("AAPL", "info", 60)
         assert not ok and "无效" in msg
@@ -441,8 +441,8 @@ class TestYFinanceService:
         mock_yf.shared._ERRORS = {}
         mock_yf.download.return_value = pd.DataFrame()
         with (
-            patch("backend.services.yfinance_service.yf", mock_yf),
-            patch("backend.services.yfinance_service.asyncio.sleep", new=AsyncMock()),
+            patch("backend.services.yfinance.service.yf", mock_yf),
+            patch("backend.services.yfinance.service.asyncio.sleep", new=AsyncMock()),
         ):
             ok, _, msg = await service.fetch_yf_data("AAPL", "history", 60, period="5d")
         assert not ok and "无效" in msg
@@ -450,7 +450,7 @@ class TestYFinanceService:
     @pytest.mark.asyncio
     async def test_fetch_yf_data_dev_mode_returns_mock(self):
         """Test fetch_yf_data in dev mode returns mock"""
-        with patch.dict(os.environ, {"QUANT_ENV": "development"}), patch("backend.services.yfinance_service.yf", None):
+        with patch.dict(os.environ, {"QUANT_ENV": "development"}), patch("backend.services.yfinance.service.yf", None):
             svc = YFinanceService(llm_service_instance=MagicMock())
             ok, _, msg = await svc.fetch_yf_data("AAPL", "info", 60)
             svc.close()
@@ -459,7 +459,7 @@ class TestYFinanceService:
     @pytest.mark.asyncio
     async def test_fetch_yf_data_no_yfinance_dep_returns_error(self):
         """Test fetch_yf_data when yfinance dependency is not available"""
-        with patch("backend.services.yfinance_service.yf", None):
+        with patch("backend.services.yfinance.service.yf", None):
             svc = YFinanceService(llm_service_instance=MagicMock())
             ok, _, msg = await svc.fetch_yf_data("AAPL", "info", 60)
             svc.close()
@@ -503,8 +503,8 @@ class TestYFinanceService:
         )
         # 正确 mock yfinance.download
         with (
-            patch("backend.services.yfinance_service.yf") as m_yf,
-            patch("backend.services.yfinance_service.asyncio.sleep", new=AsyncMock()),
+            patch("backend.services.yfinance.quote.yf") as m_yf,
+            patch("backend.services.yfinance.quote.asyncio.sleep", new=AsyncMock()),
         ):
             m_yf.shared._ERRORS = {}
             m_yf.download.return_value = df
@@ -522,8 +522,8 @@ class TestYFinanceService:
             index=dates,
         )
         with (
-            patch("backend.services.yfinance_service.yf") as m_yf,
-            patch("backend.services.yfinance_service.asyncio.sleep", new=AsyncMock()),
+            patch("backend.services.yfinance.quote.yf") as m_yf,
+            patch("backend.services.yfinance.quote.asyncio.sleep", new=AsyncMock()),
         ):
             m_yf.shared._ERRORS = {}
             m_yf.download.return_value = df
@@ -539,8 +539,8 @@ class TestYFinanceService:
         mock_yf.shared._ERRORS = {}
         mock_yf.download = MagicMock(side_effect=Exception("YFRateLimitError: 429 Too Many Requests"))
         with (
-            patch("backend.services.yfinance_service.yf", mock_yf),
-            patch("backend.services.yfinance_service.asyncio.sleep", new=AsyncMock()),
+            patch("backend.services.yfinance.quote.yf", mock_yf),
+            patch("backend.services.yfinance.quote.asyncio.sleep", new=AsyncMock()),
         ):
             # 确保 session 不为 None
             service.session = MagicMock()
@@ -556,8 +556,8 @@ class TestYFinanceService:
         mock_yf.shared._ERRORS = {}
         mock_yf.download.return_value = pd.DataFrame()
         with (
-            patch("backend.services.yfinance_service.yf", mock_yf),
-            patch("backend.services.yfinance_service.asyncio.sleep", new=AsyncMock()),
+            patch("backend.services.yfinance.quote.yf", mock_yf),
+            patch("backend.services.yfinance.quote.asyncio.sleep", new=AsyncMock()),
         ):
             r = await service.get_batched_quote("AAPL")
         assert r["status"] == "error"
@@ -567,8 +567,8 @@ class TestYFinanceService:
         """Test get_batched_quote with asyncio.TimeoutError"""
         service.session = MagicMock()
         with (
-            patch("backend.services.yfinance_service.asyncio.wait_for", side_effect=asyncio.TimeoutError()),
-            patch("backend.services.yfinance_service.asyncio.get_running_loop"),
+            patch("backend.services.yfinance.quote.asyncio.wait_for", side_effect=asyncio.TimeoutError()),
+            patch("backend.services.yfinance.quote.asyncio.get_running_loop"),
         ):
             r = await service.get_batched_quote("AAPL")
         assert r["status"] == "error"
@@ -579,8 +579,8 @@ class TestYFinanceService:
         """Test get_batched_quote with unexpected exception"""
         service.session = MagicMock()
         with (
-            patch("backend.services.yfinance_service.asyncio.wait_for", side_effect=RuntimeError("unexpected")),
-            patch("backend.services.yfinance_service.asyncio.get_running_loop"),
+            patch("backend.services.yfinance.quote.asyncio.wait_for", side_effect=RuntimeError("unexpected")),
+            patch("backend.services.yfinance.quote.asyncio.get_running_loop"),
         ):
             r = await service.get_batched_quote("AAPL")
         assert r["status"] == "error"
@@ -593,8 +593,8 @@ class TestYFinanceService:
             {"Open": [1, 2, 3, 4, 5], "High": [2, 3, 4, 5, 6], "Low": [0, 1, 2, 3, 4], "Volume": [100] * 5}, index=dates
         )
         with (
-            patch("backend.services.yfinance_service.yf") as m_yf,
-            patch("backend.services.yfinance_service.asyncio.sleep", new=AsyncMock()),
+            patch("backend.services.yfinance.quote.yf") as m_yf,
+            patch("backend.services.yfinance.quote.asyncio.sleep", new=AsyncMock()),
         ):
             m_yf.shared._ERRORS = {}
             m_yf.download.return_value = df
@@ -659,7 +659,7 @@ class TestYFinanceService:
     @pytest.mark.asyncio
     async def test_get_tech_indicators_dev_mode_returns_mock(self):
         """Test get_tech_indicators in dev mode returns mock"""
-        with patch.dict(os.environ, {"QUANT_ENV": "development"}), patch("backend.services.yfinance_service.yf", None):
+        with patch.dict(os.environ, {"QUANT_ENV": "development"}), patch("backend.services.yfinance.service.yf", None):
             svc = YFinanceService(llm_service_instance=MagicMock())
             r = await svc.get_tech_indicators("AAPL")
             svc.close()
@@ -678,8 +678,8 @@ class TestYFinanceService:
             "marketCap": 1000000000,
         }
         with (
-            patch("backend.services.yfinance_service.yf", mock_yf),
-            patch("backend.services.yfinance_service.asyncio.sleep", new=AsyncMock()),
+            patch("backend.services.yfinance.service.yf", mock_yf),
+            patch("backend.services.yfinance.service.asyncio.sleep", new=AsyncMock()),
         ):
             r = await service.get_tech_indicators("AAPL")
         assert r["status"] == "success" and "降级" in r["message"]
@@ -694,8 +694,8 @@ class TestYFinanceService:
         mock_yf.shared._ERRORS = {}
         mock_yf.download.side_effect = Exception("Network timeout")
         with (
-            patch("backend.services.yfinance_service.yf", mock_yf),
-            patch("backend.services.yfinance_service.asyncio.sleep", new=AsyncMock()),
+            patch("backend.services.yfinance.service.yf", mock_yf),
+            patch("backend.services.yfinance.service.asyncio.sleep", new=AsyncMock()),
         ):
             r = await service.get_tech_indicators("AAPL")
         # Should fallback to mock data (success) with a message indicating degradation
@@ -713,7 +713,7 @@ class TestYFinanceService:
         # Mock the actual fetch to avoid real network call
         with (
             patch.object(svc, "_init_session"),
-            patch("backend.services.yfinance_service.yf") as mock_yf,
+            patch("backend.services.yfinance.service.yf") as mock_yf,
             patch("asyncio.Lock") as mock_lock_class,
         ):
             mock_yf.shared._ERRORS = {}
@@ -865,7 +865,7 @@ class TestYFinanceService:
         service._batch_queue = {}
 
         # Patch asyncio.sleep to avoid actual sleep
-        with patch("backend.services.yfinance_service.asyncio.sleep", new=AsyncMock()):
+        with patch("backend.services.yfinance.service.asyncio.sleep", new=AsyncMock()):
             await service._dispatch_batch_quotes()
         # If we reach here, the early return worked (no exception)
         assert True

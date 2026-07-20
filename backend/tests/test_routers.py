@@ -276,9 +276,8 @@ class TestSecurityHelpers:
         assert "X-Internal-Sig" in result
         assert "." in result["X-Internal-Sig"]
 
-    def test_verify_internal_request_missing_header(self):
-        import asyncio
-
+    @pytest.mark.asyncio
+    async def test_verify_internal_request_missing_header(self):
         from fastapi import HTTPException
         from starlette.requests import Request
 
@@ -293,7 +292,7 @@ class TestSecurityHelpers:
         }
         request = Request(scope)
         with pytest.raises(HTTPException) as exc_info:
-            asyncio.get_event_loop().run_until_complete(verify_internal_request(request))
+            await verify_internal_request(request)
         assert exc_info.value.status_code == 401
 
 

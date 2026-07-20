@@ -599,16 +599,17 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 #### P0 — 规范公信力修复
 
-- [ ] **[SPEC-01]** §3.2 存量豁免清单：在 `docs/02 §3.2` 增加「存量超限文件豁免表」，列出当前超限文件及计划拆分时间线，避免规范沦为空文。当前严重超限：
-  - `backend/services/screener_service.py` **1838 行**（限 400）→ 按职责拆为 screener/ 目录（query_handler / dsl_parser / cache_manager / export_handler）
-  - `backend/services/yfinance_service.py` **1480 行**（限 400）→ 按功能域拆分（macro / quote / history / calendar）
-  - `backend/services/akshare_service.py` **912 行**（限 400）→ 按市场拆分（hk / cn / macro）
-- [ ] **[SPEC-02]** §8.0 部署拓扑对齐：将"三节点矩阵部署"修正为实际架构「单 VPS（API+Worker+Redis）+ 北京辅助节点（AKShare）」，与 `AGENTS.md §9` 保持一致
-- [ ] **[SPEC-03]** 前端超限文件治理（第一批）：
-  - `frontend/src/features/trading/backtest.tsx` **626 行**（限 300）→ 拆子组件 + hooks
-  - `frontend/src/features/alert/alert-center.tsx` **623 行**（限 300）→ 拆子组件
-  - `frontend/src/features/trading/risk.tsx` **593 行**（限 300）→ 拆子组件 + hooks
-  - `frontend/src/features/screener/screener-context.tsx` **450 行**（限 200）→ 拆分为 pagination hook + filter hook + context
+- [x] **[SPEC-01]** 存量超限文件拆分：将三大超限 service 文件按职责拆分为包目录，每个子文件 ≤400 行，保持所有现有 import 路径零修改。✅ **2026-07-20**：拆分完成
+  - `backend/services/screener_service.py` **1838 行** → `backend/services/screener/` (7文件: constants/models/nlp_translator/dsl_parser/daemons/service/__init__)
+  - `backend/services/yfinance_service.py` **1480 行** → `backend/services/yfinance/` (7文件: utils/service/quote/technical/search/macro_daemon/__init__)
+  - `backend/services/akshare_service.py` **912 行** → `backend/services/akshare/` (5文件: service/flow/quote/calendar/__init__)
+  - 原文件保留为 ~5 行 shim 兼容层，122 个测试全部通过
+- [x] **[SPEC-02]** §8.0 部署拓扑对齐：将“三节点矩阵部署”修正为四节点架构（US-MASTER + US-YF-A/B + CN-AKSHARE），与 `AGENTS.md §9` 保持一致。✅ **2026-07-20**：已完成
+- [x] **[SPEC-03]** 前端超限文件治理（第一批）。✅ **2026-07-20**：拆分完成
+  - `backtest.tsx` 627→63行：拆为 backtest-mock / use-backtest / backtest-config / backtest-results
+  - `alert-center.tsx` 624→171行：拆为 alert-lists / create-rule-form
+  - `risk.tsx` 594→51行：拆为 risk-types / risk-account-section / risk-advanced-panel
+  - `screener-context.tsx` 451→337行：提取 use-screener-ws hook
 
 #### P1 — 规范文档修正
 
@@ -882,20 +883,20 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 > 每日收盘后自动生成 A股/港股/美股 大盘复盘报告，结构化存储后供个股分析、专家团研判引用判因。
 
-- [ ] **[MRKT-01]** 数据模型 + 存储：`backend/services/market_review/models.py`（MarketDailyReview / IndexSnapshot / SectorPerformance / MarketEvent）+ Redis 持久化（按日期+市场键控）
-- [ ] **[MRKT-02]** 复盘生成引擎：`backend/services/market_review/generator.py`，调用现有 ToolRegistry 采集（指数行情/板块涨跌/资金流向/宏观新闻）+ LLM 生成结构化报告（市场风格定性/资金面结论/情绪评分/事件影响）
-- [ ] **[MRKT-03]** 定时触发：复用 Worker scheduler，A股 15:30 / 港股 16:30 / 美股 04:30 (CST+1) 自动触发复盘生成
-- [ ] **[MRKT-04]** 引用接口：`get_market_review(date, market)` 查询 API + Expert Team data_collector 新增 `market_review` 数据类型 + Hermes Agent 工具注册
-- [ ] **[MRKT-05]** 判因集成：个股/微观分析时自动拉取近 3 日 MarketDailyReview 作为上下文，输出判因链（大盘→板块→个股）
+- [x] **[MRKT-01]** 数据模型 + 存储：`backend/services/market_review/models.py`（MarketDailyReview / IndexSnapshot / SectorPerformance / MarketEvent）+ Redis 持久化（按日期+市场键控）✅ **2026-07-20**：models.py + storage.py(save/load_market_review) 已提交（862bfe4）
+- [x] **[MRKT-02]** 复盘生成引擎：`backend/services/market_review/generator.py`，调用现有 ToolRegistry 采集（指数行情/板块涨跌/资金流向/宏观新闻）+ LLM 生成结构化报告（市场风格定性/资金面结论/情绪评分/事件影响）✅ **2026-07-20**：generator.py 已提交（986d424）；补齐「板块涨跌」采集缺口（行业 ETF 代理，领涨/领跌分组），13 单测全过
+- [x] **[MRKT-03]** 定时触发：复用 Worker scheduler，A股 15:30 / 港股 16:30 / 美股 04:30 (CST+1) 自动触发复盘生成 ✅ **2026-07-20**：scheduler.py + worker.py 集成，Redis SETNX 防重复（23fb82d）
+- [x] **[MRKT-04]** 引用接口：`get_market_review(date, market)` 查询 API + Expert Team data_collector 新增 `market_review` 数据类型 + Hermes Agent 工具注册 ✅ **2026-07-20**：routers/market_review.py + market_review_tool.py + data_collector 接入（2c6169c）
+- [x] **[MRKT-05]** 判因集成：个股/微观分析时自动拉取近 3 日 MarketDailyReview 作为上下文，输出判因链（大盘→板块→个股）✅ **2026-07-20**：context_injector.py + agent.py chat_stream_async 集成（474d19e）
 
 ### 线 5 · 港股窝轮/牛熊证数据接入（WRNT）
 
 > 港股小市值标的无挂牌个股期权，通过 Futu OpenD 窝轮/牛熊证 API 替代，提供市场多空情绪分析能力。
 
-- [ ] **[WRNT-01]** Futu Handler 新增 `get_warrant_chain(ticker)` 方法：调用 `get_warrant` API，返回 Call/Put 窝轮 + 牛熊证列表（行使价/溢价/杠杆/delta/发行人/到期日）
-- [ ] **[WRNT-02]** Router 新增 `GET /market/warrant-chain?ticker=0772.HK` 端点 + LegacyMarketData 适配器透传
-- [ ] **[WRNT-03]** Hermes Tool `get_broker_market_data` 新增 `action="WARRANT_CHAIN"` 路由
-- [ ] **[WRNT-04]** 港股期权链降级逻辑：`get_option_chain` 对港股标的失败时自动降级到 `get_warrant_chain`，Agent 无感知
+- [x] **[WRNT-01]** Futu Handler 新增 `get_warrant_chain(ticker)` 方法：调用 `get_warrant` API，返回 Call/Put 窝轮 + 牛熊证列表（行使价/溢价/杠杆/delta/发行人/到期日）✅ **2026-07-08**：option_fund_handler.py 实现（ec035ac）
+- [x] **[WRNT-02]** Router 新增 `GET /market/warrant-chain?ticker=0772.HK` 端点 + LegacyMarketData 适配器透传 ✅ **2026-07-08**：routers/market.py + legacy_market_data.py（ec035ac）
+- [x] **[WRNT-03]** Hermes Tool `get_broker_market_data` 新增 `action="WARRANT_CHAIN"` 路由 ✅ **2026-07-08**：broker_market_tool.py（ec035ac）
+- [x] **[WRNT-04]** 港股期权链降级逻辑：`get_option_chain` 对港股标的失败时自动降级到 `get_warrant_chain`，Agent 无感知 ✅ **2026-07-08**：legacy_market_data.py 降级链（ec035ac）
 
 ---
 
@@ -1136,6 +1137,8 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 | 2026-07-08 | [RL-03] CircuitBreaker 限流解耦完成：is_rate_limit_error 过滤钩子 (识别异常携带的 ErrorCategory) + error_classifier 动态回调 (per-call 最终决定权) + record_failure(is_rate_limit=True) 手动记录接口 + call()/call_sync() 限流不计入失败计数；20 个单测全通过 |
 | 2026-07-08 | [RL-02/04] RateLimitThrottler 退避引擎完成：4 种策略 (none/linear/exponential/adaptive) + Retry-After 优先采纳 + 自适应恢复机制 (连续 10 次成功降速) + 抖动防雷群 + 线程安全 + 环境变量配置 (DATASOURCE_{NAME}_BACKOFF_*)；31 个单测全通过 |
 | 2026-07-08 | [RL-01] ErrorInfo 结构扩展完成：ErrorCategory 枚举 (normal/rate_limit/quota_exhausted/ip_blocked) + RateLimitInfo 嵌套结构 + Result 统一返回结构 + classify_http_error 自动分类 + DataSourceRouter 集成 (限流不计入熔断器)；44 个单测全通过 |
+| 2026-07-20 | [SPEC-01] 存量超限文件拆分完成：screener_service.py (1838行) → screener/ (7文件)；yfinance_service.py (1480行) → yfinance/ (7文件)；akshare_service.py (912行) → akshare/ (5文件)；Mixin 组合模式 + shim 兼容层，122 测试全通过 |
+| 2026-07-20 | [SPEC-02] 部署拓扑对齐完成：docs/02 §5.1/§8.0 “三节点矩阵”→ 四节点架构（US-MASTER + US-YF-A/B + CN-AKSHARE），与 AGENTS.md §9 保持一致；docs/02 升级至 V4.3.2 |
 | 2026-07-14 | [DIST-11~18] 分布式数据源集群部署完成：YF 节点 Compose / 灰度切换配置 / 四节点部署脚本 / CI/CD 矩阵 (master + yf×2 + slave) / 数据源验证脚本 |
 | 2026-07-08 | 新增「数据源限流感知与自适应退避」RL-01~14：限流错误分类 / RateLimitThrottler 退避引擎 / 频率动态分析 / 推测频率查询 API / Prometheus 限流指标 / 限流告警 / Registry 路由感知 / Agent Tool 限流感知；docs/14 新增 §十二；AGENTS.md 新增 §10.8 |
 | 2026-07-02 | OMS-05~07 算力节点完成：`bot_runtime.py` BotRuntimeManager (asyncio.Task 生命周期) + psutil 真实 CPU/MEM 监控 + Redis List 日志持久化 + PubSub/WebSocket 实时推送；`/deploy-to-oms` 升级为真实 Bot 启动；前端新增 Bot 终止按钮 |

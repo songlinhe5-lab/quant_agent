@@ -90,6 +90,7 @@ from backend.routers.internal import router as internal_router  # noqa: E402
 from backend.routers.logs import router as logs_router  # noqa: E402
 from backend.routers.macro import router as macro_router  # noqa: E402
 from backend.routers.market import router as market_router  # noqa: E402
+from backend.routers.market_review import router as market_review_router  # noqa: E402
 from backend.routers.mcp import router as mcp_router  # noqa: E402
 from backend.routers.oms import router as oms_router  # noqa: E402
 from backend.routers.options import router as options_router  # noqa: E402
@@ -157,6 +158,7 @@ def create_app() -> FastAPI:
     application.include_router(chat_router, prefix=API_PREFIX)
     application.include_router(settings_router, prefix=API_PREFIX)
     application.include_router(market_router, prefix=API_PREFIX)
+    application.include_router(market_review_router, prefix=API_PREFIX)
     application.include_router(trade_router, prefix=API_PREFIX)
     application.include_router(macro_router, prefix=API_PREFIX)
     application.include_router(calendars_router, prefix=API_PREFIX)

@@ -1,13 +1,11 @@
 'use client'
 
-import React, { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react'
 import { useToast } from '@/hooks/use-toast'
 import { useWatchlist } from '@/stores/use-watchlist'
-import { apiClient, getAccessToken, refreshAccessToken, isTokenExpired } from '@/lib/api-client'
-import { market } from '@/lib/proto/market'
-import { useKeepAliveActive } from '@/components/layout/keep-alive-outlet'
-import { useBackendStatusStore } from '@/stores/useBackendStatusStore'
+import { apiClient } from '@/lib/api-client'
 import { getZhLabel, formatDisplaySymbol, type SortKey } from '@/features/screener/shared'
+import { useScreenerWs } from './use-screener-ws'
 
 export interface ScreenerHistory {
   nlp: string;
@@ -93,6 +91,24 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
   const [previewData, setPreviewData] = useState<{symbol: string, price?: number, change?: number} | null>(null)
   const [columnFilters, setColumnFilters] = useState<Record<string, { min: string, max: string }>>({})
 
+  // ── Pagination computed ──
+  const dynamicCols = useMemo(() => {
+    if (results.length === 0) return []
+    const keys = new Set<string>()
+    results.forEach(r => Object.keys(r).forEach(k => { if (!['symbol', 'name', 'rank'].includes(k)) keys.add(k) }))
+    return Array.from(keys).sort()
+  }, [results])
+
+  const paginatedData = results
+  const realDataLength = totalItems
+  const totalPages = Math.ceil(totalItems / pageSize)
+  const pageSymbols = paginatedData.map(r => r.symbol)
+  const isAllCurrentPageSelected = pageSymbols.length > 0 && pageSymbols.every(r => selected.includes(r))
+
+  // ── WebSocket 实时行情 ──
+  useScreenerWs(pageSymbols)
+
+  // ── Handlers ──
   const handleApplyFilter = (col: string, range: { min: string, max: string }) => {
     if (!range.min && !range.max) {
       handleClearFilter(col)
@@ -124,46 +140,22 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  useEffect(() => { refreshPrompts() }, [])
-
-  useEffect(() => {
-    if (!dslQuery) return;
-    const interval = setInterval(() => {
-      if (document.hidden) return;
-      apiClient.post('/screener/run', {
-        dsl: dslQuery, page: 1, page_size: 1, 
-        sort_key: sortKey === 'rank' ? 'mktcap' : sortKey, 
-        sort_dir: sortDir, filters: columnFilters
-      }).catch(() => {});
-    }, 4 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [dslQuery, sortKey, sortDir, columnFilters]);
-
   const fetchPageData = async (dsl: string, page: number, size: number, sKey: string, sDir: number, filters: Record<string, any> = {}) => {
     setIsLoading(true);
     setScanStatus('从云端获取中...');
-    const validDsl = dsl;
-    try {
-      JSON.parse(dsl);
-    } catch (e) {
+    try { JSON.parse(dsl); } catch (e) {
       if (nlpQuery && nlpQuery.trim()) {
         toast({ title: '检测到缓存数据异常', description: '正在重新解析您的查询条件...' });
         await handleTranslate(nlpQuery);
         return;
       } else {
         toast({ variant: 'destructive', title: 'DSL 格式错误', description: '缓存的筛选条件已损坏。请重新输入自然语言查询或选择历史记录。' });
-        setIsLoading(false);
-        setScanStatus('');
+        setIsLoading(false); setScanStatus('');
         return;
       }
     }
-    
     try {
-      const res = await apiClient.post('/screener/run', {
-        dsl: validDsl, page, page_size: size,
-        sort_key: sKey === 'rank' ? 'mktcap' : sKey,
-        sort_dir: sDir, filters
-      });
+      const res = await apiClient.post('/screener/run', { dsl, page, page_size: size, sort_key: sKey === 'rank' ? 'mktcap' : sKey, sort_dir: sDir, filters });
       if (res.data?.status === 'success' && res.data.data) {
         setResults(res.data.data);
         setTotalItems(res.data.total || res.data.data.length);
@@ -173,67 +165,17 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
     } catch (error: any) {
       toast({ variant: 'destructive', title: '网络异常', description: error.message });
     } finally {
-      setIsLoading(false);
-      setScanStatus('');
+      setIsLoading(false); setScanStatus('');
     }
   };
-
-  useEffect(() => {
-    try {
-      const h = localStorage.getItem('quant_screener_history')
-      if (h) setHistory(JSON.parse(h))
-    } catch (e) { /* ignore parse error */ }
-    try {
-      const latestStateStr = localStorage.getItem('quant_screener_latest_state')
-      if (latestStateStr) {
-        const latestState = JSON.parse(latestStateStr)
-        if (latestState.results && latestState.results.length > 0) {
-          let isValidDsl = false;
-          try { JSON.parse(latestState.dslQuery || ''); isValidDsl = true; } catch (e) { localStorage.removeItem('quant_screener_latest_state'); }
-          if (isValidDsl) {
-            setResults(latestState.results)
-            setTotalItems(latestState.totalItems || latestState.results.length)
-            setNlpQuery(latestState.nlpQuery || '')
-            setDslQuery(latestState.dslQuery || '')
-          }
-        }
-      }
-    } catch (e) { /* ignore parse error */ }
-    const fetchCloudHistory = async () => {
-      try {
-        const res = await apiClient.get('/screener/history')
-        if (res.data?.status === 'success' && res.data.data && res.data.data.length > 0) {
-          setHistory(res.data.data)
-          localStorage.setItem('quant_screener_history', JSON.stringify(res.data.data))
-        }
-      } catch (e) { /* ignore network error */ }
-    }
-    fetchCloudHistory()
-  }, [])
 
   const handleSort = (key: SortKey) => {
     if (isLoading) return;
     const newDir = sortKey === key ? (sortDir === 1 ? -1 : 1) : -1;
-    setSortKey(key);
-    setSortDir(newDir);
-    setCurrentPage(1);
+    setSortKey(key); setSortDir(newDir); setCurrentPage(1);
     if (dslQuery) fetchPageData(dslQuery, 1, pageSize, key, newDir, columnFilters);
   }
 
-  const dynamicCols = useMemo(() => {
-    if (results.length === 0) return []
-    const keys = new Set<string>()
-    results.forEach(r => Object.keys(r).forEach(k => { if (!['symbol', 'name', 'rank'].includes(k)) keys.add(k) }))
-    return Array.from(keys).sort()
-  }, [results])
-
-  // API 已按 page/page_size 分页返回，results 即为当前页数据
-  const paginatedData = results
-  const realDataLength = totalItems
-  const totalPages = Math.ceil(totalItems / pageSize)
-  const pageSymbols = paginatedData.map(r => r.symbol)
-  const isAllCurrentPageSelected = pageSymbols.length > 0 && pageSymbols.every(r => selected.includes(r))
-  
   const toggleAll = (checked: boolean) => {
     if (checked) setSelected((prev) => Array.from(new Set([...prev, ...pageSymbols])))
     else setSelected((prev) => prev.filter((s) => !pageSymbols.includes(s)))
@@ -259,111 +201,10 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
     } catch (e) { toast({ title: '导出失败', description: '获取全量数据异常', variant: 'destructive' }) }
   }
 
-  const wsRef = useRef<WebSocket | null>(null);
-  const prevSymbolsRef = useRef<string[]>([]);
-  const isMountedRef = useRef(true);
-  const wsOpenedRef = useRef(false);
-  const keepAliveActive = useKeepAliveActive();
-
-  useEffect(() => {
-    isMountedRef.current = true;
-    let reconnectTimer: NodeJS.Timeout;
-    const connectWS = async () => {
-      // 💡 keep-alive 后台模块 / 页面隐藏时不建立 WS，避免多模块 WS 并发重连风暴
-      if (!keepAliveActive || document.visibilityState !== 'visible') return;
-      let token = getAccessToken();
-      if (!token) { console.warn('[Screener WS] 无认证 token，跳过连接'); return; }
-      // 💡 WS 层无 401 拦截器，需主动续期即将过期/已过期的 token（后端 TTL 仅 15 分钟）
-      if (isTokenExpired(token)) {
-        const refreshed = await refreshAccessToken();
-        if (!refreshed) { console.warn('[Screener WS] Token 刷新失败，停止重连，请重新登录'); return; }
-        token = refreshed;
-      }
-      // 💡 动态协议检测：HTTPS 页面必须使用 WSS
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      // ⚠️ 后端路由为 /api/v1/market/quotes/ws（main.py include_router prefix=/api/v1 + market_router prefix=/market）
-      //    必须带 /api/v1 前缀，否则握手 404/失败
-      try {
-        wsRef.current = new WebSocket(`${wsProtocol}//${window.location.host}/api/v1/market/quotes/ws?token=${token}`);
-      } catch (err) {
-        // 同步异常（极少触发，WS 连接失败走的是异步 error/close 事件）
-        useBackendStatusStore.getState().registerFailure('Market WebSocket 连接失败')
-        console.error('[Screener WS] WebSocket 构造失败:', err);
-        return;
-      }
-      wsRef.current.binaryType = "arraybuffer";
-      wsRef.current.onopen = () => {
-        if (!isMountedRef.current) return;
-        wsOpenedRef.current = true;
-        // WS 握手成功 = 后端在线（覆盖“REST 正常但 WS 故障”场景）
-        useBackendStatusStore.getState().registerSuccess()
-        const pureTickers = prevSymbolsRef.current.map((s: string) => s.replace(/^(US|HK|SH|SZ)\./, ''));
-        if (pureTickers.length > 0) wsRef.current!.send(JSON.stringify({ action: 'subscribe', tickers: pureTickers }));
-      };
-      wsRef.current.onmessage = (event) => {
-        if (!isMountedRef.current) return;
-        try {
-          if (event.data instanceof ArrayBuffer) {
-            const q = market.QuoteData.decode(new Uint8Array(event.data));
-            window.dispatchEvent(new CustomEvent('screener_quote_update', { detail: { ticker: q.ticker, last_price: q.lastPrice ?? (q as any).last_price ?? 0, change_pct: q.changePct ?? (q as any).change_pct ?? "0.0%" } }));
-          }
-        } catch (e) { /* ignore decode error */ }
-      };
-      wsRef.current.onerror = () => {
-        // WebSocket 的 error 事件规范上不携带可读错误信息（仅 type:'error' 的 Event 空壳），
-        // 连接级错误统一视为后端不可达，计入离线检测；重连交由 onclose 处理（不在此显式 close）。
-        useBackendStatusStore.getState().registerFailure('Market WebSocket 连接失败')
-        console.warn('[Screener WS] 连接错误，等待 onclose 触发重连（后端可能不可达）')
-      };
-      wsRef.current.onclose = (ev?: CloseEvent) => {
-        wsOpenedRef.current = false;
-        if (!isMountedRef.current) return;
-        if (ev) console.warn(`[Screener WS] 连接关闭 code=${ev.code} reason=${ev.reason || '(空)'}`);
-        // 💡 自愈：若关闭时 token 已过期（多半是后端 4002 鉴权拒绝），先刷新再重连；
-        //    刷新失败则说明 Refresh Token 也失效，停止重连避免死循环，提示重新登录。
-        const t = getAccessToken();
-        if (t && isTokenExpired(t)) {
-          refreshAccessToken().then((refreshed) => {
-            if (!refreshed) { console.warn('[Screener WS] Token 刷新失败，停止重连，请重新登录'); return; }
-            reconnectTimer = setTimeout(connectWS, 1000);
-          });
-          return;
-        }
-        reconnectTimer = setTimeout(connectWS, 1000);
-      };
-    };
-    connectWS();
-    const handleOnlineWS = () => { if (wsRef.current) wsRef.current.close(); };
-    window.addEventListener('online', handleOnlineWS);
-    // 💡 页面可见性 / keep-alive 激活态变化：隐藏或后台时断 WS，恢复时重连
-    const handleVisibilityOrActive = () => {
-      if (!isMountedRef.current) return
-      if (!keepAliveActive || document.visibilityState !== 'visible') {
-        if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); wsRef.current = null }
-      } else {
-        connectWS()
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibilityOrActive)
-    return () => { isMountedRef.current = false; clearTimeout(reconnectTimer); window.removeEventListener('online', handleOnlineWS); document.removeEventListener('visibilitychange', handleVisibilityOrActive); if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); } };
-  }, [keepAliveActive]);
-
-  useEffect(() => {
-    const currentSymbols = pageSymbols;
-    const prevSymbols = prevSymbolsRef.current;
-    const toUnsubscribe = prevSymbols.filter(s => !currentSymbols.includes(s)).map(s => s.replace(/^(US|HK|SH|SZ)\./, ''));
-    const toSubscribe = currentSymbols.filter(s => !prevSymbols.includes(s)).map(s => s.replace(/^(US|HK|SH|SZ)\./, ''));
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      if (toUnsubscribe.length > 0) wsRef.current.send(JSON.stringify({ action: 'unsubscribe', tickers: toUnsubscribe }));
-      if (toSubscribe.length > 0) wsRef.current.send(JSON.stringify({ action: 'subscribe', tickers: toSubscribe }));
-    }
-    prevSymbolsRef.current = currentSymbols;
-  }, [pageSymbols.join(',')]);
-
   const handleAddSingle = (symbol: string) => { addTicker(symbol); toast({ title: '已加入自选池', description: `${formatDisplaySymbol(symbol)} 已成功推入 Watchlist。` }) }
   const handleAddBatch = () => { selected.forEach(addTicker); toast({ title: '批量操作成功', description: `已将 ${selected.length} 只标的加入自选池。` }) }
   const handleAddAndOpen = (symbol: string) => { addTicker(symbol); toast({ title: '正在前往图表...', description: `${formatDisplaySymbol(symbol)} 已推入自选池。` }); sessionStorage.setItem('quant_target_symbol', symbol); window.location.hash = 'quotes' }
-  
+
   const handleSendToCopilot = useCallback((symbol: string) => {
     toast({ title: '🧠 正在召唤 Agent...', description: `即将对 ${formatDisplaySymbol(symbol)} 进行深度投研分析。` })
     const prompt = `请帮我生成一份针对【${symbol}】的深度体检研报。\n它是我刚刚通过量价筛选器捕获的高潜标的。请结合它当前的盘面特征，提取最新的财务基本面与近期新闻舆情，并给出风控建议。`
@@ -405,7 +246,7 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
       setProgress(100); setScanStatus('拉取完成，正在渲染...'); await new Promise(resolve => setTimeout(resolve, 400));
       if (res.data?.status === 'success' && res.data.data) {
         setResults(res.data.data); setTotalItems(res.data.total || res.data.data.length); setCurrentPage(1);
-        try { localStorage.setItem('quant_screener_latest_state', JSON.stringify({ nlpQuery: currentQuery, dslQuery: finalDsl, results: res.data.data, totalItems: res.data.total || res.data.data.length })); } catch (e) { /* ignore storage error */ }
+        try { localStorage.setItem('quant_screener_latest_state', JSON.stringify({ nlpQuery: currentQuery, dslQuery: finalDsl, results: res.data.data, totalItems: res.data.total || res.data.data.length })); } catch (e) { /* ignore */ }
       } else {
         toast({ variant: 'destructive', title: '筛选失败', description: res.data?.message || '无法从后端获取筛选结果。' });
       }
@@ -419,6 +260,51 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false); setTimeout(() => { setProgress(0); setScanStatus(''); }, 300); refreshPrompts();
     }
   };
+
+  // ── Effects ──
+  useEffect(() => { refreshPrompts() }, [])
+
+  useEffect(() => {
+    if (!dslQuery) return;
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      apiClient.post('/screener/run', { dsl: dslQuery, page: 1, page_size: 1, sort_key: sortKey === 'rank' ? 'mktcap' : sortKey, sort_dir: sortDir, filters: columnFilters }).catch(() => {});
+    }, 4 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [dslQuery, sortKey, sortDir, columnFilters]);
+
+  useEffect(() => {
+    try {
+      const h = localStorage.getItem('quant_screener_history')
+      if (h) setHistory(JSON.parse(h))
+    } catch (e) { /* ignore */ }
+    try {
+      const latestStateStr = localStorage.getItem('quant_screener_latest_state')
+      if (latestStateStr) {
+        const latestState = JSON.parse(latestStateStr)
+        if (latestState.results && latestState.results.length > 0) {
+          let isValidDsl = false;
+          try { JSON.parse(latestState.dslQuery || ''); isValidDsl = true; } catch (e) { localStorage.removeItem('quant_screener_latest_state'); }
+          if (isValidDsl) {
+            setResults(latestState.results)
+            setTotalItems(latestState.totalItems || latestState.results.length)
+            setNlpQuery(latestState.nlpQuery || '')
+            setDslQuery(latestState.dslQuery || '')
+          }
+        }
+      }
+    } catch (e) { /* ignore */ }
+    const fetchCloudHistory = async () => {
+      try {
+        const res = await apiClient.get('/screener/history')
+        if (res.data?.status === 'success' && res.data.data && res.data.data.length > 0) {
+          setHistory(res.data.data)
+          localStorage.setItem('quant_screener_history', JSON.stringify(res.data.data))
+        }
+      } catch (e) { /* ignore */ }
+    }
+    fetchCloudHistory()
+  }, [])
 
   useEffect(() => {
     let timer: NodeJS.Timeout

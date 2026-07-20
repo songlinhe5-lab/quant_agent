@@ -208,7 +208,7 @@ class TestFetchYfDataRouterMode:
         svc = make_service(router_enabled=False)
         svc._router = None
 
-        with patch("backend.services.yfinance_service.yf", None):
+        with patch("backend.services.yfinance.service.yf", None):
             success, data, msg = await svc.fetch_yf_data("AAPL", "info", ttl=300)
 
         assert success is False

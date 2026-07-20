@@ -37,6 +37,11 @@ _DATA_COLLECTORS: dict[str, dict[str, Any]] = {
         "param_key": None,
         "description": "市场情绪历史",
     },
+    "market_review": {
+        "tool": "get_market_review",
+        "param_key": "market",
+        "description": "市场复盘(宏观判因)",
+    },
     "code_context": {
         "tool": None,  # 由请求直接提供，不需要工具采集
         "param_key": None,
