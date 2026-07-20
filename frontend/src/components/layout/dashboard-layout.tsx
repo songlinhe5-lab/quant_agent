@@ -25,6 +25,10 @@ import { BackendStatusBanner } from './backend-status-banner'
 import { GlobalAlertGateway } from '@/features/alert/global-alert-gateway'
 import { hydrateTradingMode } from '@/features/trading/trading-mode-actions'
 import { MobileTabBar } from '@/components/layout/mobile-tab-bar'
+import { useSceneModeStore } from '@/stores/useSceneModeStore'
+import { SCENE_META } from '@/features/scene/scene-mode-types'
+import { useSceneHotkey } from '@/features/scene/use-scene-hotkey'
+import { FullscreenCopilot } from '@/features/scene/fullscreen-copilot'
 
 const domainMeta: Record<string, { label: string; color: string; dot: string }> = {
   market:   { label: '市场感知', color: 'text-sky-600 dark:text-sky-400',     dot: 'bg-sky-500 dark:bg-sky-400' },
@@ -81,6 +85,23 @@ function useHydrateTradingMode() {
   }, [])
 }
 
+/** PROD-04: 研究模式自动展开 AI 副驾 */
+function useSceneAiBehavior() {
+  const sceneMode = useSceneModeStore((s) => s.mode)
+  const openCopilot = useLayoutStore((s) => s.openCopilot)
+  const closeCopilot = useLayoutStore((s) => s.closeCopilot)
+
+  useEffect(() => {
+    const meta = SCENE_META[sceneMode]
+    if (meta.aiRole === 'drawer') {
+      openCopilot()
+    } else if (meta.aiRole === 'fullscreen') {
+      // AI 分析模式关闭抽屉（用全屏替代）
+      closeCopilot()
+    }
+  }, [sceneMode, openCopilot, closeCopilot])
+}
+
 export default function DashboardLayout() {
   const location = useLocation()
   const pathname = location.pathname
@@ -88,14 +109,25 @@ export default function DashboardLayout() {
   const settingsOpen = useLayoutStore((s) => s.settingsOpen)
   const openCopilot = useLayoutStore((s) => s.openCopilot)
   const openSettings = useLayoutStore((s) => s.openSettings)
+  const sceneMode = useSceneModeStore((s) => s.mode)
+  const sceneMeta = SCENE_META[sceneMode]
 
   useCopilotHotkey()
+  useSceneHotkey()
   useHydrateTradingMode()
+  useSceneAiBehavior()
+
+  const isAiFullscreen = sceneMeta.aiRole === 'fullscreen'
+  const sidebarHidden = !sceneMeta.sidebarVisible
 
   return (
-    <SidebarProvider className="h-screen overflow-hidden">
-      {/* FE-15: 桌面侧栏；&lt;768 由 MobileTabBar 接管 */}
-      <Sidebar className="hidden md:flex border-r border-border/40 md:!top-14 md:!h-[calc(100svh-3.5rem)]" style={{ width: '16rem' } as React.CSSProperties}>
+    <div data-scene-mode={sceneMode} className="h-screen overflow-hidden">
+    <SidebarProvider className="h-full overflow-hidden">
+      {/* FE-15: 桌面侧栏；<768 由 MobileTabBar 接管；PROD-04: 盯盘/AI分析模式隐藏 */}
+      <Sidebar className={cn(
+        'hidden md:flex border-r border-border/40 md:!top-14 md:!h-[calc(100svh-3.5rem)]',
+        sidebarHidden && 'md:!hidden',
+      )} style={{ width: '16rem' } as React.CSSProperties}>
         <SidebarContent>
           {domainOrder.map((domain) => {
             const items = modules.filter((m) => m.domain === domain)
@@ -169,25 +201,41 @@ export default function DashboardLayout() {
         </SidebarContent>
       </Sidebar>
 
-      <SidebarInset className="h-full min-h-0 overflow-hidden bg-background md:ml-[16rem] peer-data-[state=collapsed]:md:ml-[3rem]">
+      <SidebarInset className={cn(
+        'h-full min-h-0 overflow-hidden bg-background',
+        sidebarHidden ? 'md:ml-0' : 'md:ml-[16rem] peer-data-[state=collapsed]:md:ml-[3rem]',
+      )}>
         <Navbar />
         <BackendStatusBanner />
         <TradingModeBanner />
         <div className="flex flex-1 min-h-0 overflow-hidden">
-          {/* FE-29: desktop/wide/ultrawide 内容区；移动端预留 Tab Bar */}
-          <main className="flex-1 min-w-0 p-3 md:p-4 pb-16 md:pb-4 overflow-y-auto desktop:max-w-none wide:px-6 ultrawide:px-8">
-            <KeepAliveOutlet />
-          </main>
-          <GlobalCopilotDrawer />
+          {/* PROD-04: AI 分析模式渲染全屏对话工作台 */}
+          {isAiFullscreen ? (
+            <main className="flex-1 min-w-0 overflow-hidden">
+              <FullscreenCopilot />
+            </main>
+          ) : (
+            <>
+              {/* FE-29: desktop/wide/ultrawide 内容区；移动端预留 Tab Bar */}
+              <main
+                className="flex-1 min-w-0 p-3 md:p-4 pb-16 md:pb-4 overflow-y-auto desktop:max-w-none wide:px-6 ultrawide:px-8"
+                style={{ fontSize: `calc(14px * var(--density-scale, 1))` }}
+              >
+                <KeepAliveOutlet />
+              </main>
+              <GlobalCopilotDrawer />
+            </>
+          )}
         </div>
         <div className="hidden md:block">
           <StatusBar />
         </div>
         <MobileTabBar />
-        <CopilotEdgeHandle />
+        {!isAiFullscreen && <CopilotEdgeHandle />}
         <GlobalSettingsDrawer />
         <GlobalAlertGateway />
       </SidebarInset>
     </SidebarProvider>
+    </div>
   )
 }

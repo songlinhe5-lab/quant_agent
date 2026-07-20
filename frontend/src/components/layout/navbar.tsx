@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { useI18n, type DictionaryKey } from '@/contexts/i18n';
 import { useLayoutStore } from '@/stores/useLayoutStore';
 import { TradingModeSwitcher } from './trading-mode-switcher';
+import { SceneModeSwitcher } from './scene-mode-switcher';
 import { useAlertOverlayStore } from '@/stores/useAlertOverlayStore';
 
 /* ── 动态科幻 SVG Logo 组件 ─────────────────────────────────────── */
@@ -201,6 +202,8 @@ export const Navbar: React.FC = () => {
         </div>
 
         <SystemMetrics />
+
+        <SceneModeSwitcher />
 
         <TradingModeSwitcher />
 

@@ -7,7 +7,7 @@ import { ChatAttachment } from './types'
 
 export function ChatInputBox() {
   const { isGenerating } = useContext(ChatMessagesContext)
-  const { handleSend, handleStop, handleNewChat } = useContext(ChatActionContext)
+  const { handleSend, handleStop, handleNewChat, inputSetterRef } = useContext(ChatActionContext)
   
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<ChatAttachment[]>([])
@@ -16,6 +16,26 @@ export function ChatInputBox() {
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // 💡 注册 setInput 到 context ref，允许兄弟组件（MessageListArea）预填输入框
+  useEffect(() => {
+    if (inputSetterRef?.current !== undefined) {
+      inputSetterRef.current = (text: string) => {
+        setInput(text)
+        // 聚焦到 {输入标的} 占位符位置
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.focus()
+            const placeholderIdx = text.indexOf('{输入标的}')
+            if (placeholderIdx !== -1) {
+              textareaRef.current.setSelectionRange(placeholderIdx, placeholderIdx + '{输入标的}'.length)
+            }
+          }
+        }, 0)
+      }
+    }
+    return () => { if (inputSetterRef) inputSetterRef.current = null }
+  }, [inputSetterRef])
 
   useEffect(() => {
     if (textareaRef.current) {

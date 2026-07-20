@@ -4,6 +4,8 @@ import React, { useCallback, useContext, useRef, useState } from 'react'
 import { Brain, History, Plus, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLayoutStore } from '@/stores/useLayoutStore'
+import { useSceneModeStore } from '@/stores/useSceneModeStore'
+import { SCENE_META } from '@/features/scene/scene-mode-types'
 import { ChatProvider, ChatActionContext } from '@/features/copilot/chat-context'
 import { ChatSidebarWrapper } from '@/features/copilot/chat-sidebar-wrapper'
 import { MessageListArea } from '@/features/copilot/message-list-area'
@@ -144,12 +146,15 @@ export function GlobalCopilotDrawer() {
   )
 }
 
-/** 右侧边缘把手：折叠时唤起副驾 */
+/** 右侧边缘把手：折叠时唤起副驾；PROD-04: 盯盘模式隐藏 */
 export function CopilotEdgeHandle() {
   const copilotOpen = useLayoutStore((s) => s.copilotOpen)
   const settingsOpen = useLayoutStore((s) => s.settingsOpen)
   const toggleCopilot = useLayoutStore((s) => s.toggleCopilot)
+  const sceneMode = useSceneModeStore((s) => s.mode)
 
+  // PROD-04: 盯盘模式 AI 隐藏（右键唤起），不显示边缘把手
+  if (SCENE_META[sceneMode].aiRole === 'hidden') return null
   if (copilotOpen || settingsOpen) return null
 
   return (
