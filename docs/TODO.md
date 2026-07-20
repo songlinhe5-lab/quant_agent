@@ -599,7 +599,7 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 #### P0 — 规范公信力修复
 
-- [ ] **[SPEC-01]** §3.2 存量豁免清单：在 `docs/02 §3.2` 增加「存量超限文件豁免表」，列出当前超限文件及计划拆分时间线，避免规范沦为空文。当前严重超限：
+- [x] **[SPEC-01]** §3.2 存量豁免清单：在 `docs/02 §3.2` 增加「存量超限文件豁免表」，列出当前超限文件及计划拆分时间线，避免规范沦为空文。当前严重超限：✅ **2026-07-08**：§3.2.1 豁免表已写入 docs/02
   - `backend/services/screener_service.py` **1838 行**（限 400）→ 按职责拆为 screener/ 目录（query_handler / dsl_parser / cache_manager / export_handler）
   - `backend/services/yfinance_service.py` **1480 行**（限 400）→ 按功能域拆分（macro / quote / history / calendar）
   - `backend/services/akshare_service.py` **912 行**（限 400）→ 按市场拆分（hk / cn / macro）
