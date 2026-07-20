@@ -82,7 +82,9 @@ def register_middleware(app: FastAPI) -> None:
 
         envelope = {
             "code": 0 if 200 <= response.status_code < 300 else int(ErrorCode.INTERNAL_ERROR),
-            "msg": "ok" if 200 <= response.status_code < 300 else (data.get("message", "error") if isinstance(data, dict) else "error"),
+            "msg": "ok"
+            if 200 <= response.status_code < 300
+            else (data.get("message", "error") if isinstance(data, dict) else "error"),
             "data": data,
             "ts": int(time.time() * 1000),
         }

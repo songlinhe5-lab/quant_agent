@@ -257,6 +257,7 @@ class TestDataCollector:
 
         # 临时缩短超时
         import backend.services.expert_team.data_collector as dc
+
         original_timeout = dc._COLLECT_TIMEOUT
         dc._COLLECT_TIMEOUT = 0.1
 
@@ -329,12 +330,8 @@ class TestOrchestrator:
             full_report="# 报告\n测试",
         )
 
-        with patch(
-            "backend.services.expert_team.orchestrator.llm_service"
-        ) as mock_llm:
-            mock_llm.generate_pydantic = AsyncMock(
-                side_effect=[mock_r1] * 5 + [mock_r2] * 5 + [mock_chief]
-            )
+        with patch("backend.services.expert_team.orchestrator.llm_service") as mock_llm:
+            mock_llm.generate_pydantic = AsyncMock(side_effect=[mock_r1] * 5 + [mock_r2] * 5 + [mock_chief])
 
             events = []
             async for event in orchestrator.run_debate_stream(

@@ -158,7 +158,10 @@ async def app_lifespan(app: FastAPI):
                             try:
                                 async with AsyncSessionLocal() as db:
                                     snapshot = models.NavSnapshot(
-                                        market=market, nav=nav, cash=cash, market_val=market_val,
+                                        market=market,
+                                        nav=nav,
+                                        cash=cash,
+                                        market_val=market_val,
                                     )
                                     db.add(snapshot)
                                     await db.commit()
@@ -232,12 +235,14 @@ async def app_lifespan(app: FastAPI):
 
         try:
             from backend.services.bot_runtime import bot_runtime
+
             await bot_runtime.shutdown()
         except Exception:
             pass
 
         try:
             from backend.services.algo_engine import algo_engine
+
             await algo_engine.shutdown()
         except Exception:
             pass

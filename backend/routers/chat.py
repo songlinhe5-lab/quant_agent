@@ -54,30 +54,68 @@ async def get_current_username(
 STATIC_SUGGESTIONS = [
     {"title": "今日宏观风向", "prompt": "提取今天全球核心经济体的宏观大事件，并给出你的风险判断。"},
     {"title": "回测绩效归因", "prompt": "我的策略夏普比率 1.5，但最大回撤 25%，请分析可能的原因及改进建议。"},
-    {"title": "量化代码 Debug", "prompt": "我有一个报错：RuntimeWarning: divide by zero encountered in scalar divide，在 Numpy 计算夏普比率时，如何安全处理？"},
+    {
+        "title": "量化代码 Debug",
+        "prompt": "我有一个报错：RuntimeWarning: divide by zero encountered in scalar divide，在 Numpy 计算夏普比率时，如何安全处理？",
+    },
     {"title": "交易心理建设", "prompt": "连续亏损导致心态失衡，作为量化交易员，该如何科学地执行熔断并调整心态？"},
     {"title": "期权策略套利", "prompt": "当前 VIX 较低，推荐一个适合中性震荡行情的期权卖方策略（如 Iron Condor）。"},
-    {"title": "个股深度研判", "prompt": "请对我关注的标的进行深度研判，综合基本面(PE/PB/ROE)、技术面(MACD/RSI/MA)和估值分析，给出明确的多空概率和建仓建议。"},
+    {
+        "title": "个股深度研判",
+        "prompt": "请对我关注的标的进行深度研判，综合基本面(PE/PB/ROE)、技术面(MACD/RSI/MA)和估值分析，给出明确的多空概率和建仓建议。",
+    },
 ]
 
 DYN_ASSETS = [
-    "AAPL(苹果)", "TSLA(特斯拉)", "NVDA(英伟达)", "MSFT(微软)",
-    "0700.HK(腾讯)", "09988.HK(阿里)", "BTC(比特币)", "ETH(以太坊)",
-    "SPY(标普500)", "QQQ(纳指ETF)", "GLD(黄金ETF)", "USO(原油ETF)", "TLT(长牛美债)",
+    "AAPL(苹果)",
+    "TSLA(特斯拉)",
+    "NVDA(英伟达)",
+    "MSFT(微软)",
+    "0700.HK(腾讯)",
+    "09988.HK(阿里)",
+    "BTC(比特币)",
+    "ETH(以太坊)",
+    "SPY(标普500)",
+    "QQQ(纳指ETF)",
+    "GLD(黄金ETF)",
+    "USO(原油ETF)",
+    "TLT(长牛美债)",
 ]
 DYN_INDICATORS = [
-    "双均线(MA)", "指数移动平均(EMA)", "MACD", "RSI", "布林带(BOLL)",
-    "真实波幅(ATR)", "KDJ", "VWAP", "动量因子(Momentum)", "夏普比率(Sharpe)",
+    "双均线(MA)",
+    "指数移动平均(EMA)",
+    "MACD",
+    "RSI",
+    "布林带(BOLL)",
+    "真实波幅(ATR)",
+    "KDJ",
+    "VWAP",
+    "动量因子(Momentum)",
+    "夏普比率(Sharpe)",
 ]
 DYN_THEMES = [
-    "基本面", "技术面", "资金面", "情绪面",
-    "宏观政策", "期权隐含波动率(IV)", "量化统计套利", "跨市场对冲",
+    "基本面",
+    "技术面",
+    "资金面",
+    "情绪面",
+    "宏观政策",
+    "期权隐含波动率(IV)",
+    "量化统计套利",
+    "跨市场对冲",
 ]
 DYN_ACTIONS = [
-    "写一个实盘策略框架", "分析最新的走势", "诊断可能存在的黑天鹅风险",
-    "给出投资组合建议", "编写量化特征提取代码", "分析支撑位和压力位", "评估目前的估值水平",
-    "深度研判", "对标同业 top 3", "检测财务异常信号",
-    "评估12月目标价空间", "分析建仓时机",
+    "写一个实盘策略框架",
+    "分析最新的走势",
+    "诊断可能存在的黑天鹅风险",
+    "给出投资组合建议",
+    "编写量化特征提取代码",
+    "分析支撑位和压力位",
+    "评估目前的估值水平",
+    "深度研判",
+    "对标同业 top 3",
+    "检测财务异常信号",
+    "评估12月目标价空间",
+    "分析建仓时机",
 ]
 
 
@@ -249,7 +287,7 @@ async def get_sessions(
 
                 res_data.append(
                     {
-                        "session_id": r.session_id[len(prefix):] if r.session_id.startswith(prefix) else r.session_id,
+                        "session_id": r.session_id[len(prefix) :] if r.session_id.startswith(prefix) else r.session_id,
                         "title": r.title,
                         "created_at": r.created_at.isoformat() if getattr(r, "created_at", None) else "",
                         "updated_at": r.updated_at.isoformat() if getattr(r, "updated_at", None) else "",
@@ -272,9 +310,7 @@ async def get_session_history(session_id: str, username: str = Depends(get_curre
 
     def fetch_history():
         with SessionLocal() as db:
-            record = db.query(models.AgentSession).filter(
-                models.AgentSession.session_id == safe_session_id
-            ).first()
+            record = db.query(models.AgentSession).filter(models.AgentSession.session_id == safe_session_id).first()
             if record:
                 return record.messages
             return []
@@ -293,9 +329,7 @@ async def delete_all_sessions(username: str = Depends(get_current_username)):
 
     def drop_all():
         with SessionLocal() as db:
-            records = db.query(models.AgentSession).filter(
-                models.AgentSession.session_id.startswith(prefix)
-            ).all()
+            records = db.query(models.AgentSession).filter(models.AgentSession.session_id.startswith(prefix)).all()
             if not records:
                 return False
             for r in records:
@@ -329,9 +363,7 @@ async def delete_session(session_id: str, username: str = Depends(get_current_us
 
     def drop_session():
         with SessionLocal() as db:
-            record = db.query(models.AgentSession).filter(
-                models.AgentSession.session_id == safe_session_id
-            ).first()
+            record = db.query(models.AgentSession).filter(models.AgentSession.session_id == safe_session_id).first()
             if not record:
                 return False
             db.delete(record)

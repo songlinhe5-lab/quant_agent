@@ -41,8 +41,12 @@ try:
     Base.metadata.create_all(bind=engine)
     with engine.begin() as conn:
         if is_pg:
-            conn.execute(text("CREATE INDEX IF NOT EXISTS trgm_idx_ticker_symbol ON tickers USING gin (symbol gin_trgm_ops);"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS trgm_idx_ticker_name ON tickers USING gin (name gin_trgm_ops);"))
+            conn.execute(
+                text("CREATE INDEX IF NOT EXISTS trgm_idx_ticker_symbol ON tickers USING gin (symbol gin_trgm_ops);")
+            )
+            conn.execute(
+                text("CREATE INDEX IF NOT EXISTS trgm_idx_ticker_name ON tickers USING gin (name gin_trgm_ops);")
+            )
             print("✅ [System] PostgreSQL pgvector 与 pg_trgm 扩展及全局索引挂载就绪！")
 except Exception as e:
     print(f"⚠️ [System] 自动创建数据库表失败 (请确认数据库服务已启动): {e}")

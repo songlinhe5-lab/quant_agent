@@ -26,9 +26,7 @@ class ExpertTeamService:
     def __init__(self, tool_registry: Optional[ToolRegistry] = None):
         self.orchestrator = DebateOrchestrator(tool_registry=tool_registry)
 
-    async def analyze_stream(
-        self, request: AnalyzeRequest
-    ) -> AsyncGenerator[str, None]:
+    async def analyze_stream(self, request: AnalyzeRequest) -> AsyncGenerator[str, None]:
         """
         执行专家团分析，返回 SSE 格式事件流。
 
@@ -68,9 +66,7 @@ class ExpertTeamService:
                 question=s.question,
                 status=s.status,
                 expert_count=len(s.experts),
-                probability_assessment=(
-                    s.chief_report.probability_assessment if s.chief_report else None
-                ),
+                probability_assessment=(s.chief_report.probability_assessment if s.chief_report else None),
                 created_at=s.created_at,
                 completed_at=s.completed_at,
             )

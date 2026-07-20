@@ -97,9 +97,7 @@ class DebateOrchestrator:
             yield StreamEvent(type="status", message="Round 1: 各专家独立研判中...")
 
             shared_text = format_shared_data_for_prompt(shared_data)
-            round1_opinions = await self._run_round1(
-                session, experts, question, shared_text
-            )
+            round1_opinions = await self._run_round1(session, experts, question, shared_text)
             session.round1_opinions = round1_opinions
 
             for opinion in round1_opinions:
@@ -119,9 +117,7 @@ class DebateOrchestrator:
             session.status = "round2"
             yield StreamEvent(type="status", message="Round 2: 交叉辩论中...")
 
-            round2_opinions = await self._run_round2(
-                session, experts, question, shared_text, round1_opinions
-            )
+            round2_opinions = await self._run_round2(session, experts, question, shared_text, round1_opinions)
             session.round2_opinions = round2_opinions
 
             for opinion in round2_opinions:
@@ -141,9 +137,7 @@ class DebateOrchestrator:
             session.status = "synthesis"
             yield StreamEvent(type="status", message="首席分析师正在收敛最终报告...")
 
-            chief_report = await self._run_synthesis(
-                session, question, round1_opinions, round2_opinions
-            )
+            chief_report = await self._run_synthesis(session, question, round1_opinions, round2_opinions)
             session.chief_report = chief_report
 
             yield StreamEvent(
@@ -182,10 +176,7 @@ class DebateOrchestrator:
         shared_text: str,
     ) -> list[ExpertOpinion]:
         """并行调度所有专家进行独立研判"""
-        tasks = [
-            self._call_expert_round1(expert, question, shared_text)
-            for expert in experts
-        ]
+        tasks = [self._call_expert_round1(expert, question, shared_text) for expert in experts]
 
         try:
             results = await asyncio.wait_for(
@@ -213,9 +204,7 @@ class DebateOrchestrator:
 
         return opinions
 
-    async def _call_expert_round1(
-        self, expert: ExpertRole, question: str, shared_text: str
-    ) -> Optional[ExpertOpinion]:
+    async def _call_expert_round1(self, expert: ExpertRole, question: str, shared_text: str) -> Optional[ExpertOpinion]:
         """单个专家的 Round 1 调用"""
         system_prompt = expert.system_prompt or f"你是{expert.name}，{expert.description}。"
 
@@ -273,10 +262,7 @@ class DebateOrchestrator:
         round1_opinions: list[ExpertOpinion],
     ) -> list[ExpertOpinion]:
         """并行调度所有专家进行交叉辩论"""
-        tasks = [
-            self._call_expert_round2(expert, question, shared_text, round1_opinions)
-            for expert in experts
-        ]
+        tasks = [self._call_expert_round2(expert, question, shared_text, round1_opinions) for expert in experts]
 
         try:
             results = await asyncio.wait_for(
@@ -321,16 +307,14 @@ class DebateOrchestrator:
             my_r1_text = f"""### 你的 Round 1 研判
 - 观点: {my_r1.stance}
 - 置信度: {my_r1.confidence}
-- 依据: {', '.join(my_r1.key_evidence)}
+- 依据: {", ".join(my_r1.key_evidence)}
 - 推理: {my_r1.reasoning}"""
 
         # 其他专家的 Round 1 摘要
         others_text_parts: list[str] = []
         for o in round1_opinions:
             if o.expert_id != expert.id:
-                others_text_parts.append(
-                    f"- **{o.expert_id}** (置信度 {o.confidence}): {o.stance}"
-                )
+                others_text_parts.append(f"- **{o.expert_id}** (置信度 {o.confidence}): {o.stance}")
         others_text = "\n".join(others_text_parts)
 
         user_prompt = f"""## 用户问题

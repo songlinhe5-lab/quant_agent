@@ -94,16 +94,12 @@ async def collect_shared_data(
             kwargs["ticker"] = ticker
 
         # 创建异步采集任务
-        task = asyncio.create_task(
-            _safe_collect(tool_registry, tool_name, req, kwargs)
-        )
+        task = asyncio.create_task(_safe_collect(tool_registry, tool_name, req, kwargs))
         tasks.append((req, task))
 
     # 并行等待所有采集任务
     if tasks:
-        results = await asyncio.gather(
-            *[t for _, t in tasks], return_exceptions=True
-        )
+        results = await asyncio.gather(*[t for _, t in tasks], return_exceptions=True)
         for (req, _), result in zip(tasks, results):
             if isinstance(result, Exception):
                 shared_data[req] = {

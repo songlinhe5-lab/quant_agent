@@ -31,6 +31,7 @@ async def analyze(request: AnalyzeRequest):
     try:
         service.get_scenarios()
         from backend.services.expert_team.expert_registry import get_scenario
+
         get_scenario(request.scenario)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

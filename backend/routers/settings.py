@@ -99,7 +99,7 @@ async def get_financial_report(ticker: str, chunk_index: int = 0):
             return {"status": "error", "message": f"不支持的文件格式: {ext}。"}
         content = await asyncio.to_thread(_read_file_sync, target_file, ext)
         max_chars = 15000
-        chunks = [content[i: i + max_chars] for i in range(0, len(content), max_chars)]
+        chunks = [content[i : i + max_chars] for i in range(0, len(content), max_chars)]
         if not chunks:
             return {"status": "error", "message": "文件内容提取为空。"}
         if chunk_index < 0 or chunk_index >= len(chunks):

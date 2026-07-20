@@ -266,7 +266,15 @@ EXPERT_REGISTRY: dict[str, ExpertRole] = {
 
 # 团队分组索引
 TEAM_GROUPS: dict[str, list[str]] = {
-    "analyst": ["fundamental_analyst", "technical_analyst", "macro_strategist", "valuation_expert", "industry_analyst", "sentiment_analyst", "news_analyst"],
+    "analyst": [
+        "fundamental_analyst",
+        "technical_analyst",
+        "macro_strategist",
+        "valuation_expert",
+        "industry_analyst",
+        "sentiment_analyst",
+        "news_analyst",
+    ],
     "researcher": ["industry_researcher", "quant_researcher"],
     "trader": ["trade_executor"],
     "risk": ["risk_officer", "portfolio_risk_manager"],
