@@ -882,8 +882,8 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 > 每日收盘后自动生成 A股/港股/美股 大盘复盘报告，结构化存储后供个股分析、专家团研判引用判因。
 
-- [ ] **[MRKT-01]** 数据模型 + 存储：`backend/services/market_review/models.py`（MarketDailyReview / IndexSnapshot / SectorPerformance / MarketEvent）+ Redis 持久化（按日期+市场键控）
-- [ ] **[MRKT-02]** 复盘生成引擎：`backend/services/market_review/generator.py`，调用现有 ToolRegistry 采集（指数行情/板块涨跌/资金流向/宏观新闻）+ LLM 生成结构化报告（市场风格定性/资金面结论/情绪评分/事件影响）
+- [x] **[MRKT-01]** 数据模型 + 存储：`backend/services/market_review/models.py`（MarketDailyReview / IndexSnapshot / SectorPerformance / MarketEvent）+ Redis 持久化（按日期+市场键控）✅ **2026-07-20**：models.py + storage.py(save/load_market_review) 已提交（862bfe4）
+- [x] **[MRKT-02]** 复盘生成引擎：`backend/services/market_review/generator.py`，调用现有 ToolRegistry 采集（指数行情/板块涨跌/资金流向/宏观新闻）+ LLM 生成结构化报告（市场风格定性/资金面结论/情绪评分/事件影响）✅ **2026-07-20**：generator.py 已提交（986d424）；补齐「板块涨跌」采集缺口（行业 ETF 代理，领涨/领跌分组），13 单测全过
 - [ ] **[MRKT-03]** 定时触发：复用 Worker scheduler，A股 15:30 / 港股 16:30 / 美股 04:30 (CST+1) 自动触发复盘生成
 - [ ] **[MRKT-04]** 引用接口：`get_market_review(date, market)` 查询 API + Expert Team data_collector 新增 `market_review` 数据类型 + Hermes Agent 工具注册
 - [ ] **[MRKT-05]** 判因集成：个股/微观分析时自动拉取近 3 日 MarketDailyReview 作为上下文，输出判因链（大盘→板块→个股）

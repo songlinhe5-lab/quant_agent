@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.services.market_review.generator import (
     _build_analysis_prompt,
+    _collect_sectors,
     _parse_events,
     _parse_sentiment_level,
     _parse_style,
@@ -199,3 +200,51 @@ class TestGenerateMarketReview:
         assert review.style is None  # LLM 失败，无风格
         assert review.summary == ""
         assert len(review.indices) == 2  # 港股2个指数
+
+
+@pytest.mark.asyncio
+async def test_collect_sectors_populates_top_and_bottom():
+    """板块涨跌采集：行业 ETF 作代理，按涨跌幅排序填充领涨/领跌。"""
+    # 港股板块 ETF 代理代码（与 generator._SECTOR_ETFS 对应）
+    sector_quotes = {
+        "HK.03033": 2.5,   # 恒生科技 领涨
+        "HK.02800": -1.2,  # 蓝筹 领跌
+        "HK.03067": 0.8,
+        "HK.02828": -0.5,
+        "HK.03038": 1.1,
+        "HK.03024": -2.0,  # 恒生消费 领跌
+    }
+
+    mock_registry = MagicMock()
+    mock_registry.execute = AsyncMock(
+        side_effect=lambda name, **kwargs: (
+            {"status": "success", "data": {"last_price": 100.0, "change_pct": sector_quotes[kwargs["ticker"]]}}
+            if name == "get_broker_market_data" and kwargs.get("action") == "QUOTE" and kwargs.get("ticker") in sector_quotes
+            else {"status": "error", "message": "unavailable"}
+        )
+    )
+
+    top, bottom = await _collect_sectors(mock_registry, MarketType.HK)
+
+    # 港股代理共 6 个，领涨取前 5、领跌取前 5，但数据驱动：top 为涨的，bottom 为跌的
+    assert len(top) == 3  # 涨的: 03033/03067/03038
+    assert len(bottom) == 3  # 跌的: 02800/02828/03024
+    # 领涨首位涨跌幅最高
+    assert top[0].name == "恒生科技"
+    assert top[0].change_pct == 2.5
+    assert top[0].direction == "涨"
+    # 领跌首位跌幅最大
+    assert bottom[0].name == "恒生消费"
+    assert bottom[0].change_pct == -2.0
+    assert bottom[0].direction == "跌"
+
+
+@pytest.mark.asyncio
+async def test_collect_sectors_falls_back_empty_on_error():
+    """板块采集全部失败时返回空列表，不抛异常、不阻断主流程。"""
+    mock_registry = MagicMock()
+    mock_registry.execute = AsyncMock(return_value={"status": "error", "message": "unavailable"})
+
+    top, bottom = await _collect_sectors(mock_registry, MarketType.US)
+    assert top == []
+    assert bottom == []
