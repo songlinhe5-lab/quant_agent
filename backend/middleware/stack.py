@@ -7,13 +7,11 @@ import asyncio
 import json
 import os
 import time
-import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from backend.core.error_codes import ErrorCode
-from backend.core.logger import logger
 from backend.core.otel_config import get_current_trace_id
 from backend.core.redis_client import redis_client
 from backend.core.structlog_config import (

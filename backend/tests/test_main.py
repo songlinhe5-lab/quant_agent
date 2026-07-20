@@ -25,8 +25,8 @@ class TestGlobalExceptionHandler:
     def test_quant_exception_handler_returns_unified_format(self):
         """QuantBaseException 转换为统一格式"""
         from backend.core.error_codes import ErrorCode
-        from backend.core.exceptions import QuantBaseException
         from backend.core.exception_handlers import quant_exception_handler
+        from backend.core.exceptions import QuantBaseException
 
         mock_request = MagicMock(spec=Request)
         exc = QuantBaseException(

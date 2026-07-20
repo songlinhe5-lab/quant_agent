@@ -10,7 +10,6 @@ from typing import Any, Optional
 
 from hermes_agent.tool_registry import ToolRegistry
 
-
 # 数据类型 → 采集工具映射
 _DATA_COLLECTORS: dict[str, dict[str, Any]] = {
     "quote": {

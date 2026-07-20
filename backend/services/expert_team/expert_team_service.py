@@ -4,7 +4,7 @@
 """
 
 import json
-from typing import Any, AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional
 
 from backend.services.expert_team.expert_registry import list_scenarios
 from backend.services.expert_team.models import (
@@ -12,7 +12,6 @@ from backend.services.expert_team.models import (
     DebateSession,
     ScenarioTemplate,
     SessionSummary,
-    StreamEvent,
 )
 from backend.services.expert_team.orchestrator import DebateOrchestrator
 from hermes_agent.tool_registry import ToolRegistry
@@ -36,8 +35,6 @@ class ExpertTeamService:
         Yields:
             str: SSE 格式文本 "data: {...}\n\n"
         """
-        session_id: Optional[str] = None
-
         async for event in self.orchestrator.run_debate_stream(
             scenario_id=request.scenario,
             question=request.question,
@@ -45,10 +42,6 @@ class ExpertTeamService:
             code_context=request.code_context,
             extra_context=request.extra_context,
         ):
-            # 捕获 session_id
-            if event.data.get("session_id"):
-                session_id = event.data["session_id"]
-
             # 序列化为 SSE
             payload = event.model_dump()
             yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"

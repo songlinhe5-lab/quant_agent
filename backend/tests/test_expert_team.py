@@ -14,7 +14,6 @@ from backend.services.expert_team.data_collector import (
 )
 from backend.services.expert_team.expert_registry import (
     EXPERT_REGISTRY,
-    SCENARIO_TEMPLATES,
     get_expert,
     get_scenario,
     instantiate_expert_team,
@@ -27,11 +26,9 @@ from backend.services.expert_team.models import (
     ExpertOpinion,
     ExpertRole,
     ScenarioTemplate,
-    SessionSummary,
     StreamEvent,
 )
 from backend.services.expert_team.orchestrator import DebateOrchestrator
-
 
 # ─── models.py 测试 ────────────────────────────────────────────
 

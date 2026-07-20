@@ -49,6 +49,9 @@ except Exception as e:
 
 # --- 核心基础设施 ---
 from backend.bootstrap.lifecycle import app_lifespan, global_llm_client, global_registry  # noqa: E402, F401
+
+# --- 中间件 & 异常处理 ---
+from backend.core.exception_handlers import register_exception_handlers  # noqa: E402
 from backend.core.middleware import AccessLogMiddleware  # noqa: E402
 from backend.core.openapi_schema import (  # noqa: E402
     API_VERSION,
@@ -59,13 +62,11 @@ from backend.core.openapi_schema import (  # noqa: E402
 )
 from backend.core.otel_config import init_otel  # noqa: E402
 from backend.core.structlog_config import configure_structlog  # noqa: E402
-
-# --- 中间件 & 异常处理 ---
-from backend.core.exception_handlers import register_exception_handlers  # noqa: E402
 from backend.middleware.stack import register_middleware  # noqa: E402
 
 # --- 业务路由 ---
 from backend.routers.alert import router as alert_router  # noqa: E402
+from backend.routers.alpha158 import router as alpha158_router  # noqa: E402
 from backend.routers.audit import router as audit_router  # noqa: E402
 from backend.routers.auth import router as auth_router  # noqa: E402
 from backend.routers.backtest import router as backtest_router  # noqa: E402
@@ -80,7 +81,6 @@ from backend.routers.earnings_router import router as earnings_router  # noqa: E
 from backend.routers.eval import router as eval_router  # noqa: E402
 from backend.routers.expert_team import router as expert_team_router  # noqa: E402
 from backend.routers.factor import router as factor_router  # noqa: E402
-from backend.routers.alpha158 import router as alpha158_router  # noqa: E402
 from backend.routers.futu_admin import router as futu_admin_router  # noqa: E402
 from backend.routers.internal import router as internal_router  # noqa: E402
 from backend.routers.logs import router as logs_router  # noqa: E402
@@ -99,7 +99,8 @@ from backend.routers.search import router as search_router  # noqa: E402
 from backend.routers.settings import router as settings_router  # noqa: E402
 from backend.routers.strategy import router as strategy_router  # noqa: E402
 from backend.routers.system import router as system_router  # noqa: E402
-from backend.routers.system_health import root_router, router as system_health_router  # noqa: E402
+from backend.routers.system_health import root_router  # noqa: E402
+from backend.routers.system_health import router as system_health_router  # noqa: E402
 from backend.routers.trade import router as trade_router  # noqa: E402
 
 # ─── API 版本前缀 ─────────────────────────────────────────────

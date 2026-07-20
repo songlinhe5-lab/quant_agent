@@ -9,13 +9,12 @@ import secrets
 from typing import Optional
 
 import prometheus_client
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from backend.core.redis_client import redis_client
 from backend.services.notification_service import notification_service
-from backend.services.system_monitor_service import system_monitor_service
 
 router = APIRouter(tags=["System Health"])
 

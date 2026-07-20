@@ -46,7 +46,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     """捕获 Pydantic 请求参数校验失败，转换为 code=2001 的统一格式"""
     errors = []
     for err in exc.errors():
-        loc = " -> ".join(str(l) for l in err["loc"]) if err.get("loc") else ""
+        loc = " -> ".join(str(part) for part in err["loc"]) if err.get("loc") else ""
         errors.append({"field": loc, "msg": err.get("msg", ""), "type": err.get("type", "")})
     body = {
         "code": int(ErrorCode.VALIDATION_FAILED),

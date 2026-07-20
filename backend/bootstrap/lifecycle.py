@@ -11,8 +11,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from backend.core.database import AsyncSessionLocal, SessionLocal, async_engine, engine
 from backend.core import models
+from backend.core.database import AsyncSessionLocal, SessionLocal, async_engine, engine
 from backend.core.logger import logger
 from backend.core.redis_client import redis_batch_writer, redis_client
 from backend.core.security import get_password_hash

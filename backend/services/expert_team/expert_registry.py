@@ -28,7 +28,6 @@
     └── maintainability_expert 可维护性专家
 """
 
-import os
 from pathlib import Path
 
 from backend.services.expert_team.models import ExpertRole, ScenarioTemplate
