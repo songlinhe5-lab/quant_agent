@@ -37,9 +37,7 @@ class TestAKShareServiceCacheMode:
         # SPEC-01 拆分后 redis_client 分布在各子模块，需逐一 patch
         with ExitStack() as stack:
             for mod in ("flow", "quote", "calendar"):
-                stack.enter_context(
-                    patch(f"backend.services.akshare.{mod}.redis_client", mock_redis)
-                )
+                stack.enter_context(patch(f"backend.services.akshare.{mod}.redis_client", mock_redis))
             from backend.services.akshare_service import AKShareService
 
             svc = AKShareService()
