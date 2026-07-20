@@ -62,7 +62,7 @@ class TestAKShareService:
     async def test_get_southbound_flow_cache_hit(self, service):
         """南向资金缓存命中应直接返回"""
         cached = {"status": "success", "data": {"net_inflow": 12.8}}
-        with patch("backend.services.akshare_service.redis_client") as mock_redis:
+        with patch("backend.services.akshare.flow.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=json.dumps(cached))
             assert await service.get_southbound_flow() == cached
 
@@ -81,8 +81,8 @@ class TestAKShareService:
         fake_ak = MagicMock()
         with (
             patch.dict(sys.modules, {"akshare": fake_ak}),
-            patch("backend.services.akshare_service.redis_client") as mock_redis,
-            patch("backend.services.akshare_service.asyncio.gather", new=AsyncMock(return_value=(df, hist_df))),
+            patch("backend.services.akshare.flow.redis_client") as mock_redis,
+            patch("backend.services.akshare.flow.asyncio.gather", new=AsyncMock(return_value=(df, hist_df))),
         ):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
@@ -95,8 +95,8 @@ class TestAKShareService:
     async def test_get_southbound_flow_failure_returns_mock(self, service):
         """南向资金获取异常应返回 mock 数据"""
         with (
-            patch("backend.services.akshare_service.redis_client") as mock_redis,
-            patch("backend.services.akshare_service.asyncio.gather", new=AsyncMock(side_effect=RuntimeError("boom"))),
+            patch("backend.services.akshare.flow.redis_client") as mock_redis,
+            patch("backend.services.akshare.flow.asyncio.gather", new=AsyncMock(side_effect=RuntimeError("boom"))),
         ):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
@@ -119,8 +119,8 @@ class TestAKShareService:
         fake_ak = MagicMock()
         with (
             patch.dict(sys.modules, {"akshare": fake_ak}),
-            patch("backend.services.akshare_service.redis_client") as mock_redis,
-            patch("backend.services.akshare_service.asyncio.gather", new=AsyncMock(return_value=(df, hist_df))),
+            patch("backend.services.akshare.flow.redis_client") as mock_redis,
+            patch("backend.services.akshare.flow.asyncio.gather", new=AsyncMock(return_value=(df, hist_df))),
         ):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
@@ -141,7 +141,7 @@ class TestAKShareService:
         fake_ak = MagicMock()
         with (
             patch.dict(sys.modules, {"akshare": fake_ak}),
-            patch("backend.services.akshare_service.redis_client") as mock_redis,
+            patch("backend.services.akshare.quote.redis_client") as mock_redis,
         ):
             mock_redis.get = AsyncMock(return_value=None)
             result = await service.get_company_news("HK.BK1118")
@@ -154,7 +154,7 @@ class TestAKShareService:
         fake_ak = MagicMock()
         with (
             patch.dict(sys.modules, {"akshare": fake_ak}),
-            patch("backend.services.akshare_service.redis_client") as mock_redis,
+            patch("backend.services.akshare.quote.redis_client") as mock_redis,
             patch(
                 "backend.services.finnhub_service.finnhub_service._fallback_yahoo_news",
                 new=AsyncMock(return_value=yahoo_news),
@@ -170,7 +170,7 @@ class TestAKShareService:
     @pytest.mark.asyncio
     async def test_get_company_news_invalid_code_returns_error(self, service):
         """无法提取数字代码时应返回 error"""
-        with patch("backend.services.akshare_service.redis_client") as mock_redis:
+        with patch("backend.services.akshare.quote.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
             assert (await service.get_company_news("INVALID"))["status"] == "error"
@@ -184,7 +184,7 @@ class TestAKShareService:
     @pytest.mark.asyncio
     async def test_get_stock_quote_invalid_code(self, service):
         """无效代码应返回 error"""
-        with patch("backend.services.akshare_service.redis_client") as mock_redis:
+        with patch("backend.services.akshare.quote.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             assert (await service.get_stock_quote("INVALID"))["status"] == "error"
 
@@ -205,8 +205,8 @@ class TestAKShareService:
         fake_ak = MagicMock()
         with (
             patch.dict(sys.modules, {"akshare": fake_ak}),
-            patch("backend.services.akshare_service.redis_client") as mock_redis,
-            patch("backend.services.akshare_service.asyncio.to_thread", new=AsyncMock(return_value=df)),
+            patch("backend.services.akshare.quote.redis_client") as mock_redis,
+            patch("backend.services.akshare.quote.asyncio.to_thread", new=AsyncMock(return_value=df)),
         ):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
@@ -230,8 +230,8 @@ class TestAKShareService:
         fake_ak = MagicMock()
         with (
             patch.dict(sys.modules, {"akshare": fake_ak}),
-            patch("backend.services.akshare_service.redis_client") as mock_redis,
-            patch("backend.services.akshare_service.asyncio.to_thread", new=AsyncMock(return_value=df)),
+            patch("backend.services.akshare.quote.redis_client") as mock_redis,
+            patch("backend.services.akshare.quote.asyncio.to_thread", new=AsyncMock(return_value=df)),
         ):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
@@ -253,8 +253,8 @@ class TestAKShareService:
         fake_ak = MagicMock()
         with (
             patch.dict(sys.modules, {"akshare": fake_ak}),
-            patch("backend.services.akshare_service.redis_client") as mock_redis,
-            patch("backend.services.akshare_service.asyncio.to_thread", new=AsyncMock(return_value=df)),
+            patch("backend.services.akshare.flow.redis_client") as mock_redis,
+            patch("backend.services.akshare.flow.asyncio.to_thread", new=AsyncMock(return_value=df)),
         ):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
@@ -269,8 +269,8 @@ class TestAKShareService:
         fake_ak = MagicMock()
         with (
             patch.dict(sys.modules, {"akshare": fake_ak}),
-            patch("backend.services.akshare_service.redis_client") as mock_redis,
-            patch("backend.services.akshare_service.asyncio.to_thread", new=AsyncMock(return_value=pd.DataFrame())),
+            patch("backend.services.akshare.flow.redis_client") as mock_redis,
+            patch("backend.services.akshare.flow.asyncio.to_thread", new=AsyncMock(return_value=pd.DataFrame())),
         ):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
@@ -280,7 +280,7 @@ class TestAKShareService:
     async def test_get_economic_calendar_cache_hit(self, service):
         """宏观日历缓存命中"""
         cached = {"status": "success", "data": [{"event": "FOMC"}]}
-        with patch("backend.services.akshare_service.redis_client") as mock_redis:
+        with patch("backend.services.akshare.calendar.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=json.dumps(cached))
             assert await service.get_economic_calendar() == cached
 
@@ -289,9 +289,9 @@ class TestAKShareService:
         """百度股市通接口应被优先调用"""
         df = pd.DataFrame({"地区": ["US"], "事件": ["FOMC"], "重要性": ["高"], "公布时间": ["08:30"]})
         with (
-            patch("backend.services.akshare_service.redis_client") as mock_redis,
+            patch("backend.services.akshare.calendar.redis_client") as mock_redis,
             patch(
-                "backend.services.akshare_service.asyncio.gather", new=AsyncMock(return_value=[df.to_dict("records")])
+                "backend.services.akshare.calendar.asyncio.gather", new=AsyncMock(return_value=[df.to_dict("records")])
             ),
         ):
             mock_redis.get = AsyncMock(return_value=None)
@@ -304,8 +304,8 @@ class TestAKShareService:
     async def test_get_economic_calendar_exception_returns_error(self, service):
         """gather 异常应返回 error"""
         with (
-            patch("backend.services.akshare_service.redis_client") as mock_redis,
-            patch("backend.services.akshare_service.asyncio.gather", new=AsyncMock(side_effect=RuntimeError("boom"))),
+            patch("backend.services.akshare.calendar.redis_client") as mock_redis,
+            patch("backend.services.akshare.calendar.asyncio.gather", new=AsyncMock(side_effect=RuntimeError("boom"))),
         ):
             mock_redis.get = AsyncMock(return_value=None)
             assert (await service.get_economic_calendar())["status"] == "error"

@@ -599,10 +599,11 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 #### P0 — 规范公信力修复
 
-- [x] **[SPEC-01]** §3.2 存量豁免清单：在 `docs/02 §3.2` 增加「存量超限文件豁免表」，列出当前超限文件及计划拆分时间线，避免规范沦为空文。当前严重超限：✅ **2026-07-08**：§3.2.1 豁免表已写入 docs/02
-  - `backend/services/screener_service.py` **1838 行**（限 400）→ 按职责拆为 screener/ 目录（query_handler / dsl_parser / cache_manager / export_handler）
-  - `backend/services/yfinance_service.py` **1480 行**（限 400）→ 按功能域拆分（macro / quote / history / calendar）
-  - `backend/services/akshare_service.py` **912 行**（限 400）→ 按市场拆分（hk / cn / macro）
+- [x] **[SPEC-01]** 存量超限文件拆分：将三大超限 service 文件按职责拆分为包目录，每个子文件 ≤400 行，保持所有现有 import 路径零修改。✅ **2026-07-20**：拆分完成
+  - `backend/services/screener_service.py` **1838 行** → `backend/services/screener/` (7文件: constants/models/nlp_translator/dsl_parser/daemons/service/__init__)
+  - `backend/services/yfinance_service.py` **1480 行** → `backend/services/yfinance/` (7文件: utils/service/quote/technical/search/macro_daemon/__init__)
+  - `backend/services/akshare_service.py` **912 行** → `backend/services/akshare/` (5文件: service/flow/quote/calendar/__init__)
+  - 原文件保留为 ~5 行 shim 兼容层，122 个测试全部通过
 - [ ] **[SPEC-02]** §8.0 部署拓扑对齐：将"三节点矩阵部署"修正为实际架构「单 VPS（API+Worker+Redis）+ 北京辅助节点（AKShare）」，与 `AGENTS.md §9` 保持一致
 - [ ] **[SPEC-03]** 前端超限文件治理（第一批）：
   - `frontend/src/features/trading/backtest.tsx` **626 行**（限 300）→ 拆子组件 + hooks
@@ -1136,6 +1137,7 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 | 2026-07-08 | [RL-03] CircuitBreaker 限流解耦完成：is_rate_limit_error 过滤钩子 (识别异常携带的 ErrorCategory) + error_classifier 动态回调 (per-call 最终决定权) + record_failure(is_rate_limit=True) 手动记录接口 + call()/call_sync() 限流不计入失败计数；20 个单测全通过 |
 | 2026-07-08 | [RL-02/04] RateLimitThrottler 退避引擎完成：4 种策略 (none/linear/exponential/adaptive) + Retry-After 优先采纳 + 自适应恢复机制 (连续 10 次成功降速) + 抖动防雷群 + 线程安全 + 环境变量配置 (DATASOURCE_{NAME}_BACKOFF_*)；31 个单测全通过 |
 | 2026-07-08 | [RL-01] ErrorInfo 结构扩展完成：ErrorCategory 枚举 (normal/rate_limit/quota_exhausted/ip_blocked) + RateLimitInfo 嵌套结构 + Result 统一返回结构 + classify_http_error 自动分类 + DataSourceRouter 集成 (限流不计入熔断器)；44 个单测全通过 |
+| 2026-07-20 | [SPEC-01] 存量超限文件拆分完成：screener_service.py (1838行) → screener/ (7文件)；yfinance_service.py (1480行) → yfinance/ (7文件)；akshare_service.py (912行) → akshare/ (5文件)；Mixin 组合模式 + shim 兼容层，122 测试全通过 |
 | 2026-07-14 | [DIST-11~18] 分布式数据源集群部署完成：YF 节点 Compose / 灰度切换配置 / 四节点部署脚本 / CI/CD 矩阵 (master + yf×2 + slave) / 数据源验证脚本 |
 | 2026-07-08 | 新增「数据源限流感知与自适应退避」RL-01~14：限流错误分类 / RateLimitThrottler 退避引擎 / 频率动态分析 / 推测频率查询 API / Prometheus 限流指标 / 限流告警 / Registry 路由感知 / Agent Tool 限流感知；docs/14 新增 §十二；AGENTS.md 新增 §10.8 |
 | 2026-07-02 | OMS-05~07 算力节点完成：`bot_runtime.py` BotRuntimeManager (asyncio.Task 生命周期) + psutil 真实 CPU/MEM 监控 + Redis List 日志持久化 + PubSub/WebSocket 实时推送；`/deploy-to-oms` 升级为真实 Bot 启动；前端新增 Bot 终止按钮 |

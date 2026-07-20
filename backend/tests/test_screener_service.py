@@ -401,7 +401,7 @@ class TestScreenerServiceMethods:
         """Test translate_nlp_to_dsl with cached result"""
         # Mock redis cache hit
         with patch.object(screener_service, "_normalize_nlp_query", return_value="test query"):
-            with patch("backend.services.screener_service.redis_client") as mock_redis:
+            with patch("backend.services.screener.nlp_translator.redis_client") as mock_redis:
                 mock_redis.get = AsyncMock(
                     return_value=json.dumps(
                         {
@@ -419,12 +419,12 @@ class TestScreenerServiceMethods:
     @pytest.mark.asyncio
     async def test_translate_nlp_to_dsl_no_cache(self):
         """Test translate_nlp_to_dsl without cache (mocked LLM)"""
-        with patch("backend.services.screener_service.redis_client") as mock_redis:
+        with patch("backend.services.screener.nlp_translator.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.setex = AsyncMock()
 
             # Mock the LLM service
-            with patch("backend.services.screener_service.llm_service") as mock_llm:
+            with patch("backend.services.screener.nlp_translator.llm_service") as mock_llm:
                 mock_response = MagicMock()
                 mock_response.choices = [MagicMock()]
                 mock_response.choices[0].message.content = json.dumps(
