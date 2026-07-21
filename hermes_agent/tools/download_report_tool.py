@@ -29,6 +29,9 @@ _ALLOWED_DOMAINS = [
     # ── 港股 ──
     "hkexnews.hk",
     "www1.hkexnews.hk",
+    "hkex.com.hk",          # 港交所官网
+    "www.hkex.com.hk",
+    "news.hkex.com.hk",
     # ── 美股 (SEC + IR 托管平台) ──
     "sec.gov",
     "www.sec.gov",
