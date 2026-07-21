@@ -210,8 +210,8 @@ class RestClient {
 
       // 处理 401 - 尝试刷新 Token
       if (response.status === 401) {
-        // 认证接口本身返回 401 → 清除 token 并跳转登录页
-        if (path === '/auth/me' || path === '/auth/refresh' || path === '/auth/login') {
+        // 仅 refresh/login 接口本身返回 401 → 说明 Refresh Token 也失效了，清除并跳转登录
+        if (path === '/auth/refresh' || path === '/auth/login') {
           clearTokens()
           if (window.location.pathname !== '/login') {
             window.location.href = '/login'
