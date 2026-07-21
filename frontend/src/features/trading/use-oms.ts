@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useToast } from '@/hooks/use-toast'
-import { apiClient, API_BASE_URL, getAccessToken } from '@/lib/api-client'
+import { apiClient, API_BASE_URL, getValidAccessToken } from '@/lib/api-client'
 import { confirmDanger } from '@/components/confirm-dialog'
 import type { LiveBot, ActiveOrder, HistoricalTrade, AlgoExecution, Position } from './oms-types'
 import { useTradingModeStore } from '@/stores/useTradingModeStore'
@@ -91,14 +91,14 @@ export function useOms() {
     }
 
     // 2. Connect to WebSocket for real-time updates
-    const connect = () => {
+    const connect = async () => {
       if (!isMounted) return
       // 💡 keep-alive 后台模块 / 页面隐藏时不建立 WS，避免多模块 WS 并发重连风暴
       if (!keepAliveActive || document.visibilityState !== 'visible') return
 
-      // 💡 动态构建 WebSocket URL，适配 HTTPS (wss) 与跨域环境变量
+      // 💡 统一 Token 获取：内部自动处理过期检测 + Refresh 续期
+      const token = await getValidAccessToken()
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const token = getAccessToken()
       const wsUrl = API_BASE_URL.startsWith('http')
         ? API_BASE_URL.replace(/^http/, 'ws') + '/oms/ws' + (token ? `?token=${token}` : '')
         : `${protocol}//${window.location.host}${API_BASE_URL}/oms/ws` + (token ? `?token=${token}` : '')

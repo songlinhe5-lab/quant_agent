@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useToast } from '@/hooks/use-toast'
-import { apiClient, API_BASE_URL, getAccessToken, refreshAccessToken, isTokenExpired } from '@/lib/api-client'
+import { apiClient, API_BASE_URL, getValidAccessToken } from '@/lib/api-client'
 import { market } from '@/lib/proto/market'
 import { WatchlistItem } from '@/stores/use-watchlist'
 import { useKeepAliveActive } from '@/components/layout/keep-alive-outlet'
@@ -185,21 +185,11 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
       // 💡 keep-alive 后台模块 / 页面隐藏时不建立 WS，避免多模块 WS 并发重连风暴
       if (!keepAliveActive || document.visibilityState !== 'visible') return
 
-      // 无 token 时不建立连接，避免 403 无限重连
-      let token = getAccessToken()
+      // 统一 Token 获取：内部自动处理过期检测 + Refresh 续期
+      const token = await getValidAccessToken()
       if (!token) {
-        console.warn('[WS] 无认证 token，跳过 WebSocket 连接')
+        console.warn('[WS] 无有效 token，跳过 WebSocket 连接')
         return
-      }
-
-      // 💡 WS 层无 401 拦截器，需主动续期即将过期/已过期的 token（后端 TTL 仅 15 分钟）
-      if (isTokenExpired(token)) {
-        const refreshed = await refreshAccessToken()
-        if (!refreshed) {
-          console.warn('[WS] Token 刷新失败，停止重连，请重新登录')
-          return
-        }
-        token = refreshed
       }
 
       // Close existing connection
@@ -238,16 +228,6 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
         if (isMounted && watchlist.length > 0) {
           setTimeout(() => {
             if (!isMounted || wsConnectedRef.current) return
-            // 💡 自愈：若从未成功认证即被关闭（多半 token 过期被后端 4002 拒绝），
-            //    先刷新 Access Token 再重连；刷新失败则停止重连，避免死循环用死 token。
-            const t = getAccessToken()
-            if (!wasConnected && t && isTokenExpired(t)) {
-              refreshAccessToken().then((refreshed) => {
-                if (!refreshed) { console.warn('[WS] Token 刷新失败，停止重连，请重新登录'); return }
-                connectWS()
-              })
-              return
-            }
             connectWS()
           }, 3000)
         }

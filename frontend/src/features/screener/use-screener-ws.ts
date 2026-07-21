@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useRef } from 'react'
-import { getAccessToken, refreshAccessToken, isTokenExpired } from '@/lib/api-client'
+import { getValidAccessToken } from '@/lib/api-client'
 import { market } from '@/lib/proto/market'
 import { useKeepAliveActive } from '@/components/layout/keep-alive-outlet'
 import { useBackendStatusStore } from '@/stores/useBackendStatusStore'
@@ -25,13 +25,8 @@ export function useScreenerWs(pageSymbols: string[]) {
     let reconnectTimer: NodeJS.Timeout;
     const connectWS = async () => {
       if (!keepAliveActive || document.visibilityState !== 'visible') return;
-      let token = getAccessToken();
-      if (!token) { console.warn('[Screener WS] 无认证 token，跳过连接'); return; }
-      if (isTokenExpired(token)) {
-        const refreshed = await refreshAccessToken();
-        if (!refreshed) { console.warn('[Screener WS] Token 刷新失败，停止重连，请重新登录'); return; }
-        token = refreshed;
-      }
+      const token = await getValidAccessToken();
+      if (!token) { console.warn('[Screener WS] 无有效 token，跳过连接'); return; }
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       try {
         wsRef.current = new WebSocket(`${wsProtocol}//${window.location.host}/api/v1/market/quotes/ws?token=${token}`);
@@ -65,14 +60,6 @@ export function useScreenerWs(pageSymbols: string[]) {
         wsOpenedRef.current = false;
         if (!isMountedRef.current) return;
         if (ev) console.warn(`[Screener WS] 连接关闭 code=${ev.code} reason=${ev.reason || '(空)'}`);
-        const t = getAccessToken();
-        if (t && isTokenExpired(t)) {
-          refreshAccessToken().then((refreshed) => {
-            if (!refreshed) { console.warn('[Screener WS] Token 刷新失败，停止重连，请重新登录'); return; }
-            reconnectTimer = setTimeout(connectWS, 1000);
-          });
-          return;
-        }
         reconnectTimer = setTimeout(connectWS, 1000);
       };
     };
