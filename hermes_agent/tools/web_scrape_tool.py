@@ -119,11 +119,20 @@ class WebScrapeTool(BaseTool):
 
     async def _fetch_via_httpx(self, url: str) -> str | None:
         """方案 2: 直接 HTTP 抓取 (降级方案，适用于 Jina 失败时)"""
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-        }
+        # SEC.gov 要求声明性 User-Agent（公司名+邮箱），否则触发 Cloudflare 403
+        if "sec.gov" in url:
+            headers = {
+                "User-Agent": "QuantAgent Research research@quant-agent.dev",
+                "Accept-Encoding": "gzip, deflate",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Host": "www.sec.gov",
+            }
+        else:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            }
 
         try:
             async with httpx.AsyncClient(
