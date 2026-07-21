@@ -56,20 +56,108 @@ def _is_allowed_url(url: str) -> bool:
     return any(hostname == d or hostname.endswith(f".{d}") for d in _ALLOWED_DOMAINS)
 
 
-def _sanitize_filename(ticker: str, url: str) -> str:
-    """生成安全的本地文件名"""
-    # 从 URL 提取原始文件名
+# 报告类型映射（标准化文件名中的类型段）
+_REPORT_TYPES = {
+    "annual": "annual_report",
+    "年报": "annual_report",
+    "interim": "interim_report",
+    "中报": "interim_report",
+    "半年报": "interim_report",
+    "quarterly": "quarterly_report",
+    "季报": "quarterly_report",
+    "announcement": "announcement",
+    "公告": "announcement",
+    "research": "research_note",
+    "研报": "research_note",
+    "presentation": "presentation",
+    "演示": "presentation",
+}
+
+
+def _normalize_ticker_for_filename(ticker: str) -> str:
+    """
+    将各种格式的 ticker 统一为文件名安全格式，保留 '.' 以兼容后端 glob 匹配。
+
+    输入 → 输出:
+      "0772.HK" / "HK.0772" / "0772" → "0772.HK"
+      "AAPL" / "US.AAPL"            → "AAPL"
+      "600519.SH" / "SH.600519"     → "600519.SH"
+    """
+    t = ticker.upper().strip()
+
+    # 已经是 "CODE.MARKET" 格式 (如 0772.HK, 600519.SH)
+    if re.match(r"^\d+\.\w+$", t):
+        return t
+
+    # "MARKET.CODE" 格式 (如 HK.0772, US.AAPL, SH.600519) → 翻转为 CODE.MARKET
+    m = re.match(r"^(HK|US|SH|SZ)\.(.+)$", t)
+    if m:
+        market, code = m.group(1), m.group(2)
+        # 美股不需要后缀 (AAPL 而非 AAPL.US)
+        if market == "US":
+            return code
+        return f"{code}.{market}"
+
+    # 纯数字推断市场
+    if t.isdigit():
+        if len(t) == 4 or len(t) == 5:
+            return f"{t.zfill(4)}.HK"
+        if len(t) == 6:
+            suffix = "SH" if t.startswith(("60", "68")) else "SZ"
+            return f"{t}.{suffix}"
+
+    # 其他情况原样返回 (如 AAPL, TSLA)
+    return re.sub(r"[^\w.\-]", "_", t)
+
+
+def _build_filename(ticker: str, url: str, report_type: str = "", year: str = "", custom_name: str = "") -> str:
+    """
+    生成标准化文件名，确保包含 ticker 以兼容后端 glob `*{ticker}*.*` 匹配。
+
+    命名规范: {TICKER}_{report_type}_{year}.{ext}
+    示例:
+      0772.HK_annual_report_2025.pdf
+      AAPL_interim_report_2025.pdf
+      600519.SH_announcement_2025.pdf
+    """
+    safe_ticker = _normalize_ticker_for_filename(ticker)
+
+    # 确定扩展名
     url_filename = url.rstrip("/").split("/")[-1]
+    ext = Path(url_filename).suffix.lower() if Path(url_filename).suffix else ".pdf"
+    if ext not in (".pdf", ".txt", ".md", ".csv"):
+        ext = ".pdf"
 
-    # 清理 ticker 中的特殊字符
-    safe_ticker = re.sub(r"[^\w.\-]", "_", ticker.upper())
+    # 如果用户提供了自定义文件名，确保 ticker 前缀存在
+    if custom_name:
+        name = re.sub(r"[^\w.\-\u4e00-\u9fff]", "_", custom_name)
+        # 确保 ticker 在文件名中（后端匹配依赖）
+        if safe_ticker not in name:
+            name = f"{safe_ticker}_{name}"
+        if not name.endswith(ext):
+            name += ext
+        return name
 
-    if url_filename.endswith(".pdf"):
-        return f"{safe_ticker}_{url_filename}"
-    else:
-        # 非 PDF 也保留扩展名
-        ext = Path(url_filename).suffix or ".pdf"
-        return f"{safe_ticker}_report{ext}"
+    # 标准化命名: {TICKER}_{type}_{year}{ext}
+    type_key = _REPORT_TYPES.get(report_type.lower(), "") if report_type else ""
+    parts = [safe_ticker]
+    if type_key:
+        parts.append(type_key)
+    elif report_type:
+        # 未识别的类型，清理后直接使用
+        parts.append(re.sub(r"[^\w\-]", "_", report_type.lower()))
+    if year and re.match(r"^\d{4}$", year):
+        parts.append(year)
+
+    # 如果只有 ticker 没有额外信息，从 URL 文件名补充
+    if len(parts) == 1:
+        url_stem = Path(url_filename).stem
+        if url_stem and len(url_stem) > 3:
+            parts.append(re.sub(r"[^\w\-]", "_", url_stem))
+        else:
+            parts.append("report")
+
+    return "_".join(parts) + ext
 
 
 @register_tool
@@ -94,17 +182,25 @@ class DownloadReportTool(BaseTool):
             },
             "ticker": {
                 "type": "string",
-                "description": "股票代码，用于命名本地文件，例如 0772.HK、AAPL",
+                "description": "股票代码，用于命名本地文件并确保后续可被 analyze_financial_report 匹配。例如 0772.HK、AAPL、600519",
+            },
+            "report_type": {
+                "type": "string",
+                "description": "报告类型，用于标准化命名。可选值: annual(年报), interim(中报), quarterly(季报), announcement(公告), research(研报), presentation(演示)",
+            },
+            "year": {
+                "type": "string",
+                "description": "报告对应年份，例如 2025",
             },
             "filename": {
                 "type": "string",
-                "description": "可选：自定义保存文件名（不含路径），例如 0772_HK_2025_annual_report.pdf",
+                "description": "可选：自定义保存文件名（不含路径）。即使指定自定义名，系统也会确保文件名中包含 ticker 以便后续查找。",
             },
         },
         "required": ["url", "ticker"],
     }
 
-    async def run(self, url: str, ticker: str = "", filename: str = "") -> Dict[str, Any]:
+    async def run(self, url: str, ticker: str = "", report_type: str = "", year: str = "", filename: str = "") -> Dict[str, Any]:
         if not url:
             return {"status": "error", "message": "缺失 url 参数。"}
         if not ticker:
@@ -120,11 +216,14 @@ class DownloadReportTool(BaseTool):
         # 2. 确保 reports 目录存在
         _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
-        # 3. 确定文件名
-        if filename:
-            safe_name = re.sub(r"[^\w.\-]", "_", filename)
-        else:
-            safe_name = _sanitize_filename(ticker, url)
+        # 3. 生成标准化文件名（确保包含 ticker）
+        safe_name = _build_filename(
+            ticker=ticker,
+            url=url,
+            report_type=report_type,
+            year=year,
+            custom_name=filename,
+        )
 
         filepath = _REPORTS_DIR / safe_name
 
