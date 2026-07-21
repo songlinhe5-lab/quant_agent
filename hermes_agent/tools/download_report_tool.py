@@ -26,18 +26,30 @@ _REPORTS_DIR = Path(__file__).resolve().parent.parent.parent / "reports"
 
 # 允许下载的域名白名单（防止 SSRF）
 _ALLOWED_DOMAINS = [
+    # ── 港股 ──
     "hkexnews.hk",
     "www1.hkexnews.hk",
+    # ── 美股 (SEC + IR 托管平台) ──
     "sec.gov",
     "www.sec.gov",
+    "q4cdn.com",            # Q4 Inc — Apple/NVIDIA/Meta 等公司 IR 文件托管
+    "s2.q4cdn.com",
     "ir.yuewen.com",
     "yuewen.com",
-    "eastmoney.com",
+    "apple.com",            # Apple Investor Relations
+    "investor.apple.com",
+    "microsoft.com",        # Microsoft IR
+    "s203.q4cdn.com",       # 各公司专属 q4cdn 子域
+    "edgar-online.com",
+    # ── A股 ──
+    "cninfo.com.cn",        # 巨潮资讯 (深交所指定披露平台)
+    "static.cninfo.com.cn",
+    "sse.com.cn",           # 上交所
+    "static.sse.com.cn",
+    "szse.cn",              # 深交所
+    "eastmoney.com",        # 东方财富
     "sina.com.cn",
     "finance.sina.com.cn",
-    "cninfo.com.cn",
-    "sse.com.cn",
-    "szse.cn",
 ]
 
 # 最大下载大小 50MB（年报 PDF 通常 5-20MB）
