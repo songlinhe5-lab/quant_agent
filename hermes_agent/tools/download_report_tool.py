@@ -253,14 +253,23 @@ class DownloadReportTool(BaseTool):
 
         # 5. 下载文件
         try:
-            # SEC.gov 要求声明性 User-Agent（公司名+邮箱），否则触发 Cloudflare 403
-            # 参考: https://www.sec.gov/os/accessing-edgar-data
+            # SEC.gov 要求声明性 User-Agent（公司名 + 邮箱），否则触发 Cloudflare 403
+            # 参考：https://www.sec.gov/os/accessing-edgar-data
             if "sec.gov" in url:
                 headers = {
                     "User-Agent": "QuantAgent Research research@quant-agent.dev",
-                    "Accept-Encoding": "gzip, deflate",
+                    "Accept-Encoding": "gzip, deflate, br",
                     "Accept": "application/pdf,*/*",
+                    "Accept-Language": "en-US,en;q=0.9",
                     "Host": "www.sec.gov",
+                    "Sec-Ch-Ua": "Not_A;Brand=v8",
+                    "Sec-Ch-Ua-Mobile": "?0",
+                    "Sec-Ch-Ua-Platform": "\"Linux\"",
+                    "Sec-Fet-Dest": "document",
+                    "Sec-Fet-Mode": "navigate",
+                    "Sec-Fet-Site": "same-origin",
+                    "Sec-Fet-User": "?1",
+                    "Upgrade-Insecure-Requests": "1",
                 }
             else:
                 headers = {
@@ -282,6 +291,15 @@ class DownloadReportTool(BaseTool):
                     }
 
                 content = resp.content
+
+                # 🛡️ 检测到 HTML 而非 PDF → 可能触发 Cloudflare 防护或 URL 错误
+                if content[:20].startswith(b"<!DOCTYPE") or content[:20].startswith(b"<html"):
+                    html_snippet = content[:500].decode("utf-8", errors="ignore")
+                    return {
+                        "status": "error",
+                        "message": f"下载内容为 HTML 页面而非 PDF，可能触发了 Cloudflare 防护。建议：\n1. 检查 SEC.gov 链接是否为直链（应为 /Archives/edgar/data/XXX/XXX.pdf）\n2. 通过 https://www.sec.gov/cgi-bin/browse-edgar 搜索 TSLA 年报后右键 PDF 复制链接\n3. 手动在浏览器下载后放入 reports/TSLA_*.pdf",
+                        "content_preview": html_snippet,
+                    }
 
                 # 校验大小
                 if len(content) > _MAX_FILE_SIZE:
