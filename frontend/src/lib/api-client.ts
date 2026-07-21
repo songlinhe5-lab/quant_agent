@@ -127,6 +127,22 @@ export async function refreshAccessToken(): Promise<string | null> {
   return doRefreshToken(DEFAULT_CONFIG)
 }
 
+/**
+ * 🔑 统一 Token 获取入口（唯一推荐）
+ *
+ * 所有需要 Access Token 的场景（REST / WS / SSE）均应调用此函数，
+ * 内部自动处理过期检测 + Refresh Token 续期，调用方无需关心刷新逻辑。
+ *
+ * @returns 有效的 Access Token；若未登录或 Refresh Token 也失效则返回 null
+ */
+export async function getValidAccessToken(): Promise<string | null> {
+  const token = getAccessToken()
+  if (!token) return null
+  if (!isTokenExpired(token)) return token
+  // Token 已过期或即将过期 → 静默续期
+  return doRefreshToken(DEFAULT_CONFIG)
+}
+
 // ─── 错误类 ────────────────────────────────────────────────────────
 export class ApiError extends Error {
   code: number
@@ -210,8 +226,8 @@ class RestClient {
 
       // 处理 401 - 尝试刷新 Token
       if (response.status === 401) {
-        // 认证接口本身返回 401 → 清除 token 并跳转登录页
-        if (path === '/auth/me' || path === '/auth/refresh' || path === '/auth/login') {
+        // 仅 refresh/login 接口本身返回 401 → 说明 Refresh Token 也失效了，清除并跳转登录
+        if (path === '/auth/refresh' || path === '/auth/login') {
           clearTokens()
           if (window.location.pathname !== '/login') {
             window.location.href = '/login'

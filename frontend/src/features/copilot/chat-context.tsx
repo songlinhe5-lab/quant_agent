@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, createContext, useCallback, useMemo } from 'react'
-import { getAccessToken, apiClient, API_BASE_URL, refreshAccessToken } from '@/lib/api-client'
+import { getValidAccessToken, apiClient, API_BASE_URL } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
 import { useConfirmDialog } from '@/components/confirm-dialog'
 import { SessionSidebarRef } from '@/features/copilot/session-sidebar'
@@ -228,13 +228,18 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       abortControllerRef.current = new AbortController()
       setMessages(prev => [...prev, currentAssistantMsg])
 
-      // 💡 封装 fetch 为可重试函数，支持 401 Token 过期自动刷新
-      const doChatFetch = async (token: string | null) => {
+      // 💡 统一 Token 获取：内部自动处理过期检测 + Refresh 续期
+      const token = await getValidAccessToken()
+      if (!token) {
+        throw new Error('登录已过期，请重新登录后再试')
+      }
+
+      const doChatFetch = (validToken: string) => {
         return fetch(`${API_BASE_URL}/chat`, {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
+            'Authorization': `Bearer ${validToken}`
           },
           body: JSON.stringify({
             messages: [userMsg],
@@ -245,19 +250,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         })
       }
 
-      let res = await doChatFetch(getAccessToken())
-
-      // 💡 401 Token 过期 → 自动刷新 Token 并重试一次
-      if (res.status === 401) {
-        console.warn('[Chat] Token 已过期，尝试自动刷新...')
-        const newToken = await refreshAccessToken()
-        if (newToken) {
-          console.log('[Chat] Token 刷新成功，重试请求')
-          res = await doChatFetch(newToken)
-        } else {
-          throw new Error('登录已过期，请重新登录后再试')
-        }
-      }
+      let res = await doChatFetch(token)
 
       // 💡 防御性状态检查：在尝试读取流之前，先确认 HTTP 响应状态码
       if (!res.ok) {
