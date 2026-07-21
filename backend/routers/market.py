@@ -282,16 +282,22 @@ async def get_quote(ticker: str):
     # 💡 如果富途获取失败（例如美股、加密货币、外汇等无权限标的），平滑降级至雅虎财经
     if res.get("status") == "error":
         msg = res.get("message", "")
-        if "原生不支持" not in msg:
-            print(f"⚠️ [Quote] 券商数据获取 {ticker} 失败 ({msg})，准备降级...")
-
-        # 💡 架构增强：针对 A 股，优先使用本土高可用实时数据源 AKShare（通过路由服务）
+        
+        # 🛡️ A 股优先降级策略：检测到 SH./SZ.前缀时立即跳过 Futu
         is_a_share = ticker.startswith("SH.") or ticker.startswith("SZ.")
-        if is_a_share:
+        is_futu_error = "行情获取失败" in msg or "未连接" in msg or "Unsupported" in msg
+        
+        if is_a_share and (msg and msg != "Futu OpenD 未连接且无可用远程节点"):
+            print(f"⚠️ [Quote] {ticker}为 A 股且 Futu 失败 ({msg})，直接走 AKShare...")
             ak_res = await data_source_router.fetch_akshare("stock_quote", ticker=ticker)
             if ak_res.get("status") == "success":
                 return ak_res
-            print(f"⚠️ [Quote] AKShare 获取 {ticker} 失败 ({ak_res.get('message')})，继续降级雅虎财经...")  # noqa: E501
+            print(f"⚠️ [Quote] AKShare 获取 {ticker} 失败 ({ak_res.get('message')})，继续降级雅虎财经...")
+            # 不再尝试 Futu 兜底
+            yf_ticker = _to_yf_ticker(ticker)
+            yf_result = await data_source_router.fetch_yfinance(yf_ticker, "history", period="1d")
+        elif "原生不支持" not in msg:
+            print(f"⚠️ [Quote] 券商数据获取 {ticker} 失败 ({msg})，准备降级...")  # noqa: E501
 
         yf_ticker = _to_yf_ticker(ticker)
         yf_result = await data_source_router.fetch_yfinance(yf_ticker, "history", period="1d")

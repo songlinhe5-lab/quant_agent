@@ -1147,7 +1147,8 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 | 2026-07-08 | 新增「后端架构治理」ARCH-01~11（源自 docs/03 V5.1 架构审查）：main.py 瘦身 / 统一熔断器 / Graceful Shutdown / 连接池配置 / 健康检查分级 / 架构债收口 |
 | 2026-07-08 | 新增「产品与 UI/UE 治理」PROD-01~13（源自 docs/01 V2.3 产品审查）：AI 上下文注入 / 画线工具 / 工作区快照 / 多分辨率适配 / Calendars 降级 / 图表内下单 |
 | 2026-07-14 | [OPS-02] Tailscale 零信任网络完成：ACL 策略 / 节点入网脚本 / 跨节点验证脚本 / Prometheus+Grafana 端口绑定 Tailscale IP / CI 新增连通性检查 job |
-| 2026-07-02 | 新增「OMS 订单中枢与算力节点」OMS-01~12 (订单持久化/真实同步/算力节点/算法拆单/KillSwitch加固/审计日志)；新建 `docs/subsystems/oms-module.md` 设计文档 |
+| 2026-07-08 | **新增 [TOOL-01~15] Agent 工具链稳定性保障体系**：三层融合架构（Shadow Mode → Active Validation → Distributed Watchtower），详见 `docs/22. Agent 工具链稳定性保障体系.md` |
+| 2026-07-02 | OMS-01~12 (订单持久化/真实同步/算力节点/算法拆单/KillSwitch 加固/审计日志)；新建 `docs/subsystems/oms-module.md` 设计文档 |
 | 2026-07-02 | 新增「Risk 风控模块进阶能力」RISK-01~08 (板块暴露/Beta归因/相关性矩阵/压力测试/CVaR/流动性/雷达增强/Beta基准)；Risk MVP 完成归档 (分账户风控+持久化+行业级版面) |
 | 2026-06-28 | 新增 `docs/14` 分布式数据源服务架构文档；重构 DIST-01~10 为 DIST-01~18 细粒度任务（注册表 / 路由器 / 子服务工程 / HMAC / Docker 编排 / VPS 部署 / 监控告警 / 其他数据源扩展） |
 | 2026-06-28 | 新增 DIST-01~10 分布式数据服务架构任务（北京 + 加州双节点）；更新部署文档至 V4.0 |
@@ -1184,3 +1185,86 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 | 2026-06-15 | V1.0 初始版本：功能扩展愿景列表（已归档）                              |
 
 
+
+----------------------------------------------------------------------------|---------|----------|-------------|--------------------|
+| **🆕 Agent 工具链稳定性保障体系 (Tool Health Validator)**                     |         |          |             |
+----------------------------------------------------------------------------|---------|----------|-------------|--------------------|
+
+### Phase 1: Week 1 - Shadow Mode（影子模式）
+
+**目标**: 零侵入部署，每日报告生成
+
+| ID   | 任务描述                                                    | 预计工时 | 责任人       | 状态   |
+|------|-----------------------------------------------------------|---------|--------------|--------|
+| TOOL-01 | 编写 backend/services/tool_validator.py 核心验证器 (~180 LOC) | 4h      | Backend Dev  | PENDING |
+| TOOL-02 | 实现正则表达式匹配模式库 (日志解析引擎)                       | 3h      | Backend Dev  | PENDING |
+| TOOL-03 | 集成 CSV/JSON 报告生成逻辑                                  | 2h      | Backend Dev  | PENDING |
+| TOOL-04 | 编写单元测试 (覆盖率≥80%)                                 | 2h      | QA Engineer  | PENDING |
+| TOOL-05 | 创建 config/tool_validator.yaml.example 配置模板            | 1h      | Backend Dev  | PENDING |
+| TOOL-06 | 修改 backend/worker.py 追加 3 行代码集成守护进程               | 0.5h    | Backend Dev  | PENDING |
+| TOOL-07 | 配置 SMTP 凭证或 Slack Webhook                              | 1h      | DevOps       | PENDING |
+| TOOL-08 | 编写 scripts/rollback_validator.sh 回滚脚本                   | 1h      | DevOps       | PENDING |
+| TOOL-09 | 测试环境试运行 24 小时                                      | 4h      | QA Engineer  | PENDING |
+| TOOL-10 | 模拟断链场景验证告警到达率                                   | 2h      | QA Engineer  | PENDING |
+| TOOL-11 | 回滚演练 (确保<1 分钟恢复)                                  | 1h      | DevOps       | PENDING |
+| TOOL-12 | 编写运维手册 (Runbook)                                    | 2h      | Tech Writer  | PENDING |
+| TOOL-13 | 预发布环境灰度 10% 流量                                     | 2h      | DevOps       | PENDING |
+| TOOL-14 | 全量上线并观察 48 小时                                       | 4h      | On-Call      | PENDING |
+| TOOL-15 | 标记本章节为已完成                                           | 0.5h    | PM           | PENDING |
+
+**Week 1 验收标准**:
+- [ ] 成功解析 ≥ 95% 的工具调用日志
+- [ ] 每日 00:00 自动生成 CSV/JSON报告
+- [ ] 错误率 > 10% 触发 SMTP 告警
+- [ ] 可一键回滚 (< 1 分钟恢复原状)
+
+### Phase 2: Week 2-3 - Active Validation (主动验证增强)
+
+**目标**: 增加主动调用能力，覆盖断链场景
+
+| ID   | 任务描述                                                     | 预计工时 | 责任人       | 状态   |
+|------|------------------------------------------------------------|---------|--------------|--------|
+| TOOL-16 | 编写 hermes_agent/config/health_chains.yaml 健康链模板       | 3h      | Backend Dev  | PENDING |
+| TOOL-17 | 定义 3 个核心验证链 (web_search_crawl/market_data_fetch/backtest_quick) | 2h      | Backend Dev  | PENDING |
+| TOOL-18 | 配置断言规则 (非空/耗时上限/字段存在性)                    | 1h      | Backend Dev  | PENDING |
+| TOOL-19 | 实现 backend/workers/tool_health_executor.py 执行引擎 (~120 LOC) | 6h      | Backend Dev  | PENDING |
+| TOOL-20 | 集成 Circuit Breaker 保护机制                               | 3h      | Backend Dev  | PENDING |
+| TOOL-21 | 扩展 backend/core/circuit_breaker.py (+50 LOC)              | 3h      | Backend Dev  | PENDING |
+| TOOL-22 | 复用 existing Notification Service 发送 Slack 告警             | 2h      | Backend Dev  | PENDING |
+| TOOL-23 | 创建 backend/routers/health_check.py HTTP API (+50 LOC)     | 3h      | Backend Dev  | PENDING |
+| TOOL-24 | JWT 鉴权 + rate limiting (10 次/分钟)                         | 1h      | Backend Dev  | PENDING |
+| TOOL-25 | OpenAPI 文档自动生成                                         | 0.5h    | Backend Dev  | PENDING |
+| TOOL-26 | 使用 k6 脚本进行并发压力测试 (100 并发)                        | 4h      | SRE Engineer | PENDING |
+| TOOL-27 | 调整 Semaphore 限流参数 (默认 50)                            | 1h      | Backend Dev  | PENDING |
+| TOOL-28 | 优化日志打印 (避免 verbose 刷屏)                            | 1h      | Backend Dev  | PENDING |
+
+**Week 3 验收标准**:
+- [ ] 能够主动执行完整工具链 (≥ 3 步)
+- [ ] Circuit Breaker正常工作 (熔断 → 恢复)
+- [ ] P95 延迟 < 5 秒 (单链平均耗时 3 秒)
+- [ ] HTTP API 支持手动触发验证
+
+### Phase 3: Month 2 - Distributed Watchtower (分布式监控看板)
+
+**目标**: 引入 Prometheus/Grafana，实时可视化
+
+| ID   | 任务描述                                                   | 预计工时 | 责任人       | 状态   |
+|------|----------------------------------------------------------|---------|--------------|--------|
+| TOOL-29 | 安装 prometheus-client 和 FastAPI 中间件                      | 1h      | Backend Dev  | PENDING |
+| TOOL-30 | 定义 20+ 指标 (QPS/P95/成功率等)                             | 3h      | SRE Engineer | PENDING |
+| TOOL-31 | 配置 prometheus.yml scrape job                           | 1h      | DevOps       | PENDING |
+| TOOL-32 | 启动 Prometheus 容器 (t3.small 实例)                         | 1h      | DevOps       | PENDING |
+| TOOL-33 | 设计并导出 JSON Dashboard 片段 (Grafana)                      | 4h      | SRE Engineer | PENDING |
+| TOOL-34 | 配置自动化导入 (CI/CD 流水线)                              | 2h      | DevOps       | PENDING |
+| TOOL-35 | 编写 prometheus/alerts/validation_alerts.yml 告警规则          | 3h      | SRE Engineer | PENDING |
+| TOOL-36 | 接入 Alertmanager (Slack + Email 双通道)                      | 2h      | DevOps       | PENDING |
+| TOOL-37 | (可选) 部署 Kubernetes 集群 (EKS/GKE)                       | 8h      | K8s Expert   | PENDING |
+| TOOL-38 | 配置 KEDA ScaleTriggers 基于 Redis Stream 长度                | 4h      | K8s Expert   | PENDING |
+| TOOL-39 | 设置 min=5, max=100 的工作节点范围                           | 1h      | K8s Expert   | PENDING |
+| TOOL-40 | 监控扩缩容决策日志并调优参数                                | 2h      | SRE Engineer | PENDING |
+
+**Week 8 验收标准**:
+- [ ] Prometheus 数据采集正常
+- [ ] Grafana Dashboard 可访问
+- [ ] 告警规则生效 (SLI/SLO 达标)
+- [ ] 支持 100+ 并发任务队列
