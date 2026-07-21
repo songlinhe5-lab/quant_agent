@@ -305,7 +305,17 @@ jobs:
             # 清理
             echo "$TARGET_TAG" > $DEPLOY_PATH/.deployed_sha
             docker logout ghcr.io
+
+            # 镜像生命周期管理：只保留当前版本，删除所有旧 sha 镜像
+            docker images --format '{{.Repository}}:{{.Tag}}' \
+              | grep 'ghcr.io/.*quant-agent:sha-' \
+              | grep -v "$TARGET_TAG" \
+              | xargs -r docker rmi -f 2>/dev/null || true
             docker image prune -f
+
+            # 容器日志截断（防止单文件膨胀到数GB）
+            truncate -s 0 /var/lib/docker/containers/*/*-json.log 2>/dev/null || true
+
             echo "Deploy OK (tag: $TARGET_TAG)"
 
       - name: Deploy summary
