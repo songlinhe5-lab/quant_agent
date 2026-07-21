@@ -763,8 +763,15 @@ class HermesAgent:
 
                     tool_tasks = [asyncio.create_task(run_and_queue(tc)) for tc in msg_dict["tool_calls"]]
                     heartbeat_count = 0
+                    # 🐛 修复竞态：用「已接收结果计数」而非 task.done() 作为循环终止条件。
+                    # 旧逻辑 `while tool_tasks` + `tool_tasks = [t for t in tool_tasks if not t.done()]`
+                    # 存在竞态：当多个工具几乎同时完成时，处理完第一个结果后所有 task 均已 done，
+                    # 导致 tool_tasks 被一次性清空、循环提前退出，剩余工具结果未写入 messages，
+                    # 造成 assistant.tool_calls 与 tool 响应数量不匹配 → 下一轮 API 调用报 400。
+                    expected_results = len(msg_dict["tool_calls"])
+                    received_results = 0
 
-                    while tool_tasks:
+                    while received_results < expected_results:
                         try:
                             tc, res = await asyncio.wait_for(result_queue.get(), timeout=15.0)
                         except asyncio.TimeoutError:
@@ -773,6 +780,7 @@ class HermesAgent:
                             yield {"type": "heartbeat", "tick": heartbeat_count}
                             continue
 
+                        received_results += 1
                         final_res = {"status": "error", "message": str(res)} if isinstance(res, Exception) else res
                         self.messages.append(
                             {
@@ -784,8 +792,10 @@ class HermesAgent:
                         )
                         # 抛出执行结果给前端或 CLI 终端展示
                         yield {"type": "tool_result", "name": tc["function"]["name"], "result": final_res}
-                        tool_tasks = [t for t in tool_tasks if not t.done()]
 
+                    # 等待所有后台 task 收尾，避免悬挂任务泄漏
+                    if tool_tasks:
+                        await asyncio.gather(*tool_tasks, return_exceptions=True)
                     await self._save_session()
                 else:
                     # 💡 流式输出时的自愈拦截
