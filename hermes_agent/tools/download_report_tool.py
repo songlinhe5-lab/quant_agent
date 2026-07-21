@@ -250,10 +250,20 @@ class DownloadReportTool(BaseTool):
 
         # 5. 下载文件
         try:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-                "Accept": "application/pdf,*/*",
-            }
+            # SEC.gov 要求声明性 User-Agent（公司名+邮箱），否则触发 Cloudflare 403
+            # 参考: https://www.sec.gov/os/accessing-edgar-data
+            if "sec.gov" in url:
+                headers = {
+                    "User-Agent": "QuantAgent Research research@quant-agent.dev",
+                    "Accept-Encoding": "gzip, deflate",
+                    "Accept": "application/pdf,*/*",
+                    "Host": "www.sec.gov",
+                }
+            else:
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+                    "Accept": "application/pdf,*/*",
+                }
 
             async with httpx.AsyncClient(
                 timeout=_DOWNLOAD_TIMEOUT,
