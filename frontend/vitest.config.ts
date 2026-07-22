@@ -26,7 +26,7 @@ export default defineConfig({
           lines: 60,
           statements: 60,
         },
-      }
+      },
       exclude: [
         'src/types/**',
         'src/App.tsx',
