@@ -15,6 +15,7 @@ from backend.services.yfinance.search import SearchMixin
 from backend.services.yfinance.technical import TechnicalMixin
 from backend.services.yfinance.utils import RateLimitedSession, format_yf_ticker
 from backend.core.circuit_breaker import get_circuit_breaker, CircuitBreakerOpenError
+from backend.core.graceful_executor import GracefulExecutor
 
 # 💡 内存安全防御：缓存容量上限 + TTL 清理
 _YF_CACHE_MAX_SIZE = 500  # 最多缓存 500 个条目
@@ -33,14 +34,17 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
         # llm_service 支持依赖注入：测试时可传入 mock，生产环境使用全局单例
         self._llm_service_override = llm_service_instance
 
+        # 💡 ARCH-03: 使用 GracefulExecutor 支持异步优雅关闭
+        self._executor = GracefulExecutor(
+            max_workers=10, 
+            thread_name_prefix="YFinanceWorker",
+            max_wait_s=30
+        )
+
         # 💡 微批处理队列机制 (Micro-batching Queue / DataLoader)
         self._batch_queue = {}
         self._batch_lock = asyncio.Lock()
         self._batch_dispatch_task = None
-
-        # 💡 隔离线程池防死锁：YFinance 的限流机制包含同步的 time.sleep()。
-        # 必须使用专属隔离的线程池，防止其休眠耗尽 FastAPI/asyncio 默认的全局 to_thread 线程池，导致整个网关瘫痪！  # noqa: E501
-        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=10, thread_name_prefix="YFinanceWorker")  # noqa: E501
 
         self._init_session()
 
@@ -116,23 +120,51 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
         ]
         self.session.headers.update({"User-Agent": random.choice(user_agents)})
 
-    def close(self):
-        """安全关闭 requests.Session 释放连接池"""
-        if hasattr(self, "session") and self.session:
-            self.session.close()
-        if hasattr(self, "_executor") and self._executor:
-            self._executor.shutdown(wait=False)
-        # DIST-04: 关闭路由器 HTTP 客户端
-        if self._router is not None:
-            try:
+    async def async_close(self):
+        """
+        ARCH-03: 异步优雅关闭 - 等待所有任务完成
+        
+        改进:
+        ✅ ThreadPoolExecutor 改为 graceful_shutdown()（支持 timeout）
+        ✅ Session.close() 保持不变（同步操作）
+        ✅ Router 关闭保持异步逻辑
+        """
+        print("🛑 [YFinanceService] 开始优雅关闭...")
+        
+        try:
+            # 1. 关闭 requests.Session
+            if hasattr(self, "session") and self.session:
+                self.session.close()
+                print("✅ YFinanceSession 已关闭")
+        except Exception as e:
+            print(f"⚠️ YFinanceSession 关闭异常：{e}")
+        
+        try:
+            # 2. Graceful Executor shutdown
+            if hasattr(self, "_executor") and self._executor:
+                executor = self._executor
+                stats = executor.get_stats()
+                print(f"📊 Executor Stats before shutdown: {stats}")
+                
+                await executor.graceful_shutdown(timeout_s=30)
+                print(f"✅ Executor 优雅关闭完成 (active_tasks={stats['active_tasks']})")
+        except Exception as e:
+            print(f"⚠️ Executor 关闭异常：{e}")
+        
+        try:
+            # 3. 关闭路由器 HTTP 客户端
+            if self._router is not None:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
-                    loop.create_task(self._router.close())
+                    await self._router.close()
                 else:
-                    loop.run_until_complete(self._router.close())
-            except Exception:
-                pass
-            self._router = None
+                    await asyncio.get_event_loop().run_until_complete(self._router.close())
+                self._router = None
+                print("✅ YFinanceRouter 已关闭")
+        except Exception as e:
+            print(f"⚠️ Router 关闭异常：{e}")
+        
+        print("✅ YFinanceService 完全关闭完成")
 
     def get_health_status(self) -> Dict[str, Any]:
         """获取当前雅虎财经接口的熔断与健康状态"""
