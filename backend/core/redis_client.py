@@ -53,25 +53,25 @@ class RedisAsyncBatchWriter:
     async def stop(self, timeout_s: float = 10.0):
         """
         ARCH-03: 优雅停机，确保积压的数据全部写入完毕
-        
+
         Args:
             timeout_s: 最大等待时间（秒），用于等待队列清空和任务完成
-        
+
         Returns:
             bool: True 表示优雅停止成功，False 表示超时强制终止
         """
         print(f"🛑 [RedisBatchWriter] 开始优雅关闭 (timeout={timeout_s}s)...")
-        
+
         if self._task is None or self._task.done():
             # Task 尚未启动或已完成，直接进入 flush_all
             await self._flush_all()
             return True
-        
+
         # 步骤 1: 取消后台消费协程
         try:
             self._task.cancel()
             print(f"📊 [RedisBatchWriter] 当前队列深度：{self.queue.qsize()}")
-            
+
             # 等待任务完全停止（设置合理的 timeout）
             try:
                 await asyncio.wait_for(self._task, timeout=timeout_s)
@@ -79,7 +79,7 @@ class RedisAsyncBatchWriter:
                 print("⚠️ [RedisBatchWriter] Task 停止超时")
         except Exception as e:
             print(f"⚠️ [RedisBatchWriter] Task 取消异常：{e}")
-        
+
         # 步骤 2: 强制刷新生存的数据
         try:
             await self._flush_all()
@@ -87,17 +87,17 @@ class RedisAsyncBatchWriter:
         except Exception as e:
             print(f"⚠️ [RedisBatchWriter] Flush 失败：{e}")
             return False
-        
+
         # 步骤 3: 额外安全检查 - 确认队列完全为空
         max_retries = 5
         for retry in range(max_retries):
             if self.queue.empty():
                 break
             await asyncio.sleep(0.5 * (retry + 1))  # 渐进式等待
-        
+
         final_size = self.queue.qsize()
         if final_size == 0:
-            print(f"✅ [RedisBatchWriter] 优雅关闭完成 (最终队列深度：0)")
+            print("✅ [RedisBatchWriter] 优雅关闭完成 (最终队列深度：0)")
             return True
         else:
             print(f"⚠️ [RedisBatchWriter] 关闭后仍有 {final_size} 条未写入")
