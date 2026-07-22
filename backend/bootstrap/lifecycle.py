@@ -300,10 +300,14 @@ async def app_lifespan(app: FastAPI):
         print(f"⚠️ 关闭 AI 客户端异常: {e}")
 
     try:
+        # ARCH-03: Redis 批量队列优雅关闭
         print("🛑 [Cleanup] 正在排空并关闭 Redis 异步写入队列...")
-        await redis_batch_writer.stop()
+        from backend.core.redis_client import redis_batch_writer
+        success = await redis_batch_writer.stop(timeout_s=15.0)
+        if not success:
+            logger.warning("⚠️ Redis 批量队列关闭不完全")
     except Exception as e:
-        print(f"⚠️ 关闭 Redis 队列异常: {e}")
+        print(f"⚠️ 关闭 Redis 队列异常：{e}")
 
     try:
         print("🧹 [Cleanup] 正在清空 Redis 临时行情缓存...")
