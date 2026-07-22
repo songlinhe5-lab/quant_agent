@@ -34,11 +34,7 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
         self._llm_service_override = llm_service_instance
 
         # 💡 ARCH-03: 使用 GracefulExecutor 支持异步优雅关闭
-        self._executor = GracefulExecutor(
-            max_workers=10,
-            thread_name_prefix="YFinanceWorker",
-            max_wait_s=30
-        )
+        self._executor = GracefulExecutor(max_workers=10, thread_name_prefix="YFinanceWorker", max_wait_s=30)
 
         # 💡 微批处理队列机制 (Micro-batching Queue / DataLoader)
         self._batch_queue = {}
@@ -218,6 +214,7 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
 
         # 🚨 使用统一熔断器：cb.call() 会自动处理 OPEN/HALF_OPEN 状态
         try:
+
             def _do_fetch():
                 # 捕获 yfinance 多线程下载时产生的隐式异常
                 yf_shared = getattr(yf, "shared", None)
@@ -282,9 +279,7 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
                 self._error_cache.pop(cache_key, None)  # 成功获取则移除黑名单
                 return True, data, ""
 
-            print(
-                f"⚠️ [YFinance API] 获取到空数据 (疑似软限流/Cookie 失效) -> Ticker: {yf_ticker}"
-            )  # noqa: E501
+            print(f"⚠️ [YFinance API] 获取到空数据 (疑似软限流/Cookie 失效) -> Ticker: {yf_ticker}")  # noqa: E501
             return False, None, "软限流：返回空数据"
 
         except CircuitBreakerOpenError:

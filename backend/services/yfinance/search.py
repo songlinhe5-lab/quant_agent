@@ -21,6 +21,7 @@ class SearchMixin:
 
         # 🚨 使用统一熔断器：cb.call() 自动处理 OPEN/HALF_OPEN 状态
         try:
+
             async def _do_search():
                 # 💡 修复特殊字符漏洞与超大 Key 耗尽内存的风险
                 query_hash = hashlib.md5(query.strip().upper().encode("utf-8")).hexdigest()
@@ -48,6 +49,7 @@ class SearchMixin:
                         pass
 
                     try:
+
                         def _sync_search():
                             url = f"https://query2.finance.yahoo.com/v1/finance/search?q={query}&quotesCount=8&newsCount=0"
                             res = self.session.get(url, timeout=5)

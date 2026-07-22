@@ -43,13 +43,9 @@ class GracefulExecutor(ThreadPoolExecutor):
         max_workers: Optional[int] = None,
         thread_name_prefix: Optional[str] = None,
         max_wait_s: int = 30,  # 优雅关闭最大等待时间
-        **kwargs
+        **kwargs,
     ):
-        super().__init__(
-            max_workers=max_workers,
-            thread_name_prefix=thread_name_prefix,
-            **kwargs
-        )
+        super().__init__(max_workers=max_workers, thread_name_prefix=thread_name_prefix, **kwargs)
 
         self.max_wait_s = max_wait_s
 
@@ -60,12 +56,7 @@ class GracefulExecutor(ThreadPoolExecutor):
 
         print(f"✅ GracefulExecutor 初始化 (max_workers={max_workers}, max_wait_s={max_wait_s})")
 
-    def submit(
-        self,
-        fn: Callable,
-        *args,
-        **kwargs
-    ) -> asyncio.Future:
+    def submit(self, fn: Callable, *args, **kwargs) -> asyncio.Future:
         """
         重写 submit() 支持返回 asyncio.Future
 
@@ -107,7 +98,7 @@ class GracefulExecutor(ThreadPoolExecutor):
             "total_submitted": self._submitted_count,
             "total_completed": self._completed_count,
             "active_tasks": self._active_tasks,
-            "max_wait_s": self.max_wait_s
+            "max_wait_s": self.max_wait_s,
         }
 
     async def graceful_shutdown(self, timeout_s: Optional[float] = None):
@@ -131,20 +122,17 @@ class GracefulExecutor(ThreadPoolExecutor):
 
         try:
             # 方式 1: 如果支持 timeout 参数（Python 3.9+）
-            if hasattr(self, '_threads'):
+            if hasattr(self, "_threads"):
                 # 标记所有线程需要停止
                 for thread in self._threads:
-                    if hasattr(thread, 'daemon') and thread.daemon:
+                    if hasattr(thread, "daemon") and thread.daemon:
                         continue  # 守护线程不等待
 
                 # 方式 2: 使用 asyncio.wait_for + run_in_executor
                 def do_shutdown():
                     super(ThreadPoolExecutor, self).shutdown(wait=True)
 
-                await asyncio.wait_for(
-                    loop.run_in_executor(None, do_shutdown),
-                    timeout=timeout
-                )
+                await asyncio.wait_for(loop.run_in_executor(None, do_shutdown), timeout=timeout)
 
                 elapsed = time.time() - start_time
                 print(f"✅ [GracefulExecutor] 优雅关闭完成 (耗时:{elapsed:.2f}s)")
@@ -179,18 +167,12 @@ class GracefulExecutor(ThreadPoolExecutor):
 _global_graceful_executor: Optional[GracefulExecutor] = None
 
 
-def get_global_executor(
-    max_workers: int = 64,
-    max_wait_s: int = 30
-) -> GracefulExecutor:
+def get_global_executor(max_workers: int = 64, max_wait_s: int = 30) -> GracefulExecutor:
     """获取或创建全局线程池单例"""
     global _global_graceful_executor
 
     if _global_graceful_executor is None:
-        _global_graceful_executor = GracefulExecutor(
-            max_workers=max_workers,
-            max_wait_s=max_wait_s
-        )
+        _global_graceful_executor = GracefulExecutor(max_workers=max_workers, max_wait_s=max_wait_s)
 
     return _global_graceful_executor
 

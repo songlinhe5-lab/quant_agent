@@ -37,10 +37,13 @@ class QuoteMixin:
 
         # 💡 1. 使用统一熔断器：cb.call() 自动处理 OPEN/HALF_OPEN 状态
         try:
+
             async def _do_quote_fetch():
                 # 💡 2. 检查 L1 缓存 (按请求类型和参数强隔离)
                 kwargs_str = (
-                    "_".join([f"{k}_{str(v).replace(' ', '')}" for k, v in sorted(kwargs.items())]) if kwargs else "default"
+                    "_".join([f"{k}_{str(v).replace(' ', '')}" for k, v in sorted(kwargs.items())])
+                    if kwargs
+                    else "default"
                 )  # noqa: E501
                 cache_key = f"yf_batch_{req_type}_{yf_ticker}_{kwargs_str}"
 

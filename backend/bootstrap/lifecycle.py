@@ -274,7 +274,7 @@ async def app_lifespan(app: FastAPI):
                 print(f"🛑 [Shutdown] 等待 {len(tasks_to_await)} 个任务完成...")
                 await asyncio.wait_for(
                     asyncio.gather(*tasks_to_await, return_exceptions=True),
-                    timeout=60.0  # Graceful shutdown 最大等待时间
+                    timeout=60.0,  # Graceful shutdown 最大等待时间
                 )
                 print("✅ [Shutdown] 所有后台任务已优雅取消")
             except asyncio.TimeoutError:
@@ -301,6 +301,7 @@ async def app_lifespan(app: FastAPI):
         # ARCH-03: Redis 批量队列优雅关闭
         print("🛑 [Cleanup] 正在排空并关闭 Redis 异步写入队列...")
         from backend.core.redis_client import redis_batch_writer
+
         success = await redis_batch_writer.stop(timeout_s=15.0)
         if not success:
             logger.warning("⚠️ Redis 批量队列关闭不完全")
@@ -321,6 +322,7 @@ async def app_lifespan(app: FastAPI):
     try:
         # ARCH-03: 使用 async_close() 替代同步 close()
         from backend.services.yfinance.service import yf_service
+
         await yf_service.async_close()
 
         # FutuService 保持原状（暂时只支持同步关闭）
