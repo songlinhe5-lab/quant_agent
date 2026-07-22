@@ -20,7 +20,6 @@ class MacroDaemonMixin:
         # ── DIST-04: 路由器模式下由远程数据源节点负责采集，本地不启动 daemon ──
         if self._router_enabled:
             from backend.core.logger import logger
-            from backend.core.circuit_breaker import get_circuit_breaker
 
             logger.info("[YF Daemon] 路由器模式已启用，宏观数据采集由远程节点负责，本地 daemon 休眠中")
             await asyncio.sleep(3600)

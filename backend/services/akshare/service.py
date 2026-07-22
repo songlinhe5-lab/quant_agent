@@ -19,9 +19,8 @@ from typing import Any, Dict
 
 from redis.exceptions import LockError
 
-from backend.core.logger import logger
-
 from backend.core.circuit_breaker import get_circuit_breaker
+from backend.core.logger import logger
 from backend.core.redis_client import redis_client
 
 # AKShare 运行模式: direct (直连 akshare) | cache (仅读 Redis 缓存)
@@ -44,9 +43,8 @@ class AKShareService:
 
     def get_health_status(self) -> Dict[str, Any]:
         """获取东方财富 (AKShare) 接口的熔断与健康状态"""
-        import time
-    
-        now = time.time()
+
+        # now = time.time()  # TODO: 未来使用
         # DIST-03: 使用统一熔断器状态查询
         cb_state = self.cb.get_state("akshare_api")
         mode_label = "cache (北京 VPS 中继)" if self._cache_mode else "direct (直连 akshare)"

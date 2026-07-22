@@ -63,7 +63,7 @@ class YFinanceAdapter(DataSourcePort):
         self._cache: Dict[str, dict] = {}
 
         # 速率限制器 (防止触发 Yahoo 限流)
-        rate = RequestRate(DEFAULT_RATE_LIMIT, Duration.MINUTE)
+        rate = RequestRate(self.DEFAULT_RATE_LIMIT, Duration.MINUTE)
         self._limiter = Limiter(rate)
 
         # ticker 格式化缓存

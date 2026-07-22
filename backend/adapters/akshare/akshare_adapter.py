@@ -262,7 +262,7 @@ class AkShareAdapter(DataSourcePort):
             dict: {"success": bool, "data": List[KLine], "message": str?}
         """
         ticker = params.get("ticker")
-        interval = params.get("interval", "1d")
+        # interval = params.get("interval", "1d")  # TODO: 未来使用
         num = params.get("num", 100)
 
         if not ticker:
@@ -277,7 +277,7 @@ class AkShareAdapter(DataSourcePort):
                 )
             elif "." in ticker:
                 code = ticker.split(".")[0]
-                market = "hk"
+                # market = "hk"  # TODO: 未来使用
                 df = ak.stock_hk_hist(
                     symbol=code, period="daily", start_date=params.get("start_date"), end_date=params.get("end_date")
                 )

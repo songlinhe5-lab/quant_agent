@@ -4,6 +4,7 @@ import os
 import random
 import re
 import time
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
@@ -13,7 +14,9 @@ from backend.app.market_data_app import MarketDataService
 from backend.core.logger import logger
 from backend.core.metrics import WS_MESSAGES_SENT
 from backend.core.redis_client import redis_client
-from backend.core.ticker_format import format_ticker
+from backend.core.ticker_format import format_ticker, format_yf_ticker
+from backend.services.adapters.legacy_market_data import market_data_gateway
+from backend.services.data_source_router import data_source_router
 from backend.services.kline_warehouse import kline_warehouse
 from backend.services.market_engine import manager
 from backend.services.ticker_service import ticker_service
@@ -192,22 +195,22 @@ async def get_futu_status():
     💡 实时探测 OpenD 端口，而非仅依赖内存中的状态标记
     """
     # 💡 实时探测 OpenD 是否可连接（2秒超时）
-    is_reachable = market_data.is_opend_reachable(timeout=2.0)
+    is_reachable = market_data_gateway.is_opend_reachable(timeout=2.0)
 
     # 💡 如果探测失败但状态仍显示 CONNECTED，说明连接已断开，需要更新状态
-    if not is_reachable and market_data.status == "CONNECTED":
-        market_data.status = "DISCONNECTED"
-        market_data.error_msg = "OpenD 连接已断开"
+    if not is_reachable and market_data_gateway.status == "CONNECTED":
+        market_data_gateway.status = "DISCONNECTED"
+        market_data_gateway.error_msg = "OpenD 连接已断开"
         print("⚠️ [Market API] OpenD 实时探测失败，状态已更新为 DISCONNECTED")
 
     # 💡 如果探测成功但状态显示 DISCONNECTED/ERROR，尝试重新连接
-    if is_reachable and market_data.status != "CONNECTED":
+    if is_reachable and market_data_gateway.status != "CONNECTED":
         print("ℹ️ [Market API] OpenD 实时探测成功，尝试重新连接...")
-        market_data.connect()
+        market_data_gateway.connect()
 
     return {
-        "status": market_data.status,
-        "error": market_data.error_msg,
+        "status": market_data_gateway.status,
+        "error": market_data_gateway.error_msg,
         "reachable": is_reachable,  # 💡 新增：实际探测结果
     }
 
@@ -220,18 +223,18 @@ async def get_services_health():
     health_data = []
 
     # 1. Futu OpenD - 💡 实时探测而非仅依赖内存状态
-    is_opend_reachable = market_data.is_opend_reachable(timeout=2.0)
+    is_opend_reachable = market_data_gateway.is_opend_reachable(timeout=2.0)
     f_status = "healthy" if is_opend_reachable else "disconnected"
-    f_msg = market_data.error_msg if not is_opend_reachable else "已连接"
+    f_msg = market_data_gateway.error_msg if not is_opend_reachable else "已连接"
 
     # 💡 同步更新内存状态
-    if not is_opend_reachable and market_data.status == "CONNECTED":
-        market_data.status = "DISCONNECTED"
-        market_data.error_msg = "OpenD 连接已断开"
-    if is_opend_reachable and market_data.status != "CONNECTED":
-        market_data.connect()
-        f_status = "healthy" if market_data.status == "CONNECTED" else "disconnected"
-        f_msg = "已连接" if market_data.status == "CONNECTED" else market_data.error_msg
+    if not is_opend_reachable and market_data_gateway.status == "CONNECTED":
+        market_data_gateway.status = "DISCONNECTED"
+        market_data_gateway.error_msg = "OpenD 连接已断开"
+    if is_opend_reachable and market_data_gateway.status != "CONNECTED":
+        market_data_gateway.connect()
+        f_status = "healthy" if market_data_gateway.status == "CONNECTED" else "disconnected"
+        f_msg = "已连接" if market_data_gateway.status == "CONNECTED" else market_data_gateway.error_msg
 
     health_data.append(
         {
@@ -244,10 +247,10 @@ async def get_services_health():
     )
 
     # 2. AKShare (东方财富)
-    health_data.append(market_data.ak_health_status())
+    health_data.append(market_data_gateway.ak_health_status())
 
     # 3. YFinance (雅虎财经)
-    health_data.append(market_data.yf_health_status())
+    health_data.append(market_data_gateway.yf_health_status())
 
     # 4. 数据源路由服务 (跨节点路由)
     router_status = await data_source_router.get_health_status()
@@ -324,7 +327,7 @@ async def get_batch_quotes_from_cache(req: BatchQuoteRequest):
     results = {}
     for ticker in req.tickers:
         # 💡 优先从 Redis 缓存获取（yf_macro_cache 由 macro_data_daemon 定期更新）
-        yf_code = _to_yf_ticker(ticker)
+        yf_code = format_yf_ticker(ticker)
         cache_key = f"yf_macro_cache_{yf_code}"
         try:
             cached = await redis_client.get(cache_key)
@@ -507,10 +510,10 @@ async def get_tech_indicators(ticker: str, lookback_days: int = 90):
     Returns:
         dict: {"status": "success", "data": TechIndicatorsData}
     """
-    from backend.core.ticker_format import format_yf_ticker as _to_yf_ticker
+    from backend.core.ticker_format import format_yf_ticker as format_yf_ticker
 
     # 通过 YFinanceAdapter 获取历史数据后计算指标
-    yf_ticker = _to_yf_ticker(ticker)
+    yf_ticker = format_yf_ticker(ticker)
     result = _market_service._yfinance.fetch(
         "history",
         {
@@ -674,7 +677,7 @@ async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 3
     # 1. 获取财报日历事件
     try:
         # ✅ 使用 YFinanceAdapter 获取历史 earnings 数据
-        yf_ticker = _to_yf_ticker(safe_ticker)
+        # yf_ticker = format_yf_ticker(safe_ticker)  # TODO: 未来使用
 
         # TODO: 未来迁移到 DataSourcePort + Finnhub Earnings Calendar
         # result = _market_service._finnhub.fetch("earnings", {"ticker": yf_ticker})
@@ -731,7 +734,7 @@ async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 3
 
 @router.get("/fundamental/{ticker}")
 async def get_fundamental(ticker: str):
-    yf_ticker = _to_yf_ticker(ticker)
+    yf_ticker = format_yf_ticker(ticker)
     upper_ticker = yf_ticker
 
     # 💡 建立大类资产到 FRED 宏观经济序列的智能映射表
@@ -763,7 +766,7 @@ async def get_fundamental(ticker: str):
     # 1. 智能拦截：如果是宏观资产/指数，自动无缝路由给 fred_service 获取其特有的“基本面” (宏观序列)  # noqa: E501
     for key, fred_id in fred_macro_map.items():
         if key == upper_ticker or key in upper_ticker:
-            res = await market_data.get_series_observations(fred_id, limit=5)
+            res = await market_data_gateway.get_series_observations(fred_id, limit=5)
             if res.get("status") == "success":
                 return {
                     "status": "success",
@@ -800,7 +803,7 @@ async def get_fundamental(ticker: str):
         if not yf_success:
             raise HTTPException(
                 status_code=400,
-                detail=f"Futu: {futu_res.get('message')}, YFinance: {yf_msg}",
+                detail=f"Futu: {futu_result.error}, YFinance: {yf_msg}",
             )  # noqa: E501
 
         if yf_info:

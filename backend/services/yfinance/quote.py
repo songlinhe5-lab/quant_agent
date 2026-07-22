@@ -55,25 +55,25 @@ class QuoteMixin:
                     return {"status": "error", "message": f"{ticker} 数据拉取频繁失败，冷却中"}
         
                 loop = asyncio.get_running_loop()
-                # 交给业务方一个“取餐号” (Future)，业务方会原地 await 等待数据
+                # 交给业务方一个"取餐号" (Future)，业务方会原地 await 等待数据
                 fut = loop.create_future()
                 # TODO: 后续实现实际的数据获取逻辑
-                        
-            async with self._batch_lock:
-            if yf_ticker not in self._batch_queue:
-                self._batch_queue[yf_ticker] = []
-            self._batch_queue[yf_ticker].append(
-                {
-                    "fut": fut,
-                    "req_type": req_type,
-                    "kwargs": kwargs,
-                    "cache_key": cache_key,
-                }
-            )  # noqa: E501
-
-            # 若是队列中的第一个请求，则启动一个 1 秒倒计时的发车任务
-            if not self._batch_dispatch_task or self._batch_dispatch_task.done():
-                self._batch_dispatch_task = asyncio.create_task(self._dispatch_batch_quotes())  # noqa: E501
+            
+                async with self._batch_lock:
+                    if yf_ticker not in self._batch_queue:
+                        self._batch_queue[yf_ticker] = []
+                    self._batch_queue[yf_ticker].append(
+                        {
+                            "fut": fut,
+                            "req_type": req_type,
+                            "kwargs": kwargs,
+                            "cache_key": cache_key,
+                        }
+                    )  # noqa: E501
+            
+                    # 若是队列中的第一个请求，则启动一个 1 秒倒计时的发车任务
+                    if not self._batch_dispatch_task or self._batch_dispatch_task.done():
+                        self._batch_dispatch_task = asyncio.create_task(self._dispatch_batch_quotes())  # noqa: E501
 
         try:
             # 业务方带着取餐号在此挂起等待 (设置 15 秒超时防止死锁)

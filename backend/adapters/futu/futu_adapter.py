@@ -9,8 +9,13 @@ FutuAdapter - 富途牛牛/OPEN API 数据源适配器
 参考实现：backend/core/market_engine.py + backend/services/futu_service.py
 """
 
+import os
+import random
 import time
+import uuid
 from typing import Any, Callable, Dict, List, Optional
+
+from backend.core.logger import logger
 
 from .data_source_port import DataSourcePort, DataSourceResult
 
@@ -291,7 +296,7 @@ class FutuAdapter(DataSourcePort):
             dict: {"success": bool, "data": List[KLine], "message": str?}
         """
         ticker = params.get("ticker")
-        interval = params.get("interval", "1d")
+        # interval = params.get("interval", "1d")  # TODO: 未来使用
         num = params.get("num", 100)
 
         if not ticker:

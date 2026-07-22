@@ -4,8 +4,9 @@ import asyncio
 import hashlib
 import json
 import random
-import time
 from typing import Any, Dict
+
+from backend.core.redis_client import redis_client
 
 
 class SearchMixin:
@@ -13,7 +14,7 @@ class SearchMixin:
 
     async def search_tickers(self, query: str) -> Dict[str, Any]:
         """代理调用雅虎财经的自动补全搜索接口，确保添加的标的是真实存在的"""
-        from backend.core.circuit_breaker import get_circuit_breaker, CircuitBreakerOpenError
+        from backend.core.circuit_breaker import CircuitBreakerOpenError
 
         if not query or len(query) > 50:
             return {"status": "success", "data": []}
@@ -24,7 +25,7 @@ class SearchMixin:
                 # 💡 修复特殊字符漏洞与超大 Key 耗尽内存的风险
                 query_hash = hashlib.md5(query.strip().upper().encode("utf-8")).hexdigest()
                 cache_key = f"quant:yf_search:{query_hash}"
-                
+
                 try:
                     cached = await redis_client.get(cache_key)
                     if cached:
@@ -104,7 +105,7 @@ class SearchMixin:
 
             results = await self.cb.call("yf_api", _do_search)
             return {"status": "success", "data": results}
-            
+
         except CircuitBreakerOpenError:
             return {
                 "status": "warning",
