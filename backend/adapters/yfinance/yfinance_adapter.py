@@ -21,7 +21,7 @@ from pyrate_limiter import Duration, Limiter, RateLimitExceededError, RequestRat
 
 from backend.core.logger import logger
 
-from .data_source_port import DataSourcePort, DataSourceResult
+from backend.adapters.ports.data_source_port import DataSourcePort, DataSourceResult
 
 
 class YFinanceAdapter(DataSourcePort):

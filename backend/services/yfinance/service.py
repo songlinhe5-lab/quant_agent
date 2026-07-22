@@ -134,6 +134,23 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
         except Exception:
             pass
 
+        # 清理路由器
+        try:
+            if hasattr(self, "_router") and self._router is not None:
+                # 尝试同步关闭路由器（如果可能）
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # 在异步上下文中，创建任务来关闭
+                        asyncio.create_task(self._router.close())
+                    else:
+                        loop.run_until_complete(self._router.close())
+                except Exception:
+                    pass
+                self._router = None
+        except Exception:
+            pass
+
     async def async_close(self):
         """
         ARCH-03: 异步优雅关闭 - 等待所有任务完成

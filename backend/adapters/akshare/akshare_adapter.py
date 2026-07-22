@@ -22,7 +22,7 @@ import akshare as ak
 
 from backend.core.logger import logger
 
-from .data_source_port import DataSourcePort, DataSourceResult
+from backend.adapters.ports.data_source_port import DataSourcePort, DataSourceResult
 
 
 class AkShareAdapter(DataSourcePort):
