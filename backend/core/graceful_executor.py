@@ -95,11 +95,15 @@ class GracefulExecutor(ThreadPoolExecutor):
     def get_stats(self) -> dict:
         """获取执行器运行统计"""
         return {
-            "total_submitted": self._submitted_count,
-            "total_completed": self._completed_count,
+            "submitted_count": self._submitted_count,
+            "completed_count": self._completed_count,
             "active_tasks": self._active_tasks,
             "max_wait_s": self.max_wait_s,
         }
+
+    def stats(self) -> dict:
+        """获取执行器运行统计（兼容别名）"""
+        return self.get_stats()
 
     async def graceful_shutdown(self, timeout_s: Optional[float] = None):
         """
@@ -130,7 +134,7 @@ class GracefulExecutor(ThreadPoolExecutor):
 
                 # 方式 2: 使用 asyncio.wait_for + run_in_executor
                 def do_shutdown():
-                    super(ThreadPoolExecutor, self).shutdown(wait=True)
+                    ThreadPoolExecutor.shutdown(self, wait=True)
 
                 await asyncio.wait_for(loop.run_in_executor(None, do_shutdown), timeout=timeout)
 

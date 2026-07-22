@@ -75,8 +75,8 @@ class RedisAsyncBatchWriter:
             # 等待任务完全停止（设置合理的 timeout）
             try:
                 await asyncio.wait_for(self._task, timeout=timeout_s)
-            except asyncio.TimeoutError:
-                print("⚠️ [RedisBatchWriter] Task 停止超时")
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                print("⚠️ [RedisBatchWriter] Task 停止超时或已取消")
         except Exception as e:
             print(f"⚠️ [RedisBatchWriter] Task 取消异常：{e}")
 
