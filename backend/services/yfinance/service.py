@@ -115,6 +115,25 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
         ]
         self.session.headers.update({"User-Agent": random.choice(user_agents)})
 
+    def close(self):
+        """
+        同步关闭方法（兼容旧代码）
+
+        注意：此方法不会等待异步任务完成，仅用于测试和简单场景。
+        生产环境请使用 async_close()。
+        """
+        try:
+            if hasattr(self, "session") and self.session:
+                self.session.close()
+        except Exception:
+            pass
+
+        try:
+            if hasattr(self, "_executor") and self._executor:
+                self._executor.shutdown(wait=False)
+        except Exception:
+            pass
+
     async def async_close(self):
         """
         ARCH-03: 异步优雅关闭 - 等待所有任务完成
@@ -163,11 +182,29 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
 
     def get_health_status(self) -> Dict[str, Any]:
         """获取当前雅虎财经接口的熔断与健康状态"""
+        # 兼容旧代码：检查 _circuit_breaker_until 属性
+        if hasattr(self, "_circuit_breaker_until") and self._circuit_breaker_until > time.time():
+            cooldown_remaining = max(0, self._circuit_breaker_until - time.time())
+            return {
+                "name": "Yahoo Finance",
+                "status": "circuit_open",
+                "cooldown_remaining": round(cooldown_remaining, 1),
+                "message": "触发 429 限流熔断中",
+            }
+
         # DIST-03: 使用统一熔断器状态查询
         cb_state = self.cb.get_state("yf_api")
+
+        # 映射熔断器状态到健康状态
+        status_map = {
+            "closed": "healthy",  # 熔断器关闭 = 健康
+            "open": "circuit_open",  # 熔断器打开 = 熔断中
+            "half_open": "recovering",  # 半开 = 恢复中
+        }
+
         status = {
             "name": "Yahoo Finance",
-            "status": cb_state.value,
+            "status": status_map.get(cb_state.value, cb_state.value),
             "cooldown_remaining": 0,
             "message": "触发 429 限流熔断中" if cb_state.value == "open" else "正常",
         }
@@ -180,6 +217,10 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
     async def fetch_yf_data(
         self, ticker: str, fetch_type: str, ttl: int, persist: bool = False, **kwargs
     ) -> Tuple[bool, Any, str]:  # noqa: E501
+        # 兼容旧代码：检查 _circuit_breaker_until 属性
+        if hasattr(self, "_circuit_breaker_until") and self._circuit_breaker_until > time.time():
+            return False, None, "熔断器开启中（限流冷却）"
+
         if os.getenv("QUANT_ENV") == "development" and yf is None:
             return False, None, "development_mock"
         if yf is None:
@@ -211,6 +252,21 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
         cache_key = f"yf_{fetch_type}_{yf_ticker}" + (
             "_" + "_".join([f"{k}_{v}" for k, v in kwargs.items()]) if kwargs else ""
         )
+
+        # 💡 检查 L1 缓存
+        if cache_key in self._cache:
+            ts, cached_data = self._cache[cache_key]
+            if time.time() - ts < ttl:
+                return True, cached_data, ""
+
+        # 💡 检查错误黑名单缓存
+        if cache_key in self._error_cache:
+            ts = self._error_cache[cache_key]
+            if time.time() - ts < _YF_ERROR_CACHE_TTL:
+                return False, None, "限流冷却中（错误黑名单）"
+            else:
+                # 过期则清理
+                self._error_cache.pop(cache_key, None)
 
         # 🚨 使用统一熔断器：cb.call() 会自动处理 OPEN/HALF_OPEN 状态
         try:
@@ -280,7 +336,7 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
                 return True, data, ""
 
             print(f"⚠️ [YFinance API] 获取到空数据 (疑似软限流/Cookie 失效) -> Ticker: {yf_ticker}")  # noqa: E501
-            return False, None, "软限流：返回空数据"
+            return False, None, "无效标的或数据缺失：返回空数据"
 
         except CircuitBreakerOpenError:
             return False, None, "限流冷却中：yfinance 触发全局熔断，请等待 60 秒后重试"
@@ -288,4 +344,17 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
             self._error_cache[cache_key] = time.time()  # 记录进黑名单
             err_str = str(e)
             print(f"⚠️ [YFinance] 外层兜底异常 | ticker: {yf_ticker} | fetch_type: {fetch_type} | error: {err_str}")  # noqa: E501
+
+            # 检查是否是 429 限流错误
+            if "429" in err_str or "Rate limit" in err_str or "Too Many Requests" in err_str:
+                # 兼容旧代码：设置 _circuit_breaker_until
+                if not hasattr(self, "_circuit_breaker_until"):
+                    self._circuit_breaker_until = 0.0
+                self._circuit_breaker_until = time.time() + 60  # 冷却 60 秒
+                return False, None, f"限流冷却中：{err_str}"
+
+            # 检查是否是退市/无效标的错误
+            if "Delisted" in err_str or "Invalid" in err_str or "No data found" in err_str:
+                return False, None, f"无效标的或已退市：{err_str}"
+
             return False, None, f"yfinance 未知系统异常：{err_str}"

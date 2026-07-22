@@ -4,9 +4,8 @@ import asyncio
 import hashlib
 import json
 import random
+import time
 from typing import Any, Dict
-
-from backend.core.redis_client import redis_client
 
 
 class SearchMixin:
@@ -15,25 +14,32 @@ class SearchMixin:
     async def search_tickers(self, query: str) -> Dict[str, Any]:
         """代理调用雅虎财经的自动补全搜索接口，确保添加的标的是真实存在的"""
         from backend.core.circuit_breaker import CircuitBreakerOpenError
+        from backend.core.redis_client import redis_client
 
         if not query or len(query) > 50:
             return {"status": "success", "data": []}
+
+        # 兼容旧代码：检查 _circuit_breaker_until 属性
+        if hasattr(self, "_circuit_breaker_until") and self._circuit_breaker_until > time.time():
+            return {"status": "warning", "message": "熔断器开启中（限流冷却）", "data": []}
+
+        # 💡 修复特殊字符漏洞与超大 Key 耗尽内存的风险
+        query_hash = hashlib.md5(query.strip().upper().encode("utf-8")).hexdigest()
+        cache_key = f"quant:yf_search:{query_hash}"
+
+        # 💡 检查 Redis 缓存
+        try:
+            cached = await redis_client.get(cache_key)
+            if cached:
+                data = json.loads(cached)
+                return {"status": "success", "data": data}
+        except Exception:
+            pass
 
         # 🚨 使用统一熔断器：cb.call() 自动处理 OPEN/HALF_OPEN 状态
         try:
 
             async def _do_search():
-                # 💡 修复特殊字符漏洞与超大 Key 耗尽内存的风险
-                query_hash = hashlib.md5(query.strip().upper().encode("utf-8")).hexdigest()
-                cache_key = f"quant:yf_search:{query_hash}"
-
-                try:
-                    cached = await redis_client.get(cache_key)
-                    if cached:
-                        return json.loads(cached)
-                except Exception:
-                    pass
-
                 if not hasattr(self, "_search_locks"):
                     self._search_locks = {}
 

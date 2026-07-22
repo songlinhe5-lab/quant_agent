@@ -35,28 +35,30 @@ class QuoteMixin:
 
         yf_ticker = format_yf_ticker(ticker)
 
-        # 💡 1. 使用统一熔断器：cb.call() 自动处理 OPEN/HALF_OPEN 状态
+        # 兼容旧代码：检查 _circuit_breaker_until 属性
+        if hasattr(self, "_circuit_breaker_until") and self._circuit_breaker_until > time.time():
+            return {"status": "error", "message": "熔断器开启中（限流冷却）"}
+
+        # 💡 1. 检查 L1 缓存 (按请求类型和参数强隔离)
+        kwargs_str = (
+            "_".join([f"{k}_{str(v).replace(' ', '')}" for k, v in sorted(kwargs.items())]) if kwargs else "default"
+        )  # noqa: E501
+        cache_key = f"yf_batch_{req_type}_{yf_ticker}_{kwargs_str}"
+
+        now = time.time()
+        # 行情缓存 120 秒防限流，技术指标运算重，缓存 1 小时
+        ttl = 120.0 if req_type == "quote" else 3600.0
+        if cache_key in self._cache and (now - self._cache[cache_key][0] < ttl):
+            return self._cache[cache_key][1]
+
+        # 💡 2. 检查黑名单 (5 分钟冷却，防止退市/错误标的引发重复超时卡顿)
+        if cache_key in self._error_cache and (now - self._error_cache[cache_key] < 300.0):  # noqa: E501
+            return {"status": "error", "message": f"{ticker} 数据拉取频繁失败，冷却中"}
+
+        # 💡 3. 使用统一熔断器：cb.call() 自动处理 OPEN/HALF_OPEN 状态
         try:
 
             async def _do_quote_fetch():
-                # 💡 2. 检查 L1 缓存 (按请求类型和参数强隔离)
-                kwargs_str = (
-                    "_".join([f"{k}_{str(v).replace(' ', '')}" for k, v in sorted(kwargs.items())])
-                    if kwargs
-                    else "default"
-                )  # noqa: E501
-                cache_key = f"yf_batch_{req_type}_{yf_ticker}_{kwargs_str}"
-
-                now = time.time()
-                # 行情缓存 120 秒防限流，技术指标运算重，缓存 1 小时
-                ttl = 120.0 if req_type == "quote" else 3600.0
-                if cache_key in self._cache and (now - self._cache[cache_key][0] < ttl):
-                    return self._cache[cache_key][1]
-
-                # 💡 3. 检查黑名单 (5 分钟冷却，防止退市/错误标的引发重复超时卡顿)
-                if cache_key in self._error_cache and (now - self._error_cache[cache_key] < 300.0):  # noqa: E501
-                    return {"status": "error", "message": f"{ticker} 数据拉取频繁失败，冷却中"}
-
                 loop = asyncio.get_running_loop()
                 # 交给业务方一个"取餐号" (Future)，业务方会原地 await 等待数据
                 fut = loop.create_future()
