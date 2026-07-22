@@ -18,8 +18,15 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
       reportsDirectory: './coverage',
-      // 💡 暂时禁用覆盖率阈值检查，当前仅有 2 个测试文件（24 个用例）
-      // 后续逐步添加单元测试后，再添加 thresholds 配置
+      // 💡 覆盖率门禁阈值 (OPT-007 要求)
+      thresholds: {
+        global: {
+          branches: 60,
+          functions: 60,
+          lines: 60,
+          statements: 60,
+        },
+      }
       exclude: [
         'src/types/**',
         'src/App.tsx',
