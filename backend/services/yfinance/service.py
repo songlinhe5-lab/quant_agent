@@ -14,6 +14,7 @@ from backend.services.yfinance.quote import QuoteMixin
 from backend.services.yfinance.search import SearchMixin
 from backend.services.yfinance.technical import TechnicalMixin
 from backend.services.yfinance.utils import RateLimitedSession, format_yf_ticker
+from backend.core.circuit_breaker import get_circuit_breaker, CircuitBreakerOpenError
 
 # 💡 内存安全防御：缓存容量上限 + TTL 清理
 _YF_CACHE_MAX_SIZE = 500  # 最多缓存 500 个条目
@@ -27,7 +28,7 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
         self._error_cache = {}  # { cache_key: timestamp } 黑名单缓存
         self._req_lock = asyncio.Lock()
         self._last_req_time = 0.0
-        self._circuit_breaker_until = 0.0  # 全局熔断器：记录熔断结束的时间戳
+        self.cb = get_circuit_breaker()
 
         # llm_service 支持依赖注入：测试时可传入 mock，生产环境使用全局单例
         self._llm_service_override = llm_service_instance
@@ -135,13 +136,13 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
 
     def get_health_status(self) -> Dict[str, Any]:
         """获取当前雅虎财经接口的熔断与健康状态"""
-        now = time.time()
-        is_open = now < self._circuit_breaker_until
+        # DIST-03: 使用统一熔断器状态查询
+        cb_state = self.cb.get_state("yf_api")
         status = {
             "name": "Yahoo Finance",
-            "status": "circuit_open" if is_open else "healthy",
-            "cooldown_remaining": max(0, int(self._circuit_breaker_until - now)) if is_open else 0,  # noqa: E501
-            "message": "触发 429 限流熔断中" if is_open else "正常",
+            "status": cb_state.value,
+            "cooldown_remaining": 0,
+            "message": "触发 429 限流熔断中" if cb_state.value == "open" else "正常",
         }
         # DIST-04: 标注路由器模式
         if self._router_enabled:
@@ -156,7 +157,7 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
             return False, None, "development_mock"
         if yf is None:
             return False, None, "环境缺失 yfinance 依赖"
-
+    
         # ── DIST-04: 路由器模式拦截 ──
         if self._router_enabled:
             await self._ensure_router()
@@ -177,57 +178,31 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
             )
             if result.get("status") == "success" and "data" in result:
                 return True, result["data"], ""
-            return False, None, result.get("message", "路由器: 数据获取失败")
-
+            return False, None, result.get("message", "路由器：数据获取失败")
+    
         yf_ticker = format_yf_ticker(ticker)
-
-        # 🚨 全局熔断拦截：如果当前雅虎 IP 被封处于冷却期，直接短路所有网络请求
-        if time.time() < self._circuit_breaker_until:
-            return False, None, "限流冷却中：雅虎财经数据源全局熔断保护中，正在休眠冷却"
-
         cache_key = f"yf_{fetch_type}_{yf_ticker}" + (
             "_" + "_".join([f"{k}_{v}" for k, v in kwargs.items()]) if kwargs else ""
-        )  # noqa: E501
-
-        now = time.time()
-
-        # 黑名单拦截：如果该请求在最近 5 分钟（300秒）内曾经失败过，直接拦截，拒绝发起真实网络请求  # noqa: E501
-        if cache_key in self._error_cache:
-            if now - self._error_cache[cache_key] < 300:
-                return (
-                    False,
-                    None,
-                    f"数据源限流冷却中：{yf_ticker} 请求过于频繁，请等待几分钟后重试",
-                )  # noqa: E501
-            else:
-                del self._error_cache[cache_key]  # 过期则移除黑名单，给它一次重新做人的机会  # noqa: E501
-
-        if cache_key in self._cache:
-            ts, data = self._cache[cache_key]
-            if now - ts < ttl:
-                if not (fetch_type == "history" and getattr(data, "empty", False)) and not (
-                    fetch_type == "info" and len(data) <= 1
-                ):  # noqa: E501
-                    return True, data, ""
-
+        )
+            
+        # 🚨 使用统一熔断器：cb.call() 会自动处理 OPEN/HALF_OPEN 状态
         try:
-
             def _do_fetch():
                 # 捕获 yfinance 多线程下载时产生的隐式异常
                 yf_shared = getattr(yf, "shared", None)
                 if yf_shared is not None:
                     getattr(yf_shared, "_ERRORS", {}).clear()
-
+    
                 kwargs.setdefault("progress", False)
                 kwargs.setdefault("session", self.session)
-                kwargs.setdefault("threads", False)  # type: ignore # 🚨 核心：必须完全禁用 yf 的隐式多线程，防止与 RateLimitedSession 产生"线程炸弹"
-
+                kwargs.setdefault("threads", False)  # type: ignore # 🚨 核心：必须完全禁用 yf 的隐式多线程，防止与 RateLimitedSession 产生“线程炸弹”
+    
                 res = (
                     yf.Ticker(yf_ticker, session=self.session).info
                     if fetch_type == "info"
                     else yf.download(yf_ticker, **kwargs)
                 )  # noqa: E501
-
+    
                 if yf_shared is not None:
                     errs = getattr(yf_shared, "_ERRORS", {})
                     if errs:
@@ -243,7 +218,7 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
                         elif yf_ticker in errs:
                             raise Exception(errs[yf_ticker])
                 return res
-
+    
             # 内部拦截器：将发往雅虎的请求通过异步锁进行排队节流
             async def _rate_limited_fetch():
                 if self._req_lock is None:
@@ -255,66 +230,36 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
                     if elapsed < dynamic_interval:
                         await asyncio.sleep(dynamic_interval - elapsed)
                     self._last_req_time = time.time()
-
+    
                 # 🚨 致命缺陷修复：将耗时的 to_thread 网络 IO 移出异步锁！
                 # 否则一旦某个请求拥堵，该锁将被死死霸占 15 秒以上，直接卡死所有其他正在排队获取行情的协程！  # noqa: E501
                 loop = asyncio.get_running_loop()
                 return await loop.run_in_executor(self._executor, _do_fetch)
-
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    data = await _rate_limited_fetch()
-
-                    # 判断是否软限流
-                    is_soft_limited = False
-                    if fetch_type == "history" and getattr(data, "empty", True):
-                        is_soft_limited = True
-                    elif fetch_type == "info" and isinstance(data, dict) and len(data) <= 1:  # noqa: E501
-                        is_soft_limited = True
-
-                    if not is_soft_limited:
-                        self._evict_stale_cache()
-                        self._cache[cache_key] = (time.time(), data)
-                        self._error_cache.pop(cache_key, None)  # 成功获取则移除黑名单
-                        return True, data, ""
-
-                    print(
-                        f"⚠️ [YFinance API] 第 {attempt + 1} 次获取到空数据 (疑似软限流/Cookie失效) -> Ticker: {yf_ticker}"
-                    )  # noqa: E501
-                except Exception as loop_e:
-                    err_str = str(loop_e)
-                    print(f"⚠️ [YFinance API] 第 {attempt + 1} 次请求异常 -> Ticker: {yf_ticker} | Error: {err_str}")  # noqa: E501
-                    if (
-                        "429" in err_str
-                        or "Rate limit" in err_str
-                        or "Too Many Requests" in err_str
-                        or "YFRateLimitError" in err_str
-                    ):  # noqa: E501
-                        print("🚨 [YFinance] 触发全局限流熔断！所有雅虎请求将强制休眠 60 秒以释放压力")  # noqa: E501
-                        self._circuit_breaker_until = time.time() + 60.0
-                        return (
-                            False,
-                            None,
-                            "限流冷却中：yfinance 触发了 429 限流保护。已开启全局熔断，请等待 60 秒后重试。",
-                        )  # noqa: E501
-
-                if attempt < max_retries - 1:
-                    # 指数退避 + 随机抖动
-                    backoff = random.uniform(2.0, 5.0) * (2**attempt)
-                    print(f"🔄 [YFinance API] 准备第 {attempt + 2} 次重试，重置 Session 并退避休眠 {backoff:.1f} 秒...")  # noqa: E501
-                    await asyncio.sleep(backoff)
-                    self._init_session()
-                    kwargs["session"] = self.session
-
-            self._error_cache[cache_key] = time.time()
-            return (
-                False,
-                None,
-                f"重试 {max_retries} 次后仍然失败，获取 {yf_ticker} 数据无效",
+                
+            data = await self.cb.call("yf_api", _rate_limited_fetch)
+                        
+            # 判断是否软限流
+            is_soft_limited = False
+            if fetch_type == "history" and getattr(data, "empty", True):
+                is_soft_limited = True
+            elif fetch_type == "info" and isinstance(data, dict) and len(data) <= 1:  # noqa: E501
+                is_soft_limited = True
+            
+            if not is_soft_limited:
+                self._evict_stale_cache()
+                self._cache[cache_key] = (time.time(), data)
+                self._error_cache.pop(cache_key, None)  # 成功获取则移除黑名单
+                return True, data, ""
+            
+            print(
+                f"⚠️ [YFinance API] 获取到空数据 (疑似软限流/Cookie 失效) -> Ticker: {yf_ticker}"
             )  # noqa: E501
+            return False, None, "软限流：返回空数据"
+                        
+        except CircuitBreakerOpenError:
+            return False, None, "限流冷却中：yfinance 触发全局熔断，请等待 60 秒后重试"
         except Exception as e:
             self._error_cache[cache_key] = time.time()  # 记录进黑名单
             err_str = str(e)
             print(f"⚠️ [YFinance] 外层兜底异常 | ticker: {yf_ticker} | fetch_type: {fetch_type} | error: {err_str}")  # noqa: E501
-            return False, None, f"yfinance 未知系统异常: {err_str}"
+            return False, None, f"yfinance 未知系统异常：{err_str}"

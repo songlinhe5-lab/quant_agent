@@ -349,3 +349,10 @@ class CircuitBreaker:
 
 # 全局单例（默认：3 次连续失败触发熔断，60 秒后自动半开探测）
 circuit_breaker = CircuitBreaker(max_failures=3, recovery_timeout=60.0)
+
+# 导出工厂函数，方便按需创建不同配置实例
+def get_circuit_breaker(max_failures: int = 3, recovery_timeout: float = 60.0) -> CircuitBreaker:
+    """按需创建新的电路断路器实例（默认返回全局单例配置）"""
+    if max_failures == 3 and recovery_timeout == 60.0:
+        return circuit_breaker
+    return CircuitBreaker(max_failures=max_failures, recovery_timeout=recovery_timeout)

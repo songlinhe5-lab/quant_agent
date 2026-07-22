@@ -21,6 +21,8 @@ class MacroDaemonMixin:
         if self._router_enabled:
             from backend.core.logger import logger
 
+from backend.core.circuit_breaker import get_circuit_breaker
+
             logger.info("[YF Daemon] 路由器模式已启用，宏观数据采集由远程节点负责，本地 daemon 休眠中")
             await asyncio.sleep(3600)
             return
@@ -118,8 +120,8 @@ class MacroDaemonMixin:
                             or "Too Many Requests" in err_str
                             or "YFRateLimitError" in err_str
                         ):  # noqa: E501
-                            print("  🚨 [YF Daemon] 触发全局限流熔断！")
-                            self._circuit_breaker_until = time.time() + 60.0
+                            print("  🚨 [YF Daemon] 触发限流错误，记录失败以触发熔断")
+                            self.cb.record_failure("yf_api")  # 触发熔断器自动管理冷却
                             df = None
                             break
 
