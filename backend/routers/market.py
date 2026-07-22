@@ -5,18 +5,16 @@ import random
 import re
 import time
 
-import pandas as pd
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
+# 引入应用服务层 (已解耦数据源)
+from backend.app.market_data_app import MarketDataService
 from backend.core.logger import logger
 from backend.core.metrics import WS_MESSAGES_SENT
 from backend.core.redis_client import redis_client
 from backend.core.ticker_format import format_ticker
 from backend.services.kline_warehouse import kline_warehouse
-
-# 引入应用服务层 (已解耦数据源)
-from backend.app.market_data_app import MarketDataService
 from backend.services.market_engine import manager
 from backend.services.ticker_service import ticker_service
 
@@ -280,33 +278,32 @@ async def get_services_health():
 async def get_quote(ticker: str):
     """
     提供给前端的高频统一行情接口
-    
+
     ✅ 已解耦数据源：基于 DataSourcePort Protocol + MarketDataService
     🛡️ 降级策略:
       - Futu (港美股优先)
       - AkShare (A 股兜底)
       - YFinance (加密货币/外汇兜底)
-    
+
     Args:
         ticker: 标的代码
-        
+
     Returns:
         dict: {"status": "success", "data": QuoteData, "source": str}
-        
+
     Raises:
         HTTPException: 所有数据源均失败时抛出 400 错误
     """
     # 调用应用服务层的统一接口 (自动处理降级逻辑)
     result = _market_service.get_quote(ticker)
-    
+
     # 检查结果状态
     if not result.is_success():
         # 所有数据源都失败了
         raise HTTPException(
-            status_code=400,
-            detail=f"All data sources failed: {result.error}. Sources tried: {result.source}"
+            status_code=400, detail=f"All data sources failed: {result.error}. Sources tried: {result.source}"
         )
-    
+
     # 转换结果为 Router 层的响应格式
     return {
         "status": "success",
@@ -391,18 +388,18 @@ async def sync_kline_warehouse(req: SyncKlineRequest):
 async def get_history(ticker: str, ktype: str = "K_DAY", num: int = 60):
     """
     提供给前端的 K 线图历史趋势接口
-    
+
     ✅ 已解耦数据源：基于 DataSourcePort Protocol + MarketDataService
     🛡️ 降级策略:
       - Futu (港美股优先)
       - AkShare (A 股兜底)
       - YFinance (通用兜底)
-    
+
     Args:
         ticker: 标的代码
         ktype: K 线周期类型
         num: 向后取多少根 K 线
-        
+
     Returns:
         dict: {"status": "success", "data": [KLineData]}
     """
@@ -412,13 +409,10 @@ async def get_history(ticker: str, ktype: str = "K_DAY", num: int = 60):
         interval="1d" if ktype == "K_DAY" else ktype.lower(),
         num=num,
     )
-    
+
     if not result.is_success() or not result.data:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Failed to fetch history: {result.error}"
-        )
-    
+        raise HTTPException(status_code=400, detail=f"Failed to fetch history: {result.error}")
+
     # 转换结果为 Router 层响应格式
     return {
         "status": "success",
@@ -431,11 +425,11 @@ async def get_history(ticker: str, ktype: str = "K_DAY", num: int = 60):
 async def get_option_chain(ticker: str, expiration_date: str = ""):
     """
     期权链数据接口 (Futu → YFinance 降级)
-    
+
     Args:
         ticker: 标的代码
         expiration_date: 到期日 (YYYY-MM-DD)
-        
+
     Returns:
         dict: {"status": "success", "data": OptionChain}
     """
@@ -453,10 +447,10 @@ async def get_option_chain(ticker: str, expiration_date: str = ""):
 async def get_fund_flow(ticker: str):
     """
     主力资金流向接口
-    
+
     Args:
         ticker: 标的代码
-        
+
     Returns:
         dict: {"status": "success", "data": FundFlowData}
     """
@@ -474,16 +468,16 @@ async def get_fund_flow(ticker: str):
 async def get_warrant_chain(ticker: str):
     """
     港股窝轮/牛熊证链 (市场多空情绪分析，仅 HK 标的)
-    
+
     Args:
         ticker: 港股代码
-        
+
     Returns:
         dict: {"status": "success", "data": WarrantData}
     """
     # 港股窝轮 (Warrant) / 牛熊证 (CBBC) 链数据
     # 目前暂仅支持 Futu 数据源 (如果已实现 warrant_chain 能力)
-    
+
     result = _market_service._futu.fetch("warrant_chain", {"ticker": ticker})
     if not result.is_success():
         # 降级：返回提示性消息而非错误
@@ -493,7 +487,7 @@ async def get_warrant_chain(ticker: str):
             "source": "not_implemented",
             "message": f"[{ticker}] 窝轮/牛熊证链数据暂不支持（FutuAdapter 需先实现 warrant_chain 能力）",
         }
-    
+
     return {
         "status": "success",
         "data": result.data,
@@ -505,34 +499,36 @@ async def get_warrant_chain(ticker: str):
 async def get_tech_indicators(ticker: str, lookback_days: int = 90):
     """
     技术指标计算接口 (MA/MACD/RSI 等)
-    
+
     Args:
         ticker: 标的代码
         lookback_days: 回溯天数
-        
+
     Returns:
         dict: {"status": "success", "data": TechIndicatorsData}
     """
     from backend.core.ticker_format import format_yf_ticker as _to_yf_ticker
-    
+
     # 通过 YFinanceAdapter 获取历史数据后计算指标
     yf_ticker = _to_yf_ticker(ticker)
-    result = _market_service._yfinance.fetch("history", {
-        "ticker": yf_ticker,
-        "period": f"{lookback_days}d",
-    })
-    
+    result = _market_service._yfinance.fetch(
+        "history",
+        {
+            "ticker": yf_ticker,
+            "period": f"{lookback_days}d",
+        },
+    )
+
     if not result.is_success() or not result.data:
         raise HTTPException(
-            status_code=400,
-            detail=f"Failed to fetch historical data for technical indicators: {result.error}"
+            status_code=400, detail=f"Failed to fetch historical data for technical indicators: {result.error}"
         )
-    
+
     # ✅ 集成生产级技术指标计算引擎 (TechnicalIndicatorsPro)
     from backend.utils.technical_indicators_pro import calculate_technical_indicators
-    
+
     indicators = calculate_technical_indicators(result.data)
-    
+
     return {
         "status": "success",
         "data": {
@@ -547,10 +543,10 @@ async def get_tech_indicators(ticker: str, lookback_days: int = 90):
 async def search_tickers(q: str):
     """
     股票代码模糊搜索 (优先本地词库，降级 YFinance)
-    
+
     Args:
         q: 搜索关键词
-        
+
     Returns:
         dict: {"status": "success", "data": [SearchResult]}
     """
@@ -607,25 +603,26 @@ async def get_company_news(ticker: str, limit: int = 10):
                 # 4. 确认缓存确实为空，执行真实的高耗时网络请求
                 # ✅ 使用本地模拟新闻数据 (Finnhub 迁移待后续完成)
                 print(f"⚠️ [Market News] {ticker} 当前使用模拟新闻数据")
-                
+
                 # TODO: 未来迁移到 DataSourcePort + FinnhubAdapter
                 # result = _market_service._finnhub.fetch("news", {"ticker": ticker, "days_back": days_back})
-                
+
                 # 当前返回模拟数据供前端测试
-                import random
                 mock_news = [
                     {
                         "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "headline": f"{ticker}: 公司发布最新财报显示业绩增长",
-                        "summary": f"根据最新披露的财报数据，{ticker} 在本季度实现了超出预期的收入增长"
+                        "summary": f"根据最新披露的财报数据，{ticker} 在本季度实现了超出预期的收入增长",
                     },
                     {
-                        "time": (datetime.now().replace(day=max(1, datetime.now().day-2))).strftime("%Y-%m-%d %H:%M:%S"),
+                        "time": (datetime.now().replace(day=max(1, datetime.now().day - 2))).strftime(
+                            "%Y-%m-%d %H:%M:%S"
+                        ),
                         "headline": f"{ticker}: 分析师上调目标价格至新高",
-                        "summary": "多家投行因看好行业前景而纷纷上调对 {ticker} 的目标价"
-                    }
+                        "summary": "多家投行因看好行业前景而纷纷上调对 {ticker} 的目标价",
+                    },
                 ]
-                
+
                 return {
                     "status": "success",
                     "count": len(mock_news),
@@ -665,7 +662,7 @@ async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 3
         {"date": "2024-01-25", "type": "news", "label": "重大新闻标题...", "impact": "low"}
     ]
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     # 💡 净化输入
     safe_ticker = re.sub(r"[^A-Za-z0-9_.-]", "", str(ticker))[:20].upper()
@@ -678,11 +675,10 @@ async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 3
     try:
         # ✅ 使用 YFinanceAdapter 获取历史 earnings 数据
         yf_ticker = _to_yf_ticker(safe_ticker)
-        from backend.services.kline_warehouse import kline_warehouse
-        
+
         # TODO: 未来迁移到 DataSourcePort + Finnhub Earnings Calendar
         # result = _market_service._finnhub.fetch("earnings", {"ticker": yf_ticker})
-        
+
         # 当前返回模拟财报事件供前端测试
         mock_earnings = [
             {
@@ -699,12 +695,12 @@ async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 3
         events.extend(mock_earnings)
     except Exception:
         pass  # 静默处理
-    
+
     # 2. 获取个股新闻（作为重大事件）
     try:
         # ✅ 使用本地模拟新闻数据
         from datetime import timedelta
-        
+
         # TODO: 未来迁移到 DataSourcePort + Finnhub News
         mock_news_events = [
             {
@@ -790,7 +786,7 @@ async def get_fundamental(ticker: str):
 
     # 💡 优先获取 Futu 的高质量数据，失败时再使用 YFinance 兜底
     final_data = {}
-    
+
     # Step 1: 尝试 FutuAdapter
     futu_result = _market_service._futu.fetch("quote", {"ticker": ticker})
     if futu_result.is_success() and futu_result.data:
@@ -844,10 +840,10 @@ async def get_fundamental(ticker: str):
 async def get_top_holders(ticker: str):
     """
     获取沪深港通个股的 Top 机构持仓明细 (南下/北向资金代理追踪)
-    
+
     Args:
         ticker: 标的代码
-        
+
     Returns:
         dict: {"status": "success", "data": List[HolderData]}
     """
@@ -857,13 +853,13 @@ async def get_top_holders(ticker: str):
 
     # 格式化 ticker 给 AKShare 使用 (例如 HK.00700 -> 00700, US 标的直接拦截)
     symbol = ticker.split(".")[-1] if "." in ticker else ticker
-    
+
     # 调用 AkShareAdapter 获取持仓数据
     result = _market_service._akshare.fetch("hsgt_holders", {"symbol": symbol})
-    
+
     if result.is_error():
         raise HTTPException(status_code=400, detail=result.error)
-    
+
     return {
         "status": "success",
         "data": result.data,
@@ -897,21 +893,21 @@ async def get_insider_marquee(limit: int = 10):
 async def get_insider_transactions(ticker: str, limit: int = 50):
     """
     获取个股高管内幕交易记录，供前端气泡图渲染
-    
+
     Args:
         ticker: 标的代码
         limit: 返回数量限制
-        
+
     Returns:
         dict: {"status": "success", "data": List[InsiderTransactionData]}
     """
     # TODO: 需要 InsiderService + InsiderDataAdapter
     # 当前使用本地模拟数据供前端测试
     print(f"⚠️ [Insider] {ticker} 当前使用模拟内幕交易数据")
-    
+
     # TODO: 未来迁移到 DataSourcePort + InsiderDataAdapter
     # result = _market_service._insider.fetch("transactions", {{"ticker": ticker, "limit": limit}})
-    
+
     # 当前返回模拟数据
     mock_transactions = [
         {
@@ -929,9 +925,9 @@ async def get_insider_transactions(ticker: str, limit: int = 50):
             "shares": random.randint(1000, 10000),
             "price": round(random.uniform(90, 250), 2),
             "value": round(random.uniform(100000, 2500000), 2),
-        }
+        },
     ]
-    
+
     return {
         "status": "success",
         "data": mock_transactions[:limit],
