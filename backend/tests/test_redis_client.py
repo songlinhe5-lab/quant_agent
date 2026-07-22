@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.core.graceful_executor import GracefulExecutor
 from backend.core.redis_client import (
     L1_CACHE_MAX_SIZE,
     LocalL1Cache,
@@ -431,62 +432,62 @@ if __name__ == "__main__":
 
 class TestGracefulExecutor:
     """ARCH-03: GracefulExecutor 优雅关闭测试"""
-    
+
     @pytest.mark.asyncio
     async def test_executor_waits_for_task_completion(self):
         """验证 Executor 能够等待慢任务完成后再关闭"""
         executor = GracefulExecutor(max_workers=2, max_wait_s=30)
         completed_tasks = []
-        
+
         def slow_task(task_id):
             time.sleep(1)  # 模拟耗时操作
             completed_tasks.append(task_id)
             return f"Task {task_id} completed"
-        
+
         # 提交两个慢任务
         future1 = executor.submit(slow_task, 1)
         future2 = executor.submit(slow_task, 2)
-        
+
         # 立即尝试关闭（应在超时前等待所有任务完成）
         result = await executor.graceful_shutdown(timeout_s=10.0)
-        
+
         # 断言：优雅关闭应返回 True，且所有任务应已完成
         assert result is True
         assert len(completed_tasks) == 2
         assert future1.result() == "Task 1 completed"
         assert future2.result() == "Task 2 completed"
-        
+
         executor.shutdown()  # 清理资源
-    
+
     @pytest.mark.asyncio
     async def test_executor_timeout_on_slow_task(self):
         """验证 Executor 对无法完成的 task 触发 timeout"""
         executor = GracefulExecutor(max_workers=1, max_wait_s=5)
-        
+
         def very_slow_task():
             time.sleep(60)  # 非常慢的任务
             return "done"
-        
+
         executor.submit(very_slow_task)
-        
+
         # 关闭时应因超时返回 False
         result = await executor.graceful_shutdown(timeout_s=2.0)
-        
+
         # 断言：超时情况下返回 False
         assert result is False
-        
+
         executor.shutdown()  # 强制清理
-    
+
     @pytest.mark.asyncio
     async def test_executor_stats_tracking(self):
         """验证 Executor 统计信息正确记录"""
         executor = GracefulExecutor(max_workers=4)
-        
+
         for i in range(5):
             executor.submit(time.sleep, 0.1)
-        
+
         stats = executor.get_stats()
-        
+
         # 断言：统计信息应包含正确的计数
         assert stats["submitted_count"] == 5
         executor.shutdown()
@@ -494,53 +495,53 @@ class TestGracefulExecutor:
 
 class TestRedisBatchWriterStop:
     """ARCH-03: RedisAsyncBatchWriter 停止机制测试"""
-    
+
     @pytest.mark.asyncio
     async def test_batch_writer_flushes_all_items(self, mock_redis):
         """验证停止时会清空所有缓存数据"""
         writer = RedisAsyncBatchWriter(mock_redis, batch_size=200, flush_interval=0.5)
         writer.start()
-        
+
         # 批量写入多个项目
         for i in range(50):
             writer.put_set_nowait(f"test_key_{i}", f"test_value_{i}")
-        
+
         await asyncio.sleep(0.6)  # 等待一些被批处理
-        
+
         # 停止时应强制刷新剩余项
         success = await writer.stop(timeout_s=10.0)
-        
+
         # 断言：停止成功
         assert success is True
-    
+
     @pytest.mark.asyncio
     async def test_batch_writer_empty_queue_immediate(self, mock_redis):
         """验证空队列时立即返回"""
         writer = RedisAsyncBatchWriter(mock_redis, batch_size=200, flush_interval=0.5)
         writer.start()
-        
+
         await asyncio.sleep(0.1)  # 确保 worker 启动
-        
+
         # 立即停止（没有积压的数据）
         success = await writer.stop(timeout_s=5.0)
-        
+
         assert success is True
-    
+
     @pytest.mark.asyncio
     async def test_batch_writer_high_load(self, mock_redis):
         """高负载压力测试：快速写入 + 突然停止"""
         writer = RedisAsyncBatchWriter(mock_redis, batch_size=100, flush_interval=0.2)
         writer.start()
-        
+
         # 快速写入大量数据
         for i in range(500):
             writer.put_set_nowait(f"stress_key_{i}", f"value_{i}")
-        
+
         # 立即停止（模拟紧急 shutdown）
         start_time = time.time()
         success = await writer.stop(timeout_s=30.0)
         elapsed = time.time() - start_time
-        
+
         # 断言：即使在高负载下也能在一定时间内完成关闭
         assert success is True
         assert elapsed < 15.0  # 应该在 15s 内完成
