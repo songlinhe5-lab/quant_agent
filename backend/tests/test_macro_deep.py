@@ -6,7 +6,7 @@ Macro 路由深度测试 - 覆盖 dashboard/assets/margin 端点
 import json
 import os
 import sys
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -197,13 +197,24 @@ class TestFetchMacroAssetsData:
 # GET /macro/sentiment
 # ==========================================
 class TestMacroSentiment:
-    @patch("backend.routers.macro.redis_client")
-    def test_sentiment_history(self, mock_redis, client):
+    def test_sentiment_history(self, client):
         """情绪历史数据"""
-        cached = json.dumps([{"date": "2024-07-01", "vix": 15.0, "pc_ratio": 0.8}])
-        mock_redis.get = AsyncMock(return_value=cached)
+        mock_record = MagicMock()
+        mock_record.timestamp = None
+        mock_record.pc_ratio = 0.8
+        mock_record.vix_value = 15.0
+        mock_record.credit_spread = 3.2
+        mock_db = MagicMock()
+        mock_query = MagicMock()
+        mock_query.order_by.return_value.limit.return_value.all.return_value = [mock_record]
+        mock_db.query.return_value = mock_query
+        from backend.core.database import get_db
 
-        resp = client.get("/api/v1/macro/sentiment-history")
+        app.dependency_overrides[get_db] = lambda: mock_db
+        try:
+            resp = client.get("/api/v1/macro/sentiment-history")
+        finally:
+            app.dependency_overrides.clear()
         assert resp.status_code == 200
 
 
