@@ -1502,3 +1502,74 @@ STATUS: PRODUCTION READY ✨
 4. **文档先行**：每个 OPT 任务必须有设计文档评审（Design Review）
 5. **渐进交付**：每两周展示一次成果，保持团队信心
 
+---
+
+## 🚨 融资融券功能 Mock 数据清理任务 (MARGIN-TRADING-2026-07)
+
+> **创建时间**: 2026-07-22  
+> **优先级**: P1 (核心功能缺失)  
+> **关联提交**: `41cc806 feat: 新增融资融券余额看板功能`
+
+### 背景说明
+
+融资融券余额看板功能已实现完整架构，但**港股和美股数据源当前使用 Mock 数据**，需在后续迭代中接入真实数据源。
+
+### Mock 代码位置
+
+| 文件 | 行号 | Mock 内容 | 影响范围 |
+|------|------|----------|---------|
+| `backend/services/margin/hk_share.py` | 47-62 | 港股融资融券 Mock 数据 | 港股市场数据 |
+| `backend/services/margin/us_share.py` | 56-71 | 美股融资融券 Mock 数据 | 美股市场数据 |
+
+### 待办任务清单
+
+| ID | 任务描述 | 数据源方案 | 预计工时 | 状态 |
+|----|---------|-----------|---------|------|
+| **MARGIN-01** | 接入港股真实融资融券数据 | 港交所披露易 / Futu API | 8h | PENDING |
+| **MARGIN-02** | 接入美股真实融资融券数据 | FINRA Margin Statistics API | 6h | PENDING |
+| **MARGIN-03** | 添加融资融券历史趋势图表 | 前端 ECharts | 4h | PENDING |
+| **MARGIN-04** | 支持个股融资融券查询 | AKShare / Futu | 6h | PENDING |
+| **MARGIN-05** | 补充单元测试覆盖率 ≥80% | pytest + mock | 4h | PENDING |
+
+### 数据源调研
+
+#### 港股 (MARGIN-01)
+- **方案 A**: 港交所披露易 (HKEXnews) - 每日融资融券数据
+  - 网址: https://www.hkexnews.hk/
+  - 数据: 港股通融资融券余额
+  - 频率: 日频 (T+1)
+- **方案 B**: Futu API - 需确认是否提供全市场数据
+  - 接口: `get_capital_flow` / `get_margin_data`
+  - 限制: 可能仅支持个股级别数据
+
+#### 美股 (MARGIN-02)
+- **方案 A**: FINRA Margin Statistics (推荐)
+  - 网址: https://www.finra.org/rules-guidance/key-topics/margin-accounts/margin-statistics
+  - 数据: 全市场 Margin Debt (融资余额)
+  - 频率: 月度更新
+  - 获取方式: 爬取网页或调用 API
+- **方案 B**: SEC EDGAR - 券商财报数据
+  - 数据: 各券商融资融券余额
+  - 频率: 季度 (10-Q) / 年度 (10-K)
+- **方案 C**: YFinance - 个股保证金数据
+  - 接口: `ticker.info['marginData']`
+  - 限制: 仅个股级别，非全市场
+
+### 验收标准
+
+- [ ] 港股数据源接入真实数据，移除 Mock
+- [ ] 美股数据源接入真实数据，移除 Mock
+- [ ] 数据准确性验证 (与官方数据对比误差 <1%)
+- [ ] 单元测试覆盖率 ≥80%
+- [ ] 历史趋势图表上线
+- [ ] 个股融资融券查询功能上线
+
+### 风险提示
+
+1. **数据延迟**: A 股数据为 T+1，港股/美股数据源频率需确认
+2. **限流风险**: 港交所/FINRA 爬虫需控制请求频率
+3. **数据完整性**: 美股 FINRA 仅提供月度数据，非日频
+4. **API 权限**: Futu API 可能需要额外权限或付费订阅
+
+---
+
