@@ -33,10 +33,11 @@ MarketDataService - 市场行情应用服务层
 
 from typing import List, Optional
 
+from backend.adapters.ports.data_source_port import DataSourceResult
+
 from ..adapters.akshare.akshare_adapter import AkShareAdapter
 from ..adapters.futu.futu_adapter import FutuAdapter
 from ..adapters.yfinance.yfinance_adapter import YFinanceAdapter
-from .ports.data_source_port import DataSourceResult
 
 
 class MarketDataService:
