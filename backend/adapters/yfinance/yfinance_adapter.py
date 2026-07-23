@@ -273,7 +273,7 @@ class YFinanceAdapter(DataSourcePort):
 
         try:
             cache_key = f"history:{ticker}:{interval}:{period}"
-            cached_data = self._get_cached(cache_key, self.HISTORY_CACHE_TTL_SECONDS)
+            cached_data = self._get_cached(cache_key)
             if cached_data:
                 return {"success": True, "data": cached_data, "cached": True}
 

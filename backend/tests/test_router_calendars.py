@@ -1,3 +1,292 @@
+"""
+全球市场日历路由测试
+覆盖: backend/routers/calendars.py
+"""
+
+import json
+import os
+import sys
+from datetime import timezone
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
+os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+
+from fastapi.testclient import TestClient
+
+from backend.main import app
+from backend.routers.calendars import (
+    _build_tile_from_records,
+    _extract_closes_from_records,
+    _market_session_state,
+    _parse_updated_at,
+)
+
+
+@pytest.fixture
+def client():
+    return TestClient(app)
+
+
+def _unwrap(resp):
+    """剥离可能的响应封装"""
+    body = resp.json()
+    if isinstance(body, dict) and "data" in body and isinstance(body["data"], dict):
+        inner = body["data"]
+        if "status" in inner:
+            return inner
+    return body
+
+
+# ==========================================
+# 工具函数测试
+# ==========================================
+class TestParseUpdatedAt:
+    def test_iso_datetime(self):
+        """ISO 日期时间解析"""
+        dt = _parse_updated_at("2026-07-16T12:00:00")
+        assert dt is not None
+        assert dt.year == 2026
+
+    def test_iso_datetime_with_z(self):
+        """带 Z 后缀的 ISO 时间"""
+        dt = _parse_updated_at("2026-07-16T12:00:00Z")
+        assert dt is not None
+
+    def test_date_only(self):
+        """仅日期字符串"""
+        dt = _parse_updated_at("2026-07-16")
+        assert dt is not None
+        assert dt.tzinfo == timezone.utc
+
+    def test_empty_string(self):
+        """空字符串返回 None"""
+        assert _parse_updated_at("") is None
+
+    def test_invalid_string(self):
+        """无效字符串返回 None"""
+        assert _parse_updated_at("not-a-date") is None
+
+
+class TestMarketSessionState:
+    def test_crypto_24_7(self):
+        """加密货币 7x24 交易"""
+        is_open, next_change = _market_session_state(None, None, None)
+        assert is_open is True
+        assert next_change is None
+
+    def test_no_zoneinfo(self):
+        """zoneinfo 为 None 时返回 True"""
+        with patch("backend.routers.calendars.zoneinfo", None):
+            is_open, _ = _market_session_state("America/New_York", (9, 30), (16, 0))
+        assert is_open is True
+
+    def test_valid_market(self):
+        """有效市场返回元组"""
+        is_open, next_change = _market_session_state("America/New_York", (9, 30), (16, 0))
+        assert isinstance(is_open, bool)
+
+    def test_invalid_tz(self):
+        """无效时区返回 True"""
+        is_open, _ = _market_session_state("Invalid/Timezone", (9, 30), (16, 0))
+        assert is_open is True
+
+
+class TestExtractCloses:
+    def test_basic_close(self):
+        """基本 Close 字段提取"""
+        records = [{"Close": 100.0}, {"Close": 101.5}, {"Close": 102.0}]
+        closes = _extract_closes_from_records(records)
+        assert closes == [100.0, 101.5, 102.0]
+
+    def test_multi_level_column(self):
+        """多级列名 ('Close', ticker)"""
+        records = [{"('Close', 'AAPL')": 150.0}, {"('Close', 'AAPL')": 151.0}]
+        closes = _extract_closes_from_records(records)
+        assert closes == [150.0, 151.0]
+
+    def test_non_dict_records(self):
+        """非字典记录被跳过"""
+        records = [None, "invalid", {"Close": 100.0}]
+        closes = _extract_closes_from_records(records)
+        assert closes == [100.0]
+
+    def test_empty_records(self):
+        """空记录"""
+        assert _extract_closes_from_records([]) == []
+
+    def test_invalid_close_value(self):
+        """无效 Close 值被跳过"""
+        records = [{"Close": "not_a_number"}, {"Close": 100.0}]
+        closes = _extract_closes_from_records(records)
+        assert closes == [100.0]
+
+
+class TestBuildTileFromRecords:
+    def test_basic_tile(self):
+        """基本 tile 构建"""
+        records = [
+            {"Close": 100.0, "Date": "2026-07-15"},
+            {"Close": 102.0, "Date": "2026-07-16"},
+        ]
+        cfg = {"symbol": "SPX", "name": "S&P 500", "yf": "^GSPC"}
+        tile = _build_tile_from_records(records, cfg, "us_markets")
+        assert tile is not None
+        assert tile["symbol"] == "SPX"
+        assert tile["price"] == 102.0
+        assert tile["change_abs"] == 2.0
+        assert tile["change_pct"] == 2.0
+        assert tile["category"] == "us_markets"
+        assert tile["source"] == "YFinance"
+
+    def test_empty_records(self):
+        """空记录返回 None"""
+        cfg = {"symbol": "SPX", "name": "S&P 500", "yf": "^GSPC"}
+        assert _build_tile_from_records([], cfg, "us_markets") is None
+
+    def test_no_closes(self):
+        """无有效收盘价返回 None"""
+        records = [{"Volume": 1000}]
+        cfg = {"symbol": "SPX", "name": "S&P 500", "yf": "^GSPC"}
+        assert _build_tile_from_records(records, cfg, "us_markets") is None
+
+    def test_single_record(self):
+        """单条记录 (prev_close = last_close)"""
+        records = [{"Close": 100.0, "Date": "2026-07-16"}]
+        cfg = {"symbol": "SPX", "name": "S&P 500", "yf": "^GSPC"}
+        tile = _build_tile_from_records(records, cfg, "us_markets")
+        assert tile is not None
+        assert tile["change_abs"] == 0.0
+        assert tile["change_pct"] == 0.0
+
+    def test_sparkline_limit(self):
+        """sparkline 最多 60 条"""
+        records = [{"Close": float(i), "Date": f"2026-01-{i:02d}"} for i in range(1, 80)]
+        cfg = {"symbol": "SPX", "name": "S&P 500", "yf": "^GSPC"}
+        tile = _build_tile_from_records(records, cfg, "us_markets")
+        assert tile is not None
+        assert len(tile["sparkline"]) <= 60
+
+
+# ==========================================
+# 端点测试
+# ==========================================
+class TestCalendarsSnapshot:
+    @patch("backend.routers.calendars.redis_client")
+    def test_snapshot_cached(self, mock_redis, client):
+        """快照缓存命中"""
+        cached_data = json.dumps({"status": "success", "data": {"categories": []}})
+        mock_redis.get = AsyncMock(return_value=cached_data)
+        resp = client.get("/api/v1/calendars/snapshot")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "success"
+
+    @patch("backend.routers.calendars._fetch_calendar_snapshot")
+    @patch("backend.routers.calendars.redis_client")
+    def test_snapshot_cache_miss(self, mock_redis, mock_fetch, client):
+        """快照缓存未命中"""
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.set = AsyncMock()
+        mock_fetch.return_value = {
+            "categories": [],
+            "timezone": "Asia/Hong_Kong",
+            "server_time": "2026-07-23T00:00:00Z",
+            "data_sources_health": {},
+        }
+        resp = client.get("/api/v1/calendars/snapshot")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "success"
+
+
+class TestCalendarsHours:
+    def test_hours_endpoint(self, client):
+        """交易时段矩阵"""
+        resp = client.get("/api/v1/calendars/hours")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "success"
+        data = body["data"]
+        assert "timezones" in data
+        assert "markets" in data
+        assert len(data["timezones"]) >= 4
+        assert len(data["markets"]) >= 4
+
+
+class TestCalendarsDividends:
+    def test_dividends_no_api_key(self, client):
+        """无 API Key 时返回 unavailable"""
+        with patch.dict(os.environ, {"FINNHUB_API_KEY": ""}):
+            resp = client.get("/api/v1/calendars/dividends")
+        assert resp.status_code == 200
+        body = _unwrap(resp)
+        assert body.get("status") in ("unavailable", "error", "degraded")
+
+    @patch("backend.routers.calendars.redis_client")
+    def test_dividends_cached(self, mock_redis, client):
+        """分红日历缓存命中"""
+        cached = json.dumps({"status": "success", "data": [{"symbol": "AAPL"}]})
+        mock_redis.get = AsyncMock(return_value=cached)
+        with patch.dict(os.environ, {"FINNHUB_API_KEY": "test-key"}):
+            resp = client.get("/api/v1/calendars/dividends")
+        assert resp.status_code == 200
+        body = _unwrap(resp)
+        assert body.get("status") == "success"
+
+    @patch("backend.routers.calendars.rate_limit_registry")
+    @patch("backend.routers.calendars.redis_client")
+    def test_dividends_throttled(self, mock_redis, mock_rl, client):
+        """限流退避时返回 degraded"""
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_throttler = MagicMock()
+        mock_throttler.should_throttle.return_value = True
+        mock_rl.get_throttler.return_value = mock_throttler
+        with patch.dict(os.environ, {"FINNHUB_API_KEY": "test-key"}):
+            resp = client.get("/api/v1/calendars/dividends")
+        assert resp.status_code == 200
+        body = _unwrap(resp)
+        assert body.get("status") in ("degraded", "error")
+
+
+class TestCalendarsIpos:
+    def test_ipos_no_api_key(self, client):
+        """无 API Key 时返回 unavailable"""
+        with patch.dict(os.environ, {"FINNHUB_API_KEY": ""}):
+            resp = client.get("/api/v1/calendars/ipos")
+        assert resp.status_code == 200
+        body = _unwrap(resp)
+        assert body.get("status") in ("unavailable", "error", "degraded")
+
+    @patch("backend.routers.calendars.redis_client")
+    def test_ipos_cached(self, mock_redis, client):
+        """IPO 日历缓存命中"""
+        cached = json.dumps({"status": "success", "data": [{"symbol": "NEWTICKER"}]})
+        mock_redis.get = AsyncMock(return_value=cached)
+        with patch.dict(os.environ, {"FINNHUB_API_KEY": "test-key"}):
+            resp = client.get("/api/v1/calendars/ipos")
+        assert resp.status_code == 200
+        body = _unwrap(resp)
+        assert body.get("status") == "success"
+
+    @patch("backend.routers.calendars.rate_limit_registry")
+    @patch("backend.routers.calendars.redis_client")
+    def test_ipos_throttled(self, mock_redis, mock_rl, client):
+        """限流退避时返回 degraded"""
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_throttler = MagicMock()
+        mock_throttler.should_throttle.return_value = True
+        mock_rl.get_throttler.return_value = mock_throttler
+        with patch.dict(os.environ, {"FINNHUB_API_KEY": "test-key"}):
+            resp = client.get("/api/v1/calendars/ipos")
+        assert resp.status_code == 200
+        body = _unwrap(resp)
+        assert body.get("status") in ("degraded", "error")
+
+
 """routers/calendars.py 单元测试 (FE-PROD-05)
 
 覆盖: /calendars/snapshot (缓存/聚合/STALE) · /calendars/hours · /calendars/dividends · /calendars/ipos
