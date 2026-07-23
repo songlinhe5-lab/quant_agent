@@ -28,7 +28,7 @@ client = TestClient(app, raise_server_exceptions=False)
 
 # ─── /market/history AKShare 降级 ───────────────────────────────────
 class TestHistoryAKShareFallback:
-    @patch("backend.routers.market.market_data")
+    @patch("backend.routers.market.market_data_gateway")
     @patch("backend.routers.market.data_source_router")
     def test_a_share_akshare_success(self, mock_router, mock_futu):
         mock_futu.get_history = AsyncMock(return_value={"status": "error", "message": "原生不支持"})
@@ -43,10 +43,10 @@ class TestHistoryAKShareFallback:
         assert resp.json()["status"] == "success"
 
     @pytest.mark.skip(reason="需要正确 mock pandas DataFrame，成本过高，后续单独处理")
-    @patch("backend.routers.market.market_data")
-    @patch("backend.routers.market.market_data")
-    @patch("backend.routers.market.market_data")
-    @patch("backend.routers.market._to_yf_ticker")
+    @patch("backend.routers.market.market_data_gateway")
+    @patch("backend.routers.market.market_data_gateway")
+    @patch("backend.routers.market.market_data_gateway")
+    @patch("backend.routers.market.format_yf_ticker")
     def test_a_share_akshare_fail_yf_fallback(self, mock_fmt, mock_yf, mock_ak, mock_futu):
         mock_futu.get_history = AsyncMock(return_value={"status": "error", "message": "原生不支持"})
         mock_ak.get_stock_history = AsyncMock(return_value={"status": "error", "message": "AK失败"})
@@ -58,8 +58,8 @@ class TestHistoryAKShareFallback:
 # ─── /market/option-chain YFinance 降级 ─────────────────────────────
 class TestOptionChainYFinanceFallback:
     @pytest.mark.skip(reason="需要正确 mock yfinance Ticker.option_chain，成本过高，后续单独处理")
-    @patch("backend.routers.market.market_data")
-    @patch("backend.routers.market._to_yf_ticker")
+    @patch("backend.routers.market.market_data_gateway")
+    @patch("backend.routers.market.format_yf_ticker")
     def test_futu_error_yf_success(self, mock_fmt, mock_futu):
         mock_futu.get_option_chain = AsyncMock(return_value={"status": "error", "message": "原生不支持"})
         mock_fmt.return_value = "AAPL"
@@ -69,8 +69,8 @@ class TestOptionChainYFinanceFallback:
         assert data["status"] == "success"
         assert data["source"] == "yfinance_fallback"
 
-    @patch("backend.routers.market.market_data")
-    @patch("backend.routers.market._to_yf_ticker")
+    @patch("backend.routers.market.market_data_gateway")
+    @patch("backend.routers.market.format_yf_ticker")
     def test_both_fail_returns_400(self, mock_fmt, mock_futu):
         mock_futu.get_option_chain = AsyncMock(return_value={"status": "error", "message": "futu error"})
         mock_fmt.return_value = "AAPL"
@@ -83,7 +83,7 @@ class TestOptionChainYFinanceFallback:
 
 # ─── /market/tech-indicators 降级 ───────────────────────────────────
 class TestTechIndicatorsFallback:
-    @patch("backend.routers.market.market_data")
+    @patch("backend.routers.market.market_data_gateway")
     @patch("backend.routers.market.data_source_router")
     def test_futu_fail_yf_success(self, mock_router, mock_futu):
         mock_futu.get_history = AsyncMock(return_value={"status": "error", "message": "原生不支持"})
@@ -94,7 +94,7 @@ class TestTechIndicatorsFallback:
         assert resp.status_code == 200
         assert resp.json()["status"] == "success"
 
-    @patch("backend.routers.market.market_data")
+    @patch("backend.routers.market.market_data_gateway")
     @patch("backend.routers.market.data_source_router")
     def test_both_fail_returns_400(self, mock_router, mock_futu):
         mock_futu.get_history = AsyncMock(return_value={"status": "error", "message": "futu error"})
@@ -105,7 +105,7 @@ class TestTechIndicatorsFallback:
 
 # ─── /market/fundamental YFinance 兜底 ──────────────────────────────
 class TestFundamentalYFinanceFallback:
-    @patch("backend.routers.market.market_data")
+    @patch("backend.routers.market.market_data_gateway")
     @patch("backend.routers.market.data_source_router")
     def test_futu_fail_yf_success(self, mock_router, mock_futu):
         mock_futu.get_fundamental = AsyncMock(return_value={"status": "error"})
@@ -131,7 +131,7 @@ class TestFundamentalYFinanceFallback:
         assert data["status"] == "success"
         assert "trailing_PE" in data["data"]
 
-    @patch("backend.routers.market.market_data")
+    @patch("backend.routers.market.market_data_gateway")
     @patch("backend.routers.market.data_source_router")
     def test_both_fail_returns_400(self, mock_router, mock_futu):
         mock_futu.get_fundamental = AsyncMock(return_value={"status": "error"})
@@ -143,7 +143,7 @@ class TestFundamentalYFinanceFallback:
 # ─── /market/news 异常路径 ─────────────────────────────────────────
 class TestNewsErrorPaths:
     @patch("backend.routers.market.redis_client")
-    @patch("backend.routers.market.market_data")
+    @patch("backend.routers.market.market_data_gateway")
     def test_finnhub_exception_returns_empty(self, mock_finhub, mock_redis):
         mock_redis.get = AsyncMock(return_value=None)
         mock_finhub.get_company_news = AsyncMock(side_effect=Exception("Finnhub down"))
@@ -155,7 +155,7 @@ class TestNewsErrorPaths:
     @patch("backend.routers.market.redis_client")
     def test_redis_exception_continues_to_finnhub(self, mock_redis):
         mock_redis.get = AsyncMock(side_effect=Exception("Redis down"))
-        with patch("backend.routers.market.market_data") as mock_finhub:
+        with patch("backend.routers.market.market_data_gateway") as mock_finhub:
             mock_finhub.get_company_news = AsyncMock(
                 return_value={
                     "status": "success",

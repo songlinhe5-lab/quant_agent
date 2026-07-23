@@ -293,18 +293,22 @@ class TestPeakHours:
         """所有限流率 < 5% 时无高峰"""
         analyzer = RateLimitAnalyzer("test")
         now = time.time()
-        # 100 请求，2 限流 (2% < 5%)
+        # 将 base_ts 对齐到当前小时中间，确保 100 个事件（跨 ~100s）不跨小时边界
+        # 小时中间 = 当前小时起点 + 1800s，事件向前 spread 100s 不会跨桶
+        hour_start = now - (now % 3600)
+        base_ts = hour_start + 1800  # 小时中间
+        # 100 请求，2 限流 (2% < 5%)，全部在同一小时桶内
         for i in range(98):
             analyzer._events.append(
                 _RequestEvent(
-                    timestamp=now - i,
+                    timestamp=base_ts - i,
                     is_rate_limit=False,
                 )
             )
         for i in range(2):
             analyzer._events.append(
                 _RequestEvent(
-                    timestamp=now - i,
+                    timestamp=base_ts - i,
                     is_rate_limit=True,
                 )
             )
