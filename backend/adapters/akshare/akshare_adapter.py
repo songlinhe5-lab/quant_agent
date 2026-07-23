@@ -20,9 +20,8 @@ from typing import Any, Dict, List, Optional
 
 import akshare as ak
 
-from backend.core.logger import logger
-
 from backend.adapters.ports.data_source_port import DataSourcePort, DataSourceResult
+from backend.core.logger import logger
 
 
 class AkShareAdapter(DataSourcePort):

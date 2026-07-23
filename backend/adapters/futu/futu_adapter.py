@@ -15,9 +15,8 @@ import time
 import uuid
 from typing import Any, Callable, Dict, List, Optional
 
-from backend.core.logger import logger
-
 from backend.adapters.ports.data_source_port import DataSourcePort, DataSourceResult
+from backend.core.logger import logger
 
 
 class FutuAdapter(DataSourcePort):

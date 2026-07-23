@@ -19,9 +19,8 @@ from typing import Any, Dict, List, Optional
 import yfinance as yf
 from pyrate_limiter import Duration, Limiter, RateLimitExceededError, RequestRate
 
-from backend.core.logger import logger
-
 from backend.adapters.ports.data_source_port import DataSourcePort, DataSourceResult
+from backend.core.logger import logger
 
 
 class YFinanceAdapter(DataSourcePort):
