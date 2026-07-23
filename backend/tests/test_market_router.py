@@ -85,40 +85,37 @@ class TestServicesHealth:
 
 # ─── /market/quote ─────────────────────────────────────────────────────
 class TestGetQuote:
-    @patch("backend.routers.market.market_data_gateway")
-    def test_futu_success(self, mock_futu):
-        mock_futu.get_quote = AsyncMock(
-            return_value={"status": "success", "data": {"ticker": "US.AAPL", "last_price": 150.0}}
-        )
+    @patch("backend.routers.market._market_service")
+    def test_futu_success(self, mock_svc):
+        mock_result = MagicMock()
+        mock_result.is_success.return_value = True
+        mock_result.data = {"ticker": "US.AAPL", "last_price": 150.0}
+        mock_result.source = "futu"
+        mock_result.latency_ms = 10
+        mock_result.cached = False
+        mock_svc.get_quote.return_value = mock_result
         resp = client.get("/market/quote?ticker=US.AAPL")
         assert resp.status_code == 200
         assert resp.json()["status"] == "success"
 
-    @patch("backend.routers.market.market_data_gateway")
-    @patch("backend.routers.market.format_yf_ticker")
-    @patch("backend.routers.market.data_source_router")
-    def test_futu_error_yf_fallback(self, mock_router, mock_fmt, mock_futu):
-        mock_futu.get_quote = AsyncMock(return_value={"status": "error", "message": "原生不支持"})
-        mock_fmt.return_value = "AAPL"
-        mock_router.fetch_yfinance = AsyncMock(
-            return_value={
-                "success": True,
-                "data": {
-                    "regularMarketPrice": 150.0,
-                    "regularMarketChange": 1.0,
-                    "regularMarketChangePercent": 0.5,
-                    "regularMarketOpen": 149.0,
-                    "regularMarketDayHigh": 152.0,
-                    "regularMarketDayLow": 148.0,
-                    "previousClose": 149.0,
-                    "regularMarketVolume": 1000000,
-                },
-                "message": None,
-            }
-        )
+    @patch("backend.routers.market._market_service")
+    def test_futu_error_yf_fallback(self, mock_svc):
+        """Futu 失败后降级到 YFinance 成功"""
+        mock_result = MagicMock()
+        mock_result.is_success.return_value = True
+        mock_result.data = {
+            "regularMarketPrice": 150.0,
+            "regularMarketChange": 1.0,
+            "regularMarketChangePercent": 0.5,
+        }
+        mock_result.source = "yfinance"
+        mock_result.latency_ms = 50
+        mock_result.cached = False
+        mock_svc.get_quote.return_value = mock_result
         resp = client.get("/market/quote?ticker=US.AAPL")
         assert resp.status_code == 200
         assert resp.json()["status"] == "success"
+        assert resp.json()["source"] == "yfinance"
 
     @patch("backend.routers.market._market_service")
     def test_both_fail_returns_400(self, mock_svc):
@@ -216,16 +213,13 @@ class TestSearchTickers:
         assert resp.json()["status"] == "success"
 
     @patch("backend.routers.market.ticker_service")
-    @patch("backend.routers.market.data_source_router")
-    def test_local_empty_fallback_to_yf(self, mock_router, mock_ticker_svc):
+    @patch("backend.routers.market._market_service")
+    def test_local_empty_fallback_to_yf(self, mock_svc, mock_ticker_svc):
         mock_ticker_svc.search_tickers = AsyncMock(return_value={"status": "success", "data": []})
-        mock_router.fetch_yfinance = AsyncMock(
-            return_value={
-                "success": True,
-                "data": {"status": "success", "data": [{"symbol": "AAPL", "name": "Apple"}]},
-                "message": "",
-            }
-        )
+        mock_yf_result = MagicMock()
+        mock_yf_result.is_success.return_value = True
+        mock_yf_result.data = [{"symbol": "AAPL", "name": "Apple"}]
+        mock_svc._yfinance.fetch.return_value = mock_yf_result
         resp = client.get("/market/search?q=AAPL")
         assert resp.status_code == 200
 

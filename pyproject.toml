@@ -132,8 +132,8 @@ omit = [
     "*/*.pb.py",
     "backend/main.py",
 ]
-# 禁用并行模式，使用单个数据文件
-parallel = false
+# 启用并行模式，支持 pytest-xdist (-n auto) 下正确合并覆盖率数据
+parallel = true
 
 [tool.coverage.report]
 # ✅ Top10 低覆盖率文件测试已补充，覆盖率接近 70%

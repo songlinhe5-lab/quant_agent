@@ -37,16 +37,13 @@ class TestSearchTickers:
         assert data["status"] == "success"
 
     @patch("backend.routers.market.ticker_service")
-    @patch("backend.routers.market.data_source_router")
-    def test_local_empty_yf_fallback(self, mock_router, mock_ts):
+    @patch("backend.routers.market._market_service")
+    def test_local_empty_yf_fallback(self, mock_svc, mock_ts):
         mock_ts.search_tickers = AsyncMock(return_value={"status": "success", "data": []})
-        mock_router.fetch_yfinance = AsyncMock(
-            return_value={
-                "success": True,
-                "data": {"status": "success", "data": [{"symbol": "AAPL", "name": "Apple"}]},
-                "message": "",
-            }
-        )
+        mock_yf_result = MagicMock()
+        mock_yf_result.is_success.return_value = True
+        mock_yf_result.data = [{"symbol": "AAPL", "name": "Apple"}]
+        mock_svc._yfinance.fetch.return_value = mock_yf_result
         resp = client.get("/market/search?q=apple")
         assert resp.status_code == 200
 
