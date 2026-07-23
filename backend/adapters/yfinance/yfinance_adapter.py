@@ -17,13 +17,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 import yfinance as yf
-
-try:
-    from pyrate_limiter import Duration, Limiter, RateLimitExceededError, RequestRate
-
-    _HAS_PYRATE_LIMITER = True
-except ImportError:
-    _HAS_PYRATE_LIMITER = False
+from pyrate_limiter import Duration, Limiter, Rate
 
 from backend.adapters.ports.data_source_port import DataSourcePort, DataSourceResult
 from backend.core.logger import logger
@@ -68,11 +62,9 @@ class YFinanceAdapter(DataSourcePort):
         self._cache: Dict[str, dict] = {}
 
         # 速率限制器 (防止触发 Yahoo 限流)
-        if _HAS_PYRATE_LIMITER:
-            rate = RequestRate(self.DEFAULT_RATE_LIMIT, Duration.MINUTE)
-            self._limiter = Limiter(rate)
-        else:
-            self._limiter = None
+        # pyrate-limiter v4 API: Rate(limit, interval) + Limiter(rate)
+        rate = Rate(self.DEFAULT_RATE_LIMIT, Duration.MINUTE)
+        self._limiter = Limiter(rate)
 
         # ticker 格式化缓存
         self._ticker_cache: Dict[str, str] = {}
@@ -120,6 +112,10 @@ class YFinanceAdapter(DataSourcePort):
         try:
             start_time = time.time()
 
+            # pyrate-limiter v4: try_acquire 返回 False 表示触发限流
+            if not self._limiter.try_acquire(action):
+                return DataSourceResult.rate_limited(retry_after_seconds=60, source=self.name)
+
             if action == "quote":
                 result = self._fetch_quote(params)
             elif action == "history":
@@ -144,8 +140,6 @@ class YFinanceAdapter(DataSourcePort):
             )
 
         except Exception as e:
-            if _HAS_PYRATE_LIMITER and isinstance(e, RateLimitExceededError):
-                return DataSourceResult.rate_limited(retry_after_seconds=60, source=self.name)
             return DataSourceResult.error(str(e), source=self.name)
 
     # ========== 内部私有方法 ==========
