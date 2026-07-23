@@ -348,29 +348,7 @@ class TestDataSourceRouter:
         assert info.retryable is False
 
 
-"""
-Tests for backend/services/data_source_router.py
-
-Coverage targets:
-- DataSourceNode dataclass
-- DataSourceRouter initialization
-- HMAC signature generation
-- HTTP client lazy loading
-- Node selection and health filtering
-- Circuit breaker mechanism
-- YFinance fetch (local + remote)
-- AKShare fetch (local + remote)
-- Health status endpoint
-"""
-
-import asyncio
-import os
-import time
-from unittest.mock import patch
-
-import pytest
-
-from backend.services.data_source_router import DataSourceNode, DataSourceRouter
+# ===== DataSourceRouter 增强测试 =====
 
 
 @pytest.fixture
@@ -394,7 +372,7 @@ def router_enabled():
         yield DataSourceRouter()
 
 
-class TestDataSourceNode:
+class TestDataSourceNodeEnhanced:
     def test_node_initialization(self):
         node = DataSourceNode(name="test", url="http://localhost:8000")
         assert node.name == "test"

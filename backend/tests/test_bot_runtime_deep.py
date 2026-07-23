@@ -253,8 +253,6 @@ class TestRunBotLoop:
         manager._broadcast_bots_update = AsyncMock()
 
         # 运行一轮后设置停止
-        original_sleep = asyncio.sleep
-
         async def mock_sleep(seconds):
             bot._stop_requested = True
 

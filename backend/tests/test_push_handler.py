@@ -155,7 +155,7 @@ class TestGetUpdateQuoteFn:
         old_fn = ph._update_quote_to_redis
         ph._update_quote_to_redis = None
         try:
-            with patch("backend.services.market_engine.update_quote_to_redis", new_callable=AsyncMock) as mock_fn:
+            with patch("backend.services.market_engine.update_quote_to_redis", new_callable=AsyncMock):
                 fn = await ph._get_update_quote_fn()
                 assert fn is not None
         finally:

@@ -303,28 +303,7 @@ class TestTradingMode:
         assert resp.status_code == 400
 
 
-"""
-OMS 订单管理与实盘 Bot 路由单元测试
-覆盖: backend/routers/oms.py
-"""
-
-import os
-import sys
-from unittest.mock import AsyncMock, patch
-
-os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
-os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
-
-from fastapi.testclient import TestClient
-
-from backend.main import app
-
-
-def _unwrap(resp):
-    """剥离统一响应封装，返回路由原始 dict"""
-    body = resp.json()
-    return body.get("data", body)
+# ===== OMS 路由增强测试 =====
 
 
 class TestOmsStateRoutes:

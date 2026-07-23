@@ -246,7 +246,7 @@ class TestAlertEngineEvaluate:
 
         # 先设置一个基准价格
         engine._last_prices["TSLA"] = 200.0
-        events = await engine.evaluate_quote("TSLA", 200.0, volume=1000000)
+        await engine.evaluate_quote("TSLA", 200.0, volume=1000000)
         # volume_surge 需要历史成交量数据，这里可能不会触发
         # 但 metadata 应该被注入
         assert rule.metadata.get("current_volume") == 1000000

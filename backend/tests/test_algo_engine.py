@@ -16,11 +16,16 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
+from backend.services.algo_analytics import (
+    AlgoAnalytics,
+    algo_analytics,
+)
 from backend.services.algo_engine import (
     AlgoEngine,
     AlgoOrder,
     MarketImpactModel,
     _get_lot_size,
+    algo_engine,
 )
 
 
@@ -705,30 +710,10 @@ class TestAlgoEngineExecution:
         assert order.filled_qty % 100 == 0
 
 
-"""
-TRADE-02 · 算法拆单增强测试
-
-5 tests: 市场冲击模型 / POV 算法 / IS 算法 / VWAP ADV 曲线 / 执行分析
-"""
-
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
-
-from backend.services.algo_analytics import (
-    AlgoAnalytics,
-    algo_analytics,
-)
-from backend.services.algo_engine import (
-    AlgoEngine,
-    AlgoOrder,
-    MarketImpactModel,
-    algo_engine,
-)
-
-# ===== MarketImpactModel =====
+# ===== TRADE-02 · 算法拆单增强测试 =====
 
 
-class TestMarketImpactModel:
+class TestMarketImpactModelEnhanced:
     """市场冲击模型测试"""
 
     def test_estimate_slippage_basic(self):
@@ -910,7 +895,7 @@ class TestAlgoEngineNewAlgorithms:
 
 
 # ─── AlgoOrder 单元测试 ────────────────────────────────────────────────────────
-class TestAlgoOrder:
+class TestAlgoOrderEnhanced:
     """AlgoOrder 数据结构测试"""
 
     def test_algo_order_init(self):
@@ -989,8 +974,8 @@ class TestAlgoOrder:
 
 
 # ─── AlgoEngine 单元测试 ───────────────────────────────────────────────────────
-class TestAlgoEngine:
-    """AlgoEngine 核心逻辑测试"""
+class TestAlgoEngineEnhanced:
+    """AlgoEngine 核心引擎测试"""
 
     @patch("backend.services.algo_engine.redis_client")
     def test_pause_algo(self, mock_redis):
@@ -1206,7 +1191,7 @@ class TestAlgoEngine:
 
 
 # ─── lot_size 工具函数测试 ─────────────────────────────────────────────────────
-class TestGetLotSize:
+class TestGetLotSizeEnhanced:
     """lot_size 获取逻辑测试"""
 
     def test_us_stock_returns_1(self):

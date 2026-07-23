@@ -320,7 +320,6 @@ class TestRateLimiter:
 
         # 第二次 pipeline 调用返回 violation
         call_count = [0]
-        orig_pipeline = mock_redis.pipeline
 
         def side_effect():
             call_count[0] += 1

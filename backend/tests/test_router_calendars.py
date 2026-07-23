@@ -182,7 +182,7 @@ class TestCalendarsSnapshot:
         mock_redis.get = AsyncMock(return_value=cached_data)
         resp = client.get("/api/v1/calendars/snapshot")
         assert resp.status_code == 200
-        body = resp.json()
+        body = _unwrap(resp)
         assert body["status"] == "success"
 
     @patch("backend.routers.calendars._fetch_calendar_snapshot")
@@ -199,7 +199,7 @@ class TestCalendarsSnapshot:
         }
         resp = client.get("/api/v1/calendars/snapshot")
         assert resp.status_code == 200
-        body = resp.json()
+        body = _unwrap(resp)
         assert body["status"] == "success"
 
 
@@ -208,7 +208,7 @@ class TestCalendarsHours:
         """交易时段矩阵"""
         resp = client.get("/api/v1/calendars/hours")
         assert resp.status_code == 200
-        body = resp.json()
+        body = _unwrap(resp)
         assert body["status"] == "success"
         data = body["data"]
         assert "timezones" in data
@@ -287,35 +287,10 @@ class TestCalendarsIpos:
         assert body.get("status") in ("degraded", "error")
 
 
-"""routers/calendars.py 单元测试 (FE-PROD-05)
-
-覆盖: /calendars/snapshot (缓存/聚合/STALE) · /calendars/hours · /calendars/dividends · /calendars/ipos
-以及 macro.py 新增的 /macro/earnings 复用。
-
-注意：全局响应包装器将端点返回值置于 {"code":0,"msg":"ok","data": <端点返回>}，
-因此断言时统一取 resp.json()["data"] 再访问端点字段。
-"""
-
-import json
-from unittest.mock import AsyncMock, patch
-
-import pytest
-from fastapi.testclient import TestClient
-
-from backend.main import app
+# ===== routers/calendars.py 增强测试 (FE-PROD-05) =====
 
 
-@pytest.fixture
-def client():
-    return TestClient(app)
-
-
-# ==========================================
-# GET /api/v1/calendars/snapshot
-# ==========================================
-
-
-class TestCalendarsSnapshot:
+class TestCalendarsSnapshotEnhanced:
     def test_snapshot_cache_hit(self, client):
         """缓存命中：直接返回 Redis 缓存的快照结构"""
         cached = {
@@ -422,7 +397,7 @@ class TestCalendarsSnapshot:
 # ==========================================
 
 
-class TestCalendarsHours:
+class TestCalendarsHoursEnhanced:
     def test_hours_returns_timezones_and_markets(self, client):
         resp = client.get("/api/v1/calendars/hours")
         assert resp.status_code == 200

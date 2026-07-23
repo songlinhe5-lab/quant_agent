@@ -134,7 +134,6 @@ class TestSettlePortfolio:
         query_mock.filter.return_value = filter_mock
 
         call_count = [0]
-        original_filter = filter_mock.first
 
         def first_side_effect():
             call_count[0] += 1
@@ -277,7 +276,6 @@ class TestBackfillSettlement:
 
         # 第一次 query: 所有 running 组合
         # 第二次 query: 最新 NAV
-        query_results = [[portfolio], []]
         call_idx = [0]
 
         def query_side_effect(*args):

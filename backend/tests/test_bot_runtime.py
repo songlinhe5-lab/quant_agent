@@ -382,20 +382,7 @@ class TestBotRuntimeManager:
         assert result is None
 
 
-"""
-Bot Runtime 单元测试
-覆盖: backend/services/bot_runtime.py
-"""
-
-import asyncio
-import json
-import os
-import sys
-from unittest.mock import AsyncMock, patch
-
-os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
-os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+# ===== Bot Runtime 增强测试 =====
 
 
 async def _mock_bot_loop(self, bot):
@@ -408,7 +395,7 @@ async def _mock_bot_loop(self, bot):
 
 
 # ─── BotInstance 单元测试 ──────────────────────────────────────────────────────
-class TestBotInstance:
+class TestBotInstanceEnhanced:
     """BotInstance 数据结构测试"""
 
     def test_bot_instance_init(self):
@@ -473,7 +460,7 @@ class TestBotInstance:
 
 
 # ─── BotRuntimeManager 单元测试 ────────────────────────────────────────────────
-class TestBotRuntimeManager:
+class TestBotRuntimeManagerEnhanced:
     """BotRuntimeManager 核心逻辑测试"""
 
     @patch("backend.services.bot_runtime.redis_client")
