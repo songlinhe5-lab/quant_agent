@@ -120,13 +120,11 @@ class TestGetQuote:
         assert resp.status_code == 200
         assert resp.json()["status"] == "success"
 
-    @patch("backend.routers.market.market_data_gateway")
-    @patch("backend.routers.market.format_yf_ticker")
-    @patch("backend.routers.market.data_source_router")
-    def test_both_fail_returns_400(self, mock_router, mock_fmt, mock_futu):
-        mock_futu.get_quote = AsyncMock(return_value={"status": "error", "message": "futu error"})
-        mock_fmt.return_value = "AAPL"
-        mock_router.fetch_yfinance = AsyncMock(return_value={"success": False, "data": None, "message": "yf error"})
+    @patch("backend.routers.market._market_service")
+    def test_both_fail_returns_400(self, mock_svc):
+        from backend.adapters.ports.data_source_port import DataSourceResult
+
+        mock_svc.get_quote = MagicMock(return_value=DataSourceResult.error("All sources failed", source="test"))
         resp = client.get("/market/quote?ticker=US.AAPL")
         assert resp.status_code == 400
 
@@ -144,19 +142,24 @@ class TestGetFundamental:
         assert data["status"] == "success"
         assert "fred_series_id" in data["data"]
 
-    @patch("backend.routers.market.market_data_gateway")
-    @patch("backend.routers.market.market_data_gateway")
-    def test_futu_success(self, mock_yf, mock_futu):
-        mock_futu.get_fundamental = AsyncMock(return_value={"status": "success", "data": {"trailing_PE": 20.0}})
+    @patch("backend.routers.market._market_service")
+    def test_futu_success(self, mock_svc):
+        from backend.adapters.ports.data_source_port import DataSourceResult
+
+        mock_svc._futu = MagicMock()
+        mock_svc._futu.fetch = MagicMock(return_value=DataSourceResult.success({"trailing_PE": 20.0}, source="futu"))
         resp = client.get("/market/fundamental/US.AAPL")
         assert resp.status_code == 200
         assert resp.json()["data"]["trailing_PE"] == 20.0
 
-    @patch("backend.routers.market.market_data_gateway")
-    @patch("backend.routers.market.data_source_router")
-    def test_etf_returns_warning(self, mock_router, mock_futu):
-        mock_futu.get_fundamental = AsyncMock(return_value={"status": "error"})
-        mock_router.fetch_yfinance = AsyncMock(
+    @patch("backend.routers.market._market_service")
+    def test_etf_returns_warning(self, mock_svc):
+        from backend.adapters.ports.data_source_port import DataSourceResult
+
+        mock_svc._futu = MagicMock()
+        mock_svc._futu.fetch = MagicMock(return_value=DataSourceResult.error("不支持"))
+        mock_svc._yfinance = MagicMock()
+        mock_svc._yfinance.fetch = MagicMock(
             return_value={"success": True, "data": {"quoteType": "ETF", "shortName": "SPY ETF"}, "message": None}
         )
         resp = client.get("/market/fundamental/US.SPY")
@@ -236,7 +239,9 @@ class TestGetTopHolders:
 
     @patch("backend.routers.market._market_service._akshare")
     def test_hk_ticker_calls_akshare(self, mock_akshare):
-        mock_akshare.fetch = MagicMock(return_value=MagicMock(is_error=MagicMock(return_value=False), data=[], source="akshare"))
+        mock_akshare.fetch = MagicMock(
+            return_value=MagicMock(is_error=MagicMock(return_value=False), data=[], source="akshare")
+        )
         resp = client.get("/market/holders/HK.00700")
         assert resp.status_code == 200
 

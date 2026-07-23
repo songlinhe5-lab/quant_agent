@@ -78,10 +78,12 @@ class TestMarketFundFlowRoutes:
         assert resp.status_code == 200
         assert _unwrap(resp)["status"] == "success"
 
-    @patch("backend.routers.market.market_data_gateway")
-    def test_get_fund_flow_failure(self, mock_futu):
+    @patch("backend.routers.market._market_service")
+    def test_get_fund_flow_failure(self, mock_svc):
         """异常路径：Futu 接口失败返回 400"""
-        mock_futu.get_fund_flow = AsyncMock(return_value={"status": "error", "message": "标的暂不支持"})
+        from backend.adapters.ports.data_source_port import DataSourceResult
+
+        mock_svc.get_fund_flow = MagicMock(return_value=DataSourceResult.error("标的暂不支持", source="futu"))
         client = TestClient(app)
         resp = client.get("/api/v1/market/fund-flow?ticker=US.AAPL")
         assert resp.status_code == 400

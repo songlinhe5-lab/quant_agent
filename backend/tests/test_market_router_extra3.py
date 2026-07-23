@@ -102,20 +102,25 @@ class TestGetFundamental:
         data = resp.json()
         assert data["status"] == "success"
 
-    @patch("backend.routers.market.market_data_gateway")
-    @patch("backend.routers.market.market_data_gateway")
-    def test_futu_success(self, mock_yf, mock_futu):
-        mock_futu.get_fundamental = AsyncMock(return_value={"status": "success", "data": {"pe": 20.0, "pb": 3.0}})
+    @patch("backend.routers.market._market_service")
+    def test_futu_success(self, mock_svc):
+        from backend.adapters.ports.data_source_port import DataSourceResult
+
+        mock_svc._futu = MagicMock()
+        mock_svc._futu.fetch = MagicMock(return_value=DataSourceResult.success({"pe": 20.0, "pb": 3.0}, source="futu"))
         resp = client.get("/market/fundamental/US.AAPL")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "success"
 
-    @patch("backend.routers.market.market_data_gateway")
-    @patch("backend.routers.market.data_source_router")
-    def test_futu_fail_yf_success(self, mock_router, mock_futu):
-        mock_futu.get_fundamental = AsyncMock(return_value={"status": "error", "message": "失败"})
-        mock_router.fetch_yfinance = AsyncMock(
+    @patch("backend.routers.market._market_service")
+    def test_futu_fail_yf_success(self, mock_svc):
+        from backend.adapters.ports.data_source_port import DataSourceResult
+
+        mock_svc._futu = MagicMock()
+        mock_svc._futu.fetch = MagicMock(return_value=DataSourceResult.error("失败"))
+        mock_svc._yfinance = MagicMock()
+        mock_svc._yfinance.fetch = MagicMock(
             return_value={"success": True, "data": {"shortName": "Apple", "trailingPE": 20.0}, "message": "ok"}
         )
         resp = client.get("/market/fundamental/US.AAPL")
