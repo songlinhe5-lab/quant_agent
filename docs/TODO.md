@@ -1573,3 +1573,67 @@ STATUS: PRODUCTION READY ✨
 
 ---
 
+## 🔍 代码内 TODO 注释汇总 (2026-07-22 扫描)
+
+> **来源**: 全代码库 `# TODO` 注释自动扫描  
+> **规则**: 每条 TODO 必须有对应任务跟踪，禁止遗留无主 Mock 代码
+
+### 一、数据源适配器层 (backend/adapters/)
+
+| ID | 文件 | 行号 | TODO 内容 | 优先级 | 状态 |
+|----|------|------|----------|--------|------|
+| CODE-01 | `adapters/futu/futu_adapter.py` | 199 | 实现 WebSocket 订阅逻辑 (futu_pb2_req 协议) | P1 | PENDING |
+| CODE-02 | `adapters/futu/futu_adapter.py` | 218 | 实现取消订阅逻辑 | P1 | PENDING |
+| CODE-03 | `adapters/futu/futu_adapter.py` | 235 | 实际实现中使用 futu_pb2_req 或 openapi 客户端 | P1 | PENDING |
+| CODE-04 | `adapters/futu/futu_adapter.py` | 263 | 调用实际 API (quote 行情查询) | P1 | PENDING |
+| CODE-05 | `adapters/futu/futu_adapter.py` | 305 | 调用实际 API (K线历史数据) | P1 | PENDING |
+| CODE-06 | `adapters/futu/futu_adapter.py` | 341 | 调用实际 API (资金流数据) | P2 | PENDING |
+| CODE-07 | `adapters/futu/futu_adapter.py` | 365 | 调用实际 API (批量行情) | P2 | PENDING |
+| CODE-08 | `adapters/akshare/akshare_adapter.py` | 264 | interval 参数未来使用 (K线周期) | P3 | PENDING |
+| CODE-09 | `adapters/akshare/akshare_adapter.py` | 279 | market 参数未来使用 (港股市场标识) | P3 | PENDING |
+
+### 二、路由层 (backend/routers/)
+
+| ID | 文件 | 行号 | TODO 内容 | 优先级 | 状态 |
+|----|------|------|----------|--------|------|
+| CODE-10 | `routers/market.py` | 610 | 迁移到 DataSourcePort + FinnhubAdapter (新闻) | P2 | PENDING |
+| CODE-11 | `routers/market.py` | 682 | 迁移到 DataSourcePort + Finnhub Earnings Calendar | P2 | PENDING |
+| CODE-12 | `routers/market.py` | 707 | 迁移到 DataSourcePort + Finnhub News | P2 | PENDING |
+| CODE-13 | `routers/market.py` | 907 | 需要 InsiderService + InsiderDataAdapter (内幕交易) | P1 | PENDING |
+| CODE-14 | `routers/market.py` | 911 | 迁移到 DataSourcePort + InsiderDataAdapter | P2 | PENDING |
+| CODE-15 | `routers/internal.py` | 30 | 实现缓存清理逻辑 | P2 | PENDING |
+
+### 三、服务层 (backend/services/)
+
+| ID | 文件 | 行号 | TODO 内容 | 优先级 | 状态 |
+|----|------|------|----------|--------|------|
+| CODE-16 | `services/margin/hk_share.py` | 51 | 接入 Futu API 获取真实融资融券数据 | P1 | → MARGIN-01 |
+| CODE-17 | `services/margin/us_share.py` | 60 | 接入 FINRA API 获取真实 Margin Debt 数据 | P1 | → MARGIN-02 |
+| CODE-18 | `services/yfinance/quote.py` | 65 | 后续实现实际的数据获取逻辑 (微批处理) | P2 | PENDING |
+| CODE-19 | `services/akshare/service.py` | 49 | time.time() 未来使用 (健康状态冷却计时) | P3 | PENDING |
+
+### 四、引擎层 (backend/engine/)
+
+| ID | 文件 | 行号 | TODO 内容 | 优先级 | 状态 |
+|----|------|------|----------|--------|------|
+| CODE-20 | `engine/gateway.py` | 239 | 实际实现下单网关 (OMS + Futu 下单) | P1 | PENDING |
+| CODE-21 | `engine/drivers/live.py` | 152 | 接入 KlineCacheEngine（L1 Redis / L2 Parquet） | P1 | PENDING |
+
+### 五、统计摘要
+
+| 优先级 | 数量 | 说明 |
+|--------|------|------|
+| **P1** | 10 | 核心功能缺失，需优先解决 |
+| **P2** | 7 | 架构迁移/体验优化 |
+| **P3** | 3 | 低优先级/探索性 |
+| **已关联** | 2 | CODE-16→MARGIN-01, CODE-17→MARGIN-02 |
+
+### 六、重点跟进 (P1 任务)
+
+1. **CODE-01~07**: Futu 适配器 WebSocket + API 实装 → 关联 `DIST` 分布式数据源任务
+2. **CODE-13**: 内幕交易数据源 → 需 `InsiderService` + SEC/港交所数据接入
+3. **CODE-20**: 实盘下单网关 → 关联 OMS 订单管理系统
+4. **CODE-21**: 实盘 K 线缓存 → 关联 `KlineCacheEngine` 三级缓存架构
+
+---
+
