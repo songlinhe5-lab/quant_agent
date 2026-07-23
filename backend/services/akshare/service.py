@@ -49,7 +49,7 @@ class AKShareService:
         # now = time.time()  # TODO: 未来使用
         # DIST-03: 使用统一熔断器状态查询
         cb_state = self.cb.get_state("akshare_api")
-        mode_label = "cache (北京 VPS 中继)" if self._cache_mode else "direct (直连 akshare)"
+        mode_label = "cache (北京VPS中继)" if self._cache_mode else "direct (直连akshare)"
 
         # 映射熔断器状态到健康状态
         status_map = {

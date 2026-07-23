@@ -17,7 +17,13 @@ import time
 from typing import Any, Dict, List, Optional
 
 import yfinance as yf
-from pyrate_limiter import Duration, Limiter, RateLimitExceededError, RequestRate
+
+try:
+    from pyrate_limiter import Duration, Limiter, RateLimitExceededError, RequestRate
+
+    _HAS_PYRATE_LIMITER = True
+except ImportError:
+    _HAS_PYRATE_LIMITER = False
 
 from backend.adapters.ports.data_source_port import DataSourcePort, DataSourceResult
 from backend.core.logger import logger
@@ -62,8 +68,11 @@ class YFinanceAdapter(DataSourcePort):
         self._cache: Dict[str, dict] = {}
 
         # 速率限制器 (防止触发 Yahoo 限流)
-        rate = RequestRate(self.DEFAULT_RATE_LIMIT, Duration.MINUTE)
-        self._limiter = Limiter(rate)
+        if _HAS_PYRATE_LIMITER:
+            rate = RequestRate(self.DEFAULT_RATE_LIMIT, Duration.MINUTE)
+            self._limiter = Limiter(rate)
+        else:
+            self._limiter = None
 
         # ticker 格式化缓存
         self._ticker_cache: Dict[str, str] = {}
@@ -134,10 +143,9 @@ class YFinanceAdapter(DataSourcePort):
                 error=result.get("message") if not result.get("success") else None,
             )
 
-        except RateLimitExceededError:
-            return DataSourceResult.rate_limited(retry_after_seconds=60, source=self.name)
-
         except Exception as e:
+            if _HAS_PYRATE_LIMITER and isinstance(e, RateLimitExceededError):
+                return DataSourceResult.rate_limited(retry_after_seconds=60, source=self.name)
             return DataSourceResult.error(str(e), source=self.name)
 
     # ========== 内部私有方法 ==========

@@ -465,18 +465,18 @@ class TestGracefulExecutor:
         executor = GracefulExecutor(max_workers=1, max_wait_s=5)
 
         def very_slow_task():
-            time.sleep(60)  # 非常慢的任务
+            time.sleep(5)  # 比 timeout 长的任务
             return "done"
 
         executor.submit(very_slow_task)
 
         # 关闭时应因超时返回 False
-        result = await executor.graceful_shutdown(timeout_s=2.0)
+        result = await executor.graceful_shutdown(timeout_s=1.0)
 
         # 断言：超时情况下返回 False
         assert result is False
 
-        executor.shutdown()  # 强制清理
+        executor.shutdown(wait=False)  # 强制清理
 
     @pytest.mark.asyncio
     async def test_executor_stats_tracking(self):
