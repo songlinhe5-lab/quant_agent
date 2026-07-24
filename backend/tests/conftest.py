@@ -43,6 +43,22 @@ def _safe_trfh_init(self, *args, **kwargs):
 
 logging.handlers.TimedRotatingFileHandler.__init__ = _safe_trfh_init
 
+# ─── futu FTLog os.makedirs 竞态兜底 ────────────────────────
+# futu/common/ft_logger.py FTLog.__init__ 中 os.makedirs 没有 exist_ok=True，
+# pytest-xdist 并行 worker 竞态创建 ~/.com.futunn.FutuOpenD/Log 目录时抛 FileExistsError。
+# 在 futu 导入前 patch os.makedirs 使其对已存在目录不报错。
+_orig_makedirs = os.makedirs
+
+
+def _safe_makedirs(name, *args, **kwargs):
+    try:
+        return _orig_makedirs(name, *args, **kwargs)
+    except FileExistsError:
+        pass  # 目录已被其他 xdist worker 创建，安全忽略
+
+
+os.makedirs = _safe_makedirs
+
 
 # 💡 为使用 asyncio.get_event_loop() + loop.run_until_complete() 的旧测试提供事件循环
 # 注意：pytest-asyncio Mode.AUTO 已自动管理 event loop，但 test_tools.py 等旧测试
