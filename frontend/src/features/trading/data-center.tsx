@@ -16,6 +16,7 @@ import { EarningsCalendar } from '@/features/data-center/earnings-calendar'
 import { NewsStream } from '@/features/data-center/news-stream'
 import { GlobalStyle } from '@/features/data-center/global-style'
 import { MarginTradingPanel, type MarginMarketData } from '@/features/data-center/margin-trading'
+import { SectorFlowPanel, type SectorFundFlowData } from '@/features/data-center/sector-flow'
 
 export function DataCenterModule() {
   const setWsStatus = useSystemStore((state) => state.setWsStatus)
@@ -27,6 +28,8 @@ export function DataCenterModule() {
   const [earnings, setEarnings] = useState<any[]>([])
   const [marginData, setMarginData] = useState<MarginMarketData[]>([])
   const [marginStatus, setMarginStatus] = useState<string>('unknown')
+  const [sectorFlowData, setSectorFlowData] = useState<SectorFundFlowData | null>(null)
+  const [sectorFlowStatus, setSectorFlowStatus] = useState<string>('unknown')
   const [ecoMsg, setEcoMsg] = useState('')
   const [ecoDed, setEcoDed] = useState('')
   const [ecoSources, setEcoSources] = useState<string[]>([])
@@ -82,6 +85,8 @@ export function DataCenterModule() {
           if (d.earningsCalendar) setEarnings(d.earningsCalendar)
           if (d.marginTrading) setMarginData(d.marginTrading)
           if (d.marginTradingStatus) setMarginStatus(d.marginTradingStatus)
+          if (d.sectorFundFlow) setSectorFlowData(d.sectorFundFlow)
+          if (d.sectorFundFlowStatus) setSectorFlowStatus(d.sectorFundFlowStatus)
 
           setEcoMsg(d.economicEventsMessage || '')
           setEcoDed(d.economicEventsDeduction || '')
@@ -264,6 +269,8 @@ export function DataCenterModule() {
     <CapitalFlowPanel data={capitalFlows} />
     {/* 融资融券余额 */}
     <MarginTradingPanel data={marginData} status={marginStatus} lastUpdated={last} />
+    {/* 板块资金流向 */}
+    {sectorFlowData && <SectorFlowPanel data={sectorFlowData} status={sectorFlowStatus} />}
     {/* 大类资产 + 情绪风向标 + 雷达 */}
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_220px_240px] xl:grid-cols-[1fr_240px_260px] gap-2.5">
       <div className="glass-card rounded-lg overflow-hidden"><div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2"><TrendingUp className="h-3.5 w-3.5 text-muted-foreground" /><span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">大类资产走势</span><MarketClocks /></div><div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6 gap-2 p-2 bg-slate-50/50 dark:bg-black/10">{assets.filter((a: any) => a.symbol !== 'VIX').map((a: any) => (<AssetButton key={a.symbol} asset={a} />))}</div></div>

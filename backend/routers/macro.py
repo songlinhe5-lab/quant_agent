@@ -407,6 +407,17 @@ def get_sentiment_history(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── 板块资金流向 ────────────────────────────────────────────────────────────
+
+
+@router.get("/sector-fund-flow")
+async def get_sector_fund_flow():
+    """获取三市场板块资金流聚合数据 (A股行业/港股南向/美股板块)"""
+    from backend.services.fund_flow.service import fund_flow_service
+
+    return await fund_flow_service.get_sector_fund_flow()
+
+
 # ── 跨市场资金流向 ──────────────────────────────────────────────────────────
 
 
@@ -722,12 +733,14 @@ async def get_data_center_dashboard(
                 news_res,
                 earnings_res,
                 margin_res,
+                sector_flow_res,
             ) = await asyncio.gather(
                 get_macro_assets(force_refresh=force_refresh),
                 _fetch_macro_calendar_data(days_ahead=7, days_back=days_back, force_refresh=force_refresh),
                 get_macro_news(category="general", limit=15),
                 _fetch_earnings_calendar_data(days_ahead=7, days_back=days_back, force_refresh=force_refresh),  # noqa: E501
                 _fetch_margin_trading_data(),
+                _fetch_sector_fund_flow(),
                 return_exceptions=True,
             )
 
@@ -779,6 +792,15 @@ async def get_data_center_dashboard(
             elif isinstance(margin_res, BaseException):
                 margin_status = "error"
 
+            # 板块资金流数据
+            sector_fund_flow = {}
+            sector_flow_status = "unknown"
+            if isinstance(sector_flow_res, dict) and sector_flow_res.get("status") in ("success", "partial"):
+                sector_fund_flow = sector_flow_res.get("data", {})
+                sector_flow_status = sector_flow_res.get("status")
+            elif isinstance(sector_flow_res, BaseException):
+                sector_flow_status = "error"
+
             result = {
                 "status": "success",
                 "data": {
@@ -801,6 +823,8 @@ async def get_data_center_dashboard(
                     "earningsMessage": earnings_message,
                     "marginTrading": margin_data,
                     "marginTradingStatus": margin_status,
+                    "sectorFundFlow": sector_fund_flow,
+                    "sectorFundFlowStatus": sector_flow_status,
                 },
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }
@@ -820,6 +844,13 @@ async def _fetch_margin_trading_data():
     from backend.services.margin.service import margin_service
 
     return await margin_service.get_all_margin_data()
+
+
+async def _fetch_sector_fund_flow():
+    """获取三市场板块资金流数据"""
+    from backend.services.fund_flow.service import fund_flow_service
+
+    return await fund_flow_service.get_sector_fund_flow()
 
 
 async def _fetch_macro_assets_data():

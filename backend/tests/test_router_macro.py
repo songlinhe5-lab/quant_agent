@@ -319,6 +319,7 @@ class TestMacroDashboard:
             patch("backend.routers.macro._fetch_macro_calendar_data", new_callable=AsyncMock) as m_cal,
             patch("backend.routers.macro.get_macro_news", new_callable=AsyncMock) as m_news,
             patch("backend.routers.macro._fetch_earnings_calendar_data", new_callable=AsyncMock) as m_earn,
+            patch("backend.routers.macro._fetch_sector_fund_flow", new_callable=AsyncMock) as m_sector,
         ):
             m_redis.get = AsyncMock(return_value=None)
             m_redis.set = AsyncMock(return_value=True)
@@ -329,6 +330,7 @@ class TestMacroDashboard:
             m_cal.return_value = {"status": "success", "data": []}
             m_news.return_value = {"status": "success", "data": []}
             m_earn.return_value = {"status": "success", "data": []}
+            m_sector.return_value = {"status": "success", "data": {}}
             resp = client.get("/api/v1/macro/dashboard")
         assert resp.status_code == 200
         data = resp.json().get("data", resp.json())
