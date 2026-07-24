@@ -19,13 +19,19 @@ REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
 if not REDIS_PASSWORD:
     REDIS_PASSWORD = None
 
-redis_client = redis.Redis(
+# ARCH-04: Redis 连接池上限配置化（Pub/Sub + 缓存 + 限流共用，统一收口防无上限打满）
+REDIS_MAX_CONNECTIONS = int(os.getenv("REDIS_MAX_CONNECTIONS", "50"))
+
+redis_pool = redis.ConnectionPool(
     host=REDIS_HOST,
     port=REDIS_PORT,
     password=REDIS_PASSWORD,
     decode_responses=True,
     protocol=2,  # 💡 升级到 redis-py 5.x 后，重新加回此参数以强制使用 RESP2 协议向下兼容
+    max_connections=REDIS_MAX_CONNECTIONS,
 )
+
+redis_client = redis.Redis(connection_pool=redis_pool)
 
 
 # ==========================================

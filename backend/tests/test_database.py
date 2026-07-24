@@ -139,27 +139,33 @@ class TestBaseModel:
 
 
 class TestPoolSizeConfiguration:
-    """测试连接池大小配置"""
+    """测试连接池大小配置 (ARCH-04)"""
 
     def test_pool_size_from_env(self, monkeypatch):
         """测试从环境变量读取连接池大小"""
         monkeypatch.setenv("DB_POOL_SIZE", "20")
         monkeypatch.setenv("DB_MAX_OVERFLOW", "15")
 
-        pool_size = int(os.getenv("DB_POOL_SIZE", "10"))
-        max_overflow = int(os.getenv("DB_MAX_OVERFLOW", "10"))
+        pool_size = int(os.getenv("DB_POOL_SIZE", "20"))
+        max_overflow = int(os.getenv("DB_MAX_OVERFLOW", "40"))
 
         assert pool_size == 20
         assert max_overflow == 15
 
     def test_default_pool_size(self, monkeypatch):
-        """测试默认连接池大小"""
+        """测试默认连接池大小（ARCH-04: 20/40）"""
         # 清除环境变量
         monkeypatch.delenv("DB_POOL_SIZE", raising=False)
         monkeypatch.delenv("DB_MAX_OVERFLOW", raising=False)
 
-        pool_size = int(os.getenv("DB_POOL_SIZE", "10"))
-        max_overflow = int(os.getenv("DB_MAX_OVERFLOW", "10"))
+        pool_size = int(os.getenv("DB_POOL_SIZE", "20"))
+        max_overflow = int(os.getenv("DB_MAX_OVERFLOW", "40"))
 
-        assert pool_size == 10
-        assert max_overflow == 10
+        assert pool_size == 20
+        assert max_overflow == 40
+
+    def test_pool_timeout_default(self, monkeypatch):
+        """测试 DB_POOL_TIMEOUT 默认 10（ARCH-04）"""
+        monkeypatch.delenv("DB_POOL_TIMEOUT", raising=False)
+        pool_timeout = int(os.getenv("DB_POOL_TIMEOUT", "10"))
+        assert pool_timeout == 10

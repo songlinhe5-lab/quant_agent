@@ -743,10 +743,10 @@ STATUS: PRODUCTION READY ✨
 
 #### P1 — 性能与稳定性增强
 
-- [ ] **[ARCH-04]** 连接池参数配置化 + 文档化：
-  - PostgreSQL: `pool_size=20, max_overflow=40, pool_timeout=10`（当前默认 5 连接，行情高峰可能打满）
-  - Redis: `max_connections=50`（Pub/Sub + 缓存 + 限流共用未设上限）
-  - 在 `docs/03 §7.3` 或 `docs/02` 补充连接池配置规范
+- [x] **[ARCH-04]** 连接池参数配置化 + 文档化：✅ **2026-07-24** (`core/database.py` / `core/redis_client.py` / `docs/03 §7.3.1` / `.env.example`)
+- PostgreSQL: `pool_size=20, max_overflow=40, pool_timeout=10`（env 配置化，默认 20/40/10）
+- Redis: `max_connections=50`（Pub/Sub + 缓存 + 限流共用，`ConnectionPool` 配置化，默认 50）
+- 在 `docs/03 §7.3.1` 补充连接池配置规范
 - [ ] **[ARCH-05]** 健康检查分级：
   - `GET /health/live` → 进程存活（200 即可）
   - `GET /health/ready` → 依赖就绪（Redis + PG + 至少一个数据源连通）

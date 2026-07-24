@@ -12,6 +12,7 @@ ARCH-03: Graceful Shutdown 任务配套测试
 """
 
 import asyncio
+import os
 import time
 from unittest.mock import AsyncMock, MagicMock
 
@@ -545,3 +546,29 @@ class TestRedisBatchWriterStop:
         # 断言：即使在高负载下也能在一定时间内完成关闭
         assert success is True
         assert elapsed < 15.0  # 应该在 15s 内完成
+
+
+class TestRedisConnectionPool:
+    """ARCH-04: Redis 连接池 max_connections 配置化验证（不被 conftest 的 redis_client mock 干扰）"""
+
+    def test_global_pool_max_connections(self):
+        """模块级 redis_pool 上限应取 env (默认 50)"""
+        from backend.core.redis_client import redis_pool
+
+        expected = int(os.getenv("REDIS_MAX_CONNECTIONS", "50"))
+        assert redis_pool.max_connections == expected
+
+    def test_pool_respects_env_override(self, monkeypatch):
+        """REDIS_MAX_CONNECTIONS 变更后重新加载模块，连接池上限应同步"""
+        import importlib
+
+        import backend.core.redis_client as rc
+
+        monkeypatch.setenv("REDIS_MAX_CONNECTIONS", "30")
+        importlib.reload(rc)
+        try:
+            assert rc.redis_pool.max_connections == 30
+        finally:
+            # 还原默认值并重新加载，避免污染其他测试
+            monkeypatch.setenv("REDIS_MAX_CONNECTIONS", "50")
+            importlib.reload(rc)
