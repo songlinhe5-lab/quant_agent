@@ -47,6 +47,7 @@ class TestMacroDashboard:
         data = _unwrap(resp)
         assert data["status"] == "success"
 
+    @patch("backend.routers.macro._fetch_sector_fund_flow")
     @patch("backend.routers.macro._fetch_margin_trading_data")
     @patch("backend.routers.macro._fetch_earnings_calendar_data")
     @patch("backend.routers.macro.get_macro_news")
@@ -54,7 +55,7 @@ class TestMacroDashboard:
     @patch("backend.routers.macro.get_macro_assets")
     @patch("backend.routers.macro.redis_client")
     def test_dashboard_fresh(
-        self, mock_redis, mock_assets, mock_calendar, mock_news, mock_earnings, mock_margin, client
+        self, mock_redis, mock_assets, mock_calendar, mock_news, mock_earnings, mock_margin, mock_sector_flow, client
     ):
         """强制刷新"""
         mock_redis.get = AsyncMock(return_value=None)
@@ -72,6 +73,7 @@ class TestMacroDashboard:
         mock_news.return_value = {"status": "success", "data": [{"headline": "test"}]}
         mock_earnings.return_value = {"status": "success", "data": [{"symbol": "AAPL"}]}
         mock_margin.return_value = {"status": "success", "data": [{"market": "US"}]}
+        mock_sector_flow.return_value = {"status": "success", "data": {}}
 
         resp = client.get("/api/v1/macro/dashboard?force_refresh=true")
         assert resp.status_code == 200
@@ -79,6 +81,7 @@ class TestMacroDashboard:
         assert data["status"] == "success"
         assert "macroAssets" in data["data"]
 
+    @patch("backend.routers.macro._fetch_sector_fund_flow")
     @patch("backend.routers.macro._fetch_margin_trading_data")
     @patch("backend.routers.macro._fetch_earnings_calendar_data")
     @patch("backend.routers.macro.get_macro_news")
@@ -86,7 +89,7 @@ class TestMacroDashboard:
     @patch("backend.routers.macro.get_macro_assets")
     @patch("backend.routers.macro.redis_client")
     def test_dashboard_with_exceptions(
-        self, mock_redis, mock_assets, mock_calendar, mock_news, mock_earnings, mock_margin, client
+        self, mock_redis, mock_assets, mock_calendar, mock_news, mock_earnings, mock_margin, mock_sector_flow, client
     ):
         """部分数据源异常"""
         mock_redis.get = AsyncMock(return_value=None)
@@ -97,6 +100,7 @@ class TestMacroDashboard:
         mock_news.return_value = {"status": "success", "data": []}
         mock_earnings.return_value = Exception("fail")
         mock_margin.return_value = Exception("fail")
+        mock_sector_flow.return_value = Exception("fail")
 
         resp = client.get("/api/v1/macro/dashboard?force_refresh=true")
         assert resp.status_code == 200
