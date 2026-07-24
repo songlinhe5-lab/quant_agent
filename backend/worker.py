@@ -81,6 +81,17 @@ async def main():
     except asyncio.CancelledError:
         print("\n  [Worker] shutting down...")
     finally:
+        # ARCH-03: 优雅取消所有后台 Task（collector daemons + 核心守护进程）
+        for t in tasks:
+            if not t.done():
+                t.cancel()
+        if tasks:
+            try:
+                await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=30.0)
+                print("  [Worker] 后台任务已优雅取消")
+            except asyncio.TimeoutError:
+                print("  [Worker] ⚠️ 部分后台任务取消超时 (30s)，强制退出")
+        # ARCH-03: 资源释放（Redis 批量队列优先排空）
         await redis_batch_writer.stop()
         await redis_client.aclose()
         engine.dispose()

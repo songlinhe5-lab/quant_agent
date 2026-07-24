@@ -736,7 +736,7 @@ STATUS: PRODUCTION READY ✨
 - 所有数据源 Adapter 统一使用 `core/circuit_breaker.py`
 - `DataSourceInterface.fetch` 主路径内置熔断（半开探测 + 失败计数 + 滑动窗口）
 - 冷却时间配置化（env `CIRCUIT_BREAKER_COOLDOWN_S`），禁止硬编码 60s
-- [ ] **[ARCH-03]** Graceful Shutdown 完整化（当前仅关闭 bot_runtime + algo_engine）：
+- [x] **[ARCH-03]** Graceful Shutdown 完整化 (lifecycle shutdown + worker shutdown)：✅ **2026-07-24** (`bootstrap/lifecycle.py` / `worker.py` / `core/graceful_executor.py`)
   - 停止接受新请求 → 等待 in-flight 完成（max 30s）→ 关闭 WebSocket 连接（发送 close frame）
   - 停止所有后台 Task（collector daemons）→ 取消 Redis Pub/Sub 订阅
   - 断开 Futu / Redis / PG 连接 → 关闭线程池（wait=True, timeout=10）

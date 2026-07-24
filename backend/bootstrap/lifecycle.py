@@ -274,11 +274,11 @@ async def app_lifespan(app: FastAPI):
                 print(f"🛑 [Shutdown] 等待 {len(tasks_to_await)} 个任务完成...")
                 await asyncio.wait_for(
                     asyncio.gather(*tasks_to_await, return_exceptions=True),
-                    timeout=60.0,  # Graceful shutdown 最大等待时间
+                    timeout=30.0,  # ARCH-03: in-flight 任务最大等待 30s
                 )
                 print("✅ [Shutdown] 所有后台任务已优雅取消")
             except asyncio.TimeoutError:
-                print("⚠️ [Shutdown] Task 取消超时 (60s)，强制退出")
+                print("⚠️ [Shutdown] Task 取消超时 (30s)，强制退出")
     except Exception as e:
         print(f"⚠️ 取消后台任务时发生异常: {e}")
 
@@ -286,7 +286,8 @@ async def app_lifespan(app: FastAPI):
         loop = asyncio.get_running_loop()
         executor = getattr(loop, "_default_executor", None)
         if executor:
-            executor.shutdown(wait=False)
+            # ARCH-03: 优雅关闭线程池（等待在途任务完成，最多 10s）
+            executor.shutdown(wait=True, timeout=10)
     except Exception:
         pass
 
@@ -325,8 +326,8 @@ async def app_lifespan(app: FastAPI):
 
         await yf_service.async_close()
 
-        # FutuService 保持原状（暂时只支持同步关闭）
-        futu_service.close()
+        # FutuService 为同步 close()，包裹在 to_thread 避免阻塞事件循环
+        await asyncio.to_thread(futu_service.close)
     except Exception as e:
         print(f"⚠️ 关闭数据源资源异常：{e}")
 
