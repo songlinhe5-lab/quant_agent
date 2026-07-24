@@ -732,10 +732,10 @@ STATUS: PRODUCTION READY ✨
   - 中间件拆至 `middleware/stack.py` (176行)
   - 异常处理拆至 `core/exception_handlers.py` (83行)
   - 全量测试 2958 passed, 0 regression
-- [ ] **[ARCH-02]** 统一熔断器使用：当前 `akshare_service`/`futu/cache_manager` 手写时间戳熔断，`core/circuit_breaker.py`(351行) 形同摆设：
-  - 所有数据源 Adapter 统一使用 `core/circuit_breaker.py`
-  - `DataSourceInterface.fetch` 主路径内置熔断（半开探测 + 失败计数 + 滑动窗口）
-  - 冷却时间配置化（env `CIRCUIT_BREAKER_COOLDOWN_S`），禁止硬编码 60s
+- [x] **[ARCH-02]** 统一熔断器使用 (`core/circuit_breaker.py` 接入所有 `DataSourceInterface.fetch` 主路径，替换手写时间戳熔断)：✅ **2026-07-24** (PR #186 / `d93a7fa`)
+- 所有数据源 Adapter 统一使用 `core/circuit_breaker.py`
+- `DataSourceInterface.fetch` 主路径内置熔断（半开探测 + 失败计数 + 滑动窗口）
+- 冷却时间配置化（env `CIRCUIT_BREAKER_COOLDOWN_S`），禁止硬编码 60s
 - [ ] **[ARCH-03]** Graceful Shutdown 完整化（当前仅关闭 bot_runtime + algo_engine）：
   - 停止接受新请求 → 等待 in-flight 完成（max 30s）→ 关闭 WebSocket 连接（发送 close frame）
   - 停止所有后台 Task（collector daemons）→ 取消 Redis Pub/Sub 订阅
