@@ -11,6 +11,9 @@ import threading
 import time
 from typing import Any, Optional
 
+from backend.core.circuit_breaker import CircuitBreakerOpenError
+from backend.core.circuit_breaker_integration import fetch_via_breaker_async
+
 from . import ErrorInfo, Result, ResultStatus
 from .protocol import DataSourceInterface
 from .registry import rate_limit_registry
@@ -133,7 +136,18 @@ class DataSourceRegistry:
             )
 
         t0 = time.perf_counter()
-        result = await source.fetch(action, params)
+        try:
+            result = await fetch_via_breaker_async(source_name, source.fetch, action, params)
+        except CircuitBreakerOpenError:
+            # 熔断器 OPEN：直接返回错误结果，不调用具体源（避免对熔断中服务施压）
+            result = Result.make_error(
+                ErrorInfo.normal(
+                    "CIRCUIT_OPEN",
+                    f"数据源 {source_name} 处于熔断状态，调用已跳过",
+                    retryable=True,
+                ),
+                source=source_name,
+            )
         latency = (time.perf_counter() - t0) * 1000.0
         if result.latency_ms <= 0:
             result.latency_ms = latency

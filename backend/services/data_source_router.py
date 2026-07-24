@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
+from backend.core.circuit_breaker import get_cooldown_seconds
 from backend.core.logger import logger
 from backend.services.datasource import (
     ErrorCategory,
@@ -251,7 +252,7 @@ class DataSourceRouter:
                     node.error_count += 1
                     if node.error_count >= 3:
                         node.status = "unhealthy"
-                        node.circuit_breaker_until = time.time() + 60.0
+                        node.circuit_breaker_until = time.time() + get_cooldown_seconds()
                         logger.warning(f"[CircuitBreaker] 节点 {node_name} 触发熔断: {error}")
                 else:
                     # 限流类错误：记录日志但不触发熔断

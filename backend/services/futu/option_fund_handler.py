@@ -10,6 +10,7 @@ from typing import Any, Dict
 import pandas as pd
 from futu import RET_OK, SortField, SubType, WarrantRequest
 
+from backend.core.circuit_breaker import get_cooldown_seconds
 from backend.core.retry_utils import with_global_retry
 from backend.core.utils import safe_float
 
@@ -122,7 +123,7 @@ class OptionFundHandler:
         if ret != RET_OK or not isinstance(data, pd.DataFrame) or data.empty:
             if "频率太高" in str(data) or "frequency" in str(data).lower():
                 print(f"🚨 [Futu] 资金流向触发限流熔断！接口将强制全局休眠 60 秒以释放压力 ({data})")  # noqa: E501
-                self.cache_mgr.ff_circuit_breaker_until = time.time() + 60.0
+                self.cache_mgr.ff_circuit_breaker_until = time.time() + get_cooldown_seconds()
                 from .mock_provider import MockProvider
 
                 res = MockProvider.mock_fund_flow(ticker)

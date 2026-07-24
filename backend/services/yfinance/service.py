@@ -8,7 +8,7 @@ from typing import Any, Dict, Tuple
 
 import yfinance as yf
 
-from backend.core.circuit_breaker import CircuitBreakerOpenError, get_circuit_breaker
+from backend.core.circuit_breaker import CircuitBreakerOpenError, get_circuit_breaker, get_cooldown_seconds
 from backend.core.graceful_executor import GracefulExecutor
 from backend.services.yfinance.macro_daemon import MacroDaemonMixin
 from backend.services.yfinance.quote import QuoteMixin
@@ -367,7 +367,9 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
                 # 兼容旧代码：设置 _circuit_breaker_until
                 if not hasattr(self, "_circuit_breaker_until"):
                     self._circuit_breaker_until = 0.0
-                self._circuit_breaker_until = time.time() + 60  # 冷却 60 秒
+                self._circuit_breaker_until = (
+                    time.time() + get_cooldown_seconds()
+                )  # 冷却（env CIRCUIT_BREAKER_COOLDOWN_S）
                 return False, None, f"限流冷却中：{err_str}"
 
             # 检查是否是退市/无效标的错误

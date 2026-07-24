@@ -20,6 +20,19 @@ from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
 
 import pytest  # noqa: E402
 
+# ─── ARCH-02: 全局熔断单例隔离 ───────────────────────────────
+# circuit_breaker 是进程级全局单例，接入 fetch 主路径后若某测试将其熔断成 OPEN，
+# 会污染后续测试。每个测试前后重置，保证测试隔离。
+from backend.core.circuit_breaker import circuit_breaker  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _reset_circuit_breaker():
+    circuit_breaker.reset()
+    yield
+    circuit_breaker.reset()
+
+
 # ─── 🔧 关键修复：在导入任何模块之前 Mock redis.asyncio.Redis ─────────
 # 防止 backend.core.redis_client 模块在 import 时创建真实 Redis 连接（导致测试超时）
 # 必须在 `import redis.asyncio` 之前执行，确保模块加载时类已被替换
