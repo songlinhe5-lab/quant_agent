@@ -436,9 +436,16 @@ async def get_option_chain(ticker: str, expiration_date: str = ""):
     Returns:
         dict: {"status": "success", "data": OptionChain}
     """
-    result = _market_service.get_option_chain(ticker=ticker, expire_date=expiration_date)
+    result = _market_service.get_option_chain(underlying_ticker=ticker, expire_date=expiration_date)
     if result.is_error():
         raise HTTPException(status_code=400, detail=result.error)
+    if result.status == "degraded":
+        return {
+            "status": "degraded",
+            "message": result.error or "期权链数据暂不可用",
+            "data": result.data,
+            "source": result.source,
+        }
     return {
         "status": "success",
         "data": result.data,
