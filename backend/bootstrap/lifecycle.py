@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from backend.core import models
 from backend.core.database import AsyncSessionLocal, SessionLocal, async_engine, engine
 from backend.core.logger import logger
-from backend.core.redis_client import redis_batch_writer, redis_client
+from backend.core.redis_client import redis_client
 from backend.core.security import get_password_hash
 from backend.services.fred_service import fred_service
 from backend.services.futu_service import futu_service
@@ -22,7 +22,6 @@ from backend.services.llm_service import llm_service
 from backend.services.market_engine import manager
 from backend.services.notification_service import notification_service
 from backend.services.system_monitor_service import system_monitor_service
-from backend.services.yfinance_service import yf_service
 
 # 全局单例 (供 chat router 等模块引用)
 global_registry = None
@@ -222,6 +221,14 @@ async def app_lifespan(app: FastAPI):
     # === 销毁阶段 (Shutdown) ===
     print("🛑 正在关闭后端服务，释放资源...")
 
+    shutdown_timer = {"start": time.time()}
+    shutdown_steps = []  # 追踪各步骤耗时
+
+    def log_step(name):
+        elapsed = time.time() - shutdown_timer["start"]
+        shutdown_steps.append(f"{name}: {elapsed:.2f}s")
+        logger.info(f"[Shutdown Timeline] {name}: {elapsed:.2f}s")
+
     try:
         tasks_to_await = []
 
@@ -261,8 +268,17 @@ async def app_lifespan(app: FastAPI):
             pubsub_t.cancel()
             tasks_to_await.append(pubsub_t)
 
+        # ARCH-03: 增加全局超时保护（防止 task 无法响应 cancel）
         if tasks_to_await:
-            await asyncio.gather(*tasks_to_await, return_exceptions=True)
+            try:
+                print(f"🛑 [Shutdown] 等待 {len(tasks_to_await)} 个任务完成...")
+                await asyncio.wait_for(
+                    asyncio.gather(*tasks_to_await, return_exceptions=True),
+                    timeout=60.0,  # Graceful shutdown 最大等待时间
+                )
+                print("✅ [Shutdown] 所有后台任务已优雅取消")
+            except asyncio.TimeoutError:
+                print("⚠️ [Shutdown] Task 取消超时 (60s)，强制退出")
     except Exception as e:
         print(f"⚠️ 取消后台任务时发生异常: {e}")
 
@@ -282,10 +298,15 @@ async def app_lifespan(app: FastAPI):
         print(f"⚠️ 关闭 AI 客户端异常: {e}")
 
     try:
+        # ARCH-03: Redis 批量队列优雅关闭
         print("🛑 [Cleanup] 正在排空并关闭 Redis 异步写入队列...")
-        await redis_batch_writer.stop()
+        from backend.core.redis_client import redis_batch_writer
+
+        success = await redis_batch_writer.stop(timeout_s=15.0)
+        if not success:
+            logger.warning("⚠️ Redis 批量队列关闭不完全")
     except Exception as e:
-        print(f"⚠️ 关闭 Redis 队列异常: {e}")
+        print(f"⚠️ 关闭 Redis 队列异常：{e}")
 
     try:
         print("🧹 [Cleanup] 正在清空 Redis 临时行情缓存...")
@@ -299,10 +320,15 @@ async def app_lifespan(app: FastAPI):
         print(f"⚠️ 关闭 Redis 连接池异常: {e}")
 
     try:
+        # ARCH-03: 使用 async_close() 替代同步 close()
+        from backend.services.yfinance.service import yf_service
+
+        await yf_service.async_close()
+
+        # FutuService 保持原状（暂时只支持同步关闭）
         futu_service.close()
-        yf_service.close()
     except Exception as e:
-        print(f"⚠️ 关闭数据源资源异常: {e}")
+        print(f"⚠️ 关闭数据源资源异常：{e}")
 
     try:
         print("🛑 [Cleanup] 正在关闭外部 API 长连接...")
@@ -315,4 +341,9 @@ async def app_lifespan(app: FastAPI):
         engine.dispose()
         await async_engine.dispose()
     except Exception as e:
-        print(f"⚠️ 关闭数据库连接池异常: {e}")
+        print(f"⚠️ 关闭数据库连接池异常：{e}")
+
+    # ARCH-03: 记录 Shutdown 总耗时
+    total_time = time.time() - shutdown_timer["start"]
+    log_step(f"Total shutdown time: {total_time:.2f}s")
+    logger.info(f"📊 [Shutdown Summary] Total time: {total_time:.2f}s | Steps: {len(shutdown_steps)}")

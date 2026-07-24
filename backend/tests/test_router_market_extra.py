@@ -25,7 +25,7 @@ def _unwrap(resp):
 class TestMarketFutuStatusRoutes:
     """Futu 连接状态路由测试"""
 
-    @patch("backend.routers.market.market_data")
+    @patch("backend.routers.market.market_data_gateway")
     def test_get_futu_status_success(self, mock_futu):
         """正常路径：获取 Futu 连接状态"""
         mock_futu.is_opend_reachable = MagicMock(return_value=True)
@@ -42,7 +42,7 @@ class TestMarketServicesHealthRoutes:
     """数据源健康检查路由测试"""
 
     @patch("backend.routers.market.data_source_router")
-    @patch("backend.routers.market.market_data")
+    @patch("backend.routers.market.market_data_gateway")
     def test_get_services_health_success(self, mock_md, mock_ds):
         """正常路径：获取所有数据源健康状态"""
         mock_md.is_opend_reachable = MagicMock(return_value=True)
@@ -67,7 +67,7 @@ class TestMarketServicesHealthRoutes:
 class TestMarketFundFlowRoutes:
     """资金流路由测试"""
 
-    @patch("backend.routers.market.market_data")
+    @patch("backend.routers.market.market_data_gateway")
     def test_get_fund_flow_success(self, mock_futu):
         """正常路径：获取资金流数据"""
         mock_futu.get_fund_flow = AsyncMock(
@@ -78,10 +78,12 @@ class TestMarketFundFlowRoutes:
         assert resp.status_code == 200
         assert _unwrap(resp)["status"] == "success"
 
-    @patch("backend.routers.market.market_data")
-    def test_get_fund_flow_failure(self, mock_futu):
+    @patch("backend.routers.market._market_service")
+    def test_get_fund_flow_failure(self, mock_svc):
         """异常路径：Futu 接口失败返回 400"""
-        mock_futu.get_fund_flow = AsyncMock(return_value={"status": "error", "message": "标的暂不支持"})
+        from backend.adapters.ports.data_source_port import DataSourceResult
+
+        mock_svc.get_fund_flow = MagicMock(return_value=DataSourceResult.error("标的暂不支持", source="futu"))
         client = TestClient(app)
         resp = client.get("/api/v1/market/fund-flow?ticker=US.AAPL")
         assert resp.status_code == 400
@@ -108,7 +110,7 @@ class TestMarketSearchRoutes:
 class TestMarketHoldersRoutes:
     """机构持仓路由测试"""
 
-    @patch("backend.routers.market.market_data")
+    @patch("backend.routers.market.market_data_gateway")
     def test_get_holders_us_ticker_warning(self, mock_akshare):
         """参数路径：美股标的直接返回 warning"""
         client = TestClient(app)
@@ -117,10 +119,16 @@ class TestMarketHoldersRoutes:
         data = _unwrap(resp)
         assert data["status"] == "warning"
 
-    @patch("backend.routers.market.data_source_router")
-    def test_get_holders_hk_ticker_success(self, mock_router):
+    @patch("backend.routers.market._market_service._akshare")
+    def test_get_holders_hk_ticker_success(self, mock_akshare):
         """正常路径：获取港股机构持仓"""
-        mock_router.fetch_akshare = AsyncMock(return_value={"status": "success", "data": [{"holder": "中投"}]})
+        mock_akshare.fetch = MagicMock(
+            return_value=MagicMock(
+                is_error=MagicMock(return_value=False),
+                data=[{"holder": "中投"}],
+                source="akshare",
+            )
+        )
         client = TestClient(app)
         resp = client.get("/api/v1/market/holders/HK.00700")
         assert resp.status_code == 200

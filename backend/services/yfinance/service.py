@@ -1,7 +1,6 @@
 """YFinanceService 主类：核心初始化 + 数据拉取引擎"""
 
 import asyncio
-import concurrent.futures
 import os
 import random
 import time
@@ -9,6 +8,8 @@ from typing import Any, Dict, Tuple
 
 import yfinance as yf
 
+from backend.core.circuit_breaker import CircuitBreakerOpenError, get_circuit_breaker
+from backend.core.graceful_executor import GracefulExecutor
 from backend.services.yfinance.macro_daemon import MacroDaemonMixin
 from backend.services.yfinance.quote import QuoteMixin
 from backend.services.yfinance.search import SearchMixin
@@ -27,19 +28,18 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
         self._error_cache = {}  # { cache_key: timestamp } 黑名单缓存
         self._req_lock = asyncio.Lock()
         self._last_req_time = 0.0
-        self._circuit_breaker_until = 0.0  # 全局熔断器：记录熔断结束的时间戳
+        self.cb = get_circuit_breaker()
 
         # llm_service 支持依赖注入：测试时可传入 mock，生产环境使用全局单例
         self._llm_service_override = llm_service_instance
+
+        # 💡 ARCH-03: 使用 GracefulExecutor 支持异步优雅关闭
+        self._executor = GracefulExecutor(max_workers=10, thread_name_prefix="YFinanceWorker", max_wait_s=30)
 
         # 💡 微批处理队列机制 (Micro-batching Queue / DataLoader)
         self._batch_queue = {}
         self._batch_lock = asyncio.Lock()
         self._batch_dispatch_task = None
-
-        # 💡 隔离线程池防死锁：YFinance 的限流机制包含同步的 time.sleep()。
-        # 必须使用专属隔离的线程池，防止其休眠耗尽 FastAPI/asyncio 默认的全局 to_thread 线程池，导致整个网关瘫痪！  # noqa: E501
-        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=10, thread_name_prefix="YFinanceWorker")  # noqa: E501
 
         self._init_session()
 
@@ -116,32 +116,114 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
         self.session.headers.update({"User-Agent": random.choice(user_agents)})
 
     def close(self):
-        """安全关闭 requests.Session 释放连接池"""
-        if hasattr(self, "session") and self.session:
-            self.session.close()
-        if hasattr(self, "_executor") and self._executor:
-            self._executor.shutdown(wait=False)
-        # DIST-04: 关闭路由器 HTTP 客户端
-        if self._router is not None:
-            try:
+        """
+        同步关闭方法（兼容旧代码）
+
+        注意：此方法不会等待异步任务完成，仅用于测试和简单场景。
+        生产环境请使用 async_close()。
+        """
+        try:
+            if hasattr(self, "session") and self.session:
+                self.session.close()
+        except Exception:
+            pass
+
+        try:
+            if hasattr(self, "_executor") and self._executor:
+                self._executor.shutdown(wait=False)
+        except Exception:
+            pass
+
+        # 清理路由器
+        try:
+            if hasattr(self, "_router") and self._router is not None:
+                # 尝试同步关闭路由器（如果可能）
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # 在异步上下文中，创建任务来关闭
+                        asyncio.create_task(self._router.close())
+                    else:
+                        loop.run_until_complete(self._router.close())
+                except Exception:
+                    pass
+                self._router = None
+        except Exception:
+            pass
+
+    async def async_close(self):
+        """
+        ARCH-03: 异步优雅关闭 - 等待所有任务完成
+
+        改进:
+        ✅ ThreadPoolExecutor 改为 graceful_shutdown()（支持 timeout）
+        ✅ Session.close() 保持不变（同步操作）
+        ✅ Router 关闭保持异步逻辑
+        """
+        print("🛑 [YFinanceService] 开始优雅关闭...")
+
+        try:
+            # 1. 关闭 requests.Session
+            if hasattr(self, "session") and self.session:
+                self.session.close()
+                print("✅ YFinanceSession 已关闭")
+        except Exception as e:
+            print(f"⚠️ YFinanceSession 关闭异常：{e}")
+
+        try:
+            # 2. Graceful Executor shutdown
+            if hasattr(self, "_executor") and self._executor:
+                executor = self._executor
+                stats = executor.get_stats()
+                print(f"📊 Executor Stats before shutdown: {stats}")
+
+                await executor.graceful_shutdown(timeout_s=30)
+                print(f"✅ Executor 优雅关闭完成 (active_tasks={stats['active_tasks']})")
+        except Exception as e:
+            print(f"⚠️ Executor 关闭异常：{e}")
+
+        try:
+            # 3. 关闭路由器 HTTP 客户端
+            if self._router is not None:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
-                    loop.create_task(self._router.close())
+                    await self._router.close()
                 else:
-                    loop.run_until_complete(self._router.close())
-            except Exception:
-                pass
-            self._router = None
+                    await asyncio.get_event_loop().run_until_complete(self._router.close())
+                self._router = None
+                print("✅ YFinanceRouter 已关闭")
+        except Exception as e:
+            print(f"⚠️ Router 关闭异常：{e}")
+
+        print("✅ YFinanceService 完全关闭完成")
 
     def get_health_status(self) -> Dict[str, Any]:
         """获取当前雅虎财经接口的熔断与健康状态"""
-        now = time.time()
-        is_open = now < self._circuit_breaker_until
+        # 兼容旧代码：检查 _circuit_breaker_until 属性
+        if hasattr(self, "_circuit_breaker_until") and self._circuit_breaker_until > time.time():
+            cooldown_remaining = max(0, self._circuit_breaker_until - time.time())
+            return {
+                "name": "Yahoo Finance",
+                "status": "circuit_open",
+                "cooldown_remaining": round(cooldown_remaining, 1),
+                "message": "触发 429 限流熔断中",
+            }
+
+        # DIST-03: 使用统一熔断器状态查询
+        cb_state = self.cb.get_state("yf_api")
+
+        # 映射熔断器状态到健康状态
+        status_map = {
+            "closed": "healthy",  # 熔断器关闭 = 健康
+            "open": "circuit_open",  # 熔断器打开 = 熔断中
+            "half_open": "recovering",  # 半开 = 恢复中
+        }
+
         status = {
             "name": "Yahoo Finance",
-            "status": "circuit_open" if is_open else "healthy",
-            "cooldown_remaining": max(0, int(self._circuit_breaker_until - now)) if is_open else 0,  # noqa: E501
-            "message": "触发 429 限流熔断中" if is_open else "正常",
+            "status": status_map.get(cb_state.value, cb_state.value),
+            "cooldown_remaining": 0,
+            "message": "触发 429 限流熔断中" if cb_state.value == "open" else "正常",
         }
         # DIST-04: 标注路由器模式
         if self._router_enabled:
@@ -152,6 +234,10 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
     async def fetch_yf_data(
         self, ticker: str, fetch_type: str, ttl: int, persist: bool = False, **kwargs
     ) -> Tuple[bool, Any, str]:  # noqa: E501
+        # 兼容旧代码：检查 _circuit_breaker_until 属性
+        if hasattr(self, "_circuit_breaker_until") and self._circuit_breaker_until > time.time():
+            return False, None, "熔断器开启中（限流冷却）"
+
         if os.getenv("QUANT_ENV") == "development" and yf is None:
             return False, None, "development_mock"
         if yf is None:
@@ -177,39 +263,29 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
             )
             if result.get("status") == "success" and "data" in result:
                 return True, result["data"], ""
-            return False, None, result.get("message", "路由器: 数据获取失败")
+            return False, None, result.get("message", "路由器：数据获取失败")
 
         yf_ticker = format_yf_ticker(ticker)
-
-        # 🚨 全局熔断拦截：如果当前雅虎 IP 被封处于冷却期，直接短路所有网络请求
-        if time.time() < self._circuit_breaker_until:
-            return False, None, "限流冷却中：雅虎财经数据源全局熔断保护中，正在休眠冷却"
-
         cache_key = f"yf_{fetch_type}_{yf_ticker}" + (
             "_" + "_".join([f"{k}_{v}" for k, v in kwargs.items()]) if kwargs else ""
-        )  # noqa: E501
+        )
 
-        now = time.time()
-
-        # 黑名单拦截：如果该请求在最近 5 分钟（300秒）内曾经失败过，直接拦截，拒绝发起真实网络请求  # noqa: E501
-        if cache_key in self._error_cache:
-            if now - self._error_cache[cache_key] < 300:
-                return (
-                    False,
-                    None,
-                    f"数据源限流冷却中：{yf_ticker} 请求过于频繁，请等待几分钟后重试",
-                )  # noqa: E501
-            else:
-                del self._error_cache[cache_key]  # 过期则移除黑名单，给它一次重新做人的机会  # noqa: E501
-
+        # 💡 检查 L1 缓存
         if cache_key in self._cache:
-            ts, data = self._cache[cache_key]
-            if now - ts < ttl:
-                if not (fetch_type == "history" and getattr(data, "empty", False)) and not (
-                    fetch_type == "info" and len(data) <= 1
-                ):  # noqa: E501
-                    return True, data, ""
+            ts, cached_data = self._cache[cache_key]
+            if time.time() - ts < ttl:
+                return True, cached_data, ""
 
+        # 💡 检查错误黑名单缓存
+        if cache_key in self._error_cache:
+            ts = self._error_cache[cache_key]
+            if time.time() - ts < _YF_ERROR_CACHE_TTL:
+                return False, None, "限流冷却中（错误黑名单）"
+            else:
+                # 过期则清理
+                self._error_cache.pop(cache_key, None)
+
+        # 🚨 使用统一熔断器：cb.call() 会自动处理 OPEN/HALF_OPEN 状态
         try:
 
             def _do_fetch():
@@ -220,7 +296,7 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
 
                 kwargs.setdefault("progress", False)
                 kwargs.setdefault("session", self.session)
-                kwargs.setdefault("threads", False)  # type: ignore # 🚨 核心：必须完全禁用 yf 的隐式多线程，防止与 RateLimitedSession 产生"线程炸弹"
+                kwargs.setdefault("threads", False)  # type: ignore # 🚨 核心：必须完全禁用 yf 的隐式多线程，防止与 RateLimitedSession 产生“线程炸弹”
 
                 res = (
                     yf.Ticker(yf_ticker, session=self.session).info
@@ -261,60 +337,41 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
                 loop = asyncio.get_running_loop()
                 return await loop.run_in_executor(self._executor, _do_fetch)
 
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    data = await _rate_limited_fetch()
+            data = await self.cb.call("yf_api", _rate_limited_fetch)
 
-                    # 判断是否软限流
-                    is_soft_limited = False
-                    if fetch_type == "history" and getattr(data, "empty", True):
-                        is_soft_limited = True
-                    elif fetch_type == "info" and isinstance(data, dict) and len(data) <= 1:  # noqa: E501
-                        is_soft_limited = True
+            # 判断是否软限流
+            is_soft_limited = False
+            if fetch_type == "history" and getattr(data, "empty", True):
+                is_soft_limited = True
+            elif fetch_type == "info" and isinstance(data, dict) and len(data) <= 1:  # noqa: E501
+                is_soft_limited = True
 
-                    if not is_soft_limited:
-                        self._evict_stale_cache()
-                        self._cache[cache_key] = (time.time(), data)
-                        self._error_cache.pop(cache_key, None)  # 成功获取则移除黑名单
-                        return True, data, ""
+            if not is_soft_limited:
+                self._evict_stale_cache()
+                self._cache[cache_key] = (time.time(), data)
+                self._error_cache.pop(cache_key, None)  # 成功获取则移除黑名单
+                return True, data, ""
 
-                    print(
-                        f"⚠️ [YFinance API] 第 {attempt + 1} 次获取到空数据 (疑似软限流/Cookie失效) -> Ticker: {yf_ticker}"
-                    )  # noqa: E501
-                except Exception as loop_e:
-                    err_str = str(loop_e)
-                    print(f"⚠️ [YFinance API] 第 {attempt + 1} 次请求异常 -> Ticker: {yf_ticker} | Error: {err_str}")  # noqa: E501
-                    if (
-                        "429" in err_str
-                        or "Rate limit" in err_str
-                        or "Too Many Requests" in err_str
-                        or "YFRateLimitError" in err_str
-                    ):  # noqa: E501
-                        print("🚨 [YFinance] 触发全局限流熔断！所有雅虎请求将强制休眠 60 秒以释放压力")  # noqa: E501
-                        self._circuit_breaker_until = time.time() + 60.0
-                        return (
-                            False,
-                            None,
-                            "限流冷却中：yfinance 触发了 429 限流保护。已开启全局熔断，请等待 60 秒后重试。",
-                        )  # noqa: E501
+            print(f"⚠️ [YFinance API] 获取到空数据 (疑似软限流/Cookie 失效) -> Ticker: {yf_ticker}")  # noqa: E501
+            return False, None, "无效标的或数据缺失：返回空数据"
 
-                if attempt < max_retries - 1:
-                    # 指数退避 + 随机抖动
-                    backoff = random.uniform(2.0, 5.0) * (2**attempt)
-                    print(f"🔄 [YFinance API] 准备第 {attempt + 2} 次重试，重置 Session 并退避休眠 {backoff:.1f} 秒...")  # noqa: E501
-                    await asyncio.sleep(backoff)
-                    self._init_session()
-                    kwargs["session"] = self.session
-
-            self._error_cache[cache_key] = time.time()
-            return (
-                False,
-                None,
-                f"重试 {max_retries} 次后仍然失败，获取 {yf_ticker} 数据无效",
-            )  # noqa: E501
+        except CircuitBreakerOpenError:
+            return False, None, "限流冷却中：yfinance 触发全局熔断，请等待 60 秒后重试"
         except Exception as e:
             self._error_cache[cache_key] = time.time()  # 记录进黑名单
             err_str = str(e)
             print(f"⚠️ [YFinance] 外层兜底异常 | ticker: {yf_ticker} | fetch_type: {fetch_type} | error: {err_str}")  # noqa: E501
-            return False, None, f"yfinance 未知系统异常: {err_str}"
+
+            # 检查是否是 429 限流错误
+            if "429" in err_str or "Rate limit" in err_str or "Too Many Requests" in err_str:
+                # 兼容旧代码：设置 _circuit_breaker_until
+                if not hasattr(self, "_circuit_breaker_until"):
+                    self._circuit_breaker_until = 0.0
+                self._circuit_breaker_until = time.time() + 60  # 冷却 60 秒
+                return False, None, f"限流冷却中：{err_str}"
+
+            # 检查是否是退市/无效标的错误
+            if "Delisted" in err_str or "Invalid" in err_str or "No data found" in err_str:
+                return False, None, f"无效标的或已退市：{err_str}"
+
+            return False, None, f"yfinance 未知系统异常：{err_str}"

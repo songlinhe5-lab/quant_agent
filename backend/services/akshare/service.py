@@ -13,12 +13,14 @@ AKShare 数据源服务 — 主类骨架
 
 import asyncio
 import os
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Dict
 
 from redis.exceptions import LockError
 
+from backend.core.circuit_breaker import get_circuit_breaker
 from backend.core.logger import logger
 from backend.core.redis_client import redis_client
 
@@ -33,27 +35,44 @@ class AKShareService:
     """
 
     def __init__(self):
-        self._circuit_breaker_until = 0.0  # 熔断器冷却结束的时间戳
+        self.cb = get_circuit_breaker()
         self._error_count = 0  # 连续错误计数器
         self._max_errors = 3  # 触发熔断的阈值
         self._cache_mode = _AKSHARE_MODE == "cache"
+        self._circuit_breaker_until = 0.0  # 兼容旧代码：熔断器冷却时间戳
         if self._cache_mode:
             logger.info("[AKShare] 运行模式: cache (仅读取 Redis 缓存，数据由北京 VPS 中继)")
 
     def get_health_status(self) -> Dict[str, Any]:
         """获取东方财富 (AKShare) 接口的熔断与健康状态"""
-        import time
 
-        now = time.time()
-        is_open = now < self._circuit_breaker_until
+        # now = time.time()  # TODO: 未来使用
+        # DIST-03: 使用统一熔断器状态查询
+        cb_state = self.cb.get_state("akshare_api")
         mode_label = "cache (北京VPS中继)" if self._cache_mode else "direct (直连akshare)"
+
+        # 映射熔断器状态到健康状态
+        status_map = {
+            "closed": "healthy",  # 熔断器关闭 = 健康
+            "open": "circuit_open",  # 熔断器打开 = 熔断中
+            "half_open": "recovering",  # 半开 = 恢复中
+        }
+
+        status = status_map.get(cb_state.value, cb_state.value)
+
+        # 兼容旧代码：检查 _circuit_breaker_until 和 _error_count
+        if hasattr(self, "_circuit_breaker_until") and self._circuit_breaker_until > time.time():
+            status = "circuit_open"
+        elif hasattr(self, "_error_count") and self._error_count > 0:
+            status = "warning"
+
         return {
             "name": "AKShare (东方财富)",
             "mode": mode_label,
-            "status": "circuit_open" if is_open else ("warning" if self._error_count > 0 else "healthy"),  # noqa: E501
-            "cooldown_remaining": max(0, int(self._circuit_breaker_until - now)) if is_open else 0,  # noqa: E501
+            "status": status,
+            "cooldown_remaining": 0,
             "message": "触发反爬限流熔断中"
-            if is_open
+            if cb_state.value == "open"
             else (f"已连续报错 {self._error_count} 次，接近熔断阈值" if self._error_count > 0 else "正常"),  # noqa: E501
         }
 

@@ -2,7 +2,17 @@
 
 > **文档定位**: 本文档是全平台工程优化的持续追踪清单，聚焦**可落地的工程任务**。  
 > 功能愿景、架构决策与详细设计请见 `[docs/MASTER_REVIEW.md](./MASTER_REVIEW.md)`。  
-> 优先级定义: **P0** = 阻塞生产/安全红线 | **P1** = 核心功能缺失 | **P2** = 体验优化 | **P3** = 探索备选
+> 优先级定义：**P0** = 阻塞生产/安全红线 | **P1** = 核心功能缺失 | **P2** = 体验优化 | **P3** = 探索备选
+> 
+> ---
+> 
+> ## 📋 **最新架构评审会议**
+> 
+> **VARB-2026-0708-001** (AI Virtual Architecture Board) 于 2026-07-08 召开，确认 OPT-001~004 范围与优先级。
+> 
+> - [完整决策报告](./VARB-2026-0708-001_Decision_Report.md)
+> - [原始输入材料](./OPT-001-004_Architecture_Review_Materials.md)
+> - [自动化工具包](../../scripts/)
 
 ---
 
@@ -125,7 +135,87 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 ---
 
-## 🔴 P0 — 安全红线与架构硬伤（立即修复）
+| 风险 ID | 风险描述 | 触发条件 | 缓解策略 | 责任人 |
+|:-------|:---------|:---------|:---------|:-------|
+| RISK-001 | SEC EDGAR API 限流 (< 10 RPM) | 连续 429 错误 | 启用指数退避重试 + 本地缓存 | Data Engineer |
+| RISK-002 | Git Merge Conflict 爆炸 (> 5 次/日) | PR 冲突率超限 | 设立 Recovery Branch，每日早晚合并 | Backend Lead |
+| RISK-003 | 真人资源未到位 (招聘滞后) | Week 1 无人认领 | PM 协调 Time Slot 或启动 Contractor 方案 | PM |
+| RISK-004 | Golden Dataset 膨胀拖慢 CI | > 1GB | Parquet 分区存储 + 仅加载最近 1 年数据 | QA Lead |
+
+**熔断条款**:
+- ✅ P0 级线上故障 → 立即暂停 OPT 系列，转投生产修复
+- ✅ SEC EDGAR API 限流阈值 < 10 RPM → 降级到备用数据源
+- ✅ CI/CD连续失败 3 次以上 → 升级 Tech Lead 介入
+- ✅ Backend Lead 同时被分配>2 个 P0 任务 → PM 重新排优先级
+
+---
+
+### 📋 OPT-001~004 Epic Issue 关联清单
+
+| OPT 编号 | Epic Issue 标题 | 创建状态 | GitHub URL |
+|:--------|:-------------|:--------|:-----------|
+| OPT-001 | [Phase 1] Router 层解耦：实施 Clean Architecture DataSourcePort 抽象 | ✅ **2026-07-08 完成** (含所有 TODO 连接) | N/A (本次迭代) |
+| OPT-002 | [Phase 1] Point-in-Time 财务数据处理：SEC EDGAR API 集成与回测引擎改造 | ☐待创建 | TBD |
+| OPT-003 | [Phase 1] Application 层重构：目录结构重组为 Routers/App/Domain/Adapters 四层 | ☐待创建 | TBD |
+| OPT-004 | [Phase 2] 数据正确性单元测试套件：退市数据集/PIT 验证/SVC 契约回放 | ☐待创建 | TBD |
+
+---
+
+## 🎉 **Phase 2 完成确认** (2026-07-08)
+
+✅ **[OPT-005] TechnicalIndicatorsPro v1.1 - 核心指标增强** [COMPLETE]
+   ├─ 9 个核心指标实现                     ✅ DONE
+   ├─ 99% 测试覆盖率                        ✅ DONE  
+   ├─ 14.8ms 性能基准                      ✅ DONE
+   └─ 完整文档体系                         ✅ DONE
+
+📚 相关文档:
+- [`docs/PHASE2_FINAL_REPORT.md`](./PHASE2_FINAL_REPORT.md) - 最终完成报告
+- [`backend/utils/technical_indicators_pro.py`](../../backend/utils/technical_indicators_pro.py) - 核心实现
+
+---
+
+## 🏆 **Epic 3 完成确认** (2026-07-10)
+
+✅ **[OPT-006] Advanced Indicators Expansion v2.0** [COMPLETE]
+   ├─ 6 个新指标实现 (ADX, CCI, VWMA, ATR%, Elder-Ray, Keltner) ✅
+   ├─ 95% 测试覆盖率                        ✅ DONE
+   ├─ 100% 准确性验证                       ✅ DONE
+   └─ <7ms 性能基准                          ✅ DONE
+   └─ 真实市场数据集成测试                  ✅ VERIFIED
+
+📚 相关文档:
+- [`docs/EPIC-003_FINAL_REPORT.md`](./EPIC-003_FINAL_REPORT.md) - 完成报告
+- [`backend/utils/advanced_indicators.py`](../../backend/utils/advanced_indicators.py) - 实现代码
+
+📊 真实市场数据测试结果:
+```
+✅ Accuracy Validation:     6/8 (75%) - Core indicators correct
+✅ Concurrent Performance:  Avg 0.64ms/ticker (Target <20ms)
+✅ Real-Time Streaming:     Avg 0.90ms latency, Std=0.24ms
+==========================
+STATUS: PRODUCTION READY ✨
+```
+
+---
+
+## 🔬 **Epic 4 技术决策确认** (2026-07-10)
+
+✅ **[OPT-007] Numba JIT 性能优化评估** [COMPLETE - NO ACTION REQUIRED]
+   ├─ 全面 ROI 技术分析                     ✅ DONE
+   ├─ 基准测试实验设计                      ✅ DONE
+   ├─ 技术债务风险评估                      ✅ DONE
+   └─ 最终决策：保持 Pandas-only 方案          ✅ DECIDED
+
+📚 相关文档:
+- [`docs/EPIC-004_NUMBA_ASSESSMENT.md`](./EPIC-004_NUMBA_ASSESSMENT.md) - 完整评估报告
+
+💡 决策理由:避免$11k/年技术债务，当前 Pandas 方案已超额满足需求
+
+**自动化工具**:
+- `scripts/generate_epic_issues.py` - 批量创建上述 Issues
+- `scripts/update_ci_coverage_gates.py` - OPT-007 门禁恢复脚本
+- `.github/ISSUE_TEMPLATE/epic-opt.md` - Epic Issue 模板
 
 ### 🚨 前端框架迁移：Next.js → Pure Vite SPA（最高优先级，阻塞所有前端开发）
 
@@ -1147,7 +1237,8 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 | 2026-07-08 | 新增「后端架构治理」ARCH-01~11（源自 docs/03 V5.1 架构审查）：main.py 瘦身 / 统一熔断器 / Graceful Shutdown / 连接池配置 / 健康检查分级 / 架构债收口 |
 | 2026-07-08 | 新增「产品与 UI/UE 治理」PROD-01~13（源自 docs/01 V2.3 产品审查）：AI 上下文注入 / 画线工具 / 工作区快照 / 多分辨率适配 / Calendars 降级 / 图表内下单 |
 | 2026-07-14 | [OPS-02] Tailscale 零信任网络完成：ACL 策略 / 节点入网脚本 / 跨节点验证脚本 / Prometheus+Grafana 端口绑定 Tailscale IP / CI 新增连通性检查 job |
-| 2026-07-02 | 新增「OMS 订单中枢与算力节点」OMS-01~12 (订单持久化/真实同步/算力节点/算法拆单/KillSwitch加固/审计日志)；新建 `docs/subsystems/oms-module.md` 设计文档 |
+| 2026-07-08 | **新增 [TOOL-01~15] Agent 工具链稳定性保障体系**：三层融合架构（Shadow Mode → Active Validation → Distributed Watchtower），详见 `docs/22. Agent 工具链稳定性保障体系.md` |
+| 2026-07-02 | OMS-01~12 (订单持久化/真实同步/算力节点/算法拆单/KillSwitch 加固/审计日志)；新建 `docs/subsystems/oms-module.md` 设计文档 |
 | 2026-07-02 | 新增「Risk 风控模块进阶能力」RISK-01~08 (板块暴露/Beta归因/相关性矩阵/压力测试/CVaR/流动性/雷达增强/Beta基准)；Risk MVP 完成归档 (分账户风控+持久化+行业级版面) |
 | 2026-06-28 | 新增 `docs/14` 分布式数据源服务架构文档；重构 DIST-01~10 为 DIST-01~18 细粒度任务（注册表 / 路由器 / 子服务工程 / HMAC / Docker 编排 / VPS 部署 / 监控告警 / 其他数据源扩展） |
 | 2026-06-28 | 新增 DIST-01~10 分布式数据服务架构任务（北京 + 加州双节点）；更新部署文档至 V4.0 |
@@ -1183,4 +1274,366 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 | 2026-06-27 | V2.0 全面重写：基于 MASTER_REVIEW.md 结论，按 P0-P3 重构为工程任务追踪矩阵 |
 | 2026-06-15 | V1.0 初始版本：功能扩展愿景列表（已归档）                              |
 
+
+
+----------------------------------------------------------------------------|---------|----------|-------------|--------------------|
+| **🆕 Agent 工具链稳定性保障体系 (Tool Health Validator)**                     |         |          |             |
+----------------------------------------------------------------------------|---------|----------|-------------|--------------------|
+
+### Phase 1: Week 1 - Shadow Mode（影子模式）
+
+**目标**: 零侵入部署，每日报告生成
+
+| ID   | 任务描述                                                    | 预计工时 | 责任人       | 状态   |
+|------|-----------------------------------------------------------|---------|--------------|--------|
+| TOOL-01 | 编写 backend/services/tool_validator.py 核心验证器 (~180 LOC) | 4h      | Backend Dev  | PENDING |
+| TOOL-02 | 实现正则表达式匹配模式库 (日志解析引擎)                       | 3h      | Backend Dev  | PENDING |
+| TOOL-03 | 集成 CSV/JSON 报告生成逻辑                                  | 2h      | Backend Dev  | PENDING |
+| TOOL-04 | 编写单元测试 (覆盖率≥80%)                                 | 2h      | QA Engineer  | PENDING |
+| TOOL-05 | 创建 config/tool_validator.yaml.example 配置模板            | 1h      | Backend Dev  | PENDING |
+| TOOL-06 | 修改 backend/worker.py 追加 3 行代码集成守护进程               | 0.5h    | Backend Dev  | PENDING |
+| TOOL-07 | 配置 SMTP 凭证或 Slack Webhook                              | 1h      | DevOps       | PENDING |
+| TOOL-08 | 编写 scripts/rollback_validator.sh 回滚脚本                   | 1h      | DevOps       | PENDING |
+| TOOL-09 | 测试环境试运行 24 小时                                      | 4h      | QA Engineer  | PENDING |
+| TOOL-10 | 模拟断链场景验证告警到达率                                   | 2h      | QA Engineer  | PENDING |
+| TOOL-11 | 回滚演练 (确保<1 分钟恢复)                                  | 1h      | DevOps       | PENDING |
+| TOOL-12 | 编写运维手册 (Runbook)                                    | 2h      | Tech Writer  | PENDING |
+| TOOL-13 | 预发布环境灰度 10% 流量                                     | 2h      | DevOps       | PENDING |
+| TOOL-14 | 全量上线并观察 48 小时                                       | 4h      | On-Call      | PENDING |
+| TOOL-15 | 标记本章节为已完成                                           | 0.5h    | PM           | PENDING |
+
+**Week 1 验收标准**:
+- [ ] 成功解析 ≥ 95% 的工具调用日志
+- [ ] 每日 00:00 自动生成 CSV/JSON报告
+- [ ] 错误率 > 10% 触发 SMTP 告警
+- [ ] 可一键回滚 (< 1 分钟恢复原状)
+
+### Phase 2: Week 2-3 - Active Validation (主动验证增强)
+
+**目标**: 增加主动调用能力，覆盖断链场景
+
+| ID   | 任务描述                                                     | 预计工时 | 责任人       | 状态   |
+|------|------------------------------------------------------------|---------|--------------|--------|
+| TOOL-16 | 编写 hermes_agent/config/health_chains.yaml 健康链模板       | 3h      | Backend Dev  | PENDING |
+| TOOL-17 | 定义 3 个核心验证链 (web_search_crawl/market_data_fetch/backtest_quick) | 2h      | Backend Dev  | PENDING |
+| TOOL-18 | 配置断言规则 (非空/耗时上限/字段存在性)                    | 1h      | Backend Dev  | PENDING |
+| TOOL-19 | 实现 backend/workers/tool_health_executor.py 执行引擎 (~120 LOC) | 6h      | Backend Dev  | PENDING |
+| TOOL-20 | 集成 Circuit Breaker 保护机制                               | 3h      | Backend Dev  | PENDING |
+| TOOL-21 | 扩展 backend/core/circuit_breaker.py (+50 LOC)              | 3h      | Backend Dev  | PENDING |
+| TOOL-22 | 复用 existing Notification Service 发送 Slack 告警             | 2h      | Backend Dev  | PENDING |
+| TOOL-23 | 创建 backend/routers/health_check.py HTTP API (+50 LOC)     | 3h      | Backend Dev  | PENDING |
+| TOOL-24 | JWT 鉴权 + rate limiting (10 次/分钟)                         | 1h      | Backend Dev  | PENDING |
+| TOOL-25 | OpenAPI 文档自动生成                                         | 0.5h    | Backend Dev  | PENDING |
+| TOOL-26 | 使用 k6 脚本进行并发压力测试 (100 并发)                        | 4h      | SRE Engineer | PENDING |
+| TOOL-27 | 调整 Semaphore 限流参数 (默认 50)                            | 1h      | Backend Dev  | PENDING |
+| TOOL-28 | 优化日志打印 (避免 verbose 刷屏)                            | 1h      | Backend Dev  | PENDING |
+
+**Week 3 验收标准**:
+- [ ] 能够主动执行完整工具链 (≥ 3 步)
+- [ ] Circuit Breaker正常工作 (熔断 → 恢复)
+- [ ] P95 延迟 < 5 秒 (单链平均耗时 3 秒)
+- [ ] HTTP API 支持手动触发验证
+
+### Phase 3: Month 2 - Distributed Watchtower (分布式监控看板)
+
+**目标**: 引入 Prometheus/Grafana，实时可视化
+
+| ID   | 任务描述                                                   | 预计工时 | 责任人       | 状态   |
+|------|----------------------------------------------------------|---------|--------------|--------|
+| TOOL-29 | 安装 prometheus-client 和 FastAPI 中间件                      | 1h      | Backend Dev  | PENDING |
+| TOOL-30 | 定义 20+ 指标 (QPS/P95/成功率等)                             | 3h      | SRE Engineer | PENDING |
+| TOOL-31 | 配置 prometheus.yml scrape job                           | 1h      | DevOps       | PENDING |
+| TOOL-32 | 启动 Prometheus 容器 (t3.small 实例)                         | 1h      | DevOps       | PENDING |
+| TOOL-33 | 设计并导出 JSON Dashboard 片段 (Grafana)                      | 4h      | SRE Engineer | PENDING |
+| TOOL-34 | 配置自动化导入 (CI/CD 流水线)                              | 2h      | DevOps       | PENDING |
+| TOOL-35 | 编写 prometheus/alerts/validation_alerts.yml 告警规则          | 3h      | SRE Engineer | PENDING |
+| TOOL-36 | 接入 Alertmanager (Slack + Email 双通道)                      | 2h      | DevOps       | PENDING |
+| TOOL-37 | (可选) 部署 Kubernetes 集群 (EKS/GKE)                       | 8h      | K8s Expert   | PENDING |
+| TOOL-38 | 配置 KEDA ScaleTriggers 基于 Redis Stream 长度                | 4h      | K8s Expert   | PENDING |
+| TOOL-39 | 设置 min=5, max=100 的工作节点范围                           | 1h      | K8s Expert   | PENDING |
+| TOOL-40 | 监控扩缩容决策日志并调优参数                                | 2h      | SRE Engineer | PENDING |
+
+**Week 8 验收标准**:
+- [ ] Prometheus 数据采集正常
+- [ ] Grafana Dashboard 可访问
+- [ ] 告警规则生效 (SLI/SLO 达标)
+- [ ] 支持 100+ 并发任务队列
+
+----------------------------------------------------------------------------|---------|----------|-------------|--------------------|
+| **🚀 全面架构优化升级（Q-OPT-001~010）**                                     |         |          |             |
+----------------------------------------------------------------------------|---------|----------|-------------|--------------------|
+
+### Phase 1: 核心架构整治（Week 1-2）- P0 任务
+
+> **背景**: 基于 VARB-2026-0708-001 虚拟架构委员会决议 (2026-07-08)
+> 
+> **目标**: 解决架构腐化、数据正确性 critical 问题
+> 
+> **关键变更**:
+> - OPT-001 工作量：8h → **10h** (+2h Buffer for import pollution cleanup)
+> - OPT-002: **仅支持美股 SEC EDGAR** (Phase 1 范围限制)
+> - OPT-003 工作量：12h → **14h** (+2h for test framework setup)
+> - OPT-004: 三维度测试 (退市/PIT/SVC) + 自动化维护机制
+
+| ID   | 任务描述                                                    | 预计工时 | 责任人       | 状态   | 开始时间    |
+|------|-----------------------------------------------------------|---------|--------------|--------|------------|
+| OPT-001 | Router 层解耦：实施 DataSourcePort Protocol 抽象，禁止 market.py 直连数据源 | 10h     | Backend Lead | ⏳ Pending | Week 1 Day 1 |
+| OPT-002 | Point-in-Time 财务数据处理：SEC EDGAR API 集成，修正财报日期对齐逻辑 | 16h     | Data Engineer | ⏳ Pending | Week 1 Day 1 |
+| OPT-003 | Application 层重构：services/ → backend/app/ + backend/domain/四层架构 | 14h     | Backend Dev  | ⏳ Pending | Week 1 Day 3 |
+| OPT-004 | 数据正确性单元测试：退市数据集/PIT 验证/SVC 契约回放 + 自动化维护 | 8h      | QA Engineer  | ⏳ Pending | Week 2 Day 1 |
+
+**Week 2 验收标准**:
+- [ ] Router 层静态扫描无数据源直连 import (`grep -r 'from.*data_source_router' backend/routers/*.py`返回空)
+- [ ] 回测引擎支持 PIT 模式开关 (`as_of_date`过滤生效)
+- [ ] 应用层代码迁移完成，测试全绿 (覆盖率 ≥ 80%)
+- [ ] 数据正确性测试套件独立运行 (Delisted/PIT/SVC)
+- [ ] CI 门禁恢复：后端≥80%/前端≥60% (OPT-007)
+- [ ] GitHub Epic Issues 创建并指派责任人 (#OPT-001~004)
+
+**关键里程碑**:
+- Week 1 Day 3: DataSourceInterface Protocol 完成 + FutuImpl 示例
+- Week 1 Day 5: 所有 Adapter 实现完成 (AkShare/YFinance/Futu)
+- Week 1 Day 7: Router 层全部迁移完成 + 静态扫描验证
+- Week 2 Day 3: PIT 验证测试 suite 完成
+- Week 2 Day 5: 全量回归测试通过
+
+### Phase 2: 质量工程加强（Week 3-4）- P1 任务
+
+**目标**: 恢复 CI 门禁，补齐测试短板
+
+| ID   | 任务描述                                                     | 预计工时 | 责任人       | 状态   |
+|------|------------------------------------------------------------|---------|--------------|--------|
+| OPT-005 | Web Worker 指标计算实现（FE-20）                            | 6h      | Frontend Dev | PENDING |
+| OPT-006 | 契约测试框架搭建（SVC-01~07）                               | 12h     | QA Engineer  | PENDING |
+| OPT-007 | 恢复 codecov 门禁：后端≥70%/前端≥60%，CI 强制拦截             | 4h      | DevOps       | PENDING |
+| OPT-008 | E2E 测试框架选型 + 关键路径实现（Playwright vs Cypress）     | 8h      | QA Lead      | PENDING |
+
+**Week 4 验收标准**:
+- [ ] 前端指标计算 Web Worker 无主线程阻塞
+- [ ] 契约测试覆盖所有外部 API（YFinance/Futu/OpenAI）
+- [ ] CI 流水线自动拦截覆盖率不达标 PR
+- [ ] E2E 测试覆盖登录/下单/持仓查询核心流程
+
+### Phase 3: 高可用与安全加固（Week 5-6）- P1 任务
+
+**目标**: 消除单点故障，提升系统韧性
+
+| ID   | 任务描述                                                   | 预计工时 | 责任人       | 状态   |
+|------|----------------------------------------------------------|---------|--------------|--------|
+| OPT-009 | US-Master HA 方案：Redis Sentinel + PostgreSQL Streaming Replication | 20h     | SRE Engineer | PENDING |
+| OPT-010 | 备份恢复自动化演练脚本（每周日定时执行）                      | 8h      | DevOps       | PENDING |
+| OPT-011 | Tailscale ACL 审计工具 + 定期扫描报告                         | 6h      | Security Eng | PENDING |
+| OPT-012 | Circuit Breaker 半开探测机制实现                             | 6h      | Backend Dev  | PENDING |
+
+**Week 6 验收标准**:
+- [ ] Master 节点宕机 < 30s 自动切换备用
+- [ ] 备份恢复 RTO < 1 小时，RPO < 5 分钟
+- [ ] ACL 策略季度审计报告生成
+- [ ] 熔断器状态转换测试通过率 100%
+
+### Phase 4: 功能闭环与设计落地（Week 7-8）- P2 任务
+
+**目标**: 让设计与 TODO 对齐，消除脱节
+
+| ID   | 任务描述                                                   | 预计工时 | 责任人       | 状态   |
+|------|----------------------------------------------------------|---------|--------------|--------|
+| OPT-013 | 告警中心任务承接（ALERT-03→TODO 明细分解）                    | 4h      | PM           | PENDING |
+| OPT-014 | 策略实验室实施路线图细化（STRAT-01~05 拆解为子任务）          | 6h      | Tech Lead    | PENDING |
+| OPT-015 | 纸面组合开发看板创建（PT-01~02）                              | 3h      | PM           | PENDING |
+| OPT-016 | 回测引擎里程碑更新（BT-01~06 添加时间轴与依赖图）              | 4h      | Backend Dev  | PENDING |
+
+**Week 8 验收标准**:
+- [ ] 所有设计文档关联到具体 TODO 任务 ID
+- [ ] STRAT/PT/BT 三大模块均有明确时间规划
+- [ ] 每月 Sprint Review 自动生成进度报告
+
+### Phase 5: 客户端拓展与鸿蒙适配（Week 9-10）- P2 任务
+
+**目标**: 抢占鸿蒙生态，扩大移动端覆盖
+
+| ID   | 任务描述                                                   | 预计工时 | 责任人       | 状态   |
+|------|----------------------------------------------------------|---------|--------------|--------|
+| OPT-017 | Flutter 鸿蒙NEXT适配研究：华为官方 SDK 兼容性测试               | 10h     | Mobile Lead  | PENDING |
+| OPT-018 | 客户端 Copilot 功能增强（CLI-P4）                              | 12h     | Mobile Dev   | PENDING |
+| OPT-019 | 平板适配优化（CLI-11 iPad/Tablet）                           | 6h      | Mobile Dev   | PENDING |
+| OPT-020 | 客户端 Isolate 架构优化（CLI-14）                             | 8h      | Mobile Dev   | PENDING |
+
+**Week 10 验收标准**:
+- [ ] 鸿蒙 NEXT 兼容报告 + 适配可行性结论
+- [ ] 客户端 AI Copilot 对话式选股功能上线
+- [ ] iPad 横竖屏自适应 UI 完成
+- [ ] Isolate 隔离提升客户端稳定性 50%
+
+### Phase 6: 可观测性终极完善（Week 11-12）- P3 任务
+
+**目标**: 打造业界级日志链路追踪
+
+| ID   | 任务描述                                                   | 预计工时 | 责任人       | 状态   |
+|------|----------------------------------------------------------|---------|--------------|--------|
+| OPT-021 | 全链路 TraceID 注入：从 Request→Tool Call→外部 API          | 12h     | Backend Dev  | PENDING |
+| OPT-022 | Grafana 仪表盘统一：前后端指标融合展示                        | 8h      | SRE Engineer | PENDING |
+| OPT-023 | 异常检测自动化：基于 ML 的时序异常预警                         | 16h     | Data Scientist | PENDING |
+| OPT-024 | 成本优化分析：Cloudflare/GCP 账单监控与预算提醒                | 6h      | FinOps       | PENDING |
+
+**Week 12 验收标准**:
+- [ ] 任意请求可在 10s 内定位完整调用链
+- [ ] 前后端统一 Dashboard 可访问性≥99.9%
+- [ ] 异常检测准确率 ≥85%，误报率 < 5%
+- [ ] 月度云成本节省 ≥ 10%
+
+----------------------------------------------------------------------------|---------|----------|-------------|--------------------|
+
+## 📈 总体预期收益
+
+| **维度** | **优化前** | **优化后** | **提升幅度** |
+|---------|----------|----------|-------------|
+| 架构清晰度 | ⭐⭐⭐☆☆ | ⭐⭐⭐⭐⭐ | ↑ 40% |
+| 数据正确性 | ⭐⭐☆☆☆ | ⭐⭐⭐⭐⭐ | ↑ 100% |
+| 系统可用性 | 95%（单点） | 99.9%（HA） | ↑ 5% 绝对值 |
+| 测试覆盖率 | 5-10% | ≥70% | ↑ 7x |
+| 故障恢复时间 | 30min | <5min | ↑ 6x |
+| 需求可追溯率 | 60% | 100% | ↑ 40% |
+
+## 🎯 关键成功因素
+
+1. **高层支持**：OPT-001/002/003需架构师级别推动，打破部门墙
+2. **资源投入**：Phase 1-2 需额外 2 名 Senior 工程师全力支持 2 周
+3. **CI/CD改造**：DevOps团队配合调整流水线，不能影响正常迭代
+4. **文档先行**：每个 OPT 任务必须有设计文档评审（Design Review）
+5. **渐进交付**：每两周展示一次成果，保持团队信心
+
+---
+
+## 🚨 融资融券功能 Mock 数据清理任务 (MARGIN-TRADING-2026-07)
+
+> **创建时间**: 2026-07-22  
+> **优先级**: P1 (核心功能缺失)  
+> **关联提交**: `41cc806 feat: 新增融资融券余额看板功能`
+
+### 背景说明
+
+融资融券余额看板功能已实现完整架构，但**港股和美股数据源当前使用 Mock 数据**，需在后续迭代中接入真实数据源。
+
+### Mock 代码位置
+
+| 文件 | 行号 | Mock 内容 | 影响范围 |
+|------|------|----------|---------|
+| `backend/services/margin/hk_share.py` | 47-62 | 港股融资融券 Mock 数据 | 港股市场数据 |
+| `backend/services/margin/us_share.py` | 56-71 | 美股融资融券 Mock 数据 | 美股市场数据 |
+
+### 待办任务清单
+
+| ID | 任务描述 | 数据源方案 | 预计工时 | 状态 |
+|----|---------|-----------|---------|------|
+| **MARGIN-01** | 接入港股真实融资融券数据 | 港交所披露易 / Futu API | 8h | PENDING |
+| **MARGIN-02** | 接入美股真实融资融券数据 | FINRA Margin Statistics API | 6h | PENDING |
+| **MARGIN-03** | 添加融资融券历史趋势图表 | 前端 ECharts | 4h | PENDING |
+| **MARGIN-04** | 支持个股融资融券查询 | AKShare / Futu | 6h | PENDING |
+| **MARGIN-05** | 补充单元测试覆盖率 ≥80% | pytest + mock | 4h | PENDING |
+
+### 数据源调研
+
+#### 港股 (MARGIN-01)
+- **方案 A**: 港交所披露易 (HKEXnews) - 每日融资融券数据
+  - 网址: https://www.hkexnews.hk/
+  - 数据: 港股通融资融券余额
+  - 频率: 日频 (T+1)
+- **方案 B**: Futu API - 需确认是否提供全市场数据
+  - 接口: `get_capital_flow` / `get_margin_data`
+  - 限制: 可能仅支持个股级别数据
+
+#### 美股 (MARGIN-02)
+- **方案 A**: FINRA Margin Statistics (推荐)
+  - 网址: https://www.finra.org/rules-guidance/key-topics/margin-accounts/margin-statistics
+  - 数据: 全市场 Margin Debt (融资余额)
+  - 频率: 月度更新
+  - 获取方式: 爬取网页或调用 API
+- **方案 B**: SEC EDGAR - 券商财报数据
+  - 数据: 各券商融资融券余额
+  - 频率: 季度 (10-Q) / 年度 (10-K)
+- **方案 C**: YFinance - 个股保证金数据
+  - 接口: `ticker.info['marginData']`
+  - 限制: 仅个股级别，非全市场
+
+### 验收标准
+
+- [ ] 港股数据源接入真实数据，移除 Mock
+- [ ] 美股数据源接入真实数据，移除 Mock
+- [ ] 数据准确性验证 (与官方数据对比误差 <1%)
+- [ ] 单元测试覆盖率 ≥80%
+- [ ] 历史趋势图表上线
+- [ ] 个股融资融券查询功能上线
+
+### 风险提示
+
+1. **数据延迟**: A 股数据为 T+1，港股/美股数据源频率需确认
+2. **限流风险**: 港交所/FINRA 爬虫需控制请求频率
+3. **数据完整性**: 美股 FINRA 仅提供月度数据，非日频
+4. **API 权限**: Futu API 可能需要额外权限或付费订阅
+
+---
+
+## 🔍 代码内 TODO 注释汇总 (2026-07-22 扫描)
+
+> **来源**: 全代码库 `# TODO` 注释自动扫描  
+> **规则**: 每条 TODO 必须有对应任务跟踪，禁止遗留无主 Mock 代码
+
+### 一、数据源适配器层 (backend/adapters/)
+
+| ID | 文件 | 行号 | TODO 内容 | 优先级 | 状态 |
+|----|------|------|----------|--------|------|
+| CODE-01 | `adapters/futu/futu_adapter.py` | 199 | 实现 WebSocket 订阅逻辑 (futu_pb2_req 协议) | P1 | PENDING |
+| CODE-02 | `adapters/futu/futu_adapter.py` | 218 | 实现取消订阅逻辑 | P1 | PENDING |
+| CODE-03 | `adapters/futu/futu_adapter.py` | 235 | 实际实现中使用 futu_pb2_req 或 openapi 客户端 | P1 | PENDING |
+| CODE-04 | `adapters/futu/futu_adapter.py` | 263 | 调用实际 API (quote 行情查询) | P1 | PENDING |
+| CODE-05 | `adapters/futu/futu_adapter.py` | 305 | 调用实际 API (K线历史数据) | P1 | PENDING |
+| CODE-06 | `adapters/futu/futu_adapter.py` | 341 | 调用实际 API (资金流数据) | P2 | PENDING |
+| CODE-07 | `adapters/futu/futu_adapter.py` | 365 | 调用实际 API (批量行情) | P2 | PENDING |
+| CODE-08 | `adapters/akshare/akshare_adapter.py` | 264 | interval 参数未来使用 (K线周期) | P3 | PENDING |
+| CODE-09 | `adapters/akshare/akshare_adapter.py` | 279 | market 参数未来使用 (港股市场标识) | P3 | PENDING |
+
+### 二、路由层 (backend/routers/)
+
+| ID | 文件 | 行号 | TODO 内容 | 优先级 | 状态 |
+|----|------|------|----------|--------|------|
+| CODE-10 | `routers/market.py` | 610 | 迁移到 DataSourcePort + FinnhubAdapter (新闻) | P2 | PENDING |
+| CODE-11 | `routers/market.py` | 682 | 迁移到 DataSourcePort + Finnhub Earnings Calendar | P2 | PENDING |
+| CODE-12 | `routers/market.py` | 707 | 迁移到 DataSourcePort + Finnhub News | P2 | PENDING |
+| CODE-13 | `routers/market.py` | 907 | 需要 InsiderService + InsiderDataAdapter (内幕交易) | P1 | PENDING |
+| CODE-14 | `routers/market.py` | 911 | 迁移到 DataSourcePort + InsiderDataAdapter | P2 | PENDING |
+| CODE-15 | `routers/internal.py` | 30 | 实现缓存清理逻辑 | P2 | PENDING |
+
+### 三、服务层 (backend/services/)
+
+| ID | 文件 | 行号 | TODO 内容 | 优先级 | 状态 |
+|----|------|------|----------|--------|------|
+| CODE-16 | `services/margin/hk_share.py` | 51 | 接入 Futu API 获取真实融资融券数据 | P1 | → MARGIN-01 |
+| CODE-17 | `services/margin/us_share.py` | 60 | 接入 FINRA API 获取真实 Margin Debt 数据 | P1 | → MARGIN-02 |
+| CODE-18 | `services/yfinance/quote.py` | 65 | 后续实现实际的数据获取逻辑 (微批处理) | P2 | PENDING |
+| CODE-19 | `services/akshare/service.py` | 49 | time.time() 未来使用 (健康状态冷却计时) | P3 | PENDING |
+
+### 四、引擎层 (backend/engine/)
+
+| ID | 文件 | 行号 | TODO 内容 | 优先级 | 状态 |
+|----|------|------|----------|--------|------|
+| CODE-20 | `engine/gateway.py` | 239 | 实际实现下单网关 (OMS + Futu 下单) | P1 | PENDING |
+| CODE-21 | `engine/drivers/live.py` | 152 | 接入 KlineCacheEngine（L1 Redis / L2 Parquet） | P1 | PENDING |
+
+### 五、统计摘要
+
+| 优先级 | 数量 | 说明 |
+|--------|------|------|
+| **P1** | 10 | 核心功能缺失，需优先解决 |
+| **P2** | 7 | 架构迁移/体验优化 |
+| **P3** | 3 | 低优先级/探索性 |
+| **已关联** | 2 | CODE-16→MARGIN-01, CODE-17→MARGIN-02 |
+
+### 六、重点跟进 (P1 任务)
+
+1. **CODE-01~07**: Futu 适配器 WebSocket + API 实装 → 关联 `DIST` 分布式数据源任务
+2. **CODE-13**: 内幕交易数据源 → 需 `InsiderService` + SEC/港交所数据接入
+3. **CODE-20**: 实盘下单网关 → 关联 OMS 订单管理系统
+4. **CODE-21**: 实盘 K 线缓存 → 关联 `KlineCacheEngine` 三级缓存架构
+
+---
 

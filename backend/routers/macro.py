@@ -721,11 +721,13 @@ async def get_data_center_dashboard(
                 events_res,
                 news_res,
                 earnings_res,
+                margin_res,
             ) = await asyncio.gather(
                 get_macro_assets(force_refresh=force_refresh),
                 _fetch_macro_calendar_data(days_ahead=7, days_back=days_back, force_refresh=force_refresh),
                 get_macro_news(category="general", limit=15),
                 _fetch_earnings_calendar_data(days_ahead=7, days_back=days_back, force_refresh=force_refresh),  # noqa: E501
+                _fetch_margin_trading_data(),
                 return_exceptions=True,
             )
 
@@ -768,6 +770,15 @@ async def get_data_center_dashboard(
                 earnings_res.get("message", "") if isinstance(earnings_res, dict) and not earnings_ok else ""
             )  # noqa: E501
 
+            # 融资融券数据
+            margin_data = []
+            margin_status = "unknown"
+            if isinstance(margin_res, dict) and margin_res.get("status") in ("success", "partial"):
+                margin_data = margin_res.get("data", [])
+                margin_status = margin_res.get("status")
+            elif isinstance(margin_res, BaseException):
+                margin_status = "error"
+
             result = {
                 "status": "success",
                 "data": {
@@ -788,6 +799,8 @@ async def get_data_center_dashboard(
                     "earningsCalendarDeduction": earnings_calendar_deduction,
                     "earningsStatus": earnings_status,
                     "earningsMessage": earnings_message,
+                    "marginTrading": margin_data,
+                    "marginTradingStatus": margin_status,
                 },
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }
@@ -800,6 +813,13 @@ async def get_data_center_dashboard(
 
 
 # ── 大类资产数据 ────────────────────────────────────────────────────────────
+
+
+async def _fetch_margin_trading_data():
+    """获取融资融券余额数据"""
+    from backend.services.margin.service import margin_service
+
+    return await margin_service.get_all_margin_data()
 
 
 async def _fetch_macro_assets_data():
@@ -1142,3 +1162,30 @@ async def websocket_macro_calendar(websocket: WebSocket):
         except Exception:
             pass
         await pubsub.close()
+
+
+# ── 融资融券余额 ────────────────────────────────────────────────────────────
+
+
+@router.get("/margin-trading")
+async def get_margin_trading_data():
+    """
+    获取三个市场的融资融券余额数据
+
+    返回 A 股、港股、美股的融资余额和融券余额。
+    数据来源:
+    - A 股: AKShare (上交所/深交所)
+    - 港股: Futu API
+    - 美股: FINRA / YFinance
+    """
+    from backend.services.margin.service import margin_service
+
+    try:
+        result = await margin_service.get_all_margin_data()
+        return result
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"融资融券数据获取失败: {str(e)}",
+            "data": [],
+        }

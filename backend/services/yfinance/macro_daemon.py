@@ -118,8 +118,8 @@ class MacroDaemonMixin:
                             or "Too Many Requests" in err_str
                             or "YFRateLimitError" in err_str
                         ):  # noqa: E501
-                            print("  🚨 [YF Daemon] 触发全局限流熔断！")
-                            self._circuit_breaker_until = time.time() + 60.0
+                            print("  🚨 [YF Daemon] 触发限流错误，记录失败以触发熔断")
+                            self.cb.record_failure("yf_api")  # 触发熔断器自动管理冷却
                             df = None
                             break
 

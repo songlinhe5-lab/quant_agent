@@ -5,7 +5,7 @@ TEST-18: 提升 market.py 覆盖率
 
 import os
 import sys
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -37,16 +37,13 @@ class TestSearchTickers:
         assert data["status"] == "success"
 
     @patch("backend.routers.market.ticker_service")
-    @patch("backend.routers.market.data_source_router")
-    def test_local_empty_yf_fallback(self, mock_router, mock_ts):
+    @patch("backend.routers.market._market_service")
+    def test_local_empty_yf_fallback(self, mock_svc, mock_ts):
         mock_ts.search_tickers = AsyncMock(return_value={"status": "success", "data": []})
-        mock_router.fetch_yfinance = AsyncMock(
-            return_value={
-                "success": True,
-                "data": {"status": "success", "data": [{"symbol": "AAPL", "name": "Apple"}]},
-                "message": "",
-            }
-        )
+        mock_yf_result = MagicMock()
+        mock_yf_result.is_success.return_value = True
+        mock_yf_result.data = [{"symbol": "AAPL", "name": "Apple"}]
+        mock_svc._yfinance.fetch.return_value = mock_yf_result
         resp = client.get("/market/search?q=apple")
         assert resp.status_code == 200
 
@@ -59,7 +56,7 @@ class TestSearchTickers:
 
 # ─── /market/news ───────────────────────────────────────────────────
 class TestGetCompanyNews:
-    @patch("backend.routers.market.market_data")
+    @patch("backend.routers.market.market_data_gateway")
     @patch("backend.routers.market.redis_client")
     def test_cache_hit(self, mock_redis, mock_fh):
         import json
@@ -69,7 +66,7 @@ class TestGetCompanyNews:
         resp = client.get("/market/news?ticker=AAPL")
         assert resp.status_code == 200
 
-    @patch("backend.routers.market.market_data")
+    @patch("backend.routers.market.market_data_gateway")
     @patch("backend.routers.market.redis_client")
     def test_finnhub_success(self, mock_redis, mock_fh):
         mock_redis.get = AsyncMock(return_value=None)
@@ -91,7 +88,7 @@ class TestGetCompanyNews:
 
 # ─── /market/fundamental/{ticker} ─────────────────────────────────
 class TestGetFundamental:
-    @patch("backend.routers.market.market_data")
+    @patch("backend.routers.market.market_data_gateway")
     def test_macro_asset_routing(self, mock_fred):
         """测试宏观资产自动路由到 FRED"""
         mock_fred.get_series_observations = AsyncMock(
@@ -102,20 +99,25 @@ class TestGetFundamental:
         data = resp.json()
         assert data["status"] == "success"
 
-    @patch("backend.routers.market.market_data")
-    @patch("backend.routers.market.market_data")
-    def test_futu_success(self, mock_yf, mock_futu):
-        mock_futu.get_fundamental = AsyncMock(return_value={"status": "success", "data": {"pe": 20.0, "pb": 3.0}})
+    @patch("backend.routers.market._market_service")
+    def test_futu_success(self, mock_svc):
+        from backend.adapters.ports.data_source_port import DataSourceResult
+
+        mock_svc._futu = MagicMock()
+        mock_svc._futu.fetch = MagicMock(return_value=DataSourceResult.success({"pe": 20.0, "pb": 3.0}, source="futu"))
         resp = client.get("/market/fundamental/US.AAPL")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "success"
 
-    @patch("backend.routers.market.market_data")
-    @patch("backend.routers.market.data_source_router")
-    def test_futu_fail_yf_success(self, mock_router, mock_futu):
-        mock_futu.get_fundamental = AsyncMock(return_value={"status": "error", "message": "失败"})
-        mock_router.fetch_yfinance = AsyncMock(
+    @patch("backend.routers.market._market_service")
+    def test_futu_fail_yf_success(self, mock_svc):
+        from backend.adapters.ports.data_source_port import DataSourceResult
+
+        mock_svc._futu = MagicMock()
+        mock_svc._futu.fetch = MagicMock(return_value=DataSourceResult.error("失败"))
+        mock_svc._yfinance = MagicMock()
+        mock_svc._yfinance.fetch = MagicMock(
             return_value={"success": True, "data": {"shortName": "Apple", "trailingPE": 20.0}, "message": "ok"}
         )
         resp = client.get("/market/fundamental/US.AAPL")
@@ -124,10 +126,14 @@ class TestGetFundamental:
 
 # ─── /market/holders/{ticker} ─────────────────────────────────────
 class TestGetTopHolders:
-    @patch("backend.routers.market.data_source_router")
-    def test_success(self, mock_router):
-        mock_router.fetch_akshare = AsyncMock(
-            return_value={"status": "success", "data": [{"holder": "Test", "shares": 1000}]}
+    @patch("backend.routers.market._market_service._akshare")
+    def test_success(self, mock_akshare):
+        mock_akshare.fetch = MagicMock(
+            return_value=MagicMock(
+                is_error=MagicMock(return_value=False),
+                data=[{"holder": "Test", "shares": 1000}],
+                source="akshare",
+            )
         )
         resp = client.get("/market/holders/HK.00700")
         assert resp.status_code == 200
@@ -150,7 +156,7 @@ class TestGetTopHolders:
 # ─── /market/insider-marquee ───────────────────────────────────────
 @pytest.mark.skip(reason="端点返回 500，需要深入排查")
 class TestInsiderMarquee:
-    @patch("backend.routers.market.market_data")
+    @patch("backend.routers.market.market_data_gateway")
     def test_success(self, mock_fh):
         mock_fh.get_insider_transactions = AsyncMock(
             return_value={"status": "success", "data": [{"name": "Test", "transactionType": "Buy"}]}
@@ -158,7 +164,7 @@ class TestInsiderMarquee:
         resp = client.get("/market/insider-marquee?limit=5")
         assert resp.status_code == 200
 
-    @patch("backend.routers.market.market_data")
+    @patch("backend.routers.market.market_data_gateway")
     def test_error(self, mock_fh):
         mock_fh.get_insider_transactions = AsyncMock(return_value={"status": "error", "message": "失败"})
         resp = client.get("/market/insider-marquee")

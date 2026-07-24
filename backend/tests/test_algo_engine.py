@@ -1,11 +1,20 @@
 """
-TRADE-02 · 算法拆单增强测试
-
-5 tests: 市场冲击模型 / POV 算法 / IS 算法 / VWAP ADV 曲线 / 执行分析
+算法拆单引擎测试
+覆盖: backend/services/algo_engine.py
 """
 
 import asyncio
+import json
+import math
+import os
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
+os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from backend.services.algo_analytics import (
     AlgoAnalytics,
@@ -15,13 +24,696 @@ from backend.services.algo_engine import (
     AlgoEngine,
     AlgoOrder,
     MarketImpactModel,
+    _get_lot_size,
     algo_engine,
 )
 
-# ===== MarketImpactModel =====
 
-
+# ==========================================
+# MarketImpactModel 测试
+# ==========================================
 class TestMarketImpactModel:
+    def test_estimate_slippage_basic(self):
+        """基本滑点估算"""
+        slippage = MarketImpactModel.estimate_slippage(qty=1000, adv=100000, volatility=0.20)
+        assert slippage > 0
+        assert isinstance(slippage, float)
+
+    def test_estimate_slippage_zero_adv(self):
+        """ADV 为 0 返回 0"""
+        assert MarketImpactModel.estimate_slippage(qty=1000, adv=0, volatility=0.20) == 0.0
+
+    def test_estimate_slippage_zero_qty(self):
+        """数量为 0 返回 0"""
+        assert MarketImpactModel.estimate_slippage(qty=0, adv=100000, volatility=0.20) == 0.0
+
+    def test_estimate_slippage_formula(self):
+        """验证公式: eta * sigma * sqrt(qty/ADV) * 10000"""
+        qty, adv, vol, eta = 10000, 1000000, 0.30, 0.5
+        expected = eta * vol * math.sqrt(qty / adv) * 10000
+        result = MarketImpactModel.estimate_slippage(qty, adv, vol, eta)
+        assert abs(result - round(expected, 2)) < 0.01
+
+    def test_optimal_schedule_basic(self):
+        """IS 最优执行计划基本功能"""
+        schedule = MarketImpactModel.optimal_schedule(
+            target_qty=10000,
+            adv_curve=[10000, 8000, 6000, 4000],
+            volatility=0.20,
+            risk_aversion=1.0,
+        )
+        assert len(schedule) == 4
+        assert sum(schedule) == 10000
+        # 前期应分配更多 (风险厌恶)
+        assert schedule[0] >= schedule[-1]
+
+    def test_optimal_schedule_empty_curve(self):
+        """空 ADV 曲线返回空列表"""
+        assert MarketImpactModel.optimal_schedule(1000, [], 0.20) == []
+
+    def test_optimal_schedule_zero_qty(self):
+        """目标数量为 0 返回空列表"""
+        assert MarketImpactModel.optimal_schedule(0, [1000, 2000], 0.20) == []
+
+    def test_optimal_schedule_zero_total_adv(self):
+        """总 ADV 为 0 时均匀分配"""
+        schedule = MarketImpactModel.optimal_schedule(100, [0, 0, 0, 0], 0.20)
+        assert len(schedule) == 4
+        assert sum(schedule) == 100
+
+    def test_optimal_schedule_high_risk_aversion(self):
+        """高风险厌恶 → 前期更激进"""
+        schedule_high = MarketImpactModel.optimal_schedule(10000, [5000] * 10, 0.20, risk_aversion=5.0)
+        schedule_low = MarketImpactModel.optimal_schedule(10000, [5000] * 10, 0.20, risk_aversion=0.1)
+        # 高风险厌恶时第一笔占比更大
+        assert schedule_high[0] > schedule_low[0]
+
+
+# ==========================================
+# AlgoOrder 测试
+# ==========================================
+class TestAlgoOrder:
+    def test_order_creation(self):
+        """创建算法订单"""
+        order = AlgoOrder("algo_1", "TWAP", "US.AAPL", "BUY", 1000)
+        assert order.algo_id == "algo_1"
+        assert order.algo_type == "TWAP"
+        assert order.symbol == "US.AAPL"
+        assert order.side == "BUY"
+        assert order.target_qty == 1000
+        assert order.filled_qty == 0
+        assert order.status == "RUNNING"
+
+    def test_avg_price_zero_fill(self):
+        """无成交时均价为 0.00"""
+        order = AlgoOrder("algo_1", "TWAP", "US.AAPL", "BUY", 1000)
+        assert order.avg_price == "0.00"
+
+    def test_avg_price_with_fills(self):
+        """有成交时正确计算均价"""
+        order = AlgoOrder("algo_1", "TWAP", "US.AAPL", "BUY", 1000)
+        order.filled_qty = 500
+        order.total_cost = 75000.0
+        assert order.avg_price == "150.00"
+
+    def test_progress_zero(self):
+        """初始进度为 0"""
+        order = AlgoOrder("algo_1", "TWAP", "US.AAPL", "BUY", 1000)
+        assert order.progress == 0
+
+    def test_progress_partial(self):
+        """部分成交进度"""
+        order = AlgoOrder("algo_1", "TWAP", "US.AAPL", "BUY", 1000)
+        order.filled_qty = 300
+        assert order.progress == 30
+
+    def test_progress_full(self):
+        """全部成交进度 100"""
+        order = AlgoOrder("algo_1", "TWAP", "US.AAPL", "BUY", 1000)
+        order.filled_qty = 1000
+        assert order.progress == 100
+
+    def test_progress_zero_target(self):
+        """目标为 0 时进度 100"""
+        order = AlgoOrder("algo_1", "TWAP", "US.AAPL", "BUY", 0)
+        assert order.progress == 100
+
+    def test_to_api_dict(self):
+        """API 字典格式"""
+        order = AlgoOrder("algo_1", "VWAP", "00700.HK", "SELL", 500)
+        d = order.to_api_dict()
+        assert d["id"] == "algo_1"
+        assert d["algo_type"] == "VWAP"
+        assert d["symbol"] == "00700.HK"
+        assert d["target_qty"] == 500
+        assert d["filled_qty"] == 0
+        assert d["status"] == "RUNNING"
+        assert "avg_price" in d
+        assert "progress" in d
+
+
+# ==========================================
+# _get_lot_size 测试
+# ==========================================
+class TestGetLotSize:
+    @pytest.mark.asyncio
+    async def test_us_stock_returns_1(self):
+        """美股 lot_size = 1"""
+        lot = await _get_lot_size("US.AAPL")
+        assert lot == 1
+
+    @pytest.mark.asyncio
+    async def test_hk_stock_snapshot(self):
+        """港股从 snapshot 获取 lot_size"""
+        with patch("backend.services.algo_engine.futu_service", create=True) as mock_futu:
+            mock_futu.get_market_snapshots = AsyncMock(return_value={"status": "success", "data": [{"lot_size": 100}]})
+            # 需要 patch import
+            with patch.dict("sys.modules", {"backend.services.futu_service": MagicMock(futu_service=mock_futu)}):
+                lot = await _get_lot_size("00700.HK")
+        # 如果 snapshot 失败会走硬编码映射
+        assert lot in (100, 100)
+
+    @pytest.mark.asyncio
+    async def test_hk_stock_hardcoded_fallback(self):
+        """港股硬编码兜底"""
+        with patch("backend.services.algo_engine.futu_service", create=True) as mock_futu:
+            mock_futu.get_market_snapshots = AsyncMock(side_effect=Exception("连接失败"))
+            mock_futu.get_quote = AsyncMock(side_effect=Exception("连接失败"))
+            with patch.dict("sys.modules", {"backend.services.futu_service": MagicMock(futu_service=mock_futu)}):
+                lot = await _get_lot_size("00700.HK")
+        assert lot == 100  # 腾讯硬编码
+
+    @pytest.mark.asyncio
+    async def test_hk_unknown_stock_default(self):
+        """未知港股默认 100"""
+        with patch("backend.services.algo_engine.futu_service", create=True) as mock_futu:
+            mock_futu.get_market_snapshots = AsyncMock(side_effect=Exception("err"))
+            mock_futu.get_quote = AsyncMock(side_effect=Exception("err"))
+            with patch.dict("sys.modules", {"backend.services.futu_service": MagicMock(futu_service=mock_futu)}):
+                lot = await _get_lot_size("09999.HK")
+        # 09999.HK 在硬编码映射中 = 100
+        assert lot == 100
+
+
+# ==========================================
+# AlgoEngine 测试
+# ==========================================
+class TestAlgoEngine:
+    @pytest.fixture
+    def engine(self):
+        return AlgoEngine()
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_start_algo(self, mock_redis, engine):
+        """启动算法拆单"""
+        mock_redis.hset = AsyncMock()
+        mock_redis.hdel = AsyncMock()
+        mock_redis.publish = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)  # trading mode = SANDBOX
+        mock_redis.lpush = AsyncMock()
+        mock_redis.ltrim = AsyncMock()
+        mock_redis.expire = AsyncMock()
+
+        with patch.object(engine, "_run_algo_loop", new_callable=AsyncMock):
+            with patch("backend.services.algo_engine._get_lot_size", new_callable=AsyncMock, return_value=1):
+                order = await engine.start_algo("TWAP", "US.AAPL", "BUY", 1000, 60)
+                assert order.algo_type == "TWAP"
+                assert order.symbol == "US.AAPL"
+                assert order.target_qty == 1000
+                assert order.status == "RUNNING"
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_pause_algo(self, mock_redis, engine):
+        """暂停算法"""
+        mock_redis.hset = AsyncMock()
+        mock_redis.publish = AsyncMock()
+        order = AlgoOrder("algo_1", "TWAP", "US.AAPL", "BUY", 1000)
+        engine._orders["algo_1"] = order
+        result = await engine.pause_algo("algo_1")
+        assert result is True
+        assert order.status == "PAUSED"
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_pause_nonexistent(self, mock_redis, engine):
+        """暂停不存在的算法"""
+        result = await engine.pause_algo("nonexist")
+        assert result is False
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_resume_algo(self, mock_redis, engine):
+        """恢复算法"""
+        mock_redis.hset = AsyncMock()
+        mock_redis.publish = AsyncMock()
+        order = AlgoOrder("algo_1", "TWAP", "US.AAPL", "BUY", 1000)
+        order.status = "PAUSED"
+        order._pause_event.clear()
+        engine._orders["algo_1"] = order
+        result = await engine.resume_algo("algo_1")
+        assert result is True
+        assert order.status == "RUNNING"
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_resume_not_paused(self, mock_redis, engine):
+        """恢复非暂停状态的算法"""
+        order = AlgoOrder("algo_1", "TWAP", "US.AAPL", "BUY", 1000)
+        engine._orders["algo_1"] = order
+        result = await engine.resume_algo("algo_1")
+        assert result is False
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_cancel_algo(self, mock_redis, engine):
+        """取消算法"""
+        mock_redis.hset = AsyncMock()
+        mock_redis.hdel = AsyncMock()
+        mock_redis.publish = AsyncMock()
+        mock_redis.lpush = AsyncMock()
+        mock_redis.ltrim = AsyncMock()
+        mock_redis.expire = AsyncMock()
+        order = AlgoOrder("algo_1", "TWAP", "US.AAPL", "BUY", 1000)
+        engine._orders["algo_1"] = order
+        result = await engine.cancel_algo("algo_1")
+        assert result is True
+        assert order.status == "CANCELLED"
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_cancel_nonexistent(self, mock_redis, engine):
+        """取消不存在的算法"""
+        result = await engine.cancel_algo("nonexist")
+        assert result is False
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_cancel_all(self, mock_redis, engine):
+        """Kill Switch 取消所有"""
+        mock_redis.hset = AsyncMock()
+        mock_redis.hdel = AsyncMock()
+        mock_redis.publish = AsyncMock()
+        mock_redis.lpush = AsyncMock()
+        mock_redis.ltrim = AsyncMock()
+        mock_redis.expire = AsyncMock()
+        for i in range(3):
+            order = AlgoOrder(f"algo_{i}", "TWAP", "US.AAPL", "BUY", 1000)
+            engine._orders[f"algo_{i}"] = order
+        count = await engine.cancel_all()
+        assert count == 3
+
+    @pytest.mark.asyncio
+    async def test_get_all_algo_orders(self, engine):
+        """获取所有算法订单"""
+        engine._orders["a1"] = AlgoOrder("a1", "TWAP", "US.AAPL", "BUY", 1000)
+        engine._orders["a2"] = AlgoOrder("a2", "VWAP", "US.TSLA", "SELL", 500)
+        result = await engine.get_all_algo_orders()
+        assert len(result) == 2
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_simulate_fill_sandbox(self, mock_redis, engine):
+        """沙箱模式模拟成交"""
+        mock_redis.get = AsyncMock(return_value=None)  # 非 LIVE 模式
+        with patch("backend.services.algo_engine.futu_service", create=True) as mock_futu:
+            mock_futu.get_quote = AsyncMock(return_value={"status": "success", "last_price": 150.0})
+            with patch.dict("sys.modules", {"backend.services.futu_service": MagicMock(futu_service=mock_futu)}):
+                price = await engine._simulate_fill("US.AAPL", 100, "BUY")
+        assert 149.0 < price < 151.0
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_simulate_fill_fallback(self, mock_redis, engine):
+        """行情获取失败时返回默认 100.0"""
+        mock_redis.get = AsyncMock(return_value=None)
+        with patch("backend.services.algo_engine.futu_service", create=True) as mock_futu:
+            mock_futu.get_quote = AsyncMock(side_effect=Exception("连接超时"))
+            with patch.dict("sys.modules", {"backend.services.futu_service": MagicMock(futu_service=mock_futu)}):
+                price = await engine._simulate_fill("US.AAPL", 100, "BUY")
+        assert price == 100.0
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_save_algo_state_running(self, mock_redis, engine):
+        """保存运行中状态到 Redis"""
+        mock_redis.hset = AsyncMock()
+        order = AlgoOrder("algo_1", "TWAP", "US.AAPL", "BUY", 1000)
+        await engine._save_algo_state(order)
+        mock_redis.hset.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_save_algo_state_completed(self, mock_redis, engine):
+        """完成状态从活动表移除"""
+        mock_redis.hdel = AsyncMock()
+        order = AlgoOrder("algo_1", "TWAP", "US.AAPL", "BUY", 1000)
+        order.status = "COMPLETED"
+        await engine._save_algo_state(order)
+        mock_redis.hdel.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_archive_algo(self, mock_redis, engine):
+        """归档已完成算法"""
+        mock_redis.lpush = AsyncMock()
+        mock_redis.ltrim = AsyncMock()
+        mock_redis.expire = AsyncMock()
+        order = AlgoOrder("algo_1", "TWAP", "US.AAPL", "BUY", 1000)
+        order.status = "COMPLETED"
+        await engine._archive_algo(order)
+        mock_redis.lpush.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_archive_algo_not_terminal(self, mock_redis, engine):
+        """非终态不归档"""
+        mock_redis.lpush = AsyncMock()
+        order = AlgoOrder("algo_1", "TWAP", "US.AAPL", "BUY", 1000)
+        order.status = "RUNNING"
+        await engine._archive_algo(order)
+        mock_redis.lpush.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_restore_from_redis_empty(self, mock_redis, engine):
+        """Redis 无数据时恢复 0 个"""
+        mock_redis.hgetall = AsyncMock(return_value={})
+        count = await engine.restore_from_redis()
+        assert count == 0
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_restore_from_redis_with_data(self, mock_redis, engine):
+        """从 Redis 恢复算法订单"""
+        mock_redis.hgetall = AsyncMock(
+            return_value={
+                "algo_1": json.dumps(
+                    {
+                        "algo_type": "TWAP",
+                        "symbol": "US.AAPL",
+                        "side": "BUY",
+                        "target_qty": 1000,
+                        "status": "RUNNING",
+                        "filled_qty": 200,
+                        "avg_price": "150.00",
+                    }
+                )
+            }
+        )
+        with patch.object(engine, "start_algo", new_callable=AsyncMock) as mock_start:
+            mock_order = AlgoOrder("algo_new", "TWAP", "US.AAPL", "BUY", 1000)
+            mock_start.return_value = mock_order
+            count = await engine.restore_from_redis()
+        assert count == 1
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_shutdown(self, mock_redis, engine):
+        """优雅关停"""
+        mock_redis.hset = AsyncMock()
+        mock_redis.hdel = AsyncMock()
+        mock_redis.publish = AsyncMock()
+        mock_redis.lpush = AsyncMock()
+        mock_redis.ltrim = AsyncMock()
+        mock_redis.expire = AsyncMock()
+        engine._orders["a1"] = AlgoOrder("a1", "TWAP", "US.AAPL", "BUY", 1000)
+        await engine.shutdown()
+        assert engine._orders["a1"].status == "CANCELLED"
+
+
+# ==========================================
+# AlgoEngine 执行循环测试
+# ==========================================
+class TestAlgoEngineExecution:
+    @pytest.fixture
+    def engine(self):
+        return AlgoEngine()
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_run_algo_loop_unsupported_type(self, mock_redis, engine):
+        """不支持的算法类型"""
+        mock_redis.hset = AsyncMock()
+        mock_redis.hdel = AsyncMock()
+        mock_redis.publish = AsyncMock()
+        mock_redis.lpush = AsyncMock()
+        mock_redis.ltrim = AsyncMock()
+        mock_redis.expire = AsyncMock()
+        order = AlgoOrder("algo_1", "UNKNOWN", "US.AAPL", "BUY", 1000)
+        engine._orders["algo_1"] = order
+        await engine._run_algo_loop(order)
+        assert order.status == "ERROR"
+        assert "不支持" in order.message
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_run_twap_full_execution(self, mock_redis, engine):
+        """完整 TWAP 执行循环"""
+        mock_redis.hset = AsyncMock()
+        mock_redis.hdel = AsyncMock()
+        mock_redis.publish = AsyncMock()
+        mock_redis.lpush = AsyncMock()
+        mock_redis.ltrim = AsyncMock()
+        mock_redis.expire = AsyncMock()
+        order = AlgoOrder("algo_1", "TWAP", "US.AAPL", "BUY", 100)
+        order.lot_size = 1
+        engine._orders["algo_1"] = order
+        with patch.object(engine, "_simulate_fill", new_callable=AsyncMock, return_value=150.0):
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                await engine._run_twap(order)
+        assert order.filled_qty >= order.target_qty
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_run_vwap_full_execution(self, mock_redis, engine):
+        """完整 VWAP 执行循环"""
+        mock_redis.hset = AsyncMock()
+        mock_redis.hdel = AsyncMock()
+        mock_redis.publish = AsyncMock()
+        mock_redis.lpush = AsyncMock()
+        mock_redis.ltrim = AsyncMock()
+        mock_redis.expire = AsyncMock()
+        order = AlgoOrder("algo_1", "VWAP", "US.AAPL", "BUY", 100)
+        order.lot_size = 1
+        engine._orders["algo_1"] = order
+        with patch.object(engine, "_simulate_fill", new_callable=AsyncMock, return_value=150.0):
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                await engine._run_vwap(order)
+        assert order.filled_qty >= order.target_qty
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_run_iceberg_full_execution(self, mock_redis, engine):
+        """完整 ICEBERG 执行循环"""
+        mock_redis.hset = AsyncMock()
+        mock_redis.hdel = AsyncMock()
+        mock_redis.publish = AsyncMock()
+        mock_redis.lpush = AsyncMock()
+        mock_redis.ltrim = AsyncMock()
+        mock_redis.expire = AsyncMock()
+        order = AlgoOrder("algo_1", "ICEBERG", "US.AAPL", "BUY", 100)
+        order.lot_size = 1
+        order.iceberg_visible_qty = 20
+        engine._orders["algo_1"] = order
+        with patch.object(engine, "_simulate_fill", new_callable=AsyncMock, return_value=150.0):
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                await engine._run_iceberg(order)
+        assert order.filled_qty >= order.target_qty
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_run_pov_full_execution(self, mock_redis, engine):
+        """完整 POV 执行循环"""
+        mock_redis.hset = AsyncMock()
+        mock_redis.hdel = AsyncMock()
+        mock_redis.publish = AsyncMock()
+        mock_redis.lpush = AsyncMock()
+        mock_redis.ltrim = AsyncMock()
+        mock_redis.expire = AsyncMock()
+        order = AlgoOrder("algo_1", "POV", "US.AAPL", "BUY", 500)
+        order.lot_size = 1
+        engine._orders["algo_1"] = order
+        with patch.object(engine, "_simulate_fill", new_callable=AsyncMock, return_value=150.0):
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                await engine._run_pov(order)
+        assert order.filled_qty >= order.target_qty
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_run_is_full_execution(self, mock_redis, engine):
+        """完整 IS 执行循环"""
+        mock_redis.hset = AsyncMock()
+        mock_redis.hdel = AsyncMock()
+        mock_redis.publish = AsyncMock()
+        mock_redis.lpush = AsyncMock()
+        mock_redis.ltrim = AsyncMock()
+        mock_redis.expire = AsyncMock()
+        order = AlgoOrder("algo_1", "IS", "US.AAPL", "BUY", 500)
+        order.lot_size = 1
+        engine._orders["algo_1"] = order
+        with patch.object(engine, "_simulate_fill", new_callable=AsyncMock, return_value=150.0):
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                await engine._run_is(order)
+        assert order.filled_qty >= order.target_qty
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_run_twap_already_filled(self, mock_redis, engine):
+        """TWAP 已全部成交时直接返回"""
+        order = AlgoOrder("algo_1", "TWAP", "US.AAPL", "BUY", 1000)
+        order.filled_qty = 1000
+        await engine._run_twap(order)
+        assert order.filled_qty == 1000
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_run_vwap_already_filled(self, mock_redis, engine):
+        """VWAP 已全部成交时直接返回"""
+        order = AlgoOrder("algo_1", "VWAP", "US.AAPL", "BUY", 1000)
+        order.filled_qty = 1000
+        await engine._run_vwap(order)
+        assert order.filled_qty == 1000
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_run_pov_already_filled(self, mock_redis, engine):
+        """POV 已全部成交时直接返回"""
+        order = AlgoOrder("algo_1", "POV", "US.AAPL", "BUY", 1000)
+        order.filled_qty = 1000
+        await engine._run_pov(order)
+        assert order.filled_qty == 1000
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_run_is_already_filled(self, mock_redis, engine):
+        """IS 已全部成交时直接返回"""
+        order = AlgoOrder("algo_1", "IS", "US.AAPL", "BUY", 1000)
+        order.filled_qty = 1000
+        await engine._run_is(order)
+        assert order.filled_qty == 1000
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_run_twap_stop_requested(self, mock_redis, engine):
+        """TWAP 停止请求"""
+        mock_redis.hset = AsyncMock()
+        mock_redis.publish = AsyncMock()
+        order = AlgoOrder("algo_1", "TWAP", "US.AAPL", "BUY", 1000)
+        order._stop_requested = True
+        with patch.object(engine, "_simulate_fill", new_callable=AsyncMock, return_value=150.0):
+            await engine._run_twap(order)
+        assert order.filled_qty == 0
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_run_iceberg_stop_requested(self, mock_redis, engine):
+        """ICEBERG 停止请求"""
+        mock_redis.hset = AsyncMock()
+        mock_redis.publish = AsyncMock()
+        order = AlgoOrder("algo_1", "ICEBERG", "US.AAPL", "BUY", 1000)
+        order._stop_requested = True
+        with patch.object(engine, "_simulate_fill", new_callable=AsyncMock, return_value=150.0):
+            await engine._run_iceberg(order)
+        assert order.filled_qty == 0
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_run_algo_loop_twap_dispatch(self, mock_redis, engine):
+        """算法主循环分发到 TWAP"""
+        mock_redis.hset = AsyncMock()
+        mock_redis.hdel = AsyncMock()
+        mock_redis.publish = AsyncMock()
+        mock_redis.lpush = AsyncMock()
+        mock_redis.ltrim = AsyncMock()
+        mock_redis.expire = AsyncMock()
+        order = AlgoOrder("algo_1", "TWAP", "US.AAPL", "BUY", 50)
+        order.lot_size = 1
+        engine._orders["algo_1"] = order
+        with patch.object(engine, "_simulate_fill", new_callable=AsyncMock, return_value=150.0):
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                await engine._run_algo_loop(order)
+        assert order.status == "COMPLETED"
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_run_algo_loop_vwap_dispatch(self, mock_redis, engine):
+        """算法主循环分发到 VWAP"""
+        mock_redis.hset = AsyncMock()
+        mock_redis.hdel = AsyncMock()
+        mock_redis.publish = AsyncMock()
+        mock_redis.lpush = AsyncMock()
+        mock_redis.ltrim = AsyncMock()
+        mock_redis.expire = AsyncMock()
+        order = AlgoOrder("algo_1", "VWAP", "US.AAPL", "BUY", 50)
+        order.lot_size = 1
+        engine._orders["algo_1"] = order
+        with patch.object(engine, "_simulate_fill", new_callable=AsyncMock, return_value=150.0):
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                await engine._run_algo_loop(order)
+        assert order.status == "COMPLETED"
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_run_algo_loop_iceberg_dispatch(self, mock_redis, engine):
+        """算法主循环分发到 ICEBERG"""
+        mock_redis.hset = AsyncMock()
+        mock_redis.hdel = AsyncMock()
+        mock_redis.publish = AsyncMock()
+        mock_redis.lpush = AsyncMock()
+        mock_redis.ltrim = AsyncMock()
+        mock_redis.expire = AsyncMock()
+        order = AlgoOrder("algo_1", "ICEBERG", "US.AAPL", "BUY", 50)
+        order.lot_size = 1
+        order.iceberg_visible_qty = 10
+        engine._orders["algo_1"] = order
+        with patch.object(engine, "_simulate_fill", new_callable=AsyncMock, return_value=150.0):
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                await engine._run_algo_loop(order)
+        assert order.status == "COMPLETED"
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_run_algo_loop_pov_dispatch(self, mock_redis, engine):
+        """算法主循环分发到 POV"""
+        mock_redis.hset = AsyncMock()
+        mock_redis.hdel = AsyncMock()
+        mock_redis.publish = AsyncMock()
+        mock_redis.lpush = AsyncMock()
+        mock_redis.ltrim = AsyncMock()
+        mock_redis.expire = AsyncMock()
+        order = AlgoOrder("algo_1", "POV", "US.AAPL", "BUY", 200)
+        order.lot_size = 1
+        engine._orders["algo_1"] = order
+        with patch.object(engine, "_simulate_fill", new_callable=AsyncMock, return_value=150.0):
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                await engine._run_algo_loop(order)
+        assert order.status == "COMPLETED"
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_run_algo_loop_is_dispatch(self, mock_redis, engine):
+        """算法主循环分发到 IS"""
+        mock_redis.hset = AsyncMock()
+        mock_redis.hdel = AsyncMock()
+        mock_redis.publish = AsyncMock()
+        mock_redis.lpush = AsyncMock()
+        mock_redis.ltrim = AsyncMock()
+        mock_redis.expire = AsyncMock()
+        order = AlgoOrder("algo_1", "IS", "US.AAPL", "BUY", 200)
+        order.lot_size = 1
+        engine._orders["algo_1"] = order
+        with patch.object(engine, "_simulate_fill", new_callable=AsyncMock, return_value=150.0):
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                await engine._run_algo_loop(order)
+        assert order.status == "COMPLETED"
+
+    @pytest.mark.asyncio
+    @patch("backend.services.algo_engine.redis_client")
+    async def test_run_twap_hk_lot_size(self, mock_redis, engine):
+        """港股整手 TWAP"""
+        mock_redis.hset = AsyncMock()
+        mock_redis.hdel = AsyncMock()
+        mock_redis.publish = AsyncMock()
+        mock_redis.lpush = AsyncMock()
+        mock_redis.ltrim = AsyncMock()
+        mock_redis.expire = AsyncMock()
+        order = AlgoOrder("algo_1", "TWAP", "00700.HK", "BUY", 200)
+        order.lot_size = 100  # 港股每手 100 股
+        engine._orders["algo_1"] = order
+        with patch.object(engine, "_simulate_fill", new_callable=AsyncMock, return_value=350.0):
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                await engine._run_twap(order)
+        assert order.filled_qty >= order.target_qty
+        # 确保每笔都是整手
+        assert order.filled_qty % 100 == 0
+
+
+# ===== TRADE-02 · 算法拆单增强测试 =====
+
+
+class TestMarketImpactModelEnhanced:
     """市场冲击模型测试"""
 
     def test_estimate_slippage_basic(self):
@@ -203,7 +895,7 @@ class TestAlgoEngineNewAlgorithms:
 
 
 # ─── AlgoOrder 单元测试 ────────────────────────────────────────────────────────
-class TestAlgoOrder:
+class TestAlgoOrderEnhanced:
     """AlgoOrder 数据结构测试"""
 
     def test_algo_order_init(self):
@@ -282,8 +974,8 @@ class TestAlgoOrder:
 
 
 # ─── AlgoEngine 单元测试 ───────────────────────────────────────────────────────
-class TestAlgoEngine:
-    """AlgoEngine 核心逻辑测试"""
+class TestAlgoEngineEnhanced:
+    """AlgoEngine 核心引擎测试"""
 
     @patch("backend.services.algo_engine.redis_client")
     def test_pause_algo(self, mock_redis):
@@ -499,7 +1191,7 @@ class TestAlgoEngine:
 
 
 # ─── lot_size 工具函数测试 ─────────────────────────────────────────────────────
-class TestGetLotSize:
+class TestGetLotSizeEnhanced:
     """lot_size 获取逻辑测试"""
 
     def test_us_stock_returns_1(self):

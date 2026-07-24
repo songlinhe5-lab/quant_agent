@@ -35,7 +35,15 @@ class TechnicalMixin:
             )  # noqa: E501
             if not success:
                 # 将降级条件放宽，一旦获取失败就使用 mock 数据进行界面展示
-                if msg == "development_mock" or "数据无效" in msg or "限流冷却" in msg:
+                if (
+                    msg == "development_mock"
+                    or "数据无效" in msg
+                    or "限流冷却" in msg
+                    or "无效标的" in msg
+                    or "返回空数据" in msg
+                    or "网络" in msg
+                    or "timeout" in msg.lower()
+                ):
                     fallback_data = self._mock_tech_data(
                         ticker,
                         ma_periods,

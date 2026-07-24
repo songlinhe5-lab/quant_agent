@@ -71,6 +71,9 @@ def make_service(router_enabled: bool = False):
             svc._router_enabled = router_enabled
             svc._router = None
             svc._router_init_lock = asyncio.Lock()
+            # 添加缺失的 cb 属性
+            svc.cb = MagicMock()
+            svc.cb.get_state.return_value.value = "closed"
             return svc
 
 
