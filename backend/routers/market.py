@@ -813,7 +813,13 @@ async def get_fundamental(ticker: str):
                 detail=f"Futu: {futu_result.error}, YFinance: {yf_msg}",
             )  # noqa: E501
 
-        if yf_info:
+        # 💡 防御性检查：yf_info 必须是 dict 类型而非列表或 None
+        if not isinstance(yf_info, dict) or not yf_info:
+            return {
+                "status": "warning",
+                "message": f"[{ticker}] YFinance 数据不可用，标的可能不存在或未正式上市交易。",
+                "data": {},
+            }
             # 💡 新增：针对 ETF 类型返回专属提示与数据
             if yf_info.get("quoteType") == "ETF":
                 return {
