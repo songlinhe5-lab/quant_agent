@@ -802,52 +802,50 @@ async def get_fundamental(ticker: str):
     if futu_result.is_success() and futu_result.data:
         final_data.update(futu_result.data)
     else:
-        # Step 2: Futu 失败，降级到 YFinance
-        yf_result = _market_service._yfinance.fetch("quote", {"ticker": yf_ticker})
-        yf_success = yf_result.get("success", False)
-        yf_info = yf_result.get("data")
-        yf_msg = yf_result.get("message", "")
-        if not yf_success:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Futu: {futu_result.error}, YFinance: {yf_msg}",
-            )  # noqa: E501
-
-        # 💡 防御性检查：yf_info 必须是 dict 类型而非列表或 None
-        if not isinstance(yf_info, dict) or not yf_info:
+        # Step 2: Futu 失败，降级到 YFinance (info action 返回完整 t.info 基本面)
+        yf_result = _market_service._yfinance.fetch("info", {"ticker": yf_ticker})
+        yf_success = yf_result.is_success()
+        yf_info = yf_result.data if isinstance(yf_result.data, dict) else {}
+        yf_msg = yf_result.error or ""
+        if not yf_success or not yf_info:
+            # Futu 与 YFinance 均未取得可用基本面数据：返回 warning (200) 而非 500
+            warning_msg = f"Futu 与 YFinance 均未能获取标的 {ticker} 的基本面数据。"
+            if yf_msg:
+                warning_msg += f" YFinance: {yf_msg}"
             return {
                 "status": "warning",
-                "message": f"[{ticker}] YFinance 数据不可用，标的可能不存在或未正式上市交易。",
+                "message": warning_msg,
                 "data": {},
             }
-            # 💡 新增：针对 ETF 类型返回专属提示与数据
-            if yf_info.get("quoteType") == "ETF":
-                return {
-                    "status": "success",
-                    "message": f"[{ticker}] 属于 ETF 基金，没有个股维度的 PE/PB/ROE 等估值指标。",  # noqa: E501
-                    "data": {
-                        "ticker": ticker,
-                        "company_name": yf_info.get("shortName", yf_info.get("longName")),  # noqa: E501
-                        "fund_family": yf_info.get("fundFamily"),
-                        "total_assets": yf_info.get("totalAssets"),  # noqa: E501
-                        "nav_price": yf_info.get("navPrice"),
-                        "yield": f"{yf_info.get('yield', 0) * 100:.2f}%" if yf_info.get("yield") else None,  # noqa: E501
-                        "beta": yf_info.get("beta"),
-                    },
-                }
 
-            yf_results = {
-                "ticker": ticker,
-                "company_name": yf_info.get("shortName", ""),
-                "trailing_PE": yf_info.get("trailingPE"),  # noqa: E501
-                "forward_PE": yf_info.get("forwardPE"),
-                "PEG_ratio": yf_info.get("pegRatio"),
-                "price_to_book": yf_info.get("priceToBook"),  # noqa: E501
-                "ROE": f"{yf_info.get('returnOnEquity', 0) * 100:.2f}%" if yf_info.get("returnOnEquity") else None,  # noqa: E501
-                "short_ratio": yf_info.get("shortRatio"),
-                "beta": yf_info.get("beta"),
+        # 💡 ETF 无个股维度估值指标，返回 ETF 专属提示与数据
+        if yf_info.get("quoteType") == "ETF":
+            return {
+                "status": "success",
+                "message": f"[{ticker}] 属于 ETF 基金，没有个股维度的 PE/PB/ROE 等估值指标。",  # noqa: E501
+                "data": {
+                    "ticker": ticker,
+                    "company_name": yf_info.get("shortName", yf_info.get("longName")),  # noqa: E501
+                    "fund_family": yf_info.get("fundFamily"),
+                    "total_assets": yf_info.get("totalAssets"),  # noqa: E501
+                    "nav_price": yf_info.get("navPrice"),
+                    "yield": f"{yf_info.get('yield', 0) * 100:.2f}%" if yf_info.get("yield") else None,  # noqa: E501
+                    "beta": yf_info.get("beta"),
+                },
             }
-            final_data.update({k: v for k, v in yf_results.items() if v is not None})
+
+        yf_results = {
+            "ticker": ticker,
+            "company_name": yf_info.get("shortName", ""),
+            "trailing_PE": yf_info.get("trailingPE"),  # noqa: E501
+            "forward_PE": yf_info.get("forwardPE"),
+            "PEG_ratio": yf_info.get("pegRatio"),
+            "price_to_book": yf_info.get("priceToBook"),  # noqa: E501
+            "ROE": f"{yf_info.get('returnOnEquity', 0) * 100:.2f}%" if yf_info.get("returnOnEquity") else None,  # noqa: E501
+            "short_ratio": yf_info.get("shortRatio"),
+            "beta": yf_info.get("beta"),
+        }
+        final_data.update({k: v for k, v in yf_results.items() if v is not None})
 
     return {"status": "success", "data": final_data}
 
