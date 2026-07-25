@@ -715,7 +715,8 @@ STATUS: PRODUCTION READY ✨
   - "DuckDB/Parquet" → 确认是否仍在规划中，否则删除
 - [x] **[SPEC-08]** §6.1 print() 豁免或代码修复：`hermes_agent/tools/web_scrape_tool.py` 中大量使用 `print()` 做降级日志，二选一：(a) 改用 structlog (b) 在规范中豁免 Tool 层 CLI 输出
   - 落地：选 (a) 代码修复——`web_scrape_tool.py` 的 5 处 `print()` 降级日志全部改为 `structlog` `logger.warning(...)`（jina 反爬/失败、HTTP 内容过少/失败、RAG 提取失败），新增模块级 `logger = structlog.get_logger(__name__)`；`docs/02` §6.1 明确「禁止 print()」铁律覆盖 Tool 层，拒绝选项(b)豁免；版本升 V4.3.6
-- [ ] **[SPEC-09]** §4.2 覆盖率目标校准：Hermes Tool ≥90% 实际不可达（`hermes_agent/tools/` 几乎无测试），降为 ≥70% 或标注为「目标」而非「门禁」
+- [x] **[SPEC-09]** §4.2 覆盖率目标校准：Hermes Tool ≥90% 实际不可达（`hermes_agent/tools/` 几乎无测试），降为 ≥70% 或标注为「目标」而非「门禁」
+  - 落地：`docs/02` §4.2 Hermes Tool 行由「≥90% 门禁」改为「≥70%（目标，非门禁）」，补说明：该层当前几乎无测试，70% 仅为长期补齐方向、不阻断合并，优先给 web_scrape_tool 等有降级分支的工具补最小单测；版本升 V4.3.7
 
 #### P2 — 规范缺失补充
 
