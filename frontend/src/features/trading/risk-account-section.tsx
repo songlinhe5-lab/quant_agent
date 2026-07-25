@@ -70,6 +70,7 @@ export function AccountSection({ market, account, isDark, loading }: {
   const [showRadarHelp, setShowRadarHelp] = useState(false)
   const [showFactorHelp, setShowFactorHelp] = useState(false)
   const [positionsExpanded, setPositionsExpanded] = useState(true)
+  const [riskTab, setRiskTab] = useState<'overview' | 'factor' | 'stress'>('overview')
   const sym = kpi.currency === 'HKD' ? 'HK$' : '$'
   const plDir = kpi.today_pl >= 0 ? 1 : -1
 
@@ -79,6 +80,7 @@ export function AccountSection({ market, account, isDark, loading }: {
   )
 
   const totalExposure = exposure.reduce((s, d) => s + d.value, 0)
+  const topConcentration = exposure.reduce((m, d) => Math.max(m, d.pct), 0)
 
   return (
     <div className="space-y-1.5">
@@ -171,105 +173,133 @@ export function AccountSection({ market, account, isDark, loading }: {
         </div>
       </div>
 
-      {/* Risk Radar + Factors + Exposure */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-1.5">
-        <div className="glass-card rounded-lg overflow-hidden">
-          <div className="px-2 py-1 border-b border-border/20 flex items-center justify-between">
-            <span className="text-[9px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
-              <ShieldAlert className="h-2.5 w-2.5" />雷达
-            </span>
-            <button onClick={() => setShowRadarHelp(!showRadarHelp)} className={cn('transition-colors', showRadarHelp ? 'text-primary' : 'text-muted-foreground hover:text-foreground')}>
-              <Info className="h-2.5 w-2.5" />
-            </button>
+      {/* ── PROD-06: 风控面板 Tab 分组（概览/因子/压测），解决 7 图表平铺一屏放不下 ── */}
+      <div className="flex items-center gap-0.5 bg-background border border-border/50 p-0.5 rounded-md shadow-sm w-fit">
+        {([['overview', '概览', Activity], ['factor', '因子', BarChart3], ['stress', '压测', ShieldAlert]] as const).map(([id, label, Icon]) => (
+          <button key={id} onClick={() => setRiskTab(id)} className={cn('text-[10px] px-2.5 py-1 rounded flex items-center gap-1 transition-colors',
+            riskTab === id ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/30' : 'text-muted-foreground hover:text-foreground')}>
+            <Icon className="h-3 w-3" />{label}
+          </button>
+        ))}
+      </div>
+
+      {riskTab === 'overview' && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-1.5">
+          {/* Radar */}
+          <div className="glass-card rounded-lg overflow-hidden">
+            <div className="px-2 py-1 border-b border-border/20 flex items-center justify-between">
+              <span className="text-[9px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
+                <ShieldAlert className="h-2.5 w-2.5" />雷达
+              </span>
+              <button onClick={() => setShowRadarHelp(!showRadarHelp)} className={cn('transition-colors', showRadarHelp ? 'text-primary' : 'text-muted-foreground hover:text-foreground')}>
+                <Info className="h-2.5 w-2.5" />
+              </button>
+            </div>
+            {showRadarHelp && <HelpPanel items={RADAR_HELP} onClose={() => setShowRadarHelp(false)} title="六维风险指标" />}
+            <div className="flex items-center">
+              <RiskScoreGauge radar={risk_radar} isDark={isDark} />
+              <div className="flex-1 h-24 pr-0.5">
+                {risk_radar.length > 0 ? (
+                  <RiskRadarChart data={risk_radar} />
+                ) : (
+                  <div className="h-full flex items-center justify-center text-[10px] text-muted-foreground">
+                    {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : '暂无'}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-          {showRadarHelp && <HelpPanel items={RADAR_HELP} onClose={() => setShowRadarHelp(false)} title="六维风险指标" />}
-          <div className="flex items-center">
-            <RiskScoreGauge radar={risk_radar} isDark={isDark} />
-            <div className="flex-1 h-24 pr-0.5">
-              {risk_radar.length > 0 ? (
-                <RiskRadarChart data={risk_radar} />
-              ) : (
-                <div className="h-full flex items-center justify-center text-[10px] text-muted-foreground">
-                  {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : '暂无'}
-                </div>
+
+          {/* Exposure + 集中度 */}
+          <div className="glass-card rounded-lg overflow-hidden md:col-span-2">
+            <div className="px-2 py-1 border-b border-border/20 flex items-center justify-between">
+              <span className="text-[9px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
+                <PieChart className="h-2.5 w-2.5" />敞口 / 集中度
+              </span>
+              <span className="text-[8px] text-muted-foreground font-mono">集中度(Top1) {topConcentration.toFixed(1)}%</span>
+            </div>
+            <div className="p-1.5 space-y-1">
+              {exposure.map((d) => {
+                const barPct = totalExposure > 0 ? (d.value / totalExposure) * 100 : 0
+                return (
+                  <div key={d.name}>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="flex items-center gap-1">
+                        <span className="h-1.5 w-1.5 rounded-full" style={{ background: isDark ? d.color : d.lightColor }} />
+                        <span className="text-[9px] font-medium">{d.name}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[9px]">
+                        <span className="font-mono font-bold tabular-nums">{d.pct}%</span>
+                        <span className="text-muted-foreground font-mono tabular-nums text-[8px]">{sym}{(d.value / 1000).toFixed(1)}K</span>
+                      </div>
+                    </div>
+                    <div className="h-1 bg-muted/20 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${barPct}%`, background: isDark ? d.color : d.lightColor }} />
+                    </div>
+                  </div>
+                )
+              })}
+              {exposure.length === 0 && (
+                <div className="py-2 text-center text-[9px] text-muted-foreground">暂无持仓</div>
               )}
             </div>
           </div>
         </div>
+      )}
 
-        <div className="glass-card rounded-lg overflow-hidden">
-          <div className="px-2 py-1 border-b border-border/20 flex items-center justify-between">
-            <span className="text-[9px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
-              <BarChart3 className="h-2.5 w-2.5" />因子
-            </span>
-            <button onClick={() => setShowFactorHelp(!showFactorHelp)} className={cn('transition-colors', showFactorHelp ? 'text-primary' : 'text-muted-foreground hover:text-foreground')}>
-              <Info className="h-2.5 w-2.5" />
-            </button>
-          </div>
-          {showFactorHelp && <HelpPanel items={FACTOR_HELP} onClose={() => setShowFactorHelp(false)} title="风控因子说明" />}
-          <div className="divide-y divide-border/10">
-            {risk_factors.length > 0 ? risk_factors.map((f, i) => {
-              const sm = statusMeta[f.status]
-              const pct = Math.min(Math.abs(f.value) / Math.abs(f.threshold) * 100, 100)
-              return (
-                <div key={i} className="px-2 py-1">
-                  <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[9px] font-semibold">{f.label}</span>
-                    <div className="flex items-center gap-1">
-                      <span className={cn('text-[9px] font-mono font-bold tabular-nums', sm.cls)}>
-                        {f.unit === '$' ? `$${Math.abs(f.value).toLocaleString()}` : `${f.value}${f.unit}`}
-                      </span>
-                      <span className={cn('text-[7px] px-0.5 py-px rounded border font-bold', sm.bg, sm.cls)}>{sm.label}</span>
+      {riskTab === 'factor' && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-1.5">
+          {/* Factor list */}
+          <div className="glass-card rounded-lg overflow-hidden">
+            <div className="px-2 py-1 border-b border-border/20 flex items-center justify-between">
+              <span className="text-[9px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
+                <BarChart3 className="h-2.5 w-2.5" />因子
+              </span>
+              <button onClick={() => setShowFactorHelp(!showFactorHelp)} className={cn('transition-colors', showFactorHelp ? 'text-primary' : 'text-muted-foreground hover:text-foreground')}>
+                <Info className="h-2.5 w-2.5" />
+              </button>
+            </div>
+            {showFactorHelp && <HelpPanel items={FACTOR_HELP} onClose={() => setShowFactorHelp(false)} title="风控因子说明" />}
+            <div className="divide-y divide-border/10">
+              {risk_factors.length > 0 ? risk_factors.map((f, i) => {
+                const sm = statusMeta[f.status]
+                const pct = Math.min(Math.abs(f.value) / Math.abs(f.threshold) * 100, 100)
+                return (
+                  <div key={i} className="px-2 py-1">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-[9px] font-semibold">{f.label}</span>
+                      <div className="flex items-center gap-1">
+                        <span className={cn('text-[9px] font-mono font-bold tabular-nums', sm.cls)}>
+                          {f.unit === '$' ? `$${Math.abs(f.value).toLocaleString()}` : `${f.value}${f.unit}`}
+                        </span>
+                        <span className={cn('text-[7px] px-0.5 py-px rounded border font-bold', sm.bg, sm.cls)}>{sm.label}</span>
+                      </div>
+                    </div>
+                    <div className="h-0.5 bg-muted/30 rounded-full overflow-hidden">
+                      <div className={cn('h-full rounded-full transition-all duration-500', sm.dot)} style={{ width: `${pct}%` }} />
                     </div>
                   </div>
-                  <div className="h-0.5 bg-muted/30 rounded-full overflow-hidden">
-                    <div className={cn('h-full rounded-full transition-all duration-500', sm.dot)} style={{ width: `${pct}%` }} />
-                  </div>
+                )
+              }) : (
+                <div className="px-2 py-4 text-center text-[9px] text-muted-foreground">
+                  {loading ? <Loader2 className="h-3 w-3 animate-spin mx-auto" /> : '暂无'}
                 </div>
-              )
-            }) : (
-              <div className="px-2 py-4 text-center text-[9px] text-muted-foreground">
-                {loading ? <Loader2 className="h-3 w-3 animate-spin mx-auto" /> : '暂无'}
-              </div>
-            )}
+              )}
+            </div>
+          </div>
+
+          {/* 板块暴露 + 相关性矩阵 */}
+          <div className="md:col-span-2">
+            <RiskAdvancedPanel market={market} correlation={correlation} tabs={['sector', 'corr']} />
           </div>
         </div>
+      )}
 
-        <div className="glass-card rounded-lg overflow-hidden">
-          <div className="px-2 py-1 border-b border-border/20">
-            <span className="text-[9px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
-              <PieChart className="h-2.5 w-2.5" />敞口
-            </span>
-          </div>
-          <div className="p-1.5 space-y-1">
-            {exposure.map((d) => {
-              const barPct = totalExposure > 0 ? (d.value / totalExposure) * 100 : 0
-              return (
-                <div key={d.name}>
-                  <div className="flex items-center justify-between mb-0.5">
-                    <div className="flex items-center gap-1">
-                      <span className="h-1.5 w-1.5 rounded-full" style={{ background: isDark ? d.color : d.lightColor }} />
-                      <span className="text-[9px] font-medium">{d.name}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[9px]">
-                      <span className="font-mono font-bold tabular-nums">{d.pct}%</span>
-                      <span className="text-muted-foreground font-mono tabular-nums text-[8px]">{sym}{(d.value / 1000).toFixed(1)}K</span>
-                    </div>
-                  </div>
-                  <div className="h-1 bg-muted/20 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${barPct}%`, background: isDark ? d.color : d.lightColor }} />
-                  </div>
-                </div>
-              )
-            })}
-            {exposure.length === 0 && (
-              <div className="py-2 text-center text-[9px] text-muted-foreground">暂无持仓</div>
-            )}
-          </div>
-        </div>
-      </div>
+      {riskTab === 'stress' && (
+        <RiskAdvancedPanel market={market} correlation={correlation} tabs={['cvar', 'stress']} />
+      )}
 
-      {/* Positions Table */}
+      {/* Positions Table (always visible) */}
       <div className="glass-card rounded-lg overflow-hidden">
         <div className="px-3 py-1 border-b border-border/20 flex items-center justify-between cursor-pointer" onClick={() => setPositionsExpanded(!positionsExpanded)}>
           <span className="text-[9px] font-semibold text-muted-foreground uppercase">持仓</span>
@@ -332,9 +362,6 @@ export function AccountSection({ market, account, isDark, loading }: {
           </div>
         )}
       </div>
-
-      {/* Advanced Risk Panel */}
-      <RiskAdvancedPanel market={market} correlation={correlation} />
     </div>
   )
 }

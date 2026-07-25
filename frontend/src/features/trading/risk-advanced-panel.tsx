@@ -11,10 +11,14 @@ import type { CorrelationData, SectorData, CVarData } from './risk-types'
 interface RiskAdvancedPanelProps {
   market: string
   correlation?: CorrelationData
+  tabs?: Array<'sector' | 'corr' | 'cvar' | 'stress'>
 }
 
-export function RiskAdvancedPanel({ market, correlation }: RiskAdvancedPanelProps) {
+const ALL_ADV_TABS = ['sector', 'corr', 'cvar', 'stress'] as const
+
+export function RiskAdvancedPanel({ market, correlation, tabs }: RiskAdvancedPanelProps) {
   const [advancedTab, setAdvancedTab] = useState<'sector' | 'corr' | 'cvar' | 'stress' | null>(null)
+  const visibleTabs = tabs && tabs.length > 0 ? tabs : ALL_ADV_TABS
   const [sectorData, setSectorData] = useState<SectorData[]>([])
   const [cvarData, setCvarData] = useState<CVarData[]>([])
   const [stressResult, setStressResult] = useState<any>(null)
@@ -46,7 +50,7 @@ export function RiskAdvancedPanel({ market, correlation }: RiskAdvancedPanelProp
   return (
     <div className="glass-card rounded-lg overflow-hidden">
       <div className="px-3 py-1 border-b border-border/20 flex items-center gap-1.5">
-        {(['sector', 'corr', 'cvar', 'stress'] as const).map(tab => (
+        {visibleTabs.map(tab => (
           <button
             key={tab}
             onClick={() => setAdvancedTab(advancedTab === tab ? null : tab)}
