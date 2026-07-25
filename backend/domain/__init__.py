@@ -5,6 +5,21 @@ Domain 包（BE-ARCH-01 / BE-ARCH-02）
 DTO 继续用 `backend/schemas/`，避免过早复制。
 """
 
+from backend.domain.entities import (
+    AlertRule,
+    AlertRuleType,
+    OrderIntent,
+    OrderUpdate,
+    Strategy,
+)
 from backend.domain.ports import BrokerPort, QuotePort
 
-__all__ = ["QuotePort", "BrokerPort"]
+__all__ = [
+    "QuotePort",
+    "BrokerPort",
+    "Strategy",
+    "OrderIntent",
+    "OrderUpdate",
+    "AlertRule",
+    "AlertRuleType",
+]

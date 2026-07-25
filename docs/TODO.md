@@ -771,10 +771,11 @@ STATUS: PRODUCTION READY ✨
 - [x] **[ARCH-09]** `app/` 编排层扩展（已完成：screener_app / trade_app / macro_app / alert_app）：
   - 优先补：screener_app / trade_app / macro_app / alert_app ✅ 2026-07-25
   - 修正 `docs/03` BE-ARCH-01 状态为「部分收口（21/31 Router）」✅
-- [ ] **[ARCH-10]** Domain 层实体沉淀（当前仅 `ports.py` 2 个 Protocol）：
-  - 随 BT-01 落地沉淀 `Strategy`、`Order` 领域对象
-  - 随 ALERT-03 落地沉淀 `AlertRule` 领域对象
-  - 在 `docs/03` 标注当前状态：「Domain 层仅含 Ports，领域实体待演进」
+- [x] **[ARCH-10]** Domain 层实体沉淀（已完成：2026-07-25）：
+  - 随 BT-01 落地沉淀 `Strategy`、`Order` 领域对象（已在 `backend/engine/`：`strategy.py` / `contracts.py`，属 Domain 层引擎子集）
+  - 随 ALERT-03 落地沉淀 `AlertRule` 领域对象（经 `backend/domain/entities` 聚合门面认领为 Domain 层统一入口）
+  - 新增 `backend/domain/entities.py` 统一 re-export `Strategy` / `OrderIntent` / `OrderUpdate` / `AlertRule` / `AlertRuleType`；`backend/domain/__init__` 同步暴露
+  - 在 `docs/03` §2.1 标注 Domain 层实体状态（遵循「避免过早复制 DTO」：定义仍留原模块，仅做稳定聚合门面）
 - [ ] **[ARCH-11]** 启动阶段 print() 全面替换为 structlog（`main.py` lifespan 中 ~20 处 print）
 
 ### 产品与 UI/UE 治理（2026-07-08 Review 新增，源自 `docs/01` V2.3 产品审查）
