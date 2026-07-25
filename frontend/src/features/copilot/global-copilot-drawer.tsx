@@ -10,6 +10,7 @@ import { ChatProvider, ChatActionContext } from '@/features/copilot/chat-context
 import { ChatSidebarWrapper } from '@/features/copilot/chat-sidebar-wrapper'
 import { MessageListArea } from '@/features/copilot/message-list-area'
 import { ChatInputBox } from '@/features/copilot/chat-input-box'
+import { useCopilotContextStore } from '@/stores/useCopilotContextStore'
 
 const DEFAULT_WIDTH = 520
 const MIN_WIDTH = 360
@@ -19,6 +20,8 @@ function CopilotDrawerChrome({ width, onResizeStart }: { width: number; onResize
   const closeCopilot = useLayoutStore((s) => s.closeCopilot)
   const { handleNewChat } = useContext(ChatActionContext)
   const [sessionsOpen, setSessionsOpen] = useState(false)
+  const context = useCopilotContextStore((s) => s.context)
+  const clearContext = useCopilotContextStore((s) => s.clearContext)
 
   return (
     <div className="h-full flex flex-col bg-slate-50/90 dark:bg-zinc-950/95 backdrop-blur-md border-l border-white/10" style={{ width }}>
@@ -76,6 +79,24 @@ function CopilotDrawerChrome({ width, onResizeStart }: { width: number; onResize
             <div className="h-full w-full overflow-hidden [&_aside]:w-full [&_aside]:border-r-0">
               <ChatSidebarWrapper />
             </div>
+          </div>
+        )}
+        {context && (
+          <div className="mx-3 mt-3 flex items-start gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs text-violet-200">
+            <span className="mt-0.5">📎</span>
+            <div className="min-w-0 flex-1">
+              <div className="font-medium text-violet-300">已附加上下文 · {context.title}</div>
+              <div className="mt-0.5 whitespace-pre-wrap break-words text-violet-200/80">{context.summary}</div>
+            </div>
+            <button
+              type="button"
+              onClick={clearContext}
+              className="ml-1 shrink-0 rounded p-0.5 text-violet-300/70 hover:bg-violet-500/20 hover:text-violet-100"
+              aria-label="移除上下文"
+              title="移除上下文"
+            >
+              <X className="h-3 w-3" />
+            </button>
           </div>
         )}
         <MessageListArea />

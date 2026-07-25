@@ -4,6 +4,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useConfirmDialog } from '@/components/confirm-dialog'
 import { SessionSidebarRef } from '@/features/copilot/session-sidebar'
 import { ChatMessage, ToolStep, ChatAttachment, StrategyBlock } from './types'
+import { useCopilotContextStore } from '@/stores/useCopilotContextStore'
 
 /** 个股深度研判快捷指令定义 */
 export interface StockQuickCommand {
@@ -207,11 +208,19 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   // --- 核心流式请求逻辑 (SSE / NDJSON) ---
-  const handleSend = useCallback(async (text: string, sendAttachments: ChatAttachment[] = []) => {
+  const handleSend = useCallback(async (text: string, sendAttachments: ChatAttachment[] = [], opts?: { skipPageContext?: boolean }) => {
     if (isGeneratingRef.current) return
 
-    const finalContent = text.trim()
+    let finalContent = text.trim()
     if (!finalContent && sendAttachments.length === 0) return
+
+    // PROD-01: 会话首条消息自动注入当前页面上下文，实现"场景感知助手"
+    if (!opts?.skipPageContext && messagesRef.current.length === 0) {
+      const ctx = useCopilotContextStore.getState().context
+      if (ctx?.summary) {
+        finalContent = `[当前页面上下文 · ${ctx.title}]\n${ctx.summary}\n[/上下文]\n\n${finalContent}`
+      }
+    }
 
     const userMsg: ChatMessage = { 
       role: 'user', 
@@ -433,7 +442,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       sessionStorage.removeItem('quant_copilot_initial_prompt')
       // 留出时间让左侧边栏列表和会话状态就绪
       setTimeout(() => {
-        handleSend(initialPrompt, [])
+        handleSend(initialPrompt, [], { skipPageContext: true })
       }, 800)
     }
     
@@ -441,7 +450,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const handleCrossModulePrompt = (e: Event) => {
       const customEvent = e as CustomEvent<{ prompt: string }>
       if (customEvent.detail?.prompt) {
-        handleSend(customEvent.detail.prompt, [])
+        handleSend(customEvent.detail.prompt, [], { skipPageContext: true })
       }
     }
     window.addEventListener('quant_copilot_invoke', handleCrossModulePrompt)

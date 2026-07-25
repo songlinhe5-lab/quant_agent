@@ -319,7 +319,7 @@ STATUS: PRODUCTION READY ✨
 - [x] **[FE-05b]** 前端日志后端端点 + APM 面板集成：
   - 后端：`POST /api/v1/logs` 接收前端日志（level/message/timestamp/context），写入 PostgreSQL `frontend_logs` 表
   - 后端：`GET /api/v1/logs` 查询接口（支持 level 筛选、时间范围、分页）
-  - 前端：APM 面板增加“浏览器日志”Tab，展示前端错误、警告、性能指标
+  - 前端：APM 面板增加"浏览器日志"Tab，展示前端错误、警告、性能指标
   - 前端：logger.ts 启用 `enableRemote: true`，完成前后端对接
 - [x] **[FE-06]** Cmd+K 命令面板（Command Palette）：快速跳转标的、模块，键盘优先操作流
 - [x] **[FE-07]** 高频 Tick 数据必须走 `Float64Array` + `useRef`，严禁触发 React state 重渲染
@@ -378,8 +378,8 @@ STATUS: PRODUCTION READY ✨
 
 > BE-16 已解决复权/时区，但缺 point-in-time 语义与幸存者偏差处理——**这两项不做，所有回测收益率系统性偏乐观**。机构级数据供应商（Norgate / QC Data）均以此为底线。
 
-- [x] **[DQ-01]** 幸存者偏差处理：K线数据湖补充已退市/摘牌标的历史数据（Futu `get_stock_basicinfo` 含退市标志），回测标的池按“当日实际存续”动态生成，禁止用当前存续列表回测历史 ✅ **SurvivorshipBiasTracker + UniverseSnapshot + CSV IO + 33 tests**
-- [x] **[DQ-02]** 财务数据 point-in-time：财报字段存储附带 `announce_date`（公布日），回测引擎只允许读取“回测时点已公布”的财务数据，防止前视偏差（look-ahead bias）✅ **PointInTimeStore + PITQuery + 前视偏差检测 + 31 tests**
+- [x] **[DQ-01]** 幸存者偏差处理：K线数据湖补充已退市/摘牌标的历史数据（Futu `get_stock_basicinfo` 含退市标志），回测标的池按"当日实际存续"动态生成，禁止用当前存续列表回测历史 ✅ **SurvivorshipBiasTracker + UniverseSnapshot + CSV IO + 33 tests**
+- [x] **[DQ-02]** 财务数据 point-in-time：财报字段存储附带 `announce_date`（公布日），回测引擎只允许读取"回测时点已公布"的财务数据，防止前视偏差（look-ahead bias）✅ **PointInTimeStore + PITQuery + 前视偏差检测 + 31 tests**
 - [x] **[DQ-03]** 数据湖快照版本化：Parquet 按日打不可变快照 + manifest_hash + 回测引用 + 旧快照保留 — 📐 `docs/19` · ✅ **2026-07-13 全链路落地（03a~e）**：
   - [x] **[DQ-03a]** Manifest 与 PG 模型：`manifest.py` + `data_snapshots` + `SnapshotReader` / `SnapshotResolver` / `paths.py`
   - [x] **[DQ-03b]** 快照发布器：`snapshot_publisher.py` hardlink/copy + universe sidecar（`export_snapshot`）+ 质量门禁 + PG/Redis；挂接 `daemon_sync_task` 末尾
@@ -614,7 +614,7 @@ STATUS: PRODUCTION READY ✨
 
 - [x] ~~**[ARCH-01]** Futu OpenD 部署前提文档：补充宿主机要求（禁 ARM，必须 x86）+ 跨地域部署限制（港股实盘必须低延迟香港节点）~~ ✅ **2026-07-13**（`docs/12` §八：硬件约束 + 地域限制 + 版本管理）
 - [x] ~~**[ARCH-02]** DuckDB 数据湖分区策略：定义 Parquet 文件分区规则（按标的+日期分区），避免单文件过大影响查询性能~~ ✅ **2026-07-13**（`docs/12` §九：三级分区规则 + 迁移策略 + 查询优化）
-- [x] ~~**[ARCH-03]** Futu OpenD 断连恢复 SOP：定义“暂停接单 → 断线检测 → 重连 → 状态对账”完整流程，在途订单处理方案文档化~~ ✅ **2026-07-13**（`docs/12` §十：影响矩阵 + 自动恢复 + 在途对账 SOP + 人工介入 + 演练计划）
+- [x] ~~**[ARCH-03]** Futu OpenD 断连恢复 SOP：定义"暂停接单 → 断线检测 → 重连 → 状态对账"完整流程，在途订单处理方案文档化~~ ✅ **2026-07-13**（`docs/12` §十：影响矩阵 + 自动恢复 + 在途对账 SOP + 人工介入 + 演练计划）
 
 ### 策略实验室落地（2026-07-12 新增，对标 QuantConnect IDE）
 
@@ -694,7 +694,7 @@ STATUS: PRODUCTION READY ✨
   - `backend/services/yfinance_service.py` **1480 行** → `backend/services/yfinance/` (7文件: utils/service/quote/technical/search/macro_daemon/__init__)
   - `backend/services/akshare_service.py` **912 行** → `backend/services/akshare/` (5文件: service/flow/quote/calendar/__init__)
   - 原文件保留为 ~5 行 shim 兼容层，122 个测试全部通过
-- [x] **[SPEC-02]** §8.0 部署拓扑对齐：将“三节点矩阵部署”修正为四节点架构（US-MASTER + US-YF-A/B + CN-AKSHARE），与 `AGENTS.md §9` 保持一致。✅ **2026-07-20**：已完成
+- [x] **[SPEC-02]** §8.0 部署拓扑对齐：将"三节点矩阵部署"修正为四节点架构（US-MASTER + US-YF-A/B + CN-AKSHARE），与 `AGENTS.md §9` 保持一致。✅ **2026-07-20**：已完成
 - [x] **[SPEC-03]** 前端超限文件治理（第一批）。✅ **2026-07-20**：拆分完成
   - `backtest.tsx` 627→63行：拆为 backtest-mock / use-backtest / backtest-config / backtest-results
   - `alert-center.tsx` 624→171行：拆为 alert-lists / create-rule-form
@@ -781,15 +781,16 @@ STATUS: PRODUCTION READY ✨
 ### 产品与 UI/UE 治理（2026-07-08 Review 新增，源自 `docs/01` V2.3 产品审查）
 
 > 核心评价：AI 集成深度（ReAct Agent + NLP 选股 + 三模式门禁）业界领先，但图表交互深度、布局灵活性、AI 上下文感知与 TradingView/QuantConnect 仍有代差。  
-> 原则：**强化 AI 差异化护城河** + **补齐图表交互短板** + **布局从“常规 SaaS”升级为“量化工作台”**。
+> 原则：**强化 AI 差异化护城河** + **补齐图表交互短板** + **布局从"常规 SaaS"升级为"量化工作台"**。
 
 #### P0 — 核心差异化释放
 
-- [ ] **[PROD-01]** AI 副驾页面上下文自动注入：
+- [x] **[PROD-01]** AI 副驾页面上下文自动注入：
   - 在选股器打开 AI 时自动携带当前筛选条件/结果摘要
   - 在 K 线页打开时自动携带当前标的 + 周期 + 技术指标
   - 在风控页打开时自动携带当前组合摘要
-  - 目标：从“通用 ChatBot”升级为“场景感知助手”
+  - 目标：从"通用 ChatBot"升级为"场景感知助手"
+  - 实现：`useCopilotContextStore` 承接页面上下文；选股器/K线/风控三页 effect 写入；`chat-context.handleSend` 在会话首条消息自动注入 prompt；抽屉顶部"📎 已附加上下文"卡片可手动移除；`quant_copilot_invoke` 单标的推送走 skipPageContext 避免重复
 - [ ] **[PROD-02]** AI 分析结果内联标注：AI 输出的买卖信号/支撑压力位直接标注在 K 线图上（箭头/区域高亮），而非仅在对话框中输出文字
 
 #### P1 — 图表交互与布局升级
@@ -1231,7 +1232,7 @@ STATUS: PRODUCTION READY ✨
 | 2026-07-08 | [RL-02/04] RateLimitThrottler 退避引擎完成：4 种策略 (none/linear/exponential/adaptive) + Retry-After 优先采纳 + 自适应恢复机制 (连续 10 次成功降速) + 抖动防雷群 + 线程安全 + 环境变量配置 (DATASOURCE_{NAME}_BACKOFF_*)；31 个单测全通过 |
 | 2026-07-08 | [RL-01] ErrorInfo 结构扩展完成：ErrorCategory 枚举 (normal/rate_limit/quota_exhausted/ip_blocked) + RateLimitInfo 嵌套结构 + Result 统一返回结构 + classify_http_error 自动分类 + DataSourceRouter 集成 (限流不计入熔断器)；44 个单测全通过 |
 | 2026-07-20 | [SPEC-01] 存量超限文件拆分完成：screener_service.py (1838行) → screener/ (7文件)；yfinance_service.py (1480行) → yfinance/ (7文件)；akshare_service.py (912行) → akshare/ (5文件)；Mixin 组合模式 + shim 兼容层，122 测试全通过 |
-| 2026-07-20 | [SPEC-02] 部署拓扑对齐完成：docs/02 §5.1/§8.0 “三节点矩阵”→ 四节点架构（US-MASTER + US-YF-A/B + CN-AKSHARE），与 AGENTS.md §9 保持一致；docs/02 升级至 V4.3.2 |
+| 2026-07-20 | [SPEC-02] 部署拓扑对齐完成：docs/02 §5.1/§8.0 "三节点矩阵"→ 四节点架构（US-MASTER + US-YF-A/B + CN-AKSHARE），与 AGENTS.md §9 保持一致；docs/02 升级至 V4.3.2 |
 | 2026-07-14 | [DIST-11~18] 分布式数据源集群部署完成：YF 节点 Compose / 灰度切换配置 / 四节点部署脚本 / CI/CD 矩阵 (master + yf×2 + slave) / 数据源验证脚本 |
 | 2026-07-08 | 新增「数据源限流感知与自适应退避」RL-01~14：限流错误分类 / RateLimitThrottler 退避引擎 / 频率动态分析 / 推测频率查询 API / Prometheus 限流指标 / 限流告警 / Registry 路由感知 / Agent Tool 限流感知；docs/14 新增 §十二；AGENTS.md 新增 §10.8 |
 | 2026-07-02 | OMS-05~07 算力节点完成：`bot_runtime.py` BotRuntimeManager (asyncio.Task 生命周期) + psutil 真实 CPU/MEM 监控 + Redis List 日志持久化 + PubSub/WebSocket 实时推送；`/deploy-to-oms` 升级为真实 Bot 启动；前端新增 Bot 终止按钮 |

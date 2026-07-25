@@ -8,6 +8,7 @@ import { apiClient } from '@/lib/api-client'
 import { useIndicatorWorker } from '@/hooks/use-indicator-worker'
 import { HighFreqChartWrapper } from '@/features/quotes/high-freq-chart-wrapper'
 import type { WatchlistItem } from '@/stores/use-watchlist'
+import { useCopilotContextStore } from '@/stores/useCopilotContextStore'
 
 // 💡 个股事件类型定义
 interface StockEvent {
@@ -100,6 +101,27 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
   const [isDrawMode, setIsDrawMode] = useState(false)
   const isDrawModeRef = useRef(false)
   useEffect(() => { isDrawModeRef.current = isDrawMode }, [isDrawMode])
+
+  // PROD-01: 将 K线 上下文（标的 + 周期 + 技术指标）写入 AI 副驾
+  useEffect(() => {
+    if (!selectedSymbol) {
+      useCopilotContextStore.getState().clearContext()
+      return
+    }
+    const active: string[] = []
+    if (showMA20) active.push('MA20')
+    if (showMA50) active.push('MA50')
+    if (showMA200) active.push('MA200')
+    if (showBB) active.push('BB')
+    if (showMACD) active.push('MACD')
+    if (showRSI) active.push('RSI')
+    if (showKDJ) active.push('KDJ')
+    useCopilotContextStore.getState().setContext({
+      kind: 'kline',
+      title: 'K线',
+      summary: `标的: ${selectedSymbol}\n周期: ${selectedPeriod}\n技术指标: ${active.join(', ') || '无'}`,
+    })
+  }, [selectedSymbol, selectedPeriod, showMA20, showMA50, showMA200, showBB, showMACD, showRSI, showKDJ])
 
   // 💡 个股事件状态（从后端获取）
   const [stockEvents, setStockEvents] = useState<StockEvent[]>([])
