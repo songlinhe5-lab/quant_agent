@@ -6,6 +6,8 @@ Quant Agent 自定义异常层级
 
 from typing import Any, Optional
 
+from fastapi import HTTPException
+
 from backend.core.error_codes import ErrorCode
 
 
@@ -89,3 +91,31 @@ class CircuitBreakerOpenError(QuantBaseException):
             data={"service": service},
             **kw,
         )  # noqa: E501
+
+
+class AppError(HTTPException):
+    """应用编排层 (backend.app.*) 抛出的业务错误。
+
+    继承 ``fastapi.HTTPException``：既能让最小化测试 App（仅挂载 Starlette 内置
+    处理器）也能将其映射为正确的 HTTP 状态码，又能在完整应用中由 main.py 的
+    ``app_error_handler`` 统一为 ``{code, msg, data, ts}`` 格式。
+
+    编排层只需 ``from backend.core.exceptions import AppError``，不直接 import
+    fastapi（fastapi 依赖收敛在 core 层），从而满足 ``backend.app.*`` 禁用
+    FastAPI 的架构约束。
+    """
+
+    def __init__(
+        self,
+        status_code: int = 400,
+        detail: str = "",
+        data: Any = None,
+        *,
+        code: Optional[int] = None,
+        trace_id: Optional[str] = None,
+    ):
+        super().__init__(status_code=status_code, detail=detail)
+        self.code = code if code is not None else status_code
+        self.msg = detail
+        self.data = data
+        self.trace_id = trace_id

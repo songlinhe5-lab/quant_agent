@@ -12,7 +12,6 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
 from backend.core.alert_models import (
@@ -23,6 +22,7 @@ from backend.core.alert_models import (
     AlertSeverity,
     NotificationPriority,
 )
+from backend.core.exceptions import AppError
 from backend.core.logger import logger
 
 # ─────────────────────────────────────────
@@ -210,7 +210,7 @@ async def get_rule(rule_id: str) -> RuleResponse:
     """查询单条规则"""
     rule = _rules_store.get(rule_id)
     if not rule:
-        raise HTTPException(status_code=404, detail=f"规则 {rule_id} 不存在")
+        raise AppError(status_code=404, detail=f"规则 {rule_id} 不存在")
     return _rule_to_response(rule)
 
 
@@ -218,7 +218,7 @@ async def update_rule(rule_id: str, req: UpdateRuleRequest) -> RuleResponse:
     """更新告警规则"""
     rule = _rules_store.get(rule_id)
     if not rule:
-        raise HTTPException(status_code=404, detail=f"规则 {rule_id} 不存在")
+        raise AppError(status_code=404, detail=f"规则 {rule_id} 不存在")
 
     if req.name is not None:
         rule.name = req.name
@@ -240,7 +240,7 @@ async def update_rule(rule_id: str, req: UpdateRuleRequest) -> RuleResponse:
 async def delete_rule(rule_id: str) -> None:
     """删除告警规则"""
     if rule_id not in _rules_store:
-        raise HTTPException(status_code=404, detail=f"规则 {rule_id} 不存在")
+        raise AppError(status_code=404, detail=f"规则 {rule_id} 不存在")
     del _rules_store[rule_id]
     logger.info(f"[AlertAPI] 删除规则: {rule_id}")
 
@@ -249,7 +249,7 @@ async def toggle_rule(rule_id: str) -> RuleResponse:
     """启停告警规则"""
     rule = _rules_store.get(rule_id)
     if not rule:
-        raise HTTPException(status_code=404, detail=f"规则 {rule_id} 不存在")
+        raise AppError(status_code=404, detail=f"规则 {rule_id} 不存在")
 
     rule.enabled = not rule.enabled
     rule.updated_at = time.time()
@@ -288,7 +288,7 @@ async def get_event(event_id: str) -> EventResponse:
     for event in _events_store:
         if event.event_id == event_id:
             return _event_to_response(event)
-    raise HTTPException(status_code=404, detail=f"事件 {event_id} 不存在")
+    raise AppError(status_code=404, detail=f"事件 {event_id} 不存在")
 
 
 async def ack_event(event_id: str) -> EventResponse:
@@ -297,7 +297,7 @@ async def ack_event(event_id: str) -> EventResponse:
         if event.event_id == event_id:
             event.acknowledged = True
             return _event_to_response(event)
-    raise HTTPException(status_code=404, detail=f"事件 {event_id} 不存在")
+    raise AppError(status_code=404, detail=f"事件 {event_id} 不存在")
 
 
 # ─────────────────────────────────────────

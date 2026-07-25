@@ -13,12 +13,12 @@ import json
 import logging
 import os
 
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from backend.app.broker import broker
 from backend.app.market_data import market_data
 from backend.core import models
+from backend.core.exceptions import AppError
 from backend.core.redis_client import redis_client
 from backend.core.ticker_format import format_yf_ticker as _to_yf_ticker
 from backend.services.oms_service import oms_service
@@ -68,7 +68,7 @@ async def place_order(
             else:
                 acc_info = await broker.get_account_info()
                 if acc_info.get("status") == "error":
-                    raise HTTPException(status_code=500, detail="风控中断：无法获取当前账户总资产。")  # noqa: E501
+                    raise AppError(status_code=500, detail="风控中断：无法获取当前账户总资产。")  # noqa: E501
                 # 将结果写入 Redis 缓存，设置 5 秒的 TTL 生命周期。
                 # 5秒内哪怕并发 1000 笔发单，也只会调用 1 次真实 Futu API！
                 await redis_client.set(ACCOUNT_CACHE_KEY, json.dumps(acc_info), ex=5)
@@ -109,7 +109,7 @@ async def place_order(
     max_allowed_value = total_assets * max_leverage
 
     if order_value > max_allowed_value:
-        raise HTTPException(
+        raise AppError(
             status_code=403,
             detail=f"🚨 风控拦截：当前订单总价值 (${order_value:,.2f}) 超出了您的最大杠杆限制 ({max_leverage}x, 上限 ${max_allowed_value:,.2f})。",  # noqa: E501
         )
@@ -127,7 +127,7 @@ async def place_order(
         result = await broker.place_order(ticker, qty, price, action, market)
 
     if result.get("status") == "error":
-        raise HTTPException(status_code=400, detail=result.get("message"))
+        raise AppError(status_code=400, detail=result.get("message"))
 
     # ==========================================
     # 6. OMS-01: 持久化订单到 PostgreSQL + Redis PubSub 广播
@@ -190,7 +190,7 @@ async def place_order(
 async def get_account_info(market: str = "HK"):
     res = await broker.get_account_info(market)
     if res.get("status") == "error":
-        raise HTTPException(status_code=400, detail=res.get("message"))
+        raise AppError(status_code=400, detail=res.get("message"))
     return res
 
 
