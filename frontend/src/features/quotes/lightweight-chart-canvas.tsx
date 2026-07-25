@@ -239,6 +239,12 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
   const currentBarsRef = useRef<CIBar[]>([])
   // 记录每个布尔指标已登记的「末根上穿」触发日，避免重复推入信号日志
   const ciSignalStateRef = useRef<Record<string, string>>({})
+  // Toast 武装标记：延迟 2s，避免首屏 K 线加载时的历史信号轰炸，仅实时新信号提醒
+  const ciToastArmedRef = useRef(false)
+  useEffect(() => {
+    const timer = setTimeout(() => { ciToastArmedRef.current = true }, 2000)
+    return () => clearTimeout(timer)
+  }, [])
 
   const applyCustomIndicators = useCallback((bars: CIBar[]) => {
     const chart = chartRef.current
@@ -269,6 +275,9 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
           if (ciSignalStateRef.current[ind.id] !== t) {
             ciSignalStateRef.current[ind.id] = t
             useCustomIndicatorStore.getState().pushSignal({ indId: ind.id, indName: ind.name, expr: ind.expr, time: t, ts: Date.now() })
+            if (ciToastArmedRef.current) {
+              toast({ title: `📡 信号触发 · ${ind.name}`, description: `${t} 满足：${ind.expr}` })
+            }
           }
         }
       } else {

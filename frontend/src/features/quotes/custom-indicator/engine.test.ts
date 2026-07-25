@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { evaluate, validate, suggestPane, collectBoolSignals, type CIBar } from './engine'
+import { evaluate, validate, suggestPane, collectBoolSignals, runSignalBacktest, type CIBar } from './engine'
 
 function makeBars(n: number): CIBar[] {
   const bars: CIBar[] = []
@@ -100,5 +100,25 @@ describe('custom indicator engine', () => {
     const r = collectBoolSignals('RSI(14', bars)
     expect(r.ok).toBe(false)
     expect(r.times.length).toBe(0)
+  })
+
+  it('runSignalBacktest 对布尔表达式做事件驱动回测', () => {
+    const r = runSignalBacktest('CLOSE > 110', bars)
+    expect(r.ok).toBe(true)
+    expect(r.trades).toBeLessThanOrEqual(r.buys.length)
+    expect(r.winRate).toBeGreaterThanOrEqual(0)
+    expect(r.winRate).toBeLessThanOrEqual(100)
+    expect(r.maxDrawdownPct).toBeGreaterThanOrEqual(0)
+    expect(Number.isFinite(r.totalReturnPct)).toBe(true)
+  })
+
+  it('runSignalBacktest 对非布尔表达式返回错误', () => {
+    const r = runSignalBacktest('RSI(14)', bars)
+    expect(r.ok).toBe(false)
+    expect(r.error).toContain('布尔')
+  })
+
+  it('runSignalBacktest 对 K 线不足返回错误', () => {
+    expect(runSignalBacktest('CLOSE > 1', bars.slice(0, 1)).ok).toBe(false)
   })
 })

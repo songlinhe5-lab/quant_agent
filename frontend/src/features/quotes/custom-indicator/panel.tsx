@@ -3,9 +3,9 @@
  * 列出用户指标、支持新增/编辑/删除/显隐，并实时做语法校验与结果预览。
  */
 import { useState, useEffect } from 'react'
-import { Plus, Pencil, Trash2, Eye, EyeOff, X, HelpCircle, Sigma } from 'lucide-react'
+import { Plus, Pencil, Trash2, Eye, EyeOff, X, HelpCircle, Sigma, Activity } from 'lucide-react'
 import { useCustomIndicatorStore, type CustomIndicator } from './store'
-import { validate, evaluate, type CIBar } from './engine'
+import { validate, evaluate, runSignalBacktest, type CIBar, type SignalBacktestResult } from './engine'
 
 const PRESET_COLORS = ['#a855f7', '#10b981', '#ef4444', '#3b82f6', '#f59e0b', '#ec4899', '#14b8a6']
 
@@ -33,6 +33,7 @@ export function CustomIndicatorPanel({
   const [color, setColor] = useState('#a855f7')
   const [pane, setPane] = useState<'overlay' | 'separate' | 'auto'>('auto')
   const [showHelp, setShowHelp] = useState(false)
+  const [bt, setBt] = useState<{ name: string; res: SignalBacktestResult } | null>(null)
 
   useEffect(() => {
     if (editing) {
@@ -111,6 +112,9 @@ export function CustomIndicatorPanel({
                 <div className="truncate font-mono text-[9px] text-muted-foreground">{ind.expr}</div>
                 <div className="text-[9px] text-slate-500">叠加: {ind.pane === 'separate' ? '独立副图' : ind.pane === 'overlay' ? '主图' : '自动'}</div>
               </div>
+              <button onClick={() => setBt({ name: ind.name, res: runSignalBacktest(ind.expr, bars) })} title="信号回测" className="p-1 rounded hover:bg-muted/60 text-muted-foreground">
+                <Activity className="h-3 w-3" />
+              </button>
               <button onClick={() => toggle(ind.id)} title={ind.visible ? '隐藏' : '显示'} className="p-1 rounded hover:bg-muted/60 text-muted-foreground">
                 {ind.visible ? <Eye className="h-3 w-3 text-emerald-400" /> : <EyeOff className="h-3 w-3" />}
               </button>
@@ -136,6 +140,28 @@ export function CustomIndicatorPanel({
                 <span className="font-mono text-muted-foreground truncate max-w-[120px]">{s.expr}</span>
               </div>
             ))}
+          </div>
+        )}
+
+        {bt && (
+          <div className="space-y-1.5 rounded-md border border-primary/40 bg-primary/5 p-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-medium text-foreground">信号回测 · {bt.name}</span>
+              <button onClick={() => setBt(null)} className="text-[9px] text-muted-foreground hover:text-foreground">关闭</button>
+            </div>
+            {!bt.res.ok ? (
+              <div className="text-[10px] text-red-400">{bt.res.error}</div>
+            ) : (
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
+                <div className="flex justify-between"><span className="text-muted-foreground">信号数</span><span className="font-mono text-foreground">{bt.res.buys.length}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">交易数</span><span className="font-mono text-foreground">{bt.res.trades}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">胜率</span><span className="font-mono text-foreground">{bt.res.winRate.toFixed(1)}%</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">末根持仓</span><span className="font-mono text-foreground">{bt.res.holding ? '是' : '否'}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">累计收益</span><span className={`font-mono ${bt.res.totalReturnPct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{bt.res.totalReturnPct.toFixed(2)}%</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">最大回撤</span><span className="font-mono text-red-400">{bt.res.maxDrawdownPct.toFixed(2)}%</span></div>
+              </div>
+            )}
+            {bars.length === 0 && <div className="text-[9px] text-slate-500">当前无 K 线数据，请先加载图表</div>}
           </div>
         )}
 

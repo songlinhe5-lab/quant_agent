@@ -538,3 +538,84 @@ export function collectBoolSignals(expr: string, bars: CIBar[]): { ok: boolean; 
   }
   return { ok: true, times }
 }
+
+/** 信号回测结果：把布尔表达式当作「条件触发」策略做事件驱动回测 */
+export interface SignalBacktestResult {
+  ok: boolean
+  error?: string
+  /** 买入（0->1 上穿）K 线日期 */
+  buys: string[]
+  /** 卖出（1->0 下穿）K 线日期 */
+  sells: string[]
+  /** 完整配对交易数 */
+  trades: number
+  /** 盈利交易数 */
+  wins: number
+  /** 胜率 (%) */
+  winRate: number
+  /** 累计收益率 (%)：每笔收益连乘 */
+  totalReturnPct: number
+  /** 最大回撤 (%) */
+  maxDrawdownPct: number
+  /** 末根仍持仓（未平仓） */
+  holding: boolean
+}
+
+/**
+ * 轻量事件驱动回测：表达式从 0->1 上穿买入（收盘建仓），1->0 下穿卖出（收盘平仓）。
+ * 假设 T 日信号 T 日收盘成交；末根若仍成立则标记为持仓（不强制平仓，避免末端失真）。
+ * 直接复用 evaluate，与图表、信号日志同源，可作为回测引擎的条件触发入口。
+ */
+export function runSignalBacktest(expr: string, bars: CIBar[]): SignalBacktestResult {
+  const empty = (error?: string): SignalBacktestResult => ({
+    ok: false, error, buys: [], sells: [], trades: 0, wins: 0,
+    winRate: 0, totalReturnPct: 0, maxDrawdownPct: 0, holding: false,
+  })
+  const r = evaluate(expr, bars)
+  if (!r.ok) return empty(r.error)
+  if (!r.isBool) return empty('仅支持布尔表达式（如 CROSS(...) 或 比较运算），数值序列无触发点')
+  if (bars.length < 2) return empty('K 线数量不足')
+
+  const v = r.values
+  const buys: string[] = []
+  const sells: string[] = []
+  let trades = 0, wins = 0
+  let entry: number | null = null
+  let equity = 1, peak = 1, maxDd = 0
+
+  for (let i = 1; i < v.length; i++) {
+    if (v[i] == null || v[i - 1] == null) continue // 预热期跳过
+    const cur = v[i] as number
+    const prev = v[i - 1] as number
+    if (cur === 1 && prev !== 1) {
+      // 上穿：买入（若已空仓）
+      buys.push(bars[i].time)
+      if (entry == null) entry = bars[i].close
+    } else if (cur !== 1 && prev === 1) {
+      // 下穿：卖出（若持仓）
+      sells.push(bars[i].time)
+      if (entry != null) {
+        const ret = bars[i].close / entry - 1
+        trades++
+        if (ret > 0) wins++
+        equity *= 1 + ret
+        if (equity > peak) peak = equity
+        const dd = peak > 0 ? (peak - equity) / peak : 0
+        if (dd > maxDd) maxDd = dd
+        entry = null
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    buys,
+    sells,
+    trades,
+    wins,
+    winRate: trades > 0 ? (wins / trades) * 100 : 0,
+    totalReturnPct: (equity - 1) * 100,
+    maxDrawdownPct: maxDd * 100,
+    holding: entry != null,
+  }
+}
