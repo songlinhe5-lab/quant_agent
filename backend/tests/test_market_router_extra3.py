@@ -118,7 +118,7 @@ class TestGetFundamental:
         mock_svc._futu.fetch = MagicMock(return_value=DataSourceResult.error("失败"))
         mock_svc._yfinance = MagicMock()
         mock_svc._yfinance.fetch = MagicMock(
-            return_value={"success": True, "data": {"shortName": "Apple", "trailingPE": 20.0}, "message": "ok"}
+            return_value=DataSourceResult.success({"shortName": "Apple", "trailingPE": 20.0}, source="yfinance")
         )
         resp = client.get("/market/fundamental/US.AAPL")
         assert resp.status_code == 200

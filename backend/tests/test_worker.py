@@ -34,6 +34,7 @@ class TestWorkerMain:
             patch("backend.worker.redis_batch_writer") as m_bw,
             patch("backend.worker.redis_client") as m_rc,
             patch("backend.worker.engine") as m_engine,
+            patch("backend.worker.IS_DATA_NODE", True),
             patch("backend.worker.start_collector_daemons", new=AsyncMock(return_value=[])),
             patch("backend.worker.notification_service") as m_nt,
             patch("asyncio.gather") as mock_gather,

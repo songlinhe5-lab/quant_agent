@@ -115,10 +115,11 @@ class TestFundamentalYFinanceFallback:
         mock_svc._futu = MagicMock()
         mock_svc._futu.fetch = MagicMock(return_value=DataSourceResult.error("futu失败"))
         mock_svc._yfinance = MagicMock()
+        from backend.adapters.ports.data_source_port import DataSourceResult
+
         mock_svc._yfinance.fetch = MagicMock(
-            return_value={
-                "success": True,
-                "data": {
+            return_value=DataSourceResult.success(
+                {
                     "shortName": "Apple",
                     "trailingPE": 25.0,
                     "forwardPE": 24.0,
@@ -128,8 +129,8 @@ class TestFundamentalYFinanceFallback:
                     "shortRatio": 1.0,
                     "beta": 1.2,
                 },
-                "message": None,
-            }
+                source="yfinance",
+            )
         )
         resp = client.get("/market/fundamental/US.AAPL")
         assert resp.status_code == 200
@@ -138,15 +139,17 @@ class TestFundamentalYFinanceFallback:
         assert "trailing_PE" in data["data"]
 
     @patch("backend.routers.market._market_service")
-    def test_both_fail_returns_400(self, mock_svc):
+    def test_both_fail_returns_warning(self, mock_svc):
         from backend.adapters.ports.data_source_port import DataSourceResult
 
         mock_svc._futu = MagicMock()
         mock_svc._futu.fetch = MagicMock(return_value=DataSourceResult.error("futu失败"))
         mock_svc._yfinance = MagicMock()
-        mock_svc._yfinance.fetch = MagicMock(return_value={"success": False, "data": None, "message": "yf error"})
+        mock_svc._yfinance.fetch = MagicMock(return_value=DataSourceResult.error("yf error"))
         resp = client.get("/market/fundamental/US.AAPL")
-        assert resp.status_code == 400
+        # 两端均失败: get_fundamental 设计上返回 200 + status="warning" (见 market.py 注释, 而非 500/400)
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "warning"
 
 
 # ─── /market/news 异常路径 ─────────────────────────────────────────
