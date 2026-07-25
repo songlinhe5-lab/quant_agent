@@ -720,10 +720,14 @@ STATUS: PRODUCTION READY ✨
 
 #### P2 — 规范缺失补充
 
-- [ ] **[SPEC-10]** 新增「环境变量管理规范」章节：`.env` 已有 50+ 变量，需定义分组命名约定（`COLLECTOR_*` / `FUTU_*` / `LLM_*`）、必填/可选标注、`.env.example` 同步规则
-- [ ] **[SPEC-11]** 新增「错误码分配规则」：后端已有 `error_codes.py`，规范中补充错误码段位分配（如 1xxx=认证 / 2xxx=行情 / 3xxx=交易）
-- [ ] **[SPEC-12]** 新增「数据库迁移规范」：Alembic 迁移脚本命名规则（`{rev}_{scope}_{desc}.py`）、审查要求（禁止 DROP COLUMN 无确认）、回滚脚本必备
-- [ ] **[SPEC-13]** 新增「前端性能预算」：Bundle Size 门禁（主包 ≤500KB gzip）、Lighthouse Desktop ≥90、路由级 code-splitting 规则
+- [x] **[SPEC-10]** 新增「环境变量管理规范」章节：`.env` 已有 50+ 变量，需定义分组命名约定（`COLLECTOR_*` / `FUTU_*` / `LLM_*`）、必填/可选标注、`.env.example` 同步规则
+  - 落地：`docs/02` 新增 §十 环境变量管理规范（分组命名表 + 必填/可选标注规则 + `.env.example` 同步门禁），对齐实际 `.env.example` 前缀
+- [x] **[SPEC-11]** 新增「错误码分配规则」：后端已有 `error_codes.py`，规范中补充错误码段位分配（如 1xxx=认证 / 2xxx=行情 / 3xxx=交易）
+  - 落地：`docs/02` 新增 §十一 错误码分配规则，对齐真实 `backend/core/error_codes.py` 段位（0 成功 / 1xxx 认证 / 2xxx 请求资源 / 3xxx 基础设施 / 4xxx 保留 / 5xxx 内部），含 5 条分配规则
+- [x] **[SPEC-12]** 新增「数据库迁移规范」：Alembic 迁移脚本命名规则（`{rev}_{scope}_{desc}.py`）、审查要求（禁止 DROP COLUMN 无确认）、回滚脚本必备
+  - 落地：`docs/02` 新增 §十二 数据库迁移规范（Alembic），命名规则 `{rev}_{scope}_{desc}.py` 对齐现有 `pt01a_*`/`strat03a_*`/`fe05b_*`/`ai04rag_*`，含 DROP COLUMN 审查、回滚必备、幂等要求
+- [x] **[SPEC-13]** 新增「前端性能预算」：Bundle Size 门禁（主包 ≤500KB gzip）、Lighthouse Desktop ≥90、路由级 code-splitting 规则
+  - 落地：`docs/02` 新增 §十三 前端性能预算，对齐 `frontend/vite.config.ts` 与 `lighthouse:baseline` 脚本；含主包≤500KB gzip、Lighthouse Desktop≥90 门禁、路由级 React.lazy 强制拆分规则
 
 ### 后端架构治理（2026-07-08 Review 新增，源自 `docs/03` V5.1 架构审查）
 
