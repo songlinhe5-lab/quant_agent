@@ -70,7 +70,7 @@ class WebScrapeTool(BaseTool):
             return {
                 "status": "error",
                 "message": (
-                    f"无法抓取该网页：Jina API 和直接 HTTP 抓取均失败\n\n"
+                    "无法抓取该网页：Jina API 和直接 HTTP 抓取均失败\n\n"
                     "💡 建议操作:\n"
                     "1. 使用 web_search 搜索该主题的替代数据源\n"
                     "2. 尝试从搜索结果中选择其他可访问的链接\n"
