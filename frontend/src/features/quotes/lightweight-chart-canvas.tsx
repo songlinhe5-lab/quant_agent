@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { createChart, ColorType, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries, AreaSeries, LineStyle, type IChartApi, type ISeriesApi, type UTCTimestamp, type IPriceLine } from 'lightweight-charts'
+import { createChart, ColorType, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries, AreaSeries, BaselineSeries, LineStyle, createSeriesMarkers, type IChartApi, type ISeriesApi, type UTCTimestamp, type IPriceLine, type ISeriesMarkersPluginApi, type SeriesMarker, type Time } from 'lightweight-charts'
 import { AlertTriangle, TrendingUp, TrendingDown, Eye, EyeOff, Pencil, Globe, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -9,6 +9,8 @@ import { useIndicatorWorker } from '@/hooks/use-indicator-worker'
 import { HighFreqChartWrapper } from '@/features/quotes/high-freq-chart-wrapper'
 import type { WatchlistItem } from '@/stores/use-watchlist'
 import { useCopilotContextStore } from '@/stores/useCopilotContextStore'
+import { useChartAnnotationStore } from '@/stores/useChartAnnotationStore'
+import type { ChartAnnotationPayload } from '@/features/copilot/types'
 
 // 💡 个股事件类型定义
 interface StockEvent {
@@ -119,6 +121,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     useCopilotContextStore.getState().setContext({
       kind: 'kline',
       title: 'K线',
+      symbol: selectedSymbol,
       summary: `标的: ${selectedSymbol}\n周期: ${selectedPeriod}\n技术指标: ${active.join(', ') || '无'}`,
     })
   }, [selectedSymbol, selectedPeriod, showMA20, showMA50, showMA200, showBB, showMACD, showRSI, showKDJ])
@@ -171,7 +174,126 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
   const dataLengthRef = useRef<number>(0)
   const isFirstLoadFittedRef = useRef(false)
   const markersRef = useRef<any[]>([])
+  // PROD-02: AI 图表标注渲染相关引用
+  const aiMarkersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
+  const aiPriceLinesRef = useRef<IPriceLine[]>([])
+  const aiZoneSeriesRef = useRef<ISeriesApi<'Baseline'>[]>([])
+  const aiSignalsClickRef = useRef<{ time: number; detail: string }[]>([])
+  const latestAnnotationRef = useRef<{ symbol: string; payload: ChartAnnotationPayload } | null>(null)
+  const selectedSymbolRef = useRef(selectedSymbol)
+  const themeRef = useRef(theme)
+  useEffect(() => { selectedSymbolRef.current = selectedSymbol }, [selectedSymbol])
+  useEffect(() => { themeRef.current = theme }, [theme])
   const workerRef = useIndicatorWorker()
+
+  // PROD-02: 归一化标的用于跨格式匹配（US.AAPL / AAPL / 00700.HK）
+  const normalizeSymbol = (s?: string | null) => (s || '').replace(/^(US|HK|SH|SZ|MARKET)\./i, '').toUpperCase()
+
+  // 将 'YYYY-MM-DD' 或数字转换为图表使用的 Unix 秒（UTCTimestamp）
+  const toChartTime = (t: string | number): number | null => {
+    if (typeof t === 'number') return t
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t)
+    if (m) return Math.floor(Date.UTC(+m[1], +m[2] - 1, +m[3]) / 1000)
+    const n = Number(t)
+    return Number.isFinite(n) ? n : null
+  }
+
+  // PROD-02: 将当前 AI 标注渲染到 K 线图（箭头 + 价格线 + 区域带）
+  const applyAiAnnotations = () => {
+    if (aiMarkersApiRef.current) aiMarkersApiRef.current.setMarkers([])
+    aiPriceLinesRef.current.forEach((pl) => seriesRef.current?.removePriceLine(pl))
+    aiPriceLinesRef.current = []
+    aiZoneSeriesRef.current.forEach((s) => chartRef.current?.removeSeries(s))
+    aiZoneSeriesRef.current = []
+    aiSignalsClickRef.current = []
+
+    const ann = latestAnnotationRef.current
+    const series = seriesRef.current
+    const chart = chartRef.current
+    if (!ann || !series || !chart) return
+    if (normalizeSymbol(ann.symbol) !== normalizeSymbol(selectedSymbolRef.current)) return
+
+    const payload = ann.payload
+
+    // 1) 买卖信号 -> 箭头 markers
+    const signals = payload.signals || []
+    if (signals.length) {
+      const markers = signals
+        .map((sig): SeriesMarker<Time> | null => {
+          const t = toChartTime(sig.time)
+          if (t == null) return null
+          const price = sig.price
+          aiSignalsClickRef.current.push({
+            time: t,
+            detail: `${sig.side === 'buy' ? '🟢 AI 买入信号' : '🔴 AI 卖出信号'}${sig.label ? ' · ' + sig.label : ''}${price != null ? ' @ ' + price : ''}`,
+          })
+          return {
+            time: t as Time,
+            position: sig.side === 'buy' ? 'belowBar' : 'aboveBar',
+            color: sig.side === 'buy' ? '#10b981' : '#ef4444',
+            shape: sig.side === 'buy' ? 'arrowUp' : 'arrowDown',
+            text: sig.label || (sig.side === 'buy' ? 'B' : 'S'),
+          }
+        })
+        .filter((m): m is SeriesMarker<Time> => m !== null)
+        .sort((a, b) => (a.time as number) - (b.time as number))
+      if (markers.length) {
+        if (!aiMarkersApiRef.current) aiMarkersApiRef.current = createSeriesMarkers(series, markers)
+        else aiMarkersApiRef.current.setMarkers(markers)
+      }
+    }
+
+    // 2) 支撑/压力/目标/止损 -> 价格线
+    const levelColor: Record<string, string> = {
+      support: '#10b981',
+      resistance: '#ef4444',
+      target: '#3b82f6',
+      stop: '#f59e0b',
+    }
+    ;(payload.levels || []).forEach((lv) => {
+      const pl = series.createPriceLine({
+        price: lv.price,
+        color: levelColor[lv.type] || '#8b5cf6',
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: lv.label || lv.type.toUpperCase(),
+      })
+      aiPriceLinesRef.current.push(pl)
+    })
+
+    // 3) 区域高亮 -> 半透明基线带（baseline 介于 lower 与 upper 之间填充）
+    ;(payload.zones || []).forEach((z) => {
+      const band = z.color || 'rgba(139,92,246,0.16)'
+      const zone = chart.addSeries(BaselineSeries, {
+        topLineColor: 'rgba(0,0,0,0)',
+        bottomLineColor: 'rgba(0,0,0,0)',
+        topFillColor1: band,
+        topFillColor2: band,
+        bottomFillColor1: band,
+        bottomFillColor2: band,
+        lineWidth: 1,
+        priceLineVisible: false,
+        crosshairMarkerVisible: false,
+        lastValueVisible: false,
+        priceScaleId: 'right',
+        baseValue: { type: 'price', price: z.lower },
+      })
+      const base = series.data() as { time: Time }[]
+      zone.setData(base.map((d) => ({ time: d.time, value: z.upper })))
+      aiZoneSeriesRef.current.push(zone)
+    })
+  }
+  const applyAiAnnotationsRef = useRef(applyAiAnnotations)
+  applyAiAnnotationsRef.current = applyAiAnnotations
+
+  // PROD-02: 订阅 AI 标注 store，按标的匹配后渲染/清除
+  const aiPayload = useChartAnnotationStore((s) => s.payload)
+  const aiSymbol = useChartAnnotationStore((s) => s.symbol)
+  useEffect(() => {
+    latestAnnotationRef.current = aiSymbol && aiPayload ? { symbol: aiSymbol, payload: aiPayload } : null
+    applyAiAnnotations()
+  }, [aiPayload, aiSymbol, selectedSymbol, theme])
   
   const measureBoxRef = useRef<HTMLDivElement>(null)
   const measureInfoRef = useRef<HTMLDivElement>(null)
@@ -341,6 +463,11 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
         const clickedMarker = markersRef.current.find(m => m.time === param.time)
         if (clickedMarker && clickedMarker.detail) toast({ title: `📊 信号触发 (${new Date((param.time as number) * 1000).toLocaleString('zh-CN', { hour12: false })})`, description: clickedMarker.detail })
       }
+      // PROD-02: AI 标注信号点击提示
+      if (param.time && aiSignalsClickRef.current) {
+        const aiMarker = aiSignalsClickRef.current.find(m => m.time === param.time)
+        if (aiMarker) toast({ title: `🤖 AI 标注 (${(param.time as number)})`, description: aiMarker.detail })
+      }
       if (!isDrawModeRef.current || !param.point || !param.time) return;
       const price = candlestickSeries.coordinateToPrice(param.point.y);
       if (price === null) return;
@@ -371,7 +498,14 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     container.addEventListener('mousedown', handleMouseDown); window.addEventListener('mouseup', handleMouseUp);
 
     return () => {
-      ro.disconnect(); chart.remove(); chartRef.current = null; seriesRef.current = null; volumeRef.current = null; macdDiffRef.current = null; macdDeaRef.current = null; macdHistRef.current = null; rsiLineRef.current = null; rsiHistRef.current = null; kdjKRef.current = null; kdjDRef.current = null; kdjJRef.current = null; bbUpperRef.current = null; bbLowerRef.current = null; container.removeEventListener('mousedown', handleMouseDown); window.removeEventListener('mouseup', handleMouseUp);
+      ro.disconnect();
+      // PROD-02: 旧图表销毁前清空 AI 标注引用，避免跨实例 removeSeries 报错
+      if (aiMarkersApiRef.current) aiMarkersApiRef.current.setMarkers([])
+      aiMarkersApiRef.current = null
+      aiPriceLinesRef.current = []
+      aiZoneSeriesRef.current = []
+      aiSignalsClickRef.current = []
+      chart.remove(); chartRef.current = null; seriesRef.current = null; volumeRef.current = null; macdDiffRef.current = null; macdDeaRef.current = null; macdHistRef.current = null; rsiLineRef.current = null; rsiHistRef.current = null; kdjKRef.current = null; kdjDRef.current = null; kdjJRef.current = null; bbUpperRef.current = null; bbLowerRef.current = null; container.removeEventListener('mousedown', handleMouseDown); window.removeEventListener('mouseup', handleMouseUp);
     }
   }, [theme])
 
@@ -428,6 +562,8 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
         volumeData.push({ time: t, value: d.volume || 0, color: d.close >= d.open ? upColor : downColor });
       }
       seriesRef.current?.setData(lwData); markersRef.current = markers;
+      // PROD-02: 数据重载后重新叠加 AI 标注
+      applyAiAnnotationsRef.current?.()
       if (ma20Ref.current) ma20Ref.current.setData(ma20Data); if (ma50Ref.current) ma50Ref.current.setData(ma50Data); if (ma200Ref.current) ma200Ref.current.setData(ma200Data); if (bbUpperRef.current) bbUpperRef.current.setData(bbUpperData); if (bbLowerRef.current) bbLowerRef.current.setData(bbLowerData); if (volumeRef.current) volumeRef.current.setData(volumeData); if (macdDiffRef.current) macdDiffRef.current.setData(macdDiffData); if (macdDeaRef.current) macdDeaRef.current.setData(macdDeaData); if (macdHistRef.current) macdHistRef.current.setData(macdHistData); if (rsiLineRef.current) rsiLineRef.current.setData(rsiData); if (rsiHistRef.current) rsiHistRef.current.setData(rsiHistData); if (kdjKRef.current) kdjKRef.current.setData(kdjKData); if (kdjDRef.current) kdjDRef.current.setData(kdjDData); if (kdjJRef.current) kdjJRef.current.setData(kdjJData);
       if (!isFirstLoadFittedRef.current && chartRef.current && lwData.length > 0) { 
         requestAnimationFrame(() => { 
@@ -566,6 +702,20 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
             </div>
           )
         })}
+        {/* PROD-02: AI 图表标注徽标（点击标记或价格线后可见信号提示） */}
+        {aiSymbol && aiPayload && (normalizeSymbol(aiSymbol) === normalizeSymbol(selectedSymbol)) && (
+          <div className="absolute top-2 right-2 z-30 flex items-center gap-1.5 rounded-md border border-violet-500/40 bg-violet-500/10 backdrop-blur-sm px-2 py-1 text-[10px] font-mono text-violet-300 shadow-sm">
+            <span className="font-semibold">🤖 AI 标注</span>
+            {(aiPayload.signals?.length ?? 0) > 0 && <span className="px-1 rounded bg-violet-500/20">{aiPayload.signals!.length} 信号</span>}
+            {(aiPayload.levels?.length ?? 0) > 0 && <span className="px-1 rounded bg-violet-500/20">{aiPayload.levels!.length} 价位</span>}
+            {(aiPayload.zones?.length ?? 0) > 0 && <span className="px-1 rounded bg-violet-500/20">{aiPayload.zones!.length} 区域</span>}
+            <button
+              onClick={() => useChartAnnotationStore.getState().clear()}
+              className="ml-0.5 text-violet-300/70 hover:text-violet-100 leading-none"
+              title="清除 AI 标注"
+            >✕</button>
+          </div>
+        )}
       </div>
       {showEvents && stockEvents.length > 0 && (
         <div className="border-t border-border/30 px-3 py-1.5 flex items-center gap-2 shrink-0 overflow-x-auto">

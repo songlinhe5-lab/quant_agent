@@ -6,6 +6,8 @@ export interface CopilotPageContext {
   kind: CopilotContextKind
   title: string
   summary: string
+  /** 当前页面聚焦的标的（仅 kline 页有），供 AI 标注按标的匹配 */
+  symbol?: string
 }
 
 interface CopilotContextState {

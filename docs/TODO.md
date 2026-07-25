@@ -791,7 +791,11 @@ STATUS: PRODUCTION READY ✨
   - 在风控页打开时自动携带当前组合摘要
   - 目标：从"通用 ChatBot"升级为"场景感知助手"
   - 实现：`useCopilotContextStore` 承接页面上下文；选股器/K线/风控三页 effect 写入；`chat-context.handleSend` 在会话首条消息自动注入 prompt；抽屉顶部"📎 已附加上下文"卡片可手动移除；`quant_copilot_invoke` 单标的推送走 skipPageContext 避免重复
-- [ ] **[PROD-02]** AI 分析结果内联标注：AI 输出的买卖信号/支撑压力位直接标注在 K 线图上（箭头/区域高亮），而非仅在对话框中输出文字
+- [x] **[PROD-02]** AI 分析结果内联标注：AI 输出的买卖信号/支撑压力位直接标注在 K 线图上（箭头/区域高亮），而非仅在对话框中输出文字
+  - 目标：让 AI 副驾的研判从"对话框文字"升级为"K 线图内联标注"
+  - 协议：AI 在个股研判后输出 ` ```chart-annotations ` 围栏 JSON（symbol/signals/levels/zones），AGENTS.md §7 已写入主脑输出规范
+  - 后端：`hermes_agent/agent.py` 在 `collected_content` 中检测 `chart-annotations` 块并 yield `{"type":"chart_annotation","data":...}`（与 `strategy_code` 同范式）
+  - 前端：`chat-context.tsx` 消费事件 → 写入 `useChartAnnotationStore`（按 symbol 匹配）；`lightweight-chart-canvas.tsx` 订阅 store 渲染——`signals`→`createSeriesMarkers` 箭头、`levels`→`createPriceLine` 价格线、`zones`→`BaselineSeries` 半透明区域带；图表右上角「🤖 AI 标注」徽标可一键清除；点击标记触发 toast 提示
 
 #### P1 — 图表交互与布局升级
 

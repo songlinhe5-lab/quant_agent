@@ -848,6 +848,21 @@ class HermesAgent:
                             if any(kw in code for kw in ["backtest", "deploy", "Backtest", "Deploy"]):
                                 yield {"type": "strategy_code", "code": code}
 
+                        # 💡 图表标注块检测 (PROD-02)：扫描完整回复中的 ```chart-annotations JSON 块，产出结构化标注事件
+                        chart_ann_pattern = re.compile(r"```chart-annotations\s*\n(.*?)```", re.DOTALL)
+                        for ann_match in chart_ann_pattern.finditer(collected_content):
+                            raw = ann_match.group(1).strip()
+                            try:
+                                ann_data = json.loads(raw)
+                            except Exception:
+                                continue
+                            if isinstance(ann_data, dict):
+                                yield {"type": "chart_annotation", "data": ann_data}
+                            elif isinstance(ann_data, list):
+                                for item in ann_data:
+                                    if isinstance(item, dict):
+                                        yield {"type": "chart_annotation", "data": item}
+
                     return
             except Exception as e:
                 import traceback
