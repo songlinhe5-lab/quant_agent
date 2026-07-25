@@ -9,11 +9,11 @@ import os
 import time
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import FastAPI
 
 from backend.core import models
 from backend.core.database import AsyncSessionLocal, SessionLocal, async_engine, engine
-from backend.core.logger import logger
 from backend.core.redis_client import redis_client
 from backend.core.security import get_password_hash
 from backend.services.futu_service import futu_service
@@ -44,9 +44,10 @@ except ImportError:
 async def app_lifespan(app: FastAPI):
     """系统的全局生命周期管理器"""
     global global_registry, global_llm_client
+    log = structlog.get_logger("quant_agent")
 
     # === 启动阶段 (Startup) ===
-    print("\n🚀 [Startup] 正在执行后端核心服务深度自检...")
+    log.info("\n🚀 [Startup] 正在执行后端核心服务深度自检...")
 
     # 全局限制 asyncio 与 AnyIO 的最大物理线程池容量，防止 OOM
     import concurrent.futures
@@ -60,12 +61,12 @@ async def app_lifespan(app: FastAPI):
 
         limiter = current_default_thread_limiter()
         limiter.total_tokens = 64
-        print("✅ [System] 全局物理线程池容量已安全限制为最大 64 个。")
+        log.info("✅ [System] 全局物理线程池容量已安全限制为最大 64 个。")
     except Exception as e:
-        print(f"⚠️ [System] 配置全局线程池失败: {e}")
+        log.warning(f"⚠️ [System] 配置全局线程池失败: {e}")
 
     # 0. 初始化默认系统管理员账号
-    print("🚀 [Startup] 正在初始化系统默认账号...")
+    log.info("🚀 [Startup] 正在初始化系统默认账号...")
     try:
         with SessionLocal() as db:
             admin = db.query(models.User).filter(models.User.username == "admin").first()
@@ -77,9 +78,9 @@ async def app_lifespan(app: FastAPI):
                 )
                 db.add(admin_user)
                 db.commit()
-                print("✅ [Startup] 默认管理员账号 (admin/admin) 初始化成功！")
+                log.info("✅ [Startup] 默认管理员账号 (admin/admin) 初始化成功！")
     except Exception as e:
-        print(f"⚠️ [Startup] 管理员账号初始化失败: {e}")
+        log.warning(f"⚠️ [Startup] 管理员账号初始化失败: {e}")
 
     # 容灾包裹：防止外部 API 不通导致容器死循环无法启动
     try:
@@ -88,11 +89,11 @@ async def app_lifespan(app: FastAPI):
 
         push_handler.set_main_loop(asyncio.get_running_loop())
         await asyncio.wait_for(asyncio.to_thread(futu_service.connect), timeout=15.0)
-        print(f"✅ [Startup] Futu OpenD 连接状态: {futu_service.status}")
+        log.info(f"✅ [Startup] Futu OpenD 连接状态: {futu_service.status}")
     except asyncio.TimeoutError:
-        print("⚠️ [Startup] 富途 OpenD 连接超时 (15s)，已自动降级跳过")
+        log.warning("⚠️ [Startup] 富途 OpenD 连接超时 (15s)，已自动降级跳过")
     except Exception as e:
-        print(f"⚠️ [Startup] 富途 OpenD 连接失败，已自动降级跳过: {e}")
+        log.warning(f"⚠️ [Startup] 富途 OpenD 连接失败，已自动降级跳过: {e}")
 
     try:
         # 3. Redis 连通性与系统通知测试
@@ -102,20 +103,20 @@ async def app_lifespan(app: FastAPI):
         if test_fred_service is not None:
             await asyncio.wait_for(test_fred_service(), timeout=10.0)
     except asyncio.TimeoutError:
-        print("⚠️ [Startup] 核心外部服务预检超时 (10s)，已自动降级跳过")
+        log.warning("⚠️ [Startup] 核心外部服务预检超时 (10s)，已自动降级跳过")
     except Exception as e:
-        print(f"⚠️ [Startup] 核心外部服务连通性预检失败: {e}")
+        log.warning(f"⚠️ [Startup] 核心外部服务连通性预检失败: {e}")
 
-    print("\n🎉 [Startup] 所有后端服务自检完成，API 网关启动就绪！\n")
+    log.info("\n🎉 [Startup] 所有后端服务自检完成，API 网关启动就绪！\n")
 
     # 🧠 [Agent] 初始化 AI 主脑相关服务
-    print("🛠️  [Agent Startup] 装载量化 Tools 沙箱网络客户端...")
+    log.info("🛠️  [Agent Startup] 装载量化 Tools 沙箱网络客户端...")
     from hermes_agent.tool_registry import ToolRegistry
 
     global_registry = ToolRegistry()
-    print(f"✅ [Agent Startup] 成功挂载 {len(global_registry.tools)} 个 AI Agent 核心工具！")
+    log.info(f"✅ [Agent Startup] 成功挂载 {len(global_registry.tools)} 个 AI Agent 核心工具！")
 
-    print("🔌 [Agent Startup] 初始化全局共享的大模型连接池...")
+    log.info("🔌 [Agent Startup] 初始化全局共享的大模型连接池...")
     from openai import AsyncOpenAI
 
     llm_api_key = os.getenv("LLM_API_KEY", "")
@@ -124,10 +125,10 @@ async def app_lifespan(app: FastAPI):
             api_key=llm_api_key,
             base_url=os.getenv("LLM_BASE_URL", "https://api.deepseek.com"),
         )
-        print("✅ [Agent Startup] LLM 连接池已初始化")
+        log.info("✅ [Agent Startup] LLM 连接池已初始化")
     else:
         global_llm_client = None
-        print("⚠️ [Agent Startup] LLM_API_KEY 未配置，跳过 LLM 客户端初始化")
+        log.warning("⚠️ [Agent Startup] LLM_API_KEY 未配置，跳过 LLM 客户端初始化")
 
     # 🚀 启动事件循环健康监控探针
     loop_monitor_task = asyncio.create_task(system_monitor_service.event_loop_monitor_daemon())
@@ -165,13 +166,13 @@ async def app_lifespan(app: FastAPI):
                                     db.add(snapshot)
                                     await db.commit()
                             except Exception as db_err:
-                                logger.warning(f"[NAV Daemon] DB 写入失败 ({market}): {db_err}")
+                                log.warning(f"[NAV Daemon] DB 写入失败 ({market}): {db_err}")
             except Exception as e:
-                logger.warning(f"[NAV Daemon] 快照记录失败: {e}")
+                log.warning(f"[NAV Daemon] 快照记录失败: {e}")
             await asyncio.sleep(300)
 
     nav_snapshot_task = asyncio.create_task(_nav_snapshot_daemon())
-    print("✅ [Startup] NAV 快照守护进程已启动 (每 5 分钟)")
+    log.info("✅ [Startup] NAV 快照守护进程已启动 (每 5 分钟)")
 
     # 🚀 OMS 持仓同步守护进程 (每 30 秒)
     async def _oms_position_sync_daemon():
@@ -185,41 +186,41 @@ async def app_lifespan(app: FastAPI):
                     return_exceptions=True,
                 )
             except Exception as e:
-                logger.warning(f"[OMS Position Daemon] 同步失败: {e}")
+                log.warning(f"[OMS Position Daemon] 同步失败: {e}")
             await asyncio.sleep(30)
 
     oms_position_task = asyncio.create_task(_oms_position_sync_daemon())
-    print("✅ [Startup] OMS 持仓同步守护进程已启动 (每 30 秒)")
+    log.info("✅ [Startup] OMS 持仓同步守护进程已启动 (每 30 秒)")
 
     # 🚀 BotRuntimeManager 恢复
     from backend.services.bot_runtime import bot_runtime
 
     try:
         restored = await bot_runtime.restore_bots_from_redis()
-        print(f"✅ [Startup] BotRuntimeManager 已启动 (恢复 {restored} 个 Bot)")
+        log.info(f"✅ [Startup] BotRuntimeManager 已启动 (恢复 {restored} 个 Bot)")
     except Exception as e:
-        logger.warning(f"[Startup] BotRuntimeManager 恢复失败: {e}")
+        log.warning(f"[Startup] BotRuntimeManager 恢复失败: {e}")
 
     # 🚀 AlgoEngine 恢复
     from backend.services.algo_engine import algo_engine
 
     try:
         algo_restored = await algo_engine.restore_from_redis()
-        print(f"✅ [Startup] AlgoEngine 已启动 (恢复 {algo_restored} 个算法订单)")
+        log.info(f"✅ [Startup] AlgoEngine 已启动 (恢复 {algo_restored} 个算法订单)")
     except Exception as e:
-        logger.warning(f"[Startup] AlgoEngine 恢复失败: {e}")
+        log.warning(f"[Startup] AlgoEngine 恢复失败: {e}")
 
     # 🚀 MarketEngine broadcast_loop
     try:
         await manager.start_background_tasks()
-        print("✅ [Startup] MarketEngine broadcast_loop 已启动")
+        log.info("✅ [Startup] MarketEngine broadcast_loop 已启动")
     except Exception as e:
-        logger.warning(f"[Startup] MarketEngine 启动失败: {e}")
+        log.warning(f"[Startup] MarketEngine 启动失败: {e}")
 
     yield  # 挂起，FastAPI 正式对外提供服务
 
     # === 销毁阶段 (Shutdown) ===
-    print("🛑 正在关闭后端服务，释放资源...")
+    log.info("🛑 正在关闭后端服务，释放资源...")
 
     shutdown_timer = {"start": time.time()}
     shutdown_steps = []  # 追踪各步骤耗时
@@ -227,7 +228,7 @@ async def app_lifespan(app: FastAPI):
     def log_step(name):
         elapsed = time.time() - shutdown_timer["start"]
         shutdown_steps.append(f"{name}: {elapsed:.2f}s")
-        logger.info(f"[Shutdown Timeline] {name}: {elapsed:.2f}s")
+        log.info(f"[Shutdown Timeline] {name}: {elapsed:.2f}s")
 
     try:
         tasks_to_await = []
@@ -271,16 +272,16 @@ async def app_lifespan(app: FastAPI):
         # ARCH-03: 增加全局超时保护（防止 task 无法响应 cancel）
         if tasks_to_await:
             try:
-                print(f"🛑 [Shutdown] 等待 {len(tasks_to_await)} 个任务完成...")
+                log.info(f"🛑 [Shutdown] 等待 {len(tasks_to_await)} 个任务完成...")
                 await asyncio.wait_for(
                     asyncio.gather(*tasks_to_await, return_exceptions=True),
                     timeout=30.0,  # ARCH-03: in-flight 任务最大等待 30s
                 )
-                print("✅ [Shutdown] 所有后台任务已优雅取消")
+                log.info("✅ [Shutdown] 所有后台任务已优雅取消")
             except asyncio.TimeoutError:
-                print("⚠️ [Shutdown] Task 取消超时 (30s)，强制退出")
+                log.warning("⚠️ [Shutdown] Task 取消超时 (30s)，强制退出")
     except Exception as e:
-        print(f"⚠️ 取消后台任务时发生异常: {e}")
+        log.warning(f"⚠️ 取消后台任务时发生异常: {e}")
 
     try:
         loop = asyncio.get_running_loop()
@@ -296,29 +297,29 @@ async def app_lifespan(app: FastAPI):
             await global_llm_client.close()
         await llm_service.close()
     except Exception as e:
-        print(f"⚠️ 关闭 AI 客户端异常: {e}")
+        log.warning(f"⚠️ 关闭 AI 客户端异常: {e}")
 
     try:
         # ARCH-03: Redis 批量队列优雅关闭
-        print("🛑 [Cleanup] 正在排空并关闭 Redis 异步写入队列...")
+        log.info("🛑 [Cleanup] 正在排空并关闭 Redis 异步写入队列...")
         from backend.core.redis_client import redis_batch_writer
 
         success = await redis_batch_writer.stop(timeout_s=15.0)
         if not success:
-            logger.warning("⚠️ Redis 批量队列关闭不完全")
+            log.warning("⚠️ Redis 批量队列关闭不完全")
     except Exception as e:
-        print(f"⚠️ 关闭 Redis 队列异常：{e}")
+        log.warning(f"⚠️ 关闭 Redis 队列异常：{e}")
 
     try:
-        print("🧹 [Cleanup] 正在清空 Redis 临时行情缓存...")
+        log.info("🧹 [Cleanup] 正在清空 Redis 临时行情缓存...")
         await redis_client.delete("quant:quotes:latest")
     except Exception as e:
-        print(f"⚠️ 清理 Redis 缓存异常: {e}")
+        log.warning(f"⚠️ 清理 Redis 缓存异常: {e}")
 
     try:
         await redis_client.aclose()
     except Exception as e:
-        print(f"⚠️ 关闭 Redis 连接池异常: {e}")
+        log.warning(f"⚠️ 关闭 Redis 连接池异常: {e}")
 
     try:
         # ARCH-03: 使用 async_close() 替代同步 close()
@@ -329,22 +330,22 @@ async def app_lifespan(app: FastAPI):
         # FutuService 为同步 close()，包裹在 to_thread 避免阻塞事件循环
         await asyncio.to_thread(futu_service.close)
     except Exception as e:
-        print(f"⚠️ 关闭数据源资源异常：{e}")
+        log.warning(f"⚠️ 关闭数据源资源异常：{e}")
 
     try:
-        print("🛑 [Cleanup] 正在关闭外部 API 长连接...")
+        log.info("🛑 [Cleanup] 正在关闭外部 API 长连接...")
         await fred_service.close()
     except Exception as e:
-        print(f"⚠️ 关闭 FRED 等 HTTP 连接池异常: {e}")
+        log.warning(f"⚠️ 关闭 FRED 等 HTTP 连接池异常: {e}")
 
     try:
-        print("🛑 [Cleanup] 正在关闭数据库连接池...")
+        log.info("🛑 [Cleanup] 正在关闭数据库连接池...")
         engine.dispose()
         await async_engine.dispose()
     except Exception as e:
-        print(f"⚠️ 关闭数据库连接池异常：{e}")
+        log.warning(f"⚠️ 关闭数据库连接池异常：{e}")
 
     # ARCH-03: 记录 Shutdown 总耗时
     total_time = time.time() - shutdown_timer["start"]
     log_step(f"Total shutdown time: {total_time:.2f}s")
-    logger.info(f"📊 [Shutdown Summary] Total time: {total_time:.2f}s | Steps: {len(shutdown_steps)}")
+    log.info(f"📊 [Shutdown Summary] Total time: {total_time:.2f}s | Steps: {len(shutdown_steps)}")

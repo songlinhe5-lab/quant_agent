@@ -8,6 +8,10 @@ import socket
 import sys
 import warnings
 
+import structlog
+
+log = structlog.get_logger("quant_agent")
+
 # 💡 过滤 macOS/Linux 下 Uvicorn 热重载强退时的无害 POSIX 信号量泄漏警告
 warnings.filterwarnings("ignore", module="multiprocessing.resource_tracker")
 
@@ -47,9 +51,9 @@ try:
             conn.execute(
                 text("CREATE INDEX IF NOT EXISTS trgm_idx_ticker_name ON tickers USING gin (name gin_trgm_ops);")
             )
-            print("✅ [System] PostgreSQL pgvector 与 pg_trgm 扩展及全局索引挂载就绪！")
+            log.info("PostgreSQL pgvector 与 pg_trgm 扩展及全局索引挂载就绪")
 except Exception as e:
-    print(f"⚠️ [System] 自动创建数据库表失败 (请确认数据库服务已启动): {e}")
+    log.warning("自动创建数据库表失败 (请确认数据库服务已启动)", error=str(e))
 
 # --- 核心基础设施 ---
 from backend.bootstrap.lifecycle import app_lifespan, global_llm_client, global_registry  # noqa: E402, F401
