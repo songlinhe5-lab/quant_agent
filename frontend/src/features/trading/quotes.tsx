@@ -15,6 +15,9 @@ import { useMarketData } from '@/hooks/use-market-data'
 import { WatchlistSidebar } from '@/features/quotes/watchlist-sidebar'
 import { LightweightChartCanvas } from '@/features/quotes/lightweight-chart-canvas'
 import { ChartErrorBoundary, PanelErrorBoundary } from '@/components/error-boundary'
+import { useSceneModeStore } from '@/stores/useSceneModeStore'
+import { AnomalyFlash } from '@/features/quotes/anomaly-flash'
+import { FloatingWatchlist } from '@/features/quotes/floating-watchlist'
 
 // PROD-12: 分屏对比子面板——拥有独立行情数据（独立 WebSocket/历史），并与主图共享同一 syncGroup 实现十字线同步
 const COMPARE_PERIODS = [
@@ -75,6 +78,10 @@ export function QuotesModule() {
   const [selectedPeriod, setSelectedPeriod] = useState('1m')  // 💡 默认显示分时图
 
   useEffect(() => { setMounted(true) }, [])
+
+  // PROD-04a: 盯盘模式专属布局（K线全屏 + 盘口悬浮 + 异动高对比）
+  const sceneMode = useSceneModeStore((s) => s.sceneMode)
+  const isWatchScene = sceneMode === 'watch'
 
   // 💡 监听 Zustand 全局 ticker 变化（navbar 搜索跳转）
   const globalTicker = useMarketStore((s: any) => s.currentTicker)
@@ -163,6 +170,48 @@ export function QuotesModule() {
 
   // 阻止水合期间的渲染，直到客户端获取到真实 Theme 与 LocalStorage 数据
   if (!mounted) return null
+
+  // PROD-04a: 盯盘模式专属布局 —— K线全屏 + 盘口悬浮 + 异动高对比
+  if (isWatchScene) {
+    return (
+      <div className="relative h-[calc(100vh-80px)] min-h-[600px] w-full bg-background/50 rounded-xl overflow-hidden">
+        {isStale && (
+          <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/80 backdrop-blur-md transition-all duration-300 rounded-xl border border-border/50 shadow-2xl">
+            <AlertTriangle className="h-12 w-12 text-amber-500 animate-pulse drop-shadow-[0_0_10px_rgba(245,158,11,0.5)]" />
+            <p className="mt-4 text-lg font-bold text-amber-500">数据连接延迟 (STALE)</p>
+            <p className="text-sm text-muted-foreground mt-1">行情流可能已过期，正在尝试重新连接...</p>
+          </div>
+        )}
+
+        {/* 全屏 K 线 */}
+        <div className="absolute inset-0 z-0">
+          <ChartErrorBoundary name="KlineChart">
+            <LightweightChartCanvas selectedSymbol={selectedSymbol} selectedPeriod={selectedPeriod} setSelectedPeriod={setSelectedPeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={false} toggleWatchlist={toggleWatchlist} selectedItem={selected} hasData={hasData} syncGroup="default" />
+          </ChartErrorBoundary>
+        </div>
+
+        {/* 盘口悬浮（异动 > 2% 高对比闪烁） */}
+        <div className="absolute right-3 top-3 bottom-3 z-10 w-72 flex flex-col gap-2.5 max-[640px]:left-3 max-[640px]:w-auto">
+          <AnomalyFlash symbol={selectedSymbol} className="flex flex-col gap-2.5 h-full">
+            <PanelErrorBoundary name="OrderBookPanel">
+              <div className="glass-card rounded-xl overflow-hidden flex flex-col flex-1 shadow-lg border-border/40">
+                <OrderBookWebGL symbol={selectedSymbol} theme={theme} />
+              </div>
+            </PanelErrorBoundary>
+            <div className="glass-card rounded-xl overflow-hidden flex flex-col flex-1 shadow-lg border-border/40">
+              <div className="px-3 py-2.5 border-b border-border/40 bg-secondary/20 shrink-0">
+                <span className="text-[10px] font-semibold text-muted-foreground uppercase">成交流水</span>
+              </div>
+              <TradeHistory symbol={selectedSymbol} />
+            </div>
+          </AnomalyFlash>
+        </div>
+
+        {/* 自选列表：可拖拽悬浮球 */}
+        <FloatingWatchlist watchlist={watchlist} selectedSymbol={selectedSymbol} setSelectedSymbol={setSelectedSymbol} addTicker={addTicker} removeTicker={removeTicker} />
+      </div>
+    )
+  }
 
   return (
     <div className="relative h-[calc(100vh-80px)] min-h-[600px] w-full bg-background/50 rounded-xl p-1">

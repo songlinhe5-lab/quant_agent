@@ -819,7 +819,7 @@ STATUS: PRODUCTION READY ✨
   - `global-copilot-drawer.tsx` 盯盘模式隐藏 EdgeHandle
   - 12 tests passed + tsc 零错误 + 全量 197 tests 零回归
   - 待后续迭代：盯盘 K线全屏/研究多面板拖拽/监控专属布局/AI快捷指令栏
-- [ ] **[PROD-04a]** 盯盘模式专属布局（K线全屏 + 盘口悬浮 + 异动高对比）
+- [x] **[PROD-04a]** 盯盘模式专属布局（K线全屏 + 盘口悬浮 + 异动高对比）`frontend/src/features/trading/quotes.tsx` 接入 `useSceneModeStore`，`sceneMode==='watch'` 时切换全屏 K 线 + 右下角悬浮盘口（DOM/成交流水）；新增 `anomaly-flash.tsx`（监听 `market_tick`/`quote_update` 的 `change_pct`，>2% 时基于 `--scene-accent` 脉冲闪烁并标注异动方向）与 `floating-watchlist.tsx`（可拖拽悬浮球 + 自选浮层）；`globals.css` 增加 `scene-anomaly-flash` 动画。
   - Quotes 模块判断 sceneMode='watch' 时切换全屏 K 线布局
   - 自选列表改为可拖拽悬浮球样式
   - 盘口异动 > 2% 时高对比闪烁动画

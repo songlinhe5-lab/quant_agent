@@ -125,6 +125,18 @@ body {
 [data-scene-mode="monitor"]     { --density-scale: 1.0; --scene-accent: 38 92% 50%; }
 [data-scene-mode="ai-analysis"] { --density-scale: 1.0; --scene-accent: 217 91% 60%; }
 
+/* PROD-04a: 盘口异动 > 2% 高对比脉冲光环（基于 --scene-accent 场景强调色） */
+@keyframes scene-anomaly-flash {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(var(--scene-accent) / 0); border-color: hsl(var(--scene-accent) / 0); }
+  50%      { box-shadow: 0 0 26px 2px hsl(var(--scene-accent) / 0.75); border-color: hsl(var(--scene-accent) / 0.9); }
+}
+.scene-anomaly-flash {
+  animation: scene-anomaly-flash 0.9s ease-in-out infinite;
+  border: 1px solid hsl(var(--scene-accent) / 0.4);
+}
+.scene-anomaly-up  { --scene-accent: 160 84% 45%; }
+.scene-anomaly-down { --scene-accent: 0 84% 60%; }
+
 /* PROD-05: 多分辨率适配规范（与 tailwind desktop / wide / ultrawide 断点对齐）
  *  - 1280px (desktop)：AI 副驾为 overlay（global-copilot-drawer 已 fixed 定位，不挤压主工作区）
  *  - 1920px (wide)：主区留白由布局 wide:px-6 处理；页面可挂 .resp-auto-panels 默认显示盘口/新闻流等次面板
