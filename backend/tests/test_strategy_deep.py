@@ -221,7 +221,7 @@ class TestFetchBacktestData:
 
         df = pd.DataFrame(
             {
-                "time": pd.date_range("2024-01-01", periods=100000),
+                "time": pd.date_range("2024-01-01", periods=100000, freq="min"),
                 "open": [100.0] * 100000,
                 "high": [101.0] * 100000,
                 "low": [99.0] * 100000,
