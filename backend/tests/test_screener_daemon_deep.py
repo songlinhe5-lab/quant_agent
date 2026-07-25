@@ -107,7 +107,7 @@ class TestGetNewsTagsRules:
 # POST /screener/query (缓存路径)
 # ==========================================
 class TestScreenerQuery:
-    @patch("backend.routers.screener.redis_client")
+    @patch("backend.app.screener_app.redis_client")
     def test_query_from_cache(self, mock_redis, client):
         """选股查询命中缓存"""
         cached_data = [
@@ -125,7 +125,7 @@ class TestScreenerQuery:
         assert data["status"] == "success"
         assert len(data["data"]) == 2
 
-    @patch("backend.routers.screener.redis_client")
+    @patch("backend.app.screener_app.redis_client")
     def test_query_with_sort(self, mock_redis, client):
         """选股查询排序"""
         cached_data = [
@@ -150,7 +150,7 @@ class TestScreenerQuery:
         # 降序排列，MSFT(400) 在前
         assert data["data"][0]["symbol"] == "US.MSFT"
 
-    @patch("backend.routers.screener.redis_client")
+    @patch("backend.app.screener_app.redis_client")
     def test_query_with_filters(self, mock_redis, client):
         """选股查询过滤"""
         cached_data = [
@@ -174,7 +174,7 @@ class TestScreenerQuery:
         assert len(data["data"]) == 1
         assert data["data"][0]["symbol"] == "US.AAPL"
 
-    @patch("backend.routers.screener.redis_client")
+    @patch("backend.app.screener_app.redis_client")
     def test_query_pagination(self, mock_redis, client):
         """选股查询分页"""
         cached_data = [{"symbol": f"US.STK{i}", "name": f"Stock{i}", "price": float(i)} for i in range(50)]
@@ -203,7 +203,7 @@ class TestScreenerDictionary:
         yield
         app.dependency_overrides.pop(get_current_user, None)
 
-    @patch("backend.routers.screener.screener_service")
+    @patch("backend.app.screener_app.screener_service")
     def test_get_dictionary(self, mock_svc, client):
         """获取选股字典"""
         mock_svc.get_custom_rules = AsyncMock(
@@ -214,7 +214,7 @@ class TestScreenerDictionary:
         data = _unwrap(resp)
         assert data["status"] == "success"
 
-    @patch("backend.routers.screener.screener_service")
+    @patch("backend.app.screener_app.screener_service")
     def test_add_dictionary_item(self, mock_svc, client):
         """添加选股规则"""
         mock_svc.add_custom_rule = AsyncMock(return_value={"status": "success"})
@@ -224,7 +224,7 @@ class TestScreenerDictionary:
         )
         assert resp.status_code == 200
 
-    @patch("backend.routers.screener.screener_service")
+    @patch("backend.app.screener_app.screener_service")
     def test_add_dictionary_error(self, mock_svc, client):
         """添加规则失败"""
         mock_svc.add_custom_rule = AsyncMock(return_value={"status": "error", "message": "dup"})
@@ -234,7 +234,7 @@ class TestScreenerDictionary:
         )
         assert resp.status_code == 500
 
-    @patch("backend.routers.screener.screener_service")
+    @patch("backend.app.screener_app.screener_service")
     def test_batch_import(self, mock_svc, client):
         """批量导入"""
         mock_svc.add_custom_rule = AsyncMock(return_value={"status": "success"})
