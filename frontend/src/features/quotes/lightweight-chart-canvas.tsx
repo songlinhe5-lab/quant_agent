@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { createChart, ColorType, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries, AreaSeries, BaselineSeries, LineStyle, createSeriesMarkers, type IChartApi, type ISeriesApi, type UTCTimestamp, type IPriceLine, type ISeriesMarkersPluginApi, type SeriesMarker, type Time } from 'lightweight-charts'
-import { AlertTriangle, TrendingUp, TrendingDown, Eye, EyeOff, Pencil, Globe, ChevronRight } from 'lucide-react'
+import { AlertTriangle, TrendingUp, TrendingDown, Eye, EyeOff, Pencil, Globe, ChevronRight, Minus, Square, Spline, Eraser } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
@@ -76,6 +76,100 @@ class TrendLinePrimitive {
   updateEndPoint(t: any, p: any) { this.t2 = t; this.p2 = p; this._requestUpdate(); }
 }
 
+// PROD-03: 画线工具扩展（水平线 / 矩形 / 斐波那契回撤），与趋势线共用 lightweight-charts v5 IPrimitive 接口
+type DrawTool = 'none' | 'trendline' | 'hline' | 'fib' | 'rect'
+
+class HLinePaneView {
+  _source: any; _y: number | null = null;
+  constructor(s: any) { this._source = s; }
+  update() { this._y = this._source.series.priceToCoordinate(this._source.p); }
+  renderer() {
+    const y = this._y; const source = this._source;
+    return { draw: (target: any) => { target.useMediaCoordinateSpace(({ context: ctx, mediaSize }: any) => {
+      if (y == null) return;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(mediaSize.width, y);
+      ctx.strokeStyle = source.color; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = source.color; ctx.font = '10px ui-monospace, monospace';
+      ctx.fillText(source.p.toFixed(2), 6, y - 4);
+    }); } };
+  }
+}
+class HLinePrimitive {
+  series: any; t: any; p: any; color: string; _paneViews: any[]; _requestUpdate: () => void = () => {};
+  constructor(series: any, t: any, p: any, color: string) { this.series = series; this.t = t; this.p = p; this.color = color; this._paneViews = [new HLinePaneView(this)]; }
+  updateAllViews() { this._paneViews.forEach(v => v.update()); }
+  paneViews() { return this._paneViews; }
+  attached({ requestUpdate }: any) { this._requestUpdate = requestUpdate; }
+  detached() {}
+}
+
+class RectanglePaneView {
+  _source: any; _x1: number | null = null; _y1: number | null = null; _x2: number | null = null; _y2: number | null = null;
+  constructor(s: any) { this._source = s; }
+  update() {
+    const s = this._source;
+    this._x1 = s.chart.timeScale().timeToCoordinate(s.t1);
+    this._x2 = s.chart.timeScale().timeToCoordinate(s.t2);
+    this._y1 = s.series.priceToCoordinate(s.p1);
+    this._y2 = s.series.priceToCoordinate(s.p2);
+  }
+  renderer() {
+    const x1 = this._x1, x2 = this._x2, y1 = this._y1, y2 = this._y2, source = this._source;
+    return { draw: (target: any) => { target.useMediaCoordinateSpace(({ context: ctx }: any) => {
+      if (x1 == null || x2 == null || y1 == null || y2 == null) return;
+      const x = Math.min(x1, x2), yy = Math.min(y1, y2), w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
+      ctx.fillStyle = source.color; ctx.globalAlpha = 0.08; ctx.fillRect(x, yy, w, h); ctx.globalAlpha = 1;
+      ctx.strokeStyle = source.color; ctx.lineWidth = 1.5; ctx.strokeRect(x, yy, w, h);
+    }); } };
+  }
+}
+class RectanglePrimitive {
+  chart: any; series: any; t1: any; p1: any; t2: any; p2: any; color: string; _paneViews: any[]; _requestUpdate: () => void = () => {};
+  constructor(chart: any, series: any, t: any, p: any, color: string) { this.chart = chart; this.series = series; this.t1 = t; this.p1 = p; this.t2 = t; this.p2 = p; this.color = color; this._paneViews = [new RectanglePaneView(this)]; }
+  updateAllViews() { this._paneViews.forEach(v => v.update()); }
+  paneViews() { return this._paneViews; }
+  attached({ requestUpdate }: any) { this._requestUpdate = requestUpdate; }
+  detached() {}
+  updateEndPoint(t: any, p: any) { this.t2 = t; this.p2 = p; this._requestUpdate(); }
+}
+
+class FibPaneView {
+  _source: any; _y1: number | null = null; _y2: number | null = null;
+  constructor(s: any) { this._source = s; }
+  update() { const s = this._source; this._y1 = s.series.priceToCoordinate(s.p1); this._y2 = s.series.priceToCoordinate(s.p2); }
+  renderer() {
+    const y1 = this._y1, y2 = this._y2, source = this._source;
+    const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+    return { draw: (target: any) => { target.useMediaCoordinateSpace(({ context: ctx, mediaSize }: any) => {
+      if (y1 == null || y2 == null) return;
+      ctx.font = '10px ui-monospace, monospace';
+      ctx.fillStyle = source.color; ctx.globalAlpha = 0.06; ctx.fillRect(0, Math.min(y1, y2), mediaSize.width, Math.abs(y2 - y1)); ctx.globalAlpha = 1;
+      levels.forEach((lvl: number) => {
+        const y = y1 + (y2 - y1) * lvl; const price = source.p1 + (source.p2 - source.p1) * lvl;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(mediaSize.width, y);
+        ctx.strokeStyle = source.color; ctx.globalAlpha = 0.5; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+        ctx.fillStyle = source.color; ctx.fillText(`${(lvl * 100).toFixed(1)}%  ${price.toFixed(2)}`, 6, y - 3);
+      });
+    }); } };
+  }
+}
+class FibRetracementPrimitive {
+  series: any; t1: any; p1: any; t2: any; p2: any; color: string; _paneViews: any[]; _requestUpdate: () => void = () => {};
+  constructor(series: any, t: any, p: any, color: string) { this.series = series; this.t1 = t; this.p1 = p; this.t2 = t; this.p2 = p; this.color = color; this._paneViews = [new FibPaneView(this)]; }
+  updateAllViews() { this._paneViews.forEach(v => v.update()); }
+  paneViews() { return this._paneViews; }
+  attached({ requestUpdate }: any) { this._requestUpdate = requestUpdate; }
+  detached() {}
+  updateEndPoint(t: any, p: any) { this.t2 = t; this.p2 = p; this._requestUpdate(); }
+}
+
+const DRAW_TOOLS: { id: DrawTool; label: string; icon: any }[] = [
+  { id: 'trendline', label: '趋势线（两点连线）', icon: Pencil },
+  { id: 'hline', label: '水平线（单击定位价位）', icon: Minus },
+  { id: 'fib', label: '斐波那契回撤（两点）', icon: Spline },
+  { id: 'rect', label: '矩形区域（两点）', icon: Square },
+]
+
 interface LightweightChartCanvasProps {
   selectedSymbol: string;
   selectedPeriod: string;
@@ -100,9 +194,29 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
   const [showMACD, setShowMACD] = useState(true)
   const [showRSI, setShowRSI] = useState(true)
   const [showKDJ, setShowKDJ] = useState(true)
-  const [isDrawMode, setIsDrawMode] = useState(false)
+  const [drawTool, setDrawTool] = useState<DrawTool>('none')
   const isDrawModeRef = useRef(false)
-  useEffect(() => { isDrawModeRef.current = isDrawMode }, [isDrawMode])
+  useEffect(() => { isDrawModeRef.current = drawTool !== 'none' }, [drawTool])
+  const drawToolRef = useRef<DrawTool>('none')
+  useEffect(() => { drawToolRef.current = drawTool }, [drawTool])
+  const drawingsRef = useRef<any[]>([])
+  const clearDrawings = useCallback(() => {
+    const s = seriesRef.current
+    if (s) {
+      drawingsRef.current.forEach((p: any) => { try { s.detachPrimitive(p) } catch {} })
+      const c = chartContainerRef.current as any
+      if (c && c._activeDrawingPlugin) { try { s.detachPrimitive(c._activeDrawingPlugin) } catch {}; c._activeDrawingPlugin = null }
+    }
+    drawingsRef.current = []
+  }, [])
+  const selectTool = (id: DrawTool) => {
+    const next = drawTool === id ? 'none' : id
+    if (next === 'none' && drawTool !== 'none') {
+      const c = chartContainerRef.current as any
+      if (c && c._activeDrawingPlugin) { try { seriesRef.current?.detachPrimitive(c._activeDrawingPlugin) } catch {}; c._activeDrawingPlugin = null }
+    }
+    setDrawTool(next)
+  }
 
   // PROD-01: 将 K线 上下文（标的 + 周期 + 技术指标）写入 AI 副驾
   useEffect(() => {
@@ -468,17 +582,33 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
         const aiMarker = aiSignalsClickRef.current.find(m => m.time === param.time)
         if (aiMarker) toast({ title: `🤖 AI 标注 (${(param.time as number)})`, description: aiMarker.detail })
       }
-      if (!isDrawModeRef.current || !param.point || !param.time) return;
+      if (drawToolRef.current === 'none' || !param.point) return;
       const price = candlestickSeries.coordinateToPrice(param.point.y);
       if (price === null) return;
       const container = chartContainerRef.current as any;
+      const tool = drawToolRef.current;
+      const color = theme === 'dark' ? '#38bdf8' : '#0284c7';
       if (!container._activeDrawingPlugin) {
-        const pluginColor = theme === 'dark' ? '#38bdf8' : '#0284c7';
-        container._activeDrawingPlugin = new TrendLinePrimitive(chart, candlestickSeries, param.time, price, pluginColor);
-        candlestickSeries.attachPrimitive(container._activeDrawingPlugin);
+        if (tool === 'hline') {
+          const p = new HLinePrimitive(candlestickSeries, param.time ?? null, price, color);
+          candlestickSeries.attachPrimitive(p); drawingsRef.current.push(p);
+          container._activeDrawingPlugin = null; setDrawTool('none');
+        } else {
+          if (!param.time) return;
+          if (tool === 'trendline') {
+            container._activeDrawingPlugin = new TrendLinePrimitive(chart, candlestickSeries, param.time, price, color);
+          } else if (tool === 'rect') {
+            container._activeDrawingPlugin = new RectanglePrimitive(chart, candlestickSeries, param.time, price, color);
+          } else if (tool === 'fib') {
+            container._activeDrawingPlugin = new FibRetracementPrimitive(candlestickSeries, param.time, price, color);
+          }
+          candlestickSeries.attachPrimitive(container._activeDrawingPlugin);
+        }
       } else {
+        if (!param.time) return;
         container._activeDrawingPlugin.updateEndPoint(param.time, price);
-        container._activeDrawingPlugin = null; setIsDrawMode(false);
+        drawingsRef.current.push(container._activeDrawingPlugin);
+        container._activeDrawingPlugin = null; setDrawTool('none');
       }
     });
     
@@ -508,6 +638,12 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       chart.remove(); chartRef.current = null; seriesRef.current = null; volumeRef.current = null; macdDiffRef.current = null; macdDeaRef.current = null; macdHistRef.current = null; rsiLineRef.current = null; rsiHistRef.current = null; kdjKRef.current = null; kdjDRef.current = null; kdjJRef.current = null; bbUpperRef.current = null; bbLowerRef.current = null; container.removeEventListener('mousedown', handleMouseDown); window.removeEventListener('mouseup', handleMouseUp);
     }
   }, [theme])
+
+  // PROD-03: 切换标的/周期时清除已画线，避免点位错位误导
+  useEffect(() => {
+    clearDrawings()
+    setDrawTool('none')
+  }, [selectedSymbol, selectedPeriod, clearDrawings])
 
   useEffect(() => {
     if (!seriesRef.current) return
@@ -666,7 +802,14 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
         <div className="flex items-center gap-0.5 bg-background border border-border/50 p-0.5 rounded-md shadow-sm" role="group" aria-label="K线周期">
           {periods.map((p, idx) => (<button key={p.id} onClick={() => setSelectedPeriod(p.id)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium', selectedPeriod === p.id ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} aria-pressed={selectedPeriod === p.id} title={`切换至${p.label}周期 (快捷键: ${idx + 1})`}>{p.label}</button>))}
         </div>
-        <Button variant={isDrawMode ? "default" : "outline"} size="sm" onClick={() => setIsDrawMode(!isDrawMode)} className={cn("h-7 px-2.5 gap-1.5 text-[10px]", isDrawMode ? "bg-primary text-primary-foreground shadow-sm shadow-primary/30" : "border-border/50 bg-background")} title={isDrawMode ? '取消画线 (点击两点连线)' : '自由画线 (趋势线)'}><Pencil className="h-3.5 w-3.5" /></Button>
+        <div className="flex items-center gap-0.5 border-l border-border/40 pl-1.5 ml-1">
+          {DRAW_TOOLS.map((t) => (
+            <Button key={t.id} variant={drawTool === t.id ? 'default' : 'outline'} size="sm" onClick={() => selectTool(t.id)} className={cn('h-7 w-7 p-0 text-[10px]', drawTool === t.id ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/30' : 'border-border/50 bg-background')} title={t.label}>
+              <t.icon className="h-3.5 w-3.5" />
+            </Button>
+          ))}
+          <Button variant="outline" size="sm" onClick={clearDrawings} className="h-7 w-7 p-0 border-border/50 bg-background" title="清除全部画线"><Eraser className="h-3.5 w-3.5" /></Button>
+        </div>
         <Button variant="outline" size="sm" onClick={() => setShowEvents(!showEvents)} className="h-7 px-2.5 gap-1.5 text-[10px] border-border/50 bg-background" title={showEvents ? '隐藏事件' : '显示事件'}>{showEvents ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}</Button>
       </div>
       <div className="px-4 py-1.5 border-b border-border/30 bg-secondary/20 flex gap-4 text-[10px] font-mono text-muted-foreground shrink-0">
