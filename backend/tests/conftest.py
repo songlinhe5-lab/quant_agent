@@ -118,6 +118,11 @@ _REDIS_PATCH_MODULES = [
     "backend.core.redis_client",
     "backend.main",
     "backend.services.sentiment_tracker",
+    # ARCH-06 修复: system_health 用 `from backend.core.redis_client import redis_client`
+    # 绑定的是模块级名字，若其在 autouse fixture 还原成协程的窗口期被首次导入，
+    # 会永久绑定成协程，导致 /health 系列测试在全量套件中偶发失败（隔离运行却通过）。
+    # 显式加入列表，确保每测试都被正确的 mock_rc (AsyncMock, 含 ping/pipeline) 覆盖。
+    "backend.routers.system_health",
 ]
 
 
