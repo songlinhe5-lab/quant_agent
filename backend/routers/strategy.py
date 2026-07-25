@@ -27,6 +27,7 @@ from backend.backtest import (
     run_monte_carlo_stress_test,
 )
 from backend.core import models
+from backend.core.cpu_pool import run_cpu_bound
 from backend.core.database import get_db
 from backend.core.redis_client import redis_client
 from backend.core.utils import safe_truncate
@@ -833,9 +834,9 @@ async def run_strategy_sandbox(payload: RunSandboxPayload):
         if not success or df is None or df.empty:
             return {"status": "error", "message": f"回测数据加载失败: {msg}"}
 
-        # 回测引擎包含真正的 df 循环与计算逻辑，属于 CPU 密集型操作
-        # 必须使用 asyncio.to_thread 放入独立线程池，防止阻塞 FastAPI 网关的异步主事件循环  # noqa: E501
-        report = await asyncio.to_thread(
+        # 回测引擎包含真正的 df 循环与计算逻辑，属于 CPU 密集型操作 (ARCH-07)
+        # 卸载到独立进程池 (run_cpu_bound)，绕开 GIL 真并行，且不占用默认线程池
+        report = await run_cpu_bound(
             run_dynamic_sandbox_backtest,
             safe_code,
             payload.class_name,
@@ -981,7 +982,7 @@ async def optimize_strategy_sandbox(payload: OptimizeSandboxPayload):
         if not success or df is None or df.empty:
             return {"status": "error", "message": f"回测数据加载失败: {msg}"}
 
-        top_results = await asyncio.to_thread(
+        top_results = await run_cpu_bound(
             run_grid_search_backtest,
             safe_code,
             payload.class_name,
@@ -1031,7 +1032,7 @@ async def run_batch_strategy_sandbox(payload: BatchRunSandboxPayload):
                 "message": "获取选股池任何标的的历史回测数据均失败。",
             }  # noqa: E501
 
-        report = await asyncio.to_thread(
+        report = await run_cpu_bound(
             run_batch_sandbox_backtest,
             safe_code,
             payload.class_name,
@@ -1081,7 +1082,7 @@ async def monte_carlo_strategy_sandbox(payload: MonteCarloSandboxPayload):
             stock_features["market_cap"] = info_data.get("marketCap")
             stock_features["beta"] = info_data.get("beta")
 
-        summary = await asyncio.to_thread(
+        summary = await run_cpu_bound(
             run_monte_carlo_stress_test,
             safe_code,
             payload.class_name,
