@@ -338,8 +338,8 @@ class TestChatRoutes:
 
 
 class TestTradeRoutes:
-    @patch("backend.routers.trade.broker")
-    @patch("backend.routers.trade.redis_client")
+    @patch("backend.app.trade_app.broker")
+    @patch("backend.app.trade_app.redis_client")
     def test_get_portfolio(self, mock_redis, mock_futu):
         mock_futu.get_account_info = AsyncMock(return_value={"status": "success", "total_assets": 1000000})
         mock_redis.get = AsyncMock(return_value=None)
