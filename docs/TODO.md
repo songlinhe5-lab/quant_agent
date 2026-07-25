@@ -752,10 +752,10 @@ STATUS: PRODUCTION READY ✨
   - `GET /health/ready` → 依赖就绪（Redis + PG + 至少一个数据源连通，否则 503）
   - `GET /health/deep` → 全链路诊断（采集器心跳、WS 连接数、线程池使用率、事件循环 lag）
   - 原 `/api/v1/health` 重构为纯 liveness（始终 200，修复 §10.4 违规：此前 Redis 断开即 503）
-- [ ] **[ARCH-06]** 请求级超时与取消传播：
-  - 单 API 请求最大执行时间（screener 90s / market 30s / 默认 60s）
-  - 客户端断开后取消下游任务（`Request.is_disconnected()` 检查）
-  - SSE/长轮询心跳间隔 ≤15s（对齐 Cloudflare 100s 超时）
+- [x] **[ARCH-06]** 请求级超时与取消传播：✅ **2026-07-25** (`core/request_timeout.py` / `core/stream_utils.py` / `middleware/stack.py`)
+  - 单 API 请求最大执行时间（screener 90s / market 30s / 默认 60s，环境变量可覆盖）
+  - 客户端断开后取消下游任务（`Request.is_disconnected()` + 流式 `heartbeat_wrap` 级联取消；`/mcp/sse` 增加显式断开检测）
+  - SSE/长轮询心跳间隔 ≤15s（SSE 用 `: keep-alive`，NDJSON 用空行，对齐 Cloudflare 100s 超时）
 - [ ] **[ARCH-07]** `asyncio.to_thread` 使用分级（当前全项目 113 处）：
   - I/O 密集（文件读写、HTTP）→ 优先 `aiohttp`/`aiofiles` 纯异步
   - CPU 密集（指标计算、回测）→ `ProcessPoolExecutor`
