@@ -768,9 +768,9 @@ STATUS: PRODUCTION READY ✨
   - `services/screener/` ← 既往已拆分（screener_service.py 保留为兼容层），本次无改动
   - `services/macro/` ← fred + macro_calendar + sentiment 收口，包内 `__init__` 重导出公开符号
   - 验收：顶层不再保留 shim；全仓 `backend.services.risk/macro.<mod>` 规范路径；`test_be_arch02_app_boundary` allowlist 已同步；单测全绿
-- [ ] **[ARCH-09]** `app/` 编排层扩展（当前仅 5/31 Router 经 app/ 编排）：
-  - 优先补：screener_app / trade_app / macro_app / alert_app
-  - 修正 `docs/03` BE-ARCH-01 状态为「部分收口（21/31 Router）」
+- [x] **[ARCH-09]** `app/` 编排层扩展（已完成：screener_app / trade_app / macro_app / alert_app）：
+  - 优先补：screener_app / trade_app / macro_app / alert_app ✅ 2026-07-25
+  - 修正 `docs/03` BE-ARCH-01 状态为「部分收口（21/31 Router）」✅
 - [ ] **[ARCH-10]** Domain 层实体沉淀（当前仅 `ports.py` 2 个 Protocol）：
   - 随 BT-01 落地沉淀 `Strategy`、`Order` 领域对象
   - 随 ALERT-03 落地沉淀 `AlertRule` 领域对象
