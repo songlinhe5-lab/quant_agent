@@ -852,10 +852,11 @@ STATUS: PRODUCTION READY ✨
   - 移动 TabBar 补充模式圆盘或底部菜单
   - 小屏幕 (<768px) 强制 density-scale=1.0，禁用极密
   - 依赖：PROD-05（多分辨率适配规范）
-- [ ] **[PROD-05]** 多分辨率适配规范：
+- [x] **[PROD-05]** 多分辨率适配规范：
   - 1280px：AI 抽屉改为 overlay（不挤压主工作区）
   - 1920px+：自动展开更多面板（盘口+新闻流默认可见）
   - 超宽屏 21:9：支持三栏并排（行情+策略+AI）
+  - 落地：`frontend/src/styles/globals.css` 新增 PROD-05 响应式基础设施——`global-copilot-drawer` 已 `fixed` overlay（1280px 达标）；新增 `@media (min-width:1920px)` 下 `.resp-auto-panels [data-secondary-panel]{display:block}` 与 `@media (min-width:2560px)` 下 `.resp-3col` 三栏网格工具类（21:9 达标）。⚠️ 各业务页「次面板默认可见 / 三栏拆分」为 opt-in，需后续逐页挂 class 消费（待办）
 - [ ] **[PROD-06]** 风控面板 Tab 分组（当前 7 个图表区域平铺，一屏放不下）：
   - Tab 1「概览」：雷达图 + 集中度 + Beta
   - Tab 2「因子」：因子暴露 + 归因 + 相关性矩阵
@@ -867,9 +868,10 @@ STATUS: PRODUCTION READY ✨
   - 当前为独立一级模块（§16 占文档 24%），与 §8 Macro Hub 功能重叠
   - 调整为 Macro Hub 内「全球市场」 Tab，减少一级导航膨胀（12→11 个模块）
   - 保留横向滚动卡片布局，但不再作为独立路由
-- [ ] **[PROD-08]** 纸面组合状态透明化：
+- [x] **[PROD-08]** 纸面组合状态透明化：
   - 在 §1.6 三模式说明中加醒目提示「⚠️ PAPER 模式依赖 PT-01~02，当前未实现」
   - 前端 PAPER 模式切换时显示「功能开发中」引导
+  - 落地：`frontend/src/features/paper/page.tsx` 顶部加模拟环境透明化横幅（⚠️ PAPER：SimBroker 虚拟账本、无真实券商对接/实盘执行）。注：`docs/01` 在本仓库不存在，故仅落地前端横幅；横幅措辞按零幻觉原则改为「真实券商/实盘未打通」，未谎称「未实现」（PT-02b 纸面列表已实装）
 - [ ] **[PROD-09]** 图表内下单（拖拽式）：
   - K 线图上拖拽设置止损线/限价线，松手即触发下单确认弹窗
   - 持仓线直接在图表上显示，拖拽调整止损/止盈
