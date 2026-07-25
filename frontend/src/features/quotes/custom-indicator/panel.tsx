@@ -3,7 +3,7 @@
  * 列出用户指标、支持新增/编辑/删除/显隐，并实时做语法校验与结果预览。
  */
 import { useState, useEffect } from 'react'
-import { Plus, Pencil, Trash2, Eye, EyeOff, X, HelpCircle, Sigma, Activity } from 'lucide-react'
+import { Plus, Pencil, Trash2, Eye, EyeOff, X, HelpCircle, Sigma, Activity, Download } from 'lucide-react'
 import { useCustomIndicatorStore, type CustomIndicator } from './store'
 import { validate, evaluate, runSignalBacktest, type CIBar, type SignalBacktestResult } from './engine'
 
@@ -27,6 +27,22 @@ export function CustomIndicatorPanel({
   bars: CIBar[]
 }) {
   const { indicators, signalLog, add, update, remove, toggle, clearSignals } = useCustomIndicatorStore()
+
+  // 💡 PROD-11 追问：导出信号触发日志为复盘 CSV（导出全量，非仅展示的 12 条）
+  const handleExportCSV = () => {
+    if (signalLog.length === 0) return
+    const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`
+    const header = ['指标ID', '指标名称', '表达式', '触发日期', '触发时间']
+    const rows = signalLog.map((s) => [s.indId, s.indName, s.expr, s.time, new Date(s.ts).toLocaleString()].map(esc).join(','))
+    const csv = '﻿' + [header.join(','), ...rows].join('\r\n') // BOM 保证 Excel 中文不乱码
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `signal-log-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
   const [editing, setEditing] = useState<CustomIndicator | null>(null)
   const [name, setName] = useState('')
   const [expr, setExpr] = useState('')
@@ -131,7 +147,12 @@ export function CustomIndicatorPanel({
           <div className="space-y-1 rounded-md border border-border/40 bg-muted/20 p-2">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-medium text-foreground">信号触发日志</span>
-              <button onClick={clearSignals} className="text-[9px] text-muted-foreground hover:text-red-400">清空</button>
+              <div className="flex items-center gap-2">
+                <button onClick={handleExportCSV} title="导出复盘 CSV" className="flex items-center gap-0.5 text-[9px] text-muted-foreground hover:text-emerald-400">
+                  <Download className="h-3 w-3" />导出
+                </button>
+                <button onClick={clearSignals} className="text-[9px] text-muted-foreground hover:text-red-400">清空</button>
+              </div>
             </div>
             {signalLog.slice(0, 12).map((s, i) => (
               <div key={i} className="flex items-center gap-1.5 text-[9px]">
