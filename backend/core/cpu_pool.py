@@ -43,6 +43,22 @@ _cpu_pool_enabled = os.getenv("QUANT_CPU_POOL_ENABLED", "1").lower() not in (
 )
 
 
+def _resolve_max_workers() -> int:
+    """解析进程池上限，避免多 worker 部署下的进程爆炸 (ARCH-07 追问 2)。
+
+    - 显式 ``QUANT_CPU_POOL_MAX_WORKERS`` 优先；
+    - 否则在 gunicorn/uvicorn ``--workers N`` 部署下，按 worker 数均分逻辑核，
+      保证 ``uvicorn_workers × pool_workers ≲ cpu_count``，杜绝 CPU oversubscription；
+    - 单 worker 场景也封顶 4，避免无谓的进程开销。
+    """
+    env_max = os.getenv("QUANT_CPU_POOL_MAX_WORKERS")
+    if env_max and env_max.isdigit():
+        return max(1, int(env_max))
+    cpu = os.cpu_count() or 2
+    siblings = int(os.getenv("WEB_CONCURRENCY") or os.getenv("UVICORN_WORKERS") or "1")
+    return max(1, min(cpu // max(siblings, 1), 4))
+
+
 def _ensure_cpu_executor() -> "ProcessPoolExecutor | None":
     """懒初始化进程池；失败或无可用环境时返回 None（调用方回退线程）。"""
     global _cpu_executor
@@ -54,7 +70,7 @@ def _ensure_cpu_executor() -> "ProcessPoolExecutor | None":
 
             ctx = mp.get_context("fork") if hasattr(mp, "get_context") and os.name != "nt" else None
             _cpu_executor = ProcessPoolExecutor(
-                max_workers=os.cpu_count() or 2,
+                max_workers=_resolve_max_workers(),
                 mp_context=ctx,
             )
         except Exception:  # pragma: no cover - 受限环境退化为线程
