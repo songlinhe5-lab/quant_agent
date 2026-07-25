@@ -26,11 +26,12 @@ export function CustomIndicatorPanel({
   onClose: () => void
   bars: CIBar[]
 }) {
-  const { indicators, add, update, remove, toggle } = useCustomIndicatorStore()
+  const { indicators, signalLog, add, update, remove, toggle, clearSignals } = useCustomIndicatorStore()
   const [editing, setEditing] = useState<CustomIndicator | null>(null)
   const [name, setName] = useState('')
   const [expr, setExpr] = useState('')
   const [color, setColor] = useState('#a855f7')
+  const [pane, setPane] = useState<'overlay' | 'separate' | 'auto'>('auto')
   const [showHelp, setShowHelp] = useState(false)
 
   useEffect(() => {
@@ -38,6 +39,7 @@ export function CustomIndicatorPanel({
       setName(editing.name)
       setExpr(editing.expr)
       setColor(editing.color)
+      setPane(editing.pane ?? 'auto')
     }
   }, [editing])
 
@@ -48,8 +50,9 @@ export function CustomIndicatorPanel({
   const save = () => {
     if (!name.trim() || !expr.trim()) return
     if (!validate(expr).ok) return
-    if (editing && editing.id) update(editing.id, { name: name.trim(), expr: expr.trim(), color })
-    else add({ name: name.trim(), expr: expr.trim(), color, visible: true })
+    const finalPane = pane === 'auto' ? undefined : pane
+    if (editing && editing.id) update(editing.id, { name: name.trim(), expr: expr.trim(), color, pane: finalPane })
+    else add({ name: name.trim(), expr: expr.trim(), color, visible: true, pane: finalPane })
     setEditing(null)
   }
 
@@ -106,6 +109,7 @@ export function CustomIndicatorPanel({
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[11px] font-medium text-foreground">{ind.name}</div>
                 <div className="truncate font-mono text-[9px] text-muted-foreground">{ind.expr}</div>
+                <div className="text-[9px] text-slate-500">叠加: {ind.pane === 'separate' ? '独立副图' : ind.pane === 'overlay' ? '主图' : '自动'}</div>
               </div>
               <button onClick={() => toggle(ind.id)} title={ind.visible ? '隐藏' : '显示'} className="p-1 rounded hover:bg-muted/60 text-muted-foreground">
                 {ind.visible ? <Eye className="h-3 w-3 text-emerald-400" /> : <EyeOff className="h-3 w-3" />}
@@ -117,7 +121,23 @@ export function CustomIndicatorPanel({
                 <Trash2 className="h-3 w-3" />
               </button>
             </div>
-          ))}
+          )        )}
+
+        {!editing && signalLog.length > 0 && (
+          <div className="space-y-1 rounded-md border border-border/40 bg-muted/20 p-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-medium text-foreground">信号触发日志</span>
+              <button onClick={clearSignals} className="text-[9px] text-muted-foreground hover:text-red-400">清空</button>
+            </div>
+            {signalLog.slice(0, 12).map((s, i) => (
+              <div key={i} className="flex items-center gap-1.5 text-[9px]">
+                <span className="text-slate-500 font-mono shrink-0">{s.time}</span>
+                <span className="truncate flex-1 text-foreground">{s.indName}</span>
+                <span className="font-mono text-muted-foreground truncate max-w-[120px]">{s.expr}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {!editing && (
           <button
@@ -160,6 +180,18 @@ export function CustomIndicatorPanel({
                 />
               ))}
               <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="ml-auto h-5 w-6 cursor-pointer rounded border border-border/50 bg-transparent" />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-muted-foreground">叠加</span>
+              {(['auto', 'overlay', 'separate'] as const).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPane(p)}
+                  className={`rounded px-1.5 py-0.5 text-[10px] border ${pane === p ? 'border-primary text-primary bg-primary/10' : 'border-border/50 text-muted-foreground'}`}
+                >
+                  {p === 'auto' ? '自动' : p === 'overlay' ? '主图' : '副图'}
+                </button>
+              ))}
             </div>
 
             {expr.trim() && !v.ok && (

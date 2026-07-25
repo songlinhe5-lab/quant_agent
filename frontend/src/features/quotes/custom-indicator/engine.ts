@@ -513,3 +513,28 @@ export function validate(expr: string): { ok: boolean; error?: string } {
     return { ok: false, error: e?.message ?? String(e) }
   }
 }
+
+/**
+ * 建议叠加方式：振荡类指标（RSI/KDJ/MACD/BB）值域有限或含负值，
+ * 叠加到主图会严重扭曲价格尺度，建议置于独立副图；其余（均线等价格级）随主图。
+ */
+const OSC_TOKENS = ['KDJ', 'MACD', 'BB', 'RSI']
+export function suggestPane(expr: string): 'overlay' | 'separate' {
+  const up = expr.toUpperCase()
+  return OSC_TOKENS.some((t) => up.includes(t)) ? 'separate' : 'overlay'
+}
+
+/**
+ * 收集布尔表达式的所有「上穿跳变」触发点（prev != 1 且 cur == 1）。
+ * 供信号日志展示与回测引擎做条件触发扫描。
+ */
+export function collectBoolSignals(expr: string, bars: CIBar[]): { ok: boolean; times: string[]; error?: string } {
+  const r = evaluate(expr, bars)
+  if (!r.ok) return { ok: false, times: [], error: r.error }
+  if (!r.isBool) return { ok: true, times: [] }
+  const times: string[] = []
+  for (let i = 1; i < r.values.length; i++) {
+    if (r.values[i] === 1 && r.values[i - 1] !== 1) times.push(bars[i].time)
+  }
+  return { ok: true, times }
+}

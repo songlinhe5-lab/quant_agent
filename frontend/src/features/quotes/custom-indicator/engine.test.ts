@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { evaluate, validate, type CIBar } from './engine'
+import { evaluate, validate, suggestPane, collectBoolSignals, type CIBar } from './engine'
 
 function makeBars(n: number): CIBar[] {
   const bars: CIBar[] = []
@@ -71,5 +71,34 @@ describe('custom indicator engine', () => {
     const r = evaluate('(CLOSE - OPEN) * 2', bars)
     expect(r.ok).toBe(true)
     expect(r.values[5]).toBeCloseTo((bars[5].close - bars[5].open) * 2, 5)
+  })
+
+  it('suggestPane 对振荡器建议副图、对价格级建议主图', () => {
+    expect(suggestPane('RSI(14)')).toBe('separate')
+    expect(suggestPane('KDJ.K')).toBe('separate')
+    expect(suggestPane('MACD.HIST')).toBe('separate')
+    expect(suggestPane('MA(CLOSE,5)')).toBe('overlay')
+    expect(suggestPane('CLOSE > 100')).toBe('overlay')
+  })
+
+  it('collectBoolSignals 收集上穿跳变点', () => {
+    const r = collectBoolSignals('CLOSE > 110', bars)
+    expect(r.ok).toBe(true)
+    expect(r.times.length).toBeGreaterThanOrEqual(1)
+    for (const t of r.times) {
+      const bar = bars.find((b) => b.time === t)
+      expect(bar).toBeTruthy()
+      expect((bar as CIBar).close).toBeGreaterThan(110)
+    }
+  })
+
+  it('collectBoolSignals 对数值表达式返回空', () => {
+    expect(collectBoolSignals('RSI(14)', bars).times.length).toBe(0)
+  })
+
+  it('collectBoolSignals 语法错误返回 ok:false', () => {
+    const r = collectBoolSignals('RSI(14', bars)
+    expect(r.ok).toBe(false)
+    expect(r.times.length).toBe(0)
   })
 })

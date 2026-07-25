@@ -14,7 +14,7 @@ import { useChartAnnotationStore } from '@/stores/useChartAnnotationStore'
 import type { ChartAnnotationPayload } from '@/features/copilot/types'
 import { useTradeStore, type OrderSide } from '@/stores/useTradeStore'
 import { OrderConfirmModal } from './order-confirm-modal'
-import { evaluate, type CIBar } from './custom-indicator/engine'
+import { evaluate, suggestPane, type CIBar } from './custom-indicator/engine'
 import { useCustomIndicatorStore } from './custom-indicator/store'
 import { CustomIndicatorPanel } from './custom-indicator/panel'
 
@@ -237,6 +237,8 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
   const customMarkersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
   const customLineRefs = useRef<Record<string, ISeriesApi<'Line'>>>({})
   const currentBarsRef = useRef<CIBar[]>([])
+  // 记录每个布尔指标已登记的「末根上穿」触发日，避免重复推入信号日志
+  const ciSignalStateRef = useRef<Record<string, string>>({})
 
   const applyCustomIndicators = useCallback((bars: CIBar[]) => {
     const chart = chartRef.current
@@ -257,8 +259,29 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
             markers.push({ time: t, position: 'aboveBar', color: ind.color, shape: 'circle', text: ind.name })
           }
         }
+        // 末根 K 线上穿（0->1 跳变）记入信号日志，供提醒/回测消费
+        let lastFlip = -1
+        for (let i = 1; i < r.values.length; i++) {
+          if (r.values[i] === 1 && r.values[i - 1] !== 1) lastFlip = i
+        }
+        if (lastFlip === r.values.length - 1) {
+          const t = bars[lastFlip].time
+          if (ciSignalStateRef.current[ind.id] !== t) {
+            ciSignalStateRef.current[ind.id] = t
+            useCustomIndicatorStore.getState().pushSignal({ indId: ind.id, indName: ind.name, expr: ind.expr, time: t, ts: Date.now() })
+          }
+        }
       } else {
-        const line = chart.addSeries(LineSeries, { color: ind.color, lineWidth: 1, priceScaleId: 'right', crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false })
+        const pane = ind.pane ?? suggestPane(ind.expr)
+        const psId = pane === 'separate' ? 'ci-separate' : 'right'
+        const line = chart.addSeries(LineSeries, {
+          color: ind.color, lineWidth: 1,
+          priceScaleId: psId,
+          crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false,
+        })
+        if (pane === 'separate') {
+          chart.priceScale(psId).applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } })
+        }
         const data: { time: UTCTimestamp; value: number }[] = []
         for (let i = 0; i < r.values.length; i++) {
           const v = r.values[i]
