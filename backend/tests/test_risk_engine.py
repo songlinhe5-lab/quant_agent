@@ -20,7 +20,7 @@ class TestRiskEngine:
 
     def test_risk_engine_singleton(self):
         """RiskEngine 单例模式"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine1 = RiskEngine()
         engine2 = RiskEngine()
@@ -28,7 +28,7 @@ class TestRiskEngine:
 
     def test_calc_kpi(self):
         """KPI 计算"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
         positions = [
@@ -53,7 +53,7 @@ class TestRiskEngine:
 
     def test_calc_kpi_usd_currency(self):
         """USD 货币符号"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
         result = engine._calc_kpi(100000.0, 50000.0, 50000.0, [], "USD")
@@ -63,7 +63,7 @@ class TestRiskEngine:
 
     def test_calc_kpi_zero_assets(self):
         """零资产时杠杆为 0"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
         result = engine._calc_kpi(0.0, 0.0, 0.0, [])
@@ -73,7 +73,7 @@ class TestRiskEngine:
 
     def test_calc_exposure(self):
         """敞口分布计算"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
         positions = [
@@ -101,7 +101,7 @@ class TestRiskEngine:
 
     def test_calc_exposure_zero_assets(self):
         """零资产时敞口百分比为 0"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
         result = engine._calc_exposure(0.0, 0.0, 0.0, [])
@@ -110,7 +110,7 @@ class TestRiskEngine:
 
     def test_calc_max_dd_from_snapshots(self):
         """最大回撤计算"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
         snapshots = [
@@ -129,7 +129,7 @@ class TestRiskEngine:
 
     def test_calc_max_dd_from_snapshots_empty(self):
         """空快照返回 0"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
         result = engine._calc_max_dd_from_snapshots([])
@@ -137,7 +137,7 @@ class TestRiskEngine:
 
     def test_calc_max_dd_from_snapshots_single(self):
         """单条快照返回 0"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
         result = engine._calc_max_dd_from_snapshots([{"ts": 1, "nav": 100.0}])
@@ -145,7 +145,7 @@ class TestRiskEngine:
 
     def test_calc_max_dd_no_drawdown(self):
         """无回撤时为 0"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
         snapshots = [
@@ -159,7 +159,7 @@ class TestRiskEngine:
 
     def test_build_risk_radar(self):
         """六维风险雷达构建"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
         metrics = {"beta": 0.85, "vol": 0.25, "var_95": -0.02, "sharpe": 1.2}
@@ -179,7 +179,7 @@ class TestRiskEngine:
 
     def test_build_risk_factors(self):
         """因子监控构建"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
         metrics = {"beta": 0.85, "var_95": -0.02, "sharpe": 1.8}
@@ -208,7 +208,7 @@ class TestRiskEngine:
 
     def test_build_risk_factors_warn_status(self):
         """因子监控 warn 状态"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
         metrics = {"beta": 1.2, "var_95": -0.25, "sharpe": 1.2}
@@ -226,7 +226,7 @@ class TestRiskEngine:
 
     def test_build_risk_factors_crit_status(self):
         """因子监控 crit 状态"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
         metrics = {"beta": 1.5, "var_95": -0.5, "sharpe": 0.5}
@@ -244,7 +244,7 @@ class TestRiskEngine:
 
     def test_fallback_data(self):
         """降级数据格式"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
         result = engine._fallback_data("测试降级")
@@ -258,10 +258,10 @@ class TestRiskEngine:
         assert result["positions"] == []
         assert "ts" in result
 
-    @patch("backend.services.risk_engine.redis_client")
+    @patch("backend.services.risk.risk_engine.redis_client")
     def test_get_portfolio_risk_cached(self, mock_redis):
         """缓存命中时直接返回"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         cached_data = {"status": "success", "accounts": {"HK": {}}}
         mock_redis.get = AsyncMock(return_value=json.dumps(cached_data))
@@ -273,11 +273,11 @@ class TestRiskEngine:
         assert result["status"] == "success"
         assert "HK" in result["accounts"]
 
-    @patch("backend.services.risk_engine.futu_service")
-    @patch("backend.services.risk_engine.redis_client")
+    @patch("backend.services.risk.risk_engine.futu_service")
+    @patch("backend.services.risk.risk_engine.redis_client")
     def test_get_portfolio_risk_both_fail(self, mock_redis, mock_futu):
         """两个市场都失败时返回降级数据"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         mock_redis.get = AsyncMock(return_value=None)
         mock_futu.get_account_info = AsyncMock(return_value={"status": "error", "message": "Connection failed"})
@@ -289,10 +289,10 @@ class TestRiskEngine:
         assert result["status"] == "empty"
         assert "均获取失败" in result["message"]
 
-    @patch("backend.services.risk_engine.redis_client")
+    @patch("backend.services.risk.risk_engine.redis_client")
     def test_get_nav_snapshots_redis(self, mock_redis):
         """days=1 时从 Redis 读取"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         snapshots = [
             json.dumps({"ts": 1719500000.0, "nav": 100000.0}),
@@ -308,10 +308,10 @@ class TestRiskEngine:
         assert result[0]["nav"] == 100000.0
         assert result[1]["nav"] == 100500.0
 
-    @patch("backend.services.risk_engine.redis_client")
+    @patch("backend.services.risk.risk_engine.redis_client")
     def test_get_nav_snapshots_redis_empty(self, mock_redis):
         """Redis 无数据时返回空列表"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         mock_redis.lrange = AsyncMock(return_value=[])
 
@@ -320,10 +320,10 @@ class TestRiskEngine:
         result = asyncio.run(engine._get_nav_snapshots("HK", days=1))
         assert result == []
 
-    @patch("backend.services.risk_engine.redis_client")
+    @patch("backend.services.risk.risk_engine.redis_client")
     def test_calc_risk_metrics_empty_positions(self, mock_redis):
         """空持仓时返回零值"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
 

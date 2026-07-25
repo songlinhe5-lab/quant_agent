@@ -78,7 +78,7 @@ async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = Fals
                 return json.loads(cached_data)
 
         try:
-            from backend.services.macro_calendar_service import macro_calendar_aggregator
+            from backend.services.macro.macro_calendar_service import macro_calendar_aggregator
 
             agg = await macro_calendar_aggregator.aggregate(days_ahead, days_back=days_back, skip_cache=force_refresh)
             events = agg.get("data", [])

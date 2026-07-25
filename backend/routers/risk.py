@@ -9,12 +9,12 @@ from pydantic import BaseModel
 
 from backend.core.logger import logger
 from backend.services.kline_warehouse import kline_warehouse
-from backend.services.risk_attribution import calc_attribution
-from backend.services.risk_cvar import decompose_cvar
-from backend.services.risk_engine import risk_engine
-from backend.services.risk_liquidity import liquidity_assessor
-from backend.services.risk_sector import sector_analyzer
-from backend.services.risk_stress import stress_tester
+from backend.services.risk.risk_attribution import calc_attribution
+from backend.services.risk.risk_cvar import decompose_cvar
+from backend.services.risk.risk_engine import risk_engine
+from backend.services.risk.risk_liquidity import liquidity_assessor
+from backend.services.risk.risk_sector import sector_analyzer
+from backend.services.risk.risk_stress import stress_tester
 
 router = APIRouter(prefix="/risk", tags=["Risk"])
 

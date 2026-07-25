@@ -50,8 +50,8 @@ async def main():
 
     # 3. 后台服务任务 (数据节点不需要 DB 依赖的核心服务)
     if not IS_DATA_NODE:
+        from backend.services.macro.sentiment_tracker import sentiment_tracker
         from backend.services.screener_service import screener_service
-        from backend.services.sentiment_tracker import sentiment_tracker
 
         tasks.append(asyncio.create_task(ticker_service.sync_tickers_daemon()))
         tasks.append(asyncio.create_task(sentiment_tracker.track_daemon()))

@@ -14,7 +14,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 
-from backend.services.sentiment_tracker import SentimentTracker, sentiment_tracker
+from backend.services.macro.sentiment_tracker import SentimentTracker, sentiment_tracker
 
 
 def _cancel_after_sleep(counts: dict, target: int):
@@ -39,9 +39,9 @@ class TestSentimentTracker:
         """分布式锁未获取时应跳过本次迭代，进入下一轮"""
         sleep_counts = {"n": 0}
         with (
-            patch("backend.services.sentiment_tracker.redis_client.set", new=AsyncMock(return_value=False)),
+            patch("backend.services.macro.sentiment_tracker.redis_client.set", new=AsyncMock(return_value=False)),
             patch(
-                "backend.services.sentiment_tracker.asyncio.sleep",
+                "backend.services.macro.sentiment_tracker.asyncio.sleep",
                 new=AsyncMock(side_effect=_cancel_after_sleep(sleep_counts, 2)),
             ),
         ):
@@ -70,14 +70,16 @@ class TestSentimentTracker:
             return None
 
         with (
-            patch("backend.services.sentiment_tracker.redis_client.set", new=AsyncMock(return_value=True)),
-            patch("backend.services.sentiment_tracker.redis_client.get", new=AsyncMock(side_effect=fake_get)),
-            patch("backend.services.sentiment_tracker.SessionLocal", return_value=mock_session_ctx),
+            patch("backend.services.macro.sentiment_tracker.redis_client.set", new=AsyncMock(return_value=True)),
+            patch("backend.services.macro.sentiment_tracker.redis_client.get", new=AsyncMock(side_effect=fake_get)),
+            patch("backend.services.macro.sentiment_tracker.SessionLocal", return_value=mock_session_ctx),
             patch(
-                "backend.services.sentiment_tracker.asyncio.sleep",
+                "backend.services.macro.sentiment_tracker.asyncio.sleep",
                 new=AsyncMock(side_effect=_cancel_after_sleep(sleep_counts, 2)),
             ),
-            patch("backend.services.sentiment_tracker.asyncio.to_thread", new=AsyncMock(side_effect=lambda fn: fn())),
+            patch(
+                "backend.services.macro.sentiment_tracker.asyncio.to_thread", new=AsyncMock(side_effect=lambda fn: fn())
+            ),
         ):
             with pytest.raises(asyncio.CancelledError):
                 await tracker.track_daemon()
@@ -103,14 +105,16 @@ class TestSentimentTracker:
             return None
 
         with (
-            patch("backend.services.sentiment_tracker.redis_client.set", new=AsyncMock(return_value=True)),
-            patch("backend.services.sentiment_tracker.redis_client.get", new=AsyncMock(side_effect=fake_get)),
-            patch("backend.services.sentiment_tracker.SessionLocal", return_value=mock_session_ctx),
+            patch("backend.services.macro.sentiment_tracker.redis_client.set", new=AsyncMock(return_value=True)),
+            patch("backend.services.macro.sentiment_tracker.redis_client.get", new=AsyncMock(side_effect=fake_get)),
+            patch("backend.services.macro.sentiment_tracker.SessionLocal", return_value=mock_session_ctx),
             patch(
-                "backend.services.sentiment_tracker.asyncio.sleep",
+                "backend.services.macro.sentiment_tracker.asyncio.sleep",
                 new=AsyncMock(side_effect=_cancel_after_sleep(sleep_counts, 2)),
             ),
-            patch("backend.services.sentiment_tracker.asyncio.to_thread", new=AsyncMock(side_effect=lambda fn: fn())),
+            patch(
+                "backend.services.macro.sentiment_tracker.asyncio.to_thread", new=AsyncMock(side_effect=lambda fn: fn())
+            ),
         ):
             with pytest.raises(asyncio.CancelledError):
                 await tracker.track_daemon()
@@ -140,14 +144,16 @@ class TestSentimentTracker:
             return None
 
         with (
-            patch("backend.services.sentiment_tracker.redis_client.set", new=AsyncMock(return_value=True)),
-            patch("backend.services.sentiment_tracker.redis_client.get", new=AsyncMock(side_effect=fake_get)),
-            patch("backend.services.sentiment_tracker.SessionLocal", return_value=mock_session_ctx),
+            patch("backend.services.macro.sentiment_tracker.redis_client.set", new=AsyncMock(return_value=True)),
+            patch("backend.services.macro.sentiment_tracker.redis_client.get", new=AsyncMock(side_effect=fake_get)),
+            patch("backend.services.macro.sentiment_tracker.SessionLocal", return_value=mock_session_ctx),
             patch(
-                "backend.services.sentiment_tracker.asyncio.sleep",
+                "backend.services.macro.sentiment_tracker.asyncio.sleep",
                 new=AsyncMock(side_effect=_cancel_after_sleep(sleep_counts, 2)),
             ),
-            patch("backend.services.sentiment_tracker.asyncio.to_thread", new=AsyncMock(side_effect=lambda fn: fn())),
+            patch(
+                "backend.services.macro.sentiment_tracker.asyncio.to_thread", new=AsyncMock(side_effect=lambda fn: fn())
+            ),
         ):
             with pytest.raises(asyncio.CancelledError):
                 await tracker.track_daemon()
@@ -164,14 +170,16 @@ class TestSentimentTracker:
             return None
 
         with (
-            patch("backend.services.sentiment_tracker.redis_client.set", new=AsyncMock(return_value=True)),
-            patch("backend.services.sentiment_tracker.redis_client.get", new=AsyncMock(side_effect=fake_get)),
-            patch("backend.services.sentiment_tracker.SessionLocal", side_effect=RuntimeError("db down")),
+            patch("backend.services.macro.sentiment_tracker.redis_client.set", new=AsyncMock(return_value=True)),
+            patch("backend.services.macro.sentiment_tracker.redis_client.get", new=AsyncMock(side_effect=fake_get)),
+            patch("backend.services.macro.sentiment_tracker.SessionLocal", side_effect=RuntimeError("db down")),
             patch(
-                "backend.services.sentiment_tracker.asyncio.sleep",
+                "backend.services.macro.sentiment_tracker.asyncio.sleep",
                 new=AsyncMock(side_effect=_cancel_after_sleep(sleep_counts, 2)),
             ),
-            patch("backend.services.sentiment_tracker.asyncio.to_thread", new=AsyncMock(side_effect=lambda fn: fn())),
+            patch(
+                "backend.services.macro.sentiment_tracker.asyncio.to_thread", new=AsyncMock(side_effect=lambda fn: fn())
+            ),
         ):
             with pytest.raises(asyncio.CancelledError):
                 await tracker.track_daemon()

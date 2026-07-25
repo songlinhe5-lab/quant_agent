@@ -109,7 +109,7 @@ class TestMarketDaemon:
             patch(f"{DM}.asyncio.sleep", new=_make_cancelling_sleep(1)),
             patch.object(service, "get_market_news", new=AsyncMock(return_value={"status": "success", "data": news})),
             patch(f"{DM}.redis_client") as m_r,
-            patch("backend.services.sentiment_service.sentiment_service") as m_s,
+            patch("backend.services.macro.sentiment_service.sentiment_service") as m_s,
             patch(f"{DM}._get_news_tags_rules", new=AsyncMock(return_value={"FED": r"\bfed\b"})),
         ):
             m_r.set = AsyncMock(return_value=True)
@@ -156,7 +156,7 @@ class TestMarketDaemon:
         with (
             patch(f"{DM}.asyncio.sleep", new=_make_cancelling_sleep(1)),
             patch("backend.services.akshare_service.akshare_service") as m_ak,
-            patch("backend.services.fred_service.fred_service") as m_fr,
+            patch("backend.services.macro.fred_service.fred_service") as m_fr,
         ):
             m_ak.get_economic_calendar_ak = AsyncMock(return_value={"status": "error"})
             m_fr.get_economic_calendar = AsyncMock(return_value={"status": "error"})

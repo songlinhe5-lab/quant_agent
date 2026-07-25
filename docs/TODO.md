@@ -763,10 +763,11 @@ STATUS: PRODUCTION READY ✨
 
 #### P2 — 架构债渐进收口
 
-- [ ] **[ARCH-08]** `services/` 按领域分子目录（参照 `services/futu/` 成功模式）：
-  - `services/risk/` ← 6 个 risk_*.py 合并
-  - `services/screener/` ← 拆分 1838 行巨石（query_handler / dsl_parser / cache_manager / export_handler）
-  - `services/macro/` ← fred + macro_calendar + sentiment
+- [x] **[ARCH-08]** `services/` 按领域分子目录（参照 `services/futu/` 成功模式）：
+  - `services/risk/` ← 6 个 risk_*.py 收口（risk_attribution/cvar/engine/liquidity/sector/stress），包内 `__init__` 重导出公开符号
+  - `services/screener/` ← 既往已拆分（screener_service.py 保留为兼容层），本次无改动
+  - `services/macro/` ← fred + macro_calendar + sentiment 收口，包内 `__init__` 重导出公开符号
+  - 验收：顶层不再保留 shim；全仓 `backend.services.risk/macro.<mod>` 规范路径；`test_be_arch02_app_boundary` allowlist 已同步；单测全绿
 - [ ] **[ARCH-09]** `app/` 编排层扩展（当前仅 5/31 Router 经 app/ 编排）：
   - 优先补：screener_app / trade_app / macro_app / alert_app
   - 修正 `docs/03` BE-ARCH-01 状态为「部分收口（21/31 Router）」

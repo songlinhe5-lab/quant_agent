@@ -149,7 +149,7 @@ async def _earnings_alert_daemon(finnhub_service):
 # ==========================================
 async def _news_stream_daemon(finnhub_service) -> None:
     """后台守护进程：通过 Finnhub HTTP 接口准实时轮询市场新闻并推送到 Redis ZSET 与 Pub/Sub"""
-    from backend.services.sentiment_service import sentiment_service
+    from backend.services.macro.sentiment_service import sentiment_service
 
     print("🚀 [Finnhub Daemon] 启动市场新闻轮询守护进程 (HTTP -> ZSET + Pub/Sub)...")
     api_key = finnhub_service._get_api_key()
@@ -397,7 +397,7 @@ async def _macro_alert_daemon() -> None:
 
             res = await data_source_router.fetch_akshare("economic_calendar", days_ahead=1)
             if res.get("status") == "error" or not res.get("data"):
-                from backend.services.fred_service import fred_service
+                from backend.services.macro.fred_service import fred_service
 
                 res = await fred_service.get_economic_calendar(days_ahead=1)
 

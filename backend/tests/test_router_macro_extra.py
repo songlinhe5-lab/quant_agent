@@ -204,7 +204,7 @@ class TestFallbackMockMacro:
 class TestFetchMacroCalendarInternal:
     @pytest.mark.asyncio
     @patch("backend.routers.macro.redis_client")
-    @patch("backend.services.macro_calendar_service.macro_calendar_aggregator")
+    @patch("backend.services.macro.macro_calendar_service.macro_calendar_aggregator")
     @patch("backend.routers.macro.llm_service")
     async def test_calendar_with_ai_deduction_cache(self, mock_llm, mock_agg, mock_redis):
         """AI 推演缓存命中"""
@@ -235,7 +235,7 @@ class TestFetchMacroCalendarInternal:
 
     @pytest.mark.asyncio
     @patch("backend.routers.macro.redis_client")
-    @patch("backend.services.macro_calendar_service.macro_calendar_aggregator")
+    @patch("backend.services.macro.macro_calendar_service.macro_calendar_aggregator")
     async def test_calendar_empty_events_fallback(self, mock_agg, mock_redis):
         """聚合器无数据时使用 mock"""
         from backend.routers.macro import _fetch_macro_calendar_data

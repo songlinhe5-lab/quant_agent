@@ -16,9 +16,9 @@ from backend.core.database import AsyncSessionLocal, SessionLocal, async_engine,
 from backend.core.logger import logger
 from backend.core.redis_client import redis_client
 from backend.core.security import get_password_hash
-from backend.services.fred_service import fred_service
 from backend.services.futu_service import futu_service
 from backend.services.llm_service import llm_service
+from backend.services.macro.fred_service import fred_service
 from backend.services.market_engine import manager
 from backend.services.notification_service import notification_service
 from backend.services.system_monitor_service import system_monitor_service

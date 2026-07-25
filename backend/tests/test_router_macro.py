@@ -46,7 +46,7 @@ class TestMacroCalendar:
         """聚合器正常返回:高危关键词识别 + AI 推演 + 多源贡献透传"""
         with (
             patch("backend.routers.macro.redis_client") as m_redis,
-            patch("backend.services.macro_calendar_service.macro_calendar_aggregator") as m_agg,
+            patch("backend.services.macro.macro_calendar_service.macro_calendar_aggregator") as m_agg,
             patch("backend.routers.macro.llm_service") as m_llm,
         ):
             m_redis.get = AsyncMock(return_value=None)
@@ -91,7 +91,7 @@ class TestMacroCalendar:
         """聚合器无数据:降级返回离线 Mock (status=warning, HTTP 200)"""
         with (
             patch("backend.routers.macro.redis_client") as m_redis,
-            patch("backend.services.macro_calendar_service.macro_calendar_aggregator") as m_agg,
+            patch("backend.services.macro.macro_calendar_service.macro_calendar_aggregator") as m_agg,
         ):
             m_redis.get = AsyncMock(return_value=None)
             m_redis.set = AsyncMock(return_value=True)
