@@ -84,11 +84,10 @@ async def api_translate(req: ScreenerTranslateRequest):
 
 
 @router.post("/run")
-async def api_run_screener(
-    req: ScreenerRequest,
-    current_user: models.User = Depends(get_current_user),
-):
-    return await run_screener(req, current_user=current_user)
+async def api_run_screener(req: ScreenerRequest):
+    # 注意: /run 为公开选股查询端点 (ARCH-09 前即无鉴权)，app 层
+    # run_screener(req) 不接收 current_user，禁止在此加 Depends(get_current_user)。
+    return await run_screener(req)
 
 
 @router.get("/history")
