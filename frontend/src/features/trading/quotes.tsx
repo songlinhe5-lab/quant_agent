@@ -80,7 +80,7 @@ export function QuotesModule() {
   useEffect(() => { setMounted(true) }, [])
 
   // PROD-04a: 盯盘模式专属布局（K线全屏 + 盘口悬浮 + 异动高对比）
-  const sceneMode = useSceneModeStore((s) => s.sceneMode)
+  const sceneMode = useSceneModeStore((s) => s.mode)
   const isWatchScene = sceneMode === 'watch'
 
   // 💡 监听 Zustand 全局 ticker 变化（navbar 搜索跳转）

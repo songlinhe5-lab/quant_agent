@@ -825,7 +825,7 @@ STATUS: PRODUCTION READY ✨
   - 盘口异动 > 2% 时高对比闪烁动画
   - 强调色 `hsl(var(--scene-accent))` 应用于异动 UI
   - 依赖：无（可立即开始）
-- [ ] **[PROD-04b]** AI 分析模式快捷指令栏与上下文感知
+- [x] **[PROD-04b]** AI 分析模式快捷指令栏与上下文感知`fullscreen-copilot.tsx` 新增快捷指令栏（🌤️今日早报 / ⚖️对比分析 / 📡期权链 / 🌐宏观雷达 / 📋查询自选），点击经 `handleSend` 发起指令并显式要求调用 Hermes 工具生成内联图表/数据卡片；ticker 类指令自动从 `useMarketStore.currentTicker` 注入当前聚焦标的；进入 AI 模式时 `useEffect` 将全局 currentTicker 写入 `useCopilotContextStore` 实现跨模式 ticker 携带；顶栏 Brain / 会话按钮 / 指令栏统一改用 PROD-04c 的 `scene` 强调色与 `scene-accent-transition`。另修复 PROD-04a 中误用 `s.sceneMode`（应为 `s.mode`），否则 watch 模式永不触发。
   - FullscreenCopilot 补充快捷指令栏：[今日早报][对比分析][期权链][宏观雷达][选股]
   - 从其他模式切换至 AI 分析时自动携带当前标的 ticker
   - 内联图表/数据卡片自动生成（对接 Hermes 工具调用）
