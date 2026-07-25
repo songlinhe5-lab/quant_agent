@@ -45,7 +45,7 @@ async def get_us_sector_flow() -> dict[str, Any]:
     }
     """
     try:
-        from backend.routers.macro import manager, market_data
+        from backend.app.macro_app import manager, market_data
 
         async def _get_flow(ticker: str) -> dict:
             """优先从后台缓存读取，避免 Futu 限流"""
