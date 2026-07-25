@@ -3,6 +3,7 @@
  */
 
 import { FlaskConical, Play, CheckCircle, Square } from 'lucide-react'
+import { validate } from '../quotes/custom-indicator/engine'
 import { Button } from '@/components/ui/button'
 import { DynamicStrategyForm } from '@/features/strategy/dynamic-strategy-form'
 import { SnapshotPicker } from '@/features/backtest/snapshot-picker'
@@ -28,6 +29,8 @@ interface BacktestConfigProps {
   setDone: (v: boolean) => void
   setProgress: (v: number) => void
   setStrategyParams: (v: Record<string, any>) => void
+  customExpr: string
+  setCustomExpr: (v: string) => void
 }
 
 export function BacktestConfig(props: BacktestConfigProps) {
@@ -38,6 +41,7 @@ export function BacktestConfig(props: BacktestConfigProps) {
     dataSnapshotId, setDataSnapshotId, strategies, selectedStrategy,
     formSchema, handleRun, handleCancel, handleStrategyChange,
     setDone, setProgress, setStrategyParams,
+    customExpr, setCustomExpr,
   } = props
 
   return (
@@ -55,6 +59,7 @@ export function BacktestConfig(props: BacktestConfigProps) {
               {strategies.map((s, i) => (
                 <option key={i} value={s.name}>{s.name}</option>
               ))}
+              <option value="__custom_expr__">自定义指标脚本 (Pine)</option>
             </select>
           </div>
           <div>
@@ -103,6 +108,29 @@ export function BacktestConfig(props: BacktestConfigProps) {
             </div>
           </div>
         </div>
+
+        {selectedStrategy === '__custom_expr__' && (
+          <div className="mb-4 p-3 rounded-lg border border-primary/30 bg-primary/5 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-medium text-foreground">自定义指标脚本 (Pine 风格)</span>
+              <span className="text-[9px] text-muted-foreground">作为条件触发信号源</span>
+            </div>
+            <textarea
+              value={customExpr}
+              onChange={(e) => setCustomExpr(e.target.value)}
+              disabled={running || done}
+              placeholder="例：CROSS(MA(CLOSE,5), MA(CLOSE,20))  或  RSI(14) > 70"
+              rows={2}
+              className="w-full bg-background border border-border/50 rounded px-2 py-1.5 text-xs font-mono outline-none focus:border-primary resize-none"
+            />
+            {customExpr.trim() && !validate(customExpr).ok && (
+              <div className="text-[10px] text-red-400">语法错误：{validate(customExpr).error}</div>
+            )}
+            {customExpr.trim() && validate(customExpr).ok && (
+              <div className="text-[10px] text-emerald-400">✓ 表达式有效，点击「启动回测」用真实历史 K 线运行</div>
+            )}
+          </div>
+        )}
 
         <div className="mb-4 max-w-md">
           <SnapshotPicker value={dataSnapshotId} onChange={setDataSnapshotId} disabled={running || done} />

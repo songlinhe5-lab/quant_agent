@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { evaluate, validate, suggestPane, collectBoolSignals, runSignalBacktest, type CIBar } from './engine'
+import { evaluate, validate, suggestPane, collectBoolSignals, runSignalBacktest, runCustomExprBacktest, type CIBar } from './engine'
 
 function makeBars(n: number): CIBar[] {
   const bars: CIBar[] = []
@@ -120,5 +120,22 @@ describe('custom indicator engine', () => {
 
   it('runSignalBacktest 对 K 线不足返回错误', () => {
     expect(runSignalBacktest('CLOSE > 1', bars.slice(0, 1)).ok).toBe(false)
+  })
+
+  it('runCustomExprBacktest 生成回测引擎兼容结构', () => {
+    const r = runCustomExprBacktest('CLOSE > 110', bars)
+    expect(r.ok).toBe(true)
+    expect(r.result).toBeDefined()
+    expect(Array.isArray(r.result!.equity_curve)).toBe(true)
+    expect(Array.isArray(r.result!.trades)).toBe(true)
+    expect(r.result!.metrics.total_return).toMatch(/%$/)
+    expect(typeof r.result!.metrics.total_trades).toBe('number')
+    expect(Array.isArray(r.dailyReturns)).toBe(true)
+  })
+
+  it('runCustomExprBacktest 对非布尔表达式返回错误', () => {
+    const r = runCustomExprBacktest('RSI(14)', bars)
+    expect(r.ok).toBe(false)
+    expect(r.error).toContain('布尔')
   })
 })

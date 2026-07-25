@@ -619,3 +619,104 @@ export function runSignalBacktest(expr: string, bars: CIBar[]): SignalBacktestRe
     holding: entry != null,
   }
 }
+
+/**
+ * 把自定义布尔表达式接入「真实策略回测引擎」：复用 evaluate 的事件驱动逻辑，
+ * 生成与后端 /backtest/run 完全兼容的 BacktestResult 结构
+ * （equity_curve / trades / metrics），可直接喂给回测 Tear Sheet / 权益曲线 / 水下图 / 交易明细。
+ * 与 runSignalBacktest 的区别：本函数输出引擎渲染所需全套字段，而非单纯统计指标。
+ */
+export interface CustomExprBacktestResult {
+  equity_curve: { equity: number; strategy: number; date: string; benchmark: number }[]
+  trades: { date: string; action: 'BUY' | 'SELL'; profit: number }[]
+  metrics: {
+    total_return: string
+    annualized_return: string
+    sharpe_ratio: string
+    max_drawdown: string
+    win_rate: string
+    total_trades: number
+    profit_factor: string
+    total_friction_cost: string
+  }
+}
+
+export function runCustomExprBacktest(
+  expr: string,
+  bars: CIBar[],
+  initialCapital = 100000,
+): { ok: boolean; error?: string; result?: CustomExprBacktestResult; dailyReturns: number[] } {
+  const r = evaluate(expr, bars)
+  if (!r.ok) return { ok: false, error: r.error, dailyReturns: [] }
+  if (!r.isBool) return { ok: false, error: '仅支持布尔表达式作为回测信号（如 CROSS(MA(CLOSE,5), MA(CLOSE,20)) 或 RSI(14) > 70）', dailyReturns: [] }
+  if (bars.length < 2) return { ok: false, error: 'K 线数量不足', dailyReturns: [] }
+
+  const v = r.values
+  const equity_curve: CustomExprBacktestResult['equity_curve'] = []
+  const trades: CustomExprBacktestResult['trades'] = []
+  let cash = initialCapital
+  let shares = 0
+  let entryPrice = 0
+  let wins = 0
+  let grossProfit = 0
+  let grossLoss = 0
+  const benchmarkShares = initialCapital / bars[0].close
+  let prevEquity = initialCapital
+  const dailyReturns: number[] = []
+
+  for (let i = 0; i < v.length; i++) {
+    const cur = v[i] as number
+    const prev = i > 0 && v[i - 1] != null ? (v[i - 1] as number) : 0
+    if (cur === 1 && prev !== 1 && shares === 0) {
+      // 上穿：整仓买入
+      shares = cash / bars[i].close
+      cash = 0
+      entryPrice = bars[i].close
+      trades.push({ date: bars[i].time, action: 'BUY', profit: 0 })
+    } else if (cur !== 1 && prev === 1 && shares > 0) {
+      // 下穿：整仓卖出（profit 为该笔绝对金额，美元）
+      const exitPrice = bars[i].close
+      cash = shares * exitPrice
+      const profit = (exitPrice - entryPrice) * shares
+      if (profit > 0) { wins++; grossProfit += profit } else grossLoss += Math.abs(profit)
+      trades.push({ date: bars[i].time, action: 'SELL', profit })
+      shares = 0
+      entryPrice = 0
+    }
+    const eq = cash + shares * bars[i].close
+    const bench = benchmarkShares * bars[i].close
+    equity_curve.push({ equity: eq, strategy: eq, date: bars[i].time, benchmark: bench })
+    if (i > 0) dailyReturns.push(eq / prevEquity - 1)
+    prevEquity = eq
+  }
+
+  const finalEquity = cash + shares * bars[bars.length - 1].close
+  const totalReturn = (finalEquity / initialCapital - 1) * 100
+  const annualized = (Math.pow(finalEquity / initialCapital, 252 / Math.max(bars.length - 1, 1)) - 1) * 100
+  const mean = dailyReturns.reduce((a, b) => a + b, 0) / Math.max(dailyReturns.length, 1)
+  const variance = dailyReturns.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(dailyReturns.length - 1, 1)
+  const sharpe = variance > 0 ? (mean / Math.sqrt(variance)) * Math.sqrt(252) : 0
+  let procMax = initialCapital
+  let maxDd = 0
+  for (const p of equity_curve) {
+    if (p.equity > procMax) procMax = p.equity
+    const dd = (procMax - p.equity) / procMax
+    if (dd > maxDd) maxDd = dd
+  }
+  const totalTrades = trades.filter((t) => t.action === 'SELL').length
+  const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0
+  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 999 : 0
+
+  const metrics: CustomExprBacktestResult['metrics'] = {
+    total_return: `${totalReturn.toFixed(2)}%`,
+    annualized_return: `${annualized.toFixed(2)}%`,
+    sharpe_ratio: sharpe.toFixed(2),
+    max_drawdown: `-${maxDd.toFixed(2)}%`,
+    win_rate: `${winRate.toFixed(1)}%`,
+    total_trades: totalTrades,
+    profit_factor: profitFactor.toFixed(2),
+    total_friction_cost: '$0.00',
+  }
+
+  return { ok: true, result: { equity_curve, trades, metrics }, dailyReturns }
+}

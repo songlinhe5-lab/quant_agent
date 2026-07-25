@@ -241,6 +241,8 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
   const ciSignalStateRef = useRef<Record<string, string>>({})
   // Toast 武装标记：延迟 2s，避免首屏 K 线加载时的历史信号轰炸，仅实时新信号提醒
   const ciToastArmedRef = useRef(false)
+  // 系统通知权限仅请求一次，避免重复弹窗
+  const ciNotifAskedRef = useRef(false)
   useEffect(() => {
     const timer = setTimeout(() => { ciToastArmedRef.current = true }, 2000)
     return () => clearTimeout(timer)
@@ -276,7 +278,18 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
             ciSignalStateRef.current[ind.id] = t
             useCustomIndicatorStore.getState().pushSignal({ indId: ind.id, indName: ind.name, expr: ind.expr, time: t, ts: Date.now() })
             if (ciToastArmedRef.current) {
-              toast({ title: `📡 信号触发 · ${ind.name}`, description: `${t} 满足：${ind.expr}` })
+              const title = `📡 信号触发 · ${ind.name}`
+              const body = `${t} 满足：${ind.expr}`
+              toast({ title, description: body })
+              // 系统级通知：跨标签页 / 后台运行时仍可见
+              if (typeof Notification !== 'undefined') {
+                if (Notification.permission === 'granted') {
+                  new Notification(title, { body })
+                } else if (Notification.permission === 'default' && !ciNotifAskedRef.current) {
+                  ciNotifAskedRef.current = true
+                  Notification.requestPermission().catch(() => {})
+                }
+              }
             }
           }
         }
