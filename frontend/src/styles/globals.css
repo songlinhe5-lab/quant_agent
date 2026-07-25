@@ -120,10 +120,13 @@ body {
 }
 
 /* PROD-04: 场景模式 CSS 变量覆盖 */
-[data-scene-mode="watch"]       { --density-scale: 1.2; --scene-accent: 160 84% 45%; }
-[data-scene-mode="research"]    { --density-scale: 0.9; --scene-accent: 270 70% 60%; }
-[data-scene-mode="monitor"]     { --density-scale: 1.0; --scene-accent: 38 92% 50%; }
-[data-scene-mode="ai-analysis"] { --density-scale: 1.0; --scene-accent: 217 91% 60%; }
+[data-scene-mode="watch"]       { --density-scale: 1.2; --scene-accent: 160 84% 45%; --ring: 160 84% 45%; }
+[data-scene-mode="research"]    { --density-scale: 0.9; --scene-accent: 270 70% 60%; --ring: 270 70% 60%; }
+[data-scene-mode="monitor"]     { --density-scale: 1.0; --scene-accent: 38 92% 50%; --ring: 38 92% 50%; }
+[data-scene-mode="ai-analysis"] { --density-scale: 1.0; --scene-accent: 217 91% 60%; --ring: 217 91% 60%; }
+
+/* PROD-04c: 强调色关键 UI 平滑过渡（模式切换时颜色/描边/阴影 200ms 过渡） */
+.scene-accent-transition { transition: color 200ms ease-out, background-color 200ms ease-out, border-color 200ms ease-out, box-shadow 200ms ease-out, fill 200ms ease-out, stroke 200ms ease-out; }
 
 /* PROD-04a: 盘口异动 > 2% 高对比脉冲光环（基于 --scene-accent 场景强调色） */
 @keyframes scene-anomaly-flash {

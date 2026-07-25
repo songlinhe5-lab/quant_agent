@@ -56,16 +56,16 @@ function AlertToastCard({
   return (
     <div
       className={cn(
-        'pointer-events-auto rounded-lg border backdrop-blur-md shadow-lg p-3',
+        'pointer-events-auto rounded-lg border backdrop-blur-md shadow-lg p-3 scene-accent-transition',
         'animate-in slide-in-from-right-4 fade-in duration-200',
         isP1
           ? 'bg-amber-950/90 border-amber-500/40 text-amber-100'
-          : 'bg-zinc-900/95 border-white/10 text-slate-200',
+          : 'bg-zinc-900/95 border-scene/30 text-slate-200',
       )}
       role="status"
     >
       <div className="flex items-start gap-2">
-        <Bell className={cn('h-4 w-4 shrink-0 mt-0.5', isP1 ? 'text-amber-400' : 'text-slate-400')} />
+        <Bell className={cn('h-4 w-4 shrink-0 mt-0.5', isP1 ? 'text-amber-400' : 'text-scene')} />
         <div className="flex-1 min-w-0">
           <p className="text-[10px] font-mono font-bold uppercase opacity-70">
             {item.priority.toUpperCase()}

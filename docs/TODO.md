@@ -830,7 +830,7 @@ STATUS: PRODUCTION READY ✨
   - 从其他模式切换至 AI 分析时自动携带当前标的 ticker
   - 内联图表/数据卡片自动生成（对接 Hermes 工具调用）
   - 依赖：无（可立即开始）
-- [ ] **[PROD-04c]** 强调色全局动态应用 + 模式切换过渡动画
+- [x] **[PROD-04c]** 强调色全局动态应用 + 模式切换过渡动画`tailwind.config.js` 注册 `scene` 色（`hsl(var(--scene-accent))`）；`globals.css` 在各场景块内将 `--ring` 覆盖为场景强调色（全局 Focus Ring 动态化），并新增 `.scene-accent-transition` 过渡工具类；`global-copilot-drawer.tsx` 的 AI 把手/Brain/会话切换/上下文条/拖动条全部改用 `text-scene`/`bg-scene`；`alert-toast-stack.tsx` 告警铃铛与非 P1 卡片描边改用场景强调色（P1 保留琥珀语义色）。模式切换时强调色 200ms 平滑过渡。
   - Alert、Focus Ring、AI Badge 等关键 UI 应用 `hsl(var(--scene-accent))`
   - 模式切换时 `transition: all 200ms` 平滑过渡
   - 依赖：无（可立即开始）
