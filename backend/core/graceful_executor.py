@@ -162,7 +162,7 @@ class GracefulExecutor(ThreadPoolExecutor):
         stats = self.get_stats()
         return (
             f"GracefulExecutor(max_workers={self._max_workers}, "
-            f"submitted={stats['total_submitted']}, "
+            f"submitted={stats['submitted_count']}, "
             f"active={stats['active_tasks']})"
         )
 
