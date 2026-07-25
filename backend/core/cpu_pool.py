@@ -16,8 +16,11 @@ CPU 密集型任务（回测、网格搜索、蒙特卡洛、批量回测）在�
 
 本模块提供 `run_cpu_bound()` 作为 CPU 密集任务的统一入口：
 - 自动检测负载是否可 pickle；不可 pickle 的调用（绑定方法、测试 Mock、闭包、
-  含锁对象）自动回退 `asyncio.to_thread`，保证既有测试与生产行为不变。
-- 进程池初始化或执行异常时同样回退线程池，绝不因进程池故障而让请求失败。
+  含锁对象）自动回退到 **独立** 的 fallback 线程池，与默认事件循环线程池
+  （承载 akshare/futu/redis 等快速 SDK 卸载）物理隔离，避免重 CPU 任务饿死快速调用。
+- 经 ``asyncio.Semaphore`` 对并发 CPU 密集任务总数封顶，提供背压，超容任务在
+  信号量处排队而非无界占用线程。
+- 进程池初始化或执行异常时同样回退上述独立线程池，绝不因进程池故障而让请求失败。
 - 默认启用，可用环境变量 ``QUANT_CPU_POOL_ENABLED=0`` 关闭（强制回退线程）。
 """
 
@@ -27,7 +30,7 @@ import asyncio
 import logging
 import os
 import pickle
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from typing import Any, Callable, TypeVar
 
 logger = logging.getLogger(__name__)
@@ -36,6 +39,10 @@ T = TypeVar("T")
 
 # 进程池懒初始化；默认与逻辑核数对齐，避免与默认线程池争抢 CPU。
 _cpu_executor: "ProcessPoolExecutor | None" = None
+# fallback 线程池：与默认事件循环线程池物理隔离，专供不可 pickle / 进程池故障时的重 CPU 任务
+_fallback_executor: "ThreadPoolExecutor | None" = None
+# 每个事件循环一把信号量（按 loop id 缓存），对并发 CPU 密集任务总数封顶提供背压
+_semaphores: dict = {}
 _cpu_pool_enabled = os.getenv("QUANT_CPU_POOL_ENABLED", "1").lower() not in (
     "0",
     "false",
@@ -95,25 +102,56 @@ def _invoke(func: Callable[..., T], args: tuple, kwargs: dict) -> T:
     return func(*args, **kwargs)
 
 
-async def run_cpu_bound(func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
-    """将 CPU 密集型任务卸载到独立进程池。
+def _ensure_fallback_executor() -> ThreadPoolExecutor:
+    """懒初始化 fallback 线程池，与默认事件循环线程池隔离。"""
+    global _fallback_executor
+    if _fallback_executor is None:
+        _fallback_executor = ThreadPoolExecutor(
+            max_workers=_resolve_max_workers(),
+            thread_name_prefix="cpu-fallback",
+        )
+    return _fallback_executor
 
-    不可 pickle 或进程池不可用时自动回退 ``asyncio.to_thread``，行为安全等价。
+
+def _get_semaphore(limit: int) -> "asyncio.Semaphore":
+    """取当前事件循环的信号量（按 loop id 缓存，避免跨 loop 绑定告警）。"""
+    loop = asyncio.get_running_loop()
+    sem = _semaphores.get(id(loop))
+    if sem is None:
+        sem = asyncio.Semaphore(limit)
+        _semaphores[id(loop)] = sem
+    return sem
+
+
+async def run_cpu_bound(func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+    """将 CPU 密集型任务卸载到独立进程池，并对并发数做背压限流。
+
+    - 负载可 pickle → 走独立 ``ProcessPoolExecutor``（真并行，绕开 GIL）；
+    - 不可 pickle / 进程池不可用 / 进程池异常 → 回退到 **独立** 的 fallback 线程池，
+      与默认事件循环线程池（承载 akshare/futu/redis 等快速 SDK 卸载）物理隔离；
+    - 全程经 ``asyncio.Semaphore`` 对并发 CPU 密集任务总数封顶，提供背压。
     """
-    if _is_picklable(func, args, kwargs):
-        ex = _ensure_cpu_executor()
-        if ex is not None:
-            loop = asyncio.get_running_loop()
-            try:
-                return await loop.run_in_executor(ex, _invoke, func, args, kwargs)
-            except Exception:  # pragma: no cover - 进程池异常回退线程
-                logger.warning("cpu pool execution failed; fallback to thread", exc_info=True)
-    return await asyncio.to_thread(func, *args, **kwargs)
+    sem = _get_semaphore(_resolve_max_workers())
+    async with sem:
+        if _is_picklable(func, args, kwargs):
+            ex = _ensure_cpu_executor()
+            if ex is not None:
+                loop = asyncio.get_running_loop()
+                try:
+                    return await loop.run_in_executor(ex, _invoke, func, args, kwargs)
+                except Exception:  # pragma: no cover - 进程池异常回退线程
+                    logger.warning("cpu pool execution failed; fallback to thread", exc_info=True)
+        fb = _ensure_fallback_executor()
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(fb, _invoke, func, args, kwargs)
 
 
 def shutdown_cpu_pool() -> None:
-    """释放进程池（应用关闭时调用，可选）。"""
-    global _cpu_executor
+    """释放进程池与 fallback 线程池（应用关闭时调用，可选）。"""
+    global _cpu_executor, _fallback_executor
     if _cpu_executor is not None:
         _cpu_executor.shutdown(wait=False)
         _cpu_executor = None
+    if _fallback_executor is not None:
+        _fallback_executor.shutdown(wait=False)
+        _fallback_executor = None
