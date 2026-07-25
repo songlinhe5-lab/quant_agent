@@ -6,13 +6,17 @@
 import asyncio
 import os
 import secrets
-from typing import Optional
+import time
+from datetime import datetime, timezone
+from typing import Any, Optional
 
 import prometheus_client
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi.responses import FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from sqlalchemy import text
 
+from backend.core.database import async_engine
 from backend.core.redis_client import redis_client
 from backend.services.notification_service import notification_service
 
@@ -55,57 +59,215 @@ def metrics(username: str = Depends(verify_metrics_auth)):
 # ==========================================
 # --- 健康检查 & 集群状态 ---
 # ==========================================
-@router.get("/health")
-async def health_check():
-    """系统健康检查接口 (供 Docker / K8s Liveness Probe 使用)"""
-    components = {}
-    status_code = 200
-    overall_status = "healthy"
+# ==========================================
+# ARCH-05: 分级健康检查 (liveness / readiness / deep)
+# ==========================================
+_START_TIME = time.monotonic()
 
-    # 1. Redis
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+async def _check_postgres() -> tuple[bool, str]:
+    """轻量 PG 连通性探测：SELECT 1（异步引擎，非阻塞事件循环）"""
+    try:
+        async with async_engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        return True, "connected"
+    except Exception as e:  # noqa: BLE001
+        return False, f"disconnected ({type(e).__name__}: {e})"
+
+
+async def _check_data_sources() -> tuple[bool, dict[str, Any]]:
+    """
+    至少一个数据源连通：
+    - 主行情网关 market_data.status == "CONNECTED"，或
+    - 数据源注册表 (DataSourceRegistry) 中任一源 health().healthy == True
+    返回 (ready, detail)
+    """
+    detail: dict[str, Any] = {}
+
+    # 1) 主行情网关（Futu / 兼容壳）
+    try:
+        from backend.app.market_data import market_data
+
+        ds_status = getattr(market_data, "status", "unknown")
+        detail["market_gateway"] = ds_status
+        if ds_status == "CONNECTED":
+            return True, detail
+    except Exception as e:  # noqa: BLE001
+        detail["market_gateway"] = f"error ({e})"
+
+    # 2) 通用数据源注册表（Futu/YFinance/AKShare/Finnhub 等）
+    try:
+        from backend.services.datasource import datasource_registry
+
+        names = datasource_registry.list_names()
+        detail["registered_sources"] = names
+        for name in names:
+            source = datasource_registry.get(name)
+            if source is None:
+                continue
+            try:
+                info = await asyncio.wait_for(source.health(), timeout=2.0)
+                healthy = getattr(info, "healthy", False)
+                detail[f"source:{name}"] = "healthy" if healthy else "unhealthy"
+                if healthy:
+                    return True, detail
+            except Exception as e:  # noqa: BLE001
+                detail[f"source:{name}"] = f"error ({e})"
+    except Exception as e:  # noqa: BLE001
+        detail["registry_error"] = str(e)
+
+    return False, detail
+
+
+async def _measure_event_loop_lag() -> float:
+    """事件循环延迟（秒）：让出控制权后多久被重新调度，粗略反映事件循环拥塞度"""
+    loop = asyncio.get_running_loop()
+    start = loop.time()
+    await asyncio.sleep(0)
+    return round(loop.time() - start, 6)
+
+
+async def _collector_heartbeats() -> dict[str, Any]:
+    """采集器心跳：本地已启用采集器 + 各注册数据源实时健康状态"""
+    from backend.app.system_app import build_cluster_snapshot
+
+    cluster = await build_cluster_snapshot()
+    heartbeats: dict[str, Any] = {}
+    try:
+        from backend.services.datasource import datasource_registry
+
+        for name in datasource_registry.list_names():
+            source = datasource_registry.get(name)
+            if source is None:
+                continue
+            try:
+                info = await asyncio.wait_for(source.health(), timeout=2.0)
+                heartbeats[name] = (
+                    info.to_dict() if hasattr(info, "to_dict") else {"healthy": getattr(info, "healthy", False)}
+                )
+            except Exception as e:  # noqa: BLE001
+                heartbeats[name] = {"healthy": False, "error": str(e)}
+    except Exception:  # noqa: BLE001
+        pass
+    return {
+        "mode": cluster.get("mode", "standalone"),
+        "enabled_collectors": cluster.get("collectors", []),
+        "data_source_heartbeats": heartbeats,
+    }
+
+
+@router.get("/health", summary="健康检查 (liveness - 始终 200)")
+async def health_check():
+    """
+    主健康检查 (AGENTS §10.4)：只验证进程自身，不依赖任何外部依赖。
+    即使所有数据源/Redis 不可用，只要进程能响应 HTTP 即返回 200 healthy，
+    供 Docker/K8s liveness 探针使用。依赖就绪情况见 /health/ready，全链路诊断见 /health/deep。
+    """
+    return {
+        "status": "healthy",
+        "uptime_seconds": round(time.monotonic() - _START_TIME, 1),
+        "timestamp": _now_iso(),
+    }
+
+
+@router.get("/health/live", summary="存活探针 (liveness)")
+async def health_live():
+    """Liveness 探针：进程存活即 200，不依赖任何外部依赖（K8s livenessProbe）"""
+    return {
+        "status": "alive",
+        "uptime_seconds": round(time.monotonic() - _START_TIME, 1),
+        "timestamp": _now_iso(),
+    }
+
+
+@router.get("/health/ready", summary="就绪探针 (readiness)")
+async def health_ready(response: Response):
+    """
+    Readiness 探针：Redis + Postgres + 至少一个数据源连通才返回 200，
+    否则返回 503（K8s readinessProbe：不就绪则不接流量）。
+    """
+    checks: dict[str, Any] = {}
+
+    # Redis（核心基础设施：Pub/Sub + 缓存 + 限流）
+    redis_ok = False
     try:
         await redis_client.ping()
-        components["redis"] = "connected"
-    except Exception as e:
-        components["redis"] = f"disconnected ({e})"
-        overall_status = "unhealthy"
-        status_code = 503
+        redis_ok = True
+        checks["redis"] = "connected"
+    except Exception as e:  # noqa: BLE001
+        checks["redis"] = f"disconnected ({e})"
 
-    # 2. Futu (跳过，可能在远程节点)
-    components["futu"] = "skipped (may run on remote slave nodes)"
+    # Postgres（读写依赖）
+    pg_ok, pg_msg = await _check_postgres()
+    checks["postgres"] = pg_msg
 
-    # 3. YFinance (跳过，防限流)
-    components["yfinance"] = "skipped (prevent rate limits)"
+    # 数据源（至少一个连通）
+    ds_ok, ds_detail = await _check_data_sources()
+    checks["data_sources"] = ds_detail
 
-    # 4. asyncio 线程池
-    loop = asyncio.get_running_loop()
-    executor = getattr(loop, "_default_executor", None)
-    if executor is not None and hasattr(executor, "_max_workers"):
-        components["asyncio_thread_pool"] = {
-            "max_workers": executor._max_workers,
-            "spawned_threads": len(executor._threads),
-            "pending_tasks": executor._work_queue.qsize(),
-        }
-    else:
-        components["asyncio_thread_pool"] = "idle (lazy initialized)"
+    ready = redis_ok and pg_ok and ds_ok
+    if not ready:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
 
-    # 5. FastAPI/AnyIO 线程池
-    try:
-        from anyio.to_thread import current_default_thread_limiter
+    return {
+        "status": "ready" if ready else "not_ready",
+        "checks": checks,
+        "timestamp": _now_iso(),
+    }
 
-        limiter = current_default_thread_limiter()
-        components["fastapi_thread_pool"] = {
-            "max_workers": limiter.total_tokens,
-            "idle_workers": limiter.available_tokens,
-            "busy_workers": limiter.total_tokens - limiter.available_tokens,
-        }
-    except Exception as e:
-        components["fastapi_thread_pool"] = f"unknown ({e})"
 
-    response_data = {"status": overall_status, "components": components}
-    if status_code != 200:
-        raise HTTPException(status_code=status_code, detail=response_data)
-    return response_data
+@router.get("/health/deep", summary="全链路诊断 (deep)")
+async def health_deep():
+    """
+    全链路诊断：组件健康 + PG + 数据源就绪 + 采集器心跳
+    + WS 连接数 + 线程池使用率 + 事件循环 lag + 熔断器状态。
+    """
+    from backend.app.system_app import build_health_snapshot, build_metrics_snapshot
+
+    component = await build_health_snapshot()
+    metrics = build_metrics_snapshot()
+    pg_ok, pg_msg = await _check_postgres()
+    ds_ok, ds_detail = await _check_data_sources()
+    collectors = await _collector_heartbeats()
+    event_loop_lag = await _measure_event_loop_lag()
+
+    components = component.get("components", {})
+    overall = "healthy"
+    if not pg_ok or not ds_ok:
+        overall = "degraded"
+    elif component.get("status") == "unhealthy":
+        overall = "degraded"
+
+    return {
+        "status": overall,
+        "uptime_seconds": round(time.monotonic() - _START_TIME, 1),
+        "timestamp": _now_iso(),
+        "components": {
+            "redis": components.get("redis"),
+            "futu": components.get("futu"),
+            "postgres": pg_msg,
+            "data_sources_ready": ds_ok,
+        },
+        "data_source_detail": ds_detail,
+        "collectors": collectors,
+        "websocket": {
+            "active_connections": metrics.get("ws_connections"),
+            "messages_sent": metrics.get("ws_messages_sent"),
+            "messages_dropped": metrics.get("ws_messages_dropped"),
+            "subscriptions": metrics.get("ws_subscriptions"),
+        },
+        "thread_pools": {
+            "asyncio_default": components.get("asyncio_thread_pool"),
+            "fastapi_anyio": components.get("fastapi_thread_pool"),
+        },
+        "redis_queue_depth": metrics.get("redis_queue_depth"),
+        "circuit_breaker_states": metrics.get("circuit_breaker_states"),
+        "event_loop_lag_seconds": event_loop_lag,
+    }
 
 
 @router.get("/cluster")

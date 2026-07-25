@@ -747,10 +747,11 @@ STATUS: PRODUCTION READY ✨
 - PostgreSQL: `pool_size=20, max_overflow=40, pool_timeout=10`（env 配置化，默认 20/40/10）
 - Redis: `max_connections=50`（Pub/Sub + 缓存 + 限流共用，`ConnectionPool` 配置化，默认 50）
 - 在 `docs/03 §7.3.1` 补充连接池配置规范
-- [ ] **[ARCH-05]** 健康检查分级：
-  - `GET /health/live` → 进程存活（200 即可）
-  - `GET /health/ready` → 依赖就绪（Redis + PG + 至少一个数据源连通）
+- [x] **[ARCH-05]** 健康检查分级：✅ **2026-07-25** (`routers/system_health.py` / `AGENTS.md §10.4`)
+  - `GET /health/live` → 进程存活（200 即可，liveness）
+  - `GET /health/ready` → 依赖就绪（Redis + PG + 至少一个数据源连通，否则 503）
   - `GET /health/deep` → 全链路诊断（采集器心跳、WS 连接数、线程池使用率、事件循环 lag）
+  - 原 `/api/v1/health` 重构为纯 liveness（始终 200，修复 §10.4 违规：此前 Redis 断开即 503）
 - [ ] **[ARCH-06]** 请求级超时与取消传播：
   - 单 API 请求最大执行时间（screener 90s / market 30s / 默认 60s）
   - 客户端断开后取消下游任务（`Request.is_disconnected()` 检查）

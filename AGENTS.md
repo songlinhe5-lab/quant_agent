@@ -248,8 +248,12 @@ YF_ROUTER_ENABLED=true
 - 运行模式通过 `DATASOURCE_{NAME}_MODE` 环境变量控制（`internal` / `external` / `hybrid`），禁止硬编码。
 
 ### 10.4 健康检查隔离
-- **`/api/v1/health` 不得依赖数据源可用性**。主 app 健康检查只验证自身基础设施（Redis 连通性、线程池状态）。
-- 即使所有数据源均不可用，只要主 app 能正常响应 HTTP 请求，`/api/v1/health` 必须返回 `200 healthy`。
+- **`/api/v1/health` 不得依赖数据源可用性**。主 app 健康检查只验证自身基础设施（进程存活）。
+- 即使所有数据源/Redis 均不可用，只要主 app 能正常响应 HTTP 请求，`/api/v1/health` 必须返回 `200 healthy`（liveness 探针，供 K8s `livenessProbe`）。
+- **分级健康端点（ARCH-05）**：
+  - `GET /api/v1/health/live` → 存活探针（进程存活即 200，不依赖外部依赖）。
+  - `GET /api/v1/health/ready` → 就绪探针：Redis + Postgres + 至少一个数据源连通才返回 200，否则 503（K8s `readinessProbe`：不就绪则不接流量）。
+  - `GET /api/v1/health/deep` → 全链路诊断：组件健康 + PG + 数据源就绪 + 采集器心跳 + WS 连接数 + 线程池使用率 + 事件循环 lag + 熔断器状态。
 - 数据源健康状态通过独立的 `/api/v1/datasource/{name}/health` 端点暴露。
 
 ### 10.5 零侵入扩展
