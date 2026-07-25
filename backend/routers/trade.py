@@ -11,6 +11,7 @@ from fastapi import APIRouter, Body, Depends
 from sqlalchemy.orm import Session
 
 from backend.app.trade_app import (
+    _trade_locks,  # noqa: F401  (测试夹具直接清理共享锁对象)
     get_account_info,
     get_portfolio,
     get_trades,

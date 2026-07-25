@@ -15,13 +15,15 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
-from backend.app.alert_app import (
+from backend.app.alert_app import (  # noqa: F401  (测试夹具访问共享状态)
     CreateRuleRequest,
     DeliveryRecordResponse,
     EngineStatusResponse,
     EventResponse,
     RuleResponse,
     UpdateRuleRequest,
+    _events_store,
+    _rules_store,
     ack_event,
     create_rule,
     delete_rule,
