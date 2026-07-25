@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { createChart, ColorType, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries, AreaSeries, BaselineSeries, LineStyle, createSeriesMarkers, type IChartApi, type ISeriesApi, type UTCTimestamp, type IPriceLine, type ISeriesMarkersPluginApi, type SeriesMarker, type Time } from 'lightweight-charts'
 import { AlertTriangle, TrendingUp, TrendingDown, Eye, EyeOff, Pencil, Globe, ChevronRight, Minus, Square, Spline, Eraser } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { crosshairSync } from './chart-crosshair-sync'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { apiClient } from '@/lib/api-client'
@@ -182,9 +183,10 @@ interface LightweightChartCanvasProps {
   toggleWatchlist: () => void;
   selectedItem: WatchlistItem;
   hasData: boolean;
+  syncGroup?: string;
 }
 
-export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSelectedPeriod, theme, realQuote, realHistory, gatewayStatus, isWatchlistExpanded, toggleWatchlist, selectedItem, hasData }: LightweightChartCanvasProps) {
+export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSelectedPeriod, theme, realQuote, realHistory, gatewayStatus, isWatchlistExpanded, toggleWatchlist, selectedItem, hasData, syncGroup = 'default' }: LightweightChartCanvasProps) {
   const { toast } = useToast()
   const [showEvents, setShowEvents] = useState(true)
   const [showMA20, setShowMA20] = useState(true)
@@ -265,6 +267,10 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     
     return () => { isMounted = false }
   }, [selectedSymbol])
+
+  // PROD-12: 跨图表十字线同步所需的稳定实例 id 与防回环标记
+  const chartIdRef = useRef<string>(`chart-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`)
+  const isExternalSyncRef = useRef<boolean>(false)
 
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -524,6 +530,21 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
 
     chartRef.current = chart; seriesRef.current = candlestickSeries; ma20Ref.current = ma20Line; ma50Ref.current = ma50Line; ma200Ref.current = ma200Line; bbUpperRef.current = bbUpperLine; bbLowerRef.current = bbLowerLine; macdDiffRef.current = macdDiffSeries; macdDeaRef.current = macdDeaSeries; macdHistRef.current = macdHistSeries; rsiLineRef.current = rsiLineSeries; rsiHistRef.current = rsiHistSeries; kdjKRef.current = kdjKSeries; kdjDRef.current = kdjDSeries; kdjJRef.current = kdjJSeries; volumeRef.current = volumeSeries; currentPriceLineRef.current = priceLine;
 
+    // PROD-12: 注册跨图表十字线同步；applyExternal 收到同源广播时设到本图（带防回环锁）
+    crosshairSync.register(syncGroup, chartIdRef.current, (pos) => {
+      if (!chartRef.current || !seriesRef.current) return
+      isExternalSyncRef.current = true
+      try {
+        if (pos.time == null || pos.price == null) {
+          chartRef.current.clearCrosshairPosition()
+        } else {
+          chartRef.current.setCrosshairPosition(pos.price, pos.time, seriesRef.current)
+        }
+      } finally {
+        isExternalSyncRef.current = false
+      }
+    })
+
     const handleResize = (entries: ResizeObserverEntry[]) => {
       if (entries.length === 0 || !chartRef.current) return
       const newRect = entries[0].contentRect
@@ -552,6 +573,9 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     };
 
     chart.subscribeCrosshairMove((param) => {
+      // PROD-12: 由外部同步触发的 crosshair 事件直接跳过，防止回环广播
+      if (isExternalSyncRef.current) return
+
       const isValid = param.point && param.time && param.point.x >= 0 && param.point.x <= chartContainerRef.current!.clientWidth && param.point.y >= 0 && param.point.y <= chartContainerRef.current!.clientHeight;
       isCrosshairActiveRef.current = !!isValid;
       if (isValid) {
@@ -567,8 +591,13 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       if (isValid) {
         const cData = param.seriesData.get(candlestickSeries) as any; const vData = param.seriesData.get(volumeSeries) as any;
         if (cData && updateOhlcvDomRef.current) updateOhlcvDomRef.current({ ...cData, volume: vData?.value || 0 });
+        // PROD-12: 广播十字线位置给同组其他图表（同标的多周期 -> Y 对齐；异标的 -> 时间对齐）
+        const broadcastPrice = cData ? cData.close : (candlestickSeries.coordinateToPrice(param.point!.y) ?? 0)
+        crosshairSync.broadcast(chartIdRef.current, syncGroup, { time: param.time as Time, price: broadcastPrice });
       } else {
         if (lastCandleRef.current && updateOhlcvDomRef.current) updateOhlcvDomRef.current(lastCandleRef.current);
+        // PROD-12: 鼠标移出 -> 通知同组图表清除同步十字线
+        crosshairSync.broadcast(chartIdRef.current, syncGroup, { time: null, price: null });
       }
     });
 
@@ -740,6 +769,8 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       }
     }
     workerRef.current.postMessage({ id: reqId, history: sortedHistory, params: { maPeriods: [20, 50, 200], bbParams: [20, 2], macdParams: [12, 26, 9], rsiPeriod: 14, kdjParams: [9, 3, 3] } })
+    // PROD-12: 卸载或图表重建时从同步管理器注销，避免悬挂引用
+    return () => { crosshairSync.unregister(syncGroup, chartIdRef.current) }
   }, [realHistory, theme])
 
   useEffect(() => { if (ma20Ref.current) ma20Ref.current.applyOptions({ visible: showMA20 }); if (ma50Ref.current) ma50Ref.current.applyOptions({ visible: showMA50 }); if (ma200Ref.current) ma200Ref.current.applyOptions({ visible: showMA200 }); }, [showMA20, showMA50, showMA200])

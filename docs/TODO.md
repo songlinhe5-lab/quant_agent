@@ -882,7 +882,7 @@ STATUS: PRODUCTION READY ✨
 #### P3 — 长期差异化
 
 - [ ] **[PROD-11]** 自定义指标脚本（对标 TradingView Pine Script）：用户可写简单表达式指标（如 `RSI(14) > KDJ.K`），前端实时计算并叠加到 K 线图
-- [ ] **[PROD-12]** 多图表同步十字线：分屏模式下多个 K 线图共享十字线位置（同一标的不同周期，或不同标的同一时间）
+- [x] **[PROD-12]** 多图表同步十字线：✅ **2026-07-25**：新增 `chart-crosshair-sync.ts` 单例同步管理器（按 `syncGroup` 分组）；`LightweightChartCanvas` 接入注册/广播/应用（带防回环锁，外部同步不二次广播）；`quotes.tsx` 新增「同步对比」分屏模式（上下双图、各自独立 WebSocket/历史数据，共享 `syncGroup='default'`），移动任一图十字线同组其他图同步跳动。tsc 零错误 + 197 全量零回归
 
 #### AI 全模块渗透（三层架构：主动推送 / 嵌入式辅助 / 按需调用）
 

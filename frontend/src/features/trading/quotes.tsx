@@ -16,6 +16,42 @@ import { WatchlistSidebar } from '@/features/quotes/watchlist-sidebar'
 import { LightweightChartCanvas } from '@/features/quotes/lightweight-chart-canvas'
 import { ChartErrorBoundary, PanelErrorBoundary } from '@/components/error-boundary'
 
+// PROD-12: 分屏对比子面板——拥有独立行情数据（独立 WebSocket/历史），并与主图共享同一 syncGroup 实现十字线同步
+const COMPARE_PERIODS = [
+  { id: '1m', label: '分时' }, { id: '5m', label: '5分' }, { id: '15m', label: '15分' },
+  { id: '1h', label: '1时' }, { id: '4h', label: '4时' }, { id: '1d', label: '日K' },
+  { id: '1w', label: '周K' }, { id: '1M', label: '月K' },
+]
+
+function CompareChartPanel({ watchlist, updateTicker, mainSymbol, theme, syncGroup }: { watchlist: any[]; updateTicker: (s: string, d: any) => void; mainSymbol: string; theme: string | undefined; syncGroup: string }) {
+  const [compareSymbol, setCompareSymbol] = useState<string>(() => {
+    const others = watchlist.filter((w: any) => w.symbol !== mainSymbol)
+    return others[0]?.symbol ?? mainSymbol
+  })
+  const [comparePeriod, setComparePeriod] = useState<string>('1d')
+  const { realQuote, realHistory, gatewayStatus } = useMarketData({ selectedSymbol: compareSymbol, selectedPeriod: comparePeriod, watchlist, updateTicker })
+  const selected = watchlist.find((w: any) => w.symbol === compareSymbol) ?? watchlist[0]
+
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      <div className="flex items-center gap-2 px-3 py-1 border-b border-border/40 bg-secondary/20 text-[10px] shrink-0">
+        <span className="text-muted-foreground font-medium">对比标的</span>
+        <select value={compareSymbol} onChange={(e) => setCompareSymbol(e.target.value)} className="bg-card border border-border/50 rounded px-1.5 py-0.5 text-[10px]">
+          {watchlist.map((w: any) => <option key={w.symbol} value={w.symbol}>{w.symbol}</option>)}
+        </select>
+        <span className="text-muted-foreground font-medium ml-2">周期</span>
+        <select value={comparePeriod} onChange={(e) => setComparePeriod(e.target.value)} className="bg-card border border-border/50 rounded px-1.5 py-0.5 text-[10px]">
+          {COMPARE_PERIODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+        </select>
+        <span className="text-muted-foreground/70 ml-auto">十字线已与主图同步</span>
+      </div>
+      <div className="flex-1 min-h-0">
+        <LightweightChartCanvas selectedSymbol={compareSymbol} selectedPeriod={comparePeriod} setSelectedPeriod={setComparePeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={false} toggleWatchlist={() => {}} selectedItem={selected} hasData={watchlist.length > 0} syncGroup={syncGroup} />
+      </div>
+    </div>
+  )
+}
+
 export function QuotesModule() {
   const { theme } = useTheme()
   const [mounted, setMounted] = useState(false)
@@ -23,6 +59,8 @@ export function QuotesModule() {
 
   // 💡 自选列表展开/收起状态 (持久化到 LocalStorage)
   const [isWatchlistExpanded, setIsWatchlistExpanded] = useState(true)
+  // PROD-12: 分屏同步对比模式开关
+  const [compareMode, setCompareMode] = useState(false)
   useEffect(() => {
     const saved = localStorage.getItem('quant_watchlist_expanded')
     if (saved !== null) setIsWatchlistExpanded(saved === 'true')
@@ -148,9 +186,33 @@ export function QuotesModule() {
 
         {/* ── Middle: Chart (Main Focus) ───────────────────────── */}
         <Panel defaultSize={60} minSize={40} className="flex flex-col">
-          <ChartErrorBoundary name="KlineChart">
-            <LightweightChartCanvas selectedSymbol={selectedSymbol} selectedPeriod={selectedPeriod} setSelectedPeriod={setSelectedPeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={isWatchlistExpanded} toggleWatchlist={toggleWatchlist} selectedItem={selected} hasData={hasData} />
-          </ChartErrorBoundary>
+          <div className="flex items-center justify-between px-3 py-1 border-b border-border/40 bg-secondary/10 shrink-0">
+            <span className="text-[10px] font-medium text-muted-foreground">主图</span>
+            <button
+              onClick={() => setCompareMode(!compareMode)}
+              className={cn("text-[10px] px-2 py-0.5 rounded border border-border/50 transition-colors", compareMode ? "bg-primary/20 text-primary" : "bg-background hover:bg-secondary text-muted-foreground")}
+            >
+              {compareMode ? '退出同步对比' : '同步对比'}
+            </button>
+          </div>
+          {compareMode ? (
+            <div className="flex flex-col flex-1 min-h-0 gap-1">
+              <div className="flex-1 min-h-0">
+                <ChartErrorBoundary name="KlineChart">
+                  <LightweightChartCanvas selectedSymbol={selectedSymbol} selectedPeriod={selectedPeriod} setSelectedPeriod={setSelectedPeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={isWatchlistExpanded} toggleWatchlist={toggleWatchlist} selectedItem={selected} hasData={hasData} syncGroup="default" />
+                </ChartErrorBoundary>
+              </div>
+              <div className="flex-1 min-h-0 border-t border-border/40">
+                <ChartErrorBoundary name="KlineChartCompare">
+                  <CompareChartPanel watchlist={watchlist} updateTicker={updateTicker} mainSymbol={selectedSymbol} theme={theme} syncGroup="default" />
+                </ChartErrorBoundary>
+              </div>
+            </div>
+          ) : (
+            <ChartErrorBoundary name="KlineChart">
+              <LightweightChartCanvas selectedSymbol={selectedSymbol} selectedPeriod={selectedPeriod} setSelectedPeriod={setSelectedPeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={isWatchlistExpanded} toggleWatchlist={toggleWatchlist} selectedItem={selected} hasData={hasData} syncGroup="default" />
+            </ChartErrorBoundary>
+          )}
         </Panel>
 
         <PanelResizeHandle className="w-1 mx-1 rounded-full bg-border/40 hover:bg-primary/50 hover:shadow-[0_0_8px_rgba(var(--primary),0.5)] transition-all cursor-col-resize" />
