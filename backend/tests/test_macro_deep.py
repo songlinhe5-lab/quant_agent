@@ -36,7 +36,7 @@ def _unwrap(resp):
 # GET /macro/dashboard
 # ==========================================
 class TestMacroDashboard:
-    @patch("backend.routers.macro.redis_client")
+    @patch("backend.app.macro_app.redis_client")
     def test_dashboard_cached(self, mock_redis, client):
         """缓存命中"""
         cached_data = {"status": "success", "data": {"macroAssets": []}}
@@ -47,13 +47,13 @@ class TestMacroDashboard:
         data = _unwrap(resp)
         assert data["status"] == "success"
 
-    @patch("backend.routers.macro._fetch_sector_fund_flow")
-    @patch("backend.routers.macro._fetch_margin_trading_data")
-    @patch("backend.routers.macro._fetch_earnings_calendar_data")
-    @patch("backend.routers.macro.get_macro_news")
-    @patch("backend.routers.macro._fetch_macro_calendar_data")
-    @patch("backend.routers.macro.get_macro_assets")
-    @patch("backend.routers.macro.redis_client")
+    @patch("backend.app.macro_app._fetch_sector_fund_flow")
+    @patch("backend.app.macro_app._fetch_margin_trading_data")
+    @patch("backend.app.macro_app._fetch_earnings_calendar_data")
+    @patch("backend.app.macro_app.get_macro_news")
+    @patch("backend.app.macro_app._fetch_macro_calendar_data")
+    @patch("backend.app.macro_app.get_macro_assets")
+    @patch("backend.app.macro_app.redis_client")
     def test_dashboard_fresh(
         self, mock_redis, mock_assets, mock_calendar, mock_news, mock_earnings, mock_margin, mock_sector_flow, client
     ):
@@ -81,13 +81,13 @@ class TestMacroDashboard:
         assert data["status"] == "success"
         assert "macroAssets" in data["data"]
 
-    @patch("backend.routers.macro._fetch_sector_fund_flow")
-    @patch("backend.routers.macro._fetch_margin_trading_data")
-    @patch("backend.routers.macro._fetch_earnings_calendar_data")
-    @patch("backend.routers.macro.get_macro_news")
-    @patch("backend.routers.macro._fetch_macro_calendar_data")
-    @patch("backend.routers.macro.get_macro_assets")
-    @patch("backend.routers.macro.redis_client")
+    @patch("backend.app.macro_app._fetch_sector_fund_flow")
+    @patch("backend.app.macro_app._fetch_margin_trading_data")
+    @patch("backend.app.macro_app._fetch_earnings_calendar_data")
+    @patch("backend.app.macro_app.get_macro_news")
+    @patch("backend.app.macro_app._fetch_macro_calendar_data")
+    @patch("backend.app.macro_app.get_macro_assets")
+    @patch("backend.app.macro_app.redis_client")
     def test_dashboard_with_exceptions(
         self, mock_redis, mock_assets, mock_calendar, mock_news, mock_earnings, mock_margin, mock_sector_flow, client
     ):
@@ -137,7 +137,7 @@ class TestMarginTrading:
 # GET /macro/assets
 # ==========================================
 class TestMacroAssets:
-    @patch("backend.routers.macro.redis_client")
+    @patch("backend.app.macro_app.redis_client")
     def test_assets_cached(self, mock_redis, client):
         """资产数据缓存命中"""
         cached = {"status": "success", "data": {"macroAssets": [], "radarData": [], "sentimentIndicators": {}}}
@@ -148,8 +148,8 @@ class TestMacroAssets:
         data = _unwrap(resp)
         assert data["status"] == "success"
 
-    @patch("backend.routers.macro._fetch_macro_assets_data")
-    @patch("backend.routers.macro.redis_client")
+    @patch("backend.app.macro_app._fetch_macro_assets_data")
+    @patch("backend.app.macro_app.redis_client")
     def test_assets_fresh(self, mock_redis, mock_fetch, client):
         """资产数据强制刷新"""
         mock_redis.get = AsyncMock(return_value=None)
@@ -165,10 +165,10 @@ class TestMacroAssets:
 # ==========================================
 class TestFetchMacroAssetsData:
     @pytest.mark.asyncio
-    @patch("backend.routers.macro.redis_client")
+    @patch("backend.app.macro_app.redis_client")
     async def test_fetch_assets_from_cache(self, mock_redis):
         """从 Redis 缓存获取资产数据"""
-        from backend.routers.macro import _fetch_macro_assets_data
+        from backend.app.macro_app import _fetch_macro_assets_data
 
         # 模拟 Redis 中有缓存数据
         records = [
@@ -184,10 +184,10 @@ class TestFetchMacroAssetsData:
         assert result[0]["value"] == 5010.0
 
     @pytest.mark.asyncio
-    @patch("backend.routers.macro.redis_client")
+    @patch("backend.app.macro_app.redis_client")
     async def test_fetch_assets_no_cache(self, mock_redis):
         """无缓存数据"""
-        from backend.routers.macro import _fetch_macro_assets_data
+        from backend.app.macro_app import _fetch_macro_assets_data
 
         mock_redis.get = AsyncMock(return_value=None)
 
@@ -226,7 +226,7 @@ class TestMacroSentiment:
 # GET /macro/news
 # ==========================================
 class TestMacroNews:
-    @patch("backend.routers.macro.redis_client")
+    @patch("backend.app.macro_app.redis_client")
     def test_news_from_cache(self, mock_redis, client):
         """新闻缓存"""
         cached_news = [
@@ -239,7 +239,7 @@ class TestMacroNews:
         data = _unwrap(resp)
         assert data["status"] == "success"
 
-    @patch("backend.routers.macro.redis_client")
+    @patch("backend.app.macro_app.redis_client")
     def test_news_empty(self, mock_redis, client):
         """无新闻"""
         mock_redis.zrevrange = AsyncMock(return_value=[])

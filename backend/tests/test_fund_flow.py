@@ -233,8 +233,8 @@ def test_us_sector_success_via_market_data():
     fake_manager = MagicMock()
     fake_manager.flow_cache = {}
     with (
-        patch("backend.routers.macro.manager", create=True, new=fake_manager),
-        patch("backend.routers.macro.market_data", create=True, new=fake_market),
+        patch("backend.app.macro_app.manager", create=True, new=fake_manager),
+        patch("backend.app.macro_app.market_data", create=True, new=fake_market),
     ):
         res = asyncio.run(us_sector.get_us_sector_flow())
     assert res["status"] == "success"
@@ -251,8 +251,8 @@ def test_us_sector_cache_hit():
     fake_manager = MagicMock()
     fake_manager.flow_cache = {"US.SPY": cached}
     with (
-        patch("backend.routers.macro.manager", create=True, new=fake_manager),
-        patch("backend.routers.macro.market_data", create=True, new=fake_market),
+        patch("backend.app.macro_app.manager", create=True, new=fake_manager),
+        patch("backend.app.macro_app.market_data", create=True, new=fake_market),
     ):
         res = asyncio.run(us_sector.get_us_sector_flow())
     assert res["status"] == "success"
@@ -271,8 +271,8 @@ def test_us_sector_one_ticker_fails():
     fake_manager = MagicMock()
     fake_manager.flow_cache = {}
     with (
-        patch("backend.routers.macro.manager", create=True, new=fake_manager),
-        patch("backend.routers.macro.market_data", create=True, new=fake_market),
+        patch("backend.app.macro_app.manager", create=True, new=fake_manager),
+        patch("backend.app.macro_app.market_data", create=True, new=fake_market),
     ):
         res = asyncio.run(us_sector.get_us_sector_flow())
     assert res["status"] == "success"
@@ -286,8 +286,8 @@ def test_us_sector_nested_capital_flow():
     fake_manager = MagicMock()
     fake_manager.flow_cache = {}
     with (
-        patch("backend.routers.macro.manager", create=True, new=fake_manager),
-        patch("backend.routers.macro.market_data", create=True, new=fake_market),
+        patch("backend.app.macro_app.manager", create=True, new=fake_manager),
+        patch("backend.app.macro_app.market_data", create=True, new=fake_market),
     ):
         res = asyncio.run(us_sector.get_us_sector_flow())
     assert res["status"] == "success"

@@ -35,7 +35,7 @@ def _unwrap(resp):
 
 
 class TestMacroSeries:
-    @patch("backend.routers.macro.market_data")
+    @patch("backend.app.macro_app.market_data")
     def test_series_success(self, mock_md, client):
         mock_md.get_series_observations = AsyncMock(
             return_value={"status": "success", "data": [{"date": "2026-01-01", "value": 4.5}]}
@@ -45,7 +45,7 @@ class TestMacroSeries:
         data = _unwrap(resp)
         assert data["status"] == "success"
 
-    @patch("backend.routers.macro.market_data")
+    @patch("backend.app.macro_app.market_data")
     def test_series_error(self, mock_md, client):
         mock_md.get_series_observations = AsyncMock(return_value={"status": "error", "message": "Not found"})
         resp = client.get("/api/v1/macro/series?series_id=INVALID")
@@ -67,7 +67,7 @@ class TestMacroSentimentHistory:
         mock_record.vix_value = 15.2
         mock_record.credit_spread = 3.5
 
-        with patch("backend.routers.macro.models") as mock_models:
+        with patch("backend.app.macro_app.models") as mock_models:
             mock_models.SentimentRecord = MagicMock()
             with patch("backend.core.database.get_db") as mock_db:
                 mock_session = MagicMock()
@@ -86,7 +86,7 @@ class TestMacroSentimentHistory:
 
 
 class TestMacroCapitalFlow:
-    @patch("backend.routers.macro.redis_client")
+    @patch("backend.app.macro_app.redis_client")
     def test_capital_flow_cache_hit(self, mock_redis, client):
         """缓存命中"""
         cached = {"status": "success", "data": [{"market": "US", "label": "美股大盘"}]}
@@ -96,8 +96,8 @@ class TestMacroCapitalFlow:
         data = _unwrap(resp)
         assert data["status"] == "success"
 
-    @patch("backend.routers.macro._fetch_capital_flows", new_callable=AsyncMock)
-    @patch("backend.routers.macro.redis_client")
+    @patch("backend.app.macro_app._fetch_capital_flows", new_callable=AsyncMock)
+    @patch("backend.app.macro_app.redis_client")
     def test_capital_flow_fetch(self, mock_redis, mock_fetch, client):
         """正常获取资金流"""
         mock_redis.get = AsyncMock(return_value=None)
@@ -118,7 +118,7 @@ class TestMacroCapitalFlow:
 
 
 class TestMacroNews:
-    @patch("backend.routers.macro._fetch_macro_news_from_stream", new_callable=AsyncMock)
+    @patch("backend.app.macro_app._fetch_macro_news_from_stream", new_callable=AsyncMock)
     def test_news_from_stream(self, mock_stream, client):
         """从 Redis 流获取新闻"""
         mock_stream.return_value = [{"headline": "Fed holds rates", "source": "Reuters"}]
@@ -128,8 +128,8 @@ class TestMacroNews:
         assert data["status"] == "success"
         assert len(data["data"]) == 1
 
-    @patch("backend.routers.macro.market_data")
-    @patch("backend.routers.macro._fetch_macro_news_from_stream", new_callable=AsyncMock)
+    @patch("backend.app.macro_app.market_data")
+    @patch("backend.app.macro_app._fetch_macro_news_from_stream", new_callable=AsyncMock)
     def test_news_fallback_to_market_data(self, mock_stream, mock_md, client):
         """Redis 为空时降级到 market_data"""
         mock_stream.return_value = []
@@ -137,7 +137,7 @@ class TestMacroNews:
         resp = client.get("/api/v1/macro/news?category=general")
         assert resp.status_code == 200
 
-    @patch("backend.routers.macro.market_data")
+    @patch("backend.app.macro_app.market_data")
     def test_news_non_general_category(self, mock_md, client):
         """非 general 分类直接调用 market_data"""
         mock_md.get_market_news = AsyncMock(return_value={"status": "success", "data": []})
@@ -151,14 +151,14 @@ class TestMacroNews:
 
 
 class TestMacroCalendarExtra:
-    @patch("backend.routers.macro._fetch_macro_calendar_data", new_callable=AsyncMock)
+    @patch("backend.app.macro_app._fetch_macro_calendar_data", new_callable=AsyncMock)
     def test_calendar_error(self, mock_fetch, client):
         """聚合器返回错误"""
         mock_fetch.return_value = {"status": "error", "message": "数据源不可用"}
         resp = client.get("/api/v1/macro/calendar?days_ahead=7")
         assert resp.status_code == 500
 
-    @patch("backend.routers.macro._fetch_macro_calendar_data", new_callable=AsyncMock)
+    @patch("backend.app.macro_app._fetch_macro_calendar_data", new_callable=AsyncMock)
     def test_calendar_with_days_back(self, mock_fetch, client):
         """带 days_back 参数"""
         mock_fetch.return_value = {"status": "success", "data": []}
@@ -172,7 +172,7 @@ class TestMacroCalendarExtra:
 
 
 class TestMacroDashboard:
-    @patch("backend.routers.macro.redis_client")
+    @patch("backend.app.macro_app.redis_client")
     def test_dashboard_cache_hit(self, mock_redis, client):
         """看板缓存命中"""
         cached = {"status": "success", "data": {"indices": [], "news": []}}
@@ -188,7 +188,7 @@ class TestMacroDashboard:
 
 class TestFallbackMockMacro:
     def test_fallback_structure(self):
-        from backend.routers.macro import _fallback_mock_macro
+        from backend.app.macro_app import _fallback_mock_macro
 
         result = _fallback_mock_macro()
         assert result["status"] == "warning"
@@ -203,12 +203,12 @@ class TestFallbackMockMacro:
 
 class TestFetchMacroCalendarInternal:
     @pytest.mark.asyncio
-    @patch("backend.routers.macro.redis_client")
+    @patch("backend.app.macro_app.redis_client")
     @patch("backend.services.macro.macro_calendar_service.macro_calendar_aggregator")
-    @patch("backend.routers.macro.llm_service")
+    @patch("backend.app.macro_app.llm_service")
     async def test_calendar_with_ai_deduction_cache(self, mock_llm, mock_agg, mock_redis):
         """AI 推演缓存命中"""
-        from backend.routers.macro import _fetch_macro_calendar_data
+        from backend.app.macro_app import _fetch_macro_calendar_data
 
         mock_redis.get = AsyncMock(side_effect=[None, None, "缓存的AI推演"])
         mock_redis.set = AsyncMock(return_value=True)
@@ -234,11 +234,11 @@ class TestFetchMacroCalendarInternal:
         assert "ai_deduction" in result
 
     @pytest.mark.asyncio
-    @patch("backend.routers.macro.redis_client")
+    @patch("backend.app.macro_app.redis_client")
     @patch("backend.services.macro.macro_calendar_service.macro_calendar_aggregator")
     async def test_calendar_empty_events_fallback(self, mock_agg, mock_redis):
         """聚合器无数据时使用 mock"""
-        from backend.routers.macro import _fetch_macro_calendar_data
+        from backend.app.macro_app import _fetch_macro_calendar_data
 
         mock_redis.get = AsyncMock(return_value=None)
         mock_agg.aggregate = AsyncMock(return_value={"data": []})
@@ -254,12 +254,12 @@ class TestFetchMacroCalendarInternal:
 
 class TestFetchEarningsCalendar:
     @pytest.mark.asyncio
-    @patch("backend.routers.macro.redis_client")
-    @patch("backend.routers.macro.market_data")
-    @patch("backend.routers.macro.llm_service")
+    @patch("backend.app.macro_app.redis_client")
+    @patch("backend.app.macro_app.market_data")
+    @patch("backend.app.macro_app.llm_service")
     async def test_earnings_calendar_success(self, mock_llm, mock_md, mock_redis):
         """财报日历正常返回"""
-        from backend.routers.macro import _fetch_earnings_calendar_data
+        from backend.app.macro_app import _fetch_earnings_calendar_data
 
         mock_redis.get = AsyncMock(return_value=None)
         mock_redis.set = AsyncMock(return_value=True)
@@ -284,11 +284,11 @@ class TestFetchEarningsCalendar:
         assert result["data"][0]["name_cn"] == "苹果"
 
     @pytest.mark.asyncio
-    @patch("backend.routers.macro.redis_client")
-    @patch("backend.routers.macro.market_data")
+    @patch("backend.app.macro_app.redis_client")
+    @patch("backend.app.macro_app.market_data")
     async def test_earnings_calendar_error(self, mock_md, mock_redis):
         """财报日历数据源错误"""
-        from backend.routers.macro import _fetch_earnings_calendar_data
+        from backend.app.macro_app import _fetch_earnings_calendar_data
 
         mock_redis.get = AsyncMock(return_value=None)
         mock_md.get_earnings_calendar = AsyncMock(return_value={"status": "error", "message": "Failed"})

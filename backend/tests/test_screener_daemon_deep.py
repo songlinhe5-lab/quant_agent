@@ -272,7 +272,7 @@ class TestScreenerSubscribe:
 # Macro capital-flow endpoint
 # ==========================================
 class TestCapitalFlow:
-    @patch("backend.routers.macro.redis_client")
+    @patch("backend.app.macro_app.redis_client")
     def test_capital_flow_cached(self, mock_redis, client):
         """资金流向缓存"""
         cached = {"status": "success", "data": {"flows": [], "is_market_closed": False}}

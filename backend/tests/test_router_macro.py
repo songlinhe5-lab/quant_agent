@@ -33,7 +33,7 @@ class TestMacroCalendar:
     def test_calendar_cache_hit_returns_cached(self, client):
         """缓存命中:直接返回 Redis 缓存数据"""
         cached = {"status": "success", "data": [{"event": "Fed", "date": "2026-06-29T00:00:00Z"}]}
-        with patch("backend.routers.macro.redis_client") as m_redis:
+        with patch("backend.app.macro_app.redis_client") as m_redis:
             m_redis.get = AsyncMock(return_value=json.dumps(cached))
             resp = client.get("/api/v1/macro/calendar?days_ahead=7")
         assert resp.status_code == 200
@@ -45,9 +45,9 @@ class TestMacroCalendar:
     def test_calendar_akshare_success(self, client):
         """聚合器正常返回:高危关键词识别 + AI 推演 + 多源贡献透传"""
         with (
-            patch("backend.routers.macro.redis_client") as m_redis,
+            patch("backend.app.macro_app.redis_client") as m_redis,
             patch("backend.services.macro.macro_calendar_service.macro_calendar_aggregator") as m_agg,
-            patch("backend.routers.macro.llm_service") as m_llm,
+            patch("backend.app.macro_app.llm_service") as m_llm,
         ):
             m_redis.get = AsyncMock(return_value=None)
             m_redis.set = AsyncMock(return_value=True)
@@ -90,7 +90,7 @@ class TestMacroCalendar:
     def test_calendar_fallback_to_mock_when_all_sources_fail(self, client):
         """聚合器无数据:降级返回离线 Mock (status=warning, HTTP 200)"""
         with (
-            patch("backend.routers.macro.redis_client") as m_redis,
+            patch("backend.app.macro_app.redis_client") as m_redis,
             patch("backend.services.macro.macro_calendar_service.macro_calendar_aggregator") as m_agg,
         ):
             m_redis.get = AsyncMock(return_value=None)
@@ -121,7 +121,7 @@ class TestMacroCalendar:
 
 class TestMacroSeries:
     def test_series_success(self, client):
-        with patch("backend.routers.macro.market_data") as m_fred:
+        with patch("backend.app.macro_app.market_data") as m_fred:
             m_fred.get_series_observations = AsyncMock(
                 return_value={
                     "status": "success",
@@ -132,7 +132,7 @@ class TestMacroSeries:
         assert resp.status_code == 200
 
     def test_series_error_returns_400(self, client):
-        with patch("backend.routers.macro.market_data") as m_fred:
+        with patch("backend.app.macro_app.market_data") as m_fred:
             m_fred.get_series_observations = AsyncMock(
                 return_value={
                     "status": "error",
@@ -151,7 +151,7 @@ class TestMacroSeries:
 class TestSentimentHistory:
     def test_sentiment_history_no_model_returns_500(self, client):
         """models 无 SentimentRecord 属性时返回 500"""
-        with patch("backend.routers.macro.models") as m_models:
+        with patch("backend.app.macro_app.models") as m_models:
             m_models.SentimentRecord = None
             # hasattr 返回 False
             resp = client.get("/api/v1/macro/sentiment-history")
@@ -191,7 +191,7 @@ class TestCapitalFlow:
     def test_capital_flow_cache_hit(self, client):
         """缓存命中:直接返回"""
         cached = {"status": "success", "data": [{"market": "HK", "amount": 10.5}]}
-        with patch("backend.routers.macro.redis_client") as m_redis:
+        with patch("backend.app.macro_app.redis_client") as m_redis:
             m_redis.get = AsyncMock(return_value=json.dumps(cached))
             resp = client.get("/api/v1/macro/capital-flow")
         assert resp.status_code == 200
@@ -200,10 +200,10 @@ class TestCapitalFlow:
     def test_capital_flow_fetches_from_sources(self, client):
         """缓存未命中:从 AkShare + Futu 聚合"""
         with (
-            patch("backend.routers.macro.redis_client") as m_redis,
-            patch("backend.routers.macro.market_data") as m_ak,
-            patch("backend.routers.macro.market_data") as m_futu,
-            patch("backend.routers.macro.manager") as m_manager,
+            patch("backend.app.macro_app.redis_client") as m_redis,
+            patch("backend.app.macro_app.market_data") as m_ak,
+            patch("backend.app.macro_app.market_data") as m_futu,
+            patch("backend.app.macro_app.manager") as m_manager,
         ):
             m_redis.get = AsyncMock(return_value=None)
             m_redis.set = AsyncMock(return_value=True)
@@ -237,7 +237,7 @@ class TestMacroNews:
     def test_news_general_from_redis_stream(self, client):
         """general 分类:从 Redis ZSET 读取"""
         news_item = json.dumps({"headline": "Fed cuts rates", "datetime": 1719500000})
-        with patch("backend.routers.macro.redis_client") as m_redis:
+        with patch("backend.app.macro_app.redis_client") as m_redis:
             m_redis.zrevrange = AsyncMock(return_value=[news_item])
             resp = client.get("/api/v1/macro/news?category=general&limit=5")
         assert resp.status_code == 200
@@ -247,7 +247,7 @@ class TestMacroNews:
 
     def test_news_non_general_delegates_to_finnhub(self, client):
         """非 general 分类:直接走 Finnhub"""
-        with patch("backend.routers.macro.market_data") as m_finnhub:
+        with patch("backend.app.macro_app.market_data") as m_finnhub:
             m_finnhub.get_market_news = AsyncMock(
                 return_value={
                     "status": "success",
@@ -261,8 +261,8 @@ class TestMacroNews:
     def test_news_empty_redis_falls_back_to_finnhub(self, client):
         """Redis 空时回退 Finnhub"""
         with (
-            patch("backend.routers.macro.redis_client") as m_redis,
-            patch("backend.routers.macro.market_data") as m_finnhub,
+            patch("backend.app.macro_app.redis_client") as m_redis,
+            patch("backend.app.macro_app.market_data") as m_finnhub,
         ):
             m_redis.zrevrange = AsyncMock(return_value=[])
             m_finnhub.get_market_news = AsyncMock(
@@ -284,14 +284,14 @@ class TestMacroNews:
 class TestMacroAssets:
     def test_assets_cache_hit(self, client):
         cached = {"status": "success", "data": {"macroAssets": [], "radarData": []}}
-        with patch("backend.routers.macro.redis_client") as m_redis:
+        with patch("backend.app.macro_app.redis_client") as m_redis:
             m_redis.get = AsyncMock(return_value=json.dumps(cached))
             resp = client.get("/api/v1/macro/assets")
         assert resp.status_code == 200
 
     def test_assets_force_refresh_bypasses_cache(self, client):
         """force_refresh=True 绕过缓存"""
-        with patch("backend.routers.macro.redis_client") as m_redis:
+        with patch("backend.app.macro_app.redis_client") as m_redis:
             m_redis.get = AsyncMock(return_value=None)
             m_redis.set = AsyncMock(return_value=True)
             resp = client.get("/api/v1/macro/assets?force_refresh=true")
@@ -306,7 +306,7 @@ class TestMacroAssets:
 class TestMacroDashboard:
     def test_dashboard_cache_hit(self, client):
         cached = {"status": "success", "data": {"macroAssets": []}}
-        with patch("backend.routers.macro.redis_client") as m_redis:
+        with patch("backend.app.macro_app.redis_client") as m_redis:
             m_redis.get = AsyncMock(return_value=json.dumps(cached))
             resp = client.get("/api/v1/macro/dashboard")
         assert resp.status_code == 200
@@ -314,12 +314,12 @@ class TestMacroDashboard:
     def test_dashboard_aggregates_all_sources(self, client):
         """缓存未命中:并发聚合所有数据源"""
         with (
-            patch("backend.routers.macro.redis_client") as m_redis,
-            patch("backend.routers.macro.get_macro_assets", new_callable=AsyncMock) as m_assets,
-            patch("backend.routers.macro._fetch_macro_calendar_data", new_callable=AsyncMock) as m_cal,
-            patch("backend.routers.macro.get_macro_news", new_callable=AsyncMock) as m_news,
-            patch("backend.routers.macro._fetch_earnings_calendar_data", new_callable=AsyncMock) as m_earn,
-            patch("backend.routers.macro._fetch_sector_fund_flow", new_callable=AsyncMock) as m_sector,
+            patch("backend.app.macro_app.redis_client") as m_redis,
+            patch("backend.app.macro_app.get_macro_assets", new_callable=AsyncMock) as m_assets,
+            patch("backend.app.macro_app._fetch_macro_calendar_data", new_callable=AsyncMock) as m_cal,
+            patch("backend.app.macro_app.get_macro_news", new_callable=AsyncMock) as m_news,
+            patch("backend.app.macro_app._fetch_earnings_calendar_data", new_callable=AsyncMock) as m_earn,
+            patch("backend.app.macro_app._fetch_sector_fund_flow", new_callable=AsyncMock) as m_sector,
         ):
             m_redis.get = AsyncMock(return_value=None)
             m_redis.set = AsyncMock(return_value=True)

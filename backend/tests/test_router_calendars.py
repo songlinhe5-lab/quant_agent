@@ -444,7 +444,7 @@ class TestCalendarsSchedules:
 class TestMacroEarnings:
     def test_earnings_reuses_aggregator(self, client):
         with (
-            patch("backend.routers.macro._fetch_earnings_calendar_data", new_callable=AsyncMock) as m_earn,
+            patch("backend.app.macro_app._fetch_earnings_calendar_data", new_callable=AsyncMock) as m_earn,
         ):
             m_earn.return_value = {
                 "status": "success",
