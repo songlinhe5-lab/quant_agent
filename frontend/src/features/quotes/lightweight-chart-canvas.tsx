@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { createChart, ColorType, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries, AreaSeries, BaselineSeries, LineStyle, createSeriesMarkers, type IChartApi, type ISeriesApi, type UTCTimestamp, type IPriceLine, type ISeriesMarkersPluginApi, type SeriesMarker, type Time } from 'lightweight-charts'
-import { AlertTriangle, TrendingUp, TrendingDown, Eye, EyeOff, Pencil, Globe, ChevronRight, Minus, Square, Spline, Eraser, MousePointerClick } from 'lucide-react'
+import { AlertTriangle, TrendingUp, TrendingDown, Eye, EyeOff, Pencil, Globe, ChevronRight, Minus, Square, Spline, Eraser, MousePointerClick, Sigma } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { crosshairSync } from './chart-crosshair-sync'
 import { cn } from '@/lib/utils'
@@ -14,6 +14,9 @@ import { useChartAnnotationStore } from '@/stores/useChartAnnotationStore'
 import type { ChartAnnotationPayload } from '@/features/copilot/types'
 import { useTradeStore, type OrderSide } from '@/stores/useTradeStore'
 import { OrderConfirmModal } from './order-confirm-modal'
+import { evaluate, type CIBar } from './custom-indicator/engine'
+import { useCustomIndicatorStore } from './custom-indicator/store'
+import { CustomIndicatorPanel } from './custom-indicator/panel'
 
 // 💡 个股事件类型定义
 interface StockEvent {
@@ -228,6 +231,54 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
   const orderModeRef = useRef(false)
   useEffect(() => { orderModeRef.current = orderMode }, [orderMode])
   const positionCount = useTradeStore((s) => (s.positions[selectedSymbol] ?? []).length)
+
+  // PROD-11: 自定义指标脚本（Pine Script 简化版）面板与渲染引用
+  const [showCIPanel, setShowCIPanel] = useState(false)
+  const customMarkersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
+  const customLineRefs = useRef<Record<string, ISeriesApi<'Line'>>>({})
+  const currentBarsRef = useRef<CIBar[]>([])
+
+  const applyCustomIndicators = useCallback((bars: CIBar[]) => {
+    const chart = chartRef.current
+    const series = seriesRef.current
+    if (!chart || !series || bars.length === 0) return
+    // 清理上一次叠加的自定义数值线
+    Object.values(customLineRefs.current).forEach((s) => { try { chart.removeSeries(s) } catch {} })
+    customLineRefs.current = {}
+    const markers: SeriesMarker<Time>[] = []
+    const list = useCustomIndicatorStore.getState().indicators.filter((i) => i.visible)
+    for (const ind of list) {
+      const r = evaluate(ind.expr, bars)
+      if (!r.ok) continue
+      if (r.isBool) {
+        for (let i = 0; i < r.values.length; i++) {
+          if (r.values[i] === 1) {
+            const t = (new Date(bars[i].time.replace(/-/g, '/')).getTime() / 1000) as UTCTimestamp
+            markers.push({ time: t, position: 'aboveBar', color: ind.color, shape: 'circle', text: ind.name })
+          }
+        }
+      } else {
+        const line = chart.addSeries(LineSeries, { color: ind.color, lineWidth: 1, priceScaleId: 'right', crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false })
+        const data: { time: UTCTimestamp; value: number }[] = []
+        for (let i = 0; i < r.values.length; i++) {
+          const v = r.values[i]
+          if (v == null) continue
+          data.push({ time: (new Date(bars[i].time.replace(/-/g, '/')).getTime() / 1000) as UTCTimestamp, value: v })
+        }
+        line.setData(data)
+        customLineRefs.current[ind.id] = line
+      }
+    }
+    if (markers.length) {
+      if (!customMarkersApiRef.current) customMarkersApiRef.current = createSeriesMarkers(series, markers)
+      else customMarkersApiRef.current.setMarkers(markers)
+    } else if (customMarkersApiRef.current) {
+      customMarkersApiRef.current.setMarkers([])
+    }
+  }, [])
+
+  const applyCIPanelRef = useRef(applyCustomIndicators)
+  applyCIPanelRef.current = applyCustomIndicators
   const orderPreviewLineRef = useRef<IPriceLine | null>(null)
   const positionLinesRef = useRef<Record<string, IPriceLine>>({})
 
@@ -576,6 +627,8 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
 
     // PROD-09: 图表初始化后绘制模拟持仓价格线
     applyPositionLines()
+    // PROD-11: 图表重建后若已有 K 线数据，重新叠加自定义指标
+    if (currentBarsRef.current.length) applyCIPanelRef.current(currentBarsRef.current)
 
     const handleResize = (entries: ResizeObserverEntry[]) => {
       if (entries.length === 0 || !chartRef.current) return
@@ -757,6 +810,8 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       chart.remove(); chartRef.current = null; seriesRef.current = null; volumeRef.current = null; macdDiffRef.current = null; macdDeaRef.current = null; macdHistRef.current = null; rsiLineRef.current = null; rsiHistRef.current = null; kdjKRef.current = null; kdjDRef.current = null; kdjJRef.current = null; bbUpperRef.current = null; bbLowerRef.current = null;       container.removeEventListener('mousedown', handleMouseDown); window.removeEventListener('mouseup', handleMouseUp);
       clearPositionLines();
       orderPreviewLineRef.current = null
+      customMarkersApiRef.current = null
+      customLineRefs.current = {}
     }
   }, [theme, applyPositionLines])
 
@@ -772,6 +827,14 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     applyPositionLines()
     return () => { unsub(); clearPositionLines() }
   }, [selectedSymbol, applyPositionLines, clearPositionLines])
+
+  // PROD-11: 订阅自定义指标变化 -> 实时重算叠加
+  useEffect(() => {
+    const unsub = useCustomIndicatorStore.subscribe(() => {
+      if (currentBarsRef.current.length) applyCIPanelRef.current(currentBarsRef.current)
+    })
+    return unsub
+  }, [])
 
   useEffect(() => {
     if (!seriesRef.current) return
@@ -828,7 +891,10 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       seriesRef.current?.setData(lwData); markersRef.current = markers;
       // PROD-02: 数据重载后重新叠加 AI 标注
       applyAiAnnotationsRef.current?.()
-      if (ma20Ref.current) ma20Ref.current.setData(ma20Data); if (ma50Ref.current) ma50Ref.current.setData(ma50Data); if (ma200Ref.current) ma200Ref.current.setData(ma200Data); if (bbUpperRef.current) bbUpperRef.current.setData(bbUpperData); if (bbLowerRef.current) bbLowerRef.current.setData(bbLowerData); if (volumeRef.current) volumeRef.current.setData(volumeData); if (macdDiffRef.current) macdDiffRef.current.setData(macdDiffData); if (macdDeaRef.current) macdDeaRef.current.setData(macdDeaData); if (macdHistRef.current) macdHistRef.current.setData(macdHistData); if (rsiLineRef.current) rsiLineRef.current.setData(rsiData); if (rsiHistRef.current) rsiHistRef.current.setData(rsiHistData); if (kdjKRef.current) kdjKRef.current.setData(kdjKData); if (kdjDRef.current) kdjDRef.current.setData(kdjDData); if (kdjJRef.current) kdjJRef.current.setData(kdjJData);
+      if (ma20Ref.current) ma20Ref.current.setData(ma20Data); if (ma50Ref.current) ma50Ref.current.setData(ma50Data); if (ma200Ref.current) ma200Ref.current.setData(ma200Data); if (bbUpperRef.current) bbUpperRef.current.setData(bbUpperData); if (bbLowerRef.current) bbLowerRef.current.setData(bbLowerData); if (volumeRef.current) volumeRef.current.setData(volumeData); if (macdDiffRef.current) macdDiffRef.current.setData(macdDiffData); if (macdDeaRef.current) macdDeaRef.current.setData(macdDeaData); if (macdHistRef.current) macdHistRef.current.setData(macdHistData); if (rsiLineRef.current) rsiLineRef.current.setData(rsiData); if (rsiHistRef.current) rsiHistRef.current.setData(rsiHistData); if (kdjKRef.current) kdjKRef.current.setData(kdjKData); if (kdjDRef.current) kdjDRef.current.setData(kdjDData); if (kdjJRef.current) kdjJRef.current.setData(kdjJData)
+      // PROD-11: K 线就绪后叠加自定义指标（数值线/布尔信号）
+      currentBarsRef.current = sortedHistory
+      applyCIPanelRef.current?.(sortedHistory);
       if (!isFirstLoadFittedRef.current && chartRef.current && lwData.length > 0) { 
         requestAnimationFrame(() => { 
           if (chartRef.current) {
@@ -940,6 +1006,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
           ))}
           <Button variant="outline" size="sm" onClick={clearDrawings} className="h-7 w-7 p-0 border-border/50 bg-background" title="清除全部画线"><Eraser className="h-3.5 w-3.5" /></Button>
           <Button variant={orderMode ? 'default' : 'outline'} size="sm" onClick={() => { const next = !orderMode; setOrderMode(next); if (next) setDrawTool('none') }} className={cn('relative h-7 w-7 p-0 border-border/50', orderMode ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/30' : 'bg-background')} title={orderMode ? '退出下单模式' : '下单模式：在图上拖拽设置价格线'}><MousePointerClick className="h-3.5 w-3.5" />{positionCount > 0 && <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] px-0.5 rounded-full bg-emerald-500 text-[8px] font-bold text-white flex items-center justify-center">{positionCount}</span>}</Button>
+          <Button variant={showCIPanel ? 'default' : 'outline'} size="sm" onClick={() => setShowCIPanel((s) => !s)} className={cn('h-7 w-7 p-0 border-border/50', showCIPanel ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/30' : 'bg-background')} title={showCIPanel ? '关闭自定义指标' : '自定义指标脚本（Pine Script 简化版）'}><Sigma className="h-3.5 w-3.5" /></Button>
         </div>
         <Button variant="outline" size="sm" onClick={() => setShowEvents(!showEvents)} className="h-7 px-2.5 gap-1.5 text-[10px] border-border/50 bg-background" title={showEvents ? '隐藏事件' : '显示事件'}>{showEvents ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}</Button>
       </div>
@@ -948,6 +1015,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
           <MousePointerClick className="h-3 w-3" /> 下单模式：在 K 线图上按住拖拽设置价格线，松手弹出模拟下单确认框（当前 OMS 未实装，仅沙箱推演）
         </div>
       )}
+      <CustomIndicatorPanel open={showCIPanel} onClose={() => setShowCIPanel(false)} bars={currentBarsRef.current} />
       <div className="px-4 py-1.5 border-b border-border/30 bg-secondary/20 flex gap-4 text-[10px] font-mono text-muted-foreground shrink-0">
         <span className="flex items-center gap-1.5"><span className="font-semibold opacity-50">O</span> <span ref={oRef} className="text-foreground font-medium tabular-nums">--</span></span>
         <span className="flex items-center gap-1.5"><span className="font-semibold opacity-50">H</span> <span ref={hRef} className="text-foreground font-medium tabular-nums">--</span></span>

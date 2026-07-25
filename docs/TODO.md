@@ -878,7 +878,7 @@ STATUS: PRODUCTION READY ✨
 
 #### P3 — 长期差异化
 
-- [ ] **[PROD-11]** 自定义指标脚本（对标 TradingView Pine Script）：用户可写简单表达式指标（如 `RSI(14) > KDJ.K`），前端实时计算并叠加到 K 线图
+- [x] **[PROD-11]** 自定义指标脚本（对标 TradingView Pine Script）：✅ **2026-07-25**：新增 `custom-indicator/engine.ts`（纯函数表达式引擎：递归下降解析器 + 向量化求值，支持字段 OPEN/HIGH/LOW/CLOSE/VOLUME、命名空间 KDJ.{K,D,J}/MACD.{DIFF,DEA,HIST}/BB.{UPPER,LOWER,MID}、函数 MA/EMA/RSI/REF/CROSS/HHV/LLV/ABS/SQRT/MAX/MIN，MA/EMA/RSI 支持单参(作用于CLOSE)或双参；复用 worker 同款 RSI/KDJ/MACD/BOLL 算法)；`store.ts`（zustand persist 持久化用户脚本，预置 RSI(14)>KDJ.K、MA5 上穿 MA20 示例，默认隐藏）；`panel.tsx`（图表内抽屉：列表/新增/编辑/删除/显隐 + 实时语法校验与结果预览 + 语法帮助）；`lightweight-chart-canvas.tsx` 工具栏新增「ƒ」按钮，数值型表达式以主图 LineSeries 叠加、布尔型（如 `RSI(14) > KDJ.K`）以主图信号点(markers)标记，K 线就绪与 store 变化均实时重算。新增 `engine.test.ts`（8 用例）。tsc 零错误 + 205 全量零回归
 - [x] **[PROD-12]** 多图表同步十字线：✅ **2026-07-25**：新增 `chart-crosshair-sync.ts` 单例同步管理器（按 `syncGroup` 分组）；`LightweightChartCanvas` 接入注册/广播/应用（带防回环锁，外部同步不二次广播）；`quotes.tsx` 新增「同步对比」分屏模式（上下双图、各自独立 WebSocket/历史数据，共享 `syncGroup='default'`），移动任一图十字线同组其他图同步跳动。tsc 零错误 + 197 全量零回归
 
 #### AI 全模块渗透（三层架构：主动推送 / 嵌入式辅助 / 按需调用）
