@@ -239,7 +239,7 @@ export function MonacoEditorTab() {
             })
           }}
           onChange={(val) => { store.setCode(val || ''); setSyntaxError(null) }}
-          options={{ minimap: { enabled: false }, fontSize: 13, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace', lineHeight: 22, padding: { top: 16, bottom: 16 }, scrollBeyondLastLine: false, smoothScrolling: true, cursorBlinking: "smooth", cursorSmoothCaretAnimation: "on", formatOnPaste: true, overviewRulerLanes: 0, renderLineHighlight: "all", hideCursorInOverviewRuler: true, scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 } }}
+          options={{ minimap: { enabled: false }, fontSize: 13, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace', lineHeight: 22, padding: { top: 16, bottom: 16 }, scrollBeyondLastLine: false, smoothScrolling: true, cursorBlinking: "smooth", cursorSmoothCaretAnimation: "on", formatOnPaste: true, overviewRulerLanes: 0, renderLineHighlight: "all", hideCursorInOverviewRuler: true, scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 }, automaticLayout: true }}
           loading={<div className="flex items-center justify-center h-full text-muted-foreground text-xs font-mono gap-2"><Loader2 className="h-4 w-4 animate-spin" /> 启动 Monaco 核心引擎...</div>}
         />
       </div>
