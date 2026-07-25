@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { createChart, ColorType, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries, AreaSeries, BaselineSeries, LineStyle, createSeriesMarkers, type IChartApi, type ISeriesApi, type UTCTimestamp, type IPriceLine, type ISeriesMarkersPluginApi, type SeriesMarker, type Time } from 'lightweight-charts'
-import { AlertTriangle, TrendingUp, TrendingDown, Eye, EyeOff, Pencil, Globe, ChevronRight, Minus, Square, Spline, Eraser } from 'lucide-react'
+import { AlertTriangle, TrendingUp, TrendingDown, Eye, EyeOff, Pencil, Globe, ChevronRight, Minus, Square, Spline, Eraser, MousePointerClick } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { crosshairSync } from './chart-crosshair-sync'
 import { cn } from '@/lib/utils'
@@ -12,6 +12,8 @@ import type { WatchlistItem } from '@/stores/use-watchlist'
 import { useCopilotContextStore } from '@/stores/useCopilotContextStore'
 import { useChartAnnotationStore } from '@/stores/useChartAnnotationStore'
 import type { ChartAnnotationPayload } from '@/features/copilot/types'
+import { useTradeStore, type OrderSide } from '@/stores/useTradeStore'
+import { OrderConfirmModal } from './order-confirm-modal'
 
 // 💡 个股事件类型定义
 interface StockEvent {
@@ -217,8 +219,35 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       const c = chartContainerRef.current as any
       if (c && c._activeDrawingPlugin) { try { seriesRef.current?.detachPrimitive(c._activeDrawingPlugin) } catch {}; c._activeDrawingPlugin = null }
     }
+    if (next !== 'none') setOrderMode(false)
     setDrawTool(next)
   }
+
+  // PROD-09: 图表内拖拽式下单（沙箱推演）状态与价格线渲染
+  const [orderMode, setOrderMode] = useState(false)
+  const orderModeRef = useRef(false)
+  useEffect(() => { orderModeRef.current = orderMode }, [orderMode])
+  const positionCount = useTradeStore((s) => (s.positions[selectedSymbol] ?? []).length)
+  const orderPreviewLineRef = useRef<IPriceLine | null>(null)
+  const positionLinesRef = useRef<Record<string, IPriceLine>>({})
+
+  const clearPositionLines = useCallback(() => {
+    if (!seriesRef.current) return
+    Object.values(positionLinesRef.current).forEach((pl) => { try { seriesRef.current?.removePriceLine(pl) } catch {} })
+    positionLinesRef.current = {}
+  }, [])
+
+  const applyPositionLines = useCallback(() => {
+    const series = seriesRef.current
+    if (!series) return
+    clearPositionLines()
+    const positions = useTradeStore.getState().positions[selectedSymbol] ?? []
+    positions.forEach((pos) => {
+      positionLinesRef.current[`${pos.id}:entry`] = series.createPriceLine({ price: pos.entryPrice, color: pos.side === 'BUY' ? '#10b981' : '#ef4444', lineWidth: 1, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: `${pos.side} ${pos.qty}` })
+      if (pos.sl != null) positionLinesRef.current[`${pos.id}:sl`] = series.createPriceLine({ price: pos.sl, color: '#ef4444', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'SL' })
+      if (pos.tp != null) positionLinesRef.current[`${pos.id}:tp`] = series.createPriceLine({ price: pos.tp, color: '#10b981', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'TP' })
+    })
+  }, [selectedSymbol, clearPositionLines])
 
   // PROD-01: 将 K线 上下文（标的 + 周期 + 技术指标）写入 AI 副驾
   useEffect(() => {
@@ -545,6 +574,9 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       }
     })
 
+    // PROD-09: 图表初始化后绘制模拟持仓价格线
+    applyPositionLines()
+
     const handleResize = (entries: ResizeObserverEntry[]) => {
       if (entries.length === 0 || !chartRef.current) return
       const newRect = entries[0].contentRect
@@ -587,6 +619,16 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       if (isDrawModeRef.current && (chartContainerRef.current as any)._activeDrawingPlugin && isValid) {
         const price = candlestickSeries.coordinateToPrice(param.point!.y);
         if (price !== null) (chartContainerRef.current as any)._activeDrawingPlugin.updateEndPoint(param.time, price);
+      }
+      // PROD-09: 下单拖拽 -> 实时更新预览线；持仓线拖拽 -> 实时跟随
+      const c9 = chartContainerRef.current as any
+      if (c9._isOrderDragging && isValid) {
+        const dp = candlestickSeries.coordinateToPrice(param.point!.y)
+        if (dp != null && orderPreviewLineRef.current) { orderPreviewLineRef.current.applyOptions({ price: dp }); c9._orderDragPrice = dp }
+      }
+      if (c9._dragLevel && isValid) {
+        const dp = candlestickSeries.coordinateToPrice(param.point!.y)
+        if (dp != null) { c9._dragLevel.line.applyOptions({ price: dp }); c9._dragLevelPrice = dp }
       }
       if (isValid) {
         const cData = param.seriesData.get(candlestickSeries) as any; const vData = param.seriesData.get(volumeSeries) as any;
@@ -642,18 +684,66 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     });
     
     const handleMouseDown = (e: MouseEvent) => {
+      const c = chartContainerRef.current as any
       if (e.shiftKey && currentCrosshairRef.current) {
-        container._isMeasuring = true; container._measureStart = currentCrosshairRef.current;
+        c._isMeasuring = true; c._measureStart = currentCrosshairRef.current;
         if (measureBoxRef.current) measureBoxRef.current.style.display = 'block';
         if (measureInfoRef.current) measureInfoRef.current.style.display = 'flex';
-        updateMeasureDOM(container._measureStart, currentCrosshairRef.current);
-      } else {
-        if (measureBoxRef.current) measureBoxRef.current.style.display = 'none';
-        if (measureInfoRef.current) measureInfoRef.current.style.display = 'none';
-        container._isMeasuring = false;
+        updateMeasureDOM(c._measureStart, currentCrosshairRef.current);
+        return;
+      }
+      // PROD-09: 下单模式 -> 拖拽设置价格线（松手弹确认框）
+      if (orderModeRef.current && currentCrosshairRef.current) {
+        const p0 = candlestickSeries.coordinateToPrice(currentCrosshairRef.current.point.y)
+        if (p0 != null) {
+          c._isOrderDragging = true; c._orderDragPrice = p0
+          orderPreviewLineRef.current = candlestickSeries.createPriceLine({ price: p0, color: '#a855f7', lineWidth: 2, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: '拖拽下单' })
+        }
+        return;
+      }
+      // PROD-09: 命中持仓线 (entry/sl/tp) -> 拖拽调整
+      if (!isDrawModeRef.current && currentCrosshairRef.current && seriesRef.current) {
+        const my = currentCrosshairRef.current.point.y
+        const positions = useTradeStore.getState().positions[selectedSymbol] ?? []
+        for (const pos of positions) {
+          for (const lvl of (['entryPrice', 'sl', 'tp'] as const)) {
+            const val = pos[lvl]
+            if (val == null) continue
+            const ly = seriesRef.current!.priceToCoordinate(val)
+            if (ly != null && Math.abs(ly - my) < 6) {
+              const line = positionLinesRef.current[`${pos.id}:${lvl}`]
+              if (line) { c._dragLevel = { posId: pos.id, level: lvl, line }; return }
+            }
+          }
+        }
+      }
+      if (measureBoxRef.current) measureBoxRef.current.style.display = 'none';
+      if (measureInfoRef.current) measureInfoRef.current.style.display = 'none';
+      c._isMeasuring = false;
+    };
+    const handleMouseUp = () => {
+      const c = chartContainerRef.current as any
+      if (c?._isMeasuring) c._isMeasuring = false
+      // PROD-09: 完成下单拖拽 -> 弹出确认框（沙箱）
+      if (c?._isOrderDragging) {
+        c._isOrderDragging = false
+        const finalPrice = c._orderDragPrice ?? null
+        if (orderPreviewLineRef.current) { try { seriesRef.current?.removePriceLine(orderPreviewLineRef.current) } catch {}; orderPreviewLineRef.current = null }
+        if (finalPrice != null) {
+          const last = lastCandleRef.current?.close
+          const side: OrderSide = last != null && finalPrice < last ? 'BUY' : 'SELL'
+          useTradeStore.getState().setPending({ symbol: selectedSymbol, side, type: 'LIMIT', price: finalPrice, qty: 100 })
+        }
+      }
+      // PROD-09: 完成持仓线拖拽 -> 提交到 store
+      if (c?._dragLevel) {
+        const dl = c._dragLevel
+        const price = c._dragLevelPrice
+        c._dragLevel = null; c._dragLevelPrice = null
+        if (price != null) useTradeStore.getState().updatePositionLevel(selectedSymbol, dl.posId, dl.level, price)
+        else applyPositionLines()
       }
     };
-    const handleMouseUp = () => { if (container._isMeasuring) container._isMeasuring = false; };
     container.addEventListener('mousedown', handleMouseDown); window.addEventListener('mouseup', handleMouseUp);
 
     return () => {
@@ -664,15 +754,24 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       aiPriceLinesRef.current = []
       aiZoneSeriesRef.current = []
       aiSignalsClickRef.current = []
-      chart.remove(); chartRef.current = null; seriesRef.current = null; volumeRef.current = null; macdDiffRef.current = null; macdDeaRef.current = null; macdHistRef.current = null; rsiLineRef.current = null; rsiHistRef.current = null; kdjKRef.current = null; kdjDRef.current = null; kdjJRef.current = null; bbUpperRef.current = null; bbLowerRef.current = null; container.removeEventListener('mousedown', handleMouseDown); window.removeEventListener('mouseup', handleMouseUp);
+      chart.remove(); chartRef.current = null; seriesRef.current = null; volumeRef.current = null; macdDiffRef.current = null; macdDeaRef.current = null; macdHistRef.current = null; rsiLineRef.current = null; rsiHistRef.current = null; kdjKRef.current = null; kdjDRef.current = null; kdjJRef.current = null; bbUpperRef.current = null; bbLowerRef.current = null;       container.removeEventListener('mousedown', handleMouseDown); window.removeEventListener('mouseup', handleMouseUp);
+      clearPositionLines();
+      orderPreviewLineRef.current = null
     }
-  }, [theme])
+  }, [theme, applyPositionLines])
 
   // PROD-03: 切换标的/周期时清除已画线，避免点位错位误导
   useEffect(() => {
     clearDrawings()
     setDrawTool('none')
   }, [selectedSymbol, selectedPeriod, clearDrawings])
+
+  // PROD-09: 订阅模拟持仓变化 -> 重绘 entry/SL/TP 价格线
+  useEffect(() => {
+    const unsub = useTradeStore.subscribe(() => applyPositionLines())
+    applyPositionLines()
+    return () => { unsub(); clearPositionLines() }
+  }, [selectedSymbol, applyPositionLines, clearPositionLines])
 
   useEffect(() => {
     if (!seriesRef.current) return
@@ -840,9 +939,15 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
             </Button>
           ))}
           <Button variant="outline" size="sm" onClick={clearDrawings} className="h-7 w-7 p-0 border-border/50 bg-background" title="清除全部画线"><Eraser className="h-3.5 w-3.5" /></Button>
+          <Button variant={orderMode ? 'default' : 'outline'} size="sm" onClick={() => { const next = !orderMode; setOrderMode(next); if (next) setDrawTool('none') }} className={cn('relative h-7 w-7 p-0 border-border/50', orderMode ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/30' : 'bg-background')} title={orderMode ? '退出下单模式' : '下单模式：在图上拖拽设置价格线'}><MousePointerClick className="h-3.5 w-3.5" />{positionCount > 0 && <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] px-0.5 rounded-full bg-emerald-500 text-[8px] font-bold text-white flex items-center justify-center">{positionCount}</span>}</Button>
         </div>
         <Button variant="outline" size="sm" onClick={() => setShowEvents(!showEvents)} className="h-7 px-2.5 gap-1.5 text-[10px] border-border/50 bg-background" title={showEvents ? '隐藏事件' : '显示事件'}>{showEvents ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}</Button>
       </div>
+      {orderMode && (
+        <div className="px-3 py-1 border-b border-border/30 bg-primary/10 text-[10px] font-mono text-primary flex items-center gap-1.5 shrink-0">
+          <MousePointerClick className="h-3 w-3" /> 下单模式：在 K 线图上按住拖拽设置价格线，松手弹出模拟下单确认框（当前 OMS 未实装，仅沙箱推演）
+        </div>
+      )}
       <div className="px-4 py-1.5 border-b border-border/30 bg-secondary/20 flex gap-4 text-[10px] font-mono text-muted-foreground shrink-0">
         <span className="flex items-center gap-1.5"><span className="font-semibold opacity-50">O</span> <span ref={oRef} className="text-foreground font-medium tabular-nums">--</span></span>
         <span className="flex items-center gap-1.5"><span className="font-semibold opacity-50">H</span> <span ref={hRef} className="text-foreground font-medium tabular-nums">--</span></span>
@@ -911,6 +1016,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
           })}
         </div>
       )}
+      <OrderConfirmModal />
     </div>
   )
 }
