@@ -6,6 +6,7 @@ import time
 from typing import Any, Dict
 
 import httpx
+import structlog
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from backend.core.middleware import httpx_log_request, httpx_log_response
@@ -13,6 +14,8 @@ from backend.core.utils import safe_truncate
 from hermes_agent.tool_registry import register_tool
 
 from .base import BaseTool
+
+logger = structlog.get_logger(__name__)
 
 
 @register_tool
@@ -39,11 +42,11 @@ class WebScrapeTool(BaseTool):
     async def run(self, url: str, query: str = "") -> Dict[str, Any]:
         if not url:
             return {"status": "error", "message": "URL 不能为空"}
-    
+
         # 💡 安全防线：防范 SSRF 与本地文件读取 (Local File Inclusion) 漏洞
         if not url.lower().startswith(("http://", "https://")):
             return {"status": "error", "message": "非法的 URL 协议。出于安全风控原因，仅允许访问 http(s) 标准网页。"}
-    
+
         # 💡 拦截 PDF/文档链接，Jina 和 httpx 都无法解析二进制文件
         if url.lower().endswith((".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx")):
             return {
@@ -55,14 +58,14 @@ class WebScrapeTool(BaseTool):
                     "2. 手动下载文档后使用 analyze_financial_report 工具分析本地文件"
                 ),
             }
-    
+
         # 方案 1: 使用 Jina Reader API (优先，专门为大模型优化)
         content = await self._fetch_via_jina(url)
-            
+
         # 方案 2: Jina 失败时降级到直接 HTTP 抓取
         if content is None:
             content = await self._fetch_via_httpx(url)
-            
+
         if content is None:
             return {
                 "status": "error",
@@ -74,7 +77,7 @@ class WebScrapeTool(BaseTool):
                     "3. 或告知用户该网页暂时无法访问"
                 ),
             }
-    
+
         return await self._format_response(url, content, query)
 
     async def _fetch_via_jina(self, url: str) -> str | None:
@@ -109,12 +112,12 @@ class WebScrapeTool(BaseTool):
                     or "访问受限" in content
                     or "Just a moment" in content
                 ):
-                    print(f"⚠️ [WebScrape] Jina 触发反爬屏蔽")
+                    logger.warning("jina_anti_bot_blocked", url=url)
                     return None
 
                 return content
         except Exception as e:
-            print(f"⚠️ [WebScrape] Jina API 提取受阻 ({repr(e)})，降级到直接 HTTP 抓取")
+            logger.warning("jina_extract_failed_fallback_http", url=url, error=repr(e))
             return None
 
     async def _fetch_via_httpx(self, url: str) -> str | None:
@@ -175,12 +178,12 @@ class WebScrapeTool(BaseTool):
 
                 # 💡 检查内容质量
                 if len(content) < 200:
-                    print(f"⚠️ [WebScrape] HTTP 直接抓取内容过少 ({len(content)} chars)")
+                    logger.warning("http_content_too_short", url=url, chars=len(content))
                     return None
 
                 return content
         except Exception as e:
-            print(f"⚠️ [WebScrape] HTTP 直接抓取失败 ({repr(e)})")
+            logger.warning("http_fetch_failed", url=url, error=repr(e))
             return None
 
     async def _format_response(self, url: str, content: str, query: str = "") -> Dict[str, Any]:
@@ -198,7 +201,7 @@ class WebScrapeTool(BaseTool):
                 summary = await asyncio.to_thread(self._process_rag, content, query, url)
                 return {"status": "success", "data": {"url": url, "query": query, "content": summary}}
             except Exception as e:
-                print(f"⚠️ [WebScrape] RAG 提取失败: {e}，将降级为全文截断返回。")
+                logger.warning("rag_extract_failed_fallback_fulltext", url=url, error=str(e))
 
         max_chars = 15000
         if len(content) > max_chars:
