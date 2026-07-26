@@ -1030,11 +1030,12 @@ STATUS: PRODUCTION READY ✨
   - 注：采用前端 localStorage 持久化（与 indicators/signalLog 同源），未引入后端 `strategy_recipes` 表（保持客户端优先、零后端依赖，符合沙箱推演定位）
   - 配方列表（我保存的策略配方）+ 一键对比 + 导出 JSON / 分享
   - 预期工时：FE 6h + BE 4h
-- [ ] **[ALERT-COND-01]** 条件单沙盒（P2）：
+- [x] **[ALERT-COND-01]** 条件单沙盒（P2）：
   - 前端：条件构建器（选择指标 + 运算符 + 阈值，支持 AND/OR 组合）→ 模拟命中通知（浏览器弹窗 / App Push 沙盒）
   - 后端：沙盒引擎轮询 1min 持续评估，命中后写 `alert_logs_sandbox` 表 + 前端消费 SSE
   - 目前 OMS 未实装，仅模拟通知，待实盘切换后可直接复用为真条件单
   - 预期工时：FE 8h + BE 8h
+  - ✅ 状态：**已完成（前端沙盒优先，2026-07-26）**。采用前端 localStorage 持久化（与 indicators/signalLog 同源），未引入后端 `alert_logs_sandbox` 表（保持客户端优先、零后端依赖，符合沙盒推演定位）；轮询引擎在面板挂载时按可配置间隔（默认 30s，可选 10s/30s/1min/5min，规格基准 1min）持续评估末根 K 线，上升沿命中即写本地 `alertLog` + Toast/浏览器 Push 双通道模拟通知。后端 SSE 表为后续实盘切换的演进路径。
 
 ##### 社区与协作（数据治理层）
 
@@ -1153,6 +1154,7 @@ STATUS: PRODUCTION READY ✨
 | 2026-07-25 | [PROD-07 完成] Calendars 降级为 Macro Hub 子 Tab：DataCenterModule 新增概览/市场日历子 Tab，CalendarsModule 作为「市场日历」嵌入；侧栏独立入口移除（route 保留）。tsc 零错误 + 197 全量零回归 |
 | 2026-07-19 | [PROD-04 完成] 四场景模式系统：盯盘/研究/监控/AI分析四模式切换基础设施 + 布局骨架适配（12 tests + 197 全量零回归） |
 | 2026-07-26 | [COND-01] 策略配方持久化完成：`store.ts` 新增 `StrategyRecipe` 接口 + `recipes` 持久化（zustand persist v1，localStorage 键 `quant-custom-indicators`）+ `saveRecipe/removeRecipe`；`panel.tsx` 网格结果「存为配方」按钮 + 内联命名表单 + 「📂 配方库」列表（参数快照/收益/夏普/胜率/应用/删除）；`store.test.ts` +4 用例。234 tests passed。至此 PROD-11 系列（追问6 网格搜索 / 追问 G 交易明细导出 / COND-01 配方持久化）全部闭环。 |
+| 2026-07-26 | [ALERT-COND-01] 条件单沙盒完成：`alert-sandbox.ts` 新增 `AlertCondition`/`AlertLogEntry` 接口 + zustand persist（localStorage 键 `quant-alert-sandbox`）+ `addCondition/updateCondition/removeCondition/toggleCondition/setConditionState/pushAlert/clearAlertLog`，并复用 `engine.evaluate` 实现 `evalCondition`（布尔真值=1）；`alert-sandbox-panel.tsx` 条件构建器（名称+布尔表达式+通知方式 + 7 个模板）+ 可配置轮询（10s/30s/1min/5min，基准 1min）+ 上升沿检测（false→true 仅记一次）+ Toast/浏览器 Push 双通道模拟通知 + 命中日志本地落库；`lightweight-chart-canvas.tsx` 接入 Bell 触发按钮与 `getBars` 实时回调；`alert-sandbox.test.ts` +10 用例。全量 47 custom-indicator tests passed，tsc 零新增错误。前端沙盒优先，后端 `alert_logs_sandbox` 表/SSE 为实盘切换演进路径。 |
 | 2026-07-26 | [PROD-11 追问 G] 回测交易明细 CSV 导出：`engine.ts` 新增 `TradeRecord` 接口 + `SignalBacktestResult.tradeDetails` 字段；`panel.tsx` 回测面板标题栏新增「交易明细」导出按钮（8 列：序号/买入日期/买入价/卖出日期/卖出价/收益率%/持有天数/盈亏）；末根持仓以未平仓记录导出（sellDate 空）；BOM+UTF-8 保证 Excel 中文不乱码。`engine.test.ts` +5 用例（已平仓数校验、持仓记录格式、价格一致性、无交易空数组、失败回测空数组）。全量 230 tests passed。闭合信号日志→回测交易明细的复盘闭环。 |
 | 2026-07-26 | [产品功能审计] 新增 **数据源能力矩阵升级** 任务组（OPTION-01~03 / FUNDFLOW-01~02 / EARN-02~03 / SENT-01~02 / SCREEN-01 / MACRO-05 / BRD-01 / COND-01 / ALERT-COND-01 / COMM-01~02）共 17 项：对标 Bloomberg 全能力矩阵识别 6 大覆盖盲区（期权波动率/资金流增强/研报RAG问答/情绪得分化/决策工具/社区协作），优先补齐可复用后端 Tool 的高价值功能。同步新增 `docs/01 §十七`（数据源能力矩阵与产品形态升级），详见 `docs/01 §十七`。 |
 | 2026-07-16 | [BE-ARCH-05 执行] Finnhub DataSource 接入：`backend/services/datasource/adapters/finnhub.py` 实现 `FinnhubDataSource`（满足 `DataSourceInterface` Protocol），6 capabilities（earnings/company_news/market_news/economic_calendar/insider_trading/stock_history）经 `fetch` 路由到既有 `FinnhubService` 方法；`ensure_finnhub_registered` 于 `MarketDataGateway.__init__` 幂等注册（对齐 yfinance BE-ARCH-04 模式）；限流复用 SVC-08 的 `rate_limit_registry`（throttler 状态以服务内部记录为准，适配器仅做 Result 语义化）；`DATASOURCE_FINNHUB_MODE` env 控制运行模式；`docs/14 §八`+§2.4 能力矩阵更新。Pytest 17 全绿。详见 `docs/14 §二`/`§八` |\n| 2026-07-16 | [SVC-08 执行] Finnhub 限流感知：后端 `finnhub_service.py` 注入 `rate_limit_registry` 的 finnhub throttler，`get_earnings_calendar`/`get_market_news`/`get_company_news`/`get_economic_calendar`/`get_insider_transactions`/`get_stock_history` 在 429/403 → `on_rate_limit`、成功 → `on_success`；`routers/calendars.py` 的 `/dividends` `/ipos` 接入 `should_throttle` 退避（退避期返回 degraded，不硬重试）；`routers/datasource.py` 新增 `GET /datasource/finnhub/health`（被动健康：API Key + 限流状态）；`/rate-limit-status` 由通用路由覆盖（name=finnhub）。Pytest 8 全绿。详见 `docs/14 §十二` |

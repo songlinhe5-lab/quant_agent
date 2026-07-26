@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { createChart, ColorType, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries, AreaSeries, BaselineSeries, LineStyle, createSeriesMarkers, type IChartApi, type ISeriesApi, type UTCTimestamp, type IPriceLine, type ISeriesMarkersPluginApi, type SeriesMarker, type Time } from 'lightweight-charts'
-import { AlertTriangle, TrendingUp, TrendingDown, Eye, EyeOff, Pencil, Globe, ChevronRight, Minus, Square, Spline, Eraser, MousePointerClick, Sigma } from 'lucide-react'
+import { AlertTriangle, TrendingUp, TrendingDown, Eye, EyeOff, Pencil, Globe, ChevronRight, Minus, Square, Spline, Eraser, MousePointerClick, Sigma, Bell } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { crosshairSync } from './chart-crosshair-sync'
 import { cn } from '@/lib/utils'
@@ -17,6 +17,7 @@ import { OrderConfirmModal } from './order-confirm-modal'
 import { evaluate, suggestPane, type CIBar } from './custom-indicator/engine'
 import { useCustomIndicatorStore } from './custom-indicator/store'
 import { CustomIndicatorPanel } from './custom-indicator/panel'
+import { AlertSandboxPanel } from './custom-indicator/alert-sandbox-panel'
 
 // 💡 个股事件类型定义
 interface StockEvent {
@@ -234,6 +235,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
 
   // PROD-11: 自定义指标脚本（Pine Script 简化版）面板与渲染引用
   const [showCIPanel, setShowCIPanel] = useState(false)
+  const [showAlertSandbox, setShowAlertSandbox] = useState(false)
   const customMarkersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
   const customLineRefs = useRef<Record<string, ISeriesApi<'Line'>>>({})
   const currentBarsRef = useRef<CIBar[]>([])
@@ -1052,6 +1054,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
           <Button variant="outline" size="sm" onClick={clearDrawings} className="h-7 w-7 p-0 border-border/50 bg-background" title="清除全部画线"><Eraser className="h-3.5 w-3.5" /></Button>
           <Button variant={orderMode ? 'default' : 'outline'} size="sm" onClick={() => { const next = !orderMode; setOrderMode(next); if (next) setDrawTool('none') }} className={cn('relative h-7 w-7 p-0 border-border/50', orderMode ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/30' : 'bg-background')} title={orderMode ? '退出下单模式' : '下单模式：在图上拖拽设置价格线'}><MousePointerClick className="h-3.5 w-3.5" />{positionCount > 0 && <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] px-0.5 rounded-full bg-emerald-500 text-[8px] font-bold text-white flex items-center justify-center">{positionCount}</span>}</Button>
           <Button variant={showCIPanel ? 'default' : 'outline'} size="sm" onClick={() => setShowCIPanel((s) => !s)} className={cn('h-7 w-7 p-0 border-border/50', showCIPanel ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/30' : 'bg-background')} title={showCIPanel ? '关闭自定义指标' : '自定义指标脚本（Pine Script 简化版）'}><Sigma className="h-3.5 w-3.5" /></Button>
+          <Button variant={showAlertSandbox ? 'default' : 'outline'} size="sm" onClick={() => setShowAlertSandbox((s) => !s)} className={cn('h-7 w-7 p-0 border-border/50', showAlertSandbox ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/30' : 'bg-background')} title={showAlertSandbox ? '关闭条件单沙盒' : '条件单沙盒（ALERT-COND-01）'}><Bell className="h-3.5 w-3.5" /></Button>
         </div>
         <Button variant="outline" size="sm" onClick={() => setShowEvents(!showEvents)} className="h-7 px-2.5 gap-1.5 text-[10px] border-border/50 bg-background" title={showEvents ? '隐藏事件' : '显示事件'}>{showEvents ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}</Button>
       </div>
@@ -1061,6 +1064,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
         </div>
       )}
       <CustomIndicatorPanel open={showCIPanel} onClose={() => setShowCIPanel(false)} bars={currentBarsRef.current} />
+      <AlertSandboxPanel open={showAlertSandbox} onClose={() => setShowAlertSandbox(false)} getBars={() => currentBarsRef.current} />
       <div className="px-4 py-1.5 border-b border-border/30 bg-secondary/20 flex gap-4 text-[10px] font-mono text-muted-foreground shrink-0">
         <span className="flex items-center gap-1.5"><span className="font-semibold opacity-50">O</span> <span ref={oRef} className="text-foreground font-medium tabular-nums">--</span></span>
         <span className="flex items-center gap-1.5"><span className="font-semibold opacity-50">H</span> <span ref={hRef} className="text-foreground font-medium tabular-nums">--</span></span>
