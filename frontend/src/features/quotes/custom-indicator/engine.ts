@@ -584,6 +584,24 @@ export function collectBoolSignals(expr: string, bars: CIBar[], params?: Record<
   return { ok: true, times }
 }
 
+/** 单笔交易明细（PROD-11 追问 G：回测交易 CSV 导出） */
+export interface TradeRecord {
+  /** 买入日期 */
+  buyDate: string
+  /** 卖出日期（未平仓则为 ''） */
+  sellDate: string
+  /** 买入价格 */
+  buyPrice: number
+  /** 卖出价格（未平仓则为 0） */
+  sellPrice: number
+  /** 单笔收益率 (%) */
+  returnPct: number
+  /** 持有天数 */
+  holdingDays: number
+  /** 盈亏标记 */
+  win: boolean
+}
+
 /** 信号回测结果：把布尔表达式当作「条件触发」策略做事件驱动回测 */
 export interface SignalBacktestResult {
   ok: boolean
@@ -604,6 +622,8 @@ export interface SignalBacktestResult {
   maxDrawdownPct: number
   /** 末根仍持仓（未平仓） */
   holding: boolean
+  /** 逐笔交易明细（PROD-11 追问 G：用于 CSV 导出与复盘） */
+  tradeDetails: TradeRecord[]
 }
 
 /**
@@ -615,6 +635,7 @@ export function runSignalBacktest(expr: string, bars: CIBar[], params?: Record<s
   const empty = (error?: string): SignalBacktestResult => ({
     ok: false, error, buys: [], sells: [], trades: 0, wins: 0,
     winRate: 0, totalReturnPct: 0, maxDrawdownPct: 0, holding: false,
+    tradeDetails: [],
   })
   const r = evaluate(expr, bars, params)
   if (!r.ok) return empty(r.error)
@@ -626,7 +647,10 @@ export function runSignalBacktest(expr: string, bars: CIBar[], params?: Record<s
   const sells: string[] = []
   let trades = 0, wins = 0
   let entry: number | null = null
+  let entryDate = ''
+  let entryPrice = 0
   let equity = 1, peak = 1, maxDd = 0
+  const tradeDetails: TradeRecord[] = []
 
   for (let i = 1; i < v.length; i++) {
     if (v[i] == null || v[i - 1] == null) continue // 预热期跳过
@@ -635,12 +659,29 @@ export function runSignalBacktest(expr: string, bars: CIBar[], params?: Record<s
     if (cur === 1 && prev !== 1) {
       // 上穿：买入（若已空仓）
       buys.push(bars[i].time)
-      if (entry == null) entry = bars[i].close
+      if (entry == null) {
+        entry = bars[i].close
+        entryDate = bars[i].time
+        entryPrice = bars[i].close
+      }
     } else if (cur !== 1 && prev === 1) {
       // 下穿：卖出（若持仓）
       sells.push(bars[i].time)
       if (entry != null) {
         const ret = bars[i].close / entry - 1
+        // 计算持有天数（从 entryDate 到 bars[i].time 的日历日差）
+        const buyD = new Date(entryDate.replace(' ', 'T'))
+        const sellD = new Date(bars[i].time.replace(' ', 'T'))
+        const holdingDays = Math.max(1, Math.round((sellD.getTime() - buyD.getTime()) / 86400000))
+        tradeDetails.push({
+          buyDate: entryDate,
+          sellDate: bars[i].time,
+          buyPrice: entryPrice,
+          sellPrice: bars[i].close,
+          returnPct: ret * 100,
+          holdingDays,
+          win: ret > 0,
+        })
         trades++
         if (ret > 0) wins++
         equity *= 1 + ret
@@ -650,6 +691,24 @@ export function runSignalBacktest(expr: string, bars: CIBar[], params?: Record<s
         entry = null
       }
     }
+  }
+
+  // 若末根仍持仓，记录未平仓明细
+  if (entry != null) {
+    const lastBar = bars[bars.length - 1]
+    const ret = lastBar.close / entryPrice - 1
+    const buyD = new Date(entryDate.replace(' ', 'T'))
+    const lastD = new Date(lastBar.time.replace(' ', 'T'))
+    const holdingDays = Math.max(1, Math.round((lastD.getTime() - buyD.getTime()) / 86400000))
+    tradeDetails.push({
+      buyDate: entryDate,
+      sellDate: '',
+      buyPrice: entryPrice,
+      sellPrice: 0,
+      returnPct: ret * 100,
+      holdingDays,
+      win: ret > 0,
+    })
   }
 
   return {
@@ -662,6 +721,7 @@ export function runSignalBacktest(expr: string, bars: CIBar[], params?: Record<s
     totalReturnPct: (equity - 1) * 100,
     maxDrawdownPct: maxDd * 100,
     holding: entry != null,
+    tradeDetails,
   }
 }
 

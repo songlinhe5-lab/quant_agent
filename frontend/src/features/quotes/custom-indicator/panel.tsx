@@ -43,6 +43,31 @@ export function CustomIndicatorPanel({
     a.click()
     URL.revokeObjectURL(url)
   }
+
+  // 💡 PROD-11 追问 G：导出回测交易明细 CSV（含买入日期/买入价/卖出日期/卖出价/收益率%/持有天数/盈亏）
+  const handleExportBacktestCSV = () => {
+    if (!bt || !bt.res.ok || bt.res.tradeDetails.length === 0) return
+    const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`
+    const header = ['序号', '买入日期', '买入价', '卖出日期', '卖出价', '收益率%', '持有天数', '盈亏']
+    const rows = bt.res.tradeDetails.map((t, i) => [
+      i + 1,
+      t.buyDate,
+      t.buyPrice.toFixed(2),
+      t.sellDate || '(未平仓)',
+      t.sellDate ? t.sellPrice.toFixed(2) : '-',
+      t.returnPct.toFixed(2),
+      t.holdingDays,
+      t.sellDate ? (t.win ? '盈利' : '亏损') : '持仓中',
+    ].map(esc).join(','))
+    const csv = '\uFEFF' + [header.join(','), ...rows].join('\r\n') // BOM 保证 Excel 中文不乱码
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `backtest-trades-${bt.name}-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
   const [editing, setEditing] = useState<CustomIndicator | null>(null)
   const [name, setName] = useState('')
   const [expr, setExpr] = useState('')
@@ -233,7 +258,14 @@ export function CustomIndicatorPanel({
           <div className="space-y-1.5 rounded-md border border-primary/40 bg-primary/5 p-2">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-medium text-foreground">信号回测 · {bt.name}</span>
-              <button onClick={() => setBt(null)} className="text-[9px] text-muted-foreground hover:text-foreground">关闭</button>
+              <div className="flex items-center gap-2">
+                {bt.res.ok && bt.res.tradeDetails.length > 0 && (
+                  <button onClick={handleExportBacktestCSV} title="导出交易明细 CSV" className="flex items-center gap-0.5 text-[9px] text-muted-foreground hover:text-emerald-400">
+                    <Download className="h-3 w-3" />交易明细
+                  </button>
+                )}
+                <button onClick={() => setBt(null)} className="text-[9px] text-muted-foreground hover:text-foreground">关闭</button>
+              </div>
             </div>
             {!bt.res.ok ? (
               <div className="text-[10px] text-red-400">{bt.res.error}</div>

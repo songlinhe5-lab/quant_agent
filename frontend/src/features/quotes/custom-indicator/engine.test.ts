@@ -223,4 +223,52 @@ describe('custom indicator engine', () => {
       expect(runParamGridSearch('CLOSE > @n', bars, {}).ok).toBe(false)
     })
   })
+
+  describe('回测交易明细 TradeRecord（PROD-11追问G：CSV导出）', () => {
+    const bars = makeBars(60)
+
+    it('有配对交易时 tradeDetails 次数与 trades 一致', () => {
+      const r = runSignalBacktest('CROSS(MA(CLOSE,5), MA(CLOSE,20))', bars)
+      expect(r.ok).toBe(true)
+      // 完整配对交易数应与 tradeDetails 中已平仓记录数一致（末根持仓除外）
+      const closedTrades = r.tradeDetails.filter((t) => t.sellDate !== '')
+      expect(closedTrades.length).toBe(r.trades)
+    })
+
+    it('末根持仓记录 sellDate 为空、sellPrice 为 0', () => {
+      const r = runSignalBacktest('CLOSE > 100', bars)
+      expect(r.ok).toBe(true)
+      if (r.holding) {
+        const last = r.tradeDetails[r.tradeDetails.length - 1]
+        expect(last.sellDate).toBe('')
+        expect(last.sellPrice).toBe(0)
+      }
+    })
+
+    it('每笔已平仓交易的买入价/卖出价均在合理范围', () => {
+      const r = runSignalBacktest('CROSS(MA(CLOSE,5), MA(CLOSE,20))', bars)
+      expect(r.ok).toBe(true)
+      for (const t of r.tradeDetails) {
+        if (!t.sellDate) continue // 跳过未平仓
+        expect(t.buyPrice).toBeGreaterThan(0)
+        expect(t.sellPrice).toBeGreaterThan(0)
+        expect(t.holdingDays).toBeGreaterThanOrEqual(1)
+        expect(t.win).toBe(t.returnPct > 0)
+        expect(t.returnPct).toBeCloseTo(((t.sellPrice - t.buyPrice) / t.buyPrice) * 100, 1)
+      }
+    })
+
+    it('无交易（信号始终不触发）时 tradeDetails 为空数组', () => {
+      // CLOSE < 0 永远不会为真
+      const r = runSignalBacktest('CLOSE < 0', bars)
+      expect(r.trades).toBe(0)
+      expect(r.tradeDetails).toEqual([])
+    })
+
+    it('失败回测的结果包含空 tradeDetails', () => {
+      const r = runSignalBacktest('RSI(14)', bars) // 非布尔
+      expect(r.ok).toBe(false)
+      expect(r.tradeDetails).toEqual([])
+    })
+  })
 })
