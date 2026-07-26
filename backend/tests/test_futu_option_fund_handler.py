@@ -54,15 +54,15 @@ class TestOptionFundHandler:
         assert result.get("cached") is True
 
     @pytest.mark.asyncio
-    async def test_get_option_chain_dev_env_uses_mock(self):
-        """dev 环境未连接应使用 mock"""
+    async def test_get_option_chain_disconnected_returns_error_no_mock(self):
+        """option_chain 禁止 mock 兜底：未 CONNECTED 时一律返回 error（零幻觉契约，dev 环境亦不例外）"""
         handler, conn_mgr, _ = _make_handler(connected=False)
         conn_mgr.status = "DISCONNECTED"
         conn_mgr.quote_ctx = None
         with patch.dict("os.environ", {"QUANT_ENV": "development"}):
             result = await handler.get_option_chain("HK.00700")
-        assert result["status"] == "success"
-        assert result["source"] == "mock"
+        assert result["status"] == "error"
+        assert "未连接" in result["message"] or "数据源已死" in result["message"]
 
     @pytest.mark.asyncio
     async def test_get_option_chain_no_ctx_returns_error(self):

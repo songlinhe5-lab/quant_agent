@@ -100,9 +100,10 @@ class TestFetch:
         result = connected_adapter.fetch("fund_flow", {})
         assert result.is_error()
 
-    def test_fetch_option_chain_success(self, connected_adapter):
+    def test_fetch_option_chain_no_mock_fallback(self, connected_adapter):
+        """option_chain 禁止 mock 兜底：未连真实 Futu OpenD 时返回 error (零幻觉契约)"""
         result = connected_adapter.fetch("option_chain", {"underlying_ticker": "HK.09988"})
-        assert result.is_success()
+        assert result.is_error()
 
     def test_fetch_option_chain_missing_ticker(self, connected_adapter):
         result = connected_adapter.fetch("option_chain", {})

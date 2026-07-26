@@ -8,6 +8,7 @@ Futu 子系统工具函数与缓存管理器单元测试
 
 import os
 import sys
+from datetime import date, timedelta
 
 import pandas as pd
 import pytest
@@ -281,19 +282,22 @@ class TestMockProvider:
         assert all(abs(kl["close"] - 150.0) < 5.0 for kl in result["data"])
 
     def test_mock_option_chain_structure(self):
-        """期权链 mock 应包含 CALL 和 PUT 各一条"""
+        """期权链 mock 应生成完整行权价阶梯 (默认 21 档 × CALL/PUT = 42 条)"""
         result = MockProvider.mock_option_chain("US.AAPL", "2024-01-19")
         assert result["status"] == "success"
         assert result["expiration_date"] == "2024-01-19"
-        assert result["count"] == 2
+        # OPTION-01 已将 mock 丰富为完整阶梯（_strike_ladder 默认 21 档）
+        assert result["count"] == 42
         types = [opt["option_type"] for opt in result["options"]]
         assert "CALL" in types
         assert "PUT" in types
 
     def test_mock_option_chain_default_date(self):
-        """未提供 expiration_date 时应使用默认 2024-01-19"""
+        """未提供 expiration_date 时应使用动态默认 today+30 天 (非硬编码历史日期)"""
         result = MockProvider.mock_option_chain("US.AAPL", "")
-        assert result["expiration_date"] == "2024-01-19"
+        expected = (date.today() + timedelta(days=30)).strftime("%Y-%m-%d")
+        assert result["expiration_date"] == expected
+        assert result["days_to_expiry"] == 30
 
     def test_mock_fund_flow_hk_includes_broker_queue(self):
         """HK 标的 mock 资金流应包含经纪商队列"""
