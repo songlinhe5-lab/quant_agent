@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { evaluate, validate, suggestPane, collectBoolSignals, runSignalBacktest, runCustomExprBacktest, listParams, type CIBar } from './engine'
+import { evaluate, validate, suggestPane, collectBoolSignals, runSignalBacktest, runCustomExprBacktest, listParams, runParamGridSearch, type CIBar } from './engine'
 
 function makeBars(n: number): CIBar[] {
   const bars: CIBar[] = []
@@ -165,6 +165,62 @@ describe('custom indicator engine', () => {
     it('runSignalBacktest 与 runCustomExprBacktest 支持 params', () => {
       expect(runSignalBacktest('CLOSE > @t', bars, { t: 110 }).ok).toBe(true)
       expect(runCustomExprBacktest('CLOSE > @t', bars, 100000, { t: 110 }).ok).toBe(true)
+    })
+  })
+
+  describe('参数网格搜索 runParamGridSearch', () => {
+    const bars = makeBars(60)
+
+    it('对 @n 区间做穷举并返回排序后的 Top-N', () => {
+      const res = runParamGridSearch('CROSS(MA(CLOSE,@n), MA(CLOSE,20))', bars, { n: { min: 3, max: 8, step: 1 } })
+      expect(res.ok).toBe(true)
+      expect(res.total).toBe(6) // 3..8 共 6 组
+      expect(res.ran).toBe(6)
+      expect(res.items.length).toBe(6)
+      // best 必为其中一组且含完整指标
+      expect(res.best).toBeDefined()
+      expect(res.best!.ok).toBe(true)
+      expect(res.best!.metrics).toBeDefined()
+      // 默认按 totalReturnPct 降序
+      for (let i = 1; i < res.items.length; i++) {
+        const a = res.items[i - 1].metrics!.totalReturnPct
+        const b = res.items[i].metrics!.totalReturnPct
+        expect(a).toBeGreaterThanOrEqual(b)
+      }
+    })
+
+    it('best 的参数组合来自输入网格', () => {
+      const res = runParamGridSearch('CLOSE > @t', bars, { t: { min: 95, max: 105, step: 5 } })
+      expect(res.ok).toBe(true)
+      const vals = [95, 100, 105]
+      expect(vals).toContain(res.best!.params.t)
+    })
+
+    it('非布尔表达式：各组 ok=false 但整体优雅返回', () => {
+      const res = runParamGridSearch('RSI(@n)', bars, { n: { min: 3, max: 5, step: 1 } })
+      expect(res.ok).toBe(true)
+      expect(res.items.every((it) => !it.ok)).toBe(true)
+    })
+
+    it('组合数过大时返回错误提示（带上限）', () => {
+      const res = runParamGridSearch('CLOSE > @n', bars, { n: { min: 1, max: 2000, step: 1 } })
+      expect(res.ok).toBe(false)
+      expect(res.error).toContain('组合数过大')
+    })
+
+    it('maxDrawdownPct 排序时为升序（回撤越小越靠前）', () => {
+      const res = runParamGridSearch('CLOSE > @t', bars, { t: { min: 95, max: 115, step: 5 } }, { sortBy: 'maxDrawdownPct' })
+      expect(res.ok).toBe(true)
+      for (let i = 1; i < res.items.length; i++) {
+        const a = res.items[i - 1].metrics!.maxDrawdownPct
+        const b = res.items[i].metrics!.maxDrawdownPct
+        expect(a).toBeLessThanOrEqual(b)
+      }
+    })
+
+    it('K 线不足或空网格返回错误', () => {
+      expect(runParamGridSearch('CLOSE > @n', [], { n: { min: 1, max: 3, step: 1 } }).ok).toBe(false)
+      expect(runParamGridSearch('CLOSE > @n', bars, {}).ok).toBe(false)
     })
   })
 })

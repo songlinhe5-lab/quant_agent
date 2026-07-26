@@ -766,3 +766,121 @@ export function runCustomExprBacktest(
 
   return { ok: true, result: { equity_curve, trades, metrics }, dailyReturns }
 }
+
+/**
+ * 参数网格搜索（PROD-11 追问6）：对含 @参数 的自定义表达式，在给定参数区间内做笛卡尔积穷举，
+ * 逐组复用 runCustomExprBacktest 计算回测指标，按选定指标排序返回 Top-N，供 UI 一键「应用最优参数」。
+ * 与图表/信号/回测同源（均走 evaluate），零新增数据依赖。组合数上限保护，避免浏览器卡死。
+ */
+export interface ParamGridSpec {
+  min: number
+  max: number
+  step: number
+}
+export interface ParamGrid {
+  [name: string]: ParamGridSpec
+}
+export interface GridSearchMetrics {
+  /** 累计收益率 (%) */
+  totalReturnPct: number
+  /** 年化夏普比率 */
+  sharpe: number
+  /** 胜率 (%) */
+  winRatePct: number
+  /** 最大回撤幅度 (%)，取绝对值，越小越好 */
+  maxDrawdownPct: number
+  /** 完整交易数 */
+  trades: number
+}
+export interface GridSearchItem {
+  params: Record<string, number>
+  ok: boolean
+  error?: string
+  metrics?: GridSearchMetrics
+}
+export type GridSortBy = 'totalReturnPct' | 'sharpe' | 'winRatePct' | 'maxDrawdownPct'
+export interface ParamGridSearchResult {
+  ok: boolean
+  error?: string
+  /** 笛卡尔积生成的参数组合数 */
+  total: number
+  /** 实际跑完的组数（剔除非法/非布尔组合后） */
+  ran: number
+  /** 已排序（按 sortBy 降序；maxDrawdownPct 为升序，越小越好）的 Top-N */
+  items: GridSearchItem[]
+  /** 全局最优一组 */
+  best?: GridSearchItem
+}
+
+const MAX_GRID_COMBOS = 1000
+
+export function runParamGridSearch(
+  expr: string,
+  bars: CIBar[],
+  grid: ParamGrid,
+  opts?: { initialCapital?: number; sortBy?: GridSortBy; limit?: number },
+): ParamGridSearchResult {
+  const names = Object.keys(grid)
+  if (names.length === 0)
+    return { ok: false, error: '未提供参数网格（表达式需包含 @参数，如 @period）', total: 0, ran: 0, items: [] }
+  if (bars.length < 2)
+    return { ok: false, error: 'K 线数量不足，无法回测', total: 0, ran: 0, items: [] }
+
+  // 笛卡尔积：每个参数按 min/max/step 展开为整数步进序列（避免浮点累积误差）
+  const ranges = names.map((n) => {
+    const g = grid[n]
+    const step = g.step > 0 ? g.step : 1
+    const arr: number[] = []
+    let v = g.min
+    let guard = 0
+    while (v <= g.max + 1e-9 && guard < 100000) {
+      arr.push(Math.round(v * 1e6) / 1e6)
+      v += step
+      guard++
+    }
+    if (arr.length === 0) arr.push(g.min)
+    return arr
+  })
+  let combos: Record<string, number>[] = [{}]
+  for (let i = 0; i < names.length; i++) {
+    const next: Record<string, number>[] = []
+    for (const base of combos) for (const val of ranges[i]) next.push({ ...base, [names[i]]: val })
+    combos = next
+  }
+  if (combos.length > MAX_GRID_COMBOS)
+    return { ok: false, error: `组合数过大（${combos.length}），请调大 step 或缩小范围（上限 ${MAX_GRID_COMBOS}）`, total: combos.length, ran: 0, items: [] }
+
+  const items: GridSearchItem[] = []
+  for (const params of combos) {
+    const r = runCustomExprBacktest(expr, bars, opts?.initialCapital ?? 100000, params)
+    if (!r.ok || !r.result) {
+      items.push({ params, ok: false, error: r.error })
+      continue
+    }
+    const m = r.result.metrics
+    items.push({
+      params,
+      ok: true,
+      metrics: {
+        totalReturnPct: parseFloat(m.total_return),
+        sharpe: parseFloat(m.sharpe_ratio),
+        winRatePct: parseFloat(m.win_rate),
+        maxDrawdownPct: Math.abs(parseFloat(m.max_drawdown)),
+        trades: m.total_trades,
+      },
+    })
+  }
+
+  const sortBy: GridSortBy = opts?.sortBy ?? 'totalReturnPct'
+  const sorted = items.slice().sort((a, b) => {
+    if (a.ok !== b.ok) return a.ok ? -1 : 1
+    if (!a.ok || !b.ok || !a.metrics || !b.metrics) return 0
+    const av = a.metrics[sortBy]
+    const bv = b.metrics[sortBy]
+    // 回撤：幅度越小越好 → 升序；其余：越大越好 → 降序
+    return sortBy === 'maxDrawdownPct' ? av - bv : bv - av
+  })
+
+  const limit = opts?.limit ?? 50
+  return { ok: true, total: combos.length, ran: items.length, items: sorted.slice(0, limit), best: sorted[0] }
+}

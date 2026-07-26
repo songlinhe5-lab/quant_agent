@@ -3,9 +3,9 @@
  * 列出用户指标、支持新增/编辑/删除/显隐，并实时做语法校验与结果预览。
  */
 import { useState, useEffect } from 'react'
-import { Plus, Pencil, Trash2, Eye, EyeOff, X, HelpCircle, Sigma, Activity, Download } from 'lucide-react'
+import { Plus, Pencil, Trash2, Eye, EyeOff, X, HelpCircle, Sigma, Activity, Download, LayoutGrid } from 'lucide-react'
 import { useCustomIndicatorStore, type CustomIndicator } from './store'
-import { validate, evaluate, runSignalBacktest, listParams, type CIBar, type SignalBacktestResult } from './engine'
+import { validate, evaluate, runSignalBacktest, listParams, runParamGridSearch, type CIBar, type SignalBacktestResult, type ParamGrid, type GridSearchItem, type GridSortBy } from './engine'
 
 const PRESET_COLORS = ['#a855f7', '#10b981', '#ef4444', '#3b82f6', '#f59e0b', '#ec4899', '#14b8a6']
 
@@ -48,6 +48,11 @@ export function CustomIndicatorPanel({
   const [expr, setExpr] = useState('')
   const [color, setColor] = useState('#a855f7')
   const [params, setParams] = useState<Record<string, number>>({})
+  const [showGrid, setShowGrid] = useState(false)
+  const [grid, setGrid] = useState<Record<string, { min: number; max: number; step: number }>>({})
+  const [gridSort, setGridSort] = useState<GridSortBy>('totalReturnPct')
+  const [gridResult, setGridResult] = useState<ReturnType<typeof runParamGridSearch> | null>(null)
+  const [gridRunning, setGridRunning] = useState(false)
   const [pane, setPane] = useState<'overlay' | 'separate' | 'auto'>('auto')
   const [showHelp, setShowHelp] = useState(false)
   const [bt, setBt] = useState<{ name: string; res: SignalBacktestResult } | null>(null)
@@ -96,6 +101,58 @@ export function CustomIndicatorPanel({
       const last = [...preview.values].reverse().find((x) => x != null)
       previewText = `类型: 数值序列 ｜ 最新值: ${last != null ? Number(last).toFixed(3) : '—'}`
     }
+  }
+
+  // 💡 PROD-11 追问6：参数网格搜索 —— 展开区间输入并跑穷举
+  const openGrid = () => {
+    const names = listParams(expr.trim())
+    if (names.length === 0) return
+    setGrid((prev) => {
+      const next = { ...prev }
+      for (const n of names) {
+        if (!next[n]) {
+          const cur = params[n]
+          const base = typeof cur === 'number' && !Number.isNaN(cur) ? Math.max(1, Math.round(cur)) : 5
+          next[n] = { min: base, max: Math.max(base + 20, base * 2), step: 1 }
+        }
+      }
+      return next
+    })
+    setGridResult(null)
+    setShowGrid(true)
+  }
+  const runGrid = () => {
+    const names = listParams(expr.trim())
+    if (names.length === 0) return
+    // 补齐缺失参数网格（缺省取当前参数值作为单点），避免 runCustomExprBacktest 报「参数未提供」
+    const full: ParamGrid = {}
+    for (const n of names) {
+      const g = grid[n]
+      if (g && Number.isFinite(g.min) && Number.isFinite(g.max) && g.step > 0) {
+        full[n] = g
+      } else {
+        const cur = params[n]
+        const v = typeof cur === 'number' && !Number.isNaN(cur) ? cur : 1
+        full[n] = { min: v, max: v, step: 1 }
+      }
+    }
+    setGridRunning(true)
+    // 让按钮先渲染 loading 态，再同步跑穷举（K 线量受限，不会长时间卡 UI）
+    setTimeout(() => {
+      const res = runParamGridSearch(expr.trim(), bars, full, { initialCapital: 100000, sortBy: gridSort })
+      setGridResult(res)
+      setGridRunning(false)
+    }, 0)
+  }
+  const applyGridParams = (it: GridSearchItem) => {
+    setParams(it.params)
+    setEditing((e) => (e ? { ...e, params: it.params } : e))
+  }
+  const GRID_SORT_LABEL: Record<GridSortBy, string> = {
+    totalReturnPct: '累计收益',
+    sharpe: '夏普比率',
+    winRatePct: '胜率',
+    maxDrawdownPct: '最小回撤',
   }
 
   return (
@@ -240,6 +297,67 @@ export function CustomIndicatorPanel({
                     />
                   </div>
                 ))}
+              </div>
+            )}
+
+            {listParams(expr.trim()).length > 0 && (
+              <div className="space-y-1.5 rounded border border-primary/30 bg-primary/5 p-1.5">
+                <button onClick={openGrid} className="flex w-full items-center justify-center gap-1 rounded bg-primary/15 py-1 text-[10px] text-primary hover:bg-primary/25">
+                  <LayoutGrid className="h-3 w-3" /> 网格搜索最优参数
+                </button>
+                {showGrid && (
+                  <>
+                    <div className="space-y-1">
+                      {listParams(expr.trim()).map((p) => (
+                        <div key={p} className="flex items-center gap-1">
+                          <span className="w-16 shrink-0 font-mono text-[9px] text-primary">@{p}</span>
+                          <label className="text-[8px] text-muted-foreground">min</label>
+                          <input type="number" value={grid[p]?.min ?? ''} onChange={(e) => setGrid((g) => ({ ...g, [p]: { ...g[p]!, min: Number(e.target.value) } }))} className="w-11 rounded border border-border/50 bg-background px-1 py-0.5 font-mono text-[10px]" />
+                          <label className="text-[8px] text-muted-foreground">max</label>
+                          <input type="number" value={grid[p]?.max ?? ''} onChange={(e) => setGrid((g) => ({ ...g, [p]: { ...g[p]!, max: Number(e.target.value) } }))} className="w-11 rounded border border-border/50 bg-background px-1 py-0.5 font-mono text-[10px]" />
+                          <label className="text-[8px] text-muted-foreground">step</label>
+                          <input type="number" value={grid[p]?.step ?? ''} onChange={(e) => setGrid((g) => ({ ...g, [p]: { ...g[p]!, step: Number(e.target.value) } }))} className="w-9 rounded border border-border/50 bg-background px-1 py-0.5 font-mono text-[10px]" />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] text-muted-foreground">排序</span>
+                      <select value={gridSort} onChange={(e) => setGridSort(e.target.value as GridSortBy)} className="flex-1 rounded border border-border/50 bg-background px-1 py-0.5 text-[10px]">
+                        <option value="totalReturnPct">累计收益</option>
+                        <option value="sharpe">夏普比率</option>
+                        <option value="winRatePct">胜率</option>
+                        <option value="maxDrawdownPct">最小回撤</option>
+                      </select>
+                      <button onClick={runGrid} disabled={gridRunning || bars.length === 0} className="rounded bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground disabled:opacity-40">
+                        {gridRunning ? '计算中…' : '运行'}
+                      </button>
+                    </div>
+                    {bars.length === 0 && <div className="text-[9px] text-slate-500">请先加载图表 K 线</div>}
+                    {gridResult && !gridResult.ok && <div className="text-[9px] text-red-400">{gridResult.error}</div>}
+                    {gridResult?.ok && (
+                      <div className="space-y-1">
+                        <div className="text-[9px] text-muted-foreground">共 {gridResult.total} 组 · 已跑 {gridResult.ran} 组 · 按 {GRID_SORT_LABEL[gridSort]} 排序</div>
+                        <div className="max-h-40 space-y-0.5 overflow-y-auto">
+                          {gridResult.items.map((it, idx) => (
+                            <div key={idx} className="flex items-center gap-1 rounded bg-background/60 px-1 py-0.5 text-[9px] font-mono">
+                              <span className="w-4 shrink-0 text-slate-500">{idx + 1}</span>
+                              <span className="flex-1 truncate text-foreground">{Object.entries(it.params).map(([k, val]) => `@${k}=${val}`).join(' ')}</span>
+                              {it.ok && it.metrics ? (
+                                <>
+                                  <span className={it.metrics.totalReturnPct >= 0 ? 'text-emerald-400' : 'text-red-400'}>{it.metrics.totalReturnPct.toFixed(1)}%</span>
+                                  <span className="text-slate-400">S{it.metrics.sharpe.toFixed(2)}</span>
+                                  <button onClick={() => applyGridParams(it)} className="rounded bg-primary/20 px-1 text-primary hover:bg-primary/30">应用</button>
+                                </>
+                              ) : (
+                                <span className="truncate text-red-400">失败</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )}
 
