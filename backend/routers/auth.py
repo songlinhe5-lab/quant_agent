@@ -24,6 +24,23 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 15  # Access Token 有效期改短为 15 分钟
 REFRESH_TOKEN_EXPIRE_DAYS = 7  # Refresh Token 有效期设为 7 天
 
+
+def _refresh_cookie_kwargs(is_production: bool) -> dict:
+    """构造 refresh_token Cookie 的统一参数。
+
+    跨域（生产 / HTTPS）环境下必须使用 SameSite=None + Secure，否则浏览器不会在
+    跨站 fetch POST(/auth/refresh) 时携带该 HttpOnly Cookie，导致 Access Token
+    无法续期、登录态在 15 分钟后被踢出。开发（同源 / HTTP）环境保持 Lax + 非 Secure。
+    """
+    return {
+        "httponly": True,
+        "secure": is_production,
+        "samesite": "none" if is_production else "lax",
+        "max_age": REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        "path": "/",
+    }
+
+
 # tokenUrl 指明了 Swagger UI 等工具要去哪个接口获取 Token
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
@@ -125,11 +142,7 @@ def login_for_access_token(
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
-        httponly=True,
-        secure=is_production,
-        samesite="lax",
-        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
-        path="/",
+        **_refresh_cookie_kwargs(is_production),
     )  # noqa: E501
 
     # 记录审计日志
@@ -250,15 +263,11 @@ def verify_google_token(
         )
 
         # 5. 设置 HttpOnly Cookie 并直接返回 JSON
-        is_production = os.getenv("ENV") == "production"
+        is_production = os.getenv("QUANT_ENV") == "production"
         response.set_cookie(
             key="refresh_token",
             value=refresh_token,
-            httponly=True,
-            secure=is_production,  # 生产环境建议开启 HTTPS
-            samesite="lax",  # 允许带跳转的请求携带 Cookie
-            max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
-            path="/",
+            **_refresh_cookie_kwargs(is_production),
         )
 
         # 记录审计日志
@@ -344,6 +353,13 @@ async def logout(response: Response, request: Request, db: Session = Depends(get
             user_id=user_id,
         )
 
-    # 清理客户端存留的 Refresh Token Cookie
-    response.delete_cookie(key="refresh_token", path="/")
+    # 清理客户端存留的 Refresh Token Cookie（参数需与 set_cookie 保持一致才能可靠删除）
+    is_production = os.getenv("QUANT_ENV") == "production"
+    cookie_kwargs = _refresh_cookie_kwargs(is_production)
+    response.delete_cookie(
+        key="refresh_token",
+        path=cookie_kwargs["path"],
+        secure=cookie_kwargs["secure"],
+        samesite=cookie_kwargs["samesite"],
+    )
     return {"message": "Logged out successfully"}
