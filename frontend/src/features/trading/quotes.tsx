@@ -19,6 +19,7 @@ import { useSceneModeStore } from '@/stores/useSceneModeStore'
 import { AnomalyFlash } from '@/features/quotes/anomaly-flash'
 import { FloatingWatchlist } from '@/features/quotes/floating-watchlist'
 import { StrategyIDE } from '@/features/strategy/layout/strategy-ide'
+import { MonitorModeLayout } from '@/features/scene/monitor-mode-layout'
 
 // PROD-12: 分屏对比子面板——拥有独立行情数据（独立 WebSocket/历史），并与主图共享同一 syncGroup 实现十字线同步
 const COMPARE_PERIODS = [
@@ -84,6 +85,7 @@ export function QuotesModule() {
   const sceneMode = useSceneModeStore((s) => s.mode)
   const isWatchScene = sceneMode === 'watch'
   const isResearchScene = sceneMode === 'research'
+  const isMonitorScene = sceneMode === 'monitor'
 
   // 💡 监听 Zustand 全局 ticker 变化（navbar 搜索跳转）
   const globalTicker = useMarketStore((s: any) => s.currentTicker)
@@ -178,6 +180,11 @@ export function QuotesModule() {
   // PROD-04e: 研究模式专属布局 —— 多面板拖拽（代码/回测/AI）+ 底部 Terminal + ⌘1/2/3 快捷键
   if (isResearchScene) {
     return <StrategyIDE className="h-[calc(100vh-80px)]" />
+  }
+
+  // PROD-04f: 监控模式专属布局 —— 告警流主视图 + Bot 状态矩阵 + 风控仪表盘
+  if (isMonitorScene) {
+    return <MonitorModeLayout />
   }
 
   // PROD-04a: 盯盘模式专属布局 —— K线全屏 + 盘口悬浮 + 异动高对比

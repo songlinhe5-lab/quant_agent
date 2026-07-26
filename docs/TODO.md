@@ -845,10 +845,11 @@ STATUS: PRODUCTION READY ✨
   - 键盘优先交互（Cmd+1/2/3 快速跳转面板）
   - 依赖：STRAT-01~05（策略实验室核心）
   - *2026-07-26 完成：`quotes.tsx` 在 `research` 场景渲染 `StrategyIDE`（三栏 ResizablePanelGroup + 底部 Terminal），并接入全局 ⌘1/2/3 面板跳转（代码聚焦 Monaco、回测切 report、AI 助手聚焦输入框）；拖拽手柄/提示条/Topbar 部署按钮统一为 scene 强调色。*
-- [ ] **[PROD-04f]** 监控模式专属布局（告警流 + Bot矩阵 + 风控仪表盘）
+- [x] **[PROD-04f]** 监控模式专属布局（告警流 + Bot矩阵 + 风控仪表盘）
   - 监控模式下告警流自动升格为主视图
   - Bot 状态矩阵 + 风控仪表盘优先级布局
   - 依赖：ALERT-03~05, RISK-01~08
+  - *2026-07-26 完成：新增 `MonitorModeLayout`，在 `monitor` 场景渲染——左侧实时告警流（EventsList）升格为主视图，右侧列上 Bot 状态矩阵（复用 `OmsBotGrid` + `useOms` 实时数据流）、下风控仪表盘（`RiskModule`）；顶栏含节点运行数与未读告警数；强调色统一为 scene。*
 - [ ] **[PROD-04g]** 移动端场景模式适配
   - 移动 TabBar 补充模式圆盘或底部菜单
   - 小屏幕 (<768px) 强制 density-scale=1.0，禁用极密
