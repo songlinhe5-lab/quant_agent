@@ -1,3 +1,4 @@
+import logging
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -31,6 +32,8 @@ from backend.services.backtest_interpreter.service import (
     check_overfit,
     param_sweep_from_grid_results,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/backtest", tags=["Backtesting Engine"])
 
@@ -294,4 +297,22 @@ async def overfit_check_grid(req: OverfitGridRequest):
 async def interpret_walk_forward(req: WalkForwardInterpretRequest):
     """AI-03 增强：吃 Walk-Forward 报告，自动判过拟合 + Alpha 衰减，可经 LLM 一句话解读。"""
     result = await _interpreter.interpret_walk_forward(req)
+    # 持久化回测健康度，供盘前早报「🔬 回测健康度速览」主动播报 (过拟合预警从面板升级为早报)
+    ticker = (req.report or {}).get("ticker")
+    if ticker:
+        try:
+            from backend.services.backtest_interpreter.health_store import save_backtest_health
+
+            await save_backtest_health(str(ticker), result)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[Backtest] 回测健康度持久化失败 (不影响解读返回): {e}")
     return {"status": "success", "data": result.model_dump(mode="json")}
+
+
+@router.get("/health")
+async def backtest_health_list():
+    """返回所有标的最近回测健康度 (供盘前早报 / 前端展示「已纳入早报」徽标)。"""
+    from backend.services.backtest_interpreter.health_store import get_all_backtest_health
+
+    entries = await get_all_backtest_health()
+    return {"status": "success", "data": [e.model_dump(mode="json") for e in entries]}

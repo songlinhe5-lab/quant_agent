@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.services.backtest_interpreter.health_store import BacktestHealthEntry
 from backend.services.morning_briefing.generator import (
     MorningBriefingGenerator,
     generate_morning_briefing,
@@ -108,6 +109,42 @@ class TestGenerateMorningBriefing:
         assert fetched is not None and fetched.id == result.id
         latest = await get_latest_briefing("全球")
         assert latest is not None and latest.id == result.id
+
+    @pytest.mark.asyncio
+    async def test_generate_injects_backtest_health_section(self):
+        """存在回测健康度时，即便 LLM 漏渲染章节，安全网也须确定性注入「🔬 回测健康度速览」。"""
+        registry = _make_registry()
+        llm = MagicMock()
+        llm.generate = AsyncMock(return_value=FAKE_MARKDOWN)  # 注意：FAKE_MARKDOWN 不含该章节
+        entry = BacktestHealthEntry(
+            ticker="NVDA",
+            is_oos_gap=0.9,
+            alpha_decay=True,
+            overfit_risk=True,
+            robustness_ratio=0.2,
+            oos_sharpe_mean=0.1,
+            is_sharpe_mean=1.0,
+            drift_reasons=["样本外崩塌"],
+            summary="样本内光鲜外推必死",
+            source="llm",
+            model="gpt-x",
+        )
+        with (
+            patch(
+                "backend.services.backtest_interpreter.health_store.get_all_backtest_health",
+                new=AsyncMock(return_value=[entry]),
+            ),
+            patch(
+                "backend.services.morning_briefing.generator.save_briefing",
+                new_callable=AsyncMock,
+            ),
+        ):
+            result = await MorningBriefingGenerator(llm=llm, tool_registry=registry).generate(
+                market="全球", target_date="2026-07-26"
+            )
+        assert "回测健康度速览" in result.markdown
+        assert "NVDA" in result.markdown
+        assert "过拟合" in result.markdown  # 过拟合风险徽标必须出现
 
     @pytest.mark.asyncio
     async def test_module_level_helper(self):

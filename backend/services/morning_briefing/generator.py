@@ -83,6 +83,29 @@ def get_tickers_for_market(market: str) -> list[str]:
     return MARKET_TICKERS.get(market, MARKET_TICKERS["全球"])
 
 
+def format_backtest_health_section(entries) -> str:
+    """把回测健康度结论渲染为确定性 Markdown 区块 (零幻觉)。
+
+    供早报直接注入，保证即便 LLM 漏渲染「🔬 回测健康度速览」章节，
+    过拟合预警也能从被动面板升级为主动播报、不丢条。
+    """
+    if not entries:
+        return ""
+    lines = ["## 🔬 回测健康度速览", ""]
+    for h in entries[:8]:
+        if h.overfit_risk or h.alpha_decay:
+            badge = "🔴 过拟合/Alpha衰减"
+        else:
+            badge = "🟢 稳健可外推"
+        lines.append(
+            f"- **{h.ticker}** {badge}：IS/OOS 夏普缺口 `{h.is_oos_gap}`，OOS 盈利折 `{h.robustness_ratio * 100:.0f}%`"
+        )
+        if h.summary:
+            lines.append(f"  - *研判：{h.summary}*")
+    lines.append("")
+    return "\n".join(lines)
+
+
 SOURCE_TOOLS = [
     "get_macro_calendar",
     "get_broker_market_data",
@@ -109,12 +132,15 @@ MORNING_BRIEFING_PROMPT = """请基于以下【真实数据】，生成 {market}
 ## 📈 核心标的监控
 - 对每个标的输出: **[代码]**: 最新价: [价格] | 涨跌幅: [百分比] | 成交量: [量]
 
+## 🔬 回测健康度速览
+- 若【回测健康度速览】数据非空，逐条输出: **标的** + 风险徽标 (🔴 过拟合/Alpha衰减 或 🟢 稳健可外推) + IS/OOS 夏普缺口 + OOS 盈利折占比 + 研判；过拟合风险必须置顶提示，语气毒舌。若无数据则输出 "_（暂无回测健康度记录）_"。
+
 ## 🧠 主脑综合研判
 - 先给「多空因素矩阵」Markdown 表格 (表头: 多头因素 ✅ | 空头因素 ❌)
 - 再给量化概率: **看涨概率 (Bullish Probability):** [0-100 的整数]%
 - 一句硬核毒舌核心结论与明确的交易建议 (持仓观望 / 等待回踩 / 设止损位等)
 
-*(数据获取时间: {trade_date} 盘前, 数据来源: get_macro_calendar / get_broker_market_data / get_macro_news / get_macro_sentiment_history)*
+*(数据获取时间: {trade_date} 盘前, 数据来源: get_macro_calendar / get_broker_market_data / get_macro_news / get_macro_sentiment_history / backtest_interpreter)*
 
 === 真实数据 ===
 {data}
@@ -135,7 +161,8 @@ class MorningBriefingGenerator:
 
         tickers = get_tickers_for_market(market)
         calendar, quotes, news, sentiment = await self._collect_data(market, tickers)
-        markdown = await self._build_markdown(market, trade_date, calendar, quotes, news, sentiment)
+        backtest_health = await self._collect_backtest_health()
+        markdown = await self._build_markdown(market, trade_date, calendar, quotes, news, sentiment, backtest_health)
 
         result = BriefingResult(
             id=uuid.uuid4().hex[:10],
@@ -174,21 +201,35 @@ class MorningBriefingGenerator:
         )
         return calendar_t, quotes_t, news_t, sentiment_t
 
+    # ─── 回测健康度采集 (供「🔬 回测健康度速览」section) ───────
+    async def _collect_backtest_health(self):
+        try:
+            from backend.services.backtest_interpreter.health_store import get_all_backtest_health
+
+            return await get_all_backtest_health()
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[Briefing] 回测健康度读取失败，跳过该 section: {e}")
+            return []
+
     # ─── Markdown 组装 ──────────────────────────────────────────
-    async def _build_markdown(self, market, trade_date, calendar, quotes, news, sentiment) -> str:
-        data_bundle = self._format_data_bundle(market, calendar, quotes, news, sentiment)
+    async def _build_markdown(self, market, trade_date, calendar, quotes, news, sentiment, backtest_health) -> str:
+        data_bundle = self._format_data_bundle(market, calendar, quotes, news, sentiment, backtest_health)
         prompt = MORNING_BRIEFING_PROMPT.format(market=market, trade_date=trade_date, data=data_bundle)
         try:
             markdown = await self.llm.generate(prompt, tier=ModelTier.STANDARD, system_prompt=SYSTEM_PROMPT)
             if not markdown or len(markdown.strip()) < 50:
                 raise ValueError("LLM 返回内容过短，疑似空响应")
+            # 安全网：LLM 漏渲染回测健康度章节时，确定性注入，保证主动播报不丢
+            section = format_backtest_health_section(backtest_health)
+            if section and "回测健康度速览" not in markdown:
+                markdown = markdown.rstrip() + "\n\n" + section
             return markdown.strip()
         except Exception as e:  # noqa: BLE001
             logger.error(f"[Briefing] LLM 组装失败，启用数据兜底: {e}")
-            return self._fallback_markdown(market, trade_date, calendar, quotes, news, sentiment)
+            return self._fallback_markdown(market, trade_date, calendar, quotes, news, sentiment, backtest_health)
 
     # ─── 数据精简 (喂给 LLM，控制 token) ────────────────────────
-    def _format_data_bundle(self, market, calendar, quotes, news, sentiment) -> str:
+    def _format_data_bundle(self, market, calendar, quotes, news, sentiment, backtest_health) -> str:
         parts: list[str] = []
         max_quotes = len(get_tickers_for_market(market))
 
@@ -243,10 +284,27 @@ class MorningBriefingGenerator:
             except Exception:  # noqa: BLE001
                 pass
 
+        if backtest_health:
+            try:
+                blines = []
+                for h in backtest_health[:8]:
+                    verdict = "过拟合/Alpha衰减" if (h.overfit_risk or h.alpha_decay) else "稳健可外推"
+                    blines.append(
+                        f"- {h.ticker}: IS/OOS缺口={h.is_oos_gap} | "
+                        f"OOS盈利折={h.robustness_ratio * 100:.0f}% | {verdict} | 研判: {h.summary}"
+                    )
+                if blines:
+                    parts.append("【回测健康度速览】\n" + "\n".join(blines))
+            except Exception:  # noqa: BLE001
+                pass
+
         return "\n\n".join(parts) if parts else "（数据源暂不可用，请基于主脑经验给出盘前研判）"
 
     # ─── LLM 失败兜底 (保证有产出) ──────────────────────────────
-    def _fallback_markdown(self, market, trade_date, calendar, quotes, news, sentiment) -> str:
+    def _fallback_markdown(self, market, trade_date, calendar, quotes, news, sentiment, backtest_health=None) -> str:
+        health_block = (
+            format_backtest_health_section(backtest_health) or "## 🔬 回测健康度速览\n\n_（暂无回测健康度记录）_"
+        )
         return (
             f"# 🌤️ Quant Agent 盘前推演早报\n\n"
             f"> ⚠️ 数据引擎或 LLM 暂不可用，以下为降级版骨架，请以实时数据为准。\n\n"
@@ -254,6 +312,7 @@ class MorningBriefingGenerator:
             f"_（宏观日历获取失败）_\n\n"
             f"## 📈 核心标的监控\n\n"
             f"_（行情快照获取失败）_\n\n"
+            f"{health_block}\n\n"
             f"## 🧠 主脑综合研判\n\n"
             f"- 当前数据源异常，主脑拒绝在真空里瞎猜。等工具恢复再推演。\n\n"
             f"*(数据获取时间: {trade_date} 盘前, 数据来源: 降级模式)*"
