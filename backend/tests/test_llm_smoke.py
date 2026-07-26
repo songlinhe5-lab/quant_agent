@@ -13,9 +13,11 @@
 
 import asyncio
 import os
+from unittest.mock import AsyncMock
 
 import pytest
 
+from backend.services.ai_narrator.service import AiNarratorService
 from backend.services.backtest_interpreter.models import (
     InterpretRequest,
     WalkForwardInterpretRequest,
@@ -78,3 +80,21 @@ def test_ai03_walk_forward_real_llm():
     res = asyncio.run(svc.interpret_walk_forward(WalkForwardInterpretRequest(report=report, use_llm=True)))
     assert res.source == "llm", f"AI-03 walk-forward 应走真实 LLM，实际: {res.source}"
     assert res.overfit_risk is True
+
+
+def test_ai01_narrator_real_llm():
+    svc = AiNarratorService(llm=_real_service())
+    # 注入真实形态 canned 数据（新闻 + 基本面），绕过 ToolRegistry 真实调用
+    canned_news = {
+        "news": [
+            {"time": "2026-07-25", "title": "Apple 发布 AI 芯片超预期", "summary": "业绩指引上调"},
+        ]
+    }
+    canned_fund = {"data": {"pe": 30.5, "pb": 45.2, "roe": 1.4, "market_cap": 3.2e12}}
+    svc._collect = AsyncMock(return_value=(canned_news, canned_fund))  # type: ignore[assignment]
+
+    res = asyncio.run(svc.narrate(symbol="AAPL", change_pct=3.2, direction="up", threshold=2.0))
+    # 真实 LLM 成功路径：confidence=0.7、source 为工具名（非降级"无"）、摘要非空
+    assert res.confidence == 0.7, f"AI-01 应走真实 LLM 成功路径，实际 confidence={res.confidence}"
+    assert res.source != "无", f"AI-01 不应降级，实际 source={res.source}"
+    assert len(res.summary) > 5, "AI-01 摘要应非空"

@@ -12,6 +12,7 @@ import { ReturnsHistogramChart } from './returns-histogram-chart'
 import { buildTearSheetMetrics, computeDrawdownStats, computeReturnsHistogram } from './backtest-report-stats'
 import { LongestDrawdownsList, TradesTable, LimitOrdersTable } from './backtest-report-tables'
 import { BacktestInterpretPanel } from './backtest-interpret-panel'
+import { BacktestWalkForwardPanel } from './backtest-walkforward-panel'
 import {
   ReproducibilityBadgeView,
   extractReproducibilityBadge,
@@ -200,6 +201,12 @@ export function BacktestReport() {
           </div>
         )}
         <BacktestInterpretPanel backtestResult={store.backtestResult} />
+
+        <BacktestWalkForwardPanel
+          ticker={store.testTicker}
+          period={store.backtestPeriod}
+          params={store.backtestResult?.params}
+        />
 
         <div className="glass-card rounded-xl overflow-hidden border border-border/40 shadow-sm">
           <div className="px-4 py-2.5 border-b border-border/30 flex items-center justify-between gap-2 flex-wrap bg-secondary/20">
