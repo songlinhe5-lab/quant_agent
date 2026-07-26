@@ -39,6 +39,9 @@ class AlertRuleType(str, Enum):
     MA_CROSS = "ma_cross"  # 均线穿越 (metadata.short_period/metadata.long_period, threshold 无用)
     # PT-02a: 纸面组合漂移告警
     PAPER_DRIFT = "paper_drift"  # 纸面 vs 回测偏离超阈值 (threshold=TE年化阈值, 默认 0.15)
+    # ALERT-COND-01: 自由布尔表达式告警（复用前端 PROD-11 表达式引擎语义）
+    #   expr 存于 metadata["expr"]，参数存于 metadata["expr_params"]（{name: number}）
+    EXPR = "expr"
 
 
 class AlertSeverity(str, Enum):
