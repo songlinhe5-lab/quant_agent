@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import {
   AlertTriangle,
+  CheckCircle2,
+  Clock,
   Loader2,
   ShieldAlert,
   ShieldCheck,
@@ -76,7 +78,7 @@ export function BacktestWalkForwardPanel({
       // 点亮「已纳入盘前早报」徽标：结果已落库，盘前早报会主动播报
       try {
         const health = await apiClient.get<{ data: Array<{ ticker: string }> }>('/backtest/health')
-        const list = health?.data?.data ?? []
+        const list = health?.data ?? []
         setIncludedInBriefing(list.some((e) => e.ticker === ticker))
       } catch {
         setIncludedInBriefing(false)

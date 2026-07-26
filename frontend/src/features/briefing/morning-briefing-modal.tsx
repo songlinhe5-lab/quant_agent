@@ -67,7 +67,7 @@ export function MorningBriefingModal({
         const health = await apiClient.get<{
           data: Array<{ ticker: string; overfit_risk?: boolean; alpha_decay?: boolean; summary?: string }>
         }>('/backtest/health')
-        const list = health?.data?.data ?? []
+        const list = health?.data ?? []
         setHealthRisk(list.filter((e) => e.overfit_risk || e.alpha_decay))
       } catch {
         setHealthRisk([])
