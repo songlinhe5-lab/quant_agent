@@ -68,7 +68,12 @@ async def main():
         from backend.services.market_review.scheduler import market_review_scheduler_daemon
 
         tasks.append(asyncio.create_task(market_review_scheduler_daemon()))
-        print("  Core daemons started (ticker/sentiment/screener/paper_settlement/market_review)")
+
+        # BRD-01: 盘前早报定时触发器
+        from backend.services.morning_briefing.scheduler import market_briefing_scheduler_daemon
+
+        tasks.append(asyncio.create_task(market_briefing_scheduler_daemon()))
+        print("  Core daemons started (ticker/sentiment/screener/paper_settlement/market_review/morning_briefing)")
     else:
         print("  [Data Node] 跳过 DB 依赖服务 (ticker/sentiment/screener)")
 
