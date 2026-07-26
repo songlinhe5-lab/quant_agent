@@ -850,10 +850,11 @@ STATUS: PRODUCTION READY ✨
   - Bot 状态矩阵 + 风控仪表盘优先级布局
   - 依赖：ALERT-03~05, RISK-01~08
   - *2026-07-26 完成：新增 `MonitorModeLayout`，在 `monitor` 场景渲染——左侧实时告警流（EventsList）升格为主视图，右侧列上 Bot 状态矩阵（复用 `OmsBotGrid` + `useOms` 实时数据流）、下风控仪表盘（`RiskModule`）；顶栏含节点运行数与未读告警数；强调色统一为 scene。*
-- [ ] **[PROD-04g]** 移动端场景模式适配
+- [x] **[PROD-04g]** 移动端场景模式适配
   - 移动 TabBar 补充模式圆盘或底部菜单
   - 小屏幕 (<768px) 强制 density-scale=1.0，禁用极密
   - 依赖：PROD-05（多分辨率适配规范）
+  - *2026-07-26 完成：`mobile-tab-bar.tsx` 列数扩为 6，新增场景模式圆盘按钮（当前模式 emoji + scene 强调色圆环）与底部 2×2 切换菜单（SCENE_META 标签/提示）；`globals.css` 增加 `@media (max-width:767px)` 强制 `--density-scale:1`（!important）禁用盯盘 1.2/研究 0.9 极密。*
 - [x] **[PROD-05]** 多分辨率适配规范：
   - 1280px：AI 抽屉改为 overlay（不挤压主工作区）
   - 1920px+：自动展开更多面板（盘口+新闻流默认可见）

@@ -125,6 +125,14 @@ body {
 [data-scene-mode="monitor"]     { --density-scale: 1.0; --scene-accent: 38 92% 50%; --ring: 38 92% 50%; }
 [data-scene-mode="ai-analysis"] { --density-scale: 1.0; --scene-accent: 217 91% 60%; --ring: 217 91% 60%; }
 
+/* PROD-04g: 移动端 (<768px) 强制标准密度，禁用极密布局（盯盘 1.2 / 研究 0.9 在小屏失效） */
+@media (max-width: 767px) {
+  :root,
+  [data-scene-mode] {
+    --density-scale: 1 !important;
+  }
+}
+
 /* PROD-04c: 强调色关键 UI 平滑过渡（模式切换时颜色/描边/阴影 200ms 过渡） */
 .scene-accent-transition { transition: color 200ms ease-out, background-color 200ms ease-out, border-color 200ms ease-out, box-shadow 200ms ease-out, fill 200ms ease-out, stroke 200ms ease-out; }
 
