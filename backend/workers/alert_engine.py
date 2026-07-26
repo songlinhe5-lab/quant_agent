@@ -35,6 +35,7 @@ from backend.core.alert_models import (
 )
 from backend.core.logger import logger
 from backend.services.alert_dispatcher import AlertDispatcher
+from backend.services.expr_evaluator import ExprEvaluator
 from backend.services.indicator_evaluator import (
     INDICATOR_RULE_TYPES,
     IndicatorEvaluator,
@@ -77,6 +78,8 @@ class AlertEngine:
         self._trigger_count = 0
         self._dispatcher = dispatcher  # ALERT-03: 统一调度器
         self._indicator_evaluator = indicator_evaluator or IndicatorEvaluator()
+        # ALERT-COND-01: 自由表达式求值引擎（复用前端 PROD-11 表达式语义）
+        self._expr_evaluator = ExprEvaluator()
         self._market_data = market_data_service  # 用于获取技术指标
 
     # ─────────────────────────────────
@@ -151,15 +154,32 @@ class AlertEngine:
         if not matching_rules:
             return triggered_events
 
-        # 分离价格类规则和指标类规则
-        price_rules = [r for r in matching_rules if r.rule_type not in INDICATOR_RULE_TYPES]
+        # 分离价格类规则 / 指标类规则 / 自由表达式规则 (ALERT-COND-01)
+        price_rules = [
+            r for r in matching_rules if r.rule_type not in INDICATOR_RULE_TYPES and r.rule_type != AlertRuleType.EXPR
+        ]
         indicator_rules = [r for r in matching_rules if r.rule_type in INDICATOR_RULE_TYPES]
+        expr_rules = [r for r in matching_rules if r.rule_type == AlertRuleType.EXPR]
 
         # 获取上一次价格
         prev_price = self._last_prices.get(ticker)
         self._last_prices[ticker] = price
 
         now = time.time()
+
+        # ALERT-COND-01: 把行情喂给表达式引擎滚动缓冲（供 EXPR 规则基于序列求值）
+        if expr_rules:
+            self._expr_evaluator.feed(
+                ticker,
+                {
+                    "time": now,
+                    "open": price,
+                    "high": price,
+                    "low": price,
+                    "close": price,
+                    "volume": volume if volume is not None else 0.0,
+                },
+            )
 
         # ── 价格类规则评估 ──
         for rule in price_rules:
@@ -201,6 +221,28 @@ class AlertEngine:
         if indicator_rules:
             indicator_events = await self._evaluate_indicator_rules(ticker, indicator_rules, now)
             triggered_events.extend(indicator_events)
+
+        # ── ALERT-COND-01: 自由表达式规则评估 ──
+        if expr_rules:
+            for rule in expr_rules:
+                if rule.last_triggered_at and (now - rule.last_triggered_at) < rule.cooldown_seconds:
+                    continue
+                triggered, tv = self._expr_evaluator.evaluate_rule(rule)
+                if not triggered:
+                    continue
+                event = self._create_expr_event(rule, ticker, tv, now)
+                triggered_events.append(event)
+                rule.last_triggered_at = now
+                rule.trigger_count += 1
+                self._trigger_count += 1
+                await self._redis.hset(RULES_KEY, rule.rule_id, rule.model_dump_json())
+                await self._redis.lpush(EVENTS_KEY, event.model_dump_json())
+                await self._redis.ltrim(EVENTS_KEY, 0, 999)
+                await self._dispatch_event(event, rule.channels)
+                logger.info(
+                    f"[AlertEngine] 表达式告警触发: {rule.name} | {ticker} | "
+                    f"末值={tv} | expr={rule.metadata.get('expr')}"
+                )
 
         return triggered_events
 
@@ -274,6 +316,24 @@ class AlertEngine:
         except Exception as e:
             logger.warning(f"[AlertEngine] 指标获取异常: {e}")
             return None
+
+    def _create_expr_event(self, rule: AlertRule, ticker: str, trigger_value: Optional[float], ts: float) -> AlertEvent:
+        """ALERT-COND-01: 为自由表达式规则构造触发事件"""
+        expr = rule.metadata.get("expr", "")
+        message = f"🔧 {rule.name}: {ticker} 表达式命中 ({expr}) 末值={trigger_value}"
+        return AlertEvent(
+            event_id=str(uuid.uuid4()),
+            rule_id=rule.rule_id,
+            ticker=ticker,
+            rule_type=rule.rule_type,
+            severity=rule.severity,
+            message=message,
+            trigger_value=trigger_value,
+            threshold=None,
+            channels=rule.channels,
+            triggered_at=ts,
+            source="expr",
+        )
 
     def _create_event(self, rule: AlertRule, price: float, ts: float) -> AlertEvent:
         """创建告警事件"""
