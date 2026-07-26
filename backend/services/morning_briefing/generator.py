@@ -101,7 +101,10 @@ def format_backtest_health_section(entries) -> str:
             f"- **{h.ticker}** {badge}：IS/OOS 夏普缺口 `{h.is_oos_gap}`，OOS 盈利折 `{h.robustness_ratio * 100:.0f}%`"
         )
         if h.summary:
-            lines.append(f"  - *研判：{h.summary}*")
+            lines.append(f"  - *Walk-Forward 漂移：{h.summary}*")
+        if h.has_joint:
+            lev = f"杠杆 {h.leverage}x" if h.leverage and h.leverage != 1.0 else "无杠杆"
+            lines.append(f"  - *联合研判（{lev}）：{h.interpret_summary}*")
     lines.append("")
     return "\n".join(lines)
 
@@ -133,7 +136,7 @@ MORNING_BRIEFING_PROMPT = """请基于以下【真实数据】，生成 {market}
 - 对每个标的输出: **[代码]**: 最新价: [价格] | 涨跌幅: [百分比] | 成交量: [量]
 
 ## 🔬 回测健康度速览
-- 若【回测健康度速览】数据非空，逐条输出: **标的** + 风险徽标 (🔴 过拟合/Alpha衰减 或 🟢 稳健可外推) + IS/OOS 夏普缺口 + OOS 盈利折占比 + 研判；过拟合风险必须置顶提示，语气毒舌。若无数据则输出 "_（暂无回测健康度记录）_"。
+- 若【回测健康度速览】数据非空，逐条输出: **标的** + 风险徽标 (🔴 过拟合/Alpha衰减 或 🟢 稳健可外推) + IS/OOS 夏普缺口 + OOS 盈利折占比 + Walk-Forward 漂移研判 + (若含 has_joint) 联合研判(杠杆/Alpha 判别)；过拟合风险必须置顶提示，语气毒舌。若无数据则输出 "_（暂无回测健康度记录）_"。
 
 ## 🧠 主脑综合研判
 - 先给「多空因素矩阵」Markdown 表格 (表头: 多头因素 ✅ | 空头因素 ❌)
@@ -289,10 +292,14 @@ class MorningBriefingGenerator:
                 blines = []
                 for h in backtest_health[:8]:
                     verdict = "过拟合/Alpha衰减" if (h.overfit_risk or h.alpha_decay) else "稳健可外推"
-                    blines.append(
+                    line = (
                         f"- {h.ticker}: IS/OOS缺口={h.is_oos_gap} | "
-                        f"OOS盈利折={h.robustness_ratio * 100:.0f}% | {verdict} | 研判: {h.summary}"
+                        f"OOS盈利折={h.robustness_ratio * 100:.0f}% | {verdict} | Walk-Forward: {h.summary}"
                     )
+                    if h.has_joint:
+                        lev = f"杠杆{h.leverage}x" if h.leverage and h.leverage != 1.0 else "无杠杆"
+                        line += f" | 联合研判({lev}): {h.interpret_summary}"
+                    blines.append(line)
                 if blines:
                     parts.append("【回测健康度速览】\n" + "\n".join(blines))
             except Exception:  # noqa: BLE001

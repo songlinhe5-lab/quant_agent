@@ -273,6 +273,16 @@ _interpreter = BacktestInterpreterService()
 async def interpret_backtest(req: InterpretRequest):
     """AI-03①：回测 Tear Sheet 一句话解读（LLM，须含杠杆/Alpha 判别）。"""
     result = await _interpreter.interpret(req)
+    # 持久化联合研判 (杠杆/Alpha 判别 + Walk-Forward 漂移)，与主 /interpret/walk-forward 合并到同一条目，
+    # 供盘前早报「🔬 回测健康度速览」单一合并视图展示。
+    ticker = req.symbol
+    if ticker:
+        try:
+            from backend.services.backtest_interpreter.health_store import save_backtest_interpret
+
+            await save_backtest_interpret(str(ticker), result.summary, float(req.leverage or 1.0))
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[Backtest] 联合研判持久化失败 (不影响解读返回): {e}")
     return {"status": "success", "data": result.model_dump(mode="json")}
 
 

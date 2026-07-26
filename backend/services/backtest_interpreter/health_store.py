@@ -29,17 +29,21 @@ class BacktestHealthEntry(BaseModel):
     """单标的回测健康度快照 (最近一次 Walk-Forward 解读结论)。"""
 
     ticker: str
-    is_oos_gap: float
-    alpha_decay: bool
-    overfit_risk: bool
-    robustness_ratio: float
-    oos_sharpe_mean: float
-    is_sharpe_mean: float
+    is_oos_gap: float = 0.0
+    alpha_decay: bool = False
+    overfit_risk: bool = False
+    robustness_ratio: float = 0.0
+    oos_sharpe_mean: float = 0.0
+    is_sharpe_mean: float = 0.0
     drift_reasons: List[str] = Field(default_factory=list)
     summary: str = ""
     source: str = "fallback"
     model: Optional[str] = None
     updated_at: datetime = Field(default_factory=datetime.now)
+    # 联合研判 (主 /interpret 结论：杠杆/Alpha 判别 + Walk-Forward 漂移)
+    interpret_summary: str = ""
+    leverage: float = 1.0
+    has_joint: bool = False
 
 
 def _entry_from_result(ticker: str, res: WalkForwardInterpretResult) -> BacktestHealthEntry:
@@ -58,21 +62,68 @@ def _entry_from_result(ticker: str, res: WalkForwardInterpretResult) -> Backtest
     )
 
 
-async def save_backtest_health(ticker: str, res: WalkForwardInterpretResult) -> None:
-    """持久化某标的回测健康度 (最新一份覆盖)。ticker 为空则静默跳过。"""
-    if not ticker:
-        return
-    entry = _entry_from_result(ticker, res)
-    _MEMORY[ticker] = entry
+# Walk-Forward 漂移结论字段 (save_backtest_health 覆盖这些，保留联合研判字段)
+_WF_FIELDS = (
+    "is_oos_gap",
+    "alpha_decay",
+    "overfit_risk",
+    "robustness_ratio",
+    "oos_sharpe_mean",
+    "is_sharpe_mean",
+    "drift_reasons",
+    "summary",
+    "source",
+    "model",
+)
+
+
+async def _persist(entry: BacktestHealthEntry) -> None:
+    _MEMORY[entry.ticker] = entry
     try:
         from backend.core.database import get_redis_client
 
         redis = await get_redis_client()
-        await redis.set(f"{_KEY_PREFIX}{ticker}", entry.model_dump_json(), ex=REDIS_TTL)
-        await redis.sadd(_INDEX_KEY, ticker)
+        await redis.set(f"{_KEY_PREFIX}{entry.ticker}", entry.model_dump_json(), ex=REDIS_TTL)
+        await redis.sadd(_INDEX_KEY, entry.ticker)
         await redis.expire(_INDEX_KEY, REDIS_TTL)
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[BacktestHealth] Redis 写入失败，使用内存兜底: {e}")
+
+
+async def save_backtest_health(ticker: str, res: WalkForwardInterpretResult) -> None:
+    """持久化某标的 Walk-Forward 漂移结论 (覆盖 WF 字段，保留已存的联合研判字段)。"""
+    if not ticker:
+        return
+    entry = _entry_from_result(ticker, res)
+    existing = _MEMORY.get(ticker)
+    if existing is not None:
+        # 只更新 WF 漂移字段，避免覆盖联合研判 (interpret_summary/leverage/has_joint)
+        entry = existing.model_copy(update={k: getattr(entry, k) for k in _WF_FIELDS} | {"updated_at": datetime.now()})
+    await _persist(entry)
+
+
+async def save_backtest_interpret(ticker: str, summary: str, leverage: float = 1.0) -> None:
+    """持久化主 /interpret 联合结论 (杠杆/Alpha 判别 + Walk-Forward 漂移)，与 WF 漂移合并到同一条目。"""
+    if not ticker:
+        return
+    existing = _MEMORY.get(ticker)
+    if existing is not None:
+        entry = existing.model_copy(
+            update={
+                "interpret_summary": summary,
+                "leverage": leverage,
+                "has_joint": True,
+                "updated_at": datetime.now(),
+            }
+        )
+    else:
+        entry = BacktestHealthEntry(
+            ticker=ticker,
+            interpret_summary=summary,
+            leverage=leverage,
+            has_joint=True,
+        )
+    await _persist(entry)
 
 
 async def get_backtest_health(ticker: str) -> Optional[BacktestHealthEntry]:

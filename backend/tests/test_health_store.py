@@ -13,6 +13,7 @@ from backend.services.backtest_interpreter.health_store import (
     get_all_backtest_health,
     get_backtest_health,
     save_backtest_health,
+    save_backtest_interpret,
 )
 from backend.services.backtest_interpreter.models import WalkForwardInterpretResult
 
@@ -72,3 +73,30 @@ async def test_get_missing_returns_none(_no_redis):
 async def test_empty_ticker_is_noop(_no_redis):
     await save_backtest_health("", _fake_result())
     assert await get_all_backtest_health() == []
+
+
+@pytest.mark.asyncio
+async def test_interpret_and_wf_merge_into_single_entry(_no_redis):
+    """联合研判与 Walk-Forward 漂移合并到同一条目、互不覆盖 (单一合并视图的数据基础)"""
+    await save_backtest_health("NVDA", _fake_result("NVDA", overfit=True))
+    assert (await get_backtest_health("NVDA")).has_joint is False
+
+    await save_backtest_interpret("NVDA", "杠杆 3x 放大，Alpha 真实但脆弱，外推需打折", leverage=3.0)
+    entry = await get_backtest_health("NVDA")
+    assert entry.has_joint is True
+    assert entry.leverage == 3.0
+    assert entry.interpret_summary.startswith("杠杆 3x")
+    # WF 漂移字段必须保留，未被联合结论覆盖
+    assert entry.overfit_risk is True
+    assert entry.is_oos_gap == 0.9
+
+
+@pytest.mark.asyncio
+async def test_wf_after_interpret_keeps_joint(_no_redis):
+    """先联合研判、后 Walk-Forward：WF 覆盖不应抹掉联合研判字段"""
+    await save_backtest_interpret("TSLA", "无杠杆，Alpha 站得住", leverage=1.0)
+    await save_backtest_health("TSLA", _fake_result("TSLA", overfit=False, alpha_decay=False))
+    entry = await get_backtest_health("TSLA")
+    assert entry.has_joint is True
+    assert entry.interpret_summary == "无杠杆，Alpha 站得住"
+    assert entry.overfit_risk is False
