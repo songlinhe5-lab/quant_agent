@@ -358,7 +358,6 @@ class FutuAdapter(DataSourcePort):
             dict: {"success": bool, "data": OptionChain, "message": str?}
         """
         underlying_ticker = params.get("underlying_ticker")
-        expire_date = params.get("expire_date", "")
         if not underlying_ticker:
             return {"success": False, "message": "Missing underlying_ticker parameter"}
 
@@ -373,10 +372,7 @@ class FutuAdapter(DataSourcePort):
             # 未连接真实数据源：明确返回错误告警，绝不用 Mock 兜底掩盖故障
             return {
                 "success": False,
-                "message": (
-                    "数据源已死，无法分析：期权链数据源不可用"
-                    "（Futu OpenD 未连接，无法获取真实期权链）"
-                ),
+                "message": ("数据源已死，无法分析：期权链数据源不可用（Futu OpenD 未连接，无法获取真实期权链）"),
             }
         except Exception as e:
             return {"success": False, "message": str(e)}

@@ -14,7 +14,6 @@ import logging
 from typing import Any, Optional
 
 from backend.core.ticker_format import format_yf_ticker
-from backend.services.futu.mock_provider import MockProvider
 from backend.services.options_engine import compute_option_chain_greeks
 
 logger = logging.getLogger(__name__)
@@ -151,10 +150,7 @@ class MarketDataGateway:
         if not connected:
             return {
                 "status": "error",
-                "message": (
-                    "数据源已死，无法分析：期权 IV 曲面数据源不可用"
-                    "（Futu OpenD 未连接，无法获取真实期权链）"
-                ),
+                "message": ("数据源已死，无法分析：期权 IV 曲面数据源不可用（Futu OpenD 未连接，无法获取真实期权链）"),
             }
 
         try:
