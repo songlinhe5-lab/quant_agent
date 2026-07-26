@@ -17,7 +17,5 @@ class BriefingResult(BaseModel):
     date: str = Field(..., description="早报日期 YYYY-MM-DD")
     market: str = Field("全球", description="市场范围 (A股/港股/美股/全球)")
     markdown: str = Field(..., description="渲染好的早报 Markdown")
-    source_tools: List[str] = Field(
-        default_factory=list, description="数据来源工具清单"
-    )
+    source_tools: List[str] = Field(default_factory=list, description="数据来源工具清单")
     created_at: datetime = Field(default_factory=datetime.now)

@@ -28,9 +28,7 @@ async def save_briefing(result: BriefingResult) -> None:
 
         redis = await get_redis_client()
         await redis.set(f"briefing:{result.id}", result.model_dump_json(), ex=REDIS_TTL)
-        await redis.set(
-            f"briefing:latest:{result.market}", result.id, ex=REDIS_TTL
-        )
+        await redis.set(f"briefing:latest:{result.market}", result.id, ex=REDIS_TTL)
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[Briefing] Redis 写入失败，使用内存兜底: {e}")
 

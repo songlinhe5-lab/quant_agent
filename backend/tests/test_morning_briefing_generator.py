@@ -51,9 +51,7 @@ def _make_registry():
         if name == "get_broker_market_data" and kwargs.get("action") == "QUOTE":
             return {
                 "status": "success",
-                "data": [
-                    {"symbol": "SPY", "last_price": 540.2, "change_pct": 0.8, "volume": 50000000}
-                ],
+                "data": [{"symbol": "SPY", "last_price": 540.2, "change_pct": 0.8, "volume": 50000000}],
             }
         if name == "get_macro_news":
             return {
@@ -117,13 +115,13 @@ class TestGenerateMorningBriefing:
         llm = MagicMock()
         llm.generate = AsyncMock(return_value=FAKE_MARKDOWN)
 
-        with patch(
-            "backend.services.morning_briefing.generator.ToolRegistry"
-        ) as mock_cls, patch(
-            "backend.services.morning_briefing.generator.LLMService"
-        ) as mock_llm_cls, patch(
-            "backend.services.morning_briefing.generator.save_briefing",
-            new_callable=AsyncMock,
+        with (
+            patch("backend.services.morning_briefing.generator.ToolRegistry") as mock_cls,
+            patch("backend.services.morning_briefing.generator.LLMService") as mock_llm_cls,
+            patch(
+                "backend.services.morning_briefing.generator.save_briefing",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_cls.return_value = registry
             mock_llm_cls.return_value = llm
