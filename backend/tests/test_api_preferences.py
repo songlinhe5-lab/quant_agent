@@ -142,3 +142,56 @@ class TestPreferencesAPI(unittest.TestCase):
         self.assertEqual(res_get.status_code, 200, f"GET preferences failed: {res_get.json()}")
         # 💡 响应结构: envelope.data.data.macro_symbols (middleware 包一层 + 路由自身 data 字段)
         self.assertEqual(res_get.json()["data"]["data"]["macro_symbols"], ["TSLA", "NVDA"])
+
+    @patch("backend.routers.preferences.l1_cached_redis")
+    @patch("backend.routers.preferences.redis_client")
+    def test_ai_push_prefs_get_default_and_put(self, mock_redis, mock_l1):
+        mock_redis.get = AsyncMock(side_effect=_fake_get)
+        mock_redis.set = AsyncMock(side_effect=_fake_set)
+        mock_l1.get = AsyncMock(side_effect=_fake_get)
+        mock_l1.set = AsyncMock(side_effect=_fake_set)
+
+        # GET 默认返回 8 个受控模块，全部 enabled=True
+        res_get = self.client.get("/api/v1/settings/preferences/ai-push", headers=self.headers)
+        self.assertEqual(res_get.status_code, 200)
+        prefs = res_get.json()["data"]["data"]["prefs"]
+        self.assertEqual(len(prefs), 8)
+        self.assertTrue(all(p["enabled"] for p in prefs))
+        self.assertTrue(all(p["threshold"] is None for p in prefs))
+
+        # PUT 更新部分模块
+        payload = {"prefs": [{"module": "ai01", "enabled": False, "threshold": 3.0}]}
+        res_put = self.client.put("/api/v1/settings/preferences/ai-push", json=payload, headers=self.headers)
+        self.assertEqual(res_put.status_code, 200)
+        self.assertEqual(res_put.json()["data"]["data"]["updated"], 1)
+
+        # 再次 GET 应反映已保存状态（回落未改模块仍为默认 enabled=True）
+        res_get2 = self.client.get("/api/v1/settings/preferences/ai-push", headers=self.headers)
+        prefs2 = res_get2.json()["data"]["data"]["prefs"]
+        by_module = {p["module"]: p for p in prefs2}
+        self.assertFalse(by_module["ai01"]["enabled"])
+        self.assertEqual(by_module["ai01"]["threshold"], 3.0)
+        self.assertTrue(by_module["ai02"]["enabled"])
+
+    @patch("backend.routers.preferences.l1_cached_redis")
+    @patch("backend.routers.preferences.redis_client")
+    def test_ai_push_prefs_reject_unknown_module(self, mock_redis, mock_l1):
+        mock_redis.get = AsyncMock(side_effect=_fake_get)
+        mock_redis.set = AsyncMock(side_effect=_fake_set)
+        mock_l1.get = AsyncMock(side_effect=_fake_get)
+        mock_l1.set = AsyncMock(side_effect=_fake_set)
+
+        payload = {"prefs": [{"module": "ai99", "enabled": True}]}
+        res = self.client.put("/api/v1/settings/preferences/ai-push", json=payload, headers=self.headers)
+        self.assertEqual(res.status_code, 400)
+
+    @patch("backend.routers.preferences.l1_cached_redis")
+    @patch("backend.routers.preferences.redis_client")
+    def test_ai_push_prefs_reject_empty(self, mock_redis, mock_l1):
+        mock_redis.get = AsyncMock(side_effect=_fake_get)
+        mock_redis.set = AsyncMock(side_effect=_fake_set)
+        mock_l1.get = AsyncMock(side_effect=_fake_get)
+        mock_l1.set = AsyncMock(side_effect=_fake_set)
+
+        res = self.client.put("/api/v1/settings/preferences/ai-push", json={"prefs": []}, headers=self.headers)
+        self.assertEqual(res.status_code, 400)

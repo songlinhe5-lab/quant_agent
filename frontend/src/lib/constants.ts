@@ -49,6 +49,7 @@ export const STORAGE_KEYS = {
   activeModule: 'active-module',
   aiNarrator: 'quant-agent-ai-narrator',
   pattern: 'quant-agent-pattern',
+  aiPush: 'quant-agent-ai-push',
 };
 
 // ─── AI-01 异动解说员 ───────────────────────────────────────
