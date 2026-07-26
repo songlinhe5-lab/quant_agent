@@ -861,6 +861,7 @@ STATUS: PRODUCTION READY ✨
   - 超宽屏 21:9：支持三栏并排（行情+策略+AI）
   - 落地：`frontend/src/styles/globals.css` 新增 PROD-05 响应式基础设施——`global-copilot-drawer` 已 `fixed` overlay（1280px 达标）；新增 `@media (min-width:1920px)` 下 `.resp-auto-panels [data-secondary-panel]{display:block}` 与 `@media (min-width:2560px)` 下 `.resp-3col` 三栏网格工具类（21:9 达标）。
   - ✅ **[PROD-05 深化]** 多分辨率适配已真正驱动业务页：默认行情工作区 `QuotesModule`（`frontend/src/features/trading/quotes.tsx`）已挂 `resp-auto-panels` + `data-secondary-panel`，≥1920px 自动展开「新闻流」次面板（新建自包含 `market-news-panel.tsx`，复用 `NewsStream` + `GET /macro/news`）；并挂 `resp-3col`，≥2560px 揭示第三栏「AI 副驾」（内联 `AIChat`），形成 **行情 + 策略/新闻 + AI** 三栏并排。基础设施增强：`.resp-3col` 由 `align-items:start` 改为 `stretch` 以满高（当时无既有消费方，安全）；新增 `.resp-3col > [data-ultrawide-ai]{display:flex}` 揭示规则。旧 ⚠️「需逐页挂 class 消费」已闭合。
+  - ✅ **[PROD-05 深化 · 超宽屏固定三栏]** research 场景 `StrategyIDE`（`frontend/src/features/strategy/layout/strategy-ide.tsx`）现通过 `useMediaQuery('(min-width:2560px)')`（`frontend/src/hooks/use-media-query.ts`，SSR 安全）条件渲染：≥2560px 出 **非拖拽固定三栏**（复用 `.resp-3col` 网格 + 新增 `.ide-3col` 列模板锁定 IDE 比例 explorer 15% / editor 1fr / AI 26%，去间距改边框分隔），≤2559px 保留原 `react-resizable-panels` 可拖拽布局——绕开内联 `display:flex` 覆盖 grid 的样式优先级雷区，且无需维护两套布局语义。
 - [x] **[PROD-06]** 风控面板 Tab 分组（当前 7 个图表区域平铺，一屏放不下）：✅ **2026-07-25**：`AccountSection`（risk-account-section.tsx）新增概览/因子/压测三 Tab，`RiskAdvancedPanel` 支持 `tabs` 过滤复用；敞口卡派生集中度(Top1%)；持仓表常驻。tsc 零错误 + 197 全量零回归
   - Tab 1「概览」：雷达图 + 集中度 + Beta
   - Tab 2「因子」：因子暴露 + 归因 + 相关性矩阵

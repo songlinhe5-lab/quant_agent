@@ -9,10 +9,13 @@ import { BottomTerminal } from './bottom-terminal'
 import { MainTabs } from '../workspace/main-tabs'
 import { useStrategyStore } from '../stores'
 import { cn } from '@/lib/utils'
+import { useMediaQuery } from '@/hooks/use-media-query'
 
 export function StrategyIDE({ className }: { className?: string }) {
   const enterDiff = useStrategyStore(s => s.enterDiff)
   const setWorkspaceTab = useStrategyStore(s => s.setWorkspaceTab)
+  // PROD-05 深化：超宽屏 (>=2560px) 切换为固定三栏（非拖拽），普通宽度保留可拖拽布局
+  const isUltrawide = useMediaQuery('(min-width: 2560px)')
 
   // PROD-04e: 研究模式键盘优先交互（Cmd+1/2/3 快速跳转面板）
   useEffect(() => {
@@ -69,34 +72,54 @@ export function StrategyIDE({ className }: { className?: string }) {
       <Topbar />
 
       {/* Main IDE Area */}
-      <ResizablePanelGroup direction="horizontal" className="flex-1">
-        {/* Left Sidebar: Explorer */}
-        <ResizablePanel defaultSize={15} minSize={10} maxSize={25} className="bg-secondary/10">
-          <LeftSidebar />
-        </ResizablePanel>
-
-        <ResizableHandle withHandle className="bg-border/40 hover:bg-scene/50 transition-colors scene-accent-transition" />
-
-        {/* Center: Editor & Terminal */}
-        <ResizablePanel defaultSize={60}>
-          <ResizablePanelGroup direction="vertical">
-            <ResizablePanel defaultSize={75} minSize={30}>
+      {isUltrawide ? (
+        /* 超宽屏固定三栏（PROD-05 深化）：复用 .resp-3col 网格，但去除拖拽把手，比例由 .ide-3col 锁定 */
+        <div className="resp-3col ide-3col flex-1 min-h-0">
+          <div className="flex flex-col min-h-0 overflow-hidden bg-secondary/10 border-r border-border/40">
+            <LeftSidebar />
+          </div>
+          <div className="flex flex-col min-h-0 min-w-0">
+            <div className="flex-1 min-h-0 overflow-hidden">
               <MainTabs />
-            </ResizablePanel>
-            <ResizableHandle withHandle className="bg-border/40 hover:bg-scene/50 transition-colors scene-accent-transition" />
-            <ResizablePanel defaultSize={25} minSize={10}>
+            </div>
+            <div className="h-[28%] min-h-0 overflow-hidden border-t border-border/40">
               <BottomTerminal />
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        </ResizablePanel>
+            </div>
+          </div>
+          <div className="flex flex-col min-h-0 overflow-hidden border-l border-border/40">
+            <RightSidebar />
+          </div>
+        </div>
+      ) : (
+        <ResizablePanelGroup direction="horizontal" className="flex-1">
+          {/* Left Sidebar: Explorer */}
+          <ResizablePanel defaultSize={15} minSize={10} maxSize={25} className="bg-secondary/10">
+            <LeftSidebar />
+          </ResizablePanel>
 
-        <ResizableHandle withHandle className="bg-border/40 hover:bg-scene/50 transition-colors scene-accent-transition" />
+          <ResizableHandle withHandle className="bg-border/40 hover:bg-scene/50 transition-colors scene-accent-transition" />
 
-        {/* Right Sidebar: AI Copilot & Parameters */}
-        <ResizablePanel defaultSize={25} minSize={20} maxSize={40}>
-          <RightSidebar />
-        </ResizablePanel>
-      </ResizablePanelGroup>
+          {/* Center: Editor & Terminal */}
+          <ResizablePanel defaultSize={60}>
+            <ResizablePanelGroup direction="vertical">
+              <ResizablePanel defaultSize={75} minSize={30}>
+                <MainTabs />
+              </ResizablePanel>
+              <ResizableHandle withHandle className="bg-border/40 hover:bg-scene/50 transition-colors scene-accent-transition" />
+              <ResizablePanel defaultSize={25} minSize={10}>
+                <BottomTerminal />
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          </ResizablePanel>
+
+          <ResizableHandle withHandle className="bg-border/40 hover:bg-scene/50 transition-colors scene-accent-transition" />
+
+          {/* Right Sidebar: AI Copilot & Parameters */}
+          <ResizablePanel defaultSize={25} minSize={20} maxSize={40}>
+            <RightSidebar />
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      )}
 
       {/* PROD-04e: 键盘优先交互快捷键提示 */}
       <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 text-[9px] font-mono text-muted-foreground/70 bg-background/70 backdrop-blur px-2.5 py-0.5 rounded-full border border-border/30">

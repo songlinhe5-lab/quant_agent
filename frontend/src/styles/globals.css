@@ -170,6 +170,11 @@ body {
     flex-direction: column;
     min-height: 0;
   }
+  /* research 场景专用固定三栏：保留 IDE 原有比例（explorer 窄 / editor 宽 / AI 中），去间距改边框分隔 */
+  .resp-3col.ide-3col {
+    grid-template-columns: minmax(0, 15%) minmax(0, 1fr) minmax(0, 26%);
+    gap: 0;
+  }
 }
 
 @keyframes tick-flash-up {
