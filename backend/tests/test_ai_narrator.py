@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from backend.services.ai_narrator.models import NarrativeRequest, NarrativeResult
+from backend.services.ai_narrator.models import NarrativeResult
 from backend.services.ai_narrator.service import AiNarratorService
 
 

@@ -6,7 +6,7 @@
 
 from fastapi import APIRouter
 
-from backend.services.ai_narrator.models import NarrativeRequest, NarrativeResult
+from backend.services.ai_narrator.models import NarrativeRequest
 from backend.services.ai_narrator.service import AiNarratorService
 
 router = APIRouter(prefix="/ai", tags=["AI-01 异动解说员"])

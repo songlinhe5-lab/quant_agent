@@ -71,6 +71,7 @@ from backend.core.openapi_schema import (  # noqa: E402
 from backend.core.otel_config import init_otel  # noqa: E402
 from backend.core.structlog_config import configure_structlog  # noqa: E402
 from backend.middleware.stack import register_middleware  # noqa: E402
+from backend.routers.ai_narrator import router as ai_narrator_router  # noqa: E402
 
 # --- 业务路由 ---
 from backend.routers.alert import router as alert_router  # noqa: E402
@@ -112,7 +113,6 @@ from backend.routers.system import router as system_router  # noqa: E402
 from backend.routers.system_health import root_router  # noqa: E402
 from backend.routers.system_health import router as system_health_router  # noqa: E402
 from backend.routers.trade import router as trade_router  # noqa: E402
-from backend.routers.ai_narrator import router as ai_narrator_router  # noqa: E402
 
 # ─── API 版本前缀 ─────────────────────────────────────────────
 API_URL_VERSION = os.getenv("API_URL_VERSION", "v1")

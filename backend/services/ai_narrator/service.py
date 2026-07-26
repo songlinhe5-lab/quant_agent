@@ -9,7 +9,7 @@ import asyncio
 import logging
 from typing import Optional
 
-from backend.services.ai_narrator.models import NarrativeRequest, NarrativeResult
+from backend.services.ai_narrator.models import NarrativeResult
 from backend.services.llm_service import LLMService, ModelTier
 from hermes_agent.tool_registry import ToolRegistry
 
