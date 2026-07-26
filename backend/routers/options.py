@@ -194,21 +194,13 @@ async def get_iv_rank(ticker: str):
         if not atm_options:
             raise HTTPException(status_code=404, detail="期权链无有效 IV 数据可计算")
 
-        current_iv = sum(o["iv"] for o in atm_options) / len(atm_options) / 100
-
-        # 生成模拟的 IV 历史 (实际应从 Redis/DB 获取)
-        import random
-
-        random.seed(hash(ticker) % 2**32)
-        iv_history = [current_iv * (0.7 + random.random() * 0.6) for _ in range(252)]
-
-        result = await options_screener.get_iv_rank_analysis(
-            ticker=ticker,
-            current_iv=current_iv,
-            iv_history=iv_history,
+        # ⚠️ IV Rank 需要历史 IV 序列，须从 Redis/DB 获取真实数据；
+        # 当前无真实源，禁止用 random 伪造 (VIBE-CODING)。
+        # TODO: 接入真实 IV 历史序列（Redis/DB）后改为读取并调用下方分析
+        raise HTTPException(
+            status_code=404,
+            detail="IV Rank 计算失败：缺少历史 IV 序列（真实数据源不可用，禁止用模拟数据填充）",
         )
-
-        return {"status": "success", **result}
 
     except HTTPException:
         raise
