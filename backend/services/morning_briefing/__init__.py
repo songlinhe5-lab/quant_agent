@@ -1,9 +1,10 @@
 """BRD-01: 早报刊物一键生成器服务包"""
 
 from backend.services.morning_briefing.generator import (
-    CORE_TICKERS,
+    MARKET_TICKERS,
     MorningBriefingGenerator,
     generate_morning_briefing,
+    get_tickers_for_market,
 )
 from backend.services.morning_briefing.models import BriefingResult
 from backend.services.morning_briefing.storage import (
@@ -15,9 +16,10 @@ from backend.services.morning_briefing.storage import (
 __all__ = [
     "MorningBriefingGenerator",
     "generate_morning_briefing",
+    "MARKET_TICKERS",
+    "get_tickers_for_market",
     "BriefingResult",
     "save_briefing",
     "get_briefing",
     "get_latest_briefing",
-    "CORE_TICKERS",
 ]

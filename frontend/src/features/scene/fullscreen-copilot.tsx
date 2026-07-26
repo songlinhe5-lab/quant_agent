@@ -78,6 +78,7 @@ function FullscreenCopilotChrome() {
     if (ticker) {
       const prev = useCopilotContextStore.getState().context
       useCopilotContextStore.getState().setContext({
+        kind: 'analysis',
         title: prev?.title ?? 'AI 分析模式',
         summary: prev?.summary ?? `当前聚焦标的: ${ticker}`,
         symbol: ticker,

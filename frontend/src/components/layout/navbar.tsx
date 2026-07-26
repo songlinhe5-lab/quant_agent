@@ -13,6 +13,7 @@ import { useLayoutStore } from '@/stores/useLayoutStore';
 import { TradingModeSwitcher } from './trading-mode-switcher';
 import { SceneModeSwitcher } from './scene-mode-switcher';
 import { useAlertOverlayStore } from '@/stores/useAlertOverlayStore';
+import { MorningBriefingModal } from '@/features/briefing/morning-briefing-modal';
 
 /* ── 动态科幻 SVG Logo 组件 ─────────────────────────────────────── */
 const SciFiLogo = () => (

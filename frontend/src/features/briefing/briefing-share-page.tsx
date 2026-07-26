@@ -24,7 +24,7 @@ export function BriefingSharePage() {
     apiClient
       .get<{ data: BriefingData }>(`/briefing/share/${id}`)
       .then((res) => {
-        if (mounted) setBriefing(res.data.data)
+        if (mounted) setBriefing(res.data)
       })
       .catch((e: any) => {
         if (mounted) setError(e?.message || '加载失败')

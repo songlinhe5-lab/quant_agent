@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type CopilotContextKind = 'screener' | 'kline' | 'risk'
+export type CopilotContextKind = 'screener' | 'kline' | 'risk' | 'analysis'
 
 export interface CopilotPageContext {
   kind: CopilotContextKind

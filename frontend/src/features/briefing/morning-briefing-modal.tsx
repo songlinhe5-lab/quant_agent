@@ -55,10 +55,10 @@ export function MorningBriefingModal({
       setLoading(true)
       setError(null)
       try {
-        const res = await apiClient.post<{ data: BriefingData }>(
-          `/briefing/generate?market=${encodeURIComponent(mkt)}`,
-        )
-        setBriefing(res.data.data)
+      const res = await apiClient.post<{ data: BriefingData }>(
+        `/briefing/generate?market=${encodeURIComponent(mkt)}`,
+      )
+      setBriefing(res.data)
       } catch (e: any) {
         const msg = e?.message || '早报生成失败'
         setError(msg)

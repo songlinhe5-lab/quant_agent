@@ -1027,6 +1027,7 @@ STATUS: PRODUCTION READY ✨
   - 前端：Navbar 按钮 → Dialog（react-markdown 渲染 + 复制 + 分享链接）；LLM 失败有数据兜底骨架
   - 单测 `tests/test_morning_briefing_generator.py` 覆盖正常/LLM 失败兜底/模块封装三路径
   - 🔧 **市场切换（后续增强）**：`MARKET_TICKERS = {全球/美股/港股/A股}` 按市场选不同监控标的；Modal 顶部 Select 下拉切换市场（默认全球），切换即按该市场重新生成；分享页 `/briefing/:id` 头部展示市场标签。**分享页保持 ProtectedRoute 内，不对未登录公开**。
+  - 🔧 **本地验证（本机实跑，非仅留 CI）**：前端 `npm run type-check` + `npm run build` 全绿；后端 `pytest tests/test_morning_briefing_generator.py` 3 用例全 PASS。验证过程抓出 4 个会进 CI 的真实 bug 并已修复：① navbar 漏 import `MorningBriefingModal`（自 BRD-01 首提交即缺失，前端构建一直挂）；② 早报 `apiClient` 解包错 `res.data.data`→应为 `res.data`（`morning-briefing-modal`/`briefing-share-page` 两处 TS 类型错）；③ `fullscreen-copilot` 缺必填 `kind` 字段（补 `analysis` 枚举）；④ **后端 `generator.py` 的 `ToolRegistry` 导入路径错**（`backend.core.tool_registry` 不存在，应为 `hermes_agent.tool_registry`——会导致整个早报引擎 import 失败、端点 500）+ 市场切换改写时 `MARKET_TICKERS`/`get_tickers_for_market` 与 `_collect_data(market, tickers)` 调用未真正落盘，已补全。
   - 预期工时：FE 6h + BE 6h
 - [x] **[COND-01]** 自定义指标网格搜索结果保存为"策略配方"（P2）：
   - ✅ 已完成 `runParamGridSearch` 引擎 + UI（PROD-11 追问6）

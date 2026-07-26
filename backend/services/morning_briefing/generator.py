@@ -17,21 +17,46 @@ import uuid
 from datetime import date as date_cls
 from typing import Optional
 
-from backend.core.tool_registry import ToolRegistry
+from hermes_agent.tool_registry import ToolRegistry
 from backend.services.llm_service import LLMService, ModelTier
 from backend.services.morning_briefing.models import BriefingResult
 from backend.services.morning_briefing.storage import save_briefing
 
 logger = logging.getLogger(__name__)
 
-# 核心标的监控清单 (跨市场大类资产 + 指数)
-CORE_TICKERS = [
-    "SPY", "QQQ", "DIA",      # 美股指数 ETF
-    "GLD", "TLT",             # 黄金 / 美债
-    "DXY", "USDCNH",          # 美元指数 / 离岸人民币
-    "BTC",                    # 加密货币情绪锚
-    "00700.HK", "600519.SH", "513100.SH",  # 港股 / A股 核心 + 纳指ETF
-]
+# 核心标的监控清单：按市场切换，避免"全球"清单硬套单一市场
+MARKET_TICKERS: dict[str, list[str]] = {
+    "全球": [
+        "SPY", "QQQ", "DIA",      # 美股指数 ETF
+        "GLD", "TLT",             # 黄金 / 美债
+        "DXY", "USDCNH",          # 美元指数 / 离岸人民币
+        "BTC",                    # 加密货币情绪锚
+        "00700.HK", "600519.SH", "513100.SH",  # 港股 / A股 核心 + 纳指ETF
+    ],
+    "美股": [
+        "SPY", "QQQ", "DIA", "IWM",   # 大盘 / 纳指 / 道指 / 罗素2000
+        "GLD", "TLT",                 # 黄金 / 美债
+        "DXY", "BTC",                 # 美元 / 加密情绪锚
+        "NVDA", "AAPL", "TSLA",       # 龙头个股
+    ],
+    "港股": [
+        "HSI", "HSCEI",               # 恒生指数 / 国企指数
+        "00700.HK", "09988.HK", "03690.HK", "01810.HK",  # 腾讯/阿里/美团/小米
+        "GLD", "DXY", "BTC",          # 黄金 / 美元 / 加密情绪锚
+    ],
+    "A股": [
+        "000001.SH", "399001.SZ", "399006.SZ",  # 上证 / 深成 / 创业板指
+        "600519.SH", "601318.SH", "300750.SZ",  # 茅台 / 平安 / 宁德
+        "513100.SH", "518880.SH",               # 纳指ETF / 黄金ETF
+    ],
+}
+
+SUPPORTED_MARKETS = list(MARKET_TICKERS.keys())
+
+
+def get_tickers_for_market(market: str) -> list[str]:
+    """按市场返回监控标的；未知市场回退到全球清单"""
+    return MARKET_TICKERS.get(market, MARKET_TICKERS["全球"])
 
 SOURCE_TOOLS = [
     "get_macro_calendar",
@@ -85,7 +110,8 @@ class MorningBriefingGenerator:
         trade_date = target_date or date_cls.today().strftime("%Y-%m-%d")
         logger.info(f"[Briefing] 开始生成 {market} {trade_date} 盘前早报")
 
-        calendar, quotes, news, sentiment = await self._collect_data()
+        tickers = get_tickers_for_market(market)
+        calendar, quotes, news, sentiment = await self._collect_data(market, tickers)
         markdown = await self._build_markdown(
             market, trade_date, calendar, quotes, news, sentiment
         )
