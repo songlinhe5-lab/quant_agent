@@ -47,7 +47,13 @@ export const STORAGE_KEYS = {
   sidebarCollapsed: 'sidebar-collapsed',
   watchlist: 'watchlist',
   activeModule: 'active-module',
+  aiNarrator: 'quant-agent-ai-narrator',
 };
+
+// ─── AI-01 异动解说员 ───────────────────────────────────────
+export const AI_NARRATOR_THRESHOLDS = [1, 2, 5] as const
+export type AiNarratorThreshold = (typeof AI_NARRATOR_THRESHOLDS)[number]
+export const AI_NARRATOR_DEFAULT_THRESHOLD: AiNarratorThreshold = 2
 
 // 其他配置
 export const DEBOUNCE_DELAY = 300;

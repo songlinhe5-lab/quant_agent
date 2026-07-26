@@ -11,6 +11,10 @@ import { apiClient } from '@/lib/api-client'
 import { Loader2, Shield, Eye, EyeOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TradingModeSwitcher } from '@/components/layout/trading-mode-switcher'
+import { Switch } from '@/components/ui/switch'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useAiNarratorStore } from '@/stores/useAiNarratorStore'
+import { AI_NARRATOR_THRESHOLDS, type AiNarratorThreshold } from '@/lib/constants'
 
 type SettingsContentProps = {
   className?: string
@@ -61,6 +65,7 @@ export function SettingsContent({ className, compact }: SettingsContentProps) {
               </p>
             </CardContent>
           </Card>
+          <AiNarratorSettingsCard />
         </TabsContent>
 
         <TabsContent value="appearance" className="space-y-4">
@@ -242,6 +247,49 @@ function ChangePasswordCard() {
             )}
           </Button>
         </form>
+      </CardContent>
+    </Card>
+  )
+}
+
+function AiNarratorSettingsCard() {
+  const { enabled, threshold, setEnabled, setThreshold } = useAiNarratorStore()
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>AI-01 异动解说员</CardTitle>
+        <CardDescription>价格异动突破阈值时，K 线浮动 AI 解说气泡（数据驱动，带来源）</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-slate-200">开启异动解说</p>
+            <p className="text-xs text-slate-400">关闭后 K 线不再浮动解说气泡</p>
+          </div>
+          <Switch checked={enabled} onCheckedChange={setEnabled} />
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-slate-200">异动阈值</p>
+            <p className="text-xs text-slate-400">涨跌幅突破该阈值才触发解说</p>
+          </div>
+          <Select
+            value={String(threshold)}
+            onValueChange={(v) => setThreshold(Number(v) as AiNarratorThreshold)}
+          >
+            <SelectTrigger className="w-24">
+              <SelectValue placeholder="阈值" />
+            </SelectTrigger>
+            <SelectContent>
+              {AI_NARRATOR_THRESHOLDS.map((t) => (
+                <SelectItem key={t} value={String(t)}>
+                  {t}%
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </CardContent>
     </Card>
   )
