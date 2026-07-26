@@ -59,7 +59,7 @@ export function PatternRecognition({ symbol, history }: { symbol: string; histor
       lastKeyRef.current = key
       setPattern(symbol, payload, { winRate, samples, patternName: p.name })
     }
-  }, [symbol, history, enabled, setPattern])
+  }, [symbol, history, enabled, ai01Enabled, setPattern])
 
   return null
 }

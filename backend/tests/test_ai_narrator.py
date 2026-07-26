@@ -79,3 +79,33 @@ class TestAiNarrator:
         assert result.summary  # 降级仍有产出
         assert "原始数据" in result.source
         assert result.confidence < 0.7
+
+    @pytest.mark.asyncio
+    async def test_narrate_pattern_winrate_linked(self):
+        registry = _make_registry()
+        llm = MagicMock()
+        llm.generate = AsyncMock(return_value=FAKE_SUMMARY)
+
+        result = await AiNarratorService(llm=llm, tool_registry=registry).narrate(
+            symbol="AAPL",
+            change_pct=3.2,
+            include_pattern_winrate=True,
+            pattern_winrate=0.65,
+            pattern_name="头肩顶",
+        )
+        # 真实回测胜率被回传，且不捏造
+        assert result.pattern_winrate == 0.65
+        # 数据束中注入了形态历史胜率，供 LLM 引用（prompt 为首个位置参数）
+        prompt = llm.generate.call_args.args[0]
+        assert "头肩顶" in prompt
+        assert "形态历史胜率" in prompt
+        assert "65%" in prompt
+
+    @pytest.mark.asyncio
+    async def test_narrate_pattern_winrate_absent_by_default(self):
+        registry = _make_registry()
+        llm = MagicMock()
+        llm.generate = AsyncMock(return_value=FAKE_SUMMARY)
+
+        result = await AiNarratorService(llm=llm, tool_registry=registry).narrate(symbol="AAPL", change_pct=3.2)
+        assert result.pattern_winrate is None

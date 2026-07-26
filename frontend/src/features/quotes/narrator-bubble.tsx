@@ -31,6 +31,9 @@ interface NarrativePayload {
  */
 export function NarratorBubble({ symbol }: { symbol: string }) {
   const { enabled, threshold } = useAiNarratorStore()
+  const patternWinRate = usePatternStore((s) => s.winRate)
+  const patternName = usePatternStore((s) => s.patternName)
+  const ai01Enabled = useAiPushPrefStore((s) => s.isEnabled('ai01'))
   const [visible, setVisible] = useState(false)
   const [dir, setDir] = useState<'up' | 'down'>('up')
   const [data, setData] = useState<NarrativePayload | null>(null)
@@ -40,7 +43,7 @@ export function NarratorBubble({ symbol }: { symbol: string }) {
   const lastKeyRef = useRef<string>('')
 
   useEffect(() => {
-    if (!enabled) {
+    if (!ai01Enabled || !enabled) {
       setVisible(false)
       setData(null)
       return
@@ -70,6 +73,9 @@ export function NarratorBubble({ symbol }: { symbol: string }) {
           change_pct: pct,
           direction: pct >= 0 ? 'up' : 'down',
           threshold,
+          include_pattern_winrate: patternWinRate != null,
+          pattern_winrate: patternWinRate ?? null,
+          pattern_name: patternName ?? null,
         })
         .then((res: any) => {
           // 兼容两种返回结构：标准 {code,data} 解包后 res.data=result；
@@ -101,7 +107,7 @@ export function NarratorBubble({ symbol }: { symbol: string }) {
       window.removeEventListener('market_tick', handler)
       window.removeEventListener('quote_update', handler)
     }
-  }, [symbol, threshold, enabled])
+  }, [symbol, threshold, enabled, ai01Enabled, patternWinRate, patternName])
 
   if (!enabled || !visible || dismissed) return null
 
@@ -143,6 +149,11 @@ export function NarratorBubble({ symbol }: { symbol: string }) {
             {!collapsed && data && (
               <p className="mt-1 text-[10px] text-slate-500">
                 来源: {data.source} · 置信度 {(data.confidence * 100).toFixed(0)}%
+                {data.pattern_winrate != null && (
+                  <span className="ml-1 rounded bg-violet-500/20 px-1 py-0.5 text-violet-200">
+                    形态胜率 {Math.round(data.pattern_winrate * 100)}%
+                  </span>
+                )}
               </p>
             )}
           </div>

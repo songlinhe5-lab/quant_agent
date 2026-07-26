@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
+import { useAiPushPrefStore } from '@/stores/useAiPushPrefStore'
 
 const cleanSym = (s: string) => s.replace(/^(US|HK|SH|SZ|JP|SG|UK)\./i, '').replace(/\.(HK|SH|SZ|SS)$/i, '')
 
@@ -15,12 +16,18 @@ interface AnomalyFlashProps {
 /**
  * PROD-04a: 盘口异动 > 2% 高对比闪烁动画。
  * 监听实时 market_tick / quote_update 的 change_pct，超过阈值时叠加基于 --scene-accent 的脉冲光环。
+ * 受 useAiPushPrefStore 的 ai01 主开关控制（AI-09 底座）。
  */
 export function AnomalyFlash({ symbol, threshold = 2, className, children }: AnomalyFlashProps) {
+  const ai01Enabled = useAiPushPrefStore((s) => s.isEnabled('ai01'))
   const [active, setActive] = useState(false)
   const [dir, setDir] = useState<'up' | 'down'>('up')
 
   useEffect(() => {
+    if (!ai01Enabled) {
+      setActive(false)
+      return
+    }
     const handler = (e: Event) => {
       const d = (e as CustomEvent).detail
       if (!d?.ticker || cleanSym(String(d.ticker)) !== cleanSym(symbol)) return
@@ -41,7 +48,7 @@ export function AnomalyFlash({ symbol, threshold = 2, className, children }: Ano
       window.removeEventListener('market_tick', handler)
       window.removeEventListener('quote_update', handler)
     }
-  }, [symbol, threshold])
+  }, [symbol, threshold, ai01Enabled])
 
   return (
     <div

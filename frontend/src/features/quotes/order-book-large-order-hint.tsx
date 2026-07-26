@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useAiNarratorStore } from '@/stores/useAiNarratorStore'
+import { useAiPushPrefStore } from '@/stores/useAiPushPrefStore'
 
 interface BookLevel {
   price: number
@@ -124,12 +125,13 @@ function analyze(asks: BookLevel[], bids: BookLevel[]): BookHint | null {
 
 export function OrderBookLargeOrderHint({ symbol }: { symbol: string }) {
   const enabled = useAiNarratorStore((s) => s.orderBookAiEnabled)
+  const ai01Enabled = useAiPushPrefStore((s) => s.isEnabled('ai01'))
   const [hint, setHint] = useState<BookHint | null>(null)
   const lastUpdateRef = useRef(0)
   const lastTextRef = useRef('')
 
   useEffect(() => {
-    if (!enabled) {
+    if (!ai01Enabled || !enabled) {
       setHint(null)
       lastTextRef.current = ''
       return
@@ -154,9 +156,9 @@ export function OrderBookLargeOrderHint({ symbol }: { symbol: string }) {
     }
     window.addEventListener('market_tick', handler)
     return () => window.removeEventListener('market_tick', handler)
-  }, [symbol, enabled])
+  }, [symbol, enabled, ai01Enabled])
 
-  if (!enabled || !hint) return null
+  if (!ai01Enabled || !enabled || !hint) return null
 
   const dotClass =
     hint.tone === 'bull'
