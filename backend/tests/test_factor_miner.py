@@ -87,63 +87,90 @@ async def test_suggest_factors_llm_failure_fallback():
 
 
 @pytest.mark.asyncio
-async def test_grid_search_factors():
-    """测试因子参数网格搜索"""
+async def test_grid_search_factors_success_uses_real_backtest():
+    """可回测(均线类)因子: 调用真实 run_grid_search 并提取 best(零幻觉, 非 mock 数字)"""
     factors = [
         FactorSuggestion(
             name="sma_cross",
-            expression="SMA(fast) > SMA(slow)",
-            param_range={"fast": [5, 10, 20], "slow": [20, 50, 60]},
-            rationale="均线交叉",
+            expression="SMA(period) 穿越",
+            param_range={"period": [10, 20, 50]},
+            rationale="均线穿越",
         ),
     ]
-
-    miner = FactorMiner()
-    results = await miner.grid_search_factors("AAPL", factors)
+    fake_resp = {
+        "status": "success",
+        "data": {
+            "best": {"params": {"period": 20}, "sharpe": 1.8, "total_return": 0.25, "ok": True},
+            "results": [
+                {"params": {"period": 10}, "sharpe": 1.2, "total_return": 0.18, "ok": True},
+                {"params": {"period": 20}, "sharpe": 1.8, "total_return": 0.25, "ok": True},
+                {"params": {"period": 50}, "sharpe": 1.0, "total_return": 0.12, "ok": True},
+            ],
+            "n_combos": 3,
+        },
+    }
+    with patch("backend.app.grid_search_app.run_grid_search", new=AsyncMock(return_value=fake_resp)):
+        miner = FactorMiner()
+        results = await miner.grid_search_factors("AAPL", factors)
 
     assert len(results) == 1
-    assert results[0].factor_name == "sma_cross"
-    assert results[0].total_combos == 9  # 3 * 3
-    assert len(results[0].top_results) == 9  # min(9, 10)
-    assert results[0].best_sharpe > 0
-    assert results[0].best_params["fast"] in [5, 10, 20]
+    assert results[0].status == "success"
+    assert results[0].best_sharpe == 1.8
+    assert results[0].best_return == 0.25
+    assert results[0].best_params == {"period": 20}
+    assert results[0].total_combos == 3
+    assert len(results[0].top_results) == 3
 
 
 @pytest.mark.asyncio
-async def test_grid_search_empty_params():
-    """测试空参数范围时返回 None"""
+async def test_grid_search_non_backtestable_factor_skipped():
+    """不可回测因子(非均线类/无参数)诚实标记 skipped, 不捏造数字"""
     factors = [
+        FactorSuggestion(
+            name="rsi_reversal",
+            expression="RSI(14) < 30",
+            param_range={"period": [6, 14, 21]},
+            rationale="RSI 超卖反转",
+        ),
         FactorSuggestion(
             name="empty_factor",
             expression="const",
             param_range={},
-            rationale="无参数",
+            rationale="无参数因子",
         ),
     ]
 
     miner = FactorMiner()
     results = await miner.grid_search_factors("AAPL", factors)
 
-    assert len(results) == 0
+    assert len(results) == 2
+    assert all(r.status == "skipped" for r in results)
+    assert results[0].best_sharpe is None
+    assert results[0].best_return is None
+    assert "策略" in (results[0].skipped_reason or "")
 
 
 @pytest.mark.asyncio
-async def test_grid_search_max_combos_limit():
-    """测试组合数上限 256"""
+async def test_grid_search_backtest_failure_skipped():
+    """回测执行失败(数据源不可用)时诚实降级为 skipped, 不抛异常"""
     factors = [
         FactorSuggestion(
-            name="big_search",
-            expression="test",
-            param_range={"a": list(range(20)), "b": list(range(20)), "c": list(range(20))},
-            rationale="大搜索空间",
+            name="sma_cross",
+            expression="SMA(period) 穿越",
+            param_range={"period": [10, 20]},
+            rationale="均线穿越",
         ),
     ]
-
-    miner = FactorMiner()
-    results = await miner.grid_search_factors("AAPL", factors)
+    with patch(
+        "backend.app.grid_search_app.run_grid_search",
+        new=AsyncMock(side_effect=Exception("no data source")),
+    ):
+        miner = FactorMiner()
+        results = await miner.grid_search_factors("AAPL", factors)
 
     assert len(results) == 1
-    assert results[0].total_combos == 256  # 被截断
+    assert results[0].status == "skipped"
+    assert "回测执行失败" in (results[0].skipped_reason or "")
 
 
 # ===== FactorSearchResult =====
