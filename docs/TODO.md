@@ -933,6 +933,115 @@ STATUS: PRODUCTION READY ✨
   - 触发阈值可调（异动 1%/2%/5%）
   - 自然语言配置："把告警推到 Telegram，只推 P0 和 P1"
 
+#### 数据源能力矩阵与产品形态升级（2026-07-26 产品功能审计）
+
+> **背景**：对标 Bloomberg Terminal 全能力矩阵，识别现有工具链覆盖盲区，优先补齐可直接复用后端 Tool 的高价值功能。
+> **产品设计文档**：`docs/01 §十七`（数据源能力矩阵与产品形态升级）
+
+##### 期权与波动率曲面（已有 `get_broker_market_data(action="OPTION_CHAIN")` 后端基础）
+
+- [ ] **[OPTION-01]** 个股期权隐含波动率实时面板（P1）：
+  - 前端：选定标的 → 期权链表格（行=行权价、列=到期日）+ 单元格 IV% 渐变色热力图
+  - 后端：扩 `OPTION_CHAIN` action 返回 Greeks（Delta/Gamma/Vega/Theta）+ IV
+  - 预期工时：FE 8h + BE 4h
+- [ ] **[OPTION-02]** 波动率曲面 3D 可视化（P2）：
+  - ECharts GL 三维曲面图（X=行权价、Y=到期日、Z=IV）
+  - 叠加 skew 曲线（横截面）+ term structure 曲线（纵截面）
+  - 依赖 OPTION-01
+  - 预期工时：FE 6h
+- [ ] **[OPTION-03]** Put/Call Ratio 实时面板（P1）：
+  - 总 PCR + 分到期日 PCR + 历史 20 日均值对比线
+  - 后端复用 `get_macro_sentiment_history` 的 PCR 数据源
+  - 前端 ECharts 双轴（柱状 PCR + 折线标的收盘价），关联市场情绪解读
+  - 预期工时：FE 4h + BE 2h
+
+##### 资金流向增强（已有 `action="FUND_FLOW"` 后端基础）
+
+- [ ] **[FUNDFLOW-01]** 北向资金/主力资金实时看板（P1）：
+  - A股：北向资金净流入（日/周/月）+ 行业分布饼图
+  - 港股：南向资金 + 港股通十大成交榜
+  - 美股：大单（Block Trade）净流入 + 机构持仓变化 Tide Chart
+  - 前端组件：`FundFlowDashboard`（Tab 切换三市场）
+  - 预期工时：FE 8h + BE 4h
+- [ ] **[FUNDFLOW-02]** 龙虎榜/经纪商席位排行（P2）：
+  - 港股 Broker Queue（买入最多 / 卖出最多经纪商）+ 席位异动标记
+  - A股龙虎榜：机构 vs 游资标签 + 近3日净买额排序
+  - 依赖 FUNDFLOW-01 后端数据管道
+  - 预期工时：FE 6h + BE 4h
+
+##### 财报与研报本地 RAG（已有 `analyze_financial_report` + `search_global_knowledge`）
+
+- [ ] **[EARN-02]** 财报/研报 RAG 问答面板（P1）：
+  - 前端：`EarningsQAPanel` 聊天式面板（上传 PDF / 粘贴文本 / 拉取已入库报告）
+  - 后端：`POST /api/v1/rag/chat` — 输入问题 + 指定报告 ID → RAG 检索 + LLM 回答（带引用章节跳转）
+  - 支持追问链（conversation_id 持续上下文）
+  - 预期工时：FE 8h + BE 6h
+- [ ] **[EARN-03]** 研报语义检索增强（P2）：
+  - 自然语言检索："找出所有提到 CapEx 上修的公司"
+  - 检索结果展示：相关段落高亮 + 原文跳转 + 报告日期 / 分析师来源
+  - 依赖 EARN-02 问答面板作为 UI 入口
+  - 预期工时：FE 4h + BE 4h
+
+##### 宏观日历高危事件雷达（已有 `get_macro_calendar`）
+
+- [ ] **[MACRO-05]** 高危事件自动标红与倒计时（P1）：
+  - 前端：Macro Hub 侧边栏增加「🔥 高危事件」卡片（FOMC/NFP/CPI 自动标红 + 倒计时天时分）
+  - 点击展开：事件详情（前值 vs 预期 vs 共识分歧宽度） + ⚡ AI 推演卡（"若加息25bp → 港股科技预计 -2~3%"）
+  - 依赖 AI-08（事件推演）后端能力
+  - 预期工时：FE 6h + BE 2h
+
+##### 情绪量化（已有 `get_macro_sentiment_history` + `get_company_news`）
+
+- [ ] **[SENT-01]** 市场情绪综合得分面板（P1）：
+  - 后端：加权合成 VIX(30%) + P/C Ratio(25%) + Credit Spread(25%) + 新闻情绪(20%) → 0~100 情绪指数（0=极度恐惧、100=极度贪婪）
+  - 前端：Fear & Greed Index 风格仪表盘 + 历史时间序列折线图 + 极端位（<20 / >80）标注
+  - 预期工时：FE 4h + BE 4h
+- [ ] **[SENT-02]** 个股舆情情感时间序列（P2）：
+  - 基于 `get_company_news` 的新闻标题/摘要做 NLP 情感打分（-1~+1），绘制每日情感均值折线
+  - 叠加股价走势副图（情感滞后 or 同步）
+  - 预期工时：FE 4h + BE 4h
+
+##### 决策工具产品形态
+
+- [ ] **[BRD-01]** 早报刊物一键生成器（P1）：
+  - 触发方式：Dashboard 顶部「☕ 生成早报」按钮 + 定时任务（日盘前 15min 自动推送）
+  - 内容编排：宏观日历 → 核心标的监控 → 新闻提纯 → 多空概率矩阵 → 主脑综合研判
+  - 严格遵循 `AGENTS.md §7` 早报模板 + 新闻卡片格式
+  - 输出：浏览器端 Markdown 预览 + 一键复制 / 分享为 URL
+  - 后端：编排 `get_macro_calendar` + `get_broker_market_data(QUOTE)` + `get_macro_news` + `get_macro_sentiment_history` → LLM 组装
+  - 预期工时：FE 6h + BE 6h
+- [ ] **[COND-01]** 自定义指标网格搜索结果保存为"策略配方"（P2）：
+  - 已完成 `runParamGridSearch` 引擎 + UI（PROD-11 追问6）
+  - 产品化：结果保存（命名 + 描述 + 参数快照 + 回测指标）→ `strategy_recipes` 表
+  - 配方列表（我保存的策略配方）+ 一键对比 + 导出 JSON / 分享
+  - 预期工时：FE 6h + BE 4h
+- [ ] **[ALERT-COND-01]** 条件单沙盒（P2）：
+  - 前端：条件构建器（选择指标 + 运算符 + 阈值，支持 AND/OR 组合）→ 模拟命中通知（浏览器弹窗 / App Push 沙盒）
+  - 后端：沙盒引擎轮询 1min 持续评估，命中后写 `alert_logs_sandbox` 表 + 前端消费 SSE
+  - 目前 OMS 未实装，仅模拟通知，待实盘切换后可直接复用为真条件单
+  - 预期工时：FE 8h + BE 8h
+
+##### 社区与协作（数据治理层）
+
+- [ ] **[COMM-01]** 数据源健康度统一看板（P2）：
+  - 前端：`DataSourceHealthDashboard` — 卡片矩阵（每个数据源一个卡片：名称 / 状态 / 延迟 / 今日调用量 / 成功率 / 限流次数）
+  - 实时数据来源：`/api/v1/datasource/{name}/health` + `rate_limit_registry` 状态
+  - 报警：数据源 STALE > 5min → 卡片变红 + WebSocket 推送
+  - 预期工时：FE 6h
+- [ ] **[COMM-02]** 数据源贡献投票与需求看板（P3）：
+  - 前端：展示「已接入 / 开发中 / 社区投票中」三类数据源
+  - 用户可投票（1 票/天），影响下一个接入优先级
+  - 后端：投票记录 + 计数器，防止刷票
+  - 预期工时：FE 4h + BE 3h
+
+##### 智能选股器产品化
+
+- [ ] **[SCREEN-01]** 选股条件保存与分享（P1）：
+  - 前端：筛选器面板「💾 保存条件」→ 命名 + 描述 → `saved_screens` 表
+  - 「📂 我的筛选条件」下拉列表（加载 / 删除 / 重命名）
+  - 「🔗 分享」→ 生成可分享 URL（编码筛选条件为 query params，对方打开自动填充）
+  - 预期工时：FE 6h + BE 3h
+
 ---
 
 ## 🔵 P3 — 功能扩展与探索（长期规划）
@@ -1028,6 +1137,7 @@ STATUS: PRODUCTION READY ✨
 | 2026-07-25 | [PROD-06 完成] 风控面板 Tab 分组：概览(雷达+敞口/集中度) / 因子(因子列表+板块暴露+相关性矩阵) / 压测(VaR/CVaR+历史场景) 三 Tab；RiskAdvancedPanel 新增 tabs 过滤复用；敞口卡派生集中度(Top1%)；持仓表常驻。tsc 零错误 + 197 全量零回归 |
 | 2026-07-25 | [PROD-07 完成] Calendars 降级为 Macro Hub 子 Tab：DataCenterModule 新增概览/市场日历子 Tab，CalendarsModule 作为「市场日历」嵌入；侧栏独立入口移除（route 保留）。tsc 零错误 + 197 全量零回归 |
 | 2026-07-19 | [PROD-04 完成] 四场景模式系统：盯盘/研究/监控/AI分析四模式切换基础设施 + 布局骨架适配（12 tests + 197 全量零回归） |
+| 2026-07-26 | [产品功能审计] 新增 **数据源能力矩阵升级** 任务组（OPTION-01~03 / FUNDFLOW-01~02 / EARN-02~03 / SENT-01~02 / SCREEN-01 / MACRO-05 / BRD-01 / COND-01 / ALERT-COND-01 / COMM-01~02）共 17 项：对标 Bloomberg 全能力矩阵识别 6 大覆盖盲区（期权波动率/资金流增强/研报RAG问答/情绪得分化/决策工具/社区协作），优先补齐可复用后端 Tool 的高价值功能。同步新增 `docs/01 §十七`（数据源能力矩阵与产品形态升级），详见 `docs/01 §十七`。 |
 | 2026-07-16 | [BE-ARCH-05 执行] Finnhub DataSource 接入：`backend/services/datasource/adapters/finnhub.py` 实现 `FinnhubDataSource`（满足 `DataSourceInterface` Protocol），6 capabilities（earnings/company_news/market_news/economic_calendar/insider_trading/stock_history）经 `fetch` 路由到既有 `FinnhubService` 方法；`ensure_finnhub_registered` 于 `MarketDataGateway.__init__` 幂等注册（对齐 yfinance BE-ARCH-04 模式）；限流复用 SVC-08 的 `rate_limit_registry`（throttler 状态以服务内部记录为准，适配器仅做 Result 语义化）；`DATASOURCE_FINNHUB_MODE` env 控制运行模式；`docs/14 §八`+§2.4 能力矩阵更新。Pytest 17 全绿。详见 `docs/14 §二`/`§八` |\n| 2026-07-16 | [SVC-08 执行] Finnhub 限流感知：后端 `finnhub_service.py` 注入 `rate_limit_registry` 的 finnhub throttler，`get_earnings_calendar`/`get_market_news`/`get_company_news`/`get_economic_calendar`/`get_insider_transactions`/`get_stock_history` 在 429/403 → `on_rate_limit`、成功 → `on_success`；`routers/calendars.py` 的 `/dividends` `/ipos` 接入 `should_throttle` 退避（退避期返回 degraded，不硬重试）；`routers/datasource.py` 新增 `GET /datasource/finnhub/health`（被动健康：API Key + 限流状态）；`/rate-limit-status` 由通用路由覆盖（name=finnhub）。Pytest 8 全绿。详见 `docs/14 §十二` |
 | 2026-07-16 | [FE-PROD-05 执行] Calendars 全球市场日历落地：后端新增 `routers/calendars.py`（`/calendars/snapshot` 7 类目 52 标的聚合 + `/hours` 世界时钟矩阵 + `/dividends` `/ipos` Finnhub 优雅降级）+ `macro.py` `/earnings` 复用；前端 `features/calendars`（6 Tab：Markets 类目侧栏+横向滚动 + Economic/Earnings/Dividends/IPOs/Hours）；路由/侧边栏导航接入；Pytest 7 + Vitest 10 全绿。05f 仅类目显隐（拖拽分组未做）、05g Flutter 待 `client/` 仓库 PR。详见 `docs/01 §十六` |
 | 2026-07-16 | [docs/01 V2.3 同步] 新增产品前端缺口任务 **FE-PROD-05a~h**（Calendars 全球市场日历）：对标 yfinance 顶部 Markets 横向滚动条；左侧类目侧栏 + 右侧水平滚动卡片含 Sparkline；6 大类目（US/EU/Asia/Crypto/Rates/Commodities/Currencies）+ 4 日程 Tab（Economic/Earnings/Dividends/IPOs）+ Hours Tab；复用 `_fetch_macro_assets_data` 扩至 50+ 标的；与 §8 Macro Hub 边界澄清（横向广度 vs 纵向深度）；同步新增 **SVC-08**（Finnhub 限流感知）+ **BE-ARCH-05**（Finnhub DataSource 接入，接续 BE-ARCH-01~04）；任务定义与 `docs/01 §十六` · §十四 成熟度矩阵对齐 |
