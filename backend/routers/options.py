@@ -196,7 +196,7 @@ async def get_iv_rank(ticker: str):
 
         # ⚠️ IV Rank 需要历史 IV 序列，须从 Redis/DB 获取真实数据；
         # 当前无真实源，禁止用 random 伪造 (VIBE-CODING)。
-        # TODO: 接入真实 IV 历史序列（Redis/DB）后改为读取并调用下方分析
+        # TODO(OPTION-04): 接入真实 IV 历史序列（Redis/DB）后改为读取并调用下方分析
         raise HTTPException(
             status_code=404,
             detail="IV Rank 计算失败：缺少历史 IV 序列（真实数据源不可用，禁止用模拟数据填充）",

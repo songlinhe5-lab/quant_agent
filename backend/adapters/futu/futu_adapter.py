@@ -367,7 +367,7 @@ class FutuAdapter(DataSourcePort):
             ctx = getattr(self, "futu_ctx", None)
             connected = bool(getattr(ctx, "is_connected", False)) if ctx else False
             if ctx is not None and connected:
-                # TODO: 接入真实 Futu 期权链（Ctx.get_option_chain_by_date_strike）
+                # TODO(OPTION-04): 接入真实 Futu 期权链（Ctx.get_option_chain_by_date_strike）
                 # 禁止用 Mock 填充（VIBE-CODING: 非单测禁止使用 mock 数据填充逻辑）
                 pass
             # 未连接真实数据源：明确返回错误告警，绝不用 Mock 兜底掩盖故障
