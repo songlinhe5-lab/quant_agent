@@ -190,7 +190,12 @@ body {
   from { opacity: 0; transform: scale(0.96); }
   to { opacity: 1; transform: scale(1); }
 }
+@keyframes resp-slide-in-left {
+  from { opacity: 0; transform: translateX(-16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
 .resp-slide-in-right { animation: resp-slide-in-right 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
+.resp-slide-in-left { animation: resp-slide-in-left 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
 .resp-fade-up { animation: resp-fade-up 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
 .resp-scale-in { animation: resp-scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
 

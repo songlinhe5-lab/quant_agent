@@ -75,7 +75,7 @@ export function StrategyIDE({ className }: { className?: string }) {
       {isUltrawide ? (
         /* 超宽屏固定三栏（PROD-05 深化）：复用 .resp-3col 网格，但去除拖拽把手，比例由 .ide-3col 锁定 */
         <div className="resp-3col ide-3col flex-1 min-h-0">
-          <div className="flex flex-col min-h-0 overflow-hidden bg-secondary/10 border-r border-border/40">
+          <div className="resp-fade-up flex flex-col min-h-0 overflow-hidden bg-secondary/10 border-r border-border/40">
             <LeftSidebar />
           </div>
           <div className="flex flex-col min-h-0 min-w-0">
@@ -86,7 +86,7 @@ export function StrategyIDE({ className }: { className?: string }) {
               <BottomTerminal />
             </div>
           </div>
-          <div className="flex flex-col min-h-0 overflow-hidden border-l border-border/40">
+          <div className="resp-fade-up flex flex-col min-h-0 overflow-hidden border-l border-border/40" style={{ animationDelay: '0.06s' }}>
             <RightSidebar />
           </div>
         </div>
