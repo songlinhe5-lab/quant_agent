@@ -182,18 +182,18 @@ class TestMacroDashboard:
 
 
 # ==========================================
-# _fallback_mock_macro 单元测试
+# _fallback_no_data 单元测试（无数据降级，不注入 Mock 假事件）
 # ==========================================
 
 
-class TestFallbackMockMacro:
+class TestFallbackNoData:
     def test_fallback_structure(self):
-        from backend.app.macro_app import _fallback_mock_macro
+        from backend.app.macro_app import _fallback_no_data
 
-        result = _fallback_mock_macro()
+        result = _fallback_no_data()
         assert result["status"] == "warning"
-        assert len(result["data"]) >= 1
-        assert "event" in result["data"][0]
+        assert result["data"] == []  # 必须为空，禁止塞假事件
+        assert "不可用" in result["message"]
 
 
 # ==========================================

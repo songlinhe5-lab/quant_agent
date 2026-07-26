@@ -23,30 +23,20 @@ from backend.services.market_engine import manager
 _macro_locks = {}
 
 
-def _fallback_mock_macro() -> dict:
+def _fallback_no_data() -> dict:
+    """所有真实宏观数据源均不可用时的降级：如实返回空数据 + 明确告警。
+
+    历史实现 (_fallback_mock_macro) 会注入两条写死的 Fed / BOJ 假事件，
+    其日期固定在 2026-05-27 / 2026-05-29，相对当前已是过期数据，反而误导。
+    改为此策略：无数据即如实告知，由前端展示告警条与空表格，绝不塞假事件。
+    """
     return {
         "status": "warning",
-        "message": "宏观日历多源聚合无数据 (AKShare/DBnomics/FRED/Finnhub 均不可用)，使用离线 Mock 数据",
-        "data": [
-            {
-                "date": "2026-05-27T18:00:00Z",
-                "country": "US",
-                "event": "Fed Interest Rate Decision",
-                "impact": "high",
-                "previous": 4.50,
-                "estimate": 4.50,
-                "actual": None,
-            },  # noqa: E501
-            {
-                "date": "2026-05-29T03:00:00Z",
-                "country": "JP",
-                "event": "BOJ Core CPI YoY",
-                "impact": "high",
-                "previous": 2.1,
-                "estimate": 2.3,
-                "actual": None,
-            },  # noqa: E501
-        ],
+        "message": (
+            "⚠️ 所有宏观数据源 (AKShare / DBnomics / FRED / Finnhub) 当前均不可用，"
+            "暂无可展示的经济日历数据。请检查各数据源 API Key 配置与网络连通性后重试。"
+        ),
+        "data": [],
     }
 
 
@@ -75,8 +65,8 @@ async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = Fals
             agg = await macro_calendar_aggregator.aggregate(days_ahead, days_back=days_back, skip_cache=force_refresh)
             events = agg.get("data", [])
             if not events:
-                print("⚠️ [Macro] 多源聚合无数据，使用离线 Mock 数据")
-                return _fallback_mock_macro()
+                print("⚠️ [Macro] 多源聚合无数据，降级为空数据 + 告警（不再注入 Mock 假事件）")
+                return _fallback_no_data()
 
             compressed_events = []
 
