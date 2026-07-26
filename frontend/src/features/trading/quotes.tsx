@@ -17,6 +17,7 @@ import { LightweightChartCanvas } from '@/features/quotes/lightweight-chart-canv
 import { ChartErrorBoundary, PanelErrorBoundary } from '@/components/error-boundary'
 import { useSceneModeStore } from '@/stores/useSceneModeStore'
 import { AnomalyFlash } from '@/features/quotes/anomaly-flash'
+import { NarratorBubble } from '@/features/quotes/narrator-bubble'
 import { FloatingWatchlist } from '@/features/quotes/floating-watchlist'
 import { StrategyIDE } from '@/features/strategy/layout/strategy-ide'
 import { MonitorModeLayout } from '@/features/scene/monitor-mode-layout'
@@ -54,7 +55,10 @@ function CompareChartPanel({ watchlist, updateTicker, mainSymbol, theme, syncGro
         <span className="text-muted-foreground/70 ml-auto">十字线已与主图同步</span>
       </div>
       <div className="flex-1 min-h-0">
-        <LightweightChartCanvas selectedSymbol={compareSymbol} selectedPeriod={comparePeriod} setSelectedPeriod={setComparePeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={false} toggleWatchlist={() => {}} selectedItem={selected} hasData={watchlist.length > 0} syncGroup={syncGroup} />
+        <AnomalyFlash symbol={compareSymbol} className="h-full">
+          <LightweightChartCanvas selectedSymbol={compareSymbol} selectedPeriod={comparePeriod} setSelectedPeriod={setComparePeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={false} toggleWatchlist={() => {}} selectedItem={selected} hasData={watchlist.length > 0} syncGroup={syncGroup} />
+          <NarratorBubble symbol={compareSymbol} />
+        </AnomalyFlash>
       </div>
     </div>
   )
@@ -205,7 +209,10 @@ export function QuotesModule() {
         {/* 全屏 K 线 */}
         <div className="absolute inset-0 z-0">
           <ChartErrorBoundary name="KlineChart">
-            <LightweightChartCanvas selectedSymbol={selectedSymbol} selectedPeriod={selectedPeriod} setSelectedPeriod={setSelectedPeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={false} toggleWatchlist={toggleWatchlist} selectedItem={selected} hasData={hasData} syncGroup="default" />
+            <AnomalyFlash symbol={selectedSymbol} className="h-full">
+              <LightweightChartCanvas selectedSymbol={selectedSymbol} selectedPeriod={selectedPeriod} setSelectedPeriod={setSelectedPeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={false} toggleWatchlist={toggleWatchlist} selectedItem={selected} hasData={hasData} syncGroup="default" />
+              <NarratorBubble symbol={selectedSymbol} />
+            </AnomalyFlash>
           </ChartErrorBoundary>
         </div>
 
