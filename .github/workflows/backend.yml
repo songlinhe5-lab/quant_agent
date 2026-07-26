@@ -133,7 +133,7 @@ jobs:
         run: |
           echo "## Slow Tests Report (Top 20)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          uv run pytest backend/tests/ --durations=20 --tb=no -q 2>&1 | tee /tmp/slow_tests.txt
+          uv run pytest backend/tests/ --durations=20 --tb=no -q -n auto --timeout=60 --timeout-method=thread 2>&1 | tee /tmp/slow_tests.txt
           echo '```' >> $GITHUB_STEP_SUMMARY
           cat /tmp/slow_tests.txt | grep -A 30 "slowest" >> $GITHUB_STEP_SUMMARY || true
           echo '```' >> $GITHUB_STEP_SUMMARY
