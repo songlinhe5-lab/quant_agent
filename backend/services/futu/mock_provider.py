@@ -9,7 +9,6 @@ from typing import Any, Dict, List, Tuple
 
 from backend.services.options_engine import bs_greeks, bs_price
 
-
 # 常见标的的演示现货价（其余回退到 150）
 _SPOT_MAP = {
     "AAPL": 195.0,
@@ -196,18 +195,13 @@ class MockProvider:
         }
 
     @staticmethod
-    def mock_option_chain_matrix(
-        ticker: str, max_expiries: int = 8, max_strikes: int = 21
-    ) -> Dict[str, Any]:
+    def mock_option_chain_matrix(ticker: str, max_expiries: int = 8, max_strikes: int = 21) -> Dict[str, Any]:
         """生成跨到期日的 IV 波动率曲面（开发环境），供前端热力图使用。"""
         spot = _spot_of(ticker)
         strikes = _strike_ladder(spot, max_strikes)
         today = date.today()
         dte_list = [7, 14, 21, 30, 45, 60, 90, 120, 180, 240]
-        expirations = [
-            (today + timedelta(days=d)).strftime("%Y-%m-%d")
-            for d in dte_list[:max_expiries]
-        ]
+        expirations = [(today + timedelta(days=d)).strftime("%Y-%m-%d") for d in dte_list[:max_expiries]]
 
         legs: List[Dict[str, Any]] = []
         iv_call: List[List[float]] = []
@@ -225,12 +219,8 @@ class MockProvider:
                 iv_p = _iv_smile(s, spot, base=base, wing=0.12, skew=0.12)
                 row_c_iv.append(round(iv_c * 100, 2))
                 row_p_iv.append(round(iv_p * 100, 2))
-                row_c_d.append(
-                    round(bs_greeks(spot, s, T, _RISK_FREE, iv_c, "call").delta, 4)
-                )
-                row_p_d.append(
-                    round(bs_greeks(spot, s, T, _RISK_FREE, iv_p, "put").delta, 4)
-                )
+                row_c_d.append(round(bs_greeks(spot, s, T, _RISK_FREE, iv_c, "call").delta, 4))
+                row_p_d.append(round(bs_greeks(spot, s, T, _RISK_FREE, iv_p, "put").delta, 4))
                 legs.append(
                     {
                         "type": "call",

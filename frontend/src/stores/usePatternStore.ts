@@ -9,8 +9,16 @@ interface PatternState {
   /** 当前生效形态标注对应的标的 */
   symbol: string | null
   payload: ChartAnnotationPayload | null
+  /** 当前形态历史回测胜率（复用 pattern-detect，不写死） */
+  winRate: number | null
+  samples: number
+  patternName: string | null
   setEnabled: (v: boolean) => void
-  setPattern: (symbol: string, payload: ChartAnnotationPayload | null) => void
+  setPattern: (
+    symbol: string,
+    payload: ChartAnnotationPayload | null,
+    meta?: { winRate?: number | null; samples?: number; patternName?: string | null },
+  ) => void
 }
 
 /**
@@ -23,8 +31,18 @@ export const usePatternStore = create<PatternState>()(
       enabled: true,
       symbol: null,
       payload: null,
+      winRate: null,
+      samples: 0,
+      patternName: null,
       setEnabled: (v) => set({ enabled: v }),
-      setPattern: (symbol, payload) => set({ symbol: payload ? symbol : null, payload }),
+      setPattern: (symbol, payload, meta) =>
+        set({
+          symbol: payload ? symbol : null,
+          payload,
+          winRate: meta?.winRate ?? null,
+          samples: meta?.samples ?? 0,
+          patternName: meta?.patternName ?? null,
+        }),
     }),
     { name: STORAGE_KEYS.pattern },
   ),

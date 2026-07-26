@@ -21,6 +21,7 @@ SYSTEM_PROMPT = (
     "你是 Quant Agent 主脑的异动解说员。你只能基于【真实数据】中用方括号标注的"
     "新闻标题与基本面字段，归纳出一句不超过 40 字的中文一句话解说，毒舌、硬核、"
     "带金融黑话，且必须明确说出数据来源(如'据最新公司新闻'/'据基本面')。"
+    "若【真实数据】含【形态历史胜率】，须在点评中带出该胜率并据此给出方向倾向。"
     "严禁使用任何【真实数据】以外的信息，严禁编造任何数字。若【真实数据】为空，"
     "直接回复：暂无可信数据源，拒绝在真空里解说。"
 )
@@ -45,9 +46,19 @@ class AiNarratorService:
         change_pct: float,
         direction: str = "up",
         threshold: float = 2.0,
+        include_pattern_winrate: bool = False,
+        pattern_winrate: Optional[float] = None,
+        pattern_name: Optional[str] = None,
     ) -> NarrativeResult:
         news, fundamentals = await self._collect(symbol)
         data_bundle = self._format_data(news, fundamentals)
+        # 形态历史胜率联动：仅当客户端基于真实 K 线回测出有效胜率时接入，严禁捏造
+        if include_pattern_winrate and pattern_winrate is not None:
+            name = pattern_name or "当前形态"
+            pattern_block = f"【形态历史胜率】{name} 历史回测胜率 {pattern_winrate * 100:.0f}%"
+            data_bundle = (
+                f"{data_bundle}\n\n{pattern_block}".strip() if data_bundle else pattern_block
+            )
         summary, source, confidence = await self._build(
             symbol, change_pct, direction, threshold, data_bundle, has_data=bool(data_bundle)
         )
@@ -60,6 +71,9 @@ class AiNarratorService:
             source=source,
             confidence=confidence,
             triggered_by="price_anomaly",
+            pattern_winrate=pattern_winrate
+            if (include_pattern_winrate and pattern_winrate is not None)
+            else None,
         )
 
     # ─── 数据采集 ──────────────────────────────────────────────

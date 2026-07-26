@@ -5,6 +5,8 @@ import { ChevronDown, ChevronUp, Sparkles, X } from 'lucide-react'
 
 import { apiClient } from '@/lib/api-client'
 import { useAiNarratorStore } from '@/stores/useAiNarratorStore'
+import { usePatternStore } from '@/stores/usePatternStore'
+import { useAiPushPrefStore } from '@/stores/useAiPushPrefStore'
 import { cn } from '@/lib/utils'
 
 const cleanSym = (s: string) =>
@@ -19,6 +21,7 @@ interface NarrativePayload {
   source: string
   confidence: number
   triggered_by: string
+  pattern_winrate?: number | null
 }
 
 /**

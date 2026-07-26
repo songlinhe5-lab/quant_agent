@@ -21,5 +21,8 @@ async def narrate(req: NarrativeRequest):
         change_pct=req.change_pct,
         direction=req.direction,
         threshold=req.threshold,
+        include_pattern_winrate=req.include_pattern_winrate,
+        pattern_winrate=req.pattern_winrate,
+        pattern_name=req.pattern_name,
     )
     return {"status": "success", "data": result.model_dump(mode="json")}

@@ -10,9 +10,14 @@ YFinance 主路径经 DataSourceInterface Registry（`datasource_registry.fetch`
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional
 
 from backend.core.ticker_format import format_yf_ticker
+from backend.services.futu.mock_provider import MockProvider
+from backend.services.options_engine import compute_option_chain_greeks
+
+logger = logging.getLogger(__name__)
 
 
 class MarketDataGateway:

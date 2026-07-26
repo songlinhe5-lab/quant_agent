@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import type { ChartAnnotationPayload } from '@/features/copilot/types'
 import { usePatternStore } from '@/stores/usePatternStore'
+import { useAiPushPrefStore } from '@/stores/useAiPushPrefStore'
 import {
   backtestWinRate,
   detectLatest,
@@ -30,10 +31,11 @@ function toPayload(symbol: string, p: DetectedPattern, winRate: number | null, s
 export function PatternRecognition({ symbol, history }: { symbol: string; history: Bar[] }) {
   const enabled = usePatternStore((s) => s.enabled)
   const setPattern = usePatternStore((s) => s.setPattern)
+  const ai01Enabled = useAiPushPrefStore((s) => s.isEnabled('ai01'))
   const lastKeyRef = useRef('')
 
   useEffect(() => {
-    if (!enabled) {
+    if (!ai01Enabled || !enabled) {
       setPattern(symbol, null)
       lastKeyRef.current = ''
       return
@@ -55,7 +57,7 @@ export function PatternRecognition({ symbol, history }: { symbol: string; histor
     const key = `${symbol}:${p.type}:${(payload.levels ?? []).map((l) => l.price.toFixed(2)).join(',')}`
     if (key !== lastKeyRef.current) {
       lastKeyRef.current = key
-      setPattern(symbol, payload)
+      setPattern(symbol, payload, { winRate, samples, patternName: p.name })
     }
   }, [symbol, history, enabled, setPattern])
 
