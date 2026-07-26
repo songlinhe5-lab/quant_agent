@@ -283,6 +283,45 @@ class LLMService:
             print(f"⚠️ [LLMService] 结构化输出校验失败: {e}\n👉 原始输出: {content}")
             raise ValueError(f"LLM 输出未通过 Pydantic 校验: {e}")
 
+    async def generate(
+        self,
+        user_prompt: str,
+        system_prompt: str = "You are a helpful assistant.",
+        model: Optional[str] = None,
+        tier: Optional[ModelTier] = None,
+        temperature: float = 0.7,
+        **kwargs,
+    ) -> Optional[str]:
+        """通用纯文本生成（非结构化）。供 AI-01 异动解说员、盘前早报等调用。
+
+        与 generate_pydantic 同构，但返回裸文本字符串；失败时抛出异常，
+        由调用方（AI-01 / 早报）自身的降级逻辑接管。
+        """
+        client = self.get_client(tier)
+        model_name = model or self.get_model(tier)
+
+        messages: list[dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": user_prompt})
+
+        try:
+            response = await client.chat.completions.create(
+                model=model_name,
+                temperature=temperature,
+                messages=messages,
+                **kwargs,
+            )
+            if tier is not None:
+                self.router.record_success(tier)
+        except Exception:
+            if tier is not None:
+                self.router.record_failure(tier)
+            raise
+
+        content = response.choices[0].message.content or ""
+        return content.strip()
+
 
 # 导出全局单例
 llm_service = LLMService()
