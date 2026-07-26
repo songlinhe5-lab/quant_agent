@@ -368,12 +368,16 @@ class FutuAdapter(DataSourcePort):
             connected = bool(getattr(ctx, "is_connected", False)) if ctx else False
             if ctx is not None and connected:
                 # TODO: 接入真实 Futu 期权链（Ctx.get_option_chain_by_date_strike）
+                # 禁止用 Mock 填充（VIBE-CODING: 非单测禁止使用 mock 数据填充逻辑）
                 pass
-            # 开发/降级：使用 Mock 生成含 IV / Greeks / 买卖价的丰富期权链
-            from backend.services.futu.mock_provider import MockProvider
-
-            mock = MockProvider.mock_option_chain(underlying_ticker, expire_date)
-            return {"success": True, "data": mock, "cached": False}
+            # 未连接真实数据源：明确返回错误告警，绝不用 Mock 兜底掩盖故障
+            return {
+                "success": False,
+                "message": (
+                    "数据源已死，无法分析：期权链数据源不可用"
+                    "（Futu OpenD 未连接，无法获取真实期权链）"
+                ),
+            }
         except Exception as e:
             return {"success": False, "message": str(e)}
 

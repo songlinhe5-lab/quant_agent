@@ -13,7 +13,6 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from backend.core.ticker_format import format_yf_ticker
-from backend.services.futu.mock_provider import MockProvider
 
 
 class MarketDataGateway:
@@ -135,8 +134,8 @@ class MarketDataGateway:
     ) -> dict[str, Any]:
         """跨到期日的 IV 波动率曲面，供前端热力图使用。
 
-        开发环境（Futu 未连接）返回 Mock 曲面；生产环境尽力从 Futu 逐月组装，
-        任何异常均安全回退到 Mock，保证面板可用。
+        仅当 Futu 已连接时从真实数据源逐月组装；未连接或任何异常均
+        显式返回错误 + 告警，绝不用 Mock 填充掩盖数据源不可用（VIBE-CODING）。
         """
         connected = False
         try:
@@ -145,14 +144,23 @@ class MarketDataGateway:
         except Exception:
             connected = False
         if not connected:
-            return MockProvider.mock_option_chain_matrix(ticker, max_expiries, max_strikes)
+            return {
+                "status": "error",
+                "message": (
+                    "数据源已死，无法分析：期权 IV 曲面数据源不可用"
+                    "（Futu OpenD 未连接，无法获取真实期权链）"
+                ),
+            }
 
         try:
             exp_dates = None
             if hasattr(self._futu, "get_option_expiration_date_list"):
                 exp_dates = await self._futu.get_option_expiration_date_list(ticker)
             if not exp_dates:
-                return MockProvider.mock_option_chain_matrix(ticker, max_expiries, max_strikes)
+                return {
+                    "status": "error",
+                    "message": f"未获取到 {ticker} 的期权到期日列表，无法构建 IV 曲面（数据源不可用）",
+                }
             expirations: list = []
             iv_call, iv_put, delta_call, delta_put = [], [], [], []
             strikes_set: set = set()
@@ -201,8 +209,11 @@ class MarketDataGateway:
                 "source": "futu",
             }
         except Exception as e:  # noqa: BLE001
-            logger.warning(f"[MarketDataGateway] 生产期权矩阵组装失败，回退 Mock: {e}")
-            return MockProvider.mock_option_chain_matrix(ticker, max_expiries, max_strikes)
+            logger.warning(f"[MarketDataGateway] 生产期权矩阵组装失败: {e}")
+            return {
+                "status": "error",
+                "message": f"期权 IV 曲面组装失败（数据源异常）: {e}",
+            }
 
     @staticmethod
     def _is_hk_ticker(ticker: str) -> bool:
