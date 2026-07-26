@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { Topbar } from './topbar'
 import { LeftSidebar } from './left-sidebar'
@@ -16,6 +16,16 @@ export function StrategyIDE({ className }: { className?: string }) {
   const setWorkspaceTab = useStrategyStore(s => s.setWorkspaceTab)
   // PROD-05 深化：超宽屏 (>=2560px) 切换为固定三栏（非拖拽），普通宽度保留可拖拽布局
   const isUltrawide = useMediaQuery('(min-width: 2560px)')
+  // PROD-05 深化：跨 2560px 边界反复拖拽时，固定三栏子树反复重挂会重播入场动画。
+  // 用 ultrawideEntered 锁——仅「首次进入超宽屏」播放一次入场，之后再跨边界重挂不再重播。
+  const [ultrawideEntered, setUltrawideEntered] = useState(false)
+  useEffect(() => {
+    if (isUltrawide && !ultrawideEntered) {
+      const t = setTimeout(() => setUltrawideEntered(true), 320)
+      return () => clearTimeout(t)
+    }
+  }, [isUltrawide, ultrawideEntered])
+  const playEntry = isUltrawide && !ultrawideEntered
 
   // PROD-04e: 研究模式键盘优先交互（Cmd+1/2/3 快速跳转面板）
   useEffect(() => {
@@ -75,7 +85,7 @@ export function StrategyIDE({ className }: { className?: string }) {
       {isUltrawide ? (
         /* 超宽屏固定三栏（PROD-05 深化）：复用 .resp-3col 网格，但去除拖拽把手，比例由 .ide-3col 锁定 */
         <div className="resp-3col ide-3col flex-1 min-h-0">
-          <div className="resp-fade-up flex flex-col min-h-0 overflow-hidden bg-secondary/10 border-r border-border/40">
+          <div className={cn(playEntry && 'resp-fade-up', 'flex flex-col min-h-0 overflow-hidden bg-secondary/10 border-r border-border/40')}>
             <LeftSidebar />
           </div>
           <div className="flex flex-col min-h-0 min-w-0">
@@ -86,7 +96,7 @@ export function StrategyIDE({ className }: { className?: string }) {
               <BottomTerminal />
             </div>
           </div>
-          <div className="resp-fade-up flex flex-col min-h-0 overflow-hidden border-l border-border/40" style={{ animationDelay: '0.06s' }}>
+          <div className={cn(playEntry && 'resp-fade-up', 'flex flex-col min-h-0 overflow-hidden border-l border-border/40')} style={playEntry ? { animationDelay: '0.06s' } : undefined}>
             <RightSidebar />
           </div>
         </div>
