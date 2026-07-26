@@ -969,6 +969,12 @@ STATUS: PRODUCTION READY ✨
   - 后端复用 `get_macro_sentiment_history` 的 PCR 数据源
   - 前端 ECharts 双轴（柱状 PCR + 折线标的收盘价），关联市场情绪解读
   - 预期工时：FE 4h + BE 2h
+- [ ] **[OPTION-04]** 期权数据真实源接入与 mock 清退收尾（P1）：
+  - 后端 `FutuAdapter._fetch_option_chain` 接入真实 Futu 期权链（`Ctx.get_option_chain_by_date_strike`），取消 `数据源已死` 告警，恢复 OPTION-01 面板真实数据
+  - 后端 `/iv-rank` 接入真实历史 IV 序列源（Redis/DB），取消 `random` 伪造告警，恢复 IV Rank 计算
+  - 验收：OPTION-01 期权 IV 曲面面板 + IV Rank 在真实数据源下可用，全链路零 mock
+  - 依赖 OPTION-01（mock 已清退，待真实源接入）
+  - 预期工时：BE 6h
 
 ##### 资金流向增强（已有 `action="FUND_FLOW"` 后端基础）
 
