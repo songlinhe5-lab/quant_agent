@@ -67,6 +67,19 @@ async def test_interpret_llm_returns_none_fallback():
     assert res.source == "fallback"
 
 
+@pytest.mark.asyncio
+async def test_interpret_fallback_no_hallucination():
+    """降级文案必须基于真实指标做杠杆/Alpha 判别，不得谎称'数据不足'。"""
+    llm = MagicMock()
+    llm.generate_pydantic = AsyncMock(side_effect=RuntimeError("LLM dead"))
+    svc = BacktestInterpreterService(llm=llm)
+    res = await svc.interpret(InterpretRequest(annual_return=0.23, sharpe=0.9, mdd=0.18, leverage=2.1))
+    assert res.source == "fallback"
+    assert "数据不足" not in res.summary
+    assert "杠杆" in res.summary and "Alpha" in res.summary
+    assert "确定性裸研判" in res.summary
+
+
 def test_overfit_check_triggered():
     res = check_overfit([ParamSweep(param="lookback", sharpe=[1.6, 0.9, 1.5])], threshold=0.40)
     assert res.overfit is True

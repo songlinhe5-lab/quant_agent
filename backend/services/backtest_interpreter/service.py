@@ -62,6 +62,25 @@ def _format_prompt(req: InterpretRequest) -> str:
     )
 
 
+def _interpret_fallback(req: InterpretRequest) -> str:
+    """LLM 失联时的确定性裸研判（零幻觉）：仅基于已提供的真实指标做杠杆/Alpha 判别。
+
+    与 SYSTEM_PROMPT 口径一致：杠杆显著>1 且夏普偏低 → 收益靠杠杆堆；
+    杠杆≈1 且夏普可观 → Alpha 驱动；其余中性。绝不编造任何未提供的数字，
+    也不得谎称“数据不足”——指标已握在手里。
+    """
+    lev = req.leverage
+    sh = req.sharpe
+    ann = req.annual_return * 100
+    if lev > 1.3 and sh < 1.0:
+        verdict = f"杠杆{lev:.1f}x 堆出{ann:.0f}%年化但夏普仅{sh}，Alpha 稀薄，纯靠借钱放大"
+    elif lev <= 1.3 and sh >= 1.0:
+        verdict = f"杠杆{lev:.1f}x、夏普{sh}、年化{ann:.0f}%——Alpha 驱动，非杠杆注水"
+    else:
+        verdict = f"杠杆{lev:.1f}x、夏普{sh}、年化{ann:.0f}%——指标中性"
+    return f"{verdict}（LLM 失联，以下为确定性裸研判）"
+
+
 def check_overfit(param_sweep: List[ParamSweep], threshold: float = 0.40) -> OverfitCheckResult:
     """纯计算：参数敏感性 = (max - min) / max，超阈值即判过拟合。
 
@@ -220,10 +239,7 @@ class BacktestInterpreterService:
         except Exception as e:
             logger.error(f"[BacktestInterpreter] LLM 解读失败，降级: {e}")
             return InterpretResult(
-                summary=(
-                    f"年化{req.annual_return * 100:.0f}%、夏普{req.sharpe}、"
-                    f"杠杆{req.leverage}x——数据不足以下结论，拒绝在真空里解读"
-                ),
+                summary=_interpret_fallback(req),
                 source="fallback",
                 confidence=0.3,
             )
