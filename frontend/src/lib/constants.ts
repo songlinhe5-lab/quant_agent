@@ -48,6 +48,7 @@ export const STORAGE_KEYS = {
   watchlist: 'watchlist',
   activeModule: 'active-module',
   aiNarrator: 'quant-agent-ai-narrator',
+  pattern: 'quant-agent-pattern',
 };
 
 // ─── AI-01 异动解说员 ───────────────────────────────────────

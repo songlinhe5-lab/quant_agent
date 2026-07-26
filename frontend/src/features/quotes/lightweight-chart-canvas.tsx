@@ -11,6 +11,7 @@ import { HighFreqChartWrapper } from '@/features/quotes/high-freq-chart-wrapper'
 import type { WatchlistItem } from '@/stores/use-watchlist'
 import { useCopilotContextStore } from '@/stores/useCopilotContextStore'
 import { useChartAnnotationStore } from '@/stores/useChartAnnotationStore'
+import { usePatternStore } from '@/stores/usePatternStore'
 import type { ChartAnnotationPayload } from '@/features/copilot/types'
 import { useTradeStore, type OrderSide } from '@/stores/useTradeStore'
 import { OrderConfirmModal } from './order-confirm-modal'
@@ -541,6 +542,73 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     latestAnnotationRef.current = aiSymbol && aiPayload ? { symbol: aiSymbol, payload: aiPayload } : null
     applyAiAnnotations()
   }, [aiPayload, aiSymbol, selectedSymbol, theme])
+
+  // AI-01 能力②：形态识别叠加（与 AI 副驾标注相互独立，使用各自 ref 互不覆盖）
+  const patternPriceLinesRef = useRef<IPriceLine[]>([])
+  const patternZoneRef = useRef<ISeriesApi<'Baseline'>[]>([])
+  const latestPatternRef = useRef<{ symbol: string; payload: ChartAnnotationPayload } | null>(null)
+
+  const applyPatternAnnotations = () => {
+    patternPriceLinesRef.current.forEach((pl) => seriesRef.current?.removePriceLine(pl))
+    patternPriceLinesRef.current = []
+    patternZoneRef.current.forEach((s) => chartRef.current?.removeSeries(s))
+    patternZoneRef.current = []
+
+    const ann = latestPatternRef.current
+    const series = seriesRef.current
+    const chart = chartRef.current
+    if (!ann || !series || !chart) return
+    if (normalizeSymbol(ann.symbol) !== normalizeSymbol(selectedSymbolRef.current)) return
+
+    const payload = ann.payload
+    const levelColor: Record<string, string> = {
+      support: '#10b981',
+      resistance: '#ef4444',
+      target: '#3b82f6',
+      stop: '#f59e0b',
+    }
+    ;(payload.levels || []).forEach((lv) => {
+      const pl = series.createPriceLine({
+        price: lv.price,
+        color: levelColor[lv.type] || '#8b5cf6',
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: lv.label || lv.type.toUpperCase(),
+      })
+      patternPriceLinesRef.current.push(pl)
+    })
+    ;(payload.zones || []).forEach((z) => {
+      const band = z.color || 'rgba(139,92,246,0.12)'
+      const zone = chart.addSeries(BaselineSeries, {
+        topLineColor: 'rgba(0,0,0,0)',
+        bottomLineColor: 'rgba(0,0,0,0)',
+        topFillColor1: band,
+        topFillColor2: band,
+        bottomFillColor1: band,
+        bottomFillColor2: band,
+        lineWidth: 1,
+        priceLineVisible: false,
+        crosshairMarkerVisible: false,
+        lastValueVisible: false,
+        priceScaleId: 'right',
+        baseValue: { type: 'price', price: z.lower },
+      })
+      const base = series.data() as { time: Time }[]
+      zone.setData(base.map((d) => ({ time: d.time, value: z.upper })))
+      patternZoneRef.current.push(zone)
+    })
+  }
+  const applyPatternAnnotationsRef = useRef(applyPatternAnnotations)
+  applyPatternAnnotationsRef.current = applyPatternAnnotations
+
+  // AI-01 能力②：订阅形态标注 store，按标的匹配后渲染/清除
+  const patternPayload = usePatternStore((s) => s.payload)
+  const patternSymbol = usePatternStore((s) => s.symbol)
+  useEffect(() => {
+    latestPatternRef.current = patternSymbol && patternPayload ? { symbol: patternSymbol, payload: patternPayload } : null
+    applyPatternAnnotations()
+  }, [patternPayload, patternSymbol, selectedSymbol, theme])
   
   const measureBoxRef = useRef<HTMLDivElement>(null)
   const measureInfoRef = useRef<HTMLDivElement>(null)
@@ -938,6 +1006,8 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       seriesRef.current?.setData(lwData); markersRef.current = markers;
       // PROD-02: 数据重载后重新叠加 AI 标注
       applyAiAnnotationsRef.current?.()
+      // AI-01 能力②: 数据重载后重新叠加形态识别标注
+      applyPatternAnnotationsRef.current?.()
       if (ma20Ref.current) ma20Ref.current.setData(ma20Data); if (ma50Ref.current) ma50Ref.current.setData(ma50Data); if (ma200Ref.current) ma200Ref.current.setData(ma200Data); if (bbUpperRef.current) bbUpperRef.current.setData(bbUpperData); if (bbLowerRef.current) bbLowerRef.current.setData(bbLowerData); if (volumeRef.current) volumeRef.current.setData(volumeData); if (macdDiffRef.current) macdDiffRef.current.setData(macdDiffData); if (macdDeaRef.current) macdDeaRef.current.setData(macdDeaData); if (macdHistRef.current) macdHistRef.current.setData(macdHistData); if (rsiLineRef.current) rsiLineRef.current.setData(rsiData); if (rsiHistRef.current) rsiHistRef.current.setData(rsiHistData); if (kdjKRef.current) kdjKRef.current.setData(kdjKData); if (kdjDRef.current) kdjDRef.current.setData(kdjDData); if (kdjJRef.current) kdjJRef.current.setData(kdjJData)
       // PROD-11: K 线就绪后叠加自定义指标（数值线/布尔信号）
       currentBarsRef.current = sortedHistory

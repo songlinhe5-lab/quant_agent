@@ -14,6 +14,7 @@ import { TradingModeSwitcher } from '@/components/layout/trading-mode-switcher'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useAiNarratorStore } from '@/stores/useAiNarratorStore'
+import { usePatternStore } from '@/stores/usePatternStore'
 import { AI_NARRATOR_THRESHOLDS, type AiNarratorThreshold } from '@/lib/constants'
 
 type SettingsContentProps = {
@@ -253,7 +254,8 @@ function ChangePasswordCard() {
 }
 
 function AiNarratorSettingsCard() {
-  const { enabled, threshold, setEnabled, setThreshold } = useAiNarratorStore()
+  const { enabled, threshold, orderBookAiEnabled, setEnabled, setThreshold, setOrderBookAiEnabled } = useAiNarratorStore()
+  const { enabled: patternEnabled, setEnabled: setPatternEnabled } = usePatternStore()
 
   return (
     <Card>
@@ -289,6 +291,20 @@ function AiNarratorSettingsCard() {
               ))}
             </SelectContent>
           </Select>
+        </div>
+        <div className="flex items-center justify-between border-t border-border/40 pt-4">
+          <div>
+            <p className="text-sm font-medium text-slate-200">盘口大单检测</p>
+            <p className="text-xs text-slate-400">盘口底部一行提示大单压盘/托单与多空失衡</p>
+          </div>
+          <Switch checked={orderBookAiEnabled} onCheckedChange={setOrderBookAiEnabled} />
+        </div>
+        <div className="flex items-center justify-between border-t border-border/40 pt-4">
+          <div>
+            <p className="text-sm font-medium text-slate-200">形态识别叠加</p>
+            <p className="text-xs text-slate-400">K 线叠加头肩顶/双底/三角收敛虚线标注与历史胜率</p>
+          </div>
+          <Switch checked={patternEnabled} onCheckedChange={setPatternEnabled} />
         </div>
       </CardContent>
     </Card>

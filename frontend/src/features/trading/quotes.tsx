@@ -10,6 +10,8 @@ import { useWatchlist } from '@/stores/use-watchlist'
 import { useMarketStore } from '@/stores/marketStore'
 import { useTheme } from 'next-themes'
 import { OrderBookWebGL } from '@/features/quotes/order-book-webgl'
+import { OrderBookLargeOrderHint } from '@/features/quotes/order-book-large-order-hint'
+import { PatternRecognition } from '@/features/quotes/pattern-recognition'
 import { TradeHistory } from '@/features/quotes/trade-history'
 import { useMarketData } from '@/hooks/use-market-data'
 import { WatchlistSidebar } from '@/features/quotes/watchlist-sidebar'
@@ -224,6 +226,7 @@ export function QuotesModule() {
                 <OrderBookWebGL symbol={selectedSymbol} theme={theme} />
               </div>
             </PanelErrorBoundary>
+            <OrderBookLargeOrderHint symbol={selectedSymbol} />
             <div className="glass-card rounded-xl overflow-hidden flex flex-col flex-1 shadow-lg border-border/40">
               <div className="px-3 py-2.5 border-b border-border/40 bg-secondary/20 shrink-0">
                 <span className="text-[10px] font-semibold text-muted-foreground uppercase">成交流水</span>
@@ -252,6 +255,8 @@ export function QuotesModule() {
         </div>
       )}
       
+      <PatternRecognition symbol={selectedSymbol} history={realHistory} />
+
       <PanelGroup direction={isMobile ? "vertical" : "horizontal"} className={cn("flex-1 min-w-0 h-full gap-2 transition-all duration-300", isStale && "saturate-50 opacity-60")}>
         
         {/* ── Left: Watchlist ──────────────────────────── */}
@@ -311,8 +316,9 @@ export function QuotesModule() {
                     </TabsTrigger>
                   </TabsList>
                 </div>
-                <TabsContent value="dom" className="flex-1 m-0 relative overflow-hidden">
+                <TabsContent value="dom" className="flex-1 m-0 relative overflow-hidden flex flex-col">
                   <OrderBookWebGL symbol={selectedSymbol} theme={theme} hideHeader />
+                  <OrderBookLargeOrderHint symbol={selectedSymbol} />
                 </TabsContent>
                 <TabsContent value="trades" className="flex-1 m-0 relative flex flex-col bg-background/50">
                   <TradeHistory symbol={selectedSymbol} />
@@ -322,6 +328,7 @@ export function QuotesModule() {
           ) : (
             <>
               <OrderBookWebGL symbol={selectedSymbol} theme={theme} />
+              <OrderBookLargeOrderHint symbol={selectedSymbol} />
               <div className="glass-card rounded-xl overflow-hidden flex flex-col flex-1 shadow-sm border-border/40">
                 <div className="px-3 py-2.5 border-b border-border/40 bg-secondary/20 shrink-0">
                   <span className="text-[10px] font-semibold text-muted-foreground uppercase">成交流水</span>
