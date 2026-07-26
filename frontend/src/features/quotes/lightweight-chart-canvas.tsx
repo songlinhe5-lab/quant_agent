@@ -258,7 +258,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     const markers: SeriesMarker<Time>[] = []
     const list = useCustomIndicatorStore.getState().indicators.filter((i) => i.visible)
     for (const ind of list) {
-      const r = evaluate(ind.expr, bars)
+      const r = evaluate(ind.expr, bars, ind.params)
       if (!r.ok) continue
       if (r.isBool) {
         for (let i = 0; i < r.values.length; i++) {

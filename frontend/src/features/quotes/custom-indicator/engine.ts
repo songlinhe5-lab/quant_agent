@@ -13,6 +13,7 @@
  *           ABS(x) SQRT(x) MAX(a,b) MIN(a,b)
  *   运算符:  + - * / %  |  > < >= <= == !=  |  && || !  (也支持 AND/OR/NOT 关键字)
  *   字面量:  数字（如 14, 1.5, -2）
+ *   参数:    @name（用户自定义参数，如 @period，保存于指标上，运行时代入）
  *
  * 求值结果:
  *   - 数值序列（如 RSI(14)、MA(CLOSE,20)）→ 主图叠加 LineSeries
@@ -39,6 +40,7 @@ export interface EvalResult {
 type Tok =
   | { t: 'num'; v: number }
   | { t: 'id'; v: string }
+  | { t: 'param'; v: string }
   | { t: 'op'; v: string }
   | { t: 'dot' }
   | { t: 'lp' }
@@ -68,6 +70,14 @@ function tokenize(src: string): Tok[] {
       else toks.push({ t: 'id', v: up })
       i = j; continue
     }
+    if (c === '@') {
+      let j = i + 1
+      if (j < src.length && (isAlpha(src[j]) || isDigit(src[j]))) {
+        while (j < src.length && (isAlpha(src[j]) || isDigit(src[j]))) j++
+        toks.push({ t: 'param', v: src.slice(i + 1, j) }); i = j; continue
+      }
+      throw new Error(`无法识别的字符 "@"（参数须以字母/数字命名，如 @period）`)
+    }
     const two = src.slice(i, i + 2)
     if (two === '>=' || two === '<=' || two === '==' || two === '!=' || two === '&&' || two === '||') {
       toks.push({ t: 'op', v: two }); i += 2; continue
@@ -87,6 +97,7 @@ function tokenize(src: string): Tok[] {
 // ─── AST ──────────────────────────────────────────────────────────────
 type Node =
   | { k: 'num'; v: number }
+  | { k: 'param'; name: string }
   | { k: 'var'; name: string }
   | { k: 'member'; ns: string; field: string }
   | { k: 'call'; name: string; args: Node[] }
@@ -158,6 +169,7 @@ class Parser {
     const tk = this.peek()
     if (!tk) throw new Error('语法错误：表达式不完整')
     if (tk.t === 'num') { this.next(); return { k: 'num', v: tk.v } }
+    if (tk.t === 'param') { this.next(); return { k: 'param', name: tk.v } }
     if (tk.t === 'lp') { this.next(); const e = this.expr(); this.expect('rp'); return e }
     if (tk.t === 'id') {
       this.next()
@@ -346,11 +358,13 @@ function semanticError(node: Node): string | null {
       return semanticError(node.l) ?? semanticError(node.r)
     case 'num':
       return null
+    case 'param':
+      return null
   }
 }
 
 // ─── 求值 ──────────────────────────────────────────────────────────────
-export function evaluate(expr: string, bars: CIBar[]): EvalResult {
+export function evaluate(expr: string, bars: CIBar[], params?: Record<string, number>): EvalResult {
   const len = bars.length
   if (len === 0) return { ok: false, isBool: false, values: [], error: '无 K 线数据' }
   try {
@@ -377,6 +391,12 @@ export function evaluate(expr: string, bars: CIBar[]): EvalResult {
     const evalNode = (node: Node): Val => {
       switch (node.k) {
         case 'num': return seriesOf(new Array(len).fill(node.v))
+        case 'param': {
+          const val = params?.[node.name]
+          if (val == null || typeof val !== 'number' || Number.isNaN(val))
+            throw new Error(`参数 @${node.name} 未提供（在指标参数中设置）`)
+          return seriesOf(new Array(len).fill(val))
+        }
         case 'var': {
           const m: Record<string, (number | null)[]> = {
             OPEN: opens, HIGH: highs, LOW: lows, CLOSE: closes, VOLUME: vols, VOL: vols,
@@ -503,12 +523,37 @@ export function evaluate(expr: string, bars: CIBar[]): EvalResult {
 }
 
 /** 仅做语法/语义校验（不依赖 K 线数据），用于 UI 实时反馈 */
-export function validate(expr: string): { ok: boolean; error?: string } {
+/** 提取表达式中引用的 @参数 名称（去重，按首次出现顺序），供 UI 自动生成参数编辑器 */
+export function listParams(expr: string): string[] {
+  try {
+    const ast = new Parser(tokenize(expr)).parse()
+    const set: string[] = []
+    const walk = (n: Node) => {
+      switch (n.k) {
+        case 'param': if (!set.includes(n.name)) set.push(n.name); break
+        case 'unary': walk(n.e); break
+        case 'bin': walk(n.l); walk(n.r); break
+        case 'call': n.args.forEach(walk); break
+      }
+    }
+    walk(ast)
+    return set
+  } catch {
+    return []
+  }
+}
+
+export function validate(expr: string, params?: Record<string, number>): { ok: boolean; error?: string; params?: string[] } {
   try {
     const ast = new Parser(tokenize(expr)).parse()
     const err = semanticError(ast)
     if (err) return { ok: false, error: err }
-    return { ok: true }
+    const refs = listParams(expr)
+    if (params) {
+      const missing = refs.filter((p) => !(p in params) || params[p] == null || Number.isNaN(params[p] as number))
+      if (missing.length) return { ok: false, error: `参数 ${missing.map((m) => '@' + m).join(', ')} 未定义或为空` }
+    }
+    return { ok: true, params: refs }
   } catch (e: any) {
     return { ok: false, error: e?.message ?? String(e) }
   }
@@ -528,8 +573,8 @@ export function suggestPane(expr: string): 'overlay' | 'separate' {
  * 收集布尔表达式的所有「上穿跳变」触发点（prev != 1 且 cur == 1）。
  * 供信号日志展示与回测引擎做条件触发扫描。
  */
-export function collectBoolSignals(expr: string, bars: CIBar[]): { ok: boolean; times: string[]; error?: string } {
-  const r = evaluate(expr, bars)
+export function collectBoolSignals(expr: string, bars: CIBar[], params?: Record<string, number>): { ok: boolean; times: string[]; error?: string } {
+  const r = evaluate(expr, bars, params)
   if (!r.ok) return { ok: false, times: [], error: r.error }
   if (!r.isBool) return { ok: true, times: [] }
   const times: string[] = []
@@ -566,12 +611,12 @@ export interface SignalBacktestResult {
  * 假设 T 日信号 T 日收盘成交；末根若仍成立则标记为持仓（不强制平仓，避免末端失真）。
  * 直接复用 evaluate，与图表、信号日志同源，可作为回测引擎的条件触发入口。
  */
-export function runSignalBacktest(expr: string, bars: CIBar[]): SignalBacktestResult {
+export function runSignalBacktest(expr: string, bars: CIBar[], params?: Record<string, number>): SignalBacktestResult {
   const empty = (error?: string): SignalBacktestResult => ({
     ok: false, error, buys: [], sells: [], trades: 0, wins: 0,
     winRate: 0, totalReturnPct: 0, maxDrawdownPct: 0, holding: false,
   })
-  const r = evaluate(expr, bars)
+  const r = evaluate(expr, bars, params)
   if (!r.ok) return empty(r.error)
   if (!r.isBool) return empty('仅支持布尔表达式（如 CROSS(...) 或 比较运算），数值序列无触发点')
   if (bars.length < 2) return empty('K 线数量不足')
@@ -645,8 +690,9 @@ export function runCustomExprBacktest(
   expr: string,
   bars: CIBar[],
   initialCapital = 100000,
+  params?: Record<string, number>,
 ): { ok: boolean; error?: string; result?: CustomExprBacktestResult; dailyReturns: number[] } {
-  const r = evaluate(expr, bars)
+  const r = evaluate(expr, bars, params)
   if (!r.ok) return { ok: false, error: r.error, dailyReturns: [] }
   if (!r.isBool) return { ok: false, error: '仅支持布尔表达式作为回测信号（如 CROSS(MA(CLOSE,5), MA(CLOSE,20)) 或 RSI(14) > 70）', dailyReturns: [] }
   if (bars.length < 2) return { ok: false, error: 'K 线数量不足', dailyReturns: [] }

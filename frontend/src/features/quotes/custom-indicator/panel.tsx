@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, Pencil, Trash2, Eye, EyeOff, X, HelpCircle, Sigma, Activity, Download } from 'lucide-react'
 import { useCustomIndicatorStore, type CustomIndicator } from './store'
-import { validate, evaluate, runSignalBacktest, type CIBar, type SignalBacktestResult } from './engine'
+import { validate, evaluate, runSignalBacktest, listParams, type CIBar, type SignalBacktestResult } from './engine'
 
 const PRESET_COLORS = ['#a855f7', '#10b981', '#ef4444', '#3b82f6', '#f59e0b', '#ec4899', '#14b8a6']
 
@@ -47,6 +47,7 @@ export function CustomIndicatorPanel({
   const [name, setName] = useState('')
   const [expr, setExpr] = useState('')
   const [color, setColor] = useState('#a855f7')
+  const [params, setParams] = useState<Record<string, number>>({})
   const [pane, setPane] = useState<'overlay' | 'separate' | 'auto'>('auto')
   const [showHelp, setShowHelp] = useState(false)
   const [bt, setBt] = useState<{ name: string; res: SignalBacktestResult } | null>(null)
@@ -55,6 +56,7 @@ export function CustomIndicatorPanel({
     if (editing) {
       setName(editing.name)
       setExpr(editing.expr)
+      setParams(editing.params ?? {})
       setColor(editing.color)
       setPane(editing.pane ?? 'auto')
     }
@@ -66,17 +68,23 @@ export function CustomIndicatorPanel({
   const cancel = () => setEditing(null)
   const save = () => {
     if (!name.trim() || !expr.trim()) return
-    if (!validate(expr).ok) return
+    const referenced = listParams(expr.trim())
+    const finalParams = referenced.length
+      ? Object.fromEntries(referenced.map((k) => [k, params[k]]).filter(([, val]) => val != null && !Number.isNaN(val as number)))
+      : undefined
+    if (!validate(expr.trim(), finalParams ?? {}).ok) return
     const finalPane = pane === 'auto' ? undefined : pane
-    if (editing && editing.id) update(editing.id, { name: name.trim(), expr: expr.trim(), color, pane: finalPane })
-    else add({ name: name.trim(), expr: expr.trim(), color, visible: true, pane: finalPane })
+    const payload: Record<string, unknown> = { name: name.trim(), expr: expr.trim(), color, pane: finalPane }
+    if (finalParams) payload.params = finalParams
+    if (editing && editing.id) update(editing.id, payload as any)
+    else add(payload as any)
     setEditing(null)
   }
 
-  const v = expr.trim() ? validate(expr.trim()) : { ok: true }
+  const v = expr.trim() ? validate(expr.trim(), params) : { ok: true }
   const preview =
     editing && expr.trim() && v.ok && bars.length
-      ? evaluate(expr.trim(), bars)
+      ? evaluate(expr.trim(), bars, params)
       : null
 
   let previewText = ''
@@ -128,7 +136,7 @@ export function CustomIndicatorPanel({
                 <div className="truncate font-mono text-[9px] text-muted-foreground">{ind.expr}</div>
                 <div className="text-[9px] text-slate-500">叠加: {ind.pane === 'separate' ? '独立副图' : ind.pane === 'overlay' ? '主图' : '自动'}</div>
               </div>
-              <button onClick={() => setBt({ name: ind.name, res: runSignalBacktest(ind.expr, bars) })} title="信号回测" className="p-1 rounded hover:bg-muted/60 text-muted-foreground">
+              <button onClick={() => setBt({ name: ind.name, res: runSignalBacktest(ind.expr, bars, ind.params) })} title="信号回测" className="p-1 rounded hover:bg-muted/60 text-muted-foreground">
                 <Activity className="h-3 w-3" />
               </button>
               <button onClick={() => toggle(ind.id)} title={ind.visible ? '隐藏' : '显示'} className="p-1 rounded hover:bg-muted/60 text-muted-foreground">
@@ -216,6 +224,25 @@ export function CustomIndicatorPanel({
                 className="w-full resize-none rounded border border-border/50 bg-background px-2 py-1 font-mono text-[11px] text-foreground outline-none focus:border-primary"
               />
             </div>
+
+            {listParams(expr.trim()).length > 0 && (
+              <div className="space-y-1 rounded border border-primary/30 bg-primary/5 p-1.5">
+                <div className="text-[10px] text-muted-foreground">参数（运行时代入 @name）</div>
+                {listParams(expr.trim()).map((p) => (
+                  <div key={p} className="flex items-center gap-2">
+                    <span className="w-20 shrink-0 font-mono text-[10px] text-primary">@{p}</span>
+                    <input
+                      type="number"
+                      value={params[p] ?? ''}
+                      onChange={(e) => setParams((prev) => { const n = { ...prev }; if (e.target.value.trim() === '') delete n[p]; else n[p] = Number(e.target.value); return n })}
+                      placeholder="数值"
+                      className="flex-1 rounded border border-border/50 bg-background px-2 py-1 font-mono text-[11px] text-foreground outline-none focus:border-primary"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] text-muted-foreground">颜色</span>
               {PRESET_COLORS.map((c) => (

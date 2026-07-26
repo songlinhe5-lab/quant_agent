@@ -10,6 +10,8 @@ export interface CustomIndicator {
   name: string
   /** Pine 风格表达式，如 RSI(14) > KDJ.K */
   expr: string
+  /** 用户自定义参数：@name -> 数值，运行时代入表达式（如 { period: 5 }） */
+  params?: Record<string, number>
   /** 叠加线/信号点颜色 */
   color: string
   /** 是否渲染到图表 */

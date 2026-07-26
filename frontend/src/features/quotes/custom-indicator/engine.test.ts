@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { evaluate, validate, suggestPane, collectBoolSignals, runSignalBacktest, runCustomExprBacktest, type CIBar } from './engine'
+import { evaluate, validate, suggestPane, collectBoolSignals, runSignalBacktest, runCustomExprBacktest, listParams, type CIBar } from './engine'
 
 function makeBars(n: number): CIBar[] {
   const bars: CIBar[] = []
@@ -137,5 +137,34 @@ describe('custom indicator engine', () => {
     const r = runCustomExprBacktest('RSI(14)', bars)
     expect(r.ok).toBe(false)
     expect(r.error).toContain('布尔')
+  })
+
+  describe('表达式参数化 @param', () => {
+    it('listParams 提取引用的 @参数（去重保序）', () => {
+      expect(listParams('MA(CLOSE,@p) > @q')).toEqual(['p', 'q'])
+      expect(listParams('CLOSE > 100')).toEqual([])
+    })
+
+    it('evaluate 用 params 代入 @参数', () => {
+      const r = evaluate('CLOSE > @threshold', bars, { threshold: 110 })
+      expect(r.ok).toBe(true)
+      expect(r.isBool).toBe(true)
+    })
+
+    it('evaluate 未提供 @参数时返回 ok:false', () => {
+      const r = evaluate('CLOSE > @x', bars)
+      expect(r.ok).toBe(false)
+      expect(r.error).toContain('@x')
+    })
+
+    it('validate 在给定 params 后校验通过、缺失则报错', () => {
+      expect(validate('CLOSE > @x', { x: 100 }).ok).toBe(true)
+      expect(validate('CLOSE > @x', {}).ok).toBe(false)
+    })
+
+    it('runSignalBacktest 与 runCustomExprBacktest 支持 params', () => {
+      expect(runSignalBacktest('CLOSE > @t', bars, { t: 110 }).ok).toBe(true)
+      expect(runCustomExprBacktest('CLOSE > @t', bars, 100000, { t: 110 }).ok).toBe(true)
+    })
   })
 })
