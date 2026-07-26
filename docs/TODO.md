@@ -839,11 +839,12 @@ STATUS: PRODUCTION READY ✨
   - 表格 / Grid 组件按密度调整列宽、行高
   - 极密模式设最小 fontSize 11px 下限
   - 依赖：PROD-04c
-- [ ] **[PROD-04e]** 研究模式多面板拖拽布局
+- [x] **[PROD-04e]** 研究模式多面板拖拽布局
   - 启用 ResizablePanelGroup 三栏拖拽（代码/回测/AI）
   - 底部 Terminal 面板
   - 键盘优先交互（Cmd+1/2/3 快速跳转面板）
   - 依赖：STRAT-01~05（策略实验室核心）
+  - *2026-07-26 完成：`quotes.tsx` 在 `research` 场景渲染 `StrategyIDE`（三栏 ResizablePanelGroup + 底部 Terminal），并接入全局 ⌘1/2/3 面板跳转（代码聚焦 Monaco、回测切 report、AI 助手聚焦输入框）；拖拽手柄/提示条/Topbar 部署按钮统一为 scene 强调色。*
 - [ ] **[PROD-04f]** 监控模式专属布局（告警流 + Bot矩阵 + 风控仪表盘）
   - 监控模式下告警流自动升格为主视图
   - Bot 状态矩阵 + 风控仪表盘优先级布局

@@ -102,6 +102,13 @@ export function MonacoEditorTab() {
     }
   }, [monaco])
 
+  // PROD-04e: 响应 ⌘1 快捷键，聚焦代码编辑器
+  useEffect(() => {
+    const onFocus = () => editorRef.current?.focus()
+    window.addEventListener('quant_focus_code', onFocus)
+    return () => window.removeEventListener('quant_focus_code', onFocus)
+  }, [])
+
   // 💡 监听 AST 语法错误，并在 Monaco 中打上红色波浪线 (Squiggles)
   useEffect(() => {
     if (!monaco || !editorRef.current) return

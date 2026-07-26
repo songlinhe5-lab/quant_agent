@@ -18,6 +18,7 @@ import { ChartErrorBoundary, PanelErrorBoundary } from '@/components/error-bound
 import { useSceneModeStore } from '@/stores/useSceneModeStore'
 import { AnomalyFlash } from '@/features/quotes/anomaly-flash'
 import { FloatingWatchlist } from '@/features/quotes/floating-watchlist'
+import { StrategyIDE } from '@/features/strategy/layout/strategy-ide'
 
 // PROD-12: 分屏对比子面板——拥有独立行情数据（独立 WebSocket/历史），并与主图共享同一 syncGroup 实现十字线同步
 const COMPARE_PERIODS = [
@@ -82,6 +83,7 @@ export function QuotesModule() {
   // PROD-04a: 盯盘模式专属布局（K线全屏 + 盘口悬浮 + 异动高对比）
   const sceneMode = useSceneModeStore((s) => s.mode)
   const isWatchScene = sceneMode === 'watch'
+  const isResearchScene = sceneMode === 'research'
 
   // 💡 监听 Zustand 全局 ticker 变化（navbar 搜索跳转）
   const globalTicker = useMarketStore((s: any) => s.currentTicker)
@@ -122,6 +124,8 @@ export function QuotesModule() {
     const handleKeyDown = (e: KeyboardEvent) => {
       // 如果用户正在输入框中打字，则不拦截键盘事件
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      // 带修饰键的组合键（如 ⌘1/2/3 研究模式面板跳转）交由对应模式处理，不在此拦截
+      if (e.metaKey || e.ctrlKey) return;
 
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         if (watchlist.length === 0) return;
@@ -170,6 +174,11 @@ export function QuotesModule() {
 
   // 阻止水合期间的渲染，直到客户端获取到真实 Theme 与 LocalStorage 数据
   if (!mounted) return null
+
+  // PROD-04e: 研究模式专属布局 —— 多面板拖拽（代码/回测/AI）+ 底部 Terminal + ⌘1/2/3 快捷键
+  if (isResearchScene) {
+    return <StrategyIDE className="h-[calc(100vh-80px)]" />
+  }
 
   // PROD-04a: 盯盘模式专属布局 —— K线全屏 + 盘口悬浮 + 异动高对比
   if (isWatchScene) {

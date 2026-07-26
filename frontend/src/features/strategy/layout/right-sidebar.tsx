@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Bot, Settings2, Code2, Save, X, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -8,6 +8,7 @@ import { useStrategySandbox } from './use-strategy-sandbox'
 import { SandboxEnvForm } from './sandbox-env-form'
 
 export function RightSidebar() {
+  const [rightTab, setRightTab] = useState('chat')
   const {
     store,
     handleApplyParams,
@@ -18,12 +19,22 @@ export function RightSidebar() {
     applyOptimizedParams,
   } = useStrategySandbox()
 
+  // PROD-04e: 响应 ⌘3 快捷键，跳转到 AI 助手面板并聚焦输入框
+  useEffect(() => {
+    const onFocusAi = () => {
+      setRightTab('chat')
+      setTimeout(() => window.dispatchEvent(new CustomEvent('quant_focus_ai_input')), 60)
+    }
+    window.addEventListener('quant_focus_ai_chat', onFocusAi)
+    return () => window.removeEventListener('quant_focus_ai_chat', onFocusAi)
+  }, [])
+
   return (
     <div className="h-full flex flex-col bg-secondary/5">
-      <Tabs defaultValue="chat" className="flex flex-col h-full">
+      <Tabs value={rightTab} onValueChange={setRightTab} className="flex flex-col h-full">
         <TabsList className="bg-secondary/20 p-0 h-9 border-b border-border/30 rounded-none w-full justify-start px-2 shrink-0">
-          <TabsTrigger value="chat" className="text-xs px-4 h-9 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-1.5"><Bot className="h-3.5 w-3.5"/> AI Copilot</TabsTrigger>
-          <TabsTrigger value="config" className="text-xs px-4 h-9 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-1.5"><Settings2 className="h-3.5 w-3.5"/> 动态参数</TabsTrigger>
+          <TabsTrigger value="chat" className="text-xs px-4 h-9 rounded-none border-b-2 border-transparent data-[state=active]:border-scene data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-1.5 scene-accent-transition"><Bot className="h-3.5 w-3.5"/> AI Copilot</TabsTrigger>
+          <TabsTrigger value="config" className="text-xs px-4 h-9 rounded-none border-b-2 border-transparent data-[state=active]:border-scene data-[state=active]:bg-transparent data-[state=active]:shadow-none flex items-center gap-1.5 scene-accent-transition"><Settings2 className="h-3.5 w-3.5"/> 动态参数</TabsTrigger>
         </TabsList>
         
         {/* AI Copilot Tab */}
@@ -48,7 +59,7 @@ export function RightSidebar() {
                     variant="outline" 
                     size="sm" 
                     onClick={handleSavePreset} 
-                    className="h-6 px-2.5 text-[10px] gap-1.5 bg-background hover:bg-primary/10 hover:text-primary hover:border-primary/30 transition-all shrink-0"
+                    className="h-6 px-2.5 text-[10px] gap-1.5 bg-background hover:bg-scene/10 hover:text-scene hover:border-scene/30 transition-all shrink-0 scene-accent-transition"
                   >
                     <Plus className="h-3 w-3" /> 保存参数
                   </Button>

@@ -14,7 +14,15 @@ export function AIChat() {
   const [isRefreshingVibe, setIsRefreshingVibe] = useState(false)
   const lastVibeFetchRef = useRef<number>(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { toast } = useToast()
+
+  // PROD-04e: 响应 ⌘3 快捷键，聚焦 AI 助手输入框
+  useEffect(() => {
+    const onFocus = () => textareaRef.current?.focus()
+    window.addEventListener('quant_focus_ai_input', onFocus)
+    return () => window.removeEventListener('quant_focus_ai_input', onFocus)
+  }, [])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -204,6 +212,7 @@ export function AIChat() {
       <div className="p-3 border-t border-border/30 bg-secondary/10 shrink-0">
         <div className="relative group flex items-end gap-2 bg-background border border-border/60 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/30 rounded-xl p-1 transition-all">
           <textarea
+            ref={textareaRef}
             value={prompt}
             onChange={e => setPrompt(e.target.value)}
             onKeyDown={e => {
