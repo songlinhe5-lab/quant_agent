@@ -199,6 +199,16 @@ body {
 .resp-fade-up { animation: resp-fade-up 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
 .resp-scale-in { animation: resp-scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
 
+/* PROD-05 深化：无障碍兜底——用户开启「减少动态效果」时关掉整套 resp-* 入场动画 */
+@media (prefers-reduced-motion: reduce) {
+  .resp-slide-in-right,
+  .resp-slide-in-left,
+  .resp-fade-up,
+  .resp-scale-in {
+    animation: none !important;
+  }
+}
+
 @keyframes tick-flash-up {
   0% { background-color: hsl(var(--color-bull) / 0.25); }
   100% { background-color: transparent; }

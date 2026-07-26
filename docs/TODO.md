@@ -868,6 +868,8 @@ STATUS: PRODUCTION READY ✨
   - ✅ **[PROD-05 深化 · research 固定三栏侧栏入场]** 进阶建议 1 落地：超宽屏固定三栏的左右栏接 `resp-fade-up`（左栏即时、右栏 `animationDelay:0.06s` 错峰），中央编辑器作为锚点不动画，进出 2560px 边界切换时形成层次感入场。
   - ✅ **[PROD-05 · motion 工具族补 resp-slide-in-left]** 进阶建议 2 部分落地：`globals.css` 补 `resp-slide-in-left`（左锚定 popover 入场，方向对称）；但**驳回**其与 AI 副驾抽屉的接线——`global-copilot-drawer` 是 `fixed right-0` 靠 `transition-[width]` 宽度擦除动画（右锚定），非左侧滑入；挂 `resp-slide-in-left`（挂载期 keyframe）会轴错 + 与 width 过渡打架 + 只能进不能出。该工具仅留给未来左锚定抽屉。
   - ❌ **[PROD-05 · 新闻浮层滑入时位移盘口 · 驳回]** 进阶建议 1 伪前提：新闻浮层锚定 `right-[19.5rem]`、盘口 `right-3 w-72`（左沿在 18.75rem），二者相隔 0.75rem **本就不叠压**，无需位移避让。驳回。
+  - ✅ **[PROD-05 深化 · 无障碍兜底 prefers-reduced-motion]** 进阶建议 1 落地：`globals.css` 新增 `@media (prefers-reduced-motion: reduce)` 关掉整套 `resp-*` 入场动画（`animation:none !important`）。系统开启「减少动态效果」时 research 固定三栏 / 新闻浮层 / 盘口的入场动画全部禁用，跨 2560px 边界重挂不再闪动。无障碍基线补齐。
+  - ✅ **[PROD-05 深化 · watch 盘口入场统一]** 进阶建议 2 落地：盯盘全屏盘口悬浮容器（`quotes.tsx` watch 分支）接 `resp-fade-up`，与新闻浮层统一 `resp-*` motion 语言；盘口为常驻核心元素，仅 watch 场景挂载时入场一次，符号切换不重挂。
   - ❌ **[PROD-05 · research 加 min-[1920px] 兜底 · 驳回]** 进阶建议 1 伪前提：research 在 <2560px 早已是 `ResizablePanelGroup (15/60/25)` 三栏且可拖拽；`.resp-3col` 固定栏专供 ≥2560（21:9）去拖拽把手。给 research 加 `min-[1920px]:` 兜底会把 1920–2559 正常大屏的拖拽缩放能力剥夺，属回归。驳回。
   - ⏸️ **[PROD-05 · 场景级三栏比例配置 · 暂缓/YAGNI]** 进阶建议 2（把 `.ide-3col` 比例抽成「盯盘/研究/风控」场景配置表）暂不做：当前仅 research 用固定三栏，monitor 走自有 grid、watch 不用 `resp-3col` 固定栏——为单一消费方建场景配置抽象属过度设计。待第二个场景真正需要固定三栏时再抽 `SCENE_THREE_COL_RATIOS`。
 - [x] **[PROD-06]** 风控面板 Tab 分组（当前 7 个图表区域平铺，一屏放不下）：✅ **2026-07-25**：`AccountSection`（risk-account-section.tsx）新增概览/因子/压测三 Tab，`RiskAdvancedPanel` 支持 `tabs` 过滤复用；敞口卡派生集中度(Top1%)；持仓表常驻。tsc 零错误 + 197 全量零回归

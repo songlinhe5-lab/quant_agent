@@ -210,7 +210,7 @@ export function QuotesModule() {
         </div>
 
         {/* 盘口悬浮（异动 > 2% 高对比闪烁） */}
-        <div className="absolute right-3 top-3 bottom-3 z-10 w-72 flex flex-col gap-2.5 max-[640px]:left-3 max-[640px]:w-auto">
+        <div className="resp-fade-up absolute right-3 top-3 bottom-3 z-10 w-72 flex flex-col gap-2.5 max-[640px]:left-3 max-[640px]:w-auto">
           <AnomalyFlash symbol={selectedSymbol} className="flex flex-col gap-2.5 h-full">
             <PanelErrorBoundary name="OrderBookPanel">
               <div className="glass-card rounded-xl overflow-hidden flex flex-col flex-1 shadow-lg border-border/40">
