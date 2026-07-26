@@ -859,7 +859,8 @@ STATUS: PRODUCTION READY ✨
   - 1280px：AI 抽屉改为 overlay（不挤压主工作区）
   - 1920px+：自动展开更多面板（盘口+新闻流默认可见）
   - 超宽屏 21:9：支持三栏并排（行情+策略+AI）
-  - 落地：`frontend/src/styles/globals.css` 新增 PROD-05 响应式基础设施——`global-copilot-drawer` 已 `fixed` overlay（1280px 达标）；新增 `@media (min-width:1920px)` 下 `.resp-auto-panels [data-secondary-panel]{display:block}` 与 `@media (min-width:2560px)` 下 `.resp-3col` 三栏网格工具类（21:9 达标）。⚠️ 各业务页「次面板默认可见 / 三栏拆分」为 opt-in，需后续逐页挂 class 消费（待办）
+  - 落地：`frontend/src/styles/globals.css` 新增 PROD-05 响应式基础设施——`global-copilot-drawer` 已 `fixed` overlay（1280px 达标）；新增 `@media (min-width:1920px)` 下 `.resp-auto-panels [data-secondary-panel]{display:block}` 与 `@media (min-width:2560px)` 下 `.resp-3col` 三栏网格工具类（21:9 达标）。
+  - ✅ **[PROD-05 深化]** 多分辨率适配已真正驱动业务页：默认行情工作区 `QuotesModule`（`frontend/src/features/trading/quotes.tsx`）已挂 `resp-auto-panels` + `data-secondary-panel`，≥1920px 自动展开「新闻流」次面板（新建自包含 `market-news-panel.tsx`，复用 `NewsStream` + `GET /macro/news`）；并挂 `resp-3col`，≥2560px 揭示第三栏「AI 副驾」（内联 `AIChat`），形成 **行情 + 策略/新闻 + AI** 三栏并排。基础设施增强：`.resp-3col` 由 `align-items:start` 改为 `stretch` 以满高（当时无既有消费方，安全）；新增 `.resp-3col > [data-ultrawide-ai]{display:flex}` 揭示规则。旧 ⚠️「需逐页挂 class 消费」已闭合。
 - [x] **[PROD-06]** 风控面板 Tab 分组（当前 7 个图表区域平铺，一屏放不下）：✅ **2026-07-25**：`AccountSection`（risk-account-section.tsx）新增概览/因子/压测三 Tab，`RiskAdvancedPanel` 支持 `tabs` 过滤复用；敞口卡派生集中度(Top1%)；持仓表常驻。tsc 零错误 + 197 全量零回归
   - Tab 1「概览」：雷达图 + 集中度 + Beta
   - Tab 2「因子」：因子暴露 + 归因 + 相关性矩阵

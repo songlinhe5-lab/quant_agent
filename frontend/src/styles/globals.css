@@ -162,7 +162,13 @@ body {
     display: grid;
     grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
     gap: 1rem;
-    align-items: start;
+    align-items: stretch;
+  }
+  /* PROD-05 深化：超宽屏第三栏（AI 副驾）默认隐藏，≥2560px 由 .resp-3col 揭示为三栏之一 */
+  .resp-3col > [data-ultrawide-ai] {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
   }
 }
 

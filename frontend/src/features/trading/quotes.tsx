@@ -20,6 +20,8 @@ import { AnomalyFlash } from '@/features/quotes/anomaly-flash'
 import { FloatingWatchlist } from '@/features/quotes/floating-watchlist'
 import { StrategyIDE } from '@/features/strategy/layout/strategy-ide'
 import { MonitorModeLayout } from '@/features/scene/monitor-mode-layout'
+import { AIChat } from '@/features/strategy/layout/ai-chat'
+import { MarketNewsPanel } from './market-news-panel'
 
 // PROD-12: 分屏对比子面板——拥有独立行情数据（独立 WebSocket/历史），并与主图共享同一 syncGroup 实现十字线同步
 const COMPARE_PERIODS = [
@@ -230,7 +232,7 @@ export function QuotesModule() {
   }
 
   return (
-    <div className="relative h-[calc(100vh-80px)] min-h-[600px] w-full bg-background/50 rounded-xl p-1">
+    <div className="resp-auto-panels resp-3col relative flex h-[calc(100vh-80px)] min-h-[600px] w-full bg-background/50 rounded-xl p-1">
       {isStale && (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/80 backdrop-blur-md transition-all duration-300 rounded-xl border border-border/50 shadow-2xl">
           <AlertTriangle className="h-12 w-12 text-amber-500 animate-pulse drop-shadow-[0_0_10px_rgba(245,158,11,0.5)]" />
@@ -239,7 +241,7 @@ export function QuotesModule() {
         </div>
       )}
       
-      <PanelGroup direction={isMobile ? "vertical" : "horizontal"} className={cn("h-full w-full gap-2 transition-all duration-300", isStale && "saturate-50 opacity-60")}>
+      <PanelGroup direction={isMobile ? "vertical" : "horizontal"} className={cn("flex-1 min-w-0 h-full gap-2 transition-all duration-300", isStale && "saturate-50 opacity-60")}>
         
         {/* ── Left: Watchlist ──────────────────────────── */}
         {isWatchlistExpanded && (
@@ -320,6 +322,16 @@ export function QuotesModule() {
           </PanelErrorBoundary>
         </Panel>
       </PanelGroup>
+
+      {/* PROD-05 深化：1920px 自动展开「新闻流」次面板（默认隐藏，≥1920px 由 .resp-auto-panels 揭示） */}
+      <div data-secondary-panel className="hidden w-[340px] flex-shrink-0 min-h-0 border-l border-border/40">
+        <MarketNewsPanel />
+      </div>
+
+      {/* PROD-05 深化：超宽屏 21:9 三栏之一（行情+策略/新闻+AI），≥2560px 由 .resp-3col 揭示 */}
+      <div data-ultrawide-ai className="hidden w-[360px] flex-shrink-0 min-h-0 border-l border-border/40">
+        <AIChat />
+      </div>
     </div>
   )
 }
