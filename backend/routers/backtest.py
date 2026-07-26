@@ -20,6 +20,14 @@ from backend.app.walk_forward_app import (
     WalkForwardParams,
     run_walk_forward,
 )
+from backend.services.backtest_interpreter.models import (
+    InterpretRequest,
+    OverfitCheckRequest,
+)
+from backend.services.backtest_interpreter.service import (
+    BacktestInterpreterService,
+    check_overfit,
+)
 
 router = APIRouter(prefix="/backtest", tags=["Backtesting Engine"])
 
@@ -249,3 +257,21 @@ async def overfit_endpoint(req: OverfitRequest):
         return await run_overfit_check(params)
     except OverfitError as e:
         raise HTTPException(status_code=400, detail=e.message) from e
+
+
+# AI-03 (回测工坊·报告解读员)：模块级单例，避免每次请求重建 LLMService。
+_interpreter = BacktestInterpreterService()
+
+
+@router.post("/interpret")
+async def interpret_backtest(req: InterpretRequest):
+    """AI-03①：回测 Tear Sheet 一句话解读（LLM，须含杠杆/Alpha 判别）。"""
+    result = await _interpreter.interpret(req)
+    return {"status": "success", "data": result.model_dump(mode="json")}
+
+
+@router.post("/overfit-check")
+async def overfit_check(req: OverfitCheckRequest):
+    """AI-03②：过拟合检测（参数敏感性差异 > 阈值预警，纯计算）。"""
+    result = check_overfit(req.param_sweep, req.threshold)
+    return {"status": "success", "data": result.model_dump(mode="json")}

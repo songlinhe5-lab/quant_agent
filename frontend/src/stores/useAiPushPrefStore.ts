@@ -47,7 +47,7 @@ export const AI_PUSH_MODULES: AiModule[] = [
 export const AI_PUSH_MODULE_META: Record<AiModule, string> = {
   ai01: '异动解说员（K线浮动气泡）',
   ai02: '解盘副驾（自然语言投研）',
-  ai03: '财报 / 公告智能摘要',
+  ai03: '回测 Tear Sheet 解读员（杠杆/Alpha 判别 + 过拟合检测）',
   ai04: '盘前早报自动生成',
   ai05: '宏观风险雷达',
   ai06: '智能选股与归因',
