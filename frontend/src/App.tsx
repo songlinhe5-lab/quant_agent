@@ -46,6 +46,7 @@ function lazyWithRetry<T extends ComponentType<any>>(
 
 const DataCenterModule = lazyWithRetry(() => import('@/features/trading/data-center').then(m => ({ default: m.DataCenterModule })))
 const QuotesModule = lazyWithRetry(() => import('@/features/trading/quotes').then(m => ({ default: m.QuotesModule })))
+const OptionsModule = lazyWithRetry(() => import('@/features/options/options-module').then(m => ({ default: m.OptionsModule })))
 const ScreenerModule = lazyWithRetry(() => import('@/features/trading/screener').then(m => ({ default: m.ScreenerModule })))
 const StrategyDevModule = lazyWithRetry(() => import('@/features/trading/strategy').then(m => ({ default: m.StrategyDevModule })))
 const BacktestModule = lazyWithRetry(() => import('@/features/trading/backtest').then(m => ({ default: m.BacktestModule })))
@@ -97,6 +98,7 @@ export default function App() {
             <Route path="/market/:ticker" element={<MarketTickerRedirect />} />
             <Route path="/data-center" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="DataCenter"><DataCenterModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/quotes" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Quotes"><QuotesModule /></ModuleErrorBoundary></Suspense>} />
+            <Route path="/options" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Options"><OptionsModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/screener" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Screener"><ScreenerModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/strategy" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Strategy"><StrategyDevModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/backtest" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Backtest"><BacktestModule /></ModuleErrorBoundary></Suspense>} />
