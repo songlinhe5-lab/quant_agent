@@ -6,7 +6,7 @@
  * 用 BriefingMarkdown 渲染返回的 Markdown，支持「复制」与「分享链接」。
  */
 import { useCallback, useEffect, useState } from 'react'
-import { Coffee, Copy, Share2, Loader2, RefreshCw, Globe2 } from 'lucide-react'
+import { Coffee, Copy, Share2, Loader2, RefreshCw, Globe2, ShieldAlert } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -47,6 +47,9 @@ export function MorningBriefingModal({
   const [loading, setLoading] = useState(false)
   const [market, setMarket] = useState<string>('全球')
   const [briefing, setBriefing] = useState<BriefingData | null>(null)
+  const [healthRisk, setHealthRisk] = useState<
+    Array<{ ticker: string; overfit_risk?: boolean; alpha_decay?: boolean; summary?: string }>
+  >([])
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
 
@@ -59,6 +62,16 @@ export function MorningBriefingModal({
         `/briefing/generate?market=${encodeURIComponent(mkt)}`,
       )
       setBriefing(res.data)
+      // 回测健康度风险项高亮卡数据：拉取已落库的健康度，筛出风险条目
+      try {
+        const health = await apiClient.get<{
+          data: Array<{ ticker: string; overfit_risk?: boolean; alpha_decay?: boolean; summary?: string }>
+        }>('/backtest/health')
+        const list = health?.data?.data ?? []
+        setHealthRisk(list.filter((e) => e.overfit_risk || e.alpha_decay))
+      } catch {
+        setHealthRisk([])
+      }
       } catch (e: any) {
         const msg = e?.message || '早报生成失败'
         setError(msg)
@@ -126,6 +139,22 @@ export function MorningBriefingModal({
             </div>
           )}
           {error && <div className="text-red-500 text-sm py-4">{error}</div>}
+          {healthRisk.length > 0 && (
+            <div className="mb-3 rounded-xl border border-red-500/40 bg-red-500/10 p-3">
+              <div className="flex items-center gap-2 text-red-300">
+                <ShieldAlert className="h-4 w-4" />
+                <span className="text-sm font-semibold">⚠️ 回测健康度风险项</span>
+              </div>
+              <ul className="mt-2 space-y-1">
+                {healthRisk.map((e) => (
+                  <li key={e.ticker} className="text-xs text-red-200/90">
+                    <span className="font-mono">{e.ticker}</span>
+                    {e.summary ? `：${e.summary.slice(0, 80)}` : '：过拟合 / Alpha 衰减风险'}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {briefing && <BriefingMarkdown content={briefing.markdown} />}
         </div>
 

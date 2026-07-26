@@ -50,6 +50,7 @@ export function BacktestWalkForwardPanel({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<WfInterpretData | null>(null)
+  const [includedInBriefing, setIncludedInBriefing] = useState(false)
 
   const run = async () => {
     if (!ticker) return
@@ -72,6 +73,14 @@ export function BacktestWalkForwardPanel({
       )
       setData(res.data)
       onResult?.(res.data)
+      // 点亮「已纳入盘前早报」徽标：结果已落库，盘前早报会主动播报
+      try {
+        const health = await apiClient.get<{ data: Array<{ ticker: string }> }>('/backtest/health')
+        const list = health?.data?.data ?? []
+        setIncludedInBriefing(list.some((e) => e.ticker === ticker))
+      } catch {
+        setIncludedInBriefing(false)
+      }
     } catch (e: any) {
       setError(e?.message || 'Walk-Forward 检测失败')
       setData(null)
@@ -121,6 +130,17 @@ export function BacktestWalkForwardPanel({
         )}
         {data && !loading && (
           <div className="space-y-2.5">
+            <div className="flex items-center gap-2">
+              {includedInBriefing ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300 ring-1 ring-emerald-500/30">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> 已纳入盘前早报
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-500/15 px-2.5 py-1 text-xs font-medium text-slate-300 ring-1 ring-slate-500/30">
+                  <Clock className="h-3.5 w-3.5" /> 待纳入盘前早报
+                </span>
+              )}
+            </div>
             <div className="flex flex-wrap items-center gap-1.5">
               <span
                 className={cn(
