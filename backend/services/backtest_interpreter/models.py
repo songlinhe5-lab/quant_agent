@@ -4,7 +4,7 @@
 全部字段严格对应 docs/AI_01_09_PLAN.md 的接口契约，零幻觉。
 """
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -41,3 +41,16 @@ class OverfitCheckResult(BaseModel):
     overfit: bool
     max_sensitivity: float
     threshold: float
+
+
+class OverfitGridRequest(BaseModel):
+    """直接吃网格搜索真实 results，派生参数敏感性后过拟合检测。
+
+    results 每项为 dict，含 params(dict) 与指标：
+    - 后端 grid_search: {params:{...}, sharpe: 1.2}
+    - 前端 custom-indicator: {params:{...}, metrics:{sharpe: 1.2}}
+    """
+
+    results: List[Dict[str, Any]]
+    target_metric: str = "sharpe"
+    threshold: float = Field(0.40, gt=0.0, le=1.0, description="敏感性预警阈值(默认 40%)")

@@ -23,10 +23,12 @@ from backend.app.walk_forward_app import (
 from backend.services.backtest_interpreter.models import (
     InterpretRequest,
     OverfitCheckRequest,
+    OverfitGridRequest,
 )
 from backend.services.backtest_interpreter.service import (
     BacktestInterpreterService,
     check_overfit,
+    param_sweep_from_grid_results,
 )
 
 router = APIRouter(prefix="/backtest", tags=["Backtesting Engine"])
@@ -274,4 +276,14 @@ async def interpret_backtest(req: InterpretRequest):
 async def overfit_check(req: OverfitCheckRequest):
     """AI-03②：过拟合检测（参数敏感性差异 > 阈值预警，纯计算）。"""
     result = check_overfit(req.param_sweep, req.threshold)
+    return {"status": "success", "data": result.model_dump(mode="json")}
+
+
+@router.post("/overfit-check/grid")
+async def overfit_check_grid(req: OverfitGridRequest):
+    """AI-03②-增强：直接吃网格搜索真实 results，派生参数敏感性并过拟合检测。"""
+    sweeps = param_sweep_from_grid_results(req.results, req.target_metric)
+    if not sweeps:
+        raise HTTPException(status_code=400, detail="无法从 results 派生参数敏感性序列")
+    result = check_overfit(sweeps, req.threshold)
     return {"status": "success", "data": result.model_dump(mode="json")}

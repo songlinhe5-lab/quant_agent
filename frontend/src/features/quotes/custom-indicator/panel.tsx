@@ -3,7 +3,9 @@
  * 列出用户指标、支持新增/编辑/删除/显隐，并实时做语法校验与结果预览。
  */
 import { useState, useEffect } from 'react'
-import { Plus, Pencil, Trash2, Eye, EyeOff, X, HelpCircle, Sigma, Activity, Download, LayoutGrid, Save, Bookmark } from 'lucide-react'
+import { Plus, Pencil, Trash2, Eye, EyeOff, X, HelpCircle, Sigma, Activity, Download, LayoutGrid, Save, Bookmark, ShieldAlert, ShieldCheck, Loader2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { apiClient } from '@/lib/api-client'
 import { useCustomIndicatorStore, type CustomIndicator, type StrategyRecipe } from './store'
 import { validate, evaluate, runSignalBacktest, listParams, runParamGridSearch, type CIBar, type SignalBacktestResult, type ParamGrid, type GridSearchItem, type GridSortBy } from './engine'
 
@@ -77,6 +79,12 @@ export function CustomIndicatorPanel({
   const [grid, setGrid] = useState<Record<string, { min: number; max: number; step: number }>>({})
   const [gridSort, setGridSort] = useState<GridSortBy>('totalReturnPct')
   const [gridResult, setGridResult] = useState<ReturnType<typeof runParamGridSearch> | null>(null)
+  const [gridOverfit, setGridOverfit] = useState<{
+    overfit: boolean
+    max_sensitivity: number
+    threshold: number
+  } | null>(null)
+  const [gridOverfitLoading, setGridOverfitLoading] = useState(false)
   const [gridRunning, setGridRunning] = useState(false)
   // 💡 PROD-11 COND-01：策略配方库
   const [showRecipes, setShowRecipes] = useState(false)
@@ -177,6 +185,24 @@ export function CustomIndicatorPanel({
       setGridRunning(false)
     }, 0)
   }
+  const runGridOverfitCheck = async () => {
+    if (!gridResult?.ok || gridResult.items.length < 2) return
+    setGridOverfitLoading(true)
+    try {
+      const res = await apiClient.post<{
+        data: { overfit: boolean; max_sensitivity: number; threshold: number }
+      }>('/backtest/overfit-check/grid', {
+        results: gridResult.items,
+        target_metric: 'sharpe',
+      })
+      setGridOverfit(res.data)
+    } catch {
+      setGridOverfit(null)
+    } finally {
+      setGridOverfitLoading(false)
+    }
+  }
+
   const applyGridParams = (it: GridSearchItem) => {
     setParams(it.params)
     setEditing((e) => (e ? { ...e, params: it.params } : e))
@@ -411,6 +437,37 @@ export function CustomIndicatorPanel({
                             <button onClick={openRecipeForm} title="把最优参数存为配方" className="flex items-center gap-0.5 text-[9px] text-emerald-400 hover:text-emerald-300">
                               <Save className="h-3 w-3" />存为配方
                             </button>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={runGridOverfitCheck}
+                            disabled={gridOverfitLoading}
+                            className="flex items-center gap-0.5 text-[9px] text-violet-400 hover:text-violet-300 disabled:opacity-50"
+                          >
+                            {gridOverfitLoading ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <ShieldAlert className="h-3 w-3" />
+                            )}
+                            AI-03 过拟合检测
+                          </button>
+                          {gridOverfit && (
+                            <span
+                              className={cn(
+                                'flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[9px]',
+                                gridOverfit.overfit
+                                  ? 'bg-red-500/15 text-red-500'
+                                  : 'bg-emerald-500/15 text-emerald-500',
+                              )}
+                            >
+                              {gridOverfit.overfit ? (
+                                <ShieldAlert className="h-3 w-3" />
+                              ) : (
+                                <ShieldCheck className="h-3 w-3" />
+                              )}
+                              {gridOverfit.overfit ? '疑似过拟合' : '稳健'} · 敏感度 {gridOverfit.max_sensitivity}
+                            </span>
                           )}
                         </div>
                         {recipeFormOpen && (

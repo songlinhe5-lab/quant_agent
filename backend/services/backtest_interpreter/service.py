@@ -80,6 +80,52 @@ def check_overfit(param_sweep: List[ParamSweep], threshold: float = 0.40) -> Ove
     )
 
 
+def param_sweep_from_grid_results(results: List[dict], target_metric: str = "sharpe") -> List[ParamSweep]:
+    """从真实网格搜索 results 派生每参数的边际敏感性序列。
+
+    对每个参数，取其各取值下的最优指标（max，跨其余维度边际化），
+    得到一条 1D 敏感性序列供 check_overfit 使用。
+
+    兼容两种结果形态：
+    - 后端 grid_search: {params:{...}, sharpe: 1.2}
+    - 前端 custom-indicator: {params:{...}, metrics:{sharpe: 1.2}}
+    """
+    norm: list = []
+    for r in results:
+        if not isinstance(r, dict):
+            continue
+        params = r.get("params") or {}
+        if not isinstance(params, dict):
+            continue
+        val = r.get(target_metric)
+        if val is None:
+            m = r.get("metrics") or {}
+            val = m.get(target_metric) if isinstance(m, dict) else None
+        if val is None:
+            continue
+        try:
+            norm.append((params, float(val)))
+        except (TypeError, ValueError):
+            continue
+    if not norm:
+        return []
+
+    param_keys = list(norm[0][0].keys())
+    sweeps: List[ParamSweep] = []
+    for k in param_keys:
+        best: dict = {}
+        for p, v in norm:
+            pk = p.get(k)
+            if pk is None:
+                continue
+            if pk not in best or v > best[pk]:
+                best[pk] = v
+        if len(best) < 2:
+            continue
+        sweeps.append(ParamSweep(param=str(k), sharpe=list(best.values())))
+    return sweeps
+
+
 class BacktestInterpreterService:
     def __init__(self, llm: Optional[LLMService] = None):
         self.llm = llm or LLMService()
