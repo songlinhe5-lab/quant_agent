@@ -57,6 +57,9 @@ const AlertCenterModule = lazyWithRetry(() => import('@/features/trading/alert-c
 const CalendarsModule = lazyWithRetry(() => import('@/features/calendars/module').then(m => ({ default: m.CalendarsModule })))
 const PaperModule = lazyWithRetry(() => import('@/features/paper/module').then(m => ({ default: m.PaperModule })))
 const SettingsPage = lazyWithRetry(() => import('@/features/settings/settings'))
+const BriefingSharePage = lazyWithRetry(() =>
+  import('@/features/briefing/briefing-share-page').then((m) => ({ default: m.BriefingSharePage })),
+)
 
 // /market/:ticker 跳转组件：将 URL 中的 ticker 存入 sessionStorage，然后重定向到 /quotes
 function MarketTickerRedirect() {
@@ -105,6 +108,7 @@ export default function App() {
             <Route path="/calendars" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Calendars"><CalendarsModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/paper" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Paper"><PaperModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/settings" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Settings"><SettingsPage /></ModuleErrorBoundary></Suspense>} />
+            <Route path="/briefing/:id" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Briefing"><BriefingSharePage /></ModuleErrorBoundary></Suspense>} />
             </Route>
           </Route>
         </Routes>

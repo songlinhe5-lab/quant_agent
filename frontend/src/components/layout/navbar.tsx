@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { OmniSearch } from './omni-search';
 import { useMarketStore } from '@/stores/marketStore';
 import { useTheme } from 'next-themes';
-import { Sun, Moon, LogOut, User, Settings, CreditCard, Bell, Cpu, Database } from 'lucide-react';
+import { Sun, Moon, LogOut, User, Settings, CreditCard, Bell, Cpu, Database, Coffee } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { apiClient } from '@/lib/api-client';
@@ -140,6 +140,7 @@ export const Navbar: React.FC = () => {
   const badgeCount = useAlertOverlayStore((s) => s.badgeCount);
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [briefingOpen, setBriefingOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   // 避免在 hydration 期间出现 UI 不匹配的问题
@@ -200,6 +201,15 @@ export const Navbar: React.FC = () => {
         <div className="w-56 xl:w-72 hidden md:block mr-2">
           <OmniSearch onSelect={handleSearchSelect} />
         </div>
+
+        <button
+          type="button"
+          onClick={() => setBriefingOpen(true)}
+          className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-500/90 to-orange-500/90 text-white hover:opacity-90 transition-opacity shadow-sm"
+          title="一键生成盘前早报"
+        >
+          <Coffee className="w-4 h-4" />早报
+        </button>
 
         <SystemMetrics />
 
@@ -314,6 +324,7 @@ export const Navbar: React.FC = () => {
           </div>
         ) : null}
       </div>
+    <MorningBriefingModal open={briefingOpen} onOpenChange={setBriefingOpen} />
     </nav>
   );
 };
