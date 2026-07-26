@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from backend.core.ticker_format import format_yf_ticker
+from backend.services.futu.mock_provider import MockProvider
 
 
 class MarketDataGateway:
@@ -77,7 +78,131 @@ class MarketDataGateway:
                     warrant_res["_fallback"] = "warrant_chain"
                     warrant_res["_note"] = "该港股无挂牌个股期权，已降级为窝轮/牛熊证数据（市场多空情绪替代）"
                     return warrant_res
+        # 补充 Greeks / IV（期权链含定价字段时），并按类型拆分 calls/puts
+        spot = res.get("underlying_price")
+        if spot is None:
+            try:
+                q = await self.get_quote(ticker)
+                spot = (q or {}).get("last_price")
+            except Exception:
+                spot = None
+        return self._enrich_option_chain(res, spot)
+
+    def _enrich_option_chain(self, res: dict, spot: Optional[float], risk_free: float = 0.045) -> dict:
+        """为期权链补齐 Greeks/IV（Black-Scholes），并按类型拆分 calls/puts。"""
+        opts = res.get("options") or []
+        if not opts:
+            return res
+        if spot is None:
+            # 无法计算 Greeks，仅做类型拆分
+            res["calls"] = [o for o in opts if str(o.get("option_type", "")).upper() == "CALL"]
+            res["puts"] = [o for o in opts if str(o.get("option_type", "")).upper() == "PUT"]
+            return res
+        norm = []
+        for o in opts:
+            norm.append(
+                {
+                    "strike": o.get("strike_price") or o.get("strike") or 0,
+                    "expiry": o.get("expiration_date") or res.get("expiration_date") or "",
+                    "option_type": o.get("option_type") or "call",
+                    "bid": o.get("bid") or 0,
+                    "ask": o.get("ask") or 0,
+                    "volume": o.get("volume") or 0,
+                    "open_interest": o.get("open_interest") or 0,
+                    "days_to_expiry": o.get("days_to_expiry") or 30,
+                    "iv": o.get("implied_volatility"),
+                }
+            )
+        try:
+            enriched = compute_option_chain_greeks(spot, risk_free, norm)
+        except Exception:
+            enriched = norm
+        for o, e in zip(opts, enriched):
+            o["iv"] = e.get("iv")
+            o["greeks"] = e.get("greeks")
+            o["moneyness"] = e.get("moneyness")
+            # 兼容既有 compute_option_chain_greeks(读取 opt.get("strike"))
+            o["strike"] = o.get("strike_price")
+            if o.get("days_to_expiry") is None:
+                o["days_to_expiry"] = e.get("days_to_expiry")
+        res["calls"] = [o for o in opts if str(o.get("option_type", "")).upper() == "CALL"]
+        res["puts"] = [o for o in opts if str(o.get("option_type", "")).upper() == "PUT"]
+        res["underlying_price"] = spot
         return res
+
+    async def get_option_chain_matrix(
+        self, ticker: str, max_expiries: int = 8, max_strikes: int = 21
+    ) -> dict[str, Any]:
+        """跨到期日的 IV 波动率曲面，供前端热力图使用。
+
+        开发环境（Futu 未连接）返回 Mock 曲面；生产环境尽力从 Futu 逐月组装，
+        任何异常均安全回退到 Mock，保证面板可用。
+        """
+        connected = False
+        try:
+            cm = getattr(self._futu, "conn_mgr", None)
+            connected = cm is not None and getattr(cm, "status", None) == "CONNECTED"
+        except Exception:
+            connected = False
+        if not connected:
+            return MockProvider.mock_option_chain_matrix(ticker, max_expiries, max_strikes)
+
+        try:
+            exp_dates = None
+            if hasattr(self._futu, "get_option_expiration_date_list"):
+                exp_dates = await self._futu.get_option_expiration_date_list(ticker)
+            if not exp_dates:
+                return MockProvider.mock_option_chain_matrix(ticker, max_expiries, max_strikes)
+            expirations: list = []
+            iv_call, iv_put, delta_call, delta_put = [], [], [], []
+            strikes_set: set = set()
+            legs: list = []
+            for exp in exp_dates[:max_expiries]:
+                chain = await self.get_option_chain(ticker, exp)
+                opts = chain.get("options") or []
+                if not opts:
+                    continue
+                expirations.append(exp)
+                c_map, p_map = {}, {}
+                for o in opts:
+                    k = o.get("strike_price")
+                    g = o.get("greeks") or {}
+                    entry = {"iv": o.get("iv"), "delta": g.get("delta")}
+                    if str(o.get("option_type", "")).upper() == "CALL":
+                        c_map[k] = entry
+                    else:
+                        p_map[k] = entry
+                    strikes_set.add(k)
+                strikes = sorted(strikes_set)
+                iv_call.append([c_map.get(s, {}).get("iv") for s in strikes])
+                iv_put.append([p_map.get(s, {}).get("iv") for s in strikes])
+                delta_call.append([c_map.get(s, {}).get("delta") for s in strikes])
+                delta_put.append([p_map.get(s, {}).get("delta") for s in strikes])
+                for s in strikes:
+                    if c_map.get(s):
+                        legs.append({"type": "call", "expiry": exp, "strike": s, **c_map[s]})
+                    if p_map.get(s):
+                        legs.append({"type": "put", "expiry": exp, "strike": s, **p_map[s]})
+            spot = None
+            try:
+                q = await self.get_quote(ticker)
+                spot = (q or {}).get("last_price")
+            except Exception:
+                spot = None
+            return {
+                "status": "success",
+                "symbol": ticker,
+                "underlying_price": spot,
+                "expirations": expirations,
+                "strikes": sorted(strikes_set),
+                "calls": {"iv": iv_call, "delta": delta_call},
+                "puts": {"iv": iv_put, "delta": delta_put},
+                "legs": legs,
+                "source": "futu",
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[MarketDataGateway] 生产期权矩阵组装失败，回退 Mock: {e}")
+            return MockProvider.mock_option_chain_matrix(ticker, max_expiries, max_strikes)
 
     @staticmethod
     def _is_hk_ticker(ticker: str) -> bool:

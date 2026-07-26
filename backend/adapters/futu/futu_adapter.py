@@ -358,12 +358,22 @@ class FutuAdapter(DataSourcePort):
             dict: {"success": bool, "data": OptionChain, "message": str?}
         """
         underlying_ticker = params.get("underlying_ticker")
+        expire_date = params.get("expire_date", "")
         if not underlying_ticker:
             return {"success": False, "message": "Missing underlying_ticker parameter"}
 
         try:
-            # TODO: 调用实际 API
-            return {"success": True, "data": [], "cached": False}
+            # 生产：Futu OpenD 已连接时调用真实接口（HIGH-PRIORITY 接入 TODO）
+            ctx = getattr(self, "futu_ctx", None)
+            connected = bool(getattr(ctx, "is_connected", False)) if ctx else False
+            if ctx is not None and connected:
+                # TODO: 接入真实 Futu 期权链（Ctx.get_option_chain_by_date_strike）
+                pass
+            # 开发/降级：使用 Mock 生成含 IV / Greeks / 买卖价的丰富期权链
+            from backend.services.futu.mock_provider import MockProvider
+
+            mock = MockProvider.mock_option_chain(underlying_ticker, expire_date)
+            return {"success": True, "data": mock, "cached": False}
         except Exception as e:
             return {"success": False, "message": str(e)}
 

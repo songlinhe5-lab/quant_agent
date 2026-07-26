@@ -19,6 +19,13 @@ _FUNDAMENTAL_TTL = 86400  # 基本面 24 小时
 _MAX_CACHE_SIZE = 200  # 单类缓存最大条目数
 
 
+def _iv_to_pct(value: Optional[float]) -> Optional[float]:
+    """Futu 的 IV 通常为小数(0.25)，统一转换为百分数(25.0)，已为百分数则保留。"""
+    if value is None:
+        return None
+    return round(value * 100, 2) if value <= 3 else round(value, 2)
+
+
 class CacheManager:
     """缓存管理器 - 统一管理所有 Futu 数据缓存 + LRU 订阅池"""
 
@@ -185,24 +192,88 @@ class CacheManager:
 
     @staticmethod
     def compress_chain_data(raw_df, target_date: str) -> Dict[str, Any]:
-        """提取核心字段，并截断数据防止溢出"""
+        """提取期权链核心字段（含 IV / Greeks / 买卖价 / 量仓），并截断防止溢出。
+
+        兼容 Futu 返回的 DataFrame 列名（如 option_implied_volatility / implied_volatility / iv）。
+        返回结构同时包含扁平 options（旧消费方兼容）与按类型拆分的 calls / puts。
+        """
         from backend.core.utils import safe_float
 
-        compressed = []
+        # futu 列名 → 标准字段 的候选映射
+        col_map = {
+            "option_code": ["code", "option_code"],
+            "option_type": ["option_type", "type"],
+            "strike_price": ["strike_price"],
+            "implied_volatility": [
+                "option_implied_volatility",
+                "implied_volatility",
+                "iv",
+            ],
+            "delta": ["option_delta", "delta"],
+            "gamma": ["option_gamma", "gamma"],
+            "vega": ["option_vega", "vega"],
+            "theta": ["option_theta", "theta"],
+            "bid": ["bid_price", "bid"],
+            "ask": ["ask_price", "ask"],
+            "volume": ["volume"],
+            "open_interest": ["open_interest", "open_int"],
+            "expiry": ["expiry_date", "strike_time", "last_trading_date"],
+        }
+
+        def pick(row, names):
+            for n in names:
+                v = row.get(n)
+                if v is not None and str(v).lower() not in ("nan", "none", "n/a", ""):
+                    return v
+            return None
+
+        def to_num(v):
+            if v is None:
+                return None
+            f = safe_float(v)
+            return f if f == f else None  # 排除 NaN
+
+        calls, puts = [], []
         for _, row in raw_df.head(60).iterrows():
-            compressed.append(
-                {
-                    "option_code": str(row.get("code", "")),
-                    "option_type": str(row.get("option_type", "")),
-                    "strike_price": safe_float(row.get("strike_price", 0.0)),
-                }
-            )
+            leg = {
+                "option_code": str(pick(row, col_map["option_code"]) or ""),
+                "option_type": str(pick(row, col_map["option_type"]) or "").upper(),
+                "strike_price": to_num(pick(row, col_map["strike_price"])) or 0.0,
+                "implied_volatility": _iv_to_pct(to_num(pick(row, col_map["implied_volatility"]))),
+                "delta": to_num(pick(row, col_map["delta"])),
+                "gamma": to_num(pick(row, col_map["gamma"])),
+                "vega": to_num(pick(row, col_map["vega"])),
+                "theta": to_num(pick(row, col_map["theta"])),
+                "bid": to_num(pick(row, col_map["bid"])),
+                "ask": to_num(pick(row, col_map["ask"])),
+                "volume": (
+                    int(to_num(pick(row, col_map["volume"])) or 0)
+                    if to_num(pick(row, col_map["volume"])) is not None
+                    else 0
+                ),
+                "open_interest": (
+                    int(to_num(pick(row, col_map["open_interest"])) or 0)
+                    if to_num(pick(row, col_map["open_interest"])) is not None
+                    else 0
+                ),
+            }
+            exp = pick(row, col_map["expiry"])
+            if exp:
+                leg["expiration_date"] = str(exp)
+            if leg["option_type"] == "PUT":
+                puts.append(leg)
+            else:
+                calls.append(leg)
+
+        options = calls + puts
         return {
             "status": "success",
             "expiration_date": target_date,
-            "count": len(compressed),
-            "options": compressed,
-            "message": "已返回截断后的期权链。大模型可使用 option_code 调用行情工具获取实时价格与希腊字母。",  # noqa: E501
+            "count": len(options),
+            "options": options,
+            "calls": calls,
+            "puts": puts,
+            "message": "已返回期权链（含 IV / Greeks / 买卖价 / 量仓）。",
         }
 
     @staticmethod

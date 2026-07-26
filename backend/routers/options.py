@@ -215,3 +215,31 @@ async def get_iv_rank(ticker: str):
     except Exception as e:
         logger.warning(f"[Options] IV Rank 计算失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chain-matrix/{ticker}")
+async def get_option_chain_matrix(
+    ticker: str,
+    max_expiries: int = Query(8, ge=1, le=16),
+    max_strikes: int = Query(21, ge=5, le=60),
+):
+    """跨到期日的 IV 波动率曲面（前端热力图用）。
+
+    返回结构:
+    {
+      symbol, underlying_price, expirations[], strikes[],
+      calls: {iv:[[...]], delta:[[...]]},   # [到期日][行权价]
+      puts:  {iv:[[...]], delta:[[...]]},
+      legs: [{type, expiry, strike, iv, delta}, ...]
+    }
+    """
+    try:
+        res = await market_data.get_option_chain_matrix(ticker, max_expiries, max_strikes)
+        if res.get("status") == "error":
+            raise HTTPException(status_code=502, detail=res.get("message", "期权矩阵获取失败"))
+        return res
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"[Options] 期权矩阵获取失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
