@@ -874,6 +874,8 @@ STATUS: PRODUCTION READY ✨
   - ⏸️ **[PROD-05 · 场景级三栏比例配置 · 暂缓/YAGNI]** 进阶建议 2（把 `.ide-3col` 比例抽成「盯盘/研究/风控」场景配置表）暂不做：当前仅 research 用固定三栏，monitor 走自有 grid、watch 不用 `resp-3col` 固定栏——为单一消费方建场景配置抽象属过度设计。待第二个场景真正需要固定三栏时再抽 `SCENE_THREE_COL_RATIOS`。
   - ✅ **[PROD-05 深化 · 跨 2560 边界入场动画只播一次]** 进阶追问 A 落地：`strategy-ide.tsx` 新增 `ultrawideEntered` state 锁 + 320ms 延时锁定；`playEntry = isUltrawide && !ultrawideEntered` 仅在「首次进入超宽屏」给左右栏挂 `resp-fade-up`（右栏 `animationDelay:0.06s` 仅 playEntry 时下发）。用户在 2559↔2560 间反复拖拽窗口时，固定三栏子树反复重挂不再重播入场动画，消除闪烁。`prefers-reduced-motion` 用户本就无动画，锁逻辑无副作用。
   - ❌ **[PROD-05 · monitor 大屏加超宽屏固定三栏 · 驳回]** 进阶追问 B 伪前提：monitor 是行情墙 tiled-grid（多标的并列卡片）架构，本就非 explorer/editor/AI 线性三栏流；强加 `.resp-3col` 固定三栏是削足适履。其自有 grid 已天然填满超大屏，无需固定三栏介入。属拍脑袋的对称强迫症，驳回。
+  - ❌ **[PROD-05 · 抽 useEntryOnce hook 复用入场锁 · 驳回/YAGNI]** 进阶追问 1 过度抽象：一次性入场锁目前仅 `strategy-ide.tsx` 一处消费（解跨 2560 边界重挂闪烁），watch 浮层是用户主动展开的交互反馈无需锁。为单一消费方抽 `useEntryOnce(mediaQuery)` 是提前抽象（YAGNI），且 320ms 锁定魔法数耦合动画时长，抽出去反而多一层间接。待第二处真实场景出现时再抽。
+  - ❌ **[PROD-05 · watch 浮层展开只播一次 · 驳回]** 进阶追问 2 伪前提：watch 新闻浮层是用户主动点击展开→面板挂载→`resp-slide-in-right` 播放，收起卸载、再展开重播是**合理交互反馈**（提示「新闻流出现」），非噪音。改「只首次播放」反而让二次展开无过渡、体验割裂；`prefers-reduced-motion` 已兜底。保留每次展开滑入现状。
 - [x] **[PROD-06]** 风控面板 Tab 分组（当前 7 个图表区域平铺，一屏放不下）：✅ **2026-07-25**：`AccountSection`（risk-account-section.tsx）新增概览/因子/压测三 Tab，`RiskAdvancedPanel` 支持 `tabs` 过滤复用；敞口卡派生集中度(Top1%)；持仓表常驻。tsc 零错误 + 197 全量零回归
   - Tab 1「概览」：雷达图 + 集中度 + Beta
   - Tab 2「因子」：因子暴露 + 归因 + 相关性矩阵
