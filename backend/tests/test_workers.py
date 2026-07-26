@@ -66,17 +66,6 @@ class TestQuotePublisher:
                 with pytest.raises(ConnectionError):
                     await pub._fetch_futu_data("US.AAPL")
 
-    def test_get_mock_data_returns_correct_structure(self):
-        """测试 Mock 兜底数据结构正确"""
-        with patch("backend.workers.quote_publisher.redis.from_url"):
-            from backend.workers.quote_publisher import QuotePublisher
-
-            pub = QuotePublisher()
-            data = pub._get_mock_data("US.AAPL")
-            assert data["ticker"] == "US.AAPL"
-            assert data["last_price"] == 100.00
-            assert data["source"] == "mock"
-
     async def test_poll_and_publish_success_publishes_to_redis(self):
         """测试成功拉取后发布 Protobuf 到 Redis"""
         with patch("backend.workers.quote_publisher.redis.from_url"):
@@ -93,8 +82,8 @@ class TestQuotePublisher:
                 assert pub.redis.hset.called
                 assert pub.redis.publish.called
 
-    async def test_poll_and_publish_futu_failure_falls_back_to_mock(self):
-        """测试 Futu 拉取失败后降级到 Mock 数据"""
+    async def test_poll_and_publish_futu_failure_injects_no_mock_data(self):
+        """测试 Futu 拉取失败后零幻觉: 不向行情总线注入任何 Mock 假数据"""
         with patch("backend.workers.quote_publisher.redis.from_url"):
             from backend.workers.quote_publisher import QuotePublisher
 
@@ -102,7 +91,9 @@ class TestQuotePublisher:
             pub.redis = AsyncMock()
             with patch.object(pub, "_fetch_futu_data", side_effect=asyncio.TimeoutError()):
                 await pub.poll_and_publish("US.AAPL")
-                assert pub.redis.hset.called
+                # 零幻觉红线: 失败时必须直接跳过发布, 绝不推送假价格 100.00
+                assert not pub.redis.hset.called
+                assert not pub.redis.publish.called
 
     async def test_run_daemon_cancellation_exits_gracefully(self):
         """测试 Daemon 收到取消信号后优雅退出"""

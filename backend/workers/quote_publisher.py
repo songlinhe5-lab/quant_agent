@@ -78,18 +78,6 @@ class QuotePublisher:
             "source": "futu",
         }
 
-    def _get_mock_data(self, ticker: str) -> dict[str, Any]:
-        """终极兜底数据源: 零幻觉本地沙箱 Mock"""
-        return {
-            "ticker": ticker,
-            "last_price": 100.00,
-            "change_pct": "0.0%",
-            "volume_str": "0",
-            "bids": [],
-            "asks": [],
-            "source": "mock",
-        }
-
     # ==========================================
     # 核心生产逻辑
     # ==========================================
