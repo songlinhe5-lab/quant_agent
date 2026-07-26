@@ -32,7 +32,7 @@ export function WatchNewsOverlay() {
 
       {/* 展开的新闻浮层：默认收起；≥1920px 才渲染可见；挂载即右侧滑入 + 毛玻璃强化 */}
       {open && (
-        <div className="pointer-events-auto hidden min-[1920px]:flex animate-slide-in-right flex-1 mt-1 w-[340px] flex-col glass-card rounded-xl overflow-hidden border border-border/40 shadow-2xl backdrop-blur-xl bg-card/70">
+        <div className="pointer-events-auto hidden min-[1920px]:flex resp-slide-in-right flex-1 mt-1 w-[340px] flex-col glass-card rounded-xl overflow-hidden border border-border/40 shadow-2xl backdrop-blur-xl bg-card/70">
           <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 bg-secondary/20 shrink-0">
             <span className="text-[11px] font-bold tracking-widest uppercase text-muted-foreground">宏观新闻流</span>
             <button

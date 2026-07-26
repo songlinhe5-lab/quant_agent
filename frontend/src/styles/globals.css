@@ -177,12 +177,22 @@ body {
   }
 }
 
-/* PROD-05 深化：盯盘全屏新闻浮层右侧滑入动画（挂载即播放） */
+/* PROD-05 深化：响应式 motion 工具类（面板入场动画，挂载即播放，供各业务面板复用） */
 @keyframes resp-slide-in-right {
   from { opacity: 0; transform: translateX(16px); }
   to { opacity: 1; transform: translateX(0); }
 }
-.animate-slide-in-right { animation: resp-slide-in-right 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
+@keyframes resp-fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes resp-scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+.resp-slide-in-right { animation: resp-slide-in-right 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
+.resp-fade-up { animation: resp-fade-up 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
+.resp-scale-in { animation: resp-scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
 
 @keyframes tick-flash-up {
   0% { background-color: hsl(var(--color-bull) / 0.25); }
