@@ -56,9 +56,7 @@ class AiNarratorService:
         if include_pattern_winrate and pattern_winrate is not None:
             name = pattern_name or "当前形态"
             pattern_block = f"【形态历史胜率】{name} 历史回测胜率 {pattern_winrate * 100:.0f}%"
-            data_bundle = (
-                f"{data_bundle}\n\n{pattern_block}".strip() if data_bundle else pattern_block
-            )
+            data_bundle = f"{data_bundle}\n\n{pattern_block}".strip() if data_bundle else pattern_block
         summary, source, confidence = await self._build(
             symbol, change_pct, direction, threshold, data_bundle, has_data=bool(data_bundle)
         )
@@ -71,9 +69,7 @@ class AiNarratorService:
             source=source,
             confidence=confidence,
             triggered_by="price_anomaly",
-            pattern_winrate=pattern_winrate
-            if (include_pattern_winrate and pattern_winrate is not None)
-            else None,
+            pattern_winrate=pattern_winrate if (include_pattern_winrate and pattern_winrate is not None) else None,
         )
 
     # ─── 数据采集 ──────────────────────────────────────────────
