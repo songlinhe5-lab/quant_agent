@@ -34,6 +34,7 @@ from backend.core.alert_models import (
     evaluate_price_rule,
 )
 from backend.core.logger import logger
+from backend.services.alert.expr_evaluator import ExprEvaluator
 from backend.services.alert_dispatcher import AlertDispatcher
 from backend.services.alert.expr_evaluator import ExprEvaluator
 from backend.services.indicator_evaluator import (
