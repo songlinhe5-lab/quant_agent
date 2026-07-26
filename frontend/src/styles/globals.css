@@ -177,6 +177,13 @@ body {
   }
 }
 
+/* PROD-05 深化：盯盘全屏新闻浮层右侧滑入动画（挂载即播放） */
+@keyframes resp-slide-in-right {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-in-right { animation: resp-slide-in-right 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
+
 @keyframes tick-flash-up {
   0% { background-color: hsl(var(--color-bull) / 0.25); }
   100% { background-color: transparent; }
