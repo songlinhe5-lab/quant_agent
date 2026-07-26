@@ -1013,6 +1013,7 @@ STATUS: PRODUCTION READY ✨
   - 预期工时：FE 6h + BE 6h
 - [ ] **[COND-01]** 自定义指标网格搜索结果保存为"策略配方"（P2）：
   - 已完成 `runParamGridSearch` 引擎 + UI（PROD-11 追问6）
+  - ✅ 已完成回测交易明细 CSV 导出（PROD-11 追问 G：`engine.ts` TradeRecord 接口 + `panel.tsx` 导出按钮 + 5 测试用例 · `0a43300`）——与信号日志导出形成完整复盘闭环
   - 产品化：结果保存（命名 + 描述 + 参数快照 + 回测指标）→ `strategy_recipes` 表
   - 配方列表（我保存的策略配方）+ 一键对比 + 导出 JSON / 分享
   - 预期工时：FE 6h + BE 4h
@@ -1138,6 +1139,7 @@ STATUS: PRODUCTION READY ✨
 | 2026-07-25 | [PROD-06 完成] 风控面板 Tab 分组：概览(雷达+敞口/集中度) / 因子(因子列表+板块暴露+相关性矩阵) / 压测(VaR/CVaR+历史场景) 三 Tab；RiskAdvancedPanel 新增 tabs 过滤复用；敞口卡派生集中度(Top1%)；持仓表常驻。tsc 零错误 + 197 全量零回归 |
 | 2026-07-25 | [PROD-07 完成] Calendars 降级为 Macro Hub 子 Tab：DataCenterModule 新增概览/市场日历子 Tab，CalendarsModule 作为「市场日历」嵌入；侧栏独立入口移除（route 保留）。tsc 零错误 + 197 全量零回归 |
 | 2026-07-19 | [PROD-04 完成] 四场景模式系统：盯盘/研究/监控/AI分析四模式切换基础设施 + 布局骨架适配（12 tests + 197 全量零回归） |
+| 2026-07-26 | [PROD-11 追问 G] 回测交易明细 CSV 导出：`engine.ts` 新增 `TradeRecord` 接口 + `SignalBacktestResult.tradeDetails` 字段；`panel.tsx` 回测面板标题栏新增「交易明细」导出按钮（8 列：序号/买入日期/买入价/卖出日期/卖出价/收益率%/持有天数/盈亏）；末根持仓以未平仓记录导出（sellDate 空）；BOM+UTF-8 保证 Excel 中文不乱码。`engine.test.ts` +5 用例（已平仓数校验、持仓记录格式、价格一致性、无交易空数组、失败回测空数组）。全量 230 tests passed。闭合信号日志→回测交易明细的复盘闭环。 |
 | 2026-07-26 | [产品功能审计] 新增 **数据源能力矩阵升级** 任务组（OPTION-01~03 / FUNDFLOW-01~02 / EARN-02~03 / SENT-01~02 / SCREEN-01 / MACRO-05 / BRD-01 / COND-01 / ALERT-COND-01 / COMM-01~02）共 17 项：对标 Bloomberg 全能力矩阵识别 6 大覆盖盲区（期权波动率/资金流增强/研报RAG问答/情绪得分化/决策工具/社区协作），优先补齐可复用后端 Tool 的高价值功能。同步新增 `docs/01 §十七`（数据源能力矩阵与产品形态升级），详见 `docs/01 §十七`。 |
 | 2026-07-16 | [BE-ARCH-05 执行] Finnhub DataSource 接入：`backend/services/datasource/adapters/finnhub.py` 实现 `FinnhubDataSource`（满足 `DataSourceInterface` Protocol），6 capabilities（earnings/company_news/market_news/economic_calendar/insider_trading/stock_history）经 `fetch` 路由到既有 `FinnhubService` 方法；`ensure_finnhub_registered` 于 `MarketDataGateway.__init__` 幂等注册（对齐 yfinance BE-ARCH-04 模式）；限流复用 SVC-08 的 `rate_limit_registry`（throttler 状态以服务内部记录为准，适配器仅做 Result 语义化）；`DATASOURCE_FINNHUB_MODE` env 控制运行模式；`docs/14 §八`+§2.4 能力矩阵更新。Pytest 17 全绿。详见 `docs/14 §二`/`§八` |\n| 2026-07-16 | [SVC-08 执行] Finnhub 限流感知：后端 `finnhub_service.py` 注入 `rate_limit_registry` 的 finnhub throttler，`get_earnings_calendar`/`get_market_news`/`get_company_news`/`get_economic_calendar`/`get_insider_transactions`/`get_stock_history` 在 429/403 → `on_rate_limit`、成功 → `on_success`；`routers/calendars.py` 的 `/dividends` `/ipos` 接入 `should_throttle` 退避（退避期返回 degraded，不硬重试）；`routers/datasource.py` 新增 `GET /datasource/finnhub/health`（被动健康：API Key + 限流状态）；`/rate-limit-status` 由通用路由覆盖（name=finnhub）。Pytest 8 全绿。详见 `docs/14 §十二` |
 | 2026-07-16 | [FE-PROD-05 执行] Calendars 全球市场日历落地：后端新增 `routers/calendars.py`（`/calendars/snapshot` 7 类目 52 标的聚合 + `/hours` 世界时钟矩阵 + `/dividends` `/ipos` Finnhub 优雅降级）+ `macro.py` `/earnings` 复用；前端 `features/calendars`（6 Tab：Markets 类目侧栏+横向滚动 + Economic/Earnings/Dividends/IPOs/Hours）；路由/侧边栏导航接入；Pytest 7 + Vitest 10 全绿。05f 仅类目显隐（拖拽分组未做）、05g Flutter 待 `client/` 仓库 PR。详见 `docs/01 §十六` |
