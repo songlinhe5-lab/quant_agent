@@ -196,8 +196,8 @@ class RestClient {
       ...headers,
     }
 
-    // 添加 Access Token
-    const token = getAccessToken()
+    // 添加 Access Token（统一入口 getValidAccessToken：自动检测过期并静默续期，见 FE-16/SEC-07）
+    const token = await getValidAccessToken()
     if (token) {
       requestHeaders['Authorization'] = `Bearer ${token}`
     }
