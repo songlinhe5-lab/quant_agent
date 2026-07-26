@@ -54,3 +54,27 @@ class OverfitGridRequest(BaseModel):
     results: List[Dict[str, Any]]
     target_metric: str = "sharpe"
     threshold: float = Field(0.40, gt=0.0, le=1.0, description="敏感性预警阈值(默认 40%)")
+
+
+class WalkForwardInterpretRequest(BaseModel):
+    """吃 Walk-Forward 滚动验证报告（即 /walk-forward 返回的 data 负载），
+
+    自动判过拟合（IS/OOS 性能崩塌）+ Alpha 衰减（逐折 OOS 夏普恶化），
+    并可选经 LLM 生成 ≤80 字解读。
+    """
+
+    report: Dict[str, Any]
+    use_llm: bool = True
+
+
+class WalkForwardInterpretResult(BaseModel):
+    is_oos_gap: float = Field(..., description="IS 与 OOS 夏普均值缺口（Alpha 衰减核心指标）")
+    alpha_decay: bool = Field(..., description="Alpha 衰减：IS/OOS 缺口过大或已报漂移")
+    overfit_risk: bool = Field(..., description="过拟合风险：样本外崩塌且稳健性差")
+    robustness_ratio: float = Field(..., description="OOS 盈利折占比（0-1，越高越稳）")
+    oos_sharpe_mean: float = Field(..., description="样本外夏普均值")
+    is_sharpe_mean: float = Field(..., description="样本内夏普均值")
+    drift_reasons: List[str] = Field(default_factory=list)
+    summary: str
+    source: str = "fallback"
+    model: Optional[str] = None

@@ -24,6 +24,7 @@ from backend.services.backtest_interpreter.models import (
     InterpretRequest,
     OverfitCheckRequest,
     OverfitGridRequest,
+    WalkForwardInterpretRequest,
 )
 from backend.services.backtest_interpreter.service import (
     BacktestInterpreterService,
@@ -286,4 +287,11 @@ async def overfit_check_grid(req: OverfitGridRequest):
     if not sweeps:
         raise HTTPException(status_code=400, detail="无法从 results 派生参数敏感性序列")
     result = check_overfit(sweeps, req.threshold)
+    return {"status": "success", "data": result.model_dump(mode="json")}
+
+
+@router.post("/interpret/walk-forward")
+async def interpret_walk_forward(req: WalkForwardInterpretRequest):
+    """AI-03 增强：吃 Walk-Forward 报告，自动判过拟合 + Alpha 衰减，可经 LLM 一句话解读。"""
+    result = await _interpreter.interpret_walk_forward(req)
     return {"status": "success", "data": result.model_dump(mode="json")}

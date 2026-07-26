@@ -19,6 +19,8 @@ from backend.services.backtest_interpreter.models import (
     InterpretResult,
     OverfitCheckResult,
     ParamSweep,
+    WalkForwardInterpretRequest,
+    WalkForwardInterpretResult,
 )
 from backend.services.llm_service import LLMService, ModelTier
 
@@ -126,6 +128,72 @@ def param_sweep_from_grid_results(results: List[dict], target_metric: str = "sha
     return sweeps
 
 
+_WF_SYSTEM_PROMPT = (
+    "你是 Quant Agent 主脑麾下的回测报告解读员，毒舌、硬核、满嘴华尔街黑话。"
+    "用户给你的是 Walk-Forward 滚动验证的真实统计：IS/OOS 夏普缺口、样本外盈利折占比、"
+    "是否检测到性能漂移。你只做一句话解读（≤80字），必须明确给出'Alpha 衰减'还是'稳健可外推'"
+    "的硬核结论。严禁编造任何未提供的数字。"
+)
+
+_WF_PROMPT_TMPL = """请基于以下 Walk-Forward 真实统计给出一句话解读（≤80字，须含 Alpha 衰减/稳健结论）。
+
+IS/OOS 夏普缺口: {is_oos_gap}
+样本内夏普均值: {is_sharpe_mean}
+样本外夏普均值: {oos_sharpe_mean}
+样本外盈利折占比: {robustness_ratio}
+检测到性能漂移: {drift_detected}
+漂移原因: {drift_reasons}
+"""
+
+
+def _analyze_walk_forward_core(report: dict) -> dict:
+    """纯计算：从 Walk-Forward 报告派生过拟合/Alpha 衰减判定（零幻觉，不依赖 LLM）。
+
+    兼容 run_walk_forward 返回的 data 负载：summary 含 is_oos_sharpe_gap /
+    oos_positive_fold_ratio / oos_sharpe_mean / is_sharpe_mean。
+    """
+    summary = report.get("summary") or {}
+    drift_detected = bool(report.get("drift_detected", False))
+    drift_reasons = list(report.get("drift_reasons") or [])
+
+    def _f(x, default=0.0):
+        try:
+            return float(x)
+        except (TypeError, ValueError):
+            return default
+
+    is_oos_gap = _f(summary.get("is_oos_sharpe_gap"))
+    oos_sharpe_mean = _f(summary.get("oos_sharpe_mean"))
+    is_sharpe_mean = _f(summary.get("is_sharpe_mean"))
+    robustness_ratio = _f(summary.get("oos_positive_fold_ratio"))
+
+    # Alpha 衰减：IS/OOS 缺口过大（>0.5）或引擎已报漂移
+    alpha_decay = drift_detected or is_oos_gap > 0.5
+    # 过拟合风险：IS 赚钱但 OOS 多数亏损 + 缺口大
+    overfit_risk = is_oos_gap > 0.5 or (robustness_ratio < 0.5 and is_sharpe_mean > 0)
+
+    return {
+        "is_oos_gap": round(is_oos_gap, 4),
+        "alpha_decay": bool(alpha_decay),
+        "overfit_risk": bool(overfit_risk),
+        "robustness_ratio": round(robustness_ratio, 4),
+        "oos_sharpe_mean": round(oos_sharpe_mean, 4),
+        "is_sharpe_mean": round(is_sharpe_mean, 4),
+        "drift_reasons": drift_reasons,
+    }
+
+
+def _wf_fallback(core: dict) -> str:
+    if core["overfit_risk"]:
+        return (
+            f"IS/OOS 夏普缺口{core['is_oos_gap']}、OOS 盈利折仅"
+            f"{core['robustness_ratio'] * 100:.0f}%——典型过拟合，Alpha 已被样本内榨干"
+        )
+    if core["alpha_decay"]:
+        return f"IS/OOS 缺口{core['is_oos_gap']} 已现 Alpha 衰减，外推前先想想参数稳健性"
+    return f"IS/OOS 缺口{core['is_oos_gap']}、OOS 盈利折{core['robustness_ratio'] * 100:.0f}%——稳健可外推，Alpha 站得住"
+
+
 class BacktestInterpreterService:
     def __init__(self, llm: Optional[LLMService] = None):
         self.llm = llm or LLMService()
@@ -159,3 +227,49 @@ class BacktestInterpreterService:
                 source="fallback",
                 confidence=0.3,
             )
+
+    async def interpret_walk_forward(self, req: WalkForwardInterpretRequest) -> WalkForwardInterpretResult:
+        """AI-03 增强：吃 Walk-Forward 报告，自动判过拟合 + Alpha 衰减，可经 LLM 一句话解读。"""
+        core = _analyze_walk_forward_core(req.report)
+
+        summary_text = ""
+        source = "fallback"
+        model = None
+        if req.use_llm:
+            try:
+                prompt = _WF_PROMPT_TMPL.format(
+                    is_oos_gap=core["is_oos_gap"],
+                    is_sharpe_mean=core["is_sharpe_mean"],
+                    oos_sharpe_mean=core["oos_sharpe_mean"],
+                    robustness_ratio=core["robustness_ratio"],
+                    drift_detected=core["drift_reasons"] or "否",
+                    drift_reasons="; ".join(core["drift_reasons"]) or "无",
+                )
+                out = await self.llm.generate(
+                    user_prompt=prompt,
+                    system_prompt=_WF_SYSTEM_PROMPT,
+                    tier=ModelTier.FLAGSHIP,
+                    temperature=0.4,
+                )
+                if out:
+                    summary_text = out[:80]
+                    source = "llm"
+                    model = self.llm.get_model(ModelTier.FLAGSHIP)
+            except Exception as e:
+                logger.error(f"[BacktestInterpreter] Walk-Forward LLM 解读失败，降级: {e}")
+
+        if not summary_text:
+            summary_text = _wf_fallback(core)
+
+        return WalkForwardInterpretResult(
+            is_oos_gap=core["is_oos_gap"],
+            alpha_decay=core["alpha_decay"],
+            overfit_risk=core["overfit_risk"],
+            robustness_ratio=core["robustness_ratio"],
+            oos_sharpe_mean=core["oos_sharpe_mean"],
+            is_sharpe_mean=core["is_sharpe_mean"],
+            drift_reasons=core["drift_reasons"],
+            summary=summary_text,
+            source=source,
+            model=model,
+        )

@@ -8,6 +8,7 @@ mock LLMService.generate_pydantic，验证：
 - overfit 低于阈值：overfit false
 """
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -16,9 +17,11 @@ from backend.services.backtest_interpreter.models import (
     InterpretRequest,
     OverfitCheckRequest,
     ParamSweep,
+    WalkForwardInterpretRequest,
 )
 from backend.services.backtest_interpreter.service import (
     BacktestInterpreterService,
+    _analyze_walk_forward_core,
     check_overfit,
     param_sweep_from_grid_results,
 )
@@ -117,3 +120,82 @@ def test_param_sweep_from_grid_results_custom_indicator_shape():
 def test_param_sweep_from_grid_results_empty():
     assert param_sweep_from_grid_results([], "sharpe") == []
     assert param_sweep_from_grid_results([{"foo": "bar"}], "sharpe") == []
+
+
+# ─── AI-03 增强：Walk-Forward 过拟合 + Alpha 衰减 ───
+
+
+def _make_wf_report(is_oos_gap: float, robust_ratio: float, drift: bool):
+    return {
+        "summary": {
+            "is_oos_sharpe_gap": is_oos_gap,
+            "oos_positive_fold_ratio": robust_ratio,
+            "oos_sharpe_mean": 0.8,
+            "is_sharpe_mean": 0.8 + is_oos_gap,
+        },
+        "drift_detected": drift,
+        "drift_reasons": ["OOS 夏普逐折恶化 slope=-0.20"] if drift else [],
+    }
+
+
+def test_wf_core_overfit_detected():
+    core = _analyze_walk_forward_core(_make_wf_report(is_oos_gap=0.9, robust_ratio=0.2, drift=True))
+    assert core["alpha_decay"] is True
+    assert core["overfit_risk"] is True
+    assert core["robustness_ratio"] == 0.2
+    assert core["is_oos_gap"] == 0.9
+
+
+def test_wf_core_robust():
+    core = _analyze_walk_forward_core(_make_wf_report(is_oos_gap=0.1, robust_ratio=0.9, drift=False))
+    assert core["alpha_decay"] is False
+    assert core["overfit_risk"] is False
+
+
+def test_wf_interpret_uses_llm():
+    fake_llm = MagicMock()
+    fake_llm.generate = AsyncMock(return_value="IS/OOS 缺口 0.9，Alpha 已被样本内榨干，外推必崩")
+    fake_llm.get_model.return_value = "deepseek-v4-pro"
+    svc = BacktestInterpreterService(llm=fake_llm)
+    res = asyncio.run(
+        svc.interpret_walk_forward(
+            WalkForwardInterpretRequest(
+                report=_make_wf_report(is_oos_gap=0.9, robust_ratio=0.2, drift=True),
+                use_llm=True,
+            )
+        )
+    )
+    assert res.source == "llm"
+    assert res.overfit_risk is True
+    assert res.summary
+
+
+def test_wf_interpret_llm_failure_falls_back():
+    fake_llm = MagicMock()
+    fake_llm.generate = AsyncMock(side_effect=RuntimeError("LLM 死了"))
+    svc = BacktestInterpreterService(llm=fake_llm)
+    res = asyncio.run(
+        svc.interpret_walk_forward(
+            WalkForwardInterpretRequest(
+                report=_make_wf_report(is_oos_gap=0.9, robust_ratio=0.2, drift=True),
+                use_llm=True,
+            )
+        )
+    )
+    assert res.source == "fallback"
+    assert res.overfit_risk is True
+    assert "过拟合" in res.summary or "Alpha" in res.summary
+
+
+def test_wf_interpret_without_llm():
+    svc = BacktestInterpreterService(llm=MagicMock())
+    res = asyncio.run(
+        svc.interpret_walk_forward(
+            WalkForwardInterpretRequest(
+                report=_make_wf_report(is_oos_gap=0.1, robust_ratio=0.9, drift=False),
+                use_llm=False,
+            )
+        )
+    )
+    assert res.source == "fallback"
+    assert res.alpha_decay is False
