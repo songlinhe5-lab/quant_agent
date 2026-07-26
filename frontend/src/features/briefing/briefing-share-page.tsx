@@ -41,7 +41,9 @@ export function BriefingSharePage() {
     <div className="max-w-3xl mx-auto p-6">
       <div className="mb-4">
         <h1 className="text-lg font-bold">🌤️ Quant Agent 盘前早报</h1>
-        <p className="text-xs text-muted-foreground">分享链接 · {briefing?.date || id}</p>
+        <p className="text-xs text-muted-foreground">
+          分享链接 · {briefing?.market} · {briefing?.date || id}
+        </p>
       </div>
       {loading && (
         <div className="flex items-center gap-2 text-muted-foreground py-8">

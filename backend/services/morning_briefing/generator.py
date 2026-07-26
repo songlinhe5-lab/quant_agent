@@ -102,7 +102,7 @@ class MorningBriefingGenerator:
         return result
 
     # ─── 数据采集 ────────────────────────────────────────────────
-    async def _collect_data(self):
+    async def _collect_data(self, market: str, tickers: list[str]):
         async def safe(name: str, coro):
             try:
                 return await coro
@@ -120,7 +120,7 @@ class MorningBriefingGenerator:
             safe(
                 "get_broker_market_data",
                 self.tool_registry.execute(
-                    "get_broker_market_data", action="QUOTE", tickers=CORE_TICKERS
+                    "get_broker_market_data", action="QUOTE", tickers=tickers
                 ),
             ),
             safe("get_macro_news", self.tool_registry.execute("get_macro_news")),
@@ -135,7 +135,9 @@ class MorningBriefingGenerator:
     async def _build_markdown(
         self, market, trade_date, calendar, quotes, news, sentiment
     ) -> str:
-        data_bundle = self._format_data_bundle(calendar, quotes, news, sentiment)
+        data_bundle = self._format_data_bundle(
+            market, calendar, quotes, news, sentiment
+        )
         prompt = MORNING_BRIEFING_PROMPT.format(
             market=market, trade_date=trade_date, data=data_bundle
         )
@@ -153,8 +155,9 @@ class MorningBriefingGenerator:
             )
 
     # ─── 数据精简 (喂给 LLM，控制 token) ────────────────────────
-    def _format_data_bundle(self, calendar, quotes, news, sentiment) -> str:
+    def _format_data_bundle(self, market, calendar, quotes, news, sentiment) -> str:
         parts: list[str] = []
+        max_quotes = len(get_tickers_for_market(market))
 
         if calendar:
             try:
@@ -177,7 +180,7 @@ class MorningBriefingGenerator:
                 if isinstance(qlist, dict):
                     qlist = [qlist]
                 lines = []
-                for q in qlist[: len(CORE_TICKERS)]:
+                for q in qlist[: max_quotes]:
                     lines.append(
                         f"- {q.get('symbol') or q.get('ticker')}: 价={q.get('last_price') or q.get('price')} "
                         f"涨跌幅={q.get('change_pct') or q.get('change_percent')} "

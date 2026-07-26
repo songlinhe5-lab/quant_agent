@@ -1026,6 +1026,7 @@ STATUS: PRODUCTION READY ✨
   - 后端：编排 `get_macro_calendar` + `get_broker_market_data(QUOTE)` + `get_macro_news` + `get_macro_sentiment_history` → LLM 组装 Markdown（`services/morning_briefing/`：generator + storage(Redis/内存兜底) + scheduler）；路由 `POST /api/v1/briefing/generate`、`GET /briefing/latest`、`GET /briefing/share/{id}`
   - 前端：Navbar 按钮 → Dialog（react-markdown 渲染 + 复制 + 分享链接）；LLM 失败有数据兜底骨架
   - 单测 `tests/test_morning_briefing_generator.py` 覆盖正常/LLM 失败兜底/模块封装三路径
+  - 🔧 **市场切换（后续增强）**：`MARKET_TICKERS = {全球/美股/港股/A股}` 按市场选不同监控标的；Modal 顶部 Select 下拉切换市场（默认全球），切换即按该市场重新生成；分享页 `/briefing/:id` 头部展示市场标签。**分享页保持 ProtectedRoute 内，不对未登录公开**。
   - 预期工时：FE 6h + BE 6h
 - [x] **[COND-01]** 自定义指标网格搜索结果保存为"策略配方"（P2）：
   - ✅ 已完成 `runParamGridSearch` 引擎 + UI（PROD-11 追问6）

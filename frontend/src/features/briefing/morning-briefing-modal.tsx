@@ -6,7 +6,7 @@
  * 用 BriefingMarkdown 渲染返回的 Markdown，支持「复制」与「分享链接」。
  */
 import { useCallback, useEffect, useState } from 'react'
-import { Coffee, Copy, Share2, Loader2, RefreshCw } from 'lucide-react'
+import { Coffee, Copy, Share2, Loader2, RefreshCw, Globe2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -14,9 +14,19 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { apiClient } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
 import { BriefingMarkdown } from './briefing-markdown'
+
+// 与后端 MARKET_TICKERS 对齐：BRD-01 支持的市场范围
+const MARKETS = ['全球', '美股', '港股', 'A股'] as const
 
 export interface BriefingData {
   id: string
@@ -35,34 +45,43 @@ export function MorningBriefingModal({
   onOpenChange: (v: boolean) => void
 }) {
   const [loading, setLoading] = useState(false)
+  const [market, setMarket] = useState<string>('全球')
   const [briefing, setBriefing] = useState<BriefingData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
 
-  const generate = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await apiClient.post<{ data: BriefingData }>(
-        `/briefing/generate?market=${encodeURIComponent('全球')}`,
-      )
-      setBriefing(res.data.data)
-    } catch (e: any) {
-      const msg = e?.message || '早报生成失败'
-      setError(msg)
-      toast({ title: '早报生成失败', description: msg, variant: 'destructive' })
-    } finally {
-      setLoading(false)
-    }
-  }, [toast])
+  const generate = useCallback(
+    async (mkt: string) => {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await apiClient.post<{ data: BriefingData }>(
+          `/briefing/generate?market=${encodeURIComponent(mkt)}`,
+        )
+        setBriefing(res.data.data)
+      } catch (e: any) {
+        const msg = e?.message || '早报生成失败'
+        setError(msg)
+        toast({ title: '早报生成失败', description: msg, variant: 'destructive' })
+      } finally {
+        setLoading(false)
+      }
+    },
+    [toast],
+  )
 
   // 每次打开都重新生成一份新鲜早报
   useEffect(() => {
     if (open) {
       setBriefing(null)
-      void generate()
+      void generate(market)
     }
-  }, [open, generate])
+  }, [open, market, generate])
+
+  const onMarketChange = (mkt: string) => {
+    setMarket(mkt)
+    if (open) void generate(mkt)
+  }
 
   const copy = async (text: string, msg: string) => {
     try {
@@ -77,10 +96,25 @@ export function MorningBriefingModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden !flex !flex-col gap-3">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Coffee className="w-5 h-5 text-amber-500" />
-            🌤️ Quant Agent 盘前早报
-          </DialogTitle>
+          <div className="flex items-start justify-between gap-3">
+            <DialogTitle className="flex items-center gap-2">
+              <Coffee className="w-5 h-5 text-amber-500" />
+              🌤️ Quant Agent 盘前早报
+            </DialogTitle>
+            <Select value={market} onValueChange={onMarketChange}>
+              <SelectTrigger size="sm" className="w-28 gap-1.5">
+                <Globe2 className="w-3.5 h-3.5 text-muted-foreground" />
+                <SelectValue placeholder="市场" />
+              </SelectTrigger>
+              <SelectContent>
+                {MARKETS.map((m) => (
+                  <SelectItem key={m} value={m}>
+                    {m}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <DialogDescription>宏观日历 · 核心标的 · 舆情提纯 · 多空概率矩阵</DialogDescription>
         </DialogHeader>
 
@@ -97,7 +131,7 @@ export function MorningBriefingModal({
 
         <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/40">
           <button
-            onClick={generate}
+            onClick={() => void generate(market)}
             disabled={loading}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border/60 hover:bg-secondary/60 transition-colors disabled:opacity-50"
           >
