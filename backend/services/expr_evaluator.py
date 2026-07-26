@@ -529,10 +529,10 @@ def evaluate_expr(
             return {"arr": out, "is_bool": True}
         if k == "bin":
             op = node[1]
-            l = _eval_node(node[2])
-            r = _eval_node(node[3])
-            la = l["arr"]
-            ra = r["arr"]
+            lhs = _eval_node(node[2])
+            rhs = _eval_node(node[3])
+            la = lhs["arr"]
+            ra = rhs["arr"]
             if op in (">", "<", ">=", "<=", "==", "!="):
                 out = np.full(length, np.nan)
                 m = ~(np.isnan(la) | np.isnan(ra))
