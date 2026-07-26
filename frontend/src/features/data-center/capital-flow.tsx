@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { ArrowRightLeft, AlertTriangle, Clock, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { MOCK_CAPITAL_FLOWS, type CapitalFlowItem } from '@/services/mock'
+import { type CapitalFlowItem } from '@/services/mock'
 import { useZhTimeAgo } from '@/hooks/useZhTimeAgo'
 import { MiniTrendLine } from './shared'
 import { useTheme } from 'next-themes'
@@ -29,7 +29,8 @@ export function FlowItem({ item, onClick }: { item: CapitalFlowItem; onClick?: (
     return () => { if (flashTimer.current) clearTimeout(flashTimer.current) }
   }, [item.amount])
 
-  const inflow = item.amount >= 0
+  const hasAmount = item.amount !== null && item.amount !== undefined && !Number.isNaN(item.amount)
+  const inflow = hasAmount ? item.amount >= 0 : false
 
   // 💡 格式化更新时间
   const formatUpdateTime = (dateStr: string | null | undefined) => {
@@ -46,14 +47,18 @@ export function FlowItem({ item, onClick }: { item: CapitalFlowItem; onClick?: (
     <div onClick={onClick} role="button" tabIndex={0} className={cn('flex flex-col justify-center gap-1 px-2.5 py-1.5 rounded-lg border border-border/20 overflow-hidden transition-colors cursor-pointer', 'bg-slate-50 dark:bg-secondary/10 hover:bg-slate-100 dark:hover:bg-secondary/30 focus:outline-none focus:ring-1 focus:ring-primary/50', 'border-l-2', item.market === 'HK' ? 'border-l-[#f6465d]/50' : item.market === 'CN' ? 'border-l-amber-500/50' : 'border-l-blue-500/50', flash === 'up' && 'animate-flash-green', flash === 'down' && 'animate-flash-red')}>
       <div className="flex items-center gap-1.5 w-full">
         <span className="text-[10px] font-bold text-muted-foreground/80 whitespace-nowrap flex-shrink-0">{item.market === 'HK' ? '🇭🇰' : item.market === 'CN' ? '🇨🇳' : '🇺🇸'} <span className="text-foreground/80">{item.label}</span></span>
-        <span className={cn('text-xs font-bold font-mono tabular-nums whitespace-nowrap transition-colors duration-500', inflow ? 'text-[#059669] dark:text-[#0ecb81]' : 'text-[#e11d48] dark:text-[#f6465d]')}>{inflow ? '+' : ''}{item.amount.toFixed(1)}<span className="text-[8px] ml-0.5 opacity-60">{item.unit}</span></span>
-        <span className={cn('text-[9px] font-mono font-bold px-1.5 py-0.5 rounded flex-shrink-0 transition-colors duration-300 ml-auto', inflow ? 'bg-[#0ecb81]/15 text-[#059669] dark:text-[#0ecb81]' : 'bg-[#f6465d]/15 text-[#e11d48] dark:text-[#f6465d]')}>{inflow ? '流入' : '流出'}</span>
+        {hasAmount ? (
+          <span className={cn('text-xs font-bold font-mono tabular-nums whitespace-nowrap transition-colors duration-500', inflow ? 'text-[#059669] dark:text-[#0ecb81]' : 'text-[#e11d48] dark:text-[#f6465d]')}>{inflow ? '+' : ''}{item.amount.toFixed(1)}<span className="text-[8px] ml-0.5 opacity-60">{item.unit}</span></span>
+        ) : (
+          <span className="text-xs font-bold font-mono tabular-nums whitespace-nowrap text-muted-foreground">--</span>
+        )}
+        <span className={cn('text-[9px] font-mono font-bold px-1.5 py-0.5 rounded flex-shrink-0 transition-colors duration-300 ml-auto', hasAmount ? (inflow ? 'bg-[#0ecb81]/15 text-[#059669] dark:text-[#0ecb81]' : 'bg-[#f6465d]/15 text-[#e11d48] dark:text-[#f6465d]') : 'bg-secondary/20 text-muted-foreground')}>{hasAmount ? (inflow ? '流入' : '流出') : 'N/A'}</span>
         <svg width="36" height="14" viewBox="0 0 36 14" aria-hidden="true" className="flex-shrink-0 opacity-60 ml-1.5">
           {/* 💡 sparkDirs 至少需 2 个点才能画出折线；map 已为首点加 M 前缀，外层不可再加，否则生成非法 "M Mx,y" */}
           {item.sparkDirs && item.sparkDirs.length >= 2 && (
             <path
               d={item.sparkDirs.reduce<{x:number;y:number}[]>((a,d,i)=>{const pY=a.length>0?a[a.length-1].y:7;a.push({x:(i/(item.sparkDirs.length-1))*32+2,y:Math.max(1.5,Math.min(12.5,pY-d*2))});return a},[]).map((p,i)=>`${i===0?'M':'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}
-              fill="none" stroke={inflow ? (isDark ? '#0ecb81' : '#059669') : (isDark ? '#f6465d' : '#e11d48')} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+              fill="none" stroke={!hasAmount ? '#64748b' : inflow ? (isDark ? '#0ecb81' : '#059669') : (isDark ? '#f6465d' : '#e11d48')} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
             />
           )}
         </svg>
@@ -85,7 +90,8 @@ export function FlowDetailPanel({ flow, onClose }: { flow: CapitalFlowItem; onCl
   })
   let cum = 0;
   const trendData = history.map(h => { cum += h.dir * h.val; return cum; });
-  const isPositive = flow.amount >= 0;
+  const hasAmount = flow.amount !== null && flow.amount !== undefined && !Number.isNaN(flow.amount)
+  const isPositive = hasAmount ? flow.amount >= 0 : false;
   return (
     <div className="absolute inset-0 z-20 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 animate-in fade-in duration-200" onClick={onClose}>
       <div className="w-full h-full bg-card border border-border/40 rounded-lg overflow-hidden flex flex-col shadow-xl" onClick={e => e.stopPropagation()}>
@@ -96,17 +102,21 @@ export function FlowDetailPanel({ flow, onClose }: { flow: CapitalFlowItem; onCl
             <button onClick={onClose} className="p-1 rounded hover:bg-secondary/50 text-muted-foreground hover:text-foreground" aria-label="关闭"><X className="h-3.5 w-3.5" /></button>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-1.5 custom-scrollbar">
-          {history.slice().reverse().map((h, i) => (
-            <div key={i} className="flex justify-between items-center text-xs px-3 py-2 rounded-md bg-secondary/10 hover:bg-secondary/30 transition-colors border border-border/50">
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground font-mono">{h.date}</span>
-                {i === 0 && <span className="text-[9px] bg-primary/10 border border-primary/20 text-primary px-1.5 py-0.5 rounded">今日</span>}
+        {hasAmount ? (
+          <div className="flex-1 overflow-y-auto p-2 space-y-1.5 custom-scrollbar">
+            {history.slice().reverse().map((h, i) => (
+              <div key={i} className="flex justify-between items-center text-xs px-3 py-2 rounded-md bg-secondary/10 hover:bg-secondary/30 transition-colors border border-border/50">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground font-mono">{h.date}</span>
+                  {i === 0 && <span className="text-[9px] bg-primary/10 border border-primary/20 text-primary px-1.5 py-0.5 rounded">今日</span>}
+                </div>
+                <span className={cn("font-bold font-mono tabular-nums", h.dir > 0 ? "text-[#059669] dark:text-[#0ecb81]" : "text-[#e11d48] dark:text-[#f6465d]")}>{h.dir > 0 ? '+' : '-'}{h.val.toFixed(2)} {flow.unit}</span>
               </div>
-              <span className={cn("font-bold font-mono tabular-nums", h.dir > 0 ? "text-[#059669] dark:text-[#0ecb81]" : "text-[#e11d48] dark:text-[#f6465d]")}>{h.dir > 0 ? '+' : '-'}{h.val.toFixed(2)} {flow.unit}</span>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-xs text-muted-foreground">暂无净买入数据</div>
+        )}
         <div className="px-3 py-2 border-t border-border/20 text-[9px] text-muted-foreground text-center bg-secondary/10">数据源：互联互通每日结算快照</div>
       </div>
     </div>
@@ -114,7 +124,7 @@ export function FlowDetailPanel({ flow, onClose }: { flow: CapitalFlowItem; onCl
 }
 
 export function CapitalFlowPanel({ data }: { data?: CapitalFlowItem[] }) {
-  const [flows, setFlows] = useState<CapitalFlowItem[]>(MOCK_CAPITAL_FLOWS)
+  const [flows, setFlows] = useState<CapitalFlowItem[]>([])
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
   const [detailFlow, setDetailFlow] = useState<CapitalFlowItem | null>(null)
   const timeAgo = useZhTimeAgo(lastUpdate)

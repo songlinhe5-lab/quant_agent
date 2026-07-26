@@ -104,9 +104,11 @@ class QuotePublisher:
                 err_msg = "拉取超时"
             else:
                 err_msg = f"拉取异常 {type(e).__name__}: {e}"
-            logger.error(f"[{ticker}] Futu {err_msg}.系统已关闭 YFinance 兜底，使用 Mock 兜底.")
-            # 终极兜底：防止系统死锁或前端白屏
-            data = self._get_mock_data(ticker)
+            logger.error(
+                f"[{ticker}] Futu {err_msg}.系统已关闭 YFinance 兜底，不再注入 Mock 假数据，交由前端展示空/错误状态."
+            )
+            # 终极兜底：不推送任何假价格，避免污染行情总线；前端对缺失行情展示空/错误态
+            data = None
 
         if data:
             # DQ-04 / SVC-04：按数据源维度做质量校验并暴露 Prometheus

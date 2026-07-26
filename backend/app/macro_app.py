@@ -441,22 +441,27 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
 
         # 1) 港股南向（AKShare 真实数据）
         if south_res.get("status") in ("success", "warning"):
-            sd = south_res.get("data", {})
+            sd = south_res.get("data") or {}
             flows.append(
                 {
                     "market": "HK",
                     "label": "港股南向",
-                    "amount": sd.get("net_inflow", 0),
-                    "unit": "亿港元",
-                    "dir": 1 if sd.get("net_inflow", 0) >= 0 else -1,
-                    "desc": "沪深港通净买入港股",
+                    "amount": sd.get("net_inflow"),
+                    "unit": sd.get("unit", "亿港元"),
+                    "dir": 1 if (sd.get("net_inflow") or 0) >= 0 else -1,
+                    "desc": sd.get("name", "沪深港通净买入港股"),
                     "sparkDirs": sd.get("sparkline", [1, 1, -1, 1, 1, 1, -1, 1]),
-                    "data_source": "AKShare",  # 💡 数据来源
-                    "updated_at": sd.get("updated_at") or datetime.now(timezone.utc).isoformat(),  # 💡 更新时间
+                    "data_source": (sd.get("source") if sd else "N/A") or "N/A",
+                    "updated_at": sd.get("updated_at") or datetime.now(timezone.utc).isoformat(),
                 }
             )
 
-        def _parse_futu_flow(res, default_amt, real_desc, unit="亿美元"):
+        def _parse_futu_flow(res, real_desc, unit="亿美元"):
+            """解析 Futu 单标的资金流。
+
+            仅当 Futu 返回 success 时给出真实净额；失败时不再回退到写死的
+            默认假值 (旧逻辑 default_amt=2.1 等)，一律返回 None 由前端显示 N/A。
+            """
             if isinstance(res, dict) and res.get("status") == "success":
                 fund_data = res.get("data", res)
                 val = fund_data.get("main_fund_net_inflow", 0.0) / 100_000_000.0
@@ -464,8 +469,8 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
                 updated_at = fund_data.get("updated_at") or datetime.now(timezone.utc).isoformat()
                 return amt, 1 if amt >= 0 else -1, real_desc, unit, "Futu", updated_at
             return (
-                default_amt,
-                1 if default_amt >= 0 else -1,
+                None,
+                0,
                 real_desc,
                 unit,
                 "N/A",
@@ -474,22 +479,22 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
 
         # 💡 使用核心 ETF 的主买主卖差额代表板块的整体真实资金流
         csi_amount, csi_dir, csi_desc, csi_unit, csi_source, csi_updated = _parse_futu_flow(
-            csi300_res, 8.7, "沪深300ETF主力净流", "亿人民币"
+            csi300_res, "沪深300ETF主力净流", "亿人民币"
         )  # noqa: E501
         spy_amount, spy_dir, spy_desc, spy_unit, spy_source, spy_updated = _parse_futu_flow(
-            spy_res, 2.1, "标普500ETF主力净流", "亿美元"
+            spy_res, "标普500ETF主力净流", "亿美元"
         )  # noqa: E501
         qqq_amount, qqq_dir, qqq_desc, qqq_unit, qqq_source, qqq_updated = _parse_futu_flow(
-            qqq_res, 3.5, "纳指科技ETF主力净流", "亿美元"
+            qqq_res, "纳指科技ETF主力净流", "亿美元"
         )  # noqa: E501
         soxx_amount, soxx_dir, soxx_desc, soxx_unit, soxx_source, soxx_updated = _parse_futu_flow(
-            soxx_res, 1.5, "半导体ETF主力净流", "亿美元"
+            soxx_res, "半导体ETF主力净流", "亿美元"
         )  # noqa: E501
         tlt_amount, tlt_dir, tlt_desc, tlt_unit, tlt_source, tlt_updated = _parse_futu_flow(
-            tlt_res, -1.8, "20年期美债ETF主力净流", "亿美元"
+            tlt_res, "20年期美债ETF主力净流", "亿美元"
         )  # noqa: E501
         kweb_amount, kweb_dir, kweb_desc, kweb_unit, kweb_source, kweb_updated = _parse_futu_flow(
-            kweb_res, 1.2, "中概互联ETF主力净流", "亿美元"
+            kweb_res, "中概互联ETF主力净流", "亿美元"
         )  # noqa: E501
 
         flows.extend(
@@ -987,7 +992,7 @@ async def get_macro_assets(
             dxy_chg = _chg("DX-Y")
             fx = _norm_pct(dxy_chg, inverse=True) if dxy_chg is not None else 50  # noqa: E501, E702
 
-            cpc_val = 0.82
+            cpc_val = None  # 无真实 CPC 缓存时置空，前端显示 N/A
             try:
                 cpc_cache = await redis_client.get("yf_macro_cache_^CPC")
                 if cpc_cache:
@@ -1003,9 +1008,9 @@ async def get_macro_assets(
                             cpc_val = round(float(c_val), 2)
             except Exception:
                 pass
-            pc_status = "偏多" if cpc_val < 1.0 else "偏空"
-            credit_spread = round(2.0 + (vix_abs / 10.0), 2) if vix_abs else 3.45
-            cs_status = "安全" if credit_spread < 4.5 else "高危"
+            pc_status = "N/A" if cpc_val is None else ("偏多" if cpc_val < 1.0 else "偏空")
+            credit_spread = round(2.0 + (vix_abs / 10.0), 2) if vix_abs else None
+            cs_status = "N/A" if credit_spread is None else ("安全" if credit_spread < 4.5 else "高危")
 
             sentiment_indicators = {
                 "pc_ratio": {"value": cpc_val, "status": pc_status},

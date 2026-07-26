@@ -93,7 +93,7 @@ class TestAKShareService:
 
     @pytest.mark.asyncio
     async def test_get_southbound_flow_failure_returns_mock(self, service):
-        """南向资金获取异常应返回 mock 数据"""
+        """南向资金获取异常应返回空数据 + 告警，禁止注入 mock 假数字"""
         with (
             patch("backend.services.akshare.flow.redis_client") as mock_redis,
             patch("backend.services.akshare.flow.asyncio.gather", new=AsyncMock(side_effect=RuntimeError("boom"))),
@@ -102,7 +102,8 @@ class TestAKShareService:
             mock_redis.set = AsyncMock()
             result = await service.get_southbound_flow()
             assert result["status"] == "warning"
-            assert result["source"] == "mock"
+            assert result["data"] is None
+            assert result["source"] == "akshare-unavailable"
 
     @pytest.mark.asyncio
     async def test_get_northbound_flow_success(self, service):
