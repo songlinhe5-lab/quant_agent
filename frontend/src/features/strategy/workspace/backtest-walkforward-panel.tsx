@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button'
 import { apiClient } from '@/lib/api-client'
 import { useAiPushPrefStore } from '@/stores/useAiPushPrefStore'
 
-interface WfInterpretData {
+export interface WfInterpretData {
   is_oos_gap: number
   alpha_decay: boolean
   overfit_risk: boolean
@@ -30,6 +30,7 @@ interface BacktestWalkForwardPanelProps {
   ticker: string
   period: string
   params?: Record<string, any>
+  onResult?: (d: WfInterpretData) => void
 }
 
 /**
@@ -42,6 +43,7 @@ export function BacktestWalkForwardPanel({
   ticker,
   period,
   params,
+  onResult,
 }: BacktestWalkForwardPanelProps) {
   const ai03Enabled = useAiPushPrefStore((s) => s.isEnabled('ai03'))
 
@@ -69,6 +71,7 @@ export function BacktestWalkForwardPanel({
         { report, use_llm: true },
       )
       setData(res.data)
+      onResult?.(res.data)
     } catch (e: any) {
       setError(e?.message || 'Walk-Forward 检测失败')
       setData(null)

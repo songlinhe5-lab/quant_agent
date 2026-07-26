@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { apiClient } from '@/lib/api-client'
 import { useAiPushPrefStore } from '@/stores/useAiPushPrefStore'
+import { WfInterpretData } from './backtest-walkforward-panel'
 
 interface InterpretData {
   summary: string
@@ -33,15 +34,17 @@ interface ParamSweepInput {
 
 interface BacktestInterpretPanelProps {
   backtestResult: Record<string, any> | null | undefined
+  walkForward?: WfInterpretData | null
 }
 
 /**
  * AI-03 回测工坊·报告解读员面板。
  * - 自动基于真实回测指标调用 /backtest/interpret 生成 ≤80 字解读（含杠杆/Alpha 判别）。
+ * - 携带 walkForward 时把过拟合/Alpha 衰减信号织入主解读，做单一联合研判。
  * - 提供参数敏感性过拟合检测（纯计算），结果来自 /backtest/overfit-check。
  * 受 AI-09 推送偏好底座 `ai03` 开关统一管控。
  */
-export function BacktestInterpretPanel({ backtestResult }: BacktestInterpretPanelProps) {
+export function BacktestInterpretPanel({ backtestResult, walkForward }: BacktestInterpretPanelProps) {
   const ai03Enabled = useAiPushPrefStore((s) => s.isEnabled('ai03'))
 
   const [interpret, setInterpret] = useState<InterpretData | null>(null)
@@ -67,7 +70,21 @@ export function BacktestInterpretPanel({ backtestResult }: BacktestInterpretPane
       try {
         const res = await apiClient.post<{ data: InterpretData }>(
           '/backtest/interpret',
-          { symbol, annual_return: annualReturn, sharpe, mdd, leverage },
+          {
+            symbol,
+            annual_return: annualReturn,
+            sharpe,
+            mdd,
+            leverage,
+            walk_forward: walkForward
+              ? {
+                  is_oos_gap: walkForward.is_oos_gap,
+                  robustness_ratio: walkForward.robustness_ratio,
+                  overfit_risk: walkForward.overfit_risk,
+                  alpha_decay: walkForward.alpha_decay,
+                }
+              : null,
+          },
           { signal },
         )
         setInterpret(res.data)
@@ -78,7 +95,7 @@ export function BacktestInterpretPanel({ backtestResult }: BacktestInterpretPane
         setInterpreting(false)
       }
     },
-    [symbol, annualReturn, sharpe, mdd, leverage, hasMetrics],
+    [symbol, annualReturn, sharpe, mdd, leverage, hasMetrics, walkForward],
   )
 
   useEffect(() => {

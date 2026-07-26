@@ -17,6 +17,11 @@ class InterpretRequest(BaseModel):
     sharpe: float = Field(..., description="夏普比率")
     mdd: float = Field(..., description="最大回撤(绝对值展示，如 0.18)，允许负值输入")
     leverage: float = Field(1.0, description="杠杆倍数；>1 表示存在杠杆放大")
+    walk_forward: Optional[Dict[str, Any]] = Field(
+        None,
+        description="可选 Walk-Forward 结论摘要(is_oos_gap/robustness_ratio/overfit_risk/alpha_decay)，"
+        "携带则把过拟合/Alpha 衰减信号织入主解读，做单一联合研判",
+    )
 
 
 class InterpretResult(BaseModel):

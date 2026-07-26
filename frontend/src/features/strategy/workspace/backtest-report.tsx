@@ -12,7 +12,7 @@ import { ReturnsHistogramChart } from './returns-histogram-chart'
 import { buildTearSheetMetrics, computeDrawdownStats, computeReturnsHistogram } from './backtest-report-stats'
 import { LongestDrawdownsList, TradesTable, LimitOrdersTable } from './backtest-report-tables'
 import { BacktestInterpretPanel } from './backtest-interpret-panel'
-import { BacktestWalkForwardPanel } from './backtest-walkforward-panel'
+import { BacktestWalkForwardPanel, WfInterpretData } from './backtest-walkforward-panel'
 import {
   ReproducibilityBadgeView,
   extractReproducibilityBadge,
@@ -23,6 +23,7 @@ export function BacktestReport() {
   const { toast } = useToast()
   const [selectedLimitOrderIdx, setSelectedLimitOrderIdx] = useState<number | null>(null)
   const [isSyncing, setIsSyncing] = useState(false)
+  const [wfData, setWfData] = useState<WfInterpretData | null>(null)
 
   const handleSyncData = async () => {
     setIsSyncing(true)
@@ -200,12 +201,16 @@ export function BacktestReport() {
             </div>
           </div>
         )}
-        <BacktestInterpretPanel backtestResult={store.backtestResult} />
+        <BacktestInterpretPanel
+          backtestResult={store.backtestResult}
+          walkForward={wfData}
+        />
 
         <BacktestWalkForwardPanel
           ticker={store.testTicker}
           period={store.backtestPeriod}
           params={store.backtestResult?.params}
+          onResult={setWfData}
         />
 
         <div className="glass-card rounded-xl overflow-hidden border border-border/40 shadow-sm">

@@ -53,20 +53,32 @@ class _LlmInterpret(BaseModel):
 
 
 def _format_prompt(req: InterpretRequest) -> str:
-    return _PROMPT_TMPL.format(
+    prompt = _PROMPT_TMPL.format(
         symbol=req.symbol or "未指定",
         annual_return_pct=f"{req.annual_return * 100:.1f}%",
         sharpe=req.sharpe,
         mdd_pct=f"{abs(req.mdd) * 100:.1f}%",
         leverage=req.leverage,
     )
+    wf = req.walk_forward
+    if isinstance(wf, dict):
+        prompt += (
+            "\n\n【Walk-Forward 联合信号】该策略滚动验证结论："
+            f"IS/OOS 夏普缺口={wf.get('is_oos_gap')}、"
+            f"OOS 盈利折占比={wf.get('robustness_ratio')}、"
+            f"过拟合风险={wf.get('overfit_risk')}、Alpha 衰减={wf.get('alpha_decay')}。"
+            "请在前述杠杆/Alpha 判别基础上叠加此漂移信号，给出统一联合研判；"
+            "若样本外已崩塌，须直指“样本内光鲜、外推必死”。"
+        )
+    return prompt
 
 
 def _interpret_fallback(req: InterpretRequest) -> str:
-    """LLM 失联时的确定性裸研判（零幻觉）：仅基于已提供的真实指标做杠杆/Alpha 判别。
+    """LLM 失联时的确定性裸研判（零幻觉）：基于已提供的真实指标做杠杆/Alpha 判别。
 
     与 SYSTEM_PROMPT 口径一致：杠杆显著>1 且夏普偏低 → 收益靠杠杆堆；
-    杠杆≈1 且夏普可观 → Alpha 驱动；其余中性。绝不编造任何未提供的数字，
+    杠杆≈1 且夏普可观 → Alpha 驱动；其余中性。若携带 walk_forward 结论，
+    则融合其过拟合/Alpha 衰减信号做联合研判。绝不编造任何未提供的数字，
     也不得谎称“数据不足”——指标已握在手里。
     """
     lev = req.leverage
@@ -78,6 +90,12 @@ def _interpret_fallback(req: InterpretRequest) -> str:
         verdict = f"杠杆{lev:.1f}x、夏普{sh}、年化{ann:.0f}%——Alpha 驱动，非杠杆注水"
     else:
         verdict = f"杠杆{lev:.1f}x、夏普{sh}、年化{ann:.0f}%——指标中性"
+    wf = req.walk_forward
+    if isinstance(wf, dict):
+        if wf.get("overfit_risk") or wf.get("alpha_decay"):
+            verdict += "；叠加 Walk-Forward 报过拟合/Alpha 衰减，双重确认该策略外推存疑"
+        else:
+            verdict += "；Walk-Forward 亦稳健，内外部结论一致"
     return f"{verdict}（LLM 失联，以下为确定性裸研判）"
 
 

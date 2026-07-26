@@ -80,6 +80,63 @@ async def test_interpret_fallback_no_hallucination():
     assert "确定性裸研判" in res.summary
 
 
+@pytest.mark.asyncio
+async def test_interpret_with_walk_forward_fused():
+    """携带 walk_forward 摘要时，主解读提示词须织入联合信号，LLM 产联合研判。"""
+    llm = MagicMock()
+    captured = {}
+
+    async def _cap(prompt, **kwargs):
+        captured["prompt"] = prompt
+        return MagicMock(summary="样本内光鲜但 OOS 崩塌，双重确认外推必死", confidence=0.85)
+
+    llm.generate_pydantic = AsyncMock(side_effect=_cap)
+    svc = BacktestInterpreterService(llm=llm)
+    res = await svc.interpret(
+        InterpretRequest(
+            annual_return=0.23,
+            sharpe=0.9,
+            mdd=0.18,
+            leverage=2.1,
+            walk_forward={
+                "is_oos_gap": 0.9,
+                "robustness_ratio": 0.2,
+                "overfit_risk": True,
+                "alpha_decay": True,
+            },
+        )
+    )
+    assert res.source == "llm"
+    assert "Walk-Forward 联合信号" in captured["prompt"]
+    assert "0.9" in captured["prompt"]
+    assert "双重确认" in res.summary
+
+
+@pytest.mark.asyncio
+async def test_interpret_fallback_with_walk_forward():
+    """LLM 失联且携带 walk_forward 时，降级文案须融合过拟合/Alpha 衰减做联合结论。"""
+    llm = MagicMock()
+    llm.generate_pydantic = AsyncMock(side_effect=RuntimeError("LLM dead"))
+    svc = BacktestInterpreterService(llm=llm)
+    res = await svc.interpret(
+        InterpretRequest(
+            annual_return=0.23,
+            sharpe=0.9,
+            mdd=0.18,
+            leverage=2.1,
+            walk_forward={
+                "is_oos_gap": 0.9,
+                "robustness_ratio": 0.2,
+                "overfit_risk": True,
+                "alpha_decay": True,
+            },
+        )
+    )
+    assert res.source == "fallback"
+    assert "双重确认" in res.summary
+    assert "Walk-Forward" in res.summary
+
+
 def test_overfit_check_triggered():
     res = check_overfit([ParamSweep(param="lookback", sharpe=[1.6, 0.9, 1.5])], threshold=0.40)
     assert res.overfit is True
