@@ -10,7 +10,6 @@ BRD-01: 早报刊物 API 路由
 from fastapi import APIRouter, HTTPException, Query
 
 from backend.services.morning_briefing.generator import generate_morning_briefing
-from backend.services.morning_briefing.models import BriefingResult
 from backend.services.morning_briefing.storage import get_briefing, get_latest_briefing
 
 router = APIRouter(prefix="/briefing", tags=["早报刊物"])

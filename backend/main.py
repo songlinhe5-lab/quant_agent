@@ -79,6 +79,7 @@ from backend.routers.audit import router as audit_router  # noqa: E402
 from backend.routers.auth import router as auth_router  # noqa: E402
 from backend.routers.backtest import router as backtest_router  # noqa: E402
 from backend.routers.backtest_reports import router as backtest_reports_router  # noqa: E402
+from backend.routers.briefing import router as briefing_router  # noqa: E402  # BRD-01
 from backend.routers.calendars import router as calendars_router  # noqa: E402
 from backend.routers.chat import router as chat_router  # noqa: E402
 from backend.routers.client import router as client_router  # noqa: E402
@@ -95,7 +96,6 @@ from backend.routers.logs import router as logs_router  # noqa: E402
 from backend.routers.macro import router as macro_router  # noqa: E402
 from backend.routers.market import router as market_router  # noqa: E402
 from backend.routers.market_review import router as market_review_router  # noqa: E402
-from backend.routers.briefing import router as briefing_router  # noqa: E402  # BRD-01
 from backend.routers.mcp import router as mcp_router  # noqa: E402
 from backend.routers.oms import router as oms_router  # noqa: E402
 from backend.routers.options import router as options_router  # noqa: E402

@@ -17,37 +17,61 @@ import uuid
 from datetime import date as date_cls
 from typing import Optional
 
-from hermes_agent.tool_registry import ToolRegistry
 from backend.services.llm_service import LLMService, ModelTier
 from backend.services.morning_briefing.models import BriefingResult
 from backend.services.morning_briefing.storage import save_briefing
+from hermes_agent.tool_registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
 
 # 核心标的监控清单：按市场切换，避免"全球"清单硬套单一市场
 MARKET_TICKERS: dict[str, list[str]] = {
     "全球": [
-        "SPY", "QQQ", "DIA",      # 美股指数 ETF
-        "GLD", "TLT",             # 黄金 / 美债
-        "DXY", "USDCNH",          # 美元指数 / 离岸人民币
-        "BTC",                    # 加密货币情绪锚
-        "00700.HK", "600519.SH", "513100.SH",  # 港股 / A股 核心 + 纳指ETF
+        "SPY",
+        "QQQ",
+        "DIA",  # 美股指数 ETF
+        "GLD",
+        "TLT",  # 黄金 / 美债
+        "DXY",
+        "USDCNH",  # 美元指数 / 离岸人民币
+        "BTC",  # 加密货币情绪锚
+        "00700.HK",
+        "600519.SH",
+        "513100.SH",  # 港股 / A股 核心 + 纳指ETF
     ],
     "美股": [
-        "SPY", "QQQ", "DIA", "IWM",   # 大盘 / 纳指 / 道指 / 罗素2000
-        "GLD", "TLT",                 # 黄金 / 美债
-        "DXY", "BTC",                 # 美元 / 加密情绪锚
-        "NVDA", "AAPL", "TSLA",       # 龙头个股
+        "SPY",
+        "QQQ",
+        "DIA",
+        "IWM",  # 大盘 / 纳指 / 道指 / 罗素2000
+        "GLD",
+        "TLT",  # 黄金 / 美债
+        "DXY",
+        "BTC",  # 美元 / 加密情绪锚
+        "NVDA",
+        "AAPL",
+        "TSLA",  # 龙头个股
     ],
     "港股": [
-        "HSI", "HSCEI",               # 恒生指数 / 国企指数
-        "00700.HK", "09988.HK", "03690.HK", "01810.HK",  # 腾讯/阿里/美团/小米
-        "GLD", "DXY", "BTC",          # 黄金 / 美元 / 加密情绪锚
+        "HSI",
+        "HSCEI",  # 恒生指数 / 国企指数
+        "00700.HK",
+        "09988.HK",
+        "03690.HK",
+        "01810.HK",  # 腾讯/阿里/美团/小米
+        "GLD",
+        "DXY",
+        "BTC",  # 黄金 / 美元 / 加密情绪锚
     ],
     "A股": [
-        "000001.SH", "399001.SZ", "399006.SZ",  # 上证 / 深成 / 创业板指
-        "600519.SH", "601318.SH", "300750.SZ",  # 茅台 / 平安 / 宁德
-        "513100.SH", "518880.SH",               # 纳指ETF / 黄金ETF
+        "000001.SH",
+        "399001.SZ",
+        "399006.SZ",  # 上证 / 深成 / 创业板指
+        "600519.SH",
+        "601318.SH",
+        "300750.SZ",  # 茅台 / 平安 / 宁德
+        "513100.SH",
+        "518880.SH",  # 纳指ETF / 黄金ETF
     ],
 }
 
@@ -57,6 +81,7 @@ SUPPORTED_MARKETS = list(MARKET_TICKERS.keys())
 def get_tickers_for_market(market: str) -> list[str]:
     """按市场返回监控标的；未知市场回退到全球清单"""
     return MARKET_TICKERS.get(market, MARKET_TICKERS["全球"])
+
 
 SOURCE_TOOLS = [
     "get_macro_calendar",
@@ -103,18 +128,14 @@ class MorningBriefingGenerator:
         self.llm = llm or LLMService()
         self.tool_registry = tool_registry or ToolRegistry()
 
-    async def generate(
-        self, market: str = "全球", target_date: Optional[str] = None
-    ) -> BriefingResult:
+    async def generate(self, market: str = "全球", target_date: Optional[str] = None) -> BriefingResult:
         """生成一份盘前早报并持久化，返回带分享 ID 的结果"""
         trade_date = target_date or date_cls.today().strftime("%Y-%m-%d")
         logger.info(f"[Briefing] 开始生成 {market} {trade_date} 盘前早报")
 
         tickers = get_tickers_for_market(market)
         calendar, quotes, news, sentiment = await self._collect_data(market, tickers)
-        markdown = await self._build_markdown(
-            market, trade_date, calendar, quotes, news, sentiment
-        )
+        markdown = await self._build_markdown(market, trade_date, calendar, quotes, news, sentiment)
 
         result = BriefingResult(
             id=uuid.uuid4().hex[:10],
@@ -139,15 +160,11 @@ class MorningBriefingGenerator:
         calendar_t, quotes_t, news_t, sentiment_t = await asyncio.gather(
             safe(
                 "get_macro_calendar",
-                self.tool_registry.execute(
-                    "get_macro_calendar", days_ahead=7, days_back=0
-                ),
+                self.tool_registry.execute("get_macro_calendar", days_ahead=7, days_back=0),
             ),
             safe(
                 "get_broker_market_data",
-                self.tool_registry.execute(
-                    "get_broker_market_data", action="QUOTE", tickers=tickers
-                ),
+                self.tool_registry.execute("get_broker_market_data", action="QUOTE", tickers=tickers),
             ),
             safe("get_macro_news", self.tool_registry.execute("get_macro_news")),
             safe(
@@ -158,27 +175,17 @@ class MorningBriefingGenerator:
         return calendar_t, quotes_t, news_t, sentiment_t
 
     # ─── Markdown 组装 ──────────────────────────────────────────
-    async def _build_markdown(
-        self, market, trade_date, calendar, quotes, news, sentiment
-    ) -> str:
-        data_bundle = self._format_data_bundle(
-            market, calendar, quotes, news, sentiment
-        )
-        prompt = MORNING_BRIEFING_PROMPT.format(
-            market=market, trade_date=trade_date, data=data_bundle
-        )
+    async def _build_markdown(self, market, trade_date, calendar, quotes, news, sentiment) -> str:
+        data_bundle = self._format_data_bundle(market, calendar, quotes, news, sentiment)
+        prompt = MORNING_BRIEFING_PROMPT.format(market=market, trade_date=trade_date, data=data_bundle)
         try:
-            markdown = await self.llm.generate(
-                prompt, tier=ModelTier.STANDARD, system_prompt=SYSTEM_PROMPT
-            )
+            markdown = await self.llm.generate(prompt, tier=ModelTier.STANDARD, system_prompt=SYSTEM_PROMPT)
             if not markdown or len(markdown.strip()) < 50:
                 raise ValueError("LLM 返回内容过短，疑似空响应")
             return markdown.strip()
         except Exception as e:  # noqa: BLE001
             logger.error(f"[Briefing] LLM 组装失败，启用数据兜底: {e}")
-            return self._fallback_markdown(
-                market, trade_date, calendar, quotes, news, sentiment
-            )
+            return self._fallback_markdown(market, trade_date, calendar, quotes, news, sentiment)
 
     # ─── 数据精简 (喂给 LLM，控制 token) ────────────────────────
     def _format_data_bundle(self, market, calendar, quotes, news, sentiment) -> str:
@@ -206,7 +213,7 @@ class MorningBriefingGenerator:
                 if isinstance(qlist, dict):
                     qlist = [qlist]
                 lines = []
-                for q in qlist[: max_quotes]:
+                for q in qlist[:max_quotes]:
                     lines.append(
                         f"- {q.get('symbol') or q.get('ticker')}: 价={q.get('last_price') or q.get('price')} "
                         f"涨跌幅={q.get('change_pct') or q.get('change_percent')} "
@@ -224,9 +231,7 @@ class MorningBriefingGenerator:
                     nlist = [nlist]
                 lines = []
                 for n in nlist[:10]:
-                    lines.append(
-                        f"- {n.get('time') or ''} | {n.get('title')} | {n.get('summary') or ''}"
-                    )
+                    lines.append(f"- {n.get('time') or ''} | {n.get('title')} | {n.get('summary') or ''}")
                 if lines:
                     parts.append("【24h 宏观新闻】\n" + "\n".join(lines))
             except Exception:  # noqa: BLE001
@@ -255,8 +260,6 @@ class MorningBriefingGenerator:
         )
 
 
-async def generate_morning_briefing(
-    market: str = "全球", target_date: Optional[str] = None
-) -> BriefingResult:
+async def generate_morning_briefing(market: str = "全球", target_date: Optional[str] = None) -> BriefingResult:
     """模块级便捷封装"""
     return await MorningBriefingGenerator().generate(market=market, target_date=target_date)
