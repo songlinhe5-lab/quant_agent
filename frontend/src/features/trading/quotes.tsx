@@ -22,6 +22,7 @@ import { StrategyIDE } from '@/features/strategy/layout/strategy-ide'
 import { MonitorModeLayout } from '@/features/scene/monitor-mode-layout'
 import { AIChat } from '@/features/strategy/layout/ai-chat'
 import { MarketNewsPanel } from './market-news-panel'
+import { WatchNewsOverlay } from './watch-news-overlay'
 
 // PROD-12: 分屏对比子面板——拥有独立行情数据（独立 WebSocket/历史），并与主图共享同一 syncGroup 实现十字线同步
 const COMPARE_PERIODS = [
@@ -227,6 +228,9 @@ export function QuotesModule() {
 
         {/* 自选列表：可拖拽悬浮球 */}
         <FloatingWatchlist watchlist={watchlist} selectedSymbol={selectedSymbol} setSelectedSymbol={setSelectedSymbol} addTicker={addTicker} removeTicker={removeTicker} />
+
+        {/* PROD-05 深化：盯盘全屏可折叠新闻流浮层（≥1920px 展开钮，默认收起） */}
+        <WatchNewsOverlay />
       </div>
     )
   }
