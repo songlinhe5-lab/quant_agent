@@ -2,7 +2,7 @@
 ALERT-COND-01: 自由表达式求值引擎的跨语言 golden 测试
 
 以 frontend/src/features/quotes/custom-indicator/expr-golden.json 为唯一事实来源（ground truth，
-由前端 TS 引擎回填 expected），断言后端 Python 端 (backend.services.expr_evaluator) 在以下维度
+由前端 TS 引擎回填 expected），断言后端 Python 端 (backend.services.alert.expr_evaluator) 在以下维度
 与前端 1:1 一致：
   - ok（是否成功求值）
   - is_bool（结果是否为布尔序列）
@@ -20,7 +20,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.core.alert_models import AlertRule, AlertRuleType  # noqa: E402
-from backend.services.expr_evaluator import (  # noqa: E402
+from backend.services.alert.expr_evaluator import (  # noqa: E402
     ExprEvaluator,
     evaluate_expr,
 )
