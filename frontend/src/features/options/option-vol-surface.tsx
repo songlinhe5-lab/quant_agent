@@ -44,7 +44,14 @@ export function OptionVolSurface({ symbol }: { symbol: string }) {
       `${API_BASE_URL}/options/chain-matrix/${encodeURIComponent(symbol)}?max_expiries=8&max_strikes=21`,
       { credentials: 'include' },
     )
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) {
+          return r.json().then((err) => {
+            throw new Error(err?.detail || `HTTP ${r.status}`)
+          })
+        }
+        return r.json()
+      })
       .then((j) => {
         if (!cancelled) {
           setData(j)
