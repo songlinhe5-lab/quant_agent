@@ -4,6 +4,7 @@
  */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { GridSearchMetrics, GridSortBy } from './engine'
 
 export interface CustomIndicator {
   id: string
@@ -34,15 +35,41 @@ export interface CISignal {
   ts: number
 }
 
+/** 策略配方：网格搜索最优参数组合持久化（PROD-11 COND-01） */
+export interface StrategyRecipe {
+  id: string
+  /** 配方名称 */
+  name: string
+  /** 备注（可选） */
+  description?: string
+  /** 来源自定义指标名称 */
+  indicatorName: string
+  /** 原始表达式（如 RSI(@n) > 50） */
+  expr: string
+  /** 最优参数组合 */
+  params: Record<string, number>
+  /** 网格搜索排序方式 */
+  sortBy: GridSortBy
+  /** 回测指标快照 */
+  metrics?: GridSearchMetrics
+  /** 创建时间戳（ms） */
+  createdAt: number
+}
+
 interface CustomIndicatorState {
   indicators: CustomIndicator[]
   signalLog: CISignal[]
+  recipes: StrategyRecipe[]
   add: (ind: Omit<CustomIndicator, 'id'>) => void
   update: (id: string, patch: Partial<CustomIndicator>) => void
   remove: (id: string) => void
   toggle: (id: string) => void
   pushSignal: (s: CISignal) => void
   clearSignals: () => void
+  /** 保存一条策略配方（自动生成 id / createdAt） */
+  saveRecipe: (recipe: Omit<StrategyRecipe, 'id' | 'createdAt'>) => void
+  /** 删除指定配方 */
+  removeRecipe: (id: string) => void
 }
 
 const genId = () =>
@@ -60,6 +87,7 @@ export const useCustomIndicatorStore = create<CustomIndicatorState>()(
         { id: 'demo-golden', name: 'MA5 上穿 MA20', expr: 'CROSS(MA(CLOSE,5), MA(CLOSE,20))', color: '#10b981', visible: false },
       ],
       signalLog: [],
+      recipes: [],
       add: (ind) => set((s) => ({ indicators: [...s.indicators, { ...ind, id: genId() }] })),
       update: (id, patch) =>
         set((s) => ({ indicators: s.indicators.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
@@ -69,7 +97,18 @@ export const useCustomIndicatorStore = create<CustomIndicatorState>()(
       pushSignal: (sig) =>
         set((s) => ({ signalLog: [sig, ...s.signalLog].slice(0, MAX_SIGNALS) })),
       clearSignals: () => set({ signalLog: [] }),
+      saveRecipe: (recipe) =>
+        set((s) => ({ recipes: [...s.recipes, { ...recipe, id: genId(), createdAt: Date.now() }] })),
+      removeRecipe: (id) => set((s) => ({ recipes: s.recipes.filter((r) => r.id !== id) })),
     }),
-    { name: 'quant-custom-indicators' },
+    {
+      name: 'quant-custom-indicators',
+      version: 1,
+      // 老版本存储无 recipes 字段时，补齐空数组避免 undefined
+      migrate: (persisted) => {
+        const p = (persisted ?? {}) as Partial<CustomIndicatorState>
+        return { ...p, recipes: p.recipes ?? [] }
+      },
+    },
   ),
 )

@@ -3,8 +3,8 @@
  * 列出用户指标、支持新增/编辑/删除/显隐，并实时做语法校验与结果预览。
  */
 import { useState, useEffect } from 'react'
-import { Plus, Pencil, Trash2, Eye, EyeOff, X, HelpCircle, Sigma, Activity, Download, LayoutGrid } from 'lucide-react'
-import { useCustomIndicatorStore, type CustomIndicator } from './store'
+import { Plus, Pencil, Trash2, Eye, EyeOff, X, HelpCircle, Sigma, Activity, Download, LayoutGrid, Save, Bookmark } from 'lucide-react'
+import { useCustomIndicatorStore, type CustomIndicator, type StrategyRecipe } from './store'
 import { validate, evaluate, runSignalBacktest, listParams, runParamGridSearch, type CIBar, type SignalBacktestResult, type ParamGrid, type GridSearchItem, type GridSortBy } from './engine'
 
 const PRESET_COLORS = ['#a855f7', '#10b981', '#ef4444', '#3b82f6', '#f59e0b', '#ec4899', '#14b8a6']
@@ -78,6 +78,14 @@ export function CustomIndicatorPanel({
   const [gridSort, setGridSort] = useState<GridSortBy>('totalReturnPct')
   const [gridResult, setGridResult] = useState<ReturnType<typeof runParamGridSearch> | null>(null)
   const [gridRunning, setGridRunning] = useState(false)
+  // 💡 PROD-11 COND-01：策略配方库
+  const [showRecipes, setShowRecipes] = useState(false)
+  const [recipeFormOpen, setRecipeFormOpen] = useState(false)
+  const [recipeName, setRecipeName] = useState('')
+  const [recipeDesc, setRecipeDesc] = useState('')
+  const recipes = useCustomIndicatorStore((s) => s.recipes)
+  const saveRecipe = useCustomIndicatorStore((s) => s.saveRecipe)
+  const removeRecipe = useCustomIndicatorStore((s) => s.removeRecipe)
   const [pane, setPane] = useState<'overlay' | 'separate' | 'auto'>('auto')
   const [showHelp, setShowHelp] = useState(false)
   const [bt, setBt] = useState<{ name: string; res: SignalBacktestResult } | null>(null)
@@ -172,6 +180,32 @@ export function CustomIndicatorPanel({
   const applyGridParams = (it: GridSearchItem) => {
     setParams(it.params)
     setEditing((e) => (e ? { ...e, params: it.params } : e))
+  }
+  // 💡 PROD-11 COND-01：把网格搜索最优参数存为配方
+  const openRecipeForm = () => {
+    if (!gridResult?.ok || !gridResult.best || !gridResult.best.ok) return
+    setRecipeName(`${name || '未命名'} 最优参数`)
+    setRecipeDesc('')
+    setRecipeFormOpen(true)
+  }
+  const confirmSaveRecipe = () => {
+    if (!gridResult?.ok || !gridResult.best || !gridResult.best.ok || !gridResult.best.metrics) return
+    saveRecipe({
+      name: recipeName.trim() || '未命名配方',
+      description: recipeDesc.trim() || undefined,
+      indicatorName: name || '未命名指标',
+      expr: expr.trim(),
+      params: gridResult.best.params,
+      sortBy: gridSort,
+      metrics: gridResult.best.metrics,
+    })
+    setRecipeFormOpen(false)
+    setRecipeName('')
+    setRecipeDesc('')
+  }
+  const applyRecipe = (r: StrategyRecipe) => {
+    setParams(r.params)
+    setEditing((e) => (e ? { ...e, params: r.params } : e))
   }
   const GRID_SORT_LABEL: Record<GridSortBy, string> = {
     totalReturnPct: '累计收益',
@@ -337,6 +371,9 @@ export function CustomIndicatorPanel({
                 <button onClick={openGrid} className="flex w-full items-center justify-center gap-1 rounded bg-primary/15 py-1 text-[10px] text-primary hover:bg-primary/25">
                   <LayoutGrid className="h-3 w-3" /> 网格搜索最优参数
                 </button>
+                <button onClick={() => setShowRecipes((v) => !v)} className="flex w-full items-center justify-center gap-1 rounded bg-amber-500/15 py-1 text-[10px] text-amber-400 hover:bg-amber-500/25">
+                  <Bookmark className="h-3 w-3" /> 配方库 ({recipes.length})
+                </button>
                 {showGrid && (
                   <>
                     <div className="space-y-1">
@@ -368,7 +405,34 @@ export function CustomIndicatorPanel({
                     {gridResult && !gridResult.ok && <div className="text-[9px] text-red-400">{gridResult.error}</div>}
                     {gridResult?.ok && (
                       <div className="space-y-1">
-                        <div className="text-[9px] text-muted-foreground">共 {gridResult.total} 组 · 已跑 {gridResult.ran} 组 · 按 {GRID_SORT_LABEL[gridSort]} 排序</div>
+                        <div className="flex items-center justify-between">
+                          <div className="text-[9px] text-muted-foreground">共 {gridResult.total} 组 · 已跑 {gridResult.ran} 组 · 按 {GRID_SORT_LABEL[gridSort]} 排序</div>
+                          {gridResult.best && (
+                            <button onClick={openRecipeForm} title="把最优参数存为配方" className="flex items-center gap-0.5 text-[9px] text-emerald-400 hover:text-emerald-300">
+                              <Save className="h-3 w-3" />存为配方
+                            </button>
+                          )}
+                        </div>
+                        {recipeFormOpen && (
+                          <div className="space-y-1 rounded border border-emerald-500/30 bg-emerald-500/5 p-1.5">
+                            <input
+                              value={recipeName}
+                              onChange={(e) => setRecipeName(e.target.value)}
+                              placeholder="配方名称"
+                              className="w-full rounded border border-border/50 bg-background px-1 py-0.5 text-[10px] text-foreground outline-none focus:border-emerald-500"
+                            />
+                            <input
+                              value={recipeDesc}
+                              onChange={(e) => setRecipeDesc(e.target.value)}
+                              placeholder="备注（可选）"
+                              className="w-full rounded border border-border/50 bg-background px-1 py-0.5 text-[10px] text-foreground outline-none focus:border-emerald-500"
+                            />
+                            <div className="flex gap-1">
+                              <button onClick={confirmSaveRecipe} className="flex-1 rounded bg-emerald-500/20 py-0.5 text-[9px] text-emerald-400 hover:bg-emerald-500/30">保存</button>
+                              <button onClick={() => setRecipeFormOpen(false)} className="flex-1 rounded bg-muted py-0.5 text-[9px] text-muted-foreground hover:bg-muted/60">取消</button>
+                            </div>
+                          </div>
+                        )}
                         <div className="max-h-40 space-y-0.5 overflow-y-auto">
                           {gridResult.items.map((it, idx) => (
                             <div key={idx} className="flex items-center gap-1 rounded bg-background/60 px-1 py-0.5 text-[9px] font-mono">
@@ -389,6 +453,37 @@ export function CustomIndicatorPanel({
                       </div>
                     )}
                   </>
+                )}
+              </div>
+            )}
+
+            {showRecipes && (
+              <div className="space-y-1 rounded border border-amber-500/30 bg-amber-500/5 p-1.5">
+                <div className="text-[10px] font-medium text-amber-400">策略配方库</div>
+                {recipes.length === 0 ? (
+                  <div className="text-[9px] text-slate-500">暂无配方，运行网格搜索后点击「存为配方」保存最优参数</div>
+                ) : (
+                  <div className="max-h-52 space-y-1 overflow-y-auto">
+                    {recipes.map((r) => (
+                      <div key={r.id} className="rounded bg-background/60 px-1.5 py-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="truncate text-[10px] font-medium text-foreground">{r.name}</span>
+                          <button onClick={() => removeRecipe(r.id)} title="删除配方" className="shrink-0 text-red-400 hover:text-red-300">
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                        <div className="truncate font-mono text-[8px] text-slate-400">{Object.entries(r.params).map(([k, v]) => `@${k}=${v}`).join(' ')}</div>
+                        {r.metrics && (
+                          <div className="flex gap-2 font-mono text-[8px]">
+                            <span className={r.metrics.totalReturnPct >= 0 ? 'text-emerald-400' : 'text-red-400'}>{r.metrics.totalReturnPct.toFixed(1)}%</span>
+                            <span className="text-slate-500">S{r.metrics.sharpe.toFixed(2)}</span>
+                            <span className="text-slate-500">胜{r.metrics.winRatePct.toFixed(0)}%</span>
+                          </div>
+                        )}
+                        <button onClick={() => applyRecipe(r)} className="mt-0.5 rounded bg-primary/20 px-1 text-[9px] text-primary hover:bg-primary/30">应用参数</button>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             )}
