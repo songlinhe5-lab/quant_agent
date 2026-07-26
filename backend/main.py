@@ -112,6 +112,7 @@ from backend.routers.system import router as system_router  # noqa: E402
 from backend.routers.system_health import root_router  # noqa: E402
 from backend.routers.system_health import router as system_health_router  # noqa: E402
 from backend.routers.trade import router as trade_router  # noqa: E402
+from backend.routers.ai_narrator import router as ai_narrator_router  # noqa: E402
 
 # ─── API 版本前缀 ─────────────────────────────────────────────
 API_URL_VERSION = os.getenv("API_URL_VERSION", "v1")
@@ -184,6 +185,7 @@ def create_app() -> FastAPI:
     application.include_router(paper_router, prefix=API_PREFIX)
     application.include_router(futu_admin_router, prefix=API_PREFIX)
     application.include_router(alert_router, prefix=API_PREFIX)
+    application.include_router(ai_narrator_router, prefix=API_PREFIX)  # AI-01
     application.include_router(logs_router, prefix=API_PREFIX)
     application.include_router(eval_router, prefix=API_PREFIX)
     application.include_router(earnings_router, prefix=API_PREFIX)
