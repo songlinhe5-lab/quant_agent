@@ -2,7 +2,7 @@ import { TerminalSquare, AlertCircle, Bot, Loader2 } from 'lucide-react'
 import { useStrategyStore } from '../stores'
 import { Button } from '@/components/ui/button'
 import { useState } from 'react'
-import { API_BASE_URL, getAccessToken } from '@/lib/api-client'
+import { API_BASE_URL, getValidAccessToken } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
 
 export function BottomTerminal() {
@@ -20,11 +20,12 @@ export function BottomTerminal() {
       const assistantMsgId = Date.now().toString()
       store.addMessage({ id: assistantMsgId, role: 'assistant', content: '', reasoning: '', status: 'reasoning' })
       
+      const token = await getValidAccessToken()
       const response = await fetch(`${API_BASE_URL}/strategy/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(getAccessToken() ? { 'Authorization': `Bearer ${getAccessToken()}` } : {})
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({ prompt: fixPrompt })
       })
