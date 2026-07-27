@@ -280,24 +280,28 @@ export function QuotesModule() {
               {compareMode ? '退出同步对比' : '同步对比'}
             </button>
           </div>
-          {compareMode ? (
-            <div className="flex flex-col flex-1 min-h-0 gap-1">
-              <div className="flex-1 min-h-0">
-                <ChartErrorBoundary name="KlineChart">
-                  <LightweightChartCanvas selectedSymbol={selectedSymbol} selectedPeriod={selectedPeriod} setSelectedPeriod={setSelectedPeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={isWatchlistExpanded} toggleWatchlist={toggleWatchlist} selectedItem={selected} hasData={hasData} syncGroup="default" />
-                </ChartErrorBoundary>
+          {/* AI-01: 默认/研究三栏场景也挂载异动解说联动——与 compare/watch 场景一致 */}
+          <AnomalyFlash symbol={selectedSymbol}>
+            {compareMode ? (
+              <div className="flex flex-col flex-1 min-h-0 gap-1">
+                <div className="flex-1 min-h-0">
+                  <ChartErrorBoundary name="KlineChart">
+                    <LightweightChartCanvas selectedSymbol={selectedSymbol} selectedPeriod={selectedPeriod} setSelectedPeriod={setSelectedPeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={isWatchlistExpanded} toggleWatchlist={toggleWatchlist} selectedItem={selected} hasData={hasData} syncGroup="default" />
+                  </ChartErrorBoundary>
+                </div>
+                <div className="flex-1 min-h-0 border-t border-border/40">
+                  <ChartErrorBoundary name="KlineChartCompare">
+                    <CompareChartPanel watchlist={watchlist} updateTicker={updateTicker} mainSymbol={selectedSymbol} theme={theme} syncGroup="default" />
+                  </ChartErrorBoundary>
+                </div>
               </div>
-              <div className="flex-1 min-h-0 border-t border-border/40">
-                <ChartErrorBoundary name="KlineChartCompare">
-                  <CompareChartPanel watchlist={watchlist} updateTicker={updateTicker} mainSymbol={selectedSymbol} theme={theme} syncGroup="default" />
-                </ChartErrorBoundary>
-              </div>
-            </div>
-          ) : (
-            <ChartErrorBoundary name="KlineChart">
-              <LightweightChartCanvas selectedSymbol={selectedSymbol} selectedPeriod={selectedPeriod} setSelectedPeriod={setSelectedPeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={isWatchlistExpanded} toggleWatchlist={toggleWatchlist} selectedItem={selected} hasData={hasData} syncGroup="default" />
-            </ChartErrorBoundary>
-          )}
+            ) : (
+              <ChartErrorBoundary name="KlineChart">
+                <LightweightChartCanvas selectedSymbol={selectedSymbol} selectedPeriod={selectedPeriod} setSelectedPeriod={setSelectedPeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={isWatchlistExpanded} toggleWatchlist={toggleWatchlist} selectedItem={selected} hasData={hasData} syncGroup="default" />
+              </ChartErrorBoundary>
+            )}
+            <NarratorBubble symbol={selectedSymbol} />
+          </AnomalyFlash>
         </Panel>
 
         <PanelResizeHandle className="w-1 mx-1 rounded-full bg-border/40 hover:bg-primary/50 hover:shadow-[0_0_8px_rgba(var(--primary),0.5)] transition-all cursor-col-resize" />

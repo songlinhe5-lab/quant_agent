@@ -143,10 +143,12 @@ jobs:
           - node: yf-a
             host_secret: VPS_S1_HOST
             ssh_key_secret: VPS_S1_SSH_KEY
+            user_secret: VPS_S1_USER
             node_id: us-yf-a
           - node: yf-b
             host_secret: VPS_S2_HOST
             ssh_key_secret: VPS_S2_SSH_KEY
+            user_secret: VPS_S2_USER
             node_id: us-yf-b
     steps:
       - uses: actions/checkout@v4
@@ -163,11 +165,16 @@ jobs:
         run: |
           echo "compose_b64=$(base64 -w0 docker-compose.yf-node.yml)" >> $GITHUB_OUTPUT
 
+      - name: SSH connectivity pre-flight
+        uses: ./.github/actions/ssh-preflight
+        with:
+          host: ${{ secrets[matrix.host_secret] }}
+
       - name: Deploy to YF Node
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets[matrix.host_secret] }}
-          username: ${{ secrets.VPS_S1_USER }}
+          username: ${{ secrets[matrix.user_secret] }}
           key: ${{ secrets[matrix.ssh_key_secret] }}
           envs: GITHUB_ACTOR
           command_timeout: 15m

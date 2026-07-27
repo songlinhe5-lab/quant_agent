@@ -20,6 +20,39 @@ from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
 
 import pytest  # noqa: E402
 
+# ─── 🔧 跟踪并释放所有 SQLAlchemy 引擎（消除 Python 3.13 未关闭连接 ResourceWarning）──
+# 测试集里多处创建引擎却从不 dispose：backend.core.database 的模块级全局引擎
+# (sqlite:///./test.db，SingletonThreadPool 保持常开连接)、各测试模块自建的 :memory: 引擎、
+# 以及各 db_session fixture 的临时引擎。Python 3.13 下这些连接被 GC 时触发
+# `ResourceWarning: unclosed database`，且会被挂在恰好运行的测试上（与用例本身无关）。
+# 通过包装 create_engine / create_async_engine 统一登记，session 结束时一次性优雅 dispose。
+# ⚠️ 必须在任何模块导入 backend.core.database 之前安装包装（conftest 顶部最早执行，安全）。
+import sqlalchemy  # noqa: E402
+import sqlalchemy.ext.asyncio as _sa_asyncio  # noqa: E402
+
+_TRACKED_ENGINES = set()
+_ORIG_CREATE_ENGINE = sqlalchemy.create_engine
+_ORIG_CREATE_ASYNC_ENGINE = _sa_asyncio.create_async_engine
+
+
+def _track_create_engine(*args, **kwargs):
+    eng = _ORIG_CREATE_ENGINE(*args, **kwargs)
+    _TRACKED_ENGINES.add(eng)
+    return eng
+
+
+def _track_create_async_engine(*args, **kwargs):
+    eng = _ORIG_CREATE_ASYNC_ENGINE(*args, **kwargs)
+    _TRACKED_ENGINES.add(eng)
+    return eng
+
+
+sqlalchemy.create_engine = _track_create_engine
+_sa_asyncio.create_async_engine = _track_create_async_engine
+# 兼容通过顶层 sqlalchemy.create_async_engine 调用的场景（若其指向 ext.asyncio 版本）
+if getattr(sqlalchemy, "create_async_engine", None) is not None:
+    sqlalchemy.create_async_engine = _track_create_async_engine
+
 # ─── ARCH-02: 全局熔断单例隔离 ───────────────────────────────
 # circuit_breaker 是进程级全局单例，接入 fetch 主路径后若某测试将其熔断成 OPEN，
 # 会污染后续测试。每个测试前后重置，保证测试隔离。
@@ -31,6 +64,24 @@ def _reset_circuit_breaker():
     circuit_breaker.reset()
     yield
     circuit_breaker.reset()
+
+
+# ─── 🔧 DB 引擎释放（消除 Python 3.13 未关闭连接 ResourceWarning）────────────
+# 配合上方对 create_engine / create_async_engine 的包装，session 结束时统一 dispose
+# 所有被登记的引擎（全局引擎 + 模块级引擎 + 临时 fixture 引擎），确保底层 sqlite 连接
+# 优雅关闭，不依赖 SQLAlchemy __del__ 的触发时机。
+@pytest.fixture(scope="session", autouse=True)
+def _dispose_db_engines_on_teardown():
+    yield
+    for eng in list(_TRACKED_ENGINES):
+        try:
+            # sync 引擎直接 dispose；async 引擎取其底层 sync_engine 在同步上下文关闭连接
+            sync_eng = getattr(eng, "sync_engine", eng)
+            sync_eng.dispose()
+        except Exception:
+            # 测试环境容错：引擎未初始化或已释放则忽略
+            pass
+    _TRACKED_ENGINES.clear()
 
 
 # ─── 🔧 关键修复：在导入任何模块之前 Mock redis.asyncio.Redis ─────────

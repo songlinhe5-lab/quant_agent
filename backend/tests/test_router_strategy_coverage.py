@@ -424,9 +424,13 @@ async def test_monte_carlo_sandbox_module_inject(test_client):
 async def test_monte_carlo_sandbox_crash(test_client):
     ok_df = pd.DataFrame({"Close": [1, 2, 3]})
     with (
+        # ⚠️ 必须 mock market_data: 路由在 run_cpu_bound 之前会先调用 fetch_yf_data
+        # 拉取基本面特征, 若不 mock 会发起真实(慢)请求, 拖慢整轮 CI (~7s)
+        patch.object(strategy_router, "market_data") as md,
         patch.object(strategy_router, "run_cpu_bound", new=AsyncMock(side_effect=RuntimeError("boom"))),
         patch.object(strategy_router, "redis_client", _FakeRedis()),
     ):
+        md.fetch_yf_data = AsyncMock(return_value=(False, None, "nope"))
         with patch.object(strategy_router, "_fetch_backtest_data", new=AsyncMock(return_value=(True, ok_df, "ok"))):
             resp = test_client.post(
                 "/api/v1/strategy/monte-carlo-sandbox",
