@@ -1,0 +1,36 @@
+name: SSH Connectivity Pre-flight
+description: >-
+  在 appleboy/ssh-action 之前探测目标主机 22 端口可达性, 把原先静默的
+  "dial tcp :22 i/o timeout" 变成 15 秒内快速失败的清晰诊断
+  (host 不可达 / 防火墙未放行 / host secret 填错 / Tailscale 内网 IP 不可路由)。
+
+inputs:
+  host:
+    description: "目标主机 (IP 或域名), 通常来自 secrets.*_HOST"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Probe SSH reachability
+      shell: bash
+      run: |
+        HOST="${{ inputs.host }}"
+        if [ -z "$HOST" ]; then
+          echo "WARN: host 为空, 跳过 pre-flight (ssh-action 将因缺 host 失败)"
+          exit 0
+        fi
+        echo "Probing SSH reachability to ${HOST}:22 ..."
+        if ! command -v nc >/dev/null 2>&1; then
+          echo "WARN: nc(netcat) 在 runner 上不可用, 跳过 pre-flight"
+          exit 0
+        fi
+        if timeout 15 nc -zv "${HOST}" 22 2>&1; then
+          echo "OK: ${HOST}:22 可达"
+        else
+          echo "FAIL: 15s 内无法连通 ${HOST}:22"
+          echo "可能原因: VPS 宕机/未开机 | 安全组或防火墙未放行 22 | host secret 填错(重启后 IP 变更)"
+          echo "或该 host 为 Tailscale/内网 IP, 而 GitHub 公共 runner 不在 tailnet 内 (无法路由)。"
+          echo "这是网络/基础设施问题, 非代码 bug; 请先恢复 VPS 可达性再部署。"
+          exit 1
+        fi

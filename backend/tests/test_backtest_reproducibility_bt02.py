@@ -76,6 +76,9 @@ def db_session():
     session = Session()
     yield session
     session.close()
+    # ⚠️ 必须显式 dispose 引擎：:memory: 引擎的连接池会保持常开连接，
+    # 不 dispose 会在 Python 3.13 下触发 ResourceWarning: unclosed database
+    engine.dispose()
 
 
 class TestManifestPure:

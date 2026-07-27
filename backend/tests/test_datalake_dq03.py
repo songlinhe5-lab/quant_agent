@@ -61,6 +61,9 @@ def db_session():
     s = Session()
     yield s
     s.close()
+    # ⚠️ 必须显式 dispose 引擎（StaticPool 保持常开连接），否则 Python 3.13 下
+    # 触发 ResourceWarning: unclosed database
+    engine.dispose()
 
 
 @pytest.mark.asyncio
