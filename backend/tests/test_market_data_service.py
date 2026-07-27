@@ -189,7 +189,13 @@ class TestHealthCheck:
 
 class TestToYfFormat:
     def test_hk_format(self, service):
-        assert service._to_yf_format("00700.HK") == "00700.HK"
+        # yfinance 使用 4 位零填充的港股代码（腾讯 00700 -> 0700.HK）
+        assert service._to_yf_format("00700.HK") == "0700.HK"
+
+    def test_hk_futu_prefix(self, service):
+        # 💡 回归：Futu 风格前缀必须转为 yfinance 格式，否则 yfinance 返回空数据 (BE-15 关联 bug)
+        assert service._to_yf_format("HK.00772") == "0772.HK"
+        assert service._to_yf_format("HK.00700") == "0700.HK"
 
     def test_a_share_sh(self, service):
         result = service._to_yf_format("SH.600519")
@@ -200,6 +206,8 @@ class TestToYfFormat:
         assert ".SZ" in result or "000858" in result
 
     def test_us_format(self, service):
+        # Futu 前缀 US. 需剥离
+        assert service._to_yf_format("US.AAPL") == "AAPL"
         assert service._to_yf_format("AAPL") == "AAPL"
 
     def test_crypto_format(self, service):

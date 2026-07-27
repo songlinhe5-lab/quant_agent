@@ -629,7 +629,7 @@ async def get_company_news(ticker: str, limit: int = 10):
                             "%Y-%m-%d %H:%M:%S"
                         ),
                         "headline": f"{ticker}: 分析师上调目标价格至新高",
-                        "summary": "多家投行因看好行业前景而纷纷上调对 {ticker} 的目标价",
+                        "summary": f"多家投行因看好行业前景而纷纷上调对 {ticker} 的目标价",
                     },
                 ]
 
@@ -739,6 +739,23 @@ async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 3
     }
 
 
+def _safe_pct(value, mult: float = 100.0):
+    """安全地把数值字段转成百分比字符串。
+
+    yfinance 对缺失字段常返回字符串 "N/A" 或非数值，直接 `value * 100` 会抛
+    TypeError 导致 500。此处统一转换为 float，失败/NaN 返回 None。
+    """
+    if value is None:
+        return None
+    try:
+        fv = float(value)
+    except (TypeError, ValueError):
+        return None
+    if fv != fv:  # NaN
+        return None
+    return f"{fv * mult:.2f}%"
+
+
 @router.get("/fundamental/{ticker}")
 async def get_fundamental(ticker: str):
     yf_ticker = format_yf_ticker(ticker)
@@ -829,7 +846,7 @@ async def get_fundamental(ticker: str):
                     "fund_family": yf_info.get("fundFamily"),
                     "total_assets": yf_info.get("totalAssets"),  # noqa: E501
                     "nav_price": yf_info.get("navPrice"),
-                    "yield": f"{yf_info.get('yield', 0) * 100:.2f}%" if yf_info.get("yield") else None,  # noqa: E501
+                    "yield": _safe_pct(yf_info.get("yield")),  # noqa: E501
                     "beta": yf_info.get("beta"),
                 },
             }
@@ -841,7 +858,7 @@ async def get_fundamental(ticker: str):
             "forward_PE": yf_info.get("forwardPE"),
             "PEG_ratio": yf_info.get("pegRatio"),
             "price_to_book": yf_info.get("priceToBook"),  # noqa: E501
-            "ROE": f"{yf_info.get('returnOnEquity', 0) * 100:.2f}%" if yf_info.get("returnOnEquity") else None,  # noqa: E501
+            "ROE": _safe_pct(yf_info.get("returnOnEquity")),  # noqa: E501
             "short_ratio": yf_info.get("shortRatio"),
             "beta": yf_info.get("beta"),
         }

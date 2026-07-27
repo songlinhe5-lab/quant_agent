@@ -332,27 +332,16 @@ class MarketDataService:
 
     def _to_yf_format(self, ticker: str) -> str:
         """
-        转换为 Yahoo Finance 支持的 ticker 格式
+        转换为 Yahoo Finance 支持的 ticker 格式。
 
-        Examples:
-            "00700.HK" → "00700.HK"
-            "AAPL" → "AAPL"
+        委托给 core.ticker_format.format_yf_ticker（与 fundamental 路由、
+        yfinance_service 行为对齐的唯一规范实现），正确处理 Futu 风格前缀：
+            "HK.00772"  → "0772.HK"
+            "US.AAPL"   → "AAPL"
             "SH.600519" → "600519.SS"
             "SZ.000858" → "000858.SZ"
-            "BTC-USD" → "BTC-USD"
+        以及指数映射（"HK.800000" → "^HSI" 等）。
         """
-        # 已经正确的格式直接返回
-        if "." in ticker or "-" in ticker:
-            # 已有后缀或货币后缀
-            if ticker.endswith((".HK", ".US", ".SS", ".SZ", "-USD")):
-                return ticker
+        from backend.core.ticker_format import format_yf_ticker
 
-        # A 股格式转换
-        if ticker.startswith("SH."):
-            return ticker.replace("SH.", "").replace(".", ".SS")
-
-        if ticker.startswith("SZ."):
-            return ticker.replace("SZ.", "").replace(".", ".SZ")
-
-        # 港股/美股格式保持不变
-        return ticker
+        return format_yf_ticker(ticker)
