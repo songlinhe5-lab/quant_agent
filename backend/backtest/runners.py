@@ -13,7 +13,14 @@ import numpy as np
 import pandas as pd
 import vectorbt as vbt
 
-from .sandbox import SAFE_BUILTINS, BaseStrategySandbox, SandboxTimeoutTracer, _safe_stat, _verify_safe_code
+from .sandbox import (  # noqa: F401
+    SAFE_BUILTINS,
+    BaseStrategySandbox,
+    SandboxTimeoutTracer,
+    _safe_stat,
+    _verify_safe_code,
+    strip_numba_cache_source,
+)
 
 
 def _build_sandbox_globals():
@@ -55,6 +62,55 @@ def _prepare_df(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _drive_strategy(strategy_instance, df: pd.DataFrame):
+    """统一驱动策略，兼容两种契约，返回 (res_df, signal_encoding)。
+
+    与 optimize_strategy_parameters / backtest 工具描述一致，支持：
+      A. 类方法契约 (参考策略 DivergenceResonanceStrategy)：
+         实例具备 _calculate_indicators() / _generate_signals() 方法，操作 self.df，
+         输出稠密 signal 列 (1=持有多, 0=空仓, -1=持有空)。encoding="dense"
+      B. 模块级 Numba 契约 (大模型常见写法)：
+         实例具备 generate_signals(df) 方法，返回含 signal/position 列的 DataFrame。
+         signal 视为事件标记 (1=买入, -1=卖出平多, 0=无操作) → long-only。encoding="event"
+    """
+    if hasattr(strategy_instance, "_calculate_indicators") and hasattr(strategy_instance, "_generate_signals"):
+        strategy_instance.df = df.copy()
+        strategy_instance._calculate_indicators()
+        strategy_instance._generate_signals()
+        res_df = strategy_instance.df
+        encoding = "dense"
+    elif hasattr(strategy_instance, "generate_signals"):
+        res_df = strategy_instance.generate_signals(df.copy())
+        encoding = "event"
+    else:
+        raise ValueError(
+            "策略必须实现 _calculate_indicators()/_generate_signals() 类方法，"
+            "或实现 generate_signals(df) 方法（Numba 矢量化）。"
+        )
+
+    if "signal" not in res_df.columns and "position" in res_df.columns:
+        res_df = res_df.rename(columns={"position": "signal"})
+    if "signal" not in res_df.columns:
+        res_df["signal"] = 0
+    return res_df, encoding
+
+
+def _signal_entries_exits(res_df: pd.DataFrame, encoding: str):
+    """根据信号编码生成 vectorbt from_signals 所需的买卖布尔序列。"""
+    sig = res_df["signal"]
+    if encoding == "event":
+        entries = sig == 1
+        exits = sig == -1
+        short_entries = pd.Series(False, index=res_df.index)
+        short_exits = pd.Series(False, index=res_df.index)
+    else:
+        entries = sig == 1
+        exits = sig == 0
+        short_entries = sig == -1
+        short_exits = sig == 0
+    return entries, exits, short_entries, short_exits
+
+
 def run_grid_search_backtest(
     source_code: str,
     class_name: str,
@@ -73,7 +129,8 @@ def run_grid_search_backtest(
     global_scope = _build_sandbox_globals()
 
     with SandboxTimeoutTracer(timeout_seconds=5.0):
-        exec(source_code, global_scope, local_scope)
+        exec(strip_numba_cache_source(source_code), global_scope, local_scope)
+        global_scope.update(local_scope)  # 让模块级 Numba 函数对策略方法的 __globals__ 可见
         StrategyClass = local_scope.get(class_name)
         if not StrategyClass:
             raise ValueError(f"未在代码中找到名为 {class_name} 的策略类")
@@ -93,22 +150,9 @@ def run_grid_search_backtest(
         try:
             with SandboxTimeoutTracer(timeout_seconds=3.0):
                 strategy_instance = StrategyClass(**params)
+                res_df, signal_encoding = _drive_strategy(strategy_instance, df)
 
-                if not (
-                    hasattr(strategy_instance, "_calculate_indicators")
-                    and hasattr(strategy_instance, "_generate_signals")
-                ):
-                    raise ValueError(
-                        "Grid Search 仅支持 Numba 矢量化策略。请让大模型实现 _calculate_indicators 等函数。"  # noqa: E501
-                    )
-
-                strategy_instance.df = df.copy()
-                strategy_instance._calculate_indicators()
-                strategy_instance._generate_signals()
-
-            res_df = strategy_instance.df
-            if "signal" not in res_df.columns:
-                res_df["signal"] = 0
+            res_df = res_df.copy()  # 避免 SettingWithCopy
             if "atr" not in res_df.columns:
                 res_df["atr"] = res_df["Close"].diff().abs().rolling(14).mean().fillna(res_df["Close"] * 0.01)
 
@@ -116,10 +160,7 @@ def run_grid_search_backtest(
             if len(res_df) < 10:
                 raise ValueError("回测数据长度不足 (清洗 NaN 后数据少于 10 根)")
 
-            entries = res_df["signal"] == 1
-            exits = res_df["signal"] == 0
-            short_entries = res_df["signal"] == -1
-            short_exits = res_df["signal"] == 0
+            entries, exits, short_entries, short_exits = _signal_entries_exits(res_df, signal_encoding)
 
             atr_multi = params.get(
                 "atr_multiplier",
@@ -216,7 +257,8 @@ def run_monte_carlo_stress_test(
     _verify_safe_code(source_code)
 
     with SandboxTimeoutTracer(timeout_seconds=5.0):
-        exec(source_code, global_scope, local_scope)
+        exec(strip_numba_cache_source(source_code), global_scope, local_scope)
+        global_scope.update(local_scope)  # 让模块级 Numba 函数对策略方法的 __globals__ 可见
         StrategyClass = local_scope.get(class_name)
         if not StrategyClass:
             raise ValueError(f"未在代码中找到名为 {class_name} 的策略类")
@@ -270,18 +312,9 @@ def run_monte_carlo_stress_test(
 
         with SandboxTimeoutTracer(timeout_seconds=3.0):
             strategy_instance = StrategyClass(**params)
-            if not (
-                hasattr(strategy_instance, "_calculate_indicators") and hasattr(strategy_instance, "_generate_signals")
-            ):
-                raise ValueError("Monte Carlo 测试仅支持 Numba 矢量化策略。")
+            res_df, signal_encoding = _drive_strategy(strategy_instance, noisy_df)
 
-            strategy_instance.df = noisy_df
-            strategy_instance._calculate_indicators()
-            strategy_instance._generate_signals()
-
-        res_df = strategy_instance.df
-        if "signal" not in res_df.columns:
-            res_df["signal"] = 0
+        res_df = res_df.copy()
         if "atr" not in res_df.columns:
             res_df["atr"] = res_df["Close"].diff().abs().rolling(14).mean().fillna(res_df["Close"] * 0.01)
 
@@ -296,9 +329,7 @@ def run_monte_carlo_stress_test(
             )
         )
 
-        entries = res_df["signal"] == 1
-        short_entries = res_df["signal"] == -1
-        exits = res_df["signal"] == 0
+        entries, exits, short_entries, short_exits = _signal_entries_exits(res_df, signal_encoding)
         sl_trail_pct = (res_df["atr"] * atr_multi) / res_df["Close"]
 
         pf = vbt.Portfolio.from_signals(
@@ -381,7 +412,8 @@ def run_batch_sandbox_backtest(
         source_code = "from __future__ import annotations\n" + source_code
 
     with SandboxTimeoutTracer(timeout_seconds=5.0):
-        exec(source_code, global_scope, local_scope)
+        exec(strip_numba_cache_source(source_code), global_scope, local_scope)
+        global_scope.update(local_scope)  # 让模块级 Numba 函数对策略方法的 __globals__ 可见
         StrategyClass = local_scope.get(class_name)
         if not StrategyClass:
             raise ValueError(f"未在代码中找到名为 {class_name} 的策略类")
@@ -406,18 +438,9 @@ def run_batch_sandbox_backtest(
 
         with SandboxTimeoutTracer(timeout_seconds=3.0):
             strategy_instance = StrategyClass(**params)
-            if not (
-                hasattr(strategy_instance, "_calculate_indicators") and hasattr(strategy_instance, "_generate_signals")
-            ):
-                raise ValueError("批量回测仅支持纯 Pandas Numba 矢量化策略。")
+            res_df, signal_encoding = _drive_strategy(strategy_instance, df)
 
-            strategy_instance.df = df
-            strategy_instance._calculate_indicators()
-            strategy_instance._generate_signals()
-
-        res_df = strategy_instance.df
-        if "signal" not in res_df.columns:
-            res_df["signal"] = 0
+        res_df = res_df.copy()
         if "atr" not in res_df.columns:
             res_df["atr"] = res_df["Close"].diff().abs().rolling(14).mean().fillna(res_df["Close"] * 0.01)
 
@@ -425,14 +448,16 @@ def run_batch_sandbox_backtest(
         if len(res_df) < 10:
             continue
 
+        entries, exits, short_entries, short_exits = _signal_entries_exits(res_df, signal_encoding)
+
         close_dict[ticker] = res_df["Close"]
         open_dict[ticker] = res_df["Open"]
         high_dict[ticker] = res_df["High"]
         low_dict[ticker] = res_df["Low"]
-        entries_dict[ticker] = res_df["signal"] == 1
-        exits_dict[ticker] = res_df["signal"] == 0
-        short_entries_dict[ticker] = res_df["signal"] == -1
-        short_exits_dict[ticker] = res_df["signal"] == 0
+        entries_dict[ticker] = entries
+        exits_dict[ticker] = exits
+        short_entries_dict[ticker] = short_entries
+        short_exits_dict[ticker] = short_exits
         sl_trail_dict[ticker] = (res_df["atr"] * atr_multi) / res_df["Close"]
 
         valid_tickers.append(ticker)

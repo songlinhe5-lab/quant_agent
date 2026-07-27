@@ -12,6 +12,10 @@ from backend.backtest import (
     run_grid_search_backtest,
     run_monte_carlo_stress_test,
 )
+from backend.backtest.runners import (  # noqa: F401
+    _drive_strategy,
+    _signal_entries_exits,
+)
 
 from .conftest import _make_ohlc_data
 
@@ -325,3 +329,130 @@ class TestBatchSandboxBacktest:
         )
         assert "LONG" in result["valid_tickers"]
         assert "SHORT" not in result["valid_tickers"]
+
+
+# ─── 策略契约：模块级 Numba 函数 + generate_signals(df) 事件契约 ─────────
+class TestStrategyContract:
+    """回归：optimize_strategy_parameters 曾因沙箱拦截 numba / 不支持事件契约而失败。
+
+    模型按系统"矢量化"要求常写成「模块级 @njit 函数 + 类方法 generate_signals(df)」
+    并输出稀疏 position 列 (1=买, -1=卖平多)，runners 必须兼容该契约。
+    """
+
+    def test_drive_strategy_event_contract_renames_position(self):
+        # 纯 Pandas 版事件契约：generate_signals(df) 返回 position 列
+        source = (
+            "import pandas as pd\n"
+            "import numpy as np\n"
+            "class EventStrat:\n"
+            "    def generate_signals(self, df):\n"
+            "        df = df.copy()\n"
+            "        sig = np.zeros(len(df), dtype=int)\n"
+            "        # 第 20 根买入，第 60 根卖出平多\n"
+            "        sig[20] = 1\n"
+            "        sig[60] = -1\n"
+            "        df['position'] = sig\n"
+            "        return df\n"
+        )
+        ns = {}
+        exec(source, ns)
+        inst = ns["EventStrat"]()
+        res_df, encoding = _drive_strategy(inst, _make_ohlc_data(120))
+        assert encoding == "event"
+        assert "signal" in res_df.columns  # position 已重命名为 signal
+        entries, exits, short_entries, short_exits = _signal_entries_exits(res_df, encoding)
+        # event 编码：1=买入触发 entries， -1=卖出平多触发 exits，不允许做空
+        assert bool(entries.iloc[20]) is True
+        assert bool(exits.iloc[60]) is True
+        assert short_entries.sum() == 0
+
+    def test_drive_strategy_dense_contract_still_works(self):
+        # 参考策略契约 (类方法 + 稠密 signal) 必须继续可用
+        source = (
+            "import pandas as pd\n"
+            "import numpy as np\n"
+            "class DenseStrat:\n"
+            "    def _calculate_indicators(self):\n"
+            "        self.df['signal'] = 0\n"
+            "        self.df.loc[self.df.index[10], 'signal'] = 1\n"
+            "    def _generate_signals(self):\n"
+            "        self.df.loc[self.df.index[50], 'signal'] = -1\n"
+        )
+        ns = {}
+        exec(source, ns)
+        inst = ns["DenseStrat"]()
+        res_df, encoding = _drive_strategy(inst, _make_ohlc_data(80))
+        assert encoding == "dense"
+        entries, exits, short_entries, short_exits = _signal_entries_exits(res_df, encoding)
+        assert bool(entries.iloc[10]) is True
+        assert bool(short_entries.iloc[50]) is True  # 稠密编码下 -1 = 做空
+
+    def test_grid_search_numba_event_contract(self):
+        # 💡 端到端回归：用户原始 ChandelierExitStrategy (模块级 @njit + generate_signals)
+        # 必须能跑通网格搜索并产出真实指标，不再被安全风控拦截
+        numba_source = (
+            "import numpy as np\n"
+            "from numba import njit\n"
+            "import pandas as pd\n"
+            "@njit(cache=True)\n"
+            "def _calculate_indicators(opens, highs, lows, closes, volumes, atr_period):\n"
+            "    n = len(closes)\n"
+            "    tr = np.zeros(n)\n"
+            "    tr[0] = highs[0] - lows[0]\n"
+            "    for i in range(1, n):\n"
+            "        tr[i] = max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1]))\n"
+            "    atr = np.zeros(n)\n"
+            "    if n > atr_period:\n"
+            "        atr[atr_period-1] = np.mean(tr[:atr_period])\n"
+            "        for i in range(atr_period, n):\n"
+            "            atr[i] = (atr[i-1] * (atr_period - 1) + tr[i]) / atr_period\n"
+            "    return tr, atr\n"
+            "@njit(cache=True)\n"
+            "def _generate_signals(opens, highs, lows, closes, volumes, atr, atr_period, atr_multiplier):\n"
+            "    n = len(closes)\n"
+            "    signals = np.zeros(n, dtype=np.int32)\n"
+            "    first_valid = atr_period\n"
+            "    if first_valid >= n:\n"
+            "        return signals\n"
+            "    in_position = False\n"
+            "    highest_high = 0.0\n"
+            "    for i in range(first_valid, n):\n"
+            "        if not in_position:\n"
+            "            signals[i] = 1\n"
+            "            in_position = True\n"
+            "            highest_high = highs[i]\n"
+            "        else:\n"
+            "            highest_high = max(highest_high, highs[i])\n"
+            "            stop_price = highest_high - atr_multiplier * atr[i]\n"
+            "            if lows[i] <= stop_price:\n"
+            "                signals[i] = -1\n"
+            "                in_position = False\n"
+            "    return signals\n"
+            "class ChandelierExitStrategy:\n"
+            "    def __init__(self, atr_period=14, atr_multiplier=2.0):\n"
+            "        self.atr_period = int(atr_period)\n"
+            "        self.atr_multiplier = atr_multiplier\n"
+            "    def generate_signals(self, df):\n"
+            "        df = df.copy()\n"
+            "        opens = df['Open'].values.astype(np.float64)\n"
+            "        highs = df['High'].values.astype(np.float64)\n"
+            "        lows = df['Low'].values.astype(np.float64)\n"
+            "        closes = df['Close'].values.astype(np.float64)\n"
+            "        volumes = df['Volume'].values.astype(np.float64) if 'Volume' in df.columns else np.zeros(len(df))\n"
+            "        _, atr = _calculate_indicators(opens, highs, lows, closes, volumes, self.atr_period)\n"
+            "        signals = _generate_signals(opens, highs, lows, closes, volumes, atr, self.atr_period, self.atr_multiplier)\n"
+            "        df['position'] = signals\n"
+            "        return df\n"
+        )
+        df = _make_ohlc_data(300)
+        results = run_grid_search_backtest(
+            df=df,
+            source_code=numba_source,
+            class_name="ChandelierExitStrategy",
+            param_grid={"atr_period": [7, 14], "atr_multiplier": [1.5, 2.5]},
+            target_metric="win_rate",
+        )
+        assert len(results) > 0
+        for r in results:
+            assert isinstance(r["metrics"]["win_rate"], str)
+            assert "%" in r["metrics"]["win_rate"]

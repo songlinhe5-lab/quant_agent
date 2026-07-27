@@ -44,6 +44,67 @@ def _safe_import(name, globals=None, locals=None, fromlist=(), level=0):
     return __import__(name, globals, locals, fromlist, level)
 
 
+# 💡 允许的安全装饰器：仅放行 Numba JIT 等纯性能优化装饰器。
+# 回测引擎明确依赖 Numba 矢量化策略 (njit/jit)，故需放行其装饰器，
+# 但仍封杀一切可能捕获闭包/篡改执行流的未授权装饰器 (如 staticmethod 之外的自定义装饰器)。
+ALLOWED_DECORATORS = frozenset(
+    {
+        "njit",
+        "jit",
+        "vectorize",
+        "guvectorize",
+        "cfunc",
+        "stencil",
+    }
+)
+
+
+def _decorator_name(dec):
+    """从装饰器 AST 节点提取名称，支持 @njit / @njit(...) / @numba.njit 等形式。"""
+    if isinstance(dec, ast.Name):
+        return dec.id
+    if isinstance(dec, ast.Attribute):
+        return dec.attr
+    if isinstance(dec, ast.Call):
+        return _decorator_name(dec.func)
+    return None
+
+
+# 💡 缓存已剥离 cache 参数的源码，避免对每个网格组合重复 AST 解析
+_STRIP_CACHE_SOURCE: dict = {}
+
+
+def strip_numba_cache_source(source_code: str) -> str:
+    """返回剥离 Numba JIT 装饰器 cache= 参数后的源码。
+
+    沙箱策略以字符串形式 exec，numba 无法为临时源码 ('<string>') 定位缓存文件，
+    会抛 RuntimeError('cannot cache function ...: no locator available')。
+    而缓存对一次性沙箱执行毫无收益，故移除 cache=True/False 等参数。
+    """
+    cached = _STRIP_CACHE_SOURCE.get(source_code)
+    if cached is not None:
+        return cached
+    try:
+        tree = ast.parse(source_code)
+    except SyntaxError:
+        # 交给后续流程报语法错误，此处原样返回
+        _STRIP_CACHE_SOURCE[source_code] = source_code
+        return source_code
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            for dec in node.decorator_list:
+                if isinstance(dec, ast.Call) and _decorator_name(dec) in ALLOWED_DECORATORS:
+                    dec.keywords = [k for k in dec.keywords if k.arg != "cache"]
+
+    try:
+        out = ast.unparse(tree)
+    except Exception:
+        out = source_code
+    _STRIP_CACHE_SOURCE[source_code] = out
+    return out
+
+
 # 💡 设定严格的沙箱文件读写目录，并自动创建
 SANDBOX_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data", "sandbox_workspace"))
 os.makedirs(SANDBOX_DIR, exist_ok=True)
@@ -137,21 +198,21 @@ class SandboxSecurityVisitor(ast.NodeVisitor):
             "typing",
             "typing_extensions",
             "__future__",
+            # 💡 Numba 矢量化是回测引擎的一等公民：放行导入，但运行期仍需经 _safe_import 与装饰器白名单双重校验
+            "numba",
         }
         # 💡 新增：追踪当前所处的函数调用栈，用于侦测递归
         self.current_funcs = []
 
     def visit_FunctionDef(self, node):
-        # 💡 安全风控：彻底封杀所有函数装饰器，防止通过闭包和高阶函数篡改执行流或绕过递归检测  # noqa: E501
-        if node.decorator_list:
-            dec_name = getattr(
-                node.decorator_list[0],
-                "id",
-                getattr(getattr(node.decorator_list[0], "func", None), "id", "..."),
-            )
-            raise ValueError(
-                f"🚨 安全风控拦截：沙箱内严禁使用函数装饰器 (如 @{dec_name})！请保持策略代码极简。"  # noqa: E501
-            )
+        # 💡 安全风控：封杀未授权的函数装饰器，仅放行 Numba JIT 等纯性能优化装饰器。
+        # 防止通过闭包和高阶函数篡改执行流或绕过递归检测。
+        for dec in node.decorator_list:
+            dname = _decorator_name(dec)
+            if dname not in ALLOWED_DECORATORS:
+                raise ValueError(
+                    f"🚨 安全风控拦截：沙箱内严禁使用未授权装饰器 @{dname}！仅允许 Numba JIT 装饰器 (njit/jit/vectorize 等)。"  # noqa: E501
+                )
 
         # 压入当前正在解析的函数名
         self.current_funcs.append(node.name)
@@ -159,9 +220,13 @@ class SandboxSecurityVisitor(ast.NodeVisitor):
         self.current_funcs.pop()
 
     def visit_ClassDef(self, node):
-        # 💡 安全风控：彻底封杀所有类装饰器
-        if node.decorator_list:
-            raise ValueError("🚨 安全风控拦截：沙箱内严禁使用类装饰器！")
+        # 💡 安全风控：封杀未授权的类装饰器，仅放行 Numba JIT 等性能优化装饰器
+        for dec in node.decorator_list:
+            dname = _decorator_name(dec)
+            if dname not in ALLOWED_DECORATORS:
+                raise ValueError(
+                    f"🚨 安全风控拦截：沙箱内严禁使用未授权类装饰器 @{dname}！仅允许 Numba JIT 装饰器 (njit/jit 等)。"
+                )
         self.generic_visit(node)
 
     def visit_Name(self, node):

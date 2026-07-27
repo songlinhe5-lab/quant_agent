@@ -13,7 +13,15 @@ import numpy as np
 import pandas as pd
 import vectorbt as vbt
 
-from .sandbox import SAFE_BUILTINS, BaseStrategySandbox, SandboxTimeoutTracer, _safe_stat, _verify_safe_code
+from .runners import _drive_strategy, _signal_entries_exits
+from .sandbox import (  # noqa: F401
+    SAFE_BUILTINS,
+    BaseStrategySandbox,
+    SandboxTimeoutTracer,
+    _safe_stat,
+    _verify_safe_code,
+    strip_numba_cache_source,
+)
 
 
 class EventDrivenBacktestEngine:
@@ -282,23 +290,24 @@ def run_dynamic_sandbox_backtest(
     }
 
     with SandboxTimeoutTracer(timeout_seconds=5.0):
-        exec(source_code, global_scope, local_scope)
+        exec(strip_numba_cache_source(source_code), global_scope, local_scope)
+        global_scope.update(local_scope)  # 让模块级 Numba 函数对策略方法的 __globals__ 可见
         StrategyClass = local_scope.get(class_name)
         if not StrategyClass:
             raise ValueError(f"未在代码中找到名为 {class_name} 的策略类")
 
         strategy_instance = StrategyClass(**params)
 
-    # 💡 如果开启了 debug_mode，主动降级回高保真事件驱动引擎以捕获逐 K 线内部状态
-    if (
-        not debug_mode
-        and hasattr(strategy_instance, "_calculate_indicators")
-        and hasattr(strategy_instance, "_generate_signals")
-    ):
-        print(
-            f"⚡️ [Backtest Engine] 检测到 {class_name} 支持矢量化，启用 Numba 高频引擎进行回测！"  # noqa: E501
-        )
+    # 💡 debug_mode 开启时强制降级至高保真事件驱动引擎以捕获逐 K 线内部状态
+    if debug_mode:
+        print("🐛 [Backtest Engine] 调试模式已开启，强制降级至高保真事件驱动引擎！")
+        engine = EventDrivenBacktestEngine(strategy_instance, df, initial_capital=initial_capital, debug_mode=True)
+        with SandboxTimeoutTracer(timeout_seconds=10.0):
+            return engine.run()
 
+    # 💡 兼容类方法契约与 generate_signals(df) 事件契约，启用 Numba 高频引擎
+    print(f"⚡️ [Backtest Engine] 检测到 {class_name} 支持矢量化，启用 Numba 高频引擎进行回测！")
+    try:
         df_copy = df.copy()
         if isinstance(df_copy.columns, pd.MultiIndex):
             df_copy.columns = df_copy.columns.get_level_values(0)
@@ -308,124 +317,110 @@ def run_dynamic_sandbox_backtest(
             if col in df_copy.columns:
                 df_copy[col.lower()] = df_copy[col]
 
-        strategy_instance.df = df_copy
         with SandboxTimeoutTracer(timeout_seconds=5.0):
-            strategy_instance._calculate_indicators()
-            strategy_instance._generate_signals()
+            res_df, signal_encoding = _drive_strategy(strategy_instance, df_copy)
+    except ValueError:
+        # 不兼容矢量化契约 → 兜底至高保真事件驱动引擎
+        engine = EventDrivenBacktestEngine(strategy_instance, df, initial_capital=initial_capital, debug_mode=False)
+        with SandboxTimeoutTracer(timeout_seconds=10.0):
+            return engine.run()
 
-        res_df = strategy_instance.df
-        if "signal" not in res_df.columns:
-            res_df["signal"] = 0
-        if "atr" not in res_df.columns:
-            res_df["atr"] = res_df["Close"].diff().abs().rolling(14).mean().fillna(res_df["Close"] * 0.01)
+    res_df = res_df.copy()  # 避免 SettingWithCopy
+    if "atr" not in res_df.columns:
+        res_df["atr"] = res_df["Close"].diff().abs().rolling(14).mean().fillna(res_df["Close"] * 0.01)
 
-        res_df = res_df.dropna().copy()
+    res_df = res_df.dropna().copy()
+    if len(res_df) < 10:
+        raise ValueError("回测数据长度不足 (清洗 NaN 后数据少于 10 根)")
 
-        if len(res_df) < 10:
-            raise ValueError("回测数据长度不足 (清洗 NaN 后数据少于 10 根)")
+    entries, exits, short_entries, short_exits = _signal_entries_exits(res_df, signal_encoding)
 
-        entries = res_df["signal"] == 1
-        exits = res_df["signal"] == 0
-        short_entries = res_df["signal"] == -1
-        short_exits = res_df["signal"] == 0
+    atr_multi = params.get(
+        "atr_multiplier",
+        params.get("stop_loss_atr_multiple", params.get("sl_multiplier", 2.0)),
+    )
+    sl_trail_pct = (res_df["atr"] * float(atr_multi)) / res_df["Close"]
 
-        atr_multi = params.get(
-            "atr_multiplier",
-            params.get("stop_loss_atr_multiple", params.get("sl_multiplier", 2.0)),
+    pf = vbt.Portfolio.from_signals(
+        close=res_df["Close"],
+        open=res_df["Open"],
+        high=res_df["High"],
+        low=res_df["Low"],
+        entries=entries,
+        exits=exits,
+        short_entries=short_entries,
+        short_exits=short_exits,
+        init_cash=float(initial_capital),
+        fees=0.0005,
+        slippage=0.001,
+        sl_trail=sl_trail_pct,
+        upon_long_conflict="ignore",
+        upon_short_conflict="ignore",
+        freq="1D",
+    )
+
+    stats = pf.stats()
+    total_return_val = _safe_stat(stats, "Total Return [%]") / 100.0
+    sharpe_ratio = _safe_stat(stats, "Sharpe Ratio")
+    max_drawdown = _safe_stat(stats, "Max Drawdown [%]") / 100.0
+    win_rate = _safe_stat(stats, "Win Rate [%]") / 100.0
+    total_fees = _safe_stat(stats, "Total Fees Paid")
+
+    equity_curve = []
+    trades = []
+
+    equity_s = pf.value()
+    benchmark_start_price = res_df["Close"].iloc[0]
+
+    for date, eq in equity_s.items():
+        date_str = str(date).split(" ")[0].split("T")[0]
+        price = res_df.loc[date, "Close"]
+        equity_curve.append(
+            {
+                "date": date_str,
+                "equity": round(eq, 2),
+                "benchmark": round(initial_capital * (price / benchmark_start_price), 2),
+            }
         )
-        sl_trail_pct = (res_df["atr"] * float(atr_multi)) / res_df["Close"]
 
-        pf = vbt.Portfolio.from_signals(
-            close=res_df["Close"],
-            open=res_df["Open"],
-            high=res_df["High"],
-            low=res_df["Low"],
-            entries=entries,
-            exits=exits,
-            short_entries=short_entries,
-            short_exits=short_exits,
-            init_cash=float(initial_capital),
-            fees=0.0005,
-            slippage=0.001,
-            sl_trail=sl_trail_pct,
-            upon_long_conflict="ignore",
-            upon_short_conflict="ignore",
-            freq="1D",
-        )
-
-        stats = pf.stats()
-        total_return_val = _safe_stat(stats, "Total Return [%]") / 100.0
-        sharpe_ratio = _safe_stat(stats, "Sharpe Ratio")
-        max_drawdown = _safe_stat(stats, "Max Drawdown [%]") / 100.0
-        win_rate = _safe_stat(stats, "Win Rate [%]") / 100.0
-        total_fees = _safe_stat(stats, "Total Fees Paid")
-
-        equity_curve = []
-        trades = []
-
-        equity_s = pf.value()
-        benchmark_start_price = res_df["Close"].iloc[0]
-
-        for date, eq in equity_s.items():
-            date_str = str(date).split(" ")[0].split("T")[0]
-            price = res_df.loc[date, "Close"]
-            equity_curve.append(
+    if not pf.trades.records_readable.empty:
+        for _, tr in pf.trades.records_readable.iterrows():
+            entry_date_str = str(tr["Entry Timestamp"]).split(" ")[0].split("T")[0]
+            entry_action = "BUY" if tr["Direction"] == "Long" else "SHORT"
+            trades.append(
                 {
-                    "date": date_str,
-                    "equity": round(eq, 2),
-                    "benchmark": round(initial_capital * (price / benchmark_start_price), 2),
+                    "date": entry_date_str,
+                    "action": entry_action,
+                    "price": round(tr.get("Avg Entry Price") or tr.get("Entry Price", 0), 2),
+                    "shares": abs(int(tr["Size"])),
+                    "profit": 0.0,
                 }
             )
 
-        if not pf.trades.records_readable.empty:
-            for _, tr in pf.trades.records_readable.iterrows():
-                entry_date_str = str(tr["Entry Timestamp"]).split(" ")[0].split("T")[0]
-                entry_action = "BUY" if tr["Direction"] == "Long" else "SHORT"
-                trades.append(
-                    {
-                        "date": entry_date_str,
-                        "action": entry_action,
-                        "price": round(tr.get("Avg Entry Price") or tr.get("Entry Price", 0), 2),
-                        "shares": abs(int(tr["Size"])),
-                        "profit": 0.0,
-                    }
-                )
+            exit_date_str = str(tr["Exit Timestamp"]).split(" ")[0].split("T")[0]
+            exit_action = "SELL" if tr["Direction"] == "Long" else "COVER"
+            trades.append(
+                {
+                    "date": exit_date_str,
+                    "action": exit_action,
+                    "price": round(tr.get("Avg Exit Price") or tr.get("Exit Price", 0), 2),
+                    "shares": abs(int(tr["Size"])),
+                    "profit": round(tr["PnL"], 2),
+                }
+            )
 
-                exit_date_str = str(tr["Exit Timestamp"]).split(" ")[0].split("T")[0]
-                exit_action = "SELL" if tr["Direction"] == "Long" else "COVER"
-                trades.append(
-                    {
-                        "date": exit_date_str,
-                        "action": exit_action,
-                        "price": round(tr.get("Avg Exit Price") or tr.get("Exit Price", 0), 2),
-                        "shares": abs(int(tr["Size"])),
-                        "profit": round(tr["PnL"], 2),
-                    }
-                )
+        trades.sort(key=lambda x: x["date"])
 
-            trades.sort(key=lambda x: x["date"])
-
-        return {
-            "metrics": {
-                "engine": "⚡ VectorBT",
-                "total_return": f"{total_return_val * 100:.2f}%",
-                "sharpe_ratio": f"{sharpe_ratio:.2f}",
-                "max_drawdown": f"{max_drawdown * 100:.2f}%",
-                "win_rate": f"{win_rate * 100:.2f}%",
-                "total_friction_cost": f"${total_fees:,.2f}",
-            },
-            "equity_curve": equity_curve,
-            "trades": trades,
-            "limit_orders": [],
-        }
-
-    # =========================================================================
-    # 启用高保真事件驱动引擎兜底 (处理无法被 Numba 矢量化的复杂脚本)
-    # =========================================================================
-    if debug_mode:
-        print(
-            "🐛 [Backtest Engine] 调试模式已开启，强制降级至高保真事件驱动引擎以捕获逐 K 线状态！"  # noqa: E501
-        )
-    engine = EventDrivenBacktestEngine(strategy_instance, df, initial_capital=initial_capital, debug_mode=debug_mode)
-    with SandboxTimeoutTracer(timeout_seconds=10.0):
-        return engine.run()
+    return {
+        "metrics": {
+            "engine": "⚡ VectorBT",
+            "total_return": f"{total_return_val * 100:.2f}%",
+            "sharpe_ratio": f"{sharpe_ratio:.2f}",
+            "max_drawdown": f"{max_drawdown * 100:.2f}%",
+            "win_rate": f"{win_rate * 100:.2f}%",
+            "total_friction_cost": f"${total_fees:,.2f}",
+        },
+        "equity_curve": equity_curve,
+        "trades": trades,
+        "limit_orders": [],
+    }
