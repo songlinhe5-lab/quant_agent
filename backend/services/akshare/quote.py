@@ -7,6 +7,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict
 
+from backend.core.circuit_breaker import get_cooldown_seconds
 from backend.core.redis_client import redis_client
 from backend.core.retry_utils import with_global_retry
 
@@ -133,7 +134,7 @@ class QuoteMixin:
             print(f"⚠️ [AKShare] 个股新闻获取失败: {e}")
             if self._error_count >= self._max_errors:
                 print(f"🚨 [AKShare] 连续报错 {self._error_count} 次，触发个股新闻熔断休眠 60 秒！")  # noqa: E501
-                self._circuit_breaker_until = time.time() + 60.0
+                self._circuit_breaker_until = time.time() + get_cooldown_seconds()
 
             result = {
                 "status": "error",
@@ -230,7 +231,7 @@ class QuoteMixin:
             print(f"⚠️ [AKShare] A 股行情获取失败: {e}")
             if self._error_count >= self._max_errors:
                 print(f"🚨 [AKShare] 连续报错 {self._error_count} 次，触发实时行情熔断休眠 60 秒！")  # noqa: E501
-                self._circuit_breaker_until = time.time() + 60.0
+                self._circuit_breaker_until = time.time() + get_cooldown_seconds()
 
             return {"status": "error", "message": f"行情异常: {e}"}
 
@@ -304,6 +305,6 @@ class QuoteMixin:
             print(f"⚠️ [AKShare] A 股历史 K 线获取失败: {e}")
             if self._error_count >= self._max_errors:
                 print(f"🚨 [AKShare] 连续报错 {self._error_count} 次，触发 K 线接口熔断休眠 60 秒！")  # noqa: E501
-                self._circuit_breaker_until = time.time() + 60.0
+                self._circuit_breaker_until = time.time() + get_cooldown_seconds()
 
             return {"status": "error", "message": f"K线异常: {e}"}

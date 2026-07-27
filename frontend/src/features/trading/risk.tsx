@@ -6,6 +6,8 @@ import { useTheme } from 'next-themes'
 import { apiClient } from '@/lib/api-client'
 import { AccountSection } from './risk-account-section'
 import type { AccountsMap } from './risk-types'
+import { MARKET_LABELS } from './risk-types'
+import { useCopilotContextStore } from '@/stores/useCopilotContextStore'
 
 // ── Main Component ───────────────────────────────────────────────────────────
 
@@ -29,6 +31,25 @@ export function RiskModule() {
       setLoading(false)
     }
   }
+
+  // PROD-01: 将组合上下文写入 AI 副驾，实现"场景感知助手"
+  useEffect(() => {
+    const markets = ['HK', 'US'].filter((m) => accounts[m])
+    if (markets.length === 0) {
+      useCopilotContextStore.getState().clearContext()
+      return
+    }
+    const lines = markets.map((m) => {
+      const acc = accounts[m]
+      const name = MARKET_LABELS[m]?.name ?? m
+      return `${m} · ${name}: 净值 ${acc.kpi.nav} ${acc.kpi.currency} · 持仓 ${acc.position_count} 笔`
+    })
+    useCopilotContextStore.getState().setContext({
+      kind: 'risk',
+      title: '风控',
+      summary: lines.join('\n'),
+    })
+  }, [accounts])
 
   if (!isMounted) return null
   const isDark = theme === 'dark'

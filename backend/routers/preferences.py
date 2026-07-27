@@ -1,5 +1,6 @@
 import json
-from typing import Any, Dict, List
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
@@ -11,6 +12,83 @@ from backend.core.redis_client import l1_cached_redis, redis_client
 from backend.routers.auth import get_current_user
 
 router = APIRouter(prefix="/settings", tags=["Preferences"])
+
+
+# ==========================================
+# --- AI-09: 模块级 AI 推送偏好底座 ---
+# ==========================================
+# 受控模块：AI-01 ~ AI-08（AI-09 自身为底座，无需对自己的推送做偏好）
+AI_PUSH_MODULES = [f"ai{str(i).zfill(2)}" for i in range(1, 9)]  # ["ai01" .. "ai08"]
+AI_PUSH_DEFAULTS = {"enabled": True, "threshold": None}
+
+
+class AiPushPref(BaseModel):
+    """单个模块的推送偏好"""
+
+    module: str
+    enabled: bool = True
+    threshold: Optional[float] = None
+
+
+class AiPushPrefsRequest(BaseModel):
+    prefs: List[AiPushPref]
+
+
+async def _load_user_preferences(username: str) -> Dict[str, Any]:
+    raw = await redis_client.get(f"quant:user:{username}:preferences")
+    return json.loads(raw) if raw else {}
+
+
+async def _save_user_preferences(username: str, prefs: Dict[str, Any]) -> None:
+    await redis_client.set(f"quant:user:{username}:preferences", json.dumps(prefs))
+
+
+@router.get("/preferences/ai-push")
+async def get_ai_push_prefs(current_user: models.User = Depends(get_current_user)):
+    """获取模块级 AI 推送偏好（AI-09 底座）。返回全部受控模块，未存储项回落默认值。"""
+    try:
+        full = await _load_user_preferences(current_user.username)
+        stored: Dict[str, Any] = full.get("ai_push", {}) or {}
+        prefs = [
+            AiPushPref(
+                module=m,
+                enabled=bool(stored.get(m, AI_PUSH_DEFAULTS)["enabled"]),
+                threshold=stored.get(m, AI_PUSH_DEFAULTS).get("threshold"),
+            )
+            for m in AI_PUSH_MODULES
+        ]
+        return {"status": "success", "data": {"prefs": [p.model_dump() for p in prefs]}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取 AI 推送偏好失败: {str(e)}")
+
+
+@router.put("/preferences/ai-push")
+async def update_ai_push_prefs(
+    req: AiPushPrefsRequest,
+    current_user: models.User = Depends(get_current_user),
+):  # noqa: E501
+    """批量更新模块级 AI 推送偏好（AI-09 底座）。仅接受已知模块，未知模块返回 400。"""
+    if not req.prefs:
+        raise HTTPException(status_code=400, detail="prefs 不能为空")
+    try:
+        full = await _load_user_preferences(current_user.username)
+        ai_push: Dict[str, Any] = full.get("ai_push", {}) or {}
+        updated = 0
+        for p in req.prefs:
+            if p.module not in AI_PUSH_MODULES:
+                raise HTTPException(status_code=400, detail=f"未知 AI 模块: {p.module}")
+            ai_push[p.module] = {"enabled": p.enabled, "threshold": p.threshold}
+            updated += 1
+        full["ai_push"] = ai_push
+        await _save_user_preferences(current_user.username, full)
+        return {
+            "status": "success",
+            "data": {"updated": updated, "ts": datetime.now(timezone.utc).isoformat()},
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"更新 AI 推送偏好失败: {str(e)}")
 
 
 @router.get("/preferences")

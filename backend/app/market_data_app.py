@@ -34,6 +34,7 @@ MarketDataService - 市场行情应用服务层
 from typing import List, Optional
 
 from backend.adapters.ports.data_source_port import DataSourceResult
+from backend.core.circuit_breaker_integration import fetch_via_breaker_sync
 
 from ..adapters.akshare.akshare_adapter import AkShareAdapter
 from ..adapters.futu.futu_adapter import FutuAdapter
@@ -127,19 +128,19 @@ class MarketDataService:
         """
         # Step 1: 优先尝试 Futu
         if self._futu.is_available:
-            result = self._futu.fetch("quote", {"ticker": ticker})
+            result = fetch_via_breaker_sync("futu", self._futu.fetch, "quote", {"ticker": ticker})
             if result.is_success():
                 return result
 
         # Step 2: A 股直接降级到 AkShare
         if ticker.startswith(("SH.", "SZ.")):
-            ak_result = self._akshare.fetch("stock_quote", {"ticker": ticker})
+            ak_result = fetch_via_breaker_sync("akshare", self._akshare.fetch, "stock_quote", {"ticker": ticker})
             if ak_result.is_success():
                 return ak_result
 
         # Step 3: 兜底到 YFinance
         yf_ticker = self._to_yf_format(ticker)
-        return self._yfinance.fetch("quote", {"ticker": yf_ticker})
+        return fetch_via_breaker_sync("yfinance", self._yfinance.fetch, "quote", {"ticker": yf_ticker})
 
     def get_quotes_batch(self, tickers: List[str]) -> DataSourceResult:
         """
@@ -204,13 +205,13 @@ class MarketDataService:
         # 优先尝试 Futu
         if self._futu.is_available:
             if self._futu.supports_action("history"):
-                result = self._futu.fetch("history", params)
+                result = fetch_via_breaker_sync("futu", self._futu.fetch, "history", params)
                 if result.is_success():
                     return result
 
         # A 股优先用 AkShare
         if ticker.startswith(("SH.", "SZ.")):
-            ak_result = self._akshare.fetch("stock_history", params)
+            ak_result = fetch_via_breaker_sync("akshare", self._akshare.fetch, "stock_history", params)
             if ak_result.is_success():
                 return ak_result
 
@@ -228,7 +229,7 @@ class MarketDataService:
         }
         period = days_map.get(num, "1mo")
 
-        return self._yfinance.fetch("history", {**params, "period": period})
+        return fetch_via_breaker_sync("yfinance", self._yfinance.fetch, "history", {**params, "period": period})
 
     def get_full_kline(self, ticker: str, interval: str = "1d") -> DataSourceResult:
         """
@@ -247,7 +248,7 @@ class MarketDataService:
             "period": "max",
         }
 
-        return self._yfinance.fetch("history", params)
+        return fetch_via_breaker_sync("yfinance", self._yfinance.fetch, "history", params)
 
     # ========== 辅助方法：资金流向 ==========
 
@@ -263,7 +264,7 @@ class MarketDataService:
         """
         # 尝试 Futu (如果支持 fund_flow 能力)
         if self._futu.is_available and self._futu.supports_action("fund_flow"):
-            return self._futu.fetch("fund_flow", {"ticker": ticker})
+            return fetch_via_breaker_sync("futu", self._futu.fetch, "fund_flow", {"ticker": ticker})
 
         # 降级到 YFinance (如果有类似功能)
         return DataSourceResult.degraded(
@@ -289,7 +290,7 @@ class MarketDataService:
             params = {"underlying_ticker": underlying_ticker}
             if expire_date:
                 params["expire_date"] = expire_date
-            return self._futu.fetch("option_chain", params)
+            return fetch_via_breaker_sync("futu", self._futu.fetch, "option_chain", params)
 
         return DataSourceResult.degraded(
             "Option chain data only available via Futu for now",
@@ -331,27 +332,16 @@ class MarketDataService:
 
     def _to_yf_format(self, ticker: str) -> str:
         """
-        转换为 Yahoo Finance 支持的 ticker 格式
+        转换为 Yahoo Finance 支持的 ticker 格式。
 
-        Examples:
-            "00700.HK" → "00700.HK"
-            "AAPL" → "AAPL"
+        委托给 core.ticker_format.format_yf_ticker（与 fundamental 路由、
+        yfinance_service 行为对齐的唯一规范实现），正确处理 Futu 风格前缀：
+            "HK.00772"  → "0772.HK"
+            "US.AAPL"   → "AAPL"
             "SH.600519" → "600519.SS"
             "SZ.000858" → "000858.SZ"
-            "BTC-USD" → "BTC-USD"
+        以及指数映射（"HK.800000" → "^HSI" 等）。
         """
-        # 已经正确的格式直接返回
-        if "." in ticker or "-" in ticker:
-            # 已有后缀或货币后缀
-            if ticker.endswith((".HK", ".US", ".SS", ".SZ", "-USD")):
-                return ticker
+        from backend.core.ticker_format import format_yf_ticker
 
-        # A 股格式转换
-        if ticker.startswith("SH."):
-            return ticker.replace("SH.", "").replace(".", ".SS")
-
-        if ticker.startswith("SZ."):
-            return ticker.replace("SZ.", "").replace(".", ".SZ")
-
-        # 港股/美股格式保持不变
-        return ticker
+        return format_yf_ticker(ticker)

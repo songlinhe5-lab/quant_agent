@@ -6,9 +6,11 @@
  * - 场景模式 → 布局 / 信息密度 / AI 角色
  */
 
-export type SceneMode = 'watch' | 'research' | 'monitor' | 'ai-analysis'
-
-export const SCENE_MODES: SceneMode[] = ['watch', 'research', 'monitor', 'ai-analysis']
+// 场景模式联合类型由 SCENE_MODES 数组派生（单一事实来源）。
+// 新增模式只需在数组中添加一项，TypeScript 会强制 SCENE_META 补配元数据，
+// 从编译期杜绝“新增模式漏配元数据”的问题（见下方运行时兜底守卫）。
+export const SCENE_MODES = ['watch', 'research', 'monitor', 'ai-analysis'] as const
+export type SceneMode = (typeof SCENE_MODES)[number]
 
 export type AiRole = 'hidden' | 'drawer' | 'entry' | 'fullscreen'
 
@@ -78,6 +80,22 @@ export const SCENE_META: Record<SceneMode, SceneMeta> = {
     sidebarVisible: false,
     hint: '全宽对话流 · 内联图表/数据卡片 · 操作按钮闭环',
   },
+}
+
+// ── PROD-04 健壮性加固 ────────────────────────────────────────────
+// 编译期已由 `SCENE_META: Record<SceneMode, SceneMeta>` 保证每个 SceneMode 成员都有元数据；
+// 此处叠加运行时兜底，拦截通过类型断言 / any 绕过编译期检查（或数组与元数据不同步）的情况。
+for (const m of SCENE_MODES) {
+  if (!SCENE_META[m]) {
+    throw new Error(`[scene-mode-types] 场景模式 "${String(m)}" 缺少 SCENE_META 元数据配置`)
+  }
+}
+const _sceneMetaKeys = Object.keys(SCENE_META) as SceneMode[]
+if (
+  _sceneMetaKeys.length !== SCENE_MODES.length ||
+  !_sceneMetaKeys.every((k) => (SCENE_MODES as readonly string[]).includes(k))
+) {
+  throw new Error('[scene-mode-types] SCENE_META 与 SCENE_MODES 成员不一致（存在漏配或孤立的元数据）')
 }
 
 export function formatSceneLabel(mode: SceneMode): string {

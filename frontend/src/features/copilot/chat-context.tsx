@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect, createContext, useCallback, useMemo } from 'react'
-import { getValidAccessToken, apiClient, API_BASE_URL } from '@/lib/api-client'
+import { fetchWithAuth, apiClient, API_BASE_URL } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
 import { useConfirmDialog } from '@/components/confirm-dialog'
 import { SessionSidebarRef } from '@/features/copilot/session-sidebar'
-import { ChatMessage, ToolStep, ChatAttachment, StrategyBlock } from './types'
+import { ChatMessage, ToolStep, ChatAttachment, StrategyBlock, ChartAnnotationPayload } from './types'
+import { useCopilotContextStore } from '@/stores/useCopilotContextStore'
+import { useChartAnnotationStore } from '@/stores/useChartAnnotationStore'
 
 /** 个股深度研判快捷指令定义 */
 export interface StockQuickCommand {
@@ -207,11 +209,19 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   // --- 核心流式请求逻辑 (SSE / NDJSON) ---
-  const handleSend = useCallback(async (text: string, sendAttachments: ChatAttachment[] = []) => {
+  const handleSend = useCallback(async (text: string, sendAttachments: ChatAttachment[] = [], opts?: { skipPageContext?: boolean }) => {
     if (isGeneratingRef.current) return
 
-    const finalContent = text.trim()
+    let finalContent = text.trim()
     if (!finalContent && sendAttachments.length === 0) return
+
+    // PROD-01: 会话首条消息自动注入当前页面上下文，实现"场景感知助手"
+    if (!opts?.skipPageContext && messagesRef.current.length === 0) {
+      const ctx = useCopilotContextStore.getState().context
+      if (ctx?.summary) {
+        finalContent = `[当前页面上下文 · ${ctx.title}]\n${ctx.summary}\n[/上下文]\n\n${finalContent}`
+      }
+    }
 
     const userMsg: ChatMessage = { 
       role: 'user', 
@@ -228,29 +238,15 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       abortControllerRef.current = new AbortController()
       setMessages(prev => [...prev, currentAssistantMsg])
 
-      // 💡 统一 Token 获取：内部自动处理过期检测 + Refresh 续期
-      const token = await getValidAccessToken()
-      if (!token) {
-        throw new Error('登录已过期，请重新登录后再试')
-      }
-
-      const doChatFetch = (validToken: string) => {
-        return fetch(`${API_BASE_URL}/chat`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${validToken}`
-          },
-          body: JSON.stringify({
-            messages: [userMsg],
-            session_id: sessionIdRef.current
-          }),
-          credentials: 'include',
-          signal: abortControllerRef.current!.signal
-        })
-      }
-
-      let res = await doChatFetch(token)
+      // 💡 统一 Token 获取：内部自动处理过期检测 + Refresh 续期（fetchWithAuth 已封装）
+      const res = await fetchWithAuth(`${API_BASE_URL}/chat`, {
+        method: 'POST',
+        body: JSON.stringify({
+          messages: [userMsg],
+          session_id: sessionIdRef.current
+        }),
+        signal: abortControllerRef.current!.signal
+      })
 
       // 💡 防御性状态检查：在尝试读取流之前，先确认 HTTP 响应状态码
       if (!res.ok) {
@@ -339,11 +335,18 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               // 💡 后端识别的策略代码块：将其挂载到当前 assistant 消息的 strategyBlocks 数组
               if (!currentAssistantMsg.strategyBlocks) currentAssistantMsg.strategyBlocks = []
               currentAssistantMsg.strategyBlocks.push({ code: data.code })
+            } else if (data.type === 'chart_annotation') {
+              // PROD-02: 后端识别的图表标注块：挂载到消息并推送到图表标注 store
+              const payload = data.data as ChartAnnotationPayload
+              if (!currentAssistantMsg.chartAnnotations) currentAssistantMsg.chartAnnotations = []
+              currentAssistantMsg.chartAnnotations.push(payload)
+              const symbol = payload.symbol || useCopilotContextStore.getState().context?.symbol
+              if (symbol) useChartAnnotationStore.getState().setAnnotation(symbol, payload)
             }
 
-            // 💡 触发 React 重新渲染：仅在关键事件 (Tool/Strategy) 或距离上次渲染超过 50ms 时触发
+            // 💡 触发 React 重新渲染：仅在关键事件 (Tool/Strategy/Annotation) 或距离上次渲染超过 50ms 时触发
             const now = Date.now()
-            const isToolEvent = data.type === 'tool_start' || data.type === 'tool_result' || data.type === 'error' || data.type === 'strategy_code'
+            const isToolEvent = data.type === 'tool_start' || data.type === 'tool_result' || data.type === 'error' || data.type === 'strategy_code' || data.type === 'chart_annotation'
             
             if (isToolEvent || now - lastUpdateTime > 50) {
               setMessages(prev => {
@@ -433,7 +436,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       sessionStorage.removeItem('quant_copilot_initial_prompt')
       // 留出时间让左侧边栏列表和会话状态就绪
       setTimeout(() => {
-        handleSend(initialPrompt, [])
+        handleSend(initialPrompt, [], { skipPageContext: true })
       }, 800)
     }
     
@@ -441,7 +444,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const handleCrossModulePrompt = (e: Event) => {
       const customEvent = e as CustomEvent<{ prompt: string }>
       if (customEvent.detail?.prompt) {
-        handleSend(customEvent.detail.prompt, [])
+        handleSend(customEvent.detail.prompt, [], { skipPageContext: true })
       }
     }
     window.addEventListener('quant_copilot_invoke', handleCrossModulePrompt)

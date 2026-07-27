@@ -1,15 +1,17 @@
 import asyncio
+import json
 import os
 import sys
-import json
+
 from dotenv import load_dotenv
 
 # 将项目根目录加入 sys.path，避免 ModuleNotFoundError
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 load_dotenv()
 
-from backend.services.fred_service import fred_service
 from backend.core.redis_client import redis_client
+from backend.services.macro.fred_service import fred_service
+
 
 async def main():
     print("=" * 60)
@@ -29,7 +31,7 @@ async def main():
         for series_id in test_series:
             print(f"\n📡 正在请求序列 [{series_id}] 的最新 5 条数据...")
             res = await fred_service.get_series_observations(series_id=series_id, limit=5)
-            
+
             if res.get("status") == "success":
                 data = res.get("data", [])
                 print(f"  ✅ 获取成功! 提取到 {len(data)} 条数据记录。")
@@ -39,6 +41,7 @@ async def main():
     finally:
         await redis_client.aclose()
         await fred_service.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

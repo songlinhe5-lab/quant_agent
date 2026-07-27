@@ -4,10 +4,9 @@
 使用 tracemalloc 追踪内存分配，找出占用最高的模块和对象
 """
 
-import tracemalloc
 import os
 import sys
-import time
+import tracemalloc
 from pathlib import Path
 
 # 添加 backend 到 Python 路径
@@ -26,20 +25,22 @@ def start_profiling():
 def take_snapshot(label: str = ""):
     """拍摄内存快照"""
     snapshot = tracemalloc.take_snapshot()
-    snapshot = snapshot.filter_traces((
-        tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
-        tracemalloc.Filter(False, "<frozen importlib._bootstrap_external>"),
-        tracemalloc.Filter(False, "<frozen zipimport>"),
-        tracemalloc.Filter(False, "<unknown>"),
-    ))
+    snapshot = snapshot.filter_traces(
+        (
+            tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
+            tracemalloc.Filter(False, "<frozen importlib._bootstrap_external>"),
+            tracemalloc.Filter(False, "<frozen zipimport>"),
+            tracemalloc.Filter(False, "<unknown>"),
+        )
+    )
     return snapshot
 
 
 def print_top_stats(snapshot, key_type="lineno", limit=20):
     """打印内存占用最高的对象"""
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"📊 Top {limit} Memory Consumers (by {key_type})")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     top_stats = snapshot.statistics(key_type)
 
@@ -50,16 +51,14 @@ def print_top_stats(snapshot, key_type="lineno", limit=20):
     for index, stat in enumerate(top_stats[:limit], 1):
         frame = stat.traceback[0]
         filename = Path(frame.filename).name
-        print(f"{index:3d}. {filename}:{frame.lineno} - "
-              f"{stat.size / 1024 / 1024:.2f} MB "
-              f"({stat.count} blocks)")
+        print(f"{index:3d}. {filename}:{frame.lineno} - {stat.size / 1024 / 1024:.2f} MB ({stat.count} blocks)")
 
 
 def compare_snapshots(snapshot1, snapshot2, limit=20):
     """对比两个快照，找出内存增长热点"""
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"📈 Memory Growth Analysis (Top {limit})")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     stats1 = snapshot1.statistics("filename")
     stats2 = snapshot2.statistics("filename")
@@ -77,15 +76,14 @@ def compare_snapshots(snapshot1, snapshot2, limit=20):
     growth.sort(key=lambda x: x[1], reverse=True)
 
     for index, (filename, delta) in enumerate(growth[:limit], 1):
-        print(f"{index:3d}. {Path(filename).name} - "
-              f"+{delta / 1024 / 1024:.2f} MB")
+        print(f"{index:3d}. {Path(filename).name} - +{delta / 1024 / 1024:.2f} MB")
 
 
 def analyze_imports():
     """分析各模块导入后的内存占用"""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("📦 Module Import Memory Analysis")
-    print("="*80 + "\n")
+    print("=" * 80 + "\n")
 
     snapshot_before = take_snapshot()
 
@@ -95,7 +93,7 @@ def analyze_imports():
         ("Redis Client", lambda: __import__("backend.core.redis_client")),
         ("Futu Service", lambda: __import__("backend.services.futu.service")),
         ("YFinance Service", lambda: __import__("backend.services.yfinance_service")),
-        ("FRED Service", lambda: __import__("backend.services.fred_service")),
+        ("FRED Service", lambda: __import__("backend.services.macro.fred_service")),
         ("Hermes Agent", lambda: __import__("hermes_agent.agent")),
         ("Tool Registry", lambda: __import__("hermes_agent.tool_registry")),
         ("VectorBT", lambda: __import__("vectorbt")),
@@ -114,17 +112,16 @@ def analyze_imports():
             total_after = sum(stat.size for stat in stats_after)
             delta = total_after - total_before
 
-            print(f"✅ {module_name:20s} - Memory increase: "
-                  f"{delta / 1024 / 1024:7.2f} MB")
+            print(f"✅ {module_name:20s} - Memory increase: {delta / 1024 / 1024:7.2f} MB")
         except Exception as e:
             print(f"❌ {module_name:20s} - Failed to import: {e}")
 
 
 def main():
     """主函数"""
-    print("\n" + "🧠"*40)
+    print("\n" + "🧠" * 40)
     print("Quant Agent - Memory Profiler")
-    print("🧠"*40 + "\n")
+    print("🧠" * 40 + "\n")
 
     # 启动追踪
     start_profiling()

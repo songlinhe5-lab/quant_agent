@@ -11,15 +11,15 @@ if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
     # SQLite 专用配置 (单文件数据库，无须复杂连接池)
     engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 else:
-    # PostgreSQL / MySQL 连接池配置（优化：减小池大小以降低内存占用）
-    # 💡 内存优化：生产环境也不需要 40 个连接，15-20 个足够
-    POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "10"))
-    MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", "10"))
+    # PostgreSQL / MySQL 连接池配置（ARCH-04：参数全部 env 配置化）
+    POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "20"))
+    MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", "40"))
+    POOL_TIMEOUT = int(os.getenv("DB_POOL_TIMEOUT", "10"))
     engine = create_engine(
         SQLALCHEMY_DATABASE_URL,
         pool_size=POOL_SIZE,
         max_overflow=MAX_OVERFLOW,
-        pool_timeout=30,
+        pool_timeout=POOL_TIMEOUT,
         pool_recycle=1800,
         pool_pre_ping=True,
     )
@@ -53,7 +53,7 @@ else:
         ASYNC_DATABASE_URL,
         pool_size=POOL_SIZE,
         max_overflow=MAX_OVERFLOW,
-        pool_timeout=30,
+        pool_timeout=POOL_TIMEOUT,
         pool_recycle=1800,
         pool_pre_ping=True,
     )

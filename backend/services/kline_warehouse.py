@@ -42,8 +42,9 @@ class KlineWarehouse:
         try:
 
             def _read():
-                # Parquet 格式的列式读取速度是 CSV 的上百倍
-                df = pd.read_parquet(file_path)
+                # Parquet 格式的列式读取速度是 CSV 的上百倍；显式 pyarrow 引擎
+                # (pyarrow 在 C 层释放 GIL，配合 to_thread 已与事件循环充分解耦)
+                df = pd.read_parquet(file_path, engine="pyarrow")
                 df = df.sort_values("time")
                 return df.tail(num)
 
@@ -65,7 +66,7 @@ class KlineWarehouse:
 
             if os.path.exists(file_path) and not force_full:
                 try:
-                    existing_df = await asyncio.to_thread(pd.read_parquet, file_path)
+                    existing_df = await asyncio.to_thread(pd.read_parquet, file_path, engine="pyarrow")
                     if not existing_df.empty:
                         existing_df["time"] = pd.to_datetime(existing_df["time"])
                         last_date = existing_df["time"].max()

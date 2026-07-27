@@ -5,7 +5,7 @@ import { useTheme } from 'next-themes'
 import { useToast } from '@/hooks/use-toast'
 import { Loader2, Play, Save, AlertCircle, Bot } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { apiClient, API_BASE_URL, getAccessToken } from '@/lib/api-client'
+import { apiClient, API_BASE_URL, fetchWithAuth } from '@/lib/api-client'
 import { useStrategyStore } from '../stores'
 
 // 💡 终极离线方案 (ESM Bundling)：直接让打包工具自动提取并构建依赖
@@ -102,6 +102,13 @@ export function MonacoEditorTab() {
     }
   }, [monaco])
 
+  // PROD-04e: 响应 ⌘1 快捷键，聚焦代码编辑器
+  useEffect(() => {
+    const onFocus = () => editorRef.current?.focus()
+    window.addEventListener('quant_focus_code', onFocus)
+    return () => window.removeEventListener('quant_focus_code', onFocus)
+  }, [])
+
   // 💡 监听 AST 语法错误，并在 Monaco 中打上红色波浪线 (Squiggles)
   useEffect(() => {
     if (!monaco || !editorRef.current) return
@@ -191,9 +198,8 @@ export function MonacoEditorTab() {
       const assistantMsgId = Date.now().toString()
       store.addMessage({ id: assistantMsgId, role: 'assistant', content: '', reasoning: '', status: 'reasoning' })
       
-      const response = await fetch(`${API_BASE_URL}/strategy/generate`, {
+      const response = await fetchWithAuth(`${API_BASE_URL}/strategy/generate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(getAccessToken() ? { 'Authorization': `Bearer ${getAccessToken()}` } : {}) },
         body: JSON.stringify({ prompt: fixPrompt })
       })
       if (!response.body) throw new Error('流式请求发起失败')
@@ -239,7 +245,7 @@ export function MonacoEditorTab() {
             })
           }}
           onChange={(val) => { store.setCode(val || ''); setSyntaxError(null) }}
-          options={{ minimap: { enabled: false }, fontSize: 13, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace', lineHeight: 22, padding: { top: 16, bottom: 16 }, scrollBeyondLastLine: false, smoothScrolling: true, cursorBlinking: "smooth", cursorSmoothCaretAnimation: "on", formatOnPaste: true, overviewRulerLanes: 0, renderLineHighlight: "all", hideCursorInOverviewRuler: true, scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 } }}
+          options={{ minimap: { enabled: false }, fontSize: 13, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace', lineHeight: 22, padding: { top: 16, bottom: 16 }, scrollBeyondLastLine: false, smoothScrolling: true, cursorBlinking: "smooth", cursorSmoothCaretAnimation: "on", formatOnPaste: true, overviewRulerLanes: 0, renderLineHighlight: "all", hideCursorInOverviewRuler: true, scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 }, automaticLayout: true }}
           loading={<div className="flex items-center justify-center h-full text-muted-foreground text-xs font-mono gap-2"><Loader2 className="h-4 w-4 animate-spin" /> 启动 Monaco 核心引擎...</div>}
         />
       </div>

@@ -38,7 +38,7 @@ class TestScreenerSuggestionsRoutes:
 class TestScreenerTranslateRoutes:
     """自然语言转 DSL 路由测试"""
 
-    @patch("backend.routers.screener.screener_service")
+    @patch("backend.app.screener_app.screener_service")
     def test_translate_dsl_success(self, mock_service):
         """正常路径：自然语言转 DSL 成功"""
         mock_service.translate_nlp_to_dsl = AsyncMock(return_value='{"markets": ["US"], "filters": []}')
@@ -51,7 +51,7 @@ class TestScreenerTranslateRoutes:
         data = _unwrap(resp)
         assert data["status"] == "success"
 
-    @patch("backend.routers.screener.screener_service")
+    @patch("backend.app.screener_app.screener_service")
     def test_translate_dsl_failure(self, mock_service):
         """异常路径：转译失败返回 500"""
         mock_service.translate_nlp_to_dsl = AsyncMock(side_effect=RuntimeError("LLM 限流"))
@@ -72,9 +72,9 @@ class TestScreenerTranslateRoutes:
 class TestScreenerRunRoutes:
     """选股器执行路由测试"""
 
-    @patch("backend.routers.screener.redis_client")
-    @patch("backend.routers.screener.screener_service")
-    @patch("backend.routers.screener.market_data")
+    @patch("backend.app.screener_app.redis_client")
+    @patch("backend.app.screener_app.screener_service")
+    @patch("backend.app.screener_app.market_data")
     def test_run_screener_cache_hit(self, mock_futu, mock_service, mock_redis):
         """缓存命中：直接返回 Redis 中的选股结果"""
         import json
@@ -90,9 +90,9 @@ class TestScreenerRunRoutes:
         data = _unwrap(resp)
         assert data["status"] == "success"
 
-    @patch("backend.routers.screener.redis_client")
-    @patch("backend.routers.screener.screener_service")
-    @patch("backend.routers.screener.market_data")
+    @patch("backend.app.screener_app.redis_client")
+    @patch("backend.app.screener_app.screener_service")
+    @patch("backend.app.screener_app.market_data")
     def test_run_screener_invalid_dsl(self, mock_futu, mock_service, mock_redis):
         """异常路径：DSL 不是合法 JSON 返回 400"""
         mock_redis.get = AsyncMock(return_value=None)
@@ -114,7 +114,7 @@ class TestScreenerRunRoutes:
 class TestScreenerSummarizeRoutes:
     """AI 总结选股结果路由测试"""
 
-    @patch("backend.routers.screener.screener_service")
+    @patch("backend.app.screener_app.screener_service")
     def test_summarize_results_success(self, mock_service):
         """正常路径：AI 总结成功"""
         mock_service.summarize_results = AsyncMock(return_value="整体市场情绪偏多，半导体板块领涨。")
@@ -127,7 +127,7 @@ class TestScreenerSummarizeRoutes:
         data = _unwrap(resp)
         assert data["status"] == "success"
 
-    @patch("backend.routers.screener.screener_service")
+    @patch("backend.app.screener_app.screener_service")
     def test_summarize_results_failure(self, mock_service):
         """异常路径：AI 总结失败返回 error"""
         mock_service.summarize_results = AsyncMock(side_effect=RuntimeError("LLM 限流"))

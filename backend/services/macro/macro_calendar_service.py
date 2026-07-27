@@ -18,12 +18,18 @@ try:
 except Exception:  # pragma: no cover
     _ZONEINFO = None  # type: ignore
 
-from backend.app.market_data import market_data
 from backend.core.config import settings
 
 
 class MacroCalendarAggregator:
     """宏观日历聚合核心，封装多源拉取 -> 归一化(UTC) -> 合并去重 -> FRED 回填 -> 兜底。"""
+
+    @staticmethod
+    def _market_data():
+        # 延迟导入以打破 backend.app.market_data <-> backend.services.macro 循环依赖
+        from backend.app.market_data import market_data
+
+        return market_data
 
     # 各源发布时间所属时区 (用于归一化为 UTC ISO 发给前端)
     SOURCE_TZ = {
@@ -37,7 +43,7 @@ class MacroCalendarAggregator:
     async def aggregate(self, days_ahead: int = 7, days_back: int = 0, skip_cache: bool = False) -> Dict[str, Any]:
         # 1. 主源: AKShare (中国+全球前瞻日历)
         ak_res = await self._safe(
-            market_data.get_economic_calendar_ak(days_ahead, days_back=days_back, skip_cache=skip_cache)
+            self._market_data().get_economic_calendar_ak(days_ahead, days_back=days_back, skip_cache=skip_cache)
         )
         normalized: List[Dict[str, Any]] = []
         ak_events = self._extract(ak_res, "akshare")
@@ -56,14 +62,16 @@ class MacroCalendarAggregator:
 
         # 4. FRED 权威序列回填 actual (美国核心 + 国际序列)
         try:
-            merged = await market_data.backfill_fred_actuals(merged)
+            merged = await self._market_data().backfill_fred_actuals(merged)
         except Exception as e:
             print(f"⚠️ [MacroAggregator] FRED actual 回填失败: {e}")
 
         # 5. 全空 -> Finnhub 兜底 (免费档全球前瞻日历)
         if not merged:
             fh_res = await self._safe(
-                market_data.get_economic_calendar_finnhub(days_ahead, days_back=days_back, skip_cache=skip_cache)
+                self._market_data().get_economic_calendar_finnhub(
+                    days_ahead, days_back=days_back, skip_cache=skip_cache
+                )
             )
             fh_events = self._extract(fh_res, "finnhub")
             if fh_events:
@@ -72,7 +80,7 @@ class MacroCalendarAggregator:
         # 6. 仍空 -> FRED 发布日历兜底 (自带回填)
         if not merged:
             fred_res = await self._safe(
-                market_data.get_economic_calendar_fred(days_ahead, days_back=days_back, skip_cache=skip_cache)
+                self._market_data().get_economic_calendar_fred(days_ahead, days_back=days_back, skip_cache=skip_cache)
             )
             fred_events = self._extract(fred_res, "fred")
             if fred_events:
@@ -102,12 +110,16 @@ class MacroCalendarAggregator:
         for src in priority:
             if src == "dbnomics":
                 res = await self._safe(
-                    market_data.get_economic_calendar_dbnomics(days_ahead, days_back=days_back, skip_cache=skip_cache)
+                    self._market_data().get_economic_calendar_dbnomics(
+                        days_ahead, days_back=days_back, skip_cache=skip_cache
+                    )
                 )
                 events = self._extract(res, "dbnomics")
             elif src == "rbi":
                 res = await self._safe(
-                    market_data.get_economic_calendar_rbi(days_ahead, days_back=days_back, skip_cache=skip_cache)
+                    self._market_data().get_economic_calendar_rbi(
+                        days_ahead, days_back=days_back, skip_cache=skip_cache
+                    )
                 )
                 events = self._extract(res, "rbi")
             else:

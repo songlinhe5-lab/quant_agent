@@ -10,6 +10,7 @@ import { ChatProvider, ChatActionContext } from '@/features/copilot/chat-context
 import { ChatSidebarWrapper } from '@/features/copilot/chat-sidebar-wrapper'
 import { MessageListArea } from '@/features/copilot/message-list-area'
 import { ChatInputBox } from '@/features/copilot/chat-input-box'
+import { useCopilotContextStore } from '@/stores/useCopilotContextStore'
 
 const DEFAULT_WIDTH = 520
 const MIN_WIDTH = 360
@@ -19,17 +20,19 @@ function CopilotDrawerChrome({ width, onResizeStart }: { width: number; onResize
   const closeCopilot = useLayoutStore((s) => s.closeCopilot)
   const { handleNewChat } = useContext(ChatActionContext)
   const [sessionsOpen, setSessionsOpen] = useState(false)
+  const context = useCopilotContextStore((s) => s.context)
+  const clearContext = useCopilotContextStore((s) => s.clearContext)
 
   return (
     <div className="h-full flex flex-col bg-slate-50/90 dark:bg-zinc-950/95 backdrop-blur-md border-l border-white/10" style={{ width }}>
       {/* 左侧拖动条：拖动调整宽度，点击收起面板 */}
       <div
         onMouseDown={onResizeStart}
-        className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize bg-transparent hover:bg-violet-500/40 active:bg-violet-500/60 transition-colors z-10"
+        className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize bg-transparent hover:bg-scene/40 active:bg-scene/60 transition-colors z-10"
         title="拖动调整宽度 · 点击收起"
       />
       <header className="h-12 shrink-0 flex items-center gap-2 px-3 border-b border-border/40">
-        <Brain className="h-4 w-4 text-violet-400 shrink-0" aria-hidden />
+        <Brain className="h-4 w-4 text-scene shrink-0" aria-hidden />
         <h2 className="text-xs font-semibold tracking-widest uppercase text-foreground truncate">
           AI Copilot
         </h2>
@@ -39,7 +42,7 @@ function CopilotDrawerChrome({ width, onResizeStart }: { width: number; onResize
             onClick={() => setSessionsOpen((v) => !v)}
             className={cn(
               'p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors',
-              sessionsOpen && 'bg-primary/15 text-primary',
+              sessionsOpen && 'bg-scene/15 text-scene',
             )}
             aria-label="会话历史"
             title="会话历史"
@@ -76,6 +79,24 @@ function CopilotDrawerChrome({ width, onResizeStart }: { width: number; onResize
             <div className="h-full w-full overflow-hidden [&_aside]:w-full [&_aside]:border-r-0">
               <ChatSidebarWrapper />
             </div>
+          </div>
+        )}
+        {context && (
+          <div className="mx-3 mt-3 flex items-start gap-2 rounded-lg border border-scene/30 bg-scene/10 px-3 py-2 text-xs text-scene scene-accent-transition">
+            <span className="mt-0.5">📎</span>
+            <div className="min-w-0 flex-1">
+              <div className="font-medium text-scene">已附加上下文 · {context.title}</div>
+              <div className="mt-0.5 whitespace-pre-wrap break-words text-scene/80">{context.summary}</div>
+            </div>
+            <button
+              type="button"
+              onClick={clearContext}
+              className="ml-1 shrink-0 rounded p-0.5 text-scene/70 hover:bg-scene/20 hover:text-scene"
+              aria-label="移除上下文"
+              title="移除上下文"
+            >
+              <X className="h-3 w-3" />
+            </button>
           </div>
         )}
         <MessageListArea />
@@ -166,7 +187,7 @@ export function CopilotEdgeHandle() {
         'fixed right-0 top-1/2 z-40 -translate-y-1/2',
         'flex h-24 w-5 items-center justify-center rounded-l-md',
         'border border-r-0 border-white/10 bg-zinc-950/80 backdrop-blur-md',
-        'text-violet-400 hover:bg-violet-500/15 hover:text-violet-300',
+        'text-scene hover:bg-scene/15 hover:text-scene',
         'transition-colors shadow-lg',
       )}
       aria-label="展开 AI 副驾"

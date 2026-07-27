@@ -121,6 +121,26 @@ class TestSandboxSecurityVisitor:
     def test_allowed_function_def(self):
         self._check("def calculate(df):\n    return df.mean()")
 
+    # --- Numba JIT 白名单 (回测引擎依赖 Numba 矢量化策略) ---
+    def test_allowed_import_numba(self):
+        self._check("import numba")
+
+    def test_allowed_import_from_numba(self):
+        self._check("from numba import njit")
+
+    def test_allowed_njit_decorator(self):
+        # 💡 回归：@njit 装饰器必须被放行，否则 Numba 矢量化策略无法运行
+        self._check("from numba import njit\n@njit(cache=True)\ndef f(x):\n    return x * 2\n")
+
+    def test_allowed_njit_attr_decorator(self):
+        # @numba.njit 形式也应放行
+        self._check("import numba\n@numba.njit\ndef f(x):\n    return x * 2\n")
+
+    def test_blocked_unauthorized_decorator(self):
+        # 非 Numba 的自定义装饰器仍须拦截
+        with pytest.raises(ValueError, match="装饰器"):
+            self._check("@some_decorator\ndef my_func():\n    pass")
+
     # --- 高危函数拦截 ---
     def test_blocked_eval(self):
         with pytest.raises(ValueError, match="eval"):

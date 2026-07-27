@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, RefreshCw, TrendingUp, TrendingDown, Pause, Play, XCircle } from 'lucide-react'
+import { Plus, RefreshCw, TrendingUp, TrendingDown, Pause, Play, XCircle, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiClient } from '@/lib/api-client'
 import { CreatePortfolioDialog } from './create-portfolio-dialog'
@@ -83,6 +83,16 @@ export function PaperListPage() {
             <Plus className="h-3.5 w-3.5" />
             创建组合
           </button>
+        </div>
+      </div>
+
+      {/* PROD-08: 纸面组合状态透明化 —— 明确模拟环境边界，杜绝「实盘」误判 */}
+      <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+        <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" aria-hidden="true" />
+        <div className="leading-relaxed">
+          <span className="font-semibold">⚠️ 纸面模拟环境（PAPER）</span>
+          <span className="text-amber-200/80">：当前为 SimBroker 虚拟账本推演，</span>
+          不含真实券商对接与实盘执行（仅模拟交易，符合沙箱默认）。高级执行（真实下单 / 风控熔断）依赖 PT-01~02 接入，暂未与实盘网关打通。
         </div>
       </div>
 

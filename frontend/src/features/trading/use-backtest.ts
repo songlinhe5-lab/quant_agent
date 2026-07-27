@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast'
 import { apiClient } from '@/lib/api-client'
 import { LATEST_PUBLISHED } from '@/types/datalake'
 import { computeHistogram, equityCurve, returnsHist, tearSheetMetrics, underwaterData } from './backtest-mock'
+import { runCustomExprBacktest } from '../quotes/custom-indicator/engine'
 import { extractReproducibilityBadge } from '@/features/backtest/reproducibility-badge'
 
 export function useBacktest() {
@@ -24,6 +25,8 @@ export function useBacktest() {
   const [dataSource, setDataSource] = useState('auto')
   const [isDebugMode, setIsDebugMode] = useState(false)
   const [dataSnapshotId, setDataSnapshotId] = useState(LATEST_PUBLISHED)
+  // 💡 PROD-11 追问：自定义指标脚本表达式（作为回测信号源）
+  const [customExpr, setCustomExpr] = useState('')
 
   // 💡 动态策略引入状态
   const [strategies, setStrategies] = useState<any[]>([])
@@ -116,6 +119,46 @@ export function useBacktest() {
     });
 
     try {
+      // ── PROD-11 追问：自定义指标脚本策略（本地计算，复用真实历史 K 线）──
+      if (selectedStrategy === '__custom_expr__') {
+        const expr = customExpr.trim()
+        if (!expr) {
+          toast({ variant: 'destructive', title: '请输入自定义指标表达式', description: '例如：CROSS(MA(CLOSE,5), MA(CLOSE,20))' })
+          return
+        }
+        const ktypeMap: Record<string, string> = { '1d': 'K_DAY', '1h': 'K_60M', '15m': 'K_15M', '5m': 'K_5M', '1m': 'K_1M' }
+        const numMap: Record<string, number> = { '1mo': 22, '3mo': 66, '6mo': 126, '1y': 252, '2y': 504, '5y': 1260, 'max': 3000 }
+        const ktype = ktypeMap[interval] || 'K_DAY'
+        const num = numMap[period] || 252
+        try {
+          const histRes = await apiClient.get('/market/history', { ticker, ktype, num }, abortControllerRef.current!.signal)
+          const raw = histRes?.data?.data
+          if (!Array.isArray(raw) || raw.length < 2) {
+            toast({ variant: 'destructive', title: 'K 线数据不足', description: `接口返回 ${Array.isArray(raw) ? raw.length : 0} 根 K 线` })
+            return
+          }
+          const bars = (raw as any[]).map((k) => {
+            const rawTime = k.time ?? k.date ?? k.t
+            let timeStr: string
+            if (typeof rawTime === 'number') timeStr = new Date(rawTime * (rawTime < 1e12 ? 1000 : 1)).toISOString().slice(0, 10)
+            else timeStr = String(rawTime).slice(0, 10)
+            return { time: timeStr, open: Number(k.open), high: Number(k.high), low: Number(k.low), close: Number(k.close), volume: Number(k.volume ?? 0) }
+          })
+          const r = runCustomExprBacktest(expr, bars, initialCapital)
+          if (!r.ok) {
+            toast({ variant: 'destructive', title: '表达式回测失败', description: r.error })
+            return
+          }
+          setBacktestResult(r.result)
+          setRawReturns(r.dailyReturns.length ? r.dailyReturns : [0])
+          if (!isSilent) toast({ title: '✅ 自定义指标回测完成', description: `${r.result!.trades.filter((t) => t.action === 'SELL').length} 笔交易 · 总收益 ${r.result!.metrics.total_return}` })
+        } catch (e: any) {
+          if (e.name === 'CanceledError' || e.code === 'ERR_CANCELED' || e.message === 'canceled') return
+          toast({ variant: 'destructive', title: '行情获取失败', description: e.message })
+        }
+        return
+      }
+
       const res = await apiClient.post('/backtest/run', {
         ticker, period, interval,
         initial_capital: initialCapital,
@@ -212,6 +255,7 @@ export function useBacktest() {
     backtestResult, dataSource, setDataSource, isDebugMode, setIsDebugMode,
     dataSnapshotId, setDataSnapshotId, strategies, selectedStrategy,
     formSchema, strategyParams, isMounted,
+    customExpr, setCustomExpr,
     // computed
     histogramData, underwaterDataComputed, curve, metrics, reproBadge, currentTearSheet,
     // handlers

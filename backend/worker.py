@@ -50,8 +50,8 @@ async def main():
 
     # 3. 后台服务任务 (数据节点不需要 DB 依赖的核心服务)
     if not IS_DATA_NODE:
+        from backend.services.macro.sentiment_tracker import sentiment_tracker
         from backend.services.screener_service import screener_service
-        from backend.services.sentiment_tracker import sentiment_tracker
 
         tasks.append(asyncio.create_task(ticker_service.sync_tickers_daemon()))
         tasks.append(asyncio.create_task(sentiment_tracker.track_daemon()))
@@ -68,7 +68,12 @@ async def main():
         from backend.services.market_review.scheduler import market_review_scheduler_daemon
 
         tasks.append(asyncio.create_task(market_review_scheduler_daemon()))
-        print("  Core daemons started (ticker/sentiment/screener/paper_settlement/market_review)")
+
+        # BRD-01: 盘前早报定时触发器
+        from backend.services.morning_briefing.scheduler import market_briefing_scheduler_daemon
+
+        tasks.append(asyncio.create_task(market_briefing_scheduler_daemon()))
+        print("  Core daemons started (ticker/sentiment/screener/paper_settlement/market_review/morning_briefing)")
     else:
         print("  [Data Node] 跳过 DB 依赖服务 (ticker/sentiment/screener)")
 
@@ -81,6 +86,17 @@ async def main():
     except asyncio.CancelledError:
         print("\n  [Worker] shutting down...")
     finally:
+        # ARCH-03: 优雅取消所有后台 Task（collector daemons + 核心守护进程）
+        for t in tasks:
+            if not t.done():
+                t.cancel()
+        if tasks:
+            try:
+                await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=30.0)
+                print("  [Worker] 后台任务已优雅取消")
+            except asyncio.TimeoutError:
+                print("  [Worker] ⚠️ 部分后台任务取消超时 (30s)，强制退出")
+        # ARCH-03: 资源释放（Redis 批量队列优先排空）
         await redis_batch_writer.stop()
         await redis_client.aclose()
         engine.dispose()

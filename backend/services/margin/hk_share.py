@@ -6,7 +6,6 @@
 """
 
 import json
-from datetime import datetime, timezone
 from typing import Any, Dict
 
 from backend.core.logger import logger
@@ -52,29 +51,14 @@ async def get_hk_share_margin() -> Dict[str, Any]:
         # 目前 Futu OpenD 可能不直接提供全市场融资融券余额
         # 可考虑接入港交所披露易或其他数据源
 
-        # 临时使用 Mock 数据（实际部署时应替换为真实数据）
-        result = {
-            "status": "success",
-            "data": {
-                "market": "HK_SHARE",
-                "market_name": "港股",
-                "financing_balance": 1580.25,  # 亿港元
-                "securities_balance": 82.36,
-                "financing_change": +12.58,
-                "securities_change": -2.15,
-                "unit": "亿港元",
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-                "source": "Futu API (Mock)",
-            },
+        # 无真实数据源：港股融资融券 (Futu / 港交所披露易) 尚未接入，
+        # 禁止返回写死假数据并写入缓存，统一返回错误状态由前端展示空/错误兜底。
+        logger.warning("[Margin] 港股融资融券数据源尚未接入，返回空数据")
+        return {
+            "status": "error",
+            "message": "港股融资融券数据源尚未接入，暂无可展示数据",
+            "data": None,
         }
-
-        # 3. 写入缓存
-        try:
-            await redis_client.set(_CACHE_KEY, json.dumps(result), ex=_CACHE_TTL)
-        except Exception as e:
-            logger.warning(f"[Margin] 港股缓存写入失败: {e}")
-
-        return result
 
     except Exception as e:
         logger.error(f"[Margin] 港股数据获取失败: {e}", exc_info=True)

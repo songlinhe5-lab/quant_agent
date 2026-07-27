@@ -59,9 +59,9 @@ class TestPlaceOrderRiskControl:
         """风控拦截:订单总价值超过最大杠杆限制 → 403"""
         m_redis = _setup_redis_mock(prefs={"defaultLeverage": 1.0})
         with (
-            patch("backend.routers.trade.redis_client", m_redis),
-            patch("backend.routers.trade.broker") as m_futu,
-            patch("backend.routers.trade.market_data") as m_yf,
+            patch("backend.app.trade_app.redis_client", m_redis),
+            patch("backend.app.trade_app.broker") as m_futu,
+            patch("backend.app.trade_app.market_data") as m_yf,
         ):
             m_futu.get_account_info = AsyncMock(return_value={"status": "success", "total_assets": 10000.0})
             # ATR 测算跳过(避免真实调用 yfinance)
@@ -81,9 +81,9 @@ class TestPlaceOrderRiskControl:
         """风控通过:订单价值 ≤ 最大杠杆限制 → 下单成功"""
         m_redis = _setup_redis_mock(prefs={"defaultLeverage": 2.0})
         with (
-            patch("backend.routers.trade.redis_client", m_redis),
-            patch("backend.routers.trade.broker") as m_futu,
-            patch("backend.routers.trade.market_data") as m_yf,
+            patch("backend.app.trade_app.redis_client", m_redis),
+            patch("backend.app.trade_app.broker") as m_futu,
+            patch("backend.app.trade_app.market_data") as m_yf,
         ):
             m_futu.get_account_info = AsyncMock(return_value={"status": "success", "total_assets": 100000.0})
             m_futu.place_order = AsyncMock(return_value={"status": "success", "order_id": "ord-1"})
@@ -108,9 +108,9 @@ class TestPlaceOrderRiskControl:
         cached_acc = {"status": "success", "total_assets": 50000.0}
         m_redis = _setup_redis_mock(prefs={"defaultLeverage": 1.0}, account_cache=cached_acc)
         with (
-            patch("backend.routers.trade.redis_client", m_redis),
-            patch("backend.routers.trade.broker") as m_futu,
-            patch("backend.routers.trade.market_data") as m_yf,
+            patch("backend.app.trade_app.redis_client", m_redis),
+            patch("backend.app.trade_app.broker") as m_futu,
+            patch("backend.app.trade_app.market_data") as m_yf,
         ):
             m_futu.get_account_info = AsyncMock()
             m_futu.place_order = AsyncMock(return_value={"status": "success", "order_id": "ord-2"})
@@ -128,8 +128,8 @@ class TestPlaceOrderRiskControl:
         """Futu 账户接口返回 error → 500"""
         m_redis = _setup_redis_mock(prefs={"defaultLeverage": 1.0})
         with (
-            patch("backend.routers.trade.redis_client", m_redis),
-            patch("backend.routers.trade.broker") as m_futu,
+            patch("backend.app.trade_app.redis_client", m_redis),
+            patch("backend.app.trade_app.broker") as m_futu,
         ):
             m_futu.get_account_info = AsyncMock(return_value={"status": "error", "message": "futu down"})
             resp = client.post(
@@ -142,10 +142,10 @@ class TestPlaceOrderRiskControl:
         """ATR 波动率 >5% 强制降杠杆至 1.0x"""
         m_redis = _setup_redis_mock(prefs={"defaultLeverage": 3.0})
         with (
-            patch("backend.routers.trade.redis_client", m_redis),
-            patch("backend.routers.trade.broker") as m_futu,
-            patch("backend.routers.trade.market_data") as m_yf,
-            patch("backend.routers.trade._to_yf_ticker", return_value="AAPL"),
+            patch("backend.app.trade_app.redis_client", m_redis),
+            patch("backend.app.trade_app.broker") as m_futu,
+            patch("backend.app.trade_app.market_data") as m_yf,
+            patch("backend.app.trade_app._to_yf_ticker", return_value="AAPL"),
         ):
             m_futu.get_account_info = AsyncMock(return_value={"status": "success", "total_assets": 100000.0})
             m_futu.place_order = AsyncMock(return_value={"status": "success", "order_id": "ord-3"})
@@ -171,9 +171,9 @@ class TestPlaceOrderRiskControl:
         """ATR 测算异常被吞,不影响下单"""
         m_redis = _setup_redis_mock(prefs={"defaultLeverage": 1.0})
         with (
-            patch("backend.routers.trade.redis_client", m_redis),
-            patch("backend.routers.trade.broker") as m_futu,
-            patch("backend.routers.trade._to_yf_ticker", side_effect=Exception("yf err")),
+            patch("backend.app.trade_app.redis_client", m_redis),
+            patch("backend.app.trade_app.broker") as m_futu,
+            patch("backend.app.trade_app._to_yf_ticker", side_effect=Exception("yf err")),
         ):
             m_futu.get_account_info = AsyncMock(return_value={"status": "success", "total_assets": 100000.0})
             m_futu.place_order = AsyncMock(return_value={"status": "success", "order_id": "ord-4"})
@@ -192,8 +192,8 @@ class TestPlaceOrderActions:
     def test_status_action_queries_existing_order(self, client):
         m_redis = _setup_redis_mock(prefs={"defaultLeverage": 1.0})
         with (
-            patch("backend.routers.trade.redis_client", m_redis),
-            patch("backend.routers.trade.broker") as m_futu,
+            patch("backend.app.trade_app.redis_client", m_redis),
+            patch("backend.app.trade_app.broker") as m_futu,
         ):
             m_futu.get_account_info = AsyncMock(return_value={"status": "success", "total_assets": 100000.0})
             m_futu.query_order = AsyncMock(return_value={"status": "success", "order": {"id": "ord-x"}})
@@ -209,8 +209,8 @@ class TestPlaceOrderActions:
     def test_cancel_action_modifies_order(self, client):
         m_redis = _setup_redis_mock(prefs={"defaultLeverage": 1.0})
         with (
-            patch("backend.routers.trade.redis_client", m_redis),
-            patch("backend.routers.trade.broker") as m_futu,
+            patch("backend.app.trade_app.redis_client", m_redis),
+            patch("backend.app.trade_app.broker") as m_futu,
         ):
             m_futu.get_account_info = AsyncMock(return_value={"status": "success", "total_assets": 100000.0})
             m_futu.cancel_order = AsyncMock(return_value={"status": "success", "cancelled": True})
@@ -226,9 +226,9 @@ class TestPlaceOrderActions:
     def test_sell_action_uses_trd_side_sell(self, client):
         m_redis = _setup_redis_mock(prefs={"defaultLeverage": 1.0})
         with (
-            patch("backend.routers.trade.redis_client", m_redis),
-            patch("backend.routers.trade.broker") as m_futu,
-            patch("backend.routers.trade.market_data") as m_yf,
+            patch("backend.app.trade_app.redis_client", m_redis),
+            patch("backend.app.trade_app.broker") as m_futu,
+            patch("backend.app.trade_app.market_data") as m_yf,
         ):
             m_futu.get_account_info = AsyncMock(return_value={"status": "success", "total_assets": 100000.0})
             m_futu.place_order = AsyncMock(return_value={"status": "success", "order_id": "ord-sell"})
@@ -245,9 +245,9 @@ class TestPlaceOrderActions:
     def test_futu_place_order_error_returns_400(self, client):
         m_redis = _setup_redis_mock(prefs={"defaultLeverage": 1.0})
         with (
-            patch("backend.routers.trade.redis_client", m_redis),
-            patch("backend.routers.trade.broker") as m_futu,
-            patch("backend.routers.trade.market_data") as m_yf,
+            patch("backend.app.trade_app.redis_client", m_redis),
+            patch("backend.app.trade_app.broker") as m_futu,
+            patch("backend.app.trade_app.market_data") as m_yf,
         ):
             m_futu.get_account_info = AsyncMock(return_value={"status": "success", "total_assets": 100000.0})
             m_futu.place_order = AsyncMock(return_value={"status": "error", "message": "market closed"})
@@ -263,7 +263,7 @@ class TestAccountAndPortfolio:
     """get_account_info + get_portfolio"""
 
     def test_get_account_info_success(self, client):
-        with patch("backend.routers.trade.broker") as m_futu:
+        with patch("backend.app.trade_app.broker") as m_futu:
             m_futu.get_account_info = AsyncMock(return_value={"status": "success", "total_assets": 999.0})
             resp = client.get("/api/v1/trade/account?market=HK")
         assert resp.status_code == 200
@@ -273,13 +273,13 @@ class TestAccountAndPortfolio:
         assert body["data"]["total_assets"] == 999.0
 
     def test_get_account_info_error_returns_400(self, client):
-        with patch("backend.routers.trade.broker") as m_futu:
+        with patch("backend.app.trade_app.broker") as m_futu:
             m_futu.get_account_info = AsyncMock(return_value={"status": "error", "message": "timeout"})
             resp = client.get("/api/v1/trade/account")
         assert resp.status_code == 400
 
     def test_get_portfolio_returns_risk_metrics(self, client):
-        with patch("backend.routers.trade.broker") as m_futu:
+        with patch("backend.app.trade_app.broker") as m_futu:
             m_futu.get_account_info = AsyncMock(return_value={"status": "success", "total_assets": 50000.0})
             resp = client.get("/api/v1/trade/portfolio")
         assert resp.status_code == 200

@@ -1,13 +1,24 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { createChart, ColorType, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries, AreaSeries, LineStyle, type IChartApi, type ISeriesApi, type UTCTimestamp, type IPriceLine } from 'lightweight-charts'
-import { AlertTriangle, TrendingUp, TrendingDown, Eye, EyeOff, Pencil, Globe, ChevronRight } from 'lucide-react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { createChart, ColorType, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries, AreaSeries, BaselineSeries, LineStyle, createSeriesMarkers, type IChartApi, type ISeriesApi, type UTCTimestamp, type IPriceLine, type ISeriesMarkersPluginApi, type SeriesMarker, type Time } from 'lightweight-charts'
+import { AlertTriangle, TrendingUp, TrendingDown, Eye, EyeOff, Pencil, Globe, ChevronRight, Minus, Square, Spline, Eraser, MousePointerClick, Sigma, Bell } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { crosshairSync } from './chart-crosshair-sync'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { apiClient } from '@/lib/api-client'
 import { useIndicatorWorker } from '@/hooks/use-indicator-worker'
 import { HighFreqChartWrapper } from '@/features/quotes/high-freq-chart-wrapper'
 import type { WatchlistItem } from '@/stores/use-watchlist'
+import { useCopilotContextStore } from '@/stores/useCopilotContextStore'
+import { useChartAnnotationStore } from '@/stores/useChartAnnotationStore'
+import { usePatternStore } from '@/stores/usePatternStore'
+import type { ChartAnnotationPayload } from '@/features/copilot/types'
+import { useTradeStore, type OrderSide } from '@/stores/useTradeStore'
+import { OrderConfirmModal } from './order-confirm-modal'
+import { evaluate, suggestPane, type CIBar } from './custom-indicator/engine'
+import { useCustomIndicatorStore } from './custom-indicator/store'
+import { CustomIndicatorPanel } from './custom-indicator/panel'
+import { AlertSandboxPanel } from './custom-indicator/alert-sandbox-panel'
 
 // 💡 个股事件类型定义
 interface StockEvent {
@@ -73,6 +84,100 @@ class TrendLinePrimitive {
   updateEndPoint(t: any, p: any) { this.t2 = t; this.p2 = p; this._requestUpdate(); }
 }
 
+// PROD-03: 画线工具扩展（水平线 / 矩形 / 斐波那契回撤），与趋势线共用 lightweight-charts v5 IPrimitive 接口
+type DrawTool = 'none' | 'trendline' | 'hline' | 'fib' | 'rect'
+
+class HLinePaneView {
+  _source: any; _y: number | null = null;
+  constructor(s: any) { this._source = s; }
+  update() { this._y = this._source.series.priceToCoordinate(this._source.p); }
+  renderer() {
+    const y = this._y; const source = this._source;
+    return { draw: (target: any) => { target.useMediaCoordinateSpace(({ context: ctx, mediaSize }: any) => {
+      if (y == null) return;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(mediaSize.width, y);
+      ctx.strokeStyle = source.color; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = source.color; ctx.font = '10px ui-monospace, monospace';
+      ctx.fillText(source.p.toFixed(2), 6, y - 4);
+    }); } };
+  }
+}
+class HLinePrimitive {
+  series: any; t: any; p: any; color: string; _paneViews: any[]; _requestUpdate: () => void = () => {};
+  constructor(series: any, t: any, p: any, color: string) { this.series = series; this.t = t; this.p = p; this.color = color; this._paneViews = [new HLinePaneView(this)]; }
+  updateAllViews() { this._paneViews.forEach(v => v.update()); }
+  paneViews() { return this._paneViews; }
+  attached({ requestUpdate }: any) { this._requestUpdate = requestUpdate; }
+  detached() {}
+}
+
+class RectanglePaneView {
+  _source: any; _x1: number | null = null; _y1: number | null = null; _x2: number | null = null; _y2: number | null = null;
+  constructor(s: any) { this._source = s; }
+  update() {
+    const s = this._source;
+    this._x1 = s.chart.timeScale().timeToCoordinate(s.t1);
+    this._x2 = s.chart.timeScale().timeToCoordinate(s.t2);
+    this._y1 = s.series.priceToCoordinate(s.p1);
+    this._y2 = s.series.priceToCoordinate(s.p2);
+  }
+  renderer() {
+    const x1 = this._x1, x2 = this._x2, y1 = this._y1, y2 = this._y2, source = this._source;
+    return { draw: (target: any) => { target.useMediaCoordinateSpace(({ context: ctx }: any) => {
+      if (x1 == null || x2 == null || y1 == null || y2 == null) return;
+      const x = Math.min(x1, x2), yy = Math.min(y1, y2), w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
+      ctx.fillStyle = source.color; ctx.globalAlpha = 0.08; ctx.fillRect(x, yy, w, h); ctx.globalAlpha = 1;
+      ctx.strokeStyle = source.color; ctx.lineWidth = 1.5; ctx.strokeRect(x, yy, w, h);
+    }); } };
+  }
+}
+class RectanglePrimitive {
+  chart: any; series: any; t1: any; p1: any; t2: any; p2: any; color: string; _paneViews: any[]; _requestUpdate: () => void = () => {};
+  constructor(chart: any, series: any, t: any, p: any, color: string) { this.chart = chart; this.series = series; this.t1 = t; this.p1 = p; this.t2 = t; this.p2 = p; this.color = color; this._paneViews = [new RectanglePaneView(this)]; }
+  updateAllViews() { this._paneViews.forEach(v => v.update()); }
+  paneViews() { return this._paneViews; }
+  attached({ requestUpdate }: any) { this._requestUpdate = requestUpdate; }
+  detached() {}
+  updateEndPoint(t: any, p: any) { this.t2 = t; this.p2 = p; this._requestUpdate(); }
+}
+
+class FibPaneView {
+  _source: any; _y1: number | null = null; _y2: number | null = null;
+  constructor(s: any) { this._source = s; }
+  update() { const s = this._source; this._y1 = s.series.priceToCoordinate(s.p1); this._y2 = s.series.priceToCoordinate(s.p2); }
+  renderer() {
+    const y1 = this._y1, y2 = this._y2, source = this._source;
+    const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+    return { draw: (target: any) => { target.useMediaCoordinateSpace(({ context: ctx, mediaSize }: any) => {
+      if (y1 == null || y2 == null) return;
+      ctx.font = '10px ui-monospace, monospace';
+      ctx.fillStyle = source.color; ctx.globalAlpha = 0.06; ctx.fillRect(0, Math.min(y1, y2), mediaSize.width, Math.abs(y2 - y1)); ctx.globalAlpha = 1;
+      levels.forEach((lvl: number) => {
+        const y = y1 + (y2 - y1) * lvl; const price = source.p1 + (source.p2 - source.p1) * lvl;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(mediaSize.width, y);
+        ctx.strokeStyle = source.color; ctx.globalAlpha = 0.5; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+        ctx.fillStyle = source.color; ctx.fillText(`${(lvl * 100).toFixed(1)}%  ${price.toFixed(2)}`, 6, y - 3);
+      });
+    }); } };
+  }
+}
+class FibRetracementPrimitive {
+  series: any; t1: any; p1: any; t2: any; p2: any; color: string; _paneViews: any[]; _requestUpdate: () => void = () => {};
+  constructor(series: any, t: any, p: any, color: string) { this.series = series; this.t1 = t; this.p1 = p; this.t2 = t; this.p2 = p; this.color = color; this._paneViews = [new FibPaneView(this)]; }
+  updateAllViews() { this._paneViews.forEach(v => v.update()); }
+  paneViews() { return this._paneViews; }
+  attached({ requestUpdate }: any) { this._requestUpdate = requestUpdate; }
+  detached() {}
+  updateEndPoint(t: any, p: any) { this.t2 = t; this.p2 = p; this._requestUpdate(); }
+}
+
+const DRAW_TOOLS: { id: DrawTool; label: string; icon: any }[] = [
+  { id: 'trendline', label: '趋势线（两点连线）', icon: Pencil },
+  { id: 'hline', label: '水平线（单击定位价位）', icon: Minus },
+  { id: 'fib', label: '斐波那契回撤（两点）', icon: Spline },
+  { id: 'rect', label: '矩形区域（两点）', icon: Square },
+]
+
 interface LightweightChartCanvasProps {
   selectedSymbol: string;
   selectedPeriod: string;
@@ -85,9 +190,10 @@ interface LightweightChartCanvasProps {
   toggleWatchlist: () => void;
   selectedItem: WatchlistItem;
   hasData: boolean;
+  syncGroup?: string;
 }
 
-export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSelectedPeriod, theme, realQuote, realHistory, gatewayStatus, isWatchlistExpanded, toggleWatchlist, selectedItem, hasData }: LightweightChartCanvasProps) {
+export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSelectedPeriod, theme, realQuote, realHistory, gatewayStatus, isWatchlistExpanded, toggleWatchlist, selectedItem, hasData, syncGroup = 'default' }: LightweightChartCanvasProps) {
   const { toast } = useToast()
   const [showEvents, setShowEvents] = useState(true)
   const [showMA20, setShowMA20] = useState(true)
@@ -97,9 +203,172 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
   const [showMACD, setShowMACD] = useState(true)
   const [showRSI, setShowRSI] = useState(true)
   const [showKDJ, setShowKDJ] = useState(true)
-  const [isDrawMode, setIsDrawMode] = useState(false)
+  const [drawTool, setDrawTool] = useState<DrawTool>('none')
   const isDrawModeRef = useRef(false)
-  useEffect(() => { isDrawModeRef.current = isDrawMode }, [isDrawMode])
+  useEffect(() => { isDrawModeRef.current = drawTool !== 'none' }, [drawTool])
+  const drawToolRef = useRef<DrawTool>('none')
+  useEffect(() => { drawToolRef.current = drawTool }, [drawTool])
+  const drawingsRef = useRef<any[]>([])
+  const clearDrawings = useCallback(() => {
+    const s = seriesRef.current
+    if (s) {
+      drawingsRef.current.forEach((p: any) => { try { s.detachPrimitive(p) } catch {} })
+      const c = chartContainerRef.current as any
+      if (c && c._activeDrawingPlugin) { try { s.detachPrimitive(c._activeDrawingPlugin) } catch {}; c._activeDrawingPlugin = null }
+    }
+    drawingsRef.current = []
+  }, [])
+  const selectTool = (id: DrawTool) => {
+    const next = drawTool === id ? 'none' : id
+    if (next === 'none' && drawTool !== 'none') {
+      const c = chartContainerRef.current as any
+      if (c && c._activeDrawingPlugin) { try { seriesRef.current?.detachPrimitive(c._activeDrawingPlugin) } catch {}; c._activeDrawingPlugin = null }
+    }
+    if (next !== 'none') setOrderMode(false)
+    setDrawTool(next)
+  }
+
+  // PROD-09: 图表内拖拽式下单（沙箱推演）状态与价格线渲染
+  const [orderMode, setOrderMode] = useState(false)
+  const orderModeRef = useRef(false)
+  useEffect(() => { orderModeRef.current = orderMode }, [orderMode])
+  const positionCount = useTradeStore((s) => (s.positions[selectedSymbol] ?? []).length)
+
+  // PROD-11: 自定义指标脚本（Pine Script 简化版）面板与渲染引用
+  const [showCIPanel, setShowCIPanel] = useState(false)
+  const [showAlertSandbox, setShowAlertSandbox] = useState(false)
+  const customMarkersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
+  const customLineRefs = useRef<Record<string, ISeriesApi<'Line'>>>({})
+  const currentBarsRef = useRef<CIBar[]>([])
+  // 记录每个布尔指标已登记的「末根上穿」触发日，避免重复推入信号日志
+  const ciSignalStateRef = useRef<Record<string, string>>({})
+  // Toast 武装标记：延迟 2s，避免首屏 K 线加载时的历史信号轰炸，仅实时新信号提醒
+  const ciToastArmedRef = useRef(false)
+  // 系统通知权限仅请求一次，避免重复弹窗
+  const ciNotifAskedRef = useRef(false)
+  useEffect(() => {
+    const timer = setTimeout(() => { ciToastArmedRef.current = true }, 2000)
+    return () => clearTimeout(timer)
+  }, [])
+
+  const applyCustomIndicators = useCallback((bars: CIBar[]) => {
+    const chart = chartRef.current
+    const series = seriesRef.current
+    if (!chart || !series || bars.length === 0) return
+    // 清理上一次叠加的自定义数值线
+    Object.values(customLineRefs.current).forEach((s) => { try { chart.removeSeries(s) } catch {} })
+    customLineRefs.current = {}
+    const markers: SeriesMarker<Time>[] = []
+    const list = useCustomIndicatorStore.getState().indicators.filter((i) => i.visible)
+    for (const ind of list) {
+      const r = evaluate(ind.expr, bars, ind.params)
+      if (!r.ok) continue
+      if (r.isBool) {
+        for (let i = 0; i < r.values.length; i++) {
+          if (r.values[i] === 1) {
+            const t = (new Date(bars[i].time.replace(/-/g, '/')).getTime() / 1000) as UTCTimestamp
+            markers.push({ time: t, position: 'aboveBar', color: ind.color, shape: 'circle', text: ind.name })
+          }
+        }
+        // 末根 K 线上穿（0->1 跳变）记入信号日志，供提醒/回测消费
+        let lastFlip = -1
+        for (let i = 1; i < r.values.length; i++) {
+          if (r.values[i] === 1 && r.values[i - 1] !== 1) lastFlip = i
+        }
+        if (lastFlip === r.values.length - 1) {
+          const t = bars[lastFlip].time
+          if (ciSignalStateRef.current[ind.id] !== t) {
+            ciSignalStateRef.current[ind.id] = t
+            useCustomIndicatorStore.getState().pushSignal({ indId: ind.id, indName: ind.name, expr: ind.expr, time: t, ts: Date.now() })
+            if (ciToastArmedRef.current) {
+              const title = `📡 信号触发 · ${ind.name}`
+              const body = `${t} 满足：${ind.expr}`
+              toast({ title, description: body })
+              // 系统级通知：跨标签页 / 后台运行时仍可见
+              if (typeof Notification !== 'undefined') {
+                if (Notification.permission === 'granted') {
+                  new Notification(title, { body })
+                } else if (Notification.permission === 'default' && !ciNotifAskedRef.current) {
+                  ciNotifAskedRef.current = true
+                  Notification.requestPermission().catch(() => {})
+                }
+              }
+            }
+          }
+        }
+      } else {
+        const pane = ind.pane ?? suggestPane(ind.expr)
+        const psId = pane === 'separate' ? 'ci-separate' : 'right'
+        const line = chart.addSeries(LineSeries, {
+          color: ind.color, lineWidth: 1,
+          priceScaleId: psId,
+          crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false,
+        })
+        if (pane === 'separate') {
+          chart.priceScale(psId).applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } })
+        }
+        const data: { time: UTCTimestamp; value: number }[] = []
+        for (let i = 0; i < r.values.length; i++) {
+          const v = r.values[i]
+          if (v == null) continue
+          data.push({ time: (new Date(bars[i].time.replace(/-/g, '/')).getTime() / 1000) as UTCTimestamp, value: v })
+        }
+        line.setData(data)
+        customLineRefs.current[ind.id] = line
+      }
+    }
+    if (markers.length) {
+      if (!customMarkersApiRef.current) customMarkersApiRef.current = createSeriesMarkers(series, markers)
+      else customMarkersApiRef.current.setMarkers(markers)
+    } else if (customMarkersApiRef.current) {
+      customMarkersApiRef.current.setMarkers([])
+    }
+  }, [])
+
+  const applyCIPanelRef = useRef(applyCustomIndicators)
+  applyCIPanelRef.current = applyCustomIndicators
+  const orderPreviewLineRef = useRef<IPriceLine | null>(null)
+  const positionLinesRef = useRef<Record<string, IPriceLine>>({})
+
+  const clearPositionLines = useCallback(() => {
+    if (!seriesRef.current) return
+    Object.values(positionLinesRef.current).forEach((pl) => { try { seriesRef.current?.removePriceLine(pl) } catch {} })
+    positionLinesRef.current = {}
+  }, [])
+
+  const applyPositionLines = useCallback(() => {
+    const series = seriesRef.current
+    if (!series) return
+    clearPositionLines()
+    const positions = useTradeStore.getState().positions[selectedSymbol] ?? []
+    positions.forEach((pos) => {
+      positionLinesRef.current[`${pos.id}:entry`] = series.createPriceLine({ price: pos.entryPrice, color: pos.side === 'BUY' ? '#10b981' : '#ef4444', lineWidth: 1, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: `${pos.side} ${pos.qty}` })
+      if (pos.sl != null) positionLinesRef.current[`${pos.id}:sl`] = series.createPriceLine({ price: pos.sl, color: '#ef4444', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'SL' })
+      if (pos.tp != null) positionLinesRef.current[`${pos.id}:tp`] = series.createPriceLine({ price: pos.tp, color: '#10b981', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'TP' })
+    })
+  }, [selectedSymbol, clearPositionLines])
+
+  // PROD-01: 将 K线 上下文（标的 + 周期 + 技术指标）写入 AI 副驾
+  useEffect(() => {
+    if (!selectedSymbol) {
+      useCopilotContextStore.getState().clearContext()
+      return
+    }
+    const active: string[] = []
+    if (showMA20) active.push('MA20')
+    if (showMA50) active.push('MA50')
+    if (showMA200) active.push('MA200')
+    if (showBB) active.push('BB')
+    if (showMACD) active.push('MACD')
+    if (showRSI) active.push('RSI')
+    if (showKDJ) active.push('KDJ')
+    useCopilotContextStore.getState().setContext({
+      kind: 'kline',
+      title: 'K线',
+      symbol: selectedSymbol,
+      summary: `标的: ${selectedSymbol}\n周期: ${selectedPeriod}\n技术指标: ${active.join(', ') || '无'}`,
+    })
+  }, [selectedSymbol, selectedPeriod, showMA20, showMA50, showMA200, showBB, showMACD, showRSI, showKDJ])
 
   // 💡 个股事件状态（从后端获取）
   const [stockEvents, setStockEvents] = useState<StockEvent[]>([])
@@ -127,6 +396,10 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     return () => { isMounted = false }
   }, [selectedSymbol])
 
+  // PROD-12: 跨图表十字线同步所需的稳定实例 id 与防回环标记
+  const chartIdRef = useRef<string>(`chart-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`)
+  const isExternalSyncRef = useRef<boolean>(false)
+
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
@@ -149,7 +422,193 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
   const dataLengthRef = useRef<number>(0)
   const isFirstLoadFittedRef = useRef(false)
   const markersRef = useRef<any[]>([])
+  // PROD-02: AI 图表标注渲染相关引用
+  const aiMarkersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
+  const aiPriceLinesRef = useRef<IPriceLine[]>([])
+  const aiZoneSeriesRef = useRef<ISeriesApi<'Baseline'>[]>([])
+  const aiSignalsClickRef = useRef<{ time: number; detail: string }[]>([])
+  const latestAnnotationRef = useRef<{ symbol: string; payload: ChartAnnotationPayload } | null>(null)
+  const selectedSymbolRef = useRef(selectedSymbol)
+  const themeRef = useRef(theme)
+  useEffect(() => { selectedSymbolRef.current = selectedSymbol }, [selectedSymbol])
+  useEffect(() => { themeRef.current = theme }, [theme])
   const workerRef = useIndicatorWorker()
+
+  // PROD-02: 归一化标的用于跨格式匹配（US.AAPL / AAPL / 00700.HK）
+  const normalizeSymbol = (s?: string | null) => (s || '').replace(/^(US|HK|SH|SZ|MARKET)\./i, '').toUpperCase()
+
+  // 将 'YYYY-MM-DD' 或数字转换为图表使用的 Unix 秒（UTCTimestamp）
+  const toChartTime = (t: string | number): number | null => {
+    if (typeof t === 'number') return t
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t)
+    if (m) return Math.floor(Date.UTC(+m[1], +m[2] - 1, +m[3]) / 1000)
+    const n = Number(t)
+    return Number.isFinite(n) ? n : null
+  }
+
+  // PROD-02: 将当前 AI 标注渲染到 K 线图（箭头 + 价格线 + 区域带）
+  const applyAiAnnotations = () => {
+    if (aiMarkersApiRef.current) aiMarkersApiRef.current.setMarkers([])
+    aiPriceLinesRef.current.forEach((pl) => seriesRef.current?.removePriceLine(pl))
+    aiPriceLinesRef.current = []
+    aiZoneSeriesRef.current.forEach((s) => chartRef.current?.removeSeries(s))
+    aiZoneSeriesRef.current = []
+    aiSignalsClickRef.current = []
+
+    const ann = latestAnnotationRef.current
+    const series = seriesRef.current
+    const chart = chartRef.current
+    if (!ann || !series || !chart) return
+    if (normalizeSymbol(ann.symbol) !== normalizeSymbol(selectedSymbolRef.current)) return
+
+    const payload = ann.payload
+
+    // 1) 买卖信号 -> 箭头 markers
+    const signals = payload.signals || []
+    if (signals.length) {
+      const markers = signals
+        .map((sig): SeriesMarker<Time> | null => {
+          const t = toChartTime(sig.time)
+          if (t == null) return null
+          const price = sig.price
+          aiSignalsClickRef.current.push({
+            time: t,
+            detail: `${sig.side === 'buy' ? '🟢 AI 买入信号' : '🔴 AI 卖出信号'}${sig.label ? ' · ' + sig.label : ''}${price != null ? ' @ ' + price : ''}`,
+          })
+          return {
+            time: t as Time,
+            position: sig.side === 'buy' ? 'belowBar' : 'aboveBar',
+            color: sig.side === 'buy' ? '#10b981' : '#ef4444',
+            shape: sig.side === 'buy' ? 'arrowUp' : 'arrowDown',
+            text: sig.label || (sig.side === 'buy' ? 'B' : 'S'),
+          }
+        })
+        .filter((m): m is SeriesMarker<Time> => m !== null)
+        .sort((a, b) => (a.time as number) - (b.time as number))
+      if (markers.length) {
+        if (!aiMarkersApiRef.current) aiMarkersApiRef.current = createSeriesMarkers(series, markers)
+        else aiMarkersApiRef.current.setMarkers(markers)
+      }
+    }
+
+    // 2) 支撑/压力/目标/止损 -> 价格线
+    const levelColor: Record<string, string> = {
+      support: '#10b981',
+      resistance: '#ef4444',
+      target: '#3b82f6',
+      stop: '#f59e0b',
+    }
+    ;(payload.levels || []).forEach((lv) => {
+      const pl = series.createPriceLine({
+        price: lv.price,
+        color: levelColor[lv.type] || '#8b5cf6',
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: lv.label || lv.type.toUpperCase(),
+      })
+      aiPriceLinesRef.current.push(pl)
+    })
+
+    // 3) 区域高亮 -> 半透明基线带（baseline 介于 lower 与 upper 之间填充）
+    ;(payload.zones || []).forEach((z) => {
+      const band = z.color || 'rgba(139,92,246,0.16)'
+      const zone = chart.addSeries(BaselineSeries, {
+        topLineColor: 'rgba(0,0,0,0)',
+        bottomLineColor: 'rgba(0,0,0,0)',
+        topFillColor1: band,
+        topFillColor2: band,
+        bottomFillColor1: band,
+        bottomFillColor2: band,
+        lineWidth: 1,
+        priceLineVisible: false,
+        crosshairMarkerVisible: false,
+        lastValueVisible: false,
+        priceScaleId: 'right',
+        baseValue: { type: 'price', price: z.lower },
+      })
+      const base = series.data() as { time: Time }[]
+      zone.setData(base.map((d) => ({ time: d.time, value: z.upper })))
+      aiZoneSeriesRef.current.push(zone)
+    })
+  }
+  const applyAiAnnotationsRef = useRef(applyAiAnnotations)
+  applyAiAnnotationsRef.current = applyAiAnnotations
+
+  // PROD-02: 订阅 AI 标注 store，按标的匹配后渲染/清除
+  const aiPayload = useChartAnnotationStore((s) => s.payload)
+  const aiSymbol = useChartAnnotationStore((s) => s.symbol)
+  useEffect(() => {
+    latestAnnotationRef.current = aiSymbol && aiPayload ? { symbol: aiSymbol, payload: aiPayload } : null
+    applyAiAnnotations()
+  }, [aiPayload, aiSymbol, selectedSymbol, theme])
+
+  // AI-01 能力②：形态识别叠加（与 AI 副驾标注相互独立，使用各自 ref 互不覆盖）
+  const patternPriceLinesRef = useRef<IPriceLine[]>([])
+  const patternZoneRef = useRef<ISeriesApi<'Baseline'>[]>([])
+  const latestPatternRef = useRef<{ symbol: string; payload: ChartAnnotationPayload } | null>(null)
+
+  const applyPatternAnnotations = () => {
+    patternPriceLinesRef.current.forEach((pl) => seriesRef.current?.removePriceLine(pl))
+    patternPriceLinesRef.current = []
+    patternZoneRef.current.forEach((s) => chartRef.current?.removeSeries(s))
+    patternZoneRef.current = []
+
+    const ann = latestPatternRef.current
+    const series = seriesRef.current
+    const chart = chartRef.current
+    if (!ann || !series || !chart) return
+    if (normalizeSymbol(ann.symbol) !== normalizeSymbol(selectedSymbolRef.current)) return
+
+    const payload = ann.payload
+    const levelColor: Record<string, string> = {
+      support: '#10b981',
+      resistance: '#ef4444',
+      target: '#3b82f6',
+      stop: '#f59e0b',
+    }
+    ;(payload.levels || []).forEach((lv) => {
+      const pl = series.createPriceLine({
+        price: lv.price,
+        color: levelColor[lv.type] || '#8b5cf6',
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: lv.label || lv.type.toUpperCase(),
+      })
+      patternPriceLinesRef.current.push(pl)
+    })
+    ;(payload.zones || []).forEach((z) => {
+      const band = z.color || 'rgba(139,92,246,0.12)'
+      const zone = chart.addSeries(BaselineSeries, {
+        topLineColor: 'rgba(0,0,0,0)',
+        bottomLineColor: 'rgba(0,0,0,0)',
+        topFillColor1: band,
+        topFillColor2: band,
+        bottomFillColor1: band,
+        bottomFillColor2: band,
+        lineWidth: 1,
+        priceLineVisible: false,
+        crosshairMarkerVisible: false,
+        lastValueVisible: false,
+        priceScaleId: 'right',
+        baseValue: { type: 'price', price: z.lower },
+      })
+      const base = series.data() as { time: Time }[]
+      zone.setData(base.map((d) => ({ time: d.time, value: z.upper })))
+      patternZoneRef.current.push(zone)
+    })
+  }
+  const applyPatternAnnotationsRef = useRef(applyPatternAnnotations)
+  applyPatternAnnotationsRef.current = applyPatternAnnotations
+
+  // AI-01 能力②：订阅形态标注 store，按标的匹配后渲染/清除
+  const patternPayload = usePatternStore((s) => s.payload)
+  const patternSymbol = usePatternStore((s) => s.symbol)
+  useEffect(() => {
+    latestPatternRef.current = patternSymbol && patternPayload ? { symbol: patternSymbol, payload: patternPayload } : null
+    applyPatternAnnotations()
+  }, [patternPayload, patternSymbol, selectedSymbol, theme])
   
   const measureBoxRef = useRef<HTMLDivElement>(null)
   const measureInfoRef = useRef<HTMLDivElement>(null)
@@ -266,6 +725,26 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
 
     chartRef.current = chart; seriesRef.current = candlestickSeries; ma20Ref.current = ma20Line; ma50Ref.current = ma50Line; ma200Ref.current = ma200Line; bbUpperRef.current = bbUpperLine; bbLowerRef.current = bbLowerLine; macdDiffRef.current = macdDiffSeries; macdDeaRef.current = macdDeaSeries; macdHistRef.current = macdHistSeries; rsiLineRef.current = rsiLineSeries; rsiHistRef.current = rsiHistSeries; kdjKRef.current = kdjKSeries; kdjDRef.current = kdjDSeries; kdjJRef.current = kdjJSeries; volumeRef.current = volumeSeries; currentPriceLineRef.current = priceLine;
 
+    // PROD-12: 注册跨图表十字线同步；applyExternal 收到同源广播时设到本图（带防回环锁）
+    crosshairSync.register(syncGroup, chartIdRef.current, (pos) => {
+      if (!chartRef.current || !seriesRef.current) return
+      isExternalSyncRef.current = true
+      try {
+        if (pos.time == null || pos.price == null) {
+          chartRef.current.clearCrosshairPosition()
+        } else {
+          chartRef.current.setCrosshairPosition(pos.price, pos.time, seriesRef.current)
+        }
+      } finally {
+        isExternalSyncRef.current = false
+      }
+    })
+
+    // PROD-09: 图表初始化后绘制模拟持仓价格线
+    applyPositionLines()
+    // PROD-11: 图表重建后若已有 K 线数据，重新叠加自定义指标
+    if (currentBarsRef.current.length) applyCIPanelRef.current(currentBarsRef.current)
+
     const handleResize = (entries: ResizeObserverEntry[]) => {
       if (entries.length === 0 || !chartRef.current) return
       const newRect = entries[0].contentRect
@@ -294,6 +773,9 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     };
 
     chart.subscribeCrosshairMove((param) => {
+      // PROD-12: 由外部同步触发的 crosshair 事件直接跳过，防止回环广播
+      if (isExternalSyncRef.current) return
+
       const isValid = param.point && param.time && param.point.x >= 0 && param.point.x <= chartContainerRef.current!.clientWidth && param.point.y >= 0 && param.point.y <= chartContainerRef.current!.clientHeight;
       isCrosshairActiveRef.current = !!isValid;
       if (isValid) {
@@ -306,11 +788,26 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
         const price = candlestickSeries.coordinateToPrice(param.point!.y);
         if (price !== null) (chartContainerRef.current as any)._activeDrawingPlugin.updateEndPoint(param.time, price);
       }
+      // PROD-09: 下单拖拽 -> 实时更新预览线；持仓线拖拽 -> 实时跟随
+      const c9 = chartContainerRef.current as any
+      if (c9._isOrderDragging && isValid) {
+        const dp = candlestickSeries.coordinateToPrice(param.point!.y)
+        if (dp != null && orderPreviewLineRef.current) { orderPreviewLineRef.current.applyOptions({ price: dp }); c9._orderDragPrice = dp }
+      }
+      if (c9._dragLevel && isValid) {
+        const dp = candlestickSeries.coordinateToPrice(param.point!.y)
+        if (dp != null) { c9._dragLevel.line.applyOptions({ price: dp }); c9._dragLevelPrice = dp }
+      }
       if (isValid) {
         const cData = param.seriesData.get(candlestickSeries) as any; const vData = param.seriesData.get(volumeSeries) as any;
         if (cData && updateOhlcvDomRef.current) updateOhlcvDomRef.current({ ...cData, volume: vData?.value || 0 });
+        // PROD-12: 广播十字线位置给同组其他图表（同标的多周期 -> Y 对齐；异标的 -> 时间对齐）
+        const broadcastPrice = cData ? cData.close : (candlestickSeries.coordinateToPrice(param.point!.y) ?? 0)
+        crosshairSync.broadcast(chartIdRef.current, syncGroup, { time: param.time as Time, price: broadcastPrice });
       } else {
         if (lastCandleRef.current && updateOhlcvDomRef.current) updateOhlcvDomRef.current(lastCandleRef.current);
+        // PROD-12: 鼠标移出 -> 通知同组图表清除同步十字线
+        crosshairSync.broadcast(chartIdRef.current, syncGroup, { time: null, price: null });
       }
     });
 
@@ -319,39 +816,140 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
         const clickedMarker = markersRef.current.find(m => m.time === param.time)
         if (clickedMarker && clickedMarker.detail) toast({ title: `📊 信号触发 (${new Date((param.time as number) * 1000).toLocaleString('zh-CN', { hour12: false })})`, description: clickedMarker.detail })
       }
-      if (!isDrawModeRef.current || !param.point || !param.time) return;
+      // PROD-02: AI 标注信号点击提示
+      if (param.time && aiSignalsClickRef.current) {
+        const aiMarker = aiSignalsClickRef.current.find(m => m.time === param.time)
+        if (aiMarker) toast({ title: `🤖 AI 标注 (${(param.time as number)})`, description: aiMarker.detail })
+      }
+      if (drawToolRef.current === 'none' || !param.point) return;
       const price = candlestickSeries.coordinateToPrice(param.point.y);
       if (price === null) return;
       const container = chartContainerRef.current as any;
+      const tool = drawToolRef.current;
+      const color = theme === 'dark' ? '#38bdf8' : '#0284c7';
       if (!container._activeDrawingPlugin) {
-        const pluginColor = theme === 'dark' ? '#38bdf8' : '#0284c7';
-        container._activeDrawingPlugin = new TrendLinePrimitive(chart, candlestickSeries, param.time, price, pluginColor);
-        candlestickSeries.attachPrimitive(container._activeDrawingPlugin);
+        if (tool === 'hline') {
+          const p = new HLinePrimitive(candlestickSeries, param.time ?? null, price, color);
+          candlestickSeries.attachPrimitive(p); drawingsRef.current.push(p);
+          container._activeDrawingPlugin = null; setDrawTool('none');
+        } else {
+          if (!param.time) return;
+          if (tool === 'trendline') {
+            container._activeDrawingPlugin = new TrendLinePrimitive(chart, candlestickSeries, param.time, price, color);
+          } else if (tool === 'rect') {
+            container._activeDrawingPlugin = new RectanglePrimitive(chart, candlestickSeries, param.time, price, color);
+          } else if (tool === 'fib') {
+            container._activeDrawingPlugin = new FibRetracementPrimitive(candlestickSeries, param.time, price, color);
+          }
+          candlestickSeries.attachPrimitive(container._activeDrawingPlugin);
+        }
       } else {
+        if (!param.time) return;
         container._activeDrawingPlugin.updateEndPoint(param.time, price);
-        container._activeDrawingPlugin = null; setIsDrawMode(false);
+        drawingsRef.current.push(container._activeDrawingPlugin);
+        container._activeDrawingPlugin = null; setDrawTool('none');
       }
     });
     
     const handleMouseDown = (e: MouseEvent) => {
+      const c = chartContainerRef.current as any
       if (e.shiftKey && currentCrosshairRef.current) {
-        container._isMeasuring = true; container._measureStart = currentCrosshairRef.current;
+        c._isMeasuring = true; c._measureStart = currentCrosshairRef.current;
         if (measureBoxRef.current) measureBoxRef.current.style.display = 'block';
         if (measureInfoRef.current) measureInfoRef.current.style.display = 'flex';
-        updateMeasureDOM(container._measureStart, currentCrosshairRef.current);
-      } else {
-        if (measureBoxRef.current) measureBoxRef.current.style.display = 'none';
-        if (measureInfoRef.current) measureInfoRef.current.style.display = 'none';
-        container._isMeasuring = false;
+        updateMeasureDOM(c._measureStart, currentCrosshairRef.current);
+        return;
+      }
+      // PROD-09: 下单模式 -> 拖拽设置价格线（松手弹确认框）
+      if (orderModeRef.current && currentCrosshairRef.current) {
+        const p0 = candlestickSeries.coordinateToPrice(currentCrosshairRef.current.point.y)
+        if (p0 != null) {
+          c._isOrderDragging = true; c._orderDragPrice = p0
+          orderPreviewLineRef.current = candlestickSeries.createPriceLine({ price: p0, color: '#a855f7', lineWidth: 2, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: '拖拽下单' })
+        }
+        return;
+      }
+      // PROD-09: 命中持仓线 (entry/sl/tp) -> 拖拽调整
+      if (!isDrawModeRef.current && currentCrosshairRef.current && seriesRef.current) {
+        const my = currentCrosshairRef.current.point.y
+        const positions = useTradeStore.getState().positions[selectedSymbol] ?? []
+        for (const pos of positions) {
+          for (const lvl of (['entryPrice', 'sl', 'tp'] as const)) {
+            const val = pos[lvl]
+            if (val == null) continue
+            const ly = seriesRef.current!.priceToCoordinate(val)
+            if (ly != null && Math.abs(ly - my) < 6) {
+              const line = positionLinesRef.current[`${pos.id}:${lvl}`]
+              if (line) { c._dragLevel = { posId: pos.id, level: lvl, line }; return }
+            }
+          }
+        }
+      }
+      if (measureBoxRef.current) measureBoxRef.current.style.display = 'none';
+      if (measureInfoRef.current) measureInfoRef.current.style.display = 'none';
+      c._isMeasuring = false;
+    };
+    const handleMouseUp = () => {
+      const c = chartContainerRef.current as any
+      if (c?._isMeasuring) c._isMeasuring = false
+      // PROD-09: 完成下单拖拽 -> 弹出确认框（沙箱）
+      if (c?._isOrderDragging) {
+        c._isOrderDragging = false
+        const finalPrice = c._orderDragPrice ?? null
+        if (orderPreviewLineRef.current) { try { seriesRef.current?.removePriceLine(orderPreviewLineRef.current) } catch {}; orderPreviewLineRef.current = null }
+        if (finalPrice != null) {
+          const last = lastCandleRef.current?.close
+          const side: OrderSide = last != null && finalPrice < last ? 'BUY' : 'SELL'
+          useTradeStore.getState().setPending({ symbol: selectedSymbol, side, type: 'LIMIT', price: finalPrice, qty: 100 })
+        }
+      }
+      // PROD-09: 完成持仓线拖拽 -> 提交到 store
+      if (c?._dragLevel) {
+        const dl = c._dragLevel
+        const price = c._dragLevelPrice
+        c._dragLevel = null; c._dragLevelPrice = null
+        if (price != null) useTradeStore.getState().updatePositionLevel(selectedSymbol, dl.posId, dl.level, price)
+        else applyPositionLines()
       }
     };
-    const handleMouseUp = () => { if (container._isMeasuring) container._isMeasuring = false; };
     container.addEventListener('mousedown', handleMouseDown); window.addEventListener('mouseup', handleMouseUp);
 
     return () => {
-      ro.disconnect(); chart.remove(); chartRef.current = null; seriesRef.current = null; volumeRef.current = null; macdDiffRef.current = null; macdDeaRef.current = null; macdHistRef.current = null; rsiLineRef.current = null; rsiHistRef.current = null; kdjKRef.current = null; kdjDRef.current = null; kdjJRef.current = null; bbUpperRef.current = null; bbLowerRef.current = null; container.removeEventListener('mousedown', handleMouseDown); window.removeEventListener('mouseup', handleMouseUp);
+      ro.disconnect();
+      // PROD-02: 旧图表销毁前清空 AI 标注引用，避免跨实例 removeSeries 报错
+      if (aiMarkersApiRef.current) aiMarkersApiRef.current.setMarkers([])
+      aiMarkersApiRef.current = null
+      aiPriceLinesRef.current = []
+      aiZoneSeriesRef.current = []
+      aiSignalsClickRef.current = []
+      chart.remove(); chartRef.current = null; seriesRef.current = null; volumeRef.current = null; macdDiffRef.current = null; macdDeaRef.current = null; macdHistRef.current = null; rsiLineRef.current = null; rsiHistRef.current = null; kdjKRef.current = null; kdjDRef.current = null; kdjJRef.current = null; bbUpperRef.current = null; bbLowerRef.current = null;       container.removeEventListener('mousedown', handleMouseDown); window.removeEventListener('mouseup', handleMouseUp);
+      clearPositionLines();
+      orderPreviewLineRef.current = null
+      customMarkersApiRef.current = null
+      customLineRefs.current = {}
     }
-  }, [theme])
+  }, [theme, applyPositionLines])
+
+  // PROD-03: 切换标的/周期时清除已画线，避免点位错位误导
+  useEffect(() => {
+    clearDrawings()
+    setDrawTool('none')
+  }, [selectedSymbol, selectedPeriod, clearDrawings])
+
+  // PROD-09: 订阅模拟持仓变化 -> 重绘 entry/SL/TP 价格线
+  useEffect(() => {
+    const unsub = useTradeStore.subscribe(() => applyPositionLines())
+    applyPositionLines()
+    return () => { unsub(); clearPositionLines() }
+  }, [selectedSymbol, applyPositionLines, clearPositionLines])
+
+  // PROD-11: 订阅自定义指标变化 -> 实时重算叠加
+  useEffect(() => {
+    const unsub = useCustomIndicatorStore.subscribe(() => {
+      if (currentBarsRef.current.length) applyCIPanelRef.current(currentBarsRef.current)
+    })
+    return unsub
+  }, [])
 
   useEffect(() => {
     if (!seriesRef.current) return
@@ -406,7 +1004,14 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
         volumeData.push({ time: t, value: d.volume || 0, color: d.close >= d.open ? upColor : downColor });
       }
       seriesRef.current?.setData(lwData); markersRef.current = markers;
-      if (ma20Ref.current) ma20Ref.current.setData(ma20Data); if (ma50Ref.current) ma50Ref.current.setData(ma50Data); if (ma200Ref.current) ma200Ref.current.setData(ma200Data); if (bbUpperRef.current) bbUpperRef.current.setData(bbUpperData); if (bbLowerRef.current) bbLowerRef.current.setData(bbLowerData); if (volumeRef.current) volumeRef.current.setData(volumeData); if (macdDiffRef.current) macdDiffRef.current.setData(macdDiffData); if (macdDeaRef.current) macdDeaRef.current.setData(macdDeaData); if (macdHistRef.current) macdHistRef.current.setData(macdHistData); if (rsiLineRef.current) rsiLineRef.current.setData(rsiData); if (rsiHistRef.current) rsiHistRef.current.setData(rsiHistData); if (kdjKRef.current) kdjKRef.current.setData(kdjKData); if (kdjDRef.current) kdjDRef.current.setData(kdjDData); if (kdjJRef.current) kdjJRef.current.setData(kdjJData);
+      // PROD-02: 数据重载后重新叠加 AI 标注
+      applyAiAnnotationsRef.current?.()
+      // AI-01 能力②: 数据重载后重新叠加形态识别标注
+      applyPatternAnnotationsRef.current?.()
+      if (ma20Ref.current) ma20Ref.current.setData(ma20Data); if (ma50Ref.current) ma50Ref.current.setData(ma50Data); if (ma200Ref.current) ma200Ref.current.setData(ma200Data); if (bbUpperRef.current) bbUpperRef.current.setData(bbUpperData); if (bbLowerRef.current) bbLowerRef.current.setData(bbLowerData); if (volumeRef.current) volumeRef.current.setData(volumeData); if (macdDiffRef.current) macdDiffRef.current.setData(macdDiffData); if (macdDeaRef.current) macdDeaRef.current.setData(macdDeaData); if (macdHistRef.current) macdHistRef.current.setData(macdHistData); if (rsiLineRef.current) rsiLineRef.current.setData(rsiData); if (rsiHistRef.current) rsiHistRef.current.setData(rsiHistData); if (kdjKRef.current) kdjKRef.current.setData(kdjKData); if (kdjDRef.current) kdjDRef.current.setData(kdjDData); if (kdjJRef.current) kdjJRef.current.setData(kdjJData)
+      // PROD-11: K 线就绪后叠加自定义指标（数值线/布尔信号）
+      currentBarsRef.current = sortedHistory
+      applyCIPanelRef.current?.(sortedHistory);
       if (!isFirstLoadFittedRef.current && chartRef.current && lwData.length > 0) { 
         requestAnimationFrame(() => { 
           if (chartRef.current) {
@@ -446,6 +1051,8 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       }
     }
     workerRef.current.postMessage({ id: reqId, history: sortedHistory, params: { maPeriods: [20, 50, 200], bbParams: [20, 2], macdParams: [12, 26, 9], rsiPeriod: 14, kdjParams: [9, 3, 3] } })
+    // PROD-12: 卸载或图表重建时从同步管理器注销，避免悬挂引用
+    return () => { crosshairSync.unregister(syncGroup, chartIdRef.current) }
   }, [realHistory, theme])
 
   useEffect(() => { if (ma20Ref.current) ma20Ref.current.applyOptions({ visible: showMA20 }); if (ma50Ref.current) ma50Ref.current.applyOptions({ visible: showMA50 }); if (ma200Ref.current) ma200Ref.current.applyOptions({ visible: showMA200 }); }, [showMA20, showMA50, showMA200])
@@ -508,9 +1115,26 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
         <div className="flex items-center gap-0.5 bg-background border border-border/50 p-0.5 rounded-md shadow-sm" role="group" aria-label="K线周期">
           {periods.map((p, idx) => (<button key={p.id} onClick={() => setSelectedPeriod(p.id)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium', selectedPeriod === p.id ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} aria-pressed={selectedPeriod === p.id} title={`切换至${p.label}周期 (快捷键: ${idx + 1})`}>{p.label}</button>))}
         </div>
-        <Button variant={isDrawMode ? "default" : "outline"} size="sm" onClick={() => setIsDrawMode(!isDrawMode)} className={cn("h-7 px-2.5 gap-1.5 text-[10px]", isDrawMode ? "bg-primary text-primary-foreground shadow-sm shadow-primary/30" : "border-border/50 bg-background")} title={isDrawMode ? '取消画线 (点击两点连线)' : '自由画线 (趋势线)'}><Pencil className="h-3.5 w-3.5" /></Button>
+        <div className="flex items-center gap-0.5 border-l border-border/40 pl-1.5 ml-1">
+          {DRAW_TOOLS.map((t) => (
+            <Button key={t.id} variant={drawTool === t.id ? 'default' : 'outline'} size="sm" onClick={() => selectTool(t.id)} className={cn('h-7 w-7 p-0 text-[10px]', drawTool === t.id ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/30' : 'border-border/50 bg-background')} title={t.label}>
+              <t.icon className="h-3.5 w-3.5" />
+            </Button>
+          ))}
+          <Button variant="outline" size="sm" onClick={clearDrawings} className="h-7 w-7 p-0 border-border/50 bg-background" title="清除全部画线"><Eraser className="h-3.5 w-3.5" /></Button>
+          <Button variant={orderMode ? 'default' : 'outline'} size="sm" onClick={() => { const next = !orderMode; setOrderMode(next); if (next) setDrawTool('none') }} className={cn('relative h-7 w-7 p-0 border-border/50', orderMode ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/30' : 'bg-background')} title={orderMode ? '退出下单模式' : '下单模式：在图上拖拽设置价格线'}><MousePointerClick className="h-3.5 w-3.5" />{positionCount > 0 && <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] px-0.5 rounded-full bg-emerald-500 text-[8px] font-bold text-white flex items-center justify-center">{positionCount}</span>}</Button>
+          <Button variant={showCIPanel ? 'default' : 'outline'} size="sm" onClick={() => setShowCIPanel((s) => !s)} className={cn('h-7 w-7 p-0 border-border/50', showCIPanel ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/30' : 'bg-background')} title={showCIPanel ? '关闭自定义指标' : '自定义指标脚本（Pine Script 简化版）'}><Sigma className="h-3.5 w-3.5" /></Button>
+          <Button variant={showAlertSandbox ? 'default' : 'outline'} size="sm" onClick={() => setShowAlertSandbox((s) => !s)} className={cn('h-7 w-7 p-0 border-border/50', showAlertSandbox ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/30' : 'bg-background')} title={showAlertSandbox ? '关闭条件单沙盒' : '条件单沙盒（ALERT-COND-01）'}><Bell className="h-3.5 w-3.5" /></Button>
+        </div>
         <Button variant="outline" size="sm" onClick={() => setShowEvents(!showEvents)} className="h-7 px-2.5 gap-1.5 text-[10px] border-border/50 bg-background" title={showEvents ? '隐藏事件' : '显示事件'}>{showEvents ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}</Button>
       </div>
+      {orderMode && (
+        <div className="px-3 py-1 border-b border-border/30 bg-primary/10 text-[10px] font-mono text-primary flex items-center gap-1.5 shrink-0">
+          <MousePointerClick className="h-3 w-3" /> 下单模式：在 K 线图上按住拖拽设置价格线，松手弹出模拟下单确认框（当前 OMS 未实装，仅沙箱推演）
+        </div>
+      )}
+      <CustomIndicatorPanel open={showCIPanel} onClose={() => setShowCIPanel(false)} bars={currentBarsRef.current} />
+      <AlertSandboxPanel open={showAlertSandbox} onClose={() => setShowAlertSandbox(false)} getBars={() => currentBarsRef.current} />
       <div className="px-4 py-1.5 border-b border-border/30 bg-secondary/20 flex gap-4 text-[10px] font-mono text-muted-foreground shrink-0">
         <span className="flex items-center gap-1.5"><span className="font-semibold opacity-50">O</span> <span ref={oRef} className="text-foreground font-medium tabular-nums">--</span></span>
         <span className="flex items-center gap-1.5"><span className="font-semibold opacity-50">H</span> <span ref={hRef} className="text-foreground font-medium tabular-nums">--</span></span>
@@ -544,6 +1168,20 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
             </div>
           )
         })}
+        {/* PROD-02: AI 图表标注徽标（点击标记或价格线后可见信号提示） */}
+        {aiSymbol && aiPayload && (normalizeSymbol(aiSymbol) === normalizeSymbol(selectedSymbol)) && (
+          <div className="absolute top-2 right-2 z-30 flex items-center gap-1.5 rounded-md border border-violet-500/40 bg-violet-500/10 backdrop-blur-sm px-2 py-1 text-[10px] font-mono text-violet-300 shadow-sm">
+            <span className="font-semibold">🤖 AI 标注</span>
+            {(aiPayload.signals?.length ?? 0) > 0 && <span className="px-1 rounded bg-violet-500/20">{aiPayload.signals!.length} 信号</span>}
+            {(aiPayload.levels?.length ?? 0) > 0 && <span className="px-1 rounded bg-violet-500/20">{aiPayload.levels!.length} 价位</span>}
+            {(aiPayload.zones?.length ?? 0) > 0 && <span className="px-1 rounded bg-violet-500/20">{aiPayload.zones!.length} 区域</span>}
+            <button
+              onClick={() => useChartAnnotationStore.getState().clear()}
+              className="ml-0.5 text-violet-300/70 hover:text-violet-100 leading-none"
+              title="清除 AI 标注"
+            >✕</button>
+          </div>
+        )}
       </div>
       {showEvents && stockEvents.length > 0 && (
         <div className="border-t border-border/30 px-3 py-1.5 flex items-center gap-2 shrink-0 overflow-x-auto">
@@ -565,6 +1203,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
           })}
         </div>
       )}
+      <OrderConfirmModal />
     </div>
   )
 }

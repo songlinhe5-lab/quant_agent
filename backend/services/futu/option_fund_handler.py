@@ -10,6 +10,7 @@ from typing import Any, Dict
 import pandas as pd
 from futu import RET_OK, SortField, SubType, WarrantRequest
 
+from backend.core.circuit_breaker import get_cooldown_seconds
 from backend.core.retry_utils import with_global_retry
 from backend.core.utils import safe_float
 
@@ -44,11 +45,12 @@ class OptionFundHandler:
         if cached and now - cached[0] < 3600.0:
             return cached[1]
 
-        # 开发环境 Mock
-        if self.conn_mgr.status != "CONNECTED" and __import__("os").getenv("QUANT_ENV") == "development":  # noqa: E501
-            from .mock_provider import MockProvider
-
-            return MockProvider.mock_option_chain(ticker, expiration_date)
+        # 未连接真实数据源：明确返回错误告警，绝不用 Mock 填充 (VIBE-CODING)
+        if self.conn_mgr.status != "CONNECTED":
+            return {
+                "status": "error",
+                "message": "数据源已死，无法分析：期权链数据源不可用（Futu OpenD 未连接）",
+            }
 
         if not self.conn_mgr.quote_ctx:
             return {"status": "error", "message": "FutuService 未连接"}
@@ -122,7 +124,7 @@ class OptionFundHandler:
         if ret != RET_OK or not isinstance(data, pd.DataFrame) or data.empty:
             if "频率太高" in str(data) or "frequency" in str(data).lower():
                 print(f"🚨 [Futu] 资金流向触发限流熔断！接口将强制全局休眠 60 秒以释放压力 ({data})")  # noqa: E501
-                self.cache_mgr.ff_circuit_breaker_until = time.time() + 60.0
+                self.cache_mgr.ff_circuit_breaker_until = time.time() + get_cooldown_seconds()
                 from .mock_provider import MockProvider
 
                 res = MockProvider.mock_fund_flow(ticker)

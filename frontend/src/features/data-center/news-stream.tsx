@@ -5,13 +5,13 @@ import { HighlightedText, NEWS_TAG_COLORS } from './shared';
 import { useI18n, type DictionaryKey } from '@/contexts/i18n';
 import { useTheme } from 'next-themes';
 
-export function NewsStream({ news, visibleNewsCount, setVisibleNewsCount }: { news: any[], visibleNewsCount: number, setVisibleNewsCount: React.Dispatch<React.SetStateAction<number>> }) {
+export function NewsStream({ news, visibleNewsCount, setVisibleNewsCount, className }: { news: any[], visibleNewsCount: number, setVisibleNewsCount: React.Dispatch<React.SetStateAction<number>>, className?: string }) {
   const { t } = useI18n();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
   return (
-    <div className="glass-card rounded-lg overflow-hidden flex flex-col h-[350px]">
+    <div className={cn('glass-card rounded-lg overflow-hidden flex flex-col', className || 'h-[350px]')}>
       <div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2 flex-shrink-0">
         <Newspaper className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">LLM 情感打分 · 财经快讯</span>

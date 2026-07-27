@@ -20,6 +20,19 @@ from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
 
 import pytest  # noqa: E402
 
+# ─── ARCH-02: 全局熔断单例隔离 ───────────────────────────────
+# circuit_breaker 是进程级全局单例，接入 fetch 主路径后若某测试将其熔断成 OPEN，
+# 会污染后续测试。每个测试前后重置，保证测试隔离。
+from backend.core.circuit_breaker import circuit_breaker  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _reset_circuit_breaker():
+    circuit_breaker.reset()
+    yield
+    circuit_breaker.reset()
+
+
 # ─── 🔧 关键修复：在导入任何模块之前 Mock redis.asyncio.Redis ─────────
 # 防止 backend.core.redis_client 模块在 import 时创建真实 Redis 连接（导致测试超时）
 # 必须在 `import redis.asyncio` 之前执行，确保模块加载时类已被替换
@@ -104,7 +117,12 @@ os.environ["CHAT_MOCK_DELAY"] = "0"
 _REDIS_PATCH_MODULES = [
     "backend.core.redis_client",
     "backend.main",
-    "backend.services.sentiment_tracker",
+    "backend.services.macro.sentiment_tracker",
+    # ARCH-06 修复: system_health 用 `from backend.core.redis_client import redis_client`
+    # 绑定的是模块级名字，若其在 autouse fixture 还原成协程的窗口期被首次导入，
+    # 会永久绑定成协程，导致 /health 系列测试在全量套件中偶发失败（隔离运行却通过）。
+    # 显式加入列表，确保每测试都被正确的 mock_rc (AsyncMock, 含 ping/pipeline) 覆盖。
+    "backend.routers.system_health",
 ]
 
 
@@ -498,3 +516,99 @@ class TestDataFactory:
 def factory():
     """测试数据工厂"""
     return TestDataFactory()
+
+
+# ─── 测试环境鉴权旁路（TEST-SEC）─────────────────────────────
+# 业务路由现已强制 Depends(get_current_user / get_current_username)，测试环境对
+# 本次新增鉴权的路由前缀统一旁路为假用户，避免大量既有路由单测因缺少 Token 而 401。
+# 其余前缀（/auth、/chat、/sessions 等）保留真实鉴权行为，确保未认证 401 用例不被破坏。
+_BYPASS_AUTH_PREFIXES = (
+    "/api/v1/trade",
+    "/api/v1/oms",
+    "/api/v1/alert",
+    "/api/v1/audit",
+    "/api/v1/screener",
+    "/api/v1/strategy",
+    "/api/v1/chat/suggestions",
+)
+
+
+@pytest.fixture(autouse=True)
+def _auth_bypass_for_tests():
+    """为本次新增鉴权的前缀路由提供假用户旁路，其余路由保留真实鉴权。"""
+    from typing import Optional
+
+    from fastapi import Cookie, Depends, HTTPException, Request
+    from fastapi.security import HTTPAuthorizationCredentials
+
+    from backend.core.database import get_db
+    from backend.main import app
+    from backend.routers.auth import (
+        get_current_user,
+        get_current_user_optional,
+        oauth2_scheme_optional,
+    )
+    from backend.routers.chat import _bearer_scheme, get_current_username
+
+    def _is_bypass(path: str) -> bool:
+        return any(path.startswith(p) for p in _BYPASS_AUTH_PREFIXES)
+
+    def _fake_user():
+        from backend.core import models
+
+        return models.User(
+            id=1,
+            username="test_user",
+            email="test_user@example.com",
+            hashed_password="test-hashed-password",
+        )
+
+    def _ov_get_current_user(
+        token: Optional[str] = Depends(oauth2_scheme_optional),
+        db=Depends(get_db),
+        request: Request = None,
+    ):
+        if not token:
+            if request is not None and _is_bypass(request.url.path):
+                return _fake_user()
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        try:
+            return get_current_user(token, db)
+        except HTTPException:
+            if request is not None and _is_bypass(request.url.path):
+                return _fake_user()
+            raise
+
+    def _ov_get_current_user_optional(
+        token: Optional[str] = Depends(oauth2_scheme_optional),
+        db=Depends(get_db),
+        request: Request = None,
+    ):
+        try:
+            return get_current_user_optional(token, db)
+        except HTTPException:
+            if request is not None and _is_bypass(request.url.path):
+                return _fake_user()
+            raise
+
+    async def _ov_get_current_username(
+        credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+        refresh_token: Optional[str] = Cookie(None),
+        request: Request = None,
+    ):
+        try:
+            return await get_current_username(credentials, refresh_token)
+        except HTTPException:
+            if request is not None and _is_bypass(request.url.path):
+                return "test_user"
+            raise
+
+    app.dependency_overrides[get_current_user] = _ov_get_current_user
+    app.dependency_overrides[get_current_user_optional] = _ov_get_current_user_optional
+    app.dependency_overrides[get_current_username] = _ov_get_current_username
+
+    yield
+
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_current_user_optional, None)
+    app.dependency_overrides.pop(get_current_username, None)

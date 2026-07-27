@@ -143,6 +143,38 @@ export async function getValidAccessToken(): Promise<string | null> {
   return doRefreshToken(DEFAULT_CONFIG)
 }
 
+/**
+ * 带自动续期的 fetch 封装（裸 fetch 统一入口）
+ * - 复用 getValidAccessToken 预先检测过期并静默续期（默认续期）
+ * - 若仍收到 401（极端场景：服务端时钟偏移 / 超长流式连接越过 TTL / token 被吊销），
+ *   走 refreshAccessToken 强制刷新一次并重试，对齐 apiClient.request 的 401 重试语义
+ * - 自动拼接 Bearer；默认带 credentials: 'include'（与 apiClient 一致）
+ *
+ * 适用于不走 apiClient 的裸 fetch（流式策略生成、普通请求等）。
+ */
+export async function fetchWithAuth(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const token = await getValidAccessToken()
+  const headers = new Headers(init.headers)
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+
+  const doFetch = (authToken: string | null): Promise<Response> => {
+    const h = new Headers(headers)
+    if (authToken) h.set('Authorization', `Bearer ${authToken}`)
+    return fetch(url, { ...init, headers: h, credentials: init.credentials ?? 'include' })
+  }
+
+  let res = await doFetch(token)
+  if (res.status === 401) {
+    const refreshed = await refreshAccessToken()
+    if (refreshed) res = await doFetch(refreshed)
+  }
+  return res
+}
+
 // ─── 错误类 ────────────────────────────────────────────────────────
 export class ApiError extends Error {
   code: number
@@ -335,6 +367,37 @@ class RestClient {
   patch<T = any>(path: string, body?: unknown): Promise<T> {
     return this.request<T>('PATCH', path, { body })
   }
+
+  /**
+   * 原始流式请求(POST + NDJSON)：返回未解包的 Response，供调用方按行读取流。
+   * 用于 AI-02 解盘副驾 /ai/stream。
+   */
+  async stream(path: string, body?: unknown, signal?: AbortSignal): Promise<Response> {
+    const url = `${this.config.baseURL}${path}`
+    const requestHeaders: HeadersInit = { 'Content-Type': 'application/json' }
+    const token = await getValidAccessToken()
+    if (token) (requestHeaders as Record<string, string>)['Authorization'] = `Bearer ${token}`
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: requestHeaders,
+        body: body ? JSON.stringify(body) : undefined,
+        credentials: this.config.withCredentials ? 'include' : 'omit',
+        signal,
+      })
+      if (!response.ok) {
+        useBackendStatusStore.getState().registerFailure(`流式请求失败 ${response.status}`)
+        throw new ApiError(response.status, `HTTP ${response.status}`)
+      }
+      useBackendStatusStore.getState().registerSuccess()
+      return response
+    } catch (error) {
+      if (error instanceof ApiError) throw error
+      const msg = (error as Error)?.message || '网络异常'
+      useBackendStatusStore.getState().registerFailure(msg)
+      throw new ApiError(500, '网络异常')
+    }
+  }
 }
 
 // ─── SSE Client ────────────────────────────────────────────────────
@@ -421,6 +484,11 @@ class UnifiedApiClient {
 
   delete<T = any>(path: string, config?: { data?: unknown; signal?: AbortSignal }): Promise<T> {
     return this.rest.delete<T>(path, config)
+  }
+
+  /** 原始流式请求(POST + NDJSON)：返回未解包的 Response，供按行读取流。用于 AI-02 解盘副驾 /ai/stream。 */
+  stream(path: string, body?: unknown, signal?: AbortSignal): Promise<Response> {
+    return this.rest.stream(path, body, signal)
   }
 
   // SSE 快捷方法

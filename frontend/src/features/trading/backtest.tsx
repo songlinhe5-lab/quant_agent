@@ -44,6 +44,8 @@ export function BacktestModule() {
         setDone={bt.setDone}
         setProgress={bt.setProgress}
         setStrategyParams={bt.setStrategyParams}
+        customExpr={bt.customExpr}
+        setCustomExpr={bt.setCustomExpr}
       />
 
       {/* Results */}

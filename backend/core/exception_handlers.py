@@ -11,7 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from backend.core.error_codes import ERROR_CODE_TO_HTTP_STATUS, ErrorCode
-from backend.core.exceptions import QuantBaseException
+from backend.core.exceptions import AppError, QuantBaseException
 from backend.core.logger import logger
 
 
@@ -50,11 +50,27 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         errors.append({"field": loc, "msg": err.get("msg", ""), "type": err.get("type", "")})
     body = {
         "code": int(ErrorCode.VALIDATION_FAILED),
-        "msg": f"请求参数校验失败: {exc.errors()[0]['msg']}" if exc.errors() else "请求参数校验失败",
+        "msg": (f"请求参数校验失败: {exc.errors()[0]['msg']}" if exc.errors() else "请求参数校验失败"),
         "data": errors,
         "ts": int(time.time() * 1000),
     }
     return JSONResponse(status_code=422, content=body)
+
+
+async def app_error_handler(request: Request, exc: AppError):
+    """捕获应用编排层抛出的 AppError，映射为 {code, msg, data, ts} 统一格式。
+
+    状态码直接透传 exc.status_code，与编排层意图一致。
+    """
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "code": exc.code,
+            "msg": exc.msg,
+            "data": exc.data,
+            "ts": int(time.time() * 1000),
+        },
+    )
 
 
 async def global_exception_handler(request: Request, exc: Exception):
@@ -77,6 +93,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 def register_exception_handlers(app: FastAPI) -> None:
     """注册全局异常处理器"""
     app.add_exception_handler(QuantBaseException, quant_exception_handler)
+    app.add_exception_handler(AppError, app_error_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(Exception, global_exception_handler)

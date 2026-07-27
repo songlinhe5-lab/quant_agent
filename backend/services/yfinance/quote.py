@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional, cast
 import pandas as pd
 import yfinance as yf
 
+from backend.core.circuit_breaker import get_cooldown_seconds
 from backend.services.yfinance.utils import format_yf_ticker
 
 
@@ -158,7 +159,7 @@ class QuoteMixin:
                         or "YFRateLimitError" in err_str
                     ):  # noqa: E501
                         print("🚨 [YF Batcher] 触发全局限流熔断！所有雅虎请求将强制休眠 60 秒以释放压力")  # noqa: E501
-                        self._circuit_breaker_until = time.time() + 60.0
+                        self._circuit_breaker_until = time.time() + get_cooldown_seconds()
                         df = None
                         break
 

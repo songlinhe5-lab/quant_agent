@@ -55,7 +55,7 @@ class TestScreenerSuggestions:
 
 
 class TestScreenerTranslate:
-    @patch("backend.routers.screener.screener_service")
+    @patch("backend.app.screener_app.screener_service")
     def test_translate_success(self, mock_svc, client):
         mock_svc.translate_nlp_to_dsl = AsyncMock(return_value='{"market": ["US"], "filters": []}')
         resp = client.post("/api/v1/screener/translate", json={"query": "低市盈率美股"})
@@ -63,7 +63,7 @@ class TestScreenerTranslate:
         data = _unwrap(resp)
         assert data["status"] == "success"
 
-    @patch("backend.routers.screener.screener_service")
+    @patch("backend.app.screener_app.screener_service")
     def test_translate_error(self, mock_svc, client):
         mock_svc.translate_nlp_to_dsl = AsyncMock(side_effect=Exception("LLM 不可用"))
         resp = client.post("/api/v1/screener/translate", json={"query": "test"})
@@ -76,7 +76,7 @@ class TestScreenerTranslate:
 
 
 class TestScreenerRun:
-    @patch("backend.routers.screener.redis_client")
+    @patch("backend.app.screener_app.redis_client")
     def test_run_cache_hit(self, mock_redis, client):
         """Redis 缓存命中"""
         cached_data = [{"symbol": "US.AAPL", "name": "Apple", "mktcap": "3T", "price": 200}]
@@ -87,9 +87,9 @@ class TestScreenerRun:
         assert data["status"] == "success"
         assert "命中 Redis 极速缓存" in data.get("message", "")
 
-    @patch("backend.routers.screener.screener_service")
-    @patch("backend.routers.screener.market_data")
-    @patch("backend.routers.screener.redis_client")
+    @patch("backend.app.screener_app.screener_service")
+    @patch("backend.app.screener_app.market_data")
+    @patch("backend.app.screener_app.redis_client")
     def test_run_futu_success(self, mock_redis, mock_md, mock_svc, client):
         """Futu 在线筛选成功"""
         mock_redis.get = AsyncMock(return_value=None)
@@ -107,14 +107,14 @@ class TestScreenerRun:
         data = _unwrap(resp)
         assert data["status"] == "success"
 
-    @patch("backend.routers.screener.redis_client")
+    @patch("backend.app.screener_app.redis_client")
     def test_run_invalid_dsl(self, mock_redis, client):
         """DSL 格式错误"""
         mock_redis.get = AsyncMock(return_value=None)
         resp = client.post("/api/v1/screener/run", json={"dsl": "not valid json {"})
         assert resp.status_code == 400
 
-    @patch("backend.routers.screener.redis_client")
+    @patch("backend.app.screener_app.redis_client")
     def test_run_with_pagination(self, mock_redis, client):
         """带分页参数"""
         cached_data = [
@@ -130,7 +130,7 @@ class TestScreenerRun:
         assert data["total"] == 20
         assert len(data["data"]) == 5
 
-    @patch("backend.routers.screener.redis_client")
+    @patch("backend.app.screener_app.redis_client")
     def test_run_with_filters(self, mock_redis, client):
         """带表头二次过滤"""
         cached_data = [
@@ -146,7 +146,7 @@ class TestScreenerRun:
         data = _unwrap(resp)
         assert data["total"] == 1
 
-    @patch("backend.routers.screener.redis_client")
+    @patch("backend.app.screener_app.redis_client")
     def test_run_sort_by_name(self, mock_redis, client):
         """按名称排序"""
         cached_data = [
@@ -169,7 +169,7 @@ class TestScreenerRun:
 
 
 class TestScreenerHistory:
-    @patch("backend.routers.screener.redis_client")
+    @patch("backend.app.screener_app.redis_client")
     @patch("backend.routers.screener.get_current_user")
     def test_get_history_empty(self, mock_user, mock_redis, client):
         """空历史"""
@@ -183,7 +183,7 @@ class TestScreenerHistory:
         finally:
             app.dependency_overrides.clear()
 
-    @patch("backend.routers.screener.redis_client")
+    @patch("backend.app.screener_app.redis_client")
     def test_save_history(self, mock_redis, client):
         """保存历史"""
         mock_redis.set = AsyncMock(return_value=True)
@@ -204,7 +204,7 @@ class TestScreenerHistory:
 
 
 class TestScreenerReloadIndicators:
-    @patch("backend.routers.screener.screener_service")
+    @patch("backend.app.screener_app.screener_service")
     def test_reload_success(self, mock_svc, client):
         mock_svc.reload_rag_corpus.return_value = {"count": 150}
         app.dependency_overrides[get_current_user_dep()] = lambda: MagicMock(id=1)
@@ -221,7 +221,7 @@ class TestScreenerReloadIndicators:
 
 
 class TestScreenerDictionary:
-    @patch("backend.routers.screener.screener_service")
+    @patch("backend.app.screener_app.screener_service")
     def test_get_dictionary(self, mock_svc, client):
         mock_svc.get_custom_rules = AsyncMock(return_value=[{"id": 1, "desc": "低PE", "rule": "pe<15"}])
         app.dependency_overrides[get_current_user_dep()] = lambda: MagicMock(id=1)
@@ -231,7 +231,7 @@ class TestScreenerDictionary:
         finally:
             app.dependency_overrides.clear()
 
-    @patch("backend.routers.screener.screener_service")
+    @patch("backend.app.screener_app.screener_service")
     def test_add_dictionary_item(self, mock_svc, client):
         mock_svc.add_custom_rule = AsyncMock(return_value={"status": "success"})
         app.dependency_overrides[get_current_user_dep()] = lambda: MagicMock(id=1)
@@ -241,7 +241,7 @@ class TestScreenerDictionary:
         finally:
             app.dependency_overrides.clear()
 
-    @patch("backend.routers.screener.screener_service")
+    @patch("backend.app.screener_app.screener_service")
     def test_add_dictionary_error(self, mock_svc, client):
         mock_svc.add_custom_rule = AsyncMock(return_value={"status": "error", "message": "重复"})
         app.dependency_overrides[get_current_user_dep()] = lambda: MagicMock(id=1)
@@ -258,7 +258,7 @@ class TestScreenerDictionary:
 
 
 class TestScreenerDictionaryBatch:
-    @patch("backend.routers.screener.screener_service")
+    @patch("backend.app.screener_app.screener_service")
     def test_batch_import_success(self, mock_svc, client):
         mock_svc.add_custom_rule = AsyncMock(return_value={"status": "success"})
         app.dependency_overrides[get_current_user_dep()] = lambda: MagicMock(id=1)
@@ -271,7 +271,7 @@ class TestScreenerDictionaryBatch:
         finally:
             app.dependency_overrides.clear()
 
-    @patch("backend.routers.screener.screener_service")
+    @patch("backend.app.screener_app.screener_service")
     def test_batch_import_all_fail(self, mock_svc, client):
         mock_svc.add_custom_rule = AsyncMock(return_value={"status": "error", "message": "fail"})
         app.dependency_overrides[get_current_user_dep()] = lambda: MagicMock(id=1)

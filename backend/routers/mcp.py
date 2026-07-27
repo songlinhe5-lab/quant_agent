@@ -28,6 +28,9 @@ async def mcp_sse(request: Request):
         await pubsub.subscribe(f"mcp_session_{session_id}")
         try:
             while True:
+                # ARCH-06: 客户端断开后立即退出，避免无谓的 Redis 订阅空转
+                if await request.is_disconnected():
+                    break
                 try:
                     msg = await asyncio.wait_for(
                         pubsub.get_message(ignore_subscribe_messages=True, timeout=15.0),

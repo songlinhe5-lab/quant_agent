@@ -7,7 +7,6 @@ Router 只做请求校验与 HTTP 映射。
 
 from __future__ import annotations
 
-import asyncio
 import re
 import sys
 import traceback
@@ -18,6 +17,7 @@ from unittest.mock import MagicMock
 import pandas as pd
 
 from backend.app.market_data import market_data
+from backend.core.cpu_pool import run_cpu_bound
 from backend.core.utils import safe_truncate
 
 # 延迟导入 backend.backtest（vectorbt/numba 重依赖），避免 import router 时拖垮其它测试。
@@ -188,7 +188,8 @@ async def execute_backtest(req: BacktestParams, df: pd.DataFrame) -> dict[str, A
             flags=re.MULTILINE,
         )
         try:
-            report = await asyncio.to_thread(
+            # 沙箱回测属 CPU 密集，卸载到进程池 (ARCH-07)；不可 pickle 时自动回退线程
+            report = await run_cpu_bound(
                 sandbox_runner,
                 safe_code,
                 req.class_name,
@@ -213,7 +214,8 @@ async def execute_backtest(req: BacktestParams, df: pd.DataFrame) -> dict[str, A
             commission_pct=req.commission_pct,
             slippage_pct=req.slippage_pct,
         )
-        report = await asyncio.to_thread(engine.run)
+        # engine.run 是有状态绑定方法，不可 pickle，run_cpu_bound 自动回退线程 (ARCH-07)
+        report = await run_cpu_bound(engine.run)
         return {"status": "success", "data": report}
     except Exception as e:
         return {"status": "error", "message": f"内置策略执行异常: {str(e)}"}

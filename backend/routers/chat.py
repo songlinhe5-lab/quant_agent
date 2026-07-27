@@ -119,7 +119,7 @@ DYN_ACTIONS = [
 ]
 
 
-@router.get("/chat/suggestions")
+@router.get("/chat/suggestions", dependencies=[Depends(get_current_username)])
 async def get_chat_suggestions(limit: int = 10):
     import random
 

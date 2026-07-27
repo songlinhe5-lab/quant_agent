@@ -17,9 +17,11 @@ interface FactorSuggestion {
 interface FactorSearchResult {
   factor_name: string
   best_params: Record<string, number>
-  best_sharpe: number
-  best_return: number
+  best_sharpe: number | null
+  best_return: number | null
   total_combos: number
+  status?: 'success' | 'skipped'
+  skipped_reason?: string
   top_results: Array<{
     params: Record<string, number>
     sharpe: number
@@ -189,14 +191,23 @@ export function FactorMinerPanel() {
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-medium">{r.factor_name}</span>
                     <div className="flex items-center gap-3 text-[10px] font-mono">
-                      <span className="text-green-500">Sharpe: {r.best_sharpe.toFixed(2)}</span>
-                      <span className="text-blue-500">Return: {(r.best_return * 100).toFixed(1)}%</span>
+                      {r.status === 'skipped' || r.best_sharpe == null ? (
+                        <span className="text-amber-500">⚠️ 暂不可回测</span>
+                      ) : (
+                        <>
+                          <span className="text-green-500">Sharpe: {r.best_sharpe.toFixed(2)}</span>
+                          <span className="text-blue-500">Return: {((r.best_return ?? 0) * 100).toFixed(1)}%</span>
+                        </>
+                      )}
                     </div>
                   </div>
                   <div className="text-[10px] text-muted-foreground">
-                    最优参数: {Object.entries(r.best_params).map(([k, v]) => `${k}=${v}`).join(', ')}
+                    最优参数: {Object.entries(r.best_params).map(([k, v]) => `${k}=${v}`).join(', ') || '—'}
                     <span className="ml-2">({r.total_combos} 种组合)</span>
                   </div>
+                  {r.status === 'skipped' && r.skipped_reason && (
+                    <div className="text-[10px] text-amber-500/90 mt-0.5">{r.skipped_reason}</div>
+                  )}
                   {r.top_results?.length > 0 && (
                     <details className="mt-1">
                       <summary className="text-[10px] text-primary cursor-pointer hover:text-primary/80">

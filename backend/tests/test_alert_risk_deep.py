@@ -418,7 +418,7 @@ class TestRiskEngine:
 
     @pytest.fixture
     def risk_engine(self):
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         return RiskEngine()
 
@@ -426,7 +426,7 @@ class TestRiskEngine:
     async def test_get_portfolio_risk_cache_hit(self, risk_engine):
         """get_portfolio_risk: Redis 缓存命中"""
         cached_data = {"status": "success", "accounts": {}}
-        with patch("backend.services.risk_engine.redis_client") as mock_redis:
+        with patch("backend.services.risk.risk_engine.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=json.dumps(cached_data))
             result = await risk_engine.get_portfolio_risk(days=7)
             assert result == cached_data
@@ -434,11 +434,11 @@ class TestRiskEngine:
     @pytest.mark.asyncio
     async def test_get_portfolio_risk_both_accounts_fail(self, risk_engine):
         """get_portfolio_risk: HK 和 US 账户均失败"""
-        with patch("backend.services.risk_engine.redis_client") as mock_redis:
+        with patch("backend.services.risk.risk_engine.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
 
-            with patch("backend.services.risk_engine.futu_service") as mock_futu:
+            with patch("backend.services.risk.risk_engine.futu_service") as mock_futu:
                 mock_futu.get_account_info = AsyncMock(side_effect=Exception("Connection failed"))
                 result = await risk_engine.get_portfolio_risk(days=7)
                 # 返回 empty 状态而非 error
@@ -457,11 +457,11 @@ class TestRiskEngine:
             ],
             "currency": "HKD",
         }
-        with patch("backend.services.risk_engine.redis_client") as mock_redis:
+        with patch("backend.services.risk.risk_engine.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
 
-            with patch("backend.services.risk_engine.futu_service") as mock_futu:
+            with patch("backend.services.risk.risk_engine.futu_service") as mock_futu:
                 mock_futu.get_account_info = AsyncMock(side_effect=[hk_account, Exception("US failed")])
 
                 with patch.object(risk_engine, "_calc_risk_metrics", new_callable=AsyncMock) as mock_risk:
@@ -511,7 +511,7 @@ class TestRiskSector:
 
     @pytest.fixture
     def analyzer(self):
-        from backend.services.risk_sector import SectorAnalyzer
+        from backend.services.risk.risk_sector import SectorAnalyzer
 
         return SectorAnalyzer()
 
@@ -526,7 +526,7 @@ class TestRiskSector:
         """_get_sector_map: Redis 缓存命中"""
         positions = [{"code": "00700"}, {"code": "09988"}]
         cached_map = {"00700": "科技", "09988": "电商"}
-        with patch("backend.services.risk_sector.redis_client") as mock_redis:
+        with patch("backend.services.risk.risk_sector.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=json.dumps(cached_map))
             result = await analyzer._get_sector_map(positions, "HK")
             assert result == cached_map
@@ -539,7 +539,7 @@ class TestRiskSector:
             "status": "success",
             "data": [{"code": "00700", "industry": "科技"}],
         }
-        with patch("backend.services.risk_sector.redis_client") as mock_redis:
+        with patch("backend.services.risk.risk_sector.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
 
@@ -553,7 +553,7 @@ class TestRiskSector:
     async def test_get_sector_map_unknown_fallback(self, analyzer):
         """_get_sector_map: 未知行业兜底"""
         positions = [{"code": "UNKNOWN"}]
-        with patch("backend.services.risk_sector.redis_client") as mock_redis:
+        with patch("backend.services.risk.risk_sector.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
 

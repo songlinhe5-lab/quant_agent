@@ -51,7 +51,7 @@ class TestCorrelationMatrix:
 
     def test_known_correlation(self):
         """已知相关系数矩阵"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
         # 两组高度相关的序列
@@ -69,7 +69,7 @@ class TestCorrelationMatrix:
 
     def test_single_position(self):
         """单持仓返回 1x1 矩阵"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
         kline_data = {"A": make_closes(60, 100, seed=1)}
@@ -81,7 +81,7 @@ class TestCorrelationMatrix:
 
     def test_high_correlation_warning(self):
         """高相关性预警"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
         # 用不同但接近的 seed 产生高相关序列
@@ -105,7 +105,7 @@ class TestRiskRadarReal:
 
     def test_radar_with_real_data(self):
         """有 K 线数据时雷达分数非占位值"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
         metrics = {"beta": 0.8, "vol": 0.25, "var_95": -0.02, "sharpe": 1.2}
@@ -125,7 +125,7 @@ class TestRiskRadarReal:
 
     def test_radar_fallback_without_data(self):
         """无 K 线数据时降级为默认中位值"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
         metrics = {"beta": 0.5, "vol": 0.1, "var_95": -0.01, "sharpe": 1.5}
@@ -148,11 +148,11 @@ class TestRiskRadarReal:
 class TestBetaBenchmark:
     """RISK-08 Beta 基准测试"""
 
-    @patch("backend.services.risk_engine.kline_warehouse")
-    @patch("backend.services.risk_engine.futu_service")
+    @patch("backend.services.risk.risk_engine.kline_warehouse")
+    @patch("backend.services.risk.risk_engine.futu_service")
     def test_beta_real_benchmark(self, mock_futu, mock_warehouse):
         """有基准数据时 beta 非 0.85"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
 
@@ -182,11 +182,11 @@ class TestBetaBenchmark:
         # beta 应为有限数
         assert np.isfinite(result["beta"])
 
-    @patch("backend.services.risk_engine.kline_warehouse")
-    @patch("backend.services.risk_engine.futu_service")
+    @patch("backend.services.risk.risk_engine.kline_warehouse")
+    @patch("backend.services.risk.risk_engine.futu_service")
     def test_beta_fallback_on_no_benchmark(self, mock_futu, mock_warehouse):
         """基准数据缺失时 beta=0"""
-        from backend.services.risk_engine import RiskEngine
+        from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
 
@@ -213,10 +213,10 @@ class TestBetaBenchmark:
 class TestSectorExposure:
     """RISK-01 板块暴露测试"""
 
-    @patch("backend.services.risk_sector.redis_client")
+    @patch("backend.services.risk.risk_sector.redis_client")
     def test_sector_aggregation(self, mock_redis):
         """板块聚合正确"""
-        from backend.services.risk_sector import SectorAnalyzer
+        from backend.services.risk.risk_sector import SectorAnalyzer
 
         mock_redis.get = AsyncMock(
             return_value=json.dumps(
@@ -238,10 +238,10 @@ class TestSectorExposure:
         assert sectors[0]["sector"] == "科技"
         assert sectors[0]["pct"] > 0
 
-    @patch("backend.services.risk_sector.redis_client")
+    @patch("backend.services.risk.risk_sector.redis_client")
     def test_sector_empty_positions(self, mock_redis):
         """空持仓返回空列表"""
-        from backend.services.risk_sector import SectorAnalyzer
+        from backend.services.risk.risk_sector import SectorAnalyzer
 
         analyzer = SectorAnalyzer()
         result = asyncio.run(analyzer.get_sector_exposure([], "HK"))
@@ -258,7 +258,7 @@ class TestCVaR:
 
     def test_known_cvar(self):
         """已知 CVaR 值"""
-        from backend.services.risk_cvar import calc_cvar
+        from backend.services.risk.risk_cvar import calc_cvar
 
         # 标准正态分布 → CVaR(5%) ≈ -2.06
         returns = np.random.RandomState(42).normal(0, 1, 10000)
@@ -267,14 +267,14 @@ class TestCVaR:
 
     def test_cvar_empty(self):
         """空序列返回 0"""
-        from backend.services.risk_cvar import calc_cvar
+        from backend.services.risk.risk_cvar import calc_cvar
 
         assert calc_cvar(np.array([])) == 0.0
         assert calc_cvar(np.array([0.01])) == 0.0
 
     def test_decompose_cvar(self):
         """CVaR 分解结构正确"""
-        from backend.services.risk_cvar import decompose_cvar
+        from backend.services.risk.risk_cvar import decompose_cvar
 
         positions = [
             {"code": "A", "market_val": 60000.0},
@@ -295,7 +295,7 @@ class TestCVaR:
 
     def test_decompose_cvar_empty(self):
         """空持仓返回空分解"""
-        from backend.services.risk_cvar import decompose_cvar
+        from backend.services.risk.risk_cvar import decompose_cvar
 
         result = decompose_cvar([], {})
         assert result["portfolio_cvar"] == 0.0
@@ -312,7 +312,7 @@ class TestLiquidity:
 
     def test_high_liquidity(self):
         """高流动性标的"""
-        from backend.services.risk_liquidity import LiquidityAssessor
+        from backend.services.risk.risk_liquidity import LiquidityAssessor
 
         assessor = LiquidityAssessor()
         # 高波动 → 高流动性代理
@@ -327,7 +327,7 @@ class TestLiquidity:
 
     def test_large_position_warning(self):
         """大额持仓预警"""
-        from backend.services.risk_liquidity import LiquidityAssessor
+        from backend.services.risk.risk_liquidity import LiquidityAssessor
 
         assessor = LiquidityAssessor()
         kline_data = {"A": make_closes(60, 100, seed=42)}
@@ -340,7 +340,7 @@ class TestLiquidity:
 
     def test_empty_positions(self):
         """空持仓"""
-        from backend.services.risk_liquidity import LiquidityAssessor
+        from backend.services.risk.risk_liquidity import LiquidityAssessor
 
         assessor = LiquidityAssessor()
         result = assessor.assess([], {})
@@ -358,7 +358,7 @@ class TestAttribution:
 
     def test_known_attribution(self):
         """已知归因结果"""
-        from backend.services.risk_attribution import calc_attribution
+        from backend.services.risk.risk_attribution import calc_attribution
 
         rng = np.random.RandomState(42)
         benchmark = rng.normal(0.001, 0.02, 100)
@@ -373,7 +373,7 @@ class TestAttribution:
 
     def test_zero_beta(self):
         """零 beta (组合与基准无关)"""
-        from backend.services.risk_attribution import calc_attribution
+        from backend.services.risk.risk_attribution import calc_attribution
 
         rng = np.random.RandomState(42)
         benchmark = rng.normal(0.001, 0.02, 100)
@@ -386,7 +386,7 @@ class TestAttribution:
 
     def test_empty_data(self):
         """空数据返回零值"""
-        from backend.services.risk_attribution import calc_attribution
+        from backend.services.risk.risk_attribution import calc_attribution
 
         result = calc_attribution(np.array([]), np.array([]))
         assert result["alpha"] == 0.0
@@ -403,7 +403,7 @@ class TestStressTest:
 
     def test_historical_scenario(self):
         """历史情景"""
-        from backend.services.risk_stress import StressTester
+        from backend.services.risk.risk_stress import StressTester
 
         tester = StressTester()
         result = tester.run_stress(SAMPLE_POSITIONS, SAMPLE_KLINE, "2008_crash")
@@ -415,7 +415,7 @@ class TestStressTest:
 
     def test_hypothetical_scenario(self):
         """假设情景"""
-        from backend.services.risk_stress import StressTester
+        from backend.services.risk.risk_stress import StressTester
 
         tester = StressTester()
         result = tester.run_stress(SAMPLE_POSITIONS, SAMPLE_KLINE, "vol_double", market="HK")
@@ -425,7 +425,7 @@ class TestStressTest:
 
     def test_empty_positions(self):
         """空持仓"""
-        from backend.services.risk_stress import StressTester
+        from backend.services.risk.risk_stress import StressTester
 
         tester = StressTester()
         result = tester.run_stress([], {}, "2008_crash")
@@ -433,7 +433,7 @@ class TestStressTest:
 
     def test_unknown_scenario(self):
         """未知情景"""
-        from backend.services.risk_stress import StressTester
+        from backend.services.risk.risk_stress import StressTester
 
         tester = StressTester()
         result = tester.run_stress(SAMPLE_POSITIONS, SAMPLE_KLINE, "unknown_event")
@@ -441,7 +441,7 @@ class TestStressTest:
 
     def test_list_scenarios(self):
         """列出所有情景"""
-        from backend.services.risk_stress import StressTester
+        from backend.services.risk.risk_stress import StressTester
 
         tester = StressTester()
         result = tester.list_scenarios()

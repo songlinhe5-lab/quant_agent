@@ -1,0 +1,595 @@
+/**
+ * PROD-11：自定义指标脚本编辑面板（图表内抽屉）。
+ * 列出用户指标、支持新增/编辑/删除/显隐，并实时做语法校验与结果预览。
+ */
+import { useState, useEffect } from 'react'
+import { Plus, Pencil, Trash2, Eye, EyeOff, X, HelpCircle, Sigma, Activity, Download, LayoutGrid, Save, Bookmark, ShieldAlert, ShieldCheck, Loader2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { apiClient } from '@/lib/api-client'
+import { useCustomIndicatorStore, type CustomIndicator, type StrategyRecipe } from './store'
+import { validate, evaluate, runSignalBacktest, listParams, runParamGridSearch, type CIBar, type SignalBacktestResult, type ParamGrid, type GridSearchItem, type GridSortBy } from './engine'
+
+const PRESET_COLORS = ['#a855f7', '#10b981', '#ef4444', '#3b82f6', '#f59e0b', '#ec4899', '#14b8a6']
+
+const SYNTAX_HELP = [
+  ['字段', 'OPEN HIGH LOW CLOSE VOLUME'],
+  ['命名空间', 'KDJ.K / KDJ.D / KDJ.J · MACD.DIFF / MACD.DEA / MACD.HIST · BB.UPPER / BB.LOWER / BB.MID'],
+  ['函数', 'MA(x,n) EMA(x,n) RSI(x,n) REF(x,n) CROSS(a,b) HHV(x,n) LLV(x,n) ABS(x) SQRT(x) MAX(a,b) MIN(a,b)'],
+  ['运算符', '+ - * / % · > < >= <= == != · && || ! （也可用 AND/OR/NOT）'],
+  ['示例', 'RSI(14) > KDJ.K ｜ CROSS(MA(CLOSE,5), MA(CLOSE,20)) ｜ (CLOSE-MA(CLOSE,20))/MA(CLOSE,20)*100'],
+]
+
+export function CustomIndicatorPanel({
+  open,
+  onClose,
+  bars,
+}: {
+  open: boolean
+  onClose: () => void
+  bars: CIBar[]
+}) {
+  const { indicators, signalLog, add, update, remove, toggle, clearSignals } = useCustomIndicatorStore()
+
+  // 💡 PROD-11 追问：导出信号触发日志为复盘 CSV（导出全量，非仅展示的 12 条）
+  const handleExportCSV = () => {
+    if (signalLog.length === 0) return
+    const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`
+    const header = ['指标ID', '指标名称', '表达式', '触发日期', '触发时间']
+    const rows = signalLog.map((s) => [s.indId, s.indName, s.expr, s.time, new Date(s.ts).toLocaleString()].map(esc).join(','))
+    const csv = '﻿' + [header.join(','), ...rows].join('\r\n') // BOM 保证 Excel 中文不乱码
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `signal-log-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // 💡 PROD-11 追问 G：导出回测交易明细 CSV（含买入日期/买入价/卖出日期/卖出价/收益率%/持有天数/盈亏）
+  const handleExportBacktestCSV = () => {
+    if (!bt || !bt.res.ok || bt.res.tradeDetails.length === 0) return
+    const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`
+    const header = ['序号', '买入日期', '买入价', '卖出日期', '卖出价', '收益率%', '持有天数', '盈亏']
+    const rows = bt.res.tradeDetails.map((t, i) => [
+      i + 1,
+      t.buyDate,
+      t.buyPrice.toFixed(2),
+      t.sellDate || '(未平仓)',
+      t.sellDate ? t.sellPrice.toFixed(2) : '-',
+      t.returnPct.toFixed(2),
+      t.holdingDays,
+      t.sellDate ? (t.win ? '盈利' : '亏损') : '持仓中',
+    ].map(esc).join(','))
+    const csv = '\uFEFF' + [header.join(','), ...rows].join('\r\n') // BOM 保证 Excel 中文不乱码
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `backtest-trades-${bt.name}-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+  const [editing, setEditing] = useState<CustomIndicator | null>(null)
+  const [name, setName] = useState('')
+  const [expr, setExpr] = useState('')
+  const [color, setColor] = useState('#a855f7')
+  const [params, setParams] = useState<Record<string, number>>({})
+  const [showGrid, setShowGrid] = useState(false)
+  const [grid, setGrid] = useState<Record<string, { min: number; max: number; step: number }>>({})
+  const [gridSort, setGridSort] = useState<GridSortBy>('totalReturnPct')
+  const [gridResult, setGridResult] = useState<ReturnType<typeof runParamGridSearch> | null>(null)
+  const [gridOverfit, setGridOverfit] = useState<{
+    overfit: boolean
+    max_sensitivity: number
+    threshold: number
+  } | null>(null)
+  const [gridOverfitLoading, setGridOverfitLoading] = useState(false)
+  const [gridRunning, setGridRunning] = useState(false)
+  // 💡 PROD-11 COND-01：策略配方库
+  const [showRecipes, setShowRecipes] = useState(false)
+  const [recipeFormOpen, setRecipeFormOpen] = useState(false)
+  const [recipeName, setRecipeName] = useState('')
+  const [recipeDesc, setRecipeDesc] = useState('')
+  const recipes = useCustomIndicatorStore((s) => s.recipes)
+  const saveRecipe = useCustomIndicatorStore((s) => s.saveRecipe)
+  const removeRecipe = useCustomIndicatorStore((s) => s.removeRecipe)
+  const [pane, setPane] = useState<'overlay' | 'separate' | 'auto'>('auto')
+  const [showHelp, setShowHelp] = useState(false)
+  const [bt, setBt] = useState<{ name: string; res: SignalBacktestResult } | null>(null)
+
+  useEffect(() => {
+    if (editing) {
+      setName(editing.name)
+      setExpr(editing.expr)
+      setParams(editing.params ?? {})
+      setColor(editing.color)
+      setPane(editing.pane ?? 'auto')
+    }
+  }, [editing])
+
+  if (!open) return null
+
+  const startNew = () => setEditing({ id: '', name: '', expr: '', color: '#a855f7', visible: true })
+  const cancel = () => setEditing(null)
+  const save = () => {
+    if (!name.trim() || !expr.trim()) return
+    const referenced = listParams(expr.trim())
+    const finalParams = referenced.length
+      ? Object.fromEntries(referenced.map((k) => [k, params[k]]).filter(([, val]) => val != null && !Number.isNaN(val as number)))
+      : undefined
+    if (!validate(expr.trim(), finalParams ?? {}).ok) return
+    const finalPane = pane === 'auto' ? undefined : pane
+    const payload: Record<string, unknown> = { name: name.trim(), expr: expr.trim(), color, pane: finalPane }
+    if (finalParams) payload.params = finalParams
+    if (editing && editing.id) update(editing.id, payload as any)
+    else add(payload as any)
+    setEditing(null)
+  }
+
+  const v = expr.trim() ? validate(expr.trim(), params) : { ok: true }
+  const preview =
+    editing && expr.trim() && v.ok && bars.length
+      ? evaluate(expr.trim(), bars, params)
+      : null
+
+  let previewText = ''
+  if (preview && preview.ok) {
+    if (preview.isBool) {
+      const last = [...preview.values].reverse().find((x) => x != null)
+      previewText = `类型: 布尔信号 ｜ 最新状态: ${last === 1 ? '成立 ✅' : last === 0 ? '不成立' : '—'}`
+    } else {
+      const last = [...preview.values].reverse().find((x) => x != null)
+      previewText = `类型: 数值序列 ｜ 最新值: ${last != null ? Number(last).toFixed(3) : '—'}`
+    }
+  }
+
+  // 💡 PROD-11 追问6：参数网格搜索 —— 展开区间输入并跑穷举
+  const openGrid = () => {
+    const names = listParams(expr.trim())
+    if (names.length === 0) return
+    setGrid((prev) => {
+      const next = { ...prev }
+      for (const n of names) {
+        if (!next[n]) {
+          const cur = params[n]
+          const base = typeof cur === 'number' && !Number.isNaN(cur) ? Math.max(1, Math.round(cur)) : 5
+          next[n] = { min: base, max: Math.max(base + 20, base * 2), step: 1 }
+        }
+      }
+      return next
+    })
+    setGridResult(null)
+    setShowGrid(true)
+  }
+  const runGrid = () => {
+    const names = listParams(expr.trim())
+    if (names.length === 0) return
+    // 补齐缺失参数网格（缺省取当前参数值作为单点），避免 runCustomExprBacktest 报「参数未提供」
+    const full: ParamGrid = {}
+    for (const n of names) {
+      const g = grid[n]
+      if (g && Number.isFinite(g.min) && Number.isFinite(g.max) && g.step > 0) {
+        full[n] = g
+      } else {
+        const cur = params[n]
+        const v = typeof cur === 'number' && !Number.isNaN(cur) ? cur : 1
+        full[n] = { min: v, max: v, step: 1 }
+      }
+    }
+    setGridRunning(true)
+    // 让按钮先渲染 loading 态，再同步跑穷举（K 线量受限，不会长时间卡 UI）
+    setTimeout(() => {
+      const res = runParamGridSearch(expr.trim(), bars, full, { initialCapital: 100000, sortBy: gridSort })
+      setGridResult(res)
+      setGridRunning(false)
+    }, 0)
+  }
+  const runGridOverfitCheck = async () => {
+    if (!gridResult?.ok || gridResult.items.length < 2) return
+    setGridOverfitLoading(true)
+    try {
+      const res = await apiClient.post<{
+        data: { overfit: boolean; max_sensitivity: number; threshold: number }
+      }>('/backtest/overfit-check/grid', {
+        results: gridResult.items,
+        target_metric: 'sharpe',
+      })
+      setGridOverfit(res.data)
+    } catch {
+      setGridOverfit(null)
+    } finally {
+      setGridOverfitLoading(false)
+    }
+  }
+
+  const applyGridParams = (it: GridSearchItem) => {
+    setParams(it.params)
+    setEditing((e) => (e ? { ...e, params: it.params } : e))
+  }
+  // 💡 PROD-11 COND-01：把网格搜索最优参数存为配方
+  const openRecipeForm = () => {
+    if (!gridResult?.ok || !gridResult.best || !gridResult.best.ok) return
+    setRecipeName(`${name || '未命名'} 最优参数`)
+    setRecipeDesc('')
+    setRecipeFormOpen(true)
+  }
+  const confirmSaveRecipe = () => {
+    if (!gridResult?.ok || !gridResult.best || !gridResult.best.ok || !gridResult.best.metrics) return
+    saveRecipe({
+      name: recipeName.trim() || '未命名配方',
+      description: recipeDesc.trim() || undefined,
+      indicatorName: name || '未命名指标',
+      expr: expr.trim(),
+      params: gridResult.best.params,
+      sortBy: gridSort,
+      metrics: gridResult.best.metrics,
+    })
+    setRecipeFormOpen(false)
+    setRecipeName('')
+    setRecipeDesc('')
+  }
+  const applyRecipe = (r: StrategyRecipe) => {
+    setParams(r.params)
+    setEditing((e) => (e ? { ...e, params: r.params } : e))
+  }
+  const GRID_SORT_LABEL: Record<GridSortBy, string> = {
+    totalReturnPct: '累计收益',
+    sharpe: '夏普比率',
+    winRatePct: '胜率',
+    maxDrawdownPct: '最小回撤',
+  }
+
+  return (
+    <div className="absolute right-2 top-9 z-30 w-[340px] max-h-[calc(100%-3.5rem)] flex flex-col rounded-lg border border-border/60 bg-background/95 backdrop-blur shadow-2xl overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border/40">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+          <Sigma className="h-3.5 w-3.5 text-primary" /> 自定义指标
+          <span className="text-[10px] font-normal text-muted-foreground">Pine Script 简化版</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setShowHelp((s) => !s)} title="语法帮助" className="p-1 rounded hover:bg-muted/60 text-muted-foreground">
+            <HelpCircle className="h-3.5 w-3.5" />
+          </button>
+          <button onClick={onClose} title="关闭" className="p-1 rounded hover:bg-muted/60 text-muted-foreground">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        {showHelp && (
+          <div className="space-y-1.5 rounded-md border border-border/40 bg-muted/30 p-2 text-[10px] leading-relaxed text-muted-foreground">
+            {SYNTAX_HELP.map(([k, val]) => (
+              <div key={k}>
+                <span className="text-foreground font-medium">{k}：</span>
+                <span className="font-mono break-all">{val}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!editing &&
+          indicators.map((ind) => (
+            <div key={ind.id} className="flex items-center gap-2 rounded-md border border-border/40 bg-background px-2 py-1.5">
+              <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: ind.color }} />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[11px] font-medium text-foreground">{ind.name}</div>
+                <div className="truncate font-mono text-[9px] text-muted-foreground">{ind.expr}</div>
+                <div className="text-[9px] text-slate-500">叠加: {ind.pane === 'separate' ? '独立副图' : ind.pane === 'overlay' ? '主图' : '自动'}</div>
+              </div>
+              <button onClick={() => setBt({ name: ind.name, res: runSignalBacktest(ind.expr, bars, ind.params) })} title="信号回测" className="p-1 rounded hover:bg-muted/60 text-muted-foreground">
+                <Activity className="h-3 w-3" />
+              </button>
+              <button onClick={() => toggle(ind.id)} title={ind.visible ? '隐藏' : '显示'} className="p-1 rounded hover:bg-muted/60 text-muted-foreground">
+                {ind.visible ? <Eye className="h-3 w-3 text-emerald-400" /> : <EyeOff className="h-3 w-3" />}
+              </button>
+              <button onClick={() => setEditing(ind)} title="编辑" className="p-1 rounded hover:bg-muted/60 text-muted-foreground">
+                <Pencil className="h-3 w-3" />
+              </button>
+              <button onClick={() => remove(ind.id)} title="删除" className="p-1 rounded hover:bg-muted/60 text-red-400">
+                <Trash2 className="h-3 w-3" />
+              </button>
+            </div>
+          )        )}
+
+        {!editing && signalLog.length > 0 && (
+          <div className="space-y-1 rounded-md border border-border/40 bg-muted/20 p-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-medium text-foreground">信号触发日志</span>
+              <div className="flex items-center gap-2">
+                <button onClick={handleExportCSV} title="导出复盘 CSV" className="flex items-center gap-0.5 text-[9px] text-muted-foreground hover:text-emerald-400">
+                  <Download className="h-3 w-3" />导出
+                </button>
+                <button onClick={clearSignals} className="text-[9px] text-muted-foreground hover:text-red-400">清空</button>
+              </div>
+            </div>
+            {signalLog.slice(0, 12).map((s, i) => (
+              <div key={i} className="flex items-center gap-1.5 text-[9px]">
+                <span className="text-slate-500 font-mono shrink-0">{s.time}</span>
+                <span className="truncate flex-1 text-foreground">{s.indName}</span>
+                <span className="font-mono text-muted-foreground truncate max-w-[120px]">{s.expr}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {bt && (
+          <div className="space-y-1.5 rounded-md border border-primary/40 bg-primary/5 p-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-medium text-foreground">信号回测 · {bt.name}</span>
+              <div className="flex items-center gap-2">
+                {bt.res.ok && bt.res.tradeDetails.length > 0 && (
+                  <button onClick={handleExportBacktestCSV} title="导出交易明细 CSV" className="flex items-center gap-0.5 text-[9px] text-muted-foreground hover:text-emerald-400">
+                    <Download className="h-3 w-3" />交易明细
+                  </button>
+                )}
+                <button onClick={() => setBt(null)} className="text-[9px] text-muted-foreground hover:text-foreground">关闭</button>
+              </div>
+            </div>
+            {!bt.res.ok ? (
+              <div className="text-[10px] text-red-400">{bt.res.error}</div>
+            ) : (
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
+                <div className="flex justify-between"><span className="text-muted-foreground">信号数</span><span className="font-mono text-foreground">{bt.res.buys.length}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">交易数</span><span className="font-mono text-foreground">{bt.res.trades}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">胜率</span><span className="font-mono text-foreground">{bt.res.winRate.toFixed(1)}%</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">末根持仓</span><span className="font-mono text-foreground">{bt.res.holding ? '是' : '否'}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">累计收益</span><span className={`font-mono ${bt.res.totalReturnPct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{bt.res.totalReturnPct.toFixed(2)}%</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">最大回撤</span><span className="font-mono text-red-400">{bt.res.maxDrawdownPct.toFixed(2)}%</span></div>
+              </div>
+            )}
+            {bars.length === 0 && <div className="text-[9px] text-slate-500">当前无 K 线数据，请先加载图表</div>}
+          </div>
+        )}
+
+        {!editing && (
+          <button
+            onClick={startNew}
+            className="flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-border/60 py-1.5 text-[11px] text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+          >
+            <Plus className="h-3.5 w-3.5" /> 新增自定义指标
+          </button>
+        )}
+
+        {editing && (
+          <div className="space-y-2 rounded-md border border-border/50 bg-muted/20 p-2.5">
+            <div>
+              <label className="mb-1 block text-[10px] text-muted-foreground">名称</label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="如：RSI 与 KDJ 共振"
+                className="w-full rounded border border-border/50 bg-background px-2 py-1 text-[11px] text-foreground outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] text-muted-foreground">表达式</label>
+              <textarea
+                value={expr}
+                onChange={(e) => setExpr(e.target.value)}
+                rows={3}
+                placeholder="如：RSI(14) > KDJ.K"
+                className="w-full resize-none rounded border border-border/50 bg-background px-2 py-1 font-mono text-[11px] text-foreground outline-none focus:border-primary"
+              />
+            </div>
+
+            {listParams(expr.trim()).length > 0 && (
+              <div className="space-y-1 rounded border border-primary/30 bg-primary/5 p-1.5">
+                <div className="text-[10px] text-muted-foreground">参数（运行时代入 @name）</div>
+                {listParams(expr.trim()).map((p) => (
+                  <div key={p} className="flex items-center gap-2">
+                    <span className="w-20 shrink-0 font-mono text-[10px] text-primary">@{p}</span>
+                    <input
+                      type="number"
+                      value={params[p] ?? ''}
+                      onChange={(e) => setParams((prev) => { const n = { ...prev }; if (e.target.value.trim() === '') delete n[p]; else n[p] = Number(e.target.value); return n })}
+                      placeholder="数值"
+                      className="flex-1 rounded border border-border/50 bg-background px-2 py-1 font-mono text-[11px] text-foreground outline-none focus:border-primary"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {listParams(expr.trim()).length > 0 && (
+              <div className="space-y-1.5 rounded border border-primary/30 bg-primary/5 p-1.5">
+                <button onClick={openGrid} className="flex w-full items-center justify-center gap-1 rounded bg-primary/15 py-1 text-[10px] text-primary hover:bg-primary/25">
+                  <LayoutGrid className="h-3 w-3" /> 网格搜索最优参数
+                </button>
+                <button onClick={() => setShowRecipes((v) => !v)} className="flex w-full items-center justify-center gap-1 rounded bg-amber-500/15 py-1 text-[10px] text-amber-400 hover:bg-amber-500/25">
+                  <Bookmark className="h-3 w-3" /> 配方库 ({recipes.length})
+                </button>
+                {showGrid && (
+                  <>
+                    <div className="space-y-1">
+                      {listParams(expr.trim()).map((p) => (
+                        <div key={p} className="flex items-center gap-1">
+                          <span className="w-16 shrink-0 font-mono text-[9px] text-primary">@{p}</span>
+                          <label className="text-[8px] text-muted-foreground">min</label>
+                          <input type="number" value={grid[p]?.min ?? ''} onChange={(e) => setGrid((g) => ({ ...g, [p]: { ...g[p]!, min: Number(e.target.value) } }))} className="w-11 rounded border border-border/50 bg-background px-1 py-0.5 font-mono text-[10px]" />
+                          <label className="text-[8px] text-muted-foreground">max</label>
+                          <input type="number" value={grid[p]?.max ?? ''} onChange={(e) => setGrid((g) => ({ ...g, [p]: { ...g[p]!, max: Number(e.target.value) } }))} className="w-11 rounded border border-border/50 bg-background px-1 py-0.5 font-mono text-[10px]" />
+                          <label className="text-[8px] text-muted-foreground">step</label>
+                          <input type="number" value={grid[p]?.step ?? ''} onChange={(e) => setGrid((g) => ({ ...g, [p]: { ...g[p]!, step: Number(e.target.value) } }))} className="w-9 rounded border border-border/50 bg-background px-1 py-0.5 font-mono text-[10px]" />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] text-muted-foreground">排序</span>
+                      <select value={gridSort} onChange={(e) => setGridSort(e.target.value as GridSortBy)} className="flex-1 rounded border border-border/50 bg-background px-1 py-0.5 text-[10px]">
+                        <option value="totalReturnPct">累计收益</option>
+                        <option value="sharpe">夏普比率</option>
+                        <option value="winRatePct">胜率</option>
+                        <option value="maxDrawdownPct">最小回撤</option>
+                      </select>
+                      <button onClick={runGrid} disabled={gridRunning || bars.length === 0} className="rounded bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground disabled:opacity-40">
+                        {gridRunning ? '计算中…' : '运行'}
+                      </button>
+                    </div>
+                    {bars.length === 0 && <div className="text-[9px] text-slate-500">请先加载图表 K 线</div>}
+                    {gridResult && !gridResult.ok && <div className="text-[9px] text-red-400">{gridResult.error}</div>}
+                    {gridResult?.ok && (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <div className="text-[9px] text-muted-foreground">共 {gridResult.total} 组 · 已跑 {gridResult.ran} 组 · 按 {GRID_SORT_LABEL[gridSort]} 排序</div>
+                          {gridResult.best && (
+                            <button onClick={openRecipeForm} title="把最优参数存为配方" className="flex items-center gap-0.5 text-[9px] text-emerald-400 hover:text-emerald-300">
+                              <Save className="h-3 w-3" />存为配方
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={runGridOverfitCheck}
+                            disabled={gridOverfitLoading}
+                            className="flex items-center gap-0.5 text-[9px] text-violet-400 hover:text-violet-300 disabled:opacity-50"
+                          >
+                            {gridOverfitLoading ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <ShieldAlert className="h-3 w-3" />
+                            )}
+                            AI-03 过拟合检测
+                          </button>
+                          {gridOverfit && (
+                            <span
+                              className={cn(
+                                'flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[9px]',
+                                gridOverfit.overfit
+                                  ? 'bg-red-500/15 text-red-500'
+                                  : 'bg-emerald-500/15 text-emerald-500',
+                              )}
+                            >
+                              {gridOverfit.overfit ? (
+                                <ShieldAlert className="h-3 w-3" />
+                              ) : (
+                                <ShieldCheck className="h-3 w-3" />
+                              )}
+                              {gridOverfit.overfit ? '疑似过拟合' : '稳健'} · 敏感度 {gridOverfit.max_sensitivity}
+                            </span>
+                          )}
+                        </div>
+                        {recipeFormOpen && (
+                          <div className="space-y-1 rounded border border-emerald-500/30 bg-emerald-500/5 p-1.5">
+                            <input
+                              value={recipeName}
+                              onChange={(e) => setRecipeName(e.target.value)}
+                              placeholder="配方名称"
+                              className="w-full rounded border border-border/50 bg-background px-1 py-0.5 text-[10px] text-foreground outline-none focus:border-emerald-500"
+                            />
+                            <input
+                              value={recipeDesc}
+                              onChange={(e) => setRecipeDesc(e.target.value)}
+                              placeholder="备注（可选）"
+                              className="w-full rounded border border-border/50 bg-background px-1 py-0.5 text-[10px] text-foreground outline-none focus:border-emerald-500"
+                            />
+                            <div className="flex gap-1">
+                              <button onClick={confirmSaveRecipe} className="flex-1 rounded bg-emerald-500/20 py-0.5 text-[9px] text-emerald-400 hover:bg-emerald-500/30">保存</button>
+                              <button onClick={() => setRecipeFormOpen(false)} className="flex-1 rounded bg-muted py-0.5 text-[9px] text-muted-foreground hover:bg-muted/60">取消</button>
+                            </div>
+                          </div>
+                        )}
+                        <div className="max-h-40 space-y-0.5 overflow-y-auto">
+                          {gridResult.items.map((it, idx) => (
+                            <div key={idx} className="flex items-center gap-1 rounded bg-background/60 px-1 py-0.5 text-[9px] font-mono">
+                              <span className="w-4 shrink-0 text-slate-500">{idx + 1}</span>
+                              <span className="flex-1 truncate text-foreground">{Object.entries(it.params).map(([k, val]) => `@${k}=${val}`).join(' ')}</span>
+                              {it.ok && it.metrics ? (
+                                <>
+                                  <span className={it.metrics.totalReturnPct >= 0 ? 'text-emerald-400' : 'text-red-400'}>{it.metrics.totalReturnPct.toFixed(1)}%</span>
+                                  <span className="text-slate-400">S{it.metrics.sharpe.toFixed(2)}</span>
+                                  <button onClick={() => applyGridParams(it)} className="rounded bg-primary/20 px-1 text-primary hover:bg-primary/30">应用</button>
+                                </>
+                              ) : (
+                                <span className="truncate text-red-400">失败</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {showRecipes && (
+              <div className="space-y-1 rounded border border-amber-500/30 bg-amber-500/5 p-1.5">
+                <div className="text-[10px] font-medium text-amber-400">策略配方库</div>
+                {recipes.length === 0 ? (
+                  <div className="text-[9px] text-slate-500">暂无配方，运行网格搜索后点击「存为配方」保存最优参数</div>
+                ) : (
+                  <div className="max-h-52 space-y-1 overflow-y-auto">
+                    {recipes.map((r) => (
+                      <div key={r.id} className="rounded bg-background/60 px-1.5 py-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="truncate text-[10px] font-medium text-foreground">{r.name}</span>
+                          <button onClick={() => removeRecipe(r.id)} title="删除配方" className="shrink-0 text-red-400 hover:text-red-300">
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                        <div className="truncate font-mono text-[8px] text-slate-400">{Object.entries(r.params).map(([k, v]) => `@${k}=${v}`).join(' ')}</div>
+                        {r.metrics && (
+                          <div className="flex gap-2 font-mono text-[8px]">
+                            <span className={r.metrics.totalReturnPct >= 0 ? 'text-emerald-400' : 'text-red-400'}>{r.metrics.totalReturnPct.toFixed(1)}%</span>
+                            <span className="text-slate-500">S{r.metrics.sharpe.toFixed(2)}</span>
+                            <span className="text-slate-500">胜{r.metrics.winRatePct.toFixed(0)}%</span>
+                          </div>
+                        )}
+                        <button onClick={() => applyRecipe(r)} className="mt-0.5 rounded bg-primary/20 px-1 text-[9px] text-primary hover:bg-primary/30">应用参数</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-muted-foreground">颜色</span>
+              {PRESET_COLORS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setColor(c)}
+                  className={`h-4 w-4 rounded-full border ${color === c ? 'border-foreground' : 'border-transparent'}`}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+              <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="ml-auto h-5 w-6 cursor-pointer rounded border border-border/50 bg-transparent" />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-muted-foreground">叠加</span>
+              {(['auto', 'overlay', 'separate'] as const).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPane(p)}
+                  className={`rounded px-1.5 py-0.5 text-[10px] border ${pane === p ? 'border-primary text-primary bg-primary/10' : 'border-border/50 text-muted-foreground'}`}
+                >
+                  {p === 'auto' ? '自动' : p === 'overlay' ? '主图' : '副图'}
+                </button>
+              ))}
+            </div>
+
+            {expr.trim() && !v.ok && (
+              <div className="rounded bg-red-500/10 px-2 py-1 text-[10px] text-red-400">语法错误：{v.error}</div>
+            )}
+            {previewText && (
+              <div className="rounded bg-emerald-500/10 px-2 py-1 text-[10px] text-emerald-400 font-mono">{previewText}</div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button onClick={cancel} className="rounded px-2.5 py-1 text-[11px] text-muted-foreground hover:bg-muted/60">取消</button>
+              <button
+                onClick={save}
+                disabled={!name.trim() || !expr.trim() || !v.ok}
+                className="rounded bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground disabled:opacity-40"
+              >
+                {editing.id ? '保存' : '添加'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

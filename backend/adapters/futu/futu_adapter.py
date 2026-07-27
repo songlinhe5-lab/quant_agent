@@ -362,8 +362,18 @@ class FutuAdapter(DataSourcePort):
             return {"success": False, "message": "Missing underlying_ticker parameter"}
 
         try:
-            # TODO: 调用实际 API
-            return {"success": True, "data": [], "cached": False}
+            # 生产：Futu OpenD 已连接时调用真实接口（HIGH-PRIORITY 接入 TODO）
+            ctx = getattr(self, "futu_ctx", None)
+            connected = bool(getattr(ctx, "is_connected", False)) if ctx else False
+            if ctx is not None and connected:
+                # TODO(OPTION-04): 接入真实 Futu 期权链（Ctx.get_option_chain_by_date_strike）
+                # 禁止用 Mock 填充（VIBE-CODING: 非单测禁止使用 mock 数据填充逻辑）
+                pass
+            # 未连接真实数据源：明确返回错误告警，绝不用 Mock 兜底掩盖故障
+            return {
+                "success": False,
+                "message": ("数据源已死，无法分析：期权链数据源不可用（Futu OpenD 未连接，无法获取真实期权链）"),
+            }
         except Exception as e:
             return {"success": False, "message": str(e)}
 

@@ -46,6 +46,7 @@ function lazyWithRetry<T extends ComponentType<any>>(
 
 const DataCenterModule = lazyWithRetry(() => import('@/features/trading/data-center').then(m => ({ default: m.DataCenterModule })))
 const QuotesModule = lazyWithRetry(() => import('@/features/trading/quotes').then(m => ({ default: m.QuotesModule })))
+const OptionsModule = lazyWithRetry(() => import('@/features/options/options-module').then(m => ({ default: m.OptionsModule })))
 const ScreenerModule = lazyWithRetry(() => import('@/features/trading/screener').then(m => ({ default: m.ScreenerModule })))
 const StrategyDevModule = lazyWithRetry(() => import('@/features/trading/strategy').then(m => ({ default: m.StrategyDevModule })))
 const BacktestModule = lazyWithRetry(() => import('@/features/trading/backtest').then(m => ({ default: m.BacktestModule })))
@@ -57,6 +58,9 @@ const AlertCenterModule = lazyWithRetry(() => import('@/features/trading/alert-c
 const CalendarsModule = lazyWithRetry(() => import('@/features/calendars/module').then(m => ({ default: m.CalendarsModule })))
 const PaperModule = lazyWithRetry(() => import('@/features/paper/module').then(m => ({ default: m.PaperModule })))
 const SettingsPage = lazyWithRetry(() => import('@/features/settings/settings'))
+const BriefingSharePage = lazyWithRetry(() =>
+  import('@/features/briefing/briefing-share-page').then((m) => ({ default: m.BriefingSharePage })),
+)
 
 // /market/:ticker 跳转组件：将 URL 中的 ticker 存入 sessionStorage，然后重定向到 /quotes
 function MarketTickerRedirect() {
@@ -94,6 +98,7 @@ export default function App() {
             <Route path="/market/:ticker" element={<MarketTickerRedirect />} />
             <Route path="/data-center" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="DataCenter"><DataCenterModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/quotes" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Quotes"><QuotesModule /></ModuleErrorBoundary></Suspense>} />
+            <Route path="/options" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Options"><OptionsModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/screener" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Screener"><ScreenerModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/strategy" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Strategy"><StrategyDevModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/backtest" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Backtest"><BacktestModule /></ModuleErrorBoundary></Suspense>} />
@@ -105,6 +110,7 @@ export default function App() {
             <Route path="/calendars" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Calendars"><CalendarsModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/paper" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Paper"><PaperModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/settings" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Settings"><SettingsPage /></ModuleErrorBoundary></Suspense>} />
+            <Route path="/briefing/:id" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Briefing"><BriefingSharePage /></ModuleErrorBoundary></Suspense>} />
             </Route>
           </Route>
         </Routes>

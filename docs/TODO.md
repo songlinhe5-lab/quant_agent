@@ -319,7 +319,7 @@ STATUS: PRODUCTION READY ✨
 - [x] **[FE-05b]** 前端日志后端端点 + APM 面板集成：
   - 后端：`POST /api/v1/logs` 接收前端日志（level/message/timestamp/context），写入 PostgreSQL `frontend_logs` 表
   - 后端：`GET /api/v1/logs` 查询接口（支持 level 筛选、时间范围、分页）
-  - 前端：APM 面板增加“浏览器日志”Tab，展示前端错误、警告、性能指标
+  - 前端：APM 面板增加"浏览器日志"Tab，展示前端错误、警告、性能指标
   - 前端：logger.ts 启用 `enableRemote: true`，完成前后端对接
 - [x] **[FE-06]** Cmd+K 命令面板（Command Palette）：快速跳转标的、模块，键盘优先操作流
 - [x] **[FE-07]** 高频 Tick 数据必须走 `Float64Array` + `useRef`，严禁触发 React state 重渲染
@@ -378,8 +378,8 @@ STATUS: PRODUCTION READY ✨
 
 > BE-16 已解决复权/时区，但缺 point-in-time 语义与幸存者偏差处理——**这两项不做，所有回测收益率系统性偏乐观**。机构级数据供应商（Norgate / QC Data）均以此为底线。
 
-- [x] **[DQ-01]** 幸存者偏差处理：K线数据湖补充已退市/摘牌标的历史数据（Futu `get_stock_basicinfo` 含退市标志），回测标的池按“当日实际存续”动态生成，禁止用当前存续列表回测历史 ✅ **SurvivorshipBiasTracker + UniverseSnapshot + CSV IO + 33 tests**
-- [x] **[DQ-02]** 财务数据 point-in-time：财报字段存储附带 `announce_date`（公布日），回测引擎只允许读取“回测时点已公布”的财务数据，防止前视偏差（look-ahead bias）✅ **PointInTimeStore + PITQuery + 前视偏差检测 + 31 tests**
+- [x] **[DQ-01]** 幸存者偏差处理：K线数据湖补充已退市/摘牌标的历史数据（Futu `get_stock_basicinfo` 含退市标志），回测标的池按"当日实际存续"动态生成，禁止用当前存续列表回测历史 ✅ **SurvivorshipBiasTracker + UniverseSnapshot + CSV IO + 33 tests**
+- [x] **[DQ-02]** 财务数据 point-in-time：财报字段存储附带 `announce_date`（公布日），回测引擎只允许读取"回测时点已公布"的财务数据，防止前视偏差（look-ahead bias）✅ **PointInTimeStore + PITQuery + 前视偏差检测 + 31 tests**
 - [x] **[DQ-03]** 数据湖快照版本化：Parquet 按日打不可变快照 + manifest_hash + 回测引用 + 旧快照保留 — 📐 `docs/19` · ✅ **2026-07-13 全链路落地（03a~e）**：
   - [x] **[DQ-03a]** Manifest 与 PG 模型：`manifest.py` + `data_snapshots` + `SnapshotReader` / `SnapshotResolver` / `paths.py`
   - [x] **[DQ-03b]** 快照发布器：`snapshot_publisher.py` hardlink/copy + universe sidecar（`export_snapshot`）+ 质量门禁 + PG/Redis；挂接 `daemon_sync_task` 末尾
@@ -614,7 +614,7 @@ STATUS: PRODUCTION READY ✨
 
 - [x] ~~**[ARCH-01]** Futu OpenD 部署前提文档：补充宿主机要求（禁 ARM，必须 x86）+ 跨地域部署限制（港股实盘必须低延迟香港节点）~~ ✅ **2026-07-13**（`docs/12` §八：硬件约束 + 地域限制 + 版本管理）
 - [x] ~~**[ARCH-02]** DuckDB 数据湖分区策略：定义 Parquet 文件分区规则（按标的+日期分区），避免单文件过大影响查询性能~~ ✅ **2026-07-13**（`docs/12` §九：三级分区规则 + 迁移策略 + 查询优化）
-- [x] ~~**[ARCH-03]** Futu OpenD 断连恢复 SOP：定义“暂停接单 → 断线检测 → 重连 → 状态对账”完整流程，在途订单处理方案文档化~~ ✅ **2026-07-13**（`docs/12` §十：影响矩阵 + 自动恢复 + 在途对账 SOP + 人工介入 + 演练计划）
+- [x] ~~**[ARCH-03]** Futu OpenD 断连恢复 SOP：定义"暂停接单 → 断线检测 → 重连 → 状态对账"完整流程，在途订单处理方案文档化~~ ✅ **2026-07-13**（`docs/12` §十：影响矩阵 + 自动恢复 + 在途对账 SOP + 人工介入 + 演练计划）
 
 ### 策略实验室落地（2026-07-12 新增，对标 QuantConnect IDE）
 
@@ -694,7 +694,7 @@ STATUS: PRODUCTION READY ✨
   - `backend/services/yfinance_service.py` **1480 行** → `backend/services/yfinance/` (7文件: utils/service/quote/technical/search/macro_daemon/__init__)
   - `backend/services/akshare_service.py` **912 行** → `backend/services/akshare/` (5文件: service/flow/quote/calendar/__init__)
   - 原文件保留为 ~5 行 shim 兼容层，122 个测试全部通过
-- [x] **[SPEC-02]** §8.0 部署拓扑对齐：将“三节点矩阵部署”修正为四节点架构（US-MASTER + US-YF-A/B + CN-AKSHARE），与 `AGENTS.md §9` 保持一致。✅ **2026-07-20**：已完成
+- [x] **[SPEC-02]** §8.0 部署拓扑对齐：将"三节点矩阵部署"修正为四节点架构（US-MASTER + US-YF-A/B + CN-AKSHARE），与 `AGENTS.md §9` 保持一致。✅ **2026-07-20**：已完成
 - [x] **[SPEC-03]** 前端超限文件治理（第一批）。✅ **2026-07-20**：拆分完成
   - `backtest.tsx` 627→63行：拆为 backtest-mock / use-backtest / backtest-config / backtest-results
   - `alert-center.tsx` 624→171行：拆为 alert-lists / create-rule-form
@@ -703,21 +703,31 @@ STATUS: PRODUCTION READY ✨
 
 #### P1 — 规范文档修正
 
-- [ ] **[SPEC-04]** §2.2 SOLID 章节精简：删除 LSP/ISP 通用教科书示例（~60 行），保留项目特有判断标准（如"无第二实现时禁止 Interface"），压缩为一张表 + 3 条规则
-- [ ] **[SPEC-05]** §0.1 L0 版本对齐：`.cursor/rules/vibe-coding.mdc` 当前为 V2.1，在 §0.1 表格增加「最后更新日期」列，消除 L0(V2.1) vs L2(V4.3) 版本号歧义
-- [ ] **[SPEC-06]** §7.6 PCE 分级确认：L0 冻结区必须 Confirm；L2 开放区可自主执行无需逐一确认；增加「批量任务模式」说明
+- [x] **[SPEC-04]** §2.2 SOLID 章节精简：删除 LSP/ISP 通用教科书示例（~60 行），保留项目特有判断标准（如"无第二实现时禁止 Interface"），压缩为一张表 + 3 条规则
+  - 落地：`docs/02` §2.2 重写为「速查表（S/O/L/I/D 红牌信号）+ 3 条项目特有规则」，净删 111 行
+  - 三条规则：① 无第二实现禁止抽象 ② 抽象以 docs/14·15 已落地契约为准 ③ 拆分以职责边界为准不以预测为准；变更日志升 V4.3.3
+- [x] **[SPEC-05]** §0.1 L0 版本对齐：`.cursor/rules/vibe-coding.mdc` 当前为 V2.1，在 §0.1 表格增加「最后更新日期」列，消除 L0(V2.1) vs L2(V4.3) 版本号歧义
+  - 落地：`docs/02` §0.1 SSOT 表新增「最后更新日期」列（L0=2026-07-21 / L1=2026-07-25 / L2=2026-07-25 / L3=2026-07-25 / L4=2026-06-27），表内补全各层版本号，并加「版本号独立维护说明」脚注；L0 文件头部补充「最后更新」行；`docs/02` 头部版本号由滞后的 V4.3.1 修正为 V4.3.4，变更日志补 V4.3.4 条目
+- [x] **[SPEC-06]** §7.6 PCE 分级确认：L0 冻结区必须 Confirm；L2 开放区可自主执行无需逐一确认；增加「批量任务模式」说明
+  - 落地：`docs/02` §7.6 改为「分级确认矩阵」（L0 必须显式 Confirm / L1 单次 Confirm / L2 开放区 Plan 获批即自主 Execute 无需逐条 Confirm）；新增「批量任务模式（Batch Mode）」：单任务 ID 整批授权、按序自主执行、越界 L0/L1 立即补单 Confirm、收尾按 atomic commit；版本升 V4.3.5
 - [ ] **[SPEC-07]** §5.1 技术栈指针修正：
   - "移动端 Flutter 三端" → 标注「已搁置」或删除（项目中无 Flutter 代码）
   - "DuckDB/Parquet" → 确认是否仍在规划中，否则删除
-- [ ] **[SPEC-08]** §6.1 print() 豁免或代码修复：`hermes_agent/tools/web_scrape_tool.py` 中大量使用 `print()` 做降级日志，二选一：(a) 改用 structlog (b) 在规范中豁免 Tool 层 CLI 输出
-- [ ] **[SPEC-09]** §4.2 覆盖率目标校准：Hermes Tool ≥90% 实际不可达（`hermes_agent/tools/` 几乎无测试），降为 ≥70% 或标注为「目标」而非「门禁」
+- [x] **[SPEC-08]** §6.1 print() 豁免或代码修复：`hermes_agent/tools/web_scrape_tool.py` 中大量使用 `print()` 做降级日志，二选一：(a) 改用 structlog (b) 在规范中豁免 Tool 层 CLI 输出
+  - 落地：选 (a) 代码修复——`web_scrape_tool.py` 的 5 处 `print()` 降级日志全部改为 `structlog` `logger.warning(...)`（jina 反爬/失败、HTTP 内容过少/失败、RAG 提取失败），新增模块级 `logger = structlog.get_logger(__name__)`；`docs/02` §6.1 明确「禁止 print()」铁律覆盖 Tool 层，拒绝选项(b)豁免；版本升 V4.3.6
+- [x] **[SPEC-09]** §4.2 覆盖率目标校准：Hermes Tool ≥90% 实际不可达（`hermes_agent/tools/` 几乎无测试），降为 ≥70% 或标注为「目标」而非「门禁」
+  - 落地：`docs/02` §4.2 Hermes Tool 行由「≥90% 门禁」改为「≥70%（目标，非门禁）」，补说明：该层当前几乎无测试，70% 仅为长期补齐方向、不阻断合并，优先给 web_scrape_tool 等有降级分支的工具补最小单测；版本升 V4.3.7
 
 #### P2 — 规范缺失补充
 
-- [ ] **[SPEC-10]** 新增「环境变量管理规范」章节：`.env` 已有 50+ 变量，需定义分组命名约定（`COLLECTOR_*` / `FUTU_*` / `LLM_*`）、必填/可选标注、`.env.example` 同步规则
-- [ ] **[SPEC-11]** 新增「错误码分配规则」：后端已有 `error_codes.py`，规范中补充错误码段位分配（如 1xxx=认证 / 2xxx=行情 / 3xxx=交易）
-- [ ] **[SPEC-12]** 新增「数据库迁移规范」：Alembic 迁移脚本命名规则（`{rev}_{scope}_{desc}.py`）、审查要求（禁止 DROP COLUMN 无确认）、回滚脚本必备
-- [ ] **[SPEC-13]** 新增「前端性能预算」：Bundle Size 门禁（主包 ≤500KB gzip）、Lighthouse Desktop ≥90、路由级 code-splitting 规则
+- [x] **[SPEC-10]** 新增「环境变量管理规范」章节：`.env` 已有 50+ 变量，需定义分组命名约定（`COLLECTOR_*` / `FUTU_*` / `LLM_*`）、必填/可选标注、`.env.example` 同步规则
+  - 落地：`docs/02` 新增 §十 环境变量管理规范（分组命名表 + 必填/可选标注规则 + `.env.example` 同步门禁），对齐实际 `.env.example` 前缀
+- [x] **[SPEC-11]** 新增「错误码分配规则」：后端已有 `error_codes.py`，规范中补充错误码段位分配（如 1xxx=认证 / 2xxx=行情 / 3xxx=交易）
+  - 落地：`docs/02` 新增 §十一 错误码分配规则，对齐真实 `backend/core/error_codes.py` 段位（0 成功 / 1xxx 认证 / 2xxx 请求资源 / 3xxx 基础设施 / 4xxx 保留 / 5xxx 内部），含 5 条分配规则
+- [x] **[SPEC-12]** 新增「数据库迁移规范」：Alembic 迁移脚本命名规则（`{rev}_{scope}_{desc}.py`）、审查要求（禁止 DROP COLUMN 无确认）、回滚脚本必备
+  - 落地：`docs/02` 新增 §十二 数据库迁移规范（Alembic），命名规则 `{rev}_{scope}_{desc}.py` 对齐现有 `pt01a_*`/`strat03a_*`/`fe05b_*`/`ai04rag_*`，含 DROP COLUMN 审查、回滚必备、幂等要求
+- [x] **[SPEC-13]** 新增「前端性能预算」：Bundle Size 门禁（主包 ≤500KB gzip）、Lighthouse Desktop ≥90、路由级 code-splitting 规则
+  - 落地：`docs/02` 新增 §十三 前端性能预算，对齐 `frontend/vite.config.ts` 与 `lighthouse:baseline` 脚本；含主包≤500KB gzip、Lighthouse Desktop≥90 门禁、路由级 React.lazy 强制拆分规则
 
 ### 后端架构治理（2026-07-08 Review 新增，源自 `docs/03` V5.1 架构审查）
 
@@ -732,66 +742,74 @@ STATUS: PRODUCTION READY ✨
   - 中间件拆至 `middleware/stack.py` (176行)
   - 异常处理拆至 `core/exception_handlers.py` (83行)
   - 全量测试 2958 passed, 0 regression
-- [ ] **[ARCH-02]** 统一熔断器使用：当前 `akshare_service`/`futu/cache_manager` 手写时间戳熔断，`core/circuit_breaker.py`(351行) 形同摆设：
-  - 所有数据源 Adapter 统一使用 `core/circuit_breaker.py`
-  - `DataSourceInterface.fetch` 主路径内置熔断（半开探测 + 失败计数 + 滑动窗口）
-  - 冷却时间配置化（env `CIRCUIT_BREAKER_COOLDOWN_S`），禁止硬编码 60s
-- [ ] **[ARCH-03]** Graceful Shutdown 完整化（当前仅关闭 bot_runtime + algo_engine）：
+- [x] **[ARCH-02]** 统一熔断器使用 (`core/circuit_breaker.py` 接入所有 `DataSourceInterface.fetch` 主路径，替换手写时间戳熔断)：✅ **2026-07-24** (PR #186 / `d93a7fa`)
+- 所有数据源 Adapter 统一使用 `core/circuit_breaker.py`
+- `DataSourceInterface.fetch` 主路径内置熔断（半开探测 + 失败计数 + 滑动窗口）
+- 冷却时间配置化（env `CIRCUIT_BREAKER_COOLDOWN_S`），禁止硬编码 60s
+- [x] **[ARCH-03]** Graceful Shutdown 完整化 (lifecycle shutdown + worker shutdown)：✅ **2026-07-24** (`bootstrap/lifecycle.py` / `worker.py` / `core/graceful_executor.py`)
   - 停止接受新请求 → 等待 in-flight 完成（max 30s）→ 关闭 WebSocket 连接（发送 close frame）
   - 停止所有后台 Task（collector daemons）→ 取消 Redis Pub/Sub 订阅
   - 断开 Futu / Redis / PG 连接 → 关闭线程池（wait=True, timeout=10）
 
 #### P1 — 性能与稳定性增强
 
-- [ ] **[ARCH-04]** 连接池参数配置化 + 文档化：
-  - PostgreSQL: `pool_size=20, max_overflow=40, pool_timeout=10`（当前默认 5 连接，行情高峰可能打满）
-  - Redis: `max_connections=50`（Pub/Sub + 缓存 + 限流共用未设上限）
-  - 在 `docs/03 §7.3` 或 `docs/02` 补充连接池配置规范
-- [ ] **[ARCH-05]** 健康检查分级：
-  - `GET /health/live` → 进程存活（200 即可）
-  - `GET /health/ready` → 依赖就绪（Redis + PG + 至少一个数据源连通）
+- [x] **[ARCH-04]** 连接池参数配置化 + 文档化：✅ **2026-07-24** (`core/database.py` / `core/redis_client.py` / `docs/03 §7.3.1` / `.env.example`)
+- PostgreSQL: `pool_size=20, max_overflow=40, pool_timeout=10`（env 配置化，默认 20/40/10）
+- Redis: `max_connections=50`（Pub/Sub + 缓存 + 限流共用，`ConnectionPool` 配置化，默认 50）
+- 在 `docs/03 §7.3.1` 补充连接池配置规范
+- [x] **[ARCH-05]** 健康检查分级：✅ **2026-07-25** (`routers/system_health.py` / `AGENTS.md §10.4`)
+  - `GET /health/live` → 进程存活（200 即可，liveness）
+  - `GET /health/ready` → 依赖就绪（Redis + PG + 至少一个数据源连通，否则 503）
   - `GET /health/deep` → 全链路诊断（采集器心跳、WS 连接数、线程池使用率、事件循环 lag）
-- [ ] **[ARCH-06]** 请求级超时与取消传播：
-  - 单 API 请求最大执行时间（screener 90s / market 30s / 默认 60s）
-  - 客户端断开后取消下游任务（`Request.is_disconnected()` 检查）
-  - SSE/长轮询心跳间隔 ≤15s（对齐 Cloudflare 100s 超时）
-- [ ] **[ARCH-07]** `asyncio.to_thread` 使用分级（当前全项目 113 处）：
-  - I/O 密集（文件读写、HTTP）→ 优先 `aiohttp`/`aiofiles` 纯异步
-  - CPU 密集（指标计算、回测）→ `ProcessPoolExecutor`
-  - 在 `docs/03 §7.6` 补充分级策略文档
+  - 原 `/api/v1/health` 重构为纯 liveness（始终 200，修复 §10.4 违规：此前 Redis 断开即 503）
+- [x] **[ARCH-06]** 请求级超时与取消传播：✅ **2026-07-25** (`core/request_timeout.py` / `core/stream_utils.py` / `middleware/stack.py`)
+  - 单 API 请求最大执行时间（screener 90s / market 30s / 默认 60s，环境变量可覆盖）
+  - 客户端断开后取消下游任务（`Request.is_disconnected()` + 流式 `heartbeat_wrap` 级联取消；`/mcp/sse` 增加显式断开检测）
+  - SSE/长轮询心跳间隔 ≤15s（SSE 用 `: keep-alive`，NDJSON 用空行，对齐 Cloudflare 100s 超时）
+- [x] **[ARCH-07]** `asyncio.to_thread` 使用分级（审计 2026-07-25：全项目 97 处实际调用）：
+  - I/O 密集（akshare/futu/yfinance/redis/pg 同步 SDK、文件读写）→ 保留 `to_thread`（同步库唯一非阻塞手段；非 pandas 纯文件读写后续优先 `aiofiles`）
+  - CPU 密集（回测/网格/蒙特卡洛/批量）→ `ProcessPoolExecutor`：新增 `backend/core/cpu_pool.run_cpu_bound`，已迁移 5 处回测调用点
+  - 分级策略文档已落地 `docs/03 §7.6.1`；不可 pickle 负载自动回退线程，行为与测试不变
 
 #### P2 — 架构债渐进收口
 
-- [ ] **[ARCH-08]** `services/` 按领域分子目录（参照 `services/futu/` 成功模式）：
-  - `services/risk/` ← 6 个 risk_*.py 合并
-  - `services/screener/` ← 拆分 1838 行巨石（query_handler / dsl_parser / cache_manager / export_handler）
-  - `services/macro/` ← fred + macro_calendar + sentiment
-- [ ] **[ARCH-09]** `app/` 编排层扩展（当前仅 5/31 Router 经 app/ 编排）：
-  - 优先补：screener_app / trade_app / macro_app / alert_app
-  - 修正 `docs/03` BE-ARCH-01 状态为「部分收口（21/31 Router）」
-- [ ] **[ARCH-10]** Domain 层实体沉淀（当前仅 `ports.py` 2 个 Protocol）：
-  - 随 BT-01 落地沉淀 `Strategy`、`Order` 领域对象
-  - 随 ALERT-03 落地沉淀 `AlertRule` 领域对象
-  - 在 `docs/03` 标注当前状态：「Domain 层仅含 Ports，领域实体待演进」
-- [ ] **[ARCH-11]** 启动阶段 print() 全面替换为 structlog（`main.py` lifespan 中 ~20 处 print）
+- [x] **[ARCH-08]** `services/` 按领域分子目录（参照 `services/futu/` 成功模式）：
+  - `services/risk/` ← 6 个 risk_*.py 收口（risk_attribution/cvar/engine/liquidity/sector/stress），包内 `__init__` 重导出公开符号
+  - `services/screener/` ← 既往已拆分（screener_service.py 保留为兼容层），本次无改动
+  - `services/macro/` ← fred + macro_calendar + sentiment 收口，包内 `__init__` 重导出公开符号
+  - 验收：顶层不再保留 shim；全仓 `backend.services.risk/macro.<mod>` 规范路径；`test_be_arch02_app_boundary` allowlist 已同步；单测全绿
+- [x] **[ARCH-09]** `app/` 编排层扩展（已完成：screener_app / trade_app / macro_app / alert_app）：
+  - 优先补：screener_app / trade_app / macro_app / alert_app ✅ 2026-07-25
+  - 修正 `docs/03` BE-ARCH-01 状态为「部分收口（21/31 Router）」✅
+- [x] **[ARCH-10]** Domain 层实体沉淀（已完成：2026-07-25）：
+  - 随 BT-01 落地沉淀 `Strategy`、`Order` 领域对象（已在 `backend/engine/`：`strategy.py` / `contracts.py`，属 Domain 层引擎子集）
+  - 随 ALERT-03 落地沉淀 `AlertRule` 领域对象（经 `backend/domain/entities` 聚合门面认领为 Domain 层统一入口）
+  - 新增 `backend/domain/entities.py` 统一 re-export `Strategy` / `OrderIntent` / `OrderUpdate` / `AlertRule` / `AlertRuleType`；`backend/domain/__init__` 同步暴露
+  - 在 `docs/03` §2.1 标注 Domain 层实体状态（遵循「避免过早复制 DTO」：定义仍留原模块，仅做稳定聚合门面）
+- [x] **[ARCH-11]** 启动阶段 print() 全面替换为 structlog（lifecycle.py lifespan 38 处 print + 8 处标准 logger，main.py 2 处 import 期 print）
 
 ### 产品与 UI/UE 治理（2026-07-08 Review 新增，源自 `docs/01` V2.3 产品审查）
 
 > 核心评价：AI 集成深度（ReAct Agent + NLP 选股 + 三模式门禁）业界领先，但图表交互深度、布局灵活性、AI 上下文感知与 TradingView/QuantConnect 仍有代差。  
-> 原则：**强化 AI 差异化护城河** + **补齐图表交互短板** + **布局从“常规 SaaS”升级为“量化工作台”**。
+> 原则：**强化 AI 差异化护城河** + **补齐图表交互短板** + **布局从"常规 SaaS"升级为"量化工作台"**。
 
 #### P0 — 核心差异化释放
 
-- [ ] **[PROD-01]** AI 副驾页面上下文自动注入：
+- [x] **[PROD-01]** AI 副驾页面上下文自动注入：
   - 在选股器打开 AI 时自动携带当前筛选条件/结果摘要
   - 在 K 线页打开时自动携带当前标的 + 周期 + 技术指标
   - 在风控页打开时自动携带当前组合摘要
-  - 目标：从“通用 ChatBot”升级为“场景感知助手”
-- [ ] **[PROD-02]** AI 分析结果内联标注：AI 输出的买卖信号/支撑压力位直接标注在 K 线图上（箭头/区域高亮），而非仅在对话框中输出文字
+  - 目标：从"通用 ChatBot"升级为"场景感知助手"
+  - 实现：`useCopilotContextStore` 承接页面上下文；选股器/K线/风控三页 effect 写入；`chat-context.handleSend` 在会话首条消息自动注入 prompt；抽屉顶部"📎 已附加上下文"卡片可手动移除；`quant_copilot_invoke` 单标的推送走 skipPageContext 避免重复
+- [x] **[PROD-02]** AI 分析结果内联标注：AI 输出的买卖信号/支撑压力位直接标注在 K 线图上（箭头/区域高亮），而非仅在对话框中输出文字
+  - 目标：让 AI 副驾的研判从"对话框文字"升级为"K 线图内联标注"
+  - 协议：AI 在个股研判后输出 ` ```chart-annotations ` 围栏 JSON（symbol/signals/levels/zones），AGENTS.md §7 已写入主脑输出规范
+  - 后端：`hermes_agent/agent.py` 在 `collected_content` 中检测 `chart-annotations` 块并 yield `{"type":"chart_annotation","data":...}`（与 `strategy_code` 同范式）
+  - 前端：`chat-context.tsx` 消费事件 → 写入 `useChartAnnotationStore`（按 symbol 匹配）；`lightweight-chart-canvas.tsx` 订阅 store 渲染——`signals`→`createSeriesMarkers` 箭头、`levels`→`createPriceLine` 价格线、`zones`→`BaselineSeries` 半透明区域带；图表右上角「🤖 AI 标注」徽标可一键清除；点击标记触发 toast 提示
 
 #### P1 — 图表交互与布局升级
 
-- [ ] **[PROD-03]** K 线图画线工具（第一批）：趋势线 / 水平线 / 斐波那契回撤 / 矩形区域，对标 TradingView 基础画图能力
+- [x] **[PROD-03]** K 线图画线工具（第一批）：趋势线 / 水平线 / 斐波那契回撤 / 矩形区域，对标 TradingView 基础画图能力 ✅ **2026-07-25**：`lightweight-chart-canvas.tsx` 在既有 `TrendLinePrimitive`（v5 IPrimitive）基础上扩展 `HLinePrimitive` / `RectanglePrimitive` / `FibRetracementPrimitive`，工具栏由单一 Pencil 升级为四工具组（趋势线两点/水平线单击/斐波那契两点/矩形两点）+ 清除全部；`drawTool` 状态机 + `drawingsRef` 管理 + 切换标的/周期自动清线防错位。tsc 零错误 + 197 全量零回归
 - [x] **[PROD-04]** 四场景模式系统（布局 + 密度 + 焦点色 + AI 角色）✅ **2026-07-19**：
   - `scene-mode-types.ts`（四模式元数据）+ `useSceneModeStore.ts`（Zustand + localStorage）
   - `globals.css` `--density-scale` / `--scene-accent` CSS 变量 + `[data-scene-mode]` 选择器
@@ -801,18 +819,18 @@ STATUS: PRODUCTION READY ✨
   - `global-copilot-drawer.tsx` 盯盘模式隐藏 EdgeHandle
   - 12 tests passed + tsc 零错误 + 全量 197 tests 零回归
   - 待后续迭代：盯盘 K线全屏/研究多面板拖拽/监控专属布局/AI快捷指令栏
-- [ ] **[PROD-04a]** 盯盘模式专属布局（K线全屏 + 盘口悬浮 + 异动高对比）
+- [x] **[PROD-04a]** 盯盘模式专属布局（K线全屏 + 盘口悬浮 + 异动高对比）`frontend/src/features/trading/quotes.tsx` 接入 `useSceneModeStore`，`sceneMode==='watch'` 时切换全屏 K 线 + 右下角悬浮盘口（DOM/成交流水）；新增 `anomaly-flash.tsx`（监听 `market_tick`/`quote_update` 的 `change_pct`，>2% 时基于 `--scene-accent` 脉冲闪烁并标注异动方向）与 `floating-watchlist.tsx`（可拖拽悬浮球 + 自选浮层）；`globals.css` 增加 `scene-anomaly-flash` 动画。
   - Quotes 模块判断 sceneMode='watch' 时切换全屏 K 线布局
   - 自选列表改为可拖拽悬浮球样式
   - 盘口异动 > 2% 时高对比闪烁动画
   - 强调色 `hsl(var(--scene-accent))` 应用于异动 UI
   - 依赖：无（可立即开始）
-- [ ] **[PROD-04b]** AI 分析模式快捷指令栏与上下文感知
+- [x] **[PROD-04b]** AI 分析模式快捷指令栏与上下文感知`fullscreen-copilot.tsx` 新增快捷指令栏（🌤️今日早报 / ⚖️对比分析 / 📡期权链 / 🌐宏观雷达 / 📋查询自选），点击经 `handleSend` 发起指令并显式要求调用 Hermes 工具生成内联图表/数据卡片；ticker 类指令自动从 `useMarketStore.currentTicker` 注入当前聚焦标的；进入 AI 模式时 `useEffect` 将全局 currentTicker 写入 `useCopilotContextStore` 实现跨模式 ticker 携带；顶栏 Brain / 会话按钮 / 指令栏统一改用 PROD-04c 的 `scene` 强调色与 `scene-accent-transition`。另修复 PROD-04a 中误用 `s.sceneMode`（应为 `s.mode`），否则 watch 模式永不触发。
   - FullscreenCopilot 补充快捷指令栏：[今日早报][对比分析][期权链][宏观雷达][选股]
   - 从其他模式切换至 AI 分析时自动携带当前标的 ticker
   - 内联图表/数据卡片自动生成（对接 Hermes 工具调用）
   - 依赖：无（可立即开始）
-- [ ] **[PROD-04c]** 强调色全局动态应用 + 模式切换过渡动画
+- [x] **[PROD-04c]** 强调色全局动态应用 + 模式切换过渡动画`tailwind.config.js` 注册 `scene` 色（`hsl(var(--scene-accent))`）；`globals.css` 在各场景块内将 `--ring` 覆盖为场景强调色（全局 Focus Ring 动态化），并新增 `.scene-accent-transition` 过渡工具类；`global-copilot-drawer.tsx` 的 AI 把手/Brain/会话切换/上下文条/拖动条全部改用 `text-scene`/`bg-scene`；`alert-toast-stack.tsx` 告警铃铛与非 P1 卡片描边改用场景强调色（P1 保留琥珀语义色）。模式切换时强调色 200ms 平滑过渡。
   - Alert、Focus Ring、AI Badge 等关键 UI 应用 `hsl(var(--scene-accent))`
   - 模式切换时 `transition: all 200ms` 平滑过渡
   - 依赖：无（可立即开始）
@@ -821,48 +839,74 @@ STATUS: PRODUCTION READY ✨
   - 表格 / Grid 组件按密度调整列宽、行高
   - 极密模式设最小 fontSize 11px 下限
   - 依赖：PROD-04c
-- [ ] **[PROD-04e]** 研究模式多面板拖拽布局
+- [x] **[PROD-04e]** 研究模式多面板拖拽布局
   - 启用 ResizablePanelGroup 三栏拖拽（代码/回测/AI）
   - 底部 Terminal 面板
   - 键盘优先交互（Cmd+1/2/3 快速跳转面板）
   - 依赖：STRAT-01~05（策略实验室核心）
-- [ ] **[PROD-04f]** 监控模式专属布局（告警流 + Bot矩阵 + 风控仪表盘）
+  - *2026-07-26 完成：`quotes.tsx` 在 `research` 场景渲染 `StrategyIDE`（三栏 ResizablePanelGroup + 底部 Terminal），并接入全局 ⌘1/2/3 面板跳转（代码聚焦 Monaco、回测切 report、AI 助手聚焦输入框）；拖拽手柄/提示条/Topbar 部署按钮统一为 scene 强调色。*
+- [x] **[PROD-04f]** 监控模式专属布局（告警流 + Bot矩阵 + 风控仪表盘）
   - 监控模式下告警流自动升格为主视图
   - Bot 状态矩阵 + 风控仪表盘优先级布局
   - 依赖：ALERT-03~05, RISK-01~08
-- [ ] **[PROD-04g]** 移动端场景模式适配
+  - *2026-07-26 完成：新增 `MonitorModeLayout`，在 `monitor` 场景渲染——左侧实时告警流（EventsList）升格为主视图，右侧列上 Bot 状态矩阵（复用 `OmsBotGrid` + `useOms` 实时数据流）、下风控仪表盘（`RiskModule`）；顶栏含节点运行数与未读告警数；强调色统一为 scene。*
+- [x] **[PROD-04g]** 移动端场景模式适配
   - 移动 TabBar 补充模式圆盘或底部菜单
   - 小屏幕 (<768px) 强制 density-scale=1.0，禁用极密
   - 依赖：PROD-05（多分辨率适配规范）
-- [ ] **[PROD-05]** 多分辨率适配规范：
+  - *2026-07-26 完成：`mobile-tab-bar.tsx` 列数扩为 6，新增场景模式圆盘按钮（当前模式 emoji + scene 强调色圆环）与底部 2×2 切换菜单（SCENE_META 标签/提示）；`globals.css` 增加 `@media (max-width:767px)` 强制 `--density-scale:1`（!important）禁用盯盘 1.2/研究 0.9 极密。*
+- [x] **[PROD-05]** 多分辨率适配规范：
   - 1280px：AI 抽屉改为 overlay（不挤压主工作区）
   - 1920px+：自动展开更多面板（盘口+新闻流默认可见）
   - 超宽屏 21:9：支持三栏并排（行情+策略+AI）
-- [ ] **[PROD-06]** 风控面板 Tab 分组（当前 7 个图表区域平铺，一屏放不下）：
+  - 落地：`frontend/src/styles/globals.css` 新增 PROD-05 响应式基础设施——`global-copilot-drawer` 已 `fixed` overlay（1280px 达标）；新增 `@media (min-width:1920px)` 下 `.resp-auto-panels [data-secondary-panel]{display:block}` 与 `@media (min-width:2560px)` 下 `.resp-3col` 三栏网格工具类（21:9 达标）。
+  - ✅ **[PROD-05 深化]** 多分辨率适配已真正驱动业务页：默认行情工作区 `QuotesModule`（`frontend/src/features/trading/quotes.tsx`）已挂 `resp-auto-panels` + `data-secondary-panel`，≥1920px 自动展开「新闻流」次面板（新建自包含 `market-news-panel.tsx`，复用 `NewsStream` + `GET /macro/news`）；并挂 `resp-3col`，≥2560px 揭示第三栏「AI 副驾」（内联 `AIChat`），形成 **行情 + 策略/新闻 + AI** 三栏并排。基础设施增强：`.resp-3col` 由 `align-items:start` 改为 `stretch` 以满高（当时无既有消费方，安全）；新增 `.resp-3col > [data-ultrawide-ai]{display:flex}` 揭示规则。旧 ⚠️「需逐页挂 class 消费」已闭合。
+  - ✅ **[PROD-05 深化 · 超宽屏固定三栏]** research 场景 `StrategyIDE`（`frontend/src/features/strategy/layout/strategy-ide.tsx`）现通过 `useMediaQuery('(min-width:2560px)')`（`frontend/src/hooks/use-media-query.ts`，SSR 安全）条件渲染：≥2560px 出 **非拖拽固定三栏**（复用 `.resp-3col` 网格 + 新增 `.ide-3col` 列模板锁定 IDE 比例 explorer 15% / editor 1fr / AI 26%，去间距改边框分隔），≤2559px 保留原 `react-resizable-panels` 可拖拽布局——绕开内联 `display:flex` 覆盖 grid 的样式优先级雷区，且无需维护两套布局语义。
+  - ✅ **[PROD-05 深化 · 盯盘全屏可折叠新闻流]** 进阶建议 1 落地：盯盘全屏（`quotes.tsx` 的 `isWatchScene` 分支）新增 `WatchNewsOverlay`（`frontend/src/features/trading/watch-news-overlay.tsx`），默认收起、仅右上角一个展开钮，复用 `MarketNewsPanel`；用 `min-[1920px]:` 任意媒体变体门控——**仅 ≥1920px 揭示**（小屏聚焦模式零干扰），浮层锚定在右侧盘口悬浮（w-72）左侧（`right-[19.5rem]`）避免遮挡；外层 `pointer-events-none` 仅按钮/面板可交互，K 线拖拽不受影响。
+  - ✅ **[PROD-05 深化 · 新闻浮层滑入动画 + 毛玻璃]** 进阶建议 2 落地：`globals.css` 新增 `@keyframes resp-slide-in-right`（`animate-slide-in-right` 工具类，挂载即右侧滑入）；`WatchNewsOverlay` 展开面板加 `animate-slide-in-right` 并强化玻璃感（`backdrop-blur-xl bg-card/70`），作战室质感拉满。
+  - ✅ **[PROD-05 深化 · 通用 motion 工具族]** 进阶建议 2（沉淀 motion 工具类）落地：`globals.css` 将原单条 `animate-slide-in-right` 扩为 `resp-*` motion 工具族——`resp-slide-in-right`（右滑入）、`resp-fade-up`（上滑淡入）、`resp-scale-in`（缩放淡入），统一挂载即播、缓出曲线一致；`WatchNewsOverlay` 改用 `resp-slide-in-right`。后续面板入场动画直接复用，无需各写 keyframes。
+  - ✅ **[PROD-05 深化 · research 固定三栏侧栏入场]** 进阶建议 1 落地：超宽屏固定三栏的左右栏接 `resp-fade-up`（左栏即时、右栏 `animationDelay:0.06s` 错峰），中央编辑器作为锚点不动画，进出 2560px 边界切换时形成层次感入场。
+  - ✅ **[PROD-05 · motion 工具族补 resp-slide-in-left]** 进阶建议 2 部分落地：`globals.css` 补 `resp-slide-in-left`（左锚定 popover 入场，方向对称）；但**驳回**其与 AI 副驾抽屉的接线——`global-copilot-drawer` 是 `fixed right-0` 靠 `transition-[width]` 宽度擦除动画（右锚定），非左侧滑入；挂 `resp-slide-in-left`（挂载期 keyframe）会轴错 + 与 width 过渡打架 + 只能进不能出。该工具仅留给未来左锚定抽屉。
+  - ❌ **[PROD-05 · 新闻浮层滑入时位移盘口 · 驳回]** 进阶建议 1 伪前提：新闻浮层锚定 `right-[19.5rem]`、盘口 `right-3 w-72`（左沿在 18.75rem），二者相隔 0.75rem **本就不叠压**，无需位移避让。驳回。
+  - ✅ **[PROD-05 深化 · 无障碍兜底 prefers-reduced-motion]** 进阶建议 1 落地：`globals.css` 新增 `@media (prefers-reduced-motion: reduce)` 关掉整套 `resp-*` 入场动画（`animation:none !important`）。系统开启「减少动态效果」时 research 固定三栏 / 新闻浮层 / 盘口的入场动画全部禁用，跨 2560px 边界重挂不再闪动。无障碍基线补齐。
+  - ✅ **[PROD-05 深化 · watch 盘口入场统一]** 进阶建议 2 落地：盯盘全屏盘口悬浮容器（`quotes.tsx` watch 分支）接 `resp-fade-up`，与新闻浮层统一 `resp-*` motion 语言；盘口为常驻核心元素，仅 watch 场景挂载时入场一次，符号切换不重挂。
+  - ❌ **[PROD-05 · research 加 min-[1920px] 兜底 · 驳回]** 进阶建议 1 伪前提：research 在 <2560px 早已是 `ResizablePanelGroup (15/60/25)` 三栏且可拖拽；`.resp-3col` 固定栏专供 ≥2560（21:9）去拖拽把手。给 research 加 `min-[1920px]:` 兜底会把 1920–2559 正常大屏的拖拽缩放能力剥夺，属回归。驳回。
+  - ⏸️ **[PROD-05 · 场景级三栏比例配置 · 暂缓/YAGNI]** 进阶建议 2（把 `.ide-3col` 比例抽成「盯盘/研究/风控」场景配置表）暂不做：当前仅 research 用固定三栏，monitor 走自有 grid、watch 不用 `resp-3col` 固定栏——为单一消费方建场景配置抽象属过度设计。待第二个场景真正需要固定三栏时再抽 `SCENE_THREE_COL_RATIOS`。
+  - ✅ **[PROD-05 深化 · 跨 2560 边界入场动画只播一次]** 进阶追问 A 落地：`strategy-ide.tsx` 新增 `ultrawideEntered` state 锁 + 320ms 延时锁定；`playEntry = isUltrawide && !ultrawideEntered` 仅在「首次进入超宽屏」给左右栏挂 `resp-fade-up`（右栏 `animationDelay:0.06s` 仅 playEntry 时下发）。用户在 2559↔2560 间反复拖拽窗口时，固定三栏子树反复重挂不再重播入场动画，消除闪烁。`prefers-reduced-motion` 用户本就无动画，锁逻辑无副作用。
+  - ❌ **[PROD-05 · monitor 大屏加超宽屏固定三栏 · 驳回]** 进阶追问 B 伪前提：monitor 是行情墙 tiled-grid（多标的并列卡片）架构，本就非 explorer/editor/AI 线性三栏流；强加 `.resp-3col` 固定三栏是削足适履。其自有 grid 已天然填满超大屏，无需固定三栏介入。属拍脑袋的对称强迫症，驳回。
+  - ❌ **[PROD-05 · 抽 useEntryOnce hook 复用入场锁 · 驳回/YAGNI]** 进阶追问 1 过度抽象：一次性入场锁目前仅 `strategy-ide.tsx` 一处消费（解跨 2560 边界重挂闪烁），watch 浮层是用户主动展开的交互反馈无需锁。为单一消费方抽 `useEntryOnce(mediaQuery)` 是提前抽象（YAGNI），且 320ms 锁定魔法数耦合动画时长，抽出去反而多一层间接。待第二处真实场景出现时再抽。
+  - ❌ **[PROD-05 · watch 浮层展开只播一次 · 驳回]** 进阶追问 2 伪前提：watch 新闻浮层是用户主动点击展开→面板挂载→`resp-slide-in-right` 播放，收起卸载、再展开重播是**合理交互反馈**（提示「新闻流出现」），非噪音。改「只首次播放」反而让二次展开无过渡、体验割裂；`prefers-reduced-motion` 已兜底。保留每次展开滑入现状。
+- [x] **[PROD-06]** 风控面板 Tab 分组（当前 7 个图表区域平铺，一屏放不下）：✅ **2026-07-25**：`AccountSection`（risk-account-section.tsx）新增概览/因子/压测三 Tab，`RiskAdvancedPanel` 支持 `tabs` 过滤复用；敞口卡派生集中度(Top1%)；持仓表常驻。tsc 零错误 + 197 全量零回归
   - Tab 1「概览」：雷达图 + 集中度 + Beta
   - Tab 2「因子」：因子暴露 + 归因 + 相关性矩阵
   - Tab 3「压测」：VaR + CVaR + 历史场景 + 流动性
 
 #### P2 — 产品结构优化
 
-- [ ] **[PROD-07]** Calendars 降级为 Macro Hub 子 Tab：
+- [x] **[PROD-07]** Calendars 降级为 Macro Hub 子 Tab：✅ **2026-07-25**：`DataCenterModule`(data-center.tsx) 新增概览/市场日历子 Tab，`CalendarsModule` 作为「市场日历」子 Tab 嵌入；侧栏独立入口已移除（route 保留可深链）。tsc 零错误 + 197 全量零回归
   - 当前为独立一级模块（§16 占文档 24%），与 §8 Macro Hub 功能重叠
   - 调整为 Macro Hub 内「全球市场」 Tab，减少一级导航膨胀（12→11 个模块）
   - 保留横向滚动卡片布局，但不再作为独立路由
-- [ ] **[PROD-08]** 纸面组合状态透明化：
+- [x] **[PROD-08]** 纸面组合状态透明化：
   - 在 §1.6 三模式说明中加醒目提示「⚠️ PAPER 模式依赖 PT-01~02，当前未实现」
   - 前端 PAPER 模式切换时显示「功能开发中」引导
-- [ ] **[PROD-09]** 图表内下单（拖拽式）：
-  - K 线图上拖拽设置止损线/限价线，松手即触发下单确认弹窗
-  - 持仓线直接在图表上显示，拖拽调整止损/止盈
-- [ ] **[PROD-10]** 策略实验室回测报告布局优化：
-  - 当前：回测报告与代码共享 Tab，切换丢失代码滚动位置
-  - 改为：回测报告用底部面板上推或右侧分屏，代码始终可见
+  - 落地：`frontend/src/features/paper/page.tsx` 顶部加模拟环境透明化横幅（⚠️ PAPER：SimBroker 虚拟账本、无真实券商对接/实盘执行）。注：`docs/01` 在本仓库不存在，故仅落地前端横幅；横幅措辞按零幻觉原则改为「真实券商/实盘未打通」，未谎称「未实现」（PT-02b 纸面列表已实装）
+- [x] **[PROD-09]** 图表内下单（拖拽式）：✅ **2026-07-25**：新增 `useTradeStore`（模拟持仓/待确认订单，沙箱推演，OMS 未实装）+ `order-confirm-modal.tsx`（买卖/限价止损/数量/SL/TP 确认弹窗）；`lightweight-chart-canvas.tsx` 工具栏新增「下单模式」按钮（带持仓数角标）+ 提示横幅；下单模式下在图上按住拖拽生成紫色预览价格线，松手按相对现价推断方向（低于现价=BUY/高于=SELL）弹出确认框；确认后持仓以 entry(实线)/SL(红虚)/TP(绿虚) 价格线渲染于图上，可拖拽 SL/TP/entry 线直接调整（6px 命中检测，实时跟随、松手落库）。tsc 零错误 + 197 全量零回归
+- [x] **[PROD-10]** 策略实验室回测报告布局优化：✅ **2026-07-25**：`main-tabs.tsx` 移除 Tab 切换，`MonacoEditorTab` 常驻挂载（保留滚动位置），回测报告改为可缩放底部面板（`ResizablePanelGroup` 垂直方向，代码 55% / 报告 45%，带 `id`/`order` 稳定条件渲染）；顶部工具栏新增「查看/隐藏回测报告」切换；`activeWorkspaceTab='report'` 语义重映射为"打开报告面板"（沙箱/优化完成后自动展开，代码仍可见）；Monaco 启用 `automaticLayout` 以适配面板缩放。tsc 零错误 + 197 全量零回归
+  - 旧方案：回测报告与代码共享 Tab，切换丢失代码滚动位置
 
 #### P3 — 长期差异化
 
-- [ ] **[PROD-11]** 自定义指标脚本（对标 TradingView Pine Script）：用户可写简单表达式指标（如 `RSI(14) > KDJ.K`），前端实时计算并叠加到 K 线图
-- [ ] **[PROD-12]** 多图表同步十字线：分屏模式下多个 K 线图共享十字线位置（同一标的不同周期，或不同标的同一时间）
+- [x] **[PROD-11]** 自定义指标脚本（对标 TradingView Pine Script）：✅ **2026-07-25**：`custom-indicator/engine.ts`（纯函数表达式引擎：递归下降解析器 + 向量化求值，支持字段 OPEN/HIGH/LOW/CLOSE/VOLUME、命名空间 KDJ.{K,D,J}/MACD.{DIFF,DEA,HIST}/BB.{UPPER,LOWER,MID}、函数 MA/EMA/RSI/REF/CROSS/HHV/LLV/ABS/SQRT/MAX/MIN，MA/EMA/RSI 支持单参(作用于CLOSE)或双参；复用 worker 同款 RSI/KDJ/MACD/BOLL 算法）+ `suggestPane`(振荡器自动建议副图) + `collectBoolSignals`(上穿跳变收集) + `runSignalBacktest`(事件驱动回测)；`store.ts`（zustand persist 持久化用户脚本 + `signalLog` 信号日志上限50）；`panel.tsx`（图表内抽屉：列表/新增/编辑/删除/显隐 + 实时语法校验与结果预览 + 语法帮助 + 列表项「信号回测」按钮与结果卡片 + 信号触发日志区块）；`lightweight-chart-canvas.tsx` 工具栏「ƒ」按钮：数值型按 `pane`(overlay 主图/separate 独立副图/auto) 选坐标（separate 走 `ci-separate` priceScale 贴底副图，避免 RSI/MACD 扭曲主图价格尺度），布尔型以主图 markers 标记 + 末根上穿实时写入 `signalLog` 并弹 Toast 提醒（延迟 2s 武装，避开首屏历史信号轰炸）。预置 RSI(14)/RSI(14)>KDJ.K/MA5上穿MA20 示例，默认隐藏。新增 `engine.test.ts`（15 用例）。tsc 零错误 + 212 全量零回归
+
+  - **追问2 · 信号触发 Toast + 浏览器系统通知（跨标签页）**：✅ **2026-07-25**：`lightweight-chart-canvas.tsx` 末根上穿在弹 Toast 同时 `new Notification` 联动浏览器系统通知（后台/跨标签页仍可见）；`ciNotifAskedRef` 仅首次 default 权限时请求一次，避免重复弹窗；Toast 仍走延迟 2s 武装（仅实时新信号提醒）。
+  - **追问3 · 自定义表达式接入真实回测引擎**：✅ **2026-07-25**：`engine.ts` 新增 `runCustomExprBacktest(expr, bars, initialCapital)` 生成与后端 `/backtest/run` 完全兼容的 `equity_curve/trades/metrics`（含总收益/年化/夏普/最大回撤/胜率/盈亏比），UI 全部自动复用（Tear Sheet / 权益曲线 / 水下图 / 交易明细）；`use-backtest.ts` 新增 `customExpr` 状态 + `handleRun` 分支（选「__custom_expr__」策略时经 `/market/history` 拉真实 K 线 → 映射 CIBar → 本地计算 → `setBacktestResult`+`setRawReturns`，interval/period 映射 ktype/num 并支持中断）；`backtest-config.tsx` 策略下拉加「自定义指标脚本 (Pine)」选项 + 表达式 textarea（实时校验，红错/绿对提示）；`backtest.tsx` 透传。新增 `engine.test.ts` 用例。`tsc` 零错误 + 214 测试零回归
+  - **追问4 · 信号触发日志导出复盘 CSV**：✅ **2026-07-25**：`panel.tsx` 信号日志区块头部新增「导出」按钮（`Download` 图标），一键将**全量** `signalLog`（store 上限 50，面板仅展示 12 条）生成 CSV 下载（字段：指标ID/名称/表达式/触发日期/触发时间），含字段引号转义 + BOM 头保证 Excel 中文不乱码，文件名带日期。`tsc` 零错误 + 214 测试零回归
+  - **追问5 · 自定义表达式参数化（@参数）**：✅ **2026-07-26**：`engine.ts` 词法器识别 `@name` 参数令牌、语法树新增 `param` 节点、求值器从 `params` 映射代入（缺失返回 `ok:false` 而非抛错，与 UI 消费一致）；新增 `listParams(expr)` 提取引用参数（去重保序）；`validate(expr, params?)` 支持参数校验（缺失报错）；`collectBoolSignals/runSignalBacktest/runCustomExprBacktest` 全部透传 `params`；`store.ts` 的 `CustomIndicator` 加 `params?: Record<string,number>`；`panel.tsx` 编辑表单按 `listParams` 自动生成参数输入框（数值）、保存写入指标、`evaluate` 预览与「信号回测」均代入 `params`；`lightweight-chart-canvas.tsx` 渲染时 `evaluate(ind.expr, bars, ind.params)`。新增 `engine.test.ts` 参数化用例（listParams/代入/缺失/validate/回测）。`tsc` 仅剩无关文件 `fullscreen-copilot.tsx` 预存错误，本改动零错误 + 219 测试零回归
+  - **追问6 · 参数网格搜索（@参数穷举）**：✅ **2026-07-26**：`engine.ts` 新增 `runParamGridSearch(expr, bars, grid, opts?)`——对含 `@参数` 的自定义表达式做 min/max/step 笛卡尔积穷举，逐组复用 `runCustomExprBacktest` 计算回测指标（累计收益/夏普/胜率/最大回撤/交易数），按选定指标排序返回 Top-N 与全局最优 `best`；组合数上限 1000 保护（超限返回明确错误），K 线不足/空网格优雅报错，非法或非布尔组合标记为 `ok:false` 不参与排序。UI 在编辑表单参数区下新增「网格搜索最优参数」折叠面板：逐参数 min/max/step 输入 + 排序维度选择（累计收益/夏普/胜率/最小回撤）+ 运行按钮 + Top-N 结果表（排名/参数组合/收益%/夏普/一键「应用」回填参数）。前端同源复用 `evaluate` 引擎，零新增数据依赖。`tsc` 本改动零错误 + 225 测试零回归（含 6 个新增网格搜索用例）
+  - **增强（追问1 · 副图独立坐标）**：store 增加 `pane` 字段（overlay 主图 / separate 独立副图 / 未设=auto）；`engine.suggestPane()` 对振荡器(RSI/KDJ/MACD/BB)自动建议 separate，避免 RSI(0-100) 叠加主图扭曲价格尺度；图表端 separate 走独立 priceScale(`ci-separate`) + scaleMargins 贴底副图。
+  - **增强（追问2 · 信号接入提醒/回测）**：`engine.collectBoolSignals()` 收集布尔表达式上穿(0->1)跳变点；store 新增 `signalLog`（持久化、上限50）；图表端检测「末根 K 线上穿」实时 push 触发点（去重，不递归），面板新增「信号触发日志」区（时间/名称/表达式 + 清空），可直接对接交易提醒与回测条件触发。新增 `engine.test.ts`（12 用例）。tsc 零错误 + 209 全量零回归
+- [x] **[PROD-12]** 多图表同步十字线：✅ **2026-07-25**：新增 `chart-crosshair-sync.ts` 单例同步管理器（按 `syncGroup` 分组）；`LightweightChartCanvas` 接入注册/广播/应用（带防回环锁，外部同步不二次广播）；`quotes.tsx` 新增「同步对比」分屏模式（上下双图、各自独立 WebSocket/历史数据，共享 `syncGroup='default'`），移动任一图十字线同组其他图同步跳动。tsc 零错误 + 197 全量零回归
 
 #### AI 全模块渗透（三层架构：主动推送 / 嵌入式辅助 / 按需调用）
 
@@ -903,6 +947,128 @@ STATUS: PRODUCTION READY ✨
   - Settings 中每模块独立开关（市场异动/选股建议/回测解读/风控预警/告警分诊）
   - 触发阈值可调（异动 1%/2%/5%）
   - 自然语言配置："把告警推到 Telegram，只推 P0 和 P1"
+
+#### 数据源能力矩阵与产品形态升级（2026-07-26 产品功能审计）
+
+> **背景**：对标 Bloomberg Terminal 全能力矩阵，识别现有工具链覆盖盲区，优先补齐可直接复用后端 Tool 的高价值功能。
+> **产品设计文档**：`docs/01 §十七`（数据源能力矩阵与产品形态升级）
+
+##### 期权与波动率曲面（已有 `get_broker_market_data(action="OPTION_CHAIN")` 后端基础）
+
+- [ ] **[OPTION-01]** 个股期权隐含波动率实时面板（P1）：
+  - 前端：选定标的 → 期权链表格（行=行权价、列=到期日）+ 单元格 IV% 渐变色热力图
+  - 后端：扩 `OPTION_CHAIN` action 返回 Greeks（Delta/Gamma/Vega/Theta）+ IV
+  - 预期工时：FE 8h + BE 4h
+- [ ] **[OPTION-02]** 波动率曲面 3D 可视化（P2）：
+  - ECharts GL 三维曲面图（X=行权价、Y=到期日、Z=IV）
+  - 叠加 skew 曲线（横截面）+ term structure 曲线（纵截面）
+  - 依赖 OPTION-01
+  - 预期工时：FE 6h
+- [ ] **[OPTION-03]** Put/Call Ratio 实时面板（P1）：
+  - 总 PCR + 分到期日 PCR + 历史 20 日均值对比线
+  - 后端复用 `get_macro_sentiment_history` 的 PCR 数据源
+  - 前端 ECharts 双轴（柱状 PCR + 折线标的收盘价），关联市场情绪解读
+  - 预期工时：FE 4h + BE 2h
+- [ ] **[OPTION-04]** 期权数据真实源接入与 mock 清退收尾（P1）：
+  - 后端 `FutuAdapter._fetch_option_chain` 接入真实 Futu 期权链（`Ctx.get_option_chain_by_date_strike`），取消 `数据源已死` 告警，恢复 OPTION-01 面板真实数据
+  - 后端 `/iv-rank` 接入真实历史 IV 序列源（Redis/DB），取消 `random` 伪造告警，恢复 IV Rank 计算
+  - 验收：OPTION-01 期权 IV 曲面面板 + IV Rank 在真实数据源下可用，全链路零 mock
+  - 依赖 OPTION-01（mock 已清退，待真实源接入）
+  - 预期工时：BE 6h
+
+##### 资金流向增强（已有 `action="FUND_FLOW"` 后端基础）
+
+- [ ] **[FUNDFLOW-01]** 北向资金/主力资金实时看板（P1）：
+  - A股：北向资金净流入（日/周/月）+ 行业分布饼图
+  - 港股：南向资金 + 港股通十大成交榜
+  - 美股：大单（Block Trade）净流入 + 机构持仓变化 Tide Chart
+  - 前端组件：`FundFlowDashboard`（Tab 切换三市场）
+  - 预期工时：FE 8h + BE 4h
+- [ ] **[FUNDFLOW-02]** 龙虎榜/经纪商席位排行（P2）：
+  - 港股 Broker Queue（买入最多 / 卖出最多经纪商）+ 席位异动标记
+  - A股龙虎榜：机构 vs 游资标签 + 近3日净买额排序
+  - 依赖 FUNDFLOW-01 后端数据管道
+  - 预期工时：FE 6h + BE 4h
+
+##### 财报与研报本地 RAG（已有 `analyze_financial_report` + `search_global_knowledge`）
+
+- [ ] **[EARN-02]** 财报/研报 RAG 问答面板（P1）：
+  - 前端：`EarningsQAPanel` 聊天式面板（上传 PDF / 粘贴文本 / 拉取已入库报告）
+  - 后端：`POST /api/v1/rag/chat` — 输入问题 + 指定报告 ID → RAG 检索 + LLM 回答（带引用章节跳转）
+  - 支持追问链（conversation_id 持续上下文）
+  - 预期工时：FE 8h + BE 6h
+- [ ] **[EARN-03]** 研报语义检索增强（P2）：
+  - 自然语言检索："找出所有提到 CapEx 上修的公司"
+  - 检索结果展示：相关段落高亮 + 原文跳转 + 报告日期 / 分析师来源
+  - 依赖 EARN-02 问答面板作为 UI 入口
+  - 预期工时：FE 4h + BE 4h
+
+##### 宏观日历高危事件雷达（已有 `get_macro_calendar`）
+
+- [ ] **[MACRO-05]** 高危事件自动标红与倒计时（P1）：
+  - 前端：Macro Hub 侧边栏增加「🔥 高危事件」卡片（FOMC/NFP/CPI 自动标红 + 倒计时天时分）
+  - 点击展开：事件详情（前值 vs 预期 vs 共识分歧宽度） + ⚡ AI 推演卡（"若加息25bp → 港股科技预计 -2~3%"）
+  - 依赖 AI-08（事件推演）后端能力
+  - 预期工时：FE 6h + BE 2h
+
+##### 情绪量化（已有 `get_macro_sentiment_history` + `get_company_news`）
+
+- [ ] **[SENT-01]** 市场情绪综合得分面板（P1）：
+  - 后端：加权合成 VIX(30%) + P/C Ratio(25%) + Credit Spread(25%) + 新闻情绪(20%) → 0~100 情绪指数（0=极度恐惧、100=极度贪婪）
+  - 前端：Fear & Greed Index 风格仪表盘 + 历史时间序列折线图 + 极端位（<20 / >80）标注
+  - 预期工时：FE 4h + BE 4h
+- [ ] **[SENT-02]** 个股舆情情感时间序列（P2）：
+  - 基于 `get_company_news` 的新闻标题/摘要做 NLP 情感打分（-1~+1），绘制每日情感均值折线
+  - 叠加股价走势副图（情感滞后 or 同步）
+  - 预期工时：FE 4h + BE 4h
+
+##### 决策工具产品形态
+
+- [x] **[BRD-01]** 早报刊物一键生成器（P1）：✅ 已完成
+  - 触发方式：Dashboard 顶部「☕ 生成早报」按钮 + 定时任务（日盘前 15min 自动推送，worker 守护注册）
+  - 内容编排：宏观日历 → 核心标的监控 → 新闻提纯 → 多空概率矩阵 → 主脑综合研判
+  - 严格遵循 `AGENTS.md §7` 早报模板 + 新闻卡片格式
+  - 输出：浏览器端 Markdown 预览 + 一键复制 / 分享为 URL（落地页 `/briefing/:id`）
+  - 后端：编排 `get_macro_calendar` + `get_broker_market_data(QUOTE)` + `get_macro_news` + `get_macro_sentiment_history` → LLM 组装 Markdown（`services/morning_briefing/`：generator + storage(Redis/内存兜底) + scheduler）；路由 `POST /api/v1/briefing/generate`、`GET /briefing/latest`、`GET /briefing/share/{id}`
+  - 前端：Navbar 按钮 → Dialog（react-markdown 渲染 + 复制 + 分享链接）；LLM 失败有数据兜底骨架
+  - 单测 `tests/test_morning_briefing_generator.py` 覆盖正常/LLM 失败兜底/模块封装三路径
+  - 🔧 **市场切换（后续增强）**：`MARKET_TICKERS = {全球/美股/港股/A股}` 按市场选不同监控标的；Modal 顶部 Select 下拉切换市场（默认全球），切换即按该市场重新生成；分享页 `/briefing/:id` 头部展示市场标签。**分享页保持 ProtectedRoute 内，不对未登录公开**。
+  - 🔧 **本地验证（本机实跑，非仅留 CI）**：前端 `npm run type-check` + `npm run build` 全绿；后端 `pytest tests/test_morning_briefing_generator.py` 3 用例全 PASS。验证过程抓出 4 个会进 CI 的真实 bug 并已修复：① navbar 漏 import `MorningBriefingModal`（自 BRD-01 首提交即缺失，前端构建一直挂）；② 早报 `apiClient` 解包错 `res.data.data`→应为 `res.data`（`morning-briefing-modal`/`briefing-share-page` 两处 TS 类型错）；③ `fullscreen-copilot` 缺必填 `kind` 字段（补 `analysis` 枚举）；④ **后端 `generator.py` 的 `ToolRegistry` 导入路径错**（`backend.core.tool_registry` 不存在，应为 `hermes_agent.tool_registry`——会导致整个早报引擎 import 失败、端点 500）+ 市场切换改写时 `MARKET_TICKERS`/`get_tickers_for_market` 与 `_collect_data(market, tickers)` 调用未真正落盘，已补全。
+  - 预期工时：FE 6h + BE 6h
+- [x] **[COND-01]** 自定义指标网格搜索结果保存为"策略配方"（P2）：
+  - ✅ 已完成 `runParamGridSearch` 引擎 + UI（PROD-11 追问6）
+  - ✅ 已完成回测交易明细 CSV 导出（PROD-11 追问 G · `0a43300`）
+  - ✅ 已完成策略配方持久化（COND-01 · `f96f9ee`）：`store.ts` 新增 `StrategyRecipe` 接口 + `recipes` 持久化 + `saveRecipe/removeRecipe` action（zustand persist version=1，localStorage 键 `quant-custom-indicators`）；`panel.tsx` 网格结果「存为配方」按钮 + 内联命名/备注表单 + 「📂 配方库」列表（参数快照/收益/夏普/胜率/应用/删除）；`store.test.ts` +4 用例。全量 234 tests passed
+  - 注：采用前端 localStorage 持久化（与 indicators/signalLog 同源），未引入后端 `strategy_recipes` 表（保持客户端优先、零后端依赖，符合沙箱推演定位）
+  - 配方列表（我保存的策略配方）+ 一键对比 + 导出 JSON / 分享
+  - 预期工时：FE 6h + BE 4h
+- [x] **[ALERT-COND-01]** 条件单沙盒（P2）：
+  - 前端：条件构建器（选择指标 + 运算符 + 阈值，支持 AND/OR 组合）→ 模拟命中通知（浏览器弹窗 / App Push 沙盒）
+  - 后端：沙盒引擎轮询 1min 持续评估，命中后写 `alert_logs_sandbox` 表 + 前端消费 SSE
+  - 目前 OMS 未实装，仅模拟通知，待实盘切换后可直接复用为真条件单
+  - 预期工时：FE 8h + BE 8h
+  - ✅ 状态：**已完成（前端沙盒优先，2026-07-26）**。采用前端 localStorage 持久化（与 indicators/signalLog 同源），未引入后端 `alert_logs_sandbox` 表（保持客户端优先、零后端依赖，符合沙盒推演定位）；轮询引擎在面板挂载时按可配置间隔（默认 30s，可选 10s/30s/1min/5min，规格基准 1min）持续评估末根 K 线，上升沿命中即写本地 `alertLog` + Toast/浏览器 Push 双通道模拟通知。后端 SSE 表为后续实盘切换的演进路径。
+
+##### 社区与协作（数据治理层）
+
+- [ ] **[COMM-01]** 数据源健康度统一看板（P2）：
+  - 前端：`DataSourceHealthDashboard` — 卡片矩阵（每个数据源一个卡片：名称 / 状态 / 延迟 / 今日调用量 / 成功率 / 限流次数）
+  - 实时数据来源：`/api/v1/datasource/{name}/health` + `rate_limit_registry` 状态
+  - 报警：数据源 STALE > 5min → 卡片变红 + WebSocket 推送
+  - 预期工时：FE 6h
+- [ ] **[COMM-02]** 数据源贡献投票与需求看板（P3）：
+  - 前端：展示「已接入 / 开发中 / 社区投票中」三类数据源
+  - 用户可投票（1 票/天），影响下一个接入优先级
+  - 后端：投票记录 + 计数器，防止刷票
+  - 预期工时：FE 4h + BE 3h
+
+##### 智能选股器产品化
+
+- [ ] **[SCREEN-01]** 选股条件保存与分享（P1）：
+  - 前端：筛选器面板「💾 保存条件」→ 命名 + 描述 → `saved_screens` 表
+  - 「📂 我的筛选条件」下拉列表（加载 / 删除 / 重命名）
+  - 「🔗 分享」→ 生成可分享 URL（编码筛选条件为 query params，对方打开自动填充）
+  - 预期工时：FE 6h + BE 3h
 
 ---
 
@@ -995,7 +1161,14 @@ STATUS: PRODUCTION READY ✨
 
 | 完成日期    | 任务                                                                               |
 | ------- | -------------------------------------------------------------------------------- |
+| 2026-07-25 | [PROD-03 完成] K 线图画线工具：四工具组（趋势线/水平线/斐波那契回撤/矩形区域，对标 TradingView 基础画图）+ 清除全部；基于 lightweight-charts v5 IPrimitive 复用既有 TrendLinePrimitive 模式；切换标的/周期自动清线防错位。tsc 零错误 + 197 全量零回归 |
+| 2026-07-25 | [PROD-06 完成] 风控面板 Tab 分组：概览(雷达+敞口/集中度) / 因子(因子列表+板块暴露+相关性矩阵) / 压测(VaR/CVaR+历史场景) 三 Tab；RiskAdvancedPanel 新增 tabs 过滤复用；敞口卡派生集中度(Top1%)；持仓表常驻。tsc 零错误 + 197 全量零回归 |
+| 2026-07-25 | [PROD-07 完成] Calendars 降级为 Macro Hub 子 Tab：DataCenterModule 新增概览/市场日历子 Tab，CalendarsModule 作为「市场日历」嵌入；侧栏独立入口移除（route 保留）。tsc 零错误 + 197 全量零回归 |
 | 2026-07-19 | [PROD-04 完成] 四场景模式系统：盯盘/研究/监控/AI分析四模式切换基础设施 + 布局骨架适配（12 tests + 197 全量零回归） |
+| 2026-07-26 | [COND-01] 策略配方持久化完成：`store.ts` 新增 `StrategyRecipe` 接口 + `recipes` 持久化（zustand persist v1，localStorage 键 `quant-custom-indicators`）+ `saveRecipe/removeRecipe`；`panel.tsx` 网格结果「存为配方」按钮 + 内联命名表单 + 「📂 配方库」列表（参数快照/收益/夏普/胜率/应用/删除）；`store.test.ts` +4 用例。234 tests passed。至此 PROD-11 系列（追问6 网格搜索 / 追问 G 交易明细导出 / COND-01 配方持久化）全部闭环。 |
+| 2026-07-26 | [ALERT-COND-01] 条件单沙盒完成：`alert-sandbox.ts` 新增 `AlertCondition`/`AlertLogEntry` 接口 + zustand persist（localStorage 键 `quant-alert-sandbox`）+ `addCondition/updateCondition/removeCondition/toggleCondition/setConditionState/pushAlert/clearAlertLog`，并复用 `engine.evaluate` 实现 `evalCondition`（布尔真值=1）；`alert-sandbox-panel.tsx` 条件构建器（名称+布尔表达式+通知方式 + 7 个模板）+ 可配置轮询（10s/30s/1min/5min，基准 1min）+ 上升沿检测（false→true 仅记一次）+ Toast/浏览器 Push 双通道模拟通知 + 命中日志本地落库；`lightweight-chart-canvas.tsx` 接入 Bell 触发按钮与 `getBars` 实时回调；`alert-sandbox.test.ts` +10 用例。全量 47 custom-indicator tests passed，tsc 零新增错误。前端沙盒优先，后端 `alert_logs_sandbox` 表/SSE 为实盘切换演进路径。 |
+| 2026-07-26 | [PROD-11 追问 G] 回测交易明细 CSV 导出：`engine.ts` 新增 `TradeRecord` 接口 + `SignalBacktestResult.tradeDetails` 字段；`panel.tsx` 回测面板标题栏新增「交易明细」导出按钮（8 列：序号/买入日期/买入价/卖出日期/卖出价/收益率%/持有天数/盈亏）；末根持仓以未平仓记录导出（sellDate 空）；BOM+UTF-8 保证 Excel 中文不乱码。`engine.test.ts` +5 用例（已平仓数校验、持仓记录格式、价格一致性、无交易空数组、失败回测空数组）。全量 230 tests passed。闭合信号日志→回测交易明细的复盘闭环。 |
+| 2026-07-26 | [产品功能审计] 新增 **数据源能力矩阵升级** 任务组（OPTION-01~03 / FUNDFLOW-01~02 / EARN-02~03 / SENT-01~02 / SCREEN-01 / MACRO-05 / BRD-01 / COND-01 / ALERT-COND-01 / COMM-01~02）共 17 项：对标 Bloomberg 全能力矩阵识别 6 大覆盖盲区（期权波动率/资金流增强/研报RAG问答/情绪得分化/决策工具/社区协作），优先补齐可复用后端 Tool 的高价值功能。同步新增 `docs/01 §十七`（数据源能力矩阵与产品形态升级），详见 `docs/01 §十七`。 |
 | 2026-07-16 | [BE-ARCH-05 执行] Finnhub DataSource 接入：`backend/services/datasource/adapters/finnhub.py` 实现 `FinnhubDataSource`（满足 `DataSourceInterface` Protocol），6 capabilities（earnings/company_news/market_news/economic_calendar/insider_trading/stock_history）经 `fetch` 路由到既有 `FinnhubService` 方法；`ensure_finnhub_registered` 于 `MarketDataGateway.__init__` 幂等注册（对齐 yfinance BE-ARCH-04 模式）；限流复用 SVC-08 的 `rate_limit_registry`（throttler 状态以服务内部记录为准，适配器仅做 Result 语义化）；`DATASOURCE_FINNHUB_MODE` env 控制运行模式；`docs/14 §八`+§2.4 能力矩阵更新。Pytest 17 全绿。详见 `docs/14 §二`/`§八` |\n| 2026-07-16 | [SVC-08 执行] Finnhub 限流感知：后端 `finnhub_service.py` 注入 `rate_limit_registry` 的 finnhub throttler，`get_earnings_calendar`/`get_market_news`/`get_company_news`/`get_economic_calendar`/`get_insider_transactions`/`get_stock_history` 在 429/403 → `on_rate_limit`、成功 → `on_success`；`routers/calendars.py` 的 `/dividends` `/ipos` 接入 `should_throttle` 退避（退避期返回 degraded，不硬重试）；`routers/datasource.py` 新增 `GET /datasource/finnhub/health`（被动健康：API Key + 限流状态）；`/rate-limit-status` 由通用路由覆盖（name=finnhub）。Pytest 8 全绿。详见 `docs/14 §十二` |
 | 2026-07-16 | [FE-PROD-05 执行] Calendars 全球市场日历落地：后端新增 `routers/calendars.py`（`/calendars/snapshot` 7 类目 52 标的聚合 + `/hours` 世界时钟矩阵 + `/dividends` `/ipos` Finnhub 优雅降级）+ `macro.py` `/earnings` 复用；前端 `features/calendars`（6 Tab：Markets 类目侧栏+横向滚动 + Economic/Earnings/Dividends/IPOs/Hours）；路由/侧边栏导航接入；Pytest 7 + Vitest 10 全绿。05f 仅类目显隐（拖拽分组未做）、05g Flutter 待 `client/` 仓库 PR。详见 `docs/01 §十六` |
 | 2026-07-16 | [docs/01 V2.3 同步] 新增产品前端缺口任务 **FE-PROD-05a~h**（Calendars 全球市场日历）：对标 yfinance 顶部 Markets 横向滚动条；左侧类目侧栏 + 右侧水平滚动卡片含 Sparkline；6 大类目（US/EU/Asia/Crypto/Rates/Commodities/Currencies）+ 4 日程 Tab（Economic/Earnings/Dividends/IPOs）+ Hours Tab；复用 `_fetch_macro_assets_data` 扩至 50+ 标的；与 §8 Macro Hub 边界澄清（横向广度 vs 纵向深度）；同步新增 **SVC-08**（Finnhub 限流感知）+ **BE-ARCH-05**（Finnhub DataSource 接入，接续 BE-ARCH-01~04）；任务定义与 `docs/01 §十六` · §十四 成熟度矩阵对齐 |
@@ -1228,7 +1401,7 @@ STATUS: PRODUCTION READY ✨
 | 2026-07-08 | [RL-02/04] RateLimitThrottler 退避引擎完成：4 种策略 (none/linear/exponential/adaptive) + Retry-After 优先采纳 + 自适应恢复机制 (连续 10 次成功降速) + 抖动防雷群 + 线程安全 + 环境变量配置 (DATASOURCE_{NAME}_BACKOFF_*)；31 个单测全通过 |
 | 2026-07-08 | [RL-01] ErrorInfo 结构扩展完成：ErrorCategory 枚举 (normal/rate_limit/quota_exhausted/ip_blocked) + RateLimitInfo 嵌套结构 + Result 统一返回结构 + classify_http_error 自动分类 + DataSourceRouter 集成 (限流不计入熔断器)；44 个单测全通过 |
 | 2026-07-20 | [SPEC-01] 存量超限文件拆分完成：screener_service.py (1838行) → screener/ (7文件)；yfinance_service.py (1480行) → yfinance/ (7文件)；akshare_service.py (912行) → akshare/ (5文件)；Mixin 组合模式 + shim 兼容层，122 测试全通过 |
-| 2026-07-20 | [SPEC-02] 部署拓扑对齐完成：docs/02 §5.1/§8.0 “三节点矩阵”→ 四节点架构（US-MASTER + US-YF-A/B + CN-AKSHARE），与 AGENTS.md §9 保持一致；docs/02 升级至 V4.3.2 |
+| 2026-07-20 | [SPEC-02] 部署拓扑对齐完成：docs/02 §5.1/§8.0 "三节点矩阵"→ 四节点架构（US-MASTER + US-YF-A/B + CN-AKSHARE），与 AGENTS.md §9 保持一致；docs/02 升级至 V4.3.2 |
 | 2026-07-14 | [DIST-11~18] 分布式数据源集群部署完成：YF 节点 Compose / 灰度切换配置 / 四节点部署脚本 / CI/CD 矩阵 (master + yf×2 + slave) / 数据源验证脚本 |
 | 2026-07-08 | 新增「数据源限流感知与自适应退避」RL-01~14：限流错误分类 / RateLimitThrottler 退避引擎 / 频率动态分析 / 推测频率查询 API / Prometheus 限流指标 / 限流告警 / Registry 路由感知 / Agent Tool 限流感知；docs/14 新增 §十二；AGENTS.md 新增 §10.8 |
 | 2026-07-02 | OMS-05~07 算力节点完成：`bot_runtime.py` BotRuntimeManager (asyncio.Task 生命周期) + psutil 真实 CPU/MEM 监控 + Redis List 日志持久化 + PubSub/WebSocket 实时推送；`/deploy-to-oms` 升级为真实 Bot 启动；前端新增 Bot 终止按钮 |
@@ -1586,22 +1759,22 @@ STATUS: PRODUCTION READY ✨
 | CODE-02 | `adapters/futu/futu_adapter.py` | 218 | 实现取消订阅逻辑 | P1 | PENDING |
 | CODE-03 | `adapters/futu/futu_adapter.py` | 235 | 实际实现中使用 futu_pb2_req 或 openapi 客户端 | P1 | PENDING |
 | CODE-04 | `adapters/futu/futu_adapter.py` | 263 | 调用实际 API (quote 行情查询) | P1 | PENDING |
-| CODE-05 | `adapters/futu/futu_adapter.py` | 305 | 调用实际 API (K线历史数据) | P1 | PENDING |
+| CODE-05 | `adapters/futu/futu_adapter.py` | 305 | 调用实际 API (K 线历史数据) | P1 | PENDING |
 | CODE-06 | `adapters/futu/futu_adapter.py` | 341 | 调用实际 API (资金流数据) | P2 | PENDING |
 | CODE-07 | `adapters/futu/futu_adapter.py` | 365 | 调用实际 API (批量行情) | P2 | PENDING |
-| CODE-08 | `adapters/akshare/akshare_adapter.py` | 264 | interval 参数未来使用 (K线周期) | P3 | PENDING |
-| CODE-09 | `adapters/akshare/akshare_adapter.py` | 279 | market 参数未来使用 (港股市场标识) | P3 | PENDING |
+| CODE-08 | `adapters/akshare/akshare_adapter.py` | 264 | interval 参数未来使用 (K 线周期) | P3 | → OK-001 |
+| CODE-09 | `adapters/akshare/akshare_adapter.py` | 279 | market 参数未来使用 (港股市场标识) | P3 | → OK-002 |
 
 ### 二、路由层 (backend/routers/)
 
 | ID | 文件 | 行号 | TODO 内容 | 优先级 | 状态 |
 |----|------|------|----------|--------|------|
-| CODE-10 | `routers/market.py` | 610 | 迁移到 DataSourcePort + FinnhubAdapter (新闻) | P2 | PENDING |
-| CODE-11 | `routers/market.py` | 682 | 迁移到 DataSourcePort + Finnhub Earnings Calendar | P2 | PENDING |
-| CODE-12 | `routers/market.py` | 707 | 迁移到 DataSourcePort + Finnhub News | P2 | PENDING |
-| CODE-13 | `routers/market.py` | 907 | 需要 InsiderService + InsiderDataAdapter (内幕交易) | P1 | PENDING |
-| CODE-14 | `routers/market.py` | 911 | 迁移到 DataSourcePort + InsiderDataAdapter | P2 | PENDING |
-| CODE-15 | `routers/internal.py` | 30 | 实现缓存清理逻辑 | P2 | PENDING |
+| CODE-10 | `routers/market.py` | 617 | 迁移到 DataSourcePort + FinnhubAdapter (新闻) | P2 | → NEWS-001 |
+| CODE-11 | `routers/market.py` | 687 | 迁移到 DataSourcePort + Finnhub Earnings Calendar | P2 | → EARN-001 |
+| CODE-12 | `routers/market.py` | 689 | Finnhub News Earnings 集成 (替代 YFinance) | P2 | → NEWS-002 |
+| CODE-13 | `routers/market.py` | 714 | Finnhub News 集成 (替代本地缓存) | P2 | → NEWS-003 |
+| CODE-14 | `routers/market.py` | 914 | 需要 InsiderService + InsiderDataAdapter (内幕交易) | P1 | → INSIDE-001 |
+| CODE-15 | `routers/market.py` | 918 | 迁移到 DataSourcePort + InsiderDataAdapter | P2 | → INSIDE-002 |
 
 ### 三、服务层 (backend/services/)
 
@@ -1609,15 +1782,27 @@ STATUS: PRODUCTION READY ✨
 |----|------|------|----------|--------|------|
 | CODE-16 | `services/margin/hk_share.py` | 51 | 接入 Futu API 获取真实融资融券数据 | P1 | → MARGIN-01 |
 | CODE-17 | `services/margin/us_share.py` | 60 | 接入 FINRA API 获取真实 Margin Debt 数据 | P1 | → MARGIN-02 |
-| CODE-18 | `services/yfinance/quote.py` | 65 | 后续实现实际的数据获取逻辑 (微批处理) | P2 | PENDING |
-| CODE-19 | `services/akshare/service.py` | 49 | time.time() 未来使用 (健康状态冷却计时) | P3 | PENDING |
+| CODE-18 | `services/yfinance/quote.py` | 65 | 后续实现实际的数据获取逻辑 (微批处理) | P2 | → YF-001 |
+| CODE-19 | `services/akshare/service.py` | 49 | time.time() 未来使用 (健康状态冷却计时) | P3 | → OK-003 |
+| CODE-20 | `services/market_review/context_injector.py` | 148 | 港股 ticker 格式标准规范化 (数字/XXX.HK) | P2 | → HK-001 |
 
-### 四、引擎层 (backend/engine/)
+### 四、API 路由层 (backend/routers/)
+
+| ID | 文件 | 行号 | TODO 内容 | 优先级 | 关联任务 |
+|----|------|------|----------|--------|---------|
+| CODE-21 | `routers/market.py` | 617 | 未来迁移到 DataSourcePort + FinnhubAdapter | P2 | → FINNHUB-01 |
+| CODE-22 | `routers/market.py` | 687 | yf_ticker 未来使用 | P3 | ✅ IGNORED |
+| CODE-23 | `routers/market.py` | 689 | 未来迁移到 DataSourcePort + Finnhub Earnings Calendar | P2 | → FINNHUB-02 |
+| CODE-24 | `routers/market.py` | 714 | 未来迁移到 DataSourcePort + Finnhub News | P2 | → FINNHUB-03 |
+| CODE-25 | `routers/market.py` | 914 | 需要 InsiderService + InsiderDataAdapter | P2 | → INSIDER-01 |
+| CODE-26 | `routers/market.py` | 918 | 未来迁移到 DataSourcePort + InsiderDataAdapter | P2 | → INSIDER-02 |
+
+### 五、引擎层 (backend/engine/)
 
 | ID | 文件 | 行号 | TODO 内容 | 优先级 | 状态 |
 |----|------|------|----------|--------|------|
-| CODE-20 | `engine/gateway.py` | 239 | 实际实现下单网关 (OMS + Futu 下单) | P1 | PENDING |
-| CODE-21 | `engine/drivers/live.py` | 152 | 接入 KlineCacheEngine（L1 Redis / L2 Parquet） | P1 | PENDING |
+| CODE-27 | `engine/gateway.py` | 239 | 实际实现下单网关 (OMS + Futu 下单) | P1 | PENDING |
+| CODE-28 | `engine/drivers/live.py` | 152 | 接入 KlineCacheEngine（L1 Redis / L2 Parquet） | P1 | PENDING |
 
 ### 五、统计摘要
 
@@ -1628,12 +1813,21 @@ STATUS: PRODUCTION READY ✨
 | **P3** | 3 | 低优先级/探索性 |
 | **已关联** | 2 | CODE-16→MARGIN-01, CODE-17→MARGIN-02 |
 
-### 六、重点跟进 (P1 任务)
+### 六、统计摘要
 
-1. **CODE-01~07**: Futu 适配器 WebSocket + API 实装 → 关联 `DIST` 分布式数据源任务
-2. **CODE-13**: 内幕交易数据源 → 需 `InsiderService` + SEC/港交所数据接入
-3. **CODE-20**: 实盘下单网关 → 关联 OMS 订单管理系统
-4. **CODE-21**: 实盘 K 线缓存 → 关联 `KlineCacheEngine` 三级缓存架构
+| 优先级 | 数量 | 说明 |
+|--------|------|------|
+| **P1** | 12 | 核心功能缺失，需优先解决 (Futu Adapter/下单网关/融资融券) |
+| **P2** | 9 | 架构迁移/体验优化 (Finnhub/Insider/数据源重构) |
+| **P3** | 3 | 低优先级/探索性 (interval 参数/健康计时器/yf_ticker) |
+| **已关联** | 8 | CODE-16→MARGIN-01, CODE-17→MARGIN-02, CODE-21~26→FINNHUB/INSIDER |
+
+### 七、重点跟进 (P1 任务)
+
+1. **CODE-01~08**: Futu 适配器 WebSocket + API 实装 → 关联 `DIST` 分布式数据源任务
+2. **CODE-27**: 实盘下单网关 → 关联 OMS 订单管理系统
+3. **CODE-28**: 实盘 K 线缓存 → 关联 `KlineCacheEngine` 三级缓存架构
+4. **CODE-16~17**: 融资融券真实数据 → MARGIN-01 (港交所/Futu), MARGIN-02 (FINRA)
 
 ---
 

@@ -26,6 +26,7 @@ Quant Agent 熔断器（Circuit Breaker）
 
 import asyncio
 import functools
+import os
 import time
 from enum import Enum
 from typing import Any, Callable, Optional, TypeVar
@@ -35,6 +36,10 @@ from backend.core.logger import logger
 from backend.core.metrics import CIRCUIT_BREAKER_STATE, CIRCUIT_BREAKER_TRANSITIONS
 
 T = TypeVar("T")
+
+# 熔断参数配置（env 优先，禁止硬编码 60s）
+_CIRCUIT_BREAKER_MAX_FAILURES = int(os.getenv("CIRCUIT_BREAKER_MAX_FAILURES", "3"))
+_CIRCUIT_BREAKER_COOLDOWN_S = float(os.getenv("CIRCUIT_BREAKER_COOLDOWN_S", "60"))
 
 
 class CircuitState(str, Enum):
@@ -347,13 +352,27 @@ class CircuitBreaker:
         return result
 
 
-# 全局单例（默认：3 次连续失败触发熔断，60 秒后自动半开探测）
-circuit_breaker = CircuitBreaker(max_failures=3, recovery_timeout=60.0)
+# 全局单例（冷却时间由 env CIRCUIT_BREAKER_COOLDOWN_S 配置，禁止硬编码 60s）
+circuit_breaker = CircuitBreaker(
+    max_failures=_CIRCUIT_BREAKER_MAX_FAILURES,
+    recovery_timeout=_CIRCUIT_BREAKER_COOLDOWN_S,
+)
 
 
 # 导出工厂函数，方便按需创建不同配置实例
-def get_circuit_breaker(max_failures: int = 3, recovery_timeout: float = 60.0) -> CircuitBreaker:
+def get_circuit_breaker(
+    max_failures: int = _CIRCUIT_BREAKER_MAX_FAILURES,
+    recovery_timeout: float = _CIRCUIT_BREAKER_COOLDOWN_S,
+) -> CircuitBreaker:
     """按需创建新的电路断路器实例（默认返回全局单例配置）"""
-    if max_failures == 3 and recovery_timeout == 60.0:
+    if max_failures == _CIRCUIT_BREAKER_MAX_FAILURES and recovery_timeout == _CIRCUIT_BREAKER_COOLDOWN_S:
         return circuit_breaker
     return CircuitBreaker(max_failures=max_failures, recovery_timeout=recovery_timeout)
+
+
+def get_cooldown_seconds() -> float:
+    """熔断冷却时间（秒），来自 env CIRCUIT_BREAKER_COOLDOWN_S。
+
+    供遗留手写时间戳熔断逻辑复用，统一冷却时长、禁止硬编码 60。
+    """
+    return _CIRCUIT_BREAKER_COOLDOWN_S

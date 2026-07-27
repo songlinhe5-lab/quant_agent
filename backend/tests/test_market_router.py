@@ -156,14 +156,42 @@ class TestGetFundamental:
         mock_svc._futu = MagicMock()
         mock_svc._futu.fetch = MagicMock(return_value=DataSourceResult.error("不支持"))
         mock_svc._yfinance = MagicMock()
+        # YFinanceAdapter.fetch 返回 DataSourceResult (对象)，而非 dict
         mock_svc._yfinance.fetch = MagicMock(
-            return_value={"success": True, "data": {"quoteType": "ETF", "shortName": "SPY ETF"}, "message": None}
+            return_value=DataSourceResult.success({"quoteType": "ETF", "shortName": "SPY ETF"}, source="yfinance")
         )
         resp = client.get("/market/fundamental/US.SPY")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "success"
         assert "ETF" in data["message"]
+
+    @patch("backend.routers.market._market_service")
+    def test_yfinance_stock_fundamentals(self, mock_svc):
+        """回归：Futu 失败后降级到 YFinance 个股基本面 (DataSourceResult 对象 API)"""
+        from backend.adapters.ports.data_source_port import DataSourceResult
+
+        mock_svc._futu = MagicMock()
+        mock_svc._futu.fetch = MagicMock(return_value=DataSourceResult.error("不支持"))
+        mock_svc._yfinance = MagicMock()
+        mock_svc._yfinance.fetch = MagicMock(
+            return_value=DataSourceResult.success(
+                {
+                    "quoteType": "EQUITY",
+                    "shortName": "ProShares S&P 500 Ex-Health Care",
+                    "trailingPE": 18.5,
+                    "returnOnEquity": 0.1234,
+                    "shortRatio": 2.1,
+                },
+                source="yfinance",
+            )
+        )
+        resp = client.get("/market/fundamental/US.SPCX")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "success"
+        assert data["data"]["trailing_PE"] == 18.5
+        assert data["data"]["ROE"] == "12.34%"
 
 
 # ─── /market/news ───────────────────────────────────────────────────────

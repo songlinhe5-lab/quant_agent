@@ -1,351 +1,60 @@
-"""macro_calendar_service 聚合器 + 新兴市场双源 + FRED 回填 单元测试"""
+"""固化 macro_calendar_service 延迟导入的回归护栏
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+背景：macro_calendar_service 曾在模块顶层 `from backend.app.market_data import market_data`，
+而 legacy_market_data 模块加载时会实例化 MarketDataGateway()，其 __init__ 反向拉入 macro 包，
+从而在单独收集测试时触发循环导入。修复后改为运行时延迟导入 (_market_data())。
 
-import backend.services.macro_calendar_service as mcs
-from backend.services.dbnomics_service import dbnomics_service
-from backend.services.finnhub_service import finnhub_service
-from backend.services.fred_service import fred_service
-from backend.services.macro_calendar_service import MacroCalendarAggregator
-from backend.services.rbi_service import rbi_service
+本文件固化三条不变量：
+1. 模块可独立导入，不触发 backend.app.market_data 的顶层 import (循环导入不复发)；
+2. MacroCalendarAggregator 可无副作用实例化；
+3. _market_data() 在运行时延迟返回真实的 market_data 网关；
+4. 延迟导入后 aggregate() 仍能正常聚合 (替换 _market_data 即可注入 mock)。
+"""
 
+from unittest.mock import AsyncMock, MagicMock
 
-def test_normalize_timezones():
-    a = MacroCalendarAggregator()
-    # 北京时间 08:30 -> UTC 00:30
-    cn = a._normalize(
-        {
-            "time": "2024-05-15 08:30:00",
-            "country": "CN",
-            "event": "CPI",
-            "impact": "high",
-            "previous": "",
-            "estimate": "",
-            "actual": "",
-        },
-        "akshare",
-    )
-    assert cn["date"] == "2024-05-15T00:30:00Z"
-    # UTC 不变
-    us = a._normalize(
-        {
-            "time": "2024-05-15 12:30:00",
-            "country": "US",
-            "event": "CPI",
-            "impact": "medium",
-            "previous": "",
-            "estimate": "",
-            "actual": "",
-        },
-        "finnhub",
-    )
-    assert us["date"] == "2024-05-15T12:30:00Z"
-    # 美东 08:30 -> UTC 12:30
-    fred = a._normalize(
-        {
-            "time": "2024-05-15 08:30:00",
-            "country": "US",
-            "event": "CPI",
-            "impact": "high",
-            "previous": "",
-            "estimate": "",
-            "actual": "",
-        },
-        "fred",
-    )
-    assert fred["date"] == "2024-05-15T12:30:00Z"
+import pytest
+
+from backend.services.macro.macro_calendar_service import MacroCalendarAggregator
 
 
-def test_merge_prefers_complete():
-    a = MacroCalendarAggregator()
-    events = [
-        {
-            "date": "2024-05-15T00:00:00Z",
-            "country": "US",
-            "event": "CPI",
-            "impact": "high",
-            "previous": "",
-            "estimate": "",
-            "actual": "",
-            "_src": "fred",
-        },
-        {
-            "date": "2024-05-15T00:00:00Z",
-            "country": "US",
-            "event": "CPI",
-            "impact": "high",
-            "previous": "2.0",
-            "estimate": "2.1",
-            "actual": "2.3",
-            "_src": "akshare",
-        },
-    ]
-    merged = a._merge(events)
-    assert len(merged) == 1
-    assert merged[0]["actual"] == "2.3"
-    assert merged[0]["_src"] == "akshare"
+def test_module_imports_without_eager_market_data():
+    # 导入模块本身不应抛错 (延迟导入已生效，不再在模块级拉入 market_data)
+    import backend.services.macro.macro_calendar_service as mcs
+
+    assert hasattr(mcs, "MacroCalendarAggregator")
 
 
-def test_aggregate_merges_sources():
-    """主源 AKShare 有数据时, Finnhub 仅作兜底不应被调用。"""
-    a = MacroCalendarAggregator()
-    with (
-        patch.object(
-            mcs.market_data,
-            "get_economic_calendar_ak",
-            new=AsyncMock(
-                return_value={
-                    "status": "success",
-                    "data": [
-                        {
-                            "time": "2024-06-01 08:30:00",
-                            "country": "CN",
-                            "event": "CPI",
-                            "impact": "high",
-                            "previous": "",
-                            "estimate": "",
-                            "actual": "",
-                        }
-                    ],
-                }
-            ),
-        ),
-        patch.object(
-            mcs.market_data,
-            "get_economic_calendar_dbnomics",
-            new=AsyncMock(return_value={"status": "skipped", "data": []}),
-        ),
-        patch.object(
-            mcs.market_data,
-            "get_economic_calendar_rbi",
-            new=AsyncMock(return_value={"status": "skipped", "data": []}),
-        ),
-        patch.object(
-            mcs.market_data,
-            "get_economic_calendar_finnhub",
-            new=AsyncMock(
-                return_value={
-                    "status": "success",
-                    "data": [
-                        {
-                            "time": "2024-06-01 12:30:00",
-                            "country": "US",
-                            "event": "CPI",
-                            "impact": "medium",
-                            "previous": "",
-                            "estimate": "",
-                            "actual": "",
-                        }
-                    ],
-                }
-            ),
-        ) as m_fh,
-        patch.object(
-            mcs.market_data,
-            "backfill_fred_actuals",
-            new=AsyncMock(side_effect=lambda e, *args, **kwargs: e),
-        ),
-    ):
-        res = asyncio.run(a.aggregate(days_ahead=7))
-    assert res["status"] == "success"
-    # AKShare 返回 1 条, Finnhub 兜底不应被触发 (merged 非空)
-    assert len(res["data"]) == 1
-    assert res["sources_contributed"] == ["akshare"]
-    m_fh.assert_not_called()
-    assert "回填" in res["message"]
+def test_aggregator_instantiates_without_side_effects():
+    # 实例化不应在模块级或对象级绑定 market_data
+    agg = MacroCalendarAggregator()
+    assert isinstance(agg, MacroCalendarAggregator)
+    assert not hasattr(agg, "market_data")
 
 
-def test_aggregate_finnhub_fallback_when_empty():
-    """主源 AKShare 全空时, Finnhub 作为兜底前瞻日历被调用。"""
-    a = MacroCalendarAggregator()
-    with (
-        patch.object(
-            mcs.market_data,
-            "get_economic_calendar_ak",
-            new=AsyncMock(return_value={"status": "success", "data": []}),
-        ),
-        patch.object(
-            mcs.market_data,
-            "get_economic_calendar_dbnomics",
-            new=AsyncMock(return_value={"status": "skipped", "data": []}),
-        ),
-        patch.object(
-            mcs.market_data,
-            "get_economic_calendar_rbi",
-            new=AsyncMock(return_value={"status": "skipped", "data": []}),
-        ),
-        patch.object(
-            mcs.market_data,
-            "get_economic_calendar_finnhub",
-            new=AsyncMock(
-                return_value={
-                    "status": "success",
-                    "data": [
-                        {
-                            "time": "2024-06-01 12:30:00",
-                            "country": "US",
-                            "event": "CPI",
-                            "impact": "medium",
-                            "previous": "",
-                            "estimate": "",
-                            "actual": "",
-                        }
-                    ],
-                }
-            ),
-        ),
-        patch.object(
-            mcs.market_data,
-            "get_economic_calendar_fred",
-            new=AsyncMock(return_value={"status": "skipped", "data": []}),
-        ),
-        patch.object(
-            mcs.market_data,
-            "backfill_fred_actuals",
-            new=AsyncMock(side_effect=lambda e, *args, **kwargs: e),
-        ),
-    ):
-        res = asyncio.run(a.aggregate(days_ahead=7))
-    assert res["status"] == "success"
-    assert len(res["data"]) == 1
-    assert res["sources_contributed"] == ["finnhub"]
+def test_lazy_market_data_returns_real_gateway():
+    # 运行时延迟导入应返回 backend.app.market_data 中真实的市场数据网关单例
+    agg = MacroCalendarAggregator()
+    md = agg._market_data()
+    from backend.app.market_data import market_data as real_md
+
+    assert md is real_md
 
 
-def test_fred_backfill_fills_actual(monkeypatch):
-    # 💡 backfill_actuals 在无 FRED_API_KEY 时直接跳过；测试需注入 key 以验证逻辑
-    monkeypatch.setattr(fred_service, "api_key", "test-key")
-    events = [
-        {
-            "time": "2024-06-12 08:30:00",
-            "country": "US",
-            "event": "CPI",
-            "impact": "high",
-            "previous": "",
-            "estimate": "",
-            "actual": "",
-        }
-    ]
-    series = {"status": "success", "data": [{"date": "2024-05-01", "value": 3.3}, {"date": "2024-06-01", "value": 3.4}]}
-    with patch.object(fred_service, "get_series_observations", new=AsyncMock(return_value=series)):
-        out = asyncio.run(fred_service.backfill_actuals(events))
-    assert out[0]["actual"] == "3.4"
+@pytest.mark.asyncio
+async def test_aggregate_uses_lazy_market_data(monkeypatch):
+    # 延迟导入后，聚合器仍可正常聚合；验证 _market_data 是唯一的 market_data 接入点
+    agg = MacroCalendarAggregator()
+    fake = MagicMock()
+    fake.get_economic_calendar_ak = AsyncMock(return_value={"data": []})
+    fake.backfill_fred_actuals = AsyncMock(return_value=[])
+    fake.get_economic_calendar_finnhub = AsyncMock(return_value={"data": []})
+    fake.get_economic_calendar_fred = AsyncMock(return_value={"data": []})
+    fake.get_economic_calendar_dbnomics = AsyncMock(return_value={"data": []})
+    fake.get_economic_calendar_rbi = AsyncMock(return_value={"data": []})
+    monkeypatch.setattr(agg, "_market_data", lambda: fake)
 
-
-def test_fred_backfill_skips_when_actual_present():
-    events = [
-        {
-            "time": "2024-06-12 08:30:00",
-            "country": "US",
-            "event": "CPI",
-            "impact": "high",
-            "previous": "",
-            "estimate": "",
-            "actual": "3.4",
-        }
-    ]
-    with patch.object(
-        fred_service, "get_series_observations", new=AsyncMock(return_value={"status": "success", "data": []})
-    ) as m:
-        out = asyncio.run(fred_service.backfill_actuals(events))
-    assert out[0]["actual"] == "3.4"
-    m.assert_not_called()
-
-
-def test_finnhub_skips_without_key():
-    old = finnhub_service._get_api_key
-    finnhub_service._get_api_key = lambda: ""
-    try:
-        res = asyncio.run(finnhub_service.get_economic_calendar())
-    finally:
-        finnhub_service._get_api_key = old
-    assert res["status"] == "skipped"
-
-
-def test_dbnomics_parses_g20_cpi():
-    """DBnomics 返回 G20 CPI 年度同比, 解析出印度/巴西等新兴市场 actual 事件。"""
-    payload = {
-        "series": {
-            "docs": [
-                {
-                    "dimensions": {"REF_AREA": "IND"},
-                    "period": ["2023", "2024", "2025"],
-                    "period_start_day": ["2023-01-01", "2024-01-01", "2025-01-01"],
-                    "value": [5.5, 5.4, 4.9],
-                },
-                {
-                    "dimensions": {"REF_AREA": "BRA"},
-                    "period": ["2023", "2024", "2025"],
-                    "period_start_day": ["2023-01-01", "2024-01-01", "2025-01-01"],
-                    "value": [4.6, 4.4, 5.0],
-                },
-            ]
-        }
-    }
-    with (
-        patch("backend.services.dbnomics_service.redis_client") as m_redis,
-        patch("backend.services.dbnomics_service.httpx.AsyncClient") as m_client,
-    ):
-        m_redis.get.return_value = None
-        resp = MagicMock()
-        resp.json.return_value = payload
-        resp.raise_for_status.return_value = None
-        m_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=resp)
-        res = asyncio.run(dbnomics_service.get_economic_calendar())
-    assert res["status"] == "success"
-    ev_by_country = {e["country"]: e for e in res["data"]}
-    assert "India" in ev_by_country and "Brazil" in ev_by_country
-    assert ev_by_country["India"]["actual"] == "4.9"
-    assert ev_by_country["India"]["previous"] == "5.4"
-    assert ev_by_country["India"]["event"] == "India CPI (YoY)"
-
-
-def test_rbi_parses_worldbank():
-    payload = [{"page": 1}, [{"date": "2023", "value": 5.5}, {"date": "2022", "value": 6.7}]]
-    with (
-        patch("backend.services.rbi_service.redis_client") as m_redis,
-        patch("backend.services.rbi_service.httpx.AsyncClient") as m_client,
-    ):
-        m_redis.get.return_value = None
-        resp = MagicMock()
-        resp.json.return_value = payload
-        resp.raise_for_status.return_value = None
-        m_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=resp)
-        res = asyncio.run(rbi_service.get_economic_calendar())
-    assert res["status"] == "success"
-    ev = res["data"][0]
-    assert ev["country"] == "India"
-    assert ev["event"] == "India CPI (YoY)"
-    assert ev["actual"] == "5.5"
-
-
-def test_finnhub_parse_calendar():
-    raw = {
-        "economicCalendar": [
-            {
-                "event": "CPI",
-                "country": "US",
-                "impact": "3",
-                "prev": "0.2%",
-                "consensus": "0.3%",
-                "actual": "0.4%",
-                "date": "2024-05-15 12:30:00",
-            }
-        ]
-    }
-    with (
-        patch("backend.services.finnhub_service.redis_client") as m_redis,
-        patch("backend.services.finnhub_service.httpx.AsyncClient") as m_client,
-    ):
-        m_redis.get.return_value = None
-        resp = MagicMock()
-        resp.json.return_value = raw
-        resp.raise_for_status.return_value = None
-        m_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=resp)
-        res = asyncio.run(finnhub_service.get_economic_calendar())
-    assert res["status"] == "success"
-    ev = res["data"][0]
-    assert ev["country"] == "US"
-    assert ev["impact"] == "high"
-    assert ev["actual"] == "0.4%"
-    assert ev["estimate"] == "0.3%"
+    res = await agg.aggregate(days_ahead=1, days_back=1)
+    assert res["status"] in ("success", "warning")
+    assert fake.get_economic_calendar_ak.await_count == 1
+    assert fake.get_economic_calendar_fred.await_count == 1

@@ -1,0 +1,274 @@
+import { describe, it, expect } from 'vitest'
+import { evaluate, validate, suggestPane, collectBoolSignals, runSignalBacktest, runCustomExprBacktest, listParams, runParamGridSearch, type CIBar } from './engine'
+
+function makeBars(n: number): CIBar[] {
+  const bars: CIBar[] = []
+  for (let i = 0; i < n; i++) {
+    const close = 100 + Math.sin(i / 3) * 10 + i
+    const open = close - 1
+    bars.push({
+      time: `2024-01-${String((i % 28) + 1).padStart(2, '0')} 09:30:00`,
+      open,
+      high: close + 2,
+      low: open - 2,
+      close,
+      volume: 1000 + i,
+    })
+  }
+  return bars
+}
+
+describe('custom indicator engine', () => {
+  const bars = makeBars(60)
+
+  it('字段变量返回对应序列', () => {
+    const r = evaluate('CLOSE', bars)
+    expect(r.ok).toBe(true)
+    expect(r.isBool).toBe(false)
+    expect(r.values[10]).toBeCloseTo(bars[10].close, 5)
+  })
+
+  it('MA 等于简单移动平均', () => {
+    const r = evaluate('MA(CLOSE,5)', bars)
+    expect(r.ok).toBe(true)
+    const expected = (bars[4].close + bars[3].close + bars[2].close + bars[1].close + bars[0].close) / 5
+    expect(r.values[4]).toBeCloseTo(expected, 5)
+    expect(r.values[3]).toBeNull()
+  })
+
+  it('比较运算产生布尔序列', () => {
+    const r = evaluate('RSI(14) > KDJ.K', bars)
+    expect(r.ok).toBe(true)
+    expect(r.isBool).toBe(true)
+    // 布尔序列元素只能是 0/1/null
+    for (const v of r.values) expect(v === null || v === 0 || v === 1).toBe(true)
+  })
+
+  it('CROSS 仅在金叉处为真', () => {
+    const r = evaluate('CROSS(MA(CLOSE,3), MA(CLOSE,6))', bars)
+    expect(r.ok).toBe(true)
+    expect(r.isBool).toBe(true)
+  })
+
+  it('语法错误被 validate 捕获', () => {
+    expect(validate('RSI(14').ok).toBe(false)
+    expect(validate('CLOSE +* 2').ok).toBe(false)
+    expect(validate('FOO(1)').ok).toBe(false)
+  })
+
+  it('函数参数不足给出友好错误', () => {
+    const r = evaluate('RSI(CLOSE)', bars)
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/常量|周期/)
+  })
+
+  it('未知函数报错', () => {
+    const r = evaluate('WAT(1)', bars)
+    expect(r.ok).toBe(false)
+  })
+
+  it('算术运算逐点正确', () => {
+    const r = evaluate('(CLOSE - OPEN) * 2', bars)
+    expect(r.ok).toBe(true)
+    expect(r.values[5]).toBeCloseTo((bars[5].close - bars[5].open) * 2, 5)
+  })
+
+  it('suggestPane 对振荡器建议副图、对价格级建议主图', () => {
+    expect(suggestPane('RSI(14)')).toBe('separate')
+    expect(suggestPane('KDJ.K')).toBe('separate')
+    expect(suggestPane('MACD.HIST')).toBe('separate')
+    expect(suggestPane('MA(CLOSE,5)')).toBe('overlay')
+    expect(suggestPane('CLOSE > 100')).toBe('overlay')
+  })
+
+  it('collectBoolSignals 收集上穿跳变点', () => {
+    const r = collectBoolSignals('CLOSE > 110', bars)
+    expect(r.ok).toBe(true)
+    expect(r.times.length).toBeGreaterThanOrEqual(1)
+    for (const t of r.times) {
+      const bar = bars.find((b) => b.time === t)
+      expect(bar).toBeTruthy()
+      expect((bar as CIBar).close).toBeGreaterThan(110)
+    }
+  })
+
+  it('collectBoolSignals 对数值表达式返回空', () => {
+    expect(collectBoolSignals('RSI(14)', bars).times.length).toBe(0)
+  })
+
+  it('collectBoolSignals 语法错误返回 ok:false', () => {
+    const r = collectBoolSignals('RSI(14', bars)
+    expect(r.ok).toBe(false)
+    expect(r.times.length).toBe(0)
+  })
+
+  it('runSignalBacktest 对布尔表达式做事件驱动回测', () => {
+    const r = runSignalBacktest('CLOSE > 110', bars)
+    expect(r.ok).toBe(true)
+    expect(r.trades).toBeLessThanOrEqual(r.buys.length)
+    expect(r.winRate).toBeGreaterThanOrEqual(0)
+    expect(r.winRate).toBeLessThanOrEqual(100)
+    expect(r.maxDrawdownPct).toBeGreaterThanOrEqual(0)
+    expect(Number.isFinite(r.totalReturnPct)).toBe(true)
+  })
+
+  it('runSignalBacktest 对非布尔表达式返回错误', () => {
+    const r = runSignalBacktest('RSI(14)', bars)
+    expect(r.ok).toBe(false)
+    expect(r.error).toContain('布尔')
+  })
+
+  it('runSignalBacktest 对 K 线不足返回错误', () => {
+    expect(runSignalBacktest('CLOSE > 1', bars.slice(0, 1)).ok).toBe(false)
+  })
+
+  it('runCustomExprBacktest 生成回测引擎兼容结构', () => {
+    const r = runCustomExprBacktest('CLOSE > 110', bars)
+    expect(r.ok).toBe(true)
+    expect(r.result).toBeDefined()
+    expect(Array.isArray(r.result!.equity_curve)).toBe(true)
+    expect(Array.isArray(r.result!.trades)).toBe(true)
+    expect(r.result!.metrics.total_return).toMatch(/%$/)
+    expect(typeof r.result!.metrics.total_trades).toBe('number')
+    expect(Array.isArray(r.dailyReturns)).toBe(true)
+  })
+
+  it('runCustomExprBacktest 对非布尔表达式返回错误', () => {
+    const r = runCustomExprBacktest('RSI(14)', bars)
+    expect(r.ok).toBe(false)
+    expect(r.error).toContain('布尔')
+  })
+
+  describe('表达式参数化 @param', () => {
+    it('listParams 提取引用的 @参数（去重保序）', () => {
+      expect(listParams('MA(CLOSE,@p) > @q')).toEqual(['p', 'q'])
+      expect(listParams('CLOSE > 100')).toEqual([])
+    })
+
+    it('evaluate 用 params 代入 @参数', () => {
+      const r = evaluate('CLOSE > @threshold', bars, { threshold: 110 })
+      expect(r.ok).toBe(true)
+      expect(r.isBool).toBe(true)
+    })
+
+    it('evaluate 未提供 @参数时返回 ok:false', () => {
+      const r = evaluate('CLOSE > @x', bars)
+      expect(r.ok).toBe(false)
+      expect(r.error).toContain('@x')
+    })
+
+    it('validate 在给定 params 后校验通过、缺失则报错', () => {
+      expect(validate('CLOSE > @x', { x: 100 }).ok).toBe(true)
+      expect(validate('CLOSE > @x', {}).ok).toBe(false)
+    })
+
+    it('runSignalBacktest 与 runCustomExprBacktest 支持 params', () => {
+      expect(runSignalBacktest('CLOSE > @t', bars, { t: 110 }).ok).toBe(true)
+      expect(runCustomExprBacktest('CLOSE > @t', bars, 100000, { t: 110 }).ok).toBe(true)
+    })
+  })
+
+  describe('参数网格搜索 runParamGridSearch', () => {
+    const bars = makeBars(60)
+
+    it('对 @n 区间做穷举并返回排序后的 Top-N', () => {
+      const res = runParamGridSearch('CROSS(MA(CLOSE,@n), MA(CLOSE,20))', bars, { n: { min: 3, max: 8, step: 1 } })
+      expect(res.ok).toBe(true)
+      expect(res.total).toBe(6) // 3..8 共 6 组
+      expect(res.ran).toBe(6)
+      expect(res.items.length).toBe(6)
+      // best 必为其中一组且含完整指标
+      expect(res.best).toBeDefined()
+      expect(res.best!.ok).toBe(true)
+      expect(res.best!.metrics).toBeDefined()
+      // 默认按 totalReturnPct 降序
+      for (let i = 1; i < res.items.length; i++) {
+        const a = res.items[i - 1].metrics!.totalReturnPct
+        const b = res.items[i].metrics!.totalReturnPct
+        expect(a).toBeGreaterThanOrEqual(b)
+      }
+    })
+
+    it('best 的参数组合来自输入网格', () => {
+      const res = runParamGridSearch('CLOSE > @t', bars, { t: { min: 95, max: 105, step: 5 } })
+      expect(res.ok).toBe(true)
+      const vals = [95, 100, 105]
+      expect(vals).toContain(res.best!.params.t)
+    })
+
+    it('非布尔表达式：各组 ok=false 但整体优雅返回', () => {
+      const res = runParamGridSearch('RSI(@n)', bars, { n: { min: 3, max: 5, step: 1 } })
+      expect(res.ok).toBe(true)
+      expect(res.items.every((it) => !it.ok)).toBe(true)
+    })
+
+    it('组合数过大时返回错误提示（带上限）', () => {
+      const res = runParamGridSearch('CLOSE > @n', bars, { n: { min: 1, max: 2000, step: 1 } })
+      expect(res.ok).toBe(false)
+      expect(res.error).toContain('组合数过大')
+    })
+
+    it('maxDrawdownPct 排序时为升序（回撤越小越靠前）', () => {
+      const res = runParamGridSearch('CLOSE > @t', bars, { t: { min: 95, max: 115, step: 5 } }, { sortBy: 'maxDrawdownPct' })
+      expect(res.ok).toBe(true)
+      for (let i = 1; i < res.items.length; i++) {
+        const a = res.items[i - 1].metrics!.maxDrawdownPct
+        const b = res.items[i].metrics!.maxDrawdownPct
+        expect(a).toBeLessThanOrEqual(b)
+      }
+    })
+
+    it('K 线不足或空网格返回错误', () => {
+      expect(runParamGridSearch('CLOSE > @n', [], { n: { min: 1, max: 3, step: 1 } }).ok).toBe(false)
+      expect(runParamGridSearch('CLOSE > @n', bars, {}).ok).toBe(false)
+    })
+  })
+
+  describe('回测交易明细 TradeRecord（PROD-11追问G：CSV导出）', () => {
+    const bars = makeBars(60)
+
+    it('有配对交易时 tradeDetails 次数与 trades 一致', () => {
+      const r = runSignalBacktest('CROSS(MA(CLOSE,5), MA(CLOSE,20))', bars)
+      expect(r.ok).toBe(true)
+      // 完整配对交易数应与 tradeDetails 中已平仓记录数一致（末根持仓除外）
+      const closedTrades = r.tradeDetails.filter((t) => t.sellDate !== '')
+      expect(closedTrades.length).toBe(r.trades)
+    })
+
+    it('末根持仓记录 sellDate 为空、sellPrice 为 0', () => {
+      const r = runSignalBacktest('CLOSE > 100', bars)
+      expect(r.ok).toBe(true)
+      if (r.holding) {
+        const last = r.tradeDetails[r.tradeDetails.length - 1]
+        expect(last.sellDate).toBe('')
+        expect(last.sellPrice).toBe(0)
+      }
+    })
+
+    it('每笔已平仓交易的买入价/卖出价均在合理范围', () => {
+      const r = runSignalBacktest('CROSS(MA(CLOSE,5), MA(CLOSE,20))', bars)
+      expect(r.ok).toBe(true)
+      for (const t of r.tradeDetails) {
+        if (!t.sellDate) continue // 跳过未平仓
+        expect(t.buyPrice).toBeGreaterThan(0)
+        expect(t.sellPrice).toBeGreaterThan(0)
+        expect(t.holdingDays).toBeGreaterThanOrEqual(1)
+        expect(t.win).toBe(t.returnPct > 0)
+        expect(t.returnPct).toBeCloseTo(((t.sellPrice - t.buyPrice) / t.buyPrice) * 100, 1)
+      }
+    })
+
+    it('无交易（信号始终不触发）时 tradeDetails 为空数组', () => {
+      // CLOSE < 0 永远不会为真
+      const r = runSignalBacktest('CLOSE < 0', bars)
+      expect(r.trades).toBe(0)
+      expect(r.tradeDetails).toEqual([])
+    })
+
+    it('失败回测的结果包含空 tradeDetails', () => {
+      const r = runSignalBacktest('RSI(14)', bars) // 非布尔
+      expect(r.ok).toBe(false)
+      expect(r.tradeDetails).toEqual([])
+    })
+  })
+})

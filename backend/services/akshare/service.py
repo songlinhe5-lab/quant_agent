@@ -15,7 +15,6 @@ import asyncio
 import os
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime
 from typing import Any, Dict
 
 from redis.exceptions import LockError
@@ -95,27 +94,19 @@ class AKShareService:
     # ── Mock 兜底 ───────────────────────────────────────────────────────
 
     def _mock_southbound(self) -> dict:
+        """南向资金接口失败时的兜底：返回空数据 + 告警，禁止注入假数字。"""
         return {
             "status": "warning",
-            "message": "南向资金数据获取失败，使用模拟数据",
-            "data": {
-                "net_inflow": 12.8,
-                "unit": "亿人民币",
-                "date": datetime.now().strftime("%Y-%m-%d"),
-                "sparkline": [1, 1, -1, 1, 1, 1, -1, 1],
-            },
-            "source": "mock",
+            "message": "南向资金数据获取失败，暂无可用数据",
+            "data": None,
+            "source": "akshare-unavailable",
         }
 
     def _mock_northbound(self) -> dict:
+        """北向资金接口失败时的兜底：返回空数据 + 告警，禁止注入假数字。"""
         return {
             "status": "warning",
-            "message": "北向资金数据获取失败，使用模拟数据",
-            "data": {
-                "net_inflow": -5.3,
-                "unit": "亿人民币",
-                "date": datetime.now().strftime("%Y-%m-%d"),
-                "sparkline": [-1, -1, 1, -1, -1, 1, -1, -1],
-            },
-            "source": "mock",
+            "message": "北向资金数据获取失败，暂无可用数据",
+            "data": None,
+            "source": "akshare-unavailable",
         }

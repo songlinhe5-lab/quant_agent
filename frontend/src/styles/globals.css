@@ -120,10 +120,94 @@ body {
 }
 
 /* PROD-04: 场景模式 CSS 变量覆盖 */
-[data-scene-mode="watch"]       { --density-scale: 1.2; --scene-accent: 160 84% 45%; }
-[data-scene-mode="research"]    { --density-scale: 0.9; --scene-accent: 270 70% 60%; }
-[data-scene-mode="monitor"]     { --density-scale: 1.0; --scene-accent: 38 92% 50%; }
-[data-scene-mode="ai-analysis"] { --density-scale: 1.0; --scene-accent: 217 91% 60%; }
+[data-scene-mode="watch"]       { --density-scale: 1.2; --scene-accent: 160 84% 45%; --ring: 160 84% 45%; }
+[data-scene-mode="research"]    { --density-scale: 0.9; --scene-accent: 270 70% 60%; --ring: 270 70% 60%; }
+[data-scene-mode="monitor"]     { --density-scale: 1.0; --scene-accent: 38 92% 50%; --ring: 38 92% 50%; }
+[data-scene-mode="ai-analysis"] { --density-scale: 1.0; --scene-accent: 217 91% 60%; --ring: 217 91% 60%; }
+
+/* PROD-04g: 移动端 (<768px) 强制标准密度，禁用极密布局（盯盘 1.2 / 研究 0.9 在小屏失效） */
+@media (max-width: 767px) {
+  :root,
+  [data-scene-mode] {
+    --density-scale: 1 !important;
+  }
+}
+
+/* PROD-04c: 强调色关键 UI 平滑过渡（模式切换时颜色/描边/阴影 200ms 过渡） */
+.scene-accent-transition { transition: color 200ms ease-out, background-color 200ms ease-out, border-color 200ms ease-out, box-shadow 200ms ease-out, fill 200ms ease-out, stroke 200ms ease-out; }
+
+/* PROD-04a: 盘口异动 > 2% 高对比脉冲光环（基于 --scene-accent 场景强调色） */
+@keyframes scene-anomaly-flash {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(var(--scene-accent) / 0); border-color: hsl(var(--scene-accent) / 0); }
+  50%      { box-shadow: 0 0 26px 2px hsl(var(--scene-accent) / 0.75); border-color: hsl(var(--scene-accent) / 0.9); }
+}
+.scene-anomaly-flash {
+  animation: scene-anomaly-flash 0.9s ease-in-out infinite;
+  border: 1px solid hsl(var(--scene-accent) / 0.4);
+}
+.scene-anomaly-up  { --scene-accent: 160 84% 45%; }
+.scene-anomaly-down { --scene-accent: 0 84% 60%; }
+
+/* PROD-05: 多分辨率适配规范（与 tailwind desktop / wide / ultrawide 断点对齐）
+ *  - 1280px (desktop)：AI 副驾为 overlay（global-copilot-drawer 已 fixed 定位，不挤压主工作区）
+ *  - 1920px (wide)：主区留白由布局 wide:px-6 处理；页面可挂 .resp-auto-panels 默认显示盘口/新闻流等次面板
+ *  - 超宽屏 21:9 (ultrawide)：页面可挂 .resp-3col 启用「行情+策略+AI」三栏网格
+ * 以上为布局级基础设施；具体面板的「默认可见 / 三栏拆分」由各业务页按需挂 class 消费。
+ */
+@media (min-width: 1920px) {
+  .resp-auto-panels [data-secondary-panel] { display: block; }
+}
+@media (min-width: 2560px) {
+  .resp-3col {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1rem;
+    align-items: stretch;
+  }
+  /* PROD-05 深化：超宽屏第三栏（AI 副驾）默认隐藏，≥2560px 由 .resp-3col 揭示为三栏之一 */
+  .resp-3col > [data-ultrawide-ai] {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  /* research 场景专用固定三栏：保留 IDE 原有比例（explorer 窄 / editor 宽 / AI 中），去间距改边框分隔 */
+  .resp-3col.ide-3col {
+    grid-template-columns: minmax(0, 15%) minmax(0, 1fr) minmax(0, 26%);
+    gap: 0;
+  }
+}
+
+/* PROD-05 深化：响应式 motion 工具类（面板入场动画，挂载即播放，供各业务面板复用） */
+@keyframes resp-slide-in-right {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes resp-fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes resp-scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes resp-slide-in-left {
+  from { opacity: 0; transform: translateX(-16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.resp-slide-in-right { animation: resp-slide-in-right 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
+.resp-slide-in-left { animation: resp-slide-in-left 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
+.resp-fade-up { animation: resp-fade-up 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
+.resp-scale-in { animation: resp-scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* PROD-05 深化：无障碍兜底——用户开启「减少动态效果」时关掉整套 resp-* 入场动画 */
+@media (prefers-reduced-motion: reduce) {
+  .resp-slide-in-right,
+  .resp-slide-in-left,
+  .resp-fade-up,
+  .resp-scale-in {
+    animation: none !important;
+  }
+}
 
 @keyframes tick-flash-up {
   0% { background-color: hsl(var(--color-bull) / 0.25); }

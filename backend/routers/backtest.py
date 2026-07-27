@@ -1,3 +1,4 @@
+import logging
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -20,6 +21,19 @@ from backend.app.walk_forward_app import (
     WalkForwardParams,
     run_walk_forward,
 )
+from backend.services.backtest_interpreter.models import (
+    InterpretRequest,
+    OverfitCheckRequest,
+    OverfitGridRequest,
+    WalkForwardInterpretRequest,
+)
+from backend.services.backtest_interpreter.service import (
+    BacktestInterpreterService,
+    check_overfit,
+    param_sweep_from_grid_results,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/backtest", tags=["Backtesting Engine"])
 
@@ -249,3 +263,66 @@ async def overfit_endpoint(req: OverfitRequest):
         return await run_overfit_check(params)
     except OverfitError as e:
         raise HTTPException(status_code=400, detail=e.message) from e
+
+
+# AI-03 (回测工坊·报告解读员)：模块级单例，避免每次请求重建 LLMService。
+_interpreter = BacktestInterpreterService()
+
+
+@router.post("/interpret")
+async def interpret_backtest(req: InterpretRequest):
+    """AI-03①：回测 Tear Sheet 一句话解读（LLM，须含杠杆/Alpha 判别）。"""
+    result = await _interpreter.interpret(req)
+    # 持久化联合研判 (杠杆/Alpha 判别 + Walk-Forward 漂移)，与主 /interpret/walk-forward 合并到同一条目，
+    # 供盘前早报「🔬 回测健康度速览」单一合并视图展示。
+    ticker = req.symbol
+    if ticker:
+        try:
+            from backend.services.backtest_interpreter.health_store import save_backtest_interpret
+
+            await save_backtest_interpret(str(ticker), result.summary, float(req.leverage or 1.0))
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[Backtest] 联合研判持久化失败 (不影响解读返回): {e}")
+    return {"status": "success", "data": result.model_dump(mode="json")}
+
+
+@router.post("/overfit-check")
+async def overfit_check(req: OverfitCheckRequest):
+    """AI-03②：过拟合检测（参数敏感性差异 > 阈值预警，纯计算）。"""
+    result = check_overfit(req.param_sweep, req.threshold)
+    return {"status": "success", "data": result.model_dump(mode="json")}
+
+
+@router.post("/overfit-check/grid")
+async def overfit_check_grid(req: OverfitGridRequest):
+    """AI-03②-增强：直接吃网格搜索真实 results，派生参数敏感性并过拟合检测。"""
+    sweeps = param_sweep_from_grid_results(req.results, req.target_metric)
+    if not sweeps:
+        raise HTTPException(status_code=400, detail="无法从 results 派生参数敏感性序列")
+    result = check_overfit(sweeps, req.threshold)
+    return {"status": "success", "data": result.model_dump(mode="json")}
+
+
+@router.post("/interpret/walk-forward")
+async def interpret_walk_forward(req: WalkForwardInterpretRequest):
+    """AI-03 增强：吃 Walk-Forward 报告，自动判过拟合 + Alpha 衰减，可经 LLM 一句话解读。"""
+    result = await _interpreter.interpret_walk_forward(req)
+    # 持久化回测健康度，供盘前早报「🔬 回测健康度速览」主动播报 (过拟合预警从面板升级为早报)
+    ticker = (req.report or {}).get("ticker")
+    if ticker:
+        try:
+            from backend.services.backtest_interpreter.health_store import save_backtest_health
+
+            await save_backtest_health(str(ticker), result)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[Backtest] 回测健康度持久化失败 (不影响解读返回): {e}")
+    return {"status": "success", "data": result.model_dump(mode="json")}
+
+
+@router.get("/health")
+async def backtest_health_list():
+    """返回所有标的最近回测健康度 (供盘前早报 / 前端展示「已纳入早报」徽标)。"""
+    from backend.services.backtest_interpreter.health_store import get_all_backtest_health
+
+    entries = await get_all_backtest_health()
+    return {"status": "success", "data": [e.model_dump(mode="json") for e in entries]}

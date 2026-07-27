@@ -46,6 +46,11 @@ RATE_WINDOW = 60
 def register_middleware(app: FastAPI) -> None:
     """注册所有全局 HTTP 中间件 (注意: FastAPI middleware 执行顺序为后注册先执行)"""
 
+    # ARCH-06: 请求级超时与取消传播 (注册为最外层，覆盖整条中间件链)
+    from backend.core.request_timeout import request_timeout_middleware
+
+    app.middleware("http")(request_timeout_middleware)
+
     @app.middleware("http")
     async def response_envelope_middleware(request: Request, call_next):
         """BE-13: 将旧式 JSON 响应自动包装为统一信封格式"""

@@ -56,6 +56,8 @@ export default {
         bear: 'hsl(var(--color-bear))',
         warn: 'hsl(var(--color-warn))',
         info: 'hsl(var(--color-info))',
+        // PROD-04c: 场景强调色（随场景模式动态变化，用于 Alert / Focus Ring / AI Badge 等关键 UI）
+        scene: 'hsl(var(--scene-accent))',
       },
       borderRadius: {
         lg: 'var(--radius)',

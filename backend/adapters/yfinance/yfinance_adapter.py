@@ -81,7 +81,7 @@ class YFinanceAdapter(DataSourcePort):
 
     @property
     def capabilities(self) -> List[str]:
-        return ["quote", "history", "macro", "batch_quote"]
+        return ["quote", "history", "macro", "batch_quote", "info"]
 
     @property
     def is_available(self) -> bool:
@@ -124,6 +124,8 @@ class YFinanceAdapter(DataSourcePort):
                 result = self._fetch_macro(params)
             elif action == "batch_quote":
                 result = self._fetch_batch_quote(params)
+            elif action == "info":
+                result = self._fetch_info(params)
             else:
                 return DataSourceResult.error(f"Unknown action: {action}")
 
@@ -245,6 +247,58 @@ class YFinanceAdapter(DataSourcePort):
             "data": results,
             "cached": False,
         }
+
+    def _fetch_info(self, params: dict) -> dict:
+        """
+        获取标的完整基本面数据 (t.info)
+
+        用于个股/ETF 的 PE/PB/ROE/做空比例等基本面字段。
+        返回前清洗为非 JSON 可序列化标量，避免 Timestamp/list 等导致响应序列化 500。
+
+        Args:
+            params: {"ticker": "AAPL"}
+
+        Returns:
+            dict: {"success": bool, "data": dict, "message": str?, "cached": bool}
+        """
+        ticker = params.get("ticker")
+        if not ticker:
+            return {"success": False, "message": "Missing ticker parameter"}
+
+        try:
+            cache_key = f"info:{ticker}"
+            cached_data = self._get_cached(cache_key)
+            if cached_data:
+                return {"success": True, "data": cached_data, "cached": True}
+
+            t = yf.Ticker(ticker)
+            info = t.info
+            if not info:
+                return {"success": False, "message": "No fundamental data available"}
+
+            def _clean(v: Any) -> Any:
+                if v is None or isinstance(v, (str, int, float, bool)):
+                    return v
+                # numpy 标量安全转换
+                try:
+                    import numpy as np
+
+                    if isinstance(v, np.integer):
+                        return int(v)
+                    if isinstance(v, np.floating):
+                        return float(v)
+                except Exception:
+                    pass
+                # 其余 (Timestamp / list / dict 等) 统一转字符串，避免 JSON 序列化失败
+                return str(v)
+
+            clean = {k: _clean(v) for k, v in info.items()}
+            self._set_cache(cache_key, clean, self._cache_ttl)
+            return {"success": True, "data": clean, "cached": False}
+
+        except Exception as e:
+            logger.warning(f"[YFinanceAdapter] Failed to fetch info for {ticker}: {e}")
+            return {"success": False, "message": str(e)}
 
     def _fetch_history(self, params: dict) -> dict:
         """

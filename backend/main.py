@@ -8,6 +8,10 @@ import socket
 import sys
 import warnings
 
+import structlog
+
+log = structlog.get_logger("quant_agent")
+
 # 💡 过滤 macOS/Linux 下 Uvicorn 热重载强退时的无害 POSIX 信号量泄漏警告
 warnings.filterwarnings("ignore", module="multiprocessing.resource_tracker")
 
@@ -47,9 +51,9 @@ try:
             conn.execute(
                 text("CREATE INDEX IF NOT EXISTS trgm_idx_ticker_name ON tickers USING gin (name gin_trgm_ops);")
             )
-            print("✅ [System] PostgreSQL pgvector 与 pg_trgm 扩展及全局索引挂载就绪！")
+            log.info("PostgreSQL pgvector 与 pg_trgm 扩展及全局索引挂载就绪")
 except Exception as e:
-    print(f"⚠️ [System] 自动创建数据库表失败 (请确认数据库服务已启动): {e}")
+    log.warning("自动创建数据库表失败 (请确认数据库服务已启动)", error=str(e))
 
 # --- 核心基础设施 ---
 from backend.bootstrap.lifecycle import app_lifespan, global_llm_client, global_registry  # noqa: E402, F401
@@ -67,6 +71,7 @@ from backend.core.openapi_schema import (  # noqa: E402
 from backend.core.otel_config import init_otel  # noqa: E402
 from backend.core.structlog_config import configure_structlog  # noqa: E402
 from backend.middleware.stack import register_middleware  # noqa: E402
+from backend.routers.ai_narrator import router as ai_narrator_router  # noqa: E402
 
 # --- 业务路由 ---
 from backend.routers.alert import router as alert_router  # noqa: E402
@@ -75,6 +80,7 @@ from backend.routers.audit import router as audit_router  # noqa: E402
 from backend.routers.auth import router as auth_router  # noqa: E402
 from backend.routers.backtest import router as backtest_router  # noqa: E402
 from backend.routers.backtest_reports import router as backtest_reports_router  # noqa: E402
+from backend.routers.briefing import router as briefing_router  # noqa: E402  # BRD-01
 from backend.routers.calendars import router as calendars_router  # noqa: E402
 from backend.routers.chat import router as chat_router  # noqa: E402
 from backend.routers.client import router as client_router  # noqa: E402
@@ -159,6 +165,7 @@ def create_app() -> FastAPI:
     application.include_router(settings_router, prefix=API_PREFIX)
     application.include_router(market_router, prefix=API_PREFIX)
     application.include_router(market_review_router, prefix=API_PREFIX)
+    application.include_router(briefing_router, prefix=API_PREFIX)  # BRD-01
     application.include_router(trade_router, prefix=API_PREFIX)
     application.include_router(macro_router, prefix=API_PREFIX)
     application.include_router(calendars_router, prefix=API_PREFIX)
@@ -178,6 +185,7 @@ def create_app() -> FastAPI:
     application.include_router(paper_router, prefix=API_PREFIX)
     application.include_router(futu_admin_router, prefix=API_PREFIX)
     application.include_router(alert_router, prefix=API_PREFIX)
+    application.include_router(ai_narrator_router, prefix=API_PREFIX)  # AI-01
     application.include_router(logs_router, prefix=API_PREFIX)
     application.include_router(eval_router, prefix=API_PREFIX)
     application.include_router(earnings_router, prefix=API_PREFIX)

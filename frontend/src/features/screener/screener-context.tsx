@@ -6,6 +6,7 @@ import { useWatchlist } from '@/stores/use-watchlist'
 import { apiClient } from '@/lib/api-client'
 import { getZhLabel, formatDisplaySymbol, type SortKey } from '@/features/screener/shared'
 import { useScreenerWs } from './use-screener-ws'
+import { useCopilotContextStore } from '@/stores/useCopilotContextStore'
 
 export interface ScreenerHistory {
   nlp: string;
@@ -332,6 +333,31 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
     handleApplyFilter, handleClearFilter, refreshPrompts, fetchPageData, handleSort, toggleAll, toggleOne, handleExportCSV,
     handleAddSingle, handleAddBatch, handleAddAndOpen, handleSendToCopilot, handleSendToBacktest, handleSubscribe, handleTranslate
   };
+
+  // PROD-01: 将当前筛选上下文写入 AI 副驾，实现"场景感知助手"
+  useEffect(() => {
+    const list = results || []
+    const top = list
+      .slice(0, 8)
+      .map((r: any) => r?.symbol)
+      .filter(Boolean)
+      .join(', ')
+    const lines = [
+      nlpQuery ? `自然语言筛选: ${nlpQuery}` : null,
+      dslQuery ? `DSL 筛选: ${dslQuery}` : null,
+      `结果: ${list.length} 只 (总计 ${totalItems ?? list.length} 条)`,
+      top ? `Top 标的: ${top}` : null,
+    ].filter(Boolean) as string[]
+    if (lines.length === 0) {
+      useCopilotContextStore.getState().clearContext()
+      return
+    }
+    useCopilotContextStore.getState().setContext({
+      kind: 'screener',
+      title: '选股器',
+      summary: lines.join('\n'),
+    })
+  }, [nlpQuery, dslQuery, results, totalItems])
 
   return <ScreenerContext.Provider value={value}>{children}</ScreenerContext.Provider>
 }

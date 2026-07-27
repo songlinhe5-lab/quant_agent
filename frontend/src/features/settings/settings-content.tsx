@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
@@ -11,6 +11,12 @@ import { apiClient } from '@/lib/api-client'
 import { Loader2, Shield, Eye, EyeOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TradingModeSwitcher } from '@/components/layout/trading-mode-switcher'
+import { Switch } from '@/components/ui/switch'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useAiNarratorStore } from '@/stores/useAiNarratorStore'
+import { usePatternStore } from '@/stores/usePatternStore'
+import { useAiPushPrefStore, AI_PUSH_MODULES, AI_PUSH_MODULE_META, type AiModule } from '@/stores/useAiPushPrefStore'
+import { AI_NARRATOR_THRESHOLDS, type AiNarratorThreshold } from '@/lib/constants'
 
 type SettingsContentProps = {
   className?: string
@@ -33,6 +39,7 @@ export function SettingsContent({ className, compact }: SettingsContentProps) {
           <TabsTrigger value="appearance">外观主题</TabsTrigger>
           <TabsTrigger value="notifications">通知提醒</TabsTrigger>
           <TabsTrigger value="api">API 配置</TabsTrigger>
+          <TabsTrigger value="aipush">智能推送</TabsTrigger>
         </TabsList>
 
         <TabsContent value="account" className="space-y-4">
@@ -61,6 +68,7 @@ export function SettingsContent({ className, compact }: SettingsContentProps) {
               </p>
             </CardContent>
           </Card>
+          <AiNarratorSettingsCard />
         </TabsContent>
 
         <TabsContent value="appearance" className="space-y-4">
@@ -94,6 +102,10 @@ export function SettingsContent({ className, compact }: SettingsContentProps) {
               <p className="text-muted-foreground text-sm">API 配置内容待完善...</p>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="aipush" className="space-y-4">
+          <AiPushPreferencesCard />
         </TabsContent>
       </Tabs>
     </div>
@@ -242,6 +254,123 @@ function ChangePasswordCard() {
             )}
           </Button>
         </form>
+      </CardContent>
+    </Card>
+  )
+}
+
+function AiNarratorSettingsCard() {
+  const { enabled, threshold, orderBookAiEnabled, setEnabled, setThreshold, setOrderBookAiEnabled } = useAiNarratorStore()
+  const { enabled: patternEnabled, setEnabled: setPatternEnabled } = usePatternStore()
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>AI-01 异动解说员</CardTitle>
+        <CardDescription>价格异动突破阈值时，K 线浮动 AI 解说气泡（数据驱动，带来源）</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-slate-200">开启异动解说</p>
+            <p className="text-xs text-slate-400">关闭后 K 线不再浮动解说气泡</p>
+          </div>
+          <Switch checked={enabled} onCheckedChange={setEnabled} />
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-slate-200">异动阈值</p>
+            <p className="text-xs text-slate-400">涨跌幅突破该阈值才触发解说</p>
+          </div>
+          <Select
+            value={String(threshold)}
+            onValueChange={(v) => setThreshold(Number(v) as AiNarratorThreshold)}
+          >
+            <SelectTrigger className="w-24">
+              <SelectValue placeholder="阈值" />
+            </SelectTrigger>
+            <SelectContent>
+              {AI_NARRATOR_THRESHOLDS.map((t) => (
+                <SelectItem key={t} value={String(t)}>
+                  {t}%
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center justify-between border-t border-border/40 pt-4">
+          <div>
+            <p className="text-sm font-medium text-slate-200">盘口大单检测</p>
+            <p className="text-xs text-slate-400">盘口底部一行提示大单压盘/托单与多空失衡</p>
+          </div>
+          <Switch checked={orderBookAiEnabled} onCheckedChange={setOrderBookAiEnabled} />
+        </div>
+        <div className="flex items-center justify-between border-t border-border/40 pt-4">
+          <div>
+            <p className="text-sm font-medium text-slate-200">形态识别叠加</p>
+            <p className="text-xs text-slate-400">K 线叠加头肩顶/双底/三角收敛虚线标注与历史胜率</p>
+          </div>
+          <Switch checked={patternEnabled} onCheckedChange={setPatternEnabled} />
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function AiPushPreferencesCard() {
+  const { prefs, loaded, fetch, setPref } = useAiPushPrefStore()
+  const { toast } = useToast()
+
+  useEffect(() => {
+    void fetch()
+  }, [fetch])
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>AI 智能推送偏好</CardTitle>
+        <CardDescription>
+          统一控制 AI-01~AI-08 的主动推送与触发阈值；关闭后对应模块不再主动推送，仅保留按需调用。
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {AI_PUSH_MODULES.map((m: AiModule) => {
+          const p = prefs[m] ?? { enabled: true, threshold: null }
+          return (
+            <div
+              key={m}
+              className="flex items-center justify-between gap-4 rounded-lg border border-border/40 p-3"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-slate-200">
+                  {m.toUpperCase()} · {AI_PUSH_MODULE_META[m]}
+                </p>
+                <p className="text-xs text-slate-400">触发阈值（留空 = 使用模块内置默认）</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <Input
+                  type="number"
+                  step="0.1"
+                  placeholder="默认"
+                  value={p.threshold ?? ''}
+                  onChange={(e) => {
+                    const raw = e.target.value
+                    const num = Number(raw)
+                    const next = raw === '' ? null : Number.isNaN(num) ? p.threshold : num
+                    if (next !== p.threshold) void setPref(m, { threshold: next })
+                  }}
+                  onBlur={() => toast({ title: '已保存', description: `${m.toUpperCase()} 阈值已更新` })}
+                  className="w-24"
+                />
+                <Switch
+                  checked={p.enabled}
+                  onCheckedChange={(v) => void setPref(m, { enabled: v })}
+                />
+              </div>
+            </div>
+          )
+        })}
+        {!loaded && <p className="text-xs text-slate-500">正在加载服务端偏好配置…</p>}
       </CardContent>
     </Card>
   )

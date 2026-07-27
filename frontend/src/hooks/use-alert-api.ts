@@ -4,7 +4,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { apiClient } from '@/lib/api-client'
+import { apiClient, getValidAccessToken } from '@/lib/api-client'
 import logger from '@/lib/logger'
 import { useKeepAliveActive } from '@/components/layout/keep-alive-outlet'
 import { useBackendStatusStore } from '@/stores/useBackendStatusStore'
@@ -194,10 +194,15 @@ export function useAlertWebSocket(
   onEventRef.current = onEvent
   onStatusRef.current = onStatus
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
     // 💡 keep-alive 后台模块 / 页面隐藏时不建立 WS，避免多模块 WS 并发重连风暴
     if (!keepAliveActive || document.visibilityState !== 'visible') return
+
+    // 💡 统一 Token 获取：内部自动处理过期检测 + Refresh 续期
+    const token = await getValidAccessToken()
+    // 未登录 / token 刷新失败：不建立 WS，避免后端 4001 后的重连风暴
+    if (!token) return
 
     const apiVersion = import.meta.env.VITE_API_URL_VERSION || 'v1'
     const baseUrl = import.meta.env.VITE_API_BASE_URL || `/api/${apiVersion}`
@@ -206,11 +211,11 @@ export function useAlertWebSocket(
     let wsUrl: string
     if (baseUrl.startsWith('http://') || baseUrl.startsWith('https://')) {
       // 完整 URL，直接替换 http 为 ws
-      wsUrl = baseUrl.replace(/^http/, 'ws') + '/alert/ws'
+      wsUrl = baseUrl.replace(/^http/, 'ws') + '/alert/ws' + (token ? `?token=${token}` : '')
     } else {
       // 相对路径，使用当前域名
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      wsUrl = `${protocol}//${window.location.host}${baseUrl}/alert/ws`
+      wsUrl = `${protocol}//${window.location.host}${baseUrl}/alert/ws` + (token ? `?token=${token}` : '')
     }
 
     const ws = new WebSocket(wsUrl)

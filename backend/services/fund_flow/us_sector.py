@@ -45,7 +45,7 @@ async def get_us_sector_flow() -> dict[str, Any]:
     }
     """
     try:
-        from backend.routers.macro import manager, market_data
+        from backend.app.macro_app import manager, market_data
 
         async def _get_flow(ticker: str) -> dict:
             """优先从后台缓存读取，避免 Futu 限流"""
@@ -72,8 +72,8 @@ async def get_us_sector_flow() -> dict[str, Any]:
             # 解析 Futu 资金流数据
             net_inflow = 0.0
             if isinstance(data, dict):
-                # 尝试多种字段名
-                for key in ["net_inflow", "net_amount", "capital_flow"]:
+                # 尝试多种字段名 (capital_flow 为嵌套结构, 不在此处强转)
+                for key in ["net_inflow", "net_amount"]:
                     if key in data:
                         net_inflow = float(data[key])
                         break

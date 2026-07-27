@@ -73,63 +73,6 @@ export interface CapitalFlowItem {
   updated_at?: string   // 💡 更新时间
 }
 
-export const MOCK_CAPITAL_FLOWS: CapitalFlowItem[] = [
-  {
-    market: 'HK',
-    label: '港股南向',
-    amount: 12.8,
-    unit: '亿港元',
-    dir: 1,
-    desc: '沪深港通净买入港股',
-    sparkDirs: [1, 1, -1, 1, 1, 1, -1, 1],
-  },
-  {
-    market: 'CN',
-    label: 'A股北向',
-    amount: -5.3,
-    unit: '亿人民币',
-    dir: -1,
-    desc: '外资沪深股通净卖出A股',
-    sparkDirs: [-1, -1, 1, -1, -1, 1, -1, -1],
-  },
-  {
-    market: 'US',
-    label: '美股机构',
-    amount: 2.1,
-    unit: '十亿美元',
-    dir: 1,
-    desc: 'SPY/QQQ 大单净流入',
-    sparkDirs: [1, 1, 1, -1, 1, 1, 1, 1],
-  },
-  {
-    market: 'HK',
-    label: '港股外资',
-    amount: -3.2,
-    unit: '亿港元',
-    dir: -1,
-    desc: '外资主买/主卖净差',
-    sparkDirs: [-1, 1, -1, -1, -1, 1, -1, -1],
-  },
-  {
-    market: 'CN',
-    label: 'A股主力',
-    amount: 8.7,
-    unit: '亿人民币',
-    dir: 1,
-    desc: '超大单净流入',
-    sparkDirs: [1, 1, 1, 1, -1, 1, 1, 1],
-  },
-  {
-    market: 'US',
-    label: '美债资金',
-    amount: -1.8,
-    unit: '十亿美元',
-    dir: -1,
-    desc: 'TLT/HYG 资金流出',
-    sparkDirs: [-1, -1, -1, 1, -1, -1, -1, -1],
-  },
-]
-
 // 8. 大类资产走势
 export interface AssetTrendItem {
   symbol: string

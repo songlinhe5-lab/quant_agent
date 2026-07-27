@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { TrendingUp, Loader2, Clock } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { TrendingUp, Loader2, Clock, CalendarDays } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { apiClient, API_BASE_URL, getValidAccessToken } from '@/lib/api-client'
 import type { CapitalFlowItem } from '@/services/mock'
@@ -15,6 +16,7 @@ import { EconomicCalendar } from '@/features/data-center/economic-calendar'
 import { EarningsCalendar } from '@/features/data-center/earnings-calendar'
 import { NewsStream } from '@/features/data-center/news-stream'
 import { GlobalStyle } from '@/features/data-center/global-style'
+import { CalendarsModule } from '@/features/calendars/module'
 import { MarginTradingPanel, type MarginMarketData } from '@/features/data-center/margin-trading'
 import { SectorFlowPanel, type SectorFundFlowData } from '@/features/data-center/sector-flow'
 
@@ -41,6 +43,7 @@ export function DataCenterModule() {
   const [selectedEvent, setSelectedEvent] = useState<any>(null)
   const lastAlertedHeadline = useRef<string>('')
   const { toast } = useToast()
+  const [hubTab, setHubTab] = useState<'overview' | 'calendars'>('overview')
 
   useEffect(() => {
     setM(true)
@@ -265,6 +268,13 @@ export function DataCenterModule() {
   return (<div className="space-y-2.5">
     {/* Title */}
     <div className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-sky-500 dark:bg-sky-400" /><h1 className="text-base font-bold tracking-tight">数据中心与宏观</h1><span className="text-[10px] font-mono text-muted-foreground border border-border/50 rounded px-1.5 py-0.5">Macro Intelligence</span>{fetching && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground ml-2" />}{last && <div className="ml-auto flex items-center gap-1.5 text-[10px] font-mono text-muted-foreground bg-secondary/50 border border-border/30 px-2 py-1 rounded"><Clock className="h-3 w-3" /><span>{last}</span></div>}</div>
+    {/* PROD-07: Macro Hub 子Tab — 概览 / 市场日历（Calendars 模块） */}
+    <div className="flex items-center gap-1 border-b border-border/30">
+      <button onClick={() => setHubTab('overview')} className={cn('px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors', hubTab === 'overview' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>概览</button>
+      <button onClick={() => setHubTab('calendars')} className={cn('px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors flex items-center gap-1.5', hubTab === 'calendars' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}><CalendarDays className="h-3.5 w-3.5" />市场日历</button>
+    </div>
+    {hubTab === 'overview' && (
+    <>
     {/* 资金流 */}
     <CapitalFlowPanel data={capitalFlows} />
     {/* 融资融券余额 */}
@@ -308,5 +318,8 @@ export function DataCenterModule() {
     </div>
     {/* 全局动画与自定义滚动条样式 */}
     <GlobalStyle />
+    </>
+    )}
+    {hubTab === 'calendars' && <CalendarsModule />}
   </div>)
 }

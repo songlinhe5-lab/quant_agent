@@ -27,7 +27,7 @@ class TestFREDService:
 
     @pytest.fixture
     def service(self):
-        from backend.services.fred_service import FREDService
+        from backend.services.macro.fred_service import FREDService
 
         svc = FREDService()
         svc.api_key = "test-fred-key"
@@ -37,7 +37,7 @@ class TestFREDService:
     @pytest.mark.asyncio
     async def test_get_series_observations_no_api_key_returns_error(self):
         """未配置 API Key 应返回 error"""
-        from backend.services.fred_service import FREDService
+        from backend.services.macro.fred_service import FREDService
 
         svc = FREDService()
         svc.api_key = None
@@ -49,7 +49,7 @@ class TestFREDService:
     async def test_get_series_observations_cache_hit_returns_cached(self, service):
         """缓存命中应直接返回缓存数据"""
         cached = {"status": "success", "series_id": "DGS10", "data": [{"date": "2026-01-01", "value": 4.5}]}
-        with patch("backend.services.fred_service.redis_client") as mock_redis:
+        with patch("backend.services.macro.fred_service.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=json.dumps(cached))
             result = await service.get_series_observations("DGS10")
             assert result == cached
@@ -69,7 +69,7 @@ class TestFREDService:
         mock_resp.raise_for_status = MagicMock()
         service.session.get = AsyncMock(return_value=mock_resp)
 
-        with patch("backend.services.fred_service.redis_client") as mock_redis:
+        with patch("backend.services.macro.fred_service.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
 
@@ -89,7 +89,7 @@ class TestFREDService:
         mock_resp.raise_for_status = MagicMock()
         service.session.get = AsyncMock(return_value=mock_resp)
 
-        with patch("backend.services.fred_service.redis_client") as mock_redis:
+        with patch("backend.services.macro.fred_service.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             result = await service.get_series_observations("UNKNOWN")
             assert result["status"] == "warning"
@@ -100,7 +100,7 @@ class TestFREDService:
         """网络连接异常应返回 error"""
         service.session.get = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
 
-        with patch("backend.services.fred_service.redis_client") as mock_redis:
+        with patch("backend.services.macro.fred_service.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             result = await service.get_series_observations("DGS10")
             assert result["status"] == "error"
@@ -117,7 +117,7 @@ class TestFREDService:
         http_err.response.json = MagicMock(return_value={"error_message": "Invalid api_key format"})
         service.session.get = AsyncMock(side_effect=http_err)
 
-        with patch("backend.services.fred_service.redis_client") as mock_redis:
+        with patch("backend.services.macro.fred_service.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             result = await service.get_series_observations("DGS10")
             assert result["status"] == "error"
@@ -134,7 +134,7 @@ class TestFREDService:
         http_err.response.json = MagicMock(side_effect=json.JSONDecodeError("err", "doc", 0))
         service.session.get = AsyncMock(side_effect=http_err)
 
-        with patch("backend.services.fred_service.redis_client") as mock_redis:
+        with patch("backend.services.macro.fred_service.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             result = await service.get_series_observations("DGS10")
             assert result["status"] == "error"
@@ -150,7 +150,7 @@ class TestFREDService:
         )
         service.session.get = AsyncMock(side_effect=http_err)
 
-        with patch("backend.services.fred_service.redis_client") as mock_redis:
+        with patch("backend.services.macro.fred_service.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             result = await service.get_series_observations("DGS10")
             assert result["status"] == "error"
@@ -161,7 +161,7 @@ class TestFREDService:
         """未知异常应返回 error"""
         service.session.get = AsyncMock(side_effect=RuntimeError("unknown"))
 
-        with patch("backend.services.fred_service.redis_client") as mock_redis:
+        with patch("backend.services.macro.fred_service.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             result = await service.get_series_observations("DGS10")
             assert result["status"] == "error"
@@ -170,7 +170,7 @@ class TestFREDService:
     @pytest.mark.asyncio
     async def test_get_economic_calendar_no_api_key_returns_error(self):
         """未配置 API Key 应返回 error"""
-        from backend.services.fred_service import FREDService
+        from backend.services.macro.fred_service import FREDService
 
         svc = FREDService()
         svc.api_key = None
@@ -182,7 +182,7 @@ class TestFREDService:
     async def test_get_economic_calendar_cache_hit_returns_cached(self, service):
         """缓存命中应直接返回"""
         cached = {"status": "success", "data": [{"event": "FOMC"}], "source": "fred"}
-        with patch("backend.services.fred_service.redis_client") as mock_redis:
+        with patch("backend.services.macro.fred_service.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=json.dumps(cached))
             result = await service.get_economic_calendar()
             assert result == cached
@@ -203,8 +203,8 @@ class TestFREDService:
         service.session.get = AsyncMock(return_value=mock_resp)
 
         with (
-            patch("backend.services.fred_service.redis_client") as mock_redis,
-            patch("backend.services.fred_service.datetime") as mock_dt,
+            patch("backend.services.macro.fred_service.redis_client") as mock_redis,
+            patch("backend.services.macro.fred_service.datetime") as mock_dt,
         ):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
@@ -227,7 +227,7 @@ class TestFREDService:
         """HTTP 异常应返回 error"""
         service.session.get = AsyncMock(side_effect=RuntimeError("boom"))
 
-        with patch("backend.services.fred_service.redis_client") as mock_redis:
+        with patch("backend.services.macro.fred_service.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             result = await service.get_economic_calendar()
             assert result["status"] == "error"
