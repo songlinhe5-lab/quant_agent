@@ -53,7 +53,11 @@ from backend.core import models
 from backend.core.database import get_db
 from backend.routers.auth import get_current_user
 
-router = APIRouter(prefix="/screener", tags=["Screener"])
+router = APIRouter(
+    prefix="/screener",
+    tags=["Screener"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 async def get_subscription(

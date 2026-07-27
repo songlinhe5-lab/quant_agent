@@ -18,8 +18,13 @@ from backend.app.trade_app import (
     place_order,
 )
 from backend.core.database import get_db
+from backend.routers.auth import get_current_user
 
-router = APIRouter(prefix="/trade", tags=["OMS"])
+router = APIRouter(
+    prefix="/trade",
+    tags=["OMS"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.post("/order")

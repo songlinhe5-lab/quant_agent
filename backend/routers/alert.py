@@ -11,9 +11,11 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import List, Optional
 
-from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
+from jose import jwt as _jwt
 
 from backend.app.alert_app import (  # noqa: F401  (测试夹具访问共享状态)
     CreateRuleRequest,
@@ -38,8 +40,13 @@ from backend.app.alert_app import (  # noqa: F401  (测试夹具访问共享状�
 )
 from backend.core.alert_models import AlertSeverity
 from backend.core.logger import logger
+from backend.routers.auth import get_current_user
 
-router = APIRouter(prefix="/alert", tags=["Alert Center"])
+router = APIRouter(
+    prefix="/alert",
+    tags=["Alert Center"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.post("/rules", response_model=RuleResponse, status_code=201)
@@ -124,14 +131,30 @@ async def get_event_deliveries_endpoint(event_id: str):
 _ws_connections: List[WebSocket] = []
 
 
+# BE-15: WebSocket 握手鉴权密钥（与全局 SECRET_KEY 对齐）
+_WS_SECRET_KEY = os.getenv("SECRET_KEY", "your-super-secret-key-keep-it-safe")
+_WS_ALGORITHM = "HS256"
+
+
 @router.websocket("/ws")
 async def alert_websocket(websocket: WebSocket):
-    """实时告警推送 WebSocket
+    """实时告警推送 WebSocket (BE-15 增强版)
 
-    连接后订阅 Redis quant:alerts:push 频道，
-    将告警消息实时推送给前端。
-    断连后前端可通过 GET /events?since= 补拉。
+    连接鉴权：Query String ?token=<jwt> 校验；断连后前端可通过 GET /events?since= 补拉。
     """
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=4001, reason="Missing authentication token")
+        return
+    try:
+        payload = _jwt.decode(token, _WS_SECRET_KEY, algorithms=[_WS_ALGORITHM])
+        username = payload.get("sub")
+        if not username:
+            await websocket.close(code=4003, reason="Invalid token payload")
+            return
+    except Exception:
+        await websocket.close(code=4002, reason="Token expired or invalid")
+        return
     await websocket.accept()
     _ws_connections.append(websocket)
     logger.info(f"[AlertWS] 新连接，当前活跃: {len(_ws_connections)}")

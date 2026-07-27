@@ -323,7 +323,10 @@ async def _ensure_and_load_inspirations():
 # 💡 双重风控限流：单 IP 每 10 秒限 5 次；全网所有用户总和每 10 秒限 50 次 (防分布式代理群攻击)  # noqa: E501
 @router.get(
     "/inspirations",
-    dependencies=[Depends(RateLimiter(max_requests=5, window_seconds=10, global_max=50, global_window=10))],
+    dependencies=[
+        Depends(RateLimiter(max_requests=5, window_seconds=10, global_max=50, global_window=10)),
+        Depends(get_current_user),
+    ],
 )  # noqa: E501
 async def get_inspirations(limit: int = 10):
     """随机获取策略研发灵感"""
@@ -545,7 +548,7 @@ async def _fetch_backtest_data(
     return False, None, f"未匹配到支持的数据源或该数据源无法获取 {ticker} 数据。"
 
 
-@router.post("/parse-config")
+@router.post("/parse-config", dependencies=[Depends(get_current_user)])
 async def parse_strategy_config(payload: CodePayload):
     """接收在线编辑器的源码，解析并返回动态表单配置"""
     result = parse_strategy_parameters(payload.source_code)
@@ -644,7 +647,7 @@ async def generate_strategy_code(payload: GeneratePayload):
     return StreamingResponse(generate_stream(), media_type="application/x-ndjson")
 
 
-@router.post("/format")
+@router.post("/format", dependencies=[Depends(get_current_user)])
 async def format_strategy_code(payload: FormatPayload):
     """供 Monaco Editor 调用的独立 Black 代码格式化接口"""
     try:
@@ -658,7 +661,7 @@ async def format_strategy_code(payload: FormatPayload):
         return {"status": "error", "message": f"格式化失败: {str(e)}"}
 
 
-@router.post("/save")
+@router.post("/save", dependencies=[Depends(get_current_user)])
 async def save_strategy(payload: SaveStrategyPayload, db: Session = Depends(get_db)):
     """保存策略源码到本地文件系统（草稿/工作区）+ 创建版本记录 (STRAT-03a)"""
     try:
@@ -705,7 +708,7 @@ async def save_strategy(payload: SaveStrategyPayload, db: Session = Depends(get_
         return {"status": "error", "message": f"保存失败: {str(e)}"}
 
 
-@router.get("/list")
+@router.get("/list", dependencies=[Depends(get_current_user)])
 async def list_strategies():
     """拉取已保存的策略草稿列表"""
     strategies_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "strategies", "drafts"))  # noqa: E501
@@ -736,14 +739,14 @@ async def list_strategies():
 # ─────────────────────────────────────────────────────────────
 
 
-@router.get("/{name}/versions")
+@router.get("/{name}/versions", dependencies=[Depends(get_current_user)])
 async def get_strategy_versions(name: str, limit: int = 50, db: Session = Depends(get_db)):
     """获取策略版本时间线 (STRAT-03a)"""
     versions = strategy_version_service.get_versions(db, name, limit=limit)
     return {"status": "success", "data": versions}
 
 
-@router.get("/versions/{version_id}")
+@router.get("/versions/{version_id}", dependencies=[Depends(get_current_user)])
 async def get_strategy_version(version_id: str, db: Session = Depends(get_db)):
     """获取单个版本的完整信息（含代码）(STRAT-03a)"""
     version = strategy_version_service.get_version(db, version_id)
@@ -752,7 +755,7 @@ async def get_strategy_version(version_id: str, db: Session = Depends(get_db)):
     return {"status": "success", "data": version}
 
 
-@router.post("/{name}/restore")
+@router.post("/{name}/restore", dependencies=[Depends(get_current_user)])
 async def restore_strategy_version(name: str, payload: dict, db: Session = Depends(get_db)):
     """恢复指定版本，创建新的 restore 版本 (STRAT-03a)"""
     version_id = payload.get("version_id")
@@ -770,7 +773,7 @@ async def restore_strategy_version(name: str, payload: dict, db: Session = Depen
     }
 
 
-@router.get("/draft/{name}")
+@router.get("/draft/{name}", dependencies=[Depends(get_current_user)])
 async def get_draft_strategy(name: str):
     """拉取指定策略的完整源码"""
     strategies_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "strategies", "drafts"))  # noqa: E501
@@ -783,7 +786,7 @@ async def get_draft_strategy(name: str):
     return {"status": "success", "data": {"source_code": source_code}}
 
 
-@router.delete("/draft/{name}")
+@router.delete("/draft/{name}", dependencies=[Depends(get_current_user)])
 async def delete_draft_strategy(name: str):
     """彻底删除指定的策略草稿"""
     strategies_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "strategies", "drafts"))  # noqa: E501
@@ -800,7 +803,10 @@ async def delete_draft_strategy(name: str):
 # 💡 针对高消耗的沙箱回测接口，应用基于用户 ID 的限流：每个用户每 60 秒最多执行 10 次沙箱推演  # noqa: E501
 @router.post(
     "/run-sandbox",
-    dependencies=[Depends(RateLimiter(max_requests=10, window_seconds=60, by_user=True))],
+    dependencies=[
+        Depends(RateLimiter(max_requests=10, window_seconds=60, by_user=True)),
+        Depends(get_current_user),
+    ],
 )  # noqa: E501
 async def run_strategy_sandbox(payload: RunSandboxPayload):
     """
@@ -957,7 +963,7 @@ async def run_strategy_sandbox(payload: RunSandboxPayload):
         }  # noqa: E501
 
 
-@router.post("/optimize-sandbox")
+@router.post("/optimize-sandbox", dependencies=[Depends(get_current_user)])
 async def optimize_strategy_sandbox(payload: OptimizeSandboxPayload):
     """接收带有数组的参数网格，并发极速寻找全局最优参数解"""
     try:
@@ -1009,7 +1015,7 @@ async def optimize_strategy_sandbox(payload: OptimizeSandboxPayload):
         }  # noqa: E501
 
 
-@router.post("/run-batch-sandbox")
+@router.post("/run-batch-sandbox", dependencies=[Depends(get_current_user)])
 async def run_batch_strategy_sandbox(payload: BatchRunSandboxPayload):
     """针对 Screener 选股池结果执行横截面批量并发回测"""
     try:
@@ -1051,7 +1057,7 @@ async def run_batch_strategy_sandbox(payload: BatchRunSandboxPayload):
         }  # noqa: E501
 
 
-@router.post("/monte-carlo-sandbox")
+@router.post("/monte-carlo-sandbox", dependencies=[Depends(get_current_user)])
 async def monte_carlo_strategy_sandbox(payload: MonteCarloSandboxPayload):
     """蒙特卡洛压力测试接口：注入随机噪音进行百次模拟，验证策略鲁棒性"""
     try:
@@ -1106,7 +1112,7 @@ async def monte_carlo_strategy_sandbox(payload: MonteCarloSandboxPayload):
         }  # noqa: E501
 
 
-@router.post("/deploy-to-oms")
+@router.post("/deploy-to-oms", dependencies=[Depends(get_current_user)])
 async def deploy_to_oms(payload: RunSandboxPayload):
     """将沙箱中跑通的最优策略进行物理持久化，并通过 BotRuntimeManager 启动真实 Bot 算力节点 (OMS-05)"""
     try:

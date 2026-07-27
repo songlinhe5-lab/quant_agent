@@ -12,6 +12,7 @@ WebSocket 处理器属于传输层关注点，保留在 router；其引用的 ``
 
 import asyncio
 import json
+import os
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
@@ -116,9 +117,29 @@ async def get_margin_trading_data_route():
     return await get_margin_trading_data()
 
 
+# BE-15: WebSocket 握手鉴权密钥（与全局 SECRET_KEY 对齐）
+_WS_SECRET_KEY = os.getenv("SECRET_KEY", "your-super-secret-key-keep-it-safe")
+_WS_ALGORITHM = "HS256"
+
+
 @router.websocket("/news/ws")
 async def websocket_live_news(websocket: WebSocket):
-    """Websocket 接口：实时推送最新的宏观新闻流"""
+    """Websocket 接口：实时推送最新的宏观新闻流 (BE-15 增强版)"""
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=4001, reason="Missing authentication token")
+        return
+    try:
+        from jose import jwt as _jwt
+
+        payload = _jwt.decode(token, _WS_SECRET_KEY, algorithms=[_WS_ALGORITHM])
+        username = payload.get("sub")
+        if not username:
+            await websocket.close(code=4003, reason="Invalid token payload")
+            return
+    except Exception:
+        await websocket.close(code=4002, reason="Token expired or invalid")
+        return
     await websocket.accept()
     pubsub = macro_app.redis_client.pubsub()
 
@@ -167,7 +188,22 @@ async def websocket_live_news(websocket: WebSocket):
 
 @router.websocket("/calendar/ws")
 async def websocket_macro_calendar(websocket: WebSocket):
-    """Websocket 接口：推送当天的宏观事件报警"""
+    """Websocket 接口：推送当天的宏观事件报警 (BE-15 增强版)"""
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=4001, reason="Missing authentication token")
+        return
+    try:
+        from jose import jwt as _jwt
+
+        payload = _jwt.decode(token, _WS_SECRET_KEY, algorithms=[_WS_ALGORITHM])
+        username = payload.get("sub")
+        if not username:
+            await websocket.close(code=4003, reason="Invalid token payload")
+            return
+    except Exception:
+        await websocket.close(code=4002, reason="Token expired or invalid")
+        return
     await websocket.accept()
     pubsub = macro_app.redis_client.pubsub()
 

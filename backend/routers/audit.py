@@ -9,9 +9,14 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from backend.core.database import get_db
+from backend.routers.auth import get_current_user
 from backend.services.audit_service import get_audit_logs
 
-router = APIRouter(prefix="/audit", tags=["Audit"])
+router = APIRouter(
+    prefix="/audit",
+    tags=["Audit"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.get("/logs")

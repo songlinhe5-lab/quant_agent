@@ -42,6 +42,19 @@ def app():
     # 💡 路由前缀需与 main.py 中保持一致: /api/v1 + /alert
     api_prefix = "/api/v1"
     test_app.include_router(router, prefix=api_prefix)
+    # 测试环境鉴权旁路（BE-15 后告警路由已强制 Depends(get_current_user)）
+    from backend.core import models
+    from backend.routers.auth import get_current_user
+
+    def _fake_user():
+        return models.User(
+            id=1,
+            username="test_user",
+            email="test_user@example.com",
+            hashed_password="test-hashed-password",
+        )
+
+    test_app.dependency_overrides[get_current_user] = lambda: _fake_user()
     return test_app
 
 

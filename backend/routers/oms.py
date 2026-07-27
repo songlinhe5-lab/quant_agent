@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from backend.core import models
 from backend.core.database import get_db
 from backend.core.redis_client import redis_client
+from backend.routers.auth import get_current_user
 from backend.services.algo_analytics import algo_analytics
 from backend.services.algo_engine import algo_engine
 from backend.services.audit_service import log_audit
@@ -52,7 +53,7 @@ class ModeSwitchReq(BaseModel):
     mode: str  # "SANDBOX" | "PAPER" | "LIVE"
 
 
-@router.get("/state")
+@router.get("/state", dependencies=[Depends(get_current_user)])
 async def get_oms_initial_state(db: Session = Depends(get_db)):
     """
     获取 OMS 模块初始状态。
@@ -90,7 +91,7 @@ async def execute_emergency_liquidation(db: Session):
     await run_emergency_liquidation(db)
 
 
-@router.post("/kill_switch")
+@router.post("/kill_switch", dependencies=[Depends(get_current_user)])
 async def trigger_kill_switch(
     request: Request,
     background_tasks: BackgroundTasks,
@@ -116,7 +117,7 @@ async def trigger_kill_switch(
         raise HTTPException(status_code=500, detail=f"Failed to broadcast kill switch signal: {str(e)}")  # noqa: E501
 
 
-@router.post("/orders/{order_id}/cancel")
+@router.post("/orders/{order_id}/cancel", dependencies=[Depends(get_current_user)])
 async def cancel_order(
     request: Request,
     order_id: str,
@@ -145,7 +146,7 @@ async def cancel_order(
         raise HTTPException(status_code=500, detail="Cancellation dispatch failed")
 
 
-@router.post("/orders/{order_id}/modify")
+@router.post("/orders/{order_id}/modify", dependencies=[Depends(get_current_user)])
 async def modify_order(
     request: Request,
     order_id: str,
@@ -176,7 +177,7 @@ async def modify_order(
         raise HTTPException(status_code=500, detail=f"Modification dispatch failed: {str(e)}")  # noqa: E501
 
 
-@router.get("/positions")
+@router.get("/positions", dependencies=[Depends(get_current_user)])
 async def get_real_positions(market: str = "HK"):
     """OMS-04: 获取 Redis 缓存中的真实持仓列表"""
     positions = await oms_service.get_cached_positions(market)
@@ -186,7 +187,7 @@ async def get_real_positions(market: str = "HK"):
 # ── Bot 算力节点控制接口 (OMS-05) ─────────────────────────────────────────
 
 
-@router.post("/bots/{bot_id}/pause")
+@router.post("/bots/{bot_id}/pause", dependencies=[Depends(get_current_user)])
 async def pause_bot(bot_id: str):
     """OMS-05: 暂停 Bot 算力节点"""
     success = await bot_runtime.pause_bot(bot_id)
@@ -195,7 +196,7 @@ async def pause_bot(bot_id: str):
     return {"status": "success", "message": f"Bot {bot_id} 已暂停"}
 
 
-@router.post("/bots/{bot_id}/resume")
+@router.post("/bots/{bot_id}/resume", dependencies=[Depends(get_current_user)])
 async def resume_bot(bot_id: str):
     """OMS-05: 恢复 Bot 算力节点"""
     success = await bot_runtime.resume_bot(bot_id)
@@ -204,7 +205,7 @@ async def resume_bot(bot_id: str):
     return {"status": "success", "message": f"Bot {bot_id} 已恢复"}
 
 
-@router.post("/bots/{bot_id}/stop")
+@router.post("/bots/{bot_id}/stop", dependencies=[Depends(get_current_user)])
 async def stop_bot(bot_id: str):
     """OMS-05: 终止 Bot 算力节点"""
     success = await bot_runtime.stop_bot(bot_id)
@@ -213,7 +214,7 @@ async def stop_bot(bot_id: str):
     return {"status": "success", "message": f"Bot {bot_id} 已终止"}
 
 
-@router.post("/algo/start")
+@router.post("/algo/start", dependencies=[Depends(get_current_user)])
 async def start_algo_order(request: Request, req: AlgoOrderReq):
     """
     OMS-08: 接收并启动前端下发的算法拆单任务 (TWAP/VWAP/ICEBERG)
@@ -254,7 +255,7 @@ async def start_algo_order(request: Request, req: AlgoOrderReq):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/algo/{algo_id}/pause")
+@router.post("/algo/{algo_id}/pause", dependencies=[Depends(get_current_user)])
 async def pause_algo_order(algo_id: str):
     """OMS-08: 暂停算法拆单"""
     success = await algo_engine.pause_algo(algo_id)
@@ -263,7 +264,7 @@ async def pause_algo_order(algo_id: str):
     return {"status": "success", "message": f"算法 {algo_id} 已暂停"}
 
 
-@router.post("/algo/{algo_id}/resume")
+@router.post("/algo/{algo_id}/resume", dependencies=[Depends(get_current_user)])
 async def resume_algo_order(algo_id: str):
     """OMS-08: 恢复算法拆单"""
     success = await algo_engine.resume_algo(algo_id)
@@ -272,7 +273,7 @@ async def resume_algo_order(algo_id: str):
     return {"status": "success", "message": f"算法 {algo_id} 已恢复"}
 
 
-@router.post("/algo/{algo_id}/cancel")
+@router.post("/algo/{algo_id}/cancel", dependencies=[Depends(get_current_user)])
 async def cancel_algo_order(algo_id: str):
     """OMS-08: 取消算法拆单"""
     success = await algo_engine.cancel_algo(algo_id)
@@ -336,14 +337,14 @@ async def _get_trading_mode() -> str:
     return "LIVE" if os.getenv("FUTU_TRD_ENV", "SIMULATE").upper() == "REAL" else "SANDBOX"
 
 
-@router.get("/mode")
+@router.get("/mode", dependencies=[Depends(get_current_user)])
 async def get_trading_mode():
     """OMS-11 / FE-PROD-02: 获取当前交易模式 (SANDBOX/PAPER/LIVE)"""
     mode = await _get_trading_mode()
     return {"status": "success", "data": {"mode": mode}}
 
 
-@router.post("/mode/switch")
+@router.post("/mode/switch", dependencies=[Depends(get_current_user)])
 async def switch_trading_mode(request: Request, req: ModeSwitchReq, db: Session = Depends(get_db)):
     """
     OMS-11 / FE-PROD-02: 热切换交易模式 (SANDBOX/PAPER/LIVE)
