@@ -68,13 +68,18 @@ class GracefulExecutor(ThreadPoolExecutor):
         def wrapped_fn():
             try:
                 result = fn(*args, **kwargs)
-                if not async_future.done():
-                    loop.call_soon_threadsafe(async_future.set_result, result)
             except Exception as e:
+                # 必须先更新统计计数，再触发 future 的结果回调。
+                # 否则在 GIL 高争用下，事件循环线程可能在 _update_stats 执行前
+                # 就抢占到 GIL 并跑完 set_result，导致 future 已 done 而
+                # completed_count 仍为 0（CI 偶发 assert 0 >= 1 的根因）。
+                self._update_stats(completed=True)
                 if not async_future.done():
                     loop.call_soon_threadsafe(async_future.set_exception, e)
-            finally:
+            else:
                 self._update_stats(completed=True)
+                if not async_future.done():
+                    loop.call_soon_threadsafe(async_future.set_result, result)
 
         # 提交到底层 ThreadPoolExecutor
         super().submit(wrapped_fn)

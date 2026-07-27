@@ -49,9 +49,16 @@ async def test_executor_collects_stats():
         return 1
 
     fut = executor.submit(task)
+    # submitted_count 在 submit 主线程内同步累加，提交返回后即为确定值
+    assert executor.get_stats()["submitted_count"] >= 1
+
     await asyncio.wait_for(fut, timeout=5)
+    # completed_count 在 worker 线程 future 回调前已落地；轮询兜底极端 GIL 争用
+    for _ in range(50):
+        if executor.get_stats()["completed_count"] >= 1:
+            break
+        await asyncio.sleep(0.01)
     stats = executor.get_stats()
-    assert stats["submitted_count"] >= 1
     assert stats["completed_count"] >= 1
     executor.shutdown(wait=True)
 
