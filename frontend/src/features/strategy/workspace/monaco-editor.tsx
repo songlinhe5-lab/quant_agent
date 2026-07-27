@@ -5,7 +5,7 @@ import { useTheme } from 'next-themes'
 import { useToast } from '@/hooks/use-toast'
 import { Loader2, Play, Save, AlertCircle, Bot } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { apiClient, API_BASE_URL, getValidAccessToken } from '@/lib/api-client'
+import { apiClient, API_BASE_URL, fetchWithAuth } from '@/lib/api-client'
 import { useStrategyStore } from '../stores'
 
 // 💡 终极离线方案 (ESM Bundling)：直接让打包工具自动提取并构建依赖
@@ -198,10 +198,8 @@ export function MonacoEditorTab() {
       const assistantMsgId = Date.now().toString()
       store.addMessage({ id: assistantMsgId, role: 'assistant', content: '', reasoning: '', status: 'reasoning' })
       
-      const token = await getValidAccessToken()
-      const response = await fetch(`${API_BASE_URL}/strategy/generate`, {
+      const response = await fetchWithAuth(`${API_BASE_URL}/strategy/generate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
         body: JSON.stringify({ prompt: fixPrompt })
       })
       if (!response.body) throw new Error('流式请求发起失败')

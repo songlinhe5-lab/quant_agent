@@ -143,6 +143,38 @@ export async function getValidAccessToken(): Promise<string | null> {
   return doRefreshToken(DEFAULT_CONFIG)
 }
 
+/**
+ * 带自动续期的 fetch 封装（裸 fetch 统一入口）
+ * - 复用 getValidAccessToken 预先检测过期并静默续期（默认续期）
+ * - 若仍收到 401（极端场景：服务端时钟偏移 / 超长流式连接越过 TTL / token 被吊销），
+ *   走 refreshAccessToken 强制刷新一次并重试，对齐 apiClient.request 的 401 重试语义
+ * - 自动拼接 Bearer；默认带 credentials: 'include'（与 apiClient 一致）
+ *
+ * 适用于不走 apiClient 的裸 fetch（流式策略生成、普通请求等）。
+ */
+export async function fetchWithAuth(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const token = await getValidAccessToken()
+  const headers = new Headers(init.headers)
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+
+  const doFetch = (authToken: string | null): Promise<Response> => {
+    const h = new Headers(headers)
+    if (authToken) h.set('Authorization', `Bearer ${authToken}`)
+    return fetch(url, { ...init, headers: h, credentials: init.credentials ?? 'include' })
+  }
+
+  let res = await doFetch(token)
+  if (res.status === 401) {
+    const refreshed = await refreshAccessToken()
+    if (refreshed) res = await doFetch(refreshed)
+  }
+  return res
+}
+
 // ─── 错误类 ────────────────────────────────────────────────────────
 export class ApiError extends Error {
   code: number

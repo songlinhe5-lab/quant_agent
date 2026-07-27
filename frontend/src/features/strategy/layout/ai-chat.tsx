@@ -3,7 +3,7 @@ import { Bot, Send, Loader2, Sparkles, RefreshCw, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useStrategyStore } from '../stores'
-import { API_BASE_URL, getValidAccessToken, apiClient } from '@/lib/api-client'
+import { API_BASE_URL, fetchWithAuth, apiClient } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
 
 export function AIChat() {
@@ -70,13 +70,8 @@ export function AIChat() {
     addMessage({ id: assistantMsgId, role: 'assistant', content: '', reasoning: '', status: 'typing' })
     
     try {
-      const token = await getValidAccessToken()
-      const response = await fetch(`${API_BASE_URL}/strategy/generate`, {
+      const response = await fetchWithAuth(`${API_BASE_URL}/strategy/generate`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
         body: JSON.stringify({ prompt: promptToUse })
       })
 
