@@ -217,6 +217,15 @@ async def app_lifespan(app: FastAPI):
     except Exception as e:
         log.warning(f"[Startup] MarketEngine 启动失败: {e}")
 
+    # 🚀 RL-11 限流告警后台消费器 (异步队列，解耦限流回调与飞书推送 IO)
+    try:
+        from backend.services.datasource.alert_monitor import rate_limit_alert_monitor
+
+        await rate_limit_alert_monitor.start()
+        log.info("✅ [Startup] 限流告警后台消费器已启动")
+    except Exception as e:
+        log.warning(f"[Startup] 限流告警消费器启动失败: {e}")
+
     yield  # 挂起，FastAPI 正式对外提供服务
 
     # === 销毁阶段 (Shutdown) ===
@@ -258,6 +267,14 @@ async def app_lifespan(app: FastAPI):
         if "loop_monitor_task" in locals() and not loop_monitor_task.done():
             loop_monitor_task.cancel()
             tasks_to_await.append(loop_monitor_task)
+
+        # RL-11: 停止限流告警后台消费器 (cancel + await 自身 task)
+        try:
+            from backend.services.datasource.alert_monitor import rate_limit_alert_monitor
+
+            await rate_limit_alert_monitor.stop()
+        except Exception:
+            pass
 
         push_t = manager.push_task
         if push_t and not push_t.done():

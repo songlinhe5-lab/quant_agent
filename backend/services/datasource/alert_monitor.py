@@ -20,6 +20,7 @@ Rate Limit Alert Monitor (RL-11)
 
 import asyncio
 import time
+from asyncio import Queue, QueueFull
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
@@ -58,6 +59,9 @@ class RateLimitAlertMonitor:
         self._rate_counts: Dict[str, list] = {}  # source -> [timestamps]
         self._last_alert: Dict[Tuple[str, str], float] = {}  # (source, alert_type) -> timestamp
         self._notification_service = None  # 延迟导入
+        self._queue: Optional[Queue] = None  # 异步告警队列 (lifespan startup 时创建)
+        self._consumer_task: Optional[asyncio.Task] = None  # 后台消费 task
+        self._started = False
 
     def _get_notification_service(self):
         """延迟导入 NotificationService（避免循环依赖）"""
@@ -142,9 +146,9 @@ class RateLimitAlertMonitor:
                 ),
             )
 
-        # 3. 如果触发了告警，异步推送
+        # 3. 如果触发了告警，投递到异步队列（非阻塞）
         if alert is not None:
-            self._dispatch_alert(alert)
+            self._enqueue_alert(alert)
 
         return alert
 
@@ -178,26 +182,76 @@ class RateLimitAlertMonitor:
             severity=severity,
         )
 
-    def _dispatch_alert(self, alert: RateLimitAlertEvent):
-        """异步推送告警到飞书 Webhook"""
+    def _enqueue_alert(self, alert: RateLimitAlertEvent):
+        """将告警投递到异步队列（同步、非阻塞，可在 sync 限流回调中安全调用）。
+
+        后台 consumer task 在 lifespan 启动后持续消费队列并推送飞书 Webhook，
+        从而完全解耦「告警触发」（限流回调热路径）与「网络 IO 推送」，
+        避免限流回调被飞书 Webhook 的网络延迟阻塞。
+        """
         notification_svc = self._get_notification_service()
         if notification_svc is None:
             logger.warning(f"[RL-11] 告警触发但 NotificationService 不可用: {alert.message}")
             return
 
-        # 异步推送，不阻塞主流程
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(notification_svc.send_alert(alert.message))
-        except RuntimeError:
-            # 不在事件循环内，开独立 loop 发送
+        # 后台消费器未启动（无事件循环上下文）：降级为同步发送，保证告警不丢
+        if self._queue is None:
             try:
                 asyncio.run(notification_svc.send_alert(alert.message))
+                logger.warning(f"[RL-11] 告警已推送(降级同步): [{alert.severity}] {alert.message}")
             except RuntimeError:
-                # 没有事件循环，记录日志
-                logger.warning(f"[RL-11] 告警无法推送 (无事件循环): {alert.message}")
+                logger.warning(f"[RL-11] 告警无法推送 (监控器未启动且无事件循环): {alert.message}")
+            return
 
-        logger.warning(f"[RL-11] 告警已推送: [{alert.severity}] {alert.message}")
+        # 已启动：非阻塞入队，由后台 consumer 异步发送（不阻塞限流回调）
+        try:
+            self._queue.put_nowait(alert)
+        except QueueFull:
+            logger.warning(f"[RL-11] 告警队列已满，丢弃: {alert.message}")
+
+    async def start(self):
+        """启动后台消费 task。必须在事件循环内调用（app lifespan startup）。
+
+        幂等：重复调用不会创建多个 consumer。
+        """
+        if self._started:
+            return
+        self._queue = Queue()
+        self._consumer_task = asyncio.create_task(self._consume())
+        self._started = True
+        logger.info("[RL-11] 限流告警后台消费器已启动")
+
+    async def stop(self):
+        """停止后台消费 task（app lifespan shutdown）。幂等且可安全重复调用。"""
+        self._started = False
+        task = self._consumer_task
+        self._consumer_task = None
+        self._queue = None
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        logger.info("[RL-11] 限流告警后台消费器已停止")
+
+    async def _consume(self):
+        """后台消费协程：从队列取告警并推送飞书 Webhook。"""
+        queue = self._queue
+        assert queue is not None
+        while True:
+            alert = await queue.get()
+            try:
+                svc = self._get_notification_service()
+                if svc is None:
+                    logger.warning(f"[RL-11] 告警丢弃 (NotificationService 不可用): {alert.message}")
+                else:
+                    await svc.send_alert(alert.message)
+                    logger.warning(f"[RL-11] 告警已推送: [{alert.severity}] {alert.message}")
+            except Exception as e:
+                logger.error(f"[RL-11] 告警推送异常: {e}", alert=alert.message)
+            finally:
+                queue.task_done()
 
     def get_status(self) -> dict:
         """获取监控器当前状态（用于调试/可观测性）"""

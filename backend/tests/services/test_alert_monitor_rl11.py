@@ -13,8 +13,9 @@ RL-11: 限流告警监控器单测
 - Throttler 集成: on_rate_limit 自动调用告警监控器
 """
 
+import asyncio
 import time
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -27,6 +28,8 @@ from backend.services.datasource.alert_monitor import (
 def monitor():
     m = RateLimitAlertMonitor()
     m.reset()
+    # 默认 mock 掉飞书推送，避免测试中真实发送 Webhook 噪音（无 send_alert 断言依赖）
+    m._notification_service = AsyncMock()
     return m
 
 
@@ -241,3 +244,48 @@ class TestThrottlerIntegration:
             call_kwargs = mock_monitor.on_rate_limit_event.call_args.kwargs
             assert call_kwargs["source"] == "test_source"
             assert call_kwargs["category"] == "rate_limit"
+
+
+# ─────────────────────────────────────────
+# 异步队列消费 (RL-11 重构: asyncio.Queue + 后台 consumer)
+# ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_alert_queue_consumer_sends(monitor):
+    """告警应入队并由后台 consumer 异步推送到飞书 Webhook（限流回调非阻塞）"""
+    mock_svc = AsyncMock()
+    monitor._notification_service = mock_svc
+    await monitor.start()
+    try:
+        monitor.on_rate_limit_event("yahoo", "ip_blocked", 300, 1)
+        # 等待后台 consumer 取出并发送
+        for _ in range(100):
+            if mock_svc.send_alert.await_count > 0:
+                break
+            await asyncio.sleep(0.01)
+        mock_svc.send_alert.assert_awaited_once()
+        # 入队后不应阻塞限流回调（on_rate_limit_event 已同步返回）
+    finally:
+        await monitor.stop()
+
+
+@pytest.mark.asyncio
+async def test_alert_queue_start_idempotent(monitor):
+    """start() 幂等：重复调用不会创建多个 consumer task"""
+    await monitor.start()
+    try:
+        task1 = monitor._consumer_task
+        await monitor.start()
+        assert monitor._consumer_task is task1
+    finally:
+        await monitor.stop()
+
+
+def test_alert_fallback_sync_when_not_started(monitor):
+    """未启动后台消费器时，降级为同步 asyncio.run 发送（不抛异常、保证不丢）"""
+    mock_svc = AsyncMock()
+    monitor._notification_service = mock_svc
+    with patch("asyncio.run") as mock_run:
+        monitor.on_rate_limit_event("yahoo", "ip_blocked", 300, 1)
+        mock_run.assert_called_once()
