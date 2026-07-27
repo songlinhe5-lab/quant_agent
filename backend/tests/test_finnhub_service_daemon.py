@@ -30,6 +30,25 @@ def _make_cancelling_sleep(after_n=0):
     return _fake_sleep
 
 
+def _flush_insider_redis():
+    """清空持久化 redis 中 insider 跑马灯相关的残留键。
+
+    CI 使用跨运行持久化的共享 redis, 历史 job 可能已写入当日
+    `quant:insider_dedup:*` 去重键。一旦本测试的 redis mock 因并行时序
+    偶发未生效而落到真实 redis, 已存在的去重键会让 `set nx` 返回 falsy,
+    从而跳过 `zadd` 导致断言失败。运行前主动清空这些键以排除跨运行污染。
+    """
+    try:
+        from backend.core.redis_client import redis_client as _rc
+
+        for key in _rc.keys("quant:insider_dedup:*"):
+            _rc.delete(key)
+        _rc.delete("quant:insider_marquee")
+    except Exception:
+        # redis 不可用时跳过, 不影响 mock 路径
+        pass
+
+
 class TestMarketDaemon:
     """market_daemon 守护进程测试（已拆分至独立模块，仅 Master 运行）"""
 
@@ -200,6 +219,7 @@ class TestMarketDaemon:
 
         from backend.services.market_daemon import _insider_transactions_marquee_daemon
 
+        _flush_insider_redis()
         today_str = _dt.now().strftime("%Y-%m-%d")
         tx = {"change": 20000, "transaction_price": 100.0, "date": today_str, "name": "CEO Cook"}
         with (
@@ -218,6 +238,7 @@ class TestMarketDaemon:
     async def test_insider_marquee_daemon_old_txn_skipped(self, service):
         from backend.services.market_daemon import _insider_transactions_marquee_daemon
 
+        _flush_insider_redis()
         tx = {"change": 20000, "transaction_price": 100.0, "date": "2020-01-01", "name": "CEO Cook"}
         with (
             patch(f"{DM}.asyncio.sleep", new=_make_cancelling_sleep(1)),
