@@ -312,13 +312,18 @@ class TestMacroDashboard:
         assert resp.status_code == 200
 
     def test_dashboard_aggregates_all_sources(self, client):
-        """缓存未命中:并发聚合所有数据源"""
+        """缓存未命中:并发聚合所有数据源。
+
+        ⚠️ dashboard 路由 asyncio.gather 了 6 个数据源 (含 _fetch_margin_trading_data),
+        必须全部 mock, 否则未 mock 的那个会发起真实慢调用泄漏, 拖慢整轮 CI。
+        """
         with (
             patch("backend.app.macro_app.redis_client") as m_redis,
             patch("backend.app.macro_app.get_macro_assets", new_callable=AsyncMock) as m_assets,
             patch("backend.app.macro_app._fetch_macro_calendar_data", new_callable=AsyncMock) as m_cal,
             patch("backend.app.macro_app.get_macro_news", new_callable=AsyncMock) as m_news,
             patch("backend.app.macro_app._fetch_earnings_calendar_data", new_callable=AsyncMock) as m_earn,
+            patch("backend.app.macro_app._fetch_margin_trading_data", new_callable=AsyncMock) as m_margin,
             patch("backend.app.macro_app._fetch_sector_fund_flow", new_callable=AsyncMock) as m_sector,
         ):
             m_redis.get = AsyncMock(return_value=None)
@@ -330,9 +335,11 @@ class TestMacroDashboard:
             m_cal.return_value = {"status": "success", "data": []}
             m_news.return_value = {"status": "success", "data": []}
             m_earn.return_value = {"status": "success", "data": []}
+            m_margin.return_value = {"status": "success", "data": {}}
             m_sector.return_value = {"status": "success", "data": {}}
             resp = client.get("/api/v1/macro/dashboard")
         assert resp.status_code == 200
         data = resp.json().get("data", resp.json())
         assert data["status"] == "success"
         assert "macroAssets" in data["data"]
+        m_margin.assert_awaited_once()

@@ -388,9 +388,12 @@ class TestStrategyContract:
         assert bool(entries.iloc[10]) is True
         assert bool(short_entries.iloc[50]) is True  # 稠密编码下 -1 = 做空
 
+    @pytest.mark.slow
     def test_grid_search_numba_event_contract(self):
         # 💡 端到端回归：用户原始 ChandelierExitStrategy (模块级 @njit + generate_signals)
         # 必须能跑通网格搜索并产出真实指标，不再被安全风控拦截
+        # ⏱️ 该测试需 numba JIT 编译一对 @njit 函数 (~10s), 属计算必然成本,
+        # 标记为 slow 以便快速迭代用 `pytest -m "not slow"` 跳过, 不拖慢主反馈循环
         numba_source = (
             "import numpy as np\n"
             "from numba import njit\n"
