@@ -370,10 +370,33 @@ async def switch_trading_mode(request: Request, req: ModeSwitchReq, db: Session 
     }
 
 
+# BE-15: JWT 鉴权配置（与 market.py 保持一致）
+_SECRET_KEY = os.getenv("SECRET_KEY", "your-super-secret-key-keep-it-safe")
+_ALGORITHM = "HS256"
+
+
 @router.websocket("/ws")
 async def websocket_oms_updates(websocket: WebSocket):
     """Websocket 接口：实时推送 OMS 订单、成交与机器人状态"""
+    # BE-15: 连接鉴权 — 与 market/quotes/ws 对齐，从 QueryString 提取 token 并校验
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=4001, reason="Missing authentication token")
+        return
+    try:
+        from jose import jwt as _jwt
+
+        payload = _jwt.decode(token, _SECRET_KEY, algorithms=[_ALGORITHM])
+        username = payload.get("sub")
+        if not username:
+            await websocket.close(code=4003, reason="Invalid token payload")
+            return
+    except Exception:
+        await websocket.close(code=4002, reason="Token expired or invalid")
+        return
+
     await websocket.accept()
+    logger.info(f"[OMS WS] 用户 {username} 已连接 (认证通过)")
 
     pubsub = redis_client.pubsub()
 
