@@ -314,7 +314,7 @@ def test_save_black_import_error(test_client, monkeypatch):
     monkeypatch.setattr("builtins.__import__", _fake_import)
     resp = test_client.post(
         "/api/v1/strategy/save",
-        json={"source_code": "x=1", "class_name": "DemoStrategy"},
+        json={"source_code": "x=1", "class_name": "DemoStrategyCovSave"},
     )
     # 降级保存: 走 except ImportError (675-676) -> 仍成功落盘
     assert resp.status_code == 200
