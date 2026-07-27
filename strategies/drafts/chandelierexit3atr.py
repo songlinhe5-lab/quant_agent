@@ -44,7 +44,7 @@ def _generate_signals(opens, highs, lows, closes, volumes, indicators, p1, p2):
     return sig
 
 
-class ChandelierExit3ATR(BaseStrategy):
+class ChandelierExit3ATR(BaseStrategy):  # noqa: F821 (BaseStrategy 由沙箱 globals 运行时注入)
     """吊灯出场策略：多头持有，最高价回撤 mult*ATR 时离场再重新入场。"""
 
     def __init__(self, atr_period=22, atr_multiplier=3.0):
@@ -53,18 +53,18 @@ class ChandelierExit3ATR(BaseStrategy):
 
     def generate_signals(self, df):
         df = df.copy()
-        o = df["Open"].values.astype(np.float64)
-        h = df["High"].values.astype(np.float64)
-        l = df["Low"].values.astype(np.float64)
-        c = df["Close"].values.astype(np.float64)
+        op = df["Open"].values.astype(np.float64)
+        hi = df["High"].values.astype(np.float64)
+        lo = df["Low"].values.astype(np.float64)
+        cl = df["Close"].values.astype(np.float64)
         v = df["Volume"].values.astype(np.float64) if "Volume" in df.columns else np.zeros(len(df))
         sig = _generate_signals(
-            o,
-            h,
-            l,
-            c,
+            op,
+            hi,
+            lo,
+            cl,
             v,
-            _calculate_indicators(o, h, l, c, v, self.atr_period, 0.0),
+            _calculate_indicators(op, hi, lo, cl, v, self.atr_period, 0.0),
             self.atr_period,
             self.atr_multiplier,
         )
