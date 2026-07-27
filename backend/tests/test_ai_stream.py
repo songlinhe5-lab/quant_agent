@@ -54,7 +54,7 @@ def test_ai_stream_protocol(client, fake_narrate):
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("application/x-ndjson")
 
-    events = [json.loads(l) for l in resp.text.split("\n") if l.strip()]
+    events = [json.loads(line) for line in resp.text.split("\n") if line.strip()]
     assert events[0]["event"] == "ping"
 
     deltas = [e for e in events if e["event"] == "delta"]
@@ -76,7 +76,7 @@ def test_ai_stream_error_event_not_interrupt(client, monkeypatch):
 
     resp = client.post("/api/v1/ai/stream", json={"symbol": "TSLA", "change_pct": 3.1})
     assert resp.status_code == 200
-    events = [json.loads(l) for l in resp.text.split("\n") if l.strip()]
+    events = [json.loads(line) for line in resp.text.split("\n") if line.strip()]
     assert events[0]["event"] == "ping"
     assert any(e["event"] == "error" for e in events)  # 下游异常透传为 error 事件
     # error 事件不抛 500、不中断流（流正常结束）
