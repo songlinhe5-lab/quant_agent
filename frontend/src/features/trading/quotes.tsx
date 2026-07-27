@@ -20,6 +20,7 @@ import { ChartErrorBoundary, PanelErrorBoundary } from '@/components/error-bound
 import { useSceneModeStore } from '@/stores/useSceneModeStore'
 import { AnomalyFlash } from '@/features/quotes/anomaly-flash'
 import { NarratorBubble } from '@/features/quotes/narrator-bubble'
+import { CoPilotPanel } from '@/features/quotes/co-pilot-panel'
 import { FloatingWatchlist } from '@/features/quotes/floating-watchlist'
 import { StrategyIDE } from '@/features/strategy/layout/strategy-ide'
 import { MonitorModeLayout } from '@/features/scene/monitor-mode-layout'
@@ -214,6 +215,7 @@ export function QuotesModule() {
             <AnomalyFlash symbol={selectedSymbol} className="h-full">
               <LightweightChartCanvas selectedSymbol={selectedSymbol} selectedPeriod={selectedPeriod} setSelectedPeriod={setSelectedPeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={false} toggleWatchlist={toggleWatchlist} selectedItem={selected} hasData={hasData} syncGroup="default" />
               <NarratorBubble symbol={selectedSymbol} />
+              <CoPilotPanel symbol={selectedSymbol} />
             </AnomalyFlash>
           </ChartErrorBoundary>
         </div>

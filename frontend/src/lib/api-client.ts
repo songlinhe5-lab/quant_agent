@@ -335,6 +335,37 @@ class RestClient {
   patch<T = any>(path: string, body?: unknown): Promise<T> {
     return this.request<T>('PATCH', path, { body })
   }
+
+  /**
+   * 原始流式请求(POST + NDJSON)：返回未解包的 Response，供调用方按行读取流。
+   * 用于 AI-02 解盘副驾 /ai/stream。
+   */
+  async stream(path: string, body?: unknown, signal?: AbortSignal): Promise<Response> {
+    const url = `${this.config.baseURL}${path}`
+    const requestHeaders: HeadersInit = { 'Content-Type': 'application/json' }
+    const token = await getValidAccessToken()
+    if (token) (requestHeaders as Record<string, string>)['Authorization'] = `Bearer ${token}`
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: requestHeaders,
+        body: body ? JSON.stringify(body) : undefined,
+        credentials: this.config.withCredentials ? 'include' : 'omit',
+        signal,
+      })
+      if (!response.ok) {
+        useBackendStatusStore.getState().registerFailure(`流式请求失败 ${response.status}`)
+        throw new ApiError(response.status, `HTTP ${response.status}`)
+      }
+      useBackendStatusStore.getState().registerSuccess()
+      return response
+    } catch (error) {
+      if (error instanceof ApiError) throw error
+      const msg = (error as Error)?.message || '网络异常'
+      useBackendStatusStore.getState().registerFailure(msg)
+      throw new ApiError(500, '网络异常')
+    }
+  }
 }
 
 // ─── SSE Client ────────────────────────────────────────────────────
@@ -421,6 +452,11 @@ class UnifiedApiClient {
 
   delete<T = any>(path: string, config?: { data?: unknown; signal?: AbortSignal }): Promise<T> {
     return this.rest.delete<T>(path, config)
+  }
+
+  /** 原始流式请求(POST + NDJSON)：返回未解包的 Response，供按行读取流。用于 AI-02 解盘副驾 /ai/stream。 */
+  stream(path: string, body?: unknown, signal?: AbortSignal): Promise<Response> {
+    return this.rest.stream(path, body, signal)
   }
 
   // SSE 快捷方法
