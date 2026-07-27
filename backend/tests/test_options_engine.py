@@ -224,3 +224,54 @@ class TestComputeChainGreeks:
         assert results[0]["greeks"]["delta"] > 0  # Call delta > 0
         assert results[1]["greeks"]["delta"] < 0  # Put delta < 0
         assert results[0]["iv"] is not None or results[1]["iv"] is not None
+
+    def test_compute_chain_none_quotes_no_crash(self):
+        """回归: 数据源对流动性差的合约返回显式 None (bid/ask/strike/volume/oi)，
+        必须兜底为数值，不能抛 `'>' not supported between instances of 'NoneType'
+        and 'int'`。这正是 /options/greeks、/options/iv-rank、/options/vol-smile
+        在生产环境返回 500 的根因。"""
+        options_data = [
+            {
+                "strike": 100,
+                "expiry": "2024-12-20",
+                "option_type": "call",
+                "bid": None,  # 无报价
+                "ask": None,
+                "volume": None,
+                "open_interest": None,
+                "days_to_expiry": 30,
+            },
+            {
+                "strike": 105,
+                "expiry": "2024-12-20",
+                "option_type": "put",
+                "bid": 3.0,
+                "ask": 3.5,
+                "volume": 80,
+                "open_interest": 400,
+                "days_to_expiry": None,  # dte 缺失
+            },
+            {
+                # strike 为 None 的极端情形, 不能触发 ZeroDivisionError
+                "strike": None,
+                "expiry": "2024-12-20",
+                "option_type": "call",
+                "bid": 1.0,
+                "ask": 1.2,
+                "volume": 10,
+                "open_interest": 20,
+                "days_to_expiry": 30,
+            },
+        ]
+
+        # 关键断言: 不抛异常
+        results = compute_option_chain_greeks(102.0, 0.05, options_data)
+
+        assert len(results) == 3
+        # 无 mid 价的合约 IV 应回退为 None (而非崩溃)
+        assert results[0]["iv"] is None
+        assert results[0]["mid"] == 0.0
+        # 有效报价的合约仍正常定价
+        assert results[1]["iv"] is not None
+        # strike 为 None 的合约 greeks 应被安全置零, 不抛 ZeroDivisionError
+        assert results[2]["greeks"]["delta"] == 0.0
