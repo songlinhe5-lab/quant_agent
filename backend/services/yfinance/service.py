@@ -139,14 +139,12 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
             if hasattr(self, "_router") and self._router is not None:
                 # 尝试同步关闭路由器（如果可能）
                 try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        # 在异步上下文中，创建任务来关闭
-                        asyncio.create_task(self._router.close())
-                    else:
-                        loop.run_until_complete(self._router.close())
-                except Exception:
-                    pass
+                    loop = asyncio.get_running_loop()
+                    # 在异步上下文中，创建任务来关闭
+                    loop.create_task(self._router.close())
+                except RuntimeError:
+                    # 同步上下文中，开独立 loop 关闭
+                    asyncio.run(self._router.close())
                 self._router = None
         except Exception:
             pass
@@ -185,11 +183,7 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
         try:
             # 3. 关闭路由器 HTTP 客户端
             if self._router is not None:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    await self._router.close()
-                else:
-                    await asyncio.get_event_loop().run_until_complete(self._router.close())
+                await self._router.close()
                 self._router = None
                 print("✅ YFinanceRouter 已关闭")
         except Exception as e:

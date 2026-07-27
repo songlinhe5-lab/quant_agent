@@ -187,14 +187,15 @@ class RateLimitAlertMonitor:
 
         # 异步推送，不阻塞主流程
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                loop.create_task(notification_svc.send_alert(alert.message))
-            else:
-                loop.run_until_complete(notification_svc.send_alert(alert.message))
+            loop = asyncio.get_running_loop()
+            loop.create_task(notification_svc.send_alert(alert.message))
         except RuntimeError:
-            # 没有事件循环，记录日志
-            logger.warning(f"[RL-11] 告警无法推送 (无事件循环): {alert.message}")
+            # 不在事件循环内，开独立 loop 发送
+            try:
+                asyncio.run(notification_svc.send_alert(alert.message))
+            except RuntimeError:
+                # 没有事件循环，记录日志
+                logger.warning(f"[RL-11] 告警无法推送 (无事件循环): {alert.message}")
 
         logger.warning(f"[RL-11] 告警已推送: [{alert.severity}] {alert.message}")
 

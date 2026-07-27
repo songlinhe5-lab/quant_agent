@@ -137,7 +137,7 @@ class TestHttpxMonitoring:
         # 直接调用异步函数
         import asyncio
 
-        asyncio.get_event_loop().run_until_complete(httpx_log_request(mock_request))
+        asyncio.run(httpx_log_request(mock_request))
 
         # 验证时间被记录
         assert id(mock_request) in _request_timers
@@ -154,7 +154,7 @@ class TestHttpxMonitoring:
 
         import asyncio
 
-        asyncio.get_event_loop().run_until_complete(httpx_log_response(mock_response))
+        asyncio.run(httpx_log_response(mock_response))
 
     def test_httpx_log_response_fred(self):
         """测试 FRED API 响应监控"""
@@ -168,7 +168,7 @@ class TestHttpxMonitoring:
 
         import asyncio
 
-        asyncio.get_event_loop().run_until_complete(httpx_log_response(mock_response))
+        asyncio.run(httpx_log_response(mock_response))
 
     def test_httpx_log_response_yahoo(self):
         """测试 Yahoo Finance API 响应监控"""
@@ -182,7 +182,7 @@ class TestHttpxMonitoring:
 
         import asyncio
 
-        asyncio.get_event_loop().run_until_complete(httpx_log_response(mock_response))
+        asyncio.run(httpx_log_response(mock_response))
 
     def test_httpx_log_response_llm(self):
         """测试 LLM API 响应监控"""
@@ -196,7 +196,7 @@ class TestHttpxMonitoring:
 
         import asyncio
 
-        asyncio.get_event_loop().run_until_complete(httpx_log_response(mock_response))
+        asyncio.run(httpx_log_response(mock_response))
 
     def test_httpx_log_response_unknown_service(self):
         """测试未知服务名的处理"""
@@ -210,7 +210,7 @@ class TestHttpxMonitoring:
 
         import asyncio
 
-        asyncio.get_event_loop().run_until_complete(httpx_log_response(mock_response))
+        asyncio.run(httpx_log_response(mock_response))
 
     def test_httpx_log_response_slow_api(self):
         """测试慢速 API 警告日志"""
@@ -233,7 +233,7 @@ class TestHttpxMonitoring:
         import asyncio
 
         with patch("backend.core.middleware.logger") as mock_logger:
-            asyncio.get_event_loop().run_until_complete(httpx_log_response(mock_response))
+            asyncio.run(httpx_log_response(mock_response))
             # 验证警告日志被调用
             mock_logger.warning.assert_called()
 
@@ -257,7 +257,7 @@ class TestHttpxMonitoring:
         import asyncio
 
         with patch("backend.core.middleware.logger") as mock_logger:
-            asyncio.get_event_loop().run_until_complete(httpx_log_response(mock_response))
+            asyncio.run(httpx_log_response(mock_response))
             # 验证警告日志未被调用
             mock_logger.warning.assert_not_called()
 

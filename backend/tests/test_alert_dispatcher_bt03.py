@@ -240,9 +240,7 @@ class TestCooldownGate:
         gate = CooldownGate()
         event = make_event()
         # 内存模式
-        assert not asyncio.get_event_loop().run_until_complete(
-            gate.is_blocked(AlertChannel.IN_APP, event, NotificationPriority.P1)
-        )
+        assert not asyncio.run(gate.is_blocked(AlertChannel.IN_APP, event, NotificationPriority.P1))
 
     def test_fingerprint_deterministic(self):
         """fingerprint 计算确定性"""
@@ -262,14 +260,13 @@ class TestCooldownGate:
         """内存冷却模式：第二次调用被阻断"""
         gate = CooldownGate()
         event = make_event()
-        loop = asyncio.get_event_loop()
 
         # 第一次：不阻断
-        blocked1 = loop.run_until_complete(gate.is_blocked(AlertChannel.FEISHU, event, NotificationPriority.P2))
+        blocked1 = asyncio.run(gate.is_blocked(AlertChannel.FEISHU, event, NotificationPriority.P2))
         assert not blocked1
 
         # 第二次：被阻断（冷却期内）
-        blocked2 = loop.run_until_complete(gate.is_blocked(AlertChannel.FEISHU, event, NotificationPriority.P2))
+        blocked2 = asyncio.run(gate.is_blocked(AlertChannel.FEISHU, event, NotificationPriority.P2))
         assert blocked2
 
 

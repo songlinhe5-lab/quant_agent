@@ -139,7 +139,7 @@ class TestLLMRouter:
         mock_ollama.models.list = AsyncMock(side_effect=Exception("not running"))
         router._ollama_client = mock_ollama
 
-        result = asyncio.get_event_loop().run_until_complete(router.health_check())
+        result = asyncio.run(router.health_check())
         assert result["primary"] is True
         assert result["ollama"] is False
 
