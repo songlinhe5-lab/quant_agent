@@ -14,6 +14,7 @@ from backend.backtest import (
 )
 from backend.backtest.runners import (  # noqa: F401
     _drive_strategy,
+    _numba_jit_globals,
     _signal_entries_exits,
 )
 
@@ -456,3 +457,25 @@ class TestStrategyContract:
         for r in results:
             assert isinstance(r["metrics"]["win_rate"], str)
             assert "%" in r["metrics"]["win_rate"]
+
+
+def test_numba_jit_injected_into_sandbox_globals():
+    """回归测试：沙箱 globals 必须预注入 numba JIT 装饰器。
+
+    修复前 exec 使用双命名空间(globals/locals)，`from numba import njit`
+    把 njit 绑进 locals，而函数装饰器 `@njit` 在定义时从函数的 __globals__
+    (即 globals) 解析，导致 NameError: name 'njit' is not defined
+    (Python 3.13 必现，3.12 偶发)。预注入后装饰器可在 exec 期间解析。
+    """
+    globals_dict = _build_sandbox_globals_for_test()
+    assert "njit" in globals_dict, "沙箱 globals 未注入 njit，@njit 装饰器将 NameError"
+    assert "numba" in globals_dict, "沙箱 globals 未注入 numba 模块"
+    # 确认注入的 njit 确实可被调用/用作装饰器
+    assert callable(globals_dict["njit"])
+
+
+def _build_sandbox_globals_for_test():
+    # 复用 runners 内部的构建逻辑，避免与具体实现耦合过深
+    from backend.backtest.runners import _build_sandbox_globals
+
+    return _build_sandbox_globals()

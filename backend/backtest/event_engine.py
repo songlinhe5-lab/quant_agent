@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import vectorbt as vbt
 
-from .runners import _drive_strategy, _signal_entries_exits
+from .runners import _drive_strategy, _numba_jit_globals, _signal_entries_exits
 from .sandbox import (  # noqa: F401
     SAFE_BUILTINS,
     BaseStrategySandbox,
@@ -287,6 +287,8 @@ def run_dynamic_sandbox_backtest(
         "DataFrame": pd.DataFrame,
         "Series": pd.Series,
         "BaseStrategy": BaseStrategySandbox,
+        # 预注入 Numba JIT 装饰器，使 @njit 在 exec 双命名空间下可解析
+        **_numba_jit_globals(),
     }
 
     with SandboxTimeoutTracer(timeout_seconds=5.0):

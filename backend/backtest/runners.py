@@ -23,6 +23,24 @@ from .sandbox import (  # noqa: F401
 )
 
 
+def _numba_jit_globals() -> dict:
+    """返回可在沙箱 globals 中预注入的 Numba JIT 装饰器映射。
+
+    若运行环境未安装 numba，则安全地返回空字典，不影响非 Numba 策略。
+    """
+    out: dict = {}
+    try:
+        import numba  # noqa: WPS433 (沙箱白名单模块)
+    except Exception:
+        return out
+    out["numba"] = numba
+    for _jit in ("njit", "jit", "vectorize", "guvectorize", "cfunc", "stencil"):
+        _fn = getattr(numba, _jit, None)
+        if _fn is not None:
+            out[_jit] = _fn
+    return out
+
+
 def _build_sandbox_globals():
     """构建沙箱执行环境的全局命名空间"""
     return {
@@ -48,6 +66,12 @@ def _build_sandbox_globals():
         "DataFrame": pd.DataFrame,
         "Series": pd.Series,
         "BaseStrategy": BaseStrategySandbox,
+        # 预注入 Numba JIT 装饰器：exec 使用双命名空间(globals/locals)时，
+        # `from numba import njit` 会把 njit 绑进 locals，而函数装饰器 `@njit`
+        # 在定义时从函数的 __globals__(即 globals) 解析，导致 NameError。
+        # 直接注入 globals 可使装饰器在 exec 期间解析，消除命名空间陷阱
+        # 与 Python 版本差异 (3.12 偶发可解析、3.13 必现 NameError)。
+        **_numba_jit_globals(),
     }
 
 
