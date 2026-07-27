@@ -26,6 +26,9 @@ def _make_gateway():
     gw._fred = MagicMock()
     gw._dbnomics = MagicMock()
     gw._rbi = MagicMock()
+    # 默认把降级用的真实 yfinance 方法替换掉, 避免 fork+xdist 子进程里
+    # 真实 import yfinance / numpy 计算触发 segfault 把 worker 跑崩
+    gw._option_chain_yfinance = AsyncMock(return_value=None)
     return gw
 
 
@@ -123,9 +126,26 @@ def test_enrich_option_chain_with_spot():
 @pytest.mark.asyncio
 async def test_get_option_chain_normal():
     gw = _make_gateway()
-    gw._futu.get_option_chain = AsyncMock(return_value={"status": "success", "options": [{"option_type": "CALL"}]})
+    # 含定价字段(且带 underlying_price) -> 不走 yfinance 降级, 直接 enrich Greeks
+    gw._futu.get_option_chain = AsyncMock(
+        return_value={
+            "status": "success",
+            "underlying_price": 100.0,
+            "options": [
+                {
+                    "option_type": "CALL",
+                    "strike_price": 100,
+                    "bid": 1,
+                    "ask": 2,
+                    "implied_volatility": 0.2,
+                    "days_to_expiry": 30,
+                }
+            ],
+        }
+    )
     out = await gw.get_option_chain("US.AAPL")
     assert out["status"] == "success"
+    assert "calls" in out
 
 
 @pytest.mark.asyncio
