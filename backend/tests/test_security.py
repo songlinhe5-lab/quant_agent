@@ -137,7 +137,7 @@ class TestVerifyInternalRequest:
         # 不应抛出异常
         import asyncio
 
-        asyncio.get_event_loop().run_until_complete(verify_internal_request(request))
+        asyncio.run(verify_internal_request(request))
 
     def test_missing_signature_header(self):
         """缺少签名头抛出异常"""
@@ -147,7 +147,7 @@ class TestVerifyInternalRequest:
         with pytest.raises(HTTPException) as exc_info:
             import asyncio
 
-            asyncio.get_event_loop().run_until_complete(verify_internal_request(request))
+            asyncio.run(verify_internal_request(request))
 
         assert exc_info.value.status_code == 401
         assert "Missing X-Internal-Sig" in exc_info.value.detail
@@ -162,7 +162,7 @@ class TestVerifyInternalRequest:
         with pytest.raises(HTTPException) as exc_info:
             import asyncio
 
-            asyncio.get_event_loop().run_until_complete(verify_internal_request(request))
+            asyncio.run(verify_internal_request(request))
 
         assert exc_info.value.status_code == 401
         assert "Invalid internal signature" in exc_info.value.detail
