@@ -66,14 +66,13 @@ class TestBaseToolCache:
 
     def test_set_and_get_l1_cache(self):
         """测试 L1 内存缓存读写"""
-        loop = asyncio.get_event_loop()
 
         async def _test():
             await self.tool.set_cached_data("test_key", {"value": 42})
             result = await self.tool.get_cached_data("test_key", ttl=60)
             return result
 
-        result = loop.run_until_complete(_test())
+        result = asyncio.run(_test())
         assert result == {"value": 42}
 
     def test_cache_expiry(self):
@@ -82,8 +81,6 @@ class TestBaseToolCache:
 
         from hermes_agent.tools.base import BaseTool
 
-        loop = asyncio.get_event_loop()
-
         async def _test():
             await self.tool.set_cached_data("expire_key", {"value": 1})
             # 手动修改缓存时间为过去
@@ -91,14 +88,13 @@ class TestBaseToolCache:
             result = await self.tool.get_cached_data("expire_key", ttl=60)
             return result
 
-        result = loop.run_until_complete(_test())
+        result = asyncio.run(_test())
         assert result is None  # 已过期
 
     def test_cache_max_size_eviction(self):
         """测试缓存大小限制"""
         from hermes_agent.tools.base import BaseTool
 
-        loop = asyncio.get_event_loop()
         BaseTool._max_cache_size = 3
 
         async def _test():
@@ -106,7 +102,7 @@ class TestBaseToolCache:
                 await self.tool.set_cached_data(f"key_{i}", i)
             return len(BaseTool._shared_cache)
 
-        size = loop.run_until_complete(_test())
+        size = asyncio.run(_test())
         assert size <= 3
 
         # 恢复
@@ -123,9 +119,8 @@ class TestFundamentalDataTool:
         from hermes_agent.tools.fundamental_data_tool import FundamentalDataTool
 
         tool = FundamentalDataTool()
-        loop = asyncio.get_event_loop()
 
-        result = loop.run_until_complete(tool.run(ticker=""))
+        result = asyncio.run(tool.run(ticker=""))
         assert result["status"] == "error"
         assert "ticker" in result["message"].lower() or "代码" in result["message"]
 
@@ -155,8 +150,7 @@ class TestFundamentalDataTool:
         mock_client_class.return_value = mock_client
 
         tool = FundamentalDataTool()
-        loop = asyncio.get_event_loop()
-        result = loop.run_until_complete(tool.run(ticker="AAPL"))
+        result = asyncio.run(tool.run(ticker="AAPL"))
 
         assert result.get("pe") == 15.0 or "status" not in result
 
@@ -171,8 +165,7 @@ class TestFundamentalDataTool:
             return_value={"status": "error", "message": "请求后端接口失败 (重试 3 次): Connection refused"}
         )
 
-        loop = asyncio.get_event_loop()
-        result = loop.run_until_complete(tool.run(ticker="AAPL"))
+        result = asyncio.run(tool.run(ticker="AAPL"))
 
         assert result["status"] == "error"
         assert "message" in result

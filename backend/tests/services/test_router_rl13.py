@@ -117,7 +117,7 @@ class TestSelectNode:
         # 限流节点 A
         rate_limit_registry.get_throttler("node_a").on_rate_limit()
 
-        selected = asyncio.get_event_loop().run_until_complete(router._select_node("cap"))
+        selected = asyncio.run(router._select_node("cap"))
         # 应该选择未限流的 B（即使 weight 更低）
         assert selected.name == "node_b"
 
@@ -137,7 +137,7 @@ class TestSelectNode:
         )
         # 两个都不限流
 
-        selected = asyncio.get_event_loop().run_until_complete(router._select_node("cap"))
+        selected = asyncio.run(router._select_node("cap"))
         assert selected.name == "node_a"
 
     def test_prefers_lower_rate_limits_when_equal_weight(self, router):
@@ -162,13 +162,13 @@ class TestSelectNode:
         throttler_b = rate_limit_registry.get_throttler("node_b")
         throttler_b.on_rate_limit()
 
-        selected = asyncio.get_event_loop().run_until_complete(router._select_node("cap"))
+        selected = asyncio.run(router._select_node("cap"))
         # B 限流次数更少，优先选择
         assert selected.name == "node_b"
 
     def test_returns_none_when_no_healthy(self, router):
         """无健康节点时返回 None"""
-        selected = asyncio.get_event_loop().run_until_complete(router._select_node("nonexistent_cap"))
+        selected = asyncio.run(router._select_node("nonexistent_cap"))
         assert selected is None
 
 
@@ -188,7 +188,7 @@ class TestHealthStatus:
         # 触发限流
         rate_limit_registry.get_throttler("test_node").on_rate_limit()
 
-        health = asyncio.get_event_loop().run_until_complete(router.get_health_status())
+        health = asyncio.run(router.get_health_status())
         node_info = health["nodes"]["test_node"]
         assert "is_throttled" in node_info
         assert "consecutive_rate_limits" in node_info
@@ -206,7 +206,7 @@ class TestHealthStatus:
             capabilities=["cap"],
         )
 
-        health = asyncio.get_event_loop().run_until_complete(router.get_health_status())
+        health = asyncio.run(router.get_health_status())
         node_info = health["nodes"]["clean_node"]
         assert node_info["is_throttled"] is False
         assert node_info["consecutive_rate_limits"] == 0

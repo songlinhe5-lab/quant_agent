@@ -165,11 +165,9 @@ class TestCircuitBreakerAdvanced:
         async def fail_fn():
             raise RuntimeError("fail")
 
-        loop = asyncio.get_event_loop()
-
         # 触发熔断
         with pytest.raises(RuntimeError):
-            loop.run_until_complete(cb.call("half_open_test", fail_fn))
+            asyncio.run(cb.call("half_open_test", fail_fn))
 
         assert cb.get_state("half_open_test") == CircuitState.OPEN
 
@@ -193,15 +191,13 @@ class TestCircuitBreakerAdvanced:
         async def ok_fn():
             return "ok"
 
-        loop = asyncio.get_event_loop()
-
         # 服务 A 失败
         for _ in range(2):
             with pytest.raises(RuntimeError):
-                loop.run_until_complete(cb.call("svc_a", fail_fn))
+                asyncio.run(cb.call("svc_a", fail_fn))
 
         # 服务 B 正常
-        result = loop.run_until_complete(cb.call("svc_b", ok_fn))
+        result = asyncio.run(cb.call("svc_b", ok_fn))
         assert result == "ok"
 
         # A 熔断，B 正常

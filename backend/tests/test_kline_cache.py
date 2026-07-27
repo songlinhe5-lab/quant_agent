@@ -391,4 +391,4 @@ def asyncio_run(coro):
     """同步包装异步调用"""
     import asyncio
 
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
