@@ -15,7 +15,26 @@ os.environ.setdefault("REDIS_PASSWORD", "")
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from backend.services.market_engine import ConnectionManager, manager, update_quote_to_redis
+from backend.services.market_engine import (
+    ConnectionManager,
+    manager,
+    update_quote_to_redis,
+    update_trade_to_redis,
+)
+
+
+async def _run_update_quote(ticker, data, settle=0.05):
+    """在独立事件循环内运行行情写入，并等待后台 alert 任务 (create_task) 执行完毕。
+
+    使用 asyncio.run 而非 get_event_loop().run_until_complete，避免 Python 3.12 +
+    pytest-asyncio(mode=AUTO) 下复用/污染 pytest 管理的事件循环导致 worker 死锁/卡死。
+    """
+    await update_quote_to_redis(ticker, data)
+    await asyncio.sleep(settle)
+
+
+async def _run_update_trade(ticker, data):
+    await update_trade_to_redis(ticker, data)
 
 
 # ─── ConnectionManager 基础行为 ────────────────────────────────────────
@@ -152,7 +171,7 @@ class TestUpdateQuoteToRedis:
             "bids": [{"price": 149.0, "size": 10}],
             "asks": [{"price": 151.0, "size": 10}],
         }
-        asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
+        asyncio.run(_run_update_quote("US.AAPL", quote_data, settle=0))
         mock_raw_redis.hset.assert_awaited_once()
         mock_raw_redis.publish.assert_awaited_once()
 
@@ -168,7 +187,7 @@ class TestUpdateQuoteToRedis:
             "volume_str": "--",
             "source": "futu",
         }
-        asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
+        asyncio.run(_run_update_quote("US.AAPL", quote_data, settle=0))
         mock_raw_redis.hset.assert_awaited_once()
 
     @patch("backend.services.market_engine.redis_client")
@@ -196,8 +215,7 @@ class TestUpdateQuoteToRedis:
         send_alert_mock = AsyncMock()
         with patch("backend.services.market_engine.notification_service") as mock_notify:
             mock_notify.send_alert = send_alert_mock
-            asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
-            asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.05))
+            asyncio.run(_run_update_quote("US.AAPL", quote_data))
             send_alert_mock.assert_called_once()
 
 
@@ -305,8 +323,7 @@ class TestUpdateQuoteToRedisAlerts:
         send_alert_mock = AsyncMock()
         with patch("backend.services.market_engine.notification_service") as mock_notify:
             mock_notify.send_alert = send_alert_mock
-            asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
-            asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.05))
+            asyncio.run(_run_update_quote("US.AAPL", quote_data))
             send_alert_mock.assert_called_once()
 
     @patch("backend.services.market_engine.redis_client")
@@ -327,8 +344,7 @@ class TestUpdateQuoteToRedisAlerts:
         send_alert_mock = AsyncMock()
         with patch("backend.services.market_engine.notification_service") as mock_notify:
             mock_notify.send_alert = send_alert_mock
-            asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
-            asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.05))
+            asyncio.run(_run_update_quote("US.AAPL", quote_data))
             send_alert_mock.assert_called_once()
 
     @patch("backend.services.market_engine.redis_client")
@@ -349,8 +365,7 @@ class TestUpdateQuoteToRedisAlerts:
         send_alert_mock = AsyncMock()
         with patch("backend.services.market_engine.notification_service") as mock_notify:
             mock_notify.send_alert = send_alert_mock
-            asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
-            asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.05))
+            asyncio.run(_run_update_quote("US.AAPL", quote_data))
             send_alert_mock.assert_called_once()
 
     @patch("backend.services.market_engine.redis_client")
@@ -370,7 +385,7 @@ class TestUpdateQuoteToRedisAlerts:
             "source": "futu",
         }
         # ValueError 被 except 捕获，不应抛异常
-        asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
+        asyncio.run(_run_update_quote("US.AAPL", quote_data, settle=0))
         assert True
 
     @patch("backend.services.market_engine.redis_client")
@@ -391,15 +406,13 @@ class TestUpdateQuoteToRedisAlerts:
         send_alert_mock = AsyncMock()
         with patch("backend.services.market_engine.notification_service") as mock_notify:
             mock_notify.send_alert = send_alert_mock
-            asyncio.get_event_loop().run_until_complete(update_quote_to_redis("US.AAPL", quote_data))
-            asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.05))
+            asyncio.run(_run_update_quote("US.AAPL", quote_data))
             send_alert_mock.assert_not_called()
 
 
 # ─── update_trade_to_redis ────────────────────────────────────────────
 class TestUpdateTradeToRedis:
     def test_writes_to_stream_and_publishes(self):
-        from backend.services.market_engine import update_trade_to_redis
 
         fake_redis = AsyncMock()
         mgr = ConnectionManager()
@@ -410,14 +423,13 @@ class TestUpdateTradeToRedis:
         me.manager.raw_redis = fake_redis
         try:
             fake_trade_data = b"\x08\x01"
-            asyncio.get_event_loop().run_until_complete(update_trade_to_redis("US.AAPL", fake_trade_data))
+            asyncio.run(_run_update_trade("US.AAPL", fake_trade_data))
             fake_redis.xadd.assert_awaited_once()
             fake_redis.publish.assert_awaited_once()
         finally:
             me.manager.raw_redis = original_raw_redis
 
     def test_exception_handling(self):
-        from backend.services.market_engine import update_trade_to_redis
 
         fake_redis = AsyncMock()
         fake_redis.xadd = AsyncMock(side_effect=Exception("Redis down"))
@@ -427,7 +439,7 @@ class TestUpdateTradeToRedis:
         me.manager.raw_redis = fake_redis
         try:
             # 异常被捕获，不应抛出
-            asyncio.get_event_loop().run_until_complete(update_trade_to_redis("US.AAPL", b"\x08\x01"))
+            asyncio.run(_run_update_trade("US.AAPL", b"\x08\x01"))
             assert True
         finally:
             me.manager.raw_redis = original_raw_redis
