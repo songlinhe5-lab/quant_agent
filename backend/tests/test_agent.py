@@ -150,8 +150,7 @@ class TestToolRegistryExecute:
         from hermes_agent.tool_registry import ToolRegistry
 
         registry = ToolRegistry()
-        loop = asyncio.get_event_loop()
-        result = loop.run_until_complete(registry.execute("nonexistent_tool"))
+        result = asyncio.run(registry.execute("nonexistent_tool"))
         assert result["status"] == "error"
         assert "未找到" in result["message"]
 
@@ -172,8 +171,7 @@ class TestToolRegistryExecute:
         mock_tool.run = crashing_run
         registry.tools["crash_tool"] = mock_tool
 
-        loop = asyncio.get_event_loop()
-        result = loop.run_until_complete(registry.execute("crash_tool"))
+        result = asyncio.run(registry.execute("crash_tool"))
         assert result["status"] == "error"
         assert "boom" in result["message"]
 
@@ -203,11 +201,10 @@ class TestAsyncTokenBucket:
         from hermes_agent.tool_registry import AsyncTokenBucket
 
         bucket = AsyncTokenBucket(capacity=3, fill_rate=1.0)
-        loop = asyncio.get_event_loop()
 
         # 应能立即获取 3 个令牌
         for _ in range(3):
-            loop.run_until_complete(bucket.acquire())
+            asyncio.run(bucket.acquire())
 
     def test_rate_limiting(self):
         """超出容量后需等待"""
@@ -216,14 +213,13 @@ class TestAsyncTokenBucket:
         from hermes_agent.tool_registry import AsyncTokenBucket
 
         bucket = AsyncTokenBucket(capacity=2, fill_rate=10.0)
-        loop = asyncio.get_event_loop()
 
         start = time.monotonic()
         # 消耗 2 个初始令牌
-        loop.run_until_complete(bucket.acquire())
-        loop.run_until_complete(bucket.acquire())
+        asyncio.run(bucket.acquire())
+        asyncio.run(bucket.acquire())
         # 第 3 个需要等待（约 0.1s）
-        loop.run_until_complete(bucket.acquire())
+        asyncio.run(bucket.acquire())
         elapsed = time.monotonic() - start
 
         # 应该有一定等待时间

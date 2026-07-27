@@ -95,7 +95,7 @@ async def test_heartbeat_disconnect_immediate():
 
 
 async def test_heartbeat_deadline():
-    deadline = asyncio.get_event_loop().time() + 0.15
+    deadline = asyncio.get_running_loop().time() + 0.15
 
     async def src():
         await asyncio.sleep(10)

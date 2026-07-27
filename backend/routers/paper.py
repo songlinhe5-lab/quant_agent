@@ -202,12 +202,14 @@ def _load_benchmark_nav(benchmark_ref: Optional[str], days: int) -> Optional[pd.
 
         from backend.core.redis_client import redis_client
 
-        # 尝试从 Redis 获取回测报告快照
+        # 尝试从 Redis 获取回测报告快照（fire-and-forget）
         key = f"backtest:{benchmark_ref}:nav"
-        asyncio.get_event_loop()
-        asyncio.ensure_future(redis_client.get(key))
-        # 同步兼容：使用 run_until_complete 或降级
-        # 简化处理：直接返回 None，由前端后续通过异步 API 获取
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(redis_client.get(key))
+        except RuntimeError:
+            # 当前无事件循环，降级跳过（由前端异步 API 回填）
+            pass
         return None
     except Exception:
         return None

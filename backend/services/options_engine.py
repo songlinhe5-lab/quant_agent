@@ -350,17 +350,23 @@ def compute_option_chain_greeks(
     results = []
 
     for opt in options_data:
-        strike = opt.get("strike", 0)
+        # ⚠️ 数据源可能对无报价/流动性差的合约返回显式 None (而非缺失键)。
+        # `.get(k, 0)` 只在键缺失时兜底, 无法拦截 None; 若不处理, 后续
+        # `bid > 0` / `strike > 0` 等比较会抛
+        # `'>' not supported between instances of 'NoneType' and 'int'`,
+        # 导致 /options/greeks、/options/iv-rank、/options/vol-smile 全部 500。
+        # 用 `or 0` 将 None/空值统一兜底为数值。
+        strike = opt.get("strike") or 0
         expiry = opt.get("expiry", "")
         opt_type = opt.get("option_type", "call")
-        bid = opt.get("bid", 0)
-        ask = opt.get("ask", 0)
-        volume = opt.get("volume", 0)
-        oi = opt.get("open_interest", 0)
-        dte = opt.get("days_to_expiry", 30)
+        bid = opt.get("bid") or 0
+        ask = opt.get("ask") or 0
+        volume = opt.get("volume") or 0
+        oi = opt.get("open_interest") or 0
+        dte = opt.get("days_to_expiry") or 30
 
         # 到期时间 (年)
-        T = max(dte / 365.0, 1 / 365.0)
+        T = max(float(dte) / 365.0, 1 / 365.0)
 
         # 中间价
         mid_price = (bid + ask) / 2 if bid > 0 and ask > 0 else max(bid, ask)
@@ -371,9 +377,20 @@ def compute_option_chain_greeks(
         if not iv and mid_price > 0:
             iv = implied_vol(mid_price, spot_price, strike, T, risk_free_rate, opt_type)
 
-        # 计算 Greeks (使用 IV 或默认 30%)
+        # 计算 Greeks (使用 IV 或默认 30%)；行权价非法(K<=0)时无法定价，
+        # 置零字典避免 log(S/K) 触发 ZeroDivisionError (数据源可能缺失 strike)
         sigma = iv if iv and iv > 0 else 0.30
-        greeks = bs_greeks(spot_price, strike, T, risk_free_rate, sigma, opt_type)
+        if strike > 0:
+            greeks = bs_greeks(spot_price, strike, T, risk_free_rate, sigma, opt_type)
+            greeks_dict = greeks.to_dict()
+        else:
+            greeks_dict = {
+                "delta": 0.0,
+                "gamma": 0.0,
+                "theta": 0.0,
+                "vega": 0.0,
+                "rho": 0.0,
+            }
 
         results.append(
             {
@@ -387,7 +404,7 @@ def compute_option_chain_greeks(
                 "open_interest": oi,
                 "days_to_expiry": dte,
                 "iv": round(iv * 100, 2) if iv else None,
-                "greeks": greeks.to_dict(),
+                "greeks": greeks_dict,
                 "moneyness": round(spot_price / strike, 4) if strike > 0 else 0,
             }
         )
