@@ -3,11 +3,11 @@ Market Router 补充测试 - 覆盖 /search, /news, /fundamental, /holders 等�
 TEST-18: 提升 market.py 覆盖率
 """
 
+import json
 import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -154,18 +154,25 @@ class TestGetTopHolders:
 
 
 # ─── /market/insider-marquee ───────────────────────────────────────
-@pytest.mark.skip(reason="端点返回 500，需要深入排查")
 class TestInsiderMarquee:
-    @patch("backend.routers.market.market_data_gateway")
-    def test_success(self, mock_fh):
-        mock_fh.get_insider_transactions = AsyncMock(
-            return_value={"status": "success", "data": [{"name": "Test", "transactionType": "Buy"}]}
-        )
+    # RL-11 修复：端点直接从 Redis ZSET (quant:insider_marquee) 读取，并不依赖
+    # market_data_gateway；原测试 mock 错依赖导致真实 redis 调用抛异常 -> 500。
+    # 改为整体 mock backend.routers.market.redis_client（与本文件其他用例一致）。
+    @patch("backend.routers.market.redis_client")
+    def test_success(self, mock_rc):
+        mock_rc.zrevrange.return_value = [
+            json.dumps({"name": "Test", "transactionType": "Buy"}),
+            json.dumps({"name": "Test2", "transactionType": "Sell"}),
+        ]
         resp = client.get("/market/insider-marquee?limit=5")
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "success"
+        assert data["data"][0]["name"] == "Test"
 
-    @patch("backend.routers.market.market_data_gateway")
-    def test_error(self, mock_fh):
-        mock_fh.get_insider_transactions = AsyncMock(return_value={"status": "error", "message": "失败"})
+    @patch("backend.routers.market.redis_client")
+    def test_error(self, mock_rc):
+        # 端点契约：redis 读取异常时返回 500（无 400 错误态分支）
+        mock_rc.zrevrange.side_effect = Exception("redis unreachable")
         resp = client.get("/market/insider-marquee")
-        assert resp.status_code == 400
+        assert resp.status_code == 500

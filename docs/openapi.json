@@ -6,6 +6,1011 @@
     "version": "1.1.0"
   },
   "paths": {
+    "/mcp": {
+      "get": {
+        "tags": [
+          "Root"
+        ],
+        "summary": "Mcp Health Check",
+        "description": "兼容 Uptime Kuma 等监控工具的 MCP 探针",
+        "operationId": "mcp_health_check_mcp_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "tags": [
+          "Root"
+        ],
+        "summary": "服务根路径",
+        "description": "默认根路由",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/monitor": {
+      "get": {
+        "tags": [
+          "Root"
+        ],
+        "summary": "Monitor Page",
+        "description": "代理 React 编译后的入口 index.html",
+        "operationId": "monitor_page_monitor_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/sse": {
+      "get": {
+        "tags": [
+          "MCP"
+        ],
+        "summary": "Mcp Sse",
+        "description": "MCP SSE 协议端点：建立长连接，下发双向通讯路由",
+        "operationId": "mcp_sse_mcp_sse_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/message": {
+      "post": {
+        "tags": [
+          "MCP"
+        ],
+        "summary": "Mcp Message",
+        "description": "MCP HTTP 协议端点：接收客户端发来的 JSON-RPC 指令",
+        "operationId": "mcp_message_mcp_message_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "tags": [
+          "System Health"
+        ],
+        "summary": "健康检查（Redis / DB / Futu）",
+        "description": "主健康检查 (AGENTS §10.4)：只验证进程自身，不依赖任何外部依赖。\n即使所有数据源/Redis 不可用，只要进程能响应 HTTP 即返回 200 healthy，\n供 Docker/K8s liveness 探针使用。依赖就绪情况见 /health/ready，全链路诊断见 /health/deep。",
+        "operationId": "health_check_api_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health/live": {
+      "get": {
+        "tags": [
+          "System Health"
+        ],
+        "summary": "存活探针 (liveness)",
+        "description": "Liveness 探针：进程存活即 200，不依赖任何外部依赖（K8s livenessProbe）",
+        "operationId": "health_live_api_v1_health_live_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health/ready": {
+      "get": {
+        "tags": [
+          "System Health"
+        ],
+        "summary": "就绪探针 (readiness)",
+        "description": "Readiness 探针：Redis + Postgres + 至少一个数据源连通才返回 200，\n否则返回 503（K8s readinessProbe：不就绪则不接流量）。",
+        "operationId": "health_ready_api_v1_health_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health/deep": {
+      "get": {
+        "tags": [
+          "System Health"
+        ],
+        "summary": "全链路诊断 (deep)",
+        "description": "全链路诊断：组件健康 + PG + 数据源就绪 + 采集器心跳\n+ WS 连接数 + 线程池使用率 + 事件循环 lag + 熔断器状态。",
+        "operationId": "health_deep_api_v1_health_deep_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cluster": {
+      "get": {
+        "tags": [
+          "System Health"
+        ],
+        "summary": "集群/节点状态总览",
+        "description": "节点状态概览",
+        "operationId": "cluster_status_api_v1_cluster_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhook/uptime-kuma": {
+      "post": {
+        "tags": [
+          "System Health"
+        ],
+        "summary": "Uptime Kuma Webhook",
+        "description": "接收 Uptime Kuma 的 Webhook 报警，触发前端全局通知",
+        "operationId": "uptime_kuma_webhook_api_v1_webhook_uptime_kuma_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Payload"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/suggestions": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Agent 追问建议",
+        "operationId": "get_chat_suggestions_api_v1_chat_suggestions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "refresh_token",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        },
+        "description": "Agent 追问建议\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
+      }
+    },
+    "/api/v1/chat": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Hermes Agent 对话（SSE 流）",
+        "description": "接收前端对话并调用 Hermes Agent (流式 NDJSON)",
+        "operationId": "chat_endpoint_api_v1_chat_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "refresh_token",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "会话列表",
+        "description": "获取历史会话列表 (支持关键字搜索)",
+        "operationId": "get_sessions_api_v1_sessions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "refresh_token",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Delete All Sessions",
+        "description": "删除当前用户的所有历史会话 (冷热两层)",
+        "operationId": "delete_all_sessions_api_v1_sessions_delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "refresh_token",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "会话详情",
+        "description": "获取指定会话的历史详细消息",
+        "operationId": "get_session_history_api_v1_sessions__session_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "refresh_token",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Delete Session",
+        "description": "删除指定的历史会话 (冷热两层)",
+        "operationId": "delete_session_api_v1_sessions__session_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "refresh_token",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refresh Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/yfinance": {
+      "get": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Get Yfinance Setting",
+        "description": "获取 YFinance 当前开关状态",
+        "operationId": "get_yfinance_setting_api_v1_settings_yfinance_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Toggle Yfinance",
+        "description": "前端一键控制 YFinance 兜底开关",
+        "operationId": "toggle_yfinance_api_v1_settings_yfinance_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/YFinanceToggle"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/financial-report": {
+      "get": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Get Financial Report",
+        "description": "读取 reports/ 目录下的本地财报文件",
+        "operationId": "get_financial_report_api_v1_financial_report_get",
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ticker"
+            }
+          },
+          {
+            "name": "chunk_index",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Chunk Index"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/market/futu/status": {
       "get": {
         "tags": [
@@ -64,7 +1069,7 @@
           "Market & Portfolio"
         ],
         "summary": "实时行情快照",
-        "description": "提供给前端的高频统一行情接口（直接过服务高速缓存，不再调用 Tool）",
+        "description": "提供给前端的高频统一行情接口\n\n✅ 已解耦数据源：基于 DataSourcePort Protocol + MarketDataService\n🛡️ 降级策略:\n  - Futu (港美股优先)\n  - AkShare (A 股兜底)\n  - YFinance (加密货币/外汇兜底)\n\nArgs:\n    ticker: 标的代码\n\nReturns:\n    dict: {\"status\": \"success\", \"data\": QuoteData, \"source\": str}\n\nRaises:\n    HTTPException: 所有数据源均失败时抛出 400 错误",
         "operationId": "get_quote_api_v1_market_quote_get",
         "parameters": [
           {
@@ -230,7 +1235,7 @@
           "Market & Portfolio"
         ],
         "summary": "历史 K 线",
-        "description": "提供给前端的 K 线图历史趋势接口（优先 Futu，平滑降级 YFinance）",
+        "description": "提供给前端的 K 线图历史趋势接口\n\n✅ 已解耦数据源：基于 DataSourcePort Protocol + MarketDataService\n🛡️ 降级策略:\n  - Futu (港美股优先)\n  - AkShare (A 股兜底)\n  - YFinance (通用兜底)\n\nArgs:\n    ticker: 标的代码\n    ktype: K 线周期类型\n    num: 向后取多少根 K 线\n\nReturns:\n    dict: {\"status\": \"success\", \"data\": [KLineData]}",
         "operationId": "get_history_api_v1_market_history_get",
         "parameters": [
           {
@@ -304,7 +1309,7 @@
           "Market & Portfolio"
         ],
         "summary": "期权链",
-        "description": "期权链：经 MarketDataGateway（Futu → YFinance 降级）。",
+        "description": "期权链数据接口 (Futu → YFinance 降级)\n\nArgs:\n    ticker: 标的代码\n    expiration_date: 到期日 (YYYY-MM-DD)\n\nReturns:\n    dict: {\"status\": \"success\", \"data\": OptionChain}",
         "operationId": "get_option_chain_api_v1_market_option_chain_get",
         "parameters": [
           {
@@ -368,6 +1373,7 @@
           "Market & Portfolio"
         ],
         "summary": "主力资金流向",
+        "description": "主力资金流向接口\n\nArgs:\n    ticker: 标的代码\n\nReturns:\n    dict: {\"status\": \"success\", \"data\": FundFlowData}",
         "operationId": "get_fund_flow_api_v1_market_fund_flow_get",
         "parameters": [
           {
@@ -412,8 +1418,61 @@
               }
             }
           }
-        },
-        "description": "主力资金流向\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
+        }
+      }
+    },
+    "/api/v1/market/warrant-chain": {
+      "get": {
+        "tags": [
+          "Market & Portfolio"
+        ],
+        "summary": "Get Warrant Chain",
+        "description": "港股窝轮/牛熊证链 (市场多空情绪分析，仅 HK 标的)\n\nArgs:\n    ticker: 港股代码\n\nReturns:\n    dict: {\"status\": \"success\", \"data\": WarrantData}",
+        "operationId": "get_warrant_chain_api_v1_market_warrant_chain_get",
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ticker"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/market/tech-indicators": {
@@ -422,6 +1481,7 @@
           "Market & Portfolio"
         ],
         "summary": "Get Tech Indicators",
+        "description": "技术指标计算接口 (MA/MACD/RSI 等)\n\nArgs:\n    ticker: 标的代码\n    lookback_days: 回溯天数\n\nReturns:\n    dict: {\"status\": \"success\", \"data\": TechIndicatorsData}",
         "operationId": "get_tech_indicators_api_v1_market_tech_indicators_get",
         "parameters": [
           {
@@ -439,7 +1499,7 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "default": 1,
+              "default": 90,
               "title": "Lookback Days"
             }
           }
@@ -476,8 +1536,7 @@
               }
             }
           }
-        },
-        "description": "Get Tech Indicators\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
+        }
       }
     },
     "/api/v1/market/search": {
@@ -486,7 +1545,7 @@
           "Market & Portfolio"
         ],
         "summary": "Search Tickers",
-        "description": "本地离线极速股票代码模糊搜索 (双级缓存防熔断)",
+        "description": "股票代码模糊搜索 (优先本地词库，降级 YFinance)\n\nArgs:\n    q: 搜索关键词\n\nReturns:\n    dict: {\"status\": \"success\", \"data\": [SearchResult]}",
         "operationId": "search_tickers_api_v1_market_search_get",
         "parameters": [
           {
@@ -732,7 +1791,7 @@
           "Market & Portfolio"
         ],
         "summary": "Get Top Holders",
-        "description": "获取沪深港通个股的 Top 机构持仓明细 (南下/北向资金代理追踪)",
+        "description": "获取沪深港通个股的 Top 机构持仓明细 (南下/北向资金代理追踪)\n\nArgs:\n    ticker: 标的代码\n\nReturns:\n    dict: {\"status\": \"success\", \"data\": List[HolderData]}",
         "operationId": "get_top_holders_api_v1_market_holders__ticker__get",
         "parameters": [
           {
@@ -841,7 +1900,7 @@
           "Market & Portfolio"
         ],
         "summary": "Get Insider Transactions",
-        "description": "获取个股高管内幕交易记录，供前端气泡图渲染",
+        "description": "获取个股高管内幕交易记录，供前端气泡图渲染\n\nArgs:\n    ticker: 标的代码\n    limit: 返回数量限制\n\nReturns:\n    dict: {\"status\": \"success\", \"data\": List[InsiderTransactionData]}",
         "operationId": "get_insider_transactions_api_v1_market_insider_transactions_get",
         "parameters": [
           {
@@ -899,6 +1958,516 @@
         }
       }
     },
+    "/api/v1/market-review/latest": {
+      "get": {
+        "tags": [
+          "市场复盘"
+        ],
+        "summary": "Get Latest",
+        "description": "获取指定市场最新一份复盘报告",
+        "operationId": "get_latest_api_v1_market_review_latest_get",
+        "parameters": [
+          {
+            "name": "market",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "市场: A股/港股/美股",
+              "default": "A股",
+              "title": "Market"
+            },
+            "description": "市场: A股/港股/美股"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/market-review/query": {
+      "get": {
+        "tags": [
+          "市场复盘"
+        ],
+        "summary": "Query Review",
+        "description": "精确查询指定日期+市场的复盘",
+        "operationId": "query_review_api_v1_market_review_query_get",
+        "parameters": [
+          {
+            "name": "market",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "市场: A股/港股/美股",
+              "title": "Market"
+            },
+            "description": "市场: A股/港股/美股"
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "日期 YYYY-MM-DD",
+              "title": "Date"
+            },
+            "description": "日期 YYYY-MM-DD"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/market-review/recent": {
+      "get": {
+        "tags": [
+          "市场复盘"
+        ],
+        "summary": "Recent Reviews",
+        "description": "获取最近N天复盘（降序）",
+        "operationId": "recent_reviews_api_v1_market_review_recent_get",
+        "parameters": [
+          {
+            "name": "market",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "市场: A股/港股/美股",
+              "default": "A股",
+              "title": "Market"
+            },
+            "description": "市场: A股/港股/美股"
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 30,
+              "minimum": 1,
+              "description": "最近N天",
+              "default": 3,
+              "title": "Days"
+            },
+            "description": "最近N天"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/market-review/dates": {
+      "get": {
+        "tags": [
+          "市场复盘"
+        ],
+        "summary": "Available Dates",
+        "description": "列出可用复盘日期",
+        "operationId": "available_dates_api_v1_market_review_dates_get",
+        "parameters": [
+          {
+            "name": "market",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "市场: A股/港股/美股",
+              "default": "A股",
+              "title": "Market"
+            },
+            "description": "市场: A股/港股/美股"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 90,
+              "minimum": 1,
+              "default": 30,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/market-review/generate": {
+      "post": {
+        "tags": [
+          "市场复盘"
+        ],
+        "summary": "Trigger Generate",
+        "description": "手动触发复盘生成（调试/补录用）",
+        "operationId": "trigger_generate_api_v1_market_review_generate_post",
+        "parameters": [
+          {
+            "name": "market",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "市场: A股/港股/美股",
+              "title": "Market"
+            },
+            "description": "市场: A股/港股/美股"
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "日期 YYYY-MM-DD，默认今天",
+              "title": "Date"
+            },
+            "description": "日期 YYYY-MM-DD，默认今天"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/briefing/generate": {
+      "post": {
+        "tags": [
+          "早报刊物"
+        ],
+        "summary": "Trigger Generate",
+        "description": "手动触发盘前早报生成",
+        "operationId": "trigger_generate_api_v1_briefing_generate_post",
+        "parameters": [
+          {
+            "name": "market",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "市场范围: A股/港股/美股/全球",
+              "default": "全球",
+              "title": "Market"
+            },
+            "description": "市场范围: A股/港股/美股/全球"
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "日期 YYYY-MM-DD，默认今天",
+              "title": "Date"
+            },
+            "description": "日期 YYYY-MM-DD，默认今天"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/briefing/latest": {
+      "get": {
+        "tags": [
+          "早报刊物"
+        ],
+        "summary": "Latest Briefing",
+        "description": "获取指定市场最新一份早报",
+        "operationId": "latest_briefing_api_v1_briefing_latest_get",
+        "parameters": [
+          {
+            "name": "market",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "市场范围",
+              "default": "全球",
+              "title": "Market"
+            },
+            "description": "市场范围"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/briefing/share/{briefing_id}": {
+      "get": {
+        "tags": [
+          "早报刊物"
+        ],
+        "summary": "Share Briefing",
+        "description": "按分享短码获取早报 (分享 URL 落地页数据源)",
+        "operationId": "share_briefing_api_v1_briefing_share__briefing_id__get",
+        "parameters": [
+          {
+            "name": "briefing_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Briefing Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/trade/order": {
       "post": {
         "tags": [
@@ -906,12 +2475,12 @@
         ],
         "summary": "下单（沙箱/实盘由安全锁控制）",
         "description": "接收前端或 Agent 的发单指令，经过杠杆风控校验后，路由给底层券商",
-        "operationId": "place_order_api_v1_trade_order_post",
+        "operationId": "place_order_endpoint_api_v1_trade_order_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Body_place_order_api_v1_trade_order_post"
+                "$ref": "#/components/schemas/Body_place_order_endpoint_api_v1_trade_order_post"
               },
               "example": {
                 "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
@@ -952,7 +2521,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
       }
     },
     "/api/v1/trade/account": {
@@ -960,8 +2534,13 @@
         "tags": [
           "OMS"
         ],
-        "summary": "Get Account Info",
-        "operationId": "get_account_info_api_v1_trade_account_get",
+        "summary": "Get Account Info Endpoint",
+        "operationId": "get_account_info_endpoint_api_v1_trade_account_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "market",
@@ -1007,7 +2586,7 @@
             }
           }
         },
-        "description": "Get Account Info\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
+        "description": "Get Account Info Endpoint\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       }
     },
     "/api/v1/trade/portfolio": {
@@ -1015,9 +2594,9 @@
         "tags": [
           "OMS"
         ],
-        "summary": "Get Portfolio",
+        "summary": "Get Portfolio Endpoint",
         "description": "获取账户核心资产与风控指标",
-        "operationId": "get_portfolio_api_v1_trade_portfolio_get",
+        "operationId": "get_portfolio_endpoint_api_v1_trade_portfolio_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1033,7 +2612,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
       }
     },
     "/api/v1/trade/trades": {
@@ -1041,9 +2625,14 @@
         "tags": [
           "OMS"
         ],
-        "summary": "Get Trades",
+        "summary": "Get Trades Endpoint",
         "description": "从 PostgreSQL 获取最新的交易日志",
-        "operationId": "get_trades_api_v1_trade_trades_get",
+        "operationId": "get_trades_endpoint_api_v1_trade_trades_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "limit",
@@ -1094,11 +2683,11 @@
     "/api/v1/macro/calendar": {
       "get": {
         "tags": [
-          "Macro Calendar"
+          "Macro"
         ],
-        "summary": "Get Macro Calendar",
+        "summary": "Get Macro Calendar Route",
         "description": "获取全球核心经济体的宏观日历数据 (支持过去和未来)",
-        "operationId": "get_macro_calendar_api_v1_macro_calendar_get",
+        "operationId": "get_macro_calendar_route_api_v1_macro_calendar_get",
         "parameters": [
           {
             "name": "days_ahead",
@@ -1167,11 +2756,11 @@
     "/api/v1/macro/series": {
       "get": {
         "tags": [
-          "Macro Calendar"
+          "Macro"
         ],
-        "summary": "Get Macro Series",
+        "summary": "Get Macro Series Route",
         "description": "获取 FRED 宏观经济时间序列数据",
-        "operationId": "get_macro_series_api_v1_macro_series_get",
+        "operationId": "get_macro_series_route_api_v1_macro_series_get",
         "parameters": [
           {
             "name": "series_id",
@@ -1236,11 +2825,11 @@
     "/api/v1/macro/sentiment-history": {
       "get": {
         "tags": [
-          "Macro Calendar"
+          "Macro"
         ],
-        "summary": "Get Sentiment History",
+        "summary": "Get Sentiment History Route",
         "description": "获取情绪风向标历史趋势数据 (P/C Ratio, VIX, Credit Spread)",
-        "operationId": "get_sentiment_history_api_v1_macro_sentiment_history_get",
+        "operationId": "get_sentiment_history_route_api_v1_macro_sentiment_history_get",
         "parameters": [
           {
             "name": "limit",
@@ -1291,14 +2880,40 @@
         }
       }
     },
+    "/api/v1/macro/sector-fund-flow": {
+      "get": {
+        "tags": [
+          "Macro"
+        ],
+        "summary": "Get Sector Fund Flow Route",
+        "description": "获取板块资金流向数据",
+        "operationId": "get_sector_fund_flow_route_api_v1_macro_sector_fund_flow_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/macro/capital-flow": {
       "get": {
         "tags": [
-          "Macro Calendar"
+          "Macro"
         ],
-        "summary": "Get Capital Flow",
+        "summary": "Get Capital Flow Route",
         "description": "获取跨市场资金流向数据",
-        "operationId": "get_capital_flow_api_v1_macro_capital_flow_get",
+        "operationId": "get_capital_flow_route_api_v1_macro_capital_flow_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1320,11 +2935,11 @@
     "/api/v1/macro/news": {
       "get": {
         "tags": [
-          "Macro Calendar"
+          "Macro"
         ],
-        "summary": "Get Macro News",
+        "summary": "Get Macro News Route",
         "description": "获取全球市场前沿新闻",
-        "operationId": "get_macro_news_api_v1_macro_news_get",
+        "operationId": "get_macro_news_route_api_v1_macro_news_get",
         "parameters": [
           {
             "name": "category",
@@ -1390,11 +3005,11 @@
     "/api/v1/macro/dashboard": {
       "get": {
         "tags": [
-          "Macro Calendar"
+          "Macro"
         ],
-        "summary": "Get Data Center Dashboard",
+        "summary": "Get Data Center Dashboard Route",
         "description": "聚合大盘看板所需的所有核心数据",
-        "operationId": "get_data_center_dashboard_api_v1_macro_dashboard_get",
+        "operationId": "get_data_center_dashboard_route_api_v1_macro_dashboard_get",
         "parameters": [
           {
             "name": "force_refresh",
@@ -1458,14 +3073,99 @@
         }
       }
     },
+    "/api/v1/macro/earnings": {
+      "get": {
+        "tags": [
+          "Macro"
+        ],
+        "summary": "Get Earnings Calendar Route",
+        "description": "财报日历（供 Calendars Earnings Tab 复用，复用既有聚合逻辑）",
+        "operationId": "get_earnings_calendar_route_api_v1_macro_earnings_get",
+        "parameters": [
+          {
+            "name": "days_ahead",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 30,
+              "minimum": 1,
+              "description": "向后展望天数",
+              "default": 7,
+              "title": "Days Ahead"
+            },
+            "description": "向后展望天数"
+          },
+          {
+            "name": "days_back",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 30,
+              "minimum": 0,
+              "description": "向前回溯天数（含已发布）",
+              "default": 0,
+              "title": "Days Back"
+            },
+            "description": "向前回溯天数（含已发布）"
+          },
+          {
+            "name": "force_refresh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "强制绕过缓存",
+              "default": false,
+              "title": "Force Refresh"
+            },
+            "description": "强制绕过缓存"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/macro/assets": {
       "get": {
         "tags": [
-          "Macro Calendar"
+          "Macro"
         ],
-        "summary": "Get Macro Assets",
+        "summary": "Get Macro Assets Route",
         "description": "获取大类资产与宏观风险雷达数据",
-        "operationId": "get_macro_assets_api_v1_macro_assets_get",
+        "operationId": "get_macro_assets_route_api_v1_macro_assets_get",
         "parameters": [
           {
             "name": "force_refresh",
@@ -1513,6 +3213,294 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/macro/margin-trading": {
+      "get": {
+        "tags": [
+          "Macro"
+        ],
+        "summary": "Get Margin Trading Data Route",
+        "description": "获取三个市场的融资融券余额数据",
+        "operationId": "get_margin_trading_data_route_api_v1_macro_margin_trading_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/calendars/snapshot": {
+      "get": {
+        "tags": [
+          "Calendars"
+        ],
+        "summary": "Get Calendars Snapshot",
+        "description": "全球市场日历快照：按类目聚合的大类资产行情（对标 yfinance Markets 横向滚动条）",
+        "operationId": "get_calendars_snapshot_api_v1_calendars_snapshot_get",
+        "parameters": [
+          {
+            "name": "force_refresh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "强制绕过缓存拉取最新数据",
+              "default": false,
+              "title": "Force Refresh"
+            },
+            "description": "强制绕过缓存拉取最新数据"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/calendars/hours": {
+      "get": {
+        "tags": [
+          "Calendars"
+        ],
+        "summary": "Get Calendars Hours",
+        "description": "全球市场交易时段矩阵（世界时钟），供 Hours Tab 渲染 24h × 时区网格。",
+        "operationId": "get_calendars_hours_api_v1_calendars_hours_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/calendars/dividends": {
+      "get": {
+        "tags": [
+          "Calendars"
+        ],
+        "summary": "Get Calendars Dividends",
+        "description": "分红日历（优先 Finnhub，未配置 API Key 时优雅降级返回 unavailable）。SVC-08: 接入限流退避。",
+        "operationId": "get_calendars_dividends_api_v1_calendars_dividends_get",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "可选：指定标的代码（如 AAPL）",
+              "title": "Symbol"
+            },
+            "description": "可选：指定标的代码（如 AAPL）"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/calendars/ipos": {
+      "get": {
+        "tags": [
+          "Calendars"
+        ],
+        "summary": "Get Calendars Ipos",
+        "description": "IPO 日历（优先 Finnhub，未配置 API Key 时优雅降级返回 unavailable）。SVC-08: 接入限流退避。",
+        "operationId": "get_calendars_ipos_api_v1_calendars_ipos_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/preferences/ai-push": {
+      "get": {
+        "tags": [
+          "Preferences"
+        ],
+        "summary": "Get Ai Push Prefs",
+        "description": "获取模块级 AI 推送偏好（AI-09 底座）。返回全部受控模块，未存储项回落默认值。",
+        "operationId": "get_ai_push_prefs_api_v1_settings_preferences_ai_push_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Preferences"
+        ],
+        "summary": "Update Ai Push Prefs",
+        "description": "批量更新模块级 AI 推送偏好（AI-09 底座）。仅接受已知模块，未知模块返回 400。",
+        "operationId": "update_ai_push_prefs_api_v1_settings_preferences_ai_push_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiPushPrefsRequest"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
       }
     },
     "/api/v1/settings/preferences": {
@@ -2364,6 +4352,256 @@
         }
       }
     },
+    "/api/v1/backtest/interpret": {
+      "post": {
+        "tags": [
+          "Backtesting Engine"
+        ],
+        "summary": "Interpret Backtest",
+        "description": "AI-03①：回测 Tear Sheet 一句话解读（LLM，须含杠杆/Alpha 判别）。",
+        "operationId": "interpret_backtest_api_v1_backtest_interpret_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InterpretRequest"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtest/overfit-check": {
+      "post": {
+        "tags": [
+          "Backtesting Engine"
+        ],
+        "summary": "Overfit Check",
+        "description": "AI-03②：过拟合检测（参数敏感性差异 > 阈值预警，纯计算）。",
+        "operationId": "overfit_check_api_v1_backtest_overfit_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OverfitCheckRequest"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtest/overfit-check/grid": {
+      "post": {
+        "tags": [
+          "Backtesting Engine"
+        ],
+        "summary": "Overfit Check Grid",
+        "description": "AI-03②-增强：直接吃网格搜索真实 results，派生参数敏感性并过拟合检测。",
+        "operationId": "overfit_check_grid_api_v1_backtest_overfit_check_grid_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OverfitGridRequest"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtest/interpret/walk-forward": {
+      "post": {
+        "tags": [
+          "Backtesting Engine"
+        ],
+        "summary": "Interpret Walk Forward",
+        "description": "AI-03 增强：吃 Walk-Forward 报告，自动判过拟合 + Alpha 衰减，可经 LLM 一句话解读。",
+        "operationId": "interpret_walk_forward_api_v1_backtest_interpret_walk_forward_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WalkForwardInterpretRequest"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/backtest/health": {
+      "get": {
+        "tags": [
+          "Backtesting Engine"
+        ],
+        "summary": "Backtest Health List",
+        "description": "返回所有标的最近回测健康度 (供盘前早报 / 前端展示「已纳入早报」徽标)。",
+        "operationId": "backtest_health_list_api_v1_backtest_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/backtest/reports": {
       "post": {
         "tags": [
@@ -2871,9 +5109,13 @@
         "tags": [
           "Screener"
         ],
-        "summary": "Get Screener Suggestions",
-        "description": "获取随机选股灵感提示词\n💡 未来可将此列表移入 PostgreSQL 数据库表 (如 ScreenerSuggestion)，\n通过 db.query(ScreenerSuggestion).order_by(func.random()).limit(limit).all() 实现万级数据的极速动态拉取。",
-        "operationId": "get_screener_suggestions_api_v1_screener_suggestions_get",
+        "summary": "Api Get Suggestions",
+        "operationId": "api_get_suggestions_api_v1_screener_suggestions_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "limit",
@@ -2881,6 +5123,8 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
               "default": 6,
               "title": "Limit"
             }
@@ -2918,7 +5162,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Api Get Suggestions\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       }
     },
     "/api/v1/screener/translate": {
@@ -2926,9 +5171,8 @@
         "tags": [
           "Screener"
         ],
-        "summary": "Translate Dsl",
-        "description": "调用 AI 将前端输入的自然语言即时翻译为选股 DSL",
-        "operationId": "translate_dsl_api_v1_screener_translate_post",
+        "summary": "Api Translate",
+        "operationId": "api_translate_api_v1_screener_translate_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2974,7 +5218,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "description": "Api Translate\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       }
     },
     "/api/v1/screener/run": {
@@ -2983,8 +5233,7 @@
           "Screener"
         ],
         "summary": "自然语言选股",
-        "description": "接收 DSL 查询，调用 Futu 接口在线筛选股票。",
-        "operationId": "run_screener_api_v1_screener_run_post",
+        "operationId": "api_run_screener_api_v1_screener_run_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3030,7 +5279,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "description": "自然语言选股\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       }
     },
     "/api/v1/screener/history": {
@@ -3038,9 +5293,8 @@
         "tags": [
           "Screener"
         ],
-        "summary": "Get Screener History",
-        "description": "获取用户的云端选股历史记录",
-        "operationId": "get_screener_history_api_v1_screener_history_get",
+        "summary": "Api Get History",
+        "operationId": "api_get_history_api_v1_screener_history_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3061,15 +5315,15 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Api Get History\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       },
       "post": {
         "tags": [
           "Screener"
         ],
-        "summary": "Save Screener History",
-        "description": "保存用户的选股历史记录到云端",
-        "operationId": "save_screener_history_api_v1_screener_history_post",
+        "summary": "Api Save History",
+        "operationId": "api_save_history_api_v1_screener_history_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3120,7 +5374,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Api Save History\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       }
     },
     "/api/v1/screener/reload-indicators": {
@@ -3128,9 +5383,8 @@
         "tags": [
           "Screener"
         ],
-        "summary": "Reload Indicators",
-        "description": "热更新选股指标 RAG 词库",
-        "operationId": "reload_indicators_api_v1_screener_reload_indicators_post",
+        "summary": "Api Reload Indicators",
+        "operationId": "api_reload_indicators_api_v1_screener_reload_indicators_post",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3151,7 +5405,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Api Reload Indicators\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       }
     },
     "/api/v1/screener/dictionary": {
@@ -3159,9 +5414,8 @@
         "tags": [
           "Screener"
         ],
-        "summary": "Get Dictionary",
-        "description": "获取当前用户的私有选股规则列表",
-        "operationId": "get_dictionary_api_v1_screener_dictionary_get",
+        "summary": "Api Get Dictionary",
+        "operationId": "api_get_dictionary_api_v1_screener_dictionary_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3182,15 +5436,15 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Api Get Dictionary\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       },
       "post": {
         "tags": [
           "Screener"
         ],
-        "summary": "Add Dictionary Item",
-        "description": "添加私有 RAG 选股规则",
-        "operationId": "add_dictionary_item_api_v1_screener_dictionary_post",
+        "summary": "Api Add Dictionary Item",
+        "operationId": "api_add_dictionary_item_api_v1_screener_dictionary_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3241,15 +5495,15 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Api Add Dictionary Item\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       },
       "delete": {
         "tags": [
           "Screener"
         ],
-        "summary": "Delete Dictionary Item",
-        "description": "删除私有 RAG 选股规则 (适配前端基于内容匹配的删除逻辑)",
-        "operationId": "delete_dictionary_item_api_v1_screener_dictionary_delete",
+        "summary": "Api Delete Dictionary Item",
+        "operationId": "api_delete_dictionary_item_api_v1_screener_dictionary_delete",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3300,7 +5554,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Api Delete Dictionary Item\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       }
     },
     "/api/v1/screener/dictionary/batch": {
@@ -3308,9 +5563,8 @@
         "tags": [
           "Screener"
         ],
-        "summary": "Add Dictionary Batch",
-        "description": "批量导入私有 RAG 选股规则 (配合前端的 CSV 导入)",
-        "operationId": "add_dictionary_batch_api_v1_screener_dictionary_batch_post",
+        "summary": "Api Add Dictionary Batch",
+        "operationId": "api_add_dictionary_batch_api_v1_screener_dictionary_batch_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3361,7 +5615,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Api Add Dictionary Batch\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       }
     },
     "/api/v1/screener/subscribe": {
@@ -3369,9 +5624,8 @@
         "tags": [
           "Screener"
         ],
-        "summary": "Subscribe Screener",
-        "description": "将选股 DSL 策略持久化为每日定时执行的订阅任务",
-        "operationId": "subscribe_screener_api_v1_screener_subscribe_post",
+        "summary": "Api Subscribe",
+        "operationId": "api_subscribe_api_v1_screener_subscribe_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3422,7 +5676,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Api Subscribe\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       }
     },
     "/api/v1/screener/subscriptions": {
@@ -3430,9 +5685,8 @@
         "tags": [
           "Screener"
         ],
-        "summary": "Get Subscriptions",
-        "description": "获取当前用户所有的每日选股订阅任务",
-        "operationId": "get_subscriptions_api_v1_screener_subscriptions_get",
+        "summary": "Api Get Subscriptions",
+        "operationId": "api_get_subscriptions_api_v1_screener_subscriptions_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3453,17 +5707,17 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Api Get Subscriptions\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       }
     },
-    "/api/v1/screener/subscriptions/{sub_id}/time": {
+    "/api/v1/screener/subscription/time": {
       "put": {
         "tags": [
           "Screener"
         ],
-        "summary": "Update Subscription Time",
-        "description": "更新订阅任务的触发时间",
-        "operationId": "update_subscription_time_api_v1_screener_subscriptions__sub_id__time_put",
+        "summary": "Api Update Subscription Time",
+        "operationId": "api_update_subscription_time_api_v1_screener_subscription_time_put",
         "security": [
           {
             "OAuth2PasswordBearer": []
@@ -3472,10 +5726,10 @@
         "parameters": [
           {
             "name": "sub_id",
-            "in": "path",
+            "in": "query",
             "required": true,
             "schema": {
-              "type": "integer",
+              "type": "string",
               "title": "Sub Id"
             }
           }
@@ -3525,17 +5779,17 @@
               }
             }
           }
-        }
+        },
+        "description": "Api Update Subscription Time\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       }
     },
-    "/api/v1/screener/subscriptions/{sub_id}": {
+    "/api/v1/screener/subscription/{sub_id}": {
       "delete": {
         "tags": [
           "Screener"
         ],
-        "summary": "Delete Subscription",
-        "description": "彻底删除某个订阅任务",
-        "operationId": "delete_subscription_api_v1_screener_subscriptions__sub_id__delete",
+        "summary": "Api Delete Subscription",
+        "operationId": "api_delete_subscription_api_v1_screener_subscription__sub_id__delete",
         "security": [
           {
             "OAuth2PasswordBearer": []
@@ -3547,7 +5801,7 @@
             "in": "path",
             "required": true,
             "schema": {
-              "type": "integer",
+              "type": "string",
               "title": "Sub Id"
             }
           }
@@ -3584,17 +5838,17 @@
               }
             }
           }
-        }
+        },
+        "description": "Api Delete Subscription\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       }
     },
-    "/api/v1/screener/subscriptions/{sub_id}/toggle": {
-      "put": {
+    "/api/v1/screener/subscription/{sub_id}/toggle": {
+      "post": {
         "tags": [
           "Screener"
         ],
-        "summary": "Toggle Subscription",
-        "description": "切换订阅任务的 启动/暂停 状态",
-        "operationId": "toggle_subscription_api_v1_screener_subscriptions__sub_id__toggle_put",
+        "summary": "Api Toggle Subscription",
+        "operationId": "api_toggle_subscription_api_v1_screener_subscription__sub_id__toggle_post",
         "security": [
           {
             "OAuth2PasswordBearer": []
@@ -3606,7 +5860,7 @@
             "in": "path",
             "required": true,
             "schema": {
-              "type": "integer",
+              "type": "string",
               "title": "Sub Id"
             }
           }
@@ -3643,7 +5897,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Api Toggle Subscription\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       }
     },
     "/api/v1/screener/summarize": {
@@ -3651,9 +5906,8 @@
         "tags": [
           "Screener"
         ],
-        "summary": "Summarize Screener Results",
-        "description": "接收前端表格传入的选股结果，调用大模型生成盘面洞察报告",
-        "operationId": "summarize_screener_results_api_v1_screener_summarize_post",
+        "summary": "Api Summarize",
+        "operationId": "api_summarize_api_v1_screener_summarize_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3699,17 +5953,22 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "description": "Api Summarize\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       }
     },
-    "/api/v1/screener/cross-section": {
+    "/api/v1/screener/cross-sectional": {
       "post": {
         "tags": [
           "Screener"
         ],
-        "summary": "Cross Sectional Screen",
-        "description": "QUANT-03: 复杂横截面选股 — 基于 Pandas 内存引擎的跨指标表达式筛选",
-        "operationId": "cross_sectional_screen_api_v1_screener_cross_section_post",
+        "summary": "Api Cross Sectional",
+        "operationId": "api_cross_sectional_api_v1_screener_cross_sectional_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3755,7 +6014,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "description": "Api Cross Sectional\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       }
     },
     "/api/v1/screener/portfolio-backtest": {
@@ -3763,9 +6028,8 @@
         "tags": [
           "Screener"
         ],
-        "summary": "Portfolio Backtest",
-        "description": "QUANT-02: 选股结果一键组合回测 — 等权组合 + Tear Sheet",
-        "operationId": "portfolio_backtest_api_v1_screener_portfolio_backtest_post",
+        "summary": "Api Portfolio Backtest",
+        "operationId": "api_portfolio_backtest_api_v1_screener_portfolio_backtest_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3811,41 +6075,22 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "description": "Api Portfolio Backtest\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       }
     },
-    "/api/v1/screener/cep/rules": {
-      "get": {
-        "tags": [
-          "Screener"
-        ],
-        "summary": "List Cep Rules",
-        "description": "QUANT-04: 列出所有 CEP 规则",
-        "operationId": "list_cep_rules_api_v1_screener_cep_rules_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {},
-                "example": {
-                  "code": 0,
-                  "msg": "ok",
-                  "data": {},
-                  "ts": 1719475200000
-                }
-              }
-            }
-          }
-        }
-      },
+    "/api/v1/screener/cep/rule": {
       "post": {
         "tags": [
           "Screener"
         ],
-        "summary": "Create Cep Rule",
-        "description": "QUANT-04: 创建 CEP 异动规则",
-        "operationId": "create_cep_rule_api_v1_screener_cep_rules_post",
+        "summary": "Api Create Cep Rule",
+        "operationId": "api_create_cep_rule_api_v1_screener_cep_rule_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3891,17 +6136,58 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "description": "Api Create Cep Rule\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       }
     },
-    "/api/v1/screener/cep/rules/{rule_id}": {
+    "/api/v1/screener/cep/rules": {
+      "get": {
+        "tags": [
+          "Screener"
+        ],
+        "summary": "Api List Cep Rules",
+        "operationId": "api_list_cep_rules_api_v1_screener_cep_rules_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "description": "Api List Cep Rules\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
+      }
+    },
+    "/api/v1/screener/cep/rule/{rule_id}": {
       "delete": {
         "tags": [
           "Screener"
         ],
-        "summary": "Delete Cep Rule",
-        "description": "QUANT-04: 删除 CEP 规则",
-        "operationId": "delete_cep_rule_api_v1_screener_cep_rules__rule_id__delete",
+        "summary": "Api Delete Cep Rule",
+        "operationId": "api_delete_cep_rule_api_v1_screener_cep_rule__rule_id__delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "rule_id",
@@ -3945,31 +6231,30 @@
               }
             }
           }
-        }
+        },
+        "description": "Api Delete Cep Rule\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       }
     },
-    "/api/v1/screener/cep/matches": {
+    "/api/v1/screener/cep/matches/sse": {
       "get": {
         "tags": [
           "Screener"
         ],
-        "summary": "Cep Matches Sse",
-        "description": "QUANT-04: 获取最近的 CEP 匹配事件 (轮询模式)",
-        "operationId": "cep_matches_sse_api_v1_screener_cep_matches_get",
+        "summary": "Api Cep Matches Sse",
+        "operationId": "api_cep_matches_sse_api_v1_screener_cep_matches_sse_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "since",
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "null"
-                }
-              ],
+              "type": "number",
+              "default": 0.0,
               "title": "Since"
             }
           }
@@ -4006,7 +6291,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Api Cep Matches Sse\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
       }
     },
     "/api/v1/search/web": {
@@ -4073,6 +6359,11 @@
         "summary": "Get Inspirations",
         "description": "随机获取策略研发灵感",
         "operationId": "get_inspirations_api_v1_strategy_inspirations_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "limit",
@@ -4173,7 +6464,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
       }
     },
     "/api/v1/strategy/generate": {
@@ -4285,7 +6581,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
       }
     },
     "/api/v1/strategy/save": {
@@ -4341,7 +6642,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
       }
     },
     "/api/v1/strategy/list": {
@@ -4367,7 +6673,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
       }
     },
     "/api/v1/strategy/{name}/versions": {
@@ -4378,6 +6689,11 @@
         "summary": "Get Strategy Versions",
         "description": "获取策略版本时间线 (STRAT-03a)",
         "operationId": "get_strategy_versions_api_v1_strategy__name__versions_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "name",
@@ -4442,6 +6758,11 @@
         "summary": "Get Strategy Version",
         "description": "获取单个版本的完整信息（含代码）(STRAT-03a)",
         "operationId": "get_strategy_version_api_v1_strategy_versions__version_id__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "version_id",
@@ -4496,6 +6817,11 @@
         "summary": "Restore Strategy Version",
         "description": "恢复指定版本，创建新的 restore 版本 (STRAT-03a)",
         "operationId": "restore_strategy_version_api_v1_strategy__name__restore_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "name",
@@ -4565,6 +6891,11 @@
         "summary": "Get Draft Strategy",
         "description": "拉取指定策略的完整源码",
         "operationId": "get_draft_strategy_api_v1_strategy_draft__name__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "name",
@@ -4617,6 +6948,11 @@
         "summary": "Delete Draft Strategy",
         "description": "彻底删除指定的策略草稿",
         "operationId": "delete_draft_strategy_api_v1_strategy_draft__name__delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "name",
@@ -4777,7 +7113,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
       }
     },
     "/api/v1/strategy/run-batch-sandbox": {
@@ -4833,7 +7174,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
       }
     },
     "/api/v1/strategy/monte-carlo-sandbox": {
@@ -4889,7 +7235,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
       }
     },
     "/api/v1/strategy/deploy-to-oms": {
@@ -4945,7 +7296,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
       }
     },
     "/api/v1/oms/state": {
@@ -4971,7 +7327,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
       }
     },
     "/api/v1/oms/kill_switch": {
@@ -5027,7 +7388,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
       }
     },
     "/api/v1/oms/orders/{order_id}/cancel": {
@@ -5038,6 +7404,11 @@
         "summary": "Cancel Order",
         "description": "带【防并发幂等性锁】的撤单接口 (OMS-03: 同步更新 DB 状态, OMS-12: 审计日志)",
         "operationId": "cancel_order_api_v1_oms_orders__order_id__cancel_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "order_id",
@@ -5105,6 +7476,11 @@
         "summary": "Modify Order",
         "description": "修改订单价格 (改单) 接口 (OMS-03: 同步更新 DB, OMS-12: 审计日志)",
         "operationId": "modify_order_api_v1_oms_orders__order_id__modify_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "order_id",
@@ -5172,6 +7548,11 @@
         "summary": "当前持仓",
         "description": "OMS-04: 获取 Redis 缓存中的真实持仓列表",
         "operationId": "get_real_positions_api_v1_oms_positions_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "market",
@@ -5227,6 +7608,11 @@
         "summary": "Pause Bot",
         "description": "OMS-05: 暂停 Bot 算力节点",
         "operationId": "pause_bot_api_v1_oms_bots__bot_id__pause_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "bot_id",
@@ -5281,6 +7667,11 @@
         "summary": "Resume Bot",
         "description": "OMS-05: 恢复 Bot 算力节点",
         "operationId": "resume_bot_api_v1_oms_bots__bot_id__resume_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "bot_id",
@@ -5335,6 +7726,11 @@
         "summary": "Stop Bot",
         "description": "OMS-05: 终止 Bot 算力节点",
         "operationId": "stop_bot_api_v1_oms_bots__bot_id__stop_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "bot_id",
@@ -5434,7 +7830,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
       }
     },
     "/api/v1/oms/algo/{algo_id}/pause": {
@@ -5445,6 +7846,11 @@
         "summary": "Pause Algo Order",
         "description": "OMS-08: 暂停算法拆单",
         "operationId": "pause_algo_order_api_v1_oms_algo__algo_id__pause_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "algo_id",
@@ -5499,6 +7905,11 @@
         "summary": "Resume Algo Order",
         "description": "OMS-08: 恢复算法拆单",
         "operationId": "resume_algo_order_api_v1_oms_algo__algo_id__resume_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "algo_id",
@@ -5553,6 +7964,11 @@
         "summary": "Cancel Algo Order",
         "description": "OMS-08: 取消算法拆单",
         "operationId": "cancel_algo_order_api_v1_oms_algo__algo_id__cancel_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "algo_id",
@@ -5689,7 +8105,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
       }
     },
     "/api/v1/oms/mode/switch": {
@@ -5745,7 +8166,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
       }
     },
     "/api/v1/audit/logs": {
@@ -5756,6 +8182,11 @@
         "summary": "Read Audit Logs",
         "description": "查询审计日志\n\nArgs:\n    action: 操作类型（'login', 'logout', 'change_password', etc.）\n    user_id: 用户 ID\n    skip: 跳过记录数\n    limit: 返回记录数\n\nReturns:\n    审计日志列表",
         "operationId": "read_audit_logs_api_v1_audit_logs_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "action",
@@ -7332,9 +9763,14 @@
         "tags": [
           "Alert Center"
         ],
-        "summary": "Create Rule",
+        "summary": "Create Rule Endpoint",
         "description": "创建告警规则",
-        "operationId": "create_rule_api_v1_alert_rules_post",
+        "operationId": "create_rule_endpoint_api_v1_alert_rules_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -7388,9 +9824,14 @@
         "tags": [
           "Alert Center"
         ],
-        "summary": "List Rules",
+        "summary": "List Rules Endpoint",
         "description": "查询告警规则列表",
-        "operationId": "list_rules_api_v1_alert_rules_get",
+        "operationId": "list_rules_endpoint_api_v1_alert_rules_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "ticker",
@@ -7439,7 +9880,7 @@
                   "items": {
                     "$ref": "#/components/schemas/RuleResponse"
                   },
-                  "title": "Response List Rules Api V1 Alert Rules Get"
+                  "title": "Response List Rules Endpoint Api V1 Alert Rules Get"
                 },
                 "example": {
                   "code": 0,
@@ -7475,9 +9916,14 @@
         "tags": [
           "Alert Center"
         ],
-        "summary": "Get Rule",
+        "summary": "Get Rule Endpoint",
         "description": "查询单条规则",
-        "operationId": "get_rule_api_v1_alert_rules__rule_id__get",
+        "operationId": "get_rule_endpoint_api_v1_alert_rules__rule_id__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "rule_id",
@@ -7529,9 +9975,14 @@
         "tags": [
           "Alert Center"
         ],
-        "summary": "Update Rule",
+        "summary": "Update Rule Endpoint",
         "description": "更新告警规则",
-        "operationId": "update_rule_api_v1_alert_rules__rule_id__put",
+        "operationId": "update_rule_endpoint_api_v1_alert_rules__rule_id__put",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "rule_id",
@@ -7596,9 +10047,14 @@
         "tags": [
           "Alert Center"
         ],
-        "summary": "Delete Rule",
+        "summary": "Delete Rule Endpoint",
         "description": "删除告警规则",
-        "operationId": "delete_rule_api_v1_alert_rules__rule_id__delete",
+        "operationId": "delete_rule_endpoint_api_v1_alert_rules__rule_id__delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "rule_id",
@@ -7652,9 +10108,14 @@
         "tags": [
           "Alert Center"
         ],
-        "summary": "Toggle Rule",
+        "summary": "Toggle Rule Endpoint",
         "description": "启停告警规则",
-        "operationId": "toggle_rule_api_v1_alert_rules__rule_id__toggle_post",
+        "operationId": "toggle_rule_endpoint_api_v1_alert_rules__rule_id__toggle_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "rule_id",
@@ -7708,9 +10169,14 @@
         "tags": [
           "Alert Center"
         ],
-        "summary": "List Events",
+        "summary": "List Events Endpoint",
         "description": "查询告警事件历史（支持 since 参数用于 WS 断连补拉）",
-        "operationId": "list_events_api_v1_alert_events_get",
+        "operationId": "list_events_endpoint_api_v1_alert_events_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "ticker",
@@ -7725,8 +10191,10 @@
                   "type": "null"
                 }
               ],
+              "description": "按标的过滤",
               "title": "Ticker"
-            }
+            },
+            "description": "按标的过滤"
           },
           {
             "name": "severity",
@@ -7785,7 +10253,68 @@
                   "items": {
                     "$ref": "#/components/schemas/EventResponse"
                   },
-                  "title": "Response List Events Api V1 Alert Events Get"
+                  "title": "Response List Events Endpoint Api V1 Alert Events Get"
+                },
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/alert/events/{event_id}": {
+      "get": {
+        "tags": [
+          "Alert Center"
+        ],
+        "summary": "Get Event Endpoint",
+        "description": "查询单条事件",
+        "operationId": "get_event_endpoint_api_v1_alert_events__event_id__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventResponse"
                 },
                 "example": {
                   "code": 0,
@@ -7821,9 +10350,14 @@
         "tags": [
           "Alert Center"
         ],
-        "summary": "Ack Event",
+        "summary": "Ack Event Endpoint",
         "description": "确认告警事件",
-        "operationId": "ack_event_api_v1_alert_events__event_id__ack_post",
+        "operationId": "ack_event_endpoint_api_v1_alert_events__event_id__ack_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "event_id",
@@ -7877,9 +10411,9 @@
         "tags": [
           "Alert Center"
         ],
-        "summary": "Engine Status",
+        "summary": "Engine Status Endpoint",
         "description": "查询告警引擎状态（含 dispatcher health）",
-        "operationId": "engine_status_api_v1_alert_engine_status_get",
+        "operationId": "engine_status_endpoint_api_v1_alert_engine_status_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -7897,7 +10431,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
       }
     },
     "/api/v1/alert/events/{event_id}/deliveries": {
@@ -7905,9 +10444,14 @@
         "tags": [
           "Alert Center"
         ],
-        "summary": "Get Event Deliveries",
+        "summary": "Get Event Deliveries Endpoint",
         "description": "查询事件的投递记录（运维可观测 + 前端投递详情）",
-        "operationId": "get_event_deliveries_api_v1_alert_events__event_id__deliveries_get",
+        "operationId": "get_event_deliveries_endpoint_api_v1_alert_events__event_id__deliveries_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "event_id",
@@ -7929,8 +10473,308 @@
                   "items": {
                     "$ref": "#/components/schemas/DeliveryRecordResponse"
                   },
-                  "title": "Response Get Event Deliveries Api V1 Alert Events  Event Id  Deliveries Get"
+                  "title": "Response Get Event Deliveries Endpoint Api V1 Alert Events  Event Id  Deliveries Get"
                 },
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/narrate": {
+      "post": {
+        "tags": [
+          "AI-01 异动解说员"
+        ],
+        "summary": "Narrate",
+        "description": "对异动标的生成一句话数据驱动解说",
+        "operationId": "narrate_api_v1_ai_narrate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NarrativeRequest"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/stream": {
+      "post": {
+        "tags": [
+          "AI-01 异动解说员"
+        ],
+        "summary": "Stream Narrate",
+        "description": "AI-02 解盘副驾：流式返回异动解说(NDJSON)\n\n协议(每行一个 JSON 事件):\n- {\"event\":\"ping\"}                      首包占位，避免空屏\n- {\"event\":\"delta\",\"data\":{\"symbol\":..,\"text\":..}}   逐段吐出真实 summary(打字机式，内容 100% 真实)\n- {\"event\":\"done\",\"data\":<NarrativeResult>}          结构化结果(来源/置信度/形态胜率)\n- {\"event\":\"error\",\"data\":\"..\"}          下游异常，单条错误事件不中断流",
+        "operationId": "stream_narrate_api_v1_ai_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NarrativeRequest"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/logs": {
+      "post": {
+        "tags": [
+          "Frontend Logs"
+        ],
+        "summary": "Receive Frontend Logs",
+        "description": "接收前端批量日志，写入 PostgreSQL",
+        "operationId": "receive_frontend_logs_api_v1_logs_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogBatchSchema"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Frontend Logs"
+        ],
+        "summary": "Query Frontend Logs",
+        "description": "查询前端日志（支持 level 筛选、时间范围、分页）",
+        "operationId": "query_frontend_logs_api_v1_logs_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "level",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按级别筛选: DEBUG / INFO / WARN / ERROR",
+              "title": "Level"
+            },
+            "description": "按级别筛选: DEBUG / INFO / WARN / ERROR"
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO 时间戳，只返回此时间之后的日志",
+              "title": "Since"
+            },
+            "description": "ISO 时间戳，只返回此时间之后的日志"
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ISO 时间戳，只返回此时间之前的日志",
+              "title": "Until"
+            },
+            "description": "ISO 时间戳，只返回此时间之前的日志"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "description": "返回条数上限",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "返回条数上限"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "分页偏移量",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "分页偏移量"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
                 "example": {
                   "code": 0,
                   "msg": "ok",
@@ -8031,6 +10875,271 @@
                   "msg": "ok",
                   "data": {},
                   "ts": 1719475200000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/earnings/expectations": {
+      "get": {
+        "tags": [
+          "earnings"
+        ],
+        "summary": "Get Expectations",
+        "description": "获取财报预期基准值",
+        "operationId": "get_expectations_api_v1_earnings_expectations_get",
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "股票代码",
+              "title": "Ticker"
+            },
+            "description": "股票代码"
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "财报周期",
+              "title": "Period"
+            },
+            "description": "财报周期"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Expectations Api V1 Earnings Expectations Get"
+                },
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "earnings"
+        ],
+        "summary": "Set Expectations",
+        "description": "设置财报预期基准值",
+        "operationId": "set_expectations_api_v1_earnings_expectations_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetExpectationsRequest"
+              },
+              "example": {
+                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Set Expectations Api V1 Earnings Expectations Post"
+                },
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "earnings"
+        ],
+        "summary": "Delete Expectations",
+        "description": "删除财报预期基准值",
+        "operationId": "delete_expectations_api_v1_earnings_expectations_delete",
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "股票代码",
+              "title": "Ticker"
+            },
+            "description": "股票代码"
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "财报周期",
+              "title": "Period"
+            },
+            "description": "财报周期"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Delete Expectations Api V1 Earnings Expectations Delete"
+                },
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/earnings/expectations/list": {
+      "get": {
+        "tags": [
+          "earnings"
+        ],
+        "summary": "List Expectations",
+        "description": "列出所有已存储的预期值",
+        "operationId": "list_expectations_api_v1_earnings_expectations_list_get",
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "股票代码（可选）",
+              "title": "Ticker"
+            },
+            "description": "股票代码（可选）"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response List Expectations Api V1 Earnings Expectations List Get"
+                },
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
                 }
               }
             }
@@ -8544,6 +11653,84 @@
         }
       }
     },
+    "/api/v1/options/chain-matrix/{ticker}": {
+      "get": {
+        "tags": [
+          "options"
+        ],
+        "summary": "Get Option Chain Matrix",
+        "description": "跨到期日的 IV 波动率曲面（前端热力图用）。\n\n返回结构:\n{\n  symbol, underlying_price, expirations[], strikes[],\n  calls: {iv:[[...]], delta:[[...]]},   # [到期日][行权价]\n  puts:  {iv:[[...]], delta:[[...]]},\n  legs: [{type, expiry, strike, iv, delta}, ...]\n}",
+        "operationId": "get_option_chain_matrix_api_v1_options_chain_matrix__ticker__get",
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ticker"
+            }
+          },
+          {
+            "name": "max_expiries",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 16,
+              "minimum": 1,
+              "default": 8,
+              "title": "Max Expiries"
+            }
+          },
+          {
+            "name": "max_strikes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 60,
+              "minimum": 5,
+              "default": 21,
+              "title": "Max Strikes"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {},
+                  "ts": 1719475200000
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                },
+                "example": {
+                  "code": 2001,
+                  "msg": "请求参数校验失败",
+                  "data": null,
+                  "ts": 1719475200000,
+                  "trace_id": "abcdef0123456789abcdef0123456789"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/portfolio/optimize": {
       "post": {
         "tags": [
@@ -8998,72 +12185,14 @@
         }
       }
     },
-    "/api/v1/financial-report": {
+    "/api/v1/datasource/finnhub/health": {
       "get": {
-        "summary": "Get Financial Report",
-        "operationId": "get_financial_report_api_v1_financial_report_get",
-        "parameters": [
-          {
-            "name": "ticker",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Ticker"
-            }
-          },
-          {
-            "name": "chunk_index",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 0,
-              "title": "Chunk Index"
-            }
-          }
+        "tags": [
+          "DataSource Rate Limit"
         ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {},
-                "example": {
-                  "code": 0,
-                  "msg": "ok",
-                  "data": {},
-                  "ts": 1719475200000
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                },
-                "example": {
-                  "code": 2001,
-                  "msg": "请求参数校验失败",
-                  "data": null,
-                  "ts": 1719475200000,
-                  "trace_id": "abcdef0123456789abcdef0123456789"
-                }
-              }
-            }
-          }
-        },
-        "description": "Get Financial Report\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
-      }
-    },
-    "/api/v1/settings/yfinance": {
-      "get": {
-        "summary": "Get Yfinance Setting",
-        "description": "获取 YFinance 当前开关状态",
-        "operationId": "get_yfinance_setting_api_v1_settings_yfinance_get",
+        "summary": "Get Finnhub Health",
+        "description": "Finnhub 数据源健康检查（限流感知，SVC-08）。\n\n被动探测：基于 API Key 配置 + 限流退避状态，不主动消耗免费配额。\n经 DataSourceRegistry 取 FinnhubDataSource 并调用 health()（BE-ARCH-05），\n禁止直连 FinnhubService（BE-ARCH-01 边界约束）。\n限流实时状态另见 GET /datasource/finnhub/rate-limit-status（通用路由已覆盖）。",
+        "operationId": "get_finnhub_health_api_v1_datasource_finnhub_health_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -9080,16 +12209,21 @@
             }
           }
         }
-      },
+      }
+    },
+    "/api/v1/expert-team/analyze": {
       "post": {
-        "summary": "Toggle Yfinance",
-        "description": "前端一键控制 YFinance 兜底开关",
-        "operationId": "toggle_yfinance_api_v1_settings_yfinance_post",
+        "tags": [
+          "Expert Team"
+        ],
+        "summary": "Analyze",
+        "description": "发起专家团分析 (SSE 流式响应)\n\n- scenario: 场景模板 ID (financial_research / code_review)\n- question: 用户问题\n- ticker: 金融域标的代码 (可选)\n- code_context: 代码域代码片段 (可选)",
+        "operationId": "analyze_api_v1_expert_team_analyze_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/YFinanceToggle"
+                "$ref": "#/components/schemas/AnalyzeRequest"
               },
               "example": {
                 "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
@@ -9133,75 +12267,14 @@
         }
       }
     },
-    "/api/v1/health": {
+    "/api/v1/expert-team/scenarios": {
       "get": {
-        "summary": "健康检查（Redis / DB / Futu）",
-        "description": "系统健康检查接口 (供 Docker 或 K8s Liveness Probe 使用)",
-        "operationId": "health_check_api_v1_health_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {},
-                "example": {
-                  "code": 0,
-                  "msg": "ok",
-                  "data": {},
-                  "ts": 1719475200000
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/cluster": {
-      "get": {
-        "summary": "集群/节点状态总览",
-        "description": "节点状态概览",
-        "operationId": "cluster_status_api_v1_cluster_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {},
-                "example": {
-                  "code": 0,
-                  "msg": "ok",
-                  "data": {},
-                  "ts": 1719475200000
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/mcp": {
-      "get": {
-        "summary": "Mcp Health Check",
-        "description": "兼容 Uptime Kuma 等监控工具针对 MCP 探针的健康检查接口",
-        "operationId": "mcp_health_check_mcp_get",
-        "parameters": [
-          {
-            "name": "session_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Session Id"
-            }
-          }
+        "tags": [
+          "Expert Team"
         ],
+        "summary": "List Scenarios",
+        "description": "获取所有可用场景模板",
+        "operationId": "list_scenarios_api_v1_expert_team_scenarios_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -9216,109 +12289,18 @@
                 }
               }
             }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                },
-                "example": {
-                  "code": 2001,
-                  "msg": "请求参数校验失败",
-                  "data": null,
-                  "ts": 1719475200000,
-                  "trace_id": "abcdef0123456789abcdef0123456789"
-                }
-              }
-            }
           }
         }
       }
     },
-    "/api/v1/webhook/uptime-kuma": {
-      "post": {
-        "summary": "Uptime Kuma Webhook",
-        "description": "接收 Uptime Kuma 的 Webhook 报警，并触发前端全局通知",
-        "operationId": "uptime_kuma_webhook_api_v1_webhook_uptime_kuma_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": true,
-                "type": "object",
-                "title": "Payload"
-              },
-              "example": {
-                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {},
-                "example": {
-                  "code": 0,
-                  "msg": "ok",
-                  "data": {},
-                  "ts": 1719475200000
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                },
-                "example": {
-                  "code": 2001,
-                  "msg": "请求参数校验失败",
-                  "data": null,
-                  "ts": 1719475200000,
-                  "trace_id": "abcdef0123456789abcdef0123456789"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/": {
+    "/api/v1/expert-team/sessions": {
       "get": {
-        "summary": "服务根路径",
-        "description": "默认根路由",
-        "operationId": "root__get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {},
-                "example": {
-                  "code": 0,
-                  "msg": "ok",
-                  "data": {},
-                  "ts": 1719475200000
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/chat/suggestions": {
-      "get": {
-        "summary": "Agent 追问建议",
-        "operationId": "get_chat_suggestions_api_v1_chat_suggestions_get",
+        "tags": [
+          "Expert Team"
+        ],
+        "summary": "List Sessions",
+        "description": "获取历史会话列表",
+        "operationId": "list_sessions_api_v1_expert_team_sessions_get",
         "parameters": [
           {
             "name": "limit",
@@ -9326,7 +12308,7 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "default": 10,
+              "default": 20,
               "title": "Limit"
             }
           }
@@ -9363,252 +12345,17 @@
               }
             }
           }
-        },
-        "description": "Agent 追问建议\n\n响应遵循统一信封 `{code, msg, data, ts}`；失败时参见错误码表（docs/10）。"
-      }
-    },
-    "/api/v1/chat": {
-      "post": {
-        "summary": "Hermes Agent 对话（SSE 流）",
-        "description": "接收前端对话并调用 Hermes Agent (流式)",
-        "operationId": "chat_endpoint_api_v1_chat_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "refresh_token",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Refresh Token"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChatRequest"
-              },
-              "example": {
-                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {},
-                "example": {
-                  "code": 0,
-                  "msg": "ok",
-                  "data": {},
-                  "ts": 1719475200000
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                },
-                "example": {
-                  "code": 2001,
-                  "msg": "请求参数校验失败",
-                  "data": null,
-                  "ts": 1719475200000,
-                  "trace_id": "abcdef0123456789abcdef0123456789"
-                }
-              }
-            }
-          }
         }
       }
     },
-    "/api/v1/sessions": {
+    "/api/v1/expert-team/sessions/{session_id}": {
       "get": {
-        "summary": "会话列表",
-        "description": "获取历史会话列表 (支持可选的 user_id 过滤与关键字搜索)",
-        "operationId": "get_sessions_api_v1_sessions_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
+        "tags": [
+          "Expert Team"
         ],
-        "parameters": [
-          {
-            "name": "user_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "User Id"
-            }
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Q"
-            }
-          },
-          {
-            "name": "refresh_token",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Refresh Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {},
-                "example": {
-                  "code": 0,
-                  "msg": "ok",
-                  "data": {},
-                  "ts": 1719475200000
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                },
-                "example": {
-                  "code": 2001,
-                  "msg": "请求参数校验失败",
-                  "data": null,
-                  "ts": 1719475200000,
-                  "trace_id": "abcdef0123456789abcdef0123456789"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "summary": "Delete All Sessions",
-        "description": "删除当前用户的所有历史会话 (同时清理冷热两层数据)",
-        "operationId": "delete_all_sessions_api_v1_sessions_delete",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "refresh_token",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Refresh Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {},
-                "example": {
-                  "code": 0,
-                  "msg": "ok",
-                  "data": {},
-                  "ts": 1719475200000
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                },
-                "example": {
-                  "code": 2001,
-                  "msg": "请求参数校验失败",
-                  "data": null,
-                  "ts": 1719475200000,
-                  "trace_id": "abcdef0123456789abcdef0123456789"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/sessions/{session_id}": {
-      "get": {
-        "summary": "会话详情",
-        "description": "获取指定会话的历史详细消息",
-        "operationId": "get_session_history_api_v1_sessions__session_id__get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
+        "summary": "Get Session",
+        "description": "获取完整辩论记录",
+        "operationId": "get_session_api_v1_expert_team_sessions__session_id__get",
         "parameters": [
           {
             "name": "session_id",
@@ -9618,22 +12365,6 @@
               "type": "string",
               "title": "Session Id"
             }
-          },
-          {
-            "name": "refresh_token",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Refresh Token"
-            }
           }
         ],
         "responses": {
@@ -9664,188 +12395,6 @@
                   "data": null,
                   "ts": 1719475200000,
                   "trace_id": "abcdef0123456789abcdef0123456789"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "summary": "Delete Session",
-        "description": "删除指定的历史会话 (同时清理冷热两层数据)",
-        "operationId": "delete_session_api_v1_sessions__session_id__delete",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "session_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Session Id"
-            }
-          },
-          {
-            "name": "refresh_token",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Refresh Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {},
-                "example": {
-                  "code": 0,
-                  "msg": "ok",
-                  "data": {},
-                  "ts": 1719475200000
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                },
-                "example": {
-                  "code": 2001,
-                  "msg": "请求参数校验失败",
-                  "data": null,
-                  "ts": 1719475200000,
-                  "trace_id": "abcdef0123456789abcdef0123456789"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/mcp/sse": {
-      "get": {
-        "summary": "Mcp Sse",
-        "description": "MCP SSE 协议端点：建立长连接，下发双向通讯路由",
-        "operationId": "mcp_sse_mcp_sse_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {},
-                "example": {
-                  "code": 0,
-                  "msg": "ok",
-                  "data": {},
-                  "ts": 1719475200000
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/mcp/message": {
-      "post": {
-        "summary": "Mcp Message",
-        "description": "MCP HTTP 协议端点：接收客户端发来的 JSON-RPC 指令",
-        "operationId": "mcp_message_mcp_message_post",
-        "parameters": [
-          {
-            "name": "session_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Session Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": true,
-                "title": "Payload"
-              },
-              "example": {
-                "_note": "见 Schema 字段说明；统一响应见 {code,msg,data,ts}"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {},
-                "example": {
-                  "code": 0,
-                  "msg": "ok",
-                  "data": {},
-                  "ts": 1719475200000
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                },
-                "example": {
-                  "code": 2001,
-                  "msg": "请求参数校验失败",
-                  "data": null,
-                  "ts": 1719475200000,
-                  "trace_id": "abcdef0123456789abcdef0123456789"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/monitor": {
-      "get": {
-        "summary": "Monitor Page",
-        "description": "代理 React 编译后的入口 index.html",
-        "operationId": "monitor_page_monitor_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {},
-                "example": {
-                  "code": 0,
-                  "msg": "ok",
-                  "data": {},
-                  "ts": 1719475200000
                 }
               }
             }
@@ -9856,6 +12405,52 @@
   },
   "components": {
     "schemas": {
+      "AiPushPref": {
+        "properties": {
+          "module": {
+            "type": "string",
+            "title": "Module"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          }
+        },
+        "type": "object",
+        "required": [
+          "module"
+        ],
+        "title": "AiPushPref",
+        "description": "单个模块的推送偏好"
+      },
+      "AiPushPrefsRequest": {
+        "properties": {
+          "prefs": {
+            "items": {
+              "$ref": "#/components/schemas/AiPushPref"
+            },
+            "type": "array",
+            "title": "Prefs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "prefs"
+        ],
+        "title": "AiPushPrefsRequest"
+      },
       "AlertChannel": {
         "type": "string",
         "enum": [
@@ -9877,7 +12472,8 @@
           "rsi_threshold",
           "macd_cross",
           "ma_cross",
-          "paper_drift"
+          "paper_drift",
+          "expr"
         ],
         "title": "AlertRuleType",
         "description": "告警规则类型"
@@ -9953,6 +12549,52 @@
           "duration_minutes"
         ],
         "title": "AlgoOrderReq"
+      },
+      "AnalyzeRequest": {
+        "properties": {
+          "scenario": {
+            "type": "string",
+            "title": "Scenario"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "ticker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticker"
+          },
+          "code_context": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Context"
+          },
+          "extra_context": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Extra Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scenario",
+          "question"
+        ],
+        "title": "AnalyzeRequest",
+        "description": "发起专家团分析请求"
       },
       "BacktestRequest": {
         "properties": {
@@ -10192,7 +12834,7 @@
         ],
         "title": "Body_login_for_access_token_api_v1_auth_login_post"
       },
-      "Body_place_order_api_v1_trade_order_post": {
+      "Body_place_order_endpoint_api_v1_trade_order_post": {
         "properties": {
           "ticker": {
             "type": "string",
@@ -10224,7 +12866,7 @@
         "required": [
           "action"
         ],
-        "title": "Body_place_order_api_v1_trade_order_post"
+        "title": "Body_place_order_endpoint_api_v1_trade_order_post"
       },
       "CEPRuleCreate": {
         "properties": {
@@ -10811,6 +13453,75 @@
         ],
         "title": "DictionaryItem"
       },
+      "EarningsExpectation": {
+        "properties": {
+          "metric": {
+            "type": "string",
+            "title": "Metric",
+            "description": "指标名称"
+          },
+          "expected_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Low",
+            "description": "预期下限"
+          },
+          "expected_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected High",
+            "description": "预期上限"
+          },
+          "expected_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Value",
+            "description": "预期值"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit",
+            "description": "单位",
+            "default": "亿"
+          },
+          "scenario": {
+            "type": "string",
+            "title": "Scenario",
+            "description": "情景",
+            "default": "中性"
+          },
+          "notes": {
+            "type": "string",
+            "title": "Notes",
+            "description": "关键假设",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "metric"
+        ],
+        "title": "EarningsExpectation",
+        "description": "财报预期基准值"
+      },
       "EngineStatusResponse": {
         "properties": {
           "running": {
@@ -11191,6 +13902,63 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "InterpretRequest": {
+        "properties": {
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbol"
+          },
+          "annual_return": {
+            "type": "number",
+            "title": "Annual Return",
+            "description": "年化收益率，如 0.23 表示 23%"
+          },
+          "sharpe": {
+            "type": "number",
+            "title": "Sharpe",
+            "description": "夏普比率"
+          },
+          "mdd": {
+            "type": "number",
+            "title": "Mdd",
+            "description": "最大回撤(绝对值展示，如 0.18)，允许负值输入"
+          },
+          "leverage": {
+            "type": "number",
+            "title": "Leverage",
+            "description": "杠杆倍数；>1 表示存在杠杆放大",
+            "default": 1.0
+          },
+          "walk_forward": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Walk Forward",
+            "description": "可选 Walk-Forward 结论摘要(is_oos_gap/robustness_ratio/overfit_risk/alpha_decay)，携带则把过拟合/Alpha 衰减信号织入主解读，做单一联合研判"
+          }
+        },
+        "type": "object",
+        "required": [
+          "annual_return",
+          "sharpe",
+          "mdd"
+        ],
+        "title": "InterpretRequest",
+        "description": "吃回测结果，生成一句话解读。"
+      },
       "KillSwitchReq": {
         "properties": {
           "timestamp": {
@@ -11203,6 +13971,78 @@
           "timestamp"
         ],
         "title": "KillSwitchReq"
+      },
+      "LogBatchSchema": {
+        "properties": {
+          "logs": {
+            "items": {
+              "$ref": "#/components/schemas/LogEntrySchema"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Logs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "logs"
+        ],
+        "title": "LogBatchSchema",
+        "description": "批量日志请求体"
+      },
+      "LogEntrySchema": {
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp",
+            "description": "ISO 8601 时间戳"
+          },
+          "level": {
+            "type": "integer",
+            "title": "Level",
+            "description": "日志级别: 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 2048,
+            "title": "Message"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "timestamp",
+          "level",
+          "message"
+        ],
+        "title": "LogEntrySchema",
+        "description": "单条前端日志"
       },
       "ModeSwitchReq": {
         "properties": {
@@ -11384,6 +14224,66 @@
         ],
         "title": "MonteCarloSandboxPayload"
       },
+      "NarrativeRequest": {
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "change_pct": {
+            "type": "number",
+            "title": "Change Pct"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down"
+            ],
+            "title": "Direction",
+            "default": "up"
+          },
+          "threshold": {
+            "type": "number",
+            "title": "Threshold",
+            "default": 2.0
+          },
+          "include_pattern_winrate": {
+            "type": "boolean",
+            "title": "Include Pattern Winrate",
+            "default": false
+          },
+          "pattern_winrate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern Winrate"
+          },
+          "pattern_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbol",
+          "change_pct"
+        ],
+        "title": "NarrativeRequest",
+        "description": "前端异动触发时上报的请求体"
+      },
       "NotificationPriority": {
         "type": "string",
         "enum": [
@@ -11496,6 +14396,61 @@
         ],
         "title": "OptimizeSandboxPayload"
       },
+      "OverfitCheckRequest": {
+        "properties": {
+          "param_sweep": {
+            "items": {
+              "$ref": "#/components/schemas/ParamSweep"
+            },
+            "type": "array",
+            "title": "Param Sweep"
+          },
+          "threshold": {
+            "type": "number",
+            "maximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Threshold",
+            "description": "敏感性预警阈值(默认 40%)",
+            "default": 0.4
+          }
+        },
+        "type": "object",
+        "required": [
+          "param_sweep"
+        ],
+        "title": "OverfitCheckRequest"
+      },
+      "OverfitGridRequest": {
+        "properties": {
+          "results": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "target_metric": {
+            "type": "string",
+            "title": "Target Metric",
+            "default": "sharpe"
+          },
+          "threshold": {
+            "type": "number",
+            "maximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Threshold",
+            "description": "敏感性预警阈值(默认 40%)",
+            "default": 0.4
+          }
+        },
+        "type": "object",
+        "required": [
+          "results"
+        ],
+        "title": "OverfitGridRequest",
+        "description": "直接吃网格搜索真实 results，派生参数敏感性后过拟合检测。\n\nresults 每项为 dict，含 params(dict) 与指标：\n- 后端 grid_search: {params:{...}, sharpe: 1.2}\n- 前端 custom-indicator: {params:{...}, metrics:{sharpe: 1.2}}"
+      },
       "OverfitRequest": {
         "properties": {
           "ticker": {
@@ -11597,6 +14552,29 @@
         ],
         "title": "OverfitRequest",
         "description": "BT-06 过拟合检测：Deflated Sharpe + 参数悬崖。"
+      },
+      "ParamSweep": {
+        "properties": {
+          "param": {
+            "type": "string",
+            "title": "Param"
+          },
+          "sharpe": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Sharpe",
+            "description": "该参数不同取值对应的夏普比率序列"
+          }
+        },
+        "type": "object",
+        "required": [
+          "param",
+          "sharpe"
+        ],
+        "title": "ParamSweep",
+        "description": "单个参数的敏感性扫描：不同取值下的夏普序列。"
       },
       "PersistReportRequest": {
         "properties": {
@@ -12272,6 +15250,36 @@
         ],
         "title": "ScreenerTranslateRequest"
       },
+      "SetExpectationsRequest": {
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "title": "Ticker",
+            "description": "股票代码"
+          },
+          "period": {
+            "type": "string",
+            "title": "Period",
+            "description": "财报周期，如 2026H1"
+          },
+          "expectations": {
+            "items": {
+              "$ref": "#/components/schemas/EarningsExpectation"
+            },
+            "type": "array",
+            "title": "Expectations",
+            "description": "预期值列表"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticker",
+          "period",
+          "expectations"
+        ],
+        "title": "SetExpectationsRequest",
+        "description": "设置预期值请求"
+      },
       "StressTestRequest": {
         "properties": {
           "scenario": {
@@ -12467,6 +15475,26 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WalkForwardInterpretRequest": {
+        "properties": {
+          "report": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Report"
+          },
+          "use_llm": {
+            "type": "boolean",
+            "title": "Use Llm",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "report"
+        ],
+        "title": "WalkForwardInterpretRequest",
+        "description": "吃 Walk-Forward 滚动验证报告（即 /walk-forward 返回的 data 负载），\n\n自动判过拟合（IS/OOS 性能崩塌）+ Alpha 衰减（逐折 OOS 夏普恶化），\n并可选经 LLM 生成 ≤80 字解读。"
       },
       "WalkForwardRequest": {
         "properties": {
@@ -12705,6 +15733,10 @@
       }
     },
     "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      },
       "OAuth2PasswordBearer": {
         "type": "oauth2",
         "flows": {
@@ -12713,10 +15745,6 @@
             "tokenUrl": "/auth/login"
           }
         }
-      },
-      "HTTPBearer": {
-        "type": "http",
-        "scheme": "bearer"
       }
     }
   },
