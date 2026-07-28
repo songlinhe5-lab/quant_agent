@@ -30,12 +30,6 @@ describe('STRAT-05: useSandboxRun Hook Logic', () => {
 
   describe('AbortController 竞态取消', () => {
     it('should abort previous request when new one starts', async () => {
-      const abortSpy = vi.fn()
-      const mockAbortController = {
-        signal: { aborted: false },
-        abort: abortSpy,
-      }
-
       // Simulate first request
       let currentController = new AbortController()
 

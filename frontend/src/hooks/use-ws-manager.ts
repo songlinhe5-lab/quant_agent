@@ -62,6 +62,7 @@ export function useWSManager(config: WSManagerConfig) {
     isStale: false,
   })
 
+// eslint-disable-next-line react-hooks/exhaustive-deps
   const mergedConfig = { ...DEFAULT_CONFIG, ...config }
 
   // ─── 更新状态 ───────────────────────────────────────────────────
@@ -141,6 +142,7 @@ export function useWSManager(config: WSManagerConfig) {
     reconnectTimerRef.current = setTimeout(() => {
       connect()
     }, delay)
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mergedConfig, getReconnectDelay, updateStatus])
 
   // ─── 重订阅 ─────────────────────────────────────────────────────
@@ -203,7 +205,7 @@ export function useWSManager(config: WSManagerConfig) {
         }
 
         mergedConfig.onMessage?.(data)
-      } catch (e) {
+      } catch (_e) {
         logger.warn('[WS] 消息解析失败', { raw: event.data })
       }
     }
@@ -212,7 +214,7 @@ export function useWSManager(config: WSManagerConfig) {
       logger.error('[WS] 连接错误', event as unknown as Error)
     }
 
-    ws.onclose = (event) => {
+    ws.onclose = (_event) => {
       clearTimers()
       
       if (!isManualCloseRef.current) {

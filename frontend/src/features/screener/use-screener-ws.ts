@@ -50,7 +50,7 @@ export function useScreenerWs(pageSymbols: string[]) {
             const q = market.QuoteData.decode(new Uint8Array(event.data));
             window.dispatchEvent(new CustomEvent('screener_quote_update', { detail: { ticker: q.ticker, last_price: q.lastPrice ?? (q as any).last_price ?? 0, change_pct: q.changePct ?? (q as any).change_pct ?? "0.0%" } }));
           }
-        } catch (e) { /* ignore decode error */ }
+        } catch (_e) { /* ignore decode error */ }
       };
       wsRef.current.onerror = () => {
         useBackendStatusStore.getState().registerFailure('Market WebSocket 连接失败')
@@ -89,5 +89,6 @@ export function useScreenerWs(pageSymbols: string[]) {
       if (toSubscribe.length > 0) wsRef.current.send(JSON.stringify({ action: 'subscribe', tickers: toSubscribe }));
     }
     prevSymbolsRef.current = currentSymbols;
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageSymbols.join(',')]);
 }

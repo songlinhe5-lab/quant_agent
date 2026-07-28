@@ -54,6 +54,7 @@ export function AIChat() {
     if (messages.length === 0) {
       fetchVibeExamples()
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length])
 
   const handleGenerate = async (overridePrompt?: string) => {
@@ -105,7 +106,7 @@ export function AIChat() {
               } else if (data.status === 'error') {
                 updateMessage(assistantMsgId, { content: `生成失败: ${data.message}`, status: 'error' })
               }
-            } catch (e) { /* ignore */ }
+            } catch (_e) { /* ignore */ }
           }
         }
       }

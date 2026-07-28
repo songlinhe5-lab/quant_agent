@@ -4,7 +4,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { createChart, ColorType, IChartApi, ISeriesApi, LineStyle, AreaSeries } from 'lightweight-charts'
+import { createChart, ColorType, IChartApi, AreaSeries } from 'lightweight-charts'
 import { apiClient } from '@/lib/api-client'
 
 interface NavPoint {

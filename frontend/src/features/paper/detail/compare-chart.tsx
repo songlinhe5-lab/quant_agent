@@ -4,7 +4,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { createChart, ColorType, IChartApi, LineStyle, LineSeries } from 'lightweight-charts'
+import { createChart, ColorType, LineStyle, LineSeries } from 'lightweight-charts'
 import { apiClient } from '@/lib/api-client'
 
 interface ChartPoint {

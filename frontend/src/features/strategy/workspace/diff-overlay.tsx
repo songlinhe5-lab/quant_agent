@@ -9,7 +9,6 @@ import { useTheme } from 'next-themes'
 import { Check, X, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useStrategyStore } from '../stores'
-import { cn } from '@/lib/utils'
 
 // Monaco Environment setup (same as monaco-editor.tsx)
 if (typeof window !== 'undefined') {

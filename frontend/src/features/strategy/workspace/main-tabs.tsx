@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { Code2, LineChart, PanelBottomClose, PanelBottomOpen } from 'lucide-react'
+import { Code2, PanelBottomClose, PanelBottomOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { useStrategyStore } from '../stores'

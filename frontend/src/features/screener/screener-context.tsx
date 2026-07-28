@@ -134,7 +134,7 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
         setDisplayPrompts(res.data.data);
         setPlaceholderText(`告诉 Agent 您的选股逻辑，例如：${res.data.data[res.data.data.length - 1]}...`);
       }
-    } catch (e) {
+    } catch (_e) {
       const fallback = ["格雷厄姆深度价值股", "MACD在水上金叉，且量比大于2的强势突破", "A股中报业绩预增，净利润同比增长超50%", "PE历史百分位低于10%极度低估的美股", "连续三天放量，且股价突破52周新高", "港美双市场极度恐慌错杀"];
       setDisplayPrompts(fallback);
       setPlaceholderText(`告诉 Agent 您的选股逻辑，例如：${fallback[0]}...`);
@@ -144,7 +144,7 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
   const fetchPageData = async (dsl: string, page: number, size: number, sKey: string, sDir: number, filters: Record<string, any> = {}) => {
     setIsLoading(true);
     setScanStatus('从云端获取中...');
-    try { JSON.parse(dsl); } catch (e) {
+    try { JSON.parse(dsl); } catch (_e) {
       if (nlpQuery && nlpQuery.trim()) {
         toast({ title: '检测到缓存数据异常', description: '正在重新解析您的查询条件...' });
         await handleTranslate(nlpQuery);
@@ -199,7 +199,7 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
         a.download = `QuantEdge_Screener_${new Date().toISOString().slice(0, 10)}.csv`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
         toast({ title: '导出成功', description: `已为您导出全量 ${fullData.length} 条选股结果。` })
       }
-    } catch (e) { toast({ title: '导出失败', description: '获取全量数据异常', variant: 'destructive' }) }
+    } catch (_e) { toast({ title: '导出失败', description: '获取全量数据异常', variant: 'destructive' }) }
   }
 
   const handleAddSingle = (symbol: string) => { addTicker(symbol); toast({ title: '已加入自选池', description: `${formatDisplaySymbol(symbol)} 已成功推入 Watchlist。` }) }
@@ -236,7 +236,7 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
     try {
       const transRes = await apiClient.post('/screener/translate', { query: currentQuery });
       if (transRes.data?.status === 'success' && transRes.data?.data) finalDsl = transRes.data.data;
-    } catch (e: any) { /* ignore translate error */ }
+    } catch (_e: any) { /* ignore translate error */ }
     setDslQuery(finalDsl); setShowRawDsl(true); setProgress(10); setScanStatus('正在扫描...');
     const newItem = { nlp: currentQuery, dsl: finalDsl, time: Date.now() };
     const newHistory = [newItem, ...history.filter(item => item.nlp !== currentQuery)].slice(0, 20);
@@ -247,7 +247,7 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
       setProgress(100); setScanStatus('拉取完成，正在渲染...'); await new Promise(resolve => setTimeout(resolve, 400));
       if (res.data?.status === 'success' && res.data.data) {
         setResults(res.data.data); setTotalItems(res.data.total || res.data.data.length); setCurrentPage(1);
-        try { localStorage.setItem('quant_screener_latest_state', JSON.stringify({ nlpQuery: currentQuery, dslQuery: finalDsl, results: res.data.data, totalItems: res.data.total || res.data.data.length })); } catch (e) { /* ignore */ }
+        try { localStorage.setItem('quant_screener_latest_state', JSON.stringify({ nlpQuery: currentQuery, dslQuery: finalDsl, results: res.data.data, totalItems: res.data.total || res.data.data.length })); } catch (_e) { /* ignore */ }
       } else {
         toast({ variant: 'destructive', title: '筛选失败', description: res.data?.message || '无法从后端获取筛选结果。' });
       }
@@ -278,14 +278,14 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
     try {
       const h = localStorage.getItem('quant_screener_history')
       if (h) setHistory(JSON.parse(h))
-    } catch (e) { /* ignore */ }
+    } catch (_e) { /* ignore */ }
     try {
       const latestStateStr = localStorage.getItem('quant_screener_latest_state')
       if (latestStateStr) {
         const latestState = JSON.parse(latestStateStr)
         if (latestState.results && latestState.results.length > 0) {
           let isValidDsl = false;
-          try { JSON.parse(latestState.dslQuery || ''); isValidDsl = true; } catch (e) { localStorage.removeItem('quant_screener_latest_state'); }
+          try { JSON.parse(latestState.dslQuery || ''); isValidDsl = true; } catch (_e) { localStorage.removeItem('quant_screener_latest_state'); }
           if (isValidDsl) {
             setResults(latestState.results)
             setTotalItems(latestState.totalItems || latestState.results.length)
@@ -294,7 +294,7 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
           }
         }
       }
-    } catch (e) { /* ignore */ }
+    } catch (_e) { /* ignore */ }
     const fetchCloudHistory = async () => {
       try {
         const res = await apiClient.get('/screener/history')
@@ -302,7 +302,7 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
           setHistory(res.data.data)
           localStorage.setItem('quant_screener_history', JSON.stringify(res.data.data))
         }
-      } catch (e) { /* ignore */ }
+      } catch (_e) { /* ignore */ }
     }
     fetchCloudHistory()
   }, [])

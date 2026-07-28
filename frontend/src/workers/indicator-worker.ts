@@ -431,6 +431,7 @@ export function useIndicator(
       })
 
     return () => { cancelled = true }
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [indicator, data.length, JSON.stringify(params)])
 
   return { result, isLoading, error }

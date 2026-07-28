@@ -306,6 +306,7 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
       window.removeEventListener('market_tick', handleTick)
       if (resizeObserver) resizeObserver.disconnect()
       if (containerRef.current && handleWheel) {
+// eslint-disable-next-line react-hooks/exhaustive-deps
         containerRef.current.removeEventListener('wheel', handleWheel)
       }
       if (appRef.current) {

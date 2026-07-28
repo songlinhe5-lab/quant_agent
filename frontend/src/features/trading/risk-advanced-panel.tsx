@@ -37,6 +37,7 @@ export function RiskAdvancedPanel({ market, correlation, tabs }: RiskAdvancedPan
         if (d?.decompositions) setCvarData(d.decompositions)
       }).catch(() => {})
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [advancedTab, market])
 
   function runStressTest(scenario: string) {

@@ -2,7 +2,7 @@
  * STRAT-01a: Store Slices 测试
  * 验证 4 个 Slice 的状态转换和 actions
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { useStrategyStore } from '../stores'
 
 describe('STRAT-01a: Store Slices', () => {

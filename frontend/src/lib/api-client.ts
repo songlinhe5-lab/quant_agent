@@ -432,7 +432,7 @@ class SSEClient {
       try {
         const data = JSON.parse(event.data)
         onMessage(data)
-      } catch (e) {
+      } catch (_e) {
         logger.warn('[SSE] 消息解析失败', { raw: event.data })
       }
     }

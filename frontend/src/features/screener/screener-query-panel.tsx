@@ -14,7 +14,7 @@ export function ScreenerQueryPanel() {
     isLoading, progress, scanStatus, handleTranslate, showRawDsl, setShowRawDsl, handleSubscribe
   } = useScreenerContext()
 
-  const parseVal = (v: any) => {
+  const _parseVal = (v: any) => {
     const str = String(v).replace(/[+%]/g, '')
     let num = parseFloat(str)
     if (str.includes('万亿')) num *= 1e12
@@ -140,7 +140,7 @@ export function ScreenerQueryPanel() {
                     </div>
                   </div>
                 );
-              } catch (e) {
+              } catch (_e) {
                 return (
                   <div>
                     <p className="text-[10px] text-violet-600 dark:text-violet-400 font-semibold uppercase tracking-wide flex items-center gap-1 mb-1.5"><Zap className="h-3 w-3" />Agent 成功解析底层过滤规则：</p>

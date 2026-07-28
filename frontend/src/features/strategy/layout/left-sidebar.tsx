@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import { FolderGit2, Plus, Star, GitBranch, Trash2, Clock } from 'lucide-react'
 import { useStrategyStore } from '../stores'
 import { apiClient } from '@/lib/api-client'
@@ -18,7 +18,8 @@ export function LeftSidebar() {
     try {
       const f = localStorage.getItem('quant_strategy_favorites')
       if (f) store.setFavorites(JSON.parse(f))
-    } catch (e) { /* ignore */ }
+    } catch (_e) { /* ignore */ }
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleToggleFavorite = (name: string, e: React.MouseEvent) => {

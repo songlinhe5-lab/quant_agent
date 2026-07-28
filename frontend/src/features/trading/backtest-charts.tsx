@@ -19,7 +19,6 @@ export function BacktestEquityChart({ data }: { data: EquityPoint[] }) {
   const chartRef = useEChart(
     () => {
       if (!data.length) return null
-      const split = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'
       const tradeMarks = data
         .map((d, i) => (d.tradeAction ? { coord: [i, d.strategy], action: d.tradeAction, profit: d.tradeProfit } : null))
         .filter(Boolean) as { coord: [number, number]; action: string; profit?: number }[]

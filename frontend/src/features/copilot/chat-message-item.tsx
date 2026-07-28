@@ -15,7 +15,7 @@ import { useTheme } from 'next-themes'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
-const CodeBlockRenderer = React.memo(({ codeContent, isStrategyCode, lang, children, codeProps, navigate, isGenerating }: any) => {
+const CodeBlockRenderer = React.memo(({ codeContent, isStrategyCode, lang, _children, _codeProps, navigate, isGenerating }: any) => {
   const [copied, setCopied] = useState(false);
   // 💡 初始加载时：如果代码大于 50 行且不在生成状态（如查看历史记录），默认折叠
   const [isCollapsed, setIsCollapsed] = useState(() => codeContent.split('\n').length > 50 && !isGenerating);
@@ -293,7 +293,7 @@ export const ChatMessageItem = React.memo(({
                           const parsed = JSON.parse(tool.input);
                           const key = ['query', 'q', 'ticker', 'keyword', 'url'].find(k => parsed[k]);
                           if (key && typeof parsed[key] === 'string') queryDesc = parsed[key];
-                        } catch(e) { /* ignore parse error */ }
+                        } catch(_e) { /* ignore parse error */ }
 
                         let resultList: any[] | null = null;
                         try {
@@ -303,7 +303,7 @@ export const ChatMessageItem = React.memo(({
                             else if (parsed && Array.isArray(parsed.data)) resultList = parsed.data;
                             else if (parsed && Array.isArray(parsed.results)) resultList = parsed.results;
                           }
-                        } catch(e) { /* ignore parse error */ }
+                        } catch(_e) { /* ignore parse error */ }
 
                         return (
                           <div key={tIdx} className="border border-border/30 rounded-md p-2 bg-slate-100/50 dark:bg-zinc-900/50">
@@ -393,14 +393,14 @@ export const ChatMessageItem = React.memo(({
                   remarkPlugins={[remarkGfm, remarkMath]}
                   rehypePlugins={[[rehypeKatex, { strict: false }]]}
                   components={{
-                    p: ({node, ...props}) => <div className="mb-2 last:mb-0 leading-relaxed" {...props} />,
-                    a: ({node, ...props}) => <a className="text-emerald-500 hover:text-emerald-400 hover:underline underline-offset-4" target="_blank" rel="noreferrer" {...props} />,
-                    h1: ({node, ...props}) => <h1 className="text-lg font-bold mt-4 mb-2 text-foreground" {...props} />,
-                    h2: ({node, ...props}) => <h2 className="text-base font-bold mt-3 mb-2 text-foreground" {...props} />,
-                    h3: ({node, ...props}) => <h3 className="text-sm font-bold mt-2 mb-1 text-foreground" {...props} />,
-                    ul: ({node, ...props}) => <ul className="list-disc list-outside ml-4 mb-2 space-y-1" {...props} />,
-                    ol: ({node, ...props}) => <ol className="list-decimal list-outside ml-4 mb-2 space-y-1" {...props} />,
-                    li: ({node, ...props}: any) => {
+                    p: ({ ...props }) => <div className="mb-2 last:mb-0 leading-relaxed" {...props} />,
+                    a: ({ ...props }) => <a className="text-emerald-500 hover:text-emerald-400 hover:underline underline-offset-4" target="_blank" rel="noreferrer" {...props} />,
+                    h1: ({ ...props }) => <h1 className="text-lg font-bold mt-4 mb-2 text-foreground" {...props} />,
+                    h2: ({ ...props }) => <h2 className="text-base font-bold mt-3 mb-2 text-foreground" {...props} />,
+                    h3: ({ ...props }) => <h3 className="text-sm font-bold mt-2 mb-1 text-foreground" {...props} />,
+                    ul: ({ ...props }) => <ul className="list-disc list-outside ml-4 mb-2 space-y-1" {...props} />,
+                    ol: ({ ...props }) => <ol className="list-decimal list-outside ml-4 mb-2 space-y-1" {...props} />,
+                    li: ({ ...props }: any) => {
                       const extractText = (children: any): string => {
                         let text = ''
                         React.Children.forEach(children, child => {
@@ -424,8 +424,8 @@ export const ChatMessageItem = React.memo(({
                       }
                       return <li className="pl-1" {...props} />
                     },
-                    blockquote: ({node, ...props}) => <blockquote className="border-l-2 border-primary/50 pl-3 py-1.5 my-2 bg-primary/5 text-muted-foreground italic rounded-r-md" {...props} />,
-                    code: ({node, inline, className, children, ...props}: any) => {
+                    blockquote: ({ ...props }) => <blockquote className="border-l-2 border-primary/50 pl-3 py-1.5 my-2 bg-primary/5 text-muted-foreground italic rounded-r-md" {...props} />,
+                    code: ({ inline, className, children, ...props }: any) => {
                       const match = /language-(\w+)/.exec(className || '')
                       const lang = match ? match[1].toLowerCase() : ''
                       
@@ -452,7 +452,7 @@ export const ChatMessageItem = React.memo(({
                               <EChartsRenderer options={jsonObj} />
                             </div>
                           )
-                        } catch (err) {
+                        } catch (_err) {
                           return <div className="my-4 p-3 rounded-lg border border-red-500/20 bg-red-500/10 text-xs text-red-400 font-mono">⚠️ 动态图表解析中，等待 JSON 格式闭环...</div>
                         }
                       }
@@ -476,12 +476,12 @@ export const ChatMessageItem = React.memo(({
                         <code className="bg-secondary/60 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded text-[11px] font-mono mx-0.5" {...props}>{children}</code>
                       )
                     },
-                    table: ({node, ...props}) => <div className="overflow-x-auto my-3 custom-scrollbar rounded-lg border border-border/40 bg-slate-50 dark:bg-secondary/10 shadow-sm"><table className="w-full text-left border-collapse text-xs" {...props} /></div>,
-                    thead: ({node, ...props}) => <thead className="bg-slate-100 dark:bg-secondary/40 border-b border-border/40" {...props} />,
-                    tr: ({node, ...props}) => <tr className="hover:bg-slate-200/50 dark:hover:bg-secondary/30 transition-colors group" {...props} />,
-                    th: ({node, ...props}) => <th className="px-3 py-2 font-semibold text-foreground whitespace-nowrap border-b border-border/20" {...props} />,
-                    td: ({node, ...props}) => <td className="px-3 py-2 border-b border-border/10 text-muted-foreground group-hover:text-foreground transition-colors" {...props} />,
-                    hr: ({node, ...props}) => <hr className="my-4 border-border/30" {...props} />
+                    table: ({ ...props }) => <div className="overflow-x-auto my-3 custom-scrollbar rounded-lg border border-border/40 bg-slate-50 dark:bg-secondary/10 shadow-sm"><table className="w-full text-left border-collapse text-xs" {...props} /></div>,
+                    thead: ({ ...props }) => <thead className="bg-slate-100 dark:bg-secondary/40 border-b border-border/40" {...props} />,
+                    tr: ({ ...props }) => <tr className="hover:bg-slate-200/50 dark:hover:bg-secondary/30 transition-colors group" {...props} />,
+                    th: ({ ...props }) => <th className="px-3 py-2 font-semibold text-foreground whitespace-nowrap border-b border-border/20" {...props} />,
+                    td: ({ ...props }) => <td className="px-3 py-2 border-b border-border/10 text-muted-foreground group-hover:text-foreground transition-colors" {...props} />,
+                    hr: ({ ...props }) => <hr className="my-4 border-border/30" {...props} />
                   }}
                 >
                   {finalContent}

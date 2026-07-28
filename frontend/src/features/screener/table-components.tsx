@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef } from 'react'
 import { ChevronUp, ChevronDown, ArrowUpDown, Filter, Info, Building2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { formatDisplaySymbol, getZhLabel, type SortKey } from './shared'
+import { formatDisplaySymbol, type SortKey } from './shared'
 
 // ── 独立提取单行组件 (局部状态隔离，实现零GC实时跳动) ──────────────────────────────────
-export const ScreenerRow = React.memo(({ r, isSelected, dynamicCols, toggleOne, handleAddAndOpen, handleAddSingle, onPreview, onSendToCopilot, onSendToBacktest }: any) => {
+export const ScreenerRow = React.memo(({ r, isSelected, dynamicCols, toggleOne, _handleAddAndOpen, handleAddSingle, onPreview, onSendToCopilot, onSendToBacktest }: any) => {
   const [localPrice, setLocalPrice] = useState(r.price)
   const [localChg, setLocalChg] = useState(r.chg)
   const [flash, setFlash] = useState<'up' | 'down' | null>(null)

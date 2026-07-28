@@ -2,7 +2,7 @@
  * FE-PROD-04: 快照选择 / 可复现性徽章
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, act, waitFor } from '@testing-library/react'
+import { renderHook, waitFor } from '@testing-library/react'
 import { extractReproducibilityBadge } from '@/features/backtest/reproducibility-badge'
 import { LATEST_PUBLISHED } from '@/types/datalake'
 

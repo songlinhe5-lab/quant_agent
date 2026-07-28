@@ -131,6 +131,7 @@ export function CoPilotPanel({ symbol }: { symbol: string }) {
       window.removeEventListener('quote_update', handler)
       abortRef.current?.abort()
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ai02Enabled, symbol])
 
   if (!ai02Enabled) return null

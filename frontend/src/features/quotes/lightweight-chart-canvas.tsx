@@ -323,6 +323,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     } else if (customMarkersApiRef.current) {
       customMarkersApiRef.current.setMarkers([])
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const applyCIPanelRef = useRef(applyCustomIndicators)
@@ -541,6 +542,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
   useEffect(() => {
     latestAnnotationRef.current = aiSymbol && aiPayload ? { symbol: aiSymbol, payload: aiPayload } : null
     applyAiAnnotations()
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiPayload, aiSymbol, selectedSymbol, theme])
 
   // AI-01 能力②：形态识别叠加（与 AI 副驾标注相互独立，使用各自 ref 互不覆盖）
@@ -608,6 +610,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
   useEffect(() => {
     latestPatternRef.current = patternSymbol && patternPayload ? { symbol: patternSymbol, payload: patternPayload } : null
     applyPatternAnnotations()
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patternPayload, patternSymbol, selectedSymbol, theme])
   
   const measureBoxRef = useRef<HTMLDivElement>(null)
@@ -928,6 +931,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       customMarkersApiRef.current = null
       customLineRefs.current = {}
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme, applyPositionLines])
 
   // PROD-03: 切换标的/周期时清除已画线，避免点位错位误导
@@ -1052,7 +1056,9 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     }
     workerRef.current.postMessage({ id: reqId, history: sortedHistory, params: { maPeriods: [20, 50, 200], bbParams: [20, 2], macdParams: [12, 26, 9], rsiPeriod: 14, kdjParams: [9, 3, 3] } })
     // PROD-12: 卸载或图表重建时从同步管理器注销，避免悬挂引用
+// eslint-disable-next-line react-hooks/exhaustive-deps
     return () => { crosshairSync.unregister(syncGroup, chartIdRef.current) }
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [realHistory, theme])
 
   useEffect(() => { if (ma20Ref.current) ma20Ref.current.applyOptions({ visible: showMA20 }); if (ma50Ref.current) ma50Ref.current.applyOptions({ visible: showMA50 }); if (ma200Ref.current) ma200Ref.current.applyOptions({ visible: showMA200 }); }, [showMA20, showMA50, showMA200])

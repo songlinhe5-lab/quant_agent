@@ -199,7 +199,6 @@ class Parser {
 
 // ─── 序列求值原语 ──────────────────────────────────────────────────────
 interface Val { values: (number | null)[]; isBool: boolean }
-const N = (v: number): Val => ({ values: [v], isBool: false }) // 标量（实际会按 bars 长度展开）
 const seriesOf = (arr: (number | null)[]) => ({ values: arr, isBool: false })
 const boolOf = (arr: (number | null)[]) => ({ values: arr, isBool: true })
 
