@@ -37,7 +37,7 @@ jobs:
     # 💡 仅在 develop 推送和 PR 时运行，main 推送跳过（信任 develop 已验证）
     if: github.ref != 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
@@ -89,7 +89,7 @@ jobs:
           - 6379:6379
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
@@ -139,11 +139,10 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
         if: always()
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           files: ./coverage.xml
           flags: backend
-          fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
   security:
@@ -153,7 +152,7 @@ jobs:
     # 💡 仅在 develop 推送和 PR 时运行，main 推送跳过（信任 develop 已验证）
     if: always() && (needs.test.result == 'success' || needs.test.result == 'skipped')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
@@ -189,7 +188,7 @@ jobs:
     outputs:
       image_tag: ${{ steps.meta.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -236,7 +235,7 @@ jobs:
       needs.build.result == 'success'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set target image tag
         id: set_tag
@@ -353,7 +352,7 @@ jobs:
        github.event_name == 'workflow_dispatch') &&
       needs.deploy.result == 'success'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
@@ -401,7 +400,7 @@ jobs:
     needs: [deploy]
     if: always() && needs.deploy.result == 'success'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: SSH connectivity pre-flight
         uses: ./.github/actions/ssh-preflight
