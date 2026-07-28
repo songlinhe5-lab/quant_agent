@@ -9,7 +9,8 @@
 - get_option_chain_matrix: Futu 未连接报错 / 已连接组装曲面
 """
 
-from unittest.mock import AsyncMock, MagicMock
+import sys
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -192,3 +193,33 @@ async def test_option_chain_matrix_connected():
     out = await gw.get_option_chain_matrix("US.AAPL")
     assert out["status"] == "success"
     assert out["expirations"] == ["2024-01-19"]
+
+
+@pytest.mark.asyncio
+async def test_get_option_expiration_dates_yf_fallback():
+    """Futu 未连接时降级到 YFinance 真实期权到期日 (OPTION-01 修复路径)"""
+    gw = _make_gateway()
+    gw._futu.conn_mgr = None  # 跳过 Futu 分支
+    fake_ticker = MagicMock()
+    fake_ticker.options = ["2024-01-19", "2024-02-16"]
+    fake_yf = MagicMock()
+    fake_yf.Ticker.return_value = fake_ticker
+    with patch.dict(sys.modules, {"yfinance": fake_yf}):
+        dates, src = await gw._get_option_expiration_dates("US.AAPL")
+    assert dates == ["2024-01-19", "2024-02-16"]
+    assert src == "yfinance"
+
+
+@pytest.mark.asyncio
+async def test_get_option_expiration_dates_no_source():
+    """Futu 与 YFinance 均无真实数据时返回空列表 + 'none' 源标识 (不伪造)"""
+    gw = _make_gateway()
+    gw._futu.conn_mgr = None
+    fake_ticker = MagicMock()
+    fake_ticker.options = []
+    fake_yf = MagicMock()
+    fake_yf.Ticker.return_value = fake_ticker
+    with patch.dict(sys.modules, {"yfinance": fake_yf}):
+        dates, src = await gw._get_option_expiration_dates("US.AAPL")
+    assert dates == []
+    assert src == "none"
