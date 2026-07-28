@@ -3,7 +3,8 @@
  */
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { DataState, resolveDataStatus } from '@/components/data-state'
+import { DataState } from '@/components/data-state'
+import { resolveDataStatus } from '@/components/data-state-utils'
 import { MOTION } from '@/lib/motion'
 import { VirtualList } from '@/components/virtual-list'
 

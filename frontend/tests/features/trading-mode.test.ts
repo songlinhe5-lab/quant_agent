@@ -19,12 +19,12 @@ vi.mock('@/lib/api-client', () => ({
   },
 }))
 
-vi.mock('@/components/confirm-dialog', () => ({
+vi.mock('@/components/confirm-dialog-context', () => ({
   confirmDanger: vi.fn(),
 }))
 
 import { apiClient } from '@/lib/api-client'
-import { confirmDanger } from '@/components/confirm-dialog'
+import { confirmDanger } from '@/components/confirm-dialog-context'
 import { hydrateTradingMode, requestTradingModeSwitch } from '@/features/trading/trading-mode-actions'
 
 const mockApi = vi.mocked(apiClient)
