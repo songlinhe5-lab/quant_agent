@@ -39,7 +39,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Trivy results as artifact (optional)
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: trivy-scan-results
