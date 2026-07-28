@@ -146,6 +146,31 @@ class TestIVRank:
         assert resp.status_code == 404
 
 
+class TestOptionChainMatrix:
+    @patch("backend.routers.options.market_data")
+    def test_chain_matrix_success(self, mock_md):
+        mock_md.get_option_chain_matrix = AsyncMock(
+            return_value={
+                "status": "success",
+                "symbol": "US.AAPL",
+                "expirations": ["2026-08-01"],
+                "strikes": [150],
+                "calls": {"iv": [[0.3]], "delta": [[0.5]]},
+                "puts": {"iv": [[0.3]], "delta": [[-0.5]]},
+                "legs": [],
+            }
+        )
+        resp = client.get("/options/chain-matrix/US.AAPL")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "success"
+
+    @patch("backend.routers.options.market_data")
+    def test_chain_matrix_fail(self, mock_md):
+        mock_md.get_option_chain_matrix = AsyncMock(return_value={"status": "error", "message": "数据源已死，无法分析"})
+        resp = client.get("/options/chain-matrix/US.AAPL")
+        assert resp.status_code == 502
+
+
 # ==========================================
 # Risk Router
 # ==========================================
