@@ -160,6 +160,15 @@ class TestTradeHandler:
         assert result["status"] == "error"
 
     @pytest.mark.asyncio
+    async def test_get_account_info_prod_disconnected_returns_error(self):
+        """生产环境未连接应返回错误而非 mock (零幻觉契约)"""
+        handler, conn_mgr = _make_handler()
+        conn_mgr.status = "DISCONNECTED"
+        with patch.dict("os.environ", {"QUANT_ENV": "production"}):
+            result = await handler.get_account_info("HK")
+        assert result["status"] == "error"
+
+    @pytest.mark.asyncio
     async def test_get_account_info_dev_env_uses_mock(self):
         """dev 环境 + 未连接应使用 mock_account_info"""
         handler, conn_mgr = _make_handler()
