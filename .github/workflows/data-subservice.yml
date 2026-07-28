@@ -141,9 +141,9 @@ jobs:
         node: [yf-a, yf-b]
         include:
           - node: yf-a
-            host_secret: VPS_S1_HOST
-            ssh_key_secret: VPS_S1_SSH_KEY
-            user_secret: VPS_S1_USER
+            host_secret: VPS_S3_HOST
+            ssh_key_secret: VPS_S3_SSH_KEY
+            user_secret: VPS_S3_USER
             node_id: us-yf-a
           - node: yf-b
             host_secret: VPS_S2_HOST
