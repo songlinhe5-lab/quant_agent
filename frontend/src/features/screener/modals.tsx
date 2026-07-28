@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 import { apiClient } from '@/lib/api-client'
 import { useTheme } from 'next-themes'
-import { useConfirmDialog } from '@/components/confirm-dialog'
+import { useConfirmDialog } from '@/components/confirm-dialog-context'
 import { createChart, ColorType, CrosshairMode, CandlestickSeries, HistogramSeries } from 'lightweight-charts'
 import { formatDisplaySymbol } from './shared'
 

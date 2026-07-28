@@ -325,14 +325,4 @@ function CommandItem({ item, onSelect }: CommandItemProps) {
   )
 }
 
-// ─── Hook: 命令面板状态管理 ─────────────────────────────────────────
-export function useCommandPalette() {
-  const [open, setOpen] = useState(false)
-
-  const toggle = useCallback(() => setOpen((prev) => !prev), [])
-  const close = useCallback(() => setOpen(false), [])
-
-  return { open, setOpen, toggle, close }
-}
-
 export default CommandPalette

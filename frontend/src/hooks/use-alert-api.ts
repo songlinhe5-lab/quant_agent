@@ -6,7 +6,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { apiClient, getValidAccessToken } from '@/lib/api-client'
 import logger from '@/lib/logger'
-import { useKeepAliveActive } from '@/components/layout/keep-alive-outlet'
+import { useKeepAliveActive } from '@/components/layout/keep-alive-context'
 import { useBackendStatusStore } from '@/stores/useBackendStatusStore'
 import type {
   AlertRule,

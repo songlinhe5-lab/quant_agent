@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import { SortableTh, ScreenerRow } from './table-components'
 import { getZhLabel } from './shared'
 import { useScreenerContext } from './screener-context'
-import { DataState, resolveDataStatus } from '@/components/data-state'
+import { DataState } from '@/components/data-state'
+import { resolveDataStatus } from '@/components/data-state-utils'
 import { ScreenerAgGrid } from './screener-ag-grid'
 
 export function ScreenerResultsTable() {

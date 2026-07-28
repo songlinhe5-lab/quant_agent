@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useToast } from '@/hooks/use-toast'
 import { apiClient, API_BASE_URL, getValidAccessToken } from '@/lib/api-client'
-import { confirmDanger } from '@/components/confirm-dialog'
+import { confirmDanger } from '@/components/confirm-dialog-context'
 import type { LiveBot, ActiveOrder, HistoricalTrade, AlgoExecution, Position } from './oms-types'
 import { useTradingModeStore } from '@/stores/useTradingModeStore'
 import { useBackendStatusStore } from '@/stores/useBackendStatusStore'
@@ -12,7 +12,7 @@ import {
   requestTradingModeSwitch,
 } from './trading-mode-actions'
 import { formatModeLabel, type TradingMode, TRADING_MODES } from './trading-mode-types'
-import { useKeepAliveActive } from '@/components/layout/keep-alive-outlet'
+import { useKeepAliveActive } from '@/components/layout/keep-alive-context'
 
 export function useOms() {
   const { toast } = useToast()

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, createContext, useCallback, useMemo } from 'react'
 import { fetchWithAuth, apiClient, API_BASE_URL } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
-import { useConfirmDialog } from '@/components/confirm-dialog'
+import { useConfirmDialog } from '@/components/confirm-dialog-context'
 import { SessionSidebarRef } from '@/features/copilot/session-sidebar'
 import { ChatMessage, ToolStep, ChatAttachment, StrategyBlock, ChartAnnotationPayload } from './types'
 import { useCopilotContextStore } from '@/stores/useCopilotContextStore'

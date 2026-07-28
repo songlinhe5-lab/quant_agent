@@ -19,18 +19,6 @@
 
 import { test, expect, type Page } from '@playwright/test'
 
-// ─── 辅助函数 ──────────────────────────────────────────────────────
-
-/**
- * 模拟登录：注入 localStorage token 绕过路由守卫
- * 实际项目中应通过真实登录 API 获取 token
- */
-async function mockAuth(_page: Page) {
-  // 注入 mock token 到 sessionStorage（前端 SEC-07: Access Token 存内存）
-  // 由于 Access Token 存 useRef，我们需要通过页面交互登录
-  // 这里直接导航到登录页并检查
-}
-
 // ─── 1. 登录页与路由守卫 ────────────────────────────────────────────
 
 test.describe('登录页与路由守卫 (SEC-10/FE-22)', () => {

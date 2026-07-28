@@ -3,7 +3,7 @@ import { useToast } from '@/hooks/use-toast'
 import { apiClient, API_BASE_URL, getValidAccessToken } from '@/lib/api-client'
 import { market } from '@/lib/proto/market'
 import { WatchlistItem } from '@/stores/use-watchlist'
-import { useKeepAliveActive } from '@/components/layout/keep-alive-outlet'
+import { useKeepAliveActive } from '@/components/layout/keep-alive-context'
 
 interface UseMarketDataProps {
   selectedSymbol: string;

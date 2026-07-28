@@ -10,7 +10,8 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { WatchlistItem } from '@/stores/use-watchlist'
 import { SymbolContextMenu } from '@/components/symbol-context-menu'
-import { DataState, resolveDataStatus } from '@/components/data-state'
+import { DataState } from '@/components/data-state'
+import { resolveDataStatus } from '@/components/data-state-utils'
 import { VirtualList } from '@/components/virtual-list'
 
 function MiniSparkline({ dirs, theme }: { dirs: number[], theme?: string }) {

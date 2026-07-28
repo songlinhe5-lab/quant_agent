@@ -6,7 +6,7 @@
 import { useEffect, useRef } from 'react'
 import { getValidAccessToken } from '@/lib/api-client'
 import { market } from '@/lib/proto/market'
-import { useKeepAliveActive } from '@/components/layout/keep-alive-outlet'
+import { useKeepAliveActive } from '@/components/layout/keep-alive-context'
 import { useBackendStatusStore } from '@/stores/useBackendStatusStore'
 
 /**

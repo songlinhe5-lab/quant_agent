@@ -4,7 +4,8 @@ import { cn } from "@/lib/utils"
 import { AlertTriangle, X, CheckCircle2, XCircle, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { VirtualList } from '@/components/virtual-list'
-import { DataState, resolveDataStatus } from '@/components/data-state'
+import { DataState } from '@/components/data-state'
+import { resolveDataStatus } from '@/components/data-state-utils'
 
 export interface Position {
   id: string

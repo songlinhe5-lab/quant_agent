@@ -2,18 +2,12 @@
  * FE-ARCH-01: 路由友好 Keep-Alive
  * 保留 URL 深链；已访问模块隐藏不卸载，减少行情/策略切换抖动。
  */
-import { createContext, useContext, useEffect, useRef, useState, type ReactElement } from 'react'
+import { useEffect, useRef, useState, type ReactElement } from 'react'
 import { useLocation, useOutlet } from 'react-router-dom'
 import { ModuleErrorBoundary } from '@/components/error-boundary'
+import { KeepAliveActiveContext } from '@/components/layout/keep-alive-context'
 
 const MAX_CACHED = 8
-
-/**
- * Keep-Alive 激活态上下文：告知被缓存（隐藏但未卸载）的模块当前是否为激活路由。
- * WS / 轮询等副作用应据此在后台模块中暂停，避免多模块 WS 并发重连风暴。
- */
-export const KeepAliveActiveContext = createContext<boolean>(true)
-export const useKeepAliveActive = () => useContext(KeepAliveActiveContext)
 
 export function KeepAliveOutlet() {
   const outlet = useOutlet()

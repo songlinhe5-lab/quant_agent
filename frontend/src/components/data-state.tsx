@@ -4,8 +4,7 @@ import { Inbox } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty'
 import { cn } from '@/lib/utils'
-
-export type DataViewStatus = 'loading' | 'ready' | 'stale' | 'empty'
+import { type DataViewStatus } from '@/components/data-state-utils'
 
 type DataStateProps = {
   status: DataViewStatus
@@ -67,14 +66,4 @@ export function DataState({
   )
 }
 
-/** 由 loading / empty / stale 布尔推导状态 */
-export function resolveDataStatus(opts: {
-  loading?: boolean
-  empty?: boolean
-  stale?: boolean
-}): DataViewStatus {
-  if (opts.loading) return 'loading'
-  if (opts.empty) return 'empty'
-  if (opts.stale) return 'stale'
-  return 'ready'
-}
+
