@@ -41,6 +41,7 @@ from backend.core.metrics import (
 )
 from backend.core.redis_client import redis_client
 from backend.services.datalake.kline_warehouse import kline_warehouse
+from backend.services.datalake.object_store import S3ObjectStore, get_l3_object_store
 
 logger = structlog.get_logger(__name__)
 
@@ -84,6 +85,7 @@ class KlineCacheEngine:
     def __init__(self):
         self._warehouse = kline_warehouse
         self._redis = redis_client
+        self._l3: S3ObjectStore = get_l3_object_store()
 
     async def get_kline(
         self,
@@ -183,6 +185,9 @@ class KlineCacheEngine:
         # 注意：warehouse 有自己的增量更新逻辑，这里不重复实现
         # 调用方应该在更新 warehouse 后，再调用此方法同步到 L1
 
+        # L3: 对象存储冷归档（异步、幂等分区覆盖；未配置时自动跳过）
+        asyncio.create_task(self._put_l3(symbol, period, df))
+
     # ── L1 Redis 操作 ─────────────────────────────────────────────
 
     async def _get_l1(self, symbol: str, period: str, days: int) -> Optional[pd.DataFrame]:  # noqa: E501
@@ -277,16 +282,25 @@ class KlineCacheEngine:
             logger.error(f"[K线缓存 L2] 读取 {symbol} 失败: {e}")
             return None
 
-    # ── L3 对象存储操作（预留）────────────────────────────────────
+    # ── L3 对象存储操作 ────────────────────────────────────────────
+
+    async def _put_l3(self, symbol: str, period: str, df: pd.DataFrame) -> None:
+        """写入 K线到对象存储冷归档层"""
+        try:
+            await self._l3.save(symbol, period, df)
+        except Exception as e:
+            logger.error(f"[K线缓存 L3] 写入 {symbol} 失败: {e}")
 
     async def _get_l3(self, symbol: str, period: str, days: int) -> Optional[pd.DataFrame]:  # noqa: E501
         """
-        从对象存储获取 K线（预留接口）
+        从对象存储获取 K线冷归档数据
 
-        TODO: 实现 Cloudflare R2 / S3 对接
+        实现：PyArrow S3FileSystem (Cloudflare R2 / S3 兼容) 列式直读。
+        未配置对象存储时返回 None，由上层路由决定降级策略。
         """
-        logger.info(f"[K线缓存 L3] {symbol} {period} - 对象存储尚未实现，返回 None")
-        return None
+        if not self._l3.configured:
+            return None
+        return await self._l3.load(symbol, period, days)
 
     # ── 缓存管理 ──────────────────────────────────────────────────
 
@@ -335,7 +349,7 @@ class KlineCacheEngine:
                 "l1_redis_keys": count,
                 "l1_ttl_days": L1_TTL_DAYS,
                 "l2_retention_days": L2_RETENTION_DAYS,
-                "l3_enabled": False,
+                "l3_enabled": self._l3.configured,
             }
 
         except Exception as e:
