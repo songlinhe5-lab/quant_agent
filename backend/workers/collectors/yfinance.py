@@ -7,7 +7,7 @@ from typing import Any
 
 
 async def start() -> list[Coroutine[Any, Any, Any] | Awaitable[Any]]:
-    from backend.services.yfinance_service import yf_service
+    from backend.services.yfinance import yf_service
 
     print("  [yfinance] macro_data_daemon started")
     return [yf_service.macro_data_daemon()]

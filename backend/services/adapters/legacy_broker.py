@@ -17,7 +17,7 @@ class BrokerGateway:
     """实现 BrokerPort 表面 + Kill Switch。"""
 
     def __init__(self) -> None:
-        from backend.services.futu_service import futu_service
+        from backend.services.futu import futu_service
 
         self._futu = futu_service
 

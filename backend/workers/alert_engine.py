@@ -39,8 +39,8 @@ from backend.domain.indicator_evaluator import (
     IndicatorEvaluator,
     extract_indicators_from_tech_data,
 )
+from backend.services.alert.dispatcher import AlertDispatcher
 from backend.services.alert.expr_evaluator import ExprEvaluator
-from backend.services.alert_dispatcher import AlertDispatcher
 
 # ─────────────────────────────────────────
 #  Redis 键空间

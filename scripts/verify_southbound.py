@@ -1,13 +1,14 @@
 import asyncio
-import sys
-import os
 import json
+import os
+import sys
 
 # 将项目根目录加入 sys.path，以便能够正确识别并导入 backend 模块
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from backend.services.akshare_service import akshare_service
 from backend.core.redis_client import redis_client
+from backend.services.akshare import akshare_service
+
 
 async def verify_southbound():
     print("=" * 60)
@@ -16,7 +17,7 @@ async def verify_southbound():
     try:
         print("📡 正在向东方财富接口发起并发请求 (当日汇总 + 近期历史趋势)...")
         res = await akshare_service.get_southbound_flow()
-        
+
         if res.get("status") == "success":
             print("✅ [获取成功] 真实数据返回如下:")
             print(json.dumps(res, indent=2, ensure_ascii=False))
@@ -29,6 +30,7 @@ async def verify_southbound():
         print(f"❌ [执行异常]: {e}")
     finally:
         await redis_client.aclose()
+
 
 if __name__ == "__main__":
     asyncio.run(verify_southbound())

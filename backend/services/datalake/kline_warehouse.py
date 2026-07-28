@@ -7,8 +7,8 @@ import pandas as pd
 
 from backend.core.redis_client import redis_client
 from backend.services.datasource.router import data_source_router
-from backend.services.futu_service import futu_service
-from backend.services.yfinance_service import format_yf_ticker
+from backend.services.futu import futu_service
+from backend.services.yfinance import format_yf_ticker
 
 # 💡 将数仓建立在根目录的 data/kline_warehouse 下，与代码库隔离
 DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data", "kline_warehouse"))  # noqa: E501

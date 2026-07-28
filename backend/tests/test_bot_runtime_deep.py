@@ -150,7 +150,7 @@ class TestSaveBotMeta:
 # ==========================================
 class TestFetchLatestQuote:
     @pytest.mark.asyncio
-    @patch("backend.services.futu_service.futu_service")
+    @patch("backend.services.futu.futu_service")
     async def test_fetch_quote_success(self, mock_futu, manager):
         """行情获取成功"""
         mock_futu.get_quote = AsyncMock(return_value={"status": "success", "data": {"last_price": 150.0}})
@@ -158,7 +158,7 @@ class TestFetchLatestQuote:
         assert result["status"] == "success"
 
     @pytest.mark.asyncio
-    @patch("backend.services.futu_service.futu_service")
+    @patch("backend.services.futu.futu_service")
     async def test_fetch_quote_error(self, mock_futu, manager):
         """行情获取异常返回 None"""
         mock_futu.get_quote = AsyncMock(side_effect=Exception("timeout"))

@@ -174,7 +174,7 @@ class TestMarketDaemon:
 
         with (
             patch(f"{DM}.asyncio.sleep", new=_make_cancelling_sleep(1)),
-            patch("backend.services.akshare_service.akshare_service") as m_ak,
+            patch("backend.services.akshare.akshare_service") as m_ak,
             patch("backend.services.macro.fred_service.fred_service") as m_fr,
         ):
             m_ak.get_economic_calendar_ak = AsyncMock(return_value={"status": "error"})

@@ -92,7 +92,7 @@ def analyze_imports():
         ("FastAPI Core", lambda: __import__("backend.core.database")),
         ("Redis Client", lambda: __import__("backend.core.redis_client")),
         ("Futu Service", lambda: __import__("backend.services.futu.service")),
-        ("YFinance Service", lambda: __import__("backend.services.yfinance_service")),
+        ("YFinance Service", lambda: __import__("backend.services.yfinance")),
         ("FRED Service", lambda: __import__("backend.services.macro.fred_service")),
         ("Hermes Agent", lambda: __import__("hermes_agent.agent")),
         ("Tool Registry", lambda: __import__("hermes_agent.tool_registry")),

@@ -275,7 +275,7 @@ def _mock_external_services(request):
     else:
         # 💡 注意：此处仅 mock 服务实例，不 mock yfinance 模块本身
         # 否则会导致 yfinance_service.py 的 coverage 统计异常
-        with patch("backend.services.futu_service.futu_service") as mock_futu:
+        with patch("backend.services.futu.futu_service") as mock_futu:
             mock_futu.status = "DISCONNECTED"
             mock_futu.get_market_snapshot = AsyncMock(return_value=([], None))
             yield

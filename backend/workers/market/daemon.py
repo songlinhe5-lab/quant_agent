@@ -34,7 +34,7 @@ async def run_global_daemon() -> None:
     统一入口：合并启动与守护市场守护进程。
     利用并发同时运行 [市场新闻轮询]、[个股新闻轮询] 与 [WebSocket 实时行情订阅]。
     """
-    from backend.services.finnhub_service import finnhub_service
+    from backend.services.finnhub.service import finnhub_service
 
     await asyncio.gather(
         _news_stream_daemon(finnhub_service),
@@ -54,8 +54,8 @@ async def _earnings_alert_daemon(finnhub_service):
     """
     后台守护进程：监控核心明星公司的财报发布，第一时间推送到通知渠道并由主脑进行点评
     """
-    from backend.services.llm_service import llm_service
-    from backend.services.notification_service import notification_service
+    from backend.services.ai_narrator.llm_service import llm_service
+    from backend.services.alert.notification import notification_service
 
     print("🚀 [Finnhub Daemon] 启动核心财报发布监控守护进程...")
 
@@ -256,7 +256,7 @@ async def _company_news_daemon(finnhub_service) -> None:
 
                 is_asian_stock = any(x in ticker.upper() for x in ["HK", "SH", "SZ"]) or ticker.isdigit()
                 if is_asian_stock:
-                    from backend.services.data_source_router import data_source_router
+                    from backend.services.datasource.router import data_source_router
 
                     res = await data_source_router.fetch_akshare("news", ticker=ticker)
                 else:
@@ -386,14 +386,14 @@ async def _trade_stream_daemon(finnhub_service) -> None:
 # ==========================================
 async def _macro_alert_daemon() -> None:
     """后台守护进程：监控高危宏观事件，当数据实际公布时第一时间推送"""
-    from backend.services.llm_service import llm_service
-    from backend.services.notification_service import notification_service
+    from backend.services.ai_narrator.llm_service import llm_service
+    from backend.services.alert.notification import notification_service
 
     print("🚀 [Finnhub Daemon] 启动宏观日历出炉监控守护进程...")
     while True:
         await asyncio.sleep(60)
         try:
-            from backend.services.data_source_router import data_source_router
+            from backend.services.datasource.router import data_source_router
 
             res = await data_source_router.fetch_akshare("economic_calendar", days_ahead=1)
             if res.get("status") == "error" or not res.get("data"):

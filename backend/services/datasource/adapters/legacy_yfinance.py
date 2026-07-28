@@ -27,7 +27,7 @@ class LegacyYFinanceDataSource:
 
     def _svc(self) -> Any:
         if self._service is None:
-            from backend.services.yfinance_service import yf_service
+            from backend.services.yfinance import yf_service
 
             self._service = yf_service
         return self._service

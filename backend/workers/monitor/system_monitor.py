@@ -4,7 +4,7 @@ from typing import Optional
 
 from backend.core import models
 from backend.core.database import SessionLocal
-from backend.services.notification_service import notification_service
+from backend.services.alert.notification import notification_service
 
 
 class SystemMonitorService:

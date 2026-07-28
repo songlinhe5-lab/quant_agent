@@ -61,7 +61,7 @@ async def _get_lot_size(symbol: str) -> int:
 
     # 尝试从 market_snapshot 获取 (包含 lot_size)
     try:
-        from backend.services.futu_service import futu_service
+        from backend.services.futu import futu_service
 
         snapshot = await futu_service.get_market_snapshots([symbol])
         if snapshot.get("status") == "success":
@@ -76,7 +76,7 @@ async def _get_lot_size(symbol: str) -> int:
 
     # 尝试从行情获取 (备用)
     try:
-        from backend.services.futu_service import futu_service
+        from backend.services.futu import futu_service
 
         quote = await futu_service.get_quote(symbol)
         lot = quote.get("lot_size", 0)
@@ -630,7 +630,7 @@ class AlgoEngine:
 
         # SANDBOX 模式: 模拟成交
         try:
-            from backend.services.futu_service import futu_service
+            from backend.services.futu import futu_service
 
             quote = await futu_service.get_quote(symbol)
             if quote and quote.get("status") == "success":
@@ -654,7 +654,7 @@ class AlgoEngine:
         try:
             from futu import TrdMarket, TrdSide
 
-            from backend.services.futu_service import futu_service
+            from backend.services.futu import futu_service
 
             logger.info(f"[AlgoEngine] _execute_real_order 入参: {symbol} qty={qty} side={side}")
 

@@ -36,14 +36,14 @@ class TestAKShareService:
 
     @pytest.fixture
     def service(self):
-        from backend.services.akshare_service import AKShareService
+        from backend.services.akshare import AKShareService
 
         return AKShareService()
 
     @pytest.fixture(autouse=True)
     def _patch_lock(self):
         """自动 patch _acquire_lock_with_timeout 以避免真实 Redis 锁"""
-        from backend.services.akshare_service import AKShareService
+        from backend.services.akshare import AKShareService
 
         with patch.object(AKShareService, "_acquire_lock_with_timeout", _fake_lock_cm):
             yield

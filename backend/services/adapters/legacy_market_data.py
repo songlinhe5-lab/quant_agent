@@ -23,13 +23,13 @@ class MarketDataGateway:
     """实现 QuotePort 表面 + 选股/宏观等扩展方法。"""
 
     def __init__(self) -> None:
-        from backend.services.akshare_service import akshare_service
+        from backend.services.akshare import akshare_service
         from backend.services.finnhub.service import finnhub_service
-        from backend.services.futu_service import futu_service
+        from backend.services.futu import futu_service
         from backend.services.macro.dbnomics import dbnomics_service
         from backend.services.macro.fred_service import fred_service
         from backend.services.macro.rbi import rbi_service
-        from backend.services.yfinance_service import yf_service
+        from backend.services.yfinance import yf_service
 
         self._futu = futu_service
         self._yf = yf_service

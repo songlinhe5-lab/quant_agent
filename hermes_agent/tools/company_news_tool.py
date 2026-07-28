@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-from backend.services.akshare_service import akshare_service
+from backend.services.akshare import akshare_service
 from backend.services.finnhub.service import finnhub_service
 from hermes_agent.tool_registry import register_tool
 

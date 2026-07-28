@@ -50,10 +50,10 @@ def make_service(router_enabled: bool = False):
     env = {"YF_ROUTER_ENABLED": "true"} if router_enabled else {}
     with patch.dict(os.environ, env):
         with patch.object(
-            __import__("backend.services.yfinance_service", fromlist=["YFinanceService"]).YFinanceService,
+            __import__("backend.services.yfinance", fromlist=["YFinanceService"]).YFinanceService,
             "_init_session",
         ):
-            from backend.services.yfinance_service import YFinanceService
+            from backend.services.yfinance import YFinanceService
 
             svc = YFinanceService.__new__(YFinanceService)
             # 手动设置构造函数中初始化的属性

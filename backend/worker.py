@@ -20,8 +20,8 @@ load_dotenv()
 # 导入核心组件
 from backend.core.database import engine  # noqa: E402
 from backend.core.redis_client import redis_batch_writer, redis_client  # noqa: E402
-from backend.services.notification_service import notification_service  # noqa: E402
-from backend.services.ticker_service import ticker_service  # noqa: E402
+from backend.services.alert.notification import notification_service  # noqa: E402
+from backend.services.fund_flow.ticker import ticker_service  # noqa: E402
 from backend.workers.collector_registry import (  # noqa: E402
     get_enabled_collectors,
     start_collector_daemons,
@@ -51,7 +51,7 @@ async def main():
     # 3. 后台服务任务 (数据节点不需要 DB 依赖的核心服务)
     if not IS_DATA_NODE:
         from backend.services.macro.sentiment_tracker import sentiment_tracker
-        from backend.services.screener_service import screener_service
+        from backend.services.screener.screener_service import screener_service
 
         tasks.append(asyncio.create_task(ticker_service.sync_tickers_daemon()))
         tasks.append(asyncio.create_task(sentiment_tracker.track_daemon()))
@@ -60,7 +60,7 @@ async def main():
         tasks.append(asyncio.create_task(screener_service.clean_obsolete_knowledge_base_daemon()))
 
         # PT-01c: 纸面组合结算守护进程
-        from backend.services.paper_settlement_daemon import paper_settlement_daemon
+        from backend.workers.paper.settlement_daemon import paper_settlement_daemon
 
         tasks.append(asyncio.create_task(paper_settlement_daemon.run()))
 

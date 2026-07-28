@@ -22,9 +22,6 @@ SERVICES_DIR = ROOT / "services"
 ALLOWED_FLAT_SERVICES = frozenset(
     {
         "__init__.py",
-        "akshare_service.py",
-        "futu_service.py",
-        "yfinance_service.py",
         "cep_engine.py",
         "factor_miner.py",
         "survivorship_bias.py",
@@ -81,9 +78,9 @@ class TestDomainPurity:
         forbidden = (
             "backend.routers",
             "backend.workers",
-            "backend.services.futu_service",
-            "backend.services.yfinance_service",
-            "backend.services.akshare_service",
+            "backend.services.futu",
+            "backend.services.yfinance",
+            "backend.services.akshare",
             "backend.services.finnhub.service",
             "backend.services.macro.fred_service",
         )

@@ -1,39 +1,40 @@
 """
 验证富途选股条件修复后的正确性
 测试用例: [{'field': 'HIST_PERCENTILE_PE', 'type': 'featured', 'max': 40.0},
-           {'field': 'CURRENT_RATIO', 'type': 'financial', 'term': 'ANNUAL', 'min': 200.0}, 
+           {'field': 'CURRENT_RATIO', 'type': 'financial', 'term': 'ANNUAL', 'min': 200.0},
            {'field': 'PROPERTY_RATIO', 'type': 'financial', 'term': 'ANNUAL', 'max': 100.0}]
 """
+
 import asyncio
-import sys
 import os
+import sys
 
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from backend.services.futu_service import futu_service
+from backend.services.futu import futu_service
 
 
 async def test_fixed_filters():
     """测试修复后的筛选条件"""
-    
+
     print("=" * 80)
     print("✅ 富途选股条件修复验证测试")
     print("=" * 80)
-    
+
     market = "HK"
     filters = [
         {"field": "HIST_PERCENTILE_PE", "type": "featured", "max": 40.0},
         {"field": "CURRENT_RATIO", "type": "financial", "term": "ANNUAL", "min": 200.0},
-        {"field": "PROPERTY_RATIO", "type": "financial", "term": "ANNUAL", "max": 100.0}
+        {"field": "PROPERTY_RATIO", "type": "financial", "term": "ANNUAL", "max": 100.0},
     ]
-    
+
     print(f"\n📋 测试配置:")
     print(f"   市场: {market}")
     print(f"   过滤条件:")
     for i, f in enumerate(filters, 1):
         print(f"      [{i}] {f}")
-    
+
     print("\n" + "-" * 80)
     print("🔍 修复说明:")
     print("-" * 80)
@@ -46,35 +47,35 @@ async def test_fixed_filters():
     print("   - HIST_PERCENTILE_PE < 40.0: 拦截并转换为0.40，返回显示为 <= 40.0% ✅")
     print("   - CURRENT_RATIO > 200.0: 拦截并转换为2.0，返回显示为 >= 2.0 ✅")
     print("   - PROPERTY_RATIO < 100.0: 拦截并转换为1.0，返回显示为 <= 1.0 ✅")
-    
+
     print("\n" + "=" * 80)
     print("🚀 开始测试...")
     print("=" * 80)
-    
+
     try:
         # 确保连接（connect是同步方法）
         futu_service.connect()
-        
+
         print("\n📡 发起选股请求...")
         result = await futu_service.screen_stocks(market=market, filters=filters)
-        
+
         if result.get("status") == "success":
             data = result.get("data", [])
             print(f"\n✅ 选股成功! 找到 {len(data)} 只符合条件的股票")
-            
+
             if data:
                 print("\n" + "-" * 80)
                 print("📊 前5只股票的返回数据验证:")
                 print("-" * 80)
-                
+
                 all_correct = True
                 for i, stock in enumerate(data[:5], 1):
                     print(f"\n[{i}] {stock.get('name', 'N/A')} ({stock.get('symbol', 'N/A')})")
-                    
-                    pe_percentile = stock.get('hist_percentile_pe')
-                    current_ratio = stock.get('current_ratio')
-                    prop_ratio_val = stock.get('property_ratio')
-                    
+
+                    pe_percentile = stock.get("hist_percentile_pe")
+                    current_ratio = stock.get("current_ratio")
+                    prop_ratio_val = stock.get("property_ratio")
+
                     # 验证 PE 百分位
                     print(f"   PE历史百分位: {pe_percentile}", end="")
                     if pe_percentile is not None:
@@ -85,7 +86,7 @@ async def test_fixed_filters():
                             all_correct = False
                     else:
                         print(" (无数据)")
-                        
+
                     # 验证 流动比率
                     print(f"   流动比率: {current_ratio}", end="")
                     if current_ratio is not None:
@@ -96,7 +97,7 @@ async def test_fixed_filters():
                             all_correct = False
                     else:
                         print(" (无数据)")
-                    
+
                     # 验证产权比率
                     print(f"   产权比率: {prop_ratio_val}", end="")
                     if prop_ratio_val is not None:
@@ -107,13 +108,13 @@ async def test_fixed_filters():
                             all_correct = False
                     else:
                         print(" (无数据)")
-                    
+
                     # 显示其他字段
-                    if 'price' in stock:
+                    if "price" in stock:
                         print(f"   价格: HK${stock['price']}")
-                    if 'mktcap' in stock:
+                    if "mktcap" in stock:
                         print(f"   市值: HK${stock['mktcap']:.2f}")
-                
+
                 print("\n" + "=" * 80)
                 if all_correct:
                     print("🎉 验证通过！所有财务指标数值都在合理范围内")
@@ -128,12 +129,13 @@ async def test_fixed_filters():
                 print("   建议: 尝试放宽条件或切换市场（US/A股）")
         else:
             print(f"\n❌ 选股失败: {result.get('message', '未知错误')}")
-            
+
     except Exception as e:
         print(f"\n❌ 测试异常: {e}")
         import traceback
+
         traceback.print_exc()
-    
+
     finally:
         print("\n" + "=" * 80)
         print("📝 总结:")

@@ -38,7 +38,7 @@ class TestAKShareServiceCacheMode:
         with ExitStack() as stack:
             for mod in ("flow", "quote", "calendar"):
                 stack.enter_context(patch(f"backend.services.akshare.{mod}.redis_client", mock_redis))
-            from backend.services.akshare_service import AKShareService
+            from backend.services.akshare import AKShareService
 
             svc = AKShareService()
             svc._cache_mode = True  # 强制 cache 模式
@@ -133,7 +133,7 @@ class TestAKShareServiceHealthStatus:
 
     def test_cache_mode_shows_relay(self):
         """cache 模式健康状态应标注 '北京VPS中继'"""
-        from backend.services.akshare_service import AKShareService
+        from backend.services.akshare import AKShareService
 
         svc = AKShareService()
         svc._cache_mode = True
@@ -144,7 +144,7 @@ class TestAKShareServiceHealthStatus:
 
     def test_direct_mode_shows_direct(self):
         """direct 模式健康状态应标注 '直连akshare'"""
-        from backend.services.akshare_service import AKShareService
+        from backend.services.akshare import AKShareService
 
         svc = AKShareService()
         svc._cache_mode = False
@@ -236,7 +236,7 @@ class TestAKShareCollectorDaemon:
         mock_service.get_economic_calendar = AsyncMock(return_value={"status": "success", "data": []})
 
         with (
-            patch("backend.services.akshare_service.AKShareService", return_value=mock_service),
+            patch("backend.services.akshare.AKShareService", return_value=mock_service),
             patch("backend.workers.akshare_collector.asyncio.sleep", side_effect=[None, asyncio.CancelledError]),
         ):
             task = asyncio.create_task(akshare_collector_daemon(enabled_tasks=["southbound"]))
@@ -268,7 +268,7 @@ class TestAKShareCollectorDaemon:
                 raise asyncio.CancelledError
 
         with (
-            patch("backend.services.akshare_service.AKShareService", return_value=mock_service),
+            patch("backend.services.akshare.AKShareService", return_value=mock_service),
             patch("backend.workers.akshare_collector.asyncio.sleep", side_effect=mock_sleep),
         ):
             task = asyncio.create_task(akshare_collector_daemon(enabled_tasks=["southbound"]))

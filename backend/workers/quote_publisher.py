@@ -10,7 +10,7 @@ import redis.asyncio as redis
 from backend.core.proto.market_pb2 import Order, QuoteData  # type: ignore
 
 # 💡 将高频依赖移至顶部，避免在每秒成百上千次的 Tick 循环中重复导入引发局部字典查找开销
-from backend.services.futu_service import futu_service
+from backend.services.futu import futu_service
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +103,7 @@ class QuotePublisher:
             try:
                 import time as _time
 
-                from backend.services.data_quality_monitor import get_quality_monitor
+                from backend.services.data_quality.monitor import get_quality_monitor
 
                 px = float(data.get("last_price") or 0.0)
                 vol_raw = data.get("volume_str", "0")

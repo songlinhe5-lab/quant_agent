@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from backend.core.database import SessionLocal
 from backend.core.models import PaperFill, PaperNavDaily, PaperPortfolio, PaperPosition
 from backend.core.redis_client import redis_client
-from backend.services.kline_warehouse import kline_warehouse
+from backend.services.datalake.kline_warehouse import kline_warehouse
 from backend.services.paper_ledger_service import paper_ledger_service
 
 logger = logging.getLogger(__name__)

@@ -280,7 +280,7 @@ class DataSourceRouter:
 
     async def fetch_yfinance(self, ticker: str, fetch_type: str, **kwargs) -> Dict[str, Any]:
         if not self._enabled:
-            from backend.services.yfinance_service import yf_service
+            from backend.services.yfinance import yf_service
 
             if fetch_type == "quote":
                 return await yf_service.get_batched_quote(ticker, req_type="quote")
@@ -343,7 +343,7 @@ class DataSourceRouter:
         return await self.fetch_yfinance_local(ticker, fetch_type, **kwargs)
 
     async def fetch_yfinance_local(self, ticker: str, fetch_type: str, **kwargs) -> Dict[str, Any]:
-        from backend.services.yfinance_service import yf_service
+        from backend.services.yfinance import yf_service
 
         try:
             if fetch_type == "quote":
@@ -358,7 +358,7 @@ class DataSourceRouter:
             return {"success": False, "message": f"Local yfinance failed: {str(e)}"}
 
     async def fetch_akshare(self, action: str, **kwargs) -> Dict[str, Any]:
-        from backend.services.akshare_service import akshare_service
+        from backend.services.akshare import akshare_service
 
         remote_node = self._nodes.get("akshare_remote")
         if not self._enabled or not remote_node or remote_node.status != "healthy":

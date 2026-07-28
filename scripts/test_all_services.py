@@ -9,11 +9,11 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from backend.core.redis_client import redis_client
-from backend.services.futu_service import futu_service
-from backend.services.llm_service import llm_service
+from backend.services.ai_narrator.llm_service import llm_service
+from backend.services.alert.notification import notification_service
+from backend.services.futu import futu_service
 from backend.services.macro.fred_service import fred_service
-from backend.services.notification_service import notification_service
-from backend.services.yfinance_service import yf_service
+from backend.services.yfinance import yf_service
 
 
 async def test_yfinance_service():

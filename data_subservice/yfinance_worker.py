@@ -18,7 +18,7 @@ import os
 from typing import Any, Dict, Optional
 
 from backend.core.logger import logger
-from backend.services.yfinance_service import YFinanceService
+from backend.services.yfinance import YFinanceService
 
 
 class YFinanceWorker:

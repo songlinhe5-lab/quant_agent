@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 import pandas as pd
 import pytest
 
-from backend.services.yfinance_service import (
+from backend.services.yfinance import (
     RateLimitedSession,
     YFinanceService,
     _SessionBase,
@@ -259,7 +259,7 @@ class TestYFinanceService:
     def service(self, mock_llm):
         """Create a YFinanceService instance for testing"""
         # 防御性检查：确保 conftest 的 _mock_external_services 没有把 yf_service mock 掉
-        from backend.services.yfinance_service import yf_service as _global_yf
+        from backend.services.yfinance import yf_service as _global_yf
 
         if isinstance(_global_yf, MagicMock):
             raise RuntimeError(

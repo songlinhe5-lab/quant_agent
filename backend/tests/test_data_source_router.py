@@ -169,7 +169,7 @@ class TestDataSourceRouter:
         """路由禁用时走本地"""
         with patch("backend.services.datasource.router.yf_service", create=True) as mock_yf:
             mock_yf.get_batched_quote = AsyncMock(return_value={"status": "success", "data": {}})
-            with patch.dict("sys.modules", {"backend.services.yfinance_service": MagicMock(yf_service=mock_yf)}):
+            with patch.dict("sys.modules", {"backend.services.yfinance": MagicMock(yf_service=mock_yf)}):
                 result = await router.fetch_yfinance("AAPL", "quote")
         assert result.get("status") == "success"
 
@@ -178,7 +178,7 @@ class TestDataSourceRouter:
         """本地 yfinance 降级"""
         with patch("backend.services.datasource.router.yf_service", create=True) as mock_yf:
             mock_yf.get_batched_quote = AsyncMock(return_value={"status": "success"})
-            with patch.dict("sys.modules", {"backend.services.yfinance_service": MagicMock(yf_service=mock_yf)}):
+            with patch.dict("sys.modules", {"backend.services.yfinance": MagicMock(yf_service=mock_yf)}):
                 result = await router.fetch_yfinance_local("AAPL", "quote")
         assert result.get("status") == "success"
 
@@ -186,7 +186,7 @@ class TestDataSourceRouter:
     async def test_fetch_yfinance_local_unknown_type(self, router):
         """未知 fetch_type"""
         with patch("backend.services.datasource.router.yf_service", create=True) as mock_yf:
-            with patch.dict("sys.modules", {"backend.services.yfinance_service": MagicMock(yf_service=mock_yf)}):
+            with patch.dict("sys.modules", {"backend.services.yfinance": MagicMock(yf_service=mock_yf)}):
                 result = await router.fetch_yfinance_local("AAPL", "unknown_type")
         assert result.get("success") is False
 
@@ -195,7 +195,7 @@ class TestDataSourceRouter:
         """本地 yfinance 异常"""
         with patch("backend.services.datasource.router.yf_service", create=True) as mock_yf:
             mock_yf.get_batched_quote = AsyncMock(side_effect=Exception("连接失败"))
-            with patch.dict("sys.modules", {"backend.services.yfinance_service": MagicMock(yf_service=mock_yf)}):
+            with patch.dict("sys.modules", {"backend.services.yfinance": MagicMock(yf_service=mock_yf)}):
                 result = await router.fetch_yfinance_local("AAPL", "quote")
         assert result.get("success") is False
 
@@ -495,7 +495,7 @@ class TestCircuitBreaker:
 
 
 class TestFetchYFinance:
-    @patch("backend.services.yfinance_service.YFinanceService.get_batched_quote")
+    @patch("backend.services.yfinance.YFinanceService.get_batched_quote")
     def test_fetch_yfinance_disabled_router(self, mock_method, router_disabled):
         mock_method.return_value = {"success": True, "data": {}}
         result = asyncio.run(router_disabled.fetch_yfinance("AAPL", "quote"))
@@ -520,7 +520,7 @@ class TestFetchYFinance:
         assert mock_send.call_count == 2
 
     @patch("backend.services.datasource.router.DataSourceRouter._send_request")
-    @patch("backend.services.yfinance_service.YFinanceService.fetch_yf_data")
+    @patch("backend.services.yfinance.YFinanceService.fetch_yf_data")
     def test_fetch_yfinance_fallback_local(self, mock_method, mock_send, router_enabled):
         mock_send.side_effect = Exception("Network error")
         mock_method.return_value = (True, {"price": 165.0}, "")
@@ -529,7 +529,7 @@ class TestFetchYFinance:
 
 
 class TestFetchAKShare:
-    @patch("backend.services.akshare_service.AKShareService.get_southbound_flow")
+    @patch("backend.services.akshare.AKShareService.get_southbound_flow")
     def test_fetch_akshare_disabled_router(self, mock_method, router_disabled):
         mock_method.return_value = {"status": "success", "data": {}}
         result = asyncio.run(router_disabled.fetch_akshare("southbound"))
@@ -542,7 +542,7 @@ class TestFetchAKShare:
         assert result["status"] == "success"
 
     @patch("backend.services.datasource.router.DataSourceRouter._send_request")
-    @patch("backend.services.akshare_service.AKShareService.get_southbound_flow")
+    @patch("backend.services.akshare.AKShareService.get_southbound_flow")
     def test_fetch_akshare_fallback_local(self, mock_method, mock_send, router_enabled):
         mock_send.side_effect = Exception("Connection refused")
         mock_method.return_value = {"status": "success", "data": {}}

@@ -544,7 +544,7 @@ class TestRiskSector:
             mock_redis.set = AsyncMock()
 
             # futu_service 是在函数内部导入的
-            with patch("backend.services.futu_service.futu_service") as mock_futu:
+            with patch("backend.services.futu.futu_service") as mock_futu:
                 mock_futu.get_stock_basicinfo = AsyncMock(return_value=futu_data)
                 result = await analyzer._get_sector_map(positions, "HK")
                 assert result.get("00700") == "科技"
@@ -558,7 +558,7 @@ class TestRiskSector:
             mock_redis.set = AsyncMock()
 
             # futu_service 是在函数内部导入的
-            with patch("backend.services.futu_service.futu_service") as mock_futu:
+            with patch("backend.services.futu.futu_service") as mock_futu:
                 mock_futu.get_stock_basicinfo = AsyncMock(return_value={"status": "error"})
                 result = await analyzer._get_sector_map(positions, "HK")
                 assert result.get("UNKNOWN") == "未知"

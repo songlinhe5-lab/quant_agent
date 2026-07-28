@@ -260,7 +260,7 @@ class BotRuntimeManager:
     async def _fetch_latest_quote(self, ticker: str) -> Optional[Dict[str, Any]]:
         """从 Futu 获取最新行情"""
         try:
-            from backend.services.futu_service import futu_service
+            from backend.services.futu import futu_service
 
             return await futu_service.get_quote(ticker)
         except Exception as e:

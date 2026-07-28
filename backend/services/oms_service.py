@@ -158,7 +158,7 @@ class OmsService:
         由后台守护进程定时调用。
         """
         try:
-            from backend.services.futu_service import futu_service
+            from backend.services.futu import futu_service
 
             acc_info = await futu_service.get_account_info(market)
             if acc_info.get("status") != "success":

@@ -360,7 +360,7 @@ class TestBotRuntimeManager:
         """获取行情成功"""
         with patch("backend.workers.oms.bot_runtime.futu_service", create=True) as mock_futu:
             mock_futu.get_quote = AsyncMock(return_value={"status": "success", "last_price": 150.0})
-            with patch.dict("sys.modules", {"backend.services.futu_service": MagicMock(futu_service=mock_futu)}):
+            with patch.dict("sys.modules", {"backend.services.futu": MagicMock(futu_service=mock_futu)}):
                 result = await manager._fetch_latest_quote("US.AAPL")
         assert result["status"] == "success"
 
@@ -369,7 +369,7 @@ class TestBotRuntimeManager:
         """获取行情失败返回 None"""
         with patch("backend.workers.oms.bot_runtime.futu_service", create=True) as mock_futu:
             mock_futu.get_quote = AsyncMock(side_effect=Exception("连接失败"))
-            with patch.dict("sys.modules", {"backend.services.futu_service": MagicMock(futu_service=mock_futu)}):
+            with patch.dict("sys.modules", {"backend.services.futu": MagicMock(futu_service=mock_futu)}):
                 result = await manager._fetch_latest_quote("US.AAPL")
         assert result is None
 
