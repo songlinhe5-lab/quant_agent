@@ -91,6 +91,8 @@ def test_health_ready_postgres_down(client, monkeypatch):
 def test_data_sources_market_gateway_connected(client, monkeypatch):
     from backend.app import market_data as md_mod
 
+    # 仅验证数据源分支逻辑，真实 PG 由 _check_postgres 隔离（避免测试沙箱无 PG 连通性）
+    monkeypatch.setattr(sh, "_check_postgres", AsyncMock(return_value=(True, "connected")))
     monkeypatch.setattr(md_mod.market_data, "status", "CONNECTED")
     resp = client.get("/api/v1/health/deep")
     assert resp.status_code == 200
@@ -108,6 +110,8 @@ def test_data_sources_via_registry_healthy(client, monkeypatch):
 
     from backend.app import market_data as md_mod
 
+    # 仅验证注册表 + 数据源分支，真实 PG 由 _check_postgres 隔离（避免测试沙箱无 PG 连通性）
+    monkeypatch.setattr(sh, "_check_postgres", AsyncMock(return_value=(True, "connected")))
     monkeypatch.setattr(md_mod.market_data, "status", "UNKNOWN")
     monkeypatch.setattr("backend.services.datasource.datasource_registry", reg)
     resp = client.get("/api/v1/health/ready")
