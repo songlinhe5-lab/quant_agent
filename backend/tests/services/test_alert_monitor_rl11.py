@@ -289,3 +289,43 @@ def test_alert_fallback_sync_when_not_started(monitor):
     with patch("asyncio.run") as mock_run:
         monitor.on_rate_limit_event("yahoo", "ip_blocked", 300, 1)
         mock_run.assert_called_once()
+
+
+# ─────────────────────────────────────────
+# 启动健康探针 (RL-11: 防 start() 静默失败)
+# ─────────────────────────────────────────
+
+
+class TestAlertMonitorHealth:
+    """is_healthy(): 把『后台告警队列是否真在跑』从黑盒变白盒。"""
+
+    @pytest.mark.asyncio
+    async def test_healthy_after_start(self, monitor):
+        await monitor.start()
+        assert monitor.is_healthy() is True
+        await monitor.stop()
+
+    @pytest.mark.asyncio
+    async def test_unhealthy_before_start(self, monitor):
+        # 未 start 即视为不健康
+        assert monitor.is_healthy() is False
+
+    @pytest.mark.asyncio
+    async def test_unhealthy_when_consumer_cancelled(self, monitor):
+        await monitor.start()
+        assert monitor.is_healthy() is True
+        # 模拟消费 task 被意外 cancel（start() 静默失败的核心场景）
+        monitor._consumer_task.cancel()
+        try:
+            await monitor._consumer_task
+        except asyncio.CancelledError:
+            pass
+        assert monitor.is_healthy() is False
+        await monitor.stop()
+
+    @pytest.mark.asyncio
+    async def test_unhealthy_after_stop(self, monitor):
+        await monitor.start()
+        await monitor.stop()
+        # stop 后 _started=False，应判定不健康
+        assert monitor.is_healthy() is False
