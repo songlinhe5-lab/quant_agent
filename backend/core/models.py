@@ -89,6 +89,20 @@ class SentimentRecord(Base):
     fear_greed_score: Mapped[Optional[int]] = mapped_column(nullable=True)  # 贪婪恐惧指数  # noqa: E501
 
 
+class IVSnapshot(Base):
+    """个股历史隐含波动率 (IV) 快照表，供 IV Rank / IV Percentile 计算 (OPTION-04)。
+
+    仅持久化真实行情计算出的 ATM IV，禁止任何模拟/伪造数据写入。
+    """
+
+    __tablename__ = "iv_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    ticker: Mapped[str] = mapped_column(String(32), index=True)
+    iv_value: Mapped[float] = mapped_column(Float, nullable=False)  # 小数形式, 0.25 = 25%
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
 class AgentSession(Base):
     """大模型 Agent 的会话持久化存储表 (冷数据落盘)"""
 

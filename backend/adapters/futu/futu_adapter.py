@@ -366,9 +366,49 @@ class FutuAdapter(DataSourcePort):
             ctx = getattr(self, "futu_ctx", None)
             connected = bool(getattr(ctx, "is_connected", False)) if ctx else False
             if ctx is not None and connected:
-                # TODO(OPTION-04): 接入真实 Futu 期权链（Ctx.get_option_chain_by_date_strike）
-                # 禁止用 Mock 填充（VIBE-CODING: 非单测禁止使用 mock 数据填充逻辑）
-                pass
+                # OPTION-04(a): 接入真实 Futu 期权链 (零幻觉, 仅真实数据, 禁止 Mock 兜底)
+                try:
+                    from futu import RET_OK
+                except Exception:
+                    RET_OK = 0
+                expire_date = params.get("expire_date") or ""
+                if not expire_date and hasattr(ctx, "get_option_expiration_date"):
+                    try:
+                        ret, date_df = ctx.get_option_expiration_date(underlying_ticker)
+                        if ret == RET_OK and date_df is not None and not getattr(date_df, "empty", True):
+                            expire_date = str(date_df["strike_time"].iloc[0]).split(" ")[0]
+                    except Exception:
+                        pass
+                if not expire_date:
+                    return {"success": False, "message": "无法获取到期日列表 (真实数据源)"}
+                if not hasattr(ctx, "get_option_chain"):
+                    return {"success": False, "message": "Futu 上下文不支持 get_option_chain"}
+                ret, chain_df = ctx.get_option_chain(underlying_ticker, start=expire_date, end=expire_date)
+                if ret != RET_OK or chain_df is None or getattr(chain_df, "empty", True):
+                    return {"success": False, "message": f"期权链获取失败: {chain_df}"}
+                options = []
+                for _, row in chain_df.iterrows():
+                    try:
+                        options.append(
+                            {
+                                "strike_price": float(row.get("strike_price", 0) or 0),
+                                "option_type": str(row.get("option_type", "")).lower(),
+                                "implied_volatility": float(row.get("implied_volatility", 0) or 0),
+                                "option_code": row.get("option_code"),
+                                "last_price": float(row.get("last_price", 0) or 0),
+                                "volume": float(row.get("volume", 0) or 0),
+                                "open_interest": float(row.get("open_interest", 0) or 0),
+                            }
+                        )
+                    except Exception:
+                        continue
+                if not options:
+                    return {"success": False, "message": "期权链无有效合约 (真实数据源为空)"}
+                return {
+                    "success": True,
+                    "data": {"expiration": expire_date, "options": options},
+                    "cached": False,
+                }
             # 未连接真实数据源：明确返回错误告警，绝不用 Mock 兜底掩盖故障
             return {
                 "success": False,
