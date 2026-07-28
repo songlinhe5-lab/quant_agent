@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from backend.services.llm_service import ModelTier, llm_service
+from backend.services.ai_narrator.llm_service import ModelTier, llm_service
 
 logger = logging.getLogger(__name__)
 

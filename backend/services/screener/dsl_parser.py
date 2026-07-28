@@ -163,7 +163,7 @@ class DslParserMixin:
             print(f"🕵️‍♂️ [Screener] 执行另类数据过滤: 高管净买入，当前候选池 {len(valid_tech_data)} 只")  # noqa: E501
             from datetime import datetime, timedelta
 
-            from backend.services.finnhub_service import finnhub_service
+            from backend.services.finnhub.service import finnhub_service
 
             async def _check_insider(row_data):
                 try:

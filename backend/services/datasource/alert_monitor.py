@@ -67,7 +67,7 @@ class RateLimitAlertMonitor:
         """延迟导入 NotificationService（避免循环依赖）"""
         if self._notification_service is None:
             try:
-                from backend.services.notification_service import notification_service
+                from backend.services.alert.notification import notification_service
 
                 self._notification_service = notification_service
             except ImportError:

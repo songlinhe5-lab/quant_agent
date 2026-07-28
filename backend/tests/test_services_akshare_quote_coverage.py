@@ -118,7 +118,7 @@ async def test_news_hk_fallback_with_news():
     with (
         patch("backend.services.akshare.quote.redis_client", r),
         patch(
-            "backend.services.finnhub_service.finnhub_service._fallback_yahoo_news",
+            "backend.services.finnhub.service.finnhub_service._fallback_yahoo_news",
             new=AsyncMock(return_value=[{"title": "hk news"}]),
         ),
     ):
@@ -134,7 +134,7 @@ async def test_news_hk_fallback_empty_uses_short_ttl():
     with (
         patch("backend.services.akshare.quote.redis_client", r),
         patch(
-            "backend.services.finnhub_service.finnhub_service._fallback_yahoo_news",
+            "backend.services.finnhub.service.finnhub_service._fallback_yahoo_news",
             new=AsyncMock(return_value=[]),
         ),
     ):

@@ -57,7 +57,7 @@ class QuoteMixin:
             # 💡 针对港股，东方财富 A 股新闻接口经常因页面结构变化抛出正则解析异常 (Invalid escape sequence)  # noqa: E501
             # 因此在这里直接将其短路，降级交由雅虎财经获取港股新闻
             if "HK" in ticker.upper() or (ticker.isdigit() and len(ticker) == 5):
-                from backend.services.finnhub_service import finnhub_service
+                from backend.services.finnhub.service import finnhub_service
 
                 yf_sym = ticker
                 if yf_sym.startswith("HK."):

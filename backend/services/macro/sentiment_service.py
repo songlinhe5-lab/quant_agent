@@ -2,7 +2,7 @@ import asyncio
 import json
 from typing import Any, Dict, List
 
-from backend.services.llm_service import ModelTier, llm_service
+from backend.services.ai_narrator.llm_service import ModelTier, llm_service
 
 
 class SentimentService:

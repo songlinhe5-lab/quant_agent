@@ -3,7 +3,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from backend.services.search_service import search_service
+from backend.services.search.service import search_service
 
 router = APIRouter(prefix="/search", tags=["Search"])
 

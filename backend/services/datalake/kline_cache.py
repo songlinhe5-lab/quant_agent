@@ -40,7 +40,7 @@ from backend.core.metrics import (
     KLINE_CACHE_QUERY_LATENCY,
 )
 from backend.core.redis_client import redis_client
-from backend.services.kline_warehouse import kline_warehouse
+from backend.services.datalake.kline_warehouse import kline_warehouse
 
 logger = structlog.get_logger(__name__)
 

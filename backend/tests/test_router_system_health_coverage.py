@@ -55,7 +55,7 @@ def test_cluster_status(client):
 
 def test_uptime_kuma_webhook(client):
     with patch(
-        "backend.services.notification_service.notification_service.send_alert",
+        "backend.services.alert.notification.notification_service.send_alert",
         new=AsyncMock(),
     ):
         down = client.post(

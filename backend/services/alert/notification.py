@@ -29,7 +29,7 @@ class NotificationService:
     def _get_dispatcher(self):
         """延迟导入 AlertDispatcher（避免循环依赖）"""
         if self._dispatcher is None:
-            from backend.services.alert_dispatcher import get_alert_dispatcher
+            from backend.services.alert.dispatcher import get_alert_dispatcher
 
             self._dispatcher = get_alert_dispatcher()
         return self._dispatcher

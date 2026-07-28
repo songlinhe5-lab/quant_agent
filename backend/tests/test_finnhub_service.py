@@ -38,7 +38,7 @@ async def _client_cm(response=None, side_effect=None):
 class TestFinnhubService:
     @pytest.fixture
     def service(self):
-        from backend.services.finnhub_service import FinnhubService
+        from backend.services.finnhub.service import FinnhubService
 
         return FinnhubService()
 
@@ -51,7 +51,7 @@ class TestFinnhubService:
 
     @pytest.mark.asyncio
     async def test_get_earnings_calendar_cache_hit_returns_cached(self, service):
-        with patch("backend.services.finnhub_service.redis_client") as m:
+        with patch("backend.services.finnhub.service.redis_client") as m:
             m.get = AsyncMock(return_value=json.dumps([{"symbol": "AAPL"}]))
             result = await service.get_earnings_calendar()
             assert result["status"] == "success"
@@ -61,8 +61,8 @@ class TestFinnhubService:
     async def test_get_earnings_calendar_success_filters_empty_symbol(self, service):
         data = {"earningsCalendar": [{"symbol": "AAPL", "date": "2026-06-30"}, {"symbol": ""}]}
         with (
-            patch("backend.services.finnhub_service.redis_client") as m,
-            patch("backend.services.finnhub_service.httpx.AsyncClient", return_value=_client_cm(response=_resp(data))),
+            patch("backend.services.finnhub.service.redis_client") as m,
+            patch("backend.services.finnhub.service.httpx.AsyncClient", return_value=_client_cm(response=_resp(data))),
         ):
             m.get, m.setex = AsyncMock(return_value=None), AsyncMock()
             result = await service.get_earnings_calendar()
@@ -72,9 +72,9 @@ class TestFinnhubService:
     @pytest.mark.asyncio
     async def test_get_earnings_calendar_http_error_returns_error(self, service):
         with (
-            patch("backend.services.finnhub_service.redis_client") as m,
+            patch("backend.services.finnhub.service.redis_client") as m,
             patch(
-                "backend.services.finnhub_service.httpx.AsyncClient",
+                "backend.services.finnhub.service.httpx.AsyncClient",
                 return_value=_client_cm(response=_resp(err_code=500)),
             ),
         ):
@@ -85,7 +85,7 @@ class TestFinnhubService:
 
     @pytest.mark.asyncio
     async def test_get_stock_history_cache_hit_returns_cached(self, service):
-        with patch("backend.services.finnhub_service.redis_client") as m:
+        with patch("backend.services.finnhub.service.redis_client") as m:
             m.get = AsyncMock(return_value=json.dumps([{"close": 100.0}]))
             assert (await service.get_stock_history("AAPL"))["source"] == "redis_cache"
 
@@ -93,8 +93,8 @@ class TestFinnhubService:
     async def test_get_stock_history_success_returns_klines(self, service):
         data = {"s": "ok", "t": [1719500000], "o": [100.0], "h": [102.0], "l": [99.0], "c": [101.0], "v": [10000]}
         with (
-            patch("backend.services.finnhub_service.redis_client") as m,
-            patch("backend.services.finnhub_service.httpx.AsyncClient", return_value=_client_cm(response=_resp(data))),
+            patch("backend.services.finnhub.service.redis_client") as m,
+            patch("backend.services.finnhub.service.httpx.AsyncClient", return_value=_client_cm(response=_resp(data))),
         ):
             m.get, m.setex = AsyncMock(return_value=None), AsyncMock()
             result = await service.get_stock_history("US.AAPL", days_back=1)
@@ -104,9 +104,9 @@ class TestFinnhubService:
     @pytest.mark.asyncio
     async def test_get_stock_history_status_not_ok_returns_error(self, service):
         with (
-            patch("backend.services.finnhub_service.redis_client") as m,
+            patch("backend.services.finnhub.service.redis_client") as m,
             patch(
-                "backend.services.finnhub_service.httpx.AsyncClient",
+                "backend.services.finnhub.service.httpx.AsyncClient",
                 return_value=_client_cm(response=_resp({"s": "no_data"})),
             ),
         ):
@@ -115,7 +115,7 @@ class TestFinnhubService:
 
     @pytest.mark.asyncio
     async def test_get_insider_transactions_cache_hit_returns_cached(self, service):
-        with patch("backend.services.finnhub_service.redis_client") as m:
+        with patch("backend.services.finnhub.service.redis_client") as m:
             m.get = AsyncMock(return_value=json.dumps([{"name": "CEO"}]))
             assert (await service.get_insider_transactions("AAPL"))["source"] == "redis_cache"
 
@@ -128,8 +128,8 @@ class TestFinnhubService:
             ]
         }
         with (
-            patch("backend.services.finnhub_service.redis_client") as m,
-            patch("backend.services.finnhub_service.httpx.AsyncClient", return_value=_client_cm(response=_resp(data))),
+            patch("backend.services.finnhub.service.redis_client") as m,
+            patch("backend.services.finnhub.service.httpx.AsyncClient", return_value=_client_cm(response=_resp(data))),
         ):
             m.get, m.setex = AsyncMock(return_value=None), AsyncMock()
             result = await service.get_insider_transactions("US.AAPL", limit=10)
@@ -139,7 +139,7 @@ class TestFinnhubService:
     @pytest.mark.asyncio
     async def test_get_market_news_invalid_category_resets_to_general(self, service):
         with patch(
-            "backend.services.finnhub_service.httpx.AsyncClient",
+            "backend.services.finnhub.service.httpx.AsyncClient",
             return_value=_client_cm(response=_resp([{"headline": "n"}])),
         ):
             assert (await service.get_market_news("invalid"))["status"] == "success"
@@ -147,7 +147,7 @@ class TestFinnhubService:
     @pytest.mark.asyncio
     async def test_get_market_news_429_returns_rate_limit_error(self, service):
         with patch(
-            "backend.services.finnhub_service.httpx.AsyncClient", return_value=_client_cm(response=_resp(err_code=429))
+            "backend.services.finnhub.service.httpx.AsyncClient", return_value=_client_cm(response=_resp(err_code=429))
         ):
             result = await service.get_market_news()
             assert result["status"] == "error"
@@ -156,23 +156,23 @@ class TestFinnhubService:
     @pytest.mark.asyncio
     async def test_get_market_news_500_returns_error(self, service):
         with patch(
-            "backend.services.finnhub_service.httpx.AsyncClient", return_value=_client_cm(response=_resp(err_code=500))
+            "backend.services.finnhub.service.httpx.AsyncClient", return_value=_client_cm(response=_resp(err_code=500))
         ):
             result = await service.get_market_news()
             assert "HTTP 500" in result["message"]
 
     @pytest.mark.asyncio
     async def test_get_company_news_cache_hit_returns_cached(self, service):
-        with patch("backend.services.finnhub_service.redis_client") as m:
+        with patch("backend.services.finnhub.service.redis_client") as m:
             m.get = AsyncMock(return_value=json.dumps([{"headline": "cached"}]))
             assert (await service.get_company_news("AAPL"))["source"] == "redis_cache"
 
     @pytest.mark.asyncio
     async def test_get_company_news_success_returns_data(self, service):
         with (
-            patch("backend.services.finnhub_service.redis_client") as m,
+            patch("backend.services.finnhub.service.redis_client") as m,
             patch(
-                "backend.services.finnhub_service.httpx.AsyncClient",
+                "backend.services.finnhub.service.httpx.AsyncClient",
                 return_value=_client_cm(response=_resp([{"headline": "n"}])),
             ),
         ):
@@ -183,9 +183,9 @@ class TestFinnhubService:
     @pytest.mark.asyncio
     async def test_get_company_news_403_fallback_yahoo_success(self, service):
         with (
-            patch("backend.services.finnhub_service.redis_client") as m,
+            patch("backend.services.finnhub.service.redis_client") as m,
             patch(
-                "backend.services.finnhub_service.httpx.AsyncClient",
+                "backend.services.finnhub.service.httpx.AsyncClient",
                 return_value=_client_cm(response=_resp(err_code=403)),
             ),
             patch.object(service, "_fallback_yahoo_news", new=AsyncMock(return_value=[{"headline": "y"}])),
@@ -197,9 +197,9 @@ class TestFinnhubService:
     @pytest.mark.asyncio
     async def test_get_company_news_429_fallback_failure_returns_error(self, service):
         with (
-            patch("backend.services.finnhub_service.redis_client") as m,
+            patch("backend.services.finnhub.service.redis_client") as m,
             patch(
-                "backend.services.finnhub_service.httpx.AsyncClient",
+                "backend.services.finnhub.service.httpx.AsyncClient",
                 return_value=_client_cm(response=_resp(err_code=429)),
             ),
             patch.object(service, "_fallback_yahoo_news", new=AsyncMock(return_value=[])),
@@ -210,7 +210,7 @@ class TestFinnhubService:
     @pytest.mark.asyncio
     async def test_fallback_yahoo_news_success_returns_formatted(self, service):
         data = {"news": [{"title": "t1", "publisher": "Yahoo", "link": "u1", "providerPublishTime": 1719500000}]}
-        with patch("backend.services.finnhub_service.httpx.AsyncClient", return_value=_client_cm(response=_resp(data))):
+        with patch("backend.services.finnhub.service.httpx.AsyncClient", return_value=_client_cm(response=_resp(data))):
             result = await service._fallback_yahoo_news("0700.HK")
             assert len(result) == 1
             assert result[0]["related"] == "0700.HK"
@@ -218,7 +218,7 @@ class TestFinnhubService:
     @pytest.mark.asyncio
     async def test_fallback_yahoo_news_exception_returns_empty(self, service):
         with patch(
-            "backend.services.finnhub_service.httpx.AsyncClient",
+            "backend.services.finnhub.service.httpx.AsyncClient",
             return_value=_client_cm(side_effect=RuntimeError("boom")),
         ):
             assert await service._fallback_yahoo_news("AAPL") == []

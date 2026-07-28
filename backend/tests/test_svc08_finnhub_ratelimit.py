@@ -60,13 +60,13 @@ def _reset_finnhub_throttler():
 async def test_earnings_429_records_rate_limit():
     """SVC-08: 财报日历 429 应触发 throttler 退避（不计入熔断器失败计数）。"""
     from backend.services.datasource import rate_limit_registry
-    from backend.services.finnhub_service import FinnhubService
+    from backend.services.finnhub.service import FinnhubService
 
     svc = FinnhubService()
     with (
-        patch("backend.services.finnhub_service.redis_client") as m,
+        patch("backend.services.finnhub.service.redis_client") as m,
         patch(
-            "backend.services.finnhub_service.httpx.AsyncClient",
+            "backend.services.finnhub.service.httpx.AsyncClient",
             return_value=_client_cm(response=_resp(err_code=429)),
         ),
     ):
@@ -84,11 +84,11 @@ async def test_earnings_429_records_rate_limit():
 async def test_market_news_429_records_rate_limit():
     """SVC-08: 新闻 429 应记录限流。"""
     from backend.services.datasource import rate_limit_registry
-    from backend.services.finnhub_service import FinnhubService
+    from backend.services.finnhub.service import FinnhubService
 
     svc = FinnhubService()
     with patch(
-        "backend.services.finnhub_service.httpx.AsyncClient",
+        "backend.services.finnhub.service.httpx.AsyncClient",
         return_value=_client_cm(response=_resp(err_code=429)),
     ):
         result = await svc.get_market_news()
@@ -102,14 +102,14 @@ async def test_market_news_429_records_rate_limit():
 async def test_earnings_success_records_success():
     """SVC-08: 真实请求成功应推进退避恢复（consecutive_rate_limits 保持 0）。"""
     from backend.services.datasource import rate_limit_registry
-    from backend.services.finnhub_service import FinnhubService
+    from backend.services.finnhub.service import FinnhubService
 
     svc = FinnhubService()
     data = {"earningsCalendar": [{"symbol": "AAPL", "date": "2026-06-30"}, {"symbol": ""}]}
     with (
-        patch("backend.services.finnhub_service.redis_client") as m,
+        patch("backend.services.finnhub.service.redis_client") as m,
         patch(
-            "backend.services.finnhub_service.httpx.AsyncClient",
+            "backend.services.finnhub.service.httpx.AsyncClient",
             return_value=_client_cm(response=_resp(data)),
         ),
     ):

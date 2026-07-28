@@ -25,7 +25,7 @@ from backend.app.market_data import market_data
 from backend.core import models
 from backend.core.exceptions import AppError
 from backend.core.redis_client import redis_client
-from backend.services.screener_service import screener_service
+from backend.services.screener.screener_service import screener_service
 
 # 💡 选股灵感提示词（模块级，便于测试用例复用）
 SUGGESTIONS = [
@@ -636,7 +636,7 @@ async def cross_sectional_screen(req):
     """QUANT-03: 复杂横截面选股 — 基于 Pandas 内存引擎的跨指标表达式筛选"""
     try:
         from backend.domain.cross_sectional import screen as cs_screen
-        from backend.services.kline_warehouse import kline_warehouse
+        from backend.services.datalake.kline_warehouse import kline_warehouse
 
         # 批量获取 K 线
         kline_data = {}
@@ -677,7 +677,7 @@ async def portfolio_backtest(req):
     """QUANT-02: 选股结果一键组合回测 — 等权组合 + Tear Sheet"""
     try:
         from backend.app.backtest.portfolio_backtest import run_portfolio_backtest
-        from backend.services.kline_warehouse import kline_warehouse
+        from backend.services.datalake.kline_warehouse import kline_warehouse
 
         period_days = {
             "1mo": 22,

@@ -309,7 +309,7 @@ async def engine_status() -> EngineStatusResponse:
     """查询告警引擎状态（含 dispatcher health）"""
     dispatcher_health = None
     try:
-        from backend.services.alert_dispatcher import get_alert_dispatcher
+        from backend.services.alert.dispatcher import get_alert_dispatcher
 
         dispatcher = get_alert_dispatcher()
         dispatcher_health = await dispatcher.health()
@@ -334,7 +334,7 @@ async def engine_status() -> EngineStatusResponse:
 async def get_event_deliveries(event_id: str) -> List[DeliveryRecordResponse]:
     """查询事件的投递记录（运维可观测 + 前端投递详情）"""
     try:
-        from backend.services.alert_dispatcher import get_alert_dispatcher
+        from backend.services.alert.dispatcher import get_alert_dispatcher
 
         dispatcher = get_alert_dispatcher()
         records = dispatcher.get_delivery_records(event_id)

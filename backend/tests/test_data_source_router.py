@@ -16,8 +16,8 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from backend.services.data_source_router import DataSourceNode, DataSourceRouter
 from backend.services.datasource import ErrorCategory
+from backend.services.datasource.router import DataSourceNode, DataSourceRouter
 
 
 # ==========================================
@@ -73,7 +73,7 @@ class TestDataSourceRouter:
 
     def test_get_healthy_nodes(self, router):
         """获取健康节点"""
-        with patch("backend.services.data_source_router.rate_limit_registry") as mock_rl:
+        with patch("backend.services.datasource.router.rate_limit_registry") as mock_rl:
             mock_throttler = MagicMock()
             mock_status = MagicMock()
             mock_status.is_throttled = False
@@ -86,7 +86,7 @@ class TestDataSourceRouter:
 
     def test_get_healthy_nodes_no_capability(self, router):
         """无匹配能力时返回空"""
-        with patch("backend.services.data_source_router.rate_limit_registry") as mock_rl:
+        with patch("backend.services.datasource.router.rate_limit_registry") as mock_rl:
             mock_throttler = MagicMock()
             mock_status = MagicMock()
             mock_status.is_throttled = False
@@ -136,7 +136,7 @@ class TestDataSourceRouter:
     @pytest.mark.asyncio
     async def test_select_node(self, router):
         """选择最优节点"""
-        with patch("backend.services.data_source_router.rate_limit_registry") as mock_rl:
+        with patch("backend.services.datasource.router.rate_limit_registry") as mock_rl:
             mock_throttler = MagicMock()
             mock_status = MagicMock()
             mock_status.is_throttled = False
@@ -153,7 +153,7 @@ class TestDataSourceRouter:
         """无健康节点"""
         router._nodes["yf_primary"].status = "unhealthy"
         router._nodes["yf_primary"].circuit_breaker_until = time.time() + 999
-        with patch("backend.services.data_source_router.rate_limit_registry") as mock_rl:
+        with patch("backend.services.datasource.router.rate_limit_registry") as mock_rl:
             mock_throttler = MagicMock()
             mock_status = MagicMock()
             mock_status.is_throttled = False
@@ -167,7 +167,7 @@ class TestDataSourceRouter:
     @pytest.mark.asyncio
     async def test_fetch_yfinance_disabled(self, router):
         """路由禁用时走本地"""
-        with patch("backend.services.data_source_router.yf_service", create=True) as mock_yf:
+        with patch("backend.services.datasource.router.yf_service", create=True) as mock_yf:
             mock_yf.get_batched_quote = AsyncMock(return_value={"status": "success", "data": {}})
             with patch.dict("sys.modules", {"backend.services.yfinance_service": MagicMock(yf_service=mock_yf)}):
                 result = await router.fetch_yfinance("AAPL", "quote")
@@ -176,7 +176,7 @@ class TestDataSourceRouter:
     @pytest.mark.asyncio
     async def test_fetch_yfinance_local(self, router):
         """本地 yfinance 降级"""
-        with patch("backend.services.data_source_router.yf_service", create=True) as mock_yf:
+        with patch("backend.services.datasource.router.yf_service", create=True) as mock_yf:
             mock_yf.get_batched_quote = AsyncMock(return_value={"status": "success"})
             with patch.dict("sys.modules", {"backend.services.yfinance_service": MagicMock(yf_service=mock_yf)}):
                 result = await router.fetch_yfinance_local("AAPL", "quote")
@@ -185,7 +185,7 @@ class TestDataSourceRouter:
     @pytest.mark.asyncio
     async def test_fetch_yfinance_local_unknown_type(self, router):
         """未知 fetch_type"""
-        with patch("backend.services.data_source_router.yf_service", create=True) as mock_yf:
+        with patch("backend.services.datasource.router.yf_service", create=True) as mock_yf:
             with patch.dict("sys.modules", {"backend.services.yfinance_service": MagicMock(yf_service=mock_yf)}):
                 result = await router.fetch_yfinance_local("AAPL", "unknown_type")
         assert result.get("success") is False
@@ -193,7 +193,7 @@ class TestDataSourceRouter:
     @pytest.mark.asyncio
     async def test_fetch_yfinance_local_exception(self, router):
         """本地 yfinance 异常"""
-        with patch("backend.services.data_source_router.yf_service", create=True) as mock_yf:
+        with patch("backend.services.datasource.router.yf_service", create=True) as mock_yf:
             mock_yf.get_batched_quote = AsyncMock(side_effect=Exception("连接失败"))
             with patch.dict("sys.modules", {"backend.services.yfinance_service": MagicMock(yf_service=mock_yf)}):
                 result = await router.fetch_yfinance_local("AAPL", "quote")
@@ -233,7 +233,7 @@ class TestDataSourceRouter:
     @pytest.mark.asyncio
     async def test_save_akshare_stale(self, router):
         """保存 STALE 缓存"""
-        with patch("backend.services.data_source_router.redis_client", create=True) as mock_redis:
+        with patch("backend.services.datasource.router.redis_client", create=True) as mock_redis:
             mock_redis.set = AsyncMock()
             with patch.dict("sys.modules", {"backend.core.redis_client": MagicMock(redis_client=mock_redis)}):
                 await router._save_akshare_stale("southbound", {}, {"status": "success"})
@@ -242,7 +242,7 @@ class TestDataSourceRouter:
     async def test_get_akshare_stale_hit(self, router):
         """STALE 缓存命中"""
         cached = json.dumps({"status": "success", "data": [1, 2, 3]})
-        with patch("backend.services.data_source_router.redis_client", create=True) as mock_redis:
+        with patch("backend.services.datasource.router.redis_client", create=True) as mock_redis:
             mock_redis.get = AsyncMock(return_value=cached)
             with patch.dict("sys.modules", {"backend.core.redis_client": MagicMock(redis_client=mock_redis)}):
                 result = await router._get_akshare_stale("southbound", {})
@@ -253,7 +253,7 @@ class TestDataSourceRouter:
     @pytest.mark.asyncio
     async def test_get_akshare_stale_miss(self, router):
         """STALE 缓存未命中"""
-        with patch("backend.services.data_source_router.redis_client", create=True) as mock_redis:
+        with patch("backend.services.datasource.router.redis_client", create=True) as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             with patch.dict("sys.modules", {"backend.core.redis_client": MagicMock(redis_client=mock_redis)}):
                 result = await router._get_akshare_stale("southbound", {})
@@ -262,7 +262,7 @@ class TestDataSourceRouter:
     @pytest.mark.asyncio
     async def test_get_health_status(self, router):
         """健康状态"""
-        with patch("backend.services.data_source_router.rate_limit_registry") as mock_rl:
+        with patch("backend.services.datasource.router.rate_limit_registry") as mock_rl:
             mock_throttler = MagicMock()
             mock_status = MagicMock()
             mock_status.is_throttled = False
@@ -502,14 +502,14 @@ class TestFetchYFinance:
         assert result["success"] is True
         mock_method.assert_called_once()
 
-    @patch("backend.services.data_source_router.DataSourceRouter._send_request")
+    @patch("backend.services.datasource.router.DataSourceRouter._send_request")
     def test_fetch_yfinance_remote_success(self, mock_send, router_enabled):
         mock_send.return_value = {"success": True, "data": {"price": 165.0}}
         result = asyncio.run(router_enabled.fetch_yfinance("AAPL", "history", period="1d"))
         assert result["success"] is True
         assert result["data"]["price"] == 165.0
 
-    @patch("backend.services.data_source_router.DataSourceRouter._send_request")
+    @patch("backend.services.datasource.router.DataSourceRouter._send_request")
     def test_fetch_yfinance_rate_limit_switch(self, mock_send, router_enabled):
         mock_send.side_effect = [
             {"success": False, "message": "429 Rate Limit"},
@@ -519,7 +519,7 @@ class TestFetchYFinance:
         assert result["success"] is True
         assert mock_send.call_count == 2
 
-    @patch("backend.services.data_source_router.DataSourceRouter._send_request")
+    @patch("backend.services.datasource.router.DataSourceRouter._send_request")
     @patch("backend.services.yfinance_service.YFinanceService.fetch_yf_data")
     def test_fetch_yfinance_fallback_local(self, mock_method, mock_send, router_enabled):
         mock_send.side_effect = Exception("Network error")
@@ -535,13 +535,13 @@ class TestFetchAKShare:
         result = asyncio.run(router_disabled.fetch_akshare("southbound"))
         assert result["status"] == "success"
 
-    @patch("backend.services.data_source_router.DataSourceRouter._send_request")
+    @patch("backend.services.datasource.router.DataSourceRouter._send_request")
     def test_fetch_akshare_remote_success(self, mock_send, router_enabled):
         mock_send.return_value = {"status": "success", "data": {"flow": 100}}
         result = asyncio.run(router_enabled.fetch_akshare("southbound"))
         assert result["status"] == "success"
 
-    @patch("backend.services.data_source_router.DataSourceRouter._send_request")
+    @patch("backend.services.datasource.router.DataSourceRouter._send_request")
     @patch("backend.services.akshare_service.AKShareService.get_southbound_flow")
     def test_fetch_akshare_fallback_local(self, mock_method, mock_send, router_enabled):
         mock_send.side_effect = Exception("Connection refused")

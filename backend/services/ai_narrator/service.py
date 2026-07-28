@@ -9,8 +9,8 @@ import asyncio
 import logging
 from typing import Optional
 
+from backend.services.ai_narrator.llm_service import LLMService, ModelTier
 from backend.services.ai_narrator.models import NarrativeResult
-from backend.services.llm_service import LLMService, ModelTier
 from hermes_agent.tool_registry import ToolRegistry
 
 logger = logging.getLogger(__name__)

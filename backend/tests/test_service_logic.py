@@ -140,7 +140,7 @@ class TestNotificationService:
 
     @pytest.mark.asyncio
     async def test_send_alert_delegates_to_dispatcher(self):
-        from backend.services.notification_service import NotificationService
+        from backend.services.alert.notification import NotificationService
 
         service = NotificationService()
         mock_dispatcher = AsyncMock()
@@ -153,7 +153,7 @@ class TestNotificationService:
     @pytest.mark.asyncio
     async def test_send_alert_with_priority(self):
         from backend.core.alert_models import NotificationPriority
-        from backend.services.notification_service import NotificationService
+        from backend.services.alert.notification import NotificationService
 
         service = NotificationService()
         mock_dispatcher = AsyncMock()
@@ -169,7 +169,7 @@ class TestNotificationService:
     @pytest.mark.asyncio
     async def test_priority_to_severity_mapping(self):
         from backend.core.alert_models import AlertSeverity, NotificationPriority
-        from backend.services.notification_service import NotificationService
+        from backend.services.alert.notification import NotificationService
 
         assert NotificationService._priority_to_severity(NotificationPriority.P0) == AlertSeverity.CRITICAL
         assert NotificationService._priority_to_severity(NotificationPriority.P1) == AlertSeverity.CRITICAL
@@ -181,26 +181,26 @@ class TestNotificationService:
 class TestSearchService:
     @pytest.mark.asyncio
     async def test_web_search_no_api_keys(self):
-        from backend.services.search_service import SearchService
+        from backend.services.search.service import SearchService
 
         service = SearchService()
         with patch.dict(os.environ, {"TAVILY_API_KEY": "", "BOCHA_API_KEY": ""}, clear=False):
             os.environ.pop("TAVILY_API_KEY", None)
             os.environ.pop("BOCHA_API_KEY", None)
-            with patch("backend.services.search_service.asyncio.to_thread") as mock_to_thread:
+            with patch("backend.services.search.service.asyncio.to_thread") as mock_to_thread:
                 mock_to_thread.return_value = [{"title": "Test", "url": "http://test.com", "body": "content"}]
                 result = await service.web_search("test query")
                 assert result["status"] == "success"
 
     @pytest.mark.asyncio
     async def test_web_search_empty_results(self):
-        from backend.services.search_service import SearchService
+        from backend.services.search.service import SearchService
 
         service = SearchService()
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("TAVILY_API_KEY", None)
             os.environ.pop("BOCHA_API_KEY", None)
-            with patch("backend.services.search_service.asyncio.to_thread") as mock_to_thread:
+            with patch("backend.services.search.service.asyncio.to_thread") as mock_to_thread:
                 mock_to_thread.return_value = []
                 result = await service.web_search("test")
                 assert result["status"] == "success"
@@ -238,21 +238,21 @@ class TestSystemMonitorService:
 # ─── llm_service.py ─────────────────────────────────────────────────
 class TestLLMService:
     def test_init(self):
-        from backend.services.llm_service import LLMService
+        from backend.services.ai_narrator.llm_service import LLMService
 
         service = LLMService()
         assert service.client is not None
         assert service.get_model() is not None
 
     def test_get_client(self):
-        from backend.services.llm_service import LLMService
+        from backend.services.ai_narrator.llm_service import LLMService
 
         service = LLMService()
         assert service.get_client() is not None
 
     @pytest.mark.asyncio
     async def test_close(self):
-        from backend.services.llm_service import LLMService
+        from backend.services.ai_narrator.llm_service import LLMService
 
         service = LLMService()
         service.client.close = AsyncMock()
@@ -263,7 +263,7 @@ class TestLLMService:
     async def test_generate_pydantic(self):
         from pydantic import BaseModel
 
-        from backend.services.llm_service import LLMService
+        from backend.services.ai_narrator.llm_service import LLMService
 
         class TestModel(BaseModel):
             name: str
@@ -283,7 +283,7 @@ class TestLLMService:
     async def test_generate_pydantic_strips_markdown(self):
         from pydantic import BaseModel
 
-        from backend.services.llm_service import LLMService
+        from backend.services.ai_narrator.llm_service import LLMService
 
         class TestModel(BaseModel):
             name: str
@@ -301,7 +301,7 @@ class TestLLMService:
     async def test_generate_pydantic_validation_error(self):
         from pydantic import BaseModel
 
-        from backend.services.llm_service import LLMService
+        from backend.services.ai_narrator.llm_service import LLMService
 
         class TestModel(BaseModel):
             name: str

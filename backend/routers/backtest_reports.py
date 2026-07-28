@@ -15,10 +15,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from backend.app.backtest.report_service import BacktestReportService
 from backend.core.database import get_db
 from backend.core.datalake_models import DataSnapshot
 from backend.engine.contracts import RunManifest
-from backend.services.backtest_report_service import BacktestReportService
 from backend.services.datalake.manifest import build_manifest
 from backend.services.datalake.snapshot_resolver import SnapshotResolveError, SnapshotResolver
 

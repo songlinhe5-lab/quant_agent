@@ -2,7 +2,7 @@
 
 import pytest
 
-from backend.services.options_screener import OptionFilter, OptionsScreener
+from backend.services.screener.options_screener import OptionFilter, OptionsScreener
 
 
 def _chain():

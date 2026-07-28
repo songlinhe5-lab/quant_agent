@@ -19,7 +19,7 @@ from backend.app.iv_history_service import (
 )
 from backend.app.market_data import market_data
 from backend.domain.options_engine import compute_option_chain_greeks
-from backend.services.options_screener import OptionFilter, options_screener
+from backend.services.screener.options_screener import OptionFilter, options_screener
 
 logger = logging.getLogger(__name__)
 

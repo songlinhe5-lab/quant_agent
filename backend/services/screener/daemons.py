@@ -8,9 +8,9 @@ from datetime import datetime
 from backend.core import models
 from backend.core.database import SessionLocal, engine
 from backend.core.redis_client import redis_client
+from backend.services.ai_narrator.llm_service import llm_service
+from backend.services.alert.notification import notification_service
 from backend.services.futu import futu_service
-from backend.services.llm_service import llm_service
-from backend.services.notification_service import notification_service
 
 
 class DaemonMixin:
@@ -128,13 +128,13 @@ class DaemonMixin:
                                             any(x in ticker.upper() for x in ["HK", "SH", "SZ"]) or ticker.isdigit()
                                         )  # noqa: E501
                                         if is_asian:
-                                            from backend.services.data_source_router import (  # noqa: E501
+                                            from backend.services.datasource.router import (  # noqa: E501
                                                 data_source_router,
                                             )
 
                                             res = await data_source_router.fetch_akshare("news", ticker=ticker)  # noqa: E501
                                         else:
-                                            from backend.services.finnhub_service import (  # noqa: E501
+                                            from backend.services.finnhub.service import (  # noqa: E501
                                                 finnhub_service,
                                             )
 

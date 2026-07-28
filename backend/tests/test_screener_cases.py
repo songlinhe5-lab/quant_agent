@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.services.futu.screener_handler import _FUTU_V2_SUPPORT
 from backend.services.futu_service import futu_service
-from backend.services.screener_service import screener_service
+from backend.services.screener.screener_service import screener_service
 
 # 📊 100 条全维度量化选股单测用例矩阵
 TEST_CASES = [

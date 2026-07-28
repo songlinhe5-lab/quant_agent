@@ -16,7 +16,7 @@ from backend.app.market_data import market_data
 from backend.core import models
 from backend.core.exceptions import AppError
 from backend.core.redis_client import redis_client
-from backend.services.llm_service import llm_service
+from backend.services.ai_narrator.llm_service import llm_service
 from backend.services.market_engine import manager
 
 # 用于防范缓存击穿的异步细粒度锁池

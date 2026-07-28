@@ -4,12 +4,15 @@ from typing import Type
 import httpx
 from pydantic import BaseModel, Field
 
-from backend.services.finnhub_service import finnhub_service
+from backend.services.finnhub.service import finnhub_service
 from hermes_agent.tool_registry import register_tool
 
 
 class InsiderTransactionsInput(BaseModel):
-    ticker: str = Field(..., description="股票代码，仅支持美股，例如 US.AAPL, US.TSLA。港股暂不支持，请使用 web_search 搜索 'HK.00700 insider transactions HKEX' 获取信息。")
+    ticker: str = Field(
+        ...,
+        description="股票代码，仅支持美股，例如 US.AAPL, US.TSLA。港股暂不支持，请使用 web_search 搜索 'HK.00700 insider transactions HKEX' 获取信息。",
+    )
     limit: int = Field(default=20, description="返回的交易记录条数，默认 20")
 
 
@@ -117,9 +120,7 @@ class InsiderTransactionsTool:
         """尝试从 HKEX 披露易获取数据"""
         # 💡 HKEX 披露易搜索 URL
         url = "https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=zh"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
         async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
             resp = await client.get(url, headers=headers)

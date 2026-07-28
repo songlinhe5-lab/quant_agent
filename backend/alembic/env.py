@@ -25,7 +25,7 @@ from backend.core import (  # noqa: E402
 from backend.core.database import Base  # noqa: E402
 
 # 导入 TickerItem 模型，确保 Alembic 可以识别并生成迁移脚本
-from backend.services.ticker_service import TickerItem  # noqa: E402, F401
+from backend.services.fund_flow.ticker import TickerItem  # noqa: E402, F401
 
 # Alembic Config 对象
 config = context.config

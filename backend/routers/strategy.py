@@ -34,8 +34,8 @@ from backend.core.utils import safe_truncate
 from backend.domain.strategy_parser import parse_strategy_parameters
 from backend.routers.auth import get_current_user
 from backend.services import strategy_version_service
-from backend.services.kline_warehouse import kline_warehouse
-from backend.services.llm_service import llm_service
+from backend.services.ai_narrator.llm_service import llm_service
+from backend.services.datalake.kline_warehouse import kline_warehouse
 
 router = APIRouter(prefix="/strategy", tags=["Strategy Dev"])
 
@@ -853,9 +853,9 @@ async def run_strategy_sandbox(payload: RunSandboxPayload):
         )
 
         # BT-02：附加可复现性摘要（完整 SnapshotReader 装载仍属 DQ-03c）
+        from backend.app.backtest.report_service import is_reproducible
         from backend.core.database import SessionLocal
         from backend.engine.contracts import RunManifest
-        from backend.services.backtest_report_service import is_reproducible
         from backend.services.datalake.snapshot_resolver import SnapshotResolveError, SnapshotResolver
 
         code_hash = RunManifest.compute_code_hash(safe_code)
@@ -895,7 +895,7 @@ async def run_strategy_sandbox(payload: RunSandboxPayload):
                 report = {**report, "manifest": manifest.to_summary()}
 
             if payload.persist_report and isinstance(report, dict):
-                from backend.services.backtest_report_service import BacktestReportService
+                from backend.app.backtest.report_service import BacktestReportService
 
                 svc = BacktestReportService(db)
                 row = svc.save(
@@ -1127,7 +1127,7 @@ async def deploy_to_oms(payload: RunSandboxPayload):
             f.write(header + payload.source_code)
 
         # 2. OMS-05: 通过 BotRuntimeManager 启动真实 Bot 算力节点
-        from backend.services.bot_runtime import bot_runtime
+        from backend.workers.oms.bot_runtime import bot_runtime
 
         bot_id = f"bot_{payload.class_name.lower()}_{int(time.time())}"
         await bot_runtime.start_bot(

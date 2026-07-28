@@ -16,8 +16,8 @@ from backend.core.database import AsyncSessionLocal
 from backend.core.logger import logger
 from backend.core.models import NavSnapshot
 from backend.core.redis_client import redis_client
+from backend.services.datalake.kline_warehouse import kline_warehouse
 from backend.services.futu_service import futu_service
-from backend.services.kline_warehouse import kline_warehouse
 
 
 class RiskEngine:

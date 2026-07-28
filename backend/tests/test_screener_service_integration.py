@@ -10,7 +10,7 @@ import json
 import pytest
 
 from backend.routers.screener import SUGGESTIONS
-from backend.services.screener_service import ScreenerDecision, screener_service
+from backend.services.screener.screener_service import ScreenerDecision, screener_service
 
 
 @pytest.mark.asyncio

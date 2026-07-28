@@ -11,7 +11,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
-from backend.services.llm_service import ModelTier, llm_service
+from backend.services.ai_narrator.llm_service import ModelTier, llm_service
 
 logger = logging.getLogger(__name__)
 

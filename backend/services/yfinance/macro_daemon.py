@@ -9,7 +9,7 @@ import time
 import pandas as pd
 import yfinance as yf
 
-from backend.services.notification_service import notification_service
+from backend.services.alert.notification import notification_service
 
 
 class MacroDaemonMixin:

@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.services.search_service import SearchService
+from backend.services.search.service import SearchService
 
 
 def _mock_httpx_response(items_key="results", items=None):
@@ -40,7 +40,7 @@ class TestSearchServiceTavily:
         with patch.dict(os.environ, {"TAVILY_API_KEY": "tav-key", "BOCHA_API_KEY": ""}):
             resp = _mock_httpx_response(items=[{"title": "T1", "url": "http://u1", "content": "C1"}])
             with patch(
-                "backend.services.search_service.httpx.AsyncClient",
+                "backend.services.search.service.httpx.AsyncClient",
                 return_value=_mock_async_client(resp),
             ):
                 svc = SearchService()
@@ -59,11 +59,11 @@ class TestSearchServiceTavily:
             client.post.side_effect = Exception("tavily down")
             with (
                 patch(
-                    "backend.services.search_service.httpx.AsyncClient",
+                    "backend.services.search.service.httpx.AsyncClient",
                     return_value=client,
                 ),
                 patch(
-                    "backend.services.search_service.asyncio.to_thread",
+                    "backend.services.search.service.asyncio.to_thread",
                     return_value=[{"title": "DDG", "href": "u", "body": "b"}],
                 ),
             ):
@@ -77,7 +77,7 @@ class TestSearchServiceTavily:
             resp = _mock_httpx_response(items=[{"title": "T", "url": "u", "content": "c"}])
             client = _mock_async_client(resp)
             with patch(
-                "backend.services.search_service.httpx.AsyncClient",
+                "backend.services.search.service.httpx.AsyncClient",
                 return_value=client,
             ):
                 svc = SearchService()
@@ -98,7 +98,7 @@ class TestSearchServiceBocha:
                 items=[{"name": "B1", "url": "http://b1", "snippet": "S1"}],
             )
             with patch(
-                "backend.services.search_service.httpx.AsyncClient",
+                "backend.services.search.service.httpx.AsyncClient",
                 return_value=_mock_async_client(resp),
             ):
                 svc = SearchService()
@@ -114,11 +114,11 @@ class TestSearchServiceBocha:
             client.post.side_effect = Exception("bocha down")
             with (
                 patch(
-                    "backend.services.search_service.httpx.AsyncClient",
+                    "backend.services.search.service.httpx.AsyncClient",
                     return_value=client,
                 ),
                 patch(
-                    "backend.services.search_service.asyncio.to_thread",
+                    "backend.services.search.service.asyncio.to_thread",
                     return_value=[{"title": "DDG", "href": "u", "body": "b"}],
                 ),
             ):
@@ -134,7 +134,7 @@ class TestSearchServiceDuckDuckGo:
     async def test_duckduckgo_fallback_when_no_api_keys(self):
         with patch.dict(os.environ, {"TAVILY_API_KEY": "", "BOCHA_API_KEY": ""}):
             with patch(
-                "backend.services.search_service.asyncio.to_thread",
+                "backend.services.search.service.asyncio.to_thread",
                 return_value=[{"title": "DDG", "href": "u", "body": "b"}],
             ):
                 svc = SearchService()
@@ -146,7 +146,7 @@ class TestSearchServiceDuckDuckGo:
     async def test_all_providers_fail_returns_empty_with_message(self):
         with patch.dict(os.environ, {"TAVILY_API_KEY": "", "BOCHA_API_KEY": ""}):
             with patch(
-                "backend.services.search_service.asyncio.to_thread",
+                "backend.services.search.service.asyncio.to_thread",
                 return_value=[],
             ):
                 svc = SearchService()
@@ -168,7 +168,7 @@ class TestSearchServiceDuckDuckGo:
                 return []
 
             with patch(
-                "backend.services.search_service.asyncio.to_thread",
+                "backend.services.search.service.asyncio.to_thread",
                 side_effect=_capture,
             ):
                 svc = SearchService()

@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from backend.services.llm_service import LLMService, ModelTier
+from backend.services.ai_narrator.llm_service import LLMService, ModelTier
 
 
 @pytest.mark.asyncio
@@ -17,7 +17,7 @@ async def test_generate_returns_stripped_text(monkeypatch):
     fake.chat.completions.create = AsyncMock(
         return_value=MagicMock(choices=[MagicMock(message=MagicMock(content="  你好世界  "))])
     )
-    monkeypatch.setattr("backend.services.llm_service.AsyncOpenAI", lambda **k: fake)
+    monkeypatch.setattr("backend.services.ai_narrator.llm_service.AsyncOpenAI", lambda **k: fake)
     svc = LLMService()
     out = await svc.generate("hi", tier=ModelTier.STANDARD)
     assert out == "你好世界"
@@ -33,7 +33,7 @@ async def test_generate_builds_messages_with_system_prompt(monkeypatch):
         return MagicMock(choices=[MagicMock(message=MagicMock(content="ok"))])
 
     fake.chat.completions.create = fake_create
-    monkeypatch.setattr("backend.services.llm_service.AsyncOpenAI", lambda **k: fake)
+    monkeypatch.setattr("backend.services.ai_narrator.llm_service.AsyncOpenAI", lambda **k: fake)
     svc = LLMService()
     await svc.generate("user", system_prompt="sys", tier=ModelTier.STANDARD, temperature=0.3)
     msgs = captured["messages"]
@@ -50,7 +50,7 @@ async def test_generate_raises_on_failure(monkeypatch):
         raise RuntimeError("upstream dead")
 
     fake.chat.completions.create = boom
-    monkeypatch.setattr("backend.services.llm_service.AsyncOpenAI", lambda **k: fake)
+    monkeypatch.setattr("backend.services.ai_narrator.llm_service.AsyncOpenAI", lambda **k: fake)
     svc = LLMService()
     with pytest.raises(RuntimeError):
         await svc.generate("hi", tier=ModelTier.STANDARD)

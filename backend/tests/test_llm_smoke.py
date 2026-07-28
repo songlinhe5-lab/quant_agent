@@ -17,13 +17,13 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from backend.services.ai_narrator.llm_service import LLMService, ModelTier
 from backend.services.ai_narrator.service import AiNarratorService
 from backend.services.backtest_interpreter.models import (
     InterpretRequest,
     WalkForwardInterpretRequest,
 )
 from backend.services.backtest_interpreter.service import BacktestInterpreterService
-from backend.services.llm_service import LLMService, ModelTier
 
 _REAL_KEY = os.getenv("LLM_SMOKE_API_KEY")
 _REAL_URL = os.getenv("LLM_SMOKE_BASE_URL", "https://api.deepseek.com")

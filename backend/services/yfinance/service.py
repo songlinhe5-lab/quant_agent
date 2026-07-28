@@ -95,7 +95,7 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
         """懒加载 llm_service：优先使用注入的实例，否则导入全局单例"""
         if self._llm_service_override is not None:
             return self._llm_service_override
-        from backend.services.llm_service import llm_service as real_llm_service
+        from backend.services.ai_narrator.llm_service import llm_service as real_llm_service
 
         return real_llm_service
 

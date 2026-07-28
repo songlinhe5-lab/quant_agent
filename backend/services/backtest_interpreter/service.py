@@ -14,6 +14,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
+from backend.services.ai_narrator.llm_service import LLMService, ModelTier
 from backend.services.backtest_interpreter.models import (
     InterpretRequest,
     InterpretResult,
@@ -22,7 +23,6 @@ from backend.services.backtest_interpreter.models import (
     WalkForwardInterpretRequest,
     WalkForwardInterpretResult,
 )
-from backend.services.llm_service import LLMService, ModelTier
 
 logger = logging.getLogger(__name__)
 

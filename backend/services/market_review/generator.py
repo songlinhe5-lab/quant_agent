@@ -14,7 +14,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
-from backend.services.llm_service import ModelTier, llm_service
+from backend.services.ai_narrator.llm_service import ModelTier, llm_service
 from backend.services.market_review.models import (
     CapitalFlow,
     IndexSnapshot,

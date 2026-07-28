@@ -18,7 +18,7 @@ from sqlalchemy import text
 
 from backend.core.database import async_engine
 from backend.core.redis_client import redis_client
-from backend.services.notification_service import notification_service
+from backend.services.alert.notification import notification_service
 
 router = APIRouter(tags=["System Health"])
 

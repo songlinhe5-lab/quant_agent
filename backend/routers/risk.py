@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from backend.core.logger import logger
-from backend.services.kline_warehouse import kline_warehouse
+from backend.services.datalake.kline_warehouse import kline_warehouse
 from backend.services.risk.risk_attribution import calc_attribution
 from backend.services.risk.risk_cvar import decompose_cvar
 from backend.services.risk.risk_engine import risk_engine

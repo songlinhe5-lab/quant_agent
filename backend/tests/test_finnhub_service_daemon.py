@@ -54,7 +54,7 @@ class TestMarketDaemon:
 
     @pytest.fixture
     def service(self):
-        from backend.services.finnhub_service import FinnhubService
+        from backend.services.finnhub.service import FinnhubService
 
         return FinnhubService()
 
@@ -100,8 +100,8 @@ class TestMarketDaemon:
                 service, "get_earnings_calendar", new=AsyncMock(return_value={"status": "success", "data": [row]})
             ),
             patch(f"{DM}.redis_client") as m_r,
-            patch("backend.services.notification_service.notification_service") as m_n,
-            patch("backend.services.llm_service.llm_service") as m_llm,
+            patch("backend.services.alert.notification.notification_service") as m_n,
+            patch("backend.services.ai_narrator.llm_service.llm_service") as m_llm,
         ):
             m_r.set = AsyncMock(return_value=True)
             m_llm.get_client.return_value.chat.completions.create = AsyncMock(
@@ -200,12 +200,12 @@ class TestMarketDaemon:
             # RL-11 修复：daemon 实际经由 data_source_router.fetch_akshare 取宏观日历，
             # 原 mock（akshare_service）从未被调用，导致永远走 fallback 且 alert 不触发
             patch(
-                "backend.services.data_source_router.data_source_router.fetch_akshare",
+                "backend.services.datasource.router.data_source_router.fetch_akshare",
                 new=AsyncMock(return_value={"status": "success", "data": [event]}),
             ),
             patch(f"{DM}.redis_client") as m_r,
-            patch("backend.services.notification_service.notification_service") as m_n,
-            patch("backend.services.llm_service.llm_service") as m_llm,
+            patch("backend.services.alert.notification.notification_service") as m_n,
+            patch("backend.services.ai_narrator.llm_service.llm_service") as m_llm,
         ):
             m_r.set = AsyncMock(return_value=True)
             m_llm.get_client.return_value.chat.completions.create = AsyncMock(

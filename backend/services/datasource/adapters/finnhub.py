@@ -32,7 +32,7 @@ class FinnhubDataSource:
 
     def _svc(self) -> Any:
         if self._service is None:
-            from backend.services.finnhub_service import finnhub_service
+            from backend.services.finnhub.service import finnhub_service
 
             self._service = finnhub_service
         return self._service

@@ -18,7 +18,7 @@ class TestCategoryTTL:
     """分类 TTL 映射"""
 
     def test_ttl_values(self):
-        from backend.services.screener_service import ScreenerService
+        from backend.services.screener.screener_service import ScreenerService
 
         ttl = ScreenerService.CATEGORY_TTL
         assert ttl["financial_report"] == 90 * 24 * 3600
@@ -27,7 +27,7 @@ class TestCategoryTTL:
         assert ttl["general"] == 90 * 24 * 3600
 
     def test_ttl_has_all_categories(self):
-        from backend.services.screener_service import ScreenerService
+        from backend.services.screener.screener_service import ScreenerService
 
         expected = {"financial_report", "news", "macro", "general"}
         assert set(ScreenerService.CATEGORY_TTL.keys()) == expected

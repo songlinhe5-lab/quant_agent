@@ -29,7 +29,7 @@ async def get_data_quality(username: str = Depends(get_current_user)):
     SVC-04 校验结果汇总：按数据源展示脏数据率 / 完整率 / 价格异常 / 过期计数。
     Grafana 独立面板订阅 Prometheus 同名指标；本接口供前端/运维即时查看。
     """
-    from backend.services.data_quality_monitor import quality_overview
+    from backend.services.data_quality.monitor import quality_overview
 
     return {
         "status": "success",

@@ -17,7 +17,7 @@ import uuid
 from datetime import date as date_cls
 from typing import Optional
 
-from backend.services.llm_service import LLMService, ModelTier
+from backend.services.ai_narrator.llm_service import LLMService, ModelTier
 from backend.services.morning_briefing.models import BriefingResult
 from backend.services.morning_briefing.storage import save_briefing
 from hermes_agent.tool_registry import ToolRegistry

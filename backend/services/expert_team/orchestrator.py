@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Optional
 
+from backend.services.ai_narrator.llm_service import ModelTier, llm_service
 from backend.services.expert_team.data_collector import (
     collect_shared_data,
     format_shared_data_for_prompt,
@@ -24,7 +25,6 @@ from backend.services.expert_team.models import (
     ExpertRole,
     StreamEvent,
 )
-from backend.services.llm_service import ModelTier, llm_service
 from hermes_agent.tool_registry import ToolRegistry
 
 # ─── 超时配置 ──────────────────────────────────────────────────
