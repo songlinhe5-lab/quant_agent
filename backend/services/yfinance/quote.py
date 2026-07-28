@@ -62,8 +62,8 @@ class QuoteMixin:
             async def _do_quote_fetch():
                 loop = asyncio.get_running_loop()
                 # 交给业务方一个"取餐号" (Future)，业务方会原地 await 等待数据
+                # 实际取数在 _dispatch_batch_quotes -> _do_batch_fetch 中通过 yf.download 批量完成
                 fut = loop.create_future()
-                # TODO: 后续实现实际的数据获取逻辑
 
                 async with self._batch_lock:
                     if yf_ticker not in self._batch_queue:
