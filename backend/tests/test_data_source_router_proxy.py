@@ -49,7 +49,9 @@ class TestProxyYFinance:
     def test_proxy_yfinance_history(self):
         from backend.app.market_data import market_data
 
-        with patch.object(market_data._yf, "fetch_yf_data", new=AsyncMock(return_value=(True, {"price": 165.0}, ""))):
+        # proxy_yfinance("history") 实际调用网关方法 fetch_yf_data (经 datasource_registry 走真实
+        # yfinance 适配层), 而非 _yf.fetch_yf_data。直接 patch 网关方法以隔离外网, 避免 CI 抖动。
+        with patch.object(market_data, "fetch_yf_data", new=AsyncMock(return_value=(True, {"price": 165.0}, ""))):
             response = client.post(
                 "/api/v1/data-source/proxy/yfinance",
                 json={"ticker": "AAPL", "fetch_type": "history", "kwargs": {"period": "1d"}},
