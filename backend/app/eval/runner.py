@@ -19,7 +19,7 @@ from backend.domain.eval_framework import (
 logger = logging.getLogger(__name__)
 
 # Golden Dataset 路径
-GOLDEN_DATASET_PATH = Path(__file__).parent.parent / "eval" / "golden_dataset.json"
+GOLDEN_DATASET_PATH = Path(__file__).parent / "golden_dataset.json"
 
 
 def load_golden_dataset() -> List[EvalCase]:

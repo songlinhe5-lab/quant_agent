@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pandas as pd
 import pytest
 
-from backend.services.paper_settlement_daemon import PaperSettlementDaemon
+from backend.workers.paper.settlement_daemon import PaperSettlementDaemon
 
 # ─────────────────────────────────────────
 #  Fixtures
@@ -68,7 +68,7 @@ class TestIsTradingDay:
         today = date.today()
         df = pd.DataFrame({"time": [datetime(today.year, today.month, today.day)], "close": [350.0]})
 
-        with patch("backend.services.paper_settlement_daemon.kline_warehouse") as mock_kw:
+        with patch("backend.workers.paper.settlement_daemon.kline_warehouse") as mock_kw:
             mock_kw.get_history = AsyncMock(return_value=df)
             result = await daemon._is_trading_day("HK")
         assert result is True
@@ -78,7 +78,7 @@ class TestIsTradingDay:
         """无数据 → False"""
         daemon = _make_daemon()
 
-        with patch("backend.services.paper_settlement_daemon.kline_warehouse") as mock_kw:
+        with patch("backend.workers.paper.settlement_daemon.kline_warehouse") as mock_kw:
             mock_kw.get_history = AsyncMock(return_value=None)
             result = await daemon._is_trading_day("HK")
         assert result is False
@@ -90,7 +90,7 @@ class TestIsTradingDay:
         yesterday = date.today() - timedelta(days=1)
         df = pd.DataFrame({"time": [datetime(yesterday.year, yesterday.month, yesterday.day)], "close": [350.0]})
 
-        with patch("backend.services.paper_settlement_daemon.kline_warehouse") as mock_kw:
+        with patch("backend.workers.paper.settlement_daemon.kline_warehouse") as mock_kw:
             mock_kw.get_history = AsyncMock(return_value=df)
             result = await daemon._is_trading_day("US")
         assert result is False
@@ -308,7 +308,7 @@ class TestRedisLock:
         """Redis NX 锁已存在 → 跳过结算"""
         daemon = _make_daemon()
 
-        with patch("backend.services.paper_settlement_daemon.redis_client") as mock_redis:
+        with patch("backend.workers.paper.settlement_daemon.redis_client") as mock_redis:
             mock_redis.set = AsyncMock(return_value=False)  # 锁已存在
             with patch.object(daemon, "_get_running_portfolios") as mock_portfolios:
                 await daemon._settle_market("HK")
@@ -319,13 +319,13 @@ class TestRedisLock:
         """获取 NX 锁 → 正常结算"""
         daemon = _make_daemon()
 
-        with patch("backend.services.paper_settlement_daemon.redis_client") as mock_redis:
+        with patch("backend.workers.paper.settlement_daemon.redis_client") as mock_redis:
             mock_redis.set = AsyncMock(return_value=True)  # 获取锁成功
 
             mock_db = _mock_db_session()
             mock_db.query.return_value.filter.return_value.all.return_value = []
 
-            with patch("backend.services.paper_settlement_daemon.SessionLocal", return_value=mock_db):
+            with patch("backend.workers.paper.settlement_daemon.SessionLocal", return_value=mock_db):
                 with patch.object(daemon, "_get_running_portfolios", return_value=[]):
                     await daemon._settle_market("HK")
                     # 不报错即通过
@@ -354,8 +354,8 @@ class TestWeeklyReconcile:
             "replayed": {"HK.00700": {"qty": 50, "avg_cost": 350.0}},
         }
 
-        with patch("backend.services.paper_settlement_daemon.SessionLocal", return_value=mock_db):
-            with patch("backend.services.paper_settlement_daemon.paper_ledger_service") as mock_ledger:
+        with patch("backend.workers.paper.settlement_daemon.SessionLocal", return_value=mock_db):
+            with patch("backend.workers.paper.settlement_daemon.paper_ledger_service") as mock_ledger:
                 mock_ledger.reconcile.return_value = reconcile_result
                 results = await daemon.weekly_reconcile()
 
@@ -379,8 +379,8 @@ class TestWeeklyReconcile:
             "replayed": {"HK.00700": {"qty": 100, "avg_cost": 350.0}},
         }
 
-        with patch("backend.services.paper_settlement_daemon.SessionLocal", return_value=mock_db):
-            with patch("backend.services.paper_settlement_daemon.paper_ledger_service") as mock_ledger:
+        with patch("backend.workers.paper.settlement_daemon.SessionLocal", return_value=mock_db):
+            with patch("backend.workers.paper.settlement_daemon.paper_ledger_service") as mock_ledger:
                 mock_ledger.reconcile.return_value = reconcile_result
                 results = await daemon.weekly_reconcile()
 
@@ -412,8 +412,8 @@ class TestBackfillSettlement:
         mock_db.query.return_value.filter.return_value.all.return_value = [p1]
         mock_db.query.return_value.filter.return_value.order_by.return_value.first.return_value = latest_nav
 
-        with patch("backend.services.paper_settlement_daemon.SessionLocal", return_value=mock_db):
-            with patch("backend.services.paper_settlement_daemon.redis_client") as mock_redis:
+        with patch("backend.workers.paper.settlement_daemon.SessionLocal", return_value=mock_db):
+            with patch("backend.workers.paper.settlement_daemon.redis_client") as mock_redis:
                 mock_redis.set = AsyncMock(return_value=True)
                 with patch.object(daemon, "_settle_portfolio", new_callable=AsyncMock) as mock_settle:
                     await daemon.backfill_settlement(max_days=7)
@@ -436,8 +436,8 @@ class TestBackfillSettlement:
         mock_db.query.return_value.filter.return_value.all.return_value = [p1]
         mock_db.query.return_value.filter.return_value.order_by.return_value.first.return_value = latest_nav
 
-        with patch("backend.services.paper_settlement_daemon.SessionLocal", return_value=mock_db):
-            with patch("backend.services.paper_settlement_daemon.redis_client"):
+        with patch("backend.workers.paper.settlement_daemon.SessionLocal", return_value=mock_db):
+            with patch("backend.workers.paper.settlement_daemon.redis_client"):
                 with patch.object(daemon, "_settle_portfolio", new_callable=AsyncMock) as mock_settle:
                     await daemon.backfill_settlement(max_days=7)
                     mock_settle.assert_not_called()

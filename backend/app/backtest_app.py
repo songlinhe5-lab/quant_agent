@@ -225,9 +225,9 @@ async def attach_reproducibility(req: BacktestParams, report: dict[str, Any]) ->
     """BT-02 / FE-PROD-04：在回测结果上附加 manifest + badge。"""
     import uuid
 
+    from backend.app.backtest.report_service import is_reproducible
     from backend.core.database import SessionLocal
     from backend.engine.contracts import RunManifest
-    from backend.services.backtest_report_service import is_reproducible
     from backend.services.datalake.snapshot_resolver import (
         SnapshotResolveError,
         SnapshotResolver,

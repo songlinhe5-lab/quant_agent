@@ -210,26 +210,26 @@ class TestSearchService:
 # ─── system_monitor_service.py ──────────────────────────────────────
 class TestSystemMonitorService:
     def test_init(self):
-        from backend.services.system_monitor_service import SystemMonitorService
+        from backend.workers.monitor.system_monitor import SystemMonitorService
 
         service = SystemMonitorService()
         assert service._last_alert_time == 0.0
 
     def test_save_performance_log(self):
-        from backend.services.system_monitor_service import SystemMonitorService
+        from backend.workers.monitor.system_monitor import SystemMonitorService
 
         service = SystemMonitorService()
-        with patch("backend.services.system_monitor_service.SessionLocal") as mock_session:
+        with patch("backend.workers.monitor.system_monitor.SessionLocal") as mock_session:
             mock_db = MagicMock()
             mock_session.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session.return_value.__exit__ = MagicMock(return_value=False)
             service._save_performance_log("test_type", 150.0, "/api/test", "details")
 
     def test_save_performance_log_error(self):
-        from backend.services.system_monitor_service import SystemMonitorService
+        from backend.workers.monitor.system_monitor import SystemMonitorService
 
         service = SystemMonitorService()
-        with patch("backend.services.system_monitor_service.SessionLocal") as mock_session:
+        with patch("backend.workers.monitor.system_monitor.SessionLocal") as mock_session:
             mock_session.side_effect = Exception("DB error")
             # Should not raise
             service._save_performance_log("test", 100.0)

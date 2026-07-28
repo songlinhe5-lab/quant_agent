@@ -15,7 +15,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from backend.services.bot_runtime import BotInstance, BotRuntimeManager
+from backend.workers.oms.bot_runtime import BotInstance, BotRuntimeManager
 
 
 # ==========================================
@@ -88,7 +88,7 @@ class TestBotRuntimeManager:
         return BotRuntimeManager()
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_start_bot(self, mock_redis, manager):
         """启动 Bot"""
         mock_redis.hset = AsyncMock()
@@ -105,7 +105,7 @@ class TestBotRuntimeManager:
             assert "bot_1" in manager._bots
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_start_bot_duplicate(self, mock_redis, manager):
         """重复启动同一 Bot 报错"""
         mock_redis.hset = AsyncMock()
@@ -121,7 +121,7 @@ class TestBotRuntimeManager:
                 await manager.start_bot("bot_1", "TestBot2", "US.TSLA", "Strat2", {})
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_pause_bot(self, mock_redis, manager):
         """暂停 Bot"""
         mock_redis.hset = AsyncMock()
@@ -153,7 +153,7 @@ class TestBotRuntimeManager:
         assert result is False
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_resume_bot(self, mock_redis, manager):
         """恢复 Bot"""
         mock_redis.hset = AsyncMock()
@@ -181,7 +181,7 @@ class TestBotRuntimeManager:
         assert result is False
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_stop_bot(self, mock_redis, manager):
         """终止 Bot"""
         mock_redis.hset = AsyncMock()
@@ -204,7 +204,7 @@ class TestBotRuntimeManager:
         assert result is False
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_stop_all_bots(self, mock_redis, manager):
         """Kill Switch 终止所有"""
         mock_redis.hset = AsyncMock()
@@ -221,7 +221,7 @@ class TestBotRuntimeManager:
         assert count == 3
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_get_all_bots(self, mock_redis, manager):
         """获取所有 Bot"""
         mock_redis.lrange = AsyncMock(return_value=[])
@@ -239,7 +239,7 @@ class TestBotRuntimeManager:
         assert manager.get_bot("nonexist") is None
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_push_log(self, mock_redis, manager):
         """日志写入 Redis"""
         mock_redis.lpush = AsyncMock()
@@ -252,7 +252,7 @@ class TestBotRuntimeManager:
         mock_redis.publish.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_get_recent_logs(self, mock_redis, manager):
         """读取最近日志"""
         mock_redis.lrange = AsyncMock(return_value=[json.dumps({"time": "12:00:00", "msg": "hello", "type": "info"})])
@@ -261,7 +261,7 @@ class TestBotRuntimeManager:
         assert logs[0]["msg"] == "hello"
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_get_recent_logs_invalid_json(self, mock_redis, manager):
         """日志 JSON 解析失败时跳过"""
         mock_redis.lrange = AsyncMock(return_value=["invalid_json", json.dumps({"msg": "ok"})])
@@ -269,7 +269,7 @@ class TestBotRuntimeManager:
         assert len(logs) == 1
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_update_bot_stats(self, mock_redis, manager):
         """资源统计写入 Redis"""
         mock_redis.hset = AsyncMock()
@@ -279,7 +279,7 @@ class TestBotRuntimeManager:
         mock_redis.hset.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_save_bot_meta(self, mock_redis, manager):
         """元数据写入 Redis"""
         mock_redis.hset = AsyncMock()
@@ -288,7 +288,7 @@ class TestBotRuntimeManager:
         assert mock_redis.hset.call_count == 2  # meta + registry
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_restore_bots_from_redis_empty(self, mock_redis, manager):
         """Redis 无数据时恢复 0 个"""
         mock_redis.hgetall = AsyncMock(return_value={})
@@ -296,7 +296,7 @@ class TestBotRuntimeManager:
         assert count == 0
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_restore_bots_from_redis_with_data(self, mock_redis, manager):
         """从 Redis 恢复 Bot"""
         mock_redis.hgetall = AsyncMock(
@@ -319,7 +319,7 @@ class TestBotRuntimeManager:
         assert count == 1
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_restore_bots_file_not_exists(self, mock_redis, manager):
         """策略文件不存在时跳过"""
         mock_redis.hgetall = AsyncMock(
@@ -340,7 +340,7 @@ class TestBotRuntimeManager:
         assert count == 0
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_shutdown(self, mock_redis, manager):
         """优雅关停"""
         mock_redis.hset = AsyncMock()
@@ -355,10 +355,10 @@ class TestBotRuntimeManager:
         assert bot.status == "stopped"
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_fetch_latest_quote_success(self, mock_redis, manager):
         """获取行情成功"""
-        with patch("backend.services.bot_runtime.futu_service", create=True) as mock_futu:
+        with patch("backend.workers.oms.bot_runtime.futu_service", create=True) as mock_futu:
             mock_futu.get_quote = AsyncMock(return_value={"status": "success", "last_price": 150.0})
             with patch.dict("sys.modules", {"backend.services.futu_service": MagicMock(futu_service=mock_futu)}):
                 result = await manager._fetch_latest_quote("US.AAPL")
@@ -367,7 +367,7 @@ class TestBotRuntimeManager:
     @pytest.mark.asyncio
     async def test_fetch_latest_quote_failure(self, manager):
         """获取行情失败返回 None"""
-        with patch("backend.services.bot_runtime.futu_service", create=True) as mock_futu:
+        with patch("backend.workers.oms.bot_runtime.futu_service", create=True) as mock_futu:
             mock_futu.get_quote = AsyncMock(side_effect=Exception("连接失败"))
             with patch.dict("sys.modules", {"backend.services.futu_service": MagicMock(futu_service=mock_futu)}):
                 result = await manager._fetch_latest_quote("US.AAPL")
@@ -400,7 +400,7 @@ class TestBotInstanceEnhanced:
 
     def test_bot_instance_init(self):
         """BotInstance 初始化"""
-        from backend.services.bot_runtime import BotInstance
+        from backend.workers.oms.bot_runtime import BotInstance
 
         bot = BotInstance(
             bot_id="bot_001",
@@ -420,7 +420,7 @@ class TestBotInstanceEnhanced:
 
     def test_bot_instance_to_api_dict(self):
         """转 API 格式"""
-        from backend.services.bot_runtime import BotInstance
+        from backend.workers.oms.bot_runtime import BotInstance
 
         bot = BotInstance("bot_001", "TestBot", "00700.HK", "Strategy", {})
         logs = [{"time": "10:30:00", "msg": "Test log", "type": "info"}]
@@ -438,7 +438,7 @@ class TestBotInstanceEnhanced:
 
     def test_bot_instance_to_api_dict_no_logs(self):
         """无日志时返回空列表"""
-        from backend.services.bot_runtime import BotInstance
+        from backend.workers.oms.bot_runtime import BotInstance
 
         bot = BotInstance("bot_001", "TestBot", "00700.HK", "Strategy", {})
         result = bot.to_api_dict()
@@ -447,7 +447,7 @@ class TestBotInstanceEnhanced:
 
     def test_bot_instance_cpu_memory(self):
         """CPU/MEM 获取不抛异常"""
-        from backend.services.bot_runtime import BotInstance
+        from backend.workers.oms.bot_runtime import BotInstance
 
         bot = BotInstance("bot_001", "TestBot", "00700.HK", "Strategy", {})
         cpu = bot._get_cpu_percent()
@@ -463,11 +463,11 @@ class TestBotInstanceEnhanced:
 class TestBotRuntimeManagerEnhanced:
     """BotRuntimeManager 核心逻辑测试"""
 
-    @patch("backend.services.bot_runtime.redis_client")
-    @patch("backend.services.bot_runtime.BotRuntimeManager._run_bot_loop", _mock_bot_loop)
+    @patch("backend.workers.oms.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.BotRuntimeManager._run_bot_loop", _mock_bot_loop)
     def test_start_bot(self, mock_redis):
         """启动 Bot"""
-        from backend.services.bot_runtime import BotRuntimeManager
+        from backend.workers.oms.bot_runtime import BotRuntimeManager
 
         mock_redis.hset = AsyncMock()
         mock_redis.lpush = AsyncMock()
@@ -494,11 +494,11 @@ class TestBotRuntimeManagerEnhanced:
         assert "bot_001" in manager._bots
         mock_redis.hset.assert_called()
 
-    @patch("backend.services.bot_runtime.redis_client")
-    @patch("backend.services.bot_runtime.BotRuntimeManager._run_bot_loop", _mock_bot_loop)
+    @patch("backend.workers.oms.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.BotRuntimeManager._run_bot_loop", _mock_bot_loop)
     def test_start_bot_already_running(self, mock_redis):
         """重复启动已运行 Bot 抛异常"""
-        from backend.services.bot_runtime import BotRuntimeManager
+        from backend.workers.oms.bot_runtime import BotRuntimeManager
 
         mock_redis.hset = AsyncMock()
         mock_redis.lpush = AsyncMock()
@@ -531,11 +531,11 @@ class TestBotRuntimeManagerEnhanced:
         except ValueError as e:
             assert "已在运行中" in str(e)
 
-    @patch("backend.services.bot_runtime.redis_client")
-    @patch("backend.services.bot_runtime.BotRuntimeManager._run_bot_loop", _mock_bot_loop)
+    @patch("backend.workers.oms.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.BotRuntimeManager._run_bot_loop", _mock_bot_loop)
     def test_pause_bot(self, mock_redis):
         """暂停 Bot"""
-        from backend.services.bot_runtime import BotRuntimeManager
+        from backend.workers.oms.bot_runtime import BotRuntimeManager
 
         mock_redis.hset = AsyncMock()
         mock_redis.lpush = AsyncMock()
@@ -560,21 +560,21 @@ class TestBotRuntimeManagerEnhanced:
         assert bot.status == "paused"
         assert bot._pause_event.is_set() is False
 
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     def test_pause_bot_not_found(self, mock_redis):
         """暂停不存在的 Bot 返回 False"""
-        from backend.services.bot_runtime import BotRuntimeManager
+        from backend.workers.oms.bot_runtime import BotRuntimeManager
 
         manager = BotRuntimeManager()
 
         result = asyncio.run(manager.pause_bot("nonexistent"))
         assert result is False
 
-    @patch("backend.services.bot_runtime.redis_client")
-    @patch("backend.services.bot_runtime.BotRuntimeManager._run_bot_loop", _mock_bot_loop)
+    @patch("backend.workers.oms.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.BotRuntimeManager._run_bot_loop", _mock_bot_loop)
     def test_resume_bot(self, mock_redis):
         """恢复暂停的 Bot"""
-        from backend.services.bot_runtime import BotRuntimeManager
+        from backend.workers.oms.bot_runtime import BotRuntimeManager
 
         mock_redis.hset = AsyncMock()
         mock_redis.lpush = AsyncMock()
@@ -601,11 +601,11 @@ class TestBotRuntimeManagerEnhanced:
         assert bot.status == "running"
         assert bot._pause_event.is_set() is True
 
-    @patch("backend.services.bot_runtime.redis_client")
-    @patch("backend.services.bot_runtime.BotRuntimeManager._run_bot_loop", _mock_bot_loop)
+    @patch("backend.workers.oms.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.BotRuntimeManager._run_bot_loop", _mock_bot_loop)
     def test_resume_bot_not_paused(self, mock_redis):
         """恢复非 paused 状态 Bot 返回 False"""
-        from backend.services.bot_runtime import BotRuntimeManager
+        from backend.workers.oms.bot_runtime import BotRuntimeManager
 
         mock_redis.hset = AsyncMock()
         mock_redis.lpush = AsyncMock()
@@ -628,11 +628,11 @@ class TestBotRuntimeManagerEnhanced:
         result = asyncio.run(manager.resume_bot("bot_001"))
         assert result is False
 
-    @patch("backend.services.bot_runtime.redis_client")
-    @patch("backend.services.bot_runtime.BotRuntimeManager._run_bot_loop", _mock_bot_loop)
+    @patch("backend.workers.oms.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.BotRuntimeManager._run_bot_loop", _mock_bot_loop)
     def test_stop_bot(self, mock_redis):
         """终止 Bot"""
-        from backend.services.bot_runtime import BotRuntimeManager
+        from backend.workers.oms.bot_runtime import BotRuntimeManager
 
         mock_redis.hset = AsyncMock()
         mock_redis.lpush = AsyncMock()
@@ -657,21 +657,21 @@ class TestBotRuntimeManagerEnhanced:
         assert bot.status == "stopped"
         assert bot._stop_requested is True
 
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     def test_stop_bot_not_found(self, mock_redis):
         """终止不存在的 Bot 返回 False"""
-        from backend.services.bot_runtime import BotRuntimeManager
+        from backend.workers.oms.bot_runtime import BotRuntimeManager
 
         manager = BotRuntimeManager()
 
         result = asyncio.run(manager.stop_bot("nonexistent"))
         assert result is False
 
-    @patch("backend.services.bot_runtime.redis_client")
-    @patch("backend.services.bot_runtime.BotRuntimeManager._run_bot_loop", _mock_bot_loop)
+    @patch("backend.workers.oms.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.BotRuntimeManager._run_bot_loop", _mock_bot_loop)
     def test_stop_all_bots(self, mock_redis):
         """Kill Switch: 终止所有运行中 Bot"""
-        from backend.services.bot_runtime import BotRuntimeManager
+        from backend.workers.oms.bot_runtime import BotRuntimeManager
 
         mock_redis.hset = AsyncMock()
         mock_redis.lpush = AsyncMock()
@@ -688,11 +688,11 @@ class TestBotRuntimeManagerEnhanced:
         result = asyncio.run(manager.stop_all_bots())
         assert result == 2
 
-    @patch("backend.services.bot_runtime.redis_client")
-    @patch("backend.services.bot_runtime.BotRuntimeManager._run_bot_loop", _mock_bot_loop)
+    @patch("backend.workers.oms.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.BotRuntimeManager._run_bot_loop", _mock_bot_loop)
     def test_get_all_bots(self, mock_redis):
         """获取所有 Bot 状态"""
-        from backend.services.bot_runtime import BotRuntimeManager
+        from backend.workers.oms.bot_runtime import BotRuntimeManager
 
         mock_redis.hset = AsyncMock()
         mock_redis.lpush = AsyncMock()
@@ -709,11 +709,11 @@ class TestBotRuntimeManagerEnhanced:
         result = asyncio.run(manager.get_all_bots())
         assert len(result) == 2
 
-    @patch("backend.services.bot_runtime.redis_client")
-    @patch("backend.services.bot_runtime.BotRuntimeManager._run_bot_loop", _mock_bot_loop)
+    @patch("backend.workers.oms.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.BotRuntimeManager._run_bot_loop", _mock_bot_loop)
     def test_get_bot(self, mock_redis):
         """获取单个 Bot 实例"""
-        from backend.services.bot_runtime import BotRuntimeManager
+        from backend.workers.oms.bot_runtime import BotRuntimeManager
 
         mock_redis.hset = AsyncMock()
         mock_redis.lpush = AsyncMock()
@@ -733,10 +733,10 @@ class TestBotRuntimeManagerEnhanced:
         none_bot = manager.get_bot("nonexistent")
         assert none_bot is None
 
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     def test_push_log(self, mock_redis):
         """日志写入 Redis"""
-        from backend.services.bot_runtime import BotInstance, BotRuntimeManager
+        from backend.workers.oms.bot_runtime import BotInstance, BotRuntimeManager
 
         mock_redis.lpush = AsyncMock()
         mock_redis.ltrim = AsyncMock()
@@ -751,10 +751,10 @@ class TestBotRuntimeManagerEnhanced:
         mock_redis.lpush.assert_called_once()
         mock_redis.publish.assert_called_once()
 
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     def test_get_recent_logs(self, mock_redis):
         """读取最近日志"""
-        from backend.services.bot_runtime import BotRuntimeManager
+        from backend.workers.oms.bot_runtime import BotRuntimeManager
 
         log_entries = [
             json.dumps({"time": "10:30:00", "msg": "Log 1", "type": "info"}),
@@ -770,10 +770,10 @@ class TestBotRuntimeManagerEnhanced:
         assert result[0]["msg"] == "Log 1"
         assert result[1]["type"] == "warn"
 
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     def test_get_recent_logs_empty(self, mock_redis):
         """无日志时返回空列表"""
-        from backend.services.bot_runtime import BotRuntimeManager
+        from backend.workers.oms.bot_runtime import BotRuntimeManager
 
         mock_redis.lrange = AsyncMock(return_value=[])
 
@@ -782,10 +782,10 @@ class TestBotRuntimeManagerEnhanced:
         result = asyncio.run(manager._get_recent_logs("bot_001"))
         assert result == []
 
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     def test_restore_bots_from_redis_empty(self, mock_redis):
         """Redis 无注册表时恢复 0"""
-        from backend.services.bot_runtime import BotRuntimeManager
+        from backend.workers.oms.bot_runtime import BotRuntimeManager
 
         mock_redis.hgetall = AsyncMock(return_value={})
 
@@ -794,11 +794,11 @@ class TestBotRuntimeManagerEnhanced:
         result = asyncio.run(manager.restore_bots_from_redis())
         assert result == 0
 
-    @patch("backend.services.bot_runtime.redis_client")
-    @patch("backend.services.bot_runtime.BotRuntimeManager._run_bot_loop", _mock_bot_loop)
+    @patch("backend.workers.oms.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.BotRuntimeManager._run_bot_loop", _mock_bot_loop)
     def test_shutdown(self, mock_redis):
         """优雅关停"""
-        from backend.services.bot_runtime import BotRuntimeManager
+        from backend.workers.oms.bot_runtime import BotRuntimeManager
 
         mock_redis.hset = AsyncMock()
         mock_redis.lpush = AsyncMock()

@@ -213,7 +213,7 @@ class TestStrategySandboxRoutes:
 class TestStrategyDeployRoutes:
     """策略部署到 OMS 路由测试"""
 
-    @patch("backend.services.bot_runtime.bot_runtime")
+    @patch("backend.workers.oms.bot_runtime.bot_runtime")
     @patch("backend.core.redis_client.redis_client")
     def test_deploy_to_oms_success(self, mock_redis, mock_bot_rt):
         """正常路径：策略成功部署到 OMS

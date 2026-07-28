@@ -574,13 +574,13 @@ class TestSystemMonitorService:
 
     @pytest.fixture
     def monitor(self):
-        from backend.services.system_monitor_service import SystemMonitorService
+        from backend.workers.monitor.system_monitor import SystemMonitorService
 
         return SystemMonitorService()
 
     def test_save_performance_log_success(self, monitor):
         """_save_performance_log: 成功保存日志"""
-        with patch("backend.services.system_monitor_service.SessionLocal") as mock_session:
+        with patch("backend.workers.monitor.system_monitor.SessionLocal") as mock_session:
             mock_db = MagicMock()
             mock_session.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session.return_value.__exit__ = MagicMock(return_value=False)
@@ -591,7 +591,7 @@ class TestSystemMonitorService:
 
     def test_save_performance_log_error(self, monitor):
         """_save_performance_log: 保存失败"""
-        with patch("backend.services.system_monitor_service.SessionLocal") as mock_session:
+        with patch("backend.workers.monitor.system_monitor.SessionLocal") as mock_session:
             mock_session.side_effect = Exception("DB error")
             # 不应该抛出异常
             monitor._save_performance_log("test_type", 100.5)

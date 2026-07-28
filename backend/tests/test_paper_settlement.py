@@ -14,7 +14,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from backend.services.paper_settlement_daemon import PaperSettlementDaemon
+from backend.workers.paper.settlement_daemon import PaperSettlementDaemon
 
 
 @pytest.fixture
@@ -60,7 +60,7 @@ class TestComputeCash:
 # ==========================================
 class TestGetClosePrice:
     @pytest.mark.asyncio
-    @patch("backend.services.paper_settlement_daemon.kline_warehouse")
+    @patch("backend.workers.paper.settlement_daemon.kline_warehouse")
     async def test_price_found(self, mock_kw, daemon):
         """成功获取收盘价"""
         import pandas as pd
@@ -71,7 +71,7 @@ class TestGetClosePrice:
         assert price == 150.0
 
     @pytest.mark.asyncio
-    @patch("backend.services.paper_settlement_daemon.kline_warehouse")
+    @patch("backend.workers.paper.settlement_daemon.kline_warehouse")
     async def test_price_not_found(self, mock_kw, daemon):
         """无法获取收盘价"""
         mock_kw.get_history = AsyncMock(return_value=None)
@@ -79,7 +79,7 @@ class TestGetClosePrice:
         assert price is None
 
     @pytest.mark.asyncio
-    @patch("backend.services.paper_settlement_daemon.kline_warehouse")
+    @patch("backend.workers.paper.settlement_daemon.kline_warehouse")
     async def test_empty_df(self, mock_kw, daemon):
         """空 DataFrame"""
         import pandas as pd
@@ -107,7 +107,7 @@ class TestGetRunningPortfolios:
 # ==========================================
 class TestSettlePortfolio:
     @pytest.mark.asyncio
-    @patch("backend.services.paper_settlement_daemon.kline_warehouse")
+    @patch("backend.workers.paper.settlement_daemon.kline_warehouse")
     async def test_settle_basic(self, mock_kw, daemon):
         """基本结算流程"""
         import pandas as pd
@@ -160,7 +160,7 @@ class TestSettlePortfolio:
         assert db.add.called or hasattr(db, "commit")
 
     @pytest.mark.asyncio
-    @patch("backend.services.paper_settlement_daemon.kline_warehouse")
+    @patch("backend.workers.paper.settlement_daemon.kline_warehouse")
     async def test_settle_with_stale_price(self, mock_kw, daemon):
         """停牌兜底价格"""
         mock_kw.get_history = AsyncMock(return_value=None)  # 取不到价格
@@ -195,9 +195,9 @@ class TestSettlePortfolio:
 # ==========================================
 class TestIntradaySnapshot:
     @pytest.mark.asyncio
-    @patch("backend.services.paper_settlement_daemon.redis_client")
-    @patch("backend.services.paper_settlement_daemon.kline_warehouse")
-    @patch("backend.services.paper_settlement_daemon.SessionLocal")
+    @patch("backend.workers.paper.settlement_daemon.redis_client")
+    @patch("backend.workers.paper.settlement_daemon.kline_warehouse")
+    @patch("backend.workers.paper.settlement_daemon.SessionLocal")
     async def test_snapshot_basic(self, mock_session, mock_kw, mock_redis, daemon):
         """盘中快照基本流程"""
         import pandas as pd
@@ -249,8 +249,8 @@ class TestIntradaySnapshot:
 # ==========================================
 class TestBackfillSettlement:
     @pytest.mark.asyncio
-    @patch("backend.services.paper_settlement_daemon.redis_client")
-    @patch("backend.services.paper_settlement_daemon.SessionLocal")
+    @patch("backend.workers.paper.settlement_daemon.redis_client")
+    @patch("backend.workers.paper.settlement_daemon.SessionLocal")
     async def test_backfill_no_portfolios(self, mock_session, mock_redis, daemon):
         """无运行中组合"""
         db = MagicMock()
@@ -262,8 +262,8 @@ class TestBackfillSettlement:
         mock_redis.set.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch("backend.services.paper_settlement_daemon.redis_client")
-    @patch("backend.services.paper_settlement_daemon.SessionLocal")
+    @patch("backend.workers.paper.settlement_daemon.redis_client")
+    @patch("backend.workers.paper.settlement_daemon.SessionLocal")
     async def test_backfill_with_gap(self, mock_session, mock_redis, daemon):
         """有缺口的补结算"""
         db = MagicMock()
@@ -303,8 +303,8 @@ class TestBackfillSettlement:
 # ==========================================
 class TestWeeklyReconcile:
     @pytest.mark.asyncio
-    @patch("backend.services.paper_settlement_daemon.paper_ledger_service")
-    @patch("backend.services.paper_settlement_daemon.SessionLocal")
+    @patch("backend.workers.paper.settlement_daemon.paper_ledger_service")
+    @patch("backend.workers.paper.settlement_daemon.SessionLocal")
     async def test_reconcile_consistent(self, mock_session, mock_ledger, daemon):
         """对账一致"""
         db = MagicMock()
@@ -320,8 +320,8 @@ class TestWeeklyReconcile:
         assert results["p1"]["consistent"] is True
 
     @pytest.mark.asyncio
-    @patch("backend.services.paper_settlement_daemon.paper_ledger_service")
-    @patch("backend.services.paper_settlement_daemon.SessionLocal")
+    @patch("backend.workers.paper.settlement_daemon.paper_ledger_service")
+    @patch("backend.workers.paper.settlement_daemon.SessionLocal")
     async def test_reconcile_inconsistent(self, mock_session, mock_ledger, daemon):
         """对账不一致"""
         db = MagicMock()
@@ -341,8 +341,8 @@ class TestWeeklyReconcile:
 # ==========================================
 class TestCheckDrift:
     @pytest.mark.asyncio
-    @patch("backend.services.paper_settlement_daemon.redis_client")
-    @patch("backend.services.paper_settlement_daemon.paper_ledger_service")
+    @patch("backend.workers.paper.settlement_daemon.redis_client")
+    @patch("backend.workers.paper.settlement_daemon.paper_ledger_service")
     async def test_insufficient_data(self, mock_ledger, mock_redis, daemon):
         """数据不足，不触发"""
         db = MagicMock()
@@ -355,8 +355,8 @@ class TestCheckDrift:
         mock_redis.set.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch("backend.services.paper_settlement_daemon.redis_client")
-    @patch("backend.services.paper_settlement_daemon.paper_ledger_service")
+    @patch("backend.workers.paper.settlement_daemon.redis_client")
+    @patch("backend.workers.paper.settlement_daemon.paper_ledger_service")
     async def test_drift_below_threshold(self, mock_ledger, mock_redis, daemon):
         """漂移低于阈值"""
         db = MagicMock()
@@ -372,8 +372,8 @@ class TestCheckDrift:
         mock_redis.set.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch("backend.services.paper_settlement_daemon.redis_client")
-    @patch("backend.services.paper_settlement_daemon.paper_ledger_service")
+    @patch("backend.workers.paper.settlement_daemon.redis_client")
+    @patch("backend.workers.paper.settlement_daemon.paper_ledger_service")
     async def test_drift_above_threshold(self, mock_ledger, mock_redis, daemon):
         """漂移超过阈值，触发告警"""
         db = MagicMock()
@@ -400,7 +400,7 @@ class TestCheckDrift:
 # ==========================================
 class TestTradingDayChecks:
     @pytest.mark.asyncio
-    @patch("backend.services.paper_settlement_daemon.kline_warehouse")
+    @patch("backend.workers.paper.settlement_daemon.kline_warehouse")
     async def test_is_trading_day_has_bar(self, mock_kw, daemon):
         """有当日 K 线 bar 判定为交易日"""
         import pandas as pd
@@ -412,7 +412,7 @@ class TestTradingDayChecks:
         assert isinstance(result, bool)
 
     @pytest.mark.asyncio
-    @patch("backend.services.paper_settlement_daemon.kline_warehouse")
+    @patch("backend.workers.paper.settlement_daemon.kline_warehouse")
     async def test_is_trading_day_no_data(self, mock_kw, daemon):
         """无数据返回 False"""
         mock_kw.get_history = AsyncMock(return_value=None)
@@ -432,7 +432,7 @@ class TestTradingDayChecks:
 class TestLoadBenchmark:
     def test_returns_none(self):
         """简化实现返回 None"""
-        from backend.services.paper_settlement_daemon import _load_benchmark_nav_sync
+        from backend.workers.paper.settlement_daemon import _load_benchmark_nav_sync
 
         result = _load_benchmark_nav_sync("some_ref", 21)
         assert result is None

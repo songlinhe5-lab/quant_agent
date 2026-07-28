@@ -15,7 +15,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from backend.services.bot_runtime import BotInstance, BotRuntimeManager
+from backend.workers.oms.bot_runtime import BotInstance, BotRuntimeManager
 
 
 @pytest.fixture
@@ -39,7 +39,7 @@ def bot():
 # ==========================================
 class TestPushLog:
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_push_log_success(self, mock_redis, manager, bot):
         """日志写入成功"""
         mock_redis.lpush = AsyncMock()
@@ -54,7 +54,7 @@ class TestPushLog:
         mock_redis.publish.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_push_log_redis_error(self, mock_redis, manager, bot):
         """Redis 写入失败不抛异常"""
         mock_redis.lpush = AsyncMock(side_effect=Exception("Redis down"))
@@ -68,7 +68,7 @@ class TestPushLog:
 # ==========================================
 class TestGetRecentLogs:
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_get_logs_success(self, mock_redis, manager):
         """获取日志成功"""
         logs = [
@@ -82,7 +82,7 @@ class TestGetRecentLogs:
         assert result[0]["msg"] == "hello"
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_get_logs_invalid_json(self, mock_redis, manager):
         """无效 JSON 被跳过"""
         logs = ["not_json", json.dumps({"time": "10:00:00", "msg": "ok", "type": "info"})]
@@ -92,7 +92,7 @@ class TestGetRecentLogs:
         assert len(result) == 1
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_get_logs_redis_error(self, mock_redis, manager):
         """Redis 异常返回空列表"""
         mock_redis.lrange = AsyncMock(side_effect=Exception("timeout"))
@@ -106,7 +106,7 @@ class TestGetRecentLogs:
 # ==========================================
 class TestUpdateBotStats:
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_update_stats(self, mock_redis, manager, bot):
         """资源统计写入"""
         mock_redis.hset = AsyncMock()
@@ -117,7 +117,7 @@ class TestUpdateBotStats:
         mock_redis.expire.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_update_stats_error(self, mock_redis, manager, bot):
         """写入失败不抛异常"""
         mock_redis.hset = AsyncMock(side_effect=Exception("fail"))
@@ -129,7 +129,7 @@ class TestUpdateBotStats:
 # ==========================================
 class TestSaveBotMeta:
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_save_meta(self, mock_redis, manager, bot):
         """元数据保存"""
         mock_redis.hset = AsyncMock()
@@ -138,7 +138,7 @@ class TestSaveBotMeta:
         assert mock_redis.hset.call_count == 2  # meta key + registry
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_save_meta_error(self, mock_redis, manager, bot):
         """保存失败不抛异常"""
         mock_redis.hset = AsyncMock(side_effect=Exception("fail"))
@@ -187,7 +187,7 @@ class TestStrategy:
         strategy_file = tmp_path / "teststrategy.py"
         strategy_file.write_text(strategy_code)
 
-        with patch("backend.services.bot_runtime._STRATEGIES_DIR", str(tmp_path)):
+        with patch("backend.workers.oms.bot_runtime._STRATEGIES_DIR", str(tmp_path)):
             result = await manager._execute_strategy(bot, {"status": "success", "data": {"last_price": 150}})
             assert result is not None
             assert "BUY signal" in result
@@ -203,7 +203,7 @@ class TestStrategy:
         strategy_file = tmp_path / "teststrategy.py"
         strategy_file.write_text(strategy_code)
 
-        with patch("backend.services.bot_runtime._STRATEGIES_DIR", str(tmp_path)):
+        with patch("backend.workers.oms.bot_runtime._STRATEGIES_DIR", str(tmp_path)):
             result = await manager._execute_strategy(bot, {"status": "success"})
             assert result is None
 
@@ -213,7 +213,7 @@ class TestStrategy:
         strategy_file = tmp_path / "teststrategy.py"
         strategy_file.write_text("raise RuntimeError('broken')")
 
-        with patch("backend.services.bot_runtime._STRATEGIES_DIR", str(tmp_path)):
+        with patch("backend.workers.oms.bot_runtime._STRATEGIES_DIR", str(tmp_path)):
             result = await manager._execute_strategy(bot, None)
             assert result is None
 
@@ -223,7 +223,7 @@ class TestStrategy:
 # ==========================================
 class TestRunBotLoop:
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_loop_stop_immediately(self, mock_redis, manager, bot):
         """立即停止"""
         mock_redis.lpush = AsyncMock()
@@ -237,7 +237,7 @@ class TestRunBotLoop:
         assert bot.status == "stopped"
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_loop_one_iteration(self, mock_redis, manager, bot):
         """运行一轮后停止"""
         mock_redis.lpush = AsyncMock()
@@ -262,7 +262,7 @@ class TestRunBotLoop:
         assert bot.status == "stopped"
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_loop_cancelled(self, mock_redis, manager, bot):
         """CancelledError 处理"""
         mock_redis.lpush = AsyncMock()
@@ -287,7 +287,7 @@ class TestRunBotLoop:
 # ==========================================
 class TestRestoreBots:
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_restore_empty(self, mock_redis, manager):
         """无注册表"""
         mock_redis.hgetall = AsyncMock(return_value={})
@@ -295,7 +295,7 @@ class TestRestoreBots:
         assert count == 0
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_restore_with_running_bot(self, mock_redis, manager, tmp_path):
         """恢复运行中的 bot"""
         meta = {
@@ -314,14 +314,14 @@ class TestRestoreBots:
 
         manager.start_bot = AsyncMock()
 
-        with patch("backend.services.bot_runtime._STRATEGIES_DIR", str(tmp_path)):
+        with patch("backend.workers.oms.bot_runtime._STRATEGIES_DIR", str(tmp_path)):
             count = await manager.restore_bots_from_redis()
 
         assert count == 1
         manager.start_bot.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_restore_no_strategy_file(self, mock_redis, manager):
         """策略文件不存在跳过"""
         meta = {
@@ -334,13 +334,13 @@ class TestRestoreBots:
         }
         mock_redis.hgetall = AsyncMock(return_value={"bot_1": json.dumps(meta)})
 
-        with patch("backend.services.bot_runtime._STRATEGIES_DIR", "/nonexist"):
+        with patch("backend.workers.oms.bot_runtime._STRATEGIES_DIR", "/nonexist"):
             count = await manager.restore_bots_from_redis()
 
         assert count == 0
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_restore_redis_error(self, mock_redis, manager):
         """Redis 异常"""
         mock_redis.hgetall = AsyncMock(side_effect=Exception("down"))
@@ -348,7 +348,7 @@ class TestRestoreBots:
         assert count == 0
 
     @pytest.mark.asyncio
-    @patch("backend.services.bot_runtime.redis_client")
+    @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_restore_paused_bot(self, mock_redis, manager, tmp_path):
         """恢复暂停的 bot"""
         meta = {
@@ -367,7 +367,7 @@ class TestRestoreBots:
         manager.start_bot = AsyncMock()
         manager.pause_bot = AsyncMock()
 
-        with patch("backend.services.bot_runtime._STRATEGIES_DIR", str(tmp_path)):
+        with patch("backend.workers.oms.bot_runtime._STRATEGIES_DIR", str(tmp_path)):
             count = await manager.restore_bots_from_redis()
 
         assert count == 1

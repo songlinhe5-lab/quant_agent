@@ -676,8 +676,8 @@ class PortfolioBacktestRequest(BaseModel):
 async def portfolio_backtest(req):
     """QUANT-02: 选股结果一键组合回测 — 等权组合 + Tear Sheet"""
     try:
+        from backend.app.backtest.portfolio_backtest import run_portfolio_backtest
         from backend.services.kline_warehouse import kline_warehouse
-        from backend.services.portfolio_backtest import run_portfolio_backtest
 
         period_days = {
             "1mo": 22,

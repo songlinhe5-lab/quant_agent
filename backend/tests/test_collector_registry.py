@@ -163,7 +163,7 @@ class TestStartCollectorDaemons:
         with (
             mock.patch("os.getenv", return_value="master"),
             mock.patch("asyncio.create_task") as mock_create_task,
-            mock.patch("backend.services.market_daemon.run_global_daemon"),
+            mock.patch("backend.workers.market.daemon.run_global_daemon"),
         ):
             mock_create_task.return_value = mock.MagicMock()
             tasks = await start_collector_daemons(["finnhub"])
@@ -214,7 +214,7 @@ class TestStartCollectorDaemons:
             mock.patch("backend.workers.akshare_collector.akshare_collector_daemon"),
             mock.patch("backend.services.futu.watchdog.get_watchdog") as mock_wd,
             mock.patch("backend.services.futu_service.futu_service"),
-            mock.patch("backend.services.market_daemon.run_global_daemon"),
+            mock.patch("backend.workers.market.daemon.run_global_daemon"),
             mock.patch("backend.services.yfinance_service.yf_service") as mock_yf,
             mock.patch.dict(os.environ, {"NODE_TYPE": "master"}, clear=False),
         ):

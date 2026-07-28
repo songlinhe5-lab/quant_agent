@@ -10,7 +10,7 @@ import pandas as pd
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from backend.services.portfolio_backtest import (
+from backend.app.backtest.portfolio_backtest import (
     _align_kline_frames,
     _compute_rebalance_dates,
     run_portfolio_backtest,

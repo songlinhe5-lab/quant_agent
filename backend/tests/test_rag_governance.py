@@ -37,7 +37,7 @@ class TestRetrievalQualityMonitor:
     """检索质量监控"""
 
     def test_low_similarity_increments_streak(self):
-        from backend.services.rag_governance import RAGGovernanceService
+        from backend.app.rag.governance import RAGGovernanceService
 
         svc = RAGGovernanceService()
         # 连续低相似度
@@ -47,7 +47,7 @@ class TestRetrievalQualityMonitor:
         assert svc._low_similarity_streak == 5
 
     def test_alert_triggered_at_threshold(self):
-        from backend.services.rag_governance import LOW_QUALITY_STREAK, RAGGovernanceService
+        from backend.app.rag.governance import LOW_QUALITY_STREAK, RAGGovernanceService
 
         svc = RAGGovernanceService()
         result = False
@@ -56,7 +56,7 @@ class TestRetrievalQualityMonitor:
         assert result  # 达到阈值触发告警
 
     def test_high_similarity_resets_streak(self):
-        from backend.services.rag_governance import RAGGovernanceService
+        from backend.app.rag.governance import RAGGovernanceService
 
         svc = RAGGovernanceService()
         # 先积累一些低相似度
@@ -68,7 +68,7 @@ class TestRetrievalQualityMonitor:
         assert svc._low_similarity_streak == 0
 
     def test_quality_stats(self):
-        from backend.services.rag_governance import RAGGovernanceService
+        from backend.app.rag.governance import RAGGovernanceService
 
         svc = RAGGovernanceService()
         svc.record_retrieval_similarity(0.3)
@@ -80,7 +80,7 @@ class TestRetrievalQualityMonitor:
         assert stats["threshold"] == 0.6
 
     def test_empty_stats(self):
-        from backend.services.rag_governance import RAGGovernanceService
+        from backend.app.rag.governance import RAGGovernanceService
 
         svc = RAGGovernanceService()
         stats = svc.get_quality_stats()
@@ -94,7 +94,7 @@ class TestEmbeddingVersionCheck:
     @pytest.mark.asyncio
     async def test_check_version_no_table(self):
         """表不存在时返回 None"""
-        from backend.services.rag_governance import RAGGovernanceService
+        from backend.app.rag.governance import RAGGovernanceService
 
         svc = RAGGovernanceService()
         mock_conn = MagicMock()
@@ -110,7 +110,7 @@ class TestEmbeddingVersionCheck:
     @pytest.mark.asyncio
     async def test_trigger_rebuild_returns_result(self):
         """触发重建应返回状态字典"""
-        from backend.services.rag_governance import RAGGovernanceService
+        from backend.app.rag.governance import RAGGovernanceService
 
         svc = RAGGovernanceService()
         mock_conn = MagicMock()

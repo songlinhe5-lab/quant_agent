@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.services import market_daemon as md
+from backend.workers.market import daemon as md
 
 
 class _BreakLoop(Exception):

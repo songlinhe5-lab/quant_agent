@@ -154,13 +154,13 @@ class TestGoldenDataset:
     """Golden Dataset 加载"""
 
     def test_load_dataset(self):
-        from backend.services.eval_runner import load_golden_dataset
+        from backend.app.eval.runner import load_golden_dataset
 
         cases = load_golden_dataset()
         assert len(cases) >= 50
 
     def test_dataset_categories(self):
-        from backend.services.eval_runner import load_golden_dataset
+        from backend.app.eval.runner import load_golden_dataset
 
         cases = load_golden_dataset()
         categories = {c.category for c in cases}
@@ -169,7 +169,7 @@ class TestGoldenDataset:
         assert "failure" in categories
 
     def test_dataset_metric_types(self):
-        from backend.services.eval_runner import load_golden_dataset
+        from backend.app.eval.runner import load_golden_dataset
 
         cases = load_golden_dataset()
         metric_types = {c.metric_type for c in cases}
@@ -182,7 +182,7 @@ class TestEvalRunner:
     """EvalRunner 流程"""
 
     def test_run_all(self):
-        from backend.services.eval_runner import EvalRunner
+        from backend.app.eval.runner import EvalRunner
 
         runner = EvalRunner()
         report = runner.run_all()
@@ -191,7 +191,7 @@ class TestEvalRunner:
         assert report_dict["average_score"] > 0.0
 
     def test_run_single(self):
-        from backend.services.eval_runner import EvalRunner
+        from backend.app.eval.runner import EvalRunner
 
         runner = EvalRunner()
         result = runner.run_single("eval-001")
@@ -200,14 +200,14 @@ class TestEvalRunner:
         assert result.score == 1.0
 
     def test_run_single_not_found(self):
-        from backend.services.eval_runner import EvalRunner
+        from backend.app.eval.runner import EvalRunner
 
         runner = EvalRunner()
         result = runner.run_single("nonexistent")
         assert result is None
 
     def test_get_dataset_summary(self):
-        from backend.services.eval_runner import EvalRunner
+        from backend.app.eval.runner import EvalRunner
 
         runner = EvalRunner()
         summary = runner.get_dataset_summary()
@@ -215,7 +215,7 @@ class TestEvalRunner:
         assert "normal" in summary["categories"]
 
     def test_get_last_report(self):
-        from backend.services.eval_runner import EvalRunner
+        from backend.app.eval.runner import EvalRunner
 
         runner = EvalRunner()
         assert runner.get_last_report() is None
