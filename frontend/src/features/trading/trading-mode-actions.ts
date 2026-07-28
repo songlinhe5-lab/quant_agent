@@ -1,5 +1,5 @@
 import { apiClient } from '@/lib/api-client'
-import { confirmDanger } from '@/components/confirm-dialog'
+import { confirmDanger } from '@/components/confirm-dialog-context'
 import { useTradingModeStore } from '@/stores/useTradingModeStore'
 import {
   type TradingMode,

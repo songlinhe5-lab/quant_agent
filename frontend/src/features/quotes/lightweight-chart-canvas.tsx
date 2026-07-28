@@ -212,9 +212,9 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
   const clearDrawings = useCallback(() => {
     const s = seriesRef.current
     if (s) {
-      drawingsRef.current.forEach((p: any) => { try { s.detachPrimitive(p) } catch {} })
+      drawingsRef.current.forEach((p: any) => { try { s.detachPrimitive(p) } catch { /* 图表对象可能已销毁，detach/remove 失败可安全忽略 */ } })
       const c = chartContainerRef.current as any
-      if (c && c._activeDrawingPlugin) { try { s.detachPrimitive(c._activeDrawingPlugin) } catch {}; c._activeDrawingPlugin = null }
+      if (c && c._activeDrawingPlugin) { try { s.detachPrimitive(c._activeDrawingPlugin) } catch { /* 图表对象可能已销毁，detach/remove 失败可安全忽略 */ }; c._activeDrawingPlugin = null }
     }
     drawingsRef.current = []
   }, [])
@@ -222,7 +222,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     const next = drawTool === id ? 'none' : id
     if (next === 'none' && drawTool !== 'none') {
       const c = chartContainerRef.current as any
-      if (c && c._activeDrawingPlugin) { try { seriesRef.current?.detachPrimitive(c._activeDrawingPlugin) } catch {}; c._activeDrawingPlugin = null }
+      if (c && c._activeDrawingPlugin) { try { seriesRef.current?.detachPrimitive(c._activeDrawingPlugin) } catch { /* 图表对象可能已销毁，detach/remove 失败可安全忽略 */ }; c._activeDrawingPlugin = null }
     }
     if (next !== 'none') setOrderMode(false)
     setDrawTool(next)
@@ -256,7 +256,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     const series = seriesRef.current
     if (!chart || !series || bars.length === 0) return
     // 清理上一次叠加的自定义数值线
-    Object.values(customLineRefs.current).forEach((s) => { try { chart.removeSeries(s) } catch {} })
+    Object.values(customLineRefs.current).forEach((s) => { try { chart.removeSeries(s) } catch { /* 图表对象可能已销毁，detach/remove 失败可安全忽略 */ } })
     customLineRefs.current = {}
     const markers: SeriesMarker<Time>[] = []
     const list = useCustomIndicatorStore.getState().indicators.filter((i) => i.visible)
@@ -323,6 +323,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     } else if (customMarkersApiRef.current) {
       customMarkersApiRef.current.setMarkers([])
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const applyCIPanelRef = useRef(applyCustomIndicators)
@@ -332,7 +333,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
 
   const clearPositionLines = useCallback(() => {
     if (!seriesRef.current) return
-    Object.values(positionLinesRef.current).forEach((pl) => { try { seriesRef.current?.removePriceLine(pl) } catch {} })
+    Object.values(positionLinesRef.current).forEach((pl) => { try { seriesRef.current?.removePriceLine(pl) } catch { /* 图表对象可能已销毁，detach/remove 失败可安全忽略 */ } })
     positionLinesRef.current = {}
   }, [])
 
@@ -541,6 +542,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
   useEffect(() => {
     latestAnnotationRef.current = aiSymbol && aiPayload ? { symbol: aiSymbol, payload: aiPayload } : null
     applyAiAnnotations()
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiPayload, aiSymbol, selectedSymbol, theme])
 
   // AI-01 能力②：形态识别叠加（与 AI 副驾标注相互独立，使用各自 ref 互不覆盖）
@@ -608,6 +610,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
   useEffect(() => {
     latestPatternRef.current = patternSymbol && patternPayload ? { symbol: patternSymbol, payload: patternPayload } : null
     applyPatternAnnotations()
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patternPayload, patternSymbol, selectedSymbol, theme])
   
   const measureBoxRef = useRef<HTMLDivElement>(null)
@@ -896,7 +899,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       if (c?._isOrderDragging) {
         c._isOrderDragging = false
         const finalPrice = c._orderDragPrice ?? null
-        if (orderPreviewLineRef.current) { try { seriesRef.current?.removePriceLine(orderPreviewLineRef.current) } catch {}; orderPreviewLineRef.current = null }
+        if (orderPreviewLineRef.current) { try { seriesRef.current?.removePriceLine(orderPreviewLineRef.current) } catch { /* 图表对象可能已销毁，detach/remove 失败可安全忽略 */ }; orderPreviewLineRef.current = null }
         if (finalPrice != null) {
           const last = lastCandleRef.current?.close
           const side: OrderSide = last != null && finalPrice < last ? 'BUY' : 'SELL'
@@ -928,6 +931,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       customMarkersApiRef.current = null
       customLineRefs.current = {}
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme, applyPositionLines])
 
   // PROD-03: 切换标的/周期时清除已画线，避免点位错位误导
@@ -1052,7 +1056,9 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     }
     workerRef.current.postMessage({ id: reqId, history: sortedHistory, params: { maPeriods: [20, 50, 200], bbParams: [20, 2], macdParams: [12, 26, 9], rsiPeriod: 14, kdjParams: [9, 3, 3] } })
     // PROD-12: 卸载或图表重建时从同步管理器注销，避免悬挂引用
+// eslint-disable-next-line react-hooks/exhaustive-deps
     return () => { crosshairSync.unregister(syncGroup, chartIdRef.current) }
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [realHistory, theme])
 
   useEffect(() => { if (ma20Ref.current) ma20Ref.current.applyOptions({ visible: showMA20 }); if (ma50Ref.current) ma50Ref.current.applyOptions({ visible: showMA50 }); if (ma200Ref.current) ma200Ref.current.applyOptions({ visible: showMA200 }); }, [showMA20, showMA50, showMA200])

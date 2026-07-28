@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, createContext, useCallback, useMemo } from 'react'
 import { fetchWithAuth, apiClient, API_BASE_URL } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
-import { useConfirmDialog } from '@/components/confirm-dialog'
+import { useConfirmDialog } from '@/components/confirm-dialog-context'
 import { SessionSidebarRef } from '@/features/copilot/session-sidebar'
 import { ChatMessage, ToolStep, ChatAttachment, StrategyBlock, ChartAnnotationPayload } from './types'
 import { useCopilotContextStore } from '@/stores/useCopilotContextStore'
@@ -76,7 +76,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       if (res.data?.status === 'success' && res.data.data) {
         setQuickPrompts(res.data.data)
       }
-    } catch (e) {
+    } catch (_e) {
       setQuickPrompts([
         { title: '今日宏观风向', prompt: '提取今天全球核心经济体的宏观大事件，并给出你的风险判断。' },
         { title: '个股研报分析', prompt: '分析 0700.HK (腾讯控股) 最近的动态，结合基本面给出一份研报。' },
@@ -186,6 +186,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       console.error('清空记录失败:', error)
       toast({ title: '清理失败', description: '无法连接到服务器完成清理', variant: 'destructive' })
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handleNewChat, toast])
 
   const handleExport = useCallback(() => {
@@ -356,7 +357,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               })
               lastUpdateTime = now
             }
-          } catch (e) {
+          } catch (_e) {
             // 忽略非法的 JSON 切片
           }
         }

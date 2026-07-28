@@ -4,7 +4,7 @@ import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'rea
 import { Plus, Trash2, Loader2, Gauge, X, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiClient } from '@/lib/api-client';
-import { useConfirmDialog } from '@/components/confirm-dialog';
+import { useConfirmDialog } from '@/components/confirm-dialog-context';
 import { PCRatioTrendChart, VixCorrelationChart } from './sentiment-trend';
 
 // --- Type Definitions ---

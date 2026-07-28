@@ -1,6 +1,5 @@
 'use client'
 
-import { useTheme } from 'next-themes'
 import { useBacktest } from './use-backtest'
 import { BacktestConfig } from './backtest-config'
 import { BacktestResults } from './backtest-results'
@@ -9,7 +8,6 @@ import { BacktestResults } from './backtest-results'
 
 export function BacktestModule() {
   const bt = useBacktest()
-  const { theme } = useTheme()
 
   if (!bt.isMounted) return null
 

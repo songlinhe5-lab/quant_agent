@@ -224,7 +224,9 @@ async def app_lifespan(app: FastAPI):
         await rate_limit_alert_monitor.start()
         log.info("✅ [Startup] 限流告警后台消费器已启动")
     except Exception as e:
-        log.warning(f"[Startup] 限流告警消费器启动失败: {e}")
+        # 升级为 error：告警消费器启动失败属可观测性盲区，必须显式暴露
+        # （health_deep 的 components.alert_queue 会据此返回 unhealthy）
+        log.error(f"[Startup] 限流告警消费器启动失败: {e}")
 
     yield  # 挂起，FastAPI 正式对外提供服务
 

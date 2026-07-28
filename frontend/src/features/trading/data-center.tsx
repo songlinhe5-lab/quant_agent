@@ -6,7 +6,7 @@ import { apiClient, API_BASE_URL, getValidAccessToken } from '@/lib/api-client'
 import type { CapitalFlowItem } from '@/services/mock'
 import { useSystemStore } from '@/stores/useSystemStore'
 import { useToast } from '@/hooks/use-toast'
-import { useKeepAliveActive } from '@/components/layout/keep-alive-outlet'
+import { useKeepAliveActive } from '@/components/layout/keep-alive-context'
 import { MarketClocks, AssetButton, playAlertSound } from '@/features/data-center/shared'
 import { CapitalFlowPanel } from '@/features/data-center/capital-flow'
 import { MarketSentimentPanel } from '@/features/data-center/market-sentiment'
@@ -23,7 +23,7 @@ import { SectorFlowPanel, type SectorFundFlowData } from '@/features/data-center
 export function DataCenterModule() {
   const setWsStatus = useSystemStore((state) => state.setWsStatus)
   const keepAliveActive = useKeepAliveActive()
-  const [m, setM] = useState(false); const [fetching, setFetching] = useState(false); const [last, setLast] = useState(''); const [radarInfo, setRadarInfo] = useState(false); const [calendarInfo, setCalendarInfo] = useState(false); const navigate = useNavigate();
+  const [m, setM] = useState(false); const [fetching, setFetching] = useState(false); const [last, setLast] = useState(''); const [radarInfo, setRadarInfo] = useState(false); const [calendarInfo, setCalendarInfo] = useState(false); const _navigate = useNavigate();
   const [assets, setAssets] = useState<any[]>([]); const [radar, setRadar] = useState<any[]>([]); const [events, setEvents] = useState<any[]>([]); const [news, setNews] = useState<any[]>([])
   const [capitalFlows, setCapitalFlows] = useState<CapitalFlowItem[]>([])
   const [sentimentInd, setSentimentInd] = useState<any>(null)
@@ -51,7 +51,7 @@ export function DataCenterModule() {
     // 初始化时从 LocalStorage 恢复日历的筛选偏好
     const savedImpacts = localStorage.getItem('quant_macro_filter_impacts')
     if (savedImpacts !== null) {
-      try { setSelectedImpacts(JSON.parse(savedImpacts)) } catch (e) { /* ignore parse error */ }
+      try { setSelectedImpacts(JSON.parse(savedImpacts)) } catch (_e) { /* ignore parse error */ }
     } else {
       // 兼容旧的单一开关偏好设定
       const savedPref = localStorage.getItem('quant_macro_filter_high_impact')
@@ -141,6 +141,7 @@ export function DataCenterModule() {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // 💡 添加手动单点刷新数据的函数 (通过 force_refresh 参数请求网关)
@@ -179,7 +180,7 @@ export function DataCenterModule() {
   // 挂载实时新闻流 WebSocket
   useEffect(() => {
     let ws: WebSocket | null = null
-    let reconnectTimer: NodeJS.Timeout
+    let _reconnectTimer: NodeJS.Timeout
     let isUnmounted = false
 
     const connect = async () => {
@@ -262,6 +263,7 @@ export function DataCenterModule() {
       document.removeEventListener('visibilitychange', handleVisibilityOrActive)
       ws?.close()
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keepAliveActive])
 
   if (!m) return null

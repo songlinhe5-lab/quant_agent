@@ -3,7 +3,7 @@ import { useToast } from '@/hooks/use-toast'
 import { apiClient, API_BASE_URL, getValidAccessToken } from '@/lib/api-client'
 import { market } from '@/lib/proto/market'
 import { WatchlistItem } from '@/stores/use-watchlist'
-import { useKeepAliveActive } from '@/components/layout/keep-alive-outlet'
+import { useKeepAliveActive } from '@/components/layout/keep-alive-context'
 
 interface UseMarketDataProps {
   selectedSymbol: string;
@@ -172,6 +172,7 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
       isMounted = false
       clearInterval(iv)
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSymbol, watchlist.length])
 
   // 🚀 2. 建立高频 WebSocket 行情订阅 (Protobuf 解码)
@@ -221,7 +222,7 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
       }
 
       ws.onclose = (ev?: CloseEvent) => {
-        const wasConnected = wsConnectedRef.current
+        const _wasConnected = wsConnectedRef.current
         wsConnectedRef.current = false
         if (ev) console.warn(`[WS] 连接关闭 code=${ev.code} reason=${ev.reason || '(空)'}`)
         // Auto-reconnect after 3 seconds if still mounted
@@ -267,7 +268,7 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
               staleTimerRef.current = setTimeout(() => setIsStale(true), 30000)
             }
           }
-        } catch (e) { /* ignore decode error */ }
+        } catch (_e) { /* ignore decode error */ }
       }
     }
 

@@ -9,7 +9,6 @@ import { useTradeStore, type OrderSide, type OrderType } from '@/stores/useTrade
  */
 export function OrderConfirmModal() {
   const pending = useTradeStore((s) => s.pending)
-  const confirmPending = useTradeStore((s) => s.confirmPending)
   const cancelPending = useTradeStore((s) => s.cancelPending)
 
   const [side, setSide] = useState<OrderSide>('BUY')

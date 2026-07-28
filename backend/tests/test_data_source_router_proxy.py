@@ -15,7 +15,6 @@ import os
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
@@ -47,7 +46,6 @@ class TestProxyYFinance:
             data = response.json()["data"]
             assert data["success"] is True
 
-    @pytest.mark.xfail(reason="market_data.proxy_yfinance 未实现", strict=False)
     def test_proxy_yfinance_history(self):
         from backend.app.market_data import market_data
 

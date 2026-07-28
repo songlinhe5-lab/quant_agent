@@ -1,7 +1,7 @@
 import { useStrategyStore } from '../stores'
 import { apiClient } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
-import { useConfirmDialog } from '@/components/confirm-dialog'
+import { useConfirmDialog } from '@/components/confirm-dialog-context'
 import { useSandboxRun } from '../hooks/use-sandbox-run'
 
 export function useStrategySandbox() {

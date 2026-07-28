@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useToast } from '@/hooks/use-toast'
 import { apiClient, API_BASE_URL, getValidAccessToken } from '@/lib/api-client'
-import { confirmDanger } from '@/components/confirm-dialog'
+import { confirmDanger } from '@/components/confirm-dialog-context'
 import type { LiveBot, ActiveOrder, HistoricalTrade, AlgoExecution, Position } from './oms-types'
 import { useTradingModeStore } from '@/stores/useTradingModeStore'
 import { useBackendStatusStore } from '@/stores/useBackendStatusStore'
@@ -12,7 +12,7 @@ import {
   requestTradingModeSwitch,
 } from './trading-mode-actions'
 import { formatModeLabel, type TradingMode, TRADING_MODES } from './trading-mode-types'
-import { useKeepAliveActive } from '@/components/layout/keep-alive-outlet'
+import { useKeepAliveActive } from '@/components/layout/keep-alive-context'
 
 export function useOms() {
   const { toast } = useToast()
@@ -199,6 +199,7 @@ export function useOms() {
       document.removeEventListener('visibilitychange', handleVisibilityOrActive)
       ws?.close()
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toast, keepAliveActive])
 
   // 💡 自动滚动日志到底部
@@ -240,7 +241,7 @@ export function useOms() {
         cpu: 0, 
         logs: [...b.logs, { time: new Date().toLocaleTimeString('zh-CN', { hour12: false }), msg: '🚨 KILL SWITCH ENGAGED. FORCE CLOSE ALL POSITIONS.', type: 'warn' as const }] 
       })))
-    } catch (error) {
+    } catch (_error) {
       toast({ variant: 'destructive', title: '熔断指令发送失败', description: '请立即检查网络或登录券商 APP 强制平仓！' })
       setIsKilled(false)
     }
@@ -266,7 +267,7 @@ export function useOms() {
       const idempotencyKey = crypto.randomUUID()
       await apiClient.post(`/oms/orders/${orderId}/cancel`, { idempotency_key: idempotencyKey })
       toast({ title: '撤单指令已发送', description: `订单号: ${orderId}` })
-    } catch (error) {
+    } catch (_error) {
       toast({ variant: 'destructive', title: '撤单失败', description: `订单 ${orderId} 撤销请求被拒绝` })
     } finally {
       setCancelingOrders(prev => {
@@ -289,7 +290,7 @@ export function useOms() {
       
       await apiClient.post(`/oms/bots/${botId}/${action}`)
       toast({ title: `指令已发送`, description: `正在尝试${action === 'pause' ? '暂停' : '恢复'}机器人 ${botId}` })
-    } catch (error) {
+    } catch (_error) {
       toast({ variant: 'destructive', title: '操作失败', description: `无法${action === 'pause' ? '暂停' : '恢复'}机器人，网络异常` })
     }
   }
@@ -301,7 +302,7 @@ export function useOms() {
       setBots(prev => prev.map(b => b.id === botId ? { ...b, status: 'stopped' } : b))
       await apiClient.post(`/oms/bots/${botId}/stop`)
       toast({ title: 'Bot 已终止', description: `算力节点 ${botId} 已安全下线` })
-    } catch (error) {
+    } catch (_error) {
       toast({ variant: 'destructive', title: '终止失败', description: '网络异常或节点已离线' })
     }
   }

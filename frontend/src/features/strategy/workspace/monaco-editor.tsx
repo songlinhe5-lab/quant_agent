@@ -136,9 +136,10 @@ export function MonacoEditorTab() {
           const line = match ? parseInt(match[1], 10) : 0
           setSyntaxError({ line, msg: res.data.message })
         }
-      } catch (e) { /* ignore */ }
+      } catch (_e) { /* ignore */ }
     }, 800)
     return () => clearTimeout(timer)
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.code])
 
   const handleSyntaxCheck = async () => {
@@ -222,7 +223,7 @@ export function MonacoEditorTab() {
               } else if (data.status === 'error') {
                 store.updateMessage(assistantMsgId, { content: `❌ 修复失败: ${data.message}`, status: 'error' })
               }
-            } catch (e) { /* ignore */ }
+            } catch (_e) { /* ignore */ }
           }
         }
       }

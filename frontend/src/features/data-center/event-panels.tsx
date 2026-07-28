@@ -60,7 +60,7 @@ export function CalendarInfoPanel({ onClose }: { onClose: () => void }) {
 }
 
 export function EventDetailPanel({ event, onClose }: { event: any; onClose: () => void }) {
-  const { theme } = useTheme()
+  useTheme()
   const evName = event.event_zh || event.event_cn || event.title_zh || event.event;
   
   let actualColor = event.actual ? "text-foreground" : "text-muted-foreground";

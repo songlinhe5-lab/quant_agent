@@ -182,7 +182,6 @@ class TestMarketDaemon:
             with pytest.raises(asyncio.CancelledError):
                 await _macro_alert_daemon()
 
-    @pytest.mark.xfail(reason="daemon 使用 data_source_router，测试 mock 目标不匹配", strict=False)
     @pytest.mark.asyncio
     async def test_macro_alert_daemon_high_impact_published_triggers_alert(self, service):
         from backend.services.market_daemon import _macro_alert_daemon
@@ -198,12 +197,16 @@ class TestMarketDaemon:
         }
         with (
             patch(f"{DM}.asyncio.sleep", new=_make_cancelling_sleep(1)),
-            patch("backend.services.akshare_service.akshare_service") as m_ak,
+            # RL-11 修复：daemon 实际经由 data_source_router.fetch_akshare 取宏观日历，
+            # 原 mock（akshare_service）从未被调用，导致永远走 fallback 且 alert 不触发
+            patch(
+                "backend.services.data_source_router.data_source_router.fetch_akshare",
+                new=AsyncMock(return_value={"status": "success", "data": [event]}),
+            ),
             patch(f"{DM}.redis_client") as m_r,
             patch("backend.services.notification_service.notification_service") as m_n,
             patch("backend.services.llm_service.llm_service") as m_llm,
         ):
-            m_ak.get_economic_calendar_ak = AsyncMock(return_value={"status": "success", "data": [event]})
             m_r.set = AsyncMock(return_value=True)
             m_llm.get_client.return_value.chat.completions.create = AsyncMock(
                 return_value=MagicMock(choices=[MagicMock(message=MagicMock(content="hawkish"))])

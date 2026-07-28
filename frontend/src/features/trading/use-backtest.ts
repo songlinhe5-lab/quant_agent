@@ -218,6 +218,7 @@ export function useBacktest() {
     const baseData = backtestResult?.equity_curve || equityCurve;
     return baseData.map((d: any, i: number) => {
       const eq = d.equity !== undefined ? d.equity : d.strategy;
+// eslint-disable-next-line react-hooks/exhaustive-deps
       if (eq > runningMax) runningMax = eq;
       const dayTrades = backtestResult?.trades?.filter((t: any) => t.date === d.date);
       let action = null;

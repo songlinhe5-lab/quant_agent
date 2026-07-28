@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useCallback } from 'react'
-import { BarChart3, X, Loader2, TrendingUp, TrendingDown, Calendar } from 'lucide-react'
+import { BarChart3, X, Loader2, TrendingUp, TrendingDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { apiClient } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
@@ -144,7 +144,7 @@ export function PortfolioBacktestDialog({ symbols, onClose }: PortfolioBacktestD
                   <TrendingUp className="h-3.5 w-3.5" /> 净值曲线
                 </h3>
                 <div className="h-48 flex items-end gap-px">
-                  {result.equity_curve.filter((_, i) => i % Math.max(1, Math.floor(result.equity_curve.length / 100)) === 0).map((pt, i, arr) => {
+                  {result.equity_curve.filter((_, i) => i % Math.max(1, Math.floor(result.equity_curve.length / 100)) === 0).map((pt, i, _arr) => {
                     const minEq = Math.min(...result.equity_curve.map(p => p.equity))
                     const maxEq = Math.max(...result.equity_curve.map(p => p.equity))
                     const pct = maxEq > minEq ? ((pt.equity - minEq) / (maxEq - minEq)) * 100 : 50

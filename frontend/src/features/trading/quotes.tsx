@@ -107,6 +107,7 @@ export function QuotesModule() {
         addTicker(globalTicker)
       }
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [globalTicker])
 
   // 💡 监听 hash 变化（/market/:ticker 路由重定向触发）
@@ -125,11 +126,12 @@ export function QuotesModule() {
     checkTarget()
     window.addEventListener('hashchange', checkTarget)
     return () => window.removeEventListener('hashchange', checkTarget)
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const { watchlist, addTicker, removeTicker, updateTicker, reorderWatchlist } = useWatchlist()
 
-  const { realQuote, realHistory, setRealHistory, gatewayStatus, isStale, latestStatsRef } = useMarketData({ selectedSymbol, selectedPeriod, watchlist, updateTicker })
+  const { realQuote, realHistory, gatewayStatus, isStale, latestStatsRef } = useMarketData({ selectedSymbol, selectedPeriod, watchlist, updateTicker })
   
   // 💡 键盘快捷键支持：使用上下方向键快速切换自选标的，数字键 1-7 快速切换周期
   useEffect(() => {
@@ -172,6 +174,7 @@ export function QuotesModule() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   
   // 🚨 容错处理：当 Watchlist 为空时，提供安全的默认兜底值防止 React 崩溃

@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { Radio, Plus, Trash2, Loader2, AlertTriangle, Activity, X } from 'lucide-react'
+import { Radio, Plus, Trash2, Loader2, AlertTriangle, Activity } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { apiClient } from '@/lib/api-client'

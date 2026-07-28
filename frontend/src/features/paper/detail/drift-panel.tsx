@@ -8,12 +8,6 @@ import { AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiClient } from '@/lib/api-client'
 
-interface DriftAlert {
-  te: number
-  threshold: number
-  ts: string
-}
-
 interface CompareData {
   tracking_error: number
   cumulative_drift: number
@@ -30,7 +24,6 @@ const DRIFT_THRESHOLD = 0.10
 
 export function DriftPanel({ portfolioId }: DriftPanelProps) {
   const [compareData, setCompareData] = useState<CompareData | null>(null)
-  const [driftAlert, setDriftAlert] = useState<DriftAlert | null>(null)
 
   useEffect(() => {
     apiClient

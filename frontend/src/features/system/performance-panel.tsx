@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Activity, AlertTriangle, RefreshCw, Timer, Server, Wifi,
   Database, Zap, Cpu, Network, ShieldCheck, ShieldAlert, ShieldOff,
-  Globe, MonitorSmartphone,
+  MonitorSmartphone,
 } from 'lucide-react'
 import { apiClient } from '@/lib/api-client'
 import { cn } from '@/lib/utils'

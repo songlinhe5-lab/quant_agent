@@ -235,6 +235,23 @@ class RateLimitAlertMonitor:
                 pass
         logger.info("[RL-11] 限流告警后台消费器已停止")
 
+    def is_healthy(self) -> bool:
+        """RL-11 启动健康探针。
+
+        判定后台告警消费器是否「真正在运行」，而非仅「被调用过 start()」。
+        用于 health_deep 暴露「限流告警队列是否真在跑」，防止 start() 因异常
+        静默失败后无人知晓（队列堆积、告警全丢、外部零感知）。
+
+        返回 True 当且仅当：已 start、consumer task 已创建、且 task 未退出
+        （未正常结束、未被 cancel、未因异常崩溃）。
+        """
+        if not self._started:
+            return False
+        task = self._consumer_task
+        if task is None:
+            return False
+        return not task.done()
+
     async def _consume(self):
         """后台消费协程：从队列取告警并推送飞书 Webhook。"""
         queue = self._queue

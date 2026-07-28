@@ -18,13 +18,13 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v6
         with:
           version: 9
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '24'
           cache: 'pnpm'
@@ -36,11 +36,10 @@ jobs:
         working-directory: ./frontend
         run: pnpm exec vitest run --coverage
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           files: ./frontend/coverage/coverage-final.json
           flags: frontend
-          fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
   build:
@@ -51,13 +50,13 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v6
         with:
           version: 9
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '24'
           cache: 'pnpm'
@@ -78,7 +77,7 @@ jobs:
         run: pnpm audit 2>&1 || true
         continue-on-error: true
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: frontend-dist
           path: frontend/dist/
@@ -108,16 +107,16 @@ jobs:
           else
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: steps.check.outputs.skip == 'false'
       - name: Install pnpm
         if: steps.check.outputs.skip == 'false'
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v6
         with:
           version: 9
       - name: Set up Node.js
         if: steps.check.outputs.skip == 'false'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '24'
           cache: 'pnpm'

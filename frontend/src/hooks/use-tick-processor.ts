@@ -10,7 +10,6 @@
  */
 
 import { useRef, useCallback, useEffect, useState } from 'react'
-import logger from '@/lib/logger'
 
 // ─── Tick 数据结构 ──────────────────────────────────────────────────
 // [timestamp, price, volume, bid, ask, bidSize, askSize]

@@ -2,13 +2,12 @@
  * PROD-04: 四场景模式系统测试
  * 验证 store 状态转换、类型元数据、localStorage 持久化
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { useSceneModeStore } from '@/stores/useSceneModeStore'
 import {
   SCENE_MODES,
   SCENE_META,
   formatSceneLabel,
-  type SceneMode,
 } from '@/features/scene/scene-mode-types'
 
 describe('PROD-04: Scene Mode Types', () => {

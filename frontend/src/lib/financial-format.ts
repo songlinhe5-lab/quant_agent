@@ -166,7 +166,6 @@ export function getFinancialNumberClasses(
  * 可在组件 style 属性中使用
  */
 export function getMarketCSSVariables(region: MarketRegion): string {
-  const scheme = COLOR_SCHEMES[region]
   const colors = {
     CN: { up: '#ef4444', down: '#10b981' },  // 红涨绿跌
     HK: { up: '#ef4444', down: '#10b981' },

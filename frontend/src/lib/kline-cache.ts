@@ -12,12 +12,7 @@ const DB_VERSION = 1
 const STORE_NAME = 'klines'
 const MAX_AGE_DAYS = 30  // 最多保留 30 天数据
 
-// ─── 缓存键结构 ────────────────────────────────────────────────────
-interface KlineCacheKey {
-  symbol: string
-  period: KlinePeriod
-}
-
+// ─── 缓存条目结构 ──────────────────────────────────────────────────
 interface KlineCacheEntry {
   symbol: string
   period: KlinePeriod

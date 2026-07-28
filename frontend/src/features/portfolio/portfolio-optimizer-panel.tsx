@@ -84,7 +84,7 @@ export function PortfolioOptimizerPanel() {
   const [symbolsInput, setSymbolsInput] = useState("US.AAPL,US.MSFT,US.NVDA,US.GOOG,US.AMZN")
   const [model, setModel] = useState("markowitz")
   const [maxWeight, setMaxWeight] = useState([30])
-  const [riskFreeRate, setRiskFreeRate] = useState("0.02")
+  const [riskFreeRate] = useState("0.02")
   const [period, setPeriod] = useState("1y")
 
   const [result, setResult] = useState<OptimizationResult | null>(null)

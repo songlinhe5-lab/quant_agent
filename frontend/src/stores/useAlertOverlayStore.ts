@@ -24,7 +24,7 @@ function priorityOf(p: AlertPushPayload): NotificationPriority {
   return p.priority || 'p3'
 }
 
-export const useAlertOverlayStore = create<AlertOverlayState>((set, get) => ({
+export const useAlertOverlayStore = create<AlertOverlayState>((set, _get) => ({
   p0Queue: [],
   toastStack: [],
   badgeCount: 0,

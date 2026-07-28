@@ -5,7 +5,8 @@
  *   1. 在 App 根组件中放置 <ConfirmDialogProvider />
  *   2. 在任意位置调用 const ok = await confirmDanger('标题', '描述')
  */
-import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react'
+import React, { useState, useCallback, useRef, useEffect } from 'react'
+import { ConfirmContext, registerGlobalConfirm } from '@/components/confirm-dialog-context'
 import {
   AlertDialog,
   AlertDialogContent,
@@ -38,28 +39,6 @@ const DEFAULT_STATE: ConfirmState = {
   destructive: true,
   requireInputConfirm: null,
   inputValue: '',
-}
-
-interface ConfirmContextValue {
-  confirm: (opts: {
-    title: string
-    description: string
-    confirmLabel?: string
-    cancelLabel?: string
-    destructive?: boolean
-    requireInputConfirm?: string
-  }) => Promise<boolean>
-}
-
-const ConfirmContext = createContext<ConfirmContextValue | null>(null)
-
-/**
- * 确认弹窗 Hook — 必须在 ConfirmDialogProvider 内部使用
- */
-export function useConfirmDialog() {
-  const ctx = useContext(ConfirmContext)
-  if (!ctx) throw new Error('useConfirmDialog 必须在 ConfirmDialogProvider 内部使用')
-  return ctx
 }
 
 /**
@@ -152,37 +131,4 @@ export function ConfirmDialogProvider({ children }: { children: React.ReactNode 
   )
 }
 
-// ── 全局函数式 API ──────────────────────────────────────────────────────────────
-// 通过模块级引用，允许在非组件代码（如事件回调）中调用确认弹窗
 
-let globalConfirm: ConfirmContextValue['confirm'] | null = null
-
-/**
- * 注册全局 confirm 函数（由 ConfirmDialogProvider 内部自动调用）
- */
-export function registerGlobalConfirm(fn: ConfirmContextValue['confirm']) {
-  globalConfirm = fn
-}
-
-/**
- * 全局确认弹窗（可在任意上下文中调用，替代 window.confirm）
- * @returns Promise<boolean> — 用户点击确认返回 true，取消返回 false
- */
-export async function confirmDanger(
-  title: string,
-  description: string,
-  opts?: { confirmLabel?: string; cancelLabel?: string; requireInputConfirm?: string }
-): Promise<boolean> {
-  if (!globalConfirm) {
-    // 降级：如果 Provider 未挂载，回退到原生 confirm
-    return window.confirm(`${title}\n\n${description}`)
-  }
-  return globalConfirm({
-    title,
-    description,
-    confirmLabel: opts?.confirmLabel || '确认',
-    cancelLabel: opts?.cancelLabel || '取消',
-    destructive: true,
-    requireInputConfirm: opts?.requireInputConfirm,
-  })
-}

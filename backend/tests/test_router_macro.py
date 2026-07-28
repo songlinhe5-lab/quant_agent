@@ -196,24 +196,28 @@ class TestCapitalFlow:
             resp = client.get("/api/v1/macro/capital-flow")
         assert resp.status_code == 200
 
-    @pytest.mark.xfail(reason="_fetch_capital_flows 未实现", strict=False)
     def test_capital_flow_fetches_from_sources(self, client):
-        """缓存未命中:从 AkShare + Futu 聚合"""
+        """缓存未命中:从 AkShare(港股南向) + Futu(核心 ETF) 聚合。
+
+        RL-11 修复：原测试对 backend.app.macro_app.market_data 重复 patch 两次，
+        导致 get_southbound_flow 被设在已解绑的 mock 上、未生效，gather 收到非可等待
+        对象而抛 TypeError，_fetch_capital_flows 被 except 吞掉返回 []。合并为单次
+        patch 后，get_southbound_flow / get_fund_flow 均生效，真实走通实现。
+        """
         with (
             patch("backend.app.macro_app.redis_client") as m_redis,
-            patch("backend.app.macro_app.market_data") as m_ak,
-            patch("backend.app.macro_app.market_data") as m_futu,
+            patch("backend.app.macro_app.market_data") as m_md,
             patch("backend.app.macro_app.manager") as m_manager,
         ):
             m_redis.get = AsyncMock(return_value=None)
             m_redis.set = AsyncMock(return_value=True)
-            m_ak.get_southbound_flow = AsyncMock(
+            m_md.get_southbound_flow = AsyncMock(
                 return_value={
                     "status": "success",
                     "data": {"net_inflow": 50.5, "sparkline": [1, -1, 1]},
                 }
             )
-            m_futu.get_fund_flow = AsyncMock(
+            m_md.get_fund_flow = AsyncMock(
                 return_value={
                     "status": "success",
                     "data": {"main_fund_net_inflow": 200_000_000},

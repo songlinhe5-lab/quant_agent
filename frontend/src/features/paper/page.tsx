@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, RefreshCw, TrendingUp, TrendingDown, Pause, Play, XCircle, AlertTriangle } from 'lucide-react'
+import { Plus, RefreshCw, Pause, Play, XCircle, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiClient } from '@/lib/api-client'
 import { CreatePortfolioDialog } from './create-portfolio-dialog'

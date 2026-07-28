@@ -64,13 +64,6 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
 export function AlgoAnalyticsPanel({
   algoId = "",
-  algoType = "TWAP",
-  symbol = "US.AAPL",
-  side = "BUY",
-  filledQty = 0,
-  totalCost = 0,
-  targetQty = 0,
-  durationMinutes = 60,
 }: AlgoAnalyticsPanelProps) {
   const [benchmarkPrice, setBenchmarkPrice] = useState("150")
   const [marketVwap, setMarketVwap] = useState("150")
@@ -120,7 +113,7 @@ export function AlgoAnalyticsPanel({
     const quantities = buckets.map((b) => b.qty)
     const avgPrices = buckets.map((b) => b.avg_price)
 
-    const isDark = true
+    const _isDark = true
     const option = {
       backgroundColor: "transparent",
       tooltip: { trigger: "axis" },

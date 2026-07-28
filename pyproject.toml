@@ -136,8 +136,8 @@ omit = [
 parallel = true
 
 [tool.coverage.report]
-# ✅ Top10 低覆盖率文件测试已补充，覆盖率接近 70%
-fail_under = 70
+# ✅ push_handler 等低覆盖率文件单测已补充，覆盖率门槛提升至 80%
+fail_under = 80
 show_missing = true
 exclude_lines = [
     "pragma: no cover",

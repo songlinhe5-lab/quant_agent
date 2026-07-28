@@ -10,7 +10,8 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { WatchlistItem } from '@/stores/use-watchlist'
 import { SymbolContextMenu } from '@/components/symbol-context-menu'
-import { DataState, resolveDataStatus } from '@/components/data-state'
+import { DataState } from '@/components/data-state'
+import { resolveDataStatus } from '@/components/data-state-utils'
 import { VirtualList } from '@/components/virtual-list'
 
 function MiniSparkline({ dirs, theme }: { dirs: number[], theme?: string }) {
@@ -114,6 +115,7 @@ export const WatchlistSidebar = React.memo(function WatchlistSidebar({ watchlist
       const statA = latestStatsRef.current[cleanA] || { change: 0, vol: 0 }; const statB = latestStatsRef.current[cleanB] || { change: 0, vol: 0 }
       if (sortMode === 'change_desc') return statB.change - statA.change; if (sortMode === 'change_asc') return statA.change - statB.change; if (sortMode === 'vol_desc') return statB.vol - statA.vol; return 0;
     });
+// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchlist, sortMode, sortTick, searchQuery, latestStatsRef]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }))

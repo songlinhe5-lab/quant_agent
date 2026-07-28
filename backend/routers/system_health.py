@@ -209,6 +209,14 @@ async def health_ready(response: Response):
     ds_ok, ds_detail = await _check_data_sources()
     checks["data_sources"] = ds_detail
 
+    # RL-11: 限流告警消费器健康（辅助探针，不计入 ready 门槛，避免阻断业务流量）
+    try:
+        from backend.services.datasource.alert_monitor import rate_limit_alert_monitor
+
+        checks["alert_queue"] = "healthy" if rate_limit_alert_monitor.is_healthy() else "unhealthy"
+    except Exception:  # noqa: BLE001
+        checks["alert_queue"] = "unknown"
+
     ready = redis_ok and pg_ok and ds_ok
     if not ready:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
@@ -235,6 +243,23 @@ async def health_deep():
     collectors = await _collector_heartbeats()
     event_loop_lag = await _measure_event_loop_lag()
 
+    # RL-11: 限流告警后台消费器健康探针（辅助组件，不阻断业务流量）
+    # 暴露「后台告警队列是否真在跑」，防止 start() 静默失败无人知晓
+    alert_monitor_detail = {"healthy": False, "started": False, "consumer_done": None}
+    try:
+        from backend.services.datasource.alert_monitor import rate_limit_alert_monitor
+
+        alert_monitor_healthy = rate_limit_alert_monitor.is_healthy()
+        alert_monitor_detail = {
+            "healthy": alert_monitor_healthy,
+            "started": rate_limit_alert_monitor._started,
+            "consumer_done": (
+                rate_limit_alert_monitor._consumer_task is not None and rate_limit_alert_monitor._consumer_task.done()
+            ),
+        }
+    except Exception:  # noqa: BLE001
+        alert_monitor_detail["error"] = "probe_failed"
+
     components = component.get("components", {})
     overall = "healthy"
     if not pg_ok or not ds_ok:
@@ -251,6 +276,7 @@ async def health_deep():
             "futu": components.get("futu"),
             "postgres": pg_msg,
             "data_sources_ready": ds_ok,
+            "alert_queue": alert_monitor_detail,
         },
         "data_source_detail": ds_detail,
         "collectors": collectors,
