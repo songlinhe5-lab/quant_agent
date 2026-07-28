@@ -13,7 +13,7 @@ from typing import Any, Dict, List
 import numpy as np
 import pandas as pd
 
-from backend.services.performance import (
+from backend.domain.performance import (
     annualized_return,
     max_drawdown,
     sharpe,

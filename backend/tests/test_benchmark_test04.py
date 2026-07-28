@@ -46,7 +46,7 @@ from backend.core.alert_models import (
     evaluate_indicator_rule,
     evaluate_price_rule,
 )
-from backend.services.indicator_evaluator import (
+from backend.domain.indicator_evaluator import (
     IndicatorEvaluator,
     extract_indicators_from_tech_data,
 )

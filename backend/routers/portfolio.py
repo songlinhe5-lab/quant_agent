@@ -17,7 +17,7 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from backend.services.portfolio_optimizer import portfolio_optimizer
+from backend.domain.portfolio_optimizer import portfolio_optimizer
 
 router = APIRouter(prefix="/portfolio", tags=["Portfolio Optimization"])
 logger = logging.getLogger(__name__)

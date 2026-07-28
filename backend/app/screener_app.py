@@ -635,7 +635,7 @@ class CrossSectionRequest(BaseModel):
 async def cross_sectional_screen(req):
     """QUANT-03: 复杂横截面选股 — 基于 Pandas 内存引擎的跨指标表达式筛选"""
     try:
-        from backend.services.cross_sectional import screen as cs_screen
+        from backend.domain.cross_sectional import screen as cs_screen
         from backend.services.kline_warehouse import kline_warehouse
 
         # 批量获取 K 线

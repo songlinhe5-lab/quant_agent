@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from backend.services.eval_framework import (
+from backend.domain.eval_framework import (
     EvalCase,
     EvalMetrics,
     EvalReport,

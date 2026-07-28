@@ -353,7 +353,7 @@ class PaperSettlementDaemon:
         """EOD 结算钩子：计算滚动 20 交易日 TE，超阈值触发 paper_drift 告警"""
         import pandas as pd
 
-        from backend.services import performance as perf
+        from backend.domain import performance as perf
 
         pid = portfolio.id
         nav_rows = paper_ledger_service.get_nav_daily(db, pid, days=21)  # 21 条 → 20 个收益率

@@ -14,7 +14,7 @@ import logging
 from typing import Any, Optional
 
 from backend.core.ticker_format import format_yf_ticker
-from backend.services.options_engine import compute_option_chain_greeks
+from backend.domain.options_engine import compute_option_chain_greeks
 
 logger = logging.getLogger(__name__)
 

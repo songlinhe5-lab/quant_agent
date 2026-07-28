@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from backend.services.performance import (
+from backend.domain.performance import (
     annualized_return,
     cumulative_return,
     max_drawdown,

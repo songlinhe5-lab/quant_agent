@@ -31,11 +31,11 @@ from backend.core.cpu_pool import run_cpu_bound
 from backend.core.database import get_db
 from backend.core.redis_client import redis_client
 from backend.core.utils import safe_truncate
+from backend.domain.strategy_parser import parse_strategy_parameters
 from backend.routers.auth import get_current_user
 from backend.services import strategy_version_service
 from backend.services.kline_warehouse import kline_warehouse
 from backend.services.llm_service import llm_service
-from backend.services.strategy_parser import parse_strategy_parameters
 
 router = APIRouter(prefix="/strategy", tags=["Strategy Dev"])
 

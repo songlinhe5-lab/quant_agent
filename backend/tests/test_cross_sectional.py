@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from backend.services.cross_sectional import (
+from backend.domain.cross_sectional import (
     compute_indicators,
     evaluate_expression,
     screen,

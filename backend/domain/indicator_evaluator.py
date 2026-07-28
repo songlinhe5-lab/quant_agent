@@ -18,10 +18,10 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from backend.core.alert_models import (
+from backend.core.alert_models import evaluate_indicator_rule
+from backend.domain.entities import (
     AlertRule,
     AlertRuleType,
-    evaluate_indicator_rule,
 )
 from backend.core.logger import logger
 

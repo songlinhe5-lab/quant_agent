@@ -17,7 +17,7 @@ from typing import Any, Deque, Dict, List, Optional
 import pandas as pd
 from pydantic import BaseModel, Field
 
-from backend.services.cross_sectional import compute_indicators, evaluate_expression
+from backend.domain.cross_sectional import compute_indicators, evaluate_expression
 
 logger = logging.getLogger(__name__)
 

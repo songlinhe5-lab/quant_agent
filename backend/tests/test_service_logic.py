@@ -34,7 +34,7 @@ class MyStrategy:
 '''
 
     def test_parse_valid_strategy(self):
-        from backend.services.strategy_parser import parse_strategy_parameters
+        from backend.domain.strategy_parser import parse_strategy_parameters
 
         result = parse_strategy_parameters(self.SAMPLE_STRATEGY)
         assert result["status"] == "success"
@@ -46,7 +46,7 @@ class MyStrategy:
         assert "slow_ma" in param_names
 
     def test_parse_strategy_with_defaults(self):
-        from backend.services.strategy_parser import parse_strategy_parameters
+        from backend.domain.strategy_parser import parse_strategy_parameters
 
         result = parse_strategy_parameters(self.SAMPLE_STRATEGY)
         params = {p["name"]: p for p in result["data"][0]["parameters"]}
@@ -55,20 +55,20 @@ class MyStrategy:
         assert params["pos_size"]["type"] == "float"
 
     def test_parse_strategy_descriptions(self):
-        from backend.services.strategy_parser import parse_strategy_parameters
+        from backend.domain.strategy_parser import parse_strategy_parameters
 
         result = parse_strategy_parameters(self.SAMPLE_STRATEGY)
         params = {p["name"]: p for p in result["data"][0]["parameters"]}
         assert "快速均线" in params["fast_ma"]["description"]
 
     def test_parse_syntax_error(self):
-        from backend.services.strategy_parser import parse_strategy_parameters
+        from backend.domain.strategy_parser import parse_strategy_parameters
 
         result = parse_strategy_parameters("def bad syntax {{{")
         assert result["status"] == "error"
 
     def test_parse_no_strategy_class(self):
-        from backend.services.strategy_parser import parse_strategy_parameters
+        from backend.domain.strategy_parser import parse_strategy_parameters
 
         result = parse_strategy_parameters("x = 1\ny = 2")
         assert result["status"] == "error"
@@ -82,7 +82,7 @@ class TestBot:
         """
         pass
 '''
-        from backend.services.strategy_parser import parse_strategy_parameters
+        from backend.domain.strategy_parser import parse_strategy_parameters
 
         result = parse_strategy_parameters(code)
         assert result["status"] == "success"
@@ -96,7 +96,7 @@ class MyStrategy:
     def __init__(self, threshold: float = 0.5, enabled: bool = True):
         pass
 """
-        from backend.services.strategy_parser import parse_strategy_parameters
+        from backend.domain.strategy_parser import parse_strategy_parameters
 
         result = parse_strategy_parameters(code)
         params = {p["name"]: p for p in result["data"][0]["parameters"]}
@@ -109,7 +109,7 @@ class MyStrategy:
     def __init__(self, required_param, optional=10):
         pass
 """
-        from backend.services.strategy_parser import parse_strategy_parameters
+        from backend.domain.strategy_parser import parse_strategy_parameters
 
         result = parse_strategy_parameters(code)
         params = {p["name"]: p for p in result["data"][0]["parameters"]}
@@ -126,7 +126,7 @@ class MyStrategy:
     def __init__(self, fast=10):
         pass
 """
-        from backend.services.strategy_parser import parse_strategy_parameters
+        from backend.domain.strategy_parser import parse_strategy_parameters
 
         result = parse_strategy_parameters(code)
         assert result["status"] == "success"

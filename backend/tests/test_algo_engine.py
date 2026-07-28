@@ -16,7 +16,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from backend.services.algo_analytics import (
+from backend.domain.algo_analytics import (
     AlgoAnalytics,
     algo_analytics,
 )

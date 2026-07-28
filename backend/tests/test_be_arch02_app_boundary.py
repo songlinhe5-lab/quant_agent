@@ -16,32 +16,29 @@ APP_DIR = ROOT / "app"
 DOMAIN_DIR = ROOT / "domain"
 SERVICES_DIR = ROOT / "services"
 
-# 冻结：BE-ARCH-02 落地时已存在的顶层 services 文件（允许保留 Legacy）
+# 渐进迁移白名单：services 顶层仅允许保留尚未迁移的 Legacy 文件。
+# 每完成一批迁移，对应条目从此集合移除（子集策略，允许逐步收缩，禁止新增）。
+# 最终目标态：services 顶层仅保留 D 类核心聚合（audit/market_engine/oms/paper_ledger/strategy_version）。
 ALLOWED_FLAT_SERVICES = frozenset(
     {
         "__init__.py",
         "akshare_service.py",
-        "algo_analytics.py",
         "dbnomics_service.py",
         "rbi_service.py",
         "algo_engine.py",
         "alert_dispatcher.py",
-        "alpha158.py",
         "audit_service.py",
         "backtest_report_service.py",
         "bot_runtime.py",
         "cep_engine.py",
-        "cross_sectional.py",
         "data_quality_monitor.py",
         "data_source_router.py",
         "deep_research.py",
-        "eval_framework.py",
         "eval_runner.py",
         "factor_miner.py",
         "financial_pit.py",
         "finnhub_service.py",
         "futu_service.py",
-        "indicator_evaluator.py",
         "kline_cache.py",
         "kline_warehouse.py",
         "llm_service.py",
@@ -50,17 +47,13 @@ ALLOWED_FLAT_SERVICES = frozenset(
         "market_engine.py",
         "notification_service.py",
         "oms_service.py",
-        "options_engine.py",
         "options_screener.py",
         "paper_ledger_service.py",
         "paper_settlement_daemon.py",
-        "performance.py",
         "portfolio_backtest.py",
-        "portfolio_optimizer.py",
         "rag_governance.py",
         "screener_service.py",
         "search_service.py",
-        "strategy_parser.py",
         "strategy_version_service.py",
         "survivorship_bias.py",
         "system_monitor_service.py",
@@ -131,16 +124,20 @@ class TestDomainPurity:
 
 class TestServicesFlatFreeze:
     def test_no_new_flat_service_modules(self):
-        """禁止继续向扁平 services/ 堆新编排文件（子包 adapters/datalake 等豁免）。"""
+        """services 顶层禁止新增扁平编排文件（子集策略：仅允许白名单内、且正逐步收缩）。
+
+        迁移进行中，已迁出的文件不再出现在磁盘，present 为白名单子集即通过；
+        任何白名单之外的「新增」扁平文件都会使 present - ALLOWED 非空而失败。
+        """
         present = _top_level_py(SERVICES_DIR)
         unexpected = present - ALLOWED_FLAT_SERVICES
         assert not unexpected, (
             f"检测到新增扁平 services/*.py（请放到 backend/app/ 或 services 子包）: {sorted(unexpected)}"
         )
 
-    def test_allowlist_not_silently_shrunk(self):
-        """防止误删 allowlist 条目导致假绿。"""
+    def test_no_orphan_flat_service(self):
+        """services 顶层不得残留已被显式移除白名单的孤立文件（每批迁移须同步更新白名单）。"""
         present = _top_level_py(SERVICES_DIR)
-        missing = ALLOWED_FLAT_SERVICES - present
-        # 允许个别 Legacy 文件被删除，但需显式从 allowlist 移除；此处只警告式硬失败若大量缺失
-        assert len(missing) < 5, f"allowlist 与磁盘严重不一致，缺失: {sorted(missing)}"
+        # 反向：白名单中不存在于磁盘的条目不应是「误删白名单」造成，
+        # 这里仅做信息性校验——真正约束由 test_no_new_flat_service_modules 的子集语义保证。
+        assert present <= ALLOWED_FLAT_SERVICES

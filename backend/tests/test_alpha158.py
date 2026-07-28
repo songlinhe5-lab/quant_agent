@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from backend.services.alpha158 import (
+from backend.domain.alpha158 import (
     FACTOR_REGISTRY,
     Alpha158,
     compute_all_factors,
