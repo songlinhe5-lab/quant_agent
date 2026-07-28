@@ -77,7 +77,7 @@ jobs:
         run: pnpm audit 2>&1 || true
         continue-on-error: true
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: frontend-dist
           path: frontend/dist/
