@@ -19,11 +19,11 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from backend.core.alert_models import evaluate_indicator_rule
+from backend.core.logger import logger
 from backend.domain.entities import (
     AlertRule,
     AlertRuleType,
 )
-from backend.core.logger import logger
 
 # 指标类规则类型集合
 INDICATOR_RULE_TYPES = {
