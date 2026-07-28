@@ -13,11 +13,11 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from backend.app.market_data import market_data
-from backend.services.iv_history_service import (
+from backend.app.iv_history_service import (
     get_iv_history,
     record_iv_snapshot,
 )
+from backend.app.market_data import market_data
 from backend.services.options_engine import compute_option_chain_greeks
 from backend.services.options_screener import OptionFilter, options_screener
 
