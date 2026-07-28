@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from backend.services.factor_miner import FactorSuggestion, factor_miner
+from backend.services.factor_mining.factor_miner import FactorSuggestion, factor_miner
 
 router = APIRouter(prefix="/factor", tags=["factor"])
 

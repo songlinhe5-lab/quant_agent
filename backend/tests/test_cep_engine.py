@@ -9,7 +9,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from backend.services.cep_engine import CEPEngine
+from backend.services.cep.cep_engine import CEPEngine
 
 
 def _feed_bars(engine: CEPEngine, ticker: str, n: int, seed: int = 42):

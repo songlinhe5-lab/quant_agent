@@ -29,7 +29,7 @@ from backend.engine.strategy import Strategy
 
 if TYPE_CHECKING:
     from backend.services.datalake.financial_pit import PointInTimeStore
-    from backend.services.survivorship_bias import SurvivorshipBiasTracker
+    from backend.services.survivorship.survivorship_bias import SurvivorshipBiasTracker
 
 
 @dataclass

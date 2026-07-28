@@ -22,9 +22,6 @@ SERVICES_DIR = ROOT / "services"
 ALLOWED_FLAT_SERVICES = frozenset(
     {
         "__init__.py",
-        "cep_engine.py",
-        "factor_miner.py",
-        "survivorship_bias.py",
         "audit_service.py",
         "market_engine.py",
         "oms_service.py",

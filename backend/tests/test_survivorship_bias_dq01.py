@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.services.survivorship_bias import (
+from backend.services.survivorship.survivorship_bias import (
     ListingStatus,
     SurvivorshipBiasTracker,
     TickerLifecycle,
