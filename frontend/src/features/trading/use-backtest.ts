@@ -6,7 +6,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useToast } from '@/hooks/use-toast'
 import { apiClient } from '@/lib/api-client'
 import { LATEST_PUBLISHED } from '@/types/datalake'
-import { computeHistogram, equityCurve, returnsHist, tearSheetMetrics, underwaterData } from './backtest-mock'
+import { computeHistogram } from './backtest-utils'
 import { runCustomExprBacktest } from '../quotes/custom-indicator/engine'
 import { extractReproducibilityBadge } from '@/features/backtest/reproducibility-badge'
 
@@ -200,11 +200,11 @@ export function useBacktest() {
 
   const histogramData = useMemo(() => {
     if (rawReturns.length > 0) return computeHistogram(rawReturns, 40)
-    return returnsHist
+    return []
   }, [rawReturns])
 
   const underwaterDataComputed = useMemo(() => {
-    if (!backtestResult?.equity_curve) return underwaterData;
+    if (!backtestResult?.equity_curve) return [];
     let maxEq = 0;
     return backtestResult.equity_curve.map((d: any, i: number) => {
       if (d.equity > maxEq) maxEq = d.equity;
@@ -215,7 +215,7 @@ export function useBacktest() {
 
   let runningMax = 0;
   const curve = useMemo(() => {
-    const baseData = backtestResult?.equity_curve || equityCurve;
+    const baseData = backtestResult?.equity_curve || [];
     return baseData.map((d: any, i: number) => {
       const eq = d.equity !== undefined ? d.equity : d.strategy;
 // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -247,7 +247,7 @@ export function useBacktest() {
     { label: '总交易次数', value: String(metrics.total_trades),  dir: 0,  note: '' },
     { label: '盈亏比',      value: metrics.profit_factor,   dir: parseFloat(metrics.profit_factor) > 1 ? 1 : -1,  note: 'P/L Ratio' },
     { label: '摩擦成本',    value: metrics.total_friction_cost,   dir: -1,  note: '手续费+滑点' },
-  ] : tearSheetMetrics
+  ] : []
 
   return {
     // state

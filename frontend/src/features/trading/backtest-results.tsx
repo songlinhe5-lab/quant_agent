@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { BacktestEquityChart, BacktestUnderwaterChart, BacktestReturnsHistogram } from './backtest-charts'
 import { ReproducibilityBadgeView } from '@/features/backtest/reproducibility-badge'
+import { EmptyState } from '@/components/ui/data-display'
 
 interface BacktestResultsProps {
   backtestResult: any
@@ -25,6 +26,17 @@ export function BacktestResults({
   currentTearSheet, reproBadge, metrics,
   curve, underwaterDataComputed, histogramData,
 }: BacktestResultsProps) {
+  // §14.1/§14.2：未运行回测时回落空态提示，禁止展示假净值曲线/假指标或静默空白
+  if (!backtestResult) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-6">
+        <EmptyState
+          title="请运行回测推演"
+          description="在左侧配置策略参数后点击「运行回测」，生成 Tear Sheet、权益曲线与成交明细。"
+        />
+      </div>
+    )
+  }
   return (
     <>
       {/* Disclaimer banner */}
