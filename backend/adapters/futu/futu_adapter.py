@@ -38,6 +38,7 @@ try:
         SubType,
         TickerHandlerBase,
     )
+
     _FUTU_AVAILABLE = True
 except Exception:  # pragma: no cover - 无 futu 环境
     RET_OK, RET_ERROR = 0, -1
@@ -217,13 +218,27 @@ class FutuAdapter(DataSourcePort):
 
     # interval(str) -> futu KLType 值映射
     _INTERVAL_TO_KTYPE = {
-        "1d": "K_DAY", "1day": "K_DAY", "day": "K_DAY", "d": "K_DAY",
-        "1w": "K_WEEK", "week": "K_WEEK", "w": "K_WEEK",
-        "1m": "K_1M", "5m": "K_5M", "15m": "K_15M", "30m": "K_30M",
-        "60m": "K_60M", "1h": "K_60M", "h": "K_60M",
-        "1mo": "K_MON", "month": "K_MON", "mon": "K_MON",
-        "1q": "K_QUARTER", "quarter": "K_QUARTER",
-        "1y": "K_YEAR", "year": "K_YEAR",
+        "1d": "K_DAY",
+        "1day": "K_DAY",
+        "day": "K_DAY",
+        "d": "K_DAY",
+        "1w": "K_WEEK",
+        "week": "K_WEEK",
+        "w": "K_WEEK",
+        "1m": "K_1M",
+        "5m": "K_5M",
+        "15m": "K_15M",
+        "30m": "K_30M",
+        "60m": "K_60M",
+        "1h": "K_60M",
+        "h": "K_60M",
+        "1mo": "K_MON",
+        "month": "K_MON",
+        "mon": "K_MON",
+        "1q": "K_QUARTER",
+        "quarter": "K_QUARTER",
+        "1y": "K_YEAR",
+        "year": "K_YEAR",
     }
 
     _PREFIXES = {"HK", "US", "SH", "SZ"}
@@ -566,15 +581,17 @@ class FutuAdapter(DataSourcePort):
 
             klines = []
             for _, row in data.iterrows():
-                klines.append({
-                    "datetime": str(row.get("time_key", "")),
-                    "open": _to_float(row.get("open")),
-                    "high": _to_float(row.get("high")),
-                    "low": _to_float(row.get("low")),
-                    "close": _to_float(row.get("close")),
-                    "volume": _to_float(row.get("volume")),
-                    "turnover": _to_float(row.get("turnover")),
-                })
+                klines.append(
+                    {
+                        "datetime": str(row.get("time_key", "")),
+                        "open": _to_float(row.get("open")),
+                        "high": _to_float(row.get("high")),
+                        "low": _to_float(row.get("low")),
+                        "close": _to_float(row.get("close")),
+                        "volume": _to_float(row.get("volume")),
+                        "turnover": _to_float(row.get("turnover")),
+                    }
+                )
             return {"success": True, "data": klines, "cached": False}
 
         except Exception as e:
@@ -643,15 +660,17 @@ class FutuAdapter(DataSourcePort):
                 options = []
                 for _, row in chain_df.iterrows():
                     try:
-                        options.append({
-                            "strike_price": float(row.get("strike_price", 0) or 0),
-                            "option_type": str(row.get("option_type", "")).lower(),
-                            "implied_volatility": float(row.get("implied_volatility", 0) or 0),
-                            "option_code": row.get("option_code"),
-                            "last_price": float(row.get("last_price", 0) or 0),
-                            "volume": float(row.get("volume", 0) or 0),
-                            "open_interest": float(row.get("open_interest", 0) or 0),
-                        })
+                        options.append(
+                            {
+                                "strike_price": float(row.get("strike_price", 0) or 0),
+                                "option_type": str(row.get("option_type", "")).lower(),
+                                "implied_volatility": float(row.get("implied_volatility", 0) or 0),
+                                "option_code": row.get("option_code"),
+                                "last_price": float(row.get("last_price", 0) or 0),
+                                "volume": float(row.get("volume", 0) or 0),
+                                "open_interest": float(row.get("open_interest", 0) or 0),
+                            }
+                        )
                     except Exception:
                         continue
                 if not options:

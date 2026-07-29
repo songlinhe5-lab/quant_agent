@@ -27,13 +27,21 @@ logger = structlog.get_logger(__name__)
 
 _DEFAULT_COLUMNS = {
     "short_turnover": [
-        "short sell turnover", "short-selling turnover", "short turnover",
-        "沽空成交", "卖空成交额", "卖空成交金额",
+        "short sell turnover",
+        "short-selling turnover",
+        "short turnover",
+        "沽空成交",
+        "卖空成交额",
+        "卖空成交金额",
     ],
     "total_turnover": ["total turnover", "总成交", "成交总额"],
     "short_volume": [
-        "short sell volume", "short volume", "short sell vol",
-        "沽空量", "卖空成交量", "卖空股数",
+        "short sell volume",
+        "short volume",
+        "short sell vol",
+        "沽空量",
+        "卖空成交量",
+        "卖空股数",
     ],
     "total_volume": ["total volume", "总成交量", "总股数"],
 }

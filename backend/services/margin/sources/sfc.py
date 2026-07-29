@@ -24,7 +24,10 @@ logger = structlog.get_logger(__name__)
 
 _DEFAULT_COLUMNS = {
     "short_position": [
-        "short position", "short positions", "淡仓", "short position (shares)",
+        "short position",
+        "short positions",
+        "淡仓",
+        "short position (shares)",
         "short position shares",
     ],
 }

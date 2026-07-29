@@ -150,8 +150,7 @@ async def get_market_margin_indicators(market: str, as_of: Optional[date] = None
             "status": "error",
             "market": market,
             "as_of": as_of.isoformat(),
-            "message": f"无法从监管数据源获取真实数据 (tried: {', '.join(tried)})，"
-            "请配置数据源或于结算日后重试",
+            "message": f"无法从监管数据源获取真实数据 (tried: {', '.join(tried)})，请配置数据源或于结算日后重试",
         }
     else:
         try:
