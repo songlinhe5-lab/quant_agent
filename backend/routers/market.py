@@ -4,7 +4,7 @@ import os
 import random
 import re
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
@@ -610,14 +610,23 @@ async def get_company_news(ticker: str, limit: int = 10):
                 except Exception:
                     pass
 
-                # 4. 确认缓存确实为空，执行真实的高耗时网络请求
-                # ✅ 使用本地模拟新闻数据 (Finnhub 迁移待后续完成)
-                print(f"⚠️ [Market News] {ticker} 当前使用模拟新闻数据")
+                # 4. 确认缓存确实为空，优先走 DataSourcePort + FinnhubAdapter 真实新闻源
+                real_news = await _fetch_finnhub_news(safe_ticker, limit, days_back=3)
+                if real_news is not None:
+                    result = {
+                        "status": "success",
+                        "count": len(real_news),
+                        "data": real_news,
+                        "source": "finnhub",
+                        "message": None,
+                    }
+                    try:
+                        await redis_client.set(cache_key, json.dumps(result), ex=300)
+                    except Exception:
+                        pass
+                    return result
 
-                # TODO: 未来迁移到 DataSourcePort + FinnhubAdapter
-                # result = _market_service._finnhub.fetch("news", {"ticker": ticker, "days_back": days_back})
-
-                # 当前返回模拟数据供前端测试
+                # 真实源不可用时回退到本地模拟数据（供前端联调）
                 mock_news = [
                     {
                         "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -681,20 +690,16 @@ async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 3
 
     events = []
 
-    # 1. 获取财报日历事件
-    try:
-        # ✅ 使用 YFinanceAdapter 获取历史 earnings 数据
-        # yf_ticker = format_yf_ticker(safe_ticker)  # TODO: 未来使用
-
-        # TODO: 未来迁移到 DataSourcePort + Finnhub Earnings Calendar
-        # result = _market_service._finnhub.fetch("earnings", {"ticker": yf_ticker})
-
-        # 当前返回模拟财报事件供前端测试
+    # 1. 财报日历事件：优先 Finnhub，失败回退模拟数据
+    real_earnings = await _fetch_finnhub_earnings(safe_ticker, days_back, days_ahead)
+    if real_earnings:
+        events.extend(real_earnings)
+    else:
         mock_earnings = [
             {
                 "date": (datetime.now().replace(day=15)).strftime("%Y-%m-%d"),
                 "type": "earnings",
-                "label": f"Q{datetime.now().quarter} 财报",
+                "label": f"Q{(datetime.now().month - 1) // 3 + 1} 财报",
                 "impact": "high",
                 "data": {
                     "epsEstimate": round(random.uniform(1, 5), 2),
@@ -703,15 +708,23 @@ async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 3
             }
         ]
         events.extend(mock_earnings)
-    except Exception:
-        pass  # 静默处理
 
-    # 2. 获取个股新闻（作为重大事件）
-    try:
-        # ✅ 使用本地模拟新闻数据
+    # 2. 个股新闻作为重大事件：优先 Finnhub，失败回退模拟数据
+    real_news = await _fetch_finnhub_news(safe_ticker, limit=10, days_back=days_back)
+    if real_news:
+        for n in real_news:
+            events.append(
+                {
+                    "date": (n.get("time") or "")[:10],
+                    "type": "news",
+                    "label": f"{safe_ticker}: {n.get('headline', '')}",
+                    "impact": "medium",
+                    "data": {"source": "finnhub", "url": None},
+                }
+            )
+    else:
         from datetime import timedelta
 
-        # TODO: 未来迁移到 DataSourcePort + Finnhub News
         mock_news_events = [
             {
                 "date": (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d"),
@@ -725,8 +738,6 @@ async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 3
             }
         ]
         events.extend(mock_news_events)
-    except Exception:
-        pass  # 静默处理
 
     # 💡 按日期排序
     events.sort(key=lambda x: x.get("date", ""))
@@ -737,6 +748,123 @@ async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 3
         "count": len(events),
         "data": events,
     }
+
+
+# ─────────────────────────────────────────────
+# Finnhub 真实数据源桥接（DataSourcePort + FinnhubAdapter）
+# 统一：优先真实源，失败/未配置时返回 None 由调用方回退模拟数据
+# ─────────────────────────────────────────────
+
+
+async def _fetch_finnhub_news(ticker: str, limit: int, days_back: int = 3):
+    """走 Finnhub company_news 拉取个股新闻，返回 [{time, headline, summary}] 或 None。"""
+    try:
+        from backend.services.datasource.adapters.finnhub import (
+            ensure_finnhub_registered,
+        )
+        from backend.services.datasource.source_registry import datasource_registry
+
+        ensure_finnhub_registered()
+    except Exception:  # noqa: BLE001
+        return None
+
+    res = await datasource_registry.fetch("finnhub", "company_news", {"ticker": ticker, "days_back": days_back})
+    if not res.is_success:
+        return None
+
+    raw = res.data or []
+    out = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        ts = item.get("datetime")
+        t = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S") if isinstance(ts, (int, float)) else str(ts or "")
+        out.append(
+            {
+                "time": t,
+                "headline": item.get("headline", ""),
+                "summary": item.get("summary", ""),
+            }
+        )
+    return out[:limit] if limit else out
+
+
+async def _fetch_finnhub_earnings(ticker: str, days_back: int = 30, days_ahead: int = 30):
+    """走 Finnhub earnings 拉取财报日历，返回事件列表或 None。"""
+    try:
+        from backend.services.datasource.adapters.finnhub import (
+            ensure_finnhub_registered,
+        )
+        from backend.services.datasource.source_registry import datasource_registry
+
+        ensure_finnhub_registered()
+    except Exception:  # noqa: BLE001
+        return None
+
+    res = await datasource_registry.fetch(
+        "finnhub",
+        "earnings",
+        {"ticker": ticker, "days_back": days_back, "days_ahead": days_ahead},
+    )
+    if not res.is_success:
+        return None
+
+    raw = res.data or []
+    out = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        quarter = item.get("quarter")
+        out.append(
+            {
+                "date": item.get("date", ""),
+                "type": "earnings",
+                "label": f"Q{quarter} 财报" if quarter else "财报",
+                "impact": "high",
+                "data": {
+                    "epsEstimate": item.get("epsEstimated"),
+                    "epsActual": item.get("eps"),
+                },
+            }
+        )
+    return out
+
+
+async def _fetch_finnhub_insider(ticker: str, limit: int):
+    """走 Finnhub insider_trading 拉取内幕交易，返回 [{date, name, transaction_type, shares, price, value}] 或 None。"""
+    try:
+        from backend.services.datasource.adapters.finnhub import (
+            ensure_finnhub_registered,
+        )
+        from backend.services.datasource.source_registry import datasource_registry
+
+        ensure_finnhub_registered()
+    except Exception:  # noqa: BLE001
+        return None
+
+    res = await datasource_registry.fetch("finnhub", "insider_trading", {"ticker": ticker, "limit": limit})
+    if not res.is_success:
+        return None
+
+    raw = res.data or []
+    out = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        change = item.get("change") or 0
+        price = item.get("transaction_price") or 0
+        value = (change * price) if (change and price) else None
+        out.append(
+            {
+                "date": item.get("date", ""),
+                "name": item.get("name", "N/A"),
+                "transaction_type": item.get("action"),
+                "shares": change,
+                "price": price,
+                "value": value,
+            }
+        )
+    return out
 
 
 def _safe_pct(value, mult: float = 100.0):
@@ -932,14 +1060,14 @@ async def get_insider_transactions(ticker: str, limit: int = 50):
     Returns:
         dict: {"status": "success", "data": List[InsiderTransactionData]}
     """
-    # TODO: 需要 InsiderService + InsiderDataAdapter
-    # 当前使用本地模拟数据供前端测试
-    print(f"⚠️ [Insider] {ticker} 当前使用模拟内幕交易数据")
+    # 优先走 DataSourcePort + FinnhubAdapter (insider_trading)，失败回退模拟数据
+    real = await _fetch_finnhub_insider(ticker, limit)
+    if real is not None:
+        return {"status": "success", "data": real[:limit], "source": "finnhub"}
 
-    # TODO: 未来迁移到 DataSourcePort + InsiderDataAdapter
-    # result = _market_service._insider.fetch("transactions", {{"ticker": ticker, "limit": limit}})
+    # 真实源不可用时的本地模拟数据（供前端联调）
+    from datetime import datetime, timedelta
 
-    # 当前返回模拟数据
     mock_transactions = [
         {
             "date": (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d"),
