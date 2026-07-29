@@ -106,10 +106,18 @@ testpaths = ["backend/tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+# -p no:unraisableexception: 禁用 pytest 的 unraisableexception 插件。
+# 该插件会把 sys.unraisablehook 投递的异常（如 Python 3.13 下 unittest.mock 内部产生的
+# "coroutine never awaited" 误报，见 backend/tests/conftest.py 顶部注释）强制升级为
+# pytest.PytestUnraisableExceptionWarning 并当作测试失败；且插件在格式化报告时会触发
+# tracemalloc_message 的二次导入崩溃（即 CI 日志里 "Exception ignored in sys.unraisablehook
+# ... _pytest/tracemalloc.py" 噪声）。此类告警已被 conftest 认定为非业务 bug，故恢复 Python
+# 默认（仅打印、不致命）行为。放到 addopts 对所有 pytest 调用（含本地）统一生效。
 addopts = [
     "-v",
     "--strict-markers",
     "--tb=short",
+    "-p no:unraisableexception",
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
