@@ -7,17 +7,7 @@
 export const MOCK_ENABLED =
   import.meta.env.DEV && import.meta.env.VITE_ENABLE_MOCK === 'true'
 
-// 1. 顶部 Header 跑马灯行情
-export const MOCK_HEADER_TICKERS = [
-  { symbol: 'BTC/USD', price: 67542.3,  change: 2.14,  dir: 1 },
-  { symbol: 'ETH/USD', price: 3452.8,   change: -1.03, dir: -1 },
-  { symbol: 'S&P 500', price: 5432.82,  change: 0.89,  dir: 1 },
-  { symbol: 'NASDAQ',  price: 17623.45, change: 1.24,  dir: 1 },
-  { symbol: 'VIX',     price: 14.25,    change: -8.32, dir: -1 },
-  { symbol: 'DXY',     price: 104.32,   change: 0.12,  dir: 1 },
-]
-
-// 2. 自选股 Watchlist 默认列表
+// 自选股 Watchlist 默认列表（§14.1：仅 DEV + VITE_ENABLE_MOCK 下由 use-watchlist 使用）
 export const MOCK_WATCHLIST = [
   { symbol: 'BTC/USD', price: 67542.3,  change: 2.14,  vol: '32.4B', sparkDir: [1,1,-1,1,1,1,-1,1] },
   { symbol: 'ETH/USD', price: 3452.8,   change: -1.03, vol: '14.2B', sparkDir: [1,-1,-1,1,-1,-1,1,-1] },
@@ -26,47 +16,7 @@ export const MOCK_WATCHLIST = [
   { symbol: 'SPY',     price: 543.12,   change: 0.89,  vol: '28.7B', sparkDir: [1,-1,1,1,1,-1,1,1] },
 ]
 
-// 3. 选股器 (Screener) 默认结果
-export const MOCK_SCREENER_RESULTS = [
-  { rank: 1,  symbol: '00700.HK', name: '腾讯控股',   sector: '科技', mktcap: '3.21T', price: 372.8,  chg: 0.54,  rsi: 28.5, inflow: '+12.3M', chg30: '+18.5%', score: 94 },
-  { rank: 2,  symbol: '09988.HK', name: '阿里巴巴-W', sector: '科技', mktcap: '1.87T', price: 85.5,   chg: -0.58, rsi: 32.1, inflow: '+8.7M',  chg30: '+15.2%', score: 89 },
-  { rank: 3,  symbol: '01810.HK', name: '小米集团-W', sector: '科技', mktcap: '0.45T', price: 18.9,   chg: 1.23,  rsi: 25.3, inflow: '+5.2M',  chg30: '+22.1%', score: 87 },
-  { rank: 4,  symbol: '06618.HK', name: '京东物流',   sector: '物流', mktcap: '0.12T', price: 14.5,   chg: 0.35,  rsi: 19.8, inflow: '+3.1M',  chg30: '+9.5%',  score: 81 },
-  { rank: 5,  symbol: 'NVDA',     name: 'NVIDIA',     sector: '半导体','mktcap': '2.9T', price: 1189.2, chg: 2.18,  rsi: 41.2, inflow: '+45.2M', chg30: '+28.4%', score: 92 },
-  { rank: 6,  symbol: 'TSMC',     name: '台积电',     sector: '半导体','mktcap': '0.9T', price: 174.5,  chg: -0.42, rsi: 36.8, inflow: '+11.3M', chg30: '+12.8%', score: 85 },
-]
-
-// 4. Quotes DOM 十档盘口数据生成器
-export function generateMockOrders(isBid: boolean) {
-  const base = 67542
-  return Array.from({ length: 10 }, (_, i) => {
-    const offset = (i + 1) * (isBid ? -15 : 15)
-    const pseudoRand = ((i * 13) % 10) / 10
-    const size = pseudoRand * 3 + 0.1
-    const total = base * size
-    return { price: base + offset, size: size.toFixed(3), total: (total / 1000).toFixed(1) + 'K', depth: pseudoRand }
-  })
-}
-
-// 5. Quotes 近期成交流水
-export const MOCK_RECENT_TRADES = Array.from({ length: 16 }, (_, i) => {
-  const pseudoRand = ((i * 17) % 10) / 10
-  return {
-    price: 67542 + pseudoRand * 200 - 100,
-    size: (pseudoRand * 2 + 0.01).toFixed(3),
-    side: pseudoRand > 0.5 ? 'buy' : 'sell',
-    time: new Date(1717200000000 - i * 8000).toISOString().substring(11, 19),
-  }
-})
-
-// 6. Quotes 宏观日历事件点阵
-export const MOCK_PRICE_EVENTS = [
-  { date: '06-15', label: 'Q2 财报', impact: 'high' as const },
-  { date: '06-20', label: '美国非农', impact: 'high' as const },
-  { date: '06-25', label: 'FOMC', impact: 'high' as const },
-]
-
-// 7. 跨市场资金流向
+// 跨市场资金流向
 export interface CapitalFlowItem {
   market: string
   label: string
