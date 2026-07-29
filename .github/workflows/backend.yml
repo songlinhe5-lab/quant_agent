@@ -115,7 +115,14 @@ jobs:
           EMBEDDING_BASE_URL: https://api.test.com
           EMBEDDING_MODEL: BAAI/bge-large-zh-v1.5
         run: |
-          uv run pytest backend/tests/ -v -n auto \
+          # -p no:unraisableexception: 禁用 pytest 的 unraisableexception 插件。
+          # 该插件会把 sys.unraisablehook 投递的异常(如 Python 3.13 下 unittest.mock
+          # 内部产生的 "coroutine never awaited" 误报，见 backend/tests/conftest.py 顶部注释)
+          # 强制升级为 pytest.PytestUnraisableExceptionWarning 并当作测试 ERROR，且插件在
+          # 格式化报告时还会触发 tracemalloc_message 的二次导入崩溃(即 CI 日志里
+          # "Exception ignored in sys.unraisablehook ... _pytest/tracemalloc.py" 噪声)。
+          # 此类告警已被 conftest 认定为非业务 bug，恢复 Python 默认(仅打印、不致命)行为即可。
+          uv run pytest backend/tests/ -v -n auto -p no:unraisableexception \
             --timeout=60 --timeout-method=thread \
             --cov=backend --cov-report=term-missing
           uv run coverage combine || true
@@ -133,7 +140,7 @@ jobs:
         run: |
           echo "## Slow Tests Report (Top 20)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          uv run pytest backend/tests/ --durations=20 --tb=no -q -n auto --timeout=60 --timeout-method=thread 2>&1 | tee /tmp/slow_tests.txt
+          uv run pytest backend/tests/ --durations=20 --tb=no -q -n auto -p no:unraisableexception --timeout=60 --timeout-method=thread 2>&1 | tee /tmp/slow_tests.txt
           echo '```' >> $GITHUB_STEP_SUMMARY
           cat /tmp/slow_tests.txt | grep -A 30 "slowest" >> $GITHUB_STEP_SUMMARY || true
           echo '```' >> $GITHUB_STEP_SUMMARY
