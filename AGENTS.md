@@ -10,6 +10,7 @@
 
 - **核心架构拆解 (Clean Architecture)**：在生成任何具体代码前，必须明确其所属的架构层级并遵循以下物理隔离原则：
   1. **表现层 (View/UI)**：前端必须采用数据流与视图解耦的模式。针对实盘高频场景，优先采用响应式流（如 React Hooks, Zustand 或 RxJS 的单向流）处理极高频 WebSocket 数据的防抖与节流。严禁在前端组件内直接编写复杂的财务计算逻辑。
+   - **生产数据完整性红线 (Production Data Integrity Red Line)**：前端**严禁**在 `import.meta.env.PROD` 下注入任何 mock / 假数据（仅限 `DEV` + `VITE_ENABLE_MOCK` 开关，且须带 `DEMO · 假数据` 角标）；初始化态与空页面必须给出可见提示（骨架屏 / 状态文案 / `EmptyState`），禁止静默白屏；外部数据面板必须标注数据源与更新时间。详细硬规则与配套原子组件见 `AI_INSTRUCTIONS.md` §14。
   2. **逻辑层 (Domain/Strategy Logic)**：策略引擎与订单管理系统 (OMS) 需保持高度纯粹，不依赖于特定的底层数据源或经纪商 API。
   3. **数据接口层 (Data Access/Gateway)**：专门负责处理高频行情 WebSocket 流、REST API 请求及数据库读写。
   4. **第三方服务统一收口 (Single Source of Truth)**：对接任何第三方服务（如外部行情、财务数据等）时，必须在 backend 后端服务中集中实现，并封装成内部接口或能力提供给 Hermes 的 Tool 调用。**绝对不允许前端、移动客户端或 Hermes Agent 直接对接外部数据源服务。**
