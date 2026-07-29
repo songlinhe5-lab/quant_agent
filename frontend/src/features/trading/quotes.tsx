@@ -27,6 +27,7 @@ import { MonitorModeLayout } from '@/features/scene/monitor-mode-layout'
 import { AIChat } from '@/features/strategy/layout/ai-chat'
 import { MarketNewsPanel } from './market-news-panel'
 import { WatchNewsOverlay } from './watch-news-overlay'
+import { InitOverlay, EmptyState } from '@/components/ui/data-display'
 
 // PROD-12: 分屏对比子面板——拥有独立行情数据（独立 WebSocket/历史），并与主图共享同一 syncGroup 实现十字线同步
 const COMPARE_PERIODS = [
@@ -177,18 +178,15 @@ export function QuotesModule() {
 // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   
-  // 🚨 容错处理：当 Watchlist 为空时，提供安全的默认兜底值防止 React 崩溃
-  const selected = watchlist.find((w) => w.symbol === selectedSymbol) ?? watchlist[0] ?? {
-    symbol: '暂无自选',
-    price: 0,
-    change: 0,
-    vol: '--',
-    sparkDir: [0, 0, 0, 0, 0]
-  }
   const hasData = watchlist.length > 0
+  // §14.1：watchlist 为空时不再注入内联假对象（避免 PROD 下出现假数据占位），
+  // 回落 undefined，由下方图表区 EmptyState 提示用户添加标的。
+  const selected = hasData ? (watchlist.find((w) => w.symbol === selectedSymbol) ?? watchlist[0]) : undefined
 
-  // 阻止水合期间的渲染，直到客户端获取到真实 Theme 与 LocalStorage 数据
-  if (!mounted) return null
+  // §14.2：初始化态给出可见反馈（骨架屏），禁止静默白屏或卡死
+  if (!mounted) {
+    return <InitOverlay variant="skeleton" label="正在初始化行情终端…" className="h-[calc(100vh-80px)] min-h-[600px]" />
+  }
 
   // PROD-04e: 研究模式专属布局 —— 多面板拖拽（代码/回测/AI）+ 底部 Terminal + ⌘1/2/3 快捷键
   if (isResearchScene) {
@@ -216,7 +214,11 @@ export function QuotesModule() {
         <div className="absolute inset-0 z-0">
           <ChartErrorBoundary name="KlineChart">
             <AnomalyFlash symbol={selectedSymbol} className="h-full">
-              <LightweightChartCanvas selectedSymbol={selectedSymbol} selectedPeriod={selectedPeriod} setSelectedPeriod={setSelectedPeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={false} toggleWatchlist={toggleWatchlist} selectedItem={selected} hasData={hasData} syncGroup="default" />
+              {hasData ? (
+                <LightweightChartCanvas selectedSymbol={selectedSymbol} selectedPeriod={selectedPeriod} setSelectedPeriod={setSelectedPeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={false} toggleWatchlist={toggleWatchlist} selectedItem={selected!} hasData={hasData} syncGroup="default" />
+              ) : (
+                <EmptyState title="暂无自选标的" description="添加关注标的即可开始盯盘，行情订阅建立后将自动加载。" action={<button type="button" onClick={() => addTicker(selectedSymbol)} className="rounded-md border border-border/40 px-3 py-1.5 text-sm text-foreground/80 transition-colors hover:border-border/70 hover:text-foreground">添加 {selectedSymbol}</button>} />
+              )}
               <NarratorBubble symbol={selectedSymbol} />
               <CoPilotPanel symbol={selectedSymbol} />
             </AnomalyFlash>
@@ -285,23 +287,27 @@ export function QuotesModule() {
           </div>
           {/* AI-01: 默认/研究三栏场景也挂载异动解说联动——与 compare/watch 场景一致 */}
           <AnomalyFlash symbol={selectedSymbol}>
-            {compareMode ? (
-              <div className="flex flex-col flex-1 min-h-0 gap-1">
-                <div className="flex-1 min-h-0">
-                  <ChartErrorBoundary name="KlineChart">
-                    <LightweightChartCanvas selectedSymbol={selectedSymbol} selectedPeriod={selectedPeriod} setSelectedPeriod={setSelectedPeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={isWatchlistExpanded} toggleWatchlist={toggleWatchlist} selectedItem={selected} hasData={hasData} syncGroup="default" />
-                  </ChartErrorBoundary>
+            {hasData ? (
+              compareMode ? (
+                <div className="flex flex-col flex-1 min-h-0 gap-1">
+                  <div className="flex-1 min-h-0">
+                    <ChartErrorBoundary name="KlineChart">
+                      <LightweightChartCanvas selectedSymbol={selectedSymbol} selectedPeriod={selectedPeriod} setSelectedPeriod={setSelectedPeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={isWatchlistExpanded} toggleWatchlist={toggleWatchlist} selectedItem={selected!} hasData={hasData} syncGroup="default" />
+                    </ChartErrorBoundary>
+                  </div>
+                  <div className="flex-1 min-h-0 border-t border-border/40">
+                    <ChartErrorBoundary name="KlineChartCompare">
+                      <CompareChartPanel watchlist={watchlist} updateTicker={updateTicker} mainSymbol={selectedSymbol} theme={theme} syncGroup="default" />
+                    </ChartErrorBoundary>
+                  </div>
                 </div>
-                <div className="flex-1 min-h-0 border-t border-border/40">
-                  <ChartErrorBoundary name="KlineChartCompare">
-                    <CompareChartPanel watchlist={watchlist} updateTicker={updateTicker} mainSymbol={selectedSymbol} theme={theme} syncGroup="default" />
-                  </ChartErrorBoundary>
-                </div>
-              </div>
+              ) : (
+                <ChartErrorBoundary name="KlineChart">
+                  <LightweightChartCanvas selectedSymbol={selectedSymbol} selectedPeriod={selectedPeriod} setSelectedPeriod={setSelectedPeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={isWatchlistExpanded} toggleWatchlist={toggleWatchlist} selectedItem={selected!} hasData={hasData} syncGroup="default" />
+                </ChartErrorBoundary>
+              )
             ) : (
-              <ChartErrorBoundary name="KlineChart">
-                <LightweightChartCanvas selectedSymbol={selectedSymbol} selectedPeriod={selectedPeriod} setSelectedPeriod={setSelectedPeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={isWatchlistExpanded} toggleWatchlist={toggleWatchlist} selectedItem={selected} hasData={hasData} syncGroup="default" />
-              </ChartErrorBoundary>
+              <EmptyState title="暂无自选标的" description="添加关注标的即可开始盯盘，行情订阅建立后将自动加载。" action={<button type="button" onClick={() => addTicker(selectedSymbol)} className="rounded-md border border-border/40 px-3 py-1.5 text-sm text-foreground/80 transition-colors hover:border-border/70 hover:text-foreground">添加 {selectedSymbol}</button>} />
             )}
             <NarratorBubble symbol={selectedSymbol} />
           </AnomalyFlash>
