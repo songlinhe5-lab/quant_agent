@@ -148,9 +148,16 @@ class LiveContext(BaseContext):
     # ─── 数据面 ───
 
     def history(self, symbol: str, n: int, ktype: str = "K_DAY") -> pd.DataFrame:
-        """获取历史 K 线（实盘走 KlineCacheEngine，当前桩实现）"""
-        # TODO: 接入 KlineCacheEngine（L1 Redis / L2 Parquet）
-        return pd.DataFrame()
+        """获取历史 K 线（实盘走 KlineCacheEngine，L1 Redis / L2 Parquet）"""
+        from backend.services.datalake.kline_cache import get_kline_cache_engine
+
+        try:
+            engine = get_kline_cache_engine()
+            df = asyncio.run(engine.get_kline(symbol, period=ktype, days=n))
+            return df if df is not None else pd.DataFrame()
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[LiveContext] history({symbol}, n={n}, ktype={ktype}) 拉取失败，返回空 DataFrame: {e}")
+            return pd.DataFrame()
 
     def quote(self, symbol: str) -> QuoteSnapshot:
         """获取最新行情快照"""
