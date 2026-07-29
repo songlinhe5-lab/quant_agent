@@ -7,11 +7,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { BacktestEquityChart, BacktestUnderwaterChart, BacktestReturnsHistogram } from './backtest-charts'
 import { ReproducibilityBadgeView } from '@/features/backtest/reproducibility-badge'
-import { EmptyState } from '@/components/ui/data-display'
+import { EmptyState, InitOverlay } from '@/components/ui/data-display'
 
 interface BacktestResultsProps {
   backtestResult: any
   running: boolean
+  progress: number
   isDebugMode: boolean
   currentTearSheet: { label: string; value: string; dir: number; note: string }[]
   reproBadge: any
@@ -22,11 +23,24 @@ interface BacktestResultsProps {
 }
 
 export function BacktestResults({
-  backtestResult, running, isDebugMode,
+  backtestResult, running, progress, isDebugMode,
   currentTearSheet, reproBadge, metrics,
   curve, underwaterDataComputed, histogramData,
 }: BacktestResultsProps) {
-  // §14.1/§14.2：未运行回测时回落空态提示，禁止展示假净值曲线/假指标或静默空白
+  // §14.1/§14.2：区分「推演进行中」与「从未运行」两种空态。
+  // running 且尚无结果 → 进度骨架屏（引擎已在撮合，不应提示"请运行"）；
+  // 从未运行 → EmptyState 引导，禁止展示假净值曲线/假指标或静默空白。
+  if (running && !backtestResult) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-6">
+        <InitOverlay
+          variant="spinner"
+          label="引擎正在撮合历史 K 线与订单…"
+          progress={progress}
+        />
+      </div>
+    )
+  }
   if (!backtestResult) {
     return (
       <div className="flex flex-1 items-center justify-center p-6">
