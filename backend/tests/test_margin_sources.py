@@ -238,9 +238,7 @@ async def test_orchestrator_cache_hit(monkeypatch):
     }
     fake_rc = AsyncMock()
     fake_rc.get = AsyncMock(return_value=json.dumps(cached))
-    monkeypatch.setattr(
-        "backend.services.margin.sources.base.redis_client", fake_rc
-    )
+    monkeypatch.setattr("backend.services.margin.sources.base.redis_client", fake_rc)
     result = await get_market_margin_indicators("US", date(2026, 7, 27))
     assert result["short_sale_volume"] == pytest.approx(999.0)
     fake_rc.get.assert_awaited()

@@ -89,16 +89,20 @@ def test_health_check_unhealthy_when_not_connected():
 # ─── quote ───────────────────────────────────────────────────────
 def test_fetch_quote_success_parses_real_df():
     ctx = _make_fake_ctx()
-    df = pd.DataFrame([{
-        "code": "HK.00700",
-        "last_price": 512.5,
-        "open_price": 505.0,
-        "high_price": 520.0,
-        "low_price": 500.0,
-        "prev_close_price": 500.0,
-        "volume": 12345678,
-        "turnover": 6.3e9,
-    }])
+    df = pd.DataFrame(
+        [
+            {
+                "code": "HK.00700",
+                "last_price": 512.5,
+                "open_price": 505.0,
+                "high_price": 520.0,
+                "low_price": 500.0,
+                "prev_close_price": 500.0,
+                "volume": 12345678,
+                "turnover": 6.3e9,
+            }
+        ]
+    )
     ctx.get_stock_quote.return_value = (RET_OK, df)
     a = _connected_adapter(ctx)
 
@@ -131,14 +135,30 @@ def test_fetch_quote_missing_ticker():
 # ─── history ────────────────────────────────────────────────────
 def test_fetch_history_success_and_interval_mapping():
     ctx = _make_fake_ctx()
-    df = pd.DataFrame([
-        {"code": "HK.00700", "time_key": "2026-07-27 00:00:00",
-         "open": 500.0, "high": 520.0, "low": 499.0, "close": 512.5,
-         "volume": 1000, "turnover": 5.0e8},
-        {"code": "HK.00700", "time_key": "2026-07-28 00:00:00",
-         "open": 512.5, "high": 530.0, "low": 510.0, "close": 525.0,
-         "volume": 1100, "turnover": 5.5e8},
-    ])
+    df = pd.DataFrame(
+        [
+            {
+                "code": "HK.00700",
+                "time_key": "2026-07-27 00:00:00",
+                "open": 500.0,
+                "high": 520.0,
+                "low": 499.0,
+                "close": 512.5,
+                "volume": 1000,
+                "turnover": 5.0e8,
+            },
+            {
+                "code": "HK.00700",
+                "time_key": "2026-07-28 00:00:00",
+                "open": 512.5,
+                "high": 530.0,
+                "low": 510.0,
+                "close": 525.0,
+                "volume": 1100,
+                "turnover": 5.5e8,
+            },
+        ]
+    )
     ctx.get_cur_kline.return_value = (RET_OK, df)
     a = _connected_adapter(ctx)
 
@@ -164,12 +184,28 @@ def test_fetch_history_degraded_without_connection():
 # ─── fund_flow ───────────────────────────────────────────────────
 def test_fetch_fund_flow_success_aggregates_main_in_flow():
     ctx = _make_fake_ctx()
-    df = pd.DataFrame([
-        {"last_valid_time": "2026-07-27 10:00", "in_flow": 1.0, "super_in_flow": 0.2,
-         "big_in_flow": 0.3, "mid_in_flow": 0.2, "sml_in_flow": 0.3, "main_in_flow": 0.5},
-        {"last_valid_time": "2026-07-27 10:01", "in_flow": 2.0, "super_in_flow": 0.4,
-         "big_in_flow": 0.6, "mid_in_flow": 0.4, "sml_in_flow": 0.6, "main_in_flow": 1.0},
-    ])
+    df = pd.DataFrame(
+        [
+            {
+                "last_valid_time": "2026-07-27 10:00",
+                "in_flow": 1.0,
+                "super_in_flow": 0.2,
+                "big_in_flow": 0.3,
+                "mid_in_flow": 0.2,
+                "sml_in_flow": 0.3,
+                "main_in_flow": 0.5,
+            },
+            {
+                "last_valid_time": "2026-07-27 10:01",
+                "in_flow": 2.0,
+                "super_in_flow": 0.4,
+                "big_in_flow": 0.6,
+                "mid_in_flow": 0.4,
+                "sml_in_flow": 0.6,
+                "main_in_flow": 1.0,
+            },
+        ]
+    )
     ctx.get_capital_flow.return_value = (RET_OK, df)
     a = _connected_adapter(ctx)
 
@@ -194,12 +230,28 @@ def test_fetch_fund_flow_degraded_without_connection():
 def test_fetch_option_chain_real():
     ctx = _make_fake_ctx()
     date_df = pd.DataFrame([{"strike_time": "2026-12-20 00:00:00"}])
-    chain_df = pd.DataFrame([
-        {"strike_price": 500.0, "option_type": "CALL", "implied_volatility": 0.25,
-         "option_code": "HK.00700C500", "last_price": 12.0, "volume": 100, "open_interest": 2000},
-        {"strike_price": 520.0, "option_type": "PUT", "implied_volatility": 0.30,
-         "option_code": "HK.00700P520", "last_price": 8.0, "volume": 50, "open_interest": 1500},
-    ])
+    chain_df = pd.DataFrame(
+        [
+            {
+                "strike_price": 500.0,
+                "option_type": "CALL",
+                "implied_volatility": 0.25,
+                "option_code": "HK.00700C500",
+                "last_price": 12.0,
+                "volume": 100,
+                "open_interest": 2000,
+            },
+            {
+                "strike_price": 520.0,
+                "option_type": "PUT",
+                "implied_volatility": 0.30,
+                "option_code": "HK.00700P520",
+                "last_price": 8.0,
+                "volume": 50,
+                "open_interest": 1500,
+            },
+        ]
+    )
     ctx.get_option_expiration_date.return_value = (RET_OK, date_df)
     ctx.get_option_chain.return_value = (RET_OK, chain_df)
     a = _connected_adapter(ctx)
@@ -237,6 +289,7 @@ def test_subscribe_success_and_push_routing():
     ctx.subscribe.assert_called_once()
     # 回调应已注册；模拟一次推送分发，回调应被调用
     import pandas as pd
+
     push_df = pd.DataFrame([{"code": "HK.00700", "last_price": 512.0}])
     a._router.dispatch("QUOTE", push_df)
     assert len(received) == 1
@@ -283,9 +336,24 @@ def test_rate_limit_triggers_backoff(monkeypatch):
 def test_fetch_rate_limited_then_degraded():
     ctx = _make_fake_ctx()
     import pandas as pd
-    ctx.get_stock_quote.return_value = (RET_OK, pd.DataFrame([{"code": "HK.00700",
-        "last_price": 1.0, "open_price": 1.0, "high_price": 1.0, "low_price": 1.0,
-        "prev_close_price": 1.0, "volume": 1, "turnover": 1.0}]))
+
+    ctx.get_stock_quote.return_value = (
+        RET_OK,
+        pd.DataFrame(
+            [
+                {
+                    "code": "HK.00700",
+                    "last_price": 1.0,
+                    "open_price": 1.0,
+                    "high_price": 1.0,
+                    "low_price": 1.0,
+                    "prev_close_price": 1.0,
+                    "volume": 1,
+                    "turnover": 1.0,
+                }
+            ]
+        ),
+    )
     a = _adapter(ctx)
     # 连续请求触发限流（默认每分钟 60 次）
     for _ in range(61):
