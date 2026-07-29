@@ -127,7 +127,8 @@ def test_fetch_quote_degraded_without_connection():
 
 
 def test_fetch_quote_missing_ticker():
-    a = _adapter(_make_fake_ctx())
+    # 必须在已连接状态下校验，missing ticker 属请求参数错误(error)而非数据源降级(degraded)
+    a = _connected_adapter(_make_fake_ctx())
     res = a.fetch("quote", {})
     assert res.status == "error"
 
@@ -297,9 +298,11 @@ def test_subscribe_success_and_push_routing():
     assert received[0]["sub_type"] == "QUOTE"
 
 
-def test_subscribe_requires_connection():
+def test_subscribe_requires_connection(monkeypatch):
     a = FutuAdapter(ctx=None)
     a._connected = False
+    # 强制 _connect 失败（零幻觉：未连接时订阅必须抛 RuntimeError，不伪造订阅）
+    monkeypatch.setattr(a, "_connect", lambda: False)
     with pytest.raises(RuntimeError):
         a.subscribe("subscribe_quote", {"tickers": ["HK.00700"]}, callback=lambda m: None)
 
