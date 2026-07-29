@@ -1,6 +1,12 @@
 // ── 统一的本地数据桩 (Mock Service) ──────────────────────────────
 // 集中管理全局零散的 Mock 数据，方便后续根据环境变量统一切换真实 API
 
+// §14.1 生产环境零 Mock 数据：mock 仅限 DEV + 显式开关 VITE_ENABLE_MOCK，
+// PROD 构建下 import.meta.env.DEV 为 false，MOCK_ENABLED 恒为 false。
+// 所有 MOCK_* 值的使用方都必须用此开关门控（CI 会扫描未门控的引用）。
+export const MOCK_ENABLED =
+  import.meta.env.DEV && import.meta.env.VITE_ENABLE_MOCK === 'true'
+
 // 1. 顶部 Header 跑马灯行情
 export const MOCK_HEADER_TICKERS = [
   { symbol: 'BTC/USD', price: 67542.3,  change: 2.14,  dir: 1 },

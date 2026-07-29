@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { TrendingUp, TrendingDown, Minus, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { MOCK_ASSET_TRENDS, type AssetTrendItem } from '@/services/mock'
+import { MOCK_ASSET_TRENDS, MOCK_ENABLED, type AssetTrendItem } from '@/services/mock'
+import { DataSourceBadge, EmptyState } from '@/components/ui/data-display'
 
 // ── 单张资产卡片 ────────────────────────────────────────────────────────────
 function AssetCard({ item }: { item: AssetTrendItem }) {
@@ -137,19 +138,20 @@ function AssetCard({ item }: { item: AssetTrendItem }) {
         </div>
       )}
 
-      {/* 💡 数据来源与更新时间 */}
+      {/* 💡 数据来源与更新时间 (§14.3)：统一使用 DataSourceBadge */}
       <div className="mt-1.5 pt-1.5 border-t border-border/10">
-        <div className="flex items-center justify-between text-[9px] text-muted-foreground/60">
-          <span className="flex items-center gap-0.5">
-            <span className="inline-block w-1 h-1 rounded-full bg-emerald-400/60"></span>
-            {item.data_source || 'YFinance'}
-          </span>
-          <span className="font-mono tabular-nums">
-            {item.updated_at
-              ? new Date(item.updated_at).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
-              : '--'}
-          </span>
-        </div>
+        <DataSourceBadge
+          source={MOCK_ENABLED ? '模拟数据 (DEMO)' : item.data_source || 'YFinance'}
+          updatedAt={
+            item.updated_at
+              ? new Date(item.updated_at).toLocaleDateString('zh-CN', {
+                  month: '2-digit',
+                  day: '2-digit',
+                })
+              : null
+          }
+          stale={MOCK_ENABLED}
+        />
       </div>
 
       {/* 悬浮行情解读遮罩 (Hover Tooltip Overlay) */}
@@ -232,7 +234,15 @@ function MiniSpark({
 
 // ── 大类资产走势卡片容器 ─────────────────────────────────────────────────────
 export function AssetTrendCards({ initialData }: { initialData?: AssetTrendItem[] }) {
-  const [items, setItems] = useState<AssetTrendItem[]>(initialData || MOCK_ASSET_TRENDS)
+  // §14.1：PROD 下 MOCK_ENABLED 为 false，无 initialData 时回落空列表（触发 EmptyState），
+  // 不注入任何 MOCK_ASSET_TRENDS 假数据。
+  const [items, setItems] = useState<AssetTrendItem[]>(
+    initialData && initialData.length > 0
+      ? initialData
+      : MOCK_ENABLED
+        ? MOCK_ASSET_TRENDS
+        : [],
+  )
 
   // 1. 监听外部父组件传入的数据（例如 REST API 定时全量刷新）
   useEffect(() => {
@@ -266,6 +276,25 @@ export function AssetTrendCards({ initialData }: { initialData?: AssetTrendItem[
     window.addEventListener('market_tick', handleTick)
     return () => window.removeEventListener('market_tick', handleTick)
   }, [])
+
+  // §14.2：空页面态必须给提示（EmptyState：原因 + 引导操作），禁止空白卡片伪装已加载
+  if (items.length === 0) {
+    return (
+      <EmptyState
+        title="暂无大类资产走势"
+        description="行情连接中或暂无订阅标的，请稍候或添加关注标的。"
+        action={
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="rounded-md border border-border/40 px-3 py-1.5 text-sm text-foreground/80 transition-colors hover:border-border/70 hover:text-foreground"
+          >
+            重新连接行情
+          </button>
+        }
+      />
+    )
+  }
 
   return (
     <div className="w-full overflow-x-auto scrollbar-thin">
