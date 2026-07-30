@@ -66,9 +66,6 @@ async def get_vote_board(current_user: models.User = Depends(get_current_user)) 
     """
     today = date.today().isoformat()
     connected = datasource_registry.list_names()
-    # registry 动态源 + 已功能性接入但独立于 registry 的源（如 FRED macro 服务）
-    connected_entries = [{"name": n, "votes": count_map.get(n, 0)} for n in connected]
-    connected_entries += [{**d, "votes": count_map.get(d["name"], 0)} for d in _CONNECTED_SOURCES]
     names = list(connected) + [d["name"] for d in _CONNECTED_SOURCES + _DEVELOPING_SOURCES + _VOTING_SOURCES]
 
     count_map: Dict[str, int] = {}
@@ -80,6 +77,10 @@ async def get_vote_board(current_user: models.User = Depends(get_current_user)) 
         count_map = {n: int(c or 0) for n, c in zip(names, counts)}
     except Exception:
         count_map = {n: 0 for n in names}
+
+    # registry 动态源 + 已功能性接入但独立于 registry 的源（如 FRED macro 服务）
+    connected_entries = [{"name": n, "votes": count_map.get(n, 0)} for n in connected]
+    connected_entries += [{**d, "votes": count_map.get(d["name"], 0)} for d in _CONNECTED_SOURCES]
 
     my_votes = set()
     try:
