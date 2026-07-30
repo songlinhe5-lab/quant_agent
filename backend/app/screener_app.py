@@ -173,6 +173,22 @@ class ScreenerSubscriptionTimeUpdateRequest(BaseModel):
     trigger_time: str
 
 
+# ── SCREEN-01: 选股条件保存 / 分享 ──────────────────────────────────────────
+class SavedScreenRequest(BaseModel):
+    id: Optional[int] = None
+    name: str = Field(..., max_length=255)
+    description: Optional[str] = Field(default=None, max_length=1000)
+    nlp_query: str = ""
+    dsl: str = "{}"
+    sort_key: Optional[str] = None
+    sort_dir: Optional[int] = None
+
+
+class SavedScreenRenameRequest(BaseModel):
+    name: str = Field(..., max_length=255)
+    description: Optional[str] = Field(default=None, max_length=1000)
+
+
 class ScreenerTranslateRequest(BaseModel):
     query: str
 
@@ -612,6 +628,108 @@ async def toggle_subscription(db, sub):
         "message": f"订阅任务已{'恢复' if sub.is_active else '暂停'}推送",
         "is_active": sub.is_active,
     }  # noqa: E501
+
+
+# ── SCREEN-01: 选股条件保存 / 分享 ──────────────────────────────────────────
+def _serialize_saved_screen(s: "models.SavedScreen") -> dict:
+    return {
+        "id": s.id,
+        "name": s.name,
+        "description": s.description,
+        "nlp_query": s.nlp_query,
+        "dsl": s.dsl,
+        "sort_key": s.sort_key,
+        "sort_dir": s.sort_dir,
+        "created_at": s.created_at.isoformat() if s.created_at else "",
+        "updated_at": s.updated_at.isoformat() if s.updated_at else "",
+    }
+
+
+async def save_screen(req, db, current_user):
+    """保存 / 更新一条选股条件。传入 id 且归属当前用户则更新，否则新建。"""
+    if req.id:
+        screen = (
+            db.query(models.SavedScreen)
+            .filter(models.SavedScreen.id == req.id, models.SavedScreen.user_id == current_user.id)
+            .first()
+        )
+        if not screen:
+            raise AppError(status_code=404, detail="该筛选条件不存在或无权修改")
+        screen.name = req.name
+        screen.description = req.description
+        screen.nlp_query = req.nlp_query
+        screen.dsl = req.dsl
+        screen.sort_key = req.sort_key
+        screen.sort_dir = req.sort_dir
+        db.commit()
+        db.refresh(screen)
+        return {"status": "success", "message": f"已更新筛选条件：{req.name}", "data": _serialize_saved_screen(screen)}  # noqa: E501
+
+    screen = models.SavedScreen(
+        user_id=current_user.id,
+        name=req.name,
+        description=req.description,
+        nlp_query=req.nlp_query,
+        dsl=req.dsl,
+        sort_key=req.sort_key,
+        sort_dir=req.sort_dir,
+    )
+    db.add(screen)
+    db.commit()
+    db.refresh(screen)
+    return {"status": "success", "message": f"已保存筛选条件：{req.name}", "data": _serialize_saved_screen(screen)}  # noqa: E501
+
+
+async def list_screens(db, current_user):
+    """列出当前用户保存的所有选股条件 (按最近更新时间倒序)"""
+    screens = (
+        db.query(models.SavedScreen)
+        .filter(models.SavedScreen.user_id == current_user.id)
+        .order_by(models.SavedScreen.updated_at.desc())
+        .all()
+    )
+    return {"status": "success", "data": [_serialize_saved_screen(s) for s in screens]}
+
+
+async def get_screen(db, current_user, screen_id):
+    """获取单条选股条件 (归属校验)"""
+    screen = (
+        db.query(models.SavedScreen)
+        .filter(models.SavedScreen.id == screen_id, models.SavedScreen.user_id == current_user.id)
+        .first()
+    )
+    if not screen:
+        raise AppError(status_code=404, detail="该筛选条件不存在或无权访问")
+    return {"status": "success", "data": _serialize_saved_screen(screen)}
+
+
+async def rename_screen(req, db, current_user, screen_id):
+    """重命名 / 更新某条选股条件的名称与描述"""
+    screen = (
+        db.query(models.SavedScreen)
+        .filter(models.SavedScreen.id == screen_id, models.SavedScreen.user_id == current_user.id)
+        .first()
+    )
+    if not screen:
+        raise AppError(status_code=404, detail="该筛选条件不存在或无权修改")
+    screen.name = req.name
+    screen.description = req.description
+    db.commit()
+    return {"status": "success", "message": f"已重命名为：{req.name}"}
+
+
+async def delete_screen(db, current_user, screen_id):
+    """删除某条选股条件 (归属校验)"""
+    screen = (
+        db.query(models.SavedScreen)
+        .filter(models.SavedScreen.id == screen_id, models.SavedScreen.user_id == current_user.id)
+        .first()
+    )
+    if not screen:
+        raise AppError(status_code=404, detail="该筛选条件不存在或无权删除")
+    db.delete(screen)
+    db.commit()
+    return {"status": "success", "message": "筛选条件已删除"}
 
 
 class SummarizePayload(BaseModel):
