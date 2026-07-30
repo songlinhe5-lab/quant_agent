@@ -103,10 +103,16 @@ class MacroCalendarAggregator:
             return None
 
     async def _fetch_em(self, days_ahead: int, days_back: int, skip_cache: bool) -> Dict[str, Any]:
-        """按 EM_SOURCE_PRIORITY 串联 DBnomics -> RBI (免费, 无 Key 优雅跳过)。"""
+        """按 EM_SOURCE_PRIORITY 串联 DBnomics -> RBI (免费, 无 Key 优雅跳过)。
+
+        ⚠️ RBI(WorldBank) 为年度 CPI 序列, 无真实发布日。原代码将其定死为每年 12-31
+        当作独立日历事件展示会伪造日期。此处改为: RBI 仅用于回填已有 India CPI 事件的
+        actual/previous, 不再作为独立事件进入日历 (见 _backfill_india_cpi)。
+        """
         priority = [p.strip().lower() for p in settings.em_source_priority.split(",") if p.strip()]
         out_events: List[Dict[str, Any]] = []
         out_sources: List[str] = []
+        rbi_events: List[Dict[str, Any]] = []
         for src in priority:
             if src == "dbnomics":
                 res = await self._safe(
@@ -121,13 +127,33 @@ class MacroCalendarAggregator:
                         days_ahead, days_back=days_back, skip_cache=skip_cache
                     )
                 )
-                events = self._extract(res, "rbi")
+                # RBI 为年度序列, 无发布日, 仅作回填源, 不进独立日历
+                rbi_events = self._extract(res, "rbi") or []
+                if rbi_events:
+                    out_sources.append("rbi")
+                continue
             else:
                 continue
             if events:
                 out_events.extend(events)
                 out_sources.append(src)
+        # 用 RBI 年度值补全 India CPI 的 actual/previous (仅当主源未提供时)
+        self._backfill_india_cpi(out_events, rbi_events)
         return {"data": out_events, "sources": out_sources}
+
+    def _backfill_india_cpi(self, events: List[Dict[str, Any]], rbi_events: List[Dict[str, Any]]) -> None:
+        """RBI(WorldBank) 为年度序列, 无真实发布日, 仅用作 India CPI 的 actual/previous 回填,
+        绝不作为独立日历事件 (避免伪造 12-31 日期)。仅当现有 India CPI 事件缺 actual 时补全。"""
+        if not rbi_events:
+            return
+        rbi = rbi_events[0]
+        for ev in events:
+            if ev.get("country", "").strip().lower() == "india" and "cpi" in ev.get("event", "").lower():
+                if not ev.get("actual"):
+                    ev["actual"] = rbi.get("actual", "")
+                if not ev.get("previous"):
+                    ev["previous"] = rbi.get("previous", "")
+                break
 
     def _extract(self, res: Any, tag: str) -> List[Dict[str, Any]]:
         if not isinstance(res, dict):
