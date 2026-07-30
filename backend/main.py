@@ -87,6 +87,7 @@ from backend.routers.client import router as client_router  # noqa: E402
 from backend.routers.data_source import router as data_source_router  # noqa: E402
 from backend.routers.datalake import router as datalake_router  # noqa: E402
 from backend.routers.datasource import router as datasource_rl_router  # noqa: E402
+from backend.routers.datasource_vote import router as datasource_vote_router  # noqa: E402  # COMM-02
 from backend.routers.earnings_router import router as earnings_router  # noqa: E402
 from backend.routers.eval import router as eval_router  # noqa: E402
 from backend.routers.expert_team import router as expert_team_router  # noqa: E402
@@ -197,6 +198,7 @@ def create_app() -> FastAPI:
     application.include_router(internal_router, prefix=API_PREFIX)
     application.include_router(data_source_router, prefix=API_PREFIX)
     application.include_router(datasource_rl_router, prefix=API_PREFIX)
+    application.include_router(datasource_vote_router, prefix=API_PREFIX)  # COMM-02
     application.include_router(expert_team_router, prefix=API_PREFIX)
 
     # 静态资源 (前端编译产物)
