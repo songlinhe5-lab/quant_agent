@@ -172,6 +172,11 @@ class RateLimitAnalyzer:
         # 请求事件时间序列（按时间顺序，deque 自动淘汰旧事件）
         self._events: deque[_RequestEvent] = deque(maxlen=max_events)
 
+        # COMM-01 健康看板所需的实时时间戳/延迟埋点
+        self._last_request_ts: float = 0.0
+        self._last_success_ts: float = 0.0
+        self._last_latency_ms: float = 0.0
+
     @property
     def source_name(self) -> str:
         return self._source_name
@@ -180,25 +185,41 @@ class RateLimitAnalyzer:
     #  事件记录 API
     # ─────────────────────────────────────
 
-    def record_request(self, is_rate_limit: bool = False, is_error: bool = False) -> None:
+    def record_request(
+        self,
+        is_rate_limit: bool = False,
+        is_error: bool = False,
+        latency_ms: float = 0.0,
+    ) -> None:
         """
         记录一次请求事件。
 
         Args:
             is_rate_limit: 是否为限流事件
             is_error:      是否为普通错误（不计入限流分析，但记录用于统计）
+            latency_ms:    本次请求延迟（毫秒），用于健康看板展示
         """
+        now = time.time()
+        if latency_ms and latency_ms > 0:
+            self._last_latency_ms = latency_ms
+        self._last_request_ts = now
+        if not is_rate_limit and not is_error:
+            self._last_success_ts = now
         event = _RequestEvent(
-            timestamp=time.time(),
+            timestamp=now,
             is_rate_limit=is_rate_limit,
             is_error=is_error,
         )
         with self._lock:
             self._events.append(event)
 
-    def record_success(self) -> None:
-        """记录一次成功请求"""
-        self.record_request(is_rate_limit=False, is_error=False)
+    def record_success(self, latency_ms: float = 0.0) -> None:
+        """记录一次成功请求（COMM-01 健康统计用）"""
+        self.record_request(is_rate_limit=False, is_error=False, latency_ms=latency_ms)
+
+    def record_error(self, latency_ms: float = 0.0) -> None:
+        """记录一次非限流错误（COMM-01 健康统计用）"""
+        self.record_request(is_rate_limit=False, is_error=True, latency_ms=latency_ms)
 
     def record_rate_limit(self) -> None:
         """记录一次限流事件"""
@@ -421,6 +442,47 @@ class RateLimitAnalyzer:
             else:
                 result.append(f"{s:02d}:00-{(e + 1) % 24:02d}:00")
         return result
+
+    # ─────────────────────────────────────
+    #  COMM-01 健康看板指标
+    # ─────────────────────────────────────
+
+    def get_health_metrics(self) -> dict[str, Any]:
+        """
+        返回健康度看板所需的实时指标（COMM-01）。
+
+        统计「今日」(本地日期) 的调用量/成功/限流/错误，并计算成功率；
+        同时返回最近请求/成功时间戳与最近延迟，用于 STALE 判定与延迟展示。
+        """
+        now = time.localtime()
+        today_yday, today_year = now.tm_yday, now.tm_year
+        with self._lock:
+            events = list(self._events)
+            last_request_ts = self._last_request_ts
+            last_success_ts = self._last_success_ts
+            last_latency_ms = self._last_latency_ms
+        req = succ = rl = err = 0
+        for e in events:
+            lt = time.localtime(e.timestamp)
+            if lt.tm_year == today_year and lt.tm_yday == today_yday:
+                req += 1
+                if e.is_rate_limit:
+                    rl += 1
+                elif e.is_error:
+                    err += 1
+                else:
+                    succ += 1
+        success_rate = round(succ / req, 4) if req else None
+        return {
+            "today_requests": req,
+            "today_success": succ,
+            "today_rate_limits": rl,
+            "today_errors": err,
+            "success_rate": success_rate,
+            "last_request_ts": last_request_ts or None,
+            "last_success_ts": last_success_ts or None,
+            "last_latency_ms": round(last_latency_ms, 2) if last_latency_ms else None,
+        }
 
     @staticmethod
     def _calculate_avg_recovery(

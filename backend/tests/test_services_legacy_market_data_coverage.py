@@ -172,7 +172,11 @@ async def test_get_option_chain_hk_warrant_fallback():
 @pytest.mark.asyncio
 async def test_option_chain_matrix_not_connected():
     gw = _make_gateway()
-    gw._futu.conn_mgr = None
+    # Futu 未连接且无任何真实数据源可用 -> 应返回 error。
+    # 直接 mock _get_option_expiration_dates 返回空, 避免 fork+xdist 子进程里
+    # _get_option_expiration_dates 真实 import yfinance 触发 segfault 把 worker 跑崩
+    # (见 _make_gateway 注释; _option_chain_yfinance 已被 mock, 但该方法内部仍会真 import)。
+    gw._get_option_expiration_dates = AsyncMock(return_value=([], "none"))
     out = await gw.get_option_chain_matrix("US.AAPL")
     assert out["status"] == "error"
 

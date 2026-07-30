@@ -158,6 +158,12 @@ class DataSourceRegistry:
             analyzer.record_rate_limit()
         elif result.is_success:
             throttler.on_success()
+            analyzer = rate_limit_registry.get_analyzer(source_name)
+            analyzer.record_success(latency_ms=result.latency_ms)
+        else:
+            # 非限流错误: 计入健康统计但不触达退避恢复 (COMM-01)
+            analyzer = rate_limit_registry.get_analyzer(source_name)
+            analyzer.record_error(latency_ms=result.latency_ms)
 
         return result
 

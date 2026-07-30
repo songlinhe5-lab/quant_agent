@@ -157,6 +157,31 @@ class ScreenerSubscription(Base):
     owner: Mapped["User"] = relationship()
 
 
+class SavedScreen(Base):
+    """选股条件保存与分享表 (SCREEN-01)。
+
+    保存用户在选股器中配置好的筛选条件（自然语言 + DSL + 排序），
+    支持后续加载 / 重命名 / 删除，并通过编码进 URL query 参数实现分享。
+    """
+
+    __tablename__ = "saved_screens"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    nlp_query: Mapped[str] = mapped_column(String, default="")
+    dsl: Mapped[str] = mapped_column(String, default="{}")
+    sort_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    sort_dir: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())  # noqa: E501
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )  # noqa: E501
+
+    owner: Mapped["User"] = relationship()
+
+
 class WebpageKnowledgeBase(Base):
     __tablename__ = "webpage_knowledge_base"
 

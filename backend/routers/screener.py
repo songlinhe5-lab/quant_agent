@@ -17,6 +17,8 @@ from backend.app.screener_app import (  # noqa: F401
     DictionaryDeleteItem,
     DictionaryItem,
     PortfolioBacktestRequest,
+    SavedScreenRenameRequest,
+    SavedScreenRequest,
     ScreenerHistoryItem,
     ScreenerHistoryRequest,
     ScreenerRequest,
@@ -33,15 +35,20 @@ from backend.app.screener_app import (  # noqa: F401
     cross_sectional_screen,
     delete_cep_rule,
     delete_dictionary_item,
+    delete_screen,
     delete_subscription,
     get_dictionary,
+    get_screen,
     get_screener_history,
     get_screener_suggestions,
     get_subscriptions,
     list_cep_rules,
+    list_screens,
     portfolio_backtest,
     reload_indicators,
+    rename_screen,
     run_screener,
+    save_screen,
     save_screener_history,
     subscribe_screener,
     summarize_screener_results,
@@ -211,3 +218,53 @@ async def api_delete_cep_rule(rule_id: str):
 @router.get("/cep/matches/sse")
 async def api_cep_matches_sse(since: float = 0.0):
     return await cep_matches_sse(since)
+
+
+# ---------------------------------------------------------------------------
+# SCREEN-01: 选股条件保存 / 分享
+# ---------------------------------------------------------------------------
+
+
+@router.post("/screens")
+async def api_save_screen(
+    req: SavedScreenRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return await save_screen(req, db, current_user)
+
+
+@router.get("/screens")
+async def api_list_screens(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return await list_screens(db, current_user)
+
+
+@router.get("/screens/{screen_id}")
+async def api_get_screen(
+    screen_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return await get_screen(db, current_user, screen_id)
+
+
+@router.put("/screens/{screen_id}")
+async def api_rename_screen(
+    req: SavedScreenRenameRequest,
+    screen_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return await rename_screen(req, db, current_user, screen_id)
+
+
+@router.delete("/screens/{screen_id}")
+async def api_delete_screen(
+    screen_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return await delete_screen(db, current_user, screen_id)

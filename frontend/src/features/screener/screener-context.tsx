@@ -262,6 +262,116 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // ── SCREEN-01: 选股条件保存 / 分享 ─────────────────────────────────────
+  const [savedScreens, setSavedScreens] = useState<any[]>([])
+
+  // 将筛选条件编码进 URL 查询参数 (UTF-8 安全的 base64，兼容中文)
+  const encodeScreenerState = useCallback((payload: { nlp?: string; dsl?: string; sortKey?: string; sortDir?: number }) => {
+    const json = JSON.stringify(payload)
+    const bytes = new TextEncoder().encode(json)
+    let bin = ''
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+    return btoa(bin)
+  }, [])
+
+  const decodeScreenerState = useCallback((b64: string) => {
+    const bin = atob(b64)
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    return JSON.parse(new TextDecoder().decode(bytes))
+  }, [])
+
+  const loadSavedScreens = useCallback(async () => {
+    try {
+      const res = await apiClient.get('/screener/screens')
+      if (res.data?.status === 'success') setSavedScreens(res.data.data || [])
+    } catch (_e) { /* 未登录或网络异常时静默 */ }
+  }, [])
+
+  const saveCurrentScreen = useCallback(async (payload: { id?: number; name: string; description?: string }) => {
+    if (!dslQuery) {
+      toast({ variant: 'destructive', title: '暂无可保存条件', description: '请先运行一次选股生成 DSL 条件。' })
+      return { status: 'error' }
+    }
+    try {
+      const res = await apiClient.post('/screener/screens', {
+        id: payload.id, name: payload.name, description: payload.description,
+        nlp_query: nlpQuery, dsl: dslQuery, sort_key: sortKey, sort_dir: sortDir,
+      })
+      if (res.data?.status === 'success') {
+        toast({ title: '已保存', description: res.data.message })
+        await loadSavedScreens()
+        return { status: 'success', data: res.data.data }
+      }
+      toast({ variant: 'destructive', title: '保存失败', description: res.data?.message })
+      return { status: 'error' }
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: '保存异常', description: e.message || '无法连接到后端服务' })
+      return { status: 'error' }
+    }
+  }, [dslQuery, nlpQuery, sortKey, sortDir, loadSavedScreens, toast])
+
+  const deleteSavedScreen = useCallback(async (id: number) => {
+    try {
+      const res = await apiClient.delete(`/screener/screens/${id}`)
+      if (res.data?.status === 'success') {
+        setSavedScreens(prev => prev.filter(s => s.id !== id))
+        toast({ title: '已删除', description: res.data.message })
+      }
+    } catch (_e) { /* ignore */ }
+  }, [toast])
+
+  const renameSavedScreen = useCallback(async (id: number, name: string, description?: string) => {
+    try {
+      const res = await apiClient.put(`/screener/screens/${id}`, { name, description })
+      if (res.data?.status === 'success') {
+        setSavedScreens(prev => prev.map(s => s.id === id ? { ...s, name, description } : s))
+        toast({ title: '已重命名', description: res.data.message })
+      }
+    } catch (_e) { /* ignore */ }
+  }, [toast])
+
+  const applySavedScreen = useCallback(async (screen: any) => {
+    const nlp = screen?.nlp_query || ''
+    const dsl = screen?.dsl || '{}'
+    if (nlp) {
+      await handleTranslate(nlp)
+    } else {
+      setDslQuery(dsl); setShowRawDsl(true)
+      fetchPageData(dsl, 1, pageSize, screen?.sort_key || sortKey, screen?.sort_dir ?? sortDir, columnFilters)
+    }
+  }, [handleTranslate, fetchPageData, pageSize, sortKey, sortDir, columnFilters, setDslQuery, setShowRawDsl])
+
+  const shareCurrentScreen = useCallback(() => {
+    if (!dslQuery) {
+      toast({ variant: 'destructive', title: '暂无可分享条件', description: '请先运行一次选股生成 DSL 条件。' })
+      return null
+    }
+    const code = encodeScreenerState({ nlp: nlpQuery, dsl: dslQuery, sortKey, sortDir })
+    const url = `${window.location.origin}${window.location.pathname}?s=${encodeURIComponent(code)}`
+    return url
+  }, [dslQuery, nlpQuery, sortKey, sortDir, encodeScreenerState, toast])
+
+  // 挂载时解析分享链接 (?s=) 自动填充筛选条件
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('s')
+    if (!code) return
+    try {
+      const payload = decodeScreenerState(code)
+      const apply = async () => {
+        if (payload.nlp) await handleTranslate(payload.nlp)
+        else if (payload.dsl) {
+          setDslQuery(payload.dsl); setShowRawDsl(true)
+          fetchPageData(payload.dsl, 1, pageSize, payload.sortKey || sortKey, payload.sortDir ?? sortDir, columnFilters)
+        }
+      }
+      apply()
+      window.history.replaceState({}, '', window.location.pathname) // 清理分享参数，避免刷新重复触发
+    } catch (_e) { /* 非法分享码忽略 */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // ── Effects ──
   useEffect(() => { refreshPrompts() }, [])
 
@@ -331,7 +441,8 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
     showRawDsl, setShowRawDsl, showRagDict, setShowRagDict, previewData, setPreviewData, columnFilters, setColumnFilters,
     dynamicCols, paginatedData, realDataLength, totalPages, isAllCurrentPageSelected, pageSymbols,
     handleApplyFilter, handleClearFilter, refreshPrompts, fetchPageData, handleSort, toggleAll, toggleOne, handleExportCSV,
-    handleAddSingle, handleAddBatch, handleAddAndOpen, handleSendToCopilot, handleSendToBacktest, handleSubscribe, handleTranslate
+    handleAddSingle, handleAddBatch, handleAddAndOpen, handleSendToCopilot, handleSendToBacktest, handleSubscribe, handleTranslate,
+    savedScreens, loadSavedScreens, saveCurrentScreen, deleteSavedScreen, renameSavedScreen, applySavedScreen, shareCurrentScreen
   };
 
   // PROD-01: 将当前筛选上下文写入 AI 副驾，实现"场景感知助手"

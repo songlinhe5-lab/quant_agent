@@ -45,6 +45,7 @@ function lazyWithRetry<T extends ComponentType<any>>(
 }
 
 const DataCenterModule = lazyWithRetry(() => import('@/features/trading/data-center').then(m => ({ default: m.DataCenterModule })))
+const DataSourceHealthModule = lazyWithRetry(() => import('@/features/data-center/datasource-health').then(m => ({ default: m.DataSourceHealthModule })))
 const QuotesModule = lazyWithRetry(() => import('@/features/trading/quotes').then(m => ({ default: m.QuotesModule })))
 const OptionsModule = lazyWithRetry(() => import('@/features/options/options-module').then(m => ({ default: m.OptionsModule })))
 const ScreenerModule = lazyWithRetry(() => import('@/features/trading/screener').then(m => ({ default: m.ScreenerModule })))
@@ -108,6 +109,7 @@ export default function App() {
             <Route path="/apm" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="APM"><ApmModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/alerts" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Alerts"><AlertCenterModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/calendars" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Calendars"><CalendarsModule /></ModuleErrorBoundary></Suspense>} />
+            <Route path="/datasource-health" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="DataSourceHealth"><DataSourceHealthModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/paper" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Paper"><PaperModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/settings" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Settings"><SettingsPage /></ModuleErrorBoundary></Suspense>} />
             <Route path="/briefing/:id" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Briefing"><BriefingSharePage /></ModuleErrorBoundary></Suspense>} />
