@@ -22,9 +22,11 @@ export function BriefingSharePage() {
     setLoading(true)
     setError(null)
     apiClient
-      .get<{ data: BriefingData }>(`/briefing/share/${id}`)
+      .get<{ status: string; data: BriefingData }>(`/briefing/share/${id}`)
       .then((res) => {
-        if (mounted) setBriefing(res.data)
+        // 后端返回 {status, data}，经全局信封中间件再包一层，apiClient 解包后
+        // res.data = {status, data}，真实 BriefingData 在 .data
+        if (mounted) setBriefing(res.data.data)
       })
       .catch((e: any) => {
         if (mounted) setError(e?.message || '加载失败')
