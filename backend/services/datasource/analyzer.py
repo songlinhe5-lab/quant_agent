@@ -19,6 +19,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
+from math import ceil
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -176,6 +177,8 @@ class RateLimitAnalyzer:
         self._last_request_ts: float = 0.0
         self._last_success_ts: float = 0.0
         self._last_latency_ms: float = 0.0
+        # 近期延迟样本（环形缓冲，用于 avg/p95 统计与延迟数据验证）
+        self._latency_samples: deque = deque(maxlen=200)
 
     @property
     def source_name(self) -> str:
@@ -202,6 +205,7 @@ class RateLimitAnalyzer:
         now = time.time()
         if latency_ms and latency_ms > 0:
             self._last_latency_ms = latency_ms
+            self._latency_samples.append(latency_ms)
         self._last_request_ts = now
         if not is_rate_limit and not is_error:
             self._last_success_ts = now
@@ -447,6 +451,25 @@ class RateLimitAnalyzer:
     #  COMM-01 健康看板指标
     # ─────────────────────────────────────
 
+    def _latency_stats(self) -> dict[str, Any]:
+        """
+        基于近期延迟样本计算统计指标（调用延迟数据验证）。
+
+        返回 avg / p95 / min / max / samples；无样本时全部为 None/0。
+        """
+        samples = sorted(self._latency_samples)
+        if not samples:
+            return {"avg": None, "p95": None, "min": None, "max": None, "samples": 0}
+        n = len(samples)
+        p95_idx = min(n - 1, int(ceil(n * 0.95)) - 1)
+        return {
+            "avg": round(sum(samples) / n, 2),
+            "p95": round(samples[p95_idx], 2),
+            "min": round(samples[0], 2),
+            "max": round(samples[-1], 2),
+            "samples": n,
+        }
+
     def get_health_metrics(self) -> dict[str, Any]:
         """
         返回健康度看板所需的实时指标（COMM-01）。
@@ -473,6 +496,7 @@ class RateLimitAnalyzer:
                 else:
                     succ += 1
         success_rate = round(succ / req, 4) if req else None
+        lat = self._latency_stats()
         return {
             "today_requests": req,
             "today_success": succ,
@@ -482,6 +506,11 @@ class RateLimitAnalyzer:
             "last_request_ts": last_request_ts or None,
             "last_success_ts": last_success_ts or None,
             "last_latency_ms": round(last_latency_ms, 2) if last_latency_ms else None,
+            "latency_avg_ms": lat["avg"],
+            "latency_p95_ms": lat["p95"],
+            "latency_min_ms": lat["min"],
+            "latency_max_ms": lat["max"],
+            "latency_samples": lat["samples"],
         }
 
     @staticmethod
