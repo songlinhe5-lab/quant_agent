@@ -190,13 +190,21 @@ _STALE_SECONDS = 300
 _LINK_TEST_TICKER = "AAPL"
 
 
-def _build_health_card(name: str) -> Dict[str, Any]:
+async def _build_health_card(name: str) -> Dict[str, Any]:
     """聚合单数据源健康卡片数据（status / 延迟 / 今日调用量 / 成功率 / 限流次数）。"""
     throttler = rate_limit_registry.get_throttler(name)
     analyzer = rate_limit_registry.get_analyzer(name)
     rl_status = throttler.get_status()
     metrics = analyzer.get_health_metrics()
-    connected = datasource_registry.has(name)
+    mounted = datasource_registry.has(name)
+    # 取首个 available 实例（is_available 已反映真实 key/连通），无则无法感知真实健康
+    source = datasource_registry.get(name)
+    health_info = await source.health() if source is not None else None
+    # BE-ARCH-05: connected 必须 = 已挂载 AND 真实可用（key 缺失/未连通即 False，实现可感知）
+    connected = mounted and (health_info.connected if health_info is not None else False)
+    health_error = (
+        health_info.last_error if health_info is not None else ("API key 未配置或实例不可用" if mounted else "未注册")
+    )
     now = time.time()
 
     if rl_status.is_throttled:
@@ -228,6 +236,7 @@ def _build_health_card(name: str) -> Dict[str, Any]:
         "latency_min_ms": metrics["latency_min_ms"],
         "latency_max_ms": metrics["latency_max_ms"],
         "latency_samples": metrics["latency_samples"],
+        "health_error": health_error,
     }
 
 
@@ -242,13 +251,15 @@ async def get_health_overview() -> Dict[str, Any]:
     from backend.services.datasource.adapters.akshare import ensure_akshare_registered
     from backend.services.datasource.adapters.futu import ensure_futu_registered
     from backend.services.datasource.adapters.macro import ensure_macro_sources_registered
+    from backend.services.datasource.adapters.search import ensure_search_sources_registered
 
     ensure_macro_sources_registered()
     ensure_futu_registered()
     ensure_akshare_registered()
+    ensure_search_sources_registered()
 
     names = datasource_registry.list_names()
-    cards = [_build_health_card(n) for n in names]
+    cards = await asyncio.gather(*[_build_health_card(n) for n in names])
     return {"sources": cards, "total": len(cards), "generated_at": time.time()}
 
 
@@ -257,7 +268,7 @@ async def get_source_health(name: str) -> Dict[str, Any]:
     """COMM-01 单数据源健康详情。"""
     if not datasource_registry.has(name):
         raise HTTPException(status_code=404, detail=f"unknown source: {name}")
-    return _build_health_card(name)
+    return await _build_health_card(name)
 
 
 @router.post("/{name}/test-link")
@@ -288,12 +299,20 @@ async def test_datasource_link(name: str) -> Dict[str, Any]:
         status = getattr(info, "status", "ok")
         error = getattr(info, "last_error", None)
 
-        # 主动真实探测：对支持 quote 的源发起一次轻量行情请求
+        # 主动真实探测：按 capability 发起一次轻量请求，测量真实网络往返延迟
         caps = getattr(source, "capabilities", []) or []
+        probe_action: str | None = None
+        probe_params: dict[str, Any] = {}
         if "quote" in caps:
+            probe_action, probe_params = "quote", {"ticker": _LINK_TEST_TICKER}
+        elif "WEB_SEARCH" in caps:
+            probe_action, probe_params = "WEB_SEARCH", {"query": "quant agent test", "max_results": 1}
+        elif "WEB_SCRAPE" in caps:
+            probe_action, probe_params = "WEB_SCRAPE", {"url": "https://example.com"}
+        if probe_action:
             try:
                 probe_start = time.perf_counter()
-                await source.fetch("quote", {"ticker": _LINK_TEST_TICKER})
+                await source.fetch(probe_action, probe_params)
                 latency_ms = round((time.perf_counter() - probe_start) * 1000, 2)
                 probed = True
             except Exception as pe:
