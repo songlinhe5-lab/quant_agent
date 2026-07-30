@@ -237,6 +237,11 @@ async def get_health_overview() -> Dict[str, Any]:
     COMM-01 数据源健康度统一看板数据源（卡片矩阵）。
     前端 DataSourceHealthDashboard 轮询 / 订阅 WS 渲染。
     """
+    # 确保宏观数据源适配器已注册，使其出现在健康看板（可感知）
+    from backend.services.datasource.adapters.macro import ensure_macro_sources_registered
+
+    ensure_macro_sources_registered()
+
     names = datasource_registry.list_names()
     cards = [_build_health_card(n) for n in names]
     return {"sources": cards, "total": len(cards), "generated_at": time.time()}
