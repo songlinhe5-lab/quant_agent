@@ -42,8 +42,16 @@ export interface BacktestSlice {
   setBacktestResult: (res: any) => void
   runtimeError: string | null
   setRuntimeError: (err: string | null) => void
+  sandboxProgress: number
+  setSandboxProgress: (p: number) => void
+  sandboxStage: string
+  setSandboxStage: (s: string) => void
   isOptimizing: boolean
   setOptimizing: (opt: boolean) => void
+  optimizeProgress: number
+  setOptimizeProgress: (p: number) => void
+  optimizeStage: string
+  setOptimizeStage: (s: string) => void
   optimizationResults: any[] | null
   setOptimizationResults: (res: any[] | null) => void
   optimizedClassName: string
@@ -84,8 +92,16 @@ export const createBacktestSlice: StateCreator<StrategyStore, [], [], BacktestSl
   setBacktestResult: (backtestResult) => set({ backtestResult }),
   runtimeError: null,
   setRuntimeError: (runtimeError) => set({ runtimeError }),
+  sandboxProgress: 0,
+  setSandboxProgress: (p: number) => set({ sandboxProgress: p }),
+  sandboxStage: '',
+  setSandboxStage: (s: string) => set({ sandboxStage: s }),
   isOptimizing: false,
   setOptimizing: (isOptimizing) => set({ isOptimizing }),
+  optimizeProgress: 0,
+  setOptimizeProgress: (p: number) => set({ optimizeProgress: p }),
+  optimizeStage: '',
+  setOptimizeStage: (s: string) => set({ optimizeStage: s }),
   optimizationResults: null,
   setOptimizationResults: (optimizationResults) => set({ optimizationResults }),
   optimizedClassName: '',

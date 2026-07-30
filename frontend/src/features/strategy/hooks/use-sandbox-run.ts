@@ -93,6 +93,76 @@ export function useSandboxRun(options: UseSandboxRunOptions = {}) {
     [run, options.debounceMs],
   )
 
+  const runStream = useCallback(
+    async (
+      params: SandboxRunParams,
+      onProgress?: (p: { progress: number; stage: string; detail?: string }) => void,
+      shouldAbort?: () => boolean,
+    ) => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+
+      const controller = new AbortController()
+      abortControllerRef.current = controller
+
+      const currentSeq = ++requestSeqRef.current
+
+      try {
+        const res = await apiClient.stream('/strategy/run-sandbox/stream', params, controller.signal)
+        const reader = res.body!.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        let finalResult: any = null
+
+        while (true) {
+          if (shouldAbort?.()) {
+            controller.abort()
+            break
+          }
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+
+          let nl: number
+          while ((nl = buffer.indexOf('\n')) >= 0) {
+            const line = buffer.slice(0, nl).trim()
+            buffer = buffer.slice(nl + 1)
+            if (!line) continue
+
+            let msg: any
+            try {
+              msg = JSON.parse(line)
+            } catch {
+              continue
+            }
+            if (msg.type === 'result') {
+              finalResult = { status: 'success', data: msg.data }
+            } else if (msg.type === 'error') {
+              finalResult = { status: 'error', message: msg.message, error_code: msg.error_code }
+            } else if (onProgress && typeof msg.progress === 'number') {
+              onProgress({ progress: msg.progress, stage: msg.stage, detail: msg.detail })
+            }
+          }
+        }
+
+        if (currentSeq !== requestSeqRef.current) return finalResult
+        if (finalResult?.status === 'success') {
+          options.onSuccess?.(finalResult.data)
+        } else if (finalResult?.status === 'error') {
+          options.onError?.(finalResult.message)
+        }
+        return finalResult
+      } catch (e: any) {
+        if (e.name === 'CanceledError' || e.message === 'canceled') return
+        if (currentSeq !== requestSeqRef.current) return
+        options.onError?.(e.message || '网络异常')
+        throw e
+      }
+    },
+    [options],
+  )
+
   const cancel = useCallback(() => {
     // Abort in-flight request
     if (abortControllerRef.current) {
@@ -109,6 +179,7 @@ export function useSandboxRun(options: UseSandboxRunOptions = {}) {
 
   return {
     run,
+    runStream,
     runDebounced,
     cancel,
   }
