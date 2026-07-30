@@ -57,6 +57,14 @@ interface ScreenerContextType {
   handleSendToBacktest: (sym: string) => void;
   handleSubscribe: () => void;
   handleTranslate: (overrideQuery?: string | any) => void;
+  // SCREEN-01: 选股条件保存 / 加载 / 分享
+  savedScreens: any[];
+  loadSavedScreens: () => Promise<void>;
+  saveCurrentScreen: (payload: { id?: number; name: string; description?: string }) => Promise<{ status: string; data?: any }>;
+  deleteSavedScreen: (id: number) => Promise<void>;
+  renameSavedScreen: (id: number, name: string, description?: string) => Promise<void>;
+  applySavedScreen: (screen: any) => Promise<void>;
+  shareCurrentScreen: () => string | null;
 }
 
 const ScreenerContext = createContext<ScreenerContextType | null>(null)
