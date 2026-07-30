@@ -176,7 +176,8 @@ export function DataSourceHealthModule() {
   const testLink = async (source: string) => {
     setTestStates((prev) => ({ ...prev, [source]: { ...prev[source], testing: true, error: undefined } }))
     try {
-      const data = await apiClient.post<LinkTestResult>(`/datasource/${source}/test-link`)
+      const res = await apiClient.post<LinkTestResult>(`/datasource/${source}/test-link`)
+      const data = (res as unknown as { data: LinkTestResult }).data
       setTestStates((prev) => ({ ...prev, [source]: { testing: false, result: data } }))
       toast({
         title: data.connected ? '✅ 链路正常' : '❌ 链路异常',

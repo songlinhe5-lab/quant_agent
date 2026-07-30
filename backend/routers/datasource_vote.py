@@ -24,11 +24,23 @@ from backend.services.datasource import datasource_registry
 router = APIRouter(prefix="/datasource-vote", tags=["DataSource Vote"])
 
 # ── COMM-02 分类目录 ─────────────────────────────────────────────
-# 已接入（connected）由 datasource_registry 动态给出；以下为规划中 / 社区投票中。
+# 已接入（connected）由 datasource_registry 动态给出。FRED / DBnomics / RBI 已实现为
+# DataSourceInterface 适配器并在启动时注册（backend.services.datasource.adapters.macro），
+# 由 registry 自动归入 connected，无需在此硬编码。
+# _SOURCE_META 仅用于看板展示时还原中文标签（registry 仅持有源 name）。
+_SOURCE_META: Dict[str, Dict[str, str]] = {
+    "fred": {"label": "FRED 宏观经济", "desc": "圣路易斯联储宏观时间序列（已接入 market 路由 + get_fred_macro_data）"},
+    "dbnomics": {"label": "DBnomics", "desc": "全球央行/机构宏观数据集"},
+    "rbi": {"label": "RBI / World Bank", "desc": "新兴市场 CPI 等年度序列"},
+    "polygon": {"label": "Polygon.io", "desc": "美股实时/历史行情"},
+    "binance": {"label": "Binance", "desc": "加密货币现货/合约行情"},
+    "coinbase": {"label": "Coinbase", "desc": "加密货币现货行情"},
+    "cryptocompare": {"label": "CryptoCompare", "desc": "加密市场聚合数据"},
+    "tiingo": {"label": "Tiingo", "desc": "美股基本面 + 价格"},
+    "alpha_vantage": {"label": "Alpha Vantage", "desc": "美股 + 外汇 + 加密货币"},
+    "twelvedata": {"label": "Twelve Data", "desc": "多资产实时行情"},
+}
 _DEVELOPING_SOURCES: List[Dict[str, str]] = [
-    {"name": "fred", "label": "FRED 宏观经济", "desc": "圣路易斯联储宏观时间序列"},
-    {"name": "dbnomics", "label": "DBnomics", "desc": "全球央行/机构宏观数据集"},
-    {"name": "rbi", "label": "RBI / World Bank", "desc": "新兴市场 CPI 等年度序列"},
     {"name": "polygon", "label": "Polygon.io", "desc": "美股实时/历史行情"},
 ]
 _VOTING_SOURCES: List[Dict[str, str]] = [
@@ -56,6 +68,11 @@ async def get_vote_board(current_user: models.User = Depends(get_current_user)) 
     """
     COMM-02 需求看板：返回三类数据源及投票数 + 当前用户今日已投列表。
     """
+    # 确保宏观数据源适配器（FRED / DBnomics / RBI）已注册，使其出现在 connected
+    from backend.services.datasource.adapters.macro import ensure_macro_sources_registered
+
+    ensure_macro_sources_registered()
+
     today = date.today().isoformat()
     connected = datasource_registry.list_names()
     names = list(connected) + [d["name"] for d in _DEVELOPING_SOURCES + _VOTING_SOURCES]
@@ -70,6 +87,9 @@ async def get_vote_board(current_user: models.User = Depends(get_current_user)) 
     except Exception:
         count_map = {n: 0 for n in names}
 
+    # registry 动态注册源（含 FRED / DBnomics / RBI），用 _SOURCE_META 还原中文标签
+    connected_entries = [{**_SOURCE_META.get(n, {}), "name": n, "votes": count_map.get(n, 0)} for n in connected]
+
     my_votes = set()
     try:
         for n in names:
@@ -79,7 +99,7 @@ async def get_vote_board(current_user: models.User = Depends(get_current_user)) 
         pass
 
     return {
-        "connected": [{"name": n, "votes": count_map.get(n, 0)} for n in connected],
+        "connected": connected_entries,
         "developing": [{**d, "votes": count_map.get(d["name"], 0)} for d in _DEVELOPING_SOURCES],
         "voting": [{**d, "votes": count_map.get(d["name"], 0)} for d in _VOTING_SOURCES],
         "my_votes_today": sorted(my_votes),
@@ -92,6 +112,11 @@ async def cast_vote(req: VoteRequest, current_user: models.User = Depends(get_cu
     COMM-02 投票（防刷票：每用户每源每日限一票）。
     计数经 Redis 自增，用户当日投票以带 TTL(至当日结束) 的 key 去重。
     """
+    # 确保宏观数据源已注册，使其进入可投票集合
+    from backend.services.datasource.adapters.macro import ensure_macro_sources_registered
+
+    ensure_macro_sources_registered()
+
     name = (req.source or "").strip().lower()
     if name not in _all_votable():
         raise HTTPException(status_code=404, detail=f"未知或不可投票的数据源: {name}")
