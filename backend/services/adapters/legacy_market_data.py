@@ -427,6 +427,9 @@ class MarketDataGateway:
     async def get_northbound_flow(self) -> Any:
         return await self._ak.get_northbound_flow()
 
+    async def get_hk_stock_connect_flow(self) -> Any:
+        return await self._ak.get_hk_stock_connect_flow()
+
     async def get_hsgt_top_holders(self, symbol: str = "00700", **kwargs: Any) -> Any:
         return await self._ak.get_hsgt_top_holders(symbol=symbol, **kwargs)
 
@@ -501,6 +504,7 @@ class MarketDataGateway:
         mapping = {
             "southbound": self.get_southbound_flow,
             "northbound": self.get_northbound_flow,
+            "hk_connect": self.get_hk_stock_connect_flow,
             "hsgt_holders": lambda: self.get_hsgt_top_holders(symbol=kwargs.get("symbol", "00700")),
             "company_news": lambda: self.get_company_news_ak(ticker=kwargs.get("ticker", "")),
             "stock_quote": lambda: self.get_stock_quote_ak(ticker=kwargs.get("ticker", "")),

@@ -63,6 +63,12 @@ COLLECTOR_TASKS: Dict[str, CollectorTask] = {
         interval_closed=43200,
         description="宏观经济日历",
     ),
+    "hk_connect": CollectorTask(
+        name="hk_connect",
+        interval_trading=300,  # 盘中 5 分钟
+        interval_closed=7200,  # 收盘后 2 小时
+        description="港股通双通道资金流向明细 (沪+深)",
+    ),
 }
 
 
@@ -102,6 +108,14 @@ async def _collect_northbound(service) -> Dict[str, Any]:
     return result
 
 
+async def _collect_hk_connect(service) -> Dict[str, Any]:
+    """采集港股通双通道资金流向明细 (沪+深)"""
+    result = await service.get_hk_stock_connect_flow()
+    status = result.get("status", "error")
+    logger.info(f"[AKShareCollector] 港股通双通道资金流向采集完成: status={status}")
+    return result
+
+
 async def _collect_economic_calendar(service) -> Dict[str, Any]:
     """采集宏观经济日历"""
     result = await service.get_economic_calendar(days_ahead=7, skip_cache=True)
@@ -114,6 +128,7 @@ async def _collect_economic_calendar(service) -> Dict[str, Any]:
 _TASK_HANDLERS = {
     "southbound": _collect_southbound,
     "northbound": _collect_northbound,
+    "hk_connect": _collect_hk_connect,
     "economic_calendar": _collect_economic_calendar,
 }
 

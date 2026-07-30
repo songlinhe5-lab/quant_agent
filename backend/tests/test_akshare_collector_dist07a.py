@@ -163,11 +163,12 @@ class TestAKShareCollectorTasks:
     """验证采集任务定义"""
 
     def test_collector_tasks_defined(self):
-        """应定义 southbound, northbound, economic_calendar 三个任务"""
+        """应定义 southbound, northbound, hk_connect, economic_calendar 四个任务"""
         from backend.workers.akshare_collector import COLLECTOR_TASKS
 
         assert "southbound" in COLLECTOR_TASKS
         assert "northbound" in COLLECTOR_TASKS
+        assert "hk_connect" in COLLECTOR_TASKS
         assert "economic_calendar" in COLLECTOR_TASKS
 
     def test_southbound_intervals(self):

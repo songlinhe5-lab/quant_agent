@@ -75,11 +75,19 @@ class FlowMixin:
 
             # 💡 提取真实的近期历史趋势线
             sparkline = [1, 1, -1, 1, 1, 1, -1, 1]
+            weekly = None
+            monthly = None
+            history = None
             if not isinstance(hist_df, BaseException) and hist_df is not None and not hist_df.empty:  # noqa: E501
                 # 💡 修复：优先使用 "当日成交净买额" (真实净买卖) 而非 "当日资金流入" (额度占用)  # noqa: E501
                 target_col = "当日成交净买额" if "当日成交净买额" in hist_df.columns else "当日资金流入"  # noqa: E501
                 if target_col in hist_df.columns:
-                    sparkline = hist_df[target_col].tail(8).astype(float).tolist()
+                    series = hist_df[target_col].astype(float)
+                    sparkline = [round(float(v), 2) for v in series.tail(8).tolist()]
+                    # 💡 FUNDFLOW-01: 用真实日序列推算近一周(5交易日)/近一月(22交易日)累计净买入
+                    weekly = round(float(series.tail(5).sum()), 2)
+                    monthly = round(float(series.tail(22).sum()), 2)
+                    history = [round(float(v), 2) for v in series.tail(30).tolist()]
                     # 💡 智能拯救：如果实时接口返回了额度占位符(>800亿)，利用历史趋势的最后一天真实数据进行替换拯救！  # noqa: E501
                     if net_inflow >= 800.0 and len(sparkline) > 0:
                         net_inflow = float(sparkline[-1])
@@ -94,9 +102,12 @@ class FlowMixin:
                 "status": "success",
                 "data": {
                     "net_inflow": round(net_inflow, 2),
+                    "weekly": weekly,
+                    "monthly": monthly,
                     "unit": "亿人民币",
                     "date": date_str,
                     "sparkline": sparkline,
+                    "history": history,
                 },
                 "is_closed": is_closed,
                 "source": "akshare_stock_hsgt_fund_flow_summary",
@@ -174,11 +185,19 @@ class FlowMixin:
 
             # 💡 提取真实的近期历史趋势线
             sparkline = [-1, -1, 1, -1, -1, 1, -1, -1]
+            weekly = None
+            monthly = None
+            history = None
             if not isinstance(hist_df, BaseException) and hist_df is not None and not hist_df.empty:  # noqa: E501
                 # 💡 修复：优先使用 "当日成交净买额" (真实净买卖) 而非 "当日资金流入" (额度占用)  # noqa: E501
                 target_col = "当日成交净买额" if "当日成交净买额" in hist_df.columns else "当日资金流入"  # noqa: E501
                 if target_col in hist_df.columns:
-                    sparkline = hist_df[target_col].tail(8).astype(float).tolist()
+                    series = hist_df[target_col].astype(float)
+                    sparkline = [round(float(v), 2) for v in series.tail(8).tolist()]
+                    # 💡 FUNDFLOW-01: 用真实日序列推算近一周(5交易日)/近一月(22交易日)累计净买入
+                    weekly = round(float(series.tail(5).sum()), 2)
+                    monthly = round(float(series.tail(22).sum()), 2)
+                    history = [round(float(v), 2) for v in series.tail(30).tolist()]
                     # 💡 智能拯救北向：如果实时接口返回额度占位符(>1000亿)
                     if net_inflow >= 1000.0 and len(sparkline) > 0:
                         net_inflow = float(sparkline[-1])
@@ -194,9 +213,12 @@ class FlowMixin:
                 "status": "success",
                 "data": {
                     "net_inflow": round(net_inflow, 2),
+                    "weekly": weekly,
+                    "monthly": monthly,
                     "unit": "亿人民币",
                     "date": date_str,
                     "sparkline": sparkline,
+                    "history": history,
                 },
                 "is_closed": is_closed,
                 "source": "akshare_stock_hsgt_fund_flow_summary",
@@ -347,3 +369,124 @@ class FlowMixin:
         else:
             await redis_client.set(cache_key, json.dumps(result), ex=60)  # 错误状态仅做短时防穿透  # noqa: E501
         return result
+
+    @with_global_retry
+    async def get_hk_stock_connect_flow(self) -> Dict[str, Any]:
+        """获取港股通(南向)资金流向明细：港股通(沪) + 港股通(深) 双通道的
+        当日成交净买额、资金净流入、涨跌家数及相关指数表现。
+
+        数据来源: 东方财富沪深港通资金流向汇总 (stock_hsgt_fund_flow_summary_em)
+        说明: 本接口返回「沪深港通汇总」级别的双通道数据, 非逐股十大成交榜
+              (该版本 AKShare 已移除 stock_hsgt_top10_em, 逐股十大成交需另接
+               港交所披露易/券商席位的独立数据源)。
+
+        返回:
+        {
+            "status": "success",
+            "data": {
+                "trade_date": "2026-07-30",
+                "total_net_buy": -59.63,      # 南向合计成交净买额 (亿元)
+                "unit": "亿元",
+                "channels": [
+                    {"board": "港股通(沪)", "net_buy": -21.98, "net_inflow": 420.0,
+                     "up": 225, "down": 356, "flat": 0,
+                     "index": "恒生指数", "index_chg": 0.12},
+                    ...
+                ]
+            },
+            "source": "akshare_stock_hsgt_fund_flow_summary"
+        }
+        """
+        cache_key = "akshare_hk_connect_flow"
+        cached = await redis_client.get(cache_key)
+        if cached:
+            return json.loads(cached)
+
+        if self._cache_mode:
+            return {
+                "status": "no_data",
+                "message": "cache 模式: 港股通资金流向缓存未命中，等待采集器写入",
+                "data": None,
+            }
+
+        try:
+            import akshare as ak
+
+            async with self._acquire_lock_with_timeout(5.0):
+                cached_double = await redis_client.get(cache_key)
+                if cached_double:
+                    return json.loads(cached_double)
+                df = await asyncio.to_thread(ak.stock_hsgt_fund_flow_summary_em)
+
+            if df is None or df.empty:
+                raise ValueError("获取到的港股通资金流向汇总数据异常")
+
+            south_df = df[df["资金方向"] == "南向"].copy()
+            if south_df.empty:
+                raise ValueError("未在数据中找到南向(港股通)资金明细")
+
+            channels = []
+            total_net_buy = 0.0
+            for _, row in south_df.iterrows():
+                net_buy = _to_float(row.get("成交净买额"))
+                total_net_buy += net_buy
+                channels.append(
+                    {
+                        "board": str(row.get("板块", "")),
+                        "net_buy": round(net_buy, 2),
+                        "net_inflow": round(_to_float(row.get("资金净流入")), 2),
+                        "up": _to_int(row.get("上涨数")),
+                        "down": _to_int(row.get("下跌数")),
+                        "flat": _to_int(row.get("持平数")),
+                        "index": str(row.get("相关指数", "")),
+                        "index_chg": round(_to_float(row.get("指数涨跌幅")), 2),
+                    }
+                )
+
+            date_str = str(south_df["交易日"].iloc[0])
+            result = {
+                "status": "success",
+                "data": {
+                    "trade_date": date_str,
+                    "total_net_buy": round(total_net_buy, 2),
+                    "unit": "亿元",
+                    "channels": channels,
+                },
+                "source": "akshare_stock_hsgt_fund_flow_summary",
+            }
+        except Exception as e:
+            print(f"⚠️ [AKShare] 港股通资金流向获取失败: {e}")
+            result = {
+                "status": "warning",
+                "message": "港股通资金流向获取失败，暂无可用数据",
+                "data": None,
+                "source": "akshare-unavailable",
+            }
+
+        result["updated_at"] = datetime.now(timezone.utc).isoformat()
+        if result.get("status") == "success":
+            ttl = 300 + random.randint(10, 60)
+            await redis_client.set(cache_key, json.dumps(result), ex=ttl)
+        else:
+            await redis_client.set(cache_key, json.dumps(result), ex=60)
+        return result
+
+
+def _to_float(v: Any) -> float:
+    """安全转 float: 空值/占位符返回 0.0, 自动去除千分位逗号。"""
+    try:
+        if v is None or v == "" or v == "None":
+            return 0.0
+        return float(str(v).replace(",", ""))
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def _to_int(v: Any) -> int:
+    """安全转 int: 空值/占位符返回 0。"""
+    try:
+        if v is None or v == "" or v == "None":
+            return 0
+        return int(float(str(v).replace(",", "")))
+    except (ValueError, TypeError):
+        return 0
