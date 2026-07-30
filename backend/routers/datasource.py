@@ -11,13 +11,19 @@ Datasource Rate Limit Router - 数据源限流查询路由
 设计文档: docs/14 §12.3, §12.4 · BE-ARCH-04
 """
 
+import asyncio
+import json
+import os
 import re
-from typing import Optional
+import time
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+import jwt
+from fastapi import APIRouter, HTTPException, Query, WebSocket
+from fastapi.websockets import WebSocketDisconnect
 
 from backend.core.logger import logger
-from backend.services.datasource import rate_limit_registry
+from backend.services.datasource import datasource_registry, rate_limit_registry
 
 router = APIRouter(prefix="/datasource", tags=["DataSource Rate Limit"])
 
@@ -170,3 +176,114 @@ async def get_finnhub_health():
 
     info = await source.health()
     return {"source": "finnhub", **info.to_dict()}
+
+
+# ════════════════════════════════════════════════════════════════
+#  COMM-01 数据源健康度统一看板
+# ════════════════════════════════════════════════════════════════
+
+# 超过该秒数无成功响应即判定为 STALE（数据源失联）
+_STALE_SECONDS = 300
+
+
+def _build_health_card(name: str) -> Dict[str, Any]:
+    """聚合单数据源健康卡片数据（status / 延迟 / 今日调用量 / 成功率 / 限流次数）。"""
+    throttler = rate_limit_registry.get_throttler(name)
+    analyzer = rate_limit_registry.get_analyzer(name)
+    rl_status = throttler.get_status()
+    metrics = analyzer.get_health_metrics()
+    connected = datasource_registry.has(name)
+    now = time.time()
+
+    if rl_status.is_throttled:
+        status = "throttled"
+    elif metrics["last_success_ts"] and (now - metrics["last_success_ts"] > _STALE_SECONDS):
+        status = "stale"
+    elif metrics["today_errors"] > 0 and metrics["today_success"] == 0:
+        status = "error"
+    elif metrics["last_request_ts"] == 0:
+        status = "idle"
+    else:
+        status = "healthy"
+
+    return {
+        "source": name,
+        "status": status,
+        "connected": connected,
+        "latency_ms": metrics["last_latency_ms"],
+        "today_calls": metrics["today_requests"],
+        "success_rate": metrics["success_rate"],
+        "rate_limit_count": metrics["today_rate_limits"],
+        "last_request_ts": metrics["last_request_ts"],
+        "last_success_ts": metrics["last_success_ts"],
+        "is_throttled": rl_status.is_throttled,
+        "consecutive_rate_limits": rl_status.consecutive_rate_limits,
+        "backoff_strategy": rl_status.backoff_strategy,
+    }
+
+
+@router.get("/health-overview")
+async def get_health_overview() -> Dict[str, Any]:
+    """
+    COMM-01 数据源健康度统一看板数据源（卡片矩阵）。
+    前端 DataSourceHealthDashboard 轮询 / 订阅 WS 渲染。
+    """
+    names = datasource_registry.list_names()
+    cards = [_build_health_card(n) for n in names]
+    return {"sources": cards, "total": len(cards), "generated_at": time.time()}
+
+
+@router.get("/{name}/health")
+async def get_source_health(name: str) -> Dict[str, Any]:
+    """COMM-01 单数据源健康详情。"""
+    if not datasource_registry.has(name):
+        raise HTTPException(status_code=404, detail=f"unknown source: {name}")
+    return _build_health_card(name)
+
+
+@router.websocket("/ws/health")
+async def datasource_health_ws(websocket: WebSocket) -> None:
+    """
+    COMM-01 实时推送健康看板 + STALE 报警。鉴权：?token=<jwt>（HS256）。
+    每 15s 推送一次 overview；当某数据源由非 STALE 转为 STALE 时额外推送 alert。
+    """
+    token = websocket.query_params.get("token")
+    try:
+        _secret = os.getenv("WS_JWT_SECRET_KEY", os.getenv("SECRET_KEY", "dev-secret"))
+        if token:
+            jwt.decode(token, _secret, algorithms=["HS256"])
+    except Exception:
+        await websocket.close(code=4401)
+        return
+
+    await websocket.accept()
+    last_status: Dict[str, str] = {}
+    try:
+        while True:
+            names = datasource_registry.list_names()
+            cards = [_build_health_card(n) for n in names]
+            alerts: List[Dict[str, Any]] = []
+            for c in cards:
+                prev = last_status.get(c["source"])
+                if prev is not None and prev != "stale" and c["status"] == "stale":
+                    alerts.append(
+                        {
+                            "source": c["source"],
+                            "type": "stale",
+                            "message": f"{c['source']} 超过 {_STALE_SECONDS}s 无成功响应",
+                        }
+                    )
+                last_status[c["source"]] = c["status"]
+            await websocket.send_text(
+                json.dumps(
+                    {"type": "overview", "sources": cards, "generated_at": time.time()},
+                    ensure_ascii=False,
+                )
+            )
+            for a in alerts:
+                await websocket.send_text(json.dumps({"type": "alert", **a}, ensure_ascii=False))
+            await asyncio.sleep(15)
+    except WebSocketDisconnect:
+        return
+    except Exception:
+        return
