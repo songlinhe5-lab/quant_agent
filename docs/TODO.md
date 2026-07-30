@@ -955,21 +955,21 @@ STATUS: PRODUCTION READY ✨
 
 ##### 期权与波动率曲面（已有 `get_broker_market_data(action="OPTION_CHAIN")` 后端基础）
 
-- [ ] **[OPTION-01]** 个股期权隐含波动率实时面板（P1）：
+- [x] **[OPTION-01]** 个股期权隐含波动率实时面板（P1）：
   - 前端：选定标的 → 期权链表格（行=行权价、列=到期日）+ 单元格 IV% 渐变色热力图
   - 后端：扩 `OPTION_CHAIN` action 返回 Greeks（Delta/Gamma/Vega/Theta）+ IV
   - 预期工时：FE 8h + BE 4h
-- [ ] **[OPTION-02]** 波动率曲面 3D 可视化（P2）：
+- [x] **[OPTION-02]** 波动率曲面 3D 可视化（P2）：
   - ECharts GL 三维曲面图（X=行权价、Y=到期日、Z=IV）
   - 叠加 skew 曲线（横截面）+ term structure 曲线（纵截面）
   - 依赖 OPTION-01
   - 预期工时：FE 6h
-- [ ] **[OPTION-03]** Put/Call Ratio 实时面板（P1）：
+- [x] **[OPTION-03]** Put/Call Ratio 实时面板（P1）：
   - 总 PCR + 分到期日 PCR + 历史 20 日均值对比线
   - 后端复用 `get_macro_sentiment_history` 的 PCR 数据源
   - 前端 ECharts 双轴（柱状 PCR + 折线标的收盘价），关联市场情绪解读
   - 预期工时：FE 4h + BE 2h
-- [ ] **[OPTION-04]** 期权数据真实源接入与 mock 清退收尾（P1）：
+- [x] **[OPTION-04]** 期权数据真实源接入与 mock 清退收尾（P1）：
   - 后端 `FutuAdapter._fetch_option_chain` 接入真实 Futu 期权链（`Ctx.get_option_chain_by_date_strike`），取消 `数据源已死` 告警，恢复 OPTION-01 面板真实数据
   - 后端 `/iv-rank` 接入真实历史 IV 序列源（Redis/DB），取消 `random` 伪造告警，恢复 IV Rank 计算
   - 验收：OPTION-01 期权 IV 曲面面板 + IV Rank 在真实数据源下可用，全链路零 mock

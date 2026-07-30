@@ -11,7 +11,7 @@ from openai.types.chat import ChatCompletionMessageParam
 from pydantic import ValidationError
 
 from backend.core.redis_client import redis_client
-from backend.services.llm_service import llm_service
+from backend.services.ai_narrator.llm_service import llm_service
 from backend.services.screener.models import ScreenerDecision
 
 

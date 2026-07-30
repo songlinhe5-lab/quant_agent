@@ -15,7 +15,7 @@ from datetime import date
 
 import pytest
 
-from backend.services.financial_pit import (
+from backend.services.datalake.financial_pit import (
     FinancialDataPoint,
     FinancialDataType,
     FiscalPeriod,

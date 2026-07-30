@@ -169,16 +169,27 @@ class TestOptionFundHandler:
         assert result["status"] == "error"
 
     @pytest.mark.asyncio
-    async def test_get_fund_flow_circuit_breaker_returns_mock(self):
-        """熔断期内应返回 mock 数据"""
+    async def test_get_fund_flow_circuit_breaker_dev_returns_mock(self):
+        """dev 环境熔断期内应返回 mock 数据"""
         handler, _, cache_mgr = _make_handler()
         cache_mgr.ff_circuit_breaker_until = time.time() + 100  # 仍在熔断期
-        result = await handler.get_fund_flow("HK.00700")
+        with patch.dict("os.environ", {"QUANT_ENV": "development"}):
+            result = await handler.get_fund_flow("HK.00700")
         assert result["source"] == "mock"
 
     @pytest.mark.asyncio
-    async def test_get_fund_flow_frequency_limit_triggers_circuit_breaker(self):
-        """频率限制错误应触发熔断并返回 mock"""
+    async def test_get_fund_flow_circuit_breaker_prod_returns_error(self):
+        """生产环境熔断期内返回错误而非假数据 (零幻觉契约)"""
+        handler, _, cache_mgr = _make_handler()
+        cache_mgr.ff_circuit_breaker_until = time.time() + 100  # 仍在熔断期
+        with patch.dict("os.environ", {"QUANT_ENV": "production"}):
+            result = await handler.get_fund_flow("HK.00700")
+        assert result["status"] == "error"
+        assert "熔断冷却" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_get_fund_flow_frequency_limit_dev_triggers_circuit_breaker(self):
+        """dev 环境频率限制错误应触发熔断并返回 mock"""
         handler, conn_mgr, cache_mgr = _make_handler()
         cache_mgr.ff_lock = None  # 确保走创建锁分支
 
@@ -189,11 +200,35 @@ class TestOptionFundHandler:
                 "asyncio.to_thread",
                 new=AsyncMock(return_value=(-1, "频率太高，请稍后再试")),
             ),
+            patch.dict("os.environ", {"QUANT_ENV": "development"}),
         ):
             result = await handler.get_fund_flow("HK.00700")
         assert result["source"] == "mock"
         # 熔断时间应被设置为 ~60s 后
         assert cache_mgr.ff_circuit_breaker_until > time.time()
+
+    @pytest.mark.asyncio
+    async def test_get_fund_flow_frequency_limit_prod_returns_error(self):
+        """生产环境频率限制错误应触发熔断并返回错误而非假数据 (零幻觉契约)"""
+        handler, conn_mgr, cache_mgr = _make_handler()
+        cache_mgr.ff_lock = None
+
+        with (
+            patch("asyncio.sleep", new=AsyncMock(return_value=None)),
+            patch(
+                "asyncio.to_thread",
+                new=AsyncMock(return_value=(-1, "频率太高，请稍后再试")),
+            ),
+            patch.dict("os.environ", {"QUANT_ENV": "production"}),
+        ):
+            result = await handler.get_fund_flow("HK.00700")
+        assert result["status"] == "error"
+        assert "熔断" in result["message"]
+        # 熔断时间仍应被设置 (保护底层接口)
+        assert cache_mgr.ff_circuit_breaker_until > time.time()
+        cached = cache_mgr.get_fund_flow_cache("futu_fund_flow_HK.00700")
+        assert cached is not None
+        assert cached[1]["status"] == "error"
 
     @pytest.mark.asyncio
     async def test_get_fund_flow_fetch_failure_returns_error(self):

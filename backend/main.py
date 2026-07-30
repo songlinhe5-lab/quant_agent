@@ -32,7 +32,7 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 # --- 数据库初始化 (必须在所有 model 导入之后、app 创建之前) ---
 from backend.core import datalake_models, models  # noqa: E402, F401
 from backend.core.database import Base, engine  # noqa: E402
-from backend.services.ticker_service import TickerItem  # noqa: E402, F401
+from backend.services.fund_flow.ticker import TickerItem  # noqa: E402, F401
 
 try:
     from sqlalchemy import text

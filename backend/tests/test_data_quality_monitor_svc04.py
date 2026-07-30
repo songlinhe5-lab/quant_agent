@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from backend.services.data_quality_monitor import (
+from backend.services.data_quality.monitor import (
     AnomalyType,
     DataQualityMonitor,
     QualityLevel,

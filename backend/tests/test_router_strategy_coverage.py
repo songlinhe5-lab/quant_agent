@@ -457,7 +457,7 @@ async def test_run_sandbox_snapshot_resolve_and_persist(test_client):
         patch.object(strategy_router, "run_cpu_bound", new=AsyncMock(return_value=report)),
         patch.object(strategy_router, "redis_client", _FakeRedis()),
         patch("backend.services.datalake.snapshot_resolver.SnapshotResolver", _Resolver),
-        patch("backend.services.backtest_report_service.BacktestReportService") as BRS,
+        patch("backend.app.backtest.report_service.BacktestReportService") as BRS,
     ):
         md.get_history = AsyncMock(return_value={"status": "success", "data": []})
         md.get_stock_history_ak = AsyncMock(return_value={"status": "error"})

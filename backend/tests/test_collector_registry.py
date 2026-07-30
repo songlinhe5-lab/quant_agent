@@ -150,7 +150,7 @@ class TestStartCollectorDaemons:
         with (
             mock.patch("asyncio.create_task") as mock_create_task,
             mock.patch("backend.services.futu.watchdog.get_watchdog"),
-            mock.patch("backend.services.futu_service.futu_service"),
+            mock.patch("backend.services.futu.futu_service"),
         ):
             mock_create_task.return_value = mock.MagicMock()
             tasks = await start_collector_daemons(["futu"])
@@ -163,7 +163,7 @@ class TestStartCollectorDaemons:
         with (
             mock.patch("os.getenv", return_value="master"),
             mock.patch("asyncio.create_task") as mock_create_task,
-            mock.patch("backend.services.market_daemon.run_global_daemon"),
+            mock.patch("backend.workers.market.daemon.run_global_daemon"),
         ):
             mock_create_task.return_value = mock.MagicMock()
             tasks = await start_collector_daemons(["finnhub"])
@@ -186,7 +186,7 @@ class TestStartCollectorDaemons:
         """测试 YFinance 启动宏数据守护进程"""
         with (
             mock.patch("asyncio.create_task") as mock_create_task,
-            mock.patch("backend.services.yfinance_service.yf_service") as mock_service,
+            mock.patch("backend.services.yfinance.yf_service") as mock_service,
         ):
             mock_create_task.return_value = mock.MagicMock()
             mock_service.macro_data_daemon = mock.AsyncMock()
@@ -213,9 +213,9 @@ class TestStartCollectorDaemons:
             mock.patch("asyncio.gather", new=mock.AsyncMock(return_value=[])),
             mock.patch("backend.workers.akshare_collector.akshare_collector_daemon"),
             mock.patch("backend.services.futu.watchdog.get_watchdog") as mock_wd,
-            mock.patch("backend.services.futu_service.futu_service"),
-            mock.patch("backend.services.market_daemon.run_global_daemon"),
-            mock.patch("backend.services.yfinance_service.yf_service") as mock_yf,
+            mock.patch("backend.services.futu.futu_service"),
+            mock.patch("backend.workers.market.daemon.run_global_daemon"),
+            mock.patch("backend.services.yfinance.yf_service") as mock_yf,
             mock.patch.dict(os.environ, {"NODE_TYPE": "master"}, clear=False),
         ):
             mock_wd.return_value.start = mock.AsyncMock()

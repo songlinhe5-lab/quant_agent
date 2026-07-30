@@ -9,7 +9,7 @@ from typing import List
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from backend.services.deep_research import deep_research_pipeline
+from backend.app.research.deep_research import deep_research_pipeline
 
 router = APIRouter(prefix="/research", tags=["research"])
 

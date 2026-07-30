@@ -13,7 +13,7 @@ async def start() -> list[Coroutine[Any, Any, Any] | Awaitable[Any]]:
         print("  [finnhub] slave mode: data fetching only, no daemon")
         return []
 
-    from backend.services.market_daemon import run_global_daemon
+    from backend.workers.market.daemon import run_global_daemon
 
     print("  [market-daemon] global daemon started")
     return [run_global_daemon()]

@@ -282,7 +282,7 @@ def default_universe_exporter(path: Path) -> Dict[str, Any]:
         "exported_at": datetime.now(timezone.utc).isoformat(),
     }
     try:
-        from backend.services.survivorship_bias import SurvivorshipBiasTracker
+        from backend.services.survivorship.survivorship_bias import SurvivorshipBiasTracker
 
         tracker = getattr(SurvivorshipBiasTracker, "_instance", None)
         if tracker is None:

@@ -136,7 +136,7 @@ async def akshare_collector_daemon(
         enabled_tasks: 启用的任务列表，默认全部启用
     """
     # 延迟导入，避免循环依赖
-    from backend.services.akshare_service import AKShareService
+    from backend.services.akshare import AKShareService
 
     if enabled_tasks is None:
         enabled_tasks = list(COLLECTOR_TASKS.keys())

@@ -1,9 +1,8 @@
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-from backend.services.akshare_service import akshare_service
-from backend.services.finnhub_service import finnhub_service
-from backend.services.macro.sentiment_service import sentiment_service
+from backend.services.akshare import akshare_service
+from backend.services.finnhub.service import finnhub_service
 from hermes_agent.tool_registry import register_tool
 
 
@@ -28,6 +27,8 @@ class GetCompanyNewsTool:
     }
 
     async def run(self, ticker: str, days_back: int = 3) -> Dict[str, Any]:
+        from backend.services.macro.sentiment_service import sentiment_service
+
         try:
             # 💡 智能路由：港股走雅虎财经，A 股走 AKShare (东财)，美股走 Finnhub
             ticker_upper = ticker.upper()

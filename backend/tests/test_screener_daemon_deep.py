@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 from fastapi.testclient import TestClient
 
 from backend.main import app
-from backend.services.market_daemon import _generate_news_tags, _get_news_tags_rules
+from backend.workers.market.daemon import _generate_news_tags, _get_news_tags_rules
 
 
 @pytest.fixture
@@ -76,7 +76,7 @@ class TestGenerateNewsTags:
 # ==========================================
 class TestGetNewsTagsRules:
     @pytest.mark.asyncio
-    @patch("backend.services.market_daemon.l1_cached_redis")
+    @patch("backend.workers.market.daemon.l1_cached_redis")
     async def test_from_cache(self, mock_redis):
         """从缓存获取规则"""
         custom_rules = {"CUSTOM": r"\b(test)\b"}
@@ -85,7 +85,7 @@ class TestGetNewsTagsRules:
         assert "CUSTOM" in rules
 
     @pytest.mark.asyncio
-    @patch("backend.services.market_daemon.l1_cached_redis")
+    @patch("backend.workers.market.daemon.l1_cached_redis")
     async def test_default_rules(self, mock_redis):
         """缓存为空返回默认规则"""
         mock_redis.get = AsyncMock(return_value=None)
@@ -95,7 +95,7 @@ class TestGetNewsTagsRules:
         assert "GEOPOLITICS" in rules
 
     @pytest.mark.asyncio
-    @patch("backend.services.market_daemon.l1_cached_redis")
+    @patch("backend.workers.market.daemon.l1_cached_redis")
     async def test_redis_error(self, mock_redis):
         """Redis 异常返回默认规则"""
         mock_redis.get = AsyncMock(side_effect=Exception("down"))

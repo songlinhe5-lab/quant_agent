@@ -108,7 +108,7 @@ class SectorAnalyzer:
 
         # 优先 Futu get_stock_basicinfo
         try:
-            from backend.services.futu_service import futu_service
+            from backend.services.futu import futu_service
 
             futu_market = "HK" if market == "HK" else "US"
             res = await futu_service.get_stock_basicinfo(futu_market, "STOCK")

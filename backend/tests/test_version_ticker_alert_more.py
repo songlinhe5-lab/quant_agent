@@ -145,7 +145,7 @@ class TestTickerService:
 
     @pytest.fixture
     def service(self):
-        from backend.services.ticker_service import TickerService
+        from backend.services.fund_flow.ticker import TickerService
 
         return TickerService()
 
@@ -153,7 +153,7 @@ class TestTickerService:
     async def test_search_tickers_cache_hit(self, service):
         """search_tickers: 缓存命中"""
         cached_data = [{"symbol": "AAPL", "name": "Apple", "type": "stock"}]
-        with patch("backend.services.ticker_service.redis_client") as mock_redis:
+        with patch("backend.services.fund_flow.ticker.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=json.dumps(cached_data))
             result = await service.search_tickers("AAPL")
             assert result["status"] == "success"
@@ -162,11 +162,11 @@ class TestTickerService:
     @pytest.mark.asyncio
     async def test_search_tickers_db_query(self, service):
         """search_tickers: 数据库查询"""
-        with patch("backend.services.ticker_service.redis_client") as mock_redis:
+        with patch("backend.services.fund_flow.ticker.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
 
-            with patch("backend.services.ticker_service.SessionLocal") as mock_session:
+            with patch("backend.services.fund_flow.ticker.SessionLocal") as mock_session:
                 mock_db = MagicMock()
                 mock_session.return_value.__enter__ = MagicMock(return_value=mock_db)
                 mock_session.return_value.__exit__ = MagicMock(return_value=False)
@@ -180,7 +180,7 @@ class TestTickerService:
                     mock_row
                 ]
 
-                with patch("backend.services.ticker_service.engine") as mock_engine:
+                with patch("backend.services.fund_flow.ticker.engine") as mock_engine:
                     mock_engine.dialect.name = "sqlite"
                     result = await service.search_tickers("AAPL")
                     assert result["status"] == "success"
@@ -188,7 +188,7 @@ class TestTickerService:
     @pytest.mark.asyncio
     async def test_search_tickers_error(self, service):
         """search_tickers: 查询异常"""
-        with patch("backend.services.ticker_service.redis_client") as mock_redis:
+        with patch("backend.services.fund_flow.ticker.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(side_effect=Exception("Redis error"))
             result = await service.search_tickers("AAPL")
             assert result["status"] == "error"

@@ -15,8 +15,8 @@ from unittest.mock import patch
 
 import pytest
 
-from backend.services.data_source_router import DataSourceNode, DataSourceRouter
 from backend.services.datasource import rate_limit_registry
+from backend.services.datasource.router import DataSourceNode, DataSourceRouter
 
 
 @pytest.fixture(autouse=True)

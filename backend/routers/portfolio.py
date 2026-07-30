@@ -17,7 +17,7 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from backend.services.portfolio_optimizer import portfolio_optimizer
+from backend.domain.portfolio_optimizer import portfolio_optimizer
 
 router = APIRouter(prefix="/portfolio", tags=["Portfolio Optimization"])
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ async def _fetch_returns(symbols: List[str], period: str) -> pd.DataFrame:
     生产环境: 从 kline_warehouse 读取真实 K 线并计算日收益率。
     """
     try:
-        from backend.services.kline_warehouse import kline_warehouse
+        from backend.services.datalake.kline_warehouse import kline_warehouse
 
         # 尝试从真实数据获取
         frames = {}

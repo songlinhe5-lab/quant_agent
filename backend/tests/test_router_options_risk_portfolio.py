@@ -112,8 +112,8 @@ class TestVolSmile:
 class TestIVRank:
     @patch("backend.routers.options.options_screener")
     @patch("backend.routers.options.market_data")
-    def test_iv_rank_requires_real_iv_series_returns_404(self, mock_md, mock_screener):
-        """IV Rank 需要真实历史 IV 序列，禁止用模拟数据填充：当前无真实源，端点故意返回 404"""
+    def test_iv_rank_returns_200_with_real_analysis(self, mock_md, mock_screener):
+        """IV Rank 在取到真实期权链 IV 时返回 200 与 rank/percentile (历史序列不足时也如实标注, 不伪造)"""
         mock_md.get_option_chain = AsyncMock(
             return_value={
                 "status": "success",
@@ -121,7 +121,7 @@ class TestIVRank:
                     {
                         "strike": 150,
                         "type": "CALL",
-                        "iv": 30,
+                        "iv": 0.30,
                         "volume": 100,
                         "open_interest": 500,
                         "last_price": 5.0,
@@ -133,13 +133,42 @@ class TestIVRank:
         mock_md.get_quote = AsyncMock(return_value={"status": "success", "last_price": 150.0})
         mock_screener.get_iv_rank_analysis = AsyncMock(return_value={"iv_rank": 50, "iv_percentile": 45})
         resp = client.get("/options/iv-rank/US.AAPL")
-        assert resp.status_code == 404
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "success"
+        assert body["iv_rank"] == 50
+        assert "current_iv" in body
 
     @patch("backend.routers.options.market_data")
     def test_iv_rank_chain_fail(self, mock_md):
         mock_md.get_option_chain = AsyncMock(return_value={"status": "error"})
         resp = client.get("/options/iv-rank/US.AAPL")
         assert resp.status_code == 404
+
+
+class TestOptionChainMatrix:
+    @patch("backend.routers.options.market_data")
+    def test_chain_matrix_success(self, mock_md):
+        mock_md.get_option_chain_matrix = AsyncMock(
+            return_value={
+                "status": "success",
+                "symbol": "US.AAPL",
+                "expirations": ["2026-08-01"],
+                "strikes": [150],
+                "calls": {"iv": [[0.3]], "delta": [[0.5]]},
+                "puts": {"iv": [[0.3]], "delta": [[-0.5]]},
+                "legs": [],
+            }
+        )
+        resp = client.get("/options/chain-matrix/US.AAPL")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "success"
+
+    @patch("backend.routers.options.market_data")
+    def test_chain_matrix_fail(self, mock_md):
+        mock_md.get_option_chain_matrix = AsyncMock(return_value={"status": "error", "message": "数据源已死，无法分析"})
+        resp = client.get("/options/chain-matrix/US.AAPL")
+        assert resp.status_code == 502
 
 
 # ==========================================

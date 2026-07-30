@@ -10,7 +10,7 @@ export function useStrategySandbox() {
   const { confirm } = useConfirmDialog()
 
   // STRAT-05: AbortController + debounce + 请求序号
-  const { run: runSandbox, cancel: cancelSandboxRun } = useSandboxRun()
+  const { run: runSandbox, runStream: runSandboxStream, cancel: cancelSandboxRun } = useSandboxRun()
 
   // 💡 沙箱回测引擎：提取表单参数并抛给后端执行推演
   const handleApplyParams = async (className: string, data: Record<string, any>, isSilent: boolean = false) => {
@@ -20,6 +20,8 @@ export function useStrategySandbox() {
     }
     store.setSimulating(true)
     store.setRuntimeError(null)
+    store.setSandboxProgress(0)
+    store.setSandboxStage('')
     store.setWorkspaceTab('report') // 自动跳转到报告 Tab
     
     // 清洗参数：网格语法降级为单次探测
@@ -41,21 +43,29 @@ export function useStrategySandbox() {
     store.setLastUsedParams(sanitizedParams)
     
     try {
-      // STRAT-05: 使用 useSandboxRun hook (AbortController + 竞态取消)
-      const result = await runSandbox({
-        source_code: store.code,
-        class_name: className,
-        params: sanitizedParams,
-        ticker: store.testTicker,
-        period: store.backtestPeriod,
-        initial_capital: parseFloat(store.initialCapital) || 100000,
-        data_source: store.dataSource,
-        debug_mode: store.isDebugMode,
-        data_snapshot_id: store.dataSnapshotId || 'latest_published',
-        random_seed: 42,
-      })
+      // STRAT-05: 使用 runStream (SSE 真实进度 + AbortController + 竞态取消)
+      const result = await runSandboxStream(
+        {
+          source_code: store.code,
+          class_name: className,
+          params: sanitizedParams,
+          ticker: store.testTicker,
+          period: store.backtestPeriod,
+          initial_capital: parseFloat(store.initialCapital) || 100000,
+          data_source: store.dataSource,
+          debug_mode: store.isDebugMode,
+          data_snapshot_id: store.dataSnapshotId || 'latest_published',
+          random_seed: 42,
+        },
+        (p) => {
+          store.setSandboxProgress(p.progress)
+          store.setSandboxStage(p.detail || p.stage)
+        },
+        () => useStrategyStore.getState().isSimulating === false,
+      )
       if (result?.status === 'success') {
         const report = result.data
+        store.setSandboxProgress(100)
         store.setBacktestResult(report)
         const m = report.metrics || report
         if (!isSilent) {
@@ -80,6 +90,8 @@ export function useStrategySandbox() {
     if (!store.formSchema) return;
     toast({ title: '🔍 启动智能寻优', description: '正在构建参数网格并进行全空间回测...' })
     store.setOptimizing(true)
+    store.setOptimizeProgress(0)
+    store.setOptimizeStage('')
     store.setOptimizationResults(null)
     store.setOptimizedClassName(className)
     store.setRuntimeError(null)
@@ -126,8 +138,9 @@ export function useStrategySandbox() {
       });
     }
 
+    const optimizeController = new AbortController()
     try {
-      const res = await apiClient.post('/strategy/optimize-sandbox', {
+      const res = await apiClient.stream('/strategy/optimize-sandbox/stream', {
         source_code: store.code,
         class_name: className,
         param_grid: paramGrid,
@@ -136,14 +149,48 @@ export function useStrategySandbox() {
         target_metric: "sharpe_ratio",
         initial_capital: parseFloat(store.initialCapital) || 100000,
         data_source: store.dataSource
-      })
-      
-      if (res.data?.status === 'success') {
-        store.setOptimizationResults(res.data.data)
-        toast({ title: '✅ 寻优完成', description: `共找到 ${res.data.data.length} 组优质参数组合` })
-      } else {
-        toast({ variant: 'destructive', title: '寻优失败', description: res.data?.message })
-        store.setRuntimeError(res.data?.message)
+      }, optimizeController.signal)
+
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let finalData: any = null
+
+      while (true) {
+        if (useStrategyStore.getState().isOptimizing === false) {
+          optimizeController.abort()
+          break
+        }
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        let nl: number
+        while ((nl = buffer.indexOf('\n')) >= 0) {
+          const line = buffer.slice(0, nl).trim()
+          buffer = buffer.slice(nl + 1)
+          if (!line) continue
+          let msg: any
+          try {
+            msg = JSON.parse(line)
+          } catch {
+            continue
+          }
+          if (msg.type === 'result') {
+            finalData = msg.data
+          } else if (msg.type === 'error') {
+            throw new Error(msg.message)
+          } else if (typeof msg.progress === 'number') {
+            store.setOptimizeProgress(msg.progress)
+            store.setOptimizeStage(msg.detail || msg.stage)
+          }
+        }
+      }
+
+      if (finalData) {
+        store.setOptimizeProgress(100)
+        store.setOptimizationResults(finalData)
+        toast({ title: '✅ 寻优完成', description: `共找到 ${finalData.length} 组优质参数组合` })
       }
     } catch (e: any) {
       if (e.name !== 'CanceledError' && e.message !== 'canceled') {

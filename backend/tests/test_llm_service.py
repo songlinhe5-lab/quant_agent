@@ -10,7 +10,7 @@ import pytest
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
-from backend.services.llm_service import LLMService
+from backend.services.ai_narrator.llm_service import LLMService
 
 
 class TestResponse(BaseModel):
@@ -81,7 +81,7 @@ class TestLLMServiceGeneratePydantic:
             service = LLMService()
             return service
 
-    @mock.patch("backend.services.llm_service.LLMService.get_model")
+    @mock.patch("backend.services.ai_narrator.llm_service.LLMService.get_model")
     async def test_generate_pydantic_success(self, mock_get_model, service):
         """测试成功生成 Pydantic 对象"""
         mock_get_model.return_value = "test-model"
@@ -103,7 +103,7 @@ class TestLLMServiceGeneratePydantic:
         assert result.message == "Hello"
         assert result.score == 0.95
 
-    @mock.patch("backend.services.llm_service.LLMService.get_model")
+    @mock.patch("backend.services.ai_narrator.llm_service.LLMService.get_model")
     async def test_generate_pydantic_with_markdown(self, mock_get_model, service):
         """测试清理 Markdown 代码块标记"""
         mock_get_model.return_value = "test-model"
@@ -124,7 +124,7 @@ class TestLLMServiceGeneratePydantic:
         assert result.message == "Hello"
         assert result.score == 0.8
 
-    @mock.patch("backend.services.llm_service.LLMService.get_model")
+    @mock.patch("backend.services.ai_narrator.llm_service.LLMService.get_model")
     async def test_generate_pydantic_validation_error(self, mock_get_model, service):
         """测试 Pydantic 校验失败抛出异常"""
         mock_get_model.return_value = "test-model"
@@ -139,7 +139,7 @@ class TestLLMServiceGeneratePydantic:
                 response_model=TestResponse,
             )
 
-    @mock.patch("backend.services.llm_service.LLMService.get_model")
+    @mock.patch("backend.services.ai_narrator.llm_service.LLMService.get_model")
     async def test_generate_pydantic_empty_content(self, mock_get_model, service):
         """测试空内容处理"""
         mock_get_model.return_value = "test-model"

@@ -30,16 +30,16 @@ from backend.core.alert_models import (
     AlertSeverity,
     NotificationPriority,
 )
-from backend.services.alert_adapters.feishu import FeishuAdapter
-from backend.services.alert_adapters.in_app import ALERT_PUSH_CHANNEL, InAppAdapter
-from backend.services.alert_adapters.telegram import TelegramAdapter
-from backend.services.alert_dispatcher import (
+from backend.services.alert.dispatcher import (
     AlertDispatcher,
     ChannelPlanner,
     CooldownGate,
     PriorityResolver,
     RetryQueue,
 )
+from backend.services.alert_adapters.feishu import FeishuAdapter
+from backend.services.alert_adapters.in_app import ALERT_PUSH_CHANNEL, InAppAdapter
+from backend.services.alert_adapters.telegram import TelegramAdapter
 
 # ─────────────────────────────────────────────
 # 测试辅助

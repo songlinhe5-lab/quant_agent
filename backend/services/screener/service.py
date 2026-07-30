@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 
 from backend.core import models
 from backend.core.database import SessionLocal, engine
-from backend.services.llm_service import llm_service
+from backend.services.ai_narrator.llm_service import llm_service
 from backend.services.screener.daemons import DaemonMixin
 from backend.services.screener.dsl_parser import DslParserMixin
 from backend.services.screener.nlp_translator import NlpTranslatorMixin
@@ -403,11 +403,11 @@ class ScreenerService(NlpTranslatorMixin, DslParserMixin, DaemonMixin):
             try:
                 is_asian = any(x in ticker.upper() for x in ["HK", "SH", "SZ"]) or ticker.isdigit()  # noqa: E501
                 if is_asian:
-                    from backend.services.data_source_router import data_source_router
+                    from backend.services.datasource.router import data_source_router
 
                     res = await data_source_router.fetch_akshare("news", ticker=ticker)
                 else:
-                    from backend.services.finnhub_service import finnhub_service
+                    from backend.services.finnhub.service import finnhub_service
 
                     res = await finnhub_service.get_company_news(ticker, days_back=3)
                 if res.get("status") == "success" and res.get("data"):

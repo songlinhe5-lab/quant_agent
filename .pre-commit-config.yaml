@@ -5,7 +5,7 @@
 repos:
   # ── Python: Ruff lint + format ────────────────────────────────
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.4.0
+    rev: v0.15.16  # 与 pyproject ruff==0.15.16 及 uv.lock 对齐
     hooks:
       - id: ruff
         files: ^backend/.*\.py$

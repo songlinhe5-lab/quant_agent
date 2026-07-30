@@ -28,8 +28,8 @@ from backend.engine.drivers.sim_broker import SimBroker, SimBrokerConfig
 from backend.engine.strategy import Strategy
 
 if TYPE_CHECKING:
-    from backend.services.financial_pit import PointInTimeStore
-    from backend.services.survivorship_bias import SurvivorshipBiasTracker
+    from backend.services.datalake.financial_pit import PointInTimeStore
+    from backend.services.survivorship.survivorship_bias import SurvivorshipBiasTracker
 
 
 @dataclass
@@ -111,7 +111,7 @@ class BacktestContext(BaseContext):
         """获取财务数据（Point-in-Time，as-of ctx.now）"""
         if self._pit_store is None:
             return None
-        from backend.services.financial_pit import PITQuery
+        from backend.services.datalake.financial_pit import PITQuery
 
         query = PITQuery(symbol=symbol, field=field, as_of_date=self.now.date())
         points = self._pit_store.query_as_of(query)

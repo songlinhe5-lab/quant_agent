@@ -90,7 +90,7 @@ class SimBroker:
             if hasattr(current_bar, "stale") and current_bar.stale:
                 return "REJECTED_STALE"
             # 交易时段检查
-            from backend.services.market_correctness import MarketSession
+            from backend.services.market_review.correctness import MarketSession
 
             if not MarketSession.is_trading_hours(intent.symbol, current_bar.dt):
                 return "REJECTED_MARKET_CLOSED"

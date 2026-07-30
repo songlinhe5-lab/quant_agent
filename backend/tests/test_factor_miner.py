@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from backend.services.factor_miner import (
+from backend.services.factor_mining.factor_miner import (
     FactorMiner,
     FactorSearchResult,
     FactorSuggestion,
@@ -59,7 +59,7 @@ async def test_suggest_factors_success():
         },
     ]
 
-    with patch("backend.services.factor_miner.llm_service") as mock_llm:
+    with patch("backend.services.factor_mining.factor_miner.llm_service") as mock_llm:
         mock_llm.generate_pydantic = AsyncMock(return_value=mock_response)
         miner = FactorMiner()
         suggestions = await miner.suggest_factors("AAPL", "maximize_sharpe")
@@ -73,7 +73,7 @@ async def test_suggest_factors_success():
 @pytest.mark.asyncio
 async def test_suggest_factors_llm_failure_fallback():
     """测试 LLM 失败时返回默认因子"""
-    with patch("backend.services.factor_miner.llm_service") as mock_llm:
+    with patch("backend.services.factor_mining.factor_miner.llm_service") as mock_llm:
         mock_llm.generate_pydantic = AsyncMock(side_effect=Exception("LLM error"))
         miner = FactorMiner()
         suggestions = await miner.suggest_factors("AAPL")

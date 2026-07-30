@@ -654,7 +654,7 @@ class TestMonteCarloSandbox:
 # POST /strategy/deploy-to-oms
 # ==========================================
 class TestDeployToOms:
-    @patch("backend.services.bot_runtime.bot_runtime")
+    @patch("backend.workers.oms.bot_runtime.bot_runtime")
     @patch("builtins.open", create=True)
     @patch("os.makedirs")
     def test_deploy_success(self, mock_makedirs, mock_open, mock_bot_rt, client):

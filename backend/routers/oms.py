@@ -18,12 +18,12 @@ from sqlalchemy.orm import Session
 from backend.core import models
 from backend.core.database import get_db
 from backend.core.redis_client import redis_client
+from backend.domain.algo_analytics import algo_analytics
 from backend.routers.auth import get_current_user
-from backend.services.algo_analytics import algo_analytics
-from backend.services.algo_engine import algo_engine
 from backend.services.audit_service import log_audit
-from backend.services.bot_runtime import bot_runtime
 from backend.services.oms_service import oms_service
+from backend.workers.oms.algo_engine import algo_engine
+from backend.workers.oms.bot_runtime import bot_runtime
 
 router = APIRouter(prefix="/oms", tags=["OMS & Live Bots"])
 logger = logging.getLogger("OMS")

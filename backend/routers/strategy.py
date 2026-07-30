@@ -27,15 +27,15 @@ from backend.backtest import (
     run_monte_carlo_stress_test,
 )
 from backend.core import models
-from backend.core.cpu_pool import run_cpu_bound
+from backend.core.cpu_pool import run_cpu_bound, run_cpu_bound_with_progress
 from backend.core.database import get_db
 from backend.core.redis_client import redis_client
 from backend.core.utils import safe_truncate
+from backend.domain.strategy_parser import parse_strategy_parameters
 from backend.routers.auth import get_current_user
 from backend.services import strategy_version_service
-from backend.services.kline_warehouse import kline_warehouse
-from backend.services.llm_service import llm_service
-from backend.services.strategy_parser import parse_strategy_parameters
+from backend.services.ai_narrator.llm_service import llm_service
+from backend.services.datalake.kline_warehouse import kline_warehouse
 
 router = APIRouter(prefix="/strategy", tags=["Strategy Dev"])
 
@@ -548,6 +548,208 @@ async def _fetch_backtest_data(
     return False, None, f"未匹配到支持的数据源或该数据源无法获取 {ticker} 数据。"
 
 
+def _sanitize_source(code: str) -> str:
+    """剥离策略源码中被禁止的 import（talib / BaseStrategy 等），与执行沙箱保持一致。"""
+    code = re.sub(r"^\s*import\s+talib.*$", "", code, flags=re.MULTILINE)
+    code = re.sub(r"^\s*from\s+talib\s+import.*$", "", code, flags=re.MULTILINE)
+    code = re.sub(
+        r"^\s*from\s+[\w\.]+\s+import\s+BaseStrategy.*$",
+        "",
+        code,
+        flags=re.MULTILINE,
+    )
+    return code
+
+
+async def _attach_reproducibility(report, safe_code, payload, persist: bool = False):
+    """BT-02：附加可复现性摘要（与 /run-sandbox 非流式版一致）。"""
+    from backend.app.backtest.report_service import is_reproducible
+    from backend.core.database import SessionLocal
+    from backend.engine.contracts import RunManifest
+    from backend.services.datalake.snapshot_resolver import SnapshotResolveError, SnapshotResolver
+
+    code_hash = RunManifest.compute_code_hash(safe_code)
+    data_mode = "unbound"
+    manifest_hash = None
+    snapshot_id = payload.data_snapshot_id
+    db = SessionLocal()
+    try:
+        try:
+            ref = SnapshotResolver(db).resolve(snapshot_id, manifest_hash=None)
+            snapshot_id = ref.snapshot_id
+            manifest_hash = ref.manifest_hash or None
+            data_mode = ref.data_mode
+        except SnapshotResolveError:
+            data_mode = "unbound"
+        except Exception:
+            data_mode = "unbound"
+
+        reproducible = is_reproducible(
+            code_hash=code_hash,
+            manifest_hash=manifest_hash,
+            random_seed=payload.random_seed,
+            data_mode=data_mode,
+        )
+        manifest = RunManifest(
+            run_id=str(uuid.uuid4()),
+            mode="backtest",
+            code_hash=code_hash,
+            params=payload.params or {},
+            data_snapshot_id=snapshot_id,
+            manifest_hash=manifest_hash,
+            random_seed=payload.random_seed,
+            data_mode=data_mode,  # type: ignore[arg-type]
+            reproducible=reproducible,
+        )
+        if isinstance(report, dict):
+            report = {**report, "manifest": manifest.to_summary()}
+
+        if persist and isinstance(report, dict):
+            from backend.app.backtest.report_service import BacktestReportService
+
+            svc = BacktestReportService(db)
+            row = svc.save(
+                manifest,
+                metrics=report.get("metrics") or report.get("stats") or {},
+                equity_curve=report.get("equity_curve"),
+                trades=report.get("trades"),
+                symbol=payload.ticker,
+            )
+            report["persisted_run_id"] = row.run_id
+            report["badge"] = svc.to_public_dict(row)["badge"]
+    finally:
+        db.close()
+    return report
+
+
+def _sse_headers() -> dict:
+    """SSE 流式响应头：禁用代理缓冲，保证进度实时下推。"""
+    return {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+
+
+async def _stream_backtest_run(payload, chan: "asyncio.Queue") -> None:
+    """通用沙箱回测流式 runner：消费 /run-sandbox 同款逻辑并推送进度。"""
+    try:
+        for mod in ["talib", "core", "core.strategy", "backtrader"]:
+            if mod not in sys.modules:
+                sys.modules[mod] = MagicMock()
+
+        safe_code = _sanitize_source(payload.source_code)
+
+        success, df, msg = await _fetch_backtest_data(
+            payload.ticker, payload.period, payload.data_source, payload.interval,
+            snapshot_id=payload.data_snapshot_id,
+        )
+        if not success or df is None or df.empty:
+            await chan.put({"type": "error", "message": f"回测数据加载失败: {msg}"})
+            return
+
+        def on_progress(p):
+            chan.put_nowait(p)
+
+        report = await run_cpu_bound_with_progress(
+            run_dynamic_sandbox_backtest,
+            safe_code,
+            payload.class_name,
+            payload.params,
+            df,
+            payload.initial_capital,
+            payload.debug_mode,
+            on_progress=on_progress,
+        )
+
+        report = await _attach_reproducibility(report, safe_code, payload, persist=payload.persist_report)
+        await chan.put({"type": "result", "data": report})
+    except ValueError as ve:
+        await chan.put({"type": "error", "message": str(ve), "error_code": "SANDBOX_RUNTIME_ERROR"})
+    except Exception:
+        tb = safe_truncate(traceback.format_exc(), max_length=1500)
+        await chan.put({"type": "error", "message": f"沙箱运行崩溃:\n{tb}", "error_code": "SANDBOX_RUNTIME_ERROR"})
+
+
+@router.post("/run-sandbox/stream", dependencies=[Depends(RateLimiter(max_requests=10, window_seconds=60, by_user=True)), Depends(get_current_user)])
+async def run_strategy_sandbox_stream(payload: RunSandboxPayload):
+    """SSE 流式沙箱回测：实时推送撮合进度，结束返回完整报告。"""
+    chan: "asyncio.Queue" = asyncio.Queue()
+    task = asyncio.create_task(_stream_backtest_run(payload, chan))
+
+    async def gen():
+        try:
+            while True:
+                item = await chan.get()
+                yield (json.dumps(item, ensure_ascii=False) + "\n").encode("utf-8")
+                if item.get("type") in ("result", "error"):
+                    break
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(gen(), media_type="application/x-ndjson", headers=_sse_headers())
+
+
+@router.post("/optimize-sandbox/stream", dependencies=[Depends(get_current_user)])
+async def optimize_strategy_sandbox_stream(payload: OptimizeSandboxPayload):
+    """SSE 流式寻优：实时推送网格遍历进度，结束返回 Top 组合。"""
+    chan: "asyncio.Queue" = asyncio.Queue()
+
+    async def runner():
+        try:
+            for mod in ["talib", "core", "core.strategy", "backtrader"]:
+                if mod not in sys.modules:
+                    sys.modules[mod] = MagicMock()
+
+            safe_code = _sanitize_source(payload.source_code)
+
+            success, df, msg = await _fetch_backtest_data(
+                payload.ticker, payload.period, payload.data_source, payload.interval
+            )
+            if not success or df is None or df.empty:
+                await chan.put({"type": "error", "message": f"回测数据加载失败: {msg}"})
+                return
+
+            def on_progress(p):
+                chan.put_nowait(p)
+
+            top_results = await run_cpu_bound_with_progress(
+                run_grid_search_backtest,
+                safe_code,
+                payload.class_name,
+                payload.param_grid,
+                df,
+                payload.initial_capital,
+                payload.target_metric,
+                on_progress=on_progress,
+            )
+
+            if not top_results:
+                await chan.put({"type": "error", "message": "网格搜索未找到任何产生有效交易的参数组合。"})
+                return
+            await chan.put({"type": "result", "data": top_results})
+        except ValueError as ve:
+            await chan.put({"type": "error", "message": str(ve)})
+        except Exception:
+            await chan.put({"type": "error", "message": f"寻优沙箱崩溃:\n{safe_truncate(traceback.format_exc(), max_length=1500)}"})
+
+    task = asyncio.create_task(runner())
+
+    async def gen():
+        try:
+            while True:
+                item = await chan.get()
+                yield (json.dumps(item, ensure_ascii=False) + "\n").encode("utf-8")
+                if item.get("type") in ("result", "error"):
+                    break
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(gen(), media_type="application/x-ndjson", headers=_sse_headers())
+
+
 @router.post("/parse-config", dependencies=[Depends(get_current_user)])
 async def parse_strategy_config(payload: CodePayload):
     """接收在线编辑器的源码，解析并返回动态表单配置"""
@@ -853,9 +1055,9 @@ async def run_strategy_sandbox(payload: RunSandboxPayload):
         )
 
         # BT-02：附加可复现性摘要（完整 SnapshotReader 装载仍属 DQ-03c）
+        from backend.app.backtest.report_service import is_reproducible
         from backend.core.database import SessionLocal
         from backend.engine.contracts import RunManifest
-        from backend.services.backtest_report_service import is_reproducible
         from backend.services.datalake.snapshot_resolver import SnapshotResolveError, SnapshotResolver
 
         code_hash = RunManifest.compute_code_hash(safe_code)
@@ -895,7 +1097,7 @@ async def run_strategy_sandbox(payload: RunSandboxPayload):
                 report = {**report, "manifest": manifest.to_summary()}
 
             if payload.persist_report and isinstance(report, dict):
-                from backend.services.backtest_report_service import BacktestReportService
+                from backend.app.backtest.report_service import BacktestReportService
 
                 svc = BacktestReportService(db)
                 row = svc.save(
@@ -1127,7 +1329,7 @@ async def deploy_to_oms(payload: RunSandboxPayload):
             f.write(header + payload.source_code)
 
         # 2. OMS-05: 通过 BotRuntimeManager 启动真实 Bot 算力节点
-        from backend.services.bot_runtime import bot_runtime
+        from backend.workers.oms.bot_runtime import bot_runtime
 
         bot_id = f"bot_{payload.class_name.lower()}_{int(time.time())}"
         await bot_runtime.start_bot(

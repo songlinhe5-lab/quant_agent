@@ -21,7 +21,7 @@ from backend.core.alert_models import (
     AlertSeverity,
     evaluate_indicator_rule,
 )
-from backend.services.indicator_evaluator import (
+from backend.domain.indicator_evaluator import (
     INDICATOR_RULE_TYPES,
     IndicatorEvaluator,
     extract_indicators_from_tech_data,

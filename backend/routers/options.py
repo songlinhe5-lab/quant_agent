@@ -13,9 +13,13 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from backend.app.iv_history_service import (
+    get_iv_history,
+    record_iv_snapshot,
+)
 from backend.app.market_data import market_data
-from backend.services.options_engine import compute_option_chain_greeks
-from backend.services.options_screener import OptionFilter, options_screener
+from backend.domain.options_engine import compute_option_chain_greeks
+from backend.services.screener.options_screener import OptionFilter, options_screener
 
 logger = logging.getLogger(__name__)
 
@@ -194,13 +198,22 @@ async def get_iv_rank(ticker: str):
         if not atm_options:
             raise HTTPException(status_code=404, detail="期权链无有效 IV 数据可计算")
 
-        # ⚠️ IV Rank 需要历史 IV 序列，须从 Redis/DB 获取真实数据；
-        # 当前无真实源，禁止用 random 伪造 (VIBE-CODING)。
-        # TODO(OPTION-04): 接入真实 IV 历史序列（Redis/DB）后改为读取并调用下方分析
-        raise HTTPException(
-            status_code=404,
-            detail="IV Rank 计算失败：缺少历史 IV 序列（真实数据源不可用，禁止用模拟数据填充）",
-        )
+        # 当前 ATM IV: 取 ATM 合约 IV 均值 (小数形式)
+        iv_vals = [float(o.get("iv")) for o in atm_options if o.get("iv")]
+        current_iv = sum(iv_vals) / max(1, len(iv_vals)) if iv_vals else None
+        if current_iv is None or current_iv <= 0:
+            raise HTTPException(status_code=404, detail="期权链无有效 IV 数据可计算")
+
+        # OPTION-04: 真实历史 IV 序列 (Redis/DB)。惰性落库 + 读取, 零幻觉。
+        await record_iv_snapshot(ticker, current_iv)
+        iv_history = await get_iv_history(ticker)
+
+        analysis = await options_screener.get_iv_rank_analysis(ticker, current_iv, iv_history)
+        analysis["current_iv"] = round(current_iv * 100, 2)
+        analysis["data_points"] = len(iv_history)
+        if len(iv_history) < 2:
+            analysis["note"] = "历史 IV 序列不足 (已记录首批真实快照), IV Rank/Percentile 将在累积真实数据后自动生效"
+        return {"status": "success", **analysis}
 
     except HTTPException:
         raise

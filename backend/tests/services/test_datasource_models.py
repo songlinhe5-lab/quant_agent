@@ -351,7 +351,7 @@ class TestDataSourceRouterIntegration:
                 "YF_PRIMARY_NODE_URL": "http://test-node:8000",
             },
         ):
-            from backend.services.data_source_router import DataSourceRouter
+            from backend.services.datasource.router import DataSourceRouter
 
             return DataSourceRouter()
 

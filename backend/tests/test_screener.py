@@ -6,7 +6,7 @@ import unittest.mock as _mock
 import warnings
 
 from backend.routers.screener import SUGGESTIONS
-from backend.services.screener_service import screener_service
+from backend.services.screener.screener_service import screener_service
 
 
 class TestScreenerSuggestions(unittest.IsolatedAsyncioTestCase):

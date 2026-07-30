@@ -25,7 +25,7 @@ class TestTickerService:
 
     @pytest.fixture
     def service(self):
-        from backend.services.ticker_service import TickerService
+        from backend.services.fund_flow.ticker import TickerService
 
         return TickerService()
 
@@ -47,7 +47,7 @@ class TestTickerService:
     async def test_search_tickers_cache_hit_returns_cached(self, service):
         """Redis 缓存命中应直接返回缓存数据"""
         cached_data = [{"symbol": "US.AAPL", "name": "Apple", "type": "EQUITY"}]
-        with patch("backend.services.ticker_service.redis_client") as mock_redis:
+        with patch("backend.services.fund_flow.ticker.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value='[{"symbol": "US.AAPL", "name": "Apple", "type": "EQUITY"}]')
             result = await service.search_tickers("AAPL")
             assert result["status"] == "success"
@@ -63,8 +63,8 @@ class TestTickerService:
             return cached_data
 
         with (
-            patch("backend.services.ticker_service.redis_client") as mock_redis,
-            patch("backend.services.ticker_service.asyncio.to_thread", new=fake_to_thread),
+            patch("backend.services.fund_flow.ticker.redis_client") as mock_redis,
+            patch("backend.services.fund_flow.ticker.asyncio.to_thread", new=fake_to_thread),
         ):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
@@ -78,8 +78,8 @@ class TestTickerService:
     async def test_search_tickers_db_exception_returns_error(self, service):
         """数据库异常应返回 error 状态"""
         with (
-            patch("backend.services.ticker_service.redis_client") as mock_redis,
-            patch("backend.services.ticker_service.asyncio.to_thread", side_effect=RuntimeError("db fail")),
+            patch("backend.services.fund_flow.ticker.redis_client") as mock_redis,
+            patch("backend.services.fund_flow.ticker.asyncio.to_thread", side_effect=RuntimeError("db fail")),
         ):
             mock_redis.get = AsyncMock(return_value=None)
             result = await service.search_tickers("AAPL")
@@ -103,9 +103,9 @@ class TestTickerService:
             raise asyncio.CancelledError
 
         with (
-            patch("backend.services.ticker_service.asyncio.to_thread", new=AsyncMock()) as mock_thread,
-            patch("backend.services.ticker_service.asyncio.sleep", new=fake_sleep),
-            patch("backend.services.ticker_service.futu_service") as mock_futu,
+            patch("backend.services.fund_flow.ticker.asyncio.to_thread", new=AsyncMock()) as mock_thread,
+            patch("backend.services.fund_flow.ticker.asyncio.sleep", new=fake_sleep),
+            patch("backend.services.fund_flow.ticker.futu_service") as mock_futu,
         ):
             mock_thread.return_value = []
             mock_futu.status = "CONNECTED"  # 💡 模拟 Futu 已连接，跳过等待
@@ -117,7 +117,7 @@ class TestTickerService:
 
     def test_write_base_tickers_writes_to_db(self, service):
         """_write_base_tickers 应向数据库 merge 基础标的并 commit"""
-        with patch("backend.services.ticker_service.SessionLocal") as mock_session_cls:
+        with patch("backend.services.fund_flow.ticker.SessionLocal") as mock_session_cls:
             mock_db = MagicMock()
             mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
@@ -145,9 +145,9 @@ class TestTickerService:
             return func()
 
         with (
-            patch("backend.services.ticker_service.futu_service") as mock_futu,
-            patch("backend.services.ticker_service.SessionLocal") as mock_session_cls,
-            patch("backend.services.ticker_service.asyncio.to_thread", new=fake_to_thread),
+            patch("backend.services.fund_flow.ticker.futu_service") as mock_futu,
+            patch("backend.services.fund_flow.ticker.SessionLocal") as mock_session_cls,
+            patch("backend.services.fund_flow.ticker.asyncio.to_thread", new=fake_to_thread),
         ):
             mock_futu.get_stock_basicinfo = fake_get
             mock_db = MagicMock()
@@ -167,7 +167,7 @@ class TestTickerService:
         async def fake_get(market, sec_type):
             return {"status": "error", "data": []}
 
-        with patch("backend.services.ticker_service.futu_service") as mock_futu:
+        with patch("backend.services.fund_flow.ticker.futu_service") as mock_futu:
             mock_futu.get_stock_basicinfo = fake_get
             result = await service._fetch_and_save_from_futu()
             assert result == []

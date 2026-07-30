@@ -8,7 +8,7 @@ AI-03 · Eval API 端点
 
 from fastapi import APIRouter
 
-from backend.services.eval_runner import eval_runner
+from backend.app.eval.runner import eval_runner
 
 router = APIRouter(prefix="/eval", tags=["eval"])
 

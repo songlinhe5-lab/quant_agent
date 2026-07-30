@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
-from backend.services.screener_service import (
+from backend.services.screener.screener_service import (
     _SUPPORTED_PATTERNS,
     _VALID_FIELDS_SET,
     ScreenerDecision,

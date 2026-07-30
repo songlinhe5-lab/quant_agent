@@ -12,7 +12,7 @@ from futu import RET_OK, ModifyOrderOp, OrderType, TrdEnv, TrdMarket, TrdSide
 
 from backend.core.retry_utils import with_global_retry
 from backend.core.utils import safe_float
-from backend.services.notification_service import notification_service
+from backend.services.alert.notification import notification_service
 
 
 class TradeHandler:

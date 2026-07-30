@@ -10,7 +10,7 @@ from typing import List
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from backend.services.alpha158 import compute_all_factors, compute_factor, list_factors
+from backend.domain.alpha158 import compute_all_factors, compute_factor, list_factors
 
 router = APIRouter(prefix="/alpha158", tags=["alpha158"])
 

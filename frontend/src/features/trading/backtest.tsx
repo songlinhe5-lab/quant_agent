@@ -1,6 +1,7 @@
 'use client'
 
 import { useBacktest } from './use-backtest'
+import { InitOverlay } from '@/components/ui/data-display'
 import { BacktestConfig } from './backtest-config'
 import { BacktestResults } from './backtest-results'
 
@@ -9,7 +10,10 @@ import { BacktestResults } from './backtest-results'
 export function BacktestModule() {
   const bt = useBacktest()
 
-  if (!bt.isMounted) return null
+  // §14.2：初始化态给出可见反馈（骨架屏），禁止静默白屏或卡死
+  if (!bt.isMounted) {
+    return <InitOverlay variant="skeleton" label="正在初始化回测终端…" className="h-[calc(100vh-48px)] min-h-[400px]" />
+  }
 
   return (
     <div className="space-y-4">
@@ -50,6 +54,8 @@ export function BacktestModule() {
       <BacktestResults
         backtestResult={bt.backtestResult}
         running={bt.running}
+        progress={bt.progress}
+        progressStage={bt.progressStage}
         isDebugMode={bt.isDebugMode}
         currentTearSheet={bt.currentTearSheet}
         reproBadge={bt.reproBadge}

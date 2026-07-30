@@ -11,7 +11,7 @@ import time
 import prometheus_client
 import pytest
 
-from backend.services.data_quality_monitor import (
+from backend.services.data_quality.monitor import (
     DataQualityMonitor,
     get_quality_monitor,
     quality_overview,
@@ -22,7 +22,7 @@ from backend.services.data_quality_monitor import (
 def _isolate_registry(monkeypatch):
     """每个用例使用干净注册表，避免跨测污染。"""
     monkeypatch.setattr(
-        "backend.services.data_quality_monitor._MONITORS",
+        "backend.services.data_quality.monitor._MONITORS",
         {},
     )
 

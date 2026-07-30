@@ -12,11 +12,15 @@ BT-01d · ExecutionGateway 统一订单出口
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
+import uuid
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, Protocol
+
+from futu import TrdMarket, TrdSide
 
 from backend.engine.contracts import OrderIntent, OrderUpdate
 from backend.schemas.domain import OrderStatus
@@ -222,39 +226,111 @@ class OmsExecutionAdapter:
         self,
         oms_service=None,
         futu_service=None,
+        db=None,
+        is_simulated: bool = False,
     ) -> None:
         self._oms_service = oms_service
         self._futu_service = futu_service
+        self._db = db
+        self._is_simulated = is_simulated
         self._orders: dict[str, OrderUpdate] = {}
 
     def submit(self, intent: OrderIntent, client_order_id: str) -> str:
         """提交订单到 OMS
 
-        当前为桩实现，实际应调用 oms_service.create_order() + futu.place_order()
+        真实实现：
+        1. oms_service.create_order() 落库（OMS-01）
+        2. 非模拟盘时桥接 futu_service.place_order() 实盘下单
+        3. 状态回写（self._orders）
         """
-        import uuid
-
         order_id = f"oms-{uuid.uuid4().hex[:8]}"
 
-        # TODO: 实际实现
-        # 1. oms_service.create_order(symbol, side, qty, order_type, limit_price)
-        # 2. asyncio.to_thread(futu_service.place_order, ...)
-        # 3. 状态回写
-
+        # 状态回写：先登记为已提交
         self._orders[order_id] = OrderUpdate(
             order_id=order_id,
             intent_tag=intent.tag,
             status=OrderStatus.SUBMITTED,
         )
 
+        try:
+            # submit 属于同步协议（OrderExecutor），通过 asyncio.run 桥接异步 oms/futu 服务。
+            # 实盘策略运行在 asyncio.to_thread 的 worker 线程中（无运行中的事件循环），
+            # 测试等同步上下文同样适用。
+            asyncio.run(self._submit_pipeline(intent, order_id))
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"[OmsAdapter] 下单管道异常 order_id={order_id}: {e}")
+
         logger.info(f"[OmsAdapter] Order submitted: {order_id} for {intent.symbol}")
         return order_id
 
-    def cancel(self, order_id: str) -> bool:
-        """取消订单
+    async def _submit_pipeline(self, intent: OrderIntent, order_id: str) -> None:
+        price = float(intent.limit_price) if intent.order_type == "LIMIT" else 0.0
 
-        当前为桩实现。
-        """
+        db = self._db
+        own_session = False
+        if db is None:
+            from backend.core.database import SessionLocal
+
+            db = SessionLocal()
+            own_session = True
+        try:
+            # 1. 订单持久化（OMS-01）
+            res = await self._get_oms().create_order(
+                db=db,
+                order_id=order_id,
+                symbol=intent.symbol,
+                side=intent.side,
+                order_type=intent.order_type,
+                qty=int(intent.qty),
+                price=price,
+                is_simulated=self._is_simulated,
+                note=intent.tag,
+            )
+            if isinstance(res, dict) and res.get("status") != "success":
+                logger.warning(f"[OmsAdapter] OMS 落库返回非成功状态: {res}")
+
+            # 2. 模拟盘不真正发往券商
+            if self._is_simulated:
+                return
+
+            # 3. 路由到 Futu 实盘下单
+            trd_side = TrdSide.BUY if intent.side == "BUY" else TrdSide.SELL
+            market = self._infer_trd_market(intent.symbol)
+            await self._get_futu().place_order(
+                ticker=intent.symbol,
+                qty=int(intent.qty),
+                price=price,
+                trd_side=trd_side,
+                market=market,
+            )
+        finally:
+            if own_session:
+                db.close()
+
+    def _get_oms(self):
+        if self._oms_service is None:
+            from backend.services.oms_service import get_oms_service
+
+            self._oms_service = get_oms_service()
+        return self._oms_service
+
+    def _get_futu(self):
+        if self._futu_service is None:
+            from backend.services.futu.service import get_futu_service
+
+            self._futu_service = get_futu_service()
+        return self._futu_service
+
+    @staticmethod
+    def _infer_trd_market(symbol: str) -> TrdMarket:
+        if symbol.startswith("HK."):
+            return TrdMarket.HK
+        if symbol.startswith(("SH.", "SZ.")):
+            return TrdMarket.CN
+        return TrdMarket.US
+
+    def cancel(self, order_id: str) -> bool:
+        """取消订单（桩实现，真实撤单需券商 order_id 与 market，留待 OMS 回写）"""
         if order_id in self._orders:
             self._orders[order_id].status = OrderStatus.CANCELLED
             return True

@@ -14,7 +14,7 @@ import logging
 from typing import Any, Optional
 
 from backend.core.ticker_format import format_yf_ticker
-from backend.services.options_engine import compute_option_chain_greeks
+from backend.domain.options_engine import compute_option_chain_greeks
 
 logger = logging.getLogger(__name__)
 
@@ -23,13 +23,13 @@ class MarketDataGateway:
     """实现 QuotePort 表面 + 选股/宏观等扩展方法。"""
 
     def __init__(self) -> None:
-        from backend.services.akshare_service import akshare_service
-        from backend.services.dbnomics_service import dbnomics_service
-        from backend.services.finnhub_service import finnhub_service
-        from backend.services.futu_service import futu_service
+        from backend.services.akshare import akshare_service
+        from backend.services.finnhub.service import finnhub_service
+        from backend.services.futu import futu_service
+        from backend.services.macro.dbnomics import dbnomics_service
         from backend.services.macro.fred_service import fred_service
-        from backend.services.rbi_service import rbi_service
-        from backend.services.yfinance_service import yf_service
+        from backend.services.macro.rbi import rbi_service
+        from backend.services.yfinance import yf_service
 
         self._futu = futu_service
         self._yf = yf_service
@@ -133,48 +133,70 @@ class MarketDataGateway:
         res["underlying_price"] = spot
         return res
 
+    async def _get_option_expiration_dates(self, ticker: str) -> tuple[list[str], str]:
+        """获取期权到期日列表。优先 Futu 真实源，不可用则 YFinance 降级。
+
+        Returns:
+            (到期日列表, 数据源标识) ; 均无数据时返回 ([], "none")
+        """
+        futu = getattr(self, "_futu", None)
+        if futu is not None and getattr(futu, "connected", False):
+            try:
+                if hasattr(futu, "get_option_expiration_date_list"):
+                    dates = await futu.get_option_expiration_date_list(ticker)
+                    if dates:
+                        return list(dates), "futu"
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[MarketData] Futu 取到期日失败, 降级 YF: {e}")
+        # YFinance 降级 (零幻觉: 仅用真实行情数据)
+        try:
+            import yfinance as yf
+
+            tk = yf.Ticker(ticker)
+            opts = list(getattr(tk, "options", []) or [])
+            if opts:
+                return opts, "yfinance"
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[MarketData] YF 取到期日失败: {e}")
+        return [], "none"
+
     async def get_option_chain_matrix(
         self, ticker: str, max_expiries: int = 8, max_strikes: int = 21
     ) -> dict[str, Any]:
         """跨到期日的 IV 波动率曲面，供前端热力图使用。
 
-        仅当 Futu 已连接时从真实数据源逐月组装；未连接或任何异常均
-        显式返回错误 + 告警，绝不用 Mock 填充掩盖数据源不可用（VIBE-CODING）。
+        优先 Futu 真实源；Futu 未连接时自动降级到 YFinance 真实期权链
+        (OPTION-01 修复: 旧逻辑强制 Futu 连接会令真实 YF 数据也取不到)。
+        任何异常均显式返回错误，绝不用 Mock 填充 (VIBE-CODING)。
         """
-        connected = False
         try:
-            cm = getattr(self._futu, "conn_mgr", None)
-            connected = cm is not None and getattr(cm, "status", None) == "CONNECTED"
-        except Exception:
-            connected = False
-        if not connected:
-            return {
-                "status": "error",
-                "message": ("数据源已死，无法分析：期权 IV 曲面数据源不可用（Futu OpenD 未连接，无法获取真实期权链）"),
-            }
-
-        try:
-            exp_dates = None
-            if hasattr(self._futu, "get_option_expiration_date_list"):
-                exp_dates = await self._futu.get_option_expiration_date_list(ticker)
+            exp_dates, src = await self._get_option_expiration_dates(ticker)
             if not exp_dates:
                 return {
                     "status": "error",
-                    "message": f"未获取到 {ticker} 的期权到期日列表，无法构建 IV 曲面（数据源不可用）",
+                    "message": (
+                        f"数据源已死，无法分析：未获取到 {ticker} 的期权到期日列表 (Futu/YFinance 均无可用真实数据)"
+                    ),
                 }
+
             expirations: list = []
             iv_call, iv_put, delta_call, delta_put = [], [], [], []
             strikes_set: set = set()
             legs: list = []
             for exp in exp_dates[:max_expiries]:
                 chain = await self.get_option_chain(ticker, exp)
+                if chain.get("status") != "success":
+                    logger.warning(f"[MarketData] matrix: 到期 {exp} 取链失败: {chain.get('message')}")
+                    continue
                 opts = chain.get("options") or []
                 if not opts:
                     continue
                 expirations.append(exp)
                 c_map, p_map = {}, {}
                 for o in opts:
-                    k = o.get("strike_price")
+                    k = o.get("strike") or o.get("strike_price")
+                    if k is None:
+                        continue
                     g = o.get("greeks") or {}
                     entry = {"iv": o.get("iv"), "delta": g.get("delta")}
                     if str(o.get("option_type", "")).upper() == "CALL":
@@ -192,6 +214,11 @@ class MarketDataGateway:
                         legs.append({"type": "call", "expiry": exp, "strike": s, **c_map[s]})
                     if p_map.get(s):
                         legs.append({"type": "put", "expiry": exp, "strike": s, **p_map[s]})
+            if not expirations:
+                return {
+                    "status": "error",
+                    "message": f"未构建出 {ticker} 的有效期权曲面 (各到期日均无真实数据)",
+                }
             spot = None
             try:
                 q = await self.get_quote(ticker)
@@ -207,7 +234,7 @@ class MarketDataGateway:
                 "calls": {"iv": iv_call, "delta": delta_call},
                 "puts": {"iv": iv_put, "delta": delta_put},
                 "legs": legs,
-                "source": "futu",
+                "source": src,
             }
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[MarketDataGateway] 生产期权矩阵组装失败: {e}")

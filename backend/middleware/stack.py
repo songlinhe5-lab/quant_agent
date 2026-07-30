@@ -20,7 +20,7 @@ from backend.core.structlog_config import (
     symbol_var,
     trace_id_var,
 )
-from backend.services.system_monitor_service import system_monitor_service
+from backend.workers.monitor.system_monitor import system_monitor_service
 
 # ─── API 版本前缀 ─────────────────────────────────────────────
 API_URL_VERSION = os.getenv("API_URL_VERSION", "v1")

@@ -103,11 +103,16 @@ class OptionFundHandler:
         if not self.conn_mgr.quote_ctx:
             return {"status": "error", "message": "FutuService 未连接"}
 
-        # 🚨 全局熔断拦截
+        # 🚨 全局熔断拦截：冷却期内返回错误 (零幻觉 — 绝不用 Mock 填充真实资金流)
         if time.time() < self.cache_mgr.ff_circuit_breaker_until:
-            from .mock_provider import MockProvider
+            if __import__("os").getenv("QUANT_ENV") == "development":
+                from .mock_provider import MockProvider
 
-            return MockProvider.mock_fund_flow(ticker)
+                return MockProvider.mock_fund_flow(ticker)
+            return {
+                "status": "error",
+                "message": "资金流向接口处于熔断冷却期，暂不可用（请稍后再试）",
+            }
 
         if self.cache_mgr.ff_lock is None:
             self.cache_mgr.ff_lock = asyncio.Lock()
@@ -125,9 +130,14 @@ class OptionFundHandler:
             if "频率太高" in str(data) or "frequency" in str(data).lower():
                 print(f"🚨 [Futu] 资金流向触发限流熔断！接口将强制全局休眠 60 秒以释放压力 ({data})")  # noqa: E501
                 self.cache_mgr.ff_circuit_breaker_until = time.time() + get_cooldown_seconds()
-                from .mock_provider import MockProvider
+                if __import__("os").getenv("QUANT_ENV") == "development":
+                    from .mock_provider import MockProvider
 
-                res = MockProvider.mock_fund_flow(ticker)
+                    res = MockProvider.mock_fund_flow(ticker)
+                    self.cache_mgr.set_fund_flow_cache(cache_key, time.time(), res)
+                    return res
+                # 生产环境零幻觉：返回错误而非假数据，并缓存错误避免短时重复击穿
+                res = {"status": "error", "message": "资金流向触发限流熔断，暂不可用（接口休眠中）"}
                 self.cache_mgr.set_fund_flow_cache(cache_key, time.time(), res)
                 return res
 

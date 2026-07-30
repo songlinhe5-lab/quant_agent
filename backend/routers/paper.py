@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.core.database import get_db
-from backend.services import performance as perf
+from backend.domain import performance as perf
 from backend.services.paper_ledger_service import paper_ledger_service
 
 router = APIRouter(prefix="/paper", tags=["Paper Trading"])

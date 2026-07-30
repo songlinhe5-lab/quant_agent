@@ -3,7 +3,7 @@ import functools
 import inspect
 from typing import Callable
 
-from backend.services.notification_service import notification_service
+from backend.services.alert.notification import notification_service
 
 
 class ToolCorrectionError(Exception):

@@ -175,7 +175,6 @@ backend/services/futu/
 **提供的 Mock 数据：**
 - `mock_quote()`: 模拟行情
 - `mock_history()`: 模拟历史K线
-- `mock_option_chain()`: 模拟期权链
 - `mock_fund_flow()`: 模拟资金流向
 - `mock_fundamental()`: 模拟基本面数据
 - `mock_order_book()`: 模拟盘口深度

@@ -25,12 +25,12 @@ from backend.core.metrics import (
 from backend.core.proto.market_pb2 import Order, QuoteData  # type: ignore
 from backend.core.redis_client import l1_cached_redis, redis_client
 from backend.core.utils import safe_divide, safe_float
+from backend.services.alert.notification import notification_service
+from backend.services.datalake.kline_warehouse import kline_warehouse
 
 # 引入现有的 Tools (本地 futu_service 作为 ClusterManager 不可用时的兜底)
 from backend.services.futu import futu_service
-from backend.services.kline_warehouse import kline_warehouse
-from backend.services.notification_service import notification_service
-from backend.services.yfinance_service import format_yf_ticker, yf_service
+from backend.services.yfinance import format_yf_ticker, yf_service
 
 logger = logging.getLogger(__name__)
 

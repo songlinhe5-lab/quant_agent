@@ -730,6 +730,11 @@ Before any PR is merged, AI-generated code MUST pass all of the following:
 - [ ] WebSocket disconnect → STALE indicator shown
 - [ ] All high-freq callbacks wrapped in `useCallback`
 - [ ] New components are placed in the correct atomic layer
+- [ ] **生产构建不含可触发的 mock 分支**（mock 仅限 `import.meta.env.DEV` + `VITE_ENABLE_MOCK` 开关，见 §14.1）
+- [ ] 使用 mock 的界面带醒目 `DEMO · 假数据` 角标，不得伪装成真实数据
+- [ ] 初始化态有骨架屏 / 进度 / 状态文案（`InitOverlay`），无静默白屏（见 §14.2）
+- [ ] 空页面有 `EmptyState`（原因文案 + 引导操作入口），不伪装成「已加载但无内容」（见 §14.2）
+- [ ] 外部数据面板标注数据源徽章 `DataSourceBadge`（数据源 + 更新时间，降级为 STALE）（见 §14.3）
 
 ### Backend Checklist
 - [ ] No file exceeds its hard line limit (see Section 3.2)
@@ -746,3 +751,47 @@ Before any PR is merged, AI-generated code MUST pass all of the following:
 - [ ] All numbers cited are from Tool return values (zero hallucination)
 - [ ] Data source + timestamp cited at end of analysis
 - [ ] ECharts config uses dark theme (no default palette)
+
+---
+
+## 14. 生产环境数据完整性与 UX 红线 (Production Data Integrity & UX Red Lines)
+
+> 适用场景：所有 Vibe Coding 生成的**真实前端应用页面**（非聊天内联 HTML 卡片）。
+> 核心原则——**真实系统绝不伪造数据**，且任何等待 / 空缺都必须对用户透明。
+
+### 14.1 生产环境零 Mock 数据 (⛔ Non-Negotiable)
+
+- mock / fixture / 假数据**仅限本地开发与演示**，**必须**由显式开关控制：
+  `import.meta.env.DEV && import.meta.env.VITE_ENABLE_MOCK === 'true'`。
+- ⛔ **绝对禁止**在 `import.meta.env.PROD` 下注入任何 mock / fake 数据。生产构建
+  （`vite build`）不得保留任何可被触发的 mock 分支（CI 应扫描并拦截）。
+- 使用 mock 的界面**必须**渲染醒目角标（如右上角 `DEMO · 假数据`），不可伪装成真实数据。
+- 后端 `services/` / `routers/` **严禁**返回硬编码假数据；真实源不可用 / 无数据时返回
+  明确**空态**（`data: []` / `null`）或**错误态**（`status: "error"` + `error_code`），
+  ⛔ **不得**用假数据填充以「凑出好看的界面」。
+
+### 14.2 初始化与空页面必须给提示 (⛔ Non-Negotiable)
+
+- **初始化态**（首屏加载 / WS 连接中 / 订阅建立中 / 数据回填中）：必须展示骨架屏 /
+  进度 / 状态文案（如「行情连接中…」），⛔ 禁止静默白屏或卡死。统一使用
+  `components/ui/data-display/InitOverlay.tsx`。
+- **空页面态**（无持仓 / 无订阅标的 / 无回测结果 / 筛选无命中）：必须渲染 `EmptyState`，
+  包含①清晰**原因文案** ②至少一个**引导操作入口**，⛔ 禁止空白卡片伪装成
+  「已加载但无内容」。统一使用 `components/ui/data-display/EmptyState.tsx`。
+
+### 14.3 数据来源提示 (✅ Mandatory)
+
+- 任何展示外部行情 / 财务 / 新闻数据的面板，**必须**标注**数据源名称**
+  （Futu OpenD / YFinance / Finnhub / AKShare / 本地研报）+ **更新时间**，
+  复用 WebSocket 断线 STALE 概念。
+- 提供通用原子组件 `components/ui/data-display/DataSourceBadge.tsx`，统一格式：
+  `数据源: XXX · 更新于 HH:MM:SS`；异常 / 降级时 `stale` 置真，降级为 amber `STALE` 徽章。
+
+### 14.4 配套原子组件（已在 frontend 落地）
+
+| 组件 | 路径 | 用途 |
+|------|------|------|
+| `EmptyState` | `components/ui/data-display/EmptyState.tsx` | 空态（原因 + 引导操作） |
+| `DataSourceBadge` | `components/ui/data-display/DataSourceBadge.tsx` | 数据源 / 更新时间徽章 |
+| `InitOverlay` | `components/ui/data-display/InitOverlay.tsx` | 初始化遮罩（骨架 / 状态文案） |
+| barrel | `components/ui/data-display/index.ts` | 统一导出 |

@@ -34,7 +34,7 @@ class MyStrategy:
 '''
 
     def test_parse_valid_strategy(self):
-        from backend.services.strategy_parser import parse_strategy_parameters
+        from backend.domain.strategy_parser import parse_strategy_parameters
 
         result = parse_strategy_parameters(self.SAMPLE_STRATEGY)
         assert result["status"] == "success"
@@ -46,7 +46,7 @@ class MyStrategy:
         assert "slow_ma" in param_names
 
     def test_parse_strategy_with_defaults(self):
-        from backend.services.strategy_parser import parse_strategy_parameters
+        from backend.domain.strategy_parser import parse_strategy_parameters
 
         result = parse_strategy_parameters(self.SAMPLE_STRATEGY)
         params = {p["name"]: p for p in result["data"][0]["parameters"]}
@@ -55,20 +55,20 @@ class MyStrategy:
         assert params["pos_size"]["type"] == "float"
 
     def test_parse_strategy_descriptions(self):
-        from backend.services.strategy_parser import parse_strategy_parameters
+        from backend.domain.strategy_parser import parse_strategy_parameters
 
         result = parse_strategy_parameters(self.SAMPLE_STRATEGY)
         params = {p["name"]: p for p in result["data"][0]["parameters"]}
         assert "快速均线" in params["fast_ma"]["description"]
 
     def test_parse_syntax_error(self):
-        from backend.services.strategy_parser import parse_strategy_parameters
+        from backend.domain.strategy_parser import parse_strategy_parameters
 
         result = parse_strategy_parameters("def bad syntax {{{")
         assert result["status"] == "error"
 
     def test_parse_no_strategy_class(self):
-        from backend.services.strategy_parser import parse_strategy_parameters
+        from backend.domain.strategy_parser import parse_strategy_parameters
 
         result = parse_strategy_parameters("x = 1\ny = 2")
         assert result["status"] == "error"
@@ -82,7 +82,7 @@ class TestBot:
         """
         pass
 '''
-        from backend.services.strategy_parser import parse_strategy_parameters
+        from backend.domain.strategy_parser import parse_strategy_parameters
 
         result = parse_strategy_parameters(code)
         assert result["status"] == "success"
@@ -96,7 +96,7 @@ class MyStrategy:
     def __init__(self, threshold: float = 0.5, enabled: bool = True):
         pass
 """
-        from backend.services.strategy_parser import parse_strategy_parameters
+        from backend.domain.strategy_parser import parse_strategy_parameters
 
         result = parse_strategy_parameters(code)
         params = {p["name"]: p for p in result["data"][0]["parameters"]}
@@ -109,7 +109,7 @@ class MyStrategy:
     def __init__(self, required_param, optional=10):
         pass
 """
-        from backend.services.strategy_parser import parse_strategy_parameters
+        from backend.domain.strategy_parser import parse_strategy_parameters
 
         result = parse_strategy_parameters(code)
         params = {p["name"]: p for p in result["data"][0]["parameters"]}
@@ -126,7 +126,7 @@ class MyStrategy:
     def __init__(self, fast=10):
         pass
 """
-        from backend.services.strategy_parser import parse_strategy_parameters
+        from backend.domain.strategy_parser import parse_strategy_parameters
 
         result = parse_strategy_parameters(code)
         assert result["status"] == "success"
@@ -140,7 +140,7 @@ class TestNotificationService:
 
     @pytest.mark.asyncio
     async def test_send_alert_delegates_to_dispatcher(self):
-        from backend.services.notification_service import NotificationService
+        from backend.services.alert.notification import NotificationService
 
         service = NotificationService()
         mock_dispatcher = AsyncMock()
@@ -153,7 +153,7 @@ class TestNotificationService:
     @pytest.mark.asyncio
     async def test_send_alert_with_priority(self):
         from backend.core.alert_models import NotificationPriority
-        from backend.services.notification_service import NotificationService
+        from backend.services.alert.notification import NotificationService
 
         service = NotificationService()
         mock_dispatcher = AsyncMock()
@@ -169,7 +169,7 @@ class TestNotificationService:
     @pytest.mark.asyncio
     async def test_priority_to_severity_mapping(self):
         from backend.core.alert_models import AlertSeverity, NotificationPriority
-        from backend.services.notification_service import NotificationService
+        from backend.services.alert.notification import NotificationService
 
         assert NotificationService._priority_to_severity(NotificationPriority.P0) == AlertSeverity.CRITICAL
         assert NotificationService._priority_to_severity(NotificationPriority.P1) == AlertSeverity.CRITICAL
@@ -181,26 +181,26 @@ class TestNotificationService:
 class TestSearchService:
     @pytest.mark.asyncio
     async def test_web_search_no_api_keys(self):
-        from backend.services.search_service import SearchService
+        from backend.services.search.service import SearchService
 
         service = SearchService()
         with patch.dict(os.environ, {"TAVILY_API_KEY": "", "BOCHA_API_KEY": ""}, clear=False):
             os.environ.pop("TAVILY_API_KEY", None)
             os.environ.pop("BOCHA_API_KEY", None)
-            with patch("backend.services.search_service.asyncio.to_thread") as mock_to_thread:
+            with patch("backend.services.search.service.asyncio.to_thread") as mock_to_thread:
                 mock_to_thread.return_value = [{"title": "Test", "url": "http://test.com", "body": "content"}]
                 result = await service.web_search("test query")
                 assert result["status"] == "success"
 
     @pytest.mark.asyncio
     async def test_web_search_empty_results(self):
-        from backend.services.search_service import SearchService
+        from backend.services.search.service import SearchService
 
         service = SearchService()
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("TAVILY_API_KEY", None)
             os.environ.pop("BOCHA_API_KEY", None)
-            with patch("backend.services.search_service.asyncio.to_thread") as mock_to_thread:
+            with patch("backend.services.search.service.asyncio.to_thread") as mock_to_thread:
                 mock_to_thread.return_value = []
                 result = await service.web_search("test")
                 assert result["status"] == "success"
@@ -210,26 +210,26 @@ class TestSearchService:
 # ─── system_monitor_service.py ──────────────────────────────────────
 class TestSystemMonitorService:
     def test_init(self):
-        from backend.services.system_monitor_service import SystemMonitorService
+        from backend.workers.monitor.system_monitor import SystemMonitorService
 
         service = SystemMonitorService()
         assert service._last_alert_time == 0.0
 
     def test_save_performance_log(self):
-        from backend.services.system_monitor_service import SystemMonitorService
+        from backend.workers.monitor.system_monitor import SystemMonitorService
 
         service = SystemMonitorService()
-        with patch("backend.services.system_monitor_service.SessionLocal") as mock_session:
+        with patch("backend.workers.monitor.system_monitor.SessionLocal") as mock_session:
             mock_db = MagicMock()
             mock_session.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session.return_value.__exit__ = MagicMock(return_value=False)
             service._save_performance_log("test_type", 150.0, "/api/test", "details")
 
     def test_save_performance_log_error(self):
-        from backend.services.system_monitor_service import SystemMonitorService
+        from backend.workers.monitor.system_monitor import SystemMonitorService
 
         service = SystemMonitorService()
-        with patch("backend.services.system_monitor_service.SessionLocal") as mock_session:
+        with patch("backend.workers.monitor.system_monitor.SessionLocal") as mock_session:
             mock_session.side_effect = Exception("DB error")
             # Should not raise
             service._save_performance_log("test", 100.0)
@@ -238,21 +238,21 @@ class TestSystemMonitorService:
 # ─── llm_service.py ─────────────────────────────────────────────────
 class TestLLMService:
     def test_init(self):
-        from backend.services.llm_service import LLMService
+        from backend.services.ai_narrator.llm_service import LLMService
 
         service = LLMService()
         assert service.client is not None
         assert service.get_model() is not None
 
     def test_get_client(self):
-        from backend.services.llm_service import LLMService
+        from backend.services.ai_narrator.llm_service import LLMService
 
         service = LLMService()
         assert service.get_client() is not None
 
     @pytest.mark.asyncio
     async def test_close(self):
-        from backend.services.llm_service import LLMService
+        from backend.services.ai_narrator.llm_service import LLMService
 
         service = LLMService()
         service.client.close = AsyncMock()
@@ -263,7 +263,7 @@ class TestLLMService:
     async def test_generate_pydantic(self):
         from pydantic import BaseModel
 
-        from backend.services.llm_service import LLMService
+        from backend.services.ai_narrator.llm_service import LLMService
 
         class TestModel(BaseModel):
             name: str
@@ -283,7 +283,7 @@ class TestLLMService:
     async def test_generate_pydantic_strips_markdown(self):
         from pydantic import BaseModel
 
-        from backend.services.llm_service import LLMService
+        from backend.services.ai_narrator.llm_service import LLMService
 
         class TestModel(BaseModel):
             name: str
@@ -301,7 +301,7 @@ class TestLLMService:
     async def test_generate_pydantic_validation_error(self):
         from pydantic import BaseModel
 
-        from backend.services.llm_service import LLMService
+        from backend.services.ai_narrator.llm_service import LLMService
 
         class TestModel(BaseModel):
             name: str

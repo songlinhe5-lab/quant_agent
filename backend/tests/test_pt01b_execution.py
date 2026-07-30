@@ -46,7 +46,7 @@ class TestSimBrokerPaperMode:
         result = broker.submit(intent, bar)
         assert result == "REJECTED_STALE"
 
-    @patch("backend.services.market_correctness.MarketSession")
+    @patch("backend.services.market_review.correctness.MarketSession")
     def test_paper_mode_market_closed_rejection(self, mock_session_cls):
         """paper_mode: 非交易时段应拒单"""
         mock_session_cls.is_trading_hours.return_value = False
@@ -60,7 +60,7 @@ class TestSimBrokerPaperMode:
         result = broker.submit(intent, bar)
         assert result == "REJECTED_MARKET_CLOSED"
 
-    @patch("backend.services.market_correctness.MarketSession")
+    @patch("backend.services.market_review.correctness.MarketSession")
     def test_paper_mode_trading_hours_pass(self, mock_session_cls):
         """paper_mode: 交易时段内应正常撮合"""
         mock_session_cls.is_trading_hours.return_value = True
@@ -122,7 +122,7 @@ class TestFillCallback:
         bar = self._make_bar()
         intent = self._make_intent("BUY", 100)
 
-        with patch("backend.services.market_correctness.MarketSession") as mock_ms:
+        with patch("backend.services.market_review.correctness.MarketSession") as mock_ms:
             mock_ms.is_trading_hours.return_value = True
             broker.submit(intent, bar)
 
@@ -143,7 +143,7 @@ class TestFillCallback:
         # 先买入
         bar = self._make_bar()
         buy_intent = self._make_intent("BUY", 100)
-        with patch("backend.services.market_correctness.MarketSession") as mock_ms:
+        with patch("backend.services.market_review.correctness.MarketSession") as mock_ms:
             mock_ms.is_trading_hours.return_value = True
             broker.submit(buy_intent, bar)
 
@@ -151,7 +151,7 @@ class TestFillCallback:
 
         # 再卖出
         sell_intent = self._make_intent("SELL", 50)
-        with patch("backend.services.market_correctness.MarketSession") as mock_ms:
+        with patch("backend.services.market_review.correctness.MarketSession") as mock_ms:
             mock_ms.is_trading_hours.return_value = True
             broker.submit(sell_intent, bar)
 
@@ -180,7 +180,7 @@ class TestFillCallback:
 
         bar = self._make_bar()
         intent = self._make_intent("BUY", 100)
-        with patch("backend.services.market_correctness.MarketSession") as mock_ms:
+        with patch("backend.services.market_review.correctness.MarketSession") as mock_ms:
             mock_ms.is_trading_hours.return_value = True
             result = broker.submit(intent, bar)
 

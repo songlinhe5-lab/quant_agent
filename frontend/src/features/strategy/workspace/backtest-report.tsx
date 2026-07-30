@@ -149,7 +149,11 @@ export function BacktestReport() {
         <div className="flex flex-col items-center justify-center p-6 border border-border/40 rounded-xl bg-secondary/10 shadow-inner relative mb-4">
           <button onClick={handleCancelOptimize} className="absolute top-3 right-3 p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded transition-colors" title="中止寻优"><Square className="h-3 w-3 fill-current" /></button>
           <Loader2 className="h-6 w-6 animate-spin text-indigo-500 mb-2" />
-          <span className="text-xs text-muted-foreground font-mono">正在遍历参数空间极速寻优中...</span>
+          <span className="text-xs text-muted-foreground font-mono mb-3">{store.optimizeStage || '正在遍历参数空间极速寻优中...'}</span>
+          <div className="w-full max-w-md h-2 rounded-full bg-muted/30 overflow-hidden">
+            <div className="h-full bg-indigo-500 transition-all duration-300" style={{ width: `${store.optimizeProgress}%` }} />
+          </div>
+          <span className="text-[10px] font-mono text-muted-foreground mt-1.5">{store.optimizeProgress}%</span>
         </div>
       )}
       
@@ -180,12 +184,14 @@ export function BacktestReport() {
             <h3 className="text-xs font-bold text-emerald-600/50 dark:text-emerald-400/50 flex items-center gap-1.5"><LineChartIcon className="h-4 w-4" /> 沙箱回测资金曲线 ({store.backtestPeriod.toUpperCase()})</h3>
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono">
               <button onClick={handleCancelBacktest} className="p-0.5 rounded bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors" title="中止回测"><Square className="h-3 w-3 fill-current" /></button>
-              <Loader2 className="h-3 w-3 animate-spin" /> 正在推演...
+              <Loader2 className="h-3 w-3 animate-spin" /> {store.sandboxStage || '正在推演...'}
             </div>
           </div>
-          <div className="w-full h-[220px] mt-2 rounded-lg bg-secondary/20 animate-pulse flex flex-col items-center justify-center border border-dashed border-border/30">
-            <LineChartIcon className="h-8 w-8 text-muted-foreground/20 mb-2" />
-            <span className="text-[10px] font-mono text-muted-foreground/40">引擎正在撮合历史 K 线与订单...</span>
+          <div className="w-full h-[220px] mt-2 rounded-lg bg-secondary/20 flex flex-col items-center justify-center border border-dashed border-border/30 relative overflow-hidden">
+            <div className="absolute left-0 top-0 bottom-0 bg-emerald-500/10 transition-all duration-300" style={{ width: `${store.sandboxProgress}%` }} />
+            <LineChartIcon className="h-8 w-8 text-muted-foreground/20 mb-2 relative" />
+            <span className="text-[10px] font-mono text-muted-foreground/40 relative">{store.sandboxStage || '引擎正在撮合历史 K 线与订单...'}</span>
+            <span className="text-xs font-mono text-emerald-500/70 mt-1 relative">{store.sandboxProgress}%</span>
           </div>
         </div>
       )}

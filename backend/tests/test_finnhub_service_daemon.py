@@ -15,7 +15,7 @@ os.environ.setdefault("FINNHUB_API_KEY", "test-finnhub-key")
 os.environ.setdefault("LLM_API_KEY", "test-llm-key")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-DM = "backend.services.market_daemon"
+DM = "backend.workers.market.daemon"
 
 
 def _make_cancelling_sleep(after_n=0):
@@ -54,7 +54,7 @@ class TestMarketDaemon:
 
     @pytest.fixture
     def service(self):
-        from backend.services.finnhub_service import FinnhubService
+        from backend.services.finnhub.service import FinnhubService
 
         return FinnhubService()
 
@@ -72,7 +72,7 @@ class TestMarketDaemon:
     # ─── _earnings_alert_daemon ─────────────────────────────────
     @pytest.mark.asyncio
     async def test_earnings_alert_daemon_error_status_continues_then_cancels(self, service):
-        from backend.services.market_daemon import _earnings_alert_daemon
+        from backend.workers.market.daemon import _earnings_alert_daemon
 
         with (
             patch(f"{DM}.asyncio.sleep", new=_make_cancelling_sleep(1)),
@@ -83,7 +83,7 @@ class TestMarketDaemon:
 
     @pytest.mark.asyncio
     async def test_earnings_alert_daemon_published_earnings_triggers_alert(self, service):
-        from backend.services.market_daemon import _earnings_alert_daemon
+        from backend.workers.market.daemon import _earnings_alert_daemon
 
         row = {
             "symbol": "AAPL",
@@ -100,8 +100,8 @@ class TestMarketDaemon:
                 service, "get_earnings_calendar", new=AsyncMock(return_value={"status": "success", "data": [row]})
             ),
             patch(f"{DM}.redis_client") as m_r,
-            patch("backend.services.notification_service.notification_service") as m_n,
-            patch("backend.services.llm_service.llm_service") as m_llm,
+            patch("backend.services.alert.notification.notification_service") as m_n,
+            patch("backend.services.ai_narrator.llm_service.llm_service") as m_llm,
         ):
             m_r.set = AsyncMock(return_value=True)
             m_llm.get_client.return_value.chat.completions.create = AsyncMock(
@@ -114,14 +114,14 @@ class TestMarketDaemon:
     # ─── _news_stream_daemon ────────────────────────────────────
     @pytest.mark.asyncio
     async def test_news_stream_daemon_no_api_key_returns_immediately(self, service):
-        from backend.services.market_daemon import _news_stream_daemon
+        from backend.workers.market.daemon import _news_stream_daemon
 
         with patch.dict(os.environ, {"FINNHUB_API_KEY": ""}, clear=False):
             await _news_stream_daemon(service)
 
     @pytest.mark.asyncio
     async def test_news_stream_daemon_initial_snapshot_then_cancels(self, service):
-        from backend.services.market_daemon import _news_stream_daemon
+        from backend.workers.market.daemon import _news_stream_daemon
 
         news = [{"headline": "fed cuts rates", "datetime": 1719500000, "summary": ""}]
         with (
@@ -140,7 +140,7 @@ class TestMarketDaemon:
     # ─── _company_news_daemon ───────────────────────────────────
     @pytest.mark.asyncio
     async def test_company_news_daemon_no_monitored_continues_then_cancels(self, service):
-        from backend.services.market_daemon import _company_news_daemon
+        from backend.workers.market.daemon import _company_news_daemon
 
         with (
             patch(f"{DM}.asyncio.sleep", new=_make_cancelling_sleep(1)),
@@ -152,7 +152,7 @@ class TestMarketDaemon:
 
     @pytest.mark.asyncio
     async def test_company_news_daemon_with_ticker_publishes_new_news(self, service):
-        from backend.services.market_daemon import _company_news_daemon
+        from backend.workers.market.daemon import _company_news_daemon
 
         news = [{"headline": "AAPL launches new product", "datetime": 1719500000}]
         with (
@@ -170,11 +170,11 @@ class TestMarketDaemon:
     # ─── _macro_alert_daemon ────────────────────────────────────
     @pytest.mark.asyncio
     async def test_macro_alert_daemon_no_data_continues_then_cancels(self, service):
-        from backend.services.market_daemon import _macro_alert_daemon
+        from backend.workers.market.daemon import _macro_alert_daemon
 
         with (
             patch(f"{DM}.asyncio.sleep", new=_make_cancelling_sleep(1)),
-            patch("backend.services.akshare_service.akshare_service") as m_ak,
+            patch("backend.services.akshare.akshare_service") as m_ak,
             patch("backend.services.macro.fred_service.fred_service") as m_fr,
         ):
             m_ak.get_economic_calendar_ak = AsyncMock(return_value={"status": "error"})
@@ -184,7 +184,7 @@ class TestMarketDaemon:
 
     @pytest.mark.asyncio
     async def test_macro_alert_daemon_high_impact_published_triggers_alert(self, service):
-        from backend.services.market_daemon import _macro_alert_daemon
+        from backend.workers.market.daemon import _macro_alert_daemon
 
         event = {
             "event": "FOMC Rate Decision",
@@ -200,12 +200,12 @@ class TestMarketDaemon:
             # RL-11 修复：daemon 实际经由 data_source_router.fetch_akshare 取宏观日历，
             # 原 mock（akshare_service）从未被调用，导致永远走 fallback 且 alert 不触发
             patch(
-                "backend.services.data_source_router.data_source_router.fetch_akshare",
+                "backend.services.datasource.router.data_source_router.fetch_akshare",
                 new=AsyncMock(return_value={"status": "success", "data": [event]}),
             ),
             patch(f"{DM}.redis_client") as m_r,
-            patch("backend.services.notification_service.notification_service") as m_n,
-            patch("backend.services.llm_service.llm_service") as m_llm,
+            patch("backend.services.alert.notification.notification_service") as m_n,
+            patch("backend.services.ai_narrator.llm_service.llm_service") as m_llm,
         ):
             m_r.set = AsyncMock(return_value=True)
             m_llm.get_client.return_value.chat.completions.create = AsyncMock(
@@ -220,7 +220,7 @@ class TestMarketDaemon:
     async def test_insider_marquee_daemon_significant_txn_added_to_zset(self, service):
         from datetime import datetime as _dt
 
-        from backend.services.market_daemon import _insider_transactions_marquee_daemon
+        from backend.workers.market.daemon import _insider_transactions_marquee_daemon
 
         _flush_insider_redis()
         today_str = _dt.now().strftime("%Y-%m-%d")
@@ -239,7 +239,7 @@ class TestMarketDaemon:
 
     @pytest.mark.asyncio
     async def test_insider_marquee_daemon_old_txn_skipped(self, service):
-        from backend.services.market_daemon import _insider_transactions_marquee_daemon
+        from backend.workers.market.daemon import _insider_transactions_marquee_daemon
 
         _flush_insider_redis()
         tx = {"change": 20000, "transaction_price": 100.0, "date": "2020-01-01", "name": "CEO Cook"}
@@ -266,7 +266,7 @@ class TestMarketDaemon:
             patch(f"{DM}._insider_transactions_marquee_daemon", new=AsyncMock()) as m5,
             patch(f"{DM}._earnings_alert_daemon", new=AsyncMock()) as m6,
         ):
-            from backend.services.market_daemon import run_global_daemon
+            from backend.workers.market.daemon import run_global_daemon
 
             await run_global_daemon()
         m1.assert_awaited_once()

@@ -19,17 +19,17 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from backend.core.database import Base
-from backend.core.datalake_models import DataSnapshot
-from backend.engine import Bar, OrderIntent, Strategy
-from backend.engine.contracts import RunManifest
-from backend.engine.drivers.backtest import BacktestConfig, BacktestDriver
-from backend.services.backtest_report_service import (
+from backend.app.backtest.report_service import (
     BacktestReportService,
     compute_reproducibility_key,
     compute_result_digest,
     is_reproducible,
 )
+from backend.core.database import Base
+from backend.core.datalake_models import DataSnapshot
+from backend.engine import Bar, OrderIntent, Strategy
+from backend.engine.contracts import RunManifest
+from backend.engine.drivers.backtest import BacktestConfig, BacktestDriver
 from backend.services.datalake.manifest import (
     build_manifest,
     compute_manifest_hash,

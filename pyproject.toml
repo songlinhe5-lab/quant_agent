@@ -12,6 +12,8 @@ dependencies = [
     "futu-api>=10.7.0",
     "yfinance==1.4.1",
     "pandas>=2.0.0",
+    "aiohttp>=3.9.0",
+    "pyarrow>=15.0.0",
     "httpx>=0.27.0",
     "tenacity>=8.2.0",
     "pyrate-limiter>=3.0.0",
@@ -64,7 +66,7 @@ local-embedding = [
     "sentence-transformers>=2.5.0",
 ]
 dev = [
-    "ruff>=0.3.0",
+    "ruff==0.15.16",  # 锁定到 uv.lock 中的版本，避免 uv run 解析到更新的 ruff 导致格式检查不一致
     "pre-commit>=3.6.0",
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
@@ -104,10 +106,18 @@ testpaths = ["backend/tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+# -p no:unraisableexception: 禁用 pytest 的 unraisableexception 插件。
+# 该插件会把 sys.unraisablehook 投递的异常（如 Python 3.13 下 unittest.mock 内部产生的
+# "coroutine never awaited" 误报，见 backend/tests/conftest.py 顶部注释）强制升级为
+# pytest.PytestUnraisableExceptionWarning 并当作测试失败；且插件在格式化报告时会触发
+# tracemalloc_message 的二次导入崩溃（即 CI 日志里 "Exception ignored in sys.unraisablehook
+# ... _pytest/tracemalloc.py" 噪声）。此类告警已被 conftest 认定为非业务 bug，故恢复 Python
+# 默认（仅打印、不致命）行为。放到 addopts 对所有 pytest 调用（含本地）统一生效。
 addopts = [
     "-v",
     "--strict-markers",
     "--tb=short",
+    "-p no:unraisableexception",
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
@@ -132,7 +142,10 @@ omit = [
     "*/*.pb.py",
     "backend/main.py",
 ]
-# 启用并行模式，支持 pytest-xdist (-n auto) 下正确合并覆盖率数据
+# 关键修复：pytest-cov 在 -n auto (xdist) 下会自动开启 parallel 模式并合并各 worker 的
+# .coverage.<host>.<pid> 数据。此前误加的 concurrency=["multiprocessing"] 会破坏合并，
+# 导致覆盖率被严重低估（CI 曾报 75% 而单进程/正确合并应为 ~83%）。仅保留 parallel 即可，
+# 不可设置 concurrency=multiprocessing（该选项针对测试内 multiprocessing 子进程，与 xdist 冲突）。
 parallel = true
 
 [tool.coverage.report]

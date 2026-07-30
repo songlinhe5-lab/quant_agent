@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.services import market_daemon as md
+from backend.workers.market import daemon as md
 
 
 class _BreakLoop(Exception):
@@ -99,8 +99,8 @@ async def test_earnings_alert_daemon(monkeypatch):
 
     with (
         patch.object(md, "redis_client", redis),
-        patch("backend.services.llm_service.llm_service", llm),
-        patch("backend.services.notification_service.notification_service", notify),
+        patch("backend.services.ai_narrator.llm_service.llm_service", llm),
+        patch("backend.services.alert.notification.notification_service", notify),
     ):
         with pytest.raises(_BreakLoop):
             await md._earnings_alert_daemon(finnhub)
@@ -143,8 +143,8 @@ async def test_macro_alert_daemon(monkeypatch):
 
     with (
         patch.object(md, "redis_client", redis),
-        patch("backend.services.llm_service.llm_service", llm),
-        patch("backend.services.notification_service.notification_service", notify),
+        patch("backend.services.ai_narrator.llm_service.llm_service", llm),
+        patch("backend.services.alert.notification.notification_service", notify),
         patch("backend.services.macro.fred_service.fred_service", fred),
     ):
         with pytest.raises(_BreakLoop):

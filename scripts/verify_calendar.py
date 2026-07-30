@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from backend.core.redis_client import redis_client
-from backend.services.akshare_service import akshare_service
+from backend.services.akshare import akshare_service
 from backend.services.macro.fred_service import fred_service
 
 

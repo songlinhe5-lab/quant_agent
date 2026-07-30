@@ -72,6 +72,22 @@ jobs:
       - name: Build
         working-directory: ./frontend
         run: NODE_OPTIONS='--max-old-space-size=4096' pnpm run build
+      - name: 🔒 Mock 红线扫描 (§14.1 PROD 零 Mock)
+        working-directory: ./frontend
+        run: |
+          echo "🔍 扫描未门控的 mock 数据导入 (src)..."
+          violations=0
+          for f in $(grep -rlE "MOCK_[A-Z_]+" src --include=*.ts --include=*.tsx); do
+            if ! grep -q "MOCK_ENABLED" "$f"; then
+              echo "::error file=$f::§14.1 违规：$f 使用了 MOCK_* 数据但未用 MOCK_ENABLED 门控"
+              violations=1
+            fi
+          done
+          if [ "$violations" -ne 0 ]; then
+            echo "❌ 存在未门控的 mock 数据，PROD 零 Mock 红线失败"
+            exit 1
+          fi
+          echo "✅ 未发现未门控的 mock 数据导入"
       - name: Security audit
         working-directory: ./frontend
         run: pnpm audit 2>&1 || true
@@ -131,6 +147,23 @@ jobs:
         env:
           VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
         run: NODE_OPTIONS='--max-old-space-size=4096' pnpm run build
+      - name: 🔒 Mock 红线扫描 (§14.1 PROD 零 Mock)
+        if: steps.check.outputs.skip == 'false'
+        working-directory: ./frontend
+        run: |
+          echo "🔍 扫描未门控的 mock 数据导入 (src)..."
+          violations=0
+          for f in $(grep -rlE "MOCK_[A-Z_]+" src --include=*.ts --include=*.tsx); do
+            if ! grep -q "MOCK_ENABLED" "$f"; then
+              echo "::error file=$f::§14.1 违规：$f 使用了 MOCK_* 数据但未用 MOCK_ENABLED 门控"
+              violations=1
+            fi
+          done
+          if [ "$violations" -ne 0 ]; then
+            echo "❌ 存在未门控的 mock 数据，PROD 零 Mock 红线失败"
+            exit 1
+          fi
+          echo "✅ 未发现未门控的 mock 数据导入"
       - name: Deploy to Cloudflare Pages
         if: steps.check.outputs.skip == 'false'
         uses: cloudflare/pages-action@v1

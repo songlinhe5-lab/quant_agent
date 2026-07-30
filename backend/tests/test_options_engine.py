@@ -6,7 +6,7 @@ TRADE-01 · 期权定价引擎测试
 
 import math
 
-from backend.services.options_engine import (
+from backend.domain.options_engine import (
     bs_greeks,
     bs_price,
     compute_option_chain_greeks,

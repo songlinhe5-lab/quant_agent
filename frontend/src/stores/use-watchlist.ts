@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist, devtools } from 'zustand/middleware'
-import { MOCK_WATCHLIST } from '@/services/mock'
+import { MOCK_WATCHLIST, MOCK_ENABLED } from '@/services/mock'
 
 export interface WatchlistItem {
   symbol: string
@@ -22,8 +22,9 @@ export const useWatchlist = create<WatchlistState>()(
   devtools(
     persist(
       (set) => ({
-        // 初始默认提供 MOCK_WATCHLIST 兜底，展示一些常用标的
-        watchlist: MOCK_WATCHLIST,
+        // §14.1：仅在 DEV + VITE_ENABLE_MOCK 开启时，才用 MOCK_WATCHLIST 兜底展示常用标的；
+        // PROD 下默认空列表（用户自行添加标的，触发 EmptyState 而非假数据）。
+        watchlist: MOCK_ENABLED ? MOCK_WATCHLIST : [],
 
         addTicker: (symbol) => set((state) => {
           // 防止重复添加

@@ -14,9 +14,9 @@ from sqlalchemy.orm import Session
 
 from backend.app.broker import broker
 from backend.core.redis_client import redis_client
-from backend.services.algo_engine import algo_engine
-from backend.services.bot_runtime import bot_runtime
 from backend.services.oms_service import oms_service
+from backend.workers.oms.algo_engine import algo_engine
+from backend.workers.oms.bot_runtime import bot_runtime
 
 logger = logging.getLogger("OMS")
 

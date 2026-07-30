@@ -27,9 +27,11 @@ CPU 密集型任务（回测、网格搜索、蒙特卡洛、批量回测）在�
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import os
 import pickle
+import queue
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from typing import Any, Callable, TypeVar
 
@@ -155,3 +157,61 @@ def shutdown_cpu_pool() -> None:
     if _fallback_executor is not None:
         _fallback_executor.shutdown(wait=False)
         _fallback_executor = None
+
+
+async def run_cpu_bound_with_progress(
+    func: Callable[..., Any],
+    *args: Any,
+    on_progress: Callable[[dict], None] | None = None,
+    **kwargs: Any,
+) -> Any:
+    """在 worker 线程中执行 CPU 密集函数，并实时流式回传进度。
+
+    与 :func:`run_cpu_bound` 不同，本函数使用 **线程**（fallback 线程池）而非进程池，
+    以便在主线程与 worker 之间共享一个进程内 :class:`queue.Queue` 来传递进度包。
+
+    * ``func`` **必须** 接受 ``progress_queue`` 关键字参数（一个 :class:`queue.Queue`），
+      并在执行过程中按阶段推送形如
+      ``{"progress": 0-100, "stage": str, "detail": str}`` 的进度字典。
+      若 ``func`` 不接受 ``progress_queue``（通过签名探测），则不注入，此时仅外层
+      stage 进度（由调用方通过 ``on_progress`` 自行推送）生效 —— 不会抛错。
+    * ``on_progress(payload)`` 为同步回调，在事件循环中每个进度包被 drain 时调用，
+      通常用于将进度推入 asyncio 队列以驱动 SSE 流。
+    * 返回值即 ``func`` 的返回值。
+
+    注意：由于 vbt / numba / numpy 在 C 扩展内会释放 GIL，worker 线程执行重计算时
+    事件循环仍可调度 drain 协程，因此进度上报不会被饿死。
+    """
+    q: "queue.Queue" = queue.Queue()
+
+    try:
+        accepts = "progress_queue" in inspect.signature(func).parameters
+    except (ValueError, TypeError):
+        accepts = False
+
+    loop = asyncio.get_running_loop()
+    if accepts:
+        # run_in_executor 仅转发位置参数给 func，故 progress_queue 须作为末位位置参数
+        future = loop.run_in_executor(_ensure_fallback_executor(), func, *args, q)
+    else:
+        future = loop.run_in_executor(_ensure_fallback_executor(), func, *args)
+
+    # drain：在任务运行期间持续取出 worker 推送的进度包并回调。
+    while True:
+        try:
+            payload = q.get_nowait()
+        except queue.Empty:
+            if future.done():
+                break
+            await asyncio.sleep(0.05)
+            continue
+        if on_progress is not None:
+            on_progress(payload)
+
+    # 收尾 drain：捕获 worker 在返回后、future.done() 之前压入的尾部进度。
+    while not q.empty():
+        payload = q.get_nowait()
+        if on_progress is not None:
+            on_progress(payload)
+
+    return await future

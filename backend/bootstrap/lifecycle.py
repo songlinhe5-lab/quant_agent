@@ -16,12 +16,12 @@ from backend.core import models
 from backend.core.database import AsyncSessionLocal, SessionLocal, async_engine, engine
 from backend.core.redis_client import redis_client
 from backend.core.security import get_password_hash
-from backend.services.futu_service import futu_service
-from backend.services.llm_service import llm_service
+from backend.services.ai_narrator.llm_service import llm_service
+from backend.services.alert.notification import notification_service
+from backend.services.futu import futu_service
 from backend.services.macro.fred_service import fred_service
 from backend.services.market_engine import manager
-from backend.services.notification_service import notification_service
-from backend.services.system_monitor_service import system_monitor_service
+from backend.workers.monitor.system_monitor import system_monitor_service
 
 # 全局单例 (供 chat router 等模块引用)
 global_registry = None
@@ -193,7 +193,7 @@ async def app_lifespan(app: FastAPI):
     log.info("✅ [Startup] OMS 持仓同步守护进程已启动 (每 30 秒)")
 
     # 🚀 BotRuntimeManager 恢复
-    from backend.services.bot_runtime import bot_runtime
+    from backend.workers.oms.bot_runtime import bot_runtime
 
     try:
         restored = await bot_runtime.restore_bots_from_redis()
@@ -202,7 +202,7 @@ async def app_lifespan(app: FastAPI):
         log.warning(f"[Startup] BotRuntimeManager 恢复失败: {e}")
 
     # 🚀 AlgoEngine 恢复
-    from backend.services.algo_engine import algo_engine
+    from backend.workers.oms.algo_engine import algo_engine
 
     try:
         algo_restored = await algo_engine.restore_from_redis()
@@ -253,14 +253,14 @@ async def app_lifespan(app: FastAPI):
             tasks_to_await.append(oms_position_task)
 
         try:
-            from backend.services.bot_runtime import bot_runtime
+            from backend.workers.oms.bot_runtime import bot_runtime
 
             await bot_runtime.shutdown()
         except Exception:
             pass
 
         try:
-            from backend.services.algo_engine import algo_engine
+            from backend.workers.oms.algo_engine import algo_engine
 
             await algo_engine.shutdown()
         except Exception:

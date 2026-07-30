@@ -255,7 +255,7 @@ class TestScreenerService:
             mock_llm.get_model = MagicMock(return_value="gpt-4")
 
             # Mock 新闻获取 - finnhub_service 是在函数内部导入的
-            with patch("backend.services.finnhub_service.finnhub_service") as mock_finnhub:
+            with patch("backend.services.finnhub.service.finnhub_service") as mock_finnhub:
                 mock_finnhub.get_company_news = AsyncMock(return_value={"status": "success", "data": []})
 
                 result = await service.summarize_results(stocks)
@@ -273,7 +273,7 @@ class TestScreenerService:
             mock_llm.get_model = MagicMock(return_value="gpt-4")
 
             # Mock 新闻获取 - finnhub_service 是在函数内部导入的
-            with patch("backend.services.finnhub_service.finnhub_service") as mock_finnhub:
+            with patch("backend.services.finnhub.service.finnhub_service") as mock_finnhub:
                 mock_finnhub.get_company_news = AsyncMock(return_value={"status": "error"})
 
                 result = await service.summarize_results(stocks)

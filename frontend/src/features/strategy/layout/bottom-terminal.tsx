@@ -93,9 +93,9 @@ export function BottomTerminal() {
               </Button>
            </div>
         ) : store.isSimulating ? (
-           <p className="text-amber-500 opacity-80 mt-1 flex items-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> ➜ Sandbox simulation running...</p>
+           <p className="text-amber-500 opacity-80 mt-1 flex items-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> ➜ Sandbox simulation running... [{store.sandboxProgress}% {store.sandboxStage || ''}]</p>
         ) : store.isOptimizing ? (
-           <p className="text-indigo-500 opacity-80 mt-1 flex items-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> ➜ Grid searching optimal parameters...</p>
+           <p className="text-indigo-500 opacity-80 mt-1 flex items-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> ➜ Grid searching optimal parameters... [{store.optimizeProgress}% {store.optimizeStage || ''}]</p>
         ) : (
            <p className="text-amber-500 opacity-60 mt-1">➜ Waiting for sandbox execution...</p>
         )}

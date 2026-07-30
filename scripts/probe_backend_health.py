@@ -12,6 +12,7 @@
   uv run python scripts/probe_backend_health.py --json --strict
   uv run python scripts/probe_backend_health.py --url http://127.0.0.1:8000/api/v1
 """
+
 from __future__ import annotations
 
 import argparse
@@ -52,7 +53,7 @@ CHECKS = [
     {"name": "用户偏好(鉴权)", "path": "/settings/preferences", "params": {}, "auth_ok": True},
     # ---- 核心修复回归（本轮修复的期权链 IV 路径）----
     {"name": "期权链", "path": "/market/option-chain", "params": {"ticker": "AAPL"}, "critical": True},
-    {"name": "IV 排名", "path": "/options/iv-rank/AAPL", "params": {}, "critical": True},
+    {"name": "IV 排名", "path": "/options/iv-rank/AAPL", "params": {}, "critical": True, "no_data_ok": True},
     {"name": "波动率微笑", "path": "/options/vol-smile/AAPL", "params": {}},
     {"name": "期权 Greeks", "path": "/options/greeks/AAPL", "params": {}},
     # ---- 通用回归 ----
@@ -96,6 +97,11 @@ async def probe(client: httpx.AsyncClient, base: str, check: dict, strict: bool)
             return path, status, note, True
         return path, status, f"非预期状态码: {resp.text[:80]}", False
 
+    # 部分端点(如 IV Rank)在无真实数据时故意返回 404 (零幻觉: 禁止伪造),
+    # 这种 404 是设计行为, 不应判失败; 仅当返回 500 等真实错误时才失败。
+    if check.get("no_data_ok") and status == 404:
+        return path, status, "无真实数据可计算(端点拒绝伪造, 设计行为)", True
+
     if status != 200:
         return path, status, f"HTTP {status}: {resp.text[:120]}", False
 
@@ -116,10 +122,16 @@ async def run(base: str, strict: bool, as_json: bool) -> int:
     async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
         for c in CHECKS:
             path, status, msg, ok = await probe(client, base, c, strict)
-            results.append({
-                "name": c["name"], "path": path, "http": status,
-                "ok": ok, "msg": msg, "critical": c.get("critical", False),
-            })
+            results.append(
+                {
+                    "name": c["name"],
+                    "path": path,
+                    "http": status,
+                    "ok": ok,
+                    "msg": msg,
+                    "critical": c.get("critical", False),
+                }
+            )
             if not ok and c.get("critical"):
                 gw_ok = False
 
@@ -127,17 +139,19 @@ async def run(base: str, strict: bool, as_json: bool) -> int:
     failed = len(results) - passed
 
     if as_json:
-        print(json.dumps(
-            {"base": base, "passed": passed, "failed": failed, "results": results},
-            ensure_ascii=False, indent=2,
-        ))
+        print(
+            json.dumps(
+                {"base": base, "passed": passed, "failed": failed, "results": results},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
     else:
         print(f"\n{C.BOLD}{C.HEADER}🔍 后端接口 CI 探针  (Target: {base}){C.END}\n")
         for r in results:
             mark = f"{C.OK}✅" if r["ok"] else f"{C.FAIL}❌"
             crit = f"{C.WARN}[关键]{C.END}" if r["critical"] else "       "
-            print(f"{mark} {crit} {C.CYAN}{r['name']:<14}{C.END} "
-                  f"HTTP {str(r['http']):<4} {r['msg']}")
+            print(f"{mark} {crit} {C.CYAN}{r['name']:<14}{C.END} HTTP {str(r['http']):<4} {r['msg']}")
         print(f"\n{C.BOLD}通过 {passed}/{len(results)} | 失败 {failed}{C.END}")
 
     if not gw_ok:
@@ -156,9 +170,7 @@ def main() -> None:
     ap.add_argument("--url", default=None, help="覆盖 BACKEND_API_URL")
     args = ap.parse_args()
 
-    base = (args.url or os.getenv(
-        "BACKEND_API_URL", "https://quant-api.stephenhe.com/api/v1"
-    )).rstrip("/")
+    base = (args.url or os.getenv("BACKEND_API_URL", "https://quant-api.stephenhe.com/api/v1")).rstrip("/")
     try:
         rc = asyncio.run(run(base, args.strict, args.json))
     except KeyboardInterrupt:  # pragma: no cover

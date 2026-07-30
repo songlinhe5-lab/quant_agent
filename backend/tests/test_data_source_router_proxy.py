@@ -34,7 +34,7 @@ def _generate_signature(secret: str, payload: dict, timestamp: str) -> str:
 
 
 class TestProxyYFinance:
-    @patch("backend.services.yfinance_service.yf_service")
+    @patch("backend.services.yfinance.yf_service")
     def test_proxy_yfinance_quote(self, mock_yf):
         from backend.app.market_data import market_data
 
@@ -49,7 +49,9 @@ class TestProxyYFinance:
     def test_proxy_yfinance_history(self):
         from backend.app.market_data import market_data
 
-        with patch.object(market_data._yf, "fetch_yf_data", new=AsyncMock(return_value=(True, {"price": 165.0}, ""))):
+        # proxy_yfinance("history") 实际调用网关方法 fetch_yf_data (经 datasource_registry 走真实
+        # yfinance 适配层), 而非 _yf.fetch_yf_data。直接 patch 网关方法以隔离外网, 避免 CI 抖动。
+        with patch.object(market_data, "fetch_yf_data", new=AsyncMock(return_value=(True, {"price": 165.0}, ""))):
             response = client.post(
                 "/api/v1/data-source/proxy/yfinance",
                 json={"ticker": "AAPL", "fetch_type": "history", "kwargs": {"period": "1d"}},
@@ -58,7 +60,7 @@ class TestProxyYFinance:
             data = response.json()["data"]
             assert data["success"] is True
 
-    @patch("backend.services.yfinance_service.yf_service")
+    @patch("backend.services.yfinance.yf_service")
     def test_proxy_yfinance_tech(self, mock_yf):
         from backend.app.market_data import market_data
 
@@ -92,7 +94,7 @@ class TestProxyAKShare:
             assert "status" in data
             assert data["status"] == "success"
 
-    @patch("backend.services.akshare_service.akshare_service")
+    @patch("backend.services.akshare.akshare_service")
     def test_proxy_akshare_hsgt_holders(self, mock_ak):
         mock_ak.get_hsgt_top_holders = AsyncMock(return_value={"status": "success", "data": {}})
 
@@ -110,8 +112,8 @@ class TestProxyAKShare:
 
 
 class TestDataSourceHealth:
-    @patch("backend.services.yfinance_service.yf_service")
-    @patch("backend.services.akshare_service.akshare_service")
+    @patch("backend.services.yfinance.yf_service")
+    @patch("backend.services.akshare.akshare_service")
     def test_data_source_health(self, mock_ak, mock_yf):
         mock_yf.yf_health_status = MagicMock(return_value={"status": "healthy"})
         mock_ak.get_health_status = MagicMock(return_value={"status": "healthy"})
@@ -126,7 +128,7 @@ class TestDataSourceHealth:
 class TestSecurity:
     @patch("backend.routers.data_source._HMAC_SECRET", "test-secret-123")
     @patch("backend.routers.data_source._allowed_ip_set", set())
-    @patch("backend.services.yfinance_service.yf_service")
+    @patch("backend.services.yfinance.yf_service")
     def test_proxy_with_valid_signature(self, mock_yf):
         from backend.app.market_data import market_data
 

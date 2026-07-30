@@ -16,11 +16,11 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from backend.services.algo_analytics import (
+from backend.domain.algo_analytics import (
     AlgoAnalytics,
     algo_analytics,
 )
-from backend.services.algo_engine import (
+from backend.workers.oms.algo_engine import (
     AlgoEngine,
     AlgoOrder,
     MarketImpactModel,
@@ -165,10 +165,10 @@ class TestGetLotSize:
     @pytest.mark.asyncio
     async def test_hk_stock_snapshot(self):
         """港股从 snapshot 获取 lot_size"""
-        with patch("backend.services.algo_engine.futu_service", create=True) as mock_futu:
+        with patch("backend.workers.oms.algo_engine.futu_service", create=True) as mock_futu:
             mock_futu.get_market_snapshots = AsyncMock(return_value={"status": "success", "data": [{"lot_size": 100}]})
             # 需要 patch import
-            with patch.dict("sys.modules", {"backend.services.futu_service": MagicMock(futu_service=mock_futu)}):
+            with patch.dict("sys.modules", {"backend.services.futu": MagicMock(futu_service=mock_futu)}):
                 lot = await _get_lot_size("00700.HK")
         # 如果 snapshot 失败会走硬编码映射
         assert lot in (100, 100)
@@ -176,20 +176,20 @@ class TestGetLotSize:
     @pytest.mark.asyncio
     async def test_hk_stock_hardcoded_fallback(self):
         """港股硬编码兜底"""
-        with patch("backend.services.algo_engine.futu_service", create=True) as mock_futu:
+        with patch("backend.workers.oms.algo_engine.futu_service", create=True) as mock_futu:
             mock_futu.get_market_snapshots = AsyncMock(side_effect=Exception("连接失败"))
             mock_futu.get_quote = AsyncMock(side_effect=Exception("连接失败"))
-            with patch.dict("sys.modules", {"backend.services.futu_service": MagicMock(futu_service=mock_futu)}):
+            with patch.dict("sys.modules", {"backend.services.futu": MagicMock(futu_service=mock_futu)}):
                 lot = await _get_lot_size("00700.HK")
         assert lot == 100  # 腾讯硬编码
 
     @pytest.mark.asyncio
     async def test_hk_unknown_stock_default(self):
         """未知港股默认 100"""
-        with patch("backend.services.algo_engine.futu_service", create=True) as mock_futu:
+        with patch("backend.workers.oms.algo_engine.futu_service", create=True) as mock_futu:
             mock_futu.get_market_snapshots = AsyncMock(side_effect=Exception("err"))
             mock_futu.get_quote = AsyncMock(side_effect=Exception("err"))
-            with patch.dict("sys.modules", {"backend.services.futu_service": MagicMock(futu_service=mock_futu)}):
+            with patch.dict("sys.modules", {"backend.services.futu": MagicMock(futu_service=mock_futu)}):
                 lot = await _get_lot_size("09999.HK")
         # 09999.HK 在硬编码映射中 = 100
         assert lot == 100
@@ -204,7 +204,7 @@ class TestAlgoEngine:
         return AlgoEngine()
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_start_algo(self, mock_redis, engine):
         """启动算法拆单"""
         mock_redis.hset = AsyncMock()
@@ -216,7 +216,7 @@ class TestAlgoEngine:
         mock_redis.expire = AsyncMock()
 
         with patch.object(engine, "_run_algo_loop", new_callable=AsyncMock):
-            with patch("backend.services.algo_engine._get_lot_size", new_callable=AsyncMock, return_value=1):
+            with patch("backend.workers.oms.algo_engine._get_lot_size", new_callable=AsyncMock, return_value=1):
                 order = await engine.start_algo("TWAP", "US.AAPL", "BUY", 1000, 60)
                 assert order.algo_type == "TWAP"
                 assert order.symbol == "US.AAPL"
@@ -224,7 +224,7 @@ class TestAlgoEngine:
                 assert order.status == "RUNNING"
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_pause_algo(self, mock_redis, engine):
         """暂停算法"""
         mock_redis.hset = AsyncMock()
@@ -236,14 +236,14 @@ class TestAlgoEngine:
         assert order.status == "PAUSED"
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_pause_nonexistent(self, mock_redis, engine):
         """暂停不存在的算法"""
         result = await engine.pause_algo("nonexist")
         assert result is False
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_resume_algo(self, mock_redis, engine):
         """恢复算法"""
         mock_redis.hset = AsyncMock()
@@ -257,7 +257,7 @@ class TestAlgoEngine:
         assert order.status == "RUNNING"
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_resume_not_paused(self, mock_redis, engine):
         """恢复非暂停状态的算法"""
         order = AlgoOrder("algo_1", "TWAP", "US.AAPL", "BUY", 1000)
@@ -266,7 +266,7 @@ class TestAlgoEngine:
         assert result is False
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_cancel_algo(self, mock_redis, engine):
         """取消算法"""
         mock_redis.hset = AsyncMock()
@@ -282,14 +282,14 @@ class TestAlgoEngine:
         assert order.status == "CANCELLED"
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_cancel_nonexistent(self, mock_redis, engine):
         """取消不存在的算法"""
         result = await engine.cancel_algo("nonexist")
         assert result is False
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_cancel_all(self, mock_redis, engine):
         """Kill Switch 取消所有"""
         mock_redis.hset = AsyncMock()
@@ -313,29 +313,29 @@ class TestAlgoEngine:
         assert len(result) == 2
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_simulate_fill_sandbox(self, mock_redis, engine):
         """沙箱模式模拟成交"""
         mock_redis.get = AsyncMock(return_value=None)  # 非 LIVE 模式
-        with patch("backend.services.algo_engine.futu_service", create=True) as mock_futu:
+        with patch("backend.workers.oms.algo_engine.futu_service", create=True) as mock_futu:
             mock_futu.get_quote = AsyncMock(return_value={"status": "success", "last_price": 150.0})
-            with patch.dict("sys.modules", {"backend.services.futu_service": MagicMock(futu_service=mock_futu)}):
+            with patch.dict("sys.modules", {"backend.services.futu": MagicMock(futu_service=mock_futu)}):
                 price = await engine._simulate_fill("US.AAPL", 100, "BUY")
         assert 149.0 < price < 151.0
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_simulate_fill_fallback(self, mock_redis, engine):
         """行情获取失败时返回默认 100.0"""
         mock_redis.get = AsyncMock(return_value=None)
-        with patch("backend.services.algo_engine.futu_service", create=True) as mock_futu:
+        with patch("backend.workers.oms.algo_engine.futu_service", create=True) as mock_futu:
             mock_futu.get_quote = AsyncMock(side_effect=Exception("连接超时"))
-            with patch.dict("sys.modules", {"backend.services.futu_service": MagicMock(futu_service=mock_futu)}):
+            with patch.dict("sys.modules", {"backend.services.futu": MagicMock(futu_service=mock_futu)}):
                 price = await engine._simulate_fill("US.AAPL", 100, "BUY")
         assert price == 100.0
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_save_algo_state_running(self, mock_redis, engine):
         """保存运行中状态到 Redis"""
         mock_redis.hset = AsyncMock()
@@ -344,7 +344,7 @@ class TestAlgoEngine:
         mock_redis.hset.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_save_algo_state_completed(self, mock_redis, engine):
         """完成状态从活动表移除"""
         mock_redis.hdel = AsyncMock()
@@ -354,7 +354,7 @@ class TestAlgoEngine:
         mock_redis.hdel.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_archive_algo(self, mock_redis, engine):
         """归档已完成算法"""
         mock_redis.lpush = AsyncMock()
@@ -366,7 +366,7 @@ class TestAlgoEngine:
         mock_redis.lpush.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_archive_algo_not_terminal(self, mock_redis, engine):
         """非终态不归档"""
         mock_redis.lpush = AsyncMock()
@@ -376,7 +376,7 @@ class TestAlgoEngine:
         mock_redis.lpush.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_restore_from_redis_empty(self, mock_redis, engine):
         """Redis 无数据时恢复 0 个"""
         mock_redis.hgetall = AsyncMock(return_value={})
@@ -384,7 +384,7 @@ class TestAlgoEngine:
         assert count == 0
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_restore_from_redis_with_data(self, mock_redis, engine):
         """从 Redis 恢复算法订单"""
         mock_redis.hgetall = AsyncMock(
@@ -409,7 +409,7 @@ class TestAlgoEngine:
         assert count == 1
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_shutdown(self, mock_redis, engine):
         """优雅关停"""
         mock_redis.hset = AsyncMock()
@@ -432,7 +432,7 @@ class TestAlgoEngineExecution:
         return AlgoEngine()
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_run_algo_loop_unsupported_type(self, mock_redis, engine):
         """不支持的算法类型"""
         mock_redis.hset = AsyncMock()
@@ -448,7 +448,7 @@ class TestAlgoEngineExecution:
         assert "不支持" in order.message
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_run_twap_full_execution(self, mock_redis, engine):
         """完整 TWAP 执行循环"""
         mock_redis.hset = AsyncMock()
@@ -466,7 +466,7 @@ class TestAlgoEngineExecution:
         assert order.filled_qty >= order.target_qty
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_run_vwap_full_execution(self, mock_redis, engine):
         """完整 VWAP 执行循环"""
         mock_redis.hset = AsyncMock()
@@ -484,7 +484,7 @@ class TestAlgoEngineExecution:
         assert order.filled_qty >= order.target_qty
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_run_iceberg_full_execution(self, mock_redis, engine):
         """完整 ICEBERG 执行循环"""
         mock_redis.hset = AsyncMock()
@@ -503,7 +503,7 @@ class TestAlgoEngineExecution:
         assert order.filled_qty >= order.target_qty
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_run_pov_full_execution(self, mock_redis, engine):
         """完整 POV 执行循环"""
         mock_redis.hset = AsyncMock()
@@ -521,7 +521,7 @@ class TestAlgoEngineExecution:
         assert order.filled_qty >= order.target_qty
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_run_is_full_execution(self, mock_redis, engine):
         """完整 IS 执行循环"""
         mock_redis.hset = AsyncMock()
@@ -539,7 +539,7 @@ class TestAlgoEngineExecution:
         assert order.filled_qty >= order.target_qty
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_run_twap_already_filled(self, mock_redis, engine):
         """TWAP 已全部成交时直接返回"""
         order = AlgoOrder("algo_1", "TWAP", "US.AAPL", "BUY", 1000)
@@ -548,7 +548,7 @@ class TestAlgoEngineExecution:
         assert order.filled_qty == 1000
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_run_vwap_already_filled(self, mock_redis, engine):
         """VWAP 已全部成交时直接返回"""
         order = AlgoOrder("algo_1", "VWAP", "US.AAPL", "BUY", 1000)
@@ -557,7 +557,7 @@ class TestAlgoEngineExecution:
         assert order.filled_qty == 1000
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_run_pov_already_filled(self, mock_redis, engine):
         """POV 已全部成交时直接返回"""
         order = AlgoOrder("algo_1", "POV", "US.AAPL", "BUY", 1000)
@@ -566,7 +566,7 @@ class TestAlgoEngineExecution:
         assert order.filled_qty == 1000
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_run_is_already_filled(self, mock_redis, engine):
         """IS 已全部成交时直接返回"""
         order = AlgoOrder("algo_1", "IS", "US.AAPL", "BUY", 1000)
@@ -575,7 +575,7 @@ class TestAlgoEngineExecution:
         assert order.filled_qty == 1000
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_run_twap_stop_requested(self, mock_redis, engine):
         """TWAP 停止请求"""
         mock_redis.hset = AsyncMock()
@@ -587,7 +587,7 @@ class TestAlgoEngineExecution:
         assert order.filled_qty == 0
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_run_iceberg_stop_requested(self, mock_redis, engine):
         """ICEBERG 停止请求"""
         mock_redis.hset = AsyncMock()
@@ -599,7 +599,7 @@ class TestAlgoEngineExecution:
         assert order.filled_qty == 0
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_run_algo_loop_twap_dispatch(self, mock_redis, engine):
         """算法主循环分发到 TWAP"""
         mock_redis.hset = AsyncMock()
@@ -617,7 +617,7 @@ class TestAlgoEngineExecution:
         assert order.status == "COMPLETED"
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_run_algo_loop_vwap_dispatch(self, mock_redis, engine):
         """算法主循环分发到 VWAP"""
         mock_redis.hset = AsyncMock()
@@ -635,7 +635,7 @@ class TestAlgoEngineExecution:
         assert order.status == "COMPLETED"
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_run_algo_loop_iceberg_dispatch(self, mock_redis, engine):
         """算法主循环分发到 ICEBERG"""
         mock_redis.hset = AsyncMock()
@@ -654,7 +654,7 @@ class TestAlgoEngineExecution:
         assert order.status == "COMPLETED"
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_run_algo_loop_pov_dispatch(self, mock_redis, engine):
         """算法主循环分发到 POV"""
         mock_redis.hset = AsyncMock()
@@ -672,7 +672,7 @@ class TestAlgoEngineExecution:
         assert order.status == "COMPLETED"
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_run_algo_loop_is_dispatch(self, mock_redis, engine):
         """算法主循环分发到 IS"""
         mock_redis.hset = AsyncMock()
@@ -690,7 +690,7 @@ class TestAlgoEngineExecution:
         assert order.status == "COMPLETED"
 
     @pytest.mark.asyncio
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_run_twap_hk_lot_size(self, mock_redis, engine):
         """港股整手 TWAP"""
         mock_redis.hset = AsyncMock()
@@ -900,7 +900,7 @@ class TestAlgoOrderEnhanced:
 
     def test_algo_order_init(self):
         """AlgoOrder 初始化"""
-        from backend.services.algo_engine import AlgoOrder
+        from backend.workers.oms.algo_engine import AlgoOrder
 
         order = AlgoOrder(
             algo_id="algo_twap_001",
@@ -922,14 +922,14 @@ class TestAlgoOrderEnhanced:
 
     def test_algo_order_avg_price_zero(self):
         """无成交时均价为 0"""
-        from backend.services.algo_engine import AlgoOrder
+        from backend.workers.oms.algo_engine import AlgoOrder
 
         order = AlgoOrder("id1", "TWAP", "00700.HK", "BUY", 100)
         assert order.avg_price == "0.00"
 
     def test_algo_order_avg_price_with_fills(self):
         """有成交时计算均价"""
-        from backend.services.algo_engine import AlgoOrder
+        from backend.workers.oms.algo_engine import AlgoOrder
 
         order = AlgoOrder("id1", "TWAP", "00700.HK", "BUY", 100)
         order.filled_qty = 100
@@ -938,7 +938,7 @@ class TestAlgoOrderEnhanced:
 
     def test_algo_order_progress(self):
         """进度计算"""
-        from backend.services.algo_engine import AlgoOrder
+        from backend.workers.oms.algo_engine import AlgoOrder
 
         order = AlgoOrder("id1", "TWAP", "00700.HK", "BUY", 1000)
         order.filled_qty = 500
@@ -946,14 +946,14 @@ class TestAlgoOrderEnhanced:
 
     def test_algo_order_progress_zero_target(self):
         """目标为 0 时进度 100%"""
-        from backend.services.algo_engine import AlgoOrder
+        from backend.workers.oms.algo_engine import AlgoOrder
 
         order = AlgoOrder("id1", "TWAP", "00700.HK", "BUY", 0)
         assert order.progress == 100
 
     def test_algo_order_to_api_dict(self):
         """转 API 格式"""
-        from backend.services.algo_engine import AlgoOrder
+        from backend.workers.oms.algo_engine import AlgoOrder
 
         order = AlgoOrder("id1", "TWAP", "00700.HK", "BUY", 1000)
         order.filled_qty = 200
@@ -977,10 +977,10 @@ class TestAlgoOrderEnhanced:
 class TestAlgoEngineEnhanced:
     """AlgoEngine 核心引擎测试"""
 
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     def test_pause_algo(self, mock_redis):
         """暂停算法"""
-        from backend.services.algo_engine import AlgoEngine, AlgoOrder
+        from backend.workers.oms.algo_engine import AlgoEngine, AlgoOrder
 
         mock_redis.hset = AsyncMock()
         mock_redis.publish = AsyncMock()
@@ -996,20 +996,20 @@ class TestAlgoEngineEnhanced:
         assert order.status == "PAUSED"
         assert order._pause_event.is_set() is False
 
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     def test_pause_algo_not_found(self, mock_redis):
         """暂停不存在的算法返回 False"""
-        from backend.services.algo_engine import AlgoEngine
+        from backend.workers.oms.algo_engine import AlgoEngine
 
         engine = AlgoEngine()
 
         result = asyncio.run(engine.pause_algo("nonexistent"))
         assert result is False
 
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     def test_resume_algo(self, mock_redis):
         """恢复暂停的算法"""
-        from backend.services.algo_engine import AlgoEngine, AlgoOrder
+        from backend.workers.oms.algo_engine import AlgoEngine, AlgoOrder
 
         mock_redis.hset = AsyncMock()
         mock_redis.publish = AsyncMock()
@@ -1026,10 +1026,10 @@ class TestAlgoEngineEnhanced:
         assert order.status == "RUNNING"
         assert order._pause_event.is_set() is True
 
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     def test_resume_algo_not_paused(self, mock_redis):
         """恢复非 PAUSED 状态的算法返回 False"""
-        from backend.services.algo_engine import AlgoEngine, AlgoOrder
+        from backend.workers.oms.algo_engine import AlgoEngine, AlgoOrder
 
         engine = AlgoEngine()
         order = AlgoOrder("algo_001", "TWAP", "00700.HK", "BUY", 1000)
@@ -1039,10 +1039,10 @@ class TestAlgoEngineEnhanced:
         result = asyncio.run(engine.resume_algo("algo_001"))
         assert result is False
 
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_cancel_algo(self, mock_redis):
         """取消算法"""
-        from backend.services.algo_engine import AlgoEngine, AlgoOrder
+        from backend.workers.oms.algo_engine import AlgoEngine, AlgoOrder
 
         mock_redis.hset = AsyncMock()
         mock_redis.hdel = AsyncMock()
@@ -1063,10 +1063,10 @@ class TestAlgoEngineEnhanced:
         assert order.status == "CANCELLED"
         assert order._stop_requested is True
 
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_cancel_all(self, mock_redis):
         """Kill Switch: 取消所有运行中算法"""
-        from backend.services.algo_engine import AlgoEngine, AlgoOrder
+        from backend.workers.oms.algo_engine import AlgoEngine, AlgoOrder
 
         mock_redis.hset = AsyncMock()
         mock_redis.hdel = AsyncMock()
@@ -1090,10 +1090,10 @@ class TestAlgoEngineEnhanced:
 
         assert result == 2
 
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     def test_get_all_algo_orders(self, mock_redis):
         """获取所有算法订单"""
-        from backend.services.algo_engine import AlgoEngine, AlgoOrder
+        from backend.workers.oms.algo_engine import AlgoEngine, AlgoOrder
 
         engine = AlgoEngine()
         order1 = AlgoOrder("algo_001", "TWAP", "00700.HK", "BUY", 1000)
@@ -1106,10 +1106,10 @@ class TestAlgoEngineEnhanced:
         assert result[0]["id"] == "algo_001"
         assert result[1]["id"] == "algo_002"
 
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     def test_save_algo_state_completed(self, mock_redis):
         """完成状态时从活动表移除"""
-        from backend.services.algo_engine import AlgoEngine, AlgoOrder
+        from backend.workers.oms.algo_engine import AlgoEngine, AlgoOrder
 
         mock_redis.hdel = AsyncMock()
 
@@ -1121,10 +1121,10 @@ class TestAlgoEngineEnhanced:
 
         mock_redis.hdel.assert_called_once()
 
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     def test_archive_algo(self, mock_redis):
         """归档已完成算法"""
-        from backend.services.algo_engine import AlgoEngine, AlgoOrder
+        from backend.workers.oms.algo_engine import AlgoEngine, AlgoOrder
 
         mock_redis.lpush = AsyncMock()
         mock_redis.ltrim = AsyncMock()
@@ -1140,10 +1140,10 @@ class TestAlgoEngineEnhanced:
         mock_redis.ltrim.assert_called_once()
         mock_redis.expire.assert_called_once()
 
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     def test_archive_algo_running_skip(self, mock_redis):
         """运行中的算法不归档"""
-        from backend.services.algo_engine import AlgoEngine, AlgoOrder
+        from backend.workers.oms.algo_engine import AlgoEngine, AlgoOrder
 
         mock_redis.lpush = AsyncMock()
 
@@ -1155,10 +1155,10 @@ class TestAlgoEngineEnhanced:
 
         mock_redis.lpush.assert_not_called()
 
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     def test_restore_from_redis_empty(self, mock_redis):
         """Redis 无活动订单时恢复 0"""
-        from backend.services.algo_engine import AlgoEngine
+        from backend.workers.oms.algo_engine import AlgoEngine
 
         mock_redis.hgetall = AsyncMock(return_value={})
 
@@ -1167,10 +1167,10 @@ class TestAlgoEngineEnhanced:
         result = asyncio.run(engine.restore_from_redis())
         assert result == 0
 
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_shutdown(self, mock_redis):
         """优雅关停"""
-        from backend.services.algo_engine import AlgoEngine, AlgoOrder
+        from backend.workers.oms.algo_engine import AlgoEngine, AlgoOrder
 
         mock_redis.hset = AsyncMock()
         mock_redis.hdel = AsyncMock()
@@ -1196,36 +1196,36 @@ class TestGetLotSizeEnhanced:
 
     def test_us_stock_returns_1(self):
         """美股默认返回 1"""
-        from backend.services.algo_engine import _get_lot_size
+        from backend.workers.oms.algo_engine import _get_lot_size
 
         result = asyncio.run(_get_lot_size("AAPL"))
         assert result == 1
 
-    @patch("backend.services.algo_engine.futu_service", create=True)
+    @patch("backend.workers.oms.algo_engine.futu_service", create=True)
     def test_hk_stock_fallback_to_hardcoded(self, mock_futu_module):
         """港股 snapshot 失败时降级到硬编码"""
-        from backend.services.algo_engine import _get_lot_size
+        from backend.workers.oms.algo_engine import _get_lot_size
 
-        with patch.dict("sys.modules", {"backend.services.futu_service": MagicMock()}):
+        with patch.dict("sys.modules", {"backend.services.futu": MagicMock()}):
             result = asyncio.run(_get_lot_size("00700.HK"))
             assert result == 100
 
     def test_hk_stock_unknown_defaults_100(self):
         """未知港股默认 100"""
-        from backend.services.algo_engine import _get_lot_size
+        from backend.workers.oms.algo_engine import _get_lot_size
 
-        with patch.dict("sys.modules", {"backend.services.futu_service": MagicMock()}):
+        with patch.dict("sys.modules", {"backend.services.futu": MagicMock()}):
             result = asyncio.run(_get_lot_size("99999.HK"))
             assert result == 100
 
     async def test_hk_stock_from_snapshot(self):
         """港股从 snapshot 成功获取 lot_size"""
-        from backend.services.algo_engine import _get_lot_size
+        from backend.workers.oms.algo_engine import _get_lot_size
 
         mock_futu = MagicMock()
         mock_futu.get_market_snapshots = AsyncMock(return_value={"status": "success", "data": [{"lot_size": 500}]})
 
-        with patch.dict("sys.modules", {"backend.services.futu_service": mock_futu}):
+        with patch.dict("sys.modules", {"backend.services.futu": mock_futu}):
             result = await _get_lot_size("00005.HK")
             assert result == 500
 
@@ -1233,10 +1233,10 @@ class TestGetLotSizeEnhanced:
 class TestAlgoEngineSimulateFill:
     """模拟成交逻辑测试"""
 
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_simulate_fill_sandbox_mode(self, mock_redis):
         """沙箱模式模拟成交"""
-        from backend.services.algo_engine import AlgoEngine
+        from backend.workers.oms.algo_engine import AlgoEngine
 
         mock_redis.get = AsyncMock(return_value="SANDBOX")
 
@@ -1246,15 +1246,15 @@ class TestAlgoEngineSimulateFill:
         mock_module.futu_service.get_quote = mock_futu_service
 
         engine = AlgoEngine()
-        with patch.dict("sys.modules", {"backend.services.futu_service": mock_module}):
+        with patch.dict("sys.modules", {"backend.services.futu": mock_module}):
             price = await engine._simulate_fill("00700.HK", 100, "BUY")
             # 价格应该在 400 附近有微小滑点
             assert 400.0 < price < 400.5
 
-    @patch("backend.services.algo_engine.redis_client")
+    @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_simulate_fill_fallback_price(self, mock_redis):
         """行情获取失败时使用默认价格"""
-        from backend.services.algo_engine import AlgoEngine
+        from backend.workers.oms.algo_engine import AlgoEngine
 
         mock_redis.get = AsyncMock(return_value="SANDBOX")
 
@@ -1262,6 +1262,6 @@ class TestAlgoEngineSimulateFill:
         mock_module.futu_service.get_quote = AsyncMock(side_effect=Exception("Connection failed"))
 
         engine = AlgoEngine()
-        with patch.dict("sys.modules", {"backend.services.futu_service": mock_module}):
+        with patch.dict("sys.modules", {"backend.services.futu": mock_module}):
             price = await engine._simulate_fill("00700.HK", 100, "BUY")
             assert price == 100.0

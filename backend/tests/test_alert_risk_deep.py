@@ -544,7 +544,7 @@ class TestRiskSector:
             mock_redis.set = AsyncMock()
 
             # futu_service 是在函数内部导入的
-            with patch("backend.services.futu_service.futu_service") as mock_futu:
+            with patch("backend.services.futu.futu_service") as mock_futu:
                 mock_futu.get_stock_basicinfo = AsyncMock(return_value=futu_data)
                 result = await analyzer._get_sector_map(positions, "HK")
                 assert result.get("00700") == "科技"
@@ -558,7 +558,7 @@ class TestRiskSector:
             mock_redis.set = AsyncMock()
 
             # futu_service 是在函数内部导入的
-            with patch("backend.services.futu_service.futu_service") as mock_futu:
+            with patch("backend.services.futu.futu_service") as mock_futu:
                 mock_futu.get_stock_basicinfo = AsyncMock(return_value={"status": "error"})
                 result = await analyzer._get_sector_map(positions, "HK")
                 assert result.get("UNKNOWN") == "未知"
@@ -574,13 +574,13 @@ class TestSystemMonitorService:
 
     @pytest.fixture
     def monitor(self):
-        from backend.services.system_monitor_service import SystemMonitorService
+        from backend.workers.monitor.system_monitor import SystemMonitorService
 
         return SystemMonitorService()
 
     def test_save_performance_log_success(self, monitor):
         """_save_performance_log: 成功保存日志"""
-        with patch("backend.services.system_monitor_service.SessionLocal") as mock_session:
+        with patch("backend.workers.monitor.system_monitor.SessionLocal") as mock_session:
             mock_db = MagicMock()
             mock_session.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session.return_value.__exit__ = MagicMock(return_value=False)
@@ -591,7 +591,7 @@ class TestSystemMonitorService:
 
     def test_save_performance_log_error(self, monitor):
         """_save_performance_log: 保存失败"""
-        with patch("backend.services.system_monitor_service.SessionLocal") as mock_session:
+        with patch("backend.workers.monitor.system_monitor.SessionLocal") as mock_session:
             mock_session.side_effect = Exception("DB error")
             # 不应该抛出异常
             monitor._save_performance_log("test_type", 100.5)
