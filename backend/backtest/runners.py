@@ -23,6 +23,16 @@ from .sandbox import (  # noqa: F401
 )
 
 
+def _emit_progress(progress_queue, progress: int, stage: str, detail: str | None = None) -> None:
+    """线程安全地推送进度包；progress_queue 为 None 时静默跳过。"""
+    if progress_queue is None:
+        return
+    try:
+        progress_queue.put({"progress": int(progress), "stage": stage, "detail": detail})
+    except Exception:
+        pass
+
+
 def _numba_jit_globals() -> dict:
     """返回可在沙箱 globals 中预注入的 Numba JIT 装饰器映射。
 
@@ -142,6 +152,7 @@ def run_grid_search_backtest(
     df: pd.DataFrame,
     initial_capital: float = 100000.0,
     target_metric: str = "sharpe_ratio",
+    progress_queue: Optional[Any] = None,
 ) -> list:
     """
     基于 Numba 的极速网格搜索 (Grid Search) 回测引擎。
@@ -163,12 +174,16 @@ def run_grid_search_backtest(
     values = list(param_grid.values())
     combinations = list(itertools.product(*values))
 
-    print(f"🚀 [Grid Search] 启动极速寻优！开始遍历 {len(combinations)} 组参数组合...")
+    total_combos = len(combinations)
+    _emit_progress(progress_queue, 3, "grid", f"构建参数网格，共 {total_combos} 组组合")
+    print(f"🚀 [Grid Search] 启动极速寻优！开始遍历 {total_combos} 组参数组合...")
 
     df = _prepare_df(df)
 
     results = []
     last_error = None
+    done = 0
+    last_pct = 0
     for combo in combinations:
         params = dict(zip(keys, combo))
         try:
@@ -231,7 +246,14 @@ def run_grid_search_backtest(
             )
         except Exception as e:
             last_error = e
-            continue
+        finally:
+            done += 1
+            pct = int(done / total_combos * 95) if total_combos else 95
+            if pct > last_pct:
+                _emit_progress(progress_queue, pct, "grid", f"寻优进度 {done}/{total_combos}")
+                last_pct = pct
+
+    _emit_progress(progress_queue, 100, "done", "寻优完成，正在排序 Top 组合")
 
     if not results:
         if last_error is not None:

@@ -24,6 +24,16 @@ from .sandbox import (  # noqa: F401
 )
 
 
+def _emit_progress(progress_queue, progress: int, stage: str, detail: str | None = None) -> None:
+    """线程安全地推送进度包；progress_queue 为 None 时静默跳过。"""
+    if progress_queue is None:
+        return
+    try:
+        progress_queue.put({"progress": int(progress), "stage": stage, "detail": detail})
+    except Exception:
+        pass
+
+
 class EventDrivenBacktestEngine:
     """
     高保真事件驱动回测引擎 (Event-Driven Backtester)
@@ -38,6 +48,7 @@ class EventDrivenBacktestEngine:
         commission_pct: float = 0.0005,
         slippage_pct: float = 0.001,
         debug_mode: bool = False,
+        progress_queue=None,
     ):
         self.strategy = strategy_instance
         self.df = df.copy()
@@ -45,6 +56,7 @@ class EventDrivenBacktestEngine:
         self.commission_pct = commission_pct
         self.slippage_pct = slippage_pct
         self.debug_mode = debug_mode
+        self.progress_queue = progress_queue
         self.cash = initial_capital
         self.position = 0
         self.equity_curve = []
@@ -129,7 +141,15 @@ class EventDrivenBacktestEngine:
 
         benchmark_start_price = float(df.iloc[0]["close"])
 
+        total_bars = max(1, len(df) - 10)
+        last_progress = 0
+
         for i in range(10, len(df)):
+            pct = int((i - 10) / total_bars * 92)
+            if pct > last_progress:
+                _emit_progress(self.progress_queue, pct, "backtest", f"逐 K 线推演中 ({i}/{len(df)})")
+                last_progress = pct
+
             window_df = df.iloc[: i + 1]
             current_bar = window_df.iloc[-1]
             current_price = float(current_bar["close"])
@@ -235,6 +255,7 @@ class EventDrivenBacktestEngine:
         winning_trades = [t for t in sell_trades if t["profit"] > 0]
         win_rate = len(winning_trades) / len(sell_trades) if len(sell_trades) > 0 else 0.0
 
+        _emit_progress(self.progress_queue, 100, "done", "回测推演完成")
         return {
             "metrics": {
                 "engine": "🐢 Event-Driven",
@@ -257,11 +278,13 @@ def run_dynamic_sandbox_backtest(
     df: pd.DataFrame,
     initial_capital: float = 100000.0,
     debug_mode: bool = False,
+    progress_queue: Optional[Any] = None,
 ) -> dict:
     """
     运行大模型生成的动态策略 (真实逐 K 线事件驱动沙箱)
     """
     _verify_safe_code(source_code)
+    _emit_progress(progress_queue, 5, "compile", "编译策略源码并校验安全性...")
 
     local_scope = {}
     global_scope = {
@@ -299,11 +322,12 @@ def run_dynamic_sandbox_backtest(
             raise ValueError(f"未在代码中找到名为 {class_name} 的策略类")
 
         strategy_instance = StrategyClass(**params)
+    _emit_progress(progress_queue, 22, "signal", "生成交易信号与指标...")
 
     # 💡 debug_mode 开启时强制降级至高保真事件驱动引擎以捕获逐 K 线内部状态
     if debug_mode:
         print("🐛 [Backtest Engine] 调试模式已开启，强制降级至高保真事件驱动引擎！")
-        engine = EventDrivenBacktestEngine(strategy_instance, df, initial_capital=initial_capital, debug_mode=True)
+        engine = EventDrivenBacktestEngine(strategy_instance, df, initial_capital=initial_capital, debug_mode=True, progress_queue=progress_queue)
         with SandboxTimeoutTracer(timeout_seconds=10.0):
             return engine.run()
 
@@ -320,10 +344,11 @@ def run_dynamic_sandbox_backtest(
                 df_copy[col.lower()] = df_copy[col]
 
         with SandboxTimeoutTracer(timeout_seconds=5.0):
+            _emit_progress(progress_queue, 40, "match", "VectorBT 矢量化撮合历史 K 线...")
             res_df, signal_encoding = _drive_strategy(strategy_instance, df_copy)
     except ValueError:
         # 不兼容矢量化契约 → 兜底至高保真事件驱动引擎
-        engine = EventDrivenBacktestEngine(strategy_instance, df, initial_capital=initial_capital, debug_mode=False)
+        engine = EventDrivenBacktestEngine(strategy_instance, df, initial_capital=initial_capital, debug_mode=False, progress_queue=progress_queue)
         with SandboxTimeoutTracer(timeout_seconds=10.0):
             return engine.run()
 
@@ -367,9 +392,11 @@ def run_dynamic_sandbox_backtest(
     max_drawdown = _safe_stat(stats, "Max Drawdown [%]") / 100.0
     win_rate = _safe_stat(stats, "Win Rate [%]") / 100.0
     total_fees = _safe_stat(stats, "Total Fees Paid")
+    _emit_progress(progress_queue, 85, "stats", "计算绩效指标...")
 
     equity_curve = []
     trades = []
+    _emit_progress(progress_queue, 95, "curve", "重建权益曲线...")
 
     equity_s = pf.value()
     benchmark_start_price = res_df["Close"].iloc[0]
@@ -413,6 +440,7 @@ def run_dynamic_sandbox_backtest(
 
         trades.sort(key=lambda x: x["date"])
 
+    _emit_progress(progress_queue, 100, "done", "回测推演完成")
     return {
         "metrics": {
             "engine": "⚡ VectorBT",
