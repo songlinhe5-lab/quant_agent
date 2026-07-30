@@ -13,6 +13,7 @@ interface BacktestResultsProps {
   backtestResult: any
   running: boolean
   progress: number
+  progressStage: string
   isDebugMode: boolean
   currentTearSheet: { label: string; value: string; dir: number; note: string }[]
   reproBadge: any
@@ -23,7 +24,7 @@ interface BacktestResultsProps {
 }
 
 export function BacktestResults({
-  backtestResult, running, progress, isDebugMode,
+  backtestResult, running, progress, progressStage, isDebugMode,
   currentTearSheet, reproBadge, metrics,
   curve, underwaterDataComputed, histogramData,
 }: BacktestResultsProps) {
@@ -35,7 +36,7 @@ export function BacktestResults({
       <div className="flex flex-1 items-center justify-center p-6">
         <InitOverlay
           variant="spinner"
-          label="引擎正在撮合历史 K 线与订单…"
+          label={progressStage || '引擎正在撮合历史 K 线与订单…'}
           progress={progress}
         />
       </div>

@@ -14,6 +14,7 @@ export function useBacktest() {
   const [running, setRunning] = useState(false)
   const [done, setDone] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [progressStage, setProgressStage] = useState('')
   const [rawReturns, setRawReturns] = useState<number[]>([])
   const abortControllerRef = useRef<AbortController | null>(null)
 
@@ -83,26 +84,19 @@ export function useBacktest() {
     setRunning(false)
     setDone(false)
     setProgress(0)
+    setProgressStage('')
     toast({ variant: 'destructive', title: '🚨 回测已中止', description: '您手动取消了回测推演。' })
   }
 
   const handleRun = async (overrideParams?: Record<string, any>, isSilent: boolean = false) => {
     if (done || running) return
     setRunning(true)
+    setProgress(0)
+    setProgressStage('')
     if (!isSilent) setBacktestResult(null)
     setRawReturns([])
 
     abortControllerRef.current = new AbortController()
-
-    let p = 0
-    let iv: any;
-    if (!isSilent) {
-      iv = setInterval(() => {
-        p += Math.random() * 15 + 5
-        if (p >= 90) p = 90;
-        setProgress(p)
-      }, 300)
-    }
 
     const finalParams = overrideParams || strategyParams
     const sanitizedParams = { ...finalParams }
@@ -159,7 +153,8 @@ export function useBacktest() {
         return
       }
 
-      const res = await apiClient.post('/backtest/run', {
+      setProgressStage('加载历史 K 线...')
+      const res = await apiClient.stream('/backtest/run/stream', {
         ticker, period, interval,
         initial_capital: initialCapital,
         atr_multiplier: 2.0, commission_pct: 0.0005, slippage_pct: 0.001,
@@ -168,10 +163,41 @@ export function useBacktest() {
         source_code: sourceCode || undefined,
         class_name: strategyClassName || undefined,
         params: Object.keys(sanitizedParams).length > 0 ? sanitizedParams : undefined
-      }, { signal: abortControllerRef.current.signal })
+      }, abortControllerRef.current.signal)
 
-      if (res.data?.status === 'success' && res.data.data) {
-        setBacktestResult(res.data.data)
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let finalData: any = null
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        let nl: number
+        while ((nl = buffer.indexOf('\n')) >= 0) {
+          const line = buffer.slice(0, nl).trim()
+          buffer = buffer.slice(nl + 1)
+          if (!line) continue
+          let msg: any
+          try {
+            msg = JSON.parse(line)
+          } catch {
+            continue
+          }
+          if (msg.type === 'result') {
+            finalData = msg.data
+          } else if (msg.type === 'error') {
+            throw new Error(msg.message)
+          } else if (typeof msg.progress === 'number') {
+            setProgress(msg.progress)
+            setProgressStage(msg.detail || msg.stage || '')
+          }
+        }
+      }
+
+      if (finalData?.status === 'success' && finalData.data) {
+        setBacktestResult(finalData.data)
         if (!isSilent) toast({ title: '✅ 回测推演完成', description: `策略执行完毕，已生成 Tear Sheet。` })
         const generatedReturns = Array.from({length: 1000}, () => {
           let u = 0, v = 0;
@@ -180,16 +206,15 @@ export function useBacktest() {
           const z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
           return 0.05 + z * 0.08;
         });
-        setRawReturns(generatedReturns);
-      } else {
-        toast({ variant: 'destructive', title: '回测失败', description: res.data?.message })
+        setRawReturns(generatedReturns)
+      } else if (finalData) {
+        toast({ variant: 'destructive', title: '回测失败', description: finalData.message })
       }
     } catch (e: any) {
       if (e.name === 'CanceledError' || e.code === 'ERR_CANCELED' || e.message === 'canceled') return;
       toast({ variant: 'destructive', title: '网络异常', description: e.message })
     } finally {
       if (!abortControllerRef.current?.signal.aborted) {
-        if (iv) clearInterval(iv)
         setProgress(100)
         setTimeout(() => { setRunning(false); setDone(true) }, isSilent ? 0 : 400)
       }
@@ -251,7 +276,7 @@ export function useBacktest() {
 
   return {
     // state
-    running, done, progress, ticker, setTicker, period, setPeriod,
+    running, done, progress, progressStage, ticker, setTicker, period, setPeriod,
     interval, setIntervalVal, initialCapital, setInitialCapital,
     backtestResult, dataSource, setDataSource, isDebugMode, setIsDebugMode,
     dataSnapshotId, setDataSnapshotId, strategies, selectedStrategy,

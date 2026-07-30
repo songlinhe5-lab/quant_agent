@@ -55,6 +55,7 @@ export function BacktestModule() {
         backtestResult={bt.backtestResult}
         running={bt.running}
         progress={bt.progress}
+        progressStage={bt.progressStage}
         isDebugMode={bt.isDebugMode}
         currentTearSheet={bt.currentTearSheet}
         reproBadge={bt.reproBadge}
