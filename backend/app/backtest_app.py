@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 import pandas as pd
 
 from backend.app.market_data import market_data
-from backend.core.cpu_pool import run_cpu_bound
+from backend.core.cpu_pool import run_cpu_bound, run_cpu_bound_with_progress
 from backend.core.utils import safe_truncate
 
 # 延迟导入 backend.backtest（vectorbt/numba 重依赖），避免 import router 时拖垮其它测试。
@@ -288,6 +288,66 @@ async def run_backtest(req: BacktestParams) -> dict[str, Any]:
     """完整用例：加载数据 → 执行策略 → 附加可复现性摘要。"""
     df, _msg = await load_backtest_frame(req)
     result = await execute_backtest(req, df)
+    if result.get("status") == "success" and isinstance(result.get("data"), dict):
+        result = {
+            **result,
+            "data": await attach_reproducibility(req, result["data"]),
+        }
+    return result
+
+
+async def execute_backtest_stream(req: BacktestParams, df: pd.DataFrame, on_progress=None) -> dict[str, Any]:
+    """流式版本：运行动态沙箱或内置策略，并通过 on_progress 推送阶段进度（不在此吞异常）。"""
+    divergence_cls, sandbox_runner = _load_backtest_engine()
+
+    if req.source_code and req.class_name:
+        for mod in ["talib", "core", "core.strategy", "backtrader"]:
+            if mod not in sys.modules:
+                sys.modules[mod] = MagicMock()
+
+        safe_code = req.source_code
+        safe_code = re.sub(r"^\s*import\s+talib.*$", "", safe_code, flags=re.MULTILINE)
+        safe_code = re.sub(r"^\s*from\s+talib\s+import.*$", "", safe_code, flags=re.MULTILINE)
+        safe_code = re.sub(
+            r"^\s*from\s+[\w\.]+\s+import\s+BaseStrategy.*$",
+            "",
+            safe_code,
+            flags=re.MULTILINE,
+        )
+        report = await run_cpu_bound_with_progress(
+            sandbox_runner,
+            safe_code,
+            req.class_name,
+            req.params or {},
+            df,
+            req.initial_capital,
+            req.debug_mode,
+            on_progress=on_progress,
+        )
+        return {"status": "success", "data": report}
+
+    # 内置策略路径（无 source_code）：外层仅做粗略阶段提示（引擎不接受进度队列）
+    engine = divergence_cls(
+        df=df,
+        initial_capital=req.initial_capital,
+        atr_multiplier=req.atr_multiplier,
+        commission_pct=req.commission_pct,
+        slippage_pct=req.slippage_pct,
+    )
+    if on_progress:
+        on_progress({"progress": 40, "stage": "match", "detail": "DivergenceResonance 引擎撮合历史 K 线..."})
+    report = await run_cpu_bound_with_progress(engine.run, on_progress=on_progress)
+    return {"status": "success", "data": report}
+
+
+async def run_backtest_stream(req: BacktestParams, on_progress=None) -> dict[str, Any]:
+    """完整用例（流式）：加载数据 → 执行策略 → 附加可复现性摘要；阶段进度经 on_progress 回传。"""
+    if on_progress:
+        on_progress({"progress": 2, "stage": "data", "detail": "加载历史 K 线..."})
+    df, _msg = await load_backtest_frame(req)
+    if on_progress:
+        on_progress({"progress": 15, "stage": "data", "detail": f"已加载 {len(df)} 根 K 线"})
+    result = await execute_backtest_stream(req, df, on_progress)
     if result.get("status") == "success" and isinstance(result.get("data"), dict):
         result = {
             **result,

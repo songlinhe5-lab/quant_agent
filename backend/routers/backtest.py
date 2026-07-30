@@ -1,10 +1,15 @@
+import asyncio
+import json
 import logging
+import traceback
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from backend.app.backtest_app import BacktestDataError, BacktestParams, run_backtest
+from backend.app.backtest_app import BacktestDataError, BacktestParams, run_backtest, run_backtest_stream
+from backend.core.utils import safe_truncate
 from backend.app.grid_search_app import (
     GridSearchError,
     GridSearchParams,
@@ -160,6 +165,57 @@ async def run_backtest_endpoint(req: BacktestRequest):
         return await run_backtest(params)
     except BacktestDataError as e:
         raise HTTPException(status_code=400, detail=e.message) from e
+
+
+@router.post("/run/stream")
+async def run_backtest_stream_endpoint(req: BacktestRequest):
+    """SSE 流式回测：实时推送撮合阶段进度，结束返回完整 Tear Sheet。"""
+    params = BacktestParams(
+        ticker=req.ticker,
+        period=req.period,
+        interval=req.interval,
+        initial_capital=req.initial_capital,
+        atr_multiplier=req.atr_multiplier,
+        commission_pct=req.commission_pct,
+        slippage_pct=req.slippage_pct,
+        data_source=req.data_source,
+        debug_mode=req.debug_mode,
+        data_snapshot_id=req.data_snapshot_id,
+        random_seed=req.random_seed,
+        source_code=req.source_code,
+        class_name=req.class_name,
+        params=req.params,
+    )
+
+    chan: "asyncio.Queue" = asyncio.Queue()
+
+    async def runner():
+        try:
+            result = await run_backtest_stream(params, on_progress=lambda p: chan.put_nowait(p))
+            await chan.put({"type": "result", "data": result})
+        except BacktestDataError as e:
+            await chan.put({"type": "error", "message": e.message})
+        except Exception:
+            await chan.put({"type": "error", "message": safe_truncate(traceback.format_exc(), max_length=1500)})
+
+    task = asyncio.create_task(runner())
+
+    async def gen():
+        try:
+            while True:
+                item = await chan.get()
+                yield (json.dumps(item, ensure_ascii=False) + "\n").encode("utf-8")
+                if item.get("type") in ("result", "error"):
+                    break
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(
+        gen(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/walk-forward")
