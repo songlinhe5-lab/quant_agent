@@ -3,7 +3,6 @@
 覆盖: backend/services/sentiment_tracker.py
 """
 
-import asyncio
 import json
 import os
 import sys
@@ -17,46 +16,27 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 from backend.services.macro.sentiment_tracker import SentimentTracker, sentiment_tracker
 
 
-def _cancel_after_sleep(counts: dict, target: int):
-    """构造一个 side_effect：在第 N 次 sleep 后抛 CancelledError 以跳出 while True"""
-
-    async def _side_effect(delay, *args, **kwargs):
-        counts["n"] += 1
-        if counts["n"] >= target:
-            raise asyncio.CancelledError()
-
-    return _side_effect
-
-
 class TestSentimentTracker:
-    """SentimentTracker 单元测试"""
+    """SentimentTracker 单元测试（直接、确定性地测试 _run_once，避免依赖 daemon 的 sleep 取消计时）"""
 
     @pytest.fixture
     def tracker(self):
         return SentimentTracker()
 
     async def test_track_daemon_lock_not_acquired_skips_iteration(self, tracker):
-        """分布式锁未获取时应跳过本次迭代，进入下一轮"""
-        sleep_counts = {"n": 0}
+        """分布式锁未获取时，_run_once 应返回 False（由 daemon 决定跳过本轮）"""
         with (
             patch("backend.services.macro.sentiment_tracker.redis_client.set", new=AsyncMock(return_value=False)),
-            patch(
-                "backend.services.macro.sentiment_tracker.asyncio.sleep",
-                new=AsyncMock(side_effect=_cancel_after_sleep(sleep_counts, 2)),
-            ),
         ):
-            with pytest.raises(asyncio.CancelledError):
-                await tracker.track_daemon()
+            result = await tracker._run_once()
 
-        # 第一次 sleep(30) 初始延迟 + 第二次 sleep(60) 锁未获取 → CancelledError
-        assert sleep_counts["n"] == 2
+        assert result is False
 
     async def test_track_daemon_extracts_vix_and_cpc_successfully(self, tracker):
         """VIX 与 P/C 缓存存在时应解析为浮点数并写入数据库"""
         vix_cache = json.dumps([{"Close": 18.5}, {"Close": 19.2}])
         cpc_cache = json.dumps([{"Close": 0.85}, {"Close": 0.92}])
 
-        sleep_counts = {"n": 0}
         mock_db = MagicMock()
         mock_session_ctx = MagicMock()
         mock_session_ctx.__enter__ = MagicMock(return_value=mock_db)
@@ -73,17 +53,15 @@ class TestSentimentTracker:
             patch("backend.services.macro.sentiment_tracker.redis_client.set", new=AsyncMock(return_value=True)),
             patch("backend.services.macro.sentiment_tracker.redis_client.get", new=AsyncMock(side_effect=fake_get)),
             patch("backend.services.macro.sentiment_tracker.SessionLocal", return_value=mock_session_ctx),
-            patch(
-                "backend.services.macro.sentiment_tracker.asyncio.sleep",
-                new=AsyncMock(side_effect=_cancel_after_sleep(sleep_counts, 2)),
-            ),
+            # 数据库为同步 IO，测试内同步执行避免起线程，逻辑等价
             patch(
                 "backend.services.macro.sentiment_tracker.asyncio.to_thread", new=AsyncMock(side_effect=lambda fn: fn())
             ),
         ):
-            with pytest.raises(asyncio.CancelledError):
-                await tracker.track_daemon()
+            result = await tracker._run_once()
 
+        # 已获取锁且完成落库
+        assert result is True
         # 验证 DB 写入
         mock_db.add.assert_called_once()
         record = mock_db.add.call_args[0][0]
@@ -95,7 +73,6 @@ class TestSentimentTracker:
 
     async def test_track_daemon_missing_vix_cache_keeps_none(self, tracker):
         """VIX 缓存不存在时 vix_val 与 credit_spread 应为 None"""
-        sleep_counts = {"n": 0}
         mock_db = MagicMock()
         mock_session_ctx = MagicMock()
         mock_session_ctx.__enter__ = MagicMock(return_value=mock_db)
@@ -109,16 +86,12 @@ class TestSentimentTracker:
             patch("backend.services.macro.sentiment_tracker.redis_client.get", new=AsyncMock(side_effect=fake_get)),
             patch("backend.services.macro.sentiment_tracker.SessionLocal", return_value=mock_session_ctx),
             patch(
-                "backend.services.macro.sentiment_tracker.asyncio.sleep",
-                new=AsyncMock(side_effect=_cancel_after_sleep(sleep_counts, 2)),
-            ),
-            patch(
                 "backend.services.macro.sentiment_tracker.asyncio.to_thread", new=AsyncMock(side_effect=lambda fn: fn())
             ),
         ):
-            with pytest.raises(asyncio.CancelledError):
-                await tracker.track_daemon()
+            result = await tracker._run_once()
 
+        assert result is True
         record = mock_db.add.call_args[0][0]
         assert record.vix_value is None
         assert record.pc_ratio is None
@@ -130,7 +103,6 @@ class TestSentimentTracker:
         vix_cache = json.dumps([{"('Close', '^VIX')": 22.8}])
         cpc_cache = json.dumps([{"Close": 1.1}])
 
-        sleep_counts = {"n": 0}
         mock_db = MagicMock()
         mock_session_ctx = MagicMock()
         mock_session_ctx.__enter__ = MagicMock(return_value=mock_db)
@@ -148,23 +120,18 @@ class TestSentimentTracker:
             patch("backend.services.macro.sentiment_tracker.redis_client.get", new=AsyncMock(side_effect=fake_get)),
             patch("backend.services.macro.sentiment_tracker.SessionLocal", return_value=mock_session_ctx),
             patch(
-                "backend.services.macro.sentiment_tracker.asyncio.sleep",
-                new=AsyncMock(side_effect=_cancel_after_sleep(sleep_counts, 2)),
-            ),
-            patch(
                 "backend.services.macro.sentiment_tracker.asyncio.to_thread", new=AsyncMock(side_effect=lambda fn: fn())
             ),
         ):
-            with pytest.raises(asyncio.CancelledError):
-                await tracker.track_daemon()
+            result = await tracker._run_once()
 
+        assert result is True
         record = mock_db.add.call_args[0][0]
         assert record.vix_value == 22.8
         assert record.pc_ratio == 1.1
 
     async def test_track_daemon_handles_db_exception_resilient(self, tracker):
-        """数据库写入异常时不应崩溃，应继续进入下一轮循环"""
-        sleep_counts = {"n": 0}
+        """数据库写入异常时不应崩溃，_run_once 应吞掉异常并返回 True（daemon 继续下一轮）"""
 
         async def fake_get(key):
             return None
@@ -174,18 +141,13 @@ class TestSentimentTracker:
             patch("backend.services.macro.sentiment_tracker.redis_client.get", new=AsyncMock(side_effect=fake_get)),
             patch("backend.services.macro.sentiment_tracker.SessionLocal", side_effect=RuntimeError("db down")),
             patch(
-                "backend.services.macro.sentiment_tracker.asyncio.sleep",
-                new=AsyncMock(side_effect=_cancel_after_sleep(sleep_counts, 2)),
-            ),
-            patch(
                 "backend.services.macro.sentiment_tracker.asyncio.to_thread", new=AsyncMock(side_effect=lambda fn: fn())
             ),
         ):
-            with pytest.raises(asyncio.CancelledError):
-                await tracker.track_daemon()
+            result = await tracker._run_once()
 
-        # DB 异常被吞掉，循环继续，第二次 sleep 触发 CancelledError
-        assert sleep_counts["n"] == 2
+        # DB 异常被吞掉，返回 True（已获取锁），daemon 继续调度下一轮
+        assert result is True
 
     def test_global_singleton_exists(self):
         """全局单例 sentiment_tracker 应可正常导入"""
