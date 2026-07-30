@@ -24,9 +24,17 @@ from backend.services.datasource import datasource_registry
 router = APIRouter(prefix="/datasource-vote", tags=["DataSource Vote"])
 
 # ── COMM-02 分类目录 ─────────────────────────────────────────────
-# 已接入（connected）由 datasource_registry 动态给出；以下为规划中 / 社区投票中。
+# 已接入（connected）= datasource_registry 动态注册源 + 已功能性接入但独立于 registry 的源。
+# FRED 虽是独立 macro 服务（未注册进 DataSourceRegistry），但已通过 market 路由智能路由
+# 与 agent 工具 get_fred_macro_data 真实对外提供数据，故标记为已接入。
+_CONNECTED_SOURCES: List[Dict[str, str]] = [
+    {
+        "name": "fred",
+        "label": "FRED 宏观经济",
+        "desc": "圣路易斯联储宏观时间序列（已接入 market 路由 + get_fred_macro_data）",
+    },
+]
 _DEVELOPING_SOURCES: List[Dict[str, str]] = [
-    {"name": "fred", "label": "FRED 宏观经济", "desc": "圣路易斯联储宏观时间序列"},
     {"name": "dbnomics", "label": "DBnomics", "desc": "全球央行/机构宏观数据集"},
     {"name": "rbi", "label": "RBI / World Bank", "desc": "新兴市场 CPI 等年度序列"},
     {"name": "polygon", "label": "Polygon.io", "desc": "美股实时/历史行情"},
@@ -42,7 +50,7 @@ _VOTING_SOURCES: List[Dict[str, str]] = [
 
 
 def _all_votable() -> set:
-    connected = set(datasource_registry.list_names())
+    connected = set(datasource_registry.list_names()) | {d["name"] for d in _CONNECTED_SOURCES}
     catalog = {d["name"] for d in _DEVELOPING_SOURCES + _VOTING_SOURCES}
     return connected | catalog
 
@@ -58,7 +66,10 @@ async def get_vote_board(current_user: models.User = Depends(get_current_user)) 
     """
     today = date.today().isoformat()
     connected = datasource_registry.list_names()
-    names = list(connected) + [d["name"] for d in _DEVELOPING_SOURCES + _VOTING_SOURCES]
+    # registry 动态源 + 已功能性接入但独立于 registry 的源（如 FRED macro 服务）
+    connected_entries = [{"name": n, "votes": count_map.get(n, 0)} for n in connected]
+    connected_entries += [{**d, "votes": count_map.get(d["name"], 0)} for d in _CONNECTED_SOURCES]
+    names = list(connected) + [d["name"] for d in _CONNECTED_SOURCES + _DEVELOPING_SOURCES + _VOTING_SOURCES]
 
     count_map: Dict[str, int] = {}
     try:
@@ -79,7 +90,7 @@ async def get_vote_board(current_user: models.User = Depends(get_current_user)) 
         pass
 
     return {
-        "connected": [{"name": n, "votes": count_map.get(n, 0)} for n in connected],
+        "connected": connected_entries,
         "developing": [{**d, "votes": count_map.get(d["name"], 0)} for d in _DEVELOPING_SOURCES],
         "voting": [{**d, "votes": count_map.get(d["name"], 0)} for d in _VOTING_SOURCES],
         "my_votes_today": sorted(my_votes),
