@@ -396,6 +396,144 @@ async def get_sector_fund_flow():
     return await fund_flow_service.get_sector_fund_flow()
 
 
+async def get_capital_flow_dashboard(force_refresh: bool = False):
+    """FUNDFLOW-01: 北向/南向资金实时看板聚合。
+
+    聚合：北向资金净流入(日/周/月) + 南向资金净流入(日/周/月) + 三市场行业板块资金流。
+    所有子任务失败均降级为 None，由前端展示空态/告警，绝不注入假数据。
+
+    返回结构:
+    {
+        "status": "success" | "warning",
+        "data": {
+            "northbound": {"net_inflow","weekly","monthly","unit","date","sparkline","history"} | None,
+            "southbound": {...} | None,
+            "a_share": {"sectors":[{"name","net_inflow","change_pct"}],"unit","updated_at","source"} | None,
+            "hk": {"sectors":[{"name","net_inflow"}],"unit"} | None,
+            "us": {"sectors":[{"name","net_inflow"}],"unit"} | None,
+        },
+        "updated_at": ...,
+        "source": "akshare",
+    }
+    """
+    cache_key = "macro_capital_flow_dashboard"
+    if not force_refresh:
+        try:
+            cached = await redis_client.get(cache_key)
+            if cached:
+                return json.loads(cached)
+        except Exception:
+            pass
+
+    if cache_key not in _macro_locks:
+        _macro_locks[cache_key] = asyncio.Lock()
+    async with _macro_locks[cache_key]:
+        if not force_refresh:
+            try:
+                cached = await redis_client.get(cache_key)
+                if cached:
+                    return json.loads(cached)
+            except Exception:
+                pass
+
+        def _to_float(v):
+            if v is None or v == "" or v == "-":
+                return None
+            try:
+                return float(str(v).replace(",", ""))
+            except (ValueError, TypeError):
+                return None
+
+        async def _safe(coro):
+            try:
+                return await coro
+            except Exception as e:
+                print(f"⚠️ [capital-flow-dashboard] 子任务失败: {e}")
+                return None
+
+        north, south, sectors = await asyncio.gather(
+            _safe(market_data.get_northbound_flow()),
+            _safe(market_data.get_southbound_flow()),
+            _safe(get_sector_fund_flow()),
+        )
+
+        def _clean_flow(flow):
+            if not flow or flow.get("status") != "success":
+                return None
+            d = flow.get("data") or {}
+            return {
+                "net_inflow": d.get("net_inflow"),
+                "weekly": d.get("weekly"),
+                "monthly": d.get("monthly"),
+                "unit": d.get("unit"),
+                "date": d.get("date"),
+                "sparkline": d.get("sparkline"),
+                "history": d.get("history"),
+            }
+
+        def _sectors(payload):
+            if not payload or payload.get("status") != "success":
+                return None
+            return payload.get("data") or {}
+
+        north_data = _clean_flow(north)
+        south_data = _clean_flow(south)
+        sectors_data = _sectors(sectors)
+
+        a_share = None
+        hk = None
+        us = None
+        if sectors_data:
+            a_raw = (sectors_data.get("a_share") or {}).get("data") or {}
+            a_items = a_raw.get("inflow_top") or []
+            a_share = {
+                "sectors": [
+                    {
+                        "name": it.get("名称"),
+                        "net_inflow": _to_float(it.get("主力净流入")),
+                        "change_pct": _to_float(it.get("涨跌幅")),
+                    }
+                    for it in a_items
+                ],
+                "unit": a_raw.get("unit"),
+                "updated_at": (sectors_data.get("a_share") or {}).get("updated_at"),
+                "source": (sectors_data.get("a_share") or {}).get("source"),
+            }
+            hk_raw = (sectors_data.get("hk") or {}).get("data") or {}
+            hk = {
+                "sectors": [
+                    {"name": it.get("name"), "net_inflow": _to_float(it.get("net_inflow"))}
+                    for it in (hk_raw.get("sectors") or [])
+                ],
+                "unit": hk_raw.get("unit"),
+            }
+            us_raw = (sectors_data.get("us") or {}).get("data") or {}
+            us = {
+                "sectors": [
+                    {"name": it.get("name"), "net_inflow": _to_float(it.get("net_inflow"))}
+                    for it in (us_raw.get("sectors") or [])
+                ],
+                "unit": us_raw.get("unit"),
+            }
+
+        any_ok = any(x is not None for x in [north_data, south_data, a_share, hk, us])
+        result = {
+            "status": "success" if any_ok else "warning",
+            "data": {
+                "northbound": north_data,
+                "southbound": south_data,
+                "a_share": a_share,
+                "hk": hk,
+                "us": us,
+            },
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "source": "akshare",
+        }
+        if any_ok:
+            await redis_client.set(cache_key, json.dumps(result), ex=300 + random.randint(10, 60))
+        return result
+
+
 # ── 跨市场资金流向 ──────────────────────────────────────────────────────────
 
 

@@ -75,11 +75,19 @@ class FlowMixin:
 
             # 💡 提取真实的近期历史趋势线
             sparkline = [1, 1, -1, 1, 1, 1, -1, 1]
+            weekly = None
+            monthly = None
+            history = None
             if not isinstance(hist_df, BaseException) and hist_df is not None and not hist_df.empty:  # noqa: E501
                 # 💡 修复：优先使用 "当日成交净买额" (真实净买卖) 而非 "当日资金流入" (额度占用)  # noqa: E501
                 target_col = "当日成交净买额" if "当日成交净买额" in hist_df.columns else "当日资金流入"  # noqa: E501
                 if target_col in hist_df.columns:
-                    sparkline = hist_df[target_col].tail(8).astype(float).tolist()
+                    series = hist_df[target_col].astype(float)
+                    sparkline = [round(float(v), 2) for v in series.tail(8).tolist()]
+                    # 💡 FUNDFLOW-01: 用真实日序列推算近一周(5交易日)/近一月(22交易日)累计净买入
+                    weekly = round(float(series.tail(5).sum()), 2)
+                    monthly = round(float(series.tail(22).sum()), 2)
+                    history = [round(float(v), 2) for v in series.tail(30).tolist()]
                     # 💡 智能拯救：如果实时接口返回了额度占位符(>800亿)，利用历史趋势的最后一天真实数据进行替换拯救！  # noqa: E501
                     if net_inflow >= 800.0 and len(sparkline) > 0:
                         net_inflow = float(sparkline[-1])
@@ -94,9 +102,12 @@ class FlowMixin:
                 "status": "success",
                 "data": {
                     "net_inflow": round(net_inflow, 2),
+                    "weekly": weekly,
+                    "monthly": monthly,
                     "unit": "亿人民币",
                     "date": date_str,
                     "sparkline": sparkline,
+                    "history": history,
                 },
                 "is_closed": is_closed,
                 "source": "akshare_stock_hsgt_fund_flow_summary",
@@ -174,11 +185,19 @@ class FlowMixin:
 
             # 💡 提取真实的近期历史趋势线
             sparkline = [-1, -1, 1, -1, -1, 1, -1, -1]
+            weekly = None
+            monthly = None
+            history = None
             if not isinstance(hist_df, BaseException) and hist_df is not None and not hist_df.empty:  # noqa: E501
                 # 💡 修复：优先使用 "当日成交净买额" (真实净买卖) 而非 "当日资金流入" (额度占用)  # noqa: E501
                 target_col = "当日成交净买额" if "当日成交净买额" in hist_df.columns else "当日资金流入"  # noqa: E501
                 if target_col in hist_df.columns:
-                    sparkline = hist_df[target_col].tail(8).astype(float).tolist()
+                    series = hist_df[target_col].astype(float)
+                    sparkline = [round(float(v), 2) for v in series.tail(8).tolist()]
+                    # 💡 FUNDFLOW-01: 用真实日序列推算近一周(5交易日)/近一月(22交易日)累计净买入
+                    weekly = round(float(series.tail(5).sum()), 2)
+                    monthly = round(float(series.tail(22).sum()), 2)
+                    history = [round(float(v), 2) for v in series.tail(30).tolist()]
                     # 💡 智能拯救北向：如果实时接口返回额度占位符(>1000亿)
                     if net_inflow >= 1000.0 and len(sparkline) > 0:
                         net_inflow = float(sparkline[-1])
@@ -194,9 +213,12 @@ class FlowMixin:
                 "status": "success",
                 "data": {
                     "net_inflow": round(net_inflow, 2),
+                    "weekly": weekly,
+                    "monthly": monthly,
                     "unit": "亿人民币",
                     "date": date_str,
                     "sparkline": sparkline,
+                    "history": history,
                 },
                 "is_closed": is_closed,
                 "source": "akshare_stock_hsgt_fund_flow_summary",

@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from backend.app import macro_app
 from backend.app.macro_app import (
     get_capital_flow,
+    get_capital_flow_dashboard,
     get_data_center_dashboard,
     get_earnings_calendar,
     get_macro_assets,
@@ -73,6 +74,14 @@ async def get_sector_fund_flow_route():
 async def get_capital_flow_route():
     """获取跨市场资金流向数据"""
     return await get_capital_flow()
+
+
+@router.get("/capital-flow-dashboard")
+async def get_capital_flow_dashboard_route(
+    force_refresh: bool = Query(False, description="是否绕过缓存强制刷新"),
+):
+    """FUNDFLOW-01: 北向/南向资金 + 三市场板块资金流聚合看板"""
+    return await get_capital_flow_dashboard(force_refresh)
 
 
 @router.get("/news")
