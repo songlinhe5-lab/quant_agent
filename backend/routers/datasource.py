@@ -12,10 +12,12 @@ Datasource Rate Limit Router - 数据源限流查询路由
 """
 
 import asyncio
+import inspect
 import json
 import os
 import re
 import time
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket
@@ -184,6 +186,8 @@ async def get_finnhub_health():
 
 # 超过该秒数无成功响应即判定为 STALE（数据源失联）
 _STALE_SECONDS = 300
+# 链接测试主动探测使用的轻量行情标的（仅用于测量真实网络往返延迟）
+_LINK_TEST_TICKER = "AAPL"
 
 
 def _build_health_card(name: str) -> Dict[str, Any]:
@@ -219,6 +223,11 @@ def _build_health_card(name: str) -> Dict[str, Any]:
         "is_throttled": rl_status.is_throttled,
         "consecutive_rate_limits": rl_status.consecutive_rate_limits,
         "backoff_strategy": rl_status.backoff_strategy,
+        "latency_avg_ms": metrics["latency_avg_ms"],
+        "latency_p95_ms": metrics["latency_p95_ms"],
+        "latency_min_ms": metrics["latency_min_ms"],
+        "latency_max_ms": metrics["latency_max_ms"],
+        "latency_samples": metrics["latency_samples"],
     }
 
 
@@ -239,6 +248,75 @@ async def get_source_health(name: str) -> Dict[str, Any]:
     if not datasource_registry.has(name):
         raise HTTPException(status_code=404, detail=f"unknown source: {name}")
     return _build_health_card(name)
+
+
+@router.post("/{name}/test-link")
+async def test_datasource_link(name: str) -> Dict[str, Any]:
+    """
+    COMM-01 数据源链路主动探测（链接测试）。
+
+    - 调用 source.health() 获取被动状态（兼容同步/异步实现）
+    - 若数据源支持 quote action，发起一次真实轻量行情请求测量真实网络往返延迟
+    - 将测量结果回写 analyzer，驱动「调用延迟数据验证」
+    """
+    source = datasource_registry.get(name)
+    if source is None:
+        raise HTTPException(status_code=404, detail=f"unknown source: {name}")
+
+    start = time.perf_counter()
+    probed = False
+    error: Optional[str] = None
+    connected = False
+    healthy = False
+    status = "unknown"
+    try:
+        raw = source.health()
+        info = await raw if inspect.isawaitable(raw) else raw
+        latency_ms = round((time.perf_counter() - start) * 1000, 2)
+        connected = bool(getattr(info, "connected", False))
+        healthy = bool(getattr(info, "healthy", connected))
+        status = getattr(info, "status", "ok")
+        error = getattr(info, "last_error", None)
+
+        # 主动真实探测：对支持 quote 的源发起一次轻量行情请求
+        caps = getattr(source, "capabilities", []) or []
+        if "quote" in caps:
+            try:
+                probe_start = time.perf_counter()
+                await source.fetch("quote", {"ticker": _LINK_TEST_TICKER})
+                latency_ms = round((time.perf_counter() - probe_start) * 1000, 2)
+                probed = True
+            except Exception as pe:
+                # 探测失败仅作信息提示，不翻转被动健康结论（标的可能不被该源支持）
+                probed = False
+                error = f"主动探测失败（被动健康仍有效）: {pe}"
+
+        rate_limit_registry.get_analyzer(name).record_request(is_error=not connected, latency_ms=latency_ms)
+        return {
+            "source": name,
+            "connected": connected,
+            "healthy": healthy,
+            "status": status,
+            "latency_ms": latency_ms,
+            "probed": probed,
+            "validated": True,
+            "error": error,
+            "tested_at": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as e:
+        latency_ms = round((time.perf_counter() - start) * 1000, 2)
+        rate_limit_registry.get_analyzer(name).record_request(is_error=True, latency_ms=latency_ms)
+        return {
+            "source": name,
+            "connected": False,
+            "healthy": False,
+            "status": "error",
+            "latency_ms": latency_ms,
+            "probed": False,
+            "validated": True,
+            "error": str(e),
+            "tested_at": datetime.now(timezone.utc).isoformat(),
+        }
 
 
 @router.websocket("/ws/health")

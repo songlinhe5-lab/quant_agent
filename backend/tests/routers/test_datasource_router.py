@@ -11,12 +11,15 @@ RL-06: 推测频率查询 API 端点单测
 - _parse_window_seconds 参数解析
 """
 
+from unittest.mock import MagicMock
+
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from backend.routers.datasource import _parse_window_seconds
 from backend.services.datasource import rate_limit_registry
+from backend.services.datasource.analyzer import RateLimitAnalyzer
 
 
 @pytest.fixture(autouse=True)
@@ -204,6 +207,111 @@ class TestRateLimitOverviewEndpoint:
         yf = next(s for s in data["sources"] if s["source"] == "yfinance")
         assert yf["is_throttled"] is True
         assert yf["consecutive_rate_limits"] == 1
+
+
+# ─────────────────────────────────────────
+#  POST /{name}/test-link 主动链接探测
+# ─────────────────────────────────────────
+
+
+class _FakeInfo:
+    connected = True
+    healthy = True
+    status = "ok"
+    last_error = None
+
+
+class _FakeSourceUp:
+    capabilities = ["quote"]
+
+    def health(self):
+        return _FakeInfo()
+
+    async def fetch(self, action, params):
+        return {"price": 123.0}
+
+
+class _FakeSourceDown:
+    capabilities = []
+
+    def health(self):
+        info = _FakeInfo()
+        info.connected = False
+        info.healthy = False
+        info.status = "error"
+        return info
+
+    async def fetch(self, action, params):
+        raise RuntimeError("boom")
+
+
+class TestLinkTestEndpoint:
+    def test_link_test_active_probe_ok(self, client, monkeypatch):
+        """支持 quote 的源：主动探测成功，probed=True 且延迟被测量回写。"""
+        reg = MagicMock()
+        reg.get.return_value = _FakeSourceUp()
+        monkeypatch.setattr("backend.routers.datasource.datasource_registry", reg)
+
+        resp = client.post("/api/v1/datasource/yfinance/test-link")
+        assert resp.status_code == 200
+        d = resp.json()
+        assert d["source"] == "yfinance"
+        assert d["connected"] is True
+        assert d["healthy"] is True
+        assert d["probed"] is True
+        assert d["validated"] is True
+        assert isinstance(d["latency_ms"], (int, float))
+        assert d["error"] is None
+
+    def test_link_test_unknown_source_404(self, client, monkeypatch):
+        reg = MagicMock()
+        reg.get.return_value = None
+        monkeypatch.setattr("backend.routers.datasource.datasource_registry", reg)
+
+        resp = client.post("/api/v1/datasource/ghost/test-link")
+        assert resp.status_code == 404
+
+    def test_link_test_passive_fallback(self, client, monkeypatch):
+        """不支持 quote 的源：回退被动健康，probed=False。"""
+        reg = MagicMock()
+        reg.get.return_value = _FakeSourceDown()
+        monkeypatch.setattr("backend.routers.datasource.datasource_registry", reg)
+
+        resp = client.post("/api/v1/datasource/futu/test-link")
+        assert resp.status_code == 200
+        d = resp.json()
+        assert d["connected"] is False
+        assert d["probed"] is False
+        assert d["validated"] is True
+
+
+# ─────────────────────────────────────────
+#  RateLimitAnalyzer 延迟统计（调用延迟数据验证）
+# ─────────────────────────────────────────
+
+
+class TestAnalyzerLatencyStats:
+    def test_latency_stats_empty(self):
+        a = RateLimitAnalyzer("latency_empty")
+        m = a.get_health_metrics()
+        assert m["latency_avg_ms"] is None
+        assert m["latency_p95_ms"] is None
+        assert m["latency_samples"] == 0
+
+    def test_latency_stats_computed(self):
+        a = RateLimitAnalyzer("latency_calc")
+        for v in [10, 20, 30, 40, 50]:
+            a.record_request(latency_ms=v)
+        m = a.get_health_metrics()
+        assert m["latency_samples"] == 5
+        assert m["latency_avg_ms"] == 30.0
+        assert m["latency_min_ms"] == 10
+        assert m["latency_max_ms"] == 50
+        # p95: sorted[4] = 50
+        assert m["latency_p95_ms"] == 50.0
+        # 仅统计有效延迟，0/None 不计入样本
+        a.record_request(latency_ms=0)
+        assert a.get_health_metrics()["latency_samples"] == 5
 
 
 # ─────────────────────────────────────────
