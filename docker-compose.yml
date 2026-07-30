@@ -24,9 +24,12 @@ services:
     image: redis:7-alpine
     container_name: quant_redis
     restart: always
-    # 💡 SEC-14: Redis 暴露端口到宿主机 localhost，供 host 网络模式的容器访问
+    # 💡 SEC-14: Redis 双绑定 —— 127.0.0.1(本机 host 模式服务/本地工具) + Tailscale 内网 IP(北京节点)
+    # 启动时必须设置 TAILSCALE_IP=100.x.x.x 允许北京节点经 Tailscale 访问；不设置则 compose 直接报错(避免静默缺绑定)
+    # 仅绑定这两处, 不暴露公网
     ports:
       - "127.0.0.1:6379:6379"
+      - "${TAILSCALE_IP}:6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-quant_redis_secret_2026}
