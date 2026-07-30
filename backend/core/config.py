@@ -59,7 +59,6 @@ class Settings(BaseSettings):
     embedding_dim: int = Field(default=1024, alias="EMBEDDING_DIM")
 
     # ===== 数据源 API Key =====
-    fmp_api_key: Optional[str] = Field(default=None, alias="FMP_API_KEY")
     finnhub_api_key: Optional[str] = Field(default=None, alias="FINNHUB_API_KEY")
     akshare_api_key: Optional[str] = Field(default=None, alias="AKSHARE_API_KEY")
     fred_api_key: Optional[str] = Field(default=None, alias="FRED_API_KEY")

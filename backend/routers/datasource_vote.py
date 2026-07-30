@@ -32,6 +32,9 @@ _SOURCE_META: Dict[str, Dict[str, str]] = {
     "fred": {"label": "FRED 宏观经济", "desc": "圣路易斯联储宏观时间序列（已接入 market 路由 + get_fred_macro_data）"},
     "dbnomics": {"label": "DBnomics", "desc": "全球央行/机构宏观数据集"},
     "rbi": {"label": "RBI / World Bank", "desc": "新兴市场 CPI 等年度序列"},
+    "tavily": {"label": "Tavily 搜索", "desc": "RAG 专用网络搜索（英文/全球）"},
+    "bocha": {"label": "博查 Bocha", "desc": "中文网络搜索聚合（百度/微信/搜狗）"},
+    "jina": {"label": "Jina Reader", "desc": "网页正文提取（Markdown 抓取）"},
     "polygon": {"label": "Polygon.io", "desc": "美股实时/历史行情"},
     "binance": {"label": "Binance", "desc": "加密货币现货/合约行情"},
     "coinbase": {"label": "Coinbase", "desc": "加密货币现货行情"},
@@ -70,8 +73,10 @@ async def get_vote_board(current_user: models.User = Depends(get_current_user)) 
     """
     # 确保宏观数据源适配器（FRED / DBnomics / RBI）已注册，使其出现在 connected
     from backend.services.datasource.adapters.macro import ensure_macro_sources_registered
+    from backend.services.datasource.adapters.search import ensure_search_sources_registered
 
     ensure_macro_sources_registered()
+    ensure_search_sources_registered()
 
     today = date.today().isoformat()
     connected = datasource_registry.list_names()
@@ -114,8 +119,10 @@ async def cast_vote(req: VoteRequest, current_user: models.User = Depends(get_cu
     """
     # 确保宏观数据源已注册，使其进入可投票集合
     from backend.services.datasource.adapters.macro import ensure_macro_sources_registered
+    from backend.services.datasource.adapters.search import ensure_search_sources_registered
 
     ensure_macro_sources_registered()
+    ensure_search_sources_registered()
 
     name = (req.source or "").strip().lower()
     if name not in _all_votable():

@@ -58,16 +58,20 @@ export function MorningBriefingModal({
       setLoading(true)
       setError(null)
       try {
-      const res = await apiClient.post<{ data: BriefingData }>(
+      const res = await apiClient.post<{ status: string; data: BriefingData }>(
         `/briefing/generate?market=${encodeURIComponent(mkt)}`,
       )
-      setBriefing(res.data)
+      // 后端返回 {status, data}，再被全局信封中间件包成 {code,data:{status,data}}；
+      // apiClient 解包后 res.data = {status, data}，真实 BriefingData 在 .data
+      setBriefing(res.data.data)
       // 回测健康度风险项高亮卡数据：拉取已落库的健康度，筛出风险条目
       try {
         const health = await apiClient.get<{
+          status: string
           data: Array<{ ticker: string; overfit_risk?: boolean; alpha_decay?: boolean; summary?: string }>
         }>('/backtest/health')
-        const list = health?.data ?? []
+        // 同上：res.data = {status, data}，真实数组在 .data
+        const list = health?.data?.data ?? []
         setHealthRisk(list.filter((e) => e.overfit_risk || e.alpha_decay))
       } catch {
         setHealthRisk([])
