@@ -17,6 +17,7 @@ from backend.core import models
 from backend.core.exceptions import AppError
 from backend.core.redis_client import redis_client
 from backend.services.ai_narrator.llm_service import llm_service
+from backend.services.fund_flow.us_big_order import get_us_big_order_flow
 from backend.services.market_engine import manager
 
 # 用于防范缓存击穿的异步细粒度锁池
@@ -399,7 +400,8 @@ async def get_sector_fund_flow():
 async def get_capital_flow_dashboard(force_refresh: bool = False):
     """FUNDFLOW-01: 北向/南向资金实时看板聚合。
 
-    聚合：北向资金净流入(日/周/月) + 南向资金净流入(日/周/月) + 三市场行业板块资金流。
+    聚合：北向资金净流入(日/周/月) + 南向资金净流入(日/周/月) + 港股通南向双通道净买额
+          + 三市场行业板块资金流 + 美股主力/大单净流入(Futu 资金分布)。
     所有子任务失败均降级为 None，由前端展示空态/告警，绝不注入假数据。
 
     返回结构:
@@ -408,9 +410,11 @@ async def get_capital_flow_dashboard(force_refresh: bool = False):
         "data": {
             "northbound": {"net_inflow","weekly","monthly","unit","date","sparkline","history"} | None,
             "southbound": {...} | None,
+            "hk_connect": {"trade_date","total_net_buy","unit","channels":[...]} | None,
             "a_share": {"sectors":[{"name","net_inflow","change_pct"}],"unit","updated_at","source"} | None,
             "hk": {"sectors":[{"name","net_inflow"}],"unit"} | None,
             "us": {"sectors":[{"name","net_inflow"}],"unit"} | None,
+            "us_big_order": {"total_net_inflow","unit","breakdown":[...],"note"} | None,
         },
         "updated_at": ...,
         "source": "akshare",
@@ -451,11 +455,15 @@ async def get_capital_flow_dashboard(force_refresh: bool = False):
                 print(f"⚠️ [capital-flow-dashboard] 子任务失败: {e}")
                 return None
 
-        north, south, sectors = await asyncio.gather(
+        north, south, hk_connect, sectors = await asyncio.gather(
             _safe(market_data.get_northbound_flow()),
             _safe(market_data.get_southbound_flow()),
+            _safe(market_data.get_hk_stock_connect_flow()),
             _safe(get_sector_fund_flow()),
         )
+
+        # 美股大单(主力)净流入: 依赖三市场板块抓取后填充的 Futu flow_cache, 故串行其后
+        us_big_order = await _safe(get_us_big_order_flow())
 
         def _clean_flow(flow):
             if not flow or flow.get("status") != "success":
@@ -516,15 +524,32 @@ async def get_capital_flow_dashboard(force_refresh: bool = False):
                 "unit": us_raw.get("unit"),
             }
 
-        any_ok = any(x is not None for x in [north_data, south_data, a_share, hk, us])
+        def _hk_connect(payload):
+            if not payload or payload.get("status") != "success":
+                return None
+            return payload.get("data") or {}
+
+        def _us_big_order(payload):
+            if not payload or payload.get("status") != "success":
+                return None
+            return payload.get("data") or {}
+
+        hk_connect_data = _hk_connect(hk_connect)
+        us_big_order_data = _us_big_order(us_big_order)
+
+        any_ok = any(
+            x is not None for x in [north_data, south_data, hk_connect_data, a_share, hk, us, us_big_order_data]
+        )
         result = {
             "status": "success" if any_ok else "warning",
             "data": {
                 "northbound": north_data,
                 "southbound": south_data,
+                "hk_connect": hk_connect_data,
                 "a_share": a_share,
                 "hk": hk,
                 "us": us,
+                "us_big_order": us_big_order_data,
             },
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "source": "akshare",

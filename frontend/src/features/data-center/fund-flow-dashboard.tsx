@@ -30,12 +30,45 @@ interface MarketSectors {
   source?: string | null
 }
 
+interface HkConnectChannel {
+  board: string | null
+  net_buy: number | null
+  net_inflow: number | null
+  up: number | null
+  down: number | null
+  flat: number | null
+  index: string | null
+  index_chg: number | null
+}
+
+interface HkConnectData {
+  trade_date: string | null
+  total_net_buy: number | null
+  unit: string | null
+  channels: HkConnectChannel[]
+}
+
+interface UsBigOrderItem {
+  ticker: string | null
+  name: string | null
+  net_inflow: number | null
+}
+
+interface UsBigOrderData {
+  total_net_inflow: number | null
+  unit: string | null
+  breakdown: UsBigOrderItem[]
+  note?: string | null
+}
+
 interface DashboardData {
   northbound: FlowPoint | null
   southbound: FlowPoint | null
+  hk_connect: HkConnectData | null
   a_share: MarketSectors | null
   hk: MarketSectors | null
   us: MarketSectors | null
+  us_big_order: UsBigOrderData | null
 }
 
 type Period = 'day' | 'week' | 'month'
@@ -233,13 +266,123 @@ function SectorBar({ title, sectors, unit }: { title: string; sectors: SectorIte
   )
 }
 
-// ── 信息条（未接入数据源诚实提示） ───────────────────────────────────────
+// ── 港股通南向双通道净买额 ───────────────────────────────────────────────
 
-function InfoNote({ children }: { children: React.ReactNode }) {
+function HkConnectCard({ data }: { data: HkConnectData | null }) {
+  if (!data || !data.channels || data.channels.length === 0) {
+    return (
+      <div className="glass-card rounded-lg p-4 flex flex-col gap-2">
+        <div className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+          <ArrowRightLeft className="h-3.5 w-3.5 text-amber-400" /> 港股通南向双通道净买额
+        </div>
+        <div className="text-sm text-muted-foreground/60">暂无港股通数据</div>
+      </div>
+    )
+  }
+  const total = data.total_net_buy ?? 0
+  const positive = total >= 0
   return (
-    <div className="flex items-start gap-1.5 text-[10px] text-amber-500/90 dark:text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-md px-2 py-1.5">
-      <AlertTriangle className="h-3 w-3 mt-0.5 flex-shrink-0" />
-      <span>{children}</span>
+    <div className="glass-card rounded-lg p-4 flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+          <ArrowRightLeft className="h-3.5 w-3.5 text-amber-400" /> 港股通南向双通道净买额
+        </span>
+        <span className="text-[9px] text-muted-foreground/50 font-mono">交易日: {data.trade_date || '--'}</span>
+      </div>
+
+      <div className="flex items-end justify-between gap-3">
+        <div className="flex flex-col">
+          <span className="text-[10px] text-muted-foreground/70 mb-0.5">南向合计净买入</span>
+          <span className={cn('text-2xl font-bold font-mono tabular-nums', positive ? 'text-[#0ecb81]' : 'text-[#f6465d]')}>
+            {fmt(total)}
+            <span className="text-xs ml-1 opacity-70">{data.unit || '亿元'}</span>
+          </span>
+        </div>
+        {positive ? <TrendingUp className="h-5 w-5 text-[#0ecb81]" /> : <TrendingDown className="h-5 w-5 text-[#f6465d]" />}
+      </div>
+
+      <div className="grid grid-cols-1 gap-2 border-t border-border/10 pt-2">
+        {data.channels.map((c) => {
+          const pos = (c.net_buy ?? 0) >= 0
+          return (
+            <div key={c.board} className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="font-medium text-foreground/90">{c.board}</span>
+              <span className="flex items-center gap-2">
+                <span className={cn('font-mono tabular-nums', pos ? 'text-[#0ecb81]' : 'text-[#f6465d]')}>{fmt(c.net_buy)}</span>
+                <span className="text-muted-foreground/50 font-mono">
+                  涨 {c.up ?? 0} / 跌 {c.down ?? 0}
+                </span>
+                {c.index_chg !== null && c.index_chg !== undefined && (
+                  <span className={cn('font-mono', (c.index_chg ?? 0) >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]')}>
+                    {(c.index_chg ?? 0) >= 0 ? '▲' : '▼'}
+                    {Math.abs(c.index_chg ?? 0).toFixed(2)}%
+                  </span>
+                )}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="text-[9px] text-muted-foreground/50">
+        数据来源: AKShare 沪深港通资金流向汇总（南向双通道）· 口径: 港股通(沪)+(深) 成交净买额
+      </div>
+    </div>
+  )
+}
+
+// ── 美股主力 / 大单净流入 (Futu 资金分布) ─────────────────────────────────
+
+function UsBigOrderCard({ data }: { data: UsBigOrderData | null }) {
+  if (!data || !data.breakdown || data.breakdown.length === 0) {
+    return (
+      <div className="glass-card rounded-lg p-4 flex flex-col gap-2">
+        <div className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+          <BarChart3 className="h-3.5 w-3.5 text-sky-400" /> 美股主力 / 大单净流入
+        </div>
+        <div className="text-sm text-muted-foreground/60">暂无大单数据（Futu 未连接或 ETF 资金分布为空）</div>
+      </div>
+    )
+  }
+  const total = data.total_net_inflow ?? 0
+  const positive = total >= 0
+  return (
+    <div className="glass-card rounded-lg p-4 flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+          <BarChart3 className="h-3.5 w-3.5 text-sky-400" /> 美股主力 / 大单净流入
+        </span>
+        <span className="text-[9px] text-muted-foreground/50">Futu 资金分布</span>
+      </div>
+
+      <div className="flex items-end justify-between gap-3">
+        <div className="flex flex-col">
+          <span className="text-[10px] text-muted-foreground/70 mb-0.5">核心 ETF 主力(超大单+大单)净买额</span>
+          <span className={cn('text-2xl font-bold font-mono tabular-nums', positive ? 'text-[#0ecb81]' : 'text-[#f6465d]')}>
+            {fmt(total)}
+            <span className="text-xs ml-1 opacity-70">{data.unit || '亿美元'}</span>
+          </span>
+        </div>
+        {positive ? <TrendingUp className="h-5 w-5 text-[#0ecb81]" /> : <TrendingDown className="h-5 w-5 text-[#f6465d]" />}
+      </div>
+
+      <div className="flex flex-col gap-1.5 border-t border-border/10 pt-2">
+        <span className="text-[10px] text-muted-foreground/60">净流入贡献 Top</span>
+        {data.breakdown.slice(0, 5).map((b) => {
+          const pos = (b.net_inflow ?? 0) >= 0
+          return (
+            <div key={b.ticker} className="flex items-center justify-between text-[11px]">
+              <span className="font-medium text-foreground/90">
+                {b.name || b.ticker}
+                <span className="text-muted-foreground/40 ml-1 font-mono">{b.ticker}</span>
+              </span>
+              <span className={cn('font-mono tabular-nums', pos ? 'text-[#0ecb81]' : 'text-[#f6465d]')}>{fmt(b.net_inflow)}</span>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="text-[9px] text-muted-foreground/50">{data.note || '基于核心行业 ETF 的 Futu 主力/大单资金分布聚合'}</div>
     </div>
   )
 }
@@ -348,23 +491,19 @@ export function FundFlowDashboardModule() {
           {tab === 'hk' && (
             <div className="flex flex-col gap-3">
               <FlowCard title="南向资金 (港股通净买入)" point={data.southbound} accent="#f6465d" />
+              <HkConnectCard data={data.hk_connect} />
               <SectorPie title="港股通行业资金净流入分布" sectors={data.hk?.sectors ?? []} unit={data.hk?.unit ?? null} />
-              <InfoNote>
-                港股通十大成交榜 / 个股持仓明细 (沪深港通机构托管行) 数据源尚未接入，当前仅展示行业维度南向分布。
-              </InfoNote>
             </div>
           )}
 
           {tab === 'us' && (
             <div className="flex flex-col gap-3">
               <SectorBar title="美股板块 ETF 资金净流入" sectors={data.us?.sectors ?? []} unit={data.us?.unit ?? null} />
+              <UsBigOrderCard data={data.us_big_order} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <FlowCard title="北向资金 (参照)" point={data.northbound} accent="#0ecb81" />
                 <FlowCard title="南向资金 (参照)" point={data.southbound} accent="#f6465d" />
               </div>
-              <InfoNote>
-                美股「大单 (Block Trade) 净流入」与「机构持仓变化 Tide Chart」所需的逐笔大单 / 13F 持仓数据源尚未接入，当前以板块 ETF 资金流代理展示。
-              </InfoNote>
             </div>
           )}
         </>
