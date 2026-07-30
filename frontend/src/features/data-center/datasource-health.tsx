@@ -14,6 +14,7 @@ import {
   Clock,
   Database,
   Loader2,
+  Plug,
   ThumbsUp,
 } from 'lucide-react'
 import { apiClient, API_BASE_URL, getValidAccessToken } from '@/lib/api-client'
@@ -34,6 +35,23 @@ interface HealthCard {
   is_throttled: boolean
   consecutive_rate_limits: number
   backoff_strategy: string | null
+  latency_avg_ms?: number | null
+  latency_p95_ms?: number | null
+  latency_min_ms?: number | null
+  latency_max_ms?: number | null
+  latency_samples?: number
+}
+
+interface LinkTestResult {
+  source: string
+  connected: boolean
+  healthy: boolean
+  status: string
+  latency_ms: number
+  probed: boolean
+  validated: boolean
+  error: string | null
+  tested_at: string
 }
 
 const STATUS_META: Record<
@@ -59,6 +77,7 @@ export function DataSourceHealthModule() {
   const [alerts, setAlerts] = useState<string[]>([])
   const [board, setBoard] = useState<any>(null)
   const [voting, setVoting] = useState(false)
+  const [testStates, setTestStates] = useState<Record<string, { testing: boolean; result?: LinkTestResult | null; error?: string }>>({})
   const { toast } = useToast()
   const wsRef = useRef<WebSocket | null>(null)
 
@@ -154,10 +173,30 @@ export function DataSourceHealthModule() {
 
   const myVotes: string[] = board?.my_votes_today || []
 
+  const testLink = async (source: string) => {
+    setTestStates((prev) => ({ ...prev, [source]: { ...prev[source], testing: true, error: undefined } }))
+    try {
+      const data = await apiClient.post<LinkTestResult>(`/datasource/${source}/test-link`)
+      setTestStates((prev) => ({ ...prev, [source]: { testing: false, result: data } }))
+      toast({
+        title: data.connected ? '✅ 链路正常' : '❌ 链路异常',
+        description: `${source} · ${data.latency_ms.toFixed(0)}ms${data.probed ? ' · 已主动探测' : ' · 被动探测'}`,
+      })
+    } catch (e: any) {
+      const detail = e?.response?.data?.msg || e?.message || '链路测试失败'
+      setTestStates((prev) => ({ ...prev, [source]: { testing: false, error: detail } }))
+      toast({ title: '❌ 链路测试失败', description: detail })
+    }
+  }
+
+  const testAll = async () => {
+    await Promise.all(cards.map((c) => testLink(c.source)))
+  }
+
   const renderSection = (title: string, items: any[]) => (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-      <h3 className="mb-3 text-sm font-semibold text-slate-200">
-        {title} <span className="text-slate-500">({items.length})</span>
+    <div className="rounded-xl border border-border bg-card p-4">
+      <h3 className="mb-3 text-sm font-semibold text-foreground">
+        {title} <span className="text-muted-foreground">({items.length})</span>
       </h3>
       <div className="space-y-2">
         {items.map((it) => {
@@ -165,11 +204,11 @@ export function DataSourceHealthModule() {
           return (
             <div
               key={it.name}
-              className="flex items-center justify-between gap-3 rounded-lg border border-white/5 bg-black/20 px-3 py-2"
+              className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2"
             >
               <div className="min-w-0">
-                <div className="truncate text-sm font-medium text-slate-100">{it.label || it.name}</div>
-                <div className="truncate text-xs text-slate-500">{it.desc || it.name}</div>
+                <div className="truncate text-sm font-medium text-foreground">{it.label || it.name}</div>
+                <div className="truncate text-xs text-muted-foreground">{it.desc || it.name}</div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <span className="rounded-md bg-indigo-500/15 px-2 py-1 text-xs font-semibold text-indigo-300">
@@ -182,7 +221,7 @@ export function DataSourceHealthModule() {
                   className={cn(
                     'flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition',
                     voted
-                      ? 'cursor-not-allowed bg-white/5 text-slate-500'
+                      ? 'cursor-not-allowed bg-card text-muted-foreground'
                       : 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30',
                   )}
                 >
@@ -193,7 +232,7 @@ export function DataSourceHealthModule() {
             </div>
           )
         })}
-        {items.length === 0 && <div className="text-xs text-slate-600">暂无</div>}
+        {items.length === 0 && <div className="text-xs text-muted-foreground">暂无</div>}
       </div>
     </div>
   )
@@ -204,11 +243,22 @@ export function DataSourceHealthModule() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Database className="h-5 w-5 text-indigo-400" />
-          <h1 className="text-lg font-semibold text-slate-100">数据源健康度看板</h1>
-          {loading && <Loader2 className="h-4 w-4 animate-spin text-slate-500" />}
+          <h1 className="text-lg font-semibold text-foreground">数据源健康度看板</h1>
+          {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
         </div>
-        <div className="text-xs text-slate-500">
-          最后更新：{lastUpdated || '—'} · 每 30s 轮询 + WS 实时推送
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            disabled={cards.length === 0}
+            onClick={testAll}
+            className="flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-1 text-xs text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Plug className="h-3.5 w-3.5" />
+            全部测试连接
+          </button>
+          <div className="text-xs text-muted-foreground">
+            最后更新：{lastUpdated || '—'} · 每 30s 轮询 + WS 实时推送
+          </div>
         </div>
       </div>
 
@@ -229,21 +279,22 @@ export function DataSourceHealthModule() {
         {cards.map((c) => {
           const meta = STATUS_META[c.status]
           const Icon = meta.Icon
+          const t = testStates[c.source]
           return (
             <div
               key={c.source}
               className={cn(
-                'rounded-xl border bg-white/5 p-4 transition',
+                'rounded-xl border bg-card p-4 transition',
                 c.status === 'stale' || c.status === 'error'
                   ? 'border-red-500/40 shadow-[0_0_0_1px_rgba(239,68,68,0.2)]'
-                  : 'border-white/10',
+                  : 'border-border',
               )}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-slate-100">{c.source}</span>
+                  <span className="text-sm font-semibold text-foreground">{c.source}</span>
                   {!c.connected && (
-                    <span className="rounded bg-slate-500/20 px-1.5 py-0.5 text-[10px] text-slate-400">
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                       未连接
                     </span>
                   )}
@@ -255,7 +306,24 @@ export function DataSourceHealthModule() {
               </div>
 
               <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                <Metric label="延迟" value={c.latency_ms ? `${c.latency_ms.toFixed(0)} ms` : '—'} />
+                <div className="rounded-md bg-muted/40 px-2 py-1.5">
+                  <div className="text-[10px] text-muted-foreground">调用延迟</div>
+                  <div className="text-sm font-medium text-foreground">
+                    {c.latency_ms ? `${c.latency_ms.toFixed(0)} ms` : '—'}
+                  </div>
+                  {c.latency_samples && c.latency_samples > 0 ? (
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-1 text-[10px] text-muted-foreground">
+                      <span>均值 {c.latency_avg_ms != null ? c.latency_avg_ms.toFixed(0) : '—'}</span>
+                      <span>· P95 {c.latency_p95_ms != null ? c.latency_p95_ms.toFixed(0) : '—'}</span>
+                      <span>· n={c.latency_samples}</span>
+                      <span className="inline-flex items-center gap-0.5 text-emerald-400">
+                        <CheckCircle2 className="h-2.5 w-2.5" />已验证
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="mt-0.5 text-[10px] text-amber-400/80">未验证（无实测样本）</div>
+                  )}
+                </div>
                 <Metric label="今日调用" value={String(c.today_calls)} />
                 <Metric
                   label="成功率"
@@ -264,14 +332,32 @@ export function DataSourceHealthModule() {
                 <Metric label="限流次数" value={String(c.rate_limit_count)} />
               </div>
 
-              <div className="mt-2 text-[10px] text-slate-500">
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  disabled={t?.testing}
+                  onClick={() => testLink(c.source)}
+                  className="flex items-center gap-1 rounded-md bg-primary/15 px-2 py-1 text-[11px] font-medium text-primary transition hover:bg-primary/25 disabled:opacity-60"
+                >
+                  {t?.testing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plug className="h-3 w-3" />}
+                  {t?.testing ? '测试中' : '测试连接'}
+                </button>
+                {t?.result && (
+                  <span className={cn('text-[10px]', t.result.connected ? 'text-emerald-400' : 'text-red-400')}>
+                    {t.result.latency_ms.toFixed(0)}ms{t.result.probed ? ' · 实测' : ' · 被动'}
+                  </span>
+                )}
+                {t?.error && <span className="text-[10px] text-red-400">{t.error}</span>}
+              </div>
+
+              <div className="mt-2 text-[10px] text-muted-foreground">
                 最后请求 {fmtTs(c.last_request_ts)} · 最后成功 {fmtTs(c.last_success_ts)}
               </div>
             </div>
           )
         })}
         {!loading && cards.length === 0 && (
-          <div className="col-span-full rounded-lg border border-white/10 bg-white/5 p-8 text-center text-sm text-slate-500">
+          <div className="col-span-full rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
             暂无已接入数据源
           </div>
         )}
@@ -279,8 +365,8 @@ export function DataSourceHealthModule() {
 
       {/* 投票看板 COMM-02 */}
       <div>
-        <h2 className="mb-3 text-base font-semibold text-slate-100">数据源贡献投票与需求看板</h2>
-        <p className="mb-3 text-xs text-slate-500">
+        <h2 className="mb-3 text-base font-semibold text-foreground">数据源贡献投票与需求看板</h2>
+        <p className="mb-3 text-xs text-muted-foreground">
           每日每源限投一票，投票结果影响下一个数据源接入优先级。
         </p>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
@@ -295,9 +381,9 @@ export function DataSourceHealthModule() {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md bg-black/20 px-2 py-1.5">
-      <div className="text-[10px] text-slate-500">{label}</div>
-      <div className="text-sm font-medium text-slate-200">{value}</div>
+    <div className="rounded-md bg-muted/40 px-2 py-1.5">
+      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="text-sm font-medium text-foreground">{value}</div>
     </div>
   )
 }
