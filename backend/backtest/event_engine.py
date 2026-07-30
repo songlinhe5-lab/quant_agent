@@ -327,7 +327,9 @@ def run_dynamic_sandbox_backtest(
     # 💡 debug_mode 开启时强制降级至高保真事件驱动引擎以捕获逐 K 线内部状态
     if debug_mode:
         print("🐛 [Backtest Engine] 调试模式已开启，强制降级至高保真事件驱动引擎！")
-        engine = EventDrivenBacktestEngine(strategy_instance, df, initial_capital=initial_capital, debug_mode=True, progress_queue=progress_queue)
+        engine = EventDrivenBacktestEngine(
+            strategy_instance, df, initial_capital=initial_capital, debug_mode=True, progress_queue=progress_queue
+        )
         with SandboxTimeoutTracer(timeout_seconds=10.0):
             return engine.run()
 
@@ -348,7 +350,9 @@ def run_dynamic_sandbox_backtest(
             res_df, signal_encoding = _drive_strategy(strategy_instance, df_copy)
     except ValueError:
         # 不兼容矢量化契约 → 兜底至高保真事件驱动引擎
-        engine = EventDrivenBacktestEngine(strategy_instance, df, initial_capital=initial_capital, debug_mode=False, progress_queue=progress_queue)
+        engine = EventDrivenBacktestEngine(
+            strategy_instance, df, initial_capital=initial_capital, debug_mode=False, progress_queue=progress_queue
+        )
         with SandboxTimeoutTracer(timeout_seconds=10.0):
             return engine.run()
 

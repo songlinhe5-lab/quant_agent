@@ -641,7 +641,10 @@ async def _stream_backtest_run(payload, chan: "asyncio.Queue") -> None:
         safe_code = _sanitize_source(payload.source_code)
 
         success, df, msg = await _fetch_backtest_data(
-            payload.ticker, payload.period, payload.data_source, payload.interval,
+            payload.ticker,
+            payload.period,
+            payload.data_source,
+            payload.interval,
             snapshot_id=payload.data_snapshot_id,
         )
         if not success or df is None or df.empty:
@@ -671,7 +674,10 @@ async def _stream_backtest_run(payload, chan: "asyncio.Queue") -> None:
         await chan.put({"type": "error", "message": f"沙箱运行崩溃:\n{tb}", "error_code": "SANDBOX_RUNTIME_ERROR"})
 
 
-@router.post("/run-sandbox/stream", dependencies=[Depends(RateLimiter(max_requests=10, window_seconds=60, by_user=True)), Depends(get_current_user)])
+@router.post(
+    "/run-sandbox/stream",
+    dependencies=[Depends(RateLimiter(max_requests=10, window_seconds=60, by_user=True)), Depends(get_current_user)],
+)
 async def run_strategy_sandbox_stream(payload: RunSandboxPayload):
     """SSE 流式沙箱回测：实时推送撮合进度，结束返回完整报告。"""
     chan: "asyncio.Queue" = asyncio.Queue()
@@ -732,7 +738,9 @@ async def optimize_strategy_sandbox_stream(payload: OptimizeSandboxPayload):
         except ValueError as ve:
             await chan.put({"type": "error", "message": str(ve)})
         except Exception:
-            await chan.put({"type": "error", "message": f"寻优沙箱崩溃:\n{safe_truncate(traceback.format_exc(), max_length=1500)}"})
+            await chan.put(
+                {"type": "error", "message": f"寻优沙箱崩溃:\n{safe_truncate(traceback.format_exc(), max_length=1500)}"}
+            )
 
     task = asyncio.create_task(runner())
 

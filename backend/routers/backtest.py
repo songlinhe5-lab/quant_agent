@@ -9,7 +9,6 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.app.backtest_app import BacktestDataError, BacktestParams, run_backtest, run_backtest_stream
-from backend.core.utils import safe_truncate
 from backend.app.grid_search_app import (
     GridSearchError,
     GridSearchParams,
@@ -26,6 +25,7 @@ from backend.app.walk_forward_app import (
     WalkForwardParams,
     run_walk_forward,
 )
+from backend.core.utils import safe_truncate
 from backend.services.backtest_interpreter.models import (
     InterpretRequest,
     OverfitCheckRequest,

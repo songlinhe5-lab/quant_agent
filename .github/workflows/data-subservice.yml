@@ -165,6 +165,13 @@ jobs:
         run: |
           echo "compose_b64=$(base64 -w0 docker-compose.yf-node.yml)" >> $GITHUB_OUTPUT
 
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
       - name: SSH connectivity pre-flight
         uses: ./.github/actions/ssh-preflight
         with:
