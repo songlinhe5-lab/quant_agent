@@ -237,10 +237,15 @@ async def get_health_overview() -> Dict[str, Any]:
     COMM-01 数据源健康度统一看板数据源（卡片矩阵）。
     前端 DataSourceHealthDashboard 轮询 / 订阅 WS 渲染。
     """
-    # 确保宏观数据源适配器已注册，使其出现在健康看板（可感知）
+    # 确保数据源适配器已注册，使其出现在健康看板（可感知 / 可挂载）
+    # BE-ARCH-05: futu / akshare 已实现 DataSourceInterface 薄适配，惰性注册
+    from backend.services.datasource.adapters.akshare import ensure_akshare_registered
+    from backend.services.datasource.adapters.futu import ensure_futu_registered
     from backend.services.datasource.adapters.macro import ensure_macro_sources_registered
 
     ensure_macro_sources_registered()
+    ensure_futu_registered()
+    ensure_akshare_registered()
 
     names = datasource_registry.list_names()
     cards = [_build_health_card(n) for n in names]
