@@ -18,9 +18,9 @@ import re
 import time
 from typing import Any, Dict, List, Optional
 
-import jwt
 from fastapi import APIRouter, HTTPException, Query, WebSocket
 from fastapi.websockets import WebSocketDisconnect
+from jose import jwt as _jwt
 
 from backend.core.logger import logger
 from backend.services.datasource import datasource_registry, rate_limit_registry
@@ -251,7 +251,7 @@ async def datasource_health_ws(websocket: WebSocket) -> None:
     try:
         _secret = os.getenv("WS_JWT_SECRET_KEY", os.getenv("SECRET_KEY", "dev-secret"))
         if token:
-            jwt.decode(token, _secret, algorithms=["HS256"])
+            _jwt.decode(token, _secret, algorithms=["HS256"])
     except Exception:
         await websocket.close(code=4401)
         return
