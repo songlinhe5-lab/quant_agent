@@ -25,6 +25,8 @@ from fastapi.websockets import WebSocketDisconnect
 from jose import jwt as _jwt
 
 from backend.core.logger import logger
+from backend.routers.auth import ALGORITHM as _JWT_ALGORITHM
+from backend.routers.auth import SECRET_KEY as _AUTH_SECRET_KEY
 from backend.services.datasource import datasource_registry, rate_limit_registry
 
 router = APIRouter(prefix="/datasource", tags=["DataSource Rate Limit"])
@@ -184,7 +186,8 @@ async def get_finnhub_health():
 #  COMM-01 数据源健康度统一看板
 # ════════════════════════════════════════════════════════════════
 
-# 超过该秒数无成功响应即判定为 STALE（数据源失联）
+# 超过该秒数无成功响应 → 归为 idle(空闲/未活跃)，不再误判为失联；
+# 失联(stale)改由 connected(真实可达性探针) 主信号驱动，避免把"配好了但 N 分钟没被用"当断连。
 _STALE_SECONDS = 300
 # 链接测试主动探测使用的轻量行情标的（仅用于测量真实网络往返延迟）
 _LINK_TEST_TICKER = "AAPL"
@@ -209,8 +212,14 @@ async def _build_health_card(name: str) -> Dict[str, Any]:
 
     if rl_status.is_throttled:
         status = "throttled"
-    elif metrics["last_success_ts"] and (now - metrics["last_success_ts"] > _STALE_SECONDS):
+    elif not connected:
+        # 🚨 真·失联：以 connected(真实可达性探针) 为主信号。
+        # 健康探针确认不可达(key 未配 / OpenD 未起 / IP 封禁等)才判 stale，
+        # 不再把"配好但 _STALE_SECONDS 内无业务调用"误判为失联。
         status = "stale"
+    elif metrics["last_success_ts"] and (now - metrics["last_success_ts"] > _STALE_SECONDS):
+        # 配好且可达，但近期无成功调用 → 空闲(未活跃)，不是断连
+        status = "idle"
     elif metrics["today_errors"] > 0 and metrics["today_success"] == 0:
         status = "error"
     elif metrics["last_request_ts"] == 0:
@@ -372,11 +381,23 @@ async def datasource_health_ws(websocket: WebSocket) -> None:
     每 15s 推送一次 overview；当某数据源由非 STALE 转为 STALE 时额外推送 alert。
     """
     token = websocket.query_params.get("token")
-    try:
-        _secret = os.getenv("WS_JWT_SECRET_KEY", os.getenv("SECRET_KEY", "dev-secret"))
-        if token:
-            _jwt.decode(token, _secret, algorithms=["HS256"])
-    except Exception:
+    # 🔑 WS 鉴权必须与签发 Access Token 的密钥一致(auth.SECRET_KEY)，否则前端传来的
+    # access token(由 auth.SECRET_KEY 签名) 全部解码失败 → 4401 → 实时推送名存实亡。
+    # 同时兼容运维单独配置的 WS_JWT_SECRET_KEY(若存在也尝试)，避免二者不一致。
+    _secrets = [_AUTH_SECRET_KEY]
+    _ws_override = os.getenv("WS_JWT_SECRET_KEY")
+    if _ws_override and _ws_override not in _secrets:
+        _secrets.append(_ws_override)
+    _auth_ok = False
+    if token:
+        for _s in _secrets:
+            try:
+                _jwt.decode(token, _s, algorithms=[_JWT_ALGORITHM])
+                _auth_ok = True
+                break
+            except Exception:
+                continue
+    if not _auth_ok:
         await websocket.close(code=4401)
         return
 
@@ -394,7 +415,7 @@ async def datasource_health_ws(websocket: WebSocket) -> None:
                         {
                             "source": c["source"],
                             "type": "stale",
-                            "message": f"{c['source']} 超过 {_STALE_SECONDS}s 无成功响应",
+                            "message": f"{c['source']} 数据源失联（connected=false，健康探针不可达）",
                         }
                     )
                 last_status[c["source"]] = c["status"]

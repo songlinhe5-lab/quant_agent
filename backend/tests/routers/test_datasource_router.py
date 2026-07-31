@@ -11,6 +11,7 @@ RL-06: 推测频率查询 API 端点单测
 - _parse_window_seconds 参数解析
 """
 
+import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -207,6 +208,124 @@ class TestRateLimitOverviewEndpoint:
         yf = next(s for s in data["sources"] if s["source"] == "yfinance")
         assert yf["is_throttled"] is True
         assert yf["consecutive_rate_limits"] == 1
+
+
+# ─────────────────────────────────────────
+#  _build_health_card status 语义：stale/idle 解耦
+# ─────────────────────────────────────────
+class _FakeThrottlerStatus:
+    def __init__(self, is_throttled=False):
+        self.is_throttled = is_throttled
+        self.consecutive_rate_limits = 0
+        self.backoff_strategy = "adaptive"
+
+
+class _FakeThrottler:
+    def get_status(self):
+        return _FakeThrottlerStatus()
+
+
+class _FakeAnalyzer:
+    def __init__(self, metrics):
+        self._metrics = metrics
+
+    def get_health_metrics(self):
+        return self._metrics
+
+
+class _FakeHealth:
+    def __init__(self, connected):
+        self.connected = connected
+        self.healthy = connected
+        self.status = "ok" if connected else "error"
+        self.last_error = None
+
+
+class _FakeSourceHealthOnly:
+    def __init__(self, connected):
+        self.capabilities = []
+
+    def health(self):
+        return _FakeHealth(connected)
+
+
+class TestHealthCardStatusLogic:
+    """stale(失联) 改由 connected 主信号驱动；超时未调用归为 idle(空闲)。"""
+
+    def _patch(self, client, monkeypatch, connected, last_success_ts, has_success=True):
+        src = _FakeSourceHealthOnly(connected)
+        reg = MagicMock()
+        reg.has.return_value = True
+        reg.get.return_value = src
+        reg.list_names.return_value = ["yfinance"]
+        monkeypatch.setattr("backend.routers.datasource.datasource_registry", reg)
+
+        analyzer = _FakeAnalyzer(
+            {
+                "last_success_ts": last_success_ts,
+                "today_requests": 10,
+                "today_success": 10 if has_success else 0,
+                "today_errors": 0 if has_success else 5,
+                "today_rate_limits": 0,
+                "last_latency_ms": 120.0,
+                "success_rate": 1.0 if has_success else 0.0,
+                "latency_avg_ms": 120.0,
+                "latency_p95_ms": 200.0,
+                "latency_min_ms": 100.0,
+                "latency_max_ms": 300.0,
+                "latency_samples": 10,
+                "last_request_ts": last_success_ts or 0,
+            }
+        )
+        rl_reg = MagicMock()
+        rl_reg.get_throttler.return_value = _FakeThrottler()
+        rl_reg.get_analyzer.return_value = analyzer
+        monkeypatch.setattr("backend.routers.datasource.rate_limit_registry", rl_reg)
+
+    def test_connected_but_idle_is_idle_not_stale(self, client, monkeypatch):
+        """配好且可达但 5 分钟无成功调用 → idle，不再误判 stale(失联)。"""
+        old = time.time() - 1000  # 远超 _STALE_SECONDS(300)
+        self._patch(client, monkeypatch, connected=True, last_success_ts=old)
+        resp = client.get("/api/v1/datasource/rate-limit-overview")
+        assert resp.status_code == 200
+        card = next(s for s in resp.json()["sources"] if s["source"] == "yfinance")
+        assert card["connected"] is True
+        assert card["status"] == "idle"
+
+    def test_disconnected_is_stale(self, client, monkeypatch):
+        """健康探针确认不可达(connected=false) → stale(失联)，即使最近有成功调用。"""
+        recent = time.time() - 5
+        self._patch(client, monkeypatch, connected=False, last_success_ts=recent)
+        resp = client.get("/api/v1/datasource/rate-limit-overview")
+        assert resp.status_code == 200
+        card = next(s for s in resp.json()["sources"] if s["source"] == "yfinance")
+        assert card["connected"] is False
+        assert card["status"] == "stale"
+
+
+# ─────────────────────────────────────────
+#  WS /ws/health 鉴权一致性
+# ─────────────────────────────────────────
+from starlette.websockets import WebSocketDisconnect
+
+
+class TestHealthWsAuth:
+    """WS 鉴权必须与 access token 签名密钥(SECRET_KEY) 一致，否则全部 4401。"""
+
+    def test_ws_rejects_invalid_token(self, client):
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with client.websocket_connect("/api/v1/datasource/ws/health?token=invalid.token.here"):
+                pass
+        assert exc.value.code == 4401
+
+    def test_ws_accepts_valid_access_token(self, client):
+        from backend.routers.auth import create_access_token
+
+        token = create_access_token({"sub": "test-user"})
+        with client.websocket_connect(f"/api/v1/datasource/ws/health?token={token}") as ws:
+            data = ws.receive_json()
+            assert data["type"] == "overview"
+            assert "sources" in data
 
 
 # ─────────────────────────────────────────
