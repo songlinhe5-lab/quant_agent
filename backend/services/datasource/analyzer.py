@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from math import ceil
 from typing import Any, Optional
 
+from . import ErrorCategory  # ErrorCategory 定义于包 __init__；__init__ 在导入本模块前已先定义它，无循环依赖
+
 logger = logging.getLogger(__name__)
 
 
