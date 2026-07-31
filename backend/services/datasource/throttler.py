@@ -342,6 +342,7 @@ class RateLimitThrottler:
         """手动重置所有状态"""
         with self._lock:
             self._consecutive_limits = 0
+            self._block_events = 0  # 同步清零硬失败计数，避免跨请求/跨测试残留污染连续限流视图
             self._success_streak = 0
             self._request_interval = 0.0
             self._throttle_until = 0.0
