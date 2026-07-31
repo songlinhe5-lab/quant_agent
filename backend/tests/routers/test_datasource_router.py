@@ -245,6 +245,62 @@ class _FakeSourceDown:
         raise RuntimeError("boom")
 
 
+class _FakeSourceCaptureParams:
+    """捕获 probe 传入的 params，用于断言 skip_cache 透传。"""
+
+    def __init__(self, capabilities):
+        self.capabilities = capabilities
+        self.last_action = None
+        self.last_params = None
+
+    def health(self):
+        return _FakeInfo()
+
+    async def fetch(self, action, params):
+        self.last_action = action
+        self.last_params = dict(params)
+        return {"ok": True}
+
+
+class TestLinkTestSkipCache:
+    def test_quote_probe_passes_skip_cache(self, client, monkeypatch):
+        """quote 探针必须透传 skip_cache=True，否则会命中 Redis 热缓存误报 0ms。"""
+        src = _FakeSourceCaptureParams(capabilities=["quote"])
+        reg = MagicMock()
+        reg.get.return_value = src
+        monkeypatch.setattr("backend.routers.datasource.datasource_registry", reg)
+
+        resp = client.post("/api/v1/datasource/yfinance/test-link")
+        assert resp.status_code == 200
+        assert src.last_action == "quote"
+        assert src.last_params.get("skip_cache") is True
+        assert src.last_params.get("ticker") == "AAPL"
+
+    def test_web_scrape_probe_passes_skip_cache(self, client, monkeypatch):
+        """WEB_SCRAPE 探针同样透传 skip_cache=True。"""
+        src = _FakeSourceCaptureParams(capabilities=["WEB_SCRAPE"])
+        reg = MagicMock()
+        reg.get.return_value = src
+        monkeypatch.setattr("backend.routers.datasource.datasource_registry", reg)
+
+        resp = client.post("/api/v1/datasource/jina/test-link")
+        assert resp.status_code == 200
+        assert src.last_action == "WEB_SCRAPE"
+        assert src.last_params.get("skip_cache") is True
+
+    def test_web_search_probe_no_cache_layer(self, client, monkeypatch):
+        """WEB_SEARCH 适配器本就无缓存层，skip_cache 非必需，但透传无害。"""
+        src = _FakeSourceCaptureParams(capabilities=["WEB_SEARCH"])
+        reg = MagicMock()
+        reg.get.return_value = src
+        monkeypatch.setattr("backend.routers.datasource.datasource_registry", reg)
+
+        resp = client.post("/api/v1/datasource/tavily/test-link")
+        assert resp.status_code == 200
+        assert src.last_action == "WEB_SEARCH"
+        assert src.last_params.get("query") == "quant agent test"
+
+
 class TestLinkTestEndpoint:
     def test_link_test_active_probe_ok(self, client, monkeypatch):
         """支持 quote 的源：主动探测成功，probed=True 且延迟被测量回写。"""
