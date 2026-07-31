@@ -20,7 +20,9 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pandas as pd
 import pytest
-from yfinance.data import YfData  # 🔧 yfinance 新版不再从顶层导出 YfData（顶层 import 会在 collection 阶段 ImportError），统一从子模块导入，与 service.py 的 yf.YfData 指向同一对象
+from yfinance.data import (
+    YfData,  # 🔧 yfinance 新版不再从顶层导出 YfData（顶层 import 会在 collection 阶段 ImportError），统一从子模块导入，与 service.py 的 yf.YfData 指向同一对象
+)
 
 from backend.services.yfinance import (
     RateLimitedSession,
