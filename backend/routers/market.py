@@ -768,7 +768,10 @@ async def _fetch_finnhub_news(ticker: str, limit: int, days_back: int = 3):
     except Exception:  # noqa: BLE001
         return None
 
-    res = await datasource_registry.fetch("finnhub", "company_news", {"ticker": ticker, "days_back": days_back})
+    try:
+        res = await datasource_registry.fetch("finnhub", "company_news", {"ticker": ticker, "days_back": days_back})
+    except Exception:  # noqa: BLE001 - fetch 异常时回退模拟数据，不应中断新闻流
+        return None
     if not res.is_success:
         return None
 

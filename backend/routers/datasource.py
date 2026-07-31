@@ -219,7 +219,11 @@ async def _build_health_card(name: str) -> Dict[str, Any]:
     mounted = datasource_registry.has(name)
     # 取首个 available 实例（is_available 已反映真实 key/连通），无则无法感知真实健康
     source = datasource_registry.get(name)
-    health_info = await source.health() if source is not None else None
+    try:
+        health_info = await source.health() if source is not None else None
+    except Exception:
+        # 单源健康探针失败(IP 封禁/key 缺失/连接异常)不应拖垮整个看板
+        health_info = None
     # BE-ARCH-05: connected 必须 = 已挂载 AND 真实可用（key 缺失/未连通即 False，实现可感知）
     connected = mounted and (health_info.connected if health_info is not None else False)
     health_error = (
