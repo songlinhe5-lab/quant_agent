@@ -20,7 +20,7 @@ import {
 import { apiClient, API_BASE_URL, getValidAccessToken } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
 
-type HealthStatus = 'healthy' | 'stale' | 'throttled' | 'error' | 'idle'
+type HealthStatus = 'healthy' | 'stale' | 'throttled' | 'error' | 'idle' | 'blocked' | 'quota_exhausted'
 
 interface HealthCard {
   source: string
@@ -30,6 +30,8 @@ interface HealthCard {
   today_calls: number
   success_rate: number | null
   rate_limit_count: number
+  rl_category?: string | null
+  rl_breakdown?: Record<string, number>
   last_request_ts: number | null
   last_success_ts: number | null
   is_throttled: boolean
@@ -61,6 +63,8 @@ const STATUS_META: Record<
   healthy: { label: '正常', cls: 'text-emerald-400 border-emerald-500/40 bg-emerald-500/10', Icon: CheckCircle2 },
   stale: { label: '失联', cls: 'text-red-400 border-red-500/40 bg-red-500/10', Icon: AlertTriangle },
   throttled: { label: '限流', cls: 'text-amber-400 border-amber-500/40 bg-amber-500/10', Icon: Clock },
+  blocked: { label: 'IP封禁', cls: 'text-orange-400 border-orange-500/40 bg-orange-500/10', Icon: CircleSlash },
+  quota_exhausted: { label: '额度耗尽', cls: 'text-purple-400 border-purple-500/40 bg-purple-500/10', Icon: Clock },
   error: { label: '错误', cls: 'text-red-400 border-red-500/40 bg-red-500/10', Icon: AlertTriangle },
   idle: { label: '空闲', cls: 'text-slate-400 border-slate-500/30 bg-slate-500/10', Icon: CircleSlash },
 }
@@ -332,6 +336,24 @@ export function DataSourceHealthModule() {
                 />
                 <Metric label="限流次数" value={String(c.rate_limit_count)} />
               </div>
+
+              {c.rl_breakdown && Object.keys(c.rl_breakdown).length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-x-2 text-[10px] text-muted-foreground">
+                  {Object.entries(c.rl_breakdown).map(([k, v]) => (
+                    <span
+                      key={k}
+                      className={cn(
+                        k === 'ip_blocked' && 'text-orange-400',
+                        k === 'quota_exhausted' && 'text-purple-400',
+                        k === 'rate_limit' && 'text-amber-400',
+                      )}
+                    >
+                      {k === 'rate_limit' ? '限流' : k === 'ip_blocked' ? 'IP封禁' : k === 'quota_exhausted' ? '配额耗尽' : k}{' '}
+                      {v}
+                    </span>
+                  ))}
+                </div>
+              )}
 
               <div className="mt-2 flex items-center justify-between gap-2">
                 <button

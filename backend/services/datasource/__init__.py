@@ -234,6 +234,8 @@ class Result:
     latency_ms: float = 0.0
     cached: bool = False
     error: Optional[ErrorInfo] = None
+    # 源已在内部自行记录 throttler/analyzer（如 FinnhubService），registry 主路径跳过重复记录
+    self_recorded: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -242,6 +244,7 @@ class Result:
             "source": self.source,
             "latency_ms": round(self.latency_ms, 2),
             "cached": self.cached,
+            "self_recorded": self.self_recorded,
         }
         if self.error is not None:
             result["error"] = self.error.to_dict()
@@ -317,6 +320,8 @@ class RateLimitStatus:
     consecutive_rate_limits: int = 0
     total_rate_limits_1h: int = 0
     backoff_strategy: str = "none"
+    # 当前抑制主导类别：rate_limit / quota_exhausted / ip_blocked（仅 is_throttled 时有意义）
+    category: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -327,6 +332,7 @@ class RateLimitStatus:
             "consecutive_rate_limits": self.consecutive_rate_limits,
             "total_rate_limit_1h": self.total_rate_limits_1h,
             "backoff_strategy": self.backoff_strategy,
+            "category": self.category,
         }
 
 

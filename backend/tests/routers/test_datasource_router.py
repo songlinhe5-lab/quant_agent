@@ -214,10 +214,11 @@ class TestRateLimitOverviewEndpoint:
 #  _build_health_card status 语义：stale/idle 解耦
 # ─────────────────────────────────────────
 class _FakeThrottlerStatus:
-    def __init__(self, is_throttled=False):
+    def __init__(self, is_throttled=False, category=None):
         self.is_throttled = is_throttled
         self.consecutive_rate_limits = 0
         self.backoff_strategy = "adaptive"
+        self.category = category
 
 
 class _FakeThrottler:
@@ -281,6 +282,7 @@ class TestHealthCardStatusLogic:
         rl_reg.get_throttler.return_value = _FakeThrottler()
         rl_reg.get_analyzer.return_value = analyzer
         monkeypatch.setattr("backend.routers.datasource.rate_limit_registry", rl_reg)
+        return rl_reg
 
     def test_connected_but_idle_is_idle_not_stale(self, client, monkeypatch):
         """配好且可达但 5 分钟无成功调用 → idle，不再误判 stale(失联)。"""
@@ -301,6 +303,87 @@ class TestHealthCardStatusLogic:
         card = next(s for s in resp.json()["sources"] if s["source"] == "yfinance")
         assert card["connected"] is False
         assert card["status"] == "stale"
+
+    def test_throttled_rate_limit_label(self, client, monkeypatch):
+        """真·限流(RATE_LIMIT) → 标签 throttled，rl_category=rate_limit。"""
+        rl_reg = self._patch(client, monkeypatch, connected=True, last_success_ts=time.time())
+        rl_reg.get_throttler.return_value.get_status.return_value = _FakeThrottlerStatus(
+            is_throttled=True, category="rate_limit"
+        )
+        card = next(
+            s
+            for s in client.get("/api/v1/datasource/rate-limit-overview").json()["sources"]
+            if s["source"] == "yfinance"
+        )
+        assert card["status"] == "throttled"
+        assert card["rl_category"] == "rate_limit"
+
+    def test_ip_blocked_label_not_throttled(self, client, monkeypatch):
+        """403/IP封禁 → 标签 blocked（不再误标为限流 throttled）。"""
+        rl_reg = self._patch(client, monkeypatch, connected=True, last_success_ts=time.time())
+        rl_reg.get_throttler.return_value.get_status.return_value = _FakeThrottlerStatus(
+            is_throttled=True, category="ip_blocked"
+        )
+        card = next(
+            s
+            for s in client.get("/api/v1/datasource/rate-limit-overview").json()["sources"]
+            if s["source"] == "yfinance"
+        )
+        assert card["status"] == "blocked"
+        assert card["rl_category"] == "ip_blocked"
+
+    def test_quota_exhausted_label(self, client, monkeypatch):
+        """402/配额耗尽 → 标签 quota_exhausted。"""
+        rl_reg = self._patch(client, monkeypatch, connected=True, last_success_ts=time.time())
+        rl_reg.get_throttler.return_value.get_status.return_value = _FakeThrottlerStatus(
+            is_throttled=True, category="quota_exhausted"
+        )
+        card = next(
+            s
+            for s in client.get("/api/v1/datasource/rate-limit-overview").json()["sources"]
+            if s["source"] == "yfinance"
+        )
+        assert card["status"] == "quota_exhausted"
+        assert card["rl_category"] == "quota_exhausted"
+
+
+class TestThrottlerCategoryBackoff:
+    """按 category 区分退避：真·限流指数自愈；403/IP封禁、402/配额走固定窗口不污染连续计数。"""
+
+    def _t(self):
+        from backend.services.datasource import ErrorInfo
+        from backend.services.datasource.throttler import RateLimitThrottler
+
+        return RateLimitThrottler("finnhub"), ErrorInfo
+
+    def test_rate_limit_compounds_consecutive(self):
+        t, EI = self._t()
+        t.on_rate_limit(EI.rate_limited(message="429"))
+        t.on_rate_limit(EI.rate_limited(message="429"))
+        st = t.get_status()
+        assert st.category == "rate_limit"
+        assert st.is_throttled is True
+        assert t._consecutive_limits == 2
+        assert st.consecutive_rate_limits == 2
+
+    def test_ip_blocked_not_compounding(self):
+        t, EI = self._t()
+        t.on_rate_limit(EI.ip_blocked(message="403"))
+        t.on_rate_limit(EI.ip_blocked(message="403"))
+        st = t.get_status()
+        assert st.category == "ip_blocked"
+        assert st.is_throttled is True
+        # 封禁不污染 RATE_LIMIT 连续计数，仅累计 block_events
+        assert t._consecutive_limits == 0
+        assert t._block_events == 2
+        assert st.consecutive_rate_limits == 2
+
+    def test_quota_exhausted_labeled(self):
+        t, EI = self._t()
+        t.on_rate_limit(EI.quota_exhausted(message="402"))
+        st = t.get_status()
+        assert st.category == "quota_exhausted"
+        assert st.is_throttled is True
 
 
 # ─────────────────────────────────────────

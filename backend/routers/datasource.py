@@ -27,7 +27,7 @@ from jose import jwt as _jwt
 from backend.core.logger import logger
 from backend.routers.auth import ALGORITHM as _JWT_ALGORITHM
 from backend.routers.auth import SECRET_KEY as _AUTH_SECRET_KEY
-from backend.services.datasource import datasource_registry, rate_limit_registry
+from backend.services.datasource import ErrorCategory, datasource_registry, rate_limit_registry
 
 router = APIRouter(prefix="/datasource", tags=["DataSource Rate Limit"])
 
@@ -211,7 +211,15 @@ async def _build_health_card(name: str) -> Dict[str, Any]:
     now = time.time()
 
     if rl_status.is_throttled:
-        status = "throttled"
+        # 🚨 按类别区分标签：真·限流(RATE_LIMIT)→限流；403/IP封禁→封禁；402/配额耗尽→额度耗尽。
+        # 不再把所有限流类错误（key 无效 / IP 封禁 / 接口需付费）一刀切显示为"限流"。
+        cat = rl_status.category
+        if cat == ErrorCategory.IP_BLOCKED.value:
+            status = "blocked"
+        elif cat == ErrorCategory.QUOTA_EXHAUSTED.value:
+            status = "quota_exhausted"
+        else:
+            status = "throttled"
     elif not connected:
         # 🚨 真·失联：以 connected(真实可达性探针) 为主信号。
         # 健康探针确认不可达(key 未配 / OpenD 未起 / IP 封禁等)才判 stale，
@@ -235,6 +243,8 @@ async def _build_health_card(name: str) -> Dict[str, Any]:
         "today_calls": metrics["today_requests"],
         "success_rate": metrics["success_rate"],
         "rate_limit_count": metrics["today_rate_limits"],
+        "rl_category": rl_status.category,
+        "rl_breakdown": metrics.get("today_rate_limits_by_category", {}),
         "last_request_ts": metrics["last_request_ts"],
         "last_success_ts": metrics["last_success_ts"],
         "is_throttled": rl_status.is_throttled,

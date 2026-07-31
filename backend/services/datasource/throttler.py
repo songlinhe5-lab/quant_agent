@@ -25,7 +25,7 @@ from collections import deque
 from enum import Enum
 from typing import Optional
 
-from . import ErrorInfo, RateLimitStatus
+from . import ErrorCategory, ErrorInfo, RateLimitStatus
 
 logger = logging.getLogger(__name__)
 
@@ -179,11 +179,13 @@ class RateLimitThrottler:
 
         # ── 内部状态（均受 _lock 保护）──
         self._lock = threading.Lock()
-        self._consecutive_limits: int = 0
+        self._consecutive_limits: int = 0  # 连续限流次数（仅真·限流 RATE_LIMIT 用于指数退避）
         self._success_streak: int = 0
         self._request_interval: float = 0.0  # 当前请求间隔（秒）
         self._throttle_until: float = 0.0  # 退避截止时间戳
         self._estimated_limit_rpm: Optional[int] = None
+        self._category: ErrorCategory = ErrorCategory.RATE_LIMIT  # 当前抑制主导类别
+        self._block_events: int = 0  # IP封禁/配额耗尽次数（不参与指数退避，仅展示）
 
         # ── 限流事件历史（用于统计 1h 内限流次数）──
         self._rate_limit_events: deque[float] = deque(maxlen=1000)
@@ -228,29 +230,38 @@ class RateLimitThrottler:
             计算的退避秒数
         """
         with self._lock:
-            self._consecutive_limits += 1
+            now = time.monotonic()
             self._success_streak = 0
 
+            # 解析错误类别：403=IP封禁 / 402=配额耗尽 / 其余(含429)=真·限流
+            category = ErrorCategory.RATE_LIMIT
+            if error and error.category:
+                category = error.category
+            self._category = category
+
             # 记录限流事件
-            now = time.monotonic()
             self._rate_limit_events.append(now)
 
-            # Prometheus: 限流计数 +1
+            # Prometheus: 限流计数 +1（按类别打标，监控侧已对齐）
             _init_metrics()
             if _DS_RATE_LIMIT_TOTAL is not None:
-                category = "rate_limit"
-                if error and error.category:
-                    category = error.category.value
-                _DS_RATE_LIMIT_TOTAL.labels(source=self._source_name, category=category).inc()
+                _DS_RATE_LIMIT_TOTAL.labels(source=self._source_name, category=category.value).inc()
 
-            # 计算退避时间
-            wait_seconds = self._calculate_wait(error)
+            if category == ErrorCategory.RATE_LIMIT:
+                # 真·瞬时限流：指数/自适应退避 + 连续计数（自愈式，on_success 可恢复）
+                self._consecutive_limits += 1
+                wait_seconds = self._calculate_wait(error)
+            else:
+                # IP封禁 / 配额耗尽：固定非指数抑制窗口，不污染连续限流计数、不无限放大退避。
+                # 这类“硬失败”无法靠 on_success 自愈，故用有限窗口反复轻量抑制，避免打爆上游。
+                self._block_events += 1
+                wait_seconds = self._block_wait_seconds(category)
 
             # 进入退避状态
             self._throttle_until = now + wait_seconds
 
-            # 推测限流 RPM
-            if wait_seconds > 0:
+            # 推测限流 RPM（仅真·限流有意义）
+            if category == ErrorCategory.RATE_LIMIT and wait_seconds > 0:
                 self._estimated_limit_rpm = int(60.0 / wait_seconds)
             else:
                 self._estimated_limit_rpm = None
@@ -265,19 +276,18 @@ class RateLimitThrottler:
                 _DS_BACKOFF_STATE.labels(source=self._source_name).set(_BACKOFF_STATE_MAP.get(self._strategy.value, 0))
 
             logger.info(
-                f"[Throttler:{self._source_name}] 限流触发，进入退避: "
-                f"strategy={self._strategy.value}, wait={wait_seconds:.1f}s, "
-                f"consecutive={self._consecutive_limits}"
+                f"[Throttler:{self._source_name}] 限流/封禁触发，进入抑制: "
+                f"strategy={self._strategy.value}, category={category.value}, "
+                f"wait={wait_seconds:.1f}s, consecutive={self._consecutive_limits}"
             )
 
             # RL-11: 通知告警监控器
             try:
                 from backend.services.datasource.alert_monitor import rate_limit_alert_monitor
 
-                error_category = error.category.value if error and error.category else "rate_limit"
                 rate_limit_alert_monitor.on_rate_limit_event(
                     source=self._source_name,
-                    category=error_category,
+                    category=category.value,
                     wait_seconds=wait_seconds,
                     consecutive_rate_limits=self._consecutive_limits,
                 )
@@ -285,6 +295,21 @@ class RateLimitThrottler:
                 logger.debug(f"[RL-11] 告警监控器调用失败: {e}")
 
             return wait_seconds
+
+    def _block_wait_seconds(self, category: ErrorCategory) -> float:
+        """IP封禁/配额耗尽的固定抑制窗口（不随次数放大，到期自动解禁）。
+
+        这类硬失败（key 无效 / IP 被区域封锁 / 接口需付费）无法通过 on_success 自愈，
+        若走指数退避会越涨越大且永不恢复 → 看板“限流”状态长期不消失。
+        改用有限固定窗口轻量抑制，既能避免反复打爆上游，又不污染连续限流计数。
+        """
+        if category == ErrorCategory.QUOTA_EXHAUSTED:
+            window = min(self._max_delay, 3600.0)  # 配额耗尽通常需等套餐周期重置，窗口放宽到 1h
+        else:
+            window = min(self._max_delay, 300.0)  # IP封禁等上限封顶 5 分钟
+        if self._jitter:
+            window += random.uniform(0, 5.0)
+        return window
 
     def on_success(self) -> None:
         """
@@ -343,9 +368,10 @@ class RateLimitThrottler:
                 throttle_until=(time.time() + (self._throttle_until - now) if is_throttled else None),
                 estimated_rpm=effective_rpm,
                 estimated_limit_rpm=self._estimated_limit_rpm,
-                consecutive_rate_limits=self._consecutive_limits,
+                consecutive_rate_limits=self._consecutive_limits + self._block_events,
                 total_rate_limits_1h=total_1h,
                 backoff_strategy=self._strategy.value,
+                category=self._category.value if is_throttled else None,
             )
 
             # 更新 Prometheus gauge 指标

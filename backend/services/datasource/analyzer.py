@@ -111,6 +111,7 @@ class _RequestEvent:
     timestamp: float  # time.time() 绝对时间戳
     is_rate_limit: bool  # True=限流, False=成功请求
     is_error: bool = False  # True=普通错误（不计入限流分析）
+    rate_limit_category: Optional[str] = None  # 限流子类别: rate_limit/quota_exhausted/ip_blocked
 
 
 # ─────────────────────────────────────────
@@ -193,6 +194,7 @@ class RateLimitAnalyzer:
         is_rate_limit: bool = False,
         is_error: bool = False,
         latency_ms: float = 0.0,
+        rate_limit_category: Optional[str] = None,
     ) -> None:
         """
         记录一次请求事件。
@@ -201,6 +203,7 @@ class RateLimitAnalyzer:
             is_rate_limit: 是否为限流事件
             is_error:      是否为普通错误（不计入限流分析，但记录用于统计）
             latency_ms:    本次请求延迟（毫秒），用于健康看板展示
+            rate_limit_category: 限流子类别（rate_limit/quota_exhausted/ip_blocked）
         """
         now = time.time()
         if latency_ms and latency_ms > 0:
@@ -213,6 +216,7 @@ class RateLimitAnalyzer:
             timestamp=now,
             is_rate_limit=is_rate_limit,
             is_error=is_error,
+            rate_limit_category=rate_limit_category,
         )
         with self._lock:
             self._events.append(event)
@@ -225,9 +229,17 @@ class RateLimitAnalyzer:
         """记录一次非限流错误（COMM-01 健康统计用）"""
         self.record_request(is_rate_limit=False, is_error=True, latency_ms=latency_ms)
 
-    def record_rate_limit(self) -> None:
-        """记录一次限流事件"""
-        self.record_request(is_rate_limit=True, is_error=False)
+    def record_rate_limit(self, category: Optional[ErrorCategory] = None) -> None:
+        """记录一次限流事件（限流类：429/403/IP封禁/配额耗尽）。
+
+        Args:
+            category: 限流子类别（ErrorCategory），用于按类别拆分计数。
+        """
+        self.record_request(
+            is_rate_limit=True,
+            is_error=False,
+            rate_limit_category=category.value if category else None,
+        )
 
     # ─────────────────────────────────────
     #  分析 API
@@ -485,12 +497,15 @@ class RateLimitAnalyzer:
             last_success_ts = self._last_success_ts
             last_latency_ms = self._last_latency_ms
         req = succ = rl = err = 0
+        rl_by_category: dict[str, int] = {}
         for e in events:
             lt = time.localtime(e.timestamp)
             if lt.tm_year == today_year and lt.tm_yday == today_yday:
                 req += 1
                 if e.is_rate_limit:
                     rl += 1
+                    if e.rate_limit_category:
+                        rl_by_category[e.rate_limit_category] = rl_by_category.get(e.rate_limit_category, 0) + 1
                 elif e.is_error:
                     err += 1
                 else:
@@ -501,6 +516,7 @@ class RateLimitAnalyzer:
             "today_requests": req,
             "today_success": succ,
             "today_rate_limits": rl,
+            "today_rate_limits_by_category": rl_by_category,
             "today_errors": err,
             "success_rate": success_rate,
             "last_request_ts": last_request_ts or None,
