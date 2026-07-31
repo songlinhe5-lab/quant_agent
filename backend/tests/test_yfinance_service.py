@@ -20,7 +20,16 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pandas as pd
 import pytest
-from yfinance import YfData
+# 🔧 yfinance 新版不再从顶层导出 YfData（import 会在 collection 阶段直接抛 ImportError）。
+# 逐级降级导入：优先顶层，失败再走子模块，确保对各版本 yfinance 兼容，
+# 且与 service.py 中 `yf.YfData` 指向同一类对象（patch.object 才能命中真实缓存）。
+try:
+    from yfinance import YfData
+except ImportError:
+    try:
+        from yfinance.data import YfData
+    except ImportError:
+        from yfinance.utils import YfData
 
 from backend.services.yfinance import (
     RateLimitedSession,
