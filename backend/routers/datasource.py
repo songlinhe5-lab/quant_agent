@@ -304,11 +304,13 @@ async def test_datasource_link(name: str) -> Dict[str, Any]:
         probe_action: str | None = None
         probe_params: dict[str, Any] = {}
         if "quote" in caps:
-            probe_action, probe_params = "quote", {"ticker": _LINK_TEST_TICKER}
+            # 绕过缓存测量真实上游延迟，避免命中 Redis 热缓存后误报 0ms 假阳性
+            probe_action, probe_params = "quote", {"ticker": _LINK_TEST_TICKER, "skip_cache": True}
         elif "WEB_SEARCH" in caps:
             probe_action, probe_params = "WEB_SEARCH", {"query": "quant agent test", "max_results": 1}
         elif "WEB_SCRAPE" in caps:
-            probe_action, probe_params = "WEB_SCRAPE", {"url": "https://example.com"}
+            # 同样绕过缓存测量真实抓取延迟
+            probe_action, probe_params = "WEB_SCRAPE", {"url": "https://example.com", "skip_cache": True}
         if probe_action:
             try:
                 probe_start = time.perf_counter()
