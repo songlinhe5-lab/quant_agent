@@ -15,6 +15,7 @@ from backend.core.circuit_breaker import CircuitBreakerOpenError
 from backend.core.circuit_breaker_integration import fetch_via_breaker_async
 
 from . import ErrorInfo, Result, ResultStatus
+from .call_metrics_store import call_metrics
 from .protocol import DataSourceInterface
 from .registry import rate_limit_registry
 
@@ -153,17 +154,28 @@ class DataSourceRegistry:
             result.latency_ms = latency
 
         if result.status == ResultStatus.RATE_LIMITED or (result.error and result.error.is_rate_limit_type):
-            throttler.on_rate_limit(result.error)
+            # 源已在内部自行记录 throttler 时（如 FinnhubService，Result.self_recorded=True），
+            # 此处跳过 throttler 重复记录，但仍记录 analyzer 计数（含类别拆分）。
+            if not getattr(result, "self_recorded", False):
+                throttler.on_rate_limit(result.error)
             analyzer = rate_limit_registry.get_analyzer(source_name)
-            analyzer.record_rate_limit()
+            analyzer.record_rate_limit(category=(result.error.category if result.error else None))
+            await call_metrics.record_business(
+                source_name, "rate_limited", category=(result.error.category.value if result.error else None)
+            )
         elif result.is_success:
-            throttler.on_success()
+            if not getattr(result, "self_recorded", False):
+                throttler.on_success()
             analyzer = rate_limit_registry.get_analyzer(source_name)
             analyzer.record_success(latency_ms=result.latency_ms)
+            await call_metrics.record_business(source_name, "success")
         else:
             # 非限流错误: 计入健康统计但不触达退避恢复 (COMM-01)
+            if not getattr(result, "self_recorded", False):
+                throttler.on_error()
             analyzer = rate_limit_registry.get_analyzer(source_name)
             analyzer.record_error(latency_ms=result.latency_ms)
+            await call_metrics.record_business(source_name, "error")
 
         return result
 

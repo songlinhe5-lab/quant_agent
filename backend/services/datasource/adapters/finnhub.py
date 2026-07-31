@@ -16,6 +16,7 @@ import time
 from typing import Any, Optional
 
 from backend.services.datasource import (
+    ErrorCategory,
     ErrorInfo,
     HealthInfo,
     RateLimitStatus,
@@ -95,6 +96,7 @@ class FinnhubDataSource:
                 consecutive_rate_limits=rl.consecutive_rate_limits,
                 total_rate_limits_1h=rl.total_rate_limits_1h,
                 backoff_strategy=rl.backoff_strategy,
+                category=rl.category,
             ),
         )
 
@@ -164,7 +166,9 @@ class FinnhubDataSource:
             )
 
         if isinstance(data, dict) and data.get("status") == "success":
-            return Result.make_success(data.get("data"), source=self.name)
+            result = Result.make_success(data.get("data"), source=self.name)
+            result.self_recorded = True  # FinnhubService 已记录 throttler(on_success)
+            return result
         if isinstance(data, dict) and data.get("status") in ("skipped", "unavailable"):
             return Result.make_error(
                 ErrorInfo.normal(
@@ -175,17 +179,33 @@ class FinnhubDataSource:
                 source=self.name,
             )
 
-        # 错误/降级：检查是否限流类（FinnhubService 内部已记录 throttler，此处仅语义化）
-        msg = (data.get("message") if isinstance(data, dict) else "") or "finnhub fetch failed"
-        if any(x in msg for x in ("429", "限流", "Rate limit", "Too Many", "403")):
-            return Result.make_rate_limited(
-                ErrorInfo.rate_limited(code="FINNHUB_RATE_LIMIT", message=msg),
-                source=self.name,
-            )
-        return Result.make_error(
-            ErrorInfo.normal("FINNHUB_FETCH_FAILED", msg, retryable=True),
-            source=self.name,
-        )
+        # 错误/降级：FinnhubService 内部已记录 throttler（含正确类别），此处仅做语义化转换。
+        # 通过 error_category 透传真实类别，避免被关键字误判为 RATE_LIMIT。
+        raw_data = data if isinstance(data, dict) else {}
+        msg = raw_data.get("message") or "finnhub fetch failed"
+        raw_cat = raw_data.get("error_category")
+        is_rl = True
+        if raw_cat == ErrorCategory.IP_BLOCKED.value:
+            err = ErrorInfo.ip_blocked(message=msg)
+        elif raw_cat == ErrorCategory.QUOTA_EXHAUSTED.value:
+            err = ErrorInfo.quota_exhausted(message=msg)
+        elif any(x in msg for x in ("429", "限流", "Rate limit", "Too Many")):
+            err = ErrorInfo.rate_limited(message=msg)
+        elif "403" in msg or "IP_BLOCKED" in msg or "权限拒绝" in msg:
+            err = ErrorInfo.ip_blocked(message=msg)
+        elif "402" in msg or "QUOTA" in msg or "额度" in msg:
+            err = ErrorInfo.quota_exhausted(message=msg)
+        else:
+            err = ErrorInfo.normal("FINNHUB_FETCH_FAILED", msg, retryable=True)
+            is_rl = False
+
+        if is_rl:
+            # 限流类：service 已记录 throttler，标记 self_recorded 避免 registry 重复退避
+            result = Result.make_rate_limited(err, source=self.name)
+            result.self_recorded = True
+        else:
+            result = Result.make_error(err, source=self.name)
+        return result
 
 
 def ensure_finnhub_registered(service: Optional[Any] = None) -> str:

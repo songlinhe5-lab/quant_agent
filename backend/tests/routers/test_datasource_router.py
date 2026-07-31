@@ -11,11 +11,13 @@ RL-06: 推测频率查询 API 端点单测
 - _parse_window_seconds 参数解析
 """
 
+import time
 from unittest.mock import MagicMock
 
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from backend.routers.datasource import _parse_window_seconds
 from backend.services.datasource import rate_limit_registry
@@ -210,6 +212,196 @@ class TestRateLimitOverviewEndpoint:
 
 
 # ─────────────────────────────────────────
+#  _build_health_card status 语义：stale/idle 解耦
+# ─────────────────────────────────────────
+class _FakeThrottlerStatus:
+    def __init__(self, is_throttled=False, category=None):
+        self.is_throttled = is_throttled
+        self.consecutive_rate_limits = 0
+        self.backoff_strategy = "adaptive"
+        self.category = category
+
+
+class _FakeAnalyzer:
+    def __init__(self, metrics):
+        self._metrics = metrics
+
+    def get_health_metrics(self):
+        return self._metrics
+
+
+class _FakeHealth:
+    def __init__(self, connected):
+        self.connected = connected
+        self.healthy = connected
+        self.status = "ok" if connected else "error"
+        self.last_error = None
+
+
+class _FakeSourceHealthOnly:
+    def __init__(self, connected):
+        self.connected = connected
+        self.capabilities = []
+
+    async def health(self):
+        return _FakeHealth(self.connected)
+
+
+class TestHealthCardStatusLogic:
+    """stale(失联) 改由 connected 主信号驱动；超时未调用归为 idle(空闲)。"""
+
+    def _patch(self, client, monkeypatch, connected, last_success_ts, has_success=True):
+        src = _FakeSourceHealthOnly(connected)
+        reg = MagicMock()
+        reg.has.return_value = True
+        reg.get.return_value = src
+        reg.list_names.return_value = ["yfinance"]
+        monkeypatch.setattr("backend.routers.datasource.datasource_registry", reg)
+
+        analyzer = _FakeAnalyzer(
+            {
+                "last_success_ts": last_success_ts,
+                "today_requests": 10,
+                "today_success": 10 if has_success else 0,
+                "today_errors": 0 if has_success else 5,
+                "today_rate_limits": 0,
+                "last_latency_ms": 120.0,
+                "success_rate": 1.0 if has_success else 0.0,
+                "latency_avg_ms": 120.0,
+                "latency_p95_ms": 200.0,
+                "latency_min_ms": 100.0,
+                "latency_max_ms": 300.0,
+                "latency_samples": 10,
+                "last_request_ts": last_success_ts or 0,
+            }
+        )
+        rl_reg = MagicMock()
+        rl_reg.get_throttler.return_value.get_status.return_value = _FakeThrottlerStatus()
+        rl_reg.get_analyzer.return_value = analyzer
+        monkeypatch.setattr("backend.routers.datasource.rate_limit_registry", rl_reg)
+        return rl_reg
+
+    def test_connected_but_idle_is_idle_not_stale(self, client, monkeypatch):
+        """配好且可达但 5 分钟无成功调用 → idle，不再误判 stale(失联)。"""
+        old = time.time() - 1000  # 远超 _STALE_SECONDS(300)
+        self._patch(client, monkeypatch, connected=True, last_success_ts=old)
+        resp = client.get("/api/v1/datasource/health-overview")
+        assert resp.status_code == 200
+        card = next(s for s in resp.json()["sources"] if s["source"] == "yfinance")
+        assert card["connected"] is True
+        assert card["status"] == "idle"
+
+    def test_disconnected_is_stale(self, client, monkeypatch):
+        """健康探针确认不可达(connected=false) → stale(失联)，即使最近有成功调用。"""
+        recent = time.time() - 5
+        self._patch(client, monkeypatch, connected=False, last_success_ts=recent)
+        resp = client.get("/api/v1/datasource/health-overview")
+        assert resp.status_code == 200
+        card = next(s for s in resp.json()["sources"] if s["source"] == "yfinance")
+        assert card["connected"] is False
+        assert card["status"] == "stale"
+
+    def test_throttled_rate_limit_label(self, client, monkeypatch):
+        """真·限流(RATE_LIMIT) → 标签 throttled，rl_category=rate_limit。"""
+        rl_reg = self._patch(client, monkeypatch, connected=True, last_success_ts=time.time())
+        rl_reg.get_throttler.return_value.get_status.return_value = _FakeThrottlerStatus(
+            is_throttled=True, category="rate_limit"
+        )
+        card = next(
+            s for s in client.get("/api/v1/datasource/health-overview").json()["sources"] if s["source"] == "yfinance"
+        )
+        assert card["status"] == "throttled"
+        assert card["rl_category"] == "rate_limit"
+
+    def test_ip_blocked_label_not_throttled(self, client, monkeypatch):
+        """403/IP封禁 → 标签 blocked（不再误标为限流 throttled）。"""
+        rl_reg = self._patch(client, monkeypatch, connected=True, last_success_ts=time.time())
+        rl_reg.get_throttler.return_value.get_status.return_value = _FakeThrottlerStatus(
+            is_throttled=True, category="ip_blocked"
+        )
+        card = next(
+            s for s in client.get("/api/v1/datasource/health-overview").json()["sources"] if s["source"] == "yfinance"
+        )
+        assert card["status"] == "blocked"
+        assert card["rl_category"] == "ip_blocked"
+
+    def test_quota_exhausted_label(self, client, monkeypatch):
+        """402/配额耗尽 → 标签 quota_exhausted。"""
+        rl_reg = self._patch(client, monkeypatch, connected=True, last_success_ts=time.time())
+        rl_reg.get_throttler.return_value.get_status.return_value = _FakeThrottlerStatus(
+            is_throttled=True, category="quota_exhausted"
+        )
+        card = next(
+            s for s in client.get("/api/v1/datasource/health-overview").json()["sources"] if s["source"] == "yfinance"
+        )
+        assert card["status"] == "quota_exhausted"
+        assert card["rl_category"] == "quota_exhausted"
+
+
+class TestThrottlerCategoryBackoff:
+    """按 category 区分退避：真·限流指数自愈；403/IP封禁、402/配额走固定窗口不污染连续计数。"""
+
+    def _t(self):
+        from backend.services.datasource import ErrorInfo
+        from backend.services.datasource.throttler import RateLimitThrottler
+
+        return RateLimitThrottler("finnhub"), ErrorInfo
+
+    def test_rate_limit_compounds_consecutive(self):
+        t, EI = self._t()
+        t.on_rate_limit(EI.rate_limited(message="429"))
+        t.on_rate_limit(EI.rate_limited(message="429"))
+        st = t.get_status()
+        assert st.category == "rate_limit"
+        assert st.is_throttled is True
+        assert t._consecutive_limits == 2
+        assert st.consecutive_rate_limits == 2
+
+    def test_ip_blocked_not_compounding(self):
+        t, EI = self._t()
+        t.on_rate_limit(EI.ip_blocked(message="403"))
+        t.on_rate_limit(EI.ip_blocked(message="403"))
+        st = t.get_status()
+        assert st.category == "ip_blocked"
+        assert st.is_throttled is True
+        # 封禁不污染 RATE_LIMIT 连续计数，仅累计 block_events
+        assert t._consecutive_limits == 0
+        assert t._block_events == 2
+        assert st.consecutive_rate_limits == 2
+
+    def test_quota_exhausted_labeled(self):
+        t, EI = self._t()
+        t.on_rate_limit(EI.quota_exhausted(message="402"))
+        st = t.get_status()
+        assert st.category == "quota_exhausted"
+        assert st.is_throttled is True
+
+
+# ─────────────────────────────────────────
+#  WS /ws/health 鉴权一致性
+# ─────────────────────────────────────────
+
+
+class TestHealthWsAuth:
+    """WS 鉴权必须与 access token 签名密钥(SECRET_KEY) 一致，否则全部 4401。"""
+
+    def test_ws_rejects_invalid_token(self, client):
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with client.websocket_connect("/api/v1/datasource/ws/health?token=invalid.token.here"):
+                pass
+        assert exc.value.code == 4401
+
+    def test_ws_accepts_valid_access_token(self, client):
+        from backend.routers.auth import create_access_token
+
+        token = create_access_token({"sub": "test-user"})
+        with client.websocket_connect(f"/api/v1/datasource/ws/health?token={token}") as ws:
+            data = ws.receive_json()
+            assert data["type"] == "overview"
+            assert "sources" in data
+
+
+# ─────────────────────────────────────────
 #  POST /{name}/test-link 主动链接探测
 # ─────────────────────────────────────────
 
@@ -264,7 +456,7 @@ class _FakeSourceCaptureParams:
 
 class TestLinkTestSkipCache:
     def test_quote_probe_passes_skip_cache(self, client, monkeypatch):
-        """quote 探针必须透传 skip_cache=True，否则会命中 Redis 热缓存误报 0ms。"""
+        """quote 探针必须透传 skip_cache=True 与 ttl，否则会命中缓存误报 0ms 或抛 TypeError 静默失败。"""
         src = _FakeSourceCaptureParams(capabilities=["quote"])
         reg = MagicMock()
         reg.get.return_value = src
@@ -275,6 +467,8 @@ class TestLinkTestSkipCache:
         assert src.last_action == "quote"
         assert src.last_params.get("skip_cache") is True
         assert src.last_params.get("ticker") == "AAPL"
+        # ttl 是 fetch_yf_data 的必填位置参数，缺失会导致探针抛 TypeError 被静默吞掉
+        assert src.last_params.get("ttl") == 60
 
     def test_web_scrape_probe_passes_skip_cache(self, client, monkeypatch):
         """WEB_SCRAPE 探针同样透传 skip_cache=True。"""
@@ -310,6 +504,34 @@ class TestLinkTestSkipCache:
         resp = client.post("/api/v1/datasource/fred/test-link")
         assert resp.status_code == 200
         assert src.last_action == "economic_calendar"
+        assert src.last_params.get("skip_cache") is True
+        assert src.last_params.get("days_ahead") == 1
+
+    def test_futu_probe_uses_declared_uppercase_quote(self, client, monkeypatch):
+        """futu 声明大写 QUOTE，此前因探针查小写 'quote' 被漏掉 → 永远 health()≈0；现应发 QUOTE 探针。"""
+        src = _FakeSourceCaptureParams(capabilities=["QUOTE", "HISTORY", "FUND_FLOW"])
+        reg = MagicMock()
+        reg.get.return_value = src
+        monkeypatch.setattr("backend.routers.datasource.datasource_registry", reg)
+
+        resp = client.post("/api/v1/datasource/futu/test-link")
+        assert resp.status_code == 200
+        # 必须用适配器声明的大小写(QUOTE)，否则 futu.fetch 大小写敏感会拒 UNSUPPORTED_ACTION
+        assert src.last_action == "QUOTE"
+        assert src.last_params.get("ticker") == "AAPL"
+        assert src.last_params.get("skip_cache") is True
+        assert src.last_params.get("ttl") == 60
+
+    def test_akshare_probe_uses_declared_uppercase_economic_calendar(self, client, monkeypatch):
+        """akshare 声明大写 ECONOMIC_CALENDAR，此前因探针查小写被漏掉 → 永远 health()≈0；现应发探针。"""
+        src = _FakeSourceCaptureParams(capabilities=["FUND_FLOW", "ECONOMIC_CALENDAR"])
+        reg = MagicMock()
+        reg.get.return_value = src
+        monkeypatch.setattr("backend.routers.datasource.datasource_registry", reg)
+
+        resp = client.post("/api/v1/datasource/akshare/test-link")
+        assert resp.status_code == 200
+        assert src.last_action == "ECONOMIC_CALENDAR"
         assert src.last_params.get("skip_cache") is True
         assert src.last_params.get("days_ahead") == 1
 

@@ -14,9 +14,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.core.database import SessionLocal
+from backend.core.database import Base, SessionLocal, engine
 from backend.core.models import Order
 from backend.routers import oms as oms_router
+
+# 🔧 同 test_router_oms.py：幂等建表，确保 Order/AuditLog 表存在（否则路由 log_audit 500）。
+Base.metadata.create_all(bind=engine)
 
 
 def _mem_redis():

@@ -20,6 +20,9 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pandas as pd
 import pytest
+from yfinance.data import (
+    YfData,  # 🔧 yfinance 新版不再从顶层导出 YfData（顶层 import 会在 collection 阶段 ImportError），统一从子模块导入，与 service.py 的 yf.YfData 指向同一对象
+)
 
 from backend.services.yfinance import (
     RateLimitedSession,
@@ -347,6 +350,36 @@ class TestYFinanceService:
                 success, data, msg = await service.fetch_yf_data(ticker, fetch_type, ttl=300)
                 # Should try to fetch new data since cache is expired
                 assert success is True or success is False  # Just check it doesn't crash
+
+    @pytest.mark.asyncio
+    async def test_fetch_yf_data_skip_cache_bypasses_l1_and_clears_lru(self, service):
+        """skip_cache=True 必须绕过 L1 热缓存并清空 yfinance 进程内 lru，强制真实上游探测。
+
+        否则常查标的(AAPL)会被 yfinance 的 YfData.cache_get lru 秒回，
+        link-test 测不出真实延迟（且此前因缺 ttl 会抛 TypeError 静默失败）。
+        """
+        ticker = "AAPL"
+        fetch_type = "info"
+        cache_key = f"yf_{fetch_type}_{format_yf_ticker(ticker)}"
+        # 预置热 L1 缓存（price=150），若 skip_cache 未生效会错误命中它
+        service._cache[cache_key] = (time.time(), {"symbol": "AAPL", "price": 150.0})
+
+        with (
+            patch("yfinance.Ticker") as mock_ticker,
+            patch("yfinance.download") as mock_download,
+            patch.object(YfData.cache_get, "cache_clear") as mock_clear,
+        ):
+            mock_instance = MagicMock()
+            mock_instance.info = {"symbol": "AAPL", "price": 155.0}  # fresh 值
+            mock_ticker.return_value = mock_instance
+            mock_download.return_value = pd.DataFrame({"Close": [150, 151, 152]})
+
+            success, data, msg = await service.fetch_yf_data(ticker, fetch_type, ttl=60, skip_cache=True)
+            assert success is True
+            # 必须绕过 L1（取到的是 fresh 155，而非缓存 150）
+            assert data["price"] == 155.0
+            # 必须触发 yfinance 进程内 lru 清空
+            mock_clear.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_fetch_yf_data_error_cache(self, service):
