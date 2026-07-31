@@ -423,6 +423,7 @@ def parse_retry_after(response_headers: Optional[dict]) -> Optional[float]:
 #  退避引擎 / 频率分析器 / 双 Registry（BE-ARCH-04）
 # ─────────────────────────────────────────
 from .analyzer import RateLimitAnalysis, RateLimitAnalyzer  # noqa: E402
+from .call_metrics_store import CallMetricsStore, call_metrics  # noqa: E402
 from .protocol import DataSourceInterface  # noqa: E402
 from .registry import RateLimitRegistry, rate_limit_registry  # noqa: E402
 from .source_registry import DataSourceRegistry, datasource_registry  # noqa: E402
@@ -456,4 +457,7 @@ __all__ = [
     # 源实例 Registry（DataSourceInterface）
     "DataSourceRegistry",
     "datasource_registry",
+    # 今日调用聚合计数（Redis 持久化）
+    "CallMetricsStore",
+    "call_metrics",
 ]

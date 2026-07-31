@@ -10,7 +10,11 @@ import httpx
 
 from backend.core.middleware import httpx_log_request, httpx_log_response
 from backend.core.redis_client import redis_client
-from backend.services.datasource import rate_limit_registry  # SVC-08 限流感知
+from backend.services.datasource import (  # SVC-08 限流感知
+    ErrorCategory,
+    ErrorInfo,
+    rate_limit_registry,
+)
 
 
 class FinnhubService:
@@ -34,8 +38,6 @@ class FinnhubService:
 
         区分 403(IP封禁)/402(配额耗尽)/429(限流) 以触发不同退避策略，并返回类别供结果透传。
         """
-        from backend.services.datasource import ErrorCategory, ErrorInfo
-
         if status_code == 403:
             category = ErrorCategory.IP_BLOCKED
         elif status_code == 402:

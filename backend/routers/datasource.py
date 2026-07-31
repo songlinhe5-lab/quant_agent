@@ -27,7 +27,7 @@ from jose import jwt as _jwt
 from backend.core.logger import logger
 from backend.routers.auth import ALGORITHM as _JWT_ALGORITHM
 from backend.routers.auth import SECRET_KEY as _AUTH_SECRET_KEY
-from backend.services.datasource import ErrorCategory, datasource_registry, rate_limit_registry
+from backend.services.datasource import ErrorCategory, call_metrics, datasource_registry, rate_limit_registry
 
 router = APIRouter(prefix="/datasource", tags=["DataSource Rate Limit"])
 
@@ -199,6 +199,23 @@ async def _build_health_card(name: str) -> Dict[str, Any]:
     analyzer = rate_limit_registry.get_analyzer(name)
     rl_status = throttler.get_status()
     metrics = analyzer.get_health_metrics()
+    # 优先采用 Redis 持久化「今日」聚合计数（重启不丢、不受 1 万上限约束）；
+    # Redis 不可用时回退到 analyzer 内存口径（重启清零），保证看板始终可渲染。
+    redis_metrics = await call_metrics.get_today(name)
+    if redis_metrics is not None:
+        disp_calls = redis_metrics["calls"]
+        disp_success_rate = redis_metrics["success_rate"]
+        disp_rl_count = redis_metrics["rate_limit_count"]
+        disp_rl_breakdown = redis_metrics["rl_breakdown"]
+        probe_calls = redis_metrics["probe_calls"]
+        metric_source = "redis"
+    else:
+        disp_calls = metrics["today_requests"]
+        disp_success_rate = metrics["success_rate"]
+        disp_rl_count = metrics["today_rate_limits"]
+        disp_rl_breakdown = metrics.get("today_rate_limits_by_category", {})
+        probe_calls = None
+        metric_source = "memory"
     mounted = datasource_registry.has(name)
     # 取首个 available 实例（is_available 已反映真实 key/连通），无则无法感知真实健康
     source = datasource_registry.get(name)
@@ -240,11 +257,13 @@ async def _build_health_card(name: str) -> Dict[str, Any]:
         "status": status,
         "connected": connected,
         "latency_ms": metrics["last_latency_ms"],
-        "today_calls": metrics["today_requests"],
-        "success_rate": metrics["success_rate"],
-        "rate_limit_count": metrics["today_rate_limits"],
+        "today_calls": disp_calls,
+        "success_rate": disp_success_rate,
+        "rate_limit_count": disp_rl_count,
         "rl_category": rl_status.category,
-        "rl_breakdown": metrics.get("today_rate_limits_by_category", {}),
+        "rl_breakdown": disp_rl_breakdown,
+        "probe_calls": probe_calls,
+        "metric_source": metric_source,
         "last_request_ts": metrics["last_request_ts"],
         "last_success_ts": metrics["last_success_ts"],
         "is_throttled": rl_status.is_throttled,
@@ -357,6 +376,7 @@ async def test_datasource_link(name: str) -> Dict[str, Any]:
                 error = f"主动探测失败（被动健康仍有效）: {pe}"
 
         rate_limit_registry.get_analyzer(name).record_request(is_error=not connected, latency_ms=latency_ms)
+        await call_metrics.record_probe(name, success=connected)
         return {
             "source": name,
             "connected": connected,
@@ -371,6 +391,7 @@ async def test_datasource_link(name: str) -> Dict[str, Any]:
     except Exception as e:
         latency_ms = round((time.perf_counter() - start) * 1000, 2)
         rate_limit_registry.get_analyzer(name).record_request(is_error=True, latency_ms=latency_ms)
+        await call_metrics.record_probe(name, success=False)
         return {
             "source": name,
             "connected": False,

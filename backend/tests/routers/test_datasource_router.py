@@ -221,11 +221,6 @@ class _FakeThrottlerStatus:
         self.category = category
 
 
-class _FakeThrottler:
-    def get_status(self):
-        return _FakeThrottlerStatus()
-
-
 class _FakeAnalyzer:
     def __init__(self, metrics):
         self._metrics = metrics
@@ -244,10 +239,11 @@ class _FakeHealth:
 
 class _FakeSourceHealthOnly:
     def __init__(self, connected):
+        self.connected = connected
         self.capabilities = []
 
-    def health(self):
-        return _FakeHealth(connected)
+    async def health(self):
+        return _FakeHealth(self.connected)
 
 
 class TestHealthCardStatusLogic:
@@ -279,7 +275,7 @@ class TestHealthCardStatusLogic:
             }
         )
         rl_reg = MagicMock()
-        rl_reg.get_throttler.return_value = _FakeThrottler()
+        rl_reg.get_throttler.return_value.get_status.return_value = _FakeThrottlerStatus()
         rl_reg.get_analyzer.return_value = analyzer
         monkeypatch.setattr("backend.routers.datasource.rate_limit_registry", rl_reg)
         return rl_reg
@@ -288,7 +284,7 @@ class TestHealthCardStatusLogic:
         """配好且可达但 5 分钟无成功调用 → idle，不再误判 stale(失联)。"""
         old = time.time() - 1000  # 远超 _STALE_SECONDS(300)
         self._patch(client, monkeypatch, connected=True, last_success_ts=old)
-        resp = client.get("/api/v1/datasource/rate-limit-overview")
+        resp = client.get("/api/v1/datasource/health-overview")
         assert resp.status_code == 200
         card = next(s for s in resp.json()["sources"] if s["source"] == "yfinance")
         assert card["connected"] is True
@@ -298,7 +294,7 @@ class TestHealthCardStatusLogic:
         """健康探针确认不可达(connected=false) → stale(失联)，即使最近有成功调用。"""
         recent = time.time() - 5
         self._patch(client, monkeypatch, connected=False, last_success_ts=recent)
-        resp = client.get("/api/v1/datasource/rate-limit-overview")
+        resp = client.get("/api/v1/datasource/health-overview")
         assert resp.status_code == 200
         card = next(s for s in resp.json()["sources"] if s["source"] == "yfinance")
         assert card["connected"] is False
@@ -311,9 +307,7 @@ class TestHealthCardStatusLogic:
             is_throttled=True, category="rate_limit"
         )
         card = next(
-            s
-            for s in client.get("/api/v1/datasource/rate-limit-overview").json()["sources"]
-            if s["source"] == "yfinance"
+            s for s in client.get("/api/v1/datasource/health-overview").json()["sources"] if s["source"] == "yfinance"
         )
         assert card["status"] == "throttled"
         assert card["rl_category"] == "rate_limit"
@@ -325,9 +319,7 @@ class TestHealthCardStatusLogic:
             is_throttled=True, category="ip_blocked"
         )
         card = next(
-            s
-            for s in client.get("/api/v1/datasource/rate-limit-overview").json()["sources"]
-            if s["source"] == "yfinance"
+            s for s in client.get("/api/v1/datasource/health-overview").json()["sources"] if s["source"] == "yfinance"
         )
         assert card["status"] == "blocked"
         assert card["rl_category"] == "ip_blocked"
@@ -339,9 +331,7 @@ class TestHealthCardStatusLogic:
             is_throttled=True, category="quota_exhausted"
         )
         card = next(
-            s
-            for s in client.get("/api/v1/datasource/rate-limit-overview").json()["sources"]
-            if s["source"] == "yfinance"
+            s for s in client.get("/api/v1/datasource/health-overview").json()["sources"] if s["source"] == "yfinance"
         )
         assert card["status"] == "quota_exhausted"
         assert card["rl_category"] == "quota_exhausted"
