@@ -7,6 +7,7 @@ import time
 from typing import Any, Dict, Tuple
 
 import yfinance as yf
+from yfinance.data import YfData  # 🔧 新版 yfinance 不再从顶层导出 YfData，统一从子模块导入（yf.YfData 在 1.x 已失效）
 
 from backend.core.circuit_breaker import CircuitBreakerOpenError, get_circuit_breaker, get_cooldown_seconds
 from backend.core.graceful_executor import GracefulExecutor
@@ -285,7 +286,7 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
             # 强制走真实上游网络。否则常查标的(AAPL)会被该 lru 秒回，链接测试测不出真实延迟。
             # 链接测试为低频人工操作，清空全局 lru 的瞬时影响可忽略（随即自愈）。
             try:
-                yf.YfData.cache_get.cache_clear()
+                YfData.cache_get.cache_clear()
             except Exception:
                 pass
 
