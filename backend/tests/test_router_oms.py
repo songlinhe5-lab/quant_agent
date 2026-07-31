@@ -18,6 +18,12 @@ from fastapi.testclient import TestClient
 from backend.main import app
 from backend.workers.oms.algo_engine import AlgoOrder
 
+# 🔧 OMS 路由依赖真实 get_db（全局 SQLite 引擎），log_audit/Order 操作需要表存在。
+# 幂等建表，避免依赖外部 migration / 全局 DB 文件偶然状态（否则本地重跑易 500: no such table）。
+from backend.core.database import Base, engine  # noqa: E402
+from backend.core import models  # noqa: E402,F401 注册全部表（Order/AuditLog 等）
+Base.metadata.create_all(bind=engine)
+
 
 @pytest.fixture
 def client():
