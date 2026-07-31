@@ -441,7 +441,11 @@ async def datasource_health_ws(websocket: WebSocket) -> None:
     try:
         while True:
             names = datasource_registry.list_names()
-            cards = [_build_health_card(n) for n in names]
+            # 🔧 修复：_build_health_card 是 async 函数，必须用 asyncio.gather 并发 await，
+            # 否则同步列表推导得到的是 coroutine 对象，json.dumps 序列化时抛
+            # TypeError(coroutine is not JSON serializable) → WS 静默断开 → 测试收不到 overview。
+            # （GET /health-overview 用的是正确的 asyncio.gather，此处漏了）
+            cards = await asyncio.gather(*[_build_health_card(n) for n in names])
             alerts: List[Dict[str, Any]] = []
             for c in cards:
                 prev = last_status.get(c["source"])
