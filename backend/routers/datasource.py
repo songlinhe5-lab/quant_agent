@@ -304,8 +304,9 @@ async def test_datasource_link(name: str) -> Dict[str, Any]:
         probe_action: str | None = None
         probe_params: dict[str, Any] = {}
         if "quote" in caps:
-            # 绕过缓存测量真实上游延迟，避免命中 Redis 热缓存后误报 0ms 假阳性
-            probe_action, probe_params = "quote", {"ticker": _LINK_TEST_TICKER, "skip_cache": True}
+            # 绕过缓存测量真实上游延迟，避免命中 Redis 热缓存后误报 0ms 假阳性。
+            # 必须传 ttl：fetch_yf_data 的 ttl 是必填位置参数，缺失会抛 TypeError 导致探针静默失败。
+            probe_action, probe_params = "quote", {"ticker": _LINK_TEST_TICKER, "skip_cache": True, "ttl": 60}
         elif "WEB_SEARCH" in caps:
             probe_action, probe_params = "WEB_SEARCH", {"query": "quant agent test", "max_results": 1}
         elif "WEB_SCRAPE" in caps:

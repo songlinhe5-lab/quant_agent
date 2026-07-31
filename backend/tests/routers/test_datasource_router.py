@@ -264,7 +264,7 @@ class _FakeSourceCaptureParams:
 
 class TestLinkTestSkipCache:
     def test_quote_probe_passes_skip_cache(self, client, monkeypatch):
-        """quote 探针必须透传 skip_cache=True，否则会命中 Redis 热缓存误报 0ms。"""
+        """quote 探针必须透传 skip_cache=True 与 ttl，否则会命中缓存误报 0ms 或抛 TypeError 静默失败。"""
         src = _FakeSourceCaptureParams(capabilities=["quote"])
         reg = MagicMock()
         reg.get.return_value = src
@@ -275,6 +275,8 @@ class TestLinkTestSkipCache:
         assert src.last_action == "quote"
         assert src.last_params.get("skip_cache") is True
         assert src.last_params.get("ticker") == "AAPL"
+        # ttl 是 fetch_yf_data 的必填位置参数，缺失会导致探针抛 TypeError 被静默吞掉
+        assert src.last_params.get("ttl") == 60
 
     def test_web_scrape_probe_passes_skip_cache(self, client, monkeypatch):
         """WEB_SCRAPE 探针同样透传 skip_cache=True。"""

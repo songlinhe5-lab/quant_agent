@@ -260,24 +260,34 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
             return False, None, result.get("message", "路由器：数据获取失败")
 
         yf_ticker = format_yf_ticker(ticker)
+        skip_cache = bool(kwargs.get("skip_cache"))
         cache_key = f"yf_{fetch_type}_{yf_ticker}" + (
             "_" + "_".join([f"{k}_{v}" for k, v in kwargs.items()]) if kwargs else ""
         )
 
-        # 💡 检查 L1 缓存
-        if cache_key in self._cache:
-            ts, cached_data = self._cache[cache_key]
-            if time.time() - ts < ttl:
-                return True, cached_data, ""
+        if not skip_cache:
+            # 💡 检查 L1 缓存
+            if cache_key in self._cache:
+                ts, cached_data = self._cache[cache_key]
+                if time.time() - ts < ttl:
+                    return True, cached_data, ""
 
-        # 💡 检查错误黑名单缓存
-        if cache_key in self._error_cache:
-            ts = self._error_cache[cache_key]
-            if time.time() - ts < _YF_ERROR_CACHE_TTL:
-                return False, None, "限流冷却中（错误黑名单）"
-            else:
-                # 过期则清理
-                self._error_cache.pop(cache_key, None)
+            # 💡 检查错误黑名单缓存
+            if cache_key in self._error_cache:
+                ts = self._error_cache[cache_key]
+                if time.time() - ts < _YF_ERROR_CACHE_TTL:
+                    return False, None, "限流冷却中（错误黑名单）"
+                else:
+                    # 过期则清理
+                    self._error_cache.pop(cache_key, None)
+        else:
+            # 🚨 真实探测模式：清空 yfinance 进程内 lru 缓存(YfData.cache_get)，
+            # 强制走真实上游网络。否则常查标的(AAPL)会被该 lru 秒回，链接测试测不出真实延迟。
+            # 链接测试为低频人工操作，清空全局 lru 的瞬时影响可忽略（随即自愈）。
+            try:
+                yf.YfData.cache_get.cache_clear()
+            except Exception:
+                pass
 
         # 🚨 使用统一熔断器：cb.call() 会自动处理 OPEN/HALF_OPEN 状态
         try:
