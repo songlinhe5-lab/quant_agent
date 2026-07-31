@@ -311,6 +311,10 @@ async def test_datasource_link(name: str) -> Dict[str, Any]:
         elif "WEB_SCRAPE" in caps:
             # 同样绕过缓存测量真实抓取延迟
             probe_action, probe_params = "WEB_SCRAPE", {"url": "https://example.com", "skip_cache": True}
+        elif "economic_calendar" in caps or "macro_series" in caps:
+            # 宏观源(fred/dbnomics/rbi)此前无探针分支 → 永远显示 health()≈0；
+            # 现发真实上游探针并绕过缓存，使其延迟可感知
+            probe_action, probe_params = "economic_calendar", {"days_ahead": 1, "skip_cache": True}
         if probe_action:
             try:
                 probe_start = time.perf_counter()
