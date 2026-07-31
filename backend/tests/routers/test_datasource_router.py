@@ -315,6 +315,34 @@ class TestLinkTestSkipCache:
         assert src.last_params.get("skip_cache") is True
         assert src.last_params.get("days_ahead") == 1
 
+    def test_futu_probe_uses_declared_uppercase_quote(self, client, monkeypatch):
+        """futu 声明大写 QUOTE，此前因探针查小写 'quote' 被漏掉 → 永远 health()≈0；现应发 QUOTE 探针。"""
+        src = _FakeSourceCaptureParams(capabilities=["QUOTE", "HISTORY", "FUND_FLOW"])
+        reg = MagicMock()
+        reg.get.return_value = src
+        monkeypatch.setattr("backend.routers.datasource.datasource_registry", reg)
+
+        resp = client.post("/api/v1/datasource/futu/test-link")
+        assert resp.status_code == 200
+        # 必须用适配器声明的大小写(QUOTE)，否则 futu.fetch 大小写敏感会拒 UNSUPPORTED_ACTION
+        assert src.last_action == "QUOTE"
+        assert src.last_params.get("ticker") == "AAPL"
+        assert src.last_params.get("skip_cache") is True
+        assert src.last_params.get("ttl") == 60
+
+    def test_akshare_probe_uses_declared_uppercase_economic_calendar(self, client, monkeypatch):
+        """akshare 声明大写 ECONOMIC_CALENDAR，此前因探针查小写被漏掉 → 永远 health()≈0；现应发探针。"""
+        src = _FakeSourceCaptureParams(capabilities=["FUND_FLOW", "ECONOMIC_CALENDAR"])
+        reg = MagicMock()
+        reg.get.return_value = src
+        monkeypatch.setattr("backend.routers.datasource.datasource_registry", reg)
+
+        resp = client.post("/api/v1/datasource/akshare/test-link")
+        assert resp.status_code == 200
+        assert src.last_action == "ECONOMIC_CALENDAR"
+        assert src.last_params.get("skip_cache") is True
+        assert src.last_params.get("days_ahead") == 1
+
 
 class TestLinkTestEndpoint:
     def test_link_test_active_probe_ok(self, client, monkeypatch):

@@ -303,19 +303,29 @@ async def test_datasource_link(name: str) -> Dict[str, Any]:
         caps = getattr(source, "capabilities", []) or []
         probe_action: str | None = None
         probe_params: dict[str, Any] = {}
-        if "quote" in caps:
+        # 大小写不敏感匹配：适配器 capabilities 约定不统一(futu/akshare 用大写，
+        # yfinance/macro 用小写)。若直接用小写 "quote"/"economic_calendar" 判断，
+        # futu(QUOTE)/akshare(ECONOMIC_CALENDAR) 会被漏掉 → 永远回退 health()≈0。
+        # 同时用适配器【声明的大小写】作为 action，避免 futu 等 fetch 对 action 大小写敏感而
+        # 直接返回 UNSUPPORTED_ACTION。
+        caps_upper = {c.upper(): c for c in caps}
+        if "QUOTE" in caps_upper:
             # 绕过缓存测量真实上游延迟，避免命中 Redis 热缓存后误报 0ms 假阳性。
             # 必须传 ttl：fetch_yf_data 的 ttl 是必填位置参数，缺失会抛 TypeError 导致探针静默失败。
-            probe_action, probe_params = "quote", {"ticker": _LINK_TEST_TICKER, "skip_cache": True, "ttl": 60}
-        elif "WEB_SEARCH" in caps:
-            probe_action, probe_params = "WEB_SEARCH", {"query": "quant agent test", "max_results": 1}
-        elif "WEB_SCRAPE" in caps:
+            probe_action = caps_upper["QUOTE"]
+            probe_params = {"ticker": _LINK_TEST_TICKER, "skip_cache": True, "ttl": 60}
+        elif "WEB_SEARCH" in caps_upper:
+            probe_action = caps_upper["WEB_SEARCH"]
+            probe_params = {"query": "quant agent test", "max_results": 1}
+        elif "WEB_SCRAPE" in caps_upper:
             # 同样绕过缓存测量真实抓取延迟
-            probe_action, probe_params = "WEB_SCRAPE", {"url": "https://example.com", "skip_cache": True}
-        elif "economic_calendar" in caps or "macro_series" in caps:
-            # 宏观源(fred/dbnomics/rbi)此前无探针分支 → 永远显示 health()≈0；
-            # 现发真实上游探针并绕过缓存，使其延迟可感知
-            probe_action, probe_params = "economic_calendar", {"days_ahead": 1, "skip_cache": True}
+            probe_action = caps_upper["WEB_SCRAPE"]
+            probe_params = {"url": "https://example.com", "skip_cache": True}
+        elif "ECONOMIC_CALENDAR" in caps_upper or "MACRO_SERIES" in caps_upper:
+            # 宏观源(fred/dbnomics/rbi/finnhub)与 akshare 的真实上游探针并绕过缓存，
+            # 使其延迟可感知（此前因大小写漏掉 akshare，永远 health()≈0）
+            probe_action = caps_upper.get("ECONOMIC_CALENDAR") or caps_upper.get("MACRO_SERIES")
+            probe_params = {"days_ahead": 1, "skip_cache": True}
         if probe_action:
             try:
                 probe_start = time.perf_counter()
