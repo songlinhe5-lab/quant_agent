@@ -300,6 +300,19 @@ class TestLinkTestSkipCache:
         assert src.last_action == "WEB_SEARCH"
         assert src.last_params.get("query") == "quant agent test"
 
+    def test_macro_probe_runs_economic_calendar(self, client, monkeypatch):
+        """宏观源(fred/dbnomics/rbi) 此前无探针分支 → 永远 0 延迟；现应发 economic_calendar 探针。"""
+        src = _FakeSourceCaptureParams(capabilities=["macro_series", "economic_calendar"])
+        reg = MagicMock()
+        reg.get.return_value = src
+        monkeypatch.setattr("backend.routers.datasource.datasource_registry", reg)
+
+        resp = client.post("/api/v1/datasource/fred/test-link")
+        assert resp.status_code == 200
+        assert src.last_action == "economic_calendar"
+        assert src.last_params.get("skip_cache") is True
+        assert src.last_params.get("days_ahead") == 1
+
 
 class TestLinkTestEndpoint:
     def test_link_test_active_probe_ok(self, client, monkeypatch):
