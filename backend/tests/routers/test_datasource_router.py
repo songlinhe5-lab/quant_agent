@@ -17,6 +17,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from backend.routers.datasource import _parse_window_seconds
 from backend.services.datasource import rate_limit_registry
@@ -379,7 +380,6 @@ class TestThrottlerCategoryBackoff:
 # ─────────────────────────────────────────
 #  WS /ws/health 鉴权一致性
 # ─────────────────────────────────────────
-from starlette.websockets import WebSocketDisconnect
 
 
 class TestHealthWsAuth:
