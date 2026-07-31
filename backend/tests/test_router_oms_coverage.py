@@ -19,7 +19,6 @@ from backend.core.models import Order
 from backend.routers import oms as oms_router
 
 # 🔧 同 test_router_oms.py：幂等建表，确保 Order/AuditLog 表存在（否则路由 log_audit 500）。
-from backend.core import models  # noqa: F401 注册全部表
 Base.metadata.create_all(bind=engine)
 
 
