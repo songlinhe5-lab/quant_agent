@@ -27,7 +27,7 @@ services:
     environment:
       <<: *common-env
       # data_subservice 节点身份
-      DS_NODE_ID: ${DS_NODE_ID:-cn-slave-bj}
+      DS_NODE_ID: ${DS_NODE_ID:-bj-slave}
       DS_REGION: "cn-bj"
       DS_CAPABILITIES: "tushare,akshare,yfinance"
       DS_NODE_PORT: "8000"

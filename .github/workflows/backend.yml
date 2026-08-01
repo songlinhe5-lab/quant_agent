@@ -1,8 +1,8 @@
 name: Deploy Backend (US-MASTER + 4 Data Nodes)
 
 # 触发策略:
-#   - push develop : 仅构建校验 (build + 推镜像)，不部署
-#   - PR (合入 main) : 构建 + 自动部署到 5 个节点
+#   - push develop : 仅构建校验 (build + 推镜像)，绝不部署
+#   - PR (目标 main) : 构建 + 自动部署到 5 个 VPS 节点
 on:
   push:
     branches: [ develop ]
@@ -25,20 +25,20 @@ jobs:
     outputs:
       image_tag: ${{ steps.meta.outputs.tags }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build & push backend image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
@@ -61,20 +61,20 @@ jobs:
     outputs:
       image_tag: ${{ steps.meta.outputs.tags }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build & push data-subservice image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./data_subservice/Dockerfile
@@ -90,33 +90,115 @@ jobs:
   # 部署 US-MASTER (主节点)
   # ----------------------------------------------------------------
   deploy-master:
-    if: github.event_name == 'pull_request'
+    # 仅在 PR 目标分支为 main 时部署；push develop / 其他 PR 均跳过 (不部署)
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     needs: [ build ]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup SSH
         uses: ./.github/actions/ssh-preflight
         with:
           host: ${{ secrets.VPS_S1_HOST }}
 
+      - name: Stage SSH key
+        run: |
+          printf '%s\n' "${{ secrets.VPS_S1_SSH_KEY }}" > "$RUNNER_TEMP/id_ed25519"
+          chmod 600 "$RUNNER_TEMP/id_ed25519"
+
       - name: Deploy
         env:
           VPS_HOST: ${{ secrets.VPS_S1_HOST }}
           VPS_USER: ${{ secrets.VPS_S1_USER }}
           VPS_PORT: ${{ secrets.VPS_S1_PORT || '22' }}
+          MASTER_TS_IP: ${{ secrets.VPS_S1_TAILSCALE_IP }}
+          REDIS_PWD: ${{ secrets.REDIS_PASSWORD }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_NAME: ${{ secrets.DB_NAME }}
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<EOF
+          ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<'EOF'
             set -e
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             cd /opt/quant-agent
+
+            # ⚠️ 主节点 .env 由运维手动维护。
+            #    仅当 .env 完全不存在时，参考仓库 .env.example 首次生成 (cp 模板)，
+            #    并补入 compose 必需的 TAILSCALE_IP (模板无此项)。生成后一律沿用人工配置，CI 不再触碰。
+            if [ ! -f .env ]; then
+              if [ -f .env.example ]; then
+                echo "🆕 未检测到主节点 .env，参考 .env.example 首次生成"
+                cp .env.example .env
+              else
+                echo "🆕 未检测到主节点 .env，且仓库无 .env.example，用最小兜底生成"
+                printf '%s\n' 'QUANT_ENV=production' > .env
+              fi
+              # TAILSCALE_IP 为 compose 端口绑定必需项，真实值仅在 GitHub Secret，
+              # 首次生成后强制用真实 TS IP 覆盖 (无论模板是否已含占位行)
+              if [ -n "${{ secrets.VPS_S1_TAILSCALE_IP }}" ]; then
+                if grep -q '^TAILSCALE_IP=' .env; then
+                  sed -i "s|^TAILSCALE_IP=.*|TAILSCALE_IP=${{ secrets.VPS_S1_TAILSCALE_IP }}|" .env
+                else
+                  printf 'TAILSCALE_IP=%s\n' "${{ secrets.VPS_S1_TAILSCALE_IP }}" >> .env
+                fi
+              fi
+              echo "✅ 主节点 .env 已生成，请按需手动补填真实密钥/密码后再部署"
+            else
+              echo "🛡️ 检测到已存在的主节点 .env，完全保留人工配置，CI 不触碰"
+            fi
+
+            # 脱敏校验: 仅只读检查 TAILSCALE_IP 是否已在 .env 中配置，不写任何文件
+            TS_VAL=""
+            if grep -q '^TAILSCALE_IP=.' .env 2>/dev/null; then
+              TS_VAL=$(grep '^TAILSCALE_IP=' .env | cut -d'=' -f2)
+            fi
+            if [ -n "$TS_VAL" ]; then
+              TS_PREFIX=$(echo "$TS_VAL" | cut -d':' -f1 | awk -F'.' '{print $1"."$2".x.x"}')
+              echo "✅ TAILSCALE_IP 已配置 (脱敏: ${TS_PREFIX})，registry 将绑定该 TS IP 供北京节点经内网拉取"
+            else
+              echo "⚠️ 警告: TAILSCALE_IP 为空！registry 将仅绑定 127.0.0.1，北京节点无法经内网拉取镜像。如需内网拉取，请在主节点 .env 中手动配置 VPS_S1_TAILSCALE_IP。"
+            fi
+
+            IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
             curl -sSL -o docker-compose.master.yml "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.master.yml"
+            # 拉取 .env.example 供首次生成 .env 参考 (与 compose 同源, 保证版本一致)
+            curl -sSL -o .env.example "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/.env.example" || echo "⚠️ 拉取 .env.example 失败，首次生成将走兜底"
             sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:latest|${IMAGE}|g" docker-compose.master.yml
-            docker compose -f docker-compose.master.yml --env-file .env.master pull
-            docker compose -f docker-compose.master.yml --env-file .env.master up -d --remove-orphans
+
+            # 🛡️ 磁盘空间前置守卫: 拉取镜像前断言 / 剩余空间，低于阈值直接 fail fast，
+            #    避免在 pull 中途因 containerd rename 失败 (no such file or directory) 白跑整段 CI。
+            DF_AVAIL_PCT=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
+            DF_FREE_GB=$(df -BG / | awk 'NR==2 {print $4}' | tr -d 'G')
+            DISK_THRESHOLD_PCT=80
+            DISK_MIN_FREE_GB=6
+            echo "💽 磁盘状态: / 已用 ${DF_AVAIL_PCT}% | 剩余 ${DF_FREE_GB}GB"
+            if [ "$DF_AVAIL_PCT" -ge "$DISK_THRESHOLD_PCT" ] || [ "$DF_FREE_GB" -lt "$DISK_MIN_FREE_GB" ]; then
+              echo "❌ 磁盘空间不足 (已用≥${DISK_THRESHOLD_PCT}% 或 剩余<${DISK_MIN_FREE_GB}GB)，中止部署防止 containerd 拉取崩溃"
+              echo "🧹 请在主节点手动清理后重跑:"
+              echo "   docker system prune -af"
+              echo "   journalctl --vacuum-size=200M"
+              echo "   apt-get clean"
+              echo "   systemctl restart docker"
+              exit 1
+            fi
+
+            docker compose -f docker-compose.master.yml --env-file .env pull
+            docker compose -f docker-compose.master.yml --env-file .env up -d --remove-orphans
             docker image prune -f
+
+            # 将镜像推送到本机内网私有 registry，供国内节点 (北京) 经 Tailscale 内网高速拉取
+            # 注意: 在主节点本机操作，registry 地址用 localhost (不依赖远程 shell 无感的 TS IP 变量)
+            REGISTRY_IMAGE="localhost:5000/quant-agent:latest"
+            docker tag "${IMAGE}" "${REGISTRY_IMAGE}"
+            docker push "${REGISTRY_IMAGE}"
+
+            # 同时把 data-subservice 镜像推到 registry (北京节点经内网拉取)
+            DS_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:latest"
+            DS_REGISTRY_IMAGE="localhost:5000/quant-agent-data-subservice:latest"
+            docker pull "${DS_IMAGE}"
+            docker tag "${DS_IMAGE}" "${DS_REGISTRY_IMAGE}"
+            docker push "${DS_REGISTRY_IMAGE}"
           EOF
 
   # ----------------------------------------------------------------
@@ -124,8 +206,9 @@ jobs:
   # 部署时由 CI 用仓库 Secrets 动态生成各节点 .env (无需 VPS 预置)
   # ----------------------------------------------------------------
   deploy-data-nodes:
-    if: github.event_name == 'pull_request'
-    needs: [ build-data-subservice ]
+    # 仅在 PR 目标分支为 main 时部署；push develop / 其他 PR 均跳过 (不部署)
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    needs: [ build-data-subservice, deploy-master ]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -138,7 +221,7 @@ jobs:
             port-secret: VPS_BJ_PORT
             key-secret: VPS_BJ_SSH_KEY
             ts-ip-secret: VPS_BJ_TAILSCALE_IP
-            ds-id: us-slave
+            ds-id: bj-slave
             ds-region: cn
             ds-caps: "tushare,akshare,yfinance"
             tz: Asia/Shanghai
@@ -189,12 +272,17 @@ jobs:
             env-file: .env
             container: quant-data-subservice-yf-s4
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup SSH
         uses: ./.github/actions/ssh-preflight
         with:
           host: ${{ secrets[matrix.host-secret] }}
+
+      - name: Stage SSH key
+        run: |
+          printf '%s\n' "${{ secrets[matrix.key-secret] }}" > "$RUNNER_TEMP/id_ed25519"
+          chmod 600 "$RUNNER_TEMP/id_ed25519"
 
       - name: Deploy data node ${{ matrix.node }}
         env:
@@ -217,43 +305,81 @@ jobs:
           WRITE_CREDS: ${{ matrix.creds }}
           NODE_TZ: ${{ matrix.tz }}
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:latest"
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<'EOF'
+          ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<'EOF'
             set -e
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             cd /opt/quant-agent
 
-            # 动态生成节点 .env (覆盖写入，无需 VPS 预置)
-            cat > ${ENV_FILE} <<ENVEOF
-          DS_NODE_ID=${DS_NODE_ID}
-          DS_REGION=${DS_REGION}
-          DS_CAPABILITIES=${DS_CAPABILITIES}
-          DS_NODE_PORT=8000
-          PUBLIC_IP=${NODE_TS_IP}
-          DS_BASE_URL=http://${NODE_TS_IP}:8000
-
-          YF_ROUTER_ENABLED=false
-
-          REDIS_HOST=${MASTER_TS_IP}
-          REDIS_PORT=6379
-          REDIS_PASSWORD=${REDIS_PWD}
-
-          # 须与主节点 DATA_SOURCE_HMAC_SECRET 一致
-          DATA_SOURCE_HMAC_SECRET=${HMAC_SECRET}
-          DATA_SOURCE_ALLOWED_IPS=10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1
-
-          QUANT_ENV=production
-          TZ=${NODE_TZ}
-          ENVEOF
-
-            # 仅北京节点 (creds=true) 写入 Tushare / AKShare 凭证；其余纯 yfinance 节点跳过
-            if [ "${WRITE_CREDS}" = "true" ]; then
-              printf 'TUSHARE_TOKEN=%s\nAKSHARE_API_KEY=%s\nAKSHARE_MODE=internal\n' "${TUSHARE_TOKEN}" "${AKSHARE_API_KEY}" >> ${ENV_FILE}
+            # 镜像地址: 北京节点经主节点内网 registry 拉取 (避免跨洋直连 GHCR)，其余节点直连 GHCR
+            NODE="${{ matrix.node }}"
+            if [ "$NODE" = "bj" ]; then
+              IMAGE="${{ secrets.VPS_S1_TAILSCALE_IP }}:5000/quant-agent-data-subservice:latest"
+            else
+              IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:latest"
             fi
 
-            curl -sSL -o ${COMPOSE_FILE} "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/${COMPOSE_FILE}"
-            sed -i "s|ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest|${IMAGE}|g" ${COMPOSE_FILE}
-            docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} pull
-            docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} up -d --remove-orphans
+            # 北京节点: 经主节点内网 http registry 拉取，需 docker 配置 insecure-registries (一次性 root 配置)
+            if [ "$NODE" = "bj" ]; then
+              # 🔍 探测 sudo 是否免密可用，避免非交互 ssh 下 sudo 卡死等密码
+              if ! sudo -n true 2>/dev/null; then
+                echo "⚠️ SUDO_BLOCKED: 当前用户无免密 sudo，无法在 CI 内自动配置 insecure-registries"
+              fi
+              DAEMON_CFG="/etc/docker/daemon.json"
+              if [ -f "$DAEMON_CFG" ] && grep -q "${{ secrets.VPS_S1_TAILSCALE_IP }}:5000" "$DAEMON_CFG"; then
+                echo "✅ insecure-registries 已配置 (含 ${{ secrets.VPS_S1_TAILSCALE_IP }}:5000)，跳过"
+              else
+                echo "❌ 北京节点 docker 未配置访问主节点内网 registry 的 insecure-registries，CI 不自动写 root 文件"
+                echo "🛠️ 请在节点上以 root 手动执行一次:"
+                echo "   sudo mkdir -p /etc/docker"
+                echo "   echo '{ \"insecure-registries\": [\"${{ secrets.VPS_S1_TAILSCALE_IP }}:5000\"] }' | sudo tee /etc/docker/daemon.json"
+                echo "   sudo systemctl restart docker"
+                exit 1
+              fi
+            else
+              echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+            fi
+
+            # 动态生成节点 .env (覆盖写入，无需 VPS 预置)。用 printf 多行写入避免嵌套 heredoc 解析问题
+            printf '%s\n' \
+          'DS_NODE_ID=${{ matrix.ds-id }}' \
+          'DS_REGION=${{ matrix.ds-region }}' \
+          'DS_CAPABILITIES=${{ matrix.ds-caps }}' \
+          'DS_NODE_PORT=8000' \
+          'PUBLIC_IP=${{ secrets[matrix.ts-ip-secret] }}' \
+          'DS_BASE_URL=http://${{ secrets[matrix.ts-ip-secret] }}:8000' \
+          'YF_ROUTER_ENABLED=false' \
+          'REDIS_HOST=${{ secrets.VPS_S1_TAILSCALE_IP }}' \
+          'REDIS_PORT=6379' \
+          'REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}' \
+          'DATA_SOURCE_HMAC_SECRET=${{ secrets.DATA_SOURCE_HMAC_SECRET }}' \
+          'DATA_SOURCE_ALLOWED_IPS=10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1' \
+          'QUANT_ENV=production' \
+          'TZ=${{ matrix.tz }}' > ${{ matrix.env-file }}
+
+            # 仅北京节点 (creds=true) 写入 Tushare / AKShare 凭证；其余纯 yfinance 节点跳过
+            if [ "${{ matrix.creds }}" = "true" ]; then
+              printf 'TUSHARE_TOKEN=%s\nAKSHARE_API_KEY=%s\nAKSHARE_MODE=internal\n' "${{ secrets.TUSHARE_TOKEN }}" "${{ secrets.AKSHARE_API_KEY }}" >> ${{ matrix.env-file }}
+            fi
+
+            curl -sSL -o ${{ matrix.compose }} "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/${{ matrix.compose }}"
+            sed -i "s|ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest|${IMAGE}|g" ${{ matrix.compose }}
+
+            # 🛡️ 磁盘空间前置守卫: 同主节点，拉取前断言 / 剩余空间，不足则 fail fast + 打印清理提示
+            DF_AVAIL_PCT=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
+            DF_FREE_GB=$(df -BG / | awk 'NR==2 {print $4}' | tr -d 'G')
+            DISK_THRESHOLD_PCT=80
+            DISK_MIN_FREE_GB=6
+            echo "💽 磁盘状态: / 已用 ${DF_AVAIL_PCT}% | 剩余 ${DF_FREE_GB}GB"
+            if [ "$DF_AVAIL_PCT" -ge "$DISK_THRESHOLD_PCT" ] || [ "$DF_FREE_GB" -lt "$DISK_MIN_FREE_GB" ]; then
+              echo "❌ 节点 ${{ matrix.node }} 磁盘空间不足 (已用≥${DISK_THRESHOLD_PCT}% 或 剩余<${DISK_MIN_FREE_GB}GB)，中止防止 containerd 拉取崩溃"
+              echo "🧹 请在该节点手动清理后重跑:"
+              echo "   docker system prune -af"
+              echo "   journalctl --vacuum-size=200M"
+              echo "   apt-get clean"
+              echo "   systemctl restart docker"
+              exit 1
+            fi
+
+            docker compose -f ${{ matrix.compose }} --env-file ${{ matrix.env-file }} pull
+            docker compose -f ${{ matrix.compose }} --env-file ${{ matrix.env-file }} up -d --remove-orphans
             docker image prune -f
           EOF

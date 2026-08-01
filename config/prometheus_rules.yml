@@ -1,0 +1,94 @@
+# ============================================================
+#  FMP watchlist 突变检测 Recording Rules（预防性 · 多副本切换用）
+# ============================================================
+# 当前状态：未启用（docker-compose.master.yml 部署 uvicorn --workers 1，单副本）。
+# FMP collector 守护为单进程，进程内 _watchlist_prev_size 基线无重复计数风险，
+# 突变检测走 exporter 侧 Counter（FMP_WATCHLIST_SIZE_SHIFT），零 Prometheus 耦合。
+#
+# 启用条件（未来真上多副本并行时）：
+#   1. 多副本下各副本会各自维护 _watchlist_prev_size 并分别 inc()，导致
+#      FMP_WATCHLIST_SIZE_SHIFT 计数被放大 N 倍（基数放大，非告警重复——
+#      Prometheus alert rule 是服务端单点评估，只按聚合值触发一次）。
+#   2. 此时应改为 server 端统一计算，与副本数解耦、零 exporter 耦合：
+#      用本 recording rule 预计算 fmp:watchlist_size_delta5m，
+#      再把 Panel 16 的 alert expr 从 increase(shift[1h]) 切到该 rule 输出。
+#
+#   ⚠️ Counter 重启归零风险（切换时务必知悉）：
+#      本文件 shift_total_1h / file_deleted_ratio_1h 依赖 exporter 侧 Counter 的
+#      increase()。若 exporter 进程重启（部署/崩溃），Counter 从 0 重新开始，
+#      则重启后 1h 窗口内的 increase() 会被截断（只统计重启后的增量），
+#      比率与突变总数会短暂偏低。多副本切换时更稳妥的做法是改用 delta(Gauge) 系列
+#      （fmp:watchlist_size_delta5m 已基于 Gauge，天然免疫重启归零），
+#      即突变检测/比率优先引用 Gauge 派生的 delta，而非 Counter 的 increase。
+#      当前单副本走 exporter Counter 直查，重启概率低且影响窗口仅 1h，可接受。
+#
+#  ⚖️ 权衡决策（2026-08-01 主脑裁定）：保留 Counter 直查 + Panel 18 兜底组合，
+#     不切换到 Gauge delta 方案。理由：
+#       - 若 _reload_watchlist 启动即改用 Gauge delta（fmp:watchlist_size_delta5m 思路），
+#         虽能彻底根治 Counter 重启归零根因，但会牺牲单副本 simplicity：
+#         突变检测从「进程内一行 inc()」变为「依赖未启用的 recording rule + 双路径真相源」，
+#         运维心智负担显著上升，且当前单副本根本无重复计数风险。
+#       - 故仅以 Panel 18 作为「Counter 重启归零」的被动兜底告警
+#         （Gauge 变但 shift Counter 无增量），而非主动替换检测路径。
+#       - Panel 18 噪声过滤：changes(size[1h]) 取 >= 2（而非 > 0），
+#         过滤热重载重复 set 同值引发的 Gauge 偶发单次抖动误报，降低误警。
+#
+# 启用步骤（届时取消 prometheus.yml 中 rule_files 注释 + 重启 prometheus）：
+#   rule_files:
+#     - "/etc/prometheus/rules/*.yml"
+# （并 docker-compose 挂载本文件到 /etc/prometheus/rules/）
+#
+# ⚠️ 双向切换清单（防漏删 / 双路径并存混淆真相源）：
+#   启用本文件后【必须同步】执行以下反向操作，否则 exporter 侧 Counter 与
+#   recording rule 会双路径并存，运维无法判断哪条是真相：
+#   1. 删除 backend/core/metrics.py 的 FMP_WATCHLIST_SIZE_SHIFT（含 [DEPRECATED-PATH] 注释）；
+#   2. 删除 backend/workers/collectors/fmp.py 中所有 FMP_WATCHLIST_SIZE_SHIFT.inc() 调用；
+#   3. Panel 16 的 alert expr 从 increase(shift[1h]) 切到 fmp:watchlist_size_shift_flag；
+#   4. Panel 16 的 target B（size_shift 突变）与 target C（file_deleted）直查，
+#      可统一替换为本文件的 fmp:watchlist_shift_total_1h（server 端聚合双计数）；
+#   5. Panel 17 的比率 expr 直查替换为 fmp:watchlist_file_deleted_ratio_1h（server 端算完），
+#      并保留 noValue="N/A"（分母=0 时显示 N/A，与纯调仓 0% 区分）。
+# ============================================================
+
+groups:
+  - name: fmp_watchlist_recording
+    interval: 5m  # 与 delta 窗口对齐，recording rule 每 5m 评估一次
+    rules:
+      # 服务端统一计算 watchlist 标的池 5m delta，与副本数无关。
+      # 负值=缩池（删标的/文件删除），正值=扩池（加标的/调仓）。
+      # 突变判定（±50%）留给告警规则引用此 recording 指标：
+      #   abs(fmp:watchlist_size_delta5m) / clamp_min(fmp:watchlist_size_prev5m,1) >= 0.5
+      - record: fmp:watchlist_size_delta5m
+        expr: |
+          quant_fmp_collector_watchlist_size
+          - quant_fmp_collector_watchlist_size offset 5m
+
+      # 上一评估窗口的基线值，供比率判定分母使用（避免除零）。
+      - record: fmp:watchlist_size_prev5m
+        expr: |
+          quant_fmp_collector_watchlist_size offset 5m
+
+      # 派生突变标志：相对上一窗口变化 ≥ ±50%（server 端统一判定，替代进程内 Counter）。
+      # 多副本下引用此指标即可，不再依赖 N 副本各自 inc 的 shift Counter。
+      - record: fmp:watchlist_size_shift_flag
+        expr: |
+          (abs(fmp:watchlist_size_delta5m) / clamp_min(fmp:watchlist_size_prev5m, 1)) >= 0.5
+
+      # 统一聚合双计数：近 1h 内 watchlist 突变总事件数（删文件 + 标的池突变），
+      # server 端对两 Counter 的 increase 求和，与副本数解耦。
+      # 替代 Panel 16 的 target B+C 直查 increase(shift[1h]) + increase(file_deleted[1h])，
+      # 多副本启用后直接引用本指标即可（见头部双向切换清单第 4 条）。
+      - record: fmp:watchlist_shift_total_1h
+        expr: |
+          increase(quant_fmp_collector_watchlist_size_shift_total[1h])
+          + increase(quant_fmp_collector_watchlist_file_deleted_total[1h])
+
+      # 突变根因比率（server 端算完直接渲染）：近 1h 删文件占突变总数比例。
+      # = file_deleted / (file_deleted + size_shift)。分母为 0 时 PromQL 返回 NaN，
+      # Grafana stat 配 noValue="N/A" 即显示 N/A（无突变），与纯调仓 0% 区分。
+      # 替代 Panel 17 的比率 expr 直查，多副本启用后 Panel 17 直接引用本指标即可
+      # （见头部双向切换清单第 5 条），彻底脱离 increase() 直查、零 exporter 耦合。
+      - record: fmp:watchlist_file_deleted_ratio_1h
+        expr: |
+          increase(quant_fmp_collector_watchlist_file_deleted_total[1h])
+          / clamp_min(fmp:watchlist_shift_total_1h, 0)

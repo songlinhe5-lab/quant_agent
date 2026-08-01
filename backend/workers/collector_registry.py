@@ -23,7 +23,7 @@ from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from backend.workers.collectors import akshare, finnhub, futu, yfinance
+from backend.workers.collectors import akshare, finnhub, fmp, futu, yfinance
 
 CollectorFactory = Callable[[], Awaitable[Sequence[Coroutine[Any, Any, Any] | Awaitable[Any]]]]
 
@@ -70,6 +70,13 @@ COLLECTORS: Dict[str, CollectorDef] = {
         needs_postgres=False,
         description="YFinance 宏观指标/大盘数据 (分布式锁 HA daemon)",
         factory=yfinance.start,
+    ),
+    "fmp": CollectorDef(
+        name="fmp",
+        env_var="COLLECTOR_FMP",
+        needs_postgres=False,
+        description="FMP 盘后批量财报缓存 (Redis, credit 预算约束)",
+        factory=fmp.start,
     ),
 }
 

@@ -401,3 +401,132 @@ DIST_AK_STALE_TOTAL = Counter(
     "AKShare STALE 缓存降级返回总数 (CN 断连)",
     ["action"],
 )
+
+# ==========================================
+#  Finnhub WS 实时价命中/降级指标 (BE-ARCH-05)
+# ==========================================
+
+TICK_CACHE_HITS = Counter(
+    "quant_tick_cache_hits_total",
+    "Finnhub WS 实时价命中次数（quote 走 tick_cache 优先返回）",
+)
+
+TICK_CACHE_MISSES = Counter(
+    "quant_tick_cache_misses_total",
+    "Finnhub WS 实时价降级次数（tick_cache 未命中，走 REST 快照）",
+)
+
+TICK_CACHE_HIT_RATE = Gauge(
+    "quant_tick_cache_hit_rate",
+    "Finnhub WS 实时价命中率 (0~1，无查询时为 NaN)",
+)
+
+# ==========================================
+#  FMP collector 每日 credit 消耗指标 (BE-ARCH-05)
+# ==========================================
+
+FMP_CREDIT_SPENT_TOTAL = Counter(
+    "quant_fmp_collector_credit_spent_total",
+    "FMP collector 累计消耗 credit（与 FMP_COLLECTOR_DAILY_CREDIT 预算对账）",
+)
+
+FMP_COLLECTOR_PAUSED = Gauge(
+    "quant_fmp_collector_paused",
+    "FMP collector 守护暂停态（1=已暂停，因 Redis 持久化连续失败自愈中；0=正常运行）",
+)
+
+FMP_PERSIST_FAILS = Gauge(
+    "quant_fmp_collector_persist_fails",
+    "FMP collector Redis 写链路慢连续失败计数（达阈值升 P1 并暂停，区别于网络抖）",
+)
+
+FMP_PERSIST_JITTER_FAILS = Gauge(
+    "quant_fmp_collector_persist_jitter_fails",
+    "FMP collector Redis 网络抖瞬间失败计数（ping 健康但 set 偶发超时，不计入暂停阈值，防毛刺误暂停）",
+)
+
+FMP_HEAL_P99 = Gauge(
+    "quant_fmp_collector_heal_p99_seconds",
+    "FMP collector 自愈滑动窗口 P99 延迟估算（与 Grafana histogram_quantile 双算交叉校验防漂移）",
+)
+
+FMP_LAT_DEGRADED = Gauge(
+    "quant_fmp_collector_lat_degraded",
+    "FMP collector 归因信号：1=写链路慢(应暂停) 0=纯网络抖(不暂停)，与 paused/jitter 联动看归因全貌",
+)
+
+FMP_JITTER_RETRY_RECOVERED = Counter(
+    "quant_fmp_collector_jitter_retry_recovered_total",
+    "FMP collector 抖动重试挽回次数（首次失败靠重试才成功，量化重试策略挽回的潜在暂停/丢 credit 收益）",
+)
+
+FMP_HEAL_BACKOFF = Gauge(
+    "quant_fmp_collector_heal_backoff_seconds",
+    "FMP collector 自愈轮询当前退避秒数（下次探测倒计时，Redis 长断时随指数退避增长，上限 5min）",
+)
+
+FMP_REDIS_PING_LATENCY = Gauge(
+    "quant_fmp_collector_redis_ping_latency_seconds",
+    "FMP collector 自愈探测时实测 Redis PING 往返延迟（定位失败是网络抖还是 redis 本身慢）",
+)
+
+# Histogram 记录每次 ping 延迟，供 Grafana 用 histogram_quantile 算 P95/P99 分位，
+# 区分偶发毛刺（单点高）与持续劣化（分位线系统性抬升）。
+FMP_REDIS_PING_LATENCY_HIST = Histogram(
+    "quant_fmp_collector_redis_ping_latency_seconds_hist",
+    "FMP collector Redis PING 延迟直方图（分位统计用）",
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
+)
+
+FMP_JITTER_RETRY_ACTIVE = Gauge(
+    "quant_fmp_collector_jitter_retry_active",
+    "FMP collector 当前生效的抖动重试次数（自愈调参控制器闭环自适应轨迹，与成功率拐点对照是否吻合）",
+)
+
+FMP_WATCHLIST_EMPTY = Gauge(
+    "quant_fmp_collector_watchlist_empty",
+    "FMP collector watchlist 为空告警（所有标的源均未配置，守护静默兜底未拉任何财报 = 1）",
+)
+
+FMP_WATCHLIST_SIZE = Gauge(
+    "quant_fmp_collector_watchlist_size",
+    "FMP collector 当前生效 watchlist 标的池大小（多源并集；=0 即静默兜底，配合 watchlist_empty 告警定位配置遗漏）",
+)
+
+# [DEPRECATED-PATH] FMP_WATCHLIST_SIZE_SHIFT —— 进程内突变计数（当前单副本使用的真相源）。
+# 未来真上多副本并行时，此 Counter 会被放大 N 倍（各副本各自 inc），应废弃并切换到
+# Prometheus recording rule `config/prometheus_rules.yml` 中的 `fmp:watchlist_size_shift_flag`
+# （server 端统一判定，零 exporter 耦合）。届时：
+#   1. 取消 prometheus.yml 的 rule_files 注释并挂载 rules 文件；
+#   2. 将 Panel 16 的 alert expr 从 increase(shift[1h]) 切到 fmp:watchlist_size_shift_flag；
+#   3. 删除本 Counter 及其所有 inc() 调用。
+# 当前（uvicorn --workers 1 单副本）保留使用，勿删。
+FMP_WATCHLIST_SIZE_SHIFT = Counter(
+    "quant_fmp_collector_watchlist_size_shift_total",
+    "FMP collector watchlist 标的池大小突变计数（短时发生 ±50% 变化，提示账户调仓异常或文件误删）[DEPRECATED-PATH: 多副本改用 fmp:watchlist_size_shift_flag recording rule]",
+)
+
+FMP_WATCHLIST_FILE_DELETED = Counter(
+    "quant_fmp_collector_watchlist_file_deleted_total",
+    "FMP collector 监听的 watchlist/portfolio 文件被删除事件计数（根因分类：删文件 vs 调仓）",
+)
+
+# ==========================================
+#  WebScrape (fetch_webpage) 抓取成功率插桩 (AGENTS.md §2.12 降级实证)
+# ==========================================
+# 目的：量化 PR Newswire / HKEX 披露易 等反爬域名的抓取失败率，验证 Jina→httpx
+#       自动降级链的实际健康度。按 source(jina|httpx) × domain(域名) 维度计数，
+#       跑一周后 `sum(rate(failed[7d])) / sum(rate(total[7d])) by (domain)` 即得真实失败率。
+# 注意：这是纯计数插桩，不影响现有降级逻辑（Jina→httpx→建议 web_search 文案）。
+
+WEB_SCRAPE_FETCH_TOTAL = Counter(
+    "quant_webscrape_fetch_total",
+    "fetch_webpage 网页抓取尝试总数（每次 run 对单 url 计 1 次，jina 与 httpx 各独立计数）",
+    ["source", "domain"],  # source: "jina" | "httpx"；domain: urlparse(url).netloc
+)
+
+WEB_SCRAPE_FETCH_FAILED = Counter(
+    "quant_webscrape_fetch_failed_total",
+    "fetch_webpage 网页抓取失败数（反爬拦截 / 内容过短 / 网络异常 / 403-503 等均计入）",
+    ["source", "domain", "reason"],  # reason: "anti_bot" | "too_short" | "http_error"
+)

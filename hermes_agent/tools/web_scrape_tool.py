@@ -4,18 +4,29 @@ import os
 import re
 import time
 from typing import Any, Dict
+from urllib.parse import urlparse
 
 import httpx
 import structlog
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from backend.core.metrics import WEB_SCRAPE_FETCH_FAILED, WEB_SCRAPE_FETCH_TOTAL
 from backend.core.middleware import httpx_log_request, httpx_log_response
 from backend.core.utils import safe_truncate
 from hermes_agent.tool_registry import register_tool
 
 from .base import BaseTool
+from .web_search_tool import WebSearchTool
 
 logger = structlog.get_logger(__name__)
+
+
+def _domain_of(url: str) -> str:
+    """提取域名用于抓取失败率插桩维度（PR Newswire / HKEX 等反爬域名分桶）。"""
+    try:
+        return urlparse(url).netloc or "unknown"
+    except Exception:
+        return "unknown"
 
 
 @register_tool
@@ -67,14 +78,41 @@ class WebScrapeTool(BaseTool):
             content = await self._fetch_via_httpx(url)
 
         if content is None:
+            # 💡 AGENTS.md §2.12 自动降级：Jina + httpx 双路抓取失败（含 403/404/503 反爬拦截，
+            #    典型如 PR Newswire / HKEX 披露易），立即切换 web_search 而非死磕单链接。
+            domain = _domain_of(url)
+            search_query = f"{url} {query}".strip()
+            try:
+                search_res = await WebSearchTool().run(
+                    query=search_query,
+                    max_results=5,
+                    include_domains=[domain],  # 优先找同站可访问镜像/替代页
+                )
+            except Exception as e:  # 降级链自身异常不应吞掉原始抓取失败结论
+                logger.warning("webscrape_fallback_search_error", url=url, error=repr(e))
+                search_res = {"status": "error", "message": repr(e)}
+
+            if search_res.get("status") == "success" and search_res.get("data"):
+                logger.info("webscrape_fallback_web_search", url=url, domain=domain)
+                return {
+                    "status": "degraded",
+                    "fallback": "web_search",
+                    "source_url": url,
+                    "message": (
+                        f"网页直接抓取失败（Jina + HTTP 均被拦截，疑似 {domain} 反爬/403-503），"
+                        "已自动降级至 web_search 检索同站替代数据源。以下为搜索结果，非原文正文，请谨慎引用。"
+                    ),
+                    "data": search_res.get("data"),
+                }
+
+            # 连 web_search 也失败，才回退原始 error 文案
             return {
                 "status": "error",
                 "message": (
-                    "无法抓取该网页：Jina API 和直接 HTTP 抓取均失败\n\n"
+                    "无法抓取该网页：Jina API、直接 HTTP 抓取、以及自动降级 web_search 均失败\n\n"
                     "💡 建议操作:\n"
-                    "1. 使用 web_search 搜索该主题的替代数据源\n"
-                    "2. 尝试从搜索结果中选择其他可访问的链接\n"
-                    "3. 或告知用户该网页暂时无法访问"
+                    "1. 尝试从搜索结果中选择其他可访问的链接\n"
+                    "2. 或告知用户该网页暂时无法访问"
                 ),
             }
 
@@ -82,6 +120,8 @@ class WebScrapeTool(BaseTool):
 
     async def _fetch_via_jina(self, url: str) -> str | None:
         """方案 1: Jina Reader API (优先，专门为大模型优化的网页转 Markdown)"""
+        domain = _domain_of(url)
+        WEB_SCRAPE_FETCH_TOTAL.labels(source="jina", domain=domain).inc()
         jina_url = f"https://r.jina.ai/{url}"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -113,15 +153,19 @@ class WebScrapeTool(BaseTool):
                     or "Just a moment" in content
                 ):
                     logger.warning("jina_anti_bot_blocked", url=url)
+                    WEB_SCRAPE_FETCH_FAILED.labels(source="jina", domain=domain, reason="anti_bot").inc()
                     return None
 
                 return content
         except Exception as e:
             logger.warning("jina_extract_failed_fallback_http", url=url, error=repr(e))
+            WEB_SCRAPE_FETCH_FAILED.labels(source="jina", domain=domain, reason="http_error").inc()
             return None
 
     async def _fetch_via_httpx(self, url: str) -> str | None:
         """方案 2: 直接 HTTP 抓取 (降级方案，适用于 Jina 失败时)"""
+        domain = _domain_of(url)
+        WEB_SCRAPE_FETCH_TOTAL.labels(source="httpx", domain=domain).inc()
         # SEC.gov 要求声明性 User-Agent（公司名+邮箱），否则触发 Cloudflare 403
         if "sec.gov" in url:
             headers = {
@@ -179,11 +223,13 @@ class WebScrapeTool(BaseTool):
                 # 💡 检查内容质量
                 if len(content) < 200:
                     logger.warning("http_content_too_short", url=url, chars=len(content))
+                    WEB_SCRAPE_FETCH_FAILED.labels(source="httpx", domain=domain, reason="too_short").inc()
                     return None
 
                 return content
         except Exception as e:
             logger.warning("http_fetch_failed", url=url, error=repr(e))
+            WEB_SCRAPE_FETCH_FAILED.labels(source="httpx", domain=domain, reason="http_error").inc()
             return None
 
     async def _format_response(self, url: str, content: str, query: str = "") -> Dict[str, Any]:

@@ -131,6 +131,16 @@ async def _measure_event_loop_lag() -> float:
     return round(loop.time() - start, 6)
 
 
+def _safe_tick_cache_stats() -> Any:
+    """安全获取 WS tick 命中率统计，失败返回 unknown（不阻断诊断端点）。"""
+    try:
+        from backend.services.finnhub.ws_ingest import tick_cache_stats
+
+        return tick_cache_stats()
+    except Exception:  # noqa: BLE001
+        return "unknown"
+
+
 async def _collector_heartbeats() -> dict[str, Any]:
     """采集器心跳：本地已启用采集器 + 各注册数据源实时健康状态"""
     from backend.app.system_app import build_cluster_snapshot
@@ -217,6 +227,14 @@ async def health_ready(response: Response):
     except Exception:  # noqa: BLE001
         checks["alert_queue"] = "unknown"
 
+    # WS 实时价命中/降级埋点（辅助探针，不计入 ready 门槛）
+    try:
+        from backend.services.finnhub.ws_ingest import tick_cache_stats
+
+        checks["tick_cache_stats"] = tick_cache_stats()
+    except Exception:  # noqa: BLE001
+        checks["tick_cache_stats"] = "unknown"
+
     ready = redis_ok and pg_ok and ds_ok
     if not ready:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
@@ -280,6 +298,7 @@ async def health_deep():
         },
         "data_source_detail": ds_detail,
         "collectors": collectors,
+        "tick_cache_stats": _safe_tick_cache_stats(),
         "websocket": {
             "active_connections": metrics.get("ws_connections"),
             "messages_sent": metrics.get("ws_messages_sent"),
