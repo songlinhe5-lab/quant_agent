@@ -143,14 +143,20 @@ services:
     networks:
       - quant-internal
 
-  # 私有镜像中转 Registry (仅 Tailscale 内网可达)
+  # 私有镜像中转 Registry (本机 localhost + Tailscale 内网双绑定)
   # 用途: 北京等国内节点经内网拉取镜像，避免跨洋直连 GHCR 龟速
-  # 仅绑定 Tailscale 内网 IP，不对公网暴露
+  # 双绑定原因:
+  #   - 127.0.0.1:5000  → 供本机 CI 脚本 `docker push localhost:5000/...` 使用
+  #                       (backend.yml push 段硬编码 localhost，不感知远程 TS IP)
+  #   - ${TAILSCALE_IP}:5000 → 供北京节点经 Tailscale 内网高速拉取
+  # 若仅绑 ${TAILSCALE_IP}，TAILSCALE_IP 非空时 127.0.0.1 回退被吞，
+  #   导致本机 push 报 connection refused（PR 失败根因）。
   registry:
     image: registry:2
     container_name: quant_registry
     restart: always
     ports:
+      - "127.0.0.1:5000:5000"
       - "${TAILSCALE_IP:-127.0.0.1}:5000:5000"
     environment:
       - REGISTRY_STORAGE_DELETE_ENABLED=true
