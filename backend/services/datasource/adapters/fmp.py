@@ -21,6 +21,32 @@ from backend.services.datasource import (
     RateLimitStatus,
     Result,
 )
+from backend.services.finnhub.ws_ingest import tick_cache
+
+
+def _extract_ws_price(tick: dict[str, Any]) -> Optional[float]:
+    """从 Finnhub WS tick（trade/quote 原始消息）容错提取最新价。
+
+    trade: {"type":"trade","symbol":...,"data":[{"p":价格,...}]}
+    quote: {"type":"quote","symbol":...,"dp":买价,"dc":...,"pc":前收}
+    优先 trade 成交价 p，回退 quote 当前价 dp。
+    """
+    mtype = tick.get("type")
+    if mtype == "trade":
+        rows = tick.get("data") or []
+        if rows and isinstance(rows[0], dict) and rows[0].get("p") is not None:
+            return float(rows[0]["p"])
+    if mtype == "quote":
+        if tick.get("dp") is not None:
+            return float(tick["dp"])
+    # 兜底：任意已知价格字段
+    for k in ("p", "dp", "c", "price"):
+        if tick.get(k) is not None:
+            try:
+                return float(tick[k])
+            except (TypeError, ValueError):
+                continue
+    return None
 
 
 class FMPDataSource:
@@ -112,6 +138,24 @@ class FMPDataSource:
         try:
             symbol = str(params.get("symbol", ""))
             if action == "quote":
+                # 优先 Finnhub WS 实时 tick（已由 data_subservice → Redis → ws_ingest 回灌）
+                # tick_cache 内部 TTL 自动失效（_TTL=5s），命中即视为实时价，不消耗 FMP credit。
+                ws_tick = tick_cache.get(symbol)
+                if ws_tick is not None:
+                    ws_price = _extract_ws_price(ws_tick)
+                    if ws_price is not None:
+                        # 对齐 FMP /quote/{sym} 返回数组形状，前端/调用方无需改判。
+                        quote_payload = [
+                            {
+                                "symbol": symbol.upper(),
+                                "price": ws_price,
+                                "source": "finnhub-ws",
+                            }
+                        ]
+                        result = Result.make_success(quote_payload, source="finnhub-ws")
+                        result.self_recorded = True  # 实时流，不消耗 FMP credit，不计入 throttler
+                        return result
+                # 未命中实时 tick → REST 快照降级（消耗 1 credit）
                 data = await svc.get_quote(symbol)
             elif action == "profile":
                 data = await svc.get_profile(symbol)
