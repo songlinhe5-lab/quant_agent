@@ -695,7 +695,12 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                         "expr": "quant_fmp_collector_watchlist_size",
                         "legendFormat": "当前生效标的池大小 (个)",
                         "refId": "A",
-                    }
+                    },
+                    {
+                        "expr": "increase(quant_fmp_collector_watchlist_size_shift_total[1h])",
+                        "legendFormat": "近1h标的池突变次数 (±50%)",
+                        "refId": "B",
+                    },
                 ],
                 "fieldConfig": {
                     "defaults": {
@@ -709,6 +714,37 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                             ]
                         },
                     }
+                },
+                "dataLinks": [
+                    {
+                        "title": "反向联动：跳回空告警 Panel，确认 size 突变是否引发静默兜底",
+                        "type": "link",
+                        "url": "${__url_time_range}&viewPanel=15",
+                        "internal": {"datasourceUid": "${DS_PROMETHEUS}", "query": {"queryType": "timeseries"}},
+                    }
+                ],
+                "alertThreshold": True,
+                "alert": {
+                    "id": 16,
+                    "name": "FMP watchlist 标的池突变 (±50% 提示调仓异常/文件误删)",
+                    "frequency": "1m",
+                    "for": "0m",
+                    "noDataState": "no_data",
+                    "execErrState": "alerting",
+                    "conditions": [
+                        {
+                            "type": "query",
+                            "reducerType": "last",
+                            "query": {"params": ["B", "1h", "now"]},
+                            "evaluator": {"type": "gt", "params": [0]},
+                            "operator": {"type": "and"},
+                        }
+                    ],
+                    "annotations": {
+                        "summary": "FMP watchlist 标的池短时发生 ±50% 突变",
+                        "description": "近 1h 内 watchlist 标的池大小相对上一轮变化超过 ±50%（FMP_WATCHLIST_SIZE_SHIFT 计数 >0），提示账户调仓异常、文件误删或 stale 池重置。可点 Panel 反向联动跳回 Panel 15 确认是否连带触发空告警。",
+                    },
+                    "labels": {"severity": "warning", "service": "quant-agent"},
                 },
             },
         ],

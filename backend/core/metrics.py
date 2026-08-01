@@ -492,3 +492,8 @@ FMP_WATCHLIST_SIZE = Gauge(
     "quant_fmp_collector_watchlist_size",
     "FMP collector 当前生效 watchlist 标的池大小（多源并集；=0 即静默兜底，配合 watchlist_empty 告警定位配置遗漏）",
 )
+
+FMP_WATCHLIST_SIZE_SHIFT = Counter(
+    "quant_fmp_collector_watchlist_size_shift_total",
+    "FMP collector watchlist 标的池大小突变计数（短时发生 ±50% 变化，提示账户调仓异常或文件误删）",
+)

@@ -27,6 +27,7 @@ from backend.services.fmp.service import fmp_service
 # watchlist 热重载状态（进程内缓存 + mtime 跟踪）
 _watchlist_cache: list[str] = []
 _watchlist_mtimes: dict[str, float] = {}  # 多文件 mtime 快照（watchlist + portfolio 源均纳入热重载）
+_watchlist_prev_size: int = -1  # 上一轮标的池大小（突变检测基线，初始 -1 跳过首轮）
 _watchlist_lock = threading.Lock()
 _watchlist_monitor_stop = threading.Event()
 
@@ -555,9 +556,21 @@ def _reload_watchlist() -> bool:
             _watchlist_mtimes[p] = -1.0
     # 暴露标的池大小（Grafana Panel 16 反向联动用）
     try:
-        from backend.core.metrics import FMP_WATCHLIST_SIZE
+        from backend.core.metrics import FMP_WATCHLIST_SIZE, FMP_WATCHLIST_SIZE_SHIFT
 
         FMP_WATCHLIST_SIZE.set(len(syms))
+        # 突变检测：相对上一轮 size 变化超过 ±50% 即记一次（提示账户调仓异常或文件误删）
+        # 基线为 -1（首轮）时跳过，避免启动即误报
+        global _watchlist_prev_size
+        if _watchlist_prev_size >= 0 and _watchlist_prev_size > 0:
+            _ratio = abs(len(syms) - _watchlist_prev_size) / _watchlist_prev_size
+            if _ratio >= 0.5:
+                FMP_WATCHLIST_SIZE_SHIFT.inc()
+                logger.warning(
+                    f"[FMP Collector] watchlist 标的池突变 {_watchlist_prev_size} → {len(syms)} "
+                    f"(±{_ratio:.0%} ≥ 50%)，提示账户调仓异常或文件误删"
+                )
+        _watchlist_prev_size = len(syms)
     except Exception:  # noqa: BLE001
         pass
     logger.info(f"[FMP Collector] watchlist 刷新 → {len(syms)} 个标的")
@@ -578,15 +591,30 @@ def _watch_watchlist_file() -> None:
     """
     poll_interval = 5.0
     while not _watchlist_monitor_stop.is_set():
+        triggered = False
+        # ① 现存文件：mtime 变更 → 重载
         for p in _resolve_monitored_paths():
             try:
                 mtime = os.path.getmtime(p)
                 if _watchlist_mtimes.get(p, -1.0) != mtime:
                     logger.info(f"[FMP Collector] 检测到 watchlist/portfolio 文件变更: {p}")
                     _reload_watchlist()
+                    triggered = True
                     break  # 一次重载已合并所有源，无需逐个重复触发
             except OSError:
                 pass
+        # ② 已删除检测：mtime 字典含该 key 但文件已消失 → 防止 stale 池残留
+        if not triggered:
+            for p in list(_watchlist_mtimes.keys()):
+                if p not in _resolve_monitored_paths() and not os.path.exists(p):
+                    logger.warning(
+                        f"[FMP Collector] 检测到 watchlist/portfolio 文件被删除: {p}，"
+                        f"重置该源并触发重载（防 stale 池残留）"
+                    )
+                    del _watchlist_mtimes[p]
+                    _reload_watchlist()
+                    triggered = True
+                    break
         _watchlist_monitor_stop.wait(poll_interval)
 
 
