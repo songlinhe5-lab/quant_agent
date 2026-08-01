@@ -101,6 +101,11 @@ jobs:
         with:
           host: ${{ secrets.VPS_S1_HOST }}
 
+      - name: Stage SSH key
+        run: |
+          printf '%s\n' "${{ secrets.VPS_S1_SSH_KEY }}" > "$RUNNER_TEMP/id_ed25519"
+          chmod 600 "$RUNNER_TEMP/id_ed25519"
+
       - name: Deploy
         env:
           VPS_HOST: ${{ secrets.VPS_S1_HOST }}
@@ -108,7 +113,7 @@ jobs:
           VPS_PORT: ${{ secrets.VPS_S1_PORT || '22' }}
         run: |
           IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<EOF
+          ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<EOF
             set -e
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             cd /opt/quant-agent
@@ -196,6 +201,11 @@ jobs:
         with:
           host: ${{ secrets[matrix.host-secret] }}
 
+      - name: Stage SSH key
+        run: |
+          printf '%s\n' "${{ secrets[matrix.key-secret] }}" > "$RUNNER_TEMP/id_ed25519"
+          chmod 600 "$RUNNER_TEMP/id_ed25519"
+
       - name: Deploy data node ${{ matrix.node }}
         env:
           VPS_HOST: ${{ secrets[matrix.host-secret] }}
@@ -218,7 +228,7 @@ jobs:
           NODE_TZ: ${{ matrix.tz }}
         run: |
           IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:latest"
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<'EOF'
+          ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<'EOF'
             set -e
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             cd /opt/quant-agent
