@@ -1,479 +1,263 @@
-name: Backend CI
+name: Deploy Backend (US-MASTER + 4 Data Nodes)
 
+# 触发策略:
+#   - push develop : 仅构建校验 (build + 推镜像)，不部署
+#   - PR (合入 develop) : 构建 + 自动部署到 5 个节点
 on:
   push:
-    branches: [ main, develop ]
-    paths:
-      - 'backend/**'
-      - 'hermes_agent/**'
-      - 'shared/**'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - '.github/workflows/backend.yml'
-  workflow_dispatch:
-    inputs:
-      rollback_sha:
-        description: 'Commit SHA to rollback to (leave empty for normal deploy)'
-        required: false
-        type: string
+    branches: [ develop ]
+  pull_request:
+    branches: [ develop ]
 
 env:
-  GHCR_IMAGE: ghcr.io/songlinhe5-lab/quant-agent
-  UV_HTTP_TIMEOUT: 300
-
-permissions:
-  contents: read
-  packages: write
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  # ==========================================
-  # Stage 1: CI Quality Gates
-  # ==========================================
-  # 分支保护由 GitHub Branch Protection Rules 处理，不再需要手动检查
-  # ==========================================
-  lint:
-    name: Lint & Type Check
-    runs-on: ubuntu-latest
-    # 💡 仅在 develop 推送和 PR 时运行，main 推送跳过（信任 develop 已验证）
-    if: github.ref != 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v5
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          version: 'latest'
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
-      - name: Set up Python
-        run: uv python install 3.13
-      - name: Install dependencies
-        run: |
-          for i in 1 2 3; do
-            uv sync --all-extras && break
-            echo "uv sync failed (attempt $i), retrying in 10s..."
-            sleep 10
-          done
-      - name: Ruff lint
-        run: uv run ruff check backend/
-      - name: Ruff format check
-        run: uv run ruff format --check backend/
-
-  test:
-    name: Test & Coverage
-    runs-on: ubuntu-latest
-    needs: [lint]
-    # 💡 仅在 develop 推送和 PR 时运行，main 推送跳过（信任 develop 已验证）
-    if: always() && (needs.lint.result == 'success' || needs.lint.result == 'skipped')
-
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: test_db
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-      redis:
-        image: redis:7
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
-
-    steps:
-      - uses: actions/checkout@v5
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          version: 'latest'
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
-      - name: Set up Python
-        run: uv python install 3.13
-      - name: Install dependencies
-        run: |
-          for i in 1 2 3; do
-            uv sync --all-extras && break
-            echo "uv sync failed (attempt $i), retrying in 10s..."
-            sleep 10
-          done
-      - name: Run tests with coverage
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
-          INTERNAL_API_SECRET: test-secret-key
-          EMBEDDING_API_KEY: test-key
-          EMBEDDING_BASE_URL: https://api.test.com
-          EMBEDDING_MODEL: BAAI/bge-large-zh-v1.5
-        run: |
-          uv run pytest backend/tests/ -v -n auto \
-            --timeout=60 --timeout-method=thread \
-            --cov=backend --cov-report=term-missing
-          uv run coverage combine || true
-          uv run coverage xml -o coverage.xml
-          uv run coverage report --fail-under=80
-      - name: Detect slow tests
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
-          INTERNAL_API_SECRET: test-secret-key
-          EMBEDDING_API_KEY: test-key
-          EMBEDDING_BASE_URL: https://api.test.com
-          EMBEDDING_MODEL: BAAI/bge-large-zh-v1.5
-        run: |
-          echo "## Slow Tests Report (Top 20)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          uv run pytest backend/tests/ --durations=20 --tb=no -q -n auto --timeout=60 --timeout-method=thread 2>&1 | tee /tmp/slow_tests.txt
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          cat /tmp/slow_tests.txt | grep -A 30 "slowest" >> $GITHUB_STEP_SUMMARY || true
-          echo '```' >> $GITHUB_STEP_SUMMARY
-        if: always()
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v6
-        with:
-          files: ./coverage.xml
-          flags: backend
-          token: ${{ secrets.CODECOV_TOKEN }}
-
-  security:
-    name: Security Scan
-    runs-on: ubuntu-latest
-    needs: [test]
-    # 💡 仅在 develop 推送和 PR 时运行，main 推送跳过（信任 develop 已验证）
-    if: always() && (needs.test.result == 'success' || needs.test.result == 'skipped')
-    steps:
-      - uses: actions/checkout@v5
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          version: 'latest'
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
-      - name: Set up Python
-        run: uv python install 3.13
-      - name: Install dependencies
-        run: |
-          for i in 1 2 3; do
-            uv sync --all-extras && break
-            echo "uv sync failed (attempt $i), retrying in 10s..."
-            sleep 10
-          done
-      - name: pip-audit vulnerability scan
-        run: uv run pip-audit --desc --require-hashes 2>&1 || true
-        continue-on-error: true
-
-  # ==========================================
-  # Stage 2: Build & Push to GHCR
-  # ==========================================
+  # ----------------------------------------------------------------
+  # 构建主应用镜像 (US-MASTER)
+  # ----------------------------------------------------------------
   build:
-    name: Build & Push Image
     runs-on: ubuntu-latest
-    needs: [test, security]
-    if: |
-      always() &&
-      ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-       (github.event_name == 'workflow_dispatch' && !inputs.rollback_sha)) &&
-      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
-      (needs.security.result == 'success' || needs.security.result == 'skipped')
+    permissions:
+      contents: read
+      packages: write
     outputs:
-      image_tag: ${{ steps.meta.outputs.version }}
+      image_tag: ${{ steps.meta.outputs.tags }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GHCR
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
+          registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.GHCR_IMAGE }}
-          tags: |
-            type=sha,prefix=sha-
-            type=raw,value=latest
-
-      - name: Build and push
-        uses: docker/build-push-action@v5
+      - name: Build & push backend image
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          platforms: linux/amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
 
-  # ==========================================
-  # Stage 3: Deploy to VPS (美国主节点)
-  # ==========================================
-  # Secrets: VPS_S1_HOST / VPS_S1_USER / VPS_S1_SSH_KEY
-  # ==========================================
-  deploy:
-    name: Deploy to VPS
+  # ----------------------------------------------------------------
+  # 构建 data_subservice 镜像 (所有从节点共用)
+  # ----------------------------------------------------------------
+  build-data-subservice:
     runs-on: ubuntu-latest
-    needs: [build]
-    if: |
-      always() &&
-      ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-       github.event_name == 'workflow_dispatch') &&
-      needs.build.result == 'success'
-
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
-      - name: Set target image tag
-        id: set_tag
-        run: |
-          if [ -n "${{ inputs.rollback_sha }}" ]; then
-            TAG="sha-${{ inputs.rollback_sha }}"
-          else
-            TAG="sha-$(echo ${{ github.sha }} | cut -c1-7)"
-          fi
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "Deploying image tag: $TAG"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Prepare compose file (base64)
-        id: prepare_compose
-        run: |
-          echo "compose_b64=$(base64 -w0 docker-compose.yml)" >> $GITHUB_OUTPUT
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: SSH connectivity pre-flight
+      - name: Build & push data-subservice image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./data_subservice/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:latest
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+
+  # ----------------------------------------------------------------
+  # 部署 US-MASTER (主节点)
+  # ----------------------------------------------------------------
+  deploy-master:
+    if: github.event_name == 'pull_request'
+    needs: [ build ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
         uses: ./.github/actions/ssh-preflight
         with:
-          host: ${{ secrets.VPS_S1_HOST }}
+          ssh-host: ${{ secrets.VPS_S1_HOST }}
+          ssh-user: ${{ secrets.VPS_S1_USER }}
+          ssh-key: ${{ secrets.VPS_S1_SSH_KEY }}
 
-      - name: Deploy to VPS
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.VPS_S1_HOST }}
-          username: ${{ secrets.VPS_S1_USER }}
-          key: ${{ secrets.VPS_S1_SSH_KEY }}
-          envs: GITHUB_ACTOR
-          command_timeout: 30m
-          script: |
+      - name: Deploy
+        env:
+          VPS_HOST: ${{ secrets.VPS_S1_HOST }}
+          VPS_USER: ${{ secrets.VPS_S1_USER }}
+          VPS_PORT: ${{ secrets.VPS_S1_PORT || '22' }}
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<EOF
             set -e
-            DEPLOY_PATH=/opt/quant-agent
-            TARGET_TAG="${{ steps.set_tag.outputs.tag }}"
-
-            mkdir -p $DEPLOY_PATH
-            cd $DEPLOY_PATH
-
-            # 更新 compose 文件中的镜像 tag
-            echo '${{ steps.prepare_compose.outputs.compose_b64 }}' | base64 -d > docker-compose.yml
-            sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:.*|ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG}|g" docker-compose.yml
-
-            # 检查 .env 存在
-            if [ ! -f .env ]; then
-              echo "ERROR: .env not found! Please create /opt/quant-agent/.env"
-              exit 1
-            fi
-
-            # 拉取新镜像
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
-            docker pull ghcr.io/songlinhe5-lab/quant-agent:${TARGET_TAG}
-
-            # 启动服务
-            docker compose -f docker-compose.yml up -d --remove-orphans
-
-            # 健康检查 (最多 90s)
-            for i in 1 2 3 4 5 6; do
-              sleep 15
-              HEALTH=$(curl -sf --max-time 10 http://localhost:8000/api/v1/health 2>/dev/null || echo "UNHEALTHY")
-              if [ "$HEALTH" != "UNHEALTHY" ]; then
-                echo "Health check passed on attempt $i"
-                break
-              fi
-              echo "Attempt $i/6 failed, retrying..."
-              if [ "$i" = "6" ]; then
-                echo "Health check FAILED after 6 attempts (90s)"
-                docker compose -f docker-compose.yml logs --tail 50
-                docker logout ghcr.io
-                exit 1
-              fi
-            done
-
-            # 清理
-            echo "$TARGET_TAG" > $DEPLOY_PATH/.deployed_sha
-            docker logout ghcr.io
-
-            # 镜像生命周期管理：只保留当前版本，删除所有旧 sha 镜像
-            docker images --format '{{.Repository}}:{{.Tag}}' \
-              | grep 'ghcr.io/.*quant-agent:sha-' \
-              | grep -v "$TARGET_TAG" \
-              | xargs -r docker rmi -f 2>/dev/null || true
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+            cd /opt/quant-agent
+            curl -sSL -o docker-compose.master.yml "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.master.yml"
+            sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:latest|${IMAGE}|g" docker-compose.master.yml
+            docker compose -f docker-compose.master.yml --env-file .env.master pull
+            docker compose -f docker-compose.master.yml --env-file .env.master up -d --remove-orphans
             docker image prune -f
+          EOF
 
-            # 容器日志截断（防止单文件膨胀到数GB）
-            truncate -s 0 /var/lib/docker/containers/*/*-json.log 2>/dev/null || true
-
-            echo "Deploy OK (tag: $TARGET_TAG)"
-
-      - name: Deploy summary
-        if: always()
-        run: |
-          echo "## Deploy Result" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Status | ${{ needs.deploy.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Image | ${{ env.GHCR_IMAGE }}:${{ steps.set_tag.outputs.tag }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Target | ${{ secrets.VPS_S1_HOST }} |" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ inputs.rollback_sha }}" != "" ]; then
-            echo "| Rollback | ${{ inputs.rollback_sha }} |" >> $GITHUB_STEP_SUMMARY
-          fi
-
-  # ==========================================
-  # Stage 4: 部署后接口冒烟探针 (Smoke Probe)
-  # ==========================================
-  smoke_probe:
-    name: Smoke Probe Backend API
+  # ----------------------------------------------------------------
+  # 部署 4 个数据源从节点 (matrix)
+  # 部署时由 CI 用仓库 Secrets 动态生成各节点 .env (无需 VPS 预置)
+  # ----------------------------------------------------------------
+  deploy-data-nodes:
+    if: github.event_name == 'pull_request'
+    needs: [ build-data-subservice ]
     runs-on: ubuntu-latest
-    needs: [deploy]
-    # 💡 仅 main 推送 / 手动触发且 deploy 成功时运行 (探针针对线上域名)
-    if: |
-      always() &&
-      ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-       github.event_name == 'workflow_dispatch') &&
-      needs.deploy.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 北京从节点 (VPS_BJ)：tushare + akshare + yfinance
+          - node: bj
+            host-secret: VPS_BJ_HOST
+            user-secret: VPS_BJ_USER
+            port-secret: VPS_BJ_PORT
+            key-secret: VPS_BJ_SSH_KEY
+            ts-ip-secret: VPS_BJ_TAILSCALE_IP
+            ds-id: us-slave
+            ds-region: cn
+            ds-caps: "tushare,akshare,yfinance"
+            tz: Asia/Shanghai
+            creds: true
+            compose: docker-compose.slave.yml
+            env-file: .env.slave
+            container: quant-data-subservice-slave
+          # 美西从节点1 (VPS_S2)：纯 yfinance
+          - node: s2
+            host-secret: VPS_S2_HOST
+            user-secret: VPS_S2_USER
+            port-secret: VPS_S2_PORT
+            key-secret: VPS_S2_SSH_KEY
+            ts-ip-secret: VPS_S2_TAILSCALE_IP
+            ds-id: us-yf-s2
+            ds-region: us-west
+            ds-caps: "yfinance"
+            tz: America/Los_Angeles
+            compose: docker-compose.yf-node-s2.yml
+            env-file: .env.yf-s2
+            container: quant-data-subservice-yf-s2
+          # 美西从节点2 (VPS_S3)：纯 yfinance
+          - node: s3
+            host-secret: VPS_S3_HOST
+            user-secret: VPS_S3_USER
+            port-secret: VPS_S3_PORT
+            key-secret: VPS_S3_SSH_KEY
+            ts-ip-secret: VPS_S3_TAILSCALE_IP
+            ds-id: us-yf-s3
+            ds-region: us-west
+            ds-caps: "yfinance"
+            tz: America/Los_Angeles
+            compose: docker-compose.yf-node-s3.yml
+            env-file: .env.yf-s3
+            container: quant-data-subservice-yf-s3
+          # 美西从节点3 (VPS_S4)：纯 yfinance
+          - node: s4
+            host-secret: VPS_S4_HOST
+            user-secret: VPS_S4_USER
+            port-secret: VPS_S4_PORT
+            key-secret: VPS_S4_SSH_KEY
+            ts-ip-secret: VPS_S4_TAILSCALE_IP
+            ds-id: us-yf-s4
+            ds-region: us-west
+            ds-caps: "yfinance"
+            tz: America/Los_Angeles
+            compose: docker-compose.yf-node-s4.yml
+            env-file: .env.yf-s4
+            container: quant-data-subservice-yf-s4
     steps:
-      - uses: actions/checkout@v5
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          version: 'latest'
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
-      - name: Set up Python
-        run: uv python install 3.13
-      # 部署后给容器 + Cloudflare 边缘一点就绪时间
-      - name: Wait for service rollout
-        run: sleep 30
-      - name: Smoke probe backend endpoints
-        env:
-          BACKEND_API_URL: https://quant-api.stephenhe.com/api/v1
-        run: |
-          for i in 1 2 3; do
-            echo "=== probe attempt $i/3 ==="
-            if uv run --no-sync --with httpx python scripts/probe_backend_health.py --strict; then
-              echo "SMOKE PROBE PASSED"
-              exit 0
-            fi
-            echo "probe attempt $i failed, retrying in 30s..."
-            sleep 30
-          done
-          echo "SMOKE PROBE FAILED after 3 attempts"
-          exit 1
-      - name: Smoke probe summary
-        if: always()
-        env:
-          BACKEND_API_URL: https://quant-api.stephenhe.com/api/v1
-        run: |
-          echo "## Smoke Probe (Backend API)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Status | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Target | ${{ env.BACKEND_API_URL }} |" >> $GITHUB_STEP_SUMMARY
+      - uses: actions/checkout@v4
 
-  # ==========================================
-  # Stage 5: Tailscale 跨节点连通性验证 (OPS-02)
-  # ==========================================
-  verify_tailscale:
-    name: Verify Tailscale Connectivity
-    runs-on: ubuntu-latest
-    needs: [deploy]
-    if: always() && needs.deploy.result == 'success'
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: SSH connectivity pre-flight
+      - name: Setup SSH
         uses: ./.github/actions/ssh-preflight
         with:
-          host: ${{ secrets.VPS_S1_HOST }}
+          ssh-host: ${{ secrets[matrix.host-secret] }}
+          ssh-user: ${{ secrets[matrix.user-secret] }}
+          ssh-key: ${{ secrets[matrix.key-secret] }}
 
-      - name: Verify Tailscale cross-node connectivity
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.VPS_S1_HOST }}
-          username: ${{ secrets.VPS_S1_USER }}
-          key: ${{ secrets.VPS_S1_SSH_KEY }}
-          command_timeout: 5m
-          script: |
-            set -e
-            echo "=== Tailscale 状态检查 ==="
-            
-            # 检查 Tailscale 服务
-            if ! command -v tailscale &> /dev/null; then
-              echo "ERROR: Tailscale 未安装"
-              exit 1
-            fi
-            
-            # 显示 Tailnet 状态
-            echo "Tailnet 节点:"
-            tailscale status
-            
-            # 获取本机 Tailscale IP
-            TS_IP=$(tailscale ip -4)
-            echo "本机 Tailscale IP: $TS_IP"
-            
-            # 检查关键端口绑定
-            echo ""
-            echo "=== 端口绑定检查 ==="
-            echo "Redis 绑定:"
-            ss -tlnp | grep ':6379' || echo "Redis 未监听"
-            
-            echo "Postgres 绑定:"
-            ss -tlnp | grep ':5432' || echo "Postgres 未监听"
-            
-            # 验证 Redis 不对公网暴露
-            PUBLIC_IP=$(curl -s ifconfig.me 2>/dev/null || echo "")
-            if [ -n "$PUBLIC_IP" ]; then
-              # 💡 检查 Local Address 列 (第4列) 是否为 0.0.0.0:6379
-              # ss 输出格式: State Recv-Q Send-Q Local_Addr Foreign_Addr Process
-              # Foreign Address 列的 0.0.0.0:* 是正常的 (表示接受所有来源)
-              if ss -tlnp | awk 'NR>1 {print $4}' | grep -q '^0\.0\.0\.0:6379$'; then
-                echo "ERROR: Redis 绑定到 0.0.0.0 (公网可访问)!"
-                exit 1
-              fi
-              echo "✓ Redis 未对公网暴露"
-            fi
-            
-            # 测试跨节点连通性 (如果 CN-AKSHARE 在线)
-            CN_IP="${{ secrets.CN_VPS_TAILSCALE_IP }}"
-            if [ -n "$CN_IP" ]; then
-              echo ""
-              echo "=== CN-AKSHARE 连通性测试 ==="
-              if ping -c 1 -W 3 "$CN_IP" &> /dev/null; then
-                echo "✓ CN-AKSHARE ($CN_IP) 可达"
-              else
-                echo "⚠ CN-AKSHARE ($CN_IP) 不可达 (可能离线)"
-              fi
-            fi
-            
-            echo ""
-            echo "=== Tailscale 验证完成 ==="
-
-      - name: Tailscale verification summary
-        if: always()
+      - name: Deploy data node ${{ matrix.node }}
+        env:
+          VPS_HOST: ${{ secrets[matrix.host-secret] }}
+          VPS_USER: ${{ secrets[matrix.user-secret] }}
+          VPS_PORT: ${{ secrets[matrix.port-secret] || '22' }}
+          COMPOSE_FILE: ${{ matrix.compose }}
+          ENV_FILE: ${{ matrix.env-file }}
+          CONTAINER: ${{ matrix.container }}
+          # ---- 注入到目标节点 .env 的变量 ----
+          DS_NODE_ID: ${{ matrix.ds-id }}
+          DS_REGION: ${{ matrix.ds-region }}
+          DS_CAPABILITIES: ${{ matrix.ds-caps }}
+          NODE_TS_IP: ${{ secrets[matrix.ts-ip-secret] }}
+          MASTER_TS_IP: ${{ secrets.VPS_S1_TAILSCALE_IP }}
+          REDIS_PWD: ${{ secrets.REDIS_PASSWORD }}
+          HMAC_SECRET: ${{ secrets.DATA_SOURCE_HMAC_SECRET }}
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+          AKSHARE_API_KEY: ${{ secrets.AKSHARE_API_KEY }}
+          WRITE_CREDS: ${{ matrix.creds }}
+          NODE_TZ: ${{ matrix.tz }}
         run: |
-          echo "## Tailscale Verification" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Check | Result |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Status | ${{ needs.verify_tailscale.result }} |" >> $GITHUB_STEP_SUMMARY
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:latest"
+          ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<'EOF'
+            set -e
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+            cd /opt/quant-agent
+
+            # 动态生成节点 .env (覆盖写入，无需 VPS 预置)
+            cat > ${ENV_FILE} <<ENVEOF
+          DS_NODE_ID=${DS_NODE_ID}
+          DS_REGION=${DS_REGION}
+          DS_CAPABILITIES=${DS_CAPABILITIES}
+          DS_NODE_PORT=8000
+          PUBLIC_IP=${NODE_TS_IP}
+          DS_BASE_URL=http://${NODE_TS_IP}:8000
+
+          YF_ROUTER_ENABLED=false
+
+          REDIS_HOST=${MASTER_TS_IP}
+          REDIS_PORT=6379
+          REDIS_PASSWORD=${REDIS_PWD}
+
+          # 须与主节点 DATA_SOURCE_HMAC_SECRET 一致
+          DATA_SOURCE_HMAC_SECRET=${HMAC_SECRET}
+          DATA_SOURCE_ALLOWED_IPS=10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1
+
+          QUANT_ENV=production
+          TZ=${NODE_TZ}
+          ENVEOF
+
+            # 仅北京节点 (creds=true) 写入 Tushare / AKShare 凭证；其余纯 yfinance 节点跳过
+            if [ "${WRITE_CREDS}" = "true" ]; then
+              printf 'TUSHARE_TOKEN=%s\nAKSHARE_API_KEY=%s\nAKSHARE_MODE=internal\n' "${TUSHARE_TOKEN}" "${AKSHARE_API_KEY}" >> ${ENV_FILE}
+            fi
+
+            curl -sSL -o ${COMPOSE_FILE} "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/${COMPOSE_FILE}"
+            sed -i "s|ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest|${IMAGE}|g" ${COMPOSE_FILE}
+            docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} pull
+            docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} up -d --remove-orphans
+            docker image prune -f
+          EOF
