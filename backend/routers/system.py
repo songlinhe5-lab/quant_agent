@@ -759,14 +759,15 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                 "gridPos": {"h": 4, "w": 8, "x": 16, "y": 76},
                 "targets": [
                     {
-                        "expr": "increase(quant_fmp_collector_watchlist_file_deleted_total[1h]) / clamp_min(increase(quant_fmp_collector_watchlist_file_deleted_total[1h]) + increase(quant_fmp_collector_watchlist_size_shift_total[1h]), 0.0001)",
-                        "legendFormat": "突变中删文件导致占比 (0=纯调仓, 1=纯误删)",
+                        "expr": "increase(quant_fmp_collector_watchlist_file_deleted_total[1h]) / (increase(quant_fmp_collector_watchlist_file_deleted_total[1h]) + increase(quant_fmp_collector_watchlist_size_shift_total[1h]))",
+                        "legendFormat": "突变中删文件导致占比 (0=纯调仓, 1=纯误删, N/A=近1h无突变)",
                         "refId": "A",
                     }
                 ],
                 "fieldConfig": {
                     "defaults": {
                         "unit": "percentunit",
+                        "noValue": "N/A",
                         "color": {"mode": "background"},
                         "thresholds": {
                             "steps": [

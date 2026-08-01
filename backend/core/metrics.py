@@ -493,9 +493,17 @@ FMP_WATCHLIST_SIZE = Gauge(
     "FMP collector 当前生效 watchlist 标的池大小（多源并集；=0 即静默兜底，配合 watchlist_empty 告警定位配置遗漏）",
 )
 
+# [DEPRECATED-PATH] FMP_WATCHLIST_SIZE_SHIFT —— 进程内突变计数（当前单副本使用的真相源）。
+# 未来真上多副本并行时，此 Counter 会被放大 N 倍（各副本各自 inc），应废弃并切换到
+# Prometheus recording rule `config/prometheus_rules.yml` 中的 `fmp:watchlist_size_shift_flag`
+# （server 端统一判定，零 exporter 耦合）。届时：
+#   1. 取消 prometheus.yml 的 rule_files 注释并挂载 rules 文件；
+#   2. 将 Panel 16 的 alert expr 从 increase(shift[1h]) 切到 fmp:watchlist_size_shift_flag；
+#   3. 删除本 Counter 及其所有 inc() 调用。
+# 当前（uvicorn --workers 1 单副本）保留使用，勿删。
 FMP_WATCHLIST_SIZE_SHIFT = Counter(
     "quant_fmp_collector_watchlist_size_shift_total",
-    "FMP collector watchlist 标的池大小突变计数（短时发生 ±50% 变化，提示账户调仓异常或文件误删）",
+    "FMP collector watchlist 标的池大小突变计数（短时发生 ±50% 变化，提示账户调仓异常或文件误删）[DEPRECATED-PATH: 多副本改用 fmp:watchlist_size_shift_flag recording rule]",
 )
 
 FMP_WATCHLIST_FILE_DELETED = Counter(
