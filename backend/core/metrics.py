@@ -420,3 +420,12 @@ TICK_CACHE_HIT_RATE = Gauge(
     "quant_tick_cache_hit_rate",
     "Finnhub WS 实时价命中率 (0~1，无查询时为 NaN)",
 )
+
+# ==========================================
+#  FMP collector 每日 credit 消耗指标 (BE-ARCH-05)
+# ==========================================
+
+FMP_CREDIT_SPENT_TOTAL = Counter(
+    "quant_fmp_collector_credit_spent_total",
+    "FMP collector 累计消耗 credit（与 FMP_COLLECTOR_DAILY_CREDIT 预算对账）",
+)

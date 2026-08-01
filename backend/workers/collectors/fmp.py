@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import threading
 import time
 from datetime import datetime, timezone
 
@@ -22,6 +23,12 @@ from backend.core.logger import logger
 from backend.core.redis_client import redis_client
 from backend.services.datasource.registry import rate_limit_registry
 from backend.services.fmp.service import fmp_service
+
+# watchlist 热重载状态（进程内缓存 + mtime 跟踪）
+_watchlist_cache: list[str] = []
+_watchlist_mtime: float = -1.0
+_watchlist_lock = threading.Lock()
+_watchlist_monitor_stop = threading.Event()
 
 _FMP_REDIS_TTL = 24 * 3600  # 财报缓存 1 天
 _BATCH_LIMIT = 4  # 每标的拉取的季度数（控制 credit：income_statement 1 call = 数 credit）
@@ -67,7 +74,15 @@ async def _cache_financials(symbol: str) -> int:
         logger.warning(f"[FMP Collector] Redis 写入失败 {symbol}: {e}")
         return 0
     # 估算 credit：income_statement(约2) + profile(约2)
-    return 4
+    used = 4
+    # 累计 credit 消耗（与每日预算对账，Prometheus 可查）
+    try:
+        from backend.core.metrics import FMP_CREDIT_SPENT_TOTAL
+
+        FMP_CREDIT_SPENT_TOTAL.inc(used)
+    except Exception:  # noqa: BLE001
+        pass
+    return used
 
 
 def _load_watchlist() -> list[str]:
@@ -87,7 +102,6 @@ def _load_watchlist() -> list[str]:
             with open(wl_path, encoding="utf-8") as f:
                 syms = [ln.strip().upper() for ln in f if ln.strip() and not ln.startswith("#")]
             if syms:
-                logger.info(f"[FMP Collector] 从 watchlist 文件加载 {len(syms)} 个标的: {wl_path}")
                 return syms
         except OSError as e:
             logger.warning(f"[FMP Collector] watchlist 读取失败 {wl_path}: {e}")
@@ -95,13 +109,58 @@ def _load_watchlist() -> list[str]:
     # 兼容旧配置：回退到 Finnhub WS symbols
     fb = os.getenv("FINNHUB_WS_SYMBOLS", "").strip()
     if fb:
-        logger.info("[FMP Collector] 回退使用 FINNHUB_WS_SYMBOLS 作为 watchlist")
         return [s.strip().upper() for s in fb.split(",") if s.strip()]
     return []
 
 
+def _resolve_watchlist_path() -> str:
+    """解析当前 watchlist 文件路径（env 优先；否则默认文件）。"""
+    wl_path = os.getenv("FMP_COLLECTOR_WATCHLIST", "config/fmp_watchlist.txt")
+    return wl_path if wl_path and os.path.isfile(wl_path) else ""
+
+
+def _reload_watchlist() -> bool:
+    """重新解析 watchlist 并刷新进程内缓存。返回是否有变化。"""
+    global _watchlist_cache, _watchlist_mtime
+    syms = _load_watchlist()
+    with _watchlist_lock:
+        if syms == _watchlist_cache:
+            return False
+        _watchlist_cache = syms
+    wl_path = _resolve_watchlist_path()
+    if wl_path:
+        try:
+            _watchlist_mtime = os.path.getmtime(wl_path)
+        except OSError:
+            _watchlist_mtime = -1.0
+    logger.info(f"[FMP Collector] watchlist 刷新 → {len(syms)} 个标的")
+    return True
+
+
+def _get_watchlist() -> list[str]:
+    """读取进程内热重载缓存（无需每次重解析文件）。"""
+    with _watchlist_lock:
+        return list(_watchlist_cache)
+
+
+def _watch_watchlist_file() -> None:
+    """后台线程：轮询 watchlist 文件 mtime，变更即热重载（跨平台，避免引入 inotify 依赖）。"""
+    poll_interval = 5.0
+    while not _watchlist_monitor_stop.is_set():
+        wl_path = _resolve_watchlist_path()
+        if wl_path:
+            try:
+                mtime = os.path.getmtime(wl_path)
+                if mtime != _watchlist_mtime:
+                    logger.info(f"[FMP Collector] 检测到 watchlist 文件变更: {wl_path}")
+                    _reload_watchlist()
+            except OSError:
+                pass
+        _watchlist_monitor_stop.wait(poll_interval)
+
+
 async def _batch_run() -> None:
-    symbols = _load_watchlist()
+    symbols = _get_watchlist()
     if not symbols:
         logger.info("[FMP Collector] 未配置 watchlist（FMP_COLLECTOR_SYMBOLS/WATCHLIST/FINNHUB_WS_SYMBOLS 均空），跳过")
         return
@@ -123,15 +182,24 @@ async def _batch_run() -> None:
 
 
 async def fmp_collector_daemon() -> None:
-    """盘后批量守护主循环：每 6 小时触发一次（天然只会在盘后窗口实际拉取）。"""
+    """盘后批量守护主循环：每 6 小时触发一次（天然只会在盘后窗口实际拉取）。
+
+    启动即加载 watchlist 并开启后台热重载监控线程（文件变更即时刷新标的池）。
+    """
     logger.info("[FMP Collector] 守护进程启动 (盘后批量拉财报 → Redis)")
-    while True:
-        try:
-            await _batch_run()
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"[FMP Collector] 批次异常: {e}")
-        # 每 6h 一轮；盘内窗口 _batch_run 自行早退，不空转消耗 credit
-        await asyncio.sleep(6 * 3600)
+    _reload_watchlist()  # 首启加载
+    monitor = threading.Thread(target=_watch_watchlist_file, name="fmp-watchlist-mon", daemon=True)
+    monitor.start()
+    try:
+        while True:
+            try:
+                await _batch_run()
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[FMP Collector] 批次异常: {e}")
+            # 每 6h 一轮；盘内窗口 _batch_run 自行早退，不空转消耗 credit
+            await asyncio.sleep(6 * 3600)
+    finally:
+        _watchlist_monitor_stop.set()
 
 
 async def start() -> list:
