@@ -134,6 +134,14 @@ jobs:
           ENVEOF
             cp .env.master .env
 
+            # 脱敏校验: 确认主节点 TS IP 是否注入成功 (仅打印前两段, 避免泄露完整内网 IP)
+            if grep -q 'TAILSCALE_IP=.' .env.master; then
+              TS_PREFIX=$(grep '^TAILSCALE_IP=' .env.master | cut -d'=' -f2 | cut -d':' -f1 | awk -F'.' '{print $1"."$2".x.x"}')
+              echo "✅ TAILSCALE_IP 已注入 (脱敏: ${TS_PREFIX})，registry 将绑定该 TS IP 供北京节点经内网拉取"
+            else
+              echo "⚠️ 警告: TAILSCALE_IP 为空！registry 将仅绑定 127.0.0.1，北京节点无法经内网拉取镜像。请检查 secret VPS_S1_TAILSCALE_IP 是否配置。"
+            fi
+
             curl -sSL -o docker-compose.master.yml "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.master.yml"
             sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:latest|${IMAGE}|g" docker-compose.master.yml
             docker compose -f docker-compose.master.yml --env-file .env.master pull
