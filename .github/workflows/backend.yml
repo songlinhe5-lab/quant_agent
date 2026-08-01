@@ -2,12 +2,12 @@ name: Deploy Backend (US-MASTER + 4 Data Nodes)
 
 # 触发策略:
 #   - push develop : 仅构建校验 (build + 推镜像)，不部署
-#   - PR (合入 develop) : 构建 + 自动部署到 5 个节点
+#   - PR (合入 main) : 构建 + 自动部署到 5 个节点
 on:
   push:
     branches: [ develop ]
   pull_request:
-    branches: [ develop ]
+    branches: [ main ]
 
 env:
   REGISTRY: ghcr.io
