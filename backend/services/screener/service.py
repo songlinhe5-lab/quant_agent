@@ -243,6 +243,34 @@ class ScreenerService(NlpTranslatorMixin, DslParserMixin, DaemonMixin):
                     print("⚠️ [Screener] 当前非 PostgreSQL 数据库，自动降级为全量规则兜底模式。")  # noqa: E501
                     return {"count": len(self._rag_corpus), "warning": "not_postgres"}
 
+                # 💡 维度自愈：若已建表列维度与当前 EMBEDDING_DIM 不符（历史 1536 残留），
+                # 自动 ALTER 列类型，避免灌向量时 DataException: expected N dimensions
+                try:
+                    col_dim = conn.execute(
+                        text(
+                            "SELECT atttypmod FROM pg_attribute "
+                            "WHERE attrelid = 'quant_screener_rules'::regclass "
+                            "AND attname = 'embedding'"
+                        )
+                    ).scalar()
+                    if col_dim is not None and col_dim != models.EMBEDDING_DIM:
+                        print(
+                            f"⚠️ [Screener] embedding 列维度 {col_dim} != 当前 {models.EMBEDDING_DIM}，"
+                            f"正在 ALTER 列类型..."  # noqa: E501
+                        )
+                        conn.execute(
+                            text(
+                                f"ALTER TABLE quant_screener_rules "
+                                f"ALTER COLUMN embedding TYPE vector({models.EMBEDDING_DIM})"
+                            )
+                        )
+                        print(
+                            "✅ [Screener] embedding 列维度已迁移至 "  # noqa: E501
+                            f"{models.EMBEDDING_DIM}"
+                        )  # noqa: E501
+                except Exception as e:  # noqa: BLE001
+                    print(f"⚠️ [Screener] embedding 列维度自检失败（忽略，继续）: {e}")  # noqa: E501
+
                 # ⚠️ 极度重要：仅清理系统的公共冷启动知识库，绝对保留用户的私有规则 (user_id IS NOT NULL)  # noqa: E501
                 conn.execute(text("DELETE FROM quant_screener_rules WHERE user_id IS NULL"))  # noqa: E501
 

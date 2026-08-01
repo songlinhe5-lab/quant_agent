@@ -294,7 +294,7 @@ async def get_health_overview() -> Dict[str, Any]:
     from backend.services.datasource.adapters.futu import ensure_futu_registered
     from backend.services.datasource.adapters.macro import ensure_macro_sources_registered
     from backend.services.datasource.adapters.search import ensure_search_sources_registered
-    from backend.services.datasource.adapters.tushare import ensure_tushare_registered
+    from backend.services.tushare.adapter import ensure_tushare_registered
 
     ensure_macro_sources_registered()
     ensure_futu_registered()
