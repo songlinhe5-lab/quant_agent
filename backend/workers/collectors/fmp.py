@@ -127,9 +127,10 @@ async def _persist_credit() -> bool:
         was_paused = _collector_paused
         _collector_paused = False
         try:
-            from backend.core.metrics import FMP_COLLECTOR_PAUSED
+            from backend.core.metrics import FMP_COLLECTOR_PAUSED, FMP_PERSIST_FAILS
 
             FMP_COLLECTOR_PAUSED.set(0)
+            FMP_PERSIST_FAILS.set(0)
         except Exception:  # noqa: BLE001
             pass
         if was_paused:
@@ -148,6 +149,12 @@ async def _persist_credit() -> bool:
     except Exception as e:  # noqa: BLE001
         _persist_fails += 1
         logger.warning(f"[FMP Collector] credit 持久化失败 ({_persist_fails}/{_PERSIST_FAIL_THRESHOLD}): {e}")
+        try:
+            from backend.core.metrics import FMP_PERSIST_FAILS
+
+            FMP_PERSIST_FAILS.set(_persist_fails)  # 实时暴露连续失败数（Grafana 趋势）
+        except Exception:  # noqa: BLE001
+            pass
         if _persist_fails >= _PERSIST_FAIL_THRESHOLD:
             if not _persist_fail_alerted:
                 _persist_fail_alerted = True
@@ -176,18 +183,27 @@ async def _persist_credit() -> bool:
 
 
 async def _self_heal_loop() -> None:
-    """独立自愈短轮询：守护暂停态下每 30s 尝试一次 Redis 探测写，成功即自愈重启。
+    """独立自愈短轮询：守护暂停态下尝试 Redis 探测写，成功即自愈重启。
 
-    与主批量循环（6h 一轮）解耦，避免暂停期间最长 6h 才发现 Redis 已恢复、
-    自愈延迟过高导致 credit 进度静默丢失窗口过长。
+    指数退避避免 Redis 长断期间空转探测写：首探 30s，失败后按 2^n 退避，
+    上限 5min；一旦探测成功自愈，退避立即归零。与主批量循环（6h 一轮）解耦。
     """
+    base = 30.0
+    cap = 300.0
+    backoff = base
     while True:
         if _collector_paused:
             try:
-                await _persist_credit()  # 成功 → 内部解除 _collector_paused（自愈）
+                healed = await _persist_credit()  # 成功 → 内部解除 _collector_paused
+                if healed:
+                    backoff = base  # 自愈成功，退避归零
+                else:
+                    backoff = min(backoff * 2, cap)  # 仍失败 → 指数退避
             except Exception:  # noqa: BLE001
-                pass
-        await asyncio.sleep(30)
+                backoff = min(backoff * 2, cap)
+        else:
+            backoff = base  # 未暂停，保持基线，零额外写压力
+        await asyncio.sleep(backoff)
 
 
 async def _restore_credit() -> None:

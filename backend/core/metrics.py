@@ -434,3 +434,8 @@ FMP_COLLECTOR_PAUSED = Gauge(
     "quant_fmp_collector_paused",
     "FMP collector 守护暂停态（1=已暂停，因 Redis 持久化连续失败自愈中；0=正常运行）",
 )
+
+FMP_PERSIST_FAILS = Gauge(
+    "quant_fmp_collector_persist_fails",
+    "FMP collector Redis 持久化连续失败计数（观察 Redis 稳定性，达阈值升 P1 并暂停）",
+)

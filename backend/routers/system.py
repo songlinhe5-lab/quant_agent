@@ -273,6 +273,56 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                     "labels": {"severity": "critical", "service": "quant-agent"},
                 },
             },
+            {
+                "id": 6,
+                "title": "FMP Redis 持久化连续失败数 (Redis 稳定性)",
+                "type": "timeseries",
+                "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+                "targets": [
+                    {
+                        "expr": "quant_fmp_collector_persist_fails",
+                        "legendFormat": "persist_fails",
+                        "refId": "A",
+                    }
+                ],
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "short",
+                        "color": {"mode": "thresholds"},
+                        "min": 0,
+                        "thresholds": {
+                            "steps": [
+                                {"color": "green", "value": 0},
+                                {"color": "yellow", "value": 1},
+                                {"color": "red", "value": 5},
+                            ]
+                        },
+                    }
+                },
+                "alertThreshold": True,
+                "alert": {
+                    "id": 6,
+                    "name": "FMP Redis 持久化连续失败逼近阈值",
+                    "frequency": "1m",
+                    "for": "2m",
+                    "noDataState": "no_data",
+                    "execErrState": "alerting",
+                    "conditions": [
+                        {
+                            "type": "query",
+                            "reducerType": "last",
+                            "query": {"params": ["A", "5m", "now"]},
+                            "evaluator": {"type": "gte", "params": [3]},
+                            "operator": {"type": "and"},
+                        }
+                    ],
+                    "annotations": {
+                        "summary": "FMP Redis 持久化连续失败数 ≥ 3，Redis 稳定性恶化，逼近暂停阈值 5",
+                        "description": "quant_fmp_collector_persist_fails >= 3 持续 2m，需警惕 Redis 连接质量，避免守护暂停。",
+                    },
+                    "labels": {"severity": "warning", "service": "quant-agent"},
+                },
+            },
         ],
         "annotations": {"list": []},
         "templating": {"list": []},
