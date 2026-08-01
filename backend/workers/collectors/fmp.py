@@ -187,11 +187,32 @@ async def _self_heal_loop() -> None:
 
     指数退避避免 Redis 长断期间空转探测写：首探 30s，失败后按 2^n 退避，
     上限 5min；一旦探测成功自愈，退避立即归零。与主批量循环（6h 一轮）解耦。
+    每次轮询实测 Redis PING 延迟写入 _FMP_REDIS_PING_LATENCY Gauge，
+    并把当前退避秒数（下次探测倒计时）写入 _FMP_HEAL_BACKOFF Gauge。
     """
+    import time as _time
+
+    from backend.core.redis_client import redis_client
+
     base = 30.0
     cap = 300.0
     backoff = base
+    try:
+        from backend.core.metrics import FMP_HEAL_BACKOFF, FMP_REDIS_PING_LATENCY
+
+        _have_backoff_gauge = True
+    except Exception:  # noqa: BLE001
+        _have_backoff_gauge = False
     while True:
+        # 实测 Redis PING 往返延迟（无论是否暂停都探，喂延迟趋势定位抖动来源）
+        try:
+            _t0 = _time.monotonic()
+            await redis_client.ping()
+            _lat = _time.monotonic() - _t0
+            if _have_backoff_gauge:
+                FMP_REDIS_PING_LATENCY.set(round(_lat, 4))
+        except Exception:  # noqa: BLE001
+            pass  # 连 ping 都失败，延迟不写，persist_fails 已体现故障
         if _collector_paused:
             try:
                 healed = await _persist_credit()  # 成功 → 内部解除 _collector_paused
@@ -203,6 +224,11 @@ async def _self_heal_loop() -> None:
                 backoff = min(backoff * 2, cap)
         else:
             backoff = base  # 未暂停，保持基线，零额外写压力
+        if _have_backoff_gauge:
+            try:
+                FMP_HEAL_BACKOFF.set(backoff)
+            except Exception:  # noqa: BLE001
+                pass
         await asyncio.sleep(backoff)
 
 

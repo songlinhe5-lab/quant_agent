@@ -439,3 +439,13 @@ FMP_PERSIST_FAILS = Gauge(
     "quant_fmp_collector_persist_fails",
     "FMP collector Redis 持久化连续失败计数（观察 Redis 稳定性，达阈值升 P1 并暂停）",
 )
+
+FMP_HEAL_BACKOFF = Gauge(
+    "quant_fmp_collector_heal_backoff_seconds",
+    "FMP collector 自愈轮询当前退避秒数（下次探测倒计时，Redis 长断时随指数退避增长，上限 5min）",
+)
+
+FMP_REDIS_PING_LATENCY = Gauge(
+    "quant_fmp_collector_redis_ping_latency_seconds",
+    "FMP collector 自愈探测时实测 Redis PING 往返延迟（定位失败是网络抖还是 redis 本身慢）",
+)

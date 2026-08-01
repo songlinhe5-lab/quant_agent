@@ -275,7 +275,7 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
             },
             {
                 "id": 6,
-                "title": "FMP Redis 持久化连续失败数 (Redis 稳定性)",
+                "title": "FMP Redis 持久化连续失败数 + PING 延迟 (Redis 稳定性)",
                 "type": "timeseries",
                 "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
                 "targets": [
@@ -283,7 +283,12 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                         "expr": "quant_fmp_collector_persist_fails",
                         "legendFormat": "persist_fails",
                         "refId": "A",
-                    }
+                    },
+                    {
+                        "expr": "quant_fmp_collector_redis_ping_latency_seconds",
+                        "legendFormat": "redis_ping_latency_s",
+                        "refId": "B",
+                    },
                 ],
                 "fieldConfig": {
                     "defaults": {
@@ -321,6 +326,34 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                         "description": "quant_fmp_collector_persist_fails >= 3 持续 2m，需警惕 Redis 连接质量，避免守护暂停。",
                     },
                     "labels": {"severity": "warning", "service": "quant-agent"},
+                },
+            },
+            {
+                "id": 7,
+                "title": "FMP 自愈退避倒计时 (下次探测间隔)",
+                "type": "timeseries",
+                "gridPos": {"h": 8, "w": 24, "x": 0, "y": 32},
+                "targets": [
+                    {
+                        "expr": "quant_fmp_collector_heal_backoff_seconds",
+                        "legendFormat": "heal_backoff_s",
+                        "refId": "A",
+                    }
+                ],
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "s",
+                        "color": {"mode": "thresholds"},
+                        "min": 0,
+                        "custom": {"lineWidth": 2},
+                        "thresholds": {
+                            "steps": [
+                                {"color": "green", "value": 0},
+                                {"color": "yellow", "value": 30},
+                                {"color": "red", "value": 300},
+                            ]
+                        },
+                    }
                 },
             },
         ],
