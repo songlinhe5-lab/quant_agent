@@ -165,6 +165,24 @@ jobs:
             # 拉取 .env.example 供首次生成 .env 参考 (与 compose 同源, 保证版本一致)
             curl -sSL -o .env.example "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/.env.example" || echo "⚠️ 拉取 .env.example 失败，首次生成将走兜底"
             sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:latest|${IMAGE}|g" docker-compose.master.yml
+
+            # 🛡️ 磁盘空间前置守卫: 拉取镜像前断言 / 剩余空间，低于阈值直接 fail fast，
+            #    避免在 pull 中途因 containerd rename 失败 (no such file or directory) 白跑整段 CI。
+            DF_AVAIL_PCT=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
+            DF_FREE_GB=$(df -BG / | awk 'NR==2 {print $4}' | tr -d 'G')
+            DISK_THRESHOLD_PCT=80
+            DISK_MIN_FREE_GB=6
+            echo "💽 磁盘状态: / 已用 ${DF_AVAIL_PCT}% | 剩余 ${DF_FREE_GB}GB"
+            if [ "$DF_AVAIL_PCT" -ge "$DISK_THRESHOLD_PCT" ] || [ "$DF_FREE_GB" -lt "$DISK_MIN_FREE_GB" ]; then
+              echo "❌ 磁盘空间不足 (已用≥${DISK_THRESHOLD_PCT}% 或 剩余<${DISK_MIN_FREE_GB}GB)，中止部署防止 containerd 拉取崩溃"
+              echo "🧹 请在主节点手动清理后重跑:"
+              echo "   docker system prune -af"
+              echo "   journalctl --vacuum-size=200M"
+              echo "   apt-get clean"
+              echo "   systemctl restart docker"
+              exit 1
+            fi
+
             docker compose -f docker-compose.master.yml --env-file .env pull
             docker compose -f docker-compose.master.yml --env-file .env up -d --remove-orphans
             docker image prune -f
@@ -336,6 +354,23 @@ jobs:
 
             curl -sSL -o ${{ matrix.compose }} "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/${{ matrix.compose }}"
             sed -i "s|ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest|${IMAGE}|g" ${{ matrix.compose }}
+
+            # 🛡️ 磁盘空间前置守卫: 同主节点，拉取前断言 / 剩余空间，不足则 fail fast + 打印清理提示
+            DF_AVAIL_PCT=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
+            DF_FREE_GB=$(df -BG / | awk 'NR==2 {print $4}' | tr -d 'G')
+            DISK_THRESHOLD_PCT=80
+            DISK_MIN_FREE_GB=6
+            echo "💽 磁盘状态: / 已用 ${DF_AVAIL_PCT}% | 剩余 ${DF_FREE_GB}GB"
+            if [ "$DF_AVAIL_PCT" -ge "$DISK_THRESHOLD_PCT" ] || [ "$DF_FREE_GB" -lt "$DISK_MIN_FREE_GB" ]; then
+              echo "❌ 节点 ${{ matrix.node }} 磁盘空间不足 (已用≥${DISK_THRESHOLD_PCT}% 或 剩余<${DISK_MIN_FREE_GB}GB)，中止防止 containerd 拉取崩溃"
+              echo "🧹 请在该节点手动清理后重跑:"
+              echo "   docker system prune -af"
+              echo "   journalctl --vacuum-size=200M"
+              echo "   apt-get clean"
+              echo "   systemctl restart docker"
+              exit 1
+            fi
+
             docker compose -f ${{ matrix.compose }} --env-file ${{ matrix.env-file }} pull
             docker compose -f ${{ matrix.compose }} --env-file ${{ matrix.env-file }} up -d --remove-orphans
             docker image prune -f
