@@ -1,6 +1,18 @@
 global:
   scrape_interval: 15s # 每 15 秒抓取一次指标
 
+# ============================================================
+#  Recording Rules 挂载点（预防性 · 多副本切换用，当前未启用）
+# ============================================================
+#  当前单副本（uvicorn --workers 1）无需 server 端 recording rule，
+#  FMP watchlist 突变检测走 exporter 侧 Counter，零 Prometheus 耦合。
+#  未来真上多副本并行时，取消下方注释并挂载 config/prometheus_rules.yml，
+#  可把突变检测统一下沉到 server 端（fmp:watchlist_size_* 系列），
+#  避免 N 副本各自 inc 导致计数基数放大。详见该文件头部说明。
+# rule_files:
+#   - "/etc/prometheus/rules/*.yml"
+# ============================================================
+
 scrape_configs:
   - job_name: 'fastapi-app'
     # 覆盖全局配置，针对 FastAPI 应用每 5 秒抓取一次，提高实时性

@@ -1,0 +1,44 @@
+# ============================================================
+#  FMP watchlist 突变检测 Recording Rules（预防性 · 多副本切换用）
+# ============================================================
+# 当前状态：未启用（docker-compose.master.yml 部署 uvicorn --workers 1，单副本）。
+# FMP collector 守护为单进程，进程内 _watchlist_prev_size 基线无重复计数风险，
+# 突变检测走 exporter 侧 Counter（FMP_WATCHLIST_SIZE_SHIFT），零 Prometheus 耦合。
+#
+# 启用条件（未来真上多副本并行时）：
+#   1. 多副本下各副本会各自维护 _watchlist_prev_size 并分别 inc()，导致
+#      FMP_WATCHLIST_SIZE_SHIFT 计数被放大 N 倍（基数放大，非告警重复——
+#      Prometheus alert rule 是服务端单点评估，只按聚合值触发一次）。
+#   2. 此时应改为 server 端统一计算，与副本数解耦、零 exporter 耦合：
+#      用本 recording rule 预计算 fmp:watchlist_size_delta5m，
+#      再把 Panel 16 的 alert expr 从 increase(shift[1h]) 切到该 rule 输出。
+#
+# 启用步骤（届时取消 prometheus.yml 中 rule_files 注释 + 重启 prometheus）：
+#   rule_files:
+#     - "/etc/prometheus/rules/*.yml"
+# （并 docker-compose 挂载本文件到 /etc/prometheus/rules/）
+# ============================================================
+
+groups:
+  - name: fmp_watchlist_recording
+    interval: 5m  # 与 delta 窗口对齐，recording rule 每 5m 评估一次
+    rules:
+      # 服务端统一计算 watchlist 标的池 5m delta，与副本数无关。
+      # 负值=缩池（删标的/文件删除），正值=扩池（加标的/调仓）。
+      # 突变判定（±50%）留给告警规则引用此 recording 指标：
+      #   abs(fmp:watchlist_size_delta5m) / clamp_min(fmp:watchlist_size_prev5m,1) >= 0.5
+      - record: fmp:watchlist_size_delta5m
+        expr: |
+          quant_fmp_collector_watchlist_size
+          - quant_fmp_collector_watchlist_size offset 5m
+
+      # 上一评估窗口的基线值，供比率判定分母使用（避免除零）。
+      - record: fmp:watchlist_size_prev5m
+        expr: |
+          quant_fmp_collector_watchlist_size offset 5m
+
+      # 派生突变标志：相对上一窗口变化 ≥ ±50%（server 端统一判定，替代进程内 Counter）。
+      # 多副本下引用此指标即可，不再依赖 N 副本各自 inc 的 shift Counter。
+      - record: fmp:watchlist_size_shift_flag
+        expr: |
+          (abs(fmp:watchlist_size_delta5m) / clamp_min(fmp:watchlist_size_prev5m, 1)) >= 0.5

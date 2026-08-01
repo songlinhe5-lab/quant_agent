@@ -752,6 +752,57 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                     "labels": {"severity": "warning", "service": "quant-agent"},
                 },
             },
+            {
+                "id": 17,
+                "title": "突变根因比率 (删文件占比 = 误操作频率)",
+                "type": "stat",
+                "gridPos": {"h": 4, "w": 8, "x": 16, "y": 76},
+                "targets": [
+                    {
+                        "expr": "increase(quant_fmp_collector_watchlist_file_deleted_total[1h]) / clamp_min(increase(quant_fmp_collector_watchlist_file_deleted_total[1h]) + increase(quant_fmp_collector_watchlist_size_shift_total[1h]), 0.0001)",
+                        "legendFormat": "突变中删文件导致占比 (0=纯调仓, 1=纯误删)",
+                        "refId": "A",
+                    }
+                ],
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "percentunit",
+                        "color": {"mode": "background"},
+                        "thresholds": {
+                            "steps": [
+                                {"color": "#10b981", "value": 0},
+                                {"color": "#f59e0b", "value": 0.3},
+                                {"color": "#ef4444", "value": 0.7},
+                            ]
+                        },
+                        "min": 0,
+                        "max": 1,
+                    }
+                },
+                "alertThreshold": True,
+                "alert": {
+                    "id": 17,
+                    "name": "FMP watchlist 突变主要由文件误删导致 (误操作频率偏高)",
+                    "frequency": "5m",
+                    "for": "15m",
+                    "noDataState": "ok",
+                    "execErrState": "alerting",
+                    "conditions": [
+                        {
+                            "type": "query",
+                            "reducerType": "last",
+                            "query": {"params": ["A", "1h", "now"]},
+                            "evaluator": {"type": "gt", "params": [0.7]},
+                            "operator": {"type": "and"},
+                        }
+                    ],
+                    "annotations": {
+                        "summary": "FMP watchlist 突变中删文件占比 > 70%",
+                        "description": "近 1h 内 watchlist 突变事件主要由监听文件被删除触发（file_deleted / (file_deleted + size_shift) > 0.7），提示运维误操作（误删 portfolio/watchlist 文件）频率偏高，应排查文件管理流程而非账户调仓。",
+                    },
+                    "labels": {"severity": "warning", "service": "quant-agent"},
+                },
+            },
         ],
         "annotations": {"list": []},
         "templating": {
