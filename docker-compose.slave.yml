@@ -8,8 +8,8 @@
 # 部署变量: VPS_BJ_HOST / VPS_BJ_SSH_KEY / VPS_BJ_USER
 # 启动:
 #   cd /opt/quant-agent
-#   cp .env.slave.example .env.slave   # 填入 TUSHARE_TOKEN / 主节点 Tailscale IP
-#   docker compose --env-file .env.slave -f docker-compose.slave.yml up -d
+#   cp .env.slave.example .env   # 填入 TUSHARE_TOKEN / 主节点 Tailscale IP
+#   docker compose --env-file .env -f docker-compose.slave.yml up -d
 # =====================================================================
 
 x-common-env: &common-env
@@ -23,7 +23,7 @@ services:
     container_name: quant-data-subservice-slave
     restart: unless-stopped
     env_file:
-      - .env.slave
+      - .env
     environment:
       <<: *common-env
       # data_subservice 节点身份

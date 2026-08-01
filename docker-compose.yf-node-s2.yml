@@ -10,8 +10,8 @@
 # 部署变量: VPS_S2_HOST / VPS_S2_SSH_KEY / VPS_S2_USER
 # 启动:
 #   cd /opt/quant-agent
-#   cp .env.yf-s2.example .env.yf-s2   # 填入 Redis / 主节点 HMAC
-#   docker compose --env-file .env.yf-s2 -f docker-compose.yf-node-s2.yml up -d
+#   cp .env.yf-s2.example .env   # 填入 Redis / 主节点 HMAC
+#   docker compose --env-file .env -f docker-compose.yf-node-s2.yml up -d
 # =====================================================================
 
 x-common-env: &common-env
@@ -25,7 +25,7 @@ services:
     container_name: quant-data-subservice-yf-s2
     restart: unless-stopped
     env_file:
-      - .env.yf-s2
+      - .env
     environment:
       <<: *common-env
       DS_NODE_ID: ${DS_NODE_ID:-us-yf-s2}
