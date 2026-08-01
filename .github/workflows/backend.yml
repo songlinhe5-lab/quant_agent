@@ -99,9 +99,7 @@ jobs:
       - name: Setup SSH
         uses: ./.github/actions/ssh-preflight
         with:
-          ssh-host: ${{ secrets.VPS_S1_HOST }}
-          ssh-user: ${{ secrets.VPS_S1_USER }}
-          ssh-key: ${{ secrets.VPS_S1_SSH_KEY }}
+          host: ${{ secrets.VPS_S1_HOST }}
 
       - name: Deploy
         env:
@@ -196,9 +194,7 @@ jobs:
       - name: Setup SSH
         uses: ./.github/actions/ssh-preflight
         with:
-          ssh-host: ${{ secrets[matrix.host-secret] }}
-          ssh-user: ${{ secrets[matrix.user-secret] }}
-          ssh-key: ${{ secrets[matrix.key-secret] }}
+          host: ${{ secrets[matrix.host-secret] }}
 
       - name: Deploy data node ${{ matrix.node }}
         env:
