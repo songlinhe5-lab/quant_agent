@@ -39,7 +39,7 @@ from backend.core.circuit_breaker_integration import fetch_via_breaker_sync
 from ..adapters.akshare.akshare_adapter import AkShareAdapter
 from ..adapters.futu.futu_adapter import FutuAdapter
 from ..adapters.yfinance.yfinance_adapter import YFinanceAdapter
-from ..services.datasource.adapters.tushare import ensure_tushare_registered
+from ..services.tushare.adapter import ensure_tushare_registered
 
 
 class MarketDataService:

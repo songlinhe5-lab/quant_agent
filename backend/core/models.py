@@ -8,7 +8,7 @@ from sqlalchemy.sql import func
 
 from .database import Base
 
-EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "1536"))
+EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "1024"))
 
 # 💡 兼容处理：统一使用 TypeDecorator 封装 Vector 类型
 # SQLite 降级为 LargeBinary，PostgreSQL 尝试使用 pgvector.sqlalchemy.Vector
