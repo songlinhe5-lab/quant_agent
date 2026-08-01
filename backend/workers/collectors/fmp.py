@@ -560,7 +560,13 @@ def _reload_watchlist() -> bool:
 
         FMP_WATCHLIST_SIZE.set(len(syms))
         # 突变检测：相对上一轮 size 变化超过 ±50% 即记一次（提示账户调仓异常或文件误删）
-        # 基线为 -1（首轮）时跳过，避免启动即误报
+        # 基线为 -1（首轮）时跳过，避免启动即误报。
+        # 多副本去重说明：当前生产部署 uvicorn --workers 1（docker-compose.master.yml），
+        # FMP collector 守护为单进程，进程内基线无重复计数风险。若未来扩为多副本并行，
+        # 各副本会各自维护 _watchlist_prev_size 并分别 inc() 导致 shift 计数被放大（N 倍），
+        # 此时应改用 Prometheus 查询层去重：直接对下方 FMP_WATCHLIST_SIZE Gauge 做
+        # delta(quant_fmp_collector_watchlist_size[5m]) ≥ 基线*0.5 判定突变，与副本数解耦，
+        # 并将 Panel 16 的 alert expr 从 increase(shift[1h]) 切换到该 delta 查询。Gauge 已就绪，切换零代码改动。
         global _watchlist_prev_size
         if _watchlist_prev_size >= 0 and _watchlist_prev_size > 0:
             _ratio = abs(len(syms) - _watchlist_prev_size) / _watchlist_prev_size
@@ -611,6 +617,12 @@ def _watch_watchlist_file() -> None:
                         f"[FMP Collector] 检测到 watchlist/portfolio 文件被删除: {p}，"
                         f"重置该源并触发重载（防 stale 池残留）"
                     )
+                    try:
+                        from backend.core.metrics import FMP_WATCHLIST_FILE_DELETED
+
+                        FMP_WATCHLIST_FILE_DELETED.inc()
+                    except Exception:  # noqa: BLE001
+                        pass
                     del _watchlist_mtimes[p]
                     _reload_watchlist()
                     triggered = True

@@ -701,6 +701,11 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                         "legendFormat": "近1h标的池突变次数 (±50%)",
                         "refId": "B",
                     },
+                    {
+                        "expr": "increase(quant_fmp_collector_watchlist_file_deleted_total[1h])",
+                        "legendFormat": "近1h文件被删除次数 (根因:删文件)",
+                        "refId": "C",
+                    },
                 ],
                 "fieldConfig": {
                     "defaults": {

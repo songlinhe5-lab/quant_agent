@@ -497,3 +497,8 @@ FMP_WATCHLIST_SIZE_SHIFT = Counter(
     "quant_fmp_collector_watchlist_size_shift_total",
     "FMP collector watchlist 标的池大小突变计数（短时发生 ±50% 变化，提示账户调仓异常或文件误删）",
 )
+
+FMP_WATCHLIST_FILE_DELETED = Counter(
+    "quant_fmp_collector_watchlist_file_deleted_total",
+    "FMP collector 监听的 watchlist/portfolio 文件被删除事件计数（根因分类：删文件 vs 调仓）",
+)
