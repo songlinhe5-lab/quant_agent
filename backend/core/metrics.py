@@ -401,3 +401,22 @@ DIST_AK_STALE_TOTAL = Counter(
     "AKShare STALE 缓存降级返回总数 (CN 断连)",
     ["action"],
 )
+
+# ==========================================
+#  Finnhub WS 实时价命中/降级指标 (BE-ARCH-05)
+# ==========================================
+
+TICK_CACHE_HITS = Counter(
+    "quant_tick_cache_hits_total",
+    "Finnhub WS 实时价命中次数（quote 走 tick_cache 优先返回）",
+)
+
+TICK_CACHE_MISSES = Counter(
+    "quant_tick_cache_misses_total",
+    "Finnhub WS 实时价降级次数（tick_cache 未命中，走 REST 快照）",
+)
+
+TICK_CACHE_HIT_RATE = Gauge(
+    "quant_tick_cache_hit_rate",
+    "Finnhub WS 实时价命中率 (0~1，无查询时为 NaN)",
+)

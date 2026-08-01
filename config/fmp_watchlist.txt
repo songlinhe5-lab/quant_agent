@@ -1,0 +1,10 @@
+# FMP 盘后批量财报缓存 watchlist（每行一个标的，# 开头为注释）
+# 由 COLLECTOR_FMP 守护读取，盘后批量拉 income_statement/profile 写 Redis。
+# 与 FINNHUB_WS_SYMBOLS 解耦：可独立维护一份财报关注池。
+AAPL
+MSFT
+NVDA
+TSLA
+AMZN
+GOOGL
+META

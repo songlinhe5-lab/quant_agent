@@ -70,14 +70,40 @@ async def _cache_financials(symbol: str) -> int:
     return 4
 
 
+def _load_watchlist() -> list[str]:
+    """解析 FMP 守护独立 watchlist，三级回退：
+
+    1. FMP_COLLECTOR_SYMBOLS (env, 逗号分隔) —— 最高优先
+    2. FMP_COLLECTOR_WATCHLIST (独立文件, 每行一个 symbol) —— 与 FINNHUB_WS_SYMBOLS 解耦
+    3. FINNHUB_WS_SYMBOLS (env, 逗号分隔) —— 兼容旧配置
+    """
+    env_syms = os.getenv("FMP_COLLECTOR_SYMBOLS", "").strip()
+    if env_syms:
+        return [s.strip().upper() for s in env_syms.split(",") if s.strip()]
+
+    wl_path = os.getenv("FMP_COLLECTOR_WATCHLIST", "config/fmp_watchlist.txt")
+    if wl_path and os.path.isfile(wl_path):
+        try:
+            with open(wl_path, encoding="utf-8") as f:
+                syms = [ln.strip().upper() for ln in f if ln.strip() and not ln.startswith("#")]
+            if syms:
+                logger.info(f"[FMP Collector] 从 watchlist 文件加载 {len(syms)} 个标的: {wl_path}")
+                return syms
+        except OSError as e:
+            logger.warning(f"[FMP Collector] watchlist 读取失败 {wl_path}: {e}")
+
+    # 兼容旧配置：回退到 Finnhub WS symbols
+    fb = os.getenv("FINNHUB_WS_SYMBOLS", "").strip()
+    if fb:
+        logger.info("[FMP Collector] 回退使用 FINNHUB_WS_SYMBOLS 作为 watchlist")
+        return [s.strip().upper() for s in fb.split(",") if s.strip()]
+    return []
+
+
 async def _batch_run() -> None:
-    symbols = [
-        s.strip().upper()
-        for s in os.getenv("FMP_COLLECTOR_SYMBOLS", os.getenv("FINNHUB_WS_SYMBOLS", "")).split(",")
-        if s.strip()
-    ]
+    symbols = _load_watchlist()
     if not symbols:
-        logger.info("[FMP Collector] 未配置 FMP_COLLECTOR_SYMBOLS / FINNHUB_WS_SYMBOLS，跳过")
+        logger.info("[FMP Collector] 未配置 watchlist（FMP_COLLECTOR_SYMBOLS/WATCHLIST/FINNHUB_WS_SYMBOLS 均空），跳过")
         return
 
     daily_budget = int(os.getenv("FMP_COLLECTOR_DAILY_CREDIT", "200"))  # 免费档 250 上限

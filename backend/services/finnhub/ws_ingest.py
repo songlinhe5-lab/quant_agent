@@ -63,12 +63,38 @@ def record_tick_hit() -> None:
     global _hits
     with _metrics_lock:
         _hits += 1
+    _sync_prometheus(hit=True)
 
 
 def record_tick_miss() -> None:
     global _misses
     with _metrics_lock:
         _misses += 1
+    _sync_prometheus(hit=False)
+
+
+def _sync_prometheus(hit: bool) -> None:
+    """将命中/降级事件同步到 Prometheus（Counter 增量 inc，Gauge 重算命中率）。
+
+    Counter 只能累加，故每次事件 inc(1)；命中率用 Gauge set 全局比值。
+    """
+    try:
+        from backend.core.metrics import (
+            TICK_CACHE_HIT_RATE,
+            TICK_CACHE_HITS,
+            TICK_CACHE_MISSES,
+        )
+
+        if hit:
+            TICK_CACHE_HITS.inc()
+        else:
+            TICK_CACHE_MISSES.inc()
+        with _metrics_lock:
+            h, m = _hits, _misses
+        total = h + m
+        TICK_CACHE_HIT_RATE.set((h / total) if total else float("nan"))
+    except Exception:  # noqa: BLE001
+        return
 
 
 def tick_cache_stats() -> dict[str, Any]:
