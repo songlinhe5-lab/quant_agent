@@ -15,6 +15,17 @@ from backend.core.retry_utils import with_global_retry
 class QuoteMixin:
     """个股新闻 + A股实时行情 + 历史K线"""
 
+    @staticmethod
+    def _build_sina_symbol(code: str) -> str:
+        """将 6 位 A 股代码转为新浪接口所需前缀格式 (sh/sz)。
+
+        上交所: 60/68/9 开头 → sh；深交所: 00/30 开头 → sz。
+        """
+        code = code.zfill(6)
+        if code.startswith(("60", "68", "90", "88")):
+            return f"sh{code}"
+        return f"sz{code}"
+
     @with_global_retry
     async def get_company_news(self, ticker: str) -> Dict[str, Any]:
         """
@@ -184,6 +195,13 @@ class QuoteMixin:
         try:
             import akshare as ak
 
+            # 🔧 东财接口(push2his 等)在 CN 机房 IP 被反爬 RST 封禁，统一切到新浪源
+            # (实测: stock_zh_a_daily 在 VPS 直连 509ms 正常返回；东财同类接口全 FAIL)。
+            # 新浪 stock_zh_a_daily 单位为「股」(非手)，列名为 date/open/high/low/close/
+            # volume/amount/turnover，无「振幅」列，需用 (high-low)/prev_close 推算。
+            ak.set_proxy(None)  # 强制直连，清掉环境里可能残留的失效代理(如 127.0.0.1:10808)
+            sina_symbol = self._build_sina_symbol(symbol)
+
             # 为保证实时性，获取日线最近一条数据（包含今日盘中实时变动）
             async with self._acquire_lock_with_timeout(5.0):
                 # 💡 双重检查锁
@@ -191,35 +209,38 @@ class QuoteMixin:
                 if cached_double:
                     return json.loads(cached_double)
 
-                df = await asyncio.to_thread(ak.stock_zh_a_hist, symbol=symbol, period="daily", adjust="qfq")  # noqa: E501
+                df = await asyncio.to_thread(ak.stock_zh_a_daily, symbol=sina_symbol, adjust="qfq")  # noqa: E501
 
             if df is None or df.empty:
                 raise ValueError("获取到的个股行情为空")
 
             latest = df.iloc[-1]
-            prev_close = float(df.iloc[-2]["收盘"]) if len(df) > 1 else float(latest["开盘"])  # noqa: E501
-            last_price = float(latest["收盘"])
+            prev_close = float(df.iloc[-2]["close"]) if len(df) > 1 else float(latest["open"])  # noqa: E501
+            last_price = float(latest["close"])
             change = last_price - prev_close
             change_pct = (change / prev_close) * 100 if prev_close > 0 else 0.0
 
-            vol = float(latest["成交量"]) * 100  # AKShare 返回单位为手，转化为股
+            vol = float(latest["volume"])  # 新浪源 volume 单位已是「股」，不再 *100
+            high = float(latest["high"])
+            low = float(latest["low"])
+            amplitude = ((high - low) / prev_close * 100) if prev_close > 0 else 0.0
             result = {
                 "status": "success",
                 "data": {
                     "ticker": ticker,
                     "last_price": last_price,
-                    "open": float(latest["开盘"]),
-                    "high": float(latest["最高"]),
-                    "low": float(latest["最低"]),
+                    "open": float(latest["open"]),
+                    "high": high,
+                    "low": low,
                     "prev_close": prev_close,
                     "volume": vol,
-                    "turnover": float(latest["成交额"]),
+                    "turnover": float(latest["amount"]),
                     "change_val": change,
                     "change_pct": change_pct,
-                    "amplitude": float(latest.get("振幅", 0.0)),
+                    "amplitude": amplitude,
                     "volume_str": f"{vol / 1_000_000:.2f}M" if vol > 1_000_000 else f"{vol / 1_000:.2f}K",  # noqa: E501
                 },
-                "source": "akshare_fallback",
+                "source": "akshare_sina",
             }
             # 短效缓存防穿透
             ttl = 10 + random.randint(1, 5)
@@ -267,13 +288,17 @@ class QuoteMixin:
         try:
             import akshare as ak
 
+            # 🔧 同 get_realtime_quote：东财接口在 CN 机房 IP 被 RST 封禁，切新浪源
+            ak.set_proxy(None)  # 强制直连，清失效代理
+            sina_symbol = self._build_sina_symbol(symbol)
+
             async with self._acquire_lock_with_timeout(5.0):
                 # 💡 双重检查锁
                 cached_double = await redis_client.get(cache_key)
                 if cached_double:
                     return json.loads(cached_double)
 
-                df = await asyncio.to_thread(ak.stock_zh_a_hist, symbol=symbol, period="daily", adjust="qfq")  # noqa: E501
+                df = await asyncio.to_thread(ak.stock_zh_a_daily, symbol=sina_symbol, adjust="qfq")  # noqa: E501
 
             if df is None or df.empty:
                 raise ValueError("获取到的 K 线为空")
@@ -281,12 +306,12 @@ class QuoteMixin:
             df = df.tail(num)
             data_list = [
                 {
-                    "time": str(row["日期"]) + " 00:00:00",
-                    "open": float(row["开盘"]),
-                    "high": float(row["最高"]),
-                    "low": float(row["最低"]),
-                    "close": float(row["收盘"]),
-                    "volume": float(row["成交量"]) * 100,
+                    "time": str(row["date"]) + " 00:00:00",
+                    "open": float(row["open"]),
+                    "high": float(row["high"]),
+                    "low": float(row["low"]),
+                    "close": float(row["close"]),
+                    "volume": float(row["volume"]),  # 新浪源单位已是股，不 *100
                 }
                 for _, row in df.iterrows()
             ]  # noqa: E501

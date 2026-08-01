@@ -125,3 +125,22 @@ class YFinanceWorker:
     def service(self):
         """直接访问底层 YFinanceService 实例"""
         return self._service
+
+
+# ─────────────────────────────────────────
+#  模块级单例 + 便捷函数 (供 main.py / routes.py 调用)
+# ─────────────────────────────────────────
+worker = YFinanceWorker()
+
+
+async def start() -> None:
+    await worker.start()
+
+
+async def stop() -> None:
+    await worker.stop()
+
+
+async def handle(ticker: str, fetch_type: str, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """DIST-07 代理端点调用入口。"""
+    return await worker.fetch(ticker, fetch_type, **(kwargs or {}))

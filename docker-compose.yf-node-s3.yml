@@ -1,50 +1,45 @@
 # =====================================================================
-# 北京从节点 (VPS_BJ · Tushare + AKShare + YFinance 数据源)
+# 美西从节点2 (VPS_S3 · 纯 YFinance 数据源)
 # =====================================================================
-# 角色: 仅作为「数据源节点」运行 data_subservice，提供 A股 Tushare + 沪深港通 AKShare + YFinance。
-# 与主节点 (VPS_S1) 经 Tailscale 内网通信；不对公网暴露 8000。
-# 禁止启用 Futu collector。
+# 角色: 仅作为「数据源节点」运行 data_subservice，提供 YFinance (美股/加密/外汇)。
+# 独立公网 IP 直连 Yahoo；心跳写主节点 Redis Registry。
+# 主节点 YFinanceRouter 经 Tailscale 内网调用本节点做负载均衡/容灾。
 #
-# 部署变量: VPS_BJ_HOST / VPS_BJ_SSH_KEY / VPS_BJ_USER
+# 部署变量: VPS_S3_HOST / VPS_S3_SSH_KEY / VPS_S3_USER
 # 启动:
-#   cd /opt/quant-agent
-#   cp .env.slave.example .env.slave   # 填入 TUSHARE_TOKEN / 主节点 Tailscale IP
-#   docker compose --env-file .env.slave -f docker-compose.slave.yml up -d
+#   cp .env.yf-s3.example .env.yf-s3   # 填入 Redis / 主节点 HMAC
+#   docker compose --env-file .env.yf-s3 -f docker-compose.yf-node-s3.yml up -d
 # =====================================================================
 
 x-common-env: &common-env
-  TZ: Asia/Shanghai
+  TZ: America/Los_Angeles
   PYTHONUNBUFFERED: "1"
   PYTHONDONTWRITEBYTECODE: "1"
 
 services:
   data-subservice:
     image: ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest
-    container_name: quant-data-subservice-slave
+    container_name: quant-data-subservice-yf-s3
     restart: unless-stopped
     env_file:
-      - .env.slave
+      - .env.yf-s3
     environment:
       <<: *common-env
-      # data_subservice 节点身份
-      DS_NODE_ID: ${DS_NODE_ID:-cn-slave-bj}
-      DS_REGION: "cn-bj"
-      DS_CAPABILITIES: "tushare,akshare,yfinance"
+      DS_NODE_ID: ${DS_NODE_ID:-us-yf-s3}
+      DS_REGION: "us-west"
+      DS_CAPABILITIES: "yfinance"
       DS_NODE_PORT: "8000"
       DS_BASE_URL: "${DS_BASE_URL:-http://${PUBLIC_IP}:8000}"
-      # 数据源凭证
-      TUSHARE_TOKEN: ${TUSHARE_TOKEN}
-      AKSHARE_MODE: ${AKSHARE_MODE:-internal}
-      # 仅连主节点 Redis (注册表/缓存中继)
+      # YFinance 直连 Yahoo，不经过 Router
+      YF_ROUTER_ENABLED: "false"
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT:-6379}
-      # 主节点 DataSourceRouter 回调鉴权 (须与主节点 DATA_SOURCE_HMAC_SECRET 一致)
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       DATA_SOURCE_HMAC_SECRET: ${DATA_SOURCE_HMAC_SECRET}
       DATA_SOURCE_ALLOWED_IPS: ${DATA_SOURCE_ALLOWED_IPS:-10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1}
     expose:
       - "8000"
     ports:
-      # 仅 Tailscale 内网可达；如需公网请在 Tailscale 前置或加白名单
       - "127.0.0.1:8000:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ping').status==200 else 1)"]
@@ -57,7 +52,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1.5G
+          memory: 1G
 
 networks:
   quant-net:

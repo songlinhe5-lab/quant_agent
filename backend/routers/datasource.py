@@ -294,11 +294,13 @@ async def get_health_overview() -> Dict[str, Any]:
     from backend.services.datasource.adapters.futu import ensure_futu_registered
     from backend.services.datasource.adapters.macro import ensure_macro_sources_registered
     from backend.services.datasource.adapters.search import ensure_search_sources_registered
+    from backend.services.datasource.adapters.tushare import ensure_tushare_registered
 
     ensure_macro_sources_registered()
     ensure_futu_registered()
     ensure_akshare_registered()
     ensure_search_sources_registered()
+    ensure_tushare_registered()
 
     names = datasource_registry.list_names()
     cards = await asyncio.gather(*[_build_health_card(n) for n in names])

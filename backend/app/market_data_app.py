@@ -39,6 +39,7 @@ from backend.core.circuit_breaker_integration import fetch_via_breaker_sync
 from ..adapters.akshare.akshare_adapter import AkShareAdapter
 from ..adapters.futu.futu_adapter import FutuAdapter
 from ..adapters.yfinance.yfinance_adapter import YFinanceAdapter
+from ..services.datasource.adapters.tushare import ensure_tushare_registered
 
 
 class MarketDataService:
@@ -94,11 +95,19 @@ class MarketDataService:
             cache_ttl=384,
         )
 
+        # Tushare: 独立数据源 + A股主源（机房 IP 不被东财反爬封禁）
+        # token 来自环境变量 TUSHARE_TOKEN；未配置时不参与降级链（fetch 返回 NO_TOKEN）
+        self._tushare_id = ensure_tushare_registered()
+        from backend.services.datasource.source_registry import datasource_registry
+
+        self._tushare = datasource_registry.get("tushare", "stock_quote")
+
         # 数据源优先级列表 (按可用性降序排列)
         self._primary_sources = [self._futu, self._yfinance]
         self._backup_sources = {
-            "stock_quote": [self._akshare],  # A 股优先用 AkShare
-            "history": [self._akshare, self._yfinance],
+            # A股主源 Tushare 优先，AkShare(新浪源) 兜底
+            "stock_quote": [self._tushare, self._akshare],
+            "history": [self._tushare, self._akshare, self._yfinance],
         }
 
     # ========== 核心方法：行情获取 ==========
@@ -132,8 +141,12 @@ class MarketDataService:
             if result.is_success():
                 return result
 
-        # Step 2: A 股直接降级到 AkShare
+        # Step 2: A 股主源 Tushare 优先，AkShare(新浪源) 兜底
         if ticker.startswith(("SH.", "SZ.")):
+            if self._tushare is not None and self._tushare.is_available():
+                ts_result = fetch_via_breaker_sync("tushare", self._tushare.fetch, "stock_quote", {"ticker": ticker})
+                if ts_result.is_success():
+                    return ts_result
             ak_result = fetch_via_breaker_sync("akshare", self._akshare.fetch, "stock_quote", {"ticker": ticker})
             if ak_result.is_success():
                 return ak_result
@@ -209,8 +222,12 @@ class MarketDataService:
                 if result.is_success():
                     return result
 
-        # A 股优先用 AkShare
+        # A 股主源 Tushare 优先，AkShare(新浪源) 兜底
         if ticker.startswith(("SH.", "SZ.")):
+            if self._tushare is not None and self._tushare.is_available():
+                ts_result = fetch_via_breaker_sync("tushare", self._tushare.fetch, "stock_history", params)
+                if ts_result.is_success():
+                    return ts_result
             ak_result = fetch_via_breaker_sync("akshare", self._akshare.fetch, "stock_history", params)
             if ak_result.is_success():
                 return ak_result
