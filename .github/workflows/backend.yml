@@ -125,7 +125,7 @@ jobs:
 
             # 动态生成主节点 .env.master (compose 变量替换用) 与 .env (容器 env_file 用)
             cat > .env.master <<ENVEOF
-          TAILSCALE_IP=${MASTER_TS_IP}
+          TAILSCALE_IP=${{ secrets.VPS_S1_TAILSCALE_IP }}
           REDIS_PASSWORD=${REDIS_PWD}
           DB_USER=${DB_USER:-quant_admin}
           DB_PASSWORD=${DB_PASSWORD:-quant_pg_secret_2026}
@@ -140,14 +140,15 @@ jobs:
             docker compose -f docker-compose.master.yml --env-file .env.master up -d --remove-orphans
             docker image prune -f
 
-            # 将镜像推送到内网私有 registry，供国内节点 (北京) 经 Tailscale 内网高速拉取
-            REGISTRY_IMAGE="${MASTER_TS_IP}:5000/quant-agent:latest"
+            # 将镜像推送到本机内网私有 registry，供国内节点 (北京) 经 Tailscale 内网高速拉取
+            # 注意: 在主节点本机操作，registry 地址用 localhost (不依赖远程 shell 无感的 TS IP 变量)
+            REGISTRY_IMAGE="localhost:5000/quant-agent:latest"
             docker tag "${IMAGE}" "${REGISTRY_IMAGE}"
             docker push "${REGISTRY_IMAGE}"
 
             # 同时把 data-subservice 镜像推到 registry (北京节点经内网拉取)
             DS_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:latest"
-            DS_REGISTRY_IMAGE="${MASTER_TS_IP}:5000/quant-agent-data-subservice:latest"
+            DS_REGISTRY_IMAGE="localhost:5000/quant-agent-data-subservice:latest"
             docker pull "${DS_IMAGE}"
             docker tag "${DS_IMAGE}" "${DS_REGISTRY_IMAGE}"
             docker push "${DS_REGISTRY_IMAGE}"
