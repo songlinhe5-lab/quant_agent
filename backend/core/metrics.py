@@ -510,3 +510,23 @@ FMP_WATCHLIST_FILE_DELETED = Counter(
     "quant_fmp_collector_watchlist_file_deleted_total",
     "FMP collector 监听的 watchlist/portfolio 文件被删除事件计数（根因分类：删文件 vs 调仓）",
 )
+
+# ==========================================
+#  WebScrape (fetch_webpage) 抓取成功率插桩 (AGENTS.md §2.12 降级实证)
+# ==========================================
+# 目的：量化 PR Newswire / HKEX 披露易 等反爬域名的抓取失败率，验证 Jina→httpx
+#       自动降级链的实际健康度。按 source(jina|httpx) × domain(域名) 维度计数，
+#       跑一周后 `sum(rate(failed[7d])) / sum(rate(total[7d])) by (domain)` 即得真实失败率。
+# 注意：这是纯计数插桩，不影响现有降级逻辑（Jina→httpx→建议 web_search 文案）。
+
+WEB_SCRAPE_FETCH_TOTAL = Counter(
+    "quant_webscrape_fetch_total",
+    "fetch_webpage 网页抓取尝试总数（每次 run 对单 url 计 1 次，jina 与 httpx 各独立计数）",
+    ["source", "domain"],  # source: "jina" | "httpx"；domain: urlparse(url).netloc
+)
+
+WEB_SCRAPE_FETCH_FAILED = Counter(
+    "quant_webscrape_fetch_failed_total",
+    "fetch_webpage 网页抓取失败数（反爬拦截 / 内容过短 / 网络异常 / 403-503 等均计入）",
+    ["source", "domain", "reason"],  # reason: "anti_bot" | "too_short" | "http_error"
+)

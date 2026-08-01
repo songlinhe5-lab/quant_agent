@@ -4,11 +4,13 @@ import os
 import re
 import time
 from typing import Any, Dict
+from urllib.parse import urlparse
 
 import httpx
 import structlog
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from backend.core.metrics import WEB_SCRAPE_FETCH_FAILED, WEB_SCRAPE_FETCH_TOTAL
 from backend.core.middleware import httpx_log_request, httpx_log_response
 from backend.core.utils import safe_truncate
 from hermes_agent.tool_registry import register_tool
@@ -16,6 +18,14 @@ from hermes_agent.tool_registry import register_tool
 from .base import BaseTool
 
 logger = structlog.get_logger(__name__)
+
+
+def _domain_of(url: str) -> str:
+    """提取域名用于抓取失败率插桩维度（PR Newswire / HKEX 等反爬域名分桶）。"""
+    try:
+        return urlparse(url).netloc or "unknown"
+    except Exception:
+        return "unknown"
 
 
 @register_tool
@@ -82,6 +92,8 @@ class WebScrapeTool(BaseTool):
 
     async def _fetch_via_jina(self, url: str) -> str | None:
         """方案 1: Jina Reader API (优先，专门为大模型优化的网页转 Markdown)"""
+        domain = _domain_of(url)
+        WEB_SCRAPE_FETCH_TOTAL.labels(source="jina", domain=domain).inc()
         jina_url = f"https://r.jina.ai/{url}"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -113,15 +125,19 @@ class WebScrapeTool(BaseTool):
                     or "Just a moment" in content
                 ):
                     logger.warning("jina_anti_bot_blocked", url=url)
+                    WEB_SCRAPE_FETCH_FAILED.labels(source="jina", domain=domain, reason="anti_bot").inc()
                     return None
 
                 return content
         except Exception as e:
             logger.warning("jina_extract_failed_fallback_http", url=url, error=repr(e))
+            WEB_SCRAPE_FETCH_FAILED.labels(source="jina", domain=domain, reason="http_error").inc()
             return None
 
     async def _fetch_via_httpx(self, url: str) -> str | None:
         """方案 2: 直接 HTTP 抓取 (降级方案，适用于 Jina 失败时)"""
+        domain = _domain_of(url)
+        WEB_SCRAPE_FETCH_TOTAL.labels(source="httpx", domain=domain).inc()
         # SEC.gov 要求声明性 User-Agent（公司名+邮箱），否则触发 Cloudflare 403
         if "sec.gov" in url:
             headers = {
@@ -179,11 +195,13 @@ class WebScrapeTool(BaseTool):
                 # 💡 检查内容质量
                 if len(content) < 200:
                     logger.warning("http_content_too_short", url=url, chars=len(content))
+                    WEB_SCRAPE_FETCH_FAILED.labels(source="httpx", domain=domain, reason="too_short").inc()
                     return None
 
                 return content
         except Exception as e:
             logger.warning("http_fetch_failed", url=url, error=repr(e))
+            WEB_SCRAPE_FETCH_FAILED.labels(source="httpx", domain=domain, reason="http_error").inc()
             return None
 
     async def _format_response(self, url: str, content: str, query: str = "") -> Dict[str, Any]:
