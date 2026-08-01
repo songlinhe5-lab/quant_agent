@@ -427,7 +427,7 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                     ],
                     "annotations": {
                         "summary": "FMP Redis P99 延迟 > 0.5s 持续 5 分钟，判定为持续劣化（非偶发毛刺），Redis 性能或网络链路恶化",
-                        "description": "histogram_quantile(0.99, ...) > 0.5s 持续 5m 才触发，单点毛刺因 for:5m 自动过滤，劣化必报。",
+                        "description": "histogram_quantile(0.99, ...) > 0.5s 持续 5m 才触发，单点毛刺因 for:5m 自动过滤，劣化必报。注：后端 _self_heal_loop 另有 Python 侧动态归因告警（P1），触发时附同窗 persist_fails 与 PING P99，自动区分网络抖 vs 写链路慢；本 Panel 告警为该能力在 Grafana 的可视化冗余。退避天花板由 FMP_HEAL_BACKOFF_CAP env 控制（默认 300s，对应 HEAL_BACKOFF_CAP 变量）。",
                     },
                     "labels": {"severity": "critical", "service": "quant-agent"},
                 },
@@ -443,7 +443,15 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                     "query": "prometheus",
                     "current": {"text": "prometheus", "value": "prometheus"},
                     "hide": 0,
-                }
+                },
+                {
+                    "name": "HEAL_BACKOFF_CAP",
+                    "type": "text",
+                    "label": "自愈退避天花板(秒, 仅展示锚点 · 生效见 FMP_HEAL_BACKOFF_CAP env)",
+                    "query": "300",
+                    "current": {"text": "300", "value": "300"},
+                    "hide": 0,
+                },
             ]
         },
     }

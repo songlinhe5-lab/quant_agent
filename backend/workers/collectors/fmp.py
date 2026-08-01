@@ -42,6 +42,15 @@ _PERSIST_FAIL_THRESHOLD: int = 5
 
 _FMP_REDIS_TTL = 24 * 3600  # 财报缓存 1 天
 _BATCH_LIMIT = 4  # 每标的拉取的季度数（控制 credit：income_statement 1 call = 数 credit）
+# 自愈退避天花板（秒）：默认 300s（5min），可按 Redis SLA 级别经环境变量下调/上调。
+# Grafana 侧「HEAL_BACKOFF_CAP」模板变量仅作展示锚点，真正生效以此 env 为准。
+_HEAL_BACKOFF_CAP = float(os.environ.get("FMP_HEAL_BACKOFF_CAP", "300"))
+
+# 自愈 P99 劣化判定阈值（秒）与持续窗口（秒）—— 对应 Grafana Panel 8 告警语义，
+# 但此处为 Python 侧动态归因告警（触发时附带同窗 persist_fails / ping 延迟，区分网络抖 vs 写链路慢）。
+_HEAL_P99_THRESHOLD = 0.5
+_HEAL_P99_SUSTAIN = 300.0  # 持续 5min 才判定劣化（过滤偶发毛刺）
+
 # 盘后窗口（UTC）：美东 ET=UTC-4(夏令)/-5(冬令)。盘后≈收盘 16:00 ET 后至盘前 09:30 ET。
 # UTC 覆盖：夏令 20:00–次日 13:30；冬令 21:00–次日 14:30。取宽松并集 [20, 14) UTC。
 _MARKET_OPEN_UTC_START = 14  # 14:00 UTC 后视为盘后开始（保守覆盖冬令）
@@ -186,17 +195,20 @@ async def _self_heal_loop() -> None:
     """独立自愈短轮询：守护暂停态下尝试 Redis 探测写，成功即自愈重启。
 
     指数退避避免 Redis 长断期间空转探测写：首探 30s，失败后按 2^n 退避，
-    上限 5min；一旦探测成功自愈，退避立即归零。与主批量循环（6h 一轮）解耦。
-    每次轮询实测 Redis PING 延迟写入 _FMP_REDIS_PING_LATENCY Gauge，
-    并把当前退避秒数（下次探测倒计时）写入 _FMP_HEAL_BACKOFF Gauge。
+    上限由 FMP_HEAL_BACKOFF_CAP 控制（默认 5min）；一旦探测成功自愈，退避立即归零。
+    每次轮询实测 Redis PING 延迟并写入 Gauge / Histogram，同时维护滑动窗口用于
+    P99 劣化动态归因告警（触发时附同窗 persist_fails 与 ping 延迟，区分网络抖 vs 写链路慢）。
     """
     import time as _time
 
     from backend.core.redis_client import redis_client
 
     base = 30.0
-    cap = 300.0
+    cap = _HEAL_BACKOFF_CAP
     backoff = base
+    # 滑动窗口：记录 (monotonic_ts, latency_or_None)，用于 P99 持续劣化判定
+    _lat_window: list[tuple[float, float | None]] = []
+    _degrade_alerted = False
     try:
         from backend.core.metrics import (
             FMP_HEAL_BACKOFF,
@@ -209,10 +221,13 @@ async def _self_heal_loop() -> None:
         _have_backoff_gauge = False
     while True:
         # 实测 Redis PING 往返延迟（无论是否暂停都探，喂延迟趋势定位抖动来源）
+        _now = _time.monotonic()
+        _sample: float | None = None
         try:
             _t0 = _time.monotonic()
             await redis_client.ping()
             _lat = _time.monotonic() - _t0
+            _sample = _lat
             if _have_backoff_gauge:
                 FMP_REDIS_PING_LATENCY.set(round(_lat, 4))
                 try:
@@ -221,6 +236,41 @@ async def _self_heal_loop() -> None:
                     pass
         except Exception:  # noqa: BLE001
             pass  # 连 ping 都失败，延迟不写，persist_fails 已体现故障
+        _lat_window.append((_now, _sample))
+        # 仅保留最近 _HEAL_P99_SUSTAIN 秒的样本
+        _cut = _now - _HEAL_P99_SUSTAIN
+        _lat_window = [(t, v) for (t, v) in _lat_window if t >= _cut]
+        # P99 估算：窗口内有效样本取第 99 分位（样本不足则跳过）
+        _valid = sorted(v for (_, v) in _lat_window if v is not None)
+        if len(_valid) >= 10:
+            _p99 = _valid[min(len(_valid) - 1, int(len(_valid) * 0.99))]
+            if _p99 > _HEAL_P99_THRESHOLD:
+                if not _degrade_alerted:
+                    _degrade_alerted = True
+                    _avg = sum(_valid) / len(_valid)
+                    # 归因：网络抖(ping 高但 persist 正常) vs 写链路慢(persist_fails 同步涨)
+                    if _persist_fails == 0:
+                        _cause = f"疑似网络抖动（PING P99={_p99:.3f}s 但 persist_fails=0，写链路未受损）"
+                    else:
+                        _cause = f"疑似写链路慢/Redis 拒绝（PING P99={_p99:.3f}s 且 persist_fails={_persist_fails} 同步上涨）"
+                    try:
+                        from backend.core.alert_models import NotificationPriority
+                        from backend.services.alert.notification import notification_service
+
+                        await notification_service.send_alert(
+                            message=(
+                                f"[FMP Collector] Redis P99 延迟持续劣化告警\n"
+                                f"窗口 {int(_HEAL_P99_SUSTAIN)}s 内 PING P99={_p99:.3f}s（> {_HEAL_P99_THRESHOLD}s），"
+                                f"均值={_avg:.3f}s，persist_fails={_persist_fails}，退避上限={cap:.0f}s。\n"
+                                f"归因：{_cause}"
+                            ),
+                            priority=NotificationPriority.P1,
+                            source="fmp-collector",
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
+            else:
+                _degrade_alerted = False  # P99 回落，重置，下次再劣化可再报
         if _collector_paused:
             try:
                 healed = await _persist_credit()  # 成功 → 内部解除 _collector_paused
@@ -312,6 +362,9 @@ def collector_runtime() -> dict:
         "credit_spent_today": _credit_spent_today,
         "credit_reset_date": _credit_reset_date,
         "watchlist_size": len(_watchlist_cache),
+        "heal_backoff_cap": _HEAL_BACKOFF_CAP,
+        "heal_backoff_threshold": _HEAL_P99_THRESHOLD,
+        "heal_backoff_sustain": _HEAL_P99_SUSTAIN,
     }
 
 
