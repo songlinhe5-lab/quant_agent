@@ -25,10 +25,14 @@ router = APIRouter(prefix="/system", tags=["system"])
 #  0.1 可观测性总览（tick_cache + FMP credit 一页看板）
 # ==========================================
 @router.get("/observability")
-async def get_observability(username: str = Depends(get_current_user)):
+async def get_observability(
+    format: str = Query(default="json", description="json=即时快照 | grafana=导出 Grafana dashboard JSON"),
+    username: str = Depends(get_current_user),
+):
     """
     数据源实时价覆盖率 + FMP credit 消耗一页总览，供 APM 前端单页聚合。
     各指标同时暴露在 /metrics（Prometheus），本接口为前端即时快照。
+    传 ?format=grafana 返回可直接导入 Grafana 的 dashboard JSON（前端亦可据此渲染面板）。
     """
     overview: dict[str, Any] = {}
 
@@ -57,11 +61,93 @@ async def get_observability(username: str = Depends(get_current_user)):
     except Exception as e:  # noqa: BLE001
         overview["fmp_credit"] = {"error": str(e)}
 
+    if format == "grafana":
+        return _build_grafana_dashboard(overview)
+
     return {
         "status": "success",
         "message": "observability overview",
         "data": overview,
         "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+
+
+def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
+    """生成可直接导入 Grafana 的 dashboard JSON（Prometheus datasource 从 /metrics 拉）。
+
+    - Panel 1: tick_cache 命中率 Gauge（quant_tick_cache_hit_rate）
+    - Panel 2: credit 预算进度 Bar（当日 spent vs budget）
+    """
+    budget = (overview.get("fmp_credit") or {}).get("daily_budget", 200)
+    return {
+        "title": "Quant Agent - 数据源可观测性",
+        "uid": "quant-observability",
+        "schemaVersion": 39,
+        "version": 1,
+        "refresh": "30s",
+        "time": {"from": "now-6h", "to": "now"},
+        "panels": [
+            {
+                "id": 1,
+                "title": "Finnhub WS 实时价命中率",
+                "type": "gauge",
+                "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+                "targets": [
+                    {
+                        "expr": "quant_tick_cache_hit_rate",
+                        "legendFormat": "hit_rate",
+                        "refId": "A",
+                    }
+                ],
+                "fieldConfig": {
+                    "defaults": {
+                        "min": 0,
+                        "max": 1,
+                        "unit": "percentunit",
+                        "thresholds": {
+                            "steps": [
+                                {"color": "red", "value": 0},
+                                {"color": "yellow", "value": 0.5},
+                                {"color": "green", "value": 0.8},
+                            ]
+                        },
+                    }
+                },
+            },
+            {
+                "id": 2,
+                "title": "FMP 每日 credit 预算消耗",
+                "type": "bargauge",
+                "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+                "targets": [
+                    {
+                        "expr": "quant_fmp_collector_credit_spent_total",
+                        "legendFormat": "spent",
+                        "refId": "A",
+                    }
+                ],
+                "options": {
+                    "displayMode": "gradient",
+                    "max": budget,
+                },
+                "fieldConfig": {
+                    "defaults": {
+                        "min": 0,
+                        "max": budget,
+                        "unit": "short",
+                        "thresholds": {
+                            "steps": [
+                                {"color": "green", "value": 0},
+                                {"color": "yellow", "value": budget * 0.8},
+                                {"color": "red", "value": budget},
+                            ]
+                        },
+                    }
+                },
+            },
+        ],
+        "annotations": {"list": []},
+        "templating": {"list": []},
     }
 
 

@@ -30,7 +30,7 @@ _watchlist_mtime: float = -1.0
 _watchlist_lock = threading.Lock()
 _watchlist_monitor_stop = threading.Event()
 
-# 每日 credit 预算计数器（按 UTC 日期重置，避免跨日累计误导）
+# 每日 credit 预算计数器（按 UTC 日期重置，持久化到 Redis 避免进程重启丢进度）
 _credit_spent_today: int = 0
 _credit_reset_date: str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
@@ -81,6 +81,7 @@ async def _cache_financials(symbol: str) -> int:
     used = 4
     global _credit_spent_today
     _credit_spent_today += used
+    await _persist_credit()
     # 累计 credit 消耗（与每日预算对账，Prometheus 可查）
     try:
         from backend.core.metrics import FMP_CREDIT_SPENT_TOTAL
@@ -91,8 +92,38 @@ async def _cache_financials(symbol: str) -> int:
     return used
 
 
-def _maybe_reset_daily_credit() -> None:
-    """每日 00:00 UTC 重置 credit 预算计数器（进程内 + Prometheus），避免跨日累计误导。"""
+def _credit_redis_key(date: str) -> str:
+    return f"quant:fmp:credit_spent:{date}"
+
+
+async def _persist_credit() -> None:
+    """将当日 credit 消耗持久化到 Redis（ex=24h 自然过期，进程重启不丢进度）。"""
+    try:
+        await redis_client.set(
+            _credit_redis_key(_credit_reset_date),
+            str(_credit_spent_today),
+            ex=25 * 3600,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[FMP Collector] credit 持久化失败: {e}")
+
+
+async def _restore_credit() -> None:
+    """进程启动/跨日时从 Redis 恢复当日 credit 进度（防重启清零）。"""
+    global _credit_spent_today, _credit_reset_date
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    _credit_reset_date = today
+    try:
+        raw = await redis_client.get(_credit_redis_key(today))
+        if raw is not None:
+            _credit_spent_today = int(raw)
+            logger.info(f"[FMP Collector] 从 Redis 恢复当日 credit 进度: {_credit_spent_today} ({today})")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[FMP Collector] credit 恢复失败: {e}")
+
+
+async def _maybe_reset_daily_credit() -> None:
+    """每日 00:00 UTC 重置 credit 预算计数器（进程内 + Redis + Prometheus），避免跨日累计误导。"""
     global _credit_spent_today, _credit_reset_date
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     if today != _credit_reset_date:
@@ -101,6 +132,7 @@ def _maybe_reset_daily_credit() -> None:
         )
         _credit_spent_today = 0
         _credit_reset_date = today
+        await _persist_credit()  # 写新日期 key（旧 key 25h 后自然过期）
         try:
             from backend.core.metrics import FMP_CREDIT_SPENT_TOTAL
 
@@ -189,7 +221,7 @@ async def _batch_run() -> None:
         logger.info("[FMP Collector] 未配置 watchlist（FMP_COLLECTOR_SYMBOLS/WATCHLIST/FINNHUB_WS_SYMBOLS 均空），跳过")
         return
 
-    _maybe_reset_daily_credit()
+    await _maybe_reset_daily_credit()
 
     daily_budget = int(os.getenv("FMP_COLLECTOR_DAILY_CREDIT", "200"))  # 免费档 250 上限
     for sym in symbols:
@@ -213,7 +245,8 @@ async def fmp_collector_daemon() -> None:
     启动即加载 watchlist 并开启后台热重载监控线程（文件变更即时刷新标的池）。
     """
     logger.info("[FMP Collector] 守护进程启动 (盘后批量拉财报 → Redis)")
-    _reload_watchlist()  # 首启加载
+    await _restore_credit()  # 先恢复当日 credit 进度（防重启清零）
+    _reload_watchlist()  # 首启加载 watchlist
     monitor = threading.Thread(target=_watch_watchlist_file, name="fmp-watchlist-mon", daemon=True)
     monitor.start()
     try:
