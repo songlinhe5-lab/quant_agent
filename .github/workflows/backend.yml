@@ -1,8 +1,8 @@
 name: Deploy Backend (US-MASTER + 4 Data Nodes)
 
 # 触发策略:
-#   - push develop : 仅构建校验 (build + 推镜像)，不部署
-#   - PR (合入 main) : 构建 + 自动部署到 5 个节点
+#   - push develop : 仅构建校验 (build + 推镜像)，绝不部署
+#   - PR (目标 main) : 构建 + 自动部署到 5 个 VPS 节点
 on:
   push:
     branches: [ develop ]
@@ -90,7 +90,8 @@ jobs:
   # 部署 US-MASTER (主节点)
   # ----------------------------------------------------------------
   deploy-master:
-    if: github.event_name == 'pull_request'
+    # 仅在 PR 目标分支为 main 时部署；push develop / 其他 PR 均跳过 (不部署)
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     needs: [ build ]
     runs-on: ubuntu-latest
     steps:
@@ -187,7 +188,8 @@ jobs:
   # 部署时由 CI 用仓库 Secrets 动态生成各节点 .env (无需 VPS 预置)
   # ----------------------------------------------------------------
   deploy-data-nodes:
-    if: github.event_name == 'pull_request'
+    # 仅在 PR 目标分支为 main 时部署；push develop / 其他 PR 均跳过 (不部署)
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     needs: [ build-data-subservice, deploy-master ]
     runs-on: ubuntu-latest
     strategy:
