@@ -145,6 +145,51 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                     }
                 },
             },
+            {
+                "id": 3,
+                "title": "tick_cache 命中速率 (hits/s)",
+                "type": "timeseries",
+                "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+                "targets": [
+                    {
+                        "expr": "rate(quant_tick_cache_hits_total[5m])",
+                        "legendFormat": "hits/s",
+                        "refId": "A",
+                    }
+                ],
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "ops",
+                        "color": {"mode": "palette-classic"},
+                    }
+                },
+            },
+            {
+                "id": 4,
+                "title": "tick_cache 降级速率 (miss/s) · WS断流信号",
+                "type": "timeseries",
+                "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+                "targets": [
+                    {
+                        "expr": "rate(quant_tick_cache_misses_total[5m])",
+                        "legendFormat": "miss/s",
+                        "refId": "A",
+                    }
+                ],
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "ops",
+                        "color": {"mode": "palette-classic"},
+                        "thresholds": {
+                            "steps": [
+                                {"color": "green", "value": 0},
+                                {"color": "red", "value": 0.01},
+                            ]
+                        },
+                    }
+                },
+                "alertThreshold": True,
+            },
         ],
         "annotations": {"list": []},
         "templating": {"list": []},

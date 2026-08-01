@@ -34,6 +34,11 @@ _watchlist_monitor_stop = threading.Event()
 _credit_spent_today: int = 0
 _credit_reset_date: str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
+# Redis 持久化连续失败计数（达阈值升 P1 告警，避免静默丢进度）
+_persist_fails: int = 0
+_persist_fail_alerted: bool = False  # 已告警标记，避免每轮刷屏
+_PERSIST_FAIL_THRESHOLD: int = 5
+
 _FMP_REDIS_TTL = 24 * 3600  # 财报缓存 1 天
 _BATCH_LIMIT = 4  # 每标的拉取的季度数（控制 credit：income_statement 1 call = 数 credit）
 # 盘后窗口（UTC）：美东 ET=UTC-4(夏令)/-5(冬令)。盘后≈收盘 16:00 ET 后至盘前 09:30 ET。
@@ -97,13 +102,42 @@ def _credit_redis_key(date: str) -> str:
 
 
 async def _persist_credit() -> None:
-    """将当日 credit 消耗持久化到 Redis（ex=24h 自然过期，进程重启不丢进度）。"""
+    """将当日 credit 消耗持久化到 Redis（ex=25h 自然过期，进程重启不丢进度）。
+
+    连续写入失败达 _PERSIST_FAIL_THRESHOLD 次 → 升 P1 告警（已告警后置位标记，
+    恢复成功时清零，避免每轮刷屏）。
+    """
+    global _persist_fails, _persist_fail_alerted
     try:
         await redis_client.set(
             _credit_redis_key(_credit_reset_date),
             str(_credit_spent_today),
             ex=25 * 3600,
         )
+        # 恢复成功 → 清零失败计数与告警标记
+        if _persist_fails > 0:
+            logger.info(f"[FMP Collector] Redis 持久化恢复，连续失败计数清零（此前 {_persist_fails} 次）")
+        _persist_fails = 0
+        _persist_fail_alerted = False
+    except Exception as e:  # noqa: BLE001
+        _persist_fails += 1
+        logger.warning(f"[FMP Collector] credit 持久化失败 ({_persist_fails}/{_PERSIST_FAIL_THRESHOLD}): {e}")
+        if _persist_fails >= _PERSIST_FAIL_THRESHOLD and not _persist_fail_alerted:
+            _persist_fail_alerted = True
+            try:
+                from backend.core.alert_models import NotificationPriority
+                from backend.services.alert.notification import notification_service
+
+                await notification_service.send_alert(
+                    message=(
+                        f"[FMP Collector] Redis 持久化连续 {_persist_fails} 次失败，"
+                        f"当日 credit 进度可能丢失，重启将清零预算计数（P1）"
+                    ),
+                    priority=NotificationPriority.P1,
+                    source="fmp-collector",
+                )
+            except Exception as alert_e:  # noqa: BLE001
+                logger.error(f"[FMP Collector] P1 告警发送失败: {alert_e}")
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[FMP Collector] credit 持久化失败: {e}")
 
@@ -124,7 +158,7 @@ async def _restore_credit() -> None:
 
 async def _maybe_reset_daily_credit() -> None:
     """每日 00:00 UTC 重置 credit 预算计数器（进程内 + Redis + Prometheus），避免跨日累计误导。"""
-    global _credit_spent_today, _credit_reset_date
+    global _credit_spent_today, _credit_reset_date, _persist_fails, _persist_fail_alerted
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     if today != _credit_reset_date:
         logger.info(
@@ -132,6 +166,8 @@ async def _maybe_reset_daily_credit() -> None:
         )
         _credit_spent_today = 0
         _credit_reset_date = today
+        _persist_fails = 0
+        _persist_fail_alerted = False
         await _persist_credit()  # 写新日期 key（旧 key 25h 后自然过期）
         try:
             from backend.core.metrics import FMP_CREDIT_SPENT_TOTAL
