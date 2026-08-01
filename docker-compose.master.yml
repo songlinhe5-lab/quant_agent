@@ -176,6 +176,9 @@ services:
       - "${TAILSCALE_IP:-127.0.0.1}:9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      # 💡 多副本切换 Prometheus recording rules 时用：取消下行注释即可挂载 rules 目录，
+      # 并同步取消 prometheus.yml 的 rule_files 注释（详见 config/prometheus_rules.yml 头部双向切换清单）。
+      # - ./config/prometheus_rules.yml:/etc/prometheus/rules/fmp_watchlist.yml
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'

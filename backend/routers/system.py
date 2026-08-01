@@ -804,6 +804,56 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                     "labels": {"severity": "warning", "service": "quant-agent"},
                 },
             },
+            {
+                "id": 18,
+                "title": "FMP watchlist Counter 失真兜底告警 (Gauge变但shift无增量)",
+                "type": "stat",
+                "gridPos": {"h": 4, "w": 8, "x": 0, "y": 80},
+                "targets": [
+                    {
+                        "expr": "((changes(quant_fmp_collector_watchlist_size[1h]) > 0) and (increase(quant_fmp_collector_watchlist_size_shift_total[1h]) == 0)) == 1",
+                        "legendFormat": "Counter重启归零失真标志 (1=Gauge变但shift无增量)",
+                        "refId": "A",
+                    }
+                ],
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "short",
+                        "color": {"mode": "background"},
+                        "thresholds": {
+                            "steps": [
+                                {"color": "#10b981", "value": 0},
+                                {"color": "#ef4444", "value": 1},
+                            ]
+                        },
+                        "min": 0,
+                        "max": 1,
+                    }
+                },
+                "alertThreshold": True,
+                "alert": {
+                    "id": 18,
+                    "name": "FMP watchlist size 变化但 shift Counter 无增量 (Counter 可能重启归零)",
+                    "frequency": "5m",
+                    "for": "5m",
+                    "noDataState": "ok",
+                    "execErrState": "alerting",
+                    "conditions": [
+                        {
+                            "type": "query",
+                            "reducerType": "last",
+                            "query": {"params": ["A", "1h", "now"]},
+                            "evaluator": {"type": "gt", "params": [0]},
+                            "operator": {"type": "and"},
+                        }
+                    ],
+                    "annotations": {
+                        "summary": "watchlist size Gauge 近 1h 有变化但 shift Counter 无增量",
+                        "description": "quant_fmp_collector_watchlist_size 在近 1h 发生变更（changes>0），但 FMP_WATCHLIST_SIZE_SHIFT Counter 的 increase 为 0，提示 exporter 进程可能重启导致 Counter 归零，Panel 16/17 的比率与突变计数已失真。应改用 recording rule 的 Gauge 派生 delta（fmp:watchlist_size_delta5m）或检查 exporter 健康。",
+                    },
+                    "labels": {"severity": "warning", "service": "quant-agent"},
+                },
+            },
         ],
         "annotations": {"list": []},
         "templating": {
