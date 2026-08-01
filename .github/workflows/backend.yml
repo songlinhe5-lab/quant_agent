@@ -321,9 +321,9 @@ jobs:
             if [ "$NODE" = "bj" ]; then
               DAEMON_CFG="/etc/docker/daemon.json"
               if [ ! -f "$DAEMON_CFG" ] || ! grep -q "${{ secrets.VPS_S1_TAILSCALE_IP }}:5000" "$DAEMON_CFG"; then
-                mkdir -p /etc/docker
-                printf '%s\n' '{' '  "insecure-registries": ["${{ secrets.VPS_S1_TAILSCALE_IP }}:5000"]' '}' > "$DAEMON_CFG"
-                systemctl restart docker
+                sudo mkdir -p /etc/docker
+                printf '%s\n' '{' '  "insecure-registries": ["${{ secrets.VPS_S1_TAILSCALE_IP }}:5000"]' '}' | sudo tee "$DAEMON_CFG" > /dev/null
+                sudo systemctl restart docker
                 sleep 5
               fi
             else
