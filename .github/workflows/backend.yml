@@ -122,23 +122,28 @@ jobs:
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             cd /opt/quant-agent
 
-            # 动态生成主节点 .env.master (compose 变量替换用) 与 .env (容器 env_file 用)
-            # 用 printf 多行写入, 避免嵌套 heredoc 结束符缩进导致的解析混乱 (所有值均为 GitHub 表达式直注)
-            printf '%s\n' \
-          'TAILSCALE_IP=${{ secrets.VPS_S1_TAILSCALE_IP }}' \
-          'REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}' \
-          'DB_USER=${{ secrets.DB_USER }}' \
-          'DB_PASSWORD=${{ secrets.DB_PASSWORD }}' \
-          'DB_NAME=${{ secrets.DB_NAME }}' \
-          'QUANT_ENV=production' > .env.master
-            cp .env.master .env
-
-            # 脱敏校验: 确认主节点 TS IP 是否注入成功 (仅打印前两段, 避免泄露完整内网 IP)
-            if grep -q 'TAILSCALE_IP=.' .env.master; then
-              TS_PREFIX=$(grep '^TAILSCALE_IP=' .env.master | cut -d'=' -f2 | cut -d':' -f1 | awk -F'.' '{print $1"."$2".x.x"}')
-              echo "✅ TAILSCALE_IP 已注入 (脱敏: ${TS_PREFIX})，registry 将绑定该 TS IP 供北京节点经内网拉取"
+            # ⚠️ 主节点 .env / .env.master 由运维手动维护，CI 严禁覆盖！
+            # 仅在文件完全不存在时做一次兜底初始化 (首次部署场景)，之后一律沿用人工配置。
+            if [ ! -f .env.master ]; then
+              echo "🆕 未检测到 .env.master，使用仓库 Secrets 兜底生成一次 (后续请改由人工维护)"
+              printf '%s\n' \
+            'TAILSCALE_IP=${{ secrets.VPS_S1_TAILSCALE_IP }}' \
+            'REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}' \
+            'DB_USER=${{ secrets.DB_USER }}' \
+            'DB_PASSWORD=${{ secrets.DB_PASSWORD }}' \
+            'DB_NAME=${{ secrets.DB_NAME }}' \
+            'QUANT_ENV=production' > .env.master
+              cp .env.master .env
             else
-              echo "⚠️ 警告: TAILSCALE_IP 为空！registry 将仅绑定 127.0.0.1，北京节点无法经内网拉取镜像。请检查 secret VPS_S1_TAILSCALE_IP 是否配置。"
+              echo "🛡️ 检测到已存在的 .env.master，保留人工配置，CI 不覆盖"
+            fi
+
+            # 脱敏校验: 仅只读检查 TAILSCALE_IP 是否已在配置中 (不写文件)
+            if grep -q '^TAILSCALE_IP=.' .env.master; then
+              TS_PREFIX=$(grep '^TAILSCALE_IP=' .env.master | cut -d'=' -f2 | cut -d':' -f1 | awk -F'.' '{print $1"."$2".x.x"}')
+              echo "✅ TAILSCALE_IP 已配置 (脱敏: ${TS_PREFIX})，registry 将绑定该 TS IP 供北京节点经内网拉取"
+            else
+              echo "⚠️ 警告: TAILSCALE_IP 为空！registry 将仅绑定 127.0.0.1，北京节点无法经内网拉取镜像。请在主节点 .env.master 中手动配置 VPS_S1_TAILSCALE_IP。"
             fi
 
             IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
