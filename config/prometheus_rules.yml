@@ -17,6 +17,17 @@
 #   rule_files:
 #     - "/etc/prometheus/rules/*.yml"
 # （并 docker-compose 挂载本文件到 /etc/prometheus/rules/）
+#
+# ⚠️ 双向切换清单（防漏删 / 双路径并存混淆真相源）：
+#   启用本文件后【必须同步】执行以下反向操作，否则 exporter 侧 Counter 与
+#   recording rule 会双路径并存，运维无法判断哪条是真相：
+#   1. 删除 backend/core/metrics.py 的 FMP_WATCHLIST_SIZE_SHIFT（含 [DEPRECATED-PATH] 注释）；
+#   2. 删除 backend/workers/collectors/fmp.py 中所有 FMP_WATCHLIST_SIZE_SHIFT.inc() 调用；
+#   3. Panel 16 的 alert expr 从 increase(shift[1h]) 切到 fmp:watchlist_size_shift_flag；
+#   4. Panel 16 的 target B（size_shift 突变）与 target C（file_deleted）直查，
+#      可统一替换为本文件的 fmp:watchlist_shift_total_1h（server 端聚合双计数）；
+#   5. Panel 17 的比率 expr 分母改用 fmp:watchlist_shift_total_1h，分子改用
+#      increase(quant_fmp_collector_watchlist_file_deleted_total[1h])（或对应 recording 指标）。
 # ============================================================
 
 groups:
@@ -42,3 +53,12 @@ groups:
       - record: fmp:watchlist_size_shift_flag
         expr: |
           (abs(fmp:watchlist_size_delta5m) / clamp_min(fmp:watchlist_size_prev5m, 1)) >= 0.5
+
+      # 统一聚合双计数：近 1h 内 watchlist 突变总事件数（删文件 + 标的池突变），
+      # server 端对两 Counter 的 increase 求和，与副本数解耦。
+      # 替代 Panel 16 的 target B+C 直查 increase(shift[1h]) + increase(file_deleted[1h])，
+      # 多副本启用后直接引用本指标即可（见头部双向切换清单第 4 条）。
+      - record: fmp:watchlist_shift_total_1h
+        expr: |
+          increase(quant_fmp_collector_watchlist_size_shift_total[1h])
+          + increase(quant_fmp_collector_watchlist_file_deleted_total[1h])
