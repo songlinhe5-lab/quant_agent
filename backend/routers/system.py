@@ -275,7 +275,7 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
             },
             {
                 "id": 6,
-                "title": "FMP Redis 持久化连续失败数 + PING 延迟 (Redis 稳定性)",
+                "title": "FMP Redis 持久化连续失败数 + PING 延迟分位 (Redis 稳定性)",
                 "type": "timeseries",
                 "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
                 "targets": [
@@ -283,23 +283,41 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                         "expr": "quant_fmp_collector_persist_fails",
                         "legendFormat": "persist_fails",
                         "refId": "A",
+                        "dataLinks": [
+                            {
+                                "title": "下钻：聚焦此处时间窗看延迟/P95/P99",
+                                "url": "/d/quant-observability/quant-observability?orgId=1&from=${__value.time}&to=${__value.time}&var-DS_PROMETHEUS=${DS_PROMETHEUS}",
+                                "targetBlank": False,
+                            }
+                        ],
                     },
                     {
                         "expr": "quant_fmp_collector_redis_ping_latency_seconds",
-                        "legendFormat": "redis_ping_latency_s",
+                        "legendFormat": "redis_ping_latency_s (即时)",
                         "refId": "B",
+                    },
+                    {
+                        "expr": "histogram_quantile(0.95, sum(rate(quant_fmp_collector_redis_ping_latency_seconds_hist_bucket[$__range])) by (le))",
+                        "legendFormat": "P95 延迟",
+                        "refId": "C",
+                    },
+                    {
+                        "expr": "histogram_quantile(0.99, sum(rate(quant_fmp_collector_redis_ping_latency_seconds_hist_bucket[$__range])) by (le))",
+                        "legendFormat": "P99 延迟",
+                        "refId": "D",
                     },
                 ],
                 "fieldConfig": {
                     "defaults": {
-                        "unit": "short",
+                        "unit": "s",
                         "color": {"mode": "thresholds"},
                         "min": 0,
+                        "custom": {"lineWidth": 2, "axisPlacement": "auto"},
                         "thresholds": {
                             "steps": [
                                 {"color": "green", "value": 0},
-                                {"color": "yellow", "value": 1},
-                                {"color": "red", "value": 5},
+                                {"color": "yellow", "value": 0.1},
+                                {"color": "red", "value": 0.5},
                             ]
                         },
                     }
@@ -358,7 +376,18 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
             },
         ],
         "annotations": {"list": []},
-        "templating": {"list": []},
+        "templating": {
+            "list": [
+                {
+                    "name": "DS_PROMETHEUS",
+                    "type": "datasource",
+                    "label": "Prometheus 数据源",
+                    "query": "prometheus",
+                    "current": {"text": "prometheus", "value": "prometheus"},
+                    "hide": 0,
+                }
+            ]
+        },
     }
 
 

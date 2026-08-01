@@ -198,7 +198,11 @@ async def _self_heal_loop() -> None:
     cap = 300.0
     backoff = base
     try:
-        from backend.core.metrics import FMP_HEAL_BACKOFF, FMP_REDIS_PING_LATENCY
+        from backend.core.metrics import (
+            FMP_HEAL_BACKOFF,
+            FMP_REDIS_PING_LATENCY,
+            FMP_REDIS_PING_LATENCY_HIST,
+        )
 
         _have_backoff_gauge = True
     except Exception:  # noqa: BLE001
@@ -211,6 +215,10 @@ async def _self_heal_loop() -> None:
             _lat = _time.monotonic() - _t0
             if _have_backoff_gauge:
                 FMP_REDIS_PING_LATENCY.set(round(_lat, 4))
+                try:
+                    FMP_REDIS_PING_LATENCY_HIST.observe(_lat)
+                except Exception:  # noqa: BLE001
+                    pass
         except Exception:  # noqa: BLE001
             pass  # 连 ping 都失败，延迟不写，persist_fails 已体现故障
         if _collector_paused:

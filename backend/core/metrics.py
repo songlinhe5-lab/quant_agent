@@ -449,3 +449,11 @@ FMP_REDIS_PING_LATENCY = Gauge(
     "quant_fmp_collector_redis_ping_latency_seconds",
     "FMP collector 自愈探测时实测 Redis PING 往返延迟（定位失败是网络抖还是 redis 本身慢）",
 )
+
+# Histogram 记录每次 ping 延迟，供 Grafana 用 histogram_quantile 算 P95/P99 分位，
+# 区分偶发毛刺（单点高）与持续劣化（分位线系统性抬升）。
+FMP_REDIS_PING_LATENCY_HIST = Histogram(
+    "quant_fmp_collector_redis_ping_latency_seconds_hist",
+    "FMP collector Redis PING 延迟直方图（分位统计用）",
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
+)
