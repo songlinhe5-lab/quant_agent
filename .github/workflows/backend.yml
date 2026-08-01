@@ -360,8 +360,18 @@ jobs:
               printf 'TUSHARE_TOKEN=%s\nAKSHARE_API_KEY=%s\nAKSHARE_MODE=internal\n' "${{ secrets.TUSHARE_TOKEN }}" "${{ secrets.AKSHARE_API_KEY }}" >> ${{ matrix.env-file }}
             fi
 
-            curl -sSL -o ${{ matrix.compose }} "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/${{ matrix.compose }}"
+            curl -sSL -f -o ${{ matrix.compose }} "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/${{ matrix.compose }}" \
+              || { echo "❌ 拉取 ${{ matrix.compose }} 失败 (raw.githubusercontent 可能被墙)，中止避免用旧/空 compose 直连 GHCR"; exit 1; }
             sed -i "s|ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest|${IMAGE}|g" ${{ matrix.compose }}
+
+            # 🔍 镜像地址校验: 北京节点必须指向主节点内网 registry，否则会直连 GHCR 慢且可能拉不到
+            if [ "$NODE" = "bj" ]; then
+              if grep -q "ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest" ${{ matrix.compose }}; then
+                echo "❌ compose 中 data-subservice 镜像未被替换为内网 registry 地址 (${IMAGE})，中止"
+                exit 1
+              fi
+              echo "✅ 北京节点镜像已指向内网 registry: ${IMAGE}"
+            fi
 
             # 🛡️ 磁盘空间前置守卫: 同主节点，拉取前断言 / 剩余空间，不足则 fail fast + 打印清理提示
             DF_AVAIL_PCT=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
