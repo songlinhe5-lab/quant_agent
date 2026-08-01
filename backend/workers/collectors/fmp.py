@@ -47,6 +47,14 @@ _lat_window_p99: float = 0.0  # 最近窗口 P99 估算值（Gauge 交叉校验�
 
 _FMP_REDIS_TTL = 24 * 3600  # 财报缓存 1 天
 _BATCH_LIMIT = 4  # 每标的拉取的季度数（控制 credit：income_statement 1 call = 数 credit）
+# FMP credit 计费校准（防预算击穿 / 防预算误估浪费容量）：
+# 官方事实：免费档 = 250 requests/day，按 HTTP 请求次数计点（绝大多数端点 1 请求 = 1 credit）。
+# 本守护每标的调用 income_statement + profile 共 2 个独立端点（见 _cache_financials），
+# 故单 symbol 真实消耗 = _FMP_CALLS_PER_SYMBOL × _FMP_CREDIT_PER_CALL = 2 × 1 = 2 credit。
+# 旧实现硬编码 used=4（"约2+约2"）实为 2 倍高估，按日预算 200 仅能拉 50 只而非 100 只 —— 浪费一半容量。
+# 二者均 env 化，防御未来端点计费粒度变化或新增端点。
+_FMP_CREDIT_PER_CALL = int(os.environ.get("FMP_CREDIT_PER_CALL", "1"))  # 单端点点数（FMP 标准端点=1）
+_FMP_CALLS_PER_SYMBOL = int(os.environ.get("FMP_CALLS_PER_SYMBOL", "2"))  # 每 symbol 调用的端点数（statement+profile）
 # 自愈退避天花板（秒）：默认 300s（5min），可按 Redis SLA 级别经环境变量下调/上调。
 # Grafana 侧「HEAL_BACKOFF_CAP」模板变量仅作展示锚点，真正生效以此 env 为准。
 _HEAL_BACKOFF_CAP = float(os.environ.get("FMP_HEAL_BACKOFF_CAP", "300"))
@@ -117,8 +125,9 @@ async def _cache_financials(symbol: str) -> int:
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[FMP Collector] Redis 写入失败 {symbol}: {e}")
         return 0
-    # 估算 credit：income_statement(约2) + profile(约2)
-    used = 4
+    # 估算 credit：按实际调用的端点数 × 单端点点数（FMP 免费档按请求次数计点）。
+    # income_statement + profile 共 _FMP_CALLS_PER_SYMBOL 个独立 GET，各 _FMP_CREDIT_PER_CALL 点。
+    used = _FMP_CALLS_PER_SYMBOL * _FMP_CREDIT_PER_CALL
     global _credit_spent_today
     _credit_spent_today += used
     await _persist_credit()
