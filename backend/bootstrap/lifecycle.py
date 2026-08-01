@@ -217,6 +217,20 @@ async def app_lifespan(app: FastAPI):
     except Exception as e:
         log.warning(f"[Startup] MarketEngine 启动失败: {e}")
 
+    # 🚀 Finnhub WS 实时 tick 回灌（主节点订阅 quant:tick:{symbol} → 进程内缓存）
+    # 仅当配置了 FINNHUB_WS_SYMBOLS 时启动；从节点不跑（外部 WS 收口在 data_subservice）
+    try:
+        from backend.services.finnhub.ws_ingest import start_tick_ingest_task
+
+        _ws_symbols = [s.strip().upper() for s in os.getenv("FINNHUB_WS_SYMBOLS", "").split(",") if s.strip()]
+        tick_ingest_task = start_tick_ingest_task(_ws_symbols)
+        if tick_ingest_task is not None:
+            log.info(f"✅ [Startup] Finnhub WS tick 回灌已启动 (订阅 {len(_ws_symbols)} 只标的)")
+        else:
+            log.info("ℹ️ [Startup] 未配置 FINNHUB_WS_SYMBOLS，跳过 WS tick 回灌")
+    except Exception as e:
+        log.warning(f"[Startup] Finnhub WS tick 回灌启动失败: {e}")
+
     # 🚀 RL-11 限流告警后台消费器 (异步队列，解耦限流回调与飞书推送 IO)
     try:
         from backend.services.datasource.alert_monitor import rate_limit_alert_monitor
@@ -269,6 +283,11 @@ async def app_lifespan(app: FastAPI):
         if "loop_monitor_task" in locals() and not loop_monitor_task.done():
             loop_monitor_task.cancel()
             tasks_to_await.append(loop_monitor_task)
+
+        # Finnhub WS tick 回灌任务优雅取消
+        if "tick_ingest_task" in locals() and tick_ingest_task is not None and not tick_ingest_task.done():
+            tick_ingest_task.cancel()
+            tasks_to_await.append(tick_ingest_task)
 
         # RL-11: 停止限流告警后台消费器 (cancel + await 自身 task)
         try:

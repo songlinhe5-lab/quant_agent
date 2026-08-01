@@ -35,9 +35,11 @@ NODE_INFO = get_node_info()
 CAPS = NODE_INFO.capabilities
 set_capabilities(CAPS)
 
-# 仅 yfinance 能力需要常驻 worker；tushare/akshare 为按需代理，无需轮询。
+# 仅 yfinance / finnhub 能力需要常驻 worker；tushare/akshare 为按需代理，无需轮询。
 if "yfinance" in CAPS:
     from data_subservice import yfinance_worker  # noqa: F401
+if "finnhub" in CAPS:
+    from data_subservice import finnhub_worker  # noqa: F401
 
 
 @app.on_event("startup")
@@ -46,6 +48,9 @@ async def startup():
 
     if "yfinance" in CAPS:
         await yfinance_worker.start()
+    if "finnhub" in CAPS:
+        await finnhub_worker.FinnhubWorker().start()
+        await finnhub_worker.FinnhubWsClient().start()
 
     logger.info("[DataSubservice] 心跳上报至主节点 Redis (REDIS_HOST=%s)", os.getenv("REDIS_HOST", "未配置"))
 
@@ -54,6 +59,9 @@ async def startup():
 async def shutdown():
     if "yfinance" in CAPS:
         await yfinance_worker.stop()
+    if "finnhub" in CAPS:
+        await finnhub_worker.FinnhubWorker().stop()
+        await finnhub_worker.FinnhubWsClient().stop()
     logger.info("[DataSubservice] 节点 %s 停止", NODE_INFO.node_id)
 
 
