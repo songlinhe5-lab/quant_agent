@@ -37,6 +37,7 @@ _credit_reset_date: str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 # Redis 持久化连续失败计数（达阈值升 P1 告警，避免静默丢进度）
 _persist_fails: int = 0
 _persist_fail_alerted: bool = False  # 已告警标记，避免每轮刷屏
+_collector_paused: bool = False  # 持久化连续失败达阈值 → 暂停守护，Redis 恢复后自愈
 _PERSIST_FAIL_THRESHOLD: int = 5
 
 _FMP_REDIS_TTL = 24 * 3600  # 财报缓存 1 天
@@ -101,45 +102,73 @@ def _credit_redis_key(date: str) -> str:
     return f"quant:fmp:credit_spent:{date}"
 
 
-async def _persist_credit() -> None:
+async def _persist_credit() -> bool:
     """将当日 credit 消耗持久化到 Redis（ex=25h 自然过期，进程重启不丢进度）。
 
-    连续写入失败达 _PERSIST_FAIL_THRESHOLD 次 → 升 P1 告警（已告警后置位标记，
-    恢复成功时清零，避免每轮刷屏）。
+    连续写入失败达 _PERSIST_FAIL_THRESHOLD 次 → 升 P1 告警并暂停守护；
+    恢复成功时清零计数/标记并解除暂停（自愈）。
+    返回 True=写入成功，False=失败。
     """
-    global _persist_fails, _persist_fail_alerted
+    global _persist_fails, _persist_fail_alerted, _collector_paused
     try:
         await redis_client.set(
             _credit_redis_key(_credit_reset_date),
             str(_credit_spent_today),
             ex=25 * 3600,
         )
-        # 恢复成功 → 清零失败计数与告警标记
-        if _persist_fails > 0:
-            logger.info(f"[FMP Collector] Redis 持久化恢复，连续失败计数清零（此前 {_persist_fails} 次）")
+        # 恢复成功 → 清零失败计数与告警标记，解除暂停（自愈）
+        if _persist_fails > 0 or _collector_paused:
+            logger.info(
+                f"[FMP Collector] Redis 持久化恢复，连续失败计数清零"
+                f"（此前 {_persist_fails} 次，paused={_collector_paused}）→ 守护自愈重启"
+            )
         _persist_fails = 0
         _persist_fail_alerted = False
-    except Exception as e:  # noqa: BLE001
-        _persist_fails += 1
-        logger.warning(f"[FMP Collector] credit 持久化失败 ({_persist_fails}/{_PERSIST_FAIL_THRESHOLD}): {e}")
-        if _persist_fails >= _PERSIST_FAIL_THRESHOLD and not _persist_fail_alerted:
-            _persist_fail_alerted = True
+        was_paused = _collector_paused
+        _collector_paused = False
+        if was_paused:
             try:
                 from backend.core.alert_models import NotificationPriority
                 from backend.services.alert.notification import notification_service
 
                 await notification_service.send_alert(
-                    message=(
-                        f"[FMP Collector] Redis 持久化连续 {_persist_fails} 次失败，"
-                        f"当日 credit 进度可能丢失，重启将清零预算计数（P1）"
-                    ),
-                    priority=NotificationPriority.P1,
+                    message="[FMP Collector] Redis 已恢复，守护自愈重启，credit 进度持久化恢复正常",
+                    priority=NotificationPriority.P2,
                     source="fmp-collector",
                 )
-            except Exception as alert_e:  # noqa: BLE001
-                logger.error(f"[FMP Collector] P1 告警发送失败: {alert_e}")
+            except Exception:  # noqa: BLE001
+                pass
+        return True
     except Exception as e:  # noqa: BLE001
-        logger.warning(f"[FMP Collector] credit 持久化失败: {e}")
+        _persist_fails += 1
+        logger.warning(f"[FMP Collector] credit 持久化失败 ({_persist_fails}/{_PERSIST_FAIL_THRESHOLD}): {e}")
+        if _persist_fails >= _PERSIST_FAIL_THRESHOLD:
+            if not _persist_fail_alerted:
+                _persist_fail_alerted = True
+                _collector_paused = True
+                try:
+                    from backend.core.alert_models import NotificationPriority
+                    from backend.services.alert.notification import notification_service
+
+                    await notification_service.send_alert(
+                        message=(
+                            f"[FMP Collector] Redis 持久化连续 {_persist_fails} 次失败，"
+                            f"守护已暂停防丢失，待 Redis 恢复后自愈（P1）"
+                        ),
+                        priority=NotificationPriority.P1,
+                        source="fmp-collector",
+                    )
+                except Exception as alert_e:  # noqa: BLE001
+                    logger.error(f"[FMP Collector] P1 告警发送失败: {alert_e}")
+        return False
+
+
+async def _self_heal_if_paused() -> None:
+    """守护暂停态下的自愈探测：尝试一次 Redis 写入，成功则 _persist_credit 内部解除暂停。"""
+    if not _collector_paused:
+        return
+    # 仅做探测写（当前 _credit_spent_today），成功即自愈
+    await _persist_credit()
 
 
 async def _restore_credit() -> None:
@@ -287,6 +316,12 @@ async def fmp_collector_daemon() -> None:
     monitor.start()
     try:
         while True:
+            # 自愈探测：若此前因 Redis 故障暂停，每轮尝试恢复，成功则内部解除暂停
+            await _self_heal_if_paused()
+            if _collector_paused:
+                logger.warning("[FMP Collector] 守护处于暂停态（Redis 故障），跳过批量，等待自愈")
+                await asyncio.sleep(6 * 3600)
+                continue
             try:
                 await _batch_run()
             except Exception as e:  # noqa: BLE001

@@ -189,6 +189,28 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                     }
                 },
                 "alertThreshold": True,
+                "alert": {
+                    "id": 4,
+                    "name": "FMP-WS 断流：tick_cache miss 速率持续 2m 超阈值",
+                    "frequency": "1m",
+                    "for": "2m",
+                    "noDataState": "no_data",
+                    "execErrState": "alerting",
+                    "conditions": [
+                        {
+                            "type": "query",
+                            "reducerType": "last",
+                            "query": {"params": ["A", "5m", "now"]},
+                            "evaluator": {"type": "gt", "params": [0.01]},
+                            "operator": {"type": "and"},
+                        }
+                    ],
+                    "annotations": {
+                        "summary": "Finnhub WS 实时价降级速率持续 2 分钟 > 0.01/s，疑似 WS 断流",
+                        "description": "rate(quant_tick_cache_misses_total[5m]) > 0.01 持续 2m，实时价覆盖率下降，quote 已降级 REST 快照。",
+                    },
+                    "labels": {"severity": "critical", "service": "quant-agent"},
+                },
             },
         ],
         "annotations": {"list": []},
