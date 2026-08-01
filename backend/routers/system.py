@@ -356,6 +356,13 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                         "expr": "quant_fmp_collector_heal_backoff_seconds",
                         "legendFormat": "heal_backoff_s",
                         "refId": "A",
+                        "dataLinks": [
+                            {
+                                "title": "反向联动：跳失败数+延迟联合视图",
+                                "url": "/d/quant-observability/quant-observability?orgId=1&from=${__value.time}&to=${__value.time}&var-DS_PROMETHEUS=${DS_PROMETHEUS}",
+                                "targetBlank": False,
+                            }
+                        ],
                     }
                 ],
                 "fieldConfig": {
@@ -372,6 +379,57 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                             ]
                         },
                     }
+                },
+            },
+            {
+                "id": 8,
+                "title": "FMP Redis P99 延迟智能告警 (>0.5s 持续 5m)",
+                "type": "timeseries",
+                "gridPos": {"h": 6, "w": 24, "x": 0, "y": 40},
+                "hidden": False,
+                "targets": [
+                    {
+                        "expr": "histogram_quantile(0.99, sum(rate(quant_fmp_collector_redis_ping_latency_seconds_hist_bucket[$__range])) by (le))",
+                        "legendFormat": "P99 延迟",
+                        "refId": "A",
+                    }
+                ],
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "s",
+                        "color": {"mode": "thresholds"},
+                        "min": 0,
+                        "thresholds": {
+                            "steps": [
+                                {"color": "green", "value": 0},
+                                {"color": "yellow", "value": 0.1},
+                                {"color": "red", "value": 0.5},
+                            ]
+                        },
+                    }
+                },
+                "alertThreshold": True,
+                "alert": {
+                    "id": 8,
+                    "name": "FMP Redis P99 延迟持续劣化 (>0.5s 达 5m)",
+                    "frequency": "1m",
+                    "for": "5m",
+                    "noDataState": "no_data",
+                    "execErrState": "alerting",
+                    "conditions": [
+                        {
+                            "type": "query",
+                            "reducerType": "last",
+                            "query": {"params": ["A", "5m", "now"]},
+                            "evaluator": {"type": "gt", "params": [0.5]},
+                            "operator": {"type": "and"},
+                        }
+                    ],
+                    "annotations": {
+                        "summary": "FMP Redis P99 延迟 > 0.5s 持续 5 分钟，判定为持续劣化（非偶发毛刺），Redis 性能或网络链路恶化",
+                        "description": "histogram_quantile(0.99, ...) > 0.5s 持续 5m 才触发，单点毛刺因 for:5m 自动过滤，劣化必报。",
+                    },
+                    "labels": {"severity": "critical", "service": "quant-agent"},
                 },
             },
         ],
