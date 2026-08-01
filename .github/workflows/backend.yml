@@ -133,9 +133,14 @@ jobs:
                 echo "🆕 未检测到主节点 .env，且仓库无 .env.example，用最小兜底生成"
                 printf '%s\n' 'QUANT_ENV=production' > .env
               fi
-              # 补入 TAILSCALE_IP (原 .env.master 的配置项，现统一从 .env 读取；模板缺失则注入)
-              if ! grep -q '^TAILSCALE_IP=' .env; then
-                printf 'TAILSCALE_IP=%s\n' "${{ secrets.VPS_S1_TAILSCALE_IP }}" >> .env
+              # TAILSCALE_IP 为 compose 端口绑定必需项，真实值仅在 GitHub Secret，
+              # 首次生成后强制用真实 TS IP 覆盖 (无论模板是否已含占位行)
+              if [ -n "${{ secrets.VPS_S1_TAILSCALE_IP }}" ]; then
+                if grep -q '^TAILSCALE_IP=' .env; then
+                  sed -i "s|^TAILSCALE_IP=.*|TAILSCALE_IP=${{ secrets.VPS_S1_TAILSCALE_IP }}|" .env
+                else
+                  printf 'TAILSCALE_IP=%s\n' "${{ secrets.VPS_S1_TAILSCALE_IP }}" >> .env
+                fi
               fi
               echo "✅ 主节点 .env 已生成，请按需手动补填真实密钥/密码后再部署"
             else
