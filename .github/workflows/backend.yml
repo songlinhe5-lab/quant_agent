@@ -122,47 +122,33 @@ jobs:
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             cd /opt/quant-agent
 
-            # ⚠️ 主节点 .env (容器 env_file，业务配置) 由运维手动维护，CI 严禁生成/覆盖！
-            # ⚠️ 主节点 .env.master (仅给 docker compose 做变量替换，如 registry 绑定的 TAILSCALE_IP)
-            #     仅在文件完全不存在时兜底生成一次，之后一律沿用人工配置。
-            if [ ! -f .env.master ]; then
-              echo "🆕 未检测到 .env.master，使用仓库 Secrets 兜底生成一次 (后续请改由人工维护)"
-              printf '%s\n' \
-            'TAILSCALE_IP=${{ secrets.VPS_S1_TAILSCALE_IP }}' \
-            'REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}' \
-            'DB_USER=${{ secrets.DB_USER }}' \
-            'DB_PASSWORD=${{ secrets.DB_PASSWORD }}' \
-            'DB_NAME=${{ secrets.DB_NAME }}' \
-            'QUANT_ENV=production' > .env.master
-            else
-              echo "🛡️ 检测到已存在的 .env.master，保留人工配置，CI 不覆盖"
-            fi
-
+            # ⚠️ 主节点 .env 由运维手动维护，CI 严禁生成/覆盖！
+            #     .env 同时作为容器 env_file 与 docker compose 变量替换源 (--env-file)。
+            #     若其中缺少 TAILSCALE_IP/REDIS_PASSWORD/DB_*，compose 会使用自身默认值
+            #     (TAILSCALE_IP 退化为 127.0.0.1，registry 仅绑本地)，不影响启动。
             if [ -f .env ]; then
               echo "🛡️ 检测到已存在的主节点 .env，完全保留人工配置，CI 不触碰"
             else
-              echo "⚠️ 警告: 主节点 .env 不存在！容器 env_file 将缺失，请在主节点手动创建 /opt/quant-agent/.env"
+              echo "⚠️ 警告: 主节点 .env 不存在！容器 env_file 与 compose 变量源将缺失，请在主节点手动创建 /opt/quant-agent/.env"
             fi
 
-            # 脱敏校验: 仅只读检查 TAILSCALE_IP (优先看 .env，回退 .env.master)，不写任何文件
+            # 脱敏校验: 仅只读检查 TAILSCALE_IP 是否已在 .env 中配置，不写任何文件
             TS_VAL=""
             if grep -q '^TAILSCALE_IP=.' .env 2>/dev/null; then
               TS_VAL=$(grep '^TAILSCALE_IP=' .env | cut -d'=' -f2)
-            elif grep -q '^TAILSCALE_IP=.' .env.master 2>/dev/null; then
-              TS_VAL=$(grep '^TAILSCALE_IP=' .env.master | cut -d'=' -f2)
             fi
             if [ -n "$TS_VAL" ]; then
               TS_PREFIX=$(echo "$TS_VAL" | cut -d':' -f1 | awk -F'.' '{print $1"."$2".x.x"}')
               echo "✅ TAILSCALE_IP 已配置 (脱敏: ${TS_PREFIX})，registry 将绑定该 TS IP 供北京节点经内网拉取"
             else
-              echo "⚠️ 警告: TAILSCALE_IP 为空！registry 将仅绑定 127.0.0.1，北京节点无法经内网拉取镜像。请在主节点 .env 中手动配置 VPS_S1_TAILSCALE_IP。"
+              echo "⚠️ 警告: TAILSCALE_IP 为空！registry 将仅绑定 127.0.0.1，北京节点无法经内网拉取镜像。如需内网拉取，请在主节点 .env 中手动配置 VPS_S1_TAILSCALE_IP。"
             fi
 
             IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
             curl -sSL -o docker-compose.master.yml "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.master.yml"
             sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:latest|${IMAGE}|g" docker-compose.master.yml
-            docker compose -f docker-compose.master.yml --env-file .env.master pull
-            docker compose -f docker-compose.master.yml --env-file .env.master up -d --remove-orphans
+            docker compose -f docker-compose.master.yml --env-file .env pull
+            docker compose -f docker-compose.master.yml --env-file .env up -d --remove-orphans
             docker image prune -f
 
             # 将镜像推送到本机内网私有 registry，供国内节点 (北京) 经 Tailscale 内网高速拉取
