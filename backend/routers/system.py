@@ -464,6 +464,57 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                     }
                 },
             },
+            {
+                "id": 10,
+                "title": "FMP 归因信号 (lat_degraded: 写链路慢=1 / 网络抖=0)",
+                "type": "stat",
+                "gridPos": {"h": 6, "w": 12, "x": 0, "y": 52},
+                "targets": [
+                    {
+                        "expr": "quant_fmp_collector_lat_degraded",
+                        "legendFormat": "lat_degraded",
+                        "refId": "A",
+                    }
+                ],
+                "options": {
+                    "reduceOptions": {"calcs": ["lastNotNull"]},
+                    "colorMode": "background",
+                    "graphMode": "none",
+                    "justifyMode": "auto",
+                    "values": True,
+                },
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "short",
+                        "mappings": [
+                            {"type": "value", "options": {"0": {"text": "网络抖窗口(不暂停)", "color": "green"}}},
+                            {"type": "value", "options": {"1": {"text": "写链路慢(可暂停)", "color": "red"}}},
+                        ],
+                        "thresholds": {
+                            "steps": [
+                                {"color": "green", "value": 0},
+                                {"color": "red", "value": 1},
+                            ]
+                        },
+                    }
+                },
+            },
+            {
+                "id": 11,
+                "title": "FMP 归因全貌联动 (degraded / paused / jitter 同窗)",
+                "type": "timeseries",
+                "gridPos": {"h": 6, "w": 12, "x": 12, "y": 52},
+                "targets": [
+                    {"expr": "quant_fmp_collector_lat_degraded", "legendFormat": "lat_degraded", "refId": "A"},
+                    {"expr": "quant_fmp_collector_paused", "legendFormat": "paused", "refId": "B"},
+                    {
+                        "expr": "quant_fmp_collector_persist_jitter_fails",
+                        "legendFormat": "jitter_fails",
+                        "refId": "C",
+                    },
+                ],
+                "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "thresholds"}, "min": 0}},
+            },
         ],
         "annotations": {"list": []},
         "templating": {

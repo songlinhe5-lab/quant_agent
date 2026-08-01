@@ -450,6 +450,11 @@ FMP_HEAL_P99 = Gauge(
     "FMP collector 自愈滑动窗口 P99 延迟估算（与 Grafana histogram_quantile 双算交叉校验防漂移）",
 )
 
+FMP_LAT_DEGRADED = Gauge(
+    "quant_fmp_collector_lat_degraded",
+    "FMP collector 归因信号：1=写链路慢(应暂停) 0=纯网络抖(不暂停)，与 paused/jitter 联动看归因全貌",
+)
+
 FMP_HEAL_BACKOFF = Gauge(
     "quant_fmp_collector_heal_backoff_seconds",
     "FMP collector 自愈轮询当前退避秒数（下次探测倒计时，Redis 长断时随指数退避增长，上限 5min）",

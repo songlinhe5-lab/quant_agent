@@ -55,6 +55,9 @@ _HEAL_BACKOFF_CAP = float(os.environ.get("FMP_HEAL_BACKOFF_CAP", "300"))
 # 但此处为 Python 侧动态归因告警（触发时附带同窗 persist_fails / ping 延迟，区分网络抖 vs 写链路慢）。
 _HEAL_P99_THRESHOLD = 0.5
 _HEAL_P99_SUSTAIN = 300.0  # 持续 5min 才判定劣化（过滤偶发毛刺）
+# 网络抖窗口的立即重试参数：单次 set 失败后最多重试次数与每次退避（秒），提升瞬态恢复率
+_JITTER_RETRY = 3
+_JITTER_RETRY_BACKOFF = 0.2
 
 # 盘后窗口（UTC）：美东 ET=UTC-4(夏令)/-5(冬令)。盘后≈收盘 16:00 ET 后至盘前 09:30 ET。
 # UTC 覆盖：夏令 20:00–次日 13:30；冬令 21:00–次日 14:30。取宽松并集 [20, 14) UTC。
@@ -116,105 +119,128 @@ def _credit_redis_key(date: str) -> str:
     return f"quant:fmp:credit_spent:{date}"
 
 
-async def _persist_credit() -> bool:
-    """将当日 credit 消耗持久化到 Redis（ex=25h 自然过期，进程重启不丢进度）。
-
-    连续写入失败达 _PERSIST_FAIL_THRESHOLD 次 → 升 P1 告警并暂停守护；
-    恢复成功时清零计数/标记并解除暂停（自愈）。
-    返回 True=写入成功，False=失败。
-    """
-    global _persist_fails, _persist_fail_alerted, _collector_paused
+async def _do_set_credit() -> bool:
+    """单次 Redis 持久化写入（不含重试/归因）。返回 True=成功。"""
     try:
         await redis_client.set(
             _credit_redis_key(_credit_reset_date),
             str(_credit_spent_today),
             ex=25 * 3600,
         )
-        # 恢复成功 → 清零失败计数与告警标记，解除暂停（自愈）
-        if _persist_fails > 0 or _collector_paused:
-            logger.info(
-                f"[FMP Collector] Redis 持久化恢复，连续失败计数清零"
-                f"（此前 {_persist_fails} 次，paused={_collector_paused}）→ 守护自愈重启"
-            )
-        _persist_fails = 0
-        _persist_fail_alerted = False
-        _jitter_fails = 0  # 写链路恢复，抖动计数一并清零
-        was_paused = _collector_paused
-        _collector_paused = False
-        try:
-            from backend.core.metrics import FMP_COLLECTOR_PAUSED, FMP_PERSIST_FAILS
-
-            FMP_COLLECTOR_PAUSED.set(0)
-            FMP_PERSIST_FAILS.set(0)
-        except Exception:  # noqa: BLE001
-            pass
-        if was_paused:
-            try:
-                from backend.core.alert_models import NotificationPriority
-                from backend.services.alert.notification import notification_service
-
-                await notification_service.send_alert(
-                    message="[FMP Collector] Redis 已恢复，守护自愈重启，credit 进度持久化恢复正常",
-                    priority=NotificationPriority.P2,
-                    source="fmp-collector",
-                )
-            except Exception:  # noqa: BLE001
-                pass
         return True
-    except Exception as e:  # noqa: BLE001
-        # 归因分流：写链路慢（_lat_degraded=True，ping P99 高且 set 失败）→ 计入暂停阈值；
-        # 纯网络抖动（ping 健康但 set 偶发超时）→ 仅记 _jitter_fails，不暂停，避免毛刺误丢 credit。
-        if _lat_degraded:
-            _persist_fails += 1
-            logger.warning(
-                f"[FMP Collector] credit 持久化失败（写链路慢 {_persist_fails}/{_PERSIST_FAIL_THRESHOLD}）: {e}"
-            )
-            try:
-                from backend.core.metrics import FMP_PERSIST_FAILS
+    except Exception:  # noqa: BLE001
+        return False
 
-                FMP_PERSIST_FAILS.set(_persist_fails)  # 实时暴露连续失败数（Grafana 趋势）
-            except Exception:  # noqa: BLE001
-                pass
-        else:
-            _jitter_fails += 1
-            logger.warning(f"[FMP Collector] credit 持久化瞬态失败（网络抖，不暂停 {_jitter_fails} 次）: {e}")
-            try:
-                from backend.core.metrics import FMP_PERSIST_JITTER_FAILS
 
-                FMP_PERSIST_JITTER_FAILS.set(_jitter_fails)
-            except Exception:  # noqa: BLE001
-                pass
-        # 重置对侧计数：写链路恢复后抖动计数清零，避免干扰；反之亦然
-        if _lat_degraded:
-            _jitter_fails = 0
-        else:
+async def _persist_credit() -> bool:
+    """将当日 credit 消耗持久化到 Redis（ex=25h 自然过期，进程重启不丢进度）。
+
+    自愈写重试：网络抖（_lat_degraded=False）时，单次 set 失败立即重试若干次
+    （短间隔），提升瞬态恢复率，重试耗尽才记 _jitter_fails（不暂停）；
+    写链路慢（_lat_degraded=True）时不重试（避免雪崩），直接计入暂停阈值。
+    连续写入失败达 _PERSIST_FAIL_THRESHOLD 次 → 升 P1 告警并暂停守护；
+    恢复成功时清零计数/标记并解除暂停（自愈）。
+    返回 True=写入成功，False=失败。
+    """
+    global _persist_fails, _persist_fail_alerted, _collector_paused
+    # 抖动窗口：立即重试，吞掉瞬态失败；写链路慢窗口：单次即判定，不重试
+    _max_retry = _JITTER_RETRY if not _lat_degraded else 0
+    for _attempt in range(1 + _max_retry):
+        if await _do_set_credit():
+            # 恢复成功 → 清零失败计数与告警标记，解除暂停（自愈）
+            if _persist_fails > 0 or _collector_paused:
+                logger.info(
+                    f"[FMP Collector] Redis 持久化恢复"
+                    f"（此前 {_persist_fails} 次失败，paused={_collector_paused}，"
+                    f"本次第{_attempt}次尝试成功）→ 守护自愈重启"
+                )
             _persist_fails = 0
             _persist_fail_alerted = False
-        if _persist_fails >= _PERSIST_FAIL_THRESHOLD:
-            if not _persist_fail_alerted:
-                _persist_fail_alerted = True
-                _collector_paused = True
-                try:
-                    from backend.core.metrics import FMP_COLLECTOR_PAUSED
+            _jitter_fails = 0  # 写链路恢复，抖动计数一并清零
+            was_paused = _collector_paused
+            _collector_paused = False
+            try:
+                from backend.core.metrics import FMP_COLLECTOR_PAUSED, FMP_PERSIST_FAILS
 
-                    FMP_COLLECTOR_PAUSED.set(1)
-                except Exception:  # noqa: BLE001
-                    pass
+                FMP_COLLECTOR_PAUSED.set(0)
+                FMP_PERSIST_FAILS.set(0)
+            except Exception:  # noqa: BLE001
+                pass
+            if was_paused:
                 try:
                     from backend.core.alert_models import NotificationPriority
                     from backend.services.alert.notification import notification_service
 
                     await notification_service.send_alert(
-                        message=(
-                            f"[FMP Collector] Redis 持久化连续 {_persist_fails} 次失败，"
-                            f"守护已暂停防丢失，待 Redis 恢复后自愈（P1）"
-                        ),
-                        priority=NotificationPriority.P1,
+                        message="[FMP Collector] Redis 已恢复，守护自愈重启，credit 进度持久化恢复正常",
+                        priority=NotificationPriority.P2,
                         source="fmp-collector",
                     )
-                except Exception as alert_e:  # noqa: BLE001
-                    logger.error(f"[FMP Collector] P1 告警发送失败: {alert_e}")
-        return False
+                except Exception:  # noqa: BLE001
+                    pass
+            return True
+        # 本次 set 失败：写链路慢窗口直接跳出重试（不雪崩）；抖动窗口短暂退避后重试
+        if _max_retry > 0:
+            await asyncio.sleep(_JITTER_RETRY_BACKOFF)
+    # 全部重试耗尽仍失败 → 归因分流
+    try:
+        _retry_ctx = "" if _lat_degraded else f"（网络抖重试 {_max_retry} 次仍失败，不暂停）"
+        _err = RuntimeError(_retry_ctx)
+    except Exception as e:  # noqa: BLE001
+        _err = e
+    # 归因分流：写链路慢（_lat_degraded=True，ping P99 高且 set 失败）→ 计入暂停阈值；
+    # 纯网络抖动（ping 健康但 set 偶发超时）→ 仅记 _jitter_fails，不暂停，避免毛刺误丢 credit。
+    if _lat_degraded:
+        _persist_fails += 1
+        logger.warning(
+            f"[FMP Collector] credit 持久化失败（写链路慢 {_persist_fails}/{_PERSIST_FAIL_THRESHOLD}）{_retry_ctx}"
+        )
+        try:
+            from backend.core.metrics import FMP_PERSIST_FAILS
+
+            FMP_PERSIST_FAILS.set(_persist_fails)  # 实时暴露连续失败数（Grafana 趋势）
+        except Exception:  # noqa: BLE001
+            pass
+    else:
+        _jitter_fails += 1
+        logger.warning(f"[FMP Collector] credit 持久化瞬态失败（网络抖，不暂停 {_jitter_fails} 次）{_retry_ctx}")
+        try:
+            from backend.core.metrics import FMP_PERSIST_JITTER_FAILS
+
+            FMP_PERSIST_JITTER_FAILS.set(_jitter_fails)
+        except Exception:  # noqa: BLE001
+            pass
+    # 重置对侧计数：写链路恢复后抖动计数清零，避免干扰；反之亦然
+    if _lat_degraded:
+        _jitter_fails = 0
+    else:
+        _persist_fails = 0
+        _persist_fail_alerted = False
+    if _persist_fails >= _PERSIST_FAIL_THRESHOLD:
+        if not _persist_fail_alerted:
+            _persist_fail_alerted = True
+            _collector_paused = True
+            try:
+                from backend.core.metrics import FMP_COLLECTOR_PAUSED
+
+                FMP_COLLECTOR_PAUSED.set(1)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                from backend.core.alert_models import NotificationPriority
+                from backend.services.alert.notification import notification_service
+
+                await notification_service.send_alert(
+                    message=(
+                        f"[FMP Collector] Redis 持久化连续 {_persist_fails} 次失败，"
+                        f"守护已暂停防丢失，待 Redis 恢复后自愈（P1）"
+                    ),
+                    priority=NotificationPriority.P1,
+                    source="fmp-collector",
+                )
+            except Exception as alert_e:  # noqa: BLE001
+                logger.error(f"[FMP Collector] P1 告警发送失败: {alert_e}")
+    return False
 
 
 async def _self_heal_loop() -> None:
@@ -279,6 +305,12 @@ async def _self_heal_loop() -> None:
                     pass
             if _p99 > _HEAL_P99_THRESHOLD:
                 globals()["_lat_degraded"] = True  # 写链路慢信号 → 后续 set 失败才计入暂停阈值
+                try:
+                    from backend.core.metrics import FMP_LAT_DEGRADED
+
+                    FMP_LAT_DEGRADED.set(1)
+                except Exception:  # noqa: BLE001
+                    pass
                 if not _degrade_alerted:
                     _degrade_alerted = True
                     _avg = sum(_valid) / len(_valid)
@@ -305,6 +337,12 @@ async def _self_heal_loop() -> None:
                         pass
             else:
                 globals()["_lat_degraded"] = False  # P99 回落 → 视为纯网络抖窗口，set 失败不暂停
+                try:
+                    from backend.core.metrics import FMP_LAT_DEGRADED
+
+                    FMP_LAT_DEGRADED.set(0)
+                except Exception:  # noqa: BLE001
+                    pass
                 _degrade_alerted = False  # 重置，下次再劣化可再报
         if _collector_paused:
             try:
