@@ -407,7 +407,7 @@ export function FundFlowDashboardModule() {
           setData(inner)
           setUpdatedAt(inner ? fmtTime((body as any)?.updated_at) : null)
         }
-      } catch (e) {
+      } catch (_e) {
         if (alive) setError('资金流看板数据获取失败，请稍后重试')
       } finally {
         if (alive) setLoading(false)
