@@ -118,7 +118,7 @@ jobs:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           DB_NAME: ${{ secrets.DB_NAME }}
         run: |
-          ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<'EOF'
+          ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<'EOF'
             set -e
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             cd /opt/quant-agent
@@ -196,9 +196,19 @@ jobs:
             # 同时把 data-subservice 镜像推到 registry (北京节点经内网拉取)
             DS_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:latest"
             DS_REGISTRY_IMAGE="localhost:5000/quant-agent-data-subservice:latest"
-            docker pull "${DS_IMAGE}"
+            docker pull "${DS_IMAGE}" \
+              || { echo "❌ 主节点从 GHCR 拉取 data-subservice 失败，中止"; exit 1; }
             docker tag "${DS_IMAGE}" "${DS_REGISTRY_IMAGE}"
-            docker push "${DS_REGISTRY_IMAGE}"
+            docker push "${DS_REGISTRY_IMAGE}" \
+              || { echo "❌ data-subservice 推送到本机 registry 失败 (磁盘/containerd 问题?)，中止避免北京节点拉到空镜像"; exit 1; }
+            echo "✅ data-subservice 已推送至本机 registry (push 成功即镜像就位，北京节点可经内网拉取)"
+
+            # 🔍 可选校验: docker manifest inspect 探测 registry 内镜像可见性 (失败仅警告，不中止，因 push 成功已足够证明镜像就位)
+            if docker manifest inspect "${DS_REGISTRY_IMAGE}" >/dev/null 2>&1; then
+              echo "✅ registry 内 data-subservice manifest 可被 manifest inspect 解析"
+            else
+              echo "⚠️ docker manifest inspect 解析失败 (registry:2 默认可能不支持 tag 路由)，但 push 已成功，北京节点应可正常拉取"
+            fi
           EOF
 
   # ----------------------------------------------------------------
@@ -305,7 +315,7 @@ jobs:
           WRITE_CREDS: ${{ matrix.creds }}
           NODE_TZ: ${{ matrix.tz }}
         run: |
-          ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<'EOF'
+          ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<'EOF'
             set -e
             cd /opt/quant-agent
 
@@ -360,8 +370,18 @@ jobs:
               printf 'TUSHARE_TOKEN=%s\nAKSHARE_API_KEY=%s\nAKSHARE_MODE=internal\n' "${{ secrets.TUSHARE_TOKEN }}" "${{ secrets.AKSHARE_API_KEY }}" >> ${{ matrix.env-file }}
             fi
 
-            curl -sSL -o ${{ matrix.compose }} "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/${{ matrix.compose }}"
+            curl -sSL -f -o ${{ matrix.compose }} "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/${{ matrix.compose }}" \
+              || { echo "❌ 拉取 ${{ matrix.compose }} 失败 (raw.githubusercontent 可能被墙)，中止避免用旧/空 compose 直连 GHCR"; exit 1; }
             sed -i "s|ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest|${IMAGE}|g" ${{ matrix.compose }}
+
+            # 🔍 镜像地址校验: 北京节点必须指向主节点内网 registry，否则会直连 GHCR 慢且可能拉不到
+            if [ "$NODE" = "bj" ]; then
+              if grep -q "ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest" ${{ matrix.compose }}; then
+                echo "❌ compose 中 data-subservice 镜像未被替换为内网 registry 地址 (${IMAGE})，中止"
+                exit 1
+              fi
+              echo "✅ 北京节点镜像已指向内网 registry: ${IMAGE}"
+            fi
 
             # 🛡️ 磁盘空间前置守卫: 同主节点，拉取前断言 / 剩余空间，不足则 fail fast + 打印清理提示
             DF_AVAIL_PCT=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
