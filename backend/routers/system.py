@@ -515,6 +515,38 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                 ],
                 "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "thresholds"}, "min": 0}},
             },
+            {
+                "id": 12,
+                "title": "抖动重试挽回次数 (量化重试收益)",
+                "type": "stat",
+                "gridPos": {"h": 6, "w": 24, "x": 0, "y": 58},
+                "targets": [
+                    {
+                        "expr": "quant_fmp_collector_jitter_retry_recovered_total",
+                        "legendFormat": "retry_recovered",
+                        "refId": "A",
+                    }
+                ],
+                "options": {
+                    "reduceOptions": {"calcs": ["lastNotNull"]},
+                    "colorMode": "value",
+                    "graphMode": "area",
+                    "justifyMode": "auto",
+                    "values": True,
+                },
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "short",
+                        "color": {"mode": "thresholds"},
+                        "thresholds": {
+                            "steps": [
+                                {"color": "gray", "value": 0},
+                                {"color": "green", "value": 1},
+                            ]
+                        },
+                    }
+                },
+            },
         ],
         "annotations": {"list": []},
         "templating": {
@@ -533,6 +565,14 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                     "label": "自愈退避天花板(秒, 仅展示锚点 · 生效见 FMP_HEAL_BACKOFF_CAP env)",
                     "query": "300",
                     "current": {"text": "300", "value": "300"},
+                    "hide": 0,
+                },
+                {
+                    "name": "JITTER_RETRY",
+                    "type": "text",
+                    "label": "抖动重试次数(仅展示锚点 · 生效见 FMP_JITTER_RETRY env)",
+                    "query": "3",
+                    "current": {"text": "3", "value": "3"},
                     "hide": 0,
                 },
             ]

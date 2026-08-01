@@ -455,6 +455,11 @@ FMP_LAT_DEGRADED = Gauge(
     "FMP collector 归因信号：1=写链路慢(应暂停) 0=纯网络抖(不暂停)，与 paused/jitter 联动看归因全貌",
 )
 
+FMP_JITTER_RETRY_RECOVERED = Counter(
+    "quant_fmp_collector_jitter_retry_recovered_total",
+    "FMP collector 抖动重试挽回次数（首次失败靠重试才成功，量化重试策略挽回的潜在暂停/丢 credit 收益）",
+)
+
 FMP_HEAL_BACKOFF = Gauge(
     "quant_fmp_collector_heal_backoff_seconds",
     "FMP collector 自愈轮询当前退避秒数（下次探测倒计时，Redis 长断时随指数退避增长，上限 5min）",

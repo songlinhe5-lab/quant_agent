@@ -55,9 +55,9 @@ _HEAL_BACKOFF_CAP = float(os.environ.get("FMP_HEAL_BACKOFF_CAP", "300"))
 # 但此处为 Python 侧动态归因告警（触发时附带同窗 persist_fails / ping 延迟，区分网络抖 vs 写链路慢）。
 _HEAL_P99_THRESHOLD = 0.5
 _HEAL_P99_SUSTAIN = 300.0  # 持续 5min 才判定劣化（过滤偶发毛刺）
-# 网络抖窗口的立即重试参数：单次 set 失败后最多重试次数与每次退避（秒），提升瞬态恢复率
-_JITTER_RETRY = 3
-_JITTER_RETRY_BACKOFF = 0.2
+# 网络抖窗口的立即重试参数（env 热配，与 HEAL_BACKOFF_CAP 统一）：单次 set 失败后最多重试次数与每次退避（秒），提升瞬态恢复率
+_JITTER_RETRY = int(os.environ.get("FMP_JITTER_RETRY", "3"))
+_JITTER_RETRY_BACKOFF = float(os.environ.get("FMP_JITTER_RETRY_BACKOFF", "0.2"))
 
 # 盘后窗口（UTC）：美东 ET=UTC-4(夏令)/-5(冬令)。盘后≈收盘 16:00 ET 后至盘前 09:30 ET。
 # UTC 覆盖：夏令 20:00–次日 13:30；冬令 21:00–次日 14:30。取宽松并集 [20, 14) UTC。
@@ -147,6 +147,14 @@ async def _persist_credit() -> bool:
     _max_retry = _JITTER_RETRY if not _lat_degraded else 0
     for _attempt in range(1 + _max_retry):
         if await _do_set_credit():
+            # 抖动重试挽回：首次尝试即成功(_attempt=0)不计数；靠重试才成功(_attempt>=1)记一次挽回
+            if _attempt >= 1:
+                try:
+                    from backend.core.metrics import FMP_JITTER_RETRY_RECOVERED
+
+                    FMP_JITTER_RETRY_RECOVERED.inc()
+                except Exception:  # noqa: BLE001
+                    pass
             # 恢复成功 → 清零失败计数与告警标记，解除暂停（自愈）
             if _persist_fails > 0 or _collector_paused:
                 logger.info(
@@ -439,6 +447,8 @@ def collector_runtime() -> dict:
         "heal_backoff_threshold": _HEAL_P99_THRESHOLD,
         "heal_backoff_sustain": _HEAL_P99_SUSTAIN,
         "jitter_fails": _jitter_fails,
+        "jitter_retry": _JITTER_RETRY,
+        "jitter_retry_backoff": _JITTER_RETRY_BACKOFF,
         "lat_degraded": _lat_degraded,
         "lat_window_p99": _lat_window_p99,
     }
