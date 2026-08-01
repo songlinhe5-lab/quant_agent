@@ -13,6 +13,15 @@
 #      用本 recording rule 预计算 fmp:watchlist_size_delta5m，
 #      再把 Panel 16 的 alert expr 从 increase(shift[1h]) 切到该 rule 输出。
 #
+#   ⚠️ Counter 重启归零风险（切换时务必知悉）：
+#      本文件 shift_total_1h / file_deleted_ratio_1h 依赖 exporter 侧 Counter 的
+#      increase()。若 exporter 进程重启（部署/崩溃），Counter 从 0 重新开始，
+#      则重启后 1h 窗口内的 increase() 会被截断（只统计重启后的增量），
+#      比率与突变总数会短暂偏低。多副本切换时更稳妥的做法是改用 delta(Gauge) 系列
+#      （fmp:watchlist_size_delta5m 已基于 Gauge，天然免疫重启归零），
+#      即突变检测/比率优先引用 Gauge 派生的 delta，而非 Counter 的 increase。
+#      当前单副本走 exporter Counter 直查，重启概率低且影响窗口仅 1h，可接受。
+#
 # 启用步骤（届时取消 prometheus.yml 中 rule_files 注释 + 重启 prometheus）：
 #   rule_files:
 #     - "/etc/prometheus/rules/*.yml"
@@ -26,8 +35,8 @@
 #   3. Panel 16 的 alert expr 从 increase(shift[1h]) 切到 fmp:watchlist_size_shift_flag；
 #   4. Panel 16 的 target B（size_shift 突变）与 target C（file_deleted）直查，
 #      可统一替换为本文件的 fmp:watchlist_shift_total_1h（server 端聚合双计数）；
-#   5. Panel 17 的比率 expr 分母改用 fmp:watchlist_shift_total_1h，分子改用
-#      increase(quant_fmp_collector_watchlist_file_deleted_total[1h])（或对应 recording 指标）。
+#   5. Panel 17 的比率 expr 直查替换为 fmp:watchlist_file_deleted_ratio_1h（server 端算完），
+#      并保留 noValue="N/A"（分母=0 时显示 N/A，与纯调仓 0% 区分）。
 # ============================================================
 
 groups:
@@ -62,3 +71,13 @@ groups:
         expr: |
           increase(quant_fmp_collector_watchlist_size_shift_total[1h])
           + increase(quant_fmp_collector_watchlist_file_deleted_total[1h])
+
+      # 突变根因比率（server 端算完直接渲染）：近 1h 删文件占突变总数比例。
+      # = file_deleted / (file_deleted + size_shift)。分母为 0 时 PromQL 返回 NaN，
+      # Grafana stat 配 noValue="N/A" 即显示 N/A（无突变），与纯调仓 0% 区分。
+      # 替代 Panel 17 的比率 expr 直查，多副本启用后 Panel 17 直接引用本指标即可
+      # （见头部双向切换清单第 5 条），彻底脱离 increase() 直查、零 exporter 耦合。
+      - record: fmp:watchlist_file_deleted_ratio_1h
+        expr: |
+          increase(quant_fmp_collector_watchlist_file_deleted_total[1h])
+          / clamp_min(fmp:watchlist_shift_total_1h, 0)
