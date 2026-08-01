@@ -482,3 +482,8 @@ FMP_JITTER_RETRY_ACTIVE = Gauge(
     "quant_fmp_collector_jitter_retry_active",
     "FMP collector 当前生效的抖动重试次数（自愈调参控制器闭环自适应轨迹，与成功率拐点对照是否吻合）",
 )
+
+FMP_WATCHLIST_EMPTY = Gauge(
+    "quant_fmp_collector_watchlist_empty",
+    "FMP collector watchlist 为空告警（所有标的源均未配置，守护静默兜底未拉任何财报 = 1）",
+)

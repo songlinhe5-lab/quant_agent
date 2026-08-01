@@ -629,6 +629,54 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                     }
                 },
             },
+            {
+                "id": 15,
+                "title": "FMP watchlist 为空告警 (静默兜底)",
+                "type": "stat",
+                "gridPos": {"h": 4, "w": 8, "x": 0, "y": 76},
+                "targets": [
+                    {
+                        "expr": "quant_fmp_collector_watchlist_empty",
+                        "legendFormat": "watchlist 空 (1=静默兜底未拉财报)",
+                        "refId": "A",
+                    }
+                ],
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "short",
+                        "color": {"mode": "background"},
+                        "thresholds": {
+                            "steps": [
+                                {"color": "#10b981", "value": 0},
+                                {"color": "#ef4444", "value": 1},
+                            ]
+                        },
+                    }
+                },
+                "alertThreshold": True,
+                "alert": {
+                    "id": 15,
+                    "name": "FMP watchlist 为空 (所有标的源未配置)",
+                    "frequency": "1m",
+                    "for": "5m",
+                    "noDataState": "no_data",
+                    "execErrState": "alerting",
+                    "conditions": [
+                        {
+                            "type": "query",
+                            "reducerType": "last",
+                            "query": {"params": ["A", "5m", "now"]},
+                            "evaluator": {"type": "eq", "params": [1]},
+                            "operator": {"type": "and"},
+                        }
+                    ],
+                    "annotations": {
+                        "summary": "FMP watchlist 为空持续 5 分钟，守护静默兜底未拉取任何财报",
+                        "description": "FMP_COLLECTOR_SYMBOLS / PORTFOLIO_SYMBOLS / WATCHLIST / FINNHUB_WS_SYMBOLS 均未配置任何标的源，盘后守护不会拉任何财报（硬默认 4 只已废弃）。需配置至少一个源，否则财报缓存为空。",
+                    },
+                    "labels": {"severity": "critical", "service": "quant-agent"},
+                },
+            },
         ],
         "annotations": {"list": []},
         "templating": {

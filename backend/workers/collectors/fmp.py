@@ -54,6 +54,9 @@ _BATCH_LIMIT = 4  # 每标的拉取的季度数（控制 credit：income_stateme
 # 旧实现硬编码 used=4（"约2+约2"）实为 2 倍高估，按日预算 200 仅能拉 50 只而非 100 只 —— 浪费一半容量。
 # 二者均 env 化，防御未来端点计费粒度变化或新增端点。
 _FMP_CREDIT_PER_CALL = int(os.environ.get("FMP_CREDIT_PER_CALL", "1"))  # 单端点点数（FMP 标准端点=1）
+# 每 symbol 调用的端点数（income_statement + profile）。注意：FMP 官方 FAQ 明确
+# "One request counts as one API call"，limit 参数不影响计费粒度（无论 limit=4 还是 100 都只算 1 call），
+# 故此处恒为 2，不因 limit 调整而 +1（已核实，勿凭直觉改）。
 _FMP_CALLS_PER_SYMBOL = int(os.environ.get("FMP_CALLS_PER_SYMBOL", "2"))  # 每 symbol 调用的端点数（statement+profile）
 # 自愈退避天花板（秒）：默认 300s（5min），可按 Redis SLA 级别经环境变量下调/上调。
 # Grafana 侧「HEAL_BACKOFF_CAP」模板变量仅作展示锚点，真正生效以此 env 为准。
@@ -435,31 +438,61 @@ async def _maybe_reset_daily_credit() -> None:
 
 
 def _load_watchlist() -> list[str]:
-    """解析 FMP 守护独立 watchlist，三级回退：
+    """解析 FMP 守护独立 watchlist，多源并集（去重保序）：
 
-    1. FMP_COLLECTOR_SYMBOLS (env, 逗号分隔) —— 最高优先
+    源优先级（高优先源的 symbol 不会被低优先源覆盖，而是合并）：
+    1. FMP_COLLECTOR_SYMBOLS (env, 逗号分隔) —— 运营显式指定，最高优先
+    1.5 PORTFOLIO_SYMBOLS (env) / config/portfolio_symbols.txt (文件) —— 实盘持仓池并集
+        （日后接入实盘持仓时启用：把账户 positions 导出为该文件或 env，自动纳入财报缓存，
+         避免硬编码 4 只漏掉实盘标的；与既有源做并集而非取代）
     2. FMP_COLLECTOR_WATCHLIST (独立文件, 每行一个 symbol) —— 与 FINNHUB_WS_SYMBOLS 解耦
-    3. FINNHUB_WS_SYMBOLS (env, 逗号分隔) —— 兼容旧配置
+    3. FINNHUB_WS_SYMBOLS (env, 逗号分隔) —— 兼容旧配置（统一行情池回退）
+
+    返回去重后的并集；若所有源皆空，返回 []（由调用方触发空告警，防静默兜底）。
     """
+    merged: list[str] = []
+    seen: set[str] = set()
+
+    def _add(syms: list[str]) -> None:
+        for s in syms:
+            s = s.strip().upper()
+            if s and s not in seen:
+                seen.add(s)
+                merged.append(s)
+
+    # 1. 运营显式 env
     env_syms = os.getenv("FMP_COLLECTOR_SYMBOLS", "").strip()
     if env_syms:
-        return [s.strip().upper() for s in env_syms.split(",") if s.strip()]
+        _add([s for s in env_syms.split(",") if s.strip()])
 
+    # 1.5 实盘持仓池（env 优先，其次独立文件）
+    pf_env = os.getenv("PORTFOLIO_SYMBOLS", "").strip()
+    if pf_env:
+        _add([s for s in pf_env.split(",") if s.strip()])
+    else:
+        pf_path = os.getenv("PORTFOLIO_SYMBOLS_FILE", "config/portfolio_symbols.txt")
+        if pf_path and os.path.isfile(pf_path):
+            try:
+                with open(pf_path, encoding="utf-8") as f:
+                    _add([ln for ln in f if ln.strip() and not ln.startswith("#")])
+            except OSError as e:
+                logger.warning(f"[FMP Collector] portfolio 标的源读取失败 {pf_path}: {e}")
+
+    # 2. 独立 watchlist 文件
     wl_path = os.getenv("FMP_COLLECTOR_WATCHLIST", "config/fmp_watchlist.txt")
     if wl_path and os.path.isfile(wl_path):
         try:
             with open(wl_path, encoding="utf-8") as f:
-                syms = [ln.strip().upper() for ln in f if ln.strip() and not ln.startswith("#")]
-            if syms:
-                return syms
+                _add([ln for ln in f if ln.strip() and not ln.startswith("#")])
         except OSError as e:
             logger.warning(f"[FMP Collector] watchlist 读取失败 {wl_path}: {e}")
 
-    # 兼容旧配置：回退到 Finnhub WS symbols
+    # 3. 兼容旧配置：回退到 Finnhub WS symbols（统一行情池）
     fb = os.getenv("FINNHUB_WS_SYMBOLS", "").strip()
     if fb:
-        return [s.strip().upper() for s in fb.split(",") if s.strip()]
-    return []
+        _add([s for s in fb.split(",") if s.strip()])
+
+    return merged
 
 
 def collector_runtime() -> dict:
@@ -471,6 +504,7 @@ def collector_runtime() -> dict:
         "credit_spent_today": _credit_spent_today,
         "credit_reset_date": _credit_reset_date,
         "watchlist_size": len(_watchlist_cache),
+        "watchlist_empty_warn": len(_watchlist_cache) == 0,
         "heal_backoff_cap": _HEAL_BACKOFF_CAP,
         "heal_backoff_threshold": _HEAL_P99_THRESHOLD,
         "heal_backoff_sustain": _HEAL_P99_SUSTAIN,
@@ -535,9 +569,21 @@ def _watch_watchlist_file() -> None:
 
 async def _batch_run() -> None:
     symbols = _get_watchlist()
-    if not symbols:
-        logger.info("[FMP Collector] 未配置 watchlist（FMP_COLLECTOR_SYMBOLS/WATCHLIST/FINNHUB_WS_SYMBOLS 均空），跳过")
-        return
+    try:
+        from backend.core.metrics import FMP_WATCHLIST_EMPTY
+
+        if not symbols:
+            FMP_WATCHLIST_EMPTY.set(1)  # APM 告警：所有标的源均未配置，守护静默兜底未拉任何财报
+            logger.error(
+                "[FMP Collector] watchlist 为空（FMP_COLLECTOR_SYMBOLS/PORTFOLIO_SYMBOLS/"
+                "WATCHLIST/FINNHUB_WS_SYMBOLS 均未配置任何源），守护静默兜底未拉取任何财报！"
+            )
+            return
+        FMP_WATCHLIST_EMPTY.set(0)
+    except Exception:  # noqa: BLE001
+        if not symbols:
+            logger.error("[FMP Collector] watchlist 为空，所有标的源均未配置")
+            return
 
     await _maybe_reset_daily_credit()
 
@@ -567,10 +613,11 @@ async def fmp_collector_daemon() -> None:
     await _restore_credit()  # 先恢复当日 credit 进度（防重启清零）
     _reload_watchlist()  # 首启加载 watchlist
     try:
-        from backend.core.metrics import FMP_COLLECTOR_PAUSED, FMP_JITTER_RETRY_ACTIVE
+        from backend.core.metrics import FMP_COLLECTOR_PAUSED, FMP_JITTER_RETRY_ACTIVE, FMP_WATCHLIST_EMPTY
 
         FMP_COLLECTOR_PAUSED.set(0)  # 启动基线：正常态
         FMP_JITTER_RETRY_ACTIVE.set(_JITTER_RETRY)  # 启动基线：当前生效重试次数
+        FMP_WATCHLIST_EMPTY.set(0)  # 启动基线：watchlist 非空假设（首轮 _batch_run 会校正）
     except Exception:  # noqa: BLE001
         pass
     monitor = threading.Thread(target=_watch_watchlist_file, name="fmp-watchlist-mon", daemon=True)
