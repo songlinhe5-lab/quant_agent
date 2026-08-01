@@ -10,10 +10,12 @@ FMP DataSource Adapter（BE-ARCH-05）
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from typing import Any, Optional
 
+from backend.core.redis_client import redis_client
 from backend.services.datasource import (
     ErrorCategory,
     ErrorInfo,
@@ -22,6 +24,20 @@ from backend.services.datasource import (
     Result,
 )
 from backend.services.finnhub.ws_ingest import tick_cache
+
+
+async def _fmp_cache_get(symbol: str) -> Optional[dict[str, Any]]:
+    """读取 COLLECTOR_FMP 盘后写入的财报缓存 (quant:fmp:{symbol}, TTL 1d)。
+
+    命中即返回（不消耗 credit）；未命中/异常返回 None，由调用方降级 REST。
+    """
+    try:
+        raw = await redis_client.get(f"quant:fmp:{symbol.upper()}")
+        if raw:
+            return json.loads(raw)
+    except Exception:  # noqa: BLE001
+        return None
+    return None
 
 
 def _extract_ws_price(tick: dict[str, Any]) -> Optional[float]:
@@ -158,8 +174,18 @@ class FMPDataSource:
                 # 未命中实时 tick → REST 快照降级（消耗 1 credit）
                 data = await svc.get_quote(symbol)
             elif action == "profile":
+                cached = await _fmp_cache_get(symbol)
+                if cached and cached.get("profile") is not None:
+                    result = Result.make_success(cached["profile"], source="fmp-cache")
+                    result.self_recorded = True  # 命中本地缓存，不消耗 credit
+                    return result
                 data = await svc.get_profile(symbol)
             elif action == "income_statement":
+                cached = await _fmp_cache_get(symbol)
+                if cached and cached.get("income_statement") is not None:
+                    result = Result.make_success(cached["income_statement"], source="fmp-cache")
+                    result.self_recorded = True  # 命中本地缓存，不消耗 credit
+                    return result
                 data = await svc.get_income_statement(symbol, limit=int(params.get("limit", 4)))
             else:  # pragma: no cover - 已被 capabilities 前置拦截
                 return Result.make_error(
