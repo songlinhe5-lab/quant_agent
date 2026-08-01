@@ -3,15 +3,20 @@
 Data Source Router - 数据源路由服务
 ==========================================
 
-实现跨节点数据源路由：
-1. YFinance 多源切换：当主节点被 Yahoo 限流时，自动切换到备用节点
-2. AKShare 远程获取：国内 VPS 提供 AKShare 数据服务，海外主节点通过 HTTP 调用
+实现跨节点数据源路由 (5 节点拓扑):
+  - 主节点 VPS_S1 : 本地 finnhub + yfinance，按能力路由至远程 data_subservice 节点
+  - 北京 VPS_BJ   : tushare + akshare + yfinance  (tushare/akshare 唯一节点，单点)
+  - 美西 VPS_S2   : 纯 yfinance (与 S3/S4 共同负载均衡/容灾)
+  - 美西 VPS_S3/S4: 纯 yfinance (负载均衡/容灾)
+  - YFinance 主节点限流时自动 failover 至备用/远程 yfinance 节点
+  - Tushare/AKShare 流量路由至北京单节点 (无容灾，节点不可用时降级本地适配器)
 
-环境变量控制:
+环境变量控制 (URL 支持逗号分隔多活):
   DATA_SOURCE_ROUTER_ENABLED=true|false    # 是否启用路由
-  YF_PRIMARY_NODE_URL=http://localhost:8000  # yfinance 主节点
-  YF_BACKUP_NODE_URL=http://100.x.x.x:8000   # yfinance 备用节点（可选）
-  AKSHARE_REMOTE_URL=http://国内VPS:8000      # AKShare 远程节点（可选）
+  YF_PRIMARY_NODE_URL=http://localhost:8000  # yfinance 主节点 (主节点本地)
+  YF_BACKUP_NODE_URL=http://s3:8000,http://s4:8000,http://s2:8000  # yfinance 备用 (逗号分隔多活)
+  TUSHARE_REMOTE_URL=http://bj:8000          # tushare 远程 (北京单节点)
+  AKSHARE_REMOTE_URL=http://bj:8000          # akshare 远程 (北京单节点)
   DATA_SOURCE_HMAC_SECRET=...               # 节点间通信签名密钥
 """
 
@@ -67,34 +72,63 @@ class DataSourceRouter:
         self._init_nodes()
 
     def _init_nodes(self):
-        primary_url = os.getenv("YF_PRIMARY_NODE_URL", "http://localhost:8000")
-        backup_url = os.getenv("YF_BACKUP_NODE_URL", "")
-        akshare_url = os.getenv("AKSHARE_REMOTE_URL", "")
+        # 支持逗号分隔的多个 URL (多活容灾)。
+        # 注意: fetch_akshare/fetch_tushare 按固定单键 'akshare_remote'/'tushare_remote' 取节点，
+        #       故 tushare/akshare 远程 URL 仅取首个 (当前拓扑: 北京单节点，无容灾)。
+        yf_primary = os.getenv("YF_PRIMARY_NODE_URL", "http://localhost:8000")
+        yf_backups = os.getenv("YF_BACKUP_NODE_URL", "")
+        akshare_urls = self._split_urls(os.getenv("AKSHARE_REMOTE_URL", ""))
+        tushare_urls = self._split_urls(os.getenv("TUSHARE_REMOTE_URL", ""))
 
         self._nodes["yf_primary"] = DataSourceNode(
             name="yf_primary",
-            url=primary_url,
+            url=yf_primary,
             weight=10,
             capabilities=["yfinance", "quote", "history", "tech"],
         )
 
-        if backup_url:
-            self._nodes["yf_backup"] = DataSourceNode(
-                name="yf_backup",
-                url=backup_url,
+        # YFinance 备用节点 (S2 / S3 / S4 等纯 yfinance 节点)
+        for idx, url in enumerate(self._split_urls(yf_backups), start=1):
+            self._nodes[f"yf_backup_{idx}"] = DataSourceNode(
+                name=f"yf_backup_{idx}",
+                url=url,
                 weight=5,
                 capabilities=["yfinance", "quote", "history", "tech"],
             )
 
-        if akshare_url:
+        # AKShare 远程节点 (北京单节点，单键)
+        if akshare_urls:
             self._nodes["akshare_remote"] = DataSourceNode(
                 name="akshare_remote",
-                url=akshare_url,
+                url=akshare_urls[0],
                 weight=10,
                 capabilities=["akshare", "southbound", "northbound", "hsgt"],
             )
 
+        # Tushare 远程节点 (北京单节点，单键)
+        if tushare_urls:
+            self._nodes["tushare_remote"] = DataSourceNode(
+                name="tushare_remote",
+                url=tushare_urls[0],
+                weight=10,
+                capabilities=[
+                    "tushare",
+                    "stock_history",
+                    "stock_quote",
+                    "fundamental",
+                    "fund_flow",
+                    "stock_list",
+                    "lowfreq_history",
+                    "macro",
+                ],
+            )
+
         logger.info(f"[Router] 初始化完成: enabled={self._enabled}, nodes={list(self._nodes.keys())}")
+
+    @staticmethod
+    def _split_urls(raw: str) -> List[str]:
+        """将逗号分隔的 URL 字符串拆分为列表 (去除空白/空项)。"""
+        return [u.strip() for u in (raw or "").split(",") if u.strip()]
 
     def _sign_request(self, payload: dict, timestamp: str) -> str:
         if not self._hmac_secret:
@@ -399,6 +433,66 @@ class DataSourceRouter:
         else:
             await self._save_akshare_stale(action, kwargs, result)
         return result
+
+    async def fetch_tushare(self, action: str, **params) -> Dict[str, Any]:
+        """Tushare 远程节点代理 (北京从节点 DS_CAPABILITIES=tushare,akshare)。
+
+        启用 DATA_SOURCE_ROUTER 且 tushare_remote 节点健康时，优先走远程；
+        否则回退本地 Tushare 适配器 (A股主源)。
+        """
+        remote_node = self._nodes.get("tushare_remote")
+        if not self._enabled or not remote_node or remote_node.status != "healthy":
+            return await self._call_local_tushare(action, **params)
+
+        try:
+            payload = {"action": action, "params": params}
+            result = await self._send_request(remote_node, "tushare", payload)
+            if result.get("success"):
+                await self._update_node_status(remote_node.name, success=True)
+                return result
+            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+        except Exception as e:
+            logger.warning(f"[Tushare] 远程节点失败: {remote_node.name}, {action}, {str(e)}")
+            await self._update_node_status(remote_node.name, success=False, error=str(e))
+
+        logger.warning("[Tushare] 远程节点不可用，降级本地 Tushare 适配器")
+        return await self._call_local_tushare(action, **params)
+
+    async def _call_local_tushare(self, action: str, **params) -> Dict[str, Any]:
+        from backend.services.tushare import tushare_service
+
+        try:
+            if action == "stock_history":
+                return tushare_service.get_daily_history(
+                    ticker=params.get("ticker", ""), **{k: v for k, v in params.items() if k != "ticker"}
+                )
+            elif action == "stock_quote":
+                return tushare_service.get_realtime_quote(ticker=params.get("ticker", ""))
+            elif action == "fundamental":
+                return tushare_service.get_daily_basic(
+                    ticker=params.get("ticker", ""), trade_date=params.get("trade_date")
+                )
+            elif action == "fund_flow":
+                return tushare_service.get_moneyflow_hsgt(
+                    start_date=params.get("start_date"), end_date=params.get("end_date")
+                )
+            elif action == "stock_list":
+                return tushare_service.get_stock_basic(
+                    list_status=params.get("list_status", "L"),
+                    exchange=params.get("exchange"),
+                    fields=params.get("fields"),
+                )
+            elif action == "lowfreq_history":
+                return tushare_service.get_lowfreq_history(
+                    ticker=params.get("ticker", ""), **{k: v for k, v in params.items() if k != "ticker"}
+                )
+            elif action == "macro":
+                return tushare_service.get_macro(
+                    params.get("api_name", ""), **{k: v for k, v in params.items() if k != "api_name"}
+                )
+            return {"success": False, "message": f"unsupported tushare action: {action}"}
+        except Exception as e:  # noqa: BLE001
+            return {"success": False, "message": str(e)}
 
     # ─────────────────────────────────────────
     #  DIST-19: AKShare STALE 缓存降级
