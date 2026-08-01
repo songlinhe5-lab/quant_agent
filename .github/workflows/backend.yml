@@ -181,7 +181,7 @@ jobs:
             port-secret: VPS_BJ_PORT
             key-secret: VPS_BJ_SSH_KEY
             ts-ip-secret: VPS_BJ_TAILSCALE_IP
-            ds-id: us-slave
+            ds-id: bj-slave
             ds-region: cn
             ds-caps: "tushare,akshare,yfinance"
             tz: Asia/Shanghai
