@@ -117,21 +117,20 @@ jobs:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           DB_NAME: ${{ secrets.DB_NAME }}
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
-          ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<EOF
+          ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<'EOF'
             set -e
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             cd /opt/quant-agent
 
             # 动态生成主节点 .env.master (compose 变量替换用) 与 .env (容器 env_file 用)
-            cat > .env.master <<ENVEOF
-          TAILSCALE_IP=${{ secrets.VPS_S1_TAILSCALE_IP }}
-          REDIS_PASSWORD=${REDIS_PWD}
-          DB_USER=${DB_USER:-quant_admin}
-          DB_PASSWORD=${DB_PASSWORD:-quant_pg_secret_2026}
-          DB_NAME=${DB_NAME:-quant_agent_db}
-          QUANT_ENV=production
-          ENVEOF
+            # 用 printf 多行写入, 避免嵌套 heredoc 结束符缩进导致的解析混乱 (所有值均为 GitHub 表达式直注)
+            printf '%s\n' \
+          'TAILSCALE_IP=${{ secrets.VPS_S1_TAILSCALE_IP }}' \
+          'REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}' \
+          'DB_USER=${{ secrets.DB_USER }}' \
+          'DB_PASSWORD=${{ secrets.DB_PASSWORD }}' \
+          'DB_NAME=${{ secrets.DB_NAME }}' \
+          'QUANT_ENV=production' > .env.master
             cp .env.master .env
 
             # 脱敏校验: 确认主节点 TS IP 是否注入成功 (仅打印前两段, 避免泄露完整内网 IP)
@@ -142,6 +141,7 @@ jobs:
               echo "⚠️ 警告: TAILSCALE_IP 为空！registry 将仅绑定 127.0.0.1，北京节点无法经内网拉取镜像。请检查 secret VPS_S1_TAILSCALE_IP 是否配置。"
             fi
 
+            IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
             curl -sSL -o docker-compose.master.yml "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.master.yml"
             sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:latest|${IMAGE}|g" docker-compose.master.yml
             docker compose -f docker-compose.master.yml --env-file .env.master pull
@@ -265,25 +265,24 @@ jobs:
           WRITE_CREDS: ${{ matrix.creds }}
           NODE_TZ: ${{ matrix.tz }}
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:latest"
-          # 北京节点经主节点内网 registry 拉取 (避免跨洋直连 GHCR)，其余节点直连 GHCR
-          if [ "${{ matrix.node }}" = "bj" ]; then
-            IMAGE="${MASTER_TS_IP}:5000/quant-agent-data-subservice:latest"
-          fi
-          ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<EOF
+          ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<'EOF'
             set -e
             cd /opt/quant-agent
 
+            # 镜像地址: 北京节点经主节点内网 registry 拉取 (避免跨洋直连 GHCR)，其余节点直连 GHCR
+            NODE="${{ matrix.node }}"
+            if [ "$NODE" = "bj" ]; then
+              IMAGE="${{ secrets.VPS_S1_TAILSCALE_IP }}:5000/quant-agent-data-subservice:latest"
+            else
+              IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:latest"
+            fi
+
             # 北京节点: 配置 docker 允许访问主节点内网 http registry (insecure-registries, 仅一次)
-            if [ "${{ matrix.node }}" = "bj" ]; then
+            if [ "$NODE" = "bj" ]; then
               DAEMON_CFG="/etc/docker/daemon.json"
-              if [ ! -f "\$DAEMON_CFG" ] || ! grep -q "${MASTER_TS_IP}:5000" "\$DAEMON_CFG"; then
+              if [ ! -f "$DAEMON_CFG" ] || ! grep -q "${{ secrets.VPS_S1_TAILSCALE_IP }}:5000" "$DAEMON_CFG"; then
                 mkdir -p /etc/docker
-                cat > "\$DAEMON_CFG" <<DCEOF
-          {
-            "insecure-registries": ["${MASTER_TS_IP}:5000"]
-          }
-          DCEOF
+                printf '%s\n' '{' '  "insecure-registries": ["${{ secrets.VPS_S1_TAILSCALE_IP }}:5000"]' '}' > "$DAEMON_CFG"
                 systemctl restart docker
                 sleep 5
               fi
@@ -291,37 +290,31 @@ jobs:
               echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             fi
 
-            # 动态生成节点 .env (覆盖写入，无需 VPS 预置)
-            cat > ${ENV_FILE} <<ENVEOF
-          DS_NODE_ID=${DS_NODE_ID}
-          DS_REGION=${DS_REGION}
-          DS_CAPABILITIES=${DS_CAPABILITIES}
-          DS_NODE_PORT=8000
-          PUBLIC_IP=${NODE_TS_IP}
-          DS_BASE_URL=http://${NODE_TS_IP}:8000
-
-          YF_ROUTER_ENABLED=false
-
-          REDIS_HOST=${MASTER_TS_IP}
-          REDIS_PORT=6379
-          REDIS_PASSWORD=${REDIS_PWD}
-
-          # 须与主节点 DATA_SOURCE_HMAC_SECRET 一致
-          DATA_SOURCE_HMAC_SECRET=${HMAC_SECRET}
-          DATA_SOURCE_ALLOWED_IPS=10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1
-
-          QUANT_ENV=production
-          TZ=${NODE_TZ}
-          ENVEOF
+            # 动态生成节点 .env (覆盖写入，无需 VPS 预置)。用 printf 多行写入避免嵌套 heredoc 解析问题
+            printf '%s\n' \
+          'DS_NODE_ID=${{ matrix.ds-id }}' \
+          'DS_REGION=${{ matrix.ds-region }}' \
+          'DS_CAPABILITIES=${{ matrix.ds-caps }}' \
+          'DS_NODE_PORT=8000' \
+          'PUBLIC_IP=${{ secrets[matrix.ts-ip-secret] }}' \
+          'DS_BASE_URL=http://${{ secrets[matrix.ts-ip-secret] }}:8000' \
+          'YF_ROUTER_ENABLED=false' \
+          'REDIS_HOST=${{ secrets.VPS_S1_TAILSCALE_IP }}' \
+          'REDIS_PORT=6379' \
+          'REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}' \
+          'DATA_SOURCE_HMAC_SECRET=${{ secrets.DATA_SOURCE_HMAC_SECRET }}' \
+          'DATA_SOURCE_ALLOWED_IPS=10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1' \
+          'QUANT_ENV=production' \
+          'TZ=${{ matrix.tz }}' > ${{ matrix.env-file }}
 
             # 仅北京节点 (creds=true) 写入 Tushare / AKShare 凭证；其余纯 yfinance 节点跳过
-            if [ "${WRITE_CREDS}" = "true" ]; then
-              printf 'TUSHARE_TOKEN=%s\nAKSHARE_API_KEY=%s\nAKSHARE_MODE=internal\n' "${TUSHARE_TOKEN}" "${AKSHARE_API_KEY}" >> ${ENV_FILE}
+            if [ "${{ matrix.creds }}" = "true" ]; then
+              printf 'TUSHARE_TOKEN=%s\nAKSHARE_API_KEY=%s\nAKSHARE_MODE=internal\n' "${{ secrets.TUSHARE_TOKEN }}" "${{ secrets.AKSHARE_API_KEY }}" >> ${{ matrix.env-file }}
             fi
 
-            curl -sSL -o ${COMPOSE_FILE} "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/${COMPOSE_FILE}"
-            sed -i "s|ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest|${IMAGE}|g" ${COMPOSE_FILE}
-            docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} pull
-            docker compose -f ${COMPOSE_FILE} --env-file ${ENV_FILE} up -d --remove-orphans
+            curl -sSL -o ${{ matrix.compose }} "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/${{ matrix.compose }}"
+            sed -i "s|ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest|${IMAGE}|g" ${{ matrix.compose }}
+            docker compose -f ${{ matrix.compose }} --env-file ${{ matrix.env-file }} pull
+            docker compose -f ${{ matrix.compose }} --env-file ${{ matrix.env-file }} up -d --remove-orphans
             docker image prune -f
           EOF
