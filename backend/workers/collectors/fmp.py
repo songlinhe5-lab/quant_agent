@@ -39,6 +39,11 @@ _persist_fails: int = 0
 _persist_fail_alerted: bool = False  # 已告警标记，避免每轮刷屏
 _collector_paused: bool = False  # 持久化连续失败达阈值 → 暂停守护，Redis 恢复后自愈
 _PERSIST_FAIL_THRESHOLD: int = 5
+# 网络抖动失败计数：ping 健康但 set 偶发超时的瞬态失败，不计入暂停阈值（避免毛刺误暂停丢 credit）
+_jitter_fails: int = 0
+# 滑动窗口 P99 劣化信号：由 _self_heal_loop 写入，True=判定写链路慢（应暂停），False=纯网络抖（不暂停）
+_lat_degraded: bool = False
+_lat_window_p99: float = 0.0  # 最近窗口 P99 估算值（Gauge 交叉校验用）
 
 _FMP_REDIS_TTL = 24 * 3600  # 财报缓存 1 天
 _BATCH_LIMIT = 4  # 每标的拉取的季度数（控制 credit：income_statement 1 call = 数 credit）
@@ -133,6 +138,7 @@ async def _persist_credit() -> bool:
             )
         _persist_fails = 0
         _persist_fail_alerted = False
+        _jitter_fails = 0  # 写链路恢复，抖动计数一并清零
         was_paused = _collector_paused
         _collector_paused = False
         try:
@@ -156,14 +162,34 @@ async def _persist_credit() -> bool:
                 pass
         return True
     except Exception as e:  # noqa: BLE001
-        _persist_fails += 1
-        logger.warning(f"[FMP Collector] credit 持久化失败 ({_persist_fails}/{_PERSIST_FAIL_THRESHOLD}): {e}")
-        try:
-            from backend.core.metrics import FMP_PERSIST_FAILS
+        # 归因分流：写链路慢（_lat_degraded=True，ping P99 高且 set 失败）→ 计入暂停阈值；
+        # 纯网络抖动（ping 健康但 set 偶发超时）→ 仅记 _jitter_fails，不暂停，避免毛刺误丢 credit。
+        if _lat_degraded:
+            _persist_fails += 1
+            logger.warning(
+                f"[FMP Collector] credit 持久化失败（写链路慢 {_persist_fails}/{_PERSIST_FAIL_THRESHOLD}）: {e}"
+            )
+            try:
+                from backend.core.metrics import FMP_PERSIST_FAILS
 
-            FMP_PERSIST_FAILS.set(_persist_fails)  # 实时暴露连续失败数（Grafana 趋势）
-        except Exception:  # noqa: BLE001
-            pass
+                FMP_PERSIST_FAILS.set(_persist_fails)  # 实时暴露连续失败数（Grafana 趋势）
+            except Exception:  # noqa: BLE001
+                pass
+        else:
+            _jitter_fails += 1
+            logger.warning(f"[FMP Collector] credit 持久化瞬态失败（网络抖，不暂停 {_jitter_fails} 次）: {e}")
+            try:
+                from backend.core.metrics import FMP_PERSIST_JITTER_FAILS
+
+                FMP_PERSIST_JITTER_FAILS.set(_jitter_fails)
+            except Exception:  # noqa: BLE001
+                pass
+        # 重置对侧计数：写链路恢复后抖动计数清零，避免干扰；反之亦然
+        if _lat_degraded:
+            _jitter_fails = 0
+        else:
+            _persist_fails = 0
+            _persist_fail_alerted = False
         if _persist_fails >= _PERSIST_FAIL_THRESHOLD:
             if not _persist_fail_alerted:
                 _persist_fail_alerted = True
@@ -212,6 +238,7 @@ async def _self_heal_loop() -> None:
     try:
         from backend.core.metrics import (
             FMP_HEAL_BACKOFF,
+            FMP_HEAL_P99,
             FMP_REDIS_PING_LATENCY,
             FMP_REDIS_PING_LATENCY_HIST,
         )
@@ -244,24 +271,31 @@ async def _self_heal_loop() -> None:
         _valid = sorted(v for (_, v) in _lat_window if v is not None)
         if len(_valid) >= 10:
             _p99 = _valid[min(len(_valid) - 1, int(len(_valid) * 0.99))]
+            globals()["_lat_window_p99"] = _p99
+            if _have_backoff_gauge:
+                try:
+                    FMP_HEAL_P99.set(round(_p99, 4))  # 滑动窗口 P99 Gauge（与 Grafana histogram_quantile 交叉校验）
+                except Exception:  # noqa: BLE001
+                    pass
             if _p99 > _HEAL_P99_THRESHOLD:
+                globals()["_lat_degraded"] = True  # 写链路慢信号 → 后续 set 失败才计入暂停阈值
                 if not _degrade_alerted:
                     _degrade_alerted = True
                     _avg = sum(_valid) / len(_valid)
-                    # 归因：网络抖(ping 高但 persist 正常) vs 写链路慢(persist_fails 同步涨)
-                    if _persist_fails == 0:
-                        _cause = f"疑似网络抖动（PING P99={_p99:.3f}s 但 persist_fails=0，写链路未受损）"
-                    else:
-                        _cause = f"疑似写链路慢/Redis 拒绝（PING P99={_p99:.3f}s 且 persist_fails={_persist_fails} 同步上涨）"
+                    # 归因：写链路慢（P99 高且后续 persist 会同步失败 → 应暂停）vs 纯抖动（persist 仍健康）
+                    _cause = (
+                        f"写链路慢/Redis 劣化（PING P99={_p99:.3f}s 持续 {int(_HEAL_P99_SUSTAIN)}s>"
+                        f"{_HEAL_P99_THRESHOLD}s，后续持久化失败将触发暂停防丢失）"
+                    )
                     try:
                         from backend.core.alert_models import NotificationPriority
                         from backend.services.alert.notification import notification_service
 
                         await notification_service.send_alert(
                             message=(
-                                f"[FMP Collector] Redis P99 延迟持续劣化告警\n"
+                                f"[FMP Collector] Redis P99 延迟持续劣化告警（写链路慢）\n"
                                 f"窗口 {int(_HEAL_P99_SUSTAIN)}s 内 PING P99={_p99:.3f}s（> {_HEAL_P99_THRESHOLD}s），"
-                                f"均值={_avg:.3f}s，persist_fails={_persist_fails}，退避上限={cap:.0f}s。\n"
+                                f"均值={_avg:.3f}s，当前 persist_fails={_persist_fails}，退避上限={cap:.0f}s。\n"
                                 f"归因：{_cause}"
                             ),
                             priority=NotificationPriority.P1,
@@ -270,7 +304,8 @@ async def _self_heal_loop() -> None:
                     except Exception:  # noqa: BLE001
                         pass
             else:
-                _degrade_alerted = False  # P99 回落，重置，下次再劣化可再报
+                globals()["_lat_degraded"] = False  # P99 回落 → 视为纯网络抖窗口，set 失败不暂停
+                _degrade_alerted = False  # 重置，下次再劣化可再报
         if _collector_paused:
             try:
                 healed = await _persist_credit()  # 成功 → 内部解除 _collector_paused
@@ -365,6 +400,9 @@ def collector_runtime() -> dict:
         "heal_backoff_cap": _HEAL_BACKOFF_CAP,
         "heal_backoff_threshold": _HEAL_P99_THRESHOLD,
         "heal_backoff_sustain": _HEAL_P99_SUSTAIN,
+        "jitter_fails": _jitter_fails,
+        "lat_degraded": _lat_degraded,
+        "lat_window_p99": _lat_window_p99,
     }
 
 

@@ -437,7 +437,17 @@ FMP_COLLECTOR_PAUSED = Gauge(
 
 FMP_PERSIST_FAILS = Gauge(
     "quant_fmp_collector_persist_fails",
-    "FMP collector Redis 持久化连续失败计数（观察 Redis 稳定性，达阈值升 P1 并暂停）",
+    "FMP collector Redis 写链路慢连续失败计数（达阈值升 P1 并暂停，区别于网络抖）",
+)
+
+FMP_PERSIST_JITTER_FAILS = Gauge(
+    "quant_fmp_collector_persist_jitter_fails",
+    "FMP collector Redis 网络抖瞬间失败计数（ping 健康但 set 偶发超时，不计入暂停阈值，防毛刺误暂停）",
+)
+
+FMP_HEAL_P99 = Gauge(
+    "quant_fmp_collector_heal_p99_seconds",
+    "FMP collector 自愈滑动窗口 P99 延迟估算（与 Grafana histogram_quantile 双算交叉校验防漂移）",
 )
 
 FMP_HEAL_BACKOFF = Gauge(

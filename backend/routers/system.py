@@ -306,6 +306,11 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                         "legendFormat": "P99 延迟",
                         "refId": "D",
                     },
+                    {
+                        "expr": "quant_fmp_collector_heal_p99_seconds",
+                        "legendFormat": "滑动窗口P99(后端估算·交叉校验)",
+                        "refId": "E",
+                    },
                 ],
                 "fieldConfig": {
                     "defaults": {
@@ -430,6 +435,33 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                         "description": "histogram_quantile(0.99, ...) > 0.5s 持续 5m 才触发，单点毛刺因 for:5m 自动过滤，劣化必报。注：后端 _self_heal_loop 另有 Python 侧动态归因告警（P1），触发时附同窗 persist_fails 与 PING P99，自动区分网络抖 vs 写链路慢；本 Panel 告警为该能力在 Grafana 的可视化冗余。退避天花板由 FMP_HEAL_BACKOFF_CAP env 控制（默认 300s，对应 HEAL_BACKOFF_CAP 变量）。",
                     },
                     "labels": {"severity": "critical", "service": "quant-agent"},
+                },
+            },
+            {
+                "id": 9,
+                "title": "FMP Redis 网络抖瞬态失败数 (不触发暂停)",
+                "type": "timeseries",
+                "gridPos": {"h": 6, "w": 24, "x": 0, "y": 46},
+                "targets": [
+                    {
+                        "expr": "quant_fmp_collector_persist_jitter_fails",
+                        "legendFormat": "jitter_fails (毛刺·不暂停)",
+                        "refId": "A",
+                    }
+                ],
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "short",
+                        "color": {"mode": "thresholds"},
+                        "min": 0,
+                        "thresholds": {
+                            "steps": [
+                                {"color": "green", "value": 0},
+                                {"color": "yellow", "value": 1},
+                                {"color": "orange", "value": 10},
+                            ]
+                        },
+                    }
                 },
             },
         ],
