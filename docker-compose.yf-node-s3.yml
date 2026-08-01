@@ -7,8 +7,8 @@
 #
 # 部署变量: VPS_S3_HOST / VPS_S3_SSH_KEY / VPS_S3_USER
 # 启动:
-#   cp .env.yf-s3.example .env.yf-s3   # 填入 Redis / 主节点 HMAC
-#   docker compose --env-file .env.yf-s3 -f docker-compose.yf-node-s3.yml up -d
+#   cp .env.yf-s3.example .env   # 填入 Redis / 主节点 HMAC
+#   docker compose --env-file .env -f docker-compose.yf-node-s3.yml up -d
 # =====================================================================
 
 x-common-env: &common-env
@@ -22,7 +22,7 @@ services:
     container_name: quant-data-subservice-yf-s3
     restart: unless-stopped
     env_file:
-      - .env.yf-s3
+      - .env
     environment:
       <<: *common-env
       DS_NODE_ID: ${DS_NODE_ID:-us-yf-s3}
