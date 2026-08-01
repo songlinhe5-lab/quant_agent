@@ -811,7 +811,7 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                 "gridPos": {"h": 4, "w": 8, "x": 0, "y": 80},
                 "targets": [
                     {
-                        "expr": "((changes(quant_fmp_collector_watchlist_size[1h]) > 0) and (increase(quant_fmp_collector_watchlist_size_shift_total[1h]) == 0)) == 1",
+                        "expr": "((changes(quant_fmp_collector_watchlist_size[1h]) >= 2) and (increase(quant_fmp_collector_watchlist_size_shift_total[1h]) == 0)) == 1",
                         "legendFormat": "Counter重启归零失真标志 (1=Gauge变但shift无增量)",
                         "refId": "A",
                     }
@@ -849,7 +849,7 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                     ],
                     "annotations": {
                         "summary": "watchlist size Gauge 近 1h 有变化但 shift Counter 无增量",
-                        "description": "quant_fmp_collector_watchlist_size 在近 1h 发生变更（changes>0），但 FMP_WATCHLIST_SIZE_SHIFT Counter 的 increase 为 0，提示 exporter 进程可能重启导致 Counter 归零，Panel 16/17 的比率与突变计数已失真。应改用 recording rule 的 Gauge 派生 delta（fmp:watchlist_size_delta5m）或检查 exporter 健康。",
+                        "description": "quant_fmp_collector_watchlist_size 在近 1h 至少发生 2 次变更（changes>=2，过滤热重载重复 set 同值的单次抖动误报），但 FMP_WATCHLIST_SIZE_SHIFT Counter 的 increase 为 0，提示 exporter 进程可能重启导致 Counter 归零，Panel 16/17 的比率与突变计数已失真。按主脑权衡：保留 Counter 直查 + 本 Panel 兜底组合，不切 Gauge delta（单副本 simplicity 优先）。应改用 recording rule 的 Gauge 派生 delta（fmp:watchlist_size_delta5m）或检查 exporter 健康。",
                     },
                     "labels": {"severity": "warning", "service": "quant-agent"},
                 },

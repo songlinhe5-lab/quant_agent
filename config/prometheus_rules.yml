@@ -22,6 +22,17 @@
 #      即突变检测/比率优先引用 Gauge 派生的 delta，而非 Counter 的 increase。
 #      当前单副本走 exporter Counter 直查，重启概率低且影响窗口仅 1h，可接受。
 #
+#  ⚖️ 权衡决策（2026-08-01 主脑裁定）：保留 Counter 直查 + Panel 18 兜底组合，
+#     不切换到 Gauge delta 方案。理由：
+#       - 若 _reload_watchlist 启动即改用 Gauge delta（fmp:watchlist_size_delta5m 思路），
+#         虽能彻底根治 Counter 重启归零根因，但会牺牲单副本 simplicity：
+#         突变检测从「进程内一行 inc()」变为「依赖未启用的 recording rule + 双路径真相源」，
+#         运维心智负担显著上升，且当前单副本根本无重复计数风险。
+#       - 故仅以 Panel 18 作为「Counter 重启归零」的被动兜底告警
+#         （Gauge 变但 shift Counter 无增量），而非主动替换检测路径。
+#       - Panel 18 噪声过滤：changes(size[1h]) 取 >= 2（而非 > 0），
+#         过滤热重载重复 set 同值引发的 Gauge 偶发单次抖动误报，降低误警。
+#
 # 启用步骤（届时取消 prometheus.yml 中 rule_files 注释 + 重启 prometheus）：
 #   rule_files:
 #     - "/etc/prometheus/rules/*.yml"
