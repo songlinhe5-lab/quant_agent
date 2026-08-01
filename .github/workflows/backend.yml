@@ -111,12 +111,29 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_S1_HOST }}
           VPS_USER: ${{ secrets.VPS_S1_USER }}
           VPS_PORT: ${{ secrets.VPS_S1_PORT || '22' }}
+          MASTER_TS_IP: ${{ secrets.VPS_S1_TAILSCALE_IP }}
+          REDIS_PWD: ${{ secrets.REDIS_PASSWORD }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_NAME: ${{ secrets.DB_NAME }}
         run: |
           IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
           ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<EOF
             set -e
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             cd /opt/quant-agent
+
+            # 动态生成主节点 .env.master (compose 变量替换用) 与 .env (容器 env_file 用)
+            cat > .env.master <<ENVEOF
+          TAILSCALE_IP=${MASTER_TS_IP}
+          REDIS_PASSWORD=${REDIS_PWD}
+          DB_USER=${DB_USER:-quant_admin}
+          DB_PASSWORD=${DB_PASSWORD:-quant_pg_secret_2026}
+          DB_NAME=${DB_NAME:-quant_agent_db}
+          QUANT_ENV=production
+          ENVEOF
+            cp .env.master .env
+
             curl -sSL -o docker-compose.master.yml "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.master.yml"
             sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:latest|${IMAGE}|g" docker-compose.master.yml
             docker compose -f docker-compose.master.yml --env-file .env.master pull
