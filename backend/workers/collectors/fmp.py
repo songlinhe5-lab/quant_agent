@@ -126,6 +126,12 @@ async def _persist_credit() -> bool:
         _persist_fail_alerted = False
         was_paused = _collector_paused
         _collector_paused = False
+        try:
+            from backend.core.metrics import FMP_COLLECTOR_PAUSED
+
+            FMP_COLLECTOR_PAUSED.set(0)
+        except Exception:  # noqa: BLE001
+            pass
         if was_paused:
             try:
                 from backend.core.alert_models import NotificationPriority
@@ -147,6 +153,12 @@ async def _persist_credit() -> bool:
                 _persist_fail_alerted = True
                 _collector_paused = True
                 try:
+                    from backend.core.metrics import FMP_COLLECTOR_PAUSED
+
+                    FMP_COLLECTOR_PAUSED.set(1)
+                except Exception:  # noqa: BLE001
+                    pass
+                try:
                     from backend.core.alert_models import NotificationPriority
                     from backend.services.alert.notification import notification_service
 
@@ -163,12 +175,19 @@ async def _persist_credit() -> bool:
         return False
 
 
-async def _self_heal_if_paused() -> None:
-    """守护暂停态下的自愈探测：尝试一次 Redis 写入，成功则 _persist_credit 内部解除暂停。"""
-    if not _collector_paused:
-        return
-    # 仅做探测写（当前 _credit_spent_today），成功即自愈
-    await _persist_credit()
+async def _self_heal_loop() -> None:
+    """独立自愈短轮询：守护暂停态下每 30s 尝试一次 Redis 探测写，成功即自愈重启。
+
+    与主批量循环（6h 一轮）解耦，避免暂停期间最长 6h 才发现 Redis 已恢复、
+    自愈延迟过高导致 credit 进度静默丢失窗口过长。
+    """
+    while True:
+        if _collector_paused:
+            try:
+                await _persist_credit()  # 成功 → 内部解除 _collector_paused（自愈）
+            except Exception:  # noqa: BLE001
+                pass
+        await asyncio.sleep(30)
 
 
 async def _restore_credit() -> None:
@@ -232,6 +251,18 @@ def _load_watchlist() -> list[str]:
     if fb:
         return [s.strip().upper() for s in fb.split(",") if s.strip()]
     return []
+
+
+def collector_runtime() -> dict:
+    """对外暴露守护运行态（供 /observability 聚合，避免直接 import 私有全局变量）。"""
+    return {
+        "paused": _collector_paused,
+        "persist_fails": _persist_fails,
+        "persist_fail_threshold": _PERSIST_FAIL_THRESHOLD,
+        "credit_spent_today": _credit_spent_today,
+        "credit_reset_date": _credit_reset_date,
+        "watchlist_size": len(_watchlist_cache),
+    }
 
 
 def _resolve_watchlist_path() -> str:
@@ -308,18 +339,24 @@ async def fmp_collector_daemon() -> None:
     """盘后批量守护主循环：每 6 小时触发一次（天然只会在盘后窗口实际拉取）。
 
     启动即加载 watchlist 并开启后台热重载监控线程（文件变更即时刷新标的池）。
+    独立 30s 自愈短轮询随守护一并启动，缩短 Redis 恢复后的自愈延迟。
     """
     logger.info("[FMP Collector] 守护进程启动 (盘后批量拉财报 → Redis)")
     await _restore_credit()  # 先恢复当日 credit 进度（防重启清零）
     _reload_watchlist()  # 首启加载 watchlist
+    try:
+        from backend.core.metrics import FMP_COLLECTOR_PAUSED
+
+        FMP_COLLECTOR_PAUSED.set(0)  # 启动基线：正常态
+    except Exception:  # noqa: BLE001
+        pass
     monitor = threading.Thread(target=_watch_watchlist_file, name="fmp-watchlist-mon", daemon=True)
     monitor.start()
+    self_heal = asyncio.create_task(_self_heal_loop(), name="fmp-self-heal")
     try:
         while True:
-            # 自愈探测：若此前因 Redis 故障暂停，每轮尝试恢复，成功则内部解除暂停
-            await _self_heal_if_paused()
             if _collector_paused:
-                logger.warning("[FMP Collector] 守护处于暂停态（Redis 故障），跳过批量，等待自愈")
+                logger.warning("[FMP Collector] 守护处于暂停态（Redis 故障），跳过批量，30s 自愈轮询待恢复")
                 await asyncio.sleep(6 * 3600)
                 continue
             try:
@@ -330,6 +367,7 @@ async def fmp_collector_daemon() -> None:
             await asyncio.sleep(6 * 3600)
     finally:
         _watchlist_monitor_stop.set()
+        self_heal.cancel()
 
 
 async def start() -> list:

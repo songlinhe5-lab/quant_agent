@@ -429,3 +429,8 @@ FMP_CREDIT_SPENT_TOTAL = Counter(
     "quant_fmp_collector_credit_spent_total",
     "FMP collector 累计消耗 credit（与 FMP_COLLECTOR_DAILY_CREDIT 预算对账）",
 )
+
+FMP_COLLECTOR_PAUSED = Gauge(
+    "quant_fmp_collector_paused",
+    "FMP collector 守护暂停态（1=已暂停，因 Redis 持久化连续失败自愈中；0=正常运行）",
+)

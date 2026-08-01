@@ -44,13 +44,14 @@ async def get_observability(
     except Exception as e:  # noqa: BLE001
         overview["tick_cache"] = {"error": str(e)}
 
-    # 2. FMP collector credit 消耗（当日，含预算对账）
+    # 2. FMP collector credit 消耗（当日，含预算对账）+ 运行态
     try:
         from backend.core.metrics import FMP_CREDIT_SPENT_TOTAL
-        from backend.workers.collectors.fmp import _credit_spent_today
+        from backend.workers.collectors.fmp import _credit_spent_today, collector_runtime
 
         daily_budget = int(os.environ.get("FMP_COLLECTOR_DAILY_CREDIT", "200"))
         prom_value = FMP_CREDIT_SPENT_TOTAL._value.get()  # noqa: SLF001 非公开属性，监控读值专用
+        runtime = collector_runtime()
         overview["fmp_credit"] = {
             "spent_today": _credit_spent_today,
             "prometheus_total": prom_value,
@@ -58,8 +59,10 @@ async def get_observability(
             "remaining": max(daily_budget - _credit_spent_today, 0),
             "budget_used_rate": round(_credit_spent_today / daily_budget, 4) if daily_budget else None,
         }
+        overview["runtime"] = runtime
     except Exception as e:  # noqa: BLE001
         overview["fmp_credit"] = {"error": str(e)}
+        overview["runtime"] = {"error": str(e)}
 
     if format == "grafana":
         return _build_grafana_dashboard(overview)
@@ -208,6 +211,64 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                     "annotations": {
                         "summary": "Finnhub WS 实时价降级速率持续 2 分钟 > 0.01/s，疑似 WS 断流",
                         "description": "rate(quant_tick_cache_misses_total[5m]) > 0.01 持续 2m，实时价覆盖率下降，quote 已降级 REST 快照。",
+                    },
+                    "labels": {"severity": "critical", "service": "quant-agent"},
+                },
+            },
+            {
+                "id": 5,
+                "title": "FMP Collector 守护状态",
+                "type": "stat",
+                "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+                "targets": [
+                    {
+                        "expr": "quant_fmp_collector_paused",
+                        "legendFormat": "paused",
+                        "refId": "A",
+                    }
+                ],
+                "options": {
+                    "reduceOptions": {"calcs": ["lastNotNull"]},
+                    "colorMode": "background",
+                    "graphMode": "none",
+                    "justifyMode": "auto",
+                    "values": True,
+                },
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "short",
+                        "mappings": [
+                            {"type": "value", "options": {"0": {"text": "运行中", "color": "green"}}},
+                            {"type": "value", "options": {"1": {"text": "已暂停·Redis故障自愈中", "color": "red"}}},
+                        ],
+                        "thresholds": {
+                            "steps": [
+                                {"color": "green", "value": 0},
+                                {"color": "red", "value": 1},
+                            ]
+                        },
+                    }
+                },
+                "alertThreshold": True,
+                "alert": {
+                    "id": 5,
+                    "name": "FMP Collector 守护暂停（Redis 故障自愈中）",
+                    "frequency": "1m",
+                    "for": "2m",
+                    "noDataState": "no_data",
+                    "execErrState": "alerting",
+                    "conditions": [
+                        {
+                            "type": "query",
+                            "reducerType": "last",
+                            "query": {"params": ["A", "5m", "now"]},
+                            "evaluator": {"type": "gt", "params": [0]},
+                            "operator": {"type": "and"},
+                        }
+                    ],
+                    "annotations": {
+                        "summary": "FMP collector 守护已暂停（Redis 持久化连续失败），credit 进度停止持久化，30s 自愈轮询待恢复",
+                        "description": "quant_fmp_collector_paused == 1 持续 2m，守护处于暂停态，待 Redis 恢复后自愈重启。",
                     },
                     "labels": {"severity": "critical", "service": "quant-agent"},
                 },
