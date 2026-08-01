@@ -56,8 +56,19 @@ _HEAL_BACKOFF_CAP = float(os.environ.get("FMP_HEAL_BACKOFF_CAP", "300"))
 _HEAL_P99_THRESHOLD = 0.5
 _HEAL_P99_SUSTAIN = 300.0  # 持续 5min 才判定劣化（过滤偶发毛刺）
 # 网络抖窗口的立即重试参数（env 热配，与 HEAL_BACKOFF_CAP 统一）：单次 set 失败后最多重试次数与每次退避（秒），提升瞬态恢复率
+# _JITTER_RETRY 为可变运行时变量（自愈调参控制器会按成功率自适应调整），env 仅给初值与上下限。
 _JITTER_RETRY = int(os.environ.get("FMP_JITTER_RETRY", "3"))
+_JITTER_RETRY_MIN = int(os.environ.get("FMP_JITTER_RETRY_MIN", "1"))
+_JITTER_RETRY_MAX = int(os.environ.get("FMP_JITTER_RETRY_MAX", "8"))
 _JITTER_RETRY_BACKOFF = float(os.environ.get("FMP_JITTER_RETRY_BACKOFF", "0.2"))
+# 自愈调参控制器自适应参数
+_TUNE_INTERVAL = 300.0  # 每 5min 评估一次成功率
+_TUNE_SUCCESS_LOW = 0.5  # 成功率 <50% → 重试性价比低，下调重试次数
+_TUNE_SUCCESS_HIGH = 0.9  # 成功率 >90% → 重试高效，上调重试次数
+_TUNE_WINDOW = 3600.0  # 统计窗口 1h（与 Grafana Panel 13 口径一致）
+
+# 进程内重试成功率滑动统计：记录 (monotonic_ts, kind) kind∈{"recovered","jitter"}
+_jitter_stats: list[tuple[float, str]] = []
 
 # 盘后窗口（UTC）：美东 ET=UTC-4(夏令)/-5(冬令)。盘后≈收盘 16:00 ET 后至盘前 09:30 ET。
 # UTC 覆盖：夏令 20:00–次日 13:30；冬令 21:00–次日 14:30。取宽松并集 [20, 14) UTC。
@@ -153,6 +164,7 @@ async def _persist_credit() -> bool:
                     from backend.core.metrics import FMP_JITTER_RETRY_RECOVERED
 
                     FMP_JITTER_RETRY_RECOVERED.inc()
+                    _jitter_stats.append((time.monotonic(), "recovered"))
                 except Exception:  # noqa: BLE001
                     pass
             # 恢复成功 → 清零失败计数与告警标记，解除暂停（自愈）
@@ -216,6 +228,7 @@ async def _persist_credit() -> bool:
             from backend.core.metrics import FMP_PERSIST_JITTER_FAILS
 
             FMP_PERSIST_JITTER_FAILS.set(_jitter_fails)
+            _jitter_stats.append((time.monotonic(), "jitter"))
         except Exception:  # noqa: BLE001
             pass
     # 重置对侧计数：写链路恢复后抖动计数清零，避免干扰；反之亦然
@@ -448,6 +461,8 @@ def collector_runtime() -> dict:
         "heal_backoff_sustain": _HEAL_P99_SUSTAIN,
         "jitter_fails": _jitter_fails,
         "jitter_retry": _JITTER_RETRY,
+        "jitter_retry_min": _JITTER_RETRY_MIN,
+        "jitter_retry_max": _JITTER_RETRY_MAX,
         "jitter_retry_backoff": _JITTER_RETRY_BACKOFF,
         "lat_degraded": _lat_degraded,
         "lat_window_p99": _lat_window_p99,
@@ -542,6 +557,7 @@ async def fmp_collector_daemon() -> None:
     monitor = threading.Thread(target=_watch_watchlist_file, name="fmp-watchlist-mon", daemon=True)
     monitor.start()
     self_heal = asyncio.create_task(_self_heal_loop(), name="fmp-self-heal")
+    tune = asyncio.create_task(_jitter_tune_loop(), name="fmp-jitter-tune")
     try:
         while True:
             if _collector_paused:
@@ -557,6 +573,48 @@ async def fmp_collector_daemon() -> None:
     finally:
         _watchlist_monitor_stop.set()
         self_heal.cancel()
+        tune.cancel()
+
+
+async def _jitter_tune_loop() -> None:
+    """自愈调参控制器：周期性评估抖动重试成功率，闭环自适应 _JITTER_RETRY。
+
+    每 _TUNE_INTERVAL 计算最近 _TUNE_WINDOW（1h）内成功率 = recovered/(recovered+jitter)：
+      - 成功率 < _TUNE_SUCCESS_LOW(50%)：重试性价比低（抖动顽固），下调重试次数（下限 _JITTER_RETRY_MIN）
+      - 成功率 > _TUNE_SUCCESS_HIGH(90%)：重试高效（瞬态抖动），上调重试次数（上限 _JITTER_RETRY_MAX）
+    避免频繁抖动：每次仅 ±1 步进，并记录至 collector_runtime 供 APM 观测。
+    """
+    import time as _time
+
+    while True:
+        await asyncio.sleep(_TUNE_INTERVAL)
+        try:
+            _now = _time.monotonic()
+            _cut = _now - _TUNE_WINDOW
+            # 仅保留窗口内样本
+            globals()["_jitter_stats"] = [(t, k) for (t, k) in _jitter_stats if t >= _cut]
+            _stats = _jitter_stats
+            _rec = sum(1 for (_, k) in _stats if k == "recovered")
+            _jit = sum(1 for (_, k) in _stats if k == "jitter")
+            _total = _rec + _jit
+            if _total < 5:
+                continue  # 样本不足，不调参（防噪声误判）
+            _rate = _rec / _total
+            _old = _JITTER_RETRY
+            if _rate < _TUNE_SUCCESS_LOW and _JITTER_RETRY > _JITTER_RETRY_MIN:
+                globals()["_JITTER_RETRY"] = _JITTER_RETRY - 1
+                logger.info(
+                    f"[FMP 调参] 重试成功率 {_rate:.2f} < {_TUNE_SUCCESS_LOW}，下调 FMP_JITTER_RETRY "
+                    f"{_old} → {_JITTER_RETRY}（抖动顽固，重试性价比低）"
+                )
+            elif _rate > _TUNE_SUCCESS_HIGH and _JITTER_RETRY < _JITTER_RETRY_MAX:
+                globals()["_JITTER_RETRY"] = _JITTER_RETRY + 1
+                logger.info(
+                    f"[FMP 调参] 重试成功率 {_rate:.2f} > {_TUNE_SUCCESS_HIGH}，上调 FMP_JITTER_RETRY "
+                    f"{_old} → {_JITTER_RETRY}（瞬态抖动，重试高效）"
+                )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[FMP 调参] 评估异常: {e}")
 
 
 async def start() -> list:

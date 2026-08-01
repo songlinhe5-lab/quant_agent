@@ -578,6 +578,29 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                         },
                     }
                 },
+                "alertThreshold": True,
+                "alert": {
+                    "id": 13,
+                    "name": "FMP 抖动重试性价比低 (成功率<50% 持续 10m)",
+                    "frequency": "1m",
+                    "for": "10m",
+                    "noDataState": "no_data",
+                    "execErrState": "alerting",
+                    "conditions": [
+                        {
+                            "type": "query",
+                            "reducerType": "last",
+                            "query": {"params": ["A", "10m", "now"]},
+                            "evaluator": {"type": "lt", "params": [0.5]},
+                            "operator": {"type": "and"},
+                        }
+                    ],
+                    "annotations": {
+                        "summary": "FMP 抖动重试成功率 < 50% 持续 10 分钟，重试性价比低，建议下调 FMP_JITTER_RETRY",
+                        "description": "rate(recovered[1h]) / rate(jitter_fails[1h]) < 0.5 持续 10m，说明 Redis 抖动顽固、重试难救，建议降配重试次数（控制器会自动下调，本告警用于人工复核）。",
+                    },
+                    "labels": {"severity": "warning", "service": "quant-agent"},
+                },
             },
         ],
         "annotations": {"list": []},
