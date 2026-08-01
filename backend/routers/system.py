@@ -3,8 +3,9 @@ System APM 路由 — 系统性能监控与聚合仪表盘
 """
 
 import asyncio
+import os
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query
@@ -18,6 +19,50 @@ from backend.routers.auth import get_current_user
 _BEIJING_TZ = ZoneInfo("Asia/Shanghai")
 
 router = APIRouter(prefix="/system", tags=["system"])
+
+
+# ==========================================
+#  0.1 可观测性总览（tick_cache + FMP credit 一页看板）
+# ==========================================
+@router.get("/observability")
+async def get_observability(username: str = Depends(get_current_user)):
+    """
+    数据源实时价覆盖率 + FMP credit 消耗一页总览，供 APM 前端单页聚合。
+    各指标同时暴露在 /metrics（Prometheus），本接口为前端即时快照。
+    """
+    overview: dict[str, Any] = {}
+
+    # 1. Finnhub WS 实时价命中/降级
+    try:
+        from backend.services.finnhub.ws_ingest import tick_cache_stats
+
+        overview["tick_cache"] = tick_cache_stats()
+    except Exception as e:  # noqa: BLE001
+        overview["tick_cache"] = {"error": str(e)}
+
+    # 2. FMP collector credit 消耗（当日，含预算对账）
+    try:
+        from backend.core.metrics import FMP_CREDIT_SPENT_TOTAL
+        from backend.workers.collectors.fmp import _credit_spent_today
+
+        daily_budget = int(os.environ.get("FMP_COLLECTOR_DAILY_CREDIT", "200"))
+        prom_value = FMP_CREDIT_SPENT_TOTAL._value.get()  # noqa: SLF001 非公开属性，监控读值专用
+        overview["fmp_credit"] = {
+            "spent_today": _credit_spent_today,
+            "prometheus_total": prom_value,
+            "daily_budget": daily_budget,
+            "remaining": max(daily_budget - _credit_spent_today, 0),
+            "budget_used_rate": round(_credit_spent_today / daily_budget, 4) if daily_budget else None,
+        }
+    except Exception as e:  # noqa: BLE001
+        overview["fmp_credit"] = {"error": str(e)}
+
+    return {
+        "status": "success",
+        "message": "observability overview",
+        "data": overview,
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
 
 
 # ==========================================

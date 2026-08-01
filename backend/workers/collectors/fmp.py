@@ -30,6 +30,10 @@ _watchlist_mtime: float = -1.0
 _watchlist_lock = threading.Lock()
 _watchlist_monitor_stop = threading.Event()
 
+# 每日 credit 预算计数器（按 UTC 日期重置，避免跨日累计误导）
+_credit_spent_today: int = 0
+_credit_reset_date: str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
 _FMP_REDIS_TTL = 24 * 3600  # 财报缓存 1 天
 _BATCH_LIMIT = 4  # 每标的拉取的季度数（控制 credit：income_statement 1 call = 数 credit）
 # 盘后窗口（UTC）：美东 ET=UTC-4(夏令)/-5(冬令)。盘后≈收盘 16:00 ET 后至盘前 09:30 ET。
@@ -75,6 +79,8 @@ async def _cache_financials(symbol: str) -> int:
         return 0
     # 估算 credit：income_statement(约2) + profile(约2)
     used = 4
+    global _credit_spent_today
+    _credit_spent_today += used
     # 累计 credit 消耗（与每日预算对账，Prometheus 可查）
     try:
         from backend.core.metrics import FMP_CREDIT_SPENT_TOTAL
@@ -83,6 +89,24 @@ async def _cache_financials(symbol: str) -> int:
     except Exception:  # noqa: BLE001
         pass
     return used
+
+
+def _maybe_reset_daily_credit() -> None:
+    """每日 00:00 UTC 重置 credit 预算计数器（进程内 + Prometheus），避免跨日累计误导。"""
+    global _credit_spent_today, _credit_reset_date
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if today != _credit_reset_date:
+        logger.info(
+            f"[FMP Collector] 跨日重置 credit 计数器 {_credit_reset_date} → {today} (昨日累计 {_credit_spent_today})"
+        )
+        _credit_spent_today = 0
+        _credit_reset_date = today
+        try:
+            from backend.core.metrics import FMP_CREDIT_SPENT_TOTAL
+
+            FMP_CREDIT_SPENT_TOTAL.clear()  # Counter 清零，重新开始当日累计
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _load_watchlist() -> list[str]:
@@ -165,20 +189,22 @@ async def _batch_run() -> None:
         logger.info("[FMP Collector] 未配置 watchlist（FMP_COLLECTOR_SYMBOLS/WATCHLIST/FINNHUB_WS_SYMBOLS 均空），跳过")
         return
 
+    _maybe_reset_daily_credit()
+
     daily_budget = int(os.getenv("FMP_COLLECTOR_DAILY_CREDIT", "200"))  # 免费档 250 上限
-    spent = 0
     for sym in symbols:
-        if spent >= daily_budget:
-            logger.warning(f"[FMP Collector] 触及每日 credit 预算 {daily_budget}，停止剩余拉取")
+        if _credit_spent_today >= daily_budget:
+            logger.warning(
+                f"[FMP Collector] 触及每日 credit 预算 {daily_budget}（已用 {_credit_spent_today}），停止剩余拉取"
+            )
             break
         if not _in_after_hours_utc():
             logger.info("[FMP Collector] 当前为盘中时段，推迟至盘后执行")
             break
-        used = await _cache_financials(sym)
-        spent += used
+        await _cache_financials(sym)
         # 批次间留白，避免突发打满限流
         await asyncio.sleep(1.0)
-    logger.info(f"[FMP Collector] 本轮盘后批量完成，消耗 credit≈{spent}")
+    logger.info(f"[FMP Collector] 本轮盘后批量完成，当日累计 credit≈{_credit_spent_today}/{daily_budget}")
 
 
 async def fmp_collector_daemon() -> None:
