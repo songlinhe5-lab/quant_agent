@@ -23,7 +23,11 @@ from backend.services.datasource import (
     RateLimitStatus,
     Result,
 )
-from backend.services.finnhub.ws_ingest import tick_cache
+from backend.services.finnhub.ws_ingest import (
+    record_tick_hit,
+    record_tick_miss,
+    tick_cache,
+)
 
 
 async def _fmp_cache_get(symbol: str) -> Optional[dict[str, Any]]:
@@ -160,6 +164,7 @@ class FMPDataSource:
                 if ws_tick is not None:
                     ws_price = _extract_ws_price(ws_tick)
                     if ws_price is not None:
+                        record_tick_hit()  # 对齐 finnhub adapter：命中实时价计入命中率
                         # 对齐 FMP /quote/{sym} 返回数组形状，前端/调用方无需改判。
                         quote_payload = [
                             {
@@ -171,7 +176,8 @@ class FMPDataSource:
                         result = Result.make_success(quote_payload, source="finnhub-ws")
                         result.self_recorded = True  # 实时流，不消耗 FMP credit，不计入 throttler
                         return result
-                # 未命中实时 tick → REST 快照降级（消耗 1 credit）
+                # 未命中实时 tick → 记录降级，走 REST 快照（消耗 1 credit）
+                record_tick_miss()
                 data = await svc.get_quote(symbol)
             elif action == "profile":
                 cached = await _fmp_cache_get(symbol)
