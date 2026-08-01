@@ -317,14 +317,22 @@ jobs:
               IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:latest"
             fi
 
-            # 北京节点: 配置 docker 允许访问主节点内网 http registry (insecure-registries, 仅一次)
+            # 北京节点: 经主节点内网 http registry 拉取，需 docker 配置 insecure-registries (一次性 root 配置)
             if [ "$NODE" = "bj" ]; then
+              # 🔍 探测 sudo 是否免密可用，避免非交互 ssh 下 sudo 卡死等密码
+              if ! sudo -n true 2>/dev/null; then
+                echo "⚠️ SUDO_BLOCKED: 当前用户无免密 sudo，无法在 CI 内自动配置 insecure-registries"
+              fi
               DAEMON_CFG="/etc/docker/daemon.json"
-              if [ ! -f "$DAEMON_CFG" ] || ! grep -q "${{ secrets.VPS_S1_TAILSCALE_IP }}:5000" "$DAEMON_CFG"; then
-                sudo mkdir -p /etc/docker
-                printf '%s\n' '{' '  "insecure-registries": ["${{ secrets.VPS_S1_TAILSCALE_IP }}:5000"]' '}' | sudo tee "$DAEMON_CFG" > /dev/null
-                sudo systemctl restart docker
-                sleep 5
+              if [ -f "$DAEMON_CFG" ] && grep -q "${{ secrets.VPS_S1_TAILSCALE_IP }}:5000" "$DAEMON_CFG"; then
+                echo "✅ insecure-registries 已配置 (含 ${{ secrets.VPS_S1_TAILSCALE_IP }}:5000)，跳过"
+              else
+                echo "❌ 北京节点 docker 未配置访问主节点内网 registry 的 insecure-registries，CI 不自动写 root 文件"
+                echo "🛠️ 请在节点上以 root 手动执行一次:"
+                echo "   sudo mkdir -p /etc/docker"
+                echo "   echo '{ \"insecure-registries\": [\"${{ secrets.VPS_S1_TAILSCALE_IP }}:5000\"] }' | sudo tee /etc/docker/daemon.json"
+                echo "   sudo systemctl restart docker"
+                exit 1
               fi
             else
               echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
