@@ -517,15 +517,20 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
             },
             {
                 "id": 12,
-                "title": "抖动重试挽回次数 (量化重试收益)",
-                "type": "stat",
+                "title": "抖动重试挽回 (累计 + 每小时速率)",
+                "type": "timeseries",
                 "gridPos": {"h": 6, "w": 24, "x": 0, "y": 58},
                 "targets": [
                     {
                         "expr": "quant_fmp_collector_jitter_retry_recovered_total",
-                        "legendFormat": "retry_recovered",
+                        "legendFormat": "retry_recovered (累计)",
                         "refId": "A",
-                    }
+                    },
+                    {
+                        "expr": "rate(quant_fmp_collector_jitter_retry_recovered_total[1h]) * 3600",
+                        "legendFormat": "retry_recovered_每小时",
+                        "refId": "B",
+                    },
                 ],
                 "options": {
                     "reduceOptions": {"calcs": ["lastNotNull"]},
@@ -542,6 +547,33 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                             "steps": [
                                 {"color": "gray", "value": 0},
                                 {"color": "green", "value": 1},
+                            ]
+                        },
+                    }
+                },
+            },
+            {
+                "id": 13,
+                "title": "抖动重试成功率 (recovered速率 / jitter失败速率)",
+                "type": "timeseries",
+                "gridPos": {"h": 6, "w": 24, "x": 0, "y": 64},
+                "targets": [
+                    {
+                        "expr": "rate(quant_fmp_collector_jitter_retry_recovered_total[1h]) / clamp_min(rate(quant_fmp_collector_persist_jitter_fails[1h]), 0.0001)",
+                        "legendFormat": "重试成功率 (挽回/抖动失败)",
+                        "refId": "A",
+                    }
+                ],
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "percentunit",
+                        "color": {"mode": "thresholds"},
+                        "min": 0,
+                        "thresholds": {
+                            "steps": [
+                                {"color": "red", "value": 0},
+                                {"color": "yellow", "value": 0.5},
+                                {"color": "green", "value": 0.8},
                             ]
                         },
                     }
