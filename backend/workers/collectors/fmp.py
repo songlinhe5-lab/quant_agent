@@ -26,7 +26,7 @@ from backend.services.fmp.service import fmp_service
 
 # watchlist 热重载状态（进程内缓存 + mtime 跟踪）
 _watchlist_cache: list[str] = []
-_watchlist_mtime: float = -1.0
+_watchlist_mtimes: dict[str, float] = {}  # 多文件 mtime 快照（watchlist + portfolio 源均纳入热重载）
 _watchlist_lock = threading.Lock()
 _watchlist_monitor_stop = threading.Event()
 
@@ -521,26 +521,45 @@ def collector_runtime() -> dict:
     }
 
 
-def _resolve_watchlist_path() -> str:
-    """解析当前 watchlist 文件路径（env 优先；否则默认文件）。"""
+def _resolve_monitored_paths() -> list[str]:
+    """解析所有需要热重载监听的文件路径（watchlist 文件 + portfolio 文件源）。
+
+    仅返回实际存在的文件（env 指定但文件不存在的路径不纳入监听，避免无谓轮询）。
+    """
+    paths: list[str] = []
     wl_path = os.getenv("FMP_COLLECTOR_WATCHLIST", "config/fmp_watchlist.txt")
-    return wl_path if wl_path and os.path.isfile(wl_path) else ""
+    if wl_path and os.path.isfile(wl_path):
+        paths.append(wl_path)
+    # portfolio 文件源（仅当未用 env 直接指定时才监听文件）
+    if not os.getenv("PORTFOLIO_SYMBOLS", "").strip():
+        pf_path = os.getenv("PORTFOLIO_SYMBOLS_FILE", "config/portfolio_symbols.txt")
+        if pf_path and os.path.isfile(pf_path):
+            paths.append(pf_path)
+    # 去重保序
+    return list(dict.fromkeys(paths))
 
 
 def _reload_watchlist() -> bool:
     """重新解析 watchlist 并刷新进程内缓存。返回是否有变化。"""
-    global _watchlist_cache, _watchlist_mtime
+    global _watchlist_cache, _watchlist_mtimes
     syms = _load_watchlist()
     with _watchlist_lock:
         if syms == _watchlist_cache:
             return False
         _watchlist_cache = syms
-    wl_path = _resolve_watchlist_path()
-    if wl_path:
+    # 刷新所有监听文件的 mtime 快照
+    for p in _resolve_monitored_paths():
         try:
-            _watchlist_mtime = os.path.getmtime(wl_path)
+            _watchlist_mtimes[p] = os.path.getmtime(p)
         except OSError:
-            _watchlist_mtime = -1.0
+            _watchlist_mtimes[p] = -1.0
+    # 暴露标的池大小（Grafana Panel 16 反向联动用）
+    try:
+        from backend.core.metrics import FMP_WATCHLIST_SIZE
+
+        FMP_WATCHLIST_SIZE.set(len(syms))
+    except Exception:  # noqa: BLE001
+        pass
     logger.info(f"[FMP Collector] watchlist 刷新 → {len(syms)} 个标的")
     return True
 
@@ -552,16 +571,20 @@ def _get_watchlist() -> list[str]:
 
 
 def _watch_watchlist_file() -> None:
-    """后台线程：轮询 watchlist 文件 mtime，变更即热重载（跨平台，避免引入 inotify 依赖）。"""
+    """后台线程：轮询监听文件 mtime，任一变更即热重载（跨平台，避免引入 inotify 依赖）。
+
+    监听范围 = watchlist 文件 + portfolio 文件源（见 _resolve_monitored_paths）。
+    账户调仓后更新 portfolio 文件即可被捕获，无需重启守护。
+    """
     poll_interval = 5.0
     while not _watchlist_monitor_stop.is_set():
-        wl_path = _resolve_watchlist_path()
-        if wl_path:
+        for p in _resolve_monitored_paths():
             try:
-                mtime = os.path.getmtime(wl_path)
-                if mtime != _watchlist_mtime:
-                    logger.info(f"[FMP Collector] 检测到 watchlist 文件变更: {wl_path}")
+                mtime = os.path.getmtime(p)
+                if _watchlist_mtimes.get(p, -1.0) != mtime:
+                    logger.info(f"[FMP Collector] 检测到 watchlist/portfolio 文件变更: {p}")
                     _reload_watchlist()
+                    break  # 一次重载已合并所有源，无需逐个重复触发
             except OSError:
                 pass
         _watchlist_monitor_stop.wait(poll_interval)

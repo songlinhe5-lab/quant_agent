@@ -653,6 +653,14 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                         },
                     }
                 },
+                "dataLinks": [
+                    {
+                        "title": "反向联动：跳 watchlist 标的池大小，确认是配置遗漏(size=0)还是文件读取失败",
+                        "type": "link",
+                        "url": "${__url_time_range}&viewPanel=16",
+                        "internal": {"datasourceUid": "${DS_PROMETHEUS}", "query": {"queryType": "timeseries"}},
+                    }
+                ],
                 "alertThreshold": True,
                 "alert": {
                     "id": 15,
@@ -675,6 +683,32 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                         "description": "FMP_COLLECTOR_SYMBOLS / PORTFOLIO_SYMBOLS / WATCHLIST / FINNHUB_WS_SYMBOLS 均未配置任何标的源，盘后守护不会拉任何财报（硬默认 4 只已废弃）。需配置至少一个源，否则财报缓存为空。",
                     },
                     "labels": {"severity": "critical", "service": "quant-agent"},
+                },
+            },
+            {
+                "id": 16,
+                "title": "FMP watchlist 标的池大小 (多源并集)",
+                "type": "stat",
+                "gridPos": {"h": 4, "w": 8, "x": 8, "y": 76},
+                "targets": [
+                    {
+                        "expr": "quant_fmp_collector_watchlist_size",
+                        "legendFormat": "当前生效标的池大小 (个)",
+                        "refId": "A",
+                    }
+                ],
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "short",
+                        "color": {"mode": "background"},
+                        "thresholds": {
+                            "steps": [
+                                {"color": "#ef4444", "value": 0},
+                                {"color": "#64748b", "value": 1},
+                                {"color": "#10b981", "value": 5},
+                            ]
+                        },
+                    }
                 },
             },
         ],

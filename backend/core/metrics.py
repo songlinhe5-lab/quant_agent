@@ -487,3 +487,8 @@ FMP_WATCHLIST_EMPTY = Gauge(
     "quant_fmp_collector_watchlist_empty",
     "FMP collector watchlist 为空告警（所有标的源均未配置，守护静默兜底未拉任何财报 = 1）",
 )
+
+FMP_WATCHLIST_SIZE = Gauge(
+    "quant_fmp_collector_watchlist_size",
+    "FMP collector 当前生效 watchlist 标的池大小（多源并集；=0 即静默兜底，配合 watchlist_empty 告警定位配置遗漏）",
+)
