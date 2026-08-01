@@ -10,7 +10,7 @@ export function useStrategySandbox() {
   const { confirm } = useConfirmDialog()
 
   // STRAT-05: AbortController + debounce + 请求序号
-  const { run: runSandbox, runStream: runSandboxStream, cancel: cancelSandboxRun } = useSandboxRun()
+  const { runStream: runSandboxStream, cancel: cancelSandboxRun } = useSandboxRun()
 
   // 💡 沙箱回测引擎：提取表单参数并抛给后端执行推演
   const handleApplyParams = async (className: string, data: Record<string, any>, isSilent: boolean = false) => {

@@ -135,7 +135,7 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
     setCurrentPage(1)
   }
 
-  const refreshPrompts = async () => {
+  const refreshPrompts = useCallback(async () => {
     try {
       const res = await apiClient.get('/screener/suggestions?limit=6');
       if (res.data?.status === 'success' && res.data.data?.length > 0) {
@@ -147,9 +147,44 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
       setDisplayPrompts(fallback);
       setPlaceholderText(`告诉 Agent 您的选股逻辑，例如：${fallback[0]}...`);
     }
-  }
+  }, [])
 
-  const fetchPageData = async (dsl: string, page: number, size: number, sKey: string, sDir: number, filters: Record<string, any> = {}) => {
+  const handleTranslate = useCallback(async (overrideQuery?: string | any) => {
+    const currentQuery = typeof overrideQuery === 'string' ? overrideQuery : nlpQuery;
+    if (!currentQuery.trim()) return;
+    if (typeof overrideQuery === 'string') setNlpQuery(currentQuery);
+    setIsLoading(true); setProgress(5); setScanStatus('初始化 Agent...'); setDslQuery(''); setShowRawDsl(false); setResults([]);
+    let finalDsl = '{"dsl_display": "market:us mktcap:>10B pe:10~50", "markets": ["US"], "exclude_st": false, "filters": [{"field": "MARKET_CAP", "type": "simple", "term": "ANNUAL", "min_value": 10000000000}, {"field": "PE_TTM", "type": "simple", "term": "TTM", "min_value": 10.0, "max_value": 50.0}]}';
+    try {
+      const transRes = await apiClient.post('/screener/translate', { query: currentQuery });
+      if (transRes.data?.status === 'success' && transRes.data?.data) finalDsl = transRes.data.data;
+    } catch (_e: any) { /* ignore translate error */ }
+    setDslQuery(finalDsl); setShowRawDsl(true); setProgress(10); setScanStatus('正在扫描...');
+    const newItem = { nlp: currentQuery, dsl: finalDsl, time: Date.now() };
+    const newHistory = [newItem, ...history.filter(item => item.nlp !== currentQuery)].slice(0, 20);
+    localStorage.setItem('quant_screener_history', JSON.stringify(newHistory)); setHistory(newHistory);
+    apiClient.post('/screener/history', { history: newHistory }).catch(() => {});
+    try {
+      const res = await apiClient.post('/screener/run', { dsl: finalDsl, page: 1, page_size: pageSize, sort_key: sortKey === 'rank' ? 'mktcap' : sortKey, sort_dir: sortDir, filters: columnFilters }, { timeout: 45000 });
+      setProgress(100); setScanStatus('拉取完成，正在渲染...'); await new Promise(resolve => setTimeout(resolve, 400));
+      if (res.data?.status === 'success' && res.data.data) {
+        setResults(res.data.data); setTotalItems(res.data.total || res.data.data.length); setCurrentPage(1);
+        try { localStorage.setItem('quant_screener_latest_state', JSON.stringify({ nlpQuery: currentQuery, dslQuery: finalDsl, results: res.data.data, totalItems: res.data.total || res.data.data.length })); } catch (_e) { /* ignore */ }
+      } else {
+        toast({ variant: 'destructive', title: '筛选失败', description: res.data?.message || '无法从后端获取筛选结果。' });
+      }
+    } catch (error: any) {
+      setProgress(100); setScanStatus('请求中断'); await new Promise(resolve => setTimeout(resolve, 400));
+      let errMsg = error.response?.data?.detail || error.message || '连接到筛选器服务时发生错误。';
+      if (Array.isArray(errMsg)) errMsg = errMsg.map((e: any) => `${e.loc?.slice(1)?.join('.') || '参数'}: ${e.msg}`).join('\n');
+      const descriptionContent = <span className="whitespace-pre-wrap leading-relaxed">{errMsg}</span>;
+      toast({ variant: 'destructive', title: '请求异常', description: descriptionContent });
+    } finally {
+      setIsLoading(false); setTimeout(() => { setProgress(0); setScanStatus(''); }, 300); refreshPrompts();
+    }
+  }, [nlpQuery, pageSize, sortKey, sortDir, columnFilters, history, toast, refreshPrompts]);
+
+  const fetchPageData = useCallback(async (dsl: string, page: number, size: number, sKey: string, sDir: number, filters: Record<string, any> = {}) => {
     setIsLoading(true);
     setScanStatus('从云端获取中...');
     try { JSON.parse(dsl); } catch (_e) {
@@ -176,7 +211,7 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false); setScanStatus('');
     }
-  };
+  }, [nlpQuery, toast, handleTranslate]);
 
   const handleSort = (key: SortKey) => {
     if (isLoading) return;
@@ -234,41 +269,6 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
       else toast({ variant: 'destructive', title: '订阅失败', description: res.data?.message });
     } catch (e: any) { toast({ variant: 'destructive', title: '订阅异常', description: e.message || '无法连接到后端服务' }); }
   }
-
-  const handleTranslate = async (overrideQuery?: string | any) => {
-    const currentQuery = typeof overrideQuery === 'string' ? overrideQuery : nlpQuery;
-    if (!currentQuery.trim()) return;
-    if (typeof overrideQuery === 'string') setNlpQuery(currentQuery);
-    setIsLoading(true); setProgress(5); setScanStatus('初始化 Agent...'); setDslQuery(''); setShowRawDsl(false); setResults([]);
-    let finalDsl = '{"dsl_display": "market:us mktcap:>10B pe:10~50", "markets": ["US"], "exclude_st": false, "filters": [{"field": "MARKET_CAP", "type": "simple", "term": "ANNUAL", "min_value": 10000000000}, {"field": "PE_TTM", "type": "simple", "term": "TTM", "min_value": 10.0, "max_value": 50.0}]}';
-    try {
-      const transRes = await apiClient.post('/screener/translate', { query: currentQuery });
-      if (transRes.data?.status === 'success' && transRes.data?.data) finalDsl = transRes.data.data;
-    } catch (_e: any) { /* ignore translate error */ }
-    setDslQuery(finalDsl); setShowRawDsl(true); setProgress(10); setScanStatus('正在扫描...');
-    const newItem = { nlp: currentQuery, dsl: finalDsl, time: Date.now() };
-    const newHistory = [newItem, ...history.filter(item => item.nlp !== currentQuery)].slice(0, 20);
-    localStorage.setItem('quant_screener_history', JSON.stringify(newHistory)); setHistory(newHistory);
-    apiClient.post('/screener/history', { history: newHistory }).catch(() => {});
-    try {
-      const res = await apiClient.post('/screener/run', { dsl: finalDsl, page: 1, page_size: pageSize, sort_key: sortKey === 'rank' ? 'mktcap' : sortKey, sort_dir: sortDir, filters: columnFilters }, { timeout: 45000 });
-      setProgress(100); setScanStatus('拉取完成，正在渲染...'); await new Promise(resolve => setTimeout(resolve, 400));
-      if (res.data?.status === 'success' && res.data.data) {
-        setResults(res.data.data); setTotalItems(res.data.total || res.data.data.length); setCurrentPage(1);
-        try { localStorage.setItem('quant_screener_latest_state', JSON.stringify({ nlpQuery: currentQuery, dslQuery: finalDsl, results: res.data.data, totalItems: res.data.total || res.data.data.length })); } catch (_e) { /* ignore */ }
-      } else {
-        toast({ variant: 'destructive', title: '筛选失败', description: res.data?.message || '无法从后端获取筛选结果。' });
-      }
-    } catch (error: any) {
-      setProgress(100); setScanStatus('请求中断'); await new Promise(resolve => setTimeout(resolve, 400));
-      let errMsg = error.response?.data?.detail || error.message || '连接到筛选器服务时发生错误。';
-      if (Array.isArray(errMsg)) errMsg = errMsg.map((e: any) => `${e.loc?.slice(1)?.join('.') || '参数'}: ${e.msg}`).join('\n');
-      const descriptionContent = <span className="whitespace-pre-wrap leading-relaxed">{errMsg}</span>;
-      toast({ variant: 'destructive', title: '请求异常', description: descriptionContent });
-    } finally {
-      setIsLoading(false); setTimeout(() => { setProgress(0); setScanStatus(''); }, 300); refreshPrompts();
-    }
-  };
 
   // ── SCREEN-01: 选股条件保存 / 分享 ─────────────────────────────────────
   const [savedScreens, setSavedScreens] = useState<any[]>([])
@@ -381,7 +381,7 @@ export function ScreenerProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   // ── Effects ──
-  useEffect(() => { refreshPrompts() }, [])
+  useEffect(() => { refreshPrompts() }, [refreshPrompts])
 
   useEffect(() => {
     if (!dslQuery) return;
