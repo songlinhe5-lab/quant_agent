@@ -477,3 +477,8 @@ FMP_REDIS_PING_LATENCY_HIST = Histogram(
     "FMP collector Redis PING 延迟直方图（分位统计用）",
     buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
 )
+
+FMP_JITTER_RETRY_ACTIVE = Gauge(
+    "quant_fmp_collector_jitter_retry_active",
+    "FMP collector 当前生效的抖动重试次数（自愈调参控制器闭环自适应轨迹，与成功率拐点对照是否吻合）",
+)

@@ -602,6 +602,33 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                     "labels": {"severity": "warning", "service": "quant-agent"},
                 },
             },
+            {
+                "id": 14,
+                "title": "抖动重试次数自适应轨迹 (控制器生效值) · 与成功率拐点对照",
+                "type": "timeseries",
+                "gridPos": {"h": 6, "w": 24, "x": 0, "y": 70},
+                "targets": [
+                    {
+                        "expr": "quant_fmp_collector_jitter_retry_active",
+                        "legendFormat": "当前生效 FMP_JITTER_RETRY (自适应)",
+                        "refId": "A",
+                    }
+                ],
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "short",
+                        "color": {"mode": "thresholds"},
+                        "min": 1,
+                        "thresholds": {
+                            "steps": [
+                                {"color": "#64748b", "value": 1},
+                                {"color": "#f59e0b", "value": 4},
+                                {"color": "#10b981", "value": 6},
+                            ]
+                        },
+                    }
+                },
+            },
         ],
         "annotations": {"list": []},
         "templating": {

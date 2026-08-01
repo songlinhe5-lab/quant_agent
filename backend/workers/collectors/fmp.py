@@ -66,6 +66,12 @@ _TUNE_INTERVAL = 300.0  # 每 5min 评估一次成功率
 _TUNE_SUCCESS_LOW = 0.5  # 成功率 <50% → 重试性价比低，下调重试次数
 _TUNE_SUCCESS_HIGH = 0.9  # 成功率 >90% → 重试高效，上调重试次数
 _TUNE_WINDOW = 3600.0  # 统计窗口 1h（与 Grafana Panel 13 口径一致）
+# 滞回（hysteresis）：成功率需在 50%~90% 区间外持续 _TUNE_HYSTERESIS_ROUNDS 轮才动作，
+# 防边界抖动（如 49%↔51% 反复横跳）导致 _JITTER_RETRY 反复 ±1 振荡。
+_TUNE_HYSTERESIS_ROUNDS = int(os.environ.get("FMP_JITTER_TUNE_HYST_ROUNDS", "3"))
+# 滞回连击计数（进程内）：连续落在低/高区外的轮次数，达标才调参
+_TUNE_LOW_STREAK: int = 0
+_TUNE_HIGH_STREAK: int = 0
 
 # 进程内重试成功率滑动统计：记录 (monotonic_ts, kind) kind∈{"recovered","jitter"}
 _jitter_stats: list[tuple[float, str]] = []
@@ -464,6 +470,9 @@ def collector_runtime() -> dict:
         "jitter_retry_min": _JITTER_RETRY_MIN,
         "jitter_retry_max": _JITTER_RETRY_MAX,
         "jitter_retry_backoff": _JITTER_RETRY_BACKOFF,
+        "jitter_tune_hyst_rounds": _TUNE_HYSTERESIS_ROUNDS,
+        "jitter_tune_low_streak": _TUNE_LOW_STREAK,
+        "jitter_tune_high_streak": _TUNE_HIGH_STREAK,
         "lat_degraded": _lat_degraded,
         "lat_window_p99": _lat_window_p99,
     }
@@ -549,9 +558,10 @@ async def fmp_collector_daemon() -> None:
     await _restore_credit()  # 先恢复当日 credit 进度（防重启清零）
     _reload_watchlist()  # 首启加载 watchlist
     try:
-        from backend.core.metrics import FMP_COLLECTOR_PAUSED
+        from backend.core.metrics import FMP_COLLECTOR_PAUSED, FMP_JITTER_RETRY_ACTIVE
 
         FMP_COLLECTOR_PAUSED.set(0)  # 启动基线：正常态
+        FMP_JITTER_RETRY_ACTIVE.set(_JITTER_RETRY)  # 启动基线：当前生效重试次数
     except Exception:  # noqa: BLE001
         pass
     monitor = threading.Thread(target=_watch_watchlist_file, name="fmp-watchlist-mon", daemon=True)
@@ -582,9 +592,15 @@ async def _jitter_tune_loop() -> None:
     每 _TUNE_INTERVAL 计算最近 _TUNE_WINDOW（1h）内成功率 = recovered/(recovered+jitter)：
       - 成功率 < _TUNE_SUCCESS_LOW(50%)：重试性价比低（抖动顽固），下调重试次数（下限 _JITTER_RETRY_MIN）
       - 成功率 > _TUNE_SUCCESS_HIGH(90%)：重试高效（瞬态抖动），上调重试次数（上限 _JITTER_RETRY_MAX）
-    避免频繁抖动：每次仅 ±1 步进，并记录至 collector_runtime 供 APM 观测。
+    滞回（hysteresis）：成功率需在 50%~90% 区间外持续 _TUNE_HYSTERESIS_ROUNDS 轮才动作，
+    防边界抖动反复横跳导致 _JITTER_RETRY 振荡。每次仅 ±1 步进，并记录至 collector_runtime 供 APM 观测。
     """
     import time as _time
+
+    try:
+        from backend.core.metrics import FMP_JITTER_RETRY_ACTIVE
+    except Exception:  # noqa: BLE001
+        FMP_JITTER_RETRY_ACTIVE = None
 
     while True:
         await asyncio.sleep(_TUNE_INTERVAL)
@@ -600,21 +616,57 @@ async def _jitter_tune_loop() -> None:
             if _total < 5:
                 continue  # 样本不足，不调参（防噪声误判）
             _rate = _rec / _total
+            # 滞回判定：仅当成功率在阈值区外时累计连击；一旦回到区间内立即清零对侧连击
+            global _TUNE_LOW_STREAK, _TUNE_HIGH_STREAK
+            if _rate < _TUNE_SUCCESS_LOW:
+                _TUNE_LOW_STREAK += 1
+                _TUNE_HIGH_STREAK = 0
+            elif _rate > _TUNE_SUCCESS_HIGH:
+                _TUNE_HIGH_STREAK += 1
+                _TUNE_LOW_STREAK = 0
+            else:
+                # 落在死区内：双向清零，不累积任何方向连击
+                _TUNE_LOW_STREAK = 0
+                _TUNE_HIGH_STREAK = 0
+                continue
+            # 未达滞回轮次门槛：仅记录不调参，防边界反复横跳
+            if _rate < _TUNE_SUCCESS_LOW and _TUNE_LOW_STREAK < _TUNE_HYSTERESIS_ROUNDS:
+                logger.info(
+                    f"[FMP 调参] 成功率 {_rate:.2f} < {_TUNE_SUCCESS_LOW}，但连击 {_TUNE_LOW_STREAK}/"
+                    f"{_TUNE_HYSTERESIS_ROUNDS} 未达滞回门槛，暂不下调"
+                )
+                continue
+            if _rate > _TUNE_SUCCESS_HIGH and _TUNE_HIGH_STREAK < _TUNE_HYSTERESIS_ROUNDS:
+                logger.info(
+                    f"[FMP 调参] 成功率 {_rate:.2f} > {_TUNE_SUCCESS_HIGH}，但连击 {_TUNE_HIGH_STREAK}/"
+                    f"{_TUNE_HYSTERESIS_ROUNDS} 未达滞回门槛，暂不上调"
+                )
+                continue
             _old = _JITTER_RETRY
             if _rate < _TUNE_SUCCESS_LOW and _JITTER_RETRY > _JITTER_RETRY_MIN:
                 globals()["_JITTER_RETRY"] = _JITTER_RETRY - 1
                 logger.info(
-                    f"[FMP 调参] 重试成功率 {_rate:.2f} < {_TUNE_SUCCESS_LOW}，下调 FMP_JITTER_RETRY "
-                    f"{_old} → {_JITTER_RETRY}（抖动顽固，重试性价比低）"
+                    f"[FMP 调参] 成功率 {_rate:.2f} < {_TUNE_SUCCESS_LOW} 连击 {_TUNE_LOW_STREAK} 达标，"
+                    f"下调 FMP_JITTER_RETRY {_old} → {_JITTER_RETRY}（抖动顽固，重试性价比低）"
                 )
             elif _rate > _TUNE_SUCCESS_HIGH and _JITTER_RETRY < _JITTER_RETRY_MAX:
                 globals()["_JITTER_RETRY"] = _JITTER_RETRY + 1
                 logger.info(
-                    f"[FMP 调参] 重试成功率 {_rate:.2f} > {_TUNE_SUCCESS_HIGH}，上调 FMP_JITTER_RETRY "
-                    f"{_old} → {_JITTER_RETRY}（瞬态抖动，重试高效）"
+                    f"[FMP 调参] 成功率 {_rate:.2f} > {_TUNE_SUCCESS_HIGH} 连击 {_TUNE_HIGH_STREAK} 达标，"
+                    f"上调 FMP_JITTER_RETRY {_old} → {_JITTER_RETRY}（瞬态抖动，重试高效）"
                 )
+            # 动作后清零连击，避免连续多轮重复步进（每轮仅 ±1 已足够，下轮重新计连击）
+            _TUNE_LOW_STREAK = 0
+            _TUNE_HIGH_STREAK = 0
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[FMP 调参] 评估异常: {e}")
+        finally:
+            # 实时暴露当前生效值（Grafana 看自适应轨迹是否与成功率拐点吻合）
+            if FMP_JITTER_RETRY_ACTIVE is not None:
+                try:
+                    FMP_JITTER_RETRY_ACTIVE.set(_JITTER_RETRY)
+                except Exception:  # noqa: BLE001
+                    pass
 
 
 async def start() -> list:
