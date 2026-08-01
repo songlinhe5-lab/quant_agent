@@ -122,14 +122,24 @@ jobs:
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             cd /opt/quant-agent
 
-            # ⚠️ 主节点 .env 由运维手动维护，CI 严禁生成/覆盖！
-            #     .env 同时作为容器 env_file 与 docker compose 变量替换源 (--env-file)。
-            #     若其中缺少 TAILSCALE_IP/REDIS_PASSWORD/DB_*，compose 会使用自身默认值
-            #     (TAILSCALE_IP 退化为 127.0.0.1，registry 仅绑本地)，不影响启动。
-            if [ -f .env ]; then
-              echo "🛡️ 检测到已存在的主节点 .env，完全保留人工配置，CI 不触碰"
+            # ⚠️ 主节点 .env 由运维手动维护。
+            #    仅当 .env 完全不存在时，参考仓库 .env.example 首次生成 (cp 模板)，
+            #    并补入 compose 必需的 TAILSCALE_IP (模板无此项)。生成后一律沿用人工配置，CI 不再触碰。
+            if [ ! -f .env ]; then
+              if [ -f .env.example ]; then
+                echo "🆕 未检测到主节点 .env，参考 .env.example 首次生成"
+                cp .env.example .env
+              else
+                echo "🆕 未检测到主节点 .env，且仓库无 .env.example，用最小兜底生成"
+                printf '%s\n' 'QUANT_ENV=production' > .env
+              fi
+              # 补入 TAILSCALE_IP (原 .env.master 的配置项，现统一从 .env 读取；模板缺失则注入)
+              if ! grep -q '^TAILSCALE_IP=' .env; then
+                printf 'TAILSCALE_IP=%s\n' "${{ secrets.VPS_S1_TAILSCALE_IP }}" >> .env
+              fi
+              echo "✅ 主节点 .env 已生成，请按需手动补填真实密钥/密码后再部署"
             else
-              echo "⚠️ 警告: 主节点 .env 不存在！容器 env_file 与 compose 变量源将缺失，请在主节点手动创建 /opt/quant-agent/.env"
+              echo "🛡️ 检测到已存在的主节点 .env，完全保留人工配置，CI 不触碰"
             fi
 
             # 脱敏校验: 仅只读检查 TAILSCALE_IP 是否已在 .env 中配置，不写任何文件
@@ -146,6 +156,8 @@ jobs:
 
             IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
             curl -sSL -o docker-compose.master.yml "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.master.yml"
+            # 拉取 .env.example 供首次生成 .env 参考 (与 compose 同源, 保证版本一致)
+            curl -sSL -o .env.example "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/.env.example" || echo "⚠️ 拉取 .env.example 失败，首次生成将走兜底"
             sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:latest|${IMAGE}|g" docker-compose.master.yml
             docker compose -f docker-compose.master.yml --env-file .env pull
             docker compose -f docker-compose.master.yml --env-file .env up -d --remove-orphans
