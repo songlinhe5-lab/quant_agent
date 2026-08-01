@@ -139,6 +139,18 @@ jobs:
             docker compose -f docker-compose.master.yml --env-file .env.master pull
             docker compose -f docker-compose.master.yml --env-file .env.master up -d --remove-orphans
             docker image prune -f
+
+            # 将镜像推送到内网私有 registry，供国内节点 (北京) 经 Tailscale 内网高速拉取
+            REGISTRY_IMAGE="${MASTER_TS_IP}:5000/quant-agent:latest"
+            docker tag "${IMAGE}" "${REGISTRY_IMAGE}"
+            docker push "${REGISTRY_IMAGE}"
+
+            # 同时把 data-subservice 镜像推到 registry (北京节点经内网拉取)
+            DS_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:latest"
+            DS_REGISTRY_IMAGE="${MASTER_TS_IP}:5000/quant-agent-data-subservice:latest"
+            docker pull "${DS_IMAGE}"
+            docker tag "${DS_IMAGE}" "${DS_REGISTRY_IMAGE}"
+            docker push "${DS_REGISTRY_IMAGE}"
           EOF
 
   # ----------------------------------------------------------------
@@ -147,7 +159,7 @@ jobs:
   # ----------------------------------------------------------------
   deploy-data-nodes:
     if: github.event_name == 'pull_request'
-    needs: [ build-data-subservice ]
+    needs: [ build-data-subservice, deploy-master ]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -245,10 +257,30 @@ jobs:
           NODE_TZ: ${{ matrix.tz }}
         run: |
           IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:latest"
+          # 北京节点经主节点内网 registry 拉取 (避免跨洋直连 GHCR)，其余节点直连 GHCR
+          if [ "${{ matrix.node }}" = "bj" ]; then
+            IMAGE="${MASTER_TS_IP}:5000/quant-agent-data-subservice:latest"
+          fi
           ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<EOF
             set -e
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             cd /opt/quant-agent
+
+            # 北京节点: 配置 docker 允许访问主节点内网 http registry (insecure-registries, 仅一次)
+            if [ "${{ matrix.node }}" = "bj" ]; then
+              DAEMON_CFG="/etc/docker/daemon.json"
+              if [ ! -f "\$DAEMON_CFG" ] || ! grep -q "${MASTER_TS_IP}:5000" "\$DAEMON_CFG"; then
+                mkdir -p /etc/docker
+                cat > "\$DAEMON_CFG" <<DCEOF
+          {
+            "insecure-registries": ["${MASTER_TS_IP}:5000"]
+          }
+          DCEOF
+                systemctl restart docker
+                sleep 5
+              fi
+            else
+              echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+            fi
 
             # 动态生成节点 .env (覆盖写入，无需 VPS 预置)
             cat > ${ENV_FILE} <<ENVEOF
