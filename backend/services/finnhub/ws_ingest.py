@@ -52,6 +52,38 @@ class TickCache:
 tick_cache = TickCache()
 
 
+# ── tick_cache 命中率 / 降级率埋点（线程安全，Lock 保护）──────────────
+# 用于验证 WS 实时价到底覆盖了多少 quote 查询：hit=命中实时价，miss=降级 REST。
+_metrics_lock = Lock()
+_hits = 0
+_misses = 0
+
+
+def record_tick_hit() -> None:
+    global _hits
+    with _metrics_lock:
+        _hits += 1
+
+
+def record_tick_miss() -> None:
+    global _misses
+    with _metrics_lock:
+        _misses += 1
+
+
+def tick_cache_stats() -> dict[str, Any]:
+    """返回实时价命中/降级统计快照。
+
+    返回: {hits, misses, total, hit_rate(0-1, 无查询时为 None)}
+    """
+    with _metrics_lock:
+        hits = _hits
+        misses = _misses
+    total = hits + misses
+    hit_rate = (hits / total) if total else None
+    return {"hits": hits, "misses": misses, "total": total, "hit_rate": hit_rate}
+
+
 async def _redis() -> aioredis.Redis:
     return aioredis.from_url(
         f"redis://{os.getenv('REDIS_HOST', '127.0.0.1')}:{os.getenv('REDIS_PORT', '6379')}",

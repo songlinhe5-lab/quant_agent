@@ -22,6 +22,26 @@ from backend.services.datasource import (
     RateLimitStatus,
     Result,
 )
+from backend.services.finnhub.ws_ingest import record_tick_hit, record_tick_miss, tick_cache
+
+
+def _extract_ws_price(tick: dict[str, Any]) -> Optional[float]:
+    """从 Finnhub WS tick（trade/quote 原始消息）容错提取最新价。"""
+    mtype = tick.get("type")
+    if mtype == "trade":
+        rows = tick.get("data") or []
+        if rows and isinstance(rows[0], dict) and rows[0].get("p") is not None:
+            return float(rows[0]["p"])
+    if mtype == "quote":
+        if tick.get("dp") is not None:
+            return float(tick["dp"])
+    for k in ("p", "dp", "c", "price"):
+        if tick.get(k) is not None:
+            try:
+                return float(tick[k])
+            except (TypeError, ValueError):
+                continue
+    return None
 
 
 class FinnhubDataSource:
@@ -49,6 +69,7 @@ class FinnhubDataSource:
     @property
     def capabilities(self) -> list[str]:
         return [
+            "quote",
             "earnings",
             "company_news",
             "market_news",
@@ -120,7 +141,27 @@ class FinnhubDataSource:
             )
 
         try:
-            if action == "earnings":
+            if action == "quote":
+                symbol = str(params.get("symbol", ""))
+                ws_tick = tick_cache.get(symbol)
+                if ws_tick is not None:
+                    ws_price = _extract_ws_price(ws_tick)
+                    if ws_price is not None:
+                        record_tick_hit()
+                        quote_payload = [
+                            {
+                                "symbol": symbol.upper(),
+                                "price": ws_price,
+                                "source": "finnhub-ws",
+                            }
+                        ]
+                        result = Result.make_success(quote_payload, source="finnhub-ws")
+                        result.self_recorded = True
+                        return result
+                # 未命中实时 tick → 记录降级，走 REST 快照
+                record_tick_miss()
+                data = await svc.get_quote(symbol)
+            elif action == "earnings":
                 data = await svc.get_earnings_calendar(
                     days_ahead=int(params.get("days_ahead", 7)),
                     days_back=int(params.get("days_back", 0)),
