@@ -196,9 +196,25 @@ jobs:
             # 同时把 data-subservice 镜像推到 registry (北京节点经内网拉取)
             DS_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:latest"
             DS_REGISTRY_IMAGE="localhost:5000/quant-agent-data-subservice:latest"
-            docker pull "${DS_IMAGE}"
+            docker pull "${DS_IMAGE}" \
+              || { echo "❌ 主节点从 GHCR 拉取 data-subservice 失败，中止"; exit 1; }
             docker tag "${DS_IMAGE}" "${DS_REGISTRY_IMAGE}"
-            docker push "${DS_REGISTRY_IMAGE}"
+            docker push "${DS_REGISTRY_IMAGE}" \
+              || { echo "❌ data-subservice 推送到本机 registry 失败 (磁盘/containerd 问题?)，中止避免北京节点拉到空镜像"; exit 1; }
+
+            # 🔍 push 后校验: 确认 registry 内 manifest 真实存在，否则北京节点会 connection reset
+            for i in 1 2 3; do
+              if curl -fsS "http://localhost:5000/v2/quant-agent-data-subservice/manifests/latest" >/dev/null 2>&1; then
+                echo "✅ registry 内 data-subservice:latest manifest 已就绪，北京节点可经内网拉取"
+                break
+              fi
+              echo "⏳ registry manifest 尚未可见 (尝试 $i/3)，等待 3s..."
+              sleep 3
+            done
+            if ! curl -fsS "http://localhost:5000/v2/quant-agent-data-subservice/manifests/latest" >/dev/null 2>&1; then
+              echo "❌ 推送后 registry 内仍无 data-subservice manifest，中止"
+              exit 1
+            fi
           EOF
 
   # ----------------------------------------------------------------
