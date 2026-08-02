@@ -140,10 +140,15 @@ def create_app() -> FastAPI:
     register_middleware(application)
 
     # CORS
+    # ⚠️ 中间件顺序陷阱: Starlette 逆序执行 (后注册的先跑)。
+    # 必须先注册 AccessLogMiddleware, 再注册 CORSMiddleware,
+    # 这样 AccessLog 实际在 CORS 内层执行。CORS preflight (OPTIONS) 会被
+    # CORSMiddleware 直接拦截响应, 不会漏到路由层产生 400 UNMATCHED_ROUTE。
     allowed_origins = os.getenv(
         "ALLOWED_ORIGINS",
         "http://localhost:5173,http://localhost:3000,https://quant-agent.pages.dev,https://quant.stephenhe.com",
     ).split(",")
+    application.add_middleware(AccessLogMiddleware)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
@@ -151,7 +156,6 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
         allow_credentials=True,
     )
-    application.add_middleware(AccessLogMiddleware)
 
     # ─── 路由挂载 ─────────────────────────────────────────────
     # 系统基础设施 (根级: /, /monitor, /metrics, /mcp)

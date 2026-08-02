@@ -61,6 +61,12 @@ LEVEL_NAMES = list(LEVEL_MAP.values())
 # ─── POST /logs — 接收前端日志 ─────────────────────────────────────
 
 
+@router.options("")
+async def options_logs():
+    """CORS preflight 双保险: 即使 preflight 漏到路由层也返回 200, 不产生 400"""
+    return Response(status_code=200)
+
+
 @router.post("", status_code=201)
 async def receive_frontend_logs(
     body: LogBatchSchema,
