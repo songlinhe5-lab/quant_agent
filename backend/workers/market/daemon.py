@@ -27,6 +27,24 @@ from typing import Dict
 
 from backend.core.redis_client import l1_cached_redis, redis_client
 from backend.core.utils import is_my_shard
+from backend.services.datasource import Result
+from backend.services.datasource.source_registry import datasource_registry
+
+
+async def _finnhub_fetch(action: str, **params):
+    """经 DataSourceRegistry 主路径调用 Finnhub，返回 Result.data（list/dict）或 None。
+
+    统一走 registry.fetch 以触发 call_metrics 真实计数（运维面板依赖此口径），
+    禁止在守护进程中直连 finnhub_service 的 REST 方法，以免调用/延迟/限流统计丢失。
+    """
+    try:
+        result: Result = await datasource_registry.fetch("finnhub", action, params)
+    except Exception as exc:  # noqa: BLE001 - 守护进程容错，不中断轮询
+        print(f"❌ [Finnhub Daemon] registry.fetch({action}) 异常: {exc}")
+        return None
+    if not getattr(result, "is_success", False):
+        return None
+    return getattr(result, "data", None)
 
 
 async def run_global_daemon() -> None:
@@ -85,11 +103,11 @@ async def _earnings_alert_daemon(finnhub_service):
     while True:
         await asyncio.sleep(120)
         try:
-            res = await finnhub_service.get_earnings_calendar(days_ahead=1, skip_cache=True)
-            if res.get("status") == "error" or not res.get("data"):
+            res = await _finnhub_fetch("earnings", days_ahead=1, skip_cache=True)
+            if not res:
                 continue
 
-            earnings_list = res.get("data", [])
+            earnings_list = res
             for row in earnings_list:
                 symbol = str(row.get("symbol", "")).upper()
                 if symbol not in core_symbols:
@@ -160,11 +178,11 @@ async def _news_stream_daemon(finnhub_service) -> None:
     # 冷启动拉取初始快照
     try:
         print("🔄 [Finnhub Daemon] 正在通过 HTTP 拉取初始新闻快照以填充 ZSET...")
-        init_res = await asyncio.wait_for(finnhub_service.get_market_news("general"), timeout=15.0)
-        if init_res.get("status") == "success":
+        init_res = await asyncio.wait_for(_finnhub_fetch("market_news", category="general"), timeout=15.0)
+        if init_res:
             rules = await _get_news_tags_rules()
             new_items = []
-            for news_item in reversed(init_res.get("data", [])):
+            for news_item in reversed(init_res):
                 headline = news_item.get("headline", "")
                 if not headline:
                     continue
@@ -193,9 +211,9 @@ async def _news_stream_daemon(finnhub_service) -> None:
     while True:
         await asyncio.sleep(60)
         try:
-            res = await finnhub_service.get_market_news("general")
-            if res.get("status") == "success":
-                news_items = res.get("data", [])
+            res = await _finnhub_fetch("market_news", category="general")
+            if res:
+                news_items = res
                 rules = await _get_news_tags_rules()
                 new_incoming = []
 
@@ -260,10 +278,10 @@ async def _company_news_daemon(finnhub_service) -> None:
 
                     res = await data_source_router.fetch_akshare("news", ticker=ticker)
                 else:
-                    res = await finnhub_service.get_company_news(ticker, days_back=3, skip_cache=True)
+                    res = await _finnhub_fetch("company_news", ticker=ticker, days_back=3, skip_cache=True)
 
-                if res.get("status") == "success":
-                    news_items = res.get("data", [])
+                if res:
+                    news_items = res
                     new_incoming = []
 
                     for news_item in reversed(news_items):
@@ -509,10 +527,10 @@ async def _insider_transactions_marquee_daemon(finnhub_service) -> None:
 
             new_transactions_count = 0
             for ticker in MAJOR_TICKERS:
-                res = await finnhub_service.get_insider_transactions(ticker=ticker, limit=5)
+                res = await _finnhub_fetch("insider_trading", ticker=ticker, limit=5)
 
-                if res.get("status") == "success" and res.get("data"):
-                    transactions = res.get("data", [])
+                if res:
+                    transactions = res
 
                     for tx in transactions:
                         transaction_value = abs(tx.get("change", 0) * tx.get("transaction_price", 0))
