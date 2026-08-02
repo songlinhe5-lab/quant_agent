@@ -14,10 +14,12 @@ services:
     image: redis:7-alpine
     container_name: quant_redis
     restart: always
-    # 💡 SEC-14: Redis 仅绑定 Tailscale 内网 IP，不暴露公网
-    # 启动时设置 TAILSCALE_IP=100.x.x.x 允许北京节点访问
-    # 不设置则仅本地访问 (127.0.0.1)
+    # 💡 SEC-14: Redis 仅绑定 Tailscale 内网 IP + loopback，不暴露公网。
+    # 双绑定原因: TAILSCALE_IP 非空时会吞掉 127.0.0.1 回退 (见 postgres 段同款坑),
+    # 导致 host 网络模式的 quant-worker 经 127.0.0.1 连不上 redis。
+    # 公网 (38.60.126.42) 不绑定,保持 SEC-14 红线。
     ports:
+      - "127.0.0.1:6379:6379"
       - "${TAILSCALE_IP:-127.0.0.1}:6379:6379"
     volumes:
       - redis_data:/data
