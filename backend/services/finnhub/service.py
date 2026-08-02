@@ -221,6 +221,15 @@ class FinnhubService:
                     pass
                 self._record_success()
                 return {"status": "success", "data": df_data, "source": "finnhub"}
+        except httpx.HTTPStatusError as e:
+            cat = None
+            if e.response.status_code in (429, 403):
+                cat = self._record_rate_limit(e.response.status_code, "Finnhub 历史K线限流/封禁")
+            return {
+                "status": "error",
+                "message": f"Finnhub 历史K线请求异常: HTTP {e.response.status_code}",
+                "error_category": cat.value if cat else None,
+            }
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
