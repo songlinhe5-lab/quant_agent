@@ -337,7 +337,9 @@ async def test_datasource_link(name: str) -> Dict[str, Any]:
     try:
         raw = source.health()
         info = await raw if inspect.isawaitable(raw) else raw
-        latency_ms = round((time.perf_counter() - start) * 1000, 2)
+        # health() 往返耗时仅用于被动状态诊断展示，绝不作为「业务延迟样本」写入统计
+        health_latency_ms = round((time.perf_counter() - start) * 1000, 2)
+        latency_ms = health_latency_ms
         connected = bool(getattr(info, "connected", False))
         healthy = bool(getattr(info, "healthy", connected))
         status = getattr(info, "status", "ok")
@@ -374,15 +376,23 @@ async def test_datasource_link(name: str) -> Dict[str, Any]:
             try:
                 probe_start = time.perf_counter()
                 await source.fetch(probe_action, probe_params)
+                # 仅探测成功才把真实上游延迟作为样本写入统计，杜绝 health() 耗时污染
                 latency_ms = round((time.perf_counter() - probe_start) * 1000, 2)
                 probed = True
             except Exception as pe:
                 # 探测失败仅作信息提示，不翻转被动健康结论（标的可能不被该源支持）
+                # 注意：失败时不写入延迟样本，避免把一次超时/异常 await 误记为高延迟
                 probed = False
                 error = f"主动探测失败（被动健康仍有效）: {pe}"
 
-        rate_limit_registry.get_analyzer(name).record_request(is_error=not connected, latency_ms=latency_ms)
-        await call_metrics.record_probe(name, success=connected)
+        # 延迟统计只接受「真实业务探测成功」的样本；health() 耗时绝不入统计
+        if probed:
+            rate_limit_registry.get_analyzer(name).record_request(is_error=False, latency_ms=latency_ms)
+        else:
+            # 未成功探测：仅记录错误/不可用状态，不污染延迟均值与 P95
+            # 错误标志以「真实链路成功」为准：health 连通但业务探测失败也视为链路异常
+            rate_limit_registry.get_analyzer(name).record_request(is_error=not (connected and probed), latency_ms=None)
+        await call_metrics.record_probe(name, success=connected and probed)
         return {
             "source": name,
             "connected": connected,
