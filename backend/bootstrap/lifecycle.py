@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from backend.core import models
 from backend.core.database import AsyncSessionLocal, SessionLocal, async_engine, engine
 from backend.core.redis_client import redis_client
-from backend.core.security import get_password_hash
+from backend.core.security import get_password_hash, verify_password
 from backend.services.ai_narrator.llm_service import llm_service
 from backend.services.alert.notification import notification_service
 from backend.services.futu import futu_service
@@ -79,8 +79,21 @@ async def app_lifespan(app: FastAPI):
                 db.add(admin_user)
                 db.commit()
                 log.info("✅ [Startup] 默认管理员账号 (admin/admin) 初始化成功！")
+            else:
+                # 诊断增强: 区分"已存在"与"密码不匹配"
+                if not verify_password("admin", admin.hashed_password):
+                    log.warning(
+                        "⚠️ [Startup] admin 账号已存在但密码与默认 (admin) 不匹配。"
+                        "若登录 401, 请设 FORCE_RESET_ADMIN=true 重启以重置默认密码。"
+                    )
+                    if os.getenv("FORCE_RESET_ADMIN", "false").lower() == "true":
+                        admin.hashed_password = get_password_hash("admin")
+                        db.commit()
+                        log.info("✅ [Startup] FORCE_RESET_ADMIN=true, 已重置 admin 密码为默认 (admin)")
+                else:
+                    log.info("✅ [Startup] 默认管理员账号 (admin) 已存在, 跳过初始化。")
     except Exception as e:
-        log.warning(f"⚠️ [Startup] 管理员账号初始化失败: {e}")
+        log.error(f"❌ [Startup] 管理员账号初始化失败 (DB 可能未就绪): {e}")
 
     # 容灾包裹：防止外部 API 不通导致容器死循环无法启动
     try:
