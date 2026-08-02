@@ -183,7 +183,9 @@ jobs:
               exit 1
             fi
 
-            docker compose -f docker-compose.master.yml --env-file .env pull
+            # ⏱️ 主节点拉取加总超时保护，防止 GHCR 拉取慢/重试无限卡死 CI
+            timeout 900 docker compose -f docker-compose.master.yml --env-file .env pull \
+              || { echo "❌ 主节点 docker compose pull 超时或失败 (900s)"; exit 1; }
             docker compose -f docker-compose.master.yml --env-file .env up -d --remove-orphans
             docker image prune -f
 
@@ -315,6 +317,18 @@ jobs:
           WRITE_CREDS: ${{ matrix.creds }}
           NODE_TZ: ${{ matrix.tz }}
         run: |
+          # ── 中转 compose 文件: CI runner 已 checkout，直接经已建立的 SSH 通道 scp 到目标节点，
+          #    避免目标节点 (尤其北京) 直连 raw.githubusercontent 被墙导致拉取失败。
+          #    方向正确 (runner → 目标节点，复用同一把 SSH key)，零新增服务/端口。
+          scp -i "$RUNNER_TEMP/id_ed25519" \
+            -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+            -P "$VPS_PORT" \
+            "./${{ matrix.compose }}" \
+            "$VPS_USER@$VPS_HOST:/opt/quant-agent/${{ matrix.compose }}" \
+            || { echo "❌ 中转 compose 文件到目标节点失败 (scp 通道异常)"; exit 1; }
+          echo "✅ compose 文件已通过 SSH 通道中转至目标节点 /opt/quant-agent/${{ matrix.compose }}"
+
           ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<'EOF'
             set -e
             cd /opt/quant-agent
@@ -348,30 +362,37 @@ jobs:
               echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             fi
 
-            # 动态生成节点 .env (覆盖写入，无需 VPS 预置)。用 printf 多行写入避免嵌套 heredoc 解析问题
-            printf '%s\n' \
-          'DS_NODE_ID=${{ matrix.ds-id }}' \
-          'DS_REGION=${{ matrix.ds-region }}' \
-          'DS_CAPABILITIES=${{ matrix.ds-caps }}' \
-          'DS_NODE_PORT=8000' \
-          'PUBLIC_IP=${{ secrets[matrix.ts-ip-secret] }}' \
-          'DS_BASE_URL=http://${{ secrets[matrix.ts-ip-secret] }}:8000' \
-          'YF_ROUTER_ENABLED=false' \
-          'REDIS_HOST=${{ secrets.VPS_S1_TAILSCALE_IP }}' \
-          'REDIS_PORT=6379' \
-          'REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}' \
-          'DATA_SOURCE_HMAC_SECRET=${{ secrets.DATA_SOURCE_HMAC_SECRET }}' \
-          'DATA_SOURCE_ALLOWED_IPS=10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1' \
-          'QUANT_ENV=production' \
-          'TZ=${{ matrix.tz }}' > ${{ matrix.env-file }}
+            # 动态生成节点 .env (覆盖写入，无需 VPS 预置)。
+            # ⚠️ 关键: 所有含特殊字符的密钥 (REDIS_PASSWORD / HMAC / TOKEN) 一律用双引号 + $ENV_VAR 引用，
+            #    绝不把 ${{ secrets.X }} 直接插值进 printf 的单引号字面量 —— 否则密码含单引号会破坏语法导致 heredoc 卡死。
+            printf "%s\n" \
+          "DS_NODE_ID=${{ matrix.ds-id }}" \
+          "DS_REGION=${{ matrix.ds-region }}" \
+          "DS_CAPABILITIES=${{ matrix.ds-caps }}" \
+          "DS_NODE_PORT=8000" \
+          "PUBLIC_IP=$NODE_TS_IP" \
+          "DS_BASE_URL=http://$NODE_TS_IP:8000" \
+          "YF_ROUTER_ENABLED=false" \
+          "REDIS_HOST=$MASTER_TS_IP" \
+          "REDIS_PORT=6379" \
+          "REDIS_PASSWORD=$REDIS_PWD" \
+          "DATA_SOURCE_HMAC_SECRET=$HMAC_SECRET" \
+          "DATA_SOURCE_ALLOWED_IPS=10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1" \
+          "QUANT_ENV=production" \
+          "TZ=$NODE_TZ" > ${{ matrix.env-file }}
 
             # 仅北京节点 (creds=true) 写入 Tushare / AKShare 凭证；其余纯 yfinance 节点跳过
-            if [ "${{ matrix.creds }}" = "true" ]; then
-              printf 'TUSHARE_TOKEN=%s\nAKSHARE_API_KEY=%s\nAKSHARE_MODE=internal\n' "${{ secrets.TUSHARE_TOKEN }}" "${{ secrets.AKSHARE_API_KEY }}" >> ${{ matrix.env-file }}
+            if [ "$WRITE_CREDS" = "true" ]; then
+              printf "TUSHARE_TOKEN=%s\nAKSHARE_API_KEY=%s\nAKSHARE_MODE=internal\n" "$TUSHARE_TOKEN" "$AKSHARE_API_KEY" >> ${{ matrix.env-file }}
             fi
 
-            curl -sSL -f -o ${{ matrix.compose }} "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/${{ matrix.compose }}" \
-              || { echo "❌ 拉取 ${{ matrix.compose }} 失败 (raw.githubusercontent 可能被墙)，中止避免用旧/空 compose 直连 GHCR"; exit 1; }
+            # compose 文件已由 CI runner 经 SSH 通道 scp 至本节点 (见 Deploy step)，
+            # 此处仅校验就位，不再直连 raw.githubusercontent (北京节点被墙会失败)。
+            if [ ! -s "${{ matrix.compose }}" ]; then
+              echo "❌ compose 文件 ${{ matrix.compose }} 缺失或为空 (SSH 中转失败?)，中止避免用旧/空 compose 直连 GHCR"
+              exit 1
+            fi
+            echo "✅ compose 文件已就位: ${{ matrix.compose }}"
             sed -i "s|ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest|${IMAGE}|g" ${{ matrix.compose }}
 
             # 🔍 镜像地址校验: 北京节点必须指向主节点内网 registry，否则会直连 GHCR 慢且可能拉不到
@@ -399,7 +420,9 @@ jobs:
               exit 1
             fi
 
-            docker compose -f ${{ matrix.compose }} --env-file ${{ matrix.env-file }} pull
+            # ⏱️ 拉取/启动加总超时保护，防止内网 registry 不通导致 docker compose pull 无限重试卡死 CI
+            timeout 600 docker compose -f ${{ matrix.compose }} --env-file ${{ matrix.env-file }} pull \
+              || { echo "❌ docker compose pull 超时或失败 (600s)，疑似主节点 registry 不可达或 Tailscale 未连通"; exit 1; }
             docker compose -f ${{ matrix.compose }} --env-file ${{ matrix.env-file }} up -d --remove-orphans
             docker image prune -f
           EOF
