@@ -317,6 +317,18 @@ jobs:
           WRITE_CREDS: ${{ matrix.creds }}
           NODE_TZ: ${{ matrix.tz }}
         run: |
+          # ── 中转 compose 文件: CI runner 已 checkout，直接经已建立的 SSH 通道 scp 到目标节点，
+          #    避免目标节点 (尤其北京) 直连 raw.githubusercontent 被墙导致拉取失败。
+          #    方向正确 (runner → 目标节点，复用同一把 SSH key)，零新增服务/端口。
+          scp -i "$RUNNER_TEMP/id_ed25519" \
+            -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+            -P "$VPS_PORT" \
+            "./${{ matrix.compose }}" \
+            "$VPS_USER@$VPS_HOST:/opt/quant-agent/${{ matrix.compose }}" \
+            || { echo "❌ 中转 compose 文件到目标节点失败 (scp 通道异常)"; exit 1; }
+          echo "✅ compose 文件已通过 SSH 通道中转至目标节点 /opt/quant-agent/${{ matrix.compose }}"
+
           ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<'EOF'
             set -e
             cd /opt/quant-agent
@@ -374,8 +386,13 @@ jobs:
               printf "TUSHARE_TOKEN=%s\nAKSHARE_API_KEY=%s\nAKSHARE_MODE=internal\n" "$TUSHARE_TOKEN" "$AKSHARE_API_KEY" >> ${{ matrix.env-file }}
             fi
 
-            curl -sSL --max-time 60 -f -o ${{ matrix.compose }} "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/${{ matrix.compose }}" \
-              || { echo "❌ 拉取 ${{ matrix.compose }} 失败 (raw.githubusercontent 可能被墙)，中止避免用旧/空 compose 直连 GHCR"; exit 1; }
+            # compose 文件已由 CI runner 经 SSH 通道 scp 至本节点 (见 Deploy step)，
+            # 此处仅校验就位，不再直连 raw.githubusercontent (北京节点被墙会失败)。
+            if [ ! -s "${{ matrix.compose }}" ]; then
+              echo "❌ compose 文件 ${{ matrix.compose }} 缺失或为空 (SSH 中转失败?)，中止避免用旧/空 compose 直连 GHCR"
+              exit 1
+            fi
+            echo "✅ compose 文件已就位: ${{ matrix.compose }}"
             sed -i "s|ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest|${IMAGE}|g" ${{ matrix.compose }}
 
             # 🔍 镜像地址校验: 北京节点必须指向主节点内网 registry，否则会直连 GHCR 慢且可能拉不到
