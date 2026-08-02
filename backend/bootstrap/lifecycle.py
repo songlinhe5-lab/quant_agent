@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from backend.core import models
 from backend.core.database import AsyncSessionLocal, SessionLocal, async_engine, engine
 from backend.core.redis_client import redis_client
-from backend.core.security import get_password_hash
+from backend.core.security import get_password_hash, verify_password
 from backend.services.ai_narrator.llm_service import llm_service
 from backend.services.alert.notification import notification_service
 from backend.services.futu import futu_service
