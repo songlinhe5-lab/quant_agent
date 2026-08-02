@@ -30,12 +30,12 @@ class TushareDataSource:
     """TushareService → DataSourceInterface 薄适配。"""
 
     _CATEGORY_MAP = {
-        "NO_TOKEN": ErrorCategory.UNKNOWN,
-        "RATE_LIMIT": ErrorCategory.RATE_LIMITED,
+        "NO_TOKEN": ErrorCategory.NORMAL,
+        "RATE_LIMIT": ErrorCategory.RATE_LIMIT,
         "QUOTA_EXHAUSTED": ErrorCategory.QUOTA_EXHAUSTED,
         "IP_BLOCKED": ErrorCategory.IP_BLOCKED,
-        "INIT_FAILED": ErrorCategory.UNKNOWN,
-        "NORMAL": ErrorCategory.UNKNOWN,
+        "INIT_FAILED": ErrorCategory.NORMAL,
+        "NORMAL": ErrorCategory.NORMAL,
     }
 
     def __init__(self, service: Any = None) -> None:
@@ -109,7 +109,7 @@ class TushareDataSource:
             return Result.make_success(raw.get("data"), source=self.name)
         msg = raw.get("message", "tushare fetch failed")
         cat = raw.get("category", "NORMAL")
-        err_cat = self._CATEGORY_MAP.get(cat, ErrorCategory.UNKNOWN)
+        err_cat = self._CATEGORY_MAP.get(cat, ErrorCategory.NORMAL)
         # 权限/配额/限流类不可重试；网络/正常失败可重试
         retryable = cat not in ("NO_TOKEN", "QUOTA_EXHAUSTED", "IP_BLOCKED")
         err = ErrorInfo(
