@@ -4,6 +4,7 @@ Futu 期权与资金流处理模块
 """
 
 import asyncio
+import logging
 import time
 from typing import Any, Dict
 
@@ -16,6 +17,8 @@ from backend.core.utils import safe_float
 
 from .cache_manager import CacheManager
 from .quote_handler import _execute_unsubscriptions
+
+logger = logging.getLogger(__name__)
 
 
 class OptionFundHandler:
@@ -45,12 +48,21 @@ class OptionFundHandler:
         if cached and now - cached[0] < 3600.0:
             return cached[1]
 
-        # 未连接真实数据源：明确返回错误告警，绝不用 Mock 填充 (VIBE-CODING)
+        # 未连接真实数据源：先尝试惰性自愈重连一次 (BE-ARCH)
+        # 根因：web 进程 FutuService 单例可能在启动过早/OpenD 未就绪时 connect 失败，
+        # 之后无主动重连，导致 option-chain 永久假死（quote 走 FutuAdapter 不受影响）。
+        # 容器内 127.0.0.1:11111 已验证可达，重连应可成功。
         if self.conn_mgr.status != "CONNECTED":
-            return {
-                "status": "error",
-                "message": "数据源已死，无法分析：期权链数据源不可用（Futu OpenD 未连接）",
-            }
+            logger.warning(f"[OptionFundHandler] conn_mgr.status={self.conn_mgr.status}，尝试惰性自愈重连 OpenD")
+            try:
+                await asyncio.to_thread(self.conn_mgr.connect)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[OptionFundHandler] 惰性重连异常: {e}")
+            if self.conn_mgr.status != "CONNECTED":
+                return {
+                    "status": "error",
+                    "message": "数据源已死，无法分析：期权链数据源不可用（Futu OpenD 未连接）",
+                }
 
         if not self.conn_mgr.quote_ctx:
             return {"status": "error", "message": "FutuService 未连接"}
@@ -60,6 +72,10 @@ class OptionFundHandler:
                 self.conn_mgr.quote_ctx.get_option_expiration_date, market_ticker
             )
             if ret != RET_OK or not isinstance(raw_date_data, pd.DataFrame) or raw_date_data.empty:  # noqa: E501
+                logger.warning(
+                    f"[OptionFundHandler] get_option_expiration_date 失败: ticker={market_ticker} "
+                    f"ret={ret} data={str(raw_date_data)[:300]}"
+                )
                 return {
                     "status": "error",
                     "message": f"无法获取到期日列表: {raw_date_data}",
@@ -73,6 +89,10 @@ class OptionFundHandler:
             end=expiration_date,
         )
         if ret != RET_OK or not isinstance(chain_data, pd.DataFrame) or chain_data.empty:  # noqa: E501
+            logger.warning(
+                f"[OptionFundHandler] get_option_chain 失败: ticker={market_ticker} "
+                f"expiration={expiration_date} ret={ret} data={str(chain_data)[:300]}"
+            )
             return {"status": "error", "message": f"期权链获取失败: {chain_data}"}
 
         result = self.cache_mgr.compress_chain_data(chain_data, expiration_date)
