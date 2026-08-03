@@ -31,6 +31,8 @@ MarketDataService - 市场行情应用服务层
 └─────────────────────────────────────┘
 """
 
+import logging
+import time
 from typing import List, Optional
 
 from backend.adapters.ports.data_source_port import DataSourceResult
@@ -40,6 +42,8 @@ from ..adapters.akshare.akshare_adapter import AkShareAdapter
 from ..adapters.futu.futu_adapter import FutuAdapter
 from ..adapters.yfinance.yfinance_adapter import YFinanceAdapter
 from ..services.tushare.adapter import ensure_tushare_registered
+
+logger = logging.getLogger("quant_agent.market_data")
 
 
 class MarketDataService:
@@ -110,6 +114,35 @@ class MarketDataService:
             "history": [self._tushare, self._akshare, self._yfinance],
         }
 
+        # Futu 懒连接冷却时间戳（详见 _ensure_futu_connected）
+        self._futu_last_connect_attempt = 0.0
+
+    # ========== 辅助方法：Futu 懒连接 ==========
+
+    def _ensure_futu_connected(self) -> bool:
+        """
+        量化_app 进程内的 FutuAdapter 实例默认未主动 connect()
+        （worker 的 futu_service 是另一个独立实例，已自建连）。
+        首次走 Futu 数据源前懒连接一次；连上则 is_available=True，
+        连不上则保持 degraded，不影响 YFinance/AkShare 降级链。
+        带 60s 冷却，避免每次请求都触发 OpenD 重连。
+        """
+        if self._futu.is_available:
+            return True
+        now = time.time()
+        if now - self._futu_last_connect_attempt < 60.0:
+            return False
+        self._futu_last_connect_attempt = now
+        try:
+            self._futu.connect()
+            if self._futu.is_available:
+                logger.info("[MarketDataService] Futu 懒连接成功 (OpenD)")
+                return True
+            logger.warning("[MarketDataService] Futu 懒连接后仍未可用（OpenD 可能未启动）")
+        except Exception as e:
+            logger.warning(f"[MarketDataService] Futu 懒连接失败（将走降级）: {e}")
+        return False
+
     # ========== 核心方法：行情获取 ==========
 
     def get_quote(self, ticker: str) -> DataSourceResult:
@@ -136,6 +169,7 @@ class MarketDataService:
             ...     print(f"All data sources failed: {result.error}")
         """
         # Step 1: 优先尝试 Futu
+        self._ensure_futu_connected()
         if self._futu.is_available:
             result = fetch_via_breaker_sync("futu", self._futu.fetch, "quote", {"ticker": ticker})
             if result.is_success():
@@ -216,6 +250,7 @@ class MarketDataService:
             params["end_date"] = end_date
 
         # 优先尝试 Futu
+        self._ensure_futu_connected()
         if self._futu.is_available:
             if self._futu.supports_action("history"):
                 result = fetch_via_breaker_sync("futu", self._futu.fetch, "history", params)
@@ -280,6 +315,7 @@ class MarketDataService:
             DataSourceResult: {"data": FundFlowData}
         """
         # 尝试 Futu (如果支持 fund_flow 能力)
+        self._ensure_futu_connected()
         if self._futu.is_available and self._futu.supports_action("fund_flow"):
             return fetch_via_breaker_sync("futu", self._futu.fetch, "fund_flow", {"ticker": ticker})
 
@@ -303,6 +339,7 @@ class MarketDataService:
             DataSourceResult: {"data": OptionChain}
         """
         # 目前仅限 Futu (港股期权支持)
+        self._ensure_futu_connected()
         if self._futu.is_available and self._futu.supports_action("option_chain"):
             params = {"underlying_ticker": underlying_ticker}
             if expire_date:
