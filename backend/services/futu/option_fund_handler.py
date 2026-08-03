@@ -48,12 +48,21 @@ class OptionFundHandler:
         if cached and now - cached[0] < 3600.0:
             return cached[1]
 
-        # 未连接真实数据源：明确返回错误告警，绝不用 Mock 填充 (VIBE-CODING)
+        # 未连接真实数据源：先尝试惰性自愈重连一次 (BE-ARCH)
+        # 根因：web 进程 FutuService 单例可能在启动过早/OpenD 未就绪时 connect 失败，
+        # 之后无主动重连，导致 option-chain 永久假死（quote 走 FutuAdapter 不受影响）。
+        # 容器内 127.0.0.1:11111 已验证可达，重连应可成功。
         if self.conn_mgr.status != "CONNECTED":
-            return {
-                "status": "error",
-                "message": "数据源已死，无法分析：期权链数据源不可用（Futu OpenD 未连接）",
-            }
+            logger.warning(f"[OptionFundHandler] conn_mgr.status={self.conn_mgr.status}，尝试惰性自愈重连 OpenD")
+            try:
+                await asyncio.to_thread(self.conn_mgr.connect)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[OptionFundHandler] 惰性重连异常: {e}")
+            if self.conn_mgr.status != "CONNECTED":
+                return {
+                    "status": "error",
+                    "message": "数据源已死，无法分析：期权链数据源不可用（Futu OpenD 未连接）",
+                }
 
         if not self.conn_mgr.quote_ctx:
             return {"status": "error", "message": "FutuService 未连接"}
