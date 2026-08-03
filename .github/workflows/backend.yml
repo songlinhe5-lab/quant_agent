@@ -338,7 +338,15 @@ jobs:
             "./${{ matrix.compose }}" \
             "$VPS_USER@$VPS_HOST:/opt/quant-agent/${{ matrix.compose }}" \
             || { echo "❌ 中转 compose 文件到目标节点失败 (scp 通道异常)"; exit 1; }
-          echo "✅ compose 文件已通过 SSH 通道中转至目标节点 /opt/quant-agent/${{ matrix.compose }}"
+          # 同时中转 env 模板到节点 (作为 .env 生成基准，保持与仓库同源、版本一致)
+          scp -i "$RUNNER_TEMP/id_ed25519" \
+            -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+            -P "$VPS_PORT" \
+            "./.env.slave.example" \
+            "$VPS_USER@$VPS_HOST:/opt/quant-agent/.env.slave.example" \
+            || { echo "❌ 中转 env 模板到目标节点失败 (scp 通道异常)"; exit 1; }
+          echo "✅ compose 文件与 env 模板已通过 SSH 通道中转至目标节点 /opt/quant-agent/"
 
           ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<'EOF'
             set -e
@@ -373,28 +381,54 @@ jobs:
               echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             fi
 
-            # 动态生成节点 .env (覆盖写入，无需 VPS 预置)。
-            # ⚠️ 关键: 所有含特殊字符的密钥 (REDIS_PASSWORD / HMAC / TOKEN) 一律用双引号 + $ENV_VAR 引用，
-            #    绝不把 ${{ secrets.X }} 直接插值进 printf 的单引号字面量 —— 否则密码含单引号会破坏语法导致 heredoc 卡死。
-            printf "%s\n" \
-          "DS_NODE_ID=${{ matrix.ds-id }}" \
-          "DS_REGION=${{ matrix.ds-region }}" \
-          "DS_CAPABILITIES=${{ matrix.ds-caps }}" \
-          "DS_NODE_PORT=8000" \
-          "PUBLIC_IP=$NODE_TS_IP" \
-          "DS_BASE_URL=http://$NODE_TS_IP:8000" \
-          "YF_ROUTER_ENABLED=false" \
-          "REDIS_HOST=$MASTER_TS_IP" \
-          "REDIS_PORT=6379" \
-          "REDIS_PASSWORD=$REDIS_PWD" \
-          "DATA_SOURCE_HMAC_SECRET=$HMAC_SECRET" \
-          "DATA_SOURCE_ALLOWED_IPS=10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1" \
-          "QUANT_ENV=production" \
-          "TZ=$NODE_TZ" > ${{ matrix.env-file }}
+            # ╔══════════════════════════════════════════════════════════════╗
+            # ║ 基于仓库 .env.slave.example 模板生成节点 .env                  ║
+            # ║ 原则: 不预置则首次 cp 模板生成；已存在则完全跳过，CI 不触碰。  ║
+            # ╚══════════════════════════════════════════════════════════════╝
+            if [ ! -f "${{ matrix.env-file }}" ]; then
+              if [ -f .env.slave.example ]; then
+                cp .env.slave.example ${{ matrix.env-file }}
+                echo "🆕 未检测到 ${{ matrix.env-file }}，基于 .env.slave.example 首次生成"
+              else
+                echo "❌ 节点缺少 .env.slave.example 模板 (scp 中转失败?)，无法生成 ${{ matrix.env-file }}"
+                exit 1
+              fi
+            else
+              echo "🛡️ 检测到已存在的 ${{ matrix.env-file }}，完全保留人工配置，CI 不触碰 (跳过生成与回填)"
+            fi
 
-            # 仅北京节点 (creds=true) 写入 Tushare / AKShare 凭证；其余纯 yfinance 节点跳过
-            if [ "$WRITE_CREDS" = "true" ]; then
-              printf "TUSHARE_TOKEN=%s\nAKSHARE_API_KEY=%s\nAKSHARE_MODE=internal\n" "$TUSHARE_TOKEN" "$AKSHARE_API_KEY" >> ${{ matrix.env-file }}
+            # 仅对"刚由模板 cp 生成的 .env"回填 Secrets 真实值 (同一 ssh 会话原子操作，无竞态)。
+            # 判定依据: 文件仍含模板占位符 (形如 DS_NODE_ID=<...>)。人工维护过的 .env 不含占位符，跳过。
+            if grep -q '^DS_NODE_ID=<' ${{ matrix.env-file }} 2>/dev/null; then
+              echo "🔧 回填 Secrets 到新建 .env 占位符..."
+              sed -i "s|^DS_NODE_ID=.*|DS_NODE_ID=${{ matrix.ds-id }}|" ${{ matrix.env-file }}
+              sed -i "s|^DS_REGION=.*|DS_REGION=${{ matrix.ds-region }}|" ${{ matrix.env-file }}
+              sed -i "s|^DS_CAPABILITIES=.*|DS_CAPABILITIES=${{ matrix.ds-caps }}|" ${{ matrix.env-file }}
+              sed -i "s|^DS_NODE_PORT=.*|DS_NODE_PORT=8000|" ${{ matrix.env-file }}
+              sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=$NODE_TS_IP|" ${{ matrix.env-file }}
+              sed -i "s|^DS_BASE_URL=.*|DS_BASE_URL=http://$NODE_TS_IP:8000|" ${{ matrix.env-file }}
+              sed -i "s|^YF_ROUTER_ENABLED=.*|YF_ROUTER_ENABLED=false|" ${{ matrix.env-file }}
+              sed -i "s|^REDIS_HOST=.*|REDIS_HOST=$MASTER_TS_IP|" ${{ matrix.env-file }}
+              sed -i "s|^REDIS_PORT=.*|REDIS_PORT=6379|" ${{ matrix.env-file }}
+              sed -i "s|^REDIS_PASSWORD=.*|REDIS_PASSWORD=$REDIS_PWD|" ${{ matrix.env-file }}
+              sed -i "s|^DATA_SOURCE_HMAC_SECRET=.*|DATA_SOURCE_HMAC_SECRET=$HMAC_SECRET|" ${{ matrix.env-file }}
+              sed -i "s|^DATA_SOURCE_ALLOWED_IPS=.*|DATA_SOURCE_ALLOWED_IPS=10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1|" ${{ matrix.env-file }}
+              sed -i "s|^QUANT_ENV=.*|QUANT_ENV=production|" ${{ matrix.env-file }}
+              sed -i "s|^TZ=.*|TZ=$NODE_TZ|" ${{ matrix.env-file }}
+
+              # 仅北京节点 (creds=true) 回填 Tushare / AKShare 凭证；其余纯 yfinance 节点直接移除这两行占位符
+              if [ "$WRITE_CREDS" = "true" ]; then
+                sed -i "s|^TUSHARE_TOKEN=.*|TUSHARE_TOKEN=$TUSHARE_TOKEN|" ${{ matrix.env-file }}
+                sed -i "s|^AKSHARE_API_KEY=.*|AKSHARE_API_KEY=$AKSHARE_API_KEY|" ${{ matrix.env-file }}
+                sed -i "s|^AKSHARE_MODE=.*|AKSHARE_MODE=internal|" ${{ matrix.env-file }}
+              else
+                sed -i "/^TUSHARE_TOKEN=.*/d" ${{ matrix.env-file }}
+                sed -i "/^AKSHARE_API_KEY=.*/d" ${{ matrix.env-file }}
+                sed -i "/^AKSHARE_MODE=.*/d" ${{ matrix.env-file }}
+              fi
+              echo "✅ 新建 .env 已由 Secrets 回填完成"
+            else
+              echo "🛡️ ${{ matrix.env-file }} 不含模板占位符 (疑似人工维护或已回填)，跳过回填以保护现场配置"
             fi
 
             # compose 文件已由 CI runner 经 SSH 通道 scp 至本节点 (见 Deploy step)，
