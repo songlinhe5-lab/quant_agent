@@ -139,13 +139,16 @@ class FutuDataSource:
         if isinstance(data, dict) and data.get("status") == "success":
             return Result.make_success(data.get("data"), source=self.name)
         msg = (data.get("message") if isinstance(data, dict) else "") or "futu fetch failed"
+        # 期权链(option-chain)在 Futu 侧偶发失败不应熔断整个 futu 数据源
+        # (quote/history 等其它能力仍正常)，故标记为非重试类错误，避免计入熔断器。
+        option_chain_non_retryable = action == "OPTION_CHAIN"
         if any(x in msg for x in ("429", "限流", "Rate limit", "Too Many", "403")):
             return Result.make_rate_limited(
                 ErrorInfo.rate_limited(code="FUTU_RATE_LIMIT", message=msg),
                 source=self.name,
             )
         return Result.make_error(
-            ErrorInfo.normal("FUTU_FETCH_FAILED", msg, retryable=True),
+            ErrorInfo.normal("FUTU_FETCH_FAILED", msg, retryable=not option_chain_non_retryable),
             source=self.name,
         )
 
