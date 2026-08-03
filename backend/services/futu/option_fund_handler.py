@@ -8,8 +8,6 @@ import logging
 import time
 from typing import Any, Dict
 
-logger = logging.getLogger(__name__)
-
 import pandas as pd
 from futu import RET_OK, SortField, SubType, WarrantRequest
 
@@ -19,6 +17,8 @@ from backend.core.utils import safe_float
 
 from .cache_manager import CacheManager
 from .quote_handler import _execute_unsubscriptions
+
+logger = logging.getLogger(__name__)
 
 
 class OptionFundHandler:
