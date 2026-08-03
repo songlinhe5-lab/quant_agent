@@ -510,15 +510,23 @@ class FutuAdapter(DataSourcePort):
     # ---- 代码/周期归一化 ----
 
     def _normalize_code(self, code: str) -> str:
-        """将多种代码格式统一为 Futu 标准 (HK.00700 / US.AAPL)。"""
-        if not code or "." not in code:
+        """将多种代码格式统一为 Futu 标准 (HK.00700 / US.AAPL)。
+
+        - 已带合法前缀 (HK./US./SH./SZ.) 原样返回
+        - 错位点号 (如 AAPL.US) 翻转成 US.AAPL
+        - 裸代码 (如 AAPL) 默认补 US. 前缀（期权主场景为美股）
+        """
+        if not code:
             return code
+        if "." not in code:
+            return f"US.{code}"
         head, tail = code.split(".", 1)
         if head in self._PREFIXES:
             return code
         if tail in self._PREFIXES:
             return f"{tail}.{head}"
-        return code
+        # 含点号但前后都不是已知前缀，按裸代码处理补 US.
+        return f"US.{code}"
 
     def _map_interval(self, interval: str) -> str:
         """将 interval 字符串映射为 Futu KLType 值。"""
@@ -647,6 +655,8 @@ class FutuAdapter(DataSourcePort):
         underlying_ticker = params.get("underlying_ticker")
         if not underlying_ticker:
             return {"success": False, "message": "Missing underlying_ticker parameter"}
+        # 归一化为 Futu 标准代码 (AAPL -> US.AAPL)，否则 futu 期权 API 不认裸代码
+        underlying_ticker = self._normalize_code(underlying_ticker)
 
         try:
             # 生产：Futu OpenD 已连接时调用真实接口（零幻觉, 仅真实数据, 禁止 Mock 兜底）
