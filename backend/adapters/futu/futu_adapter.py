@@ -461,6 +461,16 @@ class FutuAdapter(DataSourcePort):
                 pass
         self._connected = False
 
+    # ========== 公开生命周期方法 ==========
+
+    def connect(self) -> bool:
+        """
+        建立到 Futu OpenD 的连接 (公开入口)。
+        供应用层 (如 MarketDataService 懒连接) 在首次使用前触发，
+        也对齐 DataSourcePort 约定的连接生命周期。
+        """
+        return self._connect()
+
     # ========== 内部私有方法 ==========
 
     def _connect(self) -> bool:
