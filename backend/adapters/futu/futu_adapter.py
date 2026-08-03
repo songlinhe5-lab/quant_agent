@@ -493,8 +493,9 @@ class FutuAdapter(DataSourcePort):
                 self._ctx = OpenQuoteContext(host=self._host, port=self._port)
                 self._owns_ctx = True
 
-            # OpenQuoteContext 构造即建立连接；以连通性标记可用性
-            self._connected = bool(getattr(self._ctx, "is_connected", True))
+            # OpenQuoteContext 构造即建立连接（_init_connect_sync 成功即代表连通）。
+            # futu 10.x 已无 is_connected 属性，故以"构造未抛异常"作为连接成功依据。
+            self._connected = True
             if self._connected:
                 logger.info(f"[FutuAdapter] Connected to OpenD at {self._host}:{self._port}")
             else:  # pragma: no cover
@@ -650,8 +651,10 @@ class FutuAdapter(DataSourcePort):
         try:
             # 生产：Futu OpenD 已连接时调用真实接口（零幻觉, 仅真实数据, 禁止 Mock 兜底）
             ctx = self._ctx
-            connected = bool(getattr(ctx, "is_connected", False)) if ctx else False
-            if ctx is not None and connected:
+            # 注意：futu 10.x 的 OpenQuoteContext 已无 is_connected 属性，
+            # 必须以本适配器自身的 _connected 标志（connect 成功时置 True）为唯一真相来源，
+            # 切勿再用 getattr(ctx, "is_connected", ...) 做二次校验（默认 False 会误判未连接）。
+            if ctx is not None and self._connected:
                 expire_date = params.get("expire_date") or ""
                 if not expire_date and hasattr(ctx, "get_option_expiration_date"):
                     try:
