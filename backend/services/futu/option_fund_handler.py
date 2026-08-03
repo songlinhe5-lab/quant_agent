@@ -4,8 +4,11 @@ Futu 期权与资金流处理模块
 """
 
 import asyncio
+import logging
 import time
 from typing import Any, Dict
+
+logger = logging.getLogger(__name__)
 
 import pandas as pd
 from futu import RET_OK, SortField, SubType, WarrantRequest
@@ -60,6 +63,10 @@ class OptionFundHandler:
                 self.conn_mgr.quote_ctx.get_option_expiration_date, market_ticker
             )
             if ret != RET_OK or not isinstance(raw_date_data, pd.DataFrame) or raw_date_data.empty:  # noqa: E501
+                logger.warning(
+                    f"[OptionFundHandler] get_option_expiration_date 失败: ticker={market_ticker} "
+                    f"ret={ret} data={str(raw_date_data)[:300]}"
+                )
                 return {
                     "status": "error",
                     "message": f"无法获取到期日列表: {raw_date_data}",
@@ -73,6 +80,10 @@ class OptionFundHandler:
             end=expiration_date,
         )
         if ret != RET_OK or not isinstance(chain_data, pd.DataFrame) or chain_data.empty:  # noqa: E501
+            logger.warning(
+                f"[OptionFundHandler] get_option_chain 失败: ticker={market_ticker} "
+                f"expiration={expiration_date} ret={ret} data={str(chain_data)[:300]}"
+            )
             return {"status": "error", "message": f"期权链获取失败: {chain_data}"}
 
         result = self.cache_mgr.compress_chain_data(chain_data, expiration_date)
