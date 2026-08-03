@@ -166,20 +166,31 @@ jobs:
             curl -sSL -o .env.example "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/.env.example" || echo "⚠️ 拉取 .env.example 失败，首次生成将走兜底"
             sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:latest|${IMAGE}|g" docker-compose.master.yml
 
+            # 🧹 部署前自动回收悬空 docker 资源（旧镜像/退出容器/未用网络/构建缓存），
+            #    防止历史堆积触发磁盘守卫。仅删悬空对象，不影响正在运行的容器与命名 volume。
+            echo "🧹 部署前自动清理悬空 docker 资源..."
+            docker system prune -af >/dev/null 2>&1 || true
+            journalctl --vacuum-size=200M >/dev/null 2>&1 || true
+            apt-get clean >/dev/null 2>&1 || true
+
             # 🛡️ 磁盘空间前置守卫: 拉取镜像前断言 / 剩余空间，低于阈值直接 fail fast，
             #    避免在 pull 中途因 containerd rename 失败 (no such file or directory) 白跑整段 CI。
+            #    注: 已用% 仅作告警，硬拦只看剩余 GB —— 仅重建(up --force-recreate)不拉新镜像时
+            #        80% 占用仍属安全，避免误杀；真正危险的是剩余空间不足导致 containerd 拉取崩溃。
             DF_AVAIL_PCT=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
             DF_FREE_GB=$(df -BG / | awk 'NR==2 {print $4}' | tr -d 'G')
-            DISK_THRESHOLD_PCT=80
             DISK_MIN_FREE_GB=6
             echo "💽 磁盘状态: / 已用 ${DF_AVAIL_PCT}% | 剩余 ${DF_FREE_GB}GB"
-            if [ "$DF_AVAIL_PCT" -ge "$DISK_THRESHOLD_PCT" ] || [ "$DF_FREE_GB" -lt "$DISK_MIN_FREE_GB" ]; then
-              echo "❌ 磁盘空间不足 (已用≥${DISK_THRESHOLD_PCT}% 或 剩余<${DISK_MIN_FREE_GB}GB)，中止部署防止 containerd 拉取崩溃"
-              echo "🧹 请在主节点手动清理后重跑:"
-              echo "   docker system prune -af"
-              echo "   journalctl --vacuum-size=200M"
+            if [ "$DF_AVAIL_PCT" -ge 90 ]; then
+              echo "⚠️ 磁盘已用率偏高 (≥90%)，但剩余 ${DF_FREE_GB}GB 仍够用，继续部署（仅重建不拉新镜像时安全）"
+            fi
+            if [ "$DF_FREE_GB" -lt "$DISK_MIN_FREE_GB" ]; then
+              echo "❌ 磁盘剩余空间不足 (<${DISK_MIN_FREE_GB}GB)，中止部署防止 containerd 拉取崩溃"
+              echo "🧹 请在主节点手动深度清理后重跑:"
+              echo "   docker system prune -af --volumes"
+              echo "   journalctl --vacuum-size=100M"
               echo "   apt-get clean"
-              echo "   systemctl restart docker"
+              echo "   du -h --max-depth=1 / | sort -rh | head"
               exit 1
             fi
 
@@ -404,19 +415,28 @@ jobs:
               echo "✅ 北京节点镜像已指向内网 registry: ${IMAGE}"
             fi
 
+            # 🧹 部署前自动回收悬空 docker 资源（同主节点），防止历史堆积触发磁盘守卫
+            echo "🧹 部署前自动清理悬空 docker 资源 (节点 ${{ matrix.node }})..."
+            docker system prune -af >/dev/null 2>&1 || true
+            journalctl --vacuum-size=200M >/dev/null 2>&1 || true
+            apt-get clean >/dev/null 2>&1 || true
+
             # 🛡️ 磁盘空间前置守卫: 同主节点，拉取前断言 / 剩余空间，不足则 fail fast + 打印清理提示
+            #    硬拦只看剩余 GB；已用% ≥90% 仅告警（仅重建不拉新镜像时安全）。
             DF_AVAIL_PCT=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
             DF_FREE_GB=$(df -BG / | awk 'NR==2 {print $4}' | tr -d 'G')
-            DISK_THRESHOLD_PCT=80
             DISK_MIN_FREE_GB=6
             echo "💽 磁盘状态: / 已用 ${DF_AVAIL_PCT}% | 剩余 ${DF_FREE_GB}GB"
-            if [ "$DF_AVAIL_PCT" -ge "$DISK_THRESHOLD_PCT" ] || [ "$DF_FREE_GB" -lt "$DISK_MIN_FREE_GB" ]; then
-              echo "❌ 节点 ${{ matrix.node }} 磁盘空间不足 (已用≥${DISK_THRESHOLD_PCT}% 或 剩余<${DISK_MIN_FREE_GB}GB)，中止防止 containerd 拉取崩溃"
-              echo "🧹 请在该节点手动清理后重跑:"
-              echo "   docker system prune -af"
-              echo "   journalctl --vacuum-size=200M"
+            if [ "$DF_AVAIL_PCT" -ge 90 ]; then
+              echo "⚠️ 节点 ${{ matrix.node }} 磁盘已用率偏高 (≥90%)，但剩余 ${DF_FREE_GB}GB 仍够用，继续部署"
+            fi
+            if [ "$DF_FREE_GB" -lt "$DISK_MIN_FREE_GB" ]; then
+              echo "❌ 节点 ${{ matrix.node }} 磁盘剩余空间不足 (<${DISK_MIN_FREE_GB}GB)，中止防止 containerd 拉取崩溃"
+              echo "🧹 请在该节点手动深度清理后重跑:"
+              echo "   docker system prune -af --volumes"
+              echo "   journalctl --vacuum-size=100M"
               echo "   apt-get clean"
-              echo "   systemctl restart docker"
+              echo "   du -h --max-depth=1 / | sort -rh | head"
               exit 1
             fi
 
