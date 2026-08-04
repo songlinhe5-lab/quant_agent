@@ -149,6 +149,39 @@ CLIENT_WEB_VITAL_TTFB = Histogram(
 )
 
 # ==========================================
+#  数据源监控指标 (Phase 3)
+# ==========================================
+
+# 延迟分布直方图（按数据源）
+DATASOURCE_LATENCY = Histogram(
+    "quant_datasource_latency_milliseconds",
+    "数据源请求延迟分布（毫秒）",
+    ["source", "action"],
+    buckets=[50, 100, 150, 200, 250, 300, 500, 1000, 2000, float("inf")],
+)
+
+# 错误率计数器（按数据源）
+DATASOURCE_ERRORS = Counter(
+    "quant_datasource_errors_total",
+    "数据源错误总数",
+    ["source", "error_type"],  # error_type: rate_limit, timeout, network, circuit_open, etc.
+)
+
+# 限流计数器（按数据源）
+DATASOURCE_RATE_LIMITS = Counter(
+    "quant_datasource_rate_limits_total",
+    "数据源限流次数",
+    ["source", "category"],  # category: 429, 403, 402
+)
+
+# 可用性状态（按数据源）
+DATASOURCE_AVAILABILITY = Gauge(
+    "quant_datasource_availability",
+    "数据源可用性状态 (1=可用，0=不可用)",
+    ["source"],
+)
+
+# ==========================================
 #  Agent / LLM 指标
 # ==========================================
 

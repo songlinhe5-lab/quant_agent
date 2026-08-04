@@ -315,6 +315,110 @@ async def get_source_health(name: str) -> Dict[str, Any]:
     return await _build_health_card(name)
 
 
+@router.get("/{name}/latency-distribution")
+async def get_latency_distribution(name: str, hours: int = 24) -> Dict[str, Any]:
+    """
+    Phase 3 Module 2: 获取延迟分布数据（用于直方图）。
+
+    从 Redis 读取延迟样本，按桶分组统计。
+    返回直方图数据格式。
+    """
+    from backend.services.datasource.call_metrics_store import call_metrics
+
+    # 定义延迟桶边界（毫秒）
+    buckets = [
+        (0, 50, "0-50ms"),
+        (50, 100, "50-100ms"),
+        (100, 150, "100-150ms"),
+        (150, 200, "150-200ms"),
+        (200, 250, "200-250ms"),
+        (250, 300, "250-300ms"),
+        (300, 500, "300-500ms"),
+        (500, 1000, "500-1000ms"),
+        (1000, 2000, "1000-2000ms"),
+        (2000, float("inf"), "2000ms+"),
+    ]
+
+    # 获取延迟统计
+    stats = await call_metrics.get_latency_stats(name)
+
+    if stats["samples"] == 0:
+        return {
+            "source": name,
+            "buckets": [{"range": label, "count": 0} for _, _, label in buckets],
+            "total_samples": 0,
+            "avg_ms": None,
+            "p50_ms": None,
+            "p95_ms": None,
+        }
+
+    # 从 Redis 读取原始样本进行分桶统计
+    from backend.core.redis_client import redis_client
+    from backend.services.datasource.call_metrics_store import _latency_key, _local_date_key
+
+    date = _local_date_key()
+    key = _latency_key(name, date)
+    samples = await redis_client.lrange(key, 0, -1)
+    samples_float = [float(s) for s in samples]
+
+    # 按桶统计
+    bucket_counts = []
+    for lower, upper, label in buckets:
+        count = sum(1 for s in samples_float if lower <= s < upper)
+        bucket_counts.append({"range": label, "count": count})
+
+    return {
+        "source": name,
+        "buckets": bucket_counts,
+        "total_samples": len(samples_float),
+        "avg_ms": stats["avg_ms"],
+        "p50_ms": stats["p50_ms"],
+        "p95_ms": stats["p95_ms"],
+    }
+
+
+@router.get("/{name}/error-rate-trend")
+async def get_error_rate_trend(name: str, hours: int = 24) -> Dict[str, Any]:
+    """
+    Phase 3 Module 3: 获取错误率趋势数据（用于折线图）。
+
+    返回过去 N 小时的错误率时间序列。
+    """
+    from backend.services.datasource.call_metrics_store import call_metrics
+
+    trend_data = await call_metrics.get_error_rate_trend(name, hours)
+
+    return trend_data
+
+
+@router.get("/rate-limit-heatmap")
+async def get_rate_limit_heatmap(days: int = 7) -> Dict[str, Any]:
+    """
+    Phase 3 Module 4: 获取限流热力图数据。
+
+    返回过去 N 天多个数据源的限流情况。
+    """
+    from backend.services.datasource.call_metrics_store import call_metrics
+
+    heatmap_data = await call_metrics.get_rate_limit_heatmap(days=days)
+
+    return heatmap_data
+
+
+@router.get("/{name}/availability-timeline")
+async def get_availability_timeline(name: str, hours: int = 24) -> Dict[str, Any]:
+    """
+    Phase 3 Module 5: 获取可用性时间线数据。
+
+    返回过去 N 小时的可用性状态序列。
+    """
+    from backend.services.datasource.call_metrics_store import call_metrics
+
+    timeline_data = await call_metrics.get_availability_timeline(name, hours)
+
+    return timeline_data
+
+
 @router.post("/{name}/test-link")
 async def test_datasource_link(name: str) -> Dict[str, Any]:
     """

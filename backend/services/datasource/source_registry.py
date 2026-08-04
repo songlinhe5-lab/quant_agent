@@ -13,6 +13,12 @@ from typing import Any, Optional
 
 from backend.core.circuit_breaker import CircuitBreakerOpenError
 from backend.core.circuit_breaker_integration import fetch_via_breaker_async
+from backend.core.metrics import (
+    DATASOURCE_AVAILABILITY,
+    DATASOURCE_ERRORS,
+    DATASOURCE_LATENCY,
+    DATASOURCE_RATE_LIMITS,
+)
 
 from . import ErrorInfo, Result, ResultStatus
 from .call_metrics_store import call_metrics
@@ -161,21 +167,47 @@ class DataSourceRegistry:
             analyzer = rate_limit_registry.get_analyzer(source_name)
             analyzer.record_rate_limit(category=(result.error.category if result.error else None))
             await call_metrics.record_business(
-                source_name, "rate_limited", category=(result.error.category.value if result.error else None)
+                source_name,
+                "rate_limited",
+                category=(result.error.category.value if result.error else None),
+                latency_ms=result.latency_ms,  # ← 记录延迟
             )
+            # Phase 3: Prometheus 指标导出
+            DATASOURCE_LATENCY.labels(source=source_name, action=action).observe(result.latency_ms)
+            DATASOURCE_RATE_LIMITS.labels(
+                source=source_name,
+                category=result.error.category.value if result.error else "unknown",
+            ).inc()
+            DATASOURCE_ERRORS.labels(source=source_name, error_type="rate_limit").inc()
         elif result.is_success:
             if not getattr(result, "self_recorded", False):
                 throttler.on_success()
             analyzer = rate_limit_registry.get_analyzer(source_name)
             analyzer.record_success(latency_ms=result.latency_ms)
-            await call_metrics.record_business(source_name, "success")
+            await call_metrics.record_business(
+                source_name,
+                "success",
+                latency_ms=result.latency_ms,  # ← 记录延迟
+            )
+            # Phase 3: Prometheus 指标导出
+            DATASOURCE_LATENCY.labels(source=source_name, action=action).observe(result.latency_ms)
+            DATASOURCE_AVAILABILITY.labels(source=source_name).set(1)  # 标记为可用
         else:
             # 非限流错误: 计入健康统计但不触达退避恢复 (COMM-01)
             if not getattr(result, "self_recorded", False):
                 throttler.on_error()
             analyzer = rate_limit_registry.get_analyzer(source_name)
             analyzer.record_error(latency_ms=result.latency_ms)
-            await call_metrics.record_business(source_name, "error")
+            await call_metrics.record_business(
+                source_name,
+                "error",
+                latency_ms=result.latency_ms,  # ← 记录延迟
+            )
+            # Phase 3: Prometheus 指标导出
+            DATASOURCE_LATENCY.labels(source=source_name, action=action).observe(result.latency_ms)
+            error_type = "circuit_open" if "CIRCUIT_OPEN" in str(result.error) else "network"
+            DATASOURCE_ERRORS.labels(source=source_name, error_type=error_type).inc()
+            DATASOURCE_AVAILABILITY.labels(source=source_name).set(0)  # 标记为不可用
 
         return result
 

@@ -314,19 +314,22 @@ export function DataSourceHealthModule() {
                 <div className="rounded-md bg-muted/40 px-2 py-1.5">
                   <div className="text-[10px] text-muted-foreground">调用延迟</div>
                   <div className="text-sm font-medium text-foreground">
-                    {c.latency_ms ? `${c.latency_ms.toFixed(0)} ms` : '—'}
+                    {/* 当无延迟数据时显示 N/A，而非 0ms */}
+                    {c.latency_ms != null && c.latency_ms > 0 
+                      ? `${c.latency_ms.toFixed(0)} ms` 
+                      : 'N/A'}
                   </div>
                   {c.latency_samples && c.latency_samples > 0 ? (
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-1 text-[10px] text-muted-foreground">
-                      <span>均值 {c.latency_avg_ms != null ? c.latency_avg_ms.toFixed(0) : '—'}</span>
-                      <span>· P95 {c.latency_p95_ms != null ? c.latency_p95_ms.toFixed(0) : '—'}</span>
+                      <span>均值 {c.latency_avg_ms != null && c.latency_avg_ms > 0 ? c.latency_avg_ms.toFixed(0) : '—'}</span>
+                      <span>· P95 {c.latency_p95_ms != null && c.latency_p95_ms > 0 ? c.latency_p95_ms.toFixed(0) : '—'}</span>
                       <span>· n={c.latency_samples}</span>
                       <span className="inline-flex items-center gap-0.5 text-emerald-400">
-                        <CheckCircle2 className="h-2.5 w-2.5" />已验证
+                        <CheckCircle2 className="h-2.5 w-2.5" />Redis 持久化
                       </span>
                     </div>
                   ) : (
-                    <div className="mt-0.5 text-[10px] text-amber-400/80">未验证（无实测样本）</div>
+                    <div className="mt-0.5 text-[10px] text-amber-400/80">暂无延迟数据（等待业务调用）</div>
                   )}
                 </div>
                 <Metric label="今日调用" value={String(c.today_calls)} />
