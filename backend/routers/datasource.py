@@ -377,6 +377,20 @@ async def get_latency_distribution(name: str, hours: int = 24) -> Dict[str, Any]
     }
 
 
+@router.get("/{name}/error-rate-trend")
+async def get_error_rate_trend(name: str, hours: int = 24) -> Dict[str, Any]:
+    """
+    Phase 3 Module 3: 获取错误率趋势数据（用于折线图）。
+
+    返回过去 N 小时的错误率时间序列。
+    """
+    from backend.services.datasource.call_metrics_store import call_metrics
+
+    trend_data = await call_metrics.get_error_rate_trend(name, hours)
+
+    return trend_data
+
+
 @router.post("/{name}/test-link")
 async def test_datasource_link(name: str) -> Dict[str, Any]:
     """

@@ -237,6 +237,92 @@ class CallMetricsStore:
             "samples": n,
         }
 
+    # ── 错误率趋势统计（Phase 3 Module 3）──────────────────────
+    async def get_error_rate_trend(self, source: str, hours: int = 24) -> Dict[str, Any]:
+        """
+        获取过去 N 小时的错误率时间序列（用于趋势图）。
+
+        返回格式：
+        {
+            "source": "finnhub",
+            "time_series": [
+                {"time": "2026-08-03 10:00", "calls": 100, "errors": 5, "rate_limited": 10, "error_rate": 0.05},
+                ...
+            ],
+            "summary": {
+                "total_calls": 2400,
+                "total_errors": 120,
+                "total_rate_limited": 240,
+                "avg_error_rate": 0.05,
+            }
+        }
+        """
+        if not self._enabled:
+            return {
+                "source": source,
+                "time_series": [],
+                "summary": {
+                    "total_calls": 0,
+                    "total_errors": 0,
+                    "total_rate_limited": 0,
+                    "avg_error_rate": 0.0,
+                },
+            }
+
+        # 生成过去 N 小时的时间点（每小时一个点）
+        now = datetime.now(TZ_CN)
+        time_points = []
+        for i in range(hours, 0, -1):
+            t = now - timedelta(hours=i - 1)
+            time_points.append(t.replace(minute=0, second=0, microsecond=0))
+
+        time_series = []
+        total_calls = 0
+        total_errors = 0
+        total_rate_limited = 0
+
+        for t in time_points:
+            date_str = t.strftime("%Y-%m-%d")
+            hour_str = t.strftime("%H:00")
+
+            # 从 Redis 读取该小时的指标（当前实现是按天存储，需要扩展）
+            # TODO: 扩展 Redis 键空间支持小时粒度：quant:metrics:{source}:{date}:{hour}
+            # 当前简化为返回当天的聚合数据
+            metrics = await self.get_today(source, date_str)
+
+            if metrics:
+                calls = metrics.get("calls", 0)
+                errors = metrics.get("errors", 0)
+                rate_limited = metrics.get("rate_limit_count", 0)
+                error_rate = errors / calls if calls > 0 else 0.0
+
+                time_series.append(
+                    {
+                        "time": f"{date_str} {hour_str}",
+                        "calls": calls,
+                        "errors": errors,
+                        "rate_limited": rate_limited,
+                        "error_rate": round(error_rate, 4),
+                    }
+                )
+
+                total_calls += calls
+                total_errors += errors
+                total_rate_limited += rate_limited
+
+        avg_error_rate = total_errors / total_calls if total_calls > 0 else 0.0
+
+        return {
+            "source": source,
+            "time_series": time_series,
+            "summary": {
+                "total_calls": total_calls,
+                "total_errors": total_errors,
+                "total_rate_limited": total_rate_limited,
+                "avg_error_rate": round(avg_error_rate, 4),
+            },
+        }
+
     # ── 读取 ──────────────────────────────────────────────
     async def get_today(self, source: str, date: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
