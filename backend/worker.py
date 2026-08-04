@@ -32,7 +32,7 @@ IS_DATA_NODE = os.getenv("DATA_NODE", "false").lower() == "true"
 
 
 async def main():
-    node_role = "数据节点 (Data Node)" if IS_DATA_NODE else "主节点 (Master)"
+    node_role = "子服务节点 (Subservice Node)" if IS_DATA_NODE else "主节点 (Master)"
     print("\n=====================================================")
     print(f"  [Quant Worker] Role: {node_role}")
     print(f"  [Quant Worker] Collectors: {ENABLED_COLLECTORS}")
@@ -48,7 +48,7 @@ async def main():
     collector_tasks = await start_collector_daemons(ENABLED_COLLECTORS)
     tasks.extend(collector_tasks)
 
-    # 3. 后台服务任务 (数据节点不需要 DB 依赖的核心服务)
+    # 3. 后台服务任务 (子服务节点不需要 DB 依赖的核心服务)
     if not IS_DATA_NODE:
         from backend.services.macro.sentiment_tracker import sentiment_tracker
         from backend.services.screener.screener_service import screener_service
@@ -75,7 +75,7 @@ async def main():
         tasks.append(asyncio.create_task(market_briefing_scheduler_daemon()))
         print("  Core daemons started (ticker/sentiment/screener/paper_settlement/market_review/morning_briefing)")
     else:
-        print("  [Data Node] 跳过 DB 依赖服务 (ticker/sentiment/screener)")
+        print("  [Subservice Node] 跳过 DB 依赖服务 (ticker/sentiment/screener)")
 
     print(f"\n  All {len(tasks)} tasks running!")
     asyncio.create_task(notification_service.send_alert(f"[Worker] role={node_role} collectors={ENABLED_COLLECTORS}"))

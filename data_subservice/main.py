@@ -52,7 +52,7 @@ async def startup():
         await finnhub_worker.FinnhubWorker().start()
         await finnhub_worker.FinnhubWsClient().start()
 
-    logger.info("[DataSubservice] 心跳上报至主节点 Redis (REDIS_HOST=%s)", os.getenv("REDIS_HOST", "未配置"))
+    logger.info("[DataSubservice] 节点就绪，等待 HTTP API 请求")
 
 
 @app.on_event("shutdown")

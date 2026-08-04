@@ -406,10 +406,6 @@ jobs:
               sed -i "s|^DS_NODE_PORT=.*|DS_NODE_PORT=8000|" ${{ matrix.env-file }}
               sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=$NODE_TS_IP|" ${{ matrix.env-file }}
               sed -i "s|^DS_BASE_URL=.*|DS_BASE_URL=http://$NODE_TS_IP:8000|" ${{ matrix.env-file }}
-              sed -i "s|^YF_ROUTER_ENABLED=.*|YF_ROUTER_ENABLED=false|" ${{ matrix.env-file }}
-              sed -i "s|^REDIS_HOST=.*|REDIS_HOST=$MASTER_TS_IP|" ${{ matrix.env-file }}
-              sed -i "s|^REDIS_PORT=.*|REDIS_PORT=6379|" ${{ matrix.env-file }}
-              sed -i "s|^REDIS_PASSWORD=.*|REDIS_PASSWORD=$REDIS_PWD|" ${{ matrix.env-file }}
               sed -i "s|^DATA_SOURCE_HMAC_SECRET=.*|DATA_SOURCE_HMAC_SECRET=$HMAC_SECRET|" ${{ matrix.env-file }}
               sed -i "s|^DATA_SOURCE_ALLOWED_IPS=.*|DATA_SOURCE_ALLOWED_IPS=10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1|" ${{ matrix.env-file }}
               sed -i "s|^QUANT_ENV=.*|QUANT_ENV=production|" ${{ matrix.env-file }}
