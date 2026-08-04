@@ -425,6 +425,21 @@ class MarketDataGateway:
         return self._ak.get_health_status()
 
     async def get_economic_calendar_ak(self, *args: Any, **kwargs: Any) -> Any:
+        """经济日历 - 走路由器调用 AKShare（支持远程节点降级）"""
+        try:
+            from backend.services.datasource.router import data_source_router
+
+            # 通过路由器调用 AKShare（支持远程节点）
+            result = await data_source_router.fetch_akshare("economic_calendar", **kwargs)
+
+            if result.get("status") == "success":
+                return result.get("data")
+            else:
+                logger.warning(f"[AKShare] 路由器调用失败：{result.get('message')}，降级本地")
+        except Exception as e:
+            logger.warning(f"[AKShare] 路由器异常：{e}，降级本地")
+
+        # 降级：本地调用
         return await self._ak.get_economic_calendar(*args, **kwargs)
 
     async def get_southbound_flow(self) -> Any:
