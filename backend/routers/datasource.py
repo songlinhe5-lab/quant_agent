@@ -391,6 +391,20 @@ async def get_error_rate_trend(name: str, hours: int = 24) -> Dict[str, Any]:
     return trend_data
 
 
+@router.get("/rate-limit-heatmap")
+async def get_rate_limit_heatmap(days: int = 7) -> Dict[str, Any]:
+    """
+    Phase 3 Module 4: 获取限流热力图数据。
+
+    返回过去 N 天多个数据源的限流情况。
+    """
+    from backend.services.datasource.call_metrics_store import call_metrics
+
+    heatmap_data = await call_metrics.get_rate_limit_heatmap(days=days)
+
+    return heatmap_data
+
+
 @router.post("/{name}/test-link")
 async def test_datasource_link(name: str) -> Dict[str, Any]:
     """

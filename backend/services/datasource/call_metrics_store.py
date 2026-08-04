@@ -325,6 +325,66 @@ class CallMetricsStore:
             },
         }
 
+    # ── 限流热力图统计（Phase 3 Module 4）──────────────────────
+    async def get_rate_limit_heatmap(self, sources: Optional[list] = None, days: int = 7) -> Dict[str, Any]:
+        """
+        获取过去 N 天多个数据源的限流热力图数据。
+
+        返回格式：
+        {
+            "sources": ["finnhub", "yfinance"],
+            "days": 7,
+            "heatmap": [
+                {"source": "finnhub", "date": "2026-08-03", "rate_limited": 50, "rate": 0.05},
+                ...
+            ]
+        }
+        """
+        if not self._enabled:
+            return {
+                "sources": sources or [],
+                "days": days,
+                "heatmap": [],
+            }
+
+        # 如果没有指定数据源，使用所有已知数据源
+        if not sources:
+            # 从 Redis 扫描所有有指标的数据源
+            try:
+                keys = await redis_client.keys("quant:metrics:*:calls:*")
+                sources = list(set(k.split(":")[2] for k in keys if len(k.split(":")) >= 4))
+            except Exception:
+                sources = ["finnhub", "yfinance"]  # 默认数据源
+
+        now = datetime.now(TZ_CN)
+        heatmap = []
+
+        for source in sources:
+            for i in range(days, 0, -1):
+                date = (now - timedelta(days=i - 1)).strftime("%Y-%m-%d")
+                metrics = await self.get_today(source, date)
+
+                if metrics:
+                    calls = metrics.get("calls", 0)
+                    rate_limited = metrics.get("rate_limit_count", 0)
+                    rate = rate_limited / calls if calls > 0 else 0.0
+
+                    heatmap.append(
+                        {
+                            "source": source,
+                            "date": date,
+                            "rate_limited": rate_limited,
+                            "calls": calls,
+                            "rate": round(rate, 4),
+                        }
+                    )
+
+        return {
+            "sources": sources,
+            "days": days,
+            "heatmap": heatmap,
+        }
+
     # ── 读取 ──────────────────────────────────────────────
     async def get_today(self, source: str, date: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
