@@ -44,6 +44,10 @@ from backend.services.datasource import (
 _AK_STALE_PREFIX = "quant:akshare:stale"
 _AK_STALE_TTL = int(os.getenv("AKSHARE_STALE_TTL", "86400"))  # 默认 24h
 
+# 新增：AKShare 热点数据缓存配置（主节点统一缓存）
+_AK_CACHE_PREFIX = "quant:cache:akshare"
+_AK_CACHE_TTL = int(os.getenv("AKSHARE_CACHE_TTL", "1800"))  # 默认 30 分钟
+
 
 @dataclass
 class DataSourceNode:
@@ -396,6 +400,10 @@ class DataSourceRouter:
 
         remote_node = self._nodes.get("akshare_remote")
         if not self._enabled or not remote_node or remote_node.status != "healthy":
+            # 未启用路由器或远程节点不可用：先查缓存，再降级本地
+            cached = await self._get_akshare_cache(action, kwargs)
+            if cached:
+                return cached
             result = await self._call_local_akshare(action, akshare_service, **kwargs)
             # DIST-19: 本地也失败时，尝试 STALE 缓存降级
             if result.get("status") == "error":
@@ -403,9 +411,15 @@ class DataSourceRouter:
                 if stale:
                     return stale
             else:
-                # 成功时存档 STALE 缓存
+                # 成功时存档 STALE 缓存 + 热点缓存
                 await self._save_akshare_stale(action, kwargs, result)
+                await self._save_akshare_cache(action, kwargs, result)
             return result
+
+        # 优先从 Redis 缓存读取（热点数据，TTL=30 分钟）
+        cached = await self._get_akshare_cache(action, kwargs)
+        if cached:
+            return cached
 
         try:
             payload = {"action": action, "kwargs": kwargs}
@@ -415,12 +429,14 @@ class DataSourceRouter:
                 await self._update_node_status(remote_node.name, success=True)
                 # DIST-19: 成功响应存档，供 CN 断连时降级
                 await self._save_akshare_stale(action, kwargs, result)
+                # 新增：写入热点缓存（TTL=30 分钟）
+                await self._save_akshare_cache(action, kwargs, result)
                 return result
 
             await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
 
         except Exception as e:
-            logger.warning(f"[AKShare] 远程节点失败: {remote_node.name}, {action}, {str(e)}")
+            logger.warning(f"[AKShare] 远程节点失败：{remote_node.name}, {action}, {str(e)}")
             await self._update_node_status(remote_node.name, success=False, error=str(e))
 
         # DIST-19: 远程节点不可用，先尝试本地，再 STALE
@@ -432,6 +448,7 @@ class DataSourceRouter:
                 return stale
         else:
             await self._save_akshare_stale(action, kwargs, result)
+            await self._save_akshare_cache(action, kwargs, result)
         return result
 
     async def fetch_tushare(self, action: str, **params) -> Dict[str, Any]:
@@ -526,10 +543,42 @@ class DataSourceRouter:
                     DIST_AK_STALE_TOTAL.labels(action=action).inc()
                 except Exception:
                     pass
-                logger.warning(f"[AKShare] CN 断连，降级返回 STALE 缓存: {action}")
+                logger.warning(f"[AKShare] CN 断连，降级返回 STALE 缓存：{action}")
                 return data
         except Exception as e:
-            logger.debug(f"[AKShare] STALE 缓存读取失败: {e}")
+            logger.debug(f"[AKShare] STALE 缓存读取失败：{e}")
+        return None
+
+    # ─────────────────────────────────────────
+    #  新增：AKShare 热点数据缓存（主节点统一管理）
+    # ─────────────────────────────────────────
+
+    async def _save_akshare_cache(self, action: str, kwargs: dict, data: Dict[str, Any]) -> None:
+        """将 AKShare 成功响应写入 Redis 热点缓存（TTL=30 分钟）"""
+        try:
+            from backend.core.redis_client import redis_client
+
+            cache_key = f"{_AK_CACHE_PREFIX}:{action}:{hashlib.md5(json.dumps(kwargs, sort_keys=True).encode()).hexdigest()[:8]}"
+            await redis_client.set(cache_key, json.dumps(data, ensure_ascii=False), ex=_AK_CACHE_TTL)
+            logger.debug(f"[AKShare] 写入热点缓存：{cache_key}, TTL={_AK_CACHE_TTL}s")
+        except Exception as e:
+            logger.warning(f"[AKShare] 热点缓存写入失败：{e}")
+
+    async def _get_akshare_cache(self, action: str, kwargs: dict) -> Optional[Dict[str, Any]]:
+        """从 Redis 读取 AKShare 热点缓存，命中则直接返回（< 10ms）"""
+        try:
+            from backend.core.redis_client import redis_client
+
+            cache_key = f"{_AK_CACHE_PREFIX}:{action}:{hashlib.md5(json.dumps(kwargs, sort_keys=True).encode()).hexdigest()[:8]}"
+            cached = await redis_client.get(cache_key)
+            if cached:
+                data = json.loads(cached)
+                data["source"] = "cache"
+                data["cached"] = True
+                logger.info(f"[AKShare] 热点缓存命中：{cache_key}")
+                return data
+        except Exception as e:
+            logger.debug(f"[AKShare] 热点缓存读取失败：{e}")
         return None
 
     async def _call_local_akshare(self, action: str, akshare_service, **kwargs) -> Dict[str, Any]:
