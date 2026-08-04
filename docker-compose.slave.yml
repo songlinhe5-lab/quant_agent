@@ -1,14 +1,15 @@
 # =====================================================================
 # 北京从节点 (VPS_BJ · Tushare + AKShare + YFinance 数据源)
 # =====================================================================
-# 角色: 仅作为「数据源节点」运行 data_subservice，提供 A股 Tushare + 沪深港通 AKShare + YFinance。
+# 角色：仅作为「子服务节点」运行 data_subservice，提供 A 股 Tushare + 沪深港通 AKShare + YFinance 的 HTTP API。
 # 与主节点 (VPS_S1) 经 Tailscale 内网通信；不对公网暴露 8000。
+# 子服务节点不连接 Redis，所有缓存由主节点统一管理。
 # 禁止启用 Futu collector。
 #
-# 部署变量: VPS_BJ_HOST / VPS_BJ_SSH_KEY / VPS_BJ_USER
+# 部署变量：VPS_BJ_HOST / VPS_BJ_SSH_KEY / VPS_BJ_USER
 # 启动:
 #   cd /opt/quant-agent
-#   cp .env.slave.example .env   # 填入 TUSHARE_TOKEN / 主节点 Tailscale IP
+#   cp .env.data-node.example .env   # 填入 TUSHARE_TOKEN / Tailscale IP
 #   docker compose --env-file .env -f docker-compose.slave.yml up -d
 # =====================================================================
 
@@ -35,9 +36,6 @@ services:
       # 数据源凭证
       TUSHARE_TOKEN: ${TUSHARE_TOKEN}
       AKSHARE_MODE: ${AKSHARE_MODE:-internal}
-      # 仅连主节点 Redis (注册表/缓存中继)
-      REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT:-6379}
       # 主节点 DataSourceRouter 回调鉴权 (须与主节点 DATA_SOURCE_HMAC_SECRET 一致)
       DATA_SOURCE_HMAC_SECRET: ${DATA_SOURCE_HMAC_SECRET}
       DATA_SOURCE_ALLOWED_IPS: ${DATA_SOURCE_ALLOWED_IPS:-10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1}
