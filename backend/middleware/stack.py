@@ -37,10 +37,40 @@ _SKIP_TRANSFORM_PREFIXES = (
     "/mcp",
 )
 
-# 限流配置
-_is_dev = os.getenv("QUANT_ENV", "production") == "development"
-RATE_LIMIT = 1000 if _is_dev else 100
-RATE_WINDOW = 60
+# 限流配置 (ARCH-07: 分级限流协议)
+_IS_DEV = os.getenv("QUANT_ENV", "production") == "development"
+
+# Gateway 级别限流 (全局防御层)
+GATEWAY_RATE_LIMIT = 2000 if _IS_DEV else 200
+GATEWAY_RATE_WINDOW = 60
+
+# API 级别限流 (按接口细分，单位：req/window)
+API_SPECIFIC_LIMITS = {
+    "/api/v1/market/quote": (60, 60),  # Futu: 1req/sec (防限流)
+    "/api/v1/macro/calendar": (30, 60),  # 宏观日历：30req/min
+    "/api/v1/screener/screen": (20, 60),  # 筛选器：高成本操作
+    "/api/v1/chat/completions": (10, 60),  # AI 对话：低配额
+    "/api/v1/backtest/run": (5, 60),  # 回测引擎：极低配额
+}
+
+# 豁免路径 (Gateway 层跳过检查)
+SKIP_PATHS = (
+    "/assets",
+    "/monitor",
+    "/health",
+    "/metrics",
+    "/mcp",
+    "/openapi.json",
+    "/docs",
+    "/redoc",
+    "/api/v1/auth/login",
+    "/api/v1/auth/refresh",
+    "/api/v1/market/quotes/ws",
+    "/api/v1/macro/quotes/ws",
+    "/api/v1/oms/quotes/ws",
+    "/api/v1/chat/",
+    "/api/v1/sse/",
+)
 
 
 def register_middleware(app: FastAPI) -> None:
@@ -136,28 +166,51 @@ def register_middleware(app: FastAPI) -> None:
 
     @app.middleware("http")
     async def rate_limit_middleware(request: Request, call_next):
-        """全局 API 限流 (Redis 滑动窗口)"""
-        if not request.url.path.startswith("/assets") and request.url.path not in ["/", "/monitor", "/health"]:
-            client_ip = request.client.host if request.client else "unknown"
-            key = f"rate_limit:{client_ip}"
+        """分级限流中间件 (Gateway + API Specific)"""
+        path = request.url.path
 
-            try:
-                async with redis_client.pipeline() as pipe:
-                    await pipe.incr(key)
-                    await pipe.expire(key, RATE_WINDOW, nx=True)
-                    results = await pipe.execute()
+        # Step 1: 豁免路径直接放行 (Gateway 防御层)
+        if any(path.startswith(prefix) for prefix in SKIP_PATHS):
+            return await call_next(request)
 
-                current_requests = results[0]
-                if current_requests > RATE_LIMIT:
-                    return JSONResponse(
-                        status_code=429,
-                        content={
-                            "status": "error",
-                            "message": f"请求过于频繁，限制为 {RATE_LIMIT}次/{RATE_WINDOW}秒。",
-                        },
-                    )
-            except Exception as e:
-                print(f"⚠️ [Rate Limiter] Redis 限流器异常: {e}")
+        # Step 2: 尝试获取客户端 IP
+        client_ip = request.client.host if request.client else "unknown"
+
+        # Step 3: API 特定限流优先于 Gateway 限流
+        api_limit, api_window = None, None
+        for pattern, (limit, window) in API_SPECIFIC_LIMITS.items():
+            if path.startswith(pattern) or path.endswith(pattern.split("/")[-1]):
+                api_limit, api_window = limit, window
+                break
+
+        limit = api_limit if api_limit is not None else GATEWAY_RATE_LIMIT
+        window = api_window if api_window is not None else GATEWAY_RATE_WINDOW
+
+        # Step 4: 构建限流 Key (区分不同 API)
+        key = f"rate_limit:{path}:{client_ip}"
+
+        try:
+            async with redis_client.pipeline() as pipe:
+                await pipe.incr(key)
+                await pipe.expire(key, window, nx=True)
+                results = await pipe.execute()
+
+            current = results[0]
+            if current > limit:
+                return JSONResponse(
+                    status_code=429,
+                    content={
+                        "status": "error",
+                        "message": f"请求过于频繁，{path}接口限制为{limit}次/{window}秒。",
+                        "retry_after": window,
+                    },
+                )
+        except Exception as e:
+            # FAIL-SAFE: Redis 异常 → 拒绝非豁免请求 (防暴力攻击)
+            print(f"⚠️ [Rate Limiter] Redis 服务不可用，拒绝请求：{e}")
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=503, detail=f"限流服务不可用 ({path})，请检查 Redis 连接")
 
         return await call_next(request)
 
