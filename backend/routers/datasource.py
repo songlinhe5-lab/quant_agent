@@ -405,6 +405,20 @@ async def get_rate_limit_heatmap(days: int = 7) -> Dict[str, Any]:
     return heatmap_data
 
 
+@router.get("/{name}/availability-timeline")
+async def get_availability_timeline(name: str, hours: int = 24) -> Dict[str, Any]:
+    """
+    Phase 3 Module 5: 获取可用性时间线数据。
+
+    返回过去 N 小时的可用性状态序列。
+    """
+    from backend.services.datasource.call_metrics_store import call_metrics
+
+    timeline_data = await call_metrics.get_availability_timeline(name, hours)
+
+    return timeline_data
+
+
 @router.post("/{name}/test-link")
 async def test_datasource_link(name: str) -> Dict[str, Any]:
     """

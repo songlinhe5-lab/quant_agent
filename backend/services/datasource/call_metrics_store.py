@@ -385,6 +385,76 @@ class CallMetricsStore:
             "heatmap": heatmap,
         }
 
+    # ── 可用性时间线统计（Phase 3 Module 5）──────────────────────
+    async def get_availability_timeline(self, source: str, hours: int = 24) -> Dict[str, Any]:
+        """
+        获取过去 N 小时的可用性时间序列（用于时间线图）。
+
+        简化实现：基于错误率推断可用性
+        - 如果某小时有调用且错误率 < 50%，则认为可用（1）
+        - 如果某小时无调用或错误率 >= 50%，则认为不可用（0）
+
+        返回格式：
+        {
+            "source": "finnhub",
+            "timeline": [
+                {"time": "2026-08-03 10:00", "available": 1, "error_rate": 0.05},
+                ...
+            ],
+            "summary": {
+                "total_hours": 24,
+                "available_hours": 23,
+                "availability_rate": 0.9583,
+            }
+        }
+        """
+        if not self._enabled:
+            return {
+                "source": source,
+                "timeline": [],
+                "summary": {
+                    "total_hours": 0,
+                    "available_hours": 0,
+                    "availability_rate": 0.0,
+                },
+            }
+
+        # 复用错误率趋势数据
+        trend_data = await self.get_error_rate_trend(source, hours)
+
+        timeline = []
+        available_hours = 0
+
+        for point in trend_data["time_series"]:
+            # 基于错误率判断可用性
+            is_available = point["error_rate"] < 0.5 and point["calls"] > 0
+            availability = 1 if is_available else 0
+
+            if is_available:
+                available_hours += 1
+
+            timeline.append(
+                {
+                    "time": point["time"],
+                    "available": availability,
+                    "error_rate": point["error_rate"],
+                    "calls": point["calls"],
+                }
+            )
+
+        total_hours = len(timeline)
+        availability_rate = available_hours / total_hours if total_hours > 0 else 0.0
+
+        return {
+            "source": source,
+            "timeline": timeline,
+            "summary": {
+                "total_hours": total_hours,
+                "available_hours": available_hours,
+                "availability_rate": round(availability_rate, 4),
+            },
+        }
+
     # ── 读取 ──────────────────────────────────────────────
     async def get_today(self, source: str, date: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
