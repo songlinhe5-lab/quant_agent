@@ -379,7 +379,7 @@ groups:
 
       # DIST-21c: 所有 YF 节点宕机
       - uid: dist-yf-all-down
-        title: 所有 YF 数据节点宕机
+        title: 所有 YF 子服务节点宕机
         condition: C
         data:
           - refId: A
@@ -402,8 +402,8 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "所有 YF 数据节点宕机!"
-          description: "所有 YFinance 数据节点已宕机，YF 请求将全部降级到 STALE 缓存或返回错误"
+          summary: "所有 YF 子服务节点宕机!"
+          description: "所有 YFinance 子服务节点已宕机，YF 请求将全部降级到 STALE 缓存或返回错误"
 
       # DIST-21d: CN 节点断连
       - uid: dist-cn-node-down

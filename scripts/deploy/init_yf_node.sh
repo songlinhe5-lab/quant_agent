@@ -7,7 +7,7 @@
 #   NODE_ID=us-yf-a ./scripts/deploy/init_yf_node.sh
 #   NODE_ID=us-yf-b ./scripts/deploy/init_yf_node.sh
 #
-# 角色: US-YF-A / US-YF-B (YFinance 专用数据节点)
+# 角色：US-YF-A / US-YF-B (YFinance 专用子服务节点)
 # 架构: 仅运行 data_subservice，无 Redis/PG/API
 #
 # 前置条件:
