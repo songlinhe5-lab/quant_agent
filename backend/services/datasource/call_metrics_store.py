@@ -44,11 +44,13 @@ from __future__ import annotations
 import logging
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from backend.core.redis_client import redis_client
-from backend.core.timezone import TZ_CN
+
+# 定义中国时区（UTC+8）
+TZ_CN = timezone(timedelta(hours=8))
 
 logger = logging.getLogger(__name__)
 
