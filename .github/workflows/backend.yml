@@ -342,8 +342,8 @@ jobs:
             -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
             -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
             -P "$VPS_PORT" \
-            "./.env.slave.example" \
-            "$VPS_USER@$VPS_HOST:/opt/quant-agent/.env.slave.example" \
+            "./.env.data-node.example" \
+            "$VPS_USER@$VPS_HOST:/opt/quant-agent/.env.data-node.example" \
             || { echo "❌ 中转 env 模板到目标节点失败 (scp 通道异常)"; exit 1; }
           echo "✅ compose 文件与 env 模板已通过 SSH 通道中转至目标节点 /opt/quant-agent/"
 
@@ -381,15 +381,15 @@ jobs:
             fi
 
             # ╔══════════════════════════════════════════════════════════════╗
-            # ║ 基于仓库 .env.slave.example 模板生成节点 .env                  ║
-            # ║ 原则: 不预置则首次 cp 模板生成；已存在则完全跳过，CI 不触碰。  ║
+            # ║ 基于仓库 .env.data-node.example 模板生成节点 .env              ║
+            # ║ 原则：不预置则首次 cp 模板生成；已存在则完全跳过，CI 不触碰。  ║
             # ╚══════════════════════════════════════════════════════════════╝
-            if [ ! -f "${{ matrix.env-file }}" ]; then
-              if [ -f .env.slave.example ]; then
-                cp .env.slave.example ${{ matrix.env-file }}
-                echo "🆕 未检测到 ${{ matrix.env-file }}，基于 .env.slave.example 首次生成"
+            if [ ! -f "${{ matrix.env-file}}" ]; then
+              if [ -f .env.data-node.example ]; then
+                cp .env.data-node.example ${{ matrix.env-file }}
+                echo "🆕 未检测到 ${{ matrix.env-file }}，基于 .env.data-node.example 首次生成"
               else
-                echo "❌ 节点缺少 .env.slave.example 模板 (scp 中转失败?)，无法生成 ${{ matrix.env-file }}"
+                echo "❌ 节点缺少 .env.data-node.example 模板 (scp 中转失败?)，无法生成 ${{ matrix.env-file }}"
                 exit 1
               fi
             else
