@@ -16,6 +16,7 @@ Data Subservice — 路由层 (能力感知)
 """
 
 import hashlib
+import ipaddress
 import json
 import os
 import time
@@ -31,7 +32,22 @@ _HMAC_SECRET = os.getenv("DATA_SOURCE_HMAC_SECRET", "")
 _ALLOWED_IPS = os.getenv("DATA_SOURCE_ALLOWED_IPS", "")
 _RATE_LIMIT = os.getenv("DATA_SOURCE_RATE_LIMIT", "100/minute")
 
-_allowed_ip_set = {ip.strip() for ip in _ALLOWED_IPS.split(",") if ip.strip()} if _ALLOWED_IPS else set()
+# 解析允许的 IP 网段（支持 CIDR 格式）
+_allowed_networks = []
+if _ALLOWED_IPS:
+    for ip_or_cidr in _ALLOWED_IPS.split(","):
+        ip_or_cidr = ip_or_cidr.strip()
+        if not ip_or_cidr:
+            continue
+        try:
+            # 尝试解析为网络（支持 CIDR 如 100.64.0.0/10）
+            _allowed_networks.append(ipaddress.ip_network(ip_or_cidr, strict=False))
+        except ValueError:
+            # 如果不是有效网络，尝试作为单个 IP
+            try:
+                _allowed_networks.append(ipaddress.ip_network(f"{ip_or_cidr}/32", strict=False))
+            except ValueError:
+                pass  # 忽略无效的 IP 或网段
 
 _REPLAY_WINDOW = 300
 _request_timestamps: dict = {}
@@ -47,11 +63,20 @@ def set_capabilities(caps: list[str]) -> None:
 
 
 def _verify_ip(request: Request) -> bool:
-    if not _allowed_ip_set:
-        return True
+    """验证请求来源 IP 是否在白名单内（支持 CIDR 网段匹配）"""
+    if not _allowed_networks:
+        return True  # 未配置白名单，允许所有
     client_ip = request.client.host if request.client else ""
-    if client_ip in _allowed_ip_set:
-        return True
+    if not client_ip:
+        return False
+    try:
+        client_addr = ipaddress.ip_address(client_ip)
+        # 检查客户端 IP 是否在任一允许的网段内
+        for network in _allowed_networks:
+            if client_addr in network:
+                return True
+    except ValueError:
+        pass  # 无效的客户端 IP
     return False
 
 
