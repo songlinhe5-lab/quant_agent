@@ -249,11 +249,13 @@ async def _build_health_card(name: str) -> Dict[str, Any]:
     elif metrics["last_success_ts"] and (now - metrics["last_success_ts"] > _STALE_SECONDS):
         # 配好且可达，但近期无成功调用 → 空闲(未活跃)，不是断连
         status = "idle"
-    elif metrics["today_errors"] > 0 and metrics["today_success"] == 0:
+    elif metrics["today_errors"] > 0 and metrics["today_success"] == 0 and probe_calls == 0:
+        # 有错误且无任何调用（包括探针）才显示 error
         status = "error"
     elif metrics["last_request_ts"] == 0:
         status = "idle"
     else:
+        # 包括：测试连接成功但无业务调用的情况 → 显示为 healthy
         status = "healthy"
 
     return {
@@ -428,6 +430,21 @@ async def test_datasource_link(name: str) -> Dict[str, Any]:
     - 若数据源支持 quote action，发起一次真实轻量行情请求测量真实网络往返延迟
     - 将测量结果回写 analyzer，驱动「调用延迟数据验证」
     """
+    # 确保数据源适配器已注册（与 health-overview 保持一致）
+    from backend.services.datasource.adapters.akshare import ensure_akshare_registered
+    from backend.services.datasource.adapters.finnhub import ensure_finnhub_registered
+    from backend.services.datasource.adapters.futu import ensure_futu_registered
+    from backend.services.datasource.adapters.macro import ensure_macro_sources_registered
+    from backend.services.datasource.adapters.search import ensure_search_sources_registered
+    from backend.services.tushare.adapter import ensure_tushare_registered
+
+    ensure_macro_sources_registered()
+    ensure_futu_registered()
+    ensure_akshare_registered()
+    ensure_finnhub_registered()
+    ensure_search_sources_registered()
+    ensure_tushare_registered()
+
     source = datasource_registry.get(name)
     if source is None:
         raise HTTPException(status_code=404, detail=f"unknown source: {name}")
