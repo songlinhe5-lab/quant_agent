@@ -39,9 +39,10 @@ services:
     expose:
       - "8000"
     ports:
-      # 绑定 0.0.0.0 以便 Tailscale 内网其他节点访问
-      # 安全性由 Tailscale ACL 和 data_subservice 的 DATA_SOURCE_ALLOWED_IPS 控制
-      - "0.0.0.0:8000:8000"
+      # 绑定到 Tailscale 内网 IP (PUBLIC_IP)，仅允许内网访问
+      # PUBLIC_IP 在 .env 中配置，例如：PUBLIC_IP=100.x.x.x
+      # 如果 PUBLIC_IP 未配置，回退到 127.0.0.1（仅本机访问）
+      - "${PUBLIC_IP:-127.0.0.1}:8000:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ping').status==200 else 1)"]
       interval: 30s
