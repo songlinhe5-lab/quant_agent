@@ -1,13 +1,13 @@
 # =====================================================================
-# 美西从节点2 (VPS_S3 · 纯 YFinance 数据源)
+# 美西从节点 2 (VPS_S3 · 纯 YFinance 数据源)
 # =====================================================================
-# 角色: 仅作为「数据源节点」运行 data_subservice，提供 YFinance (美股/加密/外汇)。
-# 独立公网 IP 直连 Yahoo；心跳写主节点 Redis Registry。
-# 主节点 YFinanceRouter 经 Tailscale 内网调用本节点做负载均衡/容灾。
+# 角色：仅作为「子服务节点」运行 data_subservice，提供 YFinance (美股/加密/外汇) 的 HTTP API。
+# 独立公网 IP 直连 Yahoo；主节点 YFinanceRouter 经 Tailscale 内网调用本节点做负载均衡/容灾。
+# 子服务节点不连接 Redis，所有缓存由主节点统一管理。
 #
-# 部署变量: VPS_S3_HOST / VPS_S3_SSH_KEY / VPS_S3_USER
+# 部署变量：VPS_S3_HOST / VPS_S3_SSH_KEY / VPS_S3_USER
 # 启动:
-#   cp .env.yf-s3.example .env   # 填入 Redis / 主节点 HMAC
+#   cp .env.data-node.example .env   # 填入 Tailscale IP / 主节点 HMAC
 #   docker compose --env-file .env -f docker-compose.yf-node-s3.yml up -d
 # =====================================================================
 
@@ -30,11 +30,6 @@ services:
       DS_CAPABILITIES: "yfinance"
       DS_NODE_PORT: "8000"
       DS_BASE_URL: "${DS_BASE_URL:-http://${PUBLIC_IP}:8000}"
-      # YFinance 直连 Yahoo，不经过 Router
-      YF_ROUTER_ENABLED: "false"
-      REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT:-6379}
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
       DATA_SOURCE_HMAC_SECRET: ${DATA_SOURCE_HMAC_SECRET}
       DATA_SOURCE_ALLOWED_IPS: ${DATA_SOURCE_ALLOWED_IPS:-10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1}
     expose:
