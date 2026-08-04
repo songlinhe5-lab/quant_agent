@@ -405,15 +405,20 @@ jobs:
               sed -i "s|^DS_CAPABILITIES=.*|DS_CAPABILITIES=${{ matrix.ds-caps }}|" ${{ matrix.env-file }}
               sed -i "s|^DS_NODE_PORT=.*|DS_NODE_PORT=8000|" ${{ matrix.env-file }}
                           
-              # 验证 Tailscale IP 是否存在，如果不存在则回退到 0.0.0.0
+              # 验证 Tailscale IP 是否存在；不存在则 fail fast（不回退 0.0.0.0，禁止公网暴露）
               if ip addr show | grep -q "inet $NODE_TS_IP/"; then
                 echo "✅ Tailscale IP $NODE_TS_IP 存在，绑定到该 IP"
                 sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=$NODE_TS_IP|" ${{ matrix.env-file }}
                 sed -i "s|^DS_BASE_URL=.*|DS_BASE_URL=http://$NODE_TS_IP:8000|" ${{ matrix.env-file }}
               else
-                echo "⚠️ Tailscale IP $NODE_TS_IP 不存在，回退到 0.0.0.0"
-                sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=0.0.0.0|" ${{ matrix.env-file }}
-                sed -i "s|^DS_BASE_URL=.*|DS_BASE_URL=http://0.0.0.0:8000|" ${{ matrix.env-file }}
+                echo "❌ Tailscale IP $NODE_TS_IP 在宿主机不存在，无法绑定内网端口，中止部署"
+                echo "📋 当前宿主机 IP 列表:"
+                ip -4 addr show | grep inet || true
+                echo "🔧 请先在该节点配置/启动 Tailscale 后重试:"
+                echo "   sudo tailscale status   # 确认登录状态"
+                echo "   sudo tailscale up       # 若未运行则启动"
+                echo "   确认 Tailscale IP 与 Secrets 中 ${{ matrix.ts-ip-secret }} 一致"
+                exit 1
               fi
                           
               sed -i "s|^DATA_SOURCE_HMAC_SECRET=.*|DATA_SOURCE_HMAC_SECRET=$HMAC_SECRET|" ${{ matrix.env-file }}
@@ -439,22 +444,24 @@ jobs:
             # 🛡️ 部署前 PUBLIC_IP 有效性校验 (对所有节点生效，包括已存在的人工 .env):
             #    compose 端口绑定 ${PUBLIC_IP}:8000:8000，若该 IP 在宿主机不存在
             #    (Tailscale 未运行/IP 变更)，docker 会报 "cannot assign requested address"。
-            #    校验失败时自动修正: 优先回退到当前 Tailscale IP，否则 0.0.0.0。
+            #    校验失败时: 若 Secrets 的 Tailscale IP 在宿主机存在则自动修正，否则 fail fast。
             CURRENT_PUBLIC_IP=$(grep '^PUBLIC_IP=' ${{ matrix.env-file }} | head -1 | cut -d= -f2 | tr -d '[:space:]')
             if [ -n "$CURRENT_PUBLIC_IP" ] && [ "$CURRENT_PUBLIC_IP" != "0.0.0.0" ] && [ "$CURRENT_PUBLIC_IP" != "127.0.0.1" ]; then
-              if ! ip addr show | grep -q "inet $CURRENT_PUBLIC_IP/"; then
-                echo "⚠️ .env 中 PUBLIC_IP=$CURRENT_PUBLIC_IP 在宿主机不存在 (Tailscale 未运行或 IP 已变更)，自动修正"
-                if [ -n "$NODE_TS_IP" ] && ip addr show | grep -q "inet $NODE_TS_IP/"; then
-                  echo "🔧 修正 PUBLIC_IP 为当前 Tailscale IP: $NODE_TS_IP"
-                  sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=$NODE_TS_IP|" ${{ matrix.env-file }}
-                  sed -i "s|^DS_BASE_URL=.*|DS_BASE_URL=http://$NODE_TS_IP:8000|" ${{ matrix.env-file }}
-                else
-                  echo "🔧 无可用 Tailscale IP，修正 PUBLIC_IP 为 0.0.0.0 (请检查节点 Tailscale 状态)"
-                  sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=0.0.0.0|" ${{ matrix.env-file }}
-                  sed -i "s|^DS_BASE_URL=.*|DS_BASE_URL=http://0.0.0.0:8000|" ${{ matrix.env-file }}
-                fi
-              else
+              if ip addr show | grep -q "inet $CURRENT_PUBLIC_IP/"; then
                 echo "✅ PUBLIC_IP=$CURRENT_PUBLIC_IP 在宿主机存在，端口绑定校验通过"
+              elif [ -n "$NODE_TS_IP" ] && ip addr show | grep -q "inet $NODE_TS_IP/"; then
+                echo "⚠️ .env 中 PUBLIC_IP=$CURRENT_PUBLIC_IP 在宿主机不存在，自动修正为当前 Tailscale IP: $NODE_TS_IP"
+                sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=$NODE_TS_IP|" ${{ matrix.env-file }}
+                sed -i "s|^DS_BASE_URL=.*|DS_BASE_URL=http://$NODE_TS_IP:8000|" ${{ matrix.env-file }}
+              else
+                echo "❌ .env 中 PUBLIC_IP=$CURRENT_PUBLIC_IP 在宿主机不存在，且 Secrets Tailscale IP ($NODE_TS_IP) 也不存在，中止部署"
+                echo "📋 当前宿主机 IP 列表:"
+                ip -4 addr show | grep inet || true
+                echo "🔧 请先在该节点配置/启动 Tailscale 后重试:"
+                echo "   sudo tailscale status   # 确认登录状态"
+                echo "   sudo tailscale up       # 若未运行则启动"
+                echo "   若 Tailscale IP 已变更，请同步更新 Secrets 中 ${{ matrix.ts-ip-secret }}"
+                exit 1
               fi
             else
               echo "✅ PUBLIC_IP=${CURRENT_PUBLIC_IP:-<未配置, compose 回退 127.0.0.1>} 无需校验"
