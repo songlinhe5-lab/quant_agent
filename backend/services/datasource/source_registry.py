@@ -161,21 +161,32 @@ class DataSourceRegistry:
             analyzer = rate_limit_registry.get_analyzer(source_name)
             analyzer.record_rate_limit(category=(result.error.category if result.error else None))
             await call_metrics.record_business(
-                source_name, "rate_limited", category=(result.error.category.value if result.error else None)
+                source_name,
+                "rate_limited",
+                category=(result.error.category.value if result.error else None),
+                latency_ms=result.latency_ms,  # ← 记录延迟
             )
         elif result.is_success:
             if not getattr(result, "self_recorded", False):
                 throttler.on_success()
             analyzer = rate_limit_registry.get_analyzer(source_name)
             analyzer.record_success(latency_ms=result.latency_ms)
-            await call_metrics.record_business(source_name, "success")
+            await call_metrics.record_business(
+                source_name,
+                "success",
+                latency_ms=result.latency_ms,  # ← 记录延迟
+            )
         else:
             # 非限流错误: 计入健康统计但不触达退避恢复 (COMM-01)
             if not getattr(result, "self_recorded", False):
                 throttler.on_error()
             analyzer = rate_limit_registry.get_analyzer(source_name)
             analyzer.record_error(latency_ms=result.latency_ms)
-            await call_metrics.record_business(source_name, "error")
+            await call_metrics.record_business(
+                source_name,
+                "error",
+                latency_ms=result.latency_ms,  # ← 记录延迟
+            )
 
         return result
 

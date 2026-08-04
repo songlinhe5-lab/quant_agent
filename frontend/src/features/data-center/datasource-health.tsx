@@ -325,11 +325,11 @@ export function DataSourceHealthModule() {
                       <span>· P95 {c.latency_p95_ms != null && c.latency_p95_ms > 0 ? c.latency_p95_ms.toFixed(0) : '—'}</span>
                       <span>· n={c.latency_samples}</span>
                       <span className="inline-flex items-center gap-0.5 text-emerald-400">
-                        <CheckCircle2 className="h-2.5 w-2.5" />已验证
+                        <CheckCircle2 className="h-2.5 w-2.5" />Redis 持久化
                       </span>
                     </div>
                   ) : (
-                    <div className="mt-0.5 text-[10px] text-amber-400/80">未验证（无实测样本）</div>
+                    <div className="mt-0.5 text-[10px] text-amber-400/80">暂无延迟数据（等待业务调用）</div>
                   )}
                 </div>
                 <Metric label="今日调用" value={String(c.today_calls)} />

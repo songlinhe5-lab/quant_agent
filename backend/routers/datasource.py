@@ -216,6 +216,10 @@ async def _build_health_card(name: str) -> Dict[str, Any]:
         disp_rl_breakdown = metrics.get("today_rate_limits_by_category", {})
         probe_calls = None
         metric_source = "memory"
+
+    # 新增：获取 Redis 延迟统计（P50/P95/P99）
+    latency_stats = await call_metrics.get_latency_stats(name)
+
     mounted = datasource_registry.has(name)
     # 取首个 available 实例（is_available 已反映真实 key/连通），无则无法感知真实健康
     source = datasource_registry.get(name)
@@ -273,11 +277,12 @@ async def _build_health_card(name: str) -> Dict[str, Any]:
         "is_throttled": rl_status.is_throttled,
         "consecutive_rate_limits": rl_status.consecutive_rate_limits,
         "backoff_strategy": rl_status.backoff_strategy,
-        "latency_avg_ms": metrics["latency_avg_ms"],
-        "latency_p95_ms": metrics["latency_p95_ms"],
-        "latency_min_ms": metrics["latency_min_ms"],
-        "latency_max_ms": metrics["latency_max_ms"],
-        "latency_samples": metrics["latency_samples"],
+        # 使用 Redis 延迟统计（P50/P95/P99），而非内存口径
+        "latency_avg_ms": latency_stats.get("avg_ms"),
+        "latency_p95_ms": latency_stats.get("p95_ms"),
+        "latency_min_ms": latency_stats.get("min_ms"),
+        "latency_max_ms": latency_stats.get("max_ms"),
+        "latency_samples": latency_stats.get("samples", 0),
         "health_error": health_error,
     }
 
@@ -305,6 +310,22 @@ async def get_health_overview() -> Dict[str, Any]:
     names = datasource_registry.list_names()
     cards = await asyncio.gather(*[_build_health_card(n) for n in names])
     return {"sources": cards, "total": len(cards), "generated_at": time.time()}
+
+
+@router.get("/{name}/latency")
+async def get_datasource_latency(name: str) -> Dict[str, Any]:
+    """
+    获取数据源延迟统计（P50/P95/P99/avg/min/max）。
+
+    数据来源：Redis List 存储的延迟样本（按自然日分桶）。
+    用途：前端健康看板展示真实延迟分布。
+    """
+    stats = await call_metrics.get_latency_stats(name)
+    return {
+        "source": name,
+        "date": stats.get("date"),
+        "latency": stats,
+    }
 
 
 @router.get("/{name}/health")
