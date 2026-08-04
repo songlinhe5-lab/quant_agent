@@ -224,6 +224,110 @@ jobs:
           EOF
 
   # ----------------------------------------------------------------
+  # 部署北京 VPS backend (主应用，走内网 registry 中转)
+  # ----------------------------------------------------------------
+  deploy-beijing-backend:
+    # 仅在 push 到 main 分支时部署；依赖主节点部署完成（registry 镜像已就位）
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [ build, deploy-master ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup SSH
+        uses: ./.github/actions/ssh-preflight
+        with:
+          host: ${{ secrets.VPS_BJ_HOST }}
+
+      - name: Stage SSH key
+        run: |
+          printf '%s\n' "${{ secrets.VPS_BJ_SSH_KEY }}" > "$RUNNER_TEMP/id_ed25519"
+          chmod 600 "$RUNNER_TEMP/id_ed25519"
+
+      - name: Deploy Beijing backend
+        env:
+          VPS_HOST: ${{ secrets.VPS_BJ_HOST }}
+          VPS_USER: ${{ secrets.VPS_BJ_USER }}
+          VPS_PORT: ${{ secrets.VPS_BJ_PORT || '22' }}
+          MASTER_TS_IP: ${{ secrets.VPS_S1_TAILSCALE_IP }}
+          REDIS_PWD: ${{ secrets.REDIS_PASSWORD }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+        run: |
+          # 中转 compose 文件到北京 VPS
+          scp -i "$RUNNER_TEMP/id_ed25519" \
+            -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+            -P "$VPS_PORT" \
+            "./docker-compose.master.yml" \
+            "$VPS_USER@$VPS_HOST:/opt/quant-agent/docker-compose.master.yml" \
+            || { echo "❌ 中转 compose 文件失败"; exit 1; }
+          
+          scp -i "$RUNNER_TEMP/id_ed25519" \
+            -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+            -P "$VPS_PORT" \
+            "./.env.example" \
+            "$VPS_USER@$VPS_HOST:/opt/quant-agent/.env.example" \
+            || { echo "❌ 中转 env 模板失败"; exit 1; }
+          
+          echo "✅ compose 文件与 env 模板已中转至北京 VPS"
+
+          ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<'EOF'
+            set -e
+            cd /opt/quant-agent
+
+            # 生成 .env（首次）或保留已有配置
+            if [ ! -f .env ]; then
+              if [ -f .env.example ]; then
+                echo "🆕 首次生成 .env..."
+                cp .env.example .env
+              else
+                printf '%s\n' 'QUANT_ENV=production' > .env
+              fi
+              
+              # 注入 Tailscale IP
+              if [ -n "${{ secrets.VPS_BJ_TAILSCALE_IP }}" ]; then
+                if grep -q '^TAILSCALE_IP=' .env; then
+                  sed -i "s|^TAILSCALE_IP=.*|TAILSCALE_IP=${{ secrets.VPS_BJ_TAILSCALE_IP }}|" .env
+                else
+                  printf 'TAILSCALE_IP=%s\n' "${{ secrets.VPS_BJ_TAILSCALE_IP }}" >> .env
+                fi
+              fi
+              echo "✅ .env 已生成"
+            else
+              echo "🛡️ .env 已存在，保留人工配置"
+            fi
+
+            # 从主节点内网 registry 拉取镜像（走 Tailscale，速度快）
+            REGISTRY_IMAGE="${{ secrets.VPS_S1_TAILSCALE_IP }}:5000/quant-agent:latest"
+            echo "📥 从主节点 registry 拉取镜像：$REGISTRY_IMAGE"
+            
+            # 登录主节点 registry（内网，无需认证）
+            # 直接拉取（内网 registry 默认无认证）
+            timeout 600 docker pull "$REGISTRY_IMAGE" \
+              || { echo "❌ 从主节点 registry 拉取镜像失败 (600s 超时)"; exit 1; }
+            
+            # 替换 compose 文件中的镜像地址
+            sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:latest|${REGISTRY_IMAGE}|g" docker-compose.master.yml
+
+            # 清理悬空资源
+            echo "🧹 清理悬空 docker 资源..."
+            docker system prune -af >/dev/null 2>&1 || true
+
+            # 启动服务
+            echo "🚀 启动服务..."
+            docker compose -f docker-compose.master.yml --env-file .env pull
+            docker compose -f docker-compose.master.yml --env-file .env up -d --remove-orphans
+            
+            # 清理旧镜像
+            docker image prune -f
+
+            echo "✅ 北京 VPS backend 部署完成！"
+          EOF
+
+  # ----------------------------------------------------------------
   # 部署 4 个数据源从节点 (matrix)
   # 部署时由 CI 用仓库 Secrets 动态生成各节点 .env (无需 VPS 预置)
   # ----------------------------------------------------------------
