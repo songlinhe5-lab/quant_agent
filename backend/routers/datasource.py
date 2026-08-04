@@ -430,6 +430,21 @@ async def test_datasource_link(name: str) -> Dict[str, Any]:
     - 若数据源支持 quote action，发起一次真实轻量行情请求测量真实网络往返延迟
     - 将测量结果回写 analyzer，驱动「调用延迟数据验证」
     """
+    # 确保数据源适配器已注册（与 health-overview 保持一致）
+    from backend.services.datasource.adapters.akshare import ensure_akshare_registered
+    from backend.services.datasource.adapters.finnhub import ensure_finnhub_registered
+    from backend.services.datasource.adapters.futu import ensure_futu_registered
+    from backend.services.datasource.adapters.macro import ensure_macro_sources_registered
+    from backend.services.datasource.adapters.search import ensure_search_sources_registered
+    from backend.services.tushare.adapter import ensure_tushare_registered
+
+    ensure_macro_sources_registered()
+    ensure_futu_registered()
+    ensure_akshare_registered()
+    ensure_finnhub_registered()
+    ensure_search_sources_registered()
+    ensure_tushare_registered()
+
     source = datasource_registry.get(name)
     if source is None:
         raise HTTPException(status_code=404, detail=f"unknown source: {name}")
