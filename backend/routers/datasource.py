@@ -216,10 +216,6 @@ async def _build_health_card(name: str) -> Dict[str, Any]:
         disp_rl_breakdown = metrics.get("today_rate_limits_by_category", {})
         probe_calls = None
         metric_source = "memory"
-
-    # 新增：获取 Redis 延迟统计（P50/P95/P99）
-    latency_stats = await call_metrics.get_latency_stats(name)
-
     mounted = datasource_registry.has(name)
     # 取首个 available 实例（is_available 已反映真实 key/连通），无则无法感知真实健康
     source = datasource_registry.get(name)
@@ -277,12 +273,11 @@ async def _build_health_card(name: str) -> Dict[str, Any]:
         "is_throttled": rl_status.is_throttled,
         "consecutive_rate_limits": rl_status.consecutive_rate_limits,
         "backoff_strategy": rl_status.backoff_strategy,
-        # 使用 Redis 延迟统计（P50/P95/P99），而非内存口径
-        "latency_avg_ms": latency_stats.get("avg_ms"),
-        "latency_p95_ms": latency_stats.get("p95_ms"),
-        "latency_min_ms": latency_stats.get("min_ms"),
-        "latency_max_ms": latency_stats.get("max_ms"),
-        "latency_samples": latency_stats.get("samples", 0),
+        "latency_avg_ms": metrics["latency_avg_ms"],
+        "latency_p95_ms": metrics["latency_p95_ms"],
+        "latency_min_ms": metrics["latency_min_ms"],
+        "latency_max_ms": metrics["latency_max_ms"],
+        "latency_samples": metrics["latency_samples"],
         "health_error": health_error,
     }
 
@@ -312,28 +307,74 @@ async def get_health_overview() -> Dict[str, Any]:
     return {"sources": cards, "total": len(cards), "generated_at": time.time()}
 
 
-@router.get("/{name}/latency")
-async def get_datasource_latency(name: str) -> Dict[str, Any]:
-    """
-    获取数据源延迟统计（P50/P95/P99/avg/min/max）。
-
-    数据来源：Redis List 存储的延迟样本（按自然日分桶）。
-    用途：前端健康看板展示真实延迟分布。
-    """
-    stats = await call_metrics.get_latency_stats(name)
-    return {
-        "source": name,
-        "date": stats.get("date"),
-        "latency": stats,
-    }
-
-
 @router.get("/{name}/health")
 async def get_source_health(name: str) -> Dict[str, Any]:
     """COMM-01 单数据源健康详情。"""
     if not datasource_registry.has(name):
         raise HTTPException(status_code=404, detail=f"unknown source: {name}")
     return await _build_health_card(name)
+
+
+@router.get("/{name}/latency-distribution")
+async def get_latency_distribution(name: str, hours: int = 24) -> Dict[str, Any]:
+    """
+    Phase 3 Module 2: 获取延迟分布数据（用于直方图）。
+
+    从 Redis 读取延迟样本，按桶分组统计。
+    返回直方图数据格式。
+    """
+    from backend.services.datasource.call_metrics_store import call_metrics
+
+    # 定义延迟桶边界（毫秒）
+    buckets = [
+        (0, 50, "0-50ms"),
+        (50, 100, "50-100ms"),
+        (100, 150, "100-150ms"),
+        (150, 200, "150-200ms"),
+        (200, 250, "200-250ms"),
+        (250, 300, "250-300ms"),
+        (300, 500, "300-500ms"),
+        (500, 1000, "500-1000ms"),
+        (1000, 2000, "1000-2000ms"),
+        (2000, float("inf"), "2000ms+"),
+    ]
+
+    # 获取延迟统计
+    stats = await call_metrics.get_latency_stats(name)
+
+    if stats["samples"] == 0:
+        return {
+            "source": name,
+            "buckets": [{"range": label, "count": 0} for _, _, label in buckets],
+            "total_samples": 0,
+            "avg_ms": None,
+            "p50_ms": None,
+            "p95_ms": None,
+        }
+
+    # 从 Redis 读取原始样本进行分桶统计
+    from backend.core.redis_client import redis_client
+    from backend.services.datasource.call_metrics_store import _latency_key, _local_date_key
+
+    date = _local_date_key()
+    key = _latency_key(name, date)
+    samples = await redis_client.lrange(key, 0, -1)
+    samples_float = [float(s) for s in samples]
+
+    # 按桶统计
+    bucket_counts = []
+    for lower, upper, label in buckets:
+        count = sum(1 for s in samples_float if lower <= s < upper)
+        bucket_counts.append({"range": label, "count": count})
+
+    return {
+        "source": name,
+        "buckets": bucket_counts,
+        "total_samples": len(samples_float),
+        "avg_ms": stats["avg_ms"],
+        "p50_ms": stats["p50_ms"],
+        "p95_ms": stats["p95_ms"],
+    }
 
 
 @router.post("/{name}/test-link")
