@@ -215,6 +215,25 @@ jobs:
               || { echo "❌ data-subservice 推送到本机 registry 失败 (磁盘/containerd 问题?)，中止避免北京节点拉到空镜像"; exit 1; }
             echo "✅ data-subservice 已推送至本机 registry (push 成功即镜像就位，北京节点可经内网拉取)"
 
+            # ── 主节点本地子服务 (node-s1)：与 quant-agent 同机，监听 8001，主服务经 127.0.0.1:8001 直连 ──
+            # 复用已拉取的 data-subservice 镜像 (DS_IMAGE 已在上方 pull 就位)
+            if [ ! -f .data-node.env ]; then
+              cp .data-node.env.example .data-node.env
+              echo "🆕 未检测到 .data-node.env，基于 .data-node.env.example 首次生成 (node-s1)"
+            fi
+            # 回填 node-s1 身份 (无论首次生成还是已存在，均确保本地子服务身份正确)
+            sed -i "s|^DS_NODE_ID=.*|DS_NODE_ID=us-yf-s1|" .data-node.env
+            sed -i "s|^DS_REGION=.*|DS_REGION=us-west|" .data-node.env
+            sed -i "s|^DS_CAPABILITIES=.*|DS_CAPABILITIES=yfinance|" .data-node.env
+            sed -i "s|^DS_NODE_PORT=.*|DS_NODE_PORT=8001|" .data-node.env
+            sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=127.0.0.1|" .data-node.env
+            sed -i "s|^DS_BASE_URL=.*|DS_BASE_URL=http://127.0.0.1:8001|" .data-node.env
+            sed -i "s|^DATA_SOURCE_HMAC_SECRET=.*|DATA_SOURCE_HMAC_SECRET=${{ secrets.DATA_SOURCE_HMAC_SECRET }}|" .data-node.env
+            sed -i "s|^QUANT_ENV=.*|QUANT_ENV=production|" .data-node.env
+            sed -i "s|^TZ=.*|TZ=America/Los_Angeles|" .data-node.env
+            docker compose -f docker-compose.node-s1.yml --env-file .data-node.env up -d --remove-orphans
+            echo "✅ 主节点本地子服务 (node-s1) 已启动于 127.0.0.1:8001"
+
             # 🔍 可选校验: docker manifest inspect 探测 registry 内镜像可见性 (失败仅警告，不中止，因 push 成功已足够证明镜像就位)
             if docker manifest inspect "${DS_REGISTRY_IMAGE}" >/dev/null 2>&1; then
               echo "✅ registry 内 data-subservice manifest 可被 manifest inspect 解析"
@@ -248,9 +267,9 @@ jobs:
             ds-caps: "tushare,akshare,yfinance"
             tz: Asia/Shanghai
             creds: true
-            compose: docker-compose.slave.yml
-            env-file: .env
-            container: quant-data-subservice-slave
+            compose: docker-compose.node-bj.yml
+            env-file: .data-node.env
+            container: quant-data-subservice-node-bj
           # 美西从节点1 (VPS_S2)：纯 yfinance
           - node: s2
             host-secret: VPS_S2_HOST
@@ -262,8 +281,8 @@ jobs:
             ds-region: us-west
             ds-caps: "yfinance"
             tz: America/Los_Angeles
-            compose: docker-compose.yf-node-s2.yml
-            env-file: .env
+            compose: docker-compose.node-s2.yml
+            env-file: .data-node.env
             container: quant-data-subservice-yf-s2
           # 美西从节点2 (VPS_S3)：纯 yfinance
           - node: s3
@@ -276,8 +295,8 @@ jobs:
             ds-region: us-west
             ds-caps: "yfinance"
             tz: America/Los_Angeles
-            compose: docker-compose.yf-node-s3.yml
-            env-file: .env
+            compose: docker-compose.node-s3.yml
+            env-file: .data-node.env
             container: quant-data-subservice-yf-s3
           # 美西从节点3 (VPS_S4)：纯 yfinance
           - node: s4
@@ -290,8 +309,8 @@ jobs:
             ds-region: us-west
             ds-caps: "yfinance"
             tz: America/Los_Angeles
-            compose: docker-compose.yf-node-s4.yml
-            env-file: .env
+            compose: docker-compose.node-s4.yml
+            env-file: .data-node.env
             container: quant-data-subservice-yf-s4
     steps:
       - uses: actions/checkout@v5
@@ -342,8 +361,8 @@ jobs:
             -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
             -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
             -P "$VPS_PORT" \
-            "./.env.data-node.example" \
-            "$VPS_USER@$VPS_HOST:/opt/quant-agent/.env.data-node.example" \
+            "./.data-node.env.example" \
+            "$VPS_USER@$VPS_HOST:/opt/quant-agent/.data-node.env.example" \
             || { echo "❌ 中转 env 模板到目标节点失败 (scp 通道异常)"; exit 1; }
           echo "✅ compose 文件与 env 模板已通过 SSH 通道中转至目标节点 /opt/quant-agent/"
 
@@ -381,15 +400,15 @@ jobs:
             fi
 
             # ╔══════════════════════════════════════════════════════════════╗
-            # ║ 基于仓库 .env.data-node.example 模板生成节点 .env              ║
+            # ║ 基于仓库 .data-node.env.example 模板生成节点 .env              ║
             # ║ 原则：不预置则首次 cp 模板生成；已存在则完全跳过，CI 不触碰。  ║
             # ╚══════════════════════════════════════════════════════════════╝
             if [ ! -f "${{ matrix.env-file}}" ]; then
-              if [ -f .env.data-node.example ]; then
-                cp .env.data-node.example ${{ matrix.env-file }}
-                echo "🆕 未检测到 ${{ matrix.env-file }}，基于 .env.data-node.example 首次生成"
+              if [ -f .data-node.env.example ]; then
+                cp .data-node.env.example ${{ matrix.env-file }}
+                echo "🆕 未检测到 ${{ matrix.env-file }}，基于 .data-node.env.example 首次生成"
               else
-                echo "❌ 节点缺少 .env.data-node.example 模板 (scp 中转失败?)，无法生成 ${{ matrix.env-file }}"
+                echo "❌ 节点缺少 .data-node.env.example 模板 (scp 中转失败?)，无法生成 ${{ matrix.env-file }}"
                 exit 1
               fi
             else
@@ -403,13 +422,13 @@ jobs:
               sed -i "s|^DS_NODE_ID=.*|DS_NODE_ID=${{ matrix.ds-id }}|" ${{ matrix.env-file }}
               sed -i "s|^DS_REGION=.*|DS_REGION=${{ matrix.ds-region }}|" ${{ matrix.env-file }}
               sed -i "s|^DS_CAPABILITIES=.*|DS_CAPABILITIES=${{ matrix.ds-caps }}|" ${{ matrix.env-file }}
-              sed -i "s|^DS_NODE_PORT=.*|DS_NODE_PORT=8000|" ${{ matrix.env-file }}
+              sed -i "s|^DS_NODE_PORT=.*|DS_NODE_PORT=8001|" ${{ matrix.env-file }}
                           
               # 验证 Tailscale IP 是否存在；不存在则 fail fast（不回退 0.0.0.0，禁止公网暴露）
               if ip addr show | grep -q "inet $NODE_TS_IP/"; then
                 echo "✅ Tailscale IP $NODE_TS_IP 存在，绑定到该 IP"
                 sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=$NODE_TS_IP|" ${{ matrix.env-file }}
-                sed -i "s|^DS_BASE_URL=.*|DS_BASE_URL=http://$NODE_TS_IP:8000|" ${{ matrix.env-file }}
+                sed -i "s|^DS_BASE_URL=.*|DS_BASE_URL=http://$NODE_TS_IP:8001|" ${{ matrix.env-file }}
               else
                 echo "❌ Tailscale IP $NODE_TS_IP 在宿主机不存在，无法绑定内网端口，中止部署"
                 echo "📋 当前宿主机 IP 列表:"
@@ -442,7 +461,7 @@ jobs:
             fi
 
             # 🛡️ 部署前 PUBLIC_IP 有效性校验 (对所有节点生效，包括已存在的人工 .env):
-            #    compose 端口绑定 ${PUBLIC_IP}:8000:8000，若该 IP 在宿主机不存在
+            #    compose 端口绑定 ${PUBLIC_IP}:8001:8001，若该 IP 在宿主机不存在
             #    (Tailscale 未运行/IP 变更)，docker 会报 "cannot assign requested address"。
             #    校验失败时: 若 Secrets 的 Tailscale IP 在宿主机存在则自动修正，否则 fail fast。
             CURRENT_PUBLIC_IP=$(grep '^PUBLIC_IP=' ${{ matrix.env-file }} | head -1 | cut -d= -f2 | tr -d '[:space:]')
@@ -452,7 +471,7 @@ jobs:
               elif [ -n "$NODE_TS_IP" ] && ip addr show | grep -q "inet $NODE_TS_IP/"; then
                 echo "⚠️ .env 中 PUBLIC_IP=$CURRENT_PUBLIC_IP 在宿主机不存在，自动修正为当前 Tailscale IP: $NODE_TS_IP"
                 sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=$NODE_TS_IP|" ${{ matrix.env-file }}
-                sed -i "s|^DS_BASE_URL=.*|DS_BASE_URL=http://$NODE_TS_IP:8000|" ${{ matrix.env-file }}
+                sed -i "s|^DS_BASE_URL=.*|DS_BASE_URL=http://$NODE_TS_IP:8001|" ${{ matrix.env-file }}
               else
                 echo "❌ .env 中 PUBLIC_IP=$CURRENT_PUBLIC_IP 在宿主机不存在，且 Secrets Tailscale IP ($NODE_TS_IP) 也不存在，中止部署"
                 echo "📋 当前宿主机 IP 列表:"

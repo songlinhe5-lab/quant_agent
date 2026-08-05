@@ -44,9 +44,9 @@ case "$NODE_ID" in
     us-yf-b) NODE_ID="us-yf-s3" ;;
 esac
 
-# 解析对应 compose 文件 (仓库内实际为 docker-compose.yf-node-s2/s3/s4.yml)
+# 解析对应 compose 文件 (仓库内实际为 docker-compose.node-s2/s3/s4.yml)
 NODE_SEQ="${NODE_ID#us-yf-s}"
-COMPOSE_FILE="docker-compose.yf-node-s${NODE_SEQ}.yml"
+COMPOSE_FILE="docker-compose.node-s${NODE_SEQ}.yml"
 if [ ! -f "$DEPLOY_DIR/$COMPOSE_FILE" ]; then
     log_error "未找到 compose 文件: $COMPOSE_FILE (NODE_ID=$NODE_ID)"
     exit 1
