@@ -115,6 +115,7 @@ class AKShareService:
             self._record_success("cal")
             return result
         except Exception as e:
+            logger.warning(f"[AKShare] 宏观日历获取失败: {e}")
             self._record_failure("cal")
             return []
 
@@ -127,6 +128,7 @@ class AKShareService:
             self._record_success("news")
             return result
         except Exception as e:
+            logger.warning(f"[AKShare] 港股新闻获取失败: {e}")
             self._record_failure("news")
             return []
 

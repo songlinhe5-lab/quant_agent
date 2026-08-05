@@ -117,8 +117,8 @@ class YFinanceService:
         use_cache: bool = True,
     ) -> Dict[str, Any]:
         async def _call():
-            period, start, end = resolve_date_range(period, start, end)
-            df = fetch_history(symbol, period=period, start=start, end=end, interval=interval)
+            r_period, r_start, r_end = resolve_date_range(period, start, end)
+            df = fetch_history(symbol, period=r_period, start=r_start, end=r_end, interval=interval)
             return self._df_to_records(df)
 
         try:
@@ -203,6 +203,7 @@ class YFinanceService:
             self._record_success("search")
             return result
         except Exception as e:
+            logger.warning(f"[YF] 搜索失败: {e}")
             self._record_failure("search")
             return []
 
