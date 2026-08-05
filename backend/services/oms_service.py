@@ -158,9 +158,9 @@ class OmsService:
         由后台守护进程定时调用。
         """
         try:
-            from backend.services.futu import futu_service
+            from backend.services.datasource.router import data_source_router
 
-            acc_info = await futu_service.get_account_info(market)
+            acc_info = await data_source_router.fetch_futu("ACCOUNT_INFO", market=market)
             if acc_info.get("status") != "success":
                 logger.warning(f"[OMS] 持仓同步失败 ({market}): {acc_info.get('message')}")
                 return []

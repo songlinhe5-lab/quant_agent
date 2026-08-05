@@ -687,10 +687,9 @@ class DataSourceRouter:
             result = await self._send_request(remote_node, "futu", payload)
             if result.get("status") == "success":
                 await self._update_node_status(remote_node.name, success=True)
-                # 剥掉子服务信封, 直接返回 futu_service 原始 dict
-                # (与本地降级 futu_service.xxx() 返回结构一致, 业务侧零改动)
-                inner = result.get("data")
-                return inner if isinstance(inner, dict) else result
+                # 直接透传子服务信封 (含 status/data 字段), 与本地降级
+                # futu_service.xxx() 返回结构完全一致, 业务侧零改动。
+                return result
             await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
         except Exception as e:
             logger.warning(f"[Futu] 远程节点失败: {remote_node.name}, {remote_action}, {str(e)}")

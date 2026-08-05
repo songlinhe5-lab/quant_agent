@@ -381,15 +381,15 @@ class SurvivorshipBiasTracker:
         - delisting_date: 退市日期（如有）
         """
         if futu_service_instance is None:
-            from backend.services.futu import futu_service
+            from backend.services.datasource.router import data_source_router
 
-            futu_service_instance = futu_service
+            futu_service_instance = data_source_router
 
         count = 0
         for market in ["HK", "US"]:
             for sec_type in ["STOCK", "ETF"]:
                 try:
-                    result = await futu_service_instance.get_stock_basicinfo(market, sec_type)
+                    result = await futu_service_instance.fetch_futu("STOCK_BASICINFO", market=market, sec_type=sec_type)
                     if result.get("status") != "success":
                         continue
 

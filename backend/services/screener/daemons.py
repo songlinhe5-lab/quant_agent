@@ -65,7 +65,7 @@ class DaemonMixin:
                 subs_to_run = await asyncio.to_thread(_fetch_due_subscriptions, current_time_str)
 
                 if subs_to_run:
-                    from backend.services.futu import futu_service
+                    from backend.services.datasource.router import data_source_router
 
                     print(
                         f"🚀 [Screener Daemon] {current_time_str} - 检测到 {len(subs_to_run)} 个订阅任务到达触发时间..."
@@ -87,7 +87,10 @@ class DaemonMixin:
                     for attempt in range(max_retries):
                         try:
                             markets, futu_filters, post_filters = self.parse_dsl_to_futu_filters(sub["dsl"])  # noqa: E501
-                            tasks = [futu_service.screen_stocks(market=m, filters=futu_filters) for m in markets]  # type: ignore  # noqa: E501
+                            tasks = [
+                                data_source_router.fetch_futu("SCREEN_STOCKS", market=m, filters=futu_filters)
+                                for m in markets
+                            ]  # type: ignore  # noqa: E501
                             results = await asyncio.gather(*tasks, return_exceptions=True)  # noqa: E501
 
                             final_data = []
@@ -241,7 +244,7 @@ class DaemonMixin:
 
                     print("🚀 [Screener Daemon] 开始执行每日 16:00 最强概念股盘点...")
 
-                    from backend.services.futu import futu_service
+                    from backend.services.datasource.router import data_source_router
 
                     # 1. 设定底层扫盘策略: 涨幅>5%, 成交额>1亿, 换手率>2%
                     json_payload = json.dumps(
@@ -270,7 +273,9 @@ class DaemonMixin:
                     )
                     markets, futu_filters, post_filters = self.parse_dsl_to_futu_filters(json_payload)  # noqa: E501
 
-                    tasks = [futu_service.screen_stocks(market=m, filters=futu_filters) for m in markets]  # type: ignore  # noqa: E501
+                    tasks = [
+                        data_source_router.fetch_futu("SCREEN_STOCKS", market=m, filters=futu_filters) for m in markets
+                    ]  # type: ignore  # noqa: E501
                     results = await asyncio.gather(*tasks, return_exceptions=True)
 
                     final_data = []

@@ -149,21 +149,22 @@ class TestBetaBenchmark:
     """RISK-08 Beta 基准测试"""
 
     @patch("backend.services.risk.risk_engine.kline_warehouse")
-    @patch("backend.services.risk.risk_engine.futu_service")
-    def test_beta_real_benchmark(self, mock_futu, mock_warehouse):
+    @patch("backend.services.datasource.router.data_source_router")
+    def test_beta_real_benchmark(self, mock_router, mock_warehouse):
         """有基准数据时 beta 非 0.85"""
         from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
 
-        # Mock futu_service.get_history 返回持仓 K 线
-        async def mock_history(ticker, ktype="K_DAY", num=60):
+        # Mock DataSourceRouter.fetch_futu("HISTORY") 返回持仓 K 线
+        async def mock_history(action, **kwargs):
+            ticker = kwargs.get("ticker", "")
             return {
                 "status": "success",
                 "data": [{"close": p} for p in make_closes(60, 100, seed=hash(ticker) % 100)],
             }
 
-        mock_futu.get_history = AsyncMock(side_effect=mock_history)
+        mock_router.fetch_futu = AsyncMock(side_effect=mock_history)
 
         # Mock kline_warehouse 返回基准 K 线
         import pandas as pd
@@ -183,20 +184,20 @@ class TestBetaBenchmark:
         assert np.isfinite(result["beta"])
 
     @patch("backend.services.risk.risk_engine.kline_warehouse")
-    @patch("backend.services.risk.risk_engine.futu_service")
-    def test_beta_fallback_on_no_benchmark(self, mock_futu, mock_warehouse):
-        """基准数据缺失时 beta=0"""
+    @patch("backend.services.datasource.router.data_source_router")
+    def test_beta_fallback_on_no_benchmark(self, mock_router, mock_warehouse):
+        """基准数据缺失时 beta=0 (经 DataSourceRouter.fetch_futu)"""
         from backend.services.risk.risk_engine import RiskEngine
 
         engine = RiskEngine()
 
-        async def mock_history(ticker, ktype="K_DAY", num=60):
+        async def mock_history(action, **kwargs):
             return {
                 "status": "success",
                 "data": [{"close": p} for p in make_closes(60, 100, seed=42)],
             }
 
-        mock_futu.get_history = AsyncMock(side_effect=mock_history)
+        mock_router.fetch_futu = AsyncMock(side_effect=mock_history)
         mock_warehouse.get_history = AsyncMock(return_value=None)
 
         positions = [{"code": "HK.00700", "market_val": 50000.0}]

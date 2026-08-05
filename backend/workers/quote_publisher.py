@@ -43,11 +43,12 @@ class QuotePublisher:
     # 数据获取层 (此处可替换为您真实的 Tools)
     # ==========================================
     async def _fetch_futu_data(self, ticker: str) -> dict[str, Any]:
-        """尝试拉取首选数据源: Futu OpenD (包含 Level 2 盘口)"""
-        futu_service = _get_futu_service()
+        """尝试拉取首选数据源: Futu OpenD (经 DataSourceRouter HTTP 调 source=futu, 含 Level 2 盘口)"""
+        from backend.services.datasource.router import data_source_router
+
         # 并发拉取报价与盘口，提升效率
-        quote_task = futu_service.get_quote(ticker)
-        order_book_task = futu_service.get_order_book(ticker)
+        quote_task = data_source_router.fetch_futu("QUOTE", ticker=ticker)
+        order_book_task = data_source_router.fetch_futu("ORDER_BOOK", ticker=ticker)
 
         results = await asyncio.gather(quote_task, order_book_task, return_exceptions=True)
 

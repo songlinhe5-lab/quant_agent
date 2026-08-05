@@ -293,15 +293,18 @@ class OmsExecutionAdapter:
             if self._is_simulated:
                 return
 
-            # 3. 路由到 Futu 实盘下单
+            # 3. 路由到 Futu 实盘下单 (经 DataSourceRouter HTTP 调 source=futu)
             trd_side = TrdSide.BUY if intent.side == "BUY" else TrdSide.SELL
             market = self._infer_trd_market(intent.symbol)
-            await self._get_futu().place_order(
+            from backend.services.datasource.router import data_source_router
+
+            await data_source_router.fetch_futu(
+                "PLACE_ORDER",
                 ticker=intent.symbol,
                 qty=int(intent.qty),
                 price=price,
-                trd_side=trd_side,
-                market=market,
+                trd_side=trd_side.value,
+                market=market.value,
             )
         finally:
             if own_session:

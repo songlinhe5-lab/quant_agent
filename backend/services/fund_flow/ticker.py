@@ -208,10 +208,11 @@ class TickerService:
 
     async def _fetch_and_save_from_futu(self) -> List[Dict[str, Any]]:
         tickers_to_insert = []
-        futu_svc = _get_futu_service()
+        from backend.services.datasource.router import data_source_router
+
         for market in ["HK", "US"]:
             for sec_type in ["STOCK", "ETF"]:
-                res = await futu_svc.get_stock_basicinfo(market, sec_type)
+                res = await data_source_router.fetch_futu("STOCK_BASICINFO", market=market, sec_type=sec_type)
                 if res.get("status") == "success":
                     for row in res.get("data", []):
                         code = row.get("code", "")

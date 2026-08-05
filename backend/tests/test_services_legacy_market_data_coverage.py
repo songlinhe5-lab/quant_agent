@@ -57,7 +57,7 @@ async def test_delegation_methods():
     assert (await gw.get_fund_flow("US.AAPL"))["status"] == "success"
     assert (await gw.get_warrant_chain("HK.00700"))["status"] == "success"
     assert (await gw.get_fundamental("US.AAPL"))["pe"] == 10
-    assert gw.screen_stocks("US", {"pe": "<15"}) == [{"symbol": "AAPL"}]
+    assert await gw.screen_stocks("US", {"pe": "<15"}) == [{"symbol": "AAPL"}]
     assert await gw.get_tech_indicators("US.AAPL") == {"rsi": 50}
 
     # 属性 / setter

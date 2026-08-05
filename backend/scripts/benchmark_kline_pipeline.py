@@ -131,7 +131,7 @@ class PipelineBenchmark:
         latencies = []
 
         try:
-            from backend.services.futu import futu_service
+            from backend.services.datasource.router import data_source_router
 
             for symbol in self.symbols:
                 symbol_latencies = []
@@ -139,7 +139,7 @@ class PipelineBenchmark:
                 for _ in range(self.iterations // len(self.symbols)):
                     t0 = time.perf_counter()
 
-                    await futu_service.get_quote(symbol)
+                    await data_source_router.fetch_futu("QUOTE", ticker=symbol)
 
                     t1 = time.perf_counter()
                     latency_ms = (t1 - t0) * 1000
@@ -193,7 +193,7 @@ class PipelineBenchmark:
 
         try:
             from backend.core.redis_client import redis_client
-            from backend.services.futu import futu_service
+            from backend.services.datasource.router import data_source_router
             from backend.services.market_engine import update_quote_to_redis
 
             for symbol in self.symbols[:1]:  # 只测第一个标的
@@ -201,7 +201,7 @@ class PipelineBenchmark:
                     t0 = time.perf_counter()
 
                     # 1. 获取行情
-                    quote = await futu_service.get_quote(symbol)
+                    quote = await data_source_router.fetch_futu("QUOTE", ticker=symbol)
 
                     if quote.get("status") == "success":
                         # 2. 写入 Redis

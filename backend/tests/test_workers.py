@@ -40,13 +40,16 @@ class TestQuotePublisher:
             from backend.workers.quote_publisher import QuotePublisher
 
             pub = QuotePublisher()
-            with patch("backend.workers.quote_publisher.futu_service") as mock_futu:
-                mock_futu.get_quote = AsyncMock(
-                    return_value={"last_price": 150.0, "change_pct": "1.5%", "volume_str": "10M"}
-                )
-                mock_futu.get_order_book = AsyncMock(
-                    return_value={"bids": [{"price": 149.5, "size": 100}], "asks": [{"price": 150.5, "size": 200}]}
-                )
+
+            async def fake_fetch(action, **kwargs):
+                if action == "QUOTE":
+                    return {"last_price": 150.0, "change_pct": "1.5%", "volume_str": "10M"}
+                return {"bids": [{"price": 149.5, "size": 100}], "asks": [{"price": 150.5, "size": 200}]}
+
+            with patch(
+                "backend.services.datasource.router.data_source_router.fetch_futu",
+                new=AsyncMock(side_effect=fake_fetch),
+            ):
                 result = await pub._fetch_futu_data("US.AAPL")
                 assert result["ticker"] == "US.AAPL"
                 assert result["last_price"] == 150.0
@@ -60,9 +63,10 @@ class TestQuotePublisher:
             from backend.workers.quote_publisher import QuotePublisher
 
             pub = QuotePublisher()
-            with patch("backend.workers.quote_publisher.futu_service") as mock_futu:
-                mock_futu.get_quote = AsyncMock(side_effect=RuntimeError("连接失败"))
-                mock_futu.get_order_book = AsyncMock(return_value={})
+            with patch(
+                "backend.services.datasource.router.data_source_router.fetch_futu",
+                new=AsyncMock(side_effect=RuntimeError("连接失败")),
+            ):
                 with pytest.raises(ConnectionError):
                     await pub._fetch_futu_data("US.AAPL")
 
@@ -73,11 +77,16 @@ class TestQuotePublisher:
 
             pub = QuotePublisher()
             pub.redis = AsyncMock()
-            with patch("backend.workers.quote_publisher.futu_service") as mock_futu:
-                mock_futu.get_quote = AsyncMock(
-                    return_value={"last_price": 150.0, "change_pct": "1.5%", "volume_str": "10M"}
-                )
-                mock_futu.get_order_book = AsyncMock(return_value={"bids": [{"price": 149.5, "size": 100}], "asks": []})
+
+            async def fake_fetch(action, **kwargs):
+                if action == "QUOTE":
+                    return {"last_price": 150.0, "change_pct": "1.5%", "volume_str": "10M"}
+                return {"bids": [{"price": 149.5, "size": 100}], "asks": []}
+
+            with patch(
+                "backend.services.datasource.router.data_source_router.fetch_futu",
+                new=AsyncMock(side_effect=fake_fetch),
+            ):
                 await pub.poll_and_publish("US.AAPL")
                 assert pub.redis.hset.called
                 assert pub.redis.publish.called
@@ -102,9 +111,16 @@ class TestQuotePublisher:
 
             pub = QuotePublisher()
             pub.redis = AsyncMock()
-            with patch("backend.workers.quote_publisher.futu_service") as mock_futu:
-                mock_futu.get_quote = AsyncMock(return_value={"last_price": 150.0})
-                mock_futu.get_order_book = AsyncMock(return_value={})
+
+            async def fake_fetch(action, **kwargs):
+                if action == "QUOTE":
+                    return {"last_price": 150.0}
+                return {}
+
+            with patch(
+                "backend.services.datasource.router.data_source_router.fetch_futu",
+                new=AsyncMock(side_effect=fake_fetch),
+            ):
                 task = asyncio.create_task(pub.run_daemon(["US.AAPL"], interval=0.01))
                 await asyncio.sleep(0.05)
                 task.cancel()

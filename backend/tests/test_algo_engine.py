@@ -8,7 +8,7 @@ import json
 import math
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -164,33 +164,33 @@ class TestGetLotSize:
 
     @pytest.mark.asyncio
     async def test_hk_stock_snapshot(self):
-        """港股从 snapshot 获取 lot_size"""
-        with patch("backend.workers.oms.algo_engine.futu_service", create=True) as mock_futu:
-            mock_futu.get_market_snapshots = AsyncMock(return_value={"status": "success", "data": [{"lot_size": 100}]})
-            # 需要 patch import
-            with patch.dict("sys.modules", {"backend.services.futu": MagicMock(futu_service=mock_futu)}):
-                lot = await _get_lot_size("00700.HK")
+        """港股从 snapshot 获取 lot_size (经 DataSourceRouter.fecth_futu)"""
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_futu",
+            new=AsyncMock(return_value={"status": "success", "data": [{"lot_size": 100}]}),
+        ):
+            lot = await _get_lot_size("00700.HK")
         # 如果 snapshot 失败会走硬编码映射
         assert lot in (100, 100)
 
     @pytest.mark.asyncio
     async def test_hk_stock_hardcoded_fallback(self):
-        """港股硬编码兜底"""
-        with patch("backend.workers.oms.algo_engine.futu_service", create=True) as mock_futu:
-            mock_futu.get_market_snapshots = AsyncMock(side_effect=Exception("连接失败"))
-            mock_futu.get_quote = AsyncMock(side_effect=Exception("连接失败"))
-            with patch.dict("sys.modules", {"backend.services.futu": MagicMock(futu_service=mock_futu)}):
-                lot = await _get_lot_size("00700.HK")
+        """港股硬编码兜底 (fetch_futu 失败降级硬编码)"""
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_futu",
+            new=AsyncMock(side_effect=Exception("连接失败")),
+        ):
+            lot = await _get_lot_size("00700.HK")
         assert lot == 100  # 腾讯硬编码
 
     @pytest.mark.asyncio
     async def test_hk_unknown_stock_default(self):
-        """未知港股默认 100"""
-        with patch("backend.workers.oms.algo_engine.futu_service", create=True) as mock_futu:
-            mock_futu.get_market_snapshots = AsyncMock(side_effect=Exception("err"))
-            mock_futu.get_quote = AsyncMock(side_effect=Exception("err"))
-            with patch.dict("sys.modules", {"backend.services.futu": MagicMock(futu_service=mock_futu)}):
-                lot = await _get_lot_size("09999.HK")
+        """未知港股默认 100 (fetch_futu 失败降级硬编码)"""
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_futu",
+            new=AsyncMock(side_effect=Exception("err")),
+        ):
+            lot = await _get_lot_size("09999.HK")
         # 09999.HK 在硬编码映射中 = 100
         assert lot == 100
 
@@ -315,23 +315,25 @@ class TestAlgoEngine:
     @pytest.mark.asyncio
     @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_simulate_fill_sandbox(self, mock_redis, engine):
-        """沙箱模式模拟成交"""
+        """沙箱模式模拟成交 (经 DataSourceRouter.fetch_futu)"""
         mock_redis.get = AsyncMock(return_value=None)  # 非 LIVE 模式
-        with patch("backend.workers.oms.algo_engine.futu_service", create=True) as mock_futu:
-            mock_futu.get_quote = AsyncMock(return_value={"status": "success", "last_price": 150.0})
-            with patch.dict("sys.modules", {"backend.services.futu": MagicMock(futu_service=mock_futu)}):
-                price = await engine._simulate_fill("US.AAPL", 100, "BUY")
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_futu",
+            new=AsyncMock(return_value={"status": "success", "last_price": 150.0}),
+        ):
+            price = await engine._simulate_fill("US.AAPL", 100, "BUY")
         assert 149.0 < price < 151.0
 
     @pytest.mark.asyncio
     @patch("backend.workers.oms.algo_engine.redis_client")
     async def test_simulate_fill_fallback(self, mock_redis, engine):
-        """行情获取失败时返回默认 100.0"""
+        """行情获取失败时返回默认 100.0 (fetch_futu 异常降级)"""
         mock_redis.get = AsyncMock(return_value=None)
-        with patch("backend.workers.oms.algo_engine.futu_service", create=True) as mock_futu:
-            mock_futu.get_quote = AsyncMock(side_effect=Exception("连接超时"))
-            with patch.dict("sys.modules", {"backend.services.futu": MagicMock(futu_service=mock_futu)}):
-                price = await engine._simulate_fill("US.AAPL", 100, "BUY")
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_futu",
+            new=AsyncMock(side_effect=Exception("连接超时")),
+        ):
+            price = await engine._simulate_fill("US.AAPL", 100, "BUY")
         assert price == 100.0
 
     @pytest.mark.asyncio
@@ -1201,31 +1203,36 @@ class TestGetLotSizeEnhanced:
         result = asyncio.run(_get_lot_size("AAPL"))
         assert result == 1
 
-    @patch("backend.workers.oms.algo_engine.futu_service", create=True)
-    def test_hk_stock_fallback_to_hardcoded(self, mock_futu_module):
-        """港股 snapshot 失败时降级到硬编码"""
+    def test_hk_stock_fallback_to_hardcoded(self):
+        """港股 snapshot 失败时降级到硬编码 (fetch_futu 异常)"""
         from backend.workers.oms.algo_engine import _get_lot_size
 
-        with patch.dict("sys.modules", {"backend.services.futu": MagicMock()}):
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_futu",
+            new=AsyncMock(side_effect=Exception("连接失败")),
+        ):
             result = asyncio.run(_get_lot_size("00700.HK"))
             assert result == 100
 
     def test_hk_stock_unknown_defaults_100(self):
-        """未知港股默认 100"""
+        """未知港股默认 100 (fetch_futu 异常)"""
         from backend.workers.oms.algo_engine import _get_lot_size
 
-        with patch.dict("sys.modules", {"backend.services.futu": MagicMock()}):
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_futu",
+            new=AsyncMock(side_effect=Exception("连接失败")),
+        ):
             result = asyncio.run(_get_lot_size("99999.HK"))
             assert result == 100
 
     async def test_hk_stock_from_snapshot(self):
-        """港股从 snapshot 成功获取 lot_size"""
+        """港股从 snapshot 成功获取 lot_size (经 DataSourceRouter.fetch_futu)"""
         from backend.workers.oms.algo_engine import _get_lot_size
 
-        mock_futu = MagicMock()
-        mock_futu.get_market_snapshots = AsyncMock(return_value={"status": "success", "data": [{"lot_size": 500}]})
-
-        with patch.dict("sys.modules", {"backend.services.futu": mock_futu}):
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_futu",
+            new=AsyncMock(return_value={"status": "success", "data": [{"lot_size": 500}]}),
+        ):
             result = await _get_lot_size("00005.HK")
             assert result == 500
 
@@ -1240,13 +1247,10 @@ class TestAlgoEngineSimulateFill:
 
         mock_redis.get = AsyncMock(return_value="SANDBOX")
 
-        mock_futu_service = AsyncMock(return_value={"status": "success", "last_price": 400.0})
-
-        mock_module = MagicMock()
-        mock_module.futu_service.get_quote = mock_futu_service
+        mock_fetch = AsyncMock(return_value={"status": "success", "last_price": 400.0})
 
         engine = AlgoEngine()
-        with patch.dict("sys.modules", {"backend.services.futu": mock_module}):
+        with patch("backend.services.datasource.router.data_source_router.fetch_futu", new=mock_fetch):
             price = await engine._simulate_fill("00700.HK", 100, "BUY")
             # 价格应该在 400 附近有微小滑点
             assert 400.0 < price < 400.5
@@ -1258,10 +1262,9 @@ class TestAlgoEngineSimulateFill:
 
         mock_redis.get = AsyncMock(return_value="SANDBOX")
 
-        mock_module = MagicMock()
-        mock_module.futu_service.get_quote = AsyncMock(side_effect=Exception("Connection failed"))
+        mock_fetch = AsyncMock(side_effect=Exception("Connection failed"))
 
         engine = AlgoEngine()
-        with patch.dict("sys.modules", {"backend.services.futu": mock_module}):
+        with patch("backend.services.datasource.router.data_source_router.fetch_futu", new=mock_fetch):
             price = await engine._simulate_fill("00700.HK", 100, "BUY")
             assert price == 100.0

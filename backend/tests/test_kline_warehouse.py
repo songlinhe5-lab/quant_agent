@@ -126,7 +126,7 @@ class TestKlineWarehouse:
         )
         with (
             patch(
-                "backend.services.datalake.kline_warehouse.futu_service.get_history",
+                "backend.services.datasource.router.data_source_router.fetch_futu",
                 new=AsyncMock(return_value=futu_response),
             ),
             patch(
@@ -164,7 +164,7 @@ class TestKlineWarehouse:
         with (
             patch("backend.services.datalake.kline_warehouse.pd.read_parquet", return_value=today_df),
             patch(
-                "backend.services.datalake.kline_warehouse.futu_service.get_history",
+                "backend.services.datalake.kline_warehouse.data_source_router.fetch_futu",
                 new=AsyncMock(return_value={"status": "success", "data": []}),
             ) as mock_futu,
         ):
@@ -193,7 +193,7 @@ class TestKlineWarehouse:
 
         with (
             patch(
-                "backend.services.datalake.kline_warehouse.futu_service.get_history",
+                "backend.services.datalake.kline_warehouse.data_source_router.fetch_futu",
                 new=AsyncMock(return_value={"status": "error"}),
             ),
             patch(
@@ -214,7 +214,7 @@ class TestKlineWarehouse:
         warehouse.data_dir = str(tmp_path)
         with (
             patch(
-                "backend.services.datalake.kline_warehouse.futu_service.get_history",
+                "backend.services.datalake.kline_warehouse.data_source_router.fetch_futu",
                 new=AsyncMock(return_value={"status": "error"}),
             ),
             patch(
@@ -273,7 +273,7 @@ class TestKlineWarehouse:
 
         with (
             patch(
-                "backend.services.datalake.kline_warehouse.futu_service.get_history",
+                "backend.services.datalake.kline_warehouse.data_source_router.fetch_futu",
                 new=AsyncMock(return_value={"status": "success", "data": new_data}),
             ),
             patch(

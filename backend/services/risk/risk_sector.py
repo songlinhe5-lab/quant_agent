@@ -106,12 +106,12 @@ class SectorAnalyzer:
         # 缓存未命中或不完整 → 从数据源获取
         sector_map: Dict[str, str] = {}
 
-        # 优先 Futu get_stock_basicinfo
+        # 优先 Futu get_stock_basicinfo (经 DataSourceRouter HTTP 调 source=futu)
         try:
-            from backend.services.futu import futu_service
+            from backend.services.datasource.router import data_source_router
 
             futu_market = "HK" if market == "HK" else "US"
-            res = await futu_service.get_stock_basicinfo(futu_market, "STOCK")
+            res = await data_source_router.fetch_futu("STOCK_BASICINFO", market=futu_market, sec_type="STOCK")
             if res.get("status") == "success" and res.get("data"):
                 for item in res["data"]:
                     code = item.get("code", "")

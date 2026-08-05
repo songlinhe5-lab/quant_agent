@@ -258,11 +258,11 @@ class BotRuntimeManager:
             await self._broadcast_bots_update()
 
     async def _fetch_latest_quote(self, ticker: str) -> Optional[Dict[str, Any]]:
-        """从 Futu 获取最新行情"""
+        """从 Futu 获取最新行情 (经 DataSourceRouter HTTP 调 source=futu)"""
         try:
-            from backend.services.futu import futu_service
+            from backend.services.datasource.router import data_source_router
 
-            return await futu_service.get_quote(ticker)
+            return await data_source_router.fetch_futu("QUOTE", ticker=ticker)
         except Exception as e:
             logger.debug(f"[BotRuntime] 行情获取失败 ({ticker}): {e}")
             return None

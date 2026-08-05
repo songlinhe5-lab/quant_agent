@@ -6,7 +6,6 @@ from typing import Optional
 import pandas as pd
 
 from backend.core.redis_client import redis_client
-from backend.services.datasource.router import data_source_router
 from backend.services.yfinance import format_yf_ticker
 
 # 💡 将数仓建立在根目录的 data/kline_warehouse 下，与代码库隔离
@@ -84,11 +83,13 @@ class KlineWarehouse:
 
             new_data = None
 
-            # 1. 优先使用富途拉取高质量前复权数据
-            from backend.services.futu import futu_service
+            # 1. 优先使用富途拉取高质量前复权数据 (经 DataSourceRouter HTTP 调 source=futu)
+            from backend.services.datasource.router import data_source_router
 
-            futu_res = await futu_service.get_history(ticker, ktype=ktype, num=num_to_fetch)  # noqa: E501
-            if futu_res.get("status") == "success" and futu_res.get("data"):
+            futu_res = await data_source_router.fetch_futu("HISTORY", ticker=ticker, ktype=ktype, num=num_to_fetch)  # noqa: E501
+            # 兼容两种返回结构: 本地降级返回 {"status":"success","data":[...]} 信封,
+            # 远程子服务经 router 剥信封后返回 {"data":[...]} 或裸数据。
+            if isinstance(futu_res, dict) and futu_res.get("data"):
                 new_data = futu_res["data"]
                 # 💡 强制长线保障：如果我们需要拉取超大跨度数据(>2000)，但富途分页受限返回的数据过少，废弃富途数据交由雅虎财经进行全量深度拉取  # noqa: E501
                 if num_to_fetch > 2000 and len(new_data) < 2000:

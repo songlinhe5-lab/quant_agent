@@ -151,13 +151,13 @@ async def app_lifespan(app: FastAPI):
 
     # 🚀 NAV 快照守护进程 (每 5 分钟)
     async def _nav_snapshot_daemon():
-        from backend.services.futu import futu_service
+        from backend.services.datasource.router import data_source_router
 
         while True:
             try:
                 hk_acc, us_acc = await asyncio.gather(
-                    futu_service.get_account_info("HK"),
-                    futu_service.get_account_info("US"),
+                    data_source_router.fetch_futu("ACCOUNT_INFO", market="HK"),
+                    data_source_router.fetch_futu("ACCOUNT_INFO", market="US"),
                     return_exceptions=True,
                 )
                 for market, acc in [("HK", hk_acc), ("US", us_acc)]:
