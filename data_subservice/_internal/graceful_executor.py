@@ -5,7 +5,6 @@ ARCH-03: Graceful Shutdown 任务核心组件
 """
 
 import asyncio
-import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Optional
 
@@ -71,7 +70,6 @@ class GracefulExecutor(ThreadPoolExecutor):
 
     async def graceful_shutdown(self, timeout_s: Optional[float] = None):
         timeout = timeout_s or self.max_wait_s
-        start_time = time.time()
         loop = asyncio.get_running_loop()
 
         try:

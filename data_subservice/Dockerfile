@@ -53,10 +53,8 @@ RUN sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sourc
 # 从 builder 复制 .venv
 COPY --from=builder /app/.venv /app/.venv
 
-# 复制后端源码 (子服务依赖 backend.core 中的 ServiceRegistry 等)
-COPY backend/ ./backend/
-
-# 复制子服务源码
+# 物理解耦：子服务完全自包含，仅复制子服务源码（含 _internal 内联的 backend 基础件），
+# 不再 COPY backend/ —— 子服务不依赖 backend 包。
 COPY data_subservice/ ./data_subservice/
 
 EXPOSE 8000
