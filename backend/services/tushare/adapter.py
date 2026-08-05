@@ -74,8 +74,17 @@ class TushareDataSource:
         return os.getenv("DATASOURCE_TUSHARE_MODE", "internal")
 
     def is_available(self) -> bool:
+        """检测 Tushare SDK 是否可用。
+
+        主节点不安装 tushare 包时返回 False，跳过本地注册，走 HTTP 路由。
+        """
         try:
+            import tushare  # noqa: F401
+
             return bool(self._svc()._token)
+        except ImportError:
+            # 主节点无 tushare 包，不可直连
+            return False
         except Exception:  # noqa: BLE001
             return False
 
@@ -192,9 +201,19 @@ class TushareDataSource:
 
 
 def ensure_tushare_registered(service: Optional[Any] = None) -> str:
-    """幂等注册 Tushare 适配器。"""
+    """幂等注册 Tushare 适配器。
+
+    主节点无 tushare SDK 时跳过注册，走 HTTP 路由到子服务。
+    """
+    from backend.core.logger import logger
     from backend.services.datasource.source_registry import datasource_registry
 
     if datasource_registry.has("tushare"):
         return "tushare-default"
-    return datasource_registry.register(TushareDataSource(service))
+
+    adapter = TushareDataSource(service)
+    if not adapter.is_available():
+        logger.info("Tushare SDK 不可用，跳过本地注册（走 HTTP 路由）")
+        return ""
+
+    return datasource_registry.register(adapter)

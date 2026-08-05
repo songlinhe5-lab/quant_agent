@@ -65,9 +65,18 @@ class FutuDataSource:
         return os.getenv("DATASOURCE_FUTU_MODE", "internal")
 
     def is_available(self) -> bool:
-        # OpenD 已建立长连接才视为可用；slave 节点未部署 OpenD 自然返回 False
+        """检测 Futu SDK 和 OpenD 连接是否可用。
+
+        主节点无 futu-api 包或 OpenD 未连接时返回 False，跳过本地注册。
+        """
         try:
+            import futu  # noqa: F401
+
+            # OpenD 已建立长连接才视为可用；slave 节点未部署 OpenD 自然返回 False
             return self._svc().status == "CONNECTED"
+        except ImportError:
+            # 无 futu-api 包，不可直连
+            return False
         except Exception:  # noqa: BLE001
             return False
 
@@ -154,10 +163,20 @@ class FutuDataSource:
 
 
 def ensure_futu_registered(service: Optional[Any] = None) -> str:
-    """幂等注册 Futu 适配器到 DataSourceRegistry（可挂载）。"""
+    """幂等注册 Futu 适配器到 DataSourceRegistry（可挂载）。
+
+    主节点无 futu-api SDK 或 OpenD 未连接时跳过注册。
+    """
+    from backend.core.logger import logger
     from backend.services.datasource.source_registry import datasource_registry
 
     if datasource_registry.has("futu"):
         return "futu"
-    datasource_registry.register(FutuDataSource(service), instance_id="default")
+
+    adapter = FutuDataSource(service)
+    if not adapter.is_available():
+        logger.info("Futu SDK/OpenD 不可用，跳过本地注册")
+        return ""
+
+    datasource_registry.register(adapter, instance_id="default")
     return "futu"
