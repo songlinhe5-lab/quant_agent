@@ -44,6 +44,7 @@ class TestFinnhubDataSourceProtocol:
         src = FinnhubDataSource(service=MagicMock())
         assert src.name == "finnhub"
         assert set(src.capabilities) == {
+            "quote",
             "earnings",
             "company_news",
             "market_news",
@@ -131,7 +132,8 @@ class TestFinnhubFetchRouting:
     @pytest.mark.asyncio
     async def test_fetch_unsupported_action(self):
         src = FinnhubDataSource(service=MagicMock())
-        result = await src.fetch("quote", {})
+        # quote 已实现，使用真正不被支持的 action 验证 UNSUPPORTED_ACTION
+        result = await src.fetch("foo", {})
         assert result.status == ResultStatus.ERROR
         assert result.error.code == "UNSUPPORTED_ACTION"
         assert result.error.retryable is False

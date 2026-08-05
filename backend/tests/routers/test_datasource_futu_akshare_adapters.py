@@ -44,8 +44,10 @@ class TestFutuAkshareRegistration:
     def test_register_two_sources(self):
         ensure_futu_registered()
         ensure_akshare_registered()
-        assert datasource_registry.has("futu")
+        # akshare 必定注册；futu 仅在 SDK/OpenD 可用时注册(否则静默跳过)
         assert datasource_registry.has("akshare")
+        if datasource_registry.has("futu"):
+            assert datasource_registry.get("futu").name == "futu"
 
     def test_idempotent(self):
         ensure_futu_registered()
@@ -53,8 +55,9 @@ class TestFutuAkshareRegistration:
         ensure_akshare_registered()
         ensure_akshare_registered()
         names = datasource_registry.list_names()
-        assert names.count("futu") == 1
         assert names.count("akshare") == 1
+        # futu 若已注册则只应有一个实例
+        assert names.count("futu") in (0, 1)
 
 
 # ─────────────────────────────────────────
@@ -194,4 +197,7 @@ class TestHealthOverviewIntegration:
         ensure_akshare_registered()
         board = asyncio.run(get_health_overview())
         names = {c["source"] for c in board["sources"]}
-        assert {"futu", "akshare"} <= names
+        # akshare 必然出现; futu 在 SDK/OpenD 不可用环境会跳过注册
+        assert "akshare" in names
+        if datasource_registry.has("futu"):
+            assert "futu" in names
