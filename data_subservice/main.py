@@ -31,7 +31,7 @@ from data_subservice.yfinance_worker import handle_yfinance
 load_dotenv()
 
 # ── 配置 ──
-HMAC_SECRET = os.getenv("DATASOURCE_HMAC_SECRET", "change-me-in-prod")
+HMAC_SECRET = os.getenv("DATA_SOURCE_HMAC_SECRET", "change-me-in-prod")
 SERVICE_PORT = int(os.getenv("DATASOURCE_PORT", "8000"))
 ENABLE_REDIS_HEARTBEAT = os.getenv("ENABLE_REDIS_HEARTBEAT", "false").lower() == "true"
 
