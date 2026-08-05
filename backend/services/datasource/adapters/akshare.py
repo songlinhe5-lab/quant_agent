@@ -62,8 +62,17 @@ class AKShareDataSource:
         return os.getenv("DATASOURCE_AKSHARE_MODE", "internal")
 
     def is_available(self) -> bool:
+        """检测 AKShare SDK 是否可用。
+
+        主节点不安装 akshare 包时返回 False，跳过本地注册，走 HTTP 路由。
+        """
         try:
+            import akshare  # noqa: F401
+
             return self._svc().get_health_status().get("status") != "circuit_open"
+        except ImportError:
+            # 主节点无 akshare 包，不可直连
+            return False
         except Exception:  # noqa: BLE001
             return False
 
@@ -147,10 +156,20 @@ class AKShareDataSource:
 
 
 def ensure_akshare_registered(service: Optional[Any] = None) -> str:
-    """幂等注册 AKShare 适配器到 DataSourceRegistry（可挂载）。"""
+    """幂等注册 AKShare 适配器到 DataSourceRegistry（可挂载）。
+
+    主节点无 akshare SDK 时跳过注册，走 HTTP 路由到子服务。
+    """
+    from backend.core.logger import logger
     from backend.services.datasource.source_registry import datasource_registry
 
     if datasource_registry.has("akshare"):
         return "akshare"
-    datasource_registry.register(AKShareDataSource(service), instance_id="default")
+
+    adapter = AKShareDataSource(service)
+    if not adapter.is_available():
+        logger.info("AKShare SDK 不可用，跳过本地注册（走 HTTP 路由）")
+        return ""
+
+    datasource_registry.register(adapter, instance_id="default")
     return "akshare"

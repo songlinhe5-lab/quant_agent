@@ -23,9 +23,10 @@ RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ uv
 # 复制依赖声明
 COPY pyproject.toml uv.lock ./
 
-# 安装生产依赖
+# 安装生产依赖 + 数据源 SDK（子服务节点需要直连 API）
+# datasource extras 包含 tushare/akshare/futu-api
 RUN for i in 1 2 3; do \
-      uv sync --no-dev --no-install-project && break; \
+      uv sync --no-dev --no-install-project --extra datasource && break; \
       echo "uv sync failed (attempt $i), retrying..."; \
       sleep 5; \
     done
