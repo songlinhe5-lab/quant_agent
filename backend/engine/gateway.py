@@ -20,7 +20,12 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, Protocol
 
-from futu import TrdMarket, TrdSide
+try:
+    from futu import TrdMarket, TrdSide
+except ImportError:
+    # 主节点不安装 futu-api，提供占位类型避免启动崩溃
+    TrdMarket = None  # type: ignore[assignment,misc]
+    TrdSide = None  # type: ignore[assignment,misc]
 
 from backend.engine.contracts import OrderIntent, OrderUpdate
 from backend.schemas.domain import OrderStatus
