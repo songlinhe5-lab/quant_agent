@@ -32,7 +32,7 @@ load_dotenv()
 
 # ── 配置 ──
 HMAC_SECRET = os.getenv("DATA_SOURCE_HMAC_SECRET", "change-me-in-prod")
-SERVICE_PORT = int(os.getenv("DATASOURCE_PORT", "8000"))
+SERVICE_PORT = int(os.getenv("DATASOURCE_PORT", "8001"))
 ENABLE_REDIS_HEARTBEAT = os.getenv("ENABLE_REDIS_HEARTBEAT", "false").lower() == "true"
 
 app = FastAPI(title="Quant Agent Data Subservice", version="1.0.0")

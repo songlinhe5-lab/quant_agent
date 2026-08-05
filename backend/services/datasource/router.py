@@ -13,10 +13,10 @@ Data Source Router - 数据源路由服务
 
 环境变量控制 (URL 支持逗号分隔多活):
   DATA_SOURCE_ROUTER_ENABLED=true|false    # 是否启用路由
-  YF_PRIMARY_NODE_URL=http://localhost:8000  # yfinance 主节点 (主节点本地)
-  YF_BACKUP_NODE_URL=http://s3:8000,http://s4:8000,http://s2:8000  # yfinance 备用 (逗号分隔多活)
-  TUSHARE_REMOTE_URL=http://bj:8000          # tushare 远程 (北京单节点)
-  AKSHARE_REMOTE_URL=http://bj:8000          # akshare 远程 (北京单节点)
+  YF_PRIMARY_NODE_URL=http://localhost:8001  # yfinance 主节点 (主节点本地, data_subservice 端口 8001)
+  YF_BACKUP_NODE_URL=http://s3:8001,http://s4:8001,http://s2:8001  # yfinance 备用 (逗号分隔多活)
+  TUSHARE_REMOTE_URL=http://bj:8001          # tushare 远程 (北京单节点)
+  AKSHARE_REMOTE_URL=http://bj:8001          # akshare 远程 (北京单节点)
   DATA_SOURCE_HMAC_SECRET=...               # 节点间通信签名密钥
 """
 
@@ -79,7 +79,7 @@ class DataSourceRouter:
         # 支持逗号分隔的多个 URL (多活容灾)。
         # 注意: fetch_akshare/fetch_tushare 按固定单键 'akshare_remote'/'tushare_remote' 取节点，
         #       故 tushare/akshare 远程 URL 仅取首个 (当前拓扑: 北京单节点，无容灾)。
-        yf_primary = os.getenv("YF_PRIMARY_NODE_URL", "http://localhost:8000")
+        yf_primary = os.getenv("YF_PRIMARY_NODE_URL", "http://localhost:8001")
         yf_backups = os.getenv("YF_BACKUP_NODE_URL", "")
         akshare_urls = self._split_urls(os.getenv("AKSHARE_REMOTE_URL", ""))
         tushare_urls = self._split_urls(os.getenv("TUSHARE_REMOTE_URL", ""))

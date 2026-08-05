@@ -57,6 +57,6 @@ COPY --from=builder /app/.venv /app/.venv
 # 不再 COPY backend/ —— 子服务不依赖 backend 包。
 COPY data_subservice/ ./data_subservice/
 
-EXPOSE 8000
+EXPOSE 8001
 
-CMD ["uvicorn", "data_subservice.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["uvicorn", "data_subservice.main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "1"]

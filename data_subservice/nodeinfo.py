@@ -11,7 +11,7 @@ def get_node_info(region: str = "us-west", capabilities: Optional[list] = None) 
     """构建本子节点的 NodeInfo 注册信息。"""
     node_id = os.getenv("NODE_ID", socket.gethostname())
     ip = _get_local_ip()
-    port = os.getenv("DATASOURCE_PORT", "8000")
+    port = os.getenv("DATASOURCE_PORT", "8001")
     url = f"http://{ip}:{port}"
 
     caps = capabilities or os.getenv("NODE_CAPABILITIES", "yfinance,akshare,tushare").split(",")

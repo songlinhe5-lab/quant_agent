@@ -21,5 +21,13 @@ scrape_configs:
       username: 'admin'
       password: 'admin'
     static_configs:
-      # 兼容全栈 Docker 与混合启动模式：同时尝试抓取容器内与宿主机的 8000 端口
+      # 兼容全栈 Docker 与混合启动模式：同时尝试抓取容器内与宿主机的 8000 端口 (主服务 backend)
       - targets: ['quant-agent:8000', 'host.docker.internal:8000']
+
+  # 数据子服务 (data_subservice) 指标：运行于 8001 端口，暴露熔断面板 /metrics/circuit
+  - job_name: 'data-subservice'
+    scrape_interval: 15s
+    metrics_path: /metrics/circuit
+    static_configs:
+      # 子服务与主服务分离部署：主节点本地子服务 localhost:8001，远程节点经 Tailscale 域名
+      - targets: ['localhost:8001', 'host.docker.internal:8001', 's2:8001', 's3:8001', 's4:8001', 'bj:8001']

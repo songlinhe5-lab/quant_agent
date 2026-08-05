@@ -2,7 +2,7 @@
 # 北京从节点 (VPS_BJ · Tushare + AKShare + YFinance 数据源)
 # =====================================================================
 # 角色：仅作为「子服务节点」运行 data_subservice，提供 A 股 Tushare + 沪深港通 AKShare + YFinance 的 HTTP API。
-# 与主节点 (VPS_S1) 经 Tailscale 内网通信；不对公网暴露 8000。
+# 与主节点 (VPS_S1) 经 Tailscale 内网通信；不对公网暴露 8001。
 # 子服务节点不连接 Redis，所有缓存由主节点统一管理。
 # 禁止启用 Futu collector。
 #
@@ -31,8 +31,8 @@ services:
       DS_NODE_ID: ${DS_NODE_ID:-bj-slave}
       DS_REGION: "cn-bj"
       DS_CAPABILITIES: "tushare,akshare,yfinance"
-      DS_NODE_PORT: "8000"
-      DS_BASE_URL: "${DS_BASE_URL:-http://${PUBLIC_IP}:8000}"
+      DS_NODE_PORT: "8001"
+      DS_BASE_URL: "${DS_BASE_URL:-http://${PUBLIC_IP}:8001}"
       # 数据源凭证
       TUSHARE_TOKEN: ${TUSHARE_TOKEN}
       AKSHARE_MODE: ${AKSHARE_MODE:-internal}
@@ -40,14 +40,14 @@ services:
       DATA_SOURCE_HMAC_SECRET: ${DATA_SOURCE_HMAC_SECRET}
       DATA_SOURCE_ALLOWED_IPS: ${DATA_SOURCE_ALLOWED_IPS:-10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1}
     expose:
-      - "8000"
+      - "8001"
     ports:
       # 绑定到 Tailscale 内网 IP (PUBLIC_IP)，仅允许内网访问
       # PUBLIC_IP 在 .env 中配置，例如：PUBLIC_IP=100.124.178.96
       # 如果 PUBLIC_IP 未配置，回退到 127.0.0.1（仅本机访问）
-      - "${PUBLIC_IP:-127.0.0.1}:8000:8000"
+      - "${PUBLIC_IP:-127.0.0.1}:8001:8001"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8001/health').status==200 else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3
