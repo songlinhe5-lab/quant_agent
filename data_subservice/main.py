@@ -6,6 +6,7 @@ Data Subservice — 独立数据源 HTTP 服务（物理解耦版）
 由主服务经 DataSourceRouter 通过 HMAC 签名调用。
 """
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -24,6 +25,7 @@ from data_subservice._internal.logger import logger
 from data_subservice._internal.redis_client import redis_client
 from data_subservice._internal.service_registry import ServiceRegistry
 from data_subservice.akshare_worker import handle_akshare
+from data_subservice.futu_worker import handle_futu
 from data_subservice.nodeinfo import get_node_info
 from data_subservice.tushare_worker import handle_tushare
 from data_subservice.yfinance_worker import handle_yfinance
@@ -82,6 +84,11 @@ async def fetch_data(request: Request):
         result = await handle_akshare(action, params)
     elif source == "tushare":
         result = await handle_tushare(action, params)
+    elif source == "futu":
+        # Futu 仅在主节点 COLLECTOR_FUTU=true 时启用（OpenD 本地 TCP）
+        if not os.getenv("COLLECTOR_FUTU", "false").lower() == "true":
+            raise HTTPException(status_code=503, detail="Futu 采集器未启用（仅主节点 COLLECTOR_FUTU=true）")
+        result = await handle_futu(action, params)
     else:
         raise HTTPException(status_code=400, detail=f"未知数据源: {source}")
 
@@ -93,10 +100,24 @@ async def circuit_metrics():
     return JSONResponse(circuit_breaker.status_snapshot())
 
 
-# ── 启动事件：可选向主 Redis 注册节点心跳 ──
+# ── 启动事件：可选向主 Redis 注册节点心跳 + Futu 长连接 ──
 @app.on_event("startup")
 async def startup_event():
     logger.info("🚀 Data Subservice 启动完成 (物理解耦模式，无 backend 依赖)")
+
+    # Futu 仅主节点启用（OpenD 本地 TCP，部署在主节点 VPS）
+    if os.getenv("COLLECTOR_FUTU", "false").lower() == "true":
+        try:
+            from data_subservice.futu_src import futu_service
+            from data_subservice.futu_src.watchdog import FutuWatchdog
+
+            # 初始建连（线程池执行，不阻塞事件循环）
+            await asyncio.to_thread(futu_service.connect)
+            asyncio.create_task(FutuWatchdog(futu_service).start())
+            logger.info("🔌 Futu OpenD 长连接已拉起（主节点），看门狗守护进程启动")
+        except Exception as e:
+            logger.error(f"❌ Futu OpenD 启动失败: {e}")
+
     if ENABLE_REDIS_HEARTBEAT:
         try:
             node = get_node_info()
