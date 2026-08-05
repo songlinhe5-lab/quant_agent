@@ -348,6 +348,8 @@ class TestDataSourceRouterIntegration:
             "os.environ",
             {
                 "DATA_SOURCE_ROUTER_ENABLED": "true",
+                # 启用路由时必须配置 HMAC 密钥, 否则 DataSourceRouter fail-fast
+                "DATA_SOURCE_HMAC_SECRET": "test-secret",
                 "YF_PRIMARY_NODE_URL": "http://test-node:8000",
             },
         ):

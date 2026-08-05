@@ -59,16 +59,23 @@ class TestDataSourceRouter:
         """初始化节点"""
         assert "yf_primary" in router._nodes
 
-    def test_sign_request_no_secret(self, router):
-        """无密钥时签名为空"""
-        sig = router._sign_request({"key": "value"}, "12345")
-        assert sig == ""
+    def test_sign_request_matches_subservice_contract(self):
+        """签名必须与子服务 verify_hmac 的标准 HMAC-SHA256 一致"""
+        import hashlib
+        import hmac
+
+        with patch.dict(os.environ, {"DATA_SOURCE_HMAC_SECRET": "test-secret", "DATA_SOURCE_ROUTER_ENABLED": "false"}):
+            r = DataSourceRouter()
+
+        body = '{"source": "yfinance", "action": "QUOTE", "params": {}}'
+        expected = hmac.new(b"test-secret", f"12345:{body}".encode("utf-8"), hashlib.sha256).hexdigest()
+        assert r._sign_request(body, "12345") == expected
 
     def test_sign_request_with_secret(self):
         """有密钥时生成签名"""
         with patch.dict(os.environ, {"DATA_SOURCE_HMAC_SECRET": "test-secret", "DATA_SOURCE_ROUTER_ENABLED": "false"}):
             r = DataSourceRouter()
-        sig = r._sign_request({"key": "value"}, "12345")
+        sig = r._sign_request('{"key": "value"}', "12345")
         assert len(sig) == 64  # SHA256 hex
 
     def test_get_healthy_nodes(self, router):
@@ -415,28 +422,37 @@ class TestDataSourceRouterInit:
 
 class TestHmacSignature:
     def test_sign_request_with_secret(self, router_enabled):
-        payload = {"ticker": "AAPL", "fetch_type": "quote"}
+        body = '{"source": "yfinance", "action": "QUOTE", "params": {"ticker": "AAPL"}}'
         timestamp = "1234567890"
-        signature = router_enabled._sign_request(payload, timestamp)
+        signature = router_enabled._sign_request(body, timestamp)
         assert isinstance(signature, str)
         assert len(signature) == 64
 
-    def test_sign_request_without_secret(self, router_disabled):
-        payload = {"ticker": "AAPL"}
-        signature = router_disabled._sign_request(payload, "1234567890")
-        assert signature == ""
+    def test_sign_request_matches_subservice_contract(self, router_enabled):
+        """签名须与 data_subservice/main.py::verify_hmac 完全一致"""
+        import hashlib
+        import hmac
+
+        body = '{"ticker": "AAPL"}'
+        timestamp = "1234567890"
+        expected = hmac.new(
+            router_enabled._hmac_secret.encode("utf-8"),
+            f"{timestamp}:{body}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        assert router_enabled._sign_request(body, timestamp) == expected
 
     def test_sign_request_consistent(self, router_enabled):
-        payload = {"key": "value", "num": 123}
+        body = '{"key": "value", "num": 123}'
         timestamp = "1234567890"
-        sig1 = router_enabled._sign_request(payload, timestamp)
-        sig2 = router_enabled._sign_request(payload, timestamp)
+        sig1 = router_enabled._sign_request(body, timestamp)
+        sig2 = router_enabled._sign_request(body, timestamp)
         assert sig1 == sig2
 
     def test_sign_request_with_timestamp(self, router_enabled):
-        payload = {"ticker": "AAPL"}
-        sig1 = router_enabled._sign_request(payload, "1234567890")
-        sig2 = router_enabled._sign_request(payload, "0987654321")
+        body = '{"ticker": "AAPL"}'
+        sig1 = router_enabled._sign_request(body, "1234567890")
+        sig2 = router_enabled._sign_request(body, "0987654321")
         assert sig1 != sig2
 
 

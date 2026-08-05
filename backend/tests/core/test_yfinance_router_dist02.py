@@ -249,7 +249,7 @@ class TestCallFailover:
 
         urls_called = []
 
-        async def mock_post(url, json=None, headers=None):
+        async def mock_post(url, content=None, headers=None):
             urls_called.append(url)
             raise Exception("Connection refused")
 
@@ -268,7 +268,7 @@ class TestCallFailover:
     async def test_call_rate_limit_no_circuit(self, router, fake_registry):
         fake_registry._nodes = [_make_node("limited-node"), _make_node("ok-node")]
 
-        async def mock_post(url, json=None, headers=None):
+        async def mock_post(url, content=None, headers=None):
             if "limited-node" in url:
                 mock_resp = MagicMock()
                 mock_resp.json.return_value = {
@@ -279,7 +279,7 @@ class TestCallFailover:
                 mock_resp.raise_for_status = MagicMock()
                 return mock_resp
             mock_resp = MagicMock()
-            mock_resp.json.return_value = {"status": "success", "data": {}}
+            mock_resp.json.return_value = {"code": 0, "data": {}}
             mock_resp.raise_for_status = MagicMock()
             return mock_resp
 

@@ -22,6 +22,7 @@ Data Source Router - 数据源路由服务
 
 import asyncio
 import hashlib
+import hmac
 import json
 import os
 import time
@@ -39,6 +40,40 @@ from backend.services.datasource import (
     parse_retry_after,
     rate_limit_registry,
 )
+
+# 数据子服务统一数据端点 (契约见 data_subservice/main.py::fetch_data)
+_DATA_ENDPOINT = "/api/v1/data"
+
+# 主服务内部 fetch_type -> 子服务 action 映射
+# 子服务 action 取值见 data_subservice/yfinance_worker.py::handle_yfinance
+_YF_ACTION_MAP = {
+    "quote": "QUOTE",
+    "history": "HISTORY",
+    "tech": "TECH",
+    "fund_flow": "FUND_FLOW",
+    "option_chain": "OPTION_CHAIN",
+    "financials": "FINANCIALS",
+    "search": "SEARCH",
+    "batch_quote": "BATCH_QUOTE",
+}
+
+# 主服务内部 action -> 子服务 action 映射
+# 子服务 tushare worker 已补全 FINANCIALS / HOLDER / MONEYFLOW 之外的全部能力
+# (STOCK_HISTORY / STOCK_QUOTE / FUNDAMENTAL / STOCK_LIST / LOWFREQ_HISTORY / MACRO)，
+# 对应实现见 data_subservice/_internal/tushare/service.py。
+# ⚠️ 仍无法远程实现的 action 不列入本表 (如部分需要本地专属依赖的能力)，
+#    会被识别为"远程不支持"并降级本地适配器，避免发出必然失败的远程请求污染熔断计数。
+_TS_ACTION_MAP = {
+    "financials": "FINANCIALS",
+    "holder": "HOLDER",
+    "moneyflow": "MONEYFLOW",
+    "stock_history": "STOCK_HISTORY",
+    "stock_quote": "STOCK_QUOTE",
+    "fundamental": "FUNDAMENTAL",
+    "stock_list": "STOCK_LIST",
+    "lowfreq_history": "LOWFREQ_HISTORY",
+    "macro": "MACRO",
+}
 
 # DIST-19: AKShare STALE 缓存配置
 _AK_STALE_PREFIX = "quant:akshare:stale"
@@ -73,6 +108,16 @@ class DataSourceRouter:
         self._nodes: Dict[str, DataSourceNode] = {}
         self._lock = asyncio.Lock()
         self._http_client: Optional[httpx.AsyncClient] = None
+
+        # Fail-fast: 子服务无条件校验 HMAC, 主服务若缺密钥则所有远程请求必 403。
+        # 与其在运行时以"签名失败"的形式暴露 (极难排查), 不如启动即报错。
+        # 仅在启用路由时校验, 不影响本地开发与单测。
+        if self._enabled and not self._hmac_secret:
+            raise RuntimeError(
+                "DATA_SOURCE_ROUTER_ENABLED=true 但未配置 DATA_SOURCE_HMAC_SECRET。"
+                "数据子服务会拒绝所有未签名请求 (403)，请先配置该密钥 (需与子服务侧一致)。"
+            )
+
         self._init_nodes()
 
     def _init_nodes(self):
@@ -134,13 +179,55 @@ class DataSourceRouter:
         """将逗号分隔的 URL 字符串拆分为列表 (去除空白/空项)。"""
         return [u.strip() for u in (raw or "").split(",") if u.strip()]
 
-    def _sign_request(self, payload: dict, timestamp: str) -> str:
-        if not self._hmac_secret:
-            return ""
-        payload_with_ts = payload.copy()
-        payload_with_ts["__timestamp"] = timestamp
-        data_str = json.dumps(payload_with_ts, sort_keys=True).encode("utf-8")
-        return hashlib.sha256(self._hmac_secret.encode("utf-8") + data_str).hexdigest()
+    def _sign_request(self, body: str, timestamp: str) -> str:
+        """对**实际发送的 body 字符串**做标准 HMAC-SHA256 签名。
+
+        契约与 data_subservice/main.py::verify_hmac 严格一致:
+            message   = f"{timestamp}:{body}"
+            signature = hmac_sha256(HMAC_SECRET, message).hexdigest()
+
+        注意: 必须对最终发送的字节签名, 不能重新序列化 payload,
+        否则空格/键序/Unicode 转义的差异会导致子服务验签失败 (403)。
+        """
+        return hmac.new(
+            self._hmac_secret.encode("utf-8"),
+            f"{timestamp}:{body}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+
+    @staticmethod
+    def _normalize_response(raw: Dict[str, Any]) -> Dict[str, Any]:
+        """将子服务的 {"code":0,"data":...} 响应归一化为主服务内部约定。
+
+        主服务各调用方统一以 status/success 判定结果, 子服务返回的是
+        code/data 信封, 此处做一次转换, 避免污染上层业务逻辑。
+        """
+        if not isinstance(raw, dict):
+            return {"status": "error", "success": False, "message": f"非法响应类型: {type(raw).__name__}"}
+
+        # 已是主服务内部格式 (如 _send_request 构造的错误体), 原样返回
+        if "code" not in raw:
+            return raw
+
+        if raw.get("code") != 0:
+            return {
+                "status": "error",
+                "success": False,
+                "message": str(raw.get("message") or raw.get("detail") or f"子服务返回 code={raw.get('code')}"),
+            }
+
+        data = raw.get("data")
+
+        # worker 内部错误以 {"error": "..."} 形式返回, 需识别为失败
+        if isinstance(data, dict) and data.get("error"):
+            return {"status": "error", "success": False, "message": str(data["error"]), "data": data}
+
+        result: Dict[str, Any] = {"status": "success", "success": True, "data": data}
+        # 透传 worker 已带的业务字段, 但不覆盖上面的状态字段
+        if isinstance(data, dict):
+            for k, v in data.items():
+                result.setdefault(k, v)
+        return result
 
     def _ensure_http_client(self):
         if self._http_client is None:
@@ -149,25 +236,36 @@ class DataSourceRouter:
                 limits=httpx.Limits(max_connections=20),
             )
 
-    async def _send_request(self, node: DataSourceNode, endpoint: str, payload: dict) -> Dict[str, Any]:
+    async def _send_request(self, node: DataSourceNode, source: str, payload: dict) -> Dict[str, Any]:
+        """向数据子服务发起统一数据请求。
 
+        契约 (data_subservice/main.py):
+            POST {node.url}/api/v1/data
+            body    = {"source": ..., "action": ..., "params": {...}}
+            headers = X-Timestamp / X-Signature (HMAC-SHA256)
+            resp    = {"code": 0, "data": ...}
+        """
         self._ensure_http_client()
-        url = f"{node.url}/api/v1/data-source/proxy/{endpoint}"
-        headers = {"Content-Type": "application/json"}
+        url = f"{node.url}{_DATA_ENDPOINT}"
 
-        if self._hmac_secret:
-            timestamp = str(int(time.time()))
-            signature = self._sign_request(payload, timestamp)
-            headers["X-Data-Source-Signature"] = signature
-            headers["X-Data-Source-Timestamp"] = timestamp
+        # 子服务对原始 body 字节验签, 故此处固定序列化一次并以 content= 发送,
+        # 不能用 json=payload (httpx 会重新序列化, 字节可能不一致导致 403)。
+        body = json.dumps(payload, ensure_ascii=False)
+        timestamp = str(int(time.time()))
+
+        headers = {
+            "Content-Type": "application/json",
+            "X-Timestamp": timestamp,
+            "X-Signature": self._sign_request(body, timestamp),
+        }
 
         if self._http_client is None:
             return {}
 
         try:
-            resp = await self._http_client.post(url, json=payload, headers=headers, timeout=15.0)
+            resp = await self._http_client.post(url, content=body.encode("utf-8"), headers=headers, timeout=15.0)
             resp.raise_for_status()
-            return resp.json()
+            return self._normalize_response(resp.json())
         except httpx.HTTPStatusError as e:
             status_code = e.response.status_code
             resp_headers = dict(e.response.headers)
@@ -186,7 +284,7 @@ class DataSourceRouter:
             )
 
             logger.error(
-                f"[Router] 请求错误: node={node.name}, endpoint={endpoint}, "
+                f"[Router] 请求错误: node={node.name}, source={source}, "
                 f"status={status_code}, category={category.value}, error={str(e)}"
             )
 
@@ -198,7 +296,7 @@ class DataSourceRouter:
                 "message": str(e),
             }
         except Exception as e:
-            logger.error(f"[Router] 请求失败: node={node.name}, endpoint={endpoint}, error={str(e)}")
+            logger.error(f"[Router] 请求失败: node={node.name}, source={source}, error={str(e)}")
             raise
 
     def _build_error_info_from_http(
@@ -337,9 +435,9 @@ class DataSourceRouter:
         for node in nodes:
             try:
                 payload = {
-                    "ticker": ticker,
-                    "fetch_type": fetch_type,
-                    "kwargs": kwargs,
+                    "source": "yfinance",
+                    "action": _YF_ACTION_MAP.get(fetch_type.lower(), fetch_type.upper()),
+                    "params": {"ticker": ticker, **kwargs},
                 }
                 result = await self._send_request(node, "yfinance", payload)
 
@@ -422,7 +520,11 @@ class DataSourceRouter:
             return cached
 
         try:
-            payload = {"action": action, "kwargs": kwargs}
+            payload = {
+                "source": "akshare",
+                "action": action.upper(),
+                "params": dict(kwargs),
+            }
             result = await self._send_request(remote_node, "akshare", payload)
 
             if result.get("status") == "success":
@@ -461,8 +563,19 @@ class DataSourceRouter:
         if not self._enabled or not remote_node or remote_node.status != "healthy":
             return await self._call_local_tushare(action, **params)
 
+        # 子服务 tushare worker 未实现该 action, 直接走本地, 不做无谓的远程往返,
+        # 也避免把"能力缺口"误判为节点故障而污染熔断计数。
+        remote_action = _TS_ACTION_MAP.get(action.lower())
+        if remote_action is None:
+            logger.debug(f"[Tushare] action={action} 远程子服务不支持，直接使用本地适配器")
+            return await self._call_local_tushare(action, **params)
+
         try:
-            payload = {"action": action, "params": params}
+            payload = {
+                "source": "tushare",
+                "action": remote_action,
+                "params": dict(params),
+            }
             result = await self._send_request(remote_node, "tushare", payload)
             if result.get("success"):
                 await self._update_node_status(remote_node.name, success=True)

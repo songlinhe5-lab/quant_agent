@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import json
 import time
 from typing import Any, Dict, List, Optional
@@ -43,6 +44,37 @@ _NODE_CACHE_TTL = 5.0  # 本地节点缓存刷新间隔 (秒)
 _STALE_CACHE_TTL = 86400  # STALE 缓存 TTL (24h)
 _STALE_KEY_PREFIX = "quant:yf:stale"
 _REQUEST_TIMEOUT = 15.0
+
+# 数据子服务统一数据端点 (契约见 data_subservice/main.py::fetch_data)
+_DATA_ENDPOINT = "/api/v1/data"
+
+
+def _normalize_response(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """将子服务 {"code":0,"data":...} 响应归一化为主服务内部 status/success 约定。"""
+    if not isinstance(raw, dict):
+        return {"status": "error", "success": False, "message": f"非法响应类型: {type(raw).__name__}"}
+
+    if "code" not in raw:
+        return raw
+
+    if raw.get("code") != 0:
+        return {
+            "status": "error",
+            "success": False,
+            "message": str(raw.get("message") or raw.get("detail") or f"子服务返回 code={raw.get('code')}"),
+        }
+
+    data = raw.get("data")
+    if isinstance(data, dict) and data.get("error"):
+        return {"status": "error", "success": False, "message": str(data["error"]), "data": data}
+
+    result: Dict[str, Any] = {"status": "success", "success": True, "data": data}
+    if isinstance(data, dict):
+        for k, v in data.items():
+            result.setdefault(k, v)
+    return result
+
+
 _CONNECT_TIMEOUT = 5.0
 
 
@@ -227,31 +259,51 @@ class YFinanceRouter:
             )
 
     async def _send_request(self, node: NodeInfo, endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """向指定节点发送 HTTP 请求"""
-        self._ensure_http_client()
-        url = f"{node.url}/api/v1/data-source/proxy/{endpoint}"
-        headers = {"Content-Type": "application/json"}
+        """向指定节点发送 HTTP 请求。
 
-        # HMAC 签名 (如果配置了密钥)
-        if self._hmac_secret:
-            timestamp = str(int(time.time()))
-            signature = self._sign_request(payload, timestamp)
-            headers["X-Data-Source-Signature"] = signature
-            headers["X-Data-Source-Timestamp"] = timestamp
+        契约与 data_subservice/main.py::fetch_data 严格一致:
+            POST {node.url}/api/v1/data
+            body    = {"source": ..., "action": ..., "params": {...}}
+            headers = X-Timestamp / X-Signature (HMAC-SHA256)
+            resp    = {"code": 0, "data": ...}
+        """
+        self._ensure_http_client()
+        url = f"{node.url}{_DATA_ENDPOINT}"
+
+        # endpoint 语义即数据源名 (如 "yfinance")；兼容调用方已自带 source/action 的 payload
+        body_payload = dict(payload)
+        body_payload.setdefault("source", endpoint)
+        body_payload.setdefault("action", "")
+        body_payload.setdefault("params", {})
+
+        # 子服务对原始 body 字节验签, 必须发送与签名完全相同的字节
+        body = json.dumps(body_payload, ensure_ascii=False)
+        timestamp = str(int(time.time()))
+
+        headers = {
+            "Content-Type": "application/json",
+            "X-Timestamp": timestamp,
+            "X-Signature": self._sign_request(body, timestamp),
+        }
 
         if self._http_client is None:
             return {"status": "error", "message": "HTTP client not initialized"}
 
-        resp = await self._http_client.post(url, json=payload, headers=headers)
+        resp = await self._http_client.post(url, content=body.encode("utf-8"), headers=headers)
         resp.raise_for_status()
-        return resp.json()
+        return _normalize_response(resp.json())
 
-    def _sign_request(self, payload: dict, timestamp: str) -> str:
-        """HMAC-SHA256 签名"""
-        payload_with_ts = payload.copy()
-        payload_with_ts["__timestamp"] = timestamp
-        data_str = json.dumps(payload_with_ts, sort_keys=True).encode("utf-8")
-        return hashlib.sha256(self._hmac_secret.encode("utf-8") + data_str).hexdigest()
+    def _sign_request(self, body: str, timestamp: str) -> str:
+        """标准 HMAC-SHA256 签名: hmac(secret, f"{timestamp}:{body}")。
+
+        原实现为 sha256(secret ‖ data) 朴素拼接, 既与子服务不兼容,
+        又存在长度扩展攻击风险, 已改为标准 HMAC。
+        """
+        return hmac.new(
+            self._hmac_secret.encode("utf-8"),
+            f"{timestamp}:{body}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
 
     # ─────────────────────────────────────────
     #  失败记录与熔断

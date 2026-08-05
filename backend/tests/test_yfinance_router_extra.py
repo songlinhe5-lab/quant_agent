@@ -152,23 +152,29 @@ class TestStaleCache:
 
 class TestHttpSend:
     def test_sign_request_deterministic(self, router):
-        sig1 = router._sign_request({"a": 1}, "123")
-        sig2 = router._sign_request({"a": 1}, "123")
+        sig1 = router._sign_request('{"a": 1}', "123")
+        sig2 = router._sign_request('{"a": 1}', "123")
         assert sig1 == sig2 and len(sig1) == 64
 
     async def test_send_request_ok(self, router):
         resp = MagicMock()
         resp.raise_for_status = MagicMock()
-        resp.json.return_value = {"status": "success"}
+        resp.json.return_value = {"code": 0, "data": {"price": 1.0}}
         client = AsyncMock()
         client.post = AsyncMock(return_value=resp)
         router._http_client = client
         node = _node("n1")
-        res = await router._send_request(node, "quote", {"ticker": "AAPL"})
+        res = await router._send_request(node, "yfinance", {"ticker": "AAPL"})
         assert res["status"] == "success"
-        # HMAC 头应被写入
-        _, kwargs = client.post.call_args
-        assert "X-Data-Source-Signature" in kwargs["headers"]
+
+        args, kwargs = client.post.call_args
+        # 必须打到子服务真实存在的统一端点
+        assert args[0].endswith("/api/v1/data")
+        # 头名须与子服务 verify_hmac 读取的一致
+        assert "X-Signature" in kwargs["headers"]
+        assert "X-Timestamp" in kwargs["headers"]
+        # 必须以 content= 发送签名时所用的原始字节 (不能用 json=)
+        assert "content" in kwargs and "json" not in kwargs
 
     def test_ensure_http_client_creates(self, router):
         router._http_client = None

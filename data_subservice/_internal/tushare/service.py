@@ -19,6 +19,20 @@ from data_subservice._internal.logger import logger
 TS_TOKEN = os.getenv("TUSHARE_TOKEN", "")
 
 
+def _today() -> str:
+    """返回 yyyyMMdd 格式的今日（子服务无 datetime 依赖，用 time 构造）。"""
+    import time
+
+    return time.strftime("%Y%m%d", time.localtime())
+
+
+def _today_minus(days: int) -> str:
+    import time
+
+    t = time.localtime(time.time() - days * 86400)
+    return time.strftime("%Y%m%d", t)
+
+
 class TushareService:
     """Tushare 数据源（A股财务/基本面/资金流）。"""
 
@@ -112,6 +126,164 @@ class TushareService:
         try:
             records = await circuit_breaker.call(f"tushare:{symbol}", _call)
             self._record_success(symbol)
+            return {"symbol": symbol, "data": records, "source": "tushare"}
+        except Exception as e:
+            self._record_failure(symbol)
+            return {"symbol": symbol, "error": str(e), "source": "tushare"}
+
+    # ───────────────────────────────────────────────────────────────
+    # 审计补全：以下 6 个能力在主服务侧曾有 stock_history / stock_quote /
+    # fundamental / stock_list / lowfreq_history / macro 等 action，但子服务
+    # worker 此前未实现，主路由只能降级走本地适配器（audit: capability-gap）。
+    # 现已在子服务补齐，使能力缺口真正闭合，避免污染熔断计数。
+    # ───────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _empty(kind: str) -> Dict[str, Any]:
+        return {"action": kind, "data": [], "source": "tushare"}
+
+    @staticmethod
+    def _frame_to_records(df) -> Dict[str, Any]:
+        return {"data": df.to_dict(orient="records"), "source": "tushare"}
+
+    async def get_daily_history(self, symbol: str, start_date: str, end_date: str, asset: str = "E") -> Dict[str, Any]:
+        """日线历史行情（tushare daily + asset 分流）。
+
+        对齐主服务 TushareService.get_daily_history：指数/ETF 走 index_daily。
+        返回 OHLCV。
+        """
+        if not self.pro:
+            return {"symbol": symbol, "error": "tushare not configured", "source": "tushare"}
+
+        def _call():
+            ts_code = self._to_ts_code(symbol)
+            if asset == "I":
+                df = self.pro.index_daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+            else:
+                df = self.pro.daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
+            if df is None or df.empty:
+                return []
+            return df.to_dict(orient="records")
+
+        try:
+            records = await circuit_breaker.call(f"tushare:{symbol}", _call)
+            return {"symbol": symbol, "data": records, "source": "tushare"}
+        except Exception as e:
+            self._record_failure(symbol, is_rate_limit="rate" in str(e).lower())
+            return {"symbol": symbol, "error": str(e), "source": "tushare"}
+
+    async def get_realtime_quote(self, symbol: str) -> Dict[str, Any]:
+        """实时快照（tushare rt 接口）。
+
+        对齐主服务 TushareService.get_realtime_quote：rt 不可用则降级 daily 最新一行。
+        """
+        if not self.pro:
+            return {"symbol": symbol, "error": "tushare not configured", "source": "tushare"}
+
+        def _call():
+            ts_code = self._to_ts_code(symbol)
+            df = self.pro.rt(ts_code=ts_code)
+            if df is None or df.empty:
+                df = self.pro.daily(ts_code=ts_code, start_date=_today_minus(5), end_date=_today())
+                if df is not None and not df.empty:
+                    df = df.head(1)
+            if df is None or df.empty:
+                return []
+            return df.to_dict(orient="records")
+
+        try:
+            records = await circuit_breaker.call(f"tushare:{symbol}", _call)
+            return {"symbol": symbol, "data": records, "source": "tushare"}
+        except Exception as e:
+            self._record_failure(symbol)
+            return {"symbol": symbol, "error": str(e), "source": "tushare"}
+
+    async def get_daily_basic(
+        self, symbol: str, trade_date: str = "", start_date: str = "", end_date: str = ""
+    ) -> Dict[str, Any]:
+        """每日基本面指标（tushare daily_basic）。
+
+        对齐主服务 TushareService.get_daily_basic：返回 PE/PB/市值/换手率等。
+        """
+        if not self.pro:
+            return {"symbol": symbol, "error": "tushare not configured", "source": "tushare"}
+
+        def _call():
+            ts_code = self._to_ts_code(symbol)
+            if trade_date:
+                df = self.pro.daily_basic(ts_code=ts_code, trade_date=trade_date)
+            else:
+                df = self.pro.daily_basic(ts_code=ts_code, start_date=start_date, end_date=end_date)
+            if df is None or df.empty:
+                return []
+            return df.to_dict(orient="records")
+
+        try:
+            records = await circuit_breaker.call(f"tushare:{symbol}", _call)
+            return {"symbol": symbol, "data": records, "source": "tushare"}
+        except Exception as e:
+            self._record_failure(symbol)
+            return {"symbol": symbol, "error": str(e), "source": "tushare"}
+
+    async def get_stock_basic(
+        self,
+        list_status: str = "L",
+        exchange: str = "",
+        fields: str = "ts_code,symbol,name,area,industry,market,list_status,list_date",
+    ) -> Dict[str, Any]:
+        """股票列表（tushare stock_basic）。
+
+        对齐主服务 TushareService.get_stock_basic。
+        """
+        if not self.pro:
+            return {"symbol": "", "error": "tushare not configured", "source": "tushare"}
+
+        def _call():
+            df = self.pro.stock_basic(exchange=exchange, list_status=list_status, fields=fields)
+            if df is None or df.empty:
+                return []
+            return df.to_dict(orient="records")
+
+        try:
+            records = await circuit_breaker.call("tushare:stock_basic", _call)
+            return {"data": records, "source": "tushare"}
+        except Exception as e:
+            self._record_failure("tushare:stock_basic")
+            return {"error": str(e), "source": "tushare"}
+
+    async def get_lowfreq_history(self, symbol: str, freq: str, start_date: str, end_date: str) -> Dict[str, Any]:
+        """低频历史（周/月线，tushare wk_mn 接口）。"""
+        if not self.pro:
+            return {"symbol": symbol, "error": "tushare not configured", "source": "tushare"}
+
+        def _call():
+            ts_code = self._to_ts_code(symbol)
+            df = self.pro.wk_mn(ts_code=ts_code, freq=freq, start_date=start_date, end_date=end_date)
+            if df is None or df.empty:
+                return []
+            return df.to_dict(orient="records")
+
+        try:
+            records = await circuit_breaker.call(f"tushare:{symbol}", _call)
+            return {"symbol": symbol, "data": records, "source": "tushare"}
+        except Exception as e:
+            self._record_failure(symbol)
+            return {"symbol": symbol, "error": str(e), "source": "tushare"}
+
+    async def get_macro(self, symbol: str, start_date: str, end_date: str) -> Dict[str, Any]:
+        """宏观经济数据（tushare macro 接口）。"""
+        if not self.pro:
+            return {"symbol": symbol, "error": "tushare not configured", "source": "tushare"}
+
+        def _call():
+            ts_code = self._to_ts_code(symbol)
+            df = self.pro.macro(ts_code=ts_code, start_date=start_date, end_date=end_date)
+            if df is None or df.empty:
+                return []
+            return df.to_dict(orient="records")
+
+        try:
+            records = await circuit_breaker.call(f"tushare:{symbol}", _call)
             return {"symbol": symbol, "data": records, "source": "tushare"}
         except Exception as e:
             self._record_failure(symbol)
