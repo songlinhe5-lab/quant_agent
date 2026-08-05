@@ -109,6 +109,40 @@ class TestHandleFutuRouting:
         assert "error" in out
         assert "BOGUS" in out["error"]
 
+    @pytest.mark.asyncio
+    async def test_screen_stocks_delegates(self, monkeypatch):
+        from data_subservice.futu_src import futu_service
+        from data_subservice.futu_worker import handle_futu
+
+        mock = AsyncMock(return_value={"data": [{"code": "HK.00700"}]})
+        monkeypatch.setattr(futu_service, "screen_stocks", mock)
+        out = await handle_futu("SCREEN_STOCKS", {"market": "HK", "filters": [{"type": "lot_price", "min": 1}]})
+        assert out == {"data": [{"code": "HK.00700"}]}
+        mock.assert_awaited_once_with(market="HK", filters=[{"type": "lot_price", "min": 1}])
+
+    @pytest.mark.asyncio
+    async def test_modify_order_delegates(self, monkeypatch):
+        from data_subservice.futu_src import futu_service
+        from data_subservice.futu_worker import handle_futu
+
+        mock = AsyncMock(return_value={"order_id": "123"})
+        monkeypatch.setattr(futu_service, "modify_order", mock)
+        out = await handle_futu("MODIFY_ORDER", {"order_id": "123", "op": "CANCEL", "market": "HK"})
+        assert out == {"order_id": "123"}
+        # op/market 经 _as_enum 还原为 futu enum 后传入
+        mock.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_query_order_delegates(self, monkeypatch):
+        from data_subservice.futu_src import futu_service
+        from data_subservice.futu_worker import handle_futu
+
+        mock = AsyncMock(return_value={"order_id": "123", "status": "FILLED"})
+        monkeypatch.setattr(futu_service, "query_order", mock)
+        out = await handle_futu("QUERY_ORDER", {"order_id": "123", "market": "HK"})
+        assert out == {"order_id": "123", "status": "FILLED"}
+        mock.assert_awaited_once()
+
 
 class TestMainFutuDisabled:
     """验证未启用 COLLECTOR_FUTU 时主节点子服务拒绝 futu 请求(503)"""

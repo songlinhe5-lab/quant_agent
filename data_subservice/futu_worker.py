@@ -6,8 +6,28 @@ COLLECTOR_FUTU=true 时拉起。主服务经 HTTP 调 /api/v1/data (source=futu)
 
 from typing import Any, Dict
 
+from futu import ModifyOrderOp, TrdMarket, TrdSide
+
 from data_subservice._internal.logger import logger
 from data_subservice.futu_src import futu_service
+
+
+def _as_enum(enum_cls, value):
+    """HTTP 传输的枚举 value (字符串/int) 还原为 futu enum 实例。"""
+    if value is None:
+        return None
+    if isinstance(value, enum_cls):
+        return value
+    # 先按 value 构造 (如 TrdSide("BUY") 或 TrdMarket("HK"))
+    try:
+        return enum_cls(value)
+    except (ValueError, TypeError):
+        pass
+    # 再按成员名构造 (如 "BUY" / "HK")
+    try:
+        return enum_cls[value]
+    except (KeyError, TypeError):
+        return value
 
 
 async def handle_futu(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -44,8 +64,24 @@ async def handle_futu(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
                 ticker=params.get("ticker"),
                 qty=params.get("qty", 0),
                 price=params.get("price", 0.0),
-                trd_side=params.get("trd_side"),
-                market=params.get("market"),
+                trd_side=_as_enum(TrdSide, params.get("trd_side")),
+                market=_as_enum(TrdMarket, params.get("market")),
+            )
+        elif action == "SCREEN_STOCKS":
+            return await futu_service.screen_stocks(
+                market=params.get("market", "HK"),
+                filters=params.get("filters", []),
+            )
+        elif action == "MODIFY_ORDER":
+            return await futu_service.modify_order(
+                order_id=params.get("order_id"),
+                op=_as_enum(ModifyOrderOp, params.get("op")),
+                market=_as_enum(TrdMarket, params.get("market")),
+            )
+        elif action == "QUERY_ORDER":
+            return await futu_service.query_order(
+                order_id=params.get("order_id"),
+                market=_as_enum(TrdMarket, params.get("market")),
             )
         elif action == "HEALTH":
             return {"available": futu_service.status == "CONNECTED", "source": "futu"}

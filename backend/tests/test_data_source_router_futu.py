@@ -68,7 +68,8 @@ class TestFetchFutuDisabledDegradesLocal:
 class TestFetchFutuRemotePinnedMaster:
     @pytest.mark.asyncio
     async def test_remote_success_maps_action(self, remote_router):
-        fake_resp = {"success": True, "data": {"last_price": 12}, "status": "success"}
+        # 子服务返回 {code:0, data: <futu_service 原始 dict>}, _normalize_response 包一层
+        fake_resp = {"status": "success", "data": {"status": "success", "data": {"last_price": 12}}}
         with patch.object(remote_router, "_send_request", new=AsyncMock(return_value=fake_resp)) as mock_send:
             out = await remote_router.fetch_futu("QUOTE", ticker="HK.00700")
         # 必须 pin 到 futu_master 节点
@@ -79,12 +80,15 @@ class TestFetchFutuRemotePinnedMaster:
         sent_payload = mock_send.await_args.args[2]
         assert sent_payload["source"] == "futu"
         assert sent_payload["action"] == "QUOTE"
-        assert sent_payload["params"] == {"ticker": "HK.00700"}
-        assert out["success"] is True
+        # 业务侧传 ticker, router 已对齐为子服务 worker 契约的 symbol
+        assert sent_payload["params"] == {"symbol": "HK.00700"}
+        # 剥信封: 返回 futu_service 原始 dict, 业务侧判 status=="success"
+        assert out["status"] == "success"
+        assert out["data"]["last_price"] == 12
 
     @pytest.mark.asyncio
     async def test_remote_snapshot_maps_to_snapshot(self, remote_router):
-        fake_resp = {"success": True, "data": [], "status": "success"}
+        fake_resp = {"status": "success", "data": {"status": "success", "data": []}}
         with patch.object(remote_router, "_send_request", new=AsyncMock(return_value=fake_resp)) as mock_send:
             await remote_router.fetch_futu("MARKET_SNAPSHOTS", tickers=["HK.00700"])
         sent_payload = mock_send.await_args.args[2]
@@ -92,7 +96,7 @@ class TestFetchFutuRemotePinnedMaster:
 
     @pytest.mark.asyncio
     async def test_remote_failure_degrades_local(self, remote_router):
-        fail_resp = {"success": False, "message": "subservice down"}
+        fail_resp = {"status": "error", "message": "subservice down"}
         with (
             patch.object(remote_router, "_send_request", new=AsyncMock(return_value=fail_resp)),
             patch("backend.services.futu.futu_service") as mock_fs,

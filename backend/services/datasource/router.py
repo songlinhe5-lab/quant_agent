@@ -669,63 +669,94 @@ class DataSourceRouter:
         """
         remote_action = _FUTU_ACTION_MAP.get(action.lower(), action.upper())
 
+        # 业务侧统一用 ticker/tickers, 子服务 worker 契约用 symbol/symbols, 此处对齐
+        norm_params = self._futu_normalize_params(remote_action, params)
+
         remote_node = self._nodes.get("futu_master")
         # Futu 必须 pin 主节点, 不参与多活随机选; 节点不健康直接降级本地
         if not self._enabled or not remote_node or remote_node.status != "healthy":
             logger.debug(f"[Futu] action={remote_action} 走本地降级 (enabled={self._enabled})")
-            return await self._call_local_futu(remote_action, **params)
+            return await self._call_local_futu(remote_action, **norm_params)
 
         try:
             payload = {
                 "source": "futu",
                 "action": remote_action,
-                "params": dict(params),
+                "params": norm_params,
             }
             result = await self._send_request(remote_node, "futu", payload)
-            if result.get("success"):
+            if result.get("status") == "success":
                 await self._update_node_status(remote_node.name, success=True)
-                return result
+                # 剥掉子服务信封, 直接返回 futu_service 原始 dict
+                # (与本地降级 futu_service.xxx() 返回结构一致, 业务侧零改动)
+                inner = result.get("data")
+                return inner if isinstance(inner, dict) else result
             await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
         except Exception as e:
             logger.warning(f"[Futu] 远程节点失败: {remote_node.name}, {remote_action}, {str(e)}")
             await self._update_node_status(remote_node.name, success=False, error=str(e))
 
         logger.warning("[Futu] 远程节点不可用，降级本地 futu_service")
-        return await self._call_local_futu(remote_action, **params)
+        return await self._call_local_futu(remote_action, **norm_params)
+
+    @staticmethod
+    def _futu_normalize_params(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """对齐业务侧键名与子服务 worker 契约。
+
+        业务侧统一: ticker / tickers / market / sec_type / ktype / num / ...
+        子服务 worker: symbol / symbols (其余同)
+        """
+        out = dict(params)
+        if "ticker" in out:
+            out["symbol"] = out.pop("ticker")
+        if "tickers" in out:
+            out["symbols"] = out.pop("tickers")
+        return out
 
     async def _call_local_futu(self, action: str, **params) -> Dict[str, Any]:
-        """Futu 本地降级 (保留 SDK 兼容, Phase3 删主服务 OpenD 实例后移除)。"""
+        """Futu 本地降级 (保留 SDK 兼容, Phase3 删主服务 OpenD 实例后移除)。
+
+        返回结构与 futu_service.xxx() 原始 dict 一致, 与远程分支剥信封后的结构对齐。
+        """
         from backend.services.futu import futu_service
 
         try:
             if action == "QUOTE":
-                return futu_service.get_quote(params.get("ticker", ""))
+                return futu_service.get_quote(params.get("symbol", params.get("ticker", "")))
             elif action == "HISTORY":
                 return futu_service.get_history(
-                    params.get("ticker", ""),
+                    params.get("symbol", params.get("ticker", "")),
                     ktype=params.get("ktype", "K_DAY"),
                     num=int(params.get("num", 100)),
                 )
             elif action == "FUND_FLOW":
-                return futu_service.get_fund_flow(params.get("ticker", ""), market=params.get("market"))
+                # service.get_fund_flow(self, ticker) 无 market 形参
+                return futu_service.get_fund_flow(params.get("symbol", params.get("ticker", "")))
             elif action == "OPTION_CHAIN":
                 return futu_service.get_option_chain(
-                    params.get("ticker", ""), expiration_date=params.get("expiration_date")
+                    params.get("symbol", params.get("ticker", "")),
+                    expiration_date=params.get("expiration_date"),
                 )
+            elif action == "FUNDAMENTAL":
+                return futu_service.get_fundamental(params.get("symbol", params.get("ticker", "")))
+            elif action == "ORDER_BOOK":
+                return futu_service.get_order_book(params.get("symbol", params.get("ticker", "")))
+            elif action == "WARRANT_CHAIN":
+                return futu_service.get_warrant_chain(params.get("symbol", params.get("ticker", "")))
             elif action == "ACCOUNT_INFO":
-                return futu_service.get_account_info(params.get("market", ""))
+                return futu_service.get_account_info(params.get("market", "HK"))
             elif action == "STOCK_BASICINFO":
-                return futu_service.get_stock_basicinfo(params.get("ticker", ""), info_type=params.get("info_type"))
-            elif action == "MARKET_SNAPSHOTS":
-                return futu_service.get_market_snapshots(params.get("tickers", []))
+                # service.get_stock_basicinfo(self, market, sec_type) 位置必填
+                return futu_service.get_stock_basicinfo(params.get("market", "HK"), params.get("sec_type", "STOCK"))
+            elif action == "SNAPSHOT":
+                return futu_service.get_market_snapshots(params.get("symbols", []))
             elif action == "SCREEN_STOCKS":
                 return futu_service.screen_stocks(**params)
             elif action == "PLACE_ORDER":
                 return futu_service.place_order(**params)
-            # FUNDAMENTAL / ORDER_BOOK / WARRANT_CHAIN 本地 futu_service 未直接暴露, 透传降级
-            return {"success": False, "message": f"unsupported futu action: {action}"}
+            return {"status": "error", "message": f"unsupported futu action: {action}"}
         except Exception as e:  # noqa: BLE001
-            return {"success": False, "message": str(e)}
+            return {"status": "error", "message": str(e)}
 
     # ─────────────────────────────────────────
     #  DIST-19: AKShare STALE 缓存降级
