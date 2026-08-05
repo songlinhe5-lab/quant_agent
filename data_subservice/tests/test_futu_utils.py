@@ -15,9 +15,9 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 
-from backend.services.futu.cache_manager import CacheManager
-from backend.services.futu.mock_provider import MockProvider
-from backend.services.futu.utils import format_ticker, is_futu_unsupported
+from data_subservice.futu_src.cache_manager import CacheManager
+from data_subservice.futu_src.mock_provider import MockProvider
+from data_subservice.futu_src.utils import format_ticker, is_futu_unsupported
 
 
 # ─── utils.py ──────────────────────────────────────────────────────────

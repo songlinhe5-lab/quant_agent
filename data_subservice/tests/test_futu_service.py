@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.services.futu.service import FutuService, futu_service
+from data_subservice.futu_src.service import FutuService, futu_service
 
 
 class TestFutuServiceSingleton:
@@ -113,7 +113,7 @@ class TestFutuServiceQuoteMethods:
     @pytest.mark.asyncio
     async def test_get_quote(self):
         """get_quote() 本地连接时调用 QuoteHandler.get_quote()"""
-        from backend.services.futu.utils import format_ticker, is_futu_unsupported
+        from data_subservice.futu_src.utils import format_ticker, is_futu_unsupported
 
         service = FutuService()
         service.status = "CONNECTED"
@@ -136,7 +136,7 @@ class TestFutuServiceQuoteMethods:
     @pytest.mark.asyncio
     async def test_unsubscribe_quote(self):
         """unsubscribe_quote() 本地连接时调用 QuoteHandler.unsubscribe_quote()"""
-        from backend.services.futu.utils import format_ticker
+        from data_subservice.futu_src.utils import format_ticker
 
         service = FutuService()
         service.status = "CONNECTED"
@@ -160,7 +160,7 @@ class TestFutuServiceQuoteMethods:
     @pytest.mark.asyncio
     async def test_get_order_book(self):
         """get_order_book() 本地连接时调用 QuoteHandler.get_order_book()"""
-        from backend.services.futu.utils import format_ticker, is_futu_unsupported
+        from data_subservice.futu_src.utils import format_ticker, is_futu_unsupported
 
         service = FutuService()
         service.status = "CONNECTED"
@@ -179,7 +179,7 @@ class TestFutuServiceOptionFundMethods:
     @pytest.mark.asyncio
     async def test_get_option_chain(self):
         """get_option_chain() 本地连接时调用 OptionFundHandler.get_option_chain()"""
-        from backend.services.futu.utils import format_ticker, is_futu_unsupported
+        from data_subservice.futu_src.utils import format_ticker, is_futu_unsupported
 
         service = FutuService()
         service.status = "CONNECTED"
@@ -197,7 +197,7 @@ class TestFutuServiceOptionFundMethods:
     @pytest.mark.asyncio
     async def test_get_fund_flow(self):
         """get_fund_flow() 本地连接时调用 OptionFundHandler.get_fund_flow()"""
-        from backend.services.futu.utils import format_ticker, is_futu_unsupported
+        from data_subservice.futu_src.utils import format_ticker, is_futu_unsupported
 
         service = FutuService()
         service.status = "CONNECTED"
@@ -212,7 +212,7 @@ class TestFutuServiceOptionFundMethods:
     @pytest.mark.asyncio
     async def test_get_fundamental(self):
         """get_fundamental() 本地连接时调用 OptionFundHandler.get_fundamental()"""
-        from backend.services.futu.utils import format_ticker, is_futu_unsupported
+        from data_subservice.futu_src.utils import format_ticker, is_futu_unsupported
 
         service = FutuService()
         service.status = "CONNECTED"
@@ -270,7 +270,7 @@ class TestFutuServiceTradeMethods:
         """place_order() 调用 TradeHandler.place_order()"""
         from futu import TrdMarket, TrdSide
 
-        from backend.services.futu.utils import format_ticker
+        from data_subservice.futu_src.utils import format_ticker
 
         service = FutuService()
         with patch.object(service.trade_handler, "place_order", new_callable=AsyncMock) as mock:
@@ -323,7 +323,7 @@ class TestFutuServiceUtils:
 
         service = FutuService()
         # 测试包装方法正确调用底层函数
-        with patch("backend.services.futu.service.is_futu_unsupported", return_value=True) as mock_func:
+        with patch("data_subservice.futu_src.service.is_futu_unsupported", return_value=True) as mock_func:
             result = service.is_futu_unsupported("HK.00700")
             mock_func.assert_called_once_with("HK.00700")
             assert result is True
@@ -333,7 +333,7 @@ class TestFutuServiceUtils:
 
         service = FutuService()
         # 测试包装方法正确调用底层函数
-        with patch("backend.services.futu.service.format_ticker", return_value="HK.00700") as mock_func:
+        with patch("data_subservice.futu_src.service.format_ticker", return_value="HK.00700") as mock_func:
             result = service.format_ticker("00700")
             mock_func.assert_called_once_with("00700")
             assert result == "HK.00700"

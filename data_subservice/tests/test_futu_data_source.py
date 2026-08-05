@@ -11,8 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.services.futu.data_source import LocalDataSource
-from backend.services.futu.source_router import FutuSourceRouter
+from data_subservice.futu_src.data_source import LocalDataSource
+from data_subservice.futu_src.source_router import FutuSourceRouter
 
 
 # ---------------------------------------------------------------------------
@@ -154,7 +154,7 @@ class TestConnectionManagerSwitchHost:
 
     def test_switch_host_same_address(self):
         """切换到相同地址返回 unchanged"""
-        from backend.services.futu.connection_manager import ConnectionManager
+        from data_subservice.futu_src.connection_manager import ConnectionManager
 
         with patch.dict("os.environ", {"FUTU_HOST": "127.0.0.1", "FUTU_PORT": "11111"}):
             cm = ConnectionManager()
@@ -164,7 +164,7 @@ class TestConnectionManagerSwitchHost:
 
     def test_switch_host_new_address(self):
         """切换到新地址触发重连"""
-        from backend.services.futu.connection_manager import ConnectionManager
+        from data_subservice.futu_src.connection_manager import ConnectionManager
 
         with patch.dict("os.environ", {"FUTU_HOST": "127.0.0.1", "FUTU_PORT": "11111"}):
             cm = ConnectionManager()
@@ -183,7 +183,7 @@ class TestConnectionManagerSwitchHost:
 
     def test_target_property(self):
         """target 属性返回当前地址"""
-        from backend.services.futu.connection_manager import ConnectionManager
+        from data_subservice.futu_src.connection_manager import ConnectionManager
 
         with patch.dict("os.environ", {"FUTU_HOST": "10.0.0.1", "FUTU_PORT": "11112"}):
             cm = ConnectionManager()

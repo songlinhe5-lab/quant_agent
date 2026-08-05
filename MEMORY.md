@@ -19,20 +19,33 @@
 - Phase 2.5（整洁边界收口 BE-ARCH-01~04）：✅ 完成，文档 V5.2。
 - Phase 2.6（数据源依赖抽离 + external 双模）：✅ 依赖抽离完成；⏸ **子服务部署运行** 待基础设施就绪。
 
-## 三、Phase 3 待推进（依赖基础设施，当前挂起）
+## 三、Phase 3 已完成（2026-08-06）
 
-**目标**：删主服务第二份 OpenD 实例 + 确认 data_subservice 已实际运行。
+**目标**：删主服务第二份 OpenD 实例 + 确认 data_subservice 已运行 + 迁移数据源单测到 data_subservice/tests。
 
-**前置条件（基础设施就绪后）**：
-1. 主节点仅保留 `127.0.0.1:11111` 一份 Futu OpenD（US-MASTER 宿主）；移除主服务侧重复/冗余 OpenD 启动逻辑。
-2. `data_subservice` 在 US-YF-A/B、CN-AKSHARE 等节点以 external 模式部署并启动；心跳写主 Redis Registry。
-3. 主服务 `DATASOURCE_*` 模式切 `external`，`DataSourceRouter` 经 HMAC + Tailscale 调子服务 `/ds/{source}/{action}`。
-4. 验证 `DataSourceRouter.fetch_futu` 远程透传信封（data_subservice 返回的子服务信封需与主服务 kline_warehouse 兼容 - 已在 Phase 2 修一处 envelope 不一致 bug）。
+**已落地改动**：
+1. `backend/bootstrap/lifecycle.py`：移除启动期连接 Futu OpenD 的代码块（主服务不再启动 OpenD）。
+2. `backend/workers/collectors/futu.py`：**删除**（它从 worker 进程启动第二份 OpenD）。
+3. `backend/workers/collectors/__init__.py` + `collector_registry.py`：从采集器表移除 `futu` 定义与导入。
+4. `backend/services/datasource/adapters/futu.py`：`DATASOURCE_FUTU_MODE` 默认 `internal` → **`external`**（主服务仅经 Router 走 HTTP 调子服务）。
+5. **Futu 数据源单测迁移**：11 个 `backend/tests/test_futu_*.py` 移至 `data_subservice/tests/`，import 由 `backend.services.futu` 改写为 `data_subservice.futu_src`；其中 `test_futu_trade_handler.py` 2 处断言按子服务 `query_order` 实际（仅日志通知、不 spawn 任务）对齐。
+6. `backend/tests/test_collector_registry.py`：移除 futu collector 相关断言（期望集、启停矩阵、任务数 4→3）。
 
-**风险点**：
-- legacy_market_data 循环导入（预存环境债，非本次引入，待修）。
-- Redis 未运行时 router 测试 503（环境性，非代码 bug）。
-- 子服务 remote 返回信封与主服务 local 降级返回结构需保持一致（已在 router.py + kline_warehouse.py 处理）。
+**验证**：
+- `backend.main` 导入 OK；`data_subservice` 在 `COLLECTOR_FUTU=true` 下能导入 `app` 与 `futu_src.ConnectionManager`（子服务为唯一 OpenD 宿主）。
+- `data_subservice/tests/test_futu_*.py`：**242 passed**。
+- `backend/tests/test_collector_registry.py`：17 passed。
+- 主服务 `test_market_engine.py` / `test_kline_warehouse.py` 等回归无新增失败。
+
+**预存失败（非本次引入，已 git stash 确认）**：
+- `backend/tests/test_data_source_router_futu.py::test_remote_success_maps_action`（`KeyError: last_price`，envelope 归一化断言偏差）。
+- `backend/tests/test_kline_warehouse.py` 5 例（`kline_warehouse.data_source_router` 属性缺失 + 信封处理）。
+- `backend/tests/test_futu_adapter.py::test_fetch_option_chain_not_connected_returns_error_no_mock`（adapter 行为偏差）。
+- 以上为存量技术债，Phase 3 未触碰，后续单独修。
+
+**保留项（未删）**：
+- `backend/services/futu/` 包仍保留作 `DATASOURCE_FUTU_MODE=internal` 兜底（被 legacy_market_data.futu / legacy_broker / market_engine._get_futu_service / adapters/futu 引用）。
+- `backend/tests/test_futu_adapter.py` + `test_futu_adapter_dispatch.py` 仍测试 `backend.adapters.futu.futu_adapter`（主服务 DataSourceInterface 适配器层，属集成适配非源 SDK），未迁移。
 
 ## 四、相关文件索引
 

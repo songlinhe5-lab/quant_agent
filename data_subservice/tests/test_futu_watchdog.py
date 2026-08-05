@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pandas as pd
 import pytest
 
-from backend.services.futu.watchdog import FutuWatchdog, get_watchdog
+from data_subservice.futu_src.watchdog import FutuWatchdog, get_watchdog
 
 
 def _make_watchdog():
@@ -377,7 +377,7 @@ class TestFutuWatchdog:
 
 def test_get_watchdog_singleton(monkeypatch):
     """get_watchdog 应返回全局单例"""
-    import backend.services.futu.watchdog as wd_module
+    import data_subservice.futu_src.watchdog as wd_module
 
     monkeypatch.setattr(wd_module, "_watchdog", None)
     futu_svc = MagicMock()

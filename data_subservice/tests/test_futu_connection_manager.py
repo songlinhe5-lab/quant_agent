@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from futu import RET_OK, SecurityFirm, TrdEnv, TrdMarket
 
-from backend.services.futu.connection_manager import ConnectionManager
+from data_subservice.futu_src.connection_manager import ConnectionManager
 
 
 class TestConnectionManager:
@@ -29,11 +29,11 @@ class TestConnectionManager:
         fake_ctx = MagicMock()
         with (
             patch(
-                "backend.services.futu.connection_manager.OpenQuoteContext",
+                "data_subservice.futu_src.connection_manager.OpenQuoteContext",
                 return_value=fake_ctx,
             ) as mock_open,
             patch(
-                "backend.services.futu.connection_manager.ConnectionManager._is_opend_reachable",
+                "data_subservice.futu_src.connection_manager.ConnectionManager._is_opend_reachable",
                 return_value=True,
             ),
         ):
@@ -50,11 +50,11 @@ class TestConnectionManager:
         # 先mock socket探测返回True，这样才能测试OpenQuoteContext失败的场景
         with (
             patch(
-                "backend.services.futu.connection_manager.ConnectionManager._is_opend_reachable",
+                "data_subservice.futu_src.connection_manager.ConnectionManager._is_opend_reachable",
                 return_value=True,
             ),
             patch(
-                "backend.services.futu.connection_manager.OpenQuoteContext",
+                "data_subservice.futu_src.connection_manager.OpenQuoteContext",
                 side_effect=ConnectionError("OpenD unreachable"),
             ),
         ):
@@ -68,7 +68,7 @@ class TestConnectionManager:
         mgr = ConnectionManager()
         mgr._enabled = True  # 启用 futu，绕过 DISABLED 提前返回
         with patch(
-            "backend.services.futu.connection_manager.ConnectionManager._is_opend_reachable",
+            "data_subservice.futu_src.connection_manager.ConnectionManager._is_opend_reachable",
             return_value=False,
         ):
             mgr.connect()
@@ -86,11 +86,11 @@ class TestConnectionManager:
         fake_ctx = MagicMock()
         with (
             patch(
-                "backend.services.futu.connection_manager.OpenQuoteContext",
+                "data_subservice.futu_src.connection_manager.OpenQuoteContext",
                 return_value=fake_ctx,
             ) as mock_open,
             patch(
-                "backend.services.futu.connection_manager.ConnectionManager._is_opend_reachable",
+                "data_subservice.futu_src.connection_manager.ConnectionManager._is_opend_reachable",
                 return_value=True,
             ),
         ):
@@ -129,11 +129,11 @@ class TestConnectionManager:
         fake_ctx = MagicMock()
         with (
             patch(
-                "backend.services.futu.connection_manager.ConnectionManager._is_opend_reachable",
+                "data_subservice.futu_src.connection_manager.ConnectionManager._is_opend_reachable",
                 return_value=True,
             ),
             patch(
-                "backend.services.futu.connection_manager.OpenSecTradeContext",
+                "data_subservice.futu_src.connection_manager.OpenSecTradeContext",
                 return_value=fake_ctx,
             ) as mock_open,
         ):
@@ -155,11 +155,11 @@ class TestConnectionManager:
         fake_us = MagicMock()
         with (
             patch(
-                "backend.services.futu.connection_manager.ConnectionManager._is_opend_reachable",
+                "data_subservice.futu_src.connection_manager.ConnectionManager._is_opend_reachable",
                 return_value=True,
             ),
             patch(
-                "backend.services.futu.connection_manager.OpenSecTradeContext",
+                "data_subservice.futu_src.connection_manager.OpenSecTradeContext",
                 side_effect=[fake_hk, fake_us],
             ) as mock_open,
         ):
@@ -227,6 +227,6 @@ class TestConnectionManager:
 
     def test_global_singleton_import(self):
         """模块级 singleton 实例应可被导入"""
-        from backend.services.futu.connection_manager import ConnectionManager as CM
+        from data_subservice.futu_src.connection_manager import ConnectionManager as CM
 
         assert CM is ConnectionManager

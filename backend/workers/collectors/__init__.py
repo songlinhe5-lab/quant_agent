@@ -5,6 +5,6 @@
 具体服务 import 仅出现在各 factory 内部，禁止回流到 start_collector_daemons。
 """
 
-from backend.workers.collectors import akshare, finnhub, fmp, futu, yfinance
+from backend.workers.collectors import akshare, finnhub, fmp, yfinance
 
-__all__ = ["akshare", "finnhub", "fmp", "futu", "yfinance"]
+__all__ = ["akshare", "finnhub", "fmp", "yfinance"]

@@ -10,8 +10,8 @@ import pandas as pd
 import pytest
 from futu import RET_OK
 
-from backend.services.futu.cache_manager import CacheManager
-from backend.services.futu.option_fund_handler import OptionFundHandler
+from data_subservice.futu_src.cache_manager import CacheManager
+from data_subservice.futu_src.option_fund_handler import OptionFundHandler
 
 
 def _make_handler(connected=True):

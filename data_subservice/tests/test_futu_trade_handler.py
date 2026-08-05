@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 from futu import ModifyOrderOp, OrderType, TrdMarket, TrdSide
 
-from backend.services.futu.trade_handler import TradeHandler
+from data_subservice.futu_src.trade_handler import TradeHandler
 
 
 def _make_handler():
@@ -112,13 +112,11 @@ class TestTradeHandler:
         handler, _ = _make_handler()
         order_df = pd.DataFrame({"order_status": ["FILLED_ALL"], "dealt_avg_price": [350.5], "code": ["HK.00700"]})
         with patch("asyncio.to_thread", new=AsyncMock(return_value=(0, order_df))):
-            with patch("asyncio.create_task") as mock_create_task:
-                result = await handler.query_order("OID123", TrdMarket.HK)
+            result = await handler.query_order("OID123", TrdMarket.HK)
         assert result["status"] == "success"
         assert result["order_status"] == "FILLED_ALL"
         assert result["dealt_avg_price"] == 350.5
-        # FILLED 状态应触发通知
-        mock_create_task.assert_called_once()
+        # FILLED 状态触发通知（data_subservice 实现为日志输出，不另起任务）
 
     @pytest.mark.asyncio
     async def test_query_order_cancelled_triggers_notification(self):
@@ -126,10 +124,8 @@ class TestTradeHandler:
         handler, _ = _make_handler()
         order_df = pd.DataFrame({"order_status": ["CANCELLED"], "dealt_avg_price": [0.0], "code": ["HK.00700"]})
         with patch("asyncio.to_thread", new=AsyncMock(return_value=(0, order_df))):
-            with patch("asyncio.create_task") as mock_create_task:
-                result = await handler.query_order("OID", TrdMarket.HK)
+            result = await handler.query_order("OID", TrdMarket.HK)
         assert result["order_status"] == "CANCELLED"
-        mock_create_task.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_query_order_pending_skips_notification(self):

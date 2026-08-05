@@ -95,18 +95,9 @@ async def app_lifespan(app: FastAPI):
         log.error(f"❌ [Startup] 管理员账号初始化失败 (DB 可能未就绪): {e}")
 
     # 容灾包裹：防止外部 API 不通导致容器死循环无法启动
-    try:
-        # 2. 连接 Futu OpenD
-        from backend.services.futu import futu_service, push_handler
-
-        push_handler.set_main_loop(asyncio.get_running_loop())
-        await asyncio.wait_for(asyncio.to_thread(futu_service.connect), timeout=15.0)
-        log.info(f"✅ [Startup] Futu OpenD 连接状态: {futu_service.status}")
-    except asyncio.TimeoutError:
-        log.warning("⚠️ [Startup] 富途 OpenD 连接超时 (15s)，已自动降级跳过")
-    except Exception as e:
-        log.warning(f"⚠️ [Startup] 富途 OpenD 连接失败，已自动降级跳过: {e}")
-
+    # 注 (Phase 3, 2026-08-06)：主服务不再持有/启动 Futu OpenD 实例。
+    # OpenD 唯一运行在 data_subservice 节点（COLLECTOR_FUTU=true），
+    # 主服务经 DataSourceRouter (DATASOURCE_FUTU_MODE=external) 走 HTTP 调子服务。
     try:
         # 3. Redis 连通性与系统通知测试
         if test_notification_service is not None:

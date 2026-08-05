@@ -23,7 +23,7 @@ from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from backend.workers.collectors import akshare, finnhub, fmp, futu, yfinance
+from backend.workers.collectors import akshare, finnhub, fmp, yfinance
 
 CollectorFactory = Callable[[], Awaitable[Sequence[Coroutine[Any, Any, Any] | Awaitable[Any]]]]
 
@@ -49,13 +49,6 @@ COLLECTORS: Dict[str, CollectorDef] = {
         needs_postgres=False,
         description="AKShare 港股通/南向资金 (东方财富, 纯请求式无 daemon)",
         factory=akshare.start,
-    ),
-    "futu": CollectorDef(
-        name="futu",
-        env_var="COLLECTOR_FUTU",
-        needs_postgres=False,
-        description="Futu OpenD 港美股行情 (Level 2 盘口 + watchdog)",
-        factory=futu.start,
     ),
     "finnhub": CollectorDef(
         name="finnhub",

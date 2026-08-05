@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from backend.services.futu.screener_handler import ScreenerHandler
+from data_subservice.futu_src.screener_handler import ScreenerHandler
 
 
 def _make_handler():
@@ -23,7 +23,7 @@ def _make_handler():
 async def test_screen_stocks_v2_unsupported_returns_error():
     """V2 选股接口不可用时返回明确错误, 不静默不造假"""
     handler, _ = _make_handler()
-    with patch("backend.services.futu.screener_handler._FUTU_V2_SUPPORT", False):
+    with patch("data_subservice.futu_src.screener_handler._FUTU_V2_SUPPORT", False):
         result = await handler.screen_stocks("HK", [{"field": "MARKET_CAP", "type": "simple", "min": 1e10}])
     assert result["status"] == "error"
     assert "V2" in result["message"] or "选股" in result["message"]

@@ -12,7 +12,7 @@ from futu import RET_OK, StockScreenRequest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from backend.services.futu.screener_handler import ScreenerHandler
+from data_subservice.futu_src.screener_handler import ScreenerHandler
 
 
 def _make_handler(status="CONNECTED"):
@@ -79,7 +79,7 @@ class TestScreenStocks:
     @pytest.mark.asyncio
     async def test_v2_not_supported_returns_error(self):
         handler, _ = _make_handler()
-        with patch("backend.services.futu.screener_handler._FUTU_V2_SUPPORT", False):
+        with patch("data_subservice.futu_src.screener_handler._FUTU_V2_SUPPORT", False):
             r = await handler.screen_stocks("HK", [])
         assert r["status"] == "error" and "V2" in r["message"]
 
@@ -99,7 +99,7 @@ class TestScreenStocks:
     @pytest.mark.asyncio
     async def test_inner_exception_returns_error(self):
         handler, _ = _make_handler()
-        with patch("backend.services.futu.screener_handler.StockScreenRequest") as MockReq:
+        with patch("data_subservice.futu_src.screener_handler.StockScreenRequest") as MockReq:
             MockReq.return_value.add_simple_property.side_effect = RuntimeError("boom")
             r = await handler.screen_stocks("HK", [{"field": "PRICE", "type": "simple", "min": 1}])
         assert r["status"] == "error" and "异常" in r["message"]

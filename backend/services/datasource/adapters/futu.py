@@ -62,7 +62,10 @@ class FutuDataSource:
 
     @property
     def mode(self) -> str:
-        return os.getenv("DATASOURCE_FUTU_MODE", "internal")
+        # Phase 3 (2026-08-06): 默认 external——主服务不再直连/启动 OpenD，
+        # 仅经 DataSourceRouter 走 HTTP 调 data_subservice（唯一 OpenD 宿主）。
+        # 仅在显式设 internal 时回退到主服务本地 futu_service（开发兜底）。
+        return os.getenv("DATASOURCE_FUTU_MODE", "external")
 
     def is_available(self) -> bool:
         """检测 Futu SDK 和 OpenD 连接是否可用。
