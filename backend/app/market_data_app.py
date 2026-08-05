@@ -38,8 +38,6 @@ from typing import List, Optional
 from backend.adapters.ports.data_source_port import DataSourceResult
 from backend.core.circuit_breaker_integration import fetch_via_breaker_sync
 
-from ..adapters.akshare.akshare_adapter import AkShareAdapter
-from ..adapters.futu.futu_adapter import FutuAdapter
 from ..adapters.yfinance.yfinance_adapter import YFinanceAdapter
 from ..services.tushare.adapter import ensure_tushare_registered
 
@@ -83,39 +81,61 @@ class MarketDataService:
             enable_yf_cache: 是否启用 YFinance 响应缓存
             enable_ak_cache: 是否启用 AkShare 响应缓存
         """
-        # 初始化各个适配器
-        self._futu = FutuAdapter(
-            host=futu_host,
-            port=futu_port,
-        )
+        # 保存配置参数（延迟导入）
+        self._futu_config = {"host": futu_host, "port": futu_port}
 
+        # yfinance 主数据源（无需可选依赖，直接初始化）
         self._yfinance = YFinanceAdapter(
             enable_cache=enable_yf_cache,
             cache_ttl=408,
         )
 
-        self._akshare = AkShareAdapter(
-            enable_cache=enable_ak_cache,
-            cache_ttl=384,
-        )
+        # TODO: 后续添加懒加载属性 getter 以避免启动时导入 akshare/futu
 
-        # Tushare: 独立数据源 + A股主源（机房 IP 不被东财反爬封禁）
+        # Tushare: 独立数据源 + A 股主源（机房 IP 不被东财反爬封禁）
         # token 来自环境变量 TUSHARE_TOKEN；未配置时不参与降级链（fetch 返回 NO_TOKEN）
         self._tushare_id = ensure_tushare_registered()
         from backend.services.datasource.source_registry import datasource_registry
 
         self._tushare = datasource_registry.get("tushare", "stock_quote")
 
-        # 数据源优先级列表 (按可用性降序排列)
-        self._primary_sources = [self._futu, self._yfinance]
-        self._backup_sources = {
-            # A股主源 Tushare 优先，AkShare(新浪源) 兜底
-            "stock_quote": [self._tushare, self._akshare],
-            "history": [self._tushare, self._akshare, self._yfinance],
-        }
+        # 懒加载的适配器实例（避免启动时导入可选依赖）
+        self._futu_impl = None
+        self._akshare_impl = None
 
-        # Futu 懒连接冷却时间戳（详见 _ensure_futu_connected）
-        self._futu_last_connect_attempt = 0.0
+        # 缓存配置参数
+        self._yf_cache_config = {"enable_cache": enable_yf_cache, "cache_ttl": 408}
+        self._ak_cache_config = {"enable_cache": enable_ak_cache, "cache_ttl": 384}
+
+    # ========== 属性：懒加载适配器 ==========
+
+    @property
+    def _futu(self):
+        """延迟导入 FutuAdapter，避免主节点无 futu-sdk 时崩溃。"""
+        if self._futu_impl is None:
+            from ..adapters.futu.futu_adapter import FutuAdapter
+
+            self._futu_impl = FutuAdapter(**self._futu_config)
+        return self._futu_impl
+
+    @_futu.setter
+    def _futu(self, value):
+        """允许测试注入。"""
+        self._futu_impl = value
+
+    @property
+    def _akshare(self):
+        """延迟导入 AkShareAdapter，避免主节点无 akshare 时崩溃。"""
+        if self._akshare_impl is None:
+            from ..adapters.akshare.akshare_adapter import AkShareAdapter
+
+            self._akshare_impl = AkShareAdapter(**self._ak_cache_config)
+        return self._akshare_impl
+
+    @_akshare.setter
+    def _akshare(self, value):
+        """允许测试注入。"""
+        self._akshare_impl = value
 
     # ========== 辅助方法：Futu 懒连接 ==========
 
@@ -127,20 +147,17 @@ class MarketDataService:
         连不上则保持 degraded，不影响 YFinance/AkShare 降级链。
         带 60s 冷却，避免每次请求都触发 OpenD 重连。
         """
-        if self._futu.is_available:
-            return True
-        now = time.time()
-        if now - self._futu_last_connect_attempt < 60.0:
-            return False
-        self._futu_last_connect_attempt = now
-        try:
-            self._futu.connect()
-            if self._futu.is_available:
-                logger.info("[MarketDataService] Futu 懒连接成功 (OpenD)")
-                return True
-            logger.warning("[MarketDataService] Futu 懒连接后仍未可用（OpenD 可能未启动）")
-        except Exception as e:
-            logger.warning(f"[MarketDataService] Futu 懒连接失败（将走降级）: {e}")
+        if not self._futu.is_available:
+            now = time.time()
+            if now - getattr(self, "_futu_last_connect_attempt", 0.0) >= 60.0:
+                try:
+                    self._futu.connect()
+                    if self._futu.is_available:
+                        logger.info("[MarketDataService] Futu 懒连接成功 (OpenD)")
+                        return True
+                    logger.warning("[MarketDataService] Futu 懒连接后仍未可用 (OpenD 可能未启动)")
+                except Exception as e:
+                    logger.warning(f"[MarketDataService] Futu 懒连接失败（将走降级）: {e}")
         return False
 
     # ========== 核心方法：行情获取 ==========
