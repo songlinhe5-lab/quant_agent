@@ -25,7 +25,7 @@ services:
     container_name: quant-data-subservice-yf-s2
     restart: unless-stopped
     env_file:
-      - .env
+      - .slave.env
     environment:
       <<: *common-env
       DS_NODE_ID: ${DS_NODE_ID:-us-yf-s2}

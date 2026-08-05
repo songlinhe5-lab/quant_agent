@@ -96,6 +96,13 @@ services:
       - OTEL_ENABLED=false
       - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_secret_2026}@127.0.0.1:5432/${DB_NAME:-quant_agent_db}
       - DATA_SOURCE_ROUTER_ENABLED=true
+      # 数据子服务固定运行于 8001 端口，使用独立 .slave.env 配置（与主服务 .env 隔离）。
+      # 主服务部署时仅需在主 .env 中填入子服务内网 IP（DS_NODE_IP，同机填 127.0.0.1），
+      # 以下变量由 compose 从 .env 读取 DS_NODE_IP 自动展开，无需手动硬编码。
+      - YF_PRIMARY_NODE_URL=http://${DS_NODE_IP:-127.0.0.1}:8001
+      - YF_BACKUP_NODE_URL=http://${VPS_S2_TAILSCALE_IP:-s3}:8001,http://${VPS_S3_TAILSCALE_IP:-s4}:8001,http://${VPS_S4_TAILSCALE_IP:-s2}:8001
+      - TUSHARE_REMOTE_URL=http://${VPS_BJ_TAILSCALE_IP:-bj}:8001
+      - AKSHARE_REMOTE_URL=http://${VPS_BJ_TAILSCALE_IP:-bj}:8001
       # host 模式下 127.0.0.1 即宿主 loopback,直连 OpenD
       - FUTU_HOST=127.0.0.1
       - FUTU_PORT=11111

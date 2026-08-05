@@ -24,7 +24,7 @@ services:
     container_name: quant-data-subservice-slave
     restart: unless-stopped
     env_file:
-      - .env
+      - .slave.env
     environment:
       <<: *common-env
       # data_subservice 节点身份
