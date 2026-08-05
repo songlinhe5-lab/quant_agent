@@ -481,6 +481,10 @@ async def test_datasource_link(name: str) -> Dict[str, Any]:
             # 必须传 ttl：fetch_yf_data 的 ttl 是必填位置参数，缺失会抛 TypeError 导致探针静默失败。
             probe_action = caps_upper["QUOTE"]
             probe_params = {"ticker": _LINK_TEST_TICKER, "skip_cache": True, "ttl": 60}
+        elif "STOCK_QUOTE" in caps_upper:
+            # Tushare 等 A 股数据源使用 stock_quote（非 QUOTE）
+            probe_action = caps_upper["STOCK_QUOTE"]
+            probe_params = {"ticker": "000001.SZ", "skip_cache": True}
         elif "WEB_SEARCH" in caps_upper:
             probe_action = caps_upper["WEB_SEARCH"]
             probe_params = {"query": "quant agent test", "max_results": 1}
