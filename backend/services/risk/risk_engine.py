@@ -17,7 +17,6 @@ from backend.core.logger import logger
 from backend.core.models import NavSnapshot
 from backend.core.redis_client import redis_client
 from backend.services.datalake.kline_warehouse import kline_warehouse
-from backend.services.futu import futu_service
 
 
 class RiskEngine:
@@ -46,6 +45,8 @@ class RiskEngine:
                 pass
 
         # 2. 并发获取 HK + US 两个市场的账户数据
+        from backend.services.futu import futu_service
+
         hk_res, us_res = await asyncio.gather(
             futu_service.get_account_info("HK"),
             futu_service.get_account_info("US"),
@@ -193,6 +194,8 @@ class RiskEngine:
             return {"vol": 0, "var_95": 0, "beta": 0, "sharpe": 0}, {}
 
         # 获取每只持仓的 60 日 K 线
+        from backend.services.futu import futu_service
+
         kline_data = {}
         for pos in positions:
             ticker = pos.get("code", "")

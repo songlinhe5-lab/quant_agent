@@ -9,10 +9,14 @@ import redis.asyncio as redis
 # 引入编译好的 Protobuf 模块 (运行 protoc 后会生成)
 from backend.core.proto.market_pb2 import Order, QuoteData  # type: ignore
 
-# 💡 将高频依赖移至顶部，避免在每秒成百上千次的 Tick 循环中重复导入引发局部字典查找开销
-from backend.services.futu import futu_service
-
 logger = logging.getLogger(__name__)
+
+
+def _get_futu_service():
+    """延迟导入 futu_service，避免主节点无 futu SDK 时启动崩溃。"""
+    from backend.services.futu import futu_service
+
+    return futu_service
 
 
 class QuotePublisher:
@@ -40,6 +44,7 @@ class QuotePublisher:
     # ==========================================
     async def _fetch_futu_data(self, ticker: str) -> dict[str, Any]:
         """尝试拉取首选数据源: Futu OpenD (包含 Level 2 盘口)"""
+        futu_service = _get_futu_service()
         # 并发拉取报价与盘口，提升效率
         quote_task = futu_service.get_quote(ticker)
         order_book_task = futu_service.get_order_book(ticker)

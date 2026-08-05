@@ -8,7 +8,13 @@ from sqlalchemy import Column, String
 
 from backend.core.database import Base, SessionLocal, engine
 from backend.core.redis_client import redis_client
-from backend.services.futu import futu_service
+
+
+def _get_futu_service():
+    """延迟导入 futu_service，避免主节点无 futu SDK 时启动崩溃。"""
+    from backend.services.futu import futu_service
+
+    return futu_service
 
 
 class TickerItem(Base):
@@ -125,7 +131,8 @@ class TickerService:
 
         # 💡 首次同步等待 Futu 连接就绪 (最多等待 30 秒)
         initial_wait = 0
-        while futu_service.status != "CONNECTED" and initial_wait < 30:
+        futu_svc = _get_futu_service()
+        while futu_svc.status != "CONNECTED" and initial_wait < 30:
             await asyncio.sleep(2)
             initial_wait += 2
 
@@ -134,7 +141,7 @@ class TickerService:
                 print("🔄 [Ticker Sync] 正在同步全市场股票词库至数据库...")
                 await asyncio.to_thread(self._write_base_tickers)
 
-                if futu_service.status == "CONNECTED":
+                if futu_svc.status == "CONNECTED":
                     await self._fetch_and_save_from_futu()
                     print("✅ [Ticker Sync] 股票词库同步完成，Redis 缓存 + DB 持久化就绪！")  # noqa: E501
                     # 同步成功，每天执行一次 (86400 秒)
@@ -201,9 +208,10 @@ class TickerService:
 
     async def _fetch_and_save_from_futu(self) -> List[Dict[str, Any]]:
         tickers_to_insert = []
+        futu_svc = _get_futu_service()
         for market in ["HK", "US"]:
             for sec_type in ["STOCK", "ETF"]:
-                res = await futu_service.get_stock_basicinfo(market, sec_type)
+                res = await futu_svc.get_stock_basicinfo(market, sec_type)
                 if res.get("status") == "success":
                     for row in res.get("data", []):
                         code = row.get("code", "")
