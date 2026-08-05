@@ -52,7 +52,7 @@ class NodeInfo(BaseModel):
     """节点信息模型"""
 
     node_id: str = Field(..., description="节点唯一标识 (如 ca-primary, beijing-aux)")
-    url: str = Field(..., description="节点 API 地址 (如 http://38.60.126.42:8000)")
+    url: str = Field(..., description="节点 API 地址 (如 http://38.60.126.42:8001)")
     region: str = Field(default="us-west", description="地理区域 (us-west / cn-north)")
     weight: int = Field(default=DEFAULT_NODE_WEIGHT, ge=1, le=100, description="路由权重 (1-100)")
     capabilities: List[str] = Field(default_factory=list, description="支持的数据源能力列表")
