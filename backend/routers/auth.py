@@ -22,7 +22,7 @@ from backend.services.audit_service import log_audit
 SECRET_KEY = os.getenv("SECRET_KEY", "your-super-secret-key-keep-it-safe")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 15  # Access Token 有效期改短为 15 分钟
-REFRESH_TOKEN_EXPIRE_DAYS = 7  # Refresh Token 有效期设为 7 天
+REFRESH_TOKEN_EXPIRE_DAYS = 30  # Refresh Token 有效期设为 30 天（滑动窗口：每次刷新自动续期）
 
 
 def _refresh_cookie_kwargs(is_production: bool) -> dict:
@@ -300,7 +300,9 @@ def verify_google_token(
 # --- Token 刷新与注销 API ---
 # ==========================================
 @router.post("/refresh")
-async def refresh_access_token(refresh_token: Optional[str] = Cookie(None), db: Session = Depends(get_db)):  # noqa: E501
+async def refresh_access_token(
+    response: Response, refresh_token: Optional[str] = Cookie(None), db: Session = Depends(get_db)
+):  # noqa: E501
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Refresh Token missing in cookies")
 
@@ -319,10 +321,25 @@ async def refresh_access_token(refresh_token: Optional[str] = Cookie(None), db: 
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")
 
+    # 签发新 Access Token
     new_access_token = create_access_token(
         data={"sub": user.username},
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
     )
+
+    # 滑动窗口：同时签发新 Refresh Token Cookie，延长有效期 30 天
+    # 这样只要用户在 30 天内有任何一次访问，登录态就不会过期
+    is_production = os.getenv("QUANT_ENV") == "production"
+    new_refresh_token = create_refresh_token(
+        data={"sub": user.username},
+        expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=new_refresh_token,
+        **_refresh_cookie_kwargs(is_production),
+    )
+
     return {"access_token": new_access_token}
 
 

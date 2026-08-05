@@ -338,6 +338,16 @@ class RateLimitThrottler:
                     self._estimated_limit_rpm = None
                     logger.debug(f"[Throttler:{self._source_name}] 退避归零，恢复正常速率")
 
+    def on_error(self) -> None:
+        """
+        非限流错误时调用（如网络超时、服务端 5xx 等）。
+
+        与 on_rate_limit() 不同，普通错误不触发退避恢复机制，
+        也不影响连续限流计数。仅作为 API 占位，保持接口完整性。
+        """
+        # 非限流错误不影响退避状态，无需操作
+        pass
+
     def reset(self) -> None:
         """手动重置所有状态"""
         with self._lock:
