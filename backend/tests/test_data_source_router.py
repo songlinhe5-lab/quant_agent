@@ -409,7 +409,7 @@ class TestDataSourceRouterInit:
 
     def test_nodes_initialization(self, router_enabled):
         assert "yf_primary" in router_enabled._nodes
-        assert "yf_backup" in router_enabled._nodes
+        assert "yf_backup_1" in router_enabled._nodes
         assert "akshare_remote" in router_enabled._nodes
 
     def test_nodes_capabilities(self, router_enabled):
@@ -482,7 +482,7 @@ class TestNodeHealthFiltering:
 
     def test_select_node_priority(self, router_enabled):
         router_enabled._nodes["yf_primary"].weight = 10
-        router_enabled._nodes["yf_backup"].weight = 5
+        router_enabled._nodes["yf_backup_1"].weight = 5
         node = asyncio.run(router_enabled._select_node("yfinance"))
         assert node.name == "yf_primary"
 
