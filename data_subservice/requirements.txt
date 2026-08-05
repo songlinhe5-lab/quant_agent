@@ -1,0 +1,33 @@
+# ============================================================
+# Quant Agent - Data Subservice 依赖收口 (纯数据源子服务)
+# ============================================================
+# 说明：
+# - 本文件收口「分布式数据源子服务」直连第三方数据源所需的全部 SDK。
+# - 子服务独立运行在远程 VPS，主服务 (backend) 经 DataSourceRouter 走 HTTP 调用，
+#   主服务 requirements 不再包含任何第三方数据源依赖，避免在主节点暴露直连 API。
+# - 版本号取下限(>=)，不锁死，给解析器留余地；如需可复现构建请改用
+#   requirements.lock / poetry.lock。
+# - 安装：python3 -m pip install -r data_subservice/requirements.txt
+# ============================================================
+
+# ── 第三方数据源 SDK (子服务直连核心) ──
+futu-api>=10.7.0         # Futu OpenD 直连 (港股/美股/期权)
+tushare>=1.4.0           # A股主源 (2000积分/200元档)
+akshare>=1.14.0          # AkShare (A股兜底源, 新浪源)
+yfinance>=0.2.40         # Yahoo Finance (美股/ETF)
+protobuf>=4.0.0          # futu-api 内部行情 protobuf 编解码依赖
+
+# ── 数据处理 ──
+pandas>=2.0.0
+numpy>=1.24.0
+
+# ── 子服务框架 ──
+fastapi>=0.110.0
+uvicorn>=0.29.0
+pydantic>=2.6.0
+httpx>=0.27.0
+redis>=5.0.0
+python-dotenv>=1.0.0
+
+# ── 通用 ──
+requests>=2.31.0

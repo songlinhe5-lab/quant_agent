@@ -1,23 +1,21 @@
 # ============================================================
-# Quant Agent - Backend 依赖收口
+# Quant Agent - Backend 依赖收口 (纯主服务，无第三方数据源 SDK)
 # ============================================================
 # 说明：
 # - 此前依赖裸装进运行环境(conda/miniconda3 python3.13)，无版本锁。
-# - 本文件仅收口「数据源接入链路」已验证可用的核心三方库，避免换机/CI
+# - 本文件仅收口「主服务运行」已验证可用的核心三方库，避免换机/CI
 #   再次踩 `No module named 'xxx'` 的坑。
+# - ⚠️ 架构红线：主服务仅经 DataSourceRouter 走 HTTP 调用远程数据源子服务，
+#    **禁止**在主服务内直连任何第三方数据源 SDK (futu-api / tushare / akshare /
+#    yfinance 等)。所有数据源依赖已迁移至 data_subservice/requirements.txt。
 # - 版本号取下限(>=)，不锁死，给解析器留余地；如需可复现构建请改用
 #   requirements.lock / poetry.lock。
 # - 安装：python3 -m pip install -r backend/requirements.txt
 # ============================================================
 
-# ── Tushare (A股主源, 2000积分/200元档) ──
-tushare>=1.4.0
-
-# ── 同属数据源核心库（本次验证链路依赖）──
-akshare>=1.14.0          # AkShare (A股兜底源, 新浪源)
-yfinance>=0.2.40         # Yahoo Finance (美股/ETF)
-pandas>=2.0.0            # 数据处理
-numpy>=1.24.0            # 数值计算
+# ── 数据处理 (主服务侧基础计算仍需要) ──
+pandas>=2.0.0
+numpy>=1.24.0
 
 # ── 主服务框架 ──
 fastapi>=0.110.0
