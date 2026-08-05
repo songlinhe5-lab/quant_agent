@@ -75,6 +75,24 @@ _TS_ACTION_MAP = {
     "macro": "MACRO",
 }
 
+# 主服务内部 fetch_type -> 子服务 action 映射 (Futu)
+# 子服务 futu worker 已补全全部能力, 对应实现见 data_subservice/futu_worker.py::handle_futu。
+# ⚠️ Futu OpenD 仅部署在主节点 (DATASOURCE_FUTU_MODE=external 时本路由 pin 主节点),
+#    不进入多活/容灾候选, 故 _FUTU_ACTION_MAP 仅作内部 fetch_type 归一化用。
+_FUTU_ACTION_MAP = {
+    "quote": "QUOTE",
+    "history": "HISTORY",
+    "fund_flow": "FUND_FLOW",
+    "option_chain": "OPTION_CHAIN",
+    "fundamental": "FUNDAMENTAL",
+    "order_book": "ORDER_BOOK",
+    "warrant_chain": "WARRANT_CHAIN",
+    "market_snapshots": "SNAPSHOT",
+    "stock_basicinfo": "STOCK_BASICINFO",
+    "account_info": "ACCOUNT_INFO",
+    "place_order": "PLACE_ORDER",
+}
+
 # DIST-19: AKShare STALE 缓存配置
 _AK_STALE_PREFIX = "quant:akshare:stale"
 _AK_STALE_TTL = int(os.getenv("AKSHARE_STALE_TTL", "86400"))  # 默认 24h
@@ -171,6 +189,18 @@ class DataSourceRouter:
                     "macro",
                 ],
             )
+
+        # Futu 主节点节点 (pin 主节点, 单键)
+        # Futu OpenD 仅部署在 US-MASTER 主节点 (127.0.0.1:11111), 子服务在主节点以
+        # COLLECTOR_FUTU=true 持有 OpenD 长连接。主服务经 HTTP 调 source=futu 获取数据,
+        # 不持有 SDK。URL 默认 http://localhost:8001 (与主节点 data_subservice 同机)。
+        futu_url = os.getenv("FUTU_REMOTE_URL", "http://localhost:8001")
+        self._nodes["futu_master"] = DataSourceNode(
+            name="futu_master",
+            url=futu_url,
+            weight=10,
+            capabilities=["futu"],
+        )
 
         logger.info(f"[Router] 初始化完成: enabled={self._enabled}, nodes={list(self._nodes.keys())}")
 
@@ -621,6 +651,79 @@ class DataSourceRouter:
                     params.get("api_name", ""), **{k: v for k, v in params.items() if k != "api_name"}
                 )
             return {"success": False, "message": f"unsupported tushare action: {action}"}
+        except Exception as e:  # noqa: BLE001
+            return {"success": False, "message": str(e)}
+
+    async def fetch_futu(self, action: str, **params) -> Dict[str, Any]:
+        """Futu 主节点 HTTP 代理 (source="futu", pin 主节点)。
+
+        Futu OpenD 仅部署在 US-MASTER 主节点 (127.0.0.1:11111), 由主节点
+        data_subservice (COLLECTOR_FUTU=true) 持有长连接并对外提供 source=futu。
+        主服务不持有 SDK, 所有 futu 访问经本路由 pin 到 futu_master 节点。
+
+        action 兼容两种写法: 主服务内部 fetch_type (小写) 或 子服务 action (大写),
+        统一经 _FUTU_ACTION_MAP 归一化。
+
+        降级策略: router 未启用 / 主节点子服务未起 / 远程返回失败 ->
+        回退本地 futu_service (Django 模式保留 SDK 兼容, 待 Phase3 删主服务实例后移除)。
+        """
+        remote_action = _FUTU_ACTION_MAP.get(action.lower(), action.upper())
+
+        remote_node = self._nodes.get("futu_master")
+        # Futu 必须 pin 主节点, 不参与多活随机选; 节点不健康直接降级本地
+        if not self._enabled or not remote_node or remote_node.status != "healthy":
+            logger.debug(f"[Futu] action={remote_action} 走本地降级 (enabled={self._enabled})")
+            return await self._call_local_futu(remote_action, **params)
+
+        try:
+            payload = {
+                "source": "futu",
+                "action": remote_action,
+                "params": dict(params),
+            }
+            result = await self._send_request(remote_node, "futu", payload)
+            if result.get("success"):
+                await self._update_node_status(remote_node.name, success=True)
+                return result
+            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+        except Exception as e:
+            logger.warning(f"[Futu] 远程节点失败: {remote_node.name}, {remote_action}, {str(e)}")
+            await self._update_node_status(remote_node.name, success=False, error=str(e))
+
+        logger.warning("[Futu] 远程节点不可用，降级本地 futu_service")
+        return await self._call_local_futu(remote_action, **params)
+
+    async def _call_local_futu(self, action: str, **params) -> Dict[str, Any]:
+        """Futu 本地降级 (保留 SDK 兼容, Phase3 删主服务 OpenD 实例后移除)。"""
+        from backend.services.futu import futu_service
+
+        try:
+            if action == "QUOTE":
+                return futu_service.get_quote(params.get("ticker", ""))
+            elif action == "HISTORY":
+                return futu_service.get_history(
+                    params.get("ticker", ""),
+                    ktype=params.get("ktype", "K_DAY"),
+                    num=int(params.get("num", 100)),
+                )
+            elif action == "FUND_FLOW":
+                return futu_service.get_fund_flow(params.get("ticker", ""), market=params.get("market"))
+            elif action == "OPTION_CHAIN":
+                return futu_service.get_option_chain(
+                    params.get("ticker", ""), expiration_date=params.get("expiration_date")
+                )
+            elif action == "ACCOUNT_INFO":
+                return futu_service.get_account_info(params.get("market", ""))
+            elif action == "STOCK_BASICINFO":
+                return futu_service.get_stock_basicinfo(params.get("ticker", ""), info_type=params.get("info_type"))
+            elif action == "MARKET_SNAPSHOTS":
+                return futu_service.get_market_snapshots(params.get("tickers", []))
+            elif action == "SCREEN_STOCKS":
+                return futu_service.screen_stocks(**params)
+            elif action == "PLACE_ORDER":
+                return futu_service.place_order(**params)
+            # FUNDAMENTAL / ORDER_BOOK / WARRANT_CHAIN 本地 futu_service 未直接暴露, 透传降级
+            return {"success": False, "message": f"unsupported futu action: {action}"}
         except Exception as e:  # noqa: BLE001
             return {"success": False, "message": str(e)}
 
