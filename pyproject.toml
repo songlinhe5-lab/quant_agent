@@ -106,7 +106,8 @@ ignore = ["E501"]
 quote-style = "double"
 
 [tool.pytest.ini_options]
-testpaths = ["backend/tests"]
+# 双目录: 主服务单测 + 数据子服务单测, 一并纳入 CI 验证闭环
+testpaths = ["backend/tests", "data_subservice/tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]

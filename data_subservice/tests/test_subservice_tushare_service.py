@@ -5,18 +5,13 @@ lowfreq_history / macro) 现已迁移到数据子服务
 (data_subservice/_internal/tushare/service.py)，本文件对齐该实现，
 验证 6 个新增能力方法调用正确的 tushare 接口并规整返回结构。
 即从原主服务本地 tushare 适配逻辑迁移到子服务后的单测归属。
-"""
 
-import os
-import sys
+sys.path 注入由 tests/conftest.py 统一处理, 本文件无需再 hack。
+"""
 
 import pytest
 
-# 让子服务包可被 backend 测试导入
-_SUB = os.path.join(os.path.dirname(__file__), "..", "..", "data_subservice")
-sys.path.insert(0, os.path.abspath(_SUB))
-
-from _internal.tushare import service as tushare_service  # noqa: E402
+from _internal.tushare import service as tushare_service
 
 
 class _FakeDF:

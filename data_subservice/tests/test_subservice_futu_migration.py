@@ -1,5 +1,4 @@
-"""
-DIST-FUTU-MIGRATE: 验证 Futu OpenD 长连接已从主服务剥离到子服务 (data_subservice.futu_src)
+"""DIST-FUTU-MIGRATE: 验证 Futu OpenD 长连接已从主服务剥离到子服务 (data_subservice.futu_src)
 
 背景: 按"主服务无状态、可迁移"需求, Futu OpenD TCP 长连接 + 推送生产 + 交易
 下单调用全部下沉到部署在主节点的 data_subservice 实例 (COLLECTOR_FUTU=true)。
@@ -10,19 +9,17 @@ DIST-FUTU-MIGRATE: 验证 Futu OpenD 长连接已从主服务剥离到子服务 
   2. handle_futu 按 action 正确代理到 futu_service 各方法
   3. 未知 action 返回 error
   4. main.py 的 /api/v1/data 在未启用 COLLECTOR_FUTU 时返回 503
+
+sys.path 注入由 tests/conftest.py 统一处理, 本文件无需再 hack。
 """
 
 import hashlib
 import hmac
 import os
-import sys
+import time
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
-_SUB = os.path.join(os.path.dirname(__file__), "..", "..", "data_subservice")
-if _SUB not in sys.path:
-    sys.path.insert(0, _SUB)
 
 
 class TestFutuSrcPackageIsolation:
@@ -125,7 +122,7 @@ class TestMainFutuDisabled:
 
             c = TestClient(mod.app)
             body = '{"source":"futu","action":"QUOTE","params":{"symbol":"HK.00700"}}'
-            ts = str(int(__import__("time").time()))
+            ts = str(int(time.time()))
             sig = hmac.new(b"x", f"{ts}:{body}".encode(), hashlib.sha256).hexdigest()
             r = c.post("/api/v1/data", content=body, headers={"X-Timestamp": ts, "X-Signature": sig})
             assert r.status_code == 503

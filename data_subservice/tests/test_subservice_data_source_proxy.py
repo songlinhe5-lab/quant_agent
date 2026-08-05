@@ -7,21 +7,18 @@ data_subservice/routes.py 后未清理) 已移除。yfinance / akshare 代理能
   1. /api/v1/data 端点按 source+action 正确路由到 yfinance / akshare worker
   2. 返回归一化信封 {code, data}
   3. HMAC 鉴权: 缺头/签名错误返回 403 (原 proxy 端点声称的安全能力)
+
+sys.path 注入由 tests/conftest.py 统一处理, 本文件无需再 hack。
 """
 
 import hashlib
 import hmac
 import os
-import sys
 import time
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-
-# 让子服务包可被 backend 测试导入
-_SUB = os.path.join(os.path.dirname(__file__), "..", "..", "data_subservice")
-sys.path.insert(0, os.path.abspath(_SUB))
 
 HMAC_SECRET = "test-subservice-secret"
 
