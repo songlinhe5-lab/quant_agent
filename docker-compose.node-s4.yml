@@ -7,8 +7,8 @@
 #
 # 部署变量：VPS_S4_HOST / VPS_S4_SSH_KEY / VPS_S4_USER
 # 启动:
-#   cp .data-node.env.example .data-node.env   # 填入 Tailscale IP / 主节点 HMAC
-#   docker compose --env-file .data-node.env -f docker-compose.node-s4.yml up -d
+#   cp .env.data-node.example .env.data-node   # 填入 Tailscale IP / 主节点 HMAC
+#   docker compose --env-file .env.data-node -f docker-compose.node-s4.yml up -d
 # =====================================================================
 
 x-common-env: &common-env
@@ -22,7 +22,7 @@ services:
     container_name: quant-data-subservice-yf-s4
     restart: unless-stopped
     env_file:
-      - .data-node.env
+      - .env.data-node
     environment:
       <<: *common-env
       DS_NODE_ID: ${DS_NODE_ID:-us-yf-s4}

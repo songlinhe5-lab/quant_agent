@@ -217,21 +217,21 @@ jobs:
 
             # ── 主节点本地子服务 (node-s1)：与 quant-agent 同机，监听 8001，主服务经 127.0.0.1:8001 直连 ──
             # 复用已拉取的 data-subservice 镜像 (DS_IMAGE 已在上方 pull 就位)
-            if [ ! -f .data-node.env ]; then
-              cp .data-node.env.example .data-node.env
-              echo "🆕 未检测到 .data-node.env，基于 .data-node.env.example 首次生成 (node-s1)"
+            if [ ! -f .env.data-node ]; then
+              cp .env.data-node.example .env.data-node
+              echo "🆕 未检测到 .env.data-node，基于 .env.data-node.example 首次生成 (node-s1)"
             fi
             # 回填 node-s1 身份 (无论首次生成还是已存在，均确保本地子服务身份正确)
-            sed -i "s|^DS_NODE_ID=.*|DS_NODE_ID=us-yf-s1|" .data-node.env
-            sed -i "s|^DS_REGION=.*|DS_REGION=us-west|" .data-node.env
-            sed -i "s|^DS_CAPABILITIES=.*|DS_CAPABILITIES=yfinance|" .data-node.env
-            sed -i "s|^DS_NODE_PORT=.*|DS_NODE_PORT=8001|" .data-node.env
-            sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=127.0.0.1|" .data-node.env
-            sed -i "s|^DS_BASE_URL=.*|DS_BASE_URL=http://127.0.0.1:8001|" .data-node.env
-            sed -i "s|^DATA_SOURCE_HMAC_SECRET=.*|DATA_SOURCE_HMAC_SECRET=${{ secrets.DATA_SOURCE_HMAC_SECRET }}|" .data-node.env
-            sed -i "s|^QUANT_ENV=.*|QUANT_ENV=production|" .data-node.env
-            sed -i "s|^TZ=.*|TZ=America/Los_Angeles|" .data-node.env
-            docker compose -f docker-compose.node-s1.yml --env-file .data-node.env up -d --remove-orphans
+            sed -i "s|^DS_NODE_ID=.*|DS_NODE_ID=us-yf-s1|" .env.data-node
+            sed -i "s|^DS_REGION=.*|DS_REGION=us-west|" .env.data-node
+            sed -i "s|^DS_CAPABILITIES=.*|DS_CAPABILITIES=yfinance|" .env.data-node
+            sed -i "s|^DS_NODE_PORT=.*|DS_NODE_PORT=8001|" .env.data-node
+            sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=127.0.0.1|" .env.data-node
+            sed -i "s|^DS_BASE_URL=.*|DS_BASE_URL=http://127.0.0.1:8001|" .env.data-node
+            sed -i "s|^DATA_SOURCE_HMAC_SECRET=.*|DATA_SOURCE_HMAC_SECRET=${{ secrets.DATA_SOURCE_HMAC_SECRET }}|" .env.data-node
+            sed -i "s|^QUANT_ENV=.*|QUANT_ENV=production|" .env.data-node
+            sed -i "s|^TZ=.*|TZ=America/Los_Angeles|" .env.data-node
+            docker compose -f docker-compose.node-s1.yml --env-file .env.data-node up -d --remove-orphans
             echo "✅ 主节点本地子服务 (node-s1) 已启动于 127.0.0.1:8001"
 
             # 🔍 可选校验: docker manifest inspect 探测 registry 内镜像可见性 (失败仅警告，不中止，因 push 成功已足够证明镜像就位)
@@ -268,7 +268,7 @@ jobs:
             tz: Asia/Shanghai
             creds: true
             compose: docker-compose.node-bj.yml
-            env-file: .data-node.env
+            env-file: .env.data-node
             container: quant-data-subservice-node-bj
           # 美西从节点1 (VPS_S2)：纯 yfinance
           - node: s2
@@ -282,7 +282,7 @@ jobs:
             ds-caps: "yfinance"
             tz: America/Los_Angeles
             compose: docker-compose.node-s2.yml
-            env-file: .data-node.env
+            env-file: .env.data-node
             container: quant-data-subservice-yf-s2
           # 美西从节点2 (VPS_S3)：纯 yfinance
           - node: s3
@@ -296,7 +296,7 @@ jobs:
             ds-caps: "yfinance"
             tz: America/Los_Angeles
             compose: docker-compose.node-s3.yml
-            env-file: .data-node.env
+            env-file: .env.data-node
             container: quant-data-subservice-yf-s3
           # 美西从节点3 (VPS_S4)：纯 yfinance
           - node: s4
@@ -310,7 +310,7 @@ jobs:
             ds-caps: "yfinance"
             tz: America/Los_Angeles
             compose: docker-compose.node-s4.yml
-            env-file: .data-node.env
+            env-file: .env.data-node
             container: quant-data-subservice-yf-s4
     steps:
       - uses: actions/checkout@v5
@@ -361,8 +361,8 @@ jobs:
             -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
             -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
             -P "$VPS_PORT" \
-            "./.data-node.env.example" \
-            "$VPS_USER@$VPS_HOST:/opt/quant-agent/.data-node.env.example" \
+            "./.env.data-node.example" \
+            "$VPS_USER@$VPS_HOST:/opt/quant-agent/.env.data-node.example" \
             || { echo "❌ 中转 env 模板到目标节点失败 (scp 通道异常)"; exit 1; }
           echo "✅ compose 文件与 env 模板已通过 SSH 通道中转至目标节点 /opt/quant-agent/"
 
@@ -400,15 +400,15 @@ jobs:
             fi
 
             # ╔══════════════════════════════════════════════════════════════╗
-            # ║ 基于仓库 .data-node.env.example 模板生成节点 .env              ║
+            # ║ 基于仓库 .env.data-node.example 模板生成节点 .env              ║
             # ║ 原则：不预置则首次 cp 模板生成；已存在则完全跳过，CI 不触碰。  ║
             # ╚══════════════════════════════════════════════════════════════╝
             if [ ! -f "${{ matrix.env-file}}" ]; then
-              if [ -f .data-node.env.example ]; then
-                cp .data-node.env.example ${{ matrix.env-file }}
-                echo "🆕 未检测到 ${{ matrix.env-file }}，基于 .data-node.env.example 首次生成"
+              if [ -f .env.data-node.example ]; then
+                cp .env.data-node.example ${{ matrix.env-file }}
+                echo "🆕 未检测到 ${{ matrix.env-file }}，基于 .env.data-node.example 首次生成"
               else
-                echo "❌ 节点缺少 .data-node.env.example 模板 (scp 中转失败?)，无法生成 ${{ matrix.env-file }}"
+                echo "❌ 节点缺少 .env.data-node.example 模板 (scp 中转失败?)，无法生成 ${{ matrix.env-file }}"
                 exit 1
               fi
             else

@@ -197,10 +197,12 @@ log/
 .env.test
 .env.staging
 .env.slave
+.env.data-node
 
 # 保留示例文件
 !.env.example
 !.env.slave.example
+!.env.data-node.example
 
 # 密钥与证书
 *.pem

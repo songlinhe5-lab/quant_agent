@@ -96,7 +96,7 @@ services:
       - OTEL_ENABLED=false
       - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_secret_2026}@127.0.0.1:5432/${DB_NAME:-quant_agent_db}
       - DATA_SOURCE_ROUTER_ENABLED=true
-      # 数据子服务固定运行于 8001 端口，使用独立 .data-node.env 配置（与主服务 .env 隔离）。
+      # 数据子服务固定运行于 8001 端口，使用独立 .env.data-node 配置（与主服务 .env 隔离）。
       # 主服务部署时仅需在主 .env 中填入子服务内网 IP（DS_NODE_IP，同机填 127.0.0.1），
       # 以下变量由 compose 从 .env 读取 DS_NODE_IP 自动展开，无需手动硬编码。
       - YF_PRIMARY_NODE_URL=http://${DS_NODE_IP:-127.0.0.1}:8001
