@@ -25,19 +25,28 @@ class MarketDataGateway:
     def __init__(self) -> None:
         from backend.services.akshare import akshare_service
         from backend.services.finnhub.service import finnhub_service
-        from backend.services.futu import futu_service
         from backend.services.macro.dbnomics import dbnomics_service
         from backend.services.macro.fred_service import fred_service
         from backend.services.macro.rbi import rbi_service
         from backend.services.yfinance import yf_service
 
-        self._futu = futu_service
+        # futu_service 延迟到首次使用时导入，避免主节点无 SDK 时启动崩溃
+        self._futu = None
         self._yf = yf_service
         self._ak = akshare_service
         self._fh = finnhub_service
         self._fred = fred_service
         self._dbnomics = dbnomics_service
         self._rbi = rbi_service
+
+    @property
+    def futu(self):
+        """延迟导入 futu_service。"""
+        if self._futu is None:
+            from backend.services.futu import futu_service
+
+            self._futu = futu_service
+        return self._futu
 
         from backend.services.datasource.adapters.legacy_yfinance import (
             ensure_yfinance_registered,
@@ -60,20 +69,20 @@ class MarketDataGateway:
     # ── QuotePort ──────────────────────────────────────────
 
     async def get_quote(self, ticker: str, **kwargs: Any) -> dict[str, Any]:
-        return await self._futu.get_quote(ticker=ticker, **kwargs)
+        return await self.futu.get_quote(ticker=ticker, **kwargs)
 
     async def get_history(self, ticker: str, ktype: str = "K_DAY", num: int = 100, **kwargs: Any) -> dict[str, Any]:
-        return await self._futu.get_history(ticker=ticker, ktype=ktype, num=num, **kwargs)
+        return await self.futu.get_history(ticker=ticker, ktype=ktype, num=num, **kwargs)
 
     async def get_fund_flow(self, ticker: str) -> dict[str, Any]:
-        return await self._futu.get_fund_flow(ticker)
+        return await self.futu.get_fund_flow(ticker)
 
     async def get_warrant_chain(self, ticker: str) -> dict[str, Any]:
         """港股窝轮/牛熊证链（仅 HK 标的可用）"""
-        return await self._futu.get_warrant_chain(ticker)
+        return await self.futu.get_warrant_chain(ticker)
 
     async def get_option_chain(self, ticker: str, expiration_date: str = "") -> dict[str, Any]:
-        res = await self._futu.get_option_chain(ticker, expiration_date)
+        res = await self.futu.get_option_chain(ticker, expiration_date)
         # 💡 Futu 快照期权链常只含 option_code/strike_price 而无定价字段(bid/ask/IV)，
         # 此时虽 status=success 却无法用于 Greeks/IV 计算 → 降级到 YFinance 补全定价数据。
         if res.get("status") == "error" or self._option_chain_lacks_pricing(res):
@@ -337,60 +346,60 @@ class MarketDataGateway:
     # ── Futu 扩展 ──────────────────────────────────────────
 
     async def get_fundamental(self, ticker: str) -> dict[str, Any]:
-        return await self._futu.get_fundamental(ticker)
+        return await self.futu.get_fundamental(ticker)
 
     def screen_stocks(self, market: str, filters: Any) -> Any:
-        return self._futu.screen_stocks(market=market, filters=filters)
+        return self.futu.screen_stocks(market=market, filters=filters)
 
     @property
     def status(self) -> str:
-        return self._futu.status
+        return self.futu.status
 
     @status.setter
     def status(self, value: str) -> None:
-        self._futu.status = value
+        self.futu.status = value
 
     @property
     def error_msg(self) -> str:
-        return getattr(self._futu, "error_msg", "") or ""
+        return getattr(self.futu, "error_msg", "") or ""
 
     @error_msg.setter
     def error_msg(self, value: str) -> None:
-        self._futu.error_msg = value
+        self.futu.error_msg = value
 
     @property
     def quote_ctx(self) -> Any:
-        return getattr(self._futu, "quote_ctx", None)
+        return getattr(self.futu, "quote_ctx", None)
 
     @quote_ctx.setter
     def quote_ctx(self, value: Any) -> None:
-        self._futu.quote_ctx = value
+        self.futu.quote_ctx = value
 
     @property
     def conn_mgr(self) -> Any:
-        return self._futu.conn_mgr
+        return self.futu.conn_mgr
 
     @property
     def source_router(self) -> Any:
-        return self._futu.source_router
+        return self.futu.source_router
 
     def connect(self) -> Any:
-        return self._futu.connect()
+        return self.futu.connect()
 
     def is_opend_reachable(self, timeout: float = 2.0) -> bool:
-        return bool(self._futu.conn_mgr._is_opend_reachable(timeout=timeout))
+        return bool(self.futu.conn_mgr._is_opend_reachable(timeout=timeout))
 
     def switch_opend_host(self, host: str, port: int = 11111) -> dict[str, Any]:
-        result = self._futu.conn_mgr.switch_host(host, port)
-        self._futu.status = self._futu.conn_mgr.status
-        self._futu.error_msg = self._futu.conn_mgr.error_msg
-        self._futu.quote_ctx = self._futu.conn_mgr.quote_ctx
+        result = self.futu.conn_mgr.switch_host(host, port)
+        self.futu.status = self.futu.conn_mgr.status
+        self.futu.error_msg = self.futu.conn_mgr.error_msg
+        self.futu.quote_ctx = self.futu.conn_mgr.quote_ctx
         return result
 
     def futu_health_status(self) -> dict[str, Any]:
         return {
-            "status": self._futu.status,
-            "error": self._futu.error_msg,
+            "status": self.futu.status,
+            "error": self.futu.error_msg,
             "reachable": self.is_opend_reachable(),
         }
 

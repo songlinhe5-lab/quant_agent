@@ -10,7 +10,6 @@ from backend.core.database import SessionLocal, engine
 from backend.core.redis_client import redis_client
 from backend.services.ai_narrator.llm_service import llm_service
 from backend.services.alert.notification import notification_service
-from backend.services.futu import futu_service
 
 
 class DaemonMixin:
@@ -66,6 +65,8 @@ class DaemonMixin:
                 subs_to_run = await asyncio.to_thread(_fetch_due_subscriptions, current_time_str)
 
                 if subs_to_run:
+                    from backend.services.futu import futu_service
+
                     print(
                         f"🚀 [Screener Daemon] {current_time_str} - 检测到 {len(subs_to_run)} 个订阅任务到达触发时间..."
                     )  # noqa: E501
@@ -239,6 +240,8 @@ class DaemonMixin:
                         continue
 
                     print("🚀 [Screener Daemon] 开始执行每日 16:00 最强概念股盘点...")
+
+                    from backend.services.futu import futu_service
 
                     # 1. 设定底层扫盘策略: 涨幅>5%, 成交额>1亿, 换手率>2%
                     json_payload = json.dumps(

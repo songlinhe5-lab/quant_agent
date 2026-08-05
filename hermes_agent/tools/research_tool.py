@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 
 from backend.backtest import run_batch_sandbox_backtest
 from backend.routers.strategy import _fetch_backtest_data
-from backend.services.futu import futu_service
 from backend.services.screener.screener_service import screener_service
 from hermes_agent.tool_registry import register_tool
 
@@ -32,6 +31,8 @@ class ScreenerTool:
 
     async def run(self, query: str, limit: int = 10) -> str:
         try:
+            from backend.services.futu import futu_service
+
             dsl = await screener_service.translate_nlp_to_dsl(query)
             markets, futu_filters, post_filters = screener_service.parse_dsl_to_futu_filters(dsl)
 

@@ -7,7 +7,6 @@ import pandas as pd
 
 from backend.core.redis_client import redis_client
 from backend.services.datasource.router import data_source_router
-from backend.services.futu import futu_service
 from backend.services.yfinance import format_yf_ticker
 
 # 💡 将数仓建立在根目录的 data/kline_warehouse 下，与代码库隔离
@@ -86,6 +85,8 @@ class KlineWarehouse:
             new_data = None
 
             # 1. 优先使用富途拉取高质量前复权数据
+            from backend.services.futu import futu_service
+
             futu_res = await futu_service.get_history(ticker, ktype=ktype, num=num_to_fetch)  # noqa: E501
             if futu_res.get("status") == "success" and futu_res.get("data"):
                 new_data = futu_res["data"]

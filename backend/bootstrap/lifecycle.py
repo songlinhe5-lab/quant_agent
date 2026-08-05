@@ -18,7 +18,6 @@ from backend.core.redis_client import redis_client
 from backend.core.security import get_password_hash, verify_password
 from backend.services.ai_narrator.llm_service import llm_service
 from backend.services.alert.notification import notification_service
-from backend.services.futu import futu_service
 from backend.services.macro.fred_service import fred_service
 from backend.services.market_engine import manager
 from backend.workers.monitor.system_monitor import system_monitor_service
@@ -98,7 +97,7 @@ async def app_lifespan(app: FastAPI):
     # 容灾包裹：防止外部 API 不通导致容器死循环无法启动
     try:
         # 2. 连接 Futu OpenD
-        from backend.services.futu import push_handler
+        from backend.services.futu import futu_service, push_handler
 
         push_handler.set_main_loop(asyncio.get_running_loop())
         await asyncio.wait_for(asyncio.to_thread(futu_service.connect), timeout=15.0)
@@ -152,6 +151,8 @@ async def app_lifespan(app: FastAPI):
 
     # 🚀 NAV 快照守护进程 (每 5 分钟)
     async def _nav_snapshot_daemon():
+        from backend.services.futu import futu_service
+
         while True:
             try:
                 hk_acc, us_acc = await asyncio.gather(
@@ -394,6 +395,8 @@ async def app_lifespan(app: FastAPI):
         await yf_service.async_close()
 
         # FutuService 为同步 close()，包裹在 to_thread 避免阻塞事件循环
+        from backend.services.futu import futu_service
+
         await asyncio.to_thread(futu_service.close)
     except Exception as e:
         log.warning(f"⚠️ 关闭数据源资源异常：{e}")

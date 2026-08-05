@@ -4,7 +4,6 @@ from typing import Literal, Optional, Type
 from pydantic import BaseModel, Field
 
 from backend.core.redis_client import redis_client
-from backend.services.futu.utils import format_ticker
 from hermes_agent.tool_registry import register_tool
 
 
@@ -72,6 +71,8 @@ class StockTrackingTool:
 
             if not ticker:
                 return "操作 add 或 remove 必须提供具体的股票代码 (ticker)。"
+
+            from backend.services.futu.utils import format_ticker
 
             fmt_ticker = format_ticker(ticker)
             alert_key = f"quant:alerts:by_ticker:{fmt_ticker}"

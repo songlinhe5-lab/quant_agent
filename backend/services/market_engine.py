@@ -27,12 +27,16 @@ from backend.core.redis_client import l1_cached_redis, redis_client
 from backend.core.utils import safe_divide, safe_float
 from backend.services.alert.notification import notification_service
 from backend.services.datalake.kline_warehouse import kline_warehouse
-
-# 引入现有的 Tools (本地 futu_service 作为 ClusterManager 不可用时的兜底)
-from backend.services.futu import futu_service
 from backend.services.yfinance import format_yf_ticker, yf_service
 
 logger = logging.getLogger(__name__)
+
+
+def _get_futu_service():
+    """延迟导入 futu_service，避免主节点无 futu SDK 时启动崩溃。"""
+    from backend.services.futu import futu_service
+
+    return futu_service
 
 
 async def update_quote_to_redis(ticker: str, quote_data: dict):
@@ -321,12 +325,13 @@ class ConnectionManager:
             try:
                 all_tickers = list(self.get_all_subscribed_tickers())
                 if all_tickers:
+                    futu_service = _get_futu_service()
                     # 💡 动态读取全局 YFinance 开关状态
                     yf_enabled_val = await l1_cached_redis.get("quant:settings:yfinance_enabled")  # noqa: E501
                     is_yf_enabled = yf_enabled_val != "0"
 
                     # 💡 Futu 断连防御：检测连接状态，断连时跳过所有 Futu 调用防止 CPU 空转
-                    futu_connected = futu_service.status == "CONNECTED"
+                    futu_connected = _get_futu_service().status == "CONNECTED"
 
                     # 💡 [额度释放 GC 机制]：对比当前真实需要的标的与已订阅的标的，自动剔除无人观看的废弃订阅  # noqa: E501
                     current_futu_needs = {t for t in all_tickers if not futu_service.is_futu_unsupported(t)}  # noqa: E501
