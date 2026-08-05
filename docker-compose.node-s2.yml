@@ -1,14 +1,17 @@
 # =====================================================================
-# 美西从节点 2 (VPS_S3 · 纯 YFinance 数据源)
+# 美西从节点 1 (VPS_S2 · 纯 YFinance 数据源)
 # =====================================================================
 # 角色：仅作为「子服务节点」运行 data_subservice，提供 YFinance (美股/加密/外汇) 的 HTTP API。
-# 独立公网 IP 直连 Yahoo；主节点 YFinanceRouter 经 Tailscale 内网调用本节点做负载均衡/容灾。
+#       与 S3/S4 互不相关、独立公网 IP，主节点 YFinanceRouter 对等权重负载均衡。
+#       注意：Tushare/AKShare 由北京单节点 (VPS_BJ) 承载，S2 不提供。
+# 与主节点 (VPS_S1) 经 Tailscale 内网通信；不对公网暴露 8001。
 # 子服务节点不连接 Redis，所有缓存由主节点统一管理。
 #
-# 部署变量：VPS_S3_HOST / VPS_S3_SSH_KEY / VPS_S3_USER
+# 部署变量：VPS_S2_HOST / VPS_S2_SSH_KEY / VPS_S2_USER
 # 启动:
-#   cp .env.data-node.example .env   # 填入 Tailscale IP / 主节点 HMAC
-#   docker compose --env-file .env -f docker-compose.yf-node-s3.yml up -d
+#   cd /opt/quant-agent
+#   cp .data-node.env.example .data-node.env   # 填入 Tailscale IP / 主节点 HMAC
+#   docker compose --env-file .data-node.env -f docker-compose.node-s2.yml up -d
 # =====================================================================
 
 x-common-env: &common-env
@@ -19,17 +22,18 @@ x-common-env: &common-env
 services:
   data-subservice:
     image: ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest
-    container_name: quant-data-subservice-yf-s3
+    container_name: quant-data-subservice-yf-s2
     restart: unless-stopped
     env_file:
-      - .slave.env
+      - .data-node.env
     environment:
       <<: *common-env
-      DS_NODE_ID: ${DS_NODE_ID:-us-yf-s3}
+      DS_NODE_ID: ${DS_NODE_ID:-us-yf-s2}
       DS_REGION: "us-west"
       DS_CAPABILITIES: "yfinance"
       DS_NODE_PORT: "8001"
       DS_BASE_URL: "${DS_BASE_URL:-http://${PUBLIC_IP}:8001}"
+      # 主节点 DataSourceRouter 回调鉴权 (须与主节点 DATA_SOURCE_HMAC_SECRET 一致)
       DATA_SOURCE_HMAC_SECRET: ${DATA_SOURCE_HMAC_SECRET}
       DATA_SOURCE_ALLOWED_IPS: ${DATA_SOURCE_ALLOWED_IPS:-10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1}
     expose:

@@ -1,49 +1,42 @@
 # =====================================================================
-# 北京从节点 (VPS_BJ · Tushare + AKShare + YFinance 数据源)
+# 美西从节点 2 (VPS_S3 · 纯 YFinance 数据源)
 # =====================================================================
-# 角色：仅作为「子服务节点」运行 data_subservice，提供 A 股 Tushare + 沪深港通 AKShare + YFinance 的 HTTP API。
-# 与主节点 (VPS_S1) 经 Tailscale 内网通信；不对公网暴露 8001。
+# 角色：仅作为「子服务节点」运行 data_subservice，提供 YFinance (美股/加密/外汇) 的 HTTP API。
+# 独立公网 IP 直连 Yahoo；主节点 YFinanceRouter 经 Tailscale 内网调用本节点做负载均衡/容灾。
 # 子服务节点不连接 Redis，所有缓存由主节点统一管理。
-# 禁止启用 Futu collector。
 #
-# 部署变量：VPS_BJ_HOST / VPS_BJ_SSH_KEY / VPS_BJ_USER
+# 部署变量：VPS_S3_HOST / VPS_S3_SSH_KEY / VPS_S3_USER
 # 启动:
-#   cd /opt/quant-agent
-#   cp .env.data-node.example .env   # 填入 TUSHARE_TOKEN / Tailscale IP
-#   docker compose --env-file .env -f docker-compose.slave.yml up -d
+#   cp .data-node.env.example .data-node.env   # 填入 Tailscale IP / 主节点 HMAC
+#   docker compose --env-file .data-node.env -f docker-compose.node-s3.yml up -d
 # =====================================================================
 
 x-common-env: &common-env
-  TZ: Asia/Shanghai
+  TZ: America/Los_Angeles
   PYTHONUNBUFFERED: "1"
   PYTHONDONTWRITEBYTECODE: "1"
 
 services:
   data-subservice:
     image: ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest
-    container_name: quant-data-subservice-slave
+    container_name: quant-data-subservice-yf-s3
     restart: unless-stopped
     env_file:
-      - .slave.env
+      - .data-node.env
     environment:
       <<: *common-env
-      # data_subservice 节点身份
-      DS_NODE_ID: ${DS_NODE_ID:-bj-slave}
-      DS_REGION: "cn-bj"
-      DS_CAPABILITIES: "tushare,akshare,yfinance"
+      DS_NODE_ID: ${DS_NODE_ID:-us-yf-s3}
+      DS_REGION: "us-west"
+      DS_CAPABILITIES: "yfinance"
       DS_NODE_PORT: "8001"
       DS_BASE_URL: "${DS_BASE_URL:-http://${PUBLIC_IP}:8001}"
-      # 数据源凭证
-      TUSHARE_TOKEN: ${TUSHARE_TOKEN}
-      AKSHARE_MODE: ${AKSHARE_MODE:-internal}
-      # 主节点 DataSourceRouter 回调鉴权 (须与主节点 DATA_SOURCE_HMAC_SECRET 一致)
       DATA_SOURCE_HMAC_SECRET: ${DATA_SOURCE_HMAC_SECRET}
       DATA_SOURCE_ALLOWED_IPS: ${DATA_SOURCE_ALLOWED_IPS:-10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1}
     expose:
       - "8001"
     ports:
       # 绑定到 Tailscale 内网 IP (PUBLIC_IP)，仅允许内网访问
-      # PUBLIC_IP 在 .env 中配置，例如：PUBLIC_IP=100.124.178.96
+      # PUBLIC_IP 在 .env 中配置，例如：PUBLIC_IP=100.x.x.x
       # 如果 PUBLIC_IP 未配置，回退到 127.0.0.1（仅本机访问）
       - "${PUBLIC_IP:-127.0.0.1}:8001:8001"
     healthcheck:
@@ -57,7 +50,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1.5G
+          memory: 1G
 
 networks:
   quant-net:

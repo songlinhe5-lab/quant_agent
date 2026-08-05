@@ -1,14 +1,16 @@
 # =====================================================================
-# 美西从节点 3 (VPS_S4 · 纯 YFinance 数据源)
+# 主节点本地子服务 (VPS_S1 · 纯 YFinance 数据源，与主服务同机)
 # =====================================================================
-# 角色：仅作为「子服务节点」运行 data_subservice，提供 YFinance (美股/加密/外汇) 的 HTTP API。
-# 与 S3 互不相关、独立公网 IP，主节点 YFinanceRouter 对等权重负载均衡。
+# 角色：运行在主节点 (VPS_S1) 宿主机的 data_subservice，提供 YFinance (美股/加密/外汇) 的 HTTP API。
+#       与主服务 (quant-agent :8000) 同机部署，监听 8001，主服务经 127.0.0.1:8001 直连（loopback）。
+#       作为 YFinanceRouter 的主节点 (YF_PRIMARY_NODE_URL)，S2/S3/S4 为远程容灾/扩容。
+# 与主服务共享宿主 Tailscale 网络；不对公网暴露 8001（默认仅绑定 127.0.0.1）。
 # 子服务节点不连接 Redis，所有缓存由主节点统一管理。
 #
-# 部署变量：VPS_S4_HOST / VPS_S4_SSH_KEY / VPS_S4_USER
-# 启动:
-#   cp .env.data-node.example .env   # 填入 Tailscale IP / 主节点 HMAC
-#   docker compose --env-file .env -f docker-compose.yf-node-s4.yml up -d
+# 部署：与主服务在同一宿主启动
+#   cd /opt/quant-agent
+#   cp .data-node.env.example .data-node.env   # 填入主节点 HMAC（须与主 .env 的 DATA_SOURCE_HMAC_SECRET 一致）
+#   docker compose --env-file .data-node.env -f docker-compose.node-s1.yml up -d
 # =====================================================================
 
 x-common-env: &common-env
@@ -19,25 +21,25 @@ x-common-env: &common-env
 services:
   data-subservice:
     image: ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest
-    container_name: quant-data-subservice-yf-s4
+    container_name: quant-data-subservice-yf-s1
     restart: unless-stopped
     env_file:
-      - .slave.env
+      - .data-node.env
     environment:
       <<: *common-env
-      DS_NODE_ID: ${DS_NODE_ID:-us-yf-s4}
+      DS_NODE_ID: ${DS_NODE_ID:-us-yf-s1}
       DS_REGION: "us-west"
       DS_CAPABILITIES: "yfinance"
       DS_NODE_PORT: "8001"
-      DS_BASE_URL: "${DS_BASE_URL:-http://${PUBLIC_IP}:8001}"
+      DS_BASE_URL: "${DS_BASE_URL:-http://127.0.0.1:8001}"
+      # 主节点 DataSourceRouter 回调鉴权 (须与主节点 DATA_SOURCE_HMAC_SECRET 一致)
       DATA_SOURCE_HMAC_SECRET: ${DATA_SOURCE_HMAC_SECRET}
       DATA_SOURCE_ALLOWED_IPS: ${DATA_SOURCE_ALLOWED_IPS:-10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1}
     expose:
       - "8001"
     ports:
-      # 绑定到 Tailscale 内网 IP (PUBLIC_IP)，仅允许内网访问
-      # PUBLIC_IP 在 .env 中配置，例如：PUBLIC_IP=100.x.x.x
-      # 如果 PUBLIC_IP 未配置，回退到 127.0.0.1（仅本机访问）
+      # 同机部署：默认仅绑定 127.0.0.1（loopback），主服务经 localhost:8001 直连。
+      # 若需跨节点经 Tailscale 访问，将 PUBLIC_IP 设为 TS IP 即可（PUBLIC_IP 在 .data-node.env 配置）。
       - "${PUBLIC_IP:-127.0.0.1}:8001:8001"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8001/health').status==200 else 1)"]
