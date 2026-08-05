@@ -17,145 +17,24 @@ Data Source Proxy Router - 数据源代理路由
   DATA_SOURCE_RATE_LIMIT=100/minute     # 请求频率限制
 """
 
-import hashlib
-import json
-import os
-import time
+from fastapi import APIRouter
 
-from fastapi import APIRouter, HTTPException, Request
+router = APIRouter(prefix="/data-source", tags=["Data Source Health"])
 
-from backend.core.logger import logger
-
-router = APIRouter(prefix="/data-source", tags=["Data Source Proxy"])
-
-_HMAC_SECRET = os.getenv("DATA_SOURCE_HMAC_SECRET", "")
-_ALLOWED_IPS = os.getenv("DATA_SOURCE_ALLOWED_IPS", "")
-_RATE_LIMIT = os.getenv("DATA_SOURCE_RATE_LIMIT", "100/minute")
-
-_allowed_ip_set = set(ip.strip() for ip in _ALLOWED_IPS.split(",") if ip.strip()) if _ALLOWED_IPS else set()
-
-_REPLAY_WINDOW = 300
-
-_request_timestamps = {}
-
-
-def _verify_ip(request: Request) -> bool:
-    if not _allowed_ip_set:
-        return True
-
-    client_ip = request.client.host if request.client else ""
-
-    if client_ip in _allowed_ip_set:
-        return True
-
-    logger.warning(f"[Security] IP 白名单拒绝: {client_ip}")
-    return False
-
-
-def _verify_signature(request: Request, body: dict) -> bool:
-    if not _HMAC_SECRET:
-        return True
-
-    signature = request.headers.get("X-Data-Source-Signature", "")
-    if not signature:
-        return False
-
-    timestamp = request.headers.get("X-Data-Source-Timestamp", "")
-    if not timestamp:
-        logger.warning("[Security] 请求缺少时间戳")
-        return False
-
-    try:
-        req_timestamp = int(timestamp)
-    except ValueError:
-        logger.warning("[Security] 时间戳格式无效")
-        return False
-
-    now = int(time.time())
-    if abs(now - req_timestamp) > _REPLAY_WINDOW:
-        logger.warning(f"[Security] 请求时间戳过期: {req_timestamp}, 当前: {now}")
-        return False
-
-    client_ip = request.client.host if request.client else ""
-    signature_key = f"{client_ip}:{timestamp}"
-    if signature_key in _request_timestamps:
-        logger.warning("[Security] 重放攻击检测")
-        return False
-    _request_timestamps[signature_key] = now
-
-    body_with_ts = body.copy()
-    body_with_ts["__timestamp"] = timestamp
-    expected = hashlib.sha256(
-        _HMAC_SECRET.encode("utf-8") + json.dumps(body_with_ts, sort_keys=True).encode("utf-8")
-    ).hexdigest()
-    return signature == expected
-
-
-def _cleanup_old_timestamps():
-    now = int(time.time())
-    to_remove = [key for key, ts in _request_timestamps.items() if now - ts > _REPLAY_WINDOW]
-    for key in to_remove:
-        del _request_timestamps[key]
-
-
-@router.post("/proxy/yfinance")
-async def proxy_yfinance(request: Request):
-    """代理 yfinance 请求"""
-    _cleanup_old_timestamps()
-
-    if not _verify_ip(request):
-        raise HTTPException(status_code=403, detail="IP not allowed")
-
-    body = await request.json()
-
-    if not _verify_signature(request, body):
-        raise HTTPException(status_code=401, detail="Invalid signature")
-
-    ticker = body.get("ticker", "")
-    fetch_type = body.get("fetch_type", "")
-    kwargs = body.get("kwargs", {})
-
-    logger.info(f"[Proxy] YFinance 请求: {ticker}, {fetch_type}")
-
-    from backend.app.market_data import market_data
-
-    try:
-        return await market_data.proxy_yfinance(ticker, fetch_type, kwargs)
-    except Exception as e:
-        logger.error(f"[Proxy] YFinance 错误: {ticker}, {str(e)}")
-        return {"success": False, "message": str(e)}
-
-
-@router.post("/proxy/akshare")
-async def proxy_akshare(request: Request):
-    """代理 AKShare 请求"""
-    _cleanup_old_timestamps()
-
-    if not _verify_ip(request):
-        raise HTTPException(status_code=403, detail="IP not allowed")
-
-    body = await request.json()
-
-    if not _verify_signature(request, body):
-        raise HTTPException(status_code=401, detail="Invalid signature")
-
-    action = body.get("action", "")
-    kwargs = body.get("kwargs", {})
-
-    logger.info(f"[Proxy] AKShare 请求: {action}")
-
-    from backend.app.market_data import market_data
-
-    try:
-        return await market_data.proxy_akshare(action, kwargs)
-    except Exception as e:
-        logger.error(f"[Proxy] AKShare 错误: {action}, {str(e)}")
-        return {"status": "error", "message": str(e)}
+# ───────────────────────────────────────────────────────────────
+# 修复3 (剥离 yfinance): 已删除主服务遗留的 /proxy/yfinance、/proxy/akshare
+# 代理端点。数据源代理能力已物理解耦到独立数据子服务 data_subservice
+# (统一 /api/v1/data 端点, 由主服务经 DataSourceRouter 走 HMAC 调用)。
+# 见 commit 93f1ecf (删除 data_subservice/routes.py) 与 docs/14。
+# ───────────────────────────────────────────────────────────────
 
 
 @router.get("/health")
 async def data_source_health():
-    """数据源健康检查"""
+    """数据源健康检查（仅探测主服务本地 yfinance / akshare 适配器可用性）。
+
+    注: 实际的跨节点代理请求已由 data_subservice 承接, 本端点不做代理转发。
+    """
     from backend.app.market_data import market_data
 
     return {

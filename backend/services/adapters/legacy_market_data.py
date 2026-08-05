@@ -518,36 +518,6 @@ class MarketDataGateway:
     async def backfill_fred_actuals(self, events: Any, *args: Any, **kwargs: Any) -> Any:
         return await self._fred.backfill_actuals(events, *args, **kwargs)
 
-    async def proxy_yfinance(self, ticker: str, fetch_type: str, kwargs: Optional[dict] = None) -> Any:
-        kwargs = kwargs or {}
-        if fetch_type == "quote":
-            return await self.get_batched_quote(ticker, req_type="quote")
-        if fetch_type == "tech":
-            return await self.get_tech_indicators(ticker, **kwargs)
-        if fetch_type == "history":
-            success, data, msg = await self.fetch_yf_data(ticker, "history", ttl=3600, **kwargs)
-            return {"success": success, "data": data, "message": msg}
-        return {"success": False, "message": f"Unknown fetch_type: {fetch_type}"}
-
-    async def proxy_akshare(self, action: str, kwargs: Optional[dict] = None) -> Any:
-        kwargs = kwargs or {}
-        mapping = {
-            "southbound": self.get_southbound_flow,
-            "northbound": self.get_northbound_flow,
-            "hk_connect": self.get_hk_stock_connect_flow,
-            "hsgt_holders": lambda: self.get_hsgt_top_holders(symbol=kwargs.get("symbol", "00700")),
-            "company_news": lambda: self.get_company_news_ak(ticker=kwargs.get("ticker", "")),
-            "stock_quote": lambda: self.get_stock_quote_ak(ticker=kwargs.get("ticker", "")),
-            "stock_history": lambda: self.get_stock_history_ak(
-                ticker=kwargs.get("ticker", ""), num=kwargs.get("num", 60)
-            ),
-            "economic_calendar": lambda: self.get_economic_calendar_ak(days_ahead=kwargs.get("days_ahead", 7)),
-        }
-        fn = mapping.get(action)
-        if not fn:
-            return {"status": "error", "message": f"Unknown akshare action: {action}"}
-        return await fn()
-
 
 # Composition root 单例
 market_data_gateway = MarketDataGateway()
