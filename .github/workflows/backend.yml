@@ -397,15 +397,30 @@ jobs:
             fi
 
             # 仅对"刚由模板 cp 生成的 .env"回填 Secrets 真实值 (同一 ssh 会话原子操作，无竞态)。
-            # 判定依据: 文件仍含模板占位符 (形如 DS_NODE_ID=<...>)。人工维护过的 .env 不含占位符，跳过。
+            # 判定依据：文件仍含模板占位符 (形如 DS_NODE_ID=<...>)。人工维护过的 .env 不含占位符，跳过。
             if grep -q '^DS_NODE_ID=<' ${{ matrix.env-file }} 2>/dev/null; then
               echo "🔧 回填 Secrets 到新建 .env 占位符..."
               sed -i "s|^DS_NODE_ID=.*|DS_NODE_ID=${{ matrix.ds-id }}|" ${{ matrix.env-file }}
               sed -i "s|^DS_REGION=.*|DS_REGION=${{ matrix.ds-region }}|" ${{ matrix.env-file }}
               sed -i "s|^DS_CAPABILITIES=.*|DS_CAPABILITIES=${{ matrix.ds-caps }}|" ${{ matrix.env-file }}
               sed -i "s|^DS_NODE_PORT=.*|DS_NODE_PORT=8000|" ${{ matrix.env-file }}
-              sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=$NODE_TS_IP|" ${{ matrix.env-file }}
-              sed -i "s|^DS_BASE_URL=.*|DS_BASE_URL=http://$NODE_TS_IP:8000|" ${{ matrix.env-file }}
+                          
+              # 验证 Tailscale IP 是否存在；不存在则 fail fast（不回退 0.0.0.0，禁止公网暴露）
+              if ip addr show | grep -q "inet $NODE_TS_IP/"; then
+                echo "✅ Tailscale IP $NODE_TS_IP 存在，绑定到该 IP"
+                sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=$NODE_TS_IP|" ${{ matrix.env-file }}
+                sed -i "s|^DS_BASE_URL=.*|DS_BASE_URL=http://$NODE_TS_IP:8000|" ${{ matrix.env-file }}
+              else
+                echo "❌ Tailscale IP $NODE_TS_IP 在宿主机不存在，无法绑定内网端口，中止部署"
+                echo "📋 当前宿主机 IP 列表:"
+                ip -4 addr show | grep inet || true
+                echo "🔧 请先在该节点配置/启动 Tailscale 后重试:"
+                echo "   sudo tailscale status   # 确认登录状态"
+                echo "   sudo tailscale up       # 若未运行则启动"
+                echo "   确认 Tailscale IP 与 Secrets 中 ${{ matrix.ts-ip-secret }} 一致"
+                exit 1
+              fi
+                          
               sed -i "s|^DATA_SOURCE_HMAC_SECRET=.*|DATA_SOURCE_HMAC_SECRET=$HMAC_SECRET|" ${{ matrix.env-file }}
               sed -i "s|^DATA_SOURCE_ALLOWED_IPS=.*|DATA_SOURCE_ALLOWED_IPS=10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1|" ${{ matrix.env-file }}
               sed -i "s|^QUANT_ENV=.*|QUANT_ENV=production|" ${{ matrix.env-file }}
@@ -424,6 +439,32 @@ jobs:
               echo "✅ 新建 .env 已由 Secrets 回填完成"
             else
               echo "🛡️ ${{ matrix.env-file }} 不含模板占位符 (疑似人工维护或已回填)，跳过回填以保护现场配置"
+            fi
+
+            # 🛡️ 部署前 PUBLIC_IP 有效性校验 (对所有节点生效，包括已存在的人工 .env):
+            #    compose 端口绑定 ${PUBLIC_IP}:8000:8000，若该 IP 在宿主机不存在
+            #    (Tailscale 未运行/IP 变更)，docker 会报 "cannot assign requested address"。
+            #    校验失败时: 若 Secrets 的 Tailscale IP 在宿主机存在则自动修正，否则 fail fast。
+            CURRENT_PUBLIC_IP=$(grep '^PUBLIC_IP=' ${{ matrix.env-file }} | head -1 | cut -d= -f2 | tr -d '[:space:]')
+            if [ -n "$CURRENT_PUBLIC_IP" ] && [ "$CURRENT_PUBLIC_IP" != "0.0.0.0" ] && [ "$CURRENT_PUBLIC_IP" != "127.0.0.1" ]; then
+              if ip addr show | grep -q "inet $CURRENT_PUBLIC_IP/"; then
+                echo "✅ PUBLIC_IP=$CURRENT_PUBLIC_IP 在宿主机存在，端口绑定校验通过"
+              elif [ -n "$NODE_TS_IP" ] && ip addr show | grep -q "inet $NODE_TS_IP/"; then
+                echo "⚠️ .env 中 PUBLIC_IP=$CURRENT_PUBLIC_IP 在宿主机不存在，自动修正为当前 Tailscale IP: $NODE_TS_IP"
+                sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=$NODE_TS_IP|" ${{ matrix.env-file }}
+                sed -i "s|^DS_BASE_URL=.*|DS_BASE_URL=http://$NODE_TS_IP:8000|" ${{ matrix.env-file }}
+              else
+                echo "❌ .env 中 PUBLIC_IP=$CURRENT_PUBLIC_IP 在宿主机不存在，且 Secrets Tailscale IP ($NODE_TS_IP) 也不存在，中止部署"
+                echo "📋 当前宿主机 IP 列表:"
+                ip -4 addr show | grep inet || true
+                echo "🔧 请先在该节点配置/启动 Tailscale 后重试:"
+                echo "   sudo tailscale status   # 确认登录状态"
+                echo "   sudo tailscale up       # 若未运行则启动"
+                echo "   若 Tailscale IP 已变更，请同步更新 Secrets 中 ${{ matrix.ts-ip-secret }}"
+                exit 1
+              fi
+            else
+              echo "✅ PUBLIC_IP=${CURRENT_PUBLIC_IP:-<未配置, compose 回退 127.0.0.1>} 无需校验"
             fi
 
             # compose 文件已由 CI runner 经 SSH 通道 scp 至本节点 (见 Deploy step)，
