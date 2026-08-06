@@ -25,9 +25,6 @@ class MarketDataGateway:
     def __init__(self) -> None:
         from backend.services.akshare import akshare_service
         from backend.services.finnhub.service import finnhub_service
-        from backend.services.macro.dbnomics import dbnomics_service
-        from backend.services.macro.fred_service import fred_service
-        from backend.services.macro.rbi import rbi_service
         from backend.services.yfinance import yf_service
 
         # futu_service 延迟到首次使用时导入，避免主节点无 SDK 时启动崩溃
@@ -35,9 +32,13 @@ class MarketDataGateway:
         self._yf = yf_service
         self._ak = akshare_service
         self._fh = finnhub_service
-        self._fred = fred_service
-        self._dbnomics = dbnomics_service
-        self._rbi = rbi_service
+        # dbnomics/fred/rbi 经 services.macro 间接依赖 hermes_agent；若在 __init__
+        # 同步 import，模块级 `market_data_gateway = MarketDataGateway()` 会触发
+        # 循环导入 (legacy_market_data -> macro -> ai_narrator -> hermes -> legacy_market_data)。
+        # 改为 lazy property，首次使用时（模块已全部加载）再导入。
+        self._fred = None
+        self._dbnomics = None
+        self._rbi = None
 
     @property
     def futu(self):
@@ -47,6 +48,33 @@ class MarketDataGateway:
 
             self._futu = futu_service
         return self._futu
+
+    @property
+    def dbnomics(self):
+        """延迟导入 dbnomics_service，避免模块加载期循环导入。"""
+        if self._dbnomics is None:
+            from backend.services.macro.dbnomics import dbnomics_service
+
+            self._dbnomics = dbnomics_service
+        return self._dbnomics
+
+    @property
+    def fred(self):
+        """延迟导入 fred_service，避免模块加载期循环导入。"""
+        if self._fred is None:
+            from backend.services.macro.fred_service import fred_service
+
+            self._fred = fred_service
+        return self._fred
+
+    @property
+    def rbi(self):
+        """延迟导入 rbi_service，避免模块加载期循环导入。"""
+        if self._rbi is None:
+            from backend.services.macro.rbi import rbi_service
+
+            self._rbi = rbi_service
+        return self._rbi
 
         from backend.services.datasource.adapters.legacy_yfinance import (
             ensure_yfinance_registered,
@@ -501,22 +529,22 @@ class MarketDataGateway:
         return await self._fh.get_stock_history(ticker, days_back=days_back, **kwargs)
 
     async def get_series_observations(self, series_id: str, limit: int = 5) -> Any:
-        return await self._fred.get_series_observations(series_id, limit)
+        return await self.fred.get_series_observations(series_id, limit)
 
     async def get_economic_calendar_fred(self, *args: Any, **kwargs: Any) -> Any:
-        return await self._fred.get_economic_calendar(*args, **kwargs)
+        return await self.fred.get_economic_calendar(*args, **kwargs)
 
     async def get_economic_calendar_finnhub(self, *args: Any, **kwargs: Any) -> Any:
         return await self._fh.get_economic_calendar(*args, **kwargs)
 
     async def get_economic_calendar_dbnomics(self, *args: Any, **kwargs: Any) -> Any:
-        return await self._dbnomics.get_economic_calendar(*args, **kwargs)
+        return await self.dbnomics.get_economic_calendar(*args, **kwargs)
 
     async def get_economic_calendar_rbi(self, *args: Any, **kwargs: Any) -> Any:
-        return await self._rbi.get_economic_calendar(*args, **kwargs)
+        return await self.rbi.get_economic_calendar(*args, **kwargs)
 
     async def backfill_fred_actuals(self, events: Any, *args: Any, **kwargs: Any) -> Any:
-        return await self._fred.backfill_actuals(events, *args, **kwargs)
+        return await self.fred.backfill_actuals(events, *args, **kwargs)
 
 
 # Composition root 单例
