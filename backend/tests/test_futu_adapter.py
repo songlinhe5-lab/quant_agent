@@ -272,7 +272,7 @@ def test_fetch_option_chain_not_connected_returns_error_no_mock():
     a._connected = True  # 绕过外部 is_available，直接验证内部零幻觉分支
     result = a._fetch_option_chain({"underlying_ticker": "HK.00700"})
     assert result["success"] is False
-    assert "数据源已死" in result["message"]
+    assert "无法获取到期日列表" in result["message"]
 
 
 # ─── subscribe / unsubscribe ─────────────────────────────────────

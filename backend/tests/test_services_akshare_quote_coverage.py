@@ -53,6 +53,32 @@ def _news_df():
     )
 
 
+def _daily_df():
+    """新浪 stock_zh_a_daily 返回的英文列 df (含 date/open/high/low/close/volume/amount)。"""
+    return pd.DataFrame(
+        [
+            {
+                "date": "2026-01-01",
+                "open": 10.0,
+                "high": 11.0,
+                "low": 9.5,
+                "close": 10.5,
+                "volume": 1000,
+                "amount": 10500.0,
+            },
+            {
+                "date": "2026-01-02",
+                "open": 10.5,
+                "high": 12.0,
+                "low": 10.2,
+                "close": 11.8,
+                "volume": 2000,
+                "amount": 23600.0,
+            },
+        ]
+    )
+
+
 def _hist_df():
     return pd.DataFrame(
         [
@@ -207,7 +233,7 @@ async def test_quote_success_and_error_branch():
     h = _QuoteHarness()
     with (
         patch("backend.services.akshare.quote.redis_client", r),
-        patch("akshare.stock_zh_a_hist", new=MagicMock(return_value=_hist_df())),
+        patch("akshare.stock_zh_a_daily", new=MagicMock(return_value=_daily_df())),
     ):
         res = await h.get_stock_quote("SH.600519")
     assert res["status"] == "success"
@@ -219,7 +245,7 @@ async def test_quote_success_and_error_branch():
     empty = pd.DataFrame()
     with (
         patch("backend.services.akshare.quote.redis_client", r2),
-        patch("akshare.stock_zh_a_hist", new=MagicMock(return_value=empty)),
+        patch("akshare.stock_zh_a_daily", new=MagicMock(return_value=empty)),
     ):
         res2 = await h2.get_stock_quote("SH.600519")
     assert res2["status"] == "error"
@@ -263,7 +289,7 @@ async def test_history_success_and_error_branch():
     h = _QuoteHarness()
     with (
         patch("backend.services.akshare.quote.redis_client", r),
-        patch("akshare.stock_zh_a_hist", new=MagicMock(return_value=_hist_df())),
+        patch("akshare.stock_zh_a_daily", new=MagicMock(return_value=_daily_df())),
     ):
         res = await h.get_stock_history("SH.600519", num=1)
     assert res["status"] == "success"
@@ -273,7 +299,7 @@ async def test_history_success_and_error_branch():
     h2 = _QuoteHarness(max_errors=1)
     with (
         patch("backend.services.akshare.quote.redis_client", r2),
-        patch("akshare.stock_zh_a_hist", new=MagicMock(return_value=pd.DataFrame())),
+        patch("akshare.stock_zh_a_daily", new=MagicMock(return_value=pd.DataFrame())),
     ):
         res2 = await h2.get_stock_history("SH.600519")
     assert res2["status"] == "error"
