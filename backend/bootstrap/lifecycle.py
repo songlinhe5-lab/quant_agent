@@ -64,7 +64,17 @@ async def app_lifespan(app: FastAPI):
     except Exception as e:
         log.warning(f"⚠️ [System] 配置全局线程池失败: {e}")
 
-    # 0. 初始化默认系统管理员账号
+    # 0. 数据源适配器统一注册（BE-ARCH-04: Facade 经 Registry 选源，必须启动时注册）
+    log.info("🚀 [Startup] 正在注册数据源适配器...")
+    try:
+        from backend.services.datasource.adapters import ensure_all_datasources_registered
+
+        registered = ensure_all_datasources_registered()
+        log.info(f"✅ [Startup] 数据源适配器注册完成: {registered}")
+    except Exception as e:
+        log.warning(f"⚠️ [Startup] 数据源适配器注册失败 (部分源可能不可用): {e}")
+
+    # 0.1 初始化默认系统管理员账号
     log.info("🚀 [Startup] 正在初始化系统默认账号...")
     try:
         with SessionLocal() as db:
