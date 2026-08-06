@@ -1,0 +1,68 @@
+"""临时冒烟：验证 FMP 下沉子服务 + /metrics 指标暴露（无网络，本地直跑）。"""
+
+import hashlib
+import hmac
+import json
+import time
+
+from fastapi.testclient import TestClient
+
+from data_subservice.main import HMAC_SECRET, app
+
+
+def _signed_post(client, payload: dict):
+    """带 HMAC 签名头调用 /api/v1/data（子服务强制鉴权）。
+
+    签名消息必须用与 request.body() 完全一致的原始 JSON 字节（TestClient 用
+    json.dumps 默认 separators 序列化），故此处手动 dumps 作为 content 发送。
+    """
+    raw = json.dumps(payload).encode("utf-8")
+    ts = str(int(time.time()))
+    msg = f"{ts}:{raw.decode('utf-8')}".encode("utf-8")
+    sig = hmac.new(HMAC_SECRET.encode(), msg, hashlib.sha256).hexdigest()
+    return client.post(
+        "/api/v1/data",
+        content=raw,
+        headers={"X-Timestamp": ts, "X-Signature": sig},
+    )
+
+
+def test_fmp_smoke():
+    client = TestClient(app)
+
+    # 1. /metrics 暴露 fmp_* 指标（14 个中至少命中核心几个）
+    r = client.get("/metrics")
+    assert r.status_code == 200, r.status_code
+    body = r.text
+    for must in (
+        "fmp_requests_total",
+        "fmp_credit_spent_total",
+        "fmp_credit_remaining",
+        "fmp_credit_limit",
+        "fmp_heal_p99_seconds",
+        "fmp_up",
+    ):
+        assert must in body, f"缺失指标 {must}"
+    print("[OK] /metrics 暴露 fmp_* 指标")
+
+    # 2. source=fmp CREDIT action 返回快照
+    r = _signed_post(client, {"source": "fmp", "action": "CREDIT", "params": {}})
+    assert r.status_code == 200, r.status_code
+    data = r.json()
+    assert data["code"] == 0, data
+    assert data["data"]["status"] == "success", data
+    snap = data["data"]["data"]
+    assert "remaining" in snap and "daily_limit" in snap, snap
+    print(f"[OK] fmp CREDIT 快照: {snap}")
+
+    # 3. 未知 action 优雅返回 error（不崩）
+    r = _signed_post(client, {"source": "fmp", "action": "NOPE", "params": {}})
+    assert r.status_code == 200, r.status_code
+    assert "error" in r.json()["data"], r.json()
+    print("[OK] 未知 action 优雅降级")
+
+    print("\n=== FMP 下沉冒烟全部通过 ===")
+
+
+if __name__ == "__main__":
+    test_fmp_smoke()
