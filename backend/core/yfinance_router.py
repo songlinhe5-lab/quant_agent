@@ -2,6 +2,11 @@
 YFinanceRouter — YFinance 客户端路由器
 ==========================================
 
+.. deprecated:: Phase 3 (2026-08-07)
+   YFinanceRouter 已废弃，功能已合并入 DataSourceRouter。
+   YFinanceService 不再直接引用本类，远程路由统一经 DataSourceRouter.fetch_yfinance()。
+   本文件保留仅为向后兼容，将在后续版本删除。
+
 基于 ServiceRegistry 动态发现节点，实现加权轮询 + 熔断过滤 + failover + STALE 缓存降级。
 
 核心流程:

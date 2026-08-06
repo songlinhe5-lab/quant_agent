@@ -44,35 +44,16 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
 
         self._init_session()
 
-        # ── DIST-04: 路由器兼容外壳 ──
-        # YF_ROUTER_ENABLED=true 时，通过 YFinanceRouter 将请求代理到远程数据源节点，
-        # 上层调用方 (data_source_router / market router / collector) 零改动。
-        self._router_enabled: bool = os.getenv("YF_ROUTER_ENABLED", "false").lower() in (
-            "true",
-            "1",
-            "yes",
-        )
-        self._router = None  # 懒初始化 (需要 async 上下文)
+        # ── DIST-04: 路由器兼容外壳（已废弃，统一走 DataSourceRouter） ──
+        # YFinanceService 始终走本地 SDK，远程路由由 DataSourceRouter.fetch_yfinance 统一处理。
+        # YF_ROUTER_ENABLED 环境变量已废弃，保留读取但不产生任何效果（兼容旧配置）。
+        self._router_enabled: bool = False  # 始终 False，远程路由经 DataSourceRouter
+        self._router = None
         self._router_init_lock = asyncio.Lock()
 
     async def _ensure_router(self):
-        """懒初始化 YFinanceRouter (首次异步调用时触发)"""
-        if self._router is not None:
-            return
-        async with self._router_init_lock:
-            if self._router is not None:
-                return
-            from backend.core.redis_client import redis_client
-            from backend.core.service_registry import ServiceRegistry
-            from backend.core.yfinance_router import YFinanceRouter
-
-            registry = ServiceRegistry(redis_client)
-            hmac_secret = os.getenv("DATA_SOURCE_HMAC_SECRET", "")
-            self._router = YFinanceRouter(
-                service_registry=registry,
-                redis_client=redis_client,
-                hmac_secret=hmac_secret,
-            )
+        """已废弃：YFinanceRouter 已合并入 DataSourceRouter，保留空方法兼容调用方。"""
+        pass
 
     def _evict_stale_cache(self):
         """内存安全防御：清理过期缓存，防止无界字典无限增长导致 OOM"""
@@ -238,27 +219,8 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
         if yf is None:
             return False, None, "环境缺失 yfinance 依赖"
 
-        # ── DIST-04: 路由器模式拦截 ──
-        if self._router_enabled:
-            await self._ensure_router()
-            cache_key_r = f"yf_{fetch_type}_{ticker}" + (
-                "_" + "_".join([f"{k}_{v}" for k, v in kwargs.items()]) if kwargs else ""
-            )
-            payload = {
-                "ticker": ticker,
-                "fetch_type": fetch_type,
-                "ttl": ttl,
-                "persist": persist,
-                **kwargs,
-            }
-            result = await self._router.call(
-                "yfinance",
-                payload,
-                cache_key=cache_key_r,
-            )
-            if result.get("status") == "success" and "data" in result:
-                return True, result["data"], ""
-            return False, None, result.get("message", "路由器：数据获取失败")
+        # ── DIST-04: 路由器模式已废弃，统一走 DataSourceRouter.fetch_yfinance() ──
+        # YFinanceService 始终走本地 SDK，远程路由由上层 LegacyYFinanceDataSource 处理
 
         yf_ticker = format_yf_ticker(ticker)
         skip_cache = bool(kwargs.get("skip_cache"))
