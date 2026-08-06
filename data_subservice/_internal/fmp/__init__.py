@@ -19,11 +19,7 @@ from typing import Any
 import httpx
 
 from data_subservice._internal.logger import logger
-from data_subservice._internal.metrics import (
-    FMP_CREDIT_LIMIT,
-    FMP_CREDIT_REMAINING,
-    observe_credit_consume,
-)
+from data_subservice._internal.metrics import observe_credit_consume
 
 _BASE = "https://financialmodelingprep.com/api/v3"
 
