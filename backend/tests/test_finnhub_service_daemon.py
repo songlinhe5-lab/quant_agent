@@ -16,6 +16,7 @@ os.environ.setdefault("LLM_API_KEY", "test-llm-key")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 DM = "backend.workers.market.daemon"
+AM = "backend.workers.macro.alert_daemon"
 
 
 def _make_cancelling_sleep(after_n=0):
@@ -167,24 +168,24 @@ class TestMarketDaemon:
                 await _company_news_daemon(service)
         m_r.publish.assert_called()
 
-    # ─── _macro_alert_daemon ────────────────────────────────────
+    # ─── macro_alert_daemon（独立模块 workers/macro/alert_daemon.py） ─
     @pytest.mark.asyncio
     async def test_macro_alert_daemon_no_data_continues_then_cancels(self, service):
-        from backend.workers.market.daemon import _macro_alert_daemon
+        from backend.workers.macro.alert_daemon import macro_alert_daemon
 
         with (
-            patch(f"{DM}.asyncio.sleep", new=_make_cancelling_sleep(1)),
+            patch(f"{AM}.asyncio.sleep", new=_make_cancelling_sleep(1)),
             patch("backend.services.akshare.akshare_service") as m_ak,
             patch("backend.services.macro.fred_service.fred_service") as m_fr,
         ):
             m_ak.get_economic_calendar_ak = AsyncMock(return_value={"status": "error"})
             m_fr.get_economic_calendar = AsyncMock(return_value={"status": "error"})
             with pytest.raises(asyncio.CancelledError):
-                await _macro_alert_daemon()
+                await macro_alert_daemon()
 
     @pytest.mark.asyncio
     async def test_macro_alert_daemon_high_impact_published_triggers_alert(self, service):
-        from backend.workers.market.daemon import _macro_alert_daemon
+        from backend.workers.macro.alert_daemon import macro_alert_daemon
 
         event = {
             "event": "FOMC Rate Decision",
@@ -196,14 +197,14 @@ class TestMarketDaemon:
             "time": "2026-06-29 14:00",
         }
         with (
-            patch(f"{DM}.asyncio.sleep", new=_make_cancelling_sleep(1)),
+            patch(f"{AM}.asyncio.sleep", new=_make_cancelling_sleep(1)),
             # RL-11 修复：daemon 实际经由 data_source_router.fetch_akshare 取宏观日历，
             # 原 mock（akshare_service）从未被调用，导致永远走 fallback 且 alert 不触发
             patch(
                 "backend.services.datasource.router.data_source_router.fetch_akshare",
                 new=AsyncMock(return_value={"status": "success", "data": [event]}),
             ),
-            patch(f"{DM}.redis_client") as m_r,
+            patch(f"{AM}.redis_client") as m_r,
             patch("backend.services.alert.notification.notification_service") as m_n,
             patch("backend.services.ai_narrator.llm_service.llm_service") as m_llm,
         ):
@@ -212,7 +213,7 @@ class TestMarketDaemon:
                 return_value=MagicMock(choices=[MagicMock(message=MagicMock(content="hawkish"))])
             )
             with pytest.raises(asyncio.CancelledError):
-                await _macro_alert_daemon()
+                await macro_alert_daemon()
         m_n.send_alert.assert_called_once()
 
     # ─── _insider_transactions_marquee_daemon ───────────────────

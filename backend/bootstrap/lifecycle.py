@@ -236,20 +236,9 @@ async def app_lifespan(app: FastAPI):
     except Exception as e:
         log.warning(f"[Startup] Finnhub WS tick 回灌启动失败: {e}")
 
-    # 🚀 FMP 盘后批量财报缓存守护 (COLLECTOR_FMP) - 仅 master 且开关开启
-    try:
-        if os.getenv("COLLECTOR_FMP", "false").lower() == "true":
-            from backend.workers.collectors.fmp import start as fmp_collector_start
-
-            fmp_coros = await fmp_collector_start()
-            for coro in fmp_coros:
-                asyncio.create_task(coro)
-            if fmp_coros:
-                log.info("✅ [Startup] FMP 盘后财报缓存守护已启动")
-        else:
-            log.info("ℹ️ [Startup] COLLECTOR_FMP 未开启，跳过 FMP 守护")
-    except Exception as e:
-        log.warning(f"[Startup] FMP 守护启动失败: {e}")
+    # 🚀 FMP 盘后批量财报缓存守护：已整体下沉至 data_subservice（finnhub_fmp_worker.py），
+    # 主服务不再负责 FMP 数据源采集。system.py 经 HTTP 拉取子服务 /metrics 观测 credit 预算。
+    # （COLLECTOR_FMP 环境变量保留给 data_subservice 使用）
 
     # 🚀 RL-11 限流告警后台消费器 (异步队列，解耦限流回调与飞书推送 IO)
     try:

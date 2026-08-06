@@ -47,6 +47,30 @@
 - `backend/services/futu/` 包仍保留作 `DATASOURCE_FUTU_MODE=internal` 兜底（被 legacy_market_data.futu / legacy_broker / market_engine._get_futu_service / adapters/futu 引用）。
 - `backend/tests/test_futu_adapter.py` + `test_futu_adapter_dispatch.py` 仍测试 `backend.adapters.futu.futu_adapter`（主服务 DataSourceInterface 适配器层，属集成适配非源 SDK），未迁移。
 
+## 四、Phase 4 启动（2026-08-06 决策 · V5.4）
+
+**🔴 子服务职责红线（用户拍板，须固化进 vibe coding 规则）**：
+- `data_subservice` **只负责**：① 数据源连接（SDK/WS/OpenD）② 连接与采集保障监控（限流/熔断/健康/自愈/credit 对账）③ 对外 HTTP API（`/ds/{source}/{action}` + `/metrics` Prometheus）。
+- **禁止**在子服务写任何业务逻辑/业务编排（LLM 秒评、通知、分片、宏观聚合、财报解读、信号生成）——这些依赖 backend 内部模块，违反子服务「禁 import backend」红线。
+- 判定准则：**「数据获取 + 保障监控」属子服务；「数据消费后的业务加工」属主服务**。
+
+**用户拍板结论**：
+1. finnhub：数据源获取/保障/监控逻辑下沉 data_subservice；LLM 秒评+通知+分片+宏观保留主服务。
+2. fmp：**整体下沉**（含 800 行 daemon + system.py credit 观测改经 HTTP 拉子服务 /metrics）。
+3. akshare/yfinance：先核查再动手（yfinance collector 为路由空壳可删；akshare 北京 VPS 市场级资金流 daemon 需子服务补采集）。
+
+**已落地（本次 commit）**：
+- `backend/workers/macro/alert_daemon.py`：从 `workers/market/daemon.py` 抽出 `_macro_alert_daemon`（实际用 AKShare+FRED，与 Finnhub 无关），独立化后关闭 COLLECTOR_FINNHUB 不影响宏观告警。
+- `backend/bootstrap/lifecycle.py`：删 FMP 主服务守护启动块（fmp 整体下沉）。
+- `docs/03` §4.4 + 变更日志 V5.4：固化子服务职责红线。
+- 相关测试 2 件（`test_finnhub_service_daemon.py` / `test_services_market_daemon_coverage.py`）改引用 `alert_daemon.macro_alert_daemon`。
+
+**待办（后续 commit，未做）**：
+- finnhub `service.py`（REST 取数+限流+缓存单飞）+ `_trade_stream_daemon` WS 连接层下沉 data_subservice（新建 finnhub_fmp_worker.py）。
+- fmp 800 行 daemon 整体下沉 data_subservice + `/metrics` 暴露 14 个 Prometheus 指标 + system.py credit 看板改经 HTTP。
+- akshare 市场级资金流（南向/北向/港股通）定时采集补进 data_subservice/akshare_worker.py；删主服务 akshare collector daemon。
+- 删 yfinance collector（路由空壳，零断流）；删 futu 后 COLLECTORS 已无 futu，本次维持 akshare/finnhub/fmp/yfinance 在主服务 COLLECTORS 直到下沉完成（hybrid 过渡）。
+
 ## 四、相关文件索引
 
 - 架构文档：`docs/03. 后端架构与执行引擎.md`（V5.2，§4.4 依赖收口红线）
