@@ -19,12 +19,15 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from data_subservice._internal.circuit_breaker import circuit_breaker
 from data_subservice._internal.logger import logger
+from data_subservice._internal.metrics import registry as _metrics_registry
 from data_subservice._internal.redis_client import redis_client
 from data_subservice._internal.service_registry import ServiceRegistry
 from data_subservice.akshare_worker import handle_akshare
+from data_subservice.fmp_worker import handle_fmp
 from data_subservice.futu_worker import handle_futu
 from data_subservice.nodeinfo import get_node_info
 from data_subservice.tushare_worker import handle_tushare
@@ -89,6 +92,8 @@ async def fetch_data(request: Request):
         if not os.getenv("COLLECTOR_FUTU", "false").lower() == "true":
             raise HTTPException(status_code=503, detail="Futu 采集器未启用（仅主节点 COLLECTOR_FUTU=true）")
         result = await handle_futu(action, params)
+    elif source == "fmp":
+        result = await handle_fmp(action, params)
     else:
         raise HTTPException(status_code=400, detail=f"未知数据源: {source}")
 
@@ -98,6 +103,15 @@ async def fetch_data(request: Request):
 @app.get("/metrics/circuit")
 async def circuit_metrics():
     return JSONResponse(circuit_breaker.status_snapshot())
+
+
+@app.get("/metrics")
+async def prometheus_metrics():
+    """Prometheus 抓取端点（FMP 等数据源指标，独立 registry）。"""
+    return JSONResponse(
+        content=generate_latest(_metrics_registry).decode("utf-8"),
+        media_type=CONTENT_TYPE_LATEST,
+    )
 
 
 # ── 启动事件：可选向主 Redis 注册节点心跳 + Futu 长连接 ──
