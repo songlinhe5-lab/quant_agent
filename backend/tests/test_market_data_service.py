@@ -13,23 +13,22 @@ from backend.app.market_data_app import MarketDataService
 
 @pytest.fixture
 def service():
-    """创建 MarketDataService 并 mock 所有适配器"""
-    with (
-        patch("backend.app.market_data_app.FutuAdapter") as mock_futu_cls,
-        patch("backend.app.market_data_app.YFinanceAdapter") as mock_yf_cls,
-        patch("backend.app.market_data_app.AkShareAdapter") as mock_ak_cls,
-    ):
-        mock_futu = MagicMock()
+    """创建 MarketDataService 并 mock 所有适配器。
+
+    MarketDataService 中 FutuAdapter / AkShareAdapter 为懒加载属性（避免主节点
+    无 futu-sdk / akshare 时启动崩溃），__init__ 不会实例化它们，故通过属性
+    setter 注入；YFinanceAdapter 在 __init__ 中直接创建，需 patch 其定义模块。
+    """
+    with patch("backend.adapters.yfinance.yfinance_adapter.YFinanceAdapter") as mock_yf_cls:
         mock_yf = MagicMock()
-        mock_ak = MagicMock()
-        mock_futu_cls.return_value = mock_futu
         mock_yf_cls.return_value = mock_yf
-        mock_ak_cls.return_value = mock_ak
+        mock_futu = MagicMock()
+        mock_ak = MagicMock()
 
         svc = MarketDataService()
-        svc._futu = mock_futu
-        svc._yfinance = mock_yf
-        svc._akshare = mock_ak
+        svc._yfinance = mock_yf  # __init__ 已创建真实实例，覆盖为 mock
+        svc._futu = mock_futu  # 懒加载属性 setter 注入
+        svc._akshare = mock_ak  # 懒加载属性 setter 注入
         yield svc
 
 
