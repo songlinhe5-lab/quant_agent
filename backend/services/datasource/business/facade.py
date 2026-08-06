@@ -37,6 +37,8 @@ def _business_weight(name: str) -> int:
         "futu": 100,
         "fred": 90,
         "yfinance": 80,
+        "finnhub": 75,
+        "fmp": 70,
         "akshare": 60,
     }.get(name, 50)
     return int(os.getenv(f"DATASOURCE_{name.upper()}_BUSINESS_WEIGHT", str(default)))
@@ -49,6 +51,12 @@ _STALE_THRESHOLD_SEC = {
     "HISTORY": 3600,
     "OPTION_CHAIN": 3600,
     "FUNDAMENTAL": 86400,
+    "COMPANY_NEWS": 600,
+    "INFO": 86400,
+    "WARRANT_CHAIN": 300,
+    "SCREEN_STOCKS": 600,
+    "HSGT_HOLDERS": 3600,
+    "MACRO_SERIES": 86400,
 }
 
 # 多源报价偏差阈值（百分比）；超过即触发偏差告警
@@ -115,6 +123,66 @@ class DataServiceFacade:
         return await self._dispatch(
             "FUNDAMENTAL",
             {"ticker": ticker},
+            prefer_sources=prefer_sources,
+            enable_merge=False,
+        )
+
+    async def get_fundamental_info(self, ticker: str, prefer_sources: Optional[list[str]] = None) -> Result:
+        """公司概况 / 财务详情（profile / income_statement 等）。"""
+        return await self._dispatch(
+            "INFO",
+            {"ticker": ticker},
+            prefer_sources=prefer_sources,
+            enable_merge=False,
+        )
+
+    async def get_company_news(
+        self, ticker: str, days_back: int = 3, prefer_sources: Optional[list[str]] = None
+    ) -> Result:
+        """个股新闻与公告。"""
+        return await self._dispatch(
+            "COMPANY_NEWS",
+            {"ticker": ticker, "days_back": days_back},
+            prefer_sources=prefer_sources,
+            enable_merge=False,
+        )
+
+    async def get_warrant_chain(self, ticker: str, prefer_sources: Optional[list[str]] = None) -> Result:
+        """窝轮链（Futu 专属能力）。"""
+        return await self._dispatch(
+            "WARRANT_CHAIN",
+            {"ticker": ticker},
+            prefer_sources=prefer_sources,
+            enable_merge=False,
+        )
+
+    async def screen_stocks(
+        self, market: str, filters: Any, prefer_sources: Optional[list[str]] = None
+    ) -> Result:
+        """条件选股（Futu 专属能力）。"""
+        return await self._dispatch(
+            "SCREEN_STOCKS",
+            {"market": market, "filters": filters},
+            prefer_sources=prefer_sources,
+            enable_merge=False,
+        )
+
+    async def get_hsgt_holders(self, symbol: str, prefer_sources: Optional[list[str]] = None) -> Result:
+        """沪深港通持股数据（AKShare 专属能力）。"""
+        return await self._dispatch(
+            "HSGT_HOLDERS",
+            {"symbol": symbol},
+            prefer_sources=prefer_sources,
+            enable_merge=False,
+        )
+
+    async def get_macro_series(
+        self, series_id: str, limit: int = 100, prefer_sources: Optional[list[str]] = None
+    ) -> Result:
+        """宏观经济序列（FRED 等）。"""
+        return await self._dispatch(
+            "MACRO_SERIES",
+            {"series_id": series_id, "limit": limit},
             prefer_sources=prefer_sources,
             enable_merge=False,
         )

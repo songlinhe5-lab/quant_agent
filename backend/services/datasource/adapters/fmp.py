@@ -134,7 +134,8 @@ class FMPDataSource:
         )
 
     async def fetch(self, action: str, params: dict[str, Any]) -> Result:
-        if action not in self.capabilities:
+        _action = action.lower()
+        if _action not in [c.lower() for c in self.capabilities]:
             return Result.make_error(
                 ErrorInfo.normal(
                     "UNSUPPORTED_ACTION",
@@ -153,7 +154,7 @@ class FMPDataSource:
 
         try:
             symbol = str(params.get("symbol", ""))
-            if action == "quote":
+            if _action == "quote":
                 # 优先 Finnhub WS 实时 tick（已由 data_subservice → Redis → subscription_service 回灌）
                 # subscription_service 内部 TTL 自动失效（TTL=5s），命中即视为实时价，不消耗 FMP credit。
                 ws_tick = subscription_service.get_tick(symbol)
@@ -175,14 +176,14 @@ class FMPDataSource:
                 # 未命中实时 tick → 记录降级，走 REST 快照（消耗 1 credit）
                 subscription_service.record_miss()
                 data = await svc.get_quote(symbol)
-            elif action == "profile":
+            elif _action == "profile":
                 cached = await _fmp_cache_get(symbol)
                 if cached and cached.get("profile") is not None:
                     result = Result.make_success(cached["profile"], source="fmp-cache")
                     result.self_recorded = True  # 命中本地缓存，不消耗 credit
                     return result
                 data = await svc.get_profile(symbol)
-            elif action == "income_statement":
+            elif _action == "income_statement":
                 cached = await _fmp_cache_get(symbol)
                 if cached and cached.get("income_statement") is not None:
                     result = Result.make_success(cached["income_statement"], source="fmp-cache")

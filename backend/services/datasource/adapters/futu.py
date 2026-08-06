@@ -106,7 +106,8 @@ class FutuDataSource:
     # ── 数据获取（唯一入口） ──────────────────────────────────
 
     async def fetch(self, action: str, params: dict[str, Any]) -> Result:
-        if action not in self.capabilities:
+        _action = action.upper()
+        if _action not in [c.upper() for c in self.capabilities]:
             return Result.make_error(
                 ErrorInfo.normal(
                     "UNSUPPORTED_ACTION",
@@ -119,7 +120,7 @@ class FutuDataSource:
         from backend.services.datasource.router import data_source_router
 
         try:
-            resp = await data_source_router.fetch_futu(action, **params)
+            resp = await data_source_router.fetch_futu(_action, **params)
         except Exception as e:  # noqa: BLE001
             return Result.make_error(
                 ErrorInfo.normal("FUTU_ROUTER_ERROR", str(e), retryable=True),
@@ -131,7 +132,7 @@ class FutuDataSource:
 
         msg = (resp.get("message") if isinstance(resp, dict) else "") or "futu fetch failed"
         # 期权链偶发失败不熔断（其它能力照常）
-        option_chain_non_retryable = action == "OPTION_CHAIN"
+        option_chain_non_retryable = _action == "OPTION_CHAIN"
         if any(x in msg for x in ("429", "限流", "Rate limit", "Too Many", "403")):
             return Result.make_rate_limited(
                 ErrorInfo.rate_limited(code="FUTU_RATE_LIMIT", message=msg),

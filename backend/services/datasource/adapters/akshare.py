@@ -99,7 +99,8 @@ class AKShareDataSource:
         )
 
     async def fetch(self, action: str, params: dict[str, Any]) -> Result:
-        if action not in self.capabilities:
+        _action = action.upper()
+        if _action not in [c.upper() for c in self.capabilities]:
             return Result.make_error(
                 ErrorInfo.normal(
                     "UNSUPPORTED_ACTION",
@@ -111,7 +112,7 @@ class AKShareDataSource:
 
         svc = self._svc()
         try:
-            if action == "FUND_FLOW":
+            if _action == "FUND_FLOW":
                 # 默认南向资金（港股通）；可传 direction=northbound/connect
                 direction = str(params.get("direction", "southbound"))
                 if direction == "northbound":
@@ -120,7 +121,7 @@ class AKShareDataSource:
                     data = await svc.get_hk_stock_connect_flow()
                 else:
                     data = await svc.get_southbound_flow()
-            elif action == "ECONOMIC_CALENDAR":
+            elif _action == "ECONOMIC_CALENDAR":
                 data = await svc.get_economic_calendar(
                     days_ahead=int(params.get("days_ahead", 7)),
                     days_back=int(params.get("days_back", 0)),
