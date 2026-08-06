@@ -32,6 +32,7 @@ MarketDataService - 市场行情应用服务层
 """
 
 import logging
+import os
 import time
 from typing import List, Optional
 
@@ -103,10 +104,12 @@ class MarketDataService:
         self._yf_impl = None
         self._futu_impl = None
         self._akshare_impl = None
+        self._finnhub_impl = None
 
         # 缓存配置参数
         self._yf_cache_config = {"enable_cache": enable_yf_cache, "cache_ttl": 408}
         self._ak_cache_config = {"enable_cache": enable_ak_cache, "cache_ttl": 384}
+        self._finnhub_token = os.getenv("FINNHUB_API_KEY")
 
     # ========== 属性：懒加载适配器 ==========
 
@@ -151,6 +154,24 @@ class MarketDataService:
     def _akshare(self, value):
         """允许测试注入。"""
         self._akshare_impl = value
+
+    @property
+    def _finnhub(self):
+        """延迟导入 FinnhubAdapter，避免主节点无 websockets SDK 时崩溃。"""
+        if self._finnhub_impl is None:
+            if not self._finnhub_token:
+                logger.warning("[MarketDataService] FINNHUB_API_KEY missing - disabled")
+                return None
+
+            from ..adapters.finnhub import get_finnhub_adapter
+
+            self._finnhub_impl = get_finnhub_adapter(self._finnhub_token)
+        return self._finnhub_impl
+
+    @_finnhub.setter
+    def _finnhub(self, value):
+        """允许测试注入。"""
+        self._finnhub_impl = value
 
     # ========== 辅助方法：Futu 懒连接 ==========
 
