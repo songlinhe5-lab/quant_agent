@@ -1,5 +1,5 @@
 """
-Finnhub WS 实时 tick 回灌（主节点侧，BE-ARCH-04）
+Finnhub WS 实时 tick 回灌（主节点侧，BE-ARCH-04 / BE-ARCH-07）
 
 子服务 FinnhubWsClient 将实时 trade/quote 经 Redis pub 到 quant:tick:{symbol}。
 主节点 backend 启动本订阅协程，消费频道写入进程内最近 tick 缓存（LRU，TTL 5s），
@@ -8,144 +8,67 @@ Finnhub WS 实时 tick 回灌（主节点侧，BE-ARCH-04）
 红线：
   - 不直连外部 WS；外部 WS 收口在 data_subservice（DIST-22）。
   - 订阅端只读 Redis，业务仍经 DataSourceRegistry.fetch（不直接 import 本缓存）。
+
+BE-ARCH-07 重构：
+  - 推送平面统一抽象已迁至 ``backend.services.datasource.subscription``。
+  - 本模块保留为向后兼容薄代理层，所有实现委托给 ``subscription_service``。
+  - 新代码应直接 import ``subscription_service``，禁止继续 import 本模块内部符号。
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
-import os
-import time
-from threading import Lock
 from typing import Any, Optional
 
-import redis.asyncio as aioredis
+# ── BE-ARCH-07: 委托给推送平面统一入口 ──────────────────────────────────────
+from backend.services.datasource.subscription import (
+    SubscriptionService,
+    TickCache,
+    subscription_service,
+)
+from backend.services.datasource.subscription import (
+    _record_tick_hit as record_tick_hit,
+)
+from backend.services.datasource.subscription import (
+    _record_tick_miss as record_tick_miss,
+)
+from backend.services.datasource.subscription import (
+    _tick_cache_stats as tick_cache_stats,
+)
 
-from backend.core.logger import logger
+# ── 向后兼容：保留全局 tick_cache 实例（旧代码直接 import 用）───────────────
+# 新代码应经 subscription_service.get_tick() / put_tick() 访问。
+tick_cache = subscription_service._cache
 
-_TTL = 5.0  # 实时 tick 有效期（秒）
-
-
-class TickCache:
-    """进程内最近 tick 缓存（线程安全，TTL 过期自动失效）。"""
-
-    def __init__(self) -> None:
-        self._store: dict[str, tuple[float, dict[str, Any]]] = {}
-        self._lock = Lock()
-
-    def put(self, symbol: str, tick: dict[str, Any]) -> None:
-        with self._lock:
-            self._store[symbol.upper()] = (time.monotonic(), tick)
-
-    def get(self, symbol: str) -> Optional[dict[str, Any]]:
-        with self._lock:
-            item = self._store.get(symbol.upper())
-            if not item:
-                return None
-            ts, tick = item
-            if time.monotonic() - ts > _TTL:
-                del self._store[symbol.upper()]
-                return None
-            return tick
-
-
-tick_cache = TickCache()
-
-
-# ── tick_cache 命中率 / 降级率埋点（线程安全，Lock 保护）──────────────
-# 用于验证 WS 实时价到底覆盖了多少 quote 查询：hit=命中实时价，miss=降级 REST。
-_metrics_lock = Lock()
-_hits = 0
-_misses = 0
-
-
-def record_tick_hit() -> None:
-    global _hits
-    with _metrics_lock:
-        _hits += 1
-    _sync_prometheus(hit=True)
-
-
-def record_tick_miss() -> None:
-    global _misses
-    with _metrics_lock:
-        _misses += 1
-    _sync_prometheus(hit=False)
-
-
-def _sync_prometheus(hit: bool) -> None:
-    """将命中/降级事件同步到 Prometheus（Counter 增量 inc，Gauge 重算命中率）。
-
-    Counter 只能累加，故每次事件 inc(1)；命中率用 Gauge set 全局比值。
-    """
-    try:
-        from backend.core.metrics import (
-            TICK_CACHE_HIT_RATE,
-            TICK_CACHE_HITS,
-            TICK_CACHE_MISSES,
-        )
-
-        if hit:
-            TICK_CACHE_HITS.inc()
-        else:
-            TICK_CACHE_MISSES.inc()
-        with _metrics_lock:
-            h, m = _hits, _misses
-        total = h + m
-        TICK_CACHE_HIT_RATE.set((h / total) if total else float("nan"))
-    except Exception:  # noqa: BLE001
-        return
-
-
-def tick_cache_stats() -> dict[str, Any]:
-    """返回实时价命中/降级统计快照。
-
-    返回: {hits, misses, total, hit_rate(0-1, 无查询时为 None)}
-    """
-    with _metrics_lock:
-        hits = _hits
-        misses = _misses
-    total = hits + misses
-    hit_rate = (hits / total) if total else None
-    return {"hits": hits, "misses": misses, "total": total, "hit_rate": hit_rate}
-
-
-async def _redis() -> aioredis.Redis:
-    return aioredis.from_url(
-        f"redis://{os.getenv('REDIS_HOST', '127.0.0.1')}:{os.getenv('REDIS_PORT', '6379')}",
-        password=os.getenv("REDIS_PASSWORD") or None,
-        decode_responses=True,
-    )
+__all__ = [
+    # BE-ARCH-07 新入口
+    "SubscriptionService",
+    "subscription_service",
+    # 向后兼容旧符号
+    "TickCache",
+    "tick_cache",
+    "record_tick_hit",
+    "record_tick_miss",
+    "tick_cache_stats",
+    "run_tick_ingest",
+    "start_tick_ingest_task",
+]
 
 
 async def run_tick_ingest(symbols: list[str]) -> None:
-    """订阅 quant:tick:{symbol} 频道，回灌 tick_cache。"""
-    if not symbols:
-        logger.info("[TickIngest] 无订阅标的，回灌协程不启动")
-        return
-    r = await _redis()
-    pubsub = r.pubsub()
-    for sym in symbols:
-        await pubsub.subscribe(f"quant:tick:{sym.upper()}")
-    logger.info("[TickIngest] 已订阅 %d 个实时 tick 频道", len(symbols))
-    try:
-        async for msg in pubsub.listen():
-            if msg is None or msg.get("type") != "message":
-                continue
-            try:
-                data = json.loads(msg["data"])
-            except (json.JSONDecodeError, TypeError):
-                continue
-            sym = data.get("symbol")
-            if sym:
-                tick_cache.put(sym, data)
-    except asyncio.CancelledError:  # noqa: PERF203
-        await pubsub.unsubscribe()
-        logger.info("[TickIngest] 回灌协程已停止")
+    """订阅 quant:tick:{symbol} 频道，回灌 tick_cache。
+
+    委托给 subscription_service.start_ingest()。
+    """
+    await subscription_service._cache  # noqa: B018 - 确保 cache 已初始化
+    task = subscription_service.start_ingest(symbols)
+    if task is not None:
+        await task
 
 
 def start_tick_ingest_task(symbols: list[str]) -> Optional[asyncio.Task]:
-    """由主 app 启动钩子调用，返回后台 Task。"""
-    if not symbols:
-        return None
-    return asyncio.create_task(run_tick_ingest(symbols))
+    """由主 app 启动钩子调用，返回后台 Task。
+
+    委托给 subscription_service.start_ingest()。
+    """
+    return subscription_service.start_ingest(symbols)

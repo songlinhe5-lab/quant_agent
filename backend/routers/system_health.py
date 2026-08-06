@@ -132,11 +132,11 @@ async def _measure_event_loop_lag() -> float:
 
 
 def _safe_tick_cache_stats() -> Any:
-    """安全获取 WS tick 命中率统计，失败返回 unknown（不阻断诊断端点）。"""
+    """安全获取 WS tick 命中率统计（BE-ARCH-07: 经推送平面统一入口），失败返回 unknown（不阻断诊断端点）。"""
     try:
-        from backend.services.finnhub.ws_ingest import tick_cache_stats
+        from backend.services.datasource.subscription import subscription_service
 
-        return tick_cache_stats()
+        return subscription_service.stats()
     except Exception:  # noqa: BLE001
         return "unknown"
 
@@ -227,11 +227,11 @@ async def health_ready(response: Response):
     except Exception:  # noqa: BLE001
         checks["alert_queue"] = "unknown"
 
-    # WS 实时价命中/降级埋点（辅助探针，不计入 ready 门槛）
+    # WS 实时价命中/降级埋点（BE-ARCH-07: 经推送平面统一入口，辅助探针，不计入 ready 门槛）
     try:
-        from backend.services.finnhub.ws_ingest import tick_cache_stats
+        from backend.services.datasource.subscription import subscription_service
 
-        checks["tick_cache_stats"] = tick_cache_stats()
+        checks["tick_cache_stats"] = subscription_service.stats()
     except Exception:  # noqa: BLE001
         checks["tick_cache_stats"] = "unknown"
 

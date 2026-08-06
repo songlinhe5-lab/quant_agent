@@ -222,13 +222,13 @@ async def app_lifespan(app: FastAPI):
     except Exception as e:
         log.warning(f"[Startup] MarketEngine 启动失败: {e}")
 
-    # 🚀 Finnhub WS 实时 tick 回灌（主节点订阅 quant:tick:{symbol} → 进程内缓存）
+    # 🚀 Finnhub WS 实时 tick 回灌（BE-ARCH-07: 经推送平面统一入口）
     # 仅当配置了 FINNHUB_WS_SYMBOLS 时启动；从节点不跑（外部 WS 收口在 data_subservice）
     try:
-        from backend.services.finnhub.ws_ingest import start_tick_ingest_task
+        from backend.services.datasource.subscription import subscription_service
 
         _ws_symbols = [s.strip().upper() for s in os.getenv("FINNHUB_WS_SYMBOLS", "").split(",") if s.strip()]
-        tick_ingest_task = start_tick_ingest_task(_ws_symbols)
+        tick_ingest_task = subscription_service.start_ingest(_ws_symbols)
         if tick_ingest_task is not None:
             log.info(f"✅ [Startup] Finnhub WS tick 回灌已启动 (订阅 {len(_ws_symbols)} 只标的)")
         else:

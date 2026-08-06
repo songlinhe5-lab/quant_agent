@@ -95,11 +95,11 @@ async def get_observability(
     """
     overview: dict[str, Any] = {}
 
-    # 1. Finnhub WS 实时价命中/降级
+    # 1. Finnhub WS 实时价命中/降级（BE-ARCH-07: 经推送平面统一入口）
     try:
-        from backend.services.finnhub.ws_ingest import tick_cache_stats
+        from backend.services.datasource.subscription import subscription_service
 
-        overview["tick_cache"] = tick_cache_stats()
+        overview["tick_cache"] = subscription_service.stats()
     except Exception as e:  # noqa: BLE001
         overview["tick_cache"] = {"error": str(e)}
 
