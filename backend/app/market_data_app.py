@@ -100,6 +100,7 @@ class MarketDataService:
         self._tushare = datasource_registry.get("tushare", "stock_quote")
 
         # 懒加载的适配器实例（避免启动时导入可选依赖）
+        self._yf_impl = None
         self._futu_impl = None
         self._akshare_impl = None
 
@@ -108,6 +109,20 @@ class MarketDataService:
         self._ak_cache_config = {"enable_cache": enable_ak_cache, "cache_ttl": 384}
 
     # ========== 属性：懒加载适配器 ==========
+
+    @property
+    def _yfinance(self):
+        """延迟导入 YFinanceAdapter，避免主节点无 yfinance SDK 时崩溃。"""
+        if self._yf_impl is None:
+            from ..adapters.yfinance.yfinance_adapter import YFinanceAdapter
+
+            self._yf_impl = YFinanceAdapter(**self._yf_cache_config)
+        return self._yf_impl
+
+    @_yfinance.setter
+    def _yfinance(self, value):
+        """允许测试注入。"""
+        self._yf_impl = value
 
     @property
     def _futu(self):
