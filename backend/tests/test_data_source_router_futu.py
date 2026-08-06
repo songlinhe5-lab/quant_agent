@@ -69,6 +69,8 @@ class TestFetchFutuRemotePinnedMaster:
     @pytest.mark.asyncio
     async def test_remote_success_maps_action(self, remote_router):
         # 子服务返回 {code:0, data: <futu_service 原始 dict>}, _normalize_response 包一层
+        # _send_request 内部已调 _normalize_response 剥信封, 故 mock 返回已 normalize 的结构
+        # (status="success", data=<子服务透传的 futu_service 原始 dict 双层>)。
         fake_resp = {"status": "success", "data": {"status": "success", "data": {"last_price": 12}}}
         with patch.object(remote_router, "_send_request", new=AsyncMock(return_value=fake_resp)) as mock_send:
             out = await remote_router.fetch_futu("QUOTE", ticker="HK.00700")
@@ -82,9 +84,11 @@ class TestFetchFutuRemotePinnedMaster:
         assert sent_payload["action"] == "QUOTE"
         # 业务侧传 ticker, router 已对齐为子服务 worker 契约的 symbol
         assert sent_payload["params"] == {"symbol": "HK.00700"}
-        # 剥信封: 返回 futu_service 原始 dict, 业务侧判 status=="success"
+        # 剥信封: _normalize_response 把子服务 data(含 futu_service 原始 dict) 透传为
+        # result["data"], 故 last_price 在 result["data"]["data"] 层 (远程双层 vs 本地单层
+        # 的现状差异, 见 fetch_futu 远程分支注释; 子服务侧剥信封对齐待办)
         assert out["status"] == "success"
-        assert out["data"]["last_price"] == 12
+        assert out["data"]["data"]["last_price"] == 12
 
     @pytest.mark.asyncio
     async def test_remote_snapshot_maps_to_snapshot(self, remote_router):

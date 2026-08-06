@@ -273,14 +273,18 @@ class TestRiskEngine:
         assert result["status"] == "success"
         assert "HK" in result["accounts"]
 
-    @patch("backend.services.risk.risk_engine.futu_service")
+    @patch("backend.services.datasource.router.data_source_router.fetch_futu")
     @patch("backend.services.risk.risk_engine.redis_client")
-    def test_get_portfolio_risk_both_fail(self, mock_redis, mock_futu):
-        """两个市场都失败时返回降级数据"""
+    def test_get_portfolio_risk_both_fail(self, mock_redis, mock_fetch):
+        """两个市场都失败时返回降级数据
+
+        get_portfolio_risk 现经 DataSourceRouter.fetch_futu("ACCOUNT_INFO", market=...)
+        取账户数据, 不再直接依赖模块级 futu_service, 故 mock 目标改为 router。
+        """
         from backend.services.risk.risk_engine import RiskEngine
 
         mock_redis.get = AsyncMock(return_value=None)
-        mock_futu.get_account_info = AsyncMock(return_value={"status": "error", "message": "Connection failed"})
+        mock_fetch.return_value = {"status": "error", "message": "Connection failed"}
 
         engine = RiskEngine()
 

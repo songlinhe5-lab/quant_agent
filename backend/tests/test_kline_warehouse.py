@@ -130,7 +130,7 @@ class TestKlineWarehouse:
                 new=AsyncMock(return_value=futu_response),
             ),
             patch(
-                "backend.services.datalake.kline_warehouse.data_source_router.fetch_yfinance",
+                "backend.services.datasource.router.data_source_router.fetch_yfinance",
                 new=AsyncMock(return_value={"success": True, "data": yf_df, "message": "ok"}),
             ),
             patch("backend.services.datalake.kline_warehouse.pd.read_parquet", side_effect=FileNotFoundError),
@@ -164,7 +164,7 @@ class TestKlineWarehouse:
         with (
             patch("backend.services.datalake.kline_warehouse.pd.read_parquet", return_value=today_df),
             patch(
-                "backend.services.datalake.kline_warehouse.data_source_router.fetch_futu",
+                "backend.services.datasource.router.data_source_router.fetch_futu",
                 new=AsyncMock(return_value={"status": "success", "data": []}),
             ) as mock_futu,
         ):
@@ -193,11 +193,11 @@ class TestKlineWarehouse:
 
         with (
             patch(
-                "backend.services.datalake.kline_warehouse.data_source_router.fetch_futu",
+                "backend.services.datasource.router.data_source_router.fetch_futu",
                 new=AsyncMock(return_value={"status": "error"}),
             ),
             patch(
-                "backend.services.datalake.kline_warehouse.data_source_router.fetch_yfinance",
+                "backend.services.datasource.router.data_source_router.fetch_yfinance",
                 new=AsyncMock(return_value={"success": True, "data": yf_df, "message": "ok"}),
             ),
             patch("backend.services.datalake.kline_warehouse.pd.read_parquet", side_effect=FileNotFoundError),
@@ -214,11 +214,11 @@ class TestKlineWarehouse:
         warehouse.data_dir = str(tmp_path)
         with (
             patch(
-                "backend.services.datalake.kline_warehouse.data_source_router.fetch_futu",
+                "backend.services.datasource.router.data_source_router.fetch_futu",
                 new=AsyncMock(return_value={"status": "error"}),
             ),
             patch(
-                "backend.services.datalake.kline_warehouse.data_source_router.fetch_yfinance",
+                "backend.services.datasource.router.data_source_router.fetch_yfinance",
                 new=AsyncMock(return_value={"success": False, "data": None, "message": "fail"}),
             ),
             patch("backend.services.datalake.kline_warehouse.pd.read_parquet", side_effect=FileNotFoundError),
@@ -273,11 +273,11 @@ class TestKlineWarehouse:
 
         with (
             patch(
-                "backend.services.datalake.kline_warehouse.data_source_router.fetch_futu",
+                "backend.services.datasource.router.data_source_router.fetch_futu",
                 new=AsyncMock(return_value={"status": "success", "data": new_data}),
             ),
             patch(
-                "backend.services.datalake.kline_warehouse.data_source_router.fetch_yfinance",
+                "backend.services.datasource.router.data_source_router.fetch_yfinance",
                 new=AsyncMock(return_value={"success": True, "data": yf_df, "message": "ok"}),
             ),
             patch("backend.services.datalake.kline_warehouse.pd.read_parquet", return_value=old_df),
