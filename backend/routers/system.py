@@ -21,6 +21,65 @@ _BEIJING_TZ = ZoneInfo("Asia/Shanghai")
 router = APIRouter(prefix="/system", tags=["system"])
 
 
+async def _fetch_fmp_credit(daily_budget: int) -> dict:
+    """经 HTTP 拉取 data_subservice /metrics，解析 FMP credit 指标。
+
+    credit 权威值在子服务（_internal/fmp + prometheus metrics），主服务不再持有私有全局。
+    子服务不可达时回退到主服务本地 collector_runtime() 估算值（仅展示用）。
+    """
+    import httpx
+
+    url = os.getenv("FMP_REMOTE_URL", "http://localhost:8001").rstrip("/") + "/metrics"
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as c:
+            r = await c.get(url)
+        if r.status_code != 200:
+            return {"error": f"子服务 /metrics HTTP {r.status_code}"}
+        text = r.text
+        # 解析 prometheus 文本：fmp_credit_spent_total / fmp_credit_remaining / fmp_credit_limit
+        spent = _parse_prom_metric(text, "fmp_credit_spent_total")
+        remaining = _parse_prom_metric(text, "fmp_credit_remaining")
+        limit = _parse_prom_metric(text, "fmp_credit_limit")
+        if spent is None and remaining is None:
+            return {"error": "子服务 /metrics 未暴露 fmp_credit_* 指标"}
+        eff_remaining = remaining if remaining is not None else max((limit or daily_budget) - (spent or 0), 0)
+        eff_spent = spent if spent is not None else max((limit or daily_budget) - eff_remaining, 0)
+        return {
+            "spent_today": eff_spent,
+            "prometheus_total": spent,
+            "remaining": eff_remaining,
+            "daily_budget": limit or daily_budget,
+            "budget_used_rate": round(eff_spent / (limit or daily_budget), 4) if (limit or daily_budget) else None,
+            "source": "data_subservice /metrics",
+        }
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[System] 拉取子服务 FMP credit 失败，回退本地估算: {e}")
+        from backend.workers.collectors.fmp import collector_runtime
+
+        rt = collector_runtime()
+        return {
+            "spent_today": rt.get("credit_spent_today", 0),
+            "remaining": max(daily_budget - rt.get("credit_spent_today", 0), 0),
+            "daily_budget": daily_budget,
+            "budget_used_rate": round(rt.get("credit_spent_today", 0) / daily_budget, 4) if daily_budget else None,
+            "source": "local estimate (subservice unreachable)",
+        }
+
+
+def _parse_prom_metric(text: str, name: str) -> Optional[float]:
+    """从 prometheus 文本中解析指定指标值（支持无 label 的 gauge/counter）。"""
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("#"):
+            continue
+        if line.startswith(name + " ") or line.startswith(name + "{"):
+            try:
+                return float(line.split()[-1])
+            except (ValueError, IndexError):
+                return None
+    return None
+
+
 # ==========================================
 #  0.1 可观测性总览（tick_cache + FMP credit 一页看板）
 # ==========================================
@@ -45,20 +104,16 @@ async def get_observability(
         overview["tick_cache"] = {"error": str(e)}
 
     # 2. FMP collector credit 消耗（当日，含预算对账）+ 运行态
+    # credit 权威值在 data_subservice /metrics (fmp_credit_*)，主服务经 HTTP 拉取，不再持有私有全局。
     try:
-        from backend.core.metrics import FMP_CREDIT_SPENT_TOTAL
-        from backend.workers.collectors.fmp import _credit_spent_today, collector_runtime
+        from backend.workers.collectors.fmp import collector_runtime
 
-        daily_budget = int(os.environ.get("FMP_COLLECTOR_DAILY_CREDIT", "200"))
-        prom_value = FMP_CREDIT_SPENT_TOTAL._value.get()  # noqa: SLF001 非公开属性，监控读值专用
         runtime = collector_runtime()
-        overview["fmp_credit"] = {
-            "spent_today": _credit_spent_today,
-            "prometheus_total": prom_value,
-            "daily_budget": daily_budget,
-            "remaining": max(daily_budget - _credit_spent_today, 0),
-            "budget_used_rate": round(_credit_spent_today / daily_budget, 4) if daily_budget else None,
-        }
+        daily_budget = int(os.environ.get("FMP_COLLECTOR_DAILY_CREDIT", "200"))
+
+        # 解析子服务 /metrics 文本（prometheus 格式）
+        credit = await _fetch_fmp_credit(daily_budget)
+        overview["fmp_credit"] = credit
         overview["runtime"] = runtime
     except Exception as e:  # noqa: BLE001
         overview["fmp_credit"] = {"error": str(e)}
