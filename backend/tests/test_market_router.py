@@ -259,11 +259,9 @@ class TestGetTopHolders:
         assert resp.status_code == 200
         assert resp.json()["status"] == "warning"
 
-    @patch("backend.routers.market._market_service._akshare")
-    def test_hk_ticker_calls_akshare(self, mock_akshare):
-        mock_akshare.fetch = MagicMock(
-            return_value=MagicMock(is_error=MagicMock(return_value=False), data=[], source="akshare")
-        )
+    @patch("backend.routers.market._market_service._akshare.fetch")
+    def test_hk_ticker_calls_akshare(self, mock_fetch):
+        mock_fetch.return_value = MagicMock(is_error=MagicMock(return_value=False), data=[], source="akshare")
         resp = client.get("/market/holders/HK.00700")
         assert resp.status_code == 200
 

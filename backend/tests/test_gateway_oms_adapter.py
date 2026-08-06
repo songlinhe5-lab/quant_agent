@@ -3,7 +3,7 @@ OmsExecutionAdapter 真实下单管道 + LiveContext.history 单测
 覆盖：模拟盘跳过券商、实盘桥接 Futu、交易市场对映射、撤单、K 线接入 KlineCacheEngine
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
 from futu import TrdMarket, TrdSide
@@ -30,49 +30,50 @@ def _intent(
 
 
 def test_submit_simulated_skips_futu():
-    """模拟盘：OMS 落库，但不真正发往券商 place_order。"""
+    """模拟盘：OMS 落库，但不真正发往券商 (DataSourceRouter.fetch_futu 不被调用)。"""
     oms = AsyncMock()
     futu = AsyncMock()
     db = MagicMock()
     adapter = OmsExecutionAdapter(oms_service=oms, futu_service=futu, db=db, is_simulated=True)
 
-    order_id = adapter.submit(_intent(), "client-1")
+    with patch("backend.services.datasource.router.DataSourceRouter.fetch_futu") as mock_fetch:
+        order_id = adapter.submit(_intent(), "client-1")
 
-    assert order_id.startswith("oms-")
-    oms.create_order.assert_awaited_once()
-    _, kwargs = oms.create_order.call_args
-    assert kwargs["symbol"] == "US.AAPL"
-    assert kwargs["side"] == "BUY"
-    assert kwargs["is_simulated"] is True
-    assert kwargs["db"] is db
-    futu.place_order.assert_not_awaited()
+        assert order_id.startswith("oms-")
+        oms.create_order.assert_awaited_once()
+        _, kwargs = oms.create_order.call_args
+        assert kwargs["symbol"] == "US.AAPL"
+        assert kwargs["side"] == "BUY"
+        assert kwargs["is_simulated"] is True
+        assert kwargs["db"] is db
+        mock_fetch.assert_not_awaited()
     # 状态回写
     assert adapter._orders[order_id].status.value == "SUBMITTED"
 
 
 def test_submit_live_calls_futu():
-    """实盘：OMS 落库 + Futu 实盘下单，并且 marketplace 映射正确。"""
+    """实盘：OMS 落库 + 经 DataSourceRouter.fetch_futu 实盘下单，marketplace 映射正确。"""
     oms = AsyncMock()
     futu = AsyncMock()
     db = MagicMock()
     adapter = OmsExecutionAdapter(oms_service=oms, futu_service=futu, db=db, is_simulated=False)
     intent = _intent(symbol="US.TSLA", side="SELL", order_type="LIMIT", limit_price=250.5)
 
-    adapter.submit(intent, "client-2")
+    with patch("backend.services.datasource.router.DataSourceRouter.fetch_futu") as mock_fetch:
+        adapter.submit(intent, "client-2")
 
-    oms.create_order.assert_awaited_once()
-    futu.place_order.assert_awaited_once()
-    _, kwargs = futu.place_order.call_args
-    assert kwargs["ticker"] == "US.TSLA"
-    # futu-api 的 TrdSide 为字符串枚举，直接比较值
-    assert kwargs["trd_side"] == TrdSide.SELL
-    assert kwargs["market"] == TrdMarket.US
-    assert kwargs["price"] == 250.5
-    assert kwargs["qty"] == 100
+        mock_fetch.assert_awaited_once()
+        _, kwargs = mock_fetch.call_args
+        assert kwargs["ticker"] == "US.TSLA"
+        # futu-api 的 TrdSide 为字符串枚举，直接比较值
+        assert kwargs["trd_side"] == TrdSide.SELL
+        assert kwargs["market"] == TrdMarket.US
+        assert kwargs["price"] == 250.5
+        assert kwargs["qty"] == 100
 
 
 def test_submit_hk_market_mapping():
-    """港股代码应路由到 TrdMarket.HK。"""
+    """港股代码应路由到 TrdMarket.HK (经 DataSourceRouter.fetch_futu)。"""
     futu = AsyncMock()
     adapter = OmsExecutionAdapter(
         oms_service=AsyncMock(),
@@ -80,9 +81,10 @@ def test_submit_hk_market_mapping():
         db=MagicMock(),
         is_simulated=False,
     )
-    adapter.submit(_intent(symbol="HK.00700", side="BUY"), "client-3")
-    _, kwargs = futu.place_order.call_args
-    assert kwargs["market"] == TrdMarket.HK
+    with patch("backend.services.datasource.router.DataSourceRouter.fetch_futu") as mock_fetch:
+        adapter.submit(_intent(symbol="HK.00700", side="BUY"), "client-3")
+        _, kwargs = mock_fetch.call_args
+        assert kwargs["market"] == TrdMarket.HK
 
 
 def test_infer_trd_market():

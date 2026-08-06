@@ -285,8 +285,8 @@ class TestRegistryClientConstants:
         assert int(os.getenv("DS_MAX_RETRY_DELAY", "60")) == 2  # 测试环境设为 2
 
     def test_initial_retry_delay_is_one(self):
-        """初始重试延迟固定为 1 秒"""
-        # 这是代码常量，不受环境变量影响
-        from data_subservice.main import INITIAL_RETRY_DELAY
+        """初始重试延迟固定为 1 秒 (with_global_retry.initial_wait)"""
+        # 子服务重试延迟由 _internal.retry_utils.WithGlobalRetry.initial_wait 控制
+        from data_subservice._internal.retry_utils import with_global_retry
 
-        assert INITIAL_RETRY_DELAY == 1
+        assert with_global_retry.initial_wait == 1.0
