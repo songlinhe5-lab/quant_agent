@@ -236,9 +236,21 @@ async def app_lifespan(app: FastAPI):
     except Exception as e:
         log.warning(f"[Startup] Finnhub WS tick 回灌启动失败: {e}")
 
-    # 🚀 FMP 盘后批量财报缓存守护：已整体下沉至 data_subservice（finnhub_fmp_worker.py），
-    # 主服务不再负责 FMP 数据源采集。system.py 经 HTTP 拉取子服务 /metrics 观测 credit 预算。
-    # （COLLECTOR_FMP 环境变量保留给 data_subservice 使用）
+    # 🚀 FMP 盘后批量财报缓存守护（fmp_collector_daemon）：
+    # 业务编排（watchlist 热重载 / 盘后调度 / 通知告警）留在主服务；
+    # 数据源连接层（FMPService REST + credit 配额/连接保障）经 DataSourceRouter HTTP 下沉子服务。
+    # 主服务只负责"决定拉哪些标的 + 何时拉"，实际 REST 与 credit 计数在子服务完成。
+    try:
+        from backend.workers.collectors.fmp import fmp_collector_daemon
+
+        COLLECTOR_FMP = os.getenv("COLLECTOR_FMP", "true").lower() == "true"
+        if COLLECTOR_FMP:
+            asyncio.create_task(fmp_collector_daemon())
+            log.info("✅ [Startup] FMP 盘后批量守护已启动（业务编排留主服务，REST 经子服务）")
+        else:
+            log.info("ℹ️ [Startup] COLLECTOR_FMP=false，跳过 FMP 守护")
+    except Exception as e:
+        log.warning(f"⚠️ [Startup] FMP 守护启动失败: {e}")
 
     # 🚀 RL-11 限流告警后台消费器 (异步队列，解耦限流回调与飞书推送 IO)
     try:

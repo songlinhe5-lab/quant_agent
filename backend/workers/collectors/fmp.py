@@ -1,12 +1,18 @@
 """
 FMP 财报批量守护 (COLLECTOR_FMP)
 
-盘后批量拉取标的的 income_statement / profile，写 Redis (quant:fmp:{symbol})，
-TTL 1 天，供 adapter 当日按需命中本地缓存、减少重复 REST 调用、控制 credit 消耗。
+职责红线（vibe coding · 数据源物理隔离）：
+  - 本文件只保留业务编排：watchlist 热重载 / 盘后调度 / 通知告警 + credit 预算对账接口。
+  - 数据源连接层（FMPService REST + 429 限流 + credit 计数/持久化/自愈/调参）
+    整体下沉至 data_subservice（_internal/fmp + fmp_worker.py），经 DataSourceRouter HTTP 调用。
+  - 主服务不直接持有 FMP REST 客户端；credit 实时余额从子服务 /metrics 拉取观测。
+
+盘后批量：拉取标的的 income_statement / profile，经子服务写入 Redis (quant:fmp:{symbol})
+（由子服务侧 _internal/fmp 完成写缓存），主服务仅控制"拉哪些 / 何时拉"。
 
 红线：
   - 仅 master 节点运行（slave 不启 daemon）。
-  - 严格受 rate_limit_registry 的 fmp throttler 限流 + 每日 credit 预算双重约束。
+  - 受每日 credit 预算约束（余额经子服务 /metrics 观测，预算耗尽即停）。
   - 单次批量 endpoint 消耗数十 credit，故 limit 取小值 (默认 4 季)，绝不拉全量。
 """
 
