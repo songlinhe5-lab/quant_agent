@@ -31,3 +31,12 @@ scrape_configs:
     static_configs:
       # 子服务与主服务分离部署：主节点本地子服务 localhost:8001，远程节点经 Tailscale 域名
       - targets: ['localhost:8001', 'host.docker.internal:8001', 's2:8001', 's3:8001', 's4:8001', 'bj:8001']
+
+  # 数据子服务 Prometheus 业务指标（FMP_* 系列）：独立 registry 经 /metrics 暴露
+  # Grafana dashboard 的【数据源·子服务】面板（id 10/11/12）全部依赖此 job 抓取
+  - job_name: 'data-subservice-metrics'
+    scrape_interval: 15s
+    metrics_path: /metrics
+    static_configs:
+      # 子服务与主服务分离部署：主节点本地子服务 localhost:8001，远程节点经 Tailscale 域名
+      - targets: ['localhost:8001', 'host.docker.internal:8001', 's2:8001', 's3:8001', 's4:8001', 'bj:8001']
