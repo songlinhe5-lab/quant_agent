@@ -202,6 +202,18 @@ class DataSourceRouter:
             capabilities=["futu"],
         )
 
+        # FMP 主节点节点 (pin 主节点, 单键)
+        # FMP 数据源连接层 (REST + credit 配额/指标) 已下沉 data_subservice
+        # (_internal/fmp + fmp_worker.py)。主服务经 HTTP 调 source=fmp 获取数据,
+        # 不持有 FMP REST 客户端。URL 默认 http://localhost:8001 (与主节点 data_subservice 同机)。
+        fmp_url = os.getenv("FMP_REMOTE_URL", "http://localhost:8001")
+        self._nodes["fmp_master"] = DataSourceNode(
+            name="fmp_master",
+            url=fmp_url,
+            weight=10,
+            capabilities=["fmp"],
+        )
+
         logger.info(f"[Router] 初始化完成: enabled={self._enabled}, nodes={list(self._nodes.keys())}")
 
     @staticmethod
@@ -754,6 +766,74 @@ class DataSourceRouter:
             elif action == "PLACE_ORDER":
                 return futu_service.place_order(**params)
             return {"status": "error", "message": f"unsupported futu action: {action}"}
+        except Exception as e:  # noqa: BLE001
+            return {"status": "error", "message": str(e)}
+
+    async def fetch_fmp(self, action: str, **params) -> Dict[str, Any]:
+        """FMP 主节点 HTTP 代理 (source="fmp", pin 主节点)。
+
+        FMP 数据源连接层 (REST + credit 配额/指标) 已下沉 data_subservice
+        (_internal/fmp + fmp_worker.py::handle_fmp)。主服务不持有 REST 客户端,
+        所有 fmp 访问经本路由 pin 到 fmp_master 节点。
+
+        action 兼容两种写法: 主服务内部 fetch_type (小写) 或 子服务 action (大写),
+        统一经 _FMP_ACTION_MAP 归一化。
+
+        降级策略: router 未启用 / 主节点子服务未起 / 远程返回失败 ->
+        回退本地 FMPService._local_get (保持 REST 直连兜底, 不依赖子服务)。
+        """
+        _FMP_ACTION_MAP = {
+            "quote": "QUOTE",
+            "profile": "PROFILE",
+            "income_statement": "INCOME_STATEMENT",
+        }
+        remote_action = _FMP_ACTION_MAP.get(action.lower(), action.upper())
+
+        # 业务侧统一用 symbol, 子服务 worker 契约用 symbol, 直传
+        norm_params = dict(params)
+
+        remote_node = self._nodes.get("fmp_master")
+        if not self._enabled or not remote_node or remote_node.status != "healthy":
+            logger.debug(f"[FMP] action={remote_action} 走本地降级 (enabled={self._enabled})")
+            return self._call_local_fmp(remote_action, **norm_params)
+
+        try:
+            payload = {
+                "source": "fmp",
+                "action": remote_action,
+                "params": norm_params,
+            }
+            result = await self._send_request(remote_node, "fmp", payload)
+            if result.get("status") == "success":
+                await self._update_node_status(remote_node.name, success=True)
+                # 配额耗尽错误已带 error_category=quota, 透传给业务侧, 不盲目降级
+                if result.get("error_category") == "quota":
+                    await self._update_node_status(
+                        remote_node.name, success=False, error="quota", error_category=ErrorCategory.QUOTA_EXHAUSTED
+                    )
+                    return result
+                return result
+            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+        except Exception as e:
+            logger.warning(f"[FMP] 远程节点失败: {remote_node.name}, {remote_action}, {str(e)}")
+            await self._update_node_status(remote_node.name, success=False, error=str(e))
+
+        logger.warning("[FMP] 远程节点不可用，降级本地 FMP 直连")
+        return self._call_local_fmp(remote_action, **norm_params)
+
+    @staticmethod
+    def _call_local_fmp(action: str, **params) -> Dict[str, Any]:
+        """FMP 本地降级直连 (数据源连接层兜底, 保持签名兼容)。
+
+        仅作 router 未启用 / 子服务不可达时的兜底，不重复实现 credit/限流状态机
+        (子服务 _internal/fmp 已统一处理；本地兜底不计 credit 预算，仅应急)。
+        """
+        from backend.services.fmp.service import _local_get
+
+        try:
+            symbol = params.get("symbol", params.get("ticker", ""))
+            limit = int(params.get("limit", 4))
+            return _local_get(action, symbol, limit)
         except Exception as e:  # noqa: BLE001
             return {"status": "error", "message": str(e)}
 
