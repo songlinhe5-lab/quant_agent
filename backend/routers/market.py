@@ -17,6 +17,7 @@ from backend.core.redis_client import redis_client
 from backend.core.ticker_format import format_ticker, format_yf_ticker
 from backend.services.adapters.legacy_market_data import market_data_gateway
 from backend.services.datalake.kline_warehouse import kline_warehouse
+from backend.services.datasource import ResultStatus
 from backend.services.datasource.router import data_source_router
 from backend.services.fund_flow.ticker import ticker_service
 from backend.services.market_engine import manager
@@ -297,7 +298,28 @@ async def get_quote(ticker: str):
     Raises:
         HTTPException: 所有数据源均失败时抛出 400 错误
     """
-    # 调用应用服务层的统一接口 (自动处理降级逻辑)
+    # BE-ARCH-06c: 优先走业务聚合 Facade（统一经 DataSourceRegistry 取数，
+    # 收口源选择策略/多源融合/Stale 检测/归一化），失败再回退既有应用服务层。
+    from backend.services.datasource.business import market_data_service as facade_market
+
+    facade_res = None
+    try:
+        facade_res = await facade_market.get_quote(ticker)
+    except Exception as exc:  # noqa: BLE001 - Facade 异常不应中断降级链
+        logger.warning(f"[Market API] Facade get_quote 异常，回退既有服务层: {exc}")
+
+    if facade_res is not None and facade_res.is_success:
+        # Facade 成功（含 DEGRADED 也允许透出，供前端告警）
+        resp_status = "degraded" if facade_res.status == ResultStatus.DEGRADED else "success"
+        return {
+            "status": resp_status,
+            "data": facade_res.data,
+            "source": f"facade+{facade_res.source}",
+            "latency_ms": facade_res.latency_ms,
+            "cached": facade_res.cached,
+        }
+
+    # 回退：既有应用服务层（自动处理降级逻辑）
     result = _market_service.get_quote(ticker)
 
     # 检查结果状态

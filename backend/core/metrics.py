@@ -182,6 +182,25 @@ DATASOURCE_AVAILABILITY = Gauge(
 )
 
 # ==========================================
+#  业务聚合 Facade 指标 (BE-ARCH-06d)
+#  —— 与上面「数据源层」指标分层：此处观测的是 Facade 业务聚合行为，而非单源取数
+# ==========================================
+
+# Facade 多源融合次数（按 action + 融合模式：single/multi + 是否触发偏差告警）
+DATASOURCE_FACADE_MERGE = Counter(
+    "quant_datasource_facade_merge_total",
+    "业务聚合 Facade 融合调用次数（单源直采/多源融合）",
+    ["action", "mode"],  # mode: single | multi | deviation
+)
+
+# Facade 多源报价偏差告警次数（QUOTE 多源价差超阈值）
+DATASOURCE_QUOTE_DEVIATION = Counter(
+    "quant_datasource_quote_deviation_total",
+    "Facade 多源报价偏差告警次数（超过 DATASOURCE_QUOTE_DEVIATION_PCT 阈值）",
+    ["source"],  # 作为主源（新鲜度最高者）标注
+)
+
+# ==========================================
 #  Agent / LLM 指标
 # ==========================================
 
