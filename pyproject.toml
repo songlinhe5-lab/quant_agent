@@ -60,6 +60,8 @@ dependencies = [
 [project.optional-dependencies]
 # 数据源 SDK（子服务节点安装，主节点走 HTTP 路由不安装）
 datasource = [
+    "websockets>=14.0",        # Finnhub WebSocket 客户端
+    "finnhub-python>=2.5.0",   # Finnhub REST API (备用)
     "tushare>=1.4.0",
     "akshare>=1.1.15",
     "futu-api>=10.7.0",
