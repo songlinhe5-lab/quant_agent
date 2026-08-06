@@ -31,18 +31,19 @@ class ScreenerTool:
 
     async def run(self, query: str, limit: int = 10) -> str:
         try:
-            from backend.services.futu import futu_service
+            from backend.services.datasource.business import data_service
 
             dsl = await screener_service.translate_nlp_to_dsl(query)
             markets, futu_filters, post_filters = screener_service.parse_dsl_to_futu_filters(dsl)
 
-            tasks = [futu_service.screen_stocks(market=m, filters=futu_filters) for m in markets]
+            # BE-ARCH-06b: 经 Facade 统一选源
+            tasks = [data_service.screen_stocks(market=m, filters=futu_filters) for m in markets]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             final_data = []
             for res in results:
-                if isinstance(res, dict) and res.get("status") == "success":
-                    final_data.extend(res.get("data", []))
+                if hasattr(res, "is_success") and res.is_success and res.data:
+                    final_data.extend(res.data if isinstance(res.data, list) else [])
 
             if post_filters.get("exclude_st"):
                 final_data = [
