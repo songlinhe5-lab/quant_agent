@@ -174,15 +174,21 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
             },
             {
                 "id": 2,
-                "title": "FMP 每日 credit 预算消耗",
+                # [数据源] credit 权威值在子服务（fmp_* 指标，独立 job），非主服务 quant_* 命名空间
+                "title": "FMP 每日 credit 预算消耗 (数据源·子服务)",
                 "type": "bargauge",
                 "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
                 "targets": [
                     {
-                        "expr": "quant_fmp_collector_credit_spent_total",
-                        "legendFormat": "spent",
+                        "expr": "fmp_credit_limit - fmp_credit_remaining",
+                        "legendFormat": "spent (子服务权威)",
                         "refId": "A",
-                    }
+                    },
+                    {
+                        "expr": "fmp_credit_remaining",
+                        "legendFormat": "remaining",
+                        "refId": "B",
+                    },
                 ],
                 "options": {
                     "displayMode": "gradient",
@@ -272,13 +278,176 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
             },
             {
                 "id": 5,
-                "title": "FMP Collector 守护状态",
+                # [业务] 守护是否还在跑：用「距上次批次完成的时长」判活，替代已下沉的 paused 信号
+                "title": "FMP Collector 守护活性 (距上次批次完成时长)",
                 "type": "stat",
-                "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+                "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
                 "targets": [
                     {
-                        "expr": "quant_fmp_collector_paused",
-                        "legendFormat": "paused",
+                        "expr": "time() - quant_fmp_collector_last_batch_timestamp_seconds",
+                        "legendFormat": "距上次批次完成",
+                        "refId": "A",
+                    }
+                ],
+                "options": {
+                    "reduceOptions": {"calcs": ["lastNotNull"]},
+                    "colorMode": "background",
+                    "graphMode": "none",
+                    "justifyMode": "auto",
+                    "values": True,
+                },
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "s",
+                        "thresholds": {
+                            "steps": [
+                                # 守护每 6h 一轮，>8h 未完成即视为卡死/静默
+                                {"color": "green", "value": 0},
+                                {"color": "yellow", "value": 25200},
+                                {"color": "red", "value": 28800},
+                            ]
+                        },
+                    }
+                },
+                "alertThreshold": True,
+                "alert": {
+                    "id": 5,
+                    "name": "FMP Collector 守护静默 (超 8h 无批次完成)",
+                    "frequency": "5m",
+                    "for": "10m",
+                    "noDataState": "no_data",
+                    "execErrState": "alerting",
+                    "conditions": [
+                        {
+                            "type": "query",
+                            "reducerType": "last",
+                            "query": {"params": ["A", "10m", "now"]},
+                            "evaluator": {"type": "gt", "params": [28800]},
+                            "operator": {"type": "and"},
+                        }
+                    ],
+                    "annotations": {
+                        "summary": "FMP collector 超过 8 小时没有完成任何批次，守护疑似卡死或未启动",
+                        "description": "守护正常每 6h 触发一轮；time() - last_batch_timestamp > 8h 持续 10m，需检查 COLLECTOR_FMP 开关、FMP_API_KEY 配置及守护协程存活。",
+                    },
+                    "labels": {"severity": "critical", "service": "quant-agent"},
+                },
+            },
+            {
+                "id": 6,
+                # [业务] 批次结果分布：区分正常跑完 / 盘中早退 / 空池 / 预算耗尽，定位「为什么没产出」
+                "title": "FMP 盘后批次结果分布 (近 24h)",
+                "type": "timeseries",
+                "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+                "targets": [
+                    {
+                        "expr": "increase(quant_fmp_collector_batch_runs_total[24h])",
+                        "legendFormat": "{{result}}",
+                        "refId": "A",
+                    }
+                ],
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "short",
+                        "min": 0,
+                        "color": {"mode": "palette-classic"},
+                        "custom": {"lineWidth": 2, "fillOpacity": 10},
+                    }
+                },
+            },
+            {
+                "id": 7,
+                # [业务] 真正的产出真相源：成功写 Redis 的标的数 vs 失败根因
+                "title": "FMP 财报缓存产出 (成功写入 vs 失败根因)",
+                "type": "timeseries",
+                "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+                "targets": [
+                    {
+                        "expr": "increase(quant_fmp_collector_symbols_cached_total[1h])",
+                        "legendFormat": "成功缓存标的数/h",
+                        "refId": "A",
+                    },
+                    {
+                        "expr": "increase(quant_fmp_collector_symbols_failed_total[1h])",
+                        "legendFormat": "失败/h ({{reason}})",
+                        "refId": "B",
+                    },
+                ],
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "short",
+                        "min": 0,
+                        "color": {"mode": "palette-classic"},
+                        "custom": {"lineWidth": 2, "fillOpacity": 10},
+                    }
+                },
+                "alertThreshold": True,
+                "alert": {
+                    "id": 7,
+                    "name": "FMP 标的失败率过高 (近 1h 失败 > 成功)",
+                    "frequency": "5m",
+                    "for": "15m",
+                    "noDataState": "no_data",
+                    "execErrState": "alerting",
+                    "conditions": [
+                        {
+                            "type": "query",
+                            "reducerType": "last",
+                            "query": {"params": ["B", "1h", "now"]},
+                            "evaluator": {"type": "gt", "params": [0]},
+                            "operator": {"type": "and"},
+                        }
+                    ],
+                    "annotations": {
+                        "summary": "FMP 盘后批次标的处理持续失败，财报缓存覆盖率下降",
+                        "description": "reason=fetch 指向子服务取数失败或 credit 限流（查子服务 fmp_error_total / fmp_rate_limit_total）；reason=redis 指向主服务本地 Redis 写入故障。",
+                    },
+                    "labels": {"severity": "warning", "service": "quant-agent"},
+                },
+            },
+            {
+                "id": 8,
+                # [业务] 批次耗时：评估是否溢出盘后窗口（标的池增长后尤其关键）
+                "title": "FMP 批次耗时分位 (是否溢出盘后窗口)",
+                "type": "timeseries",
+                "gridPos": {"h": 6, "w": 12, "x": 0, "y": 32},
+                "targets": [
+                    {
+                        "expr": "histogram_quantile(0.95, sum(rate(quant_fmp_collector_batch_duration_seconds_bucket[$__range])) by (le))",
+                        "legendFormat": "P95 批次耗时",
+                        "refId": "A",
+                    },
+                    {
+                        "expr": "histogram_quantile(0.99, sum(rate(quant_fmp_collector_batch_duration_seconds_bucket[$__range])) by (le))",
+                        "legendFormat": "P99 批次耗时",
+                        "refId": "B",
+                    },
+                ],
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "s",
+                        "min": 0,
+                        "color": {"mode": "thresholds"},
+                        "thresholds": {
+                            "steps": [
+                                {"color": "green", "value": 0},
+                                {"color": "yellow", "value": 600},
+                                {"color": "red", "value": 1800},
+                            ]
+                        },
+                    }
+                },
+            },
+            {
+                "id": 9,
+                # [业务] 主服务 → 子服务链路健康：credit 快照拿不到就意味着预算决策在盲飞
+                "title": "FMP 子服务可达性 (credit 快照链路)",
+                "type": "stat",
+                "gridPos": {"h": 6, "w": 12, "x": 12, "y": 32},
+                "targets": [
+                    {
+                        "expr": "quant_fmp_collector_subservice_unreachable",
+                        "legendFormat": "子服务不可达 (1=预算决策已降级)",
                         "refId": "A",
                     }
                 ],
@@ -293,8 +462,8 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                     "defaults": {
                         "unit": "short",
                         "mappings": [
-                            {"type": "value", "options": {"0": {"text": "运行中", "color": "green"}}},
-                            {"type": "value", "options": {"1": {"text": "已暂停·Redis故障自愈中", "color": "red"}}},
+                            {"type": "value", "options": {"0": {"text": "子服务正常", "color": "green"}}},
+                            {"type": "value", "options": {"1": {"text": "不可达·预算盲飞", "color": "red"}}},
                         ],
                         "thresholds": {
                             "steps": [
@@ -306,172 +475,8 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                 },
                 "alertThreshold": True,
                 "alert": {
-                    "id": 5,
-                    "name": "FMP Collector 守护暂停（Redis 故障自愈中）",
-                    "frequency": "1m",
-                    "for": "2m",
-                    "noDataState": "no_data",
-                    "execErrState": "alerting",
-                    "conditions": [
-                        {
-                            "type": "query",
-                            "reducerType": "last",
-                            "query": {"params": ["A", "5m", "now"]},
-                            "evaluator": {"type": "gt", "params": [0]},
-                            "operator": {"type": "and"},
-                        }
-                    ],
-                    "annotations": {
-                        "summary": "FMP collector 守护已暂停（Redis 持久化连续失败），credit 进度停止持久化，30s 自愈轮询待恢复",
-                        "description": "quant_fmp_collector_paused == 1 持续 2m，守护处于暂停态，待 Redis 恢复后自愈重启。",
-                    },
-                    "labels": {"severity": "critical", "service": "quant-agent"},
-                },
-            },
-            {
-                "id": 6,
-                "title": "FMP Redis 持久化连续失败数 + PING 延迟分位 (Redis 稳定性)",
-                "type": "timeseries",
-                "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
-                "targets": [
-                    {
-                        "expr": "quant_fmp_collector_persist_fails",
-                        "legendFormat": "persist_fails",
-                        "refId": "A",
-                        "dataLinks": [
-                            {
-                                "title": "下钻：聚焦此处时间窗看延迟/P95/P99",
-                                "url": "/d/quant-observability/quant-observability?orgId=1&from=${__value.time}&to=${__value.time}&var-DS_PROMETHEUS=${DS_PROMETHEUS}",
-                                "targetBlank": False,
-                            }
-                        ],
-                    },
-                    {
-                        "expr": "quant_fmp_collector_redis_ping_latency_seconds",
-                        "legendFormat": "redis_ping_latency_s (即时)",
-                        "refId": "B",
-                    },
-                    {
-                        "expr": "histogram_quantile(0.95, sum(rate(quant_fmp_collector_redis_ping_latency_seconds_hist_bucket[$__range])) by (le))",
-                        "legendFormat": "P95 延迟",
-                        "refId": "C",
-                    },
-                    {
-                        "expr": "histogram_quantile(0.99, sum(rate(quant_fmp_collector_redis_ping_latency_seconds_hist_bucket[$__range])) by (le))",
-                        "legendFormat": "P99 延迟",
-                        "refId": "D",
-                    },
-                    {
-                        "expr": "quant_fmp_collector_heal_p99_seconds",
-                        "legendFormat": "滑动窗口P99(后端估算·交叉校验)",
-                        "refId": "E",
-                    },
-                ],
-                "fieldConfig": {
-                    "defaults": {
-                        "unit": "s",
-                        "color": {"mode": "thresholds"},
-                        "min": 0,
-                        "custom": {"lineWidth": 2, "axisPlacement": "auto"},
-                        "thresholds": {
-                            "steps": [
-                                {"color": "green", "value": 0},
-                                {"color": "yellow", "value": 0.1},
-                                {"color": "red", "value": 0.5},
-                            ]
-                        },
-                    }
-                },
-                "alertThreshold": True,
-                "alert": {
-                    "id": 6,
-                    "name": "FMP Redis 持久化连续失败逼近阈值",
-                    "frequency": "1m",
-                    "for": "2m",
-                    "noDataState": "no_data",
-                    "execErrState": "alerting",
-                    "conditions": [
-                        {
-                            "type": "query",
-                            "reducerType": "last",
-                            "query": {"params": ["A", "5m", "now"]},
-                            "evaluator": {"type": "gte", "params": [3]},
-                            "operator": {"type": "and"},
-                        }
-                    ],
-                    "annotations": {
-                        "summary": "FMP Redis 持久化连续失败数 ≥ 3，Redis 稳定性恶化，逼近暂停阈值 5",
-                        "description": "quant_fmp_collector_persist_fails >= 3 持续 2m，需警惕 Redis 连接质量，避免守护暂停。",
-                    },
-                    "labels": {"severity": "warning", "service": "quant-agent"},
-                },
-            },
-            {
-                "id": 7,
-                "title": "FMP 自愈退避倒计时 (下次探测间隔)",
-                "type": "timeseries",
-                "gridPos": {"h": 8, "w": 24, "x": 0, "y": 32},
-                "targets": [
-                    {
-                        "expr": "quant_fmp_collector_heal_backoff_seconds",
-                        "legendFormat": "heal_backoff_s",
-                        "refId": "A",
-                        "dataLinks": [
-                            {
-                                "title": "反向联动：跳失败数+延迟联合视图",
-                                "url": "/d/quant-observability/quant-observability?orgId=1&from=${__value.time}&to=${__value.time}&var-DS_PROMETHEUS=${DS_PROMETHEUS}",
-                                "targetBlank": False,
-                            }
-                        ],
-                    }
-                ],
-                "fieldConfig": {
-                    "defaults": {
-                        "unit": "s",
-                        "color": {"mode": "thresholds"},
-                        "min": 0,
-                        "custom": {"lineWidth": 2},
-                        "thresholds": {
-                            "steps": [
-                                {"color": "green", "value": 0},
-                                {"color": "yellow", "value": 30},
-                                {"color": "red", "value": 300},
-                            ]
-                        },
-                    }
-                },
-            },
-            {
-                "id": 8,
-                "title": "FMP Redis P99 延迟智能告警 (>0.5s 持续 5m)",
-                "type": "timeseries",
-                "gridPos": {"h": 6, "w": 24, "x": 0, "y": 40},
-                "hidden": False,
-                "targets": [
-                    {
-                        "expr": "histogram_quantile(0.99, sum(rate(quant_fmp_collector_redis_ping_latency_seconds_hist_bucket[$__range])) by (le))",
-                        "legendFormat": "P99 延迟",
-                        "refId": "A",
-                    }
-                ],
-                "fieldConfig": {
-                    "defaults": {
-                        "unit": "s",
-                        "color": {"mode": "thresholds"},
-                        "min": 0,
-                        "thresholds": {
-                            "steps": [
-                                {"color": "green", "value": 0},
-                                {"color": "yellow", "value": 0.1},
-                                {"color": "red", "value": 0.5},
-                            ]
-                        },
-                    }
-                },
-                "alertThreshold": True,
-                "alert": {
-                    "id": 8,
-                    "name": "FMP Redis P99 延迟持续劣化 (>0.5s 达 5m)",
+                    "id": 9,
+                    "name": "FMP 子服务不可达 (credit 预算决策降级)",
                     "frequency": "1m",
                     "for": "5m",
                     "noDataState": "no_data",
@@ -481,163 +486,71 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                             "type": "query",
                             "reducerType": "last",
                             "query": {"params": ["A", "5m", "now"]},
-                            "evaluator": {"type": "gt", "params": [0.5]},
+                            "evaluator": {"type": "eq", "params": [1]},
                             "operator": {"type": "and"},
                         }
                     ],
                     "annotations": {
-                        "summary": "FMP Redis P99 延迟 > 0.5s 持续 5 分钟，判定为持续劣化（非偶发毛刺），Redis 性能或网络链路恶化",
-                        "description": "histogram_quantile(0.99, ...) > 0.5s 持续 5m 才触发，单点毛刺因 for:5m 自动过滤，劣化必报。注：后端 _self_heal_loop 另有 Python 侧动态归因告警（P1），触发时附同窗 persist_fails 与 PING P99，自动区分网络抖 vs 写链路慢；本 Panel 告警为该能力在 Grafana 的可视化冗余。退避天花板由 FMP_HEAL_BACKOFF_CAP env 控制（默认 300s，对应 HEAL_BACKOFF_CAP 变量）。",
+                        "summary": "主服务读取 FMP 子服务 credit 快照失败持续 5m，预算决策已回退本地估算",
+                        "description": "本地估算不掌握真实配额，存在超额消耗 FMP 免费档 credit 的风险。检查 FMP_REMOTE_URL 指向的子服务存活与 HMAC 配置。",
                     },
-                    "labels": {"severity": "critical", "service": "quant-agent"},
-                },
-            },
-            {
-                "id": 9,
-                "title": "FMP Redis 网络抖瞬态失败数 (不触发暂停)",
-                "type": "timeseries",
-                "gridPos": {"h": 6, "w": 24, "x": 0, "y": 46},
-                "targets": [
-                    {
-                        "expr": "quant_fmp_collector_persist_jitter_fails",
-                        "legendFormat": "jitter_fails (毛刺·不暂停)",
-                        "refId": "A",
-                    }
-                ],
-                "fieldConfig": {
-                    "defaults": {
-                        "unit": "short",
-                        "color": {"mode": "thresholds"},
-                        "min": 0,
-                        "thresholds": {
-                            "steps": [
-                                {"color": "green", "value": 0},
-                                {"color": "yellow", "value": 1},
-                                {"color": "orange", "value": 10},
-                            ]
-                        },
-                    }
+                    "labels": {"severity": "warning", "service": "quant-agent"},
                 },
             },
             {
                 "id": 10,
-                "title": "FMP 归因信号 (lat_degraded: 写链路慢=1 / 网络抖=0)",
-                "type": "stat",
-                "gridPos": {"h": 6, "w": 12, "x": 0, "y": 52},
+                # [数据源] 以下为子服务 fmp_* 命名空间，需在 Prometheus 另配 job 抓子服务 /metrics
+                "title": "FMP 数据源请求量与错误 (数据源·子服务)",
+                "type": "timeseries",
+                "gridPos": {"h": 6, "w": 12, "x": 0, "y": 38},
                 "targets": [
                     {
-                        "expr": "quant_fmp_collector_lat_degraded",
-                        "legendFormat": "lat_degraded",
+                        "expr": "sum(rate(fmp_requests_total[5m])) by (action)",
+                        "legendFormat": "req/s {{action}}",
                         "refId": "A",
-                    }
+                    },
+                    {
+                        "expr": "sum(rate(fmp_error_total[5m])) by (category)",
+                        "legendFormat": "err/s {{category}}",
+                        "refId": "B",
+                    },
                 ],
-                "options": {
-                    "reduceOptions": {"calcs": ["lastNotNull"]},
-                    "colorMode": "background",
-                    "graphMode": "none",
-                    "justifyMode": "auto",
-                    "values": True,
-                },
                 "fieldConfig": {
-                    "defaults": {
-                        "unit": "short",
-                        "mappings": [
-                            {"type": "value", "options": {"0": {"text": "网络抖窗口(不暂停)", "color": "green"}}},
-                            {"type": "value", "options": {"1": {"text": "写链路慢(可暂停)", "color": "red"}}},
-                        ],
-                        "thresholds": {
-                            "steps": [
-                                {"color": "green", "value": 0},
-                                {"color": "red", "value": 1},
-                            ]
-                        },
-                    }
+                    "defaults": {"unit": "ops", "min": 0, "color": {"mode": "palette-classic"}},
                 },
             },
             {
                 "id": 11,
-                "title": "FMP 归因全貌联动 (degraded / paused / jitter 同窗)",
+                # [数据源] 429 限流是 credit 耗尽/打太急的先行指标
+                "title": "FMP 429 限流命中 (数据源·子服务)",
                 "type": "timeseries",
-                "gridPos": {"h": 6, "w": 12, "x": 12, "y": 52},
-                "targets": [
-                    {"expr": "quant_fmp_collector_lat_degraded", "legendFormat": "lat_degraded", "refId": "A"},
-                    {"expr": "quant_fmp_collector_paused", "legendFormat": "paused", "refId": "B"},
-                    {
-                        "expr": "quant_fmp_collector_persist_jitter_fails",
-                        "legendFormat": "jitter_fails",
-                        "refId": "C",
-                    },
-                ],
-                "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "thresholds"}, "min": 0}},
-            },
-            {
-                "id": 12,
-                "title": "抖动重试挽回 (累计 + 每小时速率)",
-                "type": "timeseries",
-                "gridPos": {"h": 6, "w": 24, "x": 0, "y": 58},
+                "gridPos": {"h": 6, "w": 12, "x": 12, "y": 38},
                 "targets": [
                     {
-                        "expr": "quant_fmp_collector_jitter_retry_recovered_total",
-                        "legendFormat": "retry_recovered (累计)",
+                        "expr": "increase(fmp_rate_limit_total[1h])",
+                        "legendFormat": "429 命中/h",
                         "refId": "A",
-                    },
-                    {
-                        "expr": "rate(quant_fmp_collector_jitter_retry_recovered_total[1h]) * 3600",
-                        "legendFormat": "retry_recovered_每小时",
-                        "refId": "B",
-                    },
+                    }
                 ],
-                "options": {
-                    "reduceOptions": {"calcs": ["lastNotNull"]},
-                    "colorMode": "value",
-                    "graphMode": "area",
-                    "justifyMode": "auto",
-                    "values": True,
-                },
                 "fieldConfig": {
                     "defaults": {
                         "unit": "short",
-                        "color": {"mode": "thresholds"},
-                        "thresholds": {
-                            "steps": [
-                                {"color": "gray", "value": 0},
-                                {"color": "green", "value": 1},
-                            ]
-                        },
-                    }
-                },
-            },
-            {
-                "id": 13,
-                "title": "抖动重试成功率 (recovered速率 / jitter失败速率)",
-                "type": "timeseries",
-                "gridPos": {"h": 6, "w": 24, "x": 0, "y": 64},
-                "targets": [
-                    {
-                        "expr": "rate(quant_fmp_collector_jitter_retry_recovered_total[1h]) / clamp_min(rate(quant_fmp_collector_persist_jitter_fails[1h]), 0.0001)",
-                        "legendFormat": "重试成功率 (挽回/抖动失败)",
-                        "refId": "A",
-                    }
-                ],
-                "fieldConfig": {
-                    "defaults": {
-                        "unit": "percentunit",
-                        "color": {"mode": "thresholds"},
                         "min": 0,
+                        "color": {"mode": "thresholds"},
                         "thresholds": {
                             "steps": [
-                                {"color": "red", "value": 0},
-                                {"color": "yellow", "value": 0.5},
-                                {"color": "green", "value": 0.8},
+                                {"color": "green", "value": 0},
+                                {"color": "yellow", "value": 1},
+                                {"color": "red", "value": 10},
                             ]
                         },
                     }
                 },
                 "alertThreshold": True,
                 "alert": {
-                    "id": 13,
-                    "name": "FMP 抖动重试性价比低 (成功率<50% 持续 10m)",
-                    "frequency": "1m",
+                    "id": 11,
+                    "name": "FMP 429 限流频发 (近 1h ≥ 10 次)",
+                    "frequency": "5m",
                     "for": "10m",
                     "noDataState": "no_data",
                     "execErrState": "alerting",
@@ -645,43 +558,71 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                         {
                             "type": "query",
                             "reducerType": "last",
-                            "query": {"params": ["A", "10m", "now"]},
-                            "evaluator": {"type": "lt", "params": [0.5]},
+                            "query": {"params": ["A", "1h", "now"]},
+                            "evaluator": {"type": "gte", "params": [10]},
                             "operator": {"type": "and"},
                         }
                     ],
                     "annotations": {
-                        "summary": "FMP 抖动重试成功率 < 50% 持续 10 分钟，重试性价比低，建议下调 FMP_JITTER_RETRY",
-                        "description": "rate(recovered[1h]) / rate(jitter_fails[1h]) < 0.5 持续 10m，说明 Redis 抖动顽固、重试难救，建议降配重试次数（控制器会自动下调，本告警用于人工复核）。",
+                        "summary": "FMP 子服务近 1 小时 429 限流命中 ≥ 10 次，请求节奏过密或 credit 逼近上限",
+                        "description": "结合 fmp_credit_remaining 判断：余额充足仍 429 → 调大批次间隔；余额见底 → 缩减 watchlist 或提高 FMP 档位。",
                     },
                     "labels": {"severity": "warning", "service": "quant-agent"},
                 },
             },
             {
-                "id": 14,
-                "title": "抖动重试次数自适应轨迹 (控制器生效值) · 与成功率拐点对照",
+                "id": 12,
+                # [数据源] 数据源可用性 + 请求延迟，判断是 FMP 侧慢还是我们侧慢
+                "title": "FMP 数据源可用性与延迟 (数据源·子服务)",
                 "type": "timeseries",
-                "gridPos": {"h": 6, "w": 24, "x": 0, "y": 70},
+                "gridPos": {"h": 6, "w": 24, "x": 0, "y": 44},
                 "targets": [
                     {
-                        "expr": "quant_fmp_collector_jitter_retry_active",
-                        "legendFormat": "当前生效 FMP_JITTER_RETRY (自适应)",
+                        "expr": "fmp_up",
+                        "legendFormat": "fmp_up (1=可达)",
                         "refId": "A",
-                    }
+                    },
+                    {
+                        "expr": "histogram_quantile(0.95, sum(rate(fmp_request_latency_seconds_bucket[$__range])) by (le))",
+                        "legendFormat": "P95 请求延迟",
+                        "refId": "B",
+                    },
+                    {
+                        "expr": "histogram_quantile(0.99, sum(rate(fmp_request_latency_seconds_bucket[$__range])) by (le))",
+                        "legendFormat": "P99 请求延迟",
+                        "refId": "C",
+                    },
                 ],
                 "fieldConfig": {
                     "defaults": {
-                        "unit": "short",
-                        "color": {"mode": "thresholds"},
-                        "min": 1,
-                        "thresholds": {
-                            "steps": [
-                                {"color": "#64748b", "value": 1},
-                                {"color": "#f59e0b", "value": 4},
-                                {"color": "#10b981", "value": 6},
-                            ]
-                        },
+                        "unit": "s",
+                        "min": 0,
+                        "color": {"mode": "palette-classic"},
+                        "custom": {"lineWidth": 2},
                     }
+                },
+                "alertThreshold": True,
+                "alert": {
+                    "id": 12,
+                    "name": "FMP 数据源不可达 (fmp_up == 0)",
+                    "frequency": "1m",
+                    "for": "5m",
+                    "noDataState": "no_data",
+                    "execErrState": "alerting",
+                    "conditions": [
+                        {
+                            "type": "query",
+                            "reducerType": "last",
+                            "query": {"params": ["A", "5m", "now"]},
+                            "evaluator": {"type": "lt", "params": [1]},
+                            "operator": {"type": "and"},
+                        }
+                    ],
+                    "annotations": {
+                        "summary": "FMP 数据源持续 5 分钟不可达，盘后财报批次将全量失败",
+                        "description": "检查 FMP_API_KEY 有效性、FMP 官方服务状态及子服务出口网络。",
+                    },
+                    "labels": {"severity": "critical", "service": "quant-agent"},
                 },
             },
             {
@@ -921,22 +862,9 @@ def _build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                     "current": {"text": "prometheus", "value": "prometheus"},
                     "hide": 0,
                 },
-                {
-                    "name": "HEAL_BACKOFF_CAP",
-                    "type": "text",
-                    "label": "自愈退避天花板(秒, 仅展示锚点 · 生效见 FMP_HEAL_BACKOFF_CAP env)",
-                    "query": "300",
-                    "current": {"text": "300", "value": "300"},
-                    "hide": 0,
-                },
-                {
-                    "name": "JITTER_RETRY",
-                    "type": "text",
-                    "label": "抖动重试次数(仅展示锚点 · 生效见 FMP_JITTER_RETRY env)",
-                    "query": "3",
-                    "current": {"text": "3", "value": "3"},
-                    "hide": 0,
-                },
+                # [REMOVED-Phase5] HEAL_BACKOFF_CAP / JITTER_RETRY 两个展示锚点随
+                # Redis 自愈回路下沉子服务后一并移除：主服务已无对应 env 与指标，
+                # 留着只会误导运维以为还能在主服务调参。
             ]
         },
     }

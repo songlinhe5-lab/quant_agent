@@ -455,65 +455,58 @@ TICK_CACHE_HIT_RATE = Gauge(
 )
 
 # ==========================================
-#  FMP collector 每日 credit 消耗指标 (BE-ARCH-05)
+#  FMP collector 业务编排指标 (BE-ARCH-05 · Phase 5 下沉后重建)
 # ==========================================
+# 责任边界（与 data_subservice 物理隔离，勿混淆命名空间）：
+#   - 本文件 quant_fmp_collector_*  → 主服务【业务编排层】：watchlist 池管理、
+#     盘后批次调度成败、财报写 Redis 缓存健康。这些指标的产生者是
+#     backend/workers/collectors/fmp.py，与数据源无关。
+#   - 子服务 fmp_*（data_subservice/_internal/metrics.py，独立 registry，
+#     经 GET {FMP_REMOTE_URL}/metrics 暴露）→【数据源连接层】：REST 请求量、
+#     429 限流、credit 配额、请求延迟、数据源 up。
+#   Grafana dashboard 需同时挂两个 Prometheus job 才能拼出全貌，
+#   面板标题已用「业务」/「数据源」前缀区分，避免运维误判归因。
+#
+# [REMOVED-Phase5] 以下指标随自愈回路下沉子服务后已删除，勿在主服务重建：
+#   quant_fmp_collector_credit_spent_total  → 子服务 fmp_credit_spent_total
+#   quant_fmp_collector_paused / persist_fails / persist_jitter_fails
+#   quant_fmp_collector_heal_p99_seconds / heal_backoff_seconds
+#   quant_fmp_collector_redis_ping_latency_seconds(_hist)
+#   quant_fmp_collector_lat_degraded / jitter_retry_recovered_total / jitter_retry_active
+# 原因：Redis 写链路自愈已收敛到主服务通用健康检查，credit 配额归子服务权威。
 
-FMP_CREDIT_SPENT_TOTAL = Counter(
-    "quant_fmp_collector_credit_spent_total",
-    "FMP collector 累计消耗 credit（与 FMP_COLLECTOR_DAILY_CREDIT 预算对账）",
+FMP_BATCH_RUNS_TOTAL = Counter(
+    "quant_fmp_collector_batch_runs_total",
+    "FMP collector 盘后批次执行计数（按结果分类：completed=正常跑完 / skipped_market_hours=盘中早退 "
+    "/ skipped_empty_watchlist=标的池空 / skipped_budget=子服务 credit 预算耗尽）",
+    ["result"],
 )
 
-FMP_COLLECTOR_PAUSED = Gauge(
-    "quant_fmp_collector_paused",
-    "FMP collector 守护暂停态（1=已暂停，因 Redis 持久化连续失败自愈中；0=正常运行）",
+FMP_SYMBOLS_CACHED_TOTAL = Counter(
+    "quant_fmp_collector_symbols_cached_total",
+    "FMP collector 财报成功写入 Redis 的标的次数（业务产出真相源，与 watchlist_size 对账可得覆盖率）",
 )
 
-FMP_PERSIST_FAILS = Gauge(
-    "quant_fmp_collector_persist_fails",
-    "FMP collector Redis 写链路慢连续失败计数（达阈值升 P1 并暂停，区别于网络抖）",
+FMP_SYMBOLS_FAILED_TOTAL = Counter(
+    "quant_fmp_collector_symbols_failed_total",
+    "FMP collector 标的处理失败次数（按根因：fetch=子服务取数失败/限流 / redis=本地缓存写入失败）",
+    ["reason"],
 )
 
-FMP_PERSIST_JITTER_FAILS = Gauge(
-    "quant_fmp_collector_persist_jitter_fails",
-    "FMP collector Redis 网络抖瞬间失败计数（ping 健康但 set 偶发超时，不计入暂停阈值，防毛刺误暂停）",
+FMP_BATCH_DURATION = Histogram(
+    "quant_fmp_collector_batch_duration_seconds",
+    "FMP collector 单轮盘后批次耗时分布（含标的间 sleep 留白，用于评估批次是否溢出盘后窗口）",
+    buckets=(1, 5, 15, 30, 60, 120, 300, 600, 1800),
 )
 
-FMP_HEAL_P99 = Gauge(
-    "quant_fmp_collector_heal_p99_seconds",
-    "FMP collector 自愈滑动窗口 P99 延迟估算（与 Grafana histogram_quantile 双算交叉校验防漂移）",
+FMP_LAST_BATCH_TIMESTAMP = Gauge(
+    "quant_fmp_collector_last_batch_timestamp_seconds",
+    "FMP collector 上一轮批次完成的 Unix 时间戳（配合 time() - 该值 可告警守护静默/卡死）",
 )
 
-FMP_LAT_DEGRADED = Gauge(
-    "quant_fmp_collector_lat_degraded",
-    "FMP collector 归因信号：1=写链路慢(应暂停) 0=纯网络抖(不暂停)，与 paused/jitter 联动看归因全貌",
-)
-
-FMP_JITTER_RETRY_RECOVERED = Counter(
-    "quant_fmp_collector_jitter_retry_recovered_total",
-    "FMP collector 抖动重试挽回次数（首次失败靠重试才成功，量化重试策略挽回的潜在暂停/丢 credit 收益）",
-)
-
-FMP_HEAL_BACKOFF = Gauge(
-    "quant_fmp_collector_heal_backoff_seconds",
-    "FMP collector 自愈轮询当前退避秒数（下次探测倒计时，Redis 长断时随指数退避增长，上限 5min）",
-)
-
-FMP_REDIS_PING_LATENCY = Gauge(
-    "quant_fmp_collector_redis_ping_latency_seconds",
-    "FMP collector 自愈探测时实测 Redis PING 往返延迟（定位失败是网络抖还是 redis 本身慢）",
-)
-
-# Histogram 记录每次 ping 延迟，供 Grafana 用 histogram_quantile 算 P95/P99 分位，
-# 区分偶发毛刺（单点高）与持续劣化（分位线系统性抬升）。
-FMP_REDIS_PING_LATENCY_HIST = Histogram(
-    "quant_fmp_collector_redis_ping_latency_seconds_hist",
-    "FMP collector Redis PING 延迟直方图（分位统计用）",
-    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
-)
-
-FMP_JITTER_RETRY_ACTIVE = Gauge(
-    "quant_fmp_collector_jitter_retry_active",
-    "FMP collector 当前生效的抖动重试次数（自愈调参控制器闭环自适应轨迹，与成功率拐点对照是否吻合）",
+FMP_SUBSERVICE_UNREACHABLE = Gauge(
+    "quant_fmp_collector_subservice_unreachable",
+    "FMP collector 读取子服务 credit 快照失败（1=子服务不可达，预算决策已降级为本地估算；0=正常）",
 )
 
 FMP_WATCHLIST_EMPTY = Gauge(

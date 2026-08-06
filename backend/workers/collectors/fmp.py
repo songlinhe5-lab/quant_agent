@@ -24,6 +24,18 @@ import time
 from datetime import datetime, timezone
 
 from backend.core.logger import logger
+from backend.core.metrics import (
+    FMP_BATCH_DURATION,
+    FMP_BATCH_RUNS_TOTAL,
+    FMP_LAST_BATCH_TIMESTAMP,
+    FMP_SUBSERVICE_UNREACHABLE,
+    FMP_SYMBOLS_CACHED_TOTAL,
+    FMP_SYMBOLS_FAILED_TOTAL,
+    FMP_WATCHLIST_EMPTY,
+    FMP_WATCHLIST_FILE_DELETED,
+    FMP_WATCHLIST_SIZE,
+    FMP_WATCHLIST_SIZE_SHIFT,
+)
 from backend.core.redis_client import redis_client
 
 # watchlist 热重载状态（进程内缓存 + mtime 跟踪）
@@ -73,6 +85,7 @@ async def _cache_financials(symbol: str) -> int:
     inc = await _fetch_fmp("INCOME_STATEMENT", symbol, limit=_BATCH_LIMIT)
     if inc.get("status") != "success":
         logger.warning(f"[FMP Collector] income_statement 失败 {symbol}: {inc.get('message')}")
+        FMP_SYMBOLS_FAILED_TOTAL.labels(reason="fetch").inc()
         return 0
 
     prof = await _fetch_fmp("PROFILE", symbol)
@@ -88,8 +101,10 @@ async def _cache_financials(symbol: str) -> int:
     try:
         await redis_client.set(key, json.dumps(payload, default=str), ex=_FMP_REDIS_TTL)
         logger.info(f"[FMP Collector] 已缓存 {symbol} → {key}")
+        FMP_SYMBOLS_CACHED_TOTAL.inc()
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[FMP Collector] Redis 写入失败 {symbol}: {e}")
+        FMP_SYMBOLS_FAILED_TOTAL.labels(reason="redis").inc()
         return 0
     # credit 进度跟踪（仅业务观测，真实配额在子服务；子服务 CREDIT 快照覆盖权威值）
     used = _BATCH_LIMIT_CREDIT()
@@ -120,9 +135,12 @@ async def _sync_credit_from_subservice() -> dict:
             data = snap.get("data", {})
             _credit_spent_today = data.get("spent", _credit_spent_today)
             _credit_reset_date = data.get("reset_date", _credit_reset_date)
+            FMP_SUBSERVICE_UNREACHABLE.set(0)
             return data
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[FMP Collector] 读取子服务 credit 快照失败，回退本地估算: {e}")
+    # 取数失败或返回非 success：预算决策已降级为本地估算，置位供告警
+    FMP_SUBSERVICE_UNREACHABLE.set(1)
     return {"spent": _credit_spent_today, "remaining": -1, "reset_date": _credit_reset_date}
 
 
@@ -221,6 +239,9 @@ def _reload_watchlist() -> bool:
         if syms == _watchlist_cache:
             return False
         _watchlist_cache = syms
+    # 池规模与空池告警位（每次实际变更后刷新，供 Grafana 观测标的池健康）
+    FMP_WATCHLIST_SIZE.set(len(syms))
+    FMP_WATCHLIST_EMPTY.set(1 if not syms else 0)
     # 刷新所有监听文件的 mtime 快照
     for p in _resolve_monitored_paths():
         try:
@@ -235,6 +256,7 @@ def _reload_watchlist() -> bool:
                 f"[FMP Collector] watchlist 标的池突变 {_watchlist_prev_size} → {len(syms)} "
                 f"(±{_ratio:.0%} ≥ 50%)，提示账户调仓异常或文件误删"
             )
+            FMP_WATCHLIST_SIZE_SHIFT.inc()
     _watchlist_prev_size = len(syms)
     logger.info(f"[FMP Collector] watchlist 刷新 → {len(syms)} 个标的")
     return True
@@ -275,6 +297,7 @@ def _watch_watchlist_file() -> None:
                         f"重置该源并触发重载（防 stale 池残留）"
                     )
                     del _watchlist_mtimes[p]
+                    FMP_WATCHLIST_FILE_DELETED.inc()
                     _reload_watchlist()
                     triggered = True
                     break
@@ -283,12 +306,14 @@ def _watch_watchlist_file() -> None:
 
 async def _batch_run() -> None:
     global _credit_spent_today
+    _batch_started = time.monotonic()
     symbols = _get_watchlist()
     if not symbols:
         logger.error(
             "[FMP Collector] watchlist 为空（FMP_COLLECTOR_SYMBOLS/PORTFOLIO_SYMBOLS/"
             "WATCHLIST/FINNHUB_WS_SYMBOLS 均未配置任何源），守护静默兜底未拉取任何财报！"
         )
+        FMP_BATCH_RUNS_TOTAL.labels(result="skipped_empty_watchlist").inc()
         return
 
     # 预算决策：以子服务 credit 快照为权威（不可达则回退本地估算）
@@ -299,11 +324,14 @@ async def _batch_run() -> None:
 
     if budget_exhausted:
         logger.warning(f"[FMP Collector] 子服务 credit 预算已耗尽（remaining={remaining}），停止本轮拉取")
+        FMP_BATCH_RUNS_TOTAL.labels(result="skipped_budget").inc()
         return
 
+    hit_market_hours = False
     for sym in symbols:
         if not _in_after_hours_utc():
             logger.info("[FMP Collector] 当前为盘中时段，推迟至盘后执行")
+            hit_market_hours = True
             break
         used = await _cache_financials(sym)
         if used > 0:
@@ -313,6 +341,11 @@ async def _batch_run() -> None:
             continue
         # 批次间留白，避免突发打满限流
         await asyncio.sleep(1.0)
+
+    # 盘中早退与正常跑完分开计数：前者不代表业务产出，勿混入 completed 稀释成功率
+    FMP_BATCH_RUNS_TOTAL.labels(result="skipped_market_hours" if hit_market_hours else "completed").inc()
+    FMP_BATCH_DURATION.observe(time.monotonic() - _batch_started)
+    FMP_LAST_BATCH_TIMESTAMP.set(time.time())
     logger.info(f"[FMP Collector] 本轮盘后批量完成，当日累计 credit≈{_credit_spent_today}/{daily_budget}")
 
 
