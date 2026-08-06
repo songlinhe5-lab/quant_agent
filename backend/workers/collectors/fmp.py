@@ -282,6 +282,7 @@ def _watch_watchlist_file() -> None:
 
 
 async def _batch_run() -> None:
+    global _credit_spent_today
     symbols = _get_watchlist()
     if not symbols:
         logger.error(
