@@ -199,7 +199,8 @@ class QuoteMixin:
             # (实测: stock_zh_a_daily 在 VPS 直连 509ms 正常返回；东财同类接口全 FAIL)。
             # 新浪 stock_zh_a_daily 单位为「股」(非手)，列名为 date/open/high/low/close/
             # volume/amount/turnover，无「振幅」列，需用 (high-low)/prev_close 推算。
-            ak.set_proxy(None)  # 强制直连，清掉环境里可能残留的失效代理(如 127.0.0.1:10808)
+            if hasattr(ak, "set_proxy"):
+                ak.set_proxy(None)  # 强制直连，清掉环境里可能残留的失效代理(如 127.0.0.1:10808)
             sina_symbol = self._build_sina_symbol(symbol)
 
             # 为保证实时性，获取日线最近一条数据（包含今日盘中实时变动）
@@ -289,7 +290,8 @@ class QuoteMixin:
             import akshare as ak
 
             # 🔧 同 get_realtime_quote：东财接口在 CN 机房 IP 被 RST 封禁，切新浪源
-            ak.set_proxy(None)  # 强制直连，清失效代理
+            if hasattr(ak, "set_proxy"):
+                ak.set_proxy(None)  # 强制直连，清失效代理
             sina_symbol = self._build_sina_symbol(symbol)
 
             async with self._acquire_lock_with_timeout(5.0):
