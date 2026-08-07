@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 
 from backend.core.logger import logger
 from backend.core.redis_client import redis_client
+from backend.services.datasource.business import data_service
 
 # GICS 11 大板块标准名称映射
 GICS_SECTOR_MAP = {
@@ -121,22 +122,18 @@ class SectorAnalyzer:
         except Exception as e:
             logger.warning(f"[SectorAnalyzer] Futu basicinfo 获取失败: {e}")
 
-        # 缺失的 → YFinance 兜底 (仅美股)
+        # 缺失的 → 经 Facade 统一选源 YFinance 兜底 (仅美股)
         missing = [c for c in codes if c not in sector_map]
         if missing and market == "US":
-            try:
-                import yfinance as yf
-
-                for code in missing:
-                    try:
-                        info = yf.Ticker(code).info
-                        sector = info.get("sector", "")
+            for code in missing:
+                try:
+                    info_res = await data_service.get_fundamental_info(code, prefer_sources=["yfinance"])
+                    if info_res.is_success and isinstance(info_res.data, dict):
+                        sector = info_res.data.get("sector", "")
                         if sector:
                             sector_map[code] = sector
-                    except Exception:
-                        continue
-            except Exception as e:
-                logger.warning(f"[SectorAnalyzer] YFinance 兜底失败: {e}")
+                except Exception:
+                    continue
 
         # 仍未覆盖 → 标记未知
         for c in codes:

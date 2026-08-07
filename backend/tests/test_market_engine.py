@@ -219,49 +219,6 @@ class TestUpdateQuoteToRedis:
             send_alert_mock.assert_called_once()
 
 
-# ─── _get_yf_fast_info ────────────────────────────────────────────────
-class TestGetYfFastInfo:
-    def test_us_ticker(self):
-        mgr = ConnectionManager()
-        fake_info = MagicMock()
-        fake_info.last_price = 150.0
-        fake_info.previous_close = 149.0
-        fake_info.last_volume = 1_000_000
-        fake_ticker = MagicMock()
-        fake_ticker.fast_info = fake_info
-
-        with patch.dict(sys.modules, {"yfinance": MagicMock(Ticker=lambda t: fake_ticker)}):
-            result = mgr._get_yf_fast_info("US.AAPL")
-            assert result["status"] == "success"
-            assert result["ticker"] == "US.AAPL"
-
-    def test_hk_index(self):
-        mgr = ConnectionManager()
-        fake_info = MagicMock()
-        fake_info.last_price = 20000.0
-        fake_info.previous_close = 19900.0
-        fake_info.last_volume = 0
-        fake_ticker = MagicMock()
-        fake_ticker.fast_info = fake_info
-
-        with patch.dict(sys.modules, {"yfinance": MagicMock(Ticker=lambda t: fake_ticker)}):
-            result = mgr._get_yf_fast_info("HK.800000")
-            assert result["status"] == "success"
-
-    def test_vix(self):
-        mgr = ConnectionManager()
-        fake_info = MagicMock()
-        fake_info.last_price = 15.0
-        fake_info.previous_close = 14.5
-        fake_info.last_volume = 0
-        fake_ticker = MagicMock()
-        fake_ticker.fast_info = fake_info
-
-        with patch.dict(sys.modules, {"yfinance": MagicMock(Ticker=lambda t: fake_ticker)}):
-            result = mgr._get_yf_fast_info("US.VIX")
-            assert result["status"] == "success"
-
-
 # ─── broadcast_loop 核心逻辑分支（同步部分）──────────────────────────
 class TestBroadcastLoopBranches:
     def test_get_all_subscribed_tickers_adds_macro_set(self):
@@ -584,21 +541,6 @@ class TestRedisPubSubListener:
         # 不应抛异常
         await mgr.redis_pubsub_listener()
         assert True
-
-
-# ─── _fetch_fallback_quote ────────────────────────────────────────────
-class TestFetchFallbackQuote:
-    async def test_timeout_returns_error(self):
-        mgr = ConnectionManager()
-        with patch("backend.services.market_engine.asyncio.wait_for", side_effect=asyncio.TimeoutError()):
-            result = await mgr._fetch_fallback_quote("US.AAPL")
-            assert result["status"] == "error"
-
-    async def test_exception_returns_error(self):
-        mgr = ConnectionManager()
-        with patch("backend.services.market_engine.asyncio.to_thread", side_effect=Exception("YF down")):
-            result = await mgr._fetch_fallback_quote("US.AAPL")
-            assert result["status"] == "error"
 
 
 # ─── broadcast_loop 主循环（异步）────────────────────────────────────

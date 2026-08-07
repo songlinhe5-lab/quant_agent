@@ -289,37 +289,6 @@ class ConnectionManager:
         finally:
             await pubsub.close()
 
-    def _get_yf_fast_info(self, ticker: str):
-        import yfinance as yf
-
-        # 💡 统一走 format_yf_ticker 通用转换（不再手写 HK/US 指数映射，避免重复）
-        yf_ticker = format_yf_ticker(ticker)
-
-        info = yf.Ticker(yf_ticker).fast_info
-
-        last_price = safe_float(info.last_price)
-        prev_close = safe_float(info.previous_close)
-        change_pct = safe_divide(last_price - prev_close, prev_close) * 100
-
-        return {
-            "status": "success",
-            "ticker": ticker,
-            "requested_ticker": ticker,
-            "last_price": last_price,
-            "change_pct": f"{change_pct:+.2f}%",
-            "volume": getattr(info, "last_volume", 0),
-            "source": "yfinance",
-            "data_timestamp": "Realtime(Delayed)",
-        }
-
-    async def _fetch_fallback_quote(self, ticker: str):
-        """通过异步线程隔离调用雅虎财经，作为富途熔断时的降级通道"""
-        try:
-            return await asyncio.wait_for(asyncio.to_thread(self._get_yf_fast_info, ticker), timeout=4.0)
-        except Exception as e:
-            print(f"[YFinance Fallback Error] {ticker}: {e}")
-            return {"status": "error"}
-
     async def broadcast_loop(self) -> None:
         """背景任务持续拉取技术指标缓存与 YFinance 轮询兜底 (即使没有前端连接也保持更新 Redis)"""  # noqa: E501
         while True:
