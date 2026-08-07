@@ -65,17 +65,26 @@ datasource = [
     "tushare>=1.4.0",
     "akshare>=1.1.15",
     "futu-api>=10.7.0",
+    # 注意: yfinance 已从 backend 移除（BE-ARCH-04 / AGENTS §9.4）。
+    # YF 流量 100% 外移至 US-YF-A/B 子服务 (data_subservice)，后端经 DataSourceRouter
+    # 走 HTTP，不再本地 import 或声明 yfinance。
 ]
 # 本地向量化模型（可选，默认用 API 替代）
 local-embedding = [
     "sentence-transformers>=2.5.0",
 ]
+# ⚠️ 已废弃: 开发依赖统一收口到 [dependency-groups].dev（`uv sync --dev` 安装）。
+# 此 extra 仅为兼容历史命令 `uv sync --extra dev`（如 .github/workflows/eval.yml）而保留，
+# 内容与 dependency-group 保持一致；新增开发工具请只改 [dependency-groups].dev。
 dev = [
-    "ruff==0.15.16",  # 锁定到 uv.lock 中的版本，避免 uv run 解析到更新的 ruff 导致格式检查不一致
+    "ruff==0.15.16",
+    "mypy>=1.10.0,<3",
     "pre-commit>=3.6.0",
-    "mypy>=1.10.0",   # 类型检查（pre-commit mypy hook 依赖）
     "pytest>=8.0.0",
-    "pytest-cov>=4.1.0",
+    "pytest-cov>=7.1.0",
+    "pytest-asyncio>=0.26.0,<1.0.0",
+    "pytest-timeout>=2.3.0",
+    "pytest-xdist>=3.6.0",
     "httpx>=0.27.0",
 ]
 
@@ -171,9 +180,20 @@ exclude_lines = [
 directory = "htmlcov"
 
 [dependency-groups]
+# 唯一权威的开发依赖组（`uv sync --dev` / `uv run` 默认安装此组）。
+# ⚠️ 注意: [project.optional-dependencies].dev 是「extra」，只有显式 `--extra dev` 才装，
+#    `--dev` 不会安装它。工具链（ruff/mypy/pre-commit）必须放在本组，
+#    否则 pre-commit 只能靠 `uv run --with mypy` 临时解析，每次多付 ~3s 解析开销。
 dev = [
+    # ── 类型检查 / Lint / Hook 工具链 ──
+    "ruff==0.15.16",  # 锁定到 uv.lock 版本，避免解析到更新版导致格式检查漂移
+    "mypy>=1.10.0,<3",  # pre-commit mypy hook 依赖; 上界防 3.x 破坏性变更导致校验漂移
+    "pre-commit>=3.6.0",
+    # ── 测试 ──
+    "pytest>=8.0.0",
     "pytest-cov>=7.1.0",
     "pytest-asyncio>=0.26.0,<1.0.0",
     "pytest-timeout>=2.3.0",
     "pytest-xdist>=3.6.0",
+    "httpx>=0.27.0",
 ]

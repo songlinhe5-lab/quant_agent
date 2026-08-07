@@ -4,17 +4,17 @@ Data Source Router - 数据源路由服务
 ==========================================
 
 实现跨节点数据源路由 (5 节点拓扑):
-  - 主节点 VPS_S1 : 本地 finnhub + yfinance，按能力路由至远程 data_subservice 节点
-  - 北京 VPS_BJ   : tushare + akshare + yfinance  (tushare/akshare 唯一节点，单点)
-  - 美西 VPS_S2   : 纯 yfinance (与 S3/S4 共同负载均衡/容灾)
-  - 美西 VPS_S3/S4: 纯 yfinance (负载均衡/容灾)
-  - YFinance 主节点限流时自动 failover 至备用/远程 yfinance 节点
+  - 主节点 VPS_S1 : finnhub，按能力路由至远程 data_subservice 节点
+  - 北京 VPS_BJ   : tushare + akshare (tushare/akshare 唯一节点，单点)
+  - 美西 US-YF-A/B: 纯 yfinance 子服务 (负载均衡/容灾，YF 流量唯一出口)
+  - YFinance 流量 100% 外移至 US-YF-A/B 子服务，后端不再本地执行 yfinance
+  - YFinance 节点限流时自动 failover 至备用/远程 yfinance 节点
   - Tushare/AKShare 流量路由至北京单节点 (无容灾，节点不可用时降级本地适配器)
 
 环境变量控制 (URL 支持逗号分隔多活):
   DATA_SOURCE_ROUTER_ENABLED=true|false    # 是否启用路由
-  YF_PRIMARY_NODE_URL=http://localhost:8001  # yfinance 主节点 (主节点本地, data_subservice 端口 8001)
-  YF_BACKUP_NODE_URL=http://s3:8001,http://s4:8001,http://s2:8001  # yfinance 备用 (逗号分隔多活)
+  YF_PRIMARY_NODE_URL=http://localhost:8001  # yfinance 主节点 (data_subservice 端口 8001)
+  YF_BACKUP_NODE_URL=http://yf-b:8001       # yfinance 备用 (逗号分隔多活)
   TUSHARE_REMOTE_URL=http://bj:8001          # tushare 远程 (北京单节点)
   AKSHARE_REMOTE_URL=http://bj:8001          # akshare 远程 (北京单节点)
   DATA_SOURCE_HMAC_SECRET=...               # 节点间通信签名密钥
@@ -457,22 +457,24 @@ class DataSourceRouter:
         return healthy[0]
 
     async def fetch_yfinance(self, ticker: str, fetch_type: str, **kwargs) -> Dict[str, Any]:
-        if not self._enabled:
-            from backend.services.yfinance import yf_service
+        """联邦 YF 流量到 US-YF-A/B 子服务节点。
 
-            if fetch_type == "quote":
-                return await yf_service.get_batched_quote(ticker, req_type="quote")
-            elif fetch_type == "tech":
-                return await yf_service.get_tech_indicators(ticker, **kwargs)
-            elif fetch_type == "history":
-                success, data, msg = await yf_service.fetch_yf_data(ticker, "history", ttl=3600, **kwargs)
-                return {"success": success, "data": data, "message": msg}
-            return {"success": False, "message": f"Unknown fetch_type: {fetch_type}"}
+        后端进程不再本地执行 yfinance。若路由未启用或所有子服务节点不可用，
+        直接返回失败（不再降级本地 yfinance）。
+        """
+        if not self._enabled:
+            return {
+                "success": False,
+                "message": "DataSourceRouter 未启用，无法路由 YFinance 子服务流量",
+            }
 
         nodes = self._get_healthy_nodes("yfinance")
         if not nodes:
-            logger.warning("[YFinance] 无健康节点可用，降级本地数据源")
-            return await self.fetch_yfinance_local(ticker, fetch_type, **kwargs)
+            logger.warning("[YFinance] 无健康子服务节点可用（后端已移除本地兜底）")
+            return {
+                "success": False,
+                "message": "No healthy YFinance subservice node (local yfinance disabled)",
+            }
 
         for node in nodes:
             try:
@@ -517,23 +519,11 @@ class DataSourceRouter:
                     error_category=ErrorCategory.NORMAL,
                 )
 
-        logger.warning("[YFinance] 所有节点失败，降级本地数据源")
-        return await self.fetch_yfinance_local(ticker, fetch_type, **kwargs)
-
-    async def fetch_yfinance_local(self, ticker: str, fetch_type: str, **kwargs) -> Dict[str, Any]:
-        from backend.services.yfinance import yf_service
-
-        try:
-            if fetch_type == "quote":
-                return await yf_service.get_batched_quote(ticker, req_type="quote")
-            elif fetch_type == "tech":
-                return await yf_service.get_tech_indicators(ticker, **kwargs)
-            elif fetch_type == "history":
-                success, data, msg = await yf_service.fetch_yf_data(ticker, "history", ttl=3600, **kwargs)
-                return {"success": success, "data": data, "message": msg}
-            return {"success": False, "message": f"Unknown fetch_type: {fetch_type}"}
-        except Exception as e:
-            return {"success": False, "message": f"Local yfinance failed: {str(e)}"}
+        logger.warning("[YFinance] 所有子服务节点失败（后端已移除本地兜底）")
+        return {
+            "success": False,
+            "message": "All YFinance subservice nodes failed (local yfinance disabled)",
+        }
 
     async def fetch_akshare(self, action: str, **kwargs) -> Dict[str, Any]:
         from backend.services.akshare import akshare_service

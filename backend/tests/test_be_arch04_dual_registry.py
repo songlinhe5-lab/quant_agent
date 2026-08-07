@@ -18,6 +18,7 @@ from backend.services.datasource import (
     DataSourceRegistry,
     ErrorInfo,
     RateLimitRegistry,
+    Result,
     ResultStatus,
     datasource_registry,
     rate_limit_registry,
@@ -74,18 +75,18 @@ class TestSourceRegistryFetchPath:
     @pytest.mark.asyncio
     async def test_fetch_goes_through_interface(self):
         mock_svc = MagicMock()
-        mock_svc.fetch_yf_data = AsyncMock(return_value=(True, {"Close": [1]}, ""))
+        mock_svc.fetch = AsyncMock(return_value=Result.make_success({"Close": [1]}))
         ensure_yfinance_registered(mock_svc)
 
         result = await datasource_registry.fetch("yfinance", "history", {"ticker": "AAPL", "period": "5d"})
         assert result.is_success
         assert result.data == {"Close": [1]}
-        mock_svc.fetch_yf_data.assert_awaited_once()
+        mock_svc.fetch.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_fetch_respects_rate_limit_throttle(self):
         mock_svc = MagicMock()
-        mock_svc.fetch_yf_data = AsyncMock(return_value=(True, {"ok": 1}, ""))
+        mock_svc.fetch = AsyncMock(return_value=Result.make_success({"ok": 1}))
         ensure_yfinance_registered(mock_svc)
 
         throttler = rate_limit_registry.get_throttler("yfinance")
@@ -101,7 +102,7 @@ class TestSourceRegistryFetchPath:
 
         result = await datasource_registry.fetch("yfinance", "history", {"ticker": "AAPL"})
         assert result.status == ResultStatus.RATE_LIMITED
-        mock_svc.fetch_yf_data.assert_not_awaited()
+        mock_svc.fetch.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_unregister(self):
@@ -118,22 +119,20 @@ class TestMarketDataUsesSourceRegistry:
 
         datasource_registry.clear()
         mock_svc = MagicMock()
-        mock_svc.fetch_yf_data = AsyncMock(return_value=(True, "FRAME", ""))
+        mock_svc.fetch = AsyncMock(return_value=Result.make_success("FRAME"))
 
         # Build gateway but swap yf after init registration
         with pytest.MonkeyPatch.context() as mp:
             # Avoid real service imports where possible by patching modules used in __init__
-            MagicMock()
             mp.setattr(
                 "backend.services.adapters.legacy_market_data.MarketDataGateway.__init__",
                 lambda self: None,
             )
             gw = MarketDataGateway()
-            gw._yf = mock_svc
             ensure_yfinance_registered(mock_svc)
             ok, data, msg = await gw.fetch_yf_data("AAPL", "history", period="5d")
             assert ok is True
             assert data == "FRAME"
             assert msg == ""
-            mock_svc.fetch_yf_data.assert_awaited()
+            mock_svc.fetch.assert_awaited()
         datasource_registry.clear()

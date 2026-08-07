@@ -16,7 +16,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.services.datasource import Result
 from backend.services.datasource.adapters.akshare import (
     AKShareDataSource,
     ensure_akshare_registered,

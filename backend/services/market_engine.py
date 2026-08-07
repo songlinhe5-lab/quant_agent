@@ -24,11 +24,9 @@ from backend.core.metrics import (
 # 引入编译好的 Protobuf 模块
 from backend.core.proto.market_pb2 import Order, QuoteData  # type: ignore
 from backend.core.redis_client import l1_cached_redis, redis_client
-from backend.core.utils import safe_divide, safe_float
 from backend.services.alert.notification import notification_service
 from backend.services.datalake.kline_warehouse import kline_warehouse
 from backend.services.datasource.router import data_source_router
-from backend.services.yfinance import format_yf_ticker, yf_service
 
 logger = logging.getLogger(__name__)
 
@@ -364,16 +362,15 @@ class ConnectionManager:
                                         )  # noqa: E501
                                         df["time"] = pd.to_datetime(df["time"])
                                         df.set_index("time", inplace=True)
-                                        res = await yf_service.get_tech_indicators(
-                                            ticker=t, lookback_days=6, pre_fetched_df=df
-                                        )  # noqa: E501
+                                        # 技术面兜底改经 DataSourceRouter（US-YF-A/B 子服务）
+                                        res = await data_source_router.fetch_yfinance(t, "tech")  # noqa: E501
                                         if res.get("status") == "success":
                                             self.tech_cache[t] = res.get("data", {}).get("trend", [])  # noqa: E501
                                             continue
 
-                                # 如果 Futu 失败（加密货币/外汇等），且开启了 YF 兜底，则串行请求 YF  # noqa: E501
+                                # 如果 Futu 失败（加密货币/外汇等），且开启了 YF 兜底，则串行请求子服务 YF  # noqa: E501
                                 if is_yf_enabled:
-                                    res = await yf_service.get_tech_indicators(ticker=t, lookback_days=6)  # noqa: E501
+                                    res = await data_source_router.fetch_yfinance(t, "tech")  # noqa: E501
                                     if res.get("status") == "success":
                                         self.tech_cache[t] = res.get("data", {}).get("trend", [])  # noqa: E501
                             except Exception as e:
@@ -498,10 +495,10 @@ class ConnectionManager:
                             )  # noqa: E501
                             asyncio.create_task(notification_service.send_alert(alert_msg))
 
-                    # 2. 启用真实的 YFinance 兜底轮询！（仅在开关打开时执行）
+                    # 2. 启用真实的 YFinance 兜底轮询！（仅在开关打开时执行，流量经子服务）
                     if yf_candidates and is_yf_enabled:
-                        # 💡 无论从哪进来的获取请求，统统汇入微批队列，1 秒后打包为 1 个请求发车  # noqa: E501
-                        quote_tasks = [yf_service.get_batched_quote(t) for t in yf_candidates]  # noqa: E501
+                        # 💡 经 DataSourceRouter 联邦到 US-YF-A/B 子服务，逐个串行兜底
+                        quote_tasks = [data_source_router.fetch_yfinance(t, "quote") for t in yf_candidates]  # noqa: E501
                         quote_results = await asyncio.gather(*quote_tasks, return_exceptions=True)  # noqa: E501
 
                         for ticker, q in zip(yf_candidates, quote_results):

@@ -12,8 +12,6 @@ BE-ARCH-06a: 业务数据源聚合 Facade 守门。
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
 
 from backend.services.datasource import (
@@ -23,7 +21,7 @@ from backend.services.datasource import (
     datasource_registry,
     rate_limit_registry,
 )
-from backend.services.datasource.business.facade import DataServiceFacade, _QUOTE_DEVIATION_PCT
+from backend.services.datasource.business.facade import _QUOTE_DEVIATION_PCT, DataServiceFacade
 
 
 class _FakeSource:
@@ -134,7 +132,9 @@ class TestMergeAndStale:
     async def test_quote_deviation_emits_metric(self):
         # 偏差超阈值应触发 quote_deviation 指标（这里只验证不抛异常）
         r1 = Result.make_success({"last_price": 100.0}, source="futu", latency_ms=5.0)
-        r2 = Result.make_success({"last_price": 100.0 + 100.0 * _QUOTE_DEVIATION_PCT * 2 / 100}, source="yf", latency_ms=6.0)
+        r2 = Result.make_success(
+            {"last_price": 100.0 + 100.0 * _QUOTE_DEVIATION_PCT * 2 / 100}, source="yf", latency_ms=6.0
+        )
         merged = DataServiceFacade._merge("QUOTE", [r1, r2])
         assert merged is not None
 

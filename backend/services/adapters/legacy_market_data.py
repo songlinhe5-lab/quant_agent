@@ -25,11 +25,9 @@ class MarketDataGateway:
     def __init__(self) -> None:
         from backend.services.akshare import akshare_service
         from backend.services.finnhub.service import finnhub_service
-        from backend.services.yfinance import yf_service
 
         # futu_service 延迟到首次使用时导入，避免主节点无 SDK 时启动崩溃
         self._futu = None
-        self._yf = yf_service
         self._ak = akshare_service
         self._fh = finnhub_service
         # dbnomics/fred/rbi 经 services.macro 间接依赖 hermes_agent；若在 __init__
@@ -80,7 +78,7 @@ class MarketDataGateway:
             ensure_yfinance_registered,
         )
 
-        ensure_yfinance_registered(self._yf)
+        ensure_yfinance_registered()
 
         from backend.services.datasource.adapters.finnhub import (
             ensure_finnhub_registered,
@@ -191,16 +189,18 @@ class MarketDataGateway:
                         return list(dates), "futu"
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"[MarketData] Futu 取到期日失败, 降级 YF: {e}")
-        # YFinance 降级 (零幻觉: 仅用真实行情数据)
+        # YFinance 降级（经子服务；后端不再本地跑 yfinance）
         try:
-            import yfinance as yf
+            from backend.services.datasource.router import data_source_router
 
-            tk = yf.Ticker(ticker)
-            opts = list(getattr(tk, "options", []) or [])
-            if opts:
-                return opts, "yfinance"
+            res = await data_source_router.fetch_yfinance(format_yf_ticker(ticker), "option_chain")
+            if res.get("success") or res.get("status") == "success":
+                data = res.get("data") or res
+                opts = list((data.get("expiration_dates") or data.get("options") or []) or [])
+                if isinstance(opts, list) and opts and isinstance(opts[0], str):
+                    return opts, "yfinance-subservice"
         except Exception as e:  # noqa: BLE001
-            logger.warning(f"[MarketData] YF 取到期日失败: {e}")
+            logger.warning(f"[MarketData] YF 子服务取到期日失败: {e}")
         return [], "none"
 
     async def get_option_chain_matrix(
@@ -309,67 +309,44 @@ class MarketDataGateway:
         return True
 
     async def _option_chain_yfinance(self, ticker: str, expiration_date: str) -> Optional[dict[str, Any]]:
-        import asyncio
-        from datetime import datetime
-
-        import yfinance as yf
+        """经 DataSourceRouter 向 US-YF-A/B 子服务拉期权链（后端不再本地跑 yfinance）。"""
+        from backend.services.datasource.router import data_source_router
 
         yf_ticker = format_yf_ticker(ticker)
+        try:
+            result = await data_source_router.fetch_yfinance(
+                yf_ticker,
+                "option_chain",
+                expiration=expiration_date if expiration_date else None,
+            )
+        except Exception as e:
+            return {"status": "error", "message": f"YF 子服务期权链失败: {e}"}
 
-        def fetch_yf_options() -> dict[str, Any]:
-            tk = yf.Ticker(yf_ticker)
-            dates = tk.options
-            if not dates:
-                return {
-                    "status": "error",
-                    "message": f"{yf_ticker} 没有可用的期权链数据",
-                }
-            target_date = expiration_date if expiration_date in dates else dates[0]
-            chain = tk.option_chain(target_date)
-            # 到期天数(供 Greeks 计算)
-            try:
-                dte = max((datetime.strptime(target_date, "%Y-%m-%d") - datetime.now()).days, 1)
-            except Exception:
-                dte = 30
-
-            def _norm(row, opt_type: str) -> dict[str, Any]:
-                strike = float(row.get("strike", 0.0) or 0.0)
-                last = float(row.get("lastPrice", 0.0) or 0.0)
-                iv = float(row.get("impliedVolatility", 0.0) or 0.0)
-                # 💡 归一化为引擎统一 schema:
-                # - strike 别名(strike_price 同时保留，向后兼容)
-                # - bid/ask 由 last_price 推导(供 compute_option_chain_greeks 反解 IV)
-                # - iv 别名(供 vol_smile_analysis 直接使用 YF 的 IV)
-                return {
-                    "option_code": str(row.get("contractSymbol", "")),
-                    "option_type": opt_type,
-                    "strike_price": strike,
-                    "strike": strike,
-                    "last_price": last,
-                    "bid": last,
-                    "ask": last,
-                    "implied_volatility": iv,
-                    "iv": iv,
-                    "days_to_expiry": dte,
-                }
-
-            compressed = [(_norm(row, "CALL")) for _, row in chain.calls.head(30).iterrows()]
-            compressed += [(_norm(row, "PUT")) for _, row in chain.puts.head(30).iterrows()]
-            # 💡 统一为顶层 options 结构(Futu 也是顶层)，避免 consumers 因 data.options 嵌套差异拿到空列表
+        if not result.get("success") and result.get("status") != "success":
             return {
-                "status": "success",
-                "options": compressed,
-                "expiration_date": target_date,
-                "source": "yfinance",
-                "count": len(compressed),
-                "ticker": yf_ticker,
-                "message": "yfinance 期权链(含 IV/定价字段)",
+                "status": "error",
+                "message": result.get("message", "YF 子服务未返回期权链"),
             }
 
-        try:
-            return await asyncio.to_thread(fetch_yf_options)
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
+        data = result.get("data") or result
+        # 子服务返回可能为 {options:[...]} 或 {calls:[...], puts:[...]}；
+        # 统一归一化为顶层 options 结构，兼容 consumer 期望。
+        options = data.get("options")
+        if options is None:
+            calls = data.get("calls", []) or []
+            puts = data.get("puts", []) or []
+            options = [{**c, "option_type": "CALL"} for c in calls[:30]] + [
+                {**p, "option_type": "PUT"} for p in puts[:30]
+            ]
+        return {
+            "status": "success",
+            "options": options,
+            "expiration_date": data.get("expiration_date", expiration_date),
+            "source": "yfinance-subservice",
+            "count": len(options),
+            "ticker": yf_ticker,
+            "message": "yfinance 期权链(含 IV/定价字段，经子服务)",
+        }
 
     # ── Futu 扩展 ──────────────────────────────────────────
 
@@ -431,13 +408,15 @@ class MarketDataGateway:
             "reachable": self.is_opend_reachable(),
         }
 
-    # ── YFinance ───────────────────────────────────────────
+    # ── YFinance（远程子服务，后端不再本地执行 yfinance）───────────
 
     async def get_tech_indicators(self, ticker: str, **kwargs: Any) -> Any:
-        return await self._yf.get_tech_indicators(ticker=ticker, **kwargs)
+        from backend.services.datasource.router import data_source_router
+
+        return await data_source_router.fetch_yfinance(format_yf_ticker(ticker), "tech")
 
     async def fetch_yf_data(self, ticker: str, req_type: str, **kwargs: Any) -> Any:
-        """YFinance 主路径：DataSourceRegistry.fetch → Interface。"""
+        """YFinance 主路径：DataSourceRegistry.fetch → Interface（远程子服务）。"""
         from backend.services.datasource import ResultStatus, datasource_registry
 
         result = await datasource_registry.fetch(
@@ -451,10 +430,21 @@ class MarketDataGateway:
         return False, None, msg
 
     async def get_batched_quote(self, ticker: str, **kwargs: Any) -> Any:
-        return await self._yf.get_batched_quote(ticker, **kwargs)
+        from backend.services.datasource.router import data_source_router
+
+        return await data_source_router.fetch_yfinance(format_yf_ticker(ticker), "quote")
 
     def yf_health_status(self) -> dict[str, Any]:
-        return self._yf.get_health_status()
+        from backend.services.datasource.registry import rate_limit_registry
+
+        throttler = rate_limit_registry.get_throttler("yfinance")
+        rl = throttler.get_status()
+        return {
+            "status": "remote",
+            "mode": "subservice",
+            "is_throttled": rl.is_throttled,
+            "note": "yfinance 流量已全量外移至 US-YF-A/B 子服务",
+        }
 
     # ── AKShare / Finnhub / FRED ────────────────────────────
 

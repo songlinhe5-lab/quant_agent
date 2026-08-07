@@ -564,15 +564,13 @@ class TestBroadcastLoop:
                     "backend.services.market_engine._get_futu_service",
                     return_value=MagicMock(status="CONNECTED"),
                 ) as mock_futu:
-                    with patch("backend.services.market_engine.yf_service") as mock_yf:
-                        # 配置 mock
+                    with patch("backend.services.market_engine.data_source_router.fetch_yfinance") as mock_yf:
+                        # 配置 mock：YF 兜底改经 DataSourceRouter.fetch_yfinance（子服务）
                         mock_futu.is_futu_unsupported.return_value = True  # 所有标的都不支持富途
-                        mock_yf.get_tech_indicators = AsyncMock(
-                            return_value={"status": "success", "data": {"trend": []}}
-                        )
-                        mock_yf.get_batched_quote = AsyncMock(
-                            return_value={"status": "success", "ticker": "US.AAPL", "last_price": 150.0}
-                        )
+                        mock_yf.return_value = {
+                            "status": "success",
+                            "data": {"trend": [], "ticker": "US.AAPL", "last_price": 150.0},
+                        }
                         mock_futu.get_fund_flow = AsyncMock(
                             return_value={"status": "success", "data": {"main_fund_net_inflow": 0}}
                         )
@@ -621,12 +619,13 @@ class TestBroadcastLoop:
                             is_futu_unsupported=MagicMock(return_value=False),
                         ),
                     ) as mock_futu:
-                        with patch("backend.services.market_engine.yf_service") as mock_yf:
+                        with patch("backend.services.market_engine.data_source_router.fetch_yfinance") as mock_yf:
                             # 配置 mock：US.AAPL 支持富途
                             mock_futu.status = "CONNECTED"  # Futu 断连防御需要
-                            mock_yf.get_tech_indicators = AsyncMock(
-                                return_value={"status": "success", "data": {"trend": []}}
-                            )
+                            mock_yf.return_value = {
+                                "status": "success",
+                                "data": {"trend": []},
+                            }
 
                             with patch(
                                 "backend.services.market_engine.data_source_router.fetch_futu",
@@ -661,7 +660,7 @@ class TestBroadcastLoop:
                     "backend.services.market_engine._get_futu_service",
                     return_value=MagicMock(status="CONNECTED"),
                 ) as mock_futu:
-                    with patch("backend.services.market_engine.yf_service") as mock_yf:
+                    with patch("backend.services.market_engine.data_source_router.fetch_yfinance") as mock_yf:
                         mock_futu.is_futu_unsupported.return_value = True  # 不支持富途
                         mock_futu.get_fund_flow = AsyncMock(
                             return_value={"status": "success", "data": {"main_fund_net_inflow": 0}}
@@ -675,8 +674,8 @@ class TestBroadcastLoop:
                         except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
                             pass
 
-                        # 验证 YF 的 get_batched_quote 未被调用
-                        mock_yf.get_batched_quote.assert_not_called()
+                        # 验证 YF 子服务兜底未被调用（YF 禁用）
+                        mock_yf.assert_not_called()
 
     async def test_broadcast_loop_exception_handling(self):
         """测试 broadcast_loop 的异常处理分支"""
@@ -693,7 +692,7 @@ class TestBroadcastLoop:
                     "backend.services.market_engine._get_futu_service",
                     return_value=MagicMock(status="CONNECTED"),
                 ) as mock_futu:
-                    with patch("backend.services.market_engine.yf_service"):
+                    with patch("backend.services.market_engine.data_source_router.fetch_yfinance"):
                         mock_futu.is_futu_unsupported.return_value = True
                         mock_futu.get_fund_flow = AsyncMock(
                             return_value={"status": "success", "data": {"main_fund_net_inflow": 0}}
@@ -724,7 +723,7 @@ class TestBroadcastLoop:
                     "backend.services.market_engine._get_futu_service",
                     return_value=MagicMock(status="CONNECTED", unsubscribe_quote=AsyncMock()),
                 ) as mock_futu:
-                    with patch("backend.services.market_engine.yf_service") as mock_yf:
+                    with patch("backend.services.market_engine.data_source_router.fetch_yfinance") as mock_yf:
                         # 配置 mock
                         mock_futu.status = "CONNECTED"  # Futu 断连防御需要
                         mock_futu.is_futu_unsupported.return_value = False
@@ -734,9 +733,8 @@ class TestBroadcastLoop:
                             return_value={"status": "success", "data": {"main_fund_net_inflow": 0}}
                         )
                         mock_futu.unsubscribe_quote = AsyncMock()
-                        mock_yf.get_tech_indicators = AsyncMock(
-                            return_value={"status": "success", "data": {"trend": []}}
-                        )
+                        # YF 兜底改经子服务 router
+                        mock_yf.return_value = {"status": "success", "data": {"trend": []}}
 
                         async def _gc_track_fetch(action, **kwargs):
                             if action == "HISTORY":
@@ -779,7 +777,7 @@ class TestBroadcastLoop:
                     "backend.services.market_engine._get_futu_service",
                     return_value=MagicMock(status="CONNECTED"),
                 ) as mock_futu:
-                    with patch("backend.services.market_engine.yf_service") as mock_yf:
+                    with patch("backend.services.market_engine.data_source_router.fetch_yfinance") as mock_yf:
                         # 关键：Futu 断连状态
                         mock_futu.status = "DISCONNECTED"
                         mock_futu.is_futu_unsupported.return_value = False
@@ -787,12 +785,11 @@ class TestBroadcastLoop:
                         mock_futu.get_fund_flow = AsyncMock(return_value={"status": "error"})
                         mock_futu.get_history = AsyncMock(return_value={"status": "error"})
                         mock_futu.get_account_info = AsyncMock(return_value={"status": "error"})
-                        mock_yf.get_tech_indicators = AsyncMock(
-                            return_value={"status": "success", "data": {"trend": []}}
-                        )
-                        mock_yf.get_batched_quote = AsyncMock(
-                            return_value={"status": "success", "ticker": "US.AAPL", "last_price": 150.0}
-                        )
+                        # YF 兜底改经子服务 router
+                        mock_yf.return_value = {
+                            "status": "success",
+                            "data": {"trend": [], "ticker": "US.AAPL", "last_price": 150.0},
+                        }
 
                         ws = MagicMock()
                         mgr.subscriptions[ws] = {"US.AAPL"}

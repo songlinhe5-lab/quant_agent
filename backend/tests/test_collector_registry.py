@@ -163,13 +163,9 @@ class TestStartCollectorDaemons:
             mock_print.assert_called_with("  [finnhub] slave mode: data fetching only, no daemon")
 
     async def test_yfinance_starts_daemon(self):
-        """测试 YFinance 启动宏数据守护进程"""
-        with (
-            mock.patch("asyncio.create_task") as mock_create_task,
-            mock.patch("backend.services.yfinance.yf_service") as mock_service,
-        ):
+        """测试 YFinance 启动宏数据守护进程（远程子服务模式，不再本地 import yf_service）"""
+        with mock.patch("asyncio.create_task") as mock_create_task:
             mock_create_task.return_value = mock.MagicMock()
-            mock_service.macro_data_daemon = mock.AsyncMock()
             tasks = await start_collector_daemons(["yfinance"])
 
             mock_create_task.assert_called_once()
@@ -193,11 +189,8 @@ class TestStartCollectorDaemons:
             mock.patch("asyncio.gather", new=mock.AsyncMock(return_value=[])),
             mock.patch("backend.workers.akshare_collector.akshare_collector_daemon"),
             mock.patch("backend.workers.market.daemon.run_global_daemon"),
-            mock.patch("backend.services.yfinance.yf_service") as mock_yf,
             mock.patch.dict(os.environ, {"NODE_TYPE": "master"}, clear=False),
         ):
-            mock_yf.macro_data_daemon = mock.AsyncMock()
-
             tasks = await start_collector_daemons(["akshare", "finnhub", "yfinance"])
             assert len(tasks) == 3
             assert mock_create.call_count == 3
