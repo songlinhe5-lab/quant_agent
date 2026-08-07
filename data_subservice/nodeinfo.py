@@ -14,7 +14,11 @@ def get_node_info(region: str = "us-west", capabilities: Optional[list] = None) 
     port = os.getenv("DATASOURCE_PORT", "8001")
     url = f"http://{ip}:{port}"
 
-    caps = capabilities or os.getenv("NODE_CAPABILITIES", "yfinance,akshare,tushare").split(",")
+    caps = (
+        capabilities
+        or os.getenv("DS_CAPABILITIES")
+        or os.getenv("NODE_CAPABILITIES", "yfinance,akshare,tushare").split(",")
+    )
 
     return NodeInfo(
         node_id=node_id,

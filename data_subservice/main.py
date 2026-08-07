@@ -69,9 +69,20 @@ async def health():
     return JSONResponse({"status": "healthy", "service": "data-subservice"})
 
 
+def _declared_capabilities() -> set:
+    """读取本节点声明的数据源能力 (DS_CAPABILITIES)，未声明则不响应对应请求。
+
+    Fallback: 兼容旧 NODE_CAPABILITIES；再 fallback 到全量（保持向后兼容）。
+    """
+    raw = os.getenv("DS_CAPABILITIES") or os.getenv("NODE_CAPABILITIES")
+    if not raw:
+        return {"yfinance", "akshare", "tushare", "fmp", "futu"}
+    return {c.strip().lower() for c in raw.split(",") if c.strip()}
+
+
 @app.post("/api/v1/data", dependencies=[Depends(verify_hmac)])
 async def fetch_data(request: Request):
-    """统一数据源获取端点。路由到 yfinance / akshare / tushare 实现。"""
+    """统一数据源获取端点。仅响应本节点 DS_CAPABILITIES 声明的能力。"""
     try:
         payload = await request.json()
     except Exception:
@@ -81,19 +92,26 @@ async def fetch_data(request: Request):
     action = payload.get("action", "")
     params = payload.get("params", {})
 
+    declared = _declared_capabilities()
+
+    # 普通数据源能力：按 DS_CAPABILITIES 门控
+    if source not in declared:
+        raise HTTPException(
+            status_code=503,
+            detail=f"数据源能力未启用 (source={source} 不在 DS_CAPABILITIES={sorted(declared)})",
+        )
+
     if source == "yfinance":
         result = await handle_yfinance(action, params)
     elif source == "akshare":
         result = await handle_akshare(action, params)
     elif source == "tushare":
         result = await handle_tushare(action, params)
-    elif source == "futu":
-        # Futu 仅在主节点 COLLECTOR_FUTU=true 时启用（OpenD 本地 TCP）
-        if not os.getenv("COLLECTOR_FUTU", "false").lower() == "true":
-            raise HTTPException(status_code=503, detail="Futu 采集器未启用（仅主节点 COLLECTOR_FUTU=true）")
-        result = await handle_futu(action, params)
     elif source == "fmp":
         result = await handle_fmp(action, params)
+    elif source == "futu":
+        # Futu 依赖本地 OpenD TCP，仅声明 DS_CAPABILITIES 含 futu 的节点（主节点）响应
+        result = await handle_futu(action, params)
     else:
         raise HTTPException(status_code=400, detail=f"未知数据源: {source}")
 
@@ -119,8 +137,8 @@ async def prometheus_metrics():
 async def startup_event():
     logger.info("🚀 Data Subservice 启动完成 (物理解耦模式，无 backend 依赖)")
 
-    # Futu 仅主节点启用（OpenD 本地 TCP，部署在主节点 VPS）
-    if os.getenv("COLLECTOR_FUTU", "false").lower() == "true":
+    # Futu OpenD 长连接仅在本节点 DS_CAPABILITIES 声明 futu 时拉起（主节点 VPS 宿主）
+    if "futu" in _declared_capabilities():
         try:
             from data_subservice.futu_src import futu_service
             from data_subservice.futu_src.watchdog import FutuWatchdog

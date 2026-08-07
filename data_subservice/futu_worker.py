@@ -1,7 +1,7 @@
 """Futu worker — 物理解耦版（import _internal，无 backend 依赖）。
 
 作为主节点 data_subservice 的唯一 Futu OpenD 长连接出口，由 main.py 在
-COLLECTOR_FUTU=true 时拉起。主服务经 HTTP 调 /api/v1/data (source=futu) 分发到此。
+DS_CAPABILITIES=futu 时拉起。主服务经 HTTP 调 /api/v1/data (source=futu) 分发到此。
 """
 
 from typing import Any, Dict
