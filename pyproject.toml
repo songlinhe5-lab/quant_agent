@@ -61,7 +61,7 @@ dependencies = [
 # 数据源 SDK（子服务节点安装，主节点走 HTTP 路由不安装）
 datasource = [
     "websockets>=14.0",        # Finnhub WebSocket 客户端
-    "finnhub-python>=2.5.0",   # Finnhub REST API (备用)
+    "finnhub-python>=2.4.29",  # Finnhub REST API (备用); PyPI 最高 2.4.29
     "tushare>=1.4.0",
     "akshare>=1.1.15",
     "futu-api>=10.7.0",
@@ -73,6 +73,7 @@ local-embedding = [
 dev = [
     "ruff==0.15.16",  # 锁定到 uv.lock 中的版本，避免 uv run 解析到更新的 ruff 导致格式检查不一致
     "pre-commit>=3.6.0",
+    "mypy>=1.10.0",   # 类型检查（pre-commit mypy hook 依赖）
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
     "httpx>=0.27.0",
