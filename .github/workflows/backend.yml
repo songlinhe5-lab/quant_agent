@@ -122,6 +122,16 @@ jobs:
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             cd /opt/quant-agent
 
+            # ── 先拉取模板文件 (compose + env 模板)，确保后续 .env 首次生成有模板可用 ──
+            IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+            curl -sSL -o docker-compose.master.yml "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.master.yml"
+            curl -sSL -o docker-compose.node-s1.yml "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.node-s1.yml"
+            curl -sSL -o .env.example "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/.env.example" || echo "⚠️ 拉取 .env.example 失败，首次生成将走兜底"
+            curl -sSL -o .env.data-node.example "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/.env.data-node.example" || echo "⚠️ 拉取 .env.data-node.example 失败"
+            sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:latest|${IMAGE}|g" docker-compose.master.yml
+            sed -i "s|ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:latest|g" docker-compose.node-s1.yml
+            echo "✅ 模板文件已拉取完毕 (compose + .env.example + .env.data-node.example)"
+
             # ⚠️ 主节点 .env 由运维手动维护。
             #    仅当 .env 完全不存在时，参考仓库 .env.example 首次生成 (cp 模板)，
             #    并补入 compose 必需的 TAILSCALE_IP (模板无此项)。生成后一律沿用人工配置，CI 不再触碰。
@@ -164,16 +174,6 @@ jobs:
             else
               echo "⚠️ 警告: TAILSCALE_IP 为空！registry 将仅绑定 127.0.0.1，北京节点无法经内网拉取镜像。如需内网拉取，请在主节点 .env 中手动配置 VPS_S1_TAILSCALE_IP。"
             fi
-
-            IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
-            curl -sSL -o docker-compose.master.yml "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.master.yml"
-            curl -sSL -o docker-compose.node-s1.yml "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.node-s1.yml"
-            # 拉取 .env.example 供首次生成 .env 参考 (与 compose 同源, 保证版本一致)
-            curl -sSL -o .env.example "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/.env.example" || echo "⚠️ 拉取 .env.example 失败，首次生成将走兖底"
-            # 拉取 .env.data-node.example 供首次生成 .env.data-node 参考
-            curl -sSL -o .env.data-node.example "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/.env.data-node.example" || echo "⚠️ 拉取 .env.data-node.example 失败"
-            sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:latest|${IMAGE}|g" docker-compose.master.yml
-            sed -i "s|ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:latest|g" docker-compose.node-s1.yml
 
             # 🧹 部署前自动回收悬空 docker 资源（旧镜像/退出容器/未用网络/构建缓存），
             #    防止历史堆积触发磁盘守卫。仅删悬空对象，不影响正在运行的容器与命名 volume。
