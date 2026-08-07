@@ -287,7 +287,7 @@ jobs:
             tz: America/Los_Angeles
             compose: docker-compose.node-s2.yml
             env-file: .env.data-node
-            container: quant-data-subservice-yf-s2
+            container: quant-data-subservice-node-s2
           # 美西从节点2 (VPS_S3)：纯 yfinance
           - node: s3
             host-secret: VPS_S3_HOST
@@ -301,7 +301,7 @@ jobs:
             tz: America/Los_Angeles
             compose: docker-compose.node-s3.yml
             env-file: .env.data-node
-            container: quant-data-subservice-yf-s3
+            container: quant-data-subservice-node-s3
           # 美西从节点3 (VPS_S4)：纯 yfinance
           - node: s4
             host-secret: VPS_S4_HOST
@@ -315,7 +315,7 @@ jobs:
             tz: America/Los_Angeles
             compose: docker-compose.node-s4.yml
             env-file: .env.data-node
-            container: quant-data-subservice-yf-s4
+            container: quant-data-subservice-node-s4
     steps:
       - uses: actions/checkout@v5
 
