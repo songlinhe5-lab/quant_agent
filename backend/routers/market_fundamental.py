@@ -26,7 +26,7 @@ from backend.services.datasource.business import data_service
 router = APIRouter(prefix="/market", tags=["Market & Portfolio"])
 
 # 全局异步锁池，防止新闻接口缓存击穿 (Cache Stampede)
-_news_locks = {}
+_news_locks: dict[str, asyncio.Lock] = {}
 
 
 # ─────────────────────────────────────────────

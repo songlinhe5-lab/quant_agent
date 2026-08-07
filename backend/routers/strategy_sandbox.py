@@ -551,8 +551,10 @@ async def run_strategy_sandbox(payload: RunSandboxPayload):
         }
     except Exception:
         tb = traceback.format_exc()
-        lineno = None
-        exc_type = "UnknownError"
+        lineno: int | None = None
+        exc_type: type[BaseException] | None = None
+        exc_value: BaseException | None = None
+        exc_tb = None
         exc_message = ""
         try:
             exc_type, exc_value, exc_tb = sys.exc_info()
@@ -562,7 +564,7 @@ async def run_strategy_sandbox(payload: RunSandboxPayload):
                     if frame.filename and "<string>" in frame.filename:
                         lineno = frame.lineno
                         break
-            exc_type = exc_type.__name__ if exc_type else "UnknownError"
+            exc_name = exc_type.__name__ if exc_type else "UnknownError"
             exc_message = str(exc_value) if exc_value else ""
         except Exception:
             pass
@@ -573,7 +575,7 @@ async def run_strategy_sandbox(payload: RunSandboxPayload):
             "message": f"沙箱运行崩溃:\n{safe_truncate(tb, max_length=1500)}",
             "data": {
                 "error_detail": {
-                    "exc_type": exc_type,
+                    "exc_type": exc_name,
                     "exc_message": exc_message,
                     "lineno": lineno,
                     "traceback": tb,

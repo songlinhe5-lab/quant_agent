@@ -44,7 +44,7 @@ class FormatPayload(BaseModel):
     source_code: str
 
 
-_inspirations_cache = []
+_inspirations_cache: list[str] = []
 _inspirations_lock = asyncio.Lock()
 
 

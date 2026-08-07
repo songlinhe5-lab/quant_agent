@@ -206,7 +206,9 @@ def _load_benchmark_nav(benchmark_ref: Optional[str], days: int) -> Optional[pd.
         key = f"backtest:{benchmark_ref}:nav"
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(redis_client.get(key))
+            # fire-and-forget: 触发异步回填 NAV，结果由前端异步 API 获取，此处不 await
+            # redis_client.get 返回 Awaitable，create_task 严格期望 Coroutine，运行时等价
+            _ = loop.create_task(redis_client.get(key))  # type: ignore[arg-type]
         except RuntimeError:
             # 当前无事件循环，降级跳过（由前端异步 API 回填）
             pass

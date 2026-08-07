@@ -123,7 +123,7 @@ DYN_ACTIONS = [
 async def get_chat_suggestions(limit: int = 10):
     import random
 
-    selected = []
+    selected: list[dict[str, str]] = []
     while len(selected) < limit:
         if random.random() < 0.2:
             item = random.choice(STATIC_SUGGESTIONS)

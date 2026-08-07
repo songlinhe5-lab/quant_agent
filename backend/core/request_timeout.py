@@ -56,8 +56,9 @@ async def request_timeout_middleware(request: Request, call_next):
     # 流式响应：交给 heartbeat_wrap 统一做心跳保活 + 断开取消 + 超时熔断
     if isinstance(response, StreamingResponse):
         hb = SSE_HEARTBEAT if response.media_type == "text/event-stream" else NDJSON_HEARTBEAT
-        response.body_iterator = heartbeat_wrap(
-            response.body_iterator,
+        # heartbeat_wrap 接受 AsyncIterable，mypy 误判为需 AsyncIterator
+        response.body_iterator = heartbeat_wrap(  # type: ignore
+            response.body_iterator,  # type: ignore[arg-type]
             request,
             interval=15.0,
             heartbeat=hb,

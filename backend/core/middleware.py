@@ -38,7 +38,7 @@ EXTERNAL_API_LATENCY = Histogram(
 )
 
 # 用于在请求和响应之间传递时间的字典 (协程/线程安全，以请求对象 id 为键)
-_request_timers = {}
+_request_timers: dict[int, float] = {}
 
 
 async def httpx_log_request(request: httpx.Request):

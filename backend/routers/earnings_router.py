@@ -3,7 +3,7 @@
 """
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
@@ -96,7 +96,8 @@ async def list_expectations(
         else:
             pattern = "quant:earnings:expectations:*"
 
-        keys = await redis_client.keys(pattern)
+        # decode_responses=True 保证 keys 返回 list[str]，但 redis-py 类型标注为 list[bytes]，此处 cast
+        keys = cast(list[str], await redis_client.keys(pattern))
         result = []
 
         for key in keys:

@@ -1,7 +1,7 @@
 import asyncio
 import os
 import time
-from typing import Optional
+from typing import Any, Optional
 
 import redis.asyncio as redis
 from dotenv import load_dotenv
@@ -48,7 +48,7 @@ class RedisAsyncBatchWriter:
         self.redis = client
         self.batch_size = batch_size
         self.flush_interval = flush_interval
-        self.queue = asyncio.Queue()
+        self.queue: asyncio.Queue = asyncio.Queue()
         self._task = None
 
     def start(self):
@@ -186,7 +186,7 @@ class LocalL1Cache:
         self.redis = client
         self.default_ttl = default_ttl
         self.max_size = max_size
-        self._cache = {}
+        self._cache: dict[str, Any] = {}
         self._cleanup_task = None
 
     def _ensure_cleanup_task(self):

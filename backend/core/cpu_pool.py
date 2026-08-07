@@ -192,7 +192,8 @@ async def run_cpu_bound_with_progress(
     loop = asyncio.get_running_loop()
     if accepts:
         # run_in_executor 仅转发位置参数给 func，故 progress_queue 须作为末位位置参数
-        future = loop.run_in_executor(_ensure_fallback_executor(), func, *args, q)
+        # run_in_executor 的 callable 类型标注偏严，func(*args, q) 运行时合法
+        future = loop.run_in_executor(_ensure_fallback_executor(), func, *args, q)  # type: ignore[arg-type]
     else:
         future = loop.run_in_executor(_ensure_fallback_executor(), func, *args)
 

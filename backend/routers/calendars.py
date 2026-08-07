@@ -26,7 +26,7 @@ from fastapi import APIRouter, HTTPException, Query
 try:
     import zoneinfo
 except ImportError:  # pragma: no cover
-    zoneinfo = None
+    zoneinfo = None  # type: ignore
 
 from backend.core.redis_client import redis_client
 from backend.services.datasource import ErrorInfo, rate_limit_registry  # SVC-08 限流感知
@@ -196,7 +196,7 @@ def _market_session_state(
     close_hm: Optional[tuple[int, int]],
 ) -> tuple[bool, Optional[str]]:
     """返回 (是否交易中, 下一个开盘/收盘时间 ISO)。tz 为 None 视为 7x24 开盘。"""
-    if not tz_name or not open_hm or zoneinfo is None:
+    if tz_name is None or open_hm is None or close_hm is None or zoneinfo is None:
         return True, None
     try:
         tz = zoneinfo.ZoneInfo(tz_name)

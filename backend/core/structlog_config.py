@@ -144,7 +144,7 @@ def configure_structlog(level: int = logging.INFO) -> None:
 
     if is_dev:
         # 开发环境：彩色 key=value 控制台输出
-        renderer = structlog.dev.ConsoleRenderer(
+        renderer: Any = structlog.dev.ConsoleRenderer(
             colors=True,
             pad_event=30,
         )

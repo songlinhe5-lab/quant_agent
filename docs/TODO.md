@@ -1838,3 +1838,17 @@ STATUS: PRODUCTION READY ✨
 
 ---
 
+## 存量类型清理（mypy 增量收敛）
+
+- [x] **[BE-ARCH-06g]** mypy 存量类型问题批量清理（backend/core + backend/routers，45→0）✅ **2026-08-07**
+  - 探查策略：逐个文件确认真 bug vs 类型标注问题 vs 框架互操作噪声，**不盲目标注忽略**
+  - **真 bug 修复**：
+    - `routers/portfolio.py`：`get_klines(symbol=, period=, count=)` 方法名+返回类型错误（应为 `get_history(ticker=, ktype="K_DAY", num=count)` 返回 DataFrame，矢量化 `pct_change`）
+    - `services/datasource/analyzer.py`：`record_request(latency_ms: float=0.0)` 改为 `Optional[float]=None`（与调用方 `datasource.py:500` 的 `None` 语义一致，表示未探测不计入延迟）
+  - **类型标注补全**：`futu_admin.py`(dict[str,Any]) / `middleware.py`(dict[int,float]) / `market_fundamental.py`(dict[str,asyncio.Lock]) / `chat.py`(list[dict[str,str]]) / `strategy.py`(list[str]) / `logger.py` / `redis_client.py`(queue/_cache) / `structlog_config.py`(renderer: Any) / `calendars.py`(is None 守卫收窄)
+  - **框架互操作精准 ignore**：`exception_handlers.py`(FastAPI/Starlette 签名偏差 arg-type) / `config.py`(Settings 单例 env 注入 call-arg) / `options.py`(pydantic Field 默认 call-arg) / `otel_config.py`/`calendars.py`(import 降级 None misc) / `graceful_executor.py`(stdlib None 默认 arg-type + asyncio.Future override) / `cpu_pool.py`/`request_timeout.py`(标准库协程类型偏严 arg-type) / `paper.py`(create_task Awaitable arg-type) / `earnings_router.py`(redis decode_responses cast)
+  - **陷阱修正**：`auth.py` `response: Response = None` 行尾 `# type: ignore` 触发 Python SyntaxError（参数列表内注释歧义）→ 改为 `response: Response` 去掉默认 None（FastAPI 注入保证非 None），移除多余 assert
+  - 验证：`python -m mypy backend/core/ backend/routers/ --ignore-missing-imports` → **0 errors**；相关单测 69 passed
+
+---
+

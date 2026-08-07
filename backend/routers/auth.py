@@ -205,7 +205,8 @@ class GoogleTokenRequest(BaseModel):
 def verify_google_token(
     request: Request,
     token_request: GoogleTokenRequest,
-    response: Response = None,
+    # FastAPI 特殊参数：response 由框架注入（框架保证非 None，mypy 不再告警）
+    response: Response,
     db: Session = Depends(get_db),
 ):
     try:
@@ -264,6 +265,8 @@ def verify_google_token(
 
         # 5. 设置 HttpOnly Cookie 并直接返回 JSON
         is_production = os.getenv("QUANT_ENV") == "production"
+        # FastAPI 会注入 Response 实例，此处非 None（mypy 无法感知）
+        assert response is not None
         response.set_cookie(
             key="refresh_token",
             value=refresh_token,

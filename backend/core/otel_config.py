@@ -37,16 +37,16 @@ try:
 
     _OTEL_AVAILABLE = True
 except ImportError:
-    trace = None  # type: ignore[assignment]
-    Resource = None  # type: ignore[assignment]
-    TracerProvider = None  # type: ignore[assignment]
-    BatchSpanProcessor = None  # type: ignore[assignment]
-    ConsoleSpanExporter = None  # type: ignore[assignment]
-    ParentBased = None  # type: ignore[assignment]
-    TraceIdRatioBased = None  # type: ignore[assignment]
-    Span = None  # type: ignore[assignment]
-    Status = None  # type: ignore[assignment]
-    StatusCode = None  # type: ignore[assignment]
+    trace = None  # type: ignore
+    Resource = None  # type: ignore
+    TracerProvider = None  # type: ignore
+    BatchSpanProcessor = None  # type: ignore
+    ConsoleSpanExporter = None  # type: ignore
+    ParentBased = None  # type: ignore
+    TraceIdRatioBased = None  # type: ignore
+    Span = None  # type: ignore
+    Status = None  # type: ignore
+    StatusCode = None  # type: ignore
     _OTEL_AVAILABLE = False
 
 OTLPSpanExporter = None
