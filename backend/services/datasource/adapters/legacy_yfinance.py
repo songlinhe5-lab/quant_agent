@@ -14,12 +14,36 @@ import os
 import time
 from typing import Any, Optional
 
+from backend.core.ticker_format import format_yf_ticker
 from backend.services.datasource import (
     ErrorInfo,
     HealthInfo,
     RateLimitStatus,
     Result,
 )
+
+# adapter 标准 action（DataSourceInterface 语义，多为大写） → router fetch_type（小写）。
+# router._YF_ACTION_MAP 接受 quote/history/tech/fund_flow/option_chain/financials。
+_ACTION_TO_FETCH_TYPE = {
+    "QUOTE": "quote",
+    "quote": "quote",
+    "HISTORY": "history",
+    "history": "history",
+    "stock_history": "history",
+    "TECH": "tech",
+    "tech": "tech",
+    "technical": "tech",
+    "FUND_FLOW": "fund_flow",
+    "fund_flow": "fund_flow",
+    "OPTION_CHAIN": "option_chain",
+    "option_chain": "option_chain",
+    "FUNDAMENTAL": "financials",
+    "fundamental": "financials",
+    "INFO": "financials",
+    "info": "financials",
+    "FINANCIALS": "financials",
+    "financials": "financials",
+}
 
 
 class LegacyYFinanceDataSource:
@@ -79,14 +103,50 @@ class LegacyYFinanceDataSource:
         )
 
     async def fetch(self, action: str, params: dict[str, Any]) -> Result:
-        """委托给 DataSourceRouter（子服务联邦）。"""
+        """委托给 DataSourceRouter（子服务联邦，含多节点逐一备选）。
+
+        adapter 遵循 DataSourceInterface 协议（action 为大写语义、params 含 ticker），
+        router.fetch_yfinance 签名为 (ticker, fetch_type, **kwargs)。此处完成参数适配，
+        并把 router 返回的 dict 归一为 Result，从而完整复用 router 内
+        ``for node in _get_healthy_nodes("yfinance")`` 的多数据源 failover 逻辑。
+        """
         try:
             if self._service is not None:
                 # 测试注入路径：直接调用传入的 service（保持接口契约可测）
                 return await self._service.fetch(action, params)
+
+            # 1) 提取并格式化 ticker（兼容 ticker / symbol 键）
+            params = params or {}
+            raw_ticker = params.get("ticker") or params.get("symbol") or ""
+            if not raw_ticker:
+                return Result.make_error(
+                    ErrorInfo.normal("YFINANCE_BAD_PARAMS", "yfinance fetch 缺少 ticker/symbol 参数", retryable=False),
+                    source=self.name,
+                )
+            ticker = format_yf_ticker(str(raw_ticker))
+
+            # 2) action → router fetch_type
+            fetch_type = _ACTION_TO_FETCH_TYPE.get(action, action.lower())
+
+            # 3) 其余 params 作为 kwargs 透传给 router（剔除已被消费的键）
+            kwargs = {k: v for k, v in params.items() if k not in ("ticker", "symbol")}
+
             from backend.services.datasource.router import data_source_router
 
-            return await data_source_router.fetch_yfinance(action, params)
+            resp = await data_source_router.fetch_yfinance(ticker, fetch_type, **kwargs)
+
+            # 4) dict → Result 归一化（router 内部已做多节点备选）
+            if resp.get("success") or resp.get("status") == "success":
+                data = resp.get("data") or resp
+                return Result.make_success(data, source=self.name)
+            return Result.make_error(
+                ErrorInfo.normal(
+                    "YFINANCE_REMOTE_ERROR",
+                    str(resp.get("message", "yfinance 子服务返回失败")),
+                    retryable=True,
+                ),
+                source=self.name,
+            )
         except Exception as e:  # pragma: no cover - defensive
             err_str = str(e)
             return Result.make_error(
