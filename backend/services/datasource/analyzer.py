@@ -195,7 +195,7 @@ class RateLimitAnalyzer:
         self,
         is_rate_limit: bool = False,
         is_error: bool = False,
-        latency_ms: float = 0.0,
+        latency_ms: Optional[float] = None,
         rate_limit_category: Optional[str] = None,
     ) -> None:
         """
@@ -204,7 +204,7 @@ class RateLimitAnalyzer:
         Args:
             is_rate_limit: 是否为限流事件
             is_error:      是否为普通错误（不计入限流分析，但记录用于统计）
-            latency_ms:    本次请求延迟（毫秒），用于健康看板展示
+            latency_ms:    本次请求延迟（毫秒），用于健康看板展示；None 表示未成功探测，不计入延迟统计
             rate_limit_category: 限流子类别（rate_limit/quota_exhausted/ip_blocked）
         """
         now = time.time()
