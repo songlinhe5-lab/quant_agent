@@ -6,19 +6,16 @@ Collector Registry - 数据采集器注册表
 worker.py 通过此注册表按需启动配置的采集器。
 
 BE-ARCH-03: start_collector_daemons 只遍历 factory，零具体服务 import。
-新增采集器 = workers/collectors/<name>.py + 本表注册 + COLLECTOR_* env。
+新增采集器 = workers/collectors/<name>.py + 本表注册。
 
-环境变量控制:
-  COLLECTOR_AKSHARE=true|false
-  COLLECTOR_FUTU=true|false
-  COLLECTOR_FINNHUB=true|false
-  COLLECTOR_YFINANCE=true|false
+注意: 采集 daemon 默认全部开启，不再使用 COLLECTOR_* 开关门控。
+主服务数据源获取能力默认全开，子服务按 DS_CAPABILITIES 声明响应。
+数据源失效统一在监控 (router.get_health_status) 中显示，而非静默禁用 daemon。
 """
 
 from __future__ import annotations
 
 import asyncio
-import os
 from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -33,7 +30,6 @@ class CollectorDef:
     """采集器定义（元数据 + 启动工厂）"""
 
     name: str
-    env_var: str
     needs_postgres: bool = False
     description: str = ""
     factory: Optional[CollectorFactory] = None
@@ -45,28 +41,24 @@ class CollectorDef:
 COLLECTORS: Dict[str, CollectorDef] = {
     "akshare": CollectorDef(
         name="akshare",
-        env_var="COLLECTOR_AKSHARE",
         needs_postgres=False,
         description="AKShare 港股通/南向资金 (东方财富, 纯请求式无 daemon)",
         factory=akshare.start,
     ),
     "finnhub": CollectorDef(
         name="finnhub",
-        env_var="COLLECTOR_FINNHUB",
         needs_postgres=False,
         description="Finnhub 全球内幕交易/新闻 (daemon + API)",
         factory=finnhub.start,
     ),
     "yfinance": CollectorDef(
         name="yfinance",
-        env_var="COLLECTOR_YFINANCE",
         needs_postgres=False,
         description="YFinance 宏观指标/大盘数据 (分布式锁 HA daemon)",
         factory=yfinance.start,
     ),
     "fmp": CollectorDef(
         name="fmp",
-        env_var="COLLECTOR_FMP",
         needs_postgres=False,
         description="FMP 盘后批量财报缓存 (Redis, credit 预算约束)",
         factory=fmp.start,
@@ -75,12 +67,12 @@ COLLECTORS: Dict[str, CollectorDef] = {
 
 
 def get_enabled_collectors() -> List[str]:
-    """根据环境变量返回当前节点启用的采集器列表"""
-    enabled = []
-    for name, cdef in COLLECTORS.items():
-        if os.getenv(cdef.env_var, "false").lower() == "true":
-            enabled.append(name)
-    return enabled
+    """返回所有采集器名称（默认全部开启，不再用 COLLECTOR_* 开关门控）。
+
+    采集 daemon 常驻后台，无论数据源当下是否可用都保持开启；
+    数据源失效统一在监控 (router.get_health_status) 中显示，而非静默禁用。
+    """
+    return list(COLLECTORS.keys())
 
 
 async def start_collector_daemons(

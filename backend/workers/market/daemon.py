@@ -403,7 +403,7 @@ async def _trade_stream_daemon(finnhub_service) -> None:
 # ==========================================
 # 宏观核弹数据监控守护进程（已独立至 backend/workers/macro/alert_daemon.py）
 # 注意：原 _macro_alert_daemon 命名误导——其数据来自 AKShare + FRED，与 Finnhub 无关，
-# 仅是寄生在 finnhub collector 启动树上。现独立化，关闭 COLLECTOR_FINNHUB 不影响宏观告警。
+# 仅是寄生在 finnhub collector 启动树上。现独立化，不再依赖采集器开关启停。
 # ==========================================
 
 

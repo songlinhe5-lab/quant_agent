@@ -113,6 +113,8 @@ class DataSourceNode:
     error_count: int = 0
     circuit_breaker_until: float = 0.0
     capabilities: List[str] = field(default_factory=list)
+    # 子服务健康检查端点（用于监控数据源失效），无则跳过主动探测
+    health_check_url: Optional[str] = None
     # RL-13: 限流压力感知
     is_throttled: bool = False
     consecutive_rate_limits: int = 0
@@ -150,6 +152,7 @@ class DataSourceRouter:
         self._nodes["yf_primary"] = DataSourceNode(
             name="yf_primary",
             url=yf_primary,
+            health_check_url=f"{yf_primary}/api/v1/health",
             weight=10,
             capabilities=["yfinance", "quote", "history", "tech"],
         )
@@ -159,6 +162,7 @@ class DataSourceRouter:
             self._nodes[f"yf_backup_{idx}"] = DataSourceNode(
                 name=f"yf_backup_{idx}",
                 url=url,
+                health_check_url=f"{url}/api/v1/health",
                 weight=5,
                 capabilities=["yfinance", "quote", "history", "tech"],
             )
@@ -168,6 +172,7 @@ class DataSourceRouter:
             self._nodes["akshare_remote"] = DataSourceNode(
                 name="akshare_remote",
                 url=akshare_urls[0],
+                health_check_url=f"{akshare_urls[0]}/api/v1/health",
                 weight=10,
                 capabilities=["akshare", "southbound", "northbound", "hsgt"],
             )
@@ -177,6 +182,7 @@ class DataSourceRouter:
             self._nodes["tushare_remote"] = DataSourceNode(
                 name="tushare_remote",
                 url=tushare_urls[0],
+                health_check_url=f"{tushare_urls[0]}/api/v1/health",
                 weight=10,
                 capabilities=[
                     "tushare",
@@ -191,13 +197,14 @@ class DataSourceRouter:
             )
 
         # Futu 主节点节点 (pin 主节点, 单键)
-        # Futu OpenD 仅部署在 US-MASTER 主节点 (127.0.0.1:11111), 子服务在主节点以
-        # COLLECTOR_FUTU=true 持有 OpenD 长连接。主服务经 HTTP 调 source=futu 获取数据,
+        # Futu OpenD 仅部署在 US-MASTER 主节点 (127.0.0.1:11111), 由主节点 data_subservice
+        # 经 DS_CAPABILITIES=futu 持有 OpenD 长连接。主服务经 HTTP 调 source=futu 获取数据,
         # 不持有 SDK。URL 默认 http://localhost:8001 (与主节点 data_subservice 同机)。
         futu_url = os.getenv("FUTU_REMOTE_URL", "http://localhost:8001")
         self._nodes["futu_master"] = DataSourceNode(
             name="futu_master",
             url=futu_url,
+            health_check_url=f"{futu_url}/api/v1/health",
             weight=10,
             capabilities=["futu"],
         )
@@ -210,6 +217,7 @@ class DataSourceRouter:
         self._nodes["fmp_master"] = DataSourceNode(
             name="fmp_master",
             url=fmp_url,
+            health_check_url=f"{fmp_url}/api/v1/health",
             weight=10,
             capabilities=["fmp"],
         )
@@ -660,7 +668,7 @@ class DataSourceRouter:
         """Futu 主节点 HTTP 代理 (source="futu", pin 主节点)。
 
         Futu OpenD 仅部署在 US-MASTER 主节点 (127.0.0.1:11111), 由主节点
-        data_subservice (COLLECTOR_FUTU=true) 持有长连接并对外提供 source=futu。
+        data_subservice (DS_CAPABILITIES=futu) 持有长连接并对外提供 source=futu。
         主服务不持有 SDK, 所有 futu 访问经本路由 pin 到 futu_master 节点。
 
         action 兼容两种写法: 主服务内部 fetch_type (小写) 或 子服务 action (大写),

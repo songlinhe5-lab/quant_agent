@@ -14,7 +14,7 @@ AKShare Collector — 北京 VPS 定时采集 daemon
   北京 VPS 上运行，需确保:
   1. AKSHARE_MODE=direct (默认)
   2. 共享 Redis 可访问 (通过 Tailscale 内网或公网)
-  3. COLLECTOR_AKSHARE=true
+  3. 数据源采集能力默认开启（无需激活开关），子服务侧经 DS_CAPABILITIES 声明 akshare 能力
 
 任务编号: DIST-07 方案 A
 """

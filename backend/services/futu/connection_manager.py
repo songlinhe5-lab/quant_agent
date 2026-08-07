@@ -35,12 +35,8 @@ class ConnectionManager:
         self._host = os.getenv("FUTU_HOST", "127.0.0.1")
         self._port = int(os.getenv("FUTU_PORT", 11111))
         self._lock = threading.Lock()  # 防止并发连接
-        # 联动 COLLECTOR_FUTU (新) 并保留 FUTU_ENABLED (旧) 向后兼容
-        _futu_env = os.getenv("FUTU_ENABLED")
-        if _futu_env is not None:
-            self._enabled = _futu_env.lower() == "true"
-        else:
-            self._enabled = os.getenv("COLLECTOR_FUTU", "false").lower() == "true"
+        # 默认开启 Futu 获取逻辑；无 OpenD 时连接失败由 status/error_msg 在监控呈现，不静默禁用。
+        self._enabled = True
 
     def _is_opend_reachable(self, timeout: float = 2.0) -> bool:
         """
@@ -64,13 +60,6 @@ class ConnectionManager:
 
     def connect(self):
         """连接到 Futu OpenD 行情网关（线程安全）"""
-        # 检查是否启用富途
-        if not self._enabled:
-            self.status = "DISABLED"
-            self.error_msg = "富途服务已禁用 (COLLECTOR_FUTU=false)"
-            print("⚠️ [ConnectionManager] 富途服务已禁用，跳过连接")
-            return
-
         # 线程安全：防止并发连接
         with self._lock:
             # 双重检查：如果已连接，直接返回

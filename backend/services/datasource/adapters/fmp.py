@@ -27,7 +27,7 @@ from backend.services.datasource.subscription import subscription_service
 
 
 async def _fmp_cache_get(symbol: str) -> Optional[dict[str, Any]]:
-    """读取 COLLECTOR_FMP 盘后写入的财报缓存 (quant:fmp:{symbol}, TTL 1d)。
+    """读取 FMP 守护盘后写入的财报缓存 (quant:fmp:{symbol}, TTL 1d)。
 
     命中即返回（不消耗 credit）；未命中/异常返回 None，由调用方降级 REST。
     """

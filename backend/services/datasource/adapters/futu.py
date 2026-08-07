@@ -9,7 +9,7 @@ Futu DataSource Adapter（BE-ARCH-05 / BE-ARCH-07）
   FutuDataSource.fetch() → data_source_router.fetch_futu() → HTTP → data_subservice
   data_source_router 内部负责 action 映射、HMAC 签名、节点健康感知与本地 SDK 降级兜底。
 
-节点约束：Futu OpenD 仅部署在 US-MASTER 主节点，由 data_subservice (COLLECTOR_FUTU=true)
+节点约束：Futu OpenD 仅部署在 US-MASTER 主节点，由 data_subservice (DS_CAPABILITIES=futu)
 持有长连接。主服务不持有 SDK，所有 futu 访问经 HTTP 代理。
 
 状态感知：
