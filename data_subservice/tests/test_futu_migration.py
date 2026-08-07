@@ -1,14 +1,14 @@
 """DIST-FUTU-MIGRATE: 验证 Futu OpenD 长连接已从主服务剥离到子服务 (data_subservice.futu_src)
 
 背景: 按"主服务无状态、可迁移"需求, Futu OpenD TCP 长连接 + 推送生产 + 交易
-下单调用全部下沉到部署在主节点的 data_subservice 实例 (COLLECTOR_FUTU=true)。
+下单调用全部下沉到部署在主节点的 data_subservice 实例 (DS_CAPABILITIES=futu)。
 主服务不再 import futu SDK / 不持有 OpenD 连接, 仅经 HTTP 调子服务 source=futu。
 
 本测试覆盖:
   1. futu_src 包可独立 import, 且不反向依赖 backend (物理解耦)
   2. handle_futu 按 action 正确代理到 futu_service 各方法
   3. 未知 action 返回 error
-  4. main.py 的 /api/v1/data 在未启用 COLLECTOR_FUTU 时返回 503
+  4. main.py 的 /api/v1/data 在 DS_CAPABILITIES 未声明 futu 时返回 503
 
 sys.path 注入由 tests/conftest.py 统一处理, 本文件无需再 hack。
 """
@@ -144,13 +144,16 @@ class TestHandleFutuRouting:
         mock.assert_awaited_once()
 
 
-class TestMainFutuDisabled:
-    """验证未启用 COLLECTOR_FUTU 时主节点子服务拒绝 futu 请求(503)"""
+class TestMainFutuCapabilityGating:
+    """验证子服务按 DS_CAPABILITIES 门控 futu 请求(未声明则 503)"""
 
-    def test_futu_disabled_returns_503(self):
-        with patch.dict(os.environ, {"DATA_SOURCE_HMAC_SECRET": "x", "COLLECTOR_FUTU": "false"}):
+    def test_futu_not_in_capabilities_returns_503(self):
+        with patch.dict(os.environ, {"DATA_SOURCE_HMAC_SECRET": "x", "DS_CAPABILITIES": "yfinance"}, clear=True):
+            import importlib
+
             import data_subservice.main as mod
 
+            importlib.reload(mod)
             mod.HMAC_SECRET = "x"
             from fastapi.testclient import TestClient
 
@@ -160,3 +163,21 @@ class TestMainFutuDisabled:
             sig = hmac.new(b"x", f"{ts}:{body}".encode(), hashlib.sha256).hexdigest()
             r = c.post("/api/v1/data", content=body, headers={"X-Timestamp": ts, "X-Signature": sig})
             assert r.status_code == 503
+
+    def test_futu_in_capabilities_not_503(self):
+        with patch.dict(os.environ, {"DATA_SOURCE_HMAC_SECRET": "x", "DS_CAPABILITIES": "yfinance,futu"}, clear=True):
+            import importlib
+
+            import data_subservice.main as mod
+
+            importlib.reload(mod)
+            mod.HMAC_SECRET = "x"
+            from fastapi.testclient import TestClient
+
+            c = TestClient(mod.app)
+            body = '{"source":"futu","action":"QUOTE","params":{"symbol":"HK.00700"}}'
+            ts = str(int(time.time()))
+            sig = hmac.new(b"x", f"{ts}:{body}".encode(), hashlib.sha256).hexdigest()
+            r = c.post("/api/v1/data", content=body, headers={"X-Timestamp": ts, "X-Signature": sig})
+            # 不返回 503 能力拒绝；后续走 futu handler（可能因无 OpenD 报错，但非 503）
+            assert r.status_code != 503

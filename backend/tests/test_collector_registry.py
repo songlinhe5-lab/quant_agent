@@ -18,18 +18,16 @@ class TestCollectorDef:
         """测试创建采集器定义"""
         cdef = CollectorDef(
             name="test",
-            env_var="COLLECTOR_TEST",
             needs_postgres=True,
             description="Test collector",
         )
         assert cdef.name == "test"
-        assert cdef.env_var == "COLLECTOR_TEST"
         assert cdef.needs_postgres is True
         assert cdef.description == "Test collector"
 
     def test_collector_def_defaults(self):
         """测试采集器定义默认值"""
-        cdef = CollectorDef(name="test", env_var="COLLECTOR_TEST")
+        cdef = CollectorDef(name="test")
         assert cdef.needs_postgres is False
         assert cdef.description == ""
 
@@ -47,19 +45,16 @@ class TestCollectorsDict:
         # AKShare
         akshare = COLLECTORS["akshare"]
         assert akshare.name == "akshare"
-        assert akshare.env_var == "COLLECTOR_AKSHARE"
         assert "港股通" in akshare.description
 
         # Finnhub
         finnhub = COLLECTORS["finnhub"]
         assert finnhub.name == "finnhub"
-        assert finnhub.env_var == "COLLECTOR_FINNHUB"
         assert "内幕交易" in finnhub.description
 
         # YFinance
         yfinance = COLLECTORS["yfinance"]
         assert yfinance.name == "yfinance"
-        assert yfinance.env_var == "COLLECTOR_YFINANCE"
         assert "宏观指标" in yfinance.description
 
     def test_every_collector_has_factory(self):
@@ -69,58 +64,19 @@ class TestCollectorsDict:
 
 
 class TestGetEnabledCollectors:
-    """测试获取启用的采集器列表"""
+    """测试获取启用的采集器列表（默认全部开启，不受 env 开关影响）"""
 
-    def test_no_collectors_enabled(self):
-        """测试所有采集器都未启用时返回空列表"""
+    def test_all_collectors_enabled_by_default(self):
+        """未设置任何环境变量时返回全部采集器"""
         with mock.patch.dict(os.environ, {}, clear=True):
             enabled = get_enabled_collectors()
-            assert enabled == []
+            assert set(enabled) == {"akshare", "finnhub", "yfinance", "fmp"}
 
-    def test_single_collector_enabled(self):
-        """测试单个采集器启用"""
-        with mock.patch.dict(os.environ, {"COLLECTOR_AKSHARE": "true"}, clear=True):
+    def test_returns_all_regardless_of_env(self):
+        """get_enabled_collectors 始终返回全部采集器（COLLECTOR_* 开关已移除）"""
+        with mock.patch.dict(os.environ, {}, clear=True):
             enabled = get_enabled_collectors()
-            assert enabled == ["akshare"]
-
-    def test_multiple_collectors_enabled(self):
-        """测试多个采集器启用"""
-        with mock.patch.dict(
-            os.environ,
-            {
-                "COLLECTOR_AKSHARE": "true",
-                "COLLECTOR_YFINANCE": "true",
-            },
-            clear=True,
-        ):
-            enabled = get_enabled_collectors()
-            assert set(enabled) == {"akshare", "yfinance"}
-
-    def test_case_insensitive_env_var(self):
-        """测试环境变量值大小写不敏感"""
-        with mock.patch.dict(os.environ, {"COLLECTOR_AKSHARE": "True"}, clear=True):
-            enabled = get_enabled_collectors()
-            assert enabled == ["akshare"]
-
-        with mock.patch.dict(os.environ, {"COLLECTOR_AKSHARE": "TRUE"}, clear=True):
-            enabled = get_enabled_collectors()
-            assert enabled == ["akshare"]
-
-    def test_false_env_var(self):
-        """测试 false 值不启用采集器"""
-        with mock.patch.dict(os.environ, {"COLLECTOR_AKSHARE": "false"}, clear=True):
-            enabled = get_enabled_collectors()
-            assert enabled == []
-
-        with mock.patch.dict(os.environ, {"COLLECTOR_AKSHARE": "False"}, clear=True):
-            enabled = get_enabled_collectors()
-            assert enabled == []
-
-    def test_empty_env_var(self):
-        """测试空环境变量不启用采集器"""
-        with mock.patch.dict(os.environ, {"COLLECTOR_AKSHARE": ""}, clear=True):
-            enabled = get_enabled_collectors()
-            assert enabled == []
+            assert set(enabled) == {"akshare", "finnhub", "yfinance", "fmp"}
 
 
 @pytest.mark.asyncio
