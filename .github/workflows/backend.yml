@@ -287,7 +287,7 @@ jobs:
             tz: America/Los_Angeles
             compose: docker-compose.node-s2.yml
             env-file: .env.data-node
-            container: quant-data-subservice-yf-s2
+            container: quant-data-subservice-node-s2
           # 美西从节点2 (VPS_S3)：纯 yfinance
           - node: s3
             host-secret: VPS_S3_HOST
@@ -301,7 +301,7 @@ jobs:
             tz: America/Los_Angeles
             compose: docker-compose.node-s3.yml
             env-file: .env.data-node
-            container: quant-data-subservice-yf-s3
+            container: quant-data-subservice-node-s3
           # 美西从节点3 (VPS_S4)：纯 yfinance
           - node: s4
             host-secret: VPS_S4_HOST
@@ -315,7 +315,7 @@ jobs:
             tz: America/Los_Angeles
             compose: docker-compose.node-s4.yml
             env-file: .env.data-node
-            container: quant-data-subservice-yf-s4
+            container: quant-data-subservice-node-s4
     steps:
       - uses: actions/checkout@v5
 
@@ -373,6 +373,18 @@ jobs:
           ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<'EOF'
             set -e
             cd /opt/quant-agent
+
+            # ── Tailscale IP 自动检测: 若 GitHub Secret 未配置/为空，从宿主机 tailscale0 接口自动获取 ──
+            if [ -z "$NODE_TS_IP" ]; then
+              DETECTED_TS_IP=$(ip -4 addr show tailscale0 2>/dev/null | grep -oP 'inet \K[\d.]+' || true)
+              if [ -n "$DETECTED_TS_IP" ]; then
+                NODE_TS_IP="$DETECTED_TS_IP"
+                echo "🔍 GitHub Secret 未配置 Tailscale IP，已从 tailscale0 接口自动检测: $NODE_TS_IP"
+              else
+                echo "❌ GitHub Secret 未配置 Tailscale IP，且宿主机无 tailscale0 接口，中止部署"
+                exit 1
+              fi
+            fi
 
             # 镜像地址: 北京节点经主节点内网 registry 拉取 (避免跨洋直连 GHCR)，其余节点直连 GHCR
             NODE="${{ matrix.node }}"
