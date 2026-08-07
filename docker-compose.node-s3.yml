@@ -19,7 +19,7 @@ x-common-env: &common-env
 services:
   data-subservice:
     image: ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest
-    container_name: quant-data-subservice-s3
+    container_name: quant-data-subservice-node-s3
     restart: unless-stopped
     env_file:
       - .env.data-node
