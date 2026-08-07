@@ -15,12 +15,12 @@ services:
     container_name: quant_redis
     restart: always
     # 💡 SEC-14: Redis 仅绑定 Tailscale 内网 IP + loopback，不暴露公网。
-    # 多绑定原因: TAILSCALE_S1_IP 非空时会吞掉 127.0.0.1 回退 (见 postgres 段同款坑),
+    # 多绑定原因: TAILSCALE_IP 非空时会吞掉 127.0.0.1 回退 (见 postgres 段同款坑),
     # 导致 bridge 网络的 quant-worker 经 host.docker.internal 连不上 redis。
     # 公网 (38.60.126.42) 不绑定,保持 SEC-14 红线。
     ports:
       - "127.0.0.1:6379:6379"
-      - "${TAILSCALE_S1_IP:-127.0.0.1}:6379:6379"
+      - "${TAILSCALE_IP:-127.0.0.1}:6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-quant_redis_secret_2026}
@@ -52,7 +52,7 @@ services:
     # 仅绑定 loopback 与 Tailscale 内网，公网 (38.60.126.42) 不可达。
     ports:
       - "127.0.0.1:5432:5432"
-      - "${TAILSCALE_S1_IP:-127.0.0.1}:5432:5432"
+      - "${TAILSCALE_IP:-127.0.0.1}:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -168,14 +168,14 @@ services:
 
   # 💡 SEC-17: 私有镜像中转 Registry，仅绑定 loopback + Tailscale 内网，不暴露公网。
   # 用途: 北京等国内节点经 Tailscale 内网拉取镜像，避免跨洋直连 GHCR 龟速。
-  # 绑定 127.0.0.1 (CI push) + TAILSCALE_S1_IP (bj 节点 pull)。Tailscale 网络本身是隔离的 tailnet。
+  # 绑定 127.0.0.1 (CI push) + TAILSCALE_IP (bj 节点 pull)。Tailscale 网络本身是隔离的 tailnet。
   registry:
     image: registry:2
     container_name: quant_registry
     restart: always
     ports:
       - "127.0.0.1:5000:5000"
-      - "${TAILSCALE_S1_IP:-127.0.0.1}:5000:5000"
+      - "${TAILSCALE_IP:-127.0.0.1}:5000:5000"
     environment:
       - REGISTRY_STORAGE_DELETE_ENABLED=true
     volumes:
@@ -197,7 +197,7 @@ services:
     profiles: [monitoring]
   # 💡 OPS-02: Prometheus 仅 Tailscale 内网访问，不对公网暴露
     ports:
-      - "${TAILSCALE_S1_IP:-127.0.0.1}:9090:9090"
+      - "${TAILSCALE_IP:-127.0.0.1}:9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       # 💡 多副本切换 Prometheus recording rules 时用：取消下行注释即可挂载 rules 目录，
@@ -228,7 +228,7 @@ services:
     profiles: [monitoring]
   # 💡 OPS-02: Grafana 仅 Tailscale 内网访问，不对公网暴露
     ports:
-      - "${TAILSCALE_S1_IP:-127.0.0.1}:3001:3000"
+      - "${TAILSCALE_IP:-127.0.0.1}:3001:3000"
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning
       - grafana_data:/var/lib/grafana
