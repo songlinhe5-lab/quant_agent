@@ -208,11 +208,12 @@
 
 ### 9.1 架构概述
 
-- **US-MASTER**（加州主 VPS）：API + Worker + Redis + PostgreSQL + Futu OpenD；Finnhub/FRED 可本地；**YFinance 经 `DataSourceRouter` 调辅助节点**
+- **US-MASTER**（加州主 VPS）：API + Worker + Redis + PostgreSQL + Futu OpenD；Finnhub/FRED/DBnomics/RBI/FMP/Tavily/Bocha/Jina 的 data_subservice 实例（经 `DS_CAPABILITIES` 声明能力）；**YFinance 经 `DataSourceRouter` 调辅助节点**
 - **US-YF-A / US-YF-B**（美国辅助 ×2）：仅 `data_subservice`（yfinance），**独立公网 IP** → Yahoo；心跳写主 Redis Registry
 - **CN-DATA**（中国数据源 VPS）：Tushare + AKShare 子服务 → 主 Redis 或 HMAC 远程；**禁止** YFinance / Futu
 - 前端（Cloudflare Pages）→ 仅 US-MASTER API
 - Futu OpenD 仅主宿主机 `127.0.0.1:11111`，主服务经 `data_source_router.fetch_futu()` HTTP 代理访问
+- **设计原则 (2026-08-07)**：所有数据源仅远程。Futu/FMP/Finnhub/FRED/DBnomics/RBI/Tavily/Bocha/Jina 的连接层全部下沉 data_subservice，主服务经 `DataSourceRouter` HTTP 代理，**不再持有任何本地 SDK / WS 订阅 / 直连外部 API**。源失效在监控如实显示，无本地降级。
 - 跨节点：Tailscale only；子服务 HMAC；不对公网暴露 6379/5432/ds:8001
 
 ### 9.2 数据源能力配置（按 DS_CAPABILITIES）
@@ -223,7 +224,7 @@
   ```bash
   DATA_SOURCE_ROUTER_ENABLED=true   # 启用统一数据源路由（主开关）
   ```
-- **子服务节点**：通过 `DS_CAPABILITIES` 声明本节点能提供的数据源能力，子服务仅响应声明的能力（未声明返回 503）：
+- **子服务节点**：通过 `DS_CAPABILITIES` 声明本节点能提供的数据源能力，子服务仅响应声明的能力（未声明返回 503）。所有连接层（SDK / REST / 爬虫 / WS）均下沉子服务，主服务不再本地兜底：
   ```bash
   # US-YF-A / US-YF-B：仅 yfinance（独立公网 IP → Yahoo）
   DS_CAPABILITIES=yfinance
@@ -231,8 +232,8 @@
   # CN-DATA：AKShare + Tushare（禁止 YFinance / Futu）
   DS_CAPABILITIES=akshare,tushare
 
-  # US-MASTER：Futu OpenD 宿主（本地 TCP 127.0.0.1:11111）+ 可选本地能力
-  DS_CAPABILITIES=futu
+  # US-MASTER：Futu OpenD 宿主（本地 TCP 127.0.0.1:11111）+ 其余远程源
+  DS_CAPABILITIES=futu,fmp,finnhub,fred,dbnomics,rbi,tavily,bocha,jina
   ```
 - **采集 daemon 常驻、无开关门控**：所有采集 daemon（akshare / finnhub / yfinance / fmp）启动即常驻，不使用任何 `COLLECTOR_*` 类开关。数据源失效统一在监控显示，而非靠开关停用。
 
@@ -242,9 +243,9 @@
 |:---|:---|
 | `backend/workers/collector_registry.py` | 采集器注册表（`CollectorDef.factory`） |
 | `backend/workers/collectors/` | 各采集器启动工厂（BE-ARCH-03） |
-| `backend/services/datasource/router.py` | DataSourceRouter 统一路由（YF/Futu/AKShare/Tushare/FMP） |
-| `backend/services/datasource/adapters/` | DataSourceInterface 适配器（Futu/YF/Finnhub/FMP/AKShare/FRED 等） |
-| `data_subservice/` | YF 辅节点 + Futu/FMP/Tushare/AKShare 独立服务 |
+| `backend/services/datasource/router.py` | DataSourceRouter 统一路由（YF/Futu/AKShare/Tushare/FMP/Finnhub/FRED/DBnomics/RBI/Search），全部仅远程 |
+| `backend/services/datasource/adapters/` | DataSourceInterface 适配器（Futu/YF/Finnhub/FMP/AKShare/FRED/DBnomics/RBI/Search 等），仅经 router HTTP 代理 |
+| `data_subservice/` | YF 辅节点 + Futu/FMP/Finnhub/FRED/DBnomics/RBI/Tushare/AKShare/Search 独立服务（持有全部外部连接层） |
 | `docker-compose.master.yml` / `yf-node.yml` / `slave.yml` | 五节点 Compose（见 docs/06 §八） |
 | `.github/workflows/backend.yml` | CI/CD → US-MASTER（矩阵扩 yf/slave） |
 
