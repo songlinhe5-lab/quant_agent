@@ -44,17 +44,6 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
 
         self._init_session()
 
-        # ── DIST-04: 路由器兼容外壳（已废弃，统一走 DataSourceRouter） ──
-        # YFinanceService 始终走本地 SDK，远程路由由 DataSourceRouter.fetch_yfinance 统一处理。
-        # YF_ROUTER_ENABLED 环境变量已废弃，保留读取但不产生任何效果（兼容旧配置）。
-        self._router_enabled: bool = False  # 始终 False，远程路由经 DataSourceRouter
-        self._router = None
-        self._router_init_lock = asyncio.Lock()
-
-    async def _ensure_router(self):
-        """已废弃：YFinanceRouter 已合并入 DataSourceRouter，保留空方法兼容调用方。"""
-        pass
-
     def _evict_stale_cache(self):
         """内存安全防御：清理过期缓存，防止无界字典无限增长导致 OOM"""
         now = time.time()
@@ -116,21 +105,6 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
         except Exception:
             pass
 
-        # 清理路由器
-        try:
-            if hasattr(self, "_router") and self._router is not None:
-                # 尝试同步关闭路由器（如果可能）
-                try:
-                    loop = asyncio.get_running_loop()
-                    # 在异步上下文中，创建任务来关闭
-                    loop.create_task(self._router.close())
-                except RuntimeError:
-                    # 同步上下文中，开独立 loop 关闭
-                    asyncio.run(self._router.close())
-                self._router = None
-        except Exception:
-            pass
-
     async def async_close(self):
         """
         ARCH-03: 异步优雅关闭 - 等待所有任务完成
@@ -162,15 +136,6 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
         except Exception as e:
             print(f"⚠️ Executor 关闭异常：{e}")
 
-        try:
-            # 3. 关闭路由器 HTTP 客户端
-            if self._router is not None:
-                await self._router.close()
-                self._router = None
-                print("✅ YFinanceRouter 已关闭")
-        except Exception as e:
-            print(f"⚠️ Router 关闭异常：{e}")
-
         print("✅ YFinanceService 完全关闭完成")
 
     def get_health_status(self) -> Dict[str, Any]:
@@ -201,10 +166,6 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
             "cooldown_remaining": 0,
             "message": "触发 429 限流熔断中" if cb_state.value == "open" else "正常",
         }
-        # DIST-04: 标注路由器模式
-        if self._router_enabled:
-            status["router_mode"] = True
-            status["message"] = "路由器模式 (请求代理到远程数据源节点)"
         return status
 
     async def fetch_yf_data(

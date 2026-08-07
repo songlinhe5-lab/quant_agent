@@ -1,7 +1,6 @@
 """补充 services/yfinance/macro_daemon.py 遗漏分支的覆盖率测试。
 
 覆盖 CI 报告中的缺失行 (18-344):
-- _router_enabled=True 早返回 (18-26)
 - 主拉取路径: 分布式锁 -> yf.download -> 多线程处理 -> 缓存写入 -> 收盘总结推送 (27-219, 226-344)
 - 空数据降级 (332-335)
 - YFRateLimitError 重试 + 熔断器 record_failure (112-124)
@@ -48,8 +47,7 @@ def _make_df():
 
 
 class DummyMacroDaemon(MacroDaemonMixin):
-    def __init__(self, router_enabled=False):
-        self._router_enabled = router_enabled
+    def __init__(self):
         self._executor = ThreadPoolExecutor(max_workers=1)
         self.cb = MagicMock()
         self.llm_service = MagicMock()
@@ -62,18 +60,6 @@ class DummyMacroDaemon(MacroDaemonMixin):
         )
         self.llm_service.get_model = lambda: "gpt"
         self.session = MagicMock()
-
-
-# ── router 模式早返回 (18-26) ─────────────────────────────────────────────────
-@pytest.mark.asyncio
-async def test_router_mode_early_return(monkeypatch):
-    async def _break_immediate(*a, **k):
-        raise _BreakLoop()
-
-    monkeypatch.setattr(asyncio, "sleep", _break_immediate)
-    daemon = DummyMacroDaemon(router_enabled=True)
-    with pytest.raises(_BreakLoop):
-        await daemon.macro_data_daemon()
 
 
 # ── 主拉取 + 处理 + 缓存 + 收盘总结 (27-219, 226-344) ─────────────────────────

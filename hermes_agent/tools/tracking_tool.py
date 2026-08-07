@@ -72,7 +72,7 @@ class StockTrackingTool:
             if not ticker:
                 return "操作 add 或 remove 必须提供具体的股票代码 (ticker)。"
 
-            from backend.services.futu.utils import format_ticker
+            from backend.core.ticker_format import format_ticker
 
             fmt_ticker = format_ticker(ticker)
             alert_key = f"quant:alerts:by_ticker:{fmt_ticker}"

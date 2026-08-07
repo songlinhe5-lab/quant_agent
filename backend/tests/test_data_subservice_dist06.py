@@ -2,13 +2,13 @@
 DIST-06: data_subservice yfinance 核心逻辑迁移 — 单元测试（重构后版）
 ================================================================
 
-背景: 原 DIST-06 测试针对旧版 `YFinanceWorker` 类 + daemon + `lifespan` + `/ds/health`
+背景: 原 DIST-06 测试针对旧版 `YFinanceWorker` 类 + daemon + `/ds/health`
 架构, 而子服务已重构为函数式 `handle_yfinance` + 模块级单例 `yfinance_service`
-(叶子节点, 无 router / 无守护进程)。旧测试引用的 `YFinanceWorker` / `_yf_worker` /
+(叶子节点, 无守护进程)。旧测试引用的 `YFinanceWorker` / `_yf_worker` /
 `DS_CAPABILITIES` / `/ds/health` 等符号已不存在, 导致整文件 collection error。
 
 本文件重写为适配当前架构, 覆盖:
-  1. `yfinance_service` 单例身份 (叶子节点, _router_enabled=False, 无 macro daemon)
+  1. `yfinance_service` 单例身份 (叶子节点, 无 macro daemon)
   2. `fetch_yf_data` 统一入口路由表
   3. `handle_yfinance` 按 action 正确代理到 service 各方法
   4. 未知 action 返回 error
@@ -45,18 +45,12 @@ class TestYFinanceServiceSingleton:
 
         assert isinstance(yfinance_service, YFinanceService)
 
-    def test_router_disabled_leaf_node(self):
-        """子服务恒为叶子节点, 无 router, 无 macro daemon"""
+    def test_leaf_node_no_macro_daemon(self):
+        """子服务恒为叶子节点, 无 macro daemon"""
         from data_subservice._internal.yfinance import yfinance_service
 
-        assert yfinance_service._router_enabled is False
         assert yfinance_service.get_macro_daemon() is None
         assert yfinance_service.source_name == "yfinance"
-
-    def test_ensure_router_noop(self):
-        from data_subservice._internal.yfinance import yfinance_service
-
-        assert yfinance_service._ensure_router() is None
 
 
 # ─────────────────────────────────────────

@@ -156,9 +156,7 @@ class DataServiceFacade:
             enable_merge=False,
         )
 
-    async def screen_stocks(
-        self, market: str, filters: Any, prefer_sources: Optional[list[str]] = None
-    ) -> Result:
+    async def screen_stocks(self, market: str, filters: Any, prefer_sources: Optional[list[str]] = None) -> Result:
         """条件选股（Futu 专属能力）。"""
         return await self._dispatch(
             "SCREEN_STOCKS",
@@ -172,6 +170,17 @@ class DataServiceFacade:
         return await self._dispatch(
             "HSGT_HOLDERS",
             {"symbol": symbol},
+            prefer_sources=prefer_sources,
+            enable_merge=False,
+        )
+
+    async def get_insider_transactions(
+        self, ticker: str, limit: int = 20, prefer_sources: Optional[list[str]] = None
+    ) -> Result:
+        """高管内幕交易记录（Finnhub 能力）。"""
+        return await self._dispatch(
+            "INSIDER_TRADING",
+            {"ticker": ticker, "limit": limit},
             prefer_sources=prefer_sources,
             enable_merge=False,
         )

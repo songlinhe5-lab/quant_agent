@@ -4,7 +4,7 @@ from typing import Type
 import httpx
 from pydantic import BaseModel, Field
 
-from backend.services.finnhub.service import finnhub_service
+from backend.services.datasource.business import data_service
 from hermes_agent.tool_registry import register_tool
 
 
@@ -38,23 +38,24 @@ class InsiderTransactionsTool:
             return await self._query_hk_insider_parallel(ticker, stock_code)
 
         try:
-            res = await finnhub_service.get_insider_transactions(ticker=ticker, limit=limit)
-            if res.get("status") == "success":
-                data = res.get("data", [])
+            res = await data_service.get_insider_transactions(ticker=ticker, limit=limit)
+            if res.is_success and res.data:
+                data = res.data
                 if not data:
                     return f"未查询到 {ticker} 近期的高管内幕交易记录。"
 
                 # 格式化输出为紧凑的字符串，节省大模型 Token 上下文
                 output = []
                 for item in data:
-                    action_icon = "🟢" if item["action"] == "BUY" else "🔴"
+                    action_icon = "🟢" if item.get("action") == "BUY" else "🔴"
                     output.append(
-                        f"- {item['date']} | {item['name'][:15]:<15} | {action_icon}{item['action']} {item['change']:+,} 股 @ ${item['transaction_price']}"
+                        f"- {item.get('date', '')} | {item.get('name', '')[:15]:<15} | {action_icon}{item.get('action', '')} {item.get('change', 0):+,} 股 @ ${item.get('transaction_price', 0)}"
                     )
 
                 return f"【{ticker} 近期高管内幕交易记录】\n" + "\n".join(output)
             else:
-                return f"获取失败: {res.get('message')}"
+                err_msg = res.error.message if res.error else "未知错误"
+                return f"获取失败: {err_msg}"
         except Exception as e:
             return f"执行工具异常: {str(e)}"
 
