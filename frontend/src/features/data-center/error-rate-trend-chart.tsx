@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { TrendingUp, Loader2, RefreshCw } from 'lucide-react'
 import { apiClient } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
@@ -36,7 +36,7 @@ export function ErrorRateTrendChart({ source, className }: ErrorRateTrendChartPr
   const { theme } = useTheme()
   const isDark = theme === 'dark'
 
-  const fetchTrend = async () => {
+  const fetchTrend = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
@@ -53,13 +53,13 @@ export function ErrorRateTrendChart({ source, className }: ErrorRateTrendChartPr
     } finally {
       setLoading(false)
     }
-  }
+  }, [source])
 
   useEffect(() => {
     if (source) {
       fetchTrend()
     }
-  }, [source])
+  }, [source, fetchTrend])
 
   const chartRef = useEChart(
     () => {

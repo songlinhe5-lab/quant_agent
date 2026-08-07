@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Activity, Loader2, RefreshCw } from 'lucide-react'
 import { apiClient } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
@@ -34,7 +34,7 @@ export function AvailabilityTimelineChart({ source, className }: AvailabilityTim
   const { theme } = useTheme()
   const isDark = theme === 'dark'
 
-  const fetchTimeline = async () => {
+  const fetchTimeline = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
@@ -51,13 +51,13 @@ export function AvailabilityTimelineChart({ source, className }: AvailabilityTim
     } finally {
       setLoading(false)
     }
-  }
+  }, [source])
 
   useEffect(() => {
     if (source) {
       fetchTimeline()
     }
-  }, [source])
+  }, [source, fetchTimeline])
 
   const chartRef = useEChart(
     () => {

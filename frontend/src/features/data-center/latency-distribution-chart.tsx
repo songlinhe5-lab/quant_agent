@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { BarChart3, Loader2, RefreshCw } from 'lucide-react'
 import { apiClient } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
@@ -31,7 +31,7 @@ export function LatencyDistributionChart({ source, className }: LatencyDistribut
   const { theme } = useTheme()
   const isDark = theme === 'dark'
 
-  const fetchDistribution = async () => {
+  const fetchDistribution = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
@@ -48,13 +48,13 @@ export function LatencyDistributionChart({ source, className }: LatencyDistribut
     } finally {
       setLoading(false)
     }
-  }
+  }, [source])
 
   useEffect(() => {
     if (source) {
       fetchDistribution()
     }
-  }, [source])
+  }, [source, fetchDistribution])
 
   const chartRef = useEChart(
     () => {
