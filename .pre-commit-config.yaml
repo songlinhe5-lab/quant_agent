@@ -18,7 +18,7 @@ repos:
     hooks:
       - id: mypy
         name: Python Type Check
-        entry: bash -c 'cd /Users/stephenhe/Development/workspace/quant_agent && uv run mypy backend/core/ backend/routers/ --ignore-missing-imports --no-error-summary 2>&1 | head -30 || true'
+        entry: bash -c 'cd /Users/stephenhe/Development/workspace/quant_agent && uv run --with "mypy>=1.10.0" mypy backend/core/ backend/routers/ --ignore-missing-imports --no-error-summary 2>&1 | head -30 || true'
         language: system
         files: ^backend/.*\.py$
         pass_filenames: false
@@ -28,7 +28,7 @@ repos:
     hooks:
       - id: backend-tests
         name: Backend Tests
-        entry: bash -c 'cd /Users/stephenhe/Development/workspace/quant_agent && uv run pytest backend/tests/test_auth.py backend/tests/test_market.py backend/tests/test_tools.py -v --tb=short 2>&1 | tail -20'
+        entry: bash -c 'cd /Users/stephenhe/Development/workspace/quant_agent && python -m pytest backend/tests/test_auth.py backend/tests/test_market.py backend/tests/test_tools.py -v --tb=short 2>&1 | tail -20'
         language: system
         files: ^backend/.*\.py$
         pass_filenames: false
