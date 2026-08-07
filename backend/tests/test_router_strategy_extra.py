@@ -215,9 +215,9 @@ class TestStrategyDraft:
 
 
 class TestStrategyRunSandbox:
-    @patch("backend.routers.strategy.redis_client")
-    @patch("backend.routers.strategy._fetch_backtest_data", new_callable=AsyncMock)
-    @patch("backend.routers.strategy.run_dynamic_sandbox_backtest")
+    @patch("backend.routers.strategy_sandbox.redis_client")
+    @patch("backend.routers.strategy_sandbox._fetch_backtest_data", new_callable=AsyncMock)
+    @patch("backend.routers.strategy_sandbox.run_dynamic_sandbox_backtest")
     def test_run_sandbox_data_fail(self, mock_bt, mock_fetch, mock_redis, client):
         """数据加载失败"""
         from backend.routers.auth import get_current_user

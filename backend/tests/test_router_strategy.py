@@ -159,9 +159,9 @@ class TestStrategySandboxRoutes:
         else:
             app.dependency_overrides[get_current_user] = self._orig
 
-    @patch("backend.routers.strategy._fetch_backtest_data", new_callable=AsyncMock)
-    @patch("backend.routers.strategy.redis_client")
-    @patch("backend.routers.strategy.run_dynamic_sandbox_backtest")
+    @patch("backend.routers.strategy_sandbox._fetch_backtest_data", new_callable=AsyncMock)
+    @patch("backend.routers.strategy_sandbox.redis_client")
+    @patch("backend.routers.strategy_sandbox.run_dynamic_sandbox_backtest")
     def test_run_sandbox_success(self, mock_run, mock_redis, mock_fetch):
         """正常路径：沙箱回测成功"""
         pipe_mock = AsyncMock()
@@ -184,8 +184,8 @@ class TestStrategySandboxRoutes:
         assert resp.status_code == 200
         assert _unwrap(resp)["status"] == "success"
 
-    @patch("backend.routers.strategy._fetch_backtest_data", new_callable=AsyncMock)
-    @patch("backend.routers.strategy.redis_client")
+    @patch("backend.routers.strategy_sandbox._fetch_backtest_data", new_callable=AsyncMock)
+    @patch("backend.routers.strategy_sandbox.redis_client")
     def test_run_sandbox_data_load_fail(self, mock_redis, mock_fetch):
         """异常路径：数据加载失败时返回 error"""
         pipe_mock = AsyncMock()

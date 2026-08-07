@@ -20,9 +20,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 from fastapi import FastAPI
 
 from backend.routers.market import router
+from backend.routers.market_fundamental import router as fundamental_router
 
 app = FastAPI()
 app.include_router(router)
+app.include_router(fundamental_router)
 client = TestClient(app, raise_server_exceptions=False)
 
 
@@ -128,7 +130,7 @@ class TestGetQuote:
 
 # ─── /market/fundamental/{ticker} ─────────────────────────────────────
 class TestGetFundamental:
-    @patch("backend.routers.market.market_data_gateway")
+    @patch("backend.routers.market_fundamental.market_data_gateway")
     def test_macro_ticker_routes_to_fred(self, mock_fred):
         mock_fred.get_series_observations = AsyncMock(
             return_value={"status": "success", "data": [{"date": "2024-01-01", "value": "5000"}]}
@@ -139,7 +141,7 @@ class TestGetFundamental:
         assert data["status"] == "success"
         assert "fred_series_id" in data["data"]
 
-    @patch("backend.routers.market.data_service")
+    @patch("backend.routers.market_fundamental.data_service")
     def test_futu_success(self, mock_ds):
         mock_ds.get_fundamental = AsyncMock(
             return_value=Result(status=ResultStatus.SUCCESS, data={"trailing_PE": 20.0}, source="futu")
@@ -148,7 +150,7 @@ class TestGetFundamental:
         assert resp.status_code == 200
         assert resp.json()["data"]["trailing_PE"] == 20.0
 
-    @patch("backend.routers.market.data_service")
+    @patch("backend.routers.market_fundamental.data_service")
     def test_etf_returns_warning(self, mock_ds):
         mock_ds.get_fundamental = AsyncMock(
             return_value=Result(status=ResultStatus.ERROR, error=ErrorInfo(code="NOT_SUPPORTED", message="不支持"))
@@ -164,7 +166,7 @@ class TestGetFundamental:
         assert data["status"] == "success"
         assert "ETF" in data["message"]
 
-    @patch("backend.routers.market.data_service")
+    @patch("backend.routers.market_fundamental.data_service")
     def test_yfinance_stock_fundamentals(self, mock_ds):
         """回归：Futu 失败后降级到 YFinance 个股基本面 (Result 对象 API)"""
         mock_ds.get_fundamental = AsyncMock(
@@ -176,7 +178,7 @@ class TestGetFundamental:
                 data={
                     "quoteType": "EQUITY",
                     "shortName": "ProShares S&P 500 Ex-Health Care",
-                    "trailingPE": 18.5,
+                    "trailingPe": 18.5,
                     "returnOnEquity": 0.1234,
                     "shortRatio": 2.1,
                 },
@@ -193,8 +195,8 @@ class TestGetFundamental:
 
 # ─── /market/news ───────────────────────────────────────────────────────
 class TestGetCompanyNews:
-    @patch("backend.routers.market.redis_client")
-    @patch("backend.routers.market.market_data_gateway")
+    @patch("backend.routers.market_fundamental.redis_client")
+    @patch("backend.routers.market_fundamental.market_data_gateway")
     def test_cached_result(self, mock_finhub, mock_redis):
         import json
 
@@ -204,8 +206,8 @@ class TestGetCompanyNews:
         assert resp.status_code == 200
         assert resp.json()["data"][0]["headline"] == "Cached"
 
-    @patch("backend.routers.market.redis_client")
-    @patch("backend.routers.market.market_data_gateway")
+    @patch("backend.routers.market_fundamental.redis_client")
+    @patch("backend.routers.market_fundamental.market_data_gateway")
     def test_fetch_from_finnhub(self, mock_finhub, mock_redis):
         mock_redis.get = AsyncMock(return_value=None)
         mock_finhub.get_company_news = AsyncMock(
@@ -257,7 +259,7 @@ class TestGetTopHolders:
         assert resp.status_code == 200
         assert resp.json()["status"] == "warning"
 
-    @patch("backend.routers.market.data_service")
+    @patch("backend.routers.market_fundamental.data_service")
     def test_hk_ticker_calls_akshare(self, mock_ds):
         mock_ds.get_hsgt_holders = AsyncMock(
             return_value=Result(status=ResultStatus.SUCCESS, data=[], source="akshare")
@@ -268,7 +270,7 @@ class TestGetTopHolders:
 
 # ─── /market/insider-marquee ───────────────────────────────────────────
 class TestInsiderMarquee:
-    @patch("backend.routers.market.redis_client")
+    @patch("backend.routers.market_fundamental.redis_client")
     def test_returns_success(self, mock_redis):
         import json
 

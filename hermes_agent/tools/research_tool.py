@@ -7,7 +7,7 @@ from typing import List, Type
 from pydantic import BaseModel, Field
 
 from backend.backtest import run_batch_sandbox_backtest
-from backend.routers.strategy import _fetch_backtest_data
+from backend.routers.strategy_sandbox import _fetch_backtest_data
 from backend.services.screener.screener_service import screener_service
 from hermes_agent.tool_registry import register_tool
 

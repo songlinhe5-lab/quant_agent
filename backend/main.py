@@ -97,6 +97,7 @@ from backend.routers.internal import router as internal_router  # noqa: E402
 from backend.routers.logs import router as logs_router  # noqa: E402
 from backend.routers.macro import router as macro_router  # noqa: E402
 from backend.routers.market import router as market_router  # noqa: E402
+from backend.routers.market_fundamental import router as market_fundamental_router  # noqa: E402
 from backend.routers.market_review import router as market_review_router  # noqa: E402
 from backend.routers.mcp import router as mcp_router  # noqa: E402
 from backend.routers.oms import router as oms_router  # noqa: E402
@@ -110,6 +111,7 @@ from backend.routers.screener import router as screener_router  # noqa: E402
 from backend.routers.search import router as search_router  # noqa: E402
 from backend.routers.settings import router as settings_router  # noqa: E402
 from backend.routers.strategy import router as strategy_router  # noqa: E402
+from backend.routers.strategy_sandbox import router as strategy_sandbox_router  # noqa: E402
 from backend.routers.system import router as system_router  # noqa: E402
 from backend.routers.system_health import root_router  # noqa: E402
 from backend.routers.system_health import router as system_health_router  # noqa: E402
@@ -169,6 +171,7 @@ def create_app() -> FastAPI:
     application.include_router(chat_router, prefix=API_PREFIX)
     application.include_router(settings_router, prefix=API_PREFIX)
     application.include_router(market_router, prefix=API_PREFIX)
+    application.include_router(market_fundamental_router, prefix=API_PREFIX)
     application.include_router(market_review_router, prefix=API_PREFIX)
     application.include_router(briefing_router, prefix=API_PREFIX)  # BRD-01
     application.include_router(trade_router, prefix=API_PREFIX)
@@ -182,6 +185,7 @@ def create_app() -> FastAPI:
     application.include_router(screener_router, prefix=API_PREFIX)
     application.include_router(search_router, prefix=API_PREFIX)
     application.include_router(strategy_router, prefix=API_PREFIX)
+    application.include_router(strategy_sandbox_router, prefix=API_PREFIX)
     application.include_router(oms_router, prefix=API_PREFIX)
     application.include_router(audit_router, prefix=API_PREFIX)
     application.include_router(client_router, prefix=API_PREFIX)

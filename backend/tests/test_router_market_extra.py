@@ -118,7 +118,7 @@ class TestMarketSearchRoutes:
 class TestMarketHoldersRoutes:
     """机构持仓路由测试"""
 
-    @patch("backend.routers.market.market_data_gateway")
+    @patch("backend.routers.market_fundamental.market_data_gateway")
     def test_get_holders_us_ticker_warning(self, mock_akshare):
         """参数路径：美股标的直接返回 warning"""
         client = TestClient(app)
@@ -127,7 +127,7 @@ class TestMarketHoldersRoutes:
         data = _unwrap(resp)
         assert data["status"] == "warning"
 
-    @patch("backend.routers.market.data_service")
+    @patch("backend.routers.market_fundamental.data_service")
     def test_get_holders_hk_ticker_success(self, mock_ds):
         """正常路径：获取港股机构持仓"""
         mock_ds.get_hsgt_holders = AsyncMock(
@@ -146,7 +146,7 @@ class TestMarketHoldersRoutes:
 class TestMarketInsiderMarqueeRoutes:
     """内幕交易跑马灯路由测试"""
 
-    @patch("backend.routers.market.redis_client")
+    @patch("backend.routers.market_fundamental.redis_client")
     def test_get_insider_marquee_success(self, mock_redis):
         """正常路径：从 Redis ZSET 获取跑马灯数据"""
         import json
@@ -159,7 +159,7 @@ class TestMarketInsiderMarqueeRoutes:
         assert data["status"] == "success"
         assert len(data["data"]) == 1
 
-    @patch("backend.routers.market.redis_client")
+    @patch("backend.routers.market_fundamental.redis_client")
     def test_get_insider_marquee_empty(self, mock_redis):
         """空数据路径：ZSET 为空时返回空列表"""
         mock_redis.zrevrange = AsyncMock(return_value=[])
