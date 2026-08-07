@@ -121,7 +121,9 @@ node_modules/
 .pnp/
 .pnp.js/
 .yarn/
-# 前端使用 pnpm 管理依赖，忽略 npm 误生成的锁文件
+# 项目统一使用 pnpm 管理依赖，忽略 npm/yarn 误生成的锁文件
+package-lock.json
+yarn.lock
 frontend/package-lock.json
 
 # 构建产物

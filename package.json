@@ -1,9 +1,5 @@
 {
   "scripts": {
-    "dev": "next dev frontend",
-    "build": "next build frontend",
-    "start": "next start frontend",
-    "lint": "next lint frontend",
     "proto:gen": "mkdir -p frontend/src/lib/proto && pbjs -t static-module -o frontend/src/lib/proto/market.js shared/proto/market.proto && pbts -o frontend/src/lib/proto/market.d.ts frontend/src/lib/proto/market.js"
   },
   "dependencies": {
@@ -49,8 +45,6 @@
     "lucide-react": "^1.17.0",
     "mermaid": "^11.15.0",
     "monaco-editor": "^0.55.1",
-    "next": "^16.2.6",
-    "next-themes": "^0.4.6",
     "pixi.js": "^8.18.1",
     "protobufjs": "^8.6.0",
     "react": "^19.2.6",
