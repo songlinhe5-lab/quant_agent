@@ -15,8 +15,8 @@ services:
     container_name: quant_redis
     restart: always
     # 💡 SEC-14: Redis 仅绑定 Tailscale 内网 IP + loopback，不暴露公网。
-    # 双绑定原因: TAILSCALE_IP 非空时会吞掉 127.0.0.1 回退 (见 postgres 段同款坑),
-    # 导致 host 网络模式的 quant-worker 经 127.0.0.1 连不上 redis。
+    # 多绑定原因: TAILSCALE_IP 非空时会吞掉 127.0.0.1 回退 (见 postgres 段同款坑),
+    # 导致 bridge 网络的 quant-worker 经 host.docker.internal 连不上 redis。
     # 公网 (38.60.126.42) 不绑定,保持 SEC-14 红线。
     ports:
       - "127.0.0.1:6379:6379"
@@ -49,11 +49,10 @@ services:
       - POSTGRES_PASSWORD=${DB_PASSWORD:-quant_pg_secret_2026}
       - POSTGRES_DB=${DB_NAME:-quant_agent_db}
     # 💡 SEC-15: PostgreSQL 不暴露公网端口。
-    # 仅绑定 Tailscale 私有网 (100.102.223.44) 与 loopback，供 host 网络模式的
-    # quant-worker 经 127.0.0.1/100.102.223.44 访问；公网 (38.60.126.42) 不可达。
+    # 仅绑定 loopback 与 Tailscale 内网，公网 (38.60.126.42) 不可达。
     ports:
       - "127.0.0.1:5432:5432"
-      - "100.102.223.44:5432:5432"
+      - "${TAILSCALE_IP:-127.0.0.1}:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -85,26 +84,31 @@ services:
         condition: service_healthy
     env_file:
       - .env
-    # host 网络模式:容器共享宿主网络栈,容器内 127.0.0.1 = 宿主,
-    # 直接 loopback 连 OpenD (127.0.0.1:11111),无需中转/不破 SEC-15。
-    # 与 quant-worker 一致,避免 bridge 内 127.0.0.1 指向容器自身导致 OpenD 不可达。
-    network_mode: host
+    # 💡 SEC-16: 不使用 host 网络模式，避免共享宿主网络栈暴露所有端口。
+    # 改用 bridge 网络 + 端口映射。
+    # 8000 端口需对公网开放（frontend 经 Cloudflare Pages 回调），
+    # 同时绑定 127.0.0.1 供本机 / Tailscale 内网访问。
+    ports:
+      - "0.0.0.0:8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
-      - REDIS_HOST=127.0.0.1
+      - REDIS_HOST=host.docker.internal
       - REDIS_PORT=6379
       - QUANT_ENV=production
       - OTEL_ENABLED=false
-      - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_secret_2026}@127.0.0.1:5432/${DB_NAME:-quant_agent_db}
+      - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_secret_2026}@host.docker.internal:5432/${DB_NAME:-quant_agent_db}
       - DATA_SOURCE_ROUTER_ENABLED=true
       # 数据子服务固定运行于 8001 端口，使用独立 .env.data-node 配置（与主服务 .env 隔离）。
       # 主服务部署时仅需在主 .env 中填入子服务内网 IP（DS_NODE_IP，同机填 127.0.0.1），
       # 以下变量由 compose 从 .env 读取 DS_NODE_IP 自动展开，无需手动硬编码。
-      - YF_PRIMARY_NODE_URL=http://${DS_NODE_IP:-127.0.0.1}:8001
+      # bridge 模式下经 host.docker.internal 访问宿主上运行的子服务
+      - YF_PRIMARY_NODE_URL=http://host.docker.internal:8001
       - YF_BACKUP_NODE_URL=http://${VPS_S2_TAILSCALE_IP:-s3}:8001,http://${VPS_S3_TAILSCALE_IP:-s4}:8001,http://${VPS_S4_TAILSCALE_IP:-s2}:8001
       - TUSHARE_REMOTE_URL=http://${VPS_BJ_TAILSCALE_IP:-bj}:8001
       - AKSHARE_REMOTE_URL=http://${VPS_BJ_TAILSCALE_IP:-bj}:8001
-      # host 模式下 127.0.0.1 即宿主 loopback,直连 OpenD
-      - FUTU_HOST=127.0.0.1
+      # bridge 模式下经 host.docker.internal 访问宿主 loopback 上的 OpenD
+      - FUTU_HOST=host.docker.internal
       - FUTU_PORT=11111
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')\" || exit 1"]
@@ -115,6 +119,8 @@ services:
     volumes:
       - quant_db:/app/backend/data
       - ./reports:/app/reports
+    networks:
+      - quant-internal
     deploy:
       resources:
         limits:
@@ -136,19 +142,22 @@ services:
         condition: service_healthy
     env_file:
       - .env
-    # host 网络模式:容器共享宿主网络栈,容器内 127.0.0.1 = 宿主,
-    # 直接 loopback 连 OpenD (127.0.0.1:11111),无需中转/不破 SEC-15。
-    network_mode: host
+    # 💡 SEC-16: 不使用 host 网络模式，避免共享宿主网络栈暴露所有端口。
+    # 改用 bridge 网络，经 host.docker.internal 访问宿主服务。
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
-      - REDIS_HOST=127.0.0.1
+      - REDIS_HOST=host.docker.internal
       - REDIS_PORT=6379
       - QUANT_ENV=production
       - OTEL_ENABLED=false
-      # host 模式下 127.0.0.1 即宿主 loopback,直连 OpenD
-      - FUTU_HOST=127.0.0.1
-      - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_secret_2026}@127.0.0.1:5432/${DB_NAME:-quant_agent_db}
+      # bridge 模式下经 host.docker.internal 访问宿主 loopback 上的 OpenD
+      - FUTU_HOST=host.docker.internal
+      - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_secret_2026}@host.docker.internal:5432/${DB_NAME:-quant_agent_db}
     volumes:
       - quant_db:/app/backend/data
+    networks:
+      - quant-internal
     deploy:
       resources:
         limits:
@@ -157,16 +166,16 @@ services:
         reservations:
           memory: 256M
 
-  # 私有镜像中转 Registry (0.0.0.0 全接口绑定)
-  # 用途: 北京等国内节点经 Tailscale 内网拉取镜像，避免跨洋直连 GHCR 龟速
-  # 绑定 0.0.0.0 同时覆盖 localhost (CI push) 和 Tailscale IP (bj 节点 pull)。
-  # 安全性: Tailscale 网络本身是隔离的 tailnet，公网无法访问 5000 端口。
+  # 💡 SEC-17: 私有镜像中转 Registry，仅绑定 loopback + Tailscale 内网，不暴露公网。
+  # 用途: 北京等国内节点经 Tailscale 内网拉取镜像，避免跨洋直连 GHCR 龟速。
+  # 绑定 127.0.0.1 (CI push) + TAILSCALE_IP (bj 节点 pull)。Tailscale 网络本身是隔离的 tailnet。
   registry:
     image: registry:2
     container_name: quant_registry
     restart: always
     ports:
-      - "0.0.0.0:5000:5000"
+      - "127.0.0.1:5000:5000"
+      - "${TAILSCALE_IP:-127.0.0.1}:5000:5000"
     environment:
       - REGISTRY_STORAGE_DELETE_ENABLED=true
     volumes:
