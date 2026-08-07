@@ -11,8 +11,6 @@ from typing import Any
 
 import httpx
 
-from data_subservice._internal.logger import logger
-
 _BASE = "https://api.stlouisfed.org/fred"
 
 

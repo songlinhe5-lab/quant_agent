@@ -6,12 +6,9 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 import httpx
-
-from data_subservice._internal.logger import logger
 
 _BASE = "https://api.db.nomics.world/api/v1"
 

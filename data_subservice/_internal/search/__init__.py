@@ -11,8 +11,6 @@ from typing import Any
 
 import httpx
 
-from data_subservice._internal.logger import logger
-
 
 class TavilyService:
     async def search(self, query: str, max_results: int = 5, **kw) -> dict[str, Any]:

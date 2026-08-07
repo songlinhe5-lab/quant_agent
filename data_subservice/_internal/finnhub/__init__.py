@@ -87,7 +87,6 @@ class FinnhubService:
 
         to = datetime.utcnow()
         frm = to - timedelta(days=days_back)
-        fmt = "%Y-%m-%d"
         return await self._get(
             "/stock/candle",
             {
