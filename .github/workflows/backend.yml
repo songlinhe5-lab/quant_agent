@@ -162,7 +162,9 @@ jobs:
             IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
             curl -sSL -o docker-compose.master.yml "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.master.yml"
             # 拉取 .env.example 供首次生成 .env 参考 (与 compose 同源, 保证版本一致)
-            curl -sSL -o .env.example "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/.env.example" || echo "⚠️ 拉取 .env.example 失败，首次生成将走兜底"
+            curl -sSL -o .env.example "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/.env.example" || echo "⚠️ 拉取 .env.example 失败，首次生成将走兖底"
+            # 拉取 .env.data-node.example 供首次生成 .env.data-node 参考
+            curl -sSL -o .env.data-node.example "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/.env.data-node.example" || echo "⚠️ 拉取 .env.data-node.example 失败"
             sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:latest|${IMAGE}|g" docker-compose.master.yml
 
             # 🧹 部署前自动回收悬空 docker 资源（旧镜像/退出容器/未用网络/构建缓存），
