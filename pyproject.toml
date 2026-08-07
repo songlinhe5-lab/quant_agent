@@ -9,7 +9,6 @@ dependencies = [
     "rich>=13.0.0",
     "python-dotenv>=1.0.0",
     # Quant & API (数据源 SDK 移到 optional-dependencies.datasource)
-    "yfinance==1.4.1",
     "pandas>=2.0.0",
     "aiohttp>=3.9.0",
     "pyarrow>=15.0.0",
@@ -61,6 +60,8 @@ dependencies = [
 [project.optional-dependencies]
 # 数据源 SDK（子服务节点安装，主节点走 HTTP 路由不安装）
 datasource = [
+    "websockets>=14.0",        # Finnhub WebSocket 客户端
+    "finnhub-python>=2.5.0",   # Finnhub REST API (备用)
     "tushare>=1.4.0",
     "akshare>=1.1.15",
     "futu-api>=10.7.0",
@@ -106,7 +107,8 @@ ignore = ["E501"]
 quote-style = "double"
 
 [tool.pytest.ini_options]
-testpaths = ["backend/tests"]
+# 双目录: 主服务单测 + 数据子服务单测, 一并纳入 CI 验证闭环
+testpaths = ["backend/tests", "data_subservice/tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]

@@ -34,12 +34,22 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 # 节点 ID 校验
 NODE_ID="${NODE_ID:-}"
 if [ -z "$NODE_ID" ]; then
-    log_error "NODE_ID 未设置! 用法: NODE_ID=us-yf-a $0"
+    log_error "NODE_ID 未设置! 用法: NODE_ID=us-yf-s2 $0"
     exit 1
 fi
 
-if [[ "$NODE_ID" != "us-yf-a" && "$NODE_ID" != "us-yf-b" ]]; then
-    log_warn "NODE_ID=$NODE_ID (预期: us-yf-a 或 us-yf-b)"
+# 兼容旧别名 us-yf-a/us-yf-b -> 映射到现有 s2/s3 节点
+case "$NODE_ID" in
+    us-yf-a) NODE_ID="us-yf-s2" ;;
+    us-yf-b) NODE_ID="us-yf-s3" ;;
+esac
+
+# 解析对应 compose 文件 (仓库内实际为 docker-compose.node-s2/s3/s4.yml)
+NODE_SEQ="${NODE_ID#us-yf-s}"
+COMPOSE_FILE="docker-compose.node-s${NODE_SEQ}.yml"
+if [ ! -f "$DEPLOY_DIR/$COMPOSE_FILE" ]; then
+    log_error "未找到 compose 文件: $COMPOSE_FILE (NODE_ID=$NODE_ID)"
+    exit 1
 fi
 
 echo ""
@@ -138,13 +148,13 @@ fi
 # ==========================================
 log_info "Step 4: 构建 data_subservice 镜像 (可能需要 5-10 分钟)..."
 cd "$DEPLOY_DIR"
-docker compose -f docker-compose.yf-node.yml build --no-cache 2>&1 | tail -10
+docker compose -f $COMPOSE_FILE build --no-cache 2>&1 | tail -10
 
 # ==========================================
 # Step 5: 启动子服务
 # ==========================================
 log_info "Step 5: 启动 YFinance 子服务..."
-NODE_ID=$NODE_ID docker compose -f docker-compose.yf-node.yml up -d --remove-orphans
+NODE_ID=$NODE_ID docker compose -f $COMPOSE_FILE up -d --remove-orphans
 
 # 等待启动
 log_info "  等待服务启动 (15s)..."
@@ -162,7 +172,7 @@ if echo "$HEALTH" | grep -q '"status":"healthy"'; then
     echo "  响应: $HEALTH"
 else
     log_error "  ❌ /health 异常: $HEALTH"
-    docker compose -f docker-compose.yf-node.yml logs --tail 30
+    docker compose -f $COMPOSE_FILE logs --tail 30
     exit 1
 fi
 
@@ -183,7 +193,7 @@ fi
 # 容器状态
 echo ""
 log_info "容器状态:"
-docker compose -f docker-compose.yf-node.yml ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+docker compose -f $COMPOSE_FILE ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 
 echo ""
 echo "=========================================="
@@ -194,8 +204,8 @@ echo "  节点:     $NODE_ID"
 echo "  Tailscale IP: $TS_IP"
 echo ""
 echo "  常用命令:"
-echo "  查看日志:   docker compose -f docker-compose.yf-node.yml logs -f"
-echo "  重启服务:   docker compose -f docker-compose.yf-node.yml restart"
-echo "  停止服务:   docker compose -f docker-compose.yf-node.yml down"
-echo "  更新部署:   cd $DEPLOY_DIR && git pull && docker compose -f docker-compose.yf-node.yml build && NODE_ID=$NODE_ID docker compose -f docker-compose.yf-node.yml up -d"
+echo "  查看日志:   docker compose -f $COMPOSE_FILE logs -f"
+echo "  重启服务:   docker compose -f $COMPOSE_FILE restart"
+echo "  停止服务:   docker compose -f $COMPOSE_FILE down"
+echo "  更新部署:   cd $DEPLOY_DIR && git pull && docker compose -f $COMPOSE_FILE build && NODE_ID=$NODE_ID docker compose -f $COMPOSE_FILE up -d"
 echo ""

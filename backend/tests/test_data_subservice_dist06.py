@@ -1,497 +1,306 @@
 """
-DIST-06: data_subservice yfinance 核心逻辑迁移 — 单元测试
-==========================================================
+DIST-06: data_subservice yfinance 核心逻辑迁移 — 单元测试（重构后版）
+================================================================
 
-验证:
-  1. YFinanceWorker 初始化 (YF_ROUTER_ENABLED 强制 false)
-  2. start/stop 生命周期 (daemon 任务启动/取消)
-  3. get_health 健康检查
-  4. 数据接口代理 (fetch/batched_quote/tech_indicators/search)
-  5. main.py 集成 (lifespan 中 worker 启动/停止, 端点反映 worker 状态)
+背景: 原 DIST-06 测试针对旧版 `YFinanceWorker` 类 + daemon + `/ds/health`
+架构, 而子服务已重构为函数式 `handle_yfinance` + 模块级单例 `yfinance_service`
+(叶子节点, 无守护进程)。旧测试引用的 `YFinanceWorker` / `_yf_worker` /
+`DS_CAPABILITIES` / `/ds/health` 等符号已不存在, 导致整文件 collection error。
+
+本文件重写为适配当前架构, 覆盖:
+  1. `yfinance_service` 单例身份 (叶子节点, 无 macro daemon)
+  2. `fetch_yf_data` 统一入口路由表
+  3. `handle_yfinance` 按 action 正确代理到 service 各方法
+  4. 未知 action 返回 error
+  5. main.py `/api/v1/data` 端点正确路由到 yfinance + HMAC 鉴权 + 归一化信封
 """
 
-import asyncio
+import hashlib
+import hmac
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+import sys
+import time
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-# ─────────────────────────────────────────
-#  1. YFinanceWorker 初始化
-# ─────────────────────────────────────────
+# 让子服务包可被 backend 测试导入
+_SUB = os.path.join(os.path.dirname(__file__), "..", "..", "data_subservice")
+sys.path.insert(0, os.path.abspath(_SUB))
 
-
-class TestYFinanceWorkerInit:
-    """验证 YFinanceWorker 初始化"""
-
-    def test_forces_router_disabled(self):
-        """初始化时应强制 YF_ROUTER_ENABLED=false"""
-        with (
-            patch.dict(os.environ, {"YF_ROUTER_ENABLED": "true"}),
-            patch("data_subservice.yfinance_worker.YFinanceService") as mock_cls,
-        ):
-            mock_cls.return_value = MagicMock()
-
-            from data_subservice.yfinance_worker import YFinanceWorker
-
-            YFinanceWorker()
-
-            assert os.environ["YF_ROUTER_ENABLED"] == "false"
-            mock_cls.assert_called_once()
-
-    def test_creates_yfinance_service(self):
-        """应创建 YFinanceService 实例"""
-        with patch("data_subservice.yfinance_worker.YFinanceService") as mock_cls:
-            mock_svc = MagicMock()
-            mock_cls.return_value = mock_svc
-
-            from data_subservice.yfinance_worker import YFinanceWorker
-
-            worker = YFinanceWorker()
-
-            assert worker.service is mock_svc
-            assert worker._started is False
-            assert worker._daemon_task is None
+HMAC_SECRET = "test-subservice-secret"
 
 
 # ─────────────────────────────────────────
-#  2. start/stop 生命周期
+#  1. yfinance_service 单例身份
 # ─────────────────────────────────────────
 
 
-class TestYFinanceWorkerLifecycle:
-    """验证 worker 启动/停止流程"""
+class TestYFinanceServiceSingleton:
+    """验证子服务 yfinance_service 的叶子节点身份"""
 
-    @pytest.mark.asyncio
-    async def test_start_creates_daemon_task(self):
-        """start() 应创建 macro_data_daemon 后台任务"""
-        with patch("data_subservice.yfinance_worker.YFinanceService") as mock_cls:
-            mock_svc = MagicMock()
-            mock_svc.macro_data_daemon = AsyncMock()
-            mock_cls.return_value = mock_svc
+    def test_singleton_is_yfinance_service(self):
+        from data_subservice._internal.yfinance import yfinance_service
+        from data_subservice._internal.yfinance.service import YFinanceService
 
-            from data_subservice.yfinance_worker import YFinanceWorker
+        assert isinstance(yfinance_service, YFinanceService)
 
-            worker = YFinanceWorker()
-            await worker.start()
+    def test_leaf_node_no_macro_daemon(self):
+        """子服务恒为叶子节点, 无 macro daemon"""
+        from data_subservice._internal.yfinance import yfinance_service
 
-            assert worker._started is True
-            assert worker._daemon_task is not None
-            assert not worker._daemon_task.done()
-
-            # 清理
-            worker._daemon_task.cancel()
-            try:
-                await worker._daemon_task
-            except asyncio.CancelledError:
-                pass
-
-    @pytest.mark.asyncio
-    async def test_start_idempotent(self):
-        """重复 start() 应跳过"""
-        with patch("data_subservice.yfinance_worker.YFinanceService") as mock_cls:
-            mock_svc = MagicMock()
-            mock_svc.macro_data_daemon = AsyncMock()
-            mock_cls.return_value = mock_svc
-
-            from data_subservice.yfinance_worker import YFinanceWorker
-
-            worker = YFinanceWorker()
-
-            await worker.start()
-            first_task = worker._daemon_task
-
-            await worker.start()  # 第二次应跳过
-            assert worker._daemon_task is first_task
-
-            # 清理
-            worker._daemon_task.cancel()
-            try:
-                await worker._daemon_task
-            except asyncio.CancelledError:
-                pass
-
-    @pytest.mark.asyncio
-    async def test_stop_cancels_daemon_and_closes_service(self):
-        """stop() 应取消 daemon 任务并关闭 service"""
-        with patch("data_subservice.yfinance_worker.YFinanceService") as mock_cls:
-            mock_svc = MagicMock()
-            mock_svc.macro_data_daemon = AsyncMock()
-            mock_svc.close = MagicMock()
-            mock_cls.return_value = mock_svc
-
-            from data_subservice.yfinance_worker import YFinanceWorker
-
-            worker = YFinanceWorker()
-            await worker.start()
-
-            task = worker._daemon_task
-            assert not task.done()
-
-            await worker.stop()
-
-            # daemon 应被取消
-            assert task.done()
-            assert task.cancelled()
-            # service.close() 应被调用
-            mock_svc.close.assert_called_once()
-            assert worker._started is False
-
-    @pytest.mark.asyncio
-    async def test_stop_without_start(self):
-        """未启动时 stop() 应安全执行"""
-        with patch("data_subservice.yfinance_worker.YFinanceService") as mock_cls:
-            mock_svc = MagicMock()
-            mock_svc.close = MagicMock()
-            mock_cls.return_value = mock_svc
-
-            from data_subservice.yfinance_worker import YFinanceWorker
-
-            worker = YFinanceWorker()
-
-            await worker.stop()  # 不应抛异常
-            mock_svc.close.assert_called_once()
+        assert yfinance_service.get_macro_daemon() is None
+        assert yfinance_service.source_name == "yfinance"
 
 
 # ─────────────────────────────────────────
-#  3. 健康检查
+#  2. fetch_yf_data 统一入口路由表
 # ─────────────────────────────────────────
 
 
-class TestYFinanceWorkerHealth:
-    """验证 worker 健康检查"""
-
-    def test_get_health_returns_status(self):
-        """get_health() 应返回 service 状态 + daemon_running"""
-        with patch("data_subservice.yfinance_worker.YFinanceService") as mock_cls:
-            mock_svc = MagicMock()
-            mock_svc.get_health_status.return_value = {
-                "name": "Yahoo Finance",
-                "status": "healthy",
-                "cooldown_remaining": 0,
-                "message": "正常",
-            }
-            mock_cls.return_value = mock_svc
-
-            from data_subservice.yfinance_worker import YFinanceWorker
-
-            worker = YFinanceWorker()
-
-            health = worker.get_health()
-            assert health["name"] == "Yahoo Finance"
-            assert health["status"] == "healthy"
-            assert health["daemon_running"] is False
+class TestFetchYfDataRouting:
+    """验证 fetch_yf_data 按 endpoint 路由到具体实现"""
 
     @pytest.mark.asyncio
-    async def test_get_health_daemon_running(self):
-        """daemon 运行时 daemon_running 应为 True"""
-        with patch("data_subservice.yfinance_worker.YFinanceService") as mock_cls:
-            mock_svc = MagicMock()
-            mock_svc.macro_data_daemon = AsyncMock()
-            mock_svc.get_health_status.return_value = {"status": "healthy"}
-            mock_cls.return_value = mock_svc
+    async def test_routes_quote(self):
+        from data_subservice._internal.yfinance import yfinance_service
 
-            from data_subservice.yfinance_worker import YFinanceWorker
-
-            worker = YFinanceWorker()
-            await worker.start()
-
-            health = worker.get_health()
-            assert health["daemon_running"] is True
-
-            # 清理
-            worker._daemon_task.cancel()
-            try:
-                await worker._daemon_task
-            except asyncio.CancelledError:
-                pass
+        with patch.object(yfinance_service, "get_quote", new=AsyncMock(return_value={"k": "quote"})) as m:
+            out = await yfinance_service.fetch_yf_data("quote", "AAPL")
+            assert out == {"k": "quote"}
+            m.assert_awaited_once_with("AAPL")
 
     @pytest.mark.asyncio
-    async def test_is_daemon_running_property(self):
-        """is_daemon_running 属性应反映 daemon 状态"""
-        with patch("data_subservice.yfinance_worker.YFinanceService") as mock_cls:
-            mock_svc = MagicMock()
-            mock_svc.macro_data_daemon = AsyncMock()
-            mock_cls.return_value = mock_svc
+    async def test_routes_history(self):
+        from data_subservice._internal.yfinance import yfinance_service
 
-            from data_subservice.yfinance_worker import YFinanceWorker
+        with patch.object(yfinance_service, "get_history", new=AsyncMock(return_value={"k": "hist"})) as m:
+            out = await yfinance_service.fetch_yf_data("history", "AAPL", period="1y")
+            assert out == {"k": "hist"}
+            m.assert_awaited_once_with("AAPL", period="1y")
 
-            worker = YFinanceWorker()
+    @pytest.mark.asyncio
+    async def test_routes_flow(self):
+        from data_subservice._internal.yfinance import yfinance_service
 
-            assert worker.is_daemon_running is False
+        with patch.object(yfinance_service, "get_fund_flow", new=AsyncMock(return_value={"k": "flow"})) as m:
+            out = await yfinance_service.fetch_yf_data("flow", "AAPL")
+            assert out == {"k": "flow"}
+            m.assert_awaited_once_with("AAPL")
 
-            await worker.start()
-            assert worker.is_daemon_running is True
+    @pytest.mark.asyncio
+    async def test_routes_financials(self):
+        from data_subservice._internal.yfinance import yfinance_service
 
-            worker._daemon_task.cancel()
-            try:
-                await worker._daemon_task
-            except asyncio.CancelledError:
-                pass
+        with patch.object(yfinance_service, "get_financials", new=AsyncMock(return_value={"k": "fin"})) as m:
+            out = await yfinance_service.fetch_yf_data("financials", "AAPL", kind="quarter")
+            assert out == {"k": "fin"}
+            m.assert_awaited_once_with("AAPL", kind="quarter")
+
+    @pytest.mark.asyncio
+    async def test_routes_option_chain(self):
+        from data_subservice._internal.yfinance import yfinance_service
+
+        with patch.object(yfinance_service, "get_option_chain", new=AsyncMock(return_value={"k": "opt"})) as m:
+            out = await yfinance_service.fetch_yf_data("option_chain", "AAPL")
+            assert out == {"k": "opt"}
+            m.assert_awaited_once_with("AAPL")
+
+    @pytest.mark.asyncio
+    async def test_routes_search(self):
+        from data_subservice._internal.yfinance import yfinance_service
+
+        with patch.object(yfinance_service, "search", new=AsyncMock(return_value=[{"symbol": "AAPL"}])) as m:
+            out = await yfinance_service.fetch_yf_data("search", "Apple", limit=5)
+            assert out == [{"symbol": "AAPL"}]
+            m.assert_awaited_once_with("Apple", limit=5)
+
+    @pytest.mark.asyncio
+    async def test_routes_technical(self):
+        from data_subservice._internal.yfinance import yfinance_service
+
+        with patch.object(yfinance_service, "get_tech_indicators", new=AsyncMock(return_value={"k": "tech"})) as m:
+            out = await yfinance_service.fetch_yf_data("technical", "AAPL", period="6mo")
+            assert out == {"k": "tech"}
+            m.assert_awaited_once_with("AAPL", period="6mo")
+
+    @pytest.mark.asyncio
+    async def test_unknown_endpoint_returns_error(self):
+        from data_subservice._internal.yfinance import yfinance_service
+
+        out = await yfinance_service.fetch_yf_data("bogus", "AAPL")
+        assert "error" in out
+        assert "bogus" in out["error"]
 
 
 # ─────────────────────────────────────────
-#  4. 数据接口代理
+#  3. handle_yfinance 动作路由
 # ─────────────────────────────────────────
 
 
-class TestYFinanceWorkerDataAPI:
-    """验证 worker 数据接口正确代理到 YFinanceService"""
+class TestHandleYfinanceRouting:
+    """验证 handle_yfinance 按 action 正确代理到 yfinance_service"""
 
     @pytest.mark.asyncio
-    async def test_fetch_delegates_to_service(self):
-        """fetch() 应代理到 service.fetch_yf_data()"""
-        with patch("data_subservice.yfinance_worker.YFinanceService") as mock_cls:
-            mock_svc = MagicMock()
-            mock_svc.fetch_yf_data = AsyncMock(return_value=(True, {"Close": [100]}, ""))
-            mock_cls.return_value = mock_svc
+    async def test_quote_delegates(self):
+        from data_subservice._internal.yfinance import yfinance_service
+        from data_subservice.yfinance_worker import handle_yfinance
 
-            from data_subservice.yfinance_worker import YFinanceWorker
-
-            worker = YFinanceWorker()
-
-            result = await worker.fetch("AAPL", "history", ttl=600, period="5d")
-            assert result["success"] is True
-            assert result["data"] == {"Close": [100]}
-            mock_svc.fetch_yf_data.assert_awaited_once_with("AAPL", "history", ttl=600, period="5d")
+        with patch.object(
+            yfinance_service, "get_quote", new=AsyncMock(return_value={"symbol": "AAPL", "price": 100})
+        ) as m:
+            out = await handle_yfinance("QUOTE", {"symbol": "AAPL"})
+            assert out == {"symbol": "AAPL", "price": 100}
+            m.assert_awaited_once_with("AAPL")
 
     @pytest.mark.asyncio
-    async def test_batched_quote_delegates(self):
-        """batched_quote() 应代理到 service.get_batched_quote()"""
-        with patch("data_subservice.yfinance_worker.YFinanceService") as mock_cls:
-            mock_svc = MagicMock()
-            mock_svc.get_batched_quote = AsyncMock(return_value={"status": "success", "ticker": "AAPL"})
-            mock_cls.return_value = mock_svc
+    async def test_history_delegates(self):
+        from data_subservice._internal.yfinance import yfinance_service
+        from data_subservice.yfinance_worker import handle_yfinance
 
-            from data_subservice.yfinance_worker import YFinanceWorker
-
-            worker = YFinanceWorker()
-
-            result = await worker.batched_quote("AAPL", req_type="quote")
-            assert result["status"] == "success"
-            mock_svc.get_batched_quote.assert_awaited_once_with("AAPL", req_type="quote")
+        params = {"symbol": "AAPL", "period": "1y", "interval": "1d"}
+        with patch.object(yfinance_service, "get_history", new=AsyncMock(return_value={"count": 0})) as m:
+            out = await handle_yfinance("HISTORY", params)
+            assert out == {"count": 0}
+            m.assert_awaited_once_with("AAPL", period="1y", start=None, end=None, interval="1d")
 
     @pytest.mark.asyncio
-    async def test_tech_indicators_delegates(self):
-        """tech_indicators() 应代理到 service.get_tech_indicators()"""
-        with patch("data_subservice.yfinance_worker.YFinanceService") as mock_cls:
-            mock_svc = MagicMock()
-            mock_svc.get_tech_indicators = AsyncMock(return_value={"status": "success", "data": {}})
-            mock_cls.return_value = mock_svc
+    async def test_fund_flow_delegates(self):
+        from data_subservice._internal.yfinance import yfinance_service
+        from data_subservice.yfinance_worker import handle_yfinance
 
-            from data_subservice.yfinance_worker import YFinanceWorker
+        with patch.object(yfinance_service, "get_fund_flow", new=AsyncMock(return_value={"flow": 1})) as m:
+            out = await handle_yfinance("FUND_FLOW", {"symbol": "AAPL"})
+            assert out == {"flow": 1}
+            m.assert_awaited_once_with("AAPL")
 
-            worker = YFinanceWorker()
+    @pytest.mark.asyncio
+    async def test_option_chain_delegates(self):
+        from data_subservice._internal.yfinance import yfinance_service
+        from data_subservice.yfinance_worker import handle_yfinance
 
-            result = await worker.tech_indicators("AAPL", rsi_period=14)
-            assert result["status"] == "success"
-            mock_svc.get_tech_indicators.assert_awaited_once_with("AAPL", rsi_period=14)
+        with patch.object(yfinance_service, "get_option_chain", new=AsyncMock(return_value={"chain": []})) as m:
+            out = await handle_yfinance("OPTION_CHAIN", {"symbol": "AAPL", "expiration": "2026-09"})
+            assert out == {"chain": []}
+            m.assert_awaited_once_with("AAPL", expiration="2026-09")
+
+    @pytest.mark.asyncio
+    async def test_financials_delegates(self):
+        from data_subservice._internal.yfinance import yfinance_service
+        from data_subservice.yfinance_worker import handle_yfinance
+
+        with patch.object(yfinance_service, "get_financials", new=AsyncMock(return_value={"fin": 1})) as m:
+            out = await handle_yfinance("FINANCIALS", {"symbol": "AAPL", "kind": "quarter"})
+            assert out == {"fin": 1}
+            m.assert_awaited_once_with("AAPL", kind="quarter")
 
     @pytest.mark.asyncio
     async def test_search_delegates(self):
-        """search() 应代理到 service.search_tickers()"""
-        with patch("data_subservice.yfinance_worker.YFinanceService") as mock_cls:
-            mock_svc = MagicMock()
-            mock_svc.search_tickers = AsyncMock(return_value={"status": "success", "data": [{"symbol": "AAPL"}]})
-            mock_cls.return_value = mock_svc
+        from data_subservice._internal.yfinance import yfinance_service
+        from data_subservice.yfinance_worker import handle_yfinance
 
-            from data_subservice.yfinance_worker import YFinanceWorker
+        with patch.object(yfinance_service, "search", new=AsyncMock(return_value=[{"symbol": "AAPL"}])) as m:
+            out = await handle_yfinance("SEARCH", {"query": "Apple", "limit": 10})
+            assert out == [{"symbol": "AAPL"}]
+            m.assert_awaited_once_with("Apple", limit=10)
 
-            worker = YFinanceWorker()
+    @pytest.mark.asyncio
+    async def test_tech_delegates(self):
+        from data_subservice._internal.yfinance import yfinance_service
+        from data_subservice.yfinance_worker import handle_yfinance
 
-            result = await worker.search("Apple")
-            assert result["status"] == "success"
-            assert len(result["data"]) == 1
-            mock_svc.search_tickers.assert_awaited_once_with("Apple")
+        with patch.object(yfinance_service, "get_tech_indicators", new=AsyncMock(return_value={"indicators": {}})) as m:
+            out = await handle_yfinance("TECH", {"symbol": "AAPL", "period": "1y", "indicators": ["RSI"]})
+            assert out == {"indicators": {}}
+            m.assert_awaited_once_with("AAPL", period="1y", indicators=["RSI"])
+
+    @pytest.mark.asyncio
+    async def test_batch_quote_delegates(self):
+        from data_subservice._internal.yfinance import yfinance_service
+        from data_subservice.yfinance_worker import handle_yfinance
+
+        with patch.object(yfinance_service, "get_batched_quote", new=AsyncMock(return_value=[{"symbol": "AAPL"}])) as m:
+            out = await handle_yfinance("BATCH_QUOTE", {"symbols": ["AAPL", "MSFT"]})
+            assert out == [{"symbol": "AAPL"}]
+            m.assert_awaited_once_with(["AAPL", "MSFT"])
+
+    @pytest.mark.asyncio
+    async def test_unknown_action_returns_error(self):
+        from data_subservice.yfinance_worker import handle_yfinance
+
+        out = await handle_yfinance("BOGUS", {"symbol": "AAPL"})
+        assert "error" in out
+        assert "BOGUS" in out["error"]
 
 
 # ─────────────────────────────────────────
-#  5. main.py 集成测试
+#  4. main.py 端点集成
 # ─────────────────────────────────────────
 
 
-class TestMainIntegration:
-    """验证 main.py 中 worker 集成"""
-
-    @pytest.mark.asyncio
-    async def test_lifespan_starts_worker_when_yfinance_in_capabilities(self):
-        """当 DS_CAPABILITIES 包含 yfinance 时，lifespan 应启动 worker"""
+@pytest.fixture
+def client():
+    """导入子服务 app, 注入测试用 HMAC 密钥并 mock worker。"""
+    with patch.dict(os.environ, {"DATA_SOURCE_HMAC_SECRET": HMAC_SECRET}):
         import data_subservice.main as mod
 
-        mock_registry = AsyncMock()
-        mock_registry.register = AsyncMock(return_value=True)
-        mock_registry.deregister = AsyncMock(return_value=True)
+        mod.HMAC_SECRET = HMAC_SECRET
+        mod.handle_yfinance = AsyncMock(return_value={"symbol": "AAPL", "ok": True})
+        with patch.object(mod, "handle_yfinance", mod.handle_yfinance):
+            yield mod, __import__("fastapi.testclient").testclient.TestClient(mod.app)
 
-        fake_redis = MagicMock()
-        fake_redis.ping = AsyncMock(return_value=True)
-        fake_redis.aclose = AsyncMock()
 
-        mock_aioredis = MagicMock()
-        mock_aioredis.Redis = MagicMock(return_value=fake_redis)
+def _sign(body: str, ts: str = None) -> dict:
+    ts = ts or str(int(time.time()))
+    sig = hmac.new(HMAC_SECRET.encode(), f"{ts}:{body}".encode(), hashlib.sha256).hexdigest()
+    return {"X-Timestamp": ts, "X-Signature": sig, "Content-Type": "application/json"}
 
-        mock_worker = MagicMock()
-        mock_worker.start = AsyncMock()
-        mock_worker.stop = AsyncMock()
-        mock_worker.is_daemon_running = True
-        mock_worker.get_health.return_value = {"status": "healthy", "daemon_running": True}
 
-        with (
-            patch.object(mod, "aioredis", mock_aioredis),
-            patch.object(mod, "ServiceRegistry", return_value=mock_registry),
-            patch.object(mod, "DS_NODE_ID", "test-node-01"),
-            patch.object(mod, "DS_CAPABILITIES", ["yfinance"]),
-            patch.object(mod, "YFinanceWorker", return_value=mock_worker),
-        ):
-            async with mod.lifespan(mod.app):
-                # worker 应已启动
-                mock_worker.start.assert_awaited_once()
+class TestMainDataEndpoint:
+    """验证 main.py /api/v1/data 端点正确路由 yfinance + HMAC + 信封"""
 
-            # worker 应已停止
-            mock_worker.stop.assert_awaited_once()
+    def test_yfinance_quote_routed_to_worker(self, client):
+        mod, c = client
+        body = '{"source":"yfinance","action":"QUOTE","params":{"symbol":"AAPL"}}'
+        r = c.post("/api/v1/data", content=body, headers=_sign(body))
+        assert r.status_code == 200
+        assert r.json()["code"] == 0
+        assert r.json()["data"] == {"symbol": "AAPL", "ok": True}
+        mod.handle_yfinance.assert_awaited_once_with("QUOTE", {"symbol": "AAPL"})
 
-    @pytest.mark.asyncio
-    async def test_lifespan_skips_worker_when_no_yfinance(self):
-        """当 DS_CAPABILITIES 不包含 yfinance 时，不应启动 worker"""
-        import data_subservice.main as mod
+    def test_yfinance_history_routed(self, client):
+        mod, c = client
+        body = '{"source":"yfinance","action":"HISTORY","params":{"symbol":"AAPL","period":"1y"}}'
+        r = c.post("/api/v1/data", content=body, headers=_sign(body))
+        assert r.status_code == 200
+        mod.handle_yfinance.assert_awaited_once_with("HISTORY", {"symbol": "AAPL", "period": "1y"})
 
-        # 重置前一个测试可能残留的状态
-        mod._yf_worker = None
+    def test_yfinance_tech_routed(self, client):
+        mod, c = client
+        body = '{"source":"yfinance","action":"TECH","params":{"symbol":"AAPL"}}'
+        r = c.post("/api/v1/data", content=body, headers=_sign(body))
+        assert r.status_code == 200
+        mod.handle_yfinance.assert_awaited_once_with("TECH", {"symbol": "AAPL"})
 
-        mock_registry = AsyncMock()
-        mock_registry.register = AsyncMock(return_value=True)
-        mock_registry.deregister = AsyncMock(return_value=True)
+    def test_unknown_source_rejected(self, client):
+        _, c = client
+        body = '{"source":"bogus","action":"QUOTE","params":{}}'
+        r = c.post("/api/v1/data", content=body, headers=_sign(body))
+        assert r.status_code == 400
 
-        fake_redis = MagicMock()
-        fake_redis.ping = AsyncMock(return_value=True)
-        fake_redis.aclose = AsyncMock()
+    def test_missing_hmac_headers_returns_403(self, client):
+        _, c = client
+        body = '{"source":"yfinance","action":"QUOTE","params":{"symbol":"AAPL"}}'
+        r = c.post("/api/v1/data", content=body)
+        assert r.status_code == 403
 
-        mock_aioredis = MagicMock()
-        mock_aioredis.Redis = MagicMock(return_value=fake_redis)
-
-        with (
-            patch.object(mod, "aioredis", mock_aioredis),
-            patch.object(mod, "ServiceRegistry", return_value=mock_registry),
-            patch.object(mod, "DS_NODE_ID", "test-node-01"),
-            patch.object(mod, "DS_CAPABILITIES", ["akshare"]),
-        ):
-            async with mod.lifespan(mod.app):
-                assert mod._yf_worker is None
-
-    def test_health_endpoint_includes_daemon_status(self):
-        """/health 端点应包含 yfinance_daemon_running"""
-        import data_subservice.main as mod
-
-        mock_worker = MagicMock()
-        mock_worker.is_daemon_running = True
-
-        with (
-            patch.object(mod, "_yf_worker", mock_worker),
-            patch.object(mod, "_start_time", 1000.0),
-            patch.object(mod, "DS_NODE_ID", "test-node-01"),
-            patch.object(mod, "DS_REGION", "us-west"),
-            patch.object(mod, "DS_CAPABILITIES", ["yfinance"]),
-        ):
-            from fastapi.testclient import TestClient
-
-            from data_subservice.main import app
-
-            client = TestClient(app, raise_server_exceptions=False)
-            resp = client.get("/health")
-
-            assert resp.status_code == 200
-            data = resp.json()
-            assert data["yfinance_daemon_running"] is True
-
-    def test_ds_health_endpoint_shows_yfinance_detail(self):
-        """/ds/health 端点应显示 yfinance 真实健康信息"""
-        import data_subservice.main as mod
-
-        mock_worker = MagicMock()
-        mock_worker.get_health.return_value = {
-            "name": "Yahoo Finance",
-            "status": "healthy",
-            "cooldown_remaining": 0,
-            "message": "正常",
-            "daemon_running": True,
+    def test_wrong_signature_returns_403(self, client):
+        _, c = client
+        body = '{"source":"yfinance","action":"QUOTE","params":{"symbol":"AAPL"}}'
+        headers = {
+            "X-Timestamp": str(int(time.time())),
+            "X-Signature": "deadbeef" * 8,
+            "Content-Type": "application/json",
         }
-
-        with (
-            patch.object(mod, "_yf_worker", mock_worker),
-            patch.object(mod, "_start_time", 1000.0),
-            patch.object(mod, "DS_NODE_ID", "test-node-01"),
-            patch.object(mod, "DS_REGION", "us-west"),
-            patch.object(mod, "DS_CAPABILITIES", ["yfinance"]),
-        ):
-            from fastapi.testclient import TestClient
-
-            from data_subservice.main import app
-
-            client = TestClient(app, raise_server_exceptions=False)
-            resp = client.get("/ds/health")
-
-            assert resp.status_code == 200
-            data = resp.json()
-            assert "yfinance" in data["sources"]
-            yf_src = data["sources"]["yfinance"]
-            assert yf_src["mode"] == "local_daemon"
-            assert yf_src["status"] == "available"
-            assert "detail" in yf_src
-            assert yf_src["detail"]["daemon_running"] is True
-
-    def test_ds_health_endpoint_degraded_when_unhealthy(self):
-        """/ds/health 在 yfinance 不健康时应显示 degraded"""
-        import data_subservice.main as mod
-
-        mock_worker = MagicMock()
-        mock_worker.get_health.return_value = {
-            "name": "Yahoo Finance",
-            "status": "circuit_open",
-            "cooldown_remaining": 30,
-            "message": "限流熔断中",
-            "daemon_running": True,
-        }
-
-        with (
-            patch.object(mod, "_yf_worker", mock_worker),
-            patch.object(mod, "_start_time", 1000.0),
-            patch.object(mod, "DS_NODE_ID", "test-node-01"),
-            patch.object(mod, "DS_REGION", "us-west"),
-            patch.object(mod, "DS_CAPABILITIES", ["yfinance"]),
-        ):
-            from fastapi.testclient import TestClient
-
-            from data_subservice.main import app
-
-            client = TestClient(app, raise_server_exceptions=False)
-            resp = client.get("/ds/health")
-
-            data = resp.json()
-            yf_src = data["sources"]["yfinance"]
-            assert yf_src["status"] == "degraded"
-
-    @pytest.mark.asyncio
-    async def test_lifespan_handles_worker_init_failure(self):
-        """worker 初始化失败时 lifespan 不应崩溃"""
-        import data_subservice.main as mod
-
-        mock_registry = AsyncMock()
-        mock_registry.register = AsyncMock(return_value=True)
-        mock_registry.deregister = AsyncMock(return_value=True)
-
-        fake_redis = MagicMock()
-        fake_redis.ping = AsyncMock(return_value=True)
-        fake_redis.aclose = AsyncMock()
-
-        mock_aioredis = MagicMock()
-        mock_aioredis.Redis = MagicMock(return_value=fake_redis)
-
-        with (
-            patch.object(mod, "aioredis", mock_aioredis),
-            patch.object(mod, "ServiceRegistry", return_value=mock_registry),
-            patch.object(mod, "DS_NODE_ID", "test-node-01"),
-            patch.object(mod, "DS_CAPABILITIES", ["yfinance"]),
-            patch.object(mod, "YFinanceWorker", side_effect=RuntimeError("yfinance 依赖缺失")),
-        ):
-            # 不应抛异常
-            async with mod.lifespan(mod.app):
-                pass
+        r = c.post("/api/v1/data", content=body, headers=headers)
+        assert r.status_code == 403

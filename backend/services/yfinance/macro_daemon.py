@@ -17,14 +17,6 @@ class MacroDaemonMixin:
 
     async def macro_data_daemon(self) -> None:
         """后台守护进程：定时批量拉取宏观指标，彻底解决 YFinance 429 封控"""
-        # ── DIST-04: 路由器模式下由远程数据源节点负责采集，本地不启动 daemon ──
-        if self._router_enabled:
-            from backend.core.logger import logger
-
-            logger.info("[YF Daemon] 路由器模式已启用，宏观数据采集由远程节点负责，本地 daemon 休眠中")
-            await asyncio.sleep(3600)
-            return
-
         from backend.core.redis_client import redis_client
 
         # 需要高频守护的全球宏观指标与大盘代码 (严格对齐数据中心面板的 12 大资产)

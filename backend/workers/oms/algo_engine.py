@@ -59,11 +59,11 @@ async def _get_lot_size(symbol: str) -> int:
     if not symbol.upper().endswith(".HK"):
         return 1
 
-    # 尝试从 market_snapshot 获取 (包含 lot_size)
+    # 尝试从 market_snapshot 获取 (包含 lot_size) (经 DataSourceRouter HTTP 调 source=futu)
     try:
-        from backend.services.futu import futu_service
+        from backend.services.datasource.router import data_source_router
 
-        snapshot = await futu_service.get_market_snapshots([symbol])
+        snapshot = await data_source_router.fetch_futu("MARKET_SNAPSHOTS", tickers=[symbol])
         if snapshot.get("status") == "success":
             data_list = snapshot.get("data", [])
             if data_list:
@@ -74,11 +74,11 @@ async def _get_lot_size(symbol: str) -> int:
     except Exception as e:
         logger.debug(f"[AlgoEngine] snapshot 获取 lot_size 失败: {e}")
 
-    # 尝试从行情获取 (备用)
+    # 尝试从行情获取 (备用) (经 DataSourceRouter HTTP 调 source=futu)
     try:
-        from backend.services.futu import futu_service
+        from backend.services.datasource.router import data_source_router
 
-        quote = await futu_service.get_quote(symbol)
+        quote = await data_source_router.fetch_futu("QUOTE", ticker=symbol)
         lot = quote.get("lot_size", 0)
         if lot and lot > 0:
             logger.info(f"[AlgoEngine] {symbol} 从 quote 获取 lot_size={lot}")
@@ -628,11 +628,11 @@ class AlgoEngine:
         except Exception:
             pass
 
-        # SANDBOX 模式: 模拟成交
+        # SANDBOX 模式: 模拟成交 (经 DataSourceRouter HTTP 调 source=futu)
         try:
-            from backend.services.futu import futu_service
+            from backend.services.datasource.router import data_source_router
 
-            quote = await futu_service.get_quote(symbol)
+            quote = await data_source_router.fetch_futu("QUOTE", ticker=symbol)
             if quote and quote.get("status") == "success":
                 # compress_quote_data 返回格式: last_price 在顶层
                 last_price = quote.get("last_price", 0)
@@ -654,11 +654,11 @@ class AlgoEngine:
         try:
             from futu import TrdMarket, TrdSide
 
-            from backend.services.futu import futu_service
+            from backend.services.datasource.router import data_source_router
 
             logger.info(f"[AlgoEngine] _execute_real_order 入参: {symbol} qty={qty} side={side}")
 
-            quote = await futu_service.get_quote(symbol)
+            quote = await data_source_router.fetch_futu("QUOTE", ticker=symbol)
             if quote.get("status") != "success":
                 raise RuntimeError(f"无法获取 {symbol} 行情: {quote.get('message', '')}")
             # compress_quote_data 返回格式: last_price 在顶层
@@ -679,10 +679,17 @@ class AlgoEngine:
 
             logger.info(f"[AlgoEngine] 最终下单: {symbol} qty={qty} price={last_price}")
 
-            # 直接调用 futu_service.place_order
+            # 直接调用 futu_service.place_order (经 DataSourceRouter HTTP 调 source=futu)
             trd_side = TrdSide.BUY if side == "BUY" else TrdSide.SELL
             market = TrdMarket.HK if symbol.upper().endswith(".HK") else TrdMarket.US
-            result = await futu_service.place_order(symbol, qty, last_price, trd_side, market)
+            result = await data_source_router.fetch_futu(
+                "PLACE_ORDER",
+                ticker=symbol,
+                qty=qty,
+                price=last_price,
+                trd_side=trd_side.value,
+                market=market.value,
+            )
 
             if result.get("status") == "success" or result.get("order_id"):
                 logger.info(f"[AlgoEngine] LIVE 下单成功: {side} {qty} {symbol} @ {last_price}")

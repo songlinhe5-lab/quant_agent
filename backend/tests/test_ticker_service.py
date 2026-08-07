@@ -105,10 +105,12 @@ class TestTickerService:
         with (
             patch("backend.services.fund_flow.ticker.asyncio.to_thread", new=AsyncMock()) as mock_thread,
             patch("backend.services.fund_flow.ticker.asyncio.sleep", new=fake_sleep),
-            patch("backend.services.fund_flow.ticker.futu_service") as mock_futu,
+            patch(
+                "backend.services.fund_flow.ticker._get_futu_service",
+                return_value=MagicMock(status="CONNECTED"),
+            ),
         ):
             mock_thread.return_value = []
-            mock_futu.status = "CONNECTED"  # 💡 模拟 Futu 已连接，跳过等待
             try:
                 await service.sync_tickers_daemon()
             except asyncio.CancelledError:
@@ -145,11 +147,13 @@ class TestTickerService:
             return func()
 
         with (
-            patch("backend.services.fund_flow.ticker.futu_service") as mock_futu,
+            patch(
+                "backend.services.datasource.router.data_source_router.fetch_futu",
+                new=AsyncMock(return_value=fake_res),
+            ),
             patch("backend.services.fund_flow.ticker.SessionLocal") as mock_session_cls,
             patch("backend.services.fund_flow.ticker.asyncio.to_thread", new=fake_to_thread),
         ):
-            mock_futu.get_stock_basicinfo = fake_get
             mock_db = MagicMock()
             mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
@@ -167,7 +171,9 @@ class TestTickerService:
         async def fake_get(market, sec_type):
             return {"status": "error", "data": []}
 
-        with patch("backend.services.fund_flow.ticker.futu_service") as mock_futu:
-            mock_futu.get_stock_basicinfo = fake_get
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_futu",
+            new=AsyncMock(return_value={"status": "error", "data": []}),
+        ):
             result = await service._fetch_and_save_from_futu()
             assert result == []

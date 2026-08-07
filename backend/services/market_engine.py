@@ -27,6 +27,7 @@ from backend.core.redis_client import l1_cached_redis, redis_client
 from backend.core.utils import safe_divide, safe_float
 from backend.services.alert.notification import notification_service
 from backend.services.datalake.kline_warehouse import kline_warehouse
+from backend.services.datasource.router import data_source_router
 from backend.services.yfinance import format_yf_ticker, yf_service
 
 logger = logging.getLogger(__name__)
@@ -288,37 +289,6 @@ class ConnectionManager:
         finally:
             await pubsub.close()
 
-    def _get_yf_fast_info(self, ticker: str):
-        import yfinance as yf
-
-        # 💡 统一走 format_yf_ticker 通用转换（不再手写 HK/US 指数映射，避免重复）
-        yf_ticker = format_yf_ticker(ticker)
-
-        info = yf.Ticker(yf_ticker).fast_info
-
-        last_price = safe_float(info.last_price)
-        prev_close = safe_float(info.previous_close)
-        change_pct = safe_divide(last_price - prev_close, prev_close) * 100
-
-        return {
-            "status": "success",
-            "ticker": ticker,
-            "requested_ticker": ticker,
-            "last_price": last_price,
-            "change_pct": f"{change_pct:+.2f}%",
-            "volume": getattr(info, "last_volume", 0),
-            "source": "yfinance",
-            "data_timestamp": "Realtime(Delayed)",
-        }
-
-    async def _fetch_fallback_quote(self, ticker: str):
-        """通过异步线程隔离调用雅虎财经，作为富途熔断时的降级通道"""
-        try:
-            return await asyncio.wait_for(asyncio.to_thread(self._get_yf_fast_info, ticker), timeout=4.0)
-        except Exception as e:
-            print(f"[YFinance Fallback Error] {ticker}: {e}")
-            return {"status": "error"}
-
     async def broadcast_loop(self) -> None:
         """背景任务持续拉取技术指标缓存与 YFinance 轮询兜底 (即使没有前端连接也保持更新 Redis)"""  # noqa: E501
         while True:
@@ -376,7 +346,9 @@ class ConnectionManager:
                         for t in tickers_to_update:
                             try:
                                 # 优先尝试利用 Futu 获取 120 日历史，完全免除外部网络请求  # noqa: E501
-                                futu_res = await futu_service.get_history(t, ktype="K_DAY", num=120)  # noqa: E501
+                                futu_res = await data_source_router.fetch_futu(
+                                    "HISTORY", ticker=t, ktype="K_DAY", num=120
+                                )  # noqa: E501
                                 if futu_res.get("status") == "success" and futu_res.get("data"):  # noqa: E501
                                     df = pd.DataFrame(futu_res["data"])
                                     if len(df) >= 30:
@@ -415,7 +387,7 @@ class ConnectionManager:
 
                     # 💡 定时拉取资金流与席位 (仅在 Futu 连接时执行，断连时跳过防止 CPU 空转)  # noqa: E501
                     if futu_connected:
-                        flow_tasks = [futu_service.get_fund_flow(t) for t in all_tickers]  # noqa: E501
+                        flow_tasks = [data_source_router.fetch_futu("FUND_FLOW", ticker=t) for t in all_tickers]  # noqa: E501
                         flow_results = await asyncio.gather(*flow_tasks, return_exceptions=True)  # noqa: E501
 
                         for ticker, f_res in zip(all_tickers, flow_results):
@@ -458,7 +430,7 @@ class ConnectionManager:
                     if futu_connected and current_time - getattr(self, "last_acc_update", 0) > 10:
                         self.last_acc_update = current_time
                         try:
-                            acc_res = await futu_service.get_account_info()
+                            acc_res = await data_source_router.fetch_futu("ACCOUNT_INFO", market="HK")
                             if acc_res.get("status") == "success":
                                 total_assets = acc_res.get("total_assets", 0)
                                 positions = acc_res.get("positions", [])
@@ -474,7 +446,7 @@ class ConnectionManager:
 
                         for t in futu_check_tickers:
                             try:
-                                res = await futu_service.get_quote(t)
+                                res = await data_source_router.fetch_futu("QUOTE", ticker=t)
                                 if res.get("status") == "success":
                                     batch_success = True
 

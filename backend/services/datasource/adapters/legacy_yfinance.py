@@ -73,8 +73,9 @@ class LegacyYFinanceDataSource:
         )
 
     async def fetch(self, action: str, params: dict[str, Any]) -> Result:
+        _action = action.lower()
         ticker = str(params.get("ticker", "") or "")
-        fetch_type = str(params.get("fetch_type") or (action if action in ("history", "info", "quote") else "history"))
+        fetch_type = str(params.get("fetch_type") or (_action if _action in ("history", "info", "quote") else "history"))
         passthrough = {k: v for k, v in params.items() if k not in ("ticker", "fetch_type", "action")}
         try:
             success, data, msg = await self._svc().fetch_yf_data(ticker, fetch_type, **passthrough)

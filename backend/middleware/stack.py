@@ -206,7 +206,12 @@ def register_middleware(app: FastAPI) -> None:
                     },
                 )
         except Exception as e:
-            # FAIL-SAFE: Redis 异常 → 拒绝非豁免请求 (防暴力攻击)
+            # FAIL-SAFE: Redis 异常处理
+            _env = os.getenv("QUANT_ENV", "production")
+            if _env == "testing":
+                # 测试环境: Redis 不可用时放行，避免阻塞单元测试
+                return await call_next(request)
+            # 生产/开发环境: 拒绝非豁免请求 (防暴力攻击)
             print(f"⚠️ [Rate Limiter] Redis 服务不可用，拒绝请求：{e}")
             from fastapi import HTTPException
 

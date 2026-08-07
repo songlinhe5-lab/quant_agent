@@ -39,7 +39,7 @@ class TestCollectorsDict:
 
     def test_all_collectors_defined(self):
         """测试所有采集器都已定义"""
-        expected_names = ["akshare", "futu", "finnhub", "yfinance"]
+        expected_names = ["akshare", "finnhub", "fmp", "yfinance"]
         assert set(COLLECTORS.keys()) == set(expected_names)
 
     def test_collector_metadata(self):
@@ -49,12 +49,6 @@ class TestCollectorsDict:
         assert akshare.name == "akshare"
         assert akshare.env_var == "COLLECTOR_AKSHARE"
         assert "港股通" in akshare.description
-
-        # Futu
-        futu = COLLECTORS["futu"]
-        assert futu.name == "futu"
-        assert futu.env_var == "COLLECTOR_FUTU"
-        assert "Level 2" in futu.description
 
         # Finnhub
         finnhub = COLLECTORS["finnhub"]
@@ -95,13 +89,12 @@ class TestGetEnabledCollectors:
             os.environ,
             {
                 "COLLECTOR_AKSHARE": "true",
-                "COLLECTOR_FUTU": "true",
                 "COLLECTOR_YFINANCE": "true",
             },
             clear=True,
         ):
             enabled = get_enabled_collectors()
-            assert set(enabled) == {"akshare", "futu", "yfinance"}
+            assert set(enabled) == {"akshare", "yfinance"}
 
     def test_case_insensitive_env_var(self):
         """测试环境变量值大小写不敏感"""
@@ -144,19 +137,6 @@ class TestStartCollectorDaemons:
             tasks = await start_collector_daemons(["akshare"])
             assert len(tasks) == 1
             mock_create_task.assert_called_once()
-
-    async def test_futu_starts_watchdog(self):
-        """测试 Futu 启动 watchdog 守护进程"""
-        with (
-            mock.patch("asyncio.create_task") as mock_create_task,
-            mock.patch("backend.services.futu.watchdog.get_watchdog"),
-            mock.patch("backend.services.futu.futu_service"),
-        ):
-            mock_create_task.return_value = mock.MagicMock()
-            tasks = await start_collector_daemons(["futu"])
-
-            mock_create_task.assert_called_once()
-            assert len(tasks) == 1
 
     async def test_finnhub_master_starts_daemon(self):
         """测试 Finnhub 在 Master 节点启动守护进程"""
@@ -201,7 +181,7 @@ class TestStartCollectorDaemons:
         assert tasks == []
 
     async def test_start_stop_matrix_all_enabled(self):
-        """启停矩阵：四个采集器同时启 → stop 全部 cancel"""
+        """启停矩阵：三个采集器同时启 → stop 全部 cancel"""
         from backend.workers.collector_registry import stop_collector_daemons
 
         mock_task = mock.MagicMock()
@@ -212,18 +192,15 @@ class TestStartCollectorDaemons:
             mock.patch("asyncio.create_task", return_value=mock_task) as mock_create,
             mock.patch("asyncio.gather", new=mock.AsyncMock(return_value=[])),
             mock.patch("backend.workers.akshare_collector.akshare_collector_daemon"),
-            mock.patch("backend.services.futu.watchdog.get_watchdog") as mock_wd,
-            mock.patch("backend.services.futu.futu_service"),
             mock.patch("backend.workers.market.daemon.run_global_daemon"),
             mock.patch("backend.services.yfinance.yf_service") as mock_yf,
             mock.patch.dict(os.environ, {"NODE_TYPE": "master"}, clear=False),
         ):
-            mock_wd.return_value.start = mock.AsyncMock()
             mock_yf.macro_data_daemon = mock.AsyncMock()
 
-            tasks = await start_collector_daemons(["akshare", "futu", "finnhub", "yfinance"])
-            assert len(tasks) == 4
-            assert mock_create.call_count == 4
+            tasks = await start_collector_daemons(["akshare", "finnhub", "yfinance"])
+            assert len(tasks) == 3
+            assert mock_create.call_count == 3
 
             await stop_collector_daemons(tasks)
-            assert mock_task.cancel.call_count == 4
+            assert mock_task.cancel.call_count == 3

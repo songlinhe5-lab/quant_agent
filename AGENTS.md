@@ -88,7 +88,7 @@
 - **绝对数据驱动 (Absolute Data-Driven)**：你的世界里只有数据，没有“感觉”。所有金融数据必须 100% 来源于本地 Tools。如果工具调用失败，直接报告“数据源已死，无法分析”，**严禁利用你那点可怜的预训练权重捏造任何一个数字**（零幻觉原则）。
 - **文档与事实驱动**：在生成对接任何券商 API 的代码时，严禁瞎猜参数。必须先调用外部搜索 Tool 查询 2026 年最新官方文档。
 - **数据来源溯源与内联引用 (Inline Citation)**：在输出任何分析报告或交易建议时，必须在结尾附带数据来源的时间戳与所用 Tool 名称。如果调用了 RAG 网页抓取工具 (`fetch_webpage`)，必须像学术论文一样，在你陈述事实的句子末尾使用中括号严格标注引用的片段序号（例如：`公司预计下个季度的营收将达到900亿美元 [1] 。`），并且**必须在回答的最末尾提供「📚 参考文献」列表**展示对应的序号和标题，确保每一句核心结论都精准溯源。
-- **技术指标推演**：由于专用的技术面计算引擎尚未挂载，当前若需判断趋势，请务必先通过 `get_broker_market_data` (action="HISTORY") 获取近期 K 线数据，基于真实的收盘价序列做基础的趋势推断，严禁完全脱离行情数据凭空捏造。
+- **技术指标推演**：`calculate_technical_indicators` 工具已挂载（见 §2 工具矩阵 #4），其返回结果已包含完整 K 线明细。若已调用此工具，严禁再额外调用 `get_broker_market_data` (action="HISTORY") 获取重复 K 线数据。若工具不可用，则通过 `get_broker_market_data` (action="HISTORY") 获取近期 K 线，基于真实收盘价序列做基础趋势推断，严禁凭空捏造。
 - **矛盾数据处理 (Contradiction Handling)**：如果通过 RAG 检索到的多个片段或不同工具返回的数据存在互相矛盾（如不同段落对同一财务数据的表述不一），你必须**如实向用户暴露这种矛盾**，列出冲突的数据点及对应片段，并根据上下文（如时间先后、段落从属关系）给出你的专业推断，**绝对禁止自行掩盖冲突、强行合并或胡乱取平均值**。
 
 ## 4. 数据流效率与上下文保护 (Data Efficiency & Context Protection)
@@ -202,27 +202,28 @@
 4. **嵌入交互式图表 (ECharts)**：如果需要在 UI 中展示走势、分布等数据可视化的图表，请直接在输出的 HTML 结构中或之后，穿插使用 ````echarts` 代码块包裹的严格 JSON 配置对象（如：````echarts\n{"xAxis":{...}}\n````）。前端解析引擎会自动将其拦截并渲染为真实的动态图表。注意：JSON 必须严格合法，且严禁包含 JavaScript 函数或注释。
 5. **ECharts 强制暗黑配色 (Tailwind Colors)**：图表必须与系统的暗黑玻璃态 UI 完美融合。强制要求：背景设为透明 (`"backgroundColor": "transparent"`)，坐标轴线和网格分割线使用暗石板色 (`#1e293b` 或 `#334155`)，文字标签使用冷灰色 (`#64748b` 或 `#94a3b8`)。数据线/柱体必须使用 Tailwind 现代色系：主色调优先用紫 (`#8b5cf6`) 和蓝 (`#3b82f6`)，上涨/看多用绿 (`#10b981`)，下跌/看空用红 (`#ef4444`)，渐变背景 (areaStyle) 需辅以较低透明度。严禁使用 ECharts 默认的刺眼亮色。
 
-## 9. 数据采集架构（四节点 · 数据源分 VPS）
+## 9. 数据采集架构（五节点 · 数据源分 VPS）
 
-系统采用 **US-MASTER ×1 + US-YF-A/B ×2 + CN-AKSHARE ×1**。节点间 **Tailscale 虚拟网**；Yahoo 流量不得集中在主节点单 IP。细则见 `docs/06` V9.0。
+系统采用 **US-MASTER ×1 + US-YF-A/B ×2 + CN-DATA ×1**。节点间 **Tailscale 虚拟网**；Yahoo 流量不得集中在主节点单 IP。细则见 `docs/06` V9.1。
 
 ### 9.1 架构概述
 
-- **US-MASTER**（加州主 VPS）：API + Worker + Redis + PostgreSQL + Futu OpenD；Finnhub/FRED 可本地；**YFinance 经 `YFinanceRouter` 调辅助节点**
+- **US-MASTER**（加州主 VPS）：API + Worker + Redis + PostgreSQL + Futu OpenD；Finnhub/FRED 可本地；**YFinance 经 `DataSourceRouter` 调辅助节点**
 - **US-YF-A / US-YF-B**（美国辅助 ×2）：仅 `data_subservice`（yfinance），**独立公网 IP** → Yahoo；心跳写主 Redis Registry
-- **CN-AKSHARE**（中国辅助）：仅 AKShare → 主 Redis；**禁止** YFinance / Futu
+- **CN-DATA**（中国数据源 VPS）：Tushare + AKShare 子服务 → 主 Redis 或 HMAC 远程；**禁止** YFinance / Futu
 - 前端（Cloudflare Pages）→ 仅 US-MASTER API
-- Futu OpenD 仅主宿主机 `127.0.0.1:11111`
-- 跨节点：Tailscale only；子服务 HMAC；不对公网暴露 6379/5432/ds:8000
+- Futu OpenD 仅主宿主机 `127.0.0.1:11111`，主服务经 `data_source_router.fetch_futu()` HTTP 代理访问
+- 跨节点：Tailscale only；子服务 HMAC；不对公网暴露 6379/5432/ds:8001
 
 ### 9.2 采集器配置（US-MASTER 推荐）
 
 ```bash
 COLLECTOR_FUTU=true
 COLLECTOR_FINNHUB=true
-COLLECTOR_YFINANCE=false   # 推荐关本地 Yahoo，走 Router → US-YF-A/B
-COLLECTOR_AKSHARE=false    # AKShare 在 CN 节点
-YF_ROUTER_ENABLED=true
+COLLECTOR_YFINANCE=false   # 推荐关本地 Yahoo，走 DataSourceRouter → US-YF-A/B
+COLLECTOR_AKSHARE=false    # AKShare 在 CN-DATA 节点
+COLLECTOR_TUSHARE=false    # Tushare 在 CN-DATA 节点
+DATA_SOURCE_ROUTER_ENABLED=true  # 启用统一数据源路由
 ```
 
 ### 9.3 核心文件映射
@@ -231,17 +232,19 @@ YF_ROUTER_ENABLED=true
 |:---|:---|
 | `backend/workers/collector_registry.py` | 采集器注册表（`CollectorDef.factory`） |
 | `backend/workers/collectors/` | 各采集器启动工厂（BE-ARCH-03） |
-| `backend/core/service_registry.py` / YFinanceRouter | 多节点发现 + 抗限流路由 |
-| `data_subservice/` | YF 辅节点独立服务 |
-| `docker-compose.master.yml` / `yf-node.yml` / `slave.yml` | 四节点 Compose（见 docs/06 §八） |
+| `backend/services/datasource/router.py` | DataSourceRouter 统一路由（YF/Futu/AKShare/Tushare/FMP） |
+| `backend/services/datasource/adapters/` | DataSourceInterface 适配器（Futu/YF/Finnhub/FMP/AKShare/FRED 等） |
+| `data_subservice/` | YF 辅节点 + Futu/FMP/Tushare/AKShare 独立服务 |
+| `docker-compose.master.yml` / `yf-node.yml` / `slave.yml` | 五节点 Compose（见 docs/06 §八） |
 | `.github/workflows/backend.yml` | CI/CD → US-MASTER（矩阵扩 yf/slave） |
 
 ### 9.4 开发约束
 
 - **新增采集器**: 实现 `workers/collectors/<name>.py` 的 `async start()` → 在 `collector_registry.COLLECTORS` 注册 + `COLLECTOR_*` env；限流敏感源优先独立辅节点出口；**禁止**在 `start_collector_daemons` 内硬编码服务 import
 - **YFinance**: 至少 2 个不同公网 IP 热流量（weight 对等）；429 不计熔断失败计数，failover 下一节点
-- **CN 节点**: 禁止启用 YF/Futu collector
+- **CN 节点**: 禁止启用 YF/Futu collector（仅跑 Tushare + AKShare 子服务）
 - **Redis 键空间**: `quant:cache:{action}:{ticker}`
+- **数据源注册**: 应用启动时由 `bootstrap/lifecycle.py` 调用 `ensure_all_datasources_registered()` 统一注册，Facade 经 Registry 选源
 
 ---
 
@@ -578,7 +581,7 @@ CI/CD       GitHub Actions
 部署模式
   本地研发   ./start.sh（热更新）
   单机生产   docker-compose up -d
-  四节点生产 US-MASTER + US-YF-A/B + CN-AKSHARE（Tailscale；详见 docs/06 V9.0）
+  四节点生产 US-MASTER + US-YF-A/B + CN-DATA（Tailscale；详见 docs/06 V9.1）
   主节点     COMPOSE_PROFILES=master docker compose up -d
   YF 辅节点  docker compose -f docker-compose.yf-node.yml up -d
   CN 辅节点  COMPOSE_PROFILES=slave docker compose up -d

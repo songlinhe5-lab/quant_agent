@@ -103,7 +103,10 @@ async def test_screener_subscription_daemon(monkeypatch):
 
     with (
         patch.object(sd, "redis_client", redis),
-        patch.object(sd, "futu_service", futu),
+        patch(
+            "backend.services.datasource.router.data_source_router",
+            MagicMock(fetch_futu=AsyncMock(return_value=futu.screen_stocks.return_value)),
+        ),
         patch.object(sd, "llm_service", llm),
         patch.object(sd, "notification_service", notify),
         patch("backend.services.finnhub.service.finnhub_service", finnhub),
@@ -141,7 +144,10 @@ async def test_daily_market_summary_daemon(monkeypatch):
 
     with (
         patch.object(sd, "redis_client", redis),
-        patch.object(sd, "futu_service", futu),
+        patch(
+            "backend.services.datasource.router.data_source_router",
+            MagicMock(fetch_futu=AsyncMock(return_value=futu.screen_stocks.return_value)),
+        ),
         patch.object(sd, "llm_service", llm),
         patch.object(sd, "notification_service", notify),
     ):

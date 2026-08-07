@@ -1,2 +1,1 @@
-class Foo:
-    pass
+class Foo: pass

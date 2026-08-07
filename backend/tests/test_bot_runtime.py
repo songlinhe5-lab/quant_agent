@@ -357,20 +357,22 @@ class TestBotRuntimeManager:
     @pytest.mark.asyncio
     @patch("backend.workers.oms.bot_runtime.redis_client")
     async def test_fetch_latest_quote_success(self, mock_redis, manager):
-        """获取行情成功"""
-        with patch("backend.workers.oms.bot_runtime.futu_service", create=True) as mock_futu:
-            mock_futu.get_quote = AsyncMock(return_value={"status": "success", "last_price": 150.0})
-            with patch.dict("sys.modules", {"backend.services.futu": MagicMock(futu_service=mock_futu)}):
-                result = await manager._fetch_latest_quote("US.AAPL")
+        """获取行情成功 (经 DataSourceRouter.fetch_futu)"""
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_futu",
+            new=AsyncMock(return_value={"status": "success", "last_price": 150.0}),
+        ):
+            result = await manager._fetch_latest_quote("US.AAPL")
         assert result["status"] == "success"
 
     @pytest.mark.asyncio
     async def test_fetch_latest_quote_failure(self, manager):
-        """获取行情失败返回 None"""
-        with patch("backend.workers.oms.bot_runtime.futu_service", create=True) as mock_futu:
-            mock_futu.get_quote = AsyncMock(side_effect=Exception("连接失败"))
-            with patch.dict("sys.modules", {"backend.services.futu": MagicMock(futu_service=mock_futu)}):
-                result = await manager._fetch_latest_quote("US.AAPL")
+        """获取行情失败返回 None (fetch_futu 异常)"""
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_futu",
+            new=AsyncMock(side_effect=Exception("连接失败")),
+        ):
+            result = await manager._fetch_latest_quote("US.AAPL")
         assert result is None
 
     @pytest.mark.asyncio

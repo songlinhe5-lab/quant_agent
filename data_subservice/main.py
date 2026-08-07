@@ -1,87 +1,165 @@
 """
-==========================================
-Quant Agent — 数据源子服务 (Data Subservice)
-==========================================
+Data Subservice — 独立数据源 HTTP 服务（物理解耦版）
 
-作为「数据源节点」在远程 VPS 上独立运行，仅暴露数据代理能力。
-根据 DS_CAPABILITIES 决定本节点提供哪些数据源能力:
-  - yfinance : 美股/加密货币/外汇 (US-West 节点, US-YF-A / US-YF-B)
-  - tushare  : A股日线/实时/基本面/沪深港通 (北京从节点)
-  - akshare  : 沪深港通资金流向等 (北京从节点)
-
-主节点经 DataSourceRouter 通过 Tailscale 内网调用本服务。
-
-启动:
-  DS_CAPABILITIES=yfinance   python -m data_subservice.main
-  DS_CAPABILITIES=tushare,akshare  python -m data_subservice.main
+作为叶子数据源节点运行，仅依赖 data_subservice._internal（自包含），
+不再 import 任何 backend 包模块。对外暴露统一 /api/v1/data 端点，
+由主服务经 DataSourceRouter 通过 HMAC 签名调用。
 """
 
-import logging
+import asyncio
+import hashlib
+import hmac
+import json
 import os
+import time
+from typing import Any, Dict, Optional
 
+import httpx
 import uvicorn
-from fastapi import FastAPI
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
+from data_subservice._internal.circuit_breaker import circuit_breaker
+from data_subservice._internal.logger import logger
+from data_subservice._internal.metrics import registry as _metrics_registry
+from data_subservice._internal.redis_client import redis_client
+from data_subservice._internal.service_registry import ServiceRegistry
+from data_subservice.akshare_worker import handle_akshare
+from data_subservice.fmp_worker import handle_fmp
+from data_subservice.futu_worker import handle_futu
 from data_subservice.nodeinfo import get_node_info
-from data_subservice.routes import router, set_capabilities
+from data_subservice.tushare_worker import handle_tushare
+from data_subservice.yfinance_worker import handle_yfinance
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("data_subservice")
+load_dotenv()
 
-app = FastAPI(title="Quant Agent Data Subservice")
-app.include_router(router)
+# ── 配置 ──
+HMAC_SECRET = os.getenv("DATA_SOURCE_HMAC_SECRET", "change-me-in-prod")
+SERVICE_PORT = int(os.getenv("DATASOURCE_PORT", "8001"))
+ENABLE_REDIS_HEARTBEAT = os.getenv("ENABLE_REDIS_HEARTBEAT", "false").lower() == "true"
 
-NODE_INFO = get_node_info()
-CAPS = NODE_INFO.capabilities
-set_capabilities(CAPS)
-
-# 仅 yfinance / finnhub 能力需要常驻 worker；tushare/akshare 为按需代理，无需轮询。
-if "yfinance" in CAPS:
-    from data_subservice import yfinance_worker  # noqa: F401
-if "finnhub" in CAPS:
-    from data_subservice import finnhub_worker  # noqa: F401
+app = FastAPI(title="Quant Agent Data Subservice", version="1.0.0")
 
 
-@app.on_event("startup")
-async def startup():
-    logger.info("[DataSubservice] 节点启动: %s | region=%s | caps=%s", NODE_INFO.node_id, NODE_INFO.region, CAPS)
+# ── HMAC 校验 ──
+async def verify_hmac(
+    request: Request,
+    x_timestamp: Optional[str] = Header(None),
+    x_signature: Optional[str] = Header(None),
+) -> None:
+    if not x_timestamp or not x_signature:
+        raise HTTPException(status_code=403, detail="缺少 HMAC 请求头")
 
-    if "yfinance" in CAPS:
-        await yfinance_worker.start()
-    if "finnhub" in CAPS:
-        await finnhub_worker.FinnhubWorker().start()
-        await finnhub_worker.FinnhubWsClient().start()
+    if abs(time.time() - int(x_timestamp)) > 300:
+        raise HTTPException(status_code=403, detail="请求时间戳过期")
 
-    logger.info("[DataSubservice] 节点就绪，等待 HTTP API 请求")
+    body = (await request.body()).decode("utf-8")
+    message = f"{x_timestamp}:{body}".encode("utf-8")
+    expected = hmac.new(HMAC_SECRET.encode(), message, hashlib.sha256).hexdigest()
 
-
-@app.on_event("shutdown")
-async def shutdown():
-    if "yfinance" in CAPS:
-        await yfinance_worker.stop()
-    if "finnhub" in CAPS:
-        await finnhub_worker.FinnhubWorker().stop()
-        await finnhub_worker.FinnhubWsClient().stop()
-    logger.info("[DataSubservice] 节点 %s 停止", NODE_INFO.node_id)
+    if not hmac.compare_digest(expected, x_signature):
+        raise HTTPException(status_code=403, detail="HMAC 签名校验失败")
 
 
+# ── 路由 ──
 @app.get("/health")
 async def health():
-    return {
-        "status": "healthy",
-        "node_id": NODE_INFO.node_id,
-        "capabilities": CAPS,
-        "version": "1.0.0",
+    return JSONResponse({"status": "healthy", "service": "data-subservice"})
+
+
+@app.post("/api/v1/data", dependencies=[Depends(verify_hmac)])
+async def fetch_data(request: Request):
+    """统一数据源获取端点。路由到 yfinance / akshare / tushare 实现。"""
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="无效 JSON 请求体")
+
+    source = payload.get("source", "").lower()
+    action = payload.get("action", "")
+    params = payload.get("params", {})
+
+    if source == "yfinance":
+        result = await handle_yfinance(action, params)
+    elif source == "akshare":
+        result = await handle_akshare(action, params)
+    elif source == "tushare":
+        result = await handle_tushare(action, params)
+    elif source == "futu":
+        # Futu 仅在主节点 COLLECTOR_FUTU=true 时启用（OpenD 本地 TCP）
+        if not os.getenv("COLLECTOR_FUTU", "false").lower() == "true":
+            raise HTTPException(status_code=503, detail="Futu 采集器未启用（仅主节点 COLLECTOR_FUTU=true）")
+        result = await handle_futu(action, params)
+    elif source == "fmp":
+        result = await handle_fmp(action, params)
+    else:
+        raise HTTPException(status_code=400, detail=f"未知数据源: {source}")
+
+    return JSONResponse({"code": 0, "data": result})
+
+
+@app.get("/metrics/circuit")
+async def circuit_metrics():
+    return JSONResponse(circuit_breaker.status_snapshot())
+
+
+@app.get("/metrics")
+async def prometheus_metrics():
+    """Prometheus 抓取端点（FMP 等数据源指标，独立 registry）。"""
+    return JSONResponse(
+        content=generate_latest(_metrics_registry).decode("utf-8"),
+        media_type=CONTENT_TYPE_LATEST,
+    )
+
+
+# ── 启动事件：可选向主 Redis 注册节点心跳 + Futu 长连接 ──
+@app.on_event("startup")
+async def startup_event():
+    logger.info("🚀 Data Subservice 启动完成 (物理解耦模式，无 backend 依赖)")
+
+    # Futu 仅主节点启用（OpenD 本地 TCP，部署在主节点 VPS）
+    if os.getenv("COLLECTOR_FUTU", "false").lower() == "true":
+        try:
+            from data_subservice.futu_src import futu_service
+            from data_subservice.futu_src.watchdog import FutuWatchdog
+
+            # 初始建连（线程池执行，不阻塞事件循环）
+            await asyncio.to_thread(futu_service.connect)
+            asyncio.create_task(FutuWatchdog(futu_service).start())
+            logger.info("🔌 Futu OpenD 长连接已拉起（主节点），看门狗守护进程启动")
+        except Exception as e:
+            logger.error(f"❌ Futu OpenD 启动失败: {e}")
+
+    if ENABLE_REDIS_HEARTBEAT:
+        try:
+            node = get_node_info()
+            registry = ServiceRegistry(redis_client)
+            await registry.register(node)
+            logger.info(f"📡 已向主 Redis 注册节点心跳: {node.node_id}")
+        except Exception as e:
+            logger.warning(f"⚠️ Redis 心跳注册失败（子服务仍可独立运行）: {e}")
+
+
+# ── 远程节点调用（供主服务反向代理或子服务间互调，可选）──
+async def fetch_from_node(node_url: str, payload: Dict[str, Any], timeout: float = 10.0) -> Dict:
+    """向其它子节点发起 HMAC 签名请求（子服务间可选协作）。"""
+    timestamp = str(int(time.time()))
+    body = json.dumps(payload, ensure_ascii=False)
+    message = f"{timestamp}:{body}".encode("utf-8")
+    signature = hmac.new(HMAC_SECRET.encode(), message, hashlib.sha256).hexdigest()
+
+    headers = {
+        "Content-Type": "application/json",
+        "X-Timestamp": timestamp,
+        "X-Signature": signature,
     }
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post(f"{node_url}/api/v1/data", content=body, headers=headers)
+        resp.raise_for_status()
+        return resp.json()
 
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "data_subservice.main:app",
-        host="0.0.0.0",
-        port=int(os.getenv("DS_NODE_PORT", "8000")),
-        workers=1,
-        loop="uvloop",
-        http="httptools",
-        timeout_keep_alive=65,
-    )
+    uvicorn.run(app, host="0.0.0.0", port=SERVICE_PORT)

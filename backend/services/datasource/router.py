@@ -13,15 +13,16 @@ Data Source Router - 数据源路由服务
 
 环境变量控制 (URL 支持逗号分隔多活):
   DATA_SOURCE_ROUTER_ENABLED=true|false    # 是否启用路由
-  YF_PRIMARY_NODE_URL=http://localhost:8000  # yfinance 主节点 (主节点本地)
-  YF_BACKUP_NODE_URL=http://s3:8000,http://s4:8000,http://s2:8000  # yfinance 备用 (逗号分隔多活)
-  TUSHARE_REMOTE_URL=http://bj:8000          # tushare 远程 (北京单节点)
-  AKSHARE_REMOTE_URL=http://bj:8000          # akshare 远程 (北京单节点)
+  YF_PRIMARY_NODE_URL=http://localhost:8001  # yfinance 主节点 (主节点本地, data_subservice 端口 8001)
+  YF_BACKUP_NODE_URL=http://s3:8001,http://s4:8001,http://s2:8001  # yfinance 备用 (逗号分隔多活)
+  TUSHARE_REMOTE_URL=http://bj:8001          # tushare 远程 (北京单节点)
+  AKSHARE_REMOTE_URL=http://bj:8001          # akshare 远程 (北京单节点)
   DATA_SOURCE_HMAC_SECRET=...               # 节点间通信签名密钥
 """
 
 import asyncio
 import hashlib
+import hmac
 import json
 import os
 import time
@@ -39,6 +40,58 @@ from backend.services.datasource import (
     parse_retry_after,
     rate_limit_registry,
 )
+
+# 数据子服务统一数据端点 (契约见 data_subservice/main.py::fetch_data)
+_DATA_ENDPOINT = "/api/v1/data"
+
+# 主服务内部 fetch_type -> 子服务 action 映射
+# 子服务 action 取值见 data_subservice/yfinance_worker.py::handle_yfinance
+_YF_ACTION_MAP = {
+    "quote": "QUOTE",
+    "history": "HISTORY",
+    "tech": "TECH",
+    "fund_flow": "FUND_FLOW",
+    "option_chain": "OPTION_CHAIN",
+    "financials": "FINANCIALS",
+    "search": "SEARCH",
+    "batch_quote": "BATCH_QUOTE",
+}
+
+# 主服务内部 action -> 子服务 action 映射
+# 子服务 tushare worker 已补全 FINANCIALS / HOLDER / MONEYFLOW 之外的全部能力
+# (STOCK_HISTORY / STOCK_QUOTE / FUNDAMENTAL / STOCK_LIST / LOWFREQ_HISTORY / MACRO)，
+# 对应实现见 data_subservice/_internal/tushare/service.py。
+# ⚠️ 仍无法远程实现的 action 不列入本表 (如部分需要本地专属依赖的能力)，
+#    会被识别为"远程不支持"并降级本地适配器，避免发出必然失败的远程请求污染熔断计数。
+_TS_ACTION_MAP = {
+    "financials": "FINANCIALS",
+    "holder": "HOLDER",
+    "moneyflow": "MONEYFLOW",
+    "stock_history": "STOCK_HISTORY",
+    "stock_quote": "STOCK_QUOTE",
+    "fundamental": "FUNDAMENTAL",
+    "stock_list": "STOCK_LIST",
+    "lowfreq_history": "LOWFREQ_HISTORY",
+    "macro": "MACRO",
+}
+
+# 主服务内部 fetch_type -> 子服务 action 映射 (Futu)
+# 子服务 futu worker 已补全全部能力, 对应实现见 data_subservice/futu_worker.py::handle_futu。
+# ⚠️ Futu OpenD 仅部署在主节点 (DATASOURCE_FUTU_MODE=external 时本路由 pin 主节点),
+#    不进入多活/容灾候选, 故 _FUTU_ACTION_MAP 仅作内部 fetch_type 归一化用。
+_FUTU_ACTION_MAP = {
+    "quote": "QUOTE",
+    "history": "HISTORY",
+    "fund_flow": "FUND_FLOW",
+    "option_chain": "OPTION_CHAIN",
+    "fundamental": "FUNDAMENTAL",
+    "order_book": "ORDER_BOOK",
+    "warrant_chain": "WARRANT_CHAIN",
+    "market_snapshots": "SNAPSHOT",
+    "stock_basicinfo": "STOCK_BASICINFO",
+    "account_info": "ACCOUNT_INFO",
+    "place_order": "PLACE_ORDER",
+}
 
 # DIST-19: AKShare STALE 缓存配置
 _AK_STALE_PREFIX = "quant:akshare:stale"
@@ -73,13 +126,23 @@ class DataSourceRouter:
         self._nodes: Dict[str, DataSourceNode] = {}
         self._lock = asyncio.Lock()
         self._http_client: Optional[httpx.AsyncClient] = None
+
+        # Fail-fast: 子服务无条件校验 HMAC, 主服务若缺密钥则所有远程请求必 403。
+        # 与其在运行时以"签名失败"的形式暴露 (极难排查), 不如启动即报错。
+        # 仅在启用路由时校验, 不影响本地开发与单测。
+        if self._enabled and not self._hmac_secret:
+            raise RuntimeError(
+                "DATA_SOURCE_ROUTER_ENABLED=true 但未配置 DATA_SOURCE_HMAC_SECRET。"
+                "数据子服务会拒绝所有未签名请求 (403)，请先配置该密钥 (需与子服务侧一致)。"
+            )
+
         self._init_nodes()
 
     def _init_nodes(self):
         # 支持逗号分隔的多个 URL (多活容灾)。
         # 注意: fetch_akshare/fetch_tushare 按固定单键 'akshare_remote'/'tushare_remote' 取节点，
         #       故 tushare/akshare 远程 URL 仅取首个 (当前拓扑: 北京单节点，无容灾)。
-        yf_primary = os.getenv("YF_PRIMARY_NODE_URL", "http://localhost:8000")
+        yf_primary = os.getenv("YF_PRIMARY_NODE_URL", "http://localhost:8001")
         yf_backups = os.getenv("YF_BACKUP_NODE_URL", "")
         akshare_urls = self._split_urls(os.getenv("AKSHARE_REMOTE_URL", ""))
         tushare_urls = self._split_urls(os.getenv("TUSHARE_REMOTE_URL", ""))
@@ -127,6 +190,30 @@ class DataSourceRouter:
                 ],
             )
 
+        # Futu 主节点节点 (pin 主节点, 单键)
+        # Futu OpenD 仅部署在 US-MASTER 主节点 (127.0.0.1:11111), 子服务在主节点以
+        # COLLECTOR_FUTU=true 持有 OpenD 长连接。主服务经 HTTP 调 source=futu 获取数据,
+        # 不持有 SDK。URL 默认 http://localhost:8001 (与主节点 data_subservice 同机)。
+        futu_url = os.getenv("FUTU_REMOTE_URL", "http://localhost:8001")
+        self._nodes["futu_master"] = DataSourceNode(
+            name="futu_master",
+            url=futu_url,
+            weight=10,
+            capabilities=["futu"],
+        )
+
+        # FMP 主节点节点 (pin 主节点, 单键)
+        # FMP 数据源连接层 (REST + credit 配额/指标) 已下沉 data_subservice
+        # (_internal/fmp + fmp_worker.py)。主服务经 HTTP 调 source=fmp 获取数据,
+        # 不持有 FMP REST 客户端。URL 默认 http://localhost:8001 (与主节点 data_subservice 同机)。
+        fmp_url = os.getenv("FMP_REMOTE_URL", "http://localhost:8001")
+        self._nodes["fmp_master"] = DataSourceNode(
+            name="fmp_master",
+            url=fmp_url,
+            weight=10,
+            capabilities=["fmp"],
+        )
+
         logger.info(f"[Router] 初始化完成: enabled={self._enabled}, nodes={list(self._nodes.keys())}")
 
     @staticmethod
@@ -134,13 +221,55 @@ class DataSourceRouter:
         """将逗号分隔的 URL 字符串拆分为列表 (去除空白/空项)。"""
         return [u.strip() for u in (raw or "").split(",") if u.strip()]
 
-    def _sign_request(self, payload: dict, timestamp: str) -> str:
-        if not self._hmac_secret:
-            return ""
-        payload_with_ts = payload.copy()
-        payload_with_ts["__timestamp"] = timestamp
-        data_str = json.dumps(payload_with_ts, sort_keys=True).encode("utf-8")
-        return hashlib.sha256(self._hmac_secret.encode("utf-8") + data_str).hexdigest()
+    def _sign_request(self, body: str, timestamp: str) -> str:
+        """对**实际发送的 body 字符串**做标准 HMAC-SHA256 签名。
+
+        契约与 data_subservice/main.py::verify_hmac 严格一致:
+            message   = f"{timestamp}:{body}"
+            signature = hmac_sha256(HMAC_SECRET, message).hexdigest()
+
+        注意: 必须对最终发送的字节签名, 不能重新序列化 payload,
+        否则空格/键序/Unicode 转义的差异会导致子服务验签失败 (403)。
+        """
+        return hmac.new(
+            self._hmac_secret.encode("utf-8"),
+            f"{timestamp}:{body}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+
+    @staticmethod
+    def _normalize_response(raw: Dict[str, Any]) -> Dict[str, Any]:
+        """将子服务的 {"code":0,"data":...} 响应归一化为主服务内部约定。
+
+        主服务各调用方统一以 status/success 判定结果, 子服务返回的是
+        code/data 信封, 此处做一次转换, 避免污染上层业务逻辑。
+        """
+        if not isinstance(raw, dict):
+            return {"status": "error", "success": False, "message": f"非法响应类型: {type(raw).__name__}"}
+
+        # 已是主服务内部格式 (如 _send_request 构造的错误体), 原样返回
+        if "code" not in raw:
+            return raw
+
+        if raw.get("code") != 0:
+            return {
+                "status": "error",
+                "success": False,
+                "message": str(raw.get("message") or raw.get("detail") or f"子服务返回 code={raw.get('code')}"),
+            }
+
+        data = raw.get("data")
+
+        # worker 内部错误以 {"error": "..."} 形式返回, 需识别为失败
+        if isinstance(data, dict) and data.get("error"):
+            return {"status": "error", "success": False, "message": str(data["error"]), "data": data}
+
+        result: Dict[str, Any] = {"status": "success", "success": True, "data": data}
+        # 透传 worker 已带的业务字段, 但不覆盖上面的状态字段
+        if isinstance(data, dict):
+            for k, v in data.items():
+                result.setdefault(k, v)
+        return result
 
     def _ensure_http_client(self):
         if self._http_client is None:
@@ -149,25 +278,36 @@ class DataSourceRouter:
                 limits=httpx.Limits(max_connections=20),
             )
 
-    async def _send_request(self, node: DataSourceNode, endpoint: str, payload: dict) -> Dict[str, Any]:
+    async def _send_request(self, node: DataSourceNode, source: str, payload: dict) -> Dict[str, Any]:
+        """向数据子服务发起统一数据请求。
 
+        契约 (data_subservice/main.py):
+            POST {node.url}/api/v1/data
+            body    = {"source": ..., "action": ..., "params": {...}}
+            headers = X-Timestamp / X-Signature (HMAC-SHA256)
+            resp    = {"code": 0, "data": ...}
+        """
         self._ensure_http_client()
-        url = f"{node.url}/api/v1/data-source/proxy/{endpoint}"
-        headers = {"Content-Type": "application/json"}
+        url = f"{node.url}{_DATA_ENDPOINT}"
 
-        if self._hmac_secret:
-            timestamp = str(int(time.time()))
-            signature = self._sign_request(payload, timestamp)
-            headers["X-Data-Source-Signature"] = signature
-            headers["X-Data-Source-Timestamp"] = timestamp
+        # 子服务对原始 body 字节验签, 故此处固定序列化一次并以 content= 发送,
+        # 不能用 json=payload (httpx 会重新序列化, 字节可能不一致导致 403)。
+        body = json.dumps(payload, ensure_ascii=False)
+        timestamp = str(int(time.time()))
+
+        headers = {
+            "Content-Type": "application/json",
+            "X-Timestamp": timestamp,
+            "X-Signature": self._sign_request(body, timestamp),
+        }
 
         if self._http_client is None:
             return {}
 
         try:
-            resp = await self._http_client.post(url, json=payload, headers=headers, timeout=15.0)
+            resp = await self._http_client.post(url, content=body.encode("utf-8"), headers=headers, timeout=15.0)
             resp.raise_for_status()
-            return resp.json()
+            return self._normalize_response(resp.json())
         except httpx.HTTPStatusError as e:
             status_code = e.response.status_code
             resp_headers = dict(e.response.headers)
@@ -186,7 +326,7 @@ class DataSourceRouter:
             )
 
             logger.error(
-                f"[Router] 请求错误: node={node.name}, endpoint={endpoint}, "
+                f"[Router] 请求错误: node={node.name}, source={source}, "
                 f"status={status_code}, category={category.value}, error={str(e)}"
             )
 
@@ -198,7 +338,7 @@ class DataSourceRouter:
                 "message": str(e),
             }
         except Exception as e:
-            logger.error(f"[Router] 请求失败: node={node.name}, endpoint={endpoint}, error={str(e)}")
+            logger.error(f"[Router] 请求失败: node={node.name}, source={source}, error={str(e)}")
             raise
 
     def _build_error_info_from_http(
@@ -337,9 +477,9 @@ class DataSourceRouter:
         for node in nodes:
             try:
                 payload = {
-                    "ticker": ticker,
-                    "fetch_type": fetch_type,
-                    "kwargs": kwargs,
+                    "source": "yfinance",
+                    "action": _YF_ACTION_MAP.get(fetch_type.lower(), fetch_type.upper()),
+                    "params": {"ticker": ticker, **kwargs},
                 }
                 result = await self._send_request(node, "yfinance", payload)
 
@@ -422,7 +562,11 @@ class DataSourceRouter:
             return cached
 
         try:
-            payload = {"action": action, "kwargs": kwargs}
+            payload = {
+                "source": "akshare",
+                "action": action.upper(),
+                "params": dict(kwargs),
+            }
             result = await self._send_request(remote_node, "akshare", payload)
 
             if result.get("status") == "success":
@@ -461,8 +605,19 @@ class DataSourceRouter:
         if not self._enabled or not remote_node or remote_node.status != "healthy":
             return await self._call_local_tushare(action, **params)
 
+        # 子服务 tushare worker 未实现该 action, 直接走本地, 不做无谓的远程往返,
+        # 也避免把"能力缺口"误判为节点故障而污染熔断计数。
+        remote_action = _TS_ACTION_MAP.get(action.lower())
+        if remote_action is None:
+            logger.debug(f"[Tushare] action={action} 远程子服务不支持，直接使用本地适配器")
+            return await self._call_local_tushare(action, **params)
+
         try:
-            payload = {"action": action, "params": params}
+            payload = {
+                "source": "tushare",
+                "action": remote_action,
+                "params": dict(params),
+            }
             result = await self._send_request(remote_node, "tushare", payload)
             if result.get("success"):
                 await self._update_node_status(remote_node.name, success=True)
@@ -510,6 +665,177 @@ class DataSourceRouter:
             return {"success": False, "message": f"unsupported tushare action: {action}"}
         except Exception as e:  # noqa: BLE001
             return {"success": False, "message": str(e)}
+
+    async def fetch_futu(self, action: str, **params) -> Dict[str, Any]:
+        """Futu 主节点 HTTP 代理 (source="futu", pin 主节点)。
+
+        Futu OpenD 仅部署在 US-MASTER 主节点 (127.0.0.1:11111), 由主节点
+        data_subservice (COLLECTOR_FUTU=true) 持有长连接并对外提供 source=futu。
+        主服务不持有 SDK, 所有 futu 访问经本路由 pin 到 futu_master 节点。
+
+        action 兼容两种写法: 主服务内部 fetch_type (小写) 或 子服务 action (大写),
+        统一经 _FUTU_ACTION_MAP 归一化。
+
+        降级策略: router 未启用 / 主节点子服务未起 / 远程返回失败 ->
+        回退本地 futu_service (Django 模式保留 SDK 兼容, 待 Phase3 删主服务实例后移除)。
+        """
+        remote_action = _FUTU_ACTION_MAP.get(action.lower(), action.upper())
+
+        # 业务侧统一用 ticker/tickers, 子服务 worker 契约用 symbol/symbols, 此处对齐
+        norm_params = self._futu_normalize_params(remote_action, params)
+
+        remote_node = self._nodes.get("futu_master")
+        # Futu 必须 pin 主节点, 不参与多活随机选; 节点不健康直接降级本地
+        if not self._enabled or not remote_node or remote_node.status != "healthy":
+            logger.debug(f"[Futu] action={remote_action} 走本地降级 (enabled={self._enabled})")
+            return await self._call_local_futu(remote_action, **norm_params)
+
+        try:
+            payload = {
+                "source": "futu",
+                "action": remote_action,
+                "params": norm_params,
+            }
+            result = await self._send_request(remote_node, "futu", payload)
+            if result.get("status") == "success":
+                await self._update_node_status(remote_node.name, success=True)
+                # 直接透传子服务信封 (含 status/data 字段), 与本地降级
+                # futu_service.xxx() 返回结构完全一致, 业务侧零改动。
+                return result
+            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+        except Exception as e:
+            logger.warning(f"[Futu] 远程节点失败: {remote_node.name}, {remote_action}, {str(e)}")
+            await self._update_node_status(remote_node.name, success=False, error=str(e))
+
+        logger.warning("[Futu] 远程节点不可用，降级本地 futu_service")
+        return await self._call_local_futu(remote_action, **norm_params)
+
+    @staticmethod
+    def _futu_normalize_params(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """对齐业务侧键名与子服务 worker 契约。
+
+        业务侧统一: ticker / tickers / market / sec_type / ktype / num / ...
+        子服务 worker: symbol / symbols (其余同)
+        """
+        out = dict(params)
+        if "ticker" in out:
+            out["symbol"] = out.pop("ticker")
+        if "tickers" in out:
+            out["symbols"] = out.pop("tickers")
+        return out
+
+    async def _call_local_futu(self, action: str, **params) -> Dict[str, Any]:
+        """Futu 本地降级 (保留 SDK 兼容, Phase3 删主服务 OpenD 实例后移除)。
+
+        返回结构与 futu_service.xxx() 原始 dict 一致, 与远程分支剥信封后的结构对齐。
+        """
+        from backend.services.futu import futu_service
+
+        try:
+            if action == "QUOTE":
+                return futu_service.get_quote(params.get("symbol", params.get("ticker", "")))
+            elif action == "HISTORY":
+                return futu_service.get_history(
+                    params.get("symbol", params.get("ticker", "")),
+                    ktype=params.get("ktype", "K_DAY"),
+                    num=int(params.get("num", 100)),
+                )
+            elif action == "FUND_FLOW":
+                # service.get_fund_flow(self, ticker) 无 market 形参
+                return futu_service.get_fund_flow(params.get("symbol", params.get("ticker", "")))
+            elif action == "OPTION_CHAIN":
+                return futu_service.get_option_chain(
+                    params.get("symbol", params.get("ticker", "")),
+                    expiration_date=params.get("expiration_date"),
+                )
+            elif action == "FUNDAMENTAL":
+                return futu_service.get_fundamental(params.get("symbol", params.get("ticker", "")))
+            elif action == "ORDER_BOOK":
+                return futu_service.get_order_book(params.get("symbol", params.get("ticker", "")))
+            elif action == "WARRANT_CHAIN":
+                return futu_service.get_warrant_chain(params.get("symbol", params.get("ticker", "")))
+            elif action == "ACCOUNT_INFO":
+                return futu_service.get_account_info(params.get("market", "HK"))
+            elif action == "STOCK_BASICINFO":
+                # service.get_stock_basicinfo(self, market, sec_type) 位置必填
+                return futu_service.get_stock_basicinfo(params.get("market", "HK"), params.get("sec_type", "STOCK"))
+            elif action == "SNAPSHOT":
+                return futu_service.get_market_snapshots(params.get("symbols", []))
+            elif action == "SCREEN_STOCKS":
+                return futu_service.screen_stocks(**params)
+            elif action == "PLACE_ORDER":
+                return futu_service.place_order(**params)
+            return {"status": "error", "message": f"unsupported futu action: {action}"}
+        except Exception as e:  # noqa: BLE001
+            return {"status": "error", "message": str(e)}
+
+    async def fetch_fmp(self, action: str, **params) -> Dict[str, Any]:
+        """FMP 主节点 HTTP 代理 (source="fmp", pin 主节点)。
+
+        FMP 数据源连接层 (REST + credit 配额/指标) 已下沉 data_subservice
+        (_internal/fmp + fmp_worker.py::handle_fmp)。主服务不持有 REST 客户端,
+        所有 fmp 访问经本路由 pin 到 fmp_master 节点。
+
+        action 兼容两种写法: 主服务内部 fetch_type (小写) 或 子服务 action (大写),
+        统一经 _FMP_ACTION_MAP 归一化。
+
+        降级策略: router 未启用 / 主节点子服务未起 / 远程返回失败 ->
+        回退本地 FMPService._local_get (保持 REST 直连兜底, 不依赖子服务)。
+        """
+        _FMP_ACTION_MAP = {
+            "quote": "QUOTE",
+            "profile": "PROFILE",
+            "income_statement": "INCOME_STATEMENT",
+        }
+        remote_action = _FMP_ACTION_MAP.get(action.lower(), action.upper())
+
+        # 业务侧统一用 symbol, 子服务 worker 契约用 symbol, 直传
+        norm_params = dict(params)
+
+        remote_node = self._nodes.get("fmp_master")
+        if not self._enabled or not remote_node or remote_node.status != "healthy":
+            logger.debug(f"[FMP] action={remote_action} 走本地降级 (enabled={self._enabled})")
+            return self._call_local_fmp(remote_action, **norm_params)
+
+        try:
+            payload = {
+                "source": "fmp",
+                "action": remote_action,
+                "params": norm_params,
+            }
+            result = await self._send_request(remote_node, "fmp", payload)
+            if result.get("status") == "success":
+                await self._update_node_status(remote_node.name, success=True)
+                # 配额耗尽错误已带 error_category=quota, 透传给业务侧, 不盲目降级
+                if result.get("error_category") == "quota":
+                    await self._update_node_status(
+                        remote_node.name, success=False, error="quota", error_category=ErrorCategory.QUOTA_EXHAUSTED
+                    )
+                    return result
+                return result
+            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+        except Exception as e:
+            logger.warning(f"[FMP] 远程节点失败: {remote_node.name}, {remote_action}, {str(e)}")
+            await self._update_node_status(remote_node.name, success=False, error=str(e))
+
+        logger.warning("[FMP] 远程节点不可用，降级本地 FMP 直连")
+        return self._call_local_fmp(remote_action, **norm_params)
+
+    @staticmethod
+    def _call_local_fmp(action: str, **params) -> Dict[str, Any]:
+        """FMP 本地降级直连 (数据源连接层兜底, 保持签名兼容)。
+
+        仅作 router 未启用 / 子服务不可达时的兜底，不重复实现 credit/限流状态机
+        (子服务 _internal/fmp 已统一处理；本地兜底不计 credit 预算，仅应急)。
+        """
+        from backend.services.fmp.service import _local_get
+
+        try:
+            symbol = params.get("symbol", params.get("ticker", ""))
+            limit = int(params.get("limit", 4))
+            return _local_get(action, symbol, limit)
+        except Exception as e:  # noqa: BLE001
+            return {"status": "error", "message": str(e)}
 
     # ─────────────────────────────────────────
     #  DIST-19: AKShare STALE 缓存降级

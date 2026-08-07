@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 
 from backend.core.logger import logger
 from backend.core.redis_client import redis_client
+from backend.services.datasource.business import data_service
 
 # GICS 11 大板块标准名称映射
 GICS_SECTOR_MAP = {
@@ -106,12 +107,12 @@ class SectorAnalyzer:
         # 缓存未命中或不完整 → 从数据源获取
         sector_map: Dict[str, str] = {}
 
-        # 优先 Futu get_stock_basicinfo
+        # 优先 Futu get_stock_basicinfo (经 DataSourceRouter HTTP 调 source=futu)
         try:
-            from backend.services.futu import futu_service
+            from backend.services.datasource.router import data_source_router
 
             futu_market = "HK" if market == "HK" else "US"
-            res = await futu_service.get_stock_basicinfo(futu_market, "STOCK")
+            res = await data_source_router.fetch_futu("STOCK_BASICINFO", market=futu_market, sec_type="STOCK")
             if res.get("status") == "success" and res.get("data"):
                 for item in res["data"]:
                     code = item.get("code", "")
@@ -121,22 +122,18 @@ class SectorAnalyzer:
         except Exception as e:
             logger.warning(f"[SectorAnalyzer] Futu basicinfo 获取失败: {e}")
 
-        # 缺失的 → YFinance 兜底 (仅美股)
+        # 缺失的 → 经 Facade 统一选源 YFinance 兜底 (仅美股)
         missing = [c for c in codes if c not in sector_map]
         if missing and market == "US":
-            try:
-                import yfinance as yf
-
-                for code in missing:
-                    try:
-                        info = yf.Ticker(code).info
-                        sector = info.get("sector", "")
+            for code in missing:
+                try:
+                    info_res = await data_service.get_fundamental_info(code, prefer_sources=["yfinance"])
+                    if info_res.is_success and isinstance(info_res.data, dict):
+                        sector = info_res.data.get("sector", "")
                         if sector:
                             sector_map[code] = sector
-                    except Exception:
-                        continue
-            except Exception as e:
-                logger.warning(f"[SectorAnalyzer] YFinance 兜底失败: {e}")
+                except Exception:
+                    continue
 
         # 仍未覆盖 → 标记未知
         for c in codes:

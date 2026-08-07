@@ -39,10 +39,10 @@ class TestFetchBacktestData:
     """直接调用 _fetch_backtest_data 覆盖多数据源路径"""
 
     @pytest.mark.asyncio
-    @patch("backend.routers.strategy.kline_warehouse")
+    @patch("backend.routers.strategy_sandbox.kline_warehouse")
     async def test_local_db_success(self, mock_kw):
         """本地数仓成功返回数据"""
-        from backend.routers.strategy import _fetch_backtest_data
+        from backend.routers.strategy_sandbox import _fetch_backtest_data
 
         df = pd.DataFrame(
             {
@@ -63,10 +63,10 @@ class TestFetchBacktestData:
         assert source == "LocalDB"
 
     @pytest.mark.asyncio
-    @patch("backend.routers.strategy.kline_warehouse")
+    @patch("backend.routers.strategy_sandbox.kline_warehouse")
     async def test_local_db_insufficient_data(self, mock_kw):
         """本地数仓数据不足"""
-        from backend.routers.strategy import _fetch_backtest_data
+        from backend.routers.strategy_sandbox import _fetch_backtest_data
 
         # 只有很少数据
         df = pd.DataFrame(
@@ -86,10 +86,10 @@ class TestFetchBacktestData:
         assert "LOCAL_DATA_MISSING" in msg
 
     @pytest.mark.asyncio
-    @patch("backend.routers.strategy.kline_warehouse")
+    @patch("backend.routers.strategy_sandbox.kline_warehouse")
     async def test_local_db_none_data(self, mock_kw):
         """本地数仓返回 None"""
-        from backend.routers.strategy import _fetch_backtest_data
+        from backend.routers.strategy_sandbox import _fetch_backtest_data
 
         mock_kw.get_history = AsyncMock(return_value=None)
 
@@ -98,10 +98,10 @@ class TestFetchBacktestData:
         assert "LOCAL_DATA_MISSING" in msg
 
     @pytest.mark.asyncio
-    @patch("backend.routers.strategy.kline_warehouse")
+    @patch("backend.routers.strategy_sandbox.kline_warehouse")
     async def test_local_db_exception(self, mock_kw):
         """本地数仓异常"""
-        from backend.routers.strategy import _fetch_backtest_data
+        from backend.routers.strategy_sandbox import _fetch_backtest_data
 
         mock_kw.get_history = AsyncMock(side_effect=Exception("DB down"))
 
@@ -111,11 +111,11 @@ class TestFetchBacktestData:
         assert success is False
 
     @pytest.mark.asyncio
-    @patch("backend.routers.strategy.market_data")
-    @patch("backend.routers.strategy.kline_warehouse")
+    @patch("backend.routers.strategy_sandbox.market_data")
+    @patch("backend.routers.strategy_sandbox.kline_warehouse")
     async def test_futu_success(self, mock_kw, mock_md):
         """Futu 数据源成功"""
-        from backend.routers.strategy import _fetch_backtest_data
+        from backend.routers.strategy_sandbox import _fetch_backtest_data
 
         mock_kw.get_history = AsyncMock(return_value=None)
         mock_md.get_history = AsyncMock(
@@ -132,11 +132,11 @@ class TestFetchBacktestData:
         assert "Close" in result_df.columns
 
     @pytest.mark.asyncio
-    @patch("backend.routers.strategy.market_data")
-    @patch("backend.routers.strategy.kline_warehouse")
+    @patch("backend.routers.strategy_sandbox.market_data")
+    @patch("backend.routers.strategy_sandbox.kline_warehouse")
     async def test_futu_failure_explicit(self, mock_kw, mock_md):
         """显式指定 Futu 但失败"""
-        from backend.routers.strategy import _fetch_backtest_data
+        from backend.routers.strategy_sandbox import _fetch_backtest_data
 
         mock_kw.get_history = AsyncMock(return_value=None)
         mock_md.get_history = AsyncMock(side_effect=Exception("Futu timeout"))
@@ -146,11 +146,11 @@ class TestFetchBacktestData:
         assert "Futu" in msg
 
     @pytest.mark.asyncio
-    @patch("backend.routers.strategy.market_data")
-    @patch("backend.routers.strategy.kline_warehouse")
+    @patch("backend.routers.strategy_sandbox.market_data")
+    @patch("backend.routers.strategy_sandbox.kline_warehouse")
     async def test_finnhub_fallback_us_stock(self, mock_kw, mock_md):
         """Finnhub 兜底美股"""
-        from backend.routers.strategy import _fetch_backtest_data
+        from backend.routers.strategy_sandbox import _fetch_backtest_data
 
         mock_kw.get_history = AsyncMock(return_value=None)
         mock_md.get_history = AsyncMock(return_value={"status": "error"})
@@ -167,11 +167,11 @@ class TestFetchBacktestData:
         assert source == "Finnhub"
 
     @pytest.mark.asyncio
-    @patch("backend.routers.strategy.market_data")
-    @patch("backend.routers.strategy.kline_warehouse")
+    @patch("backend.routers.strategy_sandbox.market_data")
+    @patch("backend.routers.strategy_sandbox.kline_warehouse")
     async def test_akshare_fallback_a_stock(self, mock_kw, mock_md):
         """AKShare 兜底 A 股"""
-        from backend.routers.strategy import _fetch_backtest_data
+        from backend.routers.strategy_sandbox import _fetch_backtest_data
 
         mock_kw.get_history = AsyncMock(return_value=None)
         mock_md.get_history = AsyncMock(return_value={"status": "error"})
@@ -187,11 +187,11 @@ class TestFetchBacktestData:
         assert source == "AKShare"
 
     @pytest.mark.asyncio
-    @patch("backend.routers.strategy.market_data")
-    @patch("backend.routers.strategy.kline_warehouse")
+    @patch("backend.routers.strategy_sandbox.market_data")
+    @patch("backend.routers.strategy_sandbox.kline_warehouse")
     async def test_yfinance_final_fallback(self, mock_kw, mock_md):
         """YFinance 终极兜底"""
-        from backend.routers.strategy import _fetch_backtest_data
+        from backend.routers.strategy_sandbox import _fetch_backtest_data
 
         mock_kw.get_history = AsyncMock(return_value=None)
         mock_md.get_history = AsyncMock(return_value={"status": "error"})
@@ -202,10 +202,10 @@ class TestFetchBacktestData:
         assert success is True
 
     @pytest.mark.asyncio
-    @patch("backend.routers.strategy.kline_warehouse")
+    @patch("backend.routers.strategy_sandbox.kline_warehouse")
     async def test_unsupported_source(self, mock_kw):
         """不支持的数据源"""
-        from backend.routers.strategy import _fetch_backtest_data
+        from backend.routers.strategy_sandbox import _fetch_backtest_data
 
         mock_kw.get_history = AsyncMock(return_value=None)
 
@@ -214,10 +214,10 @@ class TestFetchBacktestData:
         assert "未匹配" in msg
 
     @pytest.mark.asyncio
-    @patch("backend.routers.strategy.kline_warehouse")
+    @patch("backend.routers.strategy_sandbox.kline_warehouse")
     async def test_interval_multiplier(self, mock_kw):
         """不同 interval 的 multiplier 计算"""
-        from backend.routers.strategy import _fetch_backtest_data
+        from backend.routers.strategy_sandbox import _fetch_backtest_data
 
         df = pd.DataFrame(
             {
@@ -237,7 +237,7 @@ class TestFetchBacktestData:
     @pytest.mark.asyncio
     async def test_live_forbidden(self):
         """live 模式被禁止"""
-        from backend.routers.strategy import _fetch_backtest_data
+        from backend.routers.strategy_sandbox import _fetch_backtest_data
 
         with patch.dict(os.environ, {"ENGINE_ALLOW_LIVE_DATA": "false"}):
             success, result_df, msg = await _fetch_backtest_data("US.AAPL", "1y", "auto", "1d", snapshot_id="live")
@@ -435,9 +435,18 @@ class TestRunSandbox:
         yield
         app.dependency_overrides.pop(get_current_user, None)
 
-    @patch("backend.routers.strategy._fetch_backtest_data")
-    def test_data_load_failure(self, mock_fetch, client):
+    @patch("backend.routers.strategy_sandbox.redis_client")
+    @patch("backend.routers.strategy_sandbox._fetch_backtest_data")
+    def test_data_load_failure(self, mock_fetch, mock_redis, client):
         """数据加载失败"""
+        # Setup rate limiter mock
+        pipe_mock = AsyncMock()
+        pipe_mock.execute = AsyncMock(return_value=[1, True])
+        pipe_mock.__aenter__ = AsyncMock(return_value=pipe_mock)
+        pipe_mock.__aexit__ = AsyncMock(return_value=None)
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.pipeline = MagicMock(return_value=pipe_mock)
+        
         mock_fetch.return_value = (False, None, "NO_DATA")
 
         resp = client.post(
@@ -455,10 +464,19 @@ class TestRunSandbox:
         assert data["status"] == "error"
         assert "回测数据加载失败" in data["message"]
 
-    @patch("backend.routers.strategy._fetch_backtest_data")
-    @patch("backend.routers.strategy.run_dynamic_sandbox_backtest")
-    def test_value_error(self, mock_run, mock_fetch, client):
+    @patch("backend.routers.strategy_sandbox.redis_client")
+    @patch("backend.routers.strategy_sandbox._fetch_backtest_data")
+    @patch("backend.routers.strategy_sandbox.run_dynamic_sandbox_backtest")
+    def test_value_error(self, mock_run, mock_fetch, mock_redis, client):
         """策略代码 ValueError"""
+        # Setup rate limiter mock
+        pipe_mock = AsyncMock()
+        pipe_mock.execute = AsyncMock(return_value=[1, True])
+        pipe_mock.__aenter__ = AsyncMock(return_value=pipe_mock)
+        pipe_mock.__aexit__ = AsyncMock(return_value=None)
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.pipeline = MagicMock(return_value=pipe_mock)
+        
         df = pd.DataFrame({"Open": [100], "High": [101], "Low": [99], "Close": [100], "Volume": [1000]})
         mock_fetch.return_value = (True, df, "LocalDB")
         mock_run.side_effect = ValueError("策略逻辑错误")
@@ -476,10 +494,19 @@ class TestRunSandbox:
         assert data["status"] == "error"
         assert data["error_code"] == "SANDBOX_RUNTIME_ERROR"
 
-    @patch("backend.routers.strategy._fetch_backtest_data")
-    @patch("backend.routers.strategy.run_dynamic_sandbox_backtest")
-    def test_generic_exception(self, mock_run, mock_fetch, client):
+    @patch("backend.routers.strategy_sandbox.redis_client")
+    @patch("backend.routers.strategy_sandbox._fetch_backtest_data")
+    @patch("backend.routers.strategy_sandbox.run_dynamic_sandbox_backtest")
+    def test_generic_exception(self, mock_run, mock_fetch, mock_redis, client):
         """策略代码未知异常"""
+        # Setup rate limiter mock
+        pipe_mock = AsyncMock()
+        pipe_mock.execute = AsyncMock(return_value=[1, True])
+        pipe_mock.__aenter__ = AsyncMock(return_value=pipe_mock)
+        pipe_mock.__aexit__ = AsyncMock(return_value=None)
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.pipeline = MagicMock(return_value=pipe_mock)
+        
         df = pd.DataFrame({"Open": [100], "High": [101], "Low": [99], "Close": [100], "Volume": [1000]})
         mock_fetch.return_value = (True, df, "LocalDB")
         mock_run.side_effect = RuntimeError("unexpected crash")
@@ -502,7 +529,7 @@ class TestRunSandbox:
 # POST /strategy/optimize-sandbox (error paths)
 # ==========================================
 class TestOptimizeSandbox:
-    @patch("backend.routers.strategy._fetch_backtest_data")
+    @patch("backend.routers.strategy_sandbox._fetch_backtest_data")
     def test_data_load_failure(self, mock_fetch, client):
         """数据加载失败"""
         mock_fetch.return_value = (False, None, "NO_DATA")
@@ -519,8 +546,8 @@ class TestOptimizeSandbox:
         data = _unwrap(resp)
         assert data["status"] == "error"
 
-    @patch("backend.routers.strategy._fetch_backtest_data")
-    @patch("backend.routers.strategy.run_grid_search_backtest")
+    @patch("backend.routers.strategy_sandbox._fetch_backtest_data")
+    @patch("backend.routers.strategy_sandbox.run_grid_search_backtest")
     def test_no_valid_results(self, mock_run, mock_fetch, client):
         """网格搜索无有效结果"""
         df = pd.DataFrame({"Open": [100], "High": [101], "Low": [99], "Close": [100], "Volume": [1000]})
@@ -540,8 +567,8 @@ class TestOptimizeSandbox:
         assert data["status"] == "error"
         assert "未找到" in data["message"]
 
-    @patch("backend.routers.strategy._fetch_backtest_data")
-    @patch("backend.routers.strategy.run_grid_search_backtest")
+    @patch("backend.routers.strategy_sandbox._fetch_backtest_data")
+    @patch("backend.routers.strategy_sandbox.run_grid_search_backtest")
     def test_value_error(self, mock_run, mock_fetch, client):
         """ValueError"""
         df = pd.DataFrame({"Open": [100], "High": [101], "Low": [99], "Close": [100], "Volume": [1000]})
@@ -565,7 +592,7 @@ class TestOptimizeSandbox:
 # POST /strategy/run-batch-sandbox
 # ==========================================
 class TestBatchSandbox:
-    @patch("backend.routers.strategy._fetch_backtest_data")
+    @patch("backend.routers.strategy_sandbox._fetch_backtest_data")
     def test_all_fetch_fail(self, mock_fetch, client):
         """所有标的数据获取失败"""
         mock_fetch.return_value = (False, None, "NO_DATA")
@@ -584,8 +611,8 @@ class TestBatchSandbox:
         assert data["status"] == "error"
         assert "失败" in data["message"]
 
-    @patch("backend.routers.strategy._fetch_backtest_data")
-    @patch("backend.routers.strategy.run_batch_sandbox_backtest")
+    @patch("backend.routers.strategy_sandbox._fetch_backtest_data")
+    @patch("backend.routers.strategy_sandbox.run_batch_sandbox_backtest")
     def test_batch_success(self, mock_run, mock_fetch, client):
         """批量回测成功"""
         df = pd.DataFrame({"Open": [100], "High": [101], "Low": [99], "Close": [100], "Volume": [1000]})
@@ -610,7 +637,7 @@ class TestBatchSandbox:
 # POST /strategy/monte-carlo-sandbox
 # ==========================================
 class TestMonteCarloSandbox:
-    @patch("backend.routers.strategy._fetch_backtest_data")
+    @patch("backend.routers.strategy_sandbox._fetch_backtest_data")
     def test_data_load_failure(self, mock_fetch, client):
         """数据加载失败"""
         mock_fetch.return_value = (False, None, "NO_DATA")
@@ -627,9 +654,9 @@ class TestMonteCarloSandbox:
         data = _unwrap(resp)
         assert data["status"] == "error"
 
-    @patch("backend.routers.strategy.market_data")
-    @patch("backend.routers.strategy._fetch_backtest_data")
-    @patch("backend.routers.strategy.run_monte_carlo_stress_test")
+    @patch("backend.routers.strategy_sandbox.market_data")
+    @patch("backend.routers.strategy_sandbox._fetch_backtest_data")
+    @patch("backend.routers.strategy_sandbox.run_monte_carlo_stress_test")
     def test_monte_carlo_success(self, mock_mc, mock_fetch, mock_md, client):
         """蒙特卡洛成功"""
         df = pd.DataFrame({"Open": [100], "High": [101], "Low": [99], "Close": [100], "Volume": [1000]})

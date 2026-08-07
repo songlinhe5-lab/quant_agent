@@ -240,7 +240,7 @@ class OmsExecutionAdapter:
 
         真实实现：
         1. oms_service.create_order() 落库（OMS-01）
-        2. 非模拟盘时桥接 futu_service.place_order() 实盘下单
+        2. 非模拟盘时桥接 DataSourceRouter.fetch_futu 实盘下单
         3. 状态回写（self._orders）
         """
         order_id = f"oms-{uuid.uuid4().hex[:8]}"
@@ -253,15 +253,32 @@ class OmsExecutionAdapter:
         )
 
         try:
-            # submit 属于同步协议（OrderExecutor），通过 asyncio.run 桥接异步 oms/futu 服务。
-            # 实盘策略运行在 asyncio.to_thread 的 worker 线程中（无运行中的事件循环），
-            # 测试等同步上下文同样适用。
-            asyncio.run(self._submit_pipeline(intent, order_id))
+            # submit 属于同步协议（OrderExecutor），通过 _run_async 桥接异步 oms/futu 服务。
+            # 实盘策略运行在 asyncio.to_thread 的 worker 线程中（无运行中的事件循环）；
+            # 若已在事件循环中（如 pytest-asyncio），则临时新开 loop 串行执行，避免
+            # asyncio.run() cannot be called from a running event loop。
+            self._run_async(self._submit_pipeline(intent, order_id))
         except Exception as e:  # noqa: BLE001
             logger.error(f"[OmsAdapter] 下单管道异常 order_id={order_id}: {e}")
 
         logger.info(f"[OmsAdapter] Order submitted: {order_id} for {intent.symbol}")
         return order_id
+
+    @staticmethod
+    def _run_async(coro):
+        """运行协程，兼容调用方已持有运行中的事件循环。"""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop is None:
+            asyncio.run(coro)
+        else:
+            new_loop = asyncio.new_event_loop()
+            try:
+                return new_loop.run_until_complete(coro)
+            finally:
+                new_loop.close()
 
     async def _submit_pipeline(self, intent: OrderIntent, order_id: str) -> None:
         price = float(intent.limit_price) if intent.order_type == "LIMIT" else 0.0
@@ -293,10 +310,13 @@ class OmsExecutionAdapter:
             if self._is_simulated:
                 return
 
-            # 3. 路由到 Futu 实盘下单
+            # 3. 路由到 Futu 实盘下单 (经 DataSourceRouter HTTP 调 source=futu)
             trd_side = TrdSide.BUY if intent.side == "BUY" else TrdSide.SELL
             market = self._infer_trd_market(intent.symbol)
-            await self._get_futu().place_order(
+            from backend.services.datasource.router import data_source_router
+
+            await data_source_router.fetch_futu(
+                "PLACE_ORDER",
                 ticker=intent.symbol,
                 qty=int(intent.qty),
                 price=price,

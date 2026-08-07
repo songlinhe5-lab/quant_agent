@@ -44,12 +44,12 @@ class RiskEngine:
             except Exception:
                 pass
 
-        # 2. 并发获取 HK + US 两个市场的账户数据
-        from backend.services.futu import futu_service
+        # 2. 并发获取 HK + US 两个市场的账户数据 (经 DataSourceRouter HTTP 调 source=futu)
+        from backend.services.datasource.router import data_source_router
 
         hk_res, us_res = await asyncio.gather(
-            futu_service.get_account_info("HK"),
-            futu_service.get_account_info("US"),
+            data_source_router.fetch_futu("ACCOUNT_INFO", market="HK"),
+            data_source_router.fetch_futu("ACCOUNT_INFO", market="US"),
             return_exceptions=True,
         )
 
@@ -193,8 +193,8 @@ class RiskEngine:
         if not positions:
             return {"vol": 0, "var_95": 0, "beta": 0, "sharpe": 0}, {}
 
-        # 获取每只持仓的 60 日 K 线
-        from backend.services.futu import futu_service
+        # 获取每只持仓的 60 日 K 线 (经 DataSourceRouter HTTP 调 source=futu)
+        from backend.services.datasource.router import data_source_router
 
         kline_data = {}
         for pos in positions:
@@ -202,7 +202,7 @@ class RiskEngine:
             if not ticker:
                 continue
             try:
-                hist = await futu_service.get_history(ticker, ktype="K_DAY", num=60)
+                hist = await data_source_router.fetch_futu("HISTORY", ticker=ticker, ktype="K_DAY", num=60)
                 if hist.get("status") == "success" and hist.get("data"):
                     closes = [float(k["close"]) for k in hist["data"] if k.get("close")]
                     if len(closes) >= 10:

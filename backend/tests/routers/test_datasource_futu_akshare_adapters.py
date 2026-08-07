@@ -12,7 +12,7 @@ Futu / AKShare 数据源适配器单测 (BE-ARCH-05)
 """
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -44,8 +44,10 @@ class TestFutuAkshareRegistration:
     def test_register_two_sources(self):
         ensure_futu_registered()
         ensure_akshare_registered()
-        assert datasource_registry.has("futu")
+        # 两者均无条件注册（Futu 经 router HTTP，不依赖本地 SDK）
         assert datasource_registry.has("akshare")
+        assert datasource_registry.has("futu")
+        assert datasource_registry.get("futu").name == "futu"
 
     def test_idempotent(self):
         ensure_futu_registered()
@@ -53,8 +55,8 @@ class TestFutuAkshareRegistration:
         ensure_akshare_registered()
         ensure_akshare_registered()
         names = datasource_registry.list_names()
-        assert names.count("futu") == 1
         assert names.count("akshare") == 1
+        assert names.count("futu") == 1
 
 
 # ─────────────────────────────────────────
@@ -62,65 +64,57 @@ class TestFutuAkshareRegistration:
 # ─────────────────────────────────────────
 
 
-def _mock_futu(connected: bool = True):
-    svc = MagicMock()
-    svc.status = "CONNECTED" if connected else "DISCONNECTED"
-    svc.error_msg = "" if connected else "OpenD 未连接"
-    svc.get_quote = AsyncMock(return_value={"status": "success", "data": {"price": 1.0}})
-    svc.get_history = AsyncMock(return_value={"status": "success", "data": [{"c": 1}]})
-    svc.get_fund_flow = AsyncMock(return_value={"status": "success", "data": {"net": 1}})
-    svc.get_option_chain = AsyncMock(return_value={"status": "success", "data": [{"o": 1}]})
-    svc.get_fundamental = AsyncMock(return_value={"status": "success", "data": {"pe": 1}})
-    return svc
-
-
 class TestFutuAdapter:
     def test_protocol_attributes(self):
-        a = FutuDataSource(service=_mock_futu())
+        a = FutuDataSource()
         assert a.name == "futu"
         assert "QUOTE" in a.capabilities
         assert "OPTION_CHAIN" in a.capabilities
+        # is_available 取决于 router 中 futu_master 节点是否存在
         assert a.is_available()
 
-    def test_is_available_when_disconnected(self):
-        a = FutuDataSource(service=_mock_futu(connected=False))
-        assert not a.is_available()
+    def test_health_reports_remote_node(self):
+        info = asyncio.run(FutuDataSource().health())
+        assert info.mode == "remote"
+        # futu_master 节点默认存在
+        assert "node_url" in info.stats
 
-    def test_health_connected(self):
-        info = asyncio.run(FutuDataSource(service=_mock_futu()).health())
-        assert info.connected and info.healthy
-
-    def test_health_disconnected(self):
-        info = asyncio.run(FutuDataSource(service=_mock_futu(connected=False)).health())
-        assert not info.connected
-        assert info.last_error == "OpenD 未连接"
-
-    def test_fetch_quote_success(self):
-        a = FutuDataSource(service=_mock_futu())
-        res = asyncio.run(a.fetch("QUOTE", {"ticker": "00700"}))
-        assert isinstance(res, Result)
+    def test_fetch_quote_via_router(self):
+        a = FutuDataSource()
+        fake_resp = {"status": "success", "data": {"last_price": 10.0}}
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_futu",
+            new=AsyncMock(return_value=fake_resp),
+        ):
+            res = asyncio.run(a.fetch("QUOTE", {"ticker": "HK.00700"}))
         assert res.is_success
-        assert res.data == {"price": 1.0}
+        assert res.data == {"last_price": 10.0}
 
     def test_fetch_unsupported_action(self):
-        a = FutuDataSource(service=_mock_futu())
+        a = FutuDataSource()
         res = asyncio.run(a.fetch("NOPE", {}))
         assert not res.is_success
         assert res.error.code == "UNSUPPORTED_ACTION"
 
-    def test_fetch_when_disconnected(self):
-        a = FutuDataSource(service=_mock_futu(connected=False))
-        res = asyncio.run(a.fetch("QUOTE", {"ticker": "00700"}))
+    def test_fetch_router_error(self):
+        a = FutuDataSource()
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_futu",
+            new=AsyncMock(return_value={"status": "error", "message": "node down"}),
+        ):
+            res = asyncio.run(a.fetch("QUOTE", {"ticker": "HK.00700"}))
         assert not res.is_success
-        assert res.error.code == "FUTU_DISCONNECTED"
+        assert res.error.code == "FUTU_FETCH_FAILED"
 
-    def test_fetch_service_error(self):
-        svc = _mock_futu()
-        svc.get_quote = AsyncMock(side_effect=RuntimeError("boom"))
-        a = FutuDataSource(service=svc)
-        res = asyncio.run(a.fetch("QUOTE", {"ticker": "00700"}))
+    def test_fetch_router_exception(self):
+        a = FutuDataSource()
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_futu",
+            new=AsyncMock(side_effect=RuntimeError("boom")),
+        ):
+            res = asyncio.run(a.fetch("QUOTE", {"ticker": "HK.00700"}))
         assert not res.is_success
-        assert res.error.code == "FUTU_ERROR"
+        assert res.error.code == "FUTU_ROUTER_ERROR"
 
 
 # ─────────────────────────────────────────
@@ -194,4 +188,6 @@ class TestHealthOverviewIntegration:
         ensure_akshare_registered()
         board = asyncio.run(get_health_overview())
         names = {c["source"] for c in board["sources"]}
-        assert {"futu", "akshare"} <= names
+        # futu / akshare 均无条件注册
+        assert "futu" in names
+        assert "akshare" in names

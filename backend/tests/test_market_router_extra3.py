@@ -6,10 +6,12 @@ TEST-18: 提升 market.py 覆盖率
 import json
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
+from backend.services.datasource import ErrorInfo, Result, ResultStatus
 
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 os.environ.setdefault("FINNHUB_API_KEY", "test-finnhub-key")
@@ -18,9 +20,11 @@ os.environ.setdefault("FRED_API_KEY", "test-fred-key")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from backend.routers.market import router
+from backend.routers.market_fundamental import router as fundamental_router
 
 app = FastAPI()
 app.include_router(router)
+app.include_router(fundamental_router)
 client = TestClient(app, raise_server_exceptions=False)
 
 
@@ -37,13 +41,14 @@ class TestSearchTickers:
         assert data["status"] == "success"
 
     @patch("backend.routers.market.ticker_service")
-    @patch("backend.routers.market._market_service")
-    def test_local_empty_yf_fallback(self, mock_svc, mock_ts):
+    @patch("backend.routers.market.data_service")
+    def test_local_empty_yf_fallback(self, mock_ds, mock_ts):
         mock_ts.search_tickers = AsyncMock(return_value={"status": "success", "data": []})
-        mock_yf_result = MagicMock()
-        mock_yf_result.is_success.return_value = True
-        mock_yf_result.data = [{"symbol": "AAPL", "name": "Apple"}]
-        mock_svc._yfinance.fetch.return_value = mock_yf_result
+        mock_ds.get_quote = AsyncMock(
+            return_value=Result(
+                status=ResultStatus.SUCCESS, data={"symbol": "AAPL", "name": "Apple"}, source="yfinance"
+            )
+        )
         resp = client.get("/market/search?q=apple")
         assert resp.status_code == 200
 
@@ -56,8 +61,8 @@ class TestSearchTickers:
 
 # ─── /market/news ───────────────────────────────────────────────────
 class TestGetCompanyNews:
-    @patch("backend.routers.market.market_data_gateway")
-    @patch("backend.routers.market.redis_client")
+    @patch("backend.routers.market_fundamental.market_data_gateway")
+    @patch("backend.routers.market_fundamental.redis_client")
     def test_cache_hit(self, mock_redis, mock_fh):
         import json
 
@@ -66,8 +71,8 @@ class TestGetCompanyNews:
         resp = client.get("/market/news?ticker=AAPL")
         assert resp.status_code == 200
 
-    @patch("backend.routers.market.market_data_gateway")
-    @patch("backend.routers.market.redis_client")
+    @patch("backend.routers.market_fundamental.market_data_gateway")
+    @patch("backend.routers.market_fundamental.redis_client")
     def test_finnhub_success(self, mock_redis, mock_fh):
         mock_redis.get = AsyncMock(return_value=None)
         mock_fh.get_company_news = AsyncMock(
@@ -88,7 +93,7 @@ class TestGetCompanyNews:
 
 # ─── /market/fundamental/{ticker} ─────────────────────────────────
 class TestGetFundamental:
-    @patch("backend.routers.market.market_data_gateway")
+    @patch("backend.routers.market_fundamental.market_data_gateway")
     def test_macro_asset_routing(self, mock_fred):
         """测试宏观资产自动路由到 FRED"""
         mock_fred.get_series_observations = AsyncMock(
@@ -99,26 +104,25 @@ class TestGetFundamental:
         data = resp.json()
         assert data["status"] == "success"
 
-    @patch("backend.routers.market._market_service")
-    def test_futu_success(self, mock_svc):
-        from backend.adapters.ports.data_source_port import DataSourceResult
-
-        mock_svc._futu = MagicMock()
-        mock_svc._futu.fetch = MagicMock(return_value=DataSourceResult.success({"pe": 20.0, "pb": 3.0}, source="futu"))
+    @patch("backend.routers.market_fundamental.data_service")
+    def test_futu_success(self, mock_ds):
+        mock_ds.get_fundamental = AsyncMock(
+            return_value=Result(status=ResultStatus.SUCCESS, data={"pe": 20.0, "pb": 3.0}, source="futu")
+        )
         resp = client.get("/market/fundamental/US.AAPL")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "success"
 
-    @patch("backend.routers.market._market_service")
-    def test_futu_fail_yf_success(self, mock_svc):
-        from backend.adapters.ports.data_source_port import DataSourceResult
-
-        mock_svc._futu = MagicMock()
-        mock_svc._futu.fetch = MagicMock(return_value=DataSourceResult.error("失败"))
-        mock_svc._yfinance = MagicMock()
-        mock_svc._yfinance.fetch = MagicMock(
-            return_value=DataSourceResult.success({"shortName": "Apple", "trailingPE": 20.0}, source="yfinance")
+    @patch("backend.routers.market_fundamental.data_service")
+    def test_futu_fail_yf_success(self, mock_ds):
+        mock_ds.get_fundamental = AsyncMock(
+            return_value=Result(status=ResultStatus.ERROR, error=ErrorInfo(code="FUTU_ERROR", message="失败"))
+        )
+        mock_ds.get_fundamental_info = AsyncMock(
+            return_value=Result(
+                status=ResultStatus.SUCCESS, data={"shortName": "Apple", "trailingPe": 20.0}, source="yfinance"
+            )
         )
         resp = client.get("/market/fundamental/US.AAPL")
         assert resp.status_code == 200
@@ -126,11 +130,11 @@ class TestGetFundamental:
 
 # ─── /market/holders/{ticker} ─────────────────────────────────────
 class TestGetTopHolders:
-    @patch("backend.routers.market._market_service._akshare")
-    def test_success(self, mock_akshare):
-        mock_akshare.fetch = MagicMock(
-            return_value=MagicMock(
-                is_error=MagicMock(return_value=False),
+    @patch("backend.routers.market_fundamental.data_service")
+    def test_success(self, mock_ds):
+        mock_ds.get_hsgt_holders = AsyncMock(
+            return_value=Result(
+                status=ResultStatus.SUCCESS,
                 data=[{"holder": "Test", "shares": 1000}],
                 source="akshare",
             )
@@ -140,9 +144,11 @@ class TestGetTopHolders:
         data = resp.json()
         assert data["status"] == "success"
 
-    @patch("backend.routers.market.data_source_router")
-    def test_error(self, mock_router):
-        mock_router.fetch_akshare = AsyncMock(return_value={"status": "error", "message": "失败"})
+    @patch("backend.routers.market_fundamental.data_service")
+    def test_error(self, mock_ds):
+        mock_ds.get_hsgt_holders = AsyncMock(
+            return_value=Result(status=ResultStatus.ERROR, error=ErrorInfo(code="AK_ERROR", message="失败"))
+        )
         resp = client.get("/market/holders/HK.00700")
         assert resp.status_code == 400
 
@@ -158,7 +164,7 @@ class TestInsiderMarquee:
     # RL-11 修复：端点直接从 Redis ZSET (quant:insider_marquee) 读取，并不依赖
     # market_data_gateway；原测试 mock 错依赖导致真实 redis 调用抛异常 -> 500。
     # 改为整体 mock backend.routers.market.redis_client（与本文件其他用例一致）。
-    @patch("backend.routers.market.redis_client")
+    @patch("backend.routers.market_fundamental.redis_client")
     def test_success(self, mock_rc):
         mock_rc.zrevrange.return_value = [
             json.dumps({"name": "Test", "transactionType": "Buy"}),
@@ -170,7 +176,7 @@ class TestInsiderMarquee:
         assert data["status"] == "success"
         assert data["data"][0]["name"] == "Test"
 
-    @patch("backend.routers.market.redis_client")
+    @patch("backend.routers.market_fundamental.redis_client")
     def test_error(self, mock_rc):
         # 端点契约：redis 读取异常时返回 500（无 400 错误态分支）
         mock_rc.zrevrange.side_effect = Exception("redis unreachable")

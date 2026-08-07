@@ -95,7 +95,8 @@ class FREDDataSource:
         )
 
     async def fetch(self, action: str, params: dict[str, Any]) -> Result:
-        if action not in self.capabilities:
+        _action = action.lower()
+        if _action not in [c.lower() for c in self.capabilities]:
             return Result.make_error(
                 ErrorInfo.normal(
                     "UNSUPPORTED_ACTION",
@@ -113,7 +114,7 @@ class FREDDataSource:
             )
 
         try:
-            if action == "macro_series":
+            if _action == "macro_series":
                 data = await svc.get_series_observations(
                     series_id=str(params.get("series_id", "")),
                     limit=int(params.get("limit", 100)),
@@ -189,7 +190,8 @@ class DbnomicsDataSource:
         )
 
     async def fetch(self, action: str, params: dict[str, Any]) -> Result:
-        if action not in self.capabilities:
+        _action = action.lower()
+        if _action not in [c.lower() for c in self.capabilities]:
             return Result.make_error(
                 ErrorInfo.normal(
                     "UNSUPPORTED_ACTION",
@@ -268,7 +270,8 @@ class RBIDataSource:
         )
 
     async def fetch(self, action: str, params: dict[str, Any]) -> Result:
-        if action not in self.capabilities:
+        _action = action.lower()
+        if _action not in [c.lower() for c in self.capabilities]:
             return Result.make_error(
                 ErrorInfo.normal(
                     "UNSUPPORTED_ACTION",

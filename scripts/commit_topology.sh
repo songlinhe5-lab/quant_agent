@@ -48,10 +48,10 @@ EOF
 echo "==> [3/5] chore: 收敛 5 节点 compose 并清理冗余"
 git add \
   docker-compose.master.yml \
-  docker-compose.slave.yml \
-  docker-compose.yf-node-s2.yml \
-  docker-compose.yf-node-s3.yml \
-  docker-compose.yf-node-s4.yml
+  docker-compose.node-bj.yml \
+  docker-compose.node-s2.yml \
+  docker-compose.node-s3.yml \
+  docker-compose.node-s4.yml
 git rm -q \
   docker-compose.yml \
   docker-compose.yf-backup.yml \
@@ -66,7 +66,7 @@ git commit -m "$(cat <<'EOF'
 chore: 收敛为多节点部署拓扑并清理冗余 compose
 
 - 保留 5 节点: master(VPS_S1) / slave(VPS_BJ: tushare+akshare+yfinance) /
-  yf-node-s2(VPS_S2: yfinance) / yf-node-s3(VPS_S3: yfinance) / yf-node-s4(VPS_S4: yfinance)
+  node-s2(VPS_S2: yfinance) / node-s3(VPS_S3: yfinance) / node-s4(VPS_S4: yfinance)
 - 删除 docker-compose.yml(单 VPS 全家桶)、docker-compose.yf-backup.yml、docker-compose.local.yml
 - 删除旧 yf 节点命名 (yf-node/yf-node2/yf-node-data + .env.yf/.env.yf2/.env.yf-data)，统一为 s2/s3/s4
 - slave/yf 节点统一引用 data_subservice 镜像，按 DS_CAPABILITIES 配置数据源
@@ -80,13 +80,13 @@ git add \
   backend/services/datasource/router.py \
   .env.example \
   .env.yf-s2.example \
-  docker-compose.yf-node-s2.yml
+  docker-compose.node-s2.yml
 git commit -m "$(cat <<'EOF'
 fix: Tushare/AKShare 收敛为北京单节点，移除 S2 双活
 
 - router.py: tushare_remote/akshare_remote 注册为单键节点；YF_BACKUP 含 S2/S3/S4
 - .env.example: TUSHARE_REMOTE_URL/AKSHARE_REMOTE_URL 改北京单节点
-- docker-compose.yf-node-s2.yml / .env.yf-s2.example: S2 为纯 yfinance 节点
+- docker-compose.node-s2.yml / .env.yf-s2.example: S2 为纯 yfinance 节点
 
 Co-Authored-By: Claude (CodeBuddy) <noreply@tencent.com>
 EOF
@@ -101,7 +101,7 @@ ci: 4 个数据源从节点纳入自动部署 + 动态生成 .env
 - push develop: 仅构建校验 (build + 推镜像)，不部署
 - PR (合入 develop): 构建 + 自动部署到 5 个节点
 - 新增 build-data-subservice job 构建 data_subservice 镜像并推送 GHCR
-- 新增 deploy-data-nodes matrix job (PR 触发): BJ(slave) / S2(yf-node-s2) / S3(yf-node-s3) / S4(yf-node-s4)
+- 新增 deploy-data-nodes matrix job (PR 触发): BJ(slave) / S2(node-s2) / S3(node-s3) / S4(node-s4)
 - 部署时由 CI 用 Secrets 动态生成各节点 .env (写入 Tailscale IP / REDIS_HOST / HMAC / TZ 等)，无需 VPS 预置
 - 各从节点 compose 改用 ghcr.io/.../quant-agent-data-subservice:latest 镜像
 - deploy 经 ssh-preflight 探测后拉取镜像 up -d --remove-orphans

@@ -106,9 +106,11 @@ async def test_earnings_alert_daemon(monkeypatch):
             await md._earnings_alert_daemon(finnhub)
 
 
-# ── _macro_alert_daemon (407-479) ──────────────────────────────────────────────
+# ── macro_alert_daemon（独立模块 workers/macro/alert_daemon.py） ───────────────
 @pytest.mark.asyncio
 async def test_macro_alert_daemon(monkeypatch):
+    from backend.workers.macro import alert_daemon
+
     _make_sleep_breaker(monkeypatch)
 
     fred = MagicMock()
@@ -142,13 +144,13 @@ async def test_macro_alert_daemon(monkeypatch):
     redis.zadd = AsyncMock()
 
     with (
-        patch.object(md, "redis_client", redis),
+        patch.object(alert_daemon, "redis_client", redis),
         patch("backend.services.ai_narrator.llm_service.llm_service", llm),
         patch("backend.services.alert.notification.notification_service", notify),
         patch("backend.services.macro.fred_service.fred_service", fred),
     ):
         with pytest.raises(_BreakLoop):
-            await md._macro_alert_daemon()
+            await alert_daemon.macro_alert_daemon()
 
 
 # ── _insider_transactions_marquee_daemon (505-555) ─────────────────────────────

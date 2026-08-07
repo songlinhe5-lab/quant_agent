@@ -192,15 +192,16 @@ class TestAKShareService:
     @pytest.mark.asyncio
     async def test_get_stock_quote_success(self, service):
         """A股行情正常路径"""
+        # 新浪源 stock_zh_a_daily 列名: date/open/high/low/close/volume/amount
         df = pd.DataFrame(
             {
-                "开盘": [100.0, 101.0],
-                "最高": [102.0, 103.0],
-                "最低": [99.0, 100.0],
-                "收盘": [101.0, 102.0],
-                "成交量": [10000, 11000],
-                "成交额": [1000000, 1100000],
-                "振幅": [3.0, 3.0],
+                "date": ["2026-06-28", "2026-06-29"],
+                "open": [100.0, 101.0],
+                "high": [102.0, 103.0],
+                "low": [99.0, 100.0],
+                "close": [101.0, 102.0],
+                "volume": [10000, 11000],
+                "amount": [1000000, 1100000],
             }
         )
         fake_ak = MagicMock()
@@ -218,14 +219,15 @@ class TestAKShareService:
     @pytest.mark.asyncio
     async def test_get_stock_history_success(self, service):
         """A股历史 K 线正常路径"""
+        # 新浪源 stock_zh_a_daily 列名: date/open/high/low/close/volume
         df = pd.DataFrame(
             {
-                "日期": ["2026-06-28", "2026-06-29"],
-                "开盘": [100.0, 101.0],
-                "最高": [102.0, 103.0],
-                "最低": [99.0, 100.0],
-                "收盘": [101.0, 102.0],
-                "成交量": [10000, 11000],
+                "date": ["2026-06-28", "2026-06-29"],
+                "open": [100.0, 101.0],
+                "high": [102.0, 103.0],
+                "low": [99.0, 100.0],
+                "close": [101.0, 102.0],
+                "volume": [10000, 11000],
             }
         )
         fake_ak = MagicMock()

@@ -276,9 +276,9 @@ def _build_tile_from_records(records: list, cfg: dict, category_key: str) -> Opt
 
 
 async def _fetch_calendar_tile_ondemand(cfg: dict, category_key: str) -> Optional[dict]:
-    """cache miss 兜底：经 DataSourceRegistry 取 yfinance history（BE-ARCH-04/05）。
+    """cache miss 兆底：经 DataSourceRegistry 取 yfinance history（BE-ARCH-04/05）。
 
-    路由模式(DATASOURCE_YFINANCE_MODE=external/hybrid)下会经 YFinanceRouter 落到
+    路由模式(DATASOURCE_YFINANCE_MODE=external)下会经 DataSourceRouter 落到
     US-YF-A/B 辅助节点，避免主节点单 IP 直连 Yahoo（对齐 AGENTS §9.2）。
     抓到后写回 yf_macro_cache_{yf} 同一 key，与 macro_data_daemon 缓存形态兼容。
     限流退避期内 registry.fetch 直接返回 rate_limited，本函数优雅降级为 None。

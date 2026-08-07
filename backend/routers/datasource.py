@@ -290,19 +290,10 @@ async def get_health_overview() -> Dict[str, Any]:
     COMM-01 数据源健康度统一看板数据源（卡片矩阵）。
     前端 DataSourceHealthDashboard 轮询 / 订阅 WS 渲染。
     """
-    # 确保数据源适配器已注册，使其出现在健康看板（可感知 / 可挂载）
-    # BE-ARCH-05: futu / akshare 已实现 DataSourceInterface 薄适配，惰性注册
-    from backend.services.datasource.adapters.akshare import ensure_akshare_registered
-    from backend.services.datasource.adapters.futu import ensure_futu_registered
-    from backend.services.datasource.adapters.macro import ensure_macro_sources_registered
-    from backend.services.datasource.adapters.search import ensure_search_sources_registered
-    from backend.services.tushare.adapter import ensure_tushare_registered
+    # 确保数据源适配器已注册（幂等补注册，正常路径已在 bootstrap 完成）
+    from backend.services.datasource.adapters import ensure_all_datasources_registered
 
-    ensure_macro_sources_registered()
-    ensure_futu_registered()
-    ensure_akshare_registered()
-    ensure_search_sources_registered()
-    ensure_tushare_registered()
+    ensure_all_datasources_registered()
 
     names = datasource_registry.list_names()
     cards = await asyncio.gather(*[_build_health_card(n) for n in names])
@@ -430,20 +421,10 @@ async def test_datasource_link(name: str) -> Dict[str, Any]:
     - 若数据源支持 quote action，发起一次真实轻量行情请求测量真实网络往返延迟
     - 将测量结果回写 analyzer，驱动「调用延迟数据验证」
     """
-    # 确保数据源适配器已注册（与 health-overview 保持一致）
-    from backend.services.datasource.adapters.akshare import ensure_akshare_registered
-    from backend.services.datasource.adapters.finnhub import ensure_finnhub_registered
-    from backend.services.datasource.adapters.futu import ensure_futu_registered
-    from backend.services.datasource.adapters.macro import ensure_macro_sources_registered
-    from backend.services.datasource.adapters.search import ensure_search_sources_registered
-    from backend.services.tushare.adapter import ensure_tushare_registered
+    # 确保数据源适配器已注册（幂等补注册，正常路径已在 bootstrap 完成）
+    from backend.services.datasource.adapters import ensure_all_datasources_registered
 
-    ensure_macro_sources_registered()
-    ensure_futu_registered()
-    ensure_akshare_registered()
-    ensure_finnhub_registered()
-    ensure_search_sources_registered()
-    ensure_tushare_registered()
+    ensure_all_datasources_registered()
 
     source = datasource_registry.get(name)
     if source is None:

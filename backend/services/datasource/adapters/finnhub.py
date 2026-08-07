@@ -22,7 +22,7 @@ from backend.services.datasource import (
     RateLimitStatus,
     Result,
 )
-from backend.services.finnhub.ws_ingest import record_tick_hit, record_tick_miss, tick_cache
+from backend.services.datasource.subscription import subscription_service
 
 
 def _extract_ws_price(tick: dict[str, Any]) -> Optional[float]:
@@ -122,7 +122,9 @@ class FinnhubDataSource:
         )
 
     async def fetch(self, action: str, params: dict[str, Any]) -> Result:
-        if action not in self.capabilities:
+        # Case-insensitive action 匹配
+        _action = action.lower()
+        if _action not in [c.lower() for c in self.capabilities]:
             return Result.make_error(
                 ErrorInfo.normal(
                     "UNSUPPORTED_ACTION",
@@ -141,13 +143,13 @@ class FinnhubDataSource:
             )
 
         try:
-            if action == "quote":
+            if _action == "quote":
                 symbol = str(params.get("symbol", ""))
-                ws_tick = tick_cache.get(symbol)
+                ws_tick = subscription_service.get_tick(symbol)
                 if ws_tick is not None:
                     ws_price = _extract_ws_price(ws_tick)
                     if ws_price is not None:
-                        record_tick_hit()
+                        subscription_service.record_hit()
                         quote_payload = [
                             {
                                 "symbol": symbol.upper(),
@@ -159,34 +161,34 @@ class FinnhubDataSource:
                         result.self_recorded = True
                         return result
                 # 未命中实时 tick → 记录降级，走 REST 快照
-                record_tick_miss()
+                subscription_service.record_miss()
                 data = await svc.get_quote(symbol)
-            elif action == "earnings":
+            elif _action == "earnings":
                 data = await svc.get_earnings_calendar(
                     days_ahead=int(params.get("days_ahead", 7)),
                     days_back=int(params.get("days_back", 0)),
                     skip_cache=bool(params.get("skip_cache", False)),
                 )
-            elif action == "company_news":
+            elif _action == "company_news":
                 data = await svc.get_company_news(
                     ticker=str(params.get("ticker", "")),
                     days_back=int(params.get("days_back", 3)),
                     skip_cache=bool(params.get("skip_cache", False)),
                 )
-            elif action == "market_news":
+            elif _action == "market_news":
                 data = await svc.get_market_news(category=str(params.get("category", "general")))
-            elif action == "economic_calendar":
+            elif _action == "economic_calendar":
                 data = await svc.get_economic_calendar(
                     days_ahead=int(params.get("days_ahead", 7)),
                     days_back=int(params.get("days_back", 0)),
                     skip_cache=bool(params.get("skip_cache", False)),
                 )
-            elif action == "insider_trading":
+            elif _action == "insider_trading":
                 data = await svc.get_insider_transactions(
                     ticker=str(params.get("ticker", "")),
                     limit=int(params.get("limit", 30)),
                 )
-            elif action == "stock_history":
+            elif _action == "stock_history":
                 data = await svc.get_stock_history(
                     ticker=str(params.get("ticker", "")),
                     days_back=int(params.get("days_back", 365)),

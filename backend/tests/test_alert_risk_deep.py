@@ -433,13 +433,13 @@ class TestRiskEngine:
 
     @pytest.mark.asyncio
     async def test_get_portfolio_risk_both_accounts_fail(self, risk_engine):
-        """get_portfolio_risk: HK 和 US 账户均失败"""
+        """get_portfolio_risk: HK 和 US 账户均失败 (经 DataSourceRouter.fetch_futu)"""
         with patch("backend.services.risk.risk_engine.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
 
-            with patch("backend.services.risk.risk_engine.futu_service") as mock_futu:
-                mock_futu.get_account_info = AsyncMock(side_effect=Exception("Connection failed"))
+            with patch("backend.services.datasource.router.data_source_router.fetch_futu") as mock_fetch:
+                mock_fetch.return_value = {"status": "error", "message": "Connection failed"}
                 result = await risk_engine.get_portfolio_risk(days=7)
                 # 返回 empty 状态而非 error
                 assert result["status"] in ("error", "empty")
@@ -461,8 +461,11 @@ class TestRiskEngine:
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
 
-            with patch("backend.services.risk.risk_engine.futu_service") as mock_futu:
-                mock_futu.get_account_info = AsyncMock(side_effect=[hk_account, Exception("US failed")])
+            with patch("backend.services.datasource.router.data_source_router.fetch_futu") as mock_fetch:
+                mock_fetch.side_effect = [
+                    {"status": "success", "data": hk_account},
+                    {"status": "error", "message": "US failed"},
+                ]
 
                 with patch.object(risk_engine, "_calc_risk_metrics", new_callable=AsyncMock) as mock_risk:
                     mock_risk.return_value = ({}, {})
@@ -533,7 +536,7 @@ class TestRiskSector:
 
     @pytest.mark.asyncio
     async def test_get_sector_map_futu_success(self, analyzer):
-        """_get_sector_map: Futu 获取成功"""
+        """_get_sector_map: Futu 获取成功 (经 DataSourceRouter.fetch_futu)"""
         positions = [{"code": "00700"}]
         futu_data = {
             "status": "success",
@@ -543,23 +546,21 @@ class TestRiskSector:
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
 
-            # futu_service 是在函数内部导入的
-            with patch("backend.services.futu.futu_service") as mock_futu:
-                mock_futu.get_stock_basicinfo = AsyncMock(return_value=futu_data)
+            with patch("backend.services.datasource.router.data_source_router.fetch_futu") as mock_fetch:
+                mock_fetch.return_value = futu_data
                 result = await analyzer._get_sector_map(positions, "HK")
                 assert result.get("00700") == "科技"
 
     @pytest.mark.asyncio
     async def test_get_sector_map_unknown_fallback(self, analyzer):
-        """_get_sector_map: 未知行业兜底"""
+        """_get_sector_map: 未知行业兜底 (fetch_futu 返回 error)"""
         positions = [{"code": "UNKNOWN"}]
         with patch("backend.services.risk.risk_sector.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
 
-            # futu_service 是在函数内部导入的
-            with patch("backend.services.futu.futu_service") as mock_futu:
-                mock_futu.get_stock_basicinfo = AsyncMock(return_value={"status": "error"})
+            with patch("backend.services.datasource.router.data_source_router.fetch_futu") as mock_fetch:
+                mock_fetch.return_value = {"status": "error"}
                 result = await analyzer._get_sector_map(positions, "HK")
                 assert result.get("UNKNOWN") == "未知"
 

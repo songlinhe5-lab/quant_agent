@@ -64,7 +64,17 @@ async def app_lifespan(app: FastAPI):
     except Exception as e:
         log.warning(f"⚠️ [System] 配置全局线程池失败: {e}")
 
-    # 0. 初始化默认系统管理员账号
+    # 0. 数据源适配器统一注册（BE-ARCH-04: Facade 经 Registry 选源，必须启动时注册）
+    log.info("🚀 [Startup] 正在注册数据源适配器...")
+    try:
+        from backend.services.datasource.adapters import ensure_all_datasources_registered
+
+        registered = ensure_all_datasources_registered()
+        log.info(f"✅ [Startup] 数据源适配器注册完成: {registered}")
+    except Exception as e:
+        log.warning(f"⚠️ [Startup] 数据源适配器注册失败 (部分源可能不可用): {e}")
+
+    # 0.1 初始化默认系统管理员账号
     log.info("🚀 [Startup] 正在初始化系统默认账号...")
     try:
         with SessionLocal() as db:
@@ -95,18 +105,9 @@ async def app_lifespan(app: FastAPI):
         log.error(f"❌ [Startup] 管理员账号初始化失败 (DB 可能未就绪): {e}")
 
     # 容灾包裹：防止外部 API 不通导致容器死循环无法启动
-    try:
-        # 2. 连接 Futu OpenD
-        from backend.services.futu import futu_service, push_handler
-
-        push_handler.set_main_loop(asyncio.get_running_loop())
-        await asyncio.wait_for(asyncio.to_thread(futu_service.connect), timeout=15.0)
-        log.info(f"✅ [Startup] Futu OpenD 连接状态: {futu_service.status}")
-    except asyncio.TimeoutError:
-        log.warning("⚠️ [Startup] 富途 OpenD 连接超时 (15s)，已自动降级跳过")
-    except Exception as e:
-        log.warning(f"⚠️ [Startup] 富途 OpenD 连接失败，已自动降级跳过: {e}")
-
+    # 注 (Phase 3, 2026-08-06)：主服务不再持有/启动 Futu OpenD 实例。
+    # OpenD 唯一运行在 data_subservice 节点（COLLECTOR_FUTU=true），
+    # 主服务经 DataSourceRouter (DATASOURCE_FUTU_MODE=external) 走 HTTP 调子服务。
     try:
         # 3. Redis 连通性与系统通知测试
         if test_notification_service is not None:
@@ -151,13 +152,13 @@ async def app_lifespan(app: FastAPI):
 
     # 🚀 NAV 快照守护进程 (每 5 分钟)
     async def _nav_snapshot_daemon():
-        from backend.services.futu import futu_service
+        from backend.services.datasource.router import data_source_router
 
         while True:
             try:
                 hk_acc, us_acc = await asyncio.gather(
-                    futu_service.get_account_info("HK"),
-                    futu_service.get_account_info("US"),
+                    data_source_router.fetch_futu("ACCOUNT_INFO", market="HK"),
+                    data_source_router.fetch_futu("ACCOUNT_INFO", market="US"),
                     return_exceptions=True,
                 )
                 for market, acc in [("HK", hk_acc), ("US", us_acc)]:
@@ -231,13 +232,13 @@ async def app_lifespan(app: FastAPI):
     except Exception as e:
         log.warning(f"[Startup] MarketEngine 启动失败: {e}")
 
-    # 🚀 Finnhub WS 实时 tick 回灌（主节点订阅 quant:tick:{symbol} → 进程内缓存）
+    # 🚀 Finnhub WS 实时 tick 回灌（BE-ARCH-07: 经推送平面统一入口）
     # 仅当配置了 FINNHUB_WS_SYMBOLS 时启动；从节点不跑（外部 WS 收口在 data_subservice）
     try:
-        from backend.services.finnhub.ws_ingest import start_tick_ingest_task
+        from backend.services.datasource.subscription import subscription_service
 
         _ws_symbols = [s.strip().upper() for s in os.getenv("FINNHUB_WS_SYMBOLS", "").split(",") if s.strip()]
-        tick_ingest_task = start_tick_ingest_task(_ws_symbols)
+        tick_ingest_task = subscription_service.start_ingest(_ws_symbols)
         if tick_ingest_task is not None:
             log.info(f"✅ [Startup] Finnhub WS tick 回灌已启动 (订阅 {len(_ws_symbols)} 只标的)")
         else:
@@ -245,20 +246,21 @@ async def app_lifespan(app: FastAPI):
     except Exception as e:
         log.warning(f"[Startup] Finnhub WS tick 回灌启动失败: {e}")
 
-    # 🚀 FMP 盘后批量财报缓存守护 (COLLECTOR_FMP) - 仅 master 且开关开启
+    # 🚀 FMP 盘后批量财报缓存守护（fmp_collector_daemon）：
+    # 业务编排（watchlist 热重载 / 盘后调度 / 通知告警）留在主服务；
+    # 数据源连接层（FMPService REST + credit 配额/连接保障）经 DataSourceRouter HTTP 下沉子服务。
+    # 主服务只负责"决定拉哪些标的 + 何时拉"，实际 REST 与 credit 计数在子服务完成。
     try:
-        if os.getenv("COLLECTOR_FMP", "false").lower() == "true":
-            from backend.workers.collectors.fmp import start as fmp_collector_start
+        from backend.workers.collectors.fmp import fmp_collector_daemon
 
-            fmp_coros = await fmp_collector_start()
-            for coro in fmp_coros:
-                asyncio.create_task(coro)
-            if fmp_coros:
-                log.info("✅ [Startup] FMP 盘后财报缓存守护已启动")
+        COLLECTOR_FMP = os.getenv("COLLECTOR_FMP", "true").lower() == "true"
+        if COLLECTOR_FMP:
+            asyncio.create_task(fmp_collector_daemon())
+            log.info("✅ [Startup] FMP 盘后批量守护已启动（业务编排留主服务，REST 经子服务）")
         else:
-            log.info("ℹ️ [Startup] COLLECTOR_FMP 未开启，跳过 FMP 守护")
+            log.info("ℹ️ [Startup] COLLECTOR_FMP=false，跳过 FMP 守护")
     except Exception as e:
-        log.warning(f"[Startup] FMP 守护启动失败: {e}")
+        log.warning(f"⚠️ [Startup] FMP 守护启动失败: {e}")
 
     # 🚀 RL-11 限流告警后台消费器 (异步队列，解耦限流回调与飞书推送 IO)
     try:

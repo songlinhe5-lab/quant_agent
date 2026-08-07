@@ -66,7 +66,7 @@ if [ ${#MISSING[@]} -gt 0 ]; then
   echo "    PUBLIC_IP=<本节点 Tailscale/公网 IP>"
   echo ""
   echo "  填完后重启从节点容器:"
-  echo "    docker compose -f docker-compose.slave.yml up -d"
+  echo "    docker compose -f docker-compose.node-bj.yml up -d"
 fi
 
 # ── 3. 启动（如用户带 --up 参数）──
@@ -74,11 +74,11 @@ if [[ "${1:-}" == "--up" ]]; then
   if [ ${#MISSING[@]} -gt 0 ]; then
     warn "关键项未填完，仍尝试启动（数据源可能不可用）。如需中止请 Ctrl-C。"
   fi
-  log "启动从节点 (docker-compose.slave.yml)..."
-  docker compose -f docker-compose.slave.yml up -d
+  log "启动从节点 (docker-compose.node-bj.yml)..."
+  docker compose -f docker-compose.node-bj.yml up -d
 else
   log "初始化完成。需要启动容器时执行:"
-  echo "    docker compose -f docker-compose.slave.yml up -d"
+  echo "    docker compose -f docker-compose.node-bj.yml up -d"
 fi
 
 # 修复权限

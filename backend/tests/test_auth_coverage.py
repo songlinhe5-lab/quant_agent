@@ -112,6 +112,9 @@ def test_no_unauthenticated_critical_routes():
             # 公开例外 → OK
             if _is_public_exception(route.path):
                 continue
+            # 纯 OPTIONS 路由 (CORS preflight) 跳过
+            if route.methods and route.methods == {"OPTIONS"}:
+                continue
             # 命中关键敏感前缀且无鉴权 → 漏网
             if _is_critical(route.path):
                 methods = ",".join(sorted(route.methods)) if route.methods else ""

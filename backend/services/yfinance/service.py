@@ -44,36 +44,6 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
 
         self._init_session()
 
-        # ── DIST-04: 路由器兼容外壳 ──
-        # YF_ROUTER_ENABLED=true 时，通过 YFinanceRouter 将请求代理到远程数据源节点，
-        # 上层调用方 (data_source_router / market router / collector) 零改动。
-        self._router_enabled: bool = os.getenv("YF_ROUTER_ENABLED", "false").lower() in (
-            "true",
-            "1",
-            "yes",
-        )
-        self._router = None  # 懒初始化 (需要 async 上下文)
-        self._router_init_lock = asyncio.Lock()
-
-    async def _ensure_router(self):
-        """懒初始化 YFinanceRouter (首次异步调用时触发)"""
-        if self._router is not None:
-            return
-        async with self._router_init_lock:
-            if self._router is not None:
-                return
-            from backend.core.redis_client import redis_client
-            from backend.core.service_registry import ServiceRegistry
-            from backend.core.yfinance_router import YFinanceRouter
-
-            registry = ServiceRegistry(redis_client)
-            hmac_secret = os.getenv("DATA_SOURCE_HMAC_SECRET", "")
-            self._router = YFinanceRouter(
-                service_registry=registry,
-                redis_client=redis_client,
-                hmac_secret=hmac_secret,
-            )
-
     def _evict_stale_cache(self):
         """内存安全防御：清理过期缓存，防止无界字典无限增长导致 OOM"""
         now = time.time()
@@ -135,21 +105,6 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
         except Exception:
             pass
 
-        # 清理路由器
-        try:
-            if hasattr(self, "_router") and self._router is not None:
-                # 尝试同步关闭路由器（如果可能）
-                try:
-                    loop = asyncio.get_running_loop()
-                    # 在异步上下文中，创建任务来关闭
-                    loop.create_task(self._router.close())
-                except RuntimeError:
-                    # 同步上下文中，开独立 loop 关闭
-                    asyncio.run(self._router.close())
-                self._router = None
-        except Exception:
-            pass
-
     async def async_close(self):
         """
         ARCH-03: 异步优雅关闭 - 等待所有任务完成
@@ -181,15 +136,6 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
         except Exception as e:
             print(f"⚠️ Executor 关闭异常：{e}")
 
-        try:
-            # 3. 关闭路由器 HTTP 客户端
-            if self._router is not None:
-                await self._router.close()
-                self._router = None
-                print("✅ YFinanceRouter 已关闭")
-        except Exception as e:
-            print(f"⚠️ Router 关闭异常：{e}")
-
         print("✅ YFinanceService 完全关闭完成")
 
     def get_health_status(self) -> Dict[str, Any]:
@@ -220,10 +166,6 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
             "cooldown_remaining": 0,
             "message": "触发 429 限流熔断中" if cb_state.value == "open" else "正常",
         }
-        # DIST-04: 标注路由器模式
-        if self._router_enabled:
-            status["router_mode"] = True
-            status["message"] = "路由器模式 (请求代理到远程数据源节点)"
         return status
 
     async def fetch_yf_data(
@@ -238,27 +180,8 @@ class YFinanceService(QuoteMixin, TechnicalMixin, SearchMixin, MacroDaemonMixin)
         if yf is None:
             return False, None, "环境缺失 yfinance 依赖"
 
-        # ── DIST-04: 路由器模式拦截 ──
-        if self._router_enabled:
-            await self._ensure_router()
-            cache_key_r = f"yf_{fetch_type}_{ticker}" + (
-                "_" + "_".join([f"{k}_{v}" for k, v in kwargs.items()]) if kwargs else ""
-            )
-            payload = {
-                "ticker": ticker,
-                "fetch_type": fetch_type,
-                "ttl": ttl,
-                "persist": persist,
-                **kwargs,
-            }
-            result = await self._router.call(
-                "yfinance",
-                payload,
-                cache_key=cache_key_r,
-            )
-            if result.get("status") == "success" and "data" in result:
-                return True, result["data"], ""
-            return False, None, result.get("message", "路由器：数据获取失败")
+        # ── DIST-04: 路由器模式已废弃，统一走 DataSourceRouter.fetch_yfinance() ──
+        # YFinanceService 始终走本地 SDK，远程路由由上层 LegacyYFinanceDataSource 处理
 
         yf_ticker = format_yf_ticker(ticker)
         skip_cache = bool(kwargs.get("skip_cache"))

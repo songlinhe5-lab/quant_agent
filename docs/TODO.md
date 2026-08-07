@@ -306,6 +306,12 @@ STATUS: PRODUCTION READY ✨
 - [x] **[BE-ARCH-02]** Application / Domain 目录落地：新增用例进 `backend/app/`（或 `*_app.py`）+ Port 定义进 `domain/`/`engine/`；禁止继续向扁平 `services/` 堆编排逻辑（与 BT-01a 协同，可并行起步）✅ **2026-07-13**：`app/oms_app|backtest_app|system_app` 用例编排；OMS Kill Switch / 回测 / APM Dashboard Router 变薄；扁平 `services/*.py` allowlist 冻结；`test_be_arch02_app_boundary.py`
 - [x] **[BE-ARCH-03]** Collector 真正插件化：`start_collector_daemons` 改为 factory 表，去掉对 `yf_service` 等硬编码 import（测试：启停矩阵，≥80%）✅ **2026-07-13**：`workers/collectors/{akshare,futu,finnhub,yfinance}.py` factory；`CollectorDef.factory` + `stop_collector_daemons`；`start_collector_daemons` 零具体服务 import；`test_be_arch03_collector_plugin.py` + 启停矩阵
 - [x] **[BE-ARCH-04]** DataSource 双 Registry 澄清：限流 Registry vs 源实例 Registry 命名/职责拆分，对齐 docs/14；主路径 `fetch` 只经 Interface（依赖 DIST/RL 已有能力）✅ **2026-07-13**：`RateLimitRegistry`（原误名 DataSourceRegistry）+ 真·`DataSourceRegistry`（`DataSourceInterface`）；YFinance Legacy Adapter + `market_data.fetch_yf_data` 经 `datasource_registry.fetch`；`test_be_arch04_dual_registry.py`
+- [x] **[BE-ARCH-06]** 业务数据源聚合 Facade（设计稿 `docs/23. 业务数据源聚合Facade设计.md`，P1）：在 `DataSourceInterface` 薄适配器之上新增 **业务聚合 Facade 层**，收口"策略逻辑 + 业务级检测 + 多源融合 + 归一化"，Tools/业务逻辑只调 Facade 业务语义接口，禁止直连具体数据源库或直发外部 HTTP（红线见文档 §二）。拆分原子任务： ✅ **2026-08-06** 全原子任务完成（a-e）
+  - [x] **[BE-ARCH-06a]** 骨架：`backend/services/datasource/business/__init__.py` + `facade.py`，实现 `DataServiceFacade`（`data_service` 单例），仅经 `datasource_registry.fetch` 取数；落地 4 个策略原语 `_select_source` / `_merge` / `_detect_stale` / `_normalize` + 单测 ✅ **2026-08-06**：`business/facade.py` + `business/__init__.py` + `tests/test_be_arch06_facade.py`（11 passed）；修复 0.0 时间戳 falsy 跳过
+  - [x] **[BE-ARCH-06b]** 行情领域 `market.py`：业务语义 `get_quote` / `get_history` / `get_fund_flow` / `get_option_chain`（含源选择权重、Stale 检测、OHLCV 归一化）✅ **2026-08-06**：`business/market.py` + `business/__init__.py` 导出 + `tests/test_be_arch06b_market.py`（9 passed）
+  - [x] **[BE-ARCH-06c]** 示范接入：把 `/market/quote` 路由改为优先经 `market_data_service.get_quote`（Facade→Registry→Router→薄适配器），失败回退既有 `MarketDataService`；保留降级路径 ✅ **2026-08-06**：`routers/market.py` QUOTE 分支
+  - [x] **[BE-ARCH-06d]** 指标补全：Facade 层 `DATASOURCE_FACADE_MERGE` / `DATASOURCE_QUOTE_DEVIATION` 业务级指标，与现有 `DATASOURCE_*` 分层 ✅ **2026-08-06**：`core/metrics.py` 新增 + `facade.py` 接入（融合计数 / 偏差告警）
+  - [x] **[BE-ARCH-06e]** 文档收口：更新 `docs/14 §二.5` 业务聚合 Facade 层 + §8/§10.1 映射 + `docs/07` 速查手册三层架构 ✅ **2026-08-06**
 
 ### 前端基础设施
 

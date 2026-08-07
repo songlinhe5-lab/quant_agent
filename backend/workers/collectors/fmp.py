@@ -1,13 +1,17 @@
 """
-FMP 财报批量守护 (COLLECTOR_FMP)
+FMP 财报批量守护 (COLLECTOR_FMP) · 业务编排层（vibe coding 红线版）
 
-盘后批量拉取标的的 income_statement / profile，写 Redis (quant:fmp:{symbol})，
-TTL 1 天，供 adapter 当日按需命中本地缓存、减少重复 REST 调用、控制 credit 消耗。
+责任边界（数据源物理隔离）：
+  - 本文件只保留业务编排：watchlist 热重载 / 盘后调度 / 通知告警。
+  - 数据源连接层（FMPService REST + 429 限流 + credit 计数/持久化/跨日重置）
+    已整体下沉至 data_subservice（_internal/fmp + fmp_worker.py），
+    经 DataSourceRouter HTTP (source=fmp) 调用，主服务不持有 FMP REST 客户端。
+  - credit 预算实时余额由子服务持有；主服务经 fetch_fmp("CREDIT") 读取快照做预算决策，
+    不重复实现配额计数/持久化（那是数据源配额保障，归子服务）。
+  - 主服务 Redis 写链路健康由主服务通用健康检查覆盖，不再挂在 FMP 守护内。
 
-红线：
-  - 仅 master 节点运行（slave 不启 daemon）。
-  - 严格受 rate_limit_registry 的 fmp throttler 限流 + 每日 credit 预算双重约束。
-  - 单次批量 endpoint 消耗数十 credit，故 limit 取小值 (默认 4 季)，绝不拉全量。
+盘后批量：决定"拉哪些标的 / 何时拉"，实际 REST 与 credit 消耗在子服务完成；
+拉回的财报经主服务写入 Redis (quant:fmp:{symbol})，供 adapter 当日命中本地缓存。
 """
 
 from __future__ import annotations
@@ -20,9 +24,19 @@ import time
 from datetime import datetime, timezone
 
 from backend.core.logger import logger
+from backend.core.metrics import (
+    FMP_BATCH_DURATION,
+    FMP_BATCH_RUNS_TOTAL,
+    FMP_LAST_BATCH_TIMESTAMP,
+    FMP_SUBSERVICE_UNREACHABLE,
+    FMP_SYMBOLS_CACHED_TOTAL,
+    FMP_SYMBOLS_FAILED_TOTAL,
+    FMP_WATCHLIST_EMPTY,
+    FMP_WATCHLIST_FILE_DELETED,
+    FMP_WATCHLIST_SIZE,
+    FMP_WATCHLIST_SIZE_SHIFT,
+)
 from backend.core.redis_client import redis_client
-from backend.services.datasource.registry import rate_limit_registry
-from backend.services.fmp.service import fmp_service
 
 # watchlist 热重载状态（进程内缓存 + mtime 跟踪）
 _watchlist_cache: list[str] = []
@@ -31,62 +45,12 @@ _watchlist_prev_size: int = -1  # 上一轮标的池大小（突变检测基线�
 _watchlist_lock = threading.Lock()
 _watchlist_monitor_stop = threading.Event()
 
-# 每日 credit 预算计数器（按 UTC 日期重置，持久化到 Redis 避免进程重启丢进度）
+# 主服务经子服务 CREDIT 快照维护的当日预算进度（仅业务观测用，不持久化）
 _credit_spent_today: int = 0
 _credit_reset_date: str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-# Redis 持久化连续失败计数（达阈值升 P1 告警，避免静默丢进度）
-_persist_fails: int = 0
-_persist_fail_alerted: bool = False  # 已告警标记，避免每轮刷屏
-_collector_paused: bool = False  # 持久化连续失败达阈值 → 暂停守护，Redis 恢复后自愈
-_PERSIST_FAIL_THRESHOLD: int = 5
-# 网络抖动失败计数：ping 健康但 set 偶发超时的瞬态失败，不计入暂停阈值（避免毛刺误暂停丢 credit）
-_jitter_fails: int = 0
-# 滑动窗口 P99 劣化信号：由 _self_heal_loop 写入，True=判定写链路慢（应暂停），False=纯网络抖（不暂停）
-_lat_degraded: bool = False
-_lat_window_p99: float = 0.0  # 最近窗口 P99 估算值（Gauge 交叉校验用）
-
 _FMP_REDIS_TTL = 24 * 3600  # 财报缓存 1 天
 _BATCH_LIMIT = 4  # 每标的拉取的季度数（控制 credit：income_statement 1 call = 数 credit）
-# FMP credit 计费校准（防预算击穿 / 防预算误估浪费容量）：
-# 官方事实：免费档 = 250 requests/day，按 HTTP 请求次数计点（绝大多数端点 1 请求 = 1 credit）。
-# 本守护每标的调用 income_statement + profile 共 2 个独立端点（见 _cache_financials），
-# 故单 symbol 真实消耗 = _FMP_CALLS_PER_SYMBOL × _FMP_CREDIT_PER_CALL = 2 × 1 = 2 credit。
-# 旧实现硬编码 used=4（"约2+约2"）实为 2 倍高估，按日预算 200 仅能拉 50 只而非 100 只 —— 浪费一半容量。
-# 二者均 env 化，防御未来端点计费粒度变化或新增端点。
-_FMP_CREDIT_PER_CALL = int(os.environ.get("FMP_CREDIT_PER_CALL", "1"))  # 单端点点数（FMP 标准端点=1）
-# 每 symbol 调用的端点数（income_statement + profile）。注意：FMP 官方 FAQ 明确
-# "One request counts as one API call"，limit 参数不影响计费粒度（无论 limit=4 还是 100 都只算 1 call），
-# 故此处恒为 2，不因 limit 调整而 +1（已核实，勿凭直觉改）。
-_FMP_CALLS_PER_SYMBOL = int(os.environ.get("FMP_CALLS_PER_SYMBOL", "2"))  # 每 symbol 调用的端点数（statement+profile）
-# 自愈退避天花板（秒）：默认 300s（5min），可按 Redis SLA 级别经环境变量下调/上调。
-# Grafana 侧「HEAL_BACKOFF_CAP」模板变量仅作展示锚点，真正生效以此 env 为准。
-_HEAL_BACKOFF_CAP = float(os.environ.get("FMP_HEAL_BACKOFF_CAP", "300"))
-
-# 自愈 P99 劣化判定阈值（秒）与持续窗口（秒）—— 对应 Grafana Panel 8 告警语义，
-# 但此处为 Python 侧动态归因告警（触发时附带同窗 persist_fails / ping 延迟，区分网络抖 vs 写链路慢）。
-_HEAL_P99_THRESHOLD = 0.5
-_HEAL_P99_SUSTAIN = 300.0  # 持续 5min 才判定劣化（过滤偶发毛刺）
-# 网络抖窗口的立即重试参数（env 热配，与 HEAL_BACKOFF_CAP 统一）：单次 set 失败后最多重试次数与每次退避（秒），提升瞬态恢复率
-# _JITTER_RETRY 为可变运行时变量（自愈调参控制器会按成功率自适应调整），env 仅给初值与上下限。
-_JITTER_RETRY = int(os.environ.get("FMP_JITTER_RETRY", "3"))
-_JITTER_RETRY_MIN = int(os.environ.get("FMP_JITTER_RETRY_MIN", "1"))
-_JITTER_RETRY_MAX = int(os.environ.get("FMP_JITTER_RETRY_MAX", "8"))
-_JITTER_RETRY_BACKOFF = float(os.environ.get("FMP_JITTER_RETRY_BACKOFF", "0.2"))
-# 自愈调参控制器自适应参数
-_TUNE_INTERVAL = 300.0  # 每 5min 评估一次成功率
-_TUNE_SUCCESS_LOW = 0.5  # 成功率 <50% → 重试性价比低，下调重试次数
-_TUNE_SUCCESS_HIGH = 0.9  # 成功率 >90% → 重试高效，上调重试次数
-_TUNE_WINDOW = 3600.0  # 统计窗口 1h（与 Grafana Panel 13 口径一致）
-# 滞回（hysteresis）：成功率需在 50%~90% 区间外持续 _TUNE_HYSTERESIS_ROUNDS 轮才动作，
-# 防边界抖动（如 49%↔51% 反复横跳）导致 _JITTER_RETRY 反复 ±1 振荡。
-_TUNE_HYSTERESIS_ROUNDS = int(os.environ.get("FMP_JITTER_TUNE_HYST_ROUNDS", "3"))
-# 滞回连击计数（进程内）：连续落在低/高区外的轮次数，达标才调参
-_TUNE_LOW_STREAK: int = 0
-_TUNE_HIGH_STREAK: int = 0
-
-# 进程内重试成功率滑动统计：记录 (monotonic_ts, kind) kind∈{"recovered","jitter"}
-_jitter_stats: list[tuple[float, str]] = []
 
 # 盘后窗口（UTC）：美东 ET=UTC-4(夏令)/-5(冬令)。盘后≈收盘 16:00 ET 后至盘前 09:30 ET。
 # UTC 覆盖：夏令 20:00–次日 13:30；冬令 21:00–次日 14:30。取宽松并集 [20, 14) UTC。
@@ -101,19 +65,30 @@ def _in_after_hours_utc() -> bool:
     return not (_MARKET_OPEN_UTC_END <= hour < 24 and hour >= 13)
 
 
-async def _cache_financials(symbol: str) -> int:
-    """拉取并缓存单标的财报，返回消耗的 credit 估算（0 表示失败/限流）。"""
-    th = rate_limit_registry.get_throttler("fmp")
-    if th.should_throttle():
-        logger.warning(f"[FMP Collector] throttler 触发，跳过 {symbol}")
-        return 0
+async def _fetch_fmp(action: str, symbol: str = "", limit: int = _BATCH_LIMIT) -> dict:
+    """经 DataSourceRouter 调子服务 source=fmp（失败/未启用自动降级本地直连）。"""
+    from backend.services.datasource.router import data_source_router
 
-    inc = await fmp_service.get_income_statement(symbol, limit=_BATCH_LIMIT)
+    params = {}
+    if symbol:
+        params["symbol"] = symbol
+    if action == "INCOME_STATEMENT":
+        params["limit"] = limit
+    return await data_source_router.fetch_fmp(action, **params)
+
+
+async def _cache_financials(symbol: str) -> int:
+    """拉取并缓存单标的财报，返回消耗的 credit 估算（0 表示失败/限流）。
+
+    实际 REST 与 credit 计数在子服务完成；主服务仅消费子服务 CREDIT 快照做进度跟踪。
+    """
+    inc = await _fetch_fmp("INCOME_STATEMENT", symbol, limit=_BATCH_LIMIT)
     if inc.get("status") != "success":
         logger.warning(f"[FMP Collector] income_statement 失败 {symbol}: {inc.get('message')}")
+        FMP_SYMBOLS_FAILED_TOTAL.labels(reason="fetch").inc()
         return 0
 
-    prof = await fmp_service.get_profile(symbol)
+    prof = await _fetch_fmp("PROFILE", symbol)
     profile_ok = prof.get("status") == "success"
 
     payload = {
@@ -126,316 +101,47 @@ async def _cache_financials(symbol: str) -> int:
     try:
         await redis_client.set(key, json.dumps(payload, default=str), ex=_FMP_REDIS_TTL)
         logger.info(f"[FMP Collector] 已缓存 {symbol} → {key}")
+        FMP_SYMBOLS_CACHED_TOTAL.inc()
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[FMP Collector] Redis 写入失败 {symbol}: {e}")
+        FMP_SYMBOLS_FAILED_TOTAL.labels(reason="redis").inc()
         return 0
-    # 估算 credit：按实际调用的端点数 × 单端点点数（FMP 免费档按请求次数计点）。
-    # income_statement + profile 共 _FMP_CALLS_PER_SYMBOL 个独立 GET，各 _FMP_CREDIT_PER_CALL 点。
-    used = _FMP_CALLS_PER_SYMBOL * _FMP_CREDIT_PER_CALL
-    global _credit_spent_today
-    _credit_spent_today += used
-    await _persist_credit()
-    # 累计 credit 消耗（与每日预算对账，Prometheus 可查）
-    try:
-        from backend.core.metrics import FMP_CREDIT_SPENT_TOTAL
-
-        FMP_CREDIT_SPENT_TOTAL.inc(used)
-    except Exception:  # noqa: BLE001
-        pass
+    # credit 进度跟踪（仅业务观测，真实配额在子服务；子服务 CREDIT 快照覆盖权威值）
+    used = _BATCH_LIMIT_CREDIT()
     return used
 
 
-def _credit_redis_key(date: str) -> str:
-    return f"quant:fmp:credit_spent:{date}"
+def _BATCH_LIMIT_CREDIT() -> int:
+    """单标的 credit 估算（income_statement + profile 共 2 端点的标准计费）。
 
-
-async def _do_set_credit() -> bool:
-    """单次 Redis 持久化写入（不含重试/归因）。返回 True=成功。"""
-    try:
-        await redis_client.set(
-            _credit_redis_key(_credit_reset_date),
-            str(_credit_spent_today),
-            ex=25 * 3600,
-        )
-        return True
-    except Exception:  # noqa: BLE001
-        return False
-
-
-async def _persist_credit() -> bool:
-    """将当日 credit 消耗持久化到 Redis（ex=25h 自然过期，进程重启不丢进度）。
-
-    自愈写重试：网络抖（_lat_degraded=False）时，单次 set 失败立即重试若干次
-    （短间隔），提升瞬态恢复率，重试耗尽才记 _jitter_fails（不暂停）；
-    写链路慢（_lat_degraded=True）时不重试（避免雪崩），直接计入暂停阈值。
-    连续写入失败达 _PERSIST_FAIL_THRESHOLD 次 → 升 P1 告警并暂停守护；
-    恢复成功时清零计数/标记并解除暂停（自愈）。
-    返回 True=写入成功，False=失败。
+    仅用于主服务本地预算进度展示；真实配额以子服务 source=fmp CREDIT 为准。
     """
-    global _persist_fails, _persist_fail_alerted, _collector_paused
-    # 抖动窗口：立即重试，吞掉瞬态失败；写链路慢窗口：单次即判定，不重试
-    _max_retry = _JITTER_RETRY if not _lat_degraded else 0
-    for _attempt in range(1 + _max_retry):
-        if await _do_set_credit():
-            # 抖动重试挽回：首次尝试即成功(_attempt=0)不计数；靠重试才成功(_attempt>=1)记一次挽回
-            if _attempt >= 1:
-                try:
-                    from backend.core.metrics import FMP_JITTER_RETRY_RECOVERED
-
-                    FMP_JITTER_RETRY_RECOVERED.inc()
-                    _jitter_stats.append((time.monotonic(), "recovered"))
-                except Exception:  # noqa: BLE001
-                    pass
-            # 恢复成功 → 清零失败计数与告警标记，解除暂停（自愈）
-            if _persist_fails > 0 or _collector_paused:
-                logger.info(
-                    f"[FMP Collector] Redis 持久化恢复"
-                    f"（此前 {_persist_fails} 次失败，paused={_collector_paused}，"
-                    f"本次第{_attempt}次尝试成功）→ 守护自愈重启"
-                )
-            _persist_fails = 0
-            _persist_fail_alerted = False
-            _jitter_fails = 0  # 写链路恢复，抖动计数一并清零
-            was_paused = _collector_paused
-            _collector_paused = False
-            try:
-                from backend.core.metrics import FMP_COLLECTOR_PAUSED, FMP_PERSIST_FAILS
-
-                FMP_COLLECTOR_PAUSED.set(0)
-                FMP_PERSIST_FAILS.set(0)
-            except Exception:  # noqa: BLE001
-                pass
-            if was_paused:
-                try:
-                    from backend.core.alert_models import NotificationPriority
-                    from backend.services.alert.notification import notification_service
-
-                    await notification_service.send_alert(
-                        message="[FMP Collector] Redis 已恢复，守护自愈重启，credit 进度持久化恢复正常",
-                        priority=NotificationPriority.P2,
-                        source="fmp-collector",
-                    )
-                except Exception:  # noqa: BLE001
-                    pass
-            return True
-        # 本次 set 失败：写链路慢窗口直接跳出重试（不雪崩）；抖动窗口短暂退避后重试
-        if _max_retry > 0:
-            await asyncio.sleep(_JITTER_RETRY_BACKOFF)
-    # 全部重试耗尽仍失败 → 归因分流
-    try:
-        _retry_ctx = "" if _lat_degraded else f"（网络抖重试 {_max_retry} 次仍失败，不暂停）"
-        _err = RuntimeError(_retry_ctx)
-    except Exception as e:  # noqa: BLE001
-        _err = e
-    # 归因分流：写链路慢（_lat_degraded=True，ping P99 高且 set 失败）→ 计入暂停阈值；
-    # 纯网络抖动（ping 健康但 set 偶发超时）→ 仅记 _jitter_fails，不暂停，避免毛刺误丢 credit。
-    if _lat_degraded:
-        _persist_fails += 1
-        logger.warning(
-            f"[FMP Collector] credit 持久化失败（写链路慢 {_persist_fails}/{_PERSIST_FAIL_THRESHOLD}）{_retry_ctx}"
-        )
-        try:
-            from backend.core.metrics import FMP_PERSIST_FAILS
-
-            FMP_PERSIST_FAILS.set(_persist_fails)  # 实时暴露连续失败数（Grafana 趋势）
-        except Exception:  # noqa: BLE001
-            pass
-    else:
-        _jitter_fails += 1
-        logger.warning(f"[FMP Collector] credit 持久化瞬态失败（网络抖，不暂停 {_jitter_fails} 次）{_retry_ctx}")
-        try:
-            from backend.core.metrics import FMP_PERSIST_JITTER_FAILS
-
-            FMP_PERSIST_JITTER_FAILS.set(_jitter_fails)
-            _jitter_stats.append((time.monotonic(), "jitter"))
-        except Exception:  # noqa: BLE001
-            pass
-    # 重置对侧计数：写链路恢复后抖动计数清零，避免干扰；反之亦然
-    if _lat_degraded:
-        _jitter_fails = 0
-    else:
-        _persist_fails = 0
-        _persist_fail_alerted = False
-    if _persist_fails >= _PERSIST_FAIL_THRESHOLD:
-        if not _persist_fail_alerted:
-            _persist_fail_alerted = True
-            _collector_paused = True
-            try:
-                from backend.core.metrics import FMP_COLLECTOR_PAUSED
-
-                FMP_COLLECTOR_PAUSED.set(1)
-            except Exception:  # noqa: BLE001
-                pass
-            try:
-                from backend.core.alert_models import NotificationPriority
-                from backend.services.alert.notification import notification_service
-
-                await notification_service.send_alert(
-                    message=(
-                        f"[FMP Collector] Redis 持久化连续 {_persist_fails} 次失败，"
-                        f"守护已暂停防丢失，待 Redis 恢复后自愈（P1）"
-                    ),
-                    priority=NotificationPriority.P1,
-                    source="fmp-collector",
-                )
-            except Exception as alert_e:  # noqa: BLE001
-                logger.error(f"[FMP Collector] P1 告警发送失败: {alert_e}")
-    return False
+    return 2
 
 
-async def _self_heal_loop() -> None:
-    """独立自愈短轮询：守护暂停态下尝试 Redis 探测写，成功即自愈重启。
+async def _sync_credit_from_subservice() -> dict:
+    """从子服务读取 credit 快照（权威），用于预算决策与运行态展示。
 
-    指数退避避免 Redis 长断期间空转探测写：首探 30s，失败后按 2^n 退避，
-    上限由 FMP_HEAL_BACKOFF_CAP 控制（默认 5min）；一旦探测成功自愈，退避立即归零。
-    每次轮询实测 Redis PING 延迟并写入 Gauge / Histogram，同时维护滑动窗口用于
-    P99 劣化动态归因告警（触发时附同窗 persist_fails 与 ping 延迟，区分网络抖 vs 写链路慢）。
+    子服务不可达时回退到主服务本地估算（_credit_spent_today），保证守护不空转。
     """
-    import time as _time
-
-    from backend.core.redis_client import redis_client
-
-    base = 30.0
-    cap = _HEAL_BACKOFF_CAP
-    backoff = base
-    # 滑动窗口：记录 (monotonic_ts, latency_or_None)，用于 P99 持续劣化判定
-    _lat_window: list[tuple[float, float | None]] = []
-    _degrade_alerted = False
-    try:
-        from backend.core.metrics import (
-            FMP_HEAL_BACKOFF,
-            FMP_HEAL_P99,
-            FMP_REDIS_PING_LATENCY,
-            FMP_REDIS_PING_LATENCY_HIST,
-        )
-
-        _have_backoff_gauge = True
-    except Exception:  # noqa: BLE001
-        _have_backoff_gauge = False
-    while True:
-        # 实测 Redis PING 往返延迟（无论是否暂停都探，喂延迟趋势定位抖动来源）
-        _now = _time.monotonic()
-        _sample: float | None = None
-        try:
-            _t0 = _time.monotonic()
-            await redis_client.ping()
-            _lat = _time.monotonic() - _t0
-            _sample = _lat
-            if _have_backoff_gauge:
-                FMP_REDIS_PING_LATENCY.set(round(_lat, 4))
-                try:
-                    FMP_REDIS_PING_LATENCY_HIST.observe(_lat)
-                except Exception:  # noqa: BLE001
-                    pass
-        except Exception:  # noqa: BLE001
-            pass  # 连 ping 都失败，延迟不写，persist_fails 已体现故障
-        _lat_window.append((_now, _sample))
-        # 仅保留最近 _HEAL_P99_SUSTAIN 秒的样本
-        _cut = _now - _HEAL_P99_SUSTAIN
-        _lat_window = [(t, v) for (t, v) in _lat_window if t >= _cut]
-        # P99 估算：窗口内有效样本取第 99 分位（样本不足则跳过）
-        _valid = sorted(v for (_, v) in _lat_window if v is not None)
-        if len(_valid) >= 10:
-            _p99 = _valid[min(len(_valid) - 1, int(len(_valid) * 0.99))]
-            globals()["_lat_window_p99"] = _p99
-            if _have_backoff_gauge:
-                try:
-                    FMP_HEAL_P99.set(round(_p99, 4))  # 滑动窗口 P99 Gauge（与 Grafana histogram_quantile 交叉校验）
-                except Exception:  # noqa: BLE001
-                    pass
-            if _p99 > _HEAL_P99_THRESHOLD:
-                globals()["_lat_degraded"] = True  # 写链路慢信号 → 后续 set 失败才计入暂停阈值
-                try:
-                    from backend.core.metrics import FMP_LAT_DEGRADED
-
-                    FMP_LAT_DEGRADED.set(1)
-                except Exception:  # noqa: BLE001
-                    pass
-                if not _degrade_alerted:
-                    _degrade_alerted = True
-                    _avg = sum(_valid) / len(_valid)
-                    # 归因：写链路慢（P99 高且后续 persist 会同步失败 → 应暂停）vs 纯抖动（persist 仍健康）
-                    _cause = (
-                        f"写链路慢/Redis 劣化（PING P99={_p99:.3f}s 持续 {int(_HEAL_P99_SUSTAIN)}s>"
-                        f"{_HEAL_P99_THRESHOLD}s，后续持久化失败将触发暂停防丢失）"
-                    )
-                    try:
-                        from backend.core.alert_models import NotificationPriority
-                        from backend.services.alert.notification import notification_service
-
-                        await notification_service.send_alert(
-                            message=(
-                                f"[FMP Collector] Redis P99 延迟持续劣化告警（写链路慢）\n"
-                                f"窗口 {int(_HEAL_P99_SUSTAIN)}s 内 PING P99={_p99:.3f}s（> {_HEAL_P99_THRESHOLD}s），"
-                                f"均值={_avg:.3f}s，当前 persist_fails={_persist_fails}，退避上限={cap:.0f}s。\n"
-                                f"归因：{_cause}"
-                            ),
-                            priority=NotificationPriority.P1,
-                            source="fmp-collector",
-                        )
-                    except Exception:  # noqa: BLE001
-                        pass
-            else:
-                globals()["_lat_degraded"] = False  # P99 回落 → 视为纯网络抖窗口，set 失败不暂停
-                try:
-                    from backend.core.metrics import FMP_LAT_DEGRADED
-
-                    FMP_LAT_DEGRADED.set(0)
-                except Exception:  # noqa: BLE001
-                    pass
-                _degrade_alerted = False  # 重置，下次再劣化可再报
-        if _collector_paused:
-            try:
-                healed = await _persist_credit()  # 成功 → 内部解除 _collector_paused
-                if healed:
-                    backoff = base  # 自愈成功，退避归零
-                else:
-                    backoff = min(backoff * 2, cap)  # 仍失败 → 指数退避
-            except Exception:  # noqa: BLE001
-                backoff = min(backoff * 2, cap)
-        else:
-            backoff = base  # 未暂停，保持基线，零额外写压力
-        if _have_backoff_gauge:
-            try:
-                FMP_HEAL_BACKOFF.set(backoff)
-            except Exception:  # noqa: BLE001
-                pass
-        await asyncio.sleep(backoff)
-
-
-async def _restore_credit() -> None:
-    """进程启动/跨日时从 Redis 恢复当日 credit 进度（防重启清零）。"""
     global _credit_spent_today, _credit_reset_date
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    _credit_reset_date = today
-    try:
-        raw = await redis_client.get(_credit_redis_key(today))
-        if raw is not None:
-            _credit_spent_today = int(raw)
-            logger.info(f"[FMP Collector] 从 Redis 恢复当日 credit 进度: {_credit_spent_today} ({today})")
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"[FMP Collector] credit 恢复失败: {e}")
-
-
-async def _maybe_reset_daily_credit() -> None:
-    """每日 00:00 UTC 重置 credit 预算计数器（进程内 + Redis + Prometheus），避免跨日累计误导。"""
-    global _credit_spent_today, _credit_reset_date, _persist_fails, _persist_fail_alerted
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     if today != _credit_reset_date:
-        logger.info(
-            f"[FMP Collector] 跨日重置 credit 计数器 {_credit_reset_date} → {today} (昨日累计 {_credit_spent_today})"
-        )
         _credit_spent_today = 0
         _credit_reset_date = today
-        _persist_fails = 0
-        _persist_fail_alerted = False
-        await _persist_credit()  # 写新日期 key（旧 key 25h 后自然过期）
-        try:
-            from backend.core.metrics import FMP_CREDIT_SPENT_TOTAL
-
-            FMP_CREDIT_SPENT_TOTAL.clear()  # Counter 清零，重新开始当日累计
-        except Exception:  # noqa: BLE001
-            pass
+    try:
+        snap = await _fetch_fmp("CREDIT")
+        if snap.get("status") == "success":
+            data = snap.get("data", {})
+            _credit_spent_today = data.get("spent", _credit_spent_today)
+            _credit_reset_date = data.get("reset_date", _credit_reset_date)
+            FMP_SUBSERVICE_UNREACHABLE.set(0)
+            return data
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[FMP Collector] 读取子服务 credit 快照失败，回退本地估算: {e}")
+    # 取数失败或返回非 success：预算决策已降级为本地估算，置位供告警
+    FMP_SUBSERVICE_UNREACHABLE.set(1)
+    return {"spent": _credit_spent_today, "remaining": -1, "reset_date": _credit_reset_date}
 
 
 def _load_watchlist() -> list[str]:
@@ -444,8 +150,6 @@ def _load_watchlist() -> list[str]:
     源优先级（高优先源的 symbol 不会被低优先源覆盖，而是合并）：
     1. FMP_COLLECTOR_SYMBOLS (env, 逗号分隔) —— 运营显式指定，最高优先
     1.5 PORTFOLIO_SYMBOLS (env) / config/portfolio_symbols.txt (文件) —— 实盘持仓池并集
-        （日后接入实盘持仓时启用：把账户 positions 导出为该文件或 env，自动纳入财报缓存，
-         避免硬编码 4 只漏掉实盘标的；与既有源做并集而非取代）
     2. FMP_COLLECTOR_WATCHLIST (独立文件, 每行一个 symbol) —— 与 FINNHUB_WS_SYMBOLS 解耦
     3. FINNHUB_WS_SYMBOLS (env, 逗号分隔) —— 兼容旧配置（统一行情池回退）
 
@@ -497,28 +201,15 @@ def _load_watchlist() -> list[str]:
 
 
 def collector_runtime() -> dict:
-    """对外暴露守护运行态（供 /observability 聚合，避免直接 import 私有全局变量）。"""
+    """对外暴露守护运行态（供 /observability 聚合，避免直接 import 私有全局变量）。
+
+    仅保留业务编排相关运行态；credit 配额权威值在子服务 /metrics，经 fetch_fmp("CREDIT") 读取。
+    """
     return {
-        "paused": _collector_paused,
-        "persist_fails": _persist_fails,
-        "persist_fail_threshold": _PERSIST_FAIL_THRESHOLD,
         "credit_spent_today": _credit_spent_today,
         "credit_reset_date": _credit_reset_date,
         "watchlist_size": len(_watchlist_cache),
         "watchlist_empty_warn": len(_watchlist_cache) == 0,
-        "heal_backoff_cap": _HEAL_BACKOFF_CAP,
-        "heal_backoff_threshold": _HEAL_P99_THRESHOLD,
-        "heal_backoff_sustain": _HEAL_P99_SUSTAIN,
-        "jitter_fails": _jitter_fails,
-        "jitter_retry": _JITTER_RETRY,
-        "jitter_retry_min": _JITTER_RETRY_MIN,
-        "jitter_retry_max": _JITTER_RETRY_MAX,
-        "jitter_retry_backoff": _JITTER_RETRY_BACKOFF,
-        "jitter_tune_hyst_rounds": _TUNE_HYSTERESIS_ROUNDS,
-        "jitter_tune_low_streak": _TUNE_LOW_STREAK,
-        "jitter_tune_high_streak": _TUNE_HIGH_STREAK,
-        "lat_degraded": _lat_degraded,
-        "lat_window_p99": _lat_window_p99,
     }
 
 
@@ -542,43 +233,31 @@ def _resolve_monitored_paths() -> list[str]:
 
 def _reload_watchlist() -> bool:
     """重新解析 watchlist 并刷新进程内缓存。返回是否有变化。"""
-    global _watchlist_cache, _watchlist_mtimes
+    global _watchlist_cache, _watchlist_mtimes, _watchlist_prev_size
     syms = _load_watchlist()
     with _watchlist_lock:
         if syms == _watchlist_cache:
             return False
         _watchlist_cache = syms
+    # 池规模与空池告警位（每次实际变更后刷新，供 Grafana 观测标的池健康）
+    FMP_WATCHLIST_SIZE.set(len(syms))
+    FMP_WATCHLIST_EMPTY.set(1 if not syms else 0)
     # 刷新所有监听文件的 mtime 快照
     for p in _resolve_monitored_paths():
         try:
             _watchlist_mtimes[p] = os.path.getmtime(p)
         except OSError:
             _watchlist_mtimes[p] = -1.0
-    # 暴露标的池大小（Grafana Panel 16 反向联动用）
-    try:
-        from backend.core.metrics import FMP_WATCHLIST_SIZE, FMP_WATCHLIST_SIZE_SHIFT
-
-        FMP_WATCHLIST_SIZE.set(len(syms))
-        # 突变检测：相对上一轮 size 变化超过 ±50% 即记一次（提示账户调仓异常或文件误删）
-        # 基线为 -1（首轮）时跳过，避免启动即误报。
-        # 多副本去重说明：当前生产部署 uvicorn --workers 1（docker-compose.master.yml），
-        # FMP collector 守护为单进程，进程内基线无重复计数风险。若未来扩为多副本并行，
-        # 各副本会各自维护 _watchlist_prev_size 并分别 inc() 导致 shift 计数被放大（N 倍），
-        # 此时应改用 Prometheus 查询层去重：直接对下方 FMP_WATCHLIST_SIZE Gauge 做
-        # delta(quant_fmp_collector_watchlist_size[5m]) ≥ 基线*0.5 判定突变，与副本数解耦，
-        # 并将 Panel 16 的 alert expr 从 increase(shift[1h]) 切换到该 delta 查询。Gauge 已就绪，切换零代码改动。
-        global _watchlist_prev_size
-        if _watchlist_prev_size >= 0 and _watchlist_prev_size > 0:
-            _ratio = abs(len(syms) - _watchlist_prev_size) / _watchlist_prev_size
-            if _ratio >= 0.5:
-                FMP_WATCHLIST_SIZE_SHIFT.inc()
-                logger.warning(
-                    f"[FMP Collector] watchlist 标的池突变 {_watchlist_prev_size} → {len(syms)} "
-                    f"(±{_ratio:.0%} ≥ 50%)，提示账户调仓异常或文件误删"
-                )
-        _watchlist_prev_size = len(syms)
-    except Exception:  # noqa: BLE001
-        pass
+    # 突变检测：相对上一轮 size 变化超过 ±50% 即记日志（提示账户调仓异常或文件误删）
+    if _watchlist_prev_size >= 0 and _watchlist_prev_size > 0:
+        _ratio = abs(len(syms) - _watchlist_prev_size) / _watchlist_prev_size
+        if _ratio >= 0.5:
+            logger.warning(
+                f"[FMP Collector] watchlist 标的池突变 {_watchlist_prev_size} → {len(syms)} "
+                f"(±{_ratio:.0%} ≥ 50%)，提示账户调仓异常或文件误删"
+            )
+            FMP_WATCHLIST_SIZE_SHIFT.inc()
+    _watchlist_prev_size = len(syms)
     logger.info(f"[FMP Collector] watchlist 刷新 → {len(syms)} 个标的")
     return True
 
@@ -617,13 +296,8 @@ def _watch_watchlist_file() -> None:
                         f"[FMP Collector] 检测到 watchlist/portfolio 文件被删除: {p}，"
                         f"重置该源并触发重载（防 stale 池残留）"
                     )
-                    try:
-                        from backend.core.metrics import FMP_WATCHLIST_FILE_DELETED
-
-                        FMP_WATCHLIST_FILE_DELETED.inc()
-                    except Exception:  # noqa: BLE001
-                        pass
                     del _watchlist_mtimes[p]
+                    FMP_WATCHLIST_FILE_DELETED.inc()
                     _reload_watchlist()
                     triggered = True
                     break
@@ -631,38 +305,47 @@ def _watch_watchlist_file() -> None:
 
 
 async def _batch_run() -> None:
+    global _credit_spent_today
+    _batch_started = time.monotonic()
     symbols = _get_watchlist()
-    try:
-        from backend.core.metrics import FMP_WATCHLIST_EMPTY
+    if not symbols:
+        logger.error(
+            "[FMP Collector] watchlist 为空（FMP_COLLECTOR_SYMBOLS/PORTFOLIO_SYMBOLS/"
+            "WATCHLIST/FINNHUB_WS_SYMBOLS 均未配置任何源），守护静默兜底未拉取任何财报！"
+        )
+        FMP_BATCH_RUNS_TOTAL.labels(result="skipped_empty_watchlist").inc()
+        return
 
-        if not symbols:
-            FMP_WATCHLIST_EMPTY.set(1)  # APM 告警：所有标的源均未配置，守护静默兜底未拉任何财报
-            logger.error(
-                "[FMP Collector] watchlist 为空（FMP_COLLECTOR_SYMBOLS/PORTFOLIO_SYMBOLS/"
-                "WATCHLIST/FINNHUB_WS_SYMBOLS 均未配置任何源），守护静默兜底未拉取任何财报！"
-            )
-            return
-        FMP_WATCHLIST_EMPTY.set(0)
-    except Exception:  # noqa: BLE001
-        if not symbols:
-            logger.error("[FMP Collector] watchlist 为空，所有标的源均未配置")
-            return
-
-    await _maybe_reset_daily_credit()
-
+    # 预算决策：以子服务 credit 快照为权威（不可达则回退本地估算）
+    snap = await _sync_credit_from_subservice()
     daily_budget = int(os.getenv("FMP_COLLECTOR_DAILY_CREDIT", "200"))  # 免费档 250 上限
+    remaining = snap.get("remaining", -1)
+    budget_exhausted = remaining >= 0 and remaining <= 0
+
+    if budget_exhausted:
+        logger.warning(f"[FMP Collector] 子服务 credit 预算已耗尽（remaining={remaining}），停止本轮拉取")
+        FMP_BATCH_RUNS_TOTAL.labels(result="skipped_budget").inc()
+        return
+
+    hit_market_hours = False
     for sym in symbols:
-        if _credit_spent_today >= daily_budget:
-            logger.warning(
-                f"[FMP Collector] 触及每日 credit 预算 {daily_budget}（已用 {_credit_spent_today}），停止剩余拉取"
-            )
-            break
         if not _in_after_hours_utc():
             logger.info("[FMP Collector] 当前为盘中时段，推迟至盘后执行")
+            hit_market_hours = True
             break
-        await _cache_financials(sym)
+        used = await _cache_financials(sym)
+        if used > 0:
+            _credit_spent_today += used
+        else:
+            # 失败/限流：跳过该标的，避免空耗后续
+            continue
         # 批次间留白，避免突发打满限流
         await asyncio.sleep(1.0)
+
+    # 盘中早退与正常跑完分开计数：前者不代表业务产出，勿混入 completed 稀释成功率
+    FMP_BATCH_RUNS_TOTAL.labels(result="skipped_market_hours" if hit_market_hours else "completed").inc()
+    FMP_BATCH_DURATION.observe(time.monotonic() - _batch_started)
+    FMP_LAST_BATCH_TIMESTAMP.set(time.time())
     logger.info(f"[FMP Collector] 本轮盘后批量完成，当日累计 credit≈{_credit_spent_today}/{daily_budget}")
 
 
@@ -670,29 +353,14 @@ async def fmp_collector_daemon() -> None:
     """盘后批量守护主循环：每 6 小时触发一次（天然只会在盘后窗口实际拉取）。
 
     启动即加载 watchlist 并开启后台热重载监控线程（文件变更即时刷新标的池）。
-    独立 30s 自愈短轮询随守护一并启动，缩短 Redis 恢复后的自愈延迟。
+    credit 配额保障与 Redis 写链路自愈已在子服务 / 主服务通用健康检查完成，本守护不再内嵌。
     """
-    logger.info("[FMP Collector] 守护进程启动 (盘后批量拉财报 → Redis)")
-    await _restore_credit()  # 先恢复当日 credit 进度（防重启清零）
+    logger.info("[FMP Collector] 守护进程启动 (盘后批量拉财报 → Redis, 数据源经子服务)")
     _reload_watchlist()  # 首启加载 watchlist
-    try:
-        from backend.core.metrics import FMP_COLLECTOR_PAUSED, FMP_JITTER_RETRY_ACTIVE, FMP_WATCHLIST_EMPTY
-
-        FMP_COLLECTOR_PAUSED.set(0)  # 启动基线：正常态
-        FMP_JITTER_RETRY_ACTIVE.set(_JITTER_RETRY)  # 启动基线：当前生效重试次数
-        FMP_WATCHLIST_EMPTY.set(0)  # 启动基线：watchlist 非空假设（首轮 _batch_run 会校正）
-    except Exception:  # noqa: BLE001
-        pass
     monitor = threading.Thread(target=_watch_watchlist_file, name="fmp-watchlist-mon", daemon=True)
     monitor.start()
-    self_heal = asyncio.create_task(_self_heal_loop(), name="fmp-self-heal")
-    tune = asyncio.create_task(_jitter_tune_loop(), name="fmp-jitter-tune")
     try:
         while True:
-            if _collector_paused:
-                logger.warning("[FMP Collector] 守护处于暂停态（Redis 故障），跳过批量，30s 自愈轮询待恢复")
-                await asyncio.sleep(6 * 3600)
-                continue
             try:
                 await _batch_run()
             except Exception as e:  # noqa: BLE001
@@ -701,91 +369,6 @@ async def fmp_collector_daemon() -> None:
             await asyncio.sleep(6 * 3600)
     finally:
         _watchlist_monitor_stop.set()
-        self_heal.cancel()
-        tune.cancel()
-
-
-async def _jitter_tune_loop() -> None:
-    """自愈调参控制器：周期性评估抖动重试成功率，闭环自适应 _JITTER_RETRY。
-
-    每 _TUNE_INTERVAL 计算最近 _TUNE_WINDOW（1h）内成功率 = recovered/(recovered+jitter)：
-      - 成功率 < _TUNE_SUCCESS_LOW(50%)：重试性价比低（抖动顽固），下调重试次数（下限 _JITTER_RETRY_MIN）
-      - 成功率 > _TUNE_SUCCESS_HIGH(90%)：重试高效（瞬态抖动），上调重试次数（上限 _JITTER_RETRY_MAX）
-    滞回（hysteresis）：成功率需在 50%~90% 区间外持续 _TUNE_HYSTERESIS_ROUNDS 轮才动作，
-    防边界抖动反复横跳导致 _JITTER_RETRY 振荡。每次仅 ±1 步进，并记录至 collector_runtime 供 APM 观测。
-    """
-    import time as _time
-
-    try:
-        from backend.core.metrics import FMP_JITTER_RETRY_ACTIVE
-    except Exception:  # noqa: BLE001
-        FMP_JITTER_RETRY_ACTIVE = None
-
-    while True:
-        await asyncio.sleep(_TUNE_INTERVAL)
-        try:
-            _now = _time.monotonic()
-            _cut = _now - _TUNE_WINDOW
-            # 仅保留窗口内样本
-            globals()["_jitter_stats"] = [(t, k) for (t, k) in _jitter_stats if t >= _cut]
-            _stats = _jitter_stats
-            _rec = sum(1 for (_, k) in _stats if k == "recovered")
-            _jit = sum(1 for (_, k) in _stats if k == "jitter")
-            _total = _rec + _jit
-            if _total < 5:
-                continue  # 样本不足，不调参（防噪声误判）
-            _rate = _rec / _total
-            # 滞回判定：仅当成功率在阈值区外时累计连击；一旦回到区间内立即清零对侧连击
-            global _TUNE_LOW_STREAK, _TUNE_HIGH_STREAK
-            if _rate < _TUNE_SUCCESS_LOW:
-                _TUNE_LOW_STREAK += 1
-                _TUNE_HIGH_STREAK = 0
-            elif _rate > _TUNE_SUCCESS_HIGH:
-                _TUNE_HIGH_STREAK += 1
-                _TUNE_LOW_STREAK = 0
-            else:
-                # 落在死区内：双向清零，不累积任何方向连击
-                _TUNE_LOW_STREAK = 0
-                _TUNE_HIGH_STREAK = 0
-                continue
-            # 未达滞回轮次门槛：仅记录不调参，防边界反复横跳
-            if _rate < _TUNE_SUCCESS_LOW and _TUNE_LOW_STREAK < _TUNE_HYSTERESIS_ROUNDS:
-                logger.info(
-                    f"[FMP 调参] 成功率 {_rate:.2f} < {_TUNE_SUCCESS_LOW}，但连击 {_TUNE_LOW_STREAK}/"
-                    f"{_TUNE_HYSTERESIS_ROUNDS} 未达滞回门槛，暂不下调"
-                )
-                continue
-            if _rate > _TUNE_SUCCESS_HIGH and _TUNE_HIGH_STREAK < _TUNE_HYSTERESIS_ROUNDS:
-                logger.info(
-                    f"[FMP 调参] 成功率 {_rate:.2f} > {_TUNE_SUCCESS_HIGH}，但连击 {_TUNE_HIGH_STREAK}/"
-                    f"{_TUNE_HYSTERESIS_ROUNDS} 未达滞回门槛，暂不上调"
-                )
-                continue
-            _old = _JITTER_RETRY
-            if _rate < _TUNE_SUCCESS_LOW and _JITTER_RETRY > _JITTER_RETRY_MIN:
-                globals()["_JITTER_RETRY"] = _JITTER_RETRY - 1
-                logger.info(
-                    f"[FMP 调参] 成功率 {_rate:.2f} < {_TUNE_SUCCESS_LOW} 连击 {_TUNE_LOW_STREAK} 达标，"
-                    f"下调 FMP_JITTER_RETRY {_old} → {_JITTER_RETRY}（抖动顽固，重试性价比低）"
-                )
-            elif _rate > _TUNE_SUCCESS_HIGH and _JITTER_RETRY < _JITTER_RETRY_MAX:
-                globals()["_JITTER_RETRY"] = _JITTER_RETRY + 1
-                logger.info(
-                    f"[FMP 调参] 成功率 {_rate:.2f} > {_TUNE_SUCCESS_HIGH} 连击 {_TUNE_HIGH_STREAK} 达标，"
-                    f"上调 FMP_JITTER_RETRY {_old} → {_JITTER_RETRY}（瞬态抖动，重试高效）"
-                )
-            # 动作后清零连击，避免连续多轮重复步进（每轮仅 ±1 已足够，下轮重新计连击）
-            _TUNE_LOW_STREAK = 0
-            _TUNE_HIGH_STREAK = 0
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"[FMP 调参] 评估异常: {e}")
-        finally:
-            # 实时暴露当前生效值（Grafana 看自适应轨迹是否与成功率拐点吻合）
-            if FMP_JITTER_RETRY_ACTIVE is not None:
-                try:
-                    FMP_JITTER_RETRY_ACTIVE.set(_JITTER_RETRY)
-                except Exception:  # noqa: BLE001
-                    pass
 
 
 async def start() -> list:

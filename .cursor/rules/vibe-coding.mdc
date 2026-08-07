@@ -435,7 +435,7 @@ image: quant-agent:latest                 # ⛔ 禁止
 | 前端高频数据 | `useState` 存 Tick | `useRef` + 直接 DOM 突变 |
 | 前端 K 线图 | ECharts | Lightweight-Charts |
 | 前端大数据列表 | 原生 `<table>` | AG Grid 虚拟滚动 |
-| 前端技术栈 | Vue/Pinia/Nuxt | React/Zustand/Next.js |
+| 前端技术栈 | Vue/Pinia/Nuxt | React/Zustand/Vite |
 | 后端路由函数 | 同步阻塞代码 | `asyncio.to_thread` |
 | 后端数据访问 | 各模块直连外部 API | 通过内网 Gateway 统一代理 |
 | Futu 百分比参数 | 传 `15`（ROE 15%） | 传 `0.15` |

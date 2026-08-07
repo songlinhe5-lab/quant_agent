@@ -92,14 +92,15 @@ class DataSourceRegistry:
             return list(self._sources.keys())
 
     def get(self, source_name: str, action: Optional[str] = None) -> Optional[DataSourceInterface]:
-        """按名称取首个可用实例；可选按 capability 过滤。"""
+        """按名称取首个可用实例；可选按 capability 过滤（case-insensitive）。"""
         with self._lock:
             entries = list(self._sources.get(source_name, []))
+        action_upper = action.upper() if action else None
         for entry in entries:
             src = entry.source
             if not src.is_available():
                 continue
-            if action is not None and action not in src.capabilities:
+            if action_upper is not None and action_upper not in [c.upper() for c in src.capabilities]:
                 continue
             return src
         # 能力不匹配时仍返回第一个可用实例（兼容宽泛 action）

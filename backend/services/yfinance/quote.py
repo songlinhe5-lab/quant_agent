@@ -20,20 +20,6 @@ class QuoteMixin:
         💡 革命性优化：基于微批处理 (Micro-batching) 的异步数据加载器。
         支持动态混入 "quote" (实时行情) 和 "tech" (技术指标) 类型的合并请求。
         """
-        # ── DIST-04: 路由器模式拦截 ──
-        if self._router_enabled:
-            await self._ensure_router()
-            payload = {"ticker": ticker, "req_type": req_type, **kwargs}
-            cache_key_r = f"batch:{ticker}:{req_type}"
-            result = await self._router.call(
-                "batch_quote",
-                payload,
-                cache_key=cache_key_r,
-            )
-            if result.get("status") == "success":
-                return result
-            return {"status": "error", "message": result.get("message", "路由器: 批量行情获取失败")}
-
         yf_ticker = format_yf_ticker(ticker)
 
         # 兼容旧代码：检查 _circuit_breaker_until 属性

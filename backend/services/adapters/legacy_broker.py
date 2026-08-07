@@ -10,6 +10,8 @@ import asyncio
 import logging
 from typing import Any, Optional
 
+from backend.services.datasource.router import data_source_router
+
 logger = logging.getLogger("BrokerGateway")
 
 
@@ -45,22 +47,32 @@ class BrokerGateway:
 
         trd_market = self._resolve_market(ticker, market)
         trd_side = TrdSide.BUY if side.upper() == "BUY" else TrdSide.SELL
-        return await self._futu.place_order(ticker, qty, price, trd_side, trd_market)
+        return await data_source_router.fetch_futu(
+            "PLACE_ORDER",
+            ticker=ticker,
+            qty=qty,
+            price=price,
+            trd_side=trd_side.value,
+            market=trd_market.value,
+        )
 
     async def cancel_order(self, order_id: str, market: Optional[str] = None) -> dict[str, Any]:
         from futu import ModifyOrderOp
 
         trd_market = self._resolve_market(None, market)
-        return await self._futu.modify_order(order_id, ModifyOrderOp.CANCEL, trd_market)
+        return await data_source_router.fetch_futu(
+            "MODIFY_ORDER",
+            order_id=order_id,
+            op=ModifyOrderOp.CANCEL.value,
+            market=trd_market.value,
+        )
 
     async def query_order(self, order_id: str, market: Optional[str] = None) -> dict[str, Any]:
         trd_market = self._resolve_market(None, market)
-        return await self._futu.query_order(order_id, trd_market)
+        return await data_source_router.fetch_futu("QUERY_ORDER", order_id=order_id, market=trd_market.value)
 
     async def get_account_info(self, market: Optional[str] = None) -> dict[str, Any]:
-        if market is None:
-            return await self._futu.get_account_info()
-        return await self._futu.get_account_info(market)
+        return await data_source_router.fetch_futu("ACCOUNT_INFO", market=market or "HK")
 
     def has_trade_ctx(self) -> bool:
         return getattr(self._futu, "trade_ctx", None) is not None

@@ -1,22 +1,24 @@
 """
-Futu DataSource Adapter（BE-ARCH-05 注册发现扩展）
+Futu DataSource Adapter（BE-ARCH-05 / BE-ARCH-07）
 =================================================
 
-将现有 FutuService（Futu OpenD 长连接中心）适配为 DataSourceInterface，使其可通过
-``datasource_registry.register()`` 挂载，并在 COMM-01 健康度看板中被统一感知
-（可挂载 + 可感知）。
+将 data_subservice（Futu OpenD 宿主）的 HTTP 接口适配为 DataSourceInterface，
+使 Facade 经 DataSourceRegistry 统一调度 futu 数据。
 
-设计原则（docs/14 §10）：组合（薄适配）而非改造原 futu 服务，避免破坏 legacy_market_data
-路由与 OpenD 直连（BE-ARCH-01 边界）。适配器只负责协议对齐与结果转换。
+数据流（唯一路径）：
+  FutuDataSource.fetch() → data_source_router.fetch_futu() → HTTP → data_subservice
+  data_source_router 内部负责 action 映射、HMAC 签名、节点健康感知与本地 SDK 降级兜底。
 
-节点约束：Futu OpenD 仅部署在 US-MASTER 主节点 (127.0.0.1:11111)，CN / slave 节点无
-OpenD。因此 ``is_available()`` / ``health()`` 以 futu_service.status 真实状态为准——未
-连接时卡片显示 disconnected，这正是健康看板的设计意图（可感知真实可用性）。
+节点约束：Futu OpenD 仅部署在 US-MASTER 主节点，由 data_subservice (COLLECTOR_FUTU=true)
+持有长连接。主服务不持有 SDK，所有 futu 访问经 HTTP 代理。
+
+状态感知：
+  - is_available() → 查询 router 中 futu_master 节点健康状态
+  - health()      → 返回远程节点诊断信息（URL / status / error_count）
 """
 
 from __future__ import annotations
 
-import os
 import time
 from typing import Any, Optional
 
@@ -29,18 +31,14 @@ from backend.services.datasource import (
 
 
 class FutuDataSource:
-    """FutuService → DataSourceInterface 薄适配。"""
+    """Futu → DataSourceInterface 适配。
 
-    def __init__(self, service: Any = None) -> None:
-        self._service = service
+    所有数据请求经 data_source_router.fetch_futu()（HTTP → data_subservice），
+    不直连本地 futu_service。router 内部保留本地 SDK 降级兜底（Phase 3 兼容）。
+    """
+
+    def __init__(self) -> None:
         self._started_at = time.monotonic()
-
-    def _svc(self) -> Any:
-        if self._service is None:
-            from backend.services.futu import futu_service
-
-            self._service = futu_service
-        return self._service
 
     @property
     def name(self) -> str:
@@ -48,7 +46,7 @@ class FutuDataSource:
 
     @property
     def version(self) -> str:
-        return "1.0.0"
+        return "2.0.0"
 
     @property
     def capabilities(self) -> list[str]:
@@ -60,42 +58,56 @@ class FutuDataSource:
             "FUNDAMENTAL",
         ]
 
-    @property
-    def mode(self) -> str:
-        return os.getenv("DATASOURCE_FUTU_MODE", "internal")
+    # ── 远程节点状态感知 ──────────────────────────────────────
+
+    def _get_futu_node(self) -> Any:
+        """取 router 中 futu_master 节点引用（不存在返回 None）。"""
+        from backend.services.datasource.router import data_source_router
+
+        return data_source_router._nodes.get("futu_master")
 
     def is_available(self) -> bool:
-        """检测 Futu SDK 和 OpenD 连接是否可用。
+        """远程 futu_master 节点是否可达。
 
-        主节点无 futu-api 包或 OpenD 未连接时返回 False，跳过本地注册。
+        只要 router 初始化完成（futu_master 节点存在）即视为可调用——
+        节点健康度由 router 内部熔断/降级机制处理，不在 adapter 层拦截。
         """
-        try:
-            import futu  # noqa: F401
-
-            # OpenD 已建立长连接才视为可用；slave 节点未部署 OpenD 自然返回 False
-            return self._svc().status == "CONNECTED"
-        except ImportError:
-            # 无 futu-api 包，不可直连
-            return False
-        except Exception:  # noqa: BLE001
-            return False
+        return self._get_futu_node() is not None
 
     async def health(self) -> HealthInfo:
-        svc = self._svc()
-        connected = svc.status == "CONNECTED"
-        last_error = svc.error_msg or None
+        """返回 futu_master 远程节点诊断信息。"""
+        node = self._get_futu_node()
+        if node is None:
+            return HealthInfo(
+                healthy=False,
+                mode="remote",
+                connected=False,
+                uptime_seconds=time.monotonic() - self._started_at,
+                last_error="futu_master 节点未配置",
+                stats={"capabilities": self.capabilities},
+                rate_limit_status=RateLimitStatus(),
+            )
+        connected = node.status == "healthy"
         return HealthInfo(
             healthy=connected,
-            mode=self.mode,
+            mode="remote",
             connected=connected,
             uptime_seconds=time.monotonic() - self._started_at,
-            last_error=last_error,
-            stats={"capabilities": self.capabilities},
+            last_error=f"error_count={node.error_count}" if node.error_count else None,
+            stats={
+                "capabilities": self.capabilities,
+                "node_url": node.url,
+                "node_status": node.status,
+                "error_count": node.error_count,
+            },
             rate_limit_status=RateLimitStatus(),
         )
 
+    # ── 数据获取（唯一入口） ──────────────────────────────────
+
     async def fetch(self, action: str, params: dict[str, Any]) -> Result:
-        if action not in self.capabilities:
+        _action = action.upper()
+        if _action not in [c.upper() for c in self.capabilities]:
             return Result.make_error(
                 ErrorInfo.normal(
                     "UNSUPPORTED_ACTION",
@@ -105,52 +117,22 @@ class FutuDataSource:
                 source=self.name,
             )
 
-        svc = self._svc()
-        if svc.status != "CONNECTED":
-            return Result.make_error(
-                ErrorInfo.normal(
-                    "FUTU_DISCONNECTED",
-                    svc.error_msg or "Futu OpenD 未连接",
-                    retryable=True,
-                ),
-                source=self.name,
-            )
+        from backend.services.datasource.router import data_source_router
 
-        ticker = str(params.get("ticker", ""))
         try:
-            if action == "QUOTE":
-                data = await svc.get_quote(ticker)
-            elif action == "HISTORY":
-                data = await svc.get_history(
-                    ticker,
-                    ktype=str(params.get("ktype", "K_DAY")),
-                    num=int(params.get("num", 60)),
-                )
-            elif action == "FUND_FLOW":
-                data = await svc.get_fund_flow(ticker)
-            elif action == "OPTION_CHAIN":
-                data = await svc.get_option_chain(ticker, expiration_date=str(params.get("expiration_date", "")))
-            else:  # pragma: no cover - 已被 capabilities 前置拦截
-                return Result.make_error(
-                    ErrorInfo.normal(
-                        "UNSUPPORTED_ACTION",
-                        f"Futu 不支持 action: {action}",
-                        retryable=False,
-                    ),
-                    source=self.name,
-                )
+            resp = await data_source_router.fetch_futu(_action, **params)
         except Exception as e:  # noqa: BLE001
             return Result.make_error(
-                ErrorInfo.normal("FUTU_ERROR", str(e), retryable=True),
+                ErrorInfo.normal("FUTU_ROUTER_ERROR", str(e), retryable=True),
                 source=self.name,
             )
 
-        if isinstance(data, dict) and data.get("status") == "success":
-            return Result.make_success(data.get("data"), source=self.name)
-        msg = (data.get("message") if isinstance(data, dict) else "") or "futu fetch failed"
-        # 期权链(option-chain)在 Futu 侧偶发失败不应熔断整个 futu 数据源
-        # (quote/history 等其它能力仍正常)，故标记为非重试类错误，避免计入熔断器。
-        option_chain_non_retryable = action == "OPTION_CHAIN"
+        if isinstance(resp, dict) and resp.get("status") == "success":
+            return Result.make_success(resp.get("data"), source=self.name)
+
+        msg = (resp.get("message") if isinstance(resp, dict) else "") or "futu fetch failed"
+        # 期权链偶发失败不熔断（其它能力照常）
+        option_chain_non_retryable = _action == "OPTION_CHAIN"
         if any(x in msg for x in ("429", "限流", "Rate limit", "Too Many", "403")):
             return Result.make_rate_limited(
                 ErrorInfo.rate_limited(code="FUTU_RATE_LIMIT", message=msg),
@@ -162,10 +144,11 @@ class FutuDataSource:
         )
 
 
-def ensure_futu_registered(service: Optional[Any] = None) -> str:
-    """幂等注册 Futu 适配器到 DataSourceRegistry（可挂载）。
+def ensure_futu_registered() -> str:
+    """幂等注册 Futu 适配器到 DataSourceRegistry。
 
-    主节点无 futu-api SDK 或 OpenD 未连接时跳过注册。
+    无条件注册——Futu 数据一律经 data_source_router HTTP 代理，
+    不依赖本地 SDK/OpenD 连接。Facade 因此始终能将 futu 纳入候选源。
     """
     from backend.core.logger import logger
     from backend.services.datasource.source_registry import datasource_registry
@@ -173,10 +156,7 @@ def ensure_futu_registered(service: Optional[Any] = None) -> str:
     if datasource_registry.has("futu"):
         return "futu"
 
-    adapter = FutuDataSource(service)
-    if not adapter.is_available():
-        logger.info("Futu SDK/OpenD 不可用，跳过本地注册")
-        return ""
-
+    adapter = FutuDataSource()
     datasource_registry.register(adapter, instance_id="default")
+    logger.info("Futu 适配器已注册 (remote via data_source_router)")
     return "futu"
