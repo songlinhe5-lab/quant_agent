@@ -84,11 +84,8 @@ quant:cache:{action}:{ticker} 采集结果缓存（TTL 5min）
 
 ```bash
 # === .env ===
-# 采集器
-COLLECTOR_FUTU=true
-COLLECTOR_YFINANCE=true
-COLLECTOR_FINNHUB=false
-COLLECTOR_AKSHARE=false
+# 数据源能力声明（采集 daemon 默认全开，不再用 COLLECTOR_* 开关）
+DS_CAPABILITIES=futu,yfinance,finnhub,akshare
 
 # Redis
 REDIS_HOST=localhost

@@ -21,7 +21,7 @@
 │  │  └── data_source.py                 │  │  services/                │ │
 │  ├─────────────────────────────────────┤  │  └── yfinance_service.py  │ │
 │  │  services/                          │  ├───────────────────────────┤ │
-│  │  ├── futu/                          │  │  COLLECTOR_YFINANCE=true  │ │
+│  │  ├── futu/                          │  │  DS_CAPABILITIES=yfinance │ │
 │  │  ├── screener_service.py            │  │  DATA_SOURCE_ROUTER=off   │ │
 │  │  ├── llm_service.py                 │  └───────────────────────────┘ │
 │  │  ├── data_source_router.py ←核心    │                                  │
@@ -36,7 +36,7 @@
 │  │  core/                              │  │  services/                │ │
 │  │  ├── redis_client.py                │  │  └── akshare_service.py   │ │
 │  │  ├── database.py                    │  ├───────────────────────────┤ │
-│  │  └── logger.py                      │  │  COLLECTOR_AKSHARE=true   │ │
+│  │  └── logger.py                      │  │  DS_CAPABILITIES=akshare  │ │
 │  ├─────────────────────────────────────┤  │  DATA_SOURCE_ROUTER=off   │ │
 │  │  Redis / PostgreSQL / Futu OpenD    │  └───────────────────────────┘ │
 │  └─────────────────────┬───────────────┘                                  │

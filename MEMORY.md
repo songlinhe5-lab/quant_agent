@@ -32,7 +32,7 @@
 6. `backend/tests/test_collector_registry.py`：移除 futu collector 相关断言（期望集、启停矩阵、任务数 4→3）。
 
 **验证**：
-- `backend.main` 导入 OK；`data_subservice` 在 `COLLECTOR_FUTU=true` 下能导入 `app` 与 `futu_src.ConnectionManager`（子服务为唯一 OpenD 宿主）。
+- `backend.main` 导入 OK；`data_subservice` 在 `DS_CAPABILITIES=futu` 下能导入 `app` 与 `futu_src.ConnectionManager`（子服务为唯一 OpenD 宿主）。
 - `data_subservice/tests/test_futu_*.py`：**242 passed**。
 - `backend/tests/test_collector_registry.py`：17 passed。
 - 主服务 `test_market_engine.py` / `test_kline_warehouse.py` 等回归无新增失败。

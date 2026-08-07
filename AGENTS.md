@@ -215,16 +215,26 @@
 - Futu OpenD 仅主宿主机 `127.0.0.1:11111`，主服务经 `data_source_router.fetch_futu()` HTTP 代理访问
 - 跨节点：Tailscale only；子服务 HMAC；不对公网暴露 6379/5432/ds:8001
 
-### 9.2 采集器配置（US-MASTER 推荐）
+### 9.2 数据源能力配置（按 DS_CAPABILITIES）
 
-```bash
-COLLECTOR_FUTU=true
-COLLECTOR_FINNHUB=true
-COLLECTOR_YFINANCE=false   # 推荐关本地 Yahoo，走 DataSourceRouter → US-YF-A/B
-COLLECTOR_AKSHARE=false    # AKShare 在 CN-DATA 节点
-COLLECTOR_TUSHARE=false    # Tushare 在 CN-DATA 节点
-DATA_SOURCE_ROUTER_ENABLED=true  # 启用统一数据源路由
-```
+> **设计原则（2026-08-07 更新）**：主服务**默认开启所有数据源获取逻辑**，不使用任何 `COLLECTOR_*` 类开关门控。数据采集 daemon 常驻后台，无论数据源当下是否可用都保持运行，源恢复后即可即时拉取，无需改配置重启。数据源失效统一通过 `DataSourceRouter.get_health_status()` 在系统监控中如实显示（节点 healthy/unhealthy、error_count、熔断 cooldown），而非静默禁用。
+
+- **主服务（US-MASTER）**：启用统一数据源路由即可，数据源能力默认全开：
+  ```bash
+  DATA_SOURCE_ROUTER_ENABLED=true   # 启用统一数据源路由（主开关）
+  ```
+- **子服务节点**：通过 `DS_CAPABILITIES` 声明本节点能提供的数据源能力，子服务仅响应声明的能力（未声明返回 503）：
+  ```bash
+  # US-YF-A / US-YF-B：仅 yfinance（独立公网 IP → Yahoo）
+  DS_CAPABILITIES=yfinance
+
+  # CN-DATA：AKShare + Tushare（禁止 YFinance / Futu）
+  DS_CAPABILITIES=akshare,tushare
+
+  # US-MASTER：Futu OpenD 宿主（本地 TCP 127.0.0.1:11111）+ 可选本地能力
+  DS_CAPABILITIES=futu
+  ```
+- **采集 daemon 常驻、无开关门控**：所有采集 daemon（akshare / finnhub / yfinance / fmp）启动即常驻，不使用任何 `COLLECTOR_*` 类开关。数据源失效统一在监控显示，而非靠开关停用。
 
 ### 9.3 核心文件映射
 
@@ -240,9 +250,9 @@ DATA_SOURCE_ROUTER_ENABLED=true  # 启用统一数据源路由
 
 ### 9.4 开发约束
 
-- **新增采集器**: 实现 `workers/collectors/<name>.py` 的 `async start()` → 在 `collector_registry.COLLECTORS` 注册 + `COLLECTOR_*` env；限流敏感源优先独立辅节点出口；**禁止**在 `start_collector_daemons` 内硬编码服务 import
+- **新增采集器**: 实现 `workers/collectors/<name>.py` 的 `async start()` → 在 `collector_registry.COLLECTORS` 注册；子服务经 `DS_CAPABILITIES` 声明能力响应请求，主服务默认全开数据源获取逻辑；限流敏感源优先独立辅节点出口；**禁止**在 `start_collector_daemons` 内硬编码服务 import
 - **YFinance**: 至少 2 个不同公网 IP 热流量（weight 对等）；429 不计熔断失败计数，failover 下一节点
-- **CN 节点**: 禁止启用 YF/Futu collector（仅跑 Tushare + AKShare 子服务）
+- **CN 节点**: 禁止声明 YF/Futu 能力（即 `DS_CAPABILITIES` 仅含 Tushare + AKShare 子服务）
 - **Redis 键空间**: `quant:cache:{action}:{ticker}`
 - **数据源注册**: 应用启动时由 `bootstrap/lifecycle.py` 调用 `ensure_all_datasources_registered()` 统一注册，Facade 经 Registry 选源
 

@@ -446,7 +446,7 @@ STATUS: PRODUCTION READY ✨
 
 > **架构决策（2026-07-13 · 对齐 docs/06 V9.0）**：
 > **US-MASTER**（API/DB/OMS/Futu）+ **US-YF-A/B**（yfinance 双公网 IP）+ **CN-AKSHARE**（仅国内源）。
-> 节点间 **Tailscale only**；主节点默认 `COLLECTOR_YFINANCE=false`，Yahoo 流量经 `YFinanceRouter` 打到 A/B。
+> 节点间 **Tailscale only**；主节点不声明 `yfinance` 能力（`DS_CAPABILITIES` 不含 yfinance），Yahoo 流量经 `YFinanceRouter` 打到 A/B。
 > 顺序：骨架（已完成）→ Compose/部署 → 灰度 → 监控收口。
 
 #### Phase 1 · 服务注册表 + 路由器骨架（主服务侧，可独立验证）
@@ -468,7 +468,7 @@ STATUS: PRODUCTION READY ✨
 
 - [x] **[DIST-10]** HMAC-SHA256 签名验证：子服务 auth 中间件 + 主服务侧自动签名 ✅ **已在 DIST-07 实现**
 - [x] **[DIST-11]** Docker Compose：`docker-compose.yf-node.yml` + 本机 2×YF 联调 + 主节点 Router
-- [x] **[DIST-12]** 灰度切换：`YF_ROUTER_ENABLED=true`，主节点 `COLLECTOR_YFINANCE=false`，对比新旧响应一致性
+- [x] **[DIST-12]** 灰度切换：`YF_ROUTER_ENABLED=true`，主节点 `DS_CAPABILITIES` 不声明 `yfinance`，对比新旧响应一致性
 - [x] **[DIST-13]** US-MASTER 部署（`COMPOSE_PROFILES=master,monitoring`）— CI/CD → VPS_S1
 - [x] **[DIST-14]** CN-AKSHARE 部署（slave profile），仅 AKShare→Redis；禁止 YF
 - [x] **[DIST-14b]** US-YF-A + US-YF-B：两台美国辅助 VPS、独立公网 IP、对称 `data_subservice`、Registry 双实例对等 weight
@@ -727,7 +727,7 @@ STATUS: PRODUCTION READY ✨
 
 #### P2 — 规范缺失补充
 
-- [x] **[SPEC-10]** 新增「环境变量管理规范」章节：`.env` 已有 50+ 变量，需定义分组命名约定（`COLLECTOR_*` / `FUTU_*` / `LLM_*`）、必填/可选标注、`.env.example` 同步规则
+- [x] **[SPEC-10]** 新增「环境变量管理规范」章节：`.env` 已有 50+ 变量，需定义分组命名约定（`DS_CAPABILITIES` / `FUTU_*` / `LLM_*`）、必填/可选标注、`.env.example` 同步规则
   - 落地：`docs/02` 新增 §十 环境变量管理规范（分组命名表 + 必填/可选标注规则 + `.env.example` 同步门禁），对齐实际 `.env.example` 前缀
 - [x] **[SPEC-11]** 新增「错误码分配规则」：后端已有 `error_codes.py`，规范中补充错误码段位分配（如 1xxx=认证 / 2xxx=行情 / 3xxx=交易）
   - 落地：`docs/02` 新增 §十一 错误码分配规则，对齐真实 `backend/core/error_codes.py` 段位（0 成功 / 1xxx 认证 / 2xxx 请求资源 / 3xxx 基础设施 / 4xxx 保留 / 5xxx 内部），含 5 条分配规则
