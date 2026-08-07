@@ -113,11 +113,11 @@ verify_master() {
         warn "YF Router 未发现 us-yf-b (可能未部署或未注册)"
     fi
 
-    # 验证主节点 COLLECTOR_YFINANCE=false
-    if grep -q "COLLECTOR_YFINANCE=false" /opt/quant-agent/.env 2>/dev/null; then
-        pass "主节点 COLLECTOR_YFINANCE=false (YF 流量走 Router)"
+    # 验证主节点不声明 yfinance 能力 (YF 流量经 Router 走 YF-A/B)
+    if grep -qE "^DS_CAPABILITIES=.*yfinance" /opt/quant-agent/.env 2>/dev/null; then
+        warn "主节点 DS_CAPABILITIES 包含 yfinance (YF 流量应走 Router)"
     else
-        warn "主节点 COLLECTOR_YFINANCE 未设置为 false"
+        pass "主节点未声明 yfinance 能力 (YF 流量走 Router)"
     fi
 }
 
@@ -190,12 +190,12 @@ verify_cn() {
         fail "AKShare 数据异常: $AK_RESULT"
     fi
 
-    # 3. 验证禁止 YF
+    # 3. 验证禁止 YF (CN 节点不声明 yfinance 能力)
     info "[3/3] 验证 CN 节点禁止 YFinance..."
-    if grep -q "COLLECTOR_YFINANCE=false" /opt/quant-agent/.env 2>/dev/null; then
-        pass "CN 节点 COLLECTOR_YFINANCE=false (禁止 YF)"
+    if grep -qE "^DS_CAPABILITIES=.*yfinance" /opt/quant-agent/.env 2>/dev/null; then
+        warn "CN 节点 DS_CAPABILITIES 包含 yfinance (应禁止 YF)"
     else
-        warn "CN 节点 COLLECTOR_YFINANCE 未设置为 false"
+        pass "CN 节点未声明 yfinance 能力 (禁止 YF)"
     fi
 
     # 验证 Redis 连接 (通过 Tailscale 到 Master)

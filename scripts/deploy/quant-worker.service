@@ -38,10 +38,7 @@ WatchdogSec=60
 
 # 环境变量
 Environment=QUANT_ENV=production
-Environment=COLLECTOR_FUTU=true
-Environment=COLLECTOR_FINNHUB=true
-Environment=COLLECTOR_YFINANCE=false
-Environment=COLLECTOR_AKSHARE=false
+# 采集 daemon 默认全开，不再用 COLLECTOR_* 开关门控；数据源失效在监控显示。
 
 # 资源限制
 MemoryMax=1G
