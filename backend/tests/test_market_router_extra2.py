@@ -6,9 +6,11 @@ Market Router 降级与异常路径单元测试 (Extra 2)
 
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
+
+from backend.services.datasource import ErrorInfo, Result, ResultStatus
 
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 os.environ.setdefault("FINNHUB_API_KEY", "test-key")
@@ -28,13 +30,12 @@ client = TestClient(app, raise_server_exceptions=False)
 
 # ─── /market/history AKShare 降级 ───────────────────────────────────
 class TestHistoryAKShareFallback:
-    @patch("backend.routers.market._market_service")
-    def test_a_share_akshare_success(self, mock_svc):
-        from backend.adapters.ports.data_source_port import DataSourceResult
-
-        mock_svc.get_kline = MagicMock(
-            return_value=DataSourceResult.success(
-                [{"time": "2024-01-01", "open": 10, "high": 11, "low": 10, "close": 10.5, "volume": 1000000}],
+    @patch("backend.routers.market._facade_market")
+    def test_a_share_akshare_success(self, mock_facade):
+        mock_facade.get_history = AsyncMock(
+            return_value=Result(
+                status=ResultStatus.SUCCESS,
+                data=[{"time": "2024-01-01", "open": 10, "high": 11, "low": 10, "close": 10.5, "volume": 1000000}],
                 source="akshare",
             )
         )
@@ -69,12 +70,14 @@ class TestOptionChainYFinanceFallback:
         assert data["status"] == "success"
         assert data["source"] == "yfinance_fallback"
 
-    @patch("backend.routers.market._market_service")
-    def test_both_fail_returns_400(self, mock_svc):
-        from backend.adapters.ports.data_source_port import DataSourceResult
-
-        mock_svc.get_option_chain = MagicMock(
-            return_value=DataSourceResult.error("All option sources failed", source="test")
+    @patch("backend.routers.market._facade_market")
+    def test_both_fail_returns_400(self, mock_facade):
+        mock_facade.get_option_chain = AsyncMock(
+            return_value=Result(
+                status=ResultStatus.ERROR,
+                error=ErrorInfo(code="ALL_FAILED", message="All option sources failed"),
+                source="test",
+            )
         )
         resp = client.get("/market/option-chain?ticker=US.AAPL")
         assert resp.status_code == 400
@@ -82,44 +85,41 @@ class TestOptionChainYFinanceFallback:
 
 # ─── /market/tech-indicators 降级 ───────────────────────────────────
 class TestTechIndicatorsFallback:
-    @patch("backend.routers.market._market_service")
-    def test_futu_fail_yf_success(self, mock_svc):
-        from backend.adapters.ports.data_source_port import DataSourceResult
-
+    @patch("backend.routers.market.data_service")
+    def test_futu_fail_yf_success(self, mock_ds):
         kline_data = [
             {"time": f"2024-01-{i:02d}", "open": 10, "high": 11, "low": 9, "close": 10.5, "volume": 1000}
             for i in range(1, 31)
         ]
-        mock_svc._yfinance = MagicMock()
-        mock_svc._yfinance.fetch = MagicMock(return_value=DataSourceResult.success(kline_data, source="yfinance"))
+        mock_ds.get_history = AsyncMock(
+            return_value=Result(status=ResultStatus.SUCCESS, data=kline_data, source="yfinance")
+        )
         resp = client.get("/market/tech-indicators?ticker=US.AAPL")
         assert resp.status_code == 200
         assert resp.json()["status"] == "success"
 
-    @patch("backend.routers.market._market_service")
-    def test_both_fail_returns_400(self, mock_svc):
-        from backend.adapters.ports.data_source_port import DataSourceResult
-
-        mock_svc._yfinance = MagicMock()
-        mock_svc._yfinance.fetch = MagicMock(return_value=DataSourceResult.error("yf error", source="yfinance"))
+    @patch("backend.routers.market.data_service")
+    def test_both_fail_returns_400(self, mock_ds):
+        mock_ds.get_history = AsyncMock(
+            return_value=Result(
+                status=ResultStatus.ERROR, error=ErrorInfo(code="YF_ERROR", message="yf error"), source="yfinance"
+            )
+        )
         resp = client.get("/market/tech-indicators?ticker=US.AAPL")
         assert resp.status_code == 400
 
 
 # ─── /market/fundamental YFinance 兜底 ──────────────────────────────
 class TestFundamentalYFinanceFallback:
-    @patch("backend.routers.market._market_service")
-    def test_futu_fail_yf_success(self, mock_svc):
-        from backend.adapters.ports.data_source_port import DataSourceResult
-
-        mock_svc._futu = MagicMock()
-        mock_svc._futu.fetch = MagicMock(return_value=DataSourceResult.error("futu失败"))
-        mock_svc._yfinance = MagicMock()
-        from backend.adapters.ports.data_source_port import DataSourceResult
-
-        mock_svc._yfinance.fetch = MagicMock(
-            return_value=DataSourceResult.success(
-                {
+    @patch("backend.routers.market.data_service")
+    def test_futu_fail_yf_success(self, mock_ds):
+        mock_ds.get_fundamental = AsyncMock(
+            return_value=Result(status=ResultStatus.ERROR, error=ErrorInfo(code="FUTU_ERROR", message="futu失败"))
+        )
+        mock_ds.get_fundamental_info = AsyncMock(
+            return_value=Result(
+                status=ResultStatus.SUCCESS,
+                data={
                     "shortName": "Apple",
                     "trailingPE": 25.0,
                     "forwardPE": 24.0,
@@ -138,16 +138,16 @@ class TestFundamentalYFinanceFallback:
         assert data["status"] == "success"
         assert "trailing_PE" in data["data"]
 
-    @patch("backend.routers.market._market_service")
-    def test_both_fail_returns_warning(self, mock_svc):
-        from backend.adapters.ports.data_source_port import DataSourceResult
-
-        mock_svc._futu = MagicMock()
-        mock_svc._futu.fetch = MagicMock(return_value=DataSourceResult.error("futu失败"))
-        mock_svc._yfinance = MagicMock()
-        mock_svc._yfinance.fetch = MagicMock(return_value=DataSourceResult.error("yf error"))
+    @patch("backend.routers.market.data_service")
+    def test_both_fail_returns_warning(self, mock_ds):
+        mock_ds.get_fundamental = AsyncMock(
+            return_value=Result(status=ResultStatus.ERROR, error=ErrorInfo(code="FUTU_ERROR", message="futu失败"))
+        )
+        mock_ds.get_fundamental_info = AsyncMock(
+            return_value=Result(status=ResultStatus.ERROR, error=ErrorInfo(code="YF_ERROR", message="yf error"))
+        )
         resp = client.get("/market/fundamental/US.AAPL")
-        # 两端均失败: get_fundamental 设计上返回 200 + status="warning" (见 market.py 注释, 而非 500/400)
+        # 两端均失败: get_fundamental 设计上返回 200 + status="warning"
         assert resp.status_code == 200
         assert resp.json()["status"] == "warning"
 

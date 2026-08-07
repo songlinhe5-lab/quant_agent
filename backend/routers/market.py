@@ -9,15 +9,19 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
-# 引入应用服务层 (已解耦数据源)
-from backend.app.market_data_app import MarketDataService
 from backend.core.logger import logger
 from backend.core.metrics import WS_MESSAGES_SENT
 from backend.core.redis_client import redis_client
 from backend.core.ticker_format import format_ticker, format_yf_ticker
+
+# Legacy OpenD 健康探测（仅用于 /futu/status 与 /health/services 端点）
 from backend.services.adapters.legacy_market_data import market_data_gateway
 from backend.services.datalake.kline_warehouse import kline_warehouse
 from backend.services.datasource import ResultStatus
+
+# BE-ARCH-06c: 新 Facade 行情领域服务（统一经 DataSourceRegistry 取数）
+from backend.services.datasource.business import data_service
+from backend.services.datasource.business import market_data_service as _facade_market
 from backend.services.datasource.router import data_source_router
 from backend.services.fund_flow.ticker import ticker_service
 from backend.services.market_engine import manager
@@ -25,9 +29,6 @@ from backend.services.market_engine import manager
 # BE-15: JWT 鉴权配置
 _SECRET_KEY = os.getenv("SECRET_KEY", "your-super-secret-key-keep-it-safe")
 _ALGORITHM = "HS256"
-
-# 初始化应用服务层
-_market_service = MarketDataService()
 
 # BE-15: WebSocket 心跳超时（秒）
 _WS_HEARTBEAT_TIMEOUT = 60
@@ -298,44 +299,24 @@ async def get_quote(ticker: str):
     Raises:
         HTTPException: 所有数据源均失败时抛出 400 错误
     """
-    # BE-ARCH-06c: 优先走业务聚合 Facade（统一经 DataSourceRegistry 取数，
-    # 收口源选择策略/多源融合/Stale 检测/归一化），失败再回退既有应用服务层。
-    from backend.services.datasource.business import market_data_service as facade_market
-
-    facade_res = None
+    # BE-ARCH-06c: 统一走新 Facade 行情领域服务（经 DataSourceRegistry 选源 + 融合 + Stale 检测）
     try:
-        facade_res = await facade_market.get_quote(ticker)
-    except Exception as exc:  # noqa: BLE001 - Facade 异常不应中断降级链
-        logger.warning(f"[Market API] Facade get_quote 异常，回退既有服务层: {exc}")
+        facade_res = await _facade_market.get_quote(ticker)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"[Market API] Facade get_quote 异常: {exc}")
+        raise HTTPException(status_code=500, detail=f"数据源调用异常: {exc}")
 
-    if facade_res is not None and facade_res.is_success:
-        # Facade 成功（含 DEGRADED 也允许透出，供前端告警）
-        resp_status = "degraded" if facade_res.status == ResultStatus.DEGRADED else "success"
-        return {
-            "status": resp_status,
-            "data": facade_res.data,
-            "source": f"facade+{facade_res.source}",
-            "latency_ms": facade_res.latency_ms,
-            "cached": facade_res.cached,
-        }
+    if not facade_res.is_success:
+        err_msg = facade_res.error.message if facade_res.error else "所有数据源失败"
+        raise HTTPException(status_code=400, detail=err_msg)
 
-    # 回退：既有应用服务层（自动处理降级逻辑）
-    result = _market_service.get_quote(ticker)
-
-    # 检查结果状态
-    if not result.is_success():
-        # 所有数据源都失败了
-        raise HTTPException(
-            status_code=400, detail=f"All data sources failed: {result.error}. Sources tried: {result.source}"
-        )
-
-    # 转换结果为 Router 层的响应格式
+    resp_status = "degraded" if facade_res.status == ResultStatus.DEGRADED else "success"
     return {
-        "status": "success",
-        "data": result.data,
-        "source": result.source,
-        "latency_ms": result.latency_ms,
-        "cached": result.cached,
+        "status": resp_status,
+        "data": facade_res.data,
+        "source": f"facade+{facade_res.source}",
+        "latency_ms": facade_res.latency_ms,
+        "cached": facade_res.cached,
     }
 
 
@@ -428,21 +409,16 @@ async def get_history(ticker: str, ktype: str = "K_DAY", num: int = 60):
     Returns:
         dict: {"status": "success", "data": [KLineData]}
     """
-    # 调用应用服务层的统一接口 (自动处理降级逻辑)
-    result = _market_service.get_kline(
-        ticker=ticker,
-        interval="1d" if ktype == "K_DAY" else ktype.lower(),
-        num=num,
-    )
+    # BE-ARCH-06c: 统一走新 Facade
+    facade_res = await _facade_market.get_history(ticker, ktype=ktype, num=num)
+    if not facade_res.is_success or not facade_res.data:
+        err_msg = facade_res.error.message if facade_res.error else "获取历史数据失败"
+        raise HTTPException(status_code=400, detail=err_msg)
 
-    if not result.is_success() or not result.data:
-        raise HTTPException(status_code=400, detail=f"Failed to fetch history: {result.error}")
-
-    # 转换结果为 Router 层响应格式
     return {
         "status": "success",
-        "data": result.data,
-        "source": result.source,
+        "data": facade_res.data,
+        "source": f"facade+{facade_res.source}",
     }
 
 
@@ -458,20 +434,22 @@ async def get_option_chain(ticker: str, expiration_date: str = ""):
     Returns:
         dict: {"status": "success", "data": OptionChain}
     """
-    result = _market_service.get_option_chain(underlying_ticker=ticker, expire_date=expiration_date)
-    if result.is_error():
-        raise HTTPException(status_code=400, detail=result.error)
-    if result.status == "degraded":
+    facade_res = await _facade_market.get_option_chain(ticker, expiration_date=expiration_date)
+    if facade_res.is_error:
+        err_msg = facade_res.error.message if facade_res.error else "期权链数据不可用"
+        raise HTTPException(status_code=400, detail=err_msg)
+    if facade_res.status == ResultStatus.DEGRADED:
+        err_msg = facade_res.error.message if facade_res.error else "期权链数据暂不可用"
         return {
             "status": "degraded",
-            "message": result.error or "期权链数据暂不可用",
-            "data": result.data,
-            "source": result.source,
+            "message": err_msg,
+            "data": facade_res.data,
+            "source": f"facade+{facade_res.source}",
         }
     return {
         "status": "success",
-        "data": result.data,
-        "source": result.source,
+        "data": facade_res.data,
+        "source": f"facade+{facade_res.source}",
     }
 
 
@@ -486,13 +464,14 @@ async def get_fund_flow(ticker: str):
     Returns:
         dict: {"status": "success", "data": FundFlowData}
     """
-    result = _market_service.get_fund_flow(ticker=ticker)
-    if result.is_error():
-        raise HTTPException(status_code=400, detail=result.error)
+    facade_res = await _facade_market.get_fund_flow(ticker)
+    if facade_res.is_error:
+        err_msg = facade_res.error.message if facade_res.error else "资金流数据不可用"
+        raise HTTPException(status_code=400, detail=err_msg)
     return {
         "status": "success",
-        "data": result.data,
-        "source": result.source,
+        "data": facade_res.data,
+        "source": f"facade+{facade_res.source}",
     }
 
 
@@ -507,23 +486,20 @@ async def get_warrant_chain(ticker: str):
     Returns:
         dict: {"status": "success", "data": WarrantData}
     """
-    # 港股窝轮 (Warrant) / 牛熊证 (CBBC) 链数据
-    # 目前暂仅支持 Futu 数据源 (如果已实现 warrant_chain 能力)
-
-    result = _market_service._futu.fetch("warrant_chain", {"ticker": ticker})
-    if not result.is_success():
-        # 降级：返回提示性消息而非错误
+    # BE-ARCH-06c: 经 Facade 统一选源
+    facade_res = await data_service.get_warrant_chain(ticker)
+    if not facade_res.is_success:
         return {
             "status": "success",
             "data": [],
             "source": "not_implemented",
-            "message": f"[{ticker}] 窝轮/牛熊证链数据暂不支持（FutuAdapter 需先实现 warrant_chain 能力）",
+            "message": f"[{ticker}] 窝轮/牛熊证链数据暂不支持（数据源未实现 warrant_chain 能力）",
         }
 
     return {
         "status": "success",
-        "data": result.data,
-        "source": result.source,
+        "data": facade_res.data,
+        "source": f"facade+{facade_res.source}",
     }
 
 
@@ -541,33 +517,28 @@ async def get_tech_indicators(ticker: str, lookback_days: int = 90):
     """
     from backend.core.ticker_format import format_yf_ticker as format_yf_ticker
 
-    # 通过 YFinanceAdapter 获取历史数据后计算指标
+    # BE-ARCH-06c: 经 Facade 统一选源获取历史 K 线
     yf_ticker = format_yf_ticker(ticker)
-    result = _market_service._yfinance.fetch(
-        "history",
-        {
-            "ticker": yf_ticker,
-            "period": f"{lookback_days}d",
-        },
-    )
+    facade_res = await data_service.get_history(yf_ticker, num=lookback_days)
 
-    if not result.is_success() or not result.data:
+    if not facade_res.is_success or not facade_res.data:
+        err_msg = facade_res.error.message if facade_res.error else "获取历史数据失败"
         raise HTTPException(
-            status_code=400, detail=f"Failed to fetch historical data for technical indicators: {result.error}"
+            status_code=400, detail=f"Failed to fetch historical data for technical indicators: {err_msg}"
         )
 
     # ✅ 集成生产级技术指标计算引擎 (TechnicalIndicatorsPro)
     from backend.utils.technical_indicators_pro import calculate_technical_indicators
 
-    indicators = calculate_technical_indicators(result.data)
+    indicators = calculate_technical_indicators(facade_res.data)
 
     return {
         "status": "success",
         "data": {
-            "klines": result.data[:10],  # 返回最近 10 根 K 线
+            "klines": facade_res.data[:10],  # 返回最近 10 根 K 线
             "indicators": indicators,  # 完整的计算结果
         },
-        "source": "yfinance + custom_tech_indicators",
+        "source": f"facade+{facade_res.source}+custom_tech_indicators",
     }
 
 
@@ -587,10 +558,10 @@ async def search_tickers(q: str):
 
     # 2. 如果本地词库为空，降级使用 YFinance 搜索
     if res.get("status") == "success" and not res.get("data"):
-        print(f"⚠️ [Search] 本地词库暂无 '{q}'，降级使用 YFinance 搜索...")
-        yf_result = _market_service._yfinance.fetch("quote", {"ticker": q})
-        if yf_result.is_success():
-            res = {"status": "success", "data": yf_result.data}
+        print(f"⚠️ [Search] 本地词库暂无 '{q}'，降级使用 Facade 搜索...")
+        facade_res = await data_service.get_quote(q, prefer_sources=["yfinance"])
+        if facade_res.is_success:
+            res = {"status": "success", "data": facade_res.data}
 
     if res.get("status") == "error":
         raise HTTPException(status_code=400, detail=res.get("message"))
@@ -964,20 +935,19 @@ async def get_fundamental(ticker: str):
             "message": f"[{ticker}] 属于大盘或板块指数。指数没有个股基本面。请改用 get_broker_market_data 工具获取成交额与行情。",
         }  # noqa: E501
 
-    # 💡 优先获取 Futu 的高质量数据，失败时再使用 YFinance 兜底
+    # BE-ARCH-06c: 经 Facade 统一选源获取基本面数据
     final_data = {}
 
-    # Step 1: 尝试 FutuAdapter
-    futu_result = _market_service._futu.fetch("quote", {"ticker": ticker})
-    if futu_result.is_success() and futu_result.data:
-        final_data.update(futu_result.data)
+    # Step 1: 尝试 Facade 基本面（Futu 优先 by weight）
+    fund_res = await data_service.get_fundamental(ticker)
+    if fund_res.is_success and fund_res.data:
+        final_data.update(fund_res.data if isinstance(fund_res.data, dict) else {})
     else:
-        # Step 2: Futu 失败，降级到 YFinance (info action 返回完整 t.info 基本面)
-        yf_result = _market_service._yfinance.fetch("info", {"ticker": yf_ticker})
-        yf_success = yf_result.is_success()
-        yf_info = yf_result.data if isinstance(yf_result.data, dict) else {}
-        yf_msg = yf_result.error or ""
-        if not yf_success or not yf_info:
+        # Step 2: Facade fundamental 失败，降级到 YFinance info
+        info_res = await data_service.get_fundamental_info(ticker, prefer_sources=["yfinance"])
+        yf_info = info_res.data if isinstance(info_res.data, dict) else {}
+        yf_msg = info_res.error.message if info_res.error else ""
+        if not info_res.is_success or not yf_info:
             # Futu 与 YFinance 均未取得可用基本面数据：返回 warning (200) 而非 500
             warning_msg = f"Futu 与 YFinance 均未能获取标的 {ticker} 的基本面数据。"
             if yf_msg:
@@ -1038,16 +1008,17 @@ async def get_top_holders(ticker: str):
     # 格式化 ticker 给 AKShare 使用 (例如 HK.00700 -> 00700, US 标的直接拦截)
     symbol = ticker.split(".")[-1] if "." in ticker else ticker
 
-    # 调用 AkShareAdapter 获取持仓数据
-    result = _market_service._akshare.fetch("hsgt_holders", {"symbol": symbol})
+    # BE-ARCH-06c: 经 Facade 统一选源
+    facade_res = await data_service.get_hsgt_holders(symbol)
 
-    if result.is_error():
-        raise HTTPException(status_code=400, detail=result.error)
+    if facade_res.is_error:
+        err_msg = facade_res.error.message if facade_res.error else "持仓数据不可用"
+        raise HTTPException(status_code=400, detail=err_msg)
 
     return {
         "status": "success",
-        "data": result.data,
-        "source": result.source,
+        "data": facade_res.data,
+        "source": f"facade+{facade_res.source}",
     }
 
 

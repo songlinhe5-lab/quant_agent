@@ -7,6 +7,8 @@ import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from backend.services.datasource import ErrorInfo, Result, ResultStatus
+
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
 os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
@@ -67,23 +69,29 @@ class TestMarketServicesHealthRoutes:
 class TestMarketFundFlowRoutes:
     """资金流路由测试"""
 
-    @patch("backend.routers.market.market_data_gateway")
-    def test_get_fund_flow_success(self, mock_futu):
+    @patch("backend.routers.market._facade_market")
+    def test_get_fund_flow_success(self, mock_facade):
         """正常路径：获取资金流数据"""
-        mock_futu.get_fund_flow = AsyncMock(
-            return_value={"status": "success", "data": [{"date": "2026-01-01", "net_inflow": 1000000}]}
+        mock_facade.get_fund_flow = AsyncMock(
+            return_value=Result(
+                status=ResultStatus.SUCCESS,
+                data={"date": "2026-01-01", "net_inflow": 1000000},
+                source="futu",
+            )
         )
         client = TestClient(app)
         resp = client.get("/api/v1/market/fund-flow?ticker=HK.00700")
         assert resp.status_code == 200
         assert _unwrap(resp)["status"] == "success"
 
-    @patch("backend.routers.market._market_service")
-    def test_get_fund_flow_failure(self, mock_svc):
-        """异常路径：Futu 接口失败返回 400"""
-        from backend.adapters.ports.data_source_port import DataSourceResult
-
-        mock_svc.get_fund_flow = MagicMock(return_value=DataSourceResult.error("标的暂不支持", source="futu"))
+    @patch("backend.routers.market._facade_market")
+    def test_get_fund_flow_failure(self, mock_facade):
+        """异常路径：资金流接口失败返回 400"""
+        mock_facade.get_fund_flow = AsyncMock(
+            return_value=Result(
+                status=ResultStatus.ERROR, error=ErrorInfo(code="NOT_SUPPORTED", message="标的暂不支持"), source="futu"
+            )
+        )
         client = TestClient(app)
         resp = client.get("/api/v1/market/fund-flow?ticker=US.AAPL")
         assert resp.status_code == 400
@@ -119,12 +127,12 @@ class TestMarketHoldersRoutes:
         data = _unwrap(resp)
         assert data["status"] == "warning"
 
-    @patch("backend.routers.market._market_service._akshare")
-    def test_get_holders_hk_ticker_success(self, mock_akshare):
+    @patch("backend.routers.market.data_service")
+    def test_get_holders_hk_ticker_success(self, mock_ds):
         """正常路径：获取港股机构持仓"""
-        mock_akshare.fetch = MagicMock(
-            return_value=MagicMock(
-                is_error=MagicMock(return_value=False),
+        mock_ds.get_hsgt_holders = AsyncMock(
+            return_value=Result(
+                status=ResultStatus.SUCCESS,
                 data=[{"holder": "中投"}],
                 source="akshare",
             )

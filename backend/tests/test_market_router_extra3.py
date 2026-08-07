@@ -6,10 +6,12 @@ TEST-18: 提升 market.py 覆盖率
 import json
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
+from backend.services.datasource import ErrorInfo, Result, ResultStatus
 
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 os.environ.setdefault("FINNHUB_API_KEY", "test-finnhub-key")
@@ -37,13 +39,14 @@ class TestSearchTickers:
         assert data["status"] == "success"
 
     @patch("backend.routers.market.ticker_service")
-    @patch("backend.routers.market._market_service")
-    def test_local_empty_yf_fallback(self, mock_svc, mock_ts):
+    @patch("backend.routers.market.data_service")
+    def test_local_empty_yf_fallback(self, mock_ds, mock_ts):
         mock_ts.search_tickers = AsyncMock(return_value={"status": "success", "data": []})
-        mock_yf_result = MagicMock()
-        mock_yf_result.is_success.return_value = True
-        mock_yf_result.data = [{"symbol": "AAPL", "name": "Apple"}]
-        mock_svc._yfinance.fetch.return_value = mock_yf_result
+        mock_ds.get_quote = AsyncMock(
+            return_value=Result(
+                status=ResultStatus.SUCCESS, data={"symbol": "AAPL", "name": "Apple"}, source="yfinance"
+            )
+        )
         resp = client.get("/market/search?q=apple")
         assert resp.status_code == 200
 
@@ -99,26 +102,25 @@ class TestGetFundamental:
         data = resp.json()
         assert data["status"] == "success"
 
-    @patch("backend.routers.market._market_service")
-    def test_futu_success(self, mock_svc):
-        from backend.adapters.ports.data_source_port import DataSourceResult
-
-        mock_svc._futu = MagicMock()
-        mock_svc._futu.fetch = MagicMock(return_value=DataSourceResult.success({"pe": 20.0, "pb": 3.0}, source="futu"))
+    @patch("backend.routers.market.data_service")
+    def test_futu_success(self, mock_ds):
+        mock_ds.get_fundamental = AsyncMock(
+            return_value=Result(status=ResultStatus.SUCCESS, data={"pe": 20.0, "pb": 3.0}, source="futu")
+        )
         resp = client.get("/market/fundamental/US.AAPL")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "success"
 
-    @patch("backend.routers.market._market_service")
-    def test_futu_fail_yf_success(self, mock_svc):
-        from backend.adapters.ports.data_source_port import DataSourceResult
-
-        mock_svc._futu = MagicMock()
-        mock_svc._futu.fetch = MagicMock(return_value=DataSourceResult.error("失败"))
-        mock_svc._yfinance = MagicMock()
-        mock_svc._yfinance.fetch = MagicMock(
-            return_value=DataSourceResult.success({"shortName": "Apple", "trailingPE": 20.0}, source="yfinance")
+    @patch("backend.routers.market.data_service")
+    def test_futu_fail_yf_success(self, mock_ds):
+        mock_ds.get_fundamental = AsyncMock(
+            return_value=Result(status=ResultStatus.ERROR, error=ErrorInfo(code="FUTU_ERROR", message="失败"))
+        )
+        mock_ds.get_fundamental_info = AsyncMock(
+            return_value=Result(
+                status=ResultStatus.SUCCESS, data={"shortName": "Apple", "trailingPE": 20.0}, source="yfinance"
+            )
         )
         resp = client.get("/market/fundamental/US.AAPL")
         assert resp.status_code == 200
@@ -126,11 +128,11 @@ class TestGetFundamental:
 
 # ─── /market/holders/{ticker} ─────────────────────────────────────
 class TestGetTopHolders:
-    @patch("backend.routers.market._market_service._akshare")
-    def test_success(self, mock_akshare):
-        mock_akshare.fetch = MagicMock(
-            return_value=MagicMock(
-                is_error=MagicMock(return_value=False),
+    @patch("backend.routers.market.data_service")
+    def test_success(self, mock_ds):
+        mock_ds.get_hsgt_holders = AsyncMock(
+            return_value=Result(
+                status=ResultStatus.SUCCESS,
                 data=[{"holder": "Test", "shares": 1000}],
                 source="akshare",
             )
