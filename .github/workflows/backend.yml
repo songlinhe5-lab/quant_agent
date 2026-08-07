@@ -145,6 +145,12 @@ jobs:
               echo "✅ 主节点 .env 已生成，请按需手动补填真实密钥/密码后再部署"
             else
               echo "🛡️ 检测到已存在的主节点 .env，完全保留人工配置，CI 不触碰"
+              # SEC-17 修复: registry 端口绑定依赖 TAILSCALE_IP，已存在的 .env 可能缺少此项。
+              # 仅补入 TAILSCALE_IP (compose 端口绑定必需)，不改动其他配置。
+              if [ -n "${{ secrets.VPS_S1_TAILSCALE_IP }}" ] && ! grep -q '^TAILSCALE_IP=' .env 2>/dev/null; then
+                printf 'TAILSCALE_IP=%s\n' "${{ secrets.VPS_S1_TAILSCALE_IP }}" >> .env
+                echo "🔧 已存在 .env 缺少 TAILSCALE_IP，已自动补入 (registry 端口绑定必需)"
+              fi
             fi
 
             # 脱敏校验: 仅只读检查 TAILSCALE_IP 是否已在 .env 中配置，不写任何文件
