@@ -374,6 +374,18 @@ jobs:
             set -e
             cd /opt/quant-agent
 
+            # ── Tailscale IP 自动检测: 若 GitHub Secret 未配置/为空，从宿主机 tailscale0 接口自动获取 ──
+            if [ -z "$NODE_TS_IP" ]; then
+              DETECTED_TS_IP=$(ip -4 addr show tailscale0 2>/dev/null | grep -oP 'inet \K[\d.]+' || true)
+              if [ -n "$DETECTED_TS_IP" ]; then
+                NODE_TS_IP="$DETECTED_TS_IP"
+                echo "🔍 GitHub Secret 未配置 Tailscale IP，已从 tailscale0 接口自动检测: $NODE_TS_IP"
+              else
+                echo "❌ GitHub Secret 未配置 Tailscale IP，且宿主机无 tailscale0 接口，中止部署"
+                exit 1
+              fi
+            fi
+
             # 镜像地址: 北京节点经主节点内网 registry 拉取 (避免跨洋直连 GHCR)，其余节点直连 GHCR
             NODE="${{ matrix.node }}"
             if [ "$NODE" = "bj" ]; then
