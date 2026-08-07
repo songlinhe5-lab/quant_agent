@@ -56,7 +56,7 @@ export function PriceTicker({ data, showVolume = true, compact = false }: PriceT
           {isPositive ? "+" : ""}{data.changePercent.toFixed(2)}%
         </span>
         {data.isStale && (
-          <span 
+          <span
             className="text-amber-500 text-xs flex items-center gap-1"
             title="数据可能已过期"
             aria-label="数据过期警告"
@@ -81,7 +81,7 @@ export function PriceTicker({ data, showVolume = true, compact = false }: PriceT
         <div>
           <h3 className="font-semibold text-lg">{data.symbol}</h3>
           {data.isStale && (
-            <span 
+            <span
               className="text-amber-500 text-xs flex items-center gap-1 mt-1"
               title="数据可能已过期，网络连接中断"
               aria-label="数据过期警告"
@@ -91,19 +91,19 @@ export function PriceTicker({ data, showVolume = true, compact = false }: PriceT
             </span>
           )}
         </div>
-        <div className={cn("flex items-center gap-1 px-2 py-1 rounded text-xs font-medium", 
+        <div className={cn("flex items-center gap-1 px-2 py-1 rounded text-xs font-medium",
           isPositive ? "bg-emerald-400/10 text-emerald-400" : "bg-red-400/10 text-red-400"
         )}>
           <Icon className="h-3 w-3" aria-hidden="true" />
           {isPositive ? "+" : ""}{data.changePercent.toFixed(2)}%
         </div>
       </div>
-      
+
       <div className="space-y-2">
         <div className="font-mono text-2xl font-bold">
           ${data.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </div>
-        
+
         <div className={cn("font-mono text-sm", ColorClass)}>
           {isPositive ? "+" : ""}${data.change.toFixed(2)}
         </div>
@@ -126,13 +126,13 @@ export function usePriceData(initialData: TickerData[]) {
 
   const simulateUpdate = useCallback(() => {
     if (!isConnected) return
-    
+
     setData(prev => prev.map(ticker => {
       const changePercent = (Math.random() - 0.5) * 0.5
       const newPrice = ticker.price * (1 + changePercent / 100)
       const newChange = newPrice - (ticker.price - ticker.change)
       const newChangePercent = (newChange / (ticker.price - ticker.change)) * 100
-      
+
       return {
         ...ticker,
         price: newPrice,

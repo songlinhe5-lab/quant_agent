@@ -1,8 +1,8 @@
 # ADR-007：Flutter 端重度 K 线 — CustomPainter（CLI-03b）
 
-> **状态**：Accepted  
-> **日期**：2026-07-13  
-> **关联**：CLI-03 / CLI-03b · `docs/05` V4.0 · ADR-006  
+> **状态**：Accepted
+> **日期**：2026-07-13
+> **关联**：CLI-03 / CLI-03b · `docs/05` V4.0 · ADR-006
 
 ---
 

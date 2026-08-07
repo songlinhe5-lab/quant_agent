@@ -109,7 +109,7 @@ export function LeftSidebar() {
             <Plus className="h-3.5 w-3.5" />
           </button>
         </div>
-        
+
         <TabsContent value="drafts" className="m-0 flex-1 overflow-hidden">
           <ul className="flex-1 overflow-y-auto p-1.5 custom-scrollbar divide-y divide-border/10 h-full">
             {displayStrategies.length > 0 ? displayStrategies.map((s) => (
@@ -160,7 +160,7 @@ export function LeftSidebar() {
             )}
           </ul>
         </TabsContent>
-        
+
         <TabsContent value="versions" className="m-0 flex-1 overflow-hidden">
           <VersionTimeline />
         </TabsContent>

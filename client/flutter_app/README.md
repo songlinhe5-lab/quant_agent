@@ -1,7 +1,7 @@
 # Quant Agent Flutter Client (CLI-01)
 
-> **定位**：随身监控 / 告警 / 简化交易薄客户端（docs/05 **V4.1**）  
-> **路径**：`client/flutter_app/`  
+> **定位**：随身监控 / 告警 / 简化交易薄客户端（docs/05 **V4.1**）
+> **路径**：`client/flutter_app/`
 > **演进任务**：`docs/TODO.md` **CLI-08~14**（Phase 1~3）· **CLI-P4-***（Phase 4）
 
 ## 分层
@@ -28,7 +28,7 @@ flutter test
 flutter analyze
 ```
 
-API 基址：`--dart-define=API_BASE_URL=https://your-host`  
+API 基址：`--dart-define=API_BASE_URL=https://your-host`
 版本号：`--dart-define=APP_VERSION=0.1.0`
 
 ## APM（CLI-02）

@@ -2,11 +2,11 @@
 
 ## 📋 决策结论
 
-**选择**: `TechnicalIndicatorsPro`(纯 Python Pandas 实现)  
+**选择**: `TechnicalIndicatorsPro`(纯 Python Pandas 实现)
 **拒绝**: TA-Lib (C 引擎)
 
-**决策时间**: 2026-07-08  
-**负责人**: VARB-虚拟架构委员会  
+**决策时间**: 2026-07-08
+**负责人**: VARB-虚拟架构委员会
 
 ---
 
@@ -152,7 +152,7 @@ CI/CD修复：20 小时 (编译失败处理)
 
 **架构委员会投票**:
 - VARB Chair: ✅ 赞成
-- Backend Lead: ✅ 赞成  
+- Backend Lead: ✅ 赞成
 - Data Science Lead: ✅ 赞成
 - DevOps Lead: ✅ 赞成 (避免部署复杂度)
 

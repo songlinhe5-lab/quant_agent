@@ -7,7 +7,7 @@ export function GlobalStyle() {
       @keyframes flash-red-pulse{0%,100%{background-color:transparent}20%{background-color:rgba(246,70,93,0.25)}}
       .animate-flash-green{animation:flash-green-pulse .8s ease-out}
       .animate-flash-red{animation:flash-red-pulse .8s ease-out}
-      
+
       /* 丝滑的新闻插入淡入下压动画 */
       @keyframes news-slide-down {
         0% { opacity: 0; transform: translateY(-15px); grid-template-rows: 0fr; }

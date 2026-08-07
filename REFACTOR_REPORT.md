@@ -1,7 +1,7 @@
 # Dashboard 组件重构报告
 
-**重构日期**: 2026-05-28  
-**组件**: `frontend/src/views/Dashboard.vue`  
+**重构日期**: 2026-05-28
+**组件**: `frontend/src/views/Dashboard.vue`
 **状态**: ✅ 完成
 
 ---
@@ -18,7 +18,7 @@
 - 删除了右侧重复的 `<aside>` 元素（~35 行代码）
 - 简化了整体 UI 结构
 
-**性能影响**: 
+**性能影响**:
 - ⬇️ DOM 节点减少 50%
 - 💾 内存占用减少 ~2-3KB
 
@@ -109,8 +109,8 @@ quotesIntervalId = setInterval(updateQuotesData, 800)
 <button v-for="item in navigation" ...>
 
 <!-- ✅ 改进后 -->
-<button 
-  v-for="item in NAVIGATION" 
+<button
+  v-for="item in NAVIGATION"
   :aria-label="item.name"
   :aria-current="activeTab === item.id"
 >
@@ -163,7 +163,7 @@ const getTrendColor = (item) => { ... }
 ```css
 /**
  * Dashboard 全局样式
- * 
+ *
  * 设计原则：
  * 1. 暗色主题 - #050505 作为底色
  * 2. 玻璃态设计 - 模糊与半透明组合

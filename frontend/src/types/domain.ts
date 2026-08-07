@@ -1,7 +1,7 @@
 /**
  * 前端 TypeScript 领域类型定义
  * FE-18: 与 docs/11 领域对象严格对齐
- * 
+ *
  * 对应后端 Pydantic Schema: backend/schemas/domain.py
  */
 
@@ -42,13 +42,13 @@ export interface Quote {
   turnover: number
   change: number
   changePercent: number
-  
+
   // 盘口数据
   bidPrice?: number
   bidVolume?: number
   askPrice?: number
   askVolume?: number
-  
+
   // 时间戳
   timestamp: number
   source?: string
@@ -131,7 +131,7 @@ export interface Order {
   status: OrderStatus
   createdAt: number
   updatedAt: number
-  
+
   // 模拟/实盘标识
   isPaper: boolean
   strategyId?: string

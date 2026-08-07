@@ -20,13 +20,13 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from backend.app.market_data import market_data
 from backend.backtest import (
     run_batch_sandbox_backtest,
     run_dynamic_sandbox_backtest,
     run_grid_search_backtest,
     run_monte_carlo_stress_test,
 )
-from backend.app.market_data import market_data
 from backend.core.cpu_pool import run_cpu_bound, run_cpu_bound_with_progress
 from backend.core.redis_client import redis_client
 from backend.core.utils import safe_truncate
@@ -45,8 +45,8 @@ def RateLimiter(
     global_window: int = 60,
 ):
     """从 strategy.py 复制的限流依赖，避免循环导入。"""
-    from starlette.status import HTTP_429_TOO_MANY_REQUESTS
     from fastapi import HTTPException, Request
+    from starlette.status import HTTP_429_TOO_MANY_REQUESTS
 
     async def dependency(request: Request):
         client_ip = request.client.host if request.client else "unknown"
@@ -743,6 +743,7 @@ async def deploy_to_oms(payload: RunSandboxPayload):
         }  # noqa: E501
     except Exception as e:
         return {"status": "error", "message": f"部署失败: {str(e)}"}
+
 
 @router.post("/optimize-sandbox/stream", dependencies=[Depends(get_current_user)])
 async def optimize_strategy_sandbox_stream(payload: OptimizeSandboxPayload):

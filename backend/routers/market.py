@@ -1,7 +1,6 @@
 import json
 import os
 import time
-from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
@@ -560,4 +559,3 @@ async def search_tickers(q: str):
     if res.get("status") == "error":
         raise HTTPException(status_code=400, detail=res.get("message"))
     return res
-

@@ -31,7 +31,7 @@ export function DiffOverlay() {
   const { theme } = useTheme()
   const monaco = useMonaco()
   const diffEditorRef = useRef<any>(null)
-  
+
   const { diff, applyDiff, rejectDiff } = useStrategyStore()
 
   useEffect(() => {

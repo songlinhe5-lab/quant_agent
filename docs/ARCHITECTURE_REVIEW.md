@@ -1,8 +1,8 @@
 # 🏛️ Quant Agent 全栈架构深度审计报告 & 全面 TODO 清单
 
-> **审计基准**：对标 QuantConnect、TradingView、Bloomberg Terminal 等业界头部量化系统  
-> **审计范围**：产品设计、AI工程规范、前后端架构、工程化部署、安全性  
-> **审计时间**：2026-06-27  
+> **审计基准**：对标 QuantConnect、TradingView、Bloomberg Terminal 等业界头部量化系统
+> **审计范围**：产品设计、AI工程规范、前后端架构、工程化部署、安全性
+> **审计时间**：2026-06-27
 > **文档状态**：V1.0 — 架构现状评估与改进路线图
 
 ---

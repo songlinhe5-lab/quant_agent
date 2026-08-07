@@ -15,7 +15,7 @@ export function GlobalRateLimitModal() {
     const handleRateLimit = (e: Event) => {
       const customEvent = e as CustomEvent<{ status: number; message: string }>
       const { status: errStatus, message: errMsg } = customEvent.detail
-      
+
       setStatus(errStatus)
       setMessage(errMsg)
       setIsOpen(true)
@@ -67,21 +67,21 @@ export function GlobalRateLimitModal() {
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="relative w-full max-w-md mx-4 overflow-hidden rounded-2xl border bg-background/95 backdrop-blur-xl shadow-2xl p-6 animate-in zoom-in-95 duration-300">
-        
+
         {/* 顶部动态色彩条 */}
         <div className={cn(
-          "absolute top-0 left-0 w-full h-1.5", 
+          "absolute top-0 left-0 w-full h-1.5",
           isBanned ? "bg-red-500" : "bg-amber-500"
         )} />
 
         <div className="flex flex-col items-center text-center space-y-4 mt-2">
           <div className={cn(
-            "p-4 rounded-full border", 
+            "p-4 rounded-full border",
             isBanned ? "bg-red-500/10 border-red-500/20 text-red-500" : "bg-amber-500/10 border-amber-500/20 text-amber-500"
           )}>
             {isBanned ? <AlertOctagon className="h-10 w-10" /> : <ShieldAlert className="h-10 w-10" />}
           </div>
-          
+
           <div className="space-y-2">
             <h2 className="text-lg font-bold tracking-tight text-foreground">
               {isBanned ? '触发系统级风控熔断' : '操作过于频繁'}
@@ -104,7 +104,7 @@ export function GlobalRateLimitModal() {
               我已知晓，不再连续点击
             </Button>
           )}
-          
+
         </div>
       </div>
     </div>

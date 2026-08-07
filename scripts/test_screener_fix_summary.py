@@ -95,7 +95,7 @@ print("")
 print("当前返回转换逻辑 (screener_handler.py:340-343):")
 print("""
 if isinstance(val, float) and prop_name in [
-    "dividend_ratio", "roe", "roa", "turnover_ratio", 
+    "dividend_ratio", "roe", "roa", "turnover_ratio",
     "price_change_pct", "amplitude", "gross_profit_ratio", "debt_to_assets",
     "hist_percentile_pe", "operating_margin_ttm", "net_profit_cash_cover_ttm"
 ]:

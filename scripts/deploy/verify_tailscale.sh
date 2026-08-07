@@ -70,9 +70,9 @@ TAILNET_STATUS=$(tailscale status --json 2>/dev/null)
 if command -v jq &> /dev/null; then
     ONLINE_NODES=$(echo "$TAILNET_STATUS" | jq -r '.Peer | to_entries[] | select(.value.Online == true) | .value.HostName' | wc -l)
     TOTAL_NODES=$(echo "$TAILNET_STATUS" | jq -r '.Peer | length')
-    
+
     info "在线节点: $ONLINE_NODES / $TOTAL_NODES"
-    
+
     # 检查关键节点
     for node in us-master cn-akshare; do
         if echo "$TAILNET_STATUS" | jq -e ".Peer | to_entries[] | select(.value.HostName == \"$node\" and .value.Online == true)" &> /dev/null; then
@@ -121,7 +121,7 @@ test_port() {
     local port=$2
     local desc=$3
     local should_pass=$4
-    
+
     if timeout 3 bash -c "echo > /dev/tcp/$host/$port" 2>/dev/null; then
         if [ "$should_pass" = "true" ]; then
             pass "$desc ($host:$port) 可达"
@@ -143,7 +143,7 @@ test_port_nc() {
     local port=$2
     local desc=$3
     local should_pass=$4
-    
+
     if nc -z -w 3 "$host" "$port" 2>/dev/null; then
         if [ "$should_pass" = "true" ]; then
             pass "$desc ($host:$port) 可达"
@@ -187,7 +187,7 @@ info "公网 IP: $PUBLIC_IP"
 if [ "$PUBLIC_IP" != "unknown" ]; then
     # 检查 Redis 是否对公网暴露
     $TEST_FUNC "$PUBLIC_IP" 6379 "公网 Redis" "false"
-    
+
     # 检查 Postgres 是否对公网暴露
     $TEST_FUNC "$PUBLIC_IP" 5432 "公网 Postgres" "false"
 else
@@ -230,7 +230,7 @@ if [ -f /etc/ssh/sshd_config ]; then
     else
         warn "SSH 密码认证未禁用"
     fi
-    
+
     if grep -q "^PermitRootLogin.*no" /etc/ssh/sshd_config; then
         pass "Root SSH 登录已禁用"
     else

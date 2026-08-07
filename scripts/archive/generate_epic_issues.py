@@ -4,46 +4,46 @@ OPT-001~004: 批量创建 GitHub Issues 脚本
 
 功能:
     根据 AI 虚拟架构委员会 (VARB) 的决策报告，自动创建 4 个 Epic 级别的 GitHub Issue。
-    
+
     每个 Epic 包含:
     - 完整的辩论记录摘要
     - 工作量估算与验收标准
     - 关联的子任务清单
     - 风险缓解机制
-    
+
 输入:
     读取 docs/VARB-2026-0708-001_Decision_Report.md (或由命令行参数指定)
-    
+
 输出:
     通过 GitHub API 创建 4 个新 Issue，并打印链接
-    
+
 使用方式:
     # 1. 设置 GitHub Token
     export GITHUB_TOKEN="your_personal_access_token"
-    
+
     # 2. 运行脚本
     python scripts/generate_epic_issues.py --owner songlinhe5-lab --repo quant-agent
-    
+
     # 3. 预览模式 (不实际创建)
     python scripts/generate_epic_issues.py --dry-run
 """
 
 import os
-import re
-import json
-import requests
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional
+from typing import List
 
+import requests
 
 # ==========================================
 # 数据模型定义
 # ==========================================
 
+
 @dataclass
 class EpicTask:
     """单个 Epic Issue 的数据模型"""
+
     opt_number: str
     title: str
     phase: str
@@ -82,20 +82,20 @@ EPICS_DATA = [
                 "id": "RISK-001",
                 "description": "历史代码中存在隐式的 data_source_router 引用",
                 "mitigation": "先用 astropy 静态分析生成依赖图，标记所有间接调用点",
-                "owner": "Backend Lead"
+                "owner": "Backend Lead",
             },
             {
                 "id": "RISK-002",
                 "description": "QA Lead 没时间编写足够覆盖分支的测试",
                 "mitigation": "将 OPT-004 测试开发与 OPT-001 并行进行，但依赖同一个 Protocol 定义",
-                "owner": "QA Lead"
-            }
+                "owner": "QA Lead",
+            },
         ],
         related_docs=[
             "docs/OPT-001-004_Architecture_Review_Materials.md#议题一-router-层解耦",
             "docs/14. 分布式数据源服务架构.md#2.1-核心接口协议",
-            "backend/routers/market.py#L156-L162 (当前反模式示例)"
-        ]
+            "backend/routers/market.py#L156-L162 (当前反模式示例)",
+        ],
     ),
     EpicTask(
         opt_number="OPT-002",
@@ -117,26 +117,26 @@ EPICS_DATA = [
                 "id": "RISK-001",
                 "description": "SEC EDGAR API 限流或临时宕机",
                 "mitigation": "实现指数退避重试 + 本地缓存 7 天数据",
-                "owner": "Data Engineer"
+                "owner": "Data Engineer",
             },
             {
                 "id": "RISK-002",
                 "description": "历史财报数据格式不统一 (PDF/HTML/XBRL)",
                 "mitigation": "第一期仅解析 XBRL 格式 (结构化最强),PDF 留到 Phase 2",
-                "owner": "Data Engineer"
+                "owner": "Data Engineer",
             },
             {
                 "id": "BLOCK-001",
                 "description": "真人资源未到位",
                 "mitigation": "PM 协调 Time Slot， Week 1 不允许插入其他需求",
-                "owner": "PM"
-            }
+                "owner": "PM",
+            },
         ],
         related_docs=[
             "docs/OPT-001-004_Architecture_Review_Materials.md#议题二-point-in-time-财务数据处理",
             "SEC EDGAR API 官方文档：https://www.sec.gov/edgar/sec-api-documentation",
-            "docs/19. Parquet 数据湖快照版本化设计.md"
-        ]
+            "docs/19. Parquet 数据湖快照版本化设计.md",
+        ],
     ),
     EpicTask(
         opt_number="OPT-003",
@@ -158,20 +158,20 @@ EPICS_DATA = [
                 "id": "RISK-001",
                 "description": "Git Merge Conflict 爆炸 (多个开发者同时改 import)",
                 "mitigation": "设立 Recovery Branch，每日早晚各合并一次，冲突大时由 Backend Lead 手动解决",
-                "owner": "Backend Lead"
+                "owner": "Backend Lead",
             },
             {
                 "id": "RISK-002",
                 "description": "Domain 层逻辑遗漏 (某些业务规则还在 Adapter 里)",
                 "mitigation": "用 AST 扫描识别所有 Entity 类，确保它们不在 Adapter 文件中定义",
-                "owner": "Backend Dev"
-            }
+                "owner": "Backend Dev",
+            },
         ],
         related_docs=[
             "docs/OPT-001-004_Architecture_Review_Materials.md#议题三-application-层重构",
             "docs/03. 后端架构与执行引擎.md#V5.1 整洁架构分层规范",
-            "backend/services/ (当前混乱目录)"
-        ]
+            "backend/services/ (当前混乱目录)",
+        ],
     ),
     EpicTask(
         opt_number="OPT-004",
@@ -193,20 +193,20 @@ EPICS_DATA = [
                 "id": "RISK-001",
                 "description": "测试数据版权争议 (CRSP 数据库授权)",
                 "mitigation": "第一期使用公开替代源 (如 NYSE Delisting List on GitHub)",
-                "owner": "QA Lead"
+                "owner": "QA Lead",
             },
             {
                 "id": "RISK-002",
                 "description": "Golden Dataset 膨胀到 GB 级，拖慢 CI",
                 "mitigation": "使用 Parquet 列式存储 + 分区 (按 ticker/date),CI 环境仅加载最近 1 年数据",
-                "owner": "QA Lead"
-            }
+                "owner": "QA Lead",
+            },
         ],
         related_docs=[
             "docs/OPT-001-004_Architecture_Review_Materials.md#议题四-data-正确性单元测试",
             "pytest 官方文档：https://docs.pytest.org/",
-            "Hypothesis 库：https://hypothesis.readthedocs.io/"
-        ]
+            "Hypothesis 库：https://hypothesis.readthedocs.io/",
+        ],
     ),
 ]
 
@@ -215,47 +215,43 @@ EPICS_DATA = [
 # GitHub API Client
 # ==========================================
 
+
 class GitHubAPI:
     """GitHub REST API v3 Client"""
-    
+
     def __init__(self, token: str, owner: str, repo: str):
         self.token = token
         self.base_url = f"https://api.github.com"
         self.repo_url = f"{self.base_url}/repos/{owner}/{repo}"
-        
+
         self.headers = {
             "Authorization": f"token {token}",
             "Accept": "application/vnd.github.v3+json",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
-    
+
     def create_issue(self, title: str, body: str, labels: List[str], assignees: List[str]) -> dict:
         """创建 Issue"""
         url = f"{self.repo_url}/issues"
-        
-        payload = {
-            "title": title,
-            "body": body,
-            "labels": labels,
-            "assignees": assignees
-        }
-        
+
+        payload = {"title": title, "body": body, "labels": labels, "assignees": assignees}
+
         response = requests.post(url, headers=self.headers, json=payload)
-        
+
         if response.status_code == 201:
             print(f"✅ Issue 创建成功：{response.json()['html_url']}")
             return response.json()
         else:
             print(f"❌ 创建失败：{response.status_code} - {response.text}")
             raise Exception(f"GitHub API Error: {response.status_code}")
-    
+
     def get_existing_issues(self, label: str) -> List[str]:
         """获取已有 Issues 标题列表，避免重复"""
         url = f"{self.repo_url}/issues"
         params = {"labels": label, "state": "all"}
-        
+
         response = requests.get(url, headers=self.headers, params=params)
-        
+
         if response.status_code == 200:
             return [issue["title"] for issue in response.json()]
         return []
@@ -265,28 +261,29 @@ class GitHubAPI:
 # Markdown 内容生成器
 # ==========================================
 
+
 def generate_epic_body(epic: EpicTask) -> str:
     """生成 Epic Issue 的 Markdown 正文"""
-    
+
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-    
+
     # 构建验收标准列表
     acceptance_list = "\n".join(f"- [ ] {crit}" for crit in epic.acceptance_criteria)
-    
+
     # 构建风险评估表格
     risk_table = "| ID | 描述 | 缓解策略 | 责任人 |\n|:-----|:-----|:---------|:-------|\n"
     for risk in epic.risks:
         risk_table += f"| {risk['id']} | {risk['description']} | {risk['mitigation']} | {risk['owner']} |\n"
-    
+
     # 构建相关文档链接
     doc_links = "\n".join(f"- [{doc.split('/')[-1]}]({doc})" for doc in epic.related_docs)
-    
+
     return f"""# 📋 Epic 概览
 
-**OPT 编号**: {epic.opt_number}  
-**所属 Phase**: {epic.phase}  
-**优先级**: {epic.priority}  
-**估算工作量**: {epic.effort_hours}h  
+**OPT 编号**: {epic.opt_number}
+**所属 Phase**: {epic.phase}
+**优先级**: {epic.priority}
+**估算工作量**: {epic.effort_hours}h
 
 ---
 
@@ -309,7 +306,7 @@ def generate_epic_body(epic: EpicTask) -> str:
 
 | 子任务 | 负责人 | 状态 | 工作量 | 时间窗口 |
 |:----------|:------|:-----|:------|:---------|
-| {epic.opt_number}: 核心实现 | @BackendLead/@DataEngineer | ⏳ Pending | {epic.effort_hours}h | {epic.backend_lead_time if epic.phase != 'Phase 2' else epic.data_engineer_time} |
+| {epic.opt_number}: 核心实现 | @BackendLead/@DataEngineer | ⏳ Pending | {epic.effort_hours}h | {epic.backend_lead_time if epic.phase != "Phase 2" else epic.data_engineer_time} |
 | OPT-{epic.opt_number}-TEST: 测试编写 | @QALead | ⏳ Pending | 2h | {epic.qa_lead_time} |
 | OPT-{epic.opt_number}-DOC: 文档更新 | @TechLead | ⏳ Pending | 1h | Week X |
 
@@ -317,9 +314,9 @@ def generate_epic_body(epic: EpicTask) -> str:
 
 ## 🗣️ 虚拟专家委员会决策记录
 
-**会议 ID**: VARB-2026-0708-001  
-**运行时间**: {timestamp}  
-**共识引擎版本**: v2.1  
+**会议 ID**: VARB-2026-0708-001
+**运行时间**: {timestamp}
+**共识引擎版本**: v2.1
 
 ### 关键决议摘要
 
@@ -343,7 +340,7 @@ def generate_epic_body(epic: EpicTask) -> str:
 **熔断执行流程**:
 ```python
 if incident_severity == "P0" and affected_users > 100:
-    trigger_circuit_breaker(phase="{epic.opt_number.lower().replace('-', '_')}")
+    trigger_circuit_breaker(phase="{epic.opt_number.lower().replace("-", "_")}")
     notify_slack("#incident-response")
     switch_to_hotfix_branch("hotfix/prod-emergency")
 ```
@@ -387,17 +384,18 @@ if incident_severity == "P0" and affected_users > 100:
 # 主流程控制
 # ==========================================
 
+
 def main():
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="批量创建 OPT Epic Issues")
     parser.add_argument("--owner", required=True, help="GitHub 组织名或用户名 (如：songlinhe5-lab)")
     parser.add_argument("--repo", required=True, help="仓库名 (如：quant-agent)")
     parser.add_argument("--dry-run", action="store_true", help="预览模式，不实际创建")
     parser.add_argument("--template-dir", default=".github/ISSUE_TEMPLATE", help="Issue 模板目录")
-    
+
     args = parser.parse_args()
-    
+
     # 检查 GitHub Token
     github_token = os.environ.get("GITHUB_TOKEN")
     if not github_token:
@@ -405,65 +403,60 @@ def main():
         print("请运行: export GITHUB_TOKEN='your_personal_access_token'")
         print("创建 Token 指南：https://github.com/settings/tokens")
         exit(1)
-    
+
     # 初始化 GitHub API Client
     gh_api = GitHubAPI(token=github_token, owner=args.owner, repo=args.repo)
-    
+
     # 预设标签
     base_labels = ["opt", "architecture", "phase-1"]
     assignees = ["songlinhe5-lab"]  # 默认指派给 Project Owner
-    
+
     # 遍历所有 Epic 数据
     for epic in EPICS_DATA:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"处理 {epic.opt_number}: {epic.title}")
-        print('='*60)
-        
+        print("=" * 60)
+
         # 生成 Issue 标题
         title = f"{epic.opt_number}: {epic.title.split(': ')[1]}"  # 简化标题
-        
+
         # 生成 Issue 正文
         body = generate_epic_body(epic)
-        
+
         # 动态标签
         labels = base_labels.copy()
         if epic.priority == "P0":
             labels.append("p0-critical")
         elif epic.priority == "P1":
             labels.append("p1-important")
-        
+
         # 预览模式
         if args.dry_run:
             print(f"\n📄 预览 Issue 内容:")
-            print("-"*60)
+            print("-" * 60)
             print(f"Title: {title}")
             print(f"Labels: {', '.join(labels)}")
             print(f"Assignees: {', '.join(assignees)}")
-            print("-"*60)
+            print("-" * 60)
             print(body[:500] + "...")  # 只显示前 500 字符
             continue
-        
+
         # 实际创建 Issue
         try:
-            issue_data = gh_api.create_issue(
-                title=title,
-                body=body,
-                labels=labels,
-                assignees=assignees
-            )
-            
+            issue_data = gh_api.create_issue(title=title, body=body, labels=labels, assignees=assignees)
+
             print(f"✅ {epic.opt_number} Epic 已创建")
             print(f"   URL: {issue_data['html_url']}")
-            
+
         except Exception as e:
             print(f"⚠️ {epic.opt_number} 创建失败：{str(e)}")
             continue
-    
-    print(f"\n{'='*60}")
+
+    print(f"\n{'=' * 60}")
     print("✨ 批量创建完成!")
     print(f"总计处理：{len(EPICS_DATA)} 个 Epic")
     print(f"模板目录：{args.template_dir}")
-    print('='*60)
+    print("=" * 60)
 
 
 if __name__ == "__main__":

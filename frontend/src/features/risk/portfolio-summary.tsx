@@ -100,7 +100,7 @@ export function PortfolioSummary({
           </span>
         </div>
         <div className="h-2 bg-secondary rounded-full overflow-hidden">
-          <div 
+          <div
             className={cn(
               "h-full rounded-full transition-all duration-500",
               isMarginDanger ? "bg-red-400" : isMarginWarning ? "bg-amber-500" : "bg-emerald-400"

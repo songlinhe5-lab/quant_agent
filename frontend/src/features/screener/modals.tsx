@@ -168,7 +168,7 @@ export function RagDictionaryPanel({ onClose }: { onClose: () => void }) {
         const text = ev.target?.result as string
         const lines = text.split('\n').filter(l => l.trim())
         if (lines.length < 2) throw new Error('CSV 文件内容为空或格式错误')
-        
+
         const newItems = []
         for (let i = 1; i < lines.length; i++) {
           const line = lines[i].trim()
@@ -276,7 +276,7 @@ export function ChartPreviewModal({ symbol, price, change, onClose }: { symbol: 
       try {
         const res = await apiClient.get('/market/history', { ticker: symbol, ktype: 'K_DAY', num: 100 })
         if (!isMounted) return
-        
+
         // 兼容两种响应格式
         const data = res?.status === 'success' ? res.data : (res?.data?.status === 'success' ? res.data.data : null)
         if (data) {
@@ -293,7 +293,7 @@ export function ChartPreviewModal({ symbol, price, change, onClose }: { symbol: 
                crosshair: { mode: CrosshairMode.Magnet },
                timeScale: { timeVisible: true, fixLeftEdge: true, fixRightEdge: true },
              })
-             
+
              const candlestickSeries = chart.addSeries(CandlestickSeries, {
                 upColor: theme === 'dark' ? '#10b981' : '#059669',
                 downColor: theme === 'dark' ? '#ef4444' : '#dc2626',
@@ -301,28 +301,28 @@ export function ChartPreviewModal({ symbol, price, change, onClose }: { symbol: 
                 wickUpColor: theme === 'dark' ? '#10b981' : '#059669',
                 wickDownColor: theme === 'dark' ? '#ef4444' : '#dc2626',
              })
-             
+
              const volumeSeries = chart.addSeries(HistogramSeries, {
                 color: '#26a69a',
                 priceFormat: { type: 'volume' },
                 priceScaleId: '',
              })
-             
+
              chart.priceScale('').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } })
 
              const sortedData = [...res.data.data].sort((a, b) => new Date(a.time.replace(/-/g, '/')).getTime() - new Date(b.time.replace(/-/g, '/')).getTime())
-             
+
              const candleData = sortedData.map((d: any) => ({
                time: new Date(d.time.replace(/-/g, '/')).getTime() / 1000,
                open: d.open, high: d.high, low: d.low, close: d.close
              }))
-             
+
              const volData = sortedData.map((d: any) => ({
                time: new Date(d.time.replace(/-/g, '/')).getTime() / 1000,
                value: d.volume,
                color: d.close >= d.open ? (theme === 'dark' ? 'rgba(16, 185, 129, 0.5)' : 'rgba(5, 150, 105, 0.5)') : (theme === 'dark' ? 'rgba(239, 68, 68, 0.5)' : 'rgba(220, 38, 38, 0.5)')
              }))
-             
+
              candlestickSeries.setData(candleData)
              volumeSeries.setData(volData)
              chart.timeScale().fitContent()
@@ -336,9 +336,9 @@ export function ChartPreviewModal({ symbol, price, change, onClose }: { symbol: 
         if (isMounted) setLoading(false)
       }
     }
-    
+
     initChart()
-    
+
     const handleResize = () => {
       if (chart && chartContainerRef.current) {
         chart.applyOptions({
@@ -347,16 +347,16 @@ export function ChartPreviewModal({ symbol, price, change, onClose }: { symbol: 
         })
       }
     }
-    
+
     window.addEventListener('resize', handleResize)
-    
+
     return () => {
       isMounted = false
       window.removeEventListener('resize', handleResize)
       if (chart) chart.remove()
     }
   }, [symbol, theme])
-  
+
   return (
     <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={onClose}>
       <div className="w-full max-w-3xl bg-card border border-border/40 rounded-xl overflow-hidden flex flex-col shadow-2xl h-[500px]" onClick={e => e.stopPropagation()}>

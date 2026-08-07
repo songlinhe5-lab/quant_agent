@@ -24,8 +24,8 @@
 {c.latency_ms ? `${c.latency_ms.toFixed(0)} ms` : '—'}
 
 // 修复后
-{c.latency_ms != null && c.latency_ms > 0 
-  ? `${c.latency_ms.toFixed(0)} ms` 
+{c.latency_ms != null && c.latency_ms > 0
+  ? `${c.latency_ms.toFixed(0)} ms`
   : 'N/A'}
 ```
 
@@ -93,7 +93,7 @@ quant:metrics:{source}:latency:{date}
   type: Redis List
   ttl: 7 days
   max_length: 1000 samples
-  
+
 示例:
   quant:metrics:finnhub:latency:2026-08-04
     - 150.5
@@ -109,15 +109,15 @@ quant:metrics:{source}:latency:{date}
 # backend/services/datasource/call_metrics_store.py
 
 async def record_business(
-    self, 
-    source: str, 
-    outcome: str, 
+    self,
+    source: str,
+    outcome: str,
     category: str = None,
     latency_ms: float = None  # ← 新增参数
 ):
     """记录业务调用时同时记录延迟"""
     # ... 原有逻辑 ...
-    
+
     # 新增：记录延迟
     if latency_ms is not None and latency_ms > 0:
         key = f"quant:metrics:{source}:latency:{date}"
@@ -136,23 +136,23 @@ async def get_latency_stats(self, source: str) -> Dict[str, float]:
 
 async def fetch(self, action: str, params: Dict[str, Any]) -> Result:
     start_time = time.perf_counter()
-    
+
     try:
         result = await self._fetch_impl(action, params)
-        
+
         # 记录延迟
         latency_ms = (time.perf_counter() - start_time) * 1000
         await call_metrics.record_business(
-            self.source_name, 
+            self.source_name,
             "success",
             latency_ms=latency_ms  # ← 新增
         )
-        
+
         return result
     except Exception as e:
         latency_ms = (time.perf_counter() - start_time) * 1000
         await call_metrics.record_business(
-            self.source_name, 
+            self.source_name,
             "error",
             latency_ms=latency_ms  # ← 新增
         )
@@ -180,8 +180,8 @@ async def get_datasource_latency(name: str):
 const latencyStats = await apiClient.get(`/datasource/${source}/latency`)
 
 <div className="text-sm font-medium text-foreground">
-  {latencyStats.avg_ms != null 
-    ? `${latencyStats.avg_ms.toFixed(0)} ms` 
+  {latencyStats.avg_ms != null
+    ? `${latencyStats.avg_ms.toFixed(0)} ms`
     : 'N/A'}
 </div>
 ```
@@ -292,7 +292,7 @@ Futu     ░   ░   ░   ░   ░   ░   ░
    # 提交 PR 到 main
    git checkout develop
    git push origin develop
-   
+
    # 创建 PR
    gh pr create --base main --head develop --title "fix: 数据源健康看板延迟显示优化"
    ```

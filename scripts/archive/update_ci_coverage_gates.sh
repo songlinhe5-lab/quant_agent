@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # OPT-007: 恢复覆盖率门禁 (Coverage Gate Restoration)
-# 
+#
 # 目标:
 #   1. 移除分支保护条件 (让所有分支都受门禁约束)
 #   2. 设置后端覆盖率门槛至 80%(OPT-001 验收标准)
@@ -79,7 +79,7 @@ else:
     # 尝试另一种格式 (多行形式)
     old_multiline = """    if: github.ref != 'refs/heads/main' && always() && (needs.test.result == 'success' || needs.test.result == 'skipped')"""
     new_multiline = """    if: always() && (needs.test.result == 'success' || needs.test.result == 'skipped')"""
-    
+
     if old_multiline in content:
         content = content.replace(old_multiline, new_multiline)
         print("✅ 已移除 security Job 的分支排除条件")
@@ -153,7 +153,7 @@ FRONTEND_YML=".github/workflows/frontend.yml"
 if [[ ! -f "$FRONTEND_YML" ]]; then
     echo ""
     echo "📝 检测到前端 CI 配置不存在，创建基础版本..."
-    
+
     cat > "$FRONTEND_YML" << 'FRONTEND_CI'
 name: Frontend CI
 
@@ -175,33 +175,33 @@ jobs:
   lint-build-test:
     name: Lint, Build & Test
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'pnpm'
           cache-dependency-path: 'frontend/pnpm-lock.yaml'
-      
+
       - name: Install dependencies
         working-directory: ./frontend
         run: pnpm install --frozen-lockfile
-      
+
       - name: Lint
         working-directory: ./frontend
         run: pnpm lint
-      
+
       - name: Build
         working-directory: ./frontend
         run: pnpm build
-      
+
       - name: Run tests with coverage
         working-directory: ./frontend
         run: pnpm test -- --coverage --ci
-      
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
@@ -209,7 +209,7 @@ jobs:
           flags: frontend
           fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}
-      
+
       - name: Detect slow tests
         working-directory: ./frontend
         run: |
@@ -218,7 +218,7 @@ jobs:
           pnpm test -- --durations=10 --tb=no -q 2>&1 | tee /tmp/slow_tests.txt
           grep -A 20 "slowest" /tmp/slow_tests.txt >> $GITHUB_STEP_SUMMARY || true
 FRONTEND_CI
-    
+
     echo "✅ 已创建前端 CI 配置：$FRONTEND_YML"
 else
     echo ""
@@ -250,30 +250,30 @@ echo ""
 # ==========================================
 if [ "$COMMIT_PR" = true ]; then
     echo "🚀 自动提交 PR 到 develop 分支..."
-    
+
     BRANCH_NAME="opt-007-coverage-gate-restoration"
-    
+
     git checkout develop 2>/dev/null || git checkout -b develop
     git checkout -b "$BRANCH_NAME"
-    
+
     git add .github/workflows/ frontend/vitest.config.ts
     git commit -m "OPT-007: Restore coverage gates (backend≥80%, frontend≥60%)
-    
+
 - Update backend test threshold from 70% to 80%
-- Remove main branch exclusion for coverage checks  
+- Remove main branch exclusion for coverage checks
 - Enable frontend coverage threshold at 60%
 - Create frontend CI workflow if not exists
 - Add Codecov upload with fail_ci_if_error"
-    
+
     # 推送到远程 (需要 GitHub TOKEN)
     if [ -n "${{ github.token }}" ]; then
         git push -u origin "$BRANCH_NAME" --force
-        
+
         # 创建 PR (需要使用 GitHub CLI)
         gh pr create \
             --title "OPT-007: Coverage Gate Restoration" \
             --body "This PR restores the code coverage门禁as per virtual architecture board decision:
-            
+
 **Changes:**
 - Backend: Threshold raised to 80% (was 70%)
 - Backend: All branches now covered (removed main exclusion)
@@ -287,7 +287,7 @@ if [ "$COMMIT_PR" = true ]; then
 
 Related: VARB-2026-0708-001 Decision Report
 "
-        
+
         echo "✅ PR 已创建：https://github.com/songlinhe5-lab/quant-agent/pull/new"
     else
         echo "⚠️ 未检测到 GitHub TOKEN，请手动推送:"

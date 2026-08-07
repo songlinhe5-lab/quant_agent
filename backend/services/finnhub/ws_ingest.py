@@ -18,7 +18,7 @@ BE-ARCH-07 重构：
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Optional
+from typing import Optional
 
 # ── BE-ARCH-07: 委托给推送平面统一入口 ──────────────────────────────────────
 from backend.services.datasource.subscription import (

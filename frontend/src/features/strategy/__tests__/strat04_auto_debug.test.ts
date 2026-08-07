@@ -24,7 +24,7 @@ describe('STRAT-04: Auto-Debug Circuit Breaker', () => {
     it('first attempt with new errorRef should succeed', () => {
       const { incrementFixAttempt } = useStrategyStore.getState()
       const result = incrementFixAttempt('error-1')
-      
+
       expect(result).toBe(true)
       const state = useStrategyStore.getState()
       expect(state.fixAttemptCount).toBe(1)
@@ -34,9 +34,9 @@ describe('STRAT-04: Auto-Debug Circuit Breaker', () => {
     it('second attempt with same errorRef should succeed', () => {
       const { incrementFixAttempt } = useStrategyStore.getState()
       incrementFixAttempt('error-1')
-      
+
       const result = incrementFixAttempt('error-1')
-      
+
       expect(result).toBe(true)
       expect(useStrategyStore.getState().fixAttemptCount).toBe(2)
     })
@@ -45,9 +45,9 @@ describe('STRAT-04: Auto-Debug Circuit Breaker', () => {
       const { incrementFixAttempt } = useStrategyStore.getState()
       incrementFixAttempt('error-1')
       incrementFixAttempt('error-1')
-      
+
       const result = incrementFixAttempt('error-1')
-      
+
       expect(result).toBe(true)
       expect(useStrategyStore.getState().fixAttemptCount).toBe(3)
     })
@@ -57,9 +57,9 @@ describe('STRAT-04: Auto-Debug Circuit Breaker', () => {
       incrementFixAttempt('error-1')
       incrementFixAttempt('error-1')
       incrementFixAttempt('error-1')
-      
+
       const result = incrementFixAttempt('error-1')
-      
+
       expect(result).toBe(false)
       expect(useStrategyStore.getState().fixAttemptCount).toBe(3)  // Not incremented
     })
@@ -70,10 +70,10 @@ describe('STRAT-04: Auto-Debug Circuit Breaker', () => {
       incrementFixAttempt('error-1')
       incrementFixAttempt('error-1')
       // Circuit broken for error-1
-      
+
       // New error should reset
       const result = incrementFixAttempt('error-2')
-      
+
       expect(result).toBe(true)
       const state = useStrategyStore.getState()
       expect(state.fixAttemptCount).toBe(1)
@@ -84,9 +84,9 @@ describe('STRAT-04: Auto-Debug Circuit Breaker', () => {
       const { incrementFixAttempt, resetFixAttempts } = useStrategyStore.getState()
       incrementFixAttempt('error-1')
       incrementFixAttempt('error-1')
-      
+
       resetFixAttempts()
-      
+
       const state = useStrategyStore.getState()
       expect(state.fixAttemptCount).toBe(0)
       expect(state.fixErrorRef).toBeNull()
@@ -108,9 +108,9 @@ describe('STRAT-04: Auto-Debug Circuit Breaker', () => {
         traceback: '...',
         debug_tail: [],
       }
-      
+
       setStructuredError(error)
-      
+
       expect(useStrategyStore.getState().structuredError).toEqual(error)
     })
 
@@ -123,9 +123,9 @@ describe('STRAT-04: Auto-Debug Circuit Breaker', () => {
         traceback: '',
         debug_tail: [],
       })
-      
+
       setStructuredError(null)
-      
+
       expect(useStrategyStore.getState().structuredError).toBeNull()
     })
   })

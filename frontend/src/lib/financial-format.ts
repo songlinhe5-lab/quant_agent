@@ -145,7 +145,7 @@ export function getFinancialNumberClasses(
   } = {}
 ): string {
   const { region, size = 'md', bold = true } = options
-  
+
   const sizeClasses = {
     sm: 'text-xs',
     md: 'text-sm',
@@ -172,7 +172,7 @@ export function getMarketCSSVariables(region: MarketRegion): string {
     US: { up: '#10b981', down: '#ef4444' },  // 绿涨红跌
     EU: { up: '#10b981', down: '#ef4444' },
   }
-  
+
   const c = colors[region]
   return `--color-up: ${c.up}; --color-down: ${c.down};`
 }

@@ -22,8 +22,8 @@
 {c.latency_ms ? `${c.latency_ms.toFixed(0)} ms` : '—'}
 
 // 修复后
-{c.latency_ms != null && c.latency_ms > 0 
-  ? `${c.latency_ms.toFixed(0)} ms` 
+{c.latency_ms != null && c.latency_ms > 0
+  ? `${c.latency_ms.toFixed(0)} ms`
   : 'N/A'}
 ```
 
@@ -51,7 +51,7 @@ quant:metrics:{source}:latency:{date}
   type: Redis List
   ttl: 7 days
   max_length: 1000 samples
-  
+
 示例:
   quant:metrics:finnhub:latency:2026-08-04
     - 150.5
@@ -67,33 +67,33 @@ quant:metrics:{source}:latency:{date}
 
 class CallMetricsStore:
     async def record_business(
-        self, 
-        source: str, 
-        outcome: str, 
+        self,
+        source: str,
+        outcome: str,
         category: str = None,
         latency_ms: float = None  # ← 新增参数
     ):
         """记录业务调用时同时记录延迟"""
         date = _local_date_key()
-        
+
         # 原有逻辑
         await self._incr(source, "calls")
         if outcome == "success":
             await self._incr(source, "success")
         # ...
-        
+
         # 新增：记录延迟
         if latency_ms is not None and latency_ms > 0:
             key = f"quant:metrics:{source}:latency:{date}"
             await redis_client.lpush(key, latency_ms)
             await redis_client.ltrim(key, 0, 999)  # 保留最近 1000 个样本
             await redis_client.expire(key, 7 * 86400)  # 7 天过期
-    
+
     async def get_latency_stats(self, source: str) -> Dict[str, float]:
         """获取延迟统计"""
         date = _local_date_key()
         key = f"quant:metrics:{source}:latency:{date}"
-        
+
         samples = await redis_client.lrange(key, 0, -1)
         if not samples:
             return {
@@ -105,10 +105,10 @@ class CallMetricsStore:
                 "max_ms": None,
                 "samples": 0,
             }
-        
+
         samples = [float(s) for s in samples]
         samples.sort()
-        
+
         return {
             "avg_ms": sum(samples) / len(samples),
             "p50_ms": samples[int(len(samples) * 0.5)],
@@ -127,24 +127,24 @@ class CallMetricsStore:
 
 async def fetch(self, action: str, params: Dict[str, Any]) -> Result:
     start_time = time.perf_counter()
-    
+
     try:
         # 原有逻辑
         result = await self._fetch_impl(action, params)
-        
+
         # 记录延迟
         latency_ms = (time.perf_counter() - start_time) * 1000
         await call_metrics.record_business(
-            self.source_name, 
+            self.source_name,
             "success",
             latency_ms=latency_ms  # ← 新增
         )
-        
+
         return result
     except Exception as e:
         latency_ms = (time.perf_counter() - start_time) * 1000
         await call_metrics.record_business(
-            self.source_name, 
+            self.source_name,
             "error",
             latency_ms=latency_ms  # ← 新增
         )
@@ -161,13 +161,13 @@ const latencyStats = await apiClient.get(`/datasource/${source}/latency`)
 
 // 展示
 <div className="text-sm font-medium text-foreground">
-  {latencyStats.avg_ms != null 
-    ? `${latencyStats.avg_ms.toFixed(0)} ms` 
+  {latencyStats.avg_ms != null
+    ? `${latencyStats.avg_ms.toFixed(0)} ms`
     : 'N/A'}
 </div>
 <div className="text-[10px] text-muted-foreground">
-  P50: {latencyStats.p50_ms?.toFixed(0) ?? '—'} · 
-  P95: {latencyStats.p95_ms?.toFixed(0) ?? '—'} · 
+  P50: {latencyStats.p50_ms?.toFixed(0) ?? '—'} ·
+  P95: {latencyStats.p95_ms?.toFixed(0) ?? '—'} ·
   n={latencyStats.samples}
 </div>
 ```

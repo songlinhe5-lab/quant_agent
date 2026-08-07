@@ -1,6 +1,6 @@
 export function getRelativeTimeText(isoString) {
   if (!isoString) return "--";
-  
+
   const targetTime = new Date(isoString).getTime();
   const now = Date.now();
   const diff = targetTime - now;

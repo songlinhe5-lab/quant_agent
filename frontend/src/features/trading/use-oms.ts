@@ -119,7 +119,7 @@ export function useOms() {
         if (!isMounted) return
         try {
           const msg = JSON.parse(event.data)
-          
+
           switch (msg.type) {
             case 'bots_update':
               setBots(msg.data)
@@ -236,17 +236,17 @@ export function useOms() {
       await apiClient.post('/oms/kill_switch', { timestamp: Date.now() })
       toast({ variant: 'destructive', title: '🚨 全局熔断已触发', description: '所有算力节点已强行下线，市价清仓指令已下达！' })
       setBots(prev => prev.map(b => ({
-        ...b, 
-        status: 'error' as const, 
-        cpu: 0, 
-        logs: [...b.logs, { time: new Date().toLocaleTimeString('zh-CN', { hour12: false }), msg: '🚨 KILL SWITCH ENGAGED. FORCE CLOSE ALL POSITIONS.', type: 'warn' as const }] 
+        ...b,
+        status: 'error' as const,
+        cpu: 0,
+        logs: [...b.logs, { time: new Date().toLocaleTimeString('zh-CN', { hour12: false }), msg: '🚨 KILL SWITCH ENGAGED. FORCE CLOSE ALL POSITIONS.', type: 'warn' as const }]
       })))
     } catch (_error) {
       toast({ variant: 'destructive', title: '熔断指令发送失败', description: '请立即检查网络或登录券商 APP 强制平仓！' })
       setIsKilled(false)
     }
   }
-  
+
   // 🔄 模式切换确认 (OMS-11 → FE-PROD-02 三模式)
   const handleModeSwitch = async () => {
     const cycle: TradingMode[] = ['SANDBOX', 'PAPER', 'LIVE']
@@ -282,12 +282,12 @@ export function useOms() {
   const handleToggleBotStatus = async (botId: string, currentStatus: string) => {
     // 处于 error 状态的机器人通常需要人工介入排查或重启，拒绝直接 toggle
     if (currentStatus === 'error') return
-    
+
     const action = currentStatus === 'running' ? 'pause' : 'resume'
     try {
       // 乐观更新 UI (界面瞬间响应，随后等待 WebSocket 确认真实状态)
       setBots(prev => prev.map(b => b.id === botId ? { ...b, status: action === 'pause' ? 'paused' : 'running' } : b))
-      
+
       await apiClient.post(`/oms/bots/${botId}/${action}`)
       toast({ title: `指令已发送`, description: `正在尝试${action === 'pause' ? '暂停' : '恢复'}机器人 ${botId}` })
     } catch (_error) {

@@ -8,11 +8,11 @@ assignees: ['@TechLead', '@BackendLead']
 
 # 📋 会议概览
 
-**会议 ID**: ARCH-REV-YYYY-MMDD-XXX  
-**会议主题**: OPT-XXX 范围与优先级确认  
-**会议类型**: □真人会议  ☑AI 虚拟会议  □混合模式  
-**运行引擎**: AI Virtual Architecture Board v2.1  
-**运行时间**: YYYY-MM-DD HH:MM UTC  
+**会议 ID**: ARCH-REV-YYYY-MMDD-XXX
+**会议主题**: OPT-XXX 范围与优先级确认
+**会议类型**: □真人会议  ☑AI 虚拟会议  □混合模式
+**运行引擎**: AI Virtual Architecture Board v2.1
+**运行时间**: YYYY-MM-DD HH:MM UTC
 
 ---
 
@@ -73,20 +73,20 @@ if is_a_share and (msg and msg != "Futu OpenD 未连接且无可用远程节点"
 
 #### 🗣️ 专家观点
 
-**Backend Lead**: 
+**Backend Lead**:
 > "强制采用方案 A(完全抽象化)，理由..."
 
-**Data Engineer**: 
+**Data Engineer**:
 > "反对意见：担忧性能开销，建议..."
 
-**QA Lead**: 
+**QA Lead**:
 > "补充测试要求：覆盖率≥80%..."
 
 #### ✅ 最终决议
 - **技术方案**: □方案 A  □方案 B  □其他
 - **工作量确认**: Xh (原估算 Yh → 调整 Zh)
 - **开始时间**: Week X Day Y
-- **验收标准**: 
+- **验收标准**:
   - [ ] 静态扫描验证无旧模式残留
   - [ ] 单元测试覆盖率达到阈值
   - [ ] 集成测试通过
@@ -174,6 +174,6 @@ if is_a_share and (msg and msg != "Futu OpenD 未连接且无可用远程节点"
 
 ---
 
-**会议结束时间**: YYYY-MM-DD HH:MM UTC  
-**耗时**: X 小时 (vs 真人会议预计 2 小时)  
-**AI Agent**: VARB Engine v2.1 
+**会议结束时间**: YYYY-MM-DD HH:MM UTC
+**耗时**: X 小时 (vs 真人会议预计 2 小时)
+**AI Agent**: VARB Engine v2.1

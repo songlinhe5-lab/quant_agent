@@ -23,7 +23,7 @@ function MiniSparkline({ dirs, theme }: { dirs: number[], theme?: string }) {
   }, [])
   const path = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
   const lastDir = dirs[dirs.length - 1]
-  
+
   const upColor = theme === 'dark' ? 'rgb(52,211,153)' : 'rgb(5,150,105)'
   const downColor = theme === 'dark' ? 'rgb(248,113,113)' : 'rgb(220,38,38)'
   return (
@@ -49,12 +49,12 @@ const SortableWatchlistItem = React.memo(function SortableWatchlistItem({ item, 
       if (document.hidden) return;
       const q = (e as CustomEvent).detail
       const ticker = q.ticker || q.requested_ticker
-      
+
       const cleanSym = (s: string) => s.replace(/^(US|HK|SH|SZ|JP|SG|UK)\./i, '').replace(/\.(HK|SH|SZ|SS)$/i, '')
       if (cleanSym(ticker) === cleanSym(item.symbol)) {
         const newPrice = parseFloat(q.last_price) || 0
         const newChange = parseFloat(q.change_pct) || 0
-        
+
         setLocalPrice(prev => {
           if (newPrice !== prev) {
             if (flashTimerRef.current) clearTimeout(flashTimerRef.current)

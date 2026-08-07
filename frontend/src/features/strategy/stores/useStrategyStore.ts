@@ -121,11 +121,11 @@ export const useStrategyStore = create<StrategyState>((set) => ({
 
   // AI Chat
   messages: [
-    { 
-      id: '1', 
-      role: 'assistant', 
-      content: '你好！我是你的量化策略 Copilot。你可以告诉我你的交易想法，例如：“写一个基于 RSI 的双均线策略，单笔仓位 5%”。', 
-      status: 'done' 
+    {
+      id: '1',
+      role: 'assistant',
+      content: '你好！我是你的量化策略 Copilot。你可以告诉我你的交易想法，例如：“写一个基于 RSI 的双均线策略，单笔仓位 5%”。',
+      status: 'done'
     }
   ],
   isGenerating: false,
@@ -134,8 +134,8 @@ export const useStrategyStore = create<StrategyState>((set) => ({
     messages: state.messages.map((m) => (m.id === id ? { ...m, ...updater } : m))
   })),
   setGenerating: (generating) => set({ isGenerating: generating }),
-  clearMessages: () => set({ 
-    messages: [{ id: '1', role: 'assistant', content: '你好！我是你的量化策略 Copilot。你可以告诉我你的交易想法。', status: 'done' }] 
+  clearMessages: () => set({
+    messages: [{ id: '1', role: 'assistant', content: '你好！我是你的量化策略 Copilot。你可以告诉我你的交易想法。', status: 'done' }]
   }),
 
   // Backtest & Form Config
@@ -159,7 +159,7 @@ export const useStrategyStore = create<StrategyState>((set) => ({
   setLastUsedClassName: (lastUsedClassName) => set({ lastUsedClassName }),
   lastUsedParams: {},
   setLastUsedParams: (lastUsedParams) => set({ lastUsedParams }),
-  
+
   // Backtest Engine State
   isSimulating: false,
   setSimulating: (isSimulating) => set({ isSimulating }),

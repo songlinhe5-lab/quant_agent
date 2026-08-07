@@ -13,20 +13,20 @@ export function BottomTerminal() {
   const handleAutoFix = async () => {
     if (!store.runtimeError) return
     setIsFixing(true)
-    
+
     try {
       const fixPrompt = `以下 Python 策略代码在沙箱执行/寻优时发生了运行时崩溃 (Runtime Error)：\n【报错信息】:\n${store.runtimeError}\n\n【错误源码】:\n${store.code}\n\n请仔细分析报错原因，直接修复该逻辑错误，并输出修复后的完整纯 Python 源码。严禁包含任何前言、后语或 Markdown 代码块标记。`
-      
+
       const assistantMsgId = Date.now().toString()
       store.addMessage({ id: assistantMsgId, role: 'assistant', content: '', reasoning: '', status: 'reasoning' })
-      
+
       const response = await fetchWithAuth(`${API_BASE_URL}/strategy/generate`, {
         method: 'POST',
         body: JSON.stringify({ prompt: fixPrompt })
       })
 
       if (!response.body) throw new Error('流式请求发起失败')
-      
+
       const reader = response.body.getReader()
       const decoder = new TextDecoder('utf-8')
       let done = false
@@ -46,14 +46,14 @@ export function BottomTerminal() {
               const data = JSON.parse(line)
               if (data.status === 'reasoning' && data.data) {
                 accumulatedReasoning += data.data
-                store.updateMessage(assistantMsgId, { 
+                store.updateMessage(assistantMsgId, {
                   reasoning: accumulatedReasoning.replace(/<\/?think>/gi, '').trimStart(),
                   status: 'reasoning'
                 })
               } else if (data.status === 'success') {
                 store.enterDiff(data.data, 'auto-fix')
                 store.setRuntimeError(null)
-                store.updateMessage(assistantMsgId, { 
+                store.updateMessage(assistantMsgId, {
                   content: '✨ Agent 已经自动修复了运行时错误！请在 Diff 编辑器中审查并确认变更。',
                   status: 'done'
                 })
@@ -82,7 +82,7 @@ export function BottomTerminal() {
       <div className="flex-1 p-3 overflow-y-auto font-mono text-[11px] text-muted-foreground bg-[oklch(0.12_0.005_270)] dark:bg-[oklch(0.08_0.005_270)] custom-scrollbar">
         <p className="mb-1">➜ QuantEdge Strategy IDE Initialized.</p>
         <p className="text-emerald-500 mb-1">➜ Agent Connection: OK.</p>
-        
+
         {store.runtimeError ? (
            <div className="mt-2 border border-red-500/30 bg-red-500/5 p-3 rounded-lg flex flex-col items-start gap-2 animate-in slide-in-from-bottom-2">
               <span className="text-red-500 font-bold flex items-center gap-1.5"><AlertCircle className="h-3.5 w-3.5"/> [Runtime Error] 沙箱执行崩溃</span>

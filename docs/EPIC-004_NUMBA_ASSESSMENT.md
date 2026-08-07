@@ -35,9 +35,9 @@
 Python: 3.12.11
 DataFrame Engine: Pandas 2.x
 Indicator Implementation: Pure Python Vectorized Operations
-Current Performance: 
+Current Performance:
   ├─ Single indicator: ~1ms
-  ├─ 6 new indicators: ~5ms  
+  ├─ 6 new indicators: ~5ms
   └─ Full suite (15 indicators): <7ms
 
 Memory Usage:
@@ -122,7 +122,7 @@ INDICATORS_TO_TEST = [
 
 #### **Hypothesis H2: Numba Advantage Threshold**
 - **Assumption**: Numba becomes worthwhile only beyond X bars
-- **Threshold candidates**: 
+- **Threshold candidates**:
   - A) 50k bars (conservative)
   - B) 100k bars (moderate)
   - C) 1M bars (aggressive)
@@ -155,16 +155,16 @@ from datetime import datetime, timedelta
 def benchmark_pandas(klines, n_iterations=10):
     """Baseline Pandas measurement"""
     from backend.utils.technical_indicators_pro import TechnicalIndicatorsEngine
-    
+
     engine = TechnicalIndicatorsEngine()
-    
+
     times = []
     for _ in range(n_iterations):
         start = time.perf_counter()
         engine.calculate(klines)
         end = time.perf_counter()
         times.append((end - start) * 1000)  # ms
-    
+
     return {
         "mean_ms": np.mean(times),
         "std_ms": np.std(times),
@@ -177,20 +177,20 @@ def benchmark_numba_rsi(close_prices, period=14):
     """JIT-compiled RSI calculation example"""
     gains = np.zeros_like(close_prices)
     losses = np.zeros_like(close_prices)
-    
+
     for i in range(1, len(close_prices)):
         delta = close_prices[i] - close_prices[i-1]
         if delta > 0:
             gains[i] = delta
         else:
             losses[i] = -delta
-    
+
     avg_gains = np.convolve(gains, np.ones(period)/period, mode='valid')
     avg_losses = np.convolve(losses, np.ones(period)/period, mode='valid')
-    
+
     rs = avg_gains / avg_losses
     rsi = 100 - (100 / (1 + rs))
-    
+
     return rsi[-1]
 
 # TODO: Run full benchmark suite...
@@ -369,6 +369,6 @@ Until then: Stick with elegant Pandas solution 🎯
 
 ---
 
-**版本**: v1.0 (技术决策完成)  
-**日期**: 2026-07-10  
+**版本**: v1.0 (技术决策完成)
+**日期**: 2026-07-10
 **状态**: ✅ **DECISION FINALIZED - NO ACTION REQUIRED**

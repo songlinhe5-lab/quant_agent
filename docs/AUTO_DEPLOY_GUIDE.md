@@ -172,5 +172,5 @@ docker logs quant_app --tail 100
 
 ---
 
-**最后更新**: 2026-08-04  
+**最后更新**: 2026-08-04
 **维护者**: Quant Agent Team

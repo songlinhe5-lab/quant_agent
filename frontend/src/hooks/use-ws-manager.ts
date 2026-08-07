@@ -8,7 +8,7 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 import logger from '@/lib/logger'
 
 // ─── 连接状态 ───────────────────────────────────────────────────────
-export type WSConnectionState = 
+export type WSConnectionState =
   | 'connecting'    // 正在连接
   | 'connected'     // 已连接
   | 'disconnected'  // 已断开
@@ -196,7 +196,7 @@ export function useWSManager(config: WSManagerConfig) {
 
       try {
         const data = JSON.parse(event.data)
-        
+
         // 处理 pong 响应
         if (data.type === 'pong') {
           const latency = Date.now() - (data.ts || 0)
@@ -216,7 +216,7 @@ export function useWSManager(config: WSManagerConfig) {
 
     ws.onclose = (_event) => {
       clearTimers()
-      
+
       if (!isManualCloseRef.current) {
         updateStatus({ state: 'disconnected', isStale: true })
         reconnect()

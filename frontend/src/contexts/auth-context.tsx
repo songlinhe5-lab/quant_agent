@@ -50,7 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }) as any;
 
     const { access_token } = res.data;
-    
+
     // 1. 将 Token 注入到全局内存中，供后续请求使用
     setAccessToken(access_token);
 
@@ -62,7 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     // 可选：通知后端注销（清除服务端的 Refresh Token Cookie）
     try { await apiClient.post('/auth/logout'); } catch { /* ignore logout error */ }
-    
+
     setAccessToken(null);
     setUser(null);
     // 登出时同样使用硬跳转，确保内存和前端缓存中的敏感数据彻底清空

@@ -69,17 +69,17 @@ def _finnhub(self):
     """懒加载 FinnhubAdapter"""
     if self._finnhub_impl is None:
         from ..adapters.finnhub import get_finnhub_adapter
-        
+
         token = os.getenv("FINNHUB_API_KEY")
         if not token:
             logger.warning("[MarketDataService] FINNHUB_API_KEY missing")
             return None
-            
+
         self._finnhub_impl = get_finnhub_adapter(token)
     return self._finnhub_impl
 ```
 
-**优势**: 
+**优势**:
 - 主节点启动时无需 SDK
 - Token 缺失时优雅降级
 - 测试可注入 Mock 实例

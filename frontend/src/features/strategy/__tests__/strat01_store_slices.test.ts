@@ -66,7 +66,7 @@ describe('STRAT-01a: Store Slices', () => {
       const { setCode, setLastSavedCode } = useStrategyStore.getState()
       setCode('print("hello")')
       expect(useStrategyStore.getState().isDirty).toBe(true)
-      
+
       setLastSavedCode('print("hello")')
       const state = useStrategyStore.getState()
       expect(state.isDirty).toBe(false)
@@ -84,10 +84,10 @@ describe('STRAT-01a: Store Slices', () => {
     it('saveCode should call API and update state', async () => {
       const { saveCode, setCode } = useStrategyStore.getState()
       setCode('print("test")')
-      
+
       // Mock the API call by checking the function exists
       expect(typeof saveCode).toBe('function')
-      
+
       // Note: Actual API call testing would require mocking apiClient
       // For now, we verify the function signature and behavior
     })
@@ -104,7 +104,7 @@ describe('STRAT-01a: Store Slices', () => {
     it('addMessage should append message', () => {
       const { addMessage } = useStrategyStore.getState()
       addMessage({ id: '2', role: 'user', content: 'Hello' })
-      
+
       const state = useStrategyStore.getState()
       expect(state.messages).toHaveLength(2)
       expect(state.messages[1].content).toBe('Hello')
@@ -113,9 +113,9 @@ describe('STRAT-01a: Store Slices', () => {
     it('updateMessage should update existing message', () => {
       const { addMessage, updateMessage } = useStrategyStore.getState()
       addMessage({ id: '2', role: 'user', content: 'Hello', status: 'typing' })
-      
+
       updateMessage('2', { content: 'Updated', status: 'done' })
-      
+
       const state = useStrategyStore.getState()
       const msg = state.messages.find(m => m.id === '2')
       expect(msg?.content).toBe('Updated')
@@ -126,9 +126,9 @@ describe('STRAT-01a: Store Slices', () => {
       const { addMessage, clearMessages } = useStrategyStore.getState()
       addMessage({ id: '2', role: 'user', content: 'Hello' })
       expect(useStrategyStore.getState().messages).toHaveLength(2)
-      
+
       clearMessages()
-      
+
       const state = useStrategyStore.getState()
       expect(state.messages).toHaveLength(1)
       expect(state.messages[0].role).toBe('assistant')
@@ -145,9 +145,9 @@ describe('STRAT-01a: Store Slices', () => {
     it('Diff state machine: enterDiff should set pendingDiff status', () => {
       const { setCode, enterDiff } = useStrategyStore.getState()
       setCode('original code')
-      
+
       enterDiff('new code', 'ai-chat')
-      
+
       const state = useStrategyStore.getState()
       expect(state.diff.status).toBe('pendingDiff')
       expect(state.diff.original).toBe('original code')
@@ -158,9 +158,9 @@ describe('STRAT-01a: Store Slices', () => {
     it('Diff state machine: enterDiff should skip diff for empty editor', () => {
       const { setCode, enterDiff } = useStrategyStore.getState()
       setCode('')
-      
+
       enterDiff('new code', 'ai-chat')
-      
+
       const state = useStrategyStore.getState()
       expect(state.diff.status).toBe('idle')
       expect(state.code).toBe('new code')
@@ -170,9 +170,9 @@ describe('STRAT-01a: Store Slices', () => {
       const { setCode, enterDiff, applyDiff } = useStrategyStore.getState()
       setCode('original')
       enterDiff('incoming', 'ai-chat')
-      
+
       applyDiff()
-      
+
       const state = useStrategyStore.getState()
       expect(state.code).toBe('incoming')
       expect(state.isDirty).toBe(true)
@@ -184,9 +184,9 @@ describe('STRAT-01a: Store Slices', () => {
       setCode('original')
       enterDiff('incoming', 'ai-chat')
       expect(useStrategyStore.getState().diff.status).toBe('pendingDiff')
-      
+
       rejectDiff()
-      
+
       const state = useStrategyStore.getState()
       expect(state.diff.status).toBe('idle')
       expect(state.code).toBe('original')
@@ -287,20 +287,20 @@ describe('STRAT-01a: Store Slices', () => {
   describe('Store Composition', () => {
     it('should combine all slices into one store', () => {
       const state = useStrategyStore.getState()
-      
+
       // EditorSlice
       expect(state).toHaveProperty('code')
       expect(state).toHaveProperty('setCode')
-      
+
       // AiSlice
       expect(state).toHaveProperty('messages')
       expect(state).toHaveProperty('addMessage')
       expect(state).toHaveProperty('diff')
-      
+
       // BacktestSlice
       expect(state).toHaveProperty('formSchema')
       expect(state).toHaveProperty('isSimulating')
-      
+
       // LayoutSlice
       expect(state).toHaveProperty('activeStrategy')
       expect(state).toHaveProperty('fetchStrategies')

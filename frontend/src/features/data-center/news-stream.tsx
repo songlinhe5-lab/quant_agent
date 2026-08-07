@@ -25,7 +25,7 @@ export function NewsStream({ news, visibleNewsCount, setVisibleNewsCount, classN
           let ts = n.time;
           if (!ts && n.datetime) ts = new Date(n.datetime * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
           ts = ts || '最近';
-          
+
           const sentimentObj = typeof n.sentiment === 'object' ? n.sentiment : null;
           const score = sentimentObj ? Number(sentimentObj.score) : 0;
           const label = sentimentObj?.label || (score >= 0 ? 'Bullish' : 'Bearish');

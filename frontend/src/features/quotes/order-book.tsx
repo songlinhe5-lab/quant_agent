@@ -26,7 +26,7 @@ export function OrderBook({ asks, bids, spread, spreadPercent, isStale = false }
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold">订单簿</h3>
         {isStale && (
-          <span 
+          <span
             className="text-amber-500 text-xs flex items-center gap-1"
             title="订单簿数据可能已过期"
             aria-label="数据过期警告"
@@ -47,11 +47,11 @@ export function OrderBook({ asks, bids, spread, spreadPercent, isStale = false }
       {/* Asks (Sells) - Red */}
       <div className="space-y-0.5 mb-2">
         {asks.slice().reverse().map((ask, i) => (
-          <div 
+          <div
             key={`ask-${i}`}
             className="grid grid-cols-3 text-xs font-mono py-1 px-2 relative rounded-sm overflow-hidden"
           >
-            <div 
+            <div
               className="absolute inset-0 bg-red-400/10"
               style={{ width: `${(ask.total / maxAskTotal) * 100}%`, marginLeft: 'auto' }}
             />
@@ -72,11 +72,11 @@ export function OrderBook({ asks, bids, spread, spreadPercent, isStale = false }
       {/* Bids (Buys) - Green */}
       <div className="space-y-0.5">
         {bids.map((bid, i) => (
-          <div 
+          <div
             key={`bid-${i}`}
             className="grid grid-cols-3 text-xs font-mono py-1 px-2 relative rounded-sm overflow-hidden"
           >
-            <div 
+            <div
               className="absolute inset-0 bg-emerald-400/10"
               style={{ width: `${(bid.total / maxBidTotal) * 100}%` }}
             />

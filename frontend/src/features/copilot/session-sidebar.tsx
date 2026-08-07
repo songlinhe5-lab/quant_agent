@@ -84,7 +84,7 @@ export const SessionSidebar = forwardRef<SessionSidebarRef, SessionSidebarProps>
         if (res.data?.status === 'success') {
           // UI 层乐观更新移除
           setSessions(prev => prev.filter(s => s.session_id !== sessionId));
-          
+
           // 如果删掉的是当前正打开的对话，自动触发新建回退
           if (activeSessionId === sessionId) {
             onNewChat();
@@ -110,7 +110,7 @@ export const SessionSidebar = forwardRef<SessionSidebarRef, SessionSidebarProps>
       });
     };
 
-    const filteredSessions = sessions.filter(session => 
+    const filteredSessions = sessions.filter(session =>
       session.title.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
@@ -125,7 +125,7 @@ export const SessionSidebar = forwardRef<SessionSidebarRef, SessionSidebarProps>
             <Plus className="w-4 h-4" />
             新建推演 (New Chat)
           </button>
-          
+
           {/* 搜索框 */}
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -186,9 +186,9 @@ export const SessionSidebar = forwardRef<SessionSidebarRef, SessionSidebarProps>
             ))
           )}
         </div>
-        
+
         {/* 底部实时情绪仪表 */}
-        <div 
+        <div
           className="p-4 border-t border-border/40 bg-slate-50/50 dark:bg-black/20 shrink-0 cursor-pointer hover:bg-slate-100/50 dark:hover:bg-white/5 transition-colors group"
           onClick={() => setShowSentimentChart(true)}
           title="点击查看近30天情绪趋势图"
@@ -215,8 +215,8 @@ export const SessionSidebar = forwardRef<SessionSidebarRef, SessionSidebarProps>
         {showSentimentChart && (
           <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200" onClick={() => setShowSentimentChart(false)}>
             <div className="w-full max-w-6xl relative" onClick={e => e.stopPropagation()}>
-              <button 
-                onClick={() => setShowSentimentChart(false)} 
+              <button
+                onClick={() => setShowSentimentChart(false)}
                 className="absolute -top-3 -right-3 z-20 p-1.5 bg-white dark:bg-zinc-800 text-muted-foreground hover:text-foreground hover:bg-slate-100 dark:hover:bg-zinc-700 rounded-full shadow-xl border border-border/50 transition-colors"
                 title="关闭"
               >

@@ -17,7 +17,7 @@ interface OrderBookRowProps {
 export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: string; theme?: string; hideHeader?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<Application | null>(null)
-  
+
   // 维护对象池，避免在渲染循环中创建任何新对象 (Zero-GC)
   const askRows = useRef<OrderBookRowProps[]>([])
   const bidRows = useRef<OrderBookRowProps[]>([])
@@ -39,7 +39,7 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
         antialias: true,
         resolution: window.devicePixelRatio || 1,
       })
-      
+
       if (!isMounted || !containerRef.current) {
         app.destroy(true)
         return
@@ -140,7 +140,7 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
       app.ticker.add(() => {
         const decayRate = 0.05 // 闪烁消退速度
         const allRows = [...askRows.current, ...bidRows.current]
-        
+
         for (let i = 0; i < allRows.length; i++) {
           const row = allRows[i]
           if (row.flashAlpha > 0) {
@@ -157,12 +157,12 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
         const newHeight = entries[0].contentRect.height
         const zoom = zoomLevelRef.current
         const virtualWidth = newWidth / zoom
-        
+
         // 永远保持 Spread 价差区间在视觉正中心
         mainContainer.y = newHeight / 2
-        
+
         const allRows = [...askRows.current, ...bidRows.current]
-        
+
         for (let i = 0; i < allRows.length; i++) {
           const row = allRows[i]
           // 抵消缩放造成的 X 轴横向拉伸，确保挂单量始终精准贴靠右侧边缘
@@ -170,7 +170,7 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
           row.flashOverlay.width = virtualWidth
           row.depthBar.x = virtualWidth - row.depthBar.width
         }
-        
+
         if (closedTextRef.current) {
           closedTextRef.current.x = newWidth / 2
           closedTextRef.current.y = newHeight / 2
@@ -187,10 +187,10 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
         const newZoom = Math.max(0.3, Math.min(1.5, zoomLevelRef.current * zoomFactor))
         zoomLevelRef.current = newZoom
         mainContainer.scale.set(newZoom)
-        
+
         const newWidth = appRef.current.screen.width
         const virtualWidth = newWidth / newZoom
-        
+
         const allRows = [...askRows.current, ...bidRows.current]
         for (let i = 0; i < allRows.length; i++) {
           const row = allRows[i]
@@ -212,7 +212,7 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
       if (cleanTicker(data.ticker) !== cleanTicker(symbol) || !appRef.current) return
 
       const isClosed = (!data.asks || data.asks.length === 0) && (!data.bids || data.bids.length === 0)
-      
+
       if (closedTextRef.current) {
         closedTextRef.current.visible = isClosed
       }
@@ -250,10 +250,10 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
           if (i < asks.length) {
             const ask = asks[i]
             const askSize = ask.size !== undefined ? Number(ask.size) : Number(ask.volume || 0)
-            
+
             row.priceText.text = parseFloat(ask.price).toFixed(2)
             row.sizeText.text = askSize.toString()
-            
+
             if (askSize > row.lastSize) row.flashAlpha = 0.8
             row.lastSize = askSize
 
@@ -269,7 +269,7 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
           }
         }
       }
-      
+
       // 更新买盘 (Bids) - 从中心向外扩散
       if (data.bids) {
         const bids = data.bids
@@ -278,10 +278,10 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
           if (i < bids.length) {
             const bid = bids[i]
             const bidSize = bid.size !== undefined ? Number(bid.size) : Number(bid.volume || 0)
-            
+
             row.priceText.text = parseFloat(bid.price).toFixed(2)
             row.sizeText.text = bidSize.toString()
-            
+
             if (bidSize > row.lastSize) row.flashAlpha = 0.8
             row.lastSize = bidSize
 

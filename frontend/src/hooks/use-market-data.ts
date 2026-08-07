@@ -46,7 +46,7 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
         const sym = /^(BTC|ETH|SOL|BNB|USDC?|USDT|XRP|DOGE|ADA|AVAX|TON|TRX|DOT|MATIC|LTC|LINK|NEAR|APT|ARB|OP|INJ|SUI|STX|IMX|FIL|ETC|ATOM|UNI|LDO|CRV|MKR|SAND|AXS|MANA|THETA|EGLD|FTM|ALGO|HBAR|VET|ICP|FLOW|CHZ|ENJ|GALA|SUSHI|COMP|AAVE|SNX|YFI|1INCH|BCH|EOS|XLM|XMR|ZEC|DASH|WAVES|KAVA|RUNE|KSM|CELO|FLOW)USD$/i.test(rawSym)
           ? rawSym.slice(0, -3) + '-USD'
           : rawSym
-        const ktypeMap: Record<string, string> = { 
+        const ktypeMap: Record<string, string> = {
           '1m': 'K_1M',    // 分时图
           'tick': 'K_1M',  // Tick图 (实时折线图，不需要历史数据)
           '5m': 'K_5M',    // 5日图
@@ -71,7 +71,7 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
         }
         const ktype = ktypeMap[selectedPeriod] || 'K_60M'
         const num = historyNumMap[selectedPeriod] || 300
-        
+
         const [statusRes, histRes] = await Promise.all([
           apiClient.get('/market/futu/status').catch(() => null),
           apiClient.get('/market/history', { ticker: sym, ktype, num }).catch(() => null)
@@ -80,11 +80,11 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
         if (isMounted && statusRes?.data) {
           setGatewayStatus(statusRes.data.status)
         }
-        
+
         if (isMounted && histRes?.data?.status === 'success' && histRes.data.data) {
           const historyData = histRes.data.data
           setRealHistory(historyData)
-          
+
           if (historyData.length > 1) {
             const recent = historyData.slice(-20)
             const sparkDir: number[] = []
@@ -105,14 +105,14 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
         }
       }
     }
-    
+
     fetchMarketData(true)
     const iv = setInterval(() => fetchMarketData(false), 15000)
 
     const handleOnline = () => { fetchMarketData(false) }
     window.addEventListener('online', handleOnline)
 
-    return () => { 
+    return () => {
       isMounted = false
       clearInterval(iv)
       window.removeEventListener('online', handleOnline)
@@ -201,10 +201,10 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
 
       const sym = selectedSymbol.replace('/', '')
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const wsUrl = API_BASE_URL.startsWith('http') 
+      const wsUrl = API_BASE_URL.startsWith('http')
         ? API_BASE_URL.replace(/^http/, 'ws') + '/market/quotes/ws?token=' + token
         : `${protocol}//${window.location.host}${API_BASE_URL}/market/quotes/ws?token=` + token
-      
+
       const ws = new WebSocket(wsUrl)
       ws.binaryType = "arraybuffer"
       wsRef.current = ws
@@ -273,10 +273,10 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
     }
 
     connectWS()
-    const handleOnlineWS = () => { 
+    const handleOnlineWS = () => {
       if (!keepAliveActive || document.visibilityState !== 'visible') return
       if (wsRef.current) wsRef.current.close()
-      setTimeout(() => { if (isMounted) connectWS() }, 500) 
+      setTimeout(() => { if (isMounted) connectWS() }, 500)
     }
     window.addEventListener('online', handleOnlineWS)
     // 💡 页面可见性 / keep-alive 激活态变化：隐藏或后台时断 WS，恢复时重连

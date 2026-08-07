@@ -4,7 +4,7 @@ function calculateMA(dayCount, data) {
   let sum = 0
   for (let i = 0, len = data.length; i < len; i++) {
     sum += data[i].close
-    if (i < dayCount - 1) { 
+    if (i < dayCount - 1) {
       result.push('-')
     } else {
       result.push(sum / dayCount)
@@ -36,19 +36,19 @@ function calculateBollingerBands(data, period = 20, multiplier = 2) {
   let sum = 0
   for (let i = 0, len = data.length; i < len; i++) {
     sum += data[i].close
-    if (i < period - 1) { 
+    if (i < period - 1) {
       upper.push('-'); lower.push('-'); mid.push('-')
     } else {
       const sma = sum / period
       mid.push(sma)
-  
+
       let varianceSum = 0
       for (let j = 0; j < period; j++) varianceSum += Math.pow(data[i - j].close - sma, 2)
       const stdDev = Math.sqrt(varianceSum / period)
-  
+
       upper.push(sma + multiplier * stdDev)
       lower.push(sma - multiplier * stdDev)
-      
+
       sum -= data[i - period + 1].close
     }
   }

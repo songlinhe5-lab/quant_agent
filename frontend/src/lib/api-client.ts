@@ -179,7 +179,7 @@ export async function fetchWithAuth(
 export class ApiError extends Error {
   code: number
   data?: unknown
-  
+
   constructor(code: number, message: string, data?: unknown) {
     super(message)
     this.name = 'ApiError'
@@ -237,7 +237,7 @@ class RestClient {
     // 发起请求
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), this.config.timeout)
-    
+
     try {
       const response = await fetch(url, {
         method,

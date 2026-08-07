@@ -1,7 +1,7 @@
 /**
  * 零 GC Tick 数据处理 Hook
  * FE-07: 高频 Tick 数据必须走 Float64Array + useRef，严禁触发 React state 重渲染
- * 
+ *
  * 设计原则:
  * 1. 使用 Float64Array 存储数值数据，避免对象数组的 GC 压力
  * 2. 使用 useRef 存储可变数据，不触发重渲染
@@ -105,7 +105,7 @@ export class TickRingBuffer {
   getRecent(n: number): TickData[] {
     const count = Math.min(n, this.count)
     const result: TickData[] = []
-    
+
     for (let i = 0; i < count; i++) {
       const idx = ((this.head - 1 - i + this.capacity) % this.capacity) * TICK_FIELDS
       result.unshift({
@@ -118,7 +118,7 @@ export class TickRingBuffer {
         askSize: this.buffer[idx + ASK_SIZE_IDX],
       })
     }
-    
+
     return result
   }
 
@@ -128,12 +128,12 @@ export class TickRingBuffer {
   getPriceArray(length: number): Float64Array {
     const count = Math.min(length, this.count)
     const prices = new Float64Array(count)
-    
+
     for (let i = 0; i < count; i++) {
       const idx = ((this.head - 1 - i + this.capacity) % this.capacity) * TICK_FIELDS + PRICE_IDX
       prices[count - 1 - i] = this.buffer[idx]
     }
-    
+
     return prices
   }
 
@@ -183,7 +183,7 @@ export interface TickDisplayState {
 // ─── Hook: 零 GC Tick 处理 ─────────────────────────────────────────
 export function useTickProcessor(symbol: string, config: Partial<TickBufferConfig> = {}) {
   const mergedConfig = { ...DEFAULT_CONFIG, ...config }
-  
+
   // 使用 ref 存储缓冲区，不触发重渲染
   const bufferRef = useRef<TickRingBuffer | null>(null)
   const prevPriceRef = useRef<number>(0)
@@ -227,7 +227,7 @@ export function useTickProcessor(symbol: string, config: Partial<TickBufferConfi
     const now = performance.now()
     if (now - lastFlushRef.current >= mergedConfig.flushInterval) {
       lastFlushRef.current = now
-      
+
       // 使用 rAF 确保在下一帧更新
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       rafRef.current = requestAnimationFrame(() => {

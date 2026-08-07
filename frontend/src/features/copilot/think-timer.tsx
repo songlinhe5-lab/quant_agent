@@ -12,7 +12,7 @@ export const ThinkTimer = ({ startTime, endTime }: { startTime: number, endTime?
     }, 100)
     return () => clearInterval(timer)
   }, [endTime])
-  
+
   const duration = Math.max(0, (now - startTime) / 1000)
   return <span>用时 {duration.toFixed(1)}s</span>
 }

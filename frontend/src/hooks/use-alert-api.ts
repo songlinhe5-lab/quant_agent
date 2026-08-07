@@ -206,7 +206,7 @@ export function useAlertWebSocket(
 
     const apiVersion = import.meta.env.VITE_API_URL_VERSION || 'v1'
     const baseUrl = import.meta.env.VITE_API_BASE_URL || `/api/${apiVersion}`
-    
+
     // 构建 WebSocket URL
     let wsUrl: string
     if (baseUrl.startsWith('http://') || baseUrl.startsWith('https://')) {

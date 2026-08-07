@@ -20,7 +20,7 @@ Futu DataSource Adapter（BE-ARCH-05 / BE-ARCH-07）
 from __future__ import annotations
 
 import time
-from typing import Any, Optional
+from typing import Any
 
 from backend.services.datasource import (
     ErrorInfo,

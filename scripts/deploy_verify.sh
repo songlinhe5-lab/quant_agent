@@ -18,7 +18,7 @@ if scp -o "StrictHostKeyChecking=no" "$LOCAL_SCRIPT" "$VPS_HOST:$REMOTE_DIR/"; t
     echo "✅ SCP 传输成功"
 else
     echo "❌ SCP 传输失败，尝试方式 2..."
-    
+
     # 方式 2: rsync 同步
     echo ""
     echo "📦 方式 2: rsync 同步"

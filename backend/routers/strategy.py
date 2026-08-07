@@ -12,7 +12,7 @@ from typing import Optional
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.core import models
@@ -268,8 +268,6 @@ async def get_inspirations(limit: int = 10):
     return {"status": "success", "data": selected}
 
 
-
-
 @router.post("/parse-config", dependencies=[Depends(get_current_user)])
 async def parse_strategy_config(payload: CodePayload):
     """接收在线编辑器的源码，解析并返回动态表单配置"""
@@ -520,5 +518,3 @@ async def delete_draft_strategy(name: str):
         return {"status": "success", "message": f"策略 {name} 已被删除"}
     except Exception as e:
         return {"status": "error", "message": f"删除失败: {str(e)}"}
-
-

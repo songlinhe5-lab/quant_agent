@@ -24,12 +24,17 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           version: "latest"
+          # 缓存 uv 下载与解析结果，跨 run 复用；lock 变更时自动失效
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Set up Python
         run: uv python install 3.13
 
+      # 一次性预装依赖到 .venv。后续所有步骤用 `uv run --frozen`，
+      # 直接复用该 .venv 且跳过依赖解析（--frozen = 不查改 uv.lock）。
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --dev --frozen
 
       - name: Run Eval Framework
         env:
@@ -39,7 +44,7 @@ jobs:
           LLM_API_KEY: "test-key"
           LLM_BASE_URL: "http://localhost:8080"
         run: |
-          uv run pytest backend/tests/test_eval_framework.py -v --tb=short 2>&1 | tee eval_report.txt
+          uv run --frozen --no-sync pytest backend/tests/test_eval_framework.py -v --tb=short 2>&1 | tee eval_report.txt
 
       - name: Run Golden Dataset Eval
         env:
@@ -47,7 +52,7 @@ jobs:
           EMBEDDING_API_KEY: "test-key"
           EMBEDDING_BASE_URL: "http://localhost:8080"
         run: |
-          uv run python -c "
+          uv run --frozen --no-sync python -c "
           from backend.services.eval_runner import eval_runner
           report = eval_runner.run_all()
           import json

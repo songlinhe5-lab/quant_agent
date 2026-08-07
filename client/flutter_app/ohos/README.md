@@ -1,6 +1,6 @@
 # HarmonyOS NEXT (`ohos/`)
 
-> CLI-06 · Quant Agent Flutter 薄客户端鸿蒙工程占位。  
+> CLI-06 · Quant Agent Flutter 薄客户端鸿蒙工程占位。
 > 正式工程用 **华为 flutter-harmonyos Fork** 生成，勿用标准 Flutter 的 `flutter create` 期望直接出 OHOS。
 
 ## 生成方式

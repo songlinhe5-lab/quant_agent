@@ -1,7 +1,7 @@
 # Figma Variables → Dart Token 同步表（CLI-ARCH-02）
 
-> **SSOT 代码**：`lib/presentation/theme/color_tokens.dart`  
-> **机器可读表**：`design/figma_variables_sync.json`  
+> **SSOT 代码**：`lib/presentation/theme/color_tokens.dart`
+> **机器可读表**：`design/figma_variables_sync.json`
 > **规范**：`docs/05` §七 / §八
 
 ## 色板 · Color/Semantic（Dark）
@@ -38,9 +38,9 @@
 
 ## 同步流程
 
-1. 设计师在 Figma **Variables** 改 `Color/Semantic`（禁止组件绑 Raw）  
-2. 导出 / 手改 `design/figma_variables_sync.json`  
-3. 对齐 `color_tokens.dart` 常量  
-4. `flutter test test/cli_arch02_figma_token_sync_test.dart` 必须绿  
+1. 设计师在 Figma **Variables** 改 `Color/Semantic`（禁止组件绑 Raw）
+2. 导出 / 手改 `design/figma_variables_sync.json`
+3. 对齐 `color_tokens.dart` 常量
+4. `flutter test test/cli_arch02_figma_token_sync_test.dart` 必须绿
 
 **禁止**：在 Feature Widget 内硬编码 `#RRGGBB`（应用 `AppColors.*`）。

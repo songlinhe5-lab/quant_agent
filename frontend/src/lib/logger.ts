@@ -52,7 +52,7 @@ class Logger {
 
   constructor(config: Partial<LoggerConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config }
-    
+
     // 生产环境启动定时刷新
     if (this.config.enableRemote) {
       this.flushTimer = setInterval(() => this.flush(), this.config.flushInterval)

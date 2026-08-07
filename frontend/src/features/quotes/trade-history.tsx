@@ -26,7 +26,7 @@ export const TradeHistory = React.memo(function TradeHistory({ symbol }: { symbo
       // 当最新价发生有效跳动时，判定为产生了一笔新交易
       if (prevPrice !== null && currentPrice !== prevPrice && currentPrice > 0) {
         const side = currentPrice >= prevPrice ? 'buy' : 'sell'
-        
+
         // 💡 针对 Protobuf 极度压缩后不含单笔精准成交量的情况，平滑使用随机数模拟单笔拆单量展示
         const size = `${(Math.random() * 5 + 0.1).toFixed(1)}k`
 
@@ -45,7 +45,7 @@ export const TradeHistory = React.memo(function TradeHistory({ symbol }: { symbo
     }
 
     window.addEventListener('market_tick', handleTick)
-    
+
     // 切换标的时，清空旧流水
     setRecentTrades([])
     prevPriceRef.current = null

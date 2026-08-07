@@ -22,14 +22,14 @@ export const useMarketStore = create<MarketState>()(
         currentTicker: '0700.HK',
         currentTickerName: '腾讯控股',
         currentTickerType: 'EQUITY',
-  
+
         setCurrentTicker: (symbol, name = '', type = 'EQUITY') =>
           set({
             currentTicker: symbol,
             currentTickerName: name,
             currentTickerType: type,
           }),
-  
+
         resetTicker: () => set({ currentTicker: '0700.HK', currentTickerName: '腾讯控股', currentTickerType: 'EQUITY' }),
       }),
       {

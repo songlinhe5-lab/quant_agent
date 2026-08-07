@@ -11,7 +11,7 @@ export default function EventCountdown({ dateIso, actual = null, onRefresh }) {
     // 首次渲染后，每 60 秒重新计算一次倒计时
     const timer = setInterval(() => {
       setCountdownText(getRelativeTimeText(dateIso));
-    }, 60000); 
+    }, 60000);
 
     // 组件卸载时清理定时器防止内存泄漏
     return () => clearInterval(timer);
@@ -25,7 +25,7 @@ export default function EventCountdown({ dateIso, actual = null, onRefresh }) {
   const handleRefreshClick = async (e) => {
     if (e) e.stopPropagation();
     if (!onRefresh || isRefreshing) return;
-    
+
     setIsRefreshing(true);
     try {
       await onRefresh();
@@ -45,14 +45,14 @@ export default function EventCountdown({ dateIso, actual = null, onRefresh }) {
     } else {
       displayText = "等待公布中...";
       // 如果传入了 onRefresh，则允许点击交互；否则仅展示呼吸灯
-      containerClass = `bg-amber-500/20 text-amber-400 ${onRefresh ? 'cursor-pointer hover:bg-amber-500/30' : 'animate-pulse'}`; 
+      containerClass = `bg-amber-500/20 text-amber-400 ${onRefresh ? 'cursor-pointer hover:bg-amber-500/30' : 'animate-pulse'}`;
     }
   } else if (isUrgent) {
     containerClass = "bg-red-500/20 text-red-400 animate-pulse"; // 红色呼吸灯：即将发布
   }
 
   return (
-    <span 
+    <span
       onClick={(isPast && !hasActualData && onRefresh) ? handleRefreshClick : undefined}
       className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold transition-colors duration-300 ${containerClass}`}
       title={(isPast && !hasActualData && onRefresh) ? "点击手动刷新获取最新数据" : undefined}

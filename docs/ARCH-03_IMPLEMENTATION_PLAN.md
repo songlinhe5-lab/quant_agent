@@ -46,11 +46,11 @@ from typing import Optional
 
 class GracefulExecutor(ThreadPoolExecutor):
     """支持异步优雅关闭的线程池"""
-    
+
     def __init__(self, *args, max_wait_s: int = 30, **kwargs):
         super().__init__(*args, **kwargs)
         self.max_wait_s = max_wait_s
-    
+
     async def graceful_shutdown(self):
         """异步优雅关闭：等待所有任务完成"""
         # Python 3.9+ 支持 shutdown(wait=True, timeout=X)
@@ -62,7 +62,7 @@ class GracefulExecutor(ThreadPoolExecutor):
                     {asyncio.get_event_loop().run_in_executor(None, self.shutdown, True)},
                     timeout=self.max_wait_s
                 )
-                
+
                 if pending:
                     print(f"⚠️ Executor 关闭超时 ({self.max_wait_s}s)，强制终止")
             except Exception as e:
@@ -95,13 +95,13 @@ async def writer():
 async def graceful_redis_shutdown():
     """等待 Redis 队列清空后关闭"""
     await redis_batch_writer.stop()  # 触发队列刷新
-    
+
     # 额外安全检查：等待队列完全为空
     for _ in range(10):  # 最多等待 10s
         if redis_queue.empty():
             break
         await asyncio.sleep(1)
-    
+
     await redis_client.aclose()
 ```
 
@@ -154,7 +154,7 @@ async def async_close(self):
     # 1. 停止 Session 复用
     if hasattr(self, "session"):
         self.session.close()
-    
+
     # 2. 优雅关闭线程池
     if hasattr(self, "_executor"):
         if isinstance(self._executor, GracefulExecutor):
@@ -162,12 +162,12 @@ async def async_close(self):
         else:
             # Fallback: 普通线程池
             self._executor.shutdown(wait=True)
-    
+
     # 3. 关闭路由器 HTTP 客户端
     if self._router is not None:
         await self._router.close()
         self._router = None
-    
+
     print("✅ YFinanceService 已完全关闭")
 ```
 
@@ -194,10 +194,10 @@ async def async_close(self):
     """优雅关闭 Futu 连接"""
     if hasattr(self, "_ws") and self._ws and not self._ws.closed:
         await self._ws.close()
-    
+
     # 通知 push_handler 停止推送
     futu_push_handler.stop_pushing()
-    
+
     time.sleep(0.5)  # 等待推送任务自然退出
 ```
 
@@ -221,18 +221,18 @@ def log_step(name):
 @asynccontextmanager
 async def app_lifespan(app):
     # ... startup ...
-    
+
     yield
-    
+
     # === Shutdown ===
     shutdown_timer["start"] = time.time()
     log_step("Shutdown started")
-    
+
     # ... 各组件关闭逻辑 ...
-    
+
     total_time = time.time() - shutdown_timer["start"]
     log_step(f"Total shutdown time: {total_time:.2f}s")
-    
+
     for step in shutdown_timer["steps"]:
         logger.info(f"[Shutdown Timeline] {step}")
 ```
@@ -286,17 +286,17 @@ SHUTDOWN_STEPS_GAUGE = Gauge(
 async def test_executor_waits_for_tasks():
     """验证 Executor 等待所有任务完成"""
     executor = GracefulExecutor(max_workers=2, max_wait_s=10)
-    
+
     def slow_task():
         time.sleep(5)
         return "done"
-    
+
     # 提交慢任务
     future = executor.submit(slow_task)
-    
+
     # 立即关闭
     await executor.graceful_shutdown()
-    
+
     assert future.result() == "done"
 
 @pytest.mark.asyncio
@@ -304,7 +304,7 @@ async def test_redis_queue_flushed_before_close():
     """验证 Redis 队列清空后连接才断开"""
     await redis_batch_writer.push("key", "value")
     await redis_batch_writer.stop()  # Should flush queue
-    
+
     # Verify queue empty
     assert redis_queue.empty()
 ```
@@ -317,10 +317,10 @@ async def test_full_system_shutdown():
     async with lifespan(app):
         # Simulate active requests
         pass
-    
+
     # Should complete within 90s
     assert total_shutdown_time <= 90.0
-    
+
     # All components properly closed
     assert yf_service._executor is None
     assert redis_client.connection_pool is None

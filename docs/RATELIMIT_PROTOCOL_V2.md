@@ -1,7 +1,7 @@
 # 🛡️ Quant Agent 限流协议规范 (RATELIMIT-01)
 
-**版本**: v2.0  
-**更新日期**: 2026-08-03  
+**版本**: v2.0
+**更新日期**: 2026-08-03
 **状态**: ✅ 已实施 (分层分级)
 
 ---
@@ -54,19 +54,19 @@
 ```python
 SKIP_PATHS = (
     # 基础设施
-    "/assets", "/monitor", "/health", "/metrics", "/mcp", 
+    "/assets", "/monitor", "/health", "/metrics", "/mcp",
     "/openapi.json", "/docs", "/redoc",
-    
+
     # 认证路径
     "/api/v1/auth/login", "/api/v1/auth/refresh",
-    
+
     # WebSocket (实时推送)
-    "/api/v1/market/quotes/ws", 
-    "/api/v1/macro/quotes/ws", 
+    "/api/v1/market/quotes/ws",
+    "/api/v1/macro/quotes/ws",
     "/api/v1/oms/quotes/ws",
-    
+
     # 流式接口
-    "/api/v1/chat/", 
+    "/api/v1/chat/",
     "/api/v1/sse/",
 )
 ```
@@ -182,7 +182,7 @@ async def test_api_specific_limits():
     for _ in range(61):
         response = client.get("/api/v1/market/quote?symbol=AAPL")
     assert response.status_code == 429
-    
+
     # 同时调用 /chat/completions 应不受影响
     response = client.post("/api/v1/chat/completions", ...)
     assert response.status_code == 200
@@ -191,7 +191,7 @@ async def test_redis_fail_safe():
     """Redis 故障时返回 503"""
     # 停止 Redis
     mocker.patch("backend.core.redis_client.redis_client.pipeline", side_effect=Exception())
-    
+
     response = client.get("/api/v1/market/quote?symbol=AAPL")
     assert response.status_code == 503
 ```
@@ -238,7 +238,7 @@ GATEWAY_RATE_LIMIT=200
 ```python
 @router.put("/api/v1/system/rate-limit-config")
 async def update_rate_limit_config(
-    config: RateLimitConfig, 
+    config: RateLimitConfig,
     admin: User = Depends(get_current_admin)
 ):
     """管理员动态调整限流配额"""
@@ -261,14 +261,14 @@ async def update_rate_limit_config(
 
 ### **常见错误**
 
-❌ **一刀切**: 所有 API 使用相同配额 → 高成本接口被拖垮  
-✅ **分区配额**: 按接口重要性差异化  
+❌ **一刀切**: 所有 API 使用相同配额 → 高成本接口被拖垮
+✅ **分区配额**: 按接口重要性差异化
 
-❌ **IP+User 混合**: 登录用户和访客混同统计 → 付费用户被误杀  
-✅ **分层限流**: 基于 JWT scope 分配不同配额  
+❌ **IP+User 混合**: 登录用户和访客混同统计 → 付费用户被误杀
+✅ **分层限流**: 基于 JWT scope 分配不同配额
 
-❌ **Redis 单点故障无保护**: 限流失效导致无限调用  
-✅ **Fail-Safe**: Redis 异常时拒绝服务  
+❌ **Redis 单点故障无保护**: 限流失效导致无限调用
+✅ **Fail-Safe**: Redis 异常时拒绝服务
 
 ---
 
@@ -283,5 +283,5 @@ async def update_rate_limit_config(
 
 ---
 
-**最后更新**: 2026-08-03  
+**最后更新**: 2026-08-03
 **维护者**: @songlinhe5-lab

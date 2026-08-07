@@ -315,8 +315,8 @@ export function DataSourceHealthModule() {
                   <div className="text-[10px] text-muted-foreground">调用延迟</div>
                   <div className="text-sm font-medium text-foreground">
                     {/* 当无延迟数据时显示 N/A，而非 0ms */}
-                    {c.latency_ms != null && c.latency_ms > 0 
-                      ? `${c.latency_ms.toFixed(0)} ms` 
+                    {c.latency_ms != null && c.latency_ms > 0
+                      ? `${c.latency_ms.toFixed(0)} ms`
                       : 'N/A'}
                   </div>
                   {c.latency_samples && c.latency_samples > 0 ? (

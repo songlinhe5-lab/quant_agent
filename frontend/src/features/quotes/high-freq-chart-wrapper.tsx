@@ -81,8 +81,8 @@ export function HighFreqChartWrapper({ symbol }: { symbol: string }) {
   }, [symbol])
 
   return (
-    <div 
-      ref={chartContainerRef} 
+    <div
+      ref={chartContainerRef}
       className="w-full h-full min-h-[300px]"
       suppressHydrationWarning
     />

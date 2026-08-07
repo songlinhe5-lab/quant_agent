@@ -35,7 +35,7 @@ const workerCode = `
 function calculateMA(data, params) {
   const period = params.period || 20
   const result = []
-  
+
   for (let i = 0; i < data.length; i++) {
     if (i < period - 1) {
       result.push({ ma: null })
@@ -47,7 +47,7 @@ function calculateMA(data, params) {
       result.push({ ma: sum / period })
     }
   }
-  
+
   return { values: result }
 }
 
@@ -56,12 +56,12 @@ function calculateEMA(data, params) {
   const period = params.period || 20
   const multiplier = 2 / (period + 1)
   const result = [{ ema: data[0] }]
-  
+
   for (let i = 1; i < data.length; i++) {
     const ema = (data[i] - result[i - 1].ema) * multiplier + result[i - 1].ema
     result.push({ ema })
   }
-  
+
   return { values: result }
 }
 
@@ -70,39 +70,39 @@ function calculateMACD(data, params) {
   const fastPeriod = params.fastPeriod || 12
   const slowPeriod = params.slowPeriod || 26
   const signalPeriod = params.signalPeriod || 9
-  
+
   const fastMultiplier = 2 / (fastPeriod + 1)
   const slowMultiplier = 2 / (slowPeriod + 1)
   const signalMultiplier = 2 / (signalPeriod + 1)
-  
+
   let fastEMA = data[0]
   let slowEMA = data[0]
   const result = []
-  
+
   for (let i = 0; i < data.length; i++) {
     if (i === 0) {
       result.push({ macd: 0, signal: 0, histogram: 0 })
       continue
     }
-    
+
     fastEMA = (data[i] - fastEMA) * fastMultiplier + fastEMA
     slowEMA = (data[i] - slowEMA) * slowMultiplier + slowEMA
-    
+
     const macd = fastEMA - slowEMA
     const prevSignal = result[i - 1].signal
     const signal = (macd - prevSignal) * signalMultiplier + prevSignal
     const histogram = macd - signal
-    
+
     result.push({ macd, signal, histogram })
   }
-  
+
   // 生成信号
   const last = result[result.length - 1]
   const prev = result[result.length - 2]
   let signal = 'neutral'
   if (prev && last.histogram > 0 && prev.histogram <= 0) signal = 'buy'
   if (prev && last.histogram < 0 && prev.histogram >= 0) signal = 'sell'
-  
+
   return { values: result, signal }
 }
 
@@ -110,17 +110,17 @@ function calculateMACD(data, params) {
 function calculateRSI(data, params) {
   const period = params.period || 14
   const result = [{ rsi: null }]
-  
+
   let gains = 0
   let losses = 0
-  
+
   for (let i = 1; i < data.length; i++) {
     const change = data[i] - data[i - 1]
-    
+
     if (i <= period) {
       if (change > 0) gains += change
       else losses -= change
-      
+
       if (i === period) {
         const avgGain = gains / period
         const avgLoss = losses / period
@@ -130,11 +130,11 @@ function calculateRSI(data, params) {
         result.push({ rsi: null })
       }
     } else {
-      const prevAvgGain = (result[i - 1].rsi !== null) 
-        ? (100 / (100 - result[i - 1].rsi) - 1) * (losses / period) 
+      const prevAvgGain = (result[i - 1].rsi !== null)
+        ? (100 / (100 - result[i - 1].rsi) - 1) * (losses / period)
         : gains / period
       const prevAvgLoss = losses / period
-      
+
       if (change > 0) {
         gains = (prevAvgGain * (period - 1) + change) / period
         losses = (prevAvgLoss * (period - 1)) / period
@@ -142,12 +142,12 @@ function calculateRSI(data, params) {
         gains = (prevAvgGain * (period - 1)) / period
         losses = (prevAvgLoss * (period - 1) - change) / period
       }
-      
+
       const rs = losses === 0 ? 100 : gains / losses
       result.push({ rsi: 100 - (100 / (1 + rs)) })
     }
   }
-  
+
   // 生成信号
   const last = result[result.length - 1]
   let signal = 'neutral'
@@ -155,7 +155,7 @@ function calculateRSI(data, params) {
     if (last.rsi > 70) signal = 'overbought'
     else if (last.rsi < 30) signal = 'oversold'
   }
-  
+
   return { values: result, signal }
 }
 
@@ -164,7 +164,7 @@ function calculateBOLL(data, params) {
   const period = params.period || 20
   const multiplier = params.multiplier || 2
   const result = []
-  
+
   for (let i = 0; i < data.length; i++) {
     if (i < period - 1) {
       result.push({ middle: null, upper: null, lower: null })
@@ -174,13 +174,13 @@ function calculateBOLL(data, params) {
         sum += data[i - j]
       }
       const ma = sum / period
-      
+
       let variance = 0
       for (let j = 0; j < period; j++) {
         variance += Math.pow(data[i - j] - ma, 2)
       }
       const std = Math.sqrt(variance / period)
-      
+
       result.push({
         middle: ma,
         upper: ma + multiplier * std,
@@ -188,7 +188,7 @@ function calculateBOLL(data, params) {
       })
     }
   }
-  
+
   return { values: result }
 }
 
@@ -198,42 +198,42 @@ function calculateKDJ(highs, lows, closes, params) {
   const kSmooth = params.kSmooth || 3
   const dSmooth = params.dSmooth || 3
   const result = []
-  
+
   for (let i = 0; i < closes.length; i++) {
     if (i < period - 1) {
       result.push({ k: null, d: null, j: null })
     } else {
       let highest = -Infinity
       let lowest = Infinity
-      
+
       for (let j = 0; j < period; j++) {
         if (highs[i - j] > highest) highest = highs[i - j]
         if (lows[i - j] < lowest) lowest = lows[i - j]
       }
-      
+
       const rsv = highest === lowest ? 50 : ((closes[i] - lowest) / (highest - lowest)) * 100
-      
+
       const prevK = result[i - 1]?.k ?? 50
       const prevD = result[i - 1]?.d ?? 50
-      
+
       const k = (2 / kSmooth) * prevK + (1 / kSmooth) * rsv
       const d = (2 / dSmooth) * prevD + (1 / dSmooth) * k
       const j = 3 * k - 2 * d
-      
+
       result.push({ k, d, j })
     }
   }
-  
+
   return { values: result }
 }
 
 // 消息处理
 self.onmessage = function(e) {
   const { id, type, indicator, data, params } = e.data
-  
+
   try {
     let result
-    
+
     switch (indicator) {
       case 'MA':
         result = calculateMA(data, params || {})
@@ -253,7 +253,7 @@ self.onmessage = function(e) {
       default:
         throw new Error('Unknown indicator: ' + indicator)
     }
-    
+
     self.postMessage({ id, type: 'result', indicator, result })
   } catch (error) {
     self.postMessage({ id, type: 'error', indicator, error: error.message })
@@ -289,7 +289,7 @@ class IndicatorWorker {
       this.worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
         const { id, type, result, error } = e.data
         const pending = this.pendingRequests.get(id)
-        
+
         if (!pending) return
 
         if (type === 'result' && result) {
@@ -297,7 +297,7 @@ class IndicatorWorker {
         } else {
           pending.reject(new Error(error || 'Worker 计算失败'))
         }
-        
+
         this.pendingRequests.delete(id)
       }
 
@@ -328,7 +328,7 @@ class IndicatorWorker {
 
     return new Promise((resolve, reject) => {
       this.pendingRequests.set(id, { resolve, reject })
-      
+
       this.worker!.postMessage({
         id,
         type: 'calculate',
@@ -357,7 +357,7 @@ class IndicatorWorker {
   ): Promise<IndicatorResult> {
     // 简单的同步计算实现
     const p = params || {}
-    
+
     switch (indicator) {
       case 'MA': {
         const period = p.period || 20

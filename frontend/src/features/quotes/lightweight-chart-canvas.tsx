@@ -373,14 +373,14 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
 
   // 💡 个股事件状态（从后端获取）
   const [stockEvents, setStockEvents] = useState<StockEvent[]>([])
-  
+
   // 💡 获取个股相关事件（财报、分红、重大新闻）
   useEffect(() => {
     let isMounted = true
-    
+
     async function fetchStockEvents() {
       if (!selectedSymbol) return
-      
+
       try {
         const sym = selectedSymbol.replace('/', '')
         const res = await apiClient.get(`/market/events/${sym}`, { days_back: 30, days_ahead: 30 })
@@ -391,9 +391,9 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
         console.error('Failed to fetch stock events:', e)
       }
     }
-    
+
     fetchStockEvents()
-    
+
     return () => { isMounted = false }
   }, [selectedSymbol])
 
@@ -612,7 +612,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     applyPatternAnnotations()
 // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patternPayload, patternSymbol, selectedSymbol, theme])
-  
+
   const measureBoxRef = useRef<HTMLDivElement>(null)
   const measureInfoRef = useRef<HTMLDivElement>(null)
   const measurePriceRef = useRef<HTMLDivElement>(null)
@@ -646,7 +646,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     const handleTick = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       const cleanSym = (s: string) => s.replace(/^(US|HK|SH|SZ|JP|SG|UK)\./i, '').replace(/\.(HK|SH|SZ|SS)$/i, '');
-      
+
       if (cleanSym(detail.ticker) === cleanSym(selectedSymbol)) {
         if (seriesRef.current && lastCandleRef.current) {
           const lastPrice = detail.last_price;
@@ -672,13 +672,13 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
   useEffect(() => {
     if (!chartContainerRef.current) return
     if (chartRef.current) chartRef.current.remove()
-    
+
     // 💡 Tick 图模式使用独立的 HighFreqChartWrapper 组件，不创建主图表
     if (selectedPeriod === 'tick') {
       chartRef.current = null
       return
     }
-    
+
     // 💡 分时线/五日线禁止缩放，日K及以上周期允许缩放（限制缩放范围）
     const isIntraday = ['1m', '5m'].includes(selectedPeriod)
     const disableZoom = isIntraday
@@ -687,16 +687,16 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     // 💡 日K及以上周期缩放范围限制：最小2（放大），最大20（缩小）
     const minBarSpacing = disableZoom ? fixedBarSpacing : 2
     const maxBarSpacing = disableZoom ? fixedBarSpacing : 20
-    
+
     const chart = createChart(chartContainerRef.current, {
       layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: theme === 'dark' ? '#94a3b8' : '#64748b' },
       grid: { vertLines: { color: theme === 'dark' ? '#334155' : '#e2e8f0' }, horzLines: { color: theme === 'dark' ? '#334155' : '#e2e8f0' } },
       crosshair: { mode: CrosshairMode.Magnet },
       rightPriceScale: { borderColor: theme === 'dark' ? '#475569' : '#cbd5e1', autoScale: true, scaleMargins: { top: 0.1, bottom: 0.40 } },
       // 💡 K线图左右拖动配置：允许拖动但不超过K线数据最大最小值
-      timeScale: { 
-        borderColor: theme === 'dark' ? '#475569' : '#cbd5e1', 
-        timeVisible: true, 
+      timeScale: {
+        borderColor: theme === 'dark' ? '#475569' : '#cbd5e1',
+        timeVisible: true,
         fixLeftEdge: true,      // 固定左边界，不允许拖动超过数据起点
         fixRightEdge: !isIntraday,     // 分时线不固定右边界，允许右侧空白
         rightOffset: isIntraday ? 10 : 0,         // 分时线右侧留空
@@ -763,7 +763,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     }
     const ro = new ResizeObserver(handleResize); ro.observe(chartContainerRef.current)
     const container = chartContainerRef.current as any;
-    
+
     const updateMeasureDOM = (start: any, end: any) => {
       if (!measureBoxRef.current || !measureInfoRef.current) return;
       const left = Math.min(start.point.x, end.point.x); const top = Math.min(start.point.y, end.point.y); const width = Math.abs(start.point.x - end.point.x); const height = Math.abs(start.point.y - end.point.y);
@@ -786,7 +786,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
         currentCrosshairRef.current = { point: param.point!, time: param.time, price: price! };
         if (container._isMeasuring && container._measureStart) updateMeasureDOM(container._measureStart, currentCrosshairRef.current);
       } else { currentCrosshairRef.current = null; }
-      
+
       if (isDrawModeRef.current && (chartContainerRef.current as any)._activeDrawingPlugin && isValid) {
         const price = candlestickSeries.coordinateToPrice(param.point!.y);
         if (price !== null) (chartContainerRef.current as any)._activeDrawingPlugin.updateEndPoint(param.time, price);
@@ -853,7 +853,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
         container._activeDrawingPlugin = null; setDrawTool('none');
       }
     });
-    
+
     const handleMouseDown = (e: MouseEvent) => {
       const c = chartContainerRef.current as any
       if (e.shiftKey && currentCrosshairRef.current) {
@@ -961,7 +961,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       seriesRef.current.setData([]); if (ma20Ref.current) ma20Ref.current.setData([]); if (ma50Ref.current) ma50Ref.current.setData([]); if (ma200Ref.current) ma200Ref.current.setData([]); if (bbUpperRef.current) bbUpperRef.current.setData([]); if (bbLowerRef.current) bbLowerRef.current.setData([]); if (volumeRef.current) volumeRef.current.setData([]); if (macdDiffRef.current) macdDiffRef.current.setData([]); if (macdDeaRef.current) macdDeaRef.current.setData([]); if (macdHistRef.current) macdHistRef.current.setData([]); if (rsiLineRef.current) rsiLineRef.current.setData([]); if (rsiHistRef.current) rsiHistRef.current.setData([]); if (kdjKRef.current) kdjKRef.current.setData([]); if (kdjDRef.current) kdjDRef.current.setData([]); if (kdjJRef.current) kdjJRef.current.setData([]);
       if (oRef.current) oRef.current.textContent = '--'; if (hRef.current) hRef.current.textContent = '--'; if (lRef.current) lRef.current.textContent = '--'; if (cRef.current) cRef.current.textContent = '--'; if (vRef.current) vRef.current.textContent = '--'; lastCandleRef.current = null; return
     }
-    
+
     const sortedHistoryAll = [...realHistory].sort((a, b) => new Date(a.time.replace(/-/g, '/')).getTime() - new Date(b.time.replace(/-/g, '/')).getTime())
     // 💡 分时线只展示当日数据，左侧从开盘开始，右侧到收盘
     const isIntradayPeriod = ['1m'].includes(selectedPeriod)
@@ -970,10 +970,10 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
       return sortedHistoryAll.filter(k => k.time.startsWith(todayStr))
     })() : sortedHistoryAll
-    
+
     if (!workerRef.current) return
     const reqId = Date.now() + Math.random()
-    
+
     workerRef.current.onmessage = (e: any) => {
       if (e.data.id !== reqId) return
       const { ma20, ma50, ma200, bb, macdCalc, rsiCalc, kdjCalc } = e.data
@@ -1016,8 +1016,8 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       // PROD-11: K 线就绪后叠加自定义指标（数值线/布尔信号）
       currentBarsRef.current = sortedHistory
       applyCIPanelRef.current?.(sortedHistory);
-      if (!isFirstLoadFittedRef.current && chartRef.current && lwData.length > 0) { 
-        requestAnimationFrame(() => { 
+      if (!isFirstLoadFittedRef.current && chartRef.current && lwData.length > 0) {
+        requestAnimationFrame(() => {
           if (chartRef.current) {
             // 💡 分时线/五日线设置可见范围，右侧到收盘时间
             const isIntradayForRange = ['1m', '5m'].includes(selectedPeriod)
@@ -1036,11 +1036,11 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
                 to: endDate.getTime() / 1000 as UTCTimestamp,
               })
             } else {
-              chartRef.current?.timeScale().fitContent() 
+              chartRef.current?.timeScale().fitContent()
             }
           }
         })
-        isFirstLoadFittedRef.current = true 
+        isFirstLoadFittedRef.current = true
       }
       dataLengthRef.current = lwData.length;
       // 💡 分时线/五日线保持固定缩放值，不随数据长度调整

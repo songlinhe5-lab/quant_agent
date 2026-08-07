@@ -17,7 +17,7 @@ export function MermaidRenderer({ chart }: { chart: string }) {
       fontFamily: 'monospace',
       securityLevel: 'strict'
     })
-    
+
     const renderChart = async () => {
       try {
         setError(false)
@@ -30,7 +30,7 @@ export function MermaidRenderer({ chart }: { chart: string }) {
         setError(true)
       }
     }
-    
+
     if (chart) {
       renderChart()
     }
