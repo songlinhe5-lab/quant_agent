@@ -29,6 +29,14 @@ class MacroDataService:
             raise ValueError("series_id 不能为空")
         return await self._facade.get_macro_series(series_id, limit=limit, prefer_sources=prefer_sources)
 
+    async def get_economic_calendar(
+        self, days_ahead: int = 7, days_back: int = 0, prefer_sources: Optional[list[str]] = None
+    ) -> Any:
+        """宏观经济日历（fred / dbnomics / rbi 多源融合 + CPI actual 回填）。"""
+        return await self._facade.get_economic_calendar(
+            days_ahead=days_ahead, days_back=days_back, prefer_sources=prefer_sources
+        )
+
     async def get_company_news(
         self, ticker: str, days_back: int = 3, prefer_sources: Optional[list[str]] = None
     ) -> Any:

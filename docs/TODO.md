@@ -312,6 +312,7 @@ STATUS: PRODUCTION READY ✨
   - [x] **[BE-ARCH-06c]** 示范接入：把 `/market/quote` 路由改为优先经 `market_data_service.get_quote`（Facade→Registry→Router→薄适配器），失败回退既有 `MarketDataService`；保留降级路径 ✅ **2026-08-06**：`routers/market.py` QUOTE 分支
   - [x] **[BE-ARCH-06d]** 指标补全：Facade 层 `DATASOURCE_FACADE_MERGE` / `DATASOURCE_QUOTE_DEVIATION` 业务级指标，与现有 `DATASOURCE_*` 分层 ✅ **2026-08-06**：`core/metrics.py` 新增 + `facade.py` 接入（融合计数 / 偏差告警）
   - [x] **[BE-ARCH-06e]** 文档收口：更新 `docs/14 §二.5` 业务聚合 Facade 层 + §8/§10.1 映射 + `docs/07` 速查手册三层架构 ✅ **2026-08-06**
+  - [x] **[BE-ARCH-06f]** 宏观经济日历收口：把已注册但仅走 Registry 直连投票的 `fred` / `dbnomics` / `rbi` 三源经 Facade 统一聚合，新增 `DataServiceFacade.get_economic_calendar`（多源 `economic_calendar` 融合 + CPI actual 回填互补 + 全源失败降级）；`MacroDataService` 暴露该域方法；新增 `/macro/economic-calendar` 路由走 Facade（不动 akshare 既有事件日历，避免回归）；配套单测 + 更新 `docs/23` ✅ **2026-08-07**：`facade.py`（`_merge_calendar_events` + `ECONOMIC_CALENDAR` 分支 + 权重 `dbnomics/rbi=55` + 域方法）/ `business/macro.py` 域方法 / `app/macro_app.py` 薄包装 / `routers/macro.py` `GET /macro/economic-calendar` / `tests/test_be_arch06f_economic_calendar.py`（7 passed）；全 06 系列 27 passed
 
 ### 前端基础设施
 

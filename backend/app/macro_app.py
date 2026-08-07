@@ -344,6 +344,27 @@ async def get_macro_calendar(
         raise AppError(status_code=500, detail=str(e))
 
 
+async def get_economic_calendar_facade(
+    days_ahead: int = 7,
+    days_back: int = 0,
+    prefer_sources: list[str] | None = None,
+):
+    """宏观日历（Facade 统一聚合 fred / dbnomics / rbi，CPI actual 互补回填）。
+
+    与 ``get_macro_calendar``（akshare 传统财经事件日历）互补，不互相替代：
+    本接口走 DataServiceFacade 的多源融合路径。
+    """
+    from backend.services.datasource.business.macro import macro_data_service
+
+    res = await macro_data_service.get_economic_calendar(
+        days_ahead=days_ahead, days_back=days_back, prefer_sources=prefer_sources
+    )
+    data = res.data if hasattr(res, "data") else res
+    if isinstance(data, dict) and data.get("status") == "error":
+        raise AppError(status_code=502, detail=data.get("message"))
+    return data
+
+
 # ── 宏观经济序列 (FRED) ───────────────────────────────────────────────────
 
 

@@ -40,8 +40,38 @@ def _business_weight(name: str) -> int:
         "finnhub": 75,
         "fmp": 70,
         "akshare": 60,
+        # 新兴市场 CPI actual 兜底（与 fred 前瞻日历互补，权重略高于默认）
+        "dbnomics": 55,
+        "rbi": 55,
     }.get(name, 50)
     return int(os.getenv(f"DATASOURCE_{name.upper()}_BUSINESS_WEIGHT", str(default)))
+
+
+def _merge_calendar_events(results: list[Result]) -> list[dict]:
+    """合并多源经济日历的 events。
+
+    - 以 ``country + event`` 为键去重
+    - ``actual`` 互补：fred 给前瞻（多数无 actual），dbnomics/rbi 给 CPI actual 兜底，
+      任一源有 actual 即回填
+    - 保留最先出现的源字段（country/event/time/impact/previous/estimate）
+    """
+    merged: dict[tuple[str, str], dict] = {}
+    for r in results:
+        data = r.data if isinstance(r.data, dict) else {}
+        for ev in data.get("events", []) or []:
+            if not isinstance(ev, dict):
+                continue
+            key = (ev.get("country", ""), ev.get("event", ""))
+            if key not in merged:
+                merged[key] = dict(ev)
+            else:
+                # actual 回填：本源有 actual 而主记录无，则补上
+                if ev.get("actual") and not merged[key].get("actual"):
+                    merged[key]["actual"] = ev["actual"]
+                # estimate 互补（同理）
+                if ev.get("estimate") and not merged[key].get("estimate"):
+                    merged[key]["estimate"] = ev["estimate"]
+    return list(merged.values())
 
 
 # 各 action 的新鲜度阈值（秒）；超过即判 stale
@@ -196,6 +226,22 @@ class DataServiceFacade:
             enable_merge=False,
         )
 
+    async def get_economic_calendar(
+        self, days_ahead: int = 7, days_back: int = 0, prefer_sources: Optional[list[str]] = None
+    ) -> Result:
+        """宏观经济日历（fred / dbnomics / rbi 多源融合）。
+
+        fred 提供前瞻事件日历（含 estimate），dbnomics/rbi 提供新兴市场 CPI
+        actual 兜底回填。两路经 ``_merge`` 的 ``ECONOMIC_CALENDAR`` 分支做
+        actual 互补合并、去重；全源失败返回 ``ALL_SOURCES_FAILED``。
+        """
+        return await self._dispatch(
+            "ECONOMIC_CALENDAR",
+            {"days_ahead": days_ahead, "days_back": days_back},
+            prefer_sources=prefer_sources,
+            enable_merge=True,
+        )
+
     # ── 内部调度原语 ──
 
     async def _dispatch(
@@ -289,6 +335,21 @@ class DataServiceFacade:
                 if dev_pct > _QUOTE_DEVIATION_PCT:
                     DATASOURCE_QUOTE_DEVIATION.labels(source=best.source).inc()
                     DATASOURCE_FACADE_MERGE.labels(action=action, mode="deviation").inc()
+        elif action == "ECONOMIC_CALENDAR":
+            # 宏观日历：fred 给前瞻日历（含 estimate），dbnomics/rbi 给新兴市场 CPI
+            # actual 兜底。按 country+event 合并，actual 互补回填，去重。
+            merged_events = _merge_calendar_events(results)
+            primary = best.data if isinstance(best.data, dict) else {}
+            merged = dict(primary)
+            merged["events"] = merged_events
+            merged["merged_sources"] = [r.source for r in results]
+            best = Result.make_success(
+                merged,
+                source=best.source,
+                latency_ms=best.latency_ms,
+                cached=best.cached,
+            )
+            DATASOURCE_FACADE_MERGE.labels(action=action, mode="calendar_merge").inc()
         return best
 
     def _detect_stale(self, data: Any, action: str) -> Optional[str]:
