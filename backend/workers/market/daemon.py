@@ -11,10 +11,13 @@ Market Daemon - 仅 Master 运行的守护进程集合
 守护进程列表:
   - _news_stream_daemon:            市场新闻轮询 + LLM 情感分析
   - _company_news_daemon:           个股新闻监控 + Pub/Sub 推送
-  - _trade_stream_daemon:           WebSocket 实时交易流
   - macro_alert_daemon:             宏观核弹数据监控 + LLM 秒评（独立模块 workers/macro/alert_daemon.py）
   - _earnings_alert_daemon:         重磅财报监控 + LLM 秒评
   - _insider_transactions_marquee:  高管内幕交易跑马灯
+
+> 2026-08-07 修订：Finnhub 仅远程。原 _trade_stream_daemon（WS tick 长连接）已移除，
+> 所有 Finnhub 取数经 DataSourceRegistry → DataSourceRouter → data_subservice REST 快照，
+> 主服务不再持有本地 FinnhubService / WS 订阅。
 """
 
 import asyncio
@@ -51,17 +54,17 @@ async def _finnhub_fetch(action: str, **params):
 async def run_global_daemon() -> None:
     """
     统一入口：合并启动与守护市场守护进程。
-    利用并发同时运行 [市场新闻轮询]、[个股新闻轮询] 与 [WebSocket 实时行情订阅]。
-    """
-    from backend.services.finnhub.service import finnhub_service
 
+    设计原则 (2026-08-07): Finnhub 仅远程。所有 Finnhub 取数经 DataSourceRegistry
+    (→ DataSourceRouter → data_subservice REST 快照) 完成，不再持有本地 FinnhubService
+    / WS tick 订阅。_trade_stream_daemon 已移除（WS 订阅层冗余）。
+    """
     await asyncio.gather(
-        _news_stream_daemon(finnhub_service),
-        _company_news_daemon(finnhub_service),
-        _trade_stream_daemon(finnhub_service),
+        _news_stream_daemon(),
+        _company_news_daemon(),
         macro_alert_daemon(),
-        _insider_transactions_marquee_daemon(finnhub_service),
-        _earnings_alert_daemon(finnhub_service),
+        _insider_transactions_marquee_daemon(),
+        _earnings_alert_daemon(),
         return_exceptions=True,
     )
 
@@ -69,7 +72,7 @@ async def run_global_daemon() -> None:
 # ==========================================
 # 财报发布监控守护进程
 # ==========================================
-async def _earnings_alert_daemon(finnhub_service):
+async def _earnings_alert_daemon():
     """
     后台守护进程：监控核心明星公司的财报发布，第一时间推送到通知渠道并由主脑进行点评
     """
@@ -166,13 +169,13 @@ async def _earnings_alert_daemon(finnhub_service):
 # ==========================================
 # 市场新闻轮询守护进程
 # ==========================================
-async def _news_stream_daemon(finnhub_service) -> None:
+async def _news_stream_daemon() -> None:
     """后台守护进程：通过 Finnhub HTTP 接口准实时轮询市场新闻并推送到 Redis ZSET 与 Pub/Sub"""
     from backend.services.macro.sentiment_service import sentiment_service
 
     print("🚀 [Finnhub Daemon] 启动市场新闻轮询守护进程 (HTTP -> ZSET + Pub/Sub)...")
-    api_key = finnhub_service._get_api_key()
-    if not api_key:
+    # Finnhub 仅远程：API Key 由 data_subservice 持有，主服务不再直连。此处仅做能力探测。
+    if not os.getenv("FINNHUB_API_KEY"):
         print("⚠️ [Finnhub Daemon] 未配置 FINNHUB_API_KEY，无法启动新闻监控。")
         return
 
@@ -257,7 +260,7 @@ async def _news_stream_daemon(finnhub_service) -> None:
 # ==========================================
 # 个股新闻监控守护进程
 # ==========================================
-async def _company_news_daemon(finnhub_service) -> None:
+async def _company_news_daemon() -> None:
     """后台守护进程：个股新闻的伪长连接监控订阅"""
     print("🚀 [Finnhub Daemon] 启动个股新闻长链接监控守护进程...")
     while True:
@@ -311,93 +314,11 @@ async def _company_news_daemon(finnhub_service) -> None:
 
 
 # ==========================================
-# WebSocket 实时交易流守护进程
+# WebSocket 实时交易流守护进程（已移除，2026-08-07）
 # ==========================================
-async def _trade_stream_daemon(finnhub_service) -> None:
-    """真正的 Finnhub WebSocket 长连接守护进程，用于实时接收美股 Tick 交易流"""
-    import websockets
-
-    print("🚀 [Finnhub WS] 启动全局长连接守护进程 (Tick 实时行情)...")
-    api_key = finnhub_service._get_api_key()
-    if not api_key:
-        print("⚠️ [Finnhub WS] 未配置 API Key，长连接守护进程已退出。")
-        return
-
-    ws_url = f"wss://ws.finnhub.io?token={api_key}"
-
-    while True:
-        try:
-            async with websockets.connect(ws_url, ping_interval=20, ping_timeout=20) as websocket:
-                print("✅ [Finnhub WS] 长连接已成功建立！正在同步监控池...")
-
-                active_subscriptions = set()
-
-                async def sync_subscriptions():
-                    while True:
-                        try:
-                            monitored_tickers = await redis_client.hkeys("quant:settings:monitored_refcounts")
-                            current_targets = set()
-                            if monitored_tickers:
-                                for t in monitored_tickers:
-                                    symbol = t.decode("utf-8") if isinstance(t, bytes) else str(t)
-                                    if not is_my_shard(symbol):
-                                        continue
-                                    if symbol.startswith("US."):
-                                        symbol = symbol[3:]
-                                    if (
-                                        not symbol.startswith("HK.")
-                                        and not symbol.startswith("SH.")
-                                        and not symbol.startswith("SZ.")
-                                    ):
-                                        current_targets.add(symbol)
-
-                            to_subscribe = current_targets - active_subscriptions
-                            to_unsubscribe = active_subscriptions - current_targets
-
-                            for sym in to_subscribe:
-                                await websocket.send(json.dumps({"type": "subscribe", "symbol": sym}))
-                                print(f"📡 [Finnhub WS] 节点分片更新，已动态新增订阅: {sym}")
-                                active_subscriptions.add(sym)
-
-                            for sym in to_unsubscribe:
-                                await websocket.send(json.dumps({"type": "unsubscribe", "symbol": sym}))
-                                print(f"📡 [Finnhub WS] 节点分片剥离，已动态退订: {sym}")
-                                active_subscriptions.remove(sym)
-                        except Exception as e:
-                            print(f"⚠️ [Finnhub WS] 动态订阅同步异常: {e}")
-                        await asyncio.sleep(15)
-
-                sync_task = asyncio.create_task(sync_subscriptions())
-
-                try:
-                    while True:
-                        message = await websocket.recv()
-                        data = json.loads(message)
-
-                        msg_type = data.get("type")
-                        if msg_type == "trade":
-                            for trade in data.get("data", []):
-                                channel = f"live_trade_{trade['s']}"
-                                await redis_client.publish(channel, json.dumps(trade))
-                        elif msg_type == "news":
-                            news_list = data.get("data", [])
-                            print(f"🎉 [Finnhub WS] 收到 {len(news_list)} 条 Premium 实时新闻推送！")
-                            for news_item in news_list:
-                                await redis_client.publish(
-                                    "live_news_channel",
-                                    json.dumps(news_item, ensure_ascii=False),
-                                )
-                        elif msg_type == "ping":
-                            await websocket.send(json.dumps({"type": "pong"}))
-                finally:
-                    sync_task.cancel()
-
-        except websockets.exceptions.ConnectionClosed:
-            print("⚠️ [Finnhub WS] 长连接意外断开，正在尝试重连...")
-        except Exception as e:
-            print(f"❌ [Finnhub WS] 长连接发生异常: {e}")
-
-        await asyncio.sleep(5)
+# 原 _trade_stream_daemon（Finnhub WS tick 长连接）已删除：Finnhub 现仅经 DataSourceRouter
+# 远程 REST 快照（data_subservice 持有 WS 订阅），主服务不再持有本地 FinnhubService / WS 订阅。
+# quote 实时性由 data_subservice 经 Redis pubsub 回灌，主服务走 registry.fetch 即远程快照。
 
 
 # ==========================================
@@ -410,7 +331,7 @@ async def _trade_stream_daemon(finnhub_service) -> None:
 # ==========================================
 # 高管内幕交易跑马灯守护进程
 # ==========================================
-async def _insider_transactions_marquee_daemon(finnhub_service) -> None:
+async def _insider_transactions_marquee_daemon() -> None:
     """后台守护进程：定时获取核心标的的高管内幕交易，筛选后推送到 Redis ZSET 供前端跑马灯"""
     print("🚀 [Finnhub Daemon] 启动高管内幕交易跑马灯守护进程...")
 
