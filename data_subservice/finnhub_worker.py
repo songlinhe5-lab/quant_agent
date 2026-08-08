@@ -12,7 +12,7 @@ from data_subservice._internal.finnhub import finnhub_service
 from data_subservice._internal.logger import logger
 
 _FINNHUB_DISPATCH: dict[str, Any] = {
-    "QUOTE": ("get_quote", ["symbol"]),
+    "QUOTE": ("get_quote", ["ticker"]),
     "COMPANY_NEWS": ("get_company_news", ["ticker", "days_back"]),
     "MARKET_NEWS": ("get_market_news", ["category"]),
     "EARNINGS": ("get_earnings_calendar", ["days_ahead", "days_back"]),
@@ -26,6 +26,7 @@ async def handle_finnhub(action: str, params: dict[str, Any]) -> dict[str, Any]:
     """动作分发：action -> finnhub_service 方法。
 
     返回普通 dict（由 main.fetch_data 包成 {"code":0,"data":...}）。
+    主服务统一以 ticker 传参，dispatch 表与 finnhub_service 方法均使用 ticker。
     """
     if action not in _FINNHUB_DISPATCH:
         logger.warning(f"⚠️ [Finnhub] 未知动作: {action}")

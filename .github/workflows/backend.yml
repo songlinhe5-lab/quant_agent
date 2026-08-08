@@ -175,6 +175,32 @@ jobs:
               echo "⚠️ 警告: TAILSCALE_IP 为空！registry 将仅绑定 127.0.0.1，北京节点无法经内网拉取镜像。如需内网拉取，请在主节点 .env 中手动配置 VPS_S1_TAILSCALE_IP。"
             fi
 
+            # 🔧 强制覆盖 TAILSCALE_IP 到 shell 环境与 .env，消除"空值 TAILSCALE_IP= 导致 registry 仅绑 loopback"的漏洞。
+            # 无论 .env 是否已存在(含空值)，只要 Secret 有真实值，就覆盖，确保后续 docker compose up 端口绑定到真实 TS IP。
+            if [ -n "${{ secrets.VPS_S1_TAILSCALE_IP }}" ]; then
+              export TAILSCALE_IP="${{ secrets.VPS_S1_TAILSCALE_IP }}"
+              if grep -q '^TAILSCALE_IP=' .env 2>/dev/null; then
+                sed -i "s|^TAILSCALE_IP=.*|TAILSCALE_IP=${{ secrets.VPS_S1_TAILSCALE_IP }}|" .env
+              else
+                printf 'TAILSCALE_IP=%s\n' "${{ secrets.VPS_S1_TAILSCALE_IP }}" >> .env
+              fi
+              echo "🔧 已强制将 TAILSCALE_IP 覆盖为真实值 (供 registry 端口绑定)，脱敏: $(echo ${{ secrets.VPS_S1_TAILSCALE_IP }} | cut -d':' -f1 | awk -F'.' '{print $1"."$2".x.x"}')"
+            fi
+
+            # ── 主节点 Tailscale 预检: 确保 registry 的 TS IP 端口绑定能成功 ──
+            # 若 tailscale0 接口存在，用其真实 IP 动态覆盖 TAILSCALE_IP (静态 Secret 值可能与当前 TS IP 不一致，
+            # 导致 docker 绑定到不存在的 IP 而只留 loopback，bj 节点再连 TS IP 即 connection refused)。
+            # 与北京节点的 tailscale0 自检逻辑对称，避免主节点静默失败、推到 bj 才暴露。
+            TS_IFACE_IP=$(ip -4 addr show tailscale0 2>/dev/null | grep -oP 'inet \K[\d.]+' || true)
+            if [ -n "$TS_IFACE_IP" ]; then
+              export TAILSCALE_IP="$TS_IFACE_IP"
+              sed -i "s|^TAILSCALE_IP=.*|TAILSCALE_IP=$TS_IFACE_IP|" .env
+              echo "🔧 主节点 tailscale0 接口检测到真实 TS IP: $TS_IFACE_IP，已用于 registry 端口绑定"
+            else
+              echo "⚠️ 主节点无 tailscale0 接口！registry 将无法在 TS IP 上监听，北京节点经内网拉取会失败。"
+              echo "   若需内网拉取，请在主节点启动 Tailscale (tailscale up) 后重跑。当前仅绑定 127.0.0.1。"
+            fi
+
             # 🧹 部署前自动回收悬空 docker 资源（旧镜像/退出容器/未用网络/构建缓存），
             #    防止历史堆积触发磁盘守卫。仅删悬空对象，不影响正在运行的容器与命名 volume。
             echo "🧹 部署前自动清理悬空 docker 资源..."
@@ -208,6 +234,33 @@ jobs:
               || { echo "❌ 主节点 docker compose pull 超时或失败 (900s)"; exit 1; }
             docker compose -f docker-compose.master.yml --env-file .env up -d --remove-orphans
             docker image prune -f
+
+            # ── 关键加固: 等待 registry 容器就绪并监听 5000 端口 ──
+            # 历史坑: registry 容器未运行 → 北京节点经内网 pull 5000 端口吃 connection refused，
+            # 错误被推到 bj 节点才暴露，排查极慢。此处主节点 deploy 后即地 fail-fast 等待。
+            # restart:always 已配置，但 compose up 后容器可能仍在启动 / 端口尚未 bind。
+            echo "🔍 等待 registry 容器就绪 (最多 30s)..."
+            for i in $(seq 1 30); do
+              if docker ps --filter name=quant_registry --filter status=running --format '{{.Names}}' | grep -q quant_registry; then
+                echo "✅ registry 容器已运行"
+                break
+              fi
+              echo "  ⏳ 等待 registry 容器启动... ($i/30)"
+              sleep 1
+            done
+            if ! docker ps --filter name=quant_registry --filter status=running --format '{{.Names}}' | grep -q quant_registry; then
+              echo "❌ registry 容器未能在 30s 内启动！请检查主节点:"
+              echo "   docker logs quant_registry"
+              echo "   docker compose -f docker-compose.master.yml --env-file .env up -d registry"
+              exit 1
+            fi
+            # 再确认 5000 端口确实在监听 (loopback 即可，CI 主节点 push 用 localhost:5000)
+            if ! (ss -tlnp 2>/dev/null | grep -q ':5000' || docker exec quant_registry wget -qO- http://localhost:5000/v2/ >/dev/null 2>&1); then
+              echo "❌ registry 容器已运行但 5000 端口未监听！请检查端口绑定 (TAILSCALE_IP/loopback)。"
+              echo "   ss -tlnp | grep 5000   # 应见 127.0.0.1:5000 与 \${TAILSCALE_IP}:5000"
+              exit 1
+            fi
+            echo "✅ registry 已就绪，5000 端口监听正常，北京节点可经内网拉取"
 
             # 将镜像推送到本机内网私有 registry，供国内节点 (北京) 经 Tailscale 内网高速拉取
             # 注意: 在主节点本机操作，registry 地址用 localhost (不依赖远程 shell 无感的 TS IP 变量)
@@ -535,6 +588,21 @@ jobs:
                 exit 1
               fi
               echo "✅ 北京节点镜像已指向内网 registry: ${IMAGE}"
+              # 🔍 registry 可达性预检: 在 docker pull 之前先用 curl 探主节点 registry /v2/ 端点，
+              # 区分"registry 容器未运行"与"Tailscale 网络不通"两种故障，避免 pull 超时后才暴露且报错模糊。
+              REGISTRY_HOST="${{ secrets.VPS_S1_TAILSCALE_IP }}:5000"
+              echo "🔍 预检主节点 registry 可达性: http://${REGISTRY_HOST}/v2/"
+              if curl -sS --max-time 10 "http://${REGISTRY_HOST}/v2/" >/dev/null 2>&1; then
+                echo "✅ 主节点 registry 可达 (HTTP 200 on /v2/)，北京节点可经内网拉取"
+              else
+                echo "❌ 主节点 registry 不可达 (http://${REGISTRY_HOST}/v2/ 探测失败)！"
+                echo "   可能原因与排查:"
+                echo "   1) 主节点 registry 容器未运行 → 主节点执行: docker compose -f docker-compose.master.yml --env-file .env up -d registry"
+                echo "   2) Tailscale 未连通 → 主/从节点: tailscale status 确认双方在同一 tailnet"
+                echo "   3) 主节点 .env 的 TAILSCALE_IP 与 Secrets 的 VPS_S1_TAILSCALE_IP 不一致 → 主节点 ss -tlnp | grep 5000 核对监听 IP"
+                echo "   4) 北京节点 docker 未配 insecure-registries → 见上方 CI 提示手动配置"
+                exit 1
+              fi
             fi
 
             # 🧹 部署前自动回收悬空 docker 资源（同主节点），防止历史堆积触发磁盘守卫

@@ -46,8 +46,8 @@ class FinnhubService:
             return {"status": "error", "message": "Finnhub 401/403 IP/Key blocked", "error_category": "ip_blocked"}
         return {"status": "error", "message": f"Finnhub HTTP {r.status_code}"}
 
-    async def get_quote(self, symbol: str) -> dict[str, Any]:
-        return await self._get("/quote", {"symbol": symbol})
+    async def get_quote(self, ticker: str) -> dict[str, Any]:
+        return await self._get("/quote", {"symbol": ticker})
 
     async def get_company_news(self, ticker: str, days_back: int = 3) -> dict[str, Any]:
         from datetime import datetime, timedelta
