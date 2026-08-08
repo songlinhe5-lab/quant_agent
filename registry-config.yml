@@ -1,0 +1,17 @@
+version: 0.1
+log:
+  level: info
+storage:
+  filesystem:
+    rootdirectory: /var/lib/registry
+http:
+  addr: :5000
+  headers:
+    X-Content-Type-Options: [nosniff]
+# SEC-17: 内网私有 registry, 仅 bind loopback + Tailscale 内网 IP (不暴露公网, 见 docker-compose.master.yml)。
+# registry:2 在此场景下**不配置任何 auth 中间件**即可匿名 push/pull:
+#   - registry 2.8.x 默认匿名允许 pull; 经验证 (独立 regtest 容器 + 最终 compose 容器) 无 auth 时匿名 push 同样放行。
+#   - 之前尝试的 auth.token.disabled / silly / htpasswd+token 等方案均不可行 (panic / 404 token 端点 / 需外部 issuer),
+#     徒增复杂度且无法让标准 Docker 客户端完成 bearer 协商, 已全部弃用。
+#   - 安全边界由网络层保证: 容器仅监听 127.0.0.1 与 Tailscale 内网 IP, 不暴露公网; Tailscale tailnet 视为可信边界。
+#   - 注意: 调用方 (北京节点) 的 docker daemon 需将主节点 TS IP:5000 加入 insecure-registries (HTTP 非 HTTPS)。
