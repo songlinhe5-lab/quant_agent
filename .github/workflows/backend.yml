@@ -235,6 +235,12 @@ jobs:
             docker compose -f docker-compose.master.yml --env-file .env up -d --remove-orphans
             docker image prune -f
 
+            # ── 防御性再拉起 registry ──
+            # --remove-orphans 可能把 registry 误判为孤儿容器清掉 (compose 版本/项目名不一致时)，
+            # 或 up 阶段因端口冲突未成功启动。此处幂等再 up 一次，确保 registry 必然运行，
+            # 否则下方等待校验会 fail-fast，不会把空 registry 暴露给北京节点。
+            docker compose -f docker-compose.master.yml --env-file .env up -d registry
+
             # ── 关键加固: 等待 registry 容器就绪并监听 5000 端口 ──
             # 历史坑: registry 容器未运行 → 北京节点经内网 pull 5000 端口吃 connection refused，
             # 错误被推到 bj 节点才暴露，排查极慢。此处主节点 deploy 后即地 fail-fast 等待。
@@ -263,14 +269,15 @@ jobs:
             echo "✅ registry 已就绪，5000 端口监听正常，北京节点可经内网拉取"
 
             # 将镜像推送到本机内网私有 registry，供国内节点 (北京) 经 Tailscale 内网高速拉取
-            # 注意: 在主节点本机操作，registry 地址用 localhost (不依赖远程 shell 无感的 TS IP 变量)
-            REGISTRY_IMAGE="localhost:5000/quant-agent:latest"
+            # 注意: 在主节点本机操作，registry 地址用 127.0.0.1 (避免 localhost 解析到 ::1 IPv6 导致偶发 denied)，
+            # 不依赖远程 shell 无感的 TS IP 变量；registry 已无 auth，匿名 push 可直接放行。
+            REGISTRY_IMAGE="127.0.0.1:5000/quant-agent:latest"
             docker tag "${IMAGE}" "${REGISTRY_IMAGE}"
             docker push "${REGISTRY_IMAGE}"
 
             # 同时把 data-subservice 镜像推到 registry (北京节点经内网拉取)
             DS_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:latest"
-            DS_REGISTRY_IMAGE="localhost:5000/quant-agent-data-subservice:latest"
+            DS_REGISTRY_IMAGE="127.0.0.1:5000/quant-agent-data-subservice:latest"
             docker pull "${DS_IMAGE}" \
               || { echo "❌ 主节点从 GHCR 拉取 data-subservice 失败，中止"; exit 1; }
             docker tag "${DS_IMAGE}" "${DS_REGISTRY_IMAGE}"
