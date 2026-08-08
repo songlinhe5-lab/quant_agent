@@ -40,7 +40,8 @@ async def _finnhub_fetch(action: str, **params):
     """经 DataSourceRegistry 主路径调用 Finnhub，返回 Result.data（list/dict）或 None。
 
     统一走 registry.fetch 以触发 call_metrics 真实计数（运维面板依赖此口径），
-    禁止在守护进程中直连 finnhub_service 的 REST 方法，以免调用/延迟/限流统计丢失。
+    禁止在守护进程中直连 FinnhubService 的 REST 方法，统一经 registry 远程取数，
+    以免调用/延迟/限流统计丢失（BE-ARCH-01 边界约束）。
     """
     try:
         result: Result = await datasource_registry.fetch("finnhub", action, params)

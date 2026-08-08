@@ -435,9 +435,9 @@ class ScreenerService(NlpTranslatorMixin, DslParserMixin, DaemonMixin):
 
                     res = await data_source_router.fetch_akshare("news", ticker=ticker)
                 else:
-                    from backend.services.finnhub.service import finnhub_service
+                    from backend.services.datasource.router import data_source_router
 
-                    res = await finnhub_service.get_company_news(ticker, days_back=3)
+                    res = await data_source_router.fetch_finnhub("company_news", ticker=ticker, days_back=3)
                 if res.get("status") == "success" and res.get("data"):
                     return res["data"][0].get("headline", "")
             except Exception:

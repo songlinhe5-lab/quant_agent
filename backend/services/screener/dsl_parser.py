@@ -163,11 +163,11 @@ class DslParserMixin:
             print(f"🕵️‍♂️ [Screener] 执行另类数据过滤: 高管净买入，当前候选池 {len(valid_tech_data)} 只")  # noqa: E501
             from datetime import datetime, timedelta
 
-            from backend.services.finnhub.service import finnhub_service
+            from backend.services.datasource.router import data_source_router
 
             async def _check_insider(row_data):
                 try:
-                    res = await finnhub_service.get_insider_transactions(row_data["symbol"], limit=30)  # noqa: E501
+                    res = await data_source_router.fetch_finnhub("insider_trading", ticker=row_data["symbol"], limit=30)  # noqa: E501
                     if res.get("status") == "success" and res.get("data"):
                         txs = res.get("data", [])
                         one_month_ago = datetime.now() - timedelta(days=30)

@@ -138,11 +138,13 @@ class DaemonMixin:
 
                                             res = await data_source_router.fetch_akshare("news", ticker=ticker)  # noqa: E501
                                         else:
-                                            from backend.services.finnhub.service import (  # noqa: E501
-                                                finnhub_service,
+                                            from backend.services.datasource.router import (  # noqa: E501
+                                                data_source_router,
                                             )
 
-                                            res = await finnhub_service.get_company_news(ticker, days_back=3)  # noqa: E501
+                                            res = await data_source_router.fetch_finnhub(
+                                                "company_news", ticker=ticker, days_back=3
+                                            )  # noqa: E501
                                         if res.get("status") == "success" and res.get("data"):  # noqa: E501
                                             return res["data"][0].get("headline", "")  # noqa: E501
                                     except Exception:

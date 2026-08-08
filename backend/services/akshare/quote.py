@@ -68,7 +68,7 @@ class QuoteMixin:
             # 💡 针对港股，东方财富 A 股新闻接口经常因页面结构变化抛出正则解析异常 (Invalid escape sequence)  # noqa: E501
             # 因此在这里直接将其短路，降级交由雅虎财经获取港股新闻
             if "HK" in ticker.upper() or (ticker.isdigit() and len(ticker) == 5):
-                from backend.services.finnhub.service import finnhub_service
+                from backend.core.yahoo_news import fetch_yahoo_news
 
                 yf_sym = ticker
                 if yf_sym.startswith("HK."):
@@ -76,7 +76,7 @@ class QuoteMixin:
                 elif yf_sym.isdigit():
                     yf_sym = f"{yf_sym}.HK"
 
-                yahoo_news = await finnhub_service._fallback_yahoo_news(yf_sym)
+                yahoo_news = await fetch_yahoo_news(yf_sym)
 
                 result = {
                     "status": "success",

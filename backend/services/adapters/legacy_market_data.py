@@ -24,12 +24,10 @@ class MarketDataGateway:
 
     def __init__(self) -> None:
         from backend.services.akshare import akshare_service
-        from backend.services.finnhub.service import finnhub_service
 
         # futu_service 延迟到首次使用时导入，避免主节点无 SDK 时启动崩溃
         self._futu = None
         self._ak = akshare_service
-        self._fh = finnhub_service
         # dbnomics/fred/rbi 经 services.macro 间接依赖 hermes_agent；若在 __init__
         # 同步 import，模块级 `market_data_gateway = MarketDataGateway()` 会触发
         # 循环导入 (legacy_market_data -> macro -> ai_narrator -> hermes -> legacy_market_data)。
@@ -79,12 +77,6 @@ class MarketDataGateway:
         )
 
         ensure_yfinance_registered()
-
-        from backend.services.datasource.adapters.finnhub import (
-            ensure_finnhub_registered,
-        )
-
-        ensure_finnhub_registered(self._fh)
 
         from backend.services.datasource.adapters.fmp import (
             ensure_fmp_registered,
@@ -493,7 +485,8 @@ class MarketDataGateway:
     async def get_company_news_fh(
         self, ticker: str, days_back: int = 3, skip_cache: bool = False, **kwargs: Any
     ) -> Any:
-        return await self._fh.get_company_news(ticker, days_back=days_back, skip_cache=skip_cache, **kwargs)
+        resp = await self._fetch_finnhub("company_news", ticker=ticker, days_back=days_back)
+        return resp
 
     async def get_earnings_calendar(
         self,
@@ -502,21 +495,24 @@ class MarketDataGateway:
         skip_cache: bool = False,
         **kwargs: Any,
     ) -> Any:
-        return await self._fh.get_earnings_calendar(
+        resp = await self._fetch_finnhub(
+            "earnings",
             days_ahead=days_ahead,
             days_back=days_back,
-            skip_cache=skip_cache,
-            **kwargs,
         )
+        return resp
 
     async def get_insider_transactions(self, ticker: str, limit: int = 30, **kwargs: Any) -> Any:
-        return await self._fh.get_insider_transactions(ticker, limit=limit, **kwargs)
+        resp = await self._fetch_finnhub("insider_trading", ticker=ticker, limit=limit)
+        return resp
 
     async def get_market_news(self, category: str = "general", **kwargs: Any) -> Any:
-        return await self._fh.get_market_news(category=category, **kwargs)
+        resp = await self._fetch_finnhub("market_news", category=category)
+        return resp
 
     async def get_stock_history_fh(self, ticker: str, days_back: int = 365, **kwargs: Any) -> Any:
-        return await self._fh.get_stock_history(ticker, days_back=days_back, **kwargs)
+        resp = await self._fetch_finnhub("stock_history", ticker=ticker, days_back=days_back)
+        return resp
 
     async def get_series_observations(self, series_id: str, limit: int = 5) -> Any:
         return await self.fred.get_series_observations(series_id, limit)
@@ -525,7 +521,18 @@ class MarketDataGateway:
         return await self.fred.get_economic_calendar(*args, **kwargs)
 
     async def get_economic_calendar_finnhub(self, *args: Any, **kwargs: Any) -> Any:
-        return await self._fh.get_economic_calendar(*args, **kwargs)
+        resp = await self._fetch_finnhub("economic_calendar", *args, **kwargs)
+        return resp
+
+    @staticmethod
+    async def _fetch_finnhub(action: str, *args: Any, **kwargs: Any) -> Any:
+        """经 DataSourceRouter 远程调用 finnhub 子服务，返回 data 载荷。"""
+        from backend.services.datasource.router import data_source_router
+
+        resp = await data_source_router.fetch_finnhub(action, *args, **kwargs)
+        if isinstance(resp, dict) and resp.get("status") == "success":
+            return resp.get("data")
+        return resp
 
     async def get_economic_calendar_dbnomics(self, *args: Any, **kwargs: Any) -> Any:
         return await self.dbnomics.get_economic_calendar(*args, **kwargs)
