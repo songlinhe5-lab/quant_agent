@@ -1,7 +1,7 @@
 # 客户端架构 Review 报告
 
-> **审计范围**：Web 前端（React SPA）+ Flutter 移动端（Android/iOS/HarmonyOS）  
-> **审计时间**：2026-06-29  
+> **审计范围**：Web 前端（React SPA）+ Flutter 移动端（Android/iOS/HarmonyOS）
+> **审计时间**：2026-06-29
 > **对照标准**：AGENTS.md 附录 A 工程规范 + docs/04 前端架构 + docs/05 客户端架构
 
 ---

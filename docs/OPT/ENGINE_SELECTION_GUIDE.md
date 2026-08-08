@@ -38,7 +38,7 @@ engine = TechnicalIndicatorsEngine(auto_calculate_signals=True)
 async def get_realtime_signal(ticker: str):
     klines = await fetch_latest_klines(ticker, count=100)
     indicators = engine.calculate(klines)  # 带缓存
-    
+
     return {
         "ticker": ticker,
         "signal": indicators["rsi"]["signal"],  # 自动信号生成
@@ -97,7 +97,7 @@ print(f"计算耗时：{result['_meta']['computation_time_ms']:.2f}ms")
 ```python
 class HybridIndicatorsEngine:
     """Pandas + TA-Lib 双引擎智能路由"""
-    
+
     def __init__(self):
         try:
             import TALib
@@ -107,7 +107,7 @@ class HybridIndicatorsEngine:
             self._use_talib = False
             self._pandas_engine = TechnicalIndicatorsEngine()
             print("📝 使用 Pandas 替代引擎")
-    
+
     def calculate(self, klines, config):
         if self._use_talib and config.name in SUPPORTED_TALIB_INDICATORS:
             return self._calculate_with_talib(klines, config)
@@ -124,20 +124,20 @@ def _calculate_rsi_numba(close_prices, period=14):
     """JIT 编译的 RSI 计算，接近 C 级别性能"""
     gains = np.zeros_like(close_prices)
     losses = np.zeros_like(close_prices)
-    
+
     for i in range(1, len(close_prices)):
         delta = close_prices[i] - close_prices[i-1]
         if delta > 0:
             gains[i] = delta
         else:
             losses[i] = -delta
-    
+
     avg_gain = np.mean(gains[-period:])
     avg_loss = np.mean(losses[-period:])
-    
+
     rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
-    
+
     return rsi
 ```
 
@@ -168,10 +168,10 @@ from backend.utils.technical_indicators_pro import TechnicalIndicatorsEngine
 @router.get("/tech-indicators/{ticker}")
 async def get_technical_indicators(ticker: str, limit: int = 10):
     klines = _market_service.get_kline(ticker, interval="K_DAY", num=limit)
-    
+
     engine = TechnicalIndicatorsEngine()
     result = engine.calculate(klines, return_history=False)
-    
+
     return {
         "status": "success",
         "indicators": result,

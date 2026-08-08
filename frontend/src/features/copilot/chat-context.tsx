@@ -59,7 +59,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const abortControllerRef = useRef<AbortController | null>(null)
   /** 用于跨组件预填输入框文本的 ref */
   const inputSetterRef = useRef<((text: string) => void) | null>(null)
-  
+
   // 💡 Refs 防穿透：确保持久化的 Action 方法永远不会因为 state 变化而被重新声明
   const sessionIdRef = useRef(sessionId)
   const messagesRef = useRef(messages)
@@ -99,7 +99,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setSessionId(id)
     localStorage.setItem('quant_agent_active_session', id)
     setMessages([])
-    
+
     try {
       // 💡 改用 apiClient，自动带上 Authorization Header，避免 401 报错
       const res = await apiClient.get(`/sessions/${id}`)
@@ -108,7 +108,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         const displayMsgs: ChatMessage[] = []
         for (const m of res.data.data) {
           if (m.role === 'system') continue
-          
+
           if (m.role === 'user') {
             displayMsgs.push({ role: 'user', content: m.content || '' })
           } else if (m.role === 'assistant') {
@@ -199,7 +199,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       }
       return text;
     }).join('\n\n---\n\n');
-    
+
     const blob = new Blob([content], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -224,12 +224,12 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    const userMsg: ChatMessage = { 
-      role: 'user', 
+    const userMsg: ChatMessage = {
+      role: 'user',
       content: finalContent,
       attachments: sendAttachments.length > 0 ? [...sendAttachments] : undefined
     }
-    
+
     setMessages(prev => [...prev, userMsg])
     setIsGenerating(true)
 
@@ -284,7 +284,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         // 将新解码的字符串追加到 buffer
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
-        
+
         // 最后一行可能是不完整的 JSON 字符串，将其留到下一次处理
         buffer = lines.pop() || ''
 
@@ -292,7 +292,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           if (!line.trim()) continue
           try {
             const data = JSON.parse(line)
-            
+
             // 根据大模型吐出的数据格式，精细化组装 Markdown 内容
             if (data.type === 'text_chunk') {
               currentAssistantMsg.content += data.content
@@ -316,7 +316,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                 }
                 const targetTool = tools[targetIdx]
                 let resStr = typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2)
-                
+
                 // 💡 前端自适应安全截断：往回寻找换行符或完整的大括号，防止切破 JSON/Markdown 结构引发 React 解析报错
                 if (resStr.length > 1500) {
                   let cutIdx = 1500;
@@ -326,7 +326,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
                   }
                   resStr = resStr.substring(0, cutIdx) + `\n\n... [数据过长，前端已自适应截断隐藏了 ${resStr.length - cutIdx} 个字符以保持终端整洁] ...`
                 }
-                
+
                 tools[targetIdx] = { ...targetTool, status: 'done', result: resStr }
                 currentAssistantMsg.tools = tools
               }
@@ -348,7 +348,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             // 💡 触发 React 重新渲染：仅在关键事件 (Tool/Strategy/Annotation) 或距离上次渲染超过 50ms 时触发
             const now = Date.now()
             const isToolEvent = data.type === 'tool_start' || data.type === 'tool_result' || data.type === 'error' || data.type === 'strategy_code' || data.type === 'chart_annotation'
-            
+
             if (isToolEvent || now - lastUpdateTime > 50) {
               setMessages(prev => {
                 const updated = [...prev]
@@ -362,7 +362,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           }
         }
       }
-      
+
       // 消息完全接收完毕后，触发左侧边栏刷新以更新【最新标题】和【消息数】
       sidebarRef.current?.fetchSessions()
 
@@ -430,7 +430,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       handleNewChat()
     }
     refreshPrompts()
-    
+
     // 💡 跨模块联动：接收来自其他模块 (如 Screener) 的自动查询指令
     const initialPrompt = sessionStorage.getItem('quant_copilot_initial_prompt')
     if (initialPrompt) {
@@ -440,7 +440,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         handleSend(initialPrompt, [], { skipPageContext: true })
       }, 800)
     }
-    
+
     // 💡 支持 SPA 单页应用内的无刷新跨模块调用 (接收选股器等模块发来的提问指令)
     const handleCrossModulePrompt = (e: Event) => {
       const customEvent = e as CustomEvent<{ prompt: string }>

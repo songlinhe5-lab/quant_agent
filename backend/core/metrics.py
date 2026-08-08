@@ -214,7 +214,7 @@ LLM_REQUEST_LATENCY = Histogram(
 LLM_TOKEN_USAGE = Counter(
     "quant_llm_tokens_total",
     "LLM Token 消耗总量",
-    ["model", "type"],  # type: "prompt" | "completion"
+    ["model", "type"],  # type 取值: "prompt" | "completion"
 )
 
 AGENT_TOOL_CALLS = Counter(

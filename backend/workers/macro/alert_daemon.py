@@ -8,7 +8,7 @@
 
 原始 _macro_alert_daemon 寄生在 Finnhub collector 启动树上（命名误导，
 实际数据来自 AKShare economic_calendar + FRED，与 Finnhub 无关）。
-现独立为 workers/macro/alert_daemon.py，关闭 COLLECTOR_FINNHUB 也不影响宏观告警。
+现独立为 workers/macro/alert_daemon.py，独立于采集器开关启停，默认常驻。
 """
 
 import asyncio

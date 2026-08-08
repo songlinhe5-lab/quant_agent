@@ -181,7 +181,7 @@ def configure_logging(level: int = logging.INFO) -> logging.Logger:
         handlers_for_listener.append(webhook_handler)
 
     # 4. 性能优化：无阻塞异步队列分发机制
-    log_queue = Queue(-1)
+    log_queue: Queue = Queue(-1)
     queue_handler = QueueHandler(log_queue)
 
     # 开启后台守护线程，一次性将队列内容分发给所有 handler

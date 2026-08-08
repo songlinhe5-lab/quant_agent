@@ -1,17 +1,16 @@
 """
 宏观数据源 DataSourceInterface 适配器 (BE-ARCH-05)
 
-将独立的宏观服务 (FRED / DBnomics / RBI) 适配为 DataSourceInterface，使其可通过
-datasource_registry.register() 挂载，并在健康看板 / 链接测试 / 投票看板中被统一感知
-（可挂载 + 可感知）。
+将 FRED / DBnomics / RBI 宏观源适配为 DataSourceInterface，供 DataSourceRegistry.fetch 主路径调用。
 
-依据 docs/14 §10：所有数据源必须实现 DataSourceInterface。采用组合（薄适配）而非改造
-原 macro 服务，避免破坏 legacy_market_data 路由与 daemon 对它们的直连（BE-ARCH-01 边界）。
+设计原则 (2026-08-07): 仅远程。宏观连接层（FRED REST / DBnomics REST / RBI 爬虫）已下沉
+data_subservice（_internal/fred|dbnomics|rbi + 对应 worker）。主服务不再本地调用
+fred_service / dbnomics_service / rbi_service，全部经 data_source_router 远程调用。
+daemon 对原 macro 服务的直连（BE-ARCH-01 边界）保持不变，本适配器仅服务 Registry.fetch。
 """
 
 from __future__ import annotations
 
-import os
 import time
 from typing import Any
 
@@ -23,75 +22,56 @@ from backend.services.datasource import (
 )
 
 
-def _rl_status(name: str) -> RateLimitStatus:
-    from backend.services.datasource.registry import rate_limit_registry
+def _node_of(name: str) -> Any:
+    from backend.services.datasource.router import data_source_router
 
-    rl = rate_limit_registry.get_throttler(name).get_status()
-    return RateLimitStatus(
-        is_throttled=rl.is_throttled,
-        throttle_until=rl.throttle_until,
-        estimated_rpm=rl.estimated_rpm,
-        estimated_limit_rpm=rl.estimated_limit_rpm,
-        consecutive_rate_limits=rl.consecutive_rate_limits,
-        total_rate_limits_1h=rl.total_rate_limits_1h,
-        backoff_strategy=rl.backoff_strategy,
-    )
+    return data_source_router._nodes.get(name)
 
 
-class FREDDataSource:
-    """FREDService → DataSourceInterface 薄适配。"""
+class _RemoteMacroDataSource:
+    """宏观源远程适配基类：经 data_source_router 调 data_subservice。"""
 
-    def __init__(self, service: Any = None) -> None:
-        self._service = service
+    source_key: str = ""  # router 节点名（不含 _master）
+    name: str = ""
+    version: str = "2.0.0"
+    capabilities: list[str] = []
+
+    def __init__(self) -> None:
         self._started_at = time.monotonic()
-
-    def _svc(self) -> Any:
-        if self._service is None:
-            from backend.services.macro.fred_service import fred_service
-
-            self._service = fred_service
-        return self._service
-
-    @property
-    def name(self) -> str:
-        return "fred"
-
-    @property
-    def version(self) -> str:
-        return "1.0.0"
-
-    @property
-    def capabilities(self) -> list[str]:
-        return ["macro_series", "economic_calendar"]
 
     @property
     def mode(self) -> str:
-        return os.getenv("DATASOURCE_FRED_MODE", "internal")
+        return "remote"
 
     def is_available(self) -> bool:
-        try:
-            return bool(self._svc().api_key)
-        except Exception:  # noqa: BLE001
-            return False
+        return _node_of(f"{self.source_key}_master") is not None
 
     async def health(self) -> HealthInfo:
-        rl = _rl_status(self.name)
-        api_key = self._svc().api_key
-        connected = bool(api_key)
-        healthy = connected and not rl.is_throttled
-        last_error = None
-        if not api_key:
-            last_error = "FRED_API_KEY 未配置"
-        elif rl.is_throttled:
-            last_error = "FRED 处于限流退避期"
+        node = _node_of(f"{self.source_key}_master")
+        if node is None:
+            return HealthInfo(
+                healthy=False,
+                mode="remote",
+                connected=False,
+                uptime_seconds=time.monotonic() - self._started_at,
+                last_error=f"{self.source_key}_master 节点未配置",
+                stats={"capabilities": self.capabilities},
+                rate_limit_status=RateLimitStatus(),
+            )
+        connected = node.status == "healthy"
         return HealthInfo(
-            healthy=healthy,
-            mode=self.mode,
+            healthy=connected,
+            mode="remote",
             connected=connected,
             uptime_seconds=time.monotonic() - self._started_at,
-            last_error=last_error,
-            stats={"capabilities": self.capabilities},
-            rate_limit_status=rl,
+            last_error=f"error_count={node.error_count}" if node.error_count else None,
+            stats={
+                "capabilities": self.capabilities,
+                "node_url": node.url,
+                "node_status": node.status,
+                "error_count": node.error_count,
+            },
+            rate_limit_status=RateLimitStatus(),
         )
 
     async def fetch(self, action: str, params: dict[str, Any]) -> Result:
@@ -100,208 +80,58 @@ class FREDDataSource:
             return Result.make_error(
                 ErrorInfo.normal(
                     "UNSUPPORTED_ACTION",
-                    f"FRED 不支持 action: {action}",
+                    f"{self.name} 不支持 action: {action}",
                     retryable=False,
                 ),
                 source=self.name,
             )
 
-        svc = self._svc()
-        if not svc.api_key:
-            return Result.make_error(
-                ErrorInfo.normal("FRED_NO_KEY", "FRED_API_KEY 未配置", retryable=False),
-                source=self.name,
-            )
+        from backend.services.datasource.router import data_source_router
 
         try:
-            if _action == "macro_series":
-                data = await svc.get_series_observations(
-                    series_id=str(params.get("series_id", "")),
-                    limit=int(params.get("limit", 100)),
-                )
-            else:  # economic_calendar
-                data = await svc.get_economic_calendar(
-                    days_ahead=int(params.get("days_ahead", 7)),
-                    days_back=int(params.get("days_back", 0)),
-                    skip_cache=bool(params.get("skip_cache", False)),
-                )
+            method = getattr(data_source_router, f"fetch_{self.source_key}")
+            resp = await method(_action, **params)
         except Exception as e:  # noqa: BLE001
             return Result.make_error(
-                ErrorInfo.normal("FRED_ERROR", str(e), retryable=True),
+                ErrorInfo.normal(f"{self.name.upper()}_ROUTER_ERROR", str(e), retryable=True),
                 source=self.name,
             )
 
-        if isinstance(data, dict) and data.get("status") == "success":
-            return Result.make_success(data.get("data"), source=self.name)
-        msg = (data.get("message") if isinstance(data, dict) else "") or "fred fetch failed"
+        if isinstance(resp, dict) and resp.get("status") == "success":
+            result = Result.make_success(resp.get("data"), source=self.name)
+            result.self_recorded = True
+            return result
+
+        msg = (resp.get("message") if isinstance(resp, dict) else "") or f"{self.name} fetch failed"
         return Result.make_error(
-            ErrorInfo.normal("FRED_FETCH_FAILED", msg, retryable=True),
+            ErrorInfo.normal(f"{self.name.upper()}_FETCH_FAILED", msg, retryable=True),
             source=self.name,
         )
 
 
-class DbnomicsDataSource:
-    """DbnomicsService → DataSourceInterface 薄适配（无 Key，仅经济日历子能力）。"""
-
-    def __init__(self, service: Any = None) -> None:
-        self._service = service
-        self._started_at = time.monotonic()
-
-    def _svc(self) -> Any:
-        if self._service is None:
-            from backend.services.macro.dbnomics import dbnomics_service
-
-            self._service = dbnomics_service
-        return self._service
-
-    @property
-    def name(self) -> str:
-        return "dbnomics"
-
-    @property
-    def version(self) -> str:
-        return "1.0.0"
-
-    @property
-    def capabilities(self) -> list[str]:
-        return ["economic_calendar"]
-
-    @property
-    def mode(self) -> str:
-        return os.getenv("DATASOURCE_DBNOMICS_MODE", "internal")
-
-    def is_available(self) -> bool:
-        try:
-            self._svc()
-            return True
-        except Exception:  # noqa: BLE001
-            return False
-
-    async def health(self) -> HealthInfo:
-        rl = _rl_status(self.name)
-        return HealthInfo(
-            healthy=not rl.is_throttled,
-            mode=self.mode,
-            connected=True,
-            uptime_seconds=time.monotonic() - self._started_at,
-            last_error="DBnomics 处于限流退避期" if rl.is_throttled else None,
-            stats={"capabilities": self.capabilities},
-            rate_limit_status=rl,
-        )
-
-    async def fetch(self, action: str, params: dict[str, Any]) -> Result:
-        _action = action.lower()
-        if _action not in [c.lower() for c in self.capabilities]:
-            return Result.make_error(
-                ErrorInfo.normal(
-                    "UNSUPPORTED_ACTION",
-                    f"DBnomics 不支持 action: {action}",
-                    retryable=False,
-                ),
-                source=self.name,
-            )
-        try:
-            data = await self._svc().get_economic_calendar(
-                days_ahead=int(params.get("days_ahead", 7)),
-                days_back=int(params.get("days_back", 0)),
-                skip_cache=bool(params.get("skip_cache", False)),
-            )
-        except Exception as e:  # noqa: BLE001
-            return Result.make_error(
-                ErrorInfo.normal("DBNOMICS_ERROR", str(e), retryable=True),
-                source=self.name,
-            )
-        if isinstance(data, dict) and data.get("status") == "success":
-            return Result.make_success(data.get("data"), source=self.name)
-        msg = (data.get("message") if isinstance(data, dict) else "") or "dbnomics fetch failed"
-        return Result.make_error(
-            ErrorInfo.normal("DBNOMICS_FETCH_FAILED", msg, retryable=True),
-            source=self.name,
-        )
+class FREDDataSource(_RemoteMacroDataSource):
+    source_key = "fred"
+    name = "fred"
+    capabilities = ["macro_series", "economic_calendar"]
 
 
-class RBIDataSource:
-    """RBIService → DataSourceInterface 薄适配（无 Key，仅经济日历子能力）。"""
+class DbnomicsDataSource(_RemoteMacroDataSource):
+    source_key = "dbnomics"
+    name = "dbnomics"
+    capabilities = ["economic_calendar"]
 
-    def __init__(self, service: Any = None) -> None:
-        self._service = service
-        self._started_at = time.monotonic()
 
-    def _svc(self) -> Any:
-        if self._service is None:
-            from backend.services.macro.rbi import rbi_service
-
-            self._service = rbi_service
-        return self._service
-
-    @property
-    def name(self) -> str:
-        return "rbi"
-
-    @property
-    def version(self) -> str:
-        return "1.0.0"
-
-    @property
-    def capabilities(self) -> list[str]:
-        return ["economic_calendar"]
-
-    @property
-    def mode(self) -> str:
-        return os.getenv("DATASOURCE_RBI_MODE", "internal")
-
-    def is_available(self) -> bool:
-        try:
-            self._svc()
-            return True
-        except Exception:  # noqa: BLE001
-            return False
-
-    async def health(self) -> HealthInfo:
-        rl = _rl_status(self.name)
-        return HealthInfo(
-            healthy=not rl.is_throttled,
-            mode=self.mode,
-            connected=True,
-            uptime_seconds=time.monotonic() - self._started_at,
-            last_error="RBI 处于限流退避期" if rl.is_throttled else None,
-            stats={"capabilities": self.capabilities},
-            rate_limit_status=rl,
-        )
-
-    async def fetch(self, action: str, params: dict[str, Any]) -> Result:
-        _action = action.lower()
-        if _action not in [c.lower() for c in self.capabilities]:
-            return Result.make_error(
-                ErrorInfo.normal(
-                    "UNSUPPORTED_ACTION",
-                    f"RBI 不支持 action: {action}",
-                    retryable=False,
-                ),
-                source=self.name,
-            )
-        try:
-            data = await self._svc().get_economic_calendar(
-                days_ahead=int(params.get("days_ahead", 7)),
-                days_back=int(params.get("days_back", 0)),
-                skip_cache=bool(params.get("skip_cache", False)),
-            )
-        except Exception as e:  # noqa: BLE001
-            return Result.make_error(
-                ErrorInfo.normal("RBI_ERROR", str(e), retryable=True),
-                source=self.name,
-            )
-        if isinstance(data, dict) and data.get("status") == "success":
-            return Result.make_success(data.get("data"), source=self.name)
-        msg = (data.get("message") if isinstance(data, dict) else "") or "rbi fetch failed"
-        return Result.make_error(
-            ErrorInfo.normal("RBI_FETCH_FAILED", msg, retryable=True),
-            source=self.name,
-        )
+class RBIDataSource(_RemoteMacroDataSource):
+    source_key = "rbi"
+    name = "rbi"
+    capabilities = ["economic_calendar"]
 
 
 def ensure_macro_sources_registered() -> list[str]:
-    """幂等注册全部宏观数据源适配器（FRED / DBnomics / RBI）。"""
+    """幂等注册全部宏观数据源适配器（FRED / DBnomics / RBI）。
+
+    无条件注册——宏观源数据一律经 data_source_router HTTP 代理，不依赖本地服务。
+    """
     from backend.services.datasource.source_registry import datasource_registry
 
     registered: list[str] = []

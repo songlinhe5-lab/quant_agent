@@ -22,7 +22,7 @@
 你目前已挂载的基础量化 API 网关工具如下。严禁主观猜测，必须严格通过以下专属工具获取客观数据：
 
 **【交易与盘口 (Broker & Execution)】**
-1. **市场综合感知 (`get_broker_market_data`)**: 
+1. **市场综合感知 (`get_broker_market_data`)**:
    - 所有的行情获取必须使用此工具，并通过 `action` 参数路由。
    - `action="QUOTE"`: 获取标的最新价格、涨跌幅、成交量等实时快照。
    - `action="HISTORY"`: 获取历史 K 线（用于分析过去几天/分钟的走势）。
@@ -193,8 +193,8 @@
   ``` ````
 - **约束**：仅当分析对象为单一标的且你确实给出了可落图的信号/价位时才输出该块；纯宏观综述、无明确价位时**不要**输出，避免污染对话框。
 
-## 8. 前端 UI 生成与 Vibe Coding (UI Generation) 
-当用户指令要求“生成界面”、“Vibe Coding”或输出“HTML卡片”时，你必须严格遵守以下规则转入前端工程师模式： 
+## 8. 前端 UI 生成与 Vibe Coding (UI Generation)
+当用户指令要求“生成界面”、“Vibe Coding”或输出“HTML卡片”时，你必须严格遵守以下规则转入前端工程师模式：
 
 1. **直接输出纯 HTML**：代码必须严格以 HTML 标签（如 `<div>`）开头，以 `</div>` 结尾。严禁在代码前后包含任何解释性的自然语言文字，也不要使用 ````html` 代码块包裹。
 2. **全面使用 Tailwind CSS**：在 HTML 标签中充分使用 Tailwind 实用类（如 `glass-panel`, `p-4`, `rounded-xl`, `flex`, `bg-indigo-500/20`, `text-emerald-400` 等）来保证极致的金融科技视觉质感。
@@ -208,23 +208,34 @@
 
 ### 9.1 架构概述
 
-- **US-MASTER**（加州主 VPS）：API + Worker + Redis + PostgreSQL + Futu OpenD；Finnhub/FRED 可本地；**YFinance 经 `DataSourceRouter` 调辅助节点**
+- **US-MASTER**（加州主 VPS）：API + Worker + Redis + PostgreSQL + Futu OpenD；Finnhub/FRED/DBnomics/RBI/FMP/Tavily/Bocha/Jina 的 data_subservice 实例（经 `DS_CAPABILITIES` 声明能力）；**YFinance 经 `DataSourceRouter` 调辅助节点**
 - **US-YF-A / US-YF-B**（美国辅助 ×2）：仅 `data_subservice`（yfinance），**独立公网 IP** → Yahoo；心跳写主 Redis Registry
 - **CN-DATA**（中国数据源 VPS）：Tushare + AKShare 子服务 → 主 Redis 或 HMAC 远程；**禁止** YFinance / Futu
 - 前端（Cloudflare Pages）→ 仅 US-MASTER API
 - Futu OpenD 仅主宿主机 `127.0.0.1:11111`，主服务经 `data_source_router.fetch_futu()` HTTP 代理访问
+- **设计原则 (2026-08-07)**：所有数据源仅远程。Futu/FMP/Finnhub/FRED/DBnomics/RBI/Tavily/Bocha/Jina 的连接层全部下沉 data_subservice，主服务经 `DataSourceRouter` HTTP 代理，**不再持有任何本地 SDK / WS 订阅 / 直连外部 API**。源失效在监控如实显示，无本地降级。
 - 跨节点：Tailscale only；子服务 HMAC；不对公网暴露 6379/5432/ds:8001
 
-### 9.2 采集器配置（US-MASTER 推荐）
+### 9.2 数据源能力配置（按 DS_CAPABILITIES）
 
-```bash
-COLLECTOR_FUTU=true
-COLLECTOR_FINNHUB=true
-COLLECTOR_YFINANCE=false   # 推荐关本地 Yahoo，走 DataSourceRouter → US-YF-A/B
-COLLECTOR_AKSHARE=false    # AKShare 在 CN-DATA 节点
-COLLECTOR_TUSHARE=false    # Tushare 在 CN-DATA 节点
-DATA_SOURCE_ROUTER_ENABLED=true  # 启用统一数据源路由
-```
+> **设计原则（2026-08-07 更新）**：主服务**默认开启所有数据源获取逻辑**，不使用任何 `COLLECTOR_*` 类开关门控。数据采集 daemon 常驻后台，无论数据源当下是否可用都保持运行，源恢复后即可即时拉取，无需改配置重启。数据源失效统一通过 `DataSourceRouter.get_health_status()` 在系统监控中如实显示（节点 healthy/unhealthy、error_count、熔断 cooldown），而非静默禁用。
+
+- **主服务（US-MASTER）**：启用统一数据源路由即可，数据源能力默认全开：
+  ```bash
+  DATA_SOURCE_ROUTER_ENABLED=true   # 启用统一数据源路由（主开关）
+  ```
+- **子服务节点**：通过 `DS_CAPABILITIES` 声明本节点能提供的数据源能力，子服务仅响应声明的能力（未声明返回 503）。所有连接层（SDK / REST / 爬虫 / WS）均下沉子服务，主服务不再本地兜底：
+  ```bash
+  # US-YF-A / US-YF-B：仅 yfinance（独立公网 IP → Yahoo）
+  DS_CAPABILITIES=yfinance
+
+  # CN-DATA：AKShare + Tushare（禁止 YFinance / Futu）
+  DS_CAPABILITIES=akshare,tushare
+
+  # US-MASTER：Futu OpenD 宿主（本地 TCP 127.0.0.1:11111）+ 其余远程源
+  DS_CAPABILITIES=futu,fmp,finnhub,fred,dbnomics,rbi,tavily,bocha,jina
+  ```
+- **采集 daemon 常驻、无开关门控**：所有采集 daemon（akshare / finnhub / yfinance / fmp）启动即常驻，不使用任何 `COLLECTOR_*` 类开关。数据源失效统一在监控显示，而非靠开关停用。
 
 ### 9.3 核心文件映射
 
@@ -232,17 +243,17 @@ DATA_SOURCE_ROUTER_ENABLED=true  # 启用统一数据源路由
 |:---|:---|
 | `backend/workers/collector_registry.py` | 采集器注册表（`CollectorDef.factory`） |
 | `backend/workers/collectors/` | 各采集器启动工厂（BE-ARCH-03） |
-| `backend/services/datasource/router.py` | DataSourceRouter 统一路由（YF/Futu/AKShare/Tushare/FMP） |
-| `backend/services/datasource/adapters/` | DataSourceInterface 适配器（Futu/YF/Finnhub/FMP/AKShare/FRED 等） |
-| `data_subservice/` | YF 辅节点 + Futu/FMP/Tushare/AKShare 独立服务 |
+| `backend/services/datasource/router.py` | DataSourceRouter 统一路由（YF/Futu/AKShare/Tushare/FMP/Finnhub/FRED/DBnomics/RBI/Search），全部仅远程 |
+| `backend/services/datasource/adapters/` | DataSourceInterface 适配器（Futu/YF/Finnhub/FMP/AKShare/FRED/DBnomics/RBI/Search 等），仅经 router HTTP 代理 |
+| `data_subservice/` | YF 辅节点 + Futu/FMP/Finnhub/FRED/DBnomics/RBI/Tushare/AKShare/Search 独立服务（持有全部外部连接层） |
 | `docker-compose.master.yml` / `yf-node.yml` / `slave.yml` | 五节点 Compose（见 docs/06 §八） |
 | `.github/workflows/backend.yml` | CI/CD → US-MASTER（矩阵扩 yf/slave） |
 
 ### 9.4 开发约束
 
-- **新增采集器**: 实现 `workers/collectors/<name>.py` 的 `async start()` → 在 `collector_registry.COLLECTORS` 注册 + `COLLECTOR_*` env；限流敏感源优先独立辅节点出口；**禁止**在 `start_collector_daemons` 内硬编码服务 import
+- **新增采集器**: 实现 `workers/collectors/<name>.py` 的 `async start()` → 在 `collector_registry.COLLECTORS` 注册；子服务经 `DS_CAPABILITIES` 声明能力响应请求，主服务默认全开数据源获取逻辑；限流敏感源优先独立辅节点出口；**禁止**在 `start_collector_daemons` 内硬编码服务 import
 - **YFinance**: 至少 2 个不同公网 IP 热流量（weight 对等）；429 不计熔断失败计数，failover 下一节点
-- **CN 节点**: 禁止启用 YF/Futu collector（仅跑 Tushare + AKShare 子服务）
+- **CN 节点**: 禁止声明 YF/Futu 能力（即 `DS_CAPABILITIES` 仅含 Tushare + AKShare 子服务）
 - **Redis 键空间**: `quant:cache:{action}:{ticker}`
 - **数据源注册**: 应用启动时由 `bootstrap/lifecycle.py` 调用 `ensure_all_datasources_registered()` 统一注册，Facade 经 Registry 选源
 

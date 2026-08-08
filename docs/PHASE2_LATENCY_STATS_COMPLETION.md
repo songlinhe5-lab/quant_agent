@@ -1,7 +1,7 @@
 # Phase 2: 延迟统计功能实施完成报告
 
-**实施日期**: 2026-08-04  
-**实施状态**: ✅ 已完成  
+**实施日期**: 2026-08-04
+**实施状态**: ✅ 已完成
 **提交哈希**: `63ff6dc`
 
 ---
@@ -66,11 +66,11 @@ async def get_latency_stats(self, source: str, date: Optional[str] = None) -> Di
     """获取指定日期的延迟统计信息"""
     # 读取所有延迟样本
     samples = await redis_client.lrange(key, 0, -1)
-    
+
     # 转换为浮点数并排序
     samples_float = sorted([float(s) for s in samples])
     n = len(samples_float)
-    
+
     # 计算分位数（线性插值）
     def percentile(data: list, p: float) -> float:
         k = (n - 1) * p
@@ -78,7 +78,7 @@ async def get_latency_stats(self, source: str, date: Optional[str] = None) -> Di
         c = f + 1 if f + 1 < n else f
         d = k - f
         return data[f] + d * (data[c] - data[f])
-    
+
     return {
         "avg_ms": sum(samples_float) / n,
         "p50_ms": percentile(samples_float, 0.50),
@@ -159,7 +159,7 @@ async def get_datasource_latency(name: str) -> Dict[str, Any]:
 async def _build_health_card(name: str) -> Dict[str, Any]:
     # 新增：获取 Redis 延迟统计
     latency_stats = await call_metrics.get_latency_stats(name)
-    
+
     return {
         # ... 其他字段 ...
         # 使用 Redis 延迟统计（P50/P95/P99），而非内存口径
@@ -183,8 +183,8 @@ async def _build_health_card(name: str) -> Dict[str, Any]:
 ```typescript
 <div className="text-sm font-medium text-foreground">
   {/* 当无延迟数据时显示 N/A，而非 0ms */}
-  {c.latency_ms != null && c.latency_ms > 0 
-    ? `${c.latency_ms.toFixed(0)} ms` 
+  {c.latency_ms != null && c.latency_ms > 0
+    ? `${c.latency_ms.toFixed(0)} ms`
     : 'N/A'}
 </div>
 ```
@@ -469,6 +469,6 @@ def percentile(data: list, p: float) -> float:
 
 ---
 
-**实施完成时间**: 2026-08-04  
-**实施人员**: AI Assistant  
+**实施完成时间**: 2026-08-04
+**实施人员**: AI Assistant
 **审核状态**: 待部署验证

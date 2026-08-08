@@ -166,7 +166,7 @@ git diff --cached --name-only --diff-filter=ACM | grep '\.py$'
 
 **说明**:
 - A = Added (新增)
-- C = Copied (复制)  
+- C = Copied (复制)
 - M = Modified (修改)
 
 只处理这些类型的文件，避免误删或重置已删除的文件。
@@ -209,7 +209,7 @@ W293  # Blank line trailing space
 第二阶段提示（人工确认）:
 ```bash
 E       # Error messages
-F       # Pyflakes errors  
+F       # Pyflakes errors
 C90     # Complexity warnings
 N       # Naming conventions
 ```
@@ -315,6 +315,6 @@ uv pip install --upgrade ruff
 
 ---
 
-**创建时间**: 2026-07-08  
-**最后更新**: 2026-07-08  
+**创建时间**: 2026-07-08
+**最后更新**: 2026-07-08
 **维护者**: VARB-2026-0708-001 Virtual Architecture Board

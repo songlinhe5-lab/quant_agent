@@ -24,14 +24,10 @@ class MarketDataGateway:
 
     def __init__(self) -> None:
         from backend.services.akshare import akshare_service
-        from backend.services.finnhub.service import finnhub_service
-        from backend.services.yfinance import yf_service
 
         # futu_service 延迟到首次使用时导入，避免主节点无 SDK 时启动崩溃
         self._futu = None
-        self._yf = yf_service
         self._ak = akshare_service
-        self._fh = finnhub_service
         # dbnomics/fred/rbi 经 services.macro 间接依赖 hermes_agent；若在 __init__
         # 同步 import，模块级 `market_data_gateway = MarketDataGateway()` 会触发
         # 循环导入 (legacy_market_data -> macro -> ai_narrator -> hermes -> legacy_market_data)。
@@ -80,13 +76,7 @@ class MarketDataGateway:
             ensure_yfinance_registered,
         )
 
-        ensure_yfinance_registered(self._yf)
-
-        from backend.services.datasource.adapters.finnhub import (
-            ensure_finnhub_registered,
-        )
-
-        ensure_finnhub_registered(self._fh)
+        ensure_yfinance_registered()
 
         from backend.services.datasource.adapters.fmp import (
             ensure_fmp_registered,
@@ -191,16 +181,18 @@ class MarketDataGateway:
                         return list(dates), "futu"
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"[MarketData] Futu 取到期日失败, 降级 YF: {e}")
-        # YFinance 降级 (零幻觉: 仅用真实行情数据)
+        # YFinance 降级（经子服务；后端不再本地跑 yfinance）
         try:
-            import yfinance as yf
+            from backend.services.datasource.router import data_source_router
 
-            tk = yf.Ticker(ticker)
-            opts = list(getattr(tk, "options", []) or [])
-            if opts:
-                return opts, "yfinance"
+            res = await data_source_router.fetch_yfinance(format_yf_ticker(ticker), "option_chain")
+            if res.get("success") or res.get("status") == "success":
+                data = res.get("data") or res
+                opts = list((data.get("expiration_dates") or data.get("options") or []) or [])
+                if isinstance(opts, list) and opts and isinstance(opts[0], str):
+                    return opts, "yfinance-subservice"
         except Exception as e:  # noqa: BLE001
-            logger.warning(f"[MarketData] YF 取到期日失败: {e}")
+            logger.warning(f"[MarketData] YF 子服务取到期日失败: {e}")
         return [], "none"
 
     async def get_option_chain_matrix(
@@ -309,67 +301,44 @@ class MarketDataGateway:
         return True
 
     async def _option_chain_yfinance(self, ticker: str, expiration_date: str) -> Optional[dict[str, Any]]:
-        import asyncio
-        from datetime import datetime
-
-        import yfinance as yf
+        """经 DataSourceRouter 向 US-YF-A/B 子服务拉期权链（后端不再本地跑 yfinance）。"""
+        from backend.services.datasource.router import data_source_router
 
         yf_ticker = format_yf_ticker(ticker)
+        try:
+            result = await data_source_router.fetch_yfinance(
+                yf_ticker,
+                "option_chain",
+                expiration=expiration_date if expiration_date else None,
+            )
+        except Exception as e:
+            return {"status": "error", "message": f"YF 子服务期权链失败: {e}"}
 
-        def fetch_yf_options() -> dict[str, Any]:
-            tk = yf.Ticker(yf_ticker)
-            dates = tk.options
-            if not dates:
-                return {
-                    "status": "error",
-                    "message": f"{yf_ticker} 没有可用的期权链数据",
-                }
-            target_date = expiration_date if expiration_date in dates else dates[0]
-            chain = tk.option_chain(target_date)
-            # 到期天数(供 Greeks 计算)
-            try:
-                dte = max((datetime.strptime(target_date, "%Y-%m-%d") - datetime.now()).days, 1)
-            except Exception:
-                dte = 30
-
-            def _norm(row, opt_type: str) -> dict[str, Any]:
-                strike = float(row.get("strike", 0.0) or 0.0)
-                last = float(row.get("lastPrice", 0.0) or 0.0)
-                iv = float(row.get("impliedVolatility", 0.0) or 0.0)
-                # 💡 归一化为引擎统一 schema:
-                # - strike 别名(strike_price 同时保留，向后兼容)
-                # - bid/ask 由 last_price 推导(供 compute_option_chain_greeks 反解 IV)
-                # - iv 别名(供 vol_smile_analysis 直接使用 YF 的 IV)
-                return {
-                    "option_code": str(row.get("contractSymbol", "")),
-                    "option_type": opt_type,
-                    "strike_price": strike,
-                    "strike": strike,
-                    "last_price": last,
-                    "bid": last,
-                    "ask": last,
-                    "implied_volatility": iv,
-                    "iv": iv,
-                    "days_to_expiry": dte,
-                }
-
-            compressed = [(_norm(row, "CALL")) for _, row in chain.calls.head(30).iterrows()]
-            compressed += [(_norm(row, "PUT")) for _, row in chain.puts.head(30).iterrows()]
-            # 💡 统一为顶层 options 结构(Futu 也是顶层)，避免 consumers 因 data.options 嵌套差异拿到空列表
+        if not result.get("success") and result.get("status") != "success":
             return {
-                "status": "success",
-                "options": compressed,
-                "expiration_date": target_date,
-                "source": "yfinance",
-                "count": len(compressed),
-                "ticker": yf_ticker,
-                "message": "yfinance 期权链(含 IV/定价字段)",
+                "status": "error",
+                "message": result.get("message", "YF 子服务未返回期权链"),
             }
 
-        try:
-            return await asyncio.to_thread(fetch_yf_options)
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
+        data = result.get("data") or result
+        # 子服务返回可能为 {options:[...]} 或 {calls:[...], puts:[...]}；
+        # 统一归一化为顶层 options 结构，兼容 consumer 期望。
+        options = data.get("options")
+        if options is None:
+            calls = data.get("calls", []) or []
+            puts = data.get("puts", []) or []
+            options = [{**c, "option_type": "CALL"} for c in calls[:30]] + [
+                {**p, "option_type": "PUT"} for p in puts[:30]
+            ]
+        return {
+            "status": "success",
+            "options": options,
+            "expiration_date": data.get("expiration_date", expiration_date),
+            "source": "yfinance-subservice",
+            "count": len(options),
+            "ticker": yf_ticker,
+            "message": "yfinance 期权链(含 IV/定价字段，经子服务)",
+        }
 
     # ── Futu 扩展 ──────────────────────────────────────────
 
@@ -431,13 +400,15 @@ class MarketDataGateway:
             "reachable": self.is_opend_reachable(),
         }
 
-    # ── YFinance ───────────────────────────────────────────
+    # ── YFinance（远程子服务，后端不再本地执行 yfinance）───────────
 
     async def get_tech_indicators(self, ticker: str, **kwargs: Any) -> Any:
-        return await self._yf.get_tech_indicators(ticker=ticker, **kwargs)
+        from backend.services.datasource.router import data_source_router
+
+        return await data_source_router.fetch_yfinance(format_yf_ticker(ticker), "tech")
 
     async def fetch_yf_data(self, ticker: str, req_type: str, **kwargs: Any) -> Any:
-        """YFinance 主路径：DataSourceRegistry.fetch → Interface。"""
+        """YFinance 主路径：DataSourceRegistry.fetch → Interface（远程子服务）。"""
         from backend.services.datasource import ResultStatus, datasource_registry
 
         result = await datasource_registry.fetch(
@@ -451,10 +422,21 @@ class MarketDataGateway:
         return False, None, msg
 
     async def get_batched_quote(self, ticker: str, **kwargs: Any) -> Any:
-        return await self._yf.get_batched_quote(ticker, **kwargs)
+        from backend.services.datasource.router import data_source_router
+
+        return await data_source_router.fetch_yfinance(format_yf_ticker(ticker), "quote")
 
     def yf_health_status(self) -> dict[str, Any]:
-        return self._yf.get_health_status()
+        from backend.services.datasource.registry import rate_limit_registry
+
+        throttler = rate_limit_registry.get_throttler("yfinance")
+        rl = throttler.get_status()
+        return {
+            "status": "remote",
+            "mode": "subservice",
+            "is_throttled": rl.is_throttled,
+            "note": "yfinance 流量已全量外移至 US-YF-A/B 子服务",
+        }
 
     # ── AKShare / Finnhub / FRED ────────────────────────────
 
@@ -503,7 +485,8 @@ class MarketDataGateway:
     async def get_company_news_fh(
         self, ticker: str, days_back: int = 3, skip_cache: bool = False, **kwargs: Any
     ) -> Any:
-        return await self._fh.get_company_news(ticker, days_back=days_back, skip_cache=skip_cache, **kwargs)
+        resp = await self._fetch_finnhub("company_news", ticker=ticker, days_back=days_back)
+        return resp
 
     async def get_earnings_calendar(
         self,
@@ -512,21 +495,24 @@ class MarketDataGateway:
         skip_cache: bool = False,
         **kwargs: Any,
     ) -> Any:
-        return await self._fh.get_earnings_calendar(
+        resp = await self._fetch_finnhub(
+            "earnings",
             days_ahead=days_ahead,
             days_back=days_back,
-            skip_cache=skip_cache,
-            **kwargs,
         )
+        return resp
 
     async def get_insider_transactions(self, ticker: str, limit: int = 30, **kwargs: Any) -> Any:
-        return await self._fh.get_insider_transactions(ticker, limit=limit, **kwargs)
+        resp = await self._fetch_finnhub("insider_trading", ticker=ticker, limit=limit)
+        return resp
 
     async def get_market_news(self, category: str = "general", **kwargs: Any) -> Any:
-        return await self._fh.get_market_news(category=category, **kwargs)
+        resp = await self._fetch_finnhub("market_news", category=category)
+        return resp
 
     async def get_stock_history_fh(self, ticker: str, days_back: int = 365, **kwargs: Any) -> Any:
-        return await self._fh.get_stock_history(ticker, days_back=days_back, **kwargs)
+        resp = await self._fetch_finnhub("stock_history", ticker=ticker, days_back=days_back)
+        return resp
 
     async def get_series_observations(self, series_id: str, limit: int = 5) -> Any:
         return await self.fred.get_series_observations(series_id, limit)
@@ -535,7 +521,18 @@ class MarketDataGateway:
         return await self.fred.get_economic_calendar(*args, **kwargs)
 
     async def get_economic_calendar_finnhub(self, *args: Any, **kwargs: Any) -> Any:
-        return await self._fh.get_economic_calendar(*args, **kwargs)
+        resp = await self._fetch_finnhub("economic_calendar", *args, **kwargs)
+        return resp
+
+    @staticmethod
+    async def _fetch_finnhub(action: str, *args: Any, **kwargs: Any) -> Any:
+        """经 DataSourceRouter 远程调用 finnhub 子服务，返回 data 载荷。"""
+        from backend.services.datasource.router import data_source_router
+
+        resp = await data_source_router.fetch_finnhub(action, *args, **kwargs)
+        if isinstance(resp, dict) and resp.get("status") == "success":
+            return resp.get("data")
+        return resp
 
     async def get_economic_calendar_dbnomics(self, *args: Any, **kwargs: Any) -> Any:
         return await self.dbnomics.get_economic_calendar(*args, **kwargs)

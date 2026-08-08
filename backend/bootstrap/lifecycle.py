@@ -106,7 +106,7 @@ async def app_lifespan(app: FastAPI):
 
     # 容灾包裹：防止外部 API 不通导致容器死循环无法启动
     # 注 (Phase 3, 2026-08-06)：主服务不再持有/启动 Futu OpenD 实例。
-    # OpenD 唯一运行在 data_subservice 节点（COLLECTOR_FUTU=true），
+    # OpenD 唯一运行在 data_subservice 节点（DS_CAPABILITIES=futu），
     # 主服务经 DataSourceRouter (DATASOURCE_FUTU_MODE=external) 走 HTTP 调子服务。
     try:
         # 3. Redis 连通性与系统通知测试
@@ -253,12 +253,9 @@ async def app_lifespan(app: FastAPI):
     try:
         from backend.workers.collectors.fmp import fmp_collector_daemon
 
-        COLLECTOR_FMP = os.getenv("COLLECTOR_FMP", "true").lower() == "true"
-        if COLLECTOR_FMP:
-            asyncio.create_task(fmp_collector_daemon())
-            log.info("✅ [Startup] FMP 盘后批量守护已启动（业务编排留主服务，REST 经子服务）")
-        else:
-            log.info("ℹ️ [Startup] COLLECTOR_FMP=false，跳过 FMP 守护")
+        # FMP 守护默认全开（数据源能力默认开启，失效在监控显示，不静默禁用）。
+        asyncio.create_task(fmp_collector_daemon())
+        log.info("✅ [Startup] FMP 盘后批量守护已启动（业务编排留主服务，REST 经子服务）")
     except Exception as e:
         log.warning(f"⚠️ [Startup] FMP 守护启动失败: {e}")
 
@@ -391,10 +388,8 @@ async def app_lifespan(app: FastAPI):
         log.warning(f"⚠️ 关闭 Redis 连接池异常: {e}")
 
     try:
-        # ARCH-03: 使用 async_close() 替代同步 close()
-        from backend.services.yfinance.service import yf_service
-
-        await yf_service.async_close()
+        # 注意：backend 不再本地运行 yfinance（已全量外移至 US-YF-A/B 子服务），
+        # 故无需在此 close 本地 yf_service。
 
         # FutuService 为同步 close()，包裹在 to_thread 避免阻塞事件循环
         from backend.services.futu import futu_service

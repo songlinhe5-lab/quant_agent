@@ -25,7 +25,7 @@ export function OrderPanel({ currentPrice, availableBalance, symbol, onSubmit }:
 
   const handleSliderChange = (value: number[]) => {
     setSliderValue(value)
-    const maxAmount = isBuy 
+    const maxAmount = isBuy
       ? availableBalance / parseFloat(price || "1")
       : availableBalance
     setAmount((maxAmount * value[0] / 100).toFixed(4))
@@ -50,8 +50,8 @@ export function OrderPanel({ currentPrice, availableBalance, symbol, onSubmit }:
           onClick={() => setSide("buy")}
           className={cn(
             "py-2 rounded-md text-sm font-medium transition-all duration-200",
-            side === "buy" 
-              ? "bg-emerald-400 text-emerald-950" 
+            side === "buy"
+              ? "bg-emerald-400 text-emerald-950"
               : "text-muted-foreground hover:text-foreground"
           )}
           title="买入"
@@ -63,8 +63,8 @@ export function OrderPanel({ currentPrice, availableBalance, symbol, onSubmit }:
           onClick={() => setSide("sell")}
           className={cn(
             "py-2 rounded-md text-sm font-medium transition-all duration-200",
-            side === "sell" 
-              ? "bg-red-400 text-red-950" 
+            side === "sell"
+              ? "bg-red-400 text-red-950"
               : "text-muted-foreground hover:text-foreground"
           )}
           title="卖出"
@@ -80,8 +80,8 @@ export function OrderPanel({ currentPrice, availableBalance, symbol, onSubmit }:
           onClick={() => setOrderType("limit")}
           className={cn(
             "px-3 py-1.5 rounded text-xs font-medium transition-colors",
-            orderType === "limit" 
-              ? "bg-accent text-foreground" 
+            orderType === "limit"
+              ? "bg-accent text-foreground"
               : "text-muted-foreground hover:text-foreground"
           )}
           title="限价单"
@@ -93,8 +93,8 @@ export function OrderPanel({ currentPrice, availableBalance, symbol, onSubmit }:
           onClick={() => setOrderType("market")}
           className={cn(
             "px-3 py-1.5 rounded text-xs font-medium transition-colors",
-            orderType === "market" 
-              ? "bg-accent text-foreground" 
+            orderType === "market"
+              ? "bg-accent text-foreground"
               : "text-muted-foreground hover:text-foreground"
           )}
           title="市价单"
@@ -180,8 +180,8 @@ export function OrderPanel({ currentPrice, availableBalance, symbol, onSubmit }:
         disabled={!amount || parseFloat(amount) <= 0}
         className={cn(
           "w-full font-semibold transition-all duration-200",
-          isBuy 
-            ? "bg-emerald-400 hover:bg-emerald-500 text-emerald-950" 
+          isBuy
+            ? "bg-emerald-400 hover:bg-emerald-500 text-emerald-950"
             : "bg-red-400 hover:bg-red-500 text-red-950"
         )}
         title={isBuy ? `买入 ${symbol}` : `卖出 ${symbol}`}

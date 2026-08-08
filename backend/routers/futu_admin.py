@@ -7,6 +7,7 @@ Futu 数据源管理 API
 """
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -48,7 +49,7 @@ async def diagnose_futu_chain(ticker: str = "HK.00700"):
     """诊断 Futu 数据源全链路 — 定位 OpenD 连接状态"""
     import traceback
 
-    diag = {"steps": [], "router_state": {}}
+    diag: dict[str, Any] = {"steps": [], "router_state": {}}
 
     # Step 0: SourceRouter 内部状态
     router_obj = market_data.source_router

@@ -135,8 +135,8 @@ ENV LIBRARY_PATH=/usr/lib/ta-lib
 RUN pip install --no-cache-dir ta-lib-python
 ```
 
-**构建耗时**: ~8 分钟 (纯编译时间)  
-**镜像体积**: +12MB vs Pandas 版 (~5MB)  
+**构建耗时**: ~8 分钟 (纯编译时间)
+**镜像体积**: +12MB vs Pandas 版 (~5MB)
 
 ---
 
@@ -156,7 +156,7 @@ RUN pip install --no-cache-dir ta-lib-python
 
 ### 案例：某量化基金 3 个月 TA-Lib 迁移失败
 
-**背景**: 
+**背景**:
 - 原系统：Pandas 实现技术指标
 - 目标：切换到 TA-Lib 提升回测性能
 
@@ -173,7 +173,7 @@ RUN pip install --no-cache-dir ta-lib-python
 > - TA-Lib 性能提升仅 1.9 倍，但我们的回测框架本身瓶颈是 I/O，不是 CPU
 > - 节省的时间 ≈ 回测从 120 分钟→63 分钟，对实际业务影响微乎其微
 > - 但部署复杂度、跨平台支持、调试难度呈指数上升
-> 
+>
 > **建议**: 除非你有专门的 DevOps 团队维护 TA-Lib 依赖，否则不要引入"
 
 

@@ -7,9 +7,10 @@ Futu DataSource Adapter（BE-ARCH-05 / BE-ARCH-07）
 
 数据流（唯一路径）：
   FutuDataSource.fetch() → data_source_router.fetch_futu() → HTTP → data_subservice
-  data_source_router 内部负责 action 映射、HMAC 签名、节点健康感知与本地 SDK 降级兜底。
+  data_source_router 内部负责 action 映射、HMAC 签名、节点健康感知。
+  设计原则 (2026-08-07): 仅远程，无本地 SDK 降级通道。
 
-节点约束：Futu OpenD 仅部署在 US-MASTER 主节点，由 data_subservice (COLLECTOR_FUTU=true)
+节点约束：Futu OpenD 仅部署在 US-MASTER 主节点，由 data_subservice (DS_CAPABILITIES=futu)
 持有长连接。主服务不持有 SDK，所有 futu 访问经 HTTP 代理。
 
 状态感知：
@@ -20,7 +21,7 @@ Futu DataSource Adapter（BE-ARCH-05 / BE-ARCH-07）
 from __future__ import annotations
 
 import time
-from typing import Any, Optional
+from typing import Any
 
 from backend.services.datasource import (
     ErrorInfo,
@@ -34,7 +35,7 @@ class FutuDataSource:
     """Futu → DataSourceInterface 适配。
 
     所有数据请求经 data_source_router.fetch_futu()（HTTP → data_subservice），
-    不直连本地 futu_service。router 内部保留本地 SDK 降级兜底（Phase 3 兼容）。
+    不直连本地 futu_service。仅远程，无本地 SDK 降级。
     """
 
     def __init__(self) -> None:

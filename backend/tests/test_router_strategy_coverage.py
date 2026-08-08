@@ -151,7 +151,9 @@ async def test_fetch_backtest_snapshot_hit(test_client):
         inst = SR.return_value
         inst.resolve_snapshot_id = AsyncMock(return_value="snap123")
         inst.get_history = AsyncMock(return_value=df_in.copy())
-        ok, df, msg = await strategy_sandbox_router._fetch_backtest_data("US.AAPL", "1y", "snapshot", "1d", snapshot_id="snap1")
+        ok, df, msg = await strategy_sandbox_router._fetch_backtest_data(
+            "US.AAPL", "1y", "snapshot", "1d", snapshot_id="snap1"
+        )
         assert ok is True
         assert isinstance(df, pd.DataFrame)
         assert list(df.columns) == ["Open", "High", "Low", "Close", "Volume"]
@@ -159,7 +161,9 @@ async def test_fetch_backtest_snapshot_hit(test_client):
 
 @pytest.mark.asyncio
 async def test_fetch_backtest_live_forbidden(test_client):
-    ok, df, msg = await strategy_sandbox_router._fetch_backtest_data("US.AAPL", "1y", "snapshot", "1d", snapshot_id="live")
+    ok, df, msg = await strategy_sandbox_router._fetch_backtest_data(
+        "US.AAPL", "1y", "snapshot", "1d", snapshot_id="live"
+    )
     assert ok is False
     assert "LIVE_FORBIDDEN" in msg  # 433-434
 
@@ -351,7 +355,9 @@ async def test_optimize_sandbox_success(test_client):
         md.get_stock_history_ak = AsyncMock(return_value={"status": "error"})
         md.get_stock_history_fh = AsyncMock(return_value={"status": "error"})
         md.fetch_yf_data = AsyncMock(return_value=(False, None, "nope"))
-        with patch.object(strategy_sandbox_router, "_fetch_backtest_data", new=AsyncMock(return_value=(True, ok_df, "ok"))):
+        with patch.object(
+            strategy_sandbox_router, "_fetch_backtest_data", new=AsyncMock(return_value=(True, ok_df, "ok"))
+        ):
             resp = test_client.post(
                 "/api/v1/strategy/optimize-sandbox",
                 json={
@@ -371,7 +377,9 @@ async def test_optimize_sandbox_crash(test_client):
         patch.object(strategy_sandbox_router, "run_cpu_bound", new=AsyncMock(side_effect=RuntimeError("boom"))),
         patch.object(strategy_sandbox_router, "redis_client", _FakeRedis()),
     ):
-        with patch.object(strategy_sandbox_router, "_fetch_backtest_data", new=AsyncMock(return_value=(True, ok_df, "ok"))):
+        with patch.object(
+            strategy_sandbox_router, "_fetch_backtest_data", new=AsyncMock(return_value=(True, ok_df, "ok"))
+        ):
             resp = test_client.post(
                 "/api/v1/strategy/optimize-sandbox",
                 json={
@@ -412,7 +420,9 @@ async def test_monte_carlo_sandbox_module_inject(test_client):
         patch.object(strategy_sandbox_router, "redis_client", _FakeRedis()),
     ):
         md.fetch_yf_data = AsyncMock(return_value=(True, {"marketCap": 1, "beta": 2}, "ok"))
-        with patch.object(strategy_sandbox_router, "_fetch_backtest_data", new=AsyncMock(return_value=(True, ok_df, "ok"))):
+        with patch.object(
+            strategy_sandbox_router, "_fetch_backtest_data", new=AsyncMock(return_value=(True, ok_df, "ok"))
+        ):
             resp = test_client.post(
                 "/api/v1/strategy/monte-carlo-sandbox",
                 json={"source_code": "x=1", "class_name": "C", "params": {}},
@@ -432,7 +442,9 @@ async def test_monte_carlo_sandbox_crash(test_client):
         patch.object(strategy_sandbox_router, "redis_client", _FakeRedis()),
     ):
         md.fetch_yf_data = AsyncMock(return_value=(False, None, "nope"))
-        with patch.object(strategy_sandbox_router, "_fetch_backtest_data", new=AsyncMock(return_value=(True, ok_df, "ok"))):
+        with patch.object(
+            strategy_sandbox_router, "_fetch_backtest_data", new=AsyncMock(return_value=(True, ok_df, "ok"))
+        ):
             resp = test_client.post(
                 "/api/v1/strategy/monte-carlo-sandbox",
                 json={"source_code": "x=1", "class_name": "C", "params": {}},
@@ -467,7 +479,9 @@ async def test_run_sandbox_snapshot_resolve_and_persist(test_client):
         svc_inst = BRS.return_value
         svc_inst.save = MagicMock(return_value=MagicMock(run_id="run_xyz"))
         svc_inst.to_public_dict = MagicMock(return_value={"badge": "G"})
-        with patch.object(strategy_sandbox_router, "_fetch_backtest_data", new=AsyncMock(return_value=(True, ok_df, "ok"))):
+        with patch.object(
+            strategy_sandbox_router, "_fetch_backtest_data", new=AsyncMock(return_value=(True, ok_df, "ok"))
+        ):
             resp = test_client.post(
                 "/api/v1/strategy/run-sandbox",
                 json={

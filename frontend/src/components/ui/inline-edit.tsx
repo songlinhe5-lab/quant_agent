@@ -14,15 +14,15 @@ export interface InlineEditProps {
   suffix?: React.ReactNode // 可选的后缀，如 "%" 或 "$"
 }
 
-export function InlineEdit({ 
-  value, 
-  onSave, 
-  placeholder = '-', 
-  className, 
-  inputClassName, 
+export function InlineEdit({
+  value,
+  onSave,
+  placeholder = '-',
+  className,
+  inputClassName,
   type = 'text',
   validate,
-  suffix 
+  suffix
 }: InlineEditProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [currentValue, setCurrentValue] = useState(value)
@@ -137,9 +137,9 @@ export function InlineEdit({
     >
       {value !== '' && value !== null && value !== undefined ? value : <span className="text-muted-foreground opacity-50">{placeholder}</span>}
       {suffix && <span>{suffix}</span>}
-      
+
       {/* 💡 移动端交互：单独包装一层 span 增加防抖热区(Padding)，并在手机端默认半透明可见 */}
-      <span 
+      <span
         onClick={(e) => { e.stopPropagation(); setIsEditing(true) }}
         className="cursor-pointer p-1.5 -mx-1 -my-1 rounded-sm hover:bg-foreground/5 active:bg-foreground/10"
       >

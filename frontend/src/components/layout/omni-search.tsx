@@ -19,7 +19,7 @@ export const OmniSearch: React.FC<OmniSearchProps> = ({ onSelect }) => {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
-  
+
   const containerRef = useRef<HTMLDivElement>(null);
 
   // 1. 处理防抖逻辑 (Debounce)
@@ -45,7 +45,7 @@ export const OmniSearch: React.FC<OmniSearchProps> = ({ onSelect }) => {
       try {
         // apiClient.get 签名: get(path, params) — 直接传 params 对象
         const response = await apiClient.get('/market/search', { q: debouncedQuery });
-        
+
         // apiClient 返回的是 response.data 包装后的结果
         if (response && response.status === 'success') {
           setResults(response.data || []);
@@ -130,13 +130,13 @@ export const OmniSearch: React.FC<OmniSearchProps> = ({ onSelect }) => {
           ) : results.length > 0 ? (
             <ul className="max-h-[300px] overflow-y-auto py-2 custom-scrollbar">
               {results.map((item, index) => (
-                <li 
+                <li
                   key={`${item.symbol}-${index}`}
                   className="px-4 py-3 hover:bg-slate-100 dark:hover:bg-slate-800/50 cursor-pointer flex items-center justify-between group transition-colors"
                   onClick={() => {
                     setIsOpen(false);
                     setQuery(item.symbol);
-                    
+
                     if (onSelect) {
                       onSelect(item.symbol, item.name, item.type);
                     }

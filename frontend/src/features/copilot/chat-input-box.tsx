@@ -8,7 +8,7 @@ import { ChatAttachment } from './types'
 export function ChatInputBox() {
   const { isGenerating } = useContext(ChatMessagesContext)
   const { handleSend, handleStop, handleNewChat, inputSetterRef } = useContext(ChatActionContext)
-  
+
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<ChatAttachment[]>([])
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
@@ -50,8 +50,8 @@ export function ChatInputBox() {
     const cursor = e.target.selectionStart
     const textBeforeCursor = val.substring(0, cursor)
     const match = textBeforeCursor.match(/(?:^|\s)@([a-zA-Z0-9.]*)$/)
-    
-    if (match) { setMentionQuery(match[1]); setMentionIndex(0) } 
+
+    if (match) { setMentionQuery(match[1]); setMentionIndex(0) }
     else setMentionQuery(null)
   }
 
@@ -104,7 +104,7 @@ export function ChatInputBox() {
       }))).then(results => setAttachments(prev => [...prev, ...results]))
     }
   }
-  
+
   // 💡 原生拖拽事件处理
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
@@ -161,7 +161,7 @@ export function ChatInputBox() {
   }
 
   return (
-        <div 
+        <div
           className={cn(
             "p-4 border-t border-border/40 shrink-0 bg-slate-100/50 dark:bg-black/20 transition-all relative",
             isDragging && "bg-indigo-50/50 dark:bg-indigo-500/10"
@@ -189,7 +189,7 @@ export function ChatInputBox() {
                 </div>
                 <div className="max-h-48 overflow-y-auto custom-scrollbar p-1">
                   {SUGGEST_STOCKS.filter(s => s.symbol.toLowerCase().includes(mentionQuery.toLowerCase()) || s.name.includes(mentionQuery)).map((s, i) => (
-                    <button 
+                    <button
                       key={s.symbol}
                       className={cn("w-full text-left px-3 py-2 flex items-center justify-between text-xs rounded-lg transition-colors", i === mentionIndex ? "bg-primary/10 text-primary font-bold" : "hover:bg-secondary/50 text-foreground font-medium")}
                       onClick={() => insertMention(s.symbol)}
@@ -218,7 +218,7 @@ export function ChatInputBox() {
                       </div>
                     )}
                     <span className="text-[10px] max-w-[120px] truncate text-slate-700 dark:text-slate-300 font-medium">{att.name}</span>
-                    <button 
+                    <button
                       onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))}
                       className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                       title="移除附件"
@@ -229,44 +229,44 @@ export function ChatInputBox() {
                 ))}
               </div>
             )}
-            
+
             <div className="flex items-end gap-2">
-              <input 
-                type="file" 
-                multiple 
+              <input
+                type="file"
+                multiple
                 accept="image/*,application/pdf"
-                className="hidden" 
+                className="hidden"
                 ref={fileInputRef}
                 onChange={handleFileChange}
               />
-              
-              <button 
+
+              <button
                 onClick={handleNewChat}
-                className="h-10 w-10 shrink-0 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-500 dark:hover:text-red-400 flex items-center justify-center transition-all mb-0.5" 
+                className="h-10 w-10 shrink-0 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-500 dark:hover:text-red-400 flex items-center justify-center transition-all mb-0.5"
                 title="清空上下文 (新推演)"
               >
                 <Trash2 className="h-4 w-4" />
               </button>
 
-              <button 
+              <button
                 onClick={() => fileInputRef.current?.click()}
-                className="h-10 w-10 shrink-0 rounded-lg hover:bg-secondary/80 text-muted-foreground flex items-center justify-center transition-all mb-0.5" 
+                className="h-10 w-10 shrink-0 rounded-lg hover:bg-secondary/80 text-muted-foreground flex items-center justify-center transition-all mb-0.5"
                 title="上传图片或PDF附件"
               >
                 <Paperclip className="h-4 w-4" />
               </button>
-              
-              <textarea 
+
+              <textarea
                 ref={textareaRef}
-                value={input} 
-                onChange={handleInputChange} 
-                onKeyDown={handleKeyDown} 
+                value={input}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
-                placeholder="输入投研指令，或粘贴图片/PDF，例如：分析 AAPL 的近期新闻..." 
-                className="w-full max-h-32 min-h-[44px] bg-transparent text-sm text-slate-900 dark:text-gray-200 placeholder:text-slate-400 dark:placeholder:text-gray-600 resize-none outline-none px-2 py-3 custom-scrollbar font-mono" 
-                rows={1} 
+                placeholder="输入投研指令，或粘贴图片/PDF，例如：分析 AAPL 的近期新闻..."
+                className="w-full max-h-32 min-h-[44px] bg-transparent text-sm text-slate-900 dark:text-gray-200 placeholder:text-slate-400 dark:placeholder:text-gray-600 resize-none outline-none px-2 py-3 custom-scrollbar font-mono"
+                rows={1}
               />
-              
+
               {isGenerating ? (
                 <button onClick={handleStop} className="h-10 w-10 shrink-0 rounded-lg bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-all shadow-[0_0_10px_rgba(239,68,68,0.3)] mb-0.5 mr-0.5" title="停止生成">
                   <Square className="h-4 w-4 fill-current" />

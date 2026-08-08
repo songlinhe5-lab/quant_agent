@@ -36,7 +36,7 @@ export function OmsConsole({
       "absolute bottom-0 left-0 right-0 glass-card border-t border-border/50 shadow-2xl transition-all duration-300 flex flex-col z-50",
       isConsoleOpen ? "h-[350px] translate-y-0" : "h-[40px] translate-y-[calc(100%-40px)]"
     )}>
-      <div 
+      <div
         className="h-[40px] px-4 flex items-center justify-between cursor-pointer bg-secondary/30 hover:bg-secondary/50 transition-colors shrink-0"
         onClick={() => setIsConsoleOpen(!isConsoleOpen)}
       >
@@ -100,16 +100,16 @@ export function OmsConsole({
                       <td className="px-4 py-2 text-right">{order.qty}</td>
                       <td className="px-4 py-2 text-right">{order.filled}</td>
                       <td className="px-4 py-2 text-center">
-                        <span className={cn("text-[10px] px-2 py-0.5 rounded-full border", 
-                          order.status === 'PENDING' ? 'border-amber-500/30 text-amber-500' : 
-                          order.status === 'PARTIALLY_FILLED' ? 'border-sky-500/30 text-sky-500' : 
+                        <span className={cn("text-[10px] px-2 py-0.5 rounded-full border",
+                          order.status === 'PENDING' ? 'border-amber-500/30 text-amber-500' :
+                          order.status === 'PARTIALLY_FILLED' ? 'border-sky-500/30 text-sky-500' :
                           'border-slate-500/30 text-slate-500'
                         )}>
                           {order.status}
                         </span>
                       </td>
                       <td className="px-4 py-2 text-center">
-                        <button 
+                        <button
                           onClick={(e) => { e.stopPropagation(); onCancelOrder(order.id); }}
                           disabled={cancelingOrders.has(order.id)}
                           className="text-[10px] text-red-500 hover:text-red-400 hover:underline disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"

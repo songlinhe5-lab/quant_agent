@@ -6,27 +6,23 @@ Market Fundamental 路由 — 个股基本面、新闻、事件、持仓与内�
 
 import asyncio
 import json
-import os
 import random
 import re
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 
-from backend.core.logger import logger
 from backend.core.redis_client import redis_client
 from backend.core.ticker_format import format_yf_ticker
 
 # Legacy OpenD 健康探测（仅用于 fundamental 端点的 FRED 路由）
 from backend.services.adapters.legacy_market_data import market_data_gateway
-from backend.services.datasource import ResultStatus
 from backend.services.datasource.business import data_service
 
 router = APIRouter(prefix="/market", tags=["Market & Portfolio"])
 
 # 全局异步锁池，防止新闻接口缓存击穿 (Cache Stampede)
-_news_locks = {}
+_news_locks: dict[str, asyncio.Lock] = {}
 
 
 # ─────────────────────────────────────────────

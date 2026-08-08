@@ -21,7 +21,7 @@ function ScreenerApp() {
         {showRagDict && <RagDictionaryPanel onClose={() => setShowRagDict(false)} />}
         {previewData && <ChartPreviewModal symbol={previewData.symbol} price={previewData.price} change={previewData.change} onClose={() => setPreviewData(null)} />}
         {showBacktest && selected.length > 0 && <PortfolioBacktestDialog symbols={selected} onClose={() => setShowBacktest(false)} />}
-        
+
         <ScreenerHeader />
         <ScreenerQueryPanel />
 

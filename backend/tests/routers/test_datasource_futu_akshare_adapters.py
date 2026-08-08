@@ -16,7 +16,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.services.datasource import Result
 from backend.services.datasource.adapters.akshare import (
     AKShareDataSource,
     ensure_akshare_registered,
@@ -122,57 +121,73 @@ class TestFutuAdapter:
 # ─────────────────────────────────────────
 
 
-def _mock_akshare(status: str = "healthy", open_cb: bool = False):
-    svc = MagicMock()
-    svc.get_health_status = MagicMock(return_value={"status": status, "mode": "direct", "message": "ok"})
-    cb_state = MagicMock()
-    cb_state.value = "open" if open_cb else "closed"
-    svc.cb = MagicMock()
-    svc.cb.get_state = MagicMock(return_value=cb_state)
-    svc.get_southbound_flow = AsyncMock(return_value={"status": "success", "data": {"net_inflow": 12.8}})
-    svc.get_northbound_flow = AsyncMock(return_value={"status": "success", "data": {"net_inflow": -5.3}})
-    svc.get_hk_stock_connect_flow = AsyncMock(return_value={"status": "success", "data": {"channels": []}})
-    svc.get_economic_calendar = AsyncMock(return_value={"status": "success", "data": [{"event": "FOMC"}]})
-    return svc
+def _patch_akshare_node(monkeypatch, status: str = "healthy"):
+    from backend.services.datasource.router import data_source_router
+
+    node = MagicMock()
+    node.status = status
+    node.url = "http://bj:8001"
+    node.error_count = 0
+    monkeypatch.setitem(data_source_router._nodes, "akshare_remote", node)
+
+
+def _patch_fetch_akshare(monkeypatch, return_value):
+    from backend.services.datasource.router import data_source_router
+
+    fetch = AsyncMock(return_value=return_value)
+    monkeypatch.setattr(data_source_router, "fetch_akshare", fetch)
+    return fetch
 
 
 class TestAKShareAdapter:
-    def test_protocol_attributes(self):
-        a = AKShareDataSource(service=_mock_akshare())
+    def test_protocol_attributes(self, monkeypatch):
+        _patch_akshare_node(monkeypatch)
+        a = AKShareDataSource()
         assert a.name == "akshare"
         assert "FUND_FLOW" in a.capabilities
         assert "ECONOMIC_CALENDAR" in a.capabilities
         assert a.is_available()
 
-    def test_is_available_when_circuit_open(self):
-        a = AKShareDataSource(service=_mock_akshare(status="circuit_open"))
-        assert not a.is_available()
-
-    def test_health_healthy(self):
-        info = asyncio.run(AKShareDataSource(service=_mock_akshare()).health())
+    def test_health_healthy(self, monkeypatch):
+        _patch_akshare_node(monkeypatch, status="healthy")
+        info = asyncio.run(AKShareDataSource().health())
         assert info.connected and info.healthy
 
-    def test_health_throttled_reflected(self):
-        info = asyncio.run(AKShareDataSource(service=_mock_akshare(open_cb=True)).health())
-        assert info.rate_limit_status.is_throttled
+    def test_health_node_missing(self, monkeypatch):
+        from backend.services.datasource.router import data_source_router
 
-    def test_fetch_fund_flow_southbound(self):
-        a = AKShareDataSource(service=_mock_akshare())
-        res = asyncio.run(a.fetch("FUND_FLOW", {"direction": "southbound"}))
+        monkeypatch.setattr(data_source_router, "_nodes", {})
+        info = asyncio.run(AKShareDataSource().health())
+        assert not info.connected
+        assert info.last_error == "akshare_remote 节点未配置"
+
+    def test_fetch_fund_flow_success(self, monkeypatch):
+        _patch_akshare_node(monkeypatch)
+        fetch = _patch_fetch_akshare(monkeypatch, {"status": "success", "data": {"net_inflow": 12.8}})
+        res = asyncio.run(AKShareDataSource().fetch("FUND_FLOW", {"direction": "southbound"}))
         assert res.is_success
         assert res.data == {"net_inflow": 12.8}
+        assert fetch.call_args.args[0] == "FUND_FLOW"
 
-    def test_fetch_economic_calendar(self):
-        a = AKShareDataSource(service=_mock_akshare())
-        res = asyncio.run(a.fetch("ECONOMIC_CALENDAR", {"days_ahead": 7}))
+    def test_fetch_economic_calendar_success(self, monkeypatch):
+        _patch_akshare_node(monkeypatch)
+        _patch_fetch_akshare(monkeypatch, {"status": "success", "data": [{"event": "FOMC"}]})
+        res = asyncio.run(AKShareDataSource().fetch("ECONOMIC_CALENDAR", {"days_ahead": 7}))
         assert res.is_success
         assert res.data == [{"event": "FOMC"}]
 
-    def test_fetch_unsupported_action(self):
-        a = AKShareDataSource(service=_mock_akshare())
-        res = asyncio.run(a.fetch("QUOTE", {}))
+    def test_fetch_unsupported_action(self, monkeypatch):
+        _patch_akshare_node(monkeypatch)
+        res = asyncio.run(AKShareDataSource().fetch("QUOTE", {}))
         assert not res.is_success
         assert res.error.code == "UNSUPPORTED_ACTION"
+
+    def test_fetch_remote_error(self, monkeypatch):
+        _patch_akshare_node(monkeypatch)
+        _patch_fetch_akshare(monkeypatch, {"status": "error", "message": "boom"})
+        res = asyncio.run(AKShareDataSource().fetch("FUND_FLOW", {}))
+        assert not res.is_success
+        assert res.error.code == "AKSHARE_FETCH_FAILED"
 
 
 # ─────────────────────────────────────────

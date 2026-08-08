@@ -17,7 +17,7 @@ export function FlowItem({ item, onClick }: { item: CapitalFlowItem; onClick?: (
     if (item.amount !== prev.current) {
       setFlash(null)
       if (flashTimer.current) clearTimeout(flashTimer.current)
-      
+
       const direction = item.amount > prev.current ? 'up' : 'down'
       prev.current = item.amount
 
@@ -137,11 +137,11 @@ export function CapitalFlowPanel({ data }: { data?: CapitalFlowItem[] }) {
   useEffect(() => {
     const i = setInterval(() => {
       if (document.hidden) return;
-      setFlows(p => p.map(it => { 
+      setFlows(p => p.map(it => {
         const realFlows = ['港股南向', 'A股核心', '美股大盘', '美股科技', '半导体', '美债避险', '中概互联']
         if (realFlows.includes(it.label)) return it;
-        const j = (Math.random() - 0.48) * Math.abs(it.amount) * 0.02; 
-        return { ...it, amount: +(it.amount + j).toFixed(1), dir: (it.amount + j) >= 0 ? 1 : -1 } 
+        const j = (Math.random() - 0.48) * Math.abs(it.amount) * 0.02;
+        return { ...it, amount: +(it.amount + j).toFixed(1), dir: (it.amount + j) >= 0 ? 1 : -1 }
       }))
     }, 2500 + Math.random() * 1500)
     return () => clearInterval(i)

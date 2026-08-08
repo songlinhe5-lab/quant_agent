@@ -23,13 +23,13 @@ export function useStrategySandbox() {
     store.setSandboxProgress(0)
     store.setSandboxStage('')
     store.setWorkspaceTab('report') // 自动跳转到报告 Tab
-    
+
     // 清洗参数：网格语法降级为单次探测
     const sanitizedParams = { ...data }
     store.formSchema.find(s => s.class_name === className)?.parameters.forEach((p: any) => {
       let val = sanitizedParams[p.name];
       if (val === '' || val === undefined || val === null) val = p.default;
-      
+
       if ((p.type === 'int' || p.type === 'float') && typeof val === 'string') {
         const firstNumStr = val.split(/[:,]/)[0]
         const parsed = p.type === 'int' ? parseInt(firstNumStr) : parseFloat(firstNumStr);
@@ -38,10 +38,10 @@ export function useStrategySandbox() {
         sanitizedParams[p.name] = val;
       }
     });
-    
+
     store.setLastUsedClassName(className)
     store.setLastUsedParams(sanitizedParams)
-    
+
     try {
       // STRAT-05: 使用 runStream (SSE 真实进度 + AbortController + 竞态取消)
       const result = await runSandboxStream(
@@ -96,15 +96,15 @@ export function useStrategySandbox() {
     store.setOptimizedClassName(className)
     store.setRuntimeError(null)
     store.setWorkspaceTab('report') // 自动跳转到报告 Tab
-    
+
     const paramGrid: Record<string, any[]> = {};
     const currentSchema = store.formSchema.find(s => s.class_name === className);
-    
+
     if (currentSchema) {
       currentSchema.parameters.forEach((p: any) => {
         let val = data[p.name];
         if (val === '' || val === undefined || val === null) val = p.default;
-        
+
         if (p.type === 'bool') {
             paramGrid[p.name] = [true, false];
         } else if (p.options && Array.isArray(p.options)) {
@@ -205,12 +205,12 @@ export function useStrategySandbox() {
   // 💡 实盘一键部署引擎
   const handleDeployToOMS = async (className: string, data: Record<string, any>) => {
     toast({ title: '🚀 部署初始化', description: `正在将 ${className} 编译并持久化至底层 OMS 引擎...` })
-    
+
     const sanitizedParams = { ...data }
     store.formSchema.find(s => s.class_name === className)?.parameters.forEach((p: any) => {
       let val = sanitizedParams[p.name];
       if (val === '' || val === undefined || val === null) val = p.default;
-      
+
       if ((p.type === 'int' || p.type === 'float') && typeof val === 'string') {
         const firstNumStr = val.split(/[:,]/)[0]
         const parsed = p.type === 'int' ? parseInt(firstNumStr) : parseFloat(firstNumStr);

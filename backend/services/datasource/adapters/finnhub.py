@@ -1,17 +1,19 @@
 """
 Finnhub DataSource Adapter（BE-ARCH-05）
 
-将现有 FinnhubService 适配为 DataSourceInterface，供 DataSourceRegistry.fetch 主路径调用。
+将 Finnhub 数据源适配为 DataSourceInterface，供 DataSourceRegistry.fetch 主路径调用。
 对齐 docs/14 §10 零侵入扩展规范：业务代码经 Registry.fetch，禁止直连 FinnhubService。
 
-限流说明：FinnhubService 各方法内部已接入 rate_limit_registry（SVC-08），
-在 429/403 → on_rate_limit、成功 → on_success。本适配器返回 Result 时仅做语义化
-转换，限流退避的真实状态以 throttler 为准（避免重复计数）。
+设计原则 (2026-08-07): 仅远程。Finnhub 连接层（REST + WS tick 订阅）已下沉
+data_subservice（_internal/finnhub + finnhub_worker.py）。主服务不持有 FinnhubService /
+WS 订阅，quote 走 REST 快照。本适配器经 data_source_router 远程调用，无本地 SDK 兜底。
+
+限流说明：限流退避状态由 data_subservice 统一处理，本适配器仅做 Result 语义化转换，
+以 router 节点健康与 throttler 为准（避免重复计数）。
 """
 
 from __future__ import annotations
 
-import os
 import time
 from typing import Any, Optional
 
@@ -22,41 +24,13 @@ from backend.services.datasource import (
     RateLimitStatus,
     Result,
 )
-from backend.services.datasource.subscription import subscription_service
-
-
-def _extract_ws_price(tick: dict[str, Any]) -> Optional[float]:
-    """从 Finnhub WS tick（trade/quote 原始消息）容错提取最新价。"""
-    mtype = tick.get("type")
-    if mtype == "trade":
-        rows = tick.get("data") or []
-        if rows and isinstance(rows[0], dict) and rows[0].get("p") is not None:
-            return float(rows[0]["p"])
-    if mtype == "quote":
-        if tick.get("dp") is not None:
-            return float(tick["dp"])
-    for k in ("p", "dp", "c", "price"):
-        if tick.get(k) is not None:
-            try:
-                return float(tick[k])
-            except (TypeError, ValueError):
-                continue
-    return None
 
 
 class FinnhubDataSource:
-    """FinnhubService → DataSourceInterface 薄适配。"""
+    """Finnhub 远程适配器：经 data_source_router.fetch_finnhub() 调用 data_subservice。"""
 
-    def __init__(self, service: Any = None) -> None:
-        self._service = service
+    def __init__(self) -> None:
         self._started_at = time.monotonic()
-
-    def _svc(self) -> Any:
-        if self._service is None:
-            from backend.services.finnhub.service import finnhub_service
-
-            self._service = finnhub_service
-        return self._service
 
     @property
     def name(self) -> str:
@@ -64,7 +38,7 @@ class FinnhubDataSource:
 
     @property
     def version(self) -> str:
-        return "1.0.0"
+        return "2.0.0"
 
     @property
     def capabilities(self) -> list[str]:
@@ -80,45 +54,42 @@ class FinnhubDataSource:
 
     @property
     def mode(self) -> str:
-        return os.getenv("DATASOURCE_FINNHUB_MODE", "internal")
+        return "remote"
+
+    def _get_finnhub_node(self) -> Any:
+        from backend.services.datasource.router import data_source_router
+
+        return data_source_router._nodes.get("finnhub_master")
 
     def is_available(self) -> bool:
-        # 模块可加载即视为可用；缺 API Key 由 fetch 返回不可重试错误
-        try:
-            self._svc()
-            return True
-        except Exception:  # noqa: BLE001
-            return False
+        return self._get_finnhub_node() is not None
 
     async def health(self) -> HealthInfo:
-        from backend.services.datasource.registry import rate_limit_registry
-
-        throttler = rate_limit_registry.get_throttler(self.name)
-        rl = throttler.get_status()
-        api_key = self._svc()._get_api_key()
-        healthy = bool(api_key) and not rl.is_throttled
-        last_error = None
-        if not api_key:
-            last_error = "FINNHUB_API_KEY 未配置"
-        elif rl.is_throttled:
-            last_error = "Finnhub 处于限流退避期"
+        node = self._get_finnhub_node()
+        if node is None:
+            return HealthInfo(
+                healthy=False,
+                mode="remote",
+                connected=False,
+                uptime_seconds=time.monotonic() - self._started_at,
+                last_error="finnhub_master 节点未配置",
+                stats={"capabilities": self.capabilities},
+                rate_limit_status=RateLimitStatus(),
+            )
+        connected = node.status == "healthy"
         return HealthInfo(
-            healthy=healthy,
-            mode=self.mode,
-            connected=bool(api_key),
+            healthy=connected,
+            mode="remote",
+            connected=connected,
             uptime_seconds=time.monotonic() - self._started_at,
-            last_error=last_error,
-            stats={"capabilities": self.capabilities},
-            rate_limit_status=RateLimitStatus(
-                is_throttled=rl.is_throttled,
-                throttle_until=rl.throttle_until,
-                estimated_rpm=rl.estimated_rpm,
-                estimated_limit_rpm=rl.estimated_limit_rpm,
-                consecutive_rate_limits=rl.consecutive_rate_limits,
-                total_rate_limits_1h=rl.total_rate_limits_1h,
-                backoff_strategy=rl.backoff_strategy,
-                category=rl.category,
-            ),
+            last_error=f"error_count={node.error_count}" if node.error_count else None,
+            stats={
+                "capabilities": self.capabilities,
+                "node_url": node.url,
+                "node_status": node.status,
+                "error_count": node.error_count,
+            },
+            rate_limit_status=RateLimitStatus(),
         )
 
     async def fetch(self, action: str, params: dict[str, Any]) -> Result:
@@ -134,97 +105,32 @@ class FinnhubDataSource:
                 source=self.name,
             )
 
-        svc = self._svc()
-        # 缺 Key 快速失败（不可重试）
-        if not svc._get_api_key():
-            return Result.make_error(
-                ErrorInfo.normal("FINNHUB_NO_KEY", "FINNHUB_API_KEY 未配置", retryable=False),
-                source=self.name,
-            )
+        from backend.services.datasource.router import data_source_router
 
         try:
-            if _action == "quote":
-                symbol = str(params.get("symbol", ""))
-                ws_tick = subscription_service.get_tick(symbol)
-                if ws_tick is not None:
-                    ws_price = _extract_ws_price(ws_tick)
-                    if ws_price is not None:
-                        subscription_service.record_hit()
-                        quote_payload = [
-                            {
-                                "symbol": symbol.upper(),
-                                "price": ws_price,
-                                "source": "finnhub-ws",
-                            }
-                        ]
-                        result = Result.make_success(quote_payload, source="finnhub-ws")
-                        result.self_recorded = True
-                        return result
-                # 未命中实时 tick → 记录降级，走 REST 快照
-                subscription_service.record_miss()
-                data = await svc.get_quote(symbol)
-            elif _action == "earnings":
-                data = await svc.get_earnings_calendar(
-                    days_ahead=int(params.get("days_ahead", 7)),
-                    days_back=int(params.get("days_back", 0)),
-                    skip_cache=bool(params.get("skip_cache", False)),
-                )
-            elif _action == "company_news":
-                data = await svc.get_company_news(
-                    ticker=str(params.get("ticker", "")),
-                    days_back=int(params.get("days_back", 3)),
-                    skip_cache=bool(params.get("skip_cache", False)),
-                )
-            elif _action == "market_news":
-                data = await svc.get_market_news(category=str(params.get("category", "general")))
-            elif _action == "economic_calendar":
-                data = await svc.get_economic_calendar(
-                    days_ahead=int(params.get("days_ahead", 7)),
-                    days_back=int(params.get("days_back", 0)),
-                    skip_cache=bool(params.get("skip_cache", False)),
-                )
-            elif _action == "insider_trading":
-                data = await svc.get_insider_transactions(
-                    ticker=str(params.get("ticker", "")),
-                    limit=int(params.get("limit", 30)),
-                )
-            elif _action == "stock_history":
-                data = await svc.get_stock_history(
-                    ticker=str(params.get("ticker", "")),
-                    days_back=int(params.get("days_back", 365)),
-                )
-            else:  # pragma: no cover - 已被 capabilities 前置拦截
-                return Result.make_error(
-                    ErrorInfo.normal(
-                        "UNSUPPORTED_ACTION",
-                        f"Finnhub 不支持 action: {action}",
-                        retryable=False,
-                    ),
-                    source=self.name,
-                )
+            resp = await data_source_router.fetch_finnhub(_action, **params)
         except Exception as e:  # noqa: BLE001
             return Result.make_error(
-                ErrorInfo.normal("FINNHUB_ERROR", str(e), retryable=True),
+                ErrorInfo.normal("FINNHUB_ROUTER_ERROR", str(e), retryable=True),
                 source=self.name,
             )
 
-        if isinstance(data, dict) and data.get("status") == "success":
-            result = Result.make_success(data.get("data"), source=self.name)
-            result.self_recorded = True  # FinnhubService 已记录 throttler(on_success)
+        if isinstance(resp, dict) and resp.get("status") == "success":
+            result = Result.make_success(resp.get("data"), source=self.name)
+            result.self_recorded = True  # router 已记录 throttler(on_success)
             return result
-        if isinstance(data, dict) and data.get("status") in ("skipped", "unavailable"):
+        if isinstance(resp, dict) and resp.get("status") in ("skipped", "unavailable"):
             return Result.make_error(
                 ErrorInfo.normal(
                     "FINNHUB_UNAVAILABLE",
-                    data.get("message", "Finnhub 暂不可用"),
+                    resp.get("message", "Finnhub 暂不可用"),
                     retryable=False,
                 ),
                 source=self.name,
             )
 
-        # 错误/降级：FinnhubService 内部已记录 throttler（含正确类别），此处仅做语义化转换。
-        # 通过 error_category 透传真实类别，避免被关键字误判为 RATE_LIMIT。
-        raw_data = data if isinstance(data, dict) else {}
+        # 错误/降级：router 已记录 throttler（含正确类别），此处仅做语义化转换
+        raw_data = resp if isinstance(resp, dict) else {}
         msg = raw_data.get("message") or "finnhub fetch failed"
         raw_cat = raw_data.get("error_category")
         is_rl = True
@@ -243,7 +149,6 @@ class FinnhubDataSource:
             is_rl = False
 
         if is_rl:
-            # 限流类：service 已记录 throttler，标记 self_recorded 避免 registry 重复退避
             result = Result.make_rate_limited(err, source=self.name)
             result.self_recorded = True
         else:
@@ -252,9 +157,13 @@ class FinnhubDataSource:
 
 
 def ensure_finnhub_registered(service: Optional[Any] = None) -> str:
-    """幂等注册 Finnhub 适配器。"""
+    """幂等注册 Finnhub 适配器。
+
+    无条件注册——Finnhub 数据一律经 data_source_router HTTP 代理，
+    不依赖本地 FinnhubService / SDK。``service`` 参数仅保留向后兼容，已被忽略。
+    """
     from backend.services.datasource.source_registry import datasource_registry
 
     if datasource_registry.has("finnhub"):
         return "finnhub-default"
-    return datasource_registry.register(FinnhubDataSource(service))
+    return datasource_registry.register(FinnhubDataSource())

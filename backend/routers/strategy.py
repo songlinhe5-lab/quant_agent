@@ -12,7 +12,7 @@ from typing import Optional
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.core import models
@@ -44,7 +44,7 @@ class FormatPayload(BaseModel):
     source_code: str
 
 
-_inspirations_cache = []
+_inspirations_cache: list[str] = []
 _inspirations_lock = asyncio.Lock()
 
 
@@ -266,8 +266,6 @@ async def get_inspirations(limit: int = 10):
     cache = await _ensure_and_load_inspirations()
     selected = random.sample(cache, min(limit, len(cache)))
     return {"status": "success", "data": selected}
-
-
 
 
 @router.post("/parse-config", dependencies=[Depends(get_current_user)])
@@ -520,5 +518,3 @@ async def delete_draft_strategy(name: str):
         return {"status": "success", "message": f"策略 {name} 已被删除"}
     except Exception as e:
         return {"status": "error", "message": f"删除失败: {str(e)}"}
-
-

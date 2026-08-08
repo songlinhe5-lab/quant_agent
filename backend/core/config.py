@@ -128,4 +128,6 @@ class Settings(BaseSettings):
 
 
 # 全局单例
-settings = Settings()
+# 必填字段 (DATABASE_URL / EMBEDDING_API_KEY / EMBEDDING_BASE_URL) 由部署环境 (.env) 注入，
+# 运行时契约由 pydantic validator 保证非空；mypy 无法感知 env 注入，故忽略 call-arg。
+settings = Settings()  # type: ignore[call-arg]

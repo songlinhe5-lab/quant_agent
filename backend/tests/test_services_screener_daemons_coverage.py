@@ -109,7 +109,10 @@ async def test_screener_subscription_daemon(monkeypatch):
         ),
         patch.object(sd, "llm_service", llm),
         patch.object(sd, "notification_service", notify),
-        patch("backend.services.finnhub.service.finnhub_service", finnhub),
+        patch(
+            "backend.services.datasource.router.data_source_router.fetch_finnhub",
+            finnhub,
+        ),
     ):
         daemon = DummyDaemon()
         with pytest.raises(_BreakLoop):

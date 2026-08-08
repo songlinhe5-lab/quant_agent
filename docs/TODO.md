@@ -1,15 +1,15 @@
 # 🎯 Quant Agent 全工程 TODO 追踪矩阵
 
-> **文档定位**: 本文档是全平台工程优化的持续追踪清单，聚焦**可落地的工程任务**。  
-> 功能愿景、架构决策与详细设计请见 `[docs/MASTER_REVIEW.md](./MASTER_REVIEW.md)`。  
+> **文档定位**: 本文档是全平台工程优化的持续追踪清单，聚焦**可落地的工程任务**。
+> 功能愿景、架构决策与详细设计请见 `[docs/MASTER_REVIEW.md](./MASTER_REVIEW.md)`。
 > 优先级定义：**P0** = 阻塞生产/安全红线 | **P1** = 核心功能缺失 | **P2** = 体验优化 | **P3** = 探索备选
-> 
+>
 > ---
-> 
+>
 > ## 📋 **最新架构评审会议**
-> 
+>
 > **VARB-2026-0708-001** (AI Virtual Architecture Board) 于 2026-07-08 召开，确认 OPT-001~004 范围与优先级。
-> 
+>
 > - [完整决策报告](./VARB-2026-0708-001_Decision_Report.md)
 > - [原始输入材料](./OPT-001-004_Architecture_Review_Materials.md)
 > - [自动化工具包](../../scripts/)
@@ -18,7 +18,7 @@
 
 ## 🗺️ 任务依赖顺序图（执行路线）
 
-> 优先级 ≠ 执行顺序。下图按**依赖关系**给出落地路线：地基先行，前后端可并行，集成收口。  
+> 优先级 ≠ 执行顺序。下图按**依赖关系**给出落地路线：地基先行，前后端可并行，集成收口。
 > 箭头表示"前者完成后才应开始后者"，同一阶段内任务可并行。
 
 ```mermaid
@@ -165,7 +165,7 @@ INFRA-01 → SEC-02/10（认证）→ BE-13/14（契约）→ BE-15（WS）→ B
 
 ✅ **[OPT-005] TechnicalIndicatorsPro v1.1 - 核心指标增强** [COMPLETE]
    ├─ 9 个核心指标实现                     ✅ DONE
-   ├─ 99% 测试覆盖率                        ✅ DONE  
+   ├─ 99% 测试覆盖率                        ✅ DONE
    ├─ 14.8ms 性能基准                      ✅ DONE
    └─ 完整文档体系                         ✅ DONE
 
@@ -312,6 +312,7 @@ STATUS: PRODUCTION READY ✨
   - [x] **[BE-ARCH-06c]** 示范接入：把 `/market/quote` 路由改为优先经 `market_data_service.get_quote`（Facade→Registry→Router→薄适配器），失败回退既有 `MarketDataService`；保留降级路径 ✅ **2026-08-06**：`routers/market.py` QUOTE 分支
   - [x] **[BE-ARCH-06d]** 指标补全：Facade 层 `DATASOURCE_FACADE_MERGE` / `DATASOURCE_QUOTE_DEVIATION` 业务级指标，与现有 `DATASOURCE_*` 分层 ✅ **2026-08-06**：`core/metrics.py` 新增 + `facade.py` 接入（融合计数 / 偏差告警）
   - [x] **[BE-ARCH-06e]** 文档收口：更新 `docs/14 §二.5` 业务聚合 Facade 层 + §8/§10.1 映射 + `docs/07` 速查手册三层架构 ✅ **2026-08-06**
+  - [x] **[BE-ARCH-06f]** 宏观经济日历收口：把已注册但仅走 Registry 直连投票的 `fred` / `dbnomics` / `rbi` 三源经 Facade 统一聚合，新增 `DataServiceFacade.get_economic_calendar`（多源 `economic_calendar` 融合 + CPI actual 回填互补 + 全源失败降级）；`MacroDataService` 暴露该域方法；新增 `/macro/economic-calendar` 路由走 Facade（不动 akshare 既有事件日历，避免回归）；配套单测 + 更新 `docs/23` ✅ **2026-08-07**：`facade.py`（`_merge_calendar_events` + `ECONOMIC_CALENDAR` 分支 + 权重 `dbnomics/rbi=55` + 域方法）/ `business/macro.py` 域方法 / `app/macro_app.py` 薄包装 / `routers/macro.py` `GET /macro/economic-calendar` / `tests/test_be_arch06f_economic_calendar.py`（7 passed）；全 06 系列 27 passed
 
 ### 前端基础设施
 
@@ -443,9 +444,9 @@ STATUS: PRODUCTION READY ✨
 
 ### 分布式数据源集群（四节点 · 多 VPS + 智能路由 + 监控）
 
-> **架构决策（2026-07-13 · 对齐 docs/06 V9.0）**：  
-> **US-MASTER**（API/DB/OMS/Futu）+ **US-YF-A/B**（yfinance 双公网 IP）+ **CN-AKSHARE**（仅国内源）。  
-> 节点间 **Tailscale only**；主节点默认 `COLLECTOR_YFINANCE=false`，Yahoo 流量经 `YFinanceRouter` 打到 A/B。  
+> **架构决策（2026-07-13 · 对齐 docs/06 V9.0）**：
+> **US-MASTER**（API/DB/OMS/Futu）+ **US-YF-A/B**（yfinance 双公网 IP）+ **CN-AKSHARE**（仅国内源）。
+> 节点间 **Tailscale only**；主节点不声明 `yfinance` 能力（`DS_CAPABILITIES` 不含 yfinance），Yahoo 流量经 `YFinanceRouter` 打到 A/B。
 > 顺序：骨架（已完成）→ Compose/部署 → 灰度 → 监控收口。
 
 #### Phase 1 · 服务注册表 + 路由器骨架（主服务侧，可独立验证）
@@ -467,7 +468,7 @@ STATUS: PRODUCTION READY ✨
 
 - [x] **[DIST-10]** HMAC-SHA256 签名验证：子服务 auth 中间件 + 主服务侧自动签名 ✅ **已在 DIST-07 实现**
 - [x] **[DIST-11]** Docker Compose：`docker-compose.yf-node.yml` + 本机 2×YF 联调 + 主节点 Router
-- [x] **[DIST-12]** 灰度切换：`YF_ROUTER_ENABLED=true`，主节点 `COLLECTOR_YFINANCE=false`，对比新旧响应一致性
+- [x] **[DIST-12]** 灰度切换：`YF_ROUTER_ENABLED=true`，主节点 `DS_CAPABILITIES` 不声明 `yfinance`，对比新旧响应一致性
 - [x] **[DIST-13]** US-MASTER 部署（`COMPOSE_PROFILES=master,monitoring`）— CI/CD → VPS_S1
 - [x] **[DIST-14]** CN-AKSHARE 部署（slave profile），仅 AKShare→Redis；禁止 YF
 - [x] **[DIST-14b]** US-YF-A + US-YF-B：两台美国辅助 VPS、独立公网 IP、对称 `data_subservice`、Registry 双实例对等 weight
@@ -486,7 +487,7 @@ STATUS: PRODUCTION READY ✨
 
 ### ~~数据源限流感知与自适应退避~~ ✅ 全部完成
 
-> RL-01~14 已全部完成并归档，详见下方「已完成归档」。  
+> RL-01~14 已全部完成并归档，详见下方「已完成归档」。
 > 核心能力：错误分类体系 (ErrorCategory) + 退避引擎 (RateLimitThrottler) + 频率分析器 (RateLimitAnalyzer) + Prometheus 指标 + Grafana 告警 + Agent Tool 智能重试 + 路由感知限流。
 
 ---
@@ -646,7 +647,7 @@ STATUS: PRODUCTION READY ✨
 
 ### Risk 风控模块进阶能力 (v0.2+)
 
-> 设计文档: `docs/subsystems/risk-module.md`  
+> 设计文档: `docs/subsystems/risk-module.md`
 > 已完成: 分账户独立风控计算 (HK/US) · 六维风险雷达 · 因子监控 · 净值曲线持久化 (Redis+DB) · 行业级版面布局
 
 - [x] **[RISK-01]** 板块暴露分析：获取每只持仓行业分类 (Futu `get_stock_basicinfo`)，按 GICS 聚合，前端横向柱状图展示板块集中度 ✅ **4 tests**
@@ -660,8 +661,8 @@ STATUS: PRODUCTION READY ✨
 
 ### OMS 订单中枢与算力节点 (v0.2+)
 
-> 设计文档: `docs/subsystems/oms-module.md`  
-> 已完成: Mock Bot卡片/挂单/成交/算法UI · WebSocket实时推送 · KillSwitch熔断 · 幂等性撤单 · 真实Futu下单+ATR风控 · **OMS-01~04 核心闭环 (订单持久化/成交打通/状态同步/持仓同步)**  
+> 设计文档: `docs/subsystems/oms-module.md`
+> 已完成: Mock Bot卡片/挂单/成交/算法UI · WebSocket实时推送 · KillSwitch熔断 · 幂等性撤单 · 真实Futu下单+ATR风控 · **OMS-01~04 核心闭环 (订单持久化/成交打通/状态同步/持仓同步)**
 > 核心问题: OMS面板与真实交易链路完全脱节，全量 Mock 数据
 
 #### P1 - 核心闭环 (真实数据接入) ✅
@@ -690,7 +691,7 @@ STATUS: PRODUCTION READY ✨
 
 ### 工程规范治理（2026-07-08 Review 新增，源自 `docs/02` V4.3 合规审查）
 
-> 规范与现实脱节治理：存量超限文件逐步拆分 + 规范文档自身修正。  
+> 规范与现实脱节治理：存量超限文件逐步拆分 + 规范文档自身修正。
 > 原则：**新增代码严格执行 §3.2 行数限制**；存量文件按优先级滚动治理，禁止"下次再拆"。
 
 #### P0 — 规范公信力修复
@@ -726,7 +727,7 @@ STATUS: PRODUCTION READY ✨
 
 #### P2 — 规范缺失补充
 
-- [x] **[SPEC-10]** 新增「环境变量管理规范」章节：`.env` 已有 50+ 变量，需定义分组命名约定（`COLLECTOR_*` / `FUTU_*` / `LLM_*`）、必填/可选标注、`.env.example` 同步规则
+- [x] **[SPEC-10]** 新增「环境变量管理规范」章节：`.env` 已有 50+ 变量，需定义分组命名约定（`DS_CAPABILITIES` / `FUTU_*` / `LLM_*`）、必填/可选标注、`.env.example` 同步规则
   - 落地：`docs/02` 新增 §十 环境变量管理规范（分组命名表 + 必填/可选标注规则 + `.env.example` 同步门禁），对齐实际 `.env.example` 前缀
 - [x] **[SPEC-11]** 新增「错误码分配规则」：后端已有 `error_codes.py`，规范中补充错误码段位分配（如 1xxx=认证 / 2xxx=行情 / 3xxx=交易）
   - 落地：`docs/02` 新增 §十一 错误码分配规则，对齐真实 `backend/core/error_codes.py` 段位（0 成功 / 1xxx 认证 / 2xxx 请求资源 / 3xxx 基础设施 / 4xxx 保留 / 5xxx 内部），含 5 条分配规则
@@ -737,7 +738,7 @@ STATUS: PRODUCTION READY ✨
 
 ### 后端架构治理（2026-07-08 Review 新增，源自 `docs/03` V5.1 架构审查）
 
-> 核心问题：文档设计意图优秀（整洁分层/Port隔离/插件化），但落地现实与文档存在显著鸿沟。  
+> 核心问题：文档设计意图优秀（整洁分层/Port隔离/插件化），但落地现实与文档存在显著鸿沟。
 > 原则：**新增代码严格走 app/ 编排层**；存量按优先级渐进收口。
 
 #### P0 — 架构硬伤修复
@@ -796,7 +797,7 @@ STATUS: PRODUCTION READY ✨
 
 ### 产品与 UI/UE 治理（2026-07-08 Review 新增，源自 `docs/01` V2.3 产品审查）
 
-> 核心评价：AI 集成深度（ReAct Agent + NLP 选股 + 三模式门禁）业界领先，但图表交互深度、布局灵活性、AI 上下文感知与 TradingView/QuantConnect 仍有代差。  
+> 核心评价：AI 集成深度（ReAct Agent + NLP 选股 + 三模式门禁）业界领先，但图表交互深度、布局灵活性、AI 上下文感知与 TradingView/QuantConnect 仍有代差。
 > 原则：**强化 AI 差异化护城河** + **补齐图表交互短板** + **布局从"常规 SaaS"升级为"量化工作台"**。
 
 #### P0 — 核心差异化释放
@@ -1545,9 +1546,9 @@ STATUS: PRODUCTION READY ✨
 ### Phase 1: 核心架构整治（Week 1-2）- P0 任务
 
 > **背景**: 基于 VARB-2026-0708-001 虚拟架构委员会决议 (2026-07-08)
-> 
+>
 > **目标**: 解决架构腐化、数据正确性 critical 问题
-> 
+>
 > **关键变更**:
 > - OPT-001 工作量：8h → **10h** (+2h Buffer for import pollution cleanup)
 > - OPT-002: **仅支持美股 SEC EDGAR** (Phase 1 范围限制)
@@ -1685,8 +1686,8 @@ STATUS: PRODUCTION READY ✨
 
 ## 🚨 融资融券功能 Mock 数据清理任务 (MARGIN-TRADING-2026-07)
 
-> **创建时间**: 2026-07-22  
-> **优先级**: P1 (核心功能缺失)  
+> **创建时间**: 2026-07-22
+> **优先级**: P1 (核心功能缺失)
 > **关联提交**: `41cc806 feat: 新增融资融券余额看板功能`
 
 ### 背景说明
@@ -1754,7 +1755,7 @@ STATUS: PRODUCTION READY ✨
 
 ## 🔍 代码内 TODO 注释汇总 (2026-07-22 扫描)
 
-> **来源**: 全代码库 `# TODO` 注释自动扫描  
+> **来源**: 全代码库 `# TODO` 注释自动扫描
 > **规则**: 每条 TODO 必须有对应任务跟踪，禁止遗留无主 Mock 代码
 
 ### 一、数据源适配器层 (backend/adapters/)
@@ -1837,3 +1838,16 @@ STATUS: PRODUCTION READY ✨
 
 ---
 
+## 存量类型清理（mypy 增量收敛）
+
+- [x] **[BE-ARCH-06g]** mypy 存量类型问题批量清理（backend/core + backend/routers，45→0）✅ **2026-08-07**
+  - 探查策略：逐个文件确认真 bug vs 类型标注问题 vs 框架互操作噪声，**不盲目标注忽略**
+  - **真 bug 修复**：
+    - `routers/portfolio.py`：`get_klines(symbol=, period=, count=)` 方法名+返回类型错误（应为 `get_history(ticker=, ktype="K_DAY", num=count)` 返回 DataFrame，矢量化 `pct_change`）
+    - `services/datasource/analyzer.py`：`record_request(latency_ms: float=0.0)` 改为 `Optional[float]=None`（与调用方 `datasource.py:500` 的 `None` 语义一致，表示未探测不计入延迟）
+  - **类型标注补全**：`futu_admin.py`(dict[str,Any]) / `middleware.py`(dict[int,float]) / `market_fundamental.py`(dict[str,asyncio.Lock]) / `chat.py`(list[dict[str,str]]) / `strategy.py`(list[str]) / `logger.py` / `redis_client.py`(queue/_cache) / `structlog_config.py`(renderer: Any) / `calendars.py`(is None 守卫收窄)
+  - **框架互操作精准 ignore**：`exception_handlers.py`(FastAPI/Starlette 签名偏差 arg-type) / `config.py`(Settings 单例 env 注入 call-arg) / `options.py`(pydantic Field 默认 call-arg) / `otel_config.py`/`calendars.py`(import 降级 None misc) / `graceful_executor.py`(stdlib None 默认 arg-type + asyncio.Future override) / `cpu_pool.py`/`request_timeout.py`(标准库协程类型偏严 arg-type) / `paper.py`(create_task Awaitable arg-type) / `earnings_router.py`(redis decode_responses cast)
+  - **陷阱修正**：`auth.py` `response: Response = None` 行尾 `# type: ignore` 触发 Python SyntaxError（参数列表内注释歧义）→ 改为 `response: Response` 去掉默认 None（FastAPI 注入保证非 None），移除多余 assert
+  - 验证：`python -m mypy backend/core/ backend/routers/ --ignore-missing-imports` → **0 errors**；相关单测 69 passed
+
+---

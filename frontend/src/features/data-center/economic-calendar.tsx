@@ -138,13 +138,13 @@ export function EconomicCalendar({
               })
               .filter((ev: any) => selectedImpacts.includes(ev.impact?.toLowerCase() || 'medium'))
               .filter((ev: any) => selectedCountry === 'all' || ev.country === selectedCountry)
-              .map((ev: any, i: number) => { 
-              let dd = ev.date, dt = ev.time; 
-              if (ev.date?.includes('T')) { const p = ev.date.split('T'); dd = p[0]; dt = p[1].replace('Z', '').substring(0, 5) } 
-              const imp = ev.impact?.toLowerCase() || 'medium'; 
+              .map((ev: any, i: number) => {
+              let dd = ev.date, dt = ev.time;
+              if (ev.date?.includes('T')) { const p = ev.date.split('T'); dd = p[0]; dt = p[1].replace('Z', '').substring(0, 5) }
+              const imp = ev.impact?.toLowerCase() || 'medium';
               const isHigh = imp === 'high';
               const isLow = imp === 'low';
-              
+
               // 动态计算实际值的偏离颜色
               let actualColor = ev.actual ? "text-foreground" : "text-slate-700 dark:text-slate-300";
               let deviationArrow = "";
@@ -180,7 +180,7 @@ export function EconomicCalendar({
                   <td className={cn("px-2 py-2 text-right font-mono text-[10px]", isHigh ? "text-foreground" : "text-slate-700 dark:text-slate-300")}>{ev.forecast || ev.estimate || '-'}</td>
                   <td className="px-3 py-2 text-right font-mono text-[10px] text-slate-500 dark:text-slate-300">{ev.prev || ev.previous || '-'}</td>
                 </tr>
-              ) 
+              )
             })}
           </tbody>
         </table>

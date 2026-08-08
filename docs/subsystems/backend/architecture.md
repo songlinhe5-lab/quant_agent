@@ -1,6 +1,6 @@
 # 后端子系统架构文档
 
-> 最后更新：2026-07-07 | 版本：V3.0  
+> 最后更新：2026-07-07 | 版本：V3.0
 > **架构变更**：升级为三节点高可用架构（海外主节点 + 海外备用节点 + 国内 AKShare 节点），支持 YFinance 多源切换和 AKShare 远程获取。
 
 ## 一、架构图（三节点高可用方案）
@@ -21,7 +21,7 @@
 │  │  └── data_source.py                 │  │  services/                │ │
 │  ├─────────────────────────────────────┤  │  └── yfinance_service.py  │ │
 │  │  services/                          │  ├───────────────────────────┤ │
-│  │  ├── futu/                          │  │  COLLECTOR_YFINANCE=true  │ │
+│  │  ├── futu/                          │  │  DS_CAPABILITIES=yfinance │ │
 │  │  ├── screener_service.py            │  │  DATA_SOURCE_ROUTER=off   │ │
 │  │  ├── llm_service.py                 │  └───────────────────────────┘ │
 │  │  ├── data_source_router.py ←核心    │                                  │
@@ -36,7 +36,7 @@
 │  │  core/                              │  │  services/                │ │
 │  │  ├── redis_client.py                │  │  └── akshare_service.py   │ │
 │  │  ├── database.py                    │  ├───────────────────────────┤ │
-│  │  └── logger.py                      │  │  COLLECTOR_AKSHARE=true   │ │
+│  │  └── logger.py                      │  │  DS_CAPABILITIES=akshare  │ │
 │  ├─────────────────────────────────────┤  │  DATA_SOURCE_ROUTER=off   │ │
 │  │  Redis / PostgreSQL / Futu OpenD    │  └───────────────────────────┘ │
 │  └─────────────────────┬───────────────┘                                  │

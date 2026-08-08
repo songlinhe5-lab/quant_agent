@@ -63,13 +63,13 @@ export function AIChat() {
 
     setIsGenerating(true)
     setPrompt('')
-    
+
     const userMsgId = Date.now().toString()
     addMessage({ id: userMsgId, role: 'user', content: promptToUse })
-    
+
     const assistantMsgId = (Date.now() + 1).toString()
     addMessage({ id: assistantMsgId, role: 'assistant', content: '', reasoning: '', status: 'typing' })
-    
+
     try {
       const response = await fetchWithAuth(`${API_BASE_URL}/strategy/generate`, {
         method: 'POST',
@@ -77,7 +77,7 @@ export function AIChat() {
       })
 
       if (!response.body) throw new Error('流式请求发起失败')
-      
+
       const reader = response.body.getReader()
       const decoder = new TextDecoder('utf-8')
       let done = false
@@ -110,7 +110,7 @@ export function AIChat() {
           }
         }
       }
-      
+
       // Ensure status is marked as done
       const currentMsgs = useStrategyStore.getState().messages
       const lastMsg = currentMsgs.find(m => m.id === assistantMsgId)
@@ -136,14 +136,14 @@ export function AIChat() {
               <p className="text-sm font-semibold text-foreground">我是你的量化策略 AI 助理</p>
               <p className="text-xs text-muted-foreground mt-1">请描述你的策略逻辑，我会为你生成 Python 源码</p>
             </div>
-            
+
             <div className="w-full max-w-sm mt-4 space-y-2 text-left">
               <div className="flex items-center justify-between px-1">
                 <span className="text-[10px] text-muted-foreground font-medium flex items-center gap-1">
                   <Sparkles className="h-3 w-3" /> 灵感示例
                 </span>
-                <button 
-                  onClick={fetchVibeExamples} 
+                <button
+                  onClick={fetchVibeExamples}
                   disabled={isRefreshingVibe}
                   className="text-primary hover:text-primary/80 transition-colors"
                 >
@@ -151,8 +151,8 @@ export function AIChat() {
                 </button>
               </div>
               {vibeExamples.map((ex, idx) => (
-                <div 
-                  key={idx} 
+                <div
+                  key={idx}
                   onClick={() => handleGenerate(ex)}
                   className="text-xs px-3 py-2 rounded-lg bg-secondary/30 hover:bg-primary/10 text-muted-foreground hover:text-primary border border-border/50 hover:border-primary/30 transition-all cursor-pointer leading-relaxed"
                 >
@@ -171,17 +171,17 @@ export function AIChat() {
                 {msg.role === 'user' ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
                 <span>{msg.role === 'user' ? 'You' : 'Agent'}</span>
               </div>
-              
+
               <div className={cn(
                 "max-w-[90%] rounded-xl px-3 py-2 text-xs leading-relaxed",
-                msg.role === 'user' 
-                  ? "bg-primary text-primary-foreground rounded-tr-sm" 
+                msg.role === 'user'
+                  ? "bg-primary text-primary-foreground rounded-tr-sm"
                   : "bg-secondary/50 border border-border/50 rounded-tl-sm text-foreground"
               )}>
                 {msg.role === 'assistant' && msg.reasoning && (
                   <div className="mb-2 pb-2 border-b border-border/50">
                     <div className="flex items-center gap-1.5 text-[10px] text-indigo-500/80 mb-1 font-mono">
-                      <Sparkles className={cn("h-3 w-3", msg.status === 'typing' && "animate-pulse")} /> 
+                      <Sparkles className={cn("h-3 w-3", msg.status === 'typing' && "animate-pulse")} />
                       深度思考过程
                     </div>
                     <div className="text-muted-foreground font-mono text-[10px] whitespace-pre-wrap opacity-80">
@@ -189,7 +189,7 @@ export function AIChat() {
                     </div>
                   </div>
                 )}
-                
+
                 {msg.content ? (
                   <div className="whitespace-pre-wrap">{msg.content}</div>
                 ) : msg.status === 'typing' ? (

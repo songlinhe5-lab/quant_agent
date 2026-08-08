@@ -49,7 +49,7 @@ git commit -am "Complete all 6 new indicators now!"
 
 # GOOD (future practice):
 git commit -m "feat(ADVANCED): implement ADX calculation logic [EPIC-003]"
-git commit -m "test(ADVANCED): add ADX accuracy validation [EPIC-003]"  
+git commit -m "test(ADVANCED): add ADX accuracy validation [EPIC-003]"
 git commit -m "feat(engine): register ADX indicator in engine [EPIC-003]"
 # Then repeat for CCI, VWMA, etc. individually
 ```
@@ -97,7 +97,7 @@ If we were doing this again from scratch with atomic commits:
 ```bash
 git commit -m "feat(adapters): implement DataSourcePort interface [OPT-001]"
 git commit -m "feat(adapters): implement FutuMarketDataClient adapter"
-git commit -m "feat(adapters): implement YFinanceMarketDataClient adapter"  
+git commit -m "feat(adapters): implement YFinanceMarketDataClient adapter"
 git commit -m "feat(adapters): implement AKShareBrokerageClient adapter"
 git commit -m "refactor(router): simplify market.py HTTP handling"
 git commit -m "feat(app): implement MarketDataService orchestration layer"

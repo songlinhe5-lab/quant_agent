@@ -40,7 +40,7 @@ ENV TZ=Asia/Shanghai \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH" \
     YF_ROUTER_ENABLED=false \
-    COLLECTOR_YFINANCE=true
+    DS_CAPABILITIES=yfinance
 
 # 运行时系统库
 RUN sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources || \

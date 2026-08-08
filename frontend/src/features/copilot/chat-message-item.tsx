@@ -42,14 +42,14 @@ const CodeBlockRenderer = React.memo(({ codeContent, isStrategyCode, lang, _chil
           {isCollapsed ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
         </button>
       </div>
-      
+
       {!isCollapsed && (
         <>
           <div className="overflow-x-auto custom-scrollbar text-[11px] leading-relaxed">
-            <SyntaxHighlighter 
-              language={lang || 'text'} 
-              style={theme === 'dark' ? vscDarkPlus : vs} 
-              customStyle={{ margin: 0, padding: '12px', background: 'transparent' }} 
+            <SyntaxHighlighter
+              language={lang || 'text'}
+              style={theme === 'dark' ? vscDarkPlus : vs}
+              customStyle={{ margin: 0, padding: '12px', background: 'transparent' }}
               PreTag="div"
             >
               {String(codeContent).replace(/\n$/, '')}
@@ -75,7 +75,7 @@ const CodeBlockRenderer = React.memo(({ codeContent, isStrategyCode, lang, _chil
                   e.stopPropagation();
                   sessionStorage.setItem('quant_strategy_initial_code', codeContent);
                   window.dispatchEvent(new CustomEvent('quant_strategy_code_invoke', { detail: { code: codeContent } }));
-                  
+
                   setTimeout(() => {
                     const tabTrigger = document.querySelector('[role="tab"][value="strategy"], [data-value="strategy"], a[href="/strategy"], a[href="#strategy"]') as HTMLElement;
                     if (tabTrigger) { tabTrigger.click(); }
@@ -196,7 +196,7 @@ export const ChatMessageItem = React.memo(({
     // 标记用户已手动交互，后续不再自动控制展开状态
     userToggledRef.current = true
   }, [])
-  
+
   // 💡 针对深度思考内容过长导致的页面伸缩跳动，为其设置独立滚动条，并在生成时自动将其内部滚动到底部
   const thinkContentRef = useRef<HTMLDivElement>(null)
   const thinkUserScrolledRef = useRef(false)
@@ -215,7 +215,7 @@ export const ChatMessageItem = React.memo(({
   }, [])
 
   return (
-    <div 
+    <div
       className={cn("flex gap-4 max-w-4xl mx-auto w-full animate-in slide-in-from-bottom-2 fade-in duration-300", msg.role === 'user' ? "flex-row-reverse" : "flex-row")}
       style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 200px' }} // 💡 开启浏览器级原生虚拟滚动，防止长列表重绘卡顿
     >
@@ -223,7 +223,7 @@ export const ChatMessageItem = React.memo(({
         {msg.role === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
       </div>
       <div className={cn("px-5 py-4 rounded-2xl text-sm leading-relaxed", msg.role === 'user' ? "bg-primary/10 border border-primary/20 text-foreground rounded-tr-sm shadow-sm" : "bg-card border border-border/40 text-foreground rounded-tl-sm shadow-sm dark:shadow-[0_0_15px_rgba(0,0,0,0.5)]", msg.role === 'assistant' && "min-w-[280px] max-w-full overflow-hidden")}>
-        
+
         {msg.role === 'user' ? (
           <div className="flex flex-col gap-2">
             <div className="whitespace-pre-wrap font-mono">{msg.content}</div>
@@ -247,10 +247,10 @@ export const ChatMessageItem = React.memo(({
         ) : (
           <div className="flex flex-col">
             {(hasThinking || hasTools) && (
-              <details 
+              <details
                 ref={detailsRef}
                 onToggle={handleThinkToggle}
-                className="group border border-border/30 rounded-lg overflow-hidden bg-slate-50/50 dark:bg-black/20 text-xs transition-colors mb-3" 
+                className="group border border-border/30 rounded-lg overflow-hidden bg-slate-50/50 dark:bg-black/20 text-xs transition-colors mb-3"
               >
                 <summary className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-white/5 font-semibold select-none list-none transition-colors [&::-webkit-details-marker]:hidden">
                   {(isThinkingState || hasRunningTools) ? <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> : <Sparkles className="h-3.5 w-3.5 text-slate-500" />}
@@ -262,8 +262,8 @@ export const ChatMessageItem = React.memo(({
                   )}
                   <ChevronRight className="h-3.5 w-3.5 ml-auto text-muted-foreground transition-transform duration-200 group-open:rotate-90" />
                 </summary>
-                <div 
-                  ref={thinkContentRef} 
+                <div
+                  ref={thinkContentRef}
                   onScroll={handleThinkScroll}
                   className="px-3 pb-3 pt-2 border-t border-border/20 text-muted-foreground whitespace-pre-wrap break-all bg-white dark:bg-black/40 max-h-96 overflow-y-auto custom-scrollbar"
                 >
@@ -281,7 +281,7 @@ export const ChatMessageItem = React.memo(({
                         const isMarket = tName.includes('market') || tName.includes('quote');
                         const isBrowse = tName.includes('browse') || tName.includes('read');
                         const ToolIcon = isSearch ? Search : isNews ? Globe : isMarket ? Database : isBrowse ? FileText : Code2;
-                        
+
                         let actionName = '调用工具';
                         if (isSearch) actionName = '搜索网络';
                         else if (isNews) actionName = '检索资讯';
@@ -312,7 +312,7 @@ export const ChatMessageItem = React.memo(({
                               {actionName} {tool.name !== actionName && <span className="font-mono text-[9px] text-muted-foreground">({tool.name})</span>}
                               {queryDesc && queryDesc !== '{}' && <span className="text-muted-foreground font-normal truncate max-w-[200px]"> - {queryDesc}</span>}
                             </div>
-                            
+
                             {tool.status === 'done' && (
                               <div className="mt-1.5 pt-1.5 border-t border-border/40">
                                 {resultList ? (
@@ -324,7 +324,7 @@ export const ChatMessageItem = React.memo(({
                                     ✅ 执行完毕
                                   </div>
                                 )}
-                                
+
                                 <details className="group/tool mt-1">
                                   <summary className="text-[10px] text-slate-500 cursor-pointer hover:text-primary transition-colors flex items-center gap-1 w-fit select-none">
                                     查看详细内容 <ChevronRight className="h-3 w-3 transition-transform group-open/tool:rotate-90" />
@@ -336,14 +336,14 @@ export const ChatMessageItem = React.memo(({
                                           const title = item.title || item.headline || item.name;
                                           const url = item.url || item.link;
                                           const sentiment = item.sentiment;
-                                          
+
                                           if (sentiment) {
                                             const isBullish = sentiment.label === 'Bullish';
                                             const isBearish = sentiment.label === 'Bearish';
-                                            const tagColor = isBullish ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' : 
-                                                             isBearish ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20' : 
+                                            const tagColor = isBullish ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' :
+                                                             isBearish ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20' :
                                                              'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20';
-                                            
+
                                             return (
                                               <div key={i} className="border border-border/50 rounded flex flex-col p-2 bg-slate-50 dark:bg-black/30 hover:bg-slate-100 dark:hover:bg-black/50 transition-colors">
                                                 <div className="flex items-start justify-between gap-2 mb-1">
@@ -411,7 +411,7 @@ export const ChatMessageItem = React.memo(({
                       }
                       const fullText = extractText(props.children).trim()
                       const match = fullText.match(/^["“「](.+?)["”」]$/)
-                      
+
                       if (match) {
                         const cmd = match[1]
                         return (
@@ -428,19 +428,19 @@ export const ChatMessageItem = React.memo(({
                     code: ({ inline, className, children, ...props }: any) => {
                       const match = /language-(\w+)/.exec(className || '')
                       const lang = match ? match[1].toLowerCase() : ''
-                      
+
                       const codeContent = String(children)
                       const isInline = typeof inline === 'boolean' ? inline : !match && !codeContent.includes('\n')
-                      
+
                       // 💡 精准识别策略与特征提取代码：包含函数、类、数据科学库的较长代码才会显示转为策略按钮
                       const isStrategyCode = (lang === 'python' || !match) && (
-                        codeContent.includes('def ') || 
-                        codeContent.includes('class ') || 
-                        codeContent.includes('import ') || 
-                        codeContent.includes('pd.') || 
+                        codeContent.includes('def ') ||
+                        codeContent.includes('class ') ||
+                        codeContent.includes('import ') ||
+                        codeContent.includes('pd.') ||
                         codeContent.includes('np.')
                       ) && codeContent.split('\n').length > 3;
-  
+
                       if (!isInline && lang === 'echarts') {
                         try {
                           const jsonObj = JSON.parse(String(children))
@@ -456,16 +456,16 @@ export const ChatMessageItem = React.memo(({
                           return <div className="my-4 p-3 rounded-lg border border-red-500/20 bg-red-500/10 text-xs text-red-400 font-mono">⚠️ 动态图表解析中，等待 JSON 格式闭环...</div>
                         }
                       }
-  
+
                       if (!isInline && lang === 'mermaid') {
                         return <MermaidRenderer chart={String(children)} />
                       }
-                      
+
                       return !isInline ? (
-                        <CodeBlockRenderer 
-                          codeContent={codeContent} 
-                          isStrategyCode={isStrategyCode} 
-                          lang={match ? match[1] : 'code'} 
+                        <CodeBlockRenderer
+                          codeContent={codeContent}
+                          isStrategyCode={isStrategyCode}
+                          lang={match ? match[1] : 'code'}
                           codeProps={props}
                           navigate={navigate}
                           isGenerating={isGenerating}
@@ -487,7 +487,7 @@ export const ChatMessageItem = React.memo(({
                   {finalContent}
                 </ReactMarkdown>
               </MarkdownErrorBoundary>
-              
+
               {/* 💡 策略部署卡片：渲染后端标记的策略代码块，附带一键部署按钮 */}
               {msg.strategyBlocks && msg.strategyBlocks.length > 0 && (
                 <div className="mt-4 space-y-3">
@@ -521,26 +521,26 @@ export const ChatMessageItem = React.memo(({
                   ))}
                 </div>
               )}
-              
+
               {isGenerating && isLast && !isThinkingState && (
                 <span className="inline-block w-1.5 h-4 mt-2 align-middle bg-emerald-400 animate-pulse" />
               )}
-              
+
               {!isThinkingState && (finalContent || !isGenerating) && (
                 <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border/30 text-muted-foreground select-none">
-                  <button 
-                    onClick={() => onCopy(finalContent, idx)} 
-                    className="flex items-center gap-1.5 text-[10px] hover:text-foreground transition-colors px-1.5 py-1 rounded-md hover:bg-secondary/60" 
+                  <button
+                    onClick={() => onCopy(finalContent, idx)}
+                    className="flex items-center gap-1.5 text-[10px] hover:text-foreground transition-colors px-1.5 py-1 rounded-md hover:bg-secondary/60"
                     title="复制内容"
                   >
                     {copiedIndex === idx ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
                     <span>{copiedIndex === idx ? '已复制' : '复制'}</span>
                   </button>
                   {isLast && (
-                    <button 
-                      onClick={() => onRetry(idx)} 
-                      disabled={isGenerating} 
-                      className="flex items-center gap-1.5 text-[10px] hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed px-1.5 py-1 rounded-md hover:bg-secondary/60" 
+                    <button
+                      onClick={() => onRetry(idx)}
+                      disabled={isGenerating}
+                      className="flex items-center gap-1.5 text-[10px] hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed px-1.5 py-1 rounded-md hover:bg-secondary/60"
                       title="重新生成"
                     >
                       <RotateCcw className={cn("h-3 w-3", isGenerating && "animate-spin")} />

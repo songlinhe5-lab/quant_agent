@@ -17,7 +17,7 @@ CI 中 9 个测试失败可归为 5 类根因：
 
 **文件**: `backend/tests/test_api_preferences.py`
 
-**问题**: 
+**问题**:
 1. URL 路径错误 — 测试调用 `/api/preferences/me`，实际端点是 `/api/v1/settings/preferences`
 2. preferences 端点依赖 Redis（`redis_client.get/set`），CI 测试环境无 Redis 需 mock
 

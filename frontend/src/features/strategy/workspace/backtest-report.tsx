@@ -83,7 +83,7 @@ export function BacktestReport() {
 
     toast({ title: '🚀 启动沙箱推演', description: `正在挂载最优参数并执行推演...` })
     store.setSimulating(true); store.setBacktestResult(null); store.setRuntimeError(null);
-    
+
     try {
       const res = await apiClient.post('/strategy/run-sandbox', {
         source_code: updatedCode, class_name: className, params: params, ticker: store.testTicker, period: store.backtestPeriod, initial_capital: parseFloat(store.initialCapital) || 100000, data_source: store.dataSource, debug_mode: store.isDebugMode, data_snapshot_id: store.dataSnapshotId || 'latest_published', random_seed: 42,
@@ -126,8 +126,8 @@ export function BacktestReport() {
             {store.runtimeError.replace("LOCAL_DATA_MISSING:", "")}
           </p>
           {store.runtimeError.includes("LOCAL_DATA_MISSING") && (
-            <Button 
-              onClick={handleSyncData} 
+            <Button
+              onClick={handleSyncData}
               disabled={isSyncing}
               className="bg-indigo-500 hover:bg-indigo-600 text-white shadow-md transition-all h-9 text-xs px-6"
             >
@@ -156,7 +156,7 @@ export function BacktestReport() {
           <span className="text-[10px] font-mono text-muted-foreground mt-1.5">{store.optimizeProgress}%</span>
         </div>
       )}
-      
+
       {!store.isOptimizing && store.optimizationResults && store.optimizationResults.length > 0 && (
         <div className="glass-card rounded-xl p-4 border border-indigo-500/30 shadow-sm bg-indigo-500/5 animate-in fade-in slide-in-from-bottom-2 mb-4">
           <div className="flex items-center gap-2 mb-3"><Sparkles className="h-4 w-4 text-indigo-500" /><h3 className="text-xs font-bold text-indigo-600 dark:text-indigo-400">智能寻优 Top 3 (按夏普比率)</h3></div>

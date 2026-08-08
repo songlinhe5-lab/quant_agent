@@ -5,14 +5,16 @@
 失败时自动降级至 Yahoo Finance (yfinance)。
 """
 
-import time
 import sys
+import time
 from dataclasses import dataclass
 from typing import Optional
 
 import pandas as pd
 from futu import (
-    OpenQuoteContext, SubType, RET_OK, KLType, AuType,
+    RET_OK,
+    OpenQuoteContext,
+    SubType,
 )
 
 # ─── 12 大宏观标的定义 ───────────────────────────────────────────────
@@ -21,18 +23,18 @@ from futu import (
 
 TARGETS = [
     # (名称, futu_code, yf_ticker, 类型)
-    ("S&P 500",           "US.SPX",   "^GSPC",       "指数"),
-    ("NASDAQ 综合",        "US.IXIC",  "^IXIC",       "指数"),
-    ("恒生指数",            "HK.800000","^HSI",        "指数"),
-    ("10Y 美债收益率",       None,       "^TNX",        "债券"),
-    ("USD/JPY",            None,       "JPY=X",       "外汇"),
-    ("美元指数 (DXY)",       None,       "DX-Y.NYB",   "外汇"),
-    ("USD/CNH",            None,       "CNH=X",       "外汇"),
-    ("比特币 (BTC)",         None,       "BTC-USD",     "加密货币"),
-    ("黄金 (XAU)",          None,       "GC=F",        "商品"),
-    ("WTI 原油",            None,       "CL=F",        "商品"),
-    ("VIX 恐慌指数",         "US.VIX",   "^VIX",        "指数"),
-    ("日经 225",            None,       "^N225",       "指数"),
+    ("S&P 500", "US.SPX", "^GSPC", "指数"),
+    ("NASDAQ 综合", "US.IXIC", "^IXIC", "指数"),
+    ("恒生指数", "HK.800000", "^HSI", "指数"),
+    ("10Y 美债收益率", None, "^TNX", "债券"),
+    ("USD/JPY", None, "JPY=X", "外汇"),
+    ("美元指数 (DXY)", None, "DX-Y.NYB", "外汇"),
+    ("USD/CNH", None, "CNH=X", "外汇"),
+    ("比特币 (BTC)", None, "BTC-USD", "加密货币"),
+    ("黄金 (XAU)", None, "GC=F", "商品"),
+    ("WTI 原油", None, "CL=F", "商品"),
+    ("VIX 恐慌指数", "US.VIX", "^VIX", "指数"),
+    ("日经 225", None, "^N225", "指数"),
 ]
 
 
@@ -43,7 +45,7 @@ class Result:
     price: Optional[float]
     change_pct: Optional[float]
     volume: Optional[str]
-    source: str   # "futu" | "yfinance" | "failed"
+    source: str  # "futu" | "yfinance" | "failed"
     error: str
 
     def ok(self) -> bool:
@@ -71,9 +73,12 @@ def try_futu(quote_ctx: OpenQuoteContext, futu_code: str) -> Result | None:
         vol = float(row.get("volume", 0))
 
         vol_str = (
-            f"{vol / 1e9:.2f}B" if vol >= 1e9
-            else f"{vol / 1e6:.2f}M" if vol >= 1e6
-            else f"{vol / 1e3:.2f}K" if vol >= 1e3
+            f"{vol / 1e9:.2f}B"
+            if vol >= 1e9
+            else f"{vol / 1e6:.2f}M"
+            if vol >= 1e6
+            else f"{vol / 1e3:.2f}K"
+            if vol >= 1e3
             else str(int(vol))
         )
 
@@ -93,12 +98,12 @@ def try_futu(quote_ctx: OpenQuoteContext, futu_code: str) -> Result | None:
 def try_yfinance(name: str, yf_ticker: str | None) -> Result:
     """尝试从 Yahoo Finance 获取最新价格"""
     try:
-        import yfinance as yf
         import requests
-        
+        import yfinance as yf
+
         class TimeoutSession(requests.Session):
             def request(self, method, url, **kwargs):
-                kwargs.setdefault('timeout', 10.0)
+                kwargs.setdefault("timeout", 10.0)
                 return super().request(method, url, **kwargs)
 
         if yf_ticker is None:
@@ -173,7 +178,9 @@ def print_result(r: Result):
     chg_str = f"{r.change_pct:+.2f}%" if r.change_pct is not None else "—"
     vol_str = r.volume or "—"
 
-    print(f"  {icon} {r.name:<20s} | 价格: {price_str:>12s} | 涨跌: {chg_str:>8s}  | 成交量: {vol_str:>10s} | 来源: {r.source}")
+    print(
+        f"  {icon} {r.name:<20s} | 价格: {price_str:>12s} | 涨跌: {chg_str:>8s}  | 成交量: {vol_str:>10s} | 来源: {r.source}"
+    )
     if r.error:
         print(f"     ⚠️  错误: {r.error}")
 

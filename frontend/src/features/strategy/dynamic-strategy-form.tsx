@@ -119,7 +119,7 @@ export function DynamicStrategyForm({ schema, onSubmit, onOptimize, onDeploy, cl
     if (type === 'int' || type === 'float') {
       // 💡 容许输入以 ":" 或 "," 分隔的字符串用于网格寻优
       if (typeof value === 'string' && (value.includes(':') || value.includes(','))) {
-        parsedValue = value; 
+        parsedValue = value;
       } else {
         parsedValue = type === 'int' ? parseInt(value, 10) : parseFloat(value);
         if (isNaN(parsedValue)) parsedValue = value; // 若解析失败保留字符串，让用户能继续打字
@@ -154,7 +154,7 @@ export function DynamicStrategyForm({ schema, onSubmit, onOptimize, onDeploy, cl
               {strat.class_name} <span className="text-muted-foreground font-normal">参数面板</span>
             </CardTitle>
           </CardHeader>
-          
+
           <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-4 pb-5 px-4">
             {strat.parameters.map(param => (
               <div key={param.name} className="flex flex-col gap-2">
@@ -187,10 +187,10 @@ export function DynamicStrategyForm({ schema, onSubmit, onOptimize, onDeploy, cl
                 </Label>
 
                 {param.options && Array.isArray(param.options) ? (
-                  <SearchableSelect 
-                    options={param.options} 
-                    value={formData[strat.class_name]?.[param.name] ?? ''} 
-                    onChange={(val) => handleChange(strat.class_name, param.name, val, param.type)} 
+                  <SearchableSelect
+                    options={param.options}
+                    value={formData[strat.class_name]?.[param.name] ?? ''}
+                    onChange={(val) => handleChange(strat.class_name, param.name, val, param.type)}
                   />
                 ) : param.type === 'bool' ? (
                   <div className="h-8 flex items-center">
@@ -204,19 +204,19 @@ export function DynamicStrategyForm({ schema, onSubmit, onOptimize, onDeploy, cl
                       const val = formData[strat.class_name]?.[param.name];
                       const isSingleNum = typeof val === 'number' || (typeof val === 'string' && !val.includes(':') && !val.includes(','));
                       if (!isSingleNum || val === '') return null;
-                      
+
                       const numVal = Number(val) || 0;
                       const min = param.min ?? (numVal > 0 ? 0 : (numVal < 0 ? numVal * 2 : 0));
                       const max = param.max ?? (numVal > 0 ? Math.max(10, numVal * 2.5) : 100);
                       const step = param.step ?? (param.type === 'int' ? 1 : 0.01);
-                      
+
                       return (
                         <div className="px-1 opacity-30 group-hover:opacity-100 transition-opacity duration-300">
-                          <input 
-                            type="range" min={min} max={max} step={step} value={numVal} 
-                            onChange={(e) => handleChange(strat.class_name, param.name, e.target.value, param.type)} 
+                          <input
+                            type="range" min={min} max={max} step={step} value={numVal}
+                            onChange={(e) => handleChange(strat.class_name, param.name, e.target.value, param.type)}
                             onPointerUp={() => onSubmit(strat.class_name, formData[strat.class_name], true)}
-                            className="w-full h-1 bg-border/50 rounded-lg appearance-none cursor-ew-resize accent-primary focus:outline-none block" 
+                            className="w-full h-1 bg-border/50 rounded-lg appearance-none cursor-ew-resize accent-primary focus:outline-none block"
                             title={`拖动快速调整: ${numVal}`}
                           />
                         </div>
@@ -229,14 +229,14 @@ export function DynamicStrategyForm({ schema, onSubmit, onOptimize, onDeploy, cl
               </div>
             ))}
           </CardContent>
-          
+
           <CardFooter className="pt-0 pb-3 px-4 flex justify-between items-center">
              {onOptimize ? (
                <Button size="sm" variant="outline" onClick={() => onOptimize(strat.class_name, formData[strat.class_name])} className="h-7 px-3 text-[10px] text-indigo-500 border-indigo-500/30 hover:bg-indigo-500/10 font-bold tracking-widest uppercase gap-1">
                  <Sparkles className="w-3 h-3" fill="currentColor" /> 智能寻优
                </Button>
              ) : <div />}
-             
+
              <div className="flex gap-2">
                {onDeploy && (
                  <Button size="sm" onClick={() => onDeploy(strat.class_name, formData[strat.class_name])} className="h-7 px-3 text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-500 hover:bg-amber-500/20 border border-amber-500/30 transition-all font-bold tracking-widest uppercase">

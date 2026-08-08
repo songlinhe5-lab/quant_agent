@@ -17,9 +17,9 @@ describe('Logger', () => {
 
   it('should log messages at correct levels', () => {
     const consoleSpy = vi.spyOn(console, 'debug').mockImplementation(() => {})
-    
+
     logger.debug('test message')
-    
+
     expect(consoleSpy).toHaveBeenCalled()
   })
 
@@ -32,26 +32,26 @@ describe('Logger', () => {
 
   it('should format log entries correctly', () => {
     const consoleSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
-    
+
     logger.info('test info', { key: 'value' })
-    
+
     expect(consoleSpy).toHaveBeenCalled()
   })
 
   it('should handle error logging', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const error = new Error('test error')
-    
+
     logger.error('error occurred', error)
-    
+
     expect(consoleSpy).toHaveBeenCalled()
   })
 
   it('should handle warn logging', () => {
     const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    
+
     logger.warn('warning message')
-    
+
     expect(consoleSpy).toHaveBeenCalled()
   })
 
@@ -59,7 +59,7 @@ describe('Logger', () => {
     // Logger should buffer entries
     logger.info('batch test 1')
     logger.info('batch test 2')
-    
+
     // flush should work without errors
     await expect(logger.flush()).resolves.not.toThrow()
   })

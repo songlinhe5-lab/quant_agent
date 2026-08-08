@@ -12,11 +12,11 @@
 | NODE_PORT | - | 8001 | 8001 | - |
 | MASTER_NODES | - | [{"id":"beijing","host":"120.53.84.116","port":6379,"password":"tradingagents123"}] | 同 Slave-1 | - |
 | SLAVE_NODES | http://<S1>:8001,http://<S2>:8001,... | - | - | - |
-| **数据采集器** |
-| COLLECTOR_AKSHARE | ✅ true | ❌ false | ❌ false | - |
-| COLLECTOR_YFINANCE | ✅ true | ✅ true | ✅ true | - |
-| COLLECTOR_FUTU | ❌ false | ✅ true | ❌ false | - |
-| COLLECTOR_FINNHUB | ❌ false | ✅ true | ❌ false | - |
+| **数据源能力 (DS_CAPABILITIES)** |
+| DS_CAPABILITIES | `futu` | `yfinance` | `yfinance` | - |
+| （CN-DATA 节点） | `akshare,tushare` | - | - | - |
+| DATA_SOURCE_ROUTER_ENABLED | ✅ true | ✅ true | ✅ true | - |
+| *说明* | *主服务数据源能力默认全开，不再用 `COLLECTOR_*` 开关门控；子服务仅响应 `DS_CAPABILITIES` 声明的能力（其余返回 503）；数据源失效统一在监控 (router.get_health_status) 显示，而非静默禁用。* |
 | **基础设施** |
 | REDIS_HOST | localhost | - | - | localhost |
 | REDIS_PORT | 6379 | - | - | 6379 |
@@ -152,10 +152,9 @@ NODE_PORT=8001
 
 MASTER_NODES=[{"id":"beijing","host":"120.53.84.116","port":6379,"password":"tradingagents123"}]
 
-COLLECTOR_FUTU=true
-COLLECTOR_FINNHUB=true
-COLLECTOR_YFINANCE=true
-COLLECTOR_AKSHARE=false
+# 主服务数据源能力默认全开，不再用 COLLECTOR_* 开关；子服务按 DS_CAPABILITIES 声明能力
+DATA_SOURCE_ROUTER_ENABLED=true
+DS_CAPABILITIES=futu
 
 FINNHUB_API_KEY=d2coo7pr01qihtcsq7n0d2coo7pr01qihtcsq7ng
 FRED_API_KEY=ff3cb5acfdf642751b1f1aa2d2c450c9
@@ -183,11 +182,11 @@ sudo chmod 600 .env
 
 对每个 Slave 重复 Step 4，修改以下内容：
 
-| Slave | SLAVE_ID | NODE_HOST | COLLECTOR_FUTU | COLLECTOR_FINNHUB |
-|-------|----------|-----------|----------------|-------------------|
-| Slave-2 | overseas-2 | <Slave-2 IP> | false | false |
-| Slave-3 | overseas-3 | <Slave-3 IP> | false | false |
-| Slave-4 | overseas-4 | <Slave-4 IP> | false | false |
+| Slave | SLAVE_ID | NODE_HOST | DS_CAPABILITIES |
+|-------|----------|-----------|----------------|
+| Slave-2 | overseas-2 | <Slave-2 IP> | yfinance |
+| Slave-3 | overseas-3 | <Slave-3 IP> | yfinance |
+| Slave-4 | overseas-4 | <Slave-4 IP> | yfinance |
 
 **Slave-2~4 简化配置**：
 ```bash
@@ -200,10 +199,8 @@ NODE_PORT=8001
 
 MASTER_NODES=[{"id":"beijing","host":"120.53.84.116","port":6379,"password":"tradingagents123"}]
 
-COLLECTOR_YFINANCE=true
-COLLECTOR_FUTU=false
-COLLECTOR_FINNHUB=false
-COLLECTOR_AKSHARE=false
+# 子服务仅响应 DS_CAPABILITIES 声明的能力（其余返回 503）；主服务数据源能力默认全开
+DS_CAPABILITIES=yfinance
 
 FRED_API_KEY=ff3cb5acfdf642751b1f1aa2d2c450c9
 

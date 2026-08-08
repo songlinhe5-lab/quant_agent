@@ -24,6 +24,7 @@ from backend.app.macro_app import (
     get_capital_flow_dashboard,
     get_data_center_dashboard,
     get_earnings_calendar,
+    get_economic_calendar_facade,
     get_macro_assets,
     get_macro_calendar,
     get_macro_news,
@@ -53,6 +54,16 @@ async def get_macro_series_route(
 ):
     """获取 FRED 宏观经济时间序列数据"""
     return await get_macro_series(series_id, limit)
+
+
+@router.get("/economic-calendar")
+async def get_economic_calendar_facade_route(
+    days_ahead: int = Query(7, ge=0, le=30, description="获取未来 N 天内的宏观经济事件"),
+    days_back: int = Query(0, ge=0, le=30, description="获取过去 N 天内已公布的宏观经济事件"),
+    prefer_sources: list[str] | None = Query(None, description="临时偏好源（fred/dbnomics/rbi）"),
+):
+    """宏观日历（Facade 聚合 fred/dbnomics/rbi，CPI actual 互补回填）"""
+    return await get_economic_calendar_facade(days_ahead, days_back, prefer_sources)
 
 
 @router.get("/sentiment-history")

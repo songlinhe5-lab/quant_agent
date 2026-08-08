@@ -31,7 +31,7 @@ export const ProtectedRoute = () => {
             <div className="h-8 w-8 bg-secondary/60 rounded-full animate-pulse" />
           </div>
         </div>
-        
+
         {/* 主体内容骨架 (量化终端网格布局) */}
         <div className="flex-1 p-4 grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
           <div className="flex flex-col gap-4">
@@ -45,7 +45,7 @@ export const ProtectedRoute = () => {
             {/* 底部区骨架 */}
             <div className="h-48 bg-secondary/30 rounded-xl border border-border/20 animate-pulse hidden md:block" />
           </div>
-          
+
           {/* 右侧面板/订单簿骨架 */}
           <div className="flex flex-col gap-4 hidden lg:flex">
             <div className="h-2/3 bg-secondary/30 rounded-xl border border-border/20 animate-pulse" />

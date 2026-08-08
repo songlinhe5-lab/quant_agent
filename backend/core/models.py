@@ -23,7 +23,7 @@ except ImportError:
     from sqlalchemy import LargeBinary
     from sqlalchemy.types import TypeDecorator
 
-    class Vector(TypeDecorator):
+    class Vector(TypeDecorator):  # type: ignore[no-redef]
         """SQLite 兼容：用 LargeBinary 存储向量（仅测试/开发环境）"""
 
         impl = LargeBinary

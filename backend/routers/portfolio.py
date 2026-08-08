@@ -63,17 +63,20 @@ async def _fetch_returns(symbols: List[str], period: str) -> pd.DataFrame:
     try:
         from backend.services.datalake.kline_warehouse import kline_warehouse
 
-        # 尝试从真实数据获取
+        # 尝试从真实数据获取（本地 Parquet 数仓，统一日线 K_DAY）
+        count = 252 * {"1y": 1, "3y": 3, "5y": 5}.get(period, 1)
         frames = {}
         for symbol in symbols:
-            klines = await kline_warehouse.get_klines(
-                symbol=symbol,
-                period="day",
-                count=252 * {"1y": 1, "3y": 3, "5y": 5}.get(period, 1),
+            df_hist = await kline_warehouse.get_history(
+                ticker=symbol,
+                ktype="K_DAY",
+                num=count,
             )
-            if klines:
-                closes = [k["close"] for k in klines]
-                frames[symbol] = pd.Series(closes).pct_change().dropna()
+            if df_hist is not None and not df_hist.empty and "close" in df_hist.columns:
+                # 矢量化计算日收益率（AGENTS.md 强制矢量化红线）
+                returns = df_hist["close"].pct_change().dropna()
+                if len(returns) >= 2:
+                    frames[symbol] = returns
 
         if len(frames) < 2:
             raise ValueError("数据不足")

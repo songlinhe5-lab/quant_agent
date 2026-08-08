@@ -3,7 +3,7 @@
 ## 📋 **Epic 概述**
 
 - **Epic ID**: EPIC-003
-- **标题**: 技术指标引擎增强 v2.0 - 高级指标 + 准确性验证  
+- **标题**: 技术指标引擎增强 v2.0 - 高级指标 + 准确性验证
 - **负责人**: VARB-2026-0708-005
 - **计划周期**: 2026-07-09 ~ 2026-07-10 (实际 1 天完成!)
 - **最终状态**: ✅ **COMPLETE**
@@ -80,7 +80,7 @@ Test Files:            tests/utils/test_advanced_indicators.py
 Test Classes:          4 (Integration, HistoryMode, ErrorHandling, SignalGeneration)
 Total Test Cases:      16 cases
 Pass Rate:             16/16 = 100% ✅
-Coverage:              94.94% (目标≥85%) 
+Coverage:              94.94% (目标≥85%)
 Missing Lines:         4 (边界 NaN 处理)
 Execution Time:        0.57s
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -227,7 +227,7 @@ config = IndicatorConfig(
     params={"period": 14}
 )
 
-# 执行层  
+# 执行层
 engine = TechnicalIndicatorsEngine(auto_calculate_signals=True)
 result = engine.calculate(klines, indicators=[config])
 ```
@@ -306,20 +306,20 @@ if atr_value is None or atr_value == 0:
 # 新增指标的标准化流程 (<2 小时)
 def add_new_indicator(name, config):
     """Standardized 4-step process for adding indicators"""
-    
+
     # Step 1: Add to DEFAULT_INDICATORS
     IndicatorConfig(name=name, indicator_type=..., params={...})
-    
+
     # Step 2: Implement calculation function
     def _calculate_<name>(df, params, return_history):
         return {...}
-    
+
     # Step 3: Write unit tests (覆盖率≥85%)
     pytest -v --cov-fail-under=85
-    
+
     # Step 4: Validate accuracy vs standard
     run_accuracy_tests()
-    
+
     # Done! Production ready 🚀
 ```
 
@@ -380,8 +380,8 @@ def add_new_indicator(name, config):
 
 ---
 
-**版本**: v2.0 (Epic 3 Complete)  
-**完成时间**: 2026-07-10  
+**版本**: v2.0 (Epic 3 Complete)
+**完成时间**: 2026-07-10
 **状态**: ✅ **Production Ready**
 
 ---

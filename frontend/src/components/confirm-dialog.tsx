@@ -130,5 +130,3 @@ export function ConfirmDialogProvider({ children }: { children: React.ReactNode 
     </ConfirmContext.Provider>
   )
 }
-
-

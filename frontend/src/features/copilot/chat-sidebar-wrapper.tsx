@@ -7,7 +7,7 @@ export function ChatSidebarWrapper() {
   const { handleSelectSession, handleNewChat, sidebarRef } = useContext(ChatActionContext)
 
   return (
-    <SessionSidebar 
+    <SessionSidebar
       ref={sidebarRef}
       activeSessionId={sessionId}
       onSelectSession={handleSelectSession}

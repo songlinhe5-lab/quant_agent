@@ -1,7 +1,9 @@
-import requests
-import sys
-import os
 import json
+import os
+import sys
+
+import requests
+
 
 def test_google_search():
     # 1. 核心配置凭证 (优先从环境变量 .env 读取，若无则使用下方兜底值)
@@ -19,9 +21,8 @@ def test_google_search():
         "q": "Alphabet ROE 2026",  # 搜索关键词
         "key": API_KEY,
         "cx": CX_ID,
-        "num": 3,                  # 返回结果数量 (1-10)
-        "hl": "zh-CN",             # 搜索结果语言: 中文简体
-
+        "num": 3,  # 返回结果数量 (1-10)
+        "hl": "zh-CN",  # 搜索结果语言: 中文简体
         # --- 更多可选高级参数 (根据需要取消注释) ---
         # "sort": "date",          # 按日期排序
         # "siteSearch": "sec.gov", # 仅在指定网站 (如美国SEC官网) 内搜索
@@ -29,13 +30,13 @@ def test_google_search():
         # "exactTerms": "财报",    # 结果必须包含的精确词汇
         # "excludeTerms": "预测",  # 结果必须排除的词汇
     }
-    
+
     print(f"🔍 正在测试 Google Custom Search API...\n关键词: {params['q']}\n")
 
     # 3. 发送请求并解析
     try:
         response = requests.get(URL, params=params, timeout=10)
-        
+
         # 💡 专门针对非 200 状态码进行拦截与详细输出
         if response.status_code != 200:
             error_details = ""
@@ -47,16 +48,18 @@ def test_google_search():
                 if "details" in error_info and error_info["details"]:
                     reason = error_info["details"][0].get("reason", reason)
                 error_details = f"Code: {code}, Status: {status}, Reason: {reason}\nMessage: {message}"
-                
+
                 print(f"❌ 测试失败: HTTP {response.status_code}")
                 if response.status_code == 403:
-                    print("原因排查：请检查 Google Cloud Console 中是否已为该 Key 启用了 'Custom Search API' 或检查 API Key 的应用/IP 限制。")
+                    print(
+                        "原因排查：请检查 Google Cloud Console 中是否已为该 Key 启用了 'Custom Search API' 或检查 API Key 的应用/IP 限制。"
+                    )
                 print(f"👉 Google 原始报错信息:\n{error_details}")
             except json.JSONDecodeError:
                 print(f"❌ 测试失败: HTTP {response.status_code}, 无法解析 JSON 响应。")
                 print(f"👉 原始响应内容: {response.text}")
             sys.exit(1)
-            
+
         # 4. 提取并打印核心数据
         results = response.json().get("items", [])
         if not results:
@@ -71,6 +74,7 @@ def test_google_search():
 
     except requests.exceptions.RequestException as e:
         print(f"🚨 接口网络请求失败或凭证错误: {e}")
+
 
 if __name__ == "__main__":
     test_google_search()

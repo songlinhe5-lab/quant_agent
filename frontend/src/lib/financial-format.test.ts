@@ -116,10 +116,10 @@ describe('Market Region', () => {
   it('should switch regions', () => {
     setMarketRegion('US')
     expect(getMarketRegion()).toBe('US')
-    
+
     setMarketRegion('HK')
     expect(getMarketRegion()).toBe('HK')
-    
+
     // Reset
     setMarketRegion('CN')
   })

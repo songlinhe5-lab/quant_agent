@@ -61,7 +61,7 @@ export function LatencyDistributionChart({ source, className }: LatencyDistribut
       if (!data || !data.buckets.length) return null
       const text = isDark ? ECHART_DARK.text : '#64748b'
       const split = isDark ? ECHART_DARK.split : 'rgba(0,0,0,0.06)'
-      
+
       return {
         backgroundColor: 'transparent',
         grid: { top: 40, right: 16, bottom: 32, left: 48 },

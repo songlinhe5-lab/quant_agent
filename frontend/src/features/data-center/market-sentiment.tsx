@@ -33,7 +33,7 @@ export function SentimentInfoPanel({ onClose }: { onClose: () => void }) {
 export function MarketSentimentPanel({ vixData, sentimentInd }: { vixData: any, sentimentInd?: any }) {
   const [showInfo, setShowInfo] = useState(false)
   const [fgScore, _setFgScore] = useState<number | null>(null);
-  
+
   const [mockSparklines] = useState(() => {
     const genTrend = (start: number, vol: number) => {
       let curr = start;

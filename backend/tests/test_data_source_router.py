@@ -173,38 +173,42 @@ class TestDataSourceRouter:
 
     @pytest.mark.asyncio
     async def test_fetch_yfinance_disabled(self, router):
-        """路由禁用时走本地"""
-        with patch("backend.services.datasource.router.yf_service", create=True) as mock_yf:
-            mock_yf.get_batched_quote = AsyncMock(return_value={"status": "success", "data": {}})
-            with patch.dict("sys.modules", {"backend.services.yfinance": MagicMock(yf_service=mock_yf)}):
-                result = await router.fetch_yfinance("AAPL", "quote")
-        assert result.get("status") == "success"
+        """路由禁用时直接返回失败（后端已移除本地 yfinance 兜底）"""
+        result = await router.fetch_yfinance("AAPL", "quote")
+        assert result.get("success") is False
+        assert "DataSourceRouter" in result.get("message", "")
 
     @pytest.mark.asyncio
-    async def test_fetch_yfinance_local(self, router):
-        """本地 yfinance 降级"""
-        with patch("backend.services.datasource.router.yf_service", create=True) as mock_yf:
-            mock_yf.get_batched_quote = AsyncMock(return_value={"status": "success"})
-            with patch.dict("sys.modules", {"backend.services.yfinance": MagicMock(yf_service=mock_yf)}):
-                result = await router.fetch_yfinance_local("AAPL", "quote")
-        assert result.get("status") == "success"
+    async def test_fetch_yfinance_no_healthy_node(self, router):
+        """无健康子服务节点时返回失败（不再降级本地）"""
+        router._enabled = True
+        router._nodes = {}  # 清空节点 → 无健康节点
+        router._update_node_status = AsyncMock()
+        result = await router.fetch_yfinance("AAPL", "quote")
+        assert result.get("success") is False
+        assert "No healthy YFinance subservice node" in result.get("message", "")
 
     @pytest.mark.asyncio
-    async def test_fetch_yfinance_local_unknown_type(self, router):
-        """未知 fetch_type"""
-        with patch("backend.services.datasource.router.yf_service", create=True) as mock_yf:
-            with patch.dict("sys.modules", {"backend.services.yfinance": MagicMock(yf_service=mock_yf)}):
-                result = await router.fetch_yfinance_local("AAPL", "unknown_type")
+    async def test_fetch_yfinance_unknown_type(self, router):
+        """未知 fetch_type 经子服务路由（节点不可用时返回失败）"""
+        router._enabled = True
+        router._nodes = {}
+        router._update_node_status = AsyncMock()
+        result = await router.fetch_yfinance("AAPL", "unknown_type")
         assert result.get("success") is False
 
     @pytest.mark.asyncio
-    async def test_fetch_yfinance_local_exception(self, router):
-        """本地 yfinance 异常"""
-        with patch("backend.services.datasource.router.yf_service", create=True) as mock_yf:
-            mock_yf.get_batched_quote = AsyncMock(side_effect=Exception("连接失败"))
-            with patch.dict("sys.modules", {"backend.services.yfinance": MagicMock(yf_service=mock_yf)}):
-                result = await router.fetch_yfinance_local("AAPL", "quote")
-        assert result.get("success") is False
+    async def test_fetch_yfinance_remote_success(self, router):
+        """经子服务成功路径"""
+        router._enabled = True
+        mock_node = MagicMock()
+        mock_node.name = "yf_primary"
+        router._get_healthy_nodes = MagicMock(return_value=[mock_node])
+        router._send_request = AsyncMock(return_value={"success": True, "data": {"price": 165.0}})
+        router._update_node_status = AsyncMock()
+        result = await router.fetch_yfinance("AAPL", "quote")
+        assert result.get("success") is True
+        assert result["data"]["price"] == 165.0
 
     @pytest.mark.asyncio
     async def test_call_local_akshare_southbound(self, router):
@@ -511,12 +515,11 @@ class TestCircuitBreaker:
 
 
 class TestFetchYFinance:
-    @patch("backend.services.yfinance.YFinanceService.get_batched_quote")
-    def test_fetch_yfinance_disabled_router(self, mock_method, router_disabled):
-        mock_method.return_value = {"success": True, "data": {}}
+    def test_fetch_yfinance_disabled_router(self, router_disabled):
+        """路由禁用时直接返回失败（不再本地兜底）"""
         result = asyncio.run(router_disabled.fetch_yfinance("AAPL", "quote"))
-        assert result["success"] is True
-        mock_method.assert_called_once()
+        assert result["success"] is False
+        assert "未启用" in result["message"] or "disabled" in result["message"]
 
     @patch("backend.services.datasource.router.DataSourceRouter._send_request")
     def test_fetch_yfinance_remote_success(self, mock_send, router_enabled):
@@ -535,13 +538,13 @@ class TestFetchYFinance:
         assert result["success"] is True
         assert mock_send.call_count == 2
 
-    @patch("backend.services.datasource.router.DataSourceRouter._send_request")
-    @patch("backend.services.yfinance.YFinanceService.fetch_yf_data")
-    def test_fetch_yfinance_fallback_local(self, mock_method, mock_send, router_enabled):
-        mock_send.side_effect = Exception("Network error")
-        mock_method.return_value = (True, {"price": 165.0}, "")
+    def test_fetch_yfinance_fallback_local_removed(self, router_enabled):
+        """本地兜底已移除：无健康节点时返回失败"""
+        router_enabled._nodes = {}
+        router_enabled._update_node_status = AsyncMock()
         result = asyncio.run(router_enabled.fetch_yfinance("AAPL", "history", period="1d"))
-        assert result["success"] is True
+        assert result["success"] is False
+        assert "No healthy YFinance subservice node" in result["message"]
 
 
 class TestFetchAKShare:

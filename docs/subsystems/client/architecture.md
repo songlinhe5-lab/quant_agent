@@ -1,6 +1,6 @@
 # 客户端子系统架构文档（Flutter 三端：Android / iOS / HarmonyOS）
 
-> 最后更新：2026-06-27 | 版本：V2.0  
+> 最后更新：2026-06-27 | 版本：V2.0
 > 三端：Android | iOS | HarmonyOS NEXT
 
 ## 一、目录架构图
@@ -107,7 +107,7 @@ rawJson → compute(_parseKlines, raw) → 子 Isolate → 主线程接收 List<
 | P2 | 委托成交 | FCM normal | APNs active | HMS normal |
 | P3 | AI 研报完成 | FCM low | APNs passive | HMS low |
 
-> **HarmonyOS 特别说明**：华为应用市场要求必须使用 HMS Push Kit，不接受 Firebase。  
+> **HarmonyOS 特别说明**：华为应用市场要求必须使用 HMS Push Kit，不接受 Firebase。
 > 通过 Platform Channel 调用鸿蒙原生 HMS Push SDK，独立对接。
 
 ## 五、客户端 APM 心跳数据格式

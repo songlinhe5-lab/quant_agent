@@ -1,7 +1,7 @@
 # QuantEdge 产品功能与 UI 设计深度审计报告
 
-> **审计标准**：对标 TradingView Pro、Bloomberg Terminal、QuantConnect LEAN、富途牛牛 Pro、问财量化  
-> **审计时间**：2026-06-27  
+> **审计标准**：对标 TradingView Pro、Bloomberg Terminal、QuantConnect LEAN、富途牛牛 Pro、问财量化
+> **审计时间**：2026-06-27
 > **覆盖范围**：信息架构、导航设计、逐页功能分析、交互路径、视觉设计规范、优先级路线图
 
 ---
@@ -477,7 +477,7 @@
 ### 4.2 全局状态常驻设计（Bottom Status Bar）
 
 ```
-[Futu ●绿 Connected | 延迟: 12ms] [Redis ●绿 Live] 
+[Futu ●绿 Connected | 延迟: 12ms] [Redis ●绿 Live]
 [Tick/s: 340] [CPU: 12% RAM: 68%]
 [模式: 🟡 SANDBOX]  [上次数据: 14:32:05 HKT]
 ```

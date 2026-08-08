@@ -2,23 +2,17 @@
 AKShare DataSource Adapter（BE-ARCH-05 注册发现扩展）
 ====================================================
 
-将现有 AKShareService（东方财富 / 沪深港通资金流向 + 宏观日历）适配为 DataSourceInterface，
-使其可通过 ``datasource_registry.register()`` 挂载，并在 COMM-01 健康度看板中被统一感知
-（可挂载 + 可感知）。
+将 AKShare 数据源适配为 DataSourceInterface，供 DataSourceRegistry.fetch 主路径调用。
 
-设计原则（docs/14 §10）：组合（薄适配）而非改造原 akshare 服务（BE-ARCH-01 边界）。适配器
-只负责协议对齐与结果转换。
-
-节点约束：AKShare 仅部署在 CN-AKSHARE 节点（北京 VPS），US-MASTER 等节点以 cache 模式仅读
-Redis 中继缓存。``is_available()`` / ``health()`` 以 akshare_service.get_health_status()
-的熔断器状态为准，可感知真实可用性。
+设计原则 (2026-08-07): 仅远程。AKShare 连接层已下沉 data_subservice（_internal/akshare +
+akshare_worker.py，部署在 CN-AKSHARE 北京节点）。主服务不持有 akshare SDK，所有请求经
+data_source_router.fetch_akshare() 远程调用，无本地 SDK 兜底。
 """
 
 from __future__ import annotations
 
-import os
 import time
-from typing import Any, Optional
+from typing import Any
 
 from backend.services.datasource import (
     ErrorInfo,
@@ -29,18 +23,10 @@ from backend.services.datasource import (
 
 
 class AKShareDataSource:
-    """AKShareService → DataSourceInterface 薄适配。"""
+    """AKShare 远程适配器：经 data_source_router.fetch_akshare() 调用 data_subservice。"""
 
-    def __init__(self, service: Any = None) -> None:
-        self._service = service
+    def __init__(self) -> None:
         self._started_at = time.monotonic()
-
-    def _svc(self) -> Any:
-        if self._service is None:
-            from backend.services.akshare import akshare_service
-
-            self._service = akshare_service
-        return self._service
 
     @property
     def name(self) -> str:
@@ -48,7 +34,7 @@ class AKShareDataSource:
 
     @property
     def version(self) -> str:
-        return "1.0.0"
+        return "2.0.0"
 
     @property
     def capabilities(self) -> list[str]:
@@ -59,43 +45,42 @@ class AKShareDataSource:
 
     @property
     def mode(self) -> str:
-        return os.getenv("DATASOURCE_AKSHARE_MODE", "internal")
+        return "remote"
+
+    def _get_akshare_node(self) -> Any:
+        from backend.services.datasource.router import data_source_router
+
+        return data_source_router._nodes.get("akshare_remote")
 
     def is_available(self) -> bool:
-        """检测 AKShare SDK 是否可用。
-
-        主节点不安装 akshare 包时返回 False，跳过本地注册，走 HTTP 路由。
-        """
-        try:
-            import akshare  # noqa: F401
-
-            return self._svc().get_health_status().get("status") != "circuit_open"
-        except ImportError:
-            # 主节点无 akshare 包，不可直连
-            return False
-        except Exception:  # noqa: BLE001
-            return False
+        return self._get_akshare_node() is not None
 
     async def health(self) -> HealthInfo:
-        svc = self._svc()
-        hs = svc.get_health_status()
-        status = hs.get("status", "unknown")
-        connected = status in ("healthy", "warning", "recovering")
-        last_error = None if status == "healthy" else hs.get("message")
-        rl = RateLimitStatus()
-        cb_state = getattr(svc, "cb", None)
-        if cb_state is not None:
-            state = cb_state.get_state("akshare_api")
-            rl.is_throttled = state.value == "open"
-            rl.backoff_strategy = "circuit_breaker"
+        node = self._get_akshare_node()
+        if node is None:
+            return HealthInfo(
+                healthy=False,
+                mode="remote",
+                connected=False,
+                uptime_seconds=time.monotonic() - self._started_at,
+                last_error="akshare_remote 节点未配置",
+                stats={"capabilities": self.capabilities},
+                rate_limit_status=RateLimitStatus(),
+            )
+        connected = node.status == "healthy"
         return HealthInfo(
-            healthy=status == "healthy",
-            mode=hs.get("mode", self.mode),
+            healthy=connected,
+            mode="remote",
             connected=connected,
             uptime_seconds=time.monotonic() - self._started_at,
-            last_error=last_error,
-            stats={"capabilities": self.capabilities, "raw_status": status},
-            rate_limit_status=rl,
+            last_error=f"error_count={node.error_count}" if node.error_count else None,
+            stats={
+                "capabilities": self.capabilities,
+                "node_url": node.url,
+                "node_status": node.status,
+                "error_count": node.error_count,
+            },
+            rate_limit_status=RateLimitStatus(),
         )
 
     async def fetch(self, action: str, params: dict[str, Any]) -> Result:
@@ -110,67 +95,37 @@ class AKShareDataSource:
                 source=self.name,
             )
 
-        svc = self._svc()
+        from backend.services.datasource.router import data_source_router
+
         try:
-            if _action == "FUND_FLOW":
-                # 默认南向资金（港股通）；可传 direction=northbound/connect
-                direction = str(params.get("direction", "southbound"))
-                if direction == "northbound":
-                    data = await svc.get_northbound_flow()
-                elif direction == "connect":
-                    data = await svc.get_hk_stock_connect_flow()
-                else:
-                    data = await svc.get_southbound_flow()
-            elif _action == "ECONOMIC_CALENDAR":
-                data = await svc.get_economic_calendar(
-                    days_ahead=int(params.get("days_ahead", 7)),
-                    days_back=int(params.get("days_back", 0)),
-                    skip_cache=bool(params.get("skip_cache", False)),
-                )
-            else:  # pragma: no cover - 已被 capabilities 前置拦截
-                return Result.make_error(
-                    ErrorInfo.normal(
-                        "UNSUPPORTED_ACTION",
-                        f"AKShare 不支持 action: {action}",
-                        retryable=False,
-                    ),
-                    source=self.name,
-                )
+            resp = await data_source_router.fetch_akshare(_action, **params)
         except Exception as e:  # noqa: BLE001
             return Result.make_error(
-                ErrorInfo.normal("AKSHARE_ERROR", str(e), retryable=True),
+                ErrorInfo.normal("AKSHARE_ROUTER_ERROR", str(e), retryable=True),
                 source=self.name,
             )
 
-        if isinstance(data, dict) and data.get("status") == "success":
-            return Result.make_success(data.get("data"), source=self.name)
-        msg = (data.get("message") if isinstance(data, dict) else "") or "akshare fetch failed"
-        if "熔断" in msg or "circuit" in msg.lower():
-            return Result.make_error(
-                ErrorInfo.normal("AKSHARE_CIRCUIT_OPEN", msg, retryable=True),
-                source=self.name,
-            )
+        if isinstance(resp, dict) and resp.get("status") == "success":
+            result = Result.make_success(resp.get("data"), source=self.name)
+            result.self_recorded = True
+            return result
+
+        msg = (resp.get("message") if isinstance(resp, dict) else "") or "akshare fetch failed"
         return Result.make_error(
             ErrorInfo.normal("AKSHARE_FETCH_FAILED", msg, retryable=True),
             source=self.name,
         )
 
 
-def ensure_akshare_registered(service: Optional[Any] = None) -> str:
+def ensure_akshare_registered(service: Any = None) -> str:
     """幂等注册 AKShare 适配器到 DataSourceRegistry（可挂载）。
 
-    主节点无 akshare SDK 时跳过注册，走 HTTP 路由到子服务。
+    无条件注册——AKShare 数据一律经 data_source_router HTTP 代理，不依赖本地 SDK。
+    ``service`` 参数仅保留向后兼容，已被忽略。
     """
-    from backend.core.logger import logger
     from backend.services.datasource.source_registry import datasource_registry
 
     if datasource_registry.has("akshare"):
         return "akshare"
-
-    adapter = AKShareDataSource(service)
-    if not adapter.is_available():
-        logger.info("AKShare SDK 不可用，跳过本地注册（走 HTTP 路由）")
-        return ""
-
-    datasource_registry.register(adapter, instance_id="default")
+    datasource_registry.register(AKShareDataSource(), instance_id="default")
     return "akshare"

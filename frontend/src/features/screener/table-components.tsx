@@ -19,7 +19,7 @@ export const ScreenerRow = React.memo(({ r, isSelected, dynamicCols, toggleOne, 
       if (ticker === r.symbol || ticker === r.symbol.replace(/^(US|HK|SH|SZ)\./, '')) {
         const newPrice = parseFloat(q.last_price) || 0
         const newChange = parseFloat(q.change_pct) || 0
-        
+
         setLocalPrice((prev: number) => {
           if (newPrice !== prev && newPrice > 0) {
             if (flashTimerRef.current) clearTimeout(flashTimerRef.current)
@@ -60,7 +60,7 @@ export const ScreenerRow = React.memo(({ r, isSelected, dynamicCols, toggleOne, 
       <td className="px-3 py-2.5 font-mono text-muted-foreground tabular-nums">{r.rank}</td>
       <td className="px-3 py-2.5 font-mono font-bold tabular-nums relative group/profile">
         <div className="flex items-center gap-1.5">
-          <button 
+          <button
             className="hover:text-primary hover:underline underline-offset-2 transition-colors relative z-10 text-left focus:outline-none"
             onClick={(e) => { e.stopPropagation(); onPreview({ symbol: r.symbol, price: localPrice !== undefined ? localPrice : r.price, change: localChg !== undefined ? localChg : r.chg }) }}
             title="点击预览 K 线图"
@@ -107,7 +107,7 @@ export const ScreenerRow = React.memo(({ r, isSelected, dynamicCols, toggleOne, 
         let val = r[col];
         if (col === 'price' && localPrice !== undefined) val = localPrice;
         if (col === 'chg' && localChg !== undefined) val = localChg;
-        
+
         let displayVal: any = val;
         let colorClass = "text-foreground/80";
 
@@ -132,8 +132,8 @@ export const ScreenerRow = React.memo(({ r, isSelected, dynamicCols, toggleOne, 
           } else if (isPct) {
             const pctVal = numVal * 100;
             displayVal = pctVal.toLocaleString('en-US', { maximumFractionDigits: 2 });
-            if (pctVal > 0) { displayVal = '+' + displayVal + '%'; colorClass = 'text-emerald-600 dark:text-emerald-400 font-semibold'; } 
-            else if (pctVal < 0) { displayVal = displayVal + '%'; colorClass = 'text-red-600 dark:text-red-400 font-semibold'; } 
+            if (pctVal > 0) { displayVal = '+' + displayVal + '%'; colorClass = 'text-emerald-600 dark:text-emerald-400 font-semibold'; }
+            else if (pctVal < 0) { displayVal = displayVal + '%'; colorClass = 'text-red-600 dark:text-red-400 font-semibold'; }
             else { displayVal = '0.00%'; colorClass = 'text-muted-foreground'; }
           } else if (!isSmallMetric && Math.abs(numVal) >= 10000) {
              const absVal = Math.abs(numVal);
@@ -150,7 +150,7 @@ export const ScreenerRow = React.memo(({ r, isSelected, dynamicCols, toggleOne, 
           if (val.startsWith('+') && !val.includes('万') && !val.includes('亿')) colorClass = 'text-emerald-600 dark:text-emerald-400 font-semibold';
           else if (val.startsWith('-') && !val.includes('万') && !val.includes('亿') && val !== '-') colorClass = 'text-red-600 dark:text-red-400 font-semibold';
           else if (val === '-') { displayVal = '--'; colorClass = "text-muted-foreground"; }
-          
+
           if (col === 'matched_patterns') {
              displayVal = val.split(', ').map((p: string, i: number) => (
                <span key={i} className="inline-block bg-violet-500/10 text-violet-600 dark:text-violet-400 px-1.5 py-0.5 rounded border border-violet-500/20 mr-1 mt-0.5 last:mr-0 text-[10px] whitespace-nowrap">{p}</span>
@@ -165,7 +165,7 @@ export const ScreenerRow = React.memo(({ r, isSelected, dynamicCols, toggleOne, 
 
         return <td key={col} className={cn("px-3 py-2.5 text-right font-mono tabular-nums whitespace-nowrap", colorClass, cellBg)}>{displayVal}</td>
       })}
-      
+
       <td className="px-3 py-2.5 pr-4">
         <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
           <button className="text-[10px] px-2 py-1 rounded border border-primary/30 text-primary hover:bg-primary hover:text-primary-foreground transition-colors font-medium whitespace-nowrap" title={`推入自选池: ${r.symbol}`} onClick={(e) => { e.stopPropagation(); handleAddSingle(r.symbol) }}>+ 自选</button>
@@ -220,7 +220,7 @@ export function SortableTh({ label, k, sortKey, sortDir, onSort, align = 'right'
   const isFiltered = !!(filterRange?.min || filterRange?.max)
 
   return (
-    <th scope="col" className={cn("px-3 py-2 whitespace-nowrap group/th hover:bg-secondary/50 transition-colors relative", 
+    <th scope="col" className={cn("px-3 py-2 whitespace-nowrap group/th hover:bg-secondary/50 transition-colors relative",
       align === 'left' ? 'text-left' : align === 'center' ? 'text-center' : 'text-right', className || 'min-w-[100px]'
     )}>
       <div className={cn("flex items-center gap-1", align === 'left' ? 'justify-start' : align === 'center' ? 'justify-center' : 'justify-end')}>

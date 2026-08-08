@@ -1,9 +1,9 @@
 # 🏛️ OPT-001~004架构评审会议材料
 
-**会议主题**: Phase 1 核心架构整治范围与优先级确认  
-**会议时长**: 2 小时  
-**参会人员**: Backend Lead, Data Engineer, QA Lead, Tech Lead, PM  
-**会议日期**: TBD  
+**会议主题**: Phase 1 核心架构整治范围与优先级确认
+**会议时长**: 2 小时
+**参会人员**: Backend Lead, Data Engineer, QA Lead, Tech Lead, PM
+**会议日期**: TBD
 
 ---
 
@@ -30,7 +30,7 @@
 # ❌ 违反整洁架构原则：Router 直连 Adapter
 if is_a_share and (msg and msg != "Futu OpenD 未连接且无可用远程节点"):
     ak_res = await data_source_router.fetch_akshare("stock_quote", ticker=ticker)
-    if ak_res.get("status") == "success":   
+    if ak_res.get("status") == "success":
         return ak_res
 ```
 
@@ -92,7 +92,7 @@ if is_a_share and (msg and msg != "Futu OpenD 未连接且无可用远程节点"
 
 **结论**: 推荐方案 A，虽然初期投入大但一劳永逸
 
-**决策点**: 
+**决策点**:
 - [ ] 同意采用方案 A 完全抽象化
 - [ ] 选择方案 B 渐进式过渡
 - [ ] 其他意见：_______
@@ -126,7 +126,7 @@ backtest.run(
 | **东财/同花顺** | A 股 | ❌ 不支持 | $/月 | 暂缓 |
 | **自建爬虫** | 全市场 | ⚠️ 高维护 | 人力 | 不推荐 |
 
-**决策**: 
+**决策**:
 - ✅ Phase 1 仅支持美股 SEC EDGAR（成熟稳定）
 - 🟡 Phase 2 扩展至港股（视资源而定）
 - ❌ Phase 1 暂不支持 A 股（数据源不可靠）
@@ -136,14 +136,14 @@ backtest.run(
 ```python
 class PitEarningsDataset:
     """Point-in-Time 财报数据集"""
-    
+
     def __init__(self):
         self.earnings_records = []  # 每条含：ticker, report_date, filed_date, period_end
-    
+
     def get_available_at(self, ticker: str, as_of_date: datetime) -> List[Earning]:
         """返回截至 as_of_date 时已公开的财报"""
         return [
-            e for e in self.earnings_records 
+            e for e in self.earnings_records
             if e.ticker == ticker and e.file_date <= as_of_date
         ]
 ```
@@ -232,13 +232,13 @@ backend/
 def test_earnings_not_available_before_filed_date():
     """财报在正式公布前不应出现在回测数据集中"""
     pit_dataset = PitEarningsDataset.load_from_edgar()
-    
+
     # AAPL 2022Q4 财报于 2023-02-01 公布
     as_of_20230131 = datetime(2023, 1, 31)
     available = pit_dataset.get_available_at("AAPL", as_of_20230131)
-    
+
     assert not any(e.period_end == "2022-12-31" for e in available)
-    
+
     # 但在 2023-02-02 应该可见
     as_of_20230202 = datetime(2023, 2, 2)
     available_later = pit_dataset.get_available_at("AAPL", as_of_20230202)

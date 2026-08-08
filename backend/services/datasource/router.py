@@ -4,19 +4,28 @@ Data Source Router - 数据源路由服务
 ==========================================
 
 实现跨节点数据源路由 (5 节点拓扑):
-  - 主节点 VPS_S1 : 本地 finnhub + yfinance，按能力路由至远程 data_subservice 节点
-  - 北京 VPS_BJ   : tushare + akshare + yfinance  (tushare/akshare 唯一节点，单点)
-  - 美西 VPS_S2   : 纯 yfinance (与 S3/S4 共同负载均衡/容灾)
-  - 美西 VPS_S3/S4: 纯 yfinance (负载均衡/容灾)
-  - YFinance 主节点限流时自动 failover 至备用/远程 yfinance 节点
-  - Tushare/AKShare 流量路由至北京单节点 (无容灾，节点不可用时降级本地适配器)
+  - 主节点 VPS_S1 : finnhub / futu / fmp / 宏观源，全部经 data_subservice 远程调用
+  - 北京 VPS_BJ   : tushare + akshare (tushare/akshare 唯一节点，单点)
+  - 美西 US-YF-A/B: 纯 yfinance 子服务 (负载均衡/容灾，YF 流量唯一出口)
+  - YFinance 流量 100% 外移至 US-YF-A/B 子服务，后端不再本地执行 yfinance
+  - YFinance 节点限流时自动 failover 至备用/远程 yfinance 节点
+  - Tushare/AKShare/Futu/FMP/Finnhub/宏观源 流量全部远程 (data_subservice)，后端不再本地兜底
+
+设计原则 (2026-08-07): 所有数据源仅远程，移除一切本地 SDK 降级通道。
+源失效统一经 get_health_status() 在监控中如实显示，而非静默降级本地。
 
 环境变量控制 (URL 支持逗号分隔多活):
   DATA_SOURCE_ROUTER_ENABLED=true|false    # 是否启用路由
-  YF_PRIMARY_NODE_URL=http://localhost:8001  # yfinance 主节点 (主节点本地, data_subservice 端口 8001)
-  YF_BACKUP_NODE_URL=http://s3:8001,http://s4:8001,http://s2:8001  # yfinance 备用 (逗号分隔多活)
+  YF_PRIMARY_NODE_URL=http://localhost:8001  # yfinance 主节点 (data_subservice 端口 8001)
+  YF_BACKUP_NODE_URL=http://yf-b:8001       # yfinance 备用 (逗号分隔多活)
   TUSHARE_REMOTE_URL=http://bj:8001          # tushare 远程 (北京单节点)
   AKSHARE_REMOTE_URL=http://bj:8001          # akshare 远程 (北京单节点)
+  FUTU_REMOTE_URL=http://localhost:8001      # futu 远程 (主节点 data_subservice, DS_CAPABILITIES=futu)
+  FMP_REMOTE_URL=http://localhost:8001       # fmp 远程 (主节点 data_subservice, DS_CAPABILITIES=fmp)
+  FINNHUB_REMOTE_URL=http://localhost:8001   # finnhub 远程 (主节点 data_subservice, DS_CAPABILITIES=finnhub)
+  FRED_REMOTE_URL=http://localhost:8001      # fred 远程
+  DBNOMICS_REMOTE_URL=http://localhost:8001  # dbnomics 远程
+  RBI_REMOTE_URL=http://localhost:8001       # rbi 远程
   DATA_SOURCE_HMAC_SECRET=...               # 节点间通信签名密钥
 """
 
@@ -93,6 +102,18 @@ _FUTU_ACTION_MAP = {
     "place_order": "PLACE_ORDER",
 }
 
+# 主服务内部 fetch_type -> 子服务 action 映射 (Finnhub)
+# Finnhub 连接层已下沉 data_subservice (_internal/finnhub + finnhub_worker.py)。
+_FINNHUB_ACTION_MAP = {
+    "quote": "QUOTE",
+    "company_news": "COMPANY_NEWS",
+    "market_news": "MARKET_NEWS",
+    "earnings": "EARNINGS",
+    "economic_calendar": "ECONOMIC_CALENDAR",
+    "insider_trading": "INSIDER_TRADING",
+    "stock_history": "STOCK_HISTORY",
+}
+
 # DIST-19: AKShare STALE 缓存配置
 _AK_STALE_PREFIX = "quant:akshare:stale"
 _AK_STALE_TTL = int(os.getenv("AKSHARE_STALE_TTL", "86400"))  # 默认 24h
@@ -113,6 +134,8 @@ class DataSourceNode:
     error_count: int = 0
     circuit_breaker_until: float = 0.0
     capabilities: List[str] = field(default_factory=list)
+    # 子服务健康检查端点（用于监控数据源失效），无则跳过主动探测
+    health_check_url: Optional[str] = None
     # RL-13: 限流压力感知
     is_throttled: bool = False
     consecutive_rate_limits: int = 0
@@ -150,6 +173,7 @@ class DataSourceRouter:
         self._nodes["yf_primary"] = DataSourceNode(
             name="yf_primary",
             url=yf_primary,
+            health_check_url=f"{yf_primary}/api/v1/health",
             weight=10,
             capabilities=["yfinance", "quote", "history", "tech"],
         )
@@ -159,6 +183,7 @@ class DataSourceRouter:
             self._nodes[f"yf_backup_{idx}"] = DataSourceNode(
                 name=f"yf_backup_{idx}",
                 url=url,
+                health_check_url=f"{url}/api/v1/health",
                 weight=5,
                 capabilities=["yfinance", "quote", "history", "tech"],
             )
@@ -168,6 +193,7 @@ class DataSourceRouter:
             self._nodes["akshare_remote"] = DataSourceNode(
                 name="akshare_remote",
                 url=akshare_urls[0],
+                health_check_url=f"{akshare_urls[0]}/api/v1/health",
                 weight=10,
                 capabilities=["akshare", "southbound", "northbound", "hsgt"],
             )
@@ -177,6 +203,7 @@ class DataSourceRouter:
             self._nodes["tushare_remote"] = DataSourceNode(
                 name="tushare_remote",
                 url=tushare_urls[0],
+                health_check_url=f"{tushare_urls[0]}/api/v1/health",
                 weight=10,
                 capabilities=[
                     "tushare",
@@ -191,13 +218,14 @@ class DataSourceRouter:
             )
 
         # Futu 主节点节点 (pin 主节点, 单键)
-        # Futu OpenD 仅部署在 US-MASTER 主节点 (127.0.0.1:11111), 子服务在主节点以
-        # COLLECTOR_FUTU=true 持有 OpenD 长连接。主服务经 HTTP 调 source=futu 获取数据,
+        # Futu OpenD 仅部署在 US-MASTER 主节点 (127.0.0.1:11111), 由主节点 data_subservice
+        # 经 DS_CAPABILITIES=futu 持有 OpenD 长连接。主服务经 HTTP 调 source=futu 获取数据,
         # 不持有 SDK。URL 默认 http://localhost:8001 (与主节点 data_subservice 同机)。
         futu_url = os.getenv("FUTU_REMOTE_URL", "http://localhost:8001")
         self._nodes["futu_master"] = DataSourceNode(
             name="futu_master",
             url=futu_url,
+            health_check_url=f"{futu_url}/api/v1/health",
             weight=10,
             capabilities=["futu"],
         )
@@ -210,8 +238,71 @@ class DataSourceRouter:
         self._nodes["fmp_master"] = DataSourceNode(
             name="fmp_master",
             url=fmp_url,
+            health_check_url=f"{fmp_url}/api/v1/health",
             weight=10,
             capabilities=["fmp"],
+        )
+
+        # Finnhub 远程节点 (pin 主节点, 单键)
+        # Finnhub 连接层 (REST + WS tick 订阅) 已下沉 data_subservice (_internal/finnhub + finnhub_worker.py)。
+        # 主服务经 HTTP 调 source=finnhub 获取数据，不持有 FinnhubService / WS 订阅。
+        # URL 默认 http://localhost:8001 (与主节点 data_subservice 同机)。
+        finnhub_url = os.getenv("FINNHUB_REMOTE_URL", "http://localhost:8001")
+        self._nodes["finnhub_master"] = DataSourceNode(
+            name="finnhub_master",
+            url=finnhub_url,
+            health_check_url=f"{finnhub_url}/api/v1/health",
+            weight=10,
+            capabilities=[
+                "finnhub",
+                "quote",
+                "company_news",
+                "market_news",
+                "earnings",
+                "economic_calendar",
+                "insider_trading",
+                "stock_history",
+            ],
+        )
+
+        # 宏观源远程节点 (FRED / DBnomics / RBI)
+        # 宏观连接层 (FRED REST / DBnomics REST / RBI 爬虫) 已下沉 data_subservice
+        # (_internal/fred|dbnomics|rbi + 对应 worker)。主服务经 HTTP 调 source=fred|dbnomics|rbi 获取数据，
+        # 不再本地调用 fred_service / dbnomics_service / rbi_service。
+        fred_url = os.getenv("FRED_REMOTE_URL", "http://localhost:8001")
+        self._nodes["fred_master"] = DataSourceNode(
+            name="fred_master",
+            url=fred_url,
+            health_check_url=f"{fred_url}/api/v1/health",
+            weight=10,
+            capabilities=["fred", "macro_series", "economic_calendar"],
+        )
+        dbnomics_url = os.getenv("DBNOMICS_REMOTE_URL", "http://localhost:8001")
+        self._nodes["dbnomics_master"] = DataSourceNode(
+            name="dbnomics_master",
+            url=dbnomics_url,
+            health_check_url=f"{dbnomics_url}/api/v1/health",
+            weight=10,
+            capabilities=["dbnomics", "economic_calendar"],
+        )
+        rbi_url = os.getenv("RBI_REMOTE_URL", "http://localhost:8001")
+        self._nodes["rbi_master"] = DataSourceNode(
+            name="rbi_master",
+            url=rbi_url,
+            health_check_url=f"{rbi_url}/api/v1/health",
+            weight=10,
+            capabilities=["rbi", "economic_calendar"],
+        )
+
+        # 搜索/抓取源远程节点 (Tavily / Bocha / Jina)
+        # 外部搜索/抓取经 data_subservice 统一代理 (search_worker.py)，主服务不再直接 httpx 外部 API。
+        search_url = os.getenv("SEARCH_REMOTE_URL", "http://localhost:8001")
+        self._nodes["search_master"] = DataSourceNode(
+            name="search_master",
+            url=search_url,
+            health_check_url=f"{search_url}/api/v1/health",
+            weight=10,
+            capabilities=["tavily", "bocha", "jina"],
         )
 
         logger.info(f"[Router] 初始化完成: enabled={self._enabled}, nodes={list(self._nodes.keys())}")
@@ -457,22 +548,24 @@ class DataSourceRouter:
         return healthy[0]
 
     async def fetch_yfinance(self, ticker: str, fetch_type: str, **kwargs) -> Dict[str, Any]:
-        if not self._enabled:
-            from backend.services.yfinance import yf_service
+        """联邦 YF 流量到 US-YF-A/B 子服务节点。
 
-            if fetch_type == "quote":
-                return await yf_service.get_batched_quote(ticker, req_type="quote")
-            elif fetch_type == "tech":
-                return await yf_service.get_tech_indicators(ticker, **kwargs)
-            elif fetch_type == "history":
-                success, data, msg = await yf_service.fetch_yf_data(ticker, "history", ttl=3600, **kwargs)
-                return {"success": success, "data": data, "message": msg}
-            return {"success": False, "message": f"Unknown fetch_type: {fetch_type}"}
+        后端进程不再本地执行 yfinance。若路由未启用或所有子服务节点不可用，
+        直接返回失败（不再降级本地 yfinance）。
+        """
+        if not self._enabled:
+            return {
+                "success": False,
+                "message": "DataSourceRouter 未启用，无法路由 YFinance 子服务流量",
+            }
 
         nodes = self._get_healthy_nodes("yfinance")
         if not nodes:
-            logger.warning("[YFinance] 无健康节点可用，降级本地数据源")
-            return await self.fetch_yfinance_local(ticker, fetch_type, **kwargs)
+            logger.warning("[YFinance] 无健康子服务节点可用（后端已移除本地兜底）")
+            return {
+                "success": False,
+                "message": "No healthy YFinance subservice node (local yfinance disabled)",
+            }
 
         for node in nodes:
             try:
@@ -517,49 +610,23 @@ class DataSourceRouter:
                     error_category=ErrorCategory.NORMAL,
                 )
 
-        logger.warning("[YFinance] 所有节点失败，降级本地数据源")
-        return await self.fetch_yfinance_local(ticker, fetch_type, **kwargs)
-
-    async def fetch_yfinance_local(self, ticker: str, fetch_type: str, **kwargs) -> Dict[str, Any]:
-        from backend.services.yfinance import yf_service
-
-        try:
-            if fetch_type == "quote":
-                return await yf_service.get_batched_quote(ticker, req_type="quote")
-            elif fetch_type == "tech":
-                return await yf_service.get_tech_indicators(ticker, **kwargs)
-            elif fetch_type == "history":
-                success, data, msg = await yf_service.fetch_yf_data(ticker, "history", ttl=3600, **kwargs)
-                return {"success": success, "data": data, "message": msg}
-            return {"success": False, "message": f"Unknown fetch_type: {fetch_type}"}
-        except Exception as e:
-            return {"success": False, "message": f"Local yfinance failed: {str(e)}"}
+        logger.warning("[YFinance] 所有子服务节点失败（后端已移除本地兜底）")
+        return {
+            "success": False,
+            "message": "All YFinance subservice nodes failed (local yfinance disabled)",
+        }
 
     async def fetch_akshare(self, action: str, **kwargs) -> Dict[str, Any]:
-        from backend.services.akshare import akshare_service
+        """AKShare 远程节点代理 (北京单节点 DS_CAPABILITIES=akshare)。
 
+        设计原则 (2026-08-07): 仅远程，移除本地 SDK 降级。router 未启用或远程节点
+        不可用时直接返回失败（源失效在监控中如实显示）。成功响应仍存档 STALE/热点
+        缓存，供 CN 断连时监控侧识别降级，但不自动回退本地。
+        """
         remote_node = self._nodes.get("akshare_remote")
         if not self._enabled or not remote_node or remote_node.status != "healthy":
-            # 未启用路由器或远程节点不可用：先查缓存，再降级本地
-            cached = await self._get_akshare_cache(action, kwargs)
-            if cached:
-                return cached
-            result = await self._call_local_akshare(action, akshare_service, **kwargs)
-            # DIST-19: 本地也失败时，尝试 STALE 缓存降级
-            if result.get("status") == "error":
-                stale = await self._get_akshare_stale(action, kwargs)
-                if stale:
-                    return stale
-            else:
-                # 成功时存档 STALE 缓存 + 热点缓存
-                await self._save_akshare_stale(action, kwargs, result)
-                await self._save_akshare_cache(action, kwargs, result)
-            return result
-
-        # 优先从 Redis 缓存读取（热点数据，TTL=30 分钟）
-        cached = await self._get_akshare_cache(action, kwargs)
-        if cached:
-            return cached
+            logger.warning("[AKShare] 远程节点不可用（后端已移除本地兜底）")
+            return {"status": "error", "message": "No healthy AKShare remote node (local SDK disabled)"}
 
         try:
             payload = {
@@ -571,9 +638,8 @@ class DataSourceRouter:
 
             if result.get("status") == "success":
                 await self._update_node_status(remote_node.name, success=True)
-                # DIST-19: 成功响应存档，供 CN 断连时降级
+                # 成功响应存档，供监控侧识别降级（不再回退本地）
                 await self._save_akshare_stale(action, kwargs, result)
-                # 新增：写入热点缓存（TTL=30 分钟）
                 await self._save_akshare_cache(action, kwargs, result)
                 return result
 
@@ -583,34 +649,25 @@ class DataSourceRouter:
             logger.warning(f"[AKShare] 远程节点失败：{remote_node.name}, {action}, {str(e)}")
             await self._update_node_status(remote_node.name, success=False, error=str(e))
 
-        # DIST-19: 远程节点不可用，先尝试本地，再 STALE
-        logger.warning("[AKShare] 远程节点不可用，降级本地数据源")
-        result = await self._call_local_akshare(action, akshare_service, **kwargs)
-        if result.get("status") == "error":
-            stale = await self._get_akshare_stale(action, kwargs)
-            if stale:
-                return stale
-        else:
-            await self._save_akshare_stale(action, kwargs, result)
-            await self._save_akshare_cache(action, kwargs, result)
-        return result
+        logger.warning("[AKShare] 远程节点失败（后端已移除本地兜底）")
+        return {"status": "error", "message": "AKShare remote node failed (local SDK disabled)"}
 
     async def fetch_tushare(self, action: str, **params) -> Dict[str, Any]:
         """Tushare 远程节点代理 (北京从节点 DS_CAPABILITIES=tushare,akshare)。
 
-        启用 DATA_SOURCE_ROUTER 且 tushare_remote 节点健康时，优先走远程；
-        否则回退本地 Tushare 适配器 (A股主源)。
+        设计原则 (2026-08-07): 仅远程，移除本地适配器降级。所有 tushare action
+        经 _TS_ACTION_MAP 归一化后走远程；子服务不支持的 action 直接返回失败，
+        不再回退本地 TushareService。
         """
         remote_node = self._nodes.get("tushare_remote")
         if not self._enabled or not remote_node or remote_node.status != "healthy":
-            return await self._call_local_tushare(action, **params)
+            logger.warning("[Tushare] 远程节点不可用（后端已移除本地兜底）")
+            return {"success": False, "message": "No healthy Tushare remote node (local adapter disabled)"}
 
-        # 子服务 tushare worker 未实现该 action, 直接走本地, 不做无谓的远程往返,
-        # 也避免把"能力缺口"误判为节点故障而污染熔断计数。
         remote_action = _TS_ACTION_MAP.get(action.lower())
         if remote_action is None:
-            logger.debug(f"[Tushare] action={action} 远程子服务不支持，直接使用本地适配器")
-            return await self._call_local_tushare(action, **params)
+            logger.warning(f"[Tushare] action={action} 远程子服务不支持，本地兜底已移除")
+            return {"success": False, "message": f"unsupported tushare action (remote-only): {action}"}
 
         try:
             payload = {
@@ -627,57 +684,17 @@ class DataSourceRouter:
             logger.warning(f"[Tushare] 远程节点失败: {remote_node.name}, {action}, {str(e)}")
             await self._update_node_status(remote_node.name, success=False, error=str(e))
 
-        logger.warning("[Tushare] 远程节点不可用，降级本地 Tushare 适配器")
-        return await self._call_local_tushare(action, **params)
-
-    async def _call_local_tushare(self, action: str, **params) -> Dict[str, Any]:
-        from backend.services.tushare import tushare_service
-
-        try:
-            if action == "stock_history":
-                return tushare_service.get_daily_history(
-                    ticker=params.get("ticker", ""), **{k: v for k, v in params.items() if k != "ticker"}
-                )
-            elif action == "stock_quote":
-                return tushare_service.get_realtime_quote(ticker=params.get("ticker", ""))
-            elif action == "fundamental":
-                return tushare_service.get_daily_basic(
-                    ticker=params.get("ticker", ""), trade_date=params.get("trade_date")
-                )
-            elif action == "fund_flow":
-                return tushare_service.get_moneyflow_hsgt(
-                    start_date=params.get("start_date"), end_date=params.get("end_date")
-                )
-            elif action == "stock_list":
-                return tushare_service.get_stock_basic(
-                    list_status=params.get("list_status", "L"),
-                    exchange=params.get("exchange"),
-                    fields=params.get("fields"),
-                )
-            elif action == "lowfreq_history":
-                return tushare_service.get_lowfreq_history(
-                    ticker=params.get("ticker", ""), **{k: v for k, v in params.items() if k != "ticker"}
-                )
-            elif action == "macro":
-                return tushare_service.get_macro(
-                    params.get("api_name", ""), **{k: v for k, v in params.items() if k != "api_name"}
-                )
-            return {"success": False, "message": f"unsupported tushare action: {action}"}
-        except Exception as e:  # noqa: BLE001
-            return {"success": False, "message": str(e)}
+        logger.warning("[Tushare] 远程节点失败（后端已移除本地兜底）")
+        return {"success": False, "message": "Tushare remote node failed (local adapter disabled)"}
 
     async def fetch_futu(self, action: str, **params) -> Dict[str, Any]:
         """Futu 主节点 HTTP 代理 (source="futu", pin 主节点)。
 
         Futu OpenD 仅部署在 US-MASTER 主节点 (127.0.0.1:11111), 由主节点
-        data_subservice (COLLECTOR_FUTU=true) 持有长连接并对外提供 source=futu。
+        data_subservice (DS_CAPABILITIES=futu) 持有长连接并对外提供 source=futu。
         主服务不持有 SDK, 所有 futu 访问经本路由 pin 到 futu_master 节点。
 
-        action 兼容两种写法: 主服务内部 fetch_type (小写) 或 子服务 action (大写),
-        统一经 _FUTU_ACTION_MAP 归一化。
-
-        降级策略: router 未启用 / 主节点子服务未起 / 远程返回失败 ->
-        回退本地 futu_service (Django 模式保留 SDK 兼容, 待 Phase3 删主服务实例后移除)。
+        设计原则 (2026-08-07): 仅远程，移除本地 futu_service 降级通道。
         """
         remote_action = _FUTU_ACTION_MAP.get(action.lower(), action.upper())
 
@@ -685,10 +702,9 @@ class DataSourceRouter:
         norm_params = self._futu_normalize_params(remote_action, params)
 
         remote_node = self._nodes.get("futu_master")
-        # Futu 必须 pin 主节点, 不参与多活随机选; 节点不健康直接降级本地
         if not self._enabled or not remote_node or remote_node.status != "healthy":
-            logger.debug(f"[Futu] action={remote_action} 走本地降级 (enabled={self._enabled})")
-            return await self._call_local_futu(remote_action, **norm_params)
+            logger.warning("[Futu] 远程节点不可用（后端已移除本地兜底）")
+            return {"status": "error", "message": "No healthy Futu remote node (local SDK disabled)"}
 
         try:
             payload = {
@@ -699,16 +715,15 @@ class DataSourceRouter:
             result = await self._send_request(remote_node, "futu", payload)
             if result.get("status") == "success":
                 await self._update_node_status(remote_node.name, success=True)
-                # 直接透传子服务信封 (含 status/data 字段), 与本地降级
-                # futu_service.xxx() 返回结构完全一致, 业务侧零改动。
+                # 直接透传子服务信封 (含 status/data 字段)
                 return result
             await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
         except Exception as e:
             logger.warning(f"[Futu] 远程节点失败: {remote_node.name}, {remote_action}, {str(e)}")
             await self._update_node_status(remote_node.name, success=False, error=str(e))
 
-        logger.warning("[Futu] 远程节点不可用，降级本地 futu_service")
-        return await self._call_local_futu(remote_action, **norm_params)
+        logger.warning("[Futu] 远程节点失败（后端已移除本地兜底）")
+        return {"status": "error", "message": "Futu remote node failed (local SDK disabled)"}
 
     @staticmethod
     def _futu_normalize_params(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -724,51 +739,6 @@ class DataSourceRouter:
             out["symbols"] = out.pop("tickers")
         return out
 
-    async def _call_local_futu(self, action: str, **params) -> Dict[str, Any]:
-        """Futu 本地降级 (保留 SDK 兼容, Phase3 删主服务 OpenD 实例后移除)。
-
-        返回结构与 futu_service.xxx() 原始 dict 一致, 与远程分支剥信封后的结构对齐。
-        """
-        from backend.services.futu import futu_service
-
-        try:
-            if action == "QUOTE":
-                return futu_service.get_quote(params.get("symbol", params.get("ticker", "")))
-            elif action == "HISTORY":
-                return futu_service.get_history(
-                    params.get("symbol", params.get("ticker", "")),
-                    ktype=params.get("ktype", "K_DAY"),
-                    num=int(params.get("num", 100)),
-                )
-            elif action == "FUND_FLOW":
-                # service.get_fund_flow(self, ticker) 无 market 形参
-                return futu_service.get_fund_flow(params.get("symbol", params.get("ticker", "")))
-            elif action == "OPTION_CHAIN":
-                return futu_service.get_option_chain(
-                    params.get("symbol", params.get("ticker", "")),
-                    expiration_date=params.get("expiration_date"),
-                )
-            elif action == "FUNDAMENTAL":
-                return futu_service.get_fundamental(params.get("symbol", params.get("ticker", "")))
-            elif action == "ORDER_BOOK":
-                return futu_service.get_order_book(params.get("symbol", params.get("ticker", "")))
-            elif action == "WARRANT_CHAIN":
-                return futu_service.get_warrant_chain(params.get("symbol", params.get("ticker", "")))
-            elif action == "ACCOUNT_INFO":
-                return futu_service.get_account_info(params.get("market", "HK"))
-            elif action == "STOCK_BASICINFO":
-                # service.get_stock_basicinfo(self, market, sec_type) 位置必填
-                return futu_service.get_stock_basicinfo(params.get("market", "HK"), params.get("sec_type", "STOCK"))
-            elif action == "SNAPSHOT":
-                return futu_service.get_market_snapshots(params.get("symbols", []))
-            elif action == "SCREEN_STOCKS":
-                return futu_service.screen_stocks(**params)
-            elif action == "PLACE_ORDER":
-                return futu_service.place_order(**params)
-            return {"status": "error", "message": f"unsupported futu action: {action}"}
-        except Exception as e:  # noqa: BLE001
-            return {"status": "error", "message": str(e)}
-
     async def fetch_fmp(self, action: str, **params) -> Dict[str, Any]:
         """FMP 主节点 HTTP 代理 (source="fmp", pin 主节点)。
 
@@ -776,11 +746,7 @@ class DataSourceRouter:
         (_internal/fmp + fmp_worker.py::handle_fmp)。主服务不持有 REST 客户端,
         所有 fmp 访问经本路由 pin 到 fmp_master 节点。
 
-        action 兼容两种写法: 主服务内部 fetch_type (小写) 或 子服务 action (大写),
-        统一经 _FMP_ACTION_MAP 归一化。
-
-        降级策略: router 未启用 / 主节点子服务未起 / 远程返回失败 ->
-        回退本地 FMPService._local_get (保持 REST 直连兜底, 不依赖子服务)。
+        设计原则 (2026-08-07): 仅远程，移除本地 _local_get 直连兜底。
         """
         _FMP_ACTION_MAP = {
             "quote": "QUOTE",
@@ -789,13 +755,12 @@ class DataSourceRouter:
         }
         remote_action = _FMP_ACTION_MAP.get(action.lower(), action.upper())
 
-        # 业务侧统一用 symbol, 子服务 worker 契约用 symbol, 直传
         norm_params = dict(params)
 
         remote_node = self._nodes.get("fmp_master")
         if not self._enabled or not remote_node or remote_node.status != "healthy":
-            logger.debug(f"[FMP] action={remote_action} 走本地降级 (enabled={self._enabled})")
-            return self._call_local_fmp(remote_action, **norm_params)
+            logger.warning("[FMP] 远程节点不可用（后端已移除本地兜底）")
+            return {"status": "error", "message": "No healthy FMP remote node (local fallback disabled)"}
 
         try:
             payload = {
@@ -806,7 +771,7 @@ class DataSourceRouter:
             result = await self._send_request(remote_node, "fmp", payload)
             if result.get("status") == "success":
                 await self._update_node_status(remote_node.name, success=True)
-                # 配额耗尽错误已带 error_category=quota, 透传给业务侧, 不盲目降级
+                # 配额耗尽错误已带 error_category=quota, 透传给业务侧
                 if result.get("error_category") == "quota":
                     await self._update_node_status(
                         remote_node.name, success=False, error="quota", error_category=ErrorCategory.QUOTA_EXHAUSTED
@@ -818,24 +783,158 @@ class DataSourceRouter:
             logger.warning(f"[FMP] 远程节点失败: {remote_node.name}, {remote_action}, {str(e)}")
             await self._update_node_status(remote_node.name, success=False, error=str(e))
 
-        logger.warning("[FMP] 远程节点不可用，降级本地 FMP 直连")
-        return self._call_local_fmp(remote_action, **norm_params)
+        logger.warning("[FMP] 远程节点失败（后端已移除本地兜底）")
+        return {"status": "error", "message": "FMP remote node failed (local fallback disabled)"}
 
-    @staticmethod
-    def _call_local_fmp(action: str, **params) -> Dict[str, Any]:
-        """FMP 本地降级直连 (数据源连接层兜底, 保持签名兼容)。
+    async def fetch_finnhub(self, action: str, **params) -> Dict[str, Any]:
+        """Finnhub 远程节点代理 (主节点 DS_CAPABILITIES=finnhub)。
 
-        仅作 router 未启用 / 子服务不可达时的兜底，不重复实现 credit/限流状态机
-        (子服务 _internal/fmp 已统一处理；本地兜底不计 credit 预算，仅应急)。
+        Finnhub 连接层 (REST + WS tick 订阅) 已下沉 data_subservice
+        (_internal/finnhub + finnhub_worker.py)。主服务不持有 FinnhubService / WS 订阅，
+        quote 走 REST 快照。仅远程，无本地 SDK 兜底。
         """
-        from backend.services.fmp.service import _local_get
+        remote_action = _FINNHUB_ACTION_MAP.get(action.lower(), action.upper())
+        remote_node = self._nodes.get("finnhub_master")
+        if not self._enabled or not remote_node or remote_node.status != "healthy":
+            logger.warning("[Finnhub] 远程节点不可用（后端已移除本地兜底）")
+            return {"status": "error", "message": "No healthy Finnhub remote node (local SDK disabled)"}
 
         try:
-            symbol = params.get("symbol", params.get("ticker", ""))
-            limit = int(params.get("limit", 4))
-            return _local_get(action, symbol, limit)
-        except Exception as e:  # noqa: BLE001
-            return {"status": "error", "message": str(e)}
+            payload = {
+                "source": "finnhub",
+                "action": remote_action,
+                "params": dict(params),
+            }
+            result = await self._send_request(remote_node, "finnhub", payload)
+            if result.get("status") == "success":
+                await self._update_node_status(remote_node.name, success=True)
+                return result
+            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+        except Exception as e:
+            logger.warning(f"[Finnhub] 远程节点失败: {remote_node.name}, {remote_action}, {str(e)}")
+            await self._update_node_status(remote_node.name, success=False, error=str(e))
+
+        logger.warning("[Finnhub] 远程节点失败（后端已移除本地兜底）")
+        return {"status": "error", "message": "Finnhub remote node failed (local SDK disabled)"}
+
+    async def fetch_fred(self, action: str, **params) -> Dict[str, Any]:
+        """FRED 远程节点代理 (主节点 DS_CAPABILITIES=fred)。
+
+        宏观连接层 (FRED REST) 已下沉 data_subservice (_internal/fred + fred_worker.py)。
+        主服务不再本地调用 fred_service。仅远程。
+        """
+        remote_node = self._nodes.get("fred_master")
+        if not self._enabled or not remote_node or remote_node.status != "healthy":
+            logger.warning("[FRED] 远程节点不可用（后端已移除本地兜底）")
+            return {"status": "error", "message": "No healthy FRED remote node (local service disabled)"}
+
+        try:
+            payload = {
+                "source": "fred",
+                "action": action.upper(),
+                "params": dict(params),
+            }
+            result = await self._send_request(remote_node, "fred", payload)
+            if result.get("status") == "success":
+                await self._update_node_status(remote_node.name, success=True)
+                return result
+            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+        except Exception as e:
+            logger.warning(f"[FRED] 远程节点失败: {remote_node.name}, {action}, {str(e)}")
+            await self._update_node_status(remote_node.name, success=False, error=str(e))
+
+        logger.warning("[FRED] 远程节点失败（后端已移除本地兜底）")
+        return {"status": "error", "message": "FRED remote node failed (local service disabled)"}
+
+    async def fetch_dbnomics(self, action: str, **params) -> Dict[str, Any]:
+        """DBnomics 远程节点代理 (主节点 DS_CAPABILITIES=dbnomics)。
+
+        宏观连接层 (DBnomics REST) 已下沉 data_subservice (_internal/dbnomics + dbnomics_worker.py)。
+        仅远程。
+        """
+        remote_node = self._nodes.get("dbnomics_master")
+        if not self._enabled or not remote_node or remote_node.status != "healthy":
+            logger.warning("[DBnomics] 远程节点不可用（后端已移除本地兜底）")
+            return {"status": "error", "message": "No healthy DBnomics remote node (local service disabled)"}
+
+        try:
+            payload = {
+                "source": "dbnomics",
+                "action": action.upper(),
+                "params": dict(params),
+            }
+            result = await self._send_request(remote_node, "dbnomics", payload)
+            if result.get("status") == "success":
+                await self._update_node_status(remote_node.name, success=True)
+                return result
+            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+        except Exception as e:
+            logger.warning(f"[DBnomics] 远程节点失败: {remote_node.name}, {action}, {str(e)}")
+            await self._update_node_status(remote_node.name, success=False, error=str(e))
+
+        logger.warning("[DBnomics] 远程节点失败（后端已移除本地兜底）")
+        return {"status": "error", "message": "DBnomics remote node failed (local service disabled)"}
+
+    async def fetch_rbi(self, action: str, **params) -> Dict[str, Any]:
+        """RBI 远程节点代理 (主节点 DS_CAPABILITIES=rbi)。
+
+        宏观连接层 (RBI 爬虫) 已下沉 data_subservice (_internal/rbi + rbi_worker.py)。
+        仅远程。
+        """
+        remote_node = self._nodes.get("rbi_master")
+        if not self._enabled or not remote_node or remote_node.status != "healthy":
+            logger.warning("[RBI] 远程节点不可用（后端已移除本地兜底）")
+            return {"status": "error", "message": "No healthy RBI remote node (local service disabled)"}
+
+        try:
+            payload = {
+                "source": "rbi",
+                "action": action.upper(),
+                "params": dict(params),
+            }
+            result = await self._send_request(remote_node, "rbi", payload)
+            if result.get("status") == "success":
+                await self._update_node_status(remote_node.name, success=True)
+                return result
+            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+        except Exception as e:
+            logger.warning(f"[RBI] 远程节点失败: {remote_node.name}, {action}, {str(e)}")
+            await self._update_node_status(remote_node.name, success=False, error=str(e))
+
+        logger.warning("[RBI] 远程节点失败（后端已移除本地兜底）")
+        return {"status": "error", "message": "RBI remote node failed (local service disabled)"}
+
+    async def fetch_search(self, source: str, **params) -> Dict[str, Any]:
+        """搜索/抓取源远程代理 (Tavily / Bocha / Jina)。
+
+        外部搜索/抓取经 data_subservice 统一代理 (search_worker.py)，主服务不再直接
+        httpx 外部 API。source ∈ {tavily, bocha, jina}。仅远程。
+        """
+        remote_node = self._nodes.get("search_master")
+        if not self._enabled or not remote_node or remote_node.status != "healthy":
+            logger.warning(f"[Search/{source}] 远程节点不可用（后端已移除直连）")
+            return {
+                "status": "error",
+                "message": f"No healthy Search remote node (direct API disabled) source={source}",
+            }
+
+        try:
+            payload = {
+                "source": source,
+                "action": "SEARCH",
+                "params": dict(params),
+            }
+            result = await self._send_request(remote_node, source, payload)
+            if result.get("status") == "success":
+                await self._update_node_status(remote_node.name, success=True)
+                return result
+            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+        except Exception as e:
+            logger.warning(f"[Search/{source}] 远程节点失败: {remote_node.name}, {str(e)}")
+            await self._update_node_status(remote_node.name, success=False, error=str(e))
+
+        logger.warning(f"[Search/{source}] 远程节点失败（后端已移除直连）")
+        return {"status": "error", "message": f"Search remote node failed (direct API disabled) source={source}"}
 
     # ─────────────────────────────────────────
     #  DIST-19: AKShare STALE 缓存降级
@@ -906,28 +1005,6 @@ class DataSourceRouter:
         except Exception as e:
             logger.debug(f"[AKShare] 热点缓存读取失败：{e}")
         return None
-
-    async def _call_local_akshare(self, action: str, akshare_service, **kwargs) -> Dict[str, Any]:
-        try:
-            if action == "southbound":
-                return await akshare_service.get_southbound_flow()
-            elif action == "northbound":
-                return await akshare_service.get_northbound_flow()
-            elif action == "hsgt_holders":
-                return await akshare_service.get_hsgt_top_holders(symbol=kwargs.get("symbol", "00700"))
-            elif action == "company_news":
-                return await akshare_service.get_company_news(ticker=kwargs.get("ticker", ""))
-            elif action == "stock_quote":
-                return await akshare_service.get_stock_quote(ticker=kwargs.get("ticker", ""))
-            elif action == "stock_history":
-                return await akshare_service.get_stock_history(
-                    ticker=kwargs.get("ticker", ""), num=kwargs.get("num", 60)
-                )
-            elif action == "economic_calendar":
-                return await akshare_service.get_economic_calendar(days_ahead=kwargs.get("days_ahead", 7))
-            return {"status": "error", "message": f"Unknown akshare action: {action}"}
-        except Exception as e:
-            return {"status": "error", "message": f"Local akshare failed: {str(e)}"}
 
     async def get_health_status(self) -> Dict[str, Any]:
         status = {"router_enabled": self._enabled, "nodes": {}}

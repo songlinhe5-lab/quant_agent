@@ -1,6 +1,6 @@
 # CHANGELOG
 
-所有重大版本变更、架构决策（ADR）与功能里程碑均记录于此。  
+所有重大版本变更、架构决策（ADR）与功能里程碑均记录于此。
 格式遵循 [Keep a Changelog](https://keepachangelog.com/)，版本语义参考 [Semantic Versioning](https://semver.org/)。
 
 ---
@@ -17,11 +17,11 @@
 ## [0.3.0] — 2026-06-27 · 文档系统 V3.0 全面重写
 
 ### Changed (Breaking)
-- **ADR-001**: 前端框架从 Next.js App Router 切换为 **Pure Vite SPA (React 18+)**。  
+- **ADR-001**: 前端框架从 Next.js App Router 切换为 **Pure Vite SPA (React 18+)**。
   原因：量化看板核心诉求是高频 WebSocket 渲染，RSC 模型与重客户端状态架构背道而驰。
-- **ADR-002**: 客户端从 Tauri + Swift/Kotlin/ArkTS 切换为 **Flutter 统一三端（Android/iOS/HarmonyOS NEXT）**。  
+- **ADR-002**: 客户端从 Tauri + Swift/Kotlin/ArkTS 切换为 **Flutter 统一三端（Android/iOS/HarmonyOS NEXT）**。
   原因：单一代码库，降低跨平台维护成本，Impeller 渲染引擎满足 60fps K线要求。
-- **ADR-003**: 部署架构升级为 **双 VPS（香港 + 国际）+ Cloudflare 边缘节点** 分布式方案。  
+- **ADR-003**: 部署架构升级为 **双 VPS（香港 + 国际）+ Cloudflare 边缘节点** 分布式方案。
   原因：充分利用 Cloudflare 免费资源（Pages/Tunnel/R2/Workers），隔离核心执行能力与 AI 推理能力。
 
 ### Added

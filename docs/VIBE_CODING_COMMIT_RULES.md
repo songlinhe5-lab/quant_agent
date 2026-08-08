@@ -43,7 +43,7 @@ git commit -m "feat(indicators): add Keltner channels breakout system"
 git commit -m "feat(phase1-3): complete Clean Architecture + Technical Indicators v2.0"
 # 实际包含了：
 # - Router 层解耦
-# - Adapters 实现  
+# - Adapters 实现
 # - Application service 层
 # - 15 个技术指标
 # - 文档编写
@@ -177,7 +177,7 @@ Step 2: Implement Core Logic (FIRST)
    ├── Test locally: python scripts/task1_validate_indicators.py
    └─ Commit: "feat(indicators): implement ADX calculation logic"
 
-Step 3: Add Tests (SECOND)  
+Step 3: Add Tests (SECOND)
    ├── Write unit tests for the new indicator
    ├── Ensure all tests pass
    └─ Commit: "test(ADVANCED): add ADX validation tests"
@@ -204,7 +204,7 @@ Step 7: Final Cleanup
 
 Final: Push & Create PR
    ├─ git push origin feat/indicator-ADX
-   └─ gh pr create --title "feat(indicators): add ADX/DMI support" 
+   └─ gh pr create --title "feat(indicators): add ADX/DMI support"
 ```
 
 ### **关键原则: Each Step = Separate Commit**
@@ -241,7 +241,7 @@ a4dd455 chore: add CI/CD coverage gate + router refactoring [OPT-007]
 ```
 BAD workflow:
 1. Write ALL 6 new indicators → 255 lines
-2. Write ALL tests → 398 lines  
+2. Write ALL tests → 398 lines
 3. Write ALL docs → 3 docs
 4. Run ALL validations
 5. Commit everything at once
@@ -295,7 +295,7 @@ Examples:
 
 # For each commit, include:
 1️⃣ ONE sentence summary (50 chars max)
-2️⃣ WHAT changed (file names + line counts)  
+2️⃣ WHAT changed (file names + line counts)
 3️⃣ WHY this change (business reason)
 4️⃣ Impact assessment (performance, breaking changes)
 
@@ -397,7 +397,7 @@ git push --force-with-lease origin develop
 
 1. **One Commit = One Purpose**
 2. **Under 500 lines total**
-3. **Self-contained functionality**  
+3. **Self-contained functionality**
 4. **Testable and reversible**
 5. **Clear commit message**
 
@@ -422,5 +422,5 @@ Any previous instructions that suggested "complete full implementation before co
 
 **New Standard: Always aim for atomic commits, even during development.**
 
-Version: v1.0 (2026-07-10)  
+Version: v1.0 (2026-07-10)
 Emergency correction triggered by monolithic commit discovery.

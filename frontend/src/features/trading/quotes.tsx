@@ -133,7 +133,7 @@ export function QuotesModule() {
   const { watchlist, addTicker, removeTicker, updateTicker, reorderWatchlist } = useWatchlist()
 
   const { realQuote, realHistory, gatewayStatus, isStale, latestStatsRef } = useMarketData({ selectedSymbol, selectedPeriod, watchlist, updateTicker })
-  
+
   // 💡 键盘快捷键支持：使用上下方向键快速切换自选标的，数字键 1-7 快速切换周期
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -145,7 +145,7 @@ export function QuotesModule() {
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         if (watchlist.length === 0) return;
         const currentIndex = watchlist.findIndex(item => item.symbol === selectedSymbol);
-        
+
         if (e.key === 'ArrowUp') {
           e.preventDefault(); // 防止页面滚动
           if (currentIndex > 0) setSelectedSymbol(watchlist[currentIndex - 1].symbol);
@@ -158,7 +158,7 @@ export function QuotesModule() {
           }
         }
       }
-      
+
       // 💡 数字键 1-6 快速切换 K 线周期
       const periodMap: Record<string, string> = {
         '1': '1m',   // 分时
@@ -177,7 +177,7 @@ export function QuotesModule() {
     return () => window.removeEventListener('keydown', handleKeyDown);
 // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-  
+
   const hasData = watchlist.length > 0
   // §14.1：watchlist 为空时不再注入内联假对象（避免 PROD 下出现假数据占位），
   // 回落 undefined，由下方图表区 EmptyState 提示用户添加标的。
@@ -261,11 +261,11 @@ export function QuotesModule() {
           <p className="text-sm text-muted-foreground mt-1">行情流可能已过期，正在尝试重新连接...</p>
         </div>
       )}
-      
+
       <PatternRecognition symbol={selectedSymbol} history={realHistory} />
 
       <PanelGroup direction={isMobile ? "vertical" : "horizontal"} className={cn("flex-1 min-w-0 h-full gap-2 transition-all duration-300", isStale && "saturate-50 opacity-60")}>
-        
+
         {/* ── Left: Watchlist ──────────────────────────── */}
         {isWatchlistExpanded && (
           <>

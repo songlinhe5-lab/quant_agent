@@ -446,7 +446,7 @@ class TestRunSandbox:
         pipe_mock.__aexit__ = AsyncMock(return_value=None)
         mock_redis.get = AsyncMock(return_value=None)
         mock_redis.pipeline = MagicMock(return_value=pipe_mock)
-        
+
         mock_fetch.return_value = (False, None, "NO_DATA")
 
         resp = client.post(
@@ -476,7 +476,7 @@ class TestRunSandbox:
         pipe_mock.__aexit__ = AsyncMock(return_value=None)
         mock_redis.get = AsyncMock(return_value=None)
         mock_redis.pipeline = MagicMock(return_value=pipe_mock)
-        
+
         df = pd.DataFrame({"Open": [100], "High": [101], "Low": [99], "Close": [100], "Volume": [1000]})
         mock_fetch.return_value = (True, df, "LocalDB")
         mock_run.side_effect = ValueError("策略逻辑错误")
@@ -506,7 +506,7 @@ class TestRunSandbox:
         pipe_mock.__aexit__ = AsyncMock(return_value=None)
         mock_redis.get = AsyncMock(return_value=None)
         mock_redis.pipeline = MagicMock(return_value=pipe_mock)
-        
+
         df = pd.DataFrame({"Open": [100], "High": [101], "Low": [99], "Close": [100], "Volume": [1000]})
         mock_fetch.return_value = (True, df, "LocalDB")
         mock_run.side_effect = RuntimeError("unexpected crash")

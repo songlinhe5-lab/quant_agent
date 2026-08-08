@@ -6,7 +6,7 @@ from typing import Optional
 import pandas as pd
 
 from backend.core.redis_client import redis_client
-from backend.services.yfinance import format_yf_ticker
+from backend.core.ticker_format import format_yf_ticker
 
 # 💡 将数仓建立在根目录的 data/kline_warehouse 下，与代码库隔离
 DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data", "kline_warehouse"))  # noqa: E501

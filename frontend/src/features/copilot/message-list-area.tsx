@@ -39,7 +39,7 @@ export function MessageListArea() {
                 </div>
                 <p className="text-xs font-mono">量化投研主脑已就绪，请输入投研指令或选择下方快捷模板...</p>
               </div>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 w-full mt-4">
                 {quickPrompts.map((qp, i) => (
                   <button key={i} onClick={() => handleSend(qp.prompt)} className="flex items-start gap-3 p-3 rounded-xl border border-border/40 bg-secondary/20 hover:bg-secondary/60 hover:border-primary/40 transition-all text-left group shadow-sm hover:shadow-md">

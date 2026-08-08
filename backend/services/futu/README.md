@@ -314,7 +314,7 @@ async def get_new_indicator(self, ticker: str):
    ```python
    # ❌ 错误
    futu_service.quote_handler.get_quote(...)
-   
+
    # ✅ 正确
    futu_service.get_quote(...)
    ```
@@ -347,13 +347,13 @@ from backend.services.futu.quote_handler import QuoteHandler
 ```
 
 ### Q: 缓存何时清除？
-A: 
+A:
 - 自动过期：根据 TTL 自动失效
 - 手动清除：调用 `close()` 会清空所有缓存
 - 重启服务：进程重启后缓存自然清空
 
 ### Q: 如何添加新的缓存类型？
-A: 
+A:
 1. 在 `CacheManager` 中添加新的缓存字典
 2. 添加 `get/set` 方法
 3. 在对应 Handler 中使用

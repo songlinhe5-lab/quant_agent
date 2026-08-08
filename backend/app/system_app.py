@@ -68,11 +68,23 @@ async def build_health_snapshot() -> dict[str, Any]:
 
 
 async def build_cluster_snapshot() -> dict[str, Any]:
+    # 主服务默认开启所有数据源能力；数据源失效通过 router 健康状态在监控中如实呈现。
+    from backend.services.datasource.router import data_source_router
     from backend.workers.collector_registry import get_enabled_collectors
+
+    data_source_health = {}
+    try:
+        data_source_health = await data_source_router.get_health_status()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[cluster] 获取数据源健康状态失败: {e}")
+        data_source_health = {"error": str(e)}
 
     return {
         "mode": "standalone",
+        # daemon 启用清单（默认全开，仅显式 false 才关）
         "collectors": get_enabled_collectors(),
+        # 数据源节点健康：数据源失效即在此可见（healthy/unhealthy/熔断/cooldown）
+        "data_sources": data_source_health,
     }
 
 

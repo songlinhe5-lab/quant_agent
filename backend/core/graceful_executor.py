@@ -45,7 +45,8 @@ class GracefulExecutor(ThreadPoolExecutor):
         max_wait_s: int = 30,  # 优雅关闭最大等待时间
         **kwargs,
     ):
-        super().__init__(max_workers=max_workers, thread_name_prefix=thread_name_prefix, **kwargs)
+        # 标准库 ThreadPoolExecutor 类型标注要求 thread_name_prefix: str，但 None 是合法默认
+        super().__init__(max_workers=max_workers, thread_name_prefix=thread_name_prefix, **kwargs)  # type: ignore[arg-type]
 
         self.max_wait_s = max_wait_s
 
@@ -56,7 +57,7 @@ class GracefulExecutor(ThreadPoolExecutor):
 
         print(f"✅ GracefulExecutor 初始化 (max_workers={max_workers}, max_wait_s={max_wait_s})")
 
-    def submit(self, fn: Callable, *args, **kwargs) -> asyncio.Future:
+    def submit(self, fn: Callable, *args, **kwargs) -> asyncio.Future:  # type: ignore[override]
         """
         重写 submit() 支持返回 asyncio.Future
 

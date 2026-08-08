@@ -79,7 +79,7 @@ else
         --ssh \
         --accept-routes=false \
         --accept-dns=true
-    
+
     log_info "Tailscale 入网成功!"
 fi
 
@@ -141,12 +141,12 @@ log_info "配置 Tailscale SSH..."
 if [ -f /etc/ssh/sshd_config ]; then
     # 备份原始配置
     sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak.$(date +%s)
-    
+
     # 禁用密码认证 (强制密钥)
     if ! grep -q "^PasswordAuthentication no" /etc/ssh/sshd_config; then
         echo "PasswordAuthentication no" | sudo tee -a /etc/ssh/sshd_config > /dev/null
     fi
-    
+
     # 重启 SSH
     sudo systemctl restart sshd 2>/dev/null || sudo service ssh restart 2>/dev/null || true
     log_info "SSH 配置已加固 (禁用密码认证)"

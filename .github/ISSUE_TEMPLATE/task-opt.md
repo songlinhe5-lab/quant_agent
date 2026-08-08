@@ -8,11 +8,11 @@ assignees: []
 
 # ✅ 任务概览
 
-**所属 Epic**: #XXXXX (OPT-XXX: [Phase X] XXX 目标)  
-**任务类型**: Refactoring / Feature / Test / Documentation  
-**优先级**: P0 / P1 / P2  
-**工作量估算**: Xh  
-**预计耗时**: X 工作日  
+**所属 Epic**: #XXXXX (OPT-XXX: [Phase X] XXX 目标)
+**任务类型**: Refactoring / Feature / Test / Documentation
+**优先级**: P0 / P1 / P2
+**工作量估算**: Xh
+**预计耗时**: X 工作日
 
 ---
 
@@ -69,7 +69,7 @@ pip install pytest-asyncio hypothesis
 class DataSourceInterface(Protocol):
     name: str
     version: str
-    
+
     def fetch(self, action: str, params: dict) -> Result:
         ...
 ```
@@ -80,7 +80,7 @@ class DataSourceInterface(Protocol):
 async def test_futu_quote_returns_success():
     adapter = FutuAdapter(...)
     result = await adapter.fetch("quote", {"ticker": "AAPL"})
-    
+
     assert result.status == "success"
     assert "price" in result.data
 ```

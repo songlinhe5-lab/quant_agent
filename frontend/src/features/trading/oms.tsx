@@ -38,10 +38,10 @@ export function OMSModule() {
 
   return (
     <div className="relative h-[calc(100vh-80px)] w-full flex flex-col overflow-hidden">
-      
+
       {showAlgoModal && <AlgoOrderModal onClose={() => setShowAlgoModal(false)} />}
       {selectedOrder && <OrderDetailModal order={selectedOrder} onClose={() => setSelectedOrder(null)} />}
-      
+
       {/* 💡 断流优雅降级保护 */}
       {isStale && (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/80 backdrop-blur-md transition-all duration-300 z-[100]">
@@ -74,9 +74,9 @@ export function OMSModule() {
             OMS & Live Bots
           </span>
         </div>
-        
+
         <div className="flex items-center gap-3">
-          <Button 
+          <Button
             onClick={() => setShowAlgoModal(true)}
             variant="outline"
             className="h-9 px-4 font-bold border-indigo-500/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 shadow-sm"
@@ -85,13 +85,13 @@ export function OMSModule() {
             新建算法单
           </Button>
 
-          <Button 
+          <Button
             onClick={handleKillSwitch}
             disabled={isKilled}
             className={cn(
               "h-9 px-6 font-bold tracking-widest uppercase transition-all duration-300 shadow-lg border",
-              isKilled 
-                ? "bg-red-950 text-red-500/50 border-red-900 cursor-not-allowed" 
+              isKilled
+                ? "bg-red-950 text-red-500/50 border-red-900 cursor-not-allowed"
                 : "bg-red-600 hover:bg-red-500 text-white border-red-500 shadow-[0_0_15px_rgba(220,38,38,0.4)] hover:shadow-[0_0_25px_rgba(220,38,38,0.6)] animate-pulse"
             )}
           >

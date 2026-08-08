@@ -101,7 +101,7 @@ DataSourceRegistry.get("futu", "quote")
 | `DATASOURCE_FUTU_NODES` | — | external/hybrid 模式的远程节点地址（逗号分隔） |
 | `FUTU_HOST` | `127.0.0.1` | OpenD 主机地址 (internal 模式) |
 | `FUTU_PORT` | `11111` | OpenD 端口 |
-| `COLLECTOR_FUTU` | `false` | 是否启用 Futu 采集器（后台定时任务） |
+| `DS_CAPABILITIES` | `futu` | 数据源能力声明；含 `futu` 时子服务启动 OpenD 连接与采集（采集 daemon 默认全开，不再用 `COLLECTOR_*` 开关） |
 
 ### 3.3 典型配置
 

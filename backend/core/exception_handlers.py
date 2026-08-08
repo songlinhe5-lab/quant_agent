@@ -92,8 +92,10 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 def register_exception_handlers(app: FastAPI) -> None:
     """注册全局异常处理器"""
-    app.add_exception_handler(QuantBaseException, quant_exception_handler)
-    app.add_exception_handler(AppError, app_error_handler)
-    app.add_exception_handler(HTTPException, http_exception_handler)
-    app.add_exception_handler(RequestValidationError, validation_exception_handler)
-    app.add_exception_handler(Exception, global_exception_handler)
+    # FastAPI/Starlette add_exception_handler 的类型签名与实际的异常处理协程不匹配
+    # (框架已知偏差，FastAPI 源码自身也如此处理)，故对每处忽略 arg-type。
+    app.add_exception_handler(QuantBaseException, quant_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(AppError, app_error_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(HTTPException, http_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(Exception, global_exception_handler)  # type: ignore[arg-type]

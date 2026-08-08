@@ -32,7 +32,7 @@
 6. `backend/tests/test_collector_registry.py`：移除 futu collector 相关断言（期望集、启停矩阵、任务数 4→3）。
 
 **验证**：
-- `backend.main` 导入 OK；`data_subservice` 在 `COLLECTOR_FUTU=true` 下能导入 `app` 与 `futu_src.ConnectionManager`（子服务为唯一 OpenD 宿主）。
+- `backend.main` 导入 OK；`data_subservice` 在 `DS_CAPABILITIES=futu` 下能导入 `app` 与 `futu_src.ConnectionManager`（子服务为唯一 OpenD 宿主）。
 - `data_subservice/tests/test_futu_*.py`：**242 passed**。
 - `backend/tests/test_collector_registry.py`：17 passed。
 - 主服务 `test_market_engine.py` / `test_kline_warehouse.py` 等回归无新增失败。
@@ -65,11 +65,16 @@
 - `docs/03` §4.4 + 变更日志 V5.4：固化子服务职责红线。
 - 相关测试 2 件（`test_finnhub_service_daemon.py` / `test_services_market_daemon_coverage.py`）改引用 `alert_daemon.macro_alert_daemon`。
 
-**待办（后续 commit，未做）**：
-- finnhub `service.py`（REST 取数+限流+缓存单飞）+ `_trade_stream_daemon` WS 连接层下沉 data_subservice（新建 finnhub_fmp_worker.py）。
-- fmp 800 行 daemon 整体下沉 data_subservice + `/metrics` 暴露 14 个 Prometheus 指标 + system.py credit 看板改经 HTTP。
-- akshare 市场级资金流（南向/北向/港股通）定时采集补进 data_subservice/akshare_worker.py；删主服务 akshare collector daemon。
-- 删 yfinance collector（路由空壳，零断流）；删 futu 后 COLLECTORS 已无 futu，本次维持 akshare/finnhub/fmp/yfinance 在主服务 COLLECTORS 直到下沉完成（hybrid 过渡）。
+**已落地（2026-08-07 全远程重构）**：
+- 所有数据源仅远程：`Futu/FMP/Finnhub/FRED/DBnomics/RBI/Tavily/Bocha/Jina` 连接层全部下沉 data_subservice（`_internal/*` + 各 `*_worker.py`），主服务经 `DataSourceRouter` HTTP 代理，**不再持有本地 SDK / WS 订阅 / 直连外部 API**。
+- `backend/services/datasource/router.py`：移除 `_call_local_*` 本地降级通道；`fetch_*` 全部 remote-only；新增 `fetch_finnhub/fred/dbnomics/rbi/search`。
+- 适配器 `futu/fmp/finnhub/macro/search/akshare` 改为经 router 调用（mode=remote）。Finnhub WS tick 层已弃用，quote 走 REST 快照。
+- 子服务 `main.fetch_data` 新增 finnhub/fred/dbnomics/rbi/search 源路由；`DS_CAPABILITIES` 声明能力（主节点可声明 `futu,fmp,finnhub,fred,dbnomics,rbi,tavily,bocha,jina`）。
+- 外部搜索/抓取 API Key 由承载对应能力的子服务节点持有，主服务不再直连 api.tavily.com / api.bochaai.com / r.jina.ai。
+
+**待办（后续优化，非阻断）**：
+- akshare 市场级资金流（南向/北向/港股通）定时采集补进 data_subservice/akshare_worker.py（当前已支持 FUND_FLOW/ECONOMIC_CALENDAR）。
+- FMP `/metrics` 暴露 Prometheus 指标 + credit 看板经 HTTP（子服务已下沉，指标待补齐）。
 
 ## 四、相关文件索引
 

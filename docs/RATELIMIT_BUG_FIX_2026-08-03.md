@@ -1,7 +1,7 @@
 # 🔧 限流中间件 Bug 修复报告 (ARCH-07)
 
-**问题诊断**: 登录请求被错误限流 + Redis 认证失败导致限流失效  
-**修复时间**: 2026-08-03  
+**问题诊断**: 登录请求被错误限流 + Redis 认证失败导致限流失效
+**修复时间**: 2026-08-03
 **严重程度**: 🔴 Critical (生产环境鉴权失效)
 
 ---
@@ -48,21 +48,21 @@ async def rate_limit_middleware(request: Request, call_next):
     if not request.url.path.startswith("/assets") and request.url.path not in ["/", "/monitor", "/health"]:
         client_ip = request.client.host if request.client else "unknown"
         key = f"rate_limit:{client_ip}"
-        
+
         try:
             async with redis_client.pipeline() as pipe:
                 await pipe.incr(key)
                 await pipe.expire(key, RATE_WINDOW, nx=True)
                 results = await pipe.execute()
-            
+
             current_requests = results[0]
             if current_requests > RATE_LIMIT:  # ← 这里永远不会触发!
                 return JSONResponse(status_code=429, ...)
-                
+
         except Exception as e:
             print(f"⚠️ [Rate Limiter] Redis 限流器异常：{e}")
             # ❌ 仅 print，无 return，继续执行到 call_next!
-    
+
     return await call_next(request)  # ← 无论是否捕获异常，都放行
 ```
 
@@ -70,7 +70,7 @@ async def rate_limit_middleware(request: Request, call_next):
 ```
 用户请求 → rate_limit_middleware
          ↓
-      Redis.connect()? 
+      Redis.connect()?
          ↓
     [NOAUTH ERROR] → try-except → print(e)
          ↓                              ↓
@@ -224,7 +224,7 @@ $ docker stop redis
 
 ## 🎯 结论
 
-**根本原因**: 
+**根本原因**:
 1. 限流中间件在 Redis 异常时无 fail-safe 机制，静默放行
 2. 未对敏感操作路径（/auth/*）进行豁免
 

@@ -8,10 +8,10 @@ assignees: ['@BackendLead', '@DataEngineer']
 
 # 📋 Epic 概览
 
-**OPT 编号**: OPT-XXX  
-**所属 Phase**: Phase X (如：Phase 1 - 核心架构整治)  
-**优先级**: P0 / P1 / P2  
-**估算工作量**: XX 小时  
+**OPT 编号**: OPT-XXX
+**所属 Phase**: Phase X (如：Phase 1 - 核心架构整治)
+**优先级**: P0 / P1 / P2
+**估算工作量**: XX 小时
 
 ---
 
@@ -67,9 +67,9 @@ assignees: ['@BackendLead', '@DataEngineer']
 
 ## 🗣️ 虚拟专家委员会决策记录
 
-**会议 ID**: VARB-2026-0708-001  
-**运行时间**: 2026-07-08  
-**共识引擎版本**: v2.1  
+**会议 ID**: VARB-2026-0708-001
+**运行时间**: 2026-07-08
+**共识引擎版本**: v2.1
 
 ### 关键决议摘要
 

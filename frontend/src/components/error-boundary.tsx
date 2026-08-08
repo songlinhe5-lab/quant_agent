@@ -35,7 +35,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     this.setState({ errorInfo })
-    
+
     // 根据级别使用不同的日志方法
     const message = `[ErrorBoundary:${this.props.level}] ${this.props.name} 崩溃`
     const context = {

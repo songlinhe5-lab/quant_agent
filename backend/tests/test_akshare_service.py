@@ -157,7 +157,7 @@ class TestAKShareService:
             patch.dict(sys.modules, {"akshare": fake_ak}),
             patch("backend.services.akshare.quote.redis_client") as mock_redis,
             patch(
-                "backend.services.finnhub.service.finnhub_service._fallback_yahoo_news",
+                "backend.core.yahoo_news.fetch_yahoo_news",
                 new=AsyncMock(return_value=yahoo_news),
             ),
         ):

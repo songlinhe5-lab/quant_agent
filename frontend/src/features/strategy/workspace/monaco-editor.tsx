@@ -22,7 +22,7 @@ export function MonacoEditorTab() {
   const { toast } = useToast()
   const monaco = useMonaco()
   const editorRef = useRef<any>(null)
-  
+
   const [isChecking, setIsChecking] = useState(false)
   const [syntaxError, setSyntaxError] = useState<{line: number, msg: string} | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -67,7 +67,7 @@ export function MonacoEditorTab() {
           return []
         }
       })
-      
+
       // 💡 注册 Python 智能代码补全 (Pandas & Numpy 核心量化方法)
       const completionProvider = monaco.languages.registerCompletionItemProvider('python', {
         triggerCharacters: ['.'],
@@ -97,7 +97,7 @@ export function MonacoEditorTab() {
           return { suggestions }
         }
       })
-      
+
       return () => { formatProvider.dispose(); completionProvider.dispose() }
     }
   }, [monaco])
@@ -162,7 +162,7 @@ export function MonacoEditorTab() {
     setIsSaving(true)
     const className = store.formSchema.length > 0 ? store.formSchema[0].class_name : 'DraftStrategy'
     const currentCode = editorRef.current ? editorRef.current.getValue() : store.code
-    
+
     try {
       const res = await apiClient.post('/strategy/save', { source_code: currentCode, class_name: className })
       if (res.data?.status === 'success') {
@@ -179,7 +179,7 @@ export function MonacoEditorTab() {
         } else {
           store.setLastSavedCode(currentCode)
         }
-        
+
         store.fetchStrategies()
         store.setActiveStrategy(className)
       } else {
@@ -198,13 +198,13 @@ export function MonacoEditorTab() {
       const fixPrompt = `以下 Python 策略代码在 AST 解析时报语法错误：\n【报错信息】: ${syntaxError.msg}\n\n【错误源码】:\n${store.code}\n\n请直接修复该语法错误，并输出修复后的完整纯 Python 源码。严禁包含任何前言、后语或 Markdown 代码块标记。`
       const assistantMsgId = Date.now().toString()
       store.addMessage({ id: assistantMsgId, role: 'assistant', content: '', reasoning: '', status: 'reasoning' })
-      
+
       const response = await fetchWithAuth(`${API_BASE_URL}/strategy/generate`, {
         method: 'POST',
         body: JSON.stringify({ prompt: fixPrompt })
       })
       if (!response.body) throw new Error('流式请求发起失败')
-      
+
       const reader = response.body.getReader(); const decoder = new TextDecoder('utf-8'); let done = false; let buffer = ''
       while (!done) {
         const { value, done: readerDone } = await reader.read(); done = readerDone
@@ -238,8 +238,8 @@ export function MonacoEditorTab() {
           language="python"
           theme={theme === 'dark' ? 'quant-dark' : 'quant-light'}
           value={store.code}
-          onMount={(editor, monaco_instance) => { 
-            editorRef.current = editor 
+          onMount={(editor, monaco_instance) => {
+            editorRef.current = editor
             editor.addCommand(monaco_instance.KeyMod.CtrlCmd | monaco_instance.KeyCode.KeyS, async () => {
               await editor.getAction('editor.action.formatDocument')?.run()
               handleSaveStrategy()

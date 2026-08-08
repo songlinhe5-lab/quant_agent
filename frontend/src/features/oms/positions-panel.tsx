@@ -29,7 +29,7 @@ interface PositionsPanelProps {
 export function PositionsPanel({ positions, isStale = false, onClose }: PositionsPanelProps) {
   const totalPnl = positions.reduce((acc, p) => acc + p.pnl, 0)
   const hasRiskPositions = positions.some(p => {
-    const riskRatio = p.side === "long" 
+    const riskRatio = p.side === "long"
       ? (p.currentPrice - p.liquidationPrice) / p.currentPrice
       : (p.liquidationPrice - p.currentPrice) / p.currentPrice
     return riskRatio < 0.1
@@ -49,7 +49,7 @@ export function PositionsPanel({ positions, isStale = false, onClose }: Position
             {positions.length}
           </span>
           {hasRiskPositions && (
-            <span 
+            <span
               className="text-amber-500 text-xs flex items-center gap-1"
               title="部分持仓接近强平价格"
               aria-label="风险警告"
@@ -66,7 +66,7 @@ export function PositionsPanel({ positions, isStale = false, onClose }: Position
           {totalPnl >= 0 ? "+" : ""}{totalPnl.toLocaleString(undefined, { minimumFractionDigits: 2 })} USD
         </div>
         {isStale && (
-          <span 
+          <span
             className="text-amber-500 text-xs flex items-center gap-1"
             title="持仓数据可能已过期"
             aria-label="数据过期警告"
@@ -219,7 +219,7 @@ export function OrderHistory({ orders, isStale = false, onCancel }: OrderHistory
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold">订单历史</h3>
         {isStale && (
-          <span 
+          <span
             className="text-amber-500 text-xs flex items-center gap-1"
             title="订单数据可能已过期"
             aria-label="数据过期警告"

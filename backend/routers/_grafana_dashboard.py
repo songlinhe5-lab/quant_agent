@@ -205,7 +205,7 @@ def build_grafana_dashboard(overview: dict[str, Any]) -> dict[str, Any]:
                     ],
                     "annotations": {
                         "summary": "FMP collector 超过 8 小时没有完成任何批次，守护疑似卡死或未启动",
-                        "description": "守护正常每 6h 触发一轮；time() - last_batch_timestamp > 8h 持续 10m，需检查 COLLECTOR_FMP 开关、FMP_API_KEY 配置及守护协程存活。",
+                        "description": "守护正常每 6h 触发一轮；time() - last_batch_timestamp > 8h 持续 10m，需检查 FMP_API_KEY 配置、数据子服务 DS_CAPABILITIES 是否含 fmp 及守护协程存活。",
                     },
                     "labels": {"severity": "critical", "service": "quant-agent"},
                 },

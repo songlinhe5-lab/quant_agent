@@ -62,7 +62,7 @@ export function CalendarInfoPanel({ onClose }: { onClose: () => void }) {
 export function EventDetailPanel({ event, onClose }: { event: any; onClose: () => void }) {
   useTheme()
   const evName = event.event_zh || event.event_cn || event.title_zh || event.event;
-  
+
   let actualColor = event.actual ? "text-foreground" : "text-muted-foreground";
   let deviationArrow = "";
   if (event.actual && (event.forecast || event.estimate)) {
@@ -75,7 +75,7 @@ export function EventDetailPanel({ event, onClose }: { event: any; onClose: () =
       actualColor = (isBetter && !invert) || (!isBetter && invert) ? "text-[#059669] dark:text-[#0ecb81]" : "text-[#e11d48] dark:text-[#f6465d]";
     }
   }
-  
+
   const imp = event.impact?.toLowerCase() || 'medium';
   const isHigh = imp === 'high';
   const isLow = imp === 'low';
@@ -103,7 +103,7 @@ export function EventDetailPanel({ event, onClose }: { event: any; onClose: () =
             <span className="text-[10px] text-muted-foreground font-mono bg-secondary/40 px-2 py-0.5 rounded">{dd} {dt}</span>
             <span className={cn('inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold tracking-widest', isHigh ? 'text-[#e11d48] dark:text-[#f6465d]' : isLow ? 'text-sky-600/70 dark:text-sky-400/70' : 'text-amber-500/70 dark:text-amber-400/70')}>{isHigh ? '●●●' : isLow ? '●' : '●●'}</span>
           </div>
-          
+
           <div className="grid grid-cols-3 gap-2 p-2.5 bg-secondary/20 rounded-lg border border-border/30">
             <div className="flex flex-col gap-1">
               <span className="text-[9px] text-muted-foreground">前值 (Prev)</span>
@@ -121,7 +121,7 @@ export function EventDetailPanel({ event, onClose }: { event: any; onClose: () =
               </span>
             </div>
           </div>
-          
+
           <div className="space-y-1.5">
             <h4 className="text-[10px] font-bold text-muted-foreground uppercase flex items-center gap-1">
               <Sparkles className="h-3 w-3 text-indigo-500 dark:text-indigo-400" /> AI 智能推演

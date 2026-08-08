@@ -227,20 +227,31 @@ jobs:
 
             # ── 主节点本地子服务 (node-s1)：与 quant-agent 同机，监听 8001，主服务经 127.0.0.1:8001 直连 ──
             # 复用已拉取的 data-subservice 镜像 (DS_IMAGE 已在上方 pull 就位)
+            # ╔══════════════════════════════════════════════════════════════╗
+            # ║ .env.data-node 一次性生成原则 (与主节点 .env 语义一致)         ║
+            # ║ 不存在 → 由模板生成并回填 Secrets；已存在 → 完全不触碰。       ║
+            # ║ 便于运维手工调参 (如 DS_CAPABILITIES) 后不被下次部署覆盖。     ║
+            # ╚══════════════════════════════════════════════════════════════╝
             if [ ! -f .env.data-node ]; then
+              if [ ! -f .env.data-node.example ]; then
+                echo "❌ 缺少 .env.data-node.example 模板，无法生成 .env.data-node (node-s1)"
+                exit 1
+              fi
               cp .env.data-node.example .env.data-node
-              echo "🆕 未检测到 .env.data-node，基于 .env.data-node.example 首次生成 (node-s1)"
+              echo "🆕 未检测到 .env.data-node，基于模板首次生成并回填 (node-s1)"
+              sed -i "s|^DS_NODE_ID=.*|DS_NODE_ID=us-yf-s1|" .env.data-node
+              sed -i "s|^DS_REGION=.*|DS_REGION=us-west|" .env.data-node
+              sed -i "s|^DS_CAPABILITIES=.*|DS_CAPABILITIES=yfinance|" .env.data-node
+              sed -i "s|^DS_NODE_PORT=.*|DS_NODE_PORT=8001|" .env.data-node
+              sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=127.0.0.1|" .env.data-node
+              sed -i "s|^DS_BASE_URL=.*|DS_BASE_URL=http://127.0.0.1:8001|" .env.data-node
+              sed -i "s|^DATA_SOURCE_HMAC_SECRET=.*|DATA_SOURCE_HMAC_SECRET=${{ secrets.DATA_SOURCE_HMAC_SECRET }}|" .env.data-node
+              sed -i "s|^QUANT_ENV=.*|QUANT_ENV=production|" .env.data-node
+              sed -i "s|^TZ=.*|TZ=America/Los_Angeles|" .env.data-node
+              echo "✅ .env.data-node 已生成 (node-s1)"
+            else
+              echo "🛡️ 检测到已存在的 .env.data-node，完全保留人工配置，CI 不触碰 (node-s1)"
             fi
-            # 回填 node-s1 身份 (无论首次生成还是已存在，均确保本地子服务身份正确)
-            sed -i "s|^DS_NODE_ID=.*|DS_NODE_ID=us-yf-s1|" .env.data-node
-            sed -i "s|^DS_REGION=.*|DS_REGION=us-west|" .env.data-node
-            sed -i "s|^DS_CAPABILITIES=.*|DS_CAPABILITIES=yfinance|" .env.data-node
-            sed -i "s|^DS_NODE_PORT=.*|DS_NODE_PORT=8001|" .env.data-node
-            sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=127.0.0.1|" .env.data-node
-            sed -i "s|^DS_BASE_URL=.*|DS_BASE_URL=http://127.0.0.1:8001|" .env.data-node
-            sed -i "s|^DATA_SOURCE_HMAC_SECRET=.*|DATA_SOURCE_HMAC_SECRET=${{ secrets.DATA_SOURCE_HMAC_SECRET }}|" .env.data-node
-            sed -i "s|^QUANT_ENV=.*|QUANT_ENV=production|" .env.data-node
-            sed -i "s|^TZ=.*|TZ=America/Los_Angeles|" .env.data-node
             docker compose -f docker-compose.node-s1.yml --env-file .env.data-node up -d --remove-orphans
             echo "✅ 主节点本地子服务 (node-s1) 已启动于 127.0.0.1:8001"
 
@@ -445,7 +456,7 @@ jobs:
               sed -i "s|^DS_REGION=.*|DS_REGION=${{ matrix.ds-region }}|" ${{ matrix.env-file }}
               sed -i "s|^DS_CAPABILITIES=.*|DS_CAPABILITIES=${{ matrix.ds-caps }}|" ${{ matrix.env-file }}
               sed -i "s|^DS_NODE_PORT=.*|DS_NODE_PORT=8001|" ${{ matrix.env-file }}
-                          
+
               # 验证 Tailscale IP 是否存在；不存在则 fail fast（不回退 0.0.0.0，禁止公网暴露）
               if ip addr show | grep -q "inet $NODE_TS_IP/"; then
                 echo "✅ Tailscale IP $NODE_TS_IP 存在，绑定到该 IP"
@@ -461,7 +472,7 @@ jobs:
                 echo "   确认 Tailscale IP 与 Secrets 中 ${{ matrix.ts-ip-secret }} 一致"
                 exit 1
               fi
-                          
+
               sed -i "s|^DATA_SOURCE_HMAC_SECRET=.*|DATA_SOURCE_HMAC_SECRET=$HMAC_SECRET|" ${{ matrix.env-file }}
               sed -i "s|^DATA_SOURCE_ALLOWED_IPS=.*|DATA_SOURCE_ALLOWED_IPS=10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1|" ${{ matrix.env-file }}
               sed -i "s|^QUANT_ENV=.*|QUANT_ENV=production|" ${{ matrix.env-file }}

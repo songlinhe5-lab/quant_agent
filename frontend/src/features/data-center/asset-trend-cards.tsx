@@ -17,7 +17,7 @@ function AssetCard({ item }: { item: AssetTrendItem }) {
       // 1. 打断并重置当前动画，清理遗留定时器
       setFlash(null)
       if (flashTimer.current) clearTimeout(flashTimer.current)
-      
+
       const direction = item.price > prevPrice.current ? 'up' : 'down'
       prevPrice.current = item.price
 
@@ -263,7 +263,7 @@ export function AssetTrendCards({ initialData }: { initialData?: AssetTrendItem[
           if (ticker === item.symbol || ticker.includes(item.symbol)) {
             const newPrice = parseFloat(last_price)
             if (isNaN(newPrice)) return item
-            
+
             // 基于新价格重算涨跌幅
             const newChangePct = ((newPrice - item.basePrice) / item.basePrice) * 100
             return { ...item, price: newPrice, changePct: newChangePct }

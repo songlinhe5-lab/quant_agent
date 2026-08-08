@@ -1,218 +1,172 @@
-"""补充 services/market_daemon.py 遗漏分支的覆盖率测试。
+"""market/daemon.py 覆盖测试（SVC-06 市场化推送，全远程架构）。
 
-覆盖 CI 报告中的缺失行:
-- _generate_news_tags 纯函数 (584-593)
-- _get_news_tags_rules: 命中缓存 / 走默认规则 (561-581)
-- 各守护进程主体 (299-381, 407-479, 505-555, 184-206) 采用 "第二次 asyncio.sleep 抛
-  出 _BreakLoop 跳出 while True" 模式, 配合 mock 外部服务一次性跑通循环体。
+覆盖：
+1. _finnhub_fetch 经 datasource_registry.fetch("finnhub", ...) 远程路由（BE-ARCH-01/05）。
+2. _earnings_alert_daemon 经远程 fetch 取数并触发通知（一次迭代 + 超时取消）。
+3. _news_stream_daemon 在「未配置 FINNHUB_API_KEY」时静默退出（能力探测保护）。
+4. run_global_daemon 聚合正确的子 daemon。
+5. 架构约束：_trade_stream_daemon(WS) 已移除，不再直连 FinnhubService。
+
+注意：daemon 内部多为 while True 轮询，单测用 asyncio.wait_for 触发一次迭代后
+强制取消，避免挂起。
 """
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
+from backend.services.datasource import Result, ResultStatus
 from backend.workers.market import daemon as md
 
 
-class _BreakLoop(Exception):
-    """用于打断 daemon 的 while True 循环。"""
+def _result(data):
+    return Result(status=ResultStatus.SUCCESS, data=data)
 
 
-def _make_sleep_breaker(monkeypatch):
-    state = {"n": 0}
+class FakeLLM:
+    """极简 LLM 桩：让财报/新闻 daemon 的 AI 解读分支可单测。"""
 
-    async def _break(*a, **k):
-        state["n"] += 1
-        if state["n"] >= 2:
-            raise _BreakLoop()
+    def get_client(self):
+        return self
 
-    monkeypatch.setattr(asyncio, "sleep", _break)
+    def get_model(self):
+        return "gpt-test"
 
+    @property
+    def chat(self):
+        return self
 
-# ── 纯函数 (584-593) ──────────────────────────────────────────────────────────
-def test_generate_news_tags():
-    rules = {
-        "FED": r"\b(fed|fomc)\b",
-        "INFLATION": r"\b(cpi|pce)\b",
-        "BAD": r"([unclosed",  # 非法正则 -> re.error -> 跳过
-    }
-    tags = md._generate_news_tags("fed cuts rates as cpi cools", rules)
-    assert "FED" in tags
-    assert "INFLATION" in tags
-    assert "BAD" not in tags  # 非法正则被跳过
+    @property
+    def completions(self):
+        return self
 
-
-# ── _get_news_tags_rules (561-581) ─────────────────────────────────────────────
-@pytest.mark.asyncio
-async def test_get_news_tags_rules_cached():
-    fake = AsyncMock()
-    fake.get = AsyncMock(return_value='{"CUSTOM": "x"}')
-    with patch.object(md, "l1_cached_redis", fake):
-        rules = await md._get_news_tags_rules()
-    assert rules == {"CUSTOM": "x"}
+    def create(self, **kwargs):
+        msg = type("M", (), {"content": "beat"})()
+        choice = type("C", (), {"message": msg})()
+        return type("R", (), {"choices": [choice]})()
 
 
 @pytest.mark.asyncio
-async def test_get_news_tags_rules_default():
-    fake = AsyncMock()
-    fake.get = AsyncMock(return_value=None)
-    with patch.object(md, "l1_cached_redis", fake):
-        rules = await md._get_news_tags_rules()
-    assert "FED" in rules  # 回退到默认规则
+async def test_finnhub_fetch_routes_to_registry():
+    captured = {}
+
+    async def fake_fetch(source, action, params):
+        captured.update({"source": source, "action": action, "params": params})
+        return _result([{"headline": "x"}])
+
+    with pytest.MonkeyPatch().context() as m:
+        m.setattr(md.datasource_registry, "fetch", fake_fetch)
+        out = await md._finnhub_fetch("company_news", ticker="AAPL", days_back=3)
+
+    assert out == [{"headline": "x"}]
+    assert captured["source"] == "finnhub"
+    assert captured["action"] == "company_news"
+    assert captured["params"] == {"ticker": "AAPL", "days_back": 3}
 
 
-# ── _earnings_alert_daemon (299-381) ───────────────────────────────────────────
 @pytest.mark.asyncio
-async def test_earnings_alert_daemon(monkeypatch):
-    _make_sleep_breaker(monkeypatch)
+async def test_finnhub_fetch_returns_none_on_failure():
+    async def fake_fetch(source, action, params):
+        return Result(is_success=False, error="remote down", status_code=503)
 
-    finnhub = MagicMock()
-    finnhub.get_earnings_calendar = AsyncMock(
-        return_value=[
-            {
-                "symbol": "AAPL",
-                "period": "2024Q1",
-                "date": "2024-01-01",
-                "eps_estimate": 1.0,
-                "eps_actual": 1.2,
-                "revenue_estimate": 100,
-                "revenue_actual": 110,
-            }
-        ]
-    )
-
-    llm_client = MagicMock()
-    llm_client.chat.completions.create = AsyncMock(
-        return_value=MagicMock(choices=[MagicMock(message=MagicMock(content="超预期"))])
-    )
-    llm = MagicMock()
-    llm.get_client = lambda: llm_client
-    llm.get_model = lambda: "gpt"
-
-    notify = MagicMock()
-    notify.send_alert = AsyncMock()
-
-    redis = MagicMock()
-    redis.set = AsyncMock(side_effect=[True, False])  # is_new 命中与跳过两条分支
-    redis.zadd = AsyncMock()
-
-    with (
-        patch.object(md, "redis_client", redis),
-        patch("backend.services.ai_narrator.llm_service.llm_service", llm),
-        patch("backend.services.alert.notification.notification_service", notify),
-    ):
-        with pytest.raises(_BreakLoop):
-            await md._earnings_alert_daemon(finnhub)
+    with pytest.MonkeyPatch().context() as m:
+        m.setattr(md.datasource_registry, "fetch", fake_fetch)
+        assert await md._finnhub_fetch("company_news", ticker="AAPL") is None
 
 
-# ── macro_alert_daemon（独立模块 workers/macro/alert_daemon.py） ───────────────
 @pytest.mark.asyncio
-async def test_macro_alert_daemon(monkeypatch):
-    from backend.workers.macro import alert_daemon
+async def test_finnhub_fetch_returns_none_on_exception():
+    async def fake_fetch(source, action, params):
+        raise RuntimeError("boom")
 
-    _make_sleep_breaker(monkeypatch)
-
-    fred = MagicMock()
-    fred.get_economic_calendar = AsyncMock(
-        return_value=[
-            {
-                "event": "Fed Interest Rate Decision",
-                "impact": "low",
-                "actual": "5.0",
-                "estimate": "5.0",
-                "previous": "5.25",
-                "country": "US",
-                "time": "2024-01-31 18:00",
-            }
-        ]
-    )
-
-    llm_client = MagicMock()
-    llm_client.chat.completions.create = AsyncMock(
-        return_value=MagicMock(choices=[MagicMock(message=MagicMock(content="符合预期"))])
-    )
-    llm = MagicMock()
-    llm.get_client = lambda: llm_client
-    llm.get_model = lambda: "gpt"
-
-    notify = MagicMock()
-    notify.send_alert = AsyncMock()
-
-    redis = MagicMock()
-    redis.set = AsyncMock(return_value=True)
-    redis.zadd = AsyncMock()
-
-    with (
-        patch.object(alert_daemon, "redis_client", redis),
-        patch("backend.services.ai_narrator.llm_service.llm_service", llm),
-        patch("backend.services.alert.notification.notification_service", notify),
-        patch("backend.services.macro.fred_service.fred_service", fred),
-    ):
-        with pytest.raises(_BreakLoop):
-            await alert_daemon.macro_alert_daemon()
+    with pytest.MonkeyPatch().context() as m:
+        m.setattr(md.datasource_registry, "fetch", fake_fetch)
+        assert await md._finnhub_fetch("company_news", ticker="AAPL") is None
 
 
-# ── _insider_transactions_marquee_daemon (505-555) ─────────────────────────────
 @pytest.mark.asyncio
-async def test_insider_marquee_daemon(monkeypatch):
-    _make_sleep_breaker(monkeypatch)
+async def test_earnings_alert_daemon_triggers_notification(monkeypatch):
+    """设 FINNHUB_API_KEY，mock 远程 fetch 返回核心股财报，验证通知被调用一次。
 
-    finnhub = MagicMock()
-    finnhub.get_insider_transactions = AsyncMock(
-        return_value={
-            "status": "success",
-            "data": [
-                {
-                    "change": 20000,
-                    "transaction_price": 100.0,
-                    "date": "2024-01-01",
-                    "name": "CEO Cook",
-                }
-            ],
+    notification_service / llm_service 是 _earnings_alert_daemon 函数内局部导入，
+    需 patch 源模块属性（BE-ARCH-01 边界：不直接持有 FinnhubService 实例）。
+    """
+    monkeypatch.setenv("FINNHUB_API_KEY", "test-key")
+    sent = []
+
+    class FakeNotify:
+        async def send_alert(self, msg):
+            sent.append(msg)
+
+    earnings = [
+        {
+            "symbol": "AAPL",
+            "date": "2099-01-01",
+            "epsActual": 2.0,
+            "epsEstimate": 1.0,
+            "revenueActual": 1.2e11,
+            "revenueEstimate": 1.0e11,
+            "quarter": "Q1",
         }
-    )
+    ]
 
-    redis = MagicMock()
-    redis.set = AsyncMock(return_value=True)
-    redis.zadd = AsyncMock()
-    redis.zremrangebyrank = AsyncMock()
+    import backend.services.ai_narrator.llm_service as llm_mod
+    import backend.services.alert.notification as notif_mod
+    from backend.core.redis_client import redis_client as rc
 
-    with patch.object(md, "redis_client", redis):
-        with pytest.raises(_BreakLoop):
-            await md._insider_transactions_marquee_daemon(finnhub)
+    with pytest.MonkeyPatch().context() as m:
+        m.setattr("asyncio.sleep", AsyncMock())
+        m.setattr(notif_mod, "notification_service", FakeNotify())
+        m.setattr(llm_mod, "llm_service", FakeLLM())
+        m.setattr(rc, "set", AsyncMock(return_value=True))
+        m.setattr(md, "_finnhub_fetch", AsyncMock(return_value=earnings))
+
+        task = asyncio.ensure_future(md._earnings_alert_daemon())
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout=2.0)
+        except asyncio.TimeoutError:
+            task.cancel()
+
+    assert len(sent) == 1
+    assert "AAPL" in sent[0]
 
 
-# ── _company_news_daemon (255-289) ─────────────────────────────────────────────
 @pytest.mark.asyncio
-async def test_company_news_daemon(monkeypatch):
-    _make_sleep_breaker(monkeypatch)
-
-    finnhub = MagicMock()
-    finnhub.subscribe_company_news = AsyncMock()
-    finnhub.run_forever = AsyncMock()
-
-    with pytest.raises(_BreakLoop):
-        await md._company_news_daemon(finnhub)
+async def test_news_stream_daemon_skips_without_api_key(monkeypatch):
+    """未配置 FINNHUB_API_KEY 时，_news_stream_daemon 直接 return（能力探测保护）。"""
+    monkeypatch.delenv("FINNHUB_API_KEY", raising=False)
+    # 应直接返回，不进入轮询循环
+    await asyncio.wait_for(md._news_stream_daemon(), timeout=2.0)
 
 
-# ── _news_stream_daemon (184-206) ──────────────────────────────────────────────
 @pytest.mark.asyncio
-async def test_news_stream_daemon(monkeypatch):
-    _make_sleep_breaker(monkeypatch)
+async def test_run_global_daemon_aggregates_subdaemons(monkeypatch):
+    """验证 run_global_daemon 聚合了指定的 5 个子 daemon（mock 为立即返回）。"""
+    started = []
 
-    async def _empty():
-        return
-        yield
+    async def fake_daemon():
+        started.append(True)
 
-    pubsub = MagicMock()
-    pubsub.subscribe = AsyncMock()
-    pubsub.listen = lambda: _empty()
+    with pytest.MonkeyPatch().context() as m:
+        m.setattr(md, "_news_stream_daemon", fake_daemon)
+        m.setattr(md, "_company_news_daemon", fake_daemon)
+        m.setattr(md, "macro_alert_daemon", fake_daemon)
+        m.setattr(md, "_insider_transactions_marquee_daemon", fake_daemon)
+        m.setattr(md, "_earnings_alert_daemon", fake_daemon)
 
-    redis = MagicMock()
-    redis.pubsub = AsyncMock(return_value=pubsub)
+        await asyncio.wait_for(md.run_global_daemon(), timeout=2.0)
 
-    finnhub = MagicMock()
-    with patch.object(md, "redis_client", redis):
-        with pytest.raises(_BreakLoop):
-            await md._news_stream_daemon(finnhub)
+    assert len(started) == 5
+
+
+def test_no_websocket_subscription_in_daemon():
+    """架构约束：market daemon 不得再创建 WS 订阅（subscribe_company_news / _trade_stream_daemon）。"""
+    assert not hasattr(md, "_trade_stream_daemon")
+    import inspect
+
+    src = inspect.getsource(md._news_stream_daemon) + inspect.getsource(md._company_news_daemon)
+    assert "subscribe_company_news" not in src
+    assert "WebSocket" not in src
+    # 不得残留对 FinnhubService 的本地方法调用
+    assert "finnhub_service" not in inspect.getsource(md)

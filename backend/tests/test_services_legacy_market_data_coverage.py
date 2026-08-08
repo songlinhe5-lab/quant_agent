@@ -23,7 +23,7 @@ def _make_gateway():
     gw._futu = MagicMock()
     gw._yf = MagicMock()
     gw._ak = MagicMock()
-    gw._fh = MagicMock()
+    # 注意：Finnhub 现已全远程(经 DataSourceRouter)，gateway 不再持有 _fh 本地实例
     gw._fred = MagicMock()
     gw._dbnomics = MagicMock()
     gw._rbi = MagicMock()
@@ -50,29 +50,31 @@ async def test_delegation_methods():
     gw._futu.conn_mgr.status = "CONNECTED"
     gw._futu.conn_mgr._is_opend_reachable = MagicMock(return_value=True)
     gw._futu.conn_mgr.switch_host = MagicMock(return_value={"ok": True})
-    gw._yf.get_tech_indicators = AsyncMock(return_value={"rsi": 50})
 
-    assert (await gw.get_quote("US.AAPL"))["last_price"] == 1
-    assert (await gw.get_history("US.AAPL")).get("data") == []
-    assert (await gw.get_fund_flow("US.AAPL"))["status"] == "success"
-    assert (await gw.get_warrant_chain("HK.00700"))["status"] == "success"
-    assert (await gw.get_fundamental("US.AAPL"))["pe"] == 10
-    assert gw.screen_stocks("US", {"pe": "<15"}) == [{"symbol": "AAPL"}]
-    assert await gw.get_tech_indicators("US.AAPL") == {"rsi": 50}
+    # get_tech_indicators 已改经 data_source_router.fetch_yfinance 远程子服务
+    with patch("backend.services.datasource.router.data_source_router") as mock_router:
+        mock_router.fetch_yfinance = AsyncMock(return_value={"success": True, "data": {"rsi": 50}})
+        assert await gw.get_tech_indicators("US.AAPL") == {"success": True, "data": {"rsi": 50}}
 
-    # 属性 / setter
-    assert gw.status == "CONNECTED"
-    gw.status = "DISCONNECTED"
-    assert gw._futu.status == "DISCONNECTED"
-    assert gw.error_msg == "boom"
-    gw.error_msg = "fixed"
-    assert gw._futu.error_msg == "fixed"
-    assert gw.quote_ctx == "ctx"
-    gw.quote_ctx = "ctx2"
-    assert gw._futu.quote_ctx == "ctx2"
-    assert gw.conn_mgr is gw._futu.conn_mgr
-    assert gw.source_router is gw._futu.source_router
-    assert gw.connect() is gw._futu.connect()
+        assert (await gw.get_quote("US.AAPL"))["last_price"] == 1
+        assert (await gw.get_history("US.AAPL")).get("data") == []
+        assert (await gw.get_fund_flow("US.AAPL"))["status"] == "success"
+        assert (await gw.get_warrant_chain("HK.00700"))["status"] == "success"
+        assert (await gw.get_fundamental("US.AAPL"))["pe"] == 10
+        assert gw.screen_stocks("US", {"pe": "<15"}) == [{"symbol": "AAPL"}]
+
+        # 属性 / setter
+        assert gw.status == "CONNECTED"
+        gw.status = "DISCONNECTED"
+        assert gw._futu.status == "DISCONNECTED"
+        assert gw.error_msg == "boom"
+        gw.error_msg = "fixed"
+        assert gw._futu.error_msg == "fixed"
+        assert gw.quote_ctx == "ctx"
+        gw.quote_ctx = "ctx2"
+        assert gw._futu.quote_ctx == "ctx2"
+        assert gw.conn_mgr is gw._futu.conn_mgr
+        assert gw.connect() is gw._futu.connect()
     assert gw.is_opend_reachable() is True
     assert gw.switch_opend_host("1.2.3.4") == {"ok": True}
     health = gw.futu_health_status()
@@ -201,17 +203,19 @@ async def test_option_chain_matrix_connected():
 
 @pytest.mark.asyncio
 async def test_get_option_expiration_dates_yf_fallback():
-    """Futu 未连接时降级到 YFinance 真实期权到期日 (OPTION-01 修复路径)"""
+    """Futu 未连接时降级到 YFinance 子服务真实期权到期日 (OPTION-01 修复路径)"""
     gw = _make_gateway()
     gw._futu.conn_mgr = None  # 跳过 Futu 分支
-    fake_ticker = MagicMock()
-    fake_ticker.options = ["2024-01-19", "2024-02-16"]
-    fake_yf = MagicMock()
-    fake_yf.Ticker.return_value = fake_ticker
-    with patch.dict(sys.modules, {"yfinance": fake_yf}):
+    with patch("backend.services.datasource.router.data_source_router") as mock_router:
+        mock_router.fetch_yfinance = AsyncMock(
+            return_value={
+                "success": True,
+                "data": {"expiration_dates": ["2024-01-19", "2024-02-16"]},
+            }
+        )
         dates, src = await gw._get_option_expiration_dates("US.AAPL")
     assert dates == ["2024-01-19", "2024-02-16"]
-    assert src == "yfinance"
+    assert src == "yfinance-subservice"
 
 
 @pytest.mark.asyncio

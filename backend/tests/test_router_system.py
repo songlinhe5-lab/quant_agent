@@ -217,10 +217,14 @@ class TestInternalHelpers:
         """节点状态快照返回 standalone 模式"""
         from backend.routers.system import _build_cluster_snapshot
 
-        with patch("backend.workers.collector_registry.get_enabled_collectors", return_value=["futu", "yfinance"]):
+        with patch(
+            "backend.workers.collector_registry.get_enabled_collectors",
+            return_value=["akshare", "finnhub", "yfinance", "fmp"],
+        ):
             result = await _build_cluster_snapshot()
         assert result["mode"] == "standalone"
         assert "futu" in result["collectors"]
+        assert "data_sources" in result
 
     def test_build_metrics_snapshot_success(self):
         """Prometheus 指标快照正常路径"""

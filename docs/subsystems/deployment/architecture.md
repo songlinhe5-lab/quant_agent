@@ -1,6 +1,6 @@
 # 部署子系统架构文档
 
-> 最后更新：2026-07-08 | 版本：V4.0  
+> 最后更新：2026-07-08 | 版本：V4.0
 > 详细规范见 `docs/06. 工程化配置与部署方案.md`
 
 ## 一、节点拓扑（单一海外 VPS + Cloudflare 边缘）
@@ -84,11 +84,8 @@ quant:cache:{action}:{ticker} 采集结果缓存（TTL 5min）
 
 ```bash
 # === .env ===
-# 采集器
-COLLECTOR_FUTU=true
-COLLECTOR_YFINANCE=true
-COLLECTOR_FINNHUB=false
-COLLECTOR_AKSHARE=false
+# 数据源能力声明（采集 daemon 默认全开，不再用 COLLECTOR_* 开关）
+DS_CAPABILITIES=futu,yfinance,finnhub,akshare
 
 # Redis
 REDIS_HOST=localhost

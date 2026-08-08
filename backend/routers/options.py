@@ -106,6 +106,7 @@ async def screen_options(req: ScreenRequest):
         options_data = chain_res.get("options") or chain_res.get("data", {}).get("options", [])
 
         # 构建筛选条件
+        # moneyness_min/max 有 Field(None) 默认值，运行时合法；mypy 对 pydantic Field 默认推断偏差，忽略 call-arg
         filters = OptionFilter(
             ticker=req.ticker,
             iv_rank_min=req.iv_rank_min,
@@ -116,7 +117,7 @@ async def screen_options(req: ScreenRequest):
             min_open_interest=req.min_open_interest,
             option_type=req.option_type,
             expiry=req.expiry,
-        )
+        )  # type: ignore[call-arg]
 
         result = await options_screener.screen_options(
             ticker=req.ticker,
@@ -199,7 +200,8 @@ async def get_iv_rank(ticker: str):
             raise HTTPException(status_code=404, detail="期权链无有效 IV 数据可计算")
 
         # 当前 ATM IV: 取 ATM 合约 IV 均值 (小数形式)
-        iv_vals = [float(o.get("iv")) for o in atm_options if o.get("iv")]
+        # o.get("iv") 经 if 守卫已非 None，用直接索引避免 float(Optional) 类型告警
+        iv_vals = [float(o["iv"]) for o in atm_options if o.get("iv")]
         current_iv = sum(iv_vals) / max(1, len(iv_vals)) if iv_vals else None
         if current_iv is None or current_iv <= 0:
             raise HTTPException(status_code=404, detail="期权链无有效 IV 数据可计算")

@@ -1,238 +1,138 @@
+"""SVC-08 Finnhub 限流感知测试（全远程架构版）。
+
+架构背景（BE-ARCH-01 / SVC-08，2026-08-07 重构后）：
+- Finnhub 连接层（REST + WS）已下沉 data_subservice，主服务不再持有 FinnhubService。
+- 限流感知由 RateLimitThrottler（rate_limit_registry）承担：子服务侧命中 429/403/402
+  时反馈到主服务的 throttler，主服务在退避期内不再向 Finnhub 远程节点发请求。
+- 本文件不再测试 FinnhubService 内部限流，改为验证：
+  1. rate_limit_registry 的 finnhub throttler 被动探测（on_rate_limit → should_throttle
+     → get_status 反馈）。
+  2. GET /datasource/finnhub/health 端点（SVC-08 限流感知健康探针）经
+     FinnhubDataSource.health() 取数，返回结构含 rate_limit_status，且不直连 FinnhubService。
 """
-SVC-08: Finnhub 限流感知测试
-==============================
 
-验证:
-1. FinnhubService 各方法在 429/403 时接入 RateLimitThrottler（记录限流，不计入熔断）
-2. 真实请求成功时推进自适应退避恢复（on_success）
-3. calendars dividends/ipos 在限流退避期内返回 degraded，不硬重试
-4. /api/v1/datasource/finnhub/health 健康端点（被动探测 + 限流状态）
-"""
-
-import os
-import sys
-from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import httpx
 import pytest
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+from backend.services.datasource import ErrorCategory, ErrorInfo, rate_limit_registry
 
-os.environ.setdefault("FINNHUB_API_KEY", "test-finnhub-key")
-
-
-def _resp(json_data=None, err_code=None):
-    """构造 httpx.Response mock：429/403 时 raise_for_status 抛 HTTPStatusError。"""
-    r = MagicMock()
-    r.json.return_value = json_data or {}
-    r.status_code = err_code or 200
-    if err_code:
-        err = httpx.HTTPStatusError("err", request=MagicMock(), response=MagicMock(status_code=err_code))
-        r.raise_for_status = MagicMock(side_effect=err)
-    else:
-        r.raise_for_status = MagicMock()
-    return r
+# ──────────────────────────────────────────────────────────
+#  1. finnhub throttler 被动探测（限流感知核心）
+# ──────────────────────────────────────────────────────────
 
 
-@asynccontextmanager
-async def _client_cm(response=None):
-    c = AsyncMock()
-    c.get = AsyncMock(return_value=response)
-    yield c
-
-
-@pytest.fixture(autouse=True)
-def _reset_finnhub_throttler():
-    from backend.services.datasource import rate_limit_registry
-
-    rate_limit_registry.get_throttler("finnhub").reset()
-    yield
-    rate_limit_registry.get_throttler("finnhub").reset()
-
-
-# ─────────────────────────────────────────
-#  FinnhubService 限流感知
-# ─────────────────────────────────────────
+def _rl_error(category: ErrorCategory = ErrorCategory.RATE_LIMIT) -> ErrorInfo:
+    if category == ErrorCategory.RATE_LIMIT:
+        return ErrorInfo.rate_limited()
+    if category == ErrorCategory.IP_BLOCKED:
+        return ErrorInfo.ip_blocked()
+    return ErrorInfo(category=category, message="error")
 
 
 @pytest.mark.asyncio
-async def test_earnings_429_records_rate_limit():
-    """SVC-08: 财报日历 429 应触发 throttler 退避（不计入熔断器失败计数）。"""
-    from backend.services.datasource import rate_limit_registry
-    from backend.services.finnhub.service import FinnhubService
-
-    svc = FinnhubService()
-    with (
-        patch("backend.services.finnhub.service.redis_client") as m,
-        patch(
-            "backend.services.finnhub.service.httpx.AsyncClient",
-            return_value=_client_cm(response=_resp(err_code=429)),
-        ),
-    ):
-        m.get = AsyncMock(return_value=None)
-        result = await svc.get_earnings_calendar()
-
-    assert result["status"] == "error"
-    assert "HTTP 429" in result["message"]
-    st = rate_limit_registry.get_throttler("finnhub").get_status()
-    assert st.consecutive_rate_limits >= 1
-    assert st.is_throttled is True
+async def test_finnhub_throttler_initial_not_throttled():
+    th = rate_limit_registry.get_throttler("finnhub")
+    th.reset()
+    assert th.should_throttle() is False
+    assert th.get_status().is_throttled is False
 
 
 @pytest.mark.asyncio
-async def test_market_news_429_records_rate_limit():
-    """SVC-08: 新闻 429 应记录限流。"""
-    from backend.services.datasource import rate_limit_registry
-    from backend.services.finnhub.service import FinnhubService
-
-    svc = FinnhubService()
-    with patch(
-        "backend.services.finnhub.service.httpx.AsyncClient",
-        return_value=_client_cm(response=_resp(err_code=429)),
-    ):
-        result = await svc.get_market_news()
-
-    assert "429" in result["message"]
-    st = rate_limit_registry.get_throttler("finnhub").get_status()
-    assert st.consecutive_rate_limits >= 1
+async def test_finnhub_throttler_detects_rate_limit():
+    th = rate_limit_registry.get_throttler("finnhub")
+    th.reset()
+    # 模拟子服务上报 429 限流
+    th.on_rate_limit(_rl_error(ErrorCategory.RATE_LIMIT))
+    assert th.should_throttle() is True
+    status = th.get_status()
+    assert status.is_throttled is True
+    assert status.consecutive_rate_limits >= 1
+    assert status.estimated_limit_rpm is not None
 
 
 @pytest.mark.asyncio
-async def test_earnings_success_records_success():
-    """SVC-08: 真实请求成功应推进退避恢复（consecutive_rate_limits 保持 0）。"""
-    from backend.services.datasource import rate_limit_registry
-    from backend.services.finnhub.service import FinnhubService
-
-    svc = FinnhubService()
-    data = {"earningsCalendar": [{"symbol": "AAPL", "date": "2026-06-30"}, {"symbol": ""}]}
-    with (
-        patch("backend.services.finnhub.service.redis_client") as m,
-        patch(
-            "backend.services.finnhub.service.httpx.AsyncClient",
-            return_value=_client_cm(response=_resp(data)),
-        ),
-    ):
-        m.get, m.setex = AsyncMock(return_value=None), AsyncMock()
-        result = await svc.get_earnings_calendar()
-
-    assert result["status"] == "success"
-    assert len(result["data"]) == 1
-    st = rate_limit_registry.get_throttler("finnhub").get_status()
-    assert st.consecutive_rate_limits == 0
+async def test_finnhub_throttler_detects_ip_ban():
+    th = rate_limit_registry.get_throttler("finnhub")
+    th.reset()
+    # 403 = IP 封禁（硬失败，不污染连续限流计数，计入 block_events）
+    th.on_rate_limit(_rl_error(ErrorCategory.IP_BLOCKED))
+    status = th.get_status()
+    assert status.is_throttled is True
+    assert status.category == ErrorCategory.IP_BANNED.value
+    # IP 封禁不计入 consecutive_limits 指数退避计数，但计入 block_events
+    assert status.consecutive_rate_limits >= 1  # == block_events
 
 
-# ─────────────────────────────────────────
-#  Calendars dividends/ipos 限流感知
-# ─────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_finnhub_throttler_recovers_after_reset():
+    """恢复是时间驱动的（throttle_until 过期），单测用 reset() 验证可复位。"""
+    th = rate_limit_registry.get_throttler("finnhub")
+    th.on_rate_limit(_rl_error(ErrorCategory.RATE_LIMIT))
+    assert th.should_throttle() is True
+    # 连续成功降低退避间隔（接口契约：递减 consecutive_limits / 降速）
+    for _ in range(12):
+        th.on_success()
+    status = th.get_status()
+    assert status.consecutive_rate_limits == 0
+    # reset 后彻底解除抑制
+    th.reset()
+    assert th.should_throttle() is False
+    assert th.get_status().is_throttled is False
 
 
-def test_calendars_dividends_429_records_throttler():
-    """SVC-08: calendars /dividends 遇 429 返回 error 且记录限流。"""
-    from fastapi.testclient import TestClient
-
-    from backend.main import app
-    from backend.services.datasource import rate_limit_registry
-
-    with (
-        patch("backend.routers.calendars.redis_client") as m,
-        patch(
-            "backend.routers.calendars.httpx.AsyncClient",
-            return_value=_client_cm(response=_resp(err_code=429)),
-        ),
-    ):
-        m.get = AsyncMock(return_value=None)
-        r = TestClient(app).get("/api/v1/calendars/dividends")
-
-    body = r.json()["data"]
-    assert body["status"] == "error"
-    assert "HTTP 429" in body["message"]
-    assert rate_limit_registry.get_throttler("finnhub").get_status().consecutive_rate_limits >= 1
+# ──────────────────────────────────────────────────────────
+#  2. GET /api/v1/datasource/finnhub/health 端点（SVC-08）
+# ──────────────────────────────────────────────────────────
 
 
-def test_calendars_ipos_429_records_throttler():
-    """SVC-08: calendars /ipos 遇 429 返回 error 且记录限流。"""
-    from fastapi.testclient import TestClient
+def test_finnhub_health_endpoint_remote(test_client, monkeypatch):
+    """健康探针经 FinnhubDataSource.health() 取数，禁止直连 FinnhubService。"""
+    from backend.services.datasource.adapters.finnhub import FinnhubDataSource
 
-    from backend.main import app
-    from backend.services.datasource import rate_limit_registry
+    class FakeHealth:
+        healthy = True
+        connected = True
+        mode = "external_rest"
+        status = "ok"
+        last_error = None
 
-    with (
-        patch("backend.routers.calendars.redis_client") as m,
-        patch(
-            "backend.routers.calendars.httpx.AsyncClient",
-            return_value=_client_cm(response=_resp(err_code=403)),
-        ),
-    ):
-        m.get = AsyncMock(return_value=None)
-        r = TestClient(app).get("/api/v1/calendars/ipos")
+        def to_dict(self):
+            return {
+                "healthy": self.healthy,
+                "connected": self.connected,
+                "mode": self.mode,
+                "status": self.status,
+                "last_error": self.last_error,
+            }
 
-    body = r.json()["data"]
-    assert body["status"] == "error"
-    assert rate_limit_registry.get_throttler("finnhub").get_status().consecutive_rate_limits >= 1
+    async def fake_health(self):
+        return FakeHealth()
 
+    with pytest.MonkeyPatch().context() as m:
+        m.setattr(FinnhubDataSource, "health", fake_health)
+        from backend.services.datasource.adapters import ensure_all_datasources_registered
 
-def test_calendars_dividends_throttled_returns_degraded():
-    """SVC-08: 退避期内 calendars /dividends 不硬重试，返回 degraded。"""
-    from fastapi.testclient import TestClient
+        ensure_all_datasources_registered()
 
-    from backend.main import app
-    from backend.services.datasource import rate_limit_registry
+        resp = test_client.get("/api/v1/datasource/finnhub/health")
 
-    # 1) 先触发一次 429 让 throttler 进入退避期
-    with (
-        patch("backend.routers.calendars.redis_client") as m,
-        patch(
-            "backend.routers.calendars.httpx.AsyncClient",
-            return_value=_client_cm(response=_resp(err_code=429)),
-        ),
-    ):
-        m.get = AsyncMock(return_value=None)
-        TestClient(app).get("/api/v1/calendars/dividends")
-
-    assert rate_limit_registry.get_throttler("finnhub").get_status().is_throttled is True
-
-    # 2) 退避期内再次调用：无缓存命中 → 应返回 degraded，不发起真实请求
-    with patch("backend.routers.calendars.redis_client") as m:
-        m.get = AsyncMock(return_value=None)
-        r = TestClient(app).get("/api/v1/calendars/dividends")
-
-    body = r.json()["data"]
-    assert body["status"] == "degraded"
-    assert "退避" in body["message"]
-
-
-# ─────────────────────────────────────────
-#  Finnhub 健康端点
-# ─────────────────────────────────────────
-
-
-def test_finnhub_health_endpoint_connected():
-    """SVC-08: /datasource/finnhub/health 被动健康探测返回限流状态。"""
-    from fastapi.testclient import TestClient
-
-    from backend.main import app
-
-    with patch.dict(os.environ, {"FINNHUB_API_KEY": "x"}, clear=False):
-        r = TestClient(app).get("/api/v1/datasource/finnhub/health")
-
-    assert r.status_code == 200
-    body = r.json().get("data", r.json())
+    assert resp.status_code == 200
+    body = resp.json()["data"]
     assert body["source"] == "finnhub"
+    assert body["healthy"] is True
+    # SVC-08：Finnhub 解耦后 health 经 FinnhubDataSource 远程取数（不直连 FinnhubService）
+    assert body["mode"] == "external_rest"
     assert body["connected"] is True
-    assert "rate_limit_status" in body
 
 
-def test_finnhub_health_endpoint_no_api_key():
-    """SVC-08: 未配置 API Key 时健康端点标记未连接。"""
-    from fastapi.testclient import TestClient
+def test_finnhub_health_endpoint_unregistered(test_client, monkeypatch):
+    """Finnhub 未注册时返回 connected=False 但仍带限流状态（不报错，SVC-08 容错）。"""
+    from backend.services.datasource import datasource_registry
 
-    from backend.main import app
+    with pytest.MonkeyPatch().context() as m:
+        m.setattr(datasource_registry, "get", lambda n: None)
+        resp = test_client.get("/api/v1/datasource/finnhub/health")
 
-    with patch.dict(os.environ, {"FINNHUB_API_KEY": ""}, clear=False):
-        r = TestClient(app).get("/api/v1/datasource/finnhub/health")
-
-    assert r.status_code == 200
-    body = r.json().get("data", r.json())
+    assert resp.status_code == 200
+    body = resp.json()["data"]
     assert body["connected"] is False
-    assert body["last_error"] is not None
+    assert "rate_limit_status" in body

@@ -37,12 +37,12 @@ export function ScreenerAISummary({ results }: { results: any[] }) {
     setIsGenerating(true);
     setSummary('');
     setIsExpanded(true);
-    
+
     try {
       // 发送前 10 只股票给后端 (后端自带截断保护)
       const topStocks = results.slice(0, 10);
       const res = await apiClient.post('/screener/summarize', { stocks: topStocks });
-      
+
       if (res.data?.status === 'success') {
         setSummary(res.data.data);
       } else {
@@ -68,9 +68,9 @@ export function ScreenerAISummary({ results }: { results: any[] }) {
   return (
     <div className="mb-4 animate-in fade-in slide-in-from-bottom-2">
       {!summary && !isGenerating ? (
-        <Button 
-          onClick={handleSummarize} 
-          variant="outline" 
+        <Button
+          onClick={handleSummarize}
+          variant="outline"
           className="w-full flex items-center gap-2 h-10 border-indigo-500/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 transition-all shadow-sm"
         >
           <Sparkles className="w-4 h-4" />
@@ -78,7 +78,7 @@ export function ScreenerAISummary({ results }: { results: any[] }) {
         </Button>
       ) : (
         <div className="glass-card rounded-xl border border-indigo-500/30 shadow-sm bg-indigo-500/5 overflow-hidden transition-all duration-300">
-          <div 
+          <div
             className="px-4 py-2.5 border-b border-indigo-500/20 bg-indigo-500/10 flex items-center justify-between cursor-pointer hover:bg-indigo-500/15 transition-colors"
             onClick={() => setIsExpanded(!isExpanded)}
           >
@@ -90,8 +90,8 @@ export function ScreenerAISummary({ results }: { results: any[] }) {
             </div>
             <div className="flex items-center gap-3">
               {!isGenerating && summary && (
-                <button 
-                  onClick={(e) => { e.stopPropagation(); handleSummarize(); }} 
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleSummarize(); }}
                   className="text-[10px] text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
                 >
                   重新生成
@@ -100,7 +100,7 @@ export function ScreenerAISummary({ results }: { results: any[] }) {
               {isExpanded ? <ChevronUp className="w-4 h-4 text-indigo-500" /> : <ChevronDown className="w-4 h-4 text-indigo-500" />}
             </div>
           </div>
-          
+
           {isExpanded && (
             <div className="p-4 text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed markdown-body">
               {isGenerating ? (
