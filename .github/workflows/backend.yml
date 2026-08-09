@@ -296,6 +296,14 @@ jobs:
               || { echo "❌ data-subservice 推送到本机 registry 失败 (磁盘/containerd 问题?)，中止避免北京节点拉到空镜像"; exit 1; }
             echo "✅ data-subservice 已推送至本机 registry (push 成功即镜像就位，北京节点可经内网拉取)"
 
+            # ── OPS-03: 每次 push 后回收 registry 垃圾，防止私有 registry 卷无限膨胀 ──
+            # 前置: registry-config.yml 已开启 storage.delete.enabled: true，否则 GC 仅 dry-run 不释放空间。
+            # --delete-untagged 一并清掉 push 中断/版本切换残留的无 tag 层。
+            echo "🧹 push 完成，执行 registry 垃圾回收 (GC)..."
+            docker exec quant_registry bin/registry garbage-collect --delete-untagged=true /etc/registry/config.yml \
+              || echo "⚠️ registry GC 失败（非致命，下次部署或 cron 重试），registry 仍可正常服务"
+            echo "✅ registry GC 完成"
+
             # ── 主节点本地子服务 (node-s1)：与 quant-agent 同机，监听 8001，主服务经 127.0.0.1:8001 直连 ──
             # 复用已拉取的 data-subservice 镜像 (DS_IMAGE 已在上方 pull 就位)
             # ╔══════════════════════════════════════════════════════════════╗
