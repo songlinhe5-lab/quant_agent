@@ -1,9 +1,11 @@
 # =====================================================================
-# 主节点本地子服务 (VPS_S1 · 纯 YFinance 数据源，与主服务同机)
+# 主节点本地子服务 (VPS_S1 · 美西数据主节点：YFinance + Futu + Finnhub 长连接，与主服务同机)
 # =====================================================================
-# 角色：运行在主节点 (VPS_S1) 宿主机的 data_subservice，提供 YFinance (美股/加密/外汇) 的 HTTP API。
+# 角色：运行在主节点 (VPS_S1) 宿主机的 data_subservice，提供 YFinance (美股/加密/外汇) + Futu (港股/富途长连接)
+#       + Finnhub (REST+WebSocket 实时流) 的 HTTP API。镜像使用 datasource-us extra（含 futu-api/finnhub-python）。
+#       注意：A股数据源 Tushare/AKShare 仅由中国节点 (VPS_BJ) 承载，本节点不部署。
 #       与主服务 (quant-agent :8000) 同机部署，监听 8001，主服务经 127.0.0.1:8001 直连（loopback）。
-#       作为 YFinanceRouter 的主节点 (YF_PRIMARY_NODE_URL)，S2/S3/S4 为远程容灾/扩容。
+#       作为 YFinanceRouter 的主节点 (YF_PRIMARY_NODE_URL)，S2/S3/S4 为远程纯 YF 辅助/容灾扩容。
 # 与主服务共享宿主 Tailscale 网络；不对公网暴露 8001（默认仅绑定 127.0.0.1）。
 # 子服务节点不连接 Redis，所有缓存由主节点统一管理。
 #
@@ -20,7 +22,7 @@ x-common-env: &common-env
 
 services:
   data-subservice:
-    image: ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest
+    image: ghcr.io/songlinhe5-lab/quant-agent-data-subservice:us
     container_name: quant-data-subservice-node-s1
     restart: unless-stopped
     env_file:
@@ -29,7 +31,7 @@ services:
       <<: *common-env
       DS_NODE_ID: ${DS_NODE_ID:-us-yf-s1}
       DS_REGION: "us-west"
-      DS_CAPABILITIES: "yfinance"
+      DS_CAPABILITIES: "yfinance,futu,finnhub"
       DS_NODE_PORT: "8001"
       DS_BASE_URL: "${DS_BASE_URL:-http://127.0.0.1:8001}"
       # 主节点 DataSourceRouter 回调鉴权 (须与主节点 DATA_SOURCE_HMAC_SECRET 一致)

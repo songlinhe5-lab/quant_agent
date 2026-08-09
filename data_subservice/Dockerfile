@@ -11,6 +11,9 @@
 FROM python:3.11-slim AS builder
 WORKDIR /app
 
+# 数据源 extra 选择：cn=中国节点(YF+Tushare+AKShare) / us=美西主节点(YF+Futu+Finnhub) / us-aux=美西辅助(仅YF)
+ARG DS_EXTRA=datasource-cn
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ \
@@ -23,10 +26,9 @@ RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ uv
 # 复制依赖声明
 COPY pyproject.toml uv.lock ./
 
-# 安装生产依赖 + 数据源 SDK（子服务节点需要直连 API）
-# datasource extras 包含 tushare/akshare/futu-api
+# 安装生产依赖 + 指定地域的数据源 SDK（按节点能力隔离，避免全量 SDK 撑大镜像）
 RUN for i in 1 2 3; do \
-      uv sync --no-dev --no-install-project --extra datasource && break; \
+      uv sync --no-dev --no-install-project --extra ${DS_EXTRA} && break; \
       echo "uv sync failed (attempt $i), retrying..."; \
       sleep 5; \
     done
