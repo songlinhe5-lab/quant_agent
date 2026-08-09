@@ -2,7 +2,8 @@
 
 连接层已下沉 data_subservice（_internal/akshare/quote + akshare_worker）。
 本 Mixin 仅负责远程路由调用 + 主服务侧缓存/熔断/降级兜底，
-不再持有任何 akshare 本地连接。港股新闻兜底（yahoo）仍保留在主服务。
+不再持有任何 akshare 本地连接。港股新闻兜底（yahoo）经 DataSourceRouter
+联邦 yfinance 子服务远程代理，主服务不再直连外部数据源。
 """
 
 import json

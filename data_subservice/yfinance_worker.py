@@ -33,6 +33,8 @@ async def handle_yfinance(action: str, params: Dict[str, Any]) -> Dict[str, Any]
             )
         elif action == "BATCH_QUOTE":
             return await yfinance_service.get_batched_quote(params.get("symbols", []))
+        elif action == "NEWS":
+            return await yfinance_service.get_news(params.get("symbol"), limit=params.get("limit", 15))
         else:
             return {"error": f"未知 yfinance action: {action}"}
     except Exception as e:

@@ -25,6 +25,7 @@ from pathlib import Path
 
 SERVICES = Path(__file__).resolve().parents[1] / "services"
 ROUTERS = Path(__file__).resolve().parents[1] / "routers"
+CORE = Path(__file__).resolve().parents[1] / "core"
 
 # 第三方 SDK 直连 import（顶层 import 语句）
 SDK_IMPORT = re.compile(
@@ -143,6 +144,7 @@ DOMAIN_STRONG_BAN_DIRS = [
     (ROUTERS, None),  # routers/ 全层
     (HERMES, None),  # hermes_agent/ 全层
     (SERVICES / "datasource" / "business", None),  # datasource/business/ 全层
+    (CORE, None),  # core/ 全层（07j: yahoo_news 已收口为 Router 代理，不得再直连）
 ]
 
 

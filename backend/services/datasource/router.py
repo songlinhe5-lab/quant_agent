@@ -64,6 +64,7 @@ _YF_ACTION_MAP = {
     "financials": "FINANCIALS",
     "search": "SEARCH",
     "batch_quote": "BATCH_QUOTE",
+    "news": "NEWS",
 }
 
 # 主服务内部 action -> 子服务 action 映射
