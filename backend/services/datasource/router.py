@@ -582,7 +582,7 @@ class DataSourceRouter:
                 payload = {
                     "source": "yfinance",
                     "action": _YF_ACTION_MAP.get(fetch_type.lower(), fetch_type.upper()),
-                    "params": {"ticker": ticker, **kwargs},
+                    "params": self._normalize_outbound_params({"ticker": ticker, **kwargs}),
                 }
                 result = await self._send_request(node, "yfinance", payload)
 
@@ -646,7 +646,7 @@ class DataSourceRouter:
             payload = {
                 "source": "akshare",
                 "action": action.upper(),
-                "params": dict(kwargs),
+                "params": self._normalize_outbound_params(dict(kwargs)),
             }
             result = await self._send_request(remote_node, "akshare", payload)
 
@@ -691,7 +691,7 @@ class DataSourceRouter:
             payload = {
                 "source": "tushare",
                 "action": remote_action,
-                "params": dict(params),
+                "params": self._normalize_outbound_params(dict(params)),
             }
             result = await self._send_request(remote_node, "tushare", payload)
             if result.get("success"):
@@ -761,6 +761,22 @@ class DataSourceRouter:
             out["symbols"] = out.pop("tickers")
         return out
 
+    @staticmethod
+    def _normalize_outbound_params(params: Dict[str, Any]) -> Dict[str, Any]:
+        """BE-ARCH-08b: 业务侧统一用 ticker/tickers，子服务 worker 读 symbol/symbols，
+        全链路无归一导致子服务收到 symbol=None（线上取不到数）。
+
+        一处 guard：双键兼容——业务侧键名映射副本的同时保留原键，使子服务无论读
+        symbol 还是 ticker 均能命中，消除 yfinance/akshare/fmp/tushare 的键名错位。
+        ponytail: 不做字段语义转换（如 ktype→interval），仅解决键名错位这一明确天花板。
+        """
+        out = dict(params)
+        if "ticker" in out and "symbol" not in out:
+            out["symbol"] = out["ticker"]
+        if "tickers" in out and "symbols" not in out:
+            out["symbols"] = out["tickers"]
+        return out
+
     async def fetch_fmp(self, action: str, **params) -> Dict[str, Any]:
         """FMP 主节点 HTTP 代理 (source="fmp", pin 主节点)。
 
@@ -781,7 +797,7 @@ class DataSourceRouter:
         }
         remote_action = _FMP_ACTION_MAP.get(action.lower(), action.upper())
 
-        norm_params = dict(params)
+        norm_params = self._normalize_outbound_params(dict(params))
 
         remote_node = self._nodes.get("fmp_master")
         if not self._enabled or not remote_node or remote_node.status != "healthy":

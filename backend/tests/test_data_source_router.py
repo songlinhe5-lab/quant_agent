@@ -582,3 +582,34 @@ class TestClose:
         router_enabled._ensure_http_client()
         assert router_enabled._http_client is not None
         asyncio.run(router_enabled.close())
+
+
+# ==========================================
+# BE-ARCH-08b: 跨进程 params 键名归一回归
+# ==========================================
+class TestOutboundParamNormalization:
+    """验收：业务侧统一用 ticker/tickers，子服务 worker 读 symbol/symbols，
+    归一后子服务必须能取到非 None 的 symbol（否则线上取不到数）。"""
+
+    def test_ticker_maps_to_symbol_dual_key(self):
+        out = DataSourceRouter._normalize_outbound_params({"ticker": "AAPL", "period": "1mo"})
+        # 双键兼容：原键保留 + 映射副本
+        assert out.get("symbol") == "AAPL"
+        assert out.get("ticker") == "AAPL"
+        assert out.get("period") == "1mo"
+
+    def test_tickers_maps_to_symbols_dual_key(self):
+        out = DataSourceRouter._normalize_outbound_params({"tickers": ["AAPL", "MSFT"]})
+        assert out.get("symbols") == ["AAPL", "MSFT"]
+        assert out.get("tickers") == ["AAPL", "MSFT"]
+
+    def test_existing_symbol_not_overwritten(self):
+        out = DataSourceRouter._normalize_outbound_params({"symbol": "000001", "ktype": "d"})
+        assert out.get("symbol") == "000001"
+
+    def test_worker_reads_symbol_after_normalization(self):
+        """复刻 yfinance_worker 读取路径：归一后 params.get('symbol') 非 None。"""
+        raw = {"ticker": "AAPL"}  # 业务侧调用 fetch_yfinance 时传入
+        normalized = DataSourceRouter._normalize_outbound_params(raw)
+        symbol = normalized.get("symbol")  # yfinance_worker.py:13
+        assert symbol is not None and symbol == "AAPL"
