@@ -51,12 +51,21 @@ class FutuDataSource:
 
     @property
     def capabilities(self) -> list[str]:
+        # 必须与实际子服务能力对齐（data_subservice/futu_worker.py + _FUTU_ACTION_MAP）。
+        # Facade 域方法所用的 action（WARRANT_CHAIN/SCREEN_STOCKS）必须在此声明，
+        # 否则 datasource_registry.get(source, action) 的"按 action 选源"语义失效。
         return [
             "QUOTE",
             "HISTORY",
             "FUND_FLOW",
             "OPTION_CHAIN",
             "FUNDAMENTAL",
+            "ORDER_BOOK",
+            "WARRANT_CHAIN",
+            "SNAPSHOT",
+            "STOCK_BASICINFO",
+            "ACCOUNT_INFO",
+            "SCREEN_STOCKS",
         ]
 
     # ── 远程节点状态感知 ──────────────────────────────────────

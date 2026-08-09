@@ -178,7 +178,9 @@ class TestAKShareAdapter:
 
     def test_fetch_unsupported_action(self, monkeypatch):
         _patch_akshare_node(monkeypatch)
-        res = asyncio.run(AKShareDataSource().fetch("QUOTE", {}))
+        # akshare 已声明 QUOTE/HISTORY/FUND_FLOW 等真实能力，需用一个真正不支持的
+        # action 来验证 UNSUPPORTED_ACTION 分支（BE-ARCH-07i 后 capabilities 与子服务对齐）
+        res = asyncio.run(AKShareDataSource().fetch("WARRANT_CHAIN", {}))
         assert not res.is_success
         assert res.error.code == "UNSUPPORTED_ACTION"
 

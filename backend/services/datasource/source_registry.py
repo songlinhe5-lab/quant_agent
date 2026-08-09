@@ -7,9 +7,13 @@ DataSourceRegistry — 源实例注册表（docs/14 §5.1 · BE-ARCH-04）
 
 from __future__ import annotations
 
+import logging
+import os
 import threading
 import time
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 from backend.core.circuit_breaker import CircuitBreakerOpenError
 from backend.core.circuit_breaker_integration import fetch_via_breaker_async
@@ -92,7 +96,16 @@ class DataSourceRegistry:
             return list(self._sources.keys())
 
     def get(self, source_name: str, action: Optional[str] = None) -> Optional[DataSourceInterface]:
-        """按名称取首个可用实例；可选按 capability 过滤（case-insensitive）。"""
+        """按名称取首个可用实例；可选按 capability 过滤（case-insensitive）。
+
+        能力严格匹配原则（BE-ARCH-07i）：
+        当传入 ``action`` 且与实例 capabilities 不匹配时，**不再静默回退到首个
+        可用实例**——否则"按 action 选源"语义失效，只能靠 fetch 失败逐源重试兜底。
+        不匹配时返回 ``None``，由 ``fetch`` 生成明确的 ``SOURCE_NOT_FOUND`` 错误。
+        若需兼容历史宽泛 action，可设环境变量 ``DATASOURCE_LOOSE_CAPABILITY=1``
+        恢复旧回退行为（仅过渡期使用，不应长期开启）。
+        """
+        loose = os.environ.get("DATASOURCE_LOOSE_CAPABILITY", "0") == "1"
         with self._lock:
             entries = list(self._sources.get(source_name, []))
         action_upper = action.upper() if action else None
@@ -103,10 +116,20 @@ class DataSourceRegistry:
             if action_upper is not None and action_upper not in [c.upper() for c in src.capabilities]:
                 continue
             return src
-        # 能力不匹配时仍返回第一个可用实例（兼容宽泛 action）
-        for entry in entries:
-            if entry.source.is_available():
-                return entry.source
+        # 能力不匹配：显式告警，不再静默回退（除非显式开启 loose 兼容模式）
+        if action_upper is not None and entries:
+            declared = sorted({c.upper() for e in entries for c in e.source.capabilities})
+            logger.warning(
+                "[Registry] 源 %s 未声明能力 %s（已声明: %s），按 action 选源失败，返回 None（不再静默回退首实例）",
+                source_name,
+                action_upper,
+                declared,
+            )
+            if loose:
+                for entry in entries:
+                    if entry.source.is_available():
+                        logger.warning("[Registry] 已按 DATASOURCE_LOOSE_CAPABILITY 恢复回退到首实例")
+                        return entry.source
         return None
 
     def clear(self) -> None:
