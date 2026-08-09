@@ -162,7 +162,6 @@ class QuoteMixin:
         match = re.search(r"\d+", ticker)
         if not match:
             return {"status": "error", "message": "无效的 A 股代码"}
-        symbol = match.group().zfill(6)
 
         try:
             async with self._acquire_lock_with_timeout(5.0):
@@ -215,7 +214,6 @@ class QuoteMixin:
         match = re.search(r"\d+", ticker)
         if not match:
             return {"status": "error", "message": "无效的 A 股代码"}
-        symbol = match.group().zfill(6)
 
         try:
             async with self._acquire_lock_with_timeout(5.0):
