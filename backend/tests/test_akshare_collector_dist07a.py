@@ -224,20 +224,21 @@ class TestIsTradingHours:
 
 
 class TestAKShareCollectorDaemon:
-    """验证采集 daemon 的启停"""
+    """验证采集 daemon 的启停（远程子服务模式）"""
 
     @pytest.mark.asyncio
     async def test_daemon_starts_and_cancels(self):
-        """daemon 应能正常启动和取消"""
+        """daemon 应能正常启动和取消（经远程 fetch_akshare，不再依赖本地 AKShareService）"""
+        from backend.services.datasource.router import data_source_router
         from backend.workers.akshare_collector import akshare_collector_daemon
 
-        mock_service = MagicMock()
-        mock_service.get_southbound_flow = AsyncMock(return_value={"status": "success", "data": {"net_inflow": 12.8}})
-        mock_service.get_northbound_flow = AsyncMock(return_value={"status": "success", "data": {"net_inflow": -5.3}})
-        mock_service.get_economic_calendar = AsyncMock(return_value={"status": "success", "data": []})
+        mock_fetch = AsyncMock(return_value={"status": "success", "data": {"net_inflow": 12.8}})
+        mock_redis = MagicMock()
+        mock_redis.set = AsyncMock()
 
         with (
-            patch("backend.services.akshare.AKShareService", return_value=mock_service),
+            patch.object(data_source_router, "fetch_akshare", mock_fetch),
+            patch("backend.workers.akshare_collector.redis_client", mock_redis),
             patch("backend.workers.akshare_collector.asyncio.sleep", side_effect=[None, asyncio.CancelledError]),
         ):
             task = asyncio.create_task(akshare_collector_daemon(enabled_tasks=["southbound"]))
@@ -254,11 +255,13 @@ class TestAKShareCollectorDaemon:
 
     @pytest.mark.asyncio
     async def test_daemon_calls_handlers(self):
-        """daemon 应在首次循环时调用所有启用的 handler"""
+        """daemon 应在首次循环时经 fetch_akshare 拉取并写回 Redis"""
+        from backend.services.datasource.router import data_source_router
         from backend.workers.akshare_collector import akshare_collector_daemon
 
-        mock_service = MagicMock()
-        mock_service.get_southbound_flow = AsyncMock(return_value={"status": "success", "data": {"net_inflow": 12.8}})
+        mock_fetch = AsyncMock(return_value={"status": "success", "data": {"net_inflow": 12.8}})
+        mock_redis = MagicMock()
+        mock_redis.set = AsyncMock()
 
         call_count = 0
 
@@ -269,7 +272,8 @@ class TestAKShareCollectorDaemon:
                 raise asyncio.CancelledError
 
         with (
-            patch("backend.services.akshare.AKShareService", return_value=mock_service),
+            patch.object(data_source_router, "fetch_akshare", mock_fetch),
+            patch("backend.workers.akshare_collector.redis_client", mock_redis),
             patch("backend.workers.akshare_collector.asyncio.sleep", side_effect=mock_sleep),
         ):
             task = asyncio.create_task(akshare_collector_daemon(enabled_tasks=["southbound"]))
@@ -278,7 +282,8 @@ class TestAKShareCollectorDaemon:
             except asyncio.CancelledError:
                 pass
 
-            mock_service.get_southbound_flow.assert_awaited()
+            mock_fetch.assert_awaited()
+            mock_redis.set.assert_awaited()
 
 
 # ─────────────────────────────────────────
