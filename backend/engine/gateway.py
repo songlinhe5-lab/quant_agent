@@ -20,14 +20,11 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, Protocol
 
-# BE-ARCH-07c: 主服务不再硬依赖 futu SDK 取枚举, 优先用子服务 SDK, 失败回退本地常量
-try:
-    from futu import TrdMarket, TrdSide
-except Exception:  # pragma: no cover - 主服务已卸载 futu SDK
-    from backend.services.futu.enums import TrdMarket, TrdSide
-
 from backend.engine.contracts import OrderIntent, OrderUpdate
 from backend.schemas.domain import OrderStatus
+
+# BE-ARCH-07c: 主服务不再依赖 futu SDK, 改用本地枚举常量 (与 futu.TrdMarket/TrdSide 对齐)
+from backend.services.futu.enums import TrdMarket, TrdSide
 
 if TYPE_CHECKING:
     from backend.engine.drivers.sim_broker import SimBroker
