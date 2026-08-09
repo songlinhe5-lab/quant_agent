@@ -358,11 +358,11 @@ STATUS: PRODUCTION READY ✨
   - **② Registry 回退收紧**：`backend/services/datasource/source_registry.py:106-109` 改为——能力不匹配时**显式 `logging.warning` 并返回 `None`**，不再静默回退首实例（否则"按 action 选源"语义失效，只能靠 fetch 失败逐源重试兜底）。仅当环境变量 `DATASOURCE_LOOSE_CAPABILITY=1` 时恢复旧回退行为（过渡期开关，不应长期开启）。Facade `_select_source` 对全源调 `get(name, action)`，不匹配源本就该被跳过，收紧后语义正确。
   - **核验**：finnhub `INSIDER_TRADING`、macro `MACRO_SERIES`（fred）、`economic_calendar` 等既有 action 经 `action.upper()` 比对均与 capabilities 大小写声明命中，无副作用。
 
-- [ ] **[BE-ARCH-07p]** **对外暴露 broker / kline 实时数据（承接 07h-2 进程内缓存 → HTTP/WS）**：07h-2 已在 `backend/services/datasource/subscription.py` 落地 `SubscriptionService.get_broker`/`get_kline`/`start_broker_ingest`/`start_kline_ingest`（消费 `quant:broker:{tk}`/`quant:kline:{tk}` 并回灌进程内 `_PolyCache`），但**前端/外部仍无路径读取这些实时数据**。需补：
-  - **① HTTP 拉取端点**：在 `backend/routers/market.py` 新增 `GET /api/v1/market/broker/{symbol}` 与 `GET /api/v1/market/kline/{symbol}`，经 FastAPI `Depends(get_subscription_service)` 调用 `subscription_service.get_broker(symbol)`/`get_kline(symbol)`，返回 `{"symbol":..., "broker":..., "cached":bool, "updated_at":...}` 与 `{"symbol":..., "kline":[...], "cached":bool, "updated_at":...}`。需先确认 `SubscriptionService` 已在依赖容器 / app state 中可注入（参考现有 `get_market_service`/`get_datasource_router` 注入模式）。
-  - **② WS 推送端点（可选增强）**：若前端需要流式推送而非轮询，新增 `WS /api/v1/market/broker/ws?symbol=` 与 `WS /api/v1/market/kline/ws?symbol=`，在连接时 `pubsub.subscribe` 对应 `quant:*` 频道，断线时 `unsubscribe`。注意中间件 WS 白名单（`backend/middleware/stack.py:68-70`）需同步加入这两个路径。
-  - **③ 接入启动**：`backend/bootstrap/lifecycle.py` 已通过 07h-2 启动 `start_broker_ingest`/`start_kline_ingest`，本任务只需确保路由/依赖注入可用，不重复启动消费者。
-  - **④ 守门**：新增/更新 `backend/tests/` 用例，mock `SubscriptionService` 验证 HTTP 端点在缓存命中/未命中时返回正确结构与 404/空态；并确认不引入任何数据源直连（守门测试 07n 不退化）。
+- [x] **[BE-ARCH-07p]** **对外暴露 broker / kline 实时数据（承接 07h-2 进程内缓存 → HTTP）**（已完成，commit 见 git log）：
+  - **① HTTP 拉取端点**：在 `backend/routers/market.py` 新增 `GET /api/v1/market/broker/{symbol}`（`get_broker_realtime`）与 `GET /api/v1/market/kline/{symbol}`（`get_kline_realtime`），直接调用模块级单例 `subscription_service.get_broker(symbol)`/`get_kline(symbol)`（与现有 `market_data_gateway`/`data_source_router` 单例注入风格一致，无需 `Depends`）。返回结构含 `symbol`/`broker`(or `kline`)/`cached`/`updated_at`/`source`，缓存未命中时 `cached=false` 且数据字段为 `None`（前端可据此降级）。
+  - **② WS 推送端点（可选增强，未做）**：暂未实现流式推送。若前端需要，后续可新增 `WS /api/v1/market/broker/ws?symbol=` + `WS /api/v1/market/kline/ws?symbol=`（订阅 `quant:*` 频道），并同步 `backend/middleware/stack.py:68-70` 的 WS 白名单。本轮仅做 HTTP 拉取，已满足前端轮询实时盘口/K线需求。
+  - **③ 接入启动**：`backend/bootstrap/lifecycle.py` 已通过 07h-2 启动 `start_broker_ingest`/`start_kline_ingest`，本任务仅补路由，不重复启动消费者。
+  - **④ 守门**：新增 `backend/tests/test_market_router_07p.py`（4 用例，mock `subscription_service` 全链路，验证缓存命中/未命中结构与字段；全程 mock，无任何外部数据源直连，守门测试 07n 不退化）。
 
 #### P2 · 散点下沉、死代码清理与守门测试
 

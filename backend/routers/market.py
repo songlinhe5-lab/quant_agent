@@ -19,6 +19,9 @@ from backend.services.datasource import ResultStatus
 from backend.services.datasource.business import data_service
 from backend.services.datasource.business import market_data_service as _facade_market
 from backend.services.datasource.router import data_source_router
+
+# BE-ARCH-07p: 进程内 broker/kline 实时缓存（消费 quant:broker:* / quant:kline:* 回灌）
+from backend.services.datasource.subscription import subscription_service
 from backend.services.fund_flow.ticker import ticker_service
 from backend.services.market_engine import manager
 
@@ -559,3 +562,53 @@ async def search_tickers(q: str):
     if res.get("status") == "error":
         raise HTTPException(status_code=400, detail=res.get("message"))
     return res
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# BE-ARCH-07p: 对外暴露 broker / kline 实时数据
+# 数据来自 07h-2 的 SubscriptionService 进程内缓存（消费 quant:broker:{tk} /
+# quant:kline:{tk} 频道回灌，TTL 5s）。仅作只读转发，不引入任何外部直连。
+# ────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/broker/{symbol}")
+async def get_broker_realtime(symbol: str):
+    """获取标的实时盘口（broker）快照。
+
+    数据来自 Futu 推送经 data_subservice 桥接的 quant:broker:{symbol} 频道，
+    由 SubscriptionService 回灌进程内缓存。缓存未命中（TTL 过期 / 无订阅）时
+    返回 cached=false，前端应据此判断是否降级或等待下次推送。
+
+    Args:
+        symbol: 标的代码（如 00700.HK / AAPL）
+    """
+    tick = subscription_service.get_broker(symbol)
+    cached = tick is not None
+    return {
+        "symbol": symbol.upper(),
+        "broker": tick,
+        "cached": cached,
+        "updated_at": tick.get("updated_at") if tick else None,
+        "source": "quant:broker:channel+poly_cache" if cached else None,
+    }
+
+
+@router.get("/kline/{symbol}")
+async def get_kline_realtime(symbol: str):
+    """获取标的实时 K 线（kline）推送快照。
+
+    数据来自 Futu 推送经 data_subservice 桥接的 quant:kline:{symbol} 频道，
+    由 SubscriptionService 回灌进程内缓存。
+
+    Args:
+        symbol: 标的代码（如 00700.HK / AAPL）
+    """
+    kd = subscription_service.get_kline(symbol)
+    cached = kd is not None
+    return {
+        "symbol": symbol.upper(),
+        "kline": kd,
+        "cached": cached,
+        "updated_at": kd.get("updated_at") if kd else None,
+        "source": "quant:kline:channel+poly_cache" if cached else None,
+    }
