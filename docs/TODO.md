@@ -703,7 +703,15 @@ STATUS: PRODUCTION READY ✨
     - `data_source_router.py` 接入：`_maybe_offline(source, action, **params)` 统一拦截，在 10 个 `fetch_*` 方法入口注入短路（OFFLINE_MODE=1 时连子服务节点都不触网）。
     - `conftest.py` 注册 `live_network` pytest 标记（需真实网络/Key 的集成测试默认 skip）。
     - 守门：`test_offline_stubs.py`（16 用例，覆盖离线开关判定/LLM 文本·JSON·token 计量联动/router 全源短路/live_network 标记）全绿；既有 `test_data_source_router.py` 未引入新失败（6 个 akshare 失败为预先存在，依赖已移除的本地降级通道，与本次无关）。
-- [ ] **[SVC-07]** 降级与混沌测试：模拟 Futu 断连 / YFinance 超时 / OpenAI 限流，验证熔断器（BE-04）、数据源自动切换、Ollama 降级（对照 `docs/12` 应急预案）真实生效
+- [x] **[SVC-07]** 降级与混沌测试：模拟 Futu 断连 / YFinance 超时 / OpenAI 限流，验证熔断器（BE-04）、数据源自动切换、Ollama 降级（对照 `docs/12` 应急预案）真实生效
+  - **交付（2026-08-09）**：
+    - 守门：`test_chaos_degradation.py`（12 用例），**真实驱动状态机**（只在最底层注入故障，不 mock 被测逻辑本身）：
+      - **A. 熔断器 CircuitBreaker (BE-04)**：`test_circuit_breaker_open_after_max_failures`（连续失败 → OPEN → 抛 `CircuitBreakerOpenError`）、`test_circuit_breaker_half_open_then_closed`（超时 → HALF_OPEN → 成功 → CLOSED）、`test_circuit_breaker_rate_limit_skips_failure`（限流错误不计入熔断计数）、`test_circuit_breaker_prometheus_state_transition`（熔断状态变化反映到 Prometheus `CIRCUIT_BREAKER_STATE` 指标）。
+      - **B. LLM Ollama 降级 (AI-02)**：`test_llm_fallback_to_ollama_on_repeated_failure`（主供应商连续失败达阈值 → `is_fallback_active=True` 且 `get_client` 返回 Ollama client；主供应商恢复 → 切回）、`test_llm_fallback_threshold_not_reached`、`test_llm_fallback_disabled`。
+      - **C. DataSourceRouter 节点熔断 + failover**：`test_router_failover_on_node_failure`（主节点连续失败 → unhealthy + `circuit_breaker_until` 设置 → `_select_node` 自动选备节点）、`test_router_rate_limit_does_not_trip_breaker`（限流类错误只 failover 不熔断）、`test_router_no_local_fallback_on_total_outage`（全节点失联 → 返回失败且**无本地兜底**，符合移除本地 SDK 降级通道架构红线）。
+      - **D. 端到端降级编排**：`test_futu_total_outage_no_local_fallback`（Futu 全失联 → 返回错误且无本地兜底）。
+      - **E. 隔离性**：`test_parallel_circuit_breaker_isolation`（独立服务熔断状态互不干扰）。
+    - 全绿。验证重点：日志实测触发「节点 yf_a 触发熔断」「无健康子服务节点可用（后端已移除本地兜底）」「Futu 远程节点不可用（后端已移除本地兜底）」，证明降级/熔断/切换链路真实生效，而非 mock 假结果。
 
 ### 文档
 
