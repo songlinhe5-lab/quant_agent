@@ -4,8 +4,8 @@ QuoteMixin 为 mixin, 无法独立实例化, 故用一个 dummy 子类提供其�
 实例属性 (_circuit_breaker_until / _cache_mode / _error_count / _max_errors)
 与异步上下文管理器 _acquire_lock_with_timeout。
 
-方法内部 `import akshare as ak` 并调用 ak.stock_news_em / ak.stock_zh_a_hist,
-直接 patch akshare 模块对应函数即可; redis 仅 patch 本模块导入的
+连接层已下沉 data_subservice，故直接 mock 本模块导入的
+backend.services.akshare.quote.data_source_router；redis 仅 patch
 backend.services.akshare.quote.redis_client。
 """
 
@@ -13,7 +13,6 @@ import json
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pandas as pd
 import pytest
 
 from backend.services.akshare.quote import QuoteMixin
@@ -39,71 +38,47 @@ def _mem_redis(get_return=None):
     return m
 
 
-def _news_df():
-    return pd.DataFrame(
-        [
+def _news_remote():
+    return {
+        "status": "success",
+        "data": [
             {
-                "发布时间": "2026-01-02 09:30:00",
-                "新闻标题": "利好",
-                "新闻内容": "公司签大单",
-                "新闻链接": "http://x/1",
-                "文章来源": "东方财富",
+                "datetime": 1.0,
+                "date": "2026-01-02 09:30:00",
+                "headline": "利好",
+                "summary": "公司签大单",
+                "url": "http://x/1",
+                "source": "东方财富",
             }
-        ]
-    )
+        ],
+        "source": "akshare",
+    }
 
 
-def _daily_df():
-    """新浪 stock_zh_a_daily 返回的英文列 df (含 date/open/high/low/close/volume/amount)。"""
-    return pd.DataFrame(
-        [
-            {
-                "date": "2026-01-01",
-                "open": 10.0,
-                "high": 11.0,
-                "low": 9.5,
-                "close": 10.5,
-                "volume": 1000,
-                "amount": 10500.0,
-            },
-            {
-                "date": "2026-01-02",
-                "open": 10.5,
-                "high": 12.0,
-                "low": 10.2,
-                "close": 11.8,
-                "volume": 2000,
-                "amount": 23600.0,
-            },
-        ]
-    )
+def _quote_remote():
+    return {
+        "status": "success",
+        "data": {
+            "ticker": "SH.600519",
+            "last_price": 11.8,
+            "open": 10.5,
+            "high": 12.0,
+            "low": 10.2,
+            "prev_close": 10.5,
+            "volume": 2000,
+            "turnover": 23600.0,
+            "change_val": 1.3,
+            "change_pct": 12.38,
+            "amplitude": 7.62,
+            "volume_str": "2.00K",
+        },
+        "source": "akshare_sina",
+    }
 
 
-def _hist_df():
-    return pd.DataFrame(
-        [
-            {
-                "日期": "2026-01-01",
-                "开盘": 10.0,
-                "最高": 11.0,
-                "最低": 9.5,
-                "收盘": 10.5,
-                "成交量": 1000,
-                "成交额": 10500.0,
-                "振幅": 5.0,
-            },
-            {
-                "日期": "2026-01-02",
-                "开盘": 10.5,
-                "最高": 12.0,
-                "最低": 10.2,
-                "收盘": 11.8,
-                "成交量": 2000,
-                "成交额": 23600.0,
-                "振幅": 7.0,
-            },
-        ]
-    )
+def _history_remote(num=1):
+    rows = [{"time": "2026-01-02 00:00:00", "open": 10.5, "high": 12.0, "low": 10.2, "close": 11.8, "volume": 2000}]
+    return {"status": "success", "data": rows[:num], "source": "akshare_fallback"}
 
 
 # ── get_company_news ───────────────────────────────────────────────────────
@@ -170,13 +145,32 @@ async def test_news_hk_fallback_empty_uses_short_ttl():
 
 
 @pytest.mark.asyncio
+async def test_news_block_index_warning():
+    r = _mem_redis()
+    h = _QuoteHarness()
+    with patch("backend.services.akshare.quote.redis_client", r):
+        res = await h.get_company_news("HK.BK1118")
+    assert res["status"] == "warning"
+
+
+@pytest.mark.asyncio
+async def test_news_invalid_code_error():
+    r = _mem_redis()
+    h = _QuoteHarness()
+    with patch("backend.services.akshare.quote.redis_client", r):
+        res = await h.get_company_news("INVALID")
+    assert res["status"] == "error"
+
+
+@pytest.mark.asyncio
 async def test_news_ashare_success():
     r = _mem_redis()
     h = _QuoteHarness()
     with (
         patch("backend.services.akshare.quote.redis_client", r),
-        patch("akshare.stock_news_em", new=MagicMock(return_value=_news_df())),
+        patch("backend.services.akshare.quote.data_source_router") as mock_router,
     ):
+        mock_router.fetch_akshare = AsyncMock(return_value=_news_remote())
         res = await h.get_company_news("SH.600519")
     assert res["status"] == "success"
     assert res["data"][0]["headline"] == "利好"
@@ -189,8 +183,9 @@ async def test_news_ashare_error_triggers_circuit():
     h = _QuoteHarness(max_errors=1)
     with (
         patch("backend.services.akshare.quote.redis_client", r),
-        patch("akshare.stock_news_em", new=MagicMock(side_effect=ValueError("boom"))),
+        patch("backend.services.akshare.quote.data_source_router") as mock_router,
     ):
+        mock_router.fetch_akshare = AsyncMock(side_effect=ValueError("boom"))
         res = await h.get_company_news("SH.600519")
     assert res["status"] == "error"
     assert h._circuit_breaker_until > 0  # 触发熔断休眠
@@ -233,20 +228,21 @@ async def test_quote_success_and_error_branch():
     h = _QuoteHarness()
     with (
         patch("backend.services.akshare.quote.redis_client", r),
-        patch("akshare.stock_zh_a_daily", new=MagicMock(return_value=_daily_df())),
+        patch("backend.services.akshare.quote.data_source_router") as mock_router,
     ):
+        mock_router.fetch_akshare = AsyncMock(return_value=_quote_remote())
         res = await h.get_stock_quote("SH.600519")
     assert res["status"] == "success"
     assert res["data"]["last_price"] == 11.8
 
-    # 空 df -> 异常分支 + 熔断
+    # 远程非成功 -> 异常分支 + 熔断
     r2 = _mem_redis()
     h2 = _QuoteHarness(max_errors=1)
-    empty = pd.DataFrame()
     with (
         patch("backend.services.akshare.quote.redis_client", r2),
-        patch("akshare.stock_zh_a_daily", new=MagicMock(return_value=empty)),
+        patch("backend.services.akshare.quote.data_source_router") as mock_router2,
     ):
+        mock_router2.fetch_akshare = AsyncMock(side_effect=RuntimeError("remote boom"))
         res2 = await h2.get_stock_quote("SH.600519")
     assert res2["status"] == "error"
     assert h2._circuit_breaker_until > 0
@@ -289,8 +285,9 @@ async def test_history_success_and_error_branch():
     h = _QuoteHarness()
     with (
         patch("backend.services.akshare.quote.redis_client", r),
-        patch("akshare.stock_zh_a_daily", new=MagicMock(return_value=_daily_df())),
+        patch("backend.services.akshare.quote.data_source_router") as mock_router,
     ):
+        mock_router.fetch_akshare = AsyncMock(return_value=_history_remote(num=1))
         res = await h.get_stock_history("SH.600519", num=1)
     assert res["status"] == "success"
     assert len(res["data"]) == 1
@@ -299,8 +296,9 @@ async def test_history_success_and_error_branch():
     h2 = _QuoteHarness(max_errors=1)
     with (
         patch("backend.services.akshare.quote.redis_client", r2),
-        patch("akshare.stock_zh_a_daily", new=MagicMock(return_value=pd.DataFrame())),
+        patch("backend.services.akshare.quote.data_source_router") as mock_router2,
     ):
+        mock_router2.fetch_akshare = AsyncMock(side_effect=RuntimeError("boom"))
         res2 = await h2.get_stock_history("SH.600519")
     assert res2["status"] == "error"
     assert h2._circuit_breaker_until > 0

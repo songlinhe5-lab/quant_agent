@@ -478,43 +478,49 @@ class MarketDataGateway:
         return self._ak.get_health_status()
 
     async def get_economic_calendar_ak(self, *args: Any, **kwargs: Any) -> Any:
-        """经济日历 - 走路由器调用 AKShare（支持远程节点降级）"""
-        try:
-            from backend.services.datasource.router import data_source_router
+        """经济日历 - 纯远程 AKShare 子服务（无本地降级，源失效在监控如实显示）"""
+        from backend.services.datasource.router import data_source_router
 
-            # 通过路由器调用 AKShare（支持远程节点）
-            result = await data_source_router.fetch_akshare("economic_calendar", **kwargs)
-
-            if result.get("status") == "success":
-                return result.get("data")
-            else:
-                logger.warning(f"[AKShare] 路由器调用失败：{result.get('message')}，降级本地")
-        except Exception as e:
-            logger.warning(f"[AKShare] 路由器异常：{e}，降级本地")
-
-        # 降级：本地调用
-        return await self._ak.get_economic_calendar(*args, **kwargs)
+        result = await data_source_router.fetch_akshare("ECONOMIC_CALENDAR", **kwargs)
+        if result.get("status") == "success":
+            return result.get("data")
+        logger.warning(f"[AKShare] 经济日历远程调用失败：{result.get('message')}")
+        return []
 
     async def get_southbound_flow(self) -> Any:
-        return await self._ak.get_southbound_flow()
+        from backend.services.datasource.router import data_source_router
+
+        return await data_source_router.fetch_akshare("SOUTHBOUND")
 
     async def get_northbound_flow(self) -> Any:
-        return await self._ak.get_northbound_flow()
+        from backend.services.datasource.router import data_source_router
+
+        return await data_source_router.fetch_akshare("FUND_FLOW")
 
     async def get_hk_stock_connect_flow(self) -> Any:
-        return await self._ak.get_hk_stock_connect_flow()
+        from backend.services.datasource.router import data_source_router
+
+        return await data_source_router.fetch_akshare("HK_CONNECT")
 
     async def get_hsgt_top_holders(self, symbol: str = "00700", **kwargs: Any) -> Any:
-        return await self._ak.get_hsgt_top_holders(symbol=symbol, **kwargs)
+        from backend.services.datasource.router import data_source_router
+
+        return await data_source_router.fetch_akshare("HSGT_HOLDERS", symbol=symbol)
 
     async def get_company_news_ak(self, ticker: str = "", **kwargs: Any) -> Any:
-        return await self._ak.get_company_news(ticker=ticker, **kwargs)
+        from backend.services.datasource.router import data_source_router
+
+        return await data_source_router.fetch_akshare("STOCK_NEWS", ticker=ticker)
 
     async def get_stock_quote_ak(self, ticker: str = "", **kwargs: Any) -> Any:
-        return await self._ak.get_stock_quote(ticker=ticker, **kwargs)
+        from backend.services.datasource.router import data_source_router
+
+        return await data_source_router.fetch_akshare("QUOTE_A", ticker=ticker)
 
     async def get_stock_history_ak(self, ticker: str, num: int = 60) -> Any:
-        return await self._ak.get_stock_history(ticker, num=num)
+        from backend.services.datasource.router import data_source_router
+
+        return await data_source_router.fetch_akshare("HISTORY_A", ticker=ticker, num=num)
 
     async def get_company_news_fh(
         self, ticker: str, days_back: int = 3, skip_cache: bool = False, **kwargs: Any

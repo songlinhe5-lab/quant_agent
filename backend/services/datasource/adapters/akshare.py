@@ -39,8 +39,17 @@ class AKShareDataSource:
     @property
     def capabilities(self) -> list[str]:
         return [
-            "FUND_FLOW",
-            "ECONOMIC_CALENDAR",
+            "QUOTE",  # A/HK/US 实时行情
+            "HISTORY",  # A/HK/US 历史 K 线
+            "FUND_FLOW",  # 北向/个股资金流
+            "SOUTHBOUND",  # 南向资金
+            "HK_CONNECT",  # 港股通双通道
+            "HSGT_HOLDERS",  # 沪深港通十大持股
+            "STOCK_NEWS",  # 个股新闻
+            "QUOTE_A",  # A 股新浪源行情兜底
+            "HISTORY_A",  # A 股新浪源历史兜底
+            "ECONOMIC_CALENDAR",  # 经济日历
+            "NEWS",  # 港股新闻
         ]
 
     @property

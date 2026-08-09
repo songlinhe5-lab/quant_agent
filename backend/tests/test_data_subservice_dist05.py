@@ -88,11 +88,11 @@ class TestDataSourceDispatch:
 
     def test_akshare_routed(self, client):
         mod, c = client
-        body = '{"source":"akshare","action":"FUND_FLOW","params":{"direction":"southbound"}}'
+        body = '{"source":"akshare","action":"SOUTHBOUND","params":{}}'
         r = c.post("/api/v1/data", content=body, headers=_sign(body))
         assert r.status_code == 200
         assert r.json()["data"] == {"k": "ak"}
-        mod.handle_akshare.assert_awaited_once_with("FUND_FLOW", {"direction": "southbound"})
+        mod.handle_akshare.assert_awaited_once_with("SOUTHBOUND", {})
 
     def test_tushare_routed(self, client):
         mod, c = client
@@ -106,7 +106,8 @@ class TestDataSourceDispatch:
         _, c = client
         body = '{"source":"bogus","action":"QUOTE","params":{}}'
         r = c.post("/api/v1/data", content=body, headers=_sign(body))
-        assert r.status_code == 400
+        # 网关对未声明能力(DS_CAPABILITIES 不含)统一返回 503 服务不可用
+        assert r.status_code == 503
 
     def test_missing_hmac_returns_403(self, client):
         _, c = client

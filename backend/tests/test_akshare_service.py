@@ -1,8 +1,13 @@
 """
-AKShareService A 股/港股通数据源单元测试
+AKShareService A 股/港股通数据源单元测试（连接层已下沉 data_subservice）
+
 覆盖: get_health_status, get_southbound_flow, get_northbound_flow,
       get_hsgt_top_holders, get_company_news, get_stock_quote,
       get_stock_history, get_economic_calendar
+
+测试策略: 主服务不再持有 akshare 本地连接，所有数据经
+data_source_router.fetch_akshare() 远程获取，故此处 mock 远程路由返回
+子服务约定结构，断言主服务侧的缓存/熔断/降级/解析透传逻辑。
 """
 
 import json
@@ -10,9 +15,8 @@ import os
 import sys
 import time
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-import pandas as pd
 import pytest
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
@@ -68,38 +72,44 @@ class TestAKShareService:
 
     @pytest.mark.asyncio
     async def test_get_southbound_flow_success(self, service):
-        """南向资金正常路径"""
-        df = pd.DataFrame(
-            {
-                "资金方向": ["南向", "北向"],
-                "资金净流入": [12.8, -5.3],
-                "交易日": ["2026-06-29", "2026-06-29"],
-                "交易状态": [3, 3],
-            }
-        )
-        hist_df = pd.DataFrame({"当日成交净买额": [10, 12, 8]})
-        fake_ak = MagicMock()
+        """南向资金正常路径（远程返回子服务结构）"""
+        remote = {
+            "status": "success",
+            "data": {
+                "net_inflow": 12.8,
+                "weekly": 50.0,
+                "monthly": 200.0,
+                "unit": "亿人民币",
+                "date": "2026-06-29",
+                "sparkline": [1, 1, -1, 1],
+                "history": [1, 1, -1, 1],
+            },
+            "is_closed": True,
+            "source": "akshare_stock_hsgt_fund_flow_summary",
+        }
         with (
-            patch.dict(sys.modules, {"akshare": fake_ak}),
             patch("backend.services.akshare.flow.redis_client") as mock_redis,
-            patch("backend.services.akshare.flow.asyncio.gather", new=AsyncMock(return_value=(df, hist_df))),
+            patch("backend.services.akshare.flow.data_source_router") as mock_router,
         ):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
+            mock_router.fetch_akshare = AsyncMock(return_value=remote)
             result = await service.get_southbound_flow()
             assert result["status"] == "success"
             assert result["data"]["net_inflow"] == 12.8
             assert result["is_closed"] is True
+            mock_router.fetch_akshare.assert_awaited_once_with("SOUTHBOUND")
 
     @pytest.mark.asyncio
     async def test_get_southbound_flow_failure_returns_mock(self, service):
-        """南向资金获取异常应返回空数据 + 告警，禁止注入 mock 假数字"""
+        """南向资金获取异常应返回降级 warning，禁止注入 mock 假数字"""
         with (
             patch("backend.services.akshare.flow.redis_client") as mock_redis,
-            patch("backend.services.akshare.flow.asyncio.gather", new=AsyncMock(side_effect=RuntimeError("boom"))),
+            patch("backend.services.akshare.flow.data_source_router") as mock_router,
         ):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
+            mock_router.fetch_akshare = AsyncMock(side_effect=RuntimeError("boom"))
             result = await service.get_southbound_flow()
             assert result["status"] == "warning"
             assert result["data"] is None
@@ -107,27 +117,32 @@ class TestAKShareService:
 
     @pytest.mark.asyncio
     async def test_get_northbound_flow_success(self, service):
-        """北向资金正常路径"""
-        df = pd.DataFrame(
-            {
-                "资金方向": ["北向", "南向"],
-                "资金净流入": [-5.3, 12.8],
-                "交易日": ["2026-06-29", "2026-06-29"],
-                "交易状态": [3, 3],
-            }
-        )
-        hist_df = pd.DataFrame({"当日成交净买额": [-1, -2, -3]})
-        fake_ak = MagicMock()
+        """北向资金正常路径（远程返回子服务结构）"""
+        remote = {
+            "status": "success",
+            "data": {
+                "net_inflow": -5.3,
+                "weekly": -10.0,
+                "monthly": -30.0,
+                "unit": "亿人民币",
+                "date": "2026-06-29",
+                "sparkline": [-1, -1, 1, -1],
+                "history": [-1, -1, 1, -1],
+            },
+            "is_closed": True,
+            "source": "akshare_stock_hsgt_fund_flow_summary",
+        }
         with (
-            patch.dict(sys.modules, {"akshare": fake_ak}),
             patch("backend.services.akshare.flow.redis_client") as mock_redis,
-            patch("backend.services.akshare.flow.asyncio.gather", new=AsyncMock(return_value=(df, hist_df))),
+            patch("backend.services.akshare.flow.data_source_router") as mock_router,
         ):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
+            mock_router.fetch_akshare = AsyncMock(return_value=remote)
             result = await service.get_northbound_flow()
             assert result["status"] == "success"
             assert result["data"]["net_inflow"] == -5.3
+            mock_router.fetch_akshare.assert_awaited_once_with("FUND_FLOW")
 
     @pytest.mark.asyncio
     async def test_get_company_news_circuit_open_returns_error(self, service):
@@ -138,12 +153,8 @@ class TestAKShareService:
 
     @pytest.mark.asyncio
     async def test_get_company_news_block_index_returns_warning(self, service):
-        """板块指数代码应返回 warning"""
-        fake_ak = MagicMock()
-        with (
-            patch.dict(sys.modules, {"akshare": fake_ak}),
-            patch("backend.services.akshare.quote.redis_client") as mock_redis,
-        ):
+        """板块指数代码应返回 warning（不触网）"""
+        with patch("backend.services.akshare.quote.redis_client") as mock_redis:
             mock_redis.get = AsyncMock(return_value=None)
             result = await service.get_company_news("HK.BK1118")
             assert result["status"] == "warning"
@@ -152,9 +163,7 @@ class TestAKShareService:
     async def test_get_company_news_hk_fallback_yahoo(self, service):
         """港股代码应通过 Yahoo 兜底获取新闻"""
         yahoo_news = [{"headline": "h1"}, {"headline": "h2"}]
-        fake_ak = MagicMock()
         with (
-            patch.dict(sys.modules, {"akshare": fake_ak}),
             patch("backend.services.akshare.quote.redis_client") as mock_redis,
             patch(
                 "backend.core.yahoo_news.fetch_yahoo_news",
@@ -177,6 +186,23 @@ class TestAKShareService:
             assert (await service.get_company_news("INVALID"))["status"] == "error"
 
     @pytest.mark.asyncio
+    async def test_get_company_news_akshare_success(self, service):
+        """A股新闻应远程调 STOCK_NEWS 并透传"""
+        news = [{"headline": "a", "date": "2026-06-29 10:00:00"}]
+        remote = {"status": "success", "data": news, "source": "akshare"}
+        with (
+            patch("backend.services.akshare.quote.redis_client") as mock_redis,
+            patch("backend.services.akshare.quote.data_source_router") as mock_router,
+        ):
+            mock_redis.get = AsyncMock(return_value=None)
+            mock_redis.set = AsyncMock()
+            mock_router.fetch_akshare = AsyncMock(return_value=remote)
+            result = await service.get_company_news("SH.600519")
+            assert result["status"] == "success"
+            assert result["data"] == news
+            mock_router.fetch_akshare.assert_awaited_once_with("STOCK_NEWS", ticker="SH.600519")
+
+    @pytest.mark.asyncio
     async def test_get_stock_quote_circuit_open_returns_error(self, service):
         """熔断开启时应直接返回 error"""
         service._circuit_breaker_until = time.time() + 30
@@ -191,92 +217,115 @@ class TestAKShareService:
 
     @pytest.mark.asyncio
     async def test_get_stock_quote_success(self, service):
-        """A股行情正常路径"""
-        # 新浪源 stock_zh_a_daily 列名: date/open/high/low/close/volume/amount
-        df = pd.DataFrame(
-            {
-                "date": ["2026-06-28", "2026-06-29"],
-                "open": [100.0, 101.0],
-                "high": [102.0, 103.0],
-                "low": [99.0, 100.0],
-                "close": [101.0, 102.0],
-                "volume": [10000, 11000],
-                "amount": [1000000, 1100000],
-            }
-        )
-        fake_ak = MagicMock()
+        """A股行情正常路径（远程返回子服务结构）"""
+        remote = {
+            "status": "success",
+            "data": {
+                "ticker": "SH.600519",
+                "last_price": 102.0,
+                "open": 101.0,
+                "high": 103.0,
+                "low": 100.0,
+                "prev_close": 101.0,
+                "volume": 11000,
+                "turnover": 1100000,
+                "change_val": 1.0,
+                "change_pct": 0.99,
+                "amplitude": 2.97,
+                "volume_str": "11.00K",
+            },
+            "source": "akshare_sina",
+        }
         with (
-            patch.dict(sys.modules, {"akshare": fake_ak}),
             patch("backend.services.akshare.quote.redis_client") as mock_redis,
-            patch("backend.services.akshare.quote.asyncio.to_thread", new=AsyncMock(return_value=df)),
+            patch("backend.services.akshare.quote.data_source_router") as mock_router,
         ):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
+            mock_router.fetch_akshare = AsyncMock(return_value=remote)
             result = await service.get_stock_quote("SH.600519")
             assert result["status"] == "success"
             assert result["data"]["last_price"] == 102.0
+            mock_router.fetch_akshare.assert_awaited_once_with("QUOTE_A", ticker="SH.600519")
 
     @pytest.mark.asyncio
     async def test_get_stock_history_success(self, service):
-        """A股历史 K 线正常路径"""
-        # 新浪源 stock_zh_a_daily 列名: date/open/high/low/close/volume
-        df = pd.DataFrame(
-            {
-                "date": ["2026-06-28", "2026-06-29"],
-                "open": [100.0, 101.0],
-                "high": [102.0, 103.0],
-                "low": [99.0, 100.0],
-                "close": [101.0, 102.0],
-                "volume": [10000, 11000],
-            }
-        )
-        fake_ak = MagicMock()
+        """A股历史 K 线正常路径（远程返回子服务结构）"""
+        remote = {
+            "status": "success",
+            "data": [
+                {
+                    "time": "2026-06-28 00:00:00",
+                    "open": 100.0,
+                    "high": 102.0,
+                    "low": 99.0,
+                    "close": 101.0,
+                    "volume": 10000,
+                },
+                {
+                    "time": "2026-06-29 00:00:00",
+                    "open": 101.0,
+                    "high": 103.0,
+                    "low": 100.0,
+                    "close": 102.0,
+                    "volume": 11000,
+                },
+            ],
+            "source": "akshare_fallback",
+        }
         with (
-            patch.dict(sys.modules, {"akshare": fake_ak}),
             patch("backend.services.akshare.quote.redis_client") as mock_redis,
-            patch("backend.services.akshare.quote.asyncio.to_thread", new=AsyncMock(return_value=df)),
+            patch("backend.services.akshare.quote.data_source_router") as mock_router,
         ):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
+            mock_router.fetch_akshare = AsyncMock(return_value=remote)
             result = await service.get_stock_history("SH.600519", num=2)
             assert result["status"] == "success"
             assert len(result["data"]) == 2
+            mock_router.fetch_akshare.assert_awaited_once_with("HISTORY_A", ticker="SH.600519", num=2)
 
     @pytest.mark.asyncio
     async def test_get_hsgt_top_holders_success(self, service):
-        """沪深港通持仓明细正常路径"""
-        df = pd.DataFrame(
-            {
-                "持股日期": ["2026-06-28", "2026-06-28", "2026-06-29"],
-                "机构名称": ["A 机构", "B 机构", "A 机构"],
-                "持股数量": [1000.0, 2000.0, 1500.0],
-                "持股数量占A股百分比": [1.0, 2.0, 1.5],
-            }
-        )
-        fake_ak = MagicMock()
+        """沪深港通持仓明细正常路径（远程返回子服务结构）"""
+        remote = {
+            "status": "success",
+            "data": {
+                "symbol": "00700",
+                "date": "2026-06-29",
+                "southbound_total_shares": 1500.0,
+                "southbound_net_change": 500.0,
+                "participants": [
+                    {"holder": "A", "shares": 1500.0, "net_change": 500.0, "pct": 1.5, "is_southbound": True}
+                ],
+                "total_shares_sampled": 1500.0,
+            },
+            "source": "akshare_stock_hsgt_individual_detail",
+        }
         with (
-            patch.dict(sys.modules, {"akshare": fake_ak}),
             patch("backend.services.akshare.flow.redis_client") as mock_redis,
-            patch("backend.services.akshare.flow.asyncio.to_thread", new=AsyncMock(return_value=df)),
+            patch("backend.services.akshare.flow.data_source_router") as mock_router,
         ):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
+            mock_router.fetch_akshare = AsyncMock(return_value=remote)
             result = await service.get_hsgt_top_holders("00700")
             assert result["status"] == "success"
             assert result["data"]["southbound_total_shares"] == 1500.0
             assert len(result["data"]["participants"]) == 1
+            mock_router.fetch_akshare.assert_awaited_once_with("HSGT_HOLDERS", symbol="00700")
 
     @pytest.mark.asyncio
     async def test_get_hsgt_top_holders_empty_returns_warning(self, service):
-        """空 DataFrame 应返回 warning"""
-        fake_ak = MagicMock()
+        """空数据应返回 warning"""
+        remote = {"status": "warning", "message": "空", "data": None}
         with (
-            patch.dict(sys.modules, {"akshare": fake_ak}),
             patch("backend.services.akshare.flow.redis_client") as mock_redis,
-            patch("backend.services.akshare.flow.asyncio.to_thread", new=AsyncMock(return_value=pd.DataFrame())),
+            patch("backend.services.akshare.flow.data_source_router") as mock_router,
         ):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
+            mock_router.fetch_akshare = AsyncMock(return_value=remote)
             assert (await service.get_hsgt_top_holders("00700"))["status"] == "warning"
 
     @pytest.mark.asyncio
@@ -289,28 +338,29 @@ class TestAKShareService:
 
     @pytest.mark.asyncio
     async def test_get_economic_calendar_success(self, service):
-        """百度股市通接口应被优先调用"""
-        df = pd.DataFrame({"地区": ["US"], "事件": ["FOMC"], "重要性": ["高"], "公布时间": ["08:30"]})
+        """远程经济日历成功路径"""
+        remote = {"status": "success", "data": [{"event": "FOMC", "country": "美国"}], "source": "akshare_universal"}
         with (
             patch("backend.services.akshare.calendar.redis_client") as mock_redis,
-            patch(
-                "backend.services.akshare.calendar.asyncio.gather", new=AsyncMock(return_value=[df.to_dict("records")])
-            ),
+            patch("backend.services.akshare.calendar.data_source_router") as mock_router,
         ):
             mock_redis.get = AsyncMock(return_value=None)
             mock_redis.set = AsyncMock()
+            mock_router.fetch_akshare = AsyncMock(return_value=remote)
             result = await service.get_economic_calendar(days_ahead=0)
             assert result["status"] == "success"
             assert result["source"] == "akshare_universal"
+            mock_router.fetch_akshare.assert_awaited_once_with("ECONOMIC_CALENDAR", days_ahead=0, days_back=0)
 
     @pytest.mark.asyncio
     async def test_get_economic_calendar_exception_returns_error(self, service):
-        """gather 异常应返回 error"""
+        """远程异常应返回 error"""
         with (
             patch("backend.services.akshare.calendar.redis_client") as mock_redis,
-            patch("backend.services.akshare.calendar.asyncio.gather", new=AsyncMock(side_effect=RuntimeError("boom"))),
+            patch("backend.services.akshare.calendar.data_source_router") as mock_router,
         ):
             mock_redis.get = AsyncMock(return_value=None)
+            mock_router.fetch_akshare = AsyncMock(side_effect=RuntimeError("boom"))
             assert (await service.get_economic_calendar())["status"] == "error"
 
     def test_mock_helpers_return_warning(self, service):
