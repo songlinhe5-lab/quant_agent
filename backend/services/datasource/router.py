@@ -139,7 +139,6 @@ class DataSourceNode:
     circuit_breaker_until: float = 0.0
     capabilities: List[str] = field(default_factory=list)
     # 子服务健康检查端点（用于监控数据源失效），无则跳过主动探测
-    health_check_url: Optional[str] = None
     # RL-13: 限流压力感知
     is_throttled: bool = False
     consecutive_rate_limits: int = 0
@@ -177,7 +176,6 @@ class DataSourceRouter:
         self._nodes["yf_primary"] = DataSourceNode(
             name="yf_primary",
             url=yf_primary,
-            health_check_url=f"{yf_primary}/api/v1/health",
             weight=10,
             capabilities=["yfinance", "quote", "history", "tech"],
         )
@@ -187,7 +185,6 @@ class DataSourceRouter:
             self._nodes[f"yf_backup_{idx}"] = DataSourceNode(
                 name=f"yf_backup_{idx}",
                 url=url,
-                health_check_url=f"{url}/api/v1/health",
                 weight=5,
                 capabilities=["yfinance", "quote", "history", "tech"],
             )
@@ -197,7 +194,6 @@ class DataSourceRouter:
             self._nodes["akshare_remote"] = DataSourceNode(
                 name="akshare_remote",
                 url=akshare_urls[0],
-                health_check_url=f"{akshare_urls[0]}/api/v1/health",
                 weight=10,
                 capabilities=["akshare", "southbound", "northbound", "hsgt"],
             )
@@ -207,7 +203,6 @@ class DataSourceRouter:
             self._nodes["tushare_remote"] = DataSourceNode(
                 name="tushare_remote",
                 url=tushare_urls[0],
-                health_check_url=f"{tushare_urls[0]}/api/v1/health",
                 weight=10,
                 capabilities=[
                     "tushare",
@@ -229,7 +224,6 @@ class DataSourceRouter:
         self._nodes["futu_master"] = DataSourceNode(
             name="futu_master",
             url=futu_url,
-            health_check_url=f"{futu_url}/api/v1/health",
             weight=10,
             capabilities=["futu"],
         )
@@ -242,7 +236,6 @@ class DataSourceRouter:
         self._nodes["fmp_master"] = DataSourceNode(
             name="fmp_master",
             url=fmp_url,
-            health_check_url=f"{fmp_url}/api/v1/health",
             weight=10,
             capabilities=["fmp"],
         )
@@ -255,7 +248,6 @@ class DataSourceRouter:
         self._nodes["finnhub_master"] = DataSourceNode(
             name="finnhub_master",
             url=finnhub_url,
-            health_check_url=f"{finnhub_url}/api/v1/health",
             weight=10,
             capabilities=[
                 "finnhub",
@@ -277,7 +269,6 @@ class DataSourceRouter:
         self._nodes["fred_master"] = DataSourceNode(
             name="fred_master",
             url=fred_url,
-            health_check_url=f"{fred_url}/api/v1/health",
             weight=10,
             capabilities=["fred", "macro_series", "economic_calendar"],
         )
@@ -285,7 +276,6 @@ class DataSourceRouter:
         self._nodes["dbnomics_master"] = DataSourceNode(
             name="dbnomics_master",
             url=dbnomics_url,
-            health_check_url=f"{dbnomics_url}/api/v1/health",
             weight=10,
             capabilities=["dbnomics", "economic_calendar"],
         )
@@ -293,7 +283,6 @@ class DataSourceRouter:
         self._nodes["rbi_master"] = DataSourceNode(
             name="rbi_master",
             url=rbi_url,
-            health_check_url=f"{rbi_url}/api/v1/health",
             weight=10,
             capabilities=["rbi", "economic_calendar"],
         )
@@ -304,7 +293,6 @@ class DataSourceRouter:
         self._nodes["search_master"] = DataSourceNode(
             name="search_master",
             url=search_url,
-            health_check_url=f"{search_url}/api/v1/health",
             weight=10,
             capabilities=["tavily", "bocha", "jina"],
         )

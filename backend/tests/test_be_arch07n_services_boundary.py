@@ -42,15 +42,16 @@ STRONG_BAN_PREFIXES = [
     "fund_flow",
 ]
 
-# 已知 legacy 连接层目录（允许 SDK 直连，待 07j 整体下沉）
+# 已知 legacy 连接层目录（允许 SDK 直连，待 07c/07j 整体下沉）
 LEGACY_OK_DIRS = {
     "futu",
     "akshare",
     "tushare",
     "finnhub",
-    "yfinance",
     "fmp",
     "adapters",  # legacy_market_data 在此，07c 部分卸载但 akshare 残留仍在
+    # 注：yfinance 已于 BE-ARCH-07k 彻底删除（search.py/technical.py 死 mixin 直连 Yahoo），
+    #     不再作为 legacy 连接层白名单成员，主服务 yahoo_news 改走 router.fetch_yfinance 远程代理。
 }
 
 
