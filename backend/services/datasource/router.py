@@ -690,7 +690,13 @@ class DataSourceRouter:
             logger.warning(f"[AKShare] 远程节点失败：{remote_node.name}, {action}, {str(e)}")
             await self._update_node_status(remote_node.name, success=False, error=str(e))
 
-        logger.warning("[AKShare] 远程节点失败（后端已移除本地兜底）")
+        # BE-ARCH-08f: 远程失败不返回裸错，先尝试 STALE 缓存降级 (DIST-19)。
+        # _get_akshare_stale 命中即打 degraded/stale_source 标记（并已上报指标）。
+        stale = await self._get_akshare_stale(action, kwargs)
+        if stale is not None:
+            return stale
+
+        logger.warning("[AKShare] 远程节点失败且无 STALE 缓存（后端已移除本地兜底）")
         return {"status": "error", "message": "AKShare remote node failed (local SDK disabled)"}
 
     async def fetch_tushare(self, action: str, **params) -> Dict[str, Any]:

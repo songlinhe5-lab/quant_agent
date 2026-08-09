@@ -688,3 +688,46 @@ class TestPinNodeHalfOpenProbe:
     def test_unhealthy_cooldown_expired_allows_probe(self):
         n = self._make_node("unhealthy", time.time() - 1)
         assert DataSourceRouter._pin_node_usable(n) is True
+
+
+# ==========================================
+# BE-ARCH-08f: AKShare 远程失败 STALE 降级 (DIST-19 写入只写不读)
+# ==========================================
+class TestFetchAkshareStaleDegrade:
+    """验收：AKShare 远程节点失败时, 应先返回 STALE 缓存 (degraded=true) 而非裸错;
+    无 STALE 缓存时才返回裸错。"""
+
+    @pytest.mark.asyncio
+    async def test_remote_fail_falls_back_to_stale(self, monkeypatch, patch_redis_client):
+        router = DataSourceRouter(enabled=True, sources=["akshare"])
+        node = DataSourceNode(name="akshare_remote", url="http://akshare", status="healthy")
+        monkeypatch.setattr(router, "_select_node", lambda s: node)
+        monkeypatch.setattr(
+            router,
+            "_send_request",
+            AsyncMock(return_value={"status": "error", "message": "boom"}),
+        )
+        stale_payload = {"status": "success", "data": {"a": 1}, "degraded": True, "stale_source": True}
+        monkeypatch.setattr(router, "_get_akshare_stale", AsyncMock(return_value=stale_payload))
+
+        payload = {"action": "stock_zh_a_spot_em", "params": {}, "kwargs": {}}
+        result = await router.fetch_akshare(payload)
+        assert result["status"] == "success"
+        assert result.get("degraded") is True
+        assert result.get("stale_source") is True
+
+    @pytest.mark.asyncio
+    async def test_remote_fail_no_stale_returns_error(self, monkeypatch, patch_redis_client):
+        router = DataSourceRouter(enabled=True, sources=["akshare"])
+        node = DataSourceNode(name="akshare_remote", url="http://akshare", status="healthy")
+        monkeypatch.setattr(router, "_select_node", lambda s: node)
+        monkeypatch.setattr(
+            router,
+            "_send_request",
+            AsyncMock(return_value={"status": "error", "message": "boom"}),
+        )
+        monkeypatch.setattr(router, "_get_akshare_stale", AsyncMock(return_value=None))
+
+        payload = {"action": "stock_zh_a_spot_em", "params": {}, "kwargs": {}}
+        result = await router.fetch_akshare(payload)
+        assert result["status"] == "error"
