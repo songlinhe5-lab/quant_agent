@@ -1,177 +1,130 @@
-"""SearchService 单元测试
+"""SearchService 单元测试 (BE-ARCH-07d 合规: 仅远程代理)
 
-覆盖: Tavily 成功/失败降级、Bocha 成功/失败降级、DuckDuckGo 兜底、
-全部失败返回空、include/exclude_domains 传参、无 API key 路径。
+覆盖: 经 data_source_router.fetch_search 远程调用, Tavily -> Bocha 降级、
+全部远程源失败返回空、include/exclude_domains 透传、异常降级。
+主服务不再直连任何外部搜索 API (api.tavily.com / api.bochaai.com / duckduckgo)。
 """
 
-import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
-from backend.services.search.service import SearchService
+from backend.services.search.service import _SEARCH_SOURCE_PRIORITY, SearchService
 
 
-def _mock_httpx_response(items_key="results", items=None):
-    """构造 httpx 响应 mock,items_key 区分 Tavily(results) vs Bocha(data.webPages.value)"""
-    resp = MagicMock()
-    resp.raise_for_status = MagicMock()
-    if items_key == "results":
-        resp.json.return_value = {"results": items or []}
-    else:
-        resp.json.return_value = {"data": {"webPages": {"value": items or []}}}
-    return resp
+def _fake_fetch(seq):
+    """构造 fetch_search: 按 source 返回对应结果, 不在 seq 中的 source 返回 error。"""
+
+    async def _f(source, **params):
+        return seq.get(source, {"status": "error", "message": f"{source} unavailable"})
+
+    return _f
 
 
-def _mock_async_client(resp):
-    """构造 httpx.AsyncClient context manager mock"""
-    client = AsyncMock()
-    client.__aenter__.return_value = client
-    client.__aexit__.return_value = None
-    client.post.return_value = resp
-    return client
-
-
-class TestSearchServiceTavily:
-    """优先级 1: Tavily API"""
+class TestSearchServiceRemoteTavily:
+    """优先级 1: 经远程 Tavily 代理"""
 
     @pytest.mark.asyncio
     async def test_tavily_success_returns_formatted_results(self):
-        with patch.dict(os.environ, {"TAVILY_API_KEY": "tav-key", "BOCHA_API_KEY": ""}):
-            resp = _mock_httpx_response(items=[{"title": "T1", "url": "http://u1", "content": "C1"}])
-            with patch(
-                "backend.services.search.service.httpx.AsyncClient",
-                return_value=_mock_async_client(resp),
-            ):
-                svc = SearchService()
-                result = await svc.web_search("test query")
+        svc = SearchService()
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_search",
+            new=_fake_fetch(
+                {"tavily": {"status": "success", "data": [{"title": "T1", "href": "http://u1", "body": "C1"}]}}
+            ),
+        ):
+            result = await svc.web_search("test query")
         assert result["status"] == "success"
-        assert len(result["data"]) == 1
         assert result["data"][0] == {"title": "T1", "href": "http://u1", "body": "C1"}
 
     @pytest.mark.asyncio
-    async def test_tavily_failure_falls_through_to_next_provider(self):
-        with patch.dict(os.environ, {"TAVILY_API_KEY": "tav-key", "BOCHA_API_KEY": ""}):
-            # Tavily 抛异常 → results 为空 → 进入 DuckDuckGo 兜底
-            client = AsyncMock()
-            client.__aenter__.return_value = client
-            client.__aexit__.return_value = None
-            client.post.side_effect = Exception("tavily down")
-            with (
-                patch(
-                    "backend.services.search.service.httpx.AsyncClient",
-                    return_value=client,
-                ),
-                patch(
-                    "backend.services.search.service.asyncio.to_thread",
-                    return_value=[{"title": "DDG", "href": "u", "body": "b"}],
-                ),
-            ):
-                svc = SearchService()
-                result = await svc.web_search("q")
-        assert result["data"][0]["title"] == "DDG"
-
-    @pytest.mark.asyncio
-    async def test_tavily_passes_include_exclude_domains(self):
-        with patch.dict(os.environ, {"TAVILY_API_KEY": "tav-key", "BOCHA_API_KEY": ""}):
-            resp = _mock_httpx_response(items=[{"title": "T", "url": "u", "content": "c"}])
-            client = _mock_async_client(resp)
-            with patch(
-                "backend.services.search.service.httpx.AsyncClient",
-                return_value=client,
-            ):
-                svc = SearchService()
-                await svc.web_search("q", include_domains=["a.com"], exclude_domains=["b.com"])
-            sent_payload = client.post.call_args.kwargs["json"]
-            assert sent_payload["include_domains"] == ["a.com"]
-            assert sent_payload["exclude_domains"] == ["b.com"]
-
-
-class TestSearchServiceBocha:
-    """优先级 2: Bocha API"""
-
-    @pytest.mark.asyncio
-    async def test_bocha_success_when_tavily_key_absent(self):
-        with patch.dict(os.environ, {"TAVILY_API_KEY": "", "BOCHA_API_KEY": "bocha-key"}):
-            resp = _mock_httpx_response(
-                items_key="data",
-                items=[{"name": "B1", "url": "http://b1", "snippet": "S1"}],
-            )
-            with patch(
-                "backend.services.search.service.httpx.AsyncClient",
-                return_value=_mock_async_client(resp),
-            ):
-                svc = SearchService()
-                result = await svc.web_search("q")
+    async def test_tavily_failure_falls_through_to_bocha(self):
+        svc = SearchService()
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_search",
+            new=_fake_fetch(
+                {"bocha": {"status": "success", "data": [{"title": "B1", "href": "http://b1", "body": "S1"}]}}
+            ),
+        ):
+            result = await svc.web_search("q")
         assert result["data"][0] == {"title": "B1", "href": "http://b1", "body": "S1"}
 
     @pytest.mark.asyncio
-    async def test_bocha_failure_falls_through_to_duckduckgo(self):
-        with patch.dict(os.environ, {"TAVILY_API_KEY": "", "BOCHA_API_KEY": "bocha-key"}):
-            client = AsyncMock()
-            client.__aenter__.return_value = client
-            client.__aexit__.return_value = None
-            client.post.side_effect = Exception("bocha down")
-            with (
-                patch(
-                    "backend.services.search.service.httpx.AsyncClient",
-                    return_value=client,
-                ),
-                patch(
-                    "backend.services.search.service.asyncio.to_thread",
-                    return_value=[{"title": "DDG", "href": "u", "body": "b"}],
-                ),
-            ):
-                svc = SearchService()
-                result = await svc.web_search("q")
-        assert result["data"][0]["title"] == "DDG"
+    async def test_tavily_passes_include_exclude_domains(self):
+        svc = SearchService()
+        captured = {}
+
+        async def _capture(source, **params):
+            captured.update(params)
+            return {"status": "success", "data": []}
+
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_search",
+            new=_capture,
+        ):
+            await svc.web_search("q", include_domains=["a.com"], exclude_domains=["b.com"])
+        assert captured["include_domains"] == ["a.com"]
+        assert captured["exclude_domains"] == ["b.com"]
 
 
-class TestSearchServiceDuckDuckGo:
-    """优先级 3: DuckDuckGo 兜底"""
+class TestSearchServiceRemoteBocha:
+    """优先级 2: 经远程 Bocha 代理 (Tavily 不可用时)"""
 
     @pytest.mark.asyncio
-    async def test_duckduckgo_fallback_when_no_api_keys(self):
-        with patch.dict(os.environ, {"TAVILY_API_KEY": "", "BOCHA_API_KEY": ""}):
-            with patch(
-                "backend.services.search.service.asyncio.to_thread",
-                return_value=[{"title": "DDG", "href": "u", "body": "b"}],
-            ):
-                svc = SearchService()
-                result = await svc.web_search("q")
-        assert result["status"] == "success"
-        assert len(result["data"]) == 1
+    async def test_bocha_success_when_tavily_unavailable(self):
+        svc = SearchService()
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_search",
+            new=_fake_fetch(
+                {"bocha": {"status": "success", "data": [{"title": "B1", "href": "http://b1", "body": "S1"}]}}
+            ),
+        ):
+            result = await svc.web_search("q")
+        assert result["data"][0] == {"title": "B1", "href": "http://b1", "body": "S1"}
+
+
+class TestSearchServiceAllFail:
+    """全部远程源失败/空: 返回空 data + message (不再直连 DuckDuckGo)"""
 
     @pytest.mark.asyncio
     async def test_all_providers_fail_returns_empty_with_message(self):
-        with patch.dict(os.environ, {"TAVILY_API_KEY": "", "BOCHA_API_KEY": ""}):
-            with patch(
-                "backend.services.search.service.asyncio.to_thread",
-                return_value=[],
-            ):
-                svc = SearchService()
-                result = await svc.web_search("q")
+        svc = SearchService()
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_search",
+            new=_fake_fetch({}),
+        ):
+            result = await svc.web_search("q")
         assert result["status"] == "success"
         assert result["data"] == []
         assert "未找到" in result["message"]
 
     @pytest.mark.asyncio
-    async def test_duckduckgo_uses_proxy_from_env(self):
-        with patch.dict(
-            os.environ,
-            {"TAVILY_API_KEY": "", "BOCHA_API_KEY": "", "HTTPS_PROXY": "http://proxy:8080"},
+    async def test_remote_exception_falls_through_then_empty(self):
+        svc = SearchService()
+        calls = []
+
+        async def _boom(source, **params):
+            calls.append(source)
+            raise RuntimeError("search node unreachable")
+
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_search",
+            new=_boom,
         ):
-            captured = {}
+            result = await svc.web_search("q")
+        # 两个源都被尝试过
+        assert set(calls) == set(_SEARCH_SOURCE_PRIORITY)
+        assert result["data"] == []
+        assert "message" in result
 
-            def _capture(func):
-                captured["func"] = func
-                return []
 
-            with patch(
-                "backend.services.search.service.asyncio.to_thread",
-                side_effect=_capture,
-            ):
-                svc = SearchService()
-                await svc.web_search("q")
-            # 验证 to_thread 被调用(内部 DDGS 会读 proxy)
-            assert "func" in captured
+class TestSearchServiceNoDirectExternalAPI:
+    """07d 验收: 主服务搜索服务不直连任何外部搜索 API"""
+
+    def test_no_external_domains_in_source(self):
+        import inspect
+
+        src = inspect.getsource(SearchService)
+        assert "api.tavily.com" not in src
+        assert "api.bochaai.com" not in src
+        assert "duckduckgo_search" not in src

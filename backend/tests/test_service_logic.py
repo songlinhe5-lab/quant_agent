@@ -184,27 +184,30 @@ class TestSearchService:
         from backend.services.search.service import SearchService
 
         service = SearchService()
-        with patch.dict(os.environ, {"TAVILY_API_KEY": "", "BOCHA_API_KEY": ""}, clear=False):
-            os.environ.pop("TAVILY_API_KEY", None)
-            os.environ.pop("BOCHA_API_KEY", None)
-            with patch("backend.services.search.service.asyncio.to_thread") as mock_to_thread:
-                mock_to_thread.return_value = [{"title": "Test", "url": "http://test.com", "body": "content"}]
-                result = await service.web_search("test query")
-                assert result["status"] == "success"
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_search",
+            new=AsyncMock(
+                return_value={
+                    "status": "success",
+                    "data": [{"title": "Test", "href": "http://test.com", "body": "content"}],
+                }
+            ),
+        ):
+            result = await service.web_search("test query")
+            assert result["status"] == "success"
 
     @pytest.mark.asyncio
     async def test_web_search_empty_results(self):
         from backend.services.search.service import SearchService
 
         service = SearchService()
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("TAVILY_API_KEY", None)
-            os.environ.pop("BOCHA_API_KEY", None)
-            with patch("backend.services.search.service.asyncio.to_thread") as mock_to_thread:
-                mock_to_thread.return_value = []
-                result = await service.web_search("test")
-                assert result["status"] == "success"
-                assert "data" in result
+        with patch(
+            "backend.services.datasource.router.data_source_router.fetch_search",
+            new=AsyncMock(return_value={"status": "success", "data": []}),
+        ):
+            result = await service.web_search("test")
+            assert result["status"] == "success"
+            assert "data" in result
 
 
 # ─── system_monitor_service.py ──────────────────────────────────────
