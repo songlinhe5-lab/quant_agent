@@ -1,4 +1,3 @@
-import asyncio
 from typing import Type
 
 import httpx
@@ -60,18 +59,20 @@ class InsiderTransactionsTool:
             return f"执行工具异常: {str(e)}"
 
     async def _query_hk_insider_parallel(self, ticker: str, stock_code: str) -> str:
-        """港股内幕交易并行查询：web_search + HKEX 披露易"""
-        # 💡 并行发起两个查询
-        search_task = self._search_hk_insider(stock_code)
-        hkex_task = self._fetch_hkex_disclosure(stock_code)
+        """港股内幕交易查询：经后端 web_search 代理（BE-ARCH-07m 收口，不直连 HKEX）。
 
-        results = await asyncio.gather(search_task, hkex_task, return_exceptions=True)
-        search_result, hkex_result = results
+        原实现并行调 _fetch_hkex_disclosure 直连 www1.hkexnews.hk（外部源直连，
+        违反 07m 红线）；该分支仅返回"需 JS 渲染请手动访问"提示、无数据价值，已移除。
+        港股查询统一经后端搜索 API（search_service → data_subservice 远程代理）。
+        """
+        try:
+            search_result = await self._search_hk_insider(stock_code)
+        except Exception as e:
+            search_result = e
 
         # 💡 组装结果
         output_parts = [f"【{ticker} 高管内幕交易查询】\n"]
 
-        # 处理搜索结果
         if isinstance(search_result, dict) and search_result.get("status") == "success":
             output_parts.append("📰 相关新闻与公告：")
             for item in search_result.get("data", [])[:5]:
@@ -81,18 +82,7 @@ class InsiderTransactionsTool:
             output_parts.append("")
         elif isinstance(search_result, Exception):
             output_parts.append(f"⚠️ 搜索失败: {search_result}\n")
-
-        # 处理 HKEX 结果
-        if isinstance(hkex_result, dict) and hkex_result.get("status") == "success":
-            output_parts.append("📋 HKEX 披露易数据：")
-            output_parts.append(hkex_result.get("content", "")[:2000])
-        elif isinstance(hkex_result, Exception):
-            output_parts.append(f"⚠️ HKEX 查询失败: {hkex_result}\n")
-
-        # 💡 如果两个都失败，返回引导信息
-        if len(output_parts) == 1:
-            return (
-                f"⚠️ 港股内幕交易数据暂不支持直接查询。\n\n"
+            output_parts.append(
                 f"💡 建议操作：\n"
                 f"1. 使用 web_search 搜索 '{ticker} 高管交易 HKEX 披露易'\n"
                 f"2. 访问 HKEX 披露易: https://www.hkexnews.hk\n"
@@ -103,7 +93,7 @@ class InsiderTransactionsTool:
         return "\n".join(output_parts)
 
     async def _search_hk_insider(self, stock_code: str) -> dict:
-        """通过后端搜索 API 查询港股内幕交易新闻"""
+        """通过后端搜索 API 查询港股内幕交易新闻（经 data_subservice 远程代理）"""
         import os
 
         backend_url = os.getenv("BACKEND_URL", "http://localhost:8000")
@@ -116,22 +106,3 @@ class InsiderTransactionsTool:
             )
             resp.raise_for_status()
             return resp.json()
-
-    async def _fetch_hkex_disclosure(self, stock_code: str) -> dict:
-        """尝试从 HKEX 披露易获取数据"""
-        # 💡 HKEX 披露易搜索 URL
-        url = "https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=zh"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-
-        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            content = resp.text
-
-            # 💡 简单提取页面内容（实际 HKEX 需要 JS 渲染，这里只返回提示）
-            if len(content) < 500:
-                return {
-                    "status": "success",
-                    "content": f"HKEX 披露易需要 JavaScript 渲染，请访问: {url} 搜索股票代码 {stock_code}",
-                }
-            return {"status": "success", "content": f"HKEX 披露易页面已加载，请手动访问搜索 {stock_code}"}

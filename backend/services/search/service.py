@@ -54,6 +54,29 @@ class SearchService:
             "message": "未找到相关结果或搜索服务暂不可用。请尝试简化搜索词。",
         }
 
+    async def fetch_webpage(self, url: str, query: str = "") -> Dict[str, Any]:
+        """网页正文提取（经远程 Jina 代理，主服务不直连外部）。
+
+        对应 Hermes fetch_webpage 工具的后端实现。Jina Reader 负责将网页
+        转 Markdown 正文，外部 API key / rate limit 均在 data_subservice 子服务侧
+        持有（BE-ARCH-07m: Hermes 不得直连 Jina Reader 端点）。
+        """
+        try:
+            resp = await data_source_router.fetch_search("jina", url=url)
+        except Exception as e:  # noqa: BLE001 - 远程代理异常视为抓取失败
+            return {"status": "error", "message": f"Jina 远程代理失败: {e}"}
+
+        if isinstance(resp, dict) and resp.get("status") == "success":
+            data = resp.get("data") or {}
+            content = data.get("content") if isinstance(data, dict) else None
+            if content:
+                return {"status": "success", "data": {"url": url, "content": content}}
+            return {"status": "error", "message": "Jina 返回空正文"}
+        return {
+            "status": "error",
+            "message": (resp.get("message", "Jina 抓取失败") if isinstance(resp, dict) else "Jina 抓取失败"),
+        }
+
 
 # 导出全局单例
 search_service = SearchService()

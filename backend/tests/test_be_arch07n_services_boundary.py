@@ -173,19 +173,24 @@ class TestExternalDomainNoDirectLink:
         assert not dirty, "routers 出现外部数据源域名字面量（应经 router 远程）:\n" + "\n".join(dirty[:20])
 
     def test_hermes_no_external_domain(self):
-        """hermes_agent 不得直连外部数据源；已知 jina 直连为 07m 待治理项，锁定不扩散。"""
+        """hermes_agent 不得直连外部数据源。
+
+        07m 已收口 web_scrape_tool(r.jina.ai) 与 insider_tool(hkexnews) 直连；
+        download_report_tool 的 hkexnews/sec 二进制 PDF 下载因无现成远程代理
+        （Jina 仅支持网页正文，不支持二进制），登记为已知 07j 待治理项，锁定不扩散。
+        """
         if not HERMES.exists():
             return
         known_violations = {
-            "web_scrape_tool.py",  # 07m: 直连 r.jina.ai，应经 data_subservice Jina 代理
+            "download_report_tool.py",  # 07j: PDF 二进制下载直连 hkexnews/sec，待子服务扩 FILE_DOWNLOAD action
         }
         violations: list[str] = []
         for p in _iter_py(HERMES):
             hits = _match_external_domain(p)
             if p.name in known_violations:
-                continue  # 登记已知遗留，待 07m 收口
+                continue  # 登记已知遗留，待 07j 收口
             violations.extend(hits)
-        assert not violations, "hermes_agent 出现新增外部数据源直连（超出已知 07m 清单）:\n" + "\n".join(
+        assert not violations, "hermes_agent 出现新增外部数据源直连（超出已知 07j 清单）:\n" + "\n".join(
             violations[:20]
         )
 
