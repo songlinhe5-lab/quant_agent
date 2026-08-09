@@ -397,7 +397,10 @@ STATUS: PRODUCTION READY ✨
     - **SDK 仅限 legacy**：第三方 SDK import 只应出现在已知 legacy 连接层目录（`services/futu|akshare|tushare|finnhub|yfinance|fmp|adapters`），待 07j 整体下沉。
     - **外部域名字面量强门禁**：`routers/`、`hermes_agent/`、`services/datasource/business/` 不得出现 `https?://` 后的外部数据源直连 URL（排除纯 label 配置字符串误杀）；`hermes_agent/tools/web_scrape_tool.py` 的 `r.jina.ai` 直连登记为 **已知 07m 待治理项**（锁定不扩散，其余 hermes 文件零违规）。
   - 守门覆盖 `backend/`、`hermes_agent/`；豁免 `data_subservice/**`、`backend/tests/**`（与 07n 原豁免清单一致，adapters 的 `provider` 标识字符串因改用 http(s):// 模式已自然豁免）。
-- [ ] **[BE-ARCH-07o]** **`scripts/` 探针脚本归口**（最低优先，仅治理不阻塞）：`scripts/` 下大量运维探针直连外部源（`test_yf*.py`、`futu_fetch.py`、`probe_akshare_alts.py`、`probe_tushare_diag.py`、`test_finnhub_*.py`、`test_tavily_search.py` 等）。这些是诊断工具而非生产路径，保留但需：① 统一移入 `scripts/probes/` 并在 README 标注"绕过数据服务，仅用于源连通性诊断"；② 纳入 07n 守门测试的豁免清单，避免与生产违规混淆
+- [x] **[BE-ARCH-07o]** **`scripts/` 探针脚本归口**（已完成，2026-08-09）：
+  - **① 归口 `scripts/probes/` + README 标注（本轮完成）** ✅：将根目录直连外部源的诊断脚本统一 `git mv` 至 `scripts/probes/`（含 `test_yf*.py`、`futu_fetch.py`、`test_futu_screen_direct.py`、`test_screener_cases.py`、`probe_akshare_alts.py`、`probe_sina_schema.py`、`probe_local_proxy.py`、`verify_quote_sina.py`、`test_local_em_direct.py`、`probe_tushare_diag.py`、`test_finnhub_*.py`、`test_tavily_search.py`、`test_google_search.py`、`verify_macro.py`、`sync_minute_data.py`、`export_all_tickers.py`，共 20 个），新增 `scripts/probes/README.md` 标注"诊断工具绕过数据服务、仅用于源连通性排查、不得被 backend 生产模块 import"。`scripts/archive/` 维持原状（已是弃用归档，不在 07o 范围）。
+  - **② 纳入 07n 守门豁免（无需改动，已天然成立）** ✅：`test_be_arch07n_services_boundary.py` 的强门禁只扫描 `backend/services/`、`backend/routers/`、`backend/core/`、`hermes_agent/`，**不覆盖 `scripts/`**（含 `scripts/probes/`），因此这些诊断脚本的 SDK 直连不会误触生产违规守门；README 已显式说明此豁免边界，禁止新增生产依赖。
+  - 守门自检：移动后 `scripts/` 根目录已无直连第三方 SDK 的诊断脚本（仅 `scripts/archive/` 与 backend 内部 profiling 引用保留）；07n 门禁 10 用例不受影响（扫描范围未变）。
 
 ### 前端基础设施
 
