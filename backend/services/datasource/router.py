@@ -347,9 +347,20 @@ class DataSourceRouter:
 
         data = raw.get("data")
 
-        # worker 内部错误以 {"error": "..."} 形式返回, 需识别为失败
-        if isinstance(data, dict) and data.get("error"):
-            return {"status": "error", "success": False, "message": str(data["error"]), "data": data}
+        # worker 内部错误以 {"error": "..."} 或 {"status": "error", "error_category": ...}
+        # 两种形式返回 (FMP/Finnhub 走后者且不带 error 键)。无论哪种都必须识别为失败,
+        # 否则配额耗尽 / 429 会被吞成"有数据返回", 限流退避 (RateLimitThrottler) 与
+        # error_category 判定在这两源上完全失效 (BE-ARCH-08d)。
+        if isinstance(data, dict) and (data.get("error") or data.get("status") == "error"):
+            result: Dict[str, Any] = {
+                "status": "error",
+                "success": False,
+                "message": str(data.get("error") or data.get("message") or "子服务返回错误状态"),
+            }
+            # 透传 error_category (限流/配额类), 供上层 throttler 与熔断分流
+            if data.get("error_category"):
+                result["error_category"] = data["error_category"]
+            return result
 
         result: Dict[str, Any] = {"status": "success", "success": True, "data": data}
         # 透传 worker 已带的业务字段, 但不覆盖上面的状态字段
@@ -820,7 +831,20 @@ class DataSourceRouter:
                     )
                     return result
                 return result
-            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+            # BE-ARCH-08d: 失败但可能是限流类 (429/quota/ip_blocked), 透传 error_category
+            # 使 RateLimitThrottler 退避与熔断分流生效, 而非一律计入普通失败触发熔断
+            ec = result.get("error_category")
+            if ec:
+                await self._update_node_status(
+                    remote_node.name,
+                    success=False,
+                    error=str(result.get("message")),
+                    error_category=ErrorCategory(ec)
+                    if ec in {e.value for e in ErrorCategory}
+                    else ErrorCategory.NORMAL,
+                )
+            else:
+                await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
         except Exception as e:
             logger.warning(f"[FMP] 远程节点失败: {remote_node.name}, {remote_action}, {str(e)}")
             await self._update_node_status(remote_node.name, success=False, error=str(e))
@@ -855,7 +879,19 @@ class DataSourceRouter:
             if result.get("status") == "success":
                 await self._update_node_status(remote_node.name, success=True)
                 return result
-            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+            # BE-ARCH-08d: 失败但可能是限流类 (429/ip_blocked), 透传 error_category
+            ec = result.get("error_category")
+            if ec:
+                await self._update_node_status(
+                    remote_node.name,
+                    success=False,
+                    error=str(result.get("message")),
+                    error_category=ErrorCategory(ec)
+                    if ec in {e.value for e in ErrorCategory}
+                    else ErrorCategory.NORMAL,
+                )
+            else:
+                await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
         except Exception as e:
             logger.warning(f"[Finnhub] 远程节点失败: {remote_node.name}, {remote_action}, {str(e)}")
             await self._update_node_status(remote_node.name, success=False, error=str(e))

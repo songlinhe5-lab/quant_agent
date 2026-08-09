@@ -613,3 +613,50 @@ class TestOutboundParamNormalization:
         normalized = DataSourceRouter._normalize_outbound_params(raw)
         symbol = normalized.get("symbol")  # yfinance_worker.py:13
         assert symbol is not None and symbol == "AAPL"
+
+
+# ==========================================
+# BE-ARCH-08d: 子服务错误体归一回归 (限流/配额感知)
+# ==========================================
+class TestNormalizeResponseErrorBody:
+    """验收：子服务 (FMP/Finnhub) 返回 {"status":"error",...} (无 error 键) 必须被
+    识别为失败并透传 error_category, 否则 429/配额耗尽被吞成成功, RateLimitThrottler
+    退避与熔断分流在这两源上完全失效。"""
+
+    def test_status_error_without_error_key_is_failure(self):
+        raw = {"code": 0, "data": {"status": "error", "message": "FMP 429 rate limited"}}
+        r = DataSourceRouter._normalize_response(raw)
+        assert r["status"] == "error"
+        assert r["success"] is False
+        assert "429" in r["message"]
+
+    def test_status_error_propagates_error_category(self):
+        raw = {
+            "code": 0,
+            "data": {
+                "status": "error",
+                "message": "FMP quota exhausted",
+                "error_category": "quota",
+            },
+        }
+        r = DataSourceRouter._normalize_response(raw)
+        assert r["status"] == "error"
+        assert r.get("error_category") == "quota"
+
+    def test_legacy_error_key_still_failure(self):
+        raw = {"code": 0, "data": {"error": "unknown fmp action: FOO"}}
+        r = DataSourceRouter._normalize_response(raw)
+        assert r["status"] == "error"
+        assert "FOO" in r["message"]
+
+    def test_success_body_unaffected(self):
+        raw = {"code": 0, "data": {"status": "success", "symbol": "AAPL", "price": 123.4}}
+        r = DataSourceRouter._normalize_response(raw)
+        assert r["status"] == "success"
+        assert r["success"] is True
+        assert r["data"]["price"] == 123.4
+
+    def test_nonzero_code_is_failure(self):
+        raw = {"code": 500, "message": "boom"}
+        r = DataSourceRouter._normalize_response(raw)
+        assert r["status"] == "error"

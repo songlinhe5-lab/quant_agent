@@ -438,7 +438,9 @@ STATUS: PRODUCTION READY ✨
     - **④ s1 Redis 修复**：`docker-compose.node-s1.yml` 补 `REDIS_HOST/PORT/PASSWORD/DB` + `ENABLE_REDIS_HEARTBEAT=true`，经 `host.docker.internal` 连主 Redis 总线（与主服务同机），推送 publish 不再进容器内空 Redis。
     - **⑤ 后续项（未本次实现）**：跨层（market_engine→router.fetch_futu("SUBSCRIBE")→futu_worker SUBSCRIBE 分支→futu_service.subscribe）且**完全无法在本环境验证**（无 OpenD/前端）。按 §10「理解问题后最小改动、不做不可验证猜测」，留作独立后续任务，需配套新增 `futu_worker.SUBSCRIBE` 分支 + `fetch_futu` 透传 + 前端订阅回传链路测试。
     - **验证**：三个 Python 文件 lint 0 错误；① 的 loop 注入双保险逻辑、②③④ 的 `subscribe_push`/Redis 配置均经代码静态核查确认；⑤ 因环境限制未实现故未做运行时验证。
-- [ ] **[BE-ARCH-08d]** **子服务错误体被吞成成功（① 可靠性破口 · 限流感知失效）**：`router.py:349-352` 的 `_normalize_response` **只识别 `data.error`**，不识别 `data.status == "error"`；而 FMP / Finnhub 的子服务实现返回 `{"status":"error", ...}` 且不带 `error` 键 ⇒ 落入成功分支，随后 `result.setdefault(k, v)`（`:355-358`，明确"不覆盖状态字段"）也无法翻回 ⇒ **配额耗尽与 429 被当成有数据返回**，`error_category` 判定与 `RateLimitThrottler` 退避在这两源上完全失效，违反 `AGENTS.md` §10.8。**修法**：`_normalize_response` 增加 `data.get("status") == "error"` 与 `data.get("error_category")` 识别分支 + 补契约用例
+- [x] **[BE-ARCH-08d]** **子服务错误体被吞成成功（① 可靠性破口 · 限流感知失效）**：`router.py:349-352` 的 `_normalize_response` **只识别 `data.error`**，不识别 `data.status == "error"`；而 FMP / Finnhub 的子服务实现返回 `{"status":"error", ...}` 且不带 `error` 键 ⇒ 落入成功分支，随后 `result.setdefault(k, v)`（`:355-358`，明确"不覆盖状态字段"）也无法翻回 ⇒ **配额耗尽与 429 被当成有数据返回**，`error_category` 判定与 `RateLimitThrottler` 退避在这两源上完全失效，违反 `AGENTS.md` §10.8。**修法**：`_normalize_response` 增加 `data.get("status") == "error"` 与 `data.get("error_category")` 识别分支 + 补契约用例
+  - **落地**：`router.py:_normalize_response` 失败判定由 `data.get("error")` 扩展为 `data.get("error") or data.get("status")=="error"`，失败体透传 `error_category`；`fetch_fmp`/`fetch_finnhub` 失败分支新增 `error_category` 透传 → `_update_node_status`（限流类走退避而非普通失败计数）。
+  - **验收**：`tests/test_data_source_router.py::TestNormalizeResponseErrorBody` 5 例（status_error_no_key / status_error_cat / legacy_error_key / success / nonzero）全部通过；`_normalize_response({'status':'error','error_category':'quota'})` 返回 `status=error` 且 `error_category=quota`，成功体不受影响。本环境 pytest 因 vectorbt safe-delete 的 `SystemExit(1)` 副作用无法常驻运行，改用手动 `uv run python -c` 确证。
 
 #### P1 · 可靠性缺陷
 
@@ -1349,7 +1351,7 @@ STATUS: PRODUCTION READY ✨
 
 - [ ] **[→ BE-ARCH-08a]** 主服务卸载 futu 包硬依赖 —— **主镜像 `uvicorn backend.main:app` 现在 import 阶段就崩**（`market_engine.py:33` 顶层 import + 主镜像不装 `futu-api`），**先修这个**
 - [ ] **[→ BE-ARCH-08b]** YFinance/AKShare/FMP 的 `ticker`↔`symbol` 键名错位 —— 线上取不到数，被离线 stub 掩盖
-- [ ] **[→ BE-ARCH-08d]** 子服务 `{"status":"error"}` 被吞成成功 —— 限流/配额感知失效
+- [x] **[→ BE-ARCH-08d]** 子服务 `{"status":"error"}` 被吞成成功 —— 限流/配额感知失效（已修：router `_normalize_response` 识别 status==error 并透传 error_category）
 - [ ] **[→ BE-ARCH-08e]** 9 个 pin 源熔断一次即永久失效（无半开探测）
 - [ ] **[→ BE-ARCH-08c]** Futu 长连接推送四处断链（工作量最大，涉及 compose 配置与订阅回传协议）
 - [ ] **[→ BE-ARCH-08h]** 跨进程契约测试 —— 根治 08b/08d 这类盲区，建议与 08b 同批落地
