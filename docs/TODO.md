@@ -275,7 +275,7 @@ STATUS: PRODUCTION READY ✨
 ### 文档治理（2026-07-12 第三轮 Review 补充，见 `MASTER_REVIEW.md §7.3 #4`）
 
 - [x] **[DOC-04]** `docs/01` §十二 路线图收口：V2.2 已声明 `TODO.md` 为任务 SSOT，§十二 仅作产品索引并标注 FE-PROD/BT/ALERT 任务 ID ✅ **2026-07-13 V2.2 落地**
-- [ ] **[DOC-05]** 北京节点冷备启动脚本：最低限度 DR 预案（R2 备份异地恢复 + 北京节点冷备启动命令集），不追求热备但确保 RTO < 4h
+- [x] **[DOC-05]** 北京节点冷备启动脚本：最低限度 DR 预案 ✅ **2026-08-09**：新建 `scripts/disaster_recovery/bj_cold_standby.sh`，覆盖 ① R2 异地备份拉取（PG dump + Redis RDB，依赖 docs/12 的每日 03:00/03:30 备份计划）② PostgreSQL 恢复 ③ Redis RDB 恢复（停写替换）④ 北京节点 `docker-compose.node-bj.yml` 拉起 `data_subservice`（DS_CAPABILITIES=tushare,akshare,yfinance）⑤ 主服务 `.env` 远程源降级指向北京 Tailscale IP 并待人工重启 ⑥ RTO 计时（<4h 预算）。支持 `--dry-run` / `--skip-restore`；`bash -n` 语法校验通过。缺点：备份侧 `scripts/backup-redis.sh` / `backup-pg.sh` 在 docs/12 计划中仍缺失（仅恢复侧就绪），建议作为后续独立任务补备份脚本。
 
 ---
 
@@ -805,9 +805,9 @@ STATUS: PRODUCTION READY ✨
   - 落地：`docs/02` §0.1 SSOT 表新增「最后更新日期」列（L0=2026-07-21 / L1=2026-07-25 / L2=2026-07-25 / L3=2026-07-25 / L4=2026-06-27），表内补全各层版本号，并加「版本号独立维护说明」脚注；L0 文件头部补充「最后更新」行；`docs/02` 头部版本号由滞后的 V4.3.1 修正为 V4.3.4，变更日志补 V4.3.4 条目
 - [x] **[SPEC-06]** §7.6 PCE 分级确认：L0 冻结区必须 Confirm；L2 开放区可自主执行无需逐一确认；增加「批量任务模式」说明
   - 落地：`docs/02` §7.6 改为「分级确认矩阵」（L0 必须显式 Confirm / L1 单次 Confirm / L2 开放区 Plan 获批即自主 Execute 无需逐条 Confirm）；新增「批量任务模式（Batch Mode）」：单任务 ID 整批授权、按序自主执行、越界 L0/L1 立即补单 Confirm、收尾按 atomic commit；版本升 V4.3.5
-- [ ] **[SPEC-07]** §5.1 技术栈指针修正：
-  - "移动端 Flutter 三端" → 标注「已搁置」或删除（项目中无 Flutter 代码）
-  - "DuckDB/Parquet" → 确认是否仍在规划中，否则删除
+- [x] **[SPEC-07]** §5.1 技术栈指针修正 ✅ **2026-08-09**：
+  - "移动端 Flutter 三端" → **更正而非删除**：项目实际存在 Flutter 代码（`client/flutter_app/`，91 个 .dart / 184 文件，独立仓库），原 TODO 称"项目中无 Flutter 代码"前提错误；改为标注「独立仓库 `client/flutter_app/`」。`docs/02` §5.1 第 479 行已更新。
+  - "DuckDB/Parquet" → **确认仍在使用**（BE-02 三级历史 K 线缓存温层为 DuckDB/Parquet），保留并加注。`docs/02` §5.1 第 476 行已更新。
 - [x] **[SPEC-08]** §6.1 print() 豁免或代码修复：`hermes_agent/tools/web_scrape_tool.py` 中大量使用 `print()` 做降级日志，二选一：(a) 改用 structlog (b) 在规范中豁免 Tool 层 CLI 输出
   - 落地：选 (a) 代码修复——`web_scrape_tool.py` 的 5 处 `print()` 降级日志全部改为 `structlog` `logger.warning(...)`（jina 反爬/失败、HTTP 内容过少/失败、RAG 提取失败），新增模块级 `logger = structlog.get_logger(__name__)`；`docs/02` §6.1 明确「禁止 print()」铁律覆盖 Tool 层，拒绝选项(b)豁免；版本升 V4.3.6
 - [x] **[SPEC-09]** §4.2 覆盖率目标校准：Hermes Tool ≥90% 实际不可达（`hermes_agent/tools/` 几乎无测试），降为 ≥70% 或标注为「目标」而非「门禁」
@@ -1253,10 +1253,10 @@ STATUS: PRODUCTION READY ✨
 
 > 审计发现主行情入口仍绕过数据服务直连本地 Futu SDK，且 `market_engine` 一处死门控废掉了四段已合规的远程调用。这条线不收口，`AGENTS.md` §9.1"主服务不持有任何本地 SDK / 直连外部 API"就是一句空话。详见 `docs/23` §八。
 
-- [ ] **[→ BE-ARCH-07a]** QuotePort Futu 路径切 Registry/Facade（`legacy_market_data.py:89-103`）— **先做这个**
-- [ ] **[→ BE-ARCH-07b]** 修 `market_engine.py:302` 死门控（Bug，改动量最小、收益立现）
-- [ ] **[→ BE-ARCH-07n]** 守门测试扩面到 `services/` 层，防止边修边漏
-- [ ] **[→ BE-ARCH-07d/07e]** `routers/search`、`routers/calendars` 切已有适配器（合规通道早已就位）
+- [x] **[→ BE-ARCH-07a]** QuotePort Futu 路径切 Registry/Facade（`legacy_market_data.py:89-103`）✅ `b636c73`（get_quote/get_history/get_fund_flow/get_warrant_chain 均经 `datasource_registry.fetch("futu", ...)` 远程路由，移除主服务本地 Futu SDK）
+- [x] **[→ BE-ARCH-07b]** 修 `market_engine.py:302` 死门控（Bug，改动量最小、收益立现）✅ `dc806ca`（移除 `futu_connected` 恒 False 死门控，恢复 4 段 `fetch_futu` 调用；Futu 经 DataSourceRouter 远程，节点自带熔断/健康度）
+- [x] **[→ BE-ARCH-07n]** 守门测试扩面到 `services/` 层，防止边修边漏 ✅ `ea50f31`（`test_be_arch07n_services_boundary.py` DOMAIN_STRONG_BAN_DIRS 扩至 `services/datasource`、`services/margin`、`services/fund_flow` + `hermes_agent/`，10 用例全绿）
+- [x] **[→ BE-ARCH-07d/07e]** `routers/search`、`routers/calendars` 切已有适配器（合规通道早已就位）✅ `a5a022a` + `b600532`（`routers/search.py` 经 `search_service.web_search` → `data_source_router.fetch_search` 远程代理；`routers/calendars.py` 的 `/dividends` `/ipos` 经 `fetch_finnhub` 路由，无任何主服务直连残留）
 
 ---
 
