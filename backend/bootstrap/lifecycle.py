@@ -390,11 +390,9 @@ async def app_lifespan(app: FastAPI):
     try:
         # 注意：backend 不再本地运行 yfinance（已全量外移至 US-YF-A/B 子服务），
         # 故无需在此 close 本地 yf_service。
-
-        # FutuService 为同步 close()，包裹在 to_thread 避免阻塞事件循环
-        from backend.services.futu import futu_service
-
-        await asyncio.to_thread(futu_service.close)
+        # BE-ARCH-07c: 主服务已卸载 Futu SDK 连接层 (OpenD 直连下沉 data_subservice),
+        # futu_service 不再持有本地连接资源, 无需在此 close。
+        pass
     except Exception as e:
         log.warning(f"⚠️ 关闭数据源资源异常：{e}")
 

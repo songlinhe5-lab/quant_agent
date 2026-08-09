@@ -100,6 +100,7 @@ _FUTU_ACTION_MAP = {
     "stock_basicinfo": "STOCK_BASICINFO",
     "account_info": "ACCOUNT_INFO",
     "place_order": "PLACE_ORDER",
+    "emergency_liquidation": "EMERGENCY_LIQUIDATION",
 }
 
 # 主服务内部 fetch_type -> 子服务 action 映射 (Finnhub)

@@ -652,7 +652,11 @@ class AlgoEngine:
     async def _execute_real_order(self, symbol: str, qty: int, side: str) -> float:
         """LIVE 模式: 通过 futu_service 提交真实限价单"""
         try:
-            from futu import TrdMarket, TrdSide
+            # BE-ARCH-07c: 主服务不再硬依赖 futu SDK 取枚举, 回退本地常量
+            try:
+                from futu import TrdMarket, TrdSide
+            except Exception:  # pragma: no cover - 主服务已卸载 futu SDK
+                from backend.services.futu.enums import TrdMarket, TrdSide
 
             from backend.services.datasource.router import data_source_router
 

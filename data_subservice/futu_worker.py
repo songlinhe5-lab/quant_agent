@@ -83,6 +83,8 @@ async def handle_futu(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
                 order_id=params.get("order_id"),
                 market=_as_enum(TrdMarket, params.get("market")),
             )
+        elif action == "EMERGENCY_LIQUIDATION":
+            return await futu_service.emergency_liquidation(params.get("market", "HK"))
         elif action == "HEALTH":
             return {"available": futu_service.status == "CONNECTED", "source": "futu"}
         else:

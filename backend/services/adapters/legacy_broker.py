@@ -6,7 +6,6 @@ Legacy Broker Gateway（BE-ARCH-01）
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any, Optional
 
@@ -24,7 +23,7 @@ class BrokerGateway:
         self._futu = futu_service
 
     def _resolve_market(self, ticker: Optional[str], market: Optional[str]):
-        from futu import TrdMarket
+        from backend.services.futu.enums import TrdMarket
 
         if market is not None:
             if isinstance(market, TrdMarket):
@@ -43,7 +42,7 @@ class BrokerGateway:
         side: str,
         market: Optional[str] = None,
     ) -> dict[str, Any]:
-        from futu import TrdSide
+        from backend.services.futu.enums import TrdSide
 
         trd_market = self._resolve_market(ticker, market)
         trd_side = TrdSide.BUY if side.upper() == "BUY" else TrdSide.SELL
@@ -57,7 +56,7 @@ class BrokerGateway:
         )
 
     async def cancel_order(self, order_id: str, market: Optional[str] = None) -> dict[str, Any]:
-        from futu import ModifyOrderOp
+        from backend.services.futu.enums import ModifyOrderOp
 
         trd_market = self._resolve_market(None, market)
         return await data_source_router.fetch_futu(
@@ -75,58 +74,35 @@ class BrokerGateway:
         return await data_source_router.fetch_futu("ACCOUNT_INFO", market=market or "HK")
 
     def has_trade_ctx(self) -> bool:
-        return getattr(self._futu, "trade_ctx", None) is not None
+        """BE-ARCH-07c: 主服务不再本地持有 trade_ctx, 改为远程 futu 可达性检查。"""
+        from backend.services.datasource.router import data_source_router
+
+        try:
+            res = data_source_router.health_check("futu")
+            return bool(res.get("available")) if isinstance(res, dict) else False
+        except Exception:
+            return False
 
     async def execute_emergency_liquidation(self) -> dict[str, Any]:
         """
         Kill Switch 物理撤单+市价平仓。
-        返回 {"ok": bool, "reason": str|None}；无 trade_ctx 时 ok=False。
+        返回 {"ok": bool, "reason": str|None}。
+
+        BE-ARCH-07c: 主服务不再本地持有 trade_ctx 直连, 改经 DataSourceRouter
+        HTTP 代理调用子服务 futu worker 的 EMERGENCY_LIQUIDATION action。
         """
-        from futu import ModifyOrderOp, OrderType, TrdSide
+        from backend.services.datasource.router import data_source_router
 
-        ctx = getattr(self._futu, "trade_ctx", None)
-        if not ctx:
-            logger.error("🚨 [KILL SWITCH] 未检测到有效的底层交易网关上下文 (trade_ctx)")
-            return {"ok": False, "reason": "no_trade_ctx"}
-
-        def cancel_all_orders() -> None:
-            ret, data = ctx.order_list_query(status_filter_list=["SUBMITTED", "WAITING_SUBMIT"])
-            if ret == 0 and not data.empty:
-                for _, row in data.iterrows():
-                    ctx.modify_order(
-                        ModifyOrderOp.CANCEL,
-                        row["order_id"],
-                        0,
-                        0,
-                        trd_env=row["trd_env"],
-                    )
-                    logger.warning(f"🛑 [KILL SWITCH] 撤单指令已发送: {row['order_id']}")
-
-        def close_all_positions() -> None:
-            ret_pos, pos_data = ctx.position_list_query()
-            if ret_pos == 0 and not pos_data.empty:
-                for _, row in pos_data.iterrows():
-                    qty = float(row.get("qty", 0))
-                    if qty == 0:
-                        continue
-                    symbol = row["code"]
-                    pos_side = row.get("position_side", "LONG")
-                    trd_side = TrdSide.SELL if pos_side == "LONG" else TrdSide.BUY
-                    logger.warning(f"💥 [KILL SWITCH] 正在市价平仓: {symbol} 数量 {abs(qty)} 方向 {trd_side}")
-                    ctx.place_order(
-                        price=0.0,
-                        qty=abs(qty),
-                        code=symbol,
-                        trd_side=trd_side,
-                        order_type=OrderType.MARKET,
-                        trd_env=row["trd_env"],
-                    )
-
-        await asyncio.to_thread(cancel_all_orders)
-        await asyncio.sleep(0.5)
-        await asyncio.to_thread(close_all_positions)
-        logger.warning("✅ [KILL SWITCH] 物理清仓程序全部下达完毕。")
-        return {"ok": True, "reason": None}
+        res = await data_source_router.fetch_futu("EMERGENCY_LIQUIDATION", market="HK")
+        if isinstance(res, dict) and res.get("status") == "error":
+            logger.error(f"🚨 [KILL SWITCH] 远程清仓失败: {res.get('message')}")
+            return {"ok": False, "reason": res.get("message", "remote_error")}
+        if isinstance(res, dict) and res.get("ok") is True:
+            logger.warning(f"✅ [KILL SWITCH] 远程清仓执行完毕: {res.get('message')}")
+            return {"ok": True, "reason": None}
+        # 结构异常兜底
+        logger.error(f"🚨 [KILL SWITCH] 远程清仓返回异常: {res}")
+        return {"ok": False, "reason": "unexpected_remote_response"}
 
 
 broker_gateway = BrokerGateway()
