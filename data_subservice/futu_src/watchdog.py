@@ -202,7 +202,7 @@ class FutuWatchdog:
                             self._conn_mgr.quote_ctx.subscribe,
                             [market_ticker],
                             [SubType.QUOTE],
-                            subscribe_push=False,
+                            subscribe_push=True,  # BE-ARCH-08c③: 探针需开启推送订阅，否则重连后仅有拉取无推送
                         ),
                         timeout=3.0,
                     )
@@ -305,7 +305,7 @@ class FutuWatchdog:
                         self._conn_mgr.quote_ctx.subscribe,
                         [ticker],
                         futu_sub_types,
-                        subscribe_push=False,
+                        subscribe_push=True,  # BE-ARCH-08c③: 重连后必须恢复推送订阅，否则推送静默
                     ),
                     timeout=5.0,
                 )

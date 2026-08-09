@@ -171,7 +171,14 @@ async def startup_event():
     if "futu" in _declared_capabilities():
         try:
             from data_subservice.futu_src import futu_service
+            from data_subservice.futu_src.push_handler import set_main_loop
             from data_subservice.futu_src.watchdog import FutuWatchdog
+
+            # BE-ARCH-08c①: connect() 经 asyncio.to_thread 在工作线程执行，
+            # _register_push_handlers 内 asyncio.get_running_loop() 会抛 RuntimeError。
+            # 先把主事件循环引用注入 push_handler，作为子线程回退的双保险，
+            # 否则推送桥接 (_main_loop=None) 会静默丢弃所有 OpenD 推送回调。
+            set_main_loop(asyncio.get_event_loop())
 
             # 初始建连（线程池执行，不阻塞事件循环）
             await asyncio.to_thread(futu_service.connect)
