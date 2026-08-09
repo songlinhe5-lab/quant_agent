@@ -42,6 +42,27 @@ class FREDService:
             return {"status": "error", "message": "FRED 429 rate limited", "error_category": "rate_limit"}
         return {"status": "error", "message": f"FRED HTTP {r.status_code}"}
 
+    async def get_releases_dates(self, limit: int = 1000, sort_order: str = "desc") -> dict[str, Any]:
+        """获取 FRED 全部数据发布日期原始序列（主服务负责窗口过滤与事件归一化）。"""
+        if not self.api_key:
+            return {"status": "error", "message": "FRED_API_KEY 未配置"}
+        params = {
+            "api_key": self.api_key,
+            "file_type": "json",
+            "limit": limit,
+            "sort_order": sort_order,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as c:
+                r = await c.get(f"{_BASE}/releases/dates", params=params)
+        except Exception as e:  # noqa: BLE001
+            return {"status": "error", "message": f"FRED request failed: {e}"}
+        if r.status_code == 200:
+            return {"status": "success", "data": r.json()}
+        if r.status_code == 429:
+            return {"status": "error", "message": "FRED 429 rate limited", "error_category": "rate_limit"}
+        return {"status": "error", "message": f"FRED HTTP {r.status_code}"}
+
     async def get_economic_calendar(self, days_ahead: int = 7, days_back: int = 0) -> dict[str, Any]:
         """FRED 无原生日历，复用 series/observations 近窗口（与 backend 行为对齐）。"""
         return await self.get_series_observations("FEDFUNDS", limit=days_ahead + days_back + 5)

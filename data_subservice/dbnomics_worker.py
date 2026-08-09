@@ -12,6 +12,8 @@ from data_subservice._internal.logger import logger
 
 _DBNOMICS_DISPATCH: dict[str, Any] = {
     "ECONOMIC_CALENDAR": ("get_economic_calendar", ["days_ahead", "days_back"]),
+    # BE-ARCH-07f: 主服务 EM CPI 回填所需的 OECD G20 CPI 原始序列
+    "EM_CPI_SERIES": ("get_em_cpi_series", ["countries"]),
 }
 
 

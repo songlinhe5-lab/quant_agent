@@ -1,53 +1,37 @@
 import asyncio
 import json
-import os
 import random
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-import httpx
-
-from backend.core.middleware import httpx_log_request, httpx_log_response
 from backend.core.redis_client import redis_client
-from backend.core.retry_utils import with_global_retry
+from backend.services.datasource.router import data_source_router
 
 
 class FREDService:
     """
     从圣路易斯联储 (FRED) 获取宏观经济数据。
+
+    BE-ARCH-07f: 主服务不再持有 FRED REST 直连，统一经 DataSourceRouter
+    远程代理至 data_subservice (source=fred)。本类仅保留 Redis 缓存、
+    归一化与事件回填等纯业务逻辑。
     """
 
     def __init__(self):
-        self.api_key = os.getenv("FRED_API_KEY")
-        if not self.api_key:
-            print("⚠️ [FREDService] 未找到 FRED_API_KEY 环境变量，宏观数据工具将不可用。")  # noqa: E501
-        self.base_url = "https://api.stlouisfed.org/fred"
-        # 💡 使用共享的 AsyncClient 以复用连接，提升性能
-        self.session = httpx.AsyncClient(
-            timeout=15.0,
-            event_hooks={
-                "request": [httpx_log_request],
-                "response": [httpx_log_response],
-            },  # noqa: E501
-        )
         self._locks = {}
 
     async def close(self):
-        """安全释放底层的 httpx.AsyncClient 连接池"""
-        await self.session.aclose()
+        """远程化后无本地连接池需要释放，保留接口以兼容 lifecycle 调用。"""
+        return None
 
-    @with_global_retry
     async def get_series_observations(self, series_id: str, limit: int = 100) -> Dict[str, Any]:  # noqa: E501
         """
-        获取指定宏观经济序列的最新观测值。
+        获取指定宏观经济序列的最新观测值（经子服务远程代理）。
         :param series_id: FRED 序列 ID (例如: 'DGS10' 代表10年期美债收益率)
         :param limit: 返回的数据点数量
         :return: 包含状态和数据的字典
         """
-        if not self.api_key:
-            return {"status": "error", "message": "FRED API Key 未配置"}
-
         # 💡 防御特殊字符造成的 Redis 脏数据和查询污染
         safe_id = re.sub(r"[^A-Z0-9_-]", "", str(series_id).upper())[:30]
         cache_key = f"fred_series_{safe_id}_{limit}"
@@ -69,74 +53,59 @@ class FREDService:
             except Exception:
                 pass
 
-            params = {
-                "series_id": series_id,
-                "api_key": self.api_key,
-                "file_type": "json",
-                "limit": limit,
-                "sort_order": "desc",  # 获取最新的数据
-            }
+            remote = await data_source_router.fetch_fred(
+                "macro_series",
+                series_id=series_id,
+                limit=limit,
+            )
+            if not isinstance(remote, dict) or remote.get("status") != "success":
+                message = "FRED 子服务不可用"
+                if isinstance(remote, dict):
+                    message = remote.get("message") or remote.get("error") or message
+                print(f"❌ [FREDService] 远程获取失败: {message}")
+                return {"status": "error", "message": message}
 
-            try:
-                response = await self.session.get(f"{self.base_url}/series/observations", params=params)  # noqa: E501
-                response.raise_for_status()
-                data = response.json()
+            payload = remote.get("data")
+            # 子服务透传 FRED 原始 JSON，兼容已归一化的列表形态
+            if isinstance(payload, dict):
+                raw_observations = payload.get("observations") or []
+            elif isinstance(payload, list):
+                raw_observations = payload
+            else:
+                raw_observations = []
 
-                if "observations" not in data or not data["observations"]:
-                    return {
-                        "status": "warning",
-                        "message": f"未找到序列 {series_id} 的数据",
-                        "data": [],
-                    }  # noqa: E501
-
-                # 适配 FRED 返回的 value 可能为 "." 的情况
-                observations = [
-                    {
-                        "date": obs["date"],
-                        "value": float(obs["value"]) if obs["value"] != "." else None,
-                    }
-                    for obs in data["observations"]
-                ]  # noqa: E501
-                result = {
-                    "status": "success",
-                    "series_id": series_id,
-                    "data": observations,
+            if not raw_observations:
+                return {
+                    "status": "warning",
+                    "message": f"未找到序列 {series_id} 的数据",
+                    "data": [],
                 }  # noqa: E501
+
+            # 适配 FRED 返回的 value 可能为 "." 的情况
+            observations = []
+            for obs in raw_observations:
+                if not isinstance(obs, dict):
+                    continue
+                raw_value = obs.get("value")
+                value = None
+                if raw_value not in (None, ".", ""):
+                    try:
+                        value = float(raw_value)
+                    except (TypeError, ValueError):
+                        value = None
+                observations.append({"date": obs.get("date"), "value": value})
+
+            result = {
+                "status": "success",
+                "series_id": series_id,
+                "data": observations,
+            }  # noqa: E501
+            try:
                 ttl = 43200 + random.randint(100, 600)
                 await redis_client.set(cache_key, json.dumps(result), ex=ttl)  # 缓存 12 小时 + Jitter  # noqa: E501
-                return result
-            except httpx.ConnectError as e:
-                print(f"❌ [FREDService] 网络连接异常: {e}")
-                return {
-                    "status": "error",
-                    "message": "无法连接到 FRED 服务器。请检查网络连接或是否需要代理。",
-                }  # noqa: E501
-            except httpx.HTTPStatusError as e:
-                if e.response.status_code == 400:
-                    error_detail = "请求参数错误"
-                    try:
-                        error_detail = e.response.json().get("error_message", error_detail)  # noqa: E501, E701
-                    except json.JSONDecodeError:
-                        pass  # noqa: E701
-                    if "api_key" in error_detail.lower():
-                        return {
-                            "status": "error",
-                            "message": f"FRED API Key 无效或已过期。请检查 .env 文件。({error_detail})",
-                        }  # noqa: E501
-                    return {
-                        "status": "error",
-                        "message": f"FRED API 请求失败: {error_detail}",
-                    }  # noqa: E501
-                return {
-                    "status": "error",
-                    "message": f"FRED API 返回 HTTP 错误: {e.response.status_code}",
-                }  # noqa: E501
             except Exception as e:
-                print(f"❌ [FREDService] 未知异常: {e}")
-                return {
-                    "status": "error",
-                    "message": f"获取 FRED 数据时发生未知异常: {str(e)}",
-                }  # noqa: E501
+                print(f"⚠️ [FREDService] Redis 缓存写入异常: {e}")
+            return result
 
     # 💡 事件关键词 -> FRED 权威序列映射 (美国核心 + 国际序列尝试)
     # 用于 actual 回填：当 AKShare/Finnhub/FRED 日历事件 actual 为空时，按映射查 FRED 最新观测回填。
@@ -199,9 +168,6 @@ class FREDService:
         - 取观测日期 <= 事件日期的最新观测值写入 actual。
         - 各序列仅查一次（get_series_observations 自带 12h 缓存）。
         """
-        if not self.api_key:
-            return events
-
         need: Dict[str, List[int]] = {}
         for idx, ev in enumerate(events):
             if ev.get("actual"):
@@ -239,16 +205,12 @@ class FREDService:
                     events[idx]["actual"] = str(best_obs["value"])
         return events
 
-    @with_global_retry
     async def get_economic_calendar(
         self, days_ahead: int = 7, days_back: int = 0, skip_cache: bool = False
     ) -> Dict[str, Any]:  # noqa: E501
-        """从 FRED 获取未来的宏观经济数据发布日历
+        """从 FRED 获取未来的宏观经济数据发布日历（经子服务远程代理）
         💡 支持 days_back 参数获取过去已公布的数据
         """
-        if not self.api_key:
-            return {"status": "error", "message": "FRED API Key 未配置"}
-
         today = datetime.now(timezone.utc)
         # 💡 如果有 days_back，起始日期从过去开始
         start_date = (today - timedelta(days=days_back)).strftime("%Y-%m-%d")
@@ -275,63 +237,72 @@ class FREDService:
                 except Exception:
                     pass
 
-            params = {
-                "api_key": self.api_key,
-                "file_type": "json",
-                "limit": 1000,
-                "sort_order": "desc",  # 倒序拉取包含未来数年的所有发布日期
-            }
-
-            try:
-                response = await self.session.get(f"{self.base_url}/releases/dates", params=params)  # noqa: E501
-                response.raise_for_status()
-                data = response.json()
-
-                releases = data.get("release_dates", [])
-                events = []
-                for row in releases:
-                    event_date = str(row.get("date", ""))
-                    # 💡 内存截断过滤：只保留未来 7 天内的数据
-                    if event_date > end_date:
-                        continue
-                    if event_date < start_date:
-                        # 💡 容错修复：不再使用 break 阻断循环，防止接口返回数据乱序导致全部被提前截断  # noqa: E501
-                        continue
-
-                    event_name = str(row.get("release_name", ""))
-                    if not event_name:
-                        continue  # noqa: E701
-
-                    events.append(
-                        {
-                            "time": event_date + " 08:30:00",  # FRED 默认使用东部时间上午发布  # noqa: E501
-                            "country": "US",
-                            "event": event_name,
-                            "impact": "medium",
-                            "previous": "",
-                            "estimate": "",
-                            "actual": "",
-                        }
-                    )
-
-                # 💡 恢复为符合日历显示的正序 (时间从小到大)
-                events.reverse()
-
-                # 💡 FRED 降级路径就地回填 actual，使降级不再丢失实际公布值
-                try:
-                    events = await self.backfill_actuals(events)
-                except Exception as e:
-                    print(f"⚠️ [FRED] 日历 actual 回填异常: {e}")
-
-                result = {"status": "success", "data": events, "source": "fred"}
-                ttl = 43200 + random.randint(100, 600)
-                await redis_client.set(cache_key, json.dumps(result), ex=ttl)
-                return result
-            except Exception as e:
+            remote = await data_source_router.fetch_fred(
+                "releases_dates",
+                limit=1000,
+                sort_order="desc",  # 倒序拉取包含未来数年的所有发布日期
+            )
+            if not isinstance(remote, dict) or remote.get("status") != "success":
+                message = "FRED 子服务不可用"
+                if isinstance(remote, dict):
+                    message = remote.get("message") or remote.get("error") or message
                 return {
                     "status": "error",
-                    "message": f"FRED 宏观日历请求异常: {str(e)}",
+                    "message": f"FRED 宏观日历请求异常: {message}",
                 }  # noqa: E501
+
+            payload = remote.get("data")
+            if isinstance(payload, dict):
+                releases = payload.get("release_dates") or []
+            elif isinstance(payload, list):
+                releases = payload
+            else:
+                releases = []
+
+            events = []
+            for row in releases:
+                if not isinstance(row, dict):
+                    continue
+                event_date = str(row.get("date", ""))
+                # 💡 内存截断过滤：只保留未来 7 天内的数据
+                if event_date > end_date:
+                    continue
+                if event_date < start_date:
+                    # 💡 容错修复：不再使用 break 阻断循环，防止接口返回数据乱序导致全部被提前截断  # noqa: E501
+                    continue
+
+                event_name = str(row.get("release_name", ""))
+                if not event_name:
+                    continue  # noqa: E701
+
+                events.append(
+                    {
+                        "time": event_date + " 08:30:00",  # FRED 默认使用东部时间上午发布  # noqa: E501
+                        "country": "US",
+                        "event": event_name,
+                        "impact": "medium",
+                        "previous": "",
+                        "estimate": "",
+                        "actual": "",
+                    }
+                )
+
+            # 💡 恢复为符合日历显示的正序 (时间从小到大)
+            events.reverse()
+
+            # 💡 FRED 降级路径就地回填 actual，使降级不再丢失实际公布值
+            try:
+                events = await self.backfill_actuals(events)
+            except Exception as e:
+                print(f"⚠️ [FRED] 日历 actual 回填异常: {e}")
+
+            result = {"status": "success", "data": events, "source": "fred"}
+            try:
+                ttl = 43200 + random.randint(100, 600)
+                await redis_client.set(cache_key, json.dumps(result), ex=ttl)
+            except Exception as e:
+                print(f"⚠️ [FREDService] Redis 缓存写入异常: {e}")
+            return result
 
 
 # 导出全局单例
