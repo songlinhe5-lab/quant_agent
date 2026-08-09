@@ -182,6 +182,41 @@ DATASOURCE_AVAILABILITY = Gauge(
 )
 
 # ==========================================
+#  数据源主动拨测指标 (SVC-02)
+#  —— 与上面「业务调用」维度区分: 此处是周期性主动探活 (probe) 的观测,
+#     即使业务流量为 0 也能反映源的真实存活状态。
+# ==========================================
+
+# 主动探针最近一次成功率 (1=成功, 0=失败) —— 区别于 DATASOURCE_AVAILABILITY (业务调用驱动)
+DATASOURCE_PROBE_SUCCESS = Gauge(
+    "quant_datasource_probe_success",
+    "数据源主动拨测最近一次成败 (1=成功, 0=失败)，周期刷新，不依赖业务流量",
+    ["source"],
+)
+
+# 主动探针延迟分布（毫秒）
+DATASOURCE_PROBE_LATENCY = Histogram(
+    "quant_datasource_probe_latency_milliseconds",
+    "数据源主动拨测延迟分布（毫秒）",
+    ["source", "action"],
+    buckets=[50, 100, 150, 200, 250, 300, 500, 1000, 2000, float("inf")],
+)
+
+# 主动探针总次数（按状态分类 success/error/rate_limited/circuit_open）
+DATASOURCE_PROBE_TOTAL = Counter(
+    "quant_datasource_probe_total",
+    "数据源主动拨测总次数（按探针结果分类）",
+    ["source", "status"],
+)
+
+# 主动探针失败次数（按错误类型）
+DATASOURCE_PROBE_FAILURES = Counter(
+    "quant_datasource_probe_failures_total",
+    "数据源主动拨测失败次数（按错误类型分类）",
+    ["source", "error_type"],  # error_type: network, timeout, rate_limit, circuit_open, auth
+)
+
+# ==========================================
 #  业务聚合 Facade 指标 (BE-ARCH-06d)
 #  —— 与上面「数据源层」指标分层：此处观测的是 Facade 业务聚合行为，而非单源取数
 # ==========================================

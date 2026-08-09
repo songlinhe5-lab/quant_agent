@@ -299,6 +299,16 @@ async def app_lifespan(app: FastAPI):
     except Exception as e:
         log.error(f"[Startup] 配额与成本监控器启动失败: {e}")
 
+    # 🚀 SVC-02 三方服务可用性拨测 (周期探活 Futu/YF/Finnhub/FMP/FRED/OpenAI/Ollama
+    #    → 探针成功率/延迟写入 Prometheus + call_metrics 探针字段，供 SVC-03 消费)
+    try:
+        from backend.services.datasource.probe_daemon import data_source_probe_daemon
+
+        await data_source_probe_daemon.start()
+        log.info("✅ [Startup] 数据源可用性拨测 daemon 已启动 (SVC-02)")
+    except Exception as e:
+        log.error(f"[Startup] 数据源可用性拨测 daemon 启动失败: {e}")
+
     yield  # 挂起，FastAPI 正式对外提供服务
 
     # === 销毁阶段 (Shutdown) ===
@@ -367,6 +377,14 @@ async def app_lifespan(app: FastAPI):
             from backend.services.ai_narrator.quota_monitor import quota_cost_monitor
 
             await quota_cost_monitor.stop()
+        except Exception:
+            pass
+
+        # SVC-02: 停止数据源可用性拨测 daemon
+        try:
+            from backend.services.datasource.probe_daemon import data_source_probe_daemon
+
+            await data_source_probe_daemon.stop()
         except Exception:
             pass
 

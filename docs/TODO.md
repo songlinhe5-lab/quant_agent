@@ -686,7 +686,12 @@ STATUS: PRODUCTION READY ✨
   - **离线工作流**：默认 `record_mode='none'` 离线回放（`match_on=["method","path"]` 忽略 host/port/签名，端口无关）；`QUANT_RECORD=1` 时连 `ContractMockSubservice`（线程内 mock 子服务）补录 cassette。
   - 新建 `backend/tests/contract_helpers.py`（`ContractMockSubservice` + `get_vcr` + cassette 管理）、`backend/tests/test_contract_replay.py`（5 个契约用例，覆盖 finnhub/fmp/futu/yfinance/fred 字段契约断言）；`conftest.py` 注册 `contract_replay` 标记；`.env.example` 补 `QUANT_RECORD` 说明。
   - 守门：`test_contract_replay.py`（5 用例）离线回放全绿；`vcrpy` 依赖入 `pyproject.toml` + `uv.lock`。
-- [ ] **[SVC-02]** 三方服务可用性拨测：定时探活 Futu OpenD / YFinance / Finnhub / OpenAI / Ollama / FRED，成功率与延迟写入 Prometheus metrics
+- [x] **[SVC-02]** 三方服务可用性拨测：定时探活 Futu OpenD / YFinance / Finnhub / OpenAI / Ollama / FRED，成功率与延迟写入 Prometheus metrics ✅ **2026-08-09**：
+  - **新建 `backend/services/datasource/probe_daemon.py`**：`DataSourceProbeDaemon` 周期（默认 60s）并发拨测 7 个依赖（futu/yfinance/finnhub/fmp/fred 经 `datasource_registry.fetch`，openai/ollama 经 `LLMRouter.health_check()`）。每次探针：计时 → 分类错误（rate_limit/circuit_open/auth/timeout/network/unreachable）→ 写 `call_metrics.record_probe` + Prometheus 探针指标。
+  - **独立探针指标（与业务维度解耦）**：`quant_datasource_probe_success`(Gauge 最近成败)、`quant_datasource_probe_latency_milliseconds`(Histogram)、`quant_datasource_probe_total`(Counter)、`quant_datasource_probe_failures_total`(Counter)。业务调用维度 `quant_datasource_availability` 仅在业务流量下刷新；探针维度周期主动刷新，无流量也能反映源存活——正是 SVC-02 价值。
+  - **lifecycle 挂接**：`bootstrap/lifecycle.py` startup/stop 挂载 `data_source_probe_daemon`（同 SVC-03/05 模式）。
+  - **守门**：`backend/tests/test_datasource_probe.py`（4 用例）验证成功/失败分类/熔断分类/异常不可达，注入底层 fetch/llm_health 真实驱动 daemon 循环，全部离线通过。
+  - 探针 action 选用各源最轻量接口（quote/macro_series），失败不触达业务限流退避/熔断器，避免对故障源施压。
 - [x] **[SVC-03]** 三方服务监控面板 + 告警 ✅ **2026-08-09**：
   - **Grafana 数据源（API 层，已天然具备）**：`backend/routers/datasource.py` 的 `GET /datasource/health-overview` + `GET /datasource/{name}/health` 经 `call_metrics_store`（已记录 success/calls + 延迟样本）+ `_build_health_card` 返回完整 `status`(含 stale/throttled/blocked/quota_exhausted 等熔断态)、`success_rate`、`today_calls`、`latency_avg_ms/p95_ms`、`rl_*` 限流明细 —— Grafana 可直接 scrape 此 JSON 端点实现成功率/延迟/熔断面板，无需新建采集层。
   - **告警缺口补齐（本轮新增）**：新建 `backend/services/datasource/health_monitor.py` 的 `DataSourceHealthMonitor`，周期（默认 60s）扫描各源当日成功率 + 可达性，成功率 < 95%（且当日调用 ≥ 20 样本防低流量误报）或源失联 → 经 `notification_service.send_alert` 推送**飞书告警（接 OBS-02）**；内置队列解耦 + 15min 去重冷却防告警风暴；`lifecycle.startup` 启动、`lifecycle.shutdown` 停止、`/health/deep` 暴露 `datasource_health_monitor` 探针。
