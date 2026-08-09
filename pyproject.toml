@@ -90,6 +90,7 @@ dev = [
     "pytest-asyncio>=0.26.0,<1.0.0",
     "pytest-timeout>=2.3.0",
     "pytest-xdist>=3.6.0",
+    "pytest-env>=1.1.0",
     "httpx>=0.27.0",
 ]
 
@@ -148,6 +149,12 @@ markers = [
     "asyncio: mark test as async",
 ]
 asyncio_mode = "auto"
+# pytest-env: 注入测试运行环境，避免 vectorbt/numba 在 workspace 内写缓存触发 IDE 的
+# safe-delete 批量守卫导致 pytest 进程在 import 阶段 SystemExit 崩溃（见 backend/tests/conftest.py）。
+# NUMBA_CACHE_DIR 指向 workspace 外，使 numba 缓存写入不进入守卫拦截范围。
+env = [
+    "NUMBA_CACHE_DIR=/tmp/numba_cache",
+]
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::UserWarning",
@@ -200,6 +207,7 @@ dev = [
     "pytest-asyncio>=0.26.0,<1.0.0",
     "pytest-timeout>=2.3.0",
     "pytest-xdist>=3.6.0",
+    "pytest-env>=1.1.0",
     "httpx>=0.27.0",
     "vcrpy>=8.3.0",
 ]
