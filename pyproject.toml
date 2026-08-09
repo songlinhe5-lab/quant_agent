@@ -59,15 +59,20 @@ dependencies = [
 
 [project.optional-dependencies]
 # 数据源 SDK（子服务节点安装，主节点走 HTTP 路由不安装）
-datasource = [
-    "websockets>=14.0",        # Finnhub WebSocket 客户端
-    "finnhub-python>=2.4.29",  # Finnhub REST API (备用); PyPI 最高 2.4.29
-    "tushare>=1.4.0",
-    "akshare>=1.1.15",
-    "futu-api>=10.7.0",
-    # 注意: yfinance 已从 backend 移除（BE-ARCH-04 / AGENTS §9.4）。
-    # YF 流量 100% 外移至 US-YF-A/B 子服务 (data_subservice)，后端经 DataSourceRouter
-    # 走 HTTP，不再本地 import 或声明 yfinance。
+# 按节点地域/能力拆分为细粒度 extra，避免单镜像打全量 SDK 造成体积膨胀。
+# 基础依赖已含 websockets>=12.0，Finnhub 长连接无需额外声明。
+datasource-cn = [
+    "yfinance",                # 美股/加密/外汇 (中国节点经 YF 辅助节点路由)
+    "tushare>=1.4.0",          # A 股
+    "akshare>=1.1.15",         # 沪深港通
+]
+datasource-us = [
+    "yfinance",                # 美股/加密/外汇
+    "futu-api>=10.7.0",        # 港股/富途 (长连接 OpenD)
+    "finnhub-python>=2.4.29",  # Finnhub REST+WebSocket (长连接实时流)
+]
+datasource-us-aux = [
+    "yfinance",                # 美西辅助节点：仅 YF，不含 futu/finnhub
 ]
 # 本地向量化模型（可选，默认用 API 替代）
 local-embedding = [

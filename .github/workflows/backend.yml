@@ -50,15 +50,25 @@ jobs:
             BUILDKIT_INLINE_CACHE=1
 
   # ----------------------------------------------------------------
-  # 构建 data_subservice 镜像 (所有从节点共用)
+  # 构建 data_subservice 镜像 (按节点类型拆分 extra，隔离 SDK 依赖体积)
+  #   cn      : 中国节点 (yfinance + tushare + akshare)
+  #   us      : 美西主节点 (yfinance + futu + finnhub 长连接)
+  #   us-aux  : 美西辅助节点 (仅 yfinance)
   # ----------------------------------------------------------------
   build-data-subservice:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-    outputs:
-      image_tag: ${{ steps.meta.outputs.tags }}
+    strategy:
+      matrix:
+        include:
+          - ds_extra: datasource-cn
+            tag: cn
+          - ds_extra: datasource-us
+            tag: us
+          - ds_extra: datasource-us-aux
+            tag: us-aux
     steps:
       - uses: actions/checkout@v5
 
@@ -72,18 +82,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & push data-subservice image
+      - name: Build & push data-subservice image (${{ matrix.tag }})
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./data_subservice/Dockerfile
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:latest
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${{ matrix.tag }}
           platforms: linux/amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
             BUILDKIT_INLINE_CACHE=1
+            DS_EXTRA=${{ matrix.ds_extra }}
 
   # ----------------------------------------------------------------
   # 部署 US-MASTER (主节点)
@@ -129,7 +140,7 @@ jobs:
             curl -sSL -o .env.example "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/.env.example" || echo "⚠️ 拉取 .env.example 失败，首次生成将走兜底"
             curl -sSL -o .env.data-node.example "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/.env.data-node.example" || echo "⚠️ 拉取 .env.data-node.example 失败"
             sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:latest|${IMAGE}|g" docker-compose.master.yml
-            sed -i "s|ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:latest|g" docker-compose.node-s1.yml
+            sed -i "s|ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:us|g" docker-compose.node-s1.yml
             echo "✅ 模板文件已拉取完毕 (compose + .env.example + .env.data-node.example)"
 
             # ⚠️ 主节点 .env 由运维手动维护。
@@ -336,7 +347,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # 北京从节点 (VPS_BJ)：tushare + akshare + yfinance
+          # 北京从节点 (VPS_BJ)：tushare + akshare + yfinance → datasource-cn
           - node: bj
             host-secret: VPS_BJ_HOST
             user-secret: VPS_BJ_USER
@@ -346,12 +357,13 @@ jobs:
             ds-id: bj-slave
             ds-region: cn
             ds-caps: "tushare,akshare,yfinance"
+            ds-tag: cn
             tz: Asia/Shanghai
             creds: true
             compose: docker-compose.node-bj.yml
             env-file: .env.data-node
             container: quant-data-subservice-node-bj
-          # 美西从节点1 (VPS_S2)：纯 yfinance
+          # 美西从节点1 (VPS_S2)：纯 yfinance → datasource-us-aux
           - node: s2
             host-secret: VPS_S2_HOST
             user-secret: VPS_S2_USER
@@ -361,11 +373,12 @@ jobs:
             ds-id: us-yf-s2
             ds-region: us-west
             ds-caps: "yfinance"
+            ds-tag: us-aux
             tz: America/Los_Angeles
             compose: docker-compose.node-s2.yml
             env-file: .env.data-node
             container: quant-data-subservice-node-s2
-          # 美西从节点2 (VPS_S3)：纯 yfinance
+          # 美西从节点2 (VPS_S3)：纯 yfinance → datasource-us-aux
           - node: s3
             host-secret: VPS_S3_HOST
             user-secret: VPS_S3_USER
@@ -375,11 +388,12 @@ jobs:
             ds-id: us-yf-s3
             ds-region: us-west
             ds-caps: "yfinance"
+            ds-tag: us-aux
             tz: America/Los_Angeles
             compose: docker-compose.node-s3.yml
             env-file: .env.data-node
             container: quant-data-subservice-node-s3
-          # 美西从节点3 (VPS_S4)：纯 yfinance
+          # 美西从节点3 (VPS_S4)：纯 yfinance → datasource-us-aux
           - node: s4
             host-secret: VPS_S4_HOST
             user-secret: VPS_S4_USER
@@ -389,6 +403,7 @@ jobs:
             ds-id: us-yf-s4
             ds-region: us-west
             ds-caps: "yfinance"
+            ds-tag: us-aux
             tz: America/Los_Angeles
             compose: docker-compose.node-s4.yml
             env-file: .env.data-node
@@ -464,11 +479,13 @@ jobs:
             fi
 
             # 镜像地址: 北京节点经主节点内网 registry 拉取 (避免跨洋直连 GHCR)，其余节点直连 GHCR
+            # tag 按节点能力拆分 (cn / us / us-aux)，取自 matrix.ds-tag
             NODE="${{ matrix.node }}"
+            DS_TAG="${{ matrix.ds-tag }}"
             if [ "$NODE" = "bj" ]; then
-              IMAGE="${{ secrets.VPS_S1_TAILSCALE_IP }}:5000/quant-agent-data-subservice:latest"
+              IMAGE="${{ secrets.VPS_S1_TAILSCALE_IP }}:5000/quant-agent-data-subservice:${DS_TAG}"
             else
-              IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:latest"
+              IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${DS_TAG}"
             fi
 
             # 北京节点: 经主节点内网 http registry 拉取，需 docker 配置 insecure-registries (一次性 root 配置)
@@ -586,11 +603,11 @@ jobs:
               exit 1
             fi
             echo "✅ compose 文件已就位: ${{ matrix.compose }}"
-            sed -i "s|ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest|${IMAGE}|g" ${{ matrix.compose }}
+            sed -i "s|ghcr.io/songlinhe5-lab/quant-agent-data-subservice:[a-z-]*|${IMAGE}|g" ${{ matrix.compose }}
 
             # 🔍 镜像地址校验: 北京节点必须指向主节点内网 registry，否则会直连 GHCR 慢且可能拉不到
             if [ "$NODE" = "bj" ]; then
-              if grep -q "ghcr.io/songlinhe5-lab/quant-agent-data-subservice:latest" ${{ matrix.compose }}; then
+              if grep -q "ghcr.io/songlinhe5-lab/quant-agent-data-subservice:" ${{ matrix.compose }}; then
                 echo "❌ compose 中 data-subservice 镜像未被替换为内网 registry 地址 (${IMAGE})，中止"
                 exit 1
               fi
