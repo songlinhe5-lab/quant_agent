@@ -44,6 +44,13 @@ load_dotenv()
 HMAC_SECRET = os.getenv("DATA_SOURCE_HMAC_SECRET", "change-me-in-prod")
 SERVICE_PORT = int(os.getenv("DATASOURCE_PORT", "8001"))
 ENABLE_REDIS_HEARTBEAT = os.getenv("ENABLE_REDIS_HEARTBEAT", "false").lower() == "true"
+# 心跳周期须远低于注册表 TTL（默认 30s），否则节点会在 TTL 期满后被判 dead。
+# 取 TTL 的 1/3 作为刷新间隔，留足网络抖动余量。
+_HEARTBEAT_TTL = int(os.getenv("NODE_HEARTBEAT_TTL", "30"))
+_HEARTBEAT_INTERVAL = max(5, _HEARTBEAT_TTL // 3)
+
+# 后台心跳任务句柄，便于 shutdown 时清理
+_heartbeat_task: Optional[asyncio.Task] = None
 
 app = FastAPI(title="Quant Agent Data Subservice", version="1.0.0")
 
@@ -79,6 +86,9 @@ def _declared_capabilities() -> set:
 
     Fallback: 兼容旧 NODE_CAPABILITIES；再 fallback 到全量（保持向后兼容）。
     """
+    # 默认能力集（未显式声明 DS_CAPABILITIES 时）。
+    # ⚠️ 注意：部署时必须通过 DS_CAPABILITIES 显式声明本节点能力，否则未声明的能力全部 503。
+    # 全量能力集参考：yfinance,akshare,tushare,fmp,futu,finnhub,fred,dbnomics,rbi,tavily,bocha,jina
     raw = os.getenv("DS_CAPABILITIES") or os.getenv("NODE_CAPABILITIES")
     if not raw:
         return {"yfinance", "akshare", "tushare", "fmp", "futu"}
@@ -176,8 +186,35 @@ async def startup_event():
             registry = ServiceRegistry(redis_client)
             await registry.register(node)
             logger.info(f"📡 已向主 Redis 注册节点心跳: {node.node_id}")
+            # 启动后台周期心跳，避免 TTL 到期后节点被判 dead（07l③ 修复）
+            global _heartbeat_task
+            _heartbeat_task = asyncio.create_task(_heartbeat_loop(node.node_id, registry))
         except Exception as e:
             logger.warning(f"⚠️ Redis 心跳注册失败（子服务仍可独立运行）: {e}")
+
+
+async def _heartbeat_loop(node_id: str, registry: ServiceRegistry) -> None:
+    """周期性刷新 Redis 心跳，间隔远低于注册表 TTL。"""
+    while True:
+        try:
+            await asyncio.sleep(_HEARTBEAT_INTERVAL)
+            ok = await registry.heartbeat(node_id)
+            if not ok:
+                logger.warning(f"⚠️ 节点 {node_id} 心跳刷新失败")
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"❌ 心跳循环异常: {e}")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    if _heartbeat_task is not None:
+        _heartbeat_task.cancel()
+        try:
+            await _heartbeat_task
+        except (asyncio.CancelledError, Exception):
+            pass
 
 
 # ── 远程节点调用（供主服务反向代理或子服务间互调，可选）──

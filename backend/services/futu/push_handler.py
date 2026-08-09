@@ -8,8 +8,8 @@ Futu 推送数据回调处理器
   - StockQuoteHandlerBase:     实时报价推送 (→ quant:quotes:stream)
   - OrderBookHandlerBase:      盘口深度推送 (→ quant:quotes:stream, 合并 bids/asks)
   - TickerHandlerBase:         逐笔成交推送 (→ quant:trades:stream:{ticker})
-  - BrokerHandlerBase:         经纪商队列推送 (→ futu:push:broker:{ticker})
-  - CurKlineHandlerBase:       实时 K 线推送 (→ futu:push:kline:{ticker})
+  - BrokerHandlerBase:         经纪商队列推送 (→ quant:broker:{ticker})
+  - CurKlineHandlerBase:       实时 K 线推送 (→ quant:kline:{ticker})
 """
 
 import asyncio
@@ -258,8 +258,10 @@ def _make_ticker_handler():
 
                     async def _publish(td=trade_data, tk=ticker):
                         redis = await _get_redis()
+                        # 对齐统一行情总线命名：逐笔成交 → quant:trades:stream:{ticker}
+                        # （CEP / market_engine 前端均订阅此频道，原 futu:push:ticker:* 无人消费）
                         await redis.publish(
-                            f"futu:push:ticker:{tk}",
+                            f"quant:trades:stream:{tk}",
                             json.dumps(td),
                         )
 
@@ -305,7 +307,9 @@ def _make_broker_handler():
                             "source": "futu_push",
                         }
                     )
-                    await redis.publish(f"futu:push:broker:{ticker}", payload)
+                    # 对齐统一行情总线命名：经纪商队列 → quant:broker:{ticker}
+                    # （subscription.py 回灌层订阅 quant:broker:{symbol}）
+                    await redis.publish(f"quant:broker:{ticker}", payload)
 
                 _schedule_coroutine(_publish())
             except Exception as e:
@@ -349,7 +353,9 @@ def _make_kline_handler():
 
                     async def _publish(kd=kline_data, tk=ticker):
                         redis = await _get_redis()
-                        await redis.publish(f"futu:push:kline:{tk}", json.dumps(kd))
+                        # 对齐统一行情总线命名：实时 K 线 → quant:kline:{ticker}
+                        # （subscription.py 回灌层订阅 quant:kline:{symbol}）
+                        await redis.publish(f"quant:kline:{tk}", json.dumps(kd))
 
                     _schedule_coroutine(_publish())
             except Exception as e:

@@ -574,3 +574,70 @@ class TestHandlerEdgeCases:
         handler = push_executor._make_kline_handler()
         ret, _ = handler.on_recv_rsp(object())
         assert ret == RET_OK
+
+
+class TestChannelNameAlignmentBEARCH07l:
+    """BE-ARCH-07l④：推送频道须对齐统一行情总线 quant:* 命名，禁止 futu:push:*。"""
+
+    @patch("futu.TickerHandlerBase.on_recv_rsp")
+    def test_ticker_publishes_to_quant_trades_stream(self, mock_base, push_executor):
+        df = pd.DataFrame(
+            {
+                "code": ["US.AAPL"],
+                "time": ["09:30:01"],
+                "price": [151.0],
+                "volume": [100],
+                "turnover": [15100.0],
+                "ticker_direction": [1],
+                "sequence": [1],
+            }
+        )
+        mock_base.return_value = (RET_OK, df)
+        handler = push_executor._make_ticker_handler()
+        ret, _ = handler.on_recv_rsp(object())
+        assert ret == RET_OK
+        args = push_executor._redis_client.publish.call_args
+        assert args is not None
+        channel = args.args[0]
+        assert channel == "quant:trades:stream:US.AAPL"
+        assert not channel.startswith("futu:push:")
+
+    @patch("futu.BrokerHandlerBase.on_recv_rsp")
+    def test_broker_publishes_to_quant_broker(self, mock_base, push_executor):
+        broker_rsp = {
+            "code": "US.AAPL",
+            "bid_broker_queue": [{"broker_id": 1, "broker_name": "X", "bid_vol": 10}],
+            "ask_broker_queue": [{"broker_id": 2, "broker_name": "Y", "ask_vol": 5}],
+        }
+        mock_base.return_value = (RET_OK, broker_rsp)
+        handler = push_executor._make_broker_handler()
+        ret, _ = handler.on_recv_rsp(object())
+        assert ret == RET_OK
+        args = push_executor._redis_client.publish.call_args
+        assert args is not None
+        channel = args.args[0]
+        assert channel == "quant:broker:US.AAPL"
+        assert not channel.startswith("futu:push:")
+
+    @patch("futu.CurKlineHandlerBase.on_recv_rsp")
+    def test_kline_publishes_to_quant_kline(self, mock_base, push_executor):
+        df = pd.DataFrame(
+            {
+                "code": ["US.AAPL"],
+                "time_key": ["t"],
+                "open": [1.0],
+                "high": [2.0],
+                "low": [0.5],
+                "close": [1.5],
+                "volume": [10.0],
+            }
+        )
+        mock_base.return_value = (RET_OK, df)
+        handler = push_executor._make_kline_handler()
+        ret, _ = handler.on_recv_rsp(object())
+        assert ret == RET_OK
+        args = push_executor._redis_client.publish.call_args
+        assert args is not None
+        channel = args.args[0]
+        assert channel == "quant:kline:US.AAPL"
+        assert not channel.startswith("futu:push:")
