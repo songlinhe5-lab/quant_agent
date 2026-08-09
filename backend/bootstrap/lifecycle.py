@@ -243,6 +243,17 @@ async def app_lifespan(app: FastAPI):
             log.info(f"✅ [Startup] Finnhub WS tick 回灌已启动 (订阅 {len(_ws_symbols)} 只标的)")
         else:
             log.info("ℹ️ [Startup] 未配置 FINNHUB_WS_SYMBOLS，跳过 WS tick 回灌")
+
+        # 🚀 BE-ARCH-07h-2: Futu 经纪商队列 / 实时 K 线推送回灌
+        # 子服务 push_handler 已将 broker/kline 桥接到 quant:broker:{ticker} / quant:kline:{ticker}，
+        # 复用同一批订阅标的启动主服务侧消费者（无独立环境变量，跟随 tick 配置）。
+        try:
+            broker_task = subscription_service.start_broker_ingest(_ws_symbols)
+            kline_task = subscription_service.start_kline_ingest(_ws_symbols)
+            if broker_task is not None or kline_task is not None:
+                log.info(f"✅ [Startup] Futu broker/kline 推送回灌已启动 (订阅 {len(_ws_symbols)} 只标的)")
+        except Exception as be:
+            log.warning(f"[Startup] Futu broker/kline 推送回灌启动失败: {be}")
     except Exception as e:
         log.warning(f"[Startup] Finnhub WS tick 回灌启动失败: {e}")
 
