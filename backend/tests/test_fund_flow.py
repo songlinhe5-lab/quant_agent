@@ -1,14 +1,14 @@
 """板块资金流服务单测 (A股/港股聚合 + 美股代理)
 
-零外部依赖: 通过 mock akshare 与 redis_client 覆盖全部分支。
+零外部依赖: 通过 mock data_source_router.fetch_akshare 与 redis_client 覆盖全部分支。
+本地 akshare SDK 已下沉 data_subservice，主服务仅负责远程路由 + 缓存 + 降级。
 """
 
 import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pandas as pd
-
+from backend.services.datasource.router import data_source_router
 from backend.services.fund_flow import a_share_sector, hk_sector, us_sector
 from backend.services.fund_flow.a_share_sector import get_a_share_sector_flow
 from backend.services.fund_flow.hk_sector import get_hk_sector_flow
@@ -25,6 +25,12 @@ def _fake_redis(get_return=None, set_raise=False):
     return m
 
 
+def _fake_fetch(action_result: dict):
+    """构造一个返回指定结果的 fetch_akshare mock。"""
+    m = AsyncMock(return_value=action_result)
+    return m
+
+
 # ============================ A 股板块 ============================
 
 
@@ -37,17 +43,24 @@ def test_a_share_cache_hit():
 
 
 def test_a_share_success_standard_columns():
-    df = pd.DataFrame(
-        {
-            "名称": ["银行", "券商"],
-            "今日涨跌幅": [1.5, -2.0],
-            "今日主力净流入-净额": [1_000_000.0, -500_000.0],
-            "今日主力净流入-净占比": [3.2, -1.1],
-        }
-    )
+    payload = {
+        "status": "success",
+        "data": {
+            "market": "A_SHARE",
+            "market_name": "A股行业",
+            "inflow_top": [
+                {"name": "银行", "change_pct": 1.5, "main_net_inflow": 100.0, "main_net_pct": 3.2},
+                {"name": "券商", "change_pct": -2.0, "main_net_inflow": -50.0, "main_net_pct": -1.1},
+            ],
+            "outflow_top": [],
+            "unit": "万元",
+            "source": "AKShare (东方财富)",
+        },
+        "source": "akshare_stock_sector_fund_flow_rank",
+    }
     with (
         patch.object(a_share_sector, "redis_client", _fake_redis()),
-        patch("akshare.stock_sector_fund_flow_rank", return_value=df),
+        patch.object(data_source_router, "fetch_akshare", _fake_fetch(payload)),
     ):
         res = asyncio.run(get_a_share_sector_flow())
     assert res["status"] == "success"
@@ -55,29 +68,11 @@ def test_a_share_success_standard_columns():
     assert res["data"]["inflow_top"][0]["name"] == "银行"
 
 
-def test_a_share_success_compat_columns():
-    # 字段名与默认不一致, 触发兼容字段名探测循环 (lines 66-80)
-    df = pd.DataFrame(
-        {
-            "主力净流入净额": [800_000.0, 200_000.0],
-            "主力净流入净占比": [2.0, 0.5],
-            "涨跌幅": [0.5, -0.3],
-            "板块名": ["医药", "消费"],
-        }
-    )
-    with (
-        patch.object(a_share_sector, "redis_client", _fake_redis()),
-        patch("akshare.stock_sector_fund_flow_rank", return_value=df),
-    ):
-        res = asyncio.run(get_a_share_sector_flow())
-    assert res["status"] == "success"
-    assert res["data"]["inflow_top"][0]["main_net_inflow"] == 80.0
-
-
 def test_a_share_empty_df():
+    payload = {"status": "error", "message": "AKShare 返回空数据", "data": None}
     with (
         patch.object(a_share_sector, "redis_client", _fake_redis()),
-        patch("akshare.stock_sector_fund_flow_rank", return_value=pd.DataFrame()),
+        patch.object(data_source_router, "fetch_akshare", _fake_fetch(payload)),
     ):
         res = asyncio.run(get_a_share_sector_flow())
     assert res["status"] == "error"
@@ -86,24 +81,28 @@ def test_a_share_empty_df():
 def test_a_share_akshare_raises():
     with (
         patch.object(a_share_sector, "redis_client", _fake_redis()),
-        patch("akshare.stock_sector_fund_flow_rank", side_effect=RuntimeError("boom")),
+        patch.object(data_source_router, "fetch_akshare", AsyncMock(side_effect=RuntimeError("boom"))),
     ):
         res = asyncio.run(get_a_share_sector_flow())
     assert res["status"] == "error"
 
 
 def test_a_share_cache_write_failure_silent():
-    df = pd.DataFrame(
-        {
-            "名称": ["银行"],
-            "今日涨跌幅": [1.0],
-            "今日主力净流入-净额": [100.0],
-            "今日主力净流入-净占比": [1.0],
-        }
-    )
+    payload = {
+        "status": "success",
+        "data": {
+            "market": "A_SHARE",
+            "market_name": "A股行业",
+            "inflow_top": [{"name": "银行", "change_pct": 1.0, "main_net_inflow": 0.01, "main_net_pct": 1.0}],
+            "outflow_top": [],
+            "unit": "万元",
+            "source": "AKShare (东方财富)",
+        },
+        "source": "akshare_stock_sector_fund_flow_rank",
+    }
     with (
         patch.object(a_share_sector, "redis_client", _fake_redis(set_raise=True)),
-        patch("akshare.stock_sector_fund_flow_rank", return_value=df),
+        patch.object(data_source_router, "fetch_akshare", _fake_fetch(payload)),
     ):
         res = asyncio.run(get_a_share_sector_flow())
     # 缓存写入失败不影响主流程
@@ -111,35 +110,39 @@ def test_a_share_cache_write_failure_silent():
 
 
 def test_a_share_redis_get_raises_silent():
-    # redis 读取异常被吞, 回退到 akshare (覆盖 43-44)
+    # redis 读取异常被吞, 回退到远程 fetch (覆盖 44-46)
     rc = AsyncMock()
     rc.get = AsyncMock(side_effect=RuntimeError("redis boom"))
     rc.set = AsyncMock(return_value=True)
-    df = pd.DataFrame(
-        {
-            "名称": ["银行"],
-            "今日涨跌幅": [1.0],
-            "今日主力净流入-净额": [100.0],
-            "今日主力净流入-净占比": [1.0],
-        }
-    )
+    payload = {
+        "status": "success",
+        "data": {
+            "market": "A_SHARE",
+            "market_name": "A股行业",
+            "inflow_top": [{"name": "银行", "change_pct": 1.0, "main_net_inflow": 0.01, "main_net_pct": 1.0}],
+            "outflow_top": [],
+            "unit": "万元",
+            "source": "AKShare (东方财富)",
+        },
+        "source": "akshare_stock_sector_fund_flow_rank",
+    }
     with (
         patch.object(a_share_sector, "redis_client", rc),
-        patch("akshare.stock_sector_fund_flow_rank", return_value=df),
+        patch.object(data_source_router, "fetch_akshare", _fake_fetch(payload)),
     ):
         res = asyncio.run(get_a_share_sector_flow())
     assert res["status"] == "success"
 
 
 def test_a_share_stale_fallback():
-    # akshare 失败但有 STALE 缓存 -> 返回降级数据 (覆盖 121-127)
+    # 远程失败但有 STALE 缓存 -> 返回降级数据 (覆盖 stale 分支)
     stale = json.dumps({"status": "success", "data": {"market": "A_SHARE"}})
     rc = AsyncMock()
     rc.get = AsyncMock(side_effect=[None, stale])
     rc.set = AsyncMock(return_value=True)
     with (
         patch.object(a_share_sector, "redis_client", rc),
-        patch("akshare.stock_sector_fund_flow_rank", side_effect=RuntimeError("ak boom")),
+        patch.object(data_source_router, "fetch_akshare", AsyncMock(side_effect=RuntimeError("ak boom"))),
     ):
         res = asyncio.run(get_a_share_sector_flow())
     assert res["status"] == "success"
@@ -150,10 +153,24 @@ def test_a_share_stale_fallback():
 
 
 def test_hk_success():
-    df = pd.DataFrame({"行业": ["科技", "金融"], "净买入": [1e6, -5e5]})
+    payload = {
+        "status": "success",
+        "data": {
+            "market": "HK",
+            "market_name": "港股南向",
+            "sectors": [
+                {"name": "科技", "net_inflow": 100.0, "pct": 0.6},
+                {"name": "金融", "net_inflow": -50.0, "pct": 0.4},
+            ],
+            "unit": "万元",
+            "note": "日频更新，盘后刷新",
+            "source": "AKShare (东方财富)",
+        },
+        "source": "akshare_stock_hsgt_fund_flow_summary_em",
+    }
     with (
         patch.object(hk_sector, "redis_client", _fake_redis()),
-        patch("akshare.stock_hsgt_fund_flow_summary_em", return_value=df),
+        patch.object(data_source_router, "fetch_akshare", _fake_fetch(payload)),
     ):
         res = asyncio.run(get_hk_sector_flow())
     assert res["status"] == "success"
@@ -161,33 +178,10 @@ def test_hk_success():
 
 
 def test_hk_empty_df():
+    payload = {"status": "error", "message": "AKShare 返回空数据", "data": None}
     with (
         patch.object(hk_sector, "redis_client", _fake_redis()),
-        patch("akshare.stock_hsgt_fund_flow_summary_em", return_value=pd.DataFrame()),
-    ):
-        res = asyncio.run(get_hk_sector_flow())
-    assert res["status"] == "degraded"
-
-
-def test_hk_generic_parse():
-    # 字段名不匹配候选, 但存在可解析的数值列 -> 通用解析分支
-    df = pd.DataFrame({"板块": ["A", "B"], "资金": [100.0, 200.0]})
-    with (
-        patch.object(hk_sector, "redis_client", _fake_redis()),
-        patch("akshare.stock_hsgt_fund_flow_summary_em", return_value=df),
-    ):
-        res = asyncio.run(get_hk_sector_flow())
-    assert res["status"] == "success"
-    # 按资金净流入降序: B(200) 在 A(100) 之前
-    assert res["data"]["sectors"][0]["name"] == "B"
-
-
-def test_hk_no_parseable_columns():
-    # 单列且非数值 -> 无法解析 -> 降级
-    df = pd.DataFrame({"foo": ["x"]})
-    with (
-        patch.object(hk_sector, "redis_client", _fake_redis()),
-        patch("akshare.stock_hsgt_fund_flow_summary_em", return_value=df),
+        patch.object(data_source_router, "fetch_akshare", _fake_fetch(payload)),
     ):
         res = asyncio.run(get_hk_sector_flow())
     assert res["status"] == "degraded"
@@ -196,30 +190,58 @@ def test_hk_no_parseable_columns():
 def test_hk_akshare_raises():
     with (
         patch.object(hk_sector, "redis_client", _fake_redis()),
-        patch("akshare.stock_hsgt_fund_flow_summary_em", side_effect=RuntimeError("boom")),
+        patch.object(data_source_router, "fetch_akshare", AsyncMock(side_effect=RuntimeError("boom"))),
     ):
         res = asyncio.run(get_hk_sector_flow())
     assert res["status"] == "degraded"
 
 
 def test_hk_redis_get_raises_silent():
-    # redis 读取异常被吞, 回退到 akshare (覆盖 44-46)
+    # redis 读取异常被吞, 回退到远程 fetch (覆盖 46)
     rc = AsyncMock()
     rc.get = AsyncMock(side_effect=RuntimeError("redis boom"))
     rc.set = AsyncMock(return_value=True)
-    df = pd.DataFrame({"行业": ["科技"], "净买入": [1e6]})
-    with patch.object(hk_sector, "redis_client", rc), patch("akshare.stock_hsgt_fund_flow_summary_em", return_value=df):
+    payload = {
+        "status": "success",
+        "data": {
+            "market": "HK",
+            "market_name": "港股南向",
+            "sectors": [{"name": "科技", "net_inflow": 100.0, "pct": 1.0}],
+            "unit": "万元",
+            "note": "日频更新，盘后刷新",
+            "source": "AKShare (东方财富)",
+        },
+        "source": "akshare_stock_hsgt_fund_flow_summary_em",
+    }
+    with (
+        patch.object(hk_sector, "redis_client", rc),
+        patch.object(data_source_router, "fetch_akshare", _fake_fetch(payload)),
+    ):
         res = asyncio.run(get_hk_sector_flow())
     assert res["status"] == "success"
 
 
 def test_hk_cache_write_failure_silent():
-    # 缓存写入失败不影响主流程 (覆盖 80-81)
+    # 缓存写入失败不影响主流程
     rc = AsyncMock()
     rc.get = AsyncMock(return_value=None)
     rc.set = AsyncMock(side_effect=RuntimeError("redis boom"))
-    df = pd.DataFrame({"行业": ["科技"], "净买入": [1e6]})
-    with patch.object(hk_sector, "redis_client", rc), patch("akshare.stock_hsgt_fund_flow_summary_em", return_value=df):
+    payload = {
+        "status": "success",
+        "data": {
+            "market": "HK",
+            "market_name": "港股南向",
+            "sectors": [{"name": "科技", "net_inflow": 100.0, "pct": 1.0}],
+            "unit": "万元",
+            "note": "日频更新，盘后刷新",
+            "source": "AKShare (东方财富)",
+        },
+        "source": "akshare_stock_hsgt_fund_flow_summary_em",
+    }
+    with (
+        patch.object(hk_sector, "redis_client", rc),
+        patch.object(data_source_router, "fetch_akshare", _fake_fetch(payload)),
+    ):
         res = asyncio.run(get_hk_sector_flow())
     assert res["status"] == "success"
 

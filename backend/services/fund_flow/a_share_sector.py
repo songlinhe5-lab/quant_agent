@@ -5,13 +5,13 @@
 频率: 盘中实时
 """
 
-import asyncio
 import json
 from datetime import datetime, timezone
 from typing import Any
 
 from backend.core.logger import logger
 from backend.core.redis_client import redis_client
+from backend.services.datasource.router import data_source_router
 
 # Redis 缓存配置
 _CACHE_KEY = "quant:fund_flow:a_share_sector"
@@ -20,7 +20,7 @@ _CACHE_TTL = 300  # 5 分钟
 
 async def get_a_share_sector_flow() -> dict[str, Any]:
     """
-    获取 A 股行业板块资金流排名
+    获取 A 股行业板块资金流排名（远程调用 AKShare 子服务，本地已移除 akshare SDK）。
 
     返回格式:
     {
@@ -43,69 +43,13 @@ async def get_a_share_sector_flow() -> dict[str, Any]:
     except Exception as e:
         logger.warning(f"[FundFlow] A股板块缓存读取失败: {e}")
 
-    # 2. 从 AKShare 获取数据
+    # 2. 远程调用 AKShare 子服务（解析逻辑已下沉 data_subservice）
     try:
-        import akshare as ak
+        result = await data_source_router.fetch_akshare("SECTOR_FLOW_A")
+        if result.get("status") != "success":
+            raise ValueError(result.get("message", "远程A股板块资金流返回非成功状态"))
 
-        df = await asyncio.to_thread(
-            ak.stock_sector_fund_flow_rank,
-            indicator="今日",
-            sector_type="行业资金流",
-        )
-
-        if df is None or df.empty:
-            return {"status": "error", "message": "AKShare 返回空数据", "data": None}
-
-        # 解析字段 (东方财富字段名)
-        name_col = "名称"
-        change_col = "今日涨跌幅"
-        main_net_col = "今日主力净流入-净额"
-        main_pct_col = "今日主力净流入-净占比"
-
-        # 兼容字段名差异
-        if main_net_col not in df.columns:
-            for col in df.columns:
-                if "主力净流入" in col and "净额" in col:
-                    main_net_col = col
-                    break
-        if main_pct_col not in df.columns:
-            for col in df.columns:
-                if "主力净流入" in col and "净占比" in col:
-                    main_pct_col = col
-                    break
-        if change_col not in df.columns:
-            for col in df.columns:
-                if "涨跌幅" in col:
-                    change_col = col
-                    break
-
-        # 确保主力净流入为数值
-        df[main_net_col] = df[main_net_col].astype(float)
-        df_sorted = df.sort_values(main_net_col, ascending=False)
-
-        def _parse_row(row) -> dict:
-            return {
-                "name": str(row.get(name_col, "")),
-                "change_pct": round(float(row.get(change_col, 0)), 2),
-                "main_net_inflow": round(float(row.get(main_net_col, 0)) / 1e4, 2),  # 万元
-                "main_net_pct": round(float(row.get(main_pct_col, 0)), 2),
-            }
-
-        inflow_top = [_parse_row(row) for _, row in df_sorted.head(10).iterrows()]
-        outflow_top = [_parse_row(row) for _, row in df_sorted.tail(5).iloc[::-1].iterrows()]
-
-        result = {
-            "status": "success",
-            "data": {
-                "market": "A_SHARE",
-                "market_name": "A股行业",
-                "inflow_top": inflow_top,
-                "outflow_top": outflow_top,
-                "unit": "万元",
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-                "source": "AKShare (东方财富)",
-            },
-        }
+        result["data"]["updated_at"] = datetime.now(timezone.utc).isoformat()
 
         # 3. 写入缓存
         try:

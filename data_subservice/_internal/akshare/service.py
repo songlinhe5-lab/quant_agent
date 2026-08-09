@@ -12,7 +12,10 @@ from typing import Any, Dict, List, Optional
 
 from data_subservice._internal.akshare.calendar import get_economic_calendar
 from data_subservice._internal.akshare.flow import (
+    get_a_share_margin,
+    get_a_share_sector_flow,
     get_hk_connect_flow,
+    get_hk_sector_flow,
     get_hsgt_top_holders,
     get_individual_flow,
     get_northbound_flow_full,
@@ -210,6 +213,42 @@ class AKShareService:
             logger.warning(f"[AKShare] 港股新闻获取失败: {e}")
             self._record_failure("news")
             return []
+
+    async def get_margin_a_share(self) -> Dict[str, Any]:
+        def _call():
+            return get_a_share_margin()
+
+        try:
+            result = await circuit_breaker.call("akshare:margin", _call)
+            self._record_success("margin")
+            return result
+        except Exception as e:
+            self._record_failure("margin")
+            return {"status": "error", "message": str(e), "data": None}
+
+    async def get_sector_flow_a(self) -> Dict[str, Any]:
+        def _call():
+            return get_a_share_sector_flow()
+
+        try:
+            result = await circuit_breaker.call("akshare:sector_a", _call)
+            self._record_success("sector_a")
+            return result
+        except Exception as e:
+            self._record_failure("sector_a")
+            return {"status": "error", "message": str(e), "data": None}
+
+    async def get_sector_flow_hk(self) -> Dict[str, Any]:
+        def _call():
+            return get_hk_sector_flow()
+
+        try:
+            result = await circuit_breaker.call("akshare:sector_hk", _call)
+            self._record_success("sector_hk")
+            return result
+        except Exception as e:
+            self._record_failure("sector_hk")
+            return {"status": "error", "message": str(e), "data": None}
 
 
 # 全局单例

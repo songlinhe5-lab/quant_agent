@@ -50,6 +50,9 @@ class AKShareDataSource:
             "HISTORY_A",  # A 股新浪源历史兜底
             "ECONOMIC_CALENDAR",  # 经济日历
             "NEWS",  # 港股新闻
+            "MARGIN_A_SHARE",  # A 股融资融券余额
+            "SECTOR_FLOW_A",  # A 股行业板块资金流
+            "SECTOR_FLOW_HK",  # 港股南向行业资金流
         ]
 
     @property
