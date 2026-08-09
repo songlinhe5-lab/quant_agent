@@ -142,7 +142,7 @@ async def test_subscription_service_start_broker_kline_ingest_returns_task_or_no
     assert isinstance(t2, asyncio.Task)
     assert svc._broker_task is t1 and svc._kline_task is t2
     # 重复调用取消旧任务
-    t3 = svc.start_broker_ingest(["HK.00700"])
+    svc.start_broker_ingest(["HK.00700"])
     assert t1.cancelled() or t1.done() or t1.cancelling()
     svc.stop_poly_ingest()
     assert svc._broker_task is None and svc._kline_task is None
