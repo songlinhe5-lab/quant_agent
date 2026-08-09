@@ -695,7 +695,14 @@ STATUS: PRODUCTION READY ✨
     - 新建 `backend/services/ai_narrator/quota_monitor.py` 的 `QuotaCostMonitor`：周期（默认 60s）扫描 ① LLM 当日 token 消耗 vs `LLM_DAILY_TOKEN_BUDGET`（达 80% warning / 100% critical）② Finnhub 当日 `rl_quota_exhausted > 0`（硬停服 critical）→ 经 `notification_service.send_alert` 推送飞书（接 OBS-02）；内置队列解耦 + 15min 去重冷却防告警风暴。
     - `lifecycle.startup` / `shutdown` 挂接 `quota_cost_monitor`，`/health/deep` 暴露 `quota_cost_monitor` 探针。
     - 守门：`test_quota_cost_monitor.py`（13 用例，覆盖 token 累计/降级/预算 warning·critical·阈值下不告警/预算禁用/Finnhub 配额耗尽/去重/生命周期/端到端推送）全绿；`.env.example` 补 `LLM_DAILY_TOKEN_BUDGET` / `LLM_TOKEN_METRICS_ENABLED` 说明。
-- [ ] **[SVC-06]** 三方服务 Mock/Stub：本地开发与 CI 全程可离线运行，不依赖真实 API Key，保证测试确定性与可重复
+- [x] **[SVC-06]** 三方服务 Mock/Stub：本地开发与 CI 全程可离线运行，不依赖真实 API Key，保证测试确定性与可重复
+  - **交付（2026-08-09）**：
+    - 新建 `backend/services/ai_narrator/llm_stub.py` 的 `LLMStubProvider`：构造与 OpenAI 响应结构兼容的确定性假响应（含 `usage.prompt/completion/total_tokens`），支持文本模式（`make_text_response`）与 JSON 模式（`make_json_response` 返回 pydantic 最小合法实例 JSON，确保 `generate_pydantic` 校验通过）；`is_offline_llm_enabled()` 在 `QUANT_ENV∈{offline,testing,dev}` 或 `LLM_STUB=1` 时启用。
+    - `llm_service.py` 接入：`LLMService._is_offline()` + `_offline_override`（测试可注入）；`generate` / `generate_pydantic` 离线分支短路到 stub（保留 `await self._record_token_usage(...)` 验证 SVC-05 计量链路）；`_record_token_usage` 改为 `async` 并直接 `await store.record(...)`（异常安全，消除 fire-and-forget 调度不确定性）。
+    - 新建 `backend/services/datasource/offline_stub.py`：统一确定性 stub 数据（yfinance/akshare/tushare/futu/fmp/finnhub/fred/dbnomics/rbi/search 等），`build_offline_response(source, action, **params)` 返回 `{"success":True,"offline_stub":True,...}`；`is_offline_mode_enabled()` 在 `OFFLINE_MODE=1` 或 `QUANT_ENV=offline` 时启用（**刻意不把 testing/dev 纳入**，避免破坏既有 router 集成测试，它们依赖 conftest 的远程节点 mock 走真实路径）。
+    - `data_source_router.py` 接入：`_maybe_offline(source, action, **params)` 统一拦截，在 10 个 `fetch_*` 方法入口注入短路（OFFLINE_MODE=1 时连子服务节点都不触网）。
+    - `conftest.py` 注册 `live_network` pytest 标记（需真实网络/Key 的集成测试默认 skip）。
+    - 守门：`test_offline_stubs.py`（16 用例，覆盖离线开关判定/LLM 文本·JSON·token 计量联动/router 全源短路/live_network 标记）全绿；既有 `test_data_source_router.py` 未引入新失败（6 个 akshare 失败为预先存在，依赖已移除的本地降级通道，与本次无关）。
 - [ ] **[SVC-07]** 降级与混沌测试：模拟 Futu 断连 / YFinance 超时 / OpenAI 限流，验证熔断器（BE-04）、数据源自动切换、Ollama 降级（对照 `docs/12` 应急预案）真实生效
 
 ### 文档

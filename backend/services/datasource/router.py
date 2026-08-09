@@ -49,6 +49,10 @@ from backend.services.datasource import (
     parse_retry_after,
     rate_limit_registry,
 )
+from backend.services.datasource.offline_stub import (
+    build_offline_response,
+    is_offline_mode_enabled,
+)
 
 # 数据子服务统一数据端点 (契约见 data_subservice/main.py::fetch_data)
 _DATA_ENDPOINT = "/api/v1/data"
@@ -539,12 +543,26 @@ class DataSourceRouter:
         healthy.sort(key=lambda n: (n.is_throttled, -n.weight, n.consecutive_rate_limits))
         return healthy[0]
 
+    def _maybe_offline(self, source: str, action: str = "", **params) -> Optional[Dict[str, Any]]:
+        """SVC-06: 离线 stub 拦截。
+
+        当 OFFLINE_MODE=1 或 QUANT_ENV∈{offline,testing,dev} 时，直接返回确定性 stub，
+        连子服务节点都不触网。生产环境（OFFLINE_MODE=0）返回 None 走真实远程。
+        """
+        if not is_offline_mode_enabled():
+            return None
+        return build_offline_response(source, action, **params)
+
     async def fetch_yfinance(self, ticker: str, fetch_type: str, **kwargs) -> Dict[str, Any]:
         """联邦 YF 流量到 US-YF-A/B 子服务节点。
 
         后端进程不再本地执行 yfinance。若路由未启用或所有子服务节点不可用，
         直接返回失败（不再降级本地 yfinance）。
         """
+        offline = self._maybe_offline("yfinance", fetch_type, ticker=ticker, **kwargs)
+        if offline is not None:
+            return offline
+
         if not self._enabled:
             return {
                 "success": False,
@@ -613,8 +631,12 @@ class DataSourceRouter:
 
         设计原则 (2026-08-07): 仅远程，移除本地 SDK 降级。router 未启用或远程节点
         不可用时直接返回失败（源失效在监控中如实显示）。成功响应仍存档 STALE/热点
-        缓存，供 CN 断连时监控侧识别降级，但不自动回退本地。
+        缓存，        供 CN 断连时监控侧识别降级，但不自动回退本地。
         """
+        offline = self._maybe_offline("akshare", action, **kwargs)
+        if offline is not None:
+            return offline
+
         remote_node = self._nodes.get("akshare_remote")
         if not self._enabled or not remote_node or remote_node.status != "healthy":
             logger.warning("[AKShare] 远程节点不可用（后端已移除本地兜底）")
@@ -651,6 +673,10 @@ class DataSourceRouter:
         经 _TS_ACTION_MAP 归一化后走远程；子服务不支持的 action 直接返回失败，
         不再回退本地 TushareService。
         """
+        offline = self._maybe_offline("tushare", action, **params)
+        if offline is not None:
+            return offline
+
         remote_node = self._nodes.get("tushare_remote")
         if not self._enabled or not remote_node or remote_node.status != "healthy":
             logger.warning("[Tushare] 远程节点不可用（后端已移除本地兜底）")
@@ -688,6 +714,10 @@ class DataSourceRouter:
 
         设计原则 (2026-08-07): 仅远程，移除本地 futu_service 降级通道。
         """
+        offline = self._maybe_offline("futu", action, **params)
+        if offline is not None:
+            return offline
+
         remote_action = _FUTU_ACTION_MAP.get(action.lower(), action.upper())
 
         # 业务侧统一用 ticker/tickers, 子服务 worker 契约用 symbol/symbols, 此处对齐
@@ -740,6 +770,10 @@ class DataSourceRouter:
 
         设计原则 (2026-08-07): 仅远程，移除本地 _local_get 直连兜底。
         """
+        offline = self._maybe_offline("fmp", action, **params)
+        if offline is not None:
+            return offline
+
         _FMP_ACTION_MAP = {
             "quote": "QUOTE",
             "profile": "PROFILE",
@@ -785,6 +819,10 @@ class DataSourceRouter:
         (_internal/finnhub + finnhub_worker.py)。主服务不持有 FinnhubService / WS 订阅，
         quote 走 REST 快照。仅远程，无本地 SDK 兜底。
         """
+        offline = self._maybe_offline("finnhub", action, **params)
+        if offline is not None:
+            return offline
+
         remote_action = _FINNHUB_ACTION_MAP.get(action.lower(), action.upper())
         remote_node = self._nodes.get("finnhub_master")
         if not self._enabled or not remote_node or remote_node.status != "healthy":
@@ -815,6 +853,10 @@ class DataSourceRouter:
         宏观连接层 (FRED REST) 已下沉 data_subservice (_internal/fred + fred_worker.py)。
         主服务不再本地调用 fred_service。仅远程。
         """
+        offline = self._maybe_offline("fred", action, **params)
+        if offline is not None:
+            return offline
+
         remote_node = self._nodes.get("fred_master")
         if not self._enabled or not remote_node or remote_node.status != "healthy":
             logger.warning("[FRED] 远程节点不可用（后端已移除本地兜底）")
@@ -844,6 +886,10 @@ class DataSourceRouter:
         宏观连接层 (DBnomics REST) 已下沉 data_subservice (_internal/dbnomics + dbnomics_worker.py)。
         仅远程。
         """
+        offline = self._maybe_offline("dbnomics", action, **params)
+        if offline is not None:
+            return offline
+
         remote_node = self._nodes.get("dbnomics_master")
         if not self._enabled or not remote_node or remote_node.status != "healthy":
             logger.warning("[DBnomics] 远程节点不可用（后端已移除本地兜底）")
@@ -873,6 +919,10 @@ class DataSourceRouter:
         宏观连接层 (RBI 爬虫) 已下沉 data_subservice (_internal/rbi + rbi_worker.py)。
         仅远程。
         """
+        offline = self._maybe_offline("rbi", action, **params)
+        if offline is not None:
+            return offline
+
         remote_node = self._nodes.get("rbi_master")
         if not self._enabled or not remote_node or remote_node.status != "healthy":
             logger.warning("[RBI] 远程节点不可用（后端已移除本地兜底）")
@@ -902,6 +952,10 @@ class DataSourceRouter:
         外部搜索/抓取经 data_subservice 统一代理 (search_worker.py)，主服务不再直接
         httpx 外部 API。source ∈ {tavily, bocha, jina}。仅远程。
         """
+        offline = self._maybe_offline("search", source, **params)
+        if offline is not None:
+            return offline
+
         remote_node = self._nodes.get("search_master")
         if not self._enabled or not remote_node or remote_node.status != "healthy":
             logger.warning(f"[Search/{source}] 远程节点不可用（后端已移除直连）")

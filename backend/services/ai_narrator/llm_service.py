@@ -183,6 +183,10 @@ class LLMService:
         if self.api_key:
             self._init_client()
 
+        # SVC-06: 离线 stub 模式开关（None=按环境自动判定，True/False=强制覆盖）。
+        # 用于测试注入或本地显式离线。默认 None → 由 llm_stub.is_offline_llm_enabled() 决定。
+        self._offline_override: Optional[bool] = None
+
     def _init_client(self):
         """初始化 OpenAI 客户端（需要已设置 api_key）"""
         self._client = AsyncOpenAI(
@@ -221,6 +225,17 @@ class LLMService:
             return self.router.get_model(tier)
         return self.model_name
 
+    def _is_offline(self) -> bool:
+        """SVC-06: 是否走 LLM 离线 stub（不触网）。
+
+        优先级：实例 _offline_override 显式覆盖 > 环境变量自动判定。
+        """
+        if self._offline_override is not None:
+            return self._offline_override
+        from backend.services.ai_narrator.llm_stub import is_offline_llm_enabled
+
+        return is_offline_llm_enabled()
+
     async def close(self):
         """安全关闭 OpenAI 客户端底层的 HTTP 连接池"""
         if self._client:
@@ -246,6 +261,19 @@ class LLMService:
         """
         schema_str = json.dumps(response_model.model_json_schema(), ensure_ascii=False)
         enhanced_system_prompt = f"{system_prompt}\n\nYou MUST output ONLY a valid JSON object that strictly adheres to the following JSON Schema:\n{schema_str}"  # noqa: E501
+
+        # SVC-06: 离线 stub 短路（不触网，返回确定性最小合法 JSON，供调用方校验）
+        if self._is_offline():
+            from backend.services.ai_narrator.llm_stub import llm_stub_provider
+
+            response = llm_stub_provider.make_json_response(response_model)
+            # 走真实 token 计量插桩，验证 SVC-05 计量链路（异常安全）
+            await self._record_token_usage(response)
+            content = response.choices[0].message.content or ""
+            try:
+                return response_model.model_validate_json(content)
+            except ValidationError as e:
+                raise ValueError(f"LLM 离线 stub 输出未通过校验: {e}")
 
         client = self.get_client(tier)
         model = self.get_model(tier)
@@ -283,8 +311,12 @@ class LLMService:
             print(f"⚠️ [LLMService] 结构化输出校验失败: {e}\n👉 原始输出: {content}")
             raise ValueError(f"LLM 输出未通过 Pydantic 校验: {e}")
 
-    def _record_token_usage(self, response: Any) -> None:
-        """从 OpenAI 响应提取 token 消耗并异步记录（异常安全，不拖累热路径）。"""
+    async def _record_token_usage(self, response: Any) -> None:
+        """从 OpenAI 响应提取 token 消耗并异步记录（异常安全，不拖累热路径）。
+
+        store.record 已是异常安全的轻量 Redis hincrby，直接 await 即可，
+        无需 fire-and-forget（避免任务调度不确定性，且 record 不抛回业务层）。
+        """
         usage = getattr(response, "usage", None)
         if usage is None:
             return
@@ -292,26 +324,14 @@ class LLMService:
             prompt = getattr(usage, "prompt_tokens", 0) or 0
             completion = getattr(usage, "completion_tokens", 0) or 0
             total = getattr(usage, "total_tokens", 0) or 0
-            # 以 fire-and-forget 方式写入，避免 await 阻塞调用方
             from backend.services.ai_narrator.token_usage_store import token_usage_store
 
             store = token_usage_store
             if not store.enabled:
                 return
-            try:
-                import asyncio
-
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    loop.create_task(store.record(prompt, completion, total))
-                else:
-                    asyncio.run(store.record(prompt, completion, total))
-            except RuntimeError:
-                # 无事件循环（极少），降级为同步记录的内存累计不触发，
-                # 记录跳过（不致命）
-                pass
-        except Exception as e:  # noqa: BLE001
-            logger.debug(f"[LLMService] token 计量失败（已忽略）: {e}")
+            await store.record(prompt, completion, total)
+        except Exception:  # noqa: BLE001
+            pass
 
     async def generate(
         self,
@@ -335,6 +355,16 @@ class LLMService:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": user_prompt})
 
+        # SVC-06: 离线 stub 短路（不触网，返回确定性文本，供调用方降级逻辑消费）
+        if self._is_offline():
+            from backend.services.ai_narrator.llm_stub import llm_stub_provider
+
+            response = llm_stub_provider.make_text_response(
+                f"[离线stub] 已为 prompt 生成确定性解说：{user_prompt[:40]}…"
+            )
+            await self._record_token_usage(response)
+            return response.choices[0].message.content.strip()
+
         try:
             response = await client.chat.completions.create(
                 model=model_name,
@@ -350,7 +380,7 @@ class LLMService:
             raise
 
         content = response.choices[0].message.content or ""
-        self._record_token_usage(response)
+        await self._record_token_usage(response)
         return content.strip()
 
 
