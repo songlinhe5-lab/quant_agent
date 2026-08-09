@@ -1,0 +1,48 @@
+interactions:
+- request:
+    body: '{"source": "finnhub", "action": "QUOTE", "params": {"symbol": "AAPL"}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '70'
+      content-type:
+      - application/json
+      host:
+      - 127.0.0.1:18199
+      user-agent:
+      - python-httpx/0.28.1
+      x-signature:
+      - 9226955531a9f96aed4cdc0e0e13d4a3a18584932b488adab66869c048c91b9a
+      x-timestamp:
+      - '1786283250'
+    method: POST
+    uri: http://127.0.0.1:18199/api/v1/data
+  response:
+    body:
+      string: '{"code": 0, "data": {"c": 189.71, "d": 1.23, "dp": 0.65, "h": 190.5,
+        "l": 188.1, "o": 188.4, "pc": 188.48, "t": 1723819200, "v": 48213900, "symbol":
+        "AAPL"}, "meta": {"source": "finnhub", "action": "QUOTE", "latency_ms": 42}}'
+    headers:
+      connection:
+      - keep-alive
+      content-length:
+      - '225'
+      content-type:
+      - application/json
+      date:
+      - Sun, 09 Aug 2026 13:47:30 GMT
+      keep-alive:
+      - timeout=60
+      proxy-connection:
+      - keep-alive
+      server:
+      - BaseHTTP/0.6 Python/3.13.5
+    status:
+      code: 200
+      message: OK
+version: 1

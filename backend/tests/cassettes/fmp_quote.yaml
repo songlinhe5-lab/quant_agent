@@ -1,0 +1,49 @@
+interactions:
+- request:
+    body: '{"source": "fmp", "action": "QUOTE", "params": {"symbol": "AAPL"}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '66'
+      content-type:
+      - application/json
+      host:
+      - 127.0.0.1:18199
+      user-agent:
+      - python-httpx/0.28.1
+      x-signature:
+      - 79bb2030bd731ee816f7dc0777b0c7e6a4633131565815005b17a6f4aa530961
+      x-timestamp:
+      - '1786283250'
+    method: POST
+    uri: http://127.0.0.1:18199/api/v1/data
+  response:
+    body:
+      string: '{"code": 0, "data": {"symbol": "AAPL", "price": 189.71, "changesPercentage":
+        0.65, "change": 1.23, "dayLow": 188.1, "dayHigh": 190.5, "open": 188.4, "previousClose":
+        188.48, "volume": 48213900}, "meta": {"source": "fmp", "action": "QUOTE",
+        "latency_ms": 51}}'
+    headers:
+      connection:
+      - keep-alive
+      content-length:
+      - '258'
+      content-type:
+      - application/json
+      date:
+      - Sun, 09 Aug 2026 13:47:30 GMT
+      keep-alive:
+      - timeout=60
+      proxy-connection:
+      - keep-alive
+      server:
+      - BaseHTTP/0.6 Python/3.13.5
+    status:
+      code: 200
+      message: OK
+version: 1

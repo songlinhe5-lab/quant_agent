@@ -680,7 +680,12 @@ STATUS: PRODUCTION READY ✨
 
 > 量化系统所有结论 100% 依赖外部数据源（Futu / YFinance / Finnhub / OpenAI / Ollama / FRED）。三方 API 静默变更字段、限流、宕机是最高频的生产事故源，必须独立测试 + 持续监控。
 
-- [ ] **[SVC-01]** 三方数据源契约测试（录制回放）：用 `vcrpy` / `pytest-recording` 录制真实响应为固定 fixture，CI 离线回放，三方改字段时立即让解析层测试变红
+- [x] **[SVC-01]** 三方数据源契约测试（录制回放）：用 `vcrpy` 录制真实响应为固定 fixture，CI 离线回放，三方改字段时立即让解析层测试变红 ✅ **2026-08-09**：
+  - **录制点**：`DataSourceRouter._send_request` 发出的 `httpx` 调用（到 `data_subservice` 的 `POST /api/v1/data`）。cassettes 预置在 `backend/tests/cassettes/`（finnhub_quote / fmp_quote / futu_quote / yfinance_quote / fred_macro_series）。
+  - **契约载体**：子服务响应 `{"code":0,"data":...}` → router `_normalize_response` → `{"status":"success","data":...}`；适配器解析 `data` 字段。任一源（Yahoo/Finnhub/FMP/Futu/FRED）改字段 → 对应断言变红。
+  - **离线工作流**：默认 `record_mode='none'` 离线回放（`match_on=["method","path"]` 忽略 host/port/签名，端口无关）；`QUANT_RECORD=1` 时连 `ContractMockSubservice`（线程内 mock 子服务）补录 cassette。
+  - 新建 `backend/tests/contract_helpers.py`（`ContractMockSubservice` + `get_vcr` + cassette 管理）、`backend/tests/test_contract_replay.py`（5 个契约用例，覆盖 finnhub/fmp/futu/yfinance/fred 字段契约断言）；`conftest.py` 注册 `contract_replay` 标记；`.env.example` 补 `QUANT_RECORD` 说明。
+  - 守门：`test_contract_replay.py`（5 用例）离线回放全绿；`vcrpy` 依赖入 `pyproject.toml` + `uv.lock`。
 - [ ] **[SVC-02]** 三方服务可用性拨测：定时探活 Futu OpenD / YFinance / Finnhub / OpenAI / Ollama / FRED，成功率与延迟写入 Prometheus metrics
 - [x] **[SVC-03]** 三方服务监控面板 + 告警 ✅ **2026-08-09**：
   - **Grafana 数据源（API 层，已天然具备）**：`backend/routers/datasource.py` 的 `GET /datasource/health-overview` + `GET /datasource/{name}/health` 经 `call_metrics_store`（已记录 success/calls + 延迟样本）+ `_build_health_card` 返回完整 `status`(含 stale/throttled/blocked/quota_exhausted 等熔断态)、`success_rate`、`today_calls`、`latency_avg_ms/p95_ms`、`rl_*` 限流明细 —— Grafana 可直接 scrape 此 JSON 端点实现成功率/延迟/熔断面板，无需新建采集层。

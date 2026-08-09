@@ -191,8 +191,8 @@ directory = "htmlcov"
 #    否则 pre-commit 只能靠 `uv run --with mypy` 临时解析，每次多付 ~3s 解析开销。
 dev = [
     # ── 类型检查 / Lint / Hook 工具链 ──
-    "ruff==0.15.16",  # 锁定到 uv.lock 版本，避免解析到更新版导致格式检查漂移
-    "mypy>=1.10.0,<3",  # pre-commit mypy hook 依赖; 上界防 3.x 破坏性变更导致校验漂移
+    "ruff==0.15.16", # 锁定到 uv.lock 版本，避免解析到更新版导致格式检查漂移
+    "mypy>=1.10.0,<3", # pre-commit mypy hook 依赖; 上界防 3.x 破坏性变更导致校验漂移
     "pre-commit>=3.6.0",
     # ── 测试 ──
     "pytest>=8.0.0",
@@ -201,4 +201,5 @@ dev = [
     "pytest-timeout>=2.3.0",
     "pytest-xdist>=3.6.0",
     "httpx>=0.27.0",
+    "vcrpy>=8.3.0",
 ]
