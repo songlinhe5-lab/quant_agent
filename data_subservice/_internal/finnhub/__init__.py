@@ -82,6 +82,15 @@ class FinnhubService:
     async def get_insider_transactions(self, ticker: str, limit: int = 30) -> dict[str, Any]:
         return await self._get("/stock/insider-transactions", {"symbol": ticker})
 
+    async def get_dividend_calendar(self, symbol: str | None = None) -> dict[str, Any]:
+        """分红日历 (BE-ARCH-07e: 自 calendars 路由下沉)。可选按 symbol 过滤。"""
+        params = {"symbol": symbol} if symbol else {}
+        return await self._get("/calendar/dividend", params)
+
+    async def get_ipo_calendar(self) -> dict[str, Any]:
+        """IPO 日历 (BE-ARCH-07e: 自 calendars 路由下沉)。"""
+        return await self._get("/calendar/ipo", {})
+
     async def get_stock_history(self, ticker: str, days_back: int = 365) -> dict[str, Any]:
         from datetime import datetime, timedelta
 

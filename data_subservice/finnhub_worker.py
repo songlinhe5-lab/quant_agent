@@ -19,6 +19,8 @@ _FINNHUB_DISPATCH: dict[str, Any] = {
     "ECONOMIC_CALENDAR": ("get_economic_calendar", ["days_ahead", "days_back"]),
     "INSIDER_TRADING": ("get_insider_transactions", ["ticker", "limit"]),
     "STOCK_HISTORY": ("get_stock_history", ["ticker", "days_back"]),
+    "DIVIDEND_CALENDAR": ("get_dividend_calendar", ["symbol"]),
+    "IPO_CALENDAR": ("get_ipo_calendar", []),
 }
 
 

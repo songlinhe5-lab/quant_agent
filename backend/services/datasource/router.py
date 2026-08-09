@@ -113,6 +113,8 @@ _FINNHUB_ACTION_MAP = {
     "economic_calendar": "ECONOMIC_CALENDAR",
     "insider_trading": "INSIDER_TRADING",
     "stock_history": "STOCK_HISTORY",
+    "dividend_calendar": "DIVIDEND_CALENDAR",
+    "ipo_calendar": "IPO_CALENDAR",
 }
 
 # DIST-19: AKShare STALE 缓存配置
