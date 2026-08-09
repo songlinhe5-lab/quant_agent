@@ -827,6 +827,10 @@ class DataSourceRouter:
             "quote": "QUOTE",
             "profile": "PROFILE",
             "income_statement": "INCOME_STATEMENT",
+            # BE-ARCH-08g: Facade 的 get_fundamental/get_fundamental_info 以 FUNDAMENTAL/INFO
+            # 抵达, 显式映射避免回退到 action.upper() 的隐式约定, 保证 worker 分支命中。
+            "fundamental": "FUNDAMENTAL",
+            "info": "INFO",
         }
         remote_action = _FMP_ACTION_MAP.get(action.lower(), action.upper())
 

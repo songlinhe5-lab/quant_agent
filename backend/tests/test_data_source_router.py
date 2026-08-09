@@ -731,3 +731,33 @@ class TestFetchAkshareStaleDegrade:
         payload = {"action": "stock_zh_a_spot_em", "params": {}, "kwargs": {}}
         result = await router.fetch_akshare(payload)
         assert result["status"] == "error"
+
+
+# ==========================================
+# BE-ARCH-08g: FMP FUNDAMENTAL/INFO 路由打通 (Facade 选到 fmp 不再必失败)
+# ==========================================
+class TestFmpFundamentalInfoRouting:
+    """验收：Facade 的 get_fundamental/get_fundamental_info 以 FUNDAMENTAL/INFO 抵达
+    router.fetch_fmp 后, 经 _FMP_ACTION_MAP 映射为子服务 worker 可识别的
+    FUNDAMENTAL/INFO action (此前缺失 → worker 返回"未知 fmp action")。"""
+
+    @pytest.mark.asyncio
+    async def test_fmp_action_map_fundamental_info(self, monkeypatch, patch_redis_client):
+        router = DataSourceRouter(enabled=True, sources=["fmp"])
+        node = DataSourceNode(name="fmp_master", url="http://fmp", status="healthy")
+        router._nodes["fmp_master"] = node
+        captured = {}
+
+        async def fake_send(n, source, payload):
+            captured["action"] = payload["action"]
+            return {"status": "success", "data": {"ok": True}}
+
+        monkeypatch.setattr(router, "_send_request", fake_send)
+
+        await router.fetch_fmp("fundamental", symbol="AAPL")
+        assert captured["action"] == "FUNDAMENTAL"
+        await router.fetch_fmp("info", symbol="AAPL")
+        assert captured["action"] == "INFO"
+        # 既有 action 仍映射正确
+        await router.fetch_fmp("profile", symbol="AAPL")
+        assert captured["action"] == "PROFILE"
