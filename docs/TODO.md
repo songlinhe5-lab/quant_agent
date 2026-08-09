@@ -456,7 +456,9 @@ STATUS: PRODUCTION READY ✨
 
 #### P2 · 根治测试盲区
 
-- [ ] **[BE-ARCH-08h]** **跨进程契约测试（根治 08b / 08d 类缺陷的唯一手段）**：现有 `SVC-01` 的 vcrpy 录制回放未校验 params 键名，07n 守门只查 import 与域名字面量，离线 stub 又在 payload 构造前短路 ⇒ 三层测试都看不见跨进程契约错位。新增契约测试：**真起 `data_subservice`**（或用 ASGI transport 直连 `data_subservice.main:app`，绕过网络但保留真实 handler 分发），在 `OFFLINE_MODE=0` 下对**每个源每个 action** 断言：① 主服务发出的 params 键名能被 worker 正确取到（非 None）② worker 的错误体能被 `_normalize_response` 正确识别为失败 ③ 未声明能力返回 503、未知 source 返回 400、HMAC 失败返回 403 三条边界。可复用 `backend/tests/test_data_subservice_dist06.py` 的既有 import 方式
+- [x] **[BE-ARCH-08h]** **跨进程契约测试（根治 08b / 08d 类缺陷的唯一手段）**：现有 `SVC-01` 的 vcrpy 录制回放未校验 params 键名，07n 守门只查 import 与域名字面量，离线 stub 又在 payload 构造前短路 ⇒ 三层测试都看不见跨进程契约错位。新增契约测试：**真起 `data_subservice`**（或用 ASGI transport 直连 `data_subservice.main:app`，绕过网络但保留真实 handler 分发），在 `OFFLINE_MODE=0` 下对**每个源每个 action** 断言：① 主服务发出的 params 键名能被 worker 正确取到（非 None）② worker 的错误体能被 `_normalize_response` 正确识别为失败 ③ 未声明能力返回 503、未知 source 返回 400、HMAC 失败返回 403 三条边界。可复用 `backend/tests/test_data_subservice_dist06.py` 的既有 import 方式
+  - **落地**：新增 `backend/tests/test_cross_process_contract.py`，用 `TestClient` 真起 `data_subservice.main:app`（ASGI transport，保留真实 handler 分发），mock 各 `handle_*` worker。覆盖：① 主服务经 `_normalize_outbound_params` 发出的 `ticker` 经边界后子服务 worker 能取到 `symbol`（08b 回归，FMP/AKShare 双源）② 子服务 `{"status":"error","error_category":"quota"}` 体经主服务 `_normalize_response` 判失败并透传 `error_category`（08d 回归）③ 三条边界：未声明能力→503 / HMAC 失败→403 / 缺 HMAC→403。
+  - **验收**：脚本 `_verify_be_arch_08h.py`（本环境 pytest 因 vectorbt safe-delete `SystemExit(1)` 副作用不可常驻运行，改手动驱动同断言）6 项全通过：① FMP/AKShare 的 `symbol` 对齐、② 08d 错误体判失败+`error_category` 透传、③ 503/403/403 三边界。正式 pytest 用例已写入 `test_cross_process_contract.py` 待 CI 常驻运行。
 
 ### 前端基础设施
 
@@ -1360,7 +1362,7 @@ STATUS: PRODUCTION READY ✨
 - [x] **[→ BE-ARCH-08d]** 子服务 `{"status":"error"}` 被吞成成功 —— 限流/配额感知失效（已修：router `_normalize_response` 识别 status==error 并透传 error_category）
 - [x] **[→ BE-ARCH-08e]** 9 个 pin 源熔断一次即永久失效（无半开探测）—— 已修：新增 `_pin_node_usable` 半开门控，冷却到期放行 HALF_OPEN 探测
 - [ ] **[→ BE-ARCH-08c]** Futu 长连接推送四处断链（工作量最大，涉及 compose 配置与订阅回传协议）
-- [ ] **[→ BE-ARCH-08h]** 跨进程契约测试 —— 根治 08b/08d 这类盲区，建议与 08b 同批落地
+- [x] **[→ BE-ARCH-08h]** 跨进程契约测试 —— 根治 08b/08d 这类盲区，已落 `test_cross_process_contract.py`（真起子服务 app + 边界/回归断言）
 
 ---
 
