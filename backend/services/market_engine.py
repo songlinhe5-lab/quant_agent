@@ -28,9 +28,10 @@ from backend.services.alert.notification import notification_service
 from backend.services.datalake.kline_warehouse import kline_warehouse
 from backend.services.datasource.router import data_source_router
 
-# BE-ARCH-07b: 子服务化后 futu 经 DataSourceRouter 远程调用，本地 futu_service 仅保留
-# is_futu_unsupported / unsubscribe_quote / cache_mgr 等 tracer 判定逻辑，不再做连接门控。
-from backend.services.futu import futu_service
+# BE-ARCH-08a: 卸载主服务对 futu 包的硬依赖。子服务化后主服务不再持有 OpenD 连接与本地
+# 订阅缓存，仅保留纯函数判定 is_futu_unsupported（位于 utils.py，零 SDK import）。原
+# unsubscribe_quote / cache_mgr.evict_stale_cache 操作主服务不持有的资源，属死代码已删除。
+from backend.services.futu.utils import is_futu_unsupported
 
 logger = logging.getLogger(__name__)
 
@@ -299,22 +300,14 @@ class ConnectionManager:
                     # 恒为 False 废掉了下方 4 段已合规的 fetch_futu 调用。Router 内部已处理不可用。
 
                     # 💡 [额度释放 GC 机制]：对比当前真实需要的标的与已订阅的标的，自动剔除无人观看的废弃订阅  # noqa: E501
-                    current_futu_needs = {t for t in all_tickers if not futu_service.is_futu_unsupported(t)}  # noqa: E501
+                    current_futu_needs = {t for t in all_tickers if not is_futu_unsupported(t)}  # noqa: E501
                     stale_subs = self._futu_active_subs - current_futu_needs
 
                     if stale_subs:
-                        print(
-                            f"🧹 [Futu GC] 检测到 {len(stale_subs)} 只标的已无活跃监听，正在向富途发起退订以释放额度..."
-                        )  # noqa: E501
+                        print(f"🧹 [Futu GC] 检测到 {len(stale_subs)} 只标的已无活跃监听，正在清理本地订阅记录...")  # noqa: E501
                         for stale_t in stale_subs:
-                            try:
-                                # 调用 futu_service 的退订方法释放底层占用
-                                if hasattr(futu_service, "unsubscribe_quote"):
-                                    await futu_service.unsubscribe_quote(stale_t)
-                                # 从系统的已订阅记录中移除
-                                self._futu_active_subs.discard(stale_t)
-                            except Exception as e:
-                                print(f"⚠️ [Futu GC] 退订 {stale_t} 失败: {e}")
+                            # 子服务化后底层退订由 Futu 子服务自行管理，主服务仅清理本地记录
+                            self._futu_active_subs.discard(stale_t)
 
                     # 更新当前活跃的富途订阅池
                     self._futu_active_subs.update(current_futu_needs)
@@ -326,10 +319,6 @@ class ConnectionManager:
                     stale_flow = [t for t in self.flow_cache if t not in all_tickers]
                     for t in stale_flow:
                         del self.flow_cache[t]
-
-                    # 💡 内存安全防御：清理 Futu 缓存过期条目
-                    if hasattr(futu_service, "cache_mgr"):
-                        futu_service.cache_mgr.evict_stale_cache()
 
                     # 💡 优化 1: 定时刷新技术面指标缓存 (仅在 Futu 连接时执行)
                     # 技术指标(日线级)无需每 3 秒全量并发刷新。设定为 1 小时更新一次，或发现新标的时触发  # noqa: E501
@@ -391,7 +380,7 @@ class ConnectionManager:
                     futu_check_tickers = []
                     current_time = time.time()
                     for t in all_tickers:
-                        if futu_service.is_futu_unsupported(t):
+                        if is_futu_unsupported(t):
                             yf_candidates.append(t)
                         elif current_time - self.last_futu_update.get(t, 0) > 10:
                             futu_check_tickers.append(t)
