@@ -28,14 +28,11 @@ from backend.services.alert.notification import notification_service
 from backend.services.datalake.kline_warehouse import kline_warehouse
 from backend.services.datasource.router import data_source_router
 
+# BE-ARCH-07b: 子服务化后 futu 经 DataSourceRouter 远程调用，本地 futu_service 仅保留
+# is_futu_unsupported / unsubscribe_quote / cache_mgr 等 tracer 判定逻辑，不再做连接门控。
+from backend.services.futu import futu_service
+
 logger = logging.getLogger(__name__)
-
-
-def _get_futu_service():
-    """延迟导入 futu_service，避免主节点无 futu SDK 时启动崩溃。"""
-    from backend.services.futu import futu_service
-
-    return futu_service
 
 
 async def update_quote_to_redis(ticker: str, quote_data: dict):
@@ -293,13 +290,13 @@ class ConnectionManager:
             try:
                 all_tickers = list(self.get_all_subscribed_tickers())
                 if all_tickers:
-                    futu_service = _get_futu_service()
                     # 💡 动态读取全局 YFinance 开关状态
                     yf_enabled_val = await l1_cached_redis.get("quant:settings:yfinance_enabled")  # noqa: E501
                     is_yf_enabled = yf_enabled_val != "0"
 
-                    # 💡 Futu 断连防御：检测连接状态，断连时跳过所有 Futu 调用防止 CPU 空转
-                    futu_connected = _get_futu_service().status == "CONNECTED"
+                    # BE-ARCH-07b: 移除 futu_connected 死门控。子服务化后 Futu 经 DataSourceRouter
+                    # 远程调用（节点自带熔断/健康度），主服务本地 status 恒非 CONNECTED，原门控
+                    # 恒为 False 废掉了下方 4 段已合规的 fetch_futu 调用。Router 内部已处理不可用。
 
                     # 💡 [额度释放 GC 机制]：对比当前真实需要的标的与已订阅的标的，自动剔除无人观看的废弃订阅  # noqa: E501
                     current_futu_needs = {t for t in all_tickers if not futu_service.is_futu_unsupported(t)}  # noqa: E501
@@ -340,7 +337,7 @@ class ConnectionManager:
                     need_global_tech_update = current_time - getattr(self, "last_tech_update", 0) > 3600  # noqa: E501
                     tickers_to_update = [t for t in all_tickers if t not in self.tech_cache or need_global_tech_update]  # noqa: E501
 
-                    if tickers_to_update and futu_connected:
+                    if tickers_to_update:
                         for t in tickers_to_update:
                             try:
                                 # 优先尝试利用 Futu 获取 120 日历史，完全免除外部网络请求  # noqa: E501
@@ -382,14 +379,13 @@ class ConnectionManager:
                         if need_global_tech_update:
                             self.last_tech_update = current_time
 
-                    # 💡 定时拉取资金流与席位 (仅在 Futu 连接时执行，断连时跳过防止 CPU 空转)  # noqa: E501
-                    if futu_connected:
-                        flow_tasks = [data_source_router.fetch_futu("FUND_FLOW", ticker=t) for t in all_tickers]  # noqa: E501
-                        flow_results = await asyncio.gather(*flow_tasks, return_exceptions=True)  # noqa: E501
+                    # 💡 定时拉取资金流与席位 (BE-ARCH-07b: 移除 futu_connected 死门控，经 Router 远程调用 Futu 节点，内部自带熔断)  # noqa: E501
+                    flow_tasks = [data_source_router.fetch_futu("FUND_FLOW", ticker=t) for t in all_tickers]  # noqa: E501
+                    flow_results = await asyncio.gather(*flow_tasks, return_exceptions=True)  # noqa: E501
 
-                        for ticker, f_res in zip(all_tickers, flow_results):
-                            if isinstance(f_res, dict) and f_res.get("status") == "success":
-                                self.flow_cache[ticker] = f_res
+                    for ticker, f_res in zip(all_tickers, flow_results):
+                        if isinstance(f_res, dict) and f_res.get("status") == "success":
+                            self.flow_cache[ticker] = f_res
 
                     yf_candidates = []
                     futu_check_tickers = []
@@ -423,8 +419,8 @@ class ConnectionManager:
                                         )  # noqa: E501
                                         asyncio.create_task(notification_service.send_alert(alert_msg))
 
-                    # 💡 每 10 秒异步拉取一次账户真实资产快照 (仅在 Futu 连接时执行)
-                    if futu_connected and current_time - getattr(self, "last_acc_update", 0) > 10:
+                    # 💡 每 10 秒异步拉取一次账户真实资产快照 (BE-ARCH-07b: 移除 futu_connected 死门控)
+                    if current_time - getattr(self, "last_acc_update", 0) > 10:
                         self.last_acc_update = current_time
                         try:
                             acc_res = await data_source_router.fetch_futu("ACCOUNT_INFO", market="HK")
@@ -436,8 +432,8 @@ class ConnectionManager:
                         except Exception:
                             pass
 
-                    # 1. 优先执行富途快照补漏 (仅在 Futu 连接时执行)
-                    if futu_connected and futu_check_tickers:
+                    # 1. 优先执行富途快照补漏 (BE-ARCH-07b: 移除 futu_connected 死门控)
+                    if futu_check_tickers:
                         batch_success = False
                         last_futu_error = None
 

@@ -561,8 +561,8 @@ class TestBroadcastLoop:
         with patch("backend.services.market_engine.asyncio.sleep", side_effect=fast_sleep):
             with patch("backend.services.market_engine.l1_cached_redis.get", return_value="1"):
                 with patch(
-                    "backend.services.market_engine._get_futu_service",
-                    return_value=MagicMock(status="CONNECTED"),
+                    "backend.services.market_engine.futu_service",
+                    MagicMock(status="CONNECTED"),
                 ) as mock_futu:
                     with patch("backend.services.market_engine.data_source_router.fetch_yfinance") as mock_yf:
                         # 配置 mock：YF 兜底改经 DataSourceRouter.fetch_yfinance（子服务）
@@ -613,8 +613,8 @@ class TestBroadcastLoop:
             with patch("backend.services.market_engine.asyncio.sleep", side_effect=fast_sleep):
                 with patch("backend.services.market_engine.l1_cached_redis.get", return_value="1"):
                     with patch(
-                        "backend.services.market_engine._get_futu_service",
-                        return_value=MagicMock(
+                        "backend.services.market_engine.futu_service",
+                        MagicMock(
                             status="CONNECTED",
                             is_futu_unsupported=MagicMock(return_value=False),
                         ),
@@ -657,8 +657,8 @@ class TestBroadcastLoop:
         with patch("backend.services.market_engine.asyncio.sleep", side_effect=fast_sleep):
             with patch("backend.services.market_engine.l1_cached_redis.get", return_value="0"):  # YF 禁用
                 with patch(
-                    "backend.services.market_engine._get_futu_service",
-                    return_value=MagicMock(status="CONNECTED"),
+                    "backend.services.market_engine.futu_service",
+                    MagicMock(status="CONNECTED"),
                 ) as mock_futu:
                     with patch("backend.services.market_engine.data_source_router.fetch_yfinance") as mock_yf:
                         mock_futu.is_futu_unsupported.return_value = True  # 不支持富途
@@ -689,8 +689,8 @@ class TestBroadcastLoop:
         with patch("backend.services.market_engine.asyncio.sleep", side_effect=fast_sleep):
             with patch("backend.services.market_engine.l1_cached_redis.get", side_effect=Exception("Redis error")):
                 with patch(
-                    "backend.services.market_engine._get_futu_service",
-                    return_value=MagicMock(status="CONNECTED"),
+                    "backend.services.market_engine.futu_service",
+                    MagicMock(status="CONNECTED"),
                 ) as mock_futu:
                     with patch("backend.services.market_engine.data_source_router.fetch_yfinance"):
                         mock_futu.is_futu_unsupported.return_value = True
@@ -720,8 +720,8 @@ class TestBroadcastLoop:
         with patch("backend.services.market_engine.asyncio.sleep", side_effect=fast_sleep):
             with patch("backend.services.market_engine.l1_cached_redis.get", return_value="1"):
                 with patch(
-                    "backend.services.market_engine._get_futu_service",
-                    return_value=MagicMock(status="CONNECTED", unsubscribe_quote=AsyncMock()),
+                    "backend.services.market_engine.futu_service",
+                    MagicMock(status="CONNECTED", unsubscribe_quote=AsyncMock()),
                 ) as mock_futu:
                     with patch("backend.services.market_engine.data_source_router.fetch_yfinance") as mock_yf:
                         # 配置 mock
@@ -774,8 +774,8 @@ class TestBroadcastLoop:
         with patch("backend.services.market_engine.asyncio.sleep", side_effect=fast_sleep):
             with patch("backend.services.market_engine.l1_cached_redis.get", return_value="1"):
                 with patch(
-                    "backend.services.market_engine._get_futu_service",
-                    return_value=MagicMock(status="CONNECTED"),
+                    "backend.services.market_engine.futu_service",
+                    MagicMock(status="CONNECTED"),
                 ) as mock_futu:
                     with patch("backend.services.market_engine.data_source_router.fetch_yfinance") as mock_yf:
                         # 关键：Futu 断连状态
