@@ -211,37 +211,6 @@ class TestDataSourceRouter:
         assert result["data"]["price"] == 165.0
 
     @pytest.mark.asyncio
-    async def test_call_local_akshare_southbound(self, router):
-        """本地 AKShare 南向资金"""
-        mock_ak = MagicMock()
-        mock_ak.get_southbound_flow = AsyncMock(return_value={"status": "success"})
-        result = await router._call_local_akshare("southbound", mock_ak)
-        assert result["status"] == "success"
-
-    @pytest.mark.asyncio
-    async def test_call_local_akshare_northbound(self, router):
-        """本地 AKShare 北向资金"""
-        mock_ak = MagicMock()
-        mock_ak.get_northbound_flow = AsyncMock(return_value={"status": "success"})
-        result = await router._call_local_akshare("northbound", mock_ak)
-        assert result["status"] == "success"
-
-    @pytest.mark.asyncio
-    async def test_call_local_akshare_unknown(self, router):
-        """未知 action"""
-        mock_ak = MagicMock()
-        result = await router._call_local_akshare("unknown_action", mock_ak)
-        assert result["status"] == "error"
-
-    @pytest.mark.asyncio
-    async def test_call_local_akshare_exception(self, router):
-        """AKShare 异常"""
-        mock_ak = MagicMock()
-        mock_ak.get_southbound_flow = AsyncMock(side_effect=Exception("网络错误"))
-        result = await router._call_local_akshare("southbound", mock_ak)
-        assert result["status"] == "error"
-
-    @pytest.mark.asyncio
     async def test_save_akshare_stale(self, router):
         """保存 STALE 缓存"""
         with patch("backend.services.datasource.router.redis_client", create=True) as mock_redis:
@@ -548,25 +517,30 @@ class TestFetchYFinance:
 
 
 class TestFetchAKShare:
-    @patch("backend.services.akshare.AKShareService.get_southbound_flow")
-    def test_fetch_akshare_disabled_router(self, mock_method, router_disabled):
-        mock_method.return_value = {"status": "success", "data": {}}
+    def test_fetch_akshare_disabled_router(self, router_disabled):
+        """Router 未启用时直接返回 error（不再本地兜底）"""
         result = asyncio.run(router_disabled.fetch_akshare("southbound"))
-        assert result["status"] == "success"
+        assert result["status"] == "error"
+        assert "未启用" in result["message"] or "disabled" in result["message"]
 
     @patch("backend.services.datasource.router.DataSourceRouter._send_request")
-    def test_fetch_akshare_remote_success(self, mock_send, router_enabled):
+    @patch("backend.services.datasource.router.DataSourceRouter._save_akshare_stale")
+    @patch("backend.services.datasource.router.DataSourceRouter._save_akshare_cache")
+    def test_fetch_akshare_remote_success(self, mock_cache, mock_stale, mock_send, router_enabled):
         mock_send.return_value = {"status": "success", "data": {"flow": 100}}
         result = asyncio.run(router_enabled.fetch_akshare("southbound"))
         assert result["status"] == "success"
+        mock_stale.assert_awaited_once()
+        mock_cache.assert_awaited_once()
 
+    @patch("backend.services.datasource.router.DataSourceRouter._get_akshare_stale")
     @patch("backend.services.datasource.router.DataSourceRouter._send_request")
-    @patch("backend.services.akshare.AKShareService.get_southbound_flow")
-    def test_fetch_akshare_fallback_local(self, mock_method, mock_send, router_enabled):
+    def test_fetch_akshare_remote_fail_no_stale(self, mock_send, mock_stale, router_enabled):
+        """远程失败且无 STALE 缓存时返回裸 error（不再本地兜底）"""
         mock_send.side_effect = Exception("Connection refused")
-        mock_method.return_value = {"status": "success", "data": {}}
+        mock_stale.return_value = None
         result = asyncio.run(router_enabled.fetch_akshare("southbound"))
-        assert result["status"] == "success"
+        assert result["status"] == "error"
 
 
 class TestHealthStatus:
@@ -698,8 +672,9 @@ class TestFetchAkshareStaleDegrade:
     无 STALE 缓存时才返回裸错。"""
 
     @pytest.mark.asyncio
-    async def test_remote_fail_falls_back_to_stale(self, monkeypatch, patch_redis_client):
-        router = DataSourceRouter(enabled=True, sources=["akshare"])
+    async def test_remote_fail_falls_back_to_stale(self, monkeypatch):
+        router = DataSourceRouter()
+        router._enabled = True
         node = DataSourceNode(name="akshare_remote", url="http://akshare", status="healthy")
         monkeypatch.setattr(router, "_select_node", lambda s: node)
         monkeypatch.setattr(
@@ -717,8 +692,9 @@ class TestFetchAkshareStaleDegrade:
         assert result.get("stale_source") is True
 
     @pytest.mark.asyncio
-    async def test_remote_fail_no_stale_returns_error(self, monkeypatch, patch_redis_client):
-        router = DataSourceRouter(enabled=True, sources=["akshare"])
+    async def test_remote_fail_no_stale_returns_error(self, monkeypatch):
+        router = DataSourceRouter()
+        router._enabled = True
         node = DataSourceNode(name="akshare_remote", url="http://akshare", status="healthy")
         monkeypatch.setattr(router, "_select_node", lambda s: node)
         monkeypatch.setattr(
@@ -742,11 +718,15 @@ class TestFmpFundamentalInfoRouting:
     FUNDAMENTAL/INFO action (此前缺失 → worker 返回"未知 fmp action")。"""
 
     @pytest.mark.asyncio
-    async def test_fmp_action_map_fundamental_info(self, monkeypatch, patch_redis_client):
-        router = DataSourceRouter(enabled=True, sources=["fmp"])
+    async def test_fmp_action_map_fundamental_info(self, monkeypatch):
+        router = DataSourceRouter()
+        router._enabled = True
         node = DataSourceNode(name="fmp_master", url="http://fmp", status="healthy")
         router._nodes["fmp_master"] = node
         captured = {}
+        # 屏蔽 success 分支的 redis 存档 (避免 asyncio.run 嵌套 + 真实 redis)
+        monkeypatch.setattr(router, "_save_fmp_profile", AsyncMock())
+        monkeypatch.setattr(router, "_save_fmp_cache", AsyncMock())
 
         async def fake_send(n, source, payload):
             captured["action"] = payload["action"]
