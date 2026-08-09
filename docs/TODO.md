@@ -688,7 +688,13 @@ STATUS: PRODUCTION READY ✨
   - 守门：`test_datasource_health_monitor.py`（8 用例，覆盖阈值/去重/生命周期/端到端推送）全绿。
   - 注：限流类告警仍由 `alert_monitor.py`(RL-11) 独立覆盖，本模块不重复告警；Grafana 面板 JSON 属前端展示层，可后续独立交付。
 - [x] **[SVC-04]** ⬆️ **已提级 P1（2026-07-12）** 数据质量校验：行情字段完整性、价格异常值（如 0 价/跳变）、时间戳新鲜度检测，脏数据拦截并告警，严禁污染下游分析（与 DIST Phase 3 部署并行推进，结果汇入 DQ-04 看板）✅ **DataQualityMonitor + 19 tests**
-- [ ] **[SVC-05]** 三方配额与成本监控：OpenAI token 消耗 / 调用次数 / Finnhub 速率配额实时统计，逼近上限提前告警，防止超额停服或账单爆炸
+- [x] **[SVC-05]** 三方配额与成本监控：OpenAI token 消耗 / 调用次数 / Finnhub 速率配额实时统计，逼近上限提前告警，防止超额停服或账单爆炸
+  - **交付（2026-08-09）**：
+    - 新建 `backend/services/ai_narrator/token_usage_store.py` 的 `TokenUsageStore`：Redis 分日分桶记录 LLM `prompt_tokens/completion_tokens/total_tokens/calls`，注册 Prometheus 指标 `llm_token_usage_total` / `llm_token_usage_today`；Redis 不可用时内存降级累计（`get_today` 返回降级标记）。
+    - 在 `llm_service.py` 的 `generate` / `generate_pydantic` 成功路径插桩 `_record_token_usage(response)`，从 OpenAI `response.usage` 提取 token 消耗，fire-and-forget 异步写入（异常安全，不拖累热路径）。
+    - 新建 `backend/services/ai_narrator/quota_monitor.py` 的 `QuotaCostMonitor`：周期（默认 60s）扫描 ① LLM 当日 token 消耗 vs `LLM_DAILY_TOKEN_BUDGET`（达 80% warning / 100% critical）② Finnhub 当日 `rl_quota_exhausted > 0`（硬停服 critical）→ 经 `notification_service.send_alert` 推送飞书（接 OBS-02）；内置队列解耦 + 15min 去重冷却防告警风暴。
+    - `lifecycle.startup` / `shutdown` 挂接 `quota_cost_monitor`，`/health/deep` 暴露 `quota_cost_monitor` 探针。
+    - 守门：`test_quota_cost_monitor.py`（13 用例，覆盖 token 累计/降级/预算 warning·critical·阈值下不告警/预算禁用/Finnhub 配额耗尽/去重/生命周期/端到端推送）全绿；`.env.example` 补 `LLM_DAILY_TOKEN_BUDGET` / `LLM_TOKEN_METRICS_ENABLED` 说明。
 - [ ] **[SVC-06]** 三方服务 Mock/Stub：本地开发与 CI 全程可离线运行，不依赖真实 API Key，保证测试确定性与可重复
 - [ ] **[SVC-07]** 降级与混沌测试：模拟 Futu 断连 / YFinance 超时 / OpenAI 限流，验证熔断器（BE-04）、数据源自动切换、Ollama 降级（对照 `docs/12` 应急预案）真实生效
 

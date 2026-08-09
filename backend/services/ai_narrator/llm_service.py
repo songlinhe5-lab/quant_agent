@@ -10,7 +10,7 @@ import json
 import logging
 import os
 from enum import Enum
-from typing import Dict, Optional, Type, TypeVar
+from typing import Any, Dict, Optional, Type, TypeVar
 
 import httpx
 from openai import AsyncOpenAI
@@ -283,6 +283,36 @@ class LLMService:
             print(f"⚠️ [LLMService] 结构化输出校验失败: {e}\n👉 原始输出: {content}")
             raise ValueError(f"LLM 输出未通过 Pydantic 校验: {e}")
 
+    def _record_token_usage(self, response: Any) -> None:
+        """从 OpenAI 响应提取 token 消耗并异步记录（异常安全，不拖累热路径）。"""
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return
+        try:
+            prompt = getattr(usage, "prompt_tokens", 0) or 0
+            completion = getattr(usage, "completion_tokens", 0) or 0
+            total = getattr(usage, "total_tokens", 0) or 0
+            # 以 fire-and-forget 方式写入，避免 await 阻塞调用方
+            from backend.services.ai_narrator.token_usage_store import token_usage_store
+
+            store = token_usage_store
+            if not store.enabled:
+                return
+            try:
+                import asyncio
+
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(store.record(prompt, completion, total))
+                else:
+                    asyncio.run(store.record(prompt, completion, total))
+            except RuntimeError:
+                # 无事件循环（极少），降级为同步记录的内存累计不触发，
+                # 记录跳过（不致命）
+                pass
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"[LLMService] token 计量失败（已忽略）: {e}")
+
     async def generate(
         self,
         user_prompt: str,
@@ -320,6 +350,7 @@ class LLMService:
             raise
 
         content = response.choices[0].message.content or ""
+        self._record_token_usage(response)
         return content.strip()
 
 

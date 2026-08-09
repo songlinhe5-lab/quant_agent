@@ -298,6 +298,24 @@ async def health_deep():
     except Exception:  # noqa: BLE001
         health_monitor_detail["error"] = "probe_failed"
 
+    # SVC-05: 配额与成本监控器健康探针（辅助组件，不阻断业务流量）
+    quota_monitor_detail = {"healthy": False, "started": False, "scan_done": None, "consume_done": None}
+    try:
+        from backend.services.ai_narrator.quota_monitor import quota_cost_monitor
+
+        quota_monitor_healthy = quota_cost_monitor.is_healthy()
+        quota_monitor_detail = {
+            "healthy": quota_monitor_healthy,
+            "started": quota_cost_monitor._started,
+            "llm_daily_budget": quota_cost_monitor._llm_daily_budget,
+            "scan_done": (quota_cost_monitor._scan_task is not None and quota_cost_monitor._scan_task.done()),
+            "consume_done": (
+                quota_cost_monitor._consumer_task is not None and quota_cost_monitor._consumer_task.done()
+            ),
+        }
+    except Exception:  # noqa: BLE001
+        quota_monitor_detail["error"] = "probe_failed"
+
     components = component.get("components", {})
     overall = "healthy"
     if not pg_ok or not ds_ok:
@@ -316,6 +334,7 @@ async def health_deep():
             "data_sources_ready": ds_ok,
             "alert_queue": alert_monitor_detail,
             "datasource_health_monitor": health_monitor_detail,
+            "quota_cost_monitor": quota_monitor_detail,
         },
         "data_source_detail": ds_detail,
         "collectors": collectors,

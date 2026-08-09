@@ -290,6 +290,15 @@ async def app_lifespan(app: FastAPI):
     except Exception as e:
         log.error(f"[Startup] 数据源健康告警监控器启动失败: {e}")
 
+    # 🚀 SVC-05 配额与成本监控器 (LLM token 预算逼近 / Finnhub 配额耗尽 → 飞书告警，接 OBS-02)
+    try:
+        from backend.services.ai_narrator.quota_monitor import quota_cost_monitor
+
+        await quota_cost_monitor.start()
+        log.info("✅ [Startup] 配额与成本监控器已启动 (SVC-05)")
+    except Exception as e:
+        log.error(f"[Startup] 配额与成本监控器启动失败: {e}")
+
     yield  # 挂起，FastAPI 正式对外提供服务
 
     # === 销毁阶段 (Shutdown) ===
@@ -350,6 +359,14 @@ async def app_lifespan(app: FastAPI):
             from backend.services.datasource.health_monitor import data_source_health_monitor
 
             await data_source_health_monitor.stop()
+        except Exception:
+            pass
+
+        # SVC-05: 停止配额与成本监控器
+        try:
+            from backend.services.ai_narrator.quota_monitor import quota_cost_monitor
+
+            await quota_cost_monitor.stop()
         except Exception:
             pass
 
