@@ -660,3 +660,31 @@ class TestNormalizeResponseErrorBody:
         raw = {"code": 500, "message": "boom"}
         r = DataSourceRouter._normalize_response(raw)
         assert r["status"] == "error"
+
+
+# ==========================================
+# BE-ARCH-08e: 单节点 pin 源熔断后半开探测 (避免永久失效)
+# ==========================================
+class TestPinNodeHalfOpenProbe:
+    """验收：pin 源熔断 (status=unhealthy + circuit_breaker_until 未来) 后, 冷却到期应
+    允许一次探测 (HALF_OPEN); 冷却未到期仍拦截; healthy 始终放行。"""
+
+    def _make_node(self, status: str, cooldown_until: float) -> DataSourceNode:
+        return DataSourceNode(
+            name="akshare_remote",
+            url="http://x",
+            status=status,
+            circuit_breaker_until=cooldown_until,
+        )
+
+    def test_healthy_always_usable(self):
+        n = self._make_node("healthy", 0.0)
+        assert DataSourceRouter._pin_node_usable(n) is True
+
+    def test_unhealthy_cooldown_active_blocked(self):
+        n = self._make_node("unhealthy", time.time() + 100)
+        assert DataSourceRouter._pin_node_usable(n) is False
+
+    def test_unhealthy_cooldown_expired_allows_probe(self):
+        n = self._make_node("unhealthy", time.time() - 1)
+        assert DataSourceRouter._pin_node_usable(n) is True

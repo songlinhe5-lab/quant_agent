@@ -554,6 +554,22 @@ class DataSourceRouter:
         healthy.sort(key=lambda n: (n.is_throttled, -n.weight, n.consecutive_rate_limits))
         return healthy[0]
 
+    @staticmethod
+    def _pin_node_usable(node: "DataSourceNode") -> bool:
+        """BE-ARCH-08e: 单节点 pin 源半开探测门控。
+
+        单节点 pin 源 (akshare/tushare/futu/fmp/finnhub/fred/dbnomics/rbi/search)
+        熔断后若仅用 `status != "healthy"` 门控，则永远不会再发请求 → 永不恢复
+        （不请求就不可能成功，不成功就永远 unhealthy）。
+
+        此处允许：节点 healthy **或** 已熔断且冷却已到期的半开探测 (HALF_OPEN)，
+        对齐子服务侧已有的 HALF_OPEN 语义。探测成功由 `_update_node_status` 翻回
+        healthy；失败则续冷却。限流类错误不计入熔断计数，本身不会触发 permanent 失效。
+        """
+        if node.status == "healthy":
+            return True
+        return time.time() >= node.circuit_breaker_until
+
     def _maybe_offline(self, source: str, action: str = "", **params) -> Optional[Dict[str, Any]]:
         """SVC-06: 离线 stub 拦截。
 
@@ -649,7 +665,7 @@ class DataSourceRouter:
             return offline
 
         remote_node = self._nodes.get("akshare_remote")
-        if not self._enabled or not remote_node or remote_node.status != "healthy":
+        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
             logger.warning("[AKShare] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy AKShare remote node (local SDK disabled)"}
 
@@ -689,7 +705,7 @@ class DataSourceRouter:
             return offline
 
         remote_node = self._nodes.get("tushare_remote")
-        if not self._enabled or not remote_node or remote_node.status != "healthy":
+        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
             logger.warning("[Tushare] 远程节点不可用（后端已移除本地兜底）")
             return {"success": False, "message": "No healthy Tushare remote node (local adapter disabled)"}
 
@@ -735,7 +751,7 @@ class DataSourceRouter:
         norm_params = self._futu_normalize_params(remote_action, params)
 
         remote_node = self._nodes.get("futu_master")
-        if not self._enabled or not remote_node or remote_node.status != "healthy":
+        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
             logger.warning("[Futu] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy Futu remote node (local SDK disabled)"}
 
@@ -811,7 +827,7 @@ class DataSourceRouter:
         norm_params = self._normalize_outbound_params(dict(params))
 
         remote_node = self._nodes.get("fmp_master")
-        if not self._enabled or not remote_node or remote_node.status != "healthy":
+        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
             logger.warning("[FMP] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy FMP remote node (local fallback disabled)"}
 
@@ -865,7 +881,7 @@ class DataSourceRouter:
 
         remote_action = _FINNHUB_ACTION_MAP.get(action.lower(), action.upper())
         remote_node = self._nodes.get("finnhub_master")
-        if not self._enabled or not remote_node or remote_node.status != "healthy":
+        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
             logger.warning("[Finnhub] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy Finnhub remote node (local SDK disabled)"}
 
@@ -910,7 +926,7 @@ class DataSourceRouter:
             return offline
 
         remote_node = self._nodes.get("fred_master")
-        if not self._enabled or not remote_node or remote_node.status != "healthy":
+        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
             logger.warning("[FRED] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy FRED remote node (local service disabled)"}
 
@@ -943,7 +959,7 @@ class DataSourceRouter:
             return offline
 
         remote_node = self._nodes.get("dbnomics_master")
-        if not self._enabled or not remote_node or remote_node.status != "healthy":
+        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
             logger.warning("[DBnomics] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy DBnomics remote node (local service disabled)"}
 
@@ -976,7 +992,7 @@ class DataSourceRouter:
             return offline
 
         remote_node = self._nodes.get("rbi_master")
-        if not self._enabled or not remote_node or remote_node.status != "healthy":
+        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
             logger.warning("[RBI] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy RBI remote node (local service disabled)"}
 
@@ -1009,7 +1025,7 @@ class DataSourceRouter:
             return offline
 
         remote_node = self._nodes.get("search_master")
-        if not self._enabled or not remote_node or remote_node.status != "healthy":
+        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
             logger.warning(f"[Search/{source}] 远程节点不可用（后端已移除直连）")
             return {
                 "status": "error",
