@@ -87,20 +87,54 @@ class MarketDataGateway:
     # ── QuotePort ──────────────────────────────────────────
 
     async def get_quote(self, ticker: str, **kwargs: Any) -> dict[str, Any]:
-        return await self.futu.get_quote(ticker=ticker, **kwargs)
+        # BE-ARCH-07a: Futu 直调改为经 DataSourceRegistry 远程路由（子服务化，移除主服务本地 SDK）
+        from backend.services.datasource import ResultStatus, datasource_registry
+
+        result = await datasource_registry.fetch("futu", "QUOTE", {"ticker": ticker, **kwargs})
+        if result.status in (ResultStatus.SUCCESS, ResultStatus.DEGRADED):
+            return result.data
+        return {"status": "error", "message": result.error.message if result.error else "futu QUOTE 路由失败"}
 
     async def get_history(self, ticker: str, ktype: str = "K_DAY", num: int = 100, **kwargs: Any) -> dict[str, Any]:
-        return await self.futu.get_history(ticker=ticker, ktype=ktype, num=num, **kwargs)
+        from backend.services.datasource import ResultStatus, datasource_registry
+
+        result = await datasource_registry.fetch(
+            "futu", "HISTORY", {"ticker": ticker, "ktype": ktype, "num": num, **kwargs}
+        )
+        if result.status in (ResultStatus.SUCCESS, ResultStatus.DEGRADED):
+            return result.data
+        return {"status": "error", "message": result.error.message if result.error else "futu HISTORY 路由失败"}
 
     async def get_fund_flow(self, ticker: str) -> dict[str, Any]:
-        return await self.futu.get_fund_flow(ticker)
+        from backend.services.datasource import ResultStatus, datasource_registry
+
+        result = await datasource_registry.fetch("futu", "FUND_FLOW", {"ticker": ticker})
+        if result.status in (ResultStatus.SUCCESS, ResultStatus.DEGRADED):
+            return result.data
+        return {"status": "error", "message": result.error.message if result.error else "futu FUND_FLOW 路由失败"}
 
     async def get_warrant_chain(self, ticker: str) -> dict[str, Any]:
-        """港股窝轮/牛熊证链（仅 HK 标的可用）"""
-        return await self.futu.get_warrant_chain(ticker)
+        """港股窝轮/牛熊证链（仅 HK 标的可用），经 DataSourceRegistry 远程路由。"""
+        from backend.services.datasource import ResultStatus, datasource_registry
+
+        result = await datasource_registry.fetch("futu", "WARRANT_CHAIN", {"ticker": ticker})
+        if result.status in (ResultStatus.SUCCESS, ResultStatus.DEGRADED):
+            return result.data
+        return {"status": "error", "message": result.error.message if result.error else "futu WARRANT_CHAIN 路由失败"}
 
     async def get_option_chain(self, ticker: str, expiration_date: str = "") -> dict[str, Any]:
-        res = await self.futu.get_option_chain(ticker, expiration_date)
+        from backend.services.datasource import ResultStatus, datasource_registry
+
+        futu_res = await datasource_registry.fetch(
+            "futu", "OPTION_CHAIN", {"ticker": ticker, "expiration_date": expiration_date}
+        )
+        if futu_res.status in (ResultStatus.SUCCESS, ResultStatus.DEGRADED):
+            res = futu_res.data
+        else:
+            res = {
+                "status": "error",
+                "message": futu_res.error.message if futu_res.error else "futu OPTION_CHAIN 路由失败",
+            }
         # 💡 Futu 快照期权链常只含 option_code/strike_price 而无定价字段(bid/ask/IV)，
         # 此时虽 status=success 却无法用于 Greeks/IV 计算 → 降级到 YFinance 补全定价数据。
         if res.get("status") == "error" or self._option_chain_lacks_pricing(res):
