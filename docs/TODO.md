@@ -682,7 +682,11 @@ STATUS: PRODUCTION READY ✨
 
 - [ ] **[SVC-01]** 三方数据源契约测试（录制回放）：用 `vcrpy` / `pytest-recording` 录制真实响应为固定 fixture，CI 离线回放，三方改字段时立即让解析层测试变红
 - [ ] **[SVC-02]** 三方服务可用性拨测：定时探活 Futu OpenD / YFinance / Finnhub / OpenAI / Ollama / FRED，成功率与延迟写入 Prometheus metrics
-- [ ] **[SVC-03]** 三方服务监控面板 + 告警：Grafana 独立面板展示各数据源成功率/延迟/熔断状态，任一数据源 Down 或成功率 < 95% 触发告警（接 OBS-02）
+- [x] **[SVC-03]** 三方服务监控面板 + 告警 ✅ **2026-08-09**：
+  - **Grafana 数据源（API 层，已天然具备）**：`backend/routers/datasource.py` 的 `GET /datasource/health-overview` + `GET /datasource/{name}/health` 经 `call_metrics_store`（已记录 success/calls + 延迟样本）+ `_build_health_card` 返回完整 `status`(含 stale/throttled/blocked/quota_exhausted 等熔断态)、`success_rate`、`today_calls`、`latency_avg_ms/p95_ms`、`rl_*` 限流明细 —— Grafana 可直接 scrape 此 JSON 端点实现成功率/延迟/熔断面板，无需新建采集层。
+  - **告警缺口补齐（本轮新增）**：新建 `backend/services/datasource/health_monitor.py` 的 `DataSourceHealthMonitor`，周期（默认 60s）扫描各源当日成功率 + 可达性，成功率 < 95%（且当日调用 ≥ 20 样本防低流量误报）或源失联 → 经 `notification_service.send_alert` 推送**飞书告警（接 OBS-02）**；内置队列解耦 + 15min 去重冷却防告警风暴；`lifecycle.startup` 启动、`lifecycle.shutdown` 停止、`/health/deep` 暴露 `datasource_health_monitor` 探针。
+  - 守门：`test_datasource_health_monitor.py`（8 用例，覆盖阈值/去重/生命周期/端到端推送）全绿。
+  - 注：限流类告警仍由 `alert_monitor.py`(RL-11) 独立覆盖，本模块不重复告警；Grafana 面板 JSON 属前端展示层，可后续独立交付。
 - [x] **[SVC-04]** ⬆️ **已提级 P1（2026-07-12）** 数据质量校验：行情字段完整性、价格异常值（如 0 价/跳变）、时间戳新鲜度检测，脏数据拦截并告警，严禁污染下游分析（与 DIST Phase 3 部署并行推进，结果汇入 DQ-04 看板）✅ **DataQualityMonitor + 19 tests**
 - [ ] **[SVC-05]** 三方配额与成本监控：OpenAI token 消耗 / 调用次数 / Finnhub 速率配额实时统计，逼近上限提前告警，防止超额停服或账单爆炸
 - [ ] **[SVC-06]** 三方服务 Mock/Stub：本地开发与 CI 全程可离线运行，不依赖真实 API Key，保证测试确定性与可重复

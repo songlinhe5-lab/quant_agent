@@ -278,6 +278,26 @@ async def health_deep():
     except Exception:  # noqa: BLE001
         alert_monitor_detail["error"] = "probe_failed"
 
+    # SVC-03: 数据源健康告警监控器健康探针（辅助组件，不阻断业务流量）
+    health_monitor_detail = {"healthy": False, "started": False, "scan_done": None, "consume_done": None}
+    try:
+        from backend.services.datasource.health_monitor import data_source_health_monitor
+
+        health_monitor_healthy = data_source_health_monitor.is_healthy()
+        health_monitor_detail = {
+            "healthy": health_monitor_healthy,
+            "started": data_source_health_monitor._started,
+            "scan_done": (
+                data_source_health_monitor._scan_task is not None and data_source_health_monitor._scan_task.done()
+            ),
+            "consume_done": (
+                data_source_health_monitor._consumer_task is not None
+                and data_source_health_monitor._consumer_task.done()
+            ),
+        }
+    except Exception:  # noqa: BLE001
+        health_monitor_detail["error"] = "probe_failed"
+
     components = component.get("components", {})
     overall = "healthy"
     if not pg_ok or not ds_ok:
@@ -295,6 +315,7 @@ async def health_deep():
             "postgres": pg_msg,
             "data_sources_ready": ds_ok,
             "alert_queue": alert_monitor_detail,
+            "datasource_health_monitor": health_monitor_detail,
         },
         "data_source_detail": ds_detail,
         "collectors": collectors,

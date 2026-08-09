@@ -281,6 +281,15 @@ async def app_lifespan(app: FastAPI):
         # （health_deep 的 components.alert_queue 会据此返回 unhealthy）
         log.error(f"[Startup] 限流告警消费器启动失败: {e}")
 
+    # 🚀 SVC-03 数据源健康告警监控器 (周期扫描成功率<95%/Down → 飞书告警，接 OBS-02)
+    try:
+        from backend.services.datasource.health_monitor import data_source_health_monitor
+
+        await data_source_health_monitor.start()
+        log.info("✅ [Startup] 数据源健康告警监控器已启动 (SVC-03)")
+    except Exception as e:
+        log.error(f"[Startup] 数据源健康告警监控器启动失败: {e}")
+
     yield  # 挂起，FastAPI 正式对外提供服务
 
     # === 销毁阶段 (Shutdown) ===
@@ -333,6 +342,14 @@ async def app_lifespan(app: FastAPI):
             from backend.services.datasource.alert_monitor import rate_limit_alert_monitor
 
             await rate_limit_alert_monitor.stop()
+        except Exception:
+            pass
+
+        # SVC-03: 停止数据源健康告警监控器
+        try:
+            from backend.services.datasource.health_monitor import data_source_health_monitor
+
+            await data_source_health_monitor.stop()
         except Exception:
             pass
 
