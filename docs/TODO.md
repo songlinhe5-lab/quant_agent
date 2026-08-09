@@ -698,6 +698,8 @@ STATUS: PRODUCTION READY ✨
   - 守门：`test_datasource_health_monitor.py`（8 用例，覆盖阈值/去重/生命周期/端到端推送）全绿。
   - 注：限流类告警仍由 `alert_monitor.py`(RL-11) 独立覆盖，本模块不重复告警；Grafana 面板 JSON 属前端展示层，可后续独立交付。
 - [x] **[SVC-04]** ⬆️ **已提级 P1（2026-07-12）** 数据质量校验：行情字段完整性、价格异常值（如 0 价/跳变）、时间戳新鲜度检测，脏数据拦截并告警，严禁污染下游分析（与 DIST Phase 3 部署并行推进，结果汇入 DQ-04 看板）✅ **DataQualityMonitor + 19 tests**
+  - **[2026-08-09 验证 + 加固]**：实测 SVC-04 已真实落地且接线生效——`quote_publisher.py` 第 129 行对每条行情调用 `get_quality_monitor(source).validate_quote(...)`；`routers/system.py` 暴露 `GET /api/v1/system/data-quality`（DQ-04 看板数据源）；`core/metrics.py` 已建 `quant_data_quality_*` 全套 Prometheus 指标（脏数据率/完整率/价格异常/过期/质量等级/校验次数）。端到端验证：正常 quote 通过、脏数据（零价+负量+过期）被拦截分类、Prometheus 实时刷新、告警回调触发。
+  - **修复脏数据率语义 bug**：原 `dirty_rate = anomaly_count / total_records` 在单条记录触发多条异常时 >1（实测 300%），污染 DQ-04 面板。改为 `dirty_records / total_records`（含异常记录数 / 总记录数，恒 ≤1）。`QualityMetrics` 新增 `dirty_records` 字段，`validate_quote` 累加，`reset()` 随重建归零。新增 `test_data_quality_dirtyrate_fix.py`（3 用例）回归。SVC-04 全量测试 26+ 全绿。
 - [x] **[SVC-05]** 三方配额与成本监控：OpenAI token 消耗 / 调用次数 / Finnhub 速率配额实时统计，逼近上限提前告警，防止超额停服或账单爆炸
   - **交付（2026-08-09）**：
     - 新建 `backend/services/ai_narrator/token_usage_store.py` 的 `TokenUsageStore`：Redis 分日分桶记录 LLM `prompt_tokens/completion_tokens/total_tokens/calls`，注册 Prometheus 指标 `llm_token_usage_total` / `llm_token_usage_today`；Redis 不可用时内存降级累计（`get_today` 返回降级标记）。

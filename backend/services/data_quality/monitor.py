@@ -52,7 +52,8 @@ class QualityMetrics:
     source: str  # 数据源名称 (futu/yfinance/finnhub)
     total_records: int = 0  # 总记录数
     valid_records: int = 0  # 有效记录数
-    anomaly_count: int = 0  # 异常记录数
+    dirty_records: int = 0  # 含异常的记录数（脏数据率分母口径）
+    anomaly_count: int = 0  # 异常条目累计数（单条记录可含多条异常）
     missing_field_count: int = 0  # 字段缺失次数
     price_anomaly_count: int = 0  # 价格异常次数
     stale_count: int = 0  # 过期数据次数
@@ -64,10 +65,10 @@ class QualityMetrics:
 
     @property
     def dirty_rate(self) -> float:
-        """脏数据率"""
+        """脏数据率 = 含异常的记录数 / 总记录数（语义口径，恒 <= 1.0）"""
         if self.total_records == 0:
             return 0.0
-        return self.anomaly_count / self.total_records
+        return self.dirty_records / self.total_records
 
     @property
     def completeness_rate(self) -> float:
@@ -233,6 +234,8 @@ class DataQualityMonitor:
         is_valid = len(anomalies) == 0
         if is_valid:
             self._metrics.valid_records += 1
+        else:
+            self._metrics.dirty_records += 1
         self._metrics.anomaly_count += len(anomalies)
         self._metrics.last_check_at = time.time()
         self._metrics.anomalies.extend(anomalies[-100:])  # 保留最近 100 条异常
