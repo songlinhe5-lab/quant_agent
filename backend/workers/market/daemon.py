@@ -245,7 +245,7 @@ async def _news_stream_daemon() -> None:
                             ts = float(dt_val) if dt_val is not None else time.time()
                             member = json.dumps(news_item, sort_keys=True)
                             await redis_client.zadd("macro_news_stream", {member: ts})
-                            await redis_client.publish("live_news_channel", member)
+                            await redis_client.publish("macro_news", member)
 
                 cutoff_time = time.time() - 86400
                 await redis_client.zremrangebyscore("macro_news_stream", 0, cutoff_time)

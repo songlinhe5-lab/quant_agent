@@ -61,6 +61,9 @@ __pycache__/
 *.dylib
 *.dll
 
+# Numba JIT 编译缓存（本地生成，跨环境无效）
+.numba_cache/
+
 # 虚拟环境
 venv/
 env/

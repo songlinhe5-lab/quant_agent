@@ -13,7 +13,9 @@
 
 import asyncio
 import hashlib
+import json
 import re
+import time
 
 from backend.core.redis_client import redis_client
 
@@ -109,5 +111,20 @@ async def macro_alert_daemon() -> None:
 
                         msg = f"🚨 [宏观核弹数据出炉]\n\n📅 事件: {event_name}\n🇺🇳 国家: {country}\n🔴 公布值 (Actual): {actual_val}\n⚪ 预期值 (Forecast): {estimate_val}\n⚪ 前值 (Previous): {previous_val}{ai_comment}\n\n⚠️ 数据已发布，盘面可能出现剧烈波动，请注意风控！"  # noqa: E501
                         await notification_service.send_alert(msg)
+                        # 同步广播到 macro_alerts 频道，供 /macro/calendar/ws 实时订阅
+                        try:
+                            alert_payload = {
+                                "type": "macro_alert",
+                                "event_name": event_name,
+                                "country": country,
+                                "actual": actual_val,
+                                "forecast": estimate_val,
+                                "previous": previous_val,
+                                "comment": ai_comment,
+                                "triggered_at": time.time(),
+                            }
+                            await redis_client.publish("macro_alerts", json.dumps(alert_payload, ensure_ascii=False))
+                        except Exception as pub_e:
+                            print(f"⚠️ [Macro Daemon] macro_alerts 发布失败: {pub_e}")
         except Exception as e:
             print(f"❌ [Macro Daemon] 宏观报警监控异常: {e}")
