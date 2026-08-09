@@ -431,7 +431,7 @@ STATUS: PRODUCTION READY ✨
   - **③ 重连恢复关掉了推送**：`futu_src/watchdog.py:205,308` `_restore_subscriptions` 用 `subscribe_push=False`，即便曾订阅，重连后变静默订阅
   - **④ 子服务未接主 Redis**：`docker-compose.node-s1.yml` **完全无 Redis 配置**，`data_subservice/_internal/redis_client.py:20` 默认 `localhost` ⇒ publish 进容器内空 Redis 而非主节点总线
   - **⑤ 前端订阅不回传**：WS `subscribe` 仅更新主服务本地字典（`routers/market.py:101-107` → `market_engine.py:166-172`），不通知子服务去 OpenD 订阅新标的 ⇒ 新标的只能等 `broadcast_loop` 约 10s 后 HTTP 拉快照"碰巧"触发订阅
-  - **实际落地（2026-08-09）**：本次闭环 **① ②③④** 四处根因级断链点（单点 guard，可静态验证），**⑤ 标注为明确后续项**（详见本行末）。
+  - **实际落地（2026-08-09 ② 批次）**：① ②③④ 先行闭环；**本批次补齐 ⑤**：新增 `quote_handler.subscribe_quote`（QUOTE+ORDER_BOOK `subscribe_push=True`，与 `get_quote` 内联订阅段同构）→ `FutuService.subscribe_quote` 暴露 → `futu_worker` 补 `SUBSCRIBE`/`UNSUBSCRIBE` 分支 → `router._FUTU_ACTION_MAP` 声明 `subscribe/unsubscribe` → `routers/market.py` WS `subscribe`/`unsubscribe` 在本地登记后 best-effort `asyncio.create_task(fetch_futu("subscribe"/"unsubscribe", ticker=t))` 回传子服务（经 `is_futu_unsupported` 守卫，不阻塞 WS ack，子服务不可用由 router 熔断吸收）。闭环后新标的订阅即时通知 OpenD 实时推送，不再依赖 10s 轮询碰巧触发。验收：`test_cross_process_contract.py::TestFutuSubscribeCallbackContract` 断言 SUBSCRIBE/UNSUBSCRIBE 经子服务真实落到 worker 且取到 `symbol`；`futu_worker` 分支手动确证。`is_futu_unsupported` 守卫沿用 `broadcast_loop` 既有逻辑，未扩大范围。
     - **① 根因修复**：`connection_manager._register_push_handlers` 的 `except RuntimeError` 分支回退 `asyncio.get_event_loop()`（不再仅 warning）；`main.py:startup_event` 在 `to_thread(connect)` **前**显式 `set_main_loop(asyncio.get_event_loop())` 双保险 → 推送桥接 `_main_loop` 不再为 None，OpenD 回调可经 `_schedule_coroutine` 入主循环。
     - **② 已在位**：`quote_handler.get_realtime_quote:81-96` 首次 fetch 即 `subscribe(subscribe_push=True)`，启动零订阅的"破口"实为 fetch 副作用已覆盖，无需额外改 connect。
     - **③ 重连静默修复**：`watchdog.py:205`(健康探针订阅) 与 `:308`(`_restore_subscriptions` 重连恢复) 的 `subscribe_push=False` 均改 `True` → 重连后推送订阅恢复，不再静默。
@@ -1361,7 +1361,7 @@ STATUS: PRODUCTION READY ✨
 - [ ] **[→ BE-ARCH-08b]** YFinance/AKShare/FMP 的 `ticker`↔`symbol` 键名错位 —— 线上取不到数，被离线 stub 掩盖
 - [x] **[→ BE-ARCH-08d]** 子服务 `{"status":"error"}` 被吞成成功 —— 限流/配额感知失效（已修：router `_normalize_response` 识别 status==error 并透传 error_category）
 - [x] **[→ BE-ARCH-08e]** 9 个 pin 源熔断一次即永久失效（无半开探测）—— 已修：新增 `_pin_node_usable` 半开门控，冷却到期放行 HALF_OPEN 探测
-- [ ] **[→ BE-ARCH-08c]** Futu 长连接推送四处断链（工作量最大，涉及 compose 配置与订阅回传协议）
+- [x] **[→ BE-ARCH-08c]** Futu 长连接推送四处断链 —— ① ②③④ 已修；⑤ 订阅回传已闭环（WS subscribe→router→futu_worker SUBSCRIBE→OpenD 实时订阅）
 - [x] **[→ BE-ARCH-08h]** 跨进程契约测试 —— 根治 08b/08d 这类盲区，已落 `test_cross_process_contract.py`（真起子服务 app + 边界/回归断言）
 
 ---

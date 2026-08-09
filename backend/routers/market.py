@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import time
@@ -23,6 +24,7 @@ from backend.services.datasource.router import data_source_router
 # BE-ARCH-07p: 进程内 broker/kline 实时缓存（消费 quant:broker:* / quant:kline:* 回灌）
 from backend.services.datasource.subscription import subscription_service
 from backend.services.fund_flow.ticker import ticker_service
+from backend.services.futu.utils import is_futu_unsupported
 from backend.services.market_engine import manager
 
 # BE-15: JWT 鉴权配置
@@ -105,6 +107,12 @@ async def quotes_websocket(websocket: WebSocket):
                     if new_tickers:
                         last_ids = msg.get("last_ids", {})
                         manager.subscribe(websocket, new_tickers, last_ids)
+                        # BE-ARCH-08c⑤: 回传子服务 → OpenD 真正订阅实时推送,
+                        # 否则新标的只能等 broadcast_loop 约 10s 轮询"碰巧"触发订阅。
+                        # best-effort, 不阻塞 WS ack; 子服务不可用由 router 内部熔断吸收。
+                        for t in new_tickers:
+                            if not is_futu_unsupported(t):
+                                asyncio.create_task(data_source_router.fetch_futu("subscribe", ticker=t))
                     WS_MESSAGES_SENT.labels(type="system").inc()
                     await websocket.send_text(
                         json.dumps(
@@ -121,6 +129,10 @@ async def quotes_websocket(websocket: WebSocket):
                     )
                 elif action == "unsubscribe":
                     manager.unsubscribe(websocket, req_tickers)
+                    # BE-ARCH-08c⑤: 回传子服务 → OpenD 退订, 释放订阅额度槽位
+                    for t in req_tickers:
+                        if not is_futu_unsupported(t):
+                            asyncio.create_task(data_source_router.fetch_futu("unsubscribe", ticker=t))
                     WS_MESSAGES_SENT.labels(type="system").inc()
                     await websocket.send_text(
                         json.dumps(

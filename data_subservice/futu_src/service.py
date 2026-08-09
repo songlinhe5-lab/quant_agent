@@ -117,6 +117,13 @@ class FutuService:
             is_unsupported_func=is_futu_unsupported,
         )
 
+    async def subscribe_quote(self, ticker: str) -> Dict[str, Any]:
+        if self.status != "CONNECTED":
+            return {"status": "error", "message": "Futu OpenD 未连接，跳过订阅"}
+        return await self.quote_handler.subscribe_quote(
+            ticker, format_ticker_func=format_ticker, is_unsupported_func=is_futu_unsupported
+        )
+
     async def unsubscribe_quote(self, ticker: str) -> Dict[str, Any]:
         if self.status != "CONNECTED":
             return {"status": "error", "message": "Futu OpenD 未连接，跳过退订"}

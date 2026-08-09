@@ -196,6 +196,48 @@ class QuoteHandler:
         return res
 
     @with_global_retry
+    async def subscribe_quote(self, ticker: str, format_ticker_func, is_unsupported_func) -> Dict[str, Any]:  # noqa: E501
+        """BE-ARCH-08c⑤: 向 OpenD 订阅个股实时推送 (QUOTE + ORDER_BOOK, subscribe_push=True)。
+
+        此前订阅仅作为 get_quote 的副作用发生, 前端 WS 新订阅标的无法通知 OpenD 去订阅,
+        只能等主服务 broadcast_loop 约 10s 轮询"碰巧"触发 → 实时推送对新标的长期滞后。
+        本方法供 futu_worker 的 SUBSCRIBE action 直接调用, 实现前端订阅 → 子服务 → OpenD
+        的实时订阅回传闭环。逻辑与 get_quote 内联订阅段保持一致 (LRU 容量 + 双类型订阅)。
+        """
+        if is_unsupported_func(ticker):
+            return {"status": "error", "message": "富途原生不支持该大类资产"}
+
+        market_ticker = format_ticker_func(ticker)
+
+        if self.conn_mgr.status != "CONNECTED" and __import__("os").getenv("QUANT_ENV") == "development":  # noqa: E501
+            # 开发环境 Mock 视为订阅成功 (无真实 OpenD)
+            self.cache_mgr.touch_topic(market_ticker, SubType.QUOTE)
+            self.cache_mgr.touch_topic(market_ticker, SubType.ORDER_BOOK)
+            return {"status": "success", "subscribed": [market_ticker], "mode": "mock"}
+
+        if not self.conn_mgr.quote_ctx:
+            return {"status": "error", "message": "FutuService 未连接"}
+
+        if self.cache_mgr.has_topic(market_ticker, SubType.QUOTE):
+            return {"status": "success", "subscribed": [market_ticker], "already": True}
+
+        # LRU 容量检查：超限时淘汰最久未用的订阅
+        evicted = self.cache_mgr.ensure_capacity(needed=2)  # 💡 需要2个槽位：QUOTE + ORDER_BOOK
+        await _execute_unsubscriptions(self.conn_mgr, self.cache_mgr, evicted)
+
+        ret, msg = self.conn_mgr.quote_ctx.subscribe(
+            [market_ticker],
+            [SubType.QUOTE, SubType.ORDER_BOOK],
+            subscribe_push=True,  # 开启推送，实时报价 + 盘口深度通过 PushHandler 桥接到 Redis
+            extended_time=True,  # noqa: E501
+        )
+        if ret != RET_OK:
+            return {"status": "error", "message": msg}
+        self.cache_mgr.touch_topic(market_ticker, SubType.QUOTE)
+        self.cache_mgr.touch_topic(market_ticker, SubType.ORDER_BOOK)
+        return {"status": "success", "subscribed": [market_ticker]}
+
+    @with_global_retry
     async def unsubscribe_quote(self, ticker: str, format_ticker_func) -> Dict[str, Any]:  # noqa: E501
         """退订个股行情，释放 OpenD 订阅额度槽位"""
         market_ticker = format_ticker_func(ticker)

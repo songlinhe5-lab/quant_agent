@@ -106,6 +106,9 @@ _FUTU_ACTION_MAP = {
     "account_info": "ACCOUNT_INFO",
     "place_order": "PLACE_ORDER",
     "emergency_liquidation": "EMERGENCY_LIQUIDATION",
+    # BE-ARCH-08c⑤: 前端 WS 订阅回传 — subscribe/unsubscribe 通知 OpenD 实时订阅
+    "subscribe": "SUBSCRIBE",
+    "unsubscribe": "UNSUBSCRIBE",
 }
 
 # 主服务内部 fetch_type -> 子服务 action 映射 (Finnhub)

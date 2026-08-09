@@ -23,6 +23,7 @@ BE-ARCH-08h: 跨进程契约测试（根治 08b / 08d 类缺陷的唯一手段�
 
 import hashlib
 import hmac
+import json
 import os
 import sys
 import time
@@ -126,6 +127,40 @@ class TestSubserviceErrorBodyContract:
             normalized = DataSourceRouter._normalize_response(envelope)
             assert normalized["status"] == "error", "子服务错误体被吞成成功"
             assert normalized.get("error_category") == "quota"
+
+
+# ─────────────────────────────────────────
+# ④ BE-ARCH-08c⑤: 前端订阅回传 → SUBSCRIBE/UNSUBSCRIBE 经子服务真实落到 worker
+# ─────────────────────────────────────────
+class TestFutuSubscribeCallbackContract:
+    """BE-ARCH-08c⑤: 前端 WS 订阅应回传子服务 SUBSCRIBE, 经 futu_worker 落到
+    futu_service.subscribe_quote (通知 OpenD 真正订阅实时推送)。此前无此分支。"""
+
+    @pytest.mark.asyncio
+    async def test_subscribe_reaches_worker(self, sub_app):
+        mod, client = sub_app
+        mock = AsyncMock(return_value={"status": "success", "subscribed": ["HK.00700"]})
+        with patch.object(mod, "handle_futu", mock):
+            params = _outbound_params(ticker="HK.00700")
+            body = json.dumps({"source": "futu", "action": "SUBSCRIBE", "params": params})
+            r = client.post("/api/v1/data", content=body, headers=_sign(body))
+            assert r.status_code == 200
+            action, got = mock.call_args[0]
+            assert action == "SUBSCRIBE", f"worker 未收到 SUBSCRIBE: {action}"
+            assert got.get("symbol") == "HK.00700", f"worker 未取到 symbol: {got}"
+
+    @pytest.mark.asyncio
+    async def test_unsubscribe_reaches_worker(self, sub_app):
+        mod, client = sub_app
+        mock = AsyncMock(return_value={"status": "success", "unsubscribed": ["HK.00700"]})
+        with patch.object(mod, "handle_futu", mock):
+            params = _outbound_params(ticker="HK.00700")
+            body = json.dumps({"source": "futu", "action": "UNSUBSCRIBE", "params": params})
+            r = client.post("/api/v1/data", content=body, headers=_sign(body))
+            assert r.status_code == 200
+            action, got = mock.call_args[0]
+            assert action == "UNSUBSCRIBE", f"worker 未收到 UNSUBSCRIBE: {action}"
+            assert got.get("symbol") == "HK.00700"
 
 
 # ─────────────────────────────────────────
