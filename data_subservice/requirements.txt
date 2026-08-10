@@ -1,13 +1,17 @@
 # ============================================================
 # Quant Agent - Data Subservice 依赖收口 (纯数据源子服务)
 # ============================================================
-# 说明：
-# - 本文件收口「分布式数据源子服务」直连第三方数据源所需的全部 SDK。
+# ⚠️ 警告：本文件为「全量 SDK 清单」，仅用于本地开发/调试参考，
+#    NOT 用于生产镜像构建！生产镜像由 data_subservice/Dockerfile 经
+#    pyproject.toml 的细粒度 extra (datasource-us / datasource-cn / datasource-us-aux)
+#    按节点能力隔离安装，避免单镜像打全量 SDK 造成体积膨胀。
+#    若误用 `pip install -r requirements.txt` 构建，会把 futu+akshare+tushare+yfinance
+#    全部装进镜像，体积从 ~400MB 飙到 500MB+。
 # - 子服务独立运行在远程 VPS，主服务 (backend) 经 DataSourceRouter 走 HTTP 调用，
 #   主服务 requirements 不再包含任何第三方数据源依赖，避免在主节点暴露直连 API。
 # - 版本号取下限(>=)，不锁死，给解析器留余地；如需可复现构建请改用
 #   requirements.lock / poetry.lock。
-# - 安装：python3 -m pip install -r data_subservice/requirements.txt
+# - 本地安装：python3 -m pip install -r data_subservice/requirements.txt (仅调试用)
 # ============================================================
 
 # ── 第三方数据源 SDK (子服务直连核心) ──
