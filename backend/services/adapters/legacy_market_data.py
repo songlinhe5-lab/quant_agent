@@ -418,14 +418,12 @@ class MarketDataGateway:
         return self.futu.connect()
 
     def is_opend_reachable(self, timeout: float = 2.0) -> bool:
-        return bool(self.futu.conn_mgr._is_opend_reachable(timeout=timeout))
+        # BE-ARCH-09: 主服务远程-only, 无本地 OpenD, 主机可达性由子服务负责
+        return bool(self.futu.is_opend_reachable(timeout=timeout))
 
     def switch_opend_host(self, host: str, port: int = 11111) -> dict[str, Any]:
-        result = self.futu.conn_mgr.switch_host(host, port)
-        self.futu.status = self.futu.conn_mgr.status
-        self.futu.error_msg = self.futu.conn_mgr.error_msg
-        self.futu.quote_ctx = self.futu.conn_mgr.quote_ctx
-        return result
+        # BE-ARCH-09: 主服务远程-only, 不再切换本地 OpenD 连接; 兼容占位返回
+        return self.futu.switch_opend_host(host, port)
 
     def futu_health_status(self) -> dict[str, Any]:
         return {
