@@ -26,17 +26,25 @@ from data_subservice._internal.logger import logger
 from data_subservice._internal.metrics import registry as _metrics_registry
 from data_subservice._internal.redis_client import redis_client
 from data_subservice._internal.service_registry import ServiceRegistry
-from data_subservice.akshare_worker import handle_akshare
-from data_subservice.dbnomics_worker import handle_dbnomics
-from data_subservice.finnhub_worker import handle_finnhub
-from data_subservice.fmp_worker import handle_fmp
-from data_subservice.fred_worker import handle_fred
-from data_subservice.futu_worker import handle_futu
 from data_subservice.nodeinfo import get_node_info
-from data_subservice.rbi_worker import handle_rbi
-from data_subservice.search_worker import handle_search
-from data_subservice.tushare_worker import handle_tushare
 from data_subservice.yfinance_worker import handle_yfinance
+
+# 重型/本地依赖型 worker（akshare/tushare/futu 等）采用延迟导入，避免在仅声明
+# yfinance 能力的叶子节点（主服务 backend 测试环境不安装 akshare/tushare/futu）
+# 上因 import 失败而无法启动。仅当对应 source 被请求时才 import，缺失时返回 503。
+_WORKER_IMPORTS = {
+    "akshare": "data_subservice.akshare_worker",
+    "tushare": "data_subservice.tushare_worker",
+    "futu": "data_subservice.futu_worker",
+    "finnhub": "data_subservice.finnhub_worker",
+    "fmp": "data_subservice.fmp_worker",
+    "fred": "data_subservice.fred_worker",
+    "dbnomics": "data_subservice.dbnomics_worker",
+    "rbi": "data_subservice.rbi_worker",
+    "tavily": "data_subservice.search_worker",
+    "bocha": "data_subservice.search_worker",
+    "jina": "data_subservice.search_worker",
+}
 
 load_dotenv()
 
@@ -118,30 +126,22 @@ async def fetch_data(request: Request):
 
     if source == "yfinance":
         result = await handle_yfinance(action, params)
-    elif source == "akshare":
-        result = await handle_akshare(action, params)
-    elif source == "tushare":
-        result = await handle_tushare(action, params)
-    elif source == "fmp":
-        result = await handle_fmp(action, params)
-    elif source == "finnhub":
-        # QUOTE/COMPANY_NEWS/MARKET_NEWS/EARNINGS/ECONOMIC_CALENDAR/INSIDER_TRADING/STOCK_HISTORY
-        result = await handle_finnhub(action, params)
-    elif source == "fred":
-        # MACRO_SERIES/ECONOMIC_CALENDAR
-        result = await handle_fred(action, params)
-    elif source == "dbnomics":
-        # ECONOMIC_CALENDAR
-        result = await handle_dbnomics(action, params)
-    elif source == "rbi":
-        # ECONOMIC_CALENDAR
-        result = await handle_rbi(action, params)
-    elif source in ("tavily", "bocha", "jina"):
-        # SEARCH
-        result = await handle_search(source, action, params)
-    elif source == "futu":
-        # Futu 依赖本地 OpenD TCP，仅声明 DS_CAPABILITIES 含 futu 的节点（主节点）响应
-        result = await handle_futu(action, params)
+    elif source in _WORKER_IMPORTS:
+        # 延迟导入对应 worker（重型/本地依赖型 SDK 仅在请求时 import）
+        try:
+            mod = __import__(_WORKER_IMPORTS[source], fromlist=["handle_" + source])
+        except ModuleNotFoundError as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"数据源依赖缺失 (source={source}, 未安装对应 SDK: {e.name})",
+            )
+        handler = getattr(mod, "handle_" + source, None)
+        if handler is None:
+            raise HTTPException(status_code=503, detail=f"数据源处理程序未实现: {source}")
+        if source in ("tavily", "bocha", "jina"):
+            result = await handler(source, action, params)
+        else:
+            result = await handler(action, params)
     else:
         raise HTTPException(status_code=400, detail=f"未知数据源: {source}")
 
