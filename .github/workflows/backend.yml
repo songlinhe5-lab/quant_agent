@@ -344,7 +344,9 @@ jobs:
             # --remove-orphans 可能把 registry 误判为孤儿容器清掉 (compose 版本/项目名不一致时)，
             # 或 up 阶段因端口冲突未成功启动。此处幂等再 up 一次，确保 registry 必然运行，
             # 否则下方等待校验会 fail-fast，不会把空 registry 暴露给北京节点。
-            docker compose -f docker-compose.master.yml --env-file .env up -d registry
+            # 🔧 加固: up 命令本身非零退出时当场 fail，不再静默进入等待循环 (避免 30s 空等且信息模糊)。
+            docker compose -f docker-compose.master.yml --env-file .env up -d registry \
+              || { echo "❌ 主节点 up -d registry 执行失败 (registry 未创建)，中止避免北京节点拉到空 registry"; exit 1; }
 
             # ── 关键加固: 等待 registry 容器就绪并监听 5000 端口 ──
             # 历史坑: registry 容器未运行 → 北京节点经内网 pull 5000 端口吃 connection refused，
