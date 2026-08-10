@@ -6,10 +6,7 @@ import pytest
 # 💡 核心修复：因为文件放在了 backend/tests 下，必须向上跳两级才能到达 quant_agent 根目录  # noqa: E501
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
 
-from backend.services.futu import futu_service
-from backend.services.futu.screener_handler import _FUTU_V2_SUPPORT
 from backend.services.screener.screener_service import screener_service
 
 # 📊 100 条全维度量化选股单测用例矩阵
@@ -1022,113 +1019,9 @@ def test_screener_dsl_parsing(case):
             pytest.fail(f"Unexpected ValueError for valid JSON: {json_string} | Error: {e}")  # noqa: E501
 
 
-@pytest.mark.asyncio
-@pytest.mark.skipif(not _FUTU_V2_SUPPORT, reason="需要完整的 futu-api V2 接口支持（CI 环境可能不完整）")
-async def test_futu_service_indicator_pattern_fix():
-    """
-    测试 futu_service.py 中对于技术指标形态的修复：
-    验证 MACD_GOLDEN_CROSS + K_DAY 能否被正确容错并映射到 Pattern.MACD_GOLD_CROSS 与 Period.DAY
-    """
-    # 💡 运行时双重守卫：skipif 可能因模块属性缺失而未能生效
-    import backend.services.futu.screener_handler as handler_module
-
-    if not hasattr(handler_module, "StockScreenRequest") or handler_module.StockScreenRequest is None:
-        pytest.skip("screener_handler 模块未成功加载 StockScreenRequest")
-
-    # 模拟 Futu 连接状态与内部 Context
-    futu_service.conn_mgr.status = "CONNECTED"
-    futu_service.conn_mgr.quote_ctx = MagicMock()
-
-    from futu import RET_OK
-    from futu.quote.stock_screen_const import Pattern
-
-    # 模拟底层选股直接返回空结果，避免深入解析导致报错
-    futu_service.conn_mgr.quote_ctx.get_stock_screen.return_value = (RET_OK, (True, []))
-
-    filters = [{"field": "MACD_GOLDEN_CROSS", "type": "indicator_pattern", "period": "K_DAY"}]
-
-    # 💡 正确 mock 所有内部导入的模块级变量（💡 必须用 MagicMock() 实例而非 MagicMock 类）
-    with (
-        patch.multiple(
-            "backend.services.futu.screener_handler",
-            StockScreenRequest=MagicMock(),
-            SimpleField=MagicMock(),
-            BasicProperty=MagicMock(),
-            SimpleProperty=MagicMock(),
-            FinancialProperty=MagicMock(),
-            CumulativeProperty=MagicMock(),
-            FeaturedProperty=MagicMock(),
-            Indicator=MagicMock(),
-            KlineShapeProperty=MagicMock(),
-            OptionProperty=MagicMock(),
-            Pattern=MagicMock(),
-            Position=MagicMock(),
-            BrokerProperty=MagicMock(),
-            ScrMarket=MagicMock(),
-            ScrSortDir=MagicMock(),
-            Term=MagicMock(),
-        ),
-        patch("asyncio.sleep", new=AsyncMock()),
-    ):
-        # 配置 MagicMock 的返回值，使得 get_enum 能正常工作
-        handler_module.Pattern.MACD_GOLD_CROSS = Pattern.MACD_GOLD_CROSS
-        handler_module.Pattern.MACD_GOLDEN_CROSS = Pattern.MACD_GOLD_CROSS  # 容错映射
-        # 💡 修复：模块无 Period 属性，使用 MagicMock 替代
-        handler_module.SimpleField.MARKET = MagicMock()
-        handler_module.BasicProperty.CODE = MagicMock()
-        handler_module.BasicProperty.NAME = MagicMock()
-        handler_module.BasicProperty.INDUSTRY = MagicMock()
-
-        await futu_service.screen_stocks(market="HK", filters=filters)
-
-        # 验证 StockScreenRequest 被调用（间接验证测试通过）
-        # 由于我们已经 mock 了所有变量，这个测试主要验证不会抛出异常
-
-
-@pytest.mark.asyncio
-@pytest.mark.skipif(not _FUTU_V2_SUPPORT, reason="需要完整的 futu-api V2 接口支持（CI 环境可能不完整）")
-async def test_futu_service_indicator_positional():
-    """
-    测试 futu_service.py 中对于技术指标位置关系的组装逻辑：
-    验证 MA 上穿 EMA 的场景能否正确组装，并附加正确的 retrieve 回包字段。
-    """
-    # 💡 运行时双重守卫
-    import backend.services.futu.screener_handler as handler_module
-
-    if not hasattr(handler_module, "StockScreenRequest") or handler_module.StockScreenRequest is None:
-        pytest.skip("screener_handler 模块未成功加载 StockScreenRequest")
-
-    # 模拟 Futu 连接状态与内部 Context
-    futu_service.conn_mgr.status = "CONNECTED"
-    futu_service.status = "CONNECTED"  # _route() 读取 self.status
-    futu_service.conn_mgr.quote_ctx = MagicMock()
-
-    from futu import RET_OK
-
-    futu_service.conn_mgr.quote_ctx.get_stock_screen.return_value = (RET_OK, (True, []))
-
-    filters = [
-        {
-            "field": "MA",
-            "type": "indicator_positional",
-            "second_indicator": "EMA",
-            "position": "CROSS_UP",
-            "period": "K_DAY",
-        }
-    ]
-
-    # 启用 V2 支持并 mock StockScreenRequest
-    with (
-        patch("backend.services.futu.screener_handler._FUTU_V2_SUPPORT", True),
-        patch("backend.services.futu.screener_handler.StockScreenRequest") as MockReq,
-        patch("asyncio.sleep", new=AsyncMock()),
-    ):
-        mock_req_instance = MockReq.return_value
-        await futu_service.screen_stocks(market="US", filters=filters)
-
-        # 💡 修复：底层 handler 传递的是 enum 的 value（int），而非 enum 对象本身
-        # 使用 ANY 匹配避免 enum 对象 vs int 值的断言失败
-        mock_req_instance.add_indicator_positional.assert_called()
-        # 验证 add_retrieve_indicator 被调用过（参数可能是 enum 对象或其 value）
-        retrieve_calls = [c for c in mock_req_instance.add_retrieve_indicator.call_args_list]
-        assert len(retrieve_calls) >= 2, f"Expected at least 2 add_retrieve_indicator calls, got {len(retrieve_calls)}"
+# ============================================================================
+# 注: 以下两个 futu-api SDK 集成测试 (test_futu_service_indicator_pattern_fix /
+# test_futu_service_indicator_positional) 已随主服务 futu 直连模块 (screener_handler)
+# 的移除而删除。主服务走 DataSourceRouter.fetch_futu 远程代理, 选股实际拼装由
+# data_subservice/futu_src 完成, 不再在主服务单测内联 SDK mock。
+# ============================================================================

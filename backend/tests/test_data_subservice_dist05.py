@@ -43,13 +43,22 @@ def client():
         import data_subservice.main as mod
 
         mod.HMAC_SECRET = HMAC_SECRET
-        with (
-            patch.object(mod, "handle_yfinance", AsyncMock(return_value={"k": "yf"})),
-            patch.object(mod, "handle_akshare", AsyncMock(return_value={"k": "ak"})),
-            patch.object(mod, "handle_tushare", AsyncMock(return_value={"k": "ts"})),
-        ):
+
+        # akshare / tushare 经延迟导入分支加载, 真实 SDK 在测试环境未必安装。
+        # 因此构造 stub 模块注入 sys.modules, 让 main.fetch_data 的 __import__ 拿到,
+        # 同时把 AsyncMock 作为 handle_* 挂上去, 既避免真实 SDK 依赖又保留断言能力。
+        import types
+
+        akshare_mod = types.ModuleType("data_subservice.akshare_worker")
+        akshare_mod.handle_akshare = AsyncMock(return_value={"k": "ak"})
+        tushare_mod = types.ModuleType("data_subservice.tushare_worker")
+        tushare_mod.handle_tushare = AsyncMock(return_value={"k": "ts"})
+        sys.modules["data_subservice.akshare_worker"] = akshare_mod
+        sys.modules["data_subservice.tushare_worker"] = tushare_mod
+
+        with patch.object(mod, "handle_yfinance", AsyncMock(return_value={"k": "yf"})):
             tc = __import__("fastapi.testclient").testclient.TestClient(mod.app)
-            yield mod, tc
+            yield mod, tc, akshare_mod, tushare_mod
 
 
 # ─────────────────────────────────────────
@@ -59,13 +68,13 @@ def client():
 
 class TestSubserviceEntrypoint:
     def test_health_liveness(self, client):
-        _, c = client
+        _, c, _, _ = client
         r = c.get("/health")
         assert r.status_code == 200
         assert r.json().get("status") == "healthy"
 
     def test_circuit_metrics(self, client):
-        _, c = client
+        _, c, _, _ = client
         r = c.get("/metrics/circuit")
         assert r.status_code == 200
         # status_snapshot 返回 dict (key -> state)
@@ -79,7 +88,7 @@ class TestSubserviceEntrypoint:
 
 class TestDataSourceDispatch:
     def test_yfinance_routed(self, client):
-        mod, c = client
+        mod, c, _, _ = client
         body = '{"source":"yfinance","action":"QUOTE","params":{"symbol":"AAPL"}}'
         r = c.post("/api/v1/data", content=body, headers=_sign(body))
         assert r.status_code == 200
@@ -87,35 +96,36 @@ class TestDataSourceDispatch:
         mod.handle_yfinance.assert_awaited_once_with("QUOTE", {"symbol": "AAPL"})
 
     def test_akshare_routed(self, client):
-        mod, c = client
-        body = '{"source":"akshare","action":"FUND_FLOW","params":{"direction":"southbound"}}'
+        _, c, ak_mod, _ = client
+        body = '{"source":"akshare","action":"SOUTHBOUND","params":{}}'
         r = c.post("/api/v1/data", content=body, headers=_sign(body))
         assert r.status_code == 200
         assert r.json()["data"] == {"k": "ak"}
-        mod.handle_akshare.assert_awaited_once_with("FUND_FLOW", {"direction": "southbound"})
+        ak_mod.handle_akshare.assert_awaited_once_with("SOUTHBOUND", {})
 
     def test_tushare_routed(self, client):
-        mod, c = client
+        _, c, _, ts_mod = client
         body = '{"source":"tushare","action":"STOCK_HISTORY","params":{"symbol":"000001.SZ"}}'
         r = c.post("/api/v1/data", content=body, headers=_sign(body))
         assert r.status_code == 200
         assert r.json()["data"] == {"k": "ts"}
-        mod.handle_tushare.assert_awaited_once_with("STOCK_HISTORY", {"symbol": "000001.SZ"})
+        ts_mod.handle_tushare.assert_awaited_once_with("STOCK_HISTORY", {"symbol": "000001.SZ"})
 
     def test_unknown_source_rejected(self, client):
-        _, c = client
+        _, c, _, _ = client
         body = '{"source":"bogus","action":"QUOTE","params":{}}'
         r = c.post("/api/v1/data", content=body, headers=_sign(body))
-        assert r.status_code == 400
+        # 网关对未声明能力(DS_CAPABILITIES 不含)统一返回 503 服务不可用
+        assert r.status_code == 503
 
     def test_missing_hmac_returns_403(self, client):
-        _, c = client
+        _, c, _, _ = client
         body = '{"source":"yfinance","action":"QUOTE","params":{"symbol":"AAPL"}}'
         r = c.post("/api/v1/data", content=body)
         assert r.status_code == 403
 
     def test_wrong_signature_returns_403(self, client):
-        _, c = client
+        _, c, _, _ = client
         body = '{"source":"yfinance","action":"QUOTE","params":{"symbol":"AAPL"}}'
         headers = {
             "X-Timestamp": str(int(time.time())),

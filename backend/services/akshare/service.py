@@ -2,12 +2,13 @@
 AKShare 数据源服务 — 主类骨架
 
 负责从东方财富/沪深港通获取跨市场资金净买卖数据。
-数据来源: akshare stock_hsgt_* 系列接口
-缓存策略: Redis 60s TTL，避免频繁请求触发限流
+连接层已下沉 data_subservice (BE-ARCH-07f-2): 主服务不再持有 akshare 本地连接，
+全部经 DataSourceRouter 远程调用 AKShare 子服务 (stock_hsgt_* 等接口)。
+主服务仅负责 Redis 缓存、熔断状态维护与降级兜底。
 
 运行模式 (环境变量 AKSHARE_MODE):
-  - direct: 直连 akshare 库获取数据 (默认，主服务本地模式)
-  - cache:  仅读取 Redis 缓存，不直连 akshare (加州主服务 + 北京 VPS 中继模式)
+  - direct: 远程调用 AKShare 子服务 (默认)
+  - cache:  仅读取 Redis 缓存，不触网 (加州主服务 + 北京 VPS 中继模式)
             数据由北京 VPS 的 AKShareCollector 定时采集写入 Redis
 """
 

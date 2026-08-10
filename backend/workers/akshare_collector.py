@@ -1,8 +1,10 @@
 """
-AKShare Collector — 北京 VPS 定时采集 daemon
-==============================================
+AKShare Collector — 北京 VPS 定时采集 daemon（远程子服务模式）
+==========================================================
 
-方案 A (Redis 中继): 北京 VPS 直连东方财富，定时采集数据写入共享 Redis，
+连接层已下沉 data_subservice（_internal/akshare + akshare_worker，部署在 CN-AKSHARE
+北京节点，DS_CAPABILITIES=akshare）。采集 daemon 不再实例化本地 AKShareService，
+统一经 data_source_router.fetch_akshare() 联邦调用子服务拉取数据，写回共享 Redis，
 加州主服务 (AKSHARE_MODE=cache) 从 Redis 读取缓存数据。
 
 采集频率:
@@ -12,21 +14,23 @@ AKShare Collector — 北京 VPS 定时采集 daemon
 
 部署:
   北京 VPS 上运行，需确保:
-  1. AKSHARE_MODE=direct (默认)
-  2. 共享 Redis 可访问 (通过 Tailscale 内网或公网)
-  3. 数据源采集能力默认开启（无需激活开关），子服务侧经 DS_CAPABILITIES 声明 akshare 能力
+  1. 共享 Redis 可访问 (通过 Tailscale 内网或公网)
+  2. AKSHARE 数据源能力默认开启（无需激活开关），子服务侧经 DS_CAPABILITIES 声明 akshare 能力
 
-任务编号: DIST-07 方案 A
+任务编号: DIST-07 方案 A (BE-ARCH-07g 去本地 SDK)
 """
 
 from __future__ import annotations
 
 import asyncio
-import os
+import json
 import time
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from backend.core.logger import logger
+from backend.core.redis_client import redis_client
+from backend.services.datasource.router import data_source_router
 
 # ─────────────────────────────────────────
 #  采集任务定义
@@ -92,36 +96,41 @@ def _is_trading_hours() -> bool:
     return (hour == 9 and minute >= 15) or (10 <= hour <= 15) or (hour == 16 and minute <= 15)
 
 
-async def _collect_southbound(service) -> Dict[str, Any]:
-    """采集南向资金"""
-    result = await service.get_southbound_flow()
+async def _fetch_and_cache(action: str, redis_key: str, ttl: int, **params: Any) -> Dict[str, Any]:
+    """统一经子服务拉取 AKShare 数据并写回共享 Redis（对齐主服务 cache-mode 读取）。"""
+    result = await data_source_router.fetch_akshare(action, **params)
+    if not isinstance(result, dict):
+        return {"status": "error", "message": f"子服务返回非字典: {type(result)}", "data": None}
+
+    result["updated_at"] = datetime.now(timezone.utc).isoformat()
+    try:
+        await redis_client.set(redis_key, json.dumps(result, ensure_ascii=False), ex=ttl)
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning(f"[AKShareCollector] 写缓存失败 {redis_key}: {e}")
+
     status = result.get("status", "error")
-    logger.info(f"[AKShareCollector] 南向资金采集完成: status={status}")
+    logger.info(f"[AKShareCollector] 采集完成 action={action} status={status}")
     return result
 
 
-async def _collect_northbound(service) -> Dict[str, Any]:
-    """采集北向资金"""
-    result = await service.get_northbound_flow()
-    status = result.get("status", "error")
-    logger.info(f"[AKShareCollector] 北向资金采集完成: status={status}")
-    return result
+async def _collect_southbound(service=None) -> Dict[str, Any]:
+    """采集南向资金 → akshare_southbound_flow"""
+    return await _fetch_and_cache("SOUTHBOUND", "akshare_southbound_flow", 300)
 
 
-async def _collect_hk_connect(service) -> Dict[str, Any]:
-    """采集港股通双通道资金流向明细 (沪+深)"""
-    result = await service.get_hk_stock_connect_flow()
-    status = result.get("status", "error")
-    logger.info(f"[AKShareCollector] 港股通双通道资金流向采集完成: status={status}")
-    return result
+async def _collect_northbound(service=None) -> Dict[str, Any]:
+    """采集北向资金 → akshare_northbound_flow (走 FUND_FLOW action，对齐 FlowMixin)"""
+    return await _fetch_and_cache("FUND_FLOW", "akshare_northbound_flow", 300)
 
 
-async def _collect_economic_calendar(service) -> Dict[str, Any]:
-    """采集宏观经济日历"""
-    result = await service.get_economic_calendar(days_ahead=7, skip_cache=True)
-    status = result.get("status", "error")
-    logger.info(f"[AKShareCollector] 宏观日历采集完成: status={status}, events={len(result.get('data', []))}")
-    return result
+async def _collect_hk_connect(service=None) -> Dict[str, Any]:
+    """采集港股通双通道资金流向明细 (沪+深) → akshare_hk_connect_flow"""
+    return await _fetch_and_cache("HK_CONNECT", "akshare_hk_connect_flow", 300)
+
+
+async def _collect_economic_calendar(service=None) -> Dict[str, Any]:
+    """采集宏观经济日历 → akshare_econ_cal_7_0"""
+    return await _fetch_and_cache("ECONOMIC_CALENDAR", "akshare_econ_cal_7_0", 43200, days_ahead=7)
 
 
 # 任务名 → 采集函数映射
@@ -142,30 +151,18 @@ async def akshare_collector_daemon(
     enabled_tasks: List[str] | None = None,
 ) -> None:
     """
-    AKShare 采集 daemon 主入口。
+    AKShare 采集 daemon 主入口（远程子服务模式）。
 
-    在北京 VPS 上运行，定时采集数据写入共享 Redis。
-    加州主服务 (AKSHARE_MODE=cache) 从 Redis 读取。
+    在北京 VPS 上运行，经 data_source_router 联邦调用 CN-AKSHARE 子服务拉取数据，
+    写入共享 Redis。加州主服务 (AKSHARE_MODE=cache) 从 Redis 读取。
 
     Args:
         enabled_tasks: 启用的任务列表，默认全部启用
     """
-    # 延迟导入，避免循环依赖
-    from backend.services.akshare import AKShareService
-
     if enabled_tasks is None:
         enabled_tasks = list(COLLECTOR_TASKS.keys())
 
-    # 创建 direct 模式的 AKShareService (不依赖环境变量，强制 direct)
-    original_mode = os.environ.get("AKSHARE_MODE", "")
-    os.environ["AKSHARE_MODE"] = "direct"
-
-    service = AKShareService()
-    # 恢复原环境变量
-    if original_mode:
-        os.environ["AKSHARE_MODE"] = original_mode
-
-    logger.info(f"[AKShareCollector] 启动采集 daemon, 任务列表: {enabled_tasks}")
+    logger.info(f"[AKShareCollector] 启动采集 daemon (远程子服务模式), 任务列表: {enabled_tasks}")
 
     # 记录每个任务的最后采集时间
     last_collected: Dict[str, float] = {name: 0.0 for name in enabled_tasks}
@@ -191,7 +188,7 @@ async def akshare_collector_daemon(
                     continue
 
                 try:
-                    await handler(service)
+                    await handler()
                     last_collected[task_name] = time.time()
                 except Exception as e:
                     logger.error(f"[AKShareCollector] {task_name} 采集异常: {e}")

@@ -10,15 +10,25 @@ AKShareService — AKShare 数据源实现（物理解耦裁剪版）
 
 from typing import Any, Dict, List, Optional
 
-from data_subservice._internal.akshare.calendar import (
-    get_economic_calendar,
+from data_subservice._internal.akshare.calendar import get_economic_calendar
+from data_subservice._internal.akshare.flow import (
+    get_a_share_margin,
+    get_a_share_sector_flow,
+    get_hk_connect_flow,
+    get_hk_sector_flow,
+    get_hsgt_top_holders,
+    get_individual_flow,
+    get_northbound_flow_full,
+    get_southbound_flow,
 )
-from data_subservice._internal.akshare.flow import get_individual_flow, get_northbound_flow
 from data_subservice._internal.akshare.quote import (
+    get_company_news,
     get_history,
     get_hk_news,
     get_hk_stock_quote,
     get_spot_a_quote,
+    get_stock_history_a_sina,
+    get_stock_quote_a_sina,
     get_us_stock_quote,
 )
 from data_subservice._internal.circuit_breaker import circuit_breaker
@@ -96,7 +106,7 @@ class AKShareService:
         def _call():
             if symbol:
                 return get_individual_flow(symbol)
-            return get_northbound_flow()
+            return get_northbound_flow_full()
 
         try:
             result = await circuit_breaker.call("akshare:flow", _call)
@@ -106,18 +116,90 @@ class AKShareService:
             self._record_failure("flow")
             return {"error": str(e), "source": "akshare"}
 
-    async def get_econ_cal(self) -> List[Dict[str, Any]]:
+    async def get_southbound(self) -> Dict[str, Any]:
         def _call():
-            return get_economic_calendar()
+            return get_southbound_flow()
+
+        try:
+            result = await circuit_breaker.call("akshare:southbound", _call)
+            self._record_success("southbound")
+            return result or {"status": "warning", "data": None, "source": "akshare-unavailable"}
+        except Exception as e:
+            self._record_failure("southbound")
+            return {"status": "error", "message": str(e), "data": None}
+
+    async def get_hk_connect(self) -> Dict[str, Any]:
+        def _call():
+            return get_hk_connect_flow()
+
+        try:
+            result = await circuit_breaker.call("akshare:hk_connect", _call)
+            self._record_success("hk_connect")
+            return result or {"status": "warning", "data": None, "source": "akshare-unavailable"}
+        except Exception as e:
+            self._record_failure("hk_connect")
+            return {"status": "error", "message": str(e), "data": None}
+
+    async def get_hsgt_top_holders(self, symbol: str = "00700") -> Dict[str, Any]:
+        def _call():
+            return get_hsgt_top_holders(symbol)
+
+        try:
+            result = await circuit_breaker.call(f"akshare:holders:{symbol}", _call)
+            self._record_success(f"holders:{symbol}")
+            return result or {"status": "warning", "data": None, "source": "akshare-unavailable"}
+        except Exception as e:
+            self._record_failure(f"holders:{symbol}")
+            return {"status": "error", "message": str(e), "data": None}
+
+    async def get_stock_news(self, ticker: str) -> Dict[str, Any]:
+        def _call():
+            return get_company_news(ticker)
+
+        try:
+            result = await circuit_breaker.call(f"akshare:news:{ticker}", _call)
+            self._record_success(f"news:{ticker}")
+            return result or {"status": "success", "data": [], "source": "akshare"}
+        except Exception as e:
+            self._record_failure(f"news:{ticker}")
+            return {"status": "error", "message": str(e), "data": []}
+
+    async def get_quote_a(self, ticker: str) -> Dict[str, Any]:
+        def _call():
+            return get_stock_quote_a_sina(ticker)
+
+        try:
+            result = await circuit_breaker.call(f"akshare:quote:{ticker}", _call)
+            self._record_success(f"quote:{ticker}")
+            return result or {"status": "error", "message": "no data", "data": None}
+        except Exception as e:
+            self._record_failure(f"quote:{ticker}")
+            return {"status": "error", "message": str(e), "data": None}
+
+    async def get_history_a(self, ticker: str, num: int = 60) -> Dict[str, Any]:
+        def _call():
+            return get_stock_history_a_sina(ticker, num=num)
+
+        try:
+            result = await circuit_breaker.call(f"akshare:history:{ticker}", _call)
+            self._record_success(f"history:{ticker}")
+            return result or {"status": "error", "message": "no data", "data": None}
+        except Exception as e:
+            self._record_failure(f"history:{ticker}")
+            return {"status": "error", "message": str(e), "data": None}
+
+    async def get_econ_cal(self, days_ahead: int = 7, days_back: int = 0) -> Dict[str, Any]:
+        def _call():
+            return get_economic_calendar(days_ahead=days_ahead, days_back=days_back)
 
         try:
             result = await circuit_breaker.call("akshare:cal", _call)
             self._record_success("cal")
-            return result
+            return result or {"status": "error", "message": "no data", "data": []}
         except Exception as e:
             logger.warning(f"[AKShare] 宏观日历获取失败: {e}")
             self._record_failure("cal")
-            return []
+            return {"status": "error", "message": str(e), "data": []}
 
     async def get_hk_news(self, days: int = 3) -> List[Dict[str, Any]]:
         def _call():
@@ -131,6 +213,42 @@ class AKShareService:
             logger.warning(f"[AKShare] 港股新闻获取失败: {e}")
             self._record_failure("news")
             return []
+
+    async def get_margin_a_share(self) -> Dict[str, Any]:
+        def _call():
+            return get_a_share_margin()
+
+        try:
+            result = await circuit_breaker.call("akshare:margin", _call)
+            self._record_success("margin")
+            return result
+        except Exception as e:
+            self._record_failure("margin")
+            return {"status": "error", "message": str(e), "data": None}
+
+    async def get_sector_flow_a(self) -> Dict[str, Any]:
+        def _call():
+            return get_a_share_sector_flow()
+
+        try:
+            result = await circuit_breaker.call("akshare:sector_a", _call)
+            self._record_success("sector_a")
+            return result
+        except Exception as e:
+            self._record_failure("sector_a")
+            return {"status": "error", "message": str(e), "data": None}
+
+    async def get_sector_flow_hk(self) -> Dict[str, Any]:
+        def _call():
+            return get_hk_sector_flow()
+
+        try:
+            result = await circuit_breaker.call("akshare:sector_hk", _call)
+            self._record_success("sector_hk")
+            return result
+        except Exception as e:
+            self._record_failure("sector_hk")
+            return {"status": "error", "message": str(e), "data": None}
 
 
 # 全局单例

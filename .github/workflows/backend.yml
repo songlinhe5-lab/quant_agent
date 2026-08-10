@@ -50,6 +50,67 @@ jobs:
             BUILDKIT_INLINE_CACHE=1
 
   # ----------------------------------------------------------------
+  # 单元回归测试: 主服务 backend/tests
+  #   自包含 (conftest 强制 SQLite + Mock Redis)，无需真实 DB/Redis 服务。
+  #   作为 deploy-master 的合并门禁 (merge gate)。
+  # ----------------------------------------------------------------
+  test-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Sync dependencies
+        run: uv sync --all-extras
+
+      - name: Run backend unit tests
+        # CI 无 OTel collector(4318)，禁用 SDK 避免 trace 导出无限重试拖垮 job
+        env:
+          OTEL_SDK_DISABLED: "true"
+        run: uv run pytest backend/tests -p no:cacheprovider --tb=short -q --log-cli-level=WARNING
+
+  # ----------------------------------------------------------------
+  # 单元回归测试: 数据子服务 data_subservice/tests
+  #   独立 pytest 入口 (data_subservice/pytest.ini)，需在装有 requirements.txt 的环境运行
+  #   (tushare/futu/akshare 等重型 SDK 按架构禁止装在主服务环境)。
+  #   作为 deploy-data-nodes 的合并门禁。
+  # ----------------------------------------------------------------
+  test-data-subservice:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install data_subservice dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # 运行时依赖 (含 tushare/futu/akshare 等重型 SDK)
+          pip install -r data_subservice/requirements.txt
+          # 测试依赖 (不进运行时 requirements，单独安装):
+          #   pytest / pytest-asyncio (pytest.ini 设 asyncio_mode=auto) /
+          #   pytest-mock (mocker fixture) / pytest-env (pytest.ini [env] 段)
+          pip install pytest pytest-asyncio pytest-mock pytest-env
+
+      - name: Run data_subservice unit tests
+        working-directory: data_subservice
+        # CI 无 OTel collector(4318)，禁用 SDK 避免 trace 导出无限重试
+        env:
+          OTEL_SDK_DISABLED: "true"
+        run: python -m pytest -c pytest.ini --tb=short -q --log-cli-level=WARNING
+
+  # ----------------------------------------------------------------
   # 构建 data_subservice 镜像 (按节点类型拆分 extra，隔离 SDK 依赖体积)
   #   cn      : 中国节点 (yfinance + tushare + akshare)
   #   us      : 美西主节点 (yfinance + futu + finnhub 长连接)
@@ -102,7 +163,7 @@ jobs:
   deploy-master:
     # 仅在 push 到 main 分支时部署（真正 merge 后）；push develop / PR 均跳过
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [ build ]
+    needs: [ build, test-backend ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -296,6 +357,14 @@ jobs:
               || { echo "❌ data-subservice 推送到本机 registry 失败 (磁盘/containerd 问题?)，中止避免北京节点拉到空镜像"; exit 1; }
             echo "✅ data-subservice 已推送至本机 registry (push 成功即镜像就位，北京节点可经内网拉取)"
 
+            # ── OPS-03: 每次 push 后回收 registry 垃圾，防止私有 registry 卷无限膨胀 ──
+            # 前置: registry-config.yml 已开启 storage.delete.enabled: true，否则 GC 仅 dry-run 不释放空间。
+            # --delete-untagged 一并清掉 push 中断/版本切换残留的无 tag 层。
+            echo "🧹 push 完成，执行 registry 垃圾回收 (GC)..."
+            docker exec quant_registry bin/registry garbage-collect --delete-untagged=true /etc/registry/config.yml \
+              || echo "⚠️ registry GC 失败（非致命，下次部署或 cron 重试），registry 仍可正常服务"
+            echo "✅ registry GC 完成"
+
             # ── 主节点本地子服务 (node-s1)：与 quant-agent 同机，监听 8001，主服务经 127.0.0.1:8001 直连 ──
             # 复用已拉取的 data-subservice 镜像 (DS_IMAGE 已在上方 pull 就位)
             # ╔══════════════════════════════════════════════════════════════╗
@@ -341,7 +410,7 @@ jobs:
   deploy-data-nodes:
     # 仅在 push 到 main 分支时部署（真正 merge 后）；push develop / PR 均跳过
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [ build-data-subservice, deploy-master ]
+    needs: [ build-data-subservice, test-data-subservice, deploy-master ]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

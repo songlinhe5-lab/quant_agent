@@ -243,6 +243,17 @@ async def app_lifespan(app: FastAPI):
             log.info(f"✅ [Startup] Finnhub WS tick 回灌已启动 (订阅 {len(_ws_symbols)} 只标的)")
         else:
             log.info("ℹ️ [Startup] 未配置 FINNHUB_WS_SYMBOLS，跳过 WS tick 回灌")
+
+        # 🚀 BE-ARCH-07h-2: Futu 经纪商队列 / 实时 K 线推送回灌
+        # 子服务 push_handler 已将 broker/kline 桥接到 quant:broker:{ticker} / quant:kline:{ticker}，
+        # 复用同一批订阅标的启动主服务侧消费者（无独立环境变量，跟随 tick 配置）。
+        try:
+            broker_task = subscription_service.start_broker_ingest(_ws_symbols)
+            kline_task = subscription_service.start_kline_ingest(_ws_symbols)
+            if broker_task is not None or kline_task is not None:
+                log.info(f"✅ [Startup] Futu broker/kline 推送回灌已启动 (订阅 {len(_ws_symbols)} 只标的)")
+        except Exception as be:
+            log.warning(f"[Startup] Futu broker/kline 推送回灌启动失败: {be}")
     except Exception as e:
         log.warning(f"[Startup] Finnhub WS tick 回灌启动失败: {e}")
 
@@ -269,6 +280,34 @@ async def app_lifespan(app: FastAPI):
         # 升级为 error：告警消费器启动失败属可观测性盲区，必须显式暴露
         # （health_deep 的 components.alert_queue 会据此返回 unhealthy）
         log.error(f"[Startup] 限流告警消费器启动失败: {e}")
+
+    # 🚀 SVC-03 数据源健康告警监控器 (周期扫描成功率<95%/Down → 飞书告警，接 OBS-02)
+    try:
+        from backend.services.datasource.health_monitor import data_source_health_monitor
+
+        await data_source_health_monitor.start()
+        log.info("✅ [Startup] 数据源健康告警监控器已启动 (SVC-03)")
+    except Exception as e:
+        log.error(f"[Startup] 数据源健康告警监控器启动失败: {e}")
+
+    # 🚀 SVC-05 配额与成本监控器 (LLM token 预算逼近 / Finnhub 配额耗尽 → 飞书告警，接 OBS-02)
+    try:
+        from backend.services.ai_narrator.quota_monitor import quota_cost_monitor
+
+        await quota_cost_monitor.start()
+        log.info("✅ [Startup] 配额与成本监控器已启动 (SVC-05)")
+    except Exception as e:
+        log.error(f"[Startup] 配额与成本监控器启动失败: {e}")
+
+    # 🚀 SVC-02 三方服务可用性拨测 (周期探活 Futu/YF/Finnhub/FMP/FRED/OpenAI/Ollama
+    #    → 探针成功率/延迟写入 Prometheus + call_metrics 探针字段，供 SVC-03 消费)
+    try:
+        from backend.services.datasource.probe_daemon import data_source_probe_daemon
+
+        await data_source_probe_daemon.start()
+        log.info("✅ [Startup] 数据源可用性拨测 daemon 已启动 (SVC-02)")
+    except Exception as e:
+        log.error(f"[Startup] 数据源可用性拨测 daemon 启动失败: {e}")
 
     yield  # 挂起，FastAPI 正式对外提供服务
 
@@ -322,6 +361,30 @@ async def app_lifespan(app: FastAPI):
             from backend.services.datasource.alert_monitor import rate_limit_alert_monitor
 
             await rate_limit_alert_monitor.stop()
+        except Exception:
+            pass
+
+        # SVC-03: 停止数据源健康告警监控器
+        try:
+            from backend.services.datasource.health_monitor import data_source_health_monitor
+
+            await data_source_health_monitor.stop()
+        except Exception:
+            pass
+
+        # SVC-05: 停止配额与成本监控器
+        try:
+            from backend.services.ai_narrator.quota_monitor import quota_cost_monitor
+
+            await quota_cost_monitor.stop()
+        except Exception:
+            pass
+
+        # SVC-02: 停止数据源可用性拨测 daemon
+        try:
+            from backend.services.datasource.probe_daemon import data_source_probe_daemon
+
+            await data_source_probe_daemon.stop()
         except Exception:
             pass
 
@@ -390,11 +453,9 @@ async def app_lifespan(app: FastAPI):
     try:
         # 注意：backend 不再本地运行 yfinance（已全量外移至 US-YF-A/B 子服务），
         # 故无需在此 close 本地 yf_service。
-
-        # FutuService 为同步 close()，包裹在 to_thread 避免阻塞事件循环
-        from backend.services.futu import futu_service
-
-        await asyncio.to_thread(futu_service.close)
+        # BE-ARCH-07c: 主服务已卸载 Futu SDK 连接层 (OpenD 直连下沉 data_subservice),
+        # futu_service 不再持有本地连接资源, 无需在此 close。
+        pass
     except Exception as e:
         log.warning(f"⚠️ 关闭数据源资源异常：{e}")
 

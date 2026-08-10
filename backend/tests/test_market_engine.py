@@ -560,30 +560,31 @@ class TestBroadcastLoop:
 
         with patch("backend.services.market_engine.asyncio.sleep", side_effect=fast_sleep):
             with patch("backend.services.market_engine.l1_cached_redis.get", return_value="1"):
+                # BE-ARCH-07b: futu_service 本地门控已移除，所有 Futu 调用经 DataSourceRouter
+                # 远程执行；is_futu_unsupported 为纯函数（backend.services.futu.utils）
                 with patch(
-                    "backend.services.market_engine._get_futu_service",
-                    return_value=MagicMock(status="CONNECTED"),
-                ) as mock_futu:
-                    with patch("backend.services.market_engine.data_source_router.fetch_yfinance") as mock_yf:
-                        # 配置 mock：YF 兜底改经 DataSourceRouter.fetch_yfinance（子服务）
-                        mock_futu.is_futu_unsupported.return_value = True  # 所有标的都不支持富途
-                        mock_yf.return_value = {
-                            "status": "success",
-                            "data": {"trend": [], "ticker": "US.AAPL", "last_price": 150.0},
-                        }
-                        mock_futu.get_fund_flow = AsyncMock(
-                            return_value={"status": "success", "data": {"main_fund_net_inflow": 0}}
-                        )
+                    "backend.services.market_engine.is_futu_unsupported",
+                    return_value=True,  # 所有标的都不支持富途
+                ):
+                    with patch(
+                        "backend.services.market_engine.data_source_router.fetch_futu",
+                        new=AsyncMock(return_value={"status": "success", "data": {}}),
+                    ):
+                        with patch("backend.services.market_engine.data_source_router.fetch_yfinance") as mock_yf:
+                            mock_yf.return_value = {
+                                "status": "success",
+                                "data": {"trend": [], "ticker": "US.AAPL", "last_price": 150.0},
+                            }
 
-                        # 添加一个订阅
-                        ws = MagicMock()
-                        mgr.subscriptions[ws] = {"US.AAPL"}
+                            # 添加一个订阅
+                            ws = MagicMock()
+                            mgr.subscriptions[ws] = {"US.AAPL"}
 
-                        # 使用 timeout 让循环快速退出（fast_sleep 使循环飞速迭代，0.1s 足够）
-                        try:
-                            await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
-                        except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
-                            pass
+                            # 使用 timeout 让循环快速退出
+                            try:
+                                await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
+                            except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
+                                pass
 
     async def test_broadcast_loop_with_futu_support(self):
         """测试 broadcast_loop 当标的支持富途时 (经 DataSourceRouter.fetch_futu)"""
@@ -613,15 +614,10 @@ class TestBroadcastLoop:
             with patch("backend.services.market_engine.asyncio.sleep", side_effect=fast_sleep):
                 with patch("backend.services.market_engine.l1_cached_redis.get", return_value="1"):
                     with patch(
-                        "backend.services.market_engine._get_futu_service",
-                        return_value=MagicMock(
-                            status="CONNECTED",
-                            is_futu_unsupported=MagicMock(return_value=False),
-                        ),
-                    ) as mock_futu:
+                        "backend.services.market_engine.is_futu_unsupported",
+                        return_value=False,  # US.AAPL 支持富途
+                    ):
                         with patch("backend.services.market_engine.data_source_router.fetch_yfinance") as mock_yf:
-                            # 配置 mock：US.AAPL 支持富途
-                            mock_futu.status = "CONNECTED"  # Futu 断连防御需要
                             mock_yf.return_value = {
                                 "status": "success",
                                 "data": {"trend": []},
@@ -635,14 +631,13 @@ class TestBroadcastLoop:
                                 ws = MagicMock()
                                 mgr.subscriptions[ws] = {"US.AAPL"}
 
-                                # 使用 timeout 让循环快速退出（fast_sleep 使循环飞速迭代，0.3s 足够跑到 QUOTE）
+                                # 使用 timeout 让循环快速退出
                                 try:
                                     await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.3)
                                 except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
                                     pass
 
                             # 验证富途 fetch_futu("QUOTE", ...) 被调用
-                            # 验证富途 fetch_futu("QUOTE", ...) 被调用 (后台为宏观标的拉取)
                             quote_calls = [c for c in mock_fetch.call_args_list if c.args and c.args[0] == "QUOTE"]
                             assert quote_calls, "fetch_futu('QUOTE', ...) was not called"
 
@@ -657,25 +652,24 @@ class TestBroadcastLoop:
         with patch("backend.services.market_engine.asyncio.sleep", side_effect=fast_sleep):
             with patch("backend.services.market_engine.l1_cached_redis.get", return_value="0"):  # YF 禁用
                 with patch(
-                    "backend.services.market_engine._get_futu_service",
-                    return_value=MagicMock(status="CONNECTED"),
-                ) as mock_futu:
-                    with patch("backend.services.market_engine.data_source_router.fetch_yfinance") as mock_yf:
-                        mock_futu.is_futu_unsupported.return_value = True  # 不支持富途
-                        mock_futu.get_fund_flow = AsyncMock(
-                            return_value={"status": "success", "data": {"main_fund_net_inflow": 0}}
-                        )
+                    "backend.services.market_engine.is_futu_unsupported",
+                    return_value=True,  # 不支持富途
+                ):
+                    with patch(
+                        "backend.services.market_engine.data_source_router.fetch_futu",
+                        new=AsyncMock(return_value={"status": "success", "data": {}}),
+                    ):
+                        with patch("backend.services.market_engine.data_source_router.fetch_yfinance") as mock_yf:
+                            ws = MagicMock()
+                            mgr.subscriptions[ws] = {"US.AAPL"}
 
-                        ws = MagicMock()
-                        mgr.subscriptions[ws] = {"US.AAPL"}
+                            try:
+                                await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
+                            except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
+                                pass
 
-                        try:
-                            await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
-                        except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
-                            pass
-
-                        # 验证 YF 子服务兜底未被调用（YF 禁用）
-                        mock_yf.assert_not_called()
+                            # 验证 YF 子服务兜底未被调用（YF 禁用）
+                            mock_yf.assert_not_called()
 
     async def test_broadcast_loop_exception_handling(self):
         """测试 broadcast_loop 的异常处理分支"""
@@ -689,23 +683,22 @@ class TestBroadcastLoop:
         with patch("backend.services.market_engine.asyncio.sleep", side_effect=fast_sleep):
             with patch("backend.services.market_engine.l1_cached_redis.get", side_effect=Exception("Redis error")):
                 with patch(
-                    "backend.services.market_engine._get_futu_service",
-                    return_value=MagicMock(status="CONNECTED"),
-                ) as mock_futu:
-                    with patch("backend.services.market_engine.data_source_router.fetch_yfinance"):
-                        mock_futu.is_futu_unsupported.return_value = True
-                        mock_futu.get_fund_flow = AsyncMock(
-                            return_value={"status": "success", "data": {"main_fund_net_inflow": 0}}
-                        )
+                    "backend.services.market_engine.is_futu_unsupported",
+                    return_value=True,
+                ):
+                    with patch(
+                        "backend.services.market_engine.data_source_router.fetch_futu",
+                        new=AsyncMock(return_value={"status": "success", "data": {}}),
+                    ):
+                        with patch("backend.services.market_engine.data_source_router.fetch_yfinance"):
+                            ws = MagicMock()
+                            mgr.subscriptions[ws] = {"US.AAPL"}
 
-                        ws = MagicMock()
-                        mgr.subscriptions[ws] = {"US.AAPL"}
-
-                        # 使用 timeout 让循环快速退出（fast_sleep 使循环飞速迭代，0.1s 足够）
-                        try:
-                            await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
-                        except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
-                            pass
+                            # 使用 timeout 让循环快速退出
+                            try:
+                                await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
+                            except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
+                                pass
 
                         # 如果到达这里，说明异常被捕获，循环继续了
 
@@ -720,19 +713,10 @@ class TestBroadcastLoop:
         with patch("backend.services.market_engine.asyncio.sleep", side_effect=fast_sleep):
             with patch("backend.services.market_engine.l1_cached_redis.get", return_value="1"):
                 with patch(
-                    "backend.services.market_engine._get_futu_service",
-                    return_value=MagicMock(status="CONNECTED", unsubscribe_quote=AsyncMock()),
-                ) as mock_futu:
+                    "backend.services.market_engine.is_futu_unsupported",
+                    return_value=False,
+                ):
                     with patch("backend.services.market_engine.data_source_router.fetch_yfinance") as mock_yf:
-                        # 配置 mock
-                        mock_futu.status = "CONNECTED"  # Futu 断连防御需要
-                        mock_futu.is_futu_unsupported.return_value = False
-                        mock_futu.get_quote = AsyncMock(return_value={"status": "success", "last_price": 150.0})
-                        mock_futu.get_history = AsyncMock(return_value={"status": "error"})
-                        mock_futu.get_fund_flow = AsyncMock(
-                            return_value={"status": "success", "data": {"main_fund_net_inflow": 0}}
-                        )
-                        mock_futu.unsubscribe_quote = AsyncMock()
                         # YF 兜底改经子服务 router
                         mock_yf.return_value = {"status": "success", "data": {"trend": []}}
 
@@ -765,7 +749,9 @@ class TestBroadcastLoop:
                         assert "US.OLD_TICKER" not in mgr._futu_active_subs
 
     async def test_broadcast_loop_futu_disconnected_skips_all_futu_calls(self):
-        """Futu 断连时 broadcast_loop 跳过所有 Futu 调用，防止 CPU 空转"""
+        """BE-ARCH-07b: futu_service 本地 status 门控已移除，所有 Futu 调用无条件经
+        DataSourceRouter 远程执行（router 内部自带熔断/健康度）。本用例改为验证：
+        当 is_futu_unsupported 返回 False 时，fetch_futu 被实际调用（而非被本地门控跳过）。"""
         mgr = ConnectionManager()
 
         async def fast_sleep(delay):
@@ -774,32 +760,27 @@ class TestBroadcastLoop:
         with patch("backend.services.market_engine.asyncio.sleep", side_effect=fast_sleep):
             with patch("backend.services.market_engine.l1_cached_redis.get", return_value="1"):
                 with patch(
-                    "backend.services.market_engine._get_futu_service",
-                    return_value=MagicMock(status="CONNECTED"),
-                ) as mock_futu:
+                    "backend.services.market_engine.is_futu_unsupported",
+                    return_value=False,
+                ):
                     with patch("backend.services.market_engine.data_source_router.fetch_yfinance") as mock_yf:
-                        # 关键：Futu 断连状态
-                        mock_futu.status = "DISCONNECTED"
-                        mock_futu.is_futu_unsupported.return_value = False
-                        mock_futu.get_quote = AsyncMock(return_value={"status": "error"})
-                        mock_futu.get_fund_flow = AsyncMock(return_value={"status": "error"})
-                        mock_futu.get_history = AsyncMock(return_value={"status": "error"})
-                        mock_futu.get_account_info = AsyncMock(return_value={"status": "error"})
-                        # YF 兜底改经子服务 router
                         mock_yf.return_value = {
                             "status": "success",
                             "data": {"trend": [], "ticker": "US.AAPL", "last_price": 150.0},
                         }
 
+                        mock_fetch = AsyncMock(return_value={"status": "success", "data": {}})
                         ws = MagicMock()
                         mgr.subscriptions[ws] = {"US.AAPL"}
 
-                        try:
-                            await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
-                        except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
-                            pass
+                        with patch(
+                            "backend.services.market_engine.data_source_router.fetch_futu",
+                            new=mock_fetch,
+                        ):
+                            try:
+                                await asyncio.wait_for(mgr.broadcast_loop(), timeout=0.1)
+                            except (asyncio.TimeoutError, StopAsyncIteration, StopIteration):
+                                pass
 
-                        # 核心断言：Futu 断连时，所有 Futu 调用均被跳过
-                        mock_futu.get_fund_flow.assert_not_called()
-                        mock_futu.get_quote.assert_not_called()
-                        mock_futu.get_account_info.assert_not_called()
+                        # 核心断言：无本地 status 门控，Futu 调用实际经 Router 执行
+                        assert mock_fetch.await_count > 0, "fetch_futu 应被唤起（无本地门控跳过）"

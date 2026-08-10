@@ -11,6 +11,15 @@ import pytest
 from backend.services.ai_narrator.llm_service import LLMService, ModelTier
 
 
+@pytest.fixture(autouse=True)
+def _force_online_llm(monkeypatch):
+    """强制关闭 SVC-06 离线 stub，验证真实 OpenAI client 调用路径（见同名说明）。"""
+    monkeypatch.setattr(
+        "backend.services.ai_narrator.llm_service.LLMService._is_offline",
+        lambda self: False,
+    )
+
+
 @pytest.mark.asyncio
 async def test_generate_returns_stripped_text(monkeypatch):
     fake = MagicMock()

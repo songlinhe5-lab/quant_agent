@@ -68,7 +68,10 @@ datasource-cn = [
 ]
 datasource-us = [
     "yfinance",                # 美股/加密/外汇
-    "futu-api>=10.7.0",        # 港股/富途 (长连接 OpenD)
+    # futu-api 仅子服务镜像 (-data-subservice:us) 使用: backend/services/futu 已改造为
+    # 纯 HTTP 透传 facade (BE-ARCH-09), 主服务运行时绝不 import futu, 经 DataSourceRouter
+    # 转发至 data_subservice/futu_src。请勿在主服务默认环境安装此包。
+    "futu-api>=10.7.0",        # 港股/富途 (仅 data_subservice, 主服务走 HTTP 代理)
     "finnhub-python>=2.4.29",  # Finnhub REST+WebSocket (长连接实时流)
 ]
 datasource-us-aux = [
@@ -90,6 +93,7 @@ dev = [
     "pytest-asyncio>=0.26.0,<1.0.0",
     "pytest-timeout>=2.3.0",
     "pytest-xdist>=3.6.0",
+    "pytest-env>=1.1.0",
     "httpx>=0.27.0",
 ]
 
@@ -122,8 +126,11 @@ ignore = ["E501"]
 quote-style = "double"
 
 [tool.pytest.ini_options]
-# 双目录: 主服务单测 + 数据子服务单测, 一并纳入 CI 验证闭环
-testpaths = ["backend/tests", "data_subservice/tests"]
+# 仅主服务单测。data_subservice 依赖 tushare/futu/akshare 等重型 SDK，
+# 按架构规定这些 SDK 禁止装在 backend 环境（backend/requirements.txt 明文禁止），
+# 故子服务单测不放进本 testpaths，避免 collection 阶段 import 失败拖垮整轮。
+# 子服务单测由 data_subservice/pytest.ini 独立驱动，需在装有对应 SDK 的环境运行。
+testpaths = ["backend/tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -148,6 +155,12 @@ markers = [
     "asyncio: mark test as async",
 ]
 asyncio_mode = "auto"
+# pytest-env: 注入测试运行环境，避免 vectorbt/numba 在 workspace 内写缓存触发 IDE 的
+# safe-delete 批量守卫导致 pytest 进程在 import 阶段 SystemExit 崩溃（见 backend/tests/conftest.py）。
+# NUMBA_CACHE_DIR 指向 workspace 外，使 numba 缓存写入不进入守卫拦截范围。
+env = [
+    "NUMBA_CACHE_DIR=/tmp/numba_cache",
+]
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::UserWarning",
@@ -191,8 +204,8 @@ directory = "htmlcov"
 #    否则 pre-commit 只能靠 `uv run --with mypy` 临时解析，每次多付 ~3s 解析开销。
 dev = [
     # ── 类型检查 / Lint / Hook 工具链 ──
-    "ruff==0.15.16",  # 锁定到 uv.lock 版本，避免解析到更新版导致格式检查漂移
-    "mypy>=1.10.0,<3",  # pre-commit mypy hook 依赖; 上界防 3.x 破坏性变更导致校验漂移
+    "ruff==0.15.16", # 锁定到 uv.lock 版本，避免解析到更新版导致格式检查漂移
+    "mypy>=1.10.0,<3", # pre-commit mypy hook 依赖; 上界防 3.x 破坏性变更导致校验漂移
     "pre-commit>=3.6.0",
     # ── 测试 ──
     "pytest>=8.0.0",
@@ -200,5 +213,7 @@ dev = [
     "pytest-asyncio>=0.26.0,<1.0.0",
     "pytest-timeout>=2.3.0",
     "pytest-xdist>=3.6.0",
+    "pytest-env>=1.1.0",
     "httpx>=0.27.0",
+    "vcrpy>=8.3.0",
 ]

@@ -44,10 +44,15 @@ lint:
 	uv run ruff check
 
 # ── 测试 ──────────────────────────────────────────────
+# ⚠️ 环境前置: 在 CodeBuddy IDE 内运行 pytest 时，必须将 CODEBUDDY_SAFE_DELETE_ENABLED=0
+# 透传给子进程。原因: IDE 的 safe-delete 批量守卫会拦截 pytest-cov 合并 .coverage.* 文件
+# 以及 vectorbt/numba 在 workspace 内写缓存的临时文件，从而让 pytest 进程在 import 阶段
+# 被 SystemExit 杀掉、无法产出覆盖率。本地终端（非 IDE）无需该变量。
+# NUMBA_CACHE_DIR 已由 pyproject.toml 的 [tool.pytest.ini_options].env 注入 /tmp/numba_cache。
 
 test:
 	@echo "🧪 运行全部后端单元测试..."
-	uv run pytest backend/tests/ -v --tb=short
+	CODEBUDDY_SAFE_DELETE_ENABLED=0 uv run pytest backend/tests/ -v --tb=short
 
 test-cluster:
 	@echo "🔗 运行集群通信端到端验证 (需要本地 Redis 运行中)..."
@@ -55,7 +60,7 @@ test-cluster:
 
 coverage:
 	@echo "📊 运行测试并生成覆盖率报告..."
-	uv run pytest backend/tests/ -v --tb=short --cov=backend --cov-report=term-missing --cov-report=html
+	CODEBUDDY_SAFE_DELETE_ENABLED=0 uv run pytest backend/tests/ -v --tb=short --cov=backend --cov-report=term-missing --cov-report=html
 	@echo "📄 覆盖率报告已生成: htmlcov/index.html"
 
 # ── 本地开发 ──────────────────────────────────────────

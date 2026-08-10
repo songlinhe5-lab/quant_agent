@@ -49,6 +49,10 @@ from backend.services.datasource import (
     parse_retry_after,
     rate_limit_registry,
 )
+from backend.services.datasource.offline_stub import (
+    build_offline_response,
+    is_offline_mode_enabled,
+)
 
 # 数据子服务统一数据端点 (契约见 data_subservice/main.py::fetch_data)
 _DATA_ENDPOINT = "/api/v1/data"
@@ -64,6 +68,7 @@ _YF_ACTION_MAP = {
     "financials": "FINANCIALS",
     "search": "SEARCH",
     "batch_quote": "BATCH_QUOTE",
+    "news": "NEWS",
 }
 
 # 主服务内部 action -> 子服务 action 映射
@@ -100,6 +105,10 @@ _FUTU_ACTION_MAP = {
     "stock_basicinfo": "STOCK_BASICINFO",
     "account_info": "ACCOUNT_INFO",
     "place_order": "PLACE_ORDER",
+    "emergency_liquidation": "EMERGENCY_LIQUIDATION",
+    # BE-ARCH-08c⑤: 前端 WS 订阅回传 — subscribe/unsubscribe 通知 OpenD 实时订阅
+    "subscribe": "SUBSCRIBE",
+    "unsubscribe": "UNSUBSCRIBE",
 }
 
 # 主服务内部 fetch_type -> 子服务 action 映射 (Finnhub)
@@ -112,6 +121,8 @@ _FINNHUB_ACTION_MAP = {
     "economic_calendar": "ECONOMIC_CALENDAR",
     "insider_trading": "INSIDER_TRADING",
     "stock_history": "STOCK_HISTORY",
+    "dividend_calendar": "DIVIDEND_CALENDAR",
+    "ipo_calendar": "IPO_CALENDAR",
 }
 
 # DIST-19: AKShare STALE 缓存配置
@@ -135,7 +146,6 @@ class DataSourceNode:
     circuit_breaker_until: float = 0.0
     capabilities: List[str] = field(default_factory=list)
     # 子服务健康检查端点（用于监控数据源失效），无则跳过主动探测
-    health_check_url: Optional[str] = None
     # RL-13: 限流压力感知
     is_throttled: bool = False
     consecutive_rate_limits: int = 0
@@ -173,7 +183,6 @@ class DataSourceRouter:
         self._nodes["yf_primary"] = DataSourceNode(
             name="yf_primary",
             url=yf_primary,
-            health_check_url=f"{yf_primary}/api/v1/health",
             weight=10,
             capabilities=["yfinance", "quote", "history", "tech"],
         )
@@ -183,7 +192,6 @@ class DataSourceRouter:
             self._nodes[f"yf_backup_{idx}"] = DataSourceNode(
                 name=f"yf_backup_{idx}",
                 url=url,
-                health_check_url=f"{url}/api/v1/health",
                 weight=5,
                 capabilities=["yfinance", "quote", "history", "tech"],
             )
@@ -193,7 +201,6 @@ class DataSourceRouter:
             self._nodes["akshare_remote"] = DataSourceNode(
                 name="akshare_remote",
                 url=akshare_urls[0],
-                health_check_url=f"{akshare_urls[0]}/api/v1/health",
                 weight=10,
                 capabilities=["akshare", "southbound", "northbound", "hsgt"],
             )
@@ -203,7 +210,6 @@ class DataSourceRouter:
             self._nodes["tushare_remote"] = DataSourceNode(
                 name="tushare_remote",
                 url=tushare_urls[0],
-                health_check_url=f"{tushare_urls[0]}/api/v1/health",
                 weight=10,
                 capabilities=[
                     "tushare",
@@ -225,7 +231,6 @@ class DataSourceRouter:
         self._nodes["futu_master"] = DataSourceNode(
             name="futu_master",
             url=futu_url,
-            health_check_url=f"{futu_url}/api/v1/health",
             weight=10,
             capabilities=["futu"],
         )
@@ -238,7 +243,6 @@ class DataSourceRouter:
         self._nodes["fmp_master"] = DataSourceNode(
             name="fmp_master",
             url=fmp_url,
-            health_check_url=f"{fmp_url}/api/v1/health",
             weight=10,
             capabilities=["fmp"],
         )
@@ -251,7 +255,6 @@ class DataSourceRouter:
         self._nodes["finnhub_master"] = DataSourceNode(
             name="finnhub_master",
             url=finnhub_url,
-            health_check_url=f"{finnhub_url}/api/v1/health",
             weight=10,
             capabilities=[
                 "finnhub",
@@ -273,7 +276,6 @@ class DataSourceRouter:
         self._nodes["fred_master"] = DataSourceNode(
             name="fred_master",
             url=fred_url,
-            health_check_url=f"{fred_url}/api/v1/health",
             weight=10,
             capabilities=["fred", "macro_series", "economic_calendar"],
         )
@@ -281,7 +283,6 @@ class DataSourceRouter:
         self._nodes["dbnomics_master"] = DataSourceNode(
             name="dbnomics_master",
             url=dbnomics_url,
-            health_check_url=f"{dbnomics_url}/api/v1/health",
             weight=10,
             capabilities=["dbnomics", "economic_calendar"],
         )
@@ -289,7 +290,6 @@ class DataSourceRouter:
         self._nodes["rbi_master"] = DataSourceNode(
             name="rbi_master",
             url=rbi_url,
-            health_check_url=f"{rbi_url}/api/v1/health",
             weight=10,
             capabilities=["rbi", "economic_calendar"],
         )
@@ -300,7 +300,6 @@ class DataSourceRouter:
         self._nodes["search_master"] = DataSourceNode(
             name="search_master",
             url=search_url,
-            health_check_url=f"{search_url}/api/v1/health",
             weight=10,
             capabilities=["tavily", "bocha", "jina"],
         )
@@ -351,9 +350,20 @@ class DataSourceRouter:
 
         data = raw.get("data")
 
-        # worker 内部错误以 {"error": "..."} 形式返回, 需识别为失败
-        if isinstance(data, dict) and data.get("error"):
-            return {"status": "error", "success": False, "message": str(data["error"]), "data": data}
+        # worker 内部错误以 {"error": "..."} 或 {"status": "error", "error_category": ...}
+        # 两种形式返回 (FMP/Finnhub 走后者且不带 error 键)。无论哪种都必须识别为失败,
+        # 否则配额耗尽 / 429 会被吞成"有数据返回", 限流退避 (RateLimitThrottler) 与
+        # error_category 判定在这两源上完全失效 (BE-ARCH-08d)。
+        if isinstance(data, dict) and (data.get("error") or data.get("status") == "error"):
+            result: Dict[str, Any] = {
+                "status": "error",
+                "success": False,
+                "message": str(data.get("error") or data.get("message") or "子服务返回错误状态"),
+            }
+            # 透传 error_category (限流/配额类), 供上层 throttler 与熔断分流
+            if data.get("error_category"):
+                result["error_category"] = data["error_category"]
+            return result
 
         result: Dict[str, Any] = {"status": "success", "success": True, "data": data}
         # 透传 worker 已带的业务字段, 但不覆盖上面的状态字段
@@ -547,12 +557,42 @@ class DataSourceRouter:
         healthy.sort(key=lambda n: (n.is_throttled, -n.weight, n.consecutive_rate_limits))
         return healthy[0]
 
+    @staticmethod
+    def _pin_node_usable(node: "DataSourceNode") -> bool:
+        """BE-ARCH-08e: 单节点 pin 源半开探测门控。
+
+        单节点 pin 源 (akshare/tushare/futu/fmp/finnhub/fred/dbnomics/rbi/search)
+        熔断后若仅用 `status != "healthy"` 门控，则永远不会再发请求 → 永不恢复
+        （不请求就不可能成功，不成功就永远 unhealthy）。
+
+        此处允许：节点 healthy **或** 已熔断且冷却已到期的半开探测 (HALF_OPEN)，
+        对齐子服务侧已有的 HALF_OPEN 语义。探测成功由 `_update_node_status` 翻回
+        healthy；失败则续冷却。限流类错误不计入熔断计数，本身不会触发 permanent 失效。
+        """
+        if node.status == "healthy":
+            return True
+        return time.time() >= node.circuit_breaker_until
+
+    def _maybe_offline(self, source: str, action: str = "", **params) -> Optional[Dict[str, Any]]:
+        """SVC-06: 离线 stub 拦截。
+
+        当 OFFLINE_MODE=1 或 QUANT_ENV∈{offline,testing,dev} 时，直接返回确定性 stub，
+        连子服务节点都不触网。生产环境（OFFLINE_MODE=0）返回 None 走真实远程。
+        """
+        if not is_offline_mode_enabled():
+            return None
+        return build_offline_response(source, action, **params)
+
     async def fetch_yfinance(self, ticker: str, fetch_type: str, **kwargs) -> Dict[str, Any]:
         """联邦 YF 流量到 US-YF-A/B 子服务节点。
 
         后端进程不再本地执行 yfinance。若路由未启用或所有子服务节点不可用，
         直接返回失败（不再降级本地 yfinance）。
         """
+        offline = self._maybe_offline("yfinance", fetch_type, ticker=ticker, **kwargs)
+        if offline is not None:
+            return offline
+
         if not self._enabled:
             return {
                 "success": False,
@@ -572,7 +612,7 @@ class DataSourceRouter:
                 payload = {
                     "source": "yfinance",
                     "action": _YF_ACTION_MAP.get(fetch_type.lower(), fetch_type.upper()),
-                    "params": {"ticker": ticker, **kwargs},
+                    "params": self._normalize_outbound_params({"ticker": ticker, **kwargs}),
                 }
                 result = await self._send_request(node, "yfinance", payload)
 
@@ -621,10 +661,14 @@ class DataSourceRouter:
 
         设计原则 (2026-08-07): 仅远程，移除本地 SDK 降级。router 未启用或远程节点
         不可用时直接返回失败（源失效在监控中如实显示）。成功响应仍存档 STALE/热点
-        缓存，供 CN 断连时监控侧识别降级，但不自动回退本地。
+        缓存，        供 CN 断连时监控侧识别降级，但不自动回退本地。
         """
+        offline = self._maybe_offline("akshare", action, **kwargs)
+        if offline is not None:
+            return offline
+
         remote_node = self._nodes.get("akshare_remote")
-        if not self._enabled or not remote_node or remote_node.status != "healthy":
+        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
             logger.warning("[AKShare] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy AKShare remote node (local SDK disabled)"}
 
@@ -632,7 +676,7 @@ class DataSourceRouter:
             payload = {
                 "source": "akshare",
                 "action": action.upper(),
-                "params": dict(kwargs),
+                "params": self._normalize_outbound_params(dict(kwargs)),
             }
             result = await self._send_request(remote_node, "akshare", payload)
 
@@ -649,7 +693,13 @@ class DataSourceRouter:
             logger.warning(f"[AKShare] 远程节点失败：{remote_node.name}, {action}, {str(e)}")
             await self._update_node_status(remote_node.name, success=False, error=str(e))
 
-        logger.warning("[AKShare] 远程节点失败（后端已移除本地兜底）")
+        # BE-ARCH-08f: 远程失败不返回裸错，先尝试 STALE 缓存降级 (DIST-19)。
+        # _get_akshare_stale 命中即打 degraded/stale_source 标记（并已上报指标）。
+        stale = await self._get_akshare_stale(action, kwargs)
+        if stale is not None:
+            return stale
+
+        logger.warning("[AKShare] 远程节点失败且无 STALE 缓存（后端已移除本地兜底）")
         return {"status": "error", "message": "AKShare remote node failed (local SDK disabled)"}
 
     async def fetch_tushare(self, action: str, **params) -> Dict[str, Any]:
@@ -659,8 +709,12 @@ class DataSourceRouter:
         经 _TS_ACTION_MAP 归一化后走远程；子服务不支持的 action 直接返回失败，
         不再回退本地 TushareService。
         """
+        offline = self._maybe_offline("tushare", action, **params)
+        if offline is not None:
+            return offline
+
         remote_node = self._nodes.get("tushare_remote")
-        if not self._enabled or not remote_node or remote_node.status != "healthy":
+        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
             logger.warning("[Tushare] 远程节点不可用（后端已移除本地兜底）")
             return {"success": False, "message": "No healthy Tushare remote node (local adapter disabled)"}
 
@@ -673,7 +727,7 @@ class DataSourceRouter:
             payload = {
                 "source": "tushare",
                 "action": remote_action,
-                "params": dict(params),
+                "params": self._normalize_outbound_params(dict(params)),
             }
             result = await self._send_request(remote_node, "tushare", payload)
             if result.get("success"):
@@ -696,13 +750,17 @@ class DataSourceRouter:
 
         设计原则 (2026-08-07): 仅远程，移除本地 futu_service 降级通道。
         """
+        offline = self._maybe_offline("futu", action, **params)
+        if offline is not None:
+            return offline
+
         remote_action = _FUTU_ACTION_MAP.get(action.lower(), action.upper())
 
         # 业务侧统一用 ticker/tickers, 子服务 worker 契约用 symbol/symbols, 此处对齐
         norm_params = self._futu_normalize_params(remote_action, params)
 
         remote_node = self._nodes.get("futu_master")
-        if not self._enabled or not remote_node or remote_node.status != "healthy":
+        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
             logger.warning("[Futu] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy Futu remote node (local SDK disabled)"}
 
@@ -739,6 +797,22 @@ class DataSourceRouter:
             out["symbols"] = out.pop("tickers")
         return out
 
+    @staticmethod
+    def _normalize_outbound_params(params: Dict[str, Any]) -> Dict[str, Any]:
+        """BE-ARCH-08b: 业务侧统一用 ticker/tickers，子服务 worker 读 symbol/symbols，
+        全链路无归一导致子服务收到 symbol=None（线上取不到数）。
+
+        一处 guard：双键兼容——业务侧键名映射副本的同时保留原键，使子服务无论读
+        symbol 还是 ticker 均能命中，消除 yfinance/akshare/fmp/tushare 的键名错位。
+        ponytail: 不做字段语义转换（如 ktype→interval），仅解决键名错位这一明确天花板。
+        """
+        out = dict(params)
+        if "ticker" in out and "symbol" not in out:
+            out["symbol"] = out["ticker"]
+        if "tickers" in out and "symbols" not in out:
+            out["symbols"] = out["tickers"]
+        return out
+
     async def fetch_fmp(self, action: str, **params) -> Dict[str, Any]:
         """FMP 主节点 HTTP 代理 (source="fmp", pin 主节点)。
 
@@ -748,17 +822,25 @@ class DataSourceRouter:
 
         设计原则 (2026-08-07): 仅远程，移除本地 _local_get 直连兜底。
         """
+        offline = self._maybe_offline("fmp", action, **params)
+        if offline is not None:
+            return offline
+
         _FMP_ACTION_MAP = {
             "quote": "QUOTE",
             "profile": "PROFILE",
             "income_statement": "INCOME_STATEMENT",
+            # BE-ARCH-08g: Facade 的 get_fundamental/get_fundamental_info 以 FUNDAMENTAL/INFO
+            # 抵达, 显式映射避免回退到 action.upper() 的隐式约定, 保证 worker 分支命中。
+            "fundamental": "FUNDAMENTAL",
+            "info": "INFO",
         }
         remote_action = _FMP_ACTION_MAP.get(action.lower(), action.upper())
 
-        norm_params = dict(params)
+        norm_params = self._normalize_outbound_params(dict(params))
 
         remote_node = self._nodes.get("fmp_master")
-        if not self._enabled or not remote_node or remote_node.status != "healthy":
+        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
             logger.warning("[FMP] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy FMP remote node (local fallback disabled)"}
 
@@ -778,7 +860,20 @@ class DataSourceRouter:
                     )
                     return result
                 return result
-            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+            # BE-ARCH-08d: 失败但可能是限流类 (429/quota/ip_blocked), 透传 error_category
+            # 使 RateLimitThrottler 退避与熔断分流生效, 而非一律计入普通失败触发熔断
+            ec = result.get("error_category")
+            if ec:
+                await self._update_node_status(
+                    remote_node.name,
+                    success=False,
+                    error=str(result.get("message")),
+                    error_category=ErrorCategory(ec)
+                    if ec in {e.value for e in ErrorCategory}
+                    else ErrorCategory.NORMAL,
+                )
+            else:
+                await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
         except Exception as e:
             logger.warning(f"[FMP] 远程节点失败: {remote_node.name}, {remote_action}, {str(e)}")
             await self._update_node_status(remote_node.name, success=False, error=str(e))
@@ -793,9 +888,13 @@ class DataSourceRouter:
         (_internal/finnhub + finnhub_worker.py)。主服务不持有 FinnhubService / WS 订阅，
         quote 走 REST 快照。仅远程，无本地 SDK 兜底。
         """
+        offline = self._maybe_offline("finnhub", action, **params)
+        if offline is not None:
+            return offline
+
         remote_action = _FINNHUB_ACTION_MAP.get(action.lower(), action.upper())
         remote_node = self._nodes.get("finnhub_master")
-        if not self._enabled or not remote_node or remote_node.status != "healthy":
+        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
             logger.warning("[Finnhub] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy Finnhub remote node (local SDK disabled)"}
 
@@ -809,7 +908,19 @@ class DataSourceRouter:
             if result.get("status") == "success":
                 await self._update_node_status(remote_node.name, success=True)
                 return result
-            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+            # BE-ARCH-08d: 失败但可能是限流类 (429/ip_blocked), 透传 error_category
+            ec = result.get("error_category")
+            if ec:
+                await self._update_node_status(
+                    remote_node.name,
+                    success=False,
+                    error=str(result.get("message")),
+                    error_category=ErrorCategory(ec)
+                    if ec in {e.value for e in ErrorCategory}
+                    else ErrorCategory.NORMAL,
+                )
+            else:
+                await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
         except Exception as e:
             logger.warning(f"[Finnhub] 远程节点失败: {remote_node.name}, {remote_action}, {str(e)}")
             await self._update_node_status(remote_node.name, success=False, error=str(e))
@@ -823,8 +934,12 @@ class DataSourceRouter:
         宏观连接层 (FRED REST) 已下沉 data_subservice (_internal/fred + fred_worker.py)。
         主服务不再本地调用 fred_service。仅远程。
         """
+        offline = self._maybe_offline("fred", action, **params)
+        if offline is not None:
+            return offline
+
         remote_node = self._nodes.get("fred_master")
-        if not self._enabled or not remote_node or remote_node.status != "healthy":
+        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
             logger.warning("[FRED] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy FRED remote node (local service disabled)"}
 
@@ -852,8 +967,12 @@ class DataSourceRouter:
         宏观连接层 (DBnomics REST) 已下沉 data_subservice (_internal/dbnomics + dbnomics_worker.py)。
         仅远程。
         """
+        offline = self._maybe_offline("dbnomics", action, **params)
+        if offline is not None:
+            return offline
+
         remote_node = self._nodes.get("dbnomics_master")
-        if not self._enabled or not remote_node or remote_node.status != "healthy":
+        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
             logger.warning("[DBnomics] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy DBnomics remote node (local service disabled)"}
 
@@ -881,8 +1000,12 @@ class DataSourceRouter:
         宏观连接层 (RBI 爬虫) 已下沉 data_subservice (_internal/rbi + rbi_worker.py)。
         仅远程。
         """
+        offline = self._maybe_offline("rbi", action, **params)
+        if offline is not None:
+            return offline
+
         remote_node = self._nodes.get("rbi_master")
-        if not self._enabled or not remote_node or remote_node.status != "healthy":
+        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
             logger.warning("[RBI] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy RBI remote node (local service disabled)"}
 
@@ -910,8 +1033,12 @@ class DataSourceRouter:
         外部搜索/抓取经 data_subservice 统一代理 (search_worker.py)，主服务不再直接
         httpx 外部 API。source ∈ {tavily, bocha, jina}。仅远程。
         """
+        offline = self._maybe_offline("search", source, **params)
+        if offline is not None:
+            return offline
+
         remote_node = self._nodes.get("search_master")
-        if not self._enabled or not remote_node or remote_node.status != "healthy":
+        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
             logger.warning(f"[Search/{source}] 远程节点不可用（后端已移除直连）")
             return {
                 "status": "error",

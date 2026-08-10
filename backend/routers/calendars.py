@@ -20,7 +20,6 @@ import random
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-import httpx
 from fastapi import APIRouter, HTTPException, Query
 
 try:
@@ -491,23 +490,22 @@ async def get_calendars_dividends(
         }
 
     try:
-        params = {"token": api_key, "symbol": symbol} if symbol else {"token": api_key}
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get("https://finnhub.io/api/v1/calendar/dividend", params=params)
-            resp.raise_for_status()
-            payload = resp.json()
+        from backend.services.datasource.router import data_source_router
+
+        res = await data_source_router.fetch_finnhub("dividend_calendar", symbol=symbol)
+        if res.get("status") == "success":
+            payload = res.get("data") or {}
             items = payload.get("dividendCalendar", []) if isinstance(payload, dict) else []
             throttler.on_success()
             data = {"status": "success", "data": items, "source": "finnhub"}
             await redis_client.set(cache_key, json.dumps(data), ex=21600)
             return data
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code in (429, 403):
+        if res.get("message", "").endswith("rate_limit") or "Rate" in res.get("message", ""):
             throttler.on_rate_limit(ErrorInfo.rate_limited(code="FINNHUB_429", message="Finnhub 分红日历限流"))
         return {
             "status": "error",
             "data": [],
-            "message": f"Finnhub 分红日历请求异常: HTTP {e.response.status_code}",
+            "message": f"Finnhub 分红日历请求异常: {res.get('message', 'unknown')}",
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
     except Exception as e:  # noqa: BLE001
@@ -550,22 +548,22 @@ async def get_calendars_ipos():
         }
 
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get("https://finnhub.io/api/v1/calendar/ipo", params={"token": api_key})
-            resp.raise_for_status()
-            payload = resp.json()
+        from backend.services.datasource.router import data_source_router
+
+        res = await data_source_router.fetch_finnhub("ipo_calendar")
+        if res.get("status") == "success":
+            payload = res.get("data") or {}
             items = payload.get("ipoCalendar", []) if isinstance(payload, dict) else []
             throttler.on_success()
             data = {"status": "success", "data": items, "source": "finnhub"}
             await redis_client.set(cache_key, json.dumps(data), ex=21600)
             return data
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code in (429, 403):
+        if res.get("message", "").endswith("rate_limit") or "Rate" in res.get("message", ""):
             throttler.on_rate_limit(ErrorInfo.rate_limited(code="FINNHUB_429", message="Finnhub IPO 日历限流"))
         return {
             "status": "error",
             "data": [],
-            "message": f"Finnhub IPO 日历请求异常: HTTP {e.response.status_code}",
+            "message": f"Finnhub IPO 日历请求异常: {res.get('message', 'unknown')}",
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
     except Exception as e:  # noqa: BLE001

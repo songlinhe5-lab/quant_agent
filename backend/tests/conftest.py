@@ -20,6 +20,19 @@ from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
 
 import pytest  # noqa: E402
 
+
+def pytest_configure(config):
+    """注册自定义 mark（SVC-06: live_network 标记用于绕过离线 stub 的集成测试）。"""
+    config.addinivalue_line(
+        "markers",
+        "live_network: 标记需要真实网络/外部 API Key 的集成测试，默认被跳过（离线 stub 生效时不可达）",
+    )
+    config.addinivalue_line(
+        "markers",
+        "contract_replay: SVC-01 三方数据源契约录制/回放测试，默认离线回放预置 cassette；QUANT_RECORD=1 时连 mock 子服务补录",
+    )
+
+
 # ─── 🔧 跟踪并释放所有 SQLAlchemy 引擎（消除 Python 3.13 未关闭连接 ResourceWarning）──
 # 测试集里多处创建引擎却从不 dispose：backend.core.database 的模块级全局引擎
 # (sqlite:///./test.db，SingletonThreadPool 保持常开连接)、各测试模块自建的 :memory: 引擎、

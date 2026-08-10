@@ -87,20 +87,54 @@ class MarketDataGateway:
     # ── QuotePort ──────────────────────────────────────────
 
     async def get_quote(self, ticker: str, **kwargs: Any) -> dict[str, Any]:
-        return await self.futu.get_quote(ticker=ticker, **kwargs)
+        # BE-ARCH-07a: Futu 直调改为经 DataSourceRegistry 远程路由（子服务化，移除主服务本地 SDK）
+        from backend.services.datasource import ResultStatus, datasource_registry
+
+        result = await datasource_registry.fetch("futu", "QUOTE", {"ticker": ticker, **kwargs})
+        if result.status in (ResultStatus.SUCCESS, ResultStatus.DEGRADED):
+            return result.data
+        return {"status": "error", "message": result.error.message if result.error else "futu QUOTE 路由失败"}
 
     async def get_history(self, ticker: str, ktype: str = "K_DAY", num: int = 100, **kwargs: Any) -> dict[str, Any]:
-        return await self.futu.get_history(ticker=ticker, ktype=ktype, num=num, **kwargs)
+        from backend.services.datasource import ResultStatus, datasource_registry
+
+        result = await datasource_registry.fetch(
+            "futu", "HISTORY", {"ticker": ticker, "ktype": ktype, "num": num, **kwargs}
+        )
+        if result.status in (ResultStatus.SUCCESS, ResultStatus.DEGRADED):
+            return result.data
+        return {"status": "error", "message": result.error.message if result.error else "futu HISTORY 路由失败"}
 
     async def get_fund_flow(self, ticker: str) -> dict[str, Any]:
-        return await self.futu.get_fund_flow(ticker)
+        from backend.services.datasource import ResultStatus, datasource_registry
+
+        result = await datasource_registry.fetch("futu", "FUND_FLOW", {"ticker": ticker})
+        if result.status in (ResultStatus.SUCCESS, ResultStatus.DEGRADED):
+            return result.data
+        return {"status": "error", "message": result.error.message if result.error else "futu FUND_FLOW 路由失败"}
 
     async def get_warrant_chain(self, ticker: str) -> dict[str, Any]:
-        """港股窝轮/牛熊证链（仅 HK 标的可用）"""
-        return await self.futu.get_warrant_chain(ticker)
+        """港股窝轮/牛熊证链（仅 HK 标的可用），经 DataSourceRegistry 远程路由。"""
+        from backend.services.datasource import ResultStatus, datasource_registry
+
+        result = await datasource_registry.fetch("futu", "WARRANT_CHAIN", {"ticker": ticker})
+        if result.status in (ResultStatus.SUCCESS, ResultStatus.DEGRADED):
+            return result.data
+        return {"status": "error", "message": result.error.message if result.error else "futu WARRANT_CHAIN 路由失败"}
 
     async def get_option_chain(self, ticker: str, expiration_date: str = "") -> dict[str, Any]:
-        res = await self.futu.get_option_chain(ticker, expiration_date)
+        from backend.services.datasource import ResultStatus, datasource_registry
+
+        futu_res = await datasource_registry.fetch(
+            "futu", "OPTION_CHAIN", {"ticker": ticker, "expiration_date": expiration_date}
+        )
+        if futu_res.status in (ResultStatus.SUCCESS, ResultStatus.DEGRADED):
+            res = futu_res.data
+        else:
+            res = {
+                "status": "error",
+                "message": futu_res.error.message if futu_res.error else "futu OPTION_CHAIN 路由失败",
+            }
         # 💡 Futu 快照期权链常只含 option_code/strike_price 而无定价字段(bid/ask/IV)，
         # 此时虽 status=success 却无法用于 Greeks/IV 计算 → 降级到 YFinance 补全定价数据。
         if res.get("status") == "error" or self._option_chain_lacks_pricing(res):
@@ -384,14 +418,12 @@ class MarketDataGateway:
         return self.futu.connect()
 
     def is_opend_reachable(self, timeout: float = 2.0) -> bool:
-        return bool(self.futu.conn_mgr._is_opend_reachable(timeout=timeout))
+        # BE-ARCH-09: 主服务远程-only, 无本地 OpenD, 主机可达性由子服务负责
+        return bool(self.futu.is_opend_reachable(timeout=timeout))
 
     def switch_opend_host(self, host: str, port: int = 11111) -> dict[str, Any]:
-        result = self.futu.conn_mgr.switch_host(host, port)
-        self.futu.status = self.futu.conn_mgr.status
-        self.futu.error_msg = self.futu.conn_mgr.error_msg
-        self.futu.quote_ctx = self.futu.conn_mgr.quote_ctx
-        return result
+        # BE-ARCH-09: 主服务远程-only, 不再切换本地 OpenD 连接; 兼容占位返回
+        return self.futu.switch_opend_host(host, port)
 
     def futu_health_status(self) -> dict[str, Any]:
         return {
@@ -444,43 +476,49 @@ class MarketDataGateway:
         return self._ak.get_health_status()
 
     async def get_economic_calendar_ak(self, *args: Any, **kwargs: Any) -> Any:
-        """经济日历 - 走路由器调用 AKShare（支持远程节点降级）"""
-        try:
-            from backend.services.datasource.router import data_source_router
+        """经济日历 - 纯远程 AKShare 子服务（无本地降级，源失效在监控如实显示）"""
+        from backend.services.datasource.router import data_source_router
 
-            # 通过路由器调用 AKShare（支持远程节点）
-            result = await data_source_router.fetch_akshare("economic_calendar", **kwargs)
-
-            if result.get("status") == "success":
-                return result.get("data")
-            else:
-                logger.warning(f"[AKShare] 路由器调用失败：{result.get('message')}，降级本地")
-        except Exception as e:
-            logger.warning(f"[AKShare] 路由器异常：{e}，降级本地")
-
-        # 降级：本地调用
-        return await self._ak.get_economic_calendar(*args, **kwargs)
+        result = await data_source_router.fetch_akshare("ECONOMIC_CALENDAR", **kwargs)
+        if result.get("status") == "success":
+            return result.get("data")
+        logger.warning(f"[AKShare] 经济日历远程调用失败：{result.get('message')}")
+        return []
 
     async def get_southbound_flow(self) -> Any:
-        return await self._ak.get_southbound_flow()
+        from backend.services.datasource.router import data_source_router
+
+        return await data_source_router.fetch_akshare("SOUTHBOUND")
 
     async def get_northbound_flow(self) -> Any:
-        return await self._ak.get_northbound_flow()
+        from backend.services.datasource.router import data_source_router
+
+        return await data_source_router.fetch_akshare("FUND_FLOW")
 
     async def get_hk_stock_connect_flow(self) -> Any:
-        return await self._ak.get_hk_stock_connect_flow()
+        from backend.services.datasource.router import data_source_router
+
+        return await data_source_router.fetch_akshare("HK_CONNECT")
 
     async def get_hsgt_top_holders(self, symbol: str = "00700", **kwargs: Any) -> Any:
-        return await self._ak.get_hsgt_top_holders(symbol=symbol, **kwargs)
+        from backend.services.datasource.router import data_source_router
+
+        return await data_source_router.fetch_akshare("HSGT_HOLDERS", symbol=symbol)
 
     async def get_company_news_ak(self, ticker: str = "", **kwargs: Any) -> Any:
-        return await self._ak.get_company_news(ticker=ticker, **kwargs)
+        from backend.services.datasource.router import data_source_router
+
+        return await data_source_router.fetch_akshare("STOCK_NEWS", ticker=ticker)
 
     async def get_stock_quote_ak(self, ticker: str = "", **kwargs: Any) -> Any:
-        return await self._ak.get_stock_quote(ticker=ticker, **kwargs)
+        from backend.services.datasource.router import data_source_router
+
+        return await data_source_router.fetch_akshare("QUOTE_A", ticker=ticker)
 
     async def get_stock_history_ak(self, ticker: str, num: int = 60) -> Any:
-        return await self._ak.get_stock_history(ticker, num=num)
+        from backend.services.datasource.router import data_source_router
+
+        return await data_source_router.fetch_akshare("HISTORY_A", ticker=ticker, num=num)
 
     async def get_company_news_fh(
         self, ticker: str, days_back: int = 3, skip_cache: bool = False, **kwargs: Any

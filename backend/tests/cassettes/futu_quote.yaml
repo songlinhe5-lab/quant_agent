@@ -1,0 +1,49 @@
+interactions:
+- request:
+    body: '{"source": "futu", "action": "QUOTE", "params": {"symbol": "AAPL"}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '67'
+      content-type:
+      - application/json
+      host:
+      - 127.0.0.1:18199
+      user-agent:
+      - python-httpx/0.28.1
+      x-signature:
+      - c049605f2be8fb29a42b16ee00d347f7833a7546bafd6a9174cce62fbc823ffc
+      x-timestamp:
+      - '1786283251'
+    method: POST
+    uri: http://127.0.0.1:18199/api/v1/data
+  response:
+    body:
+      string: '{"code": 0, "data": {"code": 0, "stock_code": "AAPL", "curt_price":
+        189.71, "price_change": 1.23, "change_rate": 0.65, "open_price": 188.4, "high_price":
+        190.5, "low_price": 188.1, "last_close": 188.48, "volume": 48213900}, "meta":
+        {"source": "futu", "action": "QUOTE", "latency_ms": 38}}'
+    headers:
+      connection:
+      - keep-alive
+      content-length:
+      - '288'
+      content-type:
+      - application/json
+      date:
+      - Sun, 09 Aug 2026 13:47:31 GMT
+      keep-alive:
+      - timeout=60
+      proxy-connection:
+      - keep-alive
+      server:
+      - BaseHTTP/0.6 Python/3.13.5
+    status:
+      code: 200
+      message: OK
+version: 1

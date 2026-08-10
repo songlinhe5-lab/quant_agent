@@ -117,6 +117,13 @@ class FutuService:
             is_unsupported_func=is_futu_unsupported,
         )
 
+    async def subscribe_quote(self, ticker: str) -> Dict[str, Any]:
+        if self.status != "CONNECTED":
+            return {"status": "error", "message": "Futu OpenD 未连接，跳过订阅"}
+        return await self.quote_handler.subscribe_quote(
+            ticker, format_ticker_func=format_ticker, is_unsupported_func=is_futu_unsupported
+        )
+
     async def unsubscribe_quote(self, ticker: str) -> Dict[str, Any]:
         if self.status != "CONNECTED":
             return {"status": "error", "message": "Futu OpenD 未连接，跳过退订"}
@@ -225,6 +232,15 @@ class FutuService:
             "fetch_account_info",
             {"market": market},
             self.trade_handler.get_account_info,
+            market=market,
+        )
+
+    async def emergency_liquidation(self, market: str = "HK") -> Dict[str, Any]:
+        # BE-ARCH-07c: Kill Switch 下沉子服务, 复用本地 trade_handler 直连通道
+        return await self._route(
+            "emergency_liquidation",
+            {"market": market},
+            self.trade_handler.emergency_liquidation,
             market=market,
         )
 

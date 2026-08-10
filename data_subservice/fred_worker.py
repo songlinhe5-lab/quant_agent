@@ -13,6 +13,8 @@ from data_subservice._internal.logger import logger
 _FRED_DISPATCH: dict[str, Any] = {
     "MACRO_SERIES": ("get_series_observations", ["series_id", "limit"]),
     "ECONOMIC_CALENDAR": ("get_economic_calendar", ["days_ahead", "days_back"]),
+    # BE-ARCH-07f: 主服务日历解析所需的 FRED 发布日期原始序列
+    "RELEASES_DATES": ("get_releases_dates", ["limit", "sort_order"]),
 }
 
 

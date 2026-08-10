@@ -1,8 +1,14 @@
-"""个股新闻与行情 Mixin"""
+"""个股新闻与行情 Mixin
 
-import asyncio
+连接层已下沉 data_subservice（_internal/akshare/quote + akshare_worker）。
+本 Mixin 仅负责远程路由调用 + 主服务侧缓存/熔断/降级兜底，
+不再持有任何 akshare 本地连接。港股新闻兜底（yahoo）经 DataSourceRouter
+联邦 yfinance 子服务远程代理，主服务不再直连外部数据源。
+"""
+
 import json
 import random
+import re
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict
@@ -10,6 +16,7 @@ from typing import Any, Dict
 from backend.core.circuit_breaker import get_cooldown_seconds
 from backend.core.redis_client import redis_client
 from backend.core.retry_utils import with_global_retry
+from backend.services.datasource.router import data_source_router
 
 
 class QuoteMixin:
@@ -28,9 +35,9 @@ class QuoteMixin:
 
     @with_global_retry
     async def get_company_news(self, ticker: str) -> Dict[str, Any]:
-        """
-        获取港股或A股的个股新闻（短链接，Redis 缓存）
-        数据来源: 东方财富 (AKShare)
+        """获取港股或A股的个股新闻（远程 AKShare + 港股 yahoo 兜底）。
+
+        数据来源: 东方财富 (AKShare, A股) / 雅虎财经 (港股兜底)
         """
         # 🚨 熔断拦截：直接短路并交由上一级继续降级
         if time.time() < self._circuit_breaker_until:
@@ -38,7 +45,7 @@ class QuoteMixin:
                 "status": "error",
                 "message": "AKShare 数据源触发限流熔断，冷却中",
                 "data": [],
-            }  # noqa: E501
+            }
 
         cache_key = f"akshare_company_news_{ticker}"
         cached = await redis_client.get(cache_key)
@@ -52,126 +59,94 @@ class QuoteMixin:
                 "data": [],
             }
 
+        # 💡 拦截板块指数代码，防止串台
+        if "BK" in ticker.upper():
+            return {
+                "status": "warning",
+                "message": f"[{ticker}] 为板块指数，不适用个股新闻接口",
+                "data": [],
+            }
+
+        # 💡 港股：AKShare A股新闻接口不稳定，直接降级 yahoo
+        if "HK" in ticker.upper() or (ticker.isdigit() and len(ticker) == 5):
+            from backend.core.yahoo_news import fetch_yahoo_news
+
+            yf_sym = ticker
+            if yf_sym.startswith("HK."):
+                yf_sym = f"{yf_sym[3:]}.HK"
+            elif yf_sym.isdigit():
+                yf_sym = f"{yf_sym}.HK"
+
+            yahoo_news = await fetch_yahoo_news(yf_sym)
+            result = {
+                "status": "success",
+                "data": yahoo_news[:30],
+                "source": "yahoo_fallback",
+            }
+            self._error_count = 0
+            result["updated_at"] = datetime.now(timezone.utc).isoformat()
+            if yahoo_news:
+                await redis_client.set(cache_key, json.dumps(result), ex=86400)
+            else:
+                await redis_client.set(cache_key, json.dumps(result), ex=60)
+            return result
+
+        # A 股：远程调 AKShare 子服务
+        match = re.search(r"\d+", ticker)
+        if not match:
+            return {
+                "status": "error",
+                "message": f"无法从代码 {ticker} 提取纯数字代码以获取新闻",
+                "data": [],
+            }
+        symbol = match.group()
+        if "SH" in ticker.upper() or "SZ" in ticker.upper():
+            symbol = symbol.zfill(6)
+
         try:
-            import re
-
-            import akshare as ak
-
-            # 💡 拦截板块指数代码 (如 HK.BK1118)，防止正则提取数字后发生串台
-            if "BK" in ticker.upper():
-                return {
-                    "status": "warning",
-                    "message": f"[{ticker}] 为板块指数，不适用个股新闻接口",
-                    "data": [],
-                }  # noqa: E501
-
-            # 💡 针对港股，东方财富 A 股新闻接口经常因页面结构变化抛出正则解析异常 (Invalid escape sequence)  # noqa: E501
-            # 因此在这里直接将其短路，降级交由雅虎财经获取港股新闻
-            if "HK" in ticker.upper() or (ticker.isdigit() and len(ticker) == 5):
-                from backend.core.yahoo_news import fetch_yahoo_news
-
-                yf_sym = ticker
-                if yf_sym.startswith("HK."):
-                    yf_sym = f"{yf_sym[3:]}.HK"
-                elif yf_sym.isdigit():
-                    yf_sym = f"{yf_sym}.HK"
-
-                yahoo_news = await fetch_yahoo_news(yf_sym)
-
-                result = {
-                    "status": "success",
-                    "data": yahoo_news[:30],
-                    "source": "yahoo_fallback",
-                }  # noqa: E501
-                self._error_count = 0
-                result["updated_at"] = datetime.now(timezone.utc).isoformat()
-
-                if yahoo_news:
-                    await redis_client.set(cache_key, json.dumps(result), ex=86400)
-                else:
-                    await redis_client.set(cache_key, json.dumps(result), ex=60)
-                return result
-
-            # 提取纯数字代码，例如从 "SH.600519" 中提取 "600519"
-            match = re.search(r"\d+", ticker)
-            if not match:
-                raise ValueError(f"无法从代码 {ticker} 提取纯数字代码以获取新闻")
-            symbol = match.group()
-
-            # 💡 强制补齐位数：A 股必须为 6 位纯数字
-            if "SH" in ticker.upper() or "SZ" in ticker.upper():
-                symbol = symbol.zfill(6)
-
-            # stock_news_em 返回 columns: ['关键词', '新闻标题', '新闻内容', '发布时间', '文章来源', '新闻链接']  # noqa: E501
             async with self._acquire_lock_with_timeout(5.0):
-                # 💡 双重检查锁
                 cached_double = await redis_client.get(cache_key)
                 if cached_double:
                     return json.loads(cached_double)
-
-                df = await asyncio.to_thread(ak.stock_news_em, symbol=symbol)
-            if df is None or df.empty:
-                raise ValueError(f"获取到的 {ticker} 新闻数据为空")
-
-            if "发布时间" in df.columns:
-                df = df.sort_values(by="发布时间", ascending=False)
-
-            news_list = []
-            for _, row in df.head(30).iterrows():  # 截取前 30 条作为热缓存
-                pub_time = str(row.get("发布时间", ""))
-
-                # 兼容格式，将 datetime 转换为 UNIX 时间戳
-                try:
-                    dt = datetime.strptime(pub_time, "%Y-%m-%d %H:%M:%S")
-                    ts = dt.replace(tzinfo=timezone.utc).timestamp()
-                except Exception:
-                    ts = datetime.now().timestamp()
-
-                news_list.append(
-                    {
-                        "datetime": ts,
-                        "date": pub_time,
-                        "headline": str(row.get("新闻标题", "")),
-                        "summary": str(row.get("新闻内容", "")),
-                        "url": str(row.get("新闻链接", "")),
-                        "source": str(row.get("文章来源", "东方财富")),
-                    }
-                )
-
-            result = {"status": "success", "data": news_list, "source": "akshare"}
-            self._error_count = 0  # 成功则清零错误计数
+                remote = await data_source_router.fetch_akshare("STOCK_NEWS", ticker=ticker)
+            if remote.get("status") != "success":
+                raise ValueError(remote.get("message", "远程个股新闻返回非成功状态"))
+            result = {
+                "status": "success",
+                "data": remote.get("data", []),
+                "source": "akshare",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            self._error_count = 0
         except Exception as e:
             self._error_count += 1
             print(f"⚠️ [AKShare] 个股新闻获取失败: {e}")
             if self._error_count >= self._max_errors:
-                print(f"🚨 [AKShare] 连续报错 {self._error_count} 次，触发个股新闻熔断休眠 60 秒！")  # noqa: E501
+                print(f"🚨 [AKShare] 连续报错 {self._error_count} 次，触发个股新闻熔断休眠 60 秒！")
                 self._circuit_breaker_until = time.time() + get_cooldown_seconds()
-
             result = {
                 "status": "error",
                 "message": f"AKShare 个股新闻获取失败: {e}",
                 "data": [],
-            }  # noqa: E501
+            }
 
         result["updated_at"] = datetime.now(timezone.utc).isoformat()
-
         if result.get("status") == "success" and result.get("data"):
             ttl = 86400 + random.randint(100, 600)
             await redis_client.set(cache_key, json.dumps(result), ex=ttl)
         else:
             await redis_client.set(cache_key, json.dumps(result), ex=60)
-
         return result
 
     @with_global_retry
     async def get_stock_quote(self, ticker: str) -> Dict[str, Any]:
-        """获取 A 股个股实时行情兜底 (基于东方财富)"""
+        """获取 A 股个股实时行情兜底 (远程 AKShare 新浪源)。"""
         # 🚨 熔断拦截
         if time.time() < self._circuit_breaker_until:
             return {
                 "status": "error",
                 "message": "AKShare 行情接口熔断中，直接降级雅虎财经",
-            }  # noqa: E501
+            }
 
         cache_key = f"akshare_quote_{ticker}"
         cached = await redis_client.get(cache_key)
@@ -185,65 +160,24 @@ class QuoteMixin:
                 "data": None,
             }
 
-        import re
-
         match = re.search(r"\d+", ticker)
         if not match:
             return {"status": "error", "message": "无效的 A 股代码"}
-        symbol = match.group().zfill(6)
 
         try:
-            import akshare as ak
-
-            # 🔧 东财接口(push2his 等)在 CN 机房 IP 被反爬 RST 封禁，统一切到新浪源
-            # (实测: stock_zh_a_daily 在 VPS 直连 509ms 正常返回；东财同类接口全 FAIL)。
-            # 新浪 stock_zh_a_daily 单位为「股」(非手)，列名为 date/open/high/low/close/
-            # volume/amount/turnover，无「振幅」列，需用 (high-low)/prev_close 推算。
-            if hasattr(ak, "set_proxy"):
-                ak.set_proxy(None)  # 强制直连，清掉环境里可能残留的失效代理(如 127.0.0.1:10808)
-            sina_symbol = self._build_sina_symbol(symbol)
-
-            # 为保证实时性，获取日线最近一条数据（包含今日盘中实时变动）
             async with self._acquire_lock_with_timeout(5.0):
-                # 💡 双重检查锁
                 cached_double = await redis_client.get(cache_key)
                 if cached_double:
                     return json.loads(cached_double)
-
-                df = await asyncio.to_thread(ak.stock_zh_a_daily, symbol=sina_symbol, adjust="qfq")  # noqa: E501
-
-            if df is None or df.empty:
-                raise ValueError("获取到的个股行情为空")
-
-            latest = df.iloc[-1]
-            prev_close = float(df.iloc[-2]["close"]) if len(df) > 1 else float(latest["open"])  # noqa: E501
-            last_price = float(latest["close"])
-            change = last_price - prev_close
-            change_pct = (change / prev_close) * 100 if prev_close > 0 else 0.0
-
-            vol = float(latest["volume"])  # 新浪源 volume 单位已是「股」，不再 *100
-            high = float(latest["high"])
-            low = float(latest["low"])
-            amplitude = ((high - low) / prev_close * 100) if prev_close > 0 else 0.0
+                remote = await data_source_router.fetch_akshare("QUOTE_A", ticker=ticker)
+            if remote.get("status") != "success":
+                raise ValueError(remote.get("message", "远程行情返回非成功状态"))
             result = {
                 "status": "success",
-                "data": {
-                    "ticker": ticker,
-                    "last_price": last_price,
-                    "open": float(latest["open"]),
-                    "high": high,
-                    "low": low,
-                    "prev_close": prev_close,
-                    "volume": vol,
-                    "turnover": float(latest["amount"]),
-                    "change_val": change,
-                    "change_pct": change_pct,
-                    "amplitude": amplitude,
-                    "volume_str": f"{vol / 1_000_000:.2f}M" if vol > 1_000_000 else f"{vol / 1_000:.2f}K",  # noqa: E501
-                },
+                "data": remote.get("data"),
                 "source": "akshare_sina",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             }
-            # 短效缓存防穿透
             ttl = 10 + random.randint(1, 5)
             await redis_client.set(cache_key, json.dumps(result), ex=ttl)
             self._error_count = 0
@@ -252,20 +186,19 @@ class QuoteMixin:
             self._error_count += 1
             print(f"⚠️ [AKShare] A 股行情获取失败: {e}")
             if self._error_count >= self._max_errors:
-                print(f"🚨 [AKShare] 连续报错 {self._error_count} 次，触发实时行情熔断休眠 60 秒！")  # noqa: E501
+                print(f"🚨 [AKShare] 连续报错 {self._error_count} 次，触发实时行情熔断休眠 60 秒！")
                 self._circuit_breaker_until = time.time() + get_cooldown_seconds()
-
             return {"status": "error", "message": f"行情异常: {e}"}
 
     @with_global_retry
     async def get_stock_history(self, ticker: str, num: int = 60) -> Dict[str, Any]:
-        """获取 A 股个股历史 K 线兜底 (基于东方财富前复权)"""
+        """获取 A 股个股历史 K 线兜底 (远程 AKShare 新浪源)。"""
         # 🚨 熔断拦截
         if time.time() < self._circuit_breaker_until:
             return {
                 "status": "error",
                 "message": "AKShare 历史K线接口熔断中，直接降级雅虎财经",
-            }  # noqa: E501
+            }
 
         cache_key = f"akshare_history_{ticker}_{num}"
         cached = await redis_client.get(cache_key)
@@ -279,59 +212,32 @@ class QuoteMixin:
                 "data": None,
             }
 
-        import re
-
         match = re.search(r"\d+", ticker)
         if not match:
             return {"status": "error", "message": "无效的 A 股代码"}
-        symbol = match.group().zfill(6)
 
         try:
-            import akshare as ak
-
-            # 🔧 同 get_realtime_quote：东财接口在 CN 机房 IP 被 RST 封禁，切新浪源
-            if hasattr(ak, "set_proxy"):
-                ak.set_proxy(None)  # 强制直连，清失效代理
-            sina_symbol = self._build_sina_symbol(symbol)
-
             async with self._acquire_lock_with_timeout(5.0):
-                # 💡 双重检查锁
                 cached_double = await redis_client.get(cache_key)
                 if cached_double:
                     return json.loads(cached_double)
-
-                df = await asyncio.to_thread(ak.stock_zh_a_daily, symbol=sina_symbol, adjust="qfq")  # noqa: E501
-
-            if df is None or df.empty:
-                raise ValueError("获取到的 K 线为空")
-
-            df = df.tail(num)
-            data_list = [
-                {
-                    "time": str(row["date"]) + " 00:00:00",
-                    "open": float(row["open"]),
-                    "high": float(row["high"]),
-                    "low": float(row["low"]),
-                    "close": float(row["close"]),
-                    "volume": float(row["volume"]),  # 新浪源单位已是股，不 *100
-                }
-                for _, row in df.iterrows()
-            ]  # noqa: E501
-            self._error_count = 0
-
+                remote = await data_source_router.fetch_akshare("HISTORY_A", ticker=ticker, num=num)
+            if remote.get("status") != "success":
+                raise ValueError(remote.get("message", "远程K线返回非成功状态"))
             result = {
                 "status": "success",
-                "data": data_list,
+                "data": remote.get("data"),
                 "source": "akshare_fallback",
-            }  # noqa: E501
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
             ttl = 10 + random.randint(1, 5)
             await redis_client.set(cache_key, json.dumps(result), ex=ttl)
+            self._error_count = 0
             return result
         except Exception as e:
             self._error_count += 1
             print(f"⚠️ [AKShare] A 股历史 K 线获取失败: {e}")
             if self._error_count >= self._max_errors:
-                print(f"🚨 [AKShare] 连续报错 {self._error_count} 次，触发 K 线接口熔断休眠 60 秒！")  # noqa: E501
+                print(f"🚨 [AKShare] 连续报错 {self._error_count} 次，触发 K 线接口熔断休眠 60 秒！")
                 self._circuit_breaker_until = time.time() + get_cooldown_seconds()
-
             return {"status": "error", "message": f"K线异常: {e}"}

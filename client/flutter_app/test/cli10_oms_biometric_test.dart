@@ -213,19 +213,16 @@ void main() {
       expect(result.data![1].status, 'PARTIAL');
     });
 
-    test(
-      'fetchActiveOrders returns empty list when no active orders',
-      () async {
-        final gw = FakeRestGateway(
-          getResponse: ApiResult.success({'active_orders': []}),
-        );
-        final service = OmsService(gateway: gw);
+    test('fetchActiveOrders returns empty list when no active orders', () async {
+      final gw = FakeRestGateway(
+        getResponse: ApiResult.success({'active_orders': []}),
+      );
+      final service = OmsService(gateway: gw);
 
-        final result = await service.fetchActiveOrders();
-        expect(result.ok, isTrue);
-        expect(result.data, isEmpty);
-      },
-    );
+      final result = await service.fetchActiveOrders();
+      expect(result.ok, isTrue);
+      expect(result.data, isEmpty);
+    });
 
     test('fetchActiveOrders returns failure on API error', () async {
       final gw = FakeRestGateway(
@@ -334,7 +331,9 @@ void main() {
 
     test('copyWith updates status', () {
       const state = KillSwitchState();
-      final engaging = state.copyWith(status: KillSwitchStatus.engaging);
+      final engaging = state.copyWith(
+        status: KillSwitchStatus.engaging,
+      );
       expect(engaging.isEngaging, isTrue);
       expect(engaging.isIdle, isFalse);
     });

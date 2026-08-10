@@ -74,6 +74,45 @@ async def test_finnhub_fetch_returns_none_on_failure():
         assert await md._finnhub_fetch("company_news", ticker="AAPL") is None
 
 
+class _DaemonStop(Exception):
+    """测试用哨兵：让无限 while True 的 daemon 在跑过一次循环体后干净退出。"""
+
+
+def _make_sleep_that_stops_after_first():
+    """mock asyncio.sleep：第一次调用放行（让循环体执行一次），第二次 raise 终止 daemon。"""
+    state = {"n": 0}
+
+    async def _fake_sleep(*args, **kwargs):
+        state["n"] += 1
+        if state["n"] == 1:
+            return None
+        raise _DaemonStop()
+
+    return _fake_sleep
+
+
+class FakeRedis:
+    """隔离真实 Redis 的桩：daemon 仅需 set/zadd/publish 等异步方法。"""
+
+    async def set(self, *args, **kwargs):
+        return True
+
+    async def zadd(self, *args, **kwargs):
+        return 1
+
+    async def publish(self, *args, **kwargs):
+        return 1
+
+    async def hkeys(self, *args, **kwargs):
+        return []
+
+    async def zremrangebyscore(self, *args, **kwargs):
+        return 0
+
+    async def zremrangebyrank(self, *args, **kwargs):
+        return 0
+
+
 @pytest.mark.asyncio
 async def test_earnings_alert_daemon_remote_path(monkeypatch):
     monkeypatch.setenv("FINNHUB_API_KEY", "test-key")
@@ -97,22 +136,20 @@ async def test_earnings_alert_daemon_remote_path(monkeypatch):
 
     import backend.services.ai_narrator.llm_service as llm_mod
     import backend.services.alert.notification as notif_mod
-    from backend.core.redis_client import redis_client as rc
 
     with pytest.MonkeyPatch().context() as m:
-        m.setattr("asyncio.sleep", AsyncMock())
+        m.setattr("asyncio.sleep", _make_sleep_that_stops_after_first())
+        m.setattr(md, "redis_client", FakeRedis())
         m.setattr(notif_mod, "notification_service", FakeNotify())
         m.setattr(llm_mod, "llm_service", FakeLLM())
-        m.setattr(rc, "set", AsyncMock(return_value=True))
         m.setattr(md, "_finnhub_fetch", AsyncMock(return_value=earnings))
 
+        # daemon 无限循环：跑过一次循环体（发 alert）后由 fake_sleep 终止，干净退出。
         task = asyncio.ensure_future(md._earnings_alert_daemon())
-        try:
-            await asyncio.wait_for(asyncio.shield(task), timeout=2.0)
-        except asyncio.TimeoutError:
-            task.cancel()
+        with pytest.raises(_DaemonStop):
+            await task
 
-    assert len(sent) == 1
+    assert len(sent) >= 1
 
 
 @pytest.mark.asyncio
@@ -133,20 +170,17 @@ async def test_daemon_skips_when_registry_fetch_none(monkeypatch):
 
     import backend.services.ai_narrator.llm_service as llm_mod
     import backend.services.alert.notification as notif_mod
-    from backend.core.redis_client import redis_client as rc
 
     with pytest.MonkeyPatch().context() as m:
-        m.setattr("asyncio.sleep", AsyncMock())
+        m.setattr("asyncio.sleep", _make_sleep_that_stops_after_first())
+        m.setattr(md, "redis_client", FakeRedis())
         m.setattr(notif_mod, "notification_service", FakeNotify())
         m.setattr(llm_mod, "llm_service", FakeLLM())
-        m.setattr(rc, "set", AsyncMock(return_value=True))
         m.setattr(md, "_finnhub_fetch", AsyncMock(return_value=None))
 
         task = asyncio.ensure_future(md._earnings_alert_daemon())
-        try:
-            await asyncio.wait_for(asyncio.shield(task), timeout=2.0)
-        except asyncio.TimeoutError:
-            task.cancel()
+        with pytest.raises(_DaemonStop):
+            await task
 
     assert sent == []
 

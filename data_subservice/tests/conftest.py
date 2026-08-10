@@ -5,8 +5,9 @@
   2. data_subservice 目录本身 -> 兼容 `from _internal.tushare import service` 这类
      以 data_subservice 为根的隐式绝对导入 (原 test_subservice_tushare_service.py 用法)
 
-复用主工程 pyproject.toml 的 pytest 配置 (asyncio_mode=auto 等),
-本目录被纳入 testpaths 后随 backend/tests 一并由 CI 执行。
+本目录不并入主工程 pyproject.toml 的 testpaths（主工程环境禁止装 tushare/futu 等 SDK），
+改由 data_subservice/pytest.ini 独立驱动，需在装有 data_subservice/requirements.txt 的环境运行:
+    cd data_subservice && pytest -c pytest.ini
 """
 
 import os

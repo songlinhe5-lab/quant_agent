@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.services.adapters.legacy_market_data import MarketDataGateway
+from backend.services.datasource import ErrorInfo, Result
 
 
 def _make_gateway():
@@ -37,10 +38,6 @@ def _make_gateway():
 @pytest.mark.asyncio
 async def test_delegation_methods():
     gw = _make_gateway()
-    gw._futu.get_quote = AsyncMock(return_value={"last_price": 1})
-    gw._futu.get_history = AsyncMock(return_value={"data": []})
-    gw._futu.get_fund_flow = AsyncMock(return_value={"status": "success"})
-    gw._futu.get_warrant_chain = AsyncMock(return_value={"status": "success"})
     gw._futu.get_fundamental = AsyncMock(return_value={"pe": 10})
     gw._futu.screen_stocks = MagicMock(return_value=[{"symbol": "AAPL"}])
     gw._futu.status = "CONNECTED"
@@ -50,10 +47,27 @@ async def test_delegation_methods():
     gw._futu.conn_mgr.status = "CONNECTED"
     gw._futu.conn_mgr._is_opend_reachable = MagicMock(return_value=True)
     gw._futu.conn_mgr.switch_host = MagicMock(return_value={"ok": True})
+    # 主服务远程-only: switch_opend_host 委托 futu，由子服务持有本地 OpenD
+    gw._futu.switch_opend_host = MagicMock(
+        return_value={"status": "unsupported", "message": "主服务无法切换本地 OpenD 宿主"}
+    )
+
+    # BE-ARCH-07a: get_quote/get_history/get_fund_flow/get_warrant_chain 经
+    # datasource_registry.fetch("futu", ACTION) 远程路由, 而非 self._futu 本地直调
+    fetch_map = {
+        "QUOTE": Result.make_success({"last_price": 1}),
+        "HISTORY": Result.make_success({"data": []}),
+        "FUND_FLOW": Result.make_success({"status": "success"}),
+        "WARRANT_CHAIN": Result.make_success({"status": "success"}),
+    }
 
     # get_tech_indicators 已改经 data_source_router.fetch_yfinance 远程子服务
-    with patch("backend.services.datasource.router.data_source_router") as mock_router:
+    with (
+        patch("backend.services.datasource.router.data_source_router") as mock_router,
+        patch("backend.services.datasource.datasource_registry") as mock_registry,
+    ):
         mock_router.fetch_yfinance = AsyncMock(return_value={"success": True, "data": {"rsi": 50}})
+        mock_registry.fetch = AsyncMock(side_effect=lambda src, action, params: fetch_map[action])
         assert await gw.get_tech_indicators("US.AAPL") == {"success": True, "data": {"rsi": 50}}
 
         assert (await gw.get_quote("US.AAPL"))["last_price"] == 1
@@ -76,9 +90,11 @@ async def test_delegation_methods():
         assert gw.conn_mgr is gw._futu.conn_mgr
         assert gw.connect() is gw._futu.connect()
     assert gw.is_opend_reachable() is True
-    assert gw.switch_opend_host("1.2.3.4") == {"ok": True}
+    # 主服务远程-only：switch_opend_host 不切换本地 OpenD，返回 unsupported
+    result = gw.switch_opend_host("1.2.3.4")
+    assert result["status"] == "unsupported"
     health = gw.futu_health_status()
-    assert health["status"] == "CONNECTED"  # switch_opend_host 已将 status 同步为 CONNECTED
+    assert health["status"] == "DISCONNECTED"  # 由前述 setter 设定，switch_opend_host 不改 status
 
 
 # ── 纯函数 (219-239) ───────────────────────────────────────────────────────────
@@ -129,24 +145,28 @@ def test_enrich_option_chain_with_spot():
 @pytest.mark.asyncio
 async def test_get_option_chain_normal():
     gw = _make_gateway()
+    # BE-ARCH-07a: futu OPTION_CHAIN 经 datasource_registry 远程路由 (success Result)
     # 含定价字段(且带 underlying_price) -> 不走 yfinance 降级, 直接 enrich Greeks
-    gw._futu.get_option_chain = AsyncMock(
-        return_value={
-            "status": "success",
-            "underlying_price": 100.0,
-            "options": [
+    with patch("backend.services.datasource.datasource_registry") as mock_registry:
+        mock_registry.fetch = AsyncMock(
+            return_value=Result.make_success(
                 {
-                    "option_type": "CALL",
-                    "strike_price": 100,
-                    "bid": 1,
-                    "ask": 2,
-                    "implied_volatility": 0.2,
-                    "days_to_expiry": 30,
+                    "status": "success",
+                    "underlying_price": 100.0,
+                    "options": [
+                        {
+                            "option_type": "CALL",
+                            "strike_price": 100,
+                            "bid": 1,
+                            "ask": 2,
+                            "implied_volatility": 0.2,
+                            "days_to_expiry": 30,
+                        }
+                    ],
                 }
-            ],
-        }
-    )
-    out = await gw.get_option_chain("US.AAPL")
+            )
+        )
+        out = await gw.get_option_chain("US.AAPL")
     assert out["status"] == "success"
     assert "calls" in out
 
@@ -154,19 +174,27 @@ async def test_get_option_chain_normal():
 @pytest.mark.asyncio
 async def test_get_option_chain_yfinance_fallback():
     gw = _make_gateway()
-    gw._futu.get_option_chain = AsyncMock(return_value={"status": "error"})
-    gw._option_chain_yfinance = AsyncMock(return_value={"status": "success", "options": [{"option_type": "CALL"}]})
-    out = await gw.get_option_chain("US.AAPL")
+    # futu OPTION_CHAIN 路由 error -> 降级 yfinance
+    with patch("backend.services.datasource.datasource_registry") as mock_registry:
+        mock_registry.fetch = AsyncMock(
+            return_value=Result.make_error(ErrorInfo.normal(code="FUTU_ROUTING_FAILED", message="futu 路由失败"))
+        )
+        gw._option_chain_yfinance = AsyncMock(return_value={"status": "success", "options": [{"option_type": "CALL"}]})
+        out = await gw.get_option_chain("US.AAPL")
     assert out["status"] == "success"
 
 
 @pytest.mark.asyncio
 async def test_get_option_chain_hk_warrant_fallback():
     gw = _make_gateway()
-    gw._futu.get_option_chain = AsyncMock(return_value={"status": "error"})
-    gw._option_chain_yfinance = AsyncMock(return_value={"status": "error"})
-    gw._futu.get_warrant_chain = AsyncMock(return_value={"status": "success"})
-    out = await gw.get_option_chain("00700.HK")
+    # futu OPTION_CHAIN 路由 error + yfinance error -> 降级 warrant_chain
+    with patch("backend.services.datasource.datasource_registry") as mock_registry:
+        mock_registry.fetch = AsyncMock(
+            return_value=Result.make_error(ErrorInfo.normal(code="FUTU_ROUTING_FAILED", message="futu 路由失败"))
+        )
+        gw._option_chain_yfinance = AsyncMock(return_value={"status": "error"})
+        gw.get_warrant_chain = AsyncMock(return_value={"status": "success"})
+        out = await gw.get_option_chain("00700.HK")
     assert out.get("_fallback") == "warrant_chain"
 
 

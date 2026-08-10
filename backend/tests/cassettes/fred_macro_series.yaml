@@ -1,0 +1,48 @@
+interactions:
+- request:
+    body: '{"source": "fred", "action": "MACRO_SERIES", "params": {"series_id": "DGS10"}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '78'
+      content-type:
+      - application/json
+      host:
+      - 127.0.0.1:18199
+      user-agent:
+      - python-httpx/0.28.1
+      x-signature:
+      - 74af715eb67f49b73f4a76e4c5d8eb6b59f846e6db8f0584dfcc3de57723d99d
+      x-timestamp:
+      - '1786283252'
+    method: POST
+    uri: http://127.0.0.1:18199/api/v1/data
+  response:
+    body:
+      string: '{"code": 0, "data": {"series_id": "DGS10", "observations": [{"date":
+        "2026-08-01", "value": 4.21}, {"date": "2026-08-02", "value": 4.18}]}, "meta":
+        {"source": "fred", "action": "MACRO_SERIES", "latency_ms": 55}}'
+    headers:
+      connection:
+      - keep-alive
+      content-length:
+      - '211'
+      content-type:
+      - application/json
+      date:
+      - Sun, 09 Aug 2026 13:47:32 GMT
+      keep-alive:
+      - timeout=60
+      proxy-connection:
+      - keep-alive
+      server:
+      - BaseHTTP/0.6 Python/3.13.5
+    status:
+      code: 200
+      message: OK
+version: 1

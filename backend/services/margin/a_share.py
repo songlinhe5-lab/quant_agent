@@ -5,13 +5,13 @@
 频率: T+1 日更新
 """
 
-import asyncio
 import json
 from datetime import datetime, timezone
 from typing import Any, Dict
 
 from backend.core.logger import logger
 from backend.core.redis_client import redis_client
+from backend.services.datasource.router import data_source_router
 
 # Redis 缓存配置
 _CACHE_KEY = "quant:margin:a_share"
@@ -20,7 +20,7 @@ _CACHE_TTL = 300  # 5 分钟
 
 async def get_a_share_margin() -> Dict[str, Any]:
     """
-    获取 A 股融资融券余额数据
+    获取 A 股融资融券余额数据（远程调用 AKShare 子服务，本地已移除 akshare SDK）。
 
     返回格式:
     {
@@ -44,80 +44,17 @@ async def get_a_share_margin() -> Dict[str, Any]:
     except Exception as e:
         logger.warning(f"[Margin] A 股缓存读取失败: {e}")
 
-    # 2. 从 AKShare 获取数据
+    # 2. 远程调用 AKShare 子服务（解析逻辑已下沉 data_subservice）
     try:
-        import akshare as ak
+        result = await data_source_router.fetch_akshare("MARGIN_A_SHARE")
+        if result.get("status") != "success":
+            raise ValueError(result.get("message", "远程融资融券返回非成功状态"))
 
-        # 并发获取上交所和深交所数据
-        sse_df, szse_df = await asyncio.gather(
-            asyncio.to_thread(ak.stock_margin_sse),
-            asyncio.to_thread(ak.stock_margin_szse),
-            return_exceptions=True,
-        )
-
-        # 解析上交所数据
-        sse_financing = 0.0
-        sse_securities = 0.0
-        if not isinstance(sse_df, BaseException) and sse_df is not None and not sse_df.empty:
-            # 取最新一行数据
-            latest = sse_df.iloc[-1]
-            # 字段名可能因 AKShare 版本而异，尝试常见字段名
-            for col in ["融资余额", "融资余额 (元)", "financing_balance"]:
-                if col in latest.index:
-                    sse_financing = float(latest[col]) / 1e8  # 转换为亿元
-                    break
-            for col in ["融券余额", "融券余额 (元)", "securities_balance"]:
-                if col in latest.index:
-                    sse_securities = float(latest[col]) / 1e8
-                    break
-
-        # 解析深交所数据
-        szse_financing = 0.0
-        szse_securities = 0.0
-        if not isinstance(szse_df, BaseException) and szse_df is not None and not szse_df.empty:
-            latest = szse_df.iloc[-1]
-            for col in ["融资余额", "融资余额 (元)", "financing_balance"]:
-                if col in latest.index:
-                    szse_financing = float(latest[col]) / 1e8
-                    break
-            for col in ["融券余额", "融券余额 (元)", "securities_balance"]:
-                if col in latest.index:
-                    szse_securities = float(latest[col]) / 1e8
-                    break
-
-        # 汇总两市数据
-        total_financing = round(sse_financing + szse_financing, 2)
-        total_securities = round(sse_securities + szse_securities, 2)
-
-        # 计算变化量（如果有前一日数据）
-        financing_change = 0.0
-        securities_change = 0.0
-        if not isinstance(sse_df, BaseException) and sse_df is not None and len(sse_df) >= 2:
-            prev = sse_df.iloc[-2]
-            for col in ["融资余额", "融资余额 (元)", "financing_balance"]:
-                if col in prev.index:
-                    prev_financing = float(prev[col]) / 1e8
-                    financing_change = round(total_financing - prev_financing - szse_financing, 2)
-                    break
-
-        result = {
-            "status": "success",
-            "data": {
-                "market": "A_SHARE",
-                "market_name": "A 股",
-                "financing_balance": total_financing,
-                "securities_balance": total_securities,
-                "financing_change": financing_change,
-                "securities_change": securities_change,
-                "unit": "亿元",
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-                "source": "AKShare (上交所/深交所)",
-            },
-        }
+        result["data"]["updated_at"] = datetime.now(timezone.utc).isoformat()
 
         # 3. 写入缓存
         try:
-            await redis_client.set(_CACHE_KEY, json.dumps(result), ex=_CACHE_TTL)
+            await redis_client.set(_CACHE_KEY, json.dumps(result, ensure_ascii=False), ex=_CACHE_TTL)
         except Exception as e:
             logger.warning(f"[Margin] A 股缓存写入失败: {e}")
 

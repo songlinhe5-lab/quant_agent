@@ -103,7 +103,14 @@ class ConnectionManager:
                 loop = asyncio.get_running_loop()
                 push_handler.set_main_loop(loop)
             except RuntimeError:
-                logger.warning("[ConnectionManager] 无法获取事件循环，推送桥接将不可用")
+                # BE-ARCH-08c①: connect() 经 asyncio.to_thread 在工作线程执行，此处无
+                # running loop。回退到主线程已 set 的事件循环引用（startup_event 已
+                # set_main_loop 双保险），否则 _main_loop 恒为 None，后续所有推送回调
+                # 经 _schedule_coroutine 静默丢弃。
+                try:
+                    push_handler.set_main_loop(asyncio.get_event_loop())
+                except RuntimeError:
+                    logger.warning("[ConnectionManager] 无法获取事件循环，推送桥接将不可用")
 
             # 检查是否启用推送模式（默认开启）
             push_enabled = os.getenv("FUTU_PUSH_ENABLED", "true").lower() == "true"

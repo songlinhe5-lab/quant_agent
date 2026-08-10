@@ -652,9 +652,9 @@ class AlgoEngine:
     async def _execute_real_order(self, symbol: str, qty: int, side: str) -> float:
         """LIVE 模式: 通过 futu_service 提交真实限价单"""
         try:
-            from futu import TrdMarket, TrdSide
-
+            # BE-ARCH-07c: 主服务不再依赖 futu SDK, 改用本地枚举常量
             from backend.services.datasource.router import data_source_router
+            from backend.services.futu.enums import TrdMarket, TrdSide
 
             logger.info(f"[AlgoEngine] _execute_real_order 入参: {symbol} qty={qty} side={side}")
 

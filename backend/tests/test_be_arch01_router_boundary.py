@@ -19,7 +19,9 @@ FORBIDDEN_IMPORT = re.compile(
     r"from\s+backend\.services\.akshare_service\b|"
     r"from\s+backend\.services\.finnhub_service\b|"
     r"from\s+backend\.services\.fred_service\b|"
-    r"from\s+backend\.services\.futu\b|"
+    # futu.utils 仅含纯函数（is_futu_unsupported 等），不持 SDK 连接，允许直连；
+    # 其余 futu 子模块（futu_service/futu_openapi_client 等）一律禁止（BE-ARCH-01 边界）。
+    r"from\s+backend\.services\.futu\.(?!utils\b)\w+|"
     r"from\s+futu\s+import\b|"
     r"import\s+futu\b|"
     r"import\s+yfinance\b"

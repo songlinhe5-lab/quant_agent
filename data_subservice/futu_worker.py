@@ -83,6 +83,14 @@ async def handle_futu(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
                 order_id=params.get("order_id"),
                 market=_as_enum(TrdMarket, params.get("market")),
             )
+        elif action == "EMERGENCY_LIQUIDATION":
+            return await futu_service.emergency_liquidation(params.get("market", "HK"))
+        # BE-ARCH-08c⑤: 前端 WS 订阅回传 — 主服务经 router 以 SUBSCRIBE/UNSUBSCRIBE 抵达,
+        # 通知 OpenD 真正订阅/退订实时推送 (此前无此分支, 新标的只能等 10s 轮询碰巧触发)。
+        elif action == "SUBSCRIBE":
+            return await futu_service.subscribe_quote(params.get("symbol"))
+        elif action == "UNSUBSCRIBE":
+            return await futu_service.unsubscribe_quote(params.get("symbol"))
         elif action == "HEALTH":
             return {"available": futu_service.status == "CONNECTED", "source": "futu"}
         else:

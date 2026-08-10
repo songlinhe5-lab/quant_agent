@@ -32,3 +32,5 @@ prometheus-client>=0.20.0   # 子服务 /metrics 指标暴露
 
 # ── 通用 ──
 requests>=2.31.0
+rich>=13.0.0                  # _internal/logger 日志美化 (运行时必需)
+tenacity>=8.2.0               # _internal/retry_utils 重试装饰器 (运行时必需)

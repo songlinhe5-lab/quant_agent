@@ -137,6 +137,42 @@ def _tick_cache_stats() -> dict[str, Any]:
 
 
 # ────────────────────────────────────────────────────────────────────────────
+# Broker / Kline 缓存（进程内，TTL 过期）
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class _PolyCache:
+    """进程内最近 broker / kline 推送缓存（线程安全，TTL 过期自动失效）。
+
+    与 TickCache 同构，承载 quant:broker:* / quant:kline:* 频道回灌的数据。
+    """
+
+    def __init__(self, ttl_sec: float = _TICK_TTL_SEC) -> None:
+        self._store: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._lock = Lock()
+        self._ttl = ttl_sec
+
+    def put(self, symbol: str, data: dict[str, Any]) -> None:
+        with self._lock:
+            self._store[symbol.upper()] = (time.monotonic(), data)
+
+    def get(self, symbol: str) -> Optional[dict[str, Any]]:
+        with self._lock:
+            item = self._store.get(symbol.upper())
+            if not item:
+                return None
+            ts, data = item
+            if time.monotonic() - ts > self._ttl:
+                del self._store[symbol.upper()]
+                return None
+            return data
+
+    def clear(self) -> None:
+        with self._lock:
+            self._store.clear()
+
+
+# ────────────────────────────────────────────────────────────────────────────
 # Redis pubsub 回灌
 # ────────────────────────────────────────────────────────────────────────────
 
@@ -179,6 +215,40 @@ async def _run_tick_ingest(symbols: list[str], cache: TickCache) -> None:
         logger.info("[TickIngest] 回灌协程已停止")
 
 
+async def _run_poly_ingest(
+    symbols: list[str],
+    cache: _PolyCache,
+    channel_prefix: str,
+) -> None:
+    """订阅 quant:{prefix}:{symbol} 频道，回灌 _PolyCache。
+
+    通用回灌协程，供 start_broker_ingest / start_kline_ingest 复用。
+    channel_prefix 为 "broker" 或 "kline"。
+    """
+    if not symbols:
+        logger.info(f"[PolyIngest:{channel_prefix}] 无订阅标的，回灌协程不启动")
+        return
+    r = await _redis()
+    pubsub = r.pubsub()
+    for sym in symbols:
+        await pubsub.subscribe(f"quant:{channel_prefix}:{sym.upper()}")
+    logger.info("[PolyIngest:%s] 已订阅 %d 个频道", channel_prefix, len(symbols))
+    try:
+        async for msg in pubsub.listen():
+            if msg is None or msg.get("type") != "message":
+                continue
+            try:
+                data = json.loads(msg["data"])
+            except (json.JSONDecodeError, TypeError):
+                continue
+            sym = data.get("ticker") or data.get("symbol")
+            if sym:
+                cache.put(sym, data)
+    except asyncio.CancelledError:  # noqa: PERF203
+        await pubsub.unsubscribe()
+        logger.info("[PolyIngest:%s] 回灌协程已停止", channel_prefix)
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # SubscriptionService — 推送平面统一入口
 # ────────────────────────────────────────────────────────────────────────────
@@ -199,6 +269,11 @@ class SubscriptionService:
     def __init__(self, cache: Optional[TickCache] = None) -> None:
         self._cache = cache or TickCache()
         self._ingest_task: Optional[asyncio.Task] = None
+        # BE-ARCH-07h-2: broker / kline 推送平面缓存与回灌任务
+        self._broker_cache = _PolyCache()
+        self._kline_cache = _PolyCache()
+        self._broker_task: Optional[asyncio.Task] = None
+        self._kline_task: Optional[asyncio.Task] = None
 
     # ── 实时价查询 ──
 
@@ -219,6 +294,40 @@ class SubscriptionService:
         通常由 Redis pubsub 回灌协程调用，业务层不应直接调用。
         """
         self._cache.put(symbol, tick)
+
+    # ── 经纪商队列查询（BE-ARCH-07h-2）──
+
+    def get_broker(self, symbol: str) -> Optional[dict[str, Any]]:
+        """获取最新经纪商队列推送（进程内 LRU 缓存，TTL 5s）。
+
+        Args:
+            symbol: 标的代码（如 "HK.00700" 或 "00700.HK"）
+
+        Returns:
+            Futu broker 推送消息，TTL 过期返回 None。
+        """
+        return self._broker_cache.get(symbol)
+
+    def put_broker(self, symbol: str, data: dict[str, Any]) -> None:
+        """写入最新 broker 推送（覆盖旧值）。通常由回灌协程调用。"""
+        self._broker_cache.put(symbol, data)
+
+    # ── 实时 K 线查询（BE-ARCH-07h-2）──
+
+    def get_kline(self, symbol: str) -> Optional[dict[str, Any]]:
+        """获取最新实时 K 线推送（进程内 LRU 缓存，TTL 5s）。
+
+        Args:
+            symbol: 标的代码
+
+        Returns:
+            Futu kline 推送消息，TTL 过期返回 None。
+        """
+        return self._kline_cache.get(symbol)
+
+    def put_kline(self, symbol: str, data: dict[str, Any]) -> None:
+        """写入最新 kline 推送（覆盖旧值）。通常由回灌协程调用。"""
+        self._kline_cache.put(symbol, data)
 
     # ── 命中率埋点 ──
 
@@ -267,6 +376,42 @@ class SubscriptionService:
         if self._ingest_task is not None and not self._ingest_task.done():
             self._ingest_task.cancel()
             self._ingest_task = None
+
+    # ── Broker / Kline 推送平面回灌（BE-ARCH-07h-2）──
+
+    def start_broker_ingest(self, symbols: list[str]) -> Optional[asyncio.Task]:
+        """启动 quant:broker:{symbol} 频道回灌协程。
+
+        由主 app 启动钩子调用，与 start_ingest 并行。重复调用会取消旧任务。
+        """
+        if not symbols:
+            logger.info("[SubscriptionService] 无 broker 订阅标的，跳过启动")
+            return None
+        if self._broker_task is not None and not self._broker_task.done():
+            self._broker_task.cancel()
+        self._broker_task = asyncio.create_task(_run_poly_ingest(symbols, self._broker_cache, "broker"))
+        return self._broker_task
+
+    def start_kline_ingest(self, symbols: list[str]) -> Optional[asyncio.Task]:
+        """启动 quant:kline:{symbol} 频道回灌协程。
+
+        由主 app 启动钩子调用，与 start_ingest 并行。重复调用会取消旧任务。
+        """
+        if not symbols:
+            logger.info("[SubscriptionService] 无 kline 订阅标的，跳过启动")
+            return None
+        if self._kline_task is not None and not self._kline_task.done():
+            self._kline_task.cancel()
+        self._kline_task = asyncio.create_task(_run_poly_ingest(symbols, self._kline_cache, "kline"))
+        return self._kline_task
+
+    def stop_poly_ingest(self) -> None:
+        """停止 broker / kline 回灌协程。"""
+        for task in (self._broker_task, self._kline_task):
+            if task is not None and not task.done():
+                task.cancel()
+        self._broker_task = None
+        self._kline_task = None
 
 
 # ────────────────────────────────────────────────────────────────────────────

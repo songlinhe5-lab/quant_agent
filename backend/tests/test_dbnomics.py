@@ -5,15 +5,18 @@ MACRO-04: DbnomicsService 单测（免费新兴市场 CPI 源）
 覆盖 dbnomics.py:
 - 序列 ID 构造
 - Redis 缓存命中 / 未命中
-- HTTP 成功解析 docs → events（含 period_start_day / 退化年份）
+- 远程成功解析 docs → events（含 period_start_day / 退化年份）
 - 过滤未知国家 / null 观测 / 长度不一致
-- 空 docs / HTTP 异常 → skipped
+- 空 docs / 远程失败 → skipped
 - _build_date 三种分支
+
+BE-ARCH-07f: 主服务已卸载 DBnomics REST 直连，改经 DataSourceRouter 远程代理，
+因此本测试 mock `data_source_router.fetch_dbnomics`。
 """
 
 import json
 from contextlib import contextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -22,6 +25,8 @@ from backend.services.macro.dbnomics import (
     DbnomicsService,
     dbnomics_service,
 )
+
+_ROUTER = "backend.services.macro.dbnomics.data_source_router"
 
 
 @contextmanager
@@ -33,15 +38,12 @@ def _patched_redis(get_value=None):
         yield r
 
 
-def _client_with_get(payload):
-    client = AsyncMock()
-    client.__aenter__.return_value = client
-    client.__aexit__.return_value = None
-    resp = MagicMock()
-    resp.raise_for_status = MagicMock()
-    resp.json.return_value = payload
-    client.get = AsyncMock(return_value=resp)
-    return client
+def _patched_remote(payload):
+    """mock 远程子服务返回 DBnomics 原始 JSON"""
+    return patch(
+        _ROUTER + ".fetch_dbnomics",
+        AsyncMock(return_value={"status": "success", "data": payload}),
+    )
 
 
 def _doc(ref_area, periods, values, start_days=None):
@@ -74,11 +76,7 @@ async def test_cache_hit_returns_redis_data():
 @pytest.mark.asyncio
 async def test_parses_docs_with_period_start_day():
     payload = {"series": {"docs": [_doc("IND", ["2023", "2024"], [5.0, 6.1], ["2023-01-01", "2024-01-01"])]}}
-    client = _client_with_get(payload)
-    with (
-        _patched_redis(get_value=None),
-        patch("backend.services.macro.dbnomics.httpx.AsyncClient", return_value=client),
-    ):
+    with _patched_redis(get_value=None), _patched_remote(payload):
         svc = DbnomicsService()
         res = await svc.get_economic_calendar()
     assert res["status"] == "success"
@@ -93,11 +91,7 @@ async def test_parses_docs_with_period_start_day():
 @pytest.mark.asyncio
 async def test_parses_docs_year_fallback():
     payload = {"series": {"docs": [_doc("BRA", ["2024"], [4.5])]}}
-    client = _client_with_get(payload)
-    with (
-        _patched_redis(get_value=None),
-        patch("backend.services.macro.dbnomics.httpx.AsyncClient", return_value=client),
-    ):
+    with _patched_redis(get_value=None), _patched_remote(payload):
         svc = DbnomicsService()
         res = await svc.get_economic_calendar()
     ev = res["data"][0]
@@ -110,11 +104,7 @@ async def test_parses_docs_year_fallback():
 async def test_unknown_country_falls_back_to_code():
     # EM_COUNTRIES.get(code, code) 对未知国码回退为原 code（仍为 truthy），因此不会跳过
     payload = {"series": {"docs": [_doc("USA", ["2024"], [2.0])]}}
-    client = _client_with_get(payload)
-    with (
-        _patched_redis(get_value=None),
-        patch("backend.services.macro.dbnomics.httpx.AsyncClient", return_value=client),
-    ):
+    with _patched_redis(get_value=None), _patched_remote(payload):
         svc = DbnomicsService()
         res = await svc.get_economic_calendar()
     assert res["status"] == "success"
@@ -124,11 +114,7 @@ async def test_unknown_country_falls_back_to_code():
 @pytest.mark.asyncio
 async def test_filters_null_observations():
     payload = {"series": {"docs": [_doc("MEX", ["2023", "2024"], [None, 4.5])]}}
-    client = _client_with_get(payload)
-    with (
-        _patched_redis(get_value=None),
-        patch("backend.services.macro.dbnomics.httpx.AsyncClient", return_value=client),
-    ):
+    with _patched_redis(get_value=None), _patched_remote(payload):
         svc = DbnomicsService()
         res = await svc.get_economic_calendar()
     ev = res["data"][0]
@@ -139,11 +125,7 @@ async def test_filters_null_observations():
 @pytest.mark.asyncio
 async def test_mismatched_period_value_length_skipped():
     payload = {"series": {"docs": [_doc("IND", ["2023", "2024"], [5.0])]}}  # 长度不一致
-    client = _client_with_get(payload)
-    with (
-        _patched_redis(get_value=None),
-        patch("backend.services.macro.dbnomics.httpx.AsyncClient", return_value=client),
-    ):
+    with _patched_redis(get_value=None), _patched_remote(payload):
         svc = DbnomicsService()
         res = await svc.get_economic_calendar()
     assert res["status"] == "skipped"
@@ -151,25 +133,32 @@ async def test_mismatched_period_value_length_skipped():
 
 @pytest.mark.asyncio
 async def test_empty_docs_returns_skipped():
-    client = _client_with_get({"series": {"docs": []}})
-    with (
-        _patched_redis(get_value=None),
-        patch("backend.services.macro.dbnomics.httpx.AsyncClient", return_value=client),
-    ):
+    with _patched_redis(get_value=None), _patched_remote({"series": {"docs": []}}):
         svc = DbnomicsService()
         res = await svc.get_economic_calendar()
     assert res["status"] == "skipped"
 
 
 @pytest.mark.asyncio
-async def test_http_error_returns_skipped():
-    client = AsyncMock()
-    client.__aenter__.return_value = client
-    client.__aexit__.return_value = None
-    client.get = AsyncMock(side_effect=Exception("boom"))
+async def test_remote_error_returns_skipped():
     with (
         _patched_redis(get_value=None),
-        patch("backend.services.macro.dbnomics.httpx.AsyncClient", return_value=client),
+        patch(
+            _ROUTER + ".fetch_dbnomics",
+            AsyncMock(return_value={"status": "error", "message": "boom"}),
+        ),
+    ):
+        svc = DbnomicsService()
+        res = await svc.get_economic_calendar()
+    assert res["status"] == "skipped"
+    assert "失败" in res["message"]
+
+
+@pytest.mark.asyncio
+async def test_remote_exception_returns_skipped():
+    with (
+        _patched_redis(get_value=None),
+        patch(_ROUTER + ".fetch_dbnomics", AsyncMock(side_effect=Exception("boom"))),
     ):
         svc = DbnomicsService()
         res = await svc.get_economic_calendar()
@@ -180,11 +169,7 @@ async def test_http_error_returns_skipped():
 @pytest.mark.asyncio
 async def test_skip_cache_bypasses_redis():
     payload = {"series": {"docs": [_doc("CHN", ["2024"], [1.5])]}}
-    client = _client_with_get(payload)
-    with (
-        _patched_redis(get_value=json.dumps([{"x": 1}])),
-        patch("backend.services.macro.dbnomics.httpx.AsyncClient", return_value=client),
-    ):
+    with _patched_redis(get_value=json.dumps([{"x": 1}])), _patched_remote(payload):
         svc = DbnomicsService()
         res = await svc.get_economic_calendar(skip_cache=True)
     assert res["source"] == "dbnomics"  # 未走缓存

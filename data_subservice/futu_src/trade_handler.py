@@ -103,6 +103,80 @@ class TradeHandler:
         }
 
     @with_global_retry
+    async def emergency_liquidation(self, market: str = "HK") -> Dict[str, Any]:
+        """Kill Switch: 物理撤单 + 市价平仓 (模拟盘)。
+
+        BE-ARCH-07c: 主服务不再本地持有 trade_ctx, 该逻辑下沉至子服务 futu worker。
+        复用 place_order/modify_order 的直连通道完成撤单与市价平仓。
+        """
+        market_map = {
+            "HK": TrdMarket.HK,
+            "US": TrdMarket.US,
+            "CN": TrdMarket.CN,
+            "SH": TrdMarket.CN,
+            "SZ": TrdMarket.CN,
+            "HK_CCASS": TrdMarket.HKCC,
+        }
+        trd_market = market_map.get(market.upper(), TrdMarket.HK)
+
+        # 未连接时直接返回错误, 避免触发 Futu SDK 后台线程无限重试
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "ok": False, "reason": "futu_opend_not_connected"}
+
+        trd_ctx = self.conn_mgr.get_trade_context(market=trd_market, trd_env=TrdEnv.SIMULATE)
+        await self.conn_mgr.unlock_trade_if_needed(trd_ctx)
+
+        cancelled = 0
+        closed = 0
+        # 1) 撤单
+        ret, order_data = await asyncio.to_thread(
+            trd_ctx.order_list_query,
+            status_filter_list=["SUBMITTED", "WAITING_SUBMIT"],
+            trd_env=TrdEnv.SIMULATE,
+        )
+        if ret == RET_OK and isinstance(order_data, pd.DataFrame) and not order_data.empty:
+            for _, row in order_data.iterrows():
+                c_ret, _ = await asyncio.to_thread(
+                    trd_ctx.modify_order,
+                    ModifyOrderOp.CANCEL,
+                    str(row["order_id"]),
+                    0,
+                    0.0,
+                    trd_env=row.get("trd_env", TrdEnv.SIMULATE),
+                )
+                if c_ret == RET_OK:
+                    cancelled += 1
+
+        # 2) 市价平仓
+        ret_pos, pos_data = await asyncio.to_thread(trd_ctx.position_list_query, trd_env=TrdEnv.SIMULATE)
+        if ret_pos == RET_OK and isinstance(pos_data, pd.DataFrame) and not pos_data.empty:
+            for _, row in pos_data.iterrows():
+                qty = float(row.get("qty", 0))
+                if qty == 0:
+                    continue
+                pos_side = row.get("position_side", "LONG")
+                trd_side = TrdSide.SELL if pos_side == "LONG" else TrdSide.BUY
+                _, _ = await asyncio.to_thread(
+                    trd_ctx.place_order,
+                    price=1.0,
+                    qty=abs(qty),
+                    code=row["code"],
+                    trd_side=trd_side,
+                    order_type=OrderType.MARKET,
+                    trd_env=row.get("trd_env", TrdEnv.SIMULATE),
+                )
+                closed += 1
+
+        return {
+            "status": "success",
+            "ok": True,
+            "reason": None,
+            "cancelled": cancelled,
+            "closed": closed,
+            "message": f"Kill Switch 执行完毕: 撤单 {cancelled} 笔, 平仓 {closed} 个标的。",
+        }
+
+    @with_global_retry
     async def get_account_info(self, market: str = "HK") -> Dict[str, Any]:
         """获取账户信息和持仓"""
         env_str = os.getenv("FUTU_TRD_ENV", "SIMULATE").upper()

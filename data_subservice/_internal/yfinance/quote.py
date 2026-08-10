@@ -140,3 +140,32 @@ def fetch_bulk_quotes(tickers: List[str]) -> List[Dict]:
     for tk in tickers:
         results.append(fetch_quote(tk))
     return results
+
+
+def fetch_news(ticker: str, limit: int = 15) -> List[Dict]:
+    """获取标的 Yahoo 新闻（远程代理主服务 yahoo_news 兜底的底层数据源）。
+
+    yfinance 库经 Yahoo Finance 非官方 news 接口拉取，子服务持有 Yahoo 出口能力，
+    主服务不再直连 query2.finance.yahoo.com。
+    """
+    yf_code = format_yf_ticker(ticker)
+    try:
+        t = yf.Ticker(yf_code)
+        raw = t.news or []
+        items = []
+        for item in raw[:limit]:
+            items.append(
+                {
+                    "uuid": item.get("uuid"),
+                    "title": item.get("title", ""),
+                    "publisher": item.get("publisher", "Yahoo Finance"),
+                    "link": item.get("link", ""),
+                    "provider_publish_time": item.get("providerPublishTime"),
+                    "type": item.get("type", "STORY"),
+                    "related_tickers": item.get("relatedTickers", []),
+                }
+            )
+        return items
+    except Exception as e:
+        logger.error(f"[News] 获取 {ticker} 新闻失败: {e}")
+        return []

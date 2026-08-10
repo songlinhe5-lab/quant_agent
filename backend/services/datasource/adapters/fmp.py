@@ -42,7 +42,23 @@ class FMPDataSource:
 
     @property
     def capabilities(self) -> list[str]:
-        return ["quote", "profile", "income_statement"]
+        # 与子服务 fmp_worker 实际 action + Facade 域方法用的 action 对齐。
+        # Facade 用大写 FUNDAMENTAL/INFO，router._FMP_ACTION_MAP 用小写 profile/
+        # income_statement/quote 映射为子服务大写 action。此处大小写全声明，
+        # 使 datasource_registry.get(source, action) 的 upper 比对均可命中，
+        # 避免"按 action 选源"因命名不一致而失效、退化为首个可用实例兜底。
+        return [
+            "quote",
+            "QUOTE",
+            "profile",
+            "PROFILE",
+            "income_statement",
+            "INCOME_STATEMENT",
+            "credit",
+            "CREDIT",
+            "FUNDAMENTAL",
+            "INFO",
+        ]
 
     @property
     def mode(self) -> str:

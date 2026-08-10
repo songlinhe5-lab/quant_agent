@@ -11,6 +11,9 @@ sys.path 注入由 tests/conftest.py 统一处理, 本文件无需再 hack。
 
 import pytest
 
+# tushare 为重型 SDK，按架构禁止装在 backend 环境；缺依赖时优雅跳过而非 collection error。
+pytest.importorskip("tushare")
+
 from _internal.tushare import service as tushare_service
 
 

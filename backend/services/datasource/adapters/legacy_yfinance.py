@@ -69,7 +69,33 @@ class LegacyYFinanceDataSource:
 
     @property
     def capabilities(self) -> list[str]:
-        return ["quote", "history", "info", "macro", "batch_quote", "fetch"]
+        # 必须与 _ACTION_TO_FETCH_TYPE 的键对齐，否则 get(source, action) 的
+        # "按 action 选源"比对失效（facade 用大写 QUOTE/HISTORY/FUND_FLOW/
+        # OPTION_CHAIN/FUNDAMENTAL/INFO/TECH，router 用小写 fetch_type）。
+        # 大小写全声明，确保 upper 比对均可命中。
+        return [
+            "quote",
+            "QUOTE",
+            "history",
+            "HISTORY",
+            "stock_history",
+            "tech",
+            "TECH",
+            "technical",
+            "fund_flow",
+            "FUND_FLOW",
+            "option_chain",
+            "OPTION_CHAIN",
+            "fundamental",
+            "FUNDAMENTAL",
+            "info",
+            "INFO",
+            "financials",
+            "FINANCIALS",
+            "macro",
+            "batch_quote",
+            "fetch",
+        ]
 
     @property
     def mode(self) -> str:

@@ -19,6 +19,8 @@ _FINNHUB_DISPATCH: dict[str, Any] = {
     "ECONOMIC_CALENDAR": ("get_economic_calendar", ["days_ahead", "days_back"]),
     "INSIDER_TRADING": ("get_insider_transactions", ["ticker", "limit"]),
     "STOCK_HISTORY": ("get_stock_history", ["ticker", "days_back"]),
+    "DIVIDEND_CALENDAR": ("get_dividend_calendar", ["symbol"]),
+    "IPO_CALENDAR": ("get_ipo_calendar", []),
 }
 
 
@@ -26,8 +28,14 @@ async def handle_finnhub(action: str, params: dict[str, Any]) -> dict[str, Any]:
     """动作分发：action -> finnhub_service 方法。
 
     返回普通 dict（由 main.fetch_data 包成 {"code":0,"data":...}）。
-    主服务统一以 ticker 传参，dispatch 表与 finnhub_service 方法均使用 ticker。
+    finnhub_service 方法统一以 ticker 命名形参，但上游 (probe_daemon /
+    DataSourceAdapter) 实际以 symbol 字段传标的。入口处做 symbol->ticker 兼容映射，
+    避免漏传标的导致 get_quote() 无参调用。
     """
+    # 上游兼容：symbol 字段映射到 ticker（finnhub_service 形参名）
+    if params.get("symbol") is not None and params.get("ticker") is None:
+        params = {**params, "ticker": params["symbol"]}
+
     if action not in _FINNHUB_DISPATCH:
         logger.warning(f"⚠️ [Finnhub] 未知动作: {action}")
         return {"error": f"unknown finnhub action: {action}"}

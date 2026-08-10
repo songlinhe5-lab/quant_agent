@@ -14,18 +14,22 @@ def get_node_info(region: str = "us-west", capabilities: Optional[list] = None) 
     port = os.getenv("DATASOURCE_PORT", "8001")
     url = f"http://{ip}:{port}"
 
-    caps = (
-        capabilities
-        or os.getenv("DS_CAPABILITIES")
-        or os.getenv("NODE_CAPABILITIES", "yfinance,akshare,tushare").split(",")
-    )
+    # 优先使用显式入参；否则读 DS_CAPABILITIES（逗号分隔）；再 fallback NODE_CAPABILITIES；
+    # 最后 fallback 到与 main._declared_capabilities 保持一致的默认集（含 finnhub/fred/dbnomics/rbi/search）。
+    if capabilities is not None:
+        raw_caps = capabilities
+    else:
+        raw_caps = os.getenv("DS_CAPABILITIES") or os.getenv("NODE_CAPABILITIES", "yfinance,akshare,tushare,fmp,futu")
+    # 统一按逗号切分（无论 env 字符串还是显式列表）
+    if isinstance(raw_caps, str):
+        raw_caps = raw_caps.split(",")
 
     return NodeInfo(
         node_id=node_id,
         url=url,
         region=region,
         weight=int(os.getenv("NODE_WEIGHT", "10")),
-        capabilities=[c.strip() for c in caps if c.strip()],
+        capabilities=[c.strip().lower() for c in raw_caps if str(c).strip()],
         metadata={"ip": ip},
     )
 

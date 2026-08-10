@@ -6,13 +6,12 @@ import time
 from typing import Any, Dict
 from urllib.parse import urlparse
 
-import httpx
 import structlog
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from backend.core.metrics import WEB_SCRAPE_FETCH_FAILED, WEB_SCRAPE_FETCH_TOTAL
-from backend.core.middleware import httpx_log_request, httpx_log_response
 from backend.core.utils import safe_truncate
+from backend.services.search.service import search_service
 from hermes_agent.tool_registry import register_tool
 
 from .base import BaseTool
@@ -118,119 +117,53 @@ class WebScrapeTool(BaseTool):
 
         return await self._format_response(url, content, query)
 
-    async def _fetch_via_jina(self, url: str) -> str | None:
-        """方案 1: Jina Reader API (优先，专门为大模型优化的网页转 Markdown)"""
+    async def _fetch_via_jina(self, url: str, query: str = "") -> str | None:
+        """方案 1: Jina Reader 网页正文提取（经 backend 远程代理，主服务/Hermes 不直连 r.jina.ai）。
+
+        BE-ARCH-07m: 原实现直连 Jina Reader（r.jina.ai 代理域名），违反"Hermes 不得
+        直连外部数据源"红线。现统一经 search_service.fetch_webpage →
+        data_source_router.fetch_search("jina", url) → data_subservice 子服务
+        （持有 Jina API key 与 rate limit）。
+        """
         domain = _domain_of(url)
         WEB_SCRAPE_FETCH_TOTAL.labels(source="jina", domain=domain).inc()
-        jina_url = f"https://r.jina.ai/{url}"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-        # 💡 如果配置了 Jina API Key，使用认证请求
-        jina_api_key = os.getenv("JINA_API_KEY")
-        if jina_api_key:
-            headers["Authorization"] = f"Bearer {jina_api_key}"
-
         try:
-            async with httpx.AsyncClient(
-                timeout=15.0,
-                follow_redirects=True,
-                event_hooks={"request": [httpx_log_request], "response": [httpx_log_response]},
-            ) as client:
-                resp = await client.get(jina_url, headers=headers)
-                resp.raise_for_status()
-                content = resp.text
-
-                # 💡 利用正则清洗 Markdown 中的冗余图片和超链接
-                content = re.sub(r"!\[[^\]]*\]\([^\)]+\)", "", content)
-                content = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", content)
-
-                # 💡 拦截动态反爬与 JS 护盾
-                if (
-                    len(content) < 200
-                    or "Please enable JS" in content
-                    or "访问受限" in content
-                    or "Just a moment" in content
-                ):
-                    logger.warning("jina_anti_bot_blocked", url=url)
-                    WEB_SCRAPE_FETCH_FAILED.labels(source="jina", domain=domain, reason="anti_bot").inc()
-                    return None
-
-                return content
-        except Exception as e:
-            logger.warning("jina_extract_failed_fallback_http", url=url, error=repr(e))
-            WEB_SCRAPE_FETCH_FAILED.labels(source="jina", domain=domain, reason="http_error").inc()
+            res = await search_service.fetch_webpage(url, query=query)
+        except Exception as e:  # noqa: BLE001 - 远程代理异常视为抓取失败，进入降级链
+            logger.warning("jina_proxy_failed", url=url, error=repr(e))
+            WEB_SCRAPE_FETCH_FAILED.labels(source="jina", domain=domain, reason="proxy_error").inc()
             return None
+
+        if res.get("status") != "success":
+            logger.warning("jina_proxy_unsuccessful", url=url, message=res.get("message"))
+            WEB_SCRAPE_FETCH_FAILED.labels(source="jina", domain=domain, reason="empty_or_blocked").inc()
+            return None
+
+        content = res.get("data", {}).get("content") if isinstance(res.get("data"), dict) else None
+        if not content:
+            return None
+
+        # 💡 利用正则清洗 Markdown 中的冗余图片和超链接
+        content = re.sub(r"!\[[^\]]*\]\([^\)]+\)", "", content)
+        content = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", content)
+
+        # 💡 拦截动态反爬与 JS 护盾
+        if len(content) < 200 or "Please enable JS" in content or "访问受限" in content or "Just a moment" in content:
+            logger.warning("jina_anti_bot_blocked", url=url)
+            WEB_SCRAPE_FETCH_FAILED.labels(source="jina", domain=domain, reason="anti_bot").inc()
+            return None
+
+        return content
 
     async def _fetch_via_httpx(self, url: str) -> str | None:
-        """方案 2: 直接 HTTP 抓取 (降级方案，适用于 Jina 失败时)"""
+        """方案 2: Jina 远程代理重试（带空 query 二次尝试，覆盖 Jina 对部分站点首次失败）。
+
+        原实现为直连目标站 httpx 抓取（Hermes 直连外部源，违反 07m 红线），已移除。
+        统一改为复用 Jina 远程代理；真正的外部降级交由 web_search（方案 3）。
+        """
         domain = _domain_of(url)
-        WEB_SCRAPE_FETCH_TOTAL.labels(source="httpx", domain=domain).inc()
-        # SEC.gov 要求声明性 User-Agent（公司名+邮箱），否则触发 Cloudflare 403
-        if "sec.gov" in url:
-            headers = {
-                "User-Agent": "QuantAgent Research research@quant-agent.dev",
-                "Accept-Encoding": "gzip, deflate",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Host": "www.sec.gov",
-            }
-        else:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-            }
-
-        try:
-            async with httpx.AsyncClient(
-                timeout=15.0,
-                follow_redirects=True,
-                event_hooks={"request": [httpx_log_request], "response": [httpx_log_response]},
-            ) as client:
-                resp = await client.get(url, headers=headers)
-                resp.raise_for_status()
-                html_content = resp.text
-
-                # 💡 简单 HTML 转文本：移除脚本、样式、标签
-                from html.parser import HTMLParser
-
-                class HTMLToText(HTMLParser):
-                    def __init__(self):
-                        super().__init__()
-                        self.text = []
-                        self.skip = False
-
-                    def handle_starttag(self, tag, attrs):
-                        if tag in ("script", "style", "nav", "footer"):
-                            self.skip = True
-                        if tag in ("p", "div", "br", "h1", "h2", "h3", "h4", "h5", "h6", "li", "tr"):
-                            self.text.append("\n")
-
-                    def handle_endtag(self, tag):
-                        if tag in ("script", "style", "nav", "footer"):
-                            self.skip = False
-                        if tag in ("p", "div", "br", "h1", "h2", "h3", "h4", "h5", "h6", "li", "tr"):
-                            self.text.append("\n")
-
-                    def handle_data(self, data):
-                        if not self.skip:
-                            self.text.append(data)
-
-                parser = HTMLToText()
-                parser.feed(html_content)
-                content = "\n".join(line.strip() for line in "".join(parser.text).split("\n") if line.strip())
-
-                # 💡 检查内容质量
-                if len(content) < 200:
-                    logger.warning("http_content_too_short", url=url, chars=len(content))
-                    WEB_SCRAPE_FETCH_FAILED.labels(source="httpx", domain=domain, reason="too_short").inc()
-                    return None
-
-                return content
-        except Exception as e:
-            logger.warning("http_fetch_failed", url=url, error=repr(e))
-            WEB_SCRAPE_FETCH_FAILED.labels(source="httpx", domain=domain, reason="http_error").inc()
-            return None
+        WEB_SCRAPE_FETCH_TOTAL.labels(source="httpx_retry", domain=domain).inc()
+        return await self._fetch_via_jina(url, query="")
 
     async def _format_response(self, url: str, content: str, query: str = "") -> Dict[str, Any]:
         """格式化输出，防止撑爆大模型 Token 上限"""

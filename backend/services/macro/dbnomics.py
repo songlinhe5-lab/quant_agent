@@ -2,13 +2,11 @@ import json
 import random
 from typing import Any, Dict, List
 
-import httpx
-
-from backend.core.middleware import httpx_log_request, httpx_log_response
 from backend.core.redis_client import redis_client
+from backend.services.datasource.router import data_source_router
 
 # ── DBnomics 免费数据源 (聚合 IMF / WorldBank / OECD / ECB 等权威机构, 完全免 Key) ──
-_DBNOMICS_BASE = "https://api.db.nomics.world/v22/series"
+# 💡 REST 出口已下沉 data_subservice/_internal/dbnomics，此处仅保留序列 ID 构造常量
 # OECD G20 CPI 数据集 (消费者价格指数, 全口径, 覆盖 G20 新兴与发达经济体)
 _DATASET = "OECD/DSD_G20_PRICES@DF_G20_PRICES"
 # 序列后缀: 年度(A) · 国家口径(N) · CPI · 年百分比(PA) · 全口径(_T) · 未做调整(N) · 年增长率(YoY)
@@ -35,10 +33,10 @@ class DbnomicsService:
     此处拉取 OECD G20 CPI 数据集的**年度同比 CPI**, 覆盖印度 / 巴西 / 墨西哥等
     AKShare 与 FRED 缺失的新兴市场, 仅回填 actual 实际值 (非前瞻事件日历)。
     与 RBI (WorldBank 印度 CPI) 形成免费双源, 彻底干掉收费的 TE_API_KEY。
-    """
 
-    def __init__(self) -> None:
-        self.base_url = _DBNOMICS_BASE
+    BE-ARCH-07f: 主服务不再持有 DBnomics REST 直连, 统一经 DataSourceRouter
+    远程代理至 data_subservice (source=dbnomics), 本类仅保留解析与 Redis 缓存逻辑。
+    """
 
     def _series_ids(self) -> List[str]:
         return [f"{_DATASET}/{code}{_SERIES_SUFFIX}" for code in EM_COUNTRIES]
@@ -60,22 +58,24 @@ class DbnomicsService:
             except Exception:
                 pass
 
-        # 💡 多序列一次拉取 (observations=true 含 period/value 平行数组)
-        params = {"series_ids": ",".join(self._series_ids()), "observations": "true"}
+        # 💡 多序列一次拉取 (observations=true 含 period/value 平行数组)，经子服务远程代理
         try:
-            async with httpx.AsyncClient(
-                timeout=20.0,
-                verify=False,
-                event_hooks={
-                    "request": [httpx_log_request],
-                    "response": [httpx_log_response],
-                },
-            ) as client:
-                resp = await client.get(self.base_url, params=params)
-                resp.raise_for_status()
-                payload = resp.json()
+            remote = await data_source_router.fetch_dbnomics(
+                "em_cpi_series",
+                countries=list(EM_COUNTRIES.keys()),
+            )
+            if not isinstance(remote, dict) or remote.get("status") != "success":
+                message = "DBnomics 子服务不可用"
+                if isinstance(remote, dict):
+                    message = remote.get("message") or remote.get("error") or message
+                return {
+                    "status": "skipped",
+                    "message": f"DBnomics 新兴市场 CPI 拉取失败: {message}",
+                    "data": [],
+                }
 
-            docs = (payload.get("series") or {}).get("docs") or []
+            payload = remote.get("data") or {}
+            docs = (payload.get("series") or {}).get("docs") or [] if isinstance(payload, dict) else []
             events: List[Dict[str, Any]] = []
             for doc in docs:
                 dims = doc.get("dimensions") or {}

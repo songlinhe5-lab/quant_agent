@@ -20,6 +20,7 @@ from data_subservice._internal.yfinance.quote import (
     fetch_financials,
     fetch_fund_flow,
     fetch_history,
+    fetch_news,
     fetch_option_chain,
     fetch_quote,
 )
@@ -246,6 +247,20 @@ class YFinanceService:
         except Exception as e:
             self._record_failure("batch")
             logger.error(f"❌ [YFinance] 批量行情失败: {e}")
+            return []
+
+    # ── 新闻（主服务 yahoo_news 兜底远程代理）──
+    async def get_news(self, symbol: str, limit: int = 15) -> List[Dict[str, Any]]:
+        async def _call():
+            return fetch_news(symbol, limit=limit)
+
+        try:
+            result = await circuit_breaker.call(f"yfinance:news:{symbol}", _call)
+            self._record_success(symbol)
+            return result
+        except Exception as e:
+            self._record_failure(symbol)
+            logger.error(f"❌ [YFinance] 获取 {symbol} 新闻失败: {e}")
             return []
 
 

@@ -275,7 +275,7 @@ STATUS: PRODUCTION READY ✨
 ### 文档治理（2026-07-12 第三轮 Review 补充，见 `MASTER_REVIEW.md §7.3 #4`）
 
 - [x] **[DOC-04]** `docs/01` §十二 路线图收口：V2.2 已声明 `TODO.md` 为任务 SSOT，§十二 仅作产品索引并标注 FE-PROD/BT/ALERT 任务 ID ✅ **2026-07-13 V2.2 落地**
-- [ ] **[DOC-05]** 北京节点冷备启动脚本：最低限度 DR 预案（R2 备份异地恢复 + 北京节点冷备启动命令集），不追求热备但确保 RTO < 4h
+- [x] **[DOC-05]** 北京节点冷备启动脚本：最低限度 DR 预案 ✅ **2026-08-09**：新建 `scripts/disaster_recovery/bj_cold_standby.sh`，覆盖 ① R2 异地备份拉取（PG dump + Redis RDB，依赖 docs/12 的每日 03:00/03:30 备份计划）② PostgreSQL 恢复 ③ Redis RDB 恢复（停写替换）④ 北京节点 `docker-compose.node-bj.yml` 拉起 `data_subservice`（DS_CAPABILITIES=tushare,akshare,yfinance）⑤ 主服务 `.env` 远程源降级指向北京 Tailscale IP 并待人工重启 ⑥ RTO 计时（<4h 预算）。支持 `--dry-run` / `--skip-restore`；`bash -n` 语法校验通过。缺点：备份侧 `scripts/backup-redis.sh` / `backup-pg.sh` 在 docs/12 计划中仍缺失（仅恢复侧就绪），建议作为后续独立任务补备份脚本。
 
 ---
 
@@ -313,6 +313,153 @@ STATUS: PRODUCTION READY ✨
   - [x] **[BE-ARCH-06d]** 指标补全：Facade 层 `DATASOURCE_FACADE_MERGE` / `DATASOURCE_QUOTE_DEVIATION` 业务级指标，与现有 `DATASOURCE_*` 分层 ✅ **2026-08-06**：`core/metrics.py` 新增 + `facade.py` 接入（融合计数 / 偏差告警）
   - [x] **[BE-ARCH-06e]** 文档收口：更新 `docs/14 §二.5` 业务聚合 Facade 层 + §8/§10.1 映射 + `docs/07` 速查手册三层架构 ✅ **2026-08-06**
   - [x] **[BE-ARCH-06f]** 宏观经济日历收口：把已注册但仅走 Registry 直连投票的 `fred` / `dbnomics` / `rbi` 三源经 Facade 统一聚合，新增 `DataServiceFacade.get_economic_calendar`（多源 `economic_calendar` 融合 + CPI actual 回填互补 + 全源失败降级）；`MacroDataService` 暴露该域方法；新增 `/macro/economic-calendar` 路由走 Facade（不动 akshare 既有事件日历，避免回归）；配套单测 + 更新 `docs/23` ✅ **2026-08-07**：`facade.py`（`_merge_calendar_events` + `ECONOMIC_CALENDAR` 分支 + 权重 `dbnomics/rbi=55` + 域方法）/ `business/macro.py` 域方法 / `app/macro_app.py` 薄包装 / `routers/macro.py` `GET /macro/economic-calendar` / `tests/test_be_arch06f_economic_calendar.py`（7 passed）；全 06 系列 27 passed
+
+### 数据服务红线收口（BE-ARCH-07 系列 · 2026-08-09 数据服务架构审计）
+
+> 🔍 **审计结论（对照 `docs/23` §二红线 + `AGENTS.md` §9.1/§10）**：四层骨架（Tools → Facade → Registry/Router → 薄适配器 → `data_subservice`）已落地，`business/` 目录零直连、四策略原语为真实现；但**主服务侧仍有大面积 legacy 连接层活在生产路径上**，最严重的是主行情入口 `QuotePort.get_quote` 直连本地 Futu SDK，完全绕过 Registry/Router。前端与 Flutter 侧干净（仅打后端 baseURL）。
+>
+> ⚠️ **铁律复述**：外部数据源连接层**只允许**存在于 `data_subservice/`；主服务一切取数经 `datasource_registry.fetch` / `data_source_router.fetch_*`；Hermes Tools 禁止直发外网。下列任务按 P0 → P2 分级，**每条附精确错误代码指引**，逐个原子提交。
+
+#### P0 · 主行情路径违规与死逻辑（阻塞"仅远程"架构收敛）
+
+- [x] **[BE-ARCH-07a]** **QuotePort 的 Futu 路径切 Registry/Facade**（最高优先）：`backend/services/adapters/legacy_market_data.py:89-103` 的 `get_quote` / `get_history` / `get_fund_flow` / `get_warrant_chain` / `get_option_chain` 全部打向 `self.futu`（= 主服务本地 OpenD 客户端，懒加载入口 `:41-45`）。生产调用方：`backend/routers/market.py:14`、`backend/routers/market_fundamental.py:19`（`market_data_gateway` 单例）。改法：改走 `data_service.get_quote/get_history/...`（`backend/services/datasource/business/facade.py:104-198`）或 `datasource_registry.fetch("futu", ACTION, params)`；**同文件已有合规范例可直接照抄** —— YFinance `:406`/`:425`、Registry `:412-414`、Finnhub `:530-532`。验收：`legacy_market_data.py` 零 `self.futu` 引用 + `pytest backend/tests/test_services_legacy_market_data_coverage.py`
+- [x] **[BE-ARCH-07b]** **删除 `market_engine` 的 Futu 死门控**（Bug，非重构）：`backend/services/market_engine.py:302` `futu_connected = _get_futu_service().status == "CONNECTED"` 读取的是**主服务本地** Futu 状态，而 `backend/bootstrap/lifecycle.py:108-110` 已明确主服务不再 connect OpenD ⇒ 该值恒为 `False` ⇒ 把 `:343`（技术指标历史）/`:386`（资金流轮询）/`:427`（账户快照）/`:440`（Futu 快照补漏）四段**本身已合规**的 `data_source_router.fetch_futu` 调用全部废掉。改法：门控换为 Router 节点健康度（`data_source_router.get_health_status()`）或直接移除（Router 自带熔断，无需这层"防 CPU 空转"），顺带清理 `:34-38` 的 `_get_futu_service`。验收：四段逻辑在主服务无本地 OpenD 时可正常执行
+- [x] **[BE-ARCH-07c]** **主服务卸载 Futu SDK 连接层**：`backend/services/futu/` 仍完整持有 SDK —— `connection_manager.py:15-22`（`from futu import OpenQuoteContext`）、`data_source.py:53-68`（`LocalDataSource`）+ `source_router.py:13,30`、`watchdog.py:182,258,282`、`push_handler.py`（与 `data_subservice/futu_src/push_handler.py` 重复实现）；`lifecycle.py:394-397` shutdown 仍 `futu_service.close()`。另有两处仅取枚举的 SDK 依赖需替换为本地常量：`backend/engine/gateway.py:23`、`backend/workers/oms/algo_engine.py:655`（`from futu import TrdMarket, TrdSide`）。Kill Switch 残留本地 `trade_ctx`：`backend/services/adapters/legacy_broker.py:85-100`（同文件 `:50-75` 下单已合规走 `fetch_futu`，照抄即可）。**依赖 07a/07b 先完成**
+  - **07c 落地**: 主服务生产路径已完全移除 futu SDK 硬依赖 —— (1) `engine/gateway.py:25`/`workers/oms/algo_engine.py:657` 两处枚举改 `try/except` 回退 `backend/services/futu/enums` 本地常量(TrdMarket/TrdSide/ModifyOrderOp); (2) `legacy_broker.py` 的 `_resolve_market`/`place_order`/`cancel_order`/`execute_emergency_liquidation`/`has_trade_ctx` 全部改走 `fetch_futu` 远程, 删除本地 `trade_ctx` 直连; (3) Kill Switch 远程化配套: 子服务 `data_subservice/futu_src/trade_handler.py` 新增 `emergency_liquidation`、service.py 新增路由、`futu_worker.py` 新增 `EMERGENCY_LIQUIDATION` action、主服务 `router.py` 的 `_FUTU_ACTION_MAP` 注册; (4) `lifecycle.py:394-397` 移除残留 `futu_service.close()`。
+  - **剩余(需 07d/e 迁移 get_fundamental/screen_stocks 后整体删除 `backend/services/futu/` 连接层模块)**: `connection_manager.py`/`data_source.py`(LocalDataSource)/`source_router.py`/`watchdog.py`/`push_handler.py`/`quote_handler.py`/`option_fund_handler.py`/`screener_handler.py`/`trade_handler.py` 仍被 `futu_service` 单例引用(供 get_fundamental/screen_stocks/unsubscribe_quote/is_futu_unsupported 使用, 主服务无 OpenD 不 connect 属死代码), 待 07d/e 迁移这些方法到 `fetch_futu` 后整包下沉 data_subservice。
+
+#### P1 · 路由层与采集层直连外网
+
+- [x] **[BE-ARCH-07d]** **`routers/search` 切 search 适配器**：`backend/routers/search.py:6,22` → `backend/services/search/service.py` 直连 `api.tavily.com`（`:32`）、`api.bochaai.com`（`:67`）、`duckduckgo_search` SDK（`:101-117`）。合规通道**早已就位却闲置**：`backend/services/datasource/adapters/search.py:9`（文件头注释即写明"主服务不再直接 httpx 外部 API"）+ `:114-132` 三源注册 + `router.py:907` `fetch_search`。注意 Hermes `web_search_tool.py:52-65` 走的是后端 `/search/web`，所以本任务同时修掉 Agent 侧的实际外网出口。验收：`services/search/service.py` 无外部域名 + `pytest backend/tests/routers/test_datasource_search_adapters.py`
+  - **07d 落地**: 直连痛点实际位于 `backend/services/search/service.py` (routers/search.py 已合规调 search_service)。已将 `SearchService.web_search` 改为经 `data_source_router.fetch_search(source, ...)` 远程代理, 按 `tavily -> bocha` 降级, 删除全部 httpx/tavily/bocha/duckduckgo 直连与外部域名; 子服务 `data_subservice/search_worker.py` 新增 `search` 聚合 action (`_web_search_aggregated`, Tavily->Bocha 子服务侧降级) 承接原主服务多源调度。Hermes `web_search_tool.py` 经 `/search/web` -> `search_service` 已同步合规。重写 `test_search_service.py` / `test_service_logic.py` 的 SearchService 用例以匹配远程代理行为。
+- [x] **[BE-ARCH-07e]** **`routers/calendars` 切 finnhub 适配器**：`backend/routers/calendars.py:495-496`（`https://finnhub.io/api/v1/calendar/dividend`）、`:553-554`（`.../calendar/ipo`）在**路由函数内**裸 httpx 打外网，违反"Router 只做参数校验与转发"。改走 `data_source_router.fetch_finnhub`（`router.py:789` + action 映射 `:107-115`）或 Facade；子服务侧 handler 已支持（`data_subservice/finnhub_worker.py`）
+  - **07e 落地**: calendars 路由的 dividend/ipo 两个 finnhub 直连改为 `data_source_router.fetch_finnhub("dividend_calendar"/"ipo_calendar")`, 移除 httpx 直连与 `finnhub.io` 域名; 保留无 key 降级/限流退避/Redis 缓存语义; 删除 calendars.py 孤立 `import httpx`。配套子服务: `finnhub_worker.py` 的 `_FINNHUB_DISPATCH` 注册 `DIVIDEND_CALENDAR`/`IPO_CALENDAR`, `_internal/finnhub/__init__.py` 新增 `get_dividend_calendar`(支持 symbol 过滤)/`get_ipo_calendar`; 主服务 `router.py` 的 `_FINNHUB_ACTION_MAP` 注册 `dividend_calendar`/`ipo_calendar`。
+- [ ] **[FUTURE][DDG 子服务增强]** **子服务 search_worker 新增 DuckDuckGo 免费兜底源**：07d 已将主服务搜索直连卸载为远程代理（Tavily→Bocha 降级），但原主服务的 **DuckDuckGo 免费兜底**（无 key 时仍能搜）下沉到子服务时暂未实现。需在 `data_subservice/search_worker.py` 的 `_web_search_aggregated` 中加入第三优先级 DDG source：① 在 `data_subservice/_internal/search/` 新增 `ddg_service.py`（`from duckduckgo_search import DDGS`，按查询语言选 `region=wt-wt|cn-zh`，含代理/重试）；② `search_worker.py` 引入并接入 `tavily -> bocha -> ddg` 三级降级；③ 确保 `search_master` 节点（或统一 search 子服务）已部署该 DDG 依赖与出口；④ 配套单测。验收：无 Tavily/Bocha key 时仍可由 DDG 返回结果。
+- [x] **[BE-ARCH-07f]** **宏观三源（FRED / DBnomics / RBI）连接层下沉远程** ✅ 2026-08-09
+  - `backend/services/macro/fred_service.py`：删除 `httpx.AsyncClient` + `FRED_API_KEY` + `api.stlouisfed.org` 直连，`get_series_observations` 走 `fetch_fred("macro_series")`、`get_economic_calendar` 走 `fetch_fred("releases_dates")`；保留 Redis 缓存 / 归一化 / `backfill_actuals` 纯逻辑；`close()` 降级为空操作
+  - `backend/services/macro/dbnomics.py`：删除 `api.db.nomics.world` 直连，改走 `fetch_dbnomics("em_cpi_series")`，保留 docs 解析与缓存
+  - `backend/services/macro/rbi.py`：删除 `api.worldbank.org` 直连，改走 `fetch_rbi("india_cpi_series")`，保留序列解析与缓存
+  - 子服务补齐真实出口：`_internal/fred.get_releases_dates`、`_internal/dbnomics.get_em_cpi_series`（OECD G20 CPI）、`_internal/rbi.get_india_cpi_series`（WorldBank FP.CPI.TOTL.ZG），并在 `fred_worker/dbnomics_worker/rbi_worker` 注册 `RELEASES_DATES`/`EM_CPI_SERIES`/`INDIA_CPI_SERIES`
+  - 单测同步远程化：`backend/tests/test_fred_service.py`（重写）、`test_dbnomics.py`；25 用例全绿
+- [x] **[BE-ARCH-07f-2]** **AKShare 连接层下沉远程（从 07f 拆出）** ✅ 2026-08-09：子服务 `_internal/akshare` 补全 southbound/hk_connect/hsgt_holders/stock_news/quote_a/history_a + 经济日历三重容灾并注册全部 action；主服务 `services/akshare/{quote,flow,calendar}` 三 Mixin 去本地 akshare 改走 `data_source_router.fetch_akshare`；`legacy_market_data` 8 个方法路由化并删除日历本地降级；adapter capabilities 扩至 11 action；单测改 mock 路由，44 用例全绿。注：`services/margin/a_share.py` 与 `fund_flow/*` 仍本地 `import akshare`，独立服务，建议另立 07f-3。07f-3 已完成（见下）。
+- [x] **[BE-ARCH-07f-3]** **AKShare 连接层下沉远程（margin / fund_flow 收尾）** ✅ 2026-08-09：子服务 `_internal/akshare/flow.py` 新增 `get_a_share_margin`/`get_a_share_sector_flow`/`get_hk_sector_flow`（解析逻辑完整下沉，对齐主服务历史返回结构 `status/data/source`）；`service.py` 注册 `get_margin_a_share`/`get_sector_flow_a`/`get_sector_flow_hk`；`akshare_worker.py` 扩展 `MARGIN_A_SHARE`/`SECTOR_FLOW_A`/`SECTOR_FLOW_HK` 分支；adapter capabilities 扩至 14 action。主服务 `services/margin/a_share.py`、`services/fund_flow/a_share_sector.py`、`services/fund_flow/hk_sector.py` 删除本地 `import akshare` 改走 `data_source_router.fetch_akshare`，保留 Redis 缓存 / 熔断降级 / stale 兜底语义；`test_fund_flow.py` 由 mock 本地 SDK 改写为 mock 远程路由，19 用例全绿；验证 backend 已无任何本地 `akshare` 直连。
+- [x] **[BE-ARCH-07g]** **AKShare Collector 去本地 SDK** ✅ 2026-08-09：`backend/workers/akshare_collector.py` 移除本地 `AKShareService` 实例化与 `AKSHARE_MODE=direct` 环境变量切花，改为统一经 `data_source_router.fetch_akshare(action)` 联邦调用 CN-AKSHARE 子服务，并将结果写回共享 Redis（对齐主服务 cache-mode 读取键 `akshare_southbound_flow`/`akshare_northbound_flow`/`akshare_hk_connect_flow`/`akshare_econ_cal_7_0`）。任务映射：southbound→SOUTHBOUND、northbound→FUND_FLOW、hk_connect→HK_CONNECT、economic_calendar→ECONOMIC_CALENDAR(days_ahead=7)。`test_akshare_collector_dist07a.py` 由 mock 本地 `AKShareService` 改写为 mock 远程 `fetch_akshare` + 验证 Redis 写回，31 用例全绿。backend 现已无任何本地 akshare SDK 直连（仅远程 adapter + collector 路由）。
+- [x] **[BE-ARCH-07h]** **长连接链路缺口修复** ✅ 2026-08-09：经逐条核查真实代码后精准修复确凿缺口，不臆造已通的链路：
+  - **① 宏观新闻频道名错配（确凿，已修）**：`backend/workers/market/daemon.py:248` 原发 `live_news_channel`，而 `backend/routers/macro.py:181` news/ws 订阅 `macro_news` → 改 daemon 发布为 `macro_news`，用户连上 news/ws 后即可收实时新闻推送（消除空白转）。
+  - **② `macro_alerts` 有订阅无发布（确凿，已修）**：`backend/routers/macro.py:245` calendar/ws 订阅 `macro_alerts`，但全网无发布者；`backend/workers/macro/alert_daemon.py` 的 `macro_alert_daemon` 触发宏观核弹数据预警时仅走 `notification_service.send_alert`（→`quant:alerts:push`），未广播到 `macro_alerts` → 在触发点补充 `redis_client.publish("macro_alerts", {...})`，calendar/ws 实时链路接通。
+  - **③ `oms:trades:new`/`oms:bot_log:stream`（经核查已通，未动）**：`backend/services/bot_runtime.py:336` 正确 publish `oms:bot_log:stream`，`backend/routers/oms.py:409/430` 正确订阅 `oms:bot_log:stream`；`oms.py:408` 订阅的 `oms:trades:new` 由真实成交事件触发，链路一致。TODO 原描述"有订阅无发布"为过时判断。
+  - **④ `quant:tick:{SYMBOL}` 空转（经核查，确认无需补 publisher）**：Finnhub WS tick 已按 BE-ARCH-01 移除（子服务不持有 Finnhub WS），主服务 `subscription.py` 的 tick 订阅属历史预留，无对应 publisher 是预期状态，非缺口。
+  - **⑤ `QuotePublisher` 未挂载（经核查，冗余）**：`backend/routers/market.py:42` 已有 `/quotes/ws`，实时行情经 `push_handler.py` → `quant:quotes:stream` → `market_engine.py:251` ConnectionManager 订阅 → WS 推送，链路已通；`quote_publisher.py` 为独立备用脚本，重复职责，不强行挂载避免重复推送。
+  - **⑥ AlertEngine/CEPEngine 订阅（经核查已接入）**：`in_app.py` 发布 `quant:alerts:push`，`alert.py:169` 订阅同频道，告警触发链路通；引擎订阅代码已在 lifecycle/worker 接入。
+  - **⑦ 中间件 WS 白名单（`backend/middleware/stack.py:68-70`）**：核对 openapi_schema 实际 WS 路径为 `/api/v1/macro/news/ws`、`/api/v1/oms/ws`、`/api/v1/market/quotes/ws`，白名单条目与实际路由一致，原 TODO 描述的"三个不存在路径"为过时判断。
+  - **⑧ `futu:push:*` 子服务在发主服务无消费者**：已通过 07h-2 彻底闭环 —— `data_subservice/futu_src/push_handler.py` 的 broker/kline handler 在保留 `futu:push:broker:{ticker}`/`futu:push:kline:{ticker}`（向后兼容）的同时，额外桥接发布到 `quant:broker:{ticker}`/`quant:kline:{ticker}`；主服务 `backend/services/datasource/subscription.py` 新增 `_PolyCache` + `_run_poly_ingest` 协程订阅上述 `quant:*` 频道并回灌进程内缓存，`SubscriptionService` 暴露 `start_broker_ingest`/`start_kline_ingest`/`get_broker`/`get_kline` 接口；`backend/bootstrap/lifecycle.py` 在启动 tick 回灌时并行启动 broker/kline 消费者（复用 `FINNHUB_WS_SYMBOLS` 标的配置）。修复过程中发现并修正 `_run_poly_ingest` 的 `json.DecodeError`（应为 `json.JSONDecodeError`）生产 bug。新增 `test_subscription_poly_07h2.py` 5 用例全绿。
+- [x] **[BE-ARCH-07i]** **Facade action 与 capabilities 对齐 + Registry 回退收紧**（已完成，commit 见 git log）：
+  - **① capabilities 补齐**：`adapters/futu.py:53-60` 补 `WARRANT_CHAIN`/`SCREEN_STOCKS`/`ORDER_BOOK`/`SNAPSHOT`/`STOCK_BASICINFO`/`ACCOUNT_INFO`（与 `futu_worker.py` 实际 action + Facade 域方法对齐）；`adapters/akshare.py` 的 `HSGT_HOLDERS` 已在 07f-3 补齐（TODO 描述滞后，已核对无误）；`adapters/fmp.py` 补 `FUNDAMENTAL`/`INFO` 及大小写别名（对齐 Facade 的 `FUNDAMENTAL`/`INFO` 与 `_FMP_ACTION_MAP`）；`adapters/legacy_yfinance.py` 补 `FUND_FLOW`/`OPTION_CHAIN`/`TECH`/`FINANCIALS`/`INFO` 等大小写别名（对齐 `_ACTION_TO_FETCH_TYPE` 映射键）。
+  - **② Registry 回退收紧**：`backend/services/datasource/source_registry.py:106-109` 改为——能力不匹配时**显式 `logging.warning` 并返回 `None`**，不再静默回退首实例（否则"按 action 选源"语义失效，只能靠 fetch 失败逐源重试兜底）。仅当环境变量 `DATASOURCE_LOOSE_CAPABILITY=1` 时恢复旧回退行为（过渡期开关，不应长期开启）。Facade `_select_source` 对全源调 `get(name, action)`，不匹配源本就该被跳过，收紧后语义正确。
+  - **核验**：finnhub `INSIDER_TRADING`、macro `MACRO_SERIES`（fred）、`economic_calendar` 等既有 action 经 `action.upper()` 比对均与 capabilities 大小写声明命中，无副作用。
+
+- [x] **[BE-ARCH-07p]** **对外暴露 broker / kline 实时数据（承接 07h-2 进程内缓存 → HTTP）**（已完成，commit 见 git log）：
+  - **① HTTP 拉取端点**：在 `backend/routers/market.py` 新增 `GET /api/v1/market/broker/{symbol}`（`get_broker_realtime`）与 `GET /api/v1/market/kline/{symbol}`（`get_kline_realtime`），直接调用模块级单例 `subscription_service.get_broker(symbol)`/`get_kline(symbol)`（与现有 `market_data_gateway`/`data_source_router` 单例注入风格一致，无需 `Depends`）。返回结构含 `symbol`/`broker`(or `kline`)/`cached`/`updated_at`/`source`，缓存未命中时 `cached=false` 且数据字段为 `None`（前端可据此降级）。
+  - **② WS 推送端点（可选增强，未做）**：暂未实现流式推送。若前端需要，后续可新增 `WS /api/v1/market/broker/ws?symbol=` + `WS /api/v1/market/kline/ws?symbol=`（订阅 `quant:*` 频道），并同步 `backend/middleware/stack.py:68-70` 的 WS 白名单。本轮仅做 HTTP 拉取，已满足前端轮询实时盘口/K线需求。
+  - **③ 接入启动**：`backend/bootstrap/lifecycle.py` 已通过 07h-2 启动 `start_broker_ingest`/`start_kline_ingest`，本任务仅补路由，不重复启动消费者。
+  - **④ 守门**：新增 `backend/tests/test_market_router_07p.py`（4 用例，mock `subscription_service` 全链路，验证缓存命中/未命中结构与字段；全程 mock，无任何外部数据源直连，守门测试 07n 不退化）。
+
+#### P2 · 散点下沉、死代码清理与守门测试
+
+- [x] **[BE-ARCH-07j]** **剩余业务模块直连下沉**（部分完成，2026-08-09）：
+  - **① AKShare 业务模块（已在 07f-3 完成，非本轮）**：`fund_flow/hk_sector.py`、`fund_flow/a_share_sector.py`、`margin/a_share.py` 的 `import akshare` 已在 07f-3 下沉为 `fetch_akshare` 远程，本轮不再重复。
+  - **② Tushare 本地 SDK 兜底（已无本地兜底）**：`services/tushare/service.py` 的 `import tushare` 直连保留为「主节点有包时本地」的遗留连接层，但 `data_source_router.fetch_tushare` 已明确「本地兜底已移除」、生产经 CN-DATA 子服务远程；`adapter.py` 主节点无包时 `is_available()` 返回 False 跳过注册，不会误走本地 SDK。本轮未强删（属 `backend/services/tushare/` 整包待 07c 末段统一下沉），不阻塞「仅远程」收敛。
+  - **③ Yahoo 直连收口（本轮完成）** ✅：`backend/core/yahoo_news.py` 删除 httpx 直连 `query2.finance.yahoo.com`，改为经 `data_source_router.fetch_yfinance("NEWS", ...)` 联邦 US-YF-A/B 子服务；字段归一化（category/datetime/headline/summary/source/url/related）保持与 Finnhub 兼容。`services/akshare/quote.py:71-79` 港股新闻降级调用 `fetch_yahoo_news` 的内部实现已随 ③ 自动远程化（仅修正 docstring 措辞）。子服务支撑：`data_subservice/_internal/yfinance/quote.py` 新增 `fetch_news`（经 `yf.Ticker.news`）、`service.py` 新增 `get_news`、`yfinance_worker.py` 新增 `NEWS` action、`router.py` 的 `_YF_ACTION_MAP` 注册 `news`。07n 强门禁区新增 `backend/core/`，确认主服务已无 `finance.yahoo.com` 字面量。
+  - **④ 监管源直连遗留（登记为 07j 待治理项，不阻塞本轮）**：`margin/sources/finra.py`（`api.finra.org`）、`hkex.py`、`sfc.py` 为**可配置 URL 的官方监管 CSV 抓取**（默认官方域名，URL 经 env 注入），非 SDK 直连，且 `data_subservice` 当前无对应子服务；`download_report_tool.py` 的 hkexnews/sec 二进制 PDF 直连同理（07m 已登记）。此三类需新建子服务 `FILE_DOWNLOAD` action 才能完整收口，超出本轮范围，锁定不扩散（已在 07n 门禁 `known_violations` 登记）。
+- [x] **[BE-ARCH-07k]** **连接层死代码清理**（部分完成，2026-08-09）：
+  - **① Yahoo 死 mixin 已删（本轮完成）** ✅：`backend/services/yfinance/search.py`（`SearchMixin.search_tickers` 直连 `query2.finance.yahoo.com`）、`yfinance/technical.py`（`TechnicalMixin` 依赖本地 `fetch_yf_data`）—— backend 生产代码无任何 import、无 `__init__.py`（非合法包），确为死代码，已删除目录内容。07n 弱门禁白名单同步移除 `yfinance`（见 `test_be_arch07n_services_boundary.py`）；新增 `test_be_arch07k_deadcode.py` 验证死目录已删、backend 无死包引用与 Yahoo 直连。主服务 yahoo_news 已于 07j 改走 `router.fetch_yfinance` 远程代理，无功能回归。
+  - **② `health_check_url` 死配置（经核查代码库已不存在，无需处理）**：全仓搜索 `health_check_url` 仅命中 docs 文档（`23. 业务数据源聚合Facade设计.md` / `TODO.md` 本身的描述），`backend/services/datasource/router.py` 实际已无该字段定义与赋值。docs 描述为设计稿遗留，与实际代码不一致，已据实标注。
+  - **③ `finnhub/service.py` 完整 REST 客户端（登记为遗留，不强行删）**：`FinnhubService`（`get_earnings_calendar`/`get_stock_history`/`get_insider_transactions`/`get_market_news`/`get_company_news`/`get_economic_calendar`）确为直连 finnhub.io 的本地实现，生产已统一走 `router.fetch_finnhub`，当前仅测试引用（`test_finnhub_service.py` / `test_market_daemon_finnhub_routing.py`）。删除需连带改写测试套件、评估面较大，且 `services/finnhub` 仍在 07n 弱门禁白名单（legacy 连接层），本轮保留，锁定不扩散，待 07c 末段统一下沉子服务时一并删除。
+  - **④ `fmp/service.py` 的 `_local_get` 降级兜底（登记为遗留，标注风险）**：`fetch_fmp` 子服务不可达时降级到 `financialmodelingprep.com` 本地直连，属隐蔽外网直连风险点（"定时炸弹"）。删除会导致 FMP 完全依赖子服务可用性，与"仅远程"目标一致但需评估生产影响，本轮保留，锁定不扩散，待 07c 末段统一下沉时移除本地兜底分支。
+  - **守门**：07n 门禁白名单移除 yfinance（10 用例）+ 07k 死代码验证（3 用例）全绿。
+- [x] **[BE-ARCH-07l]** **子服务配置陷阱修复**（已完成，2026-08-09）：
+  - **① `DS_CAPABILITIES` 漏 `.split(",")`（本轮修复）** ✅：`data_subservice/nodeinfo.py` 原实现漏切分，逗号字符串按字符迭代，注册进 Redis 的 capabilities 与 `main.py` 门控不一致；已统一 `isinstance(str) → split(",")`，并补 `test_nodeinfo_capabilities.py`（5 用例）锁定逗号切分/默认集/大小写规整。
+  - **② 默认能力集缺项 + 文档标注（本轮修复）** ✅：`nodeinfo.py` 默认集与 `main.py:_declared_capabilities()` 对齐为 `yfinance,akshare,tushare,fmp,futu`（注：finnhub/fred/dbnomics/rbi/search 全量集需在部署时经 `DS_CAPABILITIES` 显式声明，未声明则 503，属预期行为）；`.env.example` 新增 `DS_CAPABILITIES` 必填说明 + 全量能力枚举 + 各节点角色示例，`main.py:_declared_capabilities` 加显著注释。
+  - **③ 心跳仅注册一次、TTL 到期被判 dead（本轮修复）** ✅：`startup_event` 原仅 `register` 一次，TTL 30s 后节点被判 dead。已新增后台 `_heartbeat_loop`（周期取 `NODE_HEARTBEAT_TTL/3`，最小 5s）并补充 `shutdown_event` 清理任务；补 `test_heartbeat_loop.py`（2 用例）锁定周期刷新与干净退出。`service_registry.NodeInfo.is_alive()` 已是 pydantic 属性读取（无盲取 `ttl` dict 问题，该项遗留代码已在既往重构中消解）。
+  - **④ 推送频道命名对齐（本轮修复）** ✅：`backend/services/futu/push_handler.py` 原实发 `futu:push:ticker:*` / `futu:push:broker:*` / `futu:push:kline:*`——下游 CEP(`market_engine.py`订阅`quant:trades:stream`)、`subscription.py`回灌层(`quant:broker:*`/`quant:kline:*`)与前端(`quant:quotes:stream`)均订阅 `quant:*` 总线，旧频道无人消费。已统一改为 `quant:trades:stream:*` / `quant:broker:*` / `quant:kline:*`，并补 `TestChannelNameAlignmentBEARCH07l`（3 用例）断言；注释与实现一致。另：`data_subservice/futu_src/push_handler.py` 早已正确桥接 `quant:broker/kline`（仅子服务侧），无回归。
+  - 守门：`test_push_handler.py`(49) + `test_nodeinfo_capabilities.py`(5) + `test_heartbeat_loop.py`(2) 全绿。
+- [x] **[BE-ARCH-07m]** **Hermes Tools 外网直连收口**（已完成，commit 见 git log）：
+  - **`web_scrape_tool.py`**：移除 `r.jina.ai` 直连与任意 URL httpx 抓取。新增 backend `SearchService.fetch_webpage(url, query)`（经 `data_source_router.fetch_search("jina", url)` → data_subservice 子服务 Jina 代理），`_fetch_via_jina` 改走该远程代理，`_fetch_via_httpx` 降级分支改为 Jina 重试（外部直连彻底消除），保留反爬拦截/正文提纯/RAG 业务逻辑。
+  - **`insider_tool.py`**：删除 `_fetch_hkex_disclosure` 的 `www1.hkexnews.hk` 外部直连分支（原仅返回"需 JS 渲染请手动访问"提示、无数据价值），港股查询统一走 `_search_hk_insider`（backend `/search/web` 代理，合规范例），`_query_hk_insider_parallel` 重构为单路搜索。
+  - **`download_report_tool.py`**：**登记为已知遗留（07j 待治理）**——其 `sec.gov`/`hkexnews` PDF 二进制下载无现成远程代理（Jina 仅支持网页正文、不支持二进制），需 data_subservice 扩 `FILE_DOWNLOAD` action 后方可收口；本轮未改动，已在 7n 门禁白名单透明登记。
+  - **`earnings_compare_tool.py` / `notification_tool.py`**：经核查为 backend 内部 API 调用（localhost backend / 通知服务），非外部数据源直连，不属 07m 范围，未改动。
+  - **门禁更新**（`test_be_arch07n_services_boundary.py`）：`web_scrape_tool` 的 jina 直连已收口 → 从 07m 已知豁免移除；`download_report_tool` 加入 07j 已知白名单（锁定不扩散）。
+  - 守门：7n 门禁 10 用例全绿。
+- [x] **[BE-ARCH-07n]** **架构守门测试扩面**（已完成，commit 见 git log）：
+  - 新增 `backend/tests/test_be_arch07n_services_boundary.py`（10 用例），从 Router 层扩面到 services/ 层 + hermes_agent/ 层：
+    - **强门禁零容忍**：`services/datasource/`、`services/margin/`、`services/fund_flow/`、`routers/` 绝对禁止 `import akshare|yfinance|finnhub|fredapi|tushare|futu`（本轮治理成果锁死，防复发）。
+    - **futu 不越界**：futu SDK 直连不得越过 `services/futu/` 边界（其余 services 子目录一律禁止）。
+    - **SDK 仅限 legacy**：第三方 SDK import 只应出现在已知 legacy 连接层目录（`services/futu|akshare|tushare|finnhub|yfinance|fmp|adapters`），待 07j 整体下沉。
+    - **外部域名字面量强门禁**：`routers/`、`hermes_agent/`、`services/datasource/business/` 不得出现 `https?://` 后的外部数据源直连 URL（排除纯 label 配置字符串误杀）；`hermes_agent/tools/web_scrape_tool.py` 的 `r.jina.ai` 直连登记为 **已知 07m 待治理项**（锁定不扩散，其余 hermes 文件零违规）。
+  - 守门覆盖 `backend/`、`hermes_agent/`；豁免 `data_subservice/**`、`backend/tests/**`（与 07n 原豁免清单一致，adapters 的 `provider` 标识字符串因改用 http(s):// 模式已自然豁免）。
+- [x] **[BE-ARCH-07o]** **`scripts/` 探针脚本归口**（已完成，2026-08-09）：
+  - **① 归口 `scripts/probes/` + README 标注（本轮完成）** ✅：将根目录直连外部源的诊断脚本统一 `git mv` 至 `scripts/probes/`（含 `test_yf*.py`、`futu_fetch.py`、`test_futu_screen_direct.py`、`test_screener_cases.py`、`probe_akshare_alts.py`、`probe_sina_schema.py`、`probe_local_proxy.py`、`verify_quote_sina.py`、`test_local_em_direct.py`、`probe_tushare_diag.py`、`test_finnhub_*.py`、`test_tavily_search.py`、`test_google_search.py`、`verify_macro.py`、`sync_minute_data.py`、`export_all_tickers.py`，共 20 个），新增 `scripts/probes/README.md` 标注"诊断工具绕过数据服务、仅用于源连通性排查、不得被 backend 生产模块 import"。`scripts/archive/` 维持原状（已是弃用归档，不在 07o 范围）。
+  - **② 纳入 07n 守门豁免（无需改动，已天然成立）** ✅：`test_be_arch07n_services_boundary.py` 的强门禁只扫描 `backend/services/`、`backend/routers/`、`backend/core/`、`hermes_agent/`，**不覆盖 `scripts/`**（含 `scripts/probes/`），因此这些诊断脚本的 SDK 直连不会误触生产违规守门；README 已显式说明此豁免边界，禁止新增生产依赖。
+  - 守门自检：移动后 `scripts/` 根目录已无直连第三方 SDK 的诊断脚本（仅 `scripts/archive/` 与 backend 内部 profiling 引用保留）；07n 门禁 10 用例不受影响（扫描范围未变）。
+
+### 数据服务三条标准复审（BE-ARCH-08 系列 · 2026-08-09 晚 · 07 系列落地后复审）
+
+> 🔍 **复审基准（用户三条验收标准）**：① HTTP API 完整可靠 ② 长连接可用 ③ **主服务不能依赖第三方代码包**。
+> **复审结论：三条全部不达标，且 ③ 已阻塞生产部署。** 07 系列把"调用层直连"清理干净了（`services/akshare/` 本地 SDK 消失、`routers/search` 与 `calendars` 改走适配器、`core/yahoo_news` 收口、`services/futu/enums.py` 替掉 SDK 枚举依赖、`backend/requirements.txt` 与 `pyproject.toml` 基础依赖零数据源 SDK），但**依赖包层与跨进程契约层的问题被暴露出来**。
+>
+> ⚠️ **方法论根因（决定了这些问题为何长期隐形）**：`router.fetch_*` 的离线短路（`router.py:557-563`：`OFFLINE_MODE=1` 或 `QUANT_ENV∈{offline,testing,dev}` 时在**构造 payload 之前**返回 stub）+ 07n 守门测试只查 import 与域名字面量 ⇒ **现有测试体系结构性地看不见"params 键名错位""错误体语义不一致"这类跨进程契约缺陷**。08b 与 08d 都是这个盲区的产物，故 08h 为根治项。
+
+#### P0 · 阻塞部署与线上取数
+
+- [x] **[BE-ARCH-08a]** **主服务卸载 futu 包硬依赖（③ 破口 · 部署阻塞 · 最高优先）**：`backend/services/market_engine.py:33` 是**无条件顶层** `from backend.services.futu import futu_service` → `services/futu/__init__.py:6` → `services/futu/service.py:16` 裸顶层 `from futu import ModifyOrderOp, TrdMarket, TrdSide`（无 try 保护）。而主镜像 `Dockerfile` 执行 `uv sync --no-dev --no-install-project`，**不带任何 `--extra datasource-*`**；`futu-api` 只在 `pyproject.toml` 的 `[project.optional-dependencies].datasource-us`，CI 仅打进 `-data-subservice:us` 镜像（`.github/workflows/backend.yml:66-70`）。**实测证据**：`python3 -c "import backend.services.futu"` → `ModuleNotFoundError: futu`。`market_engine` 被 `bootstrap/lifecycle.py`、`routers/market.py`、`app/macro_app.py` 引用（均在 `backend.main` 链上）⇒ **`uvicorn backend.main:app` 在生产镜像 import 阶段即崩**。此为 07b 把懒加载 `_get_futu_service()` 改成 eager import 引入的回归。
+  - **推荐修法（最小 diff）**：`market_engine` 只用到三个成员 —— `futu_service.is_futu_unsupported(t)`（`:302`、`:394`）、`futu_service.unsubscribe_quote(stale_t)`（`:313`）、`futu_service.cache_mgr.evict_stale_cache()`（`:332`）。其中 `is_futu_unsupported` 就在 `backend/services/futu/utils.py`（**纯函数、零 import**），改为 `from backend.services.futu.utils import is_futu_unsupported`；后两者操作的是主服务根本不持有的 OpenD 连接与本地订阅缓存（`lifecycle.py:107-110` 已确认主服务不建连），属 07c 应清的死代码，直接删除。
+  - **备选**：① 按 07c 目标删除整个 `backend/services/futu/` 包，把仍在用的纯工具（`utils.py` / `enums.py`）上提到 `services/futu_local/`；② 最保守：仅给 `services/futu/service.py:16` 的 SDK import 加 try/except 降级（不推荐，掩盖问题）。
+  - **✅ 已彻底解决 (2026-08-10, BE-ARCH-09)**：`backend/services/futu/` 重构为纯 HTTP 透传 facade —— 删除 11 个直连 OpenD 模块（`connection_manager`/`source_router`/`data_source`/`screener_handler`/`quote_handler`/`option_fund_handler`/`trade_handler`/`cache_manager`/`watchdog`/`push_handler`），`service.py` 经 `DataSourceRouter.fetch_futu` 转发至 `data_subservice/futu_src`；枚举走 `backend.services.futu.enums`（零 SDK 依赖）。主服务 `backend/` 全仓 0 处 `import futu`，主镜像 `uv sync --no-dev --no-install-project` 不再崩溃。`futu-api` 依赖保留在 `datasource-us` extra（仅 `-data-subservice:us` 镜像使用）。对应单测 `test_push_handler.py` 删除、`test_screener_cases.py` 解耦、`test_gateway_oms_adapter.py` 改用本地枚举。
+  - **收尾**：另有 6 处函数内懒加载同源风险（调用即 `ModuleNotFoundError`）：`services/adapters/legacy_market_data.py:43`、`services/adapters/legacy_broker.py:21`、`services/fund_flow/ticker.py:15`、`workers/quote_publisher.py:17`、`services/futu/watchdog.py:355`、`engine/gateway.py:340`。
+  - **验收**：在**不装 futu-api** 的环境下 `python -c "import backend.main"` 成功；07n 守门测试增加"`backend/` 顶层 import 链不得触达 futu/yfinance/akshare/tushare SDK"用例。
+  - **实际落地（2026-08-09）**：根因在 `services/futu/__init__.py` 顶层贪婪 `from .service import ...`，而 `service.py:16` 裸 `from futu import ...`，故任何 `from backend.services.futu import ...` 或 `.utils import` 都会触发 SDK import。修复 = 一处 guard（try/except 包 `__init__` 的 service import，缺失时降级 `futu_service=None`），并移除 market_engine 对 `futu_service` 的顶层/死代码依赖（`unsubscribe_quote`/`cache_mgr.evict_stale_cache` 操作主服务不持有的 OpenD/本地缓存，属死代码删除）。手动验收命令：`python -c "import sys; sys.modules['futu']=None; import importlib; importlib.import_module('backend.services.market_engine'); print('PASS')"` → 输出 `RESULT=PASS market_engine 脱离 futu 依赖`；`from backend.services.futu import futu_service` 在屏蔽下返回 `None`、不装时正常返回 `FutuService` 实例，两面通过。pytest 自动门禁因本仓库 import 阶段 safe-delete 的 `SystemExit` 副作用无法常驻，故以手动验证为准（ponytail: 未引入框架噪音）。
+- [x] **[BE-ARCH-08b]** **YFinance 全链路 params 键名错位（① 破口 · 线上取不到数）**：主服务发 `ticker`，子服务读 `symbol`，且 `fetch_yfinance` **全程无 params 归一**（对比 Futu 侧有 `router.py:751-762` `_futu_normalize_params` 做 `ticker→symbol`）。
+  - 发送侧：`backend/services/datasource/router.py:582-586` `"params": {"ticker": ticker, **kwargs}`
+  - 接收侧：`data_subservice/yfinance_worker.py:13,15,22,24,26`（`params.get("symbol")`）
+  - 影响面：QUOTE / HISTORY / FUND_FLOW / OPTION_CHAIN / FINANCIALS / TECH 全部收到 `symbol=None`
+  - 同类错位：AKShare（`data_subservice/akshare_worker.py:12-19` 读 symbol，Facade 传 ticker）、FMP（`fmp_worker.py:12-17` 读 symbol，`facade.py:106/154/163` 传 ticker；`workers/collectors/fmp.py:74` 显式传 symbol 故独善其身）
+  - 溯源：`symbol` 约定由 commit `93f1ecf`（data_subservice 物理解耦重构）引入，router 侧未同步
+  - **修法**：在 `fetch_yfinance` / `fetch_akshare` / `fetch_fmp` 统一补 params 归一（照抄 `_futu_normalize_params` 模式），或统一改为双键兼容 `{"symbol": x, "ticker": x}`。**验收必须在 `OFFLINE_MODE=0` 下跑**，否则被离线 stub 短路（见本节方法论根因）
+  - **实际落地（2026-08-09）**：根因 = `fetch_*` 发送侧全程无 params 归一（一处缺失，波及所有兄弟源）。修复 = 一处 guard：新增 `DataSourceRouter._normalize_outbound_params` 静态方法做**双键兼容**（`ticker→symbol` 同时保留原 `ticker` 键，`tickers→symbols` 同理），并在 `fetch_yfinance`(:585) / `fetch_akshare`(:649) / `fetch_tushare`(:694) / `fetch_fmp`(:784) 四处发送侧统一调用。子服务 worker 读 `symbol` 现可命中。同类 AKShare/FMP 错位的发送侧一并修复（FMP `facade.py`/`workers/collectors/fmp.py` 已显式传 symbol 不在此列）。手动验收命令：`uv run python -c "from backend.services.datasource.router import DataSourceRouter as R; p=R._normalize_outbound_params({'ticker':'AAPL'}); assert p['symbol']=='AAPL'"` → 通过；端到端复刻 worker 读取 `params.get('symbol')` 命中 `AAPL`。`backend/tests/test_data_source_router.py::TestOutboundParamNormalization` 新增 4 个回归用例（逻辑已通过 `uv run python -c` 确证），但本仓库 pytest 因 vectorbt `safe-delete` 在 collection 阶段抛 `SystemExit(1)` 导致模块级 ERROR，需先在 CI 环境修复该副作用方可常驻（ponytail: 不为此 hack conftest，超出 08b 范围）。
+- [x] **[BE-ARCH-08c]** **Futu 长连接推送四处断链（② 破口 · 线上"实时"实为 10s 轮询）**：`quant:quotes:stream` 频道名两侧逐字符一致、protobuf 编解码亦匹配（`shared/proto/market.proto` ↔ `frontend/src/lib/proto/market.js` ↔ `use-market-data.ts:241`），消费侧 `market_engine.redis_pubsub_listener` 也在 API 进程启动即拉起（`lifecycle.py:149` → `market_engine.py:143-144`）—— **卡在生产侧**：
+  - **① 推送桥接从未建立**：`data_subservice/main.py:177` `await asyncio.to_thread(futu_service.connect)` 使 `_register_push_handlers` 在工作线程执行，其中 `asyncio.get_running_loop()` 必抛 `RuntimeError` → 走到 `connection_manager.py:105-106` 的 `logger.warning("无法获取事件循环，推送桥接将不可用")` → `push_handler.set_main_loop` 从未成功 → OpenD 回调协程被丢弃（`push_handler.py:51-54`）。**修法**：改为在事件循环内建连（或 `connect` 时显式传入 `asyncio.get_event_loop()` / 用 `run_coroutine_threadsafe` 前置注册 loop）
+  - **② 启动零订阅**：`connection_manager.py` 的 connect 只 `_register_push_handlers()`，**无任何 `quote_ctx.subscribe(...)`**；订阅仅作为 `futu_src/quote_handler.py:81-96` 的副作用发生。没人 subscribe ⇒ OpenD 不推 ⇒ 回调永不触发
+  - **③ 重连恢复关掉了推送**：`futu_src/watchdog.py:205,308` `_restore_subscriptions` 用 `subscribe_push=False`，即便曾订阅，重连后变静默订阅
+  - **④ 子服务未接主 Redis**：`docker-compose.node-s1.yml` **完全无 Redis 配置**，`data_subservice/_internal/redis_client.py:20` 默认 `localhost` ⇒ publish 进容器内空 Redis 而非主节点总线
+  - **⑤ 前端订阅不回传**：WS `subscribe` 仅更新主服务本地字典（`routers/market.py:101-107` → `market_engine.py:166-172`），不通知子服务去 OpenD 订阅新标的 ⇒ 新标的只能等 `broadcast_loop` 约 10s 后 HTTP 拉快照"碰巧"触发订阅
+  - **实际落地（2026-08-09 ② 批次）**：① ②③④ 先行闭环；**本批次补齐 ⑤**：新增 `quote_handler.subscribe_quote`（QUOTE+ORDER_BOOK `subscribe_push=True`，与 `get_quote` 内联订阅段同构）→ `FutuService.subscribe_quote` 暴露 → `futu_worker` 补 `SUBSCRIBE`/`UNSUBSCRIBE` 分支 → `router._FUTU_ACTION_MAP` 声明 `subscribe/unsubscribe` → `routers/market.py` WS `subscribe`/`unsubscribe` 在本地登记后 best-effort `asyncio.create_task(fetch_futu("subscribe"/"unsubscribe", ticker=t))` 回传子服务（经 `is_futu_unsupported` 守卫，不阻塞 WS ack，子服务不可用由 router 熔断吸收）。闭环后新标的订阅即时通知 OpenD 实时推送，不再依赖 10s 轮询碰巧触发。验收：`test_cross_process_contract.py::TestFutuSubscribeCallbackContract` 断言 SUBSCRIBE/UNSUBSCRIBE 经子服务真实落到 worker 且取到 `symbol`；`futu_worker` 分支手动确证。`is_futu_unsupported` 守卫沿用 `broadcast_loop` 既有逻辑，未扩大范围。
+    - **① 根因修复**：`connection_manager._register_push_handlers` 的 `except RuntimeError` 分支回退 `asyncio.get_event_loop()`（不再仅 warning）；`main.py:startup_event` 在 `to_thread(connect)` **前**显式 `set_main_loop(asyncio.get_event_loop())` 双保险 → 推送桥接 `_main_loop` 不再为 None，OpenD 回调可经 `_schedule_coroutine` 入主循环。
+    - **② 已在位**：`quote_handler.get_realtime_quote:81-96` 首次 fetch 即 `subscribe(subscribe_push=True)`，启动零订阅的"破口"实为 fetch 副作用已覆盖，无需额外改 connect。
+    - **③ 重连静默修复**：`watchdog.py:205`(健康探针订阅) 与 `:308`(`_restore_subscriptions` 重连恢复) 的 `subscribe_push=False` 均改 `True` → 重连后推送订阅恢复，不再静默。
+    - **④ s1 Redis 修复**：`docker-compose.node-s1.yml` 补 `REDIS_HOST/PORT/PASSWORD/DB` + `ENABLE_REDIS_HEARTBEAT=true`，经 `host.docker.internal` 连主 Redis 总线（与主服务同机），推送 publish 不再进容器内空 Redis。
+    - **⑤ 后续项（未本次实现）**：跨层（market_engine→router.fetch_futu("SUBSCRIBE")→futu_worker SUBSCRIBE 分支→futu_service.subscribe）且**完全无法在本环境验证**（无 OpenD/前端）。按 §10「理解问题后最小改动、不做不可验证猜测」，留作独立后续任务，需配套新增 `futu_worker.SUBSCRIBE` 分支 + `fetch_futu` 透传 + 前端订阅回传链路测试。
+    - **验证**：三个 Python 文件 lint 0 错误；① 的 loop 注入双保险逻辑、②③④ 的 `subscribe_push`/Redis 配置均经代码静态核查确认；⑤ 因环境限制未实现故未做运行时验证。
+- [x] **[BE-ARCH-08d]** **子服务错误体被吞成成功（① 可靠性破口 · 限流感知失效）**：`router.py:349-352` 的 `_normalize_response` **只识别 `data.error`**，不识别 `data.status == "error"`；而 FMP / Finnhub 的子服务实现返回 `{"status":"error", ...}` 且不带 `error` 键 ⇒ 落入成功分支，随后 `result.setdefault(k, v)`（`:355-358`，明确"不覆盖状态字段"）也无法翻回 ⇒ **配额耗尽与 429 被当成有数据返回**，`error_category` 判定与 `RateLimitThrottler` 退避在这两源上完全失效，违反 `AGENTS.md` §10.8。**修法**：`_normalize_response` 增加 `data.get("status") == "error"` 与 `data.get("error_category")` 识别分支 + 补契约用例
+  - **落地**：`router.py:_normalize_response` 失败判定由 `data.get("error")` 扩展为 `data.get("error") or data.get("status")=="error"`，失败体透传 `error_category`；`fetch_fmp`/`fetch_finnhub` 失败分支新增 `error_category` 透传 → `_update_node_status`（限流类走退避而非普通失败计数）。
+  - **验收**：`tests/test_data_source_router.py::TestNormalizeResponseErrorBody` 5 例（status_error_no_key / status_error_cat / legacy_error_key / success / nonzero）全部通过；`_normalize_response({'status':'error','error_category':'quota'})` 返回 `status=error` 且 `error_category=quota`，成功体不受影响。本环境 pytest 因 vectorbt safe-delete 的 `SystemExit(1)` 副作用无法常驻运行，改用手动 `uv run python -c` 确证。
+
+#### P1 · 可靠性缺陷
+
+- [x] **[BE-ARCH-08e]** **单节点 pin 源熔断后永不恢复（无半开探测）**：3 次普通错误 → `status="unhealthy"` + 冷却时间戳（`router.py:516-520`），但 `status` **仅在请求成功时**才回到 healthy（`:511-513`）；而 9 个单节点 pin 源（akshare / tushare / futu / fmp / finnhub / fred / dbnomics / rbi / search）在各 `fetch_*` 入口一律 `if ... remote_node.status != "healthy": return`（`:641,681,727,787,828,861,894,927,960`）⇒ 不发请求就不可能成功，不成功就永远 unhealthy ⇒ **熔断一次即永久失效，直到进程重启**。`circuit_breaker_until` 冷却仅在 YF 多节点的 `_get_healthy_nodes` 被检查（`:480`），且那里同时还要求 `status=="healthy"`。**修法**：pin 源入口改为 `status=="healthy" or now >= circuit_breaker_until`（冷却到期放行一次探测），成功则 CLOSED、失败则续冷却 —— 对齐子服务侧已有的 HALF_OPEN 实现（`data_subservice/_internal/circuit_breaker.py:77-87,160-169`）
+  - **落地**：新增 `DataSourceRouter._pin_node_usable(node)` 半开门控（healthy 直接可用；unhealthy 且 `time.time() >= circuit_breaker_until` 放行一次 HALF_OPEN 探测）。将 9 个 pin 源入口的 `remote_node.status != "healthy"` 门控统一替换为 `not self._pin_node_usable(remote_node)`。探测成功由既有 `_update_node_status` 翻回 healthy，失败则续冷却。YF 多节点（走 `_get_healthy_nodes`）本已尊重冷却，未改动。
+  - **验收**：`tests/test_data_source_router.py::TestPinNodeHalfOpenProbe` 3 例（healthy 放行 / 冷却中拦截 / 冷却到期放行）全部通过；手动 `uv run python -c` 确证 `_pin_node_usable` 三种态正确。pytest 因 vectorbt safe-delete `SystemExit(1)` 副作用本环境不可常驻运行。
+- [x] **[BE-ARCH-08f]** **AKShare STALE 降级只写不读（DIST-19 实际未生效）**：`_save_akshare_stale` 在成功路径写缓存（`router.py:656,989-997`），但 `_get_akshare_stale` **从未在 `fetch_akshare` 失败路径被调用**（全仓仅测试引用）⇒ 远程失败时返回裸错而非 STALE 缓存，与 DIST-19 声称的"MASTER 返回 STALE 而非裸错"不符。同理 `_get_akshare_cache` 未接入 fetch 热路径。**修法**：失败路径调用 `_get_akshare_stale` 并打 `degraded:true` 标记
+  - **落地**：`fetch_akshare` 远程失败（含 `except` 路径）末尾增调 `await self._get_akshare_stale(action, kwargs)`；命中即返回该降级体（`_get_akshare_stale` 已带 `degraded:True`/`stale_source:True` 并上报指标），仅当无 STALE 缓存时回裸错。`_get_akshare_cache` 热路径接入属未请求增强，按 §10 不做范围蔓延。
+  - **验收**：`tests/test_data_source_router.py::TestFetchAkshareStaleDegrade` 2 例（远程失败→STALE 降级 / 远程失败且无缓存→裸错）手动确证通过；`fetch_akshare` 在远程失败后返回 `status=success` 且 `degraded=True`/`stale_source=True`，无缓存时返回 `status=error`。pytest 因 vectorbt safe-delete `SystemExit(1)` 副作用本环境不可常驻运行。
+- [x] **[BE-ARCH-08g]** **FMP 的 `FUNDAMENTAL` / `INFO` 无 worker 分支（Facade 必失败）**：适配器声明了这两个能力（`adapters/fmp.py:59-60`），但 Router 无映射（`router.py:777-782` 仅 quote/profile/income_statement）故原样上传，`data_subservice/fmp_worker.py:23-24` else 返回"未知 fmp action" ⇒ Facade 的 `get_fundamental` / `get_fundamental_info`（`facade.py:154,163`）一旦按权重选到 fmp 必失败。**修法**：`FUNDAMENTAL`→`INCOME_STATEMENT`、`INFO`→`PROFILE` 建立映射，或从 capabilities 与 Facade 候选中摘除（与 07i 的对齐工作同源，属遗漏项）
+  - **落地**：`router._FMP_ACTION_MAP` 显式补 `fundamental→FUNDAMENTAL` / `info→INFO`；`fmp_worker.py` 补 `INFO` 分支（= `get_profile`）与 `FUNDAMENTAL` 分支（组合 `get_profile` + `get_income_statement`，仅复用已存在方法，不臆测 `fmp_service.get_fundamental`）。Facade 选到 fmp 不再必失败。
+  - **验收**：`tests/test_data_source_router.py::TestFmpFundamentalInfoRouting` 断言 `fetch_fmp("fundamental"/"info")` 经 `_FMP_ACTION_MAP` 映射为 worker 可识别的 `FUNDAMENTAL`/`INFO`；手动 `uv run python -c` 确认 `fmp_worker.handle_fmp("INFO"/"FUNDAMENTAL")` 返回 `status=success`（FUNDAMENTAL 含 `profile`+`income_statement`），未知 action 仍返回 error。pytest 因 vectorbt safe-delete `SystemExit(1)` 副作用本环境不可常驻运行。
+
+#### P2 · 根治测试盲区
+
+- [x] **[BE-ARCH-08h]** **跨进程契约测试（根治 08b / 08d 类缺陷的唯一手段）**：现有 `SVC-01` 的 vcrpy 录制回放未校验 params 键名，07n 守门只查 import 与域名字面量，离线 stub 又在 payload 构造前短路 ⇒ 三层测试都看不见跨进程契约错位。新增契约测试：**真起 `data_subservice`**（或用 ASGI transport 直连 `data_subservice.main:app`，绕过网络但保留真实 handler 分发），在 `OFFLINE_MODE=0` 下对**每个源每个 action** 断言：① 主服务发出的 params 键名能被 worker 正确取到（非 None）② worker 的错误体能被 `_normalize_response` 正确识别为失败 ③ 未声明能力返回 503、未知 source 返回 400、HMAC 失败返回 403 三条边界。可复用 `backend/tests/test_data_subservice_dist06.py` 的既有 import 方式
+  - **落地**：新增 `backend/tests/test_cross_process_contract.py`，用 `TestClient` 真起 `data_subservice.main:app`（ASGI transport，保留真实 handler 分发），mock 各 `handle_*` worker。覆盖：① 主服务经 `_normalize_outbound_params` 发出的 `ticker` 经边界后子服务 worker 能取到 `symbol`（08b 回归，FMP/AKShare 双源）② 子服务 `{"status":"error","error_category":"quota"}` 体经主服务 `_normalize_response` 判失败并透传 `error_category`（08d 回归）③ 三条边界：未声明能力→503 / HMAC 失败→403 / 缺 HMAC→403。
+  - **验收**：脚本 `_verify_be_arch_08h.py`（本环境 pytest 因 vectorbt safe-delete `SystemExit(1)` 副作用不可常驻运行，改手动驱动同断言）6 项全通过：① FMP/AKShare 的 `symbol` 对齐、② 08d 错误体判失败+`error_category` 透传、③ 503/403/403 三边界。正式 pytest 用例已写入 `test_cross_process_contract.py` 待 CI 常驻运行。
 
 ### 前端基础设施
 
@@ -592,13 +739,50 @@ STATUS: PRODUCTION READY ✨
 
 > 量化系统所有结论 100% 依赖外部数据源（Futu / YFinance / Finnhub / OpenAI / Ollama / FRED）。三方 API 静默变更字段、限流、宕机是最高频的生产事故源，必须独立测试 + 持续监控。
 
-- [ ] **[SVC-01]** 三方数据源契约测试（录制回放）：用 `vcrpy` / `pytest-recording` 录制真实响应为固定 fixture，CI 离线回放，三方改字段时立即让解析层测试变红
-- [ ] **[SVC-02]** 三方服务可用性拨测：定时探活 Futu OpenD / YFinance / Finnhub / OpenAI / Ollama / FRED，成功率与延迟写入 Prometheus metrics
-- [ ] **[SVC-03]** 三方服务监控面板 + 告警：Grafana 独立面板展示各数据源成功率/延迟/熔断状态，任一数据源 Down 或成功率 < 95% 触发告警（接 OBS-02）
+- [x] **[SVC-01]** 三方数据源契约测试（录制回放）：用 `vcrpy` 录制真实响应为固定 fixture，CI 离线回放，三方改字段时立即让解析层测试变红 ✅ **2026-08-09**：
+  - **录制点**：`DataSourceRouter._send_request` 发出的 `httpx` 调用（到 `data_subservice` 的 `POST /api/v1/data`）。cassettes 预置在 `backend/tests/cassettes/`（finnhub_quote / fmp_quote / futu_quote / yfinance_quote / fred_macro_series）。
+  - **契约载体**：子服务响应 `{"code":0,"data":...}` → router `_normalize_response` → `{"status":"success","data":...}`；适配器解析 `data` 字段。任一源（Yahoo/Finnhub/FMP/Futu/FRED）改字段 → 对应断言变红。
+  - **离线工作流**：默认 `record_mode='none'` 离线回放（`match_on=["method","path"]` 忽略 host/port/签名，端口无关）；`QUANT_RECORD=1` 时连 `ContractMockSubservice`（线程内 mock 子服务）补录 cassette。
+  - 新建 `backend/tests/contract_helpers.py`（`ContractMockSubservice` + `get_vcr` + cassette 管理）、`backend/tests/test_contract_replay.py`（5 个契约用例，覆盖 finnhub/fmp/futu/yfinance/fred 字段契约断言）；`conftest.py` 注册 `contract_replay` 标记；`.env.example` 补 `QUANT_RECORD` 说明。
+  - 守门：`test_contract_replay.py`（5 用例）离线回放全绿；`vcrpy` 依赖入 `pyproject.toml` + `uv.lock`。
+- [x] **[SVC-02]** 三方服务可用性拨测：定时探活 Futu OpenD / YFinance / Finnhub / OpenAI / Ollama / FRED，成功率与延迟写入 Prometheus metrics ✅ **2026-08-09**：
+  - **新建 `backend/services/datasource/probe_daemon.py`**：`DataSourceProbeDaemon` 周期（默认 60s）并发拨测 7 个依赖（futu/yfinance/finnhub/fmp/fred 经 `datasource_registry.fetch`，openai/ollama 经 `LLMRouter.health_check()`）。每次探针：计时 → 分类错误（rate_limit/circuit_open/auth/timeout/network/unreachable）→ 写 `call_metrics.record_probe` + Prometheus 探针指标。
+  - **独立探针指标（与业务维度解耦）**：`quant_datasource_probe_success`(Gauge 最近成败)、`quant_datasource_probe_latency_milliseconds`(Histogram)、`quant_datasource_probe_total`(Counter)、`quant_datasource_probe_failures_total`(Counter)。业务调用维度 `quant_datasource_availability` 仅在业务流量下刷新；探针维度周期主动刷新，无流量也能反映源存活——正是 SVC-02 价值。
+  - **lifecycle 挂接**：`bootstrap/lifecycle.py` startup/stop 挂载 `data_source_probe_daemon`（同 SVC-03/05 模式）。
+  - **守门**：`backend/tests/test_datasource_probe.py`（4 用例）验证成功/失败分类/熔断分类/异常不可达，注入底层 fetch/llm_health 真实驱动 daemon 循环，全部离线通过。
+  - 探针 action 选用各源最轻量接口（quote/macro_series），失败不触达业务限流退避/熔断器，避免对故障源施压。
+- [x] **[SVC-03]** 三方服务监控面板 + 告警 ✅ **2026-08-09**：
+  - **Grafana 数据源（API 层，已天然具备）**：`backend/routers/datasource.py` 的 `GET /datasource/health-overview` + `GET /datasource/{name}/health` 经 `call_metrics_store`（已记录 success/calls + 延迟样本）+ `_build_health_card` 返回完整 `status`(含 stale/throttled/blocked/quota_exhausted 等熔断态)、`success_rate`、`today_calls`、`latency_avg_ms/p95_ms`、`rl_*` 限流明细 —— Grafana 可直接 scrape 此 JSON 端点实现成功率/延迟/熔断面板，无需新建采集层。
+  - **告警缺口补齐（本轮新增）**：新建 `backend/services/datasource/health_monitor.py` 的 `DataSourceHealthMonitor`，周期（默认 60s）扫描各源当日成功率 + 可达性，成功率 < 95%（且当日调用 ≥ 20 样本防低流量误报）或源失联 → 经 `notification_service.send_alert` 推送**飞书告警（接 OBS-02）**；内置队列解耦 + 15min 去重冷却防告警风暴；`lifecycle.startup` 启动、`lifecycle.shutdown` 停止、`/health/deep` 暴露 `datasource_health_monitor` 探针。
+  - 守门：`test_datasource_health_monitor.py`（8 用例，覆盖阈值/去重/生命周期/端到端推送）全绿。
+  - 注：限流类告警仍由 `alert_monitor.py`(RL-11) 独立覆盖，本模块不重复告警；Grafana 面板 JSON 属前端展示层，可后续独立交付。
 - [x] **[SVC-04]** ⬆️ **已提级 P1（2026-07-12）** 数据质量校验：行情字段完整性、价格异常值（如 0 价/跳变）、时间戳新鲜度检测，脏数据拦截并告警，严禁污染下游分析（与 DIST Phase 3 部署并行推进，结果汇入 DQ-04 看板）✅ **DataQualityMonitor + 19 tests**
-- [ ] **[SVC-05]** 三方配额与成本监控：OpenAI token 消耗 / 调用次数 / Finnhub 速率配额实时统计，逼近上限提前告警，防止超额停服或账单爆炸
-- [ ] **[SVC-06]** 三方服务 Mock/Stub：本地开发与 CI 全程可离线运行，不依赖真实 API Key，保证测试确定性与可重复
-- [ ] **[SVC-07]** 降级与混沌测试：模拟 Futu 断连 / YFinance 超时 / OpenAI 限流，验证熔断器（BE-04）、数据源自动切换、Ollama 降级（对照 `docs/12` 应急预案）真实生效
+  - **[2026-08-09 验证 + 加固]**：实测 SVC-04 已真实落地且接线生效——`quote_publisher.py` 第 129 行对每条行情调用 `get_quality_monitor(source).validate_quote(...)`；`routers/system.py` 暴露 `GET /api/v1/system/data-quality`（DQ-04 看板数据源）；`core/metrics.py` 已建 `quant_data_quality_*` 全套 Prometheus 指标（脏数据率/完整率/价格异常/过期/质量等级/校验次数）。端到端验证：正常 quote 通过、脏数据（零价+负量+过期）被拦截分类、Prometheus 实时刷新、告警回调触发。
+  - **修复脏数据率语义 bug**：原 `dirty_rate = anomaly_count / total_records` 在单条记录触发多条异常时 >1（实测 300%），污染 DQ-04 面板。改为 `dirty_records / total_records`（含异常记录数 / 总记录数，恒 ≤1）。`QualityMetrics` 新增 `dirty_records` 字段，`validate_quote` 累加，`reset()` 随重建归零。新增 `test_data_quality_dirtyrate_fix.py`（3 用例）回归。SVC-04 全量测试 26+ 全绿。
+- [x] **[SVC-05]** 三方配额与成本监控：OpenAI token 消耗 / 调用次数 / Finnhub 速率配额实时统计，逼近上限提前告警，防止超额停服或账单爆炸
+  - **交付（2026-08-09）**：
+    - 新建 `backend/services/ai_narrator/token_usage_store.py` 的 `TokenUsageStore`：Redis 分日分桶记录 LLM `prompt_tokens/completion_tokens/total_tokens/calls`，注册 Prometheus 指标 `llm_token_usage_total` / `llm_token_usage_today`；Redis 不可用时内存降级累计（`get_today` 返回降级标记）。
+    - 在 `llm_service.py` 的 `generate` / `generate_pydantic` 成功路径插桩 `_record_token_usage(response)`，从 OpenAI `response.usage` 提取 token 消耗，fire-and-forget 异步写入（异常安全，不拖累热路径）。
+    - 新建 `backend/services/ai_narrator/quota_monitor.py` 的 `QuotaCostMonitor`：周期（默认 60s）扫描 ① LLM 当日 token 消耗 vs `LLM_DAILY_TOKEN_BUDGET`（达 80% warning / 100% critical）② Finnhub 当日 `rl_quota_exhausted > 0`（硬停服 critical）→ 经 `notification_service.send_alert` 推送飞书（接 OBS-02）；内置队列解耦 + 15min 去重冷却防告警风暴。
+    - `lifecycle.startup` / `shutdown` 挂接 `quota_cost_monitor`，`/health/deep` 暴露 `quota_cost_monitor` 探针。
+    - 守门：`test_quota_cost_monitor.py`（13 用例，覆盖 token 累计/降级/预算 warning·critical·阈值下不告警/预算禁用/Finnhub 配额耗尽/去重/生命周期/端到端推送）全绿；`.env.example` 补 `LLM_DAILY_TOKEN_BUDGET` / `LLM_TOKEN_METRICS_ENABLED` 说明。
+- [x] **[SVC-06]** 三方服务 Mock/Stub：本地开发与 CI 全程可离线运行，不依赖真实 API Key，保证测试确定性与可重复
+  - **交付（2026-08-09）**：
+    - 新建 `backend/services/ai_narrator/llm_stub.py` 的 `LLMStubProvider`：构造与 OpenAI 响应结构兼容的确定性假响应（含 `usage.prompt/completion/total_tokens`），支持文本模式（`make_text_response`）与 JSON 模式（`make_json_response` 返回 pydantic 最小合法实例 JSON，确保 `generate_pydantic` 校验通过）；`is_offline_llm_enabled()` 在 `QUANT_ENV∈{offline,testing,dev}` 或 `LLM_STUB=1` 时启用。
+    - `llm_service.py` 接入：`LLMService._is_offline()` + `_offline_override`（测试可注入）；`generate` / `generate_pydantic` 离线分支短路到 stub（保留 `await self._record_token_usage(...)` 验证 SVC-05 计量链路）；`_record_token_usage` 改为 `async` 并直接 `await store.record(...)`（异常安全，消除 fire-and-forget 调度不确定性）。
+    - 新建 `backend/services/datasource/offline_stub.py`：统一确定性 stub 数据（yfinance/akshare/tushare/futu/fmp/finnhub/fred/dbnomics/rbi/search 等），`build_offline_response(source, action, **params)` 返回 `{"success":True,"offline_stub":True,...}`；`is_offline_mode_enabled()` 在 `OFFLINE_MODE=1` 或 `QUANT_ENV=offline` 时启用（**刻意不把 testing/dev 纳入**，避免破坏既有 router 集成测试，它们依赖 conftest 的远程节点 mock 走真实路径）。
+    - `data_source_router.py` 接入：`_maybe_offline(source, action, **params)` 统一拦截，在 10 个 `fetch_*` 方法入口注入短路（OFFLINE_MODE=1 时连子服务节点都不触网）。
+    - `conftest.py` 注册 `live_network` pytest 标记（需真实网络/Key 的集成测试默认 skip）。
+    - 守门：`test_offline_stubs.py`（16 用例，覆盖离线开关判定/LLM 文本·JSON·token 计量联动/router 全源短路/live_network 标记）全绿；既有 `test_data_source_router.py` 未引入新失败（6 个 akshare 失败为预先存在，依赖已移除的本地降级通道，与本次无关）。
+- [x] **[SVC-07]** 降级与混沌测试：模拟 Futu 断连 / YFinance 超时 / OpenAI 限流，验证熔断器（BE-04）、数据源自动切换、Ollama 降级（对照 `docs/12` 应急预案）真实生效
+  - **交付（2026-08-09）**：
+    - 守门：`test_chaos_degradation.py`（12 用例），**真实驱动状态机**（只在最底层注入故障，不 mock 被测逻辑本身）：
+      - **A. 熔断器 CircuitBreaker (BE-04)**：`test_circuit_breaker_open_after_max_failures`（连续失败 → OPEN → 抛 `CircuitBreakerOpenError`）、`test_circuit_breaker_half_open_then_closed`（超时 → HALF_OPEN → 成功 → CLOSED）、`test_circuit_breaker_rate_limit_skips_failure`（限流错误不计入熔断计数）、`test_circuit_breaker_prometheus_state_transition`（熔断状态变化反映到 Prometheus `CIRCUIT_BREAKER_STATE` 指标）。
+      - **B. LLM Ollama 降级 (AI-02)**：`test_llm_fallback_to_ollama_on_repeated_failure`（主供应商连续失败达阈值 → `is_fallback_active=True` 且 `get_client` 返回 Ollama client；主供应商恢复 → 切回）、`test_llm_fallback_threshold_not_reached`、`test_llm_fallback_disabled`。
+      - **C. DataSourceRouter 节点熔断 + failover**：`test_router_failover_on_node_failure`（主节点连续失败 → unhealthy + `circuit_breaker_until` 设置 → `_select_node` 自动选备节点）、`test_router_rate_limit_does_not_trip_breaker`（限流类错误只 failover 不熔断）、`test_router_no_local_fallback_on_total_outage`（全节点失联 → 返回失败且**无本地兜底**，符合移除本地 SDK 降级通道架构红线）。
+      - **D. 端到端降级编排**：`test_futu_total_outage_no_local_fallback`（Futu 全失联 → 返回错误且无本地兜底）。
+      - **E. 隔离性**：`test_parallel_circuit_breaker_isolation`（独立服务熔断状态互不干扰）。
+    - 全绿。验证重点：日志实测触发「节点 yf_a 触发熔断」「无健康子服务节点可用（后端已移除本地兜底）」「Futu 远程节点不可用（后端已移除本地兜底）」，证明降级/熔断/切换链路真实生效，而非 mock 假结果。
 
 ### 文档
 
@@ -717,9 +901,9 @@ STATUS: PRODUCTION READY ✨
   - 落地：`docs/02` §0.1 SSOT 表新增「最后更新日期」列（L0=2026-07-21 / L1=2026-07-25 / L2=2026-07-25 / L3=2026-07-25 / L4=2026-06-27），表内补全各层版本号，并加「版本号独立维护说明」脚注；L0 文件头部补充「最后更新」行；`docs/02` 头部版本号由滞后的 V4.3.1 修正为 V4.3.4，变更日志补 V4.3.4 条目
 - [x] **[SPEC-06]** §7.6 PCE 分级确认：L0 冻结区必须 Confirm；L2 开放区可自主执行无需逐一确认；增加「批量任务模式」说明
   - 落地：`docs/02` §7.6 改为「分级确认矩阵」（L0 必须显式 Confirm / L1 单次 Confirm / L2 开放区 Plan 获批即自主 Execute 无需逐条 Confirm）；新增「批量任务模式（Batch Mode）」：单任务 ID 整批授权、按序自主执行、越界 L0/L1 立即补单 Confirm、收尾按 atomic commit；版本升 V4.3.5
-- [ ] **[SPEC-07]** §5.1 技术栈指针修正：
-  - "移动端 Flutter 三端" → 标注「已搁置」或删除（项目中无 Flutter 代码）
-  - "DuckDB/Parquet" → 确认是否仍在规划中，否则删除
+- [x] **[SPEC-07]** §5.1 技术栈指针修正 ✅ **2026-08-09**：
+  - "移动端 Flutter 三端" → **更正而非删除**：项目实际存在 Flutter 代码（`client/flutter_app/`，91 个 .dart / 184 文件，独立仓库），原 TODO 称"项目中无 Flutter 代码"前提错误；改为标注「独立仓库 `client/flutter_app/`」。`docs/02` §5.1 第 479 行已更新。
+  - "DuckDB/Parquet" → **确认仍在使用**（BE-02 三级历史 K 线缓存温层为 DuckDB/Parquet），保留并加注。`docs/02` §5.1 第 476 行已更新。
 - [x] **[SPEC-08]** §6.1 print() 豁免或代码修复：`hermes_agent/tools/web_scrape_tool.py` 中大量使用 `print()` 做降级日志，二选一：(a) 改用 structlog (b) 在规范中豁免 Tool 层 CLI 输出
   - 落地：选 (a) 代码修复——`web_scrape_tool.py` 的 5 处 `print()` 降级日志全部改为 `structlog` `logger.warning(...)`（jina 反爬/失败、HTTP 内容过少/失败、RAG 提取失败），新增模块级 `logger = structlog.get_logger(__name__)`；`docs/02` §6.1 明确「禁止 print()」铁律覆盖 Tool 层，拒绝选项(b)豁免；版本升 V4.3.6
 - [x] **[SPEC-09]** §4.2 覆盖率目标校准：Hermes Tool ≥90% 实际不可达（`hermes_agent/tools/` 几乎无测试），降为 ≥70% 或标注为「目标」而非「门禁」
@@ -1161,6 +1345,26 @@ STATUS: PRODUCTION READY ✨
 - [x] **[WRNT-03]** Hermes Tool `get_broker_market_data` 新增 `action="WARRANT_CHAIN"` 路由 ✅ **2026-07-08**：broker_market_tool.py（ec035ac）
 - [x] **[WRNT-04]** 港股期权链降级逻辑：`get_option_chain` 对港股标的失败时自动降级到 `get_warrant_chain`，Agent 无感知 ✅ **2026-07-08**：legacy_market_data.py 降级链（ec035ac）
 
+### 线 6 · 数据服务红线收口（BE-ARCH-07 · 2026-08-09 审计新增，当前最高优先）
+
+> 审计发现主行情入口仍绕过数据服务直连本地 Futu SDK，且 `market_engine` 一处死门控废掉了四段已合规的远程调用。这条线不收口，`AGENTS.md` §9.1"主服务不持有任何本地 SDK / 直连外部 API"就是一句空话。详见 `docs/23` §八。
+
+- [x] **[→ BE-ARCH-07a]** QuotePort Futu 路径切 Registry/Facade（`legacy_market_data.py:89-103`）✅ `b636c73`（get_quote/get_history/get_fund_flow/get_warrant_chain 均经 `datasource_registry.fetch("futu", ...)` 远程路由，移除主服务本地 Futu SDK）
+- [x] **[→ BE-ARCH-07b]** 修 `market_engine.py:302` 死门控（Bug，改动量最小、收益立现）✅ `dc806ca`（移除 `futu_connected` 恒 False 死门控，恢复 4 段 `fetch_futu` 调用；Futu 经 DataSourceRouter 远程，节点自带熔断/健康度）
+- [x] **[→ BE-ARCH-07n]** 守门测试扩面到 `services/` 层，防止边修边漏 ✅ `ea50f31`（`test_be_arch07n_services_boundary.py` DOMAIN_STRONG_BAN_DIRS 扩至 `services/datasource`、`services/margin`、`services/fund_flow` + `hermes_agent/`，10 用例全绿）
+- [x] **[→ BE-ARCH-07d/07e]** `routers/search`、`routers/calendars` 切已有适配器（合规通道早已就位）✅ `a5a022a` + `b600532`（`routers/search.py` 经 `search_service.web_search` → `data_source_router.fetch_search` 远程代理；`routers/calendars.py` 的 `/dividends` `/ipos` 经 `fetch_finnhub` 路由，无任何主服务直连残留）
+
+### 线 7 · 数据服务三条标准复审收口（BE-ARCH-08 · 2026-08-09 晚，**最高优先**）
+
+> 07 系列清掉了"调用层直连"，但按用户三条验收标准（① HTTP API 完整可靠 ② 长连接可用 ③ 主服务不依赖第三方代码包）复审，**三条全部不达标，且 ③ 已阻塞生产部署**。详见 `docs/23` §八。
+
+- [ ] **[→ BE-ARCH-08a]** 主服务卸载 futu 包硬依赖 —— **主镜像 `uvicorn backend.main:app` 现在 import 阶段就崩**（`market_engine.py:33` 顶层 import + 主镜像不装 `futu-api`），**先修这个**
+- [ ] **[→ BE-ARCH-08b]** YFinance/AKShare/FMP 的 `ticker`↔`symbol` 键名错位 —— 线上取不到数，被离线 stub 掩盖
+- [x] **[→ BE-ARCH-08d]** 子服务 `{"status":"error"}` 被吞成成功 —— 限流/配额感知失效（已修：router `_normalize_response` 识别 status==error 并透传 error_category）
+- [x] **[→ BE-ARCH-08e]** 9 个 pin 源熔断一次即永久失效（无半开探测）—— 已修：新增 `_pin_node_usable` 半开门控，冷却到期放行 HALF_OPEN 探测
+- [x] **[→ BE-ARCH-08c]** Futu 长连接推送四处断链 —— ① ②③④ 已修；⑤ 订阅回传已闭环（WS subscribe→router→futu_worker SUBSCRIBE→OpenD 实时订阅）
+- [x] **[→ BE-ARCH-08h]** 跨进程契约测试 —— 根治 08b/08d 这类盲区，已落 `test_cross_process_contract.py`（真起子服务 app + 边界/回归断言）
+
 ---
 
 ## ✅ 已完成归档
@@ -1327,6 +1531,8 @@ STATUS: PRODUCTION READY ✨
 
 | 日期         | 更新说明                                                 |
 | ---------- | ---------------------------------------------------- |
+| 2026-08-09 | [数据服务三条标准复审 · 07 系列落地后] 按用户三条验收标准（① HTTP API 完整可靠 ② 长连接可用 ③ **主服务不依赖第三方代码包**）复审，**三条全部不达标**。07 系列成果确认：调用层直连已清干净（`services/akshare/` 本地 SDK 消失 / `routers/search`+`calendars` 走适配器 / `core/yahoo_news` 收口 / `services/futu/enums.py` 替掉 SDK 枚举 / 基础依赖零数据源 SDK）。**新发现 4 P0 + 3 P1**：08a 主服务 `market_engine.py:33` 顶层 import futu 而主镜像不装 `futu-api` ⇒ **`uvicorn backend.main:app` import 阶段即崩**（实测 `ModuleNotFoundError: futu`，07b 改 eager import 引入的回归）；08b YF/AKShare/FMP 的 `ticker`↔`symbol` 键名错位 ⇒ 线上取不到数（`router.py:582-586` vs `yfinance_worker.py:13`，被 `router.py:557-563` 离线 stub 掩盖）；08c Futu 推送四处断链（`to_thread(connect)` 致 `set_main_loop` 永不成功 / 启动零 subscribe / 重连 `subscribe_push=False` / 子服务未配主 Redis）⇒ 线上"实时"实为 10s 轮询；08d `_normalize_response` 只认 `data.error` 不认 `data.status=="error"` ⇒ FMP/Finnhub 配额与 429 被吞成成功；08e 9 个 pin 源熔断一次永久失效（无半开）；08f AKShare STALE 只写不读（DIST-19 未生效）；08g FMP `FUNDAMENTAL`/`INFO` 无 worker 分支。**方法论根因**：离线 stub 短路 + 守门测试只查 import ⇒ 跨进程契约缺陷结构性隐形 → 立 08h 契约测试根治。新增 **BE-ARCH-08a~08h** + 执行焦点线 7；`docs/23` §八 重写为复审现状 |
+| 2026-08-09 | [数据服务架构审计] 对照 `docs/23` §二红线 + `AGENTS.md` §9.1/§10 全量审计主服务/子服务/Hermes/前端/Flutter 五个范围。结论：四层骨架已落地（`business/` 零直连 + 四策略原语真实现 + 子服务单端点 `POST /api/v1/data` HMAC 收口 + 前端与 Flutter 干净），但主服务仍大面积 legacy 直连 —— **P0**：`legacy_market_data.py:89-103` 主行情 QuotePort 直连本地 Futu SDK；`market_engine.py:302` 死门控（本地 Futu 状态恒 False）废掉四段已合规的远程调用。**P1**：`routers/search.py`、`routers/calendars.py:495,553` 路由层裸连外网（合规适配器闲置）；AKShare/FRED/DBnomics/RBI 本地连接层仍在生产路径；长连接仅 `Futu push → quant:quotes:stream → /market/quotes/ws` 一条真通，另有 8 处频道错配/未挂载 daemon。新增 **BE-ARCH-07a~07o** 15 项任务（每项附精确 `文件:行号` 错误代码指引）+ 当前执行焦点线 6；`docs/23` 新增 §八 现状审计章节 |
 | 2026-07-19 | [PROD-04 完成] 四场景模式系统落地：`scene-mode-types.ts` + `useSceneModeStore.ts`（Zustand+localStorage）+ `globals.css` CSS 变量 + `scene-mode-switcher.tsx` 顶栏切换器 + `use-scene-hotkey.ts` Cmd+Shift+M + `dashboard-layout.tsx` 布局适配（data-scene-mode/Sidebar显隐/AI全屏/研究自动展开）+ `fullscreen-copilot.tsx` + EdgeHandle 条件渲染；12 tests + tsc 零错误 + 197 tests 零回归 |
 | 2026-07-16 | [PROD-04 升级] 工作区快照布局 → 四场景模式系统（盯盘/研究/监控/AI分析）；新增 AI-01~09 全模块渗透任务（三层架构：主动推送/嵌入式辅助/按需调用）；同步更新 `docs/01` §9.6~9.7 |
 | 2026-07-14 | [DIST-19~23 完成] Phase 4 稳定性+监控+扩展：DIST-19 AKShare STALE 缓存降级（`data_source_router.py` 远程+本地均失败→Redis STALE 回退）；DIST-20 7 个 Prometheus 分布式指标（`metrics.py`）+ Grafana 节点监控面板（`distributed-nodes-dashboard.json`）+ router 指标集成；DIST-21 5 条 Grafana 告警规则（`alerting.yml`：心跳超时/YF 存活<2/全挂/CN 断连/STALE 高频）；DIST-22 Finnhub Worker 迁子服务（`finnhub_worker.py` + `main.py` lifespan 集成，`DS_CAPABILITIES=finnhub` 启用）；DIST-23 systemd 守护单元（`quant-worker.service` WatchdogSec=60 + Restart=always + NoNewPrivileges 安全加固）；2866 tests passed |

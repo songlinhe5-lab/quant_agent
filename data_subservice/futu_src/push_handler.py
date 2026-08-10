@@ -8,8 +8,8 @@ Futu 推送数据回调处理器
   - StockQuoteHandlerBase:     实时报价推送 (→ quant:quotes:stream)
   - OrderBookHandlerBase:      盘口深度推送 (→ quant:quotes:stream, 合并 bids/asks)
   - TickerHandlerBase:         逐笔成交推送 (→ quant:trades:stream:{ticker})
-  - BrokerHandlerBase:         经纪商队列推送 (→ futu:push:broker:{ticker})
-  - CurKlineHandlerBase:       实时 K 线推送 (→ futu:push:kline:{ticker})
+  - BrokerHandlerBase:         经纪商队列推送 (→ futu:push:broker:{ticker} + 桥接 quant:broker:{ticker})
+  - CurKlineHandlerBase:       实时 K 线推送 (→ futu:push:kline:{ticker} + 桥接 quant:kline:{ticker})
 """
 
 import asyncio
@@ -327,7 +327,9 @@ def _make_broker_handler():
                             "source": "futu_push",
                         }
                     )
+                    # 保留历史频道（向后兼容）并桥接到主服务统一 quant:* 旁路
                     await redis.publish(f"futu:push:broker:{ticker}", payload)
+                    await redis.publish(f"quant:broker:{ticker}", payload)
 
                 _schedule_coroutine(_publish())
             except Exception as e:
@@ -371,7 +373,9 @@ def _make_kline_handler():
 
                     async def _publish(kd=kline_data, tk=ticker):
                         redis = await _get_redis()
+                        # 保留历史频道（向后兼容）并桥接到主服务统一 quant:* 旁路
                         await redis.publish(f"futu:push:kline:{tk}", json.dumps(kd))
+                        await redis.publish(f"quant:kline:{tk}", json.dumps(kd))
 
                     _schedule_coroutine(_publish())
             except Exception as e:

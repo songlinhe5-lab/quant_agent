@@ -1,0 +1,49 @@
+interactions:
+- request:
+    body: '{"source": "yfinance", "action": "QUOTE", "params": {"ticker": "AAPL"}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '71'
+      content-type:
+      - application/json
+      host:
+      - 127.0.0.1:18199
+      user-agent:
+      - python-httpx/0.28.1
+      x-signature:
+      - 38f74af7e559ccc52276827a08727c32b718bf1cd8e03a4dcc95f8b64f29458e
+      x-timestamp:
+      - '1786283288'
+    method: POST
+    uri: http://127.0.0.1:18199/api/v1/data
+  response:
+    body:
+      string: '{"code": 0, "data": {"ticker": "AAPL", "price": 189.71, "change": 1.23,
+        "change_percent": 0.65, "open": 188.4, "day_high": 190.5, "day_low": 188.1,
+        "previous_close": 188.48, "volume": 48213900}, "meta": {"source": "yfinance",
+        "action": "QUOTE", "latency_ms": 67}}'
+    headers:
+      connection:
+      - keep-alive
+      content-length:
+      - '263'
+      content-type:
+      - application/json
+      date:
+      - Sun, 09 Aug 2026 13:48:08 GMT
+      keep-alive:
+      - timeout=60
+      proxy-connection:
+      - keep-alive
+      server:
+      - BaseHTTP/0.6 Python/3.13.5
+    status:
+      code: 200
+      message: OK
+version: 1

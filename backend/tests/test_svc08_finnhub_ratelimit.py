@@ -57,7 +57,7 @@ async def test_finnhub_throttler_detects_ip_ban():
     th.on_rate_limit(_rl_error(ErrorCategory.IP_BLOCKED))
     status = th.get_status()
     assert status.is_throttled is True
-    assert status.category == ErrorCategory.IP_BANNED.value
+    assert status.category == ErrorCategory.IP_BLOCKED.value
     # IP 封禁不计入 consecutive_limits 指数退避计数，但计入 block_events
     assert status.consecutive_rate_limits >= 1  # == block_events
 
@@ -66,6 +66,7 @@ async def test_finnhub_throttler_detects_ip_ban():
 async def test_finnhub_throttler_recovers_after_reset():
     """恢复是时间驱动的（throttle_until 过期），单测用 reset() 验证可复位。"""
     th = rate_limit_registry.get_throttler("finnhub")
+    th.reset()
     th.on_rate_limit(_rl_error(ErrorCategory.RATE_LIMIT))
     assert th.should_throttle() is True
     # 连续成功降低退避间隔（接口契约：递减 consecutive_limits / 降速）

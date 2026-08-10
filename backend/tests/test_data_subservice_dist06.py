@@ -286,7 +286,8 @@ class TestMainDataEndpoint:
         _, c = client
         body = '{"source":"bogus","action":"QUOTE","params":{}}'
         r = c.post("/api/v1/data", content=body, headers=_sign(body))
-        assert r.status_code == 400
+        # 未知 source 不在 DS_CAPABILITIES 声明集 -> 503（BE-ARCH: 未声明能力不响应）
+        assert r.status_code == 503
 
     def test_missing_hmac_headers_returns_403(self, client):
         _, c = client

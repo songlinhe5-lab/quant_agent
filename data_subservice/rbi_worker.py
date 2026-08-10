@@ -12,6 +12,8 @@ from data_subservice._internal.rbi import rbi_service
 
 _RBI_DISPATCH: dict[str, Any] = {
     "ECONOMIC_CALENDAR": ("get_economic_calendar", ["days_ahead", "days_back"]),
+    # BE-ARCH-07f: 主服务印度 CPI 回填所需的 World Bank 原始序列
+    "INDIA_CPI_SERIES": ("get_india_cpi_series", ["date_range", "per_page"]),
 }
 
 

@@ -26,17 +26,25 @@ from data_subservice._internal.logger import logger
 from data_subservice._internal.metrics import registry as _metrics_registry
 from data_subservice._internal.redis_client import redis_client
 from data_subservice._internal.service_registry import ServiceRegistry
-from data_subservice.akshare_worker import handle_akshare
-from data_subservice.dbnomics_worker import handle_dbnomics
-from data_subservice.finnhub_worker import handle_finnhub
-from data_subservice.fmp_worker import handle_fmp
-from data_subservice.fred_worker import handle_fred
-from data_subservice.futu_worker import handle_futu
 from data_subservice.nodeinfo import get_node_info
-from data_subservice.rbi_worker import handle_rbi
-from data_subservice.search_worker import handle_search
-from data_subservice.tushare_worker import handle_tushare
 from data_subservice.yfinance_worker import handle_yfinance
+
+# 重型/本地依赖型 worker（akshare/tushare/futu 等）采用延迟导入，避免在仅声明
+# yfinance 能力的叶子节点（主服务 backend 测试环境不安装 akshare/tushare/futu）
+# 上因 import 失败而无法启动。仅当对应 source 被请求时才 import，缺失时返回 503。
+_WORKER_IMPORTS = {
+    "akshare": "data_subservice.akshare_worker",
+    "tushare": "data_subservice.tushare_worker",
+    "futu": "data_subservice.futu_worker",
+    "finnhub": "data_subservice.finnhub_worker",
+    "fmp": "data_subservice.fmp_worker",
+    "fred": "data_subservice.fred_worker",
+    "dbnomics": "data_subservice.dbnomics_worker",
+    "rbi": "data_subservice.rbi_worker",
+    "tavily": "data_subservice.search_worker",
+    "bocha": "data_subservice.search_worker",
+    "jina": "data_subservice.search_worker",
+}
 
 load_dotenv()
 
@@ -44,6 +52,13 @@ load_dotenv()
 HMAC_SECRET = os.getenv("DATA_SOURCE_HMAC_SECRET", "change-me-in-prod")
 SERVICE_PORT = int(os.getenv("DATASOURCE_PORT", "8001"))
 ENABLE_REDIS_HEARTBEAT = os.getenv("ENABLE_REDIS_HEARTBEAT", "false").lower() == "true"
+# 心跳周期须远低于注册表 TTL（默认 30s），否则节点会在 TTL 期满后被判 dead。
+# 取 TTL 的 1/3 作为刷新间隔，留足网络抖动余量。
+_HEARTBEAT_TTL = int(os.getenv("NODE_HEARTBEAT_TTL", "30"))
+_HEARTBEAT_INTERVAL = max(5, _HEARTBEAT_TTL // 3)
+
+# 后台心跳任务句柄，便于 shutdown 时清理
+_heartbeat_task: Optional[asyncio.Task] = None
 
 app = FastAPI(title="Quant Agent Data Subservice", version="1.0.0")
 
@@ -79,6 +94,9 @@ def _declared_capabilities() -> set:
 
     Fallback: 兼容旧 NODE_CAPABILITIES；再 fallback 到全量（保持向后兼容）。
     """
+    # 默认能力集（未显式声明 DS_CAPABILITIES 时）。
+    # ⚠️ 注意：部署时必须通过 DS_CAPABILITIES 显式声明本节点能力，否则未声明的能力全部 503。
+    # 全量能力集参考：yfinance,akshare,tushare,fmp,futu,finnhub,fred,dbnomics,rbi,tavily,bocha,jina
     raw = os.getenv("DS_CAPABILITIES") or os.getenv("NODE_CAPABILITIES")
     if not raw:
         return {"yfinance", "akshare", "tushare", "fmp", "futu"}
@@ -108,30 +126,22 @@ async def fetch_data(request: Request):
 
     if source == "yfinance":
         result = await handle_yfinance(action, params)
-    elif source == "akshare":
-        result = await handle_akshare(action, params)
-    elif source == "tushare":
-        result = await handle_tushare(action, params)
-    elif source == "fmp":
-        result = await handle_fmp(action, params)
-    elif source == "finnhub":
-        # QUOTE/COMPANY_NEWS/MARKET_NEWS/EARNINGS/ECONOMIC_CALENDAR/INSIDER_TRADING/STOCK_HISTORY
-        result = await handle_finnhub(action, params)
-    elif source == "fred":
-        # MACRO_SERIES/ECONOMIC_CALENDAR
-        result = await handle_fred(action, params)
-    elif source == "dbnomics":
-        # ECONOMIC_CALENDAR
-        result = await handle_dbnomics(action, params)
-    elif source == "rbi":
-        # ECONOMIC_CALENDAR
-        result = await handle_rbi(action, params)
-    elif source in ("tavily", "bocha", "jina"):
-        # SEARCH
-        result = await handle_search(source, action, params)
-    elif source == "futu":
-        # Futu 依赖本地 OpenD TCP，仅声明 DS_CAPABILITIES 含 futu 的节点（主节点）响应
-        result = await handle_futu(action, params)
+    elif source in _WORKER_IMPORTS:
+        # 延迟导入对应 worker（重型/本地依赖型 SDK 仅在请求时 import）
+        try:
+            mod = __import__(_WORKER_IMPORTS[source], fromlist=["handle_" + source])
+        except ModuleNotFoundError as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"数据源依赖缺失 (source={source}, 未安装对应 SDK: {e.name})",
+            )
+        handler = getattr(mod, "handle_" + source, None)
+        if handler is None:
+            raise HTTPException(status_code=503, detail=f"数据源处理程序未实现: {source}")
+        if source in ("tavily", "bocha", "jina"):
+            result = await handler(source, action, params)
+        else:
+            result = await handler(action, params)
     else:
         raise HTTPException(status_code=400, detail=f"未知数据源: {source}")
 
@@ -161,7 +171,14 @@ async def startup_event():
     if "futu" in _declared_capabilities():
         try:
             from data_subservice.futu_src import futu_service
+            from data_subservice.futu_src.push_handler import set_main_loop
             from data_subservice.futu_src.watchdog import FutuWatchdog
+
+            # BE-ARCH-08c①: connect() 经 asyncio.to_thread 在工作线程执行，
+            # _register_push_handlers 内 asyncio.get_running_loop() 会抛 RuntimeError。
+            # 先把主事件循环引用注入 push_handler，作为子线程回退的双保险，
+            # 否则推送桥接 (_main_loop=None) 会静默丢弃所有 OpenD 推送回调。
+            set_main_loop(asyncio.get_event_loop())
 
             # 初始建连（线程池执行，不阻塞事件循环）
             await asyncio.to_thread(futu_service.connect)
@@ -176,8 +193,35 @@ async def startup_event():
             registry = ServiceRegistry(redis_client)
             await registry.register(node)
             logger.info(f"📡 已向主 Redis 注册节点心跳: {node.node_id}")
+            # 启动后台周期心跳，避免 TTL 到期后节点被判 dead（07l③ 修复）
+            global _heartbeat_task
+            _heartbeat_task = asyncio.create_task(_heartbeat_loop(node.node_id, registry))
         except Exception as e:
             logger.warning(f"⚠️ Redis 心跳注册失败（子服务仍可独立运行）: {e}")
+
+
+async def _heartbeat_loop(node_id: str, registry: ServiceRegistry) -> None:
+    """周期性刷新 Redis 心跳，间隔远低于注册表 TTL。"""
+    while True:
+        try:
+            await asyncio.sleep(_HEARTBEAT_INTERVAL)
+            ok = await registry.heartbeat(node_id)
+            if not ok:
+                logger.warning(f"⚠️ 节点 {node_id} 心跳刷新失败")
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"❌ 心跳循环异常: {e}")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    if _heartbeat_task is not None:
+        _heartbeat_task.cancel()
+        try:
+            await _heartbeat_task
+        except (asyncio.CancelledError, Exception):
+            pass
 
 
 # ── 远程节点调用（供主服务反向代理或子服务间互调，可选）──

@@ -38,7 +38,34 @@ async def handle_search(source: str, action: str, params: dict[str, Any]) -> dic
         if action != "SEARCH":
             return {"error": f"unknown jina action: {action}"}
         return await jina_service.scrape(url=str(params.get("url", "")))
+    if src == "search":
+        # BE-ARCH-07d: 聚合搜索入口, 子服务侧接管原主服务的多源降级调度
+        # (Tavily -> Bocha)。DuckDuckGo 免费兜底可在此扩展。
+        return await _web_search_aggregated(params)
     return {"error": f"unknown search source: {source}"}
+
+
+async def _web_search_aggregated(params: dict[str, Any]) -> dict[str, Any]:
+    """子服务侧聚合降级: Tavily -> Bocha。首个成功且非空即返回。"""
+    query = str(params.get("query", ""))
+    max_results = int(params.get("max_results", 5))
+    include_domains = params.get("include_domains")
+    exclude_domains = params.get("exclude_domains")
+
+    for svc in (tavily_service, bocha_service):
+        try:
+            resp = await svc.search(
+                query=query,
+                max_results=max_results,
+                include_domains=include_domains,
+                exclude_domains=exclude_domains,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[Search-worker] {svc.__class__.__name__} 失败: {e}")
+            continue
+        if isinstance(resp, dict) and resp.get("status") == "success" and resp.get("data"):
+            return resp
+    return {"status": "success", "data": [], "message": "未找到相关结果"}
 
 
 async def startup() -> None:
