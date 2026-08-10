@@ -6,11 +6,11 @@ OmsExecutionAdapter 真实下单管道 + LiveContext.history 单测
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
-from futu import TrdMarket, TrdSide
 
 from backend.engine.contracts import OrderIntent
 from backend.engine.drivers.live import LiveContext
 from backend.engine.gateway import OmsExecutionAdapter
+from backend.services.futu.enums import TrdMarket, TrdSide
 
 
 def _intent(
