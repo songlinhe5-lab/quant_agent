@@ -1,0 +1,44 @@
+name: Compose Hygiene Check (Reusable)
+
+# 可复用工作流: 扫描所有 docker-compose 文件，强制两项卫生约束:
+#   1) 仓库名必须用下划线版 (quant_agent-)，拒绝连字符版 (quant-agent-) —— 防 GHCR pull not found 复发
+#   2) 所有 compose 必须显式声明顶级 name: 字段 —— 防 master/node 共用默认项目名互相 orphan 清理
+# 供 backend.yml 的 build / deploy 各 job 共用，避免校验逻辑散落多处分裂。
+
+on:
+  workflow_call:
+
+jobs:
+  compose-hygiene:
+    name: 🛡️ Compose hygiene (registry name + project name)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Scan all compose files
+        shell: bash
+        run: |
+          COMPOSES="docker-compose.master.yml docker-compose.node-s1.yml docker-compose.node-bj.yml docker-compose.node-s2.yml docker-compose.node-s3.yml docker-compose.node-s4.yml"
+          BAD=0
+          for f in $COMPOSES; do
+            if [ ! -f "$f" ]; then
+              echo "❌ $f 不存在，中止"
+              BAD=1
+              continue
+            fi
+            # 1) 拒绝连字符版仓库名 (防 GHCR pull not found)
+            if grep -q "ghcr.io/songlinhe5-lab/quant-agent-data-subservice" "$f"; then
+              echo "❌ $f 仍含连字符版仓库名 quant-agent-data-subservice，请统一为下划线版 quant_agent-"
+              BAD=1
+            fi
+            # 2) 必须显式声明顶级 name: 字段，隔离 compose 项目名 (防 master/node 互相 orphan 清理)
+            if ! grep -qE '^name:' "$f"; then
+              echo "❌ $f 缺少顶级 name: 字段 (默认项目名会导致 master/node 互相 orphan，须显式声明如 name: quant-agent-node-s1)"
+              BAD=1
+            fi
+          done
+          if [ "$BAD" -ne 0 ]; then
+            echo "❌ compose 文件卫生校验失败，中止"
+            exit 1
+          fi
+          echo "✅ 全 compose 仓库名合规 (下划线版 quant_agent-) 且均显式声明 name: 项目名"
