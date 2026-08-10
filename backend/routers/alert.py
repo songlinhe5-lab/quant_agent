@@ -38,6 +38,7 @@ from backend.app.alert_app import (  # noqa: F401  (测试夹具访问共享状�
     toggle_rule,
     update_rule,
 )
+from backend.core import models
 from backend.core.alert_models import AlertSeverity
 from backend.core.logger import logger
 from backend.routers.auth import get_current_user
@@ -54,7 +55,7 @@ router = APIRouter(
 
 
 @router.post("/rules", response_model=RuleResponse, status_code=201)
-async def create_rule_endpoint(req: CreateRuleRequest, current_user: "models.User" = Depends(get_current_user)):
+async def create_rule_endpoint(req: CreateRuleRequest, current_user: models.User = Depends(get_current_user)):
     """创建告警规则"""
     return await create_rule(req)
 
@@ -62,7 +63,7 @@ async def create_rule_endpoint(req: CreateRuleRequest, current_user: "models.Use
 @router.get("/rules", response_model=List[RuleResponse])
 async def list_rules_endpoint(
     ticker: Optional[str] = Query(default=None, description="按标的过滤"),
-    current_user: "models.User" = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_user),
     enabled: Optional[bool] = Query(default=None, description="按启用状态过滤"),
 ):
     """查询告警规则列表"""
@@ -70,27 +71,27 @@ async def list_rules_endpoint(
 
 
 @router.get("/rules/{rule_id}", response_model=RuleResponse)
-async def get_rule_endpoint(rule_id: str, current_user: "models.User" = Depends(get_current_user)):
+async def get_rule_endpoint(rule_id: str, current_user: models.User = Depends(get_current_user)):
     """查询单条规则"""
     return await get_rule(rule_id)
 
 
 @router.put("/rules/{rule_id}", response_model=RuleResponse)
 async def update_rule_endpoint(
-    rule_id: str, req: UpdateRuleRequest, current_user: "models.User" = Depends(get_current_user)
+    rule_id: str, req: UpdateRuleRequest, current_user: models.User = Depends(get_current_user)
 ):
     """更新告警规则"""
     return await update_rule(rule_id, req)
 
 
 @router.delete("/rules/{rule_id}", status_code=204)
-async def delete_rule_endpoint(rule_id: str, current_user: "models.User" = Depends(get_current_user)):
+async def delete_rule_endpoint(rule_id: str, current_user: models.User = Depends(get_current_user)):
     """删除告警规则"""
     await delete_rule(rule_id)
 
 
 @router.post("/rules/{rule_id}/toggle", response_model=RuleResponse)
-async def toggle_rule_endpoint(rule_id: str, current_user: "models.User" = Depends(get_current_user)):
+async def toggle_rule_endpoint(rule_id: str, current_user: models.User = Depends(get_current_user)):
     """启停告警规则"""
     return await toggle_rule(rule_id)
 
@@ -98,7 +99,7 @@ async def toggle_rule_endpoint(rule_id: str, current_user: "models.User" = Depen
 @router.get("/events", response_model=List[EventResponse])
 async def list_events_endpoint(
     ticker: Optional[str] = Query(default=None, description="按标的过滤"),
-    current_user: "models.User" = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_user),
     severity: Optional[AlertSeverity] = Query(default=None),
     since: Optional[float] = Query(default=None, description="返回 triggered_at > since 的事件（WS 断连补拉）"),
     limit: int = Query(default=50, ge=1, le=200),
@@ -108,25 +109,25 @@ async def list_events_endpoint(
 
 
 @router.get("/events/{event_id}", response_model=EventResponse)
-async def get_event_endpoint(event_id: str, current_user: "models.User" = Depends(get_current_user)):
+async def get_event_endpoint(event_id: str, current_user: models.User = Depends(get_current_user)):
     """查询单条事件"""
     return await get_event(event_id)
 
 
 @router.post("/events/{event_id}/ack", response_model=EventResponse)
-async def ack_event_endpoint(event_id: str, current_user: "models.User" = Depends(get_current_user)):
+async def ack_event_endpoint(event_id: str, current_user: models.User = Depends(get_current_user)):
     """确认告警事件"""
     return await ack_event(event_id)
 
 
 @router.get("/engine/status", response_model=EngineStatusResponse)
-async def engine_status_endpoint(current_user: "models.User" = Depends(get_current_user)):
+async def engine_status_endpoint(current_user: models.User = Depends(get_current_user)):
     """查询告警引擎状态（含 dispatcher health）"""
     return await engine_status()
 
 
 @router.get("/events/{event_id}/deliveries", response_model=List[DeliveryRecordResponse])
-async def get_event_deliveries_endpoint(event_id: str, current_user: "models.User" = Depends(get_current_user)):
+async def get_event_deliveries_endpoint(event_id: str, current_user: models.User = Depends(get_current_user)):
     """查询事件的投递记录（运维可观测 + 前端投递详情）"""
     return await get_event_deliveries(event_id)
 
