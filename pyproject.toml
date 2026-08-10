@@ -126,8 +126,11 @@ ignore = ["E501"]
 quote-style = "double"
 
 [tool.pytest.ini_options]
-# 双目录: 主服务单测 + 数据子服务单测, 一并纳入 CI 验证闭环
-testpaths = ["backend/tests", "data_subservice/tests"]
+# 仅主服务单测。data_subservice 依赖 tushare/futu/akshare 等重型 SDK，
+# 按架构规定这些 SDK 禁止装在 backend 环境（backend/requirements.txt 明文禁止），
+# 故子服务单测不放进本 testpaths，避免 collection 阶段 import 失败拖垮整轮。
+# 子服务单测由 data_subservice/pytest.ini 独立驱动，需在装有对应 SDK 的环境运行。
+testpaths = ["backend/tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
