@@ -365,19 +365,22 @@ jobs:
             # 历史坑: registry 容器未运行 → 北京节点经内网 pull 5000 端口吃 connection refused，
             # 错误被推到 bj 节点才暴露，排查极慢。此处主节点 deploy 后即地 fail-fast 等待。
             # restart:always 已配置，但 compose up 后容器可能仍在启动 / 端口尚未 bind。
-            # 🔧 动态获取 registry 容器 ID (不再硬编码 quant_registry，随 compose name: 字段自动隔离)
-            REGISTRY_CID=$(docker compose -f docker-compose.master.yml --env-file .env ps -q registry)
+            # 🔧 动态获取 registry 容器 ID (不再硬编码 quant_registry，随 compose name: 字段自动隔离)。
+            #    判活改用 docker inspect -f '{{.State.Running}}' (返回 true/false)，
+            #    彻底绕开 docker ps --filter id=<短ID> 在部分 Docker 版本上匹配失效的陷阱。
             echo "🔍 等待 registry 容器就绪 (最多 30s)..."
+            REGISTRY_READY=0
             for i in $(seq 1 30); do
-              if [ -n "${REGISTRY_CID}" ] && docker ps --filter id="${REGISTRY_CID}" --filter status=running --format '{{.ID}}' | grep -q "${REGISTRY_CID}"; then
+              REGISTRY_CID=$(docker compose -f docker-compose.master.yml --env-file .env ps -q registry 2>/dev/null || true)
+              if [ -n "${REGISTRY_CID}" ] && [ "$(docker inspect -f '{{.State.Running}}' "${REGISTRY_CID}" 2>/dev/null)" = "true" ]; then
                 echo "✅ registry 容器已运行 (${REGISTRY_CID})"
+                REGISTRY_READY=1
                 break
               fi
               echo "  ⏳ 等待 registry 容器启动... ($i/30)"
               sleep 1
-              REGISTRY_CID=$(docker compose -f docker-compose.master.yml --env-file .env ps -q registry)
             done
-            if [ -z "${REGISTRY_CID}" ] || ! docker ps --filter id="${REGISTRY_CID}" --filter status=running --format '{{.ID}}' | grep -q "${REGISTRY_CID}"; then
+            if [ "${REGISTRY_READY}" -ne 1 ] || [ -z "${REGISTRY_CID}" ]; then
               echo "❌ registry 容器未能在 30s 内启动！请检查主节点:"
               echo "   docker compose -f docker-compose.master.yml --env-file .env logs registry"
               echo "   docker compose -f docker-compose.master.yml --env-file .env up -d registry"
