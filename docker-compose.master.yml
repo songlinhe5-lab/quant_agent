@@ -9,6 +9,10 @@
 # 含监控: docker-compose -f docker-compose.master.yml --profile monitoring up -d
 # ==========================================
 
+# 显式项目名: 与 node 系列 compose 隔离，避免 up --remove-orphans 互相把对方服务当 orphan 清理。
+# (历史坑: master/node 共用默认项目名 quant-agent，导致 node-s1 的 data-subservice 被 master 部署误判 orphan)
+name: quant-agent-master
+
 services:
   redis:
     image: redis:7-alpine

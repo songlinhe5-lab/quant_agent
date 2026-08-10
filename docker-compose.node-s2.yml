@@ -14,6 +14,9 @@
 #   docker compose --env-file .env.data-node -f docker-compose.node-s2.yml up -d
 # =====================================================================
 
+# 显式项目名: 与 master 及其他 node compose 隔离，避免 up --remove-orphans 互相把对方服务当 orphan 清理。
+name: quant-agent-node-s2
+
 x-common-env: &common-env
   TZ: America/Los_Angeles
   PYTHONUNBUFFERED: "1"
