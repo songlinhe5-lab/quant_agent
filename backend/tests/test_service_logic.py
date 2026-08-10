@@ -240,6 +240,14 @@ class TestSystemMonitorService:
 
 # ─── llm_service.py ─────────────────────────────────────────────────
 class TestLLMService:
+    @pytest.fixture(autouse=True)
+    def _force_online_llm(self, monkeypatch):
+        """强制关闭离线 stub，使结构化输出测试验证真实 client 调用路径。"""
+        monkeypatch.setattr(
+            "backend.services.ai_narrator.llm_service.LLMService._is_offline",
+            lambda self: False,
+        )
+
     def test_init(self):
         from backend.services.ai_narrator.llm_service import LLMService
 
