@@ -71,6 +71,9 @@ jobs:
         run: uv sync --all-extras
 
       - name: Run backend unit tests
+        # CI 无 OTel collector(4318)，禁用 SDK 避免 trace 导出无限重试拖垮 job
+        env:
+          OTEL_SDK_DISABLED: "true"
         run: uv run pytest backend/tests -p no:cacheprovider --tb=short -q --log-cli-level=WARNING
 
   # ----------------------------------------------------------------
@@ -102,6 +105,9 @@ jobs:
 
       - name: Run data_subservice unit tests
         working-directory: data_subservice
+        # CI 无 OTel collector(4318)，禁用 SDK 避免 trace 导出无限重试
+        env:
+          OTEL_SDK_DISABLED: "true"
         run: python -m pytest -c pytest.ini --tb=short -q --log-cli-level=WARNING
 
   # ----------------------------------------------------------------
