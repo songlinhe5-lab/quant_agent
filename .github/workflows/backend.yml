@@ -453,6 +453,21 @@ jobs:
             else
               echo "🛡️ 检测到已存在的 .env.data-node，完全保留人工配置，CI 不触碰 (node-s1)"
             fi
+
+            # ── 清理旧项目名 (quant-agent) 遗留的硬编码容器名孤儿 ──
+            # 历史坑: 旧版 node-s1 compose 用固定 container_name (quant-data-subservice-node-s1)，
+            # 旧容器以旧项目名 quant-agent 创建，占用 8001 端口 (PUBLIC_IP=TS_IP 时绑外网 IP:8001)，
+            # 新容器 quant-agent-node-s1-data-subservice-1 绑定同端口会报 "port is already allocated"。
+            # --remove-orphans 只能清当前项目孤儿，清不掉不同项目名的旧容器，故此处按旧前缀精准清理。
+            OLD_S1_ORPHAN=$(docker ps -a --filter name='quant-data-subservice-node-s1' --format '{{.Names}}' || true)
+            if [ -n "${OLD_S1_ORPHAN}" ]; then
+              echo "🧹 检测到旧项目名 (quant-agent) 遗留 node-s1 容器 (${OLD_S1_ORPHAN})，清理以释放 8001 端口:"
+              echo "${OLD_S1_ORPHAN}" | xargs -r docker rm -f
+              echo "✅ 旧 node-s1 孤儿容器已清理"
+            else
+              echo "✅ 无旧项目名 node-s1 孤儿容器，跳过清理"
+            fi
+
             docker compose -f docker-compose.node-s1.yml --env-file .env.data-node up -d --remove-orphans
             echo "✅ 主节点本地子服务 (node-s1) 已启动于 127.0.0.1:8001"
 
