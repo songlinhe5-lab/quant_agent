@@ -163,7 +163,7 @@ jobs:
   deploy-master:
     # 仅在 push 到 main 分支时部署（真正 merge 后）；push develop / PR 均跳过
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [ build, test-backend ]
+    needs: [ build, test-backend, build-data-subservice ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
