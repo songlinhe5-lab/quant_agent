@@ -88,15 +88,21 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
 
       - name: Install data_subservice dependencies
         run: |
           python -m pip install --upgrade pip
+          # 运行时依赖 (含 tushare/futu/akshare 等重型 SDK)
           pip install -r data_subservice/requirements.txt
+          # 测试依赖 (不进运行时 requirements，单独安装):
+          #   pytest / pytest-asyncio (pytest.ini 设 asyncio_mode=auto) /
+          #   pytest-mock (mocker fixture) / pytest-env (pytest.ini [env] 段)
+          pip install pytest pytest-asyncio pytest-mock pytest-env
 
       - name: Run data_subservice unit tests
         working-directory: data_subservice
-        run: pytest -c pytest.ini --tb=short -q
+        run: python -m pytest -c pytest.ini --tb=short -q
 
   # ----------------------------------------------------------------
   # 构建 data_subservice 镜像 (按节点类型拆分 extra，隔离 SDK 依赖体积)
