@@ -111,6 +111,10 @@ async def test_earnings_alert_daemon_remote_path(monkeypatch):
             await asyncio.wait_for(asyncio.shield(task), timeout=2.0)
         except asyncio.TimeoutError:
             task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
 
     assert len(sent) == 1
 
@@ -147,6 +151,10 @@ async def test_daemon_skips_when_registry_fetch_none(monkeypatch):
             await asyncio.wait_for(asyncio.shield(task), timeout=2.0)
         except asyncio.TimeoutError:
             task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
 
     assert sent == []
 
