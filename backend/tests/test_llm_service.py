@@ -20,6 +20,20 @@ class TestResponse(BaseModel):
     score: float
 
 
+@pytest.fixture(autouse=True)
+def _force_online_llm(monkeypatch):
+    """强制关闭 SVC-06 离线 stub，使测试验证真实的 OpenAI client 调用路径。
+
+    测试环境若 QUANT_ENV=testing/dev 或 LLM_STUB=1，is_offline_llm_enabled()
+    会返回 True，导致 generate / generate_pydantic 短路到 stub 而绕开被 mock 的
+    client.chat.completions.create，使这些测试失去意义。
+    """
+    monkeypatch.setattr(
+        "backend.services.ai_narrator.llm_service.LLMService._is_offline",
+        lambda self: False,
+    )
+
+
 class TestLLMServiceInit:
     """测试 LLM 服务初始化"""
 
