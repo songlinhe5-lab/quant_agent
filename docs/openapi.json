@@ -11951,58 +11951,6 @@
         }
       }
     },
-    "/api/v1/data-source/proxy/yfinance": {
-      "post": {
-        "tags": [
-          "Data Source Proxy"
-        ],
-        "summary": "Proxy Yfinance",
-        "description": "代理 yfinance 请求",
-        "operationId": "proxy_yfinance_api_v1_data_source_proxy_yfinance_post",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {},
-                "example": {
-                  "code": 0,
-                  "msg": "ok",
-                  "data": {},
-                  "ts": 1719475200000
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/data-source/proxy/akshare": {
-      "post": {
-        "tags": [
-          "Data Source Proxy"
-        ],
-        "summary": "Proxy Akshare",
-        "description": "代理 AKShare 请求",
-        "operationId": "proxy_akshare_api_v1_data_source_proxy_akshare_post",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {},
-                "example": {
-                  "code": 0,
-                  "msg": "ok",
-                  "data": {},
-                  "ts": 1719475200000
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/data-source/health": {
       "get": {
         "tags": [
