@@ -39,10 +39,12 @@ services:
       # 主节点 DataSourceRouter 回调鉴权 (须与主节点 DATA_SOURCE_HMAC_SECRET 一致)
       DATA_SOURCE_HMAC_SECRET: ${DATA_SOURCE_HMAC_SECRET}
       DATA_SOURCE_ALLOWED_IPS: ${DATA_SOURCE_ALLOWED_IPS:-10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1}
-      # BE-ARCH-08c④: Futu 长连接推送经 Redis 发布到主总线。本节点与主服务同机，
-      # 经 host.docker.internal 连主 Redis (docker-compose.master.yml 的 quant_redis)，
-      # 否则 s1 容器内 127.0.0.1 无 Redis，推送发布静默失败、主服务收不到实时行情。
-      REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
+      # BE-ARCH-08c④: Futu 长连接推送经 Redis 发布到主总线。
+      # 本节点与主服务【同机但分属独立 compose 项目 / 独立 bridge 网络】，容器内既解析不了
+      # 主服务的 `redis` 服务名，也解析不了 `host.docker.internal`(纯 Linux 自定义 bridge 默认不启用)。
+      # 同机部署回退到 127.0.0.1（主 Redis 须监听 loopback / 0.0.0.0）；
+      # 跨节点部署请在 .env.data-node 显式覆盖 REDIS_HOST 为主节点 Tailscale IP。
+      REDIS_HOST: ${REDIS_HOST:-127.0.0.1}
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-quant_redis_secret_2026}
       REDIS_DB: ${REDIS_DB:-0}

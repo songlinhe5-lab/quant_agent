@@ -170,6 +170,44 @@ class DataSourceRouter:
             )
 
         self._init_nodes()
+        # 💡 FIX-275: 启动期自检, 捕获 REMOTE_URL 端口配错指向主服务自身的典型故障
+        # (如 akshare/fred 误配成 :8000 而非子服务 :8001, 导致静默 404 / connection refused)。
+        self._validate_node_urls()
+
+    def _validate_node_urls(self):
+        """启动期校验各远程数据源节点的 URL 端口, 防止误指向主服务自身。
+
+        典型事故: AKSHARE_REMOTE_URL / FRED_REMOTE_URL 等被配成主服务端口
+        (默认 8000) 而非 data_subservice 的 8001, 导致请求打到主服务自身 →
+        404 或 connection refused, 且只在首次调用时才暴露, 排查成本高。
+
+        此处于初始化阶段主动报错, 把故障前移到启动日志, 一目了然。
+        """
+        import urllib.parse
+
+        main_port = str(os.getenv("QUANT_PORT", "8000"))
+        for name, node in self._nodes.items():
+            try:
+                parsed = urllib.parse.urlparse(node.url)
+            except Exception:
+                logger.error(f"[DataSourceRouter] 节点 {name} 的 URL 无法解析: {node.url}")
+                continue
+            port = parsed.port or (80 if parsed.scheme == "http" else 443)
+            host = (parsed.hostname or "").lower()
+            # 端口等于主服务端口 => 高度疑似指向主服务自身而非子服务(8001)
+            if str(port) == main_port:
+                logger.error(
+                    f"[DataSourceRouter] ⚠️ 节点 {name} 的 URL 端口({port}) 疑似指向主服务自身 "
+                    f"(QUANT_PORT={main_port}), 而非 data_subservice 子服务的 8001: {node.url}。"
+                    f"请检查对应的 *_REMOTE_URL 环境变量(如 AKSHARE_REMOTE_URL / FRED_REMOTE_URL / "
+                    f"YF_PRIMARY_NODE_URL 等), 子服务应运行在 *:8001。"
+                )
+            # 显式指向 localhost/127.0.0.1 但端口非 8001(非子服务)也给出弱告警
+            elif host in ("localhost", "127.0.0.1") and str(port) != "8001":
+                logger.warning(
+                    f"[DataSourceRouter] 节点 {name} 指向本地非子服务端口 {port}: {node.url}。"
+                    f"data_subservice 默认运行在 8001, 若非刻意请修正。"
+                )
 
     def _init_nodes(self):
         # 支持逗号分隔的多个 URL (多活容灾)。
