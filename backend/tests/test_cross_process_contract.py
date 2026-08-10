@@ -69,6 +69,18 @@ def _outbound_params(**kw):
     return DataSourceRouter._normalize_outbound_params(kw)
 
 
+def _stub_worker(module_name: str, attr: str, mock) -> dict:
+    """构造一个 stub 模块并挂上 mock 的 handle_*, 注入 sys.modules 供 main 延迟导入。
+
+    避免真实 SDK (futu/akshare 等) 在测试环境未安装时导入失败。
+    """
+    import types
+
+    stub = types.ModuleType(module_name)
+    setattr(stub, attr, mock)
+    return {module_name: stub}
+
+
 # ─────────────────────────────────────────
 # ① 08b 回归: 跨进程 params 键名对齐 (发 ticker, 收 symbol)
 # ─────────────────────────────────────────
@@ -79,7 +91,8 @@ class TestOutboundParamContract:
     async def test_fmp_receives_symbol_after_normalization(self, sub_app):
         mod, client = sub_app
         mock = AsyncMock(return_value={"status": "success", "data": {"ok": True}})
-        with patch.object(mod, "handle_fmp", mock):
+        stub = _stub_worker("data_subservice.fmp_worker", "handle_fmp", mock)
+        with patch.dict(sys.modules, stub):
             params = _outbound_params(ticker="AAPL")  # 模拟 Facade 以 ticker 调用
             body = '{"source":"fmp","action":"FUNDAMENTAL","params":%s}' % __import__("json").dumps(params)
             r = client.post("/api/v1/data", content=body, headers=_sign(body))
@@ -93,7 +106,8 @@ class TestOutboundParamContract:
     async def test_akshare_receives_symbol_after_normalization(self, sub_app):
         mod, client = sub_app
         mock = AsyncMock(return_value={"status": "success", "data": {"ok": True}})
-        with patch.object(mod, "handle_akshare", mock):
+        stub = _stub_worker("data_subservice.akshare_worker", "handle_akshare", mock)
+        with patch.dict(sys.modules, stub):
             params = _outbound_params(ticker="600519.SH")
             body = '{"source":"akshare","action":"stock_zh_a_spot_em","params":%s}' % __import__("json").dumps(params)
             r = client.post("/api/v1/data", content=body, headers=_sign(body))
@@ -114,7 +128,8 @@ class TestSubserviceErrorBodyContract:
         # worker 返回 FMP 真实的配额耗尽错误体 (无 error 键)
         error_body = {"status": "error", "message": "FMP quota exhausted", "error_category": "quota"}
         mock = AsyncMock(return_value=error_body)
-        with patch.object(mod, "handle_fmp", mock):
+        stub = _stub_worker("data_subservice.fmp_worker", "handle_fmp", mock)
+        with patch.dict(sys.modules, stub):
             params = _outbound_params(ticker="AAPL")
             body = '{"source":"fmp","action":"QUOTE","params":%s}' % __import__("json").dumps(params)
             r = client.post("/api/v1/data", content=body, headers=_sign(body))
@@ -140,7 +155,8 @@ class TestFutuSubscribeCallbackContract:
     async def test_subscribe_reaches_worker(self, sub_app):
         mod, client = sub_app
         mock = AsyncMock(return_value={"status": "success", "subscribed": ["HK.00700"]})
-        with patch.object(mod, "handle_futu", mock):
+        stub = _stub_worker("data_subservice.futu_worker", "handle_futu", mock)
+        with patch.dict(sys.modules, stub):
             params = _outbound_params(ticker="HK.00700")
             body = json.dumps({"source": "futu", "action": "SUBSCRIBE", "params": params})
             r = client.post("/api/v1/data", content=body, headers=_sign(body))
@@ -153,7 +169,8 @@ class TestFutuSubscribeCallbackContract:
     async def test_unsubscribe_reaches_worker(self, sub_app):
         mod, client = sub_app
         mock = AsyncMock(return_value={"status": "success", "unsubscribed": ["HK.00700"]})
-        with patch.object(mod, "handle_futu", mock):
+        stub = _stub_worker("data_subservice.futu_worker", "handle_futu", mock)
+        with patch.dict(sys.modules, stub):
             params = _outbound_params(ticker="HK.00700")
             body = json.dumps({"source": "futu", "action": "UNSUBSCRIBE", "params": params})
             r = client.post("/api/v1/data", content=body, headers=_sign(body))
