@@ -47,6 +47,23 @@ class FakeLLM:
         return type("R", (), {"choices": [choice]})()
 
 
+class _DaemonStop(Exception):
+    """测试用哨兵：让无限 while True 的 daemon 在跑过一次循环体后干净退出。"""
+
+
+def _make_sleep_that_stops_after_first():
+    """mock asyncio.sleep：第一次调用放行（让循环体执行一次），第二次 raise 终止 daemon。"""
+    state = {"n": 0}
+
+    async def _fake_sleep(*args, **kwargs):
+        state["n"] += 1
+        if state["n"] == 1:
+            return None
+        raise _DaemonStop()
+
+    return _fake_sleep
+
+
 @pytest.mark.asyncio
 async def test_finnhub_fetch_routes_to_registry():
     captured = {}
@@ -116,7 +133,7 @@ async def test_earnings_alert_daemon_triggers_notification(monkeypatch):
     from backend.core.redis_client import redis_client as rc
 
     with pytest.MonkeyPatch().context() as m:
-        m.setattr("asyncio.sleep", AsyncMock())
+        m.setattr("asyncio.sleep", _make_sleep_that_stops_after_first())
         m.setattr(notif_mod, "notification_service", FakeNotify())
         m.setattr(llm_mod, "llm_service", FakeLLM())
         m.setattr(rc, "set", AsyncMock(return_value=True))
@@ -124,9 +141,9 @@ async def test_earnings_alert_daemon_triggers_notification(monkeypatch):
 
         task = asyncio.ensure_future(md._earnings_alert_daemon())
         try:
-            await asyncio.wait_for(asyncio.shield(task), timeout=2.0)
-        except asyncio.TimeoutError:
-            task.cancel()
+            await task
+        except _DaemonStop:
+            pass  # 哨兵：daemon 跑过一次循环体后干净退出
 
     assert len(sent) == 1
     assert "AAPL" in sent[0]
