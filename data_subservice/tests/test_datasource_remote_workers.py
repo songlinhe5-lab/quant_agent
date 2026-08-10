@@ -19,7 +19,7 @@ class TestFinnhubWorker:
         with patch("data_subservice.finnhub_worker.finnhub_service") as svc:
             svc.get_quote = AsyncMock(return_value={"status": "success", "data": {"c": 1.0}})
             out = await handle_finnhub("QUOTE", {"symbol": "AAPL"})
-        svc.get_quote.assert_awaited_once_with(symbol="AAPL")
+        svc.get_quote.assert_awaited_once_with(ticker="AAPL")
         assert out == {"status": "success", "data": {"c": 1.0}}
 
     @pytest.mark.asyncio

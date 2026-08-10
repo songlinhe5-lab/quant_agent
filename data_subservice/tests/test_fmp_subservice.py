@@ -3,11 +3,25 @@
 import hashlib
 import hmac
 import json
+import os
 import time
+from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 
-from data_subservice.main import HMAC_SECRET, app
+import data_subservice.main as _main_mod
+
+# 自包含 HMAC 密钥，避免受其他测试 fixture 对 main.HMAC_SECRET 全局变量的污染
+_FMP_HMAC_SECRET = "test-fmp-subservice-secret"
+
+
+@pytest.fixture
+def client():
+    """注入测试用 HMAC 密钥，确保服务端校验与测试签名使用同一密钥（自包含）。"""
+    with patch.dict(os.environ, {"DATA_SOURCE_HMAC_SECRET": _FMP_HMAC_SECRET}):
+        _main_mod.HMAC_SECRET = _FMP_HMAC_SECRET
+        yield TestClient(_main_mod.app)
 
 
 def _signed_post(client, payload: dict):
@@ -19,7 +33,7 @@ def _signed_post(client, payload: dict):
     raw = json.dumps(payload).encode("utf-8")
     ts = str(int(time.time()))
     msg = f"{ts}:{raw.decode('utf-8')}".encode("utf-8")
-    sig = hmac.new(HMAC_SECRET.encode(), msg, hashlib.sha256).hexdigest()
+    sig = hmac.new(_FMP_HMAC_SECRET.encode(), msg, hashlib.sha256).hexdigest()
     return client.post(
         "/api/v1/data",
         content=raw,
@@ -27,9 +41,7 @@ def _signed_post(client, payload: dict):
     )
 
 
-def test_fmp_smoke():
-    client = TestClient(app)
-
+def test_fmp_smoke(client):
     # 1. /metrics 暴露 fmp_* 指标（14 个中至少命中核心几个）
     r = client.get("/metrics")
     assert r.status_code == 200, r.status_code
@@ -65,4 +77,8 @@ def test_fmp_smoke():
 
 
 if __name__ == "__main__":
-    test_fmp_smoke()
+    import os
+
+    os.environ.setdefault("DATA_SOURCE_HMAC_SECRET", _FMP_HMAC_SECRET)
+    _main_mod.HMAC_SECRET = _FMP_HMAC_SECRET
+    test_fmp_smoke(TestClient(_main_mod.app))

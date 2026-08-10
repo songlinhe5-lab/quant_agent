@@ -29,13 +29,11 @@ def client():
     with patch.dict(os.environ, {"DATA_SOURCE_HMAC_SECRET": HMAC_SECRET}):
         import data_subservice.main as mod
 
-        mod.HMAC_SECRET = HMAC_SECRET
-        # mock worker 实现, 隔离外部依赖
-        mod.handle_yfinance = AsyncMock(return_value={"symbol": "AAPL", "ok": True})
-        mod.handle_akshare = AsyncMock(return_value={"symbol": "000001", "ok": True})
+        # patch.object 在退出上下文时自动还原模块全局变量，避免污染后续测试
         with (
-            patch.object(mod, "handle_yfinance", mod.handle_yfinance),
-            patch.object(mod, "handle_akshare", mod.handle_akshare),
+            patch.object(mod, "HMAC_SECRET", HMAC_SECRET),
+            patch.object(mod, "handle_yfinance", AsyncMock(return_value={"symbol": "AAPL", "ok": True})),
+            patch.object(mod, "handle_akshare", AsyncMock(return_value={"symbol": "000001", "ok": True})),
         ):
             yield TestClient(mod.app)
 
@@ -87,7 +85,8 @@ class TestProxyCapabilitiesInDataService:
     def test_unknown_source_rejected(self, client):
         body = '{"source":"bogus","action":"QUOTE","params":{}}'
         r = client.post("/api/v1/data", content=body, headers=_sign(body))
-        assert r.status_code == 400
+        # bogus 不在 DS_CAPABILITIES 默认集 -> 能力未启用, 返回 503 (非 400)
+        assert r.status_code == 503
 
 
 class TestHmacEnforcement:
