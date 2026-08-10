@@ -16,7 +16,6 @@ name: quant-agent-master
 services:
   redis:
     image: redis:7-alpine
-    container_name: quant_redis
     restart: always
     # 💡 SEC-14: Redis 仅绑定 Tailscale 内网 IP + loopback，不暴露公网。
     # 多绑定原因: TAILSCALE_IP 非空时会吞掉 127.0.0.1 回退 (见 postgres 段同款坑),
@@ -46,7 +45,6 @@ services:
 
   postgres:
     image: pgvector/pgvector:pg15
-    container_name: quant_postgres
     restart: always
     environment:
       - POSTGRES_USER=${DB_USER:-quant_admin}
@@ -78,7 +76,6 @@ services:
   quant-agent:
     image: ghcr.io/songlinhe5-lab/quant-agent:latest
     pull_policy: missing
-    container_name: quant_app
     command: python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1 --loop uvloop --http httptools --timeout-keep-alive 65 --limit-concurrency 5000 --no-access-log
     restart: always
     depends_on:
@@ -136,7 +133,6 @@ services:
   quant-worker:
     image: ghcr.io/songlinhe5-lab/quant-agent:latest
     pull_policy: missing
-    container_name: quant_worker
     command: python backend/worker.py
     restart: always
     depends_on:
@@ -175,7 +171,6 @@ services:
   # 绑定 127.0.0.1 (CI push) + TAILSCALE_IP (bj 节点 pull)。Tailscale 网络本身是隔离的 tailnet。
   registry:
     image: registry:2
-    container_name: quant_registry
     restart: always
     ports:
       - "127.0.0.1:5000:5000"
@@ -200,7 +195,6 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.45.0
-    container_name: quant_prometheus
     restart: always
     profiles: [monitoring]
   # 💡 OPS-02: Prometheus 仅 Tailscale 内网访问，不对公网暴露
@@ -231,7 +225,6 @@ services:
 
   grafana:
     image: grafana/grafana:9.5.3
-    container_name: quant_grafana
     restart: always
     profiles: [monitoring]
   # 💡 OPS-02: Grafana 仅 Tailscale 内网访问，不对公网暴露

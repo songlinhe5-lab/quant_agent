@@ -332,6 +332,24 @@ jobs:
             # ⏱️ 主节点拉取加总超时保护，防止 GHCR 拉取慢/重试无限卡死 CI
             timeout 900 docker compose -f docker-compose.master.yml --env-file .env pull \
               || { echo "❌ 主节点 docker compose pull 超时或失败 (900s)"; exit 1; }
+
+            # ── 清理旧项目名 (quant-agent) 遗留的硬编码容器名孤儿 ──
+            # 历史坑: 旧版本 compose 用固定 container_name (quant_registry/quant_postgres/...)，
+            # 手动救急 up -d registry 时以旧项目名 quant-agent 创建了 quant_registry，占用 5000 端口。
+            # 新版 compose 删除了 container_name，容器自动命名为 quant-agent-master_registry_1，
+            # 但若旧 quant_registry 仍存在会占用 127.0.0.1:5000 与 TAILSCALE_IP:5000 → 新 registry 端口冲突起不来。
+            # --remove-orphans 只能清当前项目孤儿，清不掉不同项目名的旧容器，故此处显式按旧前缀清理。
+            # 安全边界: 仅匹配 quant_ 前缀 (旧硬编码名)，新项目容器名含 quant-agent-master_ 前缀不会被误删。
+            OLD_ORPHANS=$(docker ps -a --filter name='quant_' --format '{{.Names}}' | grep -E '^quant_(registry|postgres|redis|app|worker|prometheus|grafana)$' || true)
+            if [ -n "${OLD_ORPHANS}" ]; then
+              echo "🧹 检测到旧项目名 (quant-agent) 遗留容器，清理以避免端口/命名冲突:"
+              echo "${OLD_ORPHANS}"
+              echo "${OLD_ORPHANS}" | xargs -r docker rm -f
+              echo "✅ 旧孤儿容器已清理"
+            else
+              echo "✅ 无旧项目名孤儿容器，跳过清理"
+            fi
+
             docker compose -f docker-compose.master.yml --env-file .env up -d --remove-orphans
             docker image prune -f
 
@@ -347,23 +365,26 @@ jobs:
             # 历史坑: registry 容器未运行 → 北京节点经内网 pull 5000 端口吃 connection refused，
             # 错误被推到 bj 节点才暴露，排查极慢。此处主节点 deploy 后即地 fail-fast 等待。
             # restart:always 已配置，但 compose up 后容器可能仍在启动 / 端口尚未 bind。
+            # 🔧 动态获取 registry 容器 ID (不再硬编码 quant_registry，随 compose name: 字段自动隔离)
+            REGISTRY_CID=$(docker compose -f docker-compose.master.yml --env-file .env ps -q registry)
             echo "🔍 等待 registry 容器就绪 (最多 30s)..."
             for i in $(seq 1 30); do
-              if docker ps --filter name=quant_registry --filter status=running --format '{{.Names}}' | grep -q quant_registry; then
-                echo "✅ registry 容器已运行"
+              if [ -n "${REGISTRY_CID}" ] && docker ps --filter id="${REGISTRY_CID}" --filter status=running --format '{{.ID}}' | grep -q "${REGISTRY_CID}"; then
+                echo "✅ registry 容器已运行 (${REGISTRY_CID})"
                 break
               fi
               echo "  ⏳ 等待 registry 容器启动... ($i/30)"
               sleep 1
+              REGISTRY_CID=$(docker compose -f docker-compose.master.yml --env-file .env ps -q registry)
             done
-            if ! docker ps --filter name=quant_registry --filter status=running --format '{{.Names}}' | grep -q quant_registry; then
+            if [ -z "${REGISTRY_CID}" ] || ! docker ps --filter id="${REGISTRY_CID}" --filter status=running --format '{{.ID}}' | grep -q "${REGISTRY_CID}"; then
               echo "❌ registry 容器未能在 30s 内启动！请检查主节点:"
-              echo "   docker logs quant_registry"
+              echo "   docker compose -f docker-compose.master.yml --env-file .env logs registry"
               echo "   docker compose -f docker-compose.master.yml --env-file .env up -d registry"
               exit 1
             fi
             # 再确认 5000 端口确实在监听 (loopback 即可，CI 主节点 push 用 localhost:5000)
-            if ! (ss -tlnp 2>/dev/null | grep -q ':5000' || docker exec quant_registry wget -qO- http://localhost:5000/v2/ >/dev/null 2>&1); then
+            if ! (ss -tlnp 2>/dev/null | grep -q ':5000' || docker exec "${REGISTRY_CID}" wget -qO- http://localhost:5000/v2/ >/dev/null 2>&1); then
               echo "❌ registry 容器已运行但 5000 端口未监听！请检查端口绑定 (TAILSCALE_IP/loopback)。"
               echo "   ss -tlnp | grep 5000   # 应见 127.0.0.1:5000 与 \${TAILSCALE_IP}:5000"
               exit 1
@@ -398,7 +419,7 @@ jobs:
             # 前置: registry-config.yml 已开启 storage.delete.enabled: true，否则 GC 仅 dry-run 不释放空间。
             # --delete-untagged 一并清掉 push 中断/版本切换残留的无 tag 层。
             echo "🧹 push 完成，执行 registry 垃圾回收 (GC)..."
-            docker exec quant_registry bin/registry garbage-collect --delete-untagged=true /etc/registry/config.yml \
+            docker exec "${REGISTRY_CID}" bin/registry garbage-collect --delete-untagged=true /etc/registry/config.yml \
               || echo "⚠️ registry GC 失败（非致命，下次部署或 cron 重试），registry 仍可正常服务"
             echo "✅ registry GC 完成"
 
@@ -468,7 +489,6 @@ jobs:
             creds: true
             compose: docker-compose.node-bj.yml
             env-file: .env.data-node
-            container: quant-data-subservice-node-bj
           # 美西从节点1 (VPS_S2)：纯 yfinance → datasource-us-aux
           - node: s2
             host-secret: VPS_S2_HOST
@@ -483,7 +503,6 @@ jobs:
             tz: America/Los_Angeles
             compose: docker-compose.node-s2.yml
             env-file: .env.data-node
-            container: quant-data-subservice-node-s2
           # 美西从节点2 (VPS_S3)：纯 yfinance → datasource-us-aux
           - node: s3
             host-secret: VPS_S3_HOST
@@ -498,7 +517,6 @@ jobs:
             tz: America/Los_Angeles
             compose: docker-compose.node-s3.yml
             env-file: .env.data-node
-            container: quant-data-subservice-node-s3
           # 美西从节点3 (VPS_S4)：纯 yfinance → datasource-us-aux
           - node: s4
             host-secret: VPS_S4_HOST
@@ -513,7 +531,6 @@ jobs:
             tz: America/Los_Angeles
             compose: docker-compose.node-s4.yml
             env-file: .env.data-node
-            container: quant-data-subservice-node-s4
     steps:
       - uses: actions/checkout@v5
 
@@ -534,7 +551,6 @@ jobs:
           VPS_PORT: ${{ secrets[matrix.port-secret] || '22' }}
           COMPOSE_FILE: ${{ matrix.compose }}
           ENV_FILE: ${{ matrix.env-file }}
-          CONTAINER: ${{ matrix.container }}
           # ---- 注入到目标节点 .env 的变量 ----
           DS_NODE_ID: ${{ matrix.ds-id }}
           DS_REGION: ${{ matrix.ds-region }}
@@ -790,6 +806,21 @@ jobs:
             # ⏱️ 拉取/启动加总超时保护，防止内网 registry 不通导致 docker compose pull 无限重试卡死 CI
             timeout 600 docker compose -f ${{ matrix.compose }} --env-file ${{ matrix.env-file }} pull \
               || { echo "❌ docker compose pull 超时或失败 (600s)，疑似主节点 registry 不可达或 Tailscale 未连通"; exit 1; }
+
+            # ── 清理旧项目名 (quant-agent) 遗留的硬编码容器名孤儿 ──
+            # 历史坑: 旧版 node compose 用固定 container_name (quant-data-subservice-node-<x>)，
+            # 旧容器以旧项目名 quant-agent 创建，占用同名且与新项目名 quant-agent-node-<x> 的容器命名冲突。
+            # --remove-orphans 只能清当前项目孤儿，清不掉不同项目名的旧容器，故此处按旧前缀精准清理。
+            OLD_NODE_ORPHANS=$(docker ps -a --filter name='quant-data-subservice-node-' --format '{{.Names}}' | grep -E '^quant-data-subservice-node-(s1|bj|s2|s3|s4)$' || true)
+            if [ -n "${OLD_NODE_ORPHANS}" ]; then
+              echo "🧹 检测到旧项目名 (quant-agent) 遗留节点容器，清理以避免命名冲突:"
+              echo "${OLD_NODE_ORPHANS}"
+              echo "${OLD_NODE_ORPHANS}" | xargs -r docker rm -f
+              echo "✅ 旧节点孤儿容器已清理"
+            else
+              echo "✅ 无旧项目名节点孤儿容器，跳过清理"
+            fi
+
             docker compose -f ${{ matrix.compose }} --env-file ${{ matrix.env-file }} up -d --remove-orphans
             docker image prune -f
           EOF
