@@ -42,10 +42,21 @@ jobs:
           flags: frontend
           token: ${{ secrets.CODECOV_TOKEN }}
 
+  # ── Compose 卫生校验 (复用 backend 的 reusable workflow) ──
+  # frontend 若引入 docker-compose (如 e2e 测试)，在此传入自己的 compose 列表即可复用同一套校验。
+  # fail-on-missing=false: 当前 frontend 尚未有 compose 文件，文件不存在时跳过而非失败 (占位接入点)。
+  # 未来新增 compose 时把 fail-on-missing 改为 true 即可强制校验。
+  compose-hygiene:
+    name: 🛡️ Compose hygiene (frontend)
+    uses: ./.github/workflows/compose-hygiene.yml
+    with:
+      compose-files: "docker-compose.e2e.yml"
+      fail-on-missing: false
+
   build:
     name: Build & Lint
     runs-on: ubuntu-latest
-    needs: [test]
+    needs: [test, compose-hygiene]
     # 💡 只在 develop push 时运行（PR 不运行）
     if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
 

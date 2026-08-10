@@ -14,9 +14,19 @@ env:
 
 jobs:
   # ----------------------------------------------------------------
+  # Compose 文件卫生校验 (reusable workflow，供所有 build/deploy job 共用)
+  #   1) 拒绝连字符版仓库名 (quant-agent- → quant_agent-)
+  #   2) 所有 compose 必须显式声明顶级 name: 字段 (防 master/node 互相 orphan)
+  # ----------------------------------------------------------------
+  compose-hygiene:
+    name: 🛡️ Compose hygiene check
+    uses: ./.github/workflows/compose-hygiene.yml
+
+  # ----------------------------------------------------------------
   # 构建主应用镜像 (US-MASTER)
   # ----------------------------------------------------------------
   build:
+    needs: [compose-hygiene]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -117,6 +127,7 @@ jobs:
   #   us-aux  : 美西辅助节点 (仅 yfinance)
   # ----------------------------------------------------------------
   build-data-subservice:
+    needs: [compose-hygiene]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -132,22 +143,6 @@ jobs:
             tag: us-aux
     steps:
       - uses: actions/checkout@v5
-
-      - name: 🛡️ Static guard - reject hyphenated registry name in compose files
-        run: |
-          COMPOSES="docker-compose.node-s1.yml docker-compose.node-bj.yml docker-compose.node-s2.yml docker-compose.node-s3.yml docker-compose.node-s4.yml"
-          BAD=0
-          for f in $COMPOSES; do
-            if grep -q "ghcr.io/songlinhe5-lab/quant-agent-data-subservice" "$f"; then
-              echo "❌ $f 仍含连字符版仓库名 quant-agent-data-subservice，请统一为下划线版 quant_agent-"
-              BAD=1
-            fi
-          done
-          if [ "$BAD" -ne 0 ]; then
-            echo "❌ 检测到连字符版仓库名，中止构建 (防 GHCR pull not found 复发)"
-            exit 1
-          fi
-          echo "✅ 全 5 个 compose 仓库名合规 (下划线版 quant_agent-)"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -179,7 +174,7 @@ jobs:
   deploy-master:
     # 仅在 push 到 main 分支时部署（真正 merge 后）；push develop / PR 均跳过
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [ build, test-backend, build-data-subservice ]
+    needs: [ build, test-backend, build-data-subservice, compose-hygiene ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -344,7 +339,9 @@ jobs:
             # --remove-orphans 可能把 registry 误判为孤儿容器清掉 (compose 版本/项目名不一致时)，
             # 或 up 阶段因端口冲突未成功启动。此处幂等再 up 一次，确保 registry 必然运行，
             # 否则下方等待校验会 fail-fast，不会把空 registry 暴露给北京节点。
-            docker compose -f docker-compose.master.yml --env-file .env up -d registry
+            # 🔧 加固: up 命令本身非零退出时当场 fail，不再静默进入等待循环 (避免 30s 空等且信息模糊)。
+            docker compose -f docker-compose.master.yml --env-file .env up -d registry \
+              || { echo "❌ 主节点 up -d registry 执行失败 (registry 未创建)，中止避免北京节点拉到空 registry"; exit 1; }
 
             # ── 关键加固: 等待 registry 容器就绪并监听 5000 端口 ──
             # 历史坑: registry 容器未运行 → 北京节点经内网 pull 5000 端口吃 connection refused，
@@ -380,15 +377,22 @@ jobs:
             docker tag "${IMAGE}" "${REGISTRY_IMAGE}"
             docker push "${REGISTRY_IMAGE}"
 
-            # 同时把 data-subservice 镜像推到 registry (北京节点经内网拉取)
-            DS_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:latest"
-            DS_REGISTRY_IMAGE="127.0.0.1:5000/quant-agent-data-subservice:latest"
-            docker pull "${DS_IMAGE}" \
-              || { echo "❌ 主节点从 GHCR 拉取 data-subservice 失败，中止"; exit 1; }
-            docker tag "${DS_IMAGE}" "${DS_REGISTRY_IMAGE}"
-            docker push "${DS_REGISTRY_IMAGE}" \
-              || { echo "❌ data-subservice 推送到本机 registry 失败 (磁盘/containerd 问题?)，中止避免北京节点拉到空镜像"; exit 1; }
-            echo "✅ data-subservice 已推送至本机 registry (push 成功即镜像就位，北京节点可经内网拉取)"
+            # 同时把 data-subservice 镜像推到 registry (北京/美西从节点经内网拉取)
+            # ⚠️ 关键修复: 必须按 build-data-subservice 的真实 tag 矩阵 (cn/us/us-aux) 逐个搬运，
+            #    保持原始 tag 不变推入内网 registry。之前只推 :latest，导致 bj(:cn)/s2-s4(:us-aux)
+            #    从内网 registry 拉取时 not found (registry 里只有 :latest)。
+            DS_TAGS="cn us us-aux"
+            for DS_TAG in $DS_TAGS; do
+              DS_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${DS_TAG}"
+              DS_REGISTRY_IMAGE="127.0.0.1:5000/quant-agent-data-subservice:${DS_TAG}"
+              docker pull "${DS_IMAGE}" \
+                || { echo "❌ 主节点从 GHCR 拉取 data-subservice:${DS_TAG} 失败，中止"; exit 1; }
+              docker tag "${DS_IMAGE}" "${DS_REGISTRY_IMAGE}"
+              docker push "${DS_REGISTRY_IMAGE}" \
+                || { echo "❌ data-subservice:${DS_TAG} 推送到本机 registry 失败 (磁盘/containerd 问题?)，中止避免从节点拉到空镜像"; exit 1; }
+              echo "✅ data-subservice:${DS_TAG} 已推送至本机 registry"
+            done
+            echo "✅ data-subservice (cn/us/us-aux) 已全部推送至本机 registry，从节点可经内网拉取"
 
             # ── OPS-03: 每次 push 后回收 registry 垃圾，防止私有 registry 卷无限膨胀 ──
             # 前置: registry-config.yml 已开启 storage.delete.enabled: true，否则 GC 仅 dry-run 不释放空间。
@@ -443,7 +447,7 @@ jobs:
   deploy-data-nodes:
     # 仅在 push 到 main 分支时部署（真正 merge 后）；push develop / PR 均跳过
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [ build-data-subservice, test-data-subservice, deploy-master ]
+    needs: [ build-data-subservice, test-data-subservice, deploy-master, compose-hygiene ]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -733,9 +737,7 @@ jobs:
               # 区分"registry 容器未运行"与"Tailscale 网络不通"两种故障，避免 pull 超时后才暴露且报错模糊。
               REGISTRY_HOST="${{ secrets.VPS_S1_TAILSCALE_IP }}:5000"
               echo "🔍 预检主节点 registry 可达性: http://${REGISTRY_HOST}/v2/"
-              if curl -sS --max-time 10 "http://${REGISTRY_HOST}/v2/" >/dev/null 2>&1; then
-                echo "✅ 主节点 registry 可达 (HTTP 200 on /v2/)，北京节点可经内网拉取"
-              else
+              if ! curl -sS --max-time 10 "http://${REGISTRY_HOST}/v2/" >/dev/null 2>&1; then
                 echo "❌ 主节点 registry 不可达 (http://${REGISTRY_HOST}/v2/ 探测失败)！"
                 echo "   可能原因与排查:"
                 echo "   1) 主节点 registry 容器未运行 → 主节点执行: docker compose -f docker-compose.master.yml --env-file .env up -d registry"
@@ -744,6 +746,20 @@ jobs:
                 echo "   4) 北京节点 docker 未配 insecure-registries → 见上方 CI 提示手动配置"
                 exit 1
               fi
+              echo "✅ 主节点 registry 可达 (HTTP 200 on /v2/)"
+              # 🔍 关键加固: 不仅探 /v2/ 存活，还要验证从节点实际要拉的 tag 真实存在于 registry，
+              #    否则会出现"registry 活但缺 tag"导致 pull 阶段才 not found (历史坑: 主节点只推 :latest 漏推 :cn)。
+              DS_TAG="${{ matrix.ds-tag }}"
+              if ! curl -sS --max-time 10 "http://${REGISTRY_HOST}/v2/quant-agent-data-subservice/tags/list" | grep -q "\"${DS_TAG}\""; then
+                echo "❌ 主节点 registry 内缺失 data-subservice:${DS_TAG}！从节点将拉取 not found。"
+                echo "   排查: 主节点 deploy-master 应已将 cn/us/us-aux 全部推入内网 registry，"
+                echo "   请确认主节点 job 是否成功执行镜像搬运 (grep 'data-subservice:${DS_TAG} 已推送至本机 registry')。"
+                echo "   可手动在主节点执行: docker pull ghcr.io/songlinhe5-lab/quant_agent-data-subservice:${DS_TAG} && docker tag \\"
+                echo "     ghcr.io/songlinhe5-lab/quant_agent-data-subservice:${DS_TAG} 127.0.0.1:5000/quant-agent-data-subservice:${DS_TAG} && \\"
+                echo "     docker push 127.0.0.1:5000/quant-agent-data-subservice:${DS_TAG}"
+                exit 1
+              fi
+              echo "✅ registry 内 data-subservice:${DS_TAG} 已就位，北京节点可经内网拉取"
             fi
 
             # 🧹 部署前自动回收悬空 docker 资源（同主节点），防止历史堆积触发磁盘守卫

@@ -13,6 +13,9 @@
 #   docker compose --env-file .env.data-node -f docker-compose.node-bj.yml up -d
 # =====================================================================
 
+# 显式项目名: 与 master 及其他 node compose 隔离，避免 up --remove-orphans 互相把对方服务当 orphan 清理。
+name: quant-agent-node-bj
+
 x-common-env: &common-env
   TZ: Asia/Shanghai
   PYTHONUNBUFFERED: "1"
