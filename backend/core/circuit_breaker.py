@@ -336,7 +336,7 @@ class CircuitBreaker:
                 entry.state = CircuitState.CLOSED
                 entry.failures = 0
                 entry.last_failure_ts = 0.0
-            logger.info("🔄 [CircuitBreaker] 所有服务熔断器已重置")
+            logger.debug("🔄 [CircuitBreaker] 所有服务熔断器已重置")
 
     def status_snapshot(self) -> dict[str, dict]:
         """获取所有服务的熔断状态快照（供 /health 或监控使用）"""
