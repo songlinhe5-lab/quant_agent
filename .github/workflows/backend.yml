@@ -133,6 +133,22 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: 🛡️ Static guard - reject hyphenated registry name in compose files
+        run: |
+          COMPOSES="docker-compose.node-s1.yml docker-compose.node-bj.yml docker-compose.node-s2.yml docker-compose.node-s3.yml docker-compose.node-s4.yml"
+          BAD=0
+          for f in $COMPOSES; do
+            if grep -q "ghcr.io/songlinhe5-lab/quant-agent-data-subservice" "$f"; then
+              echo "❌ $f 仍含连字符版仓库名 quant-agent-data-subservice，请统一为下划线版 quant_agent-"
+              BAD=1
+            fi
+          done
+          if [ "$BAD" -ne 0 ]; then
+            echo "❌ 检测到连字符版仓库名，中止构建 (防 GHCR pull not found 复发)"
+            exit 1
+          fi
+          echo "✅ 全 5 个 compose 仓库名合规 (下划线版 quant_agent-)"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -201,6 +217,14 @@ jobs:
             curl -sSL -o .env.example "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/.env.example" || echo "⚠️ 拉取 .env.example 失败，首次生成将走兜底"
             curl -sSL -o .env.data-node.example "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/.env.data-node.example" || echo "⚠️ 拉取 .env.data-node.example 失败"
             sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:latest|${IMAGE}|g" docker-compose.master.yml
+            # 🛡️ 静态防复发: 严禁 compose 出现连字符版仓库名 (quant-agent-)，必须统一为下划线版 (quant_agent-)
+            #    否则会再次触发 GHCR pull not found。此扫描在任何 sed 替换前执行，拦截手改回旧名。
+            if grep -q "ghcr.io/songlinhe5-lab/quant-agent-data-subservice" docker-compose.node-s1.yml; then
+              echo "❌ docker-compose.node-s1.yml 仍含连字符版仓库名 quant-agent-data-subservice，请统一为下划线版 quant_agent-，中止"
+              exit 1
+            fi
+            echo "✅ node-s1 compose 仓库名合规 (下划线版 quant_agent-)"
+
             # ⚠️ tag 用 [a-z-]* 通配 (与 deploy-data-nodes 一致)，避免硬编码 tag 静默失配
             #    (sed 找不到模式不报错、返回 0)，导致 compose 保留原地址最终 pull not found。
             #    仓库名以 compose 内的 quant_agent-data-subservice 为准 (= IMAGE_NAME + 后缀)。
@@ -681,6 +705,15 @@ jobs:
               exit 1
             fi
             echo "✅ compose 文件已就位: ${{ matrix.compose }}"
+
+            # 🛡️ 静态防复发: 严禁任何 node compose 出现连字符版仓库名 (quant-agent-)，必须统一为下划线版 (quant_agent-)
+            #    否则会再次触发 GHCR pull not found。此扫描在任何 sed 替换前执行，拦截手改回旧名。
+            if grep -q "ghcr.io/songlinhe5-lab/quant-agent-data-subservice" ${{ matrix.compose }}; then
+              echo "❌ ${{ matrix.compose }} 仍含连字符版仓库名 quant-agent-data-subservice，请统一为下划线版 quant_agent-，中止"
+              exit 1
+            fi
+            echo "✅ ${{ matrix.compose }} 仓库名合规 (下划线版 quant_agent-)"
+
             sed -i "s|ghcr.io/songlinhe5-lab/quant_agent-data-subservice:[a-z-]*|${IMAGE}|g" ${{ matrix.compose }}
 
             # 🔍 替换后校验 (全节点): sed 失配时当场中止，避免拖到 docker compose pull 才暴露
