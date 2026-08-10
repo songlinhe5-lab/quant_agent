@@ -676,7 +676,7 @@ class TestFetchAkshareStaleDegrade:
         router = DataSourceRouter()
         router._enabled = True
         node = DataSourceNode(name="akshare_remote", url="http://akshare", status="healthy")
-        monkeypatch.setattr(router, "_select_node", lambda s: node)
+        router._nodes["akshare_remote"] = node  # fetch_akshare 走 _nodes.get("akshare_remote")
         monkeypatch.setattr(
             router,
             "_send_request",
@@ -724,9 +724,6 @@ class TestFmpFundamentalInfoRouting:
         node = DataSourceNode(name="fmp_master", url="http://fmp", status="healthy")
         router._nodes["fmp_master"] = node
         captured = {}
-        # 屏蔽 success 分支的 redis 存档 (避免 asyncio.run 嵌套 + 真实 redis)
-        monkeypatch.setattr(router, "_save_fmp_profile", AsyncMock())
-        monkeypatch.setattr(router, "_save_fmp_cache", AsyncMock())
 
         async def fake_send(n, source, payload):
             captured["action"] = payload["action"]

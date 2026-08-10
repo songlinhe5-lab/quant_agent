@@ -124,7 +124,7 @@ class TestFinnhubFetchRouting:
         src = FinnhubDataSource()
         result = await src.fetch("earnings", {})
         assert result.status == ResultStatus.ERROR
-        assert result.error.code == "FINNHUB_ROUTER_ERROR"
+        assert result.error.code == "FINNHUB_FETCH_FAILED"
 
 
 class TestFinnhubHealth:

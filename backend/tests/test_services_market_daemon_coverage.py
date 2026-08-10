@@ -130,13 +130,14 @@ async def test_earnings_alert_daemon_triggers_notification(monkeypatch):
 
     import backend.services.ai_narrator.llm_service as llm_mod
     import backend.services.alert.notification as notif_mod
-    from backend.core.redis_client import redis_client as rc
 
     with pytest.MonkeyPatch().context() as m:
+        # 显式 patch daemon 模块级 redis_client（覆盖 conftest 的 mock_rc，避免真实
+        # redis.Redis 实例在无 server 环境下的连接异常），并保留 .set 返回 True。
+        m.setattr(md, "redis_client", AsyncMock(set=AsyncMock(return_value=True)))
         m.setattr("asyncio.sleep", _make_sleep_that_stops_after_first())
         m.setattr(notif_mod, "notification_service", FakeNotify())
         m.setattr(llm_mod, "llm_service", FakeLLM())
-        m.setattr(rc, "set", AsyncMock(return_value=True))
         m.setattr(md, "_finnhub_fetch", AsyncMock(return_value=earnings))
 
         task = asyncio.ensure_future(md._earnings_alert_daemon())

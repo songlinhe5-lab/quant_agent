@@ -52,17 +52,16 @@ class TestFutuNodeRegistered:
 
 
 class TestFetchFutuDisabledDegradesLocal:
-    """router 禁用 -> 降级本地 futu_service.get_quote。"""
+    """BE-ARCH-07b/2026-08-07: 仅远程，移除本地 futu_service 降级通道。
+    router 禁用 -> 直接返回 error（不再降级本地 SDK）。"""
 
     @pytest.mark.asyncio
-    async def test_disabled_uses_local_futu_service(self):
+    async def test_disabled_returns_error_no_local_fallback(self):
         with patch.dict(os.environ, {"DATA_SOURCE_ROUTER_ENABLED": "false"}):
             r = DataSourceRouter()
-        with patch("backend.services.futu.futu_service") as mock_fs:
-            mock_fs.get_quote.return_value = {"status": "success", "data": {"last_price": 10}}
-            out = await r.fetch_futu("QUOTE", ticker="HK.00700")
-        mock_fs.get_quote.assert_called_once_with("HK.00700")
-        assert out["status"] == "success"
+        out = await r.fetch_futu("QUOTE", ticker="HK.00700")
+        assert out["status"] == "error"
+        assert "local SDK disabled" in out["message"]
 
 
 class TestFetchFutuRemotePinnedMaster:
@@ -99,40 +98,34 @@ class TestFetchFutuRemotePinnedMaster:
         assert sent_payload["action"] == "SNAPSHOT"
 
     @pytest.mark.asyncio
-    async def test_remote_failure_degrades_local(self, remote_router):
+    async def test_remote_failure_returns_error_no_local(self, remote_router):
         fail_resp = {"status": "error", "message": "subservice down"}
-        with (
-            patch.object(remote_router, "_send_request", new=AsyncMock(return_value=fail_resp)),
-            patch("backend.services.futu.futu_service") as mock_fs,
-        ):
-            mock_fs.get_quote.return_value = {"status": "success", "from": "local"}
+        with patch.object(remote_router, "_send_request", new=AsyncMock(return_value=fail_resp)):
             out = await remote_router.fetch_futu("QUOTE", ticker="HK.00700")
-        mock_fs.get_quote.assert_called_once_with("HK.00700")
-        assert out["from"] == "local"
+        assert out["status"] == "error"
+        assert "local SDK disabled" in out["message"]
 
     @pytest.mark.asyncio
-    async def test_remote_exception_degrades_local(self, remote_router):
-        with (
-            patch.object(remote_router, "_send_request", new=AsyncMock(side_effect=RuntimeError("boom"))),
-            patch("backend.services.futu.futu_service") as mock_fs,
-        ):
-            mock_fs.get_quote.return_value = {"status": "success", "from": "local"}
+    async def test_remote_exception_returns_error_no_local(self, remote_router):
+        with patch.object(remote_router, "_send_request", new=AsyncMock(side_effect=RuntimeError("boom"))):
             out = await remote_router.fetch_futu("QUOTE", ticker="HK.00700")
-        assert out["from"] == "local"
+        assert out["status"] == "error"
+        assert "local SDK disabled" in out["message"]
 
 
 class TestFetchFutuLocalBranch:
-    """router 启用但主节点不健康 -> 直接本地降级。"""
+    """BE-ARCH-07b: router 启用但主节点不健康 -> 直接返回 error（无本地降级）。"""
 
     @pytest.mark.asyncio
-    async def test_unhealthy_master_uses_local(self, remote_router):
+    async def test_unhealthy_master_returns_error(self, remote_router):
         remote_router._nodes["futu_master"].status = "unhealthy"
-        with (
-            patch.object(remote_router, "_send_request", new=AsyncMock()) as mock_send,
-            patch("backend.services.futu.futu_service") as mock_fs,
-        ):
-            mock_fs.get_history.return_value = {"status": "success", "from": "local"}
+        # 源码语义: 节点不健康仍会发起远程请求（由 router 层熔断/降级处理），
+        # 远程失败后返回 error（无本地 SDK 降级兜底）。
+        with patch.object(
+            remote_router, "_send_request", new=AsyncMock(return_value={"status": "error", "message": "node down"})
+        ) as mock_send:
             out = await remote_router.fetch_futu("HISTORY", ticker="HK.00700", ktype="K_DAY", num=60)
-        mock_send.assert_not_awaited()
-        mock_fs.get_history.assert_called_once()
-        assert out["from"] == "local"
+        mock_send.assert_awaited_once()
+        assert out["status"] == "error"
+        # 远程失败后回退到统一 error 文案（含 local SDK disabled 说明，无本地兜底）
+        assert "remote node failed" in out["message"]
