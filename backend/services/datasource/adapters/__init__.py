@@ -67,7 +67,11 @@ def ensure_all_datasources_registered() -> list[str]:
         logger.warning(f"[Registry] AKShare 注册失败: {e}")
 
     try:
-        from backend.services.tushare.adapter import ensure_tushare_registered
+        # 💡 FIX-276: 改用远程适配器 (adapters/tushare.py), 与 akshare 对称。
+        # 原 backend.services.tushare.adapter 为本地 SDK 模式, 主节点无 tushare 包时
+        # is_available()=False 跳过注册, 导致看板 list_names() 不含 tushare、健康度看板不显示。
+        # 远程模式无条件注册, 使看板始终感知 tushare_remote 节点 (即使今日无流量)。
+        from backend.services.datasource.adapters.tushare import ensure_tushare_registered
 
         name = ensure_tushare_registered()
         if name:
