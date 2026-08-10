@@ -27,13 +27,16 @@ HMAC_SECRET = "test-subservice-secret"
 def client():
     """导入子服务 app, 注入测试用 HMAC 密钥并 mock 两个 worker。"""
     with patch.dict(os.environ, {"DATA_SOURCE_HMAC_SECRET": HMAC_SECRET}):
+        # patch.object 在退出上下文时自动还原模块全局变量，避免污染后续测试
+        # 注：main 已改为延迟导入，akshare worker 仅在请求时经 __import__ 加载，
+        # 因此 handle_akshare 需 mock 到 worker 模块本身（而非 main 全局属性）。
+        import data_subservice.akshare_worker as akshare_mod
         import data_subservice.main as mod
 
-        # patch.object 在退出上下文时自动还原模块全局变量，避免污染后续测试
         with (
             patch.object(mod, "HMAC_SECRET", HMAC_SECRET),
             patch.object(mod, "handle_yfinance", AsyncMock(return_value={"symbol": "AAPL", "ok": True})),
-            patch.object(mod, "handle_akshare", AsyncMock(return_value={"symbol": "000001", "ok": True})),
+            patch.object(akshare_mod, "handle_akshare", AsyncMock(return_value={"symbol": "000001", "ok": True})),
         ):
             yield TestClient(mod.app)
 
@@ -78,9 +81,9 @@ class TestProxyCapabilitiesInDataService:
         body = '{"source":"akshare","action":"FUND_FLOW","params":{"symbol":"000001"}}'
         r = client.post("/api/v1/data", content=body, headers=_sign(body))
         assert r.status_code == 200
-        import data_subservice.main as mod
+        import data_subservice.akshare_worker as akshare_mod
 
-        mod.handle_akshare.assert_awaited_once_with("FUND_FLOW", {"symbol": "000001"})
+        akshare_mod.handle_akshare.assert_awaited_once_with("FUND_FLOW", {"symbol": "000001"})
 
     def test_unknown_source_rejected(self, client):
         body = '{"source":"bogus","action":"QUOTE","params":{}}'
