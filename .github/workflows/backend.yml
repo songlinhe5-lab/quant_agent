@@ -71,7 +71,7 @@ jobs:
         run: uv sync --all-extras
 
       - name: Run backend unit tests
-        run: uv run pytest backend/tests -p no:cacheprovider --tb=short -q
+        run: uv run pytest backend/tests -p no:cacheprovider --tb=short -q --log-cli-level=WARNING
 
   # ----------------------------------------------------------------
   # 单元回归测试: 数据子服务 data_subservice/tests
@@ -102,7 +102,7 @@ jobs:
 
       - name: Run data_subservice unit tests
         working-directory: data_subservice
-        run: python -m pytest -c pytest.ini --tb=short -q
+        run: python -m pytest -c pytest.ini --tb=short -q --log-cli-level=WARNING
 
   # ----------------------------------------------------------------
   # 构建 data_subservice 镜像 (按节点类型拆分 extra，隔离 SDK 依赖体积)
