@@ -57,7 +57,7 @@ async def diagnose_futu_chain(ticker: str = "HK.00700"):
         "mode": router_obj.current_mode,
         "local_is_available": router_obj._local.is_available,
         "futu_service_status": market_data.status,
-        "conn_mgr_status": market_data.conn_mgr.status,
+        "conn_mgr_status": market_data.conn_mgr.status(),
     }
 
     # Step 1: FutuService.get_quote 端到端

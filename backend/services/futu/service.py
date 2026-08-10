@@ -51,7 +51,6 @@ class _RemoteOnlyPlaceholder:
     暴露"远程代理"语义, 不再持有任何真实连接。
     """
 
-    status = "REMOTE"
     is_available = False
     error_msg = ""
     quote_ctx = None
