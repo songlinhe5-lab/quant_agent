@@ -26,11 +26,17 @@ from data_subservice._internal.logger import logger
 from data_subservice._internal.metrics import registry as _metrics_registry
 from data_subservice._internal.redis_client import redis_client
 from data_subservice._internal.service_registry import ServiceRegistry
-
-# 注意: 各数据源 worker 依赖 tushare/futu 等重型 SDK, 这些 SDK 按架构禁止装在
-# backend 环境, 故改为惰性 import (在 fetch_data 各分支内), 保证 main 模块在无对应
-# SDK 的轻量环境也能被 import (便于子服务单测在缺 SDK 时仍能收集/运行其余用例)。
+from data_subservice.akshare_worker import handle_akshare
+from data_subservice.dbnomics_worker import handle_dbnomics
+from data_subservice.finnhub_worker import handle_finnhub
+from data_subservice.fmp_worker import handle_fmp
+from data_subservice.fred_worker import handle_fred
+from data_subservice.futu_worker import handle_futu
 from data_subservice.nodeinfo import get_node_info
+from data_subservice.rbi_worker import handle_rbi
+from data_subservice.search_worker import handle_search
+from data_subservice.tushare_worker import handle_tushare
+from data_subservice.yfinance_worker import handle_yfinance
 
 load_dotenv()
 
@@ -111,50 +117,30 @@ async def fetch_data(request: Request):
         )
 
     if source == "yfinance":
-        from data_subservice.yfinance_worker import handle_yfinance
-
         result = await handle_yfinance(action, params)
     elif source == "akshare":
-        from data_subservice.akshare_worker import handle_akshare
-
         result = await handle_akshare(action, params)
     elif source == "tushare":
-        from data_subservice.tushare_worker import handle_tushare
-
         result = await handle_tushare(action, params)
     elif source == "fmp":
-        from data_subservice.fmp_worker import handle_fmp
-
         result = await handle_fmp(action, params)
     elif source == "finnhub":
         # QUOTE/COMPANY_NEWS/MARKET_NEWS/EARNINGS/ECONOMIC_CALENDAR/INSIDER_TRADING/STOCK_HISTORY
-        from data_subservice.finnhub_worker import handle_finnhub
-
         result = await handle_finnhub(action, params)
     elif source == "fred":
         # MACRO_SERIES/ECONOMIC_CALENDAR
-        from data_subservice.fred_worker import handle_fred
-
         result = await handle_fred(action, params)
     elif source == "dbnomics":
         # ECONOMIC_CALENDAR
-        from data_subservice.dbnomics_worker import handle_dbnomics
-
         result = await handle_dbnomics(action, params)
     elif source == "rbi":
         # ECONOMIC_CALENDAR
-        from data_subservice.rbi_worker import handle_rbi
-
         result = await handle_rbi(action, params)
     elif source in ("tavily", "bocha", "jina"):
         # SEARCH
-        from data_subservice.search_worker import handle_search
-
         result = await handle_search(source, action, params)
     elif source == "futu":
         # Futu 依赖本地 OpenD TCP，仅声明 DS_CAPABILITIES 含 futu 的节点（主节点）响应
-        from data_subservice.futu_worker import handle_futu
-
         result = await handle_futu(action, params)
     else:
         raise HTTPException(status_code=400, detail=f"未知数据源: {source}")
