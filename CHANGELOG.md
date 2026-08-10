@@ -5,6 +5,16 @@
 
 ---
 
+## [0.5.0] — 2026-08-10 · 多节点部署稳定性根治
+
+### Fixed
+- **CI 部署容器名冲突根治**: 删除 master / 全部 node compose 硬编码 `container_name`,改由 compose `name:` 字段自动隔离,消除旧项目名孤儿容器占位冲突 (#269)
+- **registry 就绪判活修复**: 等待循环改用 `docker inspect -f '{{.State.Running}}'` 判活,绕开 `docker ps --filter id=<短ID>` 匹配失效导致的 30s 误报失败 (#270)
+- **node-s1 端口占用自愈**: 主节点手动 `up node-s1` 前清理旧项目名容器孤儿,释放 8001 端口 (#271)
+- **北京节点 registry pull not found 根治**: insecure-registries 改为 `docker info` 校验 daemon 实际已加载并强制重启生效;registry GC 移除 `--delete-untagged=true`,避免误删从节点待拉取的 tag blob (#272)
+
+---
+
 ## [Unreleased] — 开发中
 
 ### Added
