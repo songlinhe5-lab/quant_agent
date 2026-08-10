@@ -1,12 +1,29 @@
 name: Compose Hygiene Check (Reusable)
 
-# 可复用工作流: 扫描所有 docker-compose 文件，强制两项卫生约束:
+# 可复用工作流: 扫描传入的 docker-compose 文件列表，强制两项卫生约束:
 #   1) 仓库名必须用下划线版 (quant_agent-)，拒绝连字符版 (quant-agent-) —— 防 GHCR pull not found 复发
-#   2) 所有 compose 必须显式声明顶级 name: 字段 —— 防 master/node 共用默认项目名互相 orphan 清理
-# 供 backend.yml 的 build / deploy 各 job 共用，避免校验逻辑散落多处分裂。
+#   2) 所有 compose 必须显式声明顶级 name: 字段 —— 防共用默认项目名互相 orphan 清理
+# 供任意 workflow 调用 (backend 默认校验 6 个节点 compose；frontend 可传入自己的 compose 列表复用)。
 
 on:
   workflow_call:
+    inputs:
+      compose-files:
+        description: '空格分隔的 compose 文件路径列表 (相对仓库根)'
+        required: false
+        type: string
+        default: >-
+          docker-compose.master.yml
+          docker-compose.node-s1.yml
+          docker-compose.node-bj.yml
+          docker-compose.node-s2.yml
+          docker-compose.node-s3.yml
+          docker-compose.node-s4.yml
+      fail-on-missing:
+        description: '若 compose 文件不存在是否失败 (默认 true)'
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   compose-hygiene:
@@ -15,15 +32,21 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Scan all compose files
+      - name: Scan compose files
         shell: bash
+        env:
+          COMPOSE_FILES: ${{ inputs.compose-files }}
+          FAIL_ON_MISSING: ${{ inputs.fail-on-missing }}
         run: |
-          COMPOSES="docker-compose.master.yml docker-compose.node-s1.yml docker-compose.node-bj.yml docker-compose.node-s2.yml docker-compose.node-s3.yml docker-compose.node-s4.yml"
           BAD=0
-          for f in $COMPOSES; do
+          for f in $COMPOSE_FILES; do
             if [ ! -f "$f" ]; then
-              echo "❌ $f 不存在，中止"
-              BAD=1
+              if [ "$FAIL_ON_MISSING" = "true" ]; then
+                echo "❌ $f 不存在，中止"
+                BAD=1
+              else
+                echo "⚠️ $f 不存在，跳过 (fail-on-missing=false)"
+              fi
               continue
             fi
             # 1) 拒绝连字符版仓库名 (防 GHCR pull not found)
@@ -31,9 +54,9 @@ jobs:
               echo "❌ $f 仍含连字符版仓库名 quant-agent-data-subservice，请统一为下划线版 quant_agent-"
               BAD=1
             fi
-            # 2) 必须显式声明顶级 name: 字段，隔离 compose 项目名 (防 master/node 互相 orphan 清理)
+            # 2) 必须显式声明顶级 name: 字段，隔离 compose 项目名 (防互相 orphan 清理)
             if ! grep -qE '^name:' "$f"; then
-              echo "❌ $f 缺少顶级 name: 字段 (默认项目名会导致 master/node 互相 orphan，须显式声明如 name: quant-agent-node-s1)"
+              echo "❌ $f 缺少顶级 name: 字段 (默认项目名会导致不同 compose 互相 orphan，须显式声明如 name: quant-agent-node-s1)"
               BAD=1
             fi
           done
