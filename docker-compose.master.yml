@@ -99,6 +99,8 @@ services:
       # 导致 Connection refused、服务 unhealthy)。8001(YF 子服务)/OpenD 仍需出容器访问宿主,保留 host.docker.internal。
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      # 必须与下方 redis 容器的 --requirepass 一致，否则主服务用空密码连被拒 (invalid username-password)
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-quant_redis_secret_2026}
       - QUANT_ENV=production
       - OTEL_ENABLED=false
       - DATABASE_URL=postgresql://${DB_USER:-quant_admin}:${DB_PASSWORD:-quant_pg_secret_2026}@postgres:5432/${DB_NAME:-quant_agent_db}
@@ -153,6 +155,8 @@ services:
       # 💡 FIX-273: 同 quant-agent,容器间通信走内部服务名 redis/postgres,避免绕 docker0 网关被拒。
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      # 必须与 redis 容器的 --requirepass 一致，否则 worker 用空密码连被拒 (invalid username-password)
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-quant_redis_secret_2026}
       - QUANT_ENV=production
       - OTEL_ENABLED=false
       # bridge 模式下经 host.docker.internal 访问宿主 loopback 上的 OpenD
