@@ -420,9 +420,11 @@ jobs:
 
             # ── OPS-03: 每次 push 后回收 registry 垃圾，防止私有 registry 卷无限膨胀 ──
             # 前置: registry-config.yml 已开启 storage.delete.enabled: true，否则 GC 仅 dry-run 不释放空间。
-            # --delete-untagged 一并清掉 push 中断/版本切换残留的无 tag 层。
-            echo "🧹 push 完成，执行 registry 垃圾回收 (GC)..."
-            docker exec "${REGISTRY_CID}" bin/registry garbage-collect --delete-untagged=true /etc/registry/config.yml \
+            # ⚠️ 严禁 --delete-untagged=true: 从节点 (bj/s2-s4) 尚未 pull 时，GC 可能把刚 push 的
+            #    cn/us/us-aux tag 引用的 blob 当 untagged 误删，导致从节点 pull 报 manifest not found。
+            #    仅清 dangling 层 (默认行为)，保留所有有 tag 引用的 blob。
+            echo "🧹 push 完成，执行 registry 垃圾回收 (GC, 仅清 dangling)..."
+            docker exec "${REGISTRY_CID}" bin/registry garbage-collect /etc/registry/config.yml \
               || echo "⚠️ registry GC 失败（非致命，下次部署或 cron 重试），registry 仍可正常服务"
             echo "✅ registry GC 完成"
 
@@ -635,15 +637,40 @@ jobs:
                 echo "⚠️ SUDO_BLOCKED: 当前用户无免密 sudo，无法在 CI 内自动配置 insecure-registries"
               fi
               DAEMON_CFG="/etc/docker/daemon.json"
-              if [ -f "$DAEMON_CFG" ] && grep -q "${{ secrets.VPS_S1_TAILSCALE_IP }}:5000" "$DAEMON_CFG"; then
-                echo "✅ insecure-registries 已配置 (含 ${{ secrets.VPS_S1_TAILSCALE_IP }}:5000)，跳过"
+              TS_REG="${{ secrets.VPS_S1_TAILSCALE_IP }}:5000"
+              # 🔍 校验 daemon 实际是否已将 :5000 当 insecure-registries 加载 (而非仅文件里有字符串)。
+              # 历史坑: daemon.json 写了但从未 systemctl restart docker，运行中的 daemon 仍对 :5000 走 https，
+              #     导致 docker compose pull 报 https://.../manifests/... not found (TLS 失败误导文案)。
+              daemon_has_insecure() {
+                docker info --format '{{json .RegistryConfig.InsecureRegistryCIDRs}} {{json .RegistryConfig.IndexConfigs}}' 2>/dev/null \
+                  | grep -q "$TS_REG"
+              }
+              if [ -f "$DAEMON_CFG" ] && grep -q "$TS_REG" "$DAEMON_CFG" && daemon_has_insecure; then
+                echo "✅ insecure-registries 已在运行 daemon 生效 (含 $TS_REG)，跳过"
               else
-                echo "❌ 北京节点 docker 未配置访问主节点内网 registry 的 insecure-registries，CI 不自动写 root 文件"
-                echo "🛠️ 请在节点上以 root 手动执行一次:"
-                echo "   sudo mkdir -p /etc/docker"
-                echo "   echo '{ \"insecure-registries\": [\"${{ secrets.VPS_S1_TAILSCALE_IP }}:5000\"] }' | sudo tee /etc/docker/daemon.json"
-                echo "   sudo systemctl restart docker"
-                exit 1
+                if ! sudo -n true 2>/dev/null; then
+                  echo "❌ 当前用户无免密 sudo，无法确保 insecure-registries 生效，请在节点手动执行:"
+                  echo "   echo '{ \"insecure-registries\": [\"$TS_REG\"] }' | sudo tee /etc/docker/daemon.json && sudo systemctl restart docker"
+                  exit 1
+                fi
+                # 文件缺配或 daemon 未加载 → 写配置并强制重启使生效
+                if [ ! -f "$DAEMON_CFG" ] || ! grep -q "$TS_REG" "$DAEMON_CFG"; then
+                  echo "🔧 写入 insecure-registries 配置: $TS_REG"
+                  sudo mkdir -p /etc/docker
+                  echo "{ \"insecure-registries\": [\"$TS_REG\"] }" | sudo tee "$DAEMON_CFG" >/dev/null
+                fi
+                echo "🔄 重启 docker daemon 使 insecure-registries 配置生效..."
+                sudo systemctl restart docker
+                # 等待 daemon 就绪且配置真正加载 (最多 30s)
+                for i in $(seq 1 30); do
+                  if daemon_has_insecure; then break; fi
+                  sleep 1
+                done
+                if ! daemon_has_insecure; then
+                  echo "❌ docker daemon 重启后仍未加载 insecure-registries ($TS_REG)，请在节点手动排查 systemctl status docker"
+                  exit 1
+                fi
+                echo "✅ insecure-registries 已写入并重启生效 (含 $TS_REG)"
               fi
             else
               echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
