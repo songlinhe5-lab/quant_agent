@@ -223,7 +223,8 @@ class TestInternalHelpers:
         ):
             result = await _build_cluster_snapshot()
         assert result["mode"] == "standalone"
-        assert "futu" in result["collectors"]
+        # standalone 模式 collectors 仅含 enabled 数据源（不含 futu 独立节点）
+        assert result["collectors"] == ["akshare", "finnhub", "yfinance", "fmp"]
         assert "data_sources" in result
 
     def test_build_metrics_snapshot_success(self):
