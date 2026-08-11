@@ -33,7 +33,10 @@ services:
       <<: *common-env
       DS_NODE_ID: ${DS_NODE_ID:-us-yf-s1}
       DS_REGION: "us-west"
-      DS_CAPABILITIES: "yfinance,futu,finnhub"
+      # ⚠️ 必须走 .env.data-node 的 DS_CAPABILITIES, 切勿硬编码!
+      # 硬编码会覆盖 env_file, 导致主服务路由的 fmp/fred 等未声明源 503 → 节点熔断。
+      # 主节点同机部署(node-s1)标准集: futu,fmp,finnhub,fred,dbnomics,rbi,tavily,bocha,jina,yfinance
+      DS_CAPABILITIES: ${DS_CAPABILITIES}
       DS_NODE_PORT: "8001"
       DS_BASE_URL: "${DS_BASE_URL:-http://127.0.0.1:8001}"
       # 主节点 DataSourceRouter 回调鉴权 (须与主节点 DATA_SOURCE_HMAC_SECRET 一致)
