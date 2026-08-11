@@ -445,7 +445,13 @@ jobs:
               echo "🆕 未检测到 .env.data-node，基于模板首次生成并回填 (node-s1)"
               sed -i "s|^DS_NODE_ID=.*|DS_NODE_ID=us-yf-s1|" .env.data-node
               sed -i "s|^DS_REGION=.*|DS_REGION=us-west|" .env.data-node
-              sed -i "s|^DS_CAPABILITIES=.*|DS_CAPABILITIES=yfinance|" .env.data-node
+              # ⚠️ 主节点同机子服务 (node-s1) 能力集必须含 futu/fmp/finnhub/fred/dbnomics/rbi 等全部源!
+              # 它是主服务 DataSourceRouter 访问 futu/fmp/宏观源的唯一本地出口 (localhost:8001)，
+              # 仅声明 yfinance 会导致这些源 503 -> router 熔断 -> 主服务刷屏"远程节点不可用"。
+              # 历史坑: 此前硬编码为纯 yfinance，引发全线数据源熔断 (见 incident 2026-08-11)。
+              # 与从节点 (matrix.ds-caps) 不同，node-s1 是主节点同机标准集，必须显式列出全部能力。
+              MASTER_DS_CAPS="futu,fmp,finnhub,fred,dbnomics,rbi,tavily,bocha,jina,yfinance"
+              sed -i "s|^DS_CAPABILITIES=.*|DS_CAPABILITIES=${MASTER_DS_CAPS}|" .env.data-node
               sed -i "s|^DS_NODE_PORT=.*|DS_NODE_PORT=8001|" .env.data-node
               sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=127.0.0.1|" .env.data-node
               sed -i "s|^DS_BASE_URL=.*|DS_BASE_URL=http://127.0.0.1:8001|" .env.data-node
