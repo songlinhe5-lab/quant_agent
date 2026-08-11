@@ -55,6 +55,12 @@ RUN sed -i 's|http://deb.debian.org|https://mirrors.aliyun.com|g' /etc/apt/sourc
 # 从 builder 复制 .venv
 COPY --from=builder /app/.venv /app/.venv
 
+# 清理 venv 内字节码缓存与构建残留，缩小镜像 (~20-30MB)
+RUN find /app/.venv -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true && \
+    find /app/.venv -type f -name '*.pyc' -delete 2>/dev/null || true && \
+    find /app/.venv -type d -name '*.egg-info' -exec rm -rf {} + 2>/dev/null || true && \
+    find /app/.venv -type d -name 'tests' -exec rm -rf {} + 2>/dev/null || true
+
 # 物理解耦：子服务完全自包含，仅复制子服务源码（含 _internal 内联的 backend 基础件），
 # 不再 COPY backend/ —— 子服务不依赖 backend 包。
 COPY data_subservice/ ./data_subservice/
