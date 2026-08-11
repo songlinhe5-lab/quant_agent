@@ -42,19 +42,27 @@ services:
       # 主节点 DataSourceRouter 回调鉴权 (须与主节点 DATA_SOURCE_HMAC_SECRET 一致)
       DATA_SOURCE_HMAC_SECRET: ${DATA_SOURCE_HMAC_SECRET}
       DATA_SOURCE_ALLOWED_IPS: ${DATA_SOURCE_ALLOWED_IPS:-10.0.0.0/8,100.64.0.0/10,172.16.0.0/12,192.168.0.0/16,127.0.0.1}
-      # BE-ARCH-08c④: Futu 长连接推送经 Redis 发布到主总线。
-      # 本节点与主服务【同机但分属独立 compose 项目 / 独立 bridge 网络】，容器内既解析不了
-      # 主服务的 `redis` 服务名，也解析不了 `host.docker.internal`(纯 Linux 自定义 bridge 默认不启用)。
-      # 同机部署回退到 127.0.0.1（主 Redis 须监听 loopback / 0.0.0.0）；
+      # BE-ARCH-08c④: Futu 长连接推送 + 节点心跳注册经 Redis 写入主总线。
+      # 本节点与主服务【同机但分属独立 compose 项目 / 独立 bridge 网络】，容器内解析不了
+      # 主服务的 `redis` 服务名。
+      # ⚠️ 严禁设为 127.0.0.1：容器内 127.0.0.1 指向【容器自身】，不是宿主！
+      #    误设会导致心跳写入失败 → 主服务 DataSourceRouter 判本节点离线 → 熔断。
+      # 同机部署统一走 host.docker.internal（下方 extra_hosts: host-gateway 映射到宿主网关）；
       # 跨节点部署请在 .env.data-node 显式覆盖 REDIS_HOST 为主节点 Tailscale IP。
-      REDIS_HOST: ${REDIS_HOST:-127.0.0.1}
+      # 📌 前置条件：宿主 Redis 必须监听 docker0 网关 IP(172.17.0.1)，否则连接被拒。
+      #    配置方式见 docs/06 §8.2「宿主服务对容器暴露规范」。
+      REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-quant_redis_secret_2026}
       REDIS_DB: ${REDIS_DB:-0}
       ENABLE_REDIS_HEARTBEAT: "true"
       # Futu OpenD 运行在【宿主】127.0.0.1:11111。s1 为独立 bridge 网络, 容器内
       # 127.0.0.1 指向容器自身, 连不上宿主 OpenD。必须经 host.docker.internal
-      # (由下方 extra_hosts: host-gateway 映射到宿主) 才能连通。
+      # (由下方 extra_hosts: host-gateway 映射到宿主网关 172.17.0.1) 才能连通。
+      # 📌 前置条件：OpenD 仅监听 127.0.0.1 且【严禁修改 OpenD.xml】(改动会触发富途
+      #    设备二次验证)，故必须在宿主部署 socat 端口转发把 172.17.0.1:11111 转到
+      #    127.0.0.1:11111，并固化为 systemd 服务。
+      #    部署命令见 docs/06 §8.2「宿主服务对容器暴露规范」。
       FUTU_HOST: ${FUTU_HOST:-host.docker.internal}
       FUTU_PORT: ${FUTU_PORT:-11111}
     expose:
