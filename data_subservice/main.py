@@ -86,7 +86,41 @@ async def verify_hmac(
 # ── 路由 ──
 @app.get("/health")
 async def health():
-    return JSONResponse({"status": "healthy", "service": "data-subservice"})
+    # 携带 futu 真实连接状态，避免 /health 成为无意义的死值（node-s1 实战复盘 2026-08-11）
+    futu_state = _futu_status_snapshot()
+    return JSONResponse(
+        {
+            "status": "healthy",
+            "service": "data-subservice",
+            "futu": futu_state,
+        }
+    )
+
+
+def _futu_status_snapshot() -> dict:
+    """读取常驻进程内 futu_service 单例的真实连接状态。
+
+    注意：必须读取模块级单例（与 startup_event 中 connect 的是同一对象），
+    严禁在外部另起进程 import 后读取——那是全新实例，quote_ctx 恒为 None，
+    会误判为 DISCONNECTED（node-s1 实战踩坑 2026-08-11）。
+    """
+    try:
+        from data_subservice.futu_src import futu_service
+
+        return {
+            "status": futu_service.status,
+            "connected": futu_service.quote_ctx is not None,
+            "target": futu_service.target,
+            "error_msg": futu_service.error_msg,
+        }
+    except Exception as e:  # 未声明 futu 能力或模块不可用时
+        return {"status": "unavailable", "connected": False, "target": None, "error_msg": str(e)}
+
+
+@app.get("/futu/status")
+async def futu_status():
+    """暴露常驻进程内 Futu OpenD 连接真实状态，供运维直查（不依赖手动进程误读）。"""
+    return JSONResponse(_futu_status_snapshot())
 
 
 def _declared_capabilities() -> set:
