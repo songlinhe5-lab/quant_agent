@@ -193,12 +193,7 @@ class FutuWatchdog:
                 timeout=self.HEALTH_TIMEOUT,
             )
 
-            # ⚠️ 仅以 futu-api 协议层返回值 ret 判定连通性：
-            # get_global_state 返回 RET_OK 即证明 TCP 握手 + OpenD 协议链路通畅，
-            # 连通性确认已充分，不得因返回体 data 为 None/空而否决（部分 OpenD
-            # 会话态下 get_global_state 返回 (RET_OK, None)，属正常，曾据此误判
-            # 断线触发 close↔connect 死循环，node-s1 复盘 2026-08-11）。
-            if ret != RET_OK:
+            if ret != RET_OK or data is None:
                 logger.debug(f"[FutuWatchdog] 健康探针失败: ret={ret}")
                 self._conn_mgr.status = "DISCONNECTED"
                 return False
