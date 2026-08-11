@@ -802,6 +802,20 @@ class DataSourceRouter:
             logger.warning("[Futu] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy Futu remote node (local SDK disabled)"}
 
+        # DIST-23: 账户/交易类 action 与行情类 action 熔断隔离
+        # 根因(2026-08-11 实战): OpenD 行情已 CONNECTED, 但交易连接(TrdCtx)因未解锁
+        # 返回 error, 此前 ACCOUNT_INFO 失败会触发 futu_master 全局熔断 → 连 QUOTE 行情
+        # 一起被误杀, 监控却只显示行情 CONNECTED, 形成隐蔽故障。
+        # 现约定: 账户/交易类 action 失败不入熔断器失败计数(避免误伤行情), 仅记录日志。
+        _FUTU_TRADE_ACTIONS = {
+            "ACCOUNT_INFO",
+            "PLACE_ORDER",
+            "MODIFY_ORDER",
+            "QUERY_ORDER",
+            "EMERGENCY_LIQUIDATION",
+        }
+        is_trade_action = remote_action in _FUTU_TRADE_ACTIONS
+
         try:
             payload = {
                 "source": "futu",
@@ -813,9 +827,18 @@ class DataSourceRouter:
                 await self._update_node_status(remote_node.name, success=True)
                 # 直接透传子服务信封 (含 status/data 字段)
                 return result
+            if is_trade_action:
+                # 账户/交易类失败: 只记录, 不计入节点熔断, 保护行情通道
+                logger.warning(
+                    f"[Futu] 账户/交易类 action={remote_action} 失败(不触发熔断, 隔离行情通道): {result.get('message')}"
+                )
+                return result
             await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
         except Exception as e:
             logger.warning(f"[Futu] 远程节点失败: {remote_node.name}, {remote_action}, {str(e)}")
+            if is_trade_action:
+                # 同上: 交易类异常不误伤行情熔断
+                return {"status": "error", "message": str(e), "trade_action_skipped_breaker": True}
             await self._update_node_status(remote_node.name, success=False, error=str(e))
 
         logger.warning("[Futu] 远程节点失败（后端已移除本地兜底）")

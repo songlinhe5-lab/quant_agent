@@ -58,7 +58,30 @@ async def handle_futu(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
         elif action == "STOCK_BASICINFO":
             return await futu_service.get_stock_basicinfo(params.get("market", "HK"), params.get("sec_type", "STOCK"))
         elif action == "ACCOUNT_INFO":
-            return await futu_service.get_account_info(params.get("market", "HK"))
+            # DIST-23: OpenD 行情已 CONNECTED 但交易未解锁时, get_account_info 返回
+            # {"error": "fetch_account_info failed: Conn", "locked": True}。
+            # 此前此 error 会沿链路触发主服务 futu_master 全局熔断 → 误杀 QUOTE 行情。
+            # 现约定: 交易未解锁属预期状态(非故障), 返回 success + 空账户数据 +
+            # trade_unlocked:false, 让上层熔断隔离逻辑(router.py)无需兜底也能安全放行行情。
+            info = await futu_service.get_account_info(params.get("market", "HK"))
+            if isinstance(info, dict) and info.get("locked"):
+                logger.warning(
+                    "[Futu Worker] ACCOUNT_INFO: OpenD 交易连接未解锁(locked), "
+                    "返回空账户数据, 不计入故障(不影响行情通道)"
+                )
+                return {
+                    "status": "success",
+                    "source": "futu",
+                    "trade_unlocked": False,
+                    "data": {
+                        "accounts": [],
+                        "total_assets": None,
+                        "cash": None,
+                        "market_value": None,
+                        "note": "OpenD 交易连接未解锁, 账户数据不可用",
+                    },
+                }
+            return info
         elif action == "PLACE_ORDER":
             return await futu_service.place_order(
                 ticker=params.get("ticker"),
