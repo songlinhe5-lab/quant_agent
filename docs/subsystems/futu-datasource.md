@@ -257,6 +257,20 @@ services:
 
 > **注意**：`host.docker.internal` 在 Linux 上需要显式配置 `host-gateway`，否则无法解析。
 
+> ⚠️ **`extra_hosts` 只解决 DNS 解析，不解决监听地址问题。** OpenD 默认仅 bind
+> `127.0.0.1:11111`，容器经网关 `172.17.0.1` 访问仍会 `Connection refused`。
+> 由于**严禁修改 `OpenD.xml`**（改动触发富途设备二次验证：短信 + 人脸），
+> 必须在宿主部署 socat 转发并固化为 systemd：
+>
+> ```bash
+> sudo apt-get install -y socat
+> sudo cp scripts/deploy/docker-gw-forward@.service /etc/systemd/system/
+> sudo systemctl daemon-reload
+> sudo systemctl enable --now docker-gw-forward@11111
+> ```
+>
+> 完整规范见 `docs/06 §8.2.1 宿主服务对容器暴露规范`。
+
 ### 6.3 网络拓扑
 
 ```
