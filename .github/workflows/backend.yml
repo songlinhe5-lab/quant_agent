@@ -424,9 +424,34 @@ jobs:
             #    cn/us/us-aux tag 引用的 blob 当 untagged 误删，导致从节点 pull 报 manifest not found。
             #    仅清 dangling 层 (默认行为)，保留所有有 tag 引用的 blob。
             echo "🧹 push 完成，执行 registry 垃圾回收 (GC, 仅清 dangling)..."
+            # 前置断言: delete.enabled 若被改回 false，GC 会静默退化为只读扫描、一点空间都不释放
+            # (11GB 堆积期间正是无人察觉)。此处显式校验，配置回退时当场告警而非默默失效。
+            if docker exec "${REGISTRY_CID}" grep -qE '^\s*enabled:\s*true' /etc/registry/config.yml 2>/dev/null; then
+              echo "✅ registry delete.enabled 已开启，GC 可真正释放空间"
+            else
+              echo "⚠️ registry-config.yml 未开启 storage.delete.enabled，GC 将不释放任何空间！请检查配置。"
+            fi
             docker exec "${REGISTRY_CID}" bin/registry garbage-collect /etc/registry/config.yml \
               || echo "⚠️ registry GC 失败（非致命，下次部署或 cron 重试），registry 仍可正常服务"
             echo "✅ registry GC 完成"
+
+            # ── 深度 GC 的 cron 自愈安装 ──────────────────────────────────
+            # 上面那轮 GC 刻意不带 --delete-untagged (从节点可能还没 pull 新 tag)，
+            # 因此 *清不掉* tag 被覆盖后残留的旧 manifest —— 那才是卷膨胀到 11GB 的真凶。
+            # 深度回收交给 scripts/registry-gc.sh 在 04:30 低峰期跑 (彼时从节点已完成 pull)。
+            # 历史坑: 该脚本曾硬编码容器名 quant_registry，docker exec 恒失败，GC 从未生效且无人发现。
+            # 现由 CI 每次部署幂等下发脚本 + 装 cron，避免重装机器后又变成"纸面上的 GC"。
+            curl -sSL -o scripts/registry-gc.sh "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/scripts/registry-gc.sh" 2>/dev/null \
+              && chmod +x scripts/registry-gc.sh \
+              && echo "✅ registry-gc.sh 已同步至主节点" \
+              || echo "⚠️ registry-gc.sh 拉取失败，跳过 cron 安装 (不影响本次部署)"
+            if [ -x scripts/registry-gc.sh ]; then
+              GC_CRON="30 4 * * * /opt/quant-agent/scripts/registry-gc.sh >> /var/log/registry-gc.log 2>&1"
+              # 幂等: 先滤掉旧的 registry-gc 行再追加，避免每次部署重复堆积 crontab 条目
+              ( crontab -l 2>/dev/null | grep -v 'registry-gc.sh' || true; echo "${GC_CRON}" ) | crontab - \
+                && echo "✅ 深度 GC cron 已安装 (每日 04:30, 日志 /var/log/registry-gc.log)" \
+                || echo "⚠️ cron 安装失败 (非致命)，可手动执行 scripts/registry-gc.sh"
+            fi
 
             # ── 主节点本地子服务 (node-s1)：与 quant-agent 同机，监听 8001，主服务经 127.0.0.1:8001 直连 ──
             # 复用已拉取的 data-subservice 镜像 (DS_IMAGE 已在上方 pull 就位)
