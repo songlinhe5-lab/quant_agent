@@ -103,15 +103,19 @@ def _futu_status_snapshot() -> dict:
     注意：必须读取模块级单例（与 startup_event 中 connect 的是同一对象），
     严禁在外部另起进程 import 后读取——那是全新实例，quote_ctx 恒为 None，
     会误判为 DISCONNECTED（node-s1 实战踩坑 2026-08-11）。
+
+    FutuService 自身的 status/quote_ctx 仅为兼容旧接口，connect() 时从
+    conn_mgr 同步；真实连接状态以内部 ConnectionManager 为准。
     """
     try:
         from data_subservice.futu_src import futu_service
 
+        conn_mgr = futu_service.conn_mgr
         return {
-            "status": futu_service.status,
-            "connected": futu_service.quote_ctx is not None,
-            "target": futu_service.target,
-            "error_msg": futu_service.error_msg,
+            "status": conn_mgr.status,
+            "connected": conn_mgr.quote_ctx is not None,
+            "target": conn_mgr.target,
+            "error_msg": conn_mgr.error_msg,
         }
     except Exception as e:  # 未声明 futu 能力或模块不可用时
         return {"status": "unavailable", "connected": False, "target": None, "error_msg": str(e)}

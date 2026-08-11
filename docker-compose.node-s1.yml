@@ -13,6 +13,13 @@
 #   cd /opt/quant-agent
 #   cp .env.data-node.example .env.data-node   # 填入主节点 HMAC（须与主 .env 的 DATA_SOURCE_HMAC_SECRET 一致）
 #   docker compose --env-file .env.data-node -f docker-compose.node-s1.yml up -d
+#
+# ⚠️ 本地重建 data-subservice:us 镜像（代码改后必须 rebuild，代码烤进镜像非挂载）：
+#   docker build -f data_subservice/Dockerfile --build-arg DS_EXTRA=datasource-us \
+#     -t ghcr.io/songlinhe5-lab/quant_agent-data-subservice:us .
+#   docker compose -f docker-compose.node-s1.yml --env-file .env.data-node up -d --force-recreate data-subservice
+#   易错点：① 必须 --build-arg DS_EXTRA=datasource-us（默认 cn 缺 futu）② tag 须与下方 image 一致(ghcr.io) ③ up 前加 --env-file .env.data-node
+#   验证：docker exec ... sh -c 'python3 -c "import urllib.request;print(urllib.request.urlopen(\"http://127.0.0.1:8001/futu/status\").read().decode())"'
 # =====================================================================
 
 # 显式项目名: 与 master 及其他 node compose 隔离，避免 up --remove-orphans 互相把对方服务当 orphan 清理。
