@@ -6,7 +6,6 @@ Futu Watchdog 单元测试
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pandas as pd
 import pytest
 
 from data_subservice.futu_src.watchdog import FutuWatchdog, get_watchdog
@@ -145,19 +144,21 @@ class TestFutuWatchdog:
 
     @pytest.mark.asyncio
     async def test_health_check_probe_success_returns_true(self):
-        """探针返回 ret=0 且非空 df 时应判定健康"""
+        """get_global_state 返回 ret=0 且非空 data 时应判定健康
+
+        💡 探针已改为 get_global_state()（不依赖具体标的市场数据），
+        避免休市/无行情权限标的返回空 df 误判断线（node-s1 复盘 2026-08-11）。
+        """
         wd, futu_svc = _make_watchdog()
         futu_svc.conn_mgr.status = "CONNECTED"
         futu_svc.conn_mgr.quote_ctx = MagicMock()
-        futu_svc.conn_mgr.quote_ctx.get_stock_quote.return_value = (0, pd.DataFrame({"code": ["HK.00700"]}))
-
-        with patch("asyncio.to_thread", new=AsyncMock(return_value=(0, pd.DataFrame({"code": ["HK.00700"]})))):
+        with patch("asyncio.to_thread", new=AsyncMock(return_value=(0, {"server_ver": "1.0"}))):
             result = await wd._health_check()
         assert result is True
 
     @pytest.mark.asyncio
     async def test_health_check_probe_failure_returns_false(self):
-        """探针返回非零 ret 时应判定不健康"""
+        """get_global_state 返回非零 ret 时应判定不健康"""
         wd, futu_svc = _make_watchdog()
         futu_svc.conn_mgr.status = "CONNECTED"
         futu_svc.conn_mgr.quote_ctx = MagicMock()
@@ -166,18 +167,8 @@ class TestFutuWatchdog:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_health_check_empty_df_returns_false(self):
-        """探针返回空 DataFrame 时应判定不健康"""
-        wd, futu_svc = _make_watchdog()
-        futu_svc.conn_mgr.status = "CONNECTED"
-        futu_svc.conn_mgr.quote_ctx = MagicMock()
-        with patch("asyncio.to_thread", new=AsyncMock(return_value=(0, pd.DataFrame()))):
-            result = await wd._health_check()
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_health_check_none_df_returns_false(self):
-        """探针返回 None df 时应判定不健康"""
+    async def test_health_check_none_data_returns_false(self):
+        """get_global_state 返回 ret=0 但 data 为 None 时应判定不健康"""
         wd, futu_svc = _make_watchdog()
         futu_svc.conn_mgr.status = "CONNECTED"
         futu_svc.conn_mgr.quote_ctx = MagicMock()
