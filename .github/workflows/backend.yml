@@ -418,15 +418,16 @@ jobs:
             done
             echo "✅ data-subservice (cn/us/us-aux) 已全部推送至本机 registry，从节点可经内网拉取"
 
-            # ── OPS-03: 每次 push 后回收 registry 垃圾，防止私有 registry 卷无限膨胀 ──
-            # 前置: registry-config.yml 已开启 storage.delete.enabled: true，否则 GC 仅 dry-run 不释放空间。
-            # ⚠️ 严禁 --delete-untagged=true: 从节点 (bj/s2-s4) 尚未 pull 时，GC 可能把刚 push 的
-            #    cn/us/us-aux tag 引用的 blob 当 untagged 误删，导致从节点 pull 报 manifest not found。
-            #    仅清 dangling 层 (默认行为)，保留所有有 tag 引用的 blob。
-            echo "🧹 push 完成，执行 registry 垃圾回收 (GC, 仅清 dangling)..."
-            docker exec "${REGISTRY_CID}" bin/registry garbage-collect /etc/registry/config.yml \
-              || echo "⚠️ registry GC 失败（非致命，下次部署或 cron 重试），registry 仍可正常服务"
-            echo "✅ registry GC 完成"
+            # ── OPS-03: 每次 push 后回收 registry 垃圾 + 安装深度 GC cron ──
+            # 逻辑已抽离至 scripts/registry-gc-install.sh (避免单 run 块超 21000 字符上限)。
+            # 保守 GC (仅清 dangling) 由该脚本在 push 后立即执行；
+            # 深度 GC (--delete-untagged) 由 scripts/registry-gc.sh 在 04:30 cron 执行，
+            # 专门清 tag 覆盖残留旧 manifest —— 卷膨胀至 11GB 的真凶。
+            # 详见两脚本头部注释及 PR 说明。
+            curl -sSL -o scripts/registry-gc-install.sh "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/scripts/registry-gc-install.sh" 2>/dev/null \
+              && chmod +x scripts/registry-gc-install.sh \
+              && GC_SCRIPT_REF="${{ github.repository }}/${{ github.sha }}" scripts/registry-gc-install.sh \
+              || echo "⚠️ registry-gc-install.sh 拉取/执行失败 (非致命)，下次部署重试；registry 与 cron 不受影响"
 
             # ── 主节点本地子服务 (node-s1)：与 quant-agent 同机，监听 8001，主服务经 127.0.0.1:8001 直连 ──
             # 复用已拉取的 data-subservice 镜像 (DS_IMAGE 已在上方 pull 就位)
