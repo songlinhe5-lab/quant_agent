@@ -213,7 +213,7 @@ class DataSourceRouter:
         # 支持逗号分隔的多个 URL (多活容灾)。
         # 注意: fetch_akshare/fetch_tushare 按固定单键 'akshare_remote'/'tushare_remote' 取节点，
         #       故 tushare/akshare 远程 URL 仅取首个 (当前拓扑: 北京单节点，无容灾)。
-        yf_primary = os.getenv("YF_PRIMARY_NODE_URL", "http://localhost:8001")
+        yf_primary = os.getenv("YF_PRIMARY_NODE_URL", "http://localhost:8001").strip()
         yf_backups = os.getenv("YF_BACKUP_NODE_URL", "")
         akshare_urls = self._split_urls(os.getenv("AKSHARE_REMOTE_URL", ""))
         tushare_urls = self._split_urls(os.getenv("TUSHARE_REMOTE_URL", ""))
@@ -265,7 +265,7 @@ class DataSourceRouter:
         # Futu OpenD 仅部署在 US-MASTER 主节点 (127.0.0.1:11111), 由主节点 data_subservice
         # 经 DS_CAPABILITIES=futu 持有 OpenD 长连接。主服务经 HTTP 调 source=futu 获取数据,
         # 不持有 SDK。URL 默认 http://localhost:8001 (与主节点 data_subservice 同机)。
-        futu_url = os.getenv("FUTU_REMOTE_URL", "http://localhost:8001")
+        futu_url = os.getenv("FUTU_REMOTE_URL", "http://localhost:8001").strip()
         self._nodes["futu_master"] = DataSourceNode(
             name="futu_master",
             url=futu_url,
@@ -277,7 +277,7 @@ class DataSourceRouter:
         # FMP 数据源连接层 (REST + credit 配额/指标) 已下沉 data_subservice
         # (_internal/fmp + fmp_worker.py)。主服务经 HTTP 调 source=fmp 获取数据,
         # 不持有 FMP REST 客户端。URL 默认 http://localhost:8001 (与主节点 data_subservice 同机)。
-        fmp_url = os.getenv("FMP_REMOTE_URL", "http://localhost:8001")
+        fmp_url = os.getenv("FMP_REMOTE_URL", "http://localhost:8001").strip()
         self._nodes["fmp_master"] = DataSourceNode(
             name="fmp_master",
             url=fmp_url,
@@ -289,7 +289,7 @@ class DataSourceRouter:
         # Finnhub 连接层 (REST + WS tick 订阅) 已下沉 data_subservice (_internal/finnhub + finnhub_worker.py)。
         # 主服务经 HTTP 调 source=finnhub 获取数据，不持有 FinnhubService / WS 订阅。
         # URL 默认 http://localhost:8001 (与主节点 data_subservice 同机)。
-        finnhub_url = os.getenv("FINNHUB_REMOTE_URL", "http://localhost:8001")
+        finnhub_url = os.getenv("FINNHUB_REMOTE_URL", "http://localhost:8001").strip()
         self._nodes["finnhub_master"] = DataSourceNode(
             name="finnhub_master",
             url=finnhub_url,
