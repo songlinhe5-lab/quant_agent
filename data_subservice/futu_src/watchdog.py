@@ -46,7 +46,10 @@ class FutuWatchdog:
 
     # ── 健康检查参数 ──────────────────────────────────────────────
     HEALTH_CHECK_INTERVAL: float = 15.0  # 每 15s 做一次健康检查
-    HEALTH_PROBE_SYMBOL: str = "HK.00700"  # 用腾讯控股做探针
+    # ⚠️ 已废弃：原用 HK.00700 做 get_stock_quote 探针，但休市/无行情权限标的
+    #    会返回空 df，误判断线引发 close↔connect 死循环（node-s1 复盘 2026-08-11）。
+    #    现改用 get_global_state() 做连通性探针，不依赖任何标的市场数据。保留常量作历史参考。
+    HEALTH_PROBE_SYMBOL: str = "HK.00700"
     HEALTH_TIMEOUT: float = 5.0  # 探针超时 5s
 
     # ── 熔断保护 ──────────────────────────────────────────────
@@ -167,72 +170,43 @@ class FutuWatchdog:
 
         策略：
         1. 首先检查 status 标志
-        2. 如果 status 显示连接，先确保探针标的已订阅，再获取快照
-        3. 快照超时或异常 → 判定为不健康
+        2. 用 get_global_state() 验证与 OpenD 的真实握手（不依赖任何标的
+           市场数据权限/交易时段），避免休市标的/无行情权限返回空 df 导致
+           误判断线、引发 close↔connect 死循环（node-s1 实战复盘 2026-08-11）
+        3. 探针失败 / 异常 → 主动把 conn_mgr.status 拉回 DISCONNECTED，
+           让状态机与现实严格对齐，再判定为不健康
         """
         # 快速路径：状态不是 CONNECTED
         if self._conn_mgr.status != "CONNECTED":
             return False
 
         if not self._conn_mgr.quote_ctx:
+            self._conn_mgr.status = "DISCONNECTED"
             return False
 
-        # 深度检查：尝试获取探针标的快照
+        # 深度检查：用 get_global_state 验证与 OpenD 的真实握手
         try:
-            from futu import RET_OK, SubType
+            from futu import RET_OK
 
-            from .utils import format_ticker
-
-            probe_ticker = self.HEALTH_PROBE_SYMBOL
-            market_ticker = format_ticker(probe_ticker)
-
-            # 先订阅 QUOTE（get_stock_quote 的前置条件）
-            try:
-                # LRU 订阅池管理
-                cache_mgr = self._futu.cache_mgr
-                if not cache_mgr.has_topic(market_ticker, SubType.QUOTE):
-                    evicted = cache_mgr.ensure_capacity(needed=1)
-                    if evicted:
-                        from .quote_handler import _execute_unsubscriptions
-
-                        await _execute_unsubscriptions(self._conn_mgr, cache_mgr, evicted)
-
-                    sub_ret, _ = await asyncio.wait_for(
-                        asyncio.to_thread(
-                            self._conn_mgr.quote_ctx.subscribe,
-                            [market_ticker],
-                            [SubType.QUOTE],
-                            subscribe_push=True,  # BE-ARCH-08c③: 探针需开启推送订阅，否则重连后仅有拉取无推送
-                        ),
-                        timeout=3.0,
-                    )
-                    if sub_ret == RET_OK:
-                        cache_mgr.touch_topic(market_ticker, SubType.QUOTE)
-                    else:
-                        logger.debug("[FutuWatchdog] 探针订阅失败")
-                        return False
-            except Exception:
-                return False
-
-            ret, df = await asyncio.wait_for(
-                asyncio.to_thread(self._conn_mgr.quote_ctx.get_stock_quote, [market_ticker]),
+            ret, data = await asyncio.wait_for(
+                asyncio.to_thread(self._conn_mgr.quote_ctx.get_global_state),
                 timeout=self.HEALTH_TIMEOUT,
             )
 
-            if ret != RET_OK:
+            if ret != RET_OK or data is None:
                 logger.debug(f"[FutuWatchdog] 健康探针失败: ret={ret}")
-                return False
-
-            if df is None or (hasattr(df, "empty") and df.empty):
+                self._conn_mgr.status = "DISCONNECTED"
                 return False
 
             return True
 
         except asyncio.TimeoutError:
             logger.warning("[FutuWatchdog] 健康探针超时")
+            self._conn_mgr.status = "DISCONNECTED"
             return False
         except Exception as e:
             logger.debug(f"[FutuWatchdog] 健康检查异常: {e}")
+            self._conn_mgr.status = "DISCONNECTED"
             return False
 
     async def _do_reconnect(self) -> bool:
