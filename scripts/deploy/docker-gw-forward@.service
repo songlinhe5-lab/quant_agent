@@ -1,0 +1,53 @@
+# =====================================================================
+# 宿主 loopback 服务 → docker0 网关 端口转发 (systemd template unit)
+# =====================================================================
+# 背景：
+#   data_subservice 运行在独立 bridge 网络的容器中，容器内 127.0.0.1 指向
+#   【容器自身】而非宿主。容器经 host.docker.internal (= docker0 网关
+#   172.17.0.1) 访问宿主服务时，若宿主服务仅 bind 127.0.0.1，连接会被
+#   直接 refused。
+#
+# 适用场景（仅限「无法修改监听地址」的服务）：
+#   - Futu OpenD :11111 —— 修改 OpenD.xml 会触发富途设备二次验证
+#                          (短信 + 人脸)，严禁改动，只能用本转发。
+#
+# 不适用（应优先改服务自身 bind，别多一层 socat）：
+#   - Redis :6379 —— 直接在 redis.conf 写 `bind 127.0.0.1 <TS_IP> 172.17.0.1`
+#
+# 安装：
+#   sudo cp scripts/deploy/docker-gw-forward@.service /etc/systemd/system/
+#   sudo apt-get install -y socat
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now docker-gw-forward@11111
+#
+# 校验：
+#   systemctl status docker-gw-forward@11111
+#   docker exec <ds容器> python3 -c "import socket;s=socket.socket();s.settimeout(3);s.connect(('host.docker.internal',11111));print('OpenD OK')"
+#
+# 安全说明：
+#   bind 到 172.17.0.1 (docker0 内部网桥) 而非 0.0.0.0，不经公网暴露。
+#   如需额外加固：ufw deny 11111 && ufw allow from 172.17.0.0/16 to any port 11111
+# =====================================================================
+
+[Unit]
+Description=Forward docker0 gateway :%i -> host loopback :%i (for container access)
+Documentation=file:///opt/quant-agent/docs/06.%20工程化配置与部署方案.md
+# docker0 网卡由 docker 创建，未就绪时 bind 172.17.0.1 会失败，必须等 docker 起来
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/socat TCP-LISTEN:%i,bind=172.17.0.1,reuseaddr,fork TCP:127.0.0.1:%i
+Restart=always
+RestartSec=3
+# 转发进程无需任何特权（>1024 端口）
+DynamicUser=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

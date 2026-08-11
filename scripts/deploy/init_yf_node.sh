@@ -90,6 +90,82 @@ else
 fi
 
 # ==========================================
+# Step 1.5: 宿主服务对容器可达性预检 (关键!)
+# ==========================================
+# 容器内 127.0.0.1 指向【容器自身】而非宿主。容器经 host.docker.internal
+# (= docker0 网关) 访问宿主 Redis / Futu OpenD 时，若宿主服务仅 bind 127.0.0.1
+# 会直接 Connection refused，表现为「心跳写入失败 → 主服务判节点离线 → 熔断」。
+# 此处提前暴露问题，避免部署后花数小时排查。
+log_info "Step 1.5: 检查宿主服务对容器的可达性..."
+
+DOCKER_GW=$(ip -4 addr show docker0 2>/dev/null | grep -oP '(?<=inet )[\d.]+' | head -1 || true)
+DOCKER_GW="${DOCKER_GW:-172.17.0.1}"
+log_info "  docker0 网关: ${DOCKER_GW}"
+
+# 探测宿主端口经网关是否可达
+probe_gw_port() {
+    timeout 3 bash -c "echo > /dev/tcp/${DOCKER_GW}/$1" 2>/dev/null
+}
+# 探测宿主端口在 loopback 上是否存在（区分「服务没跑」和「服务只 bind loopback」）
+probe_lo_port() {
+    timeout 3 bash -c "echo > /dev/tcp/127.0.0.1/$1" 2>/dev/null
+}
+
+GW_CHECK_FAILED=0
+
+# --- Redis (可直接改 bind，不需要 socat) ---
+if probe_gw_port 6379; then
+    log_info "  ✅ Redis 经网关 ${DOCKER_GW}:6379 可达"
+elif probe_lo_port 6379; then
+    GW_CHECK_FAILED=1
+    log_error "  ❌ Redis 仅监听 127.0.0.1，容器无法访问!"
+    echo "     修复: 编辑 /etc/redis/redis.conf，将 bind 行改为"
+    echo "           bind 127.0.0.1 ${TS_IP} ${DOCKER_GW}"
+    echo "           然后 sudo systemctl restart redis-server"
+else
+    log_warn "  ⚠️ Redis 未在本机运行 (跨节点部署请在 .env 设 REDIS_HOST 为主节点 Tailscale IP)"
+fi
+
+# --- Futu OpenD (严禁改 OpenD.xml，只能 socat 转发) ---
+if probe_gw_port 11111; then
+    log_info "  ✅ Futu OpenD 经网关 ${DOCKER_GW}:11111 可达"
+elif probe_lo_port 11111; then
+    log_warn "  ⚠️ Futu OpenD 仅监听 127.0.0.1，容器无法访问"
+    echo "     ⚠️ 严禁修改 OpenD.xml (会触发富途设备二次验证)，须用 socat 转发。"
+    if [ "${AUTO_SETUP_GW_FORWARD:-0}" = "1" ]; then
+        log_info "     AUTO_SETUP_GW_FORWARD=1 → 自动安装转发服务..."
+        sudo apt-get install -y socat >/dev/null 2>&1 || log_warn "     socat 安装失败，请手动安装"
+        sudo cp "$DEPLOY_DIR/scripts/deploy/docker-gw-forward@.service" /etc/systemd/system/ 2>/dev/null \
+            || log_warn "     unit 文件复制失败 (仓库尚未拉取?)"
+        sudo systemctl daemon-reload
+        sudo systemctl enable --now docker-gw-forward@11111
+        sleep 2
+        if probe_gw_port 11111; then
+            log_info "     ✅ 转发已生效"
+        else
+            GW_CHECK_FAILED=1
+            log_error "     ❌ 转发仍不可达，请检查 systemctl status docker-gw-forward@11111"
+        fi
+    else
+        GW_CHECK_FAILED=1
+        echo "     修复(固化为 systemd，开机自启):"
+        echo "       sudo apt-get install -y socat"
+        echo "       sudo cp $DEPLOY_DIR/scripts/deploy/docker-gw-forward@.service /etc/systemd/system/"
+        echo "       sudo systemctl daemon-reload"
+        echo "       sudo systemctl enable --now docker-gw-forward@11111"
+        echo "     或重跑本脚本时加 AUTO_SETUP_GW_FORWARD=1 自动完成。"
+    fi
+else
+    log_info "  ℹ️ 本机未运行 Futu OpenD (纯 YF 节点正常，跳过)"
+fi
+
+if [ "$GW_CHECK_FAILED" = "1" ]; then
+    log_error "宿主可达性预检未通过。继续部署会导致节点心跳失败 / Futu 熔断。"
+    read -p "仍要继续? (yes/N) " -r _ans
+    [ "$_ans" = "yes" ] || exit 1
+fi
+
+# ==========================================
 # Step 2: 克隆/更新代码仓库
 # ==========================================
 log_info "Step 2: 准备代码仓库..."
