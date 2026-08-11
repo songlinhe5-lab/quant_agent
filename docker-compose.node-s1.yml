@@ -33,7 +33,10 @@ services:
       <<: *common-env
       DS_NODE_ID: ${DS_NODE_ID:-us-yf-s1}
       DS_REGION: "us-west"
-      DS_CAPABILITIES: "yfinance,futu,finnhub"
+      # ⚠️ 必须走 .env.data-node 的 DS_CAPABILITIES, 切勿硬编码!
+      # 硬编码会覆盖 env_file, 导致主服务路由的 fmp/fred 等未声明源 503 → 节点熔断。
+      # 主节点同机部署(node-s1)标准集: futu,fmp,finnhub,fred,dbnomics,rbi,tavily,bocha,jina,yfinance
+      DS_CAPABILITIES: ${DS_CAPABILITIES}
       DS_NODE_PORT: "8001"
       DS_BASE_URL: "${DS_BASE_URL:-http://127.0.0.1:8001}"
       # 主节点 DataSourceRouter 回调鉴权 (须与主节点 DATA_SOURCE_HMAC_SECRET 一致)
@@ -49,6 +52,11 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-quant_redis_secret_2026}
       REDIS_DB: ${REDIS_DB:-0}
       ENABLE_REDIS_HEARTBEAT: "true"
+      # Futu OpenD 运行在【宿主】127.0.0.1:11111。s1 为独立 bridge 网络, 容器内
+      # 127.0.0.1 指向容器自身, 连不上宿主 OpenD。必须经 host.docker.internal
+      # (由下方 extra_hosts: host-gateway 映射到宿主) 才能连通。
+      FUTU_HOST: ${FUTU_HOST:-host.docker.internal}
+      FUTU_PORT: ${FUTU_PORT:-11111}
     expose:
       - "8001"
     ports:
@@ -61,6 +69,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+    # 容器内 host.docker.internal → 宿主网关, 使 Futu OpenD(宿主 127.0.0.1:11111)
+    # 对 s1 容器可达。纯 Linux 自定义 bridge 默认不解析该 magic DNS, 必须显式映射。
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - quant-net
     deploy:
