@@ -46,18 +46,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # GHCR 偶发二级限流 (403 secondary rate limit)，用重试兜底，避免整 job 直接挂
       - name: Build & push backend image
-        uses: docker/build-push-action@v7
+        uses: nick-fields/retry@v3
         with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          platforms: linux/amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            BUILDKIT_INLINE_CACHE=1
+          timeout_minutes: 30
+          max_attempts: 3
+          retry_on: error
+          command: |
+            docker buildx build \
+              --push \
+              --platform linux/amd64 \
+              --cache-from type=gha \
+              --cache-to type=gha,mode=max \
+              --build-arg BUILDKIT_INLINE_CACHE=1 \
+              --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+              --file ./Dockerfile \
+              .
 
   # ----------------------------------------------------------------
   # 单元回归测试: 主服务 backend/tests
@@ -133,6 +138,8 @@ jobs:
       contents: read
       packages: write
     strategy:
+      # 串行推送，避免多个镜像并发 push 触发 GitHub GHCR 二级限流 (secondary rate limit 403)
+      max-parallel: 1
       matrix:
         include:
           - ds_extra: datasource-cn
@@ -154,19 +161,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # GHCR 偶发二级限流 (403 secondary rate limit)，用重试兜底，避免整 job 直接挂
       - name: Build & push data-subservice image (${{ matrix.tag }})
-        uses: docker/build-push-action@v7
+        uses: nick-fields/retry@v3
         with:
-          context: .
-          file: ./data_subservice/Dockerfile
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${{ matrix.tag }}
-          platforms: linux/amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            BUILDKIT_INLINE_CACHE=1
-            DS_EXTRA=${{ matrix.ds_extra }}
+          timeout_minutes: 30
+          max_attempts: 3
+          retry_on: error
+          command: |
+            docker buildx build \
+              --push \
+              --platform linux/amd64 \
+              --cache-from type=gha \
+              --cache-to type=gha,mode=max \
+              --build-arg BUILDKIT_INLINE_CACHE=1 \
+              --build-arg DS_EXTRA=${{ matrix.ds_extra }} \
+              --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${{ matrix.tag }} \
+              --file ./data_subservice/Dockerfile \
+              .
 
   # ----------------------------------------------------------------
   # 部署 US-MASTER (主节点)
