@@ -7,7 +7,7 @@
 **决策**：主服务与数据源子服务依赖树彻底分离。
 - `backend/requirements.txt`：**禁止**包含任何第三方数据源 SDK（futu-api / tushare / akshare / yfinance）。仅保留 FastAPI/uvicorn/pydantic/sqlalchemy/httpx/redis/pandas/numpy/requests。
 - `data_subservice/requirements.txt`：收口全部数据源 SDK（futu-api / tushare / akshare / yfinance / protobuf）+ 子服务框架。
-- `pyproject.toml` 主 `[project.dependencies]` 已移除 yfinance；数据源 SDK 仅留在 `optional-dependencies.datasource` extra（供 `data_subservice/Dockerfile` `uv sync --extra datasource`）。
+- `pyproject.toml` 主 `[project.dependencies]` 已移除 yfinance；数据源 SDK 仅留在 `optional-dependencies` 的地域 extra：`datasource-cn`(Tushare+AKShare+YF) / `datasource-us`(YF+Futu+Finnhub) / `datasource-us-aux`(纯 YF)，供 `data_subservice/Dockerfile` `uv sync --extra ${DS_EXTRA}`（默认 `datasource-cn`）。
 - **架构红线**：主服务运行时只经 `DataSourceRouter` 走 HTTP 调 `data_subservice`；禁止主服务 `import futu_api / tushare / akshare / yfinance`。
 
 **验证**：两文件 install 均 satisfied；`backend.main` 导入显示「数据源不可用，走 HTTP 路由」；`data_subservice` 四 worker + app 全部 import ok。
@@ -96,4 +96,30 @@
 
 **绝不含糊**：信任边界输入校验、防数据丢失的错误处理、安全/无障碍、真实硬件校准（时钟漂移·传感器读偏）、显式要求的事。
 
-**留下一个可运行检查**：非平凡逻辑留一个 assert 自检 demo 或一个小测试文件（无框架、无 fixture）；纯一行 trivial 无需测试。不带校验的懒代码是半成品。
+**留下一个可运行检查**：非平凡逻辑留一个 assert 自检 demo 或一个小测试文件（无框架、无 fixture）；纯一行 trivial 无需测试。
+
+## 六、data-subservice 镜像重建部署铁律（2026-08-11 实战踩坑固化）
+
+**背景**：node-s1 排障 17 分钟，根因全在部署链路，不在应用代码（常驻进程 futu 从头到尾 CONNECTED）。
+
+**重建 `:us` 镜像（主节点含 futu）的唯一正确命令**：
+```bash
+docker build -f data_subservice/Dockerfile --build-arg DS_EXTRA=datasource-us \
+  -t ghcr.io/songlinhe5-lab/quant_agent-data-subservice:us .
+```
+对应地域 extra：`datasource-us`(主节点 YF+Futu+Finnhub) / `datasource-us-aux`(纯 YF) / `datasource-cn`(Tushare+AKShare+YF)。Dockerfile 默认 `DS_EXTRA=datasource-cn`，**漏传 build-arg 即缺 futu 模块** → `No module named 'futu'`。
+
+**三个必踩易错点（一次性记死）**：
+1. **extra 错胎**：必须 `--build-arg DS_EXTRA=datasource-us`，否则默认 cn 缺 futu。
+2. **镜像 tag 错位**：compose 引用 `ghcr.io/songlinhe5-lab/quant_agent-data-subservice:us`（CI 会 sed 成私有 registry）。本地 build 必须打**同名 tag**，打 `127.0.0.1:5000/...` 无效——`up` 仍拉 ghcr 旧镜像。
+3. **env 漏传**：`up` 必须 `--env-file .env.data-node`（放 `up` 前，是 compose global flag），否则 `DS_CAPABILITIES`/`FUTU_HOST` 缺失 → futu 分支不拉起。
+
+**观察方式红线（防虚假 DISCONNECTED 误判）**：
+- ❌ 禁止 `docker exec ... python3 -c "import ...futu_service; print(futu_service.quote_ctx)"` 判断状态——`exec` 是全新进程，读到的是未 connect 的全新单例（quote_ctx=None），与常驻进程无关。
+- ✅ 直查常驻进程暴露的端点：`GET /futu/status`（返回真实 status/connected/target/error_msg）或 `GET /health`（含 `futu` 字段）。PR #282 已实装。
+
+**验证连通性最终命令**：
+```bash
+docker exec quant-agent-node-s1-data-subservice-1 sh -c 'python3 -c "import urllib.request; print(urllib.request.urlopen(\"http://127.0.0.1:8001/futu/status\").read().decode())"'
+# 预期: {"status":"CONNECTED","connected":true,"target":"100.102.223.44:11111","error_msg":""}
+```不带校验的懒代码是半成品。
