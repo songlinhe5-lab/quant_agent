@@ -317,6 +317,10 @@ redis-cli -a tradingagents123 keys "quant:node:*"
      grep DATA_SOURCE_HMAC_SECRET /opt/quant-agent/.env
      ```
    - 注意：compose 用 `${DATA_SOURCE_HMAC_SECRET}` 注入，若 Slave 的 `.env` **漏配该变量**，容器内会回退代码默认值 `change-me-in-prod`，与主节点真实密钥不符 → 403。补上后 `docker compose up -d` 重启子服务即可。
+   - **⚠️ 双坑（2026-08-13 node-bj 实战）**：
+     - **占位符未替换**：`.env.data-node` 若把模板里的 `<与主节点一致的 HMAC 密钥>` **原样保留**（未换成真实哈希），容器 `printenv` 会显示这段中文占位符当密钥，与主节点 `b6fb...` 不符 → 403。注意 `printenv` 回显中文占位符不是打码，是真实配置值。
+     - **`.env` 末尾缺换行致 `echo >>` 拼接污染**：修复用 `echo 'KEY=val' >> .env` 时，若文件末行无换行，新内容会拼到上一行（如 `TZ=<时区>DATA_SOURCE_HMAC_SECRET=b6fb...`）。dotenv 把整串解析成 `TZ` 的值，`DATA_SOURCE_HMAC_SECRET` 反未定义 → 容器回退 `change-me-in-prod` → 403 依旧。肉眼 `grep` 能看到哈希却误以为已配。
+     - **正确修复**：`printf 'DATA_SOURCE_HMAC_SECRET=<真实哈希>\n' >> .env.data-node`（自带换行），再 `docker compose ... --env-file .env.data-node up -d`，最后 `docker exec <容器> printenv DATA_SOURCE_HMAC_SECRET` 复核必须是纯哈希。
 
 2. **跨 VPS 系统时间差 > 300 秒（隐蔽但高发）**
    - `verify_hmac` 有 `abs(time.time() - int(x_timestamp)) > 300` 的时间窗校验，**早于签名比对执行**。
