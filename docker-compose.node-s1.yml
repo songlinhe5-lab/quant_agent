@@ -33,9 +33,9 @@ x-common-env: &common-env
 services:
   data-subservice:
     image: ghcr.io/songlinhe5-lab/quant_agent-data-subservice:us
-    # 每次 up 强制从 GHCR 拉最新 :us, 避免复用本机旧镜像 (node-s1 旧镜像 bug 根因)。
-    # 由 CI deploy-master 拉起 (已 docker login), 能访问 GHCR; 手动 up 需先 docker login。
-    pull_policy: always
+    # missing: 本地已有 :us 镜像则复用, 本地缺失才从 GHCR 拉。既避免复用旧 bug 镜像,
+    # 又兼容手动部署(无需先 docker login GHCR)。CI deploy-master 本地无镜像时仍会拉 GHCR。
+    pull_policy: missing
     restart: unless-stopped
     env_file:
       - .env.data-node
@@ -91,8 +91,11 @@ services:
       start_period: 20s
     # 容器内 host.docker.internal → 宿主网关, 使 Futu OpenD(宿主 127.0.0.1:11111)
     # 对 s1 容器可达。纯 Linux 自定义 bridge 默认不解析该 magic DNS, 必须显式映射。
+    # ⚠️ 不能写 host-gateway（默认指向 docker0 网关 172.17.0.1, 实测 OpenD 经该网关不可达）。
+    #   OpenD 仅经 quant-net 网关 172.19.0.1 可达（容器内实测 OK），故写死该 IP。
+    #   Redis 同理（宿主 Redis 监听 172.19.0.1 网关）。
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal:172.19.0.1"
     networks:
       # 保留原独立网络（供 host.docker.internal 连宿主 redis/OpenD 不变），
       # 并加入 master 项目的 quant-internal 外部网络，使主服务能以服务名 data-subservice 直连。
