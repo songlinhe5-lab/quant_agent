@@ -738,3 +738,134 @@ class TestFmpFundamentalInfoRouting:
         # 既有 action 仍映射正确
         await router.fetch_fmp("profile", symbol="AAPL")
         assert captured["action"] == "PROFILE"
+
+
+# ==========================================
+# RL-14: 部署重置 (熔断清零) + 半开自愈探针 (熔断节点自动恢复)
+# ==========================================
+class TestRL14DeployResetAndSelfHeal:
+    """验收 (复盘 2026-08 实战故障: 改 FUTU_REMOTE_URL 重启后老进程熔断态
+    (error_count=41, status=unhealthy) 驻留内存不自愈, 导致 QUOTE 持续
+    "所有候选源失败", 必须 force-recreate 才恢复)。
+
+    修复后:
+    1. 进程启动即 reset_circuit_breakers(), 新进程从干净状态开始 (部署重置)。
+    2. 后台半开探针 _probe_loop 持续探活熔断节点, 恢复则复位为 healthy。
+    """
+
+    def test_deploy_reset_clears_circuit_breakers(self):
+        """部署重置: 构造一个已熔断污染的节点, 调用 reset 后应全部清零。"""
+        router = DataSourceRouter()
+        node = router._nodes["yf_primary"]
+        # 模拟上一次运行累积的熔断残留
+        node.status = "unhealthy"
+        node.error_count = 41
+        node.circuit_breaker_until = time.time() + 999
+        node.probe_consecutive_failures = 7
+
+        router.reset_circuit_breakers()
+
+        assert node.status == "healthy"
+        assert node.error_count == 0
+        assert node.circuit_breaker_until == 0.0
+        assert node.probe_consecutive_failures == 0
+
+    def test_deploy_reset_clears_all_nodes(self):
+        """部署重置必须覆盖所有节点, 而非单个。"""
+        router = DataSourceRouter()
+        for n in router._nodes.values():
+            n.status = "unhealthy"
+            n.error_count = 99
+            n.circuit_breaker_until = time.time() + 999
+        router.reset_circuit_breakers()
+        for n in router._nodes.values():
+            assert n.status == "healthy"
+            assert n.error_count == 0
+            assert n.circuit_breaker_until == 0.0
+
+    @pytest.mark.asyncio
+    async def test_probe_recovers_unhealthy_node(self, monkeypatch):
+        """自愈探针: 节点 unhealthy 且 /health 探活成功 -> 复位 healthy。"""
+        router = DataSourceRouter()
+        node = router._nodes["yf_primary"]
+        node.status = "unhealthy"
+        node.error_count = 30
+        node.circuit_breaker_until = time.time() + 100
+
+        # mock 探活成功
+        async def fake_probe(n):
+            return True
+
+        monkeypatch.setattr(router, "_probe_node", fake_probe)
+
+        await router._probe_once()
+
+        assert node.status == "healthy"
+        assert node.error_count == 0
+        assert node.circuit_breaker_until == 0.0
+
+    @pytest.mark.asyncio
+    async def test_probe_skips_healthy_node(self, monkeypatch):
+        """自愈探针: 全 healthy 时不应发起任何探活请求。"""
+        router = DataSourceRouter()
+        for n in router._nodes.values():
+            n.status = "healthy"
+            n.circuit_breaker_until = 0.0
+
+        called = {"probe": 0}
+
+        async def fake_probe(n):
+            called["probe"] += 1
+            return True
+
+        monkeypatch.setattr(router, "_probe_node", fake_probe)
+
+        await router._probe_once()
+        assert called["probe"] == 0, "healthy 节点不应被探针打扰"
+
+    @pytest.mark.asyncio
+    async def test_probe_keeps_unhealthy_on_failure(self, monkeypatch):
+        """自愈探针: 探活持续失败 -> 维持 unhealthy, 但冷却不续期 (由真实请求失败续期)。"""
+        router = DataSourceRouter()
+        node = router._nodes["yf_primary"]
+        node.status = "unhealthy"
+        node.error_count = 30
+        cb_until_before = time.time() - 1  # 已到期
+        node.circuit_breaker_until = cb_until_before
+
+        async def fake_probe(n):
+            return False
+
+        monkeypatch.setattr(router, "_probe_node", fake_probe)
+
+        await router._probe_once()
+
+        assert node.status == "unhealthy"
+        # 冷却不续期: 仍 <= 之前的值, 让冷却自然到期后可被 _pin_node_usable 放行重试
+        assert node.circuit_breaker_until <= cb_until_before
+
+    def test_start_probing_disabled_skipped(self):
+        """路由禁用时 start_probing 应静默跳过 (不创建后台任务, 不抛错)。"""
+        router = DataSourceRouter()
+        assert router._enabled is False
+        router._probe_task = None
+        router._shutdown_event = asyncio.Event()
+        router.start_probing()  # 禁用态 -> 直接 return
+        assert router._probe_task is None
+
+    @pytest.mark.asyncio
+    async def test_start_probing_runs_under_running_loop(self):
+        """路由启用 + running loop 下, start_probing 应真实拉起后台探针任务。"""
+        with patch.dict(
+            os.environ,
+            {
+                "DATA_SOURCE_ROUTER_ENABLED": "true",
+                "DATA_SOURCE_HMAC_SECRET": "test-verify-secret",
+            },
+        ):
+            router = DataSourceRouter()
+        router.start_probing()
+        assert router._probe_task is not None
+        assert not router._probe_task.done()
+        await router.stop_probing()
+        assert router._probe_task is None

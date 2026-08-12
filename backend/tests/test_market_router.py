@@ -89,18 +89,49 @@ class TestServicesHealth:
 
 # ─── /market/quote ─────────────────────────────────────────────────────
 class TestGetQuote:
+    @patch("backend.routers.market.data_source_router")
+    def test_futu_success(self, mock_ds):
+        mock_ds.fetch_futu = AsyncMock(
+            return_value={
+                "status": "success",
+                "data": {"ticker": "US.AAPL", "last_price": 150.0},
+                "latency_ms": 10,
+                "cached": False,
+            }
+        )
+        resp = client.get("/market/quote?ticker=US.AAPL")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "success"
+        assert body["source"] == "futu"
+
+    @patch("backend.routers.market.data_source_router")
+    def test_hk_futu_success(self, mock_ds):
+        mock_ds.fetch_futu = AsyncMock(
+            return_value={"status": "success", "data": {"last_price": 460.0}, "latency_ms": 8, "cached": False}
+        )
+        resp = client.get("/market/quote?ticker=HK.00700")
+        assert resp.status_code == 200
+        assert resp.json()["source"] == "futu"
+
+    @patch("backend.routers.market.data_source_router")
+    def test_futu_fail_returns_400(self, mock_ds):
+        mock_ds.fetch_futu = AsyncMock(return_value={"status": "error", "message": "数据源超时"})
+        resp = client.get("/market/quote?ticker=US.AAPL")
+        assert resp.status_code == 400
+
     @patch("backend.routers.market._facade_market")
-    def test_futu_success(self, mock_facade):
+    def test_non_futu_uses_facade(self, mock_facade):
         mock_facade.get_quote = AsyncMock(
             return_value=Result(
                 status=ResultStatus.SUCCESS,
-                data={"ticker": "US.AAPL", "last_price": 150.0},
-                source="futu",
-                latency_ms=10,
+                data={"last_price": 1.0},
+                source="yfinance",
+                latency_ms=12,
                 cached=False,
             )
         )
-        resp = client.get("/market/quote?ticker=US.AAPL")
+        resp = client.get("/market/quote?ticker=BTC-USD")
         assert resp.status_code == 200
         assert resp.json()["status"] == "success"
 
@@ -112,19 +143,7 @@ class TestGetQuote:
                 status=ResultStatus.ERROR, error=ErrorInfo(code="TIMEOUT", message="数据源超时"), source="test"
             )
         )
-        resp = client.get("/market/quote?ticker=US.AAPL")
-        assert resp.status_code == 400
-
-    @patch("backend.routers.market._facade_market")
-    def test_all_fail_returns_400(self, mock_facade):
-        mock_facade.get_quote = AsyncMock(
-            return_value=Result(
-                status=ResultStatus.ERROR,
-                error=ErrorInfo(code="ALL_FAILED", message="All sources failed"),
-                source="test",
-            )
-        )
-        resp = client.get("/market/quote?ticker=US.AAPL")
+        resp = client.get("/market/quote?ticker=BTC-USD")
         assert resp.status_code == 400
 
 

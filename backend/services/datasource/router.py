@@ -183,7 +183,7 @@ class DataSourceRouter:
         # 启动半开自愈探针 (后台任务, 独立于业务流量持续探查节点健康, 熔断后自动恢复)
         self._probe_task: Optional[asyncio.Task] = None
         self._shutdown_event = asyncio.Event()
-        self._start_probing()
+        self.start_probing()
 
     # ------------------------------------------------------------------
     # RL-14: 熔断自愈 (半开探针) + 部署重置
@@ -203,8 +203,13 @@ class DataSourceRouter:
             node.last_probe_at = 0.0
         logger.info(f"[Router] 熔断状态已重置 (部署重置): nodes={list(self._nodes.keys())}")
 
-    def _start_probing(self) -> None:
-        """启动后台半开探针任务 (幂等, 仅当路由启用且无进行中任务时)。"""
+    def start_probing(self) -> None:
+        """启动后台半开探针任务 (幂等, 仅当路由启用且无进行中任务时)。
+
+        供两处调用:
+        - __init__ 末尾 (模块导入期若已有 running loop 则直接拉起);
+        - lifespan startup (此时必然有 running loop, 兜底确保探针一定运行)。
+        """
         if not self._enabled:
             return
         if self._probe_task is not None and not self._probe_task.done():

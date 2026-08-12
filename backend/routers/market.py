@@ -287,6 +287,18 @@ async def get_services_health():
     return {"status": "success", "data": health_data}
 
 
+def _is_futu_ticker(ticker: str) -> bool:
+    """判定是否为富途行情标的（facade/registry 不注册 futu，需走 DataSourceRouter 单独通道）。"""
+    t = (ticker or "").upper().strip()
+    return (
+        any(t.startswith(p) for p in ("HK.", "US.", "SH.", "SZ.", "JP.", "SG.", "UK.", "LSE."))
+        or t.endswith(".HK")
+        or t.endswith(".US")
+        or t.endswith(".SH")
+        or t.endswith(".SZ")
+    )
+
+
 @router.get("/quote")
 async def get_quote(ticker: str):
     """
@@ -294,7 +306,7 @@ async def get_quote(ticker: str):
 
     ✅ 已解耦数据源：基于 DataSourcePort Protocol + MarketDataService
     🛡️ 降级策略:
-      - Futu (港美股优先)
+      - Futu (港美股/A股等经 DataSourceRouter.fetch_futu 单独通道)
       - AkShare (A 股兜底)
       - YFinance (加密货币/外汇兜底)
 
@@ -307,7 +319,26 @@ async def get_quote(ticker: str):
     Raises:
         HTTPException: 所有数据源均失败时抛出 400 错误
     """
-    # BE-ARCH-06c: 统一走新 Facade 行情领域服务（经 DataSourceRegistry 选源 + 融合 + Stale 检测）
+    # BE-ARCH-06c: futu 标的经 DataSourceRouter.fetch_futu 直连远程节点
+    # （facade/registry 不注册 futu，单独通道；与 websocket 订阅保持一致）
+    if _is_futu_ticker(ticker):
+        try:
+            futu_res = await data_source_router.fetch_futu("QUOTE", ticker=ticker)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"[Market API] Futu fetch_futu 异常: {exc}")
+            raise HTTPException(status_code=500, detail=f"Futu 数据源调用异常: {exc}")
+        if isinstance(futu_res, dict) and futu_res.get("status") == "success":
+            return {
+                "status": "success",
+                "data": futu_res.get("data"),
+                "source": "futu",
+                "latency_ms": futu_res.get("latency_ms"),
+                "cached": futu_res.get("cached", False),
+            }
+        err_msg = futu_res.get("message", "Futu 数据源失败") if isinstance(futu_res, dict) else str(futu_res)
+        raise HTTPException(status_code=400, detail=err_msg)
+
+    # 非 futu 标的走通用 Facade（经 DataSourceRegistry 选源 + 融合 + Stale 检测）
     try:
         facade_res = await _facade_market.get_quote(ticker)
     except Exception as exc:  # noqa: BLE001
