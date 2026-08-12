@@ -455,7 +455,10 @@ async def app_lifespan(app: FastAPI):
         # 故无需在此 close 本地 yf_service。
         # BE-ARCH-07c: 主服务已卸载 Futu SDK 连接层 (OpenD 直连下沉 data_subservice),
         # futu_service 不再持有本地连接资源, 无需在此 close。
-        pass
+        # RL-14: 优雅关闭半开自愈探针后台任务
+        from backend.services.datasource.router import data_source_router
+
+        await data_source_router.stop_probing()
     except Exception as e:
         log.warning(f"⚠️ 关闭数据源资源异常：{e}")
 
