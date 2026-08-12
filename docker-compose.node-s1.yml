@@ -33,6 +33,9 @@ x-common-env: &common-env
 services:
   data-subservice:
     image: ghcr.io/songlinhe5-lab/quant_agent-data-subservice:us
+    # 每次 up 强制从 GHCR 拉最新 :us, 避免复用本机旧镜像 (node-s1 旧镜像 bug 根因)。
+    # 由 CI deploy-master 拉起 (已 docker login), 能访问 GHCR; 手动 up 需先 docker login。
+    pull_policy: always
     restart: unless-stopped
     env_file:
       - .env.data-node

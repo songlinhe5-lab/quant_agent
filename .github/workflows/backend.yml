@@ -413,15 +413,10 @@ jobs:
             docker tag "${IMAGE}" "${REGISTRY_IMAGE}"
             docker push "${REGISTRY_IMAGE}"
 
-            # ── data-subservice 镜像拉取 + 内网 registry 中转 ──
-            # 1) node-s1 (主节点本地子服务) 复用本机拉取的镜像, 用的是 :us tag (见下方 sed 替换 + compose up)。
-            #    ⚠️ 必须 pull :us 到本机, 否则 node-s1 一直复用旧镜像 (PR #288 曾只 pull cn 导致此 bug)。
-            # 2) 北京节点 (node-cn) 经 S1 内网 registry 拉取, 只需中转 :cn; :us/:us-aux 美西直连 GHCR。
-            docker pull "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:us" \
-              || { echo "❌ 主节点从 GHCR 拉取 data-subservice:us (node-s1 用) 失败，中止"; exit 1; }
-            echo "✅ data-subservice:us 已拉取至本机 (node-s1 复用)"
-
-            # 只把北京节点需要的 :cn 推到内网 registry 供其中转; us/us-aux 美西直连 GHCR 不需中转。
+            # ── data-subservice 镜像内网 registry 中转 ──
+            # node-s1 (主节点本地子服务) 不预拉 :us, 由 docker-compose.node-s1.yml 的
+            # pull_policy: always 每次 up 直接拉最新 GHCR :us (见下方 compose up)。
+            # 此处仅把北京节点需要的 :cn 推到内网 registry 供其中转; us/us-aux 美西直连 GHCR 不需中转。
             docker pull "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:cn" \
               || { echo "❌ 主节点从 GHCR 拉取 data-subservice:cn 失败，中止"; exit 1; }
             docker tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:cn" "127.0.0.1:5000/quant-agent-data-subservice:cn"
