@@ -194,10 +194,14 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
-          cpus: '0.5'
+          # REG-02(2026-08-12 实战): 此前 512M 内存在北京节点经 Tailscale 拉取
+          # data-subservice:cn (含 akshare+tushare 大依赖) 时 OOM, registry 容器被
+          # docker 杀掉 → 客户端拉 manifest 报 "connection reset by peer"。
+          # registry:2 传输/解压大镜像官方建议 ≥1G, 此处提至 1G 并预留 reservations。
+          memory: 1G
+          cpus: '1.0'
         reservations:
-          memory: 128M
+          memory: 256M
     networks:
       - quant-internal
 
@@ -262,12 +266,18 @@ networks:
     driver: bridge
 
 volumes:
+  # 这三个 volume 历史由旧项目名 quant-agent 创建, 现项目名已固定为 quant-agent-master。
+  # 显式声明 external: true 复用既有 volume, 消除 'already exists but was created for
+  # project "quant-agent" (expected "quant-agent-master")' 警告, 并避免 up 时误判 orphan。
   redis_data:
     name: quant_master_redis_data
+    external: true
   quant_db:
     name: quant_master_db
+    external: true
   postgres_data:
     name: quant_master_postgres_data
+    external: true
   prometheus_data:
     name: quant_master_prometheus_data
   grafana_data:

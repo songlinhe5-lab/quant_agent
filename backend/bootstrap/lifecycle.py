@@ -309,6 +309,16 @@ async def app_lifespan(app: FastAPI):
     except Exception as e:
         log.error(f"[Startup] 数据源可用性拨测 daemon 启动失败: {e}")
 
+    # RL-14: 启动熔断半开自愈探针 (此时已有 running loop, 确保后台任务一定拉起)。
+    # 注意 __init__ 在模块导入期可能无 running loop 而跳过, 故此处显式启动兜底。
+    try:
+        from backend.services.datasource.router import data_source_router
+
+        data_source_router.start_probing()
+        log.info("✅ [Startup] 熔断自愈探针已启动 (RL-14)")
+    except Exception as e:
+        log.error(f"[Startup] 熔断自愈探针启动失败: {e}")
+
     yield  # 挂起，FastAPI 正式对外提供服务
 
     # === 销毁阶段 (Shutdown) ===
@@ -455,7 +465,10 @@ async def app_lifespan(app: FastAPI):
         # 故无需在此 close 本地 yf_service。
         # BE-ARCH-07c: 主服务已卸载 Futu SDK 连接层 (OpenD 直连下沉 data_subservice),
         # futu_service 不再持有本地连接资源, 无需在此 close。
-        pass
+        # RL-14: 优雅关闭半开自愈探针后台任务
+        from backend.services.datasource.router import data_source_router
+
+        await data_source_router.stop_probing()
     except Exception as e:
         log.warning(f"⚠️ 关闭数据源资源异常：{e}")
 

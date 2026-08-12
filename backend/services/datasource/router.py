@@ -150,6 +150,9 @@ class DataSourceNode:
     is_throttled: bool = False
     consecutive_rate_limits: int = 0
     estimated_limit_rpm: Optional[int] = None
+    # 半开自愈探针状态（RL-14: 熔断后自动探活恢复，避免单节点源永久失效）
+    last_probe_at: float = 0.0
+    probe_consecutive_failures: int = 0
 
 
 class DataSourceRouter:
@@ -173,6 +176,128 @@ class DataSourceRouter:
         # 💡 FIX-275: 启动期自检, 捕获 REMOTE_URL 端口配错指向主服务自身的典型故障
         # (如 akshare/fred 误配成 :8000 而非子服务 :8001, 导致静默 404 / connection refused)。
         self._validate_node_urls()
+        # RL-14: 每次重新部署 (进程启动) 清空所有节点的熔断残留, 防止上一次运行的
+        # unhealthy/error_count 污染新进程 (实战: 改 FUTU_REMOTE_URL 重启后老进程熔断态
+        # 未清, 导致 QUOTE 端点持续 所有候选源失败)。
+        self.reset_circuit_breakers()
+        # 启动半开自愈探针 (后台任务, 独立于业务流量持续探查节点健康, 熔断后自动恢复)
+        self._probe_task: Optional[asyncio.Task] = None
+        self._shutdown_event = asyncio.Event()
+        self._start_probing()
+
+    # ------------------------------------------------------------------
+    # RL-14: 熔断自愈 (半开探针) + 部署重置
+    # ------------------------------------------------------------------
+    def reset_circuit_breakers(self) -> None:
+        """清空所有节点的熔断残留 (error_count / circuit_breaker_until / unhealthy)。
+
+        每次进程启动 (即重新部署) 调用一次, 保证新进程从干净状态开始,
+        不会被上一次运行累积的熔断态污染 (否则单节点 pin 源一旦熔断便永久
+        "所有候选源失败", 必须 force-recreate 才能恢复)。
+        """
+        for node in self._nodes.values():
+            node.error_count = 0
+            node.circuit_breaker_until = 0.0
+            node.status = "healthy"
+            node.probe_consecutive_failures = 0
+            node.last_probe_at = 0.0
+        logger.info(f"[Router] 熔断状态已重置 (部署重置): nodes={list(self._nodes.keys())}")
+
+    def _start_probing(self) -> None:
+        """启动后台半开探针任务 (幂等, 仅当路由启用且无进行中任务时)。"""
+        if not self._enabled:
+            return
+        if self._probe_task is not None and not self._probe_task.done():
+            return
+        try:
+            # 仅当存在 running 的事件循环时才创建后台任务;
+            # 模块导入期 / 单测 setup (无 running loop) 下 get_running_loop 会抛
+            # RuntimeError, 此时静默跳过, 探针由运行时 (lifespan) 实际启动。
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        self._shutdown_event.clear()
+        self._probe_task = loop.create_task(self._probe_loop())
+        logger.info("[Router] 半开自愈探针已启动")
+
+    async def stop_probing(self) -> None:
+        """优雅关闭探针任务 (供 lifespan shutdown 调用)。"""
+        if self._probe_task is None:
+            return
+        self._shutdown_event.set()
+        try:
+            await asyncio.wait_for(self._probe_task, timeout=5.0)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            self._probe_task.cancel()
+        self._probe_task = None
+
+    async def _probe_loop(self) -> None:
+        """周期性对熔断/异常节点发起轻量探活, 成功则复位为 healthy。
+
+        仅探查处于 unhealthy 或熔断冷却中的节点 (healthy 节点无需打扰),
+        避免对正常节点造成额外请求压力。探活使用子服务 /health 端点。
+        """
+        probe_interval = float(os.getenv("DATASOURCE_PROBE_INTERVAL", "30"))
+        while not self._shutdown_event.is_set():
+            try:
+                await asyncio.sleep(probe_interval)
+                if self._shutdown_event.is_set():
+                    break
+                await self._probe_once()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:  # 探针自身异常绝不应影响主服务
+                logger.warning(f"[Router] 探针循环异常 (已忽略): {e}")
+
+    async def _probe_once(self) -> None:
+        now = time.time()
+        candidates = [
+            n for n in self._nodes.values() if n.enabled and (n.status != "healthy" or now < n.circuit_breaker_until)
+        ]
+        if not candidates:
+            return
+        for node in candidates:
+            try:
+                ok = await self._probe_node(node)
+            except Exception as e:
+                logger.debug(f"[Router] 探针 {node.name} 异常: {e}")
+                ok = False
+            async with self._lock:
+                node.last_probe_at = now
+                if ok:
+                    node.error_count = 0
+                    node.circuit_breaker_until = 0.0
+                    node.status = "healthy"
+                    node.probe_consecutive_failures = 0
+                    logger.info(f"[Router] 探针恢复节点 {node.name} -> healthy")
+                else:
+                    node.probe_consecutive_failures += 1
+                    # 探针持续失败: 维持 unhealthy, 但让熔断冷却随时间自然到期,
+                    # 不在此续期冷却 (由真实业务请求失败触发续期),
+                    # 保证 once-healthy-after-cooldown 后 _pin_node_usable 放行重试。
+
+    async def _probe_node(self, node: "DataSourceNode") -> bool:
+        """对单个节点发起 /health 探活, 返回是否健康。"""
+        self._ensure_http_client()
+        if self._http_client is None:
+            return False
+        # 优先用节点 URL 的 /health, 失败回退到 /api/v1/data 的 OPTIONS 不可用,
+        # 故直接 POST 一个轻量 PING action (子服务需支持 source=ping 或忽略)。
+        url = f"{node.url}/health"
+        try:
+            resp = await self._http_client.get(url, timeout=httpx.Timeout(5.0, connect=3.0))
+            if resp.status_code == 200:
+                try:
+                    body = resp.json()
+                    # 子服务健康体含 status 字段, 仅当显式 unhealthy 才判失败
+                    if isinstance(body, dict) and body.get("status") == "unhealthy":
+                        return False
+                except Exception:
+                    pass
+                return True
+            return False
+        except Exception:
+            return False
 
     def _validate_node_urls(self):
         """启动期校验各远程数据源节点的 URL 端口, 防止误指向主服务自身。
