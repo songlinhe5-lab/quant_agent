@@ -6,6 +6,18 @@
 >
 > ---
 >
+> ## 🗂️ 独立 TODO 专项文档索引（2026-08-13 新增）
+>
+> 下列评估已产出**独立 TODO 文档**（含调研结论 + 分级任务清单），此处仅登记索引，任务明细见各文档：
+>
+> | 任务 ID | 文档 | 结论摘要 | 优先级 |
+> |:---|:---|:---|:---|
+> | DS-SENTIMENT | [TODO-SENTIMENT-DATASOURCE.md](./TODO-SENTIMENT-DATASOURCE.md) | 散户情绪：Finnhub 403 / StockGeist 502 否决；ApeWisdom 热度榜可落地（无情绪分数） | P2 |
+> | DS-FUTU-FUND | [TODO-FUTU-FUNDAMENTAL-SCREEN.md](./TODO-FUTU-FUNDAMENTAL-SCREEN.md) | Futu 基本面：`get_stock_screen` 已覆盖；`get_financials_statements`（财务三大表）为真增量 | P1 |
+> | DS-FUTU-OPT | [TODO-FUTU-OPTION-COMBO-MARKETS.md](./TODO-FUTU-OPTION-COMBO-MARKETS.md) | Futu 组合期权：行情三件套 P0；交易类预留（沙箱）；新马日暂缓 | P1 |
+>
+> ---
+>
 > ## 📋 **最新架构评审会议**
 >
 > **VARB-2026-0708-001** (AI Virtual Architecture Board) 于 2026-07-08 召开，确认 OPT-001~004 范围与优先级。
