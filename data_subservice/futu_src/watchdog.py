@@ -81,6 +81,16 @@ class FutuWatchdog:
         self._running = True
         logger.info("[FutuWatchdog] 🐕 看门狗守护进程启动")
 
+        # BE-03② 自愈保险：若初始 connect 未建立（OpenD 会话抖动/晚于子服务启动），
+        # 入循环前先主动补连一次，避免首轮 health_check 直接判定 DISCONNECTED 后
+        # 仍需等一个退避周期才重连。
+        if self._conn_mgr.status != "CONNECTED" or self._conn_mgr.quote_ctx is None:
+            logger.info("[FutuWatchdog] 初始连接未就绪，启动前主动补连一次...")
+            try:
+                await self._do_reconnect()
+            except Exception as e:
+                logger.warning(f"[FutuWatchdog] 启动前补连失败（将进入健康检查循环重试）: {e}")
+
         try:
             while self._running:
                 try:

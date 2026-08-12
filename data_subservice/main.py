@@ -59,6 +59,10 @@ _HEARTBEAT_INTERVAL = max(5, _HEARTBEAT_TTL // 3)
 
 # 后台心跳任务句柄，便于 shutdown 时清理
 _heartbeat_task: Optional[asyncio.Task] = None
+# BE-03① 修复：watchdog task 必须有强引用持有，否则 asyncio.create_task 创建的
+# 协程会因无引用被 GC 回收，导致看门狗实际从未运行（running=False、total_reconnects=0），
+# 一旦初始 connect 因 OpenD 会话抖动未建立即永久 DISCONNECTED 且无法自愈。
+_futu_watchdog_task: Optional[asyncio.Task] = None
 
 app = FastAPI(title="Quant Agent Data Subservice", version="1.0.0")
 
@@ -231,7 +235,7 @@ async def startup_event():
         try:
             from data_subservice.futu_src import futu_service
             from data_subservice.futu_src.push_handler import set_main_loop
-            from data_subservice.futu_src.watchdog import FutuWatchdog
+            from data_subservice.futu_src.watchdog import get_watchdog
 
             # BE-ARCH-08c①: connect() 经 asyncio.to_thread 在工作线程执行，
             # _register_push_handlers 内 asyncio.get_running_loop() 会抛 RuntimeError。
@@ -241,7 +245,13 @@ async def startup_event():
 
             # 初始建连（线程池执行，不阻塞事件循环）
             await asyncio.to_thread(futu_service.connect)
-            asyncio.create_task(FutuWatchdog(futu_service).start())
+
+            # BE-03① 修复：用单例 + 全局强引用持有 task，杜绝 GC 回收导致看门狗静默停摆；
+            # 即便初始 connect 因 OpenD 抖动未建立，watchdog.start() 也会先主动补连再进入
+            # 健康检查循环，实现断连自愈。
+            global _futu_watchdog_task
+            watchdog = get_watchdog(futu_service)
+            _futu_watchdog_task = asyncio.create_task(watchdog.start())
             logger.info("🔌 Futu OpenD 长连接已拉起（主节点），看门狗守护进程启动")
         except Exception as e:
             logger.error(f"❌ Futu OpenD 启动失败: {e}")
@@ -279,6 +289,12 @@ async def shutdown_event():
         _heartbeat_task.cancel()
         try:
             await _heartbeat_task
+        except (asyncio.CancelledError, Exception):
+            pass
+    if _futu_watchdog_task is not None:
+        _futu_watchdog_task.cancel()
+        try:
+            await _futu_watchdog_task
         except (asyncio.CancelledError, Exception):
             pass
 
