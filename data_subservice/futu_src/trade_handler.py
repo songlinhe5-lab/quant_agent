@@ -202,7 +202,15 @@ class TradeHandler:
         trd_ctx = self.conn_mgr.get_trade_context(market=trd_market, trd_env=trd_env)
         try:
             if trd_env == TrdEnv.REAL:
-                await self.conn_mgr.unlock_trade_if_needed(trd_ctx)
+                # DIST-23(2026-08-11 实战): 解锁失败(OpenD 交易未解锁)属预期状态,
+                # 标记 locked=True 让上层(futu_worker)返回 success+空数据, 不误伤行情通道。
+                unlocked = await self.conn_mgr.unlock_trade_if_needed(trd_ctx)
+                if not unlocked:
+                    return {
+                        "status": "error",
+                        "locked": True,
+                        "message": "OpenD 交易连接未解锁(需在 OpenD 界面手动解锁或配置 FUTU_TRD_UNLOCK_PWD)",
+                    }
 
             ret, data = await asyncio.to_thread(trd_ctx.accinfo_query, trd_env=trd_env)
             if ret != RET_OK:

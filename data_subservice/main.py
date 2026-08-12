@@ -111,14 +111,35 @@ def _futu_status_snapshot() -> dict:
         from data_subservice.futu_src import futu_service
 
         conn_mgr = futu_service.conn_mgr
+        # DIST-23(2026-08-11 实战): 此前 /futu/status 仅暴露行情连接状态, 掩盖了
+        # 交易连接(TrdCtx)未解锁这一隐蔽故障 —— 行情 CONNECTED 但 ACCOUNT_INFO 因
+        # OpenD 交易未解锁返回 error, 进而触发主服务 futu_master 全局熔断误杀行情。
+        # 现补充交易连接/解锁状态, 让监控一眼看清"行情通、交易未解锁"的真相。
+        # 注意: 交易解锁错误记录在 TradeHandler 单例上 (get_account_info 失败时置
+        # self.last_trade_error), 而非 ConnectionManager, 故从此处取。
+        trade_ctxs = getattr(conn_mgr, "trade_ctxs", None)
+        trade_connected = bool(trade_ctxs)
+        last_trade_error = getattr(futu_service.trade_handler, "last_trade_error", "") or ""
         return {
             "status": conn_mgr.status,
             "connected": conn_mgr.quote_ctx is not None,
             "target": conn_mgr.target,
             "error_msg": conn_mgr.error_msg,
+            # 新增交易通道状态 (与行情通道分离观测)
+            "trade_connected": trade_connected,
+            "trade_unlocked": trade_connected and not last_trade_error,
+            "trade_error": last_trade_error or None,
         }
     except Exception as e:  # 未声明 futu 能力或模块不可用时
-        return {"status": "unavailable", "connected": False, "target": None, "error_msg": str(e)}
+        return {
+            "status": "unavailable",
+            "connected": False,
+            "target": None,
+            "error_msg": str(e),
+            "trade_connected": False,
+            "trade_unlocked": False,
+            "trade_error": None,
+        }
 
 
 @app.get("/futu/status")

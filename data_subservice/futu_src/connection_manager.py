@@ -156,13 +156,24 @@ class ConnectionManager:
             )
         return self.trade_ctxs[key]
 
-    async def unlock_trade_if_needed(self, trd_ctx: OpenSecTradeContext):
-        """统一提取交易密码解锁逻辑"""
+    async def unlock_trade_if_needed(self, trd_ctx: OpenSecTradeContext) -> bool:
+        """统一提取交易密码解锁逻辑。
+
+        返回是否解锁成功 (True=已解锁/无需解锁, False=解锁失败)。
+        DIST-23(2026-08-11 实战): 此前解锁失败仅打印警告、无返回值, 导致上层
+        get_account_info 无法区分"未解锁"与"常规错误", 最终 error 上抛触发主服务
+        futu_master 全局熔断误杀行情。现显式返回锁定状态供上层隔离处理。
+        """
         pwd_unlock = os.getenv("FUTU_TRD_UNLOCK_PWD", "") or os.getenv("FUTU_TRADE_PWD", "")  # noqa: E501
-        if pwd_unlock:
-            ret, data = await __import__("asyncio").to_thread(trd_ctx.unlock_trade, pwd_unlock, is_unlock=True)
-            if ret != RET_OK:
-                print(f"⚠️ [ConnectionManager] 自动解锁接口被拦截或失败: {data}。请确保已在 OpenD 界面手动解锁。")  # noqa: E501
+        if not pwd_unlock:
+            # 未配置解锁密码: 视为需要手动在 OpenD 界面解锁 (非故障, 标记锁定)
+            print("⚠️ [ConnectionManager] 未配置 FUTU_TRD_UNLOCK_PWD, 交易需手动在 OpenD 界面解锁。")
+            return False
+        ret, data = await __import__("asyncio").to_thread(trd_ctx.unlock_trade, pwd_unlock, is_unlock=True)
+        if ret != RET_OK:
+            print(f"⚠️ [ConnectionManager] 自动解锁接口被拦截或失败: {data}。请确保已在 OpenD 界面手动解锁。")  # noqa: E501
+            return False
+        return True
 
     # ── 运行时切换连接目标 ──────────────────────────────────────────
 
