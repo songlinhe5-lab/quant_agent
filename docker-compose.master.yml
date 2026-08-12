@@ -91,12 +91,10 @@ services:
     # 同时绑定 127.0.0.1 供本机 / Tailscale 内网访问。
     ports:
       - "0.0.0.0:8000:8000"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     environment:
-      # 💡 FIX-273: 容器间通信走 Docker 内部服务名，不再绕 host.docker.internal
-      # (解析到 172.17.0.1/docker0，而 redis/pg 的 docker-proxy 仅绑 127.0.0.1+TS 网卡，
-      # 导致 Connection refused、服务 unhealthy)。8001(YF 子服务)/OpenD 仍需出容器访问宿主,保留 host.docker.internal。
+      # 💡 FIX-273: 容器间通信走 Docker 内部服务名 (redis/postgres)，不依赖 host.docker.internal。
+      # 宿主服务对容器暴露统一走 Tailscale IP (TAILSCALE_IP, 稳定虚拟地址)，而非 docker 网关 IP。
+      # 详见 docs §8.2「宿主服务对容器暴露规范」。
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       # 必须与下方 redis 容器的 --requirepass 一致，否则主服务用空密码连被拒 (invalid username-password)
@@ -137,9 +135,7 @@ services:
     env_file:
       - .env
     # 💡 SEC-16: 不使用 host 网络模式，避免共享宿主网络栈暴露所有端口。
-    # 改用 bridge 网络，经 host.docker.internal 访问宿主服务。
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    # 改用 bridge 网络；容器间通信走内部服务名 redis/postgres (FIX-273)。
     environment:
       # 💡 FIX-273: 同 quant-agent,容器间通信走内部服务名 redis/postgres,避免绕 docker0 网关被拒。
       - REDIS_HOST=redis

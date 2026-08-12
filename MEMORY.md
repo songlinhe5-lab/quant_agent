@@ -124,7 +124,28 @@ docker exec quant-agent-node-s1-data-subservice-1 sh -c 'python3 -c "import urll
 # 预期: {"status":"CONNECTED","connected":true,"target":"100.102.223.44:11111","error_msg":""}
 ```不带校验的懒代码是半成品。
 
-## 七、futu /quote 主服务探针未恢复（2026-08-12 · Issue #289 衍生卡点）
+## 七、asyncio.create_task 必须持有强引用（2026-08-12 实战坑 · PR #294）
+
+**背景**：node-s1 部署新代码后子服务常驻进程 `/futu/status` 偶发 `CONNECTED` 但主服务 `/quote` 仍全部失败。深入核查发现 `futu.status` 偶发 `CONNECTED` 只是 startup 残留快照，**看门狗实际从未运行**（`running=False`、`total_reconnects=0`），一旦初始 `connect()` 因 OpenD 会话抖动未建立即永久 `DISCONNECTED`，无自愈。
+
+**🔴 根因**：`data_subservice/main.py` 原代码
+```python
+asyncio.create_task(FutuWatchdog(futu_service).start())  # 无强引用持有
+```
+`asyncio.create_task` 返回的 task 若无任何变量/容器引用，会在下一次 GC 时被回收并取消。看门狗协程因此静默停摆——这不是「没启动」，而是「启动即被 GC 掉」。
+
+**✅ 修复（commit `7e21f27` / PR #294）**：
+1. `main.py`：用 `get_watchdog(futu_service)` 单例 + 全局 `_futu_watchdog_task` 持有 task（与既有 `_heartbeat_task` 同模式），`shutdown_event` 优雅 cancel。
+2. `watchdog.py`：`start()` 入循环前先主动补连一次（`_do_reconnect`），即便初始建连失败也能立即自愈，不等一个退避周期。
+3. `connect()` 本身幂等（双重检查已连则跳过），补连与 startup 建连不冲突。
+
+**🔧 通用规则（固化进 vibe coding）**：凡 `asyncio.create_task(...)` 启动长生命周期后台协程（watchdog / heartbeat / 推送桥接 / 采集循环），**必须**用一个模块级全局变量或对象属性持有 task 引用，绝不能裸 `asyncio.create_task(...)` 丢弃返回值。短生命周期、函数内 await 完成的 task 不受此限。
+
+**观察方式红线补充**：
+- ❌ 不要用 `docker exec ... python3 -c "import ...get_watchdog; print(get_watchdog().stats)"` 判断——`exec` 是新进程，单例与常驻进程不同，且新进程未 start 过 watchdog，`running=False` 是假象。
+- ✅ 经常驻进程暴露端点或日志判断：`GET /futu/status`（真实 status/connected）+ 启动日志应出现 `🐕 看门狗守护进程启动`；重连行为看 `GET /metrics` 的 `futu_reconnect_total` 计数。
+
+## 八、futu /quote 主服务探针未恢复（2026-08-12 · Issue #289 衍生卡点）
 
 **背景**：Layer 1~5 全部闭环（PR #286~#291），node-s1 已确认部署新代码（`data_subservice/futu_src/service.py` 的 `status` 已改 property 代理 `conn_mgr.status`；经 HTTP `/futu/status` 验证子服务常驻进程 `CONNECTED`，OpenD 11111 TCP ESTABLISHED 通）。但主服务 `/quote?ticker=HK.00700` **仍持续 `No healthy Futu remote node`**，即使主服务 force-recreate 重启后亦然。
 
@@ -156,6 +177,7 @@ docker exec quant-agent-node-s1-data-subservice-1 sh -c 'python3 -c "import urll
 - [x] 经 HTTP 取 `futu` 节点真实状态（status=stale/error_count=3）。
 - [x] 主服务容器内确认 `FUTU_REMOTE_URL=http://100.102.223.44:8001`。
 - [x] **方案 A 已实施**：node-s1 子服务 `ports` 改 `127.0.0.1:8001:8001`，主服务 `FUTU_REMOTE_URL=http://data-subservice:8001`（服务名互联）；并修掉 VPS 上被救急改坏的中转镜像地址（见第八章）。详见 2026-08-12 后续会话。
+- [x] **watchdog 自愈已修复（PR #294 / commit `7e21f27`，独立于网络拓扑）**：`main.py` 用全局 `_futu_watchdog_task` 持有 task 强引用 + `watchdog.start()` 入循环前主动补连。`/futu/status` 偶发 `CONNECTED` 实为 startup 残留快照、看门狗此前从未运行的根因已闭环。重启 `data-subservice` 容器后生效。
 
 ## 八、容器隔离下的网络访问模型（2026-08-12 固化）
 

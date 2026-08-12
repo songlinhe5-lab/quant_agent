@@ -212,7 +212,7 @@
 - **US-YF-A / US-YF-B**（美国辅助 ×2）：仅 `data_subservice`（yfinance），**独立公网 IP** → Yahoo；心跳写主 Redis Registry
 - **CN-DATA**（中国数据源 VPS）：Tushare + AKShare 子服务 → 主 Redis 或 HMAC 远程；**禁止** YFinance / Futu
 - 前端（Cloudflare Pages）→ 仅 US-MASTER API
-- Futu OpenD 仅主宿主机 `127.0.0.1:11111`，主服务经 `data_source_router.fetch_futu()` HTTP 代理访问
+- Futu OpenD 在**主宿主机**运行，监听 `0.0.0.0:11111`（严禁改回 `127.0.0.1`，否则容器内子服务 `Connection refused`）；主服务经 `data_source_router.fetch_futu()` HTTP 代理访问（参见 §9.5 暴露规范）
 - **设计原则 (2026-08-07)**：所有数据源仅远程。Futu/FMP/Finnhub/FRED/DBnomics/RBI/Tavily/Bocha/Jina 的连接层全部下沉 data_subservice，主服务经 `DataSourceRouter` HTTP 代理，**不再持有任何本地 SDK / WS 订阅 / 直连外部 API**。源失效在监控如实显示，无本地降级。
 - 跨节点：Tailscale only；子服务 HMAC；不对公网暴露 6379/5432/ds:8001
 
@@ -256,6 +256,34 @@
 - **CN 节点**: 禁止声明 YF/Futu 能力（即 `DS_CAPABILITIES` 仅含 Tushare + AKShare 子服务）
 - **Redis 键空间**: `quant:cache:{action}:{ticker}`
 - **数据源注册**: 应用启动时由 `bootstrap/lifecycle.py` 调用 `ensure_all_datasources_registered()` 统一注册，Facade 经 Registry 选源
+
+### 9.5 宿主服务对容器暴露规范（架构级强制原则）
+
+> **核心铁律**：所有「宿主进程对容器内服务暴露」的访问地址，**统一走 Tailscale IP（稳定虚拟地址 `100.x.x.x`），严禁依赖 docker 内部网关 IP（如 `172.17.0.1` docker0、`172.19.0.1` quant-net）**。
+> docker 网段会随重启/重排漂移，裸写死网关 IP 是运维炸弹；Tailscale IP 跨机器语义统一、不漂移。
+
+**四类连通场景的寻址原则**：
+
+| 场景 | 寻址方式 | 示例 |
+|:---|:---|:---|
+| 同 compose 项目内容器互访 | Docker **服务名** DNS | `quant-agent` → `redis` / `postgres` |
+| 跨 compose 项目但同机 | 共享 `external` 网络 + 服务名 | master `quant-internal` ↔ node-s1 `data-subservice` |
+| 跨 VPS 机器 | **Tailscale IP**，绝不走公网 IP | node-bj/s2 → `http://<主节点TS_IP>:8001` + HMAC |
+| 容器访问**宿主**服务 | **Tailscale IP**（默认）；Futu OpenD 例外（见下） | `REDIS_HOST=<主节点TS_IP>` |
+
+**宿主服务「监听地址 ↔ 容器访问地址」对照**（踩坑高发区）：
+
+- **Redis (6379)**：宿主 `bind 127.0.0.1 <TAILSCALE_IP>`；容器内 `REDIS_HOST=<TAILSCALE_IP>`（如 `100.102.223.44`）。
+  ⚠️ 误设 `host.docker.internal`(=172.19.0.1 网关，Redis 未监听该网关) → 心跳 `Connection refused` → 节点被 `DataSourceRouter` 判离线 → 熔断刷屏。
+- **PostgreSQL (5432)**：同 compose 用 `postgres` 服务名；跨机用 `<TAILSCALE_IP>`。宿主 `listen_addresses='localhost,<TAILSCALE_IP>'`。
+- **Futu OpenD (11111) — 唯一例外**：实测 OpenD 仅经 `quant-net` 网关 `172.19.0.1` 对容器可达（TS IP / docker0 均不可达），故容器内 `FUTU_HOST=host.docker.internal`（由 `extra_hosts: host.docker.internal:172.19.0.1` 解析，且 `quant-net` 的 `subnet/gateway` 在 compose 中**显式固定**防漂移）。
+  🚫 **严禁改 `OpenD.xml` 的 `<ip>` 字段**（保持 `0.0.0.0`，改回 `127.0.0.1` 会让容器永远连不上且可能触发富途二次验证）。
+  > `extra_hosts` 只解决 DNS 解析，不解决监听地址——OpenD 本身必须确实监听 `0.0.0.0`。
+
+**红线**：
+- SEC-16：禁用 `network_mode: host`，保持容器网络隔离。
+- 宿主 Redis/PG/子服务端口不对公网暴露，仅 `127.0.0.1` + Tailscale 内网（SEC-14/15/17）。
+- 端口映射统一 `${TAILSCALE_IP:-127.0.0.1}:<port>:<port>`，禁止硬编码公网 IP。
 
 ---
 
