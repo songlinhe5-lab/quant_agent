@@ -303,6 +303,67 @@ curl http://localhost:8000/api/v1/cluster
 redis-cli -a tradingagents123 keys "quant:node:*"
 ```
 
+### **问题 4: 主服务调子服务 `POST /api/v1/data` 返回 403**
+子服务 `verify_hmac`（`data_subservice/main.py`）在两处抛 403，需按以下顺序排查：
+
+1. **HMAC 密钥不一致（最常见）**
+   - 子服务仅响应 `DATA_SOURCE_HMAC_SECRET` 与主节点 DataSourceRouter **完全相同**的请求。
+   - 检查 Slave 的 `.env` 是否**确实包含** `DATA_SOURCE_HMAC_SECRET`，且值与主节点 `.env` 一字不差：
+     ```bash
+     # Slave 上：
+     grep DATA_SOURCE_HMAC_SECRET /opt/quant-agent/.env
+     docker exec <slave-container> printenv DATA_SOURCE_HMAC_SECRET
+     # 主节点上：
+     grep DATA_SOURCE_HMAC_SECRET /opt/quant-agent/.env
+     ```
+   - 注意：compose 用 `${DATA_SOURCE_HMAC_SECRET}` 注入，若 Slave 的 `.env` **漏配该变量**，容器内会回退代码默认值 `change-me-in-prod`，与主节点真实密钥不符 → 403。补上后 `docker compose up -d` 重启子服务即可。
+   - **⚠️ 双坑（2026-08-13 node-bj 实战）**：
+     - **占位符未替换**：`.env.data-node` 若把模板里的 `<与主节点一致的 HMAC 密钥>` **原样保留**（未换成真实哈希），容器 `printenv` 会显示这段中文占位符当密钥，与主节点 `b6fb...` 不符 → 403。注意 `printenv` 回显中文占位符不是打码，是真实配置值。
+     - **`.env` 末尾缺换行致 `echo >>` 拼接污染**：修复用 `echo 'KEY=val' >> .env` 时，若文件末行无换行，新内容会拼到上一行（如 `TZ=<时区>DATA_SOURCE_HMAC_SECRET=b6fb...`）。dotenv 把整串解析成 `TZ` 的值，`DATA_SOURCE_HMAC_SECRET` 反未定义 → 容器回退 `change-me-in-prod` → 403 依旧。肉眼 `grep` 能看到哈希却误以为已配。
+     - **正确修复**：`printf 'DATA_SOURCE_HMAC_SECRET=<真实哈希>\n' >> .env.data-node`（自带换行），再 `docker compose ... --env-file .env.data-node up -d`，最后 `docker exec <容器> printenv DATA_SOURCE_HMAC_SECRET` 复核必须是纯哈希。
+
+2. **跨 VPS 系统时间差 > 300 秒（隐蔽但高发）**
+   - `verify_hmac` 有 `abs(time.time() - int(x_timestamp)) > 300` 的时间窗校验，**早于签名比对执行**。
+   - 主节点与 Slave 若未开 NTP 自动校时，时差累计超 5 分钟即触发 403，且**签名本身完全正确也照拒**。
+   - 排查：分别在各节点执行 `date +%s`，互相比对，与真实当前时间差应 < 300：
+     ```bash
+     date +%s
+     docker exec <slave-container> date +%s   # 容器共享宿主时钟，通常与宿主一致
+     ```
+   - 修复（所有节点都执行）：
+     ```bash
+     sudo timedatectl set-ntp true          # 开启 NTP 自动校时
+     # 或老版本：
+     sudo apt-get install -y ntpdate && sudo ntpdate pool.ntp.org
+     ```
+   - 校时**无需重启容器**（容器实时读取宿主时钟）。
+
+3. **缺少 HMAC 请求头**：日志若出现 `缺少 HMAC 请求头`，说明主服务未走 DataSourceRouter 签名路径，检查 `DATA_SOURCE_ROUTER_ENABLED=true` 是否已开启。
+
+> ⚠️ 经验：手动 `sed` 改 compose 后 `up -d` 时，最容易漏掉 Slave `.env` 的 `DATA_SOURCE_HMAC_SECRET`；跨云部署务必确认各节点 NTP 同步。
+
+### **问题 5: 子服务镜像拉取慢 / 被拒（跨境直连 ghcr.io 失败）**
+北京/美西等跨境节点直接拉 `ghcr.io/songlinhe5-lab/quant_agent-data-subservice:cn` 会因墙/带宽/未登录而极慢或 `denied`。正确做法是走主节点 S1 的**私有中转 registry（纯 Tailscale 内网，秒级）**。
+
+- **前置（一次性, docker daemon 级）**：在各子节点 `/etc/docker/daemon.json` 配 `insecure-registries`（否则 `pull` 被拒）：
+  ```bash
+  TS_REG="100.102.223.44:5000"
+  DAEMON_CFG="/etc/docker/daemon.json"
+  [ -f "$DAEMON_CFG" ] || echo '{}' > "$DAEMON_CFG"
+  if ! grep -q "$TS_REG" "$DAEMON_CFG"; then
+    sudo jq --arg r "$TS_REG" '. + {insecure-registries: ((.insecure-registries // []) + [$r])}' "$DAEMON_CFG" > /tmp/daemon.json && sudo mv /tmp/daemon.json "$DAEMON_CFG"
+    sudo systemctl restart docker
+  fi
+  ```
+- **配置镜像源（推荐, 免手动 sed）**：在节点 `.env.data-node` 加一行，compose 已变量化 `image: ${DATA_SUB_SERVICE_IMAGE:-ghcr.io/...}`：
+  ```bash
+  echo 'DATA_SUB_SERVICE_IMAGE=100.102.223.44:5000/quant-agent-data-subservice:cn' >> /opt/quant-agent/.env.data-node
+  docker compose -f docker-compose.node-bj.yml --env-file .env.data-node up -d
+  ```
+- **⚠️ 命名空间陷阱**：S1 registry 内实际存储名为 `quant-agent-data-subservice:cn`（CI 推送路径），**不是** ghcr 的 `songlinhe5-lab/quant_agent-data-subservice:cn`。变量值必须用前者，否则 `pull` 报 `manifest unknown`。
+- **校验**：`docker pull 100.102.223.44:5000/quant-agent-data-subservice:cn` 应秒级 `Status: Image is up to date / Downloaded`；`docker inspect <容器> --format '{{.Config.Image}}'` 应显示 `100.102.223.44:5000/...`。
+- **老方案（不推荐）**：手动 `sed -i 's|ghcr.io/...|100.102.223.44:5000/...|g' docker-compose.node-bj.yml` 再 `up -d`——可临时用，但每次重新部署会被模板覆盖，故改用上面的 `.env` 变量法。
+
 ---
 
 ## 📝 配置记录

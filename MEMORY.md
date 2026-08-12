@@ -179,6 +179,34 @@ asyncio.create_task(FutuWatchdog(futu_service).start())  # 无强引用持有
 - [x] **方案 A 已实施**：node-s1 子服务 `ports` 改 `127.0.0.1:8001:8001`，主服务 `FUTU_REMOTE_URL=http://data-subservice:8001`（服务名互联）；并修掉 VPS 上被救急改坏的中转镜像地址（见第八章）。详见 2026-08-12 后续会话。
 - [x] **watchdog 自愈已修复（PR #294 / commit `7e21f27`，独立于网络拓扑）**：`main.py` 用全局 `_futu_watchdog_task` 持有 task 强引用 + `watchdog.start()` 入循环前主动补连。`/futu/status` 偶发 `CONNECTED` 实为 startup 残留快照、看门狗此前从未运行的根因已闭环。重启 `data-subservice` 容器后生效。
 
+## 九、子服务 HMAC 403 排查踩坑（2026-08-13 实战 · node-bj）
+
+**现象**：主服务 `DataSourceRouter` 调 BJ 子服务 `POST /api/v1/data` 持续返回 **403**，但 `/health` 正常 200。日志里 200 与 403 交替（200 来自其他健康节点，403 全是 BJ）。
+
+**`verify_hmac`（`data_subservice/main.py:71-87`）三道 403 关卡**：
+1. 缺 `X-Timestamp` / `X-Signature` 头 → `缺少 HMAC 请求头`
+2. `abs(time.time() - int(x_timestamp)) > 300` → `请求时间戳过期`（**先于签名比对执行**）
+3. `hmac.compare_digest` 失败 → `HMAC 签名校验失败`
+
+**本次真因（两连击）**：
+- **根因 1 · example 占位符未替换**：BJ 的 `.env.data-node` 第 56 行把模板里的占位符 `<与主节点一致的 HMAC 密钥>` **原样照搬**，没换成真实哈希。致容器 `DATA_SOURCE_HMAC_SECRET` 字面量 = 那段中文占位符，与主服务 `b6fb201e...` 不符 → 签名校验失败 → 403。
+  - ⚠️ `docker exec ... printenv` 回显的 `<与主节点一致的 HMAC 密钥>` 不是打码，是**配置里真实的字面量**——第一眼极易误判为"密钥一致"。
+- **根因 2 · `.env` 末尾缺换行导致 `echo >>` 拼接污染**：修复时 `echo '...' >> .env.data-node`，但文件末行 `TZ=<时区>` 后无换行，追加内容被拼到同一条 → 生成坏行 `TZ=<时区>DATA_SOURCE_HMAC_SECRET=b6fb...`。dotenv 把整串解析成 `TZ` 的值，`DATA_SOURCE_HMAC_SECRET` 反未被定义 → 容器回退代码默认 `change-me-in-prod` → 403 依旧。
+  - 此坑隐蔽：肉眼 `grep` 能看到 `b6fb...` 字符串，但它在 `TZ=` 行里，变量根本没生效。
+
+**排查顺序固化（别再空推）**：
+1. `docker exec <容器> printenv DATA_SOURCE_HMAC_SECRET` —— 看**真实哈希**还是占位符/默认 `change-me-in-prod`。
+2. `grep -n "DATA_SOURCE_HMAC_SECRET" .env.data-node` —— 确认是否独立成行、无拼接污染（警惕与上一行粘连的坏行）。
+3. 主从节点分别 `date +%s` 互比，差须 < 300s（时差也会 403，且早于签名比对）。
+4. 密钥一致、时差正常、IP 白名单（`DATA_SOURCE_ALLOWED_IPS` 在代码里**无引用**，不影响）仍 403 → 抓子服务 403 的 `detail` 文案定性。
+
+**修复铁律**：
+- slave 节点 `.env.data-node` 必须含 `DATA_SOURCE_HMAC_SECRET=<真实哈希>`，且与主节点 `.env` 的 `DATA_SOURCE_HMAC_SECRET` **逐字符一致**。
+- `echo 'KEY=val' >> file` 前先 `tail -c1 file | read -r _ || echo >> file` 补换行，或干脆用 `printf 'KEY=val\n' >> file` 避免拼接污染。
+- 改完 `docker compose -f docker-compose.node-<节点>.yml --env-file .env.data-node up -d` 重启，再 `printenv` 复核。
+
+**已沉淀文档**：`DEPLOYMENT_CHECKLIST.md` 故障排查「问题 4」、`.env.data-node.example` HMAC/TZ 注释（commit `f3a6ccd`）。
+
 ## 八、容器隔离下的网络访问模型（2026-08-12 固化）
 
 **核心原则**：主服务与子服务保持 Docker bridge 隔离（**不用 `network_mode: host`**），同机走 Docker 服务名 DNS，跨机走 Tailscale + HMAC。host 化虽能让子服务用 `127.0.0.1` 连 OpenD，但牺牲隔离、暴露端口、且破坏服务名互联，得不偿失——当前 `:us` 镜像 + `host.docker.internal` 网关映射已稳定 `CONNECTED`。
