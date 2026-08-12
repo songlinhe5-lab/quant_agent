@@ -57,10 +57,11 @@ services:
       # 主服务的 `redis` 服务名。
       # ⚠️ 严禁设为 127.0.0.1：容器内 127.0.0.1 指向【容器自身】，不是宿主！
       #    误设会导致心跳写入失败 → 主服务 DataSourceRouter 判本节点离线 → 熔断。
-      # 同机部署统一走 host.docker.internal（下方 extra_hosts: host-gateway 映射到宿主网关）；
-      # 跨节点部署请在 .env.data-node 显式覆盖 REDIS_HOST 为主节点 Tailscale IP。
-      # 📌 前置条件：宿主 Redis 必须监听 docker0 网关 IP(172.17.0.1)，否则连接被拒。
-      #    配置方式见 docs/06 §8.2「宿主服务对容器暴露规范」。
+      # 同机部署 (node-s1): REDIS_HOST 必须填主节点 Tailscale IP (如 100.102.223.44),
+      #   因宿主 Redis 仅监听 127.0.0.1 + TS IP, quant-net 网关 172.19.0.1 上未监听 Redis。
+      #   注意: 不能填 host.docker.internal(=172.19.0.1), 否则心跳 Connection refused。
+      # 跨节点部署 (node-bj/s2/s3/s4): 填主节点 Tailscale IP。
+      # 📌 前置条件：宿主 Redis 须监听主节点 TS IP (100.102.223.44)。
       REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-quant_redis_secret_2026}
@@ -68,8 +69,8 @@ services:
       ENABLE_REDIS_HEARTBEAT: "true"
       # Futu OpenD 运行在【宿主】127.0.0.1:11111。s1 为独立 bridge 网络, 容器内
       # 127.0.0.1 指向容器自身, 连不上宿主 OpenD。必须经 host.docker.internal
-      # (由下方 extra_hosts: host-gateway 映射到宿主网关 172.17.0.1) 才能连通。
-      # 📌 前置条件：OpenD 仅监听 127.0.0.1 且【严禁修改 OpenD.xml】(改动会触发富途
+      # (由下方 extra_hosts 写死映射到 quant-net 网关 172.19.0.1) 才能连通。
+      # 📌 前置条件：OpenD 监听 0.0.0.0:11111 (禁止改 OpenD.xml), 且经 172.19.0.1 网关可达。
       #    设备二次验证)，故必须在宿主部署 socat 端口转发把 172.17.0.1:11111 转到
       #    127.0.0.1:11111，并固化为 systemd 服务。
       #    部署命令见 docs/06 §8.2「宿主服务对容器暴露规范」。
