@@ -303,6 +303,41 @@ curl http://localhost:8000/api/v1/cluster
 redis-cli -a tradingagents123 keys "quant:node:*"
 ```
 
+### **问题 4: 主服务调子服务 `POST /api/v1/data` 返回 403**
+子服务 `verify_hmac`（`data_subservice/main.py`）在两处抛 403，需按以下顺序排查：
+
+1. **HMAC 密钥不一致（最常见）**
+   - 子服务仅响应 `DATA_SOURCE_HMAC_SECRET` 与主节点 DataSourceRouter **完全相同**的请求。
+   - 检查 Slave 的 `.env` 是否**确实包含** `DATA_SOURCE_HMAC_SECRET`，且值与主节点 `.env` 一字不差：
+     ```bash
+     # Slave 上：
+     grep DATA_SOURCE_HMAC_SECRET /opt/quant-agent/.env
+     docker exec <slave-container> printenv DATA_SOURCE_HMAC_SECRET
+     # 主节点上：
+     grep DATA_SOURCE_HMAC_SECRET /opt/quant-agent/.env
+     ```
+   - 注意：compose 用 `${DATA_SOURCE_HMAC_SECRET}` 注入，若 Slave 的 `.env` **漏配该变量**，容器内会回退代码默认值 `change-me-in-prod`，与主节点真实密钥不符 → 403。补上后 `docker compose up -d` 重启子服务即可。
+
+2. **跨 VPS 系统时间差 > 300 秒（隐蔽但高发）**
+   - `verify_hmac` 有 `abs(time.time() - int(x_timestamp)) > 300` 的时间窗校验，**早于签名比对执行**。
+   - 主节点与 Slave 若未开 NTP 自动校时，时差累计超 5 分钟即触发 403，且**签名本身完全正确也照拒**。
+   - 排查：分别在各节点执行 `date +%s`，互相比对，与真实当前时间差应 < 300：
+     ```bash
+     date +%s
+     docker exec <slave-container> date +%s   # 容器共享宿主时钟，通常与宿主一致
+     ```
+   - 修复（所有节点都执行）：
+     ```bash
+     sudo timedatectl set-ntp true          # 开启 NTP 自动校时
+     # 或老版本：
+     sudo apt-get install -y ntpdate && sudo ntpdate pool.ntp.org
+     ```
+   - 校时**无需重启容器**（容器实时读取宿主时钟）。
+
+3. **缺少 HMAC 请求头**：日志若出现 `缺少 HMAC 请求头`，说明主服务未走 DataSourceRouter 签名路径，检查 `DATA_SOURCE_ROUTER_ENABLED=true` 是否已开启。
+
+> ⚠️ 经验：手动 `sed` 改 compose 后 `up -d` 时，最容易漏掉 Slave `.env` 的 `DATA_SOURCE_HMAC_SECRET`；跨云部署务必确认各节点 NTP 同步。
+
 ---
 
 ## 📝 配置记录
