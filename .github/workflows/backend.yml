@@ -413,11 +413,10 @@ jobs:
             docker tag "${IMAGE}" "${REGISTRY_IMAGE}"
             docker push "${REGISTRY_IMAGE}"
 
-            # 同时把 data-subservice 镜像推到 registry (北京/美西从节点经内网拉取)
-            # ⚠️ 关键修复: 必须按 build-data-subservice 的真实 tag 矩阵 (cn/us/us-aux) 逐个搬运，
-            #    保持原始 tag 不变推入内网 registry。之前只推 :latest，导致 bj(:cn)/s2-s4(:us-aux)
-            #    从内网 registry 拉取时 not found (registry 里只有 :latest)。
-            DS_TAGS="cn us us-aux"
+            # 只把北京节点需要的 data-subservice:cn 推到本机内网 registry 供其中转拉取。
+            # us/us-aux 属美西节点 (s2/s3/s4)，它们直连 GHCR 拉取 (见 deploy-data-nodes IMAGE 分支)，
+            # 无需经 S1 中转，故不推入 registry，避免重复 pull+push 浪费时间与 registry 存储。
+            DS_TAGS="cn"
             for DS_TAG in $DS_TAGS; do
               DS_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${DS_TAG}"
               DS_REGISTRY_IMAGE="127.0.0.1:5000/quant-agent-data-subservice:${DS_TAG}"
@@ -428,7 +427,7 @@ jobs:
                 || { echo "❌ data-subservice:${DS_TAG} 推送到本机 registry 失败 (磁盘/containerd 问题?)，中止避免从节点拉到空镜像"; exit 1; }
               echo "✅ data-subservice:${DS_TAG} 已推送至本机 registry"
             done
-            echo "✅ data-subservice (cn/us/us-aux) 已全部推送至本机 registry，从节点可经内网拉取"
+            echo "✅ data-subservice (cn) 已推送至本机 registry，北京节点可经内网拉取"
 
             # ── OPS-03: 每次 push 后回收 registry 垃圾 + 安装深度 GC cron ──
             # 逻辑已抽离至 scripts/registry-gc-install.sh (避免单 run 块超 21000 字符上限)。
