@@ -15,6 +15,7 @@
 > | DS-SENTIMENT | [TODO-SENTIMENT-DATASOURCE.md](./TODO-SENTIMENT-DATASOURCE.md) | 散户情绪：Finnhub 403 / StockGeist 502 否决；ApeWisdom 热度榜可落地（无情绪分数） | P2 |
 > | DS-FUTU-FUND | [TODO-FUTU-FUNDAMENTAL-SCREEN.md](./TODO-FUTU-FUNDAMENTAL-SCREEN.md) | Futu 基本面：`get_stock_screen` 已覆盖；`get_financials_statements`（财务三大表）为真增量 | P1 |
 > | DS-FUTU-OPT | [TODO-FUTU-OPTION-COMBO-MARKETS.md](./TODO-FUTU-OPTION-COMBO-MARKETS.md) | Futu 组合期权：行情三件套 P0；交易类预留（沙箱）；新马日暂缓 | P1 |
+| DS-FUTU-EVENT | [TODO-FUTU-EVENT-CONTRACT.md](./TODO-FUTU-EVENT-CONTRACT.md) | Futu 预测市场：隐含概率数据源（行情侧完整、交易侧缺失），发现链+快照先接 | P2 |
 >
 > ---
 >

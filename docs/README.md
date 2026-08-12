@@ -29,6 +29,7 @@
 | [散户情绪数据源调研 TODO](./TODO-SENTIMENT-DATASOURCE.md) | 散户情绪数据源选型（Finnhub/StockGeist 否决，ApeWisdom 热度榜可落地） |
 | [Futu 基本面/选股接口评估 TODO](./TODO-FUTU-FUNDAMENTAL-SCREEN.md) | 财务三大表为真增量，选股已覆盖 |
 | [Futu 组合期权/新马日市场评估 TODO](./TODO-FUTU-OPTION-COMBO-MARKETS.md) | 组合期权行情 P0、交易预留、新马日暂缓 |
+| [Futu 预测市场（事件合约）评估 TODO](./TODO-FUTU-EVENT-CONTRACT.md) | 隐含概率数据源，行情侧完整、交易侧缺失 |
 
 ## 1. 总体目录结构
 
