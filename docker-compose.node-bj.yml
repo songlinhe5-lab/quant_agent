@@ -23,7 +23,10 @@ x-common-env: &common-env
 
 services:
   data-subservice:
-    image: ghcr.io/songlinhe5-lab/quant_agent-data-subservice:cn
+    # 镜像地址变量化: 默认回退 ghcr.io; 跨境慢时配 DATA_SUB_SERVICE_IMAGE 指向 S1 中转 registry
+    # (如 100.102.223.44:5000/quant-agent-data-subservice:cn), 避免每次手动 sed 改本文件。
+    # ⚠️ 使用私有 http registry 须在 /etc/docker/daemon.json 配 insecure-registries (一次性, docker daemon 级)。
+    image: ${DATA_SUB_SERVICE_IMAGE:-ghcr.io/songlinhe5-lab/quant_agent-data-subservice:cn}
     restart: unless-stopped
     env_file:
       - .env.data-node
