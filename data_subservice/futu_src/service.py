@@ -61,15 +61,29 @@ class FutuService:
         # 兼容旧接口的属性映射
         self.quote_ctx = None
         self.trade_ctxs = {}
-        self.status = "DISCONNECTED"
         self.error_msg = ""
+
+    @property
+    def status(self) -> str:
+        """状态统一代理到 conn_mgr.status (单一事实源)。
+
+        原为独立字段, 仅在 connect()/close() 时同步; 当 watchdog 健康检查
+        (watchdog.py) 改写 conn_mgr.status 而未调 futu_service.connect() 时,
+        两者失同步导致 is_available 误判 (QUOTE 返回 OpenD 未连接)。
+        改为代理后, futu_service.status 永远等于 conn_mgr.status。
+        """
+        return self.conn_mgr.status
+
+    @status.setter
+    def status(self, value: str):
+        # setter 同步到 conn_mgr.status, 兼容 connect()/close() 内赋值及测试 mock 直赋
+        self.conn_mgr.status = value
 
     def connect(self):
         """连接到 Futu OpenD"""
         self.conn_mgr.connect()
         # 同步状态到旧接口
         self.quote_ctx = self.conn_mgr.quote_ctx
-        self.status = self.conn_mgr.status
         self.error_msg = self.conn_mgr.error_msg
 
     def close(self):

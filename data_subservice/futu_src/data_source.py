@@ -67,12 +67,7 @@ class LocalDataSource:
 
     @property
     def is_available(self) -> bool:
-        # 单一事实源: 与 status() 保持一致, 读 conn_mgr.status。
-        # 不能读 futu_service.status —— 它只在 connect()/close() 时同步,
-        # 若 watchdog 健康检查仅改写 conn_mgr.status 而未经 futu_service.connect()
-        # 同步, 会导致 futu_service.status 停留在 DISCONNECTED, 所有 QUOTE 被误判
-        # "OpenD 未连接", 而 /futu/status (conn_mgr.status) 却显示 CONNECTED。
-        return self._svc.conn_mgr.status == "CONNECTED"
+        return self._svc.status == "CONNECTED"
 
     @property
     def source_type(self) -> str:
