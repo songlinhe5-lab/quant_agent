@@ -123,3 +123,81 @@ docker build -f data_subservice/Dockerfile --build-arg DS_EXTRA=datasource-us \
 docker exec quant-agent-node-s1-data-subservice-1 sh -c 'python3 -c "import urllib.request; print(urllib.request.urlopen(\"http://127.0.0.1:8001/futu/status\").read().decode())"'
 # 预期: {"status":"CONNECTED","connected":true,"target":"100.102.223.44:11111","error_msg":""}
 ```不带校验的懒代码是半成品。
+
+## 七、futu /quote 主服务探针未恢复（2026-08-12 · Issue #289 衍生卡点）
+
+**背景**：Layer 1~5 全部闭环（PR #286~#291），node-s1 已确认部署新代码（`data_subservice/futu_src/service.py` 的 `status` 已改 property 代理 `conn_mgr.status`；经 HTTP `/futu/status` 验证子服务常驻进程 `CONNECTED`，OpenD 11111 TCP ESTABLISHED 通）。但主服务 `/quote?ticker=HK.00700` **仍持续 `No healthy Futu remote node`**，即使主服务 force-recreate 重启后亦然。
+
+**🔴 实测根因（2026-08-12 node-s1 直连核查，已定位）**：**不是代码 bug，是部署网络拓扑错误。**
+- 主服务运行时 `FUTU_REMOTE_URL=http://100.102.223.44:8001`（公网 IP，来自 `.env`）。
+- `GET /api/v1/market/futu/status` → `{"status":"REMOTE","reachable":false}`：主服务**容器内**访问公网 IP:8001 不可达。
+- `GET /api/v1/datasource/futu/health` → `status=stale, connected=false, health_error=error_count=3`：futu 节点已熔断，自愈探针同样走不通公网 → 永不复位。
+- 子服务容器内 `/health` → `futu: CONNECTED`（OpenD 正常，TCP 11111 通）。
+- **网络核查铁证**：
+  - 主服务容器 → 网络 `quant-agent-master_quant-internal`（IP 172.18.0.6）
+  - 子服务容器 → 网络 `quant-agent-node-s1_quant-net`（IP 172.19.0.2）
+  - **两容器在不同 compose 项目、不同 docker 网络**（master vs node-s1）
+  - 子服务 `ports` 仅 `8001/tcp -> 100.102.223.44:8001`（公网），宿主 `127.0.0.1:8001` 为 CLOSED
+- **结论**：主服务只能用公网 IP 访问子服务，但容器访问公网 IP 回环路径在 VPS 不通 → 持续 `reachable:false` → 熔断 → 探针失败 → 永不恢复。
+- **端点路径备忘**：主服务 API 全局前缀 `/api/v1`（health-overview 真实路径 `/api/v1/datasource/health-overview`，非 `/health-overview`）。
+
+**已排除（代码层全部闭环，问题在部署层）**：
+- 子服务 futu 会话未初始化（PR #290 后 `/futu/status` 已 CONNECTED）。
+- compose `environment:` 覆盖 `.env`（PR #287 已删）。
+- node-s1 复用旧 `:us` 镜像（PR #291 已修，`status is property: True` 已确认）。
+- 探针逻辑 bug / `/health-overview` 接口异常（实测接口正常返回 JSON，前缀 `/api/v1`）。
+
+**修复方向（方案待用户拍板，Issue #292 已记）**：
+- **方案 A（推荐）**：主服务 + 子服务并入同一 compose 网络；子服务 `ports` 改 `127.0.0.1:8001:8001`；`FUTU_REMOTE_URL=http://data-subservice:8001`（服务名互联），彻底不依赖公网 IP。
+- **方案 B（最小改动）**：子服务端口补映射 `127.0.0.1:8001` + 两容器建共享网络，主服务改走宿主网关/服务名。
+
+**待办**：
+- [x] 创建 Issue #292 + 同步实测根因。
+- [x] 经 HTTP 取 `futu` 节点真实状态（status=stale/error_count=3）。
+- [x] 主服务容器内确认 `FUTU_REMOTE_URL=http://100.102.223.44:8001`。
+- [x] **方案 A 已实施**：node-s1 子服务 `ports` 改 `127.0.0.1:8001:8001`，主服务 `FUTU_REMOTE_URL=http://data-subservice:8001`（服务名互联）；并修掉 VPS 上被救急改坏的中转镜像地址（见第八章）。详见 2026-08-12 后续会话。
+
+## 八、容器隔离下的网络访问模型（2026-08-12 固化）
+
+**核心原则**：主服务与子服务保持 Docker bridge 隔离（**不用 `network_mode: host`**），同机走 Docker 服务名 DNS，跨机走 Tailscale + HMAC。host 化虽能让子服务用 `127.0.0.1` 连 OpenD，但牺牲隔离、暴露端口、且破坏服务名互联，得不偿失——当前 `:us` 镜像 + `host.docker.internal` 网关映射已稳定 `CONNECTED`。
+
+### 8.1 同 VPS 内访问（容器 ↔ 容器）
+
+- **机制**：两个容器连到**同一用户自定义 bridge 网络**，Docker 内置 DNS 把对方**服务名/容器名**解析成容器 IP，直接互通，无需出宿主、无需知道 IP。
+- **当前 s1 实现**：
+  - `quant-internal` 网络（`172.18.0.0/16`）由 master 项目创建，node-s1 用 `external: true` + `name: quant-agent-master_quant-internal` 外部引用，实现**跨 compose 项目同网**。
+  - 主服务 → 子服务：`http://data-subservice:8001` ✅
+  - 子服务 → 主服务（回调）：`http://quant-agent:8000` ✅
+- **容器内访问宿主进程（OpenD/Redis）**：
+  - 容器内 `127.0.0.1` 是容器自身，**不能**连宿主 OpenD。
+  - 须用 `host.docker.internal`（compose `extra_hosts: host.docker.internal:host-gateway` 映射到宿主网关 `172.17.0.1`；s1 实测用 `172.19.0.1`）。
+  - **前置条件**：宿主进程必须监听 `0.0.0.0` 或对应网关 IP，不能只绑 `127.0.0.1`（否则网关来的连接 `Connection refused`）。OpenD 当前监听 `0.0.0.0:11111` ✅。
+
+### 8.2 跨 VPS 访问（VPS_A 容器 ↔ VPS_B 服务）
+
+- **机制**：无 Docker 内部 DNS，走 **Tailscale 虚拟组网 + HMAC 签名鉴权**。
+- **拓扑**：各 VPS 有 `tailscale0` 接口（如 S1=`100.102.223.44`、BJ=`100.124.178.96`），流量经 Tailscale 加密隧道，不经公网裸奔。
+- **寻址**：用 Tailscale IP，不能用服务名（服务名只在本机有效）。
+  - S1 主服务 → BJ 子服务（A股）：`TUSHARE_REMOTE_URL=http://100.124.178.96:8001` / `AKSHARE_REMOTE_URL=...`
+  - S1 主服务 → S2/S3/S4 辅助 YF：`YF_BACKUP_NODE_URL=http://100.x.x.x:8001`
+  - 每个请求带 `DATA_SOURCE_HMAC_SECRET` 签名，远端校验，防伪造。
+- **北京节点中转 registry（镜像分发通道，非运行时流量）**：
+  - BJ 境内直拉 GHCR 不稳，S1 部署私有 `registry:2`（监听 `127.0.0.1:5000` + Tailscale IP:5000）。
+  - CI 推送 `:cn` 镜像到 S1 registry；BJ compose 写 `127.0.0.1:5000/...:cn`，经 **Tailscale 内网**拉取。
+  - **铁律**：中转 registry **只缓存 `:cn`**（BJ 用）；主服务 (`quant_agent:latest`) 与 S1 子服务 (`:us`)、S2/S3/S4 (`:us-aux`) 均走 GHCR 直连，不进中转。
+
+### 8.3 对比速查
+
+| 维度 | 同 VPS 内 | 跨 VPS |
+|---|---|---|
+| 寻址 | Docker 服务名 DNS (`data-subservice:8001`) | Tailscale IP (`100.x.x.x:8001`) |
+| 网络层 | 宿主 bridge (172.18/172.19) | Tailscale 加密隧道 |
+| 是否出宿主 | 否（容器间直连） | 是（出 tailscale0） |
+| 鉴权 | 同网默认可信（HMAC 仍校验） | HMAC 签名必须 |
+| 配置来源 | compose `networks` + 共享外部网络 | `.env` 的 `*_REMOTE_URL` |
+
+### 8.4 `network_mode: host` 弊端备忘（已否决方案）
+
+- 两容器都 host 后 `127.0.0.1` 即宿主，localhost 全通；
+- 但：① 失去网络隔离（端口直接绑宿主所有网卡，SEC-16 红线倒退）② 端口冲突风险（无 NAT 隔离）③ Docker 服务名 DNS 失效（所有 `*_REMOTE_URL` 改 `127.0.0.1`）④ compose `networks`/`extra_hosts`/`ports` 映射全失效 ⑤ 仅解决同机，跨机仍要 Tailscale ⑥ 与 CI 模板（curl 仓库 compose 覆盖）冲突。
+- 仅当子服务用 `127.0.0.1` 连 OpenD 的单点诉求成立，但该诉求已由 `:us` 镜像 + `host.docker.internal` 网关达成，**无需 host 化**。

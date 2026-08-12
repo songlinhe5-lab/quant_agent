@@ -78,9 +78,11 @@ services:
     expose:
       - "8001"
     ports:
-      # 同机部署：默认仅绑定 127.0.0.1（loopback），主服务经 localhost:8001 直连。
-      # 若需跨节点经 Tailscale 访问，将 PUBLIC_IP 设为 TS IP 即可（PUBLIC_IP 在 .env.data-node 配置）。
-      - "${PUBLIC_IP:-127.0.0.1}:8001:8001"
+      # 同机部署：仅绑定 127.0.0.1（loopback）。主服务经共享网络用服务名
+      # data-subservice:8001 直连（见下方 networks: quant-internal，external 引用
+      # master 项目网络），不再走公网 IP（容器访问本机公网 IP 回环不通，是 futu 不可达根因）。
+      # 公网不再暴露 8001，缩小攻击面（HMAC 仅主服务调用即可）。
+      - "127.0.0.1:8001:8001"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8001/health').status==200 else 1)"]
       interval: 30s
@@ -92,7 +94,10 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
+      # 保留原独立网络（供 host.docker.internal 连宿主 redis/OpenD 不变），
+      # 并加入 master 项目的 quant-internal 外部网络，使主服务能以服务名 data-subservice 直连。
       - quant-net
+      - quant-internal
     deploy:
       resources:
         limits:
@@ -101,3 +106,8 @@ services:
 networks:
   quant-net:
     driver: bridge
+  # 外部引用 master 项目（quant-agent-master）已建的网络，实现跨 compose 项目同网互联。
+  # 主服务容器在该网络内，可用 data-subservice:8001 解析本服务，彻底绕过公网回环不通问题。
+  quant-internal:
+    external: true
+    name: quant-agent-master_quant-internal

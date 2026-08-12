@@ -74,7 +74,7 @@ services:
       - quant-internal
 
   quant-agent:
-    image: ghcr.io/songlinhe5-lab/quant-agent:latest
+    image: ghcr.io/songlinhe5-lab/quant_agent:latest
     pull_policy: missing
     command: python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1 --loop uvloop --http httptools --timeout-keep-alive 65 --limit-concurrency 5000 --no-access-log
     restart: always
@@ -125,7 +125,7 @@ services:
           memory: 1G
 
   quant-worker:
-    image: ghcr.io/songlinhe5-lab/quant-agent:latest
+    image: ghcr.io/songlinhe5-lab/quant_agent:latest
     pull_policy: missing
     command: python backend/worker.py
     restart: always
