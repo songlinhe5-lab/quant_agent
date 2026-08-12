@@ -309,6 +309,16 @@ async def app_lifespan(app: FastAPI):
     except Exception as e:
         log.error(f"[Startup] 数据源可用性拨测 daemon 启动失败: {e}")
 
+    # RL-14: 启动熔断半开自愈探针 (此时已有 running loop, 确保后台任务一定拉起)。
+    # 注意 __init__ 在模块导入期可能无 running loop 而跳过, 故此处显式启动兜底。
+    try:
+        from backend.services.datasource.router import data_source_router
+
+        data_source_router.start_probing()
+        log.info("✅ [Startup] 熔断自愈探针已启动 (RL-14)")
+    except Exception as e:
+        log.error(f"[Startup] 熔断自愈探针启动失败: {e}")
+
     yield  # 挂起，FastAPI 正式对外提供服务
 
     # === 销毁阶段 (Shutdown) ===

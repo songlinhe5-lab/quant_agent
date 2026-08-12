@@ -209,11 +209,15 @@ class DataSourceRouter:
             return
         if self._probe_task is not None and not self._probe_task.done():
             return
-        if not asyncio.get_event_loop().is_running():
-            # 模块导入期 (非 running loop, 如单测 / docker exec) 不启动后台任务
+        try:
+            # 仅当存在 running 的事件循环时才创建后台任务;
+            # 模块导入期 / 单测 setup (无 running loop) 下 get_running_loop 会抛
+            # RuntimeError, 此时静默跳过, 探针由运行时 (lifespan) 实际启动。
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
             return
         self._shutdown_event.clear()
-        self._probe_task = asyncio.create_task(self._probe_loop())
+        self._probe_task = loop.create_task(self._probe_loop())
         logger.info("[Router] 半开自愈探针已启动")
 
     async def stop_probing(self) -> None:
