@@ -413,21 +413,21 @@ jobs:
             docker tag "${IMAGE}" "${REGISTRY_IMAGE}"
             docker push "${REGISTRY_IMAGE}"
 
-            # 只把北京节点需要的 data-subservice:cn 推到本机内网 registry 供其中转拉取。
-            # us/us-aux 属美西节点 (s2/s3/s4)，它们直连 GHCR 拉取 (见 deploy-data-nodes IMAGE 分支)，
-            # 无需经 S1 中转，故不推入 registry，避免重复 pull+push 浪费时间与 registry 存储。
-            DS_TAGS="cn"
-            for DS_TAG in $DS_TAGS; do
-              DS_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${DS_TAG}"
-              DS_REGISTRY_IMAGE="127.0.0.1:5000/quant-agent-data-subservice:${DS_TAG}"
-              docker pull "${DS_IMAGE}" \
-                || { echo "❌ 主节点从 GHCR 拉取 data-subservice:${DS_TAG} 失败，中止"; exit 1; }
-              docker tag "${DS_IMAGE}" "${DS_REGISTRY_IMAGE}"
-              docker push "${DS_REGISTRY_IMAGE}" \
-                || { echo "❌ data-subservice:${DS_TAG} 推送到本机 registry 失败 (磁盘/containerd 问题?)，中止避免从节点拉到空镜像"; exit 1; }
-              echo "✅ data-subservice:${DS_TAG} 已推送至本机 registry"
-            done
-            echo "✅ data-subservice (cn) 已推送至本机 registry，北京节点可经内网拉取"
+            # ── data-subservice 镜像拉取 + 内网 registry 中转 ──
+            # 1) node-s1 (主节点本地子服务) 复用本机拉取的镜像, 用的是 :us tag (见下方 sed 替换 + compose up)。
+            #    ⚠️ 必须 pull :us 到本机, 否则 node-s1 一直复用旧镜像 (PR #288 曾只 pull cn 导致此 bug)。
+            # 2) 北京节点 (node-cn) 经 S1 内网 registry 拉取, 只需中转 :cn; :us/:us-aux 美西直连 GHCR。
+            docker pull "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:us" \
+              || { echo "❌ 主节点从 GHCR 拉取 data-subservice:us (node-s1 用) 失败，中止"; exit 1; }
+            echo "✅ data-subservice:us 已拉取至本机 (node-s1 复用)"
+
+            # 只把北京节点需要的 :cn 推到内网 registry 供其中转; us/us-aux 美西直连 GHCR 不需中转。
+            docker pull "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:cn" \
+              || { echo "❌ 主节点从 GHCR 拉取 data-subservice:cn 失败，中止"; exit 1; }
+            docker tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:cn" "127.0.0.1:5000/quant-agent-data-subservice:cn"
+            docker push "127.0.0.1:5000/quant-agent-data-subservice:cn" \
+              || { echo "❌ data-subservice:cn 推送到本机 registry 失败 (磁盘/containerd 问题?)，中止避免从节点拉到空镜像"; exit 1; }
+            echo "✅ data-subservice:cn 已推送至本机 registry，北京节点可经内网拉取"
 
             # ── OPS-03: 每次 push 后回收 registry 垃圾 + 安装深度 GC cron ──
             # 逻辑已抽离至 scripts/registry-gc-install.sh (避免单 run 块超 21000 字符上限)。
