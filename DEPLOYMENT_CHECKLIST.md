@@ -342,6 +342,28 @@ redis-cli -a tradingagents123 keys "quant:node:*"
 
 > ⚠️ 经验：手动 `sed` 改 compose 后 `up -d` 时，最容易漏掉 Slave `.env` 的 `DATA_SOURCE_HMAC_SECRET`；跨云部署务必确认各节点 NTP 同步。
 
+### **问题 5: 子服务镜像拉取慢 / 被拒（跨境直连 ghcr.io 失败）**
+北京/美西等跨境节点直接拉 `ghcr.io/songlinhe5-lab/quant_agent-data-subservice:cn` 会因墙/带宽/未登录而极慢或 `denied`。正确做法是走主节点 S1 的**私有中转 registry（纯 Tailscale 内网，秒级）**。
+
+- **前置（一次性, docker daemon 级）**：在各子节点 `/etc/docker/daemon.json` 配 `insecure-registries`（否则 `pull` 被拒）：
+  ```bash
+  TS_REG="100.102.223.44:5000"
+  DAEMON_CFG="/etc/docker/daemon.json"
+  [ -f "$DAEMON_CFG" ] || echo '{}' > "$DAEMON_CFG"
+  if ! grep -q "$TS_REG" "$DAEMON_CFG"; then
+    sudo jq --arg r "$TS_REG" '. + {insecure-registries: ((.insecure-registries // []) + [$r])}' "$DAEMON_CFG" > /tmp/daemon.json && sudo mv /tmp/daemon.json "$DAEMON_CFG"
+    sudo systemctl restart docker
+  fi
+  ```
+- **配置镜像源（推荐, 免手动 sed）**：在节点 `.env.data-node` 加一行，compose 已变量化 `image: ${DATA_SUB_SERVICE_IMAGE:-ghcr.io/...}`：
+  ```bash
+  echo 'DATA_SUB_SERVICE_IMAGE=100.102.223.44:5000/quant-agent-data-subservice:cn' >> /opt/quant-agent/.env.data-node
+  docker compose -f docker-compose.node-bj.yml --env-file .env.data-node up -d
+  ```
+- **⚠️ 命名空间陷阱**：S1 registry 内实际存储名为 `quant-agent-data-subservice:cn`（CI 推送路径），**不是** ghcr 的 `songlinhe5-lab/quant_agent-data-subservice:cn`。变量值必须用前者，否则 `pull` 报 `manifest unknown`。
+- **校验**：`docker pull 100.102.223.44:5000/quant-agent-data-subservice:cn` 应秒级 `Status: Image is up to date / Downloaded`；`docker inspect <容器> --format '{{.Config.Image}}'` 应显示 `100.102.223.44:5000/...`。
+- **老方案（不推荐）**：手动 `sed -i 's|ghcr.io/...|100.102.223.44:5000/...|g' docker-compose.node-bj.yml` 再 `up -d`——可临时用，但每次重新部署会被模板覆盖，故改用上面的 `.env` 变量法。
+
 ---
 
 ## 📝 配置记录
