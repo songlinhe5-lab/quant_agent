@@ -108,8 +108,15 @@ services:
           memory: 1G
 
 networks:
+  # ⚠️ 固定 subnet/gateway：宿主 Futu OpenD 仅经此网关 (172.19.0.1) 对容器可达，
+  # 而 docker 默认会自动从 172.17 起递增分配网段 (172.18/172.19/172.20...)，不固定会漂移，
+  # 导致 extra_hosts 写死的 172.19.0.1 失效、futu 重蹈 ERROR。显式声明使其确定性。
   quant-net:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.19.0.0/16
+          gateway: 172.19.0.1
   # 外部引用 master 项目（quant-agent-master）已建的网络，实现跨 compose 项目同网互联。
   # 主服务容器在该网络内，可用 data-subservice:8001 解析本服务，彻底绕过公网回环不通问题。
   quant-internal:
