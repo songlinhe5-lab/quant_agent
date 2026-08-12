@@ -31,7 +31,8 @@
 - 仅有**单腿期权链**：`data_subservice/futu_src/option_fund_handler.py::get_option_chain`
 - 返回字段：IV / Greeks / 买卖价 / 量仓（经 `cache_mgr.compress_chain_data` 压缩）。
 - 缓存：期权链 5 分钟 TTL（`cache_manager.py:15`）。
-- **缺失**：组合策略（跨式/价差/蝶式）、期权损益分析（盈亏平衡点/最大盈亏/Greeks 敞口）、组合下单、购买力查询。
+- **缺失（组合策略）**：组合策略（跨式/价差/蝶式）、期权损益分析（盈亏平衡点/最大盈亏/Greeks 敞口）、组合下单、购买力查询。
+- **缺失（期权全维数据）**：IV/HV 波动率分析、Put/Call 比、0DTE 末日期权、财报期权、卖方策略、行权概率（见 §三 阶段 P1.5 期权全维数据）。
 
 ### 2.2 现有交易能力
 
@@ -59,6 +60,20 @@
 - [ ] **P0.5** 接入 `@with_global_retry` + `cache_mgr` 缓存（期权行情高频，短 TTL 与现有期权链一致）。
 - [ ] **P0.6** 单测：策略解析、损益分析字段（盈亏平衡点/最大盈亏/Greeks）、异常兜底、限流退避。
 - [ ] **P0.7** 提交 PR。
+
+### 阶段 P0.5：期权全维数据（深度补强，2026-08-13 追加评估）
+
+> 来源：Futu 行情接口总览 `get_option_*` 系列，补齐现有单腿期权链缺失的专业维度。
+
+- [ ] **P0.5.1** 验证权限：确认 OpenD 账户开通对应期权数据权限。
+- [ ] **P0.5.2** 波动率：`get_option_volatility`（IV）+ `get_option_underlying_his_volatility`（HV）+ `get_option_underlying_overview`（标的总览）。
+- [ ] **P0.5.3** Put/Call 比：`get_option_market_statistic`（市场整体指标，含 P/C 比），对标 AGENTS.md 期权多空比情绪指标。
+- [ ] **P0.5.4** 末日期权：`get_option_zero_dte_screener` + `get_option_zero_dte_contract`（0DTE）。
+- [ ] **P0.5.5** 财报期权：`get_option_earnings_screener`。
+- [ ] **P0.5.6** 卖方策略：`get_option_seller_screener`。
+- [ ] **P0.5.7** 行权概率：`get_option_exercise_probability`。
+- [ ] **P0.5.8** 接入 `futu_worker.py` + 主服务 `capabilities`/`router.py` 路由 + `@with_global_retry` 缓存。
+- [ ] **P0.5.9** 单测 + 提交 PR。
 
 ### 阶段 P1：组合期权交易（预留，待 OMS 实装）
 

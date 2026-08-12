@@ -16,6 +16,7 @@
 > | DS-FUTU-FUND | [TODO-FUTU-FUNDAMENTAL-SCREEN.md](./TODO-FUTU-FUNDAMENTAL-SCREEN.md) | Futu 基本面：`get_stock_screen` 已覆盖；`get_financials_statements`（财务三大表）为真增量 | P1 |
 > | DS-FUTU-OPT | [TODO-FUTU-OPTION-COMBO-MARKETS.md](./TODO-FUTU-OPTION-COMBO-MARKETS.md) | Futu 组合期权：行情三件套 P0；交易类预留（沙箱）；新马日暂缓 | P1 |
 | DS-FUTU-EVENT | [TODO-FUTU-EVENT-CONTRACT.md](./TODO-FUTU-EVENT-CONTRACT.md) | Futu 预测市场：隐含概率数据源（行情侧完整、交易侧缺失），发现链+快照先接 | P2 |
+| DS-FUTU-SEARCH | [TODO-FUTU-SEARCH-MACRO.md](./TODO-FUTU-SEARCH-MACRO.md) | Futu 行情搜索（名称→代码）+ FedWatch 为真增量；指标列表/榜单/产业链跳过 | P1 |
 >
 > ---
 >
