@@ -161,6 +161,44 @@ def _node_breaker_threshold(node: "DataSourceNode") -> int:
     return max(_ACTION_BREAKER_NODE_MIN_THRESHOLD, math.ceil(total * _ACTION_BREAKER_NODE_RATIO))
 
 
+# Yahoo/子服务限流类错误的文本特征（BE-ARCH-08d 补漏：某些子服务——如 yfinance——
+# 未在响应 body 里携带 error_category，仅返回 "Too Many Requests" 文本，需在主服务侧兜底识别，
+# 避免限流被误判为普通失败计入熔断器）。
+_RATE_LIMIT_MESSAGE_KEYWORDS = (
+    "too many requests",
+    "rate limit",
+    "rate-limited",
+    "ratelimit",
+    "too many concurrent",
+    "throttl",
+)
+
+
+def _infer_error_category(result: Dict[str, Any]) -> ErrorCategory:
+    """从子服务响应推断 error_category，带文本兜底（BE-ARCH-08d 补漏）。
+
+    优先级：
+    1. 响应已显式带 error_category → 直接采用。
+    2. 响应 message/error 文本命中限流关键词 → 推断为 RATE_LIMIT。
+    3. 否则 → NORMAL。
+
+    这是修法 2（主服务侧兜底），与修法 1（子服务 yfinance_worker 补 error_category）
+    互为双保险：即使子服务未修复/旧版本未部署，主服务仍能正确识别限流。
+    """
+    raw = result.get("error_category")
+    if raw:
+        try:
+            return ErrorCategory(raw)
+        except ValueError:
+            pass
+
+    msg = str(result.get("message") or result.get("error") or "").lower()
+    if any(kw in msg for kw in _RATE_LIMIT_MESSAGE_KEYWORDS):
+        return ErrorCategory.RATE_LIMIT
+
+    return ErrorCategory.NORMAL
+
+
 @dataclass
 class DataSourceNode:
     name: str
@@ -882,8 +920,9 @@ class DataSourceRouter:
                 }
                 result = await self._send_request(node, "yfinance", payload)
 
-                # 检查返回结果中是否包含错误分类信息
-                error_category = ErrorCategory(result.get("error_category", "normal"))
+                # 检查返回结果中是否包含错误分类信息（含文本兜底：子服务未带
+                # error_category 时按 message 识别限流，避免限流误判为普通失败）
+                error_category = _infer_error_category(result)
 
                 if result.get("status") == "success" or result.get("success"):
                     await self._update_node_status(node.name, success=True, record_breaker=record_breaker)

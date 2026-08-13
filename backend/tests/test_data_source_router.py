@@ -17,7 +17,7 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from backend.services.datasource import ErrorCategory
-from backend.services.datasource.router import DataSourceNode, DataSourceRouter
+from backend.services.datasource.router import DataSourceNode, DataSourceRouter, _infer_error_category
 
 
 # ==========================================
@@ -800,6 +800,38 @@ class TestNormalizeResponseErrorBody:
         raw = {"code": 500, "message": "boom"}
         r = DataSourceRouter._normalize_response(raw)
         assert r["status"] == "error"
+
+
+class TestInferErrorCategory:
+    """BE-ARCH-08d 补漏：yfinance 子服务限流未带 error_category 时，主服务侧按
+    文本兜底识别为 RATE_LIMIT，避免被限流节点被误判为普通失败计入熔断器。"""
+
+    def test_explicit_category_respected(self):
+        assert _infer_error_category({"error_category": "rate_limit"}) == ErrorCategory.RATE_LIMIT
+
+    def test_message_rate_limit_text_inferred(self):
+        r = _infer_error_category({"message": "Too Many Requests. Rate limited. Try after a while."})
+        assert r == ErrorCategory.RATE_LIMIT
+
+    def test_error_key_rate_limit_inferred(self):
+        r = _infer_error_category({"error": "rate limit exceeded"})
+        assert r == ErrorCategory.RATE_LIMIT
+
+    def test_normal_error_is_normal(self):
+        r = _infer_error_category({"message": "some random failure"})
+        assert r == ErrorCategory.NORMAL
+
+    def test_unknown_enum_value_falls_back_to_text(self):
+        # 子服务返回非枚举值 + 限流文本 → 兜底识别为 RATE_LIMIT
+        r = _infer_error_category({"error_category": "unsupported_market", "message": "too many requests"})
+        assert r == ErrorCategory.RATE_LIMIT
+
+    def test_unknown_enum_value_no_text_is_normal(self):
+        r = _infer_error_category({"error_category": "unsupported_market"})
+        assert r == ErrorCategory.NORMAL
+
+    def test_empty_result_is_normal(self):
+        assert _infer_error_category({}) == ErrorCategory.NORMAL
 
 
 # ==========================================
