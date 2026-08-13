@@ -21,7 +21,7 @@ x-common-env: &common-env
 
 services:
   data-subservice:
-    image: ghcr.io/songlinhe5-lab/quant_agent-data-subservice:us-aux
+    image: ghcr.io/songlinhe5-lab/quant_agent-data-subservice:us
     restart: unless-stopped
     env_file:
       - .env.data-node

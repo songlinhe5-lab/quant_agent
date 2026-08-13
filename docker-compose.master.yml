@@ -178,7 +178,7 @@ services:
       resources:
         limits:
           # REG-02(2026-08-12 实战): 此前 512M 内存在北京节点经 Tailscale 拉取
-          # data-subservice:cn (含 akshare+tushare 大依赖) 时 OOM, registry 容器被
+          # data-subservice:us (全量 SDK) 时 OOM, registry 容器被
           # docker 杀掉 → 客户端拉 manifest 报 "connection reset by peer"。
           # registry:2 传输/解压大镜像官方建议 ≥1G, 此处提至 1G 并预留 reservations。
           memory: 1G

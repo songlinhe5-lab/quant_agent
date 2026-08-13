@@ -2,8 +2,8 @@
 # 主节点本地子服务 (VPS_S1 · 美西数据主节点：YFinance + Futu + Finnhub 长连接，与主服务同机)
 # =====================================================================
 # 角色：运行在主节点 (VPS_S1) 宿主机的 data_subservice，提供 YFinance (美股/加密/外汇) + Futu (港股/富途长连接)
-#       + Finnhub (REST+WebSocket 实时流) 的 HTTP API。镜像使用 datasource-us extra（含 futu-api/finnhub-python）。
-#       注意：A股数据源 Tushare/AKShare 仅由中国节点 (VPS_BJ) 承载，本节点不部署。
+#       + Finnhub (REST+WebSocket 实时流) + Tushare/AKShare (A股/沪深港通) 的 HTTP API。
+#       镜像为全量 datasource-all extra（含全部 SDK），节点能力由运行时 DS_CAPABILITIES 隔离。
 #       与主服务 (quant-agent :8000) 同机部署，监听 8001，主服务经 127.0.0.1:8001 直连（loopback）。
 #       作为 YFinanceRouter 的主节点 (YF_PRIMARY_NODE_URL)，S2/S3/S4 为远程纯 YF 辅助/容灾扩容。
 # 与主服务共享宿主 Tailscale 网络；不对公网暴露 8001（默认仅绑定 127.0.0.1）。
@@ -15,10 +15,10 @@
 #   docker compose --env-file .env.data-node -f docker-compose.node-s1.yml up -d
 #
 # ⚠️ 本地重建 data-subservice:us 镜像（代码改后必须 rebuild，代码烤进镜像非挂载）：
-#   docker build -f data_subservice/Dockerfile --build-arg DS_EXTRA=datasource-us \
+#   docker build -f data_subservice/Dockerfile --build-arg DS_EXTRA=datasource-all \
 #     -t ghcr.io/songlinhe5-lab/quant_agent-data-subservice:us .
 #   docker compose -f docker-compose.node-s1.yml --env-file .env.data-node up -d --force-recreate data-subservice
-#   易错点：① 必须 --build-arg DS_EXTRA=datasource-us（默认 cn 缺 futu）② tag 须与下方 image 一致(ghcr.io) ③ up 前加 --env-file .env.data-node
+#   易错点：① 必须 --build-arg DS_EXTRA=datasource-all（全量 SDK）② tag 须与下方 image 一致(ghcr.io) ③ up 前加 --env-file .env.data-node
 #   验证：docker exec ... sh -c 'python3 -c "import urllib.request;print(urllib.request.urlopen(\"http://127.0.0.1:8001/futu/status\").read().decode())"'
 # =====================================================================
 

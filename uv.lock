@@ -4877,17 +4877,11 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-datasource-cn = [
+datasource-all = [
     { name = "akshare" },
-    { name = "tushare" },
-    { name = "yfinance" },
-]
-datasource-us = [
     { name = "finnhub-python" },
     { name = "futu-api" },
-    { name = "yfinance" },
-]
-datasource-us-aux = [
+    { name = "tushare" },
     { name = "yfinance" },
 ]
 dev = [
@@ -4925,15 +4919,15 @@ dev = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.9.0" },
     { name = "aiosqlite", specifier = ">=0.19.0" },
-    { name = "akshare", marker = "extra == 'datasource-cn'", specifier = ">=1.1.15" },
+    { name = "akshare", marker = "extra == 'datasource-all'", specifier = ">=1.1.15" },
     { name = "asyncpg", specifier = ">=0.29.0" },
     { name = "bcrypt", specifier = ">=4.1.2" },
     { name = "chromadb", specifier = ">=0.4.24" },
     { name = "duckduckgo-search", specifier = ">=5.0.0" },
     { name = "fastapi", specifier = ">=0.109.0" },
-    { name = "finnhub-python", marker = "extra == 'datasource-us'", specifier = ">=2.4.29" },
+    { name = "finnhub-python", marker = "extra == 'datasource-all'", specifier = ">=2.4.29" },
     { name = "frozendict", specifier = ">=2.4.0" },
-    { name = "futu-api", marker = "extra == 'datasource-us'", specifier = ">=10.7.0" },
+    { name = "futu-api", marker = "extra == 'datasource-all'", specifier = ">=10.7.0" },
     { name = "google-auth", specifier = ">=2.28.0" },
     { name = "greenlet", specifier = ">=3.0.0" },
     { name = "httpx", specifier = ">=0.27.0" },
@@ -4979,15 +4973,13 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2.0.25" },
     { name = "structlog", specifier = ">=26.1.0" },
     { name = "tenacity", specifier = ">=8.2.0" },
-    { name = "tushare", marker = "extra == 'datasource-cn'", specifier = ">=1.4.0" },
+    { name = "tushare", marker = "extra == 'datasource-all'", specifier = ">=1.4.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.27.0" },
     { name = "vectorbt", specifier = ">=0.28.2" },
     { name = "websockets", specifier = ">=12.0" },
-    { name = "yfinance", marker = "extra == 'datasource-cn'" },
-    { name = "yfinance", marker = "extra == 'datasource-us'" },
-    { name = "yfinance", marker = "extra == 'datasource-us-aux'" },
+    { name = "yfinance", marker = "extra == 'datasource-all'" },
 ]
-provides-extras = ["datasource-cn", "datasource-us", "datasource-us-aux", "local-embedding", "dev"]
+provides-extras = ["datasource-all", "local-embedding", "dev"]
 
 [package.metadata.requires-dev]
 dev = [
