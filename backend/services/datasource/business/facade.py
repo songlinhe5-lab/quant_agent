@@ -92,6 +92,17 @@ _MARKET_FLOW_PREFERENCE: dict[str, list[str]] = {
     "CN": ["tushare", "akshare", "futu"],
 }
 
+# 基本面类 action (FUNDAMENTAL / INFO) 的市场感知源优先级。
+# DIST-SEC-05(2026-08-14): 此前 FUNDAMENTAL 无市场感知策略，默认退化为首个可用源（多为 FMP）。
+# FMP 免费档对港股/中股基本面覆盖稀疏（profile/income_statement 常返回空），而 yfinance 对
+# 港股(0772.HK)/美股覆盖稳定、akshare 对 A股覆盖稳定。故港股/中股基本面优先 yfinance/akshare，
+# 美股仍 futu 首选（真实财务）+ fmp 兜底。
+_MARKET_FUNDAMENTAL_PREFERENCE: dict[str, list[str]] = {
+    "US": ["futu", "fmp", "yfinance"],
+    "HK": ["yfinance", "akshare", "futu", "fmp"],  # FMP 港股稀疏，降到末位兜底
+    "CN": ["akshare", "tushare", "yfinance"],
+}
+
 
 def _merge_calendar_events(results: list[Result]) -> list[dict]:
     """合并多源经济日历的 events。
@@ -369,7 +380,8 @@ class DataServiceFacade:
         quote_action = action_upper in ("QUOTE", "HISTORY")
         news_action = action_upper in ("COMPANY_NEWS", "MARKET_NEWS", "NEWS", "STOCK_NEWS")
         flow_action = action_upper == "FUND_FLOW"
-        if quote_action or news_action or flow_action:
+        fundamental_action = action_upper in ("FUNDAMENTAL", "INFO")
+        if quote_action or news_action or flow_action or fundamental_action:
             ticker = params.get("ticker") or params.get("symbol") or ""
             market = _detect_market(str(ticker))
 
@@ -399,6 +411,8 @@ class DataServiceFacade:
                 preference = _MARKET_FLOW_PREFERENCE[market]
             elif news_action and market in _MARKET_NEWS_PREFERENCE:
                 preference = _MARKET_NEWS_PREFERENCE[market]
+            elif fundamental_action and market in _MARKET_FUNDAMENTAL_PREFERENCE:
+                preference = _MARKET_FUNDAMENTAL_PREFERENCE[market]
             if preference:
                 # 市场感知：报价/新闻路由是排他性策略，严格按市场专属顺序走，
                 # 仅保留 preference 中声明了对应 action 能力的源。
