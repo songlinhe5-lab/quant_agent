@@ -177,6 +177,9 @@ async def get_market_margin_indicators(market: str, as_of: Optional[date] = None
             snap = await src.fetch(as_of)
             if snap is not None:
                 any_success = True
+                # 标记数据来源（去重，避免与源内部已 append 的重复）
+                if src.name not in snap.sources:
+                    snap.sources.append(src.name)
                 # 字段级合并（互补填充），而非首个成功即返回
                 result = _merge_snapshot(result, snap)
                 logger.info("[Margin] 数据源成功(已合并)", source=src.name, market=market)
