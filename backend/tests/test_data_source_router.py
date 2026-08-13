@@ -491,7 +491,13 @@ class TestActionLevelCircuitBreaker:
     仅当多个不同 action 同时熔断（进程级故障）才整节点熔断兜底。"""
 
     def _setup_fred_node(self, router) -> None:
-        node = DataSourceNode(name="fred_master", url="http://fred", status="healthy")
+        # 模拟真实 fred_master：3 个能力（源名 + MACRO_SERIES + ECONOMIC_CALENDAR）
+        node = DataSourceNode(
+            name="fred_master",
+            url="http://fred",
+            status="healthy",
+            capabilities=["fred", "macro_series", "economic_calendar"],
+        )
         router._nodes["fred_master"] = node
 
     def test_single_action_failure_breaks_only_that_action(self, router_enabled):
@@ -509,9 +515,10 @@ class TestActionLevelCircuitBreaker:
         # 其它 action 仍可用
         assert router_enabled._action_usable(node, "ECONOMIC_CALENDAR") is True
 
-    def test_multiple_actions_failure_triggers_node_breaker(self, router_enabled):
+    def test_two_actions_do_not_trigger_node_breaker(self, router_enabled):
+        """BE-ARCH-08i 修复核心验收：小节点（3 能力）两个 action 同时熔断不整节点熔断，
+        避免 search 节点 bocha/tavily 双挂误伤 jina。"""
         self._setup_fred_node(router_enabled)
-        # 两个不同 action 各自连续失败 → 触发节点级兜底熔断
         for _ in range(3):
             asyncio.run(
                 router_enabled._update_node_status("fred_master", success=False, error="boom", action="MACRO_SERIES")
@@ -521,6 +528,27 @@ class TestActionLevelCircuitBreaker:
                 router_enabled._update_node_status(
                     "fred_master", success=False, error="boom", action="ECONOMIC_CALENDAR"
                 )
+            )
+        node = router_enabled._nodes["fred_master"]
+        # 两个 action 熔断 < 动态阈值 3 → 节点仍 healthy，不整节点熔断
+        assert node.status == "healthy"
+
+    def test_all_actions_failure_triggers_node_breaker(self, router_enabled):
+        self._setup_fred_node(router_enabled)
+        # 三个不同 action 各自连续失败 → 达到动态阈值 3 → 触发节点级兜底熔断
+        for _ in range(3):
+            asyncio.run(
+                router_enabled._update_node_status("fred_master", success=False, error="boom", action="MACRO_SERIES")
+            )
+        for _ in range(3):
+            asyncio.run(
+                router_enabled._update_node_status(
+                    "fred_master", success=False, error="boom", action="ECONOMIC_CALENDAR"
+                )
+            )
+        for _ in range(3):
+            asyncio.run(
+                router_enabled._update_node_status("fred_master", success=False, error="boom", action="FRED_SERIES")
             )
         node = router_enabled._nodes["fred_master"]
         assert node.status == "unhealthy"
@@ -561,6 +589,33 @@ class TestActionLevelCircuitBreaker:
             asyncio.run(router_enabled._update_node_status("fred_master", success=False, error="err"))
         node = router_enabled._nodes["fred_master"]
         assert node.status == "unhealthy"
+
+    def test_record_breaker_false_does_not_pollute(self, router_enabled):
+        """方案 A 验收：record_breaker=False（探针/test-link 流量）失败不污染熔断计数。"""
+        self._setup_fred_node(router_enabled)
+        # 探针连续失败多次，但不污染熔断
+        for _ in range(5):
+            asyncio.run(
+                router_enabled._update_node_status(
+                    "fred_master", success=False, error="probe", action="MACRO_SERIES", record_breaker=False
+                )
+            )
+        node = router_enabled._nodes["fred_master"]
+        # 探针失败不计入 action 熔断，节点保持 healthy
+        assert node.status == "healthy"
+        assert node.action_errors.get("MACRO_SERIES", 0) == 0
+        assert router_enabled._action_usable(node, "MACRO_SERIES") is True
+
+    def test_record_breaker_true_still_breaks(self, router_enabled):
+        """方案 A 对照：默认 record_breaker=True 的业务流量失败仍正常熔断。"""
+        self._setup_fred_node(router_enabled)
+        for _ in range(3):
+            asyncio.run(
+                router_enabled._update_node_status("fred_master", success=False, error="boom", action="MACRO_SERIES")
+            )
+        node = router_enabled._nodes["fred_master"]
+        assert node.action_errors.get("MACRO_SERIES", 0) >= 3
+        assert router_enabled._action_usable(node, "MACRO_SERIES") is False
 
 
 class TestFetchYFinance:

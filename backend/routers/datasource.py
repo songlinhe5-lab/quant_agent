@@ -513,23 +513,26 @@ async def test_datasource_link(name: str) -> Dict[str, Any]:
                 # 绕过缓存测量真实上游延迟，避免命中 Redis 热缓存后误报 0ms 假阳性。
                 # 必须传 ttl：fetch_yf_data 的 ttl 是必填位置参数，缺失会抛 TypeError 导致探针静默失败。
                 probe_action = caps_upper["QUOTE"]
-                probe_params = {"ticker": _LINK_TEST_TICKER, "skip_cache": True, "ttl": 60}
+                # _record_breaker=False：链接测试探测流量，失败不污染业务熔断器（BE-ARCH-08i）
+                probe_params = {"ticker": _LINK_TEST_TICKER, "skip_cache": True, "ttl": 60, "_record_breaker": False}
             elif "STOCK_QUOTE" in caps_upper:
                 # Tushare 等 A 股数据源使用 stock_quote（非 QUOTE）
                 probe_action = caps_upper["STOCK_QUOTE"]
-                probe_params = {"ticker": "000001.SZ", "skip_cache": True}
+                probe_params = {"ticker": "000001.SZ", "skip_cache": True, "_record_breaker": False}
             elif "WEB_SEARCH" in caps_upper:
                 probe_action = caps_upper["WEB_SEARCH"]
-                probe_params = {"query": "quant agent test", "max_results": 1}
+                # _record_breaker=False：链接测试探测流量，失败不污染业务熔断器
+                # （BE-ARCH-08i，避免 bocha 探测失败连坐 tavily/jina 整节点误杀）
+                probe_params = {"query": "quant agent test", "max_results": 1, "_record_breaker": False}
             elif "WEB_SCRAPE" in caps_upper:
                 # 同样绕过缓存测量真实抓取延迟
                 probe_action = caps_upper["WEB_SCRAPE"]
-                probe_params = {"url": "https://example.com", "skip_cache": True}
+                probe_params = {"url": "https://example.com", "skip_cache": True, "_record_breaker": False}
             elif "ECONOMIC_CALENDAR" in caps_upper or "MACRO_SERIES" in caps_upper:
                 # 宏观源(fred/dbnomics/rbi/finnhub)与 akshare 的真实上游探针并绕过缓存，
                 # 使其延迟可感知（此前因大小写漏掉 akshare，永远 health()≈0）
                 probe_action = caps_upper.get("ECONOMIC_CALENDAR") or caps_upper.get("MACRO_SERIES")
-                probe_params = {"days_ahead": 1, "skip_cache": True}
+                probe_params = {"days_ahead": 1, "skip_cache": True, "_record_breaker": False}
             if probe_action:
                 try:
                     probe_start = time.perf_counter()
