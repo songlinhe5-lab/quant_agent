@@ -107,10 +107,10 @@ class FREDService:
                 "series_id": series_id,
                 "data": observations,
             }  # noqa: E501
-            # 💡 缓存防护：异常稀疏数据（如源超时只回单点）不写入缓存，
+            # 💡 缓存防护：仅当观测点为单点（<=1，典型源超时/异常）时跳过缓存，
             # 避免脏单点被 12h TTL 锁定，导致图表长期"只有一个点"。
-            # 用户显式小 limit（<=2）时尊重其意图，照常缓存。
-            cacheable = len(observations) > 2 or limit <= 2
+            # 2 个及以上视为合法短序列照常缓存；用户显式小 limit（<=2）时尊重其意图。
+            cacheable = len(observations) > 1 or limit <= 2
             if cacheable:
                 try:
                     ttl = 43200 + random.randint(100, 600)
