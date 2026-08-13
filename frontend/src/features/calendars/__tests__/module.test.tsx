@@ -126,7 +126,7 @@ describe('CalendarsModule', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     ;(apiClient.get as any).mockImplementation(async (path: string) => {
-      if (path === '/calendars/snapshot') return { data: SNAPSHOT }
+      if (path === '/api/v1/calendars/snapshot') return { data: SNAPSHOT }
       return { data: { status: 'success', data: { timezones: [], markets: [] } } }
     })
   })
@@ -179,7 +179,7 @@ describe('CalendarsModule', () => {
     )
     fireEvent.click(screen.getByText('Hours'))
     await waitFor(() => {
-      expect(apiClient.get).toHaveBeenCalledWith('/calendars/hours')
+      expect(apiClient.get).toHaveBeenCalledWith('/api/v1/calendars/hours')
     })
   })
 })
