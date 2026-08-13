@@ -54,6 +54,13 @@ class SentimentTracker:
             # 3. 拟合 Credit Spread (基于 VIX)
             credit_spread = round(2.0 + (vix_val / 10.0), 2) if vix_val is not None else None  # noqa: E501
 
+            # ── 数据完整性红线 (PROD-零幻觉) ──
+            # 若 VIX 与 P/C 源数据均缺失（如 yfinance 节点瘫痪导致 Redis 无缓存），
+            # 禁止写入全 None 的垃圾记录污染历史序列，直接跳过本次打点。
+            if vix_val is None and cpc_val is None:
+                print("⚠️ [Sentiment Tracker] VIX/P-C 源数据均缺失，跳过本次打点（不写 None 记录，避免污染历史序列）")
+                return True
+
             # 4. 存入关系型数据库做持久化
             def save_to_db():
                 with SessionLocal() as db:
