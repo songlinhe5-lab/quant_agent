@@ -25,6 +25,15 @@ import threading
 import time
 from typing import Any, Dict, Optional
 
+
+def _is_hk_ticker(ticker: str) -> bool:
+    """识别港股代码（HK.00700 / 00700.HK / 5位港股代码）。Tushare 仅支持 A 股。"""
+    s = (ticker or "").strip().upper()
+    if s.startswith("HK.") or s.endswith(".HK"):
+        return True
+    return False
+
+
 # ── 频次保护（2000 积分 / 200元 档位限制）─────────────────────
 # 档位统一：每分钟 200 次；财务三大报表接口独立限制 80 次/分（接口文档明示）
 # 用令牌桶（秒级滑动）限速，避免触发 Tushare 429 熔断
@@ -269,6 +278,13 @@ class TushareService:
     # ── 基本面 ───────────────────────────────────────────────
     def get_daily_basic(self, ticker: str, trade_date: Optional[str] = None) -> Dict[str, Any]:
         """每日指标（PE/PB/换手率/市值等）。"""
+        if _is_hk_ticker(ticker):
+            return {
+                "success": False,
+                "message": f"Tushare 不支持港股 {ticker}",
+                "category": "UNSUPPORTED",
+                "source": "tushare",
+            }
         ts_code = self._to_ts_code(ticker)
         try:
             pro = self._ensure_pro()
@@ -308,6 +324,13 @@ class TushareService:
 
     def get_income(self, ticker: str, period: Optional[str] = None) -> Dict[str, Any]:
         """利润表（指定报告期，如 20231231）。"""
+        if _is_hk_ticker(ticker):
+            return {
+                "success": False,
+                "message": f"Tushare 不支持港股 {ticker}",
+                "category": "UNSUPPORTED",
+                "source": "tushare",
+            }
         ts_code = self._to_ts_code(ticker)
         try:
             pro = self._ensure_pro()
@@ -327,6 +350,13 @@ class TushareService:
 
     def get_fina_indicator(self, ticker: str, period: Optional[str] = None) -> Dict[str, Any]:
         """财务指标（ROE/毛利率/负债率等）。"""
+        if _is_hk_ticker(ticker):
+            return {
+                "success": False,
+                "message": f"Tushare 不支持港股 {ticker}",
+                "category": "UNSUPPORTED",
+                "source": "tushare",
+            }
         ts_code = self._to_ts_code(ticker)
         try:
             pro = self._ensure_pro()

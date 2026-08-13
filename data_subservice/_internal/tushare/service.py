@@ -19,6 +19,14 @@ from data_subservice._internal.logger import logger
 TS_TOKEN = os.getenv("TUSHARE_TOKEN", "")
 
 
+def _is_hk_symbol(symbol: str) -> bool:
+    """识别港股代码（HK.00700 / 00700.HK / 5位港股代码）。Tushare 仅支持 A 股。"""
+    s = (symbol or "").strip().upper()
+    if s.startswith("HK.") or s.endswith(".HK"):
+        return True
+    return False
+
+
 def _today() -> str:
     """返回 yyyyMMdd 格式的今日（子服务无 datetime 依赖，用 time 构造）。"""
     import time
@@ -70,6 +78,9 @@ class TushareService:
     async def get_financials(self, symbol: str, report_type: str = "income") -> Dict[str, Any]:
         if not self.pro:
             return {"symbol": symbol, "error": "tushare not configured", "source": "tushare"}
+        # Tushare 仅支持 A 股, 港股财报由 Futu 承载; 明确报错让上游跳过 Tushare
+        if _is_hk_symbol(symbol):
+            return {"symbol": symbol, "error": f"Tushare 不支持港股 {symbol}", "source": "tushare"}
 
         def _call():
             ts_code = self._to_ts_code(symbol)
