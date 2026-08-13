@@ -7,8 +7,8 @@
 #               5xx 真实服务端错误 / 连接错误。输出每接口结果 + 汇总 + JSON 报告。
 #
 # 用法:
-#   python scripts/verify_all_api_endpoints.py
-#   python scripts/verify_all_api_endpoints.py --base https://quant-api.stephenhe.com
+#   python scripts/probes/verify_all_api_endpoints.py
+#   python scripts/probes/verify_all_api_endpoints.py --base https://quant-api.stephenhe.com
 # ==========================================
 
 import argparse
