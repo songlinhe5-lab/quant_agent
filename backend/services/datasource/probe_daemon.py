@@ -6,11 +6,11 @@ SVC-02: 三方服务可用性拨测 (Probe Daemon)
 (独立维度 ``quant_datasource_probe_*``), 并落库到 ``CallMetricsStore.probe_*``
 (供 SVC-03 健康告警监控器消费):
 
-- Futu OpenD       -> datasource_registry.fetch("futu", "quote")
-- YFinance         -> datasource_registry.fetch("yfinance", "quote")
-- Finnhub          -> datasource_registry.fetch("finnhub", "QUOTE")
-- FMP              -> datasource_registry.fetch("fmp", "quote")
-- FRED             -> datasource_registry.fetch("fred", "MACRO_SERIES")
+- Futu OpenD       -> GET {futu_master.url}/health
+- YFinance         -> GET {yf_primary.url}/health
+- Finnhub          -> GET {finnhub_master.url}/health
+- FMP              -> GET {fmp_master.url}/health
+- FRED             -> GET {fred_master.url}/health
 - OpenAI           -> LLMRouter.health_check()["primary"]
 - Ollama           -> LLMRouter.health_check()["ollama"]
 
@@ -18,10 +18,10 @@ SVC-02: 三方服务可用性拨测 (Probe Daemon)
 - 与业务调用维度解耦: ``DATASOURCE_AVAILABILITY`` 由真实业务 fetch 驱动, 业务流量
   为 0 时不刷新; ``DATASOURCE_PROBE_SUCCESS`` 由本 daemon 周期拨测驱动, 无流量也能
   反映源存活。
-- 探针失败**不触达**业务限流退避/熔断器 (只发一次轻量探测, 不施压已故障源)。
-- 探针 action 选用各源最轻量接口 (quote / macro_series), 避免重历史拉取。
-- 离线环境: 各源 fetch 走 SVC-06 离线 stub / OFFLINE_MODE 短路, 探针自然返回成功,
-  daemon 照常刷新探针指标 (无网络依赖)。
+- 探针失败**不触达**业务限流退避/熔断器: 数据源探针直接 GET 节点 ``/health`` 端点
+  (与 router 半开探针 _probe_node 同源), 既不读熔断状态也不写失败计数, 不施压已故障
+  源、不污染业务熔断/退避状态机。仅反映「节点进程是否存活」, 不做真实 action 取数。
+- LLM 探针 (openai/ollama) 走 LLMRouter.health_check, 与数据源探针隔离。
 """
 
 from __future__ import annotations
@@ -31,7 +31,9 @@ import logging
 import os
 import time
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Awaitable, Callable, Dict, List, Optional
+
+import httpx
 
 from backend.core.metrics import (
     DATASOURCE_PROBE_FAILURES,
@@ -44,21 +46,23 @@ from backend.services.datasource.call_metrics_store import call_metrics
 logger = logging.getLogger(__name__)
 
 
-# 探针清单: 数据源探针 (source, action, params) | LLM 探针 ("openai"/"ollama")
+# 探针清单: 数据源探针 (node_key 定位 router 节点, 打 /health) | LLM 探针 ("openai"/"ollama")
 @dataclass
 class DataSourceProbe:
     name: str  # 指标 label (如 "finnhub" / "openai")
     kind: str  # "datasource" | "llm"
-    action: str = ""
+    node_key: str = ""  # 数据源探针对应的 router 节点名 (如 "futu_master"), 用于定位 /health URL
+    action: str = ""  # 仅作 Prometheus latency 指标的 action label
     params: Optional[dict] = None
 
 
+# node_key 必须与 DataSourceRouter._init_nodes 中的节点名严格一致
 DEFAULT_PROBES: List[DataSourceProbe] = [
-    DataSourceProbe("futu", "datasource", "quote", {"ticker": "AAPL"}),
-    DataSourceProbe("yfinance", "datasource", "quote", {"ticker": "AAPL"}),
-    DataSourceProbe("finnhub", "datasource", "QUOTE", {"symbol": "AAPL"}),
-    DataSourceProbe("fmp", "datasource", "quote", {"symbol": "AAPL"}),
-    DataSourceProbe("fred", "datasource", "MACRO_SERIES", {"series_id": "DGS10"}),
+    DataSourceProbe("futu", "datasource", node_key="futu_master", action="quote"),
+    DataSourceProbe("yfinance", "datasource", node_key="yf_primary", action="quote"),
+    DataSourceProbe("finnhub", "datasource", node_key="finnhub_master", action="QUOTE"),
+    DataSourceProbe("fmp", "datasource", node_key="fmp_master", action="quote"),
+    DataSourceProbe("fred", "datasource", node_key="fred_master", action="MACRO_SERIES"),
     DataSourceProbe("openai", "llm"),
     DataSourceProbe("ollama", "llm"),
 ]
@@ -71,14 +75,15 @@ class DataSourceProbeDaemon:
         self,
         probes: Optional[List[DataSourceProbe]] = None,
         interval_seconds: Optional[float] = None,
-        fetch_fn: Optional[Callable[[str, str, dict], Awaitable[Any]]] = None,
+        node_health_fn: Optional[Callable[[str], Awaitable[bool]]] = None,
         llm_health_fn: Optional[Callable[[], Awaitable[Dict[str, bool]]]] = None,
     ):
         self.probes = probes or list(DEFAULT_PROBES)
         self.interval = float(
             interval_seconds if interval_seconds is not None else os.getenv("PROBE_INTERVAL_SECONDS", "60")
         )
-        self._fetch_fn = fetch_fn  # 注入点 (测试用): 默认走 datasource_registry.fetch
+        # 注入点 (测试用): 数据源探针默认走 _probe_node_health (GET 节点 /health)
+        self._node_health_fn = node_health_fn
         self._llm_health_fn = llm_health_fn  # 注入点 (测试用): 默认走 LLMRouter.health_check
         self._task: Optional[asyncio.Task] = None
         self._running = False
@@ -99,11 +104,13 @@ class DataSourceProbeDaemon:
                 status_label = "success" if success else "error"
                 error_type = "unreachable" if not success else "none"
             else:
-                result = await self._do_fetch(probe.name, probe.action, probe.params or {})
-                success = bool(getattr(result, "is_success", False))
+                # 数据源探针直接打节点 /health, 不写熔断/退避计数
+                if self._node_health_fn is not None:
+                    success = await self._node_health_fn(probe.node_key)
+                else:
+                    success = await self._probe_node_health(probe.node_key)
                 status_label = "success" if success else "error"
-                err = getattr(result, "error", None)
-                error_type = self._classify_error(err)
+                error_type = "none" if success else "network"
         except Exception as exc:  # 探针自身异常 -> 视为不可达
             success = False
             status_label = "error"
@@ -128,27 +135,40 @@ class DataSourceProbeDaemon:
         self._last_results[probe.name] = success
         return success
 
-    def _classify_error(self, err: Any) -> str:
-        if err is None:
-            return "none"
-        err_code = str(getattr(err, "code", "") or "")
-        msg = str(getattr(err, "message", "") or "").lower()
-        if "rate" in msg or "429" in err_code or "402" in err_code:
-            return "rate_limit"
-        if "circuit" in msg or "CIRCUIT" in err_code:
-            return "circuit_open"
-        if "auth" in msg or "401" in err_code or "403" in err_code:
-            return "auth"
-        if "timeout" in msg:
-            return "timeout"
-        return "network"
+    async def _probe_node_health(self, node_key: str) -> bool:
+        """对 router 中指定节点发起只读 /health 探测, 返回进程是否存活。
 
-    async def _do_fetch(self, source: str, action: str, params: dict) -> Any:
-        if self._fetch_fn is not None:
-            return await self._fetch_fn(source, action, params)
-        from backend.services.datasource.source_registry import datasource_registry
+        与 router._probe_node 同源 (GET {node.url}/health), 但**不修改**节点状态
+        (error_count/circuit_breaker_until/status), 纯只读探测, 不污染业务熔断/退避计数。
+        仅在 router 未启用或节点不存在时返回 False。
+        """
+        if not node_key:
+            return False
+        from backend.services.datasource.router import data_source_router
 
-        return await datasource_registry.fetch(source, action, params)
+        node = data_source_router._nodes.get(node_key)
+        if node is None or not node.enabled:
+            return False
+
+        data_source_router._ensure_http_client()
+        client = data_source_router._http_client
+        if client is None:
+            return False
+
+        url = f"{node.url}/health"
+        try:
+            resp = await client.get(url, timeout=httpx.Timeout(5.0, connect=3.0))
+        except Exception:
+            return False
+        if resp.status_code != 200:
+            return False
+        try:
+            body = resp.json()
+            if isinstance(body, dict) and body.get("status") == "unhealthy":
+                return False
+        except Exception:
+            pass
+        return True
 
     async def _get_llm_health(self) -> Dict[str, bool]:
         if self._llm_health_fn is not None:
