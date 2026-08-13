@@ -466,6 +466,27 @@ async def get_history(ticker: str, ktype: str = "K_DAY", num: int = 60):
     Returns:
         dict: {"status": "success", "data": [KLineData]}
     """
+    # BE-ARCH-06c: Futu 标的 (港股/美股/A股等) 经 DataSourceRouter.fetch_futu 单独通道
+    # （facade/registry 不注册 futu，单独通道；与 /quote 保持一致，避免 .HK 走 yfinance 报错）
+    if _is_futu_ticker(ticker):
+        try:
+            futu_res = await data_source_router.fetch_futu("HISTORY", ticker=ticker, ktype=ktype, num=num)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"[Market API] Futu HISTORY fetch_futu 异常: {exc}")
+            raise HTTPException(status_code=500, detail=f"Futu 历史数据调用异常: {exc}")
+        if isinstance(futu_res, dict) and futu_res.get("status") == "success":
+            return {
+                "status": "success",
+                "data": futu_res.get("data"),
+                "source": "futu",
+                "latency_ms": futu_res.get("latency_ms"),
+                "cached": futu_res.get("cached", False),
+            }
+        # Futu 失败: 回退 facade (yfinance/akshare 兜底)
+        logger.warning(
+            f"[Market API] Futu HISTORY 失败, 回退 facade: {futu_res.get('message') if isinstance(futu_res, dict) else futu_res}"
+        )
+
     # BE-ARCH-06c: 统一走新 Facade
     facade_res = await _facade_market.get_history(ticker, ktype=ktype, num=num)
     if not facade_res.is_success or not facade_res.data:
@@ -574,20 +595,39 @@ async def get_tech_indicators(ticker: str, lookback_days: int = 90):
     """
     from backend.core.ticker_format import format_yf_ticker as format_yf_ticker
 
-    # BE-ARCH-06c: 经 Facade 统一选源获取历史 K 线
-    yf_ticker = format_yf_ticker(ticker)
-    facade_res = await data_service.get_history(yf_ticker, num=lookback_days)
+    # BE-ARCH-06c: Futu 标的 (港股/美股/A股等) 经 fetch_futu('HISTORY') 单独通道
+    # (facade/registry 不注册 futu)。与 /history、/quote 保持一致，避免 .HK 走 yfinance 报错。
+    klines = None
+    source = None
+    if _is_futu_ticker(ticker):
+        try:
+            futu_res = await data_source_router.fetch_futu("HISTORY", ticker=ticker, ktype="K_DAY", num=lookback_days)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"[Tech Indicators] Futu HISTORY 异常: {exc}")
+            futu_res = {"status": "error", "message": str(exc)}
+        if isinstance(futu_res, dict) and futu_res.get("status") == "success" and futu_res.get("data"):
+            klines = futu_res["data"]
+            source = "futu"
+        else:
+            logger.warning(
+                f"[Tech Indicators] Futu HISTORY 失败, 回退 facade: {futu_res.get('message') if isinstance(futu_res, dict) else futu_res}"
+            )
 
-    if not facade_res.is_success or not facade_res.data:
-        err_msg = facade_res.error.message if facade_res.error else "获取历史数据失败"
-        raise HTTPException(
-            status_code=400, detail=f"Failed to fetch historical data for technical indicators: {err_msg}"
-        )
+    # Futu 未命中时, 经 Facade 统一选源获取历史 K 线
+    if klines is None:
+        yf_ticker = format_yf_ticker(ticker)
+        facade_res = await data_service.get_history(yf_ticker, num=lookback_days)
+        if not facade_res.is_success or not facade_res.data:
+            err_msg = facade_res.error.message if facade_res.error else "获取历史数据失败"
+            raise HTTPException(
+                status_code=400, detail=f"Failed to fetch historical data for technical indicators: {err_msg}"
+            )
+        klines = facade_res.data
+        source = f"facade+{facade_res.source}"
 
     # ✅ 集成生产级技术指标计算引擎 (TechnicalIndicatorsPro)
     from backend.utils.technical_indicators_pro import calculate_technical_indicators
 
-    klines = facade_res.data
     # 防御：若上游返回仍是子服务信封 (dict 而非 list)，尝试解包一层
     if isinstance(klines, dict):
         if "data" in klines and isinstance(klines["data"], list):
@@ -595,7 +635,7 @@ async def get_tech_indicators(ticker: str, lookback_days: int = 90):
         else:
             raise HTTPException(
                 status_code=400,
-                detail=f"历史 K 线返回格式异常 (预期 list，实际 {type(facade_res.data).__name__})，无法计算技术指标",
+                detail=f"历史 K 线返回格式异常 (预期 list，实际 {type(klines).__name__})，无法计算技术指标",
             )
 
     indicators = calculate_technical_indicators(klines)
@@ -603,10 +643,10 @@ async def get_tech_indicators(ticker: str, lookback_days: int = 90):
     return {
         "status": "success",
         "data": {
-            "klines": facade_res.data[:10],  # 返回最近 10 根 K 线
+            "klines": klines[:10],  # 返回最近 10 根 K 线
             "indicators": indicators,  # 完整的计算结果
         },
-        "source": f"facade+{facade_res.source}+custom_tech_indicators",
+        "source": f"{source}+custom_tech_indicators",
     }
 
 

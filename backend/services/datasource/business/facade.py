@@ -73,11 +73,13 @@ _MARKET_QUOTE_PREFERENCE: dict[str, list[str]] = {
     "CN": ["futu", "akshare", "tushare"],  # A股走 AKShare/Tushare
 }
 
-# 新闻类 action 的源优先级：Finnhub 是港股+美股新闻核心数据源，首选；
-# A股新闻降级 AKShare（东方财富）；港股新闻降级 AKShare(雅虎兜底)。
+# 新闻类 action 的源优先级：Finnhub 是美股新闻核心数据源，首选；
+# 港股新闻主源是 Futu（富途个股资讯），且 Finnhub 免费版不支持港股代码，
+# 故港股排除 finnhub，与 _MARKET_QUOTE_PREFERENCE["HK"] 保持一致；
+# A股新闻走 AKShare（东方财富）。
 _MARKET_NEWS_PREFERENCE: dict[str, list[str]] = {
     "US": ["finnhub", "yfinance", "akshare"],
-    "HK": ["finnhub", "akshare", "yfinance"],
+    "HK": ["futu", "akshare", "yfinance"],
     "CN": ["akshare", "finnhub"],
 }
 
