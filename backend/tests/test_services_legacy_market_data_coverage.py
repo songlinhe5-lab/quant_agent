@@ -285,3 +285,55 @@ async def test_get_earnings_calendar_passthrough_error():
     res = await gw.get_earnings_calendar(days_ahead=7, days_back=0)
     assert res["status"] == "error"
     assert "Finnhub down" in res["message"]
+
+
+# ── 经济日历归一化 (剥内层信封后契约对齐，避免 _extract 吞空) ──────────────────
+@pytest.mark.asyncio
+async def test_get_economic_calendar_ak_normalizes_envelope():
+    """get_economic_calendar_ak 应返回 {"status":"success","data":[...]} 信封，
+    而非裸 list，否则 MacroCalendarAggregator._extract 的 isinstance(res, dict)
+    判定失败 → 经济日历被吞成空（actual/previous/estimate 全丢）。"""
+    gw = _make_gateway()
+    with patch("backend.services.datasource.router.data_source_router") as router:
+        router.fetch_akshare = AsyncMock(
+            return_value={
+                "status": "success",
+                "data": [{"time": "2026-08-20", "country": "美国", "event": "FOMC", "actual": "5.25"}],
+            }
+        )
+        res = await gw.get_economic_calendar_ak(days_ahead=7)
+    assert res["status"] == "success"
+    assert res["data"][0]["actual"] == "5.25"
+    assert res["source"] == "akshare"
+
+
+@pytest.mark.asyncio
+async def test_get_economic_calendar_ak_error_envelope():
+    """AKShare 失败时返回 error 信封，data 为空 list，不抛异常。"""
+    gw = _make_gateway()
+    with patch("backend.services.datasource.router.data_source_router") as router:
+        router.fetch_akshare = AsyncMock(return_value={"status": "error", "message": "akshare down"})
+        res = await gw.get_economic_calendar_ak(days_ahead=7)
+    assert res["status"] == "error"
+    assert res["data"] == []
+
+
+@pytest.mark.asyncio
+async def test_get_economic_calendar_finnhub_normalizes_envelope():
+    """get_economic_calendar_finnhub 应把 Finnhub 原始 {"economicCalendar":[...]}
+    归一化为 {"status":"success","data":[...]} 信封。"""
+    gw = _make_gateway()
+    gw._fetch_finnhub = AsyncMock(return_value={"economicCalendar": [{"date": "2026-08-20", "event": "Fed Decision"}]})
+    res = await gw.get_economic_calendar_finnhub(days_ahead=7)
+    assert res["status"] == "success"
+    assert res["data"] == [{"date": "2026-08-20", "event": "Fed Decision"}]
+    assert res["source"] == "finnhub"
+
+
+@pytest.mark.asyncio
+async def test_get_economic_calendar_finnhub_error_passthrough():
+    """Finnhub 经济日历错误信封原样透传。"""
+    gw = _make_gateway()
+    gw._fetch_finnhub = AsyncMock(return_value={"status": "error", "message": "finnhub down"})
+    res = await gw.get_economic_calendar_finnhub(days_ahead=7)
+    assert res["status"] == "error"

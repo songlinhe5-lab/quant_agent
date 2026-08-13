@@ -476,14 +476,20 @@ class MarketDataGateway:
         return self._ak.get_health_status()
 
     async def get_economic_calendar_ak(self, *args: Any, **kwargs: Any) -> Any:
-        """经济日历 - 纯远程 AKShare 子服务（无本地降级，源失效在监控如实显示）"""
+        """经济日历 - 纯远程 AKShare 子服务（无本地降级，源失效在监控如实显示）
+
+        返回统一信封 {"status":"success","data":[...]}，与 fred/dbnomics/rbi 的
+        get_economic_calendar 契约对齐。MacroCalendarAggregator._extract 期望 res 是
+        带 data 键的 dict；此前这里直接返回 result.get("data")（裸 list），剥内层信封后
+        会导致 _extract 的 isinstance(res, dict) 判定失败 → 经济日历被吞成空。
+        """
         from backend.services.datasource.router import data_source_router
 
         result = await data_source_router.fetch_akshare("ECONOMIC_CALENDAR", **kwargs)
         if result.get("status") == "success":
-            return result.get("data")
+            return {"status": "success", "data": result.get("data", []), "source": "akshare"}
         logger.warning(f"[AKShare] 经济日历远程调用失败：{result.get('message')}")
-        return []
+        return {"status": "error", "data": [], "source": "akshare", "message": result.get("message")}
 
     async def get_southbound_flow(self) -> Any:
         from backend.services.datasource.router import data_source_router
@@ -567,7 +573,13 @@ class MarketDataGateway:
 
     async def get_economic_calendar_finnhub(self, *args: Any, **kwargs: Any) -> Any:
         resp = await self._fetch_finnhub("economic_calendar", *args, **kwargs)
-        return resp
+        # _fetch_finnhub 成功返回 Finnhub 原始 {"economicCalendar":[...]}，归一化为
+        # {"status":"success","data":[...]} 信封，与 fred/dbnomics/rbi 契约对齐
+        # (MacroCalendarAggregator._extract 期望 res 带 data 键且为 list)。
+        if isinstance(resp, dict) and resp.get("status") == "error":
+            return resp
+        calendar = resp.get("economicCalendar", []) if isinstance(resp, dict) else []
+        return {"status": "success", "data": calendar, "source": "finnhub"}
 
     @staticmethod
     async def _fetch_finnhub(action: str, *args: Any, **kwargs: Any) -> Any:
