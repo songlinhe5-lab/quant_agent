@@ -368,7 +368,10 @@ async def generate_market_review(
     def _has_valid_indices(idx_list):
         if not idx_list:
             return False
-        return any(isinstance(i, dict) and i.get("price") is not None and not i.get("error") for i in idx_list)
+        # indices 元素为 IndexSnapshot 对象 (非 dict), 用 close 字段判定有效性。
+        # 旧逻辑误判 isinstance(i, dict) 且取 "price" 字段, 对 IndexSnapshot 恒为 False,
+        # 导致即使指数采集成功也误判为无核心数据, 复盘永远跳过 LLM 分析。
+        return any(getattr(i, "close", None) is not None for i in idx_list)
 
     has_core_data = _has_valid_indices(indices) or bool(sectors_top) or bool(sectors_bottom) or (capital is not None)
     if not has_core_data:
