@@ -78,6 +78,9 @@ export function clearTokens(): void {
 
 // 防止并发刷新
 let tokenRefreshPromise: Promise<string | null> | null = null
+// 标记刷新接口是否因"真 401（Refresh Token 失效）"而失败；
+// 网络/跨域异常导致刷新失败时保持 false，避免瞬时错误注销用户。
+let lastRefreshFailedHard = false
 
 /**
  * 底层刷新 Access Token（模块级，供 REST 拦截器与 WebSocket 复用）
@@ -95,7 +98,12 @@ async function doRefreshToken(config: ClientConfig): Promise<string | null> {
       })
 
       if (!response.ok) {
-        clearTokens()
+        // 仅当刷新接口本身明确拒绝（4xx 尤其是 401）才清 token 跳登录；
+        // 网络/跨域拦截等异常不应立即注销用户，交由有限重试兜底。
+        if (response.status === 401) {
+          clearTokens()
+          lastRefreshFailedHard = true
+        }
         return null
       }
 
@@ -103,13 +111,15 @@ async function doRefreshToken(config: ClientConfig): Promise<string | null> {
       const newToken = data.data?.access_token || data.access_token
       if (newToken) {
         setAccessToken(newToken)
+        lastRefreshFailedHard = false
         logger.info('[API] Token 刷新成功')
         return newToken
       }
       return null
     } catch (error) {
-      logger.error('[API] Token 刷新失败', error as Error)
-      clearTokens()
+      // 网络异常 / 跨域被拦截（如 CF 返回非 JSON 拦截页）：不清 token，允许下次重试
+      lastRefreshFailedHard = false
+      logger.error('[API] Token 刷新请求异常（非 401，保留会话）', error as Error)
       return null
     } finally {
       tokenRefreshPromise = null
@@ -305,8 +315,9 @@ class RestClient {
           })
           return this.handleResponse<T>(retryResponse)
         }
-        // 刷新失败 → token 已在 refreshToken() 中清除，跳转登录页
-        if (window.location.pathname !== '/login') {
+        // 刷新失败：仅当刷新接口"真 401（Refresh Token 失效）"才清 token + 跳登录；
+        // 网络/跨域瞬时异常不清 token，由后续请求重试续期，避免误踢用户。
+        if (lastRefreshFailedHard && window.location.pathname !== '/login') {
           window.location.href = '/login'
         }
         throw new ApiError(401, '认证已过期')
@@ -523,3 +534,75 @@ export const apiClient = new UnifiedApiClient()
 
 // 默认导出
 export default apiClient
+
+// ─── 主动续期（Token Keep-Alive）────────────────────────────────
+/**
+ * 问题背景：原续期为"被动触发"——只有某次 REST 请求撞上 access token 过期窗口
+ * 才会去 /auth/refresh。若页面长时间静止（仅 WS 推送、无 REST 请求），access token
+ * 过期后下一次任意请求才续期；一旦刷新接口因瞬时网络/跨域失败，就会被立即清 token 踢回登录页。
+ *
+ * 这里改为"主动保活"：依据 access token 的 exp 提前续期，并在页面重新可见时兜底续期，
+ * 避免静止超时 + 被动续期偶发失败导致被踢。
+ */
+let keepAliveTimer: ReturnType<typeof setTimeout> | null = null
+let keepAliveBound = false
+
+function scheduleNextRefresh() {
+  if (keepAliveTimer) clearTimeout(keepAliveTimer)
+  const token = getAccessToken()
+  if (!token) return // 未登录，停止
+  const exp = getTokenExp(token)
+  if (exp === null) return
+  const now = Math.floor(Date.now() / 1000)
+  // 距过期还剩多少秒；exp - now 为剩余有效期
+  const remain = exp - now
+  if (remain <= 0) {
+    // 已过期，立即续期
+    void getValidAccessToken()
+    scheduleNextRefresh()
+    return
+  }
+  // 提前 120s 续期（不足 120s 则立即续期）
+  const delayMs = Math.max(0, (remain - 120)) * 1000
+  keepAliveTimer = setTimeout(async () => {
+    await getValidAccessToken()
+    scheduleNextRefresh()
+  }, delayMs)
+}
+
+function onVisibilityChange() {
+  if (document.visibilityState !== 'visible') return
+  const token = getAccessToken()
+  if (!token) return
+  const exp = getTokenExp(token)
+  if (exp !== null) {
+    const remain = exp - Math.floor(Date.now() / 1000)
+    // 页面重新可见且 5 分钟内将过期 → 立即兜底续期
+    if (remain <= 300) {
+      void getValidAccessToken().then(() => scheduleNextRefresh())
+      return
+    }
+  }
+  scheduleNextRefresh()
+}
+
+/**
+ * 启动 token 主动保活。应在登录成功后调用（auth-context 挂载时）。
+ */
+export function startTokenKeepAlive() {
+  if (!keepAliveBound) {
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    keepAliveBound = true
+  }
+  scheduleNextRefresh()
+}
+
+/** 停止保活（登出时调用） */
+export function stopTokenKeepAlive() {
+  if (keepAliveTimer) clearTimeout(keepAliveTimer)
+  keepAliveTimer = null
+  if (keepAliveBound) {
+    document.removeEventListener('visibilitychange', onVisibilityChange)
+    keepAliveBound = false
+  }
+}
