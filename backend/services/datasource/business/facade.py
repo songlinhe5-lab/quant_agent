@@ -255,18 +255,31 @@ class DataServiceFacade:
         candidates = self._select_source(action, prefer_sources)
 
         results: list[Result] = []
+        last_err: Optional[Result] = None
         for src in candidates:
             res = await datasource_registry.fetch(src, action, params)
             if res.is_success:
                 results.append(res)
-            # 单源成功即可停止（除非需要多源融合）
-            if results and not enable_merge:
-                break
+                # 单源成功即可停止（除非需要多源融合）
+                if not enable_merge:
+                    break
+            else:
+                # 记录最后一个非限流错误，便于失败时溯源真实原因
+                if not (res.is_rate_limited or (res.error and res.error.is_rate_limit_type)):
+                    last_err = res
 
         if not results:
-            # 全部失败：回退首个非限流错误，保留溯源信息
-            last_err = ErrorInfo.normal("ALL_SOURCES_FAILED", f"action={action} 所有候选源失败", retryable=True)
-            return Result.make_error(last_err, source="+".join(candidates))
+            # 全部失败：优先保留首个真实业务错误的溯源信息，避免被泛化掩盖
+            if last_err is not None and last_err.error is not None:
+                reason = f"action={action} 所有候选源失败: [{last_err.source}] {last_err.error.message}"
+                return Result.make_error(
+                    ErrorInfo.normal("ALL_SOURCES_FAILED", reason, retryable=last_err.error.retryable),
+                    source="+".join(candidates),
+                )
+            last_err_fallback = ErrorInfo.normal(
+                "ALL_SOURCES_FAILED", f"action={action} 所有候选源失败", retryable=True
+            )
+            return Result.make_error(last_err_fallback, source="+".join(candidates))
 
         merged = self._merge(action, results) if enable_merge else results[0]
         DATASOURCE_FACADE_MERGE.labels(
