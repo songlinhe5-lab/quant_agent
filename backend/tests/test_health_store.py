@@ -24,8 +24,8 @@ def _no_redis():
     import backend.services.backtest_interpreter.health_store as hs
 
     hs._MEMORY.clear()
-    # create=True: get_redis_client 为包内 lazy import，patch 时属性尚未绑定，需允许创建
-    with patch("backend.core.database.get_redis_client", side_effect=RuntimeError("no redis"), create=True):
+    # redis_client 为模块级导入，patch 该模块内的引用即可强制走内存兜底
+    with patch.object(hs, "redis_client", side_effect=RuntimeError("no redis")):
         yield
     hs._MEMORY.clear()
 
