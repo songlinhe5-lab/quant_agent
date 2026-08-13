@@ -20,7 +20,7 @@ export function MacroChartPanel() {
     setError('')
     try {
       const res = await apiClient.get(
-        `/api/v1/macro/series?series_id=${id}&limit=250${forceRefresh ? '&force_refresh=true' : ''}`
+        `/macro/series?series_id=${id}&limit=250${forceRefresh ? '&force_refresh=true' : ''}`
       )
       if (res.data?.status === 'success' && res.data?.data) {
         const chartData = [...res.data.data].reverse().map(d => ({
