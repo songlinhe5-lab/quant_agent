@@ -40,9 +40,9 @@ _MARKET_INDICES: dict[MarketType, list[dict[str, str]]] = {
         {"code": "HK.800100", "name": "恒生科技指数"},
     ],
     MarketType.US: [
-        {"code": "US..DJI", "name": "道琼斯工业"},
-        {"code": "US..IXIC", "name": "纳斯达克综合"},
-        {"code": "US..INX", "name": "标普500"},
+        {"code": "US.DJI", "name": "道琼斯工业"},
+        {"code": "US.IXIC", "name": "纳斯达克综合"},
+        {"code": "US.INX", "name": "标普500"},
     ],
 }
 
@@ -363,7 +363,14 @@ async def generate_market_review(
     # ── 数据完整性红线 (PROD-零幻觉) ──
     # 核心客观数据(指数+板块+资金)全部缺失时，复盘失去行情锚点，
     # 严禁 LLM 凭新闻自由发挥生成风格/事件定性，否则等同于编造。
-    has_core_data = bool(indices) or bool(sectors_top) or bool(sectors_bottom) or (capital is not None)
+    # 注意: indices 即使全采集失败也是非空 list(每个元素含 error 字段的壳),
+    # 必须用"含真实有效行情"的标准判断, 否则 bool(indices) 恒为 True 会绕过红线。
+    def _has_valid_indices(idx_list):
+        if not idx_list:
+            return False
+        return any(isinstance(i, dict) and i.get("price") is not None and not i.get("error") for i in idx_list)
+
+    has_core_data = _has_valid_indices(indices) or bool(sectors_top) or bool(sectors_bottom) or (capital is not None)
     if not has_core_data:
         print(
             f"⚠️ [MRKT] {market.value} {date} 核心客观数据(指数/板块/资金)全部缺失，跳过 LLM 定性分析，标记 data_complete=False"
