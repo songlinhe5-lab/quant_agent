@@ -16,7 +16,16 @@ async def handle_akshare(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
                 params.get("symbol"), market=params.get("market", "A"), period=params.get("period", "daily")
             )
         elif action == "FUND_FLOW":
-            return await akshare_service.get_fund_flow(params.get("symbol"))
+            symbol = params.get("symbol") or ""
+            # 港股资金流由 Futu 承载，AKShare 不支持；明确报错让 facade 改走 Futu
+            if symbol.upper().startswith("HK.") or symbol.upper().endswith(".HK"):
+                return {
+                    "status": "error",
+                    "error_category": "UNSUPPORTED",
+                    "error": f"AKShare 不支持港股资金流 {symbol}",
+                    "source": "akshare",
+                }
+            return await akshare_service.get_fund_flow(symbol)
         elif action == "SOUTHBOUND":
             return await akshare_service.get_southbound()
         elif action == "HK_CONNECT":

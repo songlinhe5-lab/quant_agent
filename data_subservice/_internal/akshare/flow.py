@@ -271,10 +271,34 @@ def get_hsgt_top_holders(symbol: str = "00700") -> Dict[str, Any]:
         }
 
 
+def _is_hk_symbol(symbol: str) -> bool:
+    """识别港股代码（HK.00700 / 00700.HK / 5位港股代码）。"""
+    s = (symbol or "").strip().upper()
+    if s.startswith("HK.") or s.endswith(".HK"):
+        return True
+    return False
+
+
+def _a_share_market(code: str) -> str:
+    """根据 6 位 A 股代码判断沪/深市场。"""
+    code = code.zfill(6)
+    if code.startswith(("60", "68", "90", "88")):
+        return "sh"
+    return "sz"
+
+
 def get_individual_flow(symbol: str) -> Optional[Dict]:
-    """获取个股资金流向。"""
+    """获取个股资金流向（仅支持 A 股）。
+
+    港股资金流由 Futu 的 get_capital_distribution 承载，AKShare 不支持，
+    故对港股代码直接返回 None（由上层路由改走 Futu），避免静默返回空数据。
+    """
+    if _is_hk_symbol(symbol):
+        logger.warning(f"[AKShare] 个股资金流不支持港股 {symbol}，交由 Futu 处理")
+        return None
     try:
-        df = ak.stock_individual_fund_flow(stock=symbol, market="sh")
+        market = _a_share_market(symbol)
+        df = ak.stock_individual_fund_flow(stock=symbol, market=market)
         if df is None or df.empty:
             return None
         latest = df.iloc[-1]
