@@ -76,7 +76,7 @@ type TabKey = (typeof TABS)[number]['key']
 // ── A股行业 Tab ───────────────────────────────────────────────────────────
 
 function AShareTab({ data }: { data: SectorFundFlowData['a_share'] }) {
-  if (!data || data.status !== 'success' || !data.data) {
+  if (!data || data.status !== 'success' || !data.data || !data.data.inflow_top || !data.data.outflow_top) {
     return <EmptyState message="暂无A股行业资金流数据" />
   }
 
@@ -174,7 +174,7 @@ function AShareTab({ data }: { data: SectorFundFlowData['a_share'] }) {
 // ── 港股南向 Tab ──────────────────────────────────────────────────────────
 
 function HKTab({ data }: { data: SectorFundFlowData['hk'] }) {
-  if (!data || data.status !== 'success' || !data.data || data.data.sectors.length === 0) {
+  if (!data || data.status !== 'success' || !data.data || !data.data.sectors || data.data.sectors.length === 0) {
     return <EmptyState message={data?.data?.note || '暂无港股南向行业数据'} />
   }
 
@@ -228,7 +228,7 @@ function HKTab({ data }: { data: SectorFundFlowData['hk'] }) {
 // ── 美股板块 Tab ──────────────────────────────────────────────────────────
 
 function USTab({ data }: { data: SectorFundFlowData['us'] }) {
-  if (!data || data.status !== 'success' || !data.data || data.data.sectors.length === 0) {
+  if (!data || data.status !== 'success' || !data.data || !data.data.sectors || data.data.sectors.length === 0) {
     return <EmptyState message="暂无美股板块资金流数据" />
   }
 
