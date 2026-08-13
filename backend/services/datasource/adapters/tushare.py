@@ -45,15 +45,25 @@ class TushareRemoteDataSource:
     @property
     def capabilities(self) -> list[str]:
         # 与 router._TS_ACTION_MAP 的 key 对齐（fetch 时统一大写比对）。
+        # 额外声明 QUOTE / HISTORY 别名，使 facade 的报价类 action 能将 tushare
+        # 纳入 A股候选源（fetch 内做 QUOTE->STOCK_QUOTE / HISTORY->STOCK_HISTORY 映射）。
         return [
             "STOCK_HISTORY",  # A股日线历史 (pro_bar/daily)
             "STOCK_QUOTE",  # A股实时行情 (rt_k 降级 daily_basic)
+            "QUOTE",  # facade 报价别名 -> STOCK_QUOTE
+            "HISTORY",  # facade 历史别名 -> STOCK_HISTORY
             "FUNDAMENTAL",  # 每日指标 / 利润表 / 财务指标
             "FUND_FLOW",  # 沪深港通资金流向 (moneyflow_hsgt)
             "STOCK_LIST",  # 股票列表 (stock_basic)
             "LOWFREQ_HISTORY",  # 周线 / 月线
             "MACRO",  # 宏观经济 (cn_gdp/cn_cpi/cn_ppi/cn_money_supply/cn_shibor)
         ]
+
+    # facade 报价类 action -> 子服务 tushare action 归一化映射
+    _ACTION_ALIAS = {
+        "QUOTE": "STOCK_QUOTE",
+        "HISTORY": "STOCK_HISTORY",
+    }
 
     @property
     def mode(self) -> str:
@@ -107,6 +117,8 @@ class TushareRemoteDataSource:
                 ),
                 source=self.name,
             )
+        # facade 报价类别名归一化为子服务 tushare action
+        _action = self._ACTION_ALIAS.get(_action, _action)
 
         from backend.services.datasource.router import data_source_router
 
