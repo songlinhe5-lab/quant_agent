@@ -70,6 +70,11 @@ def fetch_history(
         )
         if df is not None and not df.empty:
             df = df.reset_index()
+            # yfinance 1.x 对单标的返回的 columns 为 MultiIndex, 形如 ('Close','^VIX')。
+            # 若不拍平, 下游 _df_to_records 用 row["Close"] 访问会错位/抛异常导致整行被静默丢弃
+            # (表现为 count=0 空数据, 但实际有数据)。这里统一拍平为第一级列名。
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
         return df
     except Exception as e:
         logger.error(f"[History] 获取 {ticker} 历史失败: {e}")

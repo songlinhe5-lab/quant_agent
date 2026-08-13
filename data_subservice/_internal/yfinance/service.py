@@ -158,16 +158,25 @@ class YFinanceService:
     def _df_to_records(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
         if df is None or df.empty:
             return []
+        # columns 可能在极少数情况下仍为 MultiIndex, 这里兜底拍平, 与 quote.fetch_history 保持一致
+        if isinstance(df.columns, pd.MultiIndex):
+            df = df.copy()
+            df.columns = df.columns.get_level_values(0)
         records = []
         for _, row in df.iterrows():
             try:
+
+                def _safe_num(key):
+                    v = row[key] if key in df.columns else None
+                    return float(v) if pd.notna(v) else None
+
                 rec = {
-                    "date": str(row.get("Date")),
-                    "open": float(row["Open"]) if pd.notna(row.get("Open")) else None,
-                    "high": float(row["High"]) if pd.notna(row.get("High")) else None,
-                    "low": float(row["Low"]) if pd.notna(row.get("Low")) else None,
-                    "close": float(row["Close"]) if pd.notna(row.get("Close")) else None,
-                    "volume": int(row["Volume"]) if pd.notna(row.get("Volume")) else 0,
+                    "date": str(row["Date"]) if "Date" in df.columns else None,
+                    "open": _safe_num("Open"),
+                    "high": _safe_num("High"),
+                    "low": _safe_num("Low"),
+                    "close": _safe_num("Close"),
+                    "volume": int(row["Volume"]) if ("Volume" in df.columns and pd.notna(row.get("Volume"))) else 0,
                 }
                 records.append(rec)
             except Exception:
