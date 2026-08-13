@@ -54,6 +54,10 @@ def fetch_history(
     """获取历史 K 线数据。"""
     yf_code = format_yf_ticker(ticker)
     try:
+        # DIST-SEC-01(2026-08-13): yf.download 默认会为内部数据区间拉取 spawn 多线程。
+        # 高频并发入站时（主服务经 router 批量派发 HISTORY）线程无上限累积，
+        # 最终打爆进程线程上限 → "can't start new thread" → 子服务历史数据源瘫痪。
+        # threads=False 关闭其内置多线程，并发改为由 YFinanceService 的 Semaphore 统一管控。
         df = yf.download(
             yf_code,
             period=period,
@@ -62,6 +66,7 @@ def fetch_history(
             interval=interval,
             progress=False,
             auto_adjust=True,
+            threads=False,
         )
         if df is not None and not df.empty:
             df = df.reset_index()

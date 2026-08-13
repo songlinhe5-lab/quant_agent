@@ -92,13 +92,33 @@ async def verify_hmac(
 async def health():
     # 携带 futu 真实连接状态，避免 /health 成为无意义的死值（node-s1 实战复盘 2026-08-11）
     futu_state = _futu_status_snapshot()
+    # DIST-SEC-01(2026-08-13): /health 增加线程水位探针。此前 S1 子服务线程耗尽
+    # （2263 线程、can't start new thread）但 /health 仍回 healthy，掩盖 yfinance
+    # 历史数据源已瘫痪的真相。现暴露实时线程数与告警，让监控一眼看出资源枯竭。
+    thread_count = _thread_count()
+    thread_warn = thread_count >= int(os.getenv("YF_THREAD_WARN", "800"))
     return JSONResponse(
         {
-            "status": "healthy",
+            "status": "healthy" if not thread_warn else "degraded",
             "service": "data-subservice",
+            "threads": {
+                "count": thread_count,
+                "warn_threshold": int(os.getenv("YF_THREAD_WARN", "800")),
+                "degraded": thread_warn,
+            },
             "futu": futu_state,
         }
     )
+
+
+def _thread_count() -> int:
+    """读取本进程当前线程数（host /proc/self/task 视角，避免依赖可能受限的 threading API）。"""
+    try:
+        return len(os.listdir("/proc/self/task"))
+    except Exception:
+        import threading
+
+        return threading.active_count()
 
 
 def _futu_status_snapshot() -> dict:
