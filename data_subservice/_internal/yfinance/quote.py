@@ -1,6 +1,7 @@
 """YFinance 行情获取（复制自 backend.services.yfinance.quote，物理解耦，零 backend 依赖，相对 import）"""
 
-from typing import Dict, List, Optional
+import math
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import yfinance as yf
@@ -127,16 +128,77 @@ def fetch_financials(ticker: str, kind: str = "annual") -> Dict:
         return {"symbol": ticker, "error": str(e), "source": "yfinance"}
 
 
+def _normalize_option_row(row: "pd.Series", option_type: str, expiration: Optional[str] = None) -> Dict:
+    """将 yfinance 期权合约一行归一化为后端期望的蛇形字段。"""
+
+    def _num(v: Any) -> Optional[float]:
+        try:
+            if v is None or (isinstance(v, float) and math.isnan(v)):
+                return None
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    return {
+        "expiration": expiration,
+        "strike": _num(row.get("strike")),
+        "option_type": option_type.upper(),
+        "bid": _num(row.get("bid")),
+        "ask": _num(row.get("ask")),
+        "last_price": _num(row.get("lastPrice")),
+        "volume": _num(row.get("volume")),
+        "open_interest": _num(row.get("openInterest")),
+        # yfinance 原始字段为 impliedVolatility(驼峰)；主服务 _enrich_option_chain
+        # 读取 implied_volatility，此处统一归一化，避免字段名不匹配导致 IV 全空。
+        "implied_volatility": _num(row.get("impliedVolatility")),
+    }
+
+
 def fetch_option_chain(ticker: str) -> Dict:
-    """获取期权链。"""
+    """获取期权链（含每个到期日的合约明细与 IV/定价字段）。
+
+    注意：t.option_chain() 返回 OptionsChain 对象，.calls/.puts 为 DataFrame。
+    之前实现只取了 list(chain)（到期日列表），丢掉了全部合约数据，
+    导致主服务拿不到 IV/定价字段，期权 IV 面板全空。
+    """
+    import pandas as pd  # noqa: F401  (row 类型标注用)
+
     yf_code = format_yf_ticker(ticker)
     try:
         t = yf.Ticker(yf_code)
         chain = t.option_chain()
         expirations = list(chain)
+
+        calls: List[Dict] = []
+        puts: List[Dict] = []
+        for exp in expirations:
+            try:
+                calls_df = (
+                    chain.calls[chain.calls["expirationDate"] == exp]
+                    if "expirationDate" in chain.calls.columns
+                    else chain.calls
+                )
+                puts_df = (
+                    chain.puts[chain.puts["expirationDate"] == exp]
+                    if "expirationDate" in chain.puts.columns
+                    else chain.puts
+                )
+            except Exception:
+                calls_df = chain.calls
+                puts_df = chain.puts
+            for _, r in calls_df.iterrows():
+                calls.append(_normalize_option_row(r, "CALL", exp))
+            for _, r in puts_df.iterrows():
+                puts.append(_normalize_option_row(r, "PUT", exp))
+
+        all_opts = calls + puts
         return {
             "symbol": ticker,
             "expirations": expirations,
+            "calls": calls,
+            "puts": puts,
+            "options": all_opts,
+            "count": len(all_opts),
             "source": "yfinance",
         }
     except Exception as e:
