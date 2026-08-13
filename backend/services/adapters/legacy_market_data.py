@@ -538,7 +538,14 @@ class MarketDataGateway:
             days_ahead=days_ahead,
             days_back=days_back,
         )
-        return resp
+        # _fetch_finnhub 成功时返回 router 剥信封后的 data 载荷，即 Finnhub 原始
+        # {"earningsCalendar":[...]}；失败时返回 {"status":"error","message":...} 信封。
+        # 归一化为业务层统一信封 {"status":"success","data":[...]}，否则上游
+        # _fetch_earnings_calendar_data 拿不到 status/data 字段 → 财报日历被吞成空。
+        if isinstance(resp, dict) and resp.get("status") == "error":
+            return resp
+        calendar = resp.get("earningsCalendar", []) if isinstance(resp, dict) else []
+        return {"status": "success", "data": calendar, "source": "finnhub"}
 
     async def get_insider_transactions(self, ticker: str, limit: int = 30, **kwargs: Any) -> Any:
         resp = await self._fetch_finnhub("insider_trading", ticker=ticker, limit=limit)
