@@ -855,6 +855,13 @@ class DataSourceRouter:
                 await self._save_akshare_cache(action, kwargs, result)
                 return result
 
+            # 零幻觉红线：远程明确判定 UNSUPPORTED（如 AKShare 不支持港股）时，
+            # 是确定性结论，禁止降级到 STALE 缓存（缓存可能是错误标的的空数据，
+            # 如 market=A + data=[]，降级会把假数据当成功返回）。
+            # 直接透传 UNSUPPORTED 错误，让 facade 改走下一候选源（Futu/YFinance）。
+            if result.get("error_category") == "UNSUPPORTED":
+                return result
+
             await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
 
         except Exception as e:
