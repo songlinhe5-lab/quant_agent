@@ -26,6 +26,14 @@ from backend.services.datasource import (
 )
 
 
+def _is_hk_ticker(ticker: str) -> bool:
+    """识别港股代码（HK.00700 / 00700.HK / 5位港股代码）。Tushare 仅支持 A 股。"""
+    s = (ticker or "").strip().upper()
+    if s.startswith("HK.") or s.endswith(".HK"):
+        return True
+    return False
+
+
 class TushareDataSource:
     """TushareService → DataSourceInterface 薄适配。"""
 
@@ -161,13 +169,25 @@ class TushareDataSource:
             elif action == "stock_quote":
                 raw = svc.get_realtime_quote(ticker=str(params.get("ticker", "")))
             elif action == "fundamental":
+                ticker_arg = str(params.get("ticker", ""))
+                # Tushare 仅支持 A 股, 港股财报/财务指标由 Futu 承载。
+                # 港股直接返回 UNSUPPORTED, 让 facade 跳过 Tushare 改走 Futu。
+                if _is_hk_ticker(ticker_arg):
+                    return Result.make_error(
+                        ErrorInfo.normal(
+                            "UNSUPPORTED",
+                            f"Tushare 不支持港股基本面 {ticker_arg}",
+                            retryable=False,
+                        ),
+                        source=self.name,
+                    )
                 sub = params.get("sub", "daily_basic")
                 if sub == "income":
-                    raw = svc.get_income(ticker=str(params.get("ticker", "")), period=params.get("period"))
+                    raw = svc.get_income(ticker=ticker_arg, period=params.get("period"))
                 elif sub == "fina_indicator":
-                    raw = svc.get_fina_indicator(ticker=str(params.get("ticker", "")), period=params.get("period"))
+                    raw = svc.get_fina_indicator(ticker=ticker_arg, period=params.get("period"))
                 else:
-                    raw = svc.get_daily_basic(ticker=str(params.get("ticker", "")), trade_date=params.get("trade_date"))
+                    raw = svc.get_daily_basic(ticker=ticker_arg, trade_date=params.get("trade_date"))
             elif action == "fund_flow":
                 raw = svc.get_moneyflow_hsgt(start_date=params.get("start_date"), end_date=params.get("end_date"))
             elif action == "stock_list":

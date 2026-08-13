@@ -138,7 +138,13 @@ class FutuDataSource:
             )
 
         if isinstance(resp, dict) and resp.get("status") == "success":
-            return Result.make_success(resp.get("data"), source=self.name)
+            payload = resp.get("data")
+            # 解包子服务内部信封: {"status":"success","data":<真实业务数据>}
+            # _normalize_response 不会剥离该层, 导致 payload 仍是 dict 信封,
+            # 上层 (如 calculate_technical_indicators / get_history) 拿到 dict 而非 list 而崩溃。
+            if isinstance(payload, dict) and payload.get("status") == "success" and "data" in payload:
+                payload = payload["data"]
+            return Result.make_success(payload, source=self.name)
 
         msg = (resp.get("message") if isinstance(resp, dict) else "") or "futu fetch failed"
         # 期权链偶发失败不熔断（其它能力照常）

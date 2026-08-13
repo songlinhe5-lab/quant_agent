@@ -195,7 +195,8 @@ class TestGenerateMarketReview:
 
         assert review.market == MarketType.HK
         assert review.style is None  # LLM 失败，无风格
-        assert review.summary == ""
+        # 零幻觉红线：核心数据缺失时 summary 明确标注"数据缺失"，而非静默空串
+        assert "数据缺失" in review.summary
         assert len(review.indices) == 2  # 港股2个指数
 
 

@@ -218,28 +218,47 @@ async def get_company_news(ticker: str, limit: int = 10):
                         pass
                     return result
 
-                # 真实源不可用时回退到本地模拟数据（供前端联调）
-                mock_news = [
-                    {
-                        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "headline": f"{ticker}: 公司发布最新财报显示业绩增长",
-                        "summary": f"根据最新披露的财报数据，{ticker} 在本季度实现了超出预期的收入增长",
-                    },
-                    {
-                        "time": (datetime.now().replace(day=max(1, datetime.now().day - 2))).strftime(
-                            "%Y-%m-%d %H:%M:%S"
-                        ),
-                        "headline": f"{ticker}: 分析师上调目标价格至新高",
-                        "summary": f"多家投行因看好行业前景而纷纷上调对 {ticker} 的目标价",
-                    },
-                ]
+                # 真实源 (Finnhub) 不可用 → 港股/A股经 Yahoo 兜底 (BE-ARCH-07j, 联邦 yfinance 子服务)
+                try:
+                    from backend.core.yahoo_news import fetch_yahoo_news
 
+                    yahoo_news_list = await fetch_yahoo_news(safe_ticker)
+                except Exception as yahoo_e:  # noqa: BLE001
+                    print(f"⚠️ [Market News] {safe_ticker} Yahoo 兜底异常: {yahoo_e}")
+                    yahoo_news_list = []
+
+                if yahoo_news_list:
+                    yahoo_formatted = [
+                        {
+                            "time": datetime.fromtimestamp(item["datetime"]).strftime("%Y-%m-%d %H:%M:%S")
+                            if isinstance(item.get("datetime"), (int, float))
+                            else str(item.get("time", "")),
+                            "headline": item.get("headline", ""),
+                            "summary": item.get("summary", ""),
+                        }
+                        for item in yahoo_news_list[:limit]
+                        if isinstance(item, dict)
+                    ]
+                    result = {
+                        "status": "success",
+                        "count": len(yahoo_formatted),
+                        "data": yahoo_formatted,
+                        "source": "yahoo_fallback",
+                        "message": None,
+                    }
+                    try:
+                        await redis_client.set(cache_key, json.dumps(result), ex=300)
+                    except Exception:
+                        pass
+                    return result
+
+                # 零幻觉红线: 真实源与兜底均失败, 严禁返回 mock 假数据
                 return {
-                    "status": "success",
-                    "count": len(mock_news),
-                    "data": mock_news[:limit],  # 限制返回数量
-                    "source": "mock_news_fallback",  # 临时方案标记
-                    "message": None,
+                    "status": "no_data",
+                    "count": 0,
+                    "data": [],
+                    "source": "none",
+                    "message": f"{safe_ticker} 个股新闻源暂不可用 (Finnhub 不支持该标的且 Yahoo 兜底失败)，请改用网络搜索工具获取",
                 }
     except TimeoutError:
         print(f"⚠️ [Market News] 等待 {ticker} 的锁或请求 Finnhub 超时 (5秒)")

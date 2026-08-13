@@ -40,9 +40,9 @@ _MARKET_INDICES: dict[MarketType, list[dict[str, str]]] = {
         {"code": "HK.800100", "name": "恒生科技指数"},
     ],
     MarketType.US: [
-        {"code": "US..DJI", "name": "道琼斯工业"},
-        {"code": "US..IXIC", "name": "纳斯达克综合"},
-        {"code": "US..INX", "name": "标普500"},
+        {"code": "US.DJI", "name": "道琼斯工业"},
+        {"code": "US.IXIC", "name": "纳斯达克综合"},
+        {"code": "US.INX", "name": "标普500"},
     ],
 }
 
@@ -360,8 +360,25 @@ async def generate_market_review(
     )
     sectors_top, sectors_bottom = sectors if sectors else ([], [])
 
-    # ── Phase 2: LLM 结构化分析 ──
-    analysis = await _llm_analyze(market, date, indices, capital, news, sentiment, sectors_top, sectors_bottom)
+    # ── 数据完整性红线 (PROD-零幻觉) ──
+    # 核心客观数据(指数+板块+资金)全部缺失时，复盘失去行情锚点，
+    # 严禁 LLM 凭新闻自由发挥生成风格/事件定性，否则等同于编造。
+    # 注意: indices 即使全采集失败也是非空 list(每个元素含 error 字段的壳),
+    # 必须用"含真实有效行情"的标准判断, 否则 bool(indices) 恒为 True 会绕过红线。
+    def _has_valid_indices(idx_list):
+        if not idx_list:
+            return False
+        return any(isinstance(i, dict) and i.get("price") is not None and not i.get("error") for i in idx_list)
+
+    has_core_data = _has_valid_indices(indices) or bool(sectors_top) or bool(sectors_bottom) or (capital is not None)
+    if not has_core_data:
+        print(
+            f"⚠️ [MRKT] {market.value} {date} 核心客观数据(指数/板块/资金)全部缺失，跳过 LLM 定性分析，标记 data_complete=False"
+        )
+        analysis = None
+    else:
+        # ── Phase 2: LLM 结构化分析 ──
+        analysis = await _llm_analyze(market, date, indices, capital, news, sentiment, sectors_top, sectors_bottom)
 
     # ── Phase 3: 组装 MarketDailyReview ──
     review = MarketDailyReview(
@@ -371,6 +388,7 @@ async def generate_market_review(
         capital_flow=capital,
         sectors_top=sectors_top,
         sectors_bottom=sectors_bottom,
+        data_complete=has_core_data,
     )
 
     if analysis:
@@ -394,6 +412,13 @@ async def generate_market_review(
         review.summary = analysis.summary
         review.outlook = analysis.outlook
         review.risk_tags = analysis.risk_tags
+    else:
+        # 数据完整性红线: 核心客观数据缺失，明确标注不可作为判因依据，
+        # 禁止 LLM 凭新闻自由发挥填充 style/events（零幻觉）。
+        review.style_reasoning = "核心行情数据(指数/板块/资金)缺失，复盘不可靠，不可作为个股判因依据"
+        review.event_impact_summary = "行情数据缺失，仅新闻层面可见，未做市场定性"
+        review.summary = "⚠️ 数据缺失: 当日指数/板块/资金行情未能采集，本报告不含可靠的量化复盘结论"
+        review.risk_tags = ["数据缺失"]
 
     # ── Phase 4: 持久化 ──
     await save_market_review(review)

@@ -78,13 +78,13 @@ def test_news_real_source(finnhub):
 
 
 def test_news_fallback_mock(finnhub):
-    """Finnhub 不可用 → 回退模拟数据，source=mock_news_fallback。"""
+    """Finnhub 不可用 → 零幻觉红线：返回 no_data，严禁 mock 假新闻兜底。"""
     client = TestClient(app)
     resp = client.get("/api/v1/market/news?ticker=AAPL&limit=5")
     assert resp.status_code == 200
     body = _data(resp)
-    assert body["status"] == "success"
-    assert body["source"] == "mock_news_fallback"
+    assert body["status"] == "no_data"
+    assert body["source"] != "mock_news_fallback"
 
 
 def test_events_real_source(finnhub):

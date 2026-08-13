@@ -47,6 +47,41 @@ def _business_weight(name: str) -> int:
     return int(os.getenv(f"DATASOURCE_{name.upper()}_BUSINESS_WEIGHT", str(default)))
 
 
+def _detect_market(ticker: str) -> str:
+    """按 ticker 判定市场（US / HK / CN）。
+
+    输入为业务侧标准化格式（Futu 前缀），如 ``US.AAPL`` / ``HK.00700`` /
+    ``SH.600000`` / ``SZ.000001``；兼容 ``AAPL`` / ``00700.HK`` / ``600000.SH`` 等
+    原始写法。判定结果用于市场感知的源优先级路由。
+    """
+    s = (ticker or "").strip().upper()
+    if not s:
+        return "US"
+    if s.startswith("HK.") or s.endswith(".HK") or ("HK:" in s):
+        return "HK"
+    if s.startswith(("SH.", "SZ.")) or s.endswith((".SH", ".SZ", ".SS")):
+        return "CN"
+    return "US"
+
+
+# 市场感知的源优先级（QUOTE / HISTORY 报价类 action）。
+# 策略：Futu 真实报价首选；美股 Finnhub 备选；A股/港股 AKShare/Tushare 备选。
+# 仅列出声明了对应 action 能力的源，顺序即降级顺序。
+_MARKET_QUOTE_PREFERENCE: dict[str, list[str]] = {
+    "US": ["futu", "finnhub", "yfinance", "akshare"],
+    "HK": ["futu", "akshare", "yfinance"],  # Finnhub 免费版无港股报价，排除
+    "CN": ["futu", "akshare", "tushare"],  # A股走 AKShare/Tushare
+}
+
+# 新闻类 action 的源优先级：Finnhub 是港股+美股新闻核心数据源，首选；
+# A股新闻降级 AKShare（东方财富）；港股新闻降级 AKShare(雅虎兜底)。
+_MARKET_NEWS_PREFERENCE: dict[str, list[str]] = {
+    "US": ["finnhub", "yfinance", "akshare"],
+    "HK": ["finnhub", "akshare", "yfinance"],
+    "CN": ["akshare", "finnhub"],
+}
+
+
 def _merge_calendar_events(results: list[Result]) -> list[dict]:
     """合并多源经济日历的 events。
 
@@ -252,21 +287,34 @@ class DataServiceFacade:
         enable_merge: bool = False,
     ) -> Result:
         """统一调度：选源 → 取数（可多源）→ 融合 → 检测 → 归一化。"""
-        candidates = self._select_source(action, prefer_sources)
+        candidates = self._select_source(action, prefer_sources, params=params)
 
         results: list[Result] = []
+        last_err: Optional[Result] = None
         for src in candidates:
             res = await datasource_registry.fetch(src, action, params)
             if res.is_success:
                 results.append(res)
-            # 单源成功即可停止（除非需要多源融合）
-            if results and not enable_merge:
-                break
+                # 单源成功即可停止（除非需要多源融合）
+                if not enable_merge:
+                    break
+            else:
+                # 记录最后一个非限流错误，便于失败时溯源真实原因
+                if not (res.is_rate_limited or (res.error and res.error.is_rate_limit_type)):
+                    last_err = res
 
         if not results:
-            # 全部失败：回退首个非限流错误，保留溯源信息
-            last_err = ErrorInfo.normal("ALL_SOURCES_FAILED", f"action={action} 所有候选源失败", retryable=True)
-            return Result.make_error(last_err, source="+".join(candidates))
+            # 全部失败：优先保留首个真实业务错误的溯源信息，避免被泛化掩盖
+            if last_err is not None and last_err.error is not None:
+                reason = f"action={action} 所有候选源失败: [{last_err.source}] {last_err.error.message}"
+                return Result.make_error(
+                    ErrorInfo.normal("ALL_SOURCES_FAILED", reason, retryable=last_err.error.retryable),
+                    source="+".join(candidates),
+                )
+            last_err_fallback = ErrorInfo.normal(
+                "ALL_SOURCES_FAILED", f"action={action} 所有候选源失败", retryable=True
+            )
+            return Result.make_error(last_err_fallback, source="+".join(candidates))
 
         merged = self._merge(action, results) if enable_merge else results[0]
         DATASOURCE_FACADE_MERGE.labels(
@@ -289,12 +337,29 @@ class DataServiceFacade:
 
     # ── 策略原语 ──
 
-    def _select_source(self, action: str, prefer_sources: Optional[list[str]]) -> list[str]:
-        """源选择策略：健康度过滤 → 限流退避过滤 → 业务权重排序。
+    def _select_source(
+        self, action: str, prefer_sources: Optional[list[str]], params: Optional[dict[str, Any]] = None
+    ) -> list[str]:
+        """源选择策略：市场感知优先级 → 健康度过滤 → 限流退避过滤 → 权重排序。
 
         返回候选源列表（已排序，最优在前）。``prefer_sources`` 可临时覆盖排序。
+
+        市场感知路由（2026-08-13）：QUOTE / HISTORY 报价类 action 按 ticker 判定
+        市场（US/HK/CN），用市场专属源优先级覆盖默认全局权重：
+          - Futu 作为真实报价首选（所有市场）
+          - 美股 Finnhub 备选；A股/港股 AKShare/Tushare 备选
+          - Finnhub 免费版无港股报价，港股候选源排除 finnhub
         """
         from backend.services.datasource.registry import rate_limit_registry
+
+        params = params or {}
+        market: Optional[str] = None
+        action_upper = action.upper()
+        quote_action = action_upper in ("QUOTE", "HISTORY")
+        news_action = action_upper in ("COMPANY_NEWS", "MARKET_NEWS", "NEWS", "STOCK_NEWS")
+        if quote_action or news_action:
+            ticker = params.get("ticker") or params.get("symbol") or ""
+            market = _detect_market(str(ticker))
 
         names = datasource_registry.list_names()
         scored: list[tuple[int, str]] = []
@@ -313,6 +378,20 @@ class DataServiceFacade:
             pref = [s for s in prefer_sources if any(s == n for _, n in scored)]
             rest = [n for w, n in sorted(scored, reverse=True)]
             return pref + [n for n in rest if n not in pref]
+
+        if market:
+            preference = None
+            if quote_action and market in _MARKET_QUOTE_PREFERENCE:
+                preference = _MARKET_QUOTE_PREFERENCE[market]
+            elif news_action and market in _MARKET_NEWS_PREFERENCE:
+                preference = _MARKET_NEWS_PREFERENCE[market]
+            if preference:
+                # 市场感知：按市场专属顺序排候选（仅保留声明了对应 action 能力的源）
+                available = {n for _, n in scored}
+                ordered = [s for s in preference if s in available]
+                # 兜底：preference 之外、仍支持该 action 的源按权重接在末尾
+                rest = [n for _, n in sorted(scored, reverse=True) if n not in ordered]
+                return ordered + rest
 
         return [n for _, n in sorted(scored, reverse=True)]
 

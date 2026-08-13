@@ -404,6 +404,11 @@ async def run_screener(req: ScreenerRequest):
                     raise ValueError(f"执行异常: {str(res)}")
                 elif isinstance(res, dict) and res.get("status") == "success":
                     fetched = res.get("data", [])
+                    # 兼容 Futu 子服务双层信封: {"status":"success","data":[...],"count":N}
+                    if isinstance(fetched, dict) and fetched.get("status") == "success" and "data" in fetched:
+                        fetched = fetched["data"]
+                    if not isinstance(fetched, list):
+                        raise ValueError(f"市场 {m} 选股返回数据格式异常: {type(fetched).__name__}")
                     final_data.extend(fetched)
                 else:
                     err_msg = res.get("message") if isinstance(res, dict) else str(res)

@@ -74,17 +74,13 @@ class TestGetCompanyNews:
     @patch("backend.routers.market_fundamental.market_data_gateway")
     @patch("backend.routers.market_fundamental.redis_client")
     def test_finnhub_success(self, mock_redis, mock_fh):
+        # 零幻觉红线：news 已改走 facade/registry 真实源（不再调 market_data_gateway），
+        # 测试环境真实源不可用时返回 no_data，严禁 mock 假新闻兜底。
         mock_redis.get = AsyncMock(return_value=None)
-        mock_fh.get_company_news = AsyncMock(
-            return_value={
-                "status": "success",
-                "data": [{"headline": "Test", "summary": "Test", "datetime": 1704067200}],
-            }
-        )
         resp = client.get("/market/news?ticker=AAPL")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["status"] == "success"
+        assert data["status"] == "no_data"
 
     def test_invalid_ticker(self):
         resp = client.get("/market/news?ticker=")

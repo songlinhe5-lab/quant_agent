@@ -96,3 +96,38 @@ async def delete_market_review(date: str, market: MarketType) -> bool:
     index_key = f"{_INDEX_PREFIX}:{market.value}"
     await redis_client.zrem(index_key, date)
     return deleted > 0
+
+
+async def purge_incomplete_reviews(market: Optional[MarketType] = None) -> int:
+    """清理存量脏数据复盘（零幻觉红线运维手段）。
+
+    删除所有 data_complete=False 或核心客观数据(指数/板块/资金)全空的复盘，
+    这些通常是子服务瘫痪期生成的 LLM 空编复盘，不可作为个股判因依据。
+
+    Returns:
+        被清理的复盘数量
+    """
+    from backend.services.market_review.models import MarketType as _MT
+
+    markets = [market] if market else list(_MT)
+    purged = 0
+    for m in markets:
+        dates = await list_available_dates(m, limit=_REVIEW_TTL_DAYS)
+        for d in dates:
+            review = await get_market_review(d, m)
+            if review is None:
+                continue
+            has_valid = (
+                any(
+                    getattr(i, "price", None) is not None and not getattr(i, "error", None)
+                    for i in (review.indices or [])
+                )
+                or bool(review.sectors_top)
+                or bool(review.sectors_bottom)
+                or review.capital_flow is not None
+            )
+            if not has_valid:
+                await delete_market_review(d, m)
+                purged += 1
+                print(f"🧹 [MRKT] 清理脏数据复盘 {m.value} {d} (data_complete={review.data_complete})")
+    return purged

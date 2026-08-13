@@ -94,15 +94,16 @@ class TestFREDService:
 
     @pytest.mark.asyncio
     async def test_get_series_observations_empty_observations_returns_warning(self, service):
-        """空观测值列表应返回 warning"""
+        """空观测值列表应如实标记为 error（零幻觉红线），禁止伪装成 warning"""
         with (
             patch("backend.services.macro.fred_service.redis_client") as mock_redis,
             patch(f"{_ROUTER}.fetch_fred", AsyncMock(return_value={"status": "success", "data": {"observations": []}})),
         ):
             mock_redis.get = AsyncMock(return_value=None)
             result = await service.get_series_observations("UNKNOWN")
-            assert result["status"] == "warning"
+            assert result["status"] == "error"
             assert result["data"] == []
+            assert "未返回有效观测数据" in result["message"]
 
     @pytest.mark.asyncio
     async def test_get_series_observations_remote_error_returns_error(self, service):

@@ -75,9 +75,11 @@ class FREDService:
                 raw_observations = []
 
             if not raw_observations:
+                # 零幻觉红线: 子服务成功返回但无观测点, 如实标记为错误(无有效数据),
+                # 禁止伪造"未找到序列"措辞误导(可能是 key 失效/接口异常而非序列不存在)。
                 return {
-                    "status": "warning",
-                    "message": f"未找到序列 {series_id} 的数据",
+                    "status": "error",
+                    "message": f"FRED 序列 {series_id} 未返回有效观测数据(可能源异常或序列无数据)",
                     "data": [],
                 }  # noqa: E501
 
