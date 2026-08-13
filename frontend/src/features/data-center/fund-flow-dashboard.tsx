@@ -171,7 +171,11 @@ function SectorPie({ title, sectors, unit }: { title: string; sectors: SectorIte
         backgroundColor: ECHART_DARK.tooltipBg,
         borderColor: '#334155',
         textStyle: { color: ECHART_DARK.text },
-        formatter: (p: any) => `${p.name}<br/>净流入: ${p.data.signed >= 0 ? '+' : ''}${p.data.signed.toFixed(1)} ${unit || ''}`,
+        formatter: (p: any) => {
+          const signed = p?.data?.signed
+          if (signed == null || Number.isNaN(signed)) return `${p?.name ?? ''}<br/>净流入: --`
+          return `${p.name}<br/>净流入: ${signed >= 0 ? '+' : ''}${signed.toFixed(1)} ${unit || ''}`
+        },
       },
       legend: { show: false },
       series: [
@@ -224,7 +228,9 @@ function SectorBar({ title, sectors, unit }: { title: string; sectors: SectorIte
         textStyle: { color: ECHART_DARK.text },
         formatter: (ps: any) => {
           const p = Array.isArray(ps) ? ps[0] : ps
-          return `${p.name}<br/>净流入: ${p.value >= 0 ? '+' : ''}${p.value.toFixed(1)} ${unit || ''}`
+          const val = p?.value
+          if (val == null || Number.isNaN(val)) return `${p?.name ?? ''}<br/>净流入: --`
+          return `${p.name}<br/>净流入: ${val >= 0 ? '+' : ''}${val.toFixed(1)} ${unit || ''}`
         },
       },
       xAxis: {

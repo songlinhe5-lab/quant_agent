@@ -266,7 +266,7 @@ function USTab({ data }: { data: SectorFundFlowData['us'] }) {
                   )}
                 >
                   {isPositive ? '+' : ''}
-                  {item.net_inflow.toFixed(2)}
+                  {item.net_inflow != null ? item.net_inflow.toFixed(2) : '--'}
                   <span className="text-[8px] ml-0.5 opacity-60">{item.unit}</span>
                 </span>
               </div>

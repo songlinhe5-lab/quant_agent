@@ -105,8 +105,8 @@ function AssetCard({ item }: { item: AssetTrendItem }) {
         >
           <TrendIcon className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
           <span>
-            {item.changePct >= 0 ? '+' : ''}
-            {item.changePct.toFixed(2)}%
+            {(item.changePct ?? 0) >= 0 ? '+' : ''}
+            {(item.changePct ?? 0).toFixed(2)}%
           </span>
         </div>
 
