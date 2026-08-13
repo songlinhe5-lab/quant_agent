@@ -201,15 +201,72 @@ async def build_perf_stats() -> dict[str, Any]:
         }
 
 
+async def build_threads_snapshot() -> dict[str, Any]:
+    """主服务 + 子服务进程线程水位快照（SYS-APM-THREADS）。
+
+    子服务已在 /health 暴露 threads.count（DIST-SEC-01），这里聚合双向线程监控：
+    - 主服务：threading.active_count()（本进程 uvicorn worker）；
+    - 子服务：经 DATA_SUB_SERVICE_URL/health 读取 threads 字段（HMAC 不校验 /health）。
+    """
+    import os
+    import threading
+
+    main_warn = int(os.getenv("MAIN_THREAD_WARN", "800"))
+    main_count = threading.active_count()
+
+    # 刷新主服务进程级 Prometheus 指标
+    try:
+        from backend.core.metrics import update_process_thread_metrics
+
+        update_process_thread_metrics()
+    except Exception:  # noqa: BLE001
+        pass
+
+    result: dict[str, Any] = {
+        "main_service": {
+            "thread_count": main_count,
+            "warn_threshold": main_warn,
+            "degraded": main_count >= main_warn,
+            "source": "threading.active_count",
+        },
+        "sub_service": {"reachable": False, "thread_count": None, "warn_threshold": None, "degraded": None},
+    }
+
+    # 子服务线程水位（反向探测 /health，无 HMAC 校验）
+    sub_url = os.getenv("DATA_SUB_SERVICE_URL", "http://data-subservice:8001")
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{sub_url}/health")
+            if resp.status_code == 200:
+                payload = resp.json()
+                threads = payload.get("threads", {})
+                result["sub_service"] = {
+                    "reachable": True,
+                    "thread_count": threads.get("count"),
+                    "warn_threshold": threads.get("warn_threshold"),
+                    "degraded": threads.get("degraded"),
+                    "status": payload.get("status"),
+                }
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[threads] 子服务线程水位探测失败: %s", e)
+        result["sub_service"]["error"] = str(e)
+
+    return result
+
+
 async def build_apm_dashboard() -> dict[str, Any]:
     """一次聚合 APM 面板所需全部数据。"""
     health_data = await build_health_snapshot()
     cluster_data = await build_cluster_snapshot()
     metrics_data = build_metrics_snapshot()
     perf_stats = await build_perf_stats()
+    threads_data = await build_threads_snapshot()
     return {
         "health": health_data,
         "cluster": cluster_data,
         "metrics": metrics_data,
         "performance_stats": perf_stats,
+        "threads": threads_data,
     }

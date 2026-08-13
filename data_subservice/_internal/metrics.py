@@ -41,6 +41,17 @@ FMP_CACHE_HIT_TOTAL = Counter("fmp_cache_hit_total", "FMP 财报缓存命中数�
 FMP_BATCH_SYMBOLS_TOTAL = Counter("fmp_batch_symbols_total", "FMP 盘后批量拉取标的计数", registry=registry)
 # ── 14. 数据源健康 ──
 FMP_UP = Gauge("fmp_up", "FMP 数据源可用性 (1=可达,0=异常)", registry=registry)
+# ── 15. 进程线程水位 (DIST-SEC-01 延伸：让 Grafana 也能直接 scrape 线程数) ──
+PROCESS_THREADS = Gauge("process_threads", "子服务当前进程 OS 线程数（/proc/self/task 视角）", registry=registry)
+PROCESS_THREAD_WARN = Gauge(
+    "process_thread_warn_threshold", "子服务线程数告警阈值（超过即 degraded）", registry=registry
+)
+
+
+def set_process_thread_metrics(count: int, warn_threshold: int) -> None:
+    """刷新子服务进程线程水位指标。"""
+    PROCESS_THREADS.set(count)
+    PROCESS_THREAD_WARN.set(warn_threshold)
 
 
 def observe_credit_consume(delta: int, remaining: int, limit: int) -> None:

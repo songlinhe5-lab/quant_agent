@@ -286,6 +286,22 @@ async def apm_dashboard(username: str = Depends(get_current_user)):
     return {"status": "success", "data": data}
 
 
+@router.get("/threads")
+async def threads_monitor(username: str = Depends(get_current_user)):
+    """
+    主服务 + 子服务进程线程水位监控（SYS-APM-THREADS）。
+
+    返回主服务本进程线程数，以及经 DATA_SUB_SERVICE_URL/health 探测到的子服务线程数，
+    含各自告警阈值与 degraded 标记。便于在 APM 面板直接观测线程资源枯竭风险。
+    """
+    from backend.app.system_app import build_threads_snapshot
+
+    data = await build_threads_snapshot()
+    # 任一端 degraded 即视为整体线程风险
+    degraded = bool(data["main_service"].get("degraded")) or bool(data["sub_service"].get("degraded"))
+    return {"status": "degraded" if degraded else "ok", "data": data}
+
+
 # ---- 兼容旧内部调用（转发至 system_app）----
 
 
