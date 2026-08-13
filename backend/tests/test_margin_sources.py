@@ -37,25 +37,31 @@ def finra_volume_json():
     ]
 
 
-@pytest.fixture
-def finra_si_json():
-    return [
-        {"current_short_interest": 6000.0, "average_daily_volume": 1000.0},
-        {"current_short_interest": 4000.0, "average_daily_volume": 1000.0},
-    ]
+# consolidatedShortInterest 实测返回 CSV 文本（驼峰字段，非 JSON）
+_FINRA_SI_CSV = (
+    "accountingYearMonthNumber,symbolCode,issueName,currentShortPositionQuantity,"
+    "averageDailyVolumeQuantity,daysToCoverQuantity,settlementDate\n"
+    "20260715,A,Agilent,6000.0,1000.0,6.0,2026-07-15\n"
+    "20260715,AA,Alcoa,4000.0,1000.0,4.0,2026-07-15\n"
+)
 
 
-async def test_finra_volume_and_si_aggregation(finra_volume_json, finra_si_json):
+async def test_finra_volume_and_si_aggregation(finra_volume_json):
     src = FinraRegShoSource()
+    src.token = "fake-token"  # 做空成交量需认证
 
-    async def _fake_json(url, params=None):
-        if "fo_us_sn_short_sale_volume" in url:
+    async def _fake_json(url, params=None, headers=None):
+        if "reg_sho_daily_short_sale_volume" in url:
             return finra_volume_json
-        if "fo_us_equity_short_interest" in url:
-            return finra_si_json
+        return None
+
+    async def _fake_text(url, params=None, headers=None):
+        if "consolidatedShortInterest" in url:
+            return _FINRA_SI_CSV
         return None
 
     src._http_get_json = AsyncMock(side_effect=_fake_json)
+    src._http_get_text = AsyncMock(side_effect=_fake_text)
     snap = await src.fetch(date(2026, 7, 27))
 
     assert snap is not None
@@ -69,15 +75,16 @@ async def test_finra_volume_and_si_aggregation(finra_volume_json, finra_si_json)
     assert snap.short_interest_ratio == pytest.approx(5.0)
 
 
-async def test_finra_partial_short_interest_only(finra_si_json):
+async def test_finra_partial_short_interest_only():
     src = FinraRegShoSource()
+    src.token = ""  # 无 token → 做空成交量跳过
 
-    async def _fake_json(url, params=None):
-        if "fo_us_equity_short_interest" in url:
-            return finra_si_json
-        return None  # 做空成交量缺失
+    async def _fake_text(url, params=None, headers=None):
+        if "consolidatedShortInterest" in url:
+            return _FINRA_SI_CSV
+        return None
 
-    src._http_get_json = AsyncMock(side_effect=_fake_json)
+    src._http_get_text = AsyncMock(side_effect=_fake_text)
     snap = await src.fetch(date(2026, 7, 27))
 
     assert snap is not None
@@ -89,14 +96,17 @@ async def test_finra_partial_short_interest_only(finra_si_json):
 
 async def test_finra_both_missing_returns_none():
     src = FinraRegShoSource()
-    src._http_get_json = AsyncMock(return_value=None)
+    src.token = ""
+    src._http_get_text = AsyncMock(return_value=None)
     snap = await src.fetch(date(2026, 7, 27))
     assert snap is None
 
 
 async def test_finra_http_error_returns_none():
     src = FinraRegShoSource()
+    src.token = "fake-token"
     src._http_get_json = AsyncMock(side_effect=Exception("network down"))
+    src._http_get_text = AsyncMock(side_effect=Exception("network down"))
     snap = await src.fetch(date(2026, 7, 27))
     assert snap is None
 
@@ -105,7 +115,9 @@ async def test_finra_zero_total_volume_skips_ratio(finra_volume_json):
     # 构造总成交为 0 的场景，校验不除零
     zero = [{"shortVolume": 0.0, "totalVolume": 0.0, "shortExemptVolume": 0.0}]
     src = FinraRegShoSource()
+    src.token = "fake-token"
     src._http_get_json = AsyncMock(return_value=zero)
+    src._http_get_text = AsyncMock(return_value=None)
     snap = await src.fetch(date(2026, 7, 27))
     assert snap is None  # total_volume <= 0 → 无法聚合
 
