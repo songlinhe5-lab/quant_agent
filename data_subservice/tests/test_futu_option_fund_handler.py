@@ -134,6 +134,43 @@ class TestOptionFundHandler:
         assert cached[1]["count"] == 2
 
     @pytest.mark.asyncio
+    async def test_get_option_chain_enriches_iv_from_snapshot(self):
+        """get_option_chain 应通过 get_market_snapshot 补充 IV/Greeks（否则全 null）"""
+        handler, conn_mgr, _ = _make_handler()
+        chain_df = pd.DataFrame(
+            {"code": ["OPT1", "OPT2"], "option_type": ["CALL", "PUT"], "strike_price": [350.0, 360.0]}
+        )
+        # 快照 DataFrame 含 option_implied_volatility / option_delta 等（chain_data 没有的列）
+        snap_df = pd.DataFrame(
+            {
+                "code": ["OPT1", "OPT2"],
+                "option_implied_volatility": [0.35, 0.42],
+                "option_delta": [0.6, -0.4],
+                "bid_price": [3.5, 4.2],
+                "ask_price": [3.6, 4.3],
+            }
+        )
+
+        async def fake_to_thread(fn, *args, **kwargs):
+            if fn == conn_mgr.quote_ctx.get_option_chain:
+                return (RET_OK, chain_df)
+            if fn == conn_mgr.quote_ctx.get_market_snapshot:
+                return (RET_OK, snap_df)
+            return (RET_OK, pd.DataFrame())
+
+        with patch("asyncio.to_thread", new=fake_to_thread):
+            result = await handler.get_option_chain("HK.00700", expiration_date="2026-01-01")
+        assert result["status"] == "success"
+        # options 里应包含补充的 IV 字段（不再是 null）
+        assert result["count"] == 2
+        calls = result.get("calls", [])
+        assert len(calls) == 1
+        assert calls[0]["implied_volatility"] is not None
+        assert calls[0]["implied_volatility"] == pytest.approx(35.0)  # 0.35 → 35%
+        assert calls[0]["delta"] == pytest.approx(0.6)
+        assert calls[0]["bid"] == pytest.approx(3.5)
+
+    @pytest.mark.asyncio
     async def test_get_fund_flow_unsupported_returns_error(self):
         """不支持资产应返回错误"""
         handler, _, _ = _make_handler()

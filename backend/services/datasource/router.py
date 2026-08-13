@@ -606,6 +606,21 @@ class DataSourceRouter:
                 result["error_category"] = data["error_category"]
             return result
 
+        # 剥内层信封：REST 型子服务 (fred/finnhub/fmp/dbnomics/rbi/search) 的 service 层
+        # 已返回 {"status":"success","data":{...}} 主服务风格信封，又被子服务 main.py 包成
+        # {"code":0,"data":{那个信封}}。此处若 data 仍是 {"status":"success","data":{...}}
+        # 双重包装，则剥掉内层，取真实业务数据，避免主服务业务层拿到嵌套信封解析失败
+        # (如 fred_service payload.get("observations") 拿到 None → 空数据)。
+        # 判断条件：data 含 "data" 键且 "status" 为 success（区别于 futu 等平级返回的
+        # {"status":"success","symbol":...} 无 "data" 键的情况，不误剥）。
+        inner_data = None
+        if isinstance(data, dict) and data.get("status") == "success" and "data" in data:
+            inner_data = data.get("data")
+            # 仅当内层 data 是 dict/list（真实业务数据）才剥；内层为 None/标量时不剥，
+            # 避免把空结果错误拍平。
+            if inner_data is not None and isinstance(inner_data, (dict, list)):
+                data = inner_data
+
         result: Dict[str, Any] = {"status": "success", "success": True, "data": data}
         # 透传 worker 已带的业务字段, 但不覆盖上面的状态字段
         if isinstance(data, dict):

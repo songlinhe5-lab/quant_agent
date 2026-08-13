@@ -230,3 +230,63 @@ class TestConnectionManager:
         from data_subservice.futu_src.connection_manager import ConnectionManager as CM
 
         assert CM is ConnectionManager
+
+    def test_connect_no_leak_when_status_disconnected_but_ctx_alive(self):
+        """🐛 回归测试: 线程泄漏根因 (2026-08-13)
+
+        watchdog 探针失败时把 status 改成 DISCONNECTED 但不清空 quote_ctx (旧 ctx
+        的 callback 线程仍存活)。旧逻辑的 connect() 双重检查 `status==CONNECTED and
+        quote_ctx is not None` 会因 status 已变而失败 → 反复 new OpenQuoteContext
+        覆盖旧 ctx → 旧 ctx 回调线程永久泄漏 (实测 35min 爬到 814 线程)。
+
+        断言: 只要 quote_ctx 仍存活, 无论 status 如何, connect() 都不得创建新 ctx。
+        """
+        mgr = ConnectionManager()
+        mgr._enabled = True
+        old_ctx = MagicMock()
+        mgr.quote_ctx = old_ctx
+        mgr.status = "DISCONNECTED"  # 模拟 watchdog 标记断线但 ctx 未释放
+        with (
+            patch(
+                "data_subservice.futu_src.connection_manager.OpenQuoteContext",
+                return_value=MagicMock(),
+            ) as mock_open,
+            patch(
+                "data_subservice.futu_src.connection_manager.ConnectionManager._is_opend_reachable",
+                return_value=True,
+            ),
+        ):
+            # 模拟 status 反复抖动 + 多次惰性重连触发
+            for _ in range(50):
+                mgr.connect()
+        # 关键断言: 绝不创建第二个 ctx, 旧 ctx 被复用
+        mock_open.assert_not_called()
+        assert mgr.quote_ctx is old_ctx
+
+    def test_connect_closes_stale_ctx_before_recreate(self):
+        """🐛 回归测试: 兜底防护
+
+        若 quote_ctx 为 None (已释放) 需要重建, connect() 在 new 前必须先 close 旧
+        ctx (异常路径下残留) 释放其回调线程, 避免覆盖式泄漏。
+        """
+        mgr = ConnectionManager()
+        mgr._enabled = True
+        # recreate 分支: quote_ctx 为 None (已释放) 且 status 非 CONNECTED 时,
+        # connect() 应先 close 旧 ctx (防御性) 再 new 新 ctx 并置 CONNECTED。
+        mgr.quote_ctx = None
+        mgr.status = "DISCONNECTED"
+        new_ctx = MagicMock()
+        with (
+            patch(
+                "data_subservice.futu_src.connection_manager.OpenQuoteContext",
+                return_value=new_ctx,
+            ) as mock_open,
+            patch(
+                "data_subservice.futu_src.connection_manager.ConnectionManager._is_opend_reachable",
+                return_value=True,
+            ),
+        ):
+            mgr.connect()
+        mock_open.assert_called_once()
+        assert mgr.quote_ctx is new_ctx
+        assert mgr.status == "CONNECTED"

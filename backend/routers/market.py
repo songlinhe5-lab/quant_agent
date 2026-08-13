@@ -368,18 +368,36 @@ async def get_batch_quotes_from_cache(req: BatchQuoteRequest):
     """💡 从 Redis 缓存批量获取自选列表行情数据（非聚焦 ticker 使用）"""
     results = {}
     for ticker in req.tickers:
-        # 💡 优先从 Redis 缓存获取（yf_macro_cache 由 macro_data_daemon 定期更新）
+        # 💡 优先从 Redis 缓存获取（yf_macro_cache 由 YF 采集 daemon 定期更新）
         yf_code = format_yf_ticker(ticker)
-        cache_key = f"yf_macro_cache_{yf_code}"
+        # key 必须小写：采集侧 collectors/yfinance.py 用 ticker.lower() 写缓存
+        cache_key = f"yf_macro_cache_{yf_code.lower()}"
         try:
             cached = await redis_client.get(cache_key)
             if cached:
                 data = json.loads(cached)
+                last_price = 0.0
+                change_pct = "0.0%"
+                volume_str = "--"
+                # 兼容两种缓存结构：HISTORY K线 list（采集侧现状）与旧 QUOTE dict。
+                if isinstance(data, list) and data:
+                    # HISTORY list：取最后一根 K线的 close 作为最新价
+                    last_bar = data[-1]
+                    last_price = float(last_bar.get("close") or last_bar.get("Close") or 0)
+                    prev_bar = data[-2] if len(data) > 1 else None
+                    prev_close = float(prev_bar.get("close") or prev_bar.get("Close") or 0) if prev_bar else 0.0
+                    if prev_close:
+                        change_pct = f"{((last_price - prev_close) / prev_close) * 100:.2f}%"
+                    volume_str = str(last_bar.get("volume") or last_bar.get("Volume") or "--")
+                elif isinstance(data, dict):
+                    last_price = float(data.get("last_price") or data.get("close") or 0)
+                    change_pct = str(data.get("change_pct", "0.0%"))
+                    volume_str = str(data.get("volume_str", "--"))
                 results[ticker] = {
                     "ticker": ticker,
-                    "last_price": data.get("last_price") or data.get("close", 0),
-                    "change_pct": data.get("change_pct", "0.0%"),
-                    "volume_str": data.get("volume_str", "--"),
+                    "last_price": last_price,
+                    "change_pct": change_pct,
+                    "volume_str": volume_str,
                     "source": "redis_cache",
                     "status": "CACHED",
                 }

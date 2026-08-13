@@ -48,21 +48,29 @@ class OptionFundHandler:
         if cached and now - cached[0] < 3600.0:
             return cached[1]
 
-        # 未连接真实数据源：先尝试惰性自愈重连一次 (BE-ARCH)
-        # 根因：web 进程 FutuService 单例可能在启动过早/OpenD 未就绪时 connect 失败，
-        # 之后无主动重连，导致 option-chain 永久假死（quote 走 FutuAdapter 不受影响）。
-        # 容器内 127.0.0.1:11111 已验证可达，重连应可成功。
-        if self.conn_mgr.status != "CONNECTED":
-            logger.warning(f"[OptionFundHandler] conn_mgr.status={self.conn_mgr.status}，尝试惰性自愈重连 OpenD")
+        # 未连接真实数据源：仅当 ctx 完全未初始化时，尝试惰性自愈重连一次 (BE-ARCH)
+        # ⚠️ 2026-08-13 修复：不再以 status != CONNECTED 为条件裸裸调 connect()。
+        # watchdog 在探针失败时把 status 标为 DISCONNECTED 但保留 ctx 对象，此处若
+        # 抢建连会触发 connect() 覆盖式 new ctx → futu 回调线程泄漏 (实测 35min 814 线程)。
+        # 故只在 quote_ctx is None (从未初始化) 时建连；断线态交给 watchdog 重连。
+        if self.conn_mgr.quote_ctx is None:
+            logger.warning("[OptionFundHandler] FutuService 未初始化，尝试惰性自愈连接 OpenD")
             try:
                 await asyncio.to_thread(self.conn_mgr.connect)
             except Exception as e:  # noqa: BLE001
-                logger.warning(f"[OptionFundHandler] 惰性重连异常: {e}")
-            if self.conn_mgr.status != "CONNECTED":
+                logger.warning(f"[OptionFundHandler] 惰性连接异常: {e}")
+            if self.conn_mgr.quote_ctx is None:
                 return {
                     "status": "error",
                     "message": "数据源已死，无法分析：期权链数据源不可用（Futu OpenD 未连接）",
                 }
+
+        if self.conn_mgr.status != "CONNECTED":
+            # 交给 watchdog 重连，这里不抢建连以避免线程泄漏
+            return {
+                "status": "error",
+                "message": "期权链数据源暂不可用（Futu OpenD 重连中，请稍后重试）",
+            }
 
         if not self.conn_mgr.quote_ctx:
             return {"status": "error", "message": "FutuService 未连接"}
@@ -95,10 +103,60 @@ class OptionFundHandler:
             )
             return {"status": "error", "message": f"期权链获取失败: {chain_data}"}
 
+        # 补充 IV / Greeks / 买卖价 / 量仓：Futu get_option_chain 仅返回期权链基本信息
+        # (option_code/strike_price/option_type 等)，不含 option_implied_volatility 等字段。
+        # 需对期权代码列表批量调 get_market_snapshot 拉快照，再按 option_code 合并回链数据，
+        # 否则 compress_chain_data 提取的 implied_volatility/delta/gamma 等全为 null。
+        chain_data = await self._enrich_option_chain_snapshot(market_ticker, chain_data)
+
         result = self.cache_mgr.compress_chain_data(chain_data, expiration_date)
         if result.get("status") == "success":
             self.cache_mgr.set_option_chain_cache(cache_key, time.time(), result)
         return result
+
+    async def _enrich_option_chain_snapshot(self, market_ticker: str, chain_data: pd.DataFrame) -> pd.DataFrame:
+        """用 get_market_snapshot 为期权链补充 IV / Greeks / 买卖价 / 量仓。
+
+        Futu get_option_chain 返回的 DataFrame 不含 option_implied_volatility / option_delta
+        等字段（这些仅由 get_market_snapshot 提供），导致 compress_chain_data 提取的
+        implied_volatility / delta / gamma / vega / theta / bid / ask / volume /
+        open_interest 全为 null。此处按 option_code 批量拉快照并合并回链数据。
+
+        快照失败不阻断主流程：仅记录 warning 并返回原始 chain_data（字段保持 null），
+        避免因快照异常导致期权链整体不可用。
+        """
+        try:
+            # 兼容 Futu 列名：期权代码列可能是 option_code 或 code
+            code_col = (
+                "option_code"
+                if "option_code" in chain_data.columns
+                else ("code" if "code" in chain_data.columns else None)
+            )
+            if not code_col:
+                return chain_data
+            option_codes = chain_data[code_col].astype(str).tolist()
+            if not option_codes:
+                return chain_data
+
+            ret, snap_df = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_market_snapshot, option_codes)
+            if ret != RET_OK or not isinstance(snap_df, pd.DataFrame) or snap_df.empty:
+                logger.warning(
+                    f"[OptionFundHandler] get_market_snapshot 补充期权快照失败: "
+                    f"ticker={market_ticker} ret={ret} data={str(snap_df)[:200]}"
+                )
+                return chain_data
+
+            # 快照以 code 列标识期权代码，与链数据的 code 列对齐合并
+            snap_col = "code" if "code" in snap_df.columns else snap_df.columns[0]
+            snap_df = snap_df.rename(columns={snap_col: code_col})
+            # 仅保留链数据没有的快照列，避免覆盖 code/strike_price 等
+            extra_cols = [c for c in snap_df.columns if c not in chain_data.columns]
+            extra_cols.append(code_col)
+            snap_extra = snap_df[extra_cols].drop_duplicates(subset=code_col)
+            return chain_data.merge(snap_extra, on=code_col, how="left")
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[OptionFundHandler] 补充期权快照异常: {e}")
+            return chain_data
 
     @with_global_retry
     async def get_fund_flow(self, ticker: str, format_ticker_func=None, is_unsupported_func=None) -> Dict[str, Any]:

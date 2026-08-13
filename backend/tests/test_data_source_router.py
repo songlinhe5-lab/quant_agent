@@ -801,6 +801,34 @@ class TestNormalizeResponseErrorBody:
         r = DataSourceRouter._normalize_response(raw)
         assert r["status"] == "error"
 
+    # ── 双重包装剥信封 (REST 型子服务 service 层信封被 main.py 再包一层) ──
+
+    def test_double_envelope_is_unwrapped(self):
+        """FRED/Finnhub 等 REST 型源: data 是 {"status":"success","data":{真实数据}}
+        双重包装, 应剥掉内层信封, data 直接是真实业务数据。"""
+        raw = {"code": 0, "data": {"status": "success", "data": {"observations": [{"date": "2026-08-11"}]}}}
+        r = DataSourceRouter._normalize_response(raw)
+        assert r["status"] == "success"
+        assert r["data"] == {"observations": [{"date": "2026-08-11"}]}
+
+    def test_double_envelope_list_data_unwrapped(self):
+        """内层 data 是 list 时同样剥信封。"""
+        raw = {"code": 0, "data": {"status": "success", "data": [{"symbol": "AAPL"}]}}
+        r = DataSourceRouter._normalize_response(raw)
+        assert r["data"] == [{"symbol": "AAPL"}]
+
+    def test_flat_success_no_data_key_not_unwrapped(self):
+        """平级返回 {"status":"success","symbol":...}（无 data 键）不误剥。"""
+        raw = {"code": 0, "data": {"status": "success", "symbol": "AAPL", "price": 123.4}}
+        r = DataSourceRouter._normalize_response(raw)
+        assert r["data"]["price"] == 123.4
+
+    def test_inner_none_not_unwrapped(self):
+        """内层 data 为 None 时不剥（避免把空结果错误拍平）。"""
+        raw = {"code": 0, "data": {"status": "success", "data": None}}
+        r = DataSourceRouter._normalize_response(raw)
+        assert r["status"] == "success"
+
 
 class TestInferErrorCategory:
     """BE-ARCH-08d 补漏：yfinance 子服务限流未带 error_category 时，主服务侧按

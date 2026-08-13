@@ -4,6 +4,8 @@ storage 层在无 Redis 时自动降级为进程内 dict 兜底，本测试强�
 避免依赖外部 Redis。
 """
 
+from unittest.mock import patch
+
 import pytest
 
 from backend.services.morning_briefing import storage as mb_storage
@@ -12,9 +14,9 @@ from backend.services.morning_briefing.models import BriefingResult
 
 @pytest.fixture
 def force_memory_fallback():
-    # backend.core.database 未导出 get_redis_client，storage 会自然降级到 _MEMORY 兜底。
-    # 这里不强制 patch，仅作为语义标记确保本文件走内存路径、不依赖外部 Redis。
-    yield
+    # 屏蔽真实 Redis，强制走内存兜底路径，避免测试依赖外部 Redis 连接。
+    with patch.object(mb_storage, "redis_client", side_effect=RuntimeError("no redis")):
+        yield
 
 
 def _briefing(bid: str, market: str = "全球") -> BriefingResult:

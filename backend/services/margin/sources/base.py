@@ -71,20 +71,28 @@ class BaseMarginSource:
     def __init__(self, timeout: float = 30.0):
         self.timeout = timeout
 
-    async def _http_get_json(self, url: str, params: Optional[Dict] = None) -> Optional[object]:
+    async def _http_get_json(
+        self, url: str, params: Optional[Dict] = None, headers: Optional[Dict] = None
+    ) -> Optional[object]:
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=self.timeout)) as resp:
+                async with session.get(
+                    url, params=params, headers=headers, timeout=aiohttp.ClientTimeout(total=self.timeout)
+                ) as resp:
                     resp.raise_for_status()
                     return await resp.json()
         except Exception as e:
             logger.warning(f"[Margin][{self.name}] HTTP JSON 获取失败", url=url, error=str(e))
             return None
 
-    async def _http_get_text(self, url: str, params: Optional[Dict] = None) -> Optional[str]:
+    async def _http_get_text(
+        self, url: str, params: Optional[Dict] = None, headers: Optional[Dict] = None
+    ) -> Optional[str]:
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=self.timeout)) as resp:
+                async with session.get(
+                    url, params=params, headers=headers, timeout=aiohttp.ClientTimeout(total=self.timeout)
+                ) as resp:
                     resp.raise_for_status()
                     return await resp.text()
         except Exception as e:

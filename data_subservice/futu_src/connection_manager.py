@@ -60,12 +60,31 @@ class ConnectionManager:
             return False
 
     def connect(self):
-        """连接到 Futu OpenD 行情网关（线程安全）"""
+        """连接到 Futu OpenD 行情网关（线程安全）
+
+        ⚠️ 线程泄漏防护 (2026-08-13 根因修复):
+        futu.OpenQuoteContext 内部会启动一组独立的 callback_executor 线程
+        (idle 在 queue.get())，context 被 GC 前不会 join。若此处直接 new 一个
+        新 ctx 覆盖 self.quote_ctx 而不 close 旧 ctx，旧 ctx 的回调线程将永久
+        泄漏。watchdog._health_check 在探针失败时把 status 改成 DISCONNECTED
+        (但不清空 quote_ctx)，旧逻辑据此双重检查失败 → 反复 new ctx → 线程累积
+        至 OOM(实测 35min 爬到 814 个 futu 回调线程)。
+
+        修复:
+        1) 只要 self.quote_ctx 仍存活就一律复用，不被 watchdog 的 DISCONNECTED
+           状态误杀 (ctx 对象本身还在，没必要重建)。
+        2) 真正需要重建时，先 close 掉旧 ctx 释放其回调线程，再 new。
+        """
         # 线程安全：防止并发连接
         with self._lock:
-            # 双重检查：如果已连接，直接返回
-            if self.status == "CONNECTED" and self.quote_ctx is not None:
-                print("✅ [ConnectionManager] 已连接，跳过重复连接")
+            # 双重检查：ctx 对象仍存活即复用，避免覆盖式泄漏
+            if self.quote_ctx is not None:
+                if self.status != "CONNECTED":
+                    # ctx 在但状态被 watchdog 标记断线：复用现有 ctx，
+                    # 让 watchdog 负责重连，这里不抢建连。
+                    print("♻️ [ConnectionManager] ctx 已存在，复用并保留供 watchdog 重连")
+                else:
+                    print("✅ [ConnectionManager] 已连接，跳过重复连接")
                 return
 
             # 快速探测：如果 OpenD 不可达，提前返回，避免 futu-api 内部重试
@@ -77,6 +96,14 @@ class ConnectionManager:
 
             # OpenD 可连接，再创建上下文
             try:
+                # 🛡️ 兜底：建新 ctx 前若仍有旧 ctx 残留(异常路径)，先释放其线程
+                if self.quote_ctx is not None:
+                    try:
+                        self.quote_ctx.close()
+                    except Exception:
+                        pass
+                    self.quote_ctx = None
+
                 self.quote_ctx = OpenQuoteContext(host=self._host, port=self._port)
                 self.status = "CONNECTED"
                 self.error_msg = ""

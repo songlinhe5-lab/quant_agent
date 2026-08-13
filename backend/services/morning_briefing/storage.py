@@ -8,6 +8,7 @@
 import logging
 from typing import Optional
 
+from backend.core.redis_client import redis_client
 from backend.services.morning_briefing.models import BriefingResult
 
 logger = logging.getLogger(__name__)
@@ -24,11 +25,8 @@ async def save_briefing(result: BriefingResult) -> None:
     _MEMORY[result.id] = result
     _MEMORY_LATEST[result.market] = result.id
     try:
-        from backend.core.database import get_redis_client
-
-        redis = await get_redis_client()
-        await redis.set(f"briefing:{result.id}", result.model_dump_json(), ex=REDIS_TTL)
-        await redis.set(f"briefing:latest:{result.market}", result.id, ex=REDIS_TTL)
+        await redis_client.set(f"briefing:{result.id}", result.model_dump_json(), ex=REDIS_TTL)
+        await redis_client.set(f"briefing:latest:{result.market}", result.id, ex=REDIS_TTL)
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[Briefing] Redis 写入失败，使用内存兜底: {e}")
 
@@ -37,10 +35,7 @@ async def get_briefing(briefing_id: str) -> Optional[BriefingResult]:
     if briefing_id in _MEMORY:
         return _MEMORY[briefing_id]
     try:
-        from backend.core.database import get_redis_client
-
-        redis = await get_redis_client()
-        raw = await redis.get(f"briefing:{briefing_id}")
+        raw = await redis_client.get(f"briefing:{briefing_id}")
         if raw:
             return BriefingResult.model_validate_json(raw)
     except Exception as e:  # noqa: BLE001
@@ -52,10 +47,7 @@ async def get_latest_briefing(market: str = "全球") -> Optional[BriefingResult
     if market in _MEMORY_LATEST:
         return _MEMORY.get(_MEMORY_LATEST[market])
     try:
-        from backend.core.database import get_redis_client
-
-        redis = await get_redis_client()
-        bid = await redis.get(f"briefing:latest:{market}")
+        bid = await redis_client.get(f"briefing:latest:{market}")
         if bid:
             return await get_briefing(bid)
     except Exception as e:  # noqa: BLE001

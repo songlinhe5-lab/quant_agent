@@ -13,6 +13,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
+from backend.core.redis_client import redis_client
 from backend.services.backtest_interpreter.models import WalkForwardInterpretResult
 
 logger = logging.getLogger(__name__)
@@ -80,12 +81,9 @@ _WF_FIELDS = (
 async def _persist(entry: BacktestHealthEntry) -> None:
     _MEMORY[entry.ticker] = entry
     try:
-        from backend.core.database import get_redis_client
-
-        redis = await get_redis_client()
-        await redis.set(f"{_KEY_PREFIX}{entry.ticker}", entry.model_dump_json(), ex=REDIS_TTL)
-        await redis.sadd(_INDEX_KEY, entry.ticker)
-        await redis.expire(_INDEX_KEY, REDIS_TTL)
+        await redis_client.set(f"{_KEY_PREFIX}{entry.ticker}", entry.model_dump_json(), ex=REDIS_TTL)
+        await redis_client.sadd(_INDEX_KEY, entry.ticker)
+        await redis_client.expire(_INDEX_KEY, REDIS_TTL)
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[BacktestHealth] Redis 写入失败，使用内存兜底: {e}")
 
@@ -130,10 +128,7 @@ async def get_backtest_health(ticker: str) -> Optional[BacktestHealthEntry]:
     if ticker in _MEMORY:
         return _MEMORY[ticker]
     try:
-        from backend.core.database import get_redis_client
-
-        redis = await get_redis_client()
-        raw = await redis.get(f"{_KEY_PREFIX}{ticker}")
+        raw = await redis_client.get(f"{_KEY_PREFIX}{ticker}")
         if raw:
             return BacktestHealthEntry.model_validate_json(raw)
     except Exception as e:  # noqa: BLE001
@@ -145,14 +140,11 @@ async def get_all_backtest_health() -> List[BacktestHealthEntry]:
     """返回所有标的的最近回测健康度 (按 updated_at 倒序，最新在前)。"""
     entries: List[BacktestHealthEntry] = list(_MEMORY.values())
     try:
-        from backend.core.database import get_redis_client
-
-        redis = await get_redis_client()
-        tickers = await redis.smembers(_INDEX_KEY)
+        tickers = await redis_client.smembers(_INDEX_KEY)
         for t in tickers:
             tk = t.decode() if isinstance(t, bytes) else str(t)
             if tk not in _MEMORY:
-                raw = await redis.get(f"{_KEY_PREFIX}{tk}")
+                raw = await redis_client.get(f"{_KEY_PREFIX}{tk}")
                 if raw:
                     entries.append(BacktestHealthEntry.model_validate_json(raw))
     except Exception as e:  # noqa: BLE001
