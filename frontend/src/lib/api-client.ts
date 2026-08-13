@@ -12,6 +12,27 @@ import { useBackendStatusStore } from '@/stores/useBackendStatusStore'
 const API_VERSION = import.meta.env.VITE_API_URL_VERSION || 'v1';
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || `/api/${API_VERSION}`
 
+/**
+ * 推导 WebSocket 基址，使其跟随 REST 的 API 域名（VITE_API_BASE_URL），
+ * 而非 window.location.host。避免前端访问域名（如 quant.stephenhe.com）的
+ * /api/* 被 Cloudflare 拦截导致 WS 连不上。
+ * - 绝对 URL（http/https）→ 替换为 ws/wss 并去掉路径，仅保留 origin
+ * - 相对路径（/api/v1）→ 回退到 window.location 协议+host（dev proxy 场景）
+ */
+export function getWsBaseUrl(): string {
+  try {
+    if (API_BASE_URL.startsWith('http://') || API_BASE_URL.startsWith('https://')) {
+      const u = new URL(API_BASE_URL)
+      const wsProtocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
+      return `${wsProtocol}//${u.host}`
+    }
+  } catch {
+    /* fallthrough */
+  }
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${wsProtocol}//${window.location.host}`
+}
+
 interface ClientConfig {
   baseURL: string
   timeout: number

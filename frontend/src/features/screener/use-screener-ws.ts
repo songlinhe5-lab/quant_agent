@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useRef } from 'react'
-import { getValidAccessToken } from '@/lib/api-client'
+import { getValidAccessToken, getWsBaseUrl } from '@/lib/api-client'
 import { market } from '@/lib/proto/market'
 import { useKeepAliveActive } from '@/components/layout/keep-alive-context'
 import { useBackendStatusStore } from '@/stores/useBackendStatusStore'
@@ -27,9 +27,9 @@ export function useScreenerWs(pageSymbols: string[]) {
       if (!keepAliveActive || document.visibilityState !== 'visible') return;
       const token = await getValidAccessToken();
       if (!token) { console.warn('[Screener WS] 无有效 token，跳过连接'); return; }
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsBase = getWsBaseUrl();
       try {
-        wsRef.current = new WebSocket(`${wsProtocol}//${window.location.host}/api/v1/market/quotes/ws?token=${token}`);
+        wsRef.current = new WebSocket(`${wsBase}/api/v1/market/quotes/ws?token=${token}`);
       } catch (err) {
         useBackendStatusStore.getState().registerFailure('Market WebSocket 连接失败')
         console.error('[Screener WS] WebSocket 构造失败:', err);

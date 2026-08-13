@@ -4,7 +4,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { apiClient, getValidAccessToken } from '@/lib/api-client'
+import { apiClient, getValidAccessToken, getWsBaseUrl } from '@/lib/api-client'
 import logger from '@/lib/logger'
 import { useKeepAliveActive } from '@/components/layout/keep-alive-context'
 import { useBackendStatusStore } from '@/stores/useBackendStatusStore'
@@ -204,19 +204,8 @@ export function useAlertWebSocket(
     // 未登录 / token 刷新失败：不建立 WS，避免后端 4001 后的重连风暴
     if (!token) return
 
-    const apiVersion = import.meta.env.VITE_API_URL_VERSION || 'v1'
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || `/api/${apiVersion}`
-
-    // 构建 WebSocket URL
-    let wsUrl: string
-    if (baseUrl.startsWith('http://') || baseUrl.startsWith('https://')) {
-      // 完整 URL，直接替换 http 为 ws
-      wsUrl = baseUrl.replace(/^http/, 'ws') + '/alert/ws' + (token ? `?token=${token}` : '')
-    } else {
-      // 相对路径，使用当前域名
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      wsUrl = `${protocol}//${window.location.host}${baseUrl}/alert/ws` + (token ? `?token=${token}` : '')
-    }
+    // WS 基址跟随 REST API 域名，避免访问域名 /api/* 被 Cloudflare 拦截
+    const wsUrl = `${getWsBaseUrl()}/alert/ws` + (token ? `?token=${token}` : '')
 
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws

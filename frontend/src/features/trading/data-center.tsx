@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import { TrendingUp, Loader2, Clock, CalendarDays } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { apiClient, API_BASE_URL, getValidAccessToken } from '@/lib/api-client'
+import { apiClient, getValidAccessToken, getWsBaseUrl } from '@/lib/api-client'
 import type { CapitalFlowItem } from '@/services/mock'
 import { useSystemStore } from '@/stores/useSystemStore'
 import { useToast } from '@/hooks/use-toast'
@@ -191,10 +191,7 @@ export function DataCenterModule() {
 
       // 统一 Token 获取：内部自动处理过期检测 + Refresh 续期
       const token = await getValidAccessToken()
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const wsUrl = API_BASE_URL.startsWith('http')
-        ? API_BASE_URL.replace(/^http/, 'ws') + '/macro/news/ws' + (token ? `?token=${token}` : '')
-        : `${protocol}//${window.location.host}${API_BASE_URL}/macro/news/ws` + (token ? `?token=${token}` : '')
+      const wsUrl = `${getWsBaseUrl()}/macro/news/ws` + (token ? `?token=${token}` : '')
 
       ws = new WebSocket(wsUrl)
 

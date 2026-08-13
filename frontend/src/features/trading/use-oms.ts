@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useToast } from '@/hooks/use-toast'
-import { apiClient, API_BASE_URL, getValidAccessToken } from '@/lib/api-client'
+import { apiClient, getValidAccessToken, getWsBaseUrl } from '@/lib/api-client'
 import { confirmDanger } from '@/components/confirm-dialog-context'
 import type { LiveBot, ActiveOrder, HistoricalTrade, AlgoExecution, Position } from './oms-types'
 import { useTradingModeStore } from '@/stores/useTradingModeStore'
@@ -100,10 +100,7 @@ export function useOms() {
       const token = await getValidAccessToken()
       // 未登录 / token 刷新失败：不建立 WS，避免后端 4001 后的重连风暴
       if (!token) return
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const wsUrl = API_BASE_URL.startsWith('http')
-        ? API_BASE_URL.replace(/^http/, 'ws') + '/oms/ws' + (token ? `?token=${token}` : '')
-        : `${protocol}//${window.location.host}${API_BASE_URL}/oms/ws` + (token ? `?token=${token}` : '')
+      const wsUrl = `${getWsBaseUrl()}/oms/ws` + (token ? `?token=${token}` : '')
       ws = new WebSocket(wsUrl)
 
       ws.onopen = () => {

@@ -17,7 +17,7 @@ import {
   Plug,
   ThumbsUp,
 } from 'lucide-react'
-import { apiClient, API_BASE_URL, getValidAccessToken } from '@/lib/api-client'
+import { apiClient, getValidAccessToken, getWsBaseUrl } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
 
 type HealthStatus = 'healthy' | 'stale' | 'throttled' | 'error' | 'idle' | 'blocked' | 'quota_exhausted'
@@ -124,12 +124,7 @@ export function DataSourceHealthModule() {
     const connect = async () => {
       if (stopped) return
       const token = await getValidAccessToken()
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const base =
-        API_BASE_URL.startsWith('http')
-          ? API_BASE_URL.replace(/^http/, 'ws')
-          : `${protocol}//${window.location.host}${API_BASE_URL}`
-      const wsUrl = `${base}/datasource/ws/health${token ? `?token=${token}` : ''}`
+      const wsUrl = `${getWsBaseUrl()}/datasource/ws/health${token ? `?token=${token}` : ''}`
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
       ws.onmessage = (e) => {
