@@ -158,12 +158,12 @@ class TestFundamentalYFinanceFallback:
 class TestNewsErrorPaths:
     @patch("backend.routers.market_fundamental.redis_client")
     def test_finnhub_exception_returns_mock_news(self, mock_redis):
-        """news 端点当前使用内置模拟数据，Redis 未命中时返回 mock news"""
+        """零幻觉红线：news 端点已拆除 mock 假新闻，真实源不可用时返回 no_data"""
         mock_redis.get = AsyncMock(return_value=None)
         resp = client.get("/market/news?ticker=AAPL&limit=5")
         assert resp.status_code == 200
-        assert resp.json()["status"] == "success"
-        assert len(resp.json()["data"]) > 0
+        assert resp.json()["status"] == "no_data"
+        assert resp.json()["data"] == []
 
     @patch("backend.routers.market_fundamental.redis_client")
     def test_redis_exception_continues_to_finnhub(self, mock_redis):
@@ -177,4 +177,4 @@ class TestNewsErrorPaths:
             )
             resp = client.get("/market/news?ticker=AAPL&limit=5")
             assert resp.status_code == 200
-            assert resp.json()["status"] == "success"
+            assert resp.json()["status"] == "no_data"

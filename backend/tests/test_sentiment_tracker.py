@@ -72,7 +72,7 @@ class TestSentimentTracker:
         mock_db.commit.assert_called_once()
 
     async def test_track_daemon_missing_vix_cache_keeps_none(self, tracker):
-        """VIX 缓存不存在时 vix_val 与 credit_spread 应为 None"""
+        """VIX/P-C 缓存均缺失时应跳过打点（零幻觉红线），不写入全 None 记录"""
         mock_db = MagicMock()
         mock_session_ctx = MagicMock()
         mock_session_ctx.__enter__ = MagicMock(return_value=mock_db)
@@ -91,11 +91,10 @@ class TestSentimentTracker:
         ):
             result = await tracker._run_once()
 
+        # 零幻觉红线：源数据均缺失时跳过打点，不调用 db.add，避免污染历史序列
         assert result is True
-        record = mock_db.add.call_args[0][0]
-        assert record.vix_value is None
-        assert record.pc_ratio is None
-        assert record.credit_spread is None
+        mock_db.add.assert_not_called()
+        mock_db.commit.assert_not_called()
 
     async def test_track_daemon_handles_multiindex_close_key(self, tracker):
         """当 yfinance 返回的 records 最后一条无 Close 键（MultiIndex 形式）时，应回退解析"""
