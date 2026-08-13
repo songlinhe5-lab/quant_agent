@@ -111,7 +111,7 @@ class YFinanceService:
     # ── 行情快照 ──
     async def get_quote(self, symbol: str, use_cache: bool = True) -> Dict[str, Any]:
         async def _call():
-            return fetch_quote(symbol)
+            return await asyncio.to_thread(fetch_quote, symbol)
 
         try:
             result = await self._run_guarded(f"yfinance:{symbol}", _call)
@@ -138,7 +138,9 @@ class YFinanceService:
     ) -> Dict[str, Any]:
         async def _call():
             r_period, r_start, r_end = resolve_date_range(period, start, end)
-            df = fetch_history(symbol, period=r_period, start=r_start, end=r_end, interval=interval)
+            df = await asyncio.to_thread(
+                fetch_history, symbol, period=r_period, start=r_start, end=r_end, interval=interval
+            )
             return self._df_to_records(df)
 
         try:
@@ -186,7 +188,7 @@ class YFinanceService:
     # ── 资金流向 ──
     async def get_fund_flow(self, symbol: str) -> Dict[str, Any]:
         async def _call():
-            return fetch_fund_flow(symbol)
+            return await asyncio.to_thread(fetch_fund_flow, symbol)
 
         try:
             result = await self._run_guarded(f"yfinance:{symbol}", _call)
@@ -199,7 +201,7 @@ class YFinanceService:
     # ── 期权链 ──
     async def get_option_chain(self, symbol: str, expiration: Optional[str] = None) -> Dict[str, Any]:
         async def _call():
-            return fetch_option_chain(symbol)
+            return await asyncio.to_thread(fetch_option_chain, symbol)
 
         try:
             result = await self._run_guarded(f"yfinance:{symbol}", _call)
@@ -212,7 +214,7 @@ class YFinanceService:
     # ── 财务数据 ──
     async def get_financials(self, symbol: str, kind: str = "annual") -> Dict[str, Any]:
         async def _call():
-            return fetch_financials(symbol, kind=kind)
+            return await asyncio.to_thread(fetch_financials, symbol, kind=kind)
 
         try:
             result = await self._run_guarded(f"yfinance:{symbol}", _call)
@@ -225,7 +227,7 @@ class YFinanceService:
     # ── 搜索 ──
     async def search(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         async def _call():
-            return search_tickers(query, limit=limit)
+            return await asyncio.to_thread(search_tickers, query, limit=limit)
 
         try:
             result = await self._run_guarded("yfinance:search", _call)
@@ -248,7 +250,7 @@ class YFinanceService:
             period, start, end = resolve_date_range(period=period)
             # DIST-SEC-01(2026-08-13): 经信号量约束 yf.download 并发（与 get_history 一致）
             async with self._yf_semaphore:
-                df = fetch_history(yf_code, period=period)
+                df = await asyncio.to_thread(fetch_history, yf_code, period=period)
             if df is None or df.empty:
                 return {"symbol": symbol, "error": "no history data", "source": "yfinance"}
 
@@ -268,7 +270,7 @@ class YFinanceService:
     # ── 批量行情（子服务内部调用）──
     async def get_batched_quote(self, tickers: List[str]) -> List[Dict[str, Any]]:
         async def _call():
-            return fetch_bulk_quotes(tickers)
+            return await asyncio.to_thread(fetch_bulk_quotes, tickers)
 
         try:
             result = await self._run_guarded("yfinance:batch", _call)
@@ -282,7 +284,7 @@ class YFinanceService:
     # ── 新闻（主服务 yahoo_news 兜底远程代理）──
     async def get_news(self, symbol: str, limit: int = 15) -> List[Dict[str, Any]]:
         async def _call():
-            return fetch_news(symbol, limit=limit)
+            return await asyncio.to_thread(fetch_news, symbol, limit=limit)
 
         try:
             result = await self._run_guarded(f"yfinance:news:{symbol}", _call)

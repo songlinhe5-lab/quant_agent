@@ -920,11 +920,25 @@ class DataSourceRouter:
 
         nodes = self._get_healthy_nodes("yfinance")
         if not nodes:
-            logger.warning("[YFinance] 无健康子服务节点可用（后端已移除本地兜底）")
-            return {
-                "success": False,
-                "message": "No healthy YFinance subservice node (local yfinance disabled)",
-            }
+            # DIST-SEC-03(2026-08-14): 修复「无健康节点即永久失败」的恢复不对称性。
+            # yfinance 是单节点（yf_primary），_get_healthy_nodes 仅返回 status=="healthy"
+            # 的节点，一旦节点进入熔断冷却或被标 unhealthy 便永远进不来，而业务流量又
+            # 不会触发半开探测 → 直到后台探针轮询才偶发恢复，期间 HISTORY 等请求全失败。
+            # 这里兜底：冷却期已过的 unhealthy 节点以「半开」身份参与探测，失败则继续熔断，
+            # 成功则让 _update_node_status 翻回 healthy。与 futu/fmp 等单节点源行为对齐。
+            half_open = [
+                n
+                for n in self._nodes.get("yfinance", [])
+                if n.status != "healthy" and n.circuit_breaker_until <= time.time()
+            ]
+            if not half_open:
+                logger.warning("[YFinance] 无健康/可探测子服务节点（熔断冷却中或全 offline）")
+                return {
+                    "success": False,
+                    "message": "No healthy YFinance subservice node (local yfinance disabled)",
+                }
+            logger.info(f"[YFinance] 健康节点空，启用半开探测节点: {[n.name for n in half_open]}")
+            nodes = half_open
 
         for node in nodes:
             try:
