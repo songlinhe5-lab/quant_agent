@@ -386,12 +386,14 @@ class DataServiceFacade:
             elif news_action and market in _MARKET_NEWS_PREFERENCE:
                 preference = _MARKET_NEWS_PREFERENCE[market]
             if preference:
-                # 市场感知：按市场专属顺序排候选（仅保留声明了对应 action 能力的源）
+                # 市场感知：报价/新闻路由是排他性策略，严格按市场专属顺序走，
+                # 仅保留 preference 中声明了对应 action 能力的源。
+                # 不把 preference 之外的源追加到末尾——否则港股报价会兜底降级到
+                # Finnhub(免费版返回假 0)，违背"港股报价排除 finnhub"的策略。
                 available = {n for _, n in scored}
                 ordered = [s for s in preference if s in available]
-                # 兜底：preference 之外、仍支持该 action 的源按权重接在末尾
-                rest = [n for _, n in sorted(scored, reverse=True) if n not in ordered]
-                return ordered + rest
+                if ordered:
+                    return ordered
 
         return [n for _, n in sorted(scored, reverse=True)]
 
