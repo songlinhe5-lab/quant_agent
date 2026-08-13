@@ -269,3 +269,29 @@ asyncio.create_task(FutuWatchdog(futu_service).start())  # 无强引用持有
 - 前端 `frontend/src/features/data-center/datasource-health.tsx`：新增 `testingAll` 全局锁，全部测试连接过程显示「全部测试中…」并禁用所有按钮，且改为**串行触发**，全局进行中禁止单独点「测试连接」。
 
 **勿再犯**：不要把 finnhub 当「被动探测豁免」特例去改 `test-link` 的 futu 分支——问题在「主动探测风暴拖垮节点」，应在 router/限流层统一防护（已做），而非给某源开例外。
+
+## 十一、前端 Cloudflare Pages 部署变量铁律（2026-08-14 实战 · token 频繁踢人 + 大盘空白同根因）
+
+**🔴 现象闭环**：用户访问 `quant.stephenhe.com`（Cloudflare Pages 前端），API 在 `quant-api.stephenhe.com`（独立子域）。两子域在 cookie 语境下是 **cross-site**。
+
+**构建环境变量 `VITE_API_BASE_URL` 必须等于**：
+```
+https://quant-api.stephenhe.com/api/v1
+```
+**绝不能**写成 `https://quant.stephenhe.com/api/v1`（漏 `api-` 子域）。
+
+**为什么这是「被踢回登录 + 大盘面板空白」的同一个根因**：
+- 前端 `api-client.ts` 的 `API_BASE_URL` = `VITE_API_BASE_URL`，所有 REST 与 `/auth/refresh` 都拼这个地址。
+- 若配成 `quant.stephenhe.com`，则：
+  - REST 业务请求 → 打到被 Cloudflare 拦截的域名（返回 845 字节 HTML 拦截页）→ dashboard 空白。
+  - `doRefreshToken` 的 `/auth/refresh` → 打到被拦域名 → 续期失败 → 旧代码 `clearTokens()` + 跳 `/login` → **超 10 分钟必被踢回登录页**（access token TTL=15min，过期后任意请求触发续期，撞上错域 → 清 token）。
+- 注意：本仓库 **没有 `.env.production` 文件**，该变量只在 Cloudflare Pages 的「构建环境变量」里配置，仓库外不可见，必须人工核对。
+
+**已落地的代码层防御（commit `903b35f`，PR #305）**：
+- `api-client.ts`：① 新增 `startTokenKeepAlive()`——按 access token exp 提前 120s 主动续期 + 页面可见时兜底续期，化被动续期为保活；② `refreshToken` 仅在刷新接口**真 401** 才清 token 跳登录，网络/跨域瞬时异常保留会话允许重试，避免误踢。
+- `auth-context.tsx`：登录成功 / 初始化已登录态启动 keep-alive，登出停止。
+
+**部署铁律**：
+- 改 `VITE_API_BASE_URL` 后必须重新 `wrangler pages deploy`（走 main/master push 的 CI 才触发），develop push 只 build 不部署。
+- 发布前在 Cloudflare Pages 控制台核对构建变量值 = `https://quant-api.stephenhe.com/api/v1`。
+- WS 连接已统一用 `getWsBaseUrl()`（从 `API_BASE_URL` 推导 origin），跟随 REST 子域，不再裸用 `window.location.host`，避免同样被 `quant.stephenhe.com` 拦截。
