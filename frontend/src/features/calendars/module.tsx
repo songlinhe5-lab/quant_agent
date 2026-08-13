@@ -253,7 +253,7 @@ function EconomicView() {
   useEffect(() => {
     let alive = true
     apiClient
-      .get('/macro/calendar', { days_ahead: 7 })
+      .get('/api/v1/macro/calendar', { days_ahead: 7 })
       .then((res: any) => {
         const events = (res?.data?.data as any[]) || []
         if (!alive) return
@@ -292,7 +292,7 @@ function EarningsView() {
   useEffect(() => {
     let alive = true
     apiClient
-      .get('/macro/earnings', { days_ahead: 7 })
+      .get('/api/v1/macro/earnings', { days_ahead: 7 })
       .then((res: any) => {
         const items = (res?.data?.data as any[]) || []
         if (!alive) return
