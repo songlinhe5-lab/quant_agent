@@ -1,0 +1,99 @@
+# TODO — Futu 行情搜索 / FedWatch / 市场基本面评估与接入计划
+
+> 创建时间：2026-08-13
+> 状态：评估已完成，**代码未开始**（后期开动）
+> 触发来源：富途 Futu API 行情搜索、资讯搜索、指标列表、市场基本面能力评估
+> 参考文档：
+> - `get_search_quote`：`https://openapi.futunn.com/futu-api-doc/quote/get-search-quote.html`
+> - `get_search_news`：`https://openapi.futunn.com/futu-api-doc/quote/get-search-news.html`
+> - `get_indicator_list`：`https://openapi.futunn.com/futu-api-doc/quote/get-indicator-list.html`
+> - 行情接口总览：`https://openapi.futunn.com/futu-api-doc/quote/overview.html`
+
+---
+
+## 一、评估结论（先给结论）
+
+| 接口类 | 判断 | 优先级 | 理由 |
+|---|---|---|---|
+| 行情搜索 `get_search_quote` | ✅ 接 | **P1** | 补「名称→代码」盲区，Agent 高频刚需 |
+| 资讯搜索 `get_search_news` | ⚠️ 可选 | P2 | 与现有新闻链部分重复 |
+| 指标列表 `get_indicator_list` | ❌ 跳过 | P3 | 指标已内置引擎化，用不上 |
+| FedWatch（利率概率+点阵图） | ✅ 接 | **P1** | 补 FOMC 前瞻指引，Tier1 刚需 |
+| 机构追踪（13F/ARK） | ⚠️ 可选 | P2 | 美股聪明钱，Finnhub 可部分替代 |
+| 榜单/产业链/日历 | ❌ 低/重复 | P3 | 重复或增量有限 |
+
+**一句话**：真正该动手的是**行情搜索**（补「名称→代码」）、**FedWatch**（补 FOMC 利率概率/点阵图）两个硬货；其余要么重复、要么用不上（指标列表纯属凑数）。
+
+---
+
+## 二、现状盘点
+
+- **搜索**：`search.py` 适配器（tavily/bocha/jina + 待补 DDG）是**非结构化网页搜索**，无「关键词→标的代码」能力。
+- **资讯**：`get_company_news` / `get_macro_news`（新闻检索），无「新闻+公告+评级」聚合搜索。
+- **技术指标**：`calculate_technical_indicators`（MA/MACD/RSI/ATR/布林）已内置引擎化，指标集固定。
+- **宏观**：FRED（`get_fred_macro_data`）+ 宏观日历（`macro_calendar_service`）+ VIX/P-C/Credit Spread，**缺 FedWatch 目标利率概率与点阵图**。
+- **日历**：Finnhub/akshare 已有财报/派息/经济日历。
+- **期权全维**：见 `TODO-FUTU-OPTION-COMBO-MARKETS.md`（已追加 P0.5 阶段）。
+- **榜单/产业链**：无（ApeWisdom 已覆盖「热议榜」部分需求）。
+
+---
+
+## 三、TODO List
+
+### 阶段 P1：行情搜索（ROI 高，补「名称→代码」盲区）
+
+- [ ] **P1.1** 验证权限：确认 `get_search_quote` 可用（先验证再写代码）。
+- [ ] **P1.2** 新增 `data_subservice/futu_src/search_quote_handler.py`（或扩展 `quote_handler.py`），实现 `get_search_quote(keyword)`：关键词 → 标的列表（代码/名称/市场）。
+- [ ] **P1.3** 接入 `futu_worker.py` 的 `_FUTU_ACTION_MAP`：新增 action（如 `SEARCH_QUOTE`）。
+- [ ] **P1.4** 主服务 `adapters/futu.py` 的 `capabilities` 声明 + `router.py` 路由。
+- [ ] **P1.5** 对接 Hermes Agent 工具链：为「自然语言查股票」提供「名称→代码」解析能力（替代硬编码映射）。
+- [ ] **P1.6** 单测 + 提交 PR。
+
+### 阶段 P1：FedWatch（补 FOMC 前瞻指引）
+
+- [ ] **P1.7** 验证权限：确认 `get_fed_watch_target_rate` / `get_fed_watch_dot_plot` 可用。
+- [ ] **P1.8** 新增 `data_subservice/futu_src/fedwatch_handler.py`，实现：
+  - `get_fed_watch_target_rate`（目标利率概率）
+  - `get_fed_watch_dot_plot`（点阵图）
+- [ ] **P1.9** 接入 `futu_worker.py` + 主服务 `capabilities`/`router.py` 路由。
+- [ ] **P1.10** 研判层接入：FedWatch 利率概率喂进 AGENTS.md §5 宏观风控（Tier1 FOMC 前瞻指引）。
+- [ ] **P1.11** 单测 + 提交 PR。
+
+### 阶段 P2：可选（按需再启）
+
+- [ ] **P2.1** 资讯搜索 `get_search_news`：若需「新闻+公告+评级」聚合检索再接，否则用现有新闻链。
+- [ ] **P2.2** 机构追踪 `get_institution_*` / ARK 持仓：美股「聪明钱」信号，若 Finnhub insider 数据不够用再补。
+- [ ] **P2.3** 榜单（盘前/盘后/领涨领跌/卖空）：ApeWisdom 已覆盖热议榜，Futu 榜单美股盘前盘后数据增量有限。
+
+### 阶段 P3：跳过（记录结论）
+
+- [ ] **P3.1** 指标列表 `get_indicator_list`：跳过（指标已内置引擎化，无自定义指标需求）。
+- [ ] **P3.2** 产业链 `get_industrial_chain_*`：跳过（akshare 板块数据可替代）。
+- [ ] **P3.3** 日历（财报/派息/经济）：跳过（Finnhub/akshare 已有）。
+- [ ] **P3.4** 上述跳过项记入 `MEMORY.md`，避免后人重复评估。
+
+### 阶段 P4：文档对齐
+
+- [ ] **P4.1** `MEMORY.md` 沉淀：行情搜索补「名称→代码」、FedWatch 补 FOMC 概率，其余低价值跳过。
+- [ ] **P4.2** `AGENTS.md` §5 宏观监控补 FedWatch 利率概率作为新信号源。
+- [ ] **P4.3** `DEPLOYMENT_CHECKLIST.md` 补行情搜索/FedWatch 接入说明 + 权限门槛。
+
+---
+
+## 四、落地关键点（架构红线）
+
+1. **仅远程**：下沉 `data_subservice`，主服务经 `DataSourceRouter.fetch_futu()` HTTP 代理，禁主服务直连 OpenD。
+2. **先验证权限再写代码**（同 Finnhub 403 教训）。
+3. **行情搜索是高频刚需**：Agent 每次「查 XX 股票」都触发，需接 `cache_mgr` 缓存 + 限流，避免频繁打 Futu。
+4. **FedWatch 是低频数据**：利率概率/点阵图更新频率低，可长 TTL 缓存。
+5. **零幻觉**：利率概率/点阵图必须来自 Futu 真实返回，严禁自行估算。
+
+---
+
+## 五、参考资料
+
+- 现有搜索适配器：`backend/services/datasource/adapters/search.py`
+- 现有宏观：`backend/services/macro/`（fred_service / macro_calendar_service / dbnomics / rbi）
+- 现有期权实现：`data_subservice/futu_src/option_fund_handler.py`
+- 适配器：`backend/services/datasource/adapters/futu.py`
+- 官方文档：见文件头部 4 个链接

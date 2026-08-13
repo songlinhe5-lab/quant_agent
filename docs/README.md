@@ -22,6 +22,16 @@
 | **12** | **[运维手册与应急预案](./12.%20运维手册与应急预案.md)** | **Runbook、故障恢复、灾难恢复流程** |
 | **13** | **[质量评估体系](./13.%20质量评估体系.md)** | **评分卡、定期 Review 流程、系统等级** |
 
+### 研究 / 待办专项文档
+
+| 文档 | 定位 |
+|:---|:---|
+| [散户情绪数据源调研 TODO](./TODO-SENTIMENT-DATASOURCE.md) | 散户情绪数据源选型（Finnhub/StockGeist 否决，ApeWisdom 热度榜可落地） |
+| [Futu 基本面/选股接口评估 TODO](./TODO-FUTU-FUNDAMENTAL-SCREEN.md) | 财务三大表为真增量，选股已覆盖 |
+| [Futu 组合期权/新马日市场评估 TODO](./TODO-FUTU-OPTION-COMBO-MARKETS.md) | 组合期权行情 P0、交易预留、新马日暂缓 |
+| [Futu 预测市场（事件合约）评估 TODO](./TODO-FUTU-EVENT-CONTRACT.md) | 隐含概率数据源，行情侧完整、交易侧缺失 |
+| [Futu 行情搜索/FedWatch/基本面评估 TODO](./TODO-FUTU-SEARCH-MACRO.md) | 行情搜索+FedWatch 为真增量，指标列表/榜单/产业链跳过 |
+
 ## 1. 总体目录结构
 
 以下是项目的基础目录结构：

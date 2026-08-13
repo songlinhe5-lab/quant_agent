@@ -9,6 +9,7 @@ YFinanceService — 雅虎财经数据源实现（物理解耦裁剪版）
 - 保留：quote/flow/hist/search/technical/financials/option_chain 全部核心 fetch 能力
 """
 
+import asyncio
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -43,7 +44,15 @@ class YFinanceService:
     def __init__(self):
         self._router_enabled = False  # 子服务恒为叶子节点，无 router
         self.source_name = "yfinance"
-        logger.info("✅ YFinanceService (subservice) 初始化完成")
+        # DIST-SEC-01(2026-08-13): 并发信号量，限制同时进行的 yfinance 外部 IO 调用数。
+        # 此前无限制并发入站（主服务经 router 批量派发 HISTORY/批量行情）导致 yf.download
+        # 内部线程无上限累积、进程线程耗尽、子服务历史数据源瘫痪。
+        # 经 .env 的 YF_MAX_CONCURRENCY 可调，默认 8；threads=False 已在 quote.py 关闭 yf 内置线程。
+        import os as _os
+
+        _max_conc = int(_os.getenv("YF_MAX_CONCURRENCY", "8"))
+        self._yf_semaphore = asyncio.Semaphore(_max_conc)
+        logger.info(f"✅ YFinanceService (subservice) 初始化完成 (YF_MAX_CONCURRENCY={_max_conc})")
 
     # ── 内部工具 ──
     def _ensure_router(self):
@@ -55,6 +64,16 @@ class YFinanceService:
 
     def _record_failure(self, symbol: str, is_rate_limit: bool = False):
         circuit_breaker.record_failure(symbol, is_rate_limit=is_rate_limit)
+
+    async def _run_guarded(self, key: str, fn):
+        """经并发信号量包裹的 circuit_breaker 调用。
+
+        DIST-SEC-01(2026-08-13): 所有产生 yfinance 外部 IO（yf.download / 爬虫 / API）
+        的方法都必须经此入口，确保同时进行的调用数不超过 YF_MAX_CONCURRENCY，
+        从根源上防止线程/连接无上限累积导致子服务资源耗尽。
+        """
+        async with self._yf_semaphore:
+            return await circuit_breaker.call(key, fn)
 
     def get_macro_daemon(self):
         """子服务不运行宏观守护进程，返回 None。"""
@@ -95,7 +114,7 @@ class YFinanceService:
             return fetch_quote(symbol)
 
         try:
-            result = await circuit_breaker.call(f"yfinance:{symbol}", _call)
+            result = await self._run_guarded(f"yfinance:{symbol}", _call)
             self._record_success(symbol)
             return result
         except Exception as e:
@@ -123,7 +142,7 @@ class YFinanceService:
             return self._df_to_records(df)
 
         try:
-            records = await circuit_breaker.call(f"yfinance:{symbol}", _call)
+            records = await self._run_guarded(f"yfinance:{symbol}", _call)
             self._record_success(symbol)
             return {
                 "symbol": symbol,
@@ -161,7 +180,7 @@ class YFinanceService:
             return fetch_fund_flow(symbol)
 
         try:
-            result = await circuit_breaker.call(f"yfinance:{symbol}", _call)
+            result = await self._run_guarded(f"yfinance:{symbol}", _call)
             self._record_success(symbol)
             return result
         except Exception as e:
@@ -174,7 +193,7 @@ class YFinanceService:
             return fetch_option_chain(symbol)
 
         try:
-            result = await circuit_breaker.call(f"yfinance:{symbol}", _call)
+            result = await self._run_guarded(f"yfinance:{symbol}", _call)
             self._record_success(symbol)
             return result
         except Exception as e:
@@ -187,7 +206,7 @@ class YFinanceService:
             return fetch_financials(symbol, kind=kind)
 
         try:
-            result = await circuit_breaker.call(f"yfinance:{symbol}", _call)
+            result = await self._run_guarded(f"yfinance:{symbol}", _call)
             self._record_success(symbol)
             return result
         except Exception as e:
@@ -200,7 +219,7 @@ class YFinanceService:
             return search_tickers(query, limit=limit)
 
         try:
-            result = await circuit_breaker.call("yfinance:search", _call)
+            result = await self._run_guarded("yfinance:search", _call)
             self._record_success("search")
             return result
         except Exception as e:
@@ -218,7 +237,9 @@ class YFinanceService:
         try:
             yf_code = format_yf_ticker(symbol)
             period, start, end = resolve_date_range(period=period)
-            df = fetch_history(yf_code, period=period)
+            # DIST-SEC-01(2026-08-13): 经信号量约束 yf.download 并发（与 get_history 一致）
+            async with self._yf_semaphore:
+                df = fetch_history(yf_code, period=period)
             if df is None or df.empty:
                 return {"symbol": symbol, "error": "no history data", "source": "yfinance"}
 
@@ -241,7 +262,7 @@ class YFinanceService:
             return fetch_bulk_quotes(tickers)
 
         try:
-            result = await circuit_breaker.call("yfinance:batch", _call)
+            result = await self._run_guarded("yfinance:batch", _call)
             self._record_success("batch")
             return result
         except Exception as e:
@@ -255,7 +276,7 @@ class YFinanceService:
             return fetch_news(symbol, limit=limit)
 
         try:
-            result = await circuit_breaker.call(f"yfinance:news:{symbol}", _call)
+            result = await self._run_guarded(f"yfinance:news:{symbol}", _call)
             self._record_success(symbol)
             return result
         except Exception as e:

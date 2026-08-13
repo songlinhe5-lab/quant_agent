@@ -125,13 +125,13 @@ export function AssetButton({ asset }: { asset: any }) {
           </div>
           <span className="text-xs font-bold text-foreground/90 mt-0.5 truncate">{asset.name}</span>
         </div>
-        <div className={cn('px-1.5 py-0.5 rounded-md flex items-center gap-0.5 text-[9px] font-mono font-bold flex-shrink-0', asset.change >= 0 ? 'bg-[#0ecb81]/15 text-[#059669] dark:text-[#0ecb81]' : 'bg-[#f6465d]/15 text-[#e11d48] dark:text-[#f6465d]')}>
-          {asset.change >= 0 ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}{asset.change >= 0 ? '+' : ''}{asset.change.toFixed(2)}%
+        <div className={cn('px-1.5 py-0.5 rounded-md flex items-center gap-0.5 text-[9px] font-mono font-bold flex-shrink-0', (asset.change ?? 0) >= 0 ? 'bg-[#0ecb81]/15 text-[#059669] dark:text-[#0ecb81]' : 'bg-[#f6465d]/15 text-[#e11d48] dark:text-[#f6465d]')}>
+          {(asset.change ?? 0) >= 0 ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}{(asset.change ?? 0) >= 0 ? '+' : ''}{(asset.change ?? 0).toFixed(2)}%
         </div>
       </div>
       <div className="flex items-end justify-between w-full mt-auto">
         <span className={cn('text-sm font-bold font-mono tabular-nums tracking-tight transition-colors duration-500', flash === 'up' ? 'text-[#059669] dark:text-[#0ecb81]' : flash === 'down' ? 'text-[#e11d48] dark:text-[#f6465d]' : 'text-foreground')}>
-          {asset.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          {asset.value != null ? asset.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--'}
         </span>
         {asset.sparkline && <div className="opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0"><MiniTrendLine data={asset.sparkline} isPositive={asset.change >= 0} /></div>}
       </div>
