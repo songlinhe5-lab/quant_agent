@@ -59,10 +59,13 @@ class TushareRemoteDataSource:
             "MACRO",  # 宏观经济 (cn_gdp/cn_cpi/cn_ppi/cn_money_supply/cn_shibor)
         ]
 
-    # facade 报价类 action -> 子服务 tushare action 归一化映射
+    # facade 报价/资金流类 action -> 子服务 tushare action 归一化映射。
+    # FUND_FLOW(沪深港通) 在 router._TS_ACTION_MAP 里对应 moneyflow->MONEYFLOW，
+    # 若直接透传 FUND_FLOW 会因 _TS_ACTION_MAP 无该 key 报 unsupported action。
     _ACTION_ALIAS = {
         "QUOTE": "STOCK_QUOTE",
         "HISTORY": "STOCK_HISTORY",
+        "FUND_FLOW": "MONEYFLOW",
     }
 
     @property
