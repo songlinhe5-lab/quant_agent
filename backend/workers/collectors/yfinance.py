@@ -16,19 +16,35 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
-# 宏观指标 ticker 列表（与子服务 yfinance 宏观采集一致）
+# 宏观指标 ticker 列表（覆盖 macro_app.assets_config 19 个 + 情绪/雷达附加指标）。
+# 读侧 fetch_single_asset 按 yf_code.lower() 读 yf_macro_cache_*，写侧必须与读侧
+# assets_config 的 yf 代码一一对应，否则对应资产读不到缓存 → value=0 面板空白。
 _MACRO_TICKERS = [
-    "^VIX",
+    # ── 大类资产走势 assets_config 的 19 个 ──
     "^GSPC",
+    "ES=F",
     "^IXIC",
-    "^DJI",
-    "^RUT",
+    "NQ=F",
+    "^HSI",
+    "HSTECH.HK",
+    "^TNX",
+    "JPY=X",
+    "DX-Y.NYB",
+    "USDCNH=X",
+    "BTC-USD",
     "GC=F",
     "CL=F",
-    "BTC-USD",
+    "HG=F",
+    "^VIX",
+    "^N225",
+    "XLK",
+    "XLE",
+    "KWEB",
+    # ── 情绪风向标 / 风险雷达附加指标 ──
+    "^DJI",
+    "^RUT",
     "EURUSD=X",
     "USDJPY=X",
-    "^TNX",
     "^TYX",
     "TLT",
     "HYG",
@@ -43,7 +59,10 @@ async def _refresh_macro_once() -> None:
 
     for ticker in _MACRO_TICKERS:
         try:
-            result = await data_source_router.fetch_yfinance(ticker, "quote", req_type="quote")
+            # 拉 HISTORY K线（而非 QUOTE 快照），使读侧 macro_app.fetch_single_asset
+            # 能提取 close 序列渲染 sparkline。读侧按 K线 list 解析（close/date 字段），
+            # 写 QUOTE dict 会导致读侧解析失败 → 大类资产/雷达/情绪全空。
+            result = await data_source_router.fetch_yfinance(ticker, "history", period="1mo", interval="1d")
             if not result.get("success"):
                 logger.warning(
                     "yfinance macro refresh failed",
@@ -51,10 +70,12 @@ async def _refresh_macro_once() -> None:
                     message=result.get("message"),
                 )
                 continue
-            data = result.get("data") or {}
+            payload = result.get("data") or {}
+            # 子服务 HISTORY 信封: {"symbol","interval","count","data":[...K线...],"source"}
+            records = payload.get("data") or payload.get("records") or []
             await redis_client.set(
                 f"yf_macro_cache_{ticker.lower()}",
-                json.dumps(data, default=str),
+                json.dumps(records, default=str),
                 ex=3600,
             )
         except Exception as exc:  # pragma: no cover - defensive

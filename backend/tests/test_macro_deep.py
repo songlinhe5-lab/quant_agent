@@ -196,6 +196,26 @@ class TestFetchMacroAssetsData:
         # 无缓存时返回空列表或兜底数据
         assert len(result) == 0 or all("symbol" in item for item in result)
 
+    @pytest.mark.asyncio
+    @patch("backend.app.macro_app.redis_client")
+    async def test_fetch_assets_lowercase_history_records(self, mock_redis):
+        """子服务 HISTORY 返回小写字段 (close/open/date)，且 key 用 lower，应正确解析
+        （BE-ARCH 补漏：写侧拉 HISTORY 写 K线 list，字段小写，读侧须兼容）。"""
+        from backend.app.macro_app import _fetch_macro_assets_data
+
+        records = [
+            {"date": "2026-08-11", "open": 7700.0, "close": 7728.2, "volume": 1000},
+            {"date": "2026-08-12", "open": 7728.2, "close": 7748.5, "volume": 1200},
+        ]
+        mock_redis.get = AsyncMock(return_value=json.dumps(records))
+
+        result = await _fetch_macro_assets_data()
+        spx = next(a for a in result if a["symbol"] == "SPX")
+        assert spx["value"] == 7748.5
+        # sparkline 应有 2 个 close 值
+        assert len(spx["sparkline"]) == 2
+        assert spx["data_source"] == "YFinance"
+
 
 # ==========================================
 # GET /macro/sentiment

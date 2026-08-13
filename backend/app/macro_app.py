@@ -1024,7 +1024,8 @@ async def _fetch_macro_assets_data():
         yf_code = config["yf"]  # noqa: E702
         try:
             # 直接读取由 yf_service 守护进程后台更新的 Redis 缓存
-            cache_key = f"yf_macro_cache_{yf_code}"
+            # key 必须小写（写侧 collectors/yfinance.py 用 ticker.lower() 写缓存）
+            cache_key = f"yf_macro_cache_{yf_code.lower()}"
             cached_data = await redis_client.get(cache_key)
 
             if cached_data:
@@ -1034,8 +1035,10 @@ async def _fetch_macro_assets_data():
                     closes = []
                     open_vals = []
                     for r in records:
-                        c_val = r.get("Close")
-                        o_val = r.get("Open")
+                        # 子服务 HISTORY 返回小写字段 (close/open/date)；兼容老版本大写
+                        # Close/Open/Date 及 MultiIndex 拍平前的字符串键。
+                        c_val = r.get("Close") if r.get("Close") is not None else r.get("close")
+                        o_val = r.get("Open") if r.get("Open") is not None else r.get("open")
                         if c_val is None:
                             c_val = next(
                                 (v for k, v in r.items() if str(k).startswith("('Close'")),
