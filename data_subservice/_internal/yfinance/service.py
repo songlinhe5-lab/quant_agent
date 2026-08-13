@@ -65,6 +65,18 @@ class YFinanceService:
     def _record_failure(self, symbol: str, is_rate_limit: bool = False):
         circuit_breaker.record_failure(symbol, is_rate_limit=is_rate_limit)
 
+    @staticmethod
+    def _is_data_unavailable(exc: Exception) -> bool:
+        """判断异常是否为『数据层面不可用』而非源/传输故障。
+
+        DIST-SEC-04(2026-08-14): yfinance 对部分 ticker（如 $VIX/$IXIC/$SPX 指数、停牌股）
+        会抛 'Yahoo error = "No data"' / 'No data found'。这类属于『该标的 Yahoo 无数据』，
+        不是子服务故障，绝不能计入熔断（否则单标的 miss 会误杀整节点，连带正常标的也 No healthy node）。
+        """
+        msg = str(exc).lower()
+        markers = ("no data", "yahoo error", "not found", "delisted", "empty dataset", "no data found")
+        return any(m in msg for m in markers)
+
     async def _run_guarded(self, key: str, fn):
         """经并发信号量包裹的 circuit_breaker 调用。
 
@@ -118,12 +130,14 @@ class YFinanceService:
             self._record_success(symbol)
             return result
         except Exception as e:
+            data_unavail = self._is_data_unavailable(e)
             self._record_failure(symbol, is_rate_limit="rate" in str(e).lower())
             logger.error(f"❌ [YFinance] 获取 {symbol} 行情失败: {e}")
             return {
                 "symbol": symbol,
                 "error": str(e),
                 "source": "yfinance",
+                "error_category": "data_unavailable" if data_unavail else "source_error",
             }
 
     # ── 历史 K 线 ──
@@ -154,8 +168,14 @@ class YFinanceService:
                 "source": "yfinance",
             }
         except Exception as e:
+            data_unavail = self._is_data_unavailable(e)
             self._record_failure(symbol, is_rate_limit="rate" in str(e).lower())
-            return {"symbol": symbol, "error": str(e), "source": "yfinance"}
+            return {
+                "symbol": symbol,
+                "error": str(e),
+                "source": "yfinance",
+                "error_category": "data_unavailable" if data_unavail else "source_error",
+            }
 
     def _df_to_records(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
         if df is None or df.empty:
@@ -195,8 +215,14 @@ class YFinanceService:
             self._record_success(symbol)
             return result
         except Exception as e:
+            data_unavail = self._is_data_unavailable(e)
             self._record_failure(symbol)
-            return {"symbol": symbol, "error": str(e), "source": "yfinance"}
+            return {
+                "symbol": symbol,
+                "error": str(e),
+                "source": "yfinance",
+                "error_category": "data_unavailable" if data_unavail else "source_error",
+            }
 
     # ── 期权链 ──
     async def get_option_chain(self, symbol: str, expiration: Optional[str] = None) -> Dict[str, Any]:
@@ -208,8 +234,14 @@ class YFinanceService:
             self._record_success(symbol)
             return result
         except Exception as e:
+            data_unavail = self._is_data_unavailable(e)
             self._record_failure(symbol)
-            return {"symbol": symbol, "error": str(e), "source": "yfinance"}
+            return {
+                "symbol": symbol,
+                "error": str(e),
+                "source": "yfinance",
+                "error_category": "data_unavailable" if data_unavail else "source_error",
+            }
 
     # ── 财务数据 ──
     async def get_financials(self, symbol: str, kind: str = "annual") -> Dict[str, Any]:
@@ -221,8 +253,14 @@ class YFinanceService:
             self._record_success(symbol)
             return result
         except Exception as e:
+            data_unavail = self._is_data_unavailable(e)
             self._record_failure(symbol)
-            return {"symbol": symbol, "error": str(e), "source": "yfinance"}
+            return {
+                "symbol": symbol,
+                "error": str(e),
+                "source": "yfinance",
+                "error_category": "data_unavailable" if data_unavail else "source_error",
+            }
 
     # ── 搜索 ──
     async def search(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:

@@ -41,6 +41,10 @@ class ErrorCategory(str, Enum):
     IP_BLOCKED = "ip_blocked"
     """IP 封禁：Yahoo 封 IP 段、反爬触发"""
 
+    DATA_UNAVAILABLE = "data_unavailable"
+    """数据不可用：该标的 Yahoo 无数据（如 $VIX/$IXIC 指数、停牌股）。属标的层面问题，
+    非子服务故障，DIST-SEC-04 起不计入熔断器，避免单标的 miss 误杀整节点。"""
+
 
 # ─────────────────────────────────────────
 #  限流详情 (RateLimitInfo)
