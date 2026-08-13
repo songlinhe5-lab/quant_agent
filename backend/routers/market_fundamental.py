@@ -51,6 +51,51 @@ async def _fetch_finnhub_news(ticker: str, limit: int, days_back: int = 3):
         return None
 
     raw = res.data or []
+    # 零幻觉红线：真实源返回空数组时视为"该源对该标的无数据"(如 Finnhub 免费版
+    # 不支持港股新闻，恒返回 0 条)，返回 None 让调用方降级到 Yahoo/akshare 兜底，
+    # 严禁返回 success + count:0 的假成功。
+    if not raw:
+        return None
+    out = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        ts = item.get("datetime")
+        t = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S") if isinstance(ts, (int, float)) else str(ts or "")
+        out.append(
+            {
+                "time": t,
+                "headline": item.get("headline", ""),
+                "summary": item.get("summary", ""),
+            }
+        )
+    return out[:limit] if limit else out
+
+
+async def _fetch_futu_news(ticker: str, limit: int, days_back: int = 3):
+    """走 Futu 富途搜索资讯拉取个股新闻（港股主数据源）。
+
+    返回 [{time, headline, summary}] 或 None。Futu 免费版对港股新闻可用，
+    通过 futu adapter (COMPANY_NEWS) 转发到 data_subservice 的 get_search_news。
+    """
+    try:
+        from backend.services.datasource.adapters.futu import ensure_futu_registered
+        from backend.services.datasource.source_registry import datasource_registry
+
+        ensure_futu_registered()
+    except Exception:  # noqa: BLE001
+        return None
+
+    try:
+        res = await datasource_registry.fetch("futu", "company_news", {"ticker": ticker, "days_back": days_back})
+    except Exception:  # noqa: BLE001
+        return None
+    if not res.is_success:
+        return None
+
+    raw = res.data or []
+    if not raw:
+        return None
     out = []
     for item in raw:
         if not isinstance(item, dict):
@@ -202,14 +247,22 @@ async def get_company_news(ticker: str, limit: int = 10):
                 except Exception:
                     pass
 
-                # 4. 确认缓存确实为空，优先走 DataSourcePort + FinnhubAdapter 真实新闻源
-                real_news = await _fetch_finnhub_news(safe_ticker, limit, days_back=3)
+                # 4. 确认缓存确实为空，优先走真实新闻源。
+                #    港股主数据源 = Futu 富途搜索资讯 (Finnhub 免费版港股 403 无权限)，
+                #    美股/A股 = Finnhub company_news。
+                is_hk = safe_ticker.startswith("HK.") or safe_ticker.endswith(".HK")
+                if is_hk:
+                    real_news = await _fetch_futu_news(safe_ticker, limit, days_back=3)
+                    source_tag = "futu"
+                else:
+                    real_news = await _fetch_finnhub_news(safe_ticker, limit, days_back=3)
+                    source_tag = "finnhub"
                 if real_news is not None:
                     result = {
                         "status": "success",
                         "count": len(real_news),
                         "data": real_news,
-                        "source": "finnhub",
+                        "source": source_tag,
                         "message": None,
                     }
                     try:

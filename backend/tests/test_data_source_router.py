@@ -483,6 +483,86 @@ class TestCircuitBreaker:
         assert node.circuit_breaker_until > time.time()
 
 
+# ==========================================
+# BE-ARCH-08i: action 级熔断隔离 + 节点级兜底
+# ==========================================
+class TestActionLevelCircuitBreaker:
+    """验收：单节点 pin 源某 action 连续失败只熔断该 action，不影响同节点其它 action；
+    仅当多个不同 action 同时熔断（进程级故障）才整节点熔断兜底。"""
+
+    def _setup_fred_node(self, router) -> None:
+        node = DataSourceNode(name="fred_master", url="http://fred", status="healthy")
+        router._nodes["fred_master"] = node
+
+    def test_single_action_failure_breaks_only_that_action(self, router_enabled):
+        self._setup_fred_node(router_enabled)
+        # MACRO_SERIES 连续失败 3 次 → 仅熔断 MACRO_SERIES
+        for _ in range(3):
+            asyncio.run(
+                router_enabled._update_node_status("fred_master", success=False, error="boom", action="MACRO_SERIES")
+            )
+        node = router_enabled._nodes["fred_master"]
+        # 节点本身保持 healthy，其它 action 不受影响
+        assert node.status == "healthy"
+        # MACRO_SERIES 已熔断（冷却截止在未来）
+        assert router_enabled._action_usable(node, "MACRO_SERIES") is False
+        # 其它 action 仍可用
+        assert router_enabled._action_usable(node, "ECONOMIC_CALENDAR") is True
+
+    def test_multiple_actions_failure_triggers_node_breaker(self, router_enabled):
+        self._setup_fred_node(router_enabled)
+        # 两个不同 action 各自连续失败 → 触发节点级兜底熔断
+        for _ in range(3):
+            asyncio.run(
+                router_enabled._update_node_status("fred_master", success=False, error="boom", action="MACRO_SERIES")
+            )
+        for _ in range(3):
+            asyncio.run(
+                router_enabled._update_node_status(
+                    "fred_master", success=False, error="boom", action="ECONOMIC_CALENDAR"
+                )
+            )
+        node = router_enabled._nodes["fred_master"]
+        assert node.status == "unhealthy"
+        assert node.circuit_breaker_until > time.time()
+
+    def test_action_success_resets_action_error(self, router_enabled):
+        self._setup_fred_node(router_enabled)
+        # 2 次失败（未达阈值）后 1 次成功 → 重置该 action 计数
+        asyncio.run(router_enabled._update_node_status("fred_master", success=False, error="e1", action="MACRO_SERIES"))
+        asyncio.run(router_enabled._update_node_status("fred_master", success=False, error="e2", action="MACRO_SERIES"))
+        asyncio.run(router_enabled._update_node_status("fred_master", success=True, action="MACRO_SERIES"))
+        node = router_enabled._nodes["fred_master"]
+        assert "MACRO_SERIES" not in node.action_errors
+        assert router_enabled._action_usable(node, "MACRO_SERIES") is True
+
+    def test_rate_limit_error_does_not_count_action(self, router_enabled):
+        self._setup_fred_node(router_enabled)
+        for _ in range(5):
+            asyncio.run(
+                router_enabled._update_node_status(
+                    "fred_master",
+                    success=False,
+                    error="429",
+                    error_category=ErrorCategory.RATE_LIMIT,
+                    action="MACRO_SERIES",
+                )
+            )
+        node = router_enabled._nodes["fred_master"]
+        # 限流类错误不计入 action 熔断计数
+        assert node.action_errors.get("MACRO_SERIES", 0) == 0
+        assert node.status == "healthy"
+        assert router_enabled._action_usable(node, "MACRO_SERIES") is True
+
+    def test_legacy_no_action_call_degrades_to_node_level(self, router_enabled):
+        self._setup_fred_node(router_enabled)
+        # 旧调用点（不传 action）保持原节点级熔断行为
+        for _ in range(3):
+            asyncio.run(router_enabled._update_node_status("fred_master", success=False, error="err"))
+        node = router_enabled._nodes["fred_master"]
+        assert node.status == "unhealthy"
+
+
 class TestFetchYFinance:
     def test_fetch_yfinance_disabled_router(self, router_disabled):
         """路由禁用时直接返回失败（不再本地兜底）"""
@@ -549,6 +629,37 @@ class TestHealthStatus:
         assert status["router_enabled"] is True
         assert "yf_primary" in status["nodes"]
         assert "akshare_remote" in status["nodes"]
+
+    def test_get_health_status_exposes_action_breakers(self, router_enabled):
+        """BE-ARCH-08i: health 接口暴露 action 级熔断状态"""
+        node = DataSourceNode(name="fred_master", url="http://fred", status="healthy")
+        router_enabled._nodes["fred_master"] = node
+        # MACRO_SERIES 熔断（冷却未到期），ECONOMIC_CALENDAR 正常
+        node.action_breaker_until["MACRO_SERIES"] = time.time() + 60
+        node.action_errors["MACRO_SERIES"] = 3
+        node.action_errors["ECONOMIC_CALENDAR"] = 1
+
+        status = asyncio.run(router_enabled.get_health_status())
+        fred = status["nodes"]["fred_master"]
+
+        # 冷却未到期的 action 出现在 action_breakers，且剩余冷却 > 0
+        assert "MACRO_SERIES" in fred["action_breakers"]
+        assert fred["action_breakers"]["MACRO_SERIES"] > 0
+        # 未熔断的 action 不出现
+        assert "ECONOMIC_CALENDAR" not in fred["action_breakers"]
+        # action_error_counts 完整暴露各 action 的失败计数
+        assert fred["action_error_counts"]["MACRO_SERIES"] == 3
+        assert fred["action_error_counts"]["ECONOMIC_CALENDAR"] == 1
+
+    def test_get_health_status_action_breaker_expired_not_exposed(self, router_enabled):
+        """冷却已过期的 action 不再出现在 action_breakers"""
+        node = DataSourceNode(name="fred_master", url="http://fred", status="healthy")
+        router_enabled._nodes["fred_master"] = node
+        node.action_breaker_until["MACRO_SERIES"] = time.time() - 1  # 已过期
+
+        status = asyncio.run(router_enabled.get_health_status())
+        fred = status["nodes"]["fred_master"]
+        assert "MACRO_SERIES" not in fred["action_breakers"]
 
 
 class TestClose:
@@ -685,8 +796,7 @@ class TestFetchAkshareStaleDegrade:
         stale_payload = {"status": "success", "data": {"a": 1}, "degraded": True, "stale_source": True}
         monkeypatch.setattr(router, "_get_akshare_stale", AsyncMock(return_value=stale_payload))
 
-        payload = {"action": "stock_zh_a_spot_em", "params": {}, "kwargs": {}}
-        result = await router.fetch_akshare(payload)
+        result = await router.fetch_akshare("stock_zh_a_spot_em")
         assert result["status"] == "success"
         assert result.get("degraded") is True
         assert result.get("stale_source") is True
@@ -704,8 +814,7 @@ class TestFetchAkshareStaleDegrade:
         )
         monkeypatch.setattr(router, "_get_akshare_stale", AsyncMock(return_value=None))
 
-        payload = {"action": "stock_zh_a_spot_em", "params": {}, "kwargs": {}}
-        result = await router.fetch_akshare(payload)
+        result = await router.fetch_akshare("stock_zh_a_spot_em")
         assert result["status"] == "error"
 
 

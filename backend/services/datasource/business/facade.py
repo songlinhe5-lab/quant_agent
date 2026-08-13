@@ -81,6 +81,15 @@ _MARKET_NEWS_PREFERENCE: dict[str, list[str]] = {
     "CN": ["akshare", "finnhub"],
 }
 
+# 资金流类 action (FUND_FLOW) 的市场感知源优先级。
+# 注意：tushare moneyflow 仅支持 A股个股，港股/美股资金流走 Futu/AKShare，
+# 避免港股 FUND_FLOW 被误路由到 tushare（router 报 unsupported action）。
+_MARKET_FLOW_PREFERENCE: dict[str, list[str]] = {
+    "US": ["futu", "akshare", "yfinance"],
+    "HK": ["futu", "akshare", "yfinance"],  # tushare 仅 A股，港股排除
+    "CN": ["tushare", "akshare", "futu"],
+}
+
 
 def _merge_calendar_events(results: list[Result]) -> list[dict]:
     """合并多源经济日历的 events。
@@ -357,7 +366,8 @@ class DataServiceFacade:
         action_upper = action.upper()
         quote_action = action_upper in ("QUOTE", "HISTORY")
         news_action = action_upper in ("COMPANY_NEWS", "MARKET_NEWS", "NEWS", "STOCK_NEWS")
-        if quote_action or news_action:
+        flow_action = action_upper == "FUND_FLOW"
+        if quote_action or news_action or flow_action:
             ticker = params.get("ticker") or params.get("symbol") or ""
             market = _detect_market(str(ticker))
 
@@ -383,6 +393,8 @@ class DataServiceFacade:
             preference = None
             if quote_action and market in _MARKET_QUOTE_PREFERENCE:
                 preference = _MARKET_QUOTE_PREFERENCE[market]
+            elif flow_action and market in _MARKET_FLOW_PREFERENCE:
+                preference = _MARKET_FLOW_PREFERENCE[market]
             elif news_action and market in _MARKET_NEWS_PREFERENCE:
                 preference = _MARKET_NEWS_PREFERENCE[market]
             if preference:

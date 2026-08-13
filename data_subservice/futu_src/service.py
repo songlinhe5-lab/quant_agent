@@ -131,6 +131,16 @@ class FutuService:
             is_unsupported_func=is_futu_unsupported,
         )
 
+    async def get_search_news(self, ticker: str, max_count: int = 10) -> Dict[str, Any]:
+        """搜索个股资讯（富途新闻/公告/评级），港股主数据源。"""
+        return await self._route(
+            "fetch_search_news",
+            {"ticker": ticker, "max_count": max_count},
+            self.quote_handler.get_search_news,
+            ticker=ticker,
+            max_count=max_count,
+        )
+
     async def subscribe_quote(self, ticker: str) -> Dict[str, Any]:
         if self.status != "CONNECTED":
             return {"status": "error", "message": "Futu OpenD 未连接，跳过订阅"}

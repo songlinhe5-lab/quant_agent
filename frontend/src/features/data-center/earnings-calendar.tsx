@@ -3,13 +3,14 @@ import { LineChartIcon, Sparkles } from 'lucide-react';
 import EventCountdown from '@/components/ui/event-countdown';
 
 export function EarningsCalendar({ earnings, earnDed, handleManualRefresh, loading }: { earnings: any[], earnDed: string, handleManualRefresh: () => void, loading?: boolean }) {
+  const safeEarnings = Array.isArray(earnings) ? earnings : []
   return (
     <div className="glass-card rounded-lg overflow-hidden flex flex-col h-[350px] relative">
       <div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2 flex-shrink-0">
         <LineChartIcon className="h-3.5 w-3.5 text-emerald-500 dark:text-emerald-400" />
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">本周核心财报前瞻</span>
         <span className="ml-auto text-[10px] text-muted-foreground font-mono">
-          共 {earnings.length} 家明星公司
+          共 {safeEarnings.length} 家明星公司
         </span>
       </div>
       <div className="flex-1 overflow-y-auto custom-scrollbar relative">
@@ -35,7 +36,7 @@ export function EarningsCalendar({ earnings, earnDed, handleManualRefresh, loadi
             </tr>
           </thead>
           <tbody className="divide-y divide-border/15">
-            {earnings.map((ea: any, i: number) => {
+            {safeEarnings.map((ea: any, i: number) => {
               const isoTime = `${ea.date}T20:30:00Z`;
               return (
                 <tr key={i} className="hover:bg-slate-50 dark:hover:bg-secondary/30 transition-colors">
@@ -48,7 +49,7 @@ export function EarningsCalendar({ earnings, earnDed, handleManualRefresh, loadi
             })}
           </tbody>
         </table>
-        {earnings.length === 0 && <div className="p-4 text-center text-[10px] text-muted-foreground">{loading ? '数据加载中…' : '暂无数据'}</div>}
+        {safeEarnings.length === 0 && <div className="p-4 text-center text-[10px] text-muted-foreground">{loading ? '数据加载中…' : '暂无数据'}</div>}
       </div>
     </div>
   );

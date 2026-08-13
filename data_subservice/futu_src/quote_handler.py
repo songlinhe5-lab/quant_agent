@@ -104,6 +104,55 @@ class QuoteHandler:
         return result
 
     @with_global_retry
+    async def get_search_news(self, ticker: str, max_count: int = 10) -> Dict[str, Any]:
+        """按关键词搜索资讯（港股/美股个股新闻，Futu 富途资讯 + 交易所公告 + 评级）。
+
+        Futu ``get_search_news(keyword)`` 按关键词返回新闻/公告/评级，含 ``related_securities``
+        关联标的列表（如 ``HK.00772``）。对港股 ticker，用股票代码作为关键词搜索，
+        并按 ``related_securities`` 过滤出真正关联该标的的资讯，避免混入无关结果。
+        """
+        if not self.conn_mgr.quote_ctx:
+            return {"status": "error", "message": "FutuService 未连接"}
+
+        # 从 ticker 提取搜索关键词：HK.00772 -> 00772; 00700.HK -> 00700
+        code = str(ticker).replace("HK.", "").replace("US.", "").replace(".HK", "").replace(".US", "").strip()
+        if not code:
+            return {"status": "error", "message": "无效 ticker"}
+        # 港股代码补零到5位（Futu 用 00700 这类5位码）：0772 -> 00772
+        if code.isdigit() and (ticker.startswith("HK.") or ticker.endswith(".HK")):
+            code = code.zfill(5)
+
+        try:
+            ret, df = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_search_news, code, max_count)
+        except Exception as e:
+            logger.warning(f"[Futu] get_search_news 异常 {ticker}: {e}")
+            return {"status": "error", "message": f"资讯获取失败: {e}"}
+
+        if ret != RET_OK or not isinstance(df, pd.DataFrame) or df.empty:
+            return {"status": "error", "message": f"资讯获取失败: {df}"}
+
+        # 归一化 + 按关联标的过滤
+        target = str(ticker).replace(".", "")
+        news = []
+        for _, row in df.iterrows():
+            rel = row.get("related_securities") or []
+            rel_codes = [str(r).replace(".", "") for r in (rel if isinstance(rel, list) else [])]
+            # 关联标的命中该 ticker 才保留；related_securities 为空时保留（可能是公告/评级）
+            if rel_codes and target not in rel_codes:
+                continue
+            news.append(
+                {
+                    "headline": str(row.get("title", "")),
+                    "category": str(row.get("news_sub_type", "NEWS")),
+                    "source": str(row.get("source", "")),
+                    "datetime": str(row.get("publish_time", "")),
+                    "summary": "",
+                    "url": str(row.get("url", "")),
+                }
+            )
+        return {"status": "success", "data": news, "source": "futu", "count": len(news)}
+
+    @with_global_retry
     async def get_history(self, ticker: str, ktype: str = "K_DAY", num: int = 60) -> Dict[str, Any]:  # noqa: E501
         """获取历史K线数据（带缓存和降级策略）"""
         from .utils import format_ticker, is_futu_unsupported
