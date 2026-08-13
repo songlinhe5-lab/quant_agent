@@ -25,8 +25,9 @@ function MarketMarginCard({ data }: { data: MarginMarketData }) {
   const financingUp = data.financing_change >= 0
   const securitiesUp = data.securities_change >= 0
 
-  // 格式化数字显示
-  const formatNumber = (num: number) => {
+  // 格式化数字显示（DIST-SEC-01 配套：字段缺失时兜底为 '--'）
+  const formatNumber = (num: number | null | undefined) => {
+    if (num == null || Number.isNaN(num)) return '--'
     return num.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }
 

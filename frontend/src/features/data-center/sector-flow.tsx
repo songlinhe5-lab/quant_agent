@@ -102,22 +102,22 @@ function AShareTab({ data }: { data: SectorFundFlowData['a_share'] }) {
                 <span
                   className={cn(
                     'text-[10px] font-mono px-1 rounded',
-                    item.change_pct >= 0
+                    (item.change_pct ?? 0) >= 0
                       ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                       : 'bg-red-500/10 text-red-600 dark:text-red-400'
                   )}
                 >
-                  {item.change_pct >= 0 ? '+' : ''}
-                  {item.change_pct.toFixed(2)}%
+                  {(item.change_pct ?? 0) >= 0 ? '+' : ''}
+                  {(item.change_pct ?? 0).toFixed(2)}%
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold font-mono text-emerald-600 dark:text-emerald-400">
-                  +{item.main_net_inflow.toLocaleString()}
+                  +{item.main_net_inflow != null ? item.main_net_inflow.toLocaleString() : '--'}
                   <span className="text-[8px] ml-0.5 opacity-60">{unit}</span>
                 </span>
                 <span className="text-[10px] font-mono text-muted-foreground/50 w-12 text-right">
-                  {item.main_net_pct.toFixed(2)}%
+                  {(item.main_net_pct ?? 0).toFixed(2)}%
                 </span>
               </div>
             </div>
@@ -143,22 +143,22 @@ function AShareTab({ data }: { data: SectorFundFlowData['a_share'] }) {
                 <span
                   className={cn(
                     'text-[10px] font-mono px-1 rounded',
-                    item.change_pct >= 0
+                    (item.change_pct ?? 0) >= 0
                       ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                       : 'bg-red-500/10 text-red-600 dark:text-red-400'
                   )}
                 >
-                  {item.change_pct >= 0 ? '+' : ''}
-                  {item.change_pct.toFixed(2)}%
+                  {(item.change_pct ?? 0) >= 0 ? '+' : ''}
+                  {(item.change_pct ?? 0).toFixed(2)}%
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold font-mono text-red-600 dark:text-red-400">
-                  {item.main_net_inflow.toLocaleString()}
+                  {item.main_net_inflow != null ? item.main_net_inflow.toLocaleString() : '--'}
                   <span className="text-[8px] ml-0.5 opacity-60">{unit}</span>
                 </span>
                 <span className="text-[10px] font-mono text-muted-foreground/50 w-12 text-right">
-                  {item.main_net_pct.toFixed(2)}%
+                  {(item.main_net_pct ?? 0).toFixed(2)}%
                 </span>
               </div>
             </div>
@@ -206,7 +206,7 @@ function HKTab({ data }: { data: SectorFundFlowData['hk'] }) {
                 )}
               >
                 {isPositive ? '+' : ''}
-                {item.net_inflow.toLocaleString()} {unit}
+                {item.net_inflow != null ? item.net_inflow.toLocaleString() : '--'} {unit}
               </span>
             </div>
           )

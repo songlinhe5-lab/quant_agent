@@ -82,6 +82,8 @@ export function DataSourceHealthModule() {
   const [board, setBoard] = useState<any>(null)
   const [voting, setVoting] = useState(false)
   const [testStates, setTestStates] = useState<Record<string, { testing: boolean; result?: LinkTestResult | null; error?: string }>>({})
+  // 「全部测试连接」进行中全局锁：过程中禁用所有按钮，禁止并发堆积触发
+  const [testingAll, setTestingAll] = useState(false)
   const { toast } = useToast()
   const wsRef = useRef<WebSocket | null>(null)
 
@@ -178,6 +180,8 @@ export function DataSourceHealthModule() {
   const myVotes: string[] = board?.my_votes_today || []
 
   const testLink = async (source: string) => {
+    // 「全部测试连接」进行中，禁止单独触发，避免与全局任务并发堆积
+    if (testingAll) return
     setTestStates((prev) => ({ ...prev, [source]: { ...prev[source], testing: true, error: undefined } }))
     try {
       const res = await apiClient.post<LinkTestResult>(`/datasource/${source}/test-link`)
@@ -195,7 +199,16 @@ export function DataSourceHealthModule() {
   }
 
   const testAll = async () => {
-    await Promise.all(cards.map((c) => testLink(c.source)))
+    if (testingAll) return
+    setTestingAll(true)
+    try {
+      // 串行触发，避免瞬间并发风暴打爆上游；每个源完成后再进入下一个
+      for (const c of cards) {
+        await testLink(c.source)
+      }
+    } finally {
+      setTestingAll(false)
+    }
   }
 
   const renderSection = (title: string, items: any[]) => (
@@ -254,12 +267,12 @@ export function DataSourceHealthModule() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            disabled={cards.length === 0}
+            disabled={cards.length === 0 || testingAll}
             onClick={testAll}
             className="flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-1 text-xs text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Plug className="h-3.5 w-3.5" />
-            全部测试连接
+            {testingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plug className="h-3.5 w-3.5" />}
+            {testingAll ? '全部测试中…' : '全部测试连接'}
           </button>
           <div className="text-xs text-muted-foreground">
             最后更新：{lastUpdated || '—'} · 每 30s 轮询 + WS 实时推送
@@ -361,7 +374,7 @@ export function DataSourceHealthModule() {
               <div className="mt-2 flex items-center justify-between gap-2">
                 <button
                   type="button"
-                  disabled={t?.testing}
+                  disabled={t?.testing || testingAll}
                   onClick={() => testLink(c.source)}
                   className="flex items-center gap-1 rounded-md bg-primary/15 px-2 py-1 text-[11px] font-medium text-primary transition hover:bg-primary/25 disabled:opacity-60"
                 >
