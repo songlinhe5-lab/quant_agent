@@ -97,6 +97,14 @@ class MarketDailyReview(BaseModel):
     market: MarketType = Field(description="市场类型")
     generated_at: datetime = Field(default_factory=datetime.now, description="生成时间")
 
+    # ── 数据完整性红线 (PROD-零幻觉) ──
+    # 当核心客观数据(指数/板块/资金)全部缺失时，复盘不可靠，
+    # 禁止 LLM 凭空生成风格与事件定性，须显式标记数据缺失。
+    data_complete: bool = Field(
+        default=True,
+        description="核心客观数据(指数+板块+资金)是否齐备。False 时复盘仅为新闻摘要，不可作为个股判因依据",
+    )
+
     # ── 大盘概况 ──
     indices: list[IndexSnapshot] = Field(default_factory=list, description="主要指数快照")
 

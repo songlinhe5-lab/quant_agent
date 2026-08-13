@@ -82,7 +82,12 @@ class MarketReviewTool(BaseTool):
             compressed = [self._compress_single(r) for r in data]
             return {"status": "success", "market": market, "count": len(compressed), "reviews": compressed}
 
-        return {"status": "success", "market": market, "review": self._compress_single(data)}
+        compressed = self._compress_single(data)
+        # 传递数据完整性红线标记，让 Agent 知悉该复盘是否可靠
+        if isinstance(data, dict) and data.get("data_complete") is False:
+            compressed["data_complete"] = False
+            compressed["reliability"] = "UNRELIABLE_行情数据缺失"
+        return {"status": "success", "market": market, "review": compressed}
 
     def _compress_single(self, review: Dict[str, Any]) -> Dict[str, Any]:
         """压缩单份复盘"""
