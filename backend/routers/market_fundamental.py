@@ -51,6 +51,11 @@ async def _fetch_finnhub_news(ticker: str, limit: int, days_back: int = 3):
         return None
 
     raw = res.data or []
+    # 零幻觉红线：真实源返回空数组时视为"该源对该标的无数据"(如 Finnhub 免费版
+    # 不支持港股新闻，恒返回 0 条)，返回 None 让调用方降级到 Yahoo/akshare 兜底，
+    # 严禁返回 success + count:0 的假成功。
+    if not raw:
+        return None
     out = []
     for item in raw:
         if not isinstance(item, dict):
