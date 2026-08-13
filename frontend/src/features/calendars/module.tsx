@@ -330,7 +330,7 @@ function DividendsView() {
   useEffect(() => {
     let alive = true
     apiClient
-      .get('/calendars/dividends')
+      .get('/api/v1/calendars/dividends')
       .then((res: any) => {
         const body = res?.data
         if (!alive) return
@@ -369,7 +369,7 @@ function IPOsView() {
   useEffect(() => {
     let alive = true
     apiClient
-      .get('/calendars/ipos')
+      .get('/api/v1/calendars/ipos')
       .then((res: any) => {
         const body = res?.data
         if (!alive) return
@@ -409,7 +409,7 @@ function HoursView() {
   useEffect(() => {
     let alive = true
     apiClient
-      .get('/calendars/hours')
+      .get('/api/v1/calendars/hours')
       .then((res: any) => {
         if (alive) setData(res?.data?.data || null)
       })
@@ -490,7 +490,7 @@ export function CalendarsModule() {
   const loadSnapshot = useCallback(async () => {
     setLoading(true)
     try {
-      const res: any = await apiClient.get('/calendars/snapshot')
+      const res: any = await apiClient.get('/api/v1/calendars/snapshot')
       if (res?.data?.status === 'success') {
         setSnapshot(res.data.data)
         setLast(formatTimeInZone(res.data.updated_at, tz))
