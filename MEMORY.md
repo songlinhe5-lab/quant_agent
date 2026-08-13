@@ -251,3 +251,21 @@ asyncio.create_task(FutuWatchdog(futu_service).start())  # 无强引用持有
 - 两容器都 host 后 `127.0.0.1` 即宿主，localhost 全通；
 - 但：① 失去网络隔离（端口直接绑宿主所有网卡，SEC-16 红线倒退）② 端口冲突风险（无 NAT 隔离）③ Docker 服务名 DNS 失效（所有 `*_REMOTE_URL` 改 `127.0.0.1`）④ compose `networks`/`extra_hosts`/`ports` 映射全失效 ⑤ 仅解决同机，跨机仍要 Tailscale ⑥ 与 CI 模板（curl 仓库 compose 覆盖）冲突。
 - 仅当子服务用 `127.0.0.1` 连 OpenD 的单点诉求成立，但该诉求已由 `:us` 镜像 + `host.docker.internal` 网关达成，**无需 host 化**。
+
+## 十、「测试连接」失联认知修正（2026-08-13 · 熔断假象根因）
+
+**🔴 纠正一个误导：futu 与 finnhub 的 `health()` 实现几乎一字不差，都是被动探测，不是「finnhub 被动 / futu 靠 WS」的区别。**
+
+- 两者 `health()` 均：`connected = node.status == "healthy"`，只看 `DataSourceRouter` 节点注册表的 `node.status`，**都不消耗真实配额、都不依赖 WS 连接状态**（Finnhub WS tick 层已弃用，quote 走 REST 快照；futu 同样经 router HTTP 代理）。
+- 适配器代码对照：`backend/services/datasource/adapters/futu.py:87` 与 `backend/services/datasource/adapters/finnhub.py:67` 逻辑一致。
+
+**实测「点全部测试连接后 futu 失联、finnhub 一直通」的真正原因 = 节点稳定性差异，而非探测方式：**
+- finnhub：`DS_CAPABILITIES` 在主节点本地 data_subservice 跑，节点 `finnhub_master` 由本地子服务心跳注册，主服务常驻稳定 → `node.status` 几乎恒 `healthy`。
+- futu：`futu_master` 节点依赖**主宿主机 Futu OpenD（TCP 11111）+ 经 router HTTP 代理的子服务**。`test-link` 的真实主动探测 `source.fetch("QUOTE", ...)` 打到 futu 上游，一旦风暴/抖动把 `futu_master` 节点的 `error_count` 打高或心跳失败 → `node.status=unhealthy` → 连带 `health()` 返回 `connected=False` → 看板集体失联。
+- 即：两者被动探测逻辑相同；失联差异来自**节点承载的上游稳定性**，finnhub 上游额度宽松且本地稳定，futu 上游（OpenD/子服务）易在探测风暴下被拖垮。
+
+**修复（commit 见 git log · 本次会话）**：
+- 后端 `backend/routers/datasource.py` `test_datasource_link`：加全局最小触发间隔（`TEST_LINK_MIN_INTERVAL_S` 默认 1.5s）+ per-source 串行锁（`asyncio.Lock`），抑制「全部测试连接」并发风暴；并**尊重 throttler 退避**，退避期内直接返回冷却状态、不发起真实请求（避免雪上加霜）。
+- 前端 `frontend/src/features/data-center/datasource-health.tsx`：新增 `testingAll` 全局锁，全部测试连接过程显示「全部测试中…」并禁用所有按钮，且改为**串行触发**，全局进行中禁止单独点「测试连接」。
+
+**勿再犯**：不要把 finnhub 当「被动探测豁免」特例去改 `test-link` 的 futu 分支——问题在「主动探测风暴拖垮节点」，应在 router/限流层统一防护（已做），而非给某源开例外。
