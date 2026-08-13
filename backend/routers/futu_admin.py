@@ -52,12 +52,23 @@ async def diagnose_futu_chain(ticker: str = "HK.00700"):
     diag: dict[str, Any] = {"steps": [], "router_state": {}}
 
     # Step 0: SourceRouter 内部状态
+    # ⚠️ 修复: 主服务已远程-only (BE-ARCH-09), source_router 是 _RemoteOnlyPlaceholder,
+    # 不再持有 ._local 本地 OpenD 连接对象。直接访问 ._local 会触发
+    # "_RemoteOnlyPlaceholder object has no attribute '_local'" 的 500。
+    # 改为读取占位对象已暴露的安全属性 (is_available / status())，如实反映远程代理语义。
     router_obj = market_data.source_router
+    try:
+        router_status = router_obj.status() if callable(getattr(router_obj, "status", None)) else {}
+    except Exception:
+        router_status = {}
     diag["router_state"] = {
-        "mode": router_obj.current_mode,
-        "local_is_available": router_obj._local.is_available,
+        "mode": getattr(router_obj, "current_mode", "remote"),
+        "local_is_available": getattr(router_obj, "is_available", False),
         "futu_service_status": market_data.status,
-        "conn_mgr_status": market_data.conn_mgr.status(),
+        "conn_mgr_status": (
+            market_data.conn_mgr.status() if callable(getattr(market_data.conn_mgr, "status", None)) else {}
+        ),
+        "source_router_detail": router_status,
     }
 
     # Step 1: FutuService.get_quote 端到端
