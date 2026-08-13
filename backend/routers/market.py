@@ -569,7 +569,18 @@ async def get_tech_indicators(ticker: str, lookback_days: int = 90):
     # ✅ 集成生产级技术指标计算引擎 (TechnicalIndicatorsPro)
     from backend.utils.technical_indicators_pro import calculate_technical_indicators
 
-    indicators = calculate_technical_indicators(facade_res.data)
+    klines = facade_res.data
+    # 防御：若上游返回仍是子服务信封 (dict 而非 list)，尝试解包一层
+    if isinstance(klines, dict):
+        if "data" in klines and isinstance(klines["data"], list):
+            klines = klines["data"]
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"历史 K 线返回格式异常 (预期 list，实际 {type(facade_res.data).__name__})，无法计算技术指标",
+            )
+
+    indicators = calculate_technical_indicators(klines)
 
     return {
         "status": "success",
