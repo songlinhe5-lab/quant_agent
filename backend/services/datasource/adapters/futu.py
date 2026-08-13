@@ -66,6 +66,8 @@ class FutuDataSource:
             "STOCK_BASICINFO",
             "ACCOUNT_INFO",
             "SCREEN_STOCKS",
+            "COMPANY_NEWS",  # 富途搜索资讯（港股个股新闻主源）
+            "STOCK_NEWS",
         ]
 
     # ── 远程节点状态感知 ──────────────────────────────────────
