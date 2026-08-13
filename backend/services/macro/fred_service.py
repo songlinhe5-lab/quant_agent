@@ -25,33 +25,38 @@ class FREDService:
         """远程化后无本地连接池需要释放，保留接口以兼容 lifecycle 调用。"""
         return None
 
-    async def get_series_observations(self, series_id: str, limit: int = 100) -> Dict[str, Any]:  # noqa: E501
+    async def get_series_observations(
+        self, series_id: str, limit: int = 100, force_refresh: bool = False
+    ) -> Dict[str, Any]:  # noqa: E501
         """
         获取指定宏观经济序列的最新观测值（经子服务远程代理）。
         :param series_id: FRED 序列 ID (例如: 'DGS10' 代表10年期美债收益率)
         :param limit: 返回的数据点数量
+        :param force_refresh: 为 True 时绕过 Redis 缓存，强制从子服务拉取最新数据
         :return: 包含状态和数据的字典
         """
         # 💡 防御特殊字符造成的 Redis 脏数据和查询污染
         safe_id = re.sub(r"[^A-Z0-9_-]", "", str(series_id).upper())[:30]
         cache_key = f"fred_series_{safe_id}_{limit}"
-        try:
-            cached_data = await redis_client.get(cache_key)
-            if cached_data:
-                return json.loads(cached_data)
-        except Exception as e:
-            print(f"⚠️ [FREDService] Redis 缓存读取异常: {e}")
+        if not force_refresh:
+            try:
+                cached_data = await redis_client.get(cache_key)
+                if cached_data:
+                    return json.loads(cached_data)
+            except Exception as e:
+                print(f"⚠️ [FREDService] Redis 缓存读取异常: {e}")
 
         if cache_key not in self._locks:
             self._locks[cache_key] = asyncio.Lock()
 
         async with self._locks[cache_key]:
-            try:
-                cached_double = await redis_client.get(cache_key)
-                if cached_double:
-                    return json.loads(cached_double)
-            except Exception:
-                pass
+            if not force_refresh:
+                try:
+                    cached_double = await redis_client.get(cache_key)
+                    if cached_double:
+                        return json.loads(cached_double)
+                except Exception:
+                    pass
 
             remote = await data_source_router.fetch_fred(
                 "macro_series",
@@ -102,11 +107,21 @@ class FREDService:
                 "series_id": series_id,
                 "data": observations,
             }  # noqa: E501
-            try:
-                ttl = 43200 + random.randint(100, 600)
-                await redis_client.set(cache_key, json.dumps(result), ex=ttl)  # 缓存 12 小时 + Jitter  # noqa: E501
-            except Exception as e:
-                print(f"⚠️ [FREDService] Redis 缓存写入异常: {e}")
+            # 💡 缓存防护：仅当观测点为单点（<=1，典型源超时/异常）时跳过缓存，
+            # 避免脏单点被 12h TTL 锁定，导致图表长期"只有一个点"。
+            # 2 个及以上视为合法短序列照常缓存；用户显式小 limit（<=2）时尊重其意图。
+            cacheable = len(observations) > 1 or limit <= 2
+            if cacheable:
+                try:
+                    ttl = 43200 + random.randint(100, 600)
+                    await redis_client.set(cache_key, json.dumps(result), ex=ttl)  # 缓存 12 小时 + Jitter  # noqa: E501
+                except Exception as e:
+                    print(f"⚠️ [FREDService] Redis 缓存写入异常: {e}")
+            else:
+                print(
+                    f"⚠️ [FREDService] 序列 {series_id} 仅返回 {len(observations)} 个观测点，"
+                    "疑似源异常，跳过缓存以防脏数据锁定"
+                )
             return result
 
     # 💡 事件关键词 -> FRED 权威序列映射 (美国核心 + 国际序列尝试)

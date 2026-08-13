@@ -70,11 +70,21 @@ class RiskEngine:
                 continue
 
             has_any = True
-            acc_total = float(acc_res.get("total_assets", 0))
-            acc_cash = float(acc_res.get("cash", 0))
-            acc_market_val = float(acc_res.get("market_val", 0))
-            positions = acc_res.get("positions", [])
-            currency = acc_res.get("currency", "HKD" if market == "HK" else "USD")
+            # DIST-SEC-03: router._normalize_response 仅透传 list/dict 字段到顶层,
+            # positions(list) 会被透传, 但 total_assets/cash/market_val/currency
+            # (数字/字符串) 不会。这些字段完整存在于 acc_res["data"](futu info 信封) 中。
+            # 故从此处取全部账户字段, 并兼容 data[market] 子包装形式。
+            acc_data = acc_res.get("data") or {}
+            if market in acc_data and isinstance(acc_data[market], dict):
+                acc_data = acc_data[market]  # data[market] 包装形式
+            # 顶层透传的 positions(list) 兜底
+            if not acc_data.get("positions") and acc_res.get("positions"):
+                acc_data = {**acc_data, "positions": acc_res["positions"]}
+            acc_total = float(acc_data.get("total_assets", 0) or 0)
+            acc_cash = float(acc_data.get("cash", 0) or 0)
+            acc_market_val = float(acc_data.get("market_val", 0) or 0)
+            positions = acc_data.get("positions", []) or []
+            currency = acc_data.get("currency", "HKD" if market == "HK" else "USD")
 
             # 给每个持仓打上市场标签
             for p in positions:

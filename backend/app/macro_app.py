@@ -371,9 +371,10 @@ async def get_economic_calendar_facade(
 async def get_macro_series(
     series_id: str = ...,
     limit: int = 100,
+    force_refresh: bool = False,
 ):
     """获取 FRED 宏观经济时间序列数据"""
-    res = await market_data.get_series_observations(series_id, limit)
+    res = await market_data.get_series_observations(series_id, limit, force_refresh)
     if res.get("status") == "error":
         raise AppError(status_code=400, detail=res.get("message"))
     return res
@@ -395,6 +396,11 @@ def get_sentiment_history(
         data = []
         # 倒序遍历，使其在图表上从左向右（从旧到新）排列
         for r in reversed(records):
+            # DIST-SENT-01: 跳过全 null 脏记录 (yfinance 节点断供时期旧代码写入的
+            # vix_value/pc_ratio/credit_spread 全为 None 的垃圾记录)，避免工具/图表
+            # 展示无意义空序列，误导情绪研判。
+            if r.vix_value is None and r.pc_ratio is None and r.credit_spread is None:
+                continue
             data.append(
                 {
                     "time": r.timestamp.strftime("%m-%d %H:%M") if r.timestamp else "",

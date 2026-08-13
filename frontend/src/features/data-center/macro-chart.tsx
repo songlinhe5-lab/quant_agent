@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Search, Loader2, LineChart as LineChartIcon } from 'lucide-react'
+import { Search, Loader2, RefreshCw, LineChart as LineChartIcon } from 'lucide-react'
 import { apiClient } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { useTheme } from 'next-themes'
@@ -14,12 +14,14 @@ export function MacroChartPanel() {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
 
-  const fetchSeries = async (id: string) => {
+  const fetchSeries = async (id: string, forceRefresh = false) => {
     if (!id) return
     setLoading(true)
     setError('')
     try {
-      const res = await apiClient.get(`/macro/series?series_id=${id}&limit=250`)
+      const res = await apiClient.get(
+        `/api/v1/macro/series?series_id=${id}&limit=250${forceRefresh ? '&force_refresh=true' : ''}`
+      )
       if (res.data?.status === 'success' && res.data?.data) {
         const chartData = [...res.data.data].reverse().map(d => ({
           ...d,
@@ -45,6 +47,10 @@ export function MacroChartPanel() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     if (inputValue.trim()) setSeriesId(inputValue.trim().toUpperCase())
+  }
+
+  const handleRefresh = () => {
+    fetchSeries(seriesId, true)
   }
 
   const quickTags = [
@@ -116,6 +122,9 @@ export function MacroChartPanel() {
           </div>
           <button type="submit" disabled={loading} className="bg-indigo-500/15 border border-indigo-500/20 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/25 px-2.5 py-1 rounded-full text-[10px] font-bold transition-colors disabled:opacity-50 flex items-center gap-1">
             {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <span>查询</span>}
+          </button>
+          <button type="button" onClick={handleRefresh} disabled={loading || !seriesId} title="绕过缓存强制刷新" className="bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 px-2 py-1 rounded-full text-[10px] font-bold transition-colors disabled:opacity-50 flex items-center gap-1">
+            <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </form>
       </div>

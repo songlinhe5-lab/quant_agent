@@ -104,12 +104,41 @@ class BaseMarginSource:
 
 
 # ── 编排器 ────────────────────────────────────────────────────────
+from backend.services.margin.sources.cboe import CboeShortInterestSource  # noqa: E402
 from backend.services.margin.sources.finra import FinraRegShoSource  # noqa: E402
 from backend.services.margin.sources.hkex import HkexShortSellingSource  # noqa: E402
 from backend.services.margin.sources.sfc import SfcShortPositionsSource  # noqa: E402
 
-_US_SOURCES: List[MarginIndicatorSource] = [FinraRegShoSource()]
+# US 源优先级 (2026-08-13 调整):
+#  1) CboeShortInterestSource —— CBOE 公开做空持仓 CSV，免 token、稳定、无反爬；
+#     提供 short_interest_shares / days_to_cover，作为 FINRA 免 token 路径的优先兜底。
+#  2) FinraRegShoSource —— FINRA Reg SHO 每日做空成交量 (需 token)，与 CBOE 互补
+#     (提供 short_sale_volume / ratio)。两者字段不冲突，编排器按字段合并。
+_US_SOURCES: List[MarginIndicatorSource] = [CboeShortInterestSource(), FinraRegShoSource()]
 _HK_SOURCES: List[MarginIndicatorSource] = [HkexShortSellingSource(), SfcShortPositionsSource()]
+
+
+def _merge_snapshot(acc: Optional[Dict], snap: MarketMarginSnapshot) -> Dict:
+    """字段级合并多个源的聚合结果（互补填充，首个非空优先）。
+
+    不同数据源提供互补字段（如 CBOE=做空持仓、FINRA=做空成交量），
+    不应首个成功即 return，而应合并以得到最完整的市场级指标。
+    """
+    d = snap.to_dict()
+    if acc is None:
+        return d
+    for k, v in d.items():
+        if v is None:
+            continue
+        if acc.get(k) is None:
+            acc[k] = v
+        elif k == "sources":
+            # sources 列表合并去重
+            acc[k] = list(dict.fromkeys(acc[k] + (v or [])))
+        elif k == "note" and v:
+            acc[k] = (acc.get(k, "") + " | " + v).strip(" |")
+        # 其它同名非空字段：保留首个源（高优先级源优先），不覆盖
+    return acc
 
 
 def _sources_for(market: str) -> List[MarginIndicatorSource]:
@@ -141,19 +170,23 @@ async def get_market_margin_indicators(market: str, as_of: Optional[date] = None
 
     result: Optional[Dict] = None
     tried: List[str] = []
+    any_success = False
     for src in _sources_for(market):
         tried.append(src.name)
         try:
             snap = await src.fetch(as_of)
             if snap is not None:
-                snap.sources.append(src.name)
-                result = snap.to_dict()
-                logger.info("[Margin] 数据源成功", source=src.name, market=market)
-                break
+                any_success = True
+                # 标记数据来源（去重，避免与源内部已 append 的重复）
+                if src.name not in snap.sources:
+                    snap.sources.append(src.name)
+                # 字段级合并（互补填充），而非首个成功即返回
+                result = _merge_snapshot(result, snap)
+                logger.info("[Margin] 数据源成功(已合并)", source=src.name, market=market)
         except Exception as e:
             logger.error("[Margin] 数据源异常", source=src.name, error=str(e))
 
-    if result is None:
+    if not any_success or result is None:
         result = {
             "status": "error",
             "market": market,

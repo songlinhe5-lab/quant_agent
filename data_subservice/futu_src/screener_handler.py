@@ -94,9 +94,16 @@ class ScreenerHandler:
 
         # ─── V2 接口支持检测 ─────────────────────────────────────
         if not _FUTU_V2_SUPPORT:
+            import futu as _futu_mod
+
+            _ver = getattr(_futu_mod, "__version__", "未知")
             return {
                 "status": "error",
-                "message": "当前 futu-api 版本不支持 V2 选股接口 (StockScreenRequest) 相关常量，请升级 futu-api。",
+                "message": (
+                    f"当前子服务容器内 futu-api 版本 {_ver} 不支持 V2 选股接口"
+                    f"(StockScreenRequest/stock_screen_const 导入失败)，"
+                    f"请升级 data-subservice 镜像中的 futu-api 到支持 V2 选股的版本后重新部署。"
+                ),
             }  # noqa: E501
 
         if self.conn_mgr.status != "CONNECTED" or not self.conn_mgr.quote_ctx:

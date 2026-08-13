@@ -364,6 +364,10 @@ class MarketDataGateway:
             options = [{**c, "option_type": "CALL"} for c in calls[:30]] + [
                 {**p, "option_type": "PUT"} for p in puts[:30]
             ]
+        # 按到期日过滤：主服务逐到期日调用，子服务返回全部到期日合并的合约，
+        # 需按 expiration 字段筛选，否则矩阵每个到期日都会显示全部合约。
+        if expiration_date:
+            options = [o for o in options if str(o.get("expiration")) == str(expiration_date)]
         return {
             "status": "success",
             "options": options,

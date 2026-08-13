@@ -51,9 +51,10 @@ async def get_macro_calendar_route(
 async def get_macro_series_route(
     series_id: str = Query(..., description="FRED 经济序列 ID"),
     limit: int = Query(100, le=1000, description="返回的数据点数量"),
+    force_refresh: bool = Query(False, description="为 true 时绕过缓存强制刷新"),
 ):
     """获取 FRED 宏观经济时间序列数据"""
-    return await get_macro_series(series_id, limit)
+    return await get_macro_series(series_id, limit, force_refresh)
 
 
 @router.get("/economic-calendar")

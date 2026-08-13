@@ -10,7 +10,6 @@ HTTP 映射 + 鉴权注入」。
 """
 
 import asyncio
-import copy
 import hashlib
 import json
 import random
@@ -435,16 +434,13 @@ async def run_screener(req: ScreenerRequest):
             final_data = dedup_data
 
             if not final_data:
+                # 🚫 生产环境严禁注入 mock 假数据（Production Data Integrity Red Line）：
+                # Futu 未连接 / 筛选无结果时，如实返回空，不再用 MOCK_SCREENER_RESULTS 兜底。
                 if market_data.status != "CONNECTED":
-                    mock_data = [
-                        r
-                        for r in MOCK_SCREENER_RESULTS
-                        if any(r["symbol"].upper().startswith(f"{m.upper()}.") for m in markets)
-                    ]  # noqa: E501
-                    final_data = copy.deepcopy(mock_data if mock_data else [])
-                    for r in final_data:
-                        r["price"] = round(r["price"] * (1 + (random.random() - 0.5) * 0.05), 2)  # noqa: E501
-                        r["chg"] = round((random.random() - 0.5) * 5, 2)
+                    raise AppError(
+                        status_code=503,
+                        detail="Futu OpenD 数据源未连接，无法执行在线选股。请检查 Futu 连接状态或稍后重试。",
+                    )
             else:
                 print(
                     " [Screener] 获取结果示例 (前 3 条):",

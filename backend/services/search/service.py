@@ -48,10 +48,12 @@ class SearchService:
         # 全部源失败/无结果
         if last_err:
             print(f"⚠️ [SearchService] 所有远程搜索源均失败, 末次错误: {last_err}")
+        # DIST-SEARCH-01: 透传末次错误, 使根因可见 (key 未配置 / 节点不可用 / 真无结果)
+        detail = f" (last_err={last_err})" if last_err else ""
         return {
             "status": "success",
             "data": [],
-            "message": "未找到相关结果或搜索服务暂不可用。请尝试简化搜索词。",
+            "message": f"未找到相关结果或搜索服务暂不可用。请尝试简化搜索词。{detail}",
         }
 
     async def fetch_webpage(self, url: str, query: str = "") -> Dict[str, Any]:
