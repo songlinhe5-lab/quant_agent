@@ -114,6 +114,12 @@ async def handle_futu(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
             return await futu_service.subscribe_quote(params.get("symbol"))
         elif action == "UNSUBSCRIBE":
             return await futu_service.unsubscribe_quote(params.get("symbol"))
+        elif action in ("COMPANY_NEWS", "STOCK_NEWS", "NEWS"):
+            # 个股资讯（富途新闻/公告/评级），港股主数据源
+            return await futu_service.get_search_news(
+                params.get("symbol") or params.get("ticker"),
+                max_count=int(params.get("limit", 10)),
+            )
         elif action == "HEALTH":
             return {"available": futu_service.status == "CONNECTED", "source": "futu"}
         else:
