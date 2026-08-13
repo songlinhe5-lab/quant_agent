@@ -9,11 +9,22 @@ from data_subservice._internal.logger import logger
 async def handle_akshare(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
     """处理 akshare 数据源请求。"""
     try:
+        symbol = params.get("symbol") or ""
+        # 港股行情/历史由 Futu 承载，AKShare 不支持；明确报错让 facade 改走 Futu，
+        # 避免静默返回空数据被当成功（同 FUND_FLOW 的 UNSUPPORTED 路由模式）。
+        if symbol.upper().startswith("HK.") or symbol.upper().endswith(".HK"):
+            if action in ("QUOTE", "HISTORY"):
+                return {
+                    "status": "error",
+                    "error_category": "UNSUPPORTED",
+                    "error": f"AKShare 不支持港股 {action} {symbol}",
+                    "source": "akshare",
+                }
         if action == "QUOTE":
-            return await akshare_service.get_quote(params.get("symbol"), market=params.get("market", "A"))
+            return await akshare_service.get_quote(symbol, market=params.get("market", "A"))
         elif action == "HISTORY":
             return await akshare_service.get_history(
-                params.get("symbol"), market=params.get("market", "A"), period=params.get("period", "daily")
+                symbol, market=params.get("market", "A"), period=params.get("period", "daily")
             )
         elif action == "FUND_FLOW":
             symbol = params.get("symbol") or ""
