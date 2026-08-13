@@ -1,0 +1,1984 @@
+{
+  "target": "http://100.102.223.44:8000",
+  "timestamp": "2026-08-13T22:44:09Z",
+  "total": 246,
+  "counts": {
+    "OK": 78,
+    "NOT_FOUND": 10,
+    "CONN_ERR": 2,
+    "VALIDATION_ERR": 53,
+    "AUTH_REQUIRED": 100,
+    "CLIENT_ERR": 1,
+    "SERVER_ERR": 2
+  },
+  "results": [
+    {
+      "method": "GET",
+      "path": "/mcp",
+      "status": 200,
+      "tag": "OK",
+      "detail": "MCP endpoint is online",
+      "op_id": "mcp_health_check_mcp_get"
+    },
+    {
+      "method": "GET",
+      "path": "/",
+      "status": 200,
+      "tag": "OK",
+      "detail": "Quant Agent 主网关已启动。请访问 /docs 查看接口文档。",
+      "op_id": "root__get"
+    },
+    {
+      "method": "GET",
+      "path": "/monitor",
+      "status": 404,
+      "tag": "NOT_FOUND",
+      "detail": "前端编译文件不存在，请先执行 npm run build",
+      "op_id": "monitor_page_monitor_get"
+    },
+    {
+      "method": "GET",
+      "path": "/mcp/sse",
+      "status": 0,
+      "tag": "CONN_ERR",
+      "detail": "timeout>8.0s",
+      "op_id": "mcp_sse_mcp_sse_get"
+    },
+    {
+      "method": "POST",
+      "path": "/mcp/message",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "mcp_message_mcp_message_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/health",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "health_check_api_v1_health_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/health/live",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "health_live_api_v1_health_live_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/health/ready",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "health_ready_api_v1_health_ready_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/health/deep",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "health_deep_api_v1_health_deep_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/cluster",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "cluster_status_api_v1_cluster_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/webhook/uptime-kuma",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "uptime_kuma_webhook_api_v1_webhook_uptime_kuma_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/chat/suggestions",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "请求未携带合法 Token，拒绝访问",
+      "op_id": "get_chat_suggestions_api_v1_chat_suggestions_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/chat",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "请求未携带合法 Token，拒绝访问",
+      "op_id": "chat_endpoint_api_v1_chat_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sessions",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "请求未携带合法 Token，拒绝访问",
+      "op_id": "get_sessions_api_v1_sessions_get"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/sessions",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "请求未携带合法 Token，拒绝访问",
+      "op_id": "delete_all_sessions_api_v1_sessions_delete"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sessions/{session_id}",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "请求未携带合法 Token，拒绝访问",
+      "op_id": "get_session_history_api_v1_sessions__session_id__get"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/sessions/{session_id}",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "请求未携带合法 Token，拒绝访问",
+      "op_id": "delete_session_api_v1_sessions__session_id__delete"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/yfinance",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_yfinance_setting_api_v1_settings_yfinance_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/settings/yfinance",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "toggle_yfinance_api_v1_settings_yfinance_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/financial-report",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "get_financial_report_api_v1_financial_report_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/futu/status",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_futu_status_api_v1_market_futu_status_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/health/services",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_services_health_api_v1_market_health_services_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/quote",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "get_quote_api_v1_market_quote_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/market/quotes/batch",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "get_batch_quotes_from_cache_api_v1_market_quotes_batch_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/market/kline/sync",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "sync_kline_warehouse_api_v1_market_kline_sync_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/history",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "get_history_api_v1_market_history_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/option-chain",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "get_option_chain_api_v1_market_option_chain_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/fund-flow",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "get_fund_flow_api_v1_market_fund_flow_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/warrant-chain",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "get_warrant_chain_api_v1_market_warrant_chain_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/tech-indicators",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "get_tech_indicators_api_v1_market_tech_indicators_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/search",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "search_tickers_api_v1_market_search_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/broker/{symbol}",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_broker_realtime_api_v1_market_broker__symbol__get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/kline/{symbol}",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_kline_realtime_api_v1_market_kline__symbol__get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/news",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "get_company_news_api_v1_market_news_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/events/{ticker}",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_stock_events_api_v1_market_events__ticker__get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/fundamental/{ticker}",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_fundamental_api_v1_market_fundamental__ticker__get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/holders/{ticker}",
+      "status": 400,
+      "tag": "CLIENT_ERR",
+      "detail": "action=HSGT_HOLDERS 所有候选源失败: [akshare] AKShare remote node failed (local SDK disabled)",
+      "op_id": "get_top_holders_api_v1_market_holders__ticker__get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/insider-marquee",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_insider_marquee_api_v1_market_insider_marquee_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/insider-transactions",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "get_insider_transactions_api_v1_market_insider_transactions_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market-review/latest",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_latest_api_v1_market_review_latest_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market-review/query",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "query_review_api_v1_market_review_query_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market-review/recent",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "recent_reviews_api_v1_market_review_recent_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market-review/dates",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "available_dates_api_v1_market_review_dates_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/market-review/generate",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "trigger_generate_api_v1_market_review_generate_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/briefing/generate",
+      "status": 0,
+      "tag": "CONN_ERR",
+      "detail": "timeout>8.0s",
+      "op_id": "trigger_generate_api_v1_briefing_generate_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/briefing/latest",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "latest_briefing_api_v1_briefing_latest_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/briefing/share/{briefing_id}",
+      "status": 404,
+      "tag": "NOT_FOUND",
+      "detail": "早报 {briefing_id} 不存在或已过期",
+      "op_id": "share_briefing_api_v1_briefing_share__briefing_id__get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/trade/order",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "place_order_endpoint_api_v1_trade_order_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/trade/account",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_account_info_endpoint_api_v1_trade_account_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/trade/portfolio",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_portfolio_endpoint_api_v1_trade_portfolio_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/trade/trades",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_trades_endpoint_api_v1_trade_trades_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/macro/calendar",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_macro_calendar_route_api_v1_macro_calendar_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/macro/series",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "get_macro_series_route_api_v1_macro_series_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/macro/economic-calendar",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_economic_calendar_facade_route_api_v1_macro_economic_calendar_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/macro/sentiment-history",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_sentiment_history_route_api_v1_macro_sentiment_history_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/macro/sector-fund-flow",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_sector_fund_flow_route_api_v1_macro_sector_fund_flow_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/macro/capital-flow",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_capital_flow_route_api_v1_macro_capital_flow_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/macro/capital-flow-dashboard",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_capital_flow_dashboard_route_api_v1_macro_capital_flow_dashboard_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/macro/news",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_macro_news_route_api_v1_macro_news_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/macro/dashboard",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_data_center_dashboard_route_api_v1_macro_dashboard_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/macro/earnings",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_earnings_calendar_route_api_v1_macro_earnings_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/macro/assets",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_macro_assets_route_api_v1_macro_assets_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/macro/margin-trading",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_margin_trading_data_route_api_v1_macro_margin_trading_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/calendars/snapshot",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_calendars_snapshot_api_v1_calendars_snapshot_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/calendars/hours",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_calendars_hours_api_v1_calendars_hours_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/calendars/dividends",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_calendars_dividends_api_v1_calendars_dividends_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/calendars/ipos",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_calendars_ipos_api_v1_calendars_ipos_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/preferences/ai-push",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_ai_push_prefs_api_v1_settings_preferences_ai_push_get"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/settings/preferences/ai-push",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "update_ai_push_prefs_api_v1_settings_preferences_ai_push_put"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/preferences",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_preferences_api_v1_settings_preferences_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/settings/preferences",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "update_preferences_api_v1_settings_preferences_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/news-tags",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_news_tags_rules_api_v1_settings_news_tags_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/settings/news-tags",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "update_news_tags_rules_api_v1_settings_news_tags_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/watchlist",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_watchlist_api_v1_settings_watchlist_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/settings/watchlist/batch",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "batch_update_watchlist_api_v1_settings_watchlist_batch_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "read_users_me_api_v1_auth_me_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "login_for_access_token_api_v1_auth_login_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/change-password",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "change_password_api_v1_auth_change_password_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/google/verify",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "verify_google_token_api_v1_auth_google_verify_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/refresh",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Refresh Token missing in cookies",
+      "op_id": "refresh_access_token_api_v1_auth_refresh_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "logout_api_v1_auth_logout_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/backtest/run",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "run_backtest_endpoint_api_v1_backtest_run_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/backtest/run/stream",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "run_backtest_stream_endpoint_api_v1_backtest_run_stream_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/backtest/walk-forward",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "walk_forward_endpoint_api_v1_backtest_walk_forward_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/backtest/monte-carlo",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "monte_carlo_endpoint_api_v1_backtest_monte_carlo_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/backtest/grid-search",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "grid_search_endpoint_api_v1_backtest_grid_search_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/backtest/overfit",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "overfit_endpoint_api_v1_backtest_overfit_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/backtest/interpret",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "interpret_backtest_api_v1_backtest_interpret_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/backtest/overfit-check",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "overfit_check_api_v1_backtest_overfit_check_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/backtest/overfit-check/grid",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "overfit_check_grid_api_v1_backtest_overfit_check_grid_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/backtest/interpret/walk-forward",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "interpret_walk_forward_api_v1_backtest_interpret_walk_forward_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/backtest/health",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "backtest_health_list_api_v1_backtest_health_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/backtest/reports",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "persist_backtest_report_api_v1_backtest_reports_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/backtest/reports",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "list_backtest_reports_api_v1_backtest_reports_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/backtest/reports/{run_id}",
+      "status": 404,
+      "tag": "NOT_FOUND",
+      "detail": "报告不存在: {run_id}",
+      "op_id": "get_backtest_report_api_v1_backtest_reports__run_id__get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/backtest/snapshots/register",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "register_snapshot_for_tests_api_v1_backtest_snapshots_register_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/datalake/snapshots",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "list_snapshots_api_v1_datalake_snapshots_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/datalake/snapshots/latest",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "latest_snapshot_api_v1_datalake_snapshots_latest_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/datalake/snapshots/{snapshot_id}",
+      "status": 404,
+      "tag": "NOT_FOUND",
+      "detail": "快照不存在: {snapshot_id}",
+      "op_id": "get_snapshot_api_v1_datalake_snapshots__snapshot_id__get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/datalake/snapshots/rebuild",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "rebuild_snapshot_api_v1_datalake_snapshots_rebuild_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/datalake/snapshots/retention/run",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "run_retention_api_v1_datalake_snapshots_retention_run_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/screener/suggestions",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_get_suggestions_api_v1_screener_suggestions_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/screener/translate",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_translate_api_v1_screener_translate_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/screener/run",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_run_screener_api_v1_screener_run_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/screener/history",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_get_history_api_v1_screener_history_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/screener/history",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_save_history_api_v1_screener_history_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/screener/reload-indicators",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_reload_indicators_api_v1_screener_reload_indicators_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/screener/dictionary",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_get_dictionary_api_v1_screener_dictionary_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/screener/dictionary",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_add_dictionary_item_api_v1_screener_dictionary_post"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/screener/dictionary",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_delete_dictionary_item_api_v1_screener_dictionary_delete"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/screener/dictionary/batch",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_add_dictionary_batch_api_v1_screener_dictionary_batch_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/screener/subscribe",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_subscribe_api_v1_screener_subscribe_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/screener/subscriptions",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_get_subscriptions_api_v1_screener_subscriptions_get"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/screener/subscription/time",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_update_subscription_time_api_v1_screener_subscription_time_put"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/screener/subscription/{sub_id}",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_delete_subscription_api_v1_screener_subscription__sub_id__delete"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/screener/subscription/{sub_id}/toggle",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_toggle_subscription_api_v1_screener_subscription__sub_id__toggle_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/screener/summarize",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_summarize_api_v1_screener_summarize_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/screener/cross-sectional",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_cross_sectional_api_v1_screener_cross_sectional_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/screener/portfolio-backtest",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_portfolio_backtest_api_v1_screener_portfolio_backtest_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/screener/cep/rule",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_create_cep_rule_api_v1_screener_cep_rule_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/screener/cep/rules",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_list_cep_rules_api_v1_screener_cep_rules_get"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/screener/cep/rule/{rule_id}",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_delete_cep_rule_api_v1_screener_cep_rule__rule_id__delete"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/screener/cep/matches/sse",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_cep_matches_sse_api_v1_screener_cep_matches_sse_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/screener/screens",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_list_screens_api_v1_screener_screens_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/screener/screens",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_save_screen_api_v1_screener_screens_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/screener/screens/{screen_id}",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_get_screen_api_v1_screener_screens__screen_id__get"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/screener/screens/{screen_id}",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_rename_screen_api_v1_screener_screens__screen_id__put"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/screener/screens/{screen_id}",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "api_delete_screen_api_v1_screener_screens__screen_id__delete"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/search/web",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "web_search_api_v1_search_web_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/strategy/inspirations",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_inspirations_api_v1_strategy_inspirations_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/strategy/parse-config",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "parse_strategy_config_api_v1_strategy_parse_config_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/strategy/generate",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "generate_strategy_code_api_v1_strategy_generate_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/strategy/format",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "format_strategy_code_api_v1_strategy_format_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/strategy/save",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "save_strategy_api_v1_strategy_save_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/strategy/list",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "list_strategies_api_v1_strategy_list_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/strategy/{name}/versions",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_strategy_versions_api_v1_strategy__name__versions_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/strategy/versions/{version_id}",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_strategy_version_api_v1_strategy_versions__version_id__get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/strategy/{name}/restore",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "restore_strategy_version_api_v1_strategy__name__restore_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/strategy/draft/{name}",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_draft_strategy_api_v1_strategy_draft__name__get"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/strategy/draft/{name}",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "delete_draft_strategy_api_v1_strategy_draft__name__delete"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/strategy/run-sandbox/stream",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "run_strategy_sandbox_stream_api_v1_strategy_run_sandbox_stream_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/strategy/run-sandbox",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "run_strategy_sandbox_api_v1_strategy_run_sandbox_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/strategy/optimize-sandbox",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "optimize_strategy_sandbox_api_v1_strategy_optimize_sandbox_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/strategy/run-batch-sandbox",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "run_batch_strategy_sandbox_api_v1_strategy_run_batch_sandbox_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/strategy/monte-carlo-sandbox",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "monte_carlo_strategy_sandbox_api_v1_strategy_monte_carlo_sandbox_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/strategy/deploy-to-oms",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "deploy_to_oms_api_v1_strategy_deploy_to_oms_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/strategy/optimize-sandbox/stream",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "optimize_strategy_sandbox_stream_api_v1_strategy_optimize_sandbox_stream_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/oms/state",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_oms_initial_state_api_v1_oms_state_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/oms/kill_switch",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "trigger_kill_switch_api_v1_oms_kill_switch_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/oms/orders/{order_id}/cancel",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "cancel_order_api_v1_oms_orders__order_id__cancel_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/oms/orders/{order_id}/modify",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "modify_order_api_v1_oms_orders__order_id__modify_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/oms/positions",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_real_positions_api_v1_oms_positions_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/oms/bots/{bot_id}/pause",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "pause_bot_api_v1_oms_bots__bot_id__pause_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/oms/bots/{bot_id}/resume",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "resume_bot_api_v1_oms_bots__bot_id__resume_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/oms/bots/{bot_id}/stop",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "stop_bot_api_v1_oms_bots__bot_id__stop_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/oms/algo/start",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "start_algo_order_api_v1_oms_algo_start_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/oms/algo/{algo_id}/pause",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "pause_algo_order_api_v1_oms_algo__algo_id__pause_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/oms/algo/{algo_id}/resume",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "resume_algo_order_api_v1_oms_algo__algo_id__resume_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/oms/algo/{algo_id}/cancel",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "cancel_algo_order_api_v1_oms_algo__algo_id__cancel_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/oms/algo/analytics/{algo_id}",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "get_algo_analytics_api_v1_oms_algo_analytics__algo_id__post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/oms/mode",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_trading_mode_api_v1_oms_mode_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/oms/mode/switch",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "switch_trading_mode_api_v1_oms_mode_switch_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/audit/logs",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "read_audit_logs_api_v1_audit_logs_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/client/heartbeat",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "receive_heartbeat_api_v1_client_heartbeat_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/client/heartbeat/stats",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "heartbeat_stats_api_v1_client_heartbeat_stats_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/system/observability",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_observability_api_v1_system_observability_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/system/data-quality",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_data_quality_api_v1_system_data_quality_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/system/performance-logs",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_performance_logs_api_v1_system_performance_logs_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/system/performance-stats",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_performance_stats_api_v1_system_performance_stats_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/system/apm-dashboard",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "apm_dashboard_api_v1_system_apm_dashboard_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/risk/dashboard",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_risk_dashboard_api_v1_risk_dashboard_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/risk/positions-breakdown",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_positions_breakdown_api_v1_risk_positions_breakdown_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/risk/sector-exposure",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_sector_exposure_api_v1_risk_sector_exposure_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/risk/correlation",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_correlation_api_v1_risk_correlation_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/risk/cvar",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_cvar_api_v1_risk_cvar_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/risk/liquidity",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_liquidity_api_v1_risk_liquidity_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/risk/attribution",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_attribution_api_v1_risk_attribution_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/risk/stress-test",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "post_stress_test_api_v1_risk_stress_test_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/risk/stress-test/scenarios",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_stress_scenarios_api_v1_risk_stress_test_scenarios_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/paper/portfolios",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "create_portfolio_api_v1_paper_portfolios_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/paper/portfolios",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "list_portfolios_api_v1_paper_portfolios_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/paper/portfolios/{portfolio_id}",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_portfolio_api_v1_paper_portfolios__portfolio_id__get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/paper/portfolios/{portfolio_id}/fills",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_fills_api_v1_paper_portfolios__portfolio_id__fills_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/paper/portfolios/{portfolio_id}/pause",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "pause_portfolio_api_v1_paper_portfolios__portfolio_id__pause_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/paper/portfolios/{portfolio_id}/resume",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "resume_portfolio_api_v1_paper_portfolios__portfolio_id__resume_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/paper/portfolios/{portfolio_id}/close",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "close_portfolio_api_v1_paper_portfolios__portfolio_id__close_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/paper/portfolios/{portfolio_id}/nav",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_nav_series_api_v1_paper_portfolios__portfolio_id__nav_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/paper/portfolios/{portfolio_id}/compare",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_compare_api_v1_paper_portfolios__portfolio_id__compare_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/futu/source",
+      "status": 200,
+      "tag": "OK",
+      "detail": "None",
+      "op_id": "get_source_status_api_v1_futu_source_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/futu/diagnose",
+      "status": 500,
+      "tag": "SERVER_ERR",
+      "detail": "内部服务器错误 (trace_id: 61bbe3ef-c321-41)",
+      "op_id": "diagnose_futu_chain_api_v1_futu_diagnose_get"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/futu/host",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "switch_opend_host_api_v1_futu_host_put"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/alert/rules",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "create_rule_endpoint_api_v1_alert_rules_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/alert/rules",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "list_rules_endpoint_api_v1_alert_rules_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/alert/rules/{rule_id}",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_rule_endpoint_api_v1_alert_rules__rule_id__get"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/alert/rules/{rule_id}",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "update_rule_endpoint_api_v1_alert_rules__rule_id__put"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/alert/rules/{rule_id}",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "delete_rule_endpoint_api_v1_alert_rules__rule_id__delete"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/alert/rules/{rule_id}/toggle",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "toggle_rule_endpoint_api_v1_alert_rules__rule_id__toggle_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/alert/events",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "list_events_endpoint_api_v1_alert_events_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/alert/events/{event_id}",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_event_endpoint_api_v1_alert_events__event_id__get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/alert/events/{event_id}/ack",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "ack_event_endpoint_api_v1_alert_events__event_id__ack_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/alert/engine/status",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "engine_status_endpoint_api_v1_alert_engine_status_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/alert/events/{event_id}/deliveries",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_event_deliveries_endpoint_api_v1_alert_events__event_id__deliveries_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai/narrate",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "narrate_api_v1_ai_narrate_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai/stream",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "stream_narrate_api_v1_ai_stream_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/logs",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "receive_frontend_logs_api_v1_logs_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/logs",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "query_frontend_logs_api_v1_logs_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/eval/run",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "run_eval_api_v1_eval_run_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/eval/results",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_eval_results_api_v1_eval_results_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/eval/dataset",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_dataset_summary_api_v1_eval_dataset_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/earnings/expectations",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "get_expectations_api_v1_earnings_expectations_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/earnings/expectations",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "set_expectations_api_v1_earnings_expectations_post"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/earnings/expectations",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "delete_expectations_api_v1_earnings_expectations_delete"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/earnings/expectations/list",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "list_expectations_api_v1_earnings_expectations_list_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/research/deep-report",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "generate_deep_report_api_v1_research_deep_report_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/factor/suggest",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "suggest_factors_api_v1_factor_suggest_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/factor/search",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "search_factors_api_v1_factor_search_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/alpha158/factors",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_factors_api_v1_alpha158_factors_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/alpha158/compute",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "compute_factors_api_v1_alpha158_compute_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/options/greeks/{ticker}",
+      "status": 404,
+      "tag": "NOT_FOUND",
+      "detail": "期权链获取失败: Futu remote node failed (local SDK disabled)",
+      "op_id": "get_option_greeks_api_v1_options_greeks__ticker__get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/options/screen",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "screen_options_api_v1_options_screen_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/options/vol-smile/{ticker}",
+      "status": 404,
+      "tag": "NOT_FOUND",
+      "detail": "期权链获取失败",
+      "op_id": "get_vol_smile_api_v1_options_vol_smile__ticker__get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/options/iv-rank/{ticker}",
+      "status": 404,
+      "tag": "NOT_FOUND",
+      "detail": "期权链获取失败",
+      "op_id": "get_iv_rank_api_v1_options_iv_rank__ticker__get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/options/chain-matrix/{ticker}",
+      "status": 502,
+      "tag": "SERVER_ERR",
+      "detail": "数据源已死，无法分析：未获取到 {ticker} 的期权到期日列表 (Futu/YFinance 均无可用真实数据)",
+      "op_id": "get_option_chain_matrix_api_v1_options_chain_matrix__ticker__get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/portfolio/optimize",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "optimize_portfolio_api_v1_portfolio_optimize_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/portfolio/efficient-frontier",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "get_efficient_frontier_api_v1_portfolio_efficient_frontier_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/portfolio/compare",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "compare_models_api_v1_portfolio_compare_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/internal/health",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Missing X-Internal-Sig header",
+      "op_id": "internal_health_check_api_v1_internal_health_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/internal/cache/clear",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Missing X-Internal-Sig header",
+      "op_id": "internal_clear_cache_api_v1_internal_cache_clear_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/data-source/health",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "data_source_health_api_v1_data_source_health_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/datasource/{name}/rate-limit-analysis",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_rate_limit_analysis_api_v1_datasource__name__rate_limit_analysis_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/datasource/{name}/rate-limit-status",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_rate_limit_status_api_v1_datasource__name__rate_limit_status_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/datasource/rate-limit-overview",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_rate_limit_overview_api_v1_datasource_rate_limit_overview_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/datasource/finnhub/health",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_finnhub_health_api_v1_datasource_finnhub_health_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/datasource/health-overview",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_health_overview_api_v1_datasource_health_overview_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/datasource/{name}/health",
+      "status": 404,
+      "tag": "NOT_FOUND",
+      "detail": "unknown source: {name}",
+      "op_id": "get_source_health_api_v1_datasource__name__health_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/datasource/{name}/latency-distribution",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_latency_distribution_api_v1_datasource__name__latency_distribution_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/datasource/{name}/error-rate-trend",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_error_rate_trend_api_v1_datasource__name__error_rate_trend_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/datasource/rate-limit-heatmap",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_rate_limit_heatmap_api_v1_datasource_rate_limit_heatmap_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/datasource/{name}/availability-timeline",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "get_availability_timeline_api_v1_datasource__name__availability_timeline_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/datasource/{name}/test-link",
+      "status": 404,
+      "tag": "NOT_FOUND",
+      "detail": "unknown source: {name}",
+      "op_id": "test_datasource_link_api_v1_datasource__name__test_link_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/datasource-vote/board",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "get_vote_board_api_v1_datasource_vote_board_get"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/datasource-vote/vote",
+      "status": 401,
+      "tag": "AUTH_REQUIRED",
+      "detail": "Not authenticated",
+      "op_id": "cast_vote_api_v1_datasource_vote_vote_post"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/expert-team/analyze",
+      "status": 422,
+      "tag": "VALIDATION_ERR",
+      "detail": "请求参数校验失败: Field required",
+      "op_id": "analyze_api_v1_expert_team_analyze_post"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/expert-team/scenarios",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "list_scenarios_api_v1_expert_team_scenarios_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/expert-team/sessions",
+      "status": 200,
+      "tag": "OK",
+      "detail": "ok",
+      "op_id": "list_sessions_api_v1_expert_team_sessions_get"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/expert-team/sessions/{session_id}",
+      "status": 404,
+      "tag": "NOT_FOUND",
+      "detail": "会话不存在: {session_id}",
+      "op_id": "get_session_api_v1_expert_team_sessions__session_id__get"
+    }
+  ]
+}
