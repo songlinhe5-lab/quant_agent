@@ -46,16 +46,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # GHCR 偶发二级限流 (403 secondary rate limit)，用重试兜底，避免整 job 直接挂
-      - name: Build & push backend image
+      # GHCR 偶发二级限流 (403 secondary rate limit)，用重试兜底，避免整 job 直接挂。
+      # 方案 A：develop/PR 仅本地 build 验证编译 (--load，不推 ghcr，避免污染 :latest 语义)；
+      # push main 时才真正 --push。deploy 只拉 main 构建的镜像，develop 镜像不部署。
+      - name: Build backend image (push on main only)
         uses: nick-fields/retry@v3
         with:
           timeout_minutes: 30
           max_attempts: 3
           retry_on: error
           command: |
+            PUSH_FLAG="${{ github.ref == 'refs/heads/main' && '--push' || '--load' }}"
             docker buildx build \
-              --push \
+              $PUSH_FLAG \
               --platform linux/amd64 \
               --cache-from type=gha \
               --cache-to type=gha,mode=max \
@@ -126,28 +129,20 @@ jobs:
         run: python -m pytest -c pytest.ini --tb=short -q --log-cli-level=WARNING
 
   # ----------------------------------------------------------------
-  # 构建 data_subservice 镜像 (按节点类型拆分 extra，隔离 SDK 依赖体积)
-  #   cn      : 中国节点 (yfinance + tushare + akshare)
-  #   us      : 美西主节点 (yfinance + futu + finnhub 长连接)
-  #   us-aux  : 美西辅助节点 (仅 yfinance)
+  # 构建 data_subservice 镜像 (全量 datasource-all，单 tag :us)
+  #   所有节点共用同一镜像，能力由运行时 DS_CAPABILITIES 隔离 (未声明返回 503)。
+  #   合并前三个地域镜像体积差异仅 2~4% (407.8~424.6MB)，拆分无体积收益，
+  #   反而增加矩阵串行复杂度，故合并为单一全量镜像。
   # ----------------------------------------------------------------
+  # 全量 data-subservice 镜像（单 tag :us）。所有节点共用，能力靠运行时 DS_CAPABILITIES 隔离。
+  # 方案 A：develop/PR 仅 --load 验证编译不推 ghcr；push main 才 --push。
+  # 合并后无多镜像并发，无需 max-parallel 串行限制。
   build-data-subservice:
     needs: [compose-hygiene]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-    strategy:
-      # 串行推送，避免多个镜像并发 push 触发 GitHub GHCR 二级限流 (secondary rate limit 403)
-      max-parallel: 1
-      matrix:
-        include:
-          - ds_extra: datasource-cn
-            tag: cn
-          - ds_extra: datasource-us
-            tag: us
-          - ds_extra: datasource-us-aux
-            tag: us-aux
     steps:
       - uses: actions/checkout@v5
 
@@ -162,21 +157,22 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # GHCR 偶发二级限流 (403 secondary rate limit)，用重试兜底，避免整 job 直接挂
-      - name: Build & push data-subservice image (${{ matrix.tag }})
+      - name: Build data-subservice image (push on main only)
         uses: nick-fields/retry@v3
         with:
           timeout_minutes: 30
           max_attempts: 3
           retry_on: error
           command: |
+            PUSH_FLAG="${{ github.ref == 'refs/heads/main' && '--push' || '--load' }}"
             docker buildx build \
-              --push \
+              $PUSH_FLAG \
               --platform linux/amd64 \
               --cache-from type=gha \
               --cache-to type=gha,mode=max \
               --build-arg BUILDKIT_INLINE_CACHE=1 \
-              --build-arg DS_EXTRA=${{ matrix.ds_extra }} \
-              --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${{ matrix.tag }} \
+              --build-arg DS_EXTRA=datasource-all \
+              --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:us \
               --file ./data_subservice/Dockerfile \
               .
 
@@ -416,13 +412,14 @@ jobs:
             # ── data-subservice 镜像内网 registry 中转 ──
             # node-s1 (主节点本地子服务) 不预拉 :us, 由 docker-compose.node-s1.yml 的
             # pull_policy: always 每次 up 直接拉最新 GHCR :us (见下方 compose up)。
-            # 此处仅把北京节点需要的 :cn 推到内网 registry 供其中转; us/us-aux 美西直连 GHCR 不需中转。
-            docker pull "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:cn" \
-              || { echo "❌ 主节点从 GHCR 拉取 data-subservice:cn 失败，中止"; exit 1; }
-            docker tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:cn" "127.0.0.1:5000/quant-agent-data-subservice:cn"
-            docker push "127.0.0.1:5000/quant-agent-data-subservice:cn" \
-              || { echo "❌ data-subservice:cn 推送到本机 registry 失败 (磁盘/containerd 问题?)，中止避免从节点拉到空镜像"; exit 1; }
-            echo "✅ data-subservice:cn 已推送至本机 registry，北京节点可经内网拉取"
+            # 全量镜像合并后仅 :us 一个 tag：北京节点经内网 registry 中转 :us
+            # (跨洋直连 GHCR 慢且可能被墙); node-s2/s3/s4 美西直连 GHCR :us。
+            docker pull "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:us" \
+              || { echo "❌ 主节点从 GHCR 拉取 data-subservice:us 失败，中止"; exit 1; }
+            docker tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:us" "127.0.0.1:5000/quant-agent-data-subservice:us"
+            docker push "127.0.0.1:5000/quant-agent-data-subservice:us" \
+              || { echo "❌ data-subservice:us 推送到本机 registry 失败 (磁盘/containerd 问题?)，中止避免从节点拉到空镜像"; exit 1; }
+            echo "✅ data-subservice:us 已推送至本机 registry，北京节点可经内网拉取"
 
             # ── OPS-03: 每次 push 后回收 registry 垃圾 + 安装深度 GC cron ──
             # 逻辑已抽离至 scripts/registry-gc-install.sh (避免单 run 块超 21000 字符上限)。
@@ -506,7 +503,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # 北京从节点 (VPS_BJ)：tushare + akshare + yfinance → datasource-cn
+          # 北京从节点 (VPS_BJ)：全量镜像 :us，DS_CAPABILITIES 运行时隔离为 tushare+akshare+yfinance
           - node: bj
             host-secret: VPS_BJ_HOST
             user-secret: VPS_BJ_USER
@@ -516,12 +513,12 @@ jobs:
             ds-id: bj-slave
             ds-region: cn
             ds-caps: "tushare,akshare,yfinance"
-            ds-tag: cn
+            ds-tag: us  # 全量镜像合并后统一 :us，经内网 registry 中转
             tz: Asia/Shanghai
             creds: true
             compose: docker-compose.node-bj.yml
             env-file: .env.data-node
-          # 美西从节点1 (VPS_S2)：纯 yfinance → datasource-us-aux
+          # 美西从节点1 (VPS_S2)：DS_CAPABILITIES 运行时隔离为 yfinance → 全量 :us
           - node: s2
             host-secret: VPS_S2_HOST
             user-secret: VPS_S2_USER
@@ -531,11 +528,11 @@ jobs:
             ds-id: us-yf-s2
             ds-region: us-west
             ds-caps: "yfinance"
-            ds-tag: us-aux
+            ds-tag: us
             tz: America/Los_Angeles
             compose: docker-compose.node-s2.yml
             env-file: .env.data-node
-          # 美西从节点2 (VPS_S3)：纯 yfinance → datasource-us-aux
+          # 美西从节点2 (VPS_S3)：DS_CAPABILITIES 运行时隔离为 yfinance → 全量 :us
           - node: s3
             host-secret: VPS_S3_HOST
             user-secret: VPS_S3_USER
@@ -545,11 +542,11 @@ jobs:
             ds-id: us-yf-s3
             ds-region: us-west
             ds-caps: "yfinance"
-            ds-tag: us-aux
+            ds-tag: us
             tz: America/Los_Angeles
             compose: docker-compose.node-s3.yml
             env-file: .env.data-node
-          # 美西从节点3 (VPS_S4)：纯 yfinance → datasource-us-aux
+          # 美西从节点3 (VPS_S4)：DS_CAPABILITIES 运行时隔离为 yfinance → 全量 :us
           - node: s4
             host-secret: VPS_S4_HOST
             user-secret: VPS_S4_USER
@@ -559,7 +556,7 @@ jobs:
             ds-id: us-yf-s4
             ds-region: us-west
             ds-caps: "yfinance"
-            ds-tag: us-aux
+            ds-tag: us
             tz: America/Los_Angeles
             compose: docker-compose.node-s4.yml
             env-file: .env.data-node
@@ -633,7 +630,7 @@ jobs:
             fi
 
             # 镜像地址: 北京节点经主节点内网 registry 拉取 (避免跨洋直连 GHCR)，其余节点直连 GHCR
-            # tag 按节点能力拆分 (cn / us / us-aux)，取自 matrix.ds-tag
+            # 全量镜像合并后统一 tag=us，取自 matrix.ds-tag（bj 经内网中转，美西直连 GHCR）
             NODE="${{ matrix.node }}"
             DS_TAG="${{ matrix.ds-tag }}"
             if [ "$NODE" = "bj" ]; then
@@ -825,7 +822,7 @@ jobs:
               DS_TAG="${{ matrix.ds-tag }}"
               if ! curl -sS --max-time 10 "http://${REGISTRY_HOST}/v2/quant-agent-data-subservice/tags/list" | grep -q "\"${DS_TAG}\""; then
                 echo "❌ 主节点 registry 内缺失 data-subservice:${DS_TAG}！从节点将拉取 not found。"
-                echo "   排查: 主节点 deploy-master 应已将 cn/us/us-aux 全部推入内网 registry，"
+                echo "   排查: 主节点 deploy-master 应已将 data-subservice:us 推入内网 registry，"
                 echo "   请确认主节点 job 是否成功执行镜像搬运 (grep 'data-subservice:${DS_TAG} 已推送至本机 registry')。"
                 echo "   可手动在主节点执行: docker pull ghcr.io/songlinhe5-lab/quant_agent-data-subservice:${DS_TAG} && docker tag \\"
                 echo "     ghcr.io/songlinhe5-lab/quant_agent-data-subservice:${DS_TAG} 127.0.0.1:5000/quant-agent-data-subservice:${DS_TAG} && \\"

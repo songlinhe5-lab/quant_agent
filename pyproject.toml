@@ -59,23 +59,20 @@ dependencies = [
 
 [project.optional-dependencies]
 # 数据源 SDK（子服务节点安装，主节点走 HTTP 路由不安装）
-# 按节点地域/能力拆分为细粒度 extra，避免单镜像打全量 SDK 造成体积膨胀。
+# 全量子服务镜像：所有节点共用同一 data-subservice 镜像，节点能力由运行时
+# DS_CAPABILITIES 环境变量隔离（未声明的能力返回 503），镜像不再按地域拆分。
+# 实测三个地域镜像尺寸差异仅 2~4%（407.8~424.6MB），拆分的体积收益可忽略，
+# 反而增加 CI 矩阵复杂度（串行 push 防 GHCR 限流），故合并为单一 datasource-all。
 # 基础依赖已含 websockets>=12.0，Finnhub 长连接无需额外声明。
-datasource-cn = [
-    "yfinance",                # 美股/加密/外汇 (中国节点经 YF 辅助节点路由)
+datasource-all = [
+    "yfinance",                # 美股/加密/外汇
     "tushare>=1.4.0",          # A 股
     "akshare>=1.1.15",         # 沪深港通
-]
-datasource-us = [
-    "yfinance",                # 美股/加密/外汇
-    # futu-api 仅子服务镜像 (-data-subservice:us) 使用: backend/services/futu 已改造为
-    # 纯 HTTP 透传 facade (BE-ARCH-09), 主服务运行时绝不 import futu, 经 DataSourceRouter
-    # 转发至 data_subservice/futu_src。请勿在主服务默认环境安装此包。
+    # futu-api 仅子服务镜像使用: backend/services/futu 已改造为纯 HTTP 透传 facade
+    # (BE-ARCH-09), 主服务运行时绝不 import futu, 经 DataSourceRouter 转发至
+    # data_subservice/futu_src。请勿在主服务默认环境安装此包。
     "futu-api>=10.7.0",        # 港股/富途 (仅 data_subservice, 主服务走 HTTP 代理)
     "finnhub-python>=2.4.29",  # Finnhub REST+WebSocket (长连接实时流)
-]
-datasource-us-aux = [
-    "yfinance",                # 美西辅助节点：仅 YF，不含 futu/finnhub
 ]
 # 本地向量化模型（可选，默认用 API 替代）
 local-embedding = [
