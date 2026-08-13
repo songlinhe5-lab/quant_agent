@@ -133,6 +133,12 @@ _AK_STALE_TTL = int(os.getenv("AKSHARE_STALE_TTL", "86400"))  # 默认 24h
 _AK_CACHE_PREFIX = "quant:cache:akshare"
 _AK_CACHE_TTL = int(os.getenv("AKSHARE_CACHE_TTL", "1800"))  # 默认 30 分钟
 
+# BE-ARCH-08i: action 级熔断隔离配置
+# action 连续普通失败达到该阈值 → 仅熔断该 action（不影响同节点其它 action）
+_ACTION_MAX_FAILURES = int(os.getenv("DATASOURCE_ACTION_MAX_FAILURES", "3"))
+# 同时处于熔断态的不同 action 数量达到该阈值 → 判定为进程级故障，整节点熔断兜底
+_ACTION_BREAKER_NODE_THRESHOLD = int(os.getenv("DATASOURCE_ACTION_NODE_THRESHOLD", "2"))
+
 
 @dataclass
 class DataSourceNode:
@@ -153,6 +159,12 @@ class DataSourceNode:
     # 半开自愈探针状态（RL-14: 熔断后自动探活恢复，避免单节点源永久失效）
     last_probe_at: float = 0.0
     probe_consecutive_failures: int = 0
+    # ── action 级熔断隔离（BE-ARCH-08i）──────────────────────────
+    # 单节点 pin 源承载多个 action，某 action 连续失败不应整节点熔断（误杀其它 action）。
+    # action_errors: 每个 action 的连续普通失败计数（限流类不计入）
+    # action_breaker_until: 每个 action 的熔断冷却截止时间戳
+    action_errors: Dict[str, int] = field(default_factory=dict)
+    action_breaker_until: Dict[str, float] = field(default_factory=dict)
 
 
 class DataSourceRouter:
@@ -201,6 +213,8 @@ class DataSourceRouter:
             node.status = "healthy"
             node.probe_consecutive_failures = 0
             node.last_probe_at = 0.0
+            node.action_errors.clear()
+            node.action_breaker_until.clear()
         logger.info(f"[Router] 熔断状态已重置 (部署重置): nodes={list(self._nodes.keys())}")
 
     def start_probing(self) -> None:
@@ -676,12 +690,19 @@ class DataSourceRouter:
         success: bool,
         error: str = "",
         error_category: ErrorCategory = ErrorCategory.NORMAL,
+        action: Optional[str] = None,
     ):
         """
-        更新节点状态。
+        更新节点状态（BE-ARCH-08i: action 级熔断隔离 + 节点级兜底）。
 
-        关键区分：限流类错误不计入熔断器失败计数，触发独立退避机制。
-        普通错误才走标准熔断器 CLOSED → OPEN 状态机。
+        关键区分：
+        - 限流类错误不计入任何熔断计数，触发独立退避机制。
+        - 普通错误按 action 维度计数：
+          * 单 action 连续失败 ≥ _ACTION_MAX_FAILURES → 仅熔断该 action
+            （不影响同节点其它 action，避免单节点 pin 源一处失败误杀全部能力）。
+          * 同时处于熔断态的不同 action 数 ≥ _ACTION_BREAKER_NODE_THRESHOLD
+            → 判定为进程级故障（子服务崩/HMAC 错/网络断），整节点熔断兜底。
+        - 成功：重置对应 action 计数；若整节点成功，重置全部。
         """
         async with self._lock:
             node = self._nodes.get(node_name)
@@ -693,20 +714,49 @@ class DataSourceRouter:
             if success:
                 node.error_count = 0
                 node.status = "healthy"
-            else:
-                # 限流类错误不计入熔断器失败计数
-                if error_category == ErrorCategory.NORMAL:
-                    node.error_count += 1
-                    if node.error_count >= 3:
+                if action is not None:
+                    node.action_errors.pop(action, None)
+                    node.action_breaker_until.pop(action, None)
+                else:
+                    node.action_errors.clear()
+                    node.action_breaker_until.clear()
+                return
+
+            # 限流类错误不计入熔断器失败计数
+            if error_category != ErrorCategory.NORMAL:
+                logger.info(
+                    f"[RateLimit] 节点 {node_name} 限流 ({error_category.value}): {error} — 不计入熔断器，触发独立退避"
+                )
+                return
+
+            # 普通错误：action 级计数
+            action_key = action or "__node__"
+            node.error_count += 1
+            if action is not None:
+                cnt = node.action_errors.get(action_key, 0) + 1
+                node.action_errors[action_key] = cnt
+                if cnt >= _ACTION_MAX_FAILURES:
+                    node.action_breaker_until[action_key] = time.time() + get_cooldown_seconds()
+                    logger.warning(
+                        f"[CircuitBreaker] 节点 {node_name} action={action} 连续失败 {cnt} 次，"
+                        f"触发 action 级熔断 (冷却 {get_cooldown_seconds():.0f}s)"
+                    )
+                    # 节点级兜底：统计当前处于熔断态的不同 action 数
+                    now = time.time()
+                    broken_actions = {k for k, until in node.action_breaker_until.items() if now < until}
+                    if len(broken_actions) >= _ACTION_BREAKER_NODE_THRESHOLD:
                         node.status = "unhealthy"
                         node.circuit_breaker_until = time.time() + get_cooldown_seconds()
-                        logger.warning(f"[CircuitBreaker] 节点 {node_name} 触发熔断: {error}")
-                else:
-                    # 限流类错误：记录日志但不触发熔断
-                    logger.info(
-                        f"[RateLimit] 节点 {node_name} 限流 ({error_category.value}): {error} "
-                        f"— 不计入熔断器，触发独立退避"
-                    )
+                        logger.warning(
+                            f"[CircuitBreaker] 节点 {node_name} 多个 action 同时熔断 "
+                            f"({sorted(broken_actions)})，判定进程级故障，整节点熔断兜底"
+                        )
+            else:
+                # 无 action 信息（旧调用点）：退化为节点级熔断，保持原行为
+                if node.error_count >= 3:
+                    node.status = "unhealthy"
+                    node.circuit_breaker_until = time.time() + get_cooldown_seconds()
+                    logger.warning(f"[CircuitBreaker] 节点 {node_name} 触发熔断: {error}")
 
     async def _select_node(self, capability: str) -> Optional[DataSourceNode]:
         """
@@ -740,6 +790,22 @@ class DataSourceRouter:
         if node.status == "healthy":
             return True
         return time.time() >= node.circuit_breaker_until
+
+    @staticmethod
+    def _action_usable(node: "DataSourceNode", action: str) -> bool:
+        """BE-ARCH-08i: action 级熔断门控。
+
+        单节点 pin 源某 action 被单独熔断后，仅该 action 的请求被拦截，
+        同节点其它 action 照常放行。action 冷却到期后允许半开探测（重试成功即恢复）。
+
+        节点级熔断（status != healthy）仍由 `_pin_node_usable` 统一门控，
+        本函数只负责 action 维度，需与 `_pin_node_usable` 联合使用：
+            if not (_pin_node_usable(node) and _action_usable(node, action)): ...
+        """
+        if action is None:
+            return True
+        until = node.action_breaker_until.get(action, 0.0)
+        return time.time() >= until
 
     def _maybe_offline(self, source: str, action: str = "", **params) -> Optional[Dict[str, Any]]:
         """SVC-06: 离线 stub 拦截。
@@ -836,20 +902,26 @@ class DataSourceRouter:
             return offline
 
         remote_node = self._nodes.get("akshare_remote")
-        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
+        remote_action = action.upper()
+        if (
+            not self._enabled
+            or not remote_node
+            or not self._pin_node_usable(remote_node)
+            or not self._action_usable(remote_node, remote_action)
+        ):
             logger.warning("[AKShare] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy AKShare remote node (local SDK disabled)"}
 
         try:
             payload = {
                 "source": "akshare",
-                "action": action.upper(),
+                "action": remote_action,
                 "params": self._normalize_outbound_params(dict(kwargs)),
             }
             result = await self._send_request(remote_node, "akshare", payload)
 
             if result.get("status") == "success":
-                await self._update_node_status(remote_node.name, success=True)
+                await self._update_node_status(remote_node.name, success=True, action=remote_action)
                 # 成功响应存档，供监控侧识别降级（不再回退本地）
                 await self._save_akshare_stale(action, kwargs, result)
                 await self._save_akshare_cache(action, kwargs, result)
@@ -862,11 +934,13 @@ class DataSourceRouter:
             if result.get("error_category") == "UNSUPPORTED":
                 return result
 
-            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+            await self._update_node_status(
+                remote_node.name, success=False, error=str(result.get("message")), action=remote_action
+            )
 
         except Exception as e:
             logger.warning(f"[AKShare] 远程节点失败：{remote_node.name}, {action}, {str(e)}")
-            await self._update_node_status(remote_node.name, success=False, error=str(e))
+            await self._update_node_status(remote_node.name, success=False, error=str(e), action=remote_action)
 
         # BE-ARCH-08f: 远程失败不返回裸错，先尝试 STALE 缓存降级 (DIST-19)。
         # _get_akshare_stale 命中即打 degraded/stale_source 标记（并已上报指标）。
@@ -889,14 +963,19 @@ class DataSourceRouter:
             return offline
 
         remote_node = self._nodes.get("tushare_remote")
-        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
-            logger.warning("[Tushare] 远程节点不可用（后端已移除本地兜底）")
-            return {"success": False, "message": "No healthy Tushare remote node (local adapter disabled)"}
-
         remote_action = _TS_ACTION_MAP.get(action.lower())
         if remote_action is None:
             logger.warning(f"[Tushare] action={action} 远程子服务不支持，本地兜底已移除")
             return {"success": False, "message": f"unsupported tushare action (remote-only): {action}"}
+
+        if (
+            not self._enabled
+            or not remote_node
+            or not self._pin_node_usable(remote_node)
+            or not self._action_usable(remote_node, remote_action)
+        ):
+            logger.warning("[Tushare] 远程节点不可用（后端已移除本地兜底）")
+            return {"success": False, "message": "No healthy Tushare remote node (local adapter disabled)"}
 
         try:
             payload = {
@@ -906,12 +985,14 @@ class DataSourceRouter:
             }
             result = await self._send_request(remote_node, "tushare", payload)
             if result.get("success"):
-                await self._update_node_status(remote_node.name, success=True)
+                await self._update_node_status(remote_node.name, success=True, action=remote_action)
                 return result
-            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+            await self._update_node_status(
+                remote_node.name, success=False, error=str(result.get("message")), action=remote_action
+            )
         except Exception as e:
             logger.warning(f"[Tushare] 远程节点失败: {remote_node.name}, {action}, {str(e)}")
-            await self._update_node_status(remote_node.name, success=False, error=str(e))
+            await self._update_node_status(remote_node.name, success=False, error=str(e), action=remote_action)
 
         logger.warning("[Tushare] 远程节点失败（后端已移除本地兜底）")
         return {"success": False, "message": "Tushare remote node failed (local adapter disabled)"}
@@ -935,7 +1016,12 @@ class DataSourceRouter:
         norm_params = self._futu_normalize_params(remote_action, params)
 
         remote_node = self._nodes.get("futu_master")
-        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
+        if (
+            not self._enabled
+            or not remote_node
+            or not self._pin_node_usable(remote_node)
+            or not self._action_usable(remote_node, remote_action)
+        ):
             logger.warning("[Futu] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy Futu remote node (local SDK disabled)"}
 
@@ -944,6 +1030,7 @@ class DataSourceRouter:
         # 返回 error, 此前 ACCOUNT_INFO 失败会触发 futu_master 全局熔断 → 连 QUOTE 行情
         # 一起被误杀, 监控却只显示行情 CONNECTED, 形成隐蔽故障。
         # 现约定: 账户/交易类 action 失败不入熔断器失败计数(避免误伤行情), 仅记录日志。
+        # (BE-ARCH-08i 下, 行情类 action 间也已按 action 维度隔离, 交易类豁免是额外一层保护)
         _FUTU_TRADE_ACTIONS = {
             "ACCOUNT_INFO",
             "PLACE_ORDER",
@@ -961,7 +1048,7 @@ class DataSourceRouter:
             }
             result = await self._send_request(remote_node, "futu", payload)
             if result.get("status") == "success":
-                await self._update_node_status(remote_node.name, success=True)
+                await self._update_node_status(remote_node.name, success=True, action=remote_action)
                 # 直接透传子服务信封 (含 status/data 字段)
                 return result
             if is_trade_action:
@@ -970,13 +1057,15 @@ class DataSourceRouter:
                     f"[Futu] 账户/交易类 action={remote_action} 失败(不触发熔断, 隔离行情通道): {result.get('message')}"
                 )
                 return result
-            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+            await self._update_node_status(
+                remote_node.name, success=False, error=str(result.get("message")), action=remote_action
+            )
         except Exception as e:
             logger.warning(f"[Futu] 远程节点失败: {remote_node.name}, {remote_action}, {str(e)}")
             if is_trade_action:
                 # 同上: 交易类异常不误伤行情熔断
                 return {"status": "error", "message": str(e), "trade_action_skipped_breaker": True}
-            await self._update_node_status(remote_node.name, success=False, error=str(e))
+            await self._update_node_status(remote_node.name, success=False, error=str(e), action=remote_action)
 
         logger.warning("[Futu] 远程节点失败（后端已移除本地兜底）")
         return {"status": "error", "message": "Futu remote node failed (local SDK disabled)"}
@@ -1038,7 +1127,12 @@ class DataSourceRouter:
         norm_params = self._normalize_outbound_params(dict(params))
 
         remote_node = self._nodes.get("fmp_master")
-        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
+        if (
+            not self._enabled
+            or not remote_node
+            or not self._pin_node_usable(remote_node)
+            or not self._action_usable(remote_node, remote_action)
+        ):
             logger.warning("[FMP] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy FMP remote node (local fallback disabled)"}
 
@@ -1050,7 +1144,7 @@ class DataSourceRouter:
             }
             result = await self._send_request(remote_node, "fmp", payload)
             if result.get("status") == "success":
-                await self._update_node_status(remote_node.name, success=True)
+                await self._update_node_status(remote_node.name, success=True, action=remote_action)
                 # 配额耗尽错误已带 error_category=quota, 透传给业务侧
                 if result.get("error_category") == "quota":
                     await self._update_node_status(
@@ -1069,12 +1163,15 @@ class DataSourceRouter:
                     error_category=ErrorCategory(ec)
                     if ec in {e.value for e in ErrorCategory}
                     else ErrorCategory.NORMAL,
+                    action=remote_action,
                 )
             else:
-                await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+                await self._update_node_status(
+                    remote_node.name, success=False, error=str(result.get("message")), action=remote_action
+                )
         except Exception as e:
             logger.warning(f"[FMP] 远程节点失败: {remote_node.name}, {remote_action}, {str(e)}")
-            await self._update_node_status(remote_node.name, success=False, error=str(e))
+            await self._update_node_status(remote_node.name, success=False, error=str(e), action=remote_action)
 
         logger.warning("[FMP] 远程节点失败（后端已移除本地兜底）")
         return {"status": "error", "message": "FMP remote node failed (local fallback disabled)"}
@@ -1092,7 +1189,12 @@ class DataSourceRouter:
 
         remote_action = _FINNHUB_ACTION_MAP.get(action.lower(), action.upper())
         remote_node = self._nodes.get("finnhub_master")
-        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
+        if (
+            not self._enabled
+            or not remote_node
+            or not self._pin_node_usable(remote_node)
+            or not self._action_usable(remote_node, remote_action)
+        ):
             logger.warning("[Finnhub] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy Finnhub remote node (local SDK disabled)"}
 
@@ -1104,7 +1206,7 @@ class DataSourceRouter:
             }
             result = await self._send_request(remote_node, "finnhub", payload)
             if result.get("status") == "success":
-                await self._update_node_status(remote_node.name, success=True)
+                await self._update_node_status(remote_node.name, success=True, action=remote_action)
                 return result
             # BE-ARCH-08d: 失败但可能是限流类 (429/ip_blocked), 透传 error_category
             ec = result.get("error_category")
@@ -1116,12 +1218,15 @@ class DataSourceRouter:
                     error_category=ErrorCategory(ec)
                     if ec in {e.value for e in ErrorCategory}
                     else ErrorCategory.NORMAL,
+                    action=remote_action,
                 )
             else:
-                await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+                await self._update_node_status(
+                    remote_node.name, success=False, error=str(result.get("message")), action=remote_action
+                )
         except Exception as e:
             logger.warning(f"[Finnhub] 远程节点失败: {remote_node.name}, {remote_action}, {str(e)}")
-            await self._update_node_status(remote_node.name, success=False, error=str(e))
+            await self._update_node_status(remote_node.name, success=False, error=str(e), action=remote_action)
 
         logger.warning("[Finnhub] 远程节点失败（后端已移除本地兜底）")
         return {"status": "error", "message": "Finnhub remote node failed (local SDK disabled)"}
@@ -1137,24 +1242,32 @@ class DataSourceRouter:
             return offline
 
         remote_node = self._nodes.get("fred_master")
-        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
+        remote_action = action.upper()
+        if (
+            not self._enabled
+            or not remote_node
+            or not self._pin_node_usable(remote_node)
+            or not self._action_usable(remote_node, remote_action)
+        ):
             logger.warning("[FRED] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy FRED remote node (local service disabled)"}
 
         try:
             payload = {
                 "source": "fred",
-                "action": action.upper(),
+                "action": remote_action,
                 "params": dict(params),
             }
             result = await self._send_request(remote_node, "fred", payload)
             if result.get("status") == "success":
-                await self._update_node_status(remote_node.name, success=True)
+                await self._update_node_status(remote_node.name, success=True, action=remote_action)
                 return result
-            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+            await self._update_node_status(
+                remote_node.name, success=False, error=str(result.get("message")), action=remote_action
+            )
         except Exception as e:
             logger.warning(f"[FRED] 远程节点失败: {remote_node.name}, {action}, {str(e)}")
-            await self._update_node_status(remote_node.name, success=False, error=str(e))
+            await self._update_node_status(remote_node.name, success=False, error=str(e), action=remote_action)
 
         logger.warning("[FRED] 远程节点失败（后端已移除本地兜底）")
         return {"status": "error", "message": "FRED remote node failed (local service disabled)"}
@@ -1170,24 +1283,32 @@ class DataSourceRouter:
             return offline
 
         remote_node = self._nodes.get("dbnomics_master")
-        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
+        remote_action = action.upper()
+        if (
+            not self._enabled
+            or not remote_node
+            or not self._pin_node_usable(remote_node)
+            or not self._action_usable(remote_node, remote_action)
+        ):
             logger.warning("[DBnomics] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy DBnomics remote node (local service disabled)"}
 
         try:
             payload = {
                 "source": "dbnomics",
-                "action": action.upper(),
+                "action": remote_action,
                 "params": dict(params),
             }
             result = await self._send_request(remote_node, "dbnomics", payload)
             if result.get("status") == "success":
-                await self._update_node_status(remote_node.name, success=True)
+                await self._update_node_status(remote_node.name, success=True, action=remote_action)
                 return result
-            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+            await self._update_node_status(
+                remote_node.name, success=False, error=str(result.get("message")), action=remote_action
+            )
         except Exception as e:
             logger.warning(f"[DBnomics] 远程节点失败: {remote_node.name}, {action}, {str(e)}")
-            await self._update_node_status(remote_node.name, success=False, error=str(e))
+            await self._update_node_status(remote_node.name, success=False, error=str(e), action=remote_action)
 
         logger.warning("[DBnomics] 远程节点失败（后端已移除本地兜底）")
         return {"status": "error", "message": "DBnomics remote node failed (local service disabled)"}
@@ -1203,24 +1324,32 @@ class DataSourceRouter:
             return offline
 
         remote_node = self._nodes.get("rbi_master")
-        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
+        remote_action = action.upper()
+        if (
+            not self._enabled
+            or not remote_node
+            or not self._pin_node_usable(remote_node)
+            or not self._action_usable(remote_node, remote_action)
+        ):
             logger.warning("[RBI] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy RBI remote node (local service disabled)"}
 
         try:
             payload = {
                 "source": "rbi",
-                "action": action.upper(),
+                "action": remote_action,
                 "params": dict(params),
             }
             result = await self._send_request(remote_node, "rbi", payload)
             if result.get("status") == "success":
-                await self._update_node_status(remote_node.name, success=True)
+                await self._update_node_status(remote_node.name, success=True, action=remote_action)
                 return result
-            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+            await self._update_node_status(
+                remote_node.name, success=False, error=str(result.get("message")), action=remote_action
+            )
         except Exception as e:
             logger.warning(f"[RBI] 远程节点失败: {remote_node.name}, {action}, {str(e)}")
-            await self._update_node_status(remote_node.name, success=False, error=str(e))
+            await self._update_node_status(remote_node.name, success=False, error=str(e), action=remote_action)
 
         logger.warning("[RBI] 远程节点失败（后端已移除本地兜底）")
         return {"status": "error", "message": "RBI remote node failed (local service disabled)"}
@@ -1236,7 +1365,13 @@ class DataSourceRouter:
             return offline
 
         remote_node = self._nodes.get("search_master")
-        if not self._enabled or not remote_node or not self._pin_node_usable(remote_node):
+        # search 节点承载 tavily/bocha/jina 三个源, 以 source 作为 action 维度隔离
+        if (
+            not self._enabled
+            or not remote_node
+            or not self._pin_node_usable(remote_node)
+            or not self._action_usable(remote_node, source)
+        ):
             logger.warning(f"[Search/{source}] 远程节点不可用（后端已移除直连）")
             return {
                 "status": "error",
@@ -1251,12 +1386,14 @@ class DataSourceRouter:
             }
             result = await self._send_request(remote_node, source, payload)
             if result.get("status") == "success":
-                await self._update_node_status(remote_node.name, success=True)
+                await self._update_node_status(remote_node.name, success=True, action=source)
                 return result
-            await self._update_node_status(remote_node.name, success=False, error=str(result.get("message")))
+            await self._update_node_status(
+                remote_node.name, success=False, error=str(result.get("message")), action=source
+            )
         except Exception as e:
             logger.warning(f"[Search/{source}] 远程节点失败: {remote_node.name}, {str(e)}")
-            await self._update_node_status(remote_node.name, success=False, error=str(e))
+            await self._update_node_status(remote_node.name, success=False, error=str(e), action=source)
 
         logger.warning(f"[Search/{source}] 远程节点失败（后端已移除直连）")
         return {"status": "error", "message": f"Search remote node failed (direct API disabled) source={source}"}
@@ -1340,6 +1477,11 @@ class DataSourceRouter:
             throttler = rate_limit_registry.get_throttler(name)
             throttle_status = throttler.get_status()
 
+            # BE-ARCH-08i: 暴露 action 级熔断状态（当前处于熔断冷却期的 action + 剩余秒数）
+            action_breakers = {
+                action: max(0, int(until - now)) for action, until in node.action_breaker_until.items() if until > now
+            }
+
             status["nodes"][name] = {
                 "name": node.name,
                 "url": node.url,
@@ -1349,6 +1491,9 @@ class DataSourceRouter:
                 "capabilities": node.capabilities,
                 "error_count": node.error_count,
                 "cooldown_remaining": max(0, int(node.circuit_breaker_until - now)),
+                # BE-ARCH-08i: action 级熔断状态（仅含冷却未到期的 action）
+                "action_breakers": action_breakers,
+                "action_error_counts": dict(node.action_errors),
                 # RL-13: 限流压力信息
                 "is_throttled": throttle_status.is_throttled,
                 "consecutive_rate_limits": throttle_status.consecutive_rate_limits,
