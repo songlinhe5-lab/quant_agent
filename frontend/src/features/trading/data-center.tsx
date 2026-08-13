@@ -72,9 +72,9 @@ export function DataCenterModule() {
         setFetching(true)
         // 💡 优化：直接调用后端聚合好的大盘接口，同时包含日历、财报及大模型推演结果
         const [dashRes, flowRes, newsRes] = await Promise.allSettled([
-          apiClient.get('/api/v1/macro/dashboard'),
-          apiClient.get('/api/v1/macro/capital-flow'),
-          apiClient.get('/api/v1/macro/news?limit=50')
+          apiClient.get('/macro/dashboard'),
+          apiClient.get('/macro/capital-flow'),
+          apiClient.get('/macro/news?limit=50')
         ])
 
         if (!isMounted) return

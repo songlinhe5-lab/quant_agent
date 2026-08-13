@@ -65,12 +65,14 @@ def _detect_market(ticker: str) -> str:
 
 
 # 市场感知的源优先级（QUOTE / HISTORY 报价类 action）。
-# 策略：Futu 真实报价首选；美股 Finnhub 备选；A股/港股 AKShare/Tushare 备选。
-# 仅列出声明了对应 action 能力的源，顺序即降级顺序。
+# 策略（2026-08-14）：Futu 真实报价首选（低延迟、港股原生覆盖好）；
+# yfinance 经独立 YF 辅节点远程，作为行情兜底末位（比 futu 更"永远在线"，
+# 一旦 Futu OpenD 未起可自动降级）；美股 Finnhub 备选、A股 AKShare/Tushare 备选。
+# 仅列出声明了对应 action 能力的源，顺序即降级顺序（首=优先，末=兜底）。
 _MARKET_QUOTE_PREFERENCE: dict[str, list[str]] = {
-    "US": ["futu", "finnhub", "yfinance", "akshare"],
-    "HK": ["futu", "akshare", "yfinance"],  # Finnhub 免费版无港股报价，排除
-    "CN": ["futu", "akshare", "tushare"],  # A股走 AKShare/Tushare
+    "US": ["futu", "finnhub", "akshare", "yfinance"],  # yfinance 美股行情兜底
+    "HK": ["futu", "akshare", "yfinance"],  # Finnhub 免费版无港股报价，排除；yfinance 末位兜底
+    "CN": ["futu", "akshare", "tushare"],  # A股走 AKShare/Tushare，yfinance 非 A股源不加
 }
 
 # 新闻类 action 的源优先级：Finnhub 是美股新闻核心数据源，首选；

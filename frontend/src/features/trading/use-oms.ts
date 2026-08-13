@@ -37,7 +37,7 @@ export function useOms() {
   // 💡 探测 Futu OpenD 连接状态（供持仓空态区分"未连接" vs "真·0 仓"）
   const fetchFutuStatus = async () => {
     try {
-      const res = await apiClient.get('/api/v1/futu/source')
+      const res = await apiClient.get('/futu/source')
       const local = res?.data?.local
       if (local) {
         setFutuStatus({
