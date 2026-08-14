@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import { TrendingUp, Loader2, Clock, CalendarDays } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -288,6 +288,28 @@ export function DataCenterModule() {
     )
   }
 
+  // 分区内容存在性判定：区内有有效内容才显示区标 (避免空区标误导，对齐 PROD 零幻觉红线)
+  const shortSellingHasContent = useMemo(() => {
+    const marginOk = (marginData || []).some(
+      (mk: any) => [mk.financing_balance, mk.securities_balance].some((n: any) => n != null && !Number.isNaN(n)),
+    )
+    const shortOk =
+      !!usShortInterest &&
+      usShortInterestStatus !== 'error' &&
+      [usShortInterest.short_sale_volume, usShortInterest.total_volume, usShortInterest.short_volume_ratio, usShortInterest.short_interest_shares, usShortInterest.short_interest_ratio].some((v: any) => v != null && !Number.isNaN(v))
+    const sectorOk = !!sectorFlowData && !!(
+      sectorFlowData.a_share?.data || sectorFlowData.hk?.data || sectorFlowData.us?.data
+    )
+    return marginOk || shortOk || sectorOk
+  }, [marginData, usShortInterest, usShortInterestStatus, sectorFlowData])
+
+  const sentimentHasContent = useMemo(() => {
+    const vixOk = !!assets.find((a: any) => a.symbol === 'VIX')
+    const sentOk = !!sentimentInd && Object.keys(sentimentInd).length > 0
+    const radarOk = (radar?.length ?? 0) > 0
+    return vixOk || sentOk || radarOk
+  }, [assets, sentimentInd, radar])
+
   return (<div className="space-y-2.5">
     {/* Title */}
     <div className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-sky-500 dark:bg-sky-400" /><h1 className="text-base font-bold tracking-tight">数据中心与宏观</h1><span className="text-[10px] font-mono text-muted-foreground border border-border/50 rounded px-1.5 py-0.5">Macro Intelligence</span>{fetching && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground ml-2" />}{last && <div className="ml-auto flex items-center gap-1.5 text-[10px] font-mono text-muted-foreground bg-secondary/50 border border-border/30 px-2 py-1 rounded"><Clock className="h-3 w-3" /><span>{last}</span></div>}</div>
@@ -300,23 +322,31 @@ export function DataCenterModule() {
     <>
     {/* 资金流 */}
     <CapitalFlowPanel data={capitalFlows} />
-    {/* ─────────── 卖空区 ─────────── */}
-    <SectionLabel label="卖空区" hint="Margin / Short Interest" tone="amber" />
-    {/* 融资融券余额（A股/港股） */}
-    <MarginTradingPanel data={marginData} status={marginStatus} lastUpdated={last} />
-    {/* 美股做空指标（CBOE/FINRA，与融资融券拆开独立分区） */}
-    <ShortInterestPanel data={usShortInterest} status={usShortInterestStatus} lastUpdated={last} />
-    {/* 板块资金流向 */}
-    {sectorFlowData && <SectorFlowPanel data={sectorFlowData} status={sectorFlowStatus} />}
+    {/* ─────────── 卖空区 (区内有内容才显示区标) ─────────── */}
+    {shortSellingHasContent && (
+      <>
+        <SectionLabel label="卖空区" hint="Margin / Short Interest" tone="amber" />
+        {/* 融资融券余额（A股/港股） */}
+        <MarginTradingPanel data={marginData} status={marginStatus} lastUpdated={last} />
+        {/* 美股做空指标（CBOE/FINRA，与融资融券拆开独立分区） */}
+        <ShortInterestPanel data={usShortInterest} status={usShortInterestStatus} lastUpdated={last} />
+        {/* 板块资金流向 */}
+        {sectorFlowData && <SectorFlowPanel data={sectorFlowData} status={sectorFlowStatus} />}
+      </>
+    )}
     {/* ─────────── 大类资产走势 ─────────── */}
     <SectionLabel label="大类资产走势" hint="Asset Prices" tone="sky" />
     <div className="glass-card rounded-lg overflow-hidden"><div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2"><TrendingUp className="h-3.5 w-3.5 text-muted-foreground" /><span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">大类资产走势</span><MarketClocks /></div><div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6 gap-2 p-2 bg-slate-50/50 dark:bg-black/10">{assets.filter((a: any) => a.symbol !== 'VIX').map((a: any) => (<AssetButton key={a.symbol} asset={a} />))}</div></div>
-    {/* ─────────── 情绪区 ─────────── */}
-    <SectionLabel label="情绪区" hint="VIX · Sentiment · Risk Radar" tone="violet" />
-    <div className="grid grid-cols-1 lg:grid-cols-[220px_240px] xl:grid-cols-[240px_260px] gap-2.5">
-      <MarketSentimentPanel vixData={assets.find((a: any) => a.symbol === 'VIX')} sentimentInd={sentimentInd} />
-      <MacroRiskRadar radar={radar} radarInfo={radarInfo} setRadarInfo={setRadarInfo} />
-    </div>
+    {/* ─────────── 情绪区 (区内有内容才显示区标) ─────────── */}
+    {sentimentHasContent && (
+      <>
+        <SectionLabel label="情绪区" hint="VIX · Sentiment · Risk Radar" tone="violet" />
+        <div className="grid grid-cols-1 lg:grid-cols-[220px_240px] xl:grid-cols-[240px_260px] gap-2.5">
+          <MarketSentimentPanel vixData={assets.find((a: any) => a.symbol === 'VIX')} sentimentInd={sentimentInd} />
+          <MacroRiskRadar radar={radar} radarInfo={radarInfo} setRadarInfo={setRadarInfo} />
+        </div>
+      </>
+    )}
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
       {/* 经济日历 */}
       <EconomicCalendar
