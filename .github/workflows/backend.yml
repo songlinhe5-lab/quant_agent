@@ -28,9 +28,11 @@ jobs:
 
   # ----------------------------------------------------------------
   # 构建主应用镜像 (US-MASTER)
+  #   needs: test-backend 作为构建门禁 —— 单测不过则不 build 不推 GHCR，
+  #   避免"坏代码进 GHCR"（此前 build 与 test 并行，坏镜像先被 push 污染 registry）。
   # ----------------------------------------------------------------
   build:
-    needs: [compose-hygiene]
+    needs: [compose-hygiene, test-backend]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -107,26 +109,38 @@ jobs:
   # ----------------------------------------------------------------
   # 单元回归测试: 主服务 backend/tests
   #   自包含 (conftest 强制 SQLite + Mock Redis)，无需真实 DB/Redis 服务。
-  #   作为 deploy-master 的合并门禁 (merge gate)。
+  #   作为 build/deploy-master 的合并门禁 (merge gate)。
+  #   push main：镜像已由 PR 阶段 build 并测试过，此处跳过 pytest 快速成功（保持 job
+  #   success 而非 skipped，否则 needs 它的 build/deploy 会连带被 skip）。
   # ----------------------------------------------------------------
   test-backend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
+      - name: Skip on main push (PR already tested)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "push main: 单测已在 PR 阶段跑过，跳过"
+          exit 0
+
       - name: Install uv
+        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
 
       - name: Set up Python
+        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
         run: uv python install
 
       - name: Sync dependencies
+        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
         run: uv sync --all-extras
 
       - name: Run backend unit tests
         # CI 无 OTel collector(4318)，禁用 SDK 避免 trace 导出无限重试拖垮 job
+        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
         env:
           OTEL_SDK_DISABLED: "true"
         run: uv run pytest backend/tests -p no:cacheprovider --tb=short -q --log-cli-level=WARNING
@@ -142,13 +156,21 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Skip on main push (PR already tested)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "push main: 单测已在 PR 阶段跑过，跳过"
+          exit 0
+
       - name: Set up Python
+        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
 
       - name: Install data_subservice dependencies
+        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
         run: |
           python -m pip install --upgrade pip
           # 运行时依赖 (含 tushare/futu/akshare 等重型 SDK)
@@ -159,6 +181,7 @@ jobs:
           pip install pytest pytest-asyncio pytest-mock pytest-env
 
       - name: Run data_subservice unit tests
+        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
         working-directory: data_subservice
         # CI 无 OTel collector(4318)，禁用 SDK 避免 trace 导出无限重试
         env:
@@ -175,7 +198,8 @@ jobs:
   # 方案 A：develop/PR 仅 --load 验证编译不推 ghcr；push main 才 --push。
   # 合并后无多镜像并发，无需 max-parallel 串行限制。
   build-data-subservice:
-    needs: [compose-hygiene]
+    # needs: test-data-subservice 作为构建门禁 —— 子服务单测不过则不 build 不推 GHCR
+    needs: [compose-hygiene, test-data-subservice]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -282,6 +306,12 @@ jobs:
         run: |
           ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<'EOF'
             set -e
+
+            # 关键：heredoc 为引号版 <<'EOF'，本地 runner 的 step env 不会注入远程 shell。
+            # 必须在此显式 export DEPLOY_SHA（Actions 表达式在 YAML 编译期已渲染为字面量，
+            # 不受 heredoc 引号影响），否则远程 ${DEPLOY_SHA} 为空 → IMAGE 拼成 "quant_agent:" invalid format。
+            export DEPLOY_SHA='${{ needs.build.outputs.deploy_sha }}'
+
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             cd /opt/quant-agent
 
