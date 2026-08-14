@@ -250,6 +250,17 @@ class DataSourceRouter:
                 "数据子服务会拒绝所有未签名请求 (403)，请先配置该密钥 (需与子服务侧一致)。"
             )
 
+        # [DIAG-SEC] 启动期诊断：打印实际生效的 HMAC 密钥前几位，定位密钥注入时序问题
+        # （若运行时 env 未注入导致用默认值，则与子服务侧密钥不一致 → 全部请求 403/熔断）。
+        # 仅打印前缀，绝不泄露完整密钥。
+        _secret_preview = (self._hmac_secret[:6] + "…") if self._hmac_secret else "<EMPTY>"
+        logger.warning(
+            "[DIAG-SEC] DataSourceRouter init: _enabled=%s, _hmac_secret[:6]=%s, len=%d",
+            self._enabled,
+            _secret_preview,
+            len(self._hmac_secret),
+        )
+
         self._init_nodes()
         # 💡 FIX-275: 启动期自检, 捕获 REMOTE_URL 端口配错指向主服务自身的典型故障
         # (如 akshare/fred 误配成 :8000 而非子服务 :8001, 导致静默 404 / connection refused)。
