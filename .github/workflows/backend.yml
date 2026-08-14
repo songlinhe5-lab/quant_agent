@@ -28,9 +28,11 @@ jobs:
 
   # ----------------------------------------------------------------
   # 构建主应用镜像 (US-MASTER)
+  #   needs: test-backend 作为构建门禁 —— 单测不过则不 build 不推 GHCR，
+  #   避免"坏代码进 GHCR"（此前 build 与 test 并行，坏镜像先被 push 污染 registry）。
   # ----------------------------------------------------------------
   build:
-    needs: [compose-hygiene]
+    needs: [compose-hygiene, test-backend]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -175,7 +177,8 @@ jobs:
   # 方案 A：develop/PR 仅 --load 验证编译不推 ghcr；push main 才 --push。
   # 合并后无多镜像并发，无需 max-parallel 串行限制。
   build-data-subservice:
-    needs: [compose-hygiene]
+    # needs: test-data-subservice 作为构建门禁 —— 子服务单测不过则不 build 不推 GHCR
+    needs: [compose-hygiene, test-data-subservice]
     runs-on: ubuntu-latest
     permissions:
       contents: read
