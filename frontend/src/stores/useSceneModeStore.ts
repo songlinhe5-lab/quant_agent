@@ -12,7 +12,7 @@ function loadInitialMode(): SceneMode {
   } catch {
     /* SSR or localStorage unavailable */
   }
-  return 'monitor' // 默认监控模式（最通用的日常模式）
+  return 'watch' // 默认盯盘模式（Quotes 主打 K 线视图；避免首屏整体被 MonitorModeLayout 替换导致 K 线不显示）
 }
 
 interface SceneModeState {
