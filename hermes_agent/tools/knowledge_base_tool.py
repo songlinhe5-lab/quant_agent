@@ -53,7 +53,6 @@ class KnowledgeBaseTool(BaseTool):
 
             from backend.core.database import SessionLocal
             from backend.core.embeddings import get_embeddings
-            from backend.core.models import WebpageKnowledgeBase
         except ImportError as e:
             return f"⚠️ 知识库检索依赖缺失: {e}"
 
