@@ -27,17 +27,27 @@ def _unwrap(resp):
 class TestMarketFutuStatusRoutes:
     """Futu 连接状态路由测试"""
 
-    @patch("backend.routers.market.market_data_gateway")
-    def test_get_futu_status_success(self, mock_futu):
-        """正常路径：获取 Futu 连接状态"""
-        mock_futu.is_opend_reachable = MagicMock(return_value=True)
-        mock_futu.status = "CONNECTED"
-        mock_futu.error_msg = ""
+    @patch("backend.routers.market.data_source_router")
+    def test_get_futu_status_success(self, mock_ds):
+        """正常路径：获取 Futu 连接状态（673f99b 后经 DataSourceRouter 探活节点）"""
+        mock_ds._enabled = True
+        mock_ds.fetch_futu = AsyncMock(return_value={"status": "success", "available": True})
         client = TestClient(app)
         resp = client.get("/api/v1/market/futu/status")
         assert resp.status_code == 200
         data = _unwrap(resp)
         assert data["status"] == "CONNECTED"
+
+    @patch("backend.routers.market.data_source_router")
+    def test_get_futu_status_disconnected(self, mock_ds):
+        """子服务上报 OpenD 未连接 → DISCONNECTED"""
+        mock_ds._enabled = True
+        mock_ds.fetch_futu = AsyncMock(return_value={"status": "success", "available": False})
+        client = TestClient(app)
+        resp = client.get("/api/v1/market/futu/status")
+        assert resp.status_code == 200
+        data = _unwrap(resp)
+        assert data["status"] == "DISCONNECTED"
 
 
 class TestMarketServicesHealthRoutes:
