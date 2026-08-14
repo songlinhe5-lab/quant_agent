@@ -250,6 +250,17 @@ class DataSourceRouter:
                 "数据子服务会拒绝所有未签名请求 (403)，请先配置该密钥 (需与子服务侧一致)。"
             )
 
+        # [DIAG-SEC] 启动期诊断：打印实际生效的 HMAC 密钥前几位，定位密钥注入时序问题
+        # （若运行时 env 未注入导致用默认值，则与子服务侧密钥不一致 → 全部请求 403/熔断）。
+        # 仅打印前缀，绝不泄露完整密钥。
+        _secret_preview = (self._hmac_secret[:6] + "…") if self._hmac_secret else "<EMPTY>"
+        logger.warning(
+            "[DIAG-SEC] DataSourceRouter init: _enabled=%s, _hmac_secret[:6]=%s, len=%d",
+            self._enabled,
+            _secret_preview,
+            len(self._hmac_secret),
+        )
+
         self._init_nodes()
         # 💡 FIX-275: 启动期自检, 捕获 REMOTE_URL 端口配错指向主服务自身的典型故障
         # (如 akshare/fred 误配成 :8000 而非子服务 :8001, 导致静默 404 / connection refused)。
@@ -1206,18 +1217,29 @@ class DataSourceRouter:
             logger.warning("[Futu] 远程节点不可用（后端已移除本地兜底）")
             return {"status": "error", "message": "No healthy Futu remote node (local SDK disabled)"}
 
-        # DIST-23: 账户/交易类 action 与行情类 action 熔断隔离
+        # DIST-23 + DIST-SEC-03: 交易类 / 权限依赖型 action 与行情类 action 熔断隔离
         # 根因(2026-08-11 实战): OpenD 行情已 CONNECTED, 但交易连接(TrdCtx)因未解锁
         # 返回 error, 此前 ACCOUNT_INFO 失败会触发 futu_master 全局熔断 → 连 QUOTE 行情
         # 一起被误杀, 监控却只显示行情 CONNECTED, 形成隐蔽故障。
-        # 现约定: 账户/交易类 action 失败不入熔断器失败计数(避免误伤行情), 仅记录日志。
-        # (BE-ARCH-08i 下, 行情类 action 间也已按 action 维度隔离, 交易类豁免是额外一层保护)
+        # 现约定: 账户/交易类 + 权限依赖型扩展行情(FUND_FLOW/OPTION_CHAIN 等)失败
+        # 不入熔断器失败计数(避免误伤行情通道), 仅记录日志。
+        # (BE-ARCH-08i 下, 行情类 action 间也已按 action 维度隔离, 此豁免是额外一层保护)
+        # DIST-SEC-03 (2026-08-14 实战): S1 未配置 FUTU_PWD_UNLOCK(RSA 私钥), 交易连接
+        # 未解锁 → FUND_FLOW(资金流, 部分市场需交易权限)持续返回 error → 被普通计数累积
+        # → 多个 action 同时熔断 → 整节点 futu_master unhealthy → QUOTE/HEALTH 行情通道
+        # 被误杀, 前端全盘报 "No healthy Futu remote node"。将其纳入豁免集彻底隔离。
         _FUTU_TRADE_ACTIONS = {
             "ACCOUNT_INFO",
             "PLACE_ORDER",
             "MODIFY_ORDER",
             "QUERY_ORDER",
             "EMERGENCY_LIQUIDATION",
+            # DIST-SEC-03: 权限/交易依赖型扩展行情, 失败属"数据不可用"而非"节点宕机",
+            # 不应触发节点级熔断误伤 QUOTE/HEALTH 等核心行情通道
+            "FUND_FLOW",
+            "OPTION_CHAIN",
+            "WARRANT_CHAIN",
+            "FUNDAMENTAL",
         }
         is_trade_action = remote_action in _FUTU_TRADE_ACTIONS
 
@@ -1235,9 +1257,9 @@ class DataSourceRouter:
                 # 直接透传子服务信封 (含 status/data 字段)
                 return result
             if is_trade_action:
-                # 账户/交易类失败: 只记录, 不计入节点熔断, 保护行情通道
+                # 账户/交易/权限依赖型 action 失败: 只记录, 不计入节点熔断, 保护行情通道
                 logger.warning(
-                    f"[Futu] 账户/交易类 action={remote_action} 失败(不触发熔断, 隔离行情通道): {result.get('message')}"
+                    f"[Futu] 非行情通道 action={remote_action} 失败(不触发熔断, 隔离行情通道): {result.get('message')}"
                 )
                 return result
             await self._update_node_status(
@@ -1250,7 +1272,7 @@ class DataSourceRouter:
         except Exception as e:
             logger.warning(f"[Futu] 远程节点失败: {remote_node.name}, {remote_action}, {str(e)}")
             if is_trade_action:
-                # 同上: 交易类异常不误伤行情熔断
+                # 同上: 交易/权限依赖型 action 异常不误伤行情熔断
                 return {"status": "error", "message": str(e), "trade_action_skipped_breaker": True}
             await self._update_node_status(
                 remote_node.name, success=False, error=str(e), action=remote_action, record_breaker=record_breaker

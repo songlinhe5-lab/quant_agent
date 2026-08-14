@@ -30,21 +30,41 @@ client = TestClient(app, raise_server_exceptions=False)
 
 # ─── /market/futu/status ────────────────────────────────────────────────
 class TestFutuStatus:
-    @patch("backend.routers.market.market_data_gateway")
-    def test_returns_status_and_error(self, mock_futu):
-        mock_futu.is_opend_reachable = MagicMock(return_value=True)
-        mock_futu.status = "CONNECTED"
-        mock_futu.error_msg = ""
+    @patch("backend.routers.market.data_source_router")
+    def test_returns_status_and_error(self, mock_ds):
+        # 673f99b 后 /futu/status 改走 DataSourceRouter 探活 futu_master 节点,
+        # 不再读 legacy market_data_gateway。mock router 使其返回 CONNECTED。
+        mock_ds._enabled = True
+        mock_ds.fetch_futu = AsyncMock(return_value={"status": "success", "available": True})
         resp = client.get("/market/futu/status")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "CONNECTED"
+        assert data["error"] is None
+        assert data["reachable"] is True
 
-    @patch("backend.routers.market.market_data_gateway")
-    def test_disconnected_status(self, mock_futu):
-        mock_futu.is_opend_reachable = MagicMock(return_value=False)
-        mock_futu.status = "DISCONNECTED"
-        mock_futu.error_msg = "OpenD unreachable"
+    @patch("backend.routers.market.data_source_router")
+    def test_disconnected_status(self, mock_ds):
+        # 子服务 HEALTH 返回 available=False → DISCONNECTED
+        mock_ds._enabled = True
+        mock_ds.fetch_futu = AsyncMock(return_value={"status": "success", "available": False})
+        resp = client.get("/market/futu/status")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "DISCONNECTED"
+
+    @patch("backend.routers.market.data_source_router")
+    def test_router_disabled_status(self, mock_ds):
+        # DATA_SOURCE_ROUTER_ENABLED=false → 直接 DISCONNECTED
+        mock_ds._enabled = False
+        resp = client.get("/market/futu/status")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "DISCONNECTED"
+
+    @patch("backend.routers.market.data_source_router")
+    def test_futu_remote_error_status(self, mock_ds):
+        # fetch_futu 失败 → 抛异常走 error 分支 → DISCONNECTED
+        mock_ds._enabled = True
+        mock_ds.fetch_futu = AsyncMock(side_effect=RuntimeError("boom"))
         resp = client.get("/market/futu/status")
         assert resp.status_code == 200
         assert resp.json()["status"] == "DISCONNECTED"

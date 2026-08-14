@@ -201,27 +201,41 @@ async def quotes_websocket(websocket: WebSocket):
 
 @router.get("/futu/status")
 async def get_futu_status():
-    """供前端面板感知底层 OpenD 核心连接状态
-    💡 实时探测 OpenD 端口，而非仅依赖内存中的状态标记
+    """供前端面板感知底层 OpenD 核心连接状态。
+
+    BE-ARCH-09 远程-only: 主服务不持有本地 OpenD SDK / 不直连 127.0.0.1:11111,
+    仅经 DataSourceRouter 由主节点 data_subservice (DS_CAPABILITIES=futu) 持有 OpenD
+    长连接。故此处改为探活 router 的 futu_master 节点 + 子服务 HEALTH 上报的真实
+    OpenD 连接状态 (status==CONNECTED), 而非依赖已废弃的本地 legacy gateway 探测
+    (该探测在主容器内必然 False, 导致前端 OpenD 标识永远红色)。
     """
-    # 💡 实时探测 OpenD 是否可连接（2秒超时）
-    is_reachable = market_data_gateway.is_opend_reachable(timeout=2.0)
+    if not data_source_router._enabled:
+        return {
+            "status": "DISCONNECTED",
+            "error": "数据源路由未启用 (DATA_SOURCE_ROUTER_ENABLED=false)",
+            "reachable": False,
+        }
 
-    # 💡 如果探测失败但状态仍显示 CONNECTED，说明连接已断开，需要更新状态
-    if not is_reachable and market_data_gateway.status == "CONNECTED":
-        market_data_gateway.status = "DISCONNECTED"
-        market_data_gateway.error_msg = "OpenD 连接已断开"
-        print("⚠️ [Market API] OpenD 实时探测失败，状态已更新为 DISCONNECTED")
+    try:
+        health_res = await data_source_router.fetch_futu("HEALTH")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"[Futu Status] 探活 futu_master 节点失败: {exc}")
+        health_res = {"status": "error", "message": str(exc)}
 
-    # 💡 如果探测成功但状态显示 DISCONNECTED/ERROR，尝试重新连接
-    if is_reachable and market_data_gateway.status != "CONNECTED":
-        print("ℹ️ [Market API] OpenD 实时探测成功，尝试重新连接...")
-        market_data_gateway.connect()
+    if isinstance(health_res, dict) and health_res.get("status") == "success":
+        # 子服务 HEALTH 返回 {"available": status==CONNECTED, ...}
+        opend_connected = bool(health_res.get("available"))
+        return {
+            "status": "CONNECTED" if opend_connected else "DISCONNECTED",
+            "error": None if opend_connected else "OpenD 行情通道未连接 (子服务探活失败)",
+            "reachable": True,
+        }
 
+    msg = health_res.get("message") if isinstance(health_res, dict) else str(health_res)
     return {
-        "status": market_data_gateway.status,
-        "error": market_data_gateway.error_msg,
-        "reachable": is_reachable,  # 💡 新增：实际探测结果
+        "status": "DISCONNECTED",
+        "error": f"Futu 远程节点不可用: {msg}",
+        "reachable": False,
     }
 
 

@@ -187,15 +187,34 @@ class MorningBriefingGenerator:
                 logger.warning(f"[Briefing] {name} 采集失败: {e}")
                 return None
 
+        async def collect_quotes():
+            """逐只标的采集 QUOTE（BrokerMarketTool 单次仅支持单 ticker）。
+
+            get_broker_market_data 工具的 run(action="QUOTE", ticker=...) 签名要求
+            单数 ticker 字符串，故逐只并发拉取后合并为 {data: [...]} 结构，
+            供 _build_markdown 解析。
+            """
+            results = await asyncio.gather(
+                *[self.tool_registry.execute("get_broker_market_data", action="QUOTE", ticker=t) for t in tickers]
+            )
+            merged = []
+            for r in results:
+                if not isinstance(r, dict) or r.get("status") == "error":
+                    continue
+                data = r.get("data") or r.get("quotes") or r
+                if isinstance(data, dict):
+                    merged.append(data)
+                elif isinstance(data, list):
+                    merged.extend(data)
+            return {"data": merged} if merged else None
+
         calendar_t, quotes_t, news_t, sentiment_t = await asyncio.gather(
             safe(
                 "get_macro_calendar",
-                self.tool_registry.execute("get_macro_calendar", days_ahead=7, days_back=0),
+                # 注意: MacroCalendarTool.run 仅接受 days_ahead, 勿传 days_back 以免触发 TypeError
+                self.tool_registry.execute("get_macro_calendar", days_ahead=7),
             ),
-            safe(
-                "get_broker_market_data",
-                self.tool_registry.execute("get_broker_market_data", action="QUOTE", tickers=tickers),
-            ),
+            safe("get_broker_market_data", collect_quotes()),
             safe("get_macro_news", self.tool_registry.execute("get_macro_news")),
             safe(
                 "get_macro_sentiment_history",
