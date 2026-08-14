@@ -319,7 +319,7 @@ async def get_router_node_health() -> Dict[str, Any]:
     这里复用既有的 data_source_router.get_health_status() 输出节点级结构。
 
     返回:
-      router_enabled: 数据源路由是否启用（False 时本地兜底，节点状态无意义）
+      router_enabled: 数据源路由是否启用（False 时节点由后台探针采集，状态仍有效，仅表示未走远程路由）
       yfinance: { nodes: [{name, role(primary/backup), url, status, ...}], primary_count, backup_count }
     """
     from backend.services.datasource.router import data_source_router
