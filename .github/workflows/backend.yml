@@ -1,10 +1,14 @@
 name: Deploy Backend (US-MASTER + 4 Data Nodes)
 
 # 触发策略:
-#   - push develop : 仅构建校验 (build + 推镜像)，绝不部署
-#   - push main : 构建 + 自动部署到 5 个 VPS 节点（真正 merge 后）
-#   - PR (目标 main) : 仅构建校验，不部署
+#   - pull_request (目标 main) : 构建校验 + 推送 :<sha> 镜像 (PR head SHA)，不部署。
+#                                该 :<sha> 镜像供 merge 后 deploy 复用 (方案 B)，消除 merge 时的重复 build。
+#   - push develop : 构建校验 + 推送 :<sha> 镜像，绝不部署
+#   - push main : 若 :<DEPLOY_SHA>(= merge ^2 parent = PR head SHA) 镜像已由 PR CI 推送则跳过 build，
+#                直接 pull 复用并部署到 5 个 VPS 节点；若镜像不存在 (直接 push main 无 PR) 则正常 build。
 on:
+  pull_request:
+    branches: [ main ]
   push:
     branches: [ main, develop ]
 
@@ -32,9 +36,11 @@ jobs:
       contents: read
       packages: write
     outputs:
-      image_tag: ${{ steps.meta.outputs.tags }}
+      deploy_sha: ${{ steps.sha.outputs.deploy_sha }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # 需要完整历史以解析 merge commit 的 ^2 parent
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -46,24 +52,48 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # GHCR 偶发二级限流 (403 secondary rate limit)，用重试兜底，避免整 job 直接挂。
-      # 方案 A：develop/PR 仅本地 build 验证编译 (--load，不推 ghcr，避免污染 :latest 语义)；
-      # push main 时才真正 --push。deploy 只拉 main 构建的镜像，develop 镜像不部署。
-      - name: Build backend image (push on main only)
+      # 方案 B：部署用 SHA = merge commit 的第二个 parent（= 被合并 PR 的 head SHA）。
+      # PR 事件下必须用 pull_request.head.sha（github.sha 在 PR 下是 merge ref，非真实 head），
+      # 否则 PR 阶段推送的 :<sha> 与 merge 后 ^2 解析出的真实 head 对不上。
+      - name: Resolve deploy SHA
+        id: sha
+        run: |
+          HEAD_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          DEPLOY_SHA=$(git rev-parse "${HEAD_SHA}^2" 2>/dev/null || echo "${HEAD_SHA}")
+          echo "DEPLOY_SHA=${DEPLOY_SHA}" >> "$GITHUB_ENV"
+          echo "deploy_sha=${DEPLOY_SHA}" >> "$GITHUB_OUTPUT"
+
+      # 方案 B：PR CI 已把 :<sha> 推到 GHCR，merge 后 (push main) 若镜像已存在则跳过重复 build。
+      - name: Skip-build check (reuse PR artifact)
+        id: precheck
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            if docker buildx imagetools inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.DEPLOY_SHA }}" >/dev/null 2>&1; then
+              echo "✅ 镜像 :${{ env.DEPLOY_SHA }} 已由 PR CI 构建并推送，跳过重复 build"
+              echo "skip_build=true" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      # 所有触发 (PR/develop/main) 均 --push :<sha>，使 PR 产物可被 merge 部署复用。
+      # push main 时额外打 :latest 标签（内部 registry 中转用）。
+      - name: Build backend image
+        id: build
+        if: steps.precheck.outputs.skip_build != 'true'
         uses: nick-fields/retry@v3
         with:
           timeout_minutes: 30
           max_attempts: 3
           retry_on: error
           command: |
-            PUSH_FLAG="${{ github.ref == 'refs/heads/main' && '--push' || '--load' }}"
+            MAIN_TAG="${{ github.ref == 'refs/heads/main' && '--tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest' || '' }}"
             docker buildx build \
-              $PUSH_FLAG \
+              --push \
               --platform linux/amd64 \
               --cache-from type=gha \
               --cache-to type=gha,mode=max \
               --build-arg BUILDKIT_INLINE_CACHE=1 \
-              --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+              --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.DEPLOY_SHA }} \
+              $MAIN_TAG \
               --file ./Dockerfile \
               .
 
@@ -143,8 +173,12 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      deploy_sha: ${{ steps.sha.outputs.deploy_sha }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -156,23 +190,46 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # GHCR 偶发二级限流 (403 secondary rate limit)，用重试兜底，避免整 job 直接挂
-      - name: Build data-subservice image (push on main only)
+      # 同 build job：解析部署用 SHA（merge ^2 parent），PR 阶段用 head.sha 作基准
+      - name: Resolve deploy SHA
+        id: sha
+        run: |
+          HEAD_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          DEPLOY_SHA=$(git rev-parse "${HEAD_SHA}^2" 2>/dev/null || echo "${HEAD_SHA}")
+          echo "DEPLOY_SHA=${DEPLOY_SHA}" >> "$GITHUB_ENV"
+          echo "deploy_sha=${DEPLOY_SHA}" >> "$GITHUB_OUTPUT"
+
+      # 方案 B：PR 已推送 :<sha> 则跳过重复 build
+      - name: Skip-build check (reuse PR artifact)
+        id: precheck
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            if docker buildx imagetools inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${{ env.DEPLOY_SHA }}" >/dev/null 2>&1; then
+              echo "✅ data-subservice :${{ env.DEPLOY_SHA }} 已由 PR CI 构建并推送，跳过重复 build"
+              echo "skip_build=true" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      # 所有触发均 --push :<sha>；push main 时额外打 :us 标签（节点 compose 引用 :us）
+      - name: Build data-subservice image
+        id: build
+        if: steps.precheck.outputs.skip_build != 'true'
         uses: nick-fields/retry@v3
         with:
           timeout_minutes: 30
           max_attempts: 3
           retry_on: error
           command: |
-            PUSH_FLAG="${{ github.ref == 'refs/heads/main' && '--push' || '--load' }}"
+            MAIN_TAG="${{ github.ref == 'refs/heads/main' && '--tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:us' || '' }}"
             docker buildx build \
-              $PUSH_FLAG \
+              --push \
               --platform linux/amd64 \
               --cache-from type=gha \
               --cache-to type=gha,mode=max \
               --build-arg BUILDKIT_INLINE_CACHE=1 \
               --build-arg DS_EXTRA=datasource-all \
-              --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:us \
+              --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${{ env.DEPLOY_SHA }} \
+              $MAIN_TAG \
               --file ./data_subservice/Dockerfile \
               .
 
@@ -213,8 +270,14 @@ jobs:
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             cd /opt/quant-agent
 
+            # 方案 B：部署用 SHA = merge commit 的第二个 parent（= 被合并 PR 的 head SHA）。
+            # PR CI 已把 :<sha> 推到 GHCR，此处直接复用，不再 build。
+            HEAD_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+            DEPLOY_SHA=$(git rev-parse "${HEAD_SHA}^2" 2>/dev/null || echo "${HEAD_SHA}")
+            echo "🚀 部署用镜像 tag: ${DEPLOY_SHA} (merge ^2 parent 复用 PR 构建产物)"
+
             # ── 先拉取模板文件 (compose + env 模板)，确保后续 .env 首次生成有模板可用 ──
-            IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+            IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${DEPLOY_SHA}"
             curl -sSL -o docker-compose.master.yml "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.master.yml"
             curl -sSL -o docker-compose.node-s1.yml "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.node-s1.yml"
             curl -sSL -o .env.example "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/.env.example" || echo "⚠️ 拉取 .env.example 失败，首次生成将走兜底"
@@ -412,14 +475,14 @@ jobs:
             # ── data-subservice 镜像内网 registry 中转 ──
             # node-s1 (主节点本地子服务) 不预拉 :us, 由 docker-compose.node-s1.yml 的
             # pull_policy: always 每次 up 直接拉最新 GHCR :us (见下方 compose up)。
-            # 全量镜像合并后仅 :us 一个 tag：北京节点经内网 registry 中转 :us
-            # (跨洋直连 GHCR 慢且可能被墙); node-s2/s3/s4 美西直连 GHCR :us。
-            docker pull "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:us" \
-              || { echo "❌ 主节点从 GHCR 拉取 data-subservice:us 失败，中止"; exit 1; }
-            docker tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:us" "127.0.0.1:5000/quant-agent-data-subservice:us"
+            # 方案 B：data-subservice 复用 PR 构建的 :<DEPLOY_SHA> 镜像，打上 :us 标签供内网 registry 中转。
+            # 北京节点经内网 registry 中转 :us (跨洋直连 GHCR 慢且可能被墙); node-s2/s3/s4 美西直连 GHCR :us。
+            docker pull "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${DEPLOY_SHA}" \
+              || { echo "❌ 主节点从 GHCR 拉取 data-subservice:${DEPLOY_SHA} 失败，中止"; exit 1; }
+            docker tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${DEPLOY_SHA}" "127.0.0.1:5000/quant-agent-data-subservice:us"
             docker push "127.0.0.1:5000/quant-agent-data-subservice:us" \
               || { echo "❌ data-subservice:us 推送到本机 registry 失败 (磁盘/containerd 问题?)，中止避免从节点拉到空镜像"; exit 1; }
-            echo "✅ data-subservice:us 已推送至本机 registry，北京节点可经内网拉取"
+            echo "✅ data-subservice:${DEPLOY_SHA} 已中转为 :us 推送至本机 registry，北京节点可经内网拉取"
 
             # ── OPS-03: 每次 push 后回收 registry 垃圾 + 安装深度 GC cron ──
             # 逻辑已抽离至 scripts/registry-gc-install.sh (避免单 run 块超 21000 字符上限)。
