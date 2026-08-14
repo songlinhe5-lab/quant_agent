@@ -20,13 +20,11 @@ import { ChartErrorBoundary, PanelErrorBoundary } from '@/components/error-bound
 import { useSceneModeStore } from '@/stores/useSceneModeStore'
 import { AnomalyFlash } from '@/features/quotes/anomaly-flash'
 import { NarratorBubble } from '@/features/quotes/narrator-bubble'
-import { CoPilotPanel } from '@/features/quotes/co-pilot-panel'
-import { FloatingWatchlist } from '@/features/quotes/floating-watchlist'
 import { StrategyIDE } from '@/features/strategy/layout/strategy-ide'
 import { MonitorModeLayout } from '@/features/scene/monitor-mode-layout'
 import { AIChat } from '@/features/strategy/layout/ai-chat'
 import { MarketNewsPanel } from './market-news-panel'
-import { WatchNewsOverlay } from './watch-news-overlay'
+
 import { InitOverlay, EmptyState } from '@/components/ui/data-display'
 
 // PROD-12: 分屏对比子面板——拥有独立行情数据（独立 WebSocket/历史），并与主图共享同一 syncGroup 实现十字线同步
@@ -92,9 +90,7 @@ export function QuotesModule() {
 
   useEffect(() => { setMounted(true) }, [])
 
-  // PROD-04a: 盯盘模式专属布局（K线全屏 + 盘口悬浮 + 异动高对比）
   const sceneMode = useSceneModeStore((s) => s.mode)
-  const isWatchScene = sceneMode === 'watch'
   const isResearchScene = sceneMode === 'research'
   const isMonitorScene = sceneMode === 'monitor'
 
@@ -198,59 +194,10 @@ export function QuotesModule() {
     return <MonitorModeLayout />
   }
 
-  // PROD-04a: 盯盘模式专属布局 —— K线全屏 + 盘口悬浮 + 异动高对比
-  if (isWatchScene) {
-    return (
-      <div className="relative h-[calc(100vh-80px)] min-h-[600px] w-full bg-background/50 rounded-xl overflow-hidden">
-        {isStale && (
-          <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/80 backdrop-blur-md transition-all duration-300 rounded-xl border border-border/50 shadow-2xl">
-            <AlertTriangle className="h-12 w-12 text-amber-500 animate-pulse drop-shadow-[0_0_10px_rgba(245,158,11,0.5)]" />
-            <p className="mt-4 text-lg font-bold text-amber-500">数据连接延迟 (STALE)</p>
-            <p className="text-sm text-muted-foreground mt-1">行情流可能已过期，正在尝试重新连接...</p>
-          </div>
-        )}
-
-        {/* 全屏 K 线 */}
-        <div className="absolute inset-0 z-0">
-          <ChartErrorBoundary name="KlineChart">
-            <AnomalyFlash symbol={selectedSymbol} className="h-full">
-              {hasData ? (
-                <LightweightChartCanvas selectedSymbol={selectedSymbol} selectedPeriod={selectedPeriod} setSelectedPeriod={setSelectedPeriod} theme={theme} realQuote={realQuote} realHistory={realHistory} gatewayStatus={gatewayStatus} isWatchlistExpanded={false} toggleWatchlist={toggleWatchlist} selectedItem={selected!} hasData={hasData} syncGroup="default" />
-              ) : (
-                <EmptyState title="暂无自选标的" description="添加关注标的即可开始盯盘，行情订阅建立后将自动加载。" action={<button type="button" onClick={() => addTicker(selectedSymbol)} className="rounded-md border border-border/40 px-3 py-1.5 text-sm text-foreground/80 transition-colors hover:border-border/70 hover:text-foreground">添加 {selectedSymbol}</button>} />
-              )}
-              <NarratorBubble symbol={selectedSymbol} />
-              <CoPilotPanel symbol={selectedSymbol} />
-            </AnomalyFlash>
-          </ChartErrorBoundary>
-        </div>
-
-        {/* 盘口悬浮（异动 > 2% 高对比闪烁） */}
-        <div className="resp-fade-up absolute right-3 top-3 bottom-3 z-10 w-72 flex flex-col gap-2.5 max-[640px]:left-3 max-[640px]:w-auto">
-          <AnomalyFlash symbol={selectedSymbol} className="flex flex-col gap-2.5 h-full">
-            <PanelErrorBoundary name="OrderBookPanel">
-              <div className="glass-card rounded-xl overflow-hidden flex flex-col flex-1 shadow-lg border-border/40">
-                <OrderBookWebGL symbol={selectedSymbol} theme={theme} />
-              </div>
-            </PanelErrorBoundary>
-            <OrderBookLargeOrderHint symbol={selectedSymbol} />
-            <div className="glass-card rounded-xl overflow-hidden flex flex-col flex-1 shadow-lg border-border/40">
-              <div className="px-3 py-2.5 border-b border-border/40 bg-secondary/20 shrink-0">
-                <span className="text-[10px] font-semibold text-muted-foreground uppercase">成交流水</span>
-              </div>
-              <TradeHistory symbol={selectedSymbol} />
-            </div>
-          </AnomalyFlash>
-        </div>
-
-        {/* 自选列表：可拖拽悬浮球 */}
-        <FloatingWatchlist watchlist={watchlist} selectedSymbol={selectedSymbol} setSelectedSymbol={setSelectedSymbol} addTicker={addTicker} removeTicker={removeTicker} />
-
-        {/* PROD-05 深化：盯盘全屏可折叠新闻流浮层（≥1920px 展开钮，默认收起） */}
-        <WatchNewsOverlay />
-      </div>
-    )
-  }
+  // 注：原 PROD-04a「盯盘模式全屏 K线 + 悬浮球自选」布局因 FloatingWatchlist 悬浮球被顶部导航栏
+  // 遮挡导致自选列表无法打开、全屏容器内 K 线高度塌陷导致拉不到数据，已弃用。
+  // 现 watch 场景回落到下方经充分验证的标准三栏布局（WatchlistSidebar + 主图 K线 + 盘口），
+  // 同时保留 monitor / research 的专属布局。WatchScene 仅作为场景标识用于密度/AI 角色切换。
 
   return (
     <div className="resp-auto-panels resp-3col relative flex h-[calc(100vh-80px)] min-h-[600px] w-full bg-background/50 rounded-xl p-1">

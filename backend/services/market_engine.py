@@ -36,6 +36,20 @@ from backend.services.futu.utils import is_futu_unsupported
 logger = logging.getLogger(__name__)
 
 
+def _spawn(self, coro):
+    """同步方法里的安全 fire-and-forget：仅在存在 running event loop 时
+    create_task（生产环境 WS 协程上下文必然满足）。无 loop 的同步单测/信号
+    回调上下文直接静默跳过，绝不抛 RuntimeError。task 存入实例集合持有强
+    引用，防 MEMORY 第七章所述 GC 回收导致协程静默停摆。"""
+    try:
+        task = asyncio.create_task(coro)
+    except RuntimeError:
+        return None
+    self._bg_tasks.add(task)
+    task.add_done_callback(self._bg_tasks.discard)
+    return task
+
+
 async def update_quote_to_redis(ticker: str, quote_data: dict):
     """通用的写入 Redis 逻辑（Futu 和 Yahoo 都调这个，统一序列化为 Protobuf）"""
     _t0 = time.perf_counter()
@@ -127,6 +141,7 @@ class ConnectionManager:
         self.last_account_summary = "总资产: 未知 | 浮动盈亏: 未知"
         self.last_acc_update = 0
         self._futu_active_subs = set()  # 💡 追踪当前富途占用的订阅槽位，用于自动释放
+        self._bg_tasks = set()  # 💡 持有后台 fire-and-forget task 强引用，防 GC 回收
 
         # 💡 新增：单独的原始二进制 Redis 客户端，用于处理 Protobuf
         host = os.getenv("REDIS_HOST", "localhost")
@@ -163,14 +178,18 @@ class ConnectionManager:
             WS_ACTIVE_CONNECTIONS.dec()  # 💡 监控：连接数 -1
         if websocket in self.subscriptions:
             del self.subscriptions[websocket]
+        # 前端连接断开 → 同步最新订阅标的集给行情生产者 daemon
+        self._spawn(self._sync_subscribed_tickers_to_redis())
 
     def subscribe(self, websocket: WebSocket, tickers: list[str], last_ids: Optional[dict] = None):  # noqa: E501
         if websocket in self.subscriptions:
             self.subscriptions[websocket].update(tickers)
             WS_SUBSCRIPTIONS.set(sum(len(s) for s in self.subscriptions.values()))
+        # 前端订阅变更 → 同步给行情生产者 daemon（盘口推送与自选列表一致）
+        self._spawn(self._sync_subscribed_tickers_to_redis())
 
         # 异步追补断层数据或拉取最新快照
-        asyncio.create_task(self._catch_up_or_snapshot(websocket, tickers, last_ids or {}))  # noqa: E501
+        self._spawn(self._catch_up_or_snapshot(websocket, tickers, last_ids or {}))  # noqa: E501
 
     async def _catch_up_or_snapshot(self, websocket: WebSocket, tickers: list[str], last_ids: dict):  # noqa: E501
         try:
@@ -221,6 +240,24 @@ class ConnectionManager:
             for t in tickers:
                 self.subscriptions[websocket].discard(t)
             WS_SUBSCRIPTIONS.set(sum(len(s) for s in self.subscriptions.values()))
+        # 前端反订阅变更 → 同步给行情生产者 daemon
+        self._spawn(self._sync_subscribed_tickers_to_redis())
+
+    async def _sync_subscribed_tickers_to_redis(self) -> None:
+        """将当前所有前端连接订阅的标的集合同步到 Redis (quant:ws:subscribed_tickers)，
+        供 quote_publisher daemon 动态跟随前端自选列表推送盘口（PROD-04 盘口一致）。"""
+        try:
+            all_tickers = set()
+            for tickers in self.subscriptions.values():
+                all_tickers.update(tickers)
+            key = "quant:ws:subscribed_tickers"
+            if not all_tickers:
+                await self.raw_redis.delete(key)
+            else:
+                await self.raw_redis.delete(key)
+                await self.raw_redis.sadd(key, *all_tickers)
+        except Exception as e:  # pragma: no cover - 防御性，不影响主链路
+            logger.debug("[WS] 同步订阅标的信息到 Redis 失败: %s", e)
 
     def get_all_subscribed_tickers(self) -> set[str]:
         # 基础宏观数据，确保后台始终将其拉取至 Redis，供 LLM 或前端秒开使用
