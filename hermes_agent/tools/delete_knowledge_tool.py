@@ -10,7 +10,7 @@ from .base import BaseTool
 class DeleteKnowledgeTool(BaseTool):
     """
     全局知识库清理工具。
-    根据特定的 URL 从 ChromaDB 中永久删除相关的网页碎片。
+    根据特定的 URL 从 PostgreSQL pgvector 知识库中永久删除相关的网页碎片。
     """
 
     name = "delete_global_knowledge"
@@ -26,12 +26,12 @@ class DeleteKnowledgeTool(BaseTool):
             return {"status": "error", "message": "URL 不能为空"}
 
         try:
-            result = await asyncio.to_thread(self._delete_chroma, url)
+            result = await asyncio.to_thread(self._delete_pg, url)
             return {"status": "success", "message": result}
         except Exception as e:
             return {"status": "error", "message": f"全局知识库清理失败: {str(e)}"}
 
-    def _delete_chroma(self, url: str) -> str:
+    def _delete_pg(self, url: str) -> str:
         from backend.core.database import SessionLocal
         from backend.core.models import WebpageKnowledgeBase
 
