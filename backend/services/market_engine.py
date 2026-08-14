@@ -31,7 +31,7 @@ from backend.services.datasource.router import data_source_router
 # BE-ARCH-08a: 卸载主服务对 futu 包的硬依赖。子服务化后主服务不再持有 OpenD 连接与本地
 # 订阅缓存，仅保留纯函数判定 is_futu_unsupported（位于 utils.py，零 SDK import）。原
 # unsubscribe_quote / cache_mgr.evict_stale_cache 操作主服务不持有的资源，属死代码已删除。
-from backend.services.futu.utils import is_futu_unsupported
+from backend.services.futu.utils import is_futu_unsupported, mark_futu_unsupported
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +122,9 @@ class ConnectionManager:
         self.flow_cache = {}  # 💡 资金流向与经纪商席位缓存池
         self.pubsub_task = None
         self.last_futu_update = {}
+        # 💡 资金流低频数据节流水位：FUND_FLOW 5 分钟粒度刷新（对齐 facade _STALE_THRESHOLD_SEC["FUND_FLOW"]=300），
+        # 避免每 3 秒全量 gather 打爆子服务线程池。
+        self.last_flow_update = {}
         self._futu_alert_sent = False
         self._outflow_alert_records = {}  # {ticker: timestamp} 防抖缓冲，防止连环报警
         self.last_account_summary = "总资产: 未知 | 浮动盈亏: 未知"
@@ -405,12 +408,36 @@ class ConnectionManager:
                             self.last_tech_update = current_time
 
                     # 💡 定时拉取资金流与席位 (BE-ARCH-07b: 移除 futu_connected 死门控，经 Router 远程调用 Futu 节点，内部自带熔断)  # noqa: E501
-                    flow_tasks = [data_source_router.fetch_futu("FUND_FLOW", ticker=t) for t in all_tickers]  # noqa: E501
-                    flow_results = await asyncio.gather(*flow_tasks, return_exceptions=True)  # noqa: E501
+                    # 🚨 防请求风暴 (2026-08-14)：
+                    #  1. FUND_FLOW 是低频数据，5 分钟粒度刷新即可（对齐 facade _STALE_THRESHOLD_SEC["FUND_FLOW"]=300），
+                    #     绝不每 3 秒全量 gather（否则打爆子服务 asyncio.to_thread 线程池，2263 线程 degraded）。
+                    #  2. 跳过 is_futu_unsupported 已判定的标的（指数/外汇/加密等 futu 原生不支持），
+                    #     不对注定失败的标的反复发请求。
+                    #  3. futu 返回 Unknown 等不支持错误时，动态 mark_futu_unsupported，后续循环不再请求。
+                    now_flow = time.time()
+                    flow_tickers = [
+                        t
+                        for t in all_tickers
+                        if not is_futu_unsupported(t) and now_flow - self.last_flow_update.get(t, 0) > 300
+                    ]
+                    if flow_tickers:
+                        flow_tasks = [data_source_router.fetch_futu("FUND_FLOW", ticker=t) for t in flow_tickers]  # noqa: E501
+                        flow_results = await asyncio.gather(*flow_tasks, return_exceptions=True)  # noqa: E501
 
-                    for ticker, f_res in zip(all_tickers, flow_results):
-                        if isinstance(f_res, dict) and f_res.get("status") == "success":
-                            self.flow_cache[ticker] = f_res
+                        for ticker, f_res in zip(flow_tickers, flow_results):
+                            # 无论成功失败都更新节流水位，防止下轮立刻重试
+                            self.last_flow_update[ticker] = now_flow
+                            if isinstance(f_res, dict) and f_res.get("status") == "success":
+                                self.flow_cache[ticker] = f_res
+                                continue
+                            # 🚨 动态标记：futu 不支持（Unknown stock / 本地 OpenD 未连接 等）
+                            # 也把失败标的加入动态 unsupported，下次 is_futu_unsupported 命中即跳过。
+                            err = (f_res or {}).get("message", "") if isinstance(f_res, dict) else str(f_res)
+                            if isinstance(err, str) and any(
+                                kw in err.upper()
+                                for kw in ("UNKNOWN STOCK", "UNKNOWN", "NOT SUPPORT", "NOT_SUPPORT", "UNSUPPORT")
+                            ):
+                                mark_futu_unsupported(ticker)
 
                     yf_candidates = []
                     futu_check_tickers = []
