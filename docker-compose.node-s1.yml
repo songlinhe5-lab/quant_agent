@@ -76,6 +76,15 @@ services:
       #    部署命令见 docs/06 §8.2「宿主服务对容器暴露规范」。
       FUTU_HOST: ${FUTU_HOST:-host.docker.internal}
       FUTU_PORT: ${FUTU_PORT:-11111}
+      # ── YFinance 退避/熔断自愈默认配置（DIST-SEC-06）──
+      # 雅虎免费端偶发熔断：指数退避 + failover 到 S2/S3/S4 备节点，触顶 300s 后再重试（自愈）。
+      # 以下为 throttler.py 默认值显式覆盖（如需调整改这里，无需动代码）：
+      #   strategy=adaptive: 指数退避 2^n 秒 + 动态调整；base=2s, max=300s(5min封顶)
+      #   jitter=true: ±随机抖动防雷群；恢复阈值(consecutive_limits 减1 需连续成功次数)=5
+      DATASOURCE_YFINANCE_BACKOFF_STRATEGY: ${DATASOURCE_YFINANCE_BACKOFF_STRATEGY:-adaptive}
+      DATASOURCE_YFINANCE_BACKOFF_BASE_DELAY: ${DATASOURCE_YFINANCE_BACKOFF_BASE_DELAY:-2.0}
+      DATASOURCE_YFINANCE_BACKOFF_MAX_DELAY: ${DATASOURCE_YFINANCE_BACKOFF_MAX_DELAY:-300.0}
+      DATASOURCE_YFINANCE_BACKOFF_JITTER: ${DATASOURCE_YFINANCE_BACKOFF_JITTER:-true}
     expose:
       - "8001"
     ports:

@@ -144,8 +144,8 @@ class RateLimitThrottler:
             throttler.on_success()
     """
 
-    # 自适应恢复阈值：连续成功 N 次后开始降速
-    _ADAPTIVE_RECOVERY_THRESHOLD = 10
+    # 自适应恢复阈值：连续成功 N 次后开始降速（默认 10，yfinance 熔断自愈调为 5 加速恢复）
+    _ADAPTIVE_RECOVERY_THRESHOLD = 5
     # 自适应恢复衰减系数
     _ADAPTIVE_DECAY_FACTOR = 0.8
     # 退避归零阈值
