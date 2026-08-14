@@ -164,9 +164,17 @@ class QuotePublisher:
             logger.debug(log_msg)
 
     async def run_daemon(self, tickers: list[str], interval: float = 1.0):
-        """启动生产者守护轮询进程"""
+        """启动生产者守护轮询进程。
+
+        Args:
+            tickers: 兜底常驻标的池（当前端无订阅时仍推送的基础盘口，如核心宏观/ETF）。
+            interval: 轮询间隔（秒）。
+        """
         self.is_running = True
-        logger.info(f"🚀 启动行情生产者 Daemon，关注标的: {tickers}...")
+        logger.info(f"🚀 启动行情生产者 Daemon，兜底常驻标的: {tickers}...")
+
+        # 前端自选标的集合键（由 ConnectionManager.subscribe/unsubscribe 动态维护）
+        WS_SUB_KEY = "quant:ws:subscribed_tickers"
 
         # 设置全局并发信号量，防止瞬间高并发打满 Futu 连接池或触发 YFinance IP 封禁
         sem = asyncio.Semaphore(2)
@@ -178,10 +186,27 @@ class QuotePublisher:
             # 否则并发槽位会被死死霸占，导致更新被拉长，完全失去高频意义。
             await asyncio.sleep(0.1)  # 释放锁后微小错峰即可
 
+        async def _resolve_tickers() -> list[str]:
+            """盘口推送标的池 = 前端实际订阅的标的 (Redis 集合) ∪ 兜底常驻池。
+            保证盘口推送与前端自选列表动态一致（PROD-04）。"""
+            try:
+                members = await self.redis.smembers(WS_SUB_KEY)  # type: ignore
+                live = {m.decode() if isinstance(m, bytes) else str(m) for m in members}
+            except Exception:
+                live = set()
+            # 去重并集：实时订阅优先，兜底池补全
+            return list(live | set(tickers))
+
         try:
             while self.is_running:
+                # 每轮动态解析标的池（跟随前端自选列表变化）
+                tickers_live = await _resolve_tickers()
+                if not tickers_live:
+                    await asyncio.sleep(interval)
+                    continue
+
                 # 采用限流并发拉取
-                tasks = [_bounded_poll(ticker) for ticker in tickers]
+                tasks = [_bounded_poll(ticker) for ticker in tickers_live]
                 await asyncio.gather(*tasks, return_exceptions=True)
 
                 # 💡 及时释放大对象：清除任务组和闭包结果，

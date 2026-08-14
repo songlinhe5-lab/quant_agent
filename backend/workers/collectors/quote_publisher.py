@@ -9,7 +9,10 @@ dispatch ``market_tick`` 事件 → OrderBookWebGL 渲染 Level 2。
 worker 启动，导致盘口数据永不推送、前端 Level 2 长期空白。本工厂将其纳入
 collector 注册表 (BE-ARCH-03)，随 start_collector_daemons 自动拉起。
 
-标的池来源（多源并集，去重保序）：
+盘口推送标的池 = 前端实际订阅标的 (Redis ``quant:ws:subscribed_tickers``，
+由 ConnectionManager.subscribe/unsubscribe 动态维护) ∪ 下方兜底常驻池。
+→ 保证盘口推送与前端自选列表动态一致（PROD-04）。本工厂加载的仅为兜底常驻池：
+
   1. QUOTE_PUBLISHER_SYMBOLS (env, 逗号分隔) —— 运营显式指定，最高优先
   2. config/quote_watchlist.txt (每行一个 symbol) —— 与 FMP watchlist 解耦
   3. 回退默认池 ["US.AAPL","HK.00700","US.TSLA"]
