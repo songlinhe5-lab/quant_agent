@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useToast } from '@/hooks/use-toast'
-import { apiClient, API_BASE_URL, getValidAccessToken } from '@/lib/api-client'
+import { apiClient, getValidAccessToken, getWsBaseUrl } from '@/lib/api-client'
 import { market } from '@/lib/proto/market'
 import { WatchlistItem } from '@/stores/use-watchlist'
 import { useKeepAliveActive } from '@/components/layout/keep-alive-context'
@@ -200,10 +200,7 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
       }
 
       const sym = selectedSymbol.replace('/', '')
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const wsUrl = API_BASE_URL.startsWith('http')
-        ? API_BASE_URL.replace(/^http/, 'ws') + '/market/quotes/ws?token=' + token
-        : `${protocol}//${window.location.host}${API_BASE_URL}/market/quotes/ws?token=` + token
+      const wsUrl = `${getWsBaseUrl()}/market/quotes/ws?token=` + token
 
       const ws = new WebSocket(wsUrl)
       ws.binaryType = "arraybuffer"

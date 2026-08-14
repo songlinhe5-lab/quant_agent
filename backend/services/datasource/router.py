@@ -196,6 +196,13 @@ def _infer_error_category(result: Dict[str, Any]) -> ErrorCategory:
     if any(kw in msg for kw in _RATE_LIMIT_MESSAGE_KEYWORDS):
         return ErrorCategory.RATE_LIMIT
 
+    # DIST-SEC-04(2026-08-14): 子服务 yfinance 对『该标的 Yahoo 无数据』会返回
+    # error_category="data_unavailable"。文本兜底：识别 "no data"/"yahoo error" 等特征，
+    # 避免这类标的层面问题被误判为普通失败计入熔断，误杀整节点。
+    _DATA_UNAVAIL_KEYWORDS = ("no data", "yahoo error", "delisted", "not found")
+    if any(kw in msg for kw in _DATA_UNAVAIL_KEYWORDS):
+        return ErrorCategory.DATA_UNAVAILABLE
+
     return ErrorCategory.NORMAL
 
 
@@ -920,11 +927,25 @@ class DataSourceRouter:
 
         nodes = self._get_healthy_nodes("yfinance")
         if not nodes:
-            logger.warning("[YFinance] 无健康子服务节点可用（后端已移除本地兜底）")
-            return {
-                "success": False,
-                "message": "No healthy YFinance subservice node (local yfinance disabled)",
-            }
+            # DIST-SEC-03(2026-08-14): 修复「无健康节点即永久失败」的恢复不对称性。
+            # yfinance 是单节点（yf_primary），_get_healthy_nodes 仅返回 status=="healthy"
+            # 的节点，一旦节点进入熔断冷却或被标 unhealthy 便永远进不来，而业务流量又
+            # 不会触发半开探测 → 直到后台探针轮询才偶发恢复，期间 HISTORY 等请求全失败。
+            # 这里兜底：冷却期已过的 unhealthy 节点以「半开」身份参与探测，失败则继续熔断，
+            # 成功则让 _update_node_status 翻回 healthy。与 futu/fmp 等单节点源行为对齐。
+            half_open = [
+                n
+                for n in self._nodes.get("yfinance", [])
+                if n.status != "healthy" and n.circuit_breaker_until <= time.time()
+            ]
+            if not half_open:
+                logger.warning("[YFinance] 无健康/可探测子服务节点（熔断冷却中或全 offline）")
+                return {
+                    "success": False,
+                    "message": "No healthy YFinance subservice node (local yfinance disabled)",
+                }
+            logger.info(f"[YFinance] 健康节点空，启用半开探测节点: {[n.name for n in half_open]}")
+            nodes = half_open
 
         for node in nodes:
             try:
@@ -943,8 +964,21 @@ class DataSourceRouter:
                     await self._update_node_status(node.name, success=True, record_breaker=record_breaker)
                     return result
 
-                # 限流类错误：不计入熔断器，触发 failover 到下一节点
+                # 非普通错误类处理
                 if error_category != ErrorCategory.NORMAL:
+                    if error_category == ErrorCategory.DATA_UNAVAILABLE:
+                        # DIST-SEC-04(2026-08-14): 该标的 Yahoo 无数据属标的层面问题，非子服务故障。
+                        # 不计入熔断（否则单标的 miss 误杀整节点，连带正常标的也 No healthy node），
+                        # 直接返回干净错误，不 failover（单节点场景 failover 无意义）。
+                        logger.warning(f"[YFinance] 节点 {node.name} 数据不可用 ({ticker}): {result.get('error')}")
+                        return {
+                            "success": False,
+                            "status": "error",
+                            "message": f"数据不可用 (Yahoo 无 {ticker} 数据): {result.get('error')}",
+                            "error_category": "data_unavailable",
+                            "source": "yfinance",
+                        }
+                    # 限流类错误：不计入熔断器，触发 failover 到下一节点
                     logger.warning(f"[YFinance] 节点 {node.name} 限流 ({error_category.value}): {ticker}")
                     await self._update_node_status(
                         node.name,

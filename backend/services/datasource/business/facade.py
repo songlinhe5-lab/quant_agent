@@ -65,12 +65,14 @@ def _detect_market(ticker: str) -> str:
 
 
 # 市场感知的源优先级（QUOTE / HISTORY 报价类 action）。
-# 策略：Futu 真实报价首选；美股 Finnhub 备选；A股/港股 AKShare/Tushare 备选。
-# 仅列出声明了对应 action 能力的源，顺序即降级顺序。
+# 策略（2026-08-14）：Futu 真实报价首选（低延迟、港股原生覆盖好）；
+# yfinance 经独立 YF 辅节点远程，作为行情兜底末位（比 futu 更"永远在线"，
+# 一旦 Futu OpenD 未起可自动降级）；美股 Finnhub 备选、A股 AKShare/Tushare 备选。
+# 仅列出声明了对应 action 能力的源，顺序即降级顺序（首=优先，末=兜底）。
 _MARKET_QUOTE_PREFERENCE: dict[str, list[str]] = {
-    "US": ["futu", "finnhub", "yfinance", "akshare"],
-    "HK": ["futu", "akshare", "yfinance"],  # Finnhub 免费版无港股报价，排除
-    "CN": ["futu", "akshare", "tushare"],  # A股走 AKShare/Tushare
+    "US": ["futu", "finnhub", "akshare", "yfinance"],  # yfinance 美股行情兜底
+    "HK": ["futu", "akshare", "yfinance"],  # Finnhub 免费版无港股报价，排除；yfinance 末位兜底
+    "CN": ["futu", "akshare", "tushare"],  # A股走 AKShare/Tushare，yfinance 非 A股源不加
 }
 
 # 新闻类 action 的源优先级：Finnhub 是美股新闻核心数据源，首选；
@@ -90,6 +92,17 @@ _MARKET_FLOW_PREFERENCE: dict[str, list[str]] = {
     "US": ["futu", "akshare", "yfinance"],
     "HK": ["futu", "akshare", "yfinance"],  # tushare 仅 A股，港股排除
     "CN": ["tushare", "akshare", "futu"],
+}
+
+# 基本面类 action (FUNDAMENTAL / INFO) 的市场感知源优先级。
+# DIST-SEC-05(2026-08-14): 此前 FUNDAMENTAL 无市场感知策略，默认退化为首个可用源（多为 FMP）。
+# FMP 免费档对港股/中股基本面覆盖稀疏（profile/income_statement 常返回空），而 yfinance 对
+# 港股(0772.HK)/美股覆盖稳定、akshare 对 A股覆盖稳定。故港股/中股基本面优先 yfinance/akshare，
+# 美股仍 futu 首选（真实财务）+ fmp 兜底。
+_MARKET_FUNDAMENTAL_PREFERENCE: dict[str, list[str]] = {
+    "US": ["futu", "fmp", "yfinance"],
+    "HK": ["yfinance", "akshare", "futu", "fmp"],  # FMP 港股稀疏，降到末位兜底
+    "CN": ["akshare", "tushare", "yfinance"],
 }
 
 
@@ -369,7 +382,8 @@ class DataServiceFacade:
         quote_action = action_upper in ("QUOTE", "HISTORY")
         news_action = action_upper in ("COMPANY_NEWS", "MARKET_NEWS", "NEWS", "STOCK_NEWS")
         flow_action = action_upper == "FUND_FLOW"
-        if quote_action or news_action or flow_action:
+        fundamental_action = action_upper in ("FUNDAMENTAL", "INFO")
+        if quote_action or news_action or flow_action or fundamental_action:
             ticker = params.get("ticker") or params.get("symbol") or ""
             market = _detect_market(str(ticker))
 
@@ -399,6 +413,8 @@ class DataServiceFacade:
                 preference = _MARKET_FLOW_PREFERENCE[market]
             elif news_action and market in _MARKET_NEWS_PREFERENCE:
                 preference = _MARKET_NEWS_PREFERENCE[market]
+            elif fundamental_action and market in _MARKET_FUNDAMENTAL_PREFERENCE:
+                preference = _MARKET_FUNDAMENTAL_PREFERENCE[market]
             if preference:
                 # 市场感知：报价/新闻路由是排他性策略，严格按市场专属顺序走，
                 # 仅保留 preference 中声明了对应 action 能力的源。

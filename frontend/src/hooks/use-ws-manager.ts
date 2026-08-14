@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react'
 import logger from '@/lib/logger'
+import { getWsBaseUrl } from '@/lib/api-client'
 
 // ─── 连接状态 ───────────────────────────────────────────────────────
 export type WSConnectionState =
@@ -164,7 +165,16 @@ export function useWSManager(config: WSManagerConfig) {
     updateStatus({ state: 'connecting' })
     logger.info('[WS] 正在连接...', { url: mergedConfig.url })
 
-    const ws = new WebSocket(mergedConfig.url, mergedConfig.protocols)
+    // 防御：相对路径 URL 用 API 域名基类拼接，避免回退到 window.location.host
+    // 导致访问域名 /api/* 被 Cloudflare 拦截。绝对 URL 原样透传。
+    const wsUrl = mergedConfig.url.startsWith('ws://') ||
+      mergedConfig.url.startsWith('wss://') ||
+      mergedConfig.url.startsWith('http://') ||
+      mergedConfig.url.startsWith('https://')
+      ? mergedConfig.url
+      : `${getWsBaseUrl()}${mergedConfig.url.startsWith('/') ? '' : '/'}${mergedConfig.url}`
+
+    const ws = new WebSocket(wsUrl, mergedConfig.protocols)
     wsRef.current = ws
 
     const connectStart = Date.now()

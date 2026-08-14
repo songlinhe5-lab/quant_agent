@@ -76,6 +76,10 @@
 | OTEL_SAMPLING_RATE | 1.0 | - | - | 1.0 |
 | **CORS (可选)** |
 | ALLOWED_ORIGINS | https://your-domain.pages.dev,... | - | - | https://your-domain.pages.dev,... |
+| **前端 Cloudflare Pages 构建变量** |
+| VITE_API_BASE_URL | https://quant-api.stephenhe.com/api/v1 | - | - | https://quant-api.stephenhe.com/api/v1 |
+
+> ⚠️ **VITE_API_BASE_URL 红线**：必须指向 **`quant-api` 子域**（独立 API 域名），**绝不能**写成 `quant.stephenhe.com`（漏 `api-`）。两者 cross-site，错配会导致：① 大盘面板空白（REST 打到被 Cloudflare 拦截的域名）② 超 10 分钟被踢回登录页（`/auth/refresh` 跨域续期失败，旧代码清 token）。仓库无 `.env.production`，该值仅在 Cloudflare Pages 构建变量中配置，发布前务必人工核对。改后须重新 `wrangler pages deploy` 生效。
 
 ---
 
@@ -363,6 +367,24 @@ redis-cli -a tradingagents123 keys "quant:node:*"
 - **⚠️ 命名空间陷阱**：S1 registry 内实际存储名为 `quant-agent-data-subservice:cn`（CI 推送路径），**不是** ghcr 的 `songlinhe5-lab/quant_agent-data-subservice:cn`。变量值必须用前者，否则 `pull` 报 `manifest unknown`。
 - **校验**：`docker pull 100.102.223.44:5000/quant-agent-data-subservice:cn` 应秒级 `Status: Image is up to date / Downloaded`；`docker inspect <容器> --format '{{.Config.Image}}'` 应显示 `100.102.223.44:5000/...`。
 - **老方案（不推荐）**：手动 `sed -i 's|ghcr.io/...|100.102.223.44:5000/...|g' docker-compose.node-bj.yml` 再 `up -d`——可临时用，但每次重新部署会被模板覆盖，故改用上面的 `.env` 变量法。
+
+### **问题 6: 前端超 10 分钟被踢回登录页 / 大盘面板空白**
+
+**现象**：登录后静止超过约 10~15 分钟自动跳 `/login`；或 dashboard 大盘无任何数据。
+
+**根因（同一条）**：`VITE_API_BASE_URL` 在 Cloudflare Pages 构建变量里误配成 `https://quant.stephenhe.com/api/v1`（漏 `api-` 子域）。前端访问域 `quant.stephenhe.com` 与 API 域 `quant-api.stephenhe.com` 是 **cross-site**，前者 `/api/*` 被 Cloudflare 拦截（返回 845 字节 HTML 拦截页而非 JSON）。
+- REST 业务请求被打到拦截域名 → dashboard 空白。
+- `/auth/refresh` 跨域续期失败（旧代码清 token）→ 登录态过期被踢回登录。
+
+**排查**：
+1. Cloudflare Pages 控制台 → 项目设置 → 构建与环境变量 → 核对此项目的 `VITE_API_BASE_URL` 是否为 `https://quant-api.stephenhe.com/api/v1`（带 `api-` 子域）。
+2. 浏览器 DevTools → Network：看 `POST /auth/refresh` 和 `GET /macro/dashboard` 实际请求 URL 域名，若落在 `quant.stephenhe.com` 即错配。
+3. 代码层已做防御（`api-client.ts` 的 `startTokenKeepAlive` 主动续期 + 仅在刷新接口真 401 才清 token），但**错配域名时 REST/refresh 全部落空，代码防御救不了**，必须改部署变量。
+
+**修复**：
+- 将 `VITE_API_BASE_URL` 改为 `https://quant-api.stephenhe.com/api/v1`。
+- 修改后必须重新部署：Cloudflare Pages 走 `main`/`master` 分支 push 触发 `wrangler pages deploy`（develop push 仅 build 不部署）。
+- 仓库无 `.env.production`（该变量不在仓库内），勿在仓库里找，直接看 Pages 控制台。
 
 ---
 

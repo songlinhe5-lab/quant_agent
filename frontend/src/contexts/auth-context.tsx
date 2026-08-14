@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { apiClient, setAccessToken } from '@/lib/api-client';
+import { apiClient, setAccessToken, startTokenKeepAlive, stopTokenKeepAlive } from '@/lib/api-client';
 
 interface User {
   id: string | number;
@@ -27,7 +27,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const initAuth = async () => {
       try {
         const res = await apiClient.get('/auth/me') as any;
-        if (res.data) setUser(res.data);
+        if (res.data) {
+          setUser(res.data);
+          startTokenKeepAlive(); // 已登录态：启动主动续期保活
+        }
       } catch {
         // 未登录或会话过期，保持在当前页面（登录页或公开页）
         setUser(null);
@@ -57,6 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // 2. 登录成功后，立即拉取当前用户信息
     const userRes = await apiClient.get('/auth/me') as any;
     setUser(userRes.data);
+    startTokenKeepAlive(); // 启动主动续期保活
   };
 
   const logout = async () => {
@@ -65,6 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     setAccessToken(null);
     setUser(null);
+    stopTokenKeepAlive(); // 停止保活
     // 登出时同样使用硬跳转，确保内存和前端缓存中的敏感数据彻底清空
     window.location.href = '/login';
   };

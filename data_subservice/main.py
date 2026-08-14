@@ -238,7 +238,15 @@ async def circuit_metrics():
 
 @app.get("/metrics")
 async def prometheus_metrics():
-    """Prometheus 抓取端点（FMP 等数据源指标，独立 registry）。"""
+    """Prometheus 抓取端点（FMP 等数据源指标 + 进程线程水位，独立 registry）。"""
+    # 刷新进程线程水位指标，使 Grafana 能直接 scrape 线程数（DIST-SEC-01 延伸）
+    _warn = int(os.getenv("YF_THREAD_WARN", "800"))
+    try:
+        from data_subservice._internal.metrics import set_process_thread_metrics
+
+        set_process_thread_metrics(_thread_count(), _warn)
+    except Exception:  # noqa: BLE001
+        pass
     return JSONResponse(
         content=generate_latest(_metrics_registry).decode("utf-8"),
         media_type=CONTENT_TYPE_LATEST,

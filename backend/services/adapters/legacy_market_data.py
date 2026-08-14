@@ -90,20 +90,46 @@ class MarketDataGateway:
         # BE-ARCH-07a: Futu 直调改为经 DataSourceRegistry 远程路由（子服务化，移除主服务本地 SDK）
         from backend.services.datasource import ResultStatus, datasource_registry
 
+        # 行情路由：Futu 优先（低延迟、港股原生覆盖好），失败降级 YFinance 兜底（YF 辅节点更"永远在线"）
         result = await datasource_registry.fetch("futu", "QUOTE", {"ticker": ticker, **kwargs})
         if result.status in (ResultStatus.SUCCESS, ResultStatus.DEGRADED):
-            return result.data
-        return {"status": "error", "message": result.error.message if result.error else "futu QUOTE 路由失败"}
+            data = result.data
+            data["_fallback"] = data.get("_fallback") or "futu"
+            return data
+        yf_res = await datasource_registry.fetch("yfinance", "QUOTE", {"ticker": ticker, **kwargs})
+        if yf_res.status in (ResultStatus.SUCCESS, ResultStatus.DEGRADED):
+            data = yf_res.data
+            data["_fallback"] = "yfinance"
+            data["_note"] = "Futu QUOTE 不可用，已降级至 YFinance"
+            return data
+        return {
+            "status": "error",
+            "message": yf_res.error.message if yf_res.error else "futu/yfinance QUOTE 路由均失败",
+        }
 
     async def get_history(self, ticker: str, ktype: str = "K_DAY", num: int = 100, **kwargs: Any) -> dict[str, Any]:
         from backend.services.datasource import ResultStatus, datasource_registry
 
+        # 行情路由：Futu 优先，失败降级 YFinance 兜底
         result = await datasource_registry.fetch(
             "futu", "HISTORY", {"ticker": ticker, "ktype": ktype, "num": num, **kwargs}
         )
         if result.status in (ResultStatus.SUCCESS, ResultStatus.DEGRADED):
-            return result.data
-        return {"status": "error", "message": result.error.message if result.error else "futu HISTORY 路由失败"}
+            data = result.data
+            data["_fallback"] = data.get("_fallback") or "futu"
+            return data
+        yf_res = await datasource_registry.fetch(
+            "yfinance", "HISTORY", {"ticker": ticker, "ktype": ktype, "num": num, **kwargs}
+        )
+        if yf_res.status in (ResultStatus.SUCCESS, ResultStatus.DEGRADED):
+            data = yf_res.data
+            data["_fallback"] = "yfinance"
+            data["_note"] = "Futu HISTORY 不可用，已降级至 YFinance"
+            return data
+        return {
+            "status": "error",
+            "message": yf_res.error.message if yf_res.error else "futu/yfinance HISTORY 路由均失败",
+        }
 
     async def get_fund_flow(self, ticker: str) -> dict[str, Any]:
         from backend.services.datasource import ResultStatus, datasource_registry

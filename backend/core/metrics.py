@@ -592,6 +592,34 @@ FMP_WATCHLIST_FILE_DELETED = Counter(
 )
 
 # ==========================================
+#  进程线程水位指标 (SYS-APM-THREADS)
+#  —— 主服务进程级线程监控：实时 OS 线程数 + 告警阈值。DIST-SEC-02 复盘：
+#     子服务曾线程耗尽（2263）但监控无感知，故在主服务侧也补上进程线程水位，
+#     与子服务 /health threads 一起构成主+子双向线程监控。
+# ==========================================
+
+PROCESS_THREAD_COUNT = Gauge(
+    "quant_process_thread_count",
+    "当前进程 OS 线程数（主服务 uvicorn worker 视角）",
+)
+
+PROCESS_THREAD_WARN_THRESHOLD = Gauge(
+    "quant_process_thread_warn_threshold",
+    "进程线程数告警阈值（超过即 degraded）",
+)
+
+
+def update_process_thread_metrics() -> int:
+    """刷新主服务进程线程水位指标，返回当前线程数。"""
+    import threading
+
+    count = threading.active_count()
+    PROCESS_THREAD_COUNT.set(count)
+    PROCESS_THREAD_WARN_THRESHOLD.set(int(__import__("os").getenv("MAIN_THREAD_WARN", "800")))
+    return count
+
+
+# ==========================================
 #  WebScrape (fetch_webpage) 抓取成功率插桩 (AGENTS.md §2.12 降级实证)
 # ==========================================
 # 目的：量化 PR Newswire / HKEX 披露易 等反爬域名的抓取失败率，验证 Jina→httpx
