@@ -266,6 +266,11 @@ jobs:
 
       - name: Deploy
         env:
+          # 复用 build job 已在 runner 上解析出的 deploy_sha (= merge commit ^2 = PR head SHA)。
+          # 切勿在 VPS 上重新 git rev-parse "^2"：VPS 的 /opt/quant-agent 仓库对象不全，
+          # 对 merge commit 解析 ^2 会失败并回退成 merge commit 自身 tag (CI runner 从未推送)，
+          # 导致 pull No such image (复现 #310 部署失败)。
+          DEPLOY_SHA: ${{ needs.build.outputs.deploy_sha }}
           VPS_HOST: ${{ secrets.VPS_S1_HOST }}
           VPS_USER: ${{ secrets.VPS_S1_USER }}
           VPS_PORT: ${{ secrets.VPS_S1_PORT || '22' }}
@@ -280,14 +285,8 @@ jobs:
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             cd /opt/quant-agent
 
-            # 方案 B：部署用 SHA = merge commit 的第二个 parent（= 被合并 PR 的 head SHA）。
+            # 方案 B：部署用 SHA 已由 runner 的 build job 解析 (= merge ^2 parent = PR head SHA)。
             # PR CI 已把 :<sha> 推到 GHCR，此处直接复用，不再 build。
-            # 注意：rev-parse ^2 对非 merge commit 会把脏值打到 stdout，须用 --verify --quiet 校验。
-            HEAD_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
-            DEPLOY_SHA="${HEAD_SHA}"
-            if git rev-parse --verify --quiet "${HEAD_SHA}^2" >/dev/null 2>&1; then
-              DEPLOY_SHA=$(git rev-parse --verify "${HEAD_SHA}^2")
-            fi
             echo "🚀 部署用镜像 tag: ${DEPLOY_SHA} (merge ^2 parent 复用 PR 构建产物)"
 
             # ── 先拉取模板文件 (compose + env 模板)，确保后续 .env 首次生成有模板可用 ──
