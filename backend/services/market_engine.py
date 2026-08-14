@@ -36,20 +36,6 @@ from backend.services.futu.utils import is_futu_unsupported
 logger = logging.getLogger(__name__)
 
 
-def _spawn(self, coro):
-    """同步方法里的安全 fire-and-forget：仅在存在 running event loop 时
-    create_task（生产环境 WS 协程上下文必然满足）。无 loop 的同步单测/信号
-    回调上下文直接静默跳过，绝不抛 RuntimeError。task 存入实例集合持有强
-    引用，防 MEMORY 第七章所述 GC 回收导致协程静默停摆。"""
-    try:
-        task = asyncio.create_task(coro)
-    except RuntimeError:
-        return None
-    self._bg_tasks.add(task)
-    task.add_done_callback(self._bg_tasks.discard)
-    return task
-
-
 async def update_quote_to_redis(ticker: str, quote_data: dict):
     """通用的写入 Redis 逻辑（Futu 和 Yahoo 都调这个，统一序列化为 Protobuf）"""
     _t0 = time.perf_counter()
@@ -149,6 +135,19 @@ class ConnectionManager:
         password = os.getenv("REDIS_PASSWORD", "")
         redis_url = f"redis://:{password}@{host}:{port}"
         self.raw_redis = redis.from_url(redis_url, protocol=2)
+
+    def _spawn(self, coro):
+        """同步方法里的安全 fire-and-forget：仅在存在 running event loop 时
+        create_task（生产环境 WS 协程上下文必然满足）。无 loop 的同步单测/信号
+        回调上下文直接静默跳过，绝不抛 RuntimeError。task 存入实例集合持有强
+        引用，防 MEMORY 第七章所述 GC 回收导致协程静默停摆。"""
+        try:
+            task = asyncio.create_task(coro)
+        except RuntimeError:
+            return None
+        self._bg_tasks.add(task)
+        task.add_done_callback(self._bg_tasks.discard)
+        return task
 
     async def start_background_tasks(self):
         """启动 Redis 总线监听与底层兜底轮询守护协程"""
