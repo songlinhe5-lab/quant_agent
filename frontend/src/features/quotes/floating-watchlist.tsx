@@ -29,7 +29,7 @@ export function FloatingWatchlist({ watchlist, selectedSymbol, setSelectedSymbol
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [pos, setPos] = useState({ x: 16, y: 16 })
+  const [pos, setPos] = useState({ x: 16, y: 96 })
   const [live, setLive] = useState<Record<string, { price: number; change: number }>>({})
   const drag = useRef<{ startX: number; startY: number; origX: number; origY: number; moved: boolean } | null>(null)
   const ballRef = useRef<HTMLDivElement>(null)
