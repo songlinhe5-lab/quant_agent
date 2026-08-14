@@ -22,32 +22,37 @@ class SentimentTracker:
 
         try:
             # 1. 提取 VIX 恐慌指数
+            # ⚠️ 注意：yf_macro_cache_^VIX 缓存里 records 的字段是小写 close/open/high/low/volume
+            #    （由 data_subservice quote.py 拍平后的结构），不是 yfinance 原始的 MultiIndex ('Close', sym)。
+            #    故此处用 .get("close") 小写优先，并兼容旧 MultiIndex 兜底。
             vix_val = None
             vix_cache = await redis_client.get("yf_macro_cache_^VIX")
             if vix_cache:
                 records = json.loads(vix_cache)
                 if records and len(records) > 0:
-                    v_val = records[-1].get("Close")
+                    v_val = records[-1].get("close")
                     if v_val is None:
+                        # 兜底：旧 yfinance MultiIndex 列名形如 ("'Close'", "^VIX")
                         v_val = next(
-                            (v for k, v in records[-1].items() if str(k).startswith("('Close'")),
+                            (v for k, v in records[-1].items() if str(k).lower().startswith("close")),
                             None,
-                        )  # noqa: E501
+                        )
                     if v_val:
                         vix_val = round(float(v_val), 2)
 
-            # 2. 提取 P/C Ratio
+            # 2. 提取 P/C Ratio（由 CBOE 每日统计采集器写入 yf_macro_cache_^CPC）
+            #    同样用小写 close 兼容拍平后的结构
             cpc_val = None
             cpc_cache = await redis_client.get("yf_macro_cache_^CPC")
             if cpc_cache:
                 records = json.loads(cpc_cache)
                 if records and len(records) > 0:
-                    c_val = records[-1].get("Close")
+                    c_val = records[-1].get("close")
                     if c_val is None:
                         c_val = next(
-                            (v for k, v in records[-1].items() if str(k).startswith("('Close'")),
+                            (v for k, v in records[-1].items() if str(k).lower().startswith("close")),
                             None,
-                        )  # noqa: E501
+                        )
                     if c_val:
                         cpc_val = round(float(c_val), 2)
 

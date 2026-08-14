@@ -1211,10 +1211,11 @@ async def get_macro_assets(
                 if cpc_cache:
                     cpc_records = json.loads(cpc_cache)
                     if cpc_records and len(cpc_records) > 0:
-                        c_val = cpc_records[-1].get("Close")
+                        c_val = cpc_records[-1].get("close")
                         if c_val is None:
+                            # 兜底：旧 MultiIndex 列名形如 ("'Close'", "^CPC")
                             c_val = next(
-                                (v for k, v in cpc_records[-1].items() if str(k).startswith("('Close'")),
+                                (v for k, v in cpc_records[-1].items() if str(k).lower().startswith("close")),
                                 None,
                             )  # noqa: E501
                         if c_val:
