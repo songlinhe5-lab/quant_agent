@@ -47,7 +47,9 @@ export function OptionVolSurface({ symbol }: { symbol: string }) {
       .then((r) => {
         if (!r.ok) {
           return r.json().then((err) => {
-            throw new Error(err?.detail || `HTTP ${r.status}`)
+            // 兼容统一信封 {code,msg,data} 与原生 {detail} 两种错误结构
+            const msg = err?.msg ?? err?.detail ?? err?.message ?? `HTTP ${r.status}`
+            throw new Error(msg)
           })
         }
         return r.json()
@@ -59,7 +61,14 @@ export function OptionVolSurface({ symbol }: { symbol: string }) {
         }
       })
       .catch((e) => {
-        if (!cancelled) setError(String(e))
+        if (!cancelled) {
+          // 网络层/CORS 拦截导致 fetch 失败:浏览器只给 TypeError: Failed to fetch
+          if (e instanceof TypeError || /Failed to fetch/i.test(String(e.message ?? e))) {
+            setError('后端无响应或跨域被拒绝，请检查网络/数据源连通性后重试')
+          } else {
+            setError(e?.message || String(e))
+          }
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
