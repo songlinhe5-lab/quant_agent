@@ -125,6 +125,11 @@ class ConnectionManager:
         # 💡 资金流低频数据节流水位：FUND_FLOW 5 分钟粒度刷新（对齐 facade _STALE_THRESHOLD_SEC["FUND_FLOW"]=300），
         # 避免每 3 秒全量 gather 打爆子服务线程池。
         self.last_flow_update = {}
+        # 🚨 tech 兜底失败退避（2026-08-14）：tickers_to_update 之前用 "t not in self.tech_cache"
+        # 判定，导致 futu/yfinance 都取不到数据的标的（如指数 US.SPX）从不进 tech_cache，
+        # 每 3 秒循环都对其重试 HISTORY+tech → 请求风暴喂爆子服务线程。记录每标的上次尝试时间，
+        # 失败标的退避 600s 再重试，杜绝循环风暴。
+        self.last_tech_attempt = {}
         self._futu_alert_sent = False
         self._outflow_alert_records = {}  # {ticker: timestamp} 防抖缓冲，防止连环报警
         self.last_account_summary = "总资产: 未知 | 浮动盈亏: 未知"
@@ -363,11 +368,25 @@ class ConnectionManager:
                     # 技术指标(日线级)无需每 3 秒全量并发刷新。设定为 1 小时更新一次，或发现新标的时触发  # noqa: E501
                     current_time = time.time()
                     need_global_tech_update = current_time - getattr(self, "last_tech_update", 0) > 3600  # noqa: E501
-                    tickers_to_update = [t for t in all_tickers if t not in self.tech_cache or need_global_tech_update]  # noqa: E501
+                    # 🚨 防请求风暴 (2026-08-14)：t not in self.tech_cache 会让 futu/yfinance 都取不到
+                    # 数据的标的（如指数 US.SPX/VIX）从不进 tech_cache，每 3 秒循环重试 HISTORY → 打爆
+                    # 子服务线程池。改为：未缓存 且 未判定 unsupported 且 距上次尝试超过退避间隔(600s)。
+                    _tech_backoff = 600
+                    tickers_to_update = [
+                        t
+                        for t in all_tickers
+                        if t not in self.tech_cache
+                        and not is_futu_unsupported(t)
+                        and (need_global_tech_update or current_time - self.last_tech_attempt.get(t, 0) > _tech_backoff)
+                    ]  # noqa: E501
 
                     if tickers_to_update:
                         for t in tickers_to_update:
                             try:
+                                # 🚨 防风暴：无论本轮成败都记录尝试时间，失败标的按 _tech_backoff 退避，
+                                # 避免每 3 秒循环重试注定失败的标的（指数/无权限标的）。
+                                self.last_tech_attempt[t] = current_time
+
                                 # 优先尝试利用 Futu 获取 120 日历史，完全免除外部网络请求  # noqa: E501
                                 futu_res = await data_source_router.fetch_futu(
                                     "HISTORY", ticker=t, ktype="K_DAY", num=120
