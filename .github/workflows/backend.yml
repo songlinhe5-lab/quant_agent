@@ -307,56 +307,40 @@ jobs:
           ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<'EOF'
             set -e
 
-            # 关键：heredoc 为引号版 <<'EOF'，本地 runner 的 step env 不会注入远程 shell。
-            # 必须在此显式 export DEPLOY_SHA（Actions 表达式在 YAML 编译期已渲染为字面量，
-            # 不受 heredoc 引号影响），否则远程 ${DEPLOY_SHA} 为空 → IMAGE 拼成 "quant_agent:" invalid format。
             export DEPLOY_SHA='${{ needs.build.outputs.deploy_sha }}'
 
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             cd /opt/quant-agent
 
-            # 方案 B：部署用 SHA 已由 runner 的 build job 解析 (= merge ^2 parent = PR head SHA)。
-            # PR CI 已把 :<sha> 推到 GHCR，此处直接复用，不再 build。
             echo "🚀 部署用镜像 tag: ${DEPLOY_SHA} (merge ^2 parent 复用 PR 构建产物)"
 
-            # ── 先拉取模板文件 (compose + env 模板)，确保后续 .env 首次生成有模板可用 ──
             IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${DEPLOY_SHA}"
             curl -sSL -o docker-compose.master.yml "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.master.yml"
             curl -sSL -o docker-compose.node-s1.yml "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.node-s1.yml"
             curl -sSL -o .env.example "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/.env.example" || echo "⚠️ 拉取 .env.example 失败，首次生成将走兜底"
             curl -sSL -o .env.data-node.example "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/.env.data-node.example" || echo "⚠️ 拉取 .env.data-node.example 失败"
-            # 关键：替换源必须是下划线版 quant_agent（compose 里实际是 ghcr.io/songlinhe5-lab/quant_agent:latest）。
-            # 此前误写成连字符版 quant-agent:latest 导致 sed 失配、compose 保留 :latest，
-            # docker compose pull 拉到的是缓存的 :latest 而非 :<DEPLOY_SHA>，后续 docker tag ${IMAGE} 报 No such image。
+
             sed -i "s|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest|${IMAGE}|g" docker-compose.master.yml
-            # 🔍 替换后校验: sed 失配时当场中止，避免拖到 docker compose pull/tag 才暴露
+
             if ! grep -q "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${DEPLOY_SHA}" docker-compose.master.yml; then
               echo "❌ master compose 镜像地址未被替换 (sed 模式失配)，中止"
               exit 1
             fi
-            # 🛡️ 静态防复发: 严禁 compose 出现连字符版仓库名 (quant-agent-)，必须统一为下划线版 (quant_agent-)
-            #    否则会再次触发 GHCR pull not found。此扫描在任何 sed 替换前执行，拦截手改回旧名。
+
             if grep -q "ghcr.io/songlinhe5-lab/quant-agent-data-subservice" docker-compose.node-s1.yml; then
               echo "❌ docker-compose.node-s1.yml 仍含连字符版仓库名 quant-agent-data-subservice，请统一为下划线版 quant_agent-，中止"
               exit 1
             fi
             echo "✅ node-s1 compose 仓库名合规 (下划线版 quant_agent-)"
 
-            # ⚠️ tag 用 [a-z-]* 通配 (与 deploy-data-nodes 一致)，避免硬编码 tag 静默失配
-            #    (sed 找不到模式不报错、返回 0)，导致 compose 保留原地址最终 pull not found。
-            #    仓库名以 compose 内的 quant_agent-data-subservice 为准 (= IMAGE_NAME + 后缀)。
             sed -i "s|ghcr.io/songlinhe5-lab/quant_agent-data-subservice:[a-z-]*|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:us|g" docker-compose.node-s1.yml
 
-            # 🔍 替换后校验: sed 失配时当场中止，避免拖到 docker compose pull 才暴露
             if ! grep -q "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:us" docker-compose.node-s1.yml; then
               echo "❌ node-s1 compose 镜像地址未被替换 (sed 模式失配)，中止"
               exit 1
             fi
             echo "✅ 模板文件已拉取完毕 (compose + .env.example + .env.data-node.example)"
 
-            # ⚠️ 主节点 .env 由运维手动维护。
-            #    仅当 .env 完全不存在时，参考仓库 .env.example 首次生成 (cp 模板)，
-            #    并补入 compose 必需的 TAILSCALE_IP (模板无此项)。生成后一律沿用人工配置，CI 不再触碰。
             if [ ! -f .env ]; then
               if [ -f .env.example ]; then
                 echo "🆕 未检测到主节点 .env，参考 .env.example 首次生成"
@@ -365,8 +349,7 @@ jobs:
                 echo "🆕 未检测到主节点 .env，且仓库无 .env.example，用最小兜底生成"
                 printf '%s\n' 'QUANT_ENV=production' > .env
               fi
-              # TAILSCALE_IP 为 compose 端口绑定必需项，真实值仅在 GitHub Secret，
-              # 首次生成后强制用真实 TS IP 覆盖 (无论模板是否已含占位行)
+
               if [ -n "${{ secrets.VPS_S1_TAILSCALE_IP }}" ]; then
                 if grep -q '^TAILSCALE_IP=' .env; then
                   sed -i "s|^TAILSCALE_IP=.*|TAILSCALE_IP=${{ secrets.VPS_S1_TAILSCALE_IP }}|" .env
@@ -377,15 +360,13 @@ jobs:
               echo "✅ 主节点 .env 已生成，请按需手动补填真实密钥/密码后再部署"
             else
               echo "🛡️ 检测到已存在的主节点 .env，完全保留人工配置，CI 不触碰"
-              # SEC-17 修复: registry 端口绑定依赖 TAILSCALE_IP，已存在的 .env 可能缺少此项。
-              # 仅补入 TAILSCALE_IP (compose 端口绑定必需)，不改动其他配置。
+
               if [ -n "${{ secrets.VPS_S1_TAILSCALE_IP }}" ] && ! grep -q '^TAILSCALE_IP=' .env 2>/dev/null; then
                 printf 'TAILSCALE_IP=%s\n' "${{ secrets.VPS_S1_TAILSCALE_IP }}" >> .env
                 echo "🔧 已存在 .env 缺少 TAILSCALE_IP，已自动补入 (registry 端口绑定必需)"
               fi
             fi
 
-            # 脱敏校验: 仅只读检查 TAILSCALE_IP 是否已在 .env 中配置，不写任何文件
             TS_VAL=""
             if grep -q '^TAILSCALE_IP=.' .env 2>/dev/null; then
               TS_VAL=$(grep '^TAILSCALE_IP=' .env | cut -d'=' -f2)
@@ -397,8 +378,6 @@ jobs:
               echo "⚠️ 警告: TAILSCALE_IP 为空！registry 将仅绑定 127.0.0.1，北京节点无法经内网拉取镜像。如需内网拉取，请在主节点 .env 中手动配置 VPS_S1_TAILSCALE_IP。"
             fi
 
-            # 🔧 强制覆盖 TAILSCALE_IP 到 shell 环境与 .env，消除"空值 TAILSCALE_IP= 导致 registry 仅绑 loopback"的漏洞。
-            # 无论 .env 是否已存在(含空值)，只要 Secret 有真实值，就覆盖，确保后续 docker compose up 端口绑定到真实 TS IP。
             if [ -n "${{ secrets.VPS_S1_TAILSCALE_IP }}" ]; then
               export TAILSCALE_IP="${{ secrets.VPS_S1_TAILSCALE_IP }}"
               if grep -q '^TAILSCALE_IP=' .env 2>/dev/null; then
@@ -409,10 +388,6 @@ jobs:
               echo "🔧 已强制将 TAILSCALE_IP 覆盖为真实值 (供 registry 端口绑定)，脱敏: $(echo ${{ secrets.VPS_S1_TAILSCALE_IP }} | cut -d':' -f1 | awk -F'.' '{print $1"."$2".x.x"}')"
             fi
 
-            # ── 主节点 Tailscale 预检: 确保 registry 的 TS IP 端口绑定能成功 ──
-            # 若 tailscale0 接口存在，用其真实 IP 动态覆盖 TAILSCALE_IP (静态 Secret 值可能与当前 TS IP 不一致，
-            # 导致 docker 绑定到不存在的 IP 而只留 loopback，bj 节点再连 TS IP 即 connection refused)。
-            # 与北京节点的 tailscale0 自检逻辑对称，避免主节点静默失败、推到 bj 才暴露。
             TS_IFACE_IP=$(ip -4 addr show tailscale0 2>/dev/null | grep -oP 'inet \K[\d.]+' || true)
             if [ -n "$TS_IFACE_IP" ]; then
               export TAILSCALE_IP="$TS_IFACE_IP"
@@ -423,17 +398,11 @@ jobs:
               echo "   若需内网拉取，请在主节点启动 Tailscale (tailscale up) 后重跑。当前仅绑定 127.0.0.1。"
             fi
 
-            # 🧹 部署前自动回收悬空 docker 资源（旧镜像/退出容器/未用网络/构建缓存），
-            #    防止历史堆积触发磁盘守卫。仅删悬空对象，不影响正在运行的容器与命名 volume。
             echo "🧹 部署前自动清理悬空 docker 资源..."
             docker system prune -af >/dev/null 2>&1 || true
             journalctl --vacuum-size=200M >/dev/null 2>&1 || true
             apt-get clean >/dev/null 2>&1 || true
 
-            # 🛡️ 磁盘空间前置守卫: 拉取镜像前断言 / 剩余空间，低于阈值直接 fail fast，
-            #    避免在 pull 中途因 containerd rename 失败 (no such file or directory) 白跑整段 CI。
-            #    注: 已用% 仅作告警，硬拦只看剩余 GB —— 仅重建(up --force-recreate)不拉新镜像时
-            #        80% 占用仍属安全，避免误杀；真正危险的是剩余空间不足导致 containerd 拉取崩溃。
             DF_AVAIL_PCT=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
             DF_FREE_GB=$(df -BG / | awk 'NR==2 {print $4}' | tr -d 'G')
             DISK_MIN_FREE_GB=6
@@ -451,17 +420,9 @@ jobs:
               exit 1
             fi
 
-            # ⏱️ 主节点拉取加总超时保护，防止 GHCR 拉取慢/重试无限卡死 CI
             timeout 900 docker compose -f docker-compose.master.yml --env-file .env pull \
               || { echo "❌ 主节点 docker compose pull 超时或失败 (900s)"; exit 1; }
 
-            # ── 清理旧项目名 (quant-agent) 遗留的硬编码容器名孤儿 ──
-            # 历史坑: 旧版本 compose 用固定 container_name (quant_registry/quant_postgres/...)，
-            # 手动救急 up -d registry 时以旧项目名 quant-agent 创建了 quant_registry，占用 5000 端口。
-            # 新版 compose 删除了 container_name，容器自动命名为 quant-agent-master_registry_1，
-            # 但若旧 quant_registry 仍存在会占用 127.0.0.1:5000 与 TAILSCALE_IP:5000 → 新 registry 端口冲突起不来。
-            # --remove-orphans 只能清当前项目孤儿，清不掉不同项目名的旧容器，故此处显式按旧前缀清理。
-            # 安全边界: 仅匹配 quant_ 前缀 (旧硬编码名)，新项目容器名含 quant-agent-master_ 前缀不会被误删。
             OLD_ORPHANS=$(docker ps -a --filter name='quant_' --format '{{.Names}}' | grep -E '^quant_(registry|postgres|redis|app|worker|prometheus|grafana)$' || true)
             if [ -n "${OLD_ORPHANS}" ]; then
               echo "🧹 检测到旧项目名 (quant-agent) 遗留容器，清理以避免端口/命名冲突:"
@@ -475,21 +436,9 @@ jobs:
             docker compose -f docker-compose.master.yml --env-file .env up -d --remove-orphans
             docker image prune -f
 
-            # ── 防御性再拉起 registry ──
-            # --remove-orphans 可能把 registry 误判为孤儿容器清掉 (compose 版本/项目名不一致时)，
-            # 或 up 阶段因端口冲突未成功启动。此处幂等再 up 一次，确保 registry 必然运行，
-            # 否则下方等待校验会 fail-fast，不会把空 registry 暴露给北京节点。
-            # 🔧 加固: up 命令本身非零退出时当场 fail，不再静默进入等待循环 (避免 30s 空等且信息模糊)。
             docker compose -f docker-compose.master.yml --env-file .env up -d registry \
               || { echo "❌ 主节点 up -d registry 执行失败 (registry 未创建)，中止避免北京节点拉到空 registry"; exit 1; }
 
-            # ── 关键加固: 等待 registry 容器就绪并监听 5000 端口 ──
-            # 历史坑: registry 容器未运行 → 北京节点经内网 pull 5000 端口吃 connection refused，
-            # 错误被推到 bj 节点才暴露，排查极慢。此处主节点 deploy 后即地 fail-fast 等待。
-            # restart:always 已配置，但 compose up 后容器可能仍在启动 / 端口尚未 bind。
-            # 🔧 动态获取 registry 容器 ID (不再硬编码 quant_registry，随 compose name: 字段自动隔离)。
-            #    判活改用 docker inspect -f '{{.State.Running}}' (返回 true/false)，
-            #    彻底绕开 docker ps --filter id=<短ID> 在部分 Docker 版本上匹配失效的陷阱。
             echo "🔍 等待 registry 容器就绪 (最多 30s)..."
             REGISTRY_READY=0
             for i in $(seq 1 30); do
@@ -508,7 +457,7 @@ jobs:
               echo "   docker compose -f docker-compose.master.yml --env-file .env up -d registry"
               exit 1
             fi
-            # 再确认 5000 端口确实在监听 (loopback 即可，CI 主节点 push 用 localhost:5000)
+
             if ! (ss -tlnp 2>/dev/null | grep -q ':5000' || docker exec "${REGISTRY_CID}" wget -qO- http://localhost:5000/v2/ >/dev/null 2>&1); then
               echo "❌ registry 容器已运行但 5000 端口未监听！请检查端口绑定 (TAILSCALE_IP/loopback)。"
               echo "   ss -tlnp | grep 5000   # 应见 127.0.0.1:5000 与 \${TAILSCALE_IP}:5000"
@@ -516,18 +465,10 @@ jobs:
             fi
             echo "✅ registry 已就绪，5000 端口监听正常，北京节点可经内网拉取"
 
-            # 将镜像推送到本机内网私有 registry，供国内节点 (北京) 经 Tailscale 内网高速拉取
-            # 注意: 在主节点本机操作，registry 地址用 127.0.0.1 (避免 localhost 解析到 ::1 IPv6 导致偶发 denied)，
-            # 不依赖远程 shell 无感的 TS IP 变量；registry 已无 auth，匿名 push 可直接放行。
             REGISTRY_IMAGE="127.0.0.1:5000/quant-agent:latest"
             docker tag "${IMAGE}" "${REGISTRY_IMAGE}"
             docker push "${REGISTRY_IMAGE}"
 
-            # ── data-subservice 镜像内网 registry 中转 ──
-            # node-s1 (主节点本地子服务) 不预拉 :us, 由 docker-compose.node-s1.yml 的
-            # pull_policy: always 每次 up 直接拉最新 GHCR :us (见下方 compose up)。
-            # 方案 B：data-subservice 复用 PR 构建的 :<DEPLOY_SHA> 镜像，打上 :us 标签供内网 registry 中转。
-            # 北京节点经内网 registry 中转 :us (跨洋直连 GHCR 慢且可能被墙); node-s2/s3/s4 美西直连 GHCR :us。
             docker pull "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${DEPLOY_SHA}" \
               || { echo "❌ 主节点从 GHCR 拉取 data-subservice:${DEPLOY_SHA} 失败，中止"; exit 1; }
             docker tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${DEPLOY_SHA}" "127.0.0.1:5000/quant-agent-data-subservice:us"
@@ -535,24 +476,11 @@ jobs:
               || { echo "❌ data-subservice:us 推送到本机 registry 失败 (磁盘/containerd 问题?)，中止避免从节点拉到空镜像"; exit 1; }
             echo "✅ data-subservice:${DEPLOY_SHA} 已中转为 :us 推送至本机 registry，北京节点可经内网拉取"
 
-            # ── OPS-03: 每次 push 后回收 registry 垃圾 + 安装深度 GC cron ──
-            # 逻辑已抽离至 scripts/registry-gc-install.sh (避免单 run 块超 21000 字符上限)。
-            # 保守 GC (仅清 dangling) 由该脚本在 push 后立即执行；
-            # 深度 GC (--delete-untagged) 由 scripts/registry-gc.sh 在 04:30 cron 执行，
-            # 专门清 tag 覆盖残留旧 manifest —— 卷膨胀至 11GB 的真凶。
-            # 详见两脚本头部注释及 PR 说明。
             curl -sSL -o scripts/registry-gc-install.sh "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/scripts/registry-gc-install.sh" 2>/dev/null \
               && chmod +x scripts/registry-gc-install.sh \
               && GC_SCRIPT_REF="${{ github.repository }}/${{ github.sha }}" scripts/registry-gc-install.sh \
               || echo "⚠️ registry-gc-install.sh 拉取/执行失败 (非致命)，下次部署重试；registry 与 cron 不受影响"
 
-            # ── 主节点本地子服务 (node-s1)：与 quant-agent 同机，监听 8001，主服务经 127.0.0.1:8001 直连 ──
-            # 复用已拉取的 data-subservice 镜像 (DS_IMAGE 已在上方 pull 就位)
-            # ╔══════════════════════════════════════════════════════════════╗
-            # ║ .env.data-node 一次性生成原则 (与主节点 .env 语义一致)         ║
-            # ║ 不存在 → 由模板生成并回填 Secrets；已存在 → 完全不触碰。       ║
-            # ║ 便于运维手工调参 (如 DS_CAPABILITIES) 后不被下次部署覆盖。     ║
-            # ╚══════════════════════════════════════════════════════════════╝
             if [ ! -f .env.data-node ]; then
               if [ ! -f .env.data-node.example ]; then
                 echo "❌ 缺少 .env.data-node.example 模板，无法生成 .env.data-node (node-s1)"
@@ -562,12 +490,7 @@ jobs:
               echo "🆕 未检测到 .env.data-node，基于模板首次生成并回填 (node-s1)"
               sed -i "s|^DS_NODE_ID=.*|DS_NODE_ID=us-yf-s1|" .env.data-node
               sed -i "s|^DS_REGION=.*|DS_REGION=us-west|" .env.data-node
-              # ⚠️ DS_CAPABILITIES 不再由 CI 写死/覆写: 直接沿用 .env.data-node.example 模板里的
-              #    主节点标准集 (futu,fmp,finnhub,fred,dbnomics,rbi,tavily,bocha,jina,yfinance)。
-              #    该值经 docker-compose.node-s1.yml 的 DS_CAPABILITIES=${DS_CAPABILITIES} 注入子服务，
-              #    即"走 .env.data-node 配置"。历史坑: 此前 CI sed 覆写为纯 yfinance，导致 futu/fmp/宏观源
-              #    全部 503 -> router 熔断 -> 主服务刷屏"远程节点不可用" (incident 2026-08-11)。
-              #    首次生成 = cp 模板带正确完整集; 已存在 = else 分支不动, 走运维真实配置。
+
               sed -i "s|^DS_NODE_PORT=.*|DS_NODE_PORT=8001|" .env.data-node
               sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=127.0.0.1|" .env.data-node
               sed -i "s|^DS_BASE_URL=.*|DS_BASE_URL=http://127.0.0.1:8001|" .env.data-node
@@ -579,11 +502,6 @@ jobs:
               echo "🛡️ 检测到已存在的 .env.data-node，完全保留人工配置，CI 不触碰 (node-s1)"
             fi
 
-            # ── 清理旧项目名 (quant-agent) 遗留的硬编码容器名孤儿 ──
-            # 历史坑: 旧版 node-s1 compose 用固定 container_name (quant-data-subservice-node-s1)，
-            # 旧容器以旧项目名 quant-agent 创建，占用 8001 端口 (PUBLIC_IP=TS_IP 时绑外网 IP:8001)，
-            # 新容器 quant-agent-node-s1-data-subservice-1 绑定同端口会报 "port is already allocated"。
-            # --remove-orphans 只能清当前项目孤儿，清不掉不同项目名的旧容器，故此处按旧前缀精准清理。
             OLD_S1_ORPHAN=$(docker ps -a --filter name='quant-data-subservice-node-s1' --format '{{.Names}}' || true)
             if [ -n "${OLD_S1_ORPHAN}" ]; then
               echo "🧹 检测到旧项目名 (quant-agent) 遗留 node-s1 容器 (${OLD_S1_ORPHAN})，清理以释放 8001 端口:"
@@ -596,7 +514,6 @@ jobs:
             docker compose -f docker-compose.node-s1.yml --env-file .env.data-node up -d --remove-orphans
             echo "✅ 主节点本地子服务 (node-s1) 已启动于 127.0.0.1:8001"
 
-            # 🔍 可选校验: docker manifest inspect 探测 registry 内镜像可见性 (失败仅警告，不中止，因 push 成功已足够证明镜像就位)
             if docker manifest inspect "${DS_REGISTRY_IMAGE}" >/dev/null 2>&1; then
               echo "✅ registry 内 data-subservice manifest 可被 manifest inspect 解析"
             else
@@ -731,7 +648,6 @@ jobs:
             set -e
             cd /opt/quant-agent
 
-            # ── Tailscale IP 自动检测: 若 GitHub Secret 未配置/为空，从宿主机 tailscale0 接口自动获取 ──
             if [ -z "$NODE_TS_IP" ]; then
               DETECTED_TS_IP=$(ip -4 addr show tailscale0 2>/dev/null | grep -oP 'inet \K[\d.]+' || true)
               if [ -n "$DETECTED_TS_IP" ]; then
@@ -743,8 +659,6 @@ jobs:
               fi
             fi
 
-            # 镜像地址: 北京节点经主节点内网 registry 拉取 (避免跨洋直连 GHCR)，其余节点直连 GHCR
-            # 全量镜像合并后统一 tag=us，取自 matrix.ds-tag（bj 经内网中转，美西直连 GHCR）
             NODE="${{ matrix.node }}"
             DS_TAG="${{ matrix.ds-tag }}"
             if [ "$NODE" = "bj" ]; then
@@ -753,17 +667,14 @@ jobs:
               IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${DS_TAG}"
             fi
 
-            # 北京节点: 经主节点内网 http registry 拉取，需 docker 配置 insecure-registries (一次性 root 配置)
             if [ "$NODE" = "bj" ]; then
-              # 🔍 探测 sudo 是否免密可用，避免非交互 ssh 下 sudo 卡死等密码
+
               if ! sudo -n true 2>/dev/null; then
                 echo "⚠️ SUDO_BLOCKED: 当前用户无免密 sudo，无法在 CI 内自动配置 insecure-registries"
               fi
               DAEMON_CFG="/etc/docker/daemon.json"
               TS_REG="${{ secrets.VPS_S1_TAILSCALE_IP }}:5000"
-              # 🔍 校验 daemon 实际是否已将 :5000 当 insecure-registries 加载 (而非仅文件里有字符串)。
-              # 历史坑: daemon.json 写了但从未 systemctl restart docker，运行中的 daemon 仍对 :5000 走 https，
-              #     导致 docker compose pull 报 https://.../manifests/... not found (TLS 失败误导文案)。
+
               daemon_has_insecure() {
                 docker info --format '{{json .RegistryConfig.InsecureRegistryCIDRs}} {{json .RegistryConfig.IndexConfigs}}' 2>/dev/null \
                   | grep -q "$TS_REG"
@@ -776,7 +687,7 @@ jobs:
                   echo "   echo '{ \"insecure-registries\": [\"$TS_REG\"] }' | sudo tee /etc/docker/daemon.json && sudo systemctl restart docker"
                   exit 1
                 fi
-                # 文件缺配或 daemon 未加载 → 写配置并强制重启使生效
+
                 if [ ! -f "$DAEMON_CFG" ] || ! grep -q "$TS_REG" "$DAEMON_CFG"; then
                   echo "🔧 写入 insecure-registries 配置: $TS_REG"
                   sudo mkdir -p /etc/docker
@@ -784,7 +695,7 @@ jobs:
                 fi
                 echo "🔄 重启 docker daemon 使 insecure-registries 配置生效..."
                 sudo systemctl restart docker
-                # 等待 daemon 就绪且配置真正加载 (最多 30s)
+
                 for i in $(seq 1 30); do
                   if daemon_has_insecure; then break; fi
                   sleep 1
@@ -799,10 +710,6 @@ jobs:
               echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             fi
 
-            # ╔══════════════════════════════════════════════════════════════╗
-            # ║ 基于仓库 .env.data-node.example 模板生成节点 .env              ║
-            # ║ 原则：不预置则首次 cp 模板生成；已存在则完全跳过，CI 不触碰。  ║
-            # ╚══════════════════════════════════════════════════════════════╝
             if [ ! -f "${{ matrix.env-file}}" ]; then
               if [ -f .env.data-node.example ]; then
                 cp .env.data-node.example ${{ matrix.env-file }}
@@ -815,8 +722,6 @@ jobs:
               echo "🛡️ 检测到已存在的 ${{ matrix.env-file }}，完全保留人工配置，CI 不触碰 (跳过生成与回填)"
             fi
 
-            # 仅对"刚由模板 cp 生成的 .env"回填 Secrets 真实值 (同一 ssh 会话原子操作，无竞态)。
-            # 判定依据：文件仍含模板占位符 (形如 DS_NODE_ID=<...>)。人工维护过的 .env 不含占位符，跳过。
             if grep -q '^DS_NODE_ID=<' ${{ matrix.env-file }} 2>/dev/null; then
               echo "🔧 回填 Secrets 到新建 .env 占位符..."
               sed -i "s|^DS_NODE_ID=.*|DS_NODE_ID=${{ matrix.ds-id }}|" ${{ matrix.env-file }}
@@ -824,7 +729,6 @@ jobs:
               sed -i "s|^DS_CAPABILITIES=.*|DS_CAPABILITIES=${{ matrix.ds-caps }}|" ${{ matrix.env-file }}
               sed -i "s|^DS_NODE_PORT=.*|DS_NODE_PORT=8001|" ${{ matrix.env-file }}
 
-              # 验证 Tailscale IP 是否存在；不存在则 fail fast（不回退 0.0.0.0，禁止公网暴露）
               if ip addr show | grep -q "inet $NODE_TS_IP/"; then
                 echo "✅ Tailscale IP $NODE_TS_IP 存在，绑定到该 IP"
                 sed -i "s|^PUBLIC_IP=.*|PUBLIC_IP=$NODE_TS_IP|" ${{ matrix.env-file }}
@@ -845,7 +749,6 @@ jobs:
               sed -i "s|^QUANT_ENV=.*|QUANT_ENV=production|" ${{ matrix.env-file }}
               sed -i "s|^TZ=.*|TZ=$NODE_TZ|" ${{ matrix.env-file }}
 
-              # 仅北京节点 (creds=true) 回填 Tushare / AKShare 凭证；其余纯 yfinance 节点直接移除这两行占位符
               if [ "$WRITE_CREDS" = "true" ]; then
                 sed -i "s|^TUSHARE_TOKEN=.*|TUSHARE_TOKEN=$TUSHARE_TOKEN|" ${{ matrix.env-file }}
                 sed -i "s|^AKSHARE_API_KEY=.*|AKSHARE_API_KEY=$AKSHARE_API_KEY|" ${{ matrix.env-file }}
@@ -860,10 +763,6 @@ jobs:
               echo "🛡️ ${{ matrix.env-file }} 不含模板占位符 (疑似人工维护或已回填)，跳过回填以保护现场配置"
             fi
 
-            # 🛡️ 部署前 PUBLIC_IP 有效性校验 (对所有节点生效，包括已存在的人工 .env):
-            #    compose 端口绑定 ${PUBLIC_IP}:8001:8001，若该 IP 在宿主机不存在
-            #    (Tailscale 未运行/IP 变更)，docker 会报 "cannot assign requested address"。
-            #    校验失败时: 若 Secrets 的 Tailscale IP 在宿主机存在则自动修正，否则 fail fast。
             CURRENT_PUBLIC_IP=$(grep '^PUBLIC_IP=' ${{ matrix.env-file }} | head -1 | cut -d= -f2 | tr -d '[:space:]')
             if [ -n "$CURRENT_PUBLIC_IP" ] && [ "$CURRENT_PUBLIC_IP" != "0.0.0.0" ] && [ "$CURRENT_PUBLIC_IP" != "127.0.0.1" ]; then
               if ip addr show | grep -q "inet $CURRENT_PUBLIC_IP/"; then
@@ -886,16 +785,12 @@ jobs:
               echo "✅ PUBLIC_IP=${CURRENT_PUBLIC_IP:-<未配置, compose 回退 127.0.0.1>} 无需校验"
             fi
 
-            # compose 文件已由 CI runner 经 SSH 通道 scp 至本节点 (见 Deploy step)，
-            # 此处仅校验就位，不再直连 raw.githubusercontent (北京节点被墙会失败)。
             if [ ! -s "${{ matrix.compose }}" ]; then
               echo "❌ compose 文件 ${{ matrix.compose }} 缺失或为空 (SSH 中转失败?)，中止避免用旧/空 compose 直连 GHCR"
               exit 1
             fi
             echo "✅ compose 文件已就位: ${{ matrix.compose }}"
 
-            # 🛡️ 静态防复发: 严禁任何 node compose 出现连字符版仓库名 (quant-agent-)，必须统一为下划线版 (quant_agent-)
-            #    否则会再次触发 GHCR pull not found。此扫描在任何 sed 替换前执行，拦截手改回旧名。
             if grep -q "ghcr.io/songlinhe5-lab/quant-agent-data-subservice" ${{ matrix.compose }}; then
               echo "❌ ${{ matrix.compose }} 仍含连字符版仓库名 quant-agent-data-subservice，请统一为下划线版 quant_agent-，中止"
               exit 1
@@ -904,21 +799,18 @@ jobs:
 
             sed -i "s|ghcr.io/songlinhe5-lab/quant_agent-data-subservice:[a-z-]*|${IMAGE}|g" ${{ matrix.compose }}
 
-            # 🔍 替换后校验 (全节点): sed 失配时当场中止，避免拖到 docker compose pull 才暴露
             if ! grep -q "${IMAGE}" ${{ matrix.compose }}; then
               echo "❌ ${{ matrix.compose }} 镜像地址未被替换为 ${IMAGE} (sed 模式失配)，中止"
               exit 1
             fi
 
-            # 🔍 镜像地址校验: 北京节点必须指向主节点内网 registry，否则会直连 GHCR 慢且可能拉不到
             if [ "$NODE" = "bj" ]; then
               if grep -q "ghcr.io/songlinhe5-lab/quant_agent-data-subservice:" ${{ matrix.compose }}; then
                 echo "❌ compose 中 data-subservice 镜像未被替换为内网 registry 地址 (${IMAGE})，中止"
                 exit 1
               fi
               echo "✅ 北京节点镜像已指向内网 registry: ${IMAGE}"
-              # 🔍 registry 可达性预检: 在 docker pull 之前先用 curl 探主节点 registry /v2/ 端点，
-              # 区分"registry 容器未运行"与"Tailscale 网络不通"两种故障，避免 pull 超时后才暴露且报错模糊。
+
               REGISTRY_HOST="${{ secrets.VPS_S1_TAILSCALE_IP }}:5000"
               echo "🔍 预检主节点 registry 可达性: http://${REGISTRY_HOST}/v2/"
               if ! curl -sS --max-time 10 "http://${REGISTRY_HOST}/v2/" >/dev/null 2>&1; then
@@ -931,8 +823,7 @@ jobs:
                 exit 1
               fi
               echo "✅ 主节点 registry 可达 (HTTP 200 on /v2/)"
-              # 🔍 关键加固: 不仅探 /v2/ 存活，还要验证从节点实际要拉的 tag 真实存在于 registry，
-              #    否则会出现"registry 活但缺 tag"导致 pull 阶段才 not found (历史坑: 主节点只推 :latest 漏推 :cn)。
+
               DS_TAG="${{ matrix.ds-tag }}"
               if ! curl -sS --max-time 10 "http://${REGISTRY_HOST}/v2/quant-agent-data-subservice/tags/list" | grep -q "\"${DS_TAG}\""; then
                 echo "❌ 主节点 registry 内缺失 data-subservice:${DS_TAG}！从节点将拉取 not found。"
@@ -946,14 +837,11 @@ jobs:
               echo "✅ registry 内 data-subservice:${DS_TAG} 已就位，北京节点可经内网拉取"
             fi
 
-            # 🧹 部署前自动回收悬空 docker 资源（同主节点），防止历史堆积触发磁盘守卫
             echo "🧹 部署前自动清理悬空 docker 资源 (节点 ${{ matrix.node }})..."
             docker system prune -af >/dev/null 2>&1 || true
             journalctl --vacuum-size=200M >/dev/null 2>&1 || true
             apt-get clean >/dev/null 2>&1 || true
 
-            # 🛡️ 磁盘空间前置守卫: 同主节点，拉取前断言 / 剩余空间，不足则 fail fast + 打印清理提示
-            #    硬拦只看剩余 GB；已用% ≥90% 仅告警（仅重建不拉新镜像时安全）。
             DF_AVAIL_PCT=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
             DF_FREE_GB=$(df -BG / | awk 'NR==2 {print $4}' | tr -d 'G')
             DISK_MIN_FREE_GB=6
@@ -971,14 +859,9 @@ jobs:
               exit 1
             fi
 
-            # ⏱️ 拉取/启动加总超时保护，防止内网 registry 不通导致 docker compose pull 无限重试卡死 CI
             timeout 600 docker compose -f ${{ matrix.compose }} --env-file ${{ matrix.env-file }} pull \
               || { echo "❌ docker compose pull 超时或失败 (600s)，疑似主节点 registry 不可达或 Tailscale 未连通"; exit 1; }
 
-            # ── 清理旧项目名 (quant-agent) 遗留的硬编码容器名孤儿 ──
-            # 历史坑: 旧版 node compose 用固定 container_name (quant-data-subservice-node-<x>)，
-            # 旧容器以旧项目名 quant-agent 创建，占用同名且与新项目名 quant-agent-node-<x> 的容器命名冲突。
-            # --remove-orphans 只能清当前项目孤儿，清不掉不同项目名的旧容器，故此处按旧前缀精准清理。
             OLD_NODE_ORPHANS=$(docker ps -a --filter name='quant-data-subservice-node-' --format '{{.Names}}' | grep -E '^quant-data-subservice-node-(s1|bj|s2|s3|s4)$' || true)
             if [ -n "${OLD_NODE_ORPHANS}" ]; then
               echo "🧹 检测到旧项目名 (quant-agent) 遗留节点容器，清理以避免命名冲突:"
