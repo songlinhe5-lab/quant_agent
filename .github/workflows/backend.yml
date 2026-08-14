@@ -282,6 +282,12 @@ jobs:
         run: |
           ssh -i "$RUNNER_TEMP/id_ed25519" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" <<'EOF'
             set -e
+
+            # 关键：heredoc 为引号版 <<'EOF'，本地 runner 的 step env 不会注入远程 shell。
+            # 必须在此显式 export DEPLOY_SHA（Actions 表达式在 YAML 编译期已渲染为字面量，
+            # 不受 heredoc 引号影响），否则远程 ${DEPLOY_SHA} 为空 → IMAGE 拼成 "quant_agent:" invalid format。
+            export DEPLOY_SHA='${{ needs.build.outputs.deploy_sha }}'
+
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             cd /opt/quant-agent
 
