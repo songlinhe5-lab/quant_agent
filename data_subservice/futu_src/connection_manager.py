@@ -20,8 +20,13 @@ from futu import (
     TrdEnv,
     TrdMarket,
 )
+from futu.common import sys_config
 
 logger = logging.getLogger(__name__)
+
+# 治本修复：Futu 回调线程(copy_executor)默认非 daemon，ctx 被 GC/丢弃后线程永不退出，
+# 长期累积导致数据服务线程数飙到 900+。强制设为 daemon，进程退出即回收，杜绝孤儿线程堆积。
+sys_config.SysConfig.set_all_thread_daemon(True)
 
 
 class ConnectionManager:
