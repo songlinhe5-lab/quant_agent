@@ -218,7 +218,10 @@ async def fetch_data(request: Request):
                 status_code=503,
                 detail=f"数据源依赖缺失 (source={source}, 未安装对应 SDK: {e.name})",
             )
-        handler = getattr(mod, "handle_" + source, None)
+        # search 类源 (tavily/bocha/jina) 统一由 search_worker.handle_search 按
+        # source 内部路由; 其余源走 handle_<source> 约定。先尝试 handle_<source>,
+        # 缺失时回退到 handle_search(对 search 类源生效), 避免 "处理程序未实现" 误报。
+        handler = getattr(mod, "handle_" + source, None) or getattr(mod, "handle_search", None)
         if handler is None:
             raise HTTPException(status_code=503, detail=f"数据源处理程序未实现: {source}")
         if source in ("tavily", "bocha", "jina"):
