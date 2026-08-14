@@ -20,7 +20,14 @@ from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from backend.workers.collectors import akshare, cboe_pc_ratio, finnhub, fmp, yfinance
+from backend.workers.collectors import (
+    akshare,
+    cboe_pc_ratio,
+    finnhub,
+    fmp,
+    quote_publisher,
+    yfinance,
+)
 
 CollectorFactory = Callable[[], Awaitable[Sequence[Coroutine[Any, Any, Any] | Awaitable[Any]]]]
 
@@ -68,6 +75,12 @@ COLLECTORS: Dict[str, CollectorDef] = {
         needs_postgres=False,
         description="CBOE 每日统计 TOTAL PUT/CALL RATIO (写入 yf_macro_cache_^CPC)",
         factory=cboe_pc_ratio.start,
+    ),
+    "quote_publisher": CollectorDef(
+        name="quote_publisher",
+        needs_postgres=False,
+        description="行情生产者 daemon (报价+Level2盘口 轮询经 Futu 子服务推 Redis quant:quotes:stream)",
+        factory=quote_publisher.start,
     ),
 }
 
