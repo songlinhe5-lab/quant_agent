@@ -441,12 +441,12 @@ export function DataSourceHealthModule() {
       <div className="rounded-xl border border-border bg-card p-4">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-semibold text-foreground">
-            YFinance 主/备数据源节点
+            YFinance 多源节点状态
             <span className="ml-2 text-xs font-normal text-muted-foreground">
-              {routerEnabled ? (
-                <span className="text-emerald-400">路由已启用</span>
+              {routerNodes.length > 0 ? (
+                <span className="text-emerald-400">节点在线</span>
               ) : (
-                <span className="text-amber-400">路由未启用（本地兜底）</span>
+                <span className="text-slate-400">等待探针采集</span>
               )}
             </span>
           </h2>
@@ -456,15 +456,13 @@ export function DataSourceHealthModule() {
           </span>
         </div>
 
-        {!routerEnabled && (
-          <div className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-            数据源路由未启用，以下节点状态仅供参考（实际走本地兜底，无远程节点）。
-          </div>
-        )}
+        <p className="mb-3 text-xs text-muted-foreground">
+          逐个展示 yf_primary / yf_backup_N 节点的实时健康、熔断冷却与限流退避状态（经 DataSourceRouter 联邦至 US-YF-A/B 子服务）。
+        </p>
 
         {routerNodes.length === 0 ? (
           <div className="rounded-md border border-border bg-muted/40 px-3 py-6 text-center text-sm text-muted-foreground">
-            暂无 YFinance 节点（路由未配置主/备地址）
+            暂无 YFinance 节点数据（节点由后台探针自动采集，稍后刷新）
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

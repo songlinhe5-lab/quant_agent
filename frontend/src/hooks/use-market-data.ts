@@ -82,10 +82,14 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
         }
 
         if (isMounted && histRes?.data?.status === 'success' && histRes.data.data) {
-          const historyData = histRes.data.data
+          let historyData = histRes.data.data
+          // 防御: 后端偶发嵌套信封 (data.data 仍是 {status,data} 结构) 会触发 .slice 崩溃
+          if (!Array.isArray(historyData) && historyData?.data) {
+            historyData = historyData.data
+          }
           setRealHistory(historyData)
 
-          if (historyData.length > 1) {
+          if (Array.isArray(historyData) && historyData.length > 1) {
             const recent = historyData.slice(-20)
             const sparkDir: number[] = []
             for (let i = 1; i < recent.length; i++) {

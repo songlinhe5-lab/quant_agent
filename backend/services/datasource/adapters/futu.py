@@ -142,9 +142,17 @@ class FutuDataSource:
         if isinstance(resp, dict) and resp.get("status") == "success":
             payload = resp.get("data")
             # 解包子服务内部信封: {"status":"success","data":<真实业务数据>}
-            # _normalize_response 不会剥离该层, 导致 payload 仍是 dict 信封,
-            # 上层 (如 calculate_technical_indicators / get_history) 拿到 dict 而非 list 而崩溃。
-            if isinstance(payload, dict) and payload.get("status") == "success" and "data" in payload:
+            # fetch_futu 自身已包一层 status 信封, 子服务 (OpenD) 又包一层,
+            # 因此需循环剥离所有嵌套信封, 直到 payload 不再是 {status,data} 结构,
+            # 否则上层 (get_history / calculate_technical_indicators) 会拿到 dict 而非 list 而崩溃。
+            seen = set()
+            while (
+                isinstance(payload, dict)
+                and payload.get("status") == "success"
+                and "data" in payload
+                and id(payload) not in seen
+            ):
+                seen.add(id(payload))
                 payload = payload["data"]
             return Result.make_success(payload, source=self.name)
 
