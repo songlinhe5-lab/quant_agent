@@ -564,11 +564,28 @@ class ConnectionManager:
 
                     # 2. 启用真实的 YFinance 兜底轮询！（仅在开关打开时执行，流量经子服务）
                     if yf_candidates and is_yf_enabled:
-                        # 💡 经 DataSourceRouter 联邦到 US-YF-A/B 子服务，逐个串行兜底
-                        quote_tasks = [data_source_router.fetch_yfinance(t, "quote") for t in yf_candidates]  # noqa: E501
-                        quote_results = await asyncio.gather(*quote_tasks, return_exceptions=True)  # noqa: E501
+                        # 🚨 防请求风暴 (2026-08-14)：yf_candidates 是 futu 拉取失败的标的（含指数
+                        # SPX/VIX、无权限标的），此前每 3 秒全量 gather 调 yfinance，即使 yfinance 节点
+                        # 熔断退避也仍硬试 → 持续打爆子服务线程池（线程线性增长到 178+ 未收敛）。
+                        # 修复：复用 last_futu_update 节流，仅对距上次 futu/yf 尝试 >60s 的标的调 yfinance，
+                        # 且跳过已判定 is_futu_unsupported 的标的；yfinance 失败时也记录访问时间防下轮重试。
+                        _yf_now = time.time()
+                        _yf_quote_interval = 60
+                        _yf_pending = [
+                            t
+                            for t in yf_candidates
+                            if not is_futu_unsupported(t)
+                            and (_yf_now - self.last_futu_update.get(t, 0) > _yf_quote_interval)
+                        ]
+                        if _yf_pending:
+                            quote_tasks = [data_source_router.fetch_yfinance(t, "quote") for t in _yf_pending]  # noqa: E501
+                            quote_results = await asyncio.gather(*quote_tasks, return_exceptions=True)  # noqa: E501
+                        else:
+                            quote_results = []
 
-                        for ticker, q in zip(yf_candidates, quote_results):
+                        for ticker, q in zip(_yf_pending, quote_results):
+                            # 🚨 无论成败都记录尝试时间，防止下轮立刻重试（yfinance 也失败则退避）
+                            self.last_futu_update[ticker] = _yf_now
                             if isinstance(q, dict) and q.get("status") == "success":
                                 q["ticker"] = (
                                     ticker  # 覆盖被 YF 格式化去掉了前缀的 Ticker，恢复为内部标准  # noqa: E501
