@@ -325,7 +325,15 @@ jobs:
             curl -sSL -o docker-compose.node-s1.yml "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.node-s1.yml"
             curl -sSL -o .env.example "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/.env.example" || echo "⚠️ 拉取 .env.example 失败，首次生成将走兜底"
             curl -sSL -o .env.data-node.example "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/.env.data-node.example" || echo "⚠️ 拉取 .env.data-node.example 失败"
-            sed -i "s|ghcr.io/songlinhe5-lab/quant-agent:latest|${IMAGE}|g" docker-compose.master.yml
+            # 关键：替换源必须是下划线版 quant_agent（compose 里实际是 ghcr.io/songlinhe5-lab/quant_agent:latest）。
+            # 此前误写成连字符版 quant-agent:latest 导致 sed 失配、compose 保留 :latest，
+            # docker compose pull 拉到的是缓存的 :latest 而非 :<DEPLOY_SHA>，后续 docker tag ${IMAGE} 报 No such image。
+            sed -i "s|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest|${IMAGE}|g" docker-compose.master.yml
+            # 🔍 替换后校验: sed 失配时当场中止，避免拖到 docker compose pull/tag 才暴露
+            if ! grep -q "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${DEPLOY_SHA}" docker-compose.master.yml; then
+              echo "❌ master compose 镜像地址未被替换 (sed 模式失配)，中止"
+              exit 1
+            fi
             # 🛡️ 静态防复发: 严禁 compose 出现连字符版仓库名 (quant-agent-)，必须统一为下划线版 (quant_agent-)
             #    否则会再次触发 GHCR pull not found。此扫描在任何 sed 替换前执行，拦截手改回旧名。
             if grep -q "ghcr.io/songlinhe5-lab/quant-agent-data-subservice" docker-compose.node-s1.yml; then
