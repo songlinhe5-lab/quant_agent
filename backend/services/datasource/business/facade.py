@@ -61,7 +61,31 @@ def _detect_market(ticker: str) -> str:
         return "HK"
     if s.startswith(("SH.", "SZ.")) or s.endswith((".SH", ".SZ", ".SS")):
         return "CN"
+    # 💡 裸代码 A 股识别（2026-08-14）：前端订阅/外部来源可能以裸代码形式存 A 股
+    # （如 688777 / 300316 / 600667，无 SH./SZ. 前缀）。此前被 _detect_market 判为 US，
+    # 导致 FUND_FLOW/QUOTE 走 futu(无 A 股权限) 失败。按 A 股代码段识别为 CN，
+    # 使裸代码 A 股正确路由到 tushare/akshare（_MARKET_FLOW_PREFERENCE["CN"]）。
+    # 规则：6 位纯数字，按上交所/深交所代码段判断。
+    if _is_naked_cn_code(s):
+        return "CN"
     return "US"
+
+
+def _is_naked_cn_code(ticker: str) -> bool:
+    """判断是否为无市场前缀的 A 股裸代码（6 位纯数字，按代码段识别 SH/SZ）。
+
+    上交所(SH)：600/601/603/605/688/689/900
+    深交所(SZ)：000/001/002/003/300/301/200
+    """
+    s = (ticker or "").strip()
+    if len(s) != 6 or not s.isdigit():
+        return False
+    prefix = s[:3]
+    if prefix in ("600", "601", "603", "605", "688", "689", "900"):
+        return True
+    if prefix in ("000", "001", "002", "003", "300", "301", "200"):
+        return True
+    return False
 
 
 # 市场感知的源优先级（QUOTE / HISTORY 报价类 action）。
