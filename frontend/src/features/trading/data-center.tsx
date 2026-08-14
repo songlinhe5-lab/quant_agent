@@ -18,6 +18,7 @@ import { NewsStream } from '@/features/data-center/news-stream'
 import { GlobalStyle } from '@/features/data-center/global-style'
 import { CalendarsModule } from '@/features/calendars/module'
 import { MarginTradingPanel, type MarginMarketData } from '@/features/data-center/margin-trading'
+import { ShortInterestPanel, type UsShortInterestData } from '@/features/data-center/short-interest'
 import { SectorFlowPanel, type SectorFundFlowData } from '@/features/data-center/sector-flow'
 
 export function DataCenterModule() {
@@ -30,6 +31,8 @@ export function DataCenterModule() {
   const [earnings, setEarnings] = useState<any[]>([])
   const [marginData, setMarginData] = useState<MarginMarketData[]>([])
   const [marginStatus, setMarginStatus] = useState<string>('unknown')
+  const [usShortInterest, setUsShortInterest] = useState<UsShortInterestData | null>(null)
+  const [usShortInterestStatus, setUsShortInterestStatus] = useState<string>('unknown')
   const [sectorFlowData, setSectorFlowData] = useState<SectorFundFlowData | null>(null)
   const [sectorFlowStatus, setSectorFlowStatus] = useState<string>('unknown')
   const [ecoMsg, setEcoMsg] = useState('')
@@ -88,6 +91,8 @@ export function DataCenterModule() {
           if (d.earningsCalendar) setEarnings(d.earningsCalendar)
           if (d.marginTrading) setMarginData(d.marginTrading)
           if (d.marginTradingStatus) setMarginStatus(d.marginTradingStatus)
+          if (d.usShortInterest) setUsShortInterest(d.usShortInterest)
+          if (d.usShortInterestStatus) setUsShortInterestStatus(d.usShortInterestStatus)
           if (d.sectorFundFlow) setSectorFlowData(d.sectorFundFlow)
           if (d.sectorFundFlowStatus) setSectorFlowStatus(d.sectorFundFlowStatus)
 
@@ -276,8 +281,10 @@ export function DataCenterModule() {
     <>
     {/* 资金流 */}
     <CapitalFlowPanel data={capitalFlows} />
-    {/* 融资融券余额 */}
+    {/* 融资融券余额（A股/港股） */}
     <MarginTradingPanel data={marginData} status={marginStatus} lastUpdated={last} />
+    {/* 美股做空指标（CBOE/FINRA，与融资融券拆开独立分区） */}
+    <ShortInterestPanel data={usShortInterest} status={usShortInterestStatus} lastUpdated={last} />
     {/* 板块资金流向 */}
     {sectorFlowData && <SectorFlowPanel data={sectorFlowData} status={sectorFlowStatus} />}
     {/* 大类资产 + 情绪风向标 + 雷达 */}
