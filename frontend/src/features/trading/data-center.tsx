@@ -182,6 +182,29 @@ export function DataCenterModule() {
   // 从事件数据中动态提取并排序国家列表
   const uniqueCountries = ['all', ...Array.from(new Set(events.map((ev: any) => ev.country)))].sort()
 
+  // 分区内容存在性判定：区内有有效内容才显示区标 (避免空区标误导，对齐 PROD 零幻觉红线)
+  // ⚠️ 必须放在 if (!m) return null 之前，遵守 Rules of Hooks（否则 hook 数量随 m 变化 → React #310）
+  const shortSellingHasContent = useMemo(() => {
+    const marginOk = (marginData || []).some(
+      (mk: any) => [mk.financing_balance, mk.securities_balance].some((n: any) => n != null && !Number.isNaN(n)),
+    )
+    const shortOk =
+      !!usShortInterest &&
+      usShortInterestStatus !== 'error' &&
+      [usShortInterest.short_sale_volume, usShortInterest.total_volume, usShortInterest.short_volume_ratio, usShortInterest.short_interest_shares, usShortInterest.short_interest_ratio].some((v: any) => v != null && !Number.isNaN(v))
+    const sectorOk = !!sectorFlowData && !!(
+      sectorFlowData.a_share?.data || sectorFlowData.hk?.data || sectorFlowData.us?.data
+    )
+    return marginOk || shortOk || sectorOk
+  }, [marginData, usShortInterest, usShortInterestStatus, sectorFlowData])
+
+  const sentimentHasContent = useMemo(() => {
+    const vixOk = !!assets.find((a: any) => a.symbol === 'VIX')
+    const sentOk = !!sentimentInd && Object.keys(sentimentInd).length > 0
+    const radarOk = (radar?.length ?? 0) > 0
+    return vixOk || sentOk || radarOk
+  }, [assets, sentimentInd, radar])
+
   // 挂载实时新闻流 WebSocket
   useEffect(() => {
     let ws: WebSocket | null = null
@@ -287,28 +310,6 @@ export function DataCenterModule() {
       </div>
     )
   }
-
-  // 分区内容存在性判定：区内有有效内容才显示区标 (避免空区标误导，对齐 PROD 零幻觉红线)
-  const shortSellingHasContent = useMemo(() => {
-    const marginOk = (marginData || []).some(
-      (mk: any) => [mk.financing_balance, mk.securities_balance].some((n: any) => n != null && !Number.isNaN(n)),
-    )
-    const shortOk =
-      !!usShortInterest &&
-      usShortInterestStatus !== 'error' &&
-      [usShortInterest.short_sale_volume, usShortInterest.total_volume, usShortInterest.short_volume_ratio, usShortInterest.short_interest_shares, usShortInterest.short_interest_ratio].some((v: any) => v != null && !Number.isNaN(v))
-    const sectorOk = !!sectorFlowData && !!(
-      sectorFlowData.a_share?.data || sectorFlowData.hk?.data || sectorFlowData.us?.data
-    )
-    return marginOk || shortOk || sectorOk
-  }, [marginData, usShortInterest, usShortInterestStatus, sectorFlowData])
-
-  const sentimentHasContent = useMemo(() => {
-    const vixOk = !!assets.find((a: any) => a.symbol === 'VIX')
-    const sentOk = !!sentimentInd && Object.keys(sentimentInd).length > 0
-    const radarOk = (radar?.length ?? 0) > 0
-    return vixOk || sentOk || radarOk
-  }, [assets, sentimentInd, radar])
 
   return (<div className="space-y-2.5">
     {/* Title */}
