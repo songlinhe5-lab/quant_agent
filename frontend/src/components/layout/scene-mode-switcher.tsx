@@ -1,5 +1,6 @@
 'use client'
 
+import { useNavigate } from 'react-router-dom'
 import { useSceneModeStore } from '@/stores/useSceneModeStore'
 import { SCENE_MODES, SCENE_META, type SceneMode } from '@/features/scene/scene-mode-types'
 import { cn } from '@/lib/utils'
@@ -7,10 +8,22 @@ import { cn } from '@/lib/utils'
 /**
  * PROD-04: 顶栏场景模式分段切换器
  * 对标 TradingModeSwitcher，控制布局/密度/AI角色（与 SANDBOX/PAPER/LIVE 正交）
+ *
+ * 2026-08-14：场景切换同时导航到对应独立页面（watch→/quotes, research→/strategy,
+ * monitor→/monitor, ai-analysis→/copilot）。Quotes 模块不再被监控/研究场景劫持，
+ * 监控总览 / 研究 IDE 各自独立成页，避免 Quotes 行情页被顶替。
  */
+const SCENE_ROUTE: Record<SceneMode, string> = {
+  watch: '/quotes',
+  research: '/strategy',
+  monitor: '/monitor',
+  'ai-analysis': '/copilot',
+}
+
 export function SceneModeSwitcher({ className }: { className?: string }) {
   const mode = useSceneModeStore((s) => s.mode)
   const setMode = useSceneModeStore((s) => s.setMode)
+  const navigate = useNavigate()
 
   return (
     <div
@@ -31,7 +44,10 @@ export function SceneModeSwitcher({ className }: { className?: string }) {
             type="button"
             role="radio"
             aria-checked={active}
-            onClick={() => setMode(m)}
+            onClick={() => {
+              setMode(m)
+              navigate(SCENE_ROUTE[m])
+            }}
             className={cn(
               'px-2 py-1 rounded-md text-[10px] font-bold font-mono tracking-wide transition-colors',
               active

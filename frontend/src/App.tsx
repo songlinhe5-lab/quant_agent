@@ -47,6 +47,7 @@ function lazyWithRetry<T extends ComponentType<any>>(
 const DataCenterModule = lazyWithRetry(() => import('@/features/trading/data-center').then(m => ({ default: m.DataCenterModule })))
 const FundFlowDashboardModule = lazyWithRetry(() => import('@/features/data-center/fund-flow-dashboard').then(m => ({ default: m.FundFlowDashboardModule })))
 const DataSourceHealthModule = lazyWithRetry(() => import('@/features/data-center/datasource-health').then(m => ({ default: m.DataSourceHealthModule })))
+const MonitorPageModule = lazyWithRetry(() => import('@/features/scene/monitor-page').then(m => ({ default: m.MonitorPage })))
 const QuotesModule = lazyWithRetry(() => import('@/features/trading/quotes').then(m => ({ default: m.QuotesModule })))
 const OptionsModule = lazyWithRetry(() => import('@/features/options/options-module').then(m => ({ default: m.OptionsModule })))
 const ScreenerModule = lazyWithRetry(() => import('@/features/trading/screener').then(m => ({ default: m.ScreenerModule })))
@@ -101,6 +102,7 @@ export default function App() {
             <Route path="/data-center" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="DataCenter"><DataCenterModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/fund-flow-dashboard" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="FundFlowDashboard"><FundFlowDashboardModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/quotes" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Quotes"><QuotesModule /></ModuleErrorBoundary></Suspense>} />
+            <Route path="/monitor" element={<Suspense fallback={<LoadingFallback />}><MonitorPageModule /></Suspense>} />
             <Route path="/options" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Options"><OptionsModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/screener" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Screener"><ScreenerModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/strategy" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Strategy"><StrategyDevModule /></ModuleErrorBoundary></Suspense>} />

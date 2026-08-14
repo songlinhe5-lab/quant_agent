@@ -17,11 +17,8 @@ import { useMarketData } from '@/hooks/use-market-data'
 import { WatchlistSidebar } from '@/features/quotes/watchlist-sidebar'
 import { LightweightChartCanvas } from '@/features/quotes/lightweight-chart-canvas'
 import { ChartErrorBoundary, PanelErrorBoundary } from '@/components/error-boundary'
-import { useSceneModeStore } from '@/stores/useSceneModeStore'
 import { AnomalyFlash } from '@/features/quotes/anomaly-flash'
 import { NarratorBubble } from '@/features/quotes/narrator-bubble'
-import { StrategyIDE } from '@/features/strategy/layout/strategy-ide'
-import { MonitorModeLayout } from '@/features/scene/monitor-mode-layout'
 import { AIChat } from '@/features/strategy/layout/ai-chat'
 import { MarketNewsPanel } from './market-news-panel'
 
@@ -92,9 +89,11 @@ export function QuotesModule() {
 
   useEffect(() => { setMounted(true) }, [])
 
-  const sceneMode = useSceneModeStore((s) => s.mode)
-  const isResearchScene = sceneMode === 'research'
-  const isMonitorScene = sceneMode === 'monitor'
+  // 🛠️ 2026-08-14：Quotes（行情页）不再被 research/monitor 场景劫持替换布局。
+  // 场景模式（watch/research/monitor）改为导航栏场景切换器的「独立入口」：
+  // watch→/quotes, research→/strategy, monitor→/monitor, ai-analysis→/copilot。
+  // Quotes 模块永远渲染标准三栏行情布局（自选列表 + 主图 K线 + 盘口），
+  // 保证盯盘/Quotes 页始终能看到行情 K 线，不被监控总览/研究 IDE 顶替。
 
   // 💡 监听 Zustand 全局 ticker 变化（navbar 搜索跳转）
   const globalTicker = useMarketStore((s: any) => s.currentTicker)
@@ -184,16 +183,6 @@ export function QuotesModule() {
   // §14.2：初始化态给出可见反馈（骨架屏），禁止静默白屏或卡死
   if (!mounted) {
     return <InitOverlay variant="skeleton" label="正在初始化行情终端…" className="h-[calc(100vh-80px)] min-h-[600px]" />
-  }
-
-  // PROD-04e: 研究模式专属布局 —— 多面板拖拽（代码/回测/AI）+ 底部 Terminal + ⌘1/2/3 快捷键
-  if (isResearchScene) {
-    return <StrategyIDE className="h-[calc(100vh-80px)]" />
-  }
-
-  // PROD-04f: 监控模式专属布局 —— 告警流主视图 + Bot 状态矩阵 + 风控仪表盘
-  if (isMonitorScene) {
-    return <MonitorModeLayout />
   }
 
   // 注：原 PROD-04a「盯盘模式全屏 K线 + 悬浮球自选」布局因 FloatingWatchlist 悬浮球被顶部导航栏
