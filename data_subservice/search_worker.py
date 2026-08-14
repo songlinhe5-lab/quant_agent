@@ -18,9 +18,11 @@ from data_subservice._internal.search import (
 
 async def handle_search(source: str, action: str, params: dict[str, Any]) -> dict[str, Any]:
     src = source.lower()
+    # ⚠️ 主服务 web_search Tool 历史上发 action="WEB_SEARCH", 而本 worker 早期
+    # 约定 "SEARCH"。两者均视为有效搜索动作, 避免上游契约不一致导致整链路 503/空结果。
+    if action not in ("SEARCH", "WEB_SEARCH"):
+        return {"error": f"unknown {src} action: {action}"}
     if src == "tavily":
-        if action != "SEARCH":
-            return {"error": f"unknown tavily action: {action}"}
         return await tavily_service.search(
             query=str(params.get("query", "")),
             max_results=int(params.get("max_results", 5)),
@@ -28,15 +30,11 @@ async def handle_search(source: str, action: str, params: dict[str, Any]) -> dic
             exclude_domains=params.get("exclude_domains"),
         )
     if src == "bocha":
-        if action != "SEARCH":
-            return {"error": f"unknown bocha action: {action}"}
         return await bocha_service.search(
             query=str(params.get("query", "")),
             max_results=int(params.get("max_results", 5)),
         )
     if src == "jina":
-        if action != "SEARCH":
-            return {"error": f"unknown jina action: {action}"}
         return await jina_service.scrape(url=str(params.get("url", "")))
     if src == "search":
         # BE-ARCH-07d: 聚合搜索入口, 子服务侧接管原主服务的多源降级调度
