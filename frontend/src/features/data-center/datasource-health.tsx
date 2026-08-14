@@ -56,6 +56,26 @@ interface LinkTestResult {
   tested_at: string
 }
 
+// YFinance 主/备节点（DIST-SEC-06）：DataSourceRouter 节点级健康状态
+interface RouterNode {
+  name: string
+  role: 'primary' | 'backup'
+  url: string
+  enabled: boolean
+  weight: number
+  status: string
+  capabilities: string[]
+  error_count: number
+  cooldown_remaining: number
+  action_breakers: Record<string, number>
+  action_error_counts: Record<string, number>
+  is_throttled: boolean
+  consecutive_rate_limits: number
+  total_rate_limits_1h: number
+  estimated_limit_rpm: number | null
+  backoff_strategy: string | null
+}
+
 const STATUS_META: Record<
   HealthStatus,
   { label: string; cls: string; Icon: typeof CheckCircle2 }
@@ -84,8 +104,23 @@ export function DataSourceHealthModule() {
   const [testStates, setTestStates] = useState<Record<string, { testing: boolean; result?: LinkTestResult | null; error?: string }>>({})
   // 「全部测试连接」进行中全局锁：过程中禁用所有按钮，禁止并发堆积触发
   const [testingAll, setTestingAll] = useState(false)
+  // YFinance 主/备节点健康（DIST-SEC-06）
+  const [routerEnabled, setRouterEnabled] = useState(false)
+  const [routerNodes, setRouterNodes] = useState<RouterNode[]>([])
   const { toast } = useToast()
   const wsRef = useRef<WebSocket | null>(null)
+
+  const fetchRouterHealth = async () => {
+    try {
+      const res = await apiClient.get('/datasource/router/health')
+      if (res.data?.yfinance?.nodes) {
+        setRouterEnabled(res.data.router_enabled)
+        setRouterNodes(res.data.yfinance.nodes)
+      }
+    } catch (e) {
+      console.warn('[datasource-health] router health failed', e)
+    }
+  }
 
   const fetchOverview = async () => {
     try {
@@ -113,8 +148,13 @@ export function DataSourceHealthModule() {
   useEffect(() => {
     fetchOverview()
     fetchBoard()
+    fetchRouterHealth()
     const id = setInterval(fetchOverview, 30000)
-    return () => clearInterval(id)
+    const rid = setInterval(fetchRouterHealth, 15000)
+    return () => {
+      clearInterval(id)
+      clearInterval(rid)
+    }
   }, [])
 
   // WS 实时推送健康看板 + STALE 报警
@@ -393,6 +433,119 @@ export function DataSourceHealthModule() {
         {!loading && cards.length === 0 && (
           <div className="col-span-full rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
             暂无已接入数据源
+          </div>
+        )}
+      </div>
+
+      {/* YFinance 主/备节点健康度（DIST-SEC-06）：逐个展示 yf_primary / yf_backup_N 状态 */}
+      <div className="rounded-xl border border-border bg-card p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-foreground">
+            YFinance 主/备数据源节点
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              {routerEnabled ? (
+                <span className="text-emerald-400">路由已启用</span>
+              ) : (
+                <span className="text-amber-400">路由未启用（本地兜底）</span>
+              )}
+            </span>
+          </h2>
+          <span className="text-xs text-muted-foreground">
+            主 {routerNodes.filter((n) => n.role === 'primary').length} · 备{' '}
+            {routerNodes.filter((n) => n.role === 'backup').length} · 每 15s 轮询
+          </span>
+        </div>
+
+        {!routerEnabled && (
+          <div className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+            数据源路由未启用，以下节点状态仅供参考（实际走本地兜底，无远程节点）。
+          </div>
+        )}
+
+        {routerNodes.length === 0 ? (
+          <div className="rounded-md border border-border bg-muted/40 px-3 py-6 text-center text-sm text-muted-foreground">
+            暂无 YFinance 节点（路由未配置主/备地址）
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {routerNodes.map((n) => {
+              const isDegraded =
+                n.status !== 'healthy' || n.is_throttled || n.cooldown_remaining > 0
+              const effectiveStatus: HealthStatus = n.is_throttled
+                ? 'throttled'
+                : n.status === 'healthy'
+                  ? 'healthy'
+                  : 'error'
+              const meta = STATUS_META[effectiveStatus]
+              const Icon = meta.Icon
+              return (
+                <div
+                  key={n.name}
+                  className={cn(
+                    'rounded-xl border bg-card p-4 transition',
+                    isDegraded ? 'border-red-500/40 shadow-[0_0_0_1px_rgba(239,68,68,0.2)]' : 'border-border',
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-foreground">{n.name}</span>
+                      <span
+                        className={cn(
+                          'rounded px-1.5 py-0.5 text-[10px] font-medium',
+                          n.role === 'primary'
+                            ? 'bg-indigo-500/20 text-indigo-300'
+                            : 'bg-slate-500/20 text-slate-300',
+                        )}
+                      >
+                        {n.role === 'primary' ? '主节点' : '备节点'}
+                      </span>
+                    </div>
+                    <span className={cn('flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs', meta.cls)}>
+                      <Icon className="h-3 w-3" />
+                      {meta.label}
+                    </span>
+                  </div>
+
+                  <div className="mt-1 truncate text-[10px] text-muted-foreground" title={n.url}>
+                    {n.url}
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <Metric
+                      label="熔断冷却"
+                      value={n.cooldown_remaining > 0 ? `${n.cooldown_remaining}s` : '—'}
+                    />
+                    <Metric label="连续限流" value={String(n.consecutive_rate_limits)} />
+                    <Metric label="错误计数" value={String(n.error_count)} />
+                    <Metric
+                      label="退避策略"
+                      value={n.backoff_strategy ? n.backoff_strategy.replace('_', ' ') : '—'}
+                    />
+                  </div>
+
+                  {n.action_breakers && Object.keys(n.action_breakers).length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-x-2 text-[10px]">
+                      <span className="text-amber-400">Action 熔断:</span>
+                      {Object.entries(n.action_breakers).map(([act, sec]) => (
+                        <span key={act} className="rounded bg-amber-500/10 px-1 text-amber-300">
+                          {act} {sec}s
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-2 text-[10px] text-muted-foreground">
+                    {n.is_throttled ? (
+                      <span className="text-amber-400">⏳ 退避中（雅虎熔断保护）</span>
+                    ) : n.total_rate_limits_1h > 0 ? (
+                      <span>近 1h 限流 {n.total_rate_limits_1h} 次 · 估 RPM {n.estimated_limit_rpm ?? '—'}</span>
+                    ) : (
+                      <span>近 1h 无限流 · 估 RPM {n.estimated_limit_rpm ?? '—'}</span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>

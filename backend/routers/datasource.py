@@ -308,6 +308,49 @@ async def get_source_health(name: str) -> Dict[str, Any]:
     return await _build_health_card(name)
 
 
+@router.get("/router/health")
+async def get_router_node_health() -> Dict[str, Any]:
+    """
+    YFinance 主/备数据源节点健康看板接口（DIST-SEC-06, 2026-08-14）。
+
+    数据源健康度看板需要把 yfinance 的所有主/备节点（yf_primary / yf_backup_N）
+    各自的状态展示出来，而非仅聚合为一个 yfinance 卡片。DataSourceRouter 内部以
+    节点粒度维护状态（熔断冷却 / 限流退避 / action 级熔断），但此前从未对外暴露。
+    这里复用既有的 data_source_router.get_health_status() 输出节点级结构。
+
+    返回:
+      router_enabled: 数据源路由是否启用（False 时本地兜底，节点状态无意义）
+      yfinance: { nodes: [{name, role(primary/backup), url, status, ...}], primary_count, backup_count }
+    """
+    from backend.services.datasource.router import data_source_router
+
+    status = await data_source_router.get_health_status()
+    all_nodes = status.get("nodes", {})
+
+    # 仅保留 yfinance 相关节点（key 形如 yf_primary / yf_backup_1 ...）
+    yf_nodes = []
+    for node in all_nodes.values():
+        name = node.get("name", "")
+        if not name.startswith("yf_"):
+            continue
+        role = "primary" if name == "yf_primary" else "backup"
+        yf_nodes.append({**node, "role": role})
+
+    # 按 主节点在前、备节点序号升序 排序，保证看板展示顺序稳定
+    yf_nodes.sort(
+        key=lambda n: 0 if n["role"] == "primary" else int(n["name"].split("_")[-1]) if n["role"] == "backup" else 99
+    )
+
+    return {
+        "router_enabled": status.get("router_enabled", False),
+        "yfinance": {
+            "nodes": yf_nodes,
+            "primary_count": sum(1 for n in yf_nodes if n["role"] == "primary"),
+            "backup_count": sum(1 for n in yf_nodes if n["role"] == "backup"),
+        },
+    }
+
+
 @router.get("/{name}/latency-distribution")
 async def get_latency_distribution(name: str, hours: int = 24) -> Dict[str, Any]:
     """

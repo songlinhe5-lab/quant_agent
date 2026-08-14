@@ -595,8 +595,8 @@ class MarketDataGateway:
         resp = await self._fetch_finnhub("stock_history", ticker=ticker, days_back=days_back)
         return resp
 
-    async def get_series_observations(self, series_id: str, limit: int = 5) -> Any:
-        return await self.fred.get_series_observations(series_id, limit)
+    async def get_series_observations(self, series_id: str, limit: int = 5, force_refresh: bool = False) -> Any:
+        return await self.fred.get_series_observations(series_id, limit, force_refresh=force_refresh)
 
     async def get_economic_calendar_fred(self, *args: Any, **kwargs: Any) -> Any:
         return await self.fred.get_economic_calendar(*args, **kwargs)

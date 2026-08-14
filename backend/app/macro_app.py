@@ -864,6 +864,7 @@ async def get_data_center_dashboard(
                 earnings_res,
                 margin_res,
                 sector_flow_res,
+                us_short_res,
             ) = await asyncio.gather(
                 get_macro_assets(force_refresh=force_refresh),
                 _fetch_macro_calendar_data(days_ahead=7, days_back=days_back, force_refresh=force_refresh),
@@ -871,6 +872,7 @@ async def get_data_center_dashboard(
                 _fetch_earnings_calendar_data(days_ahead=7, days_back=days_back, force_refresh=force_refresh),  # noqa: E501
                 _fetch_margin_trading_data(),
                 _fetch_sector_fund_flow(),
+                _fetch_us_short_interest(),
                 return_exceptions=True,
             )
 
@@ -928,6 +930,15 @@ async def get_data_center_dashboard(
             elif isinstance(margin_res, BaseException):
                 margin_status = "error"
 
+            # 美股做空指标 (CBOE/FINRA)
+            us_short_interest = None
+            us_short_interest_status = "unknown"
+            if isinstance(us_short_res, dict) and us_short_res.get("status") == "success":
+                us_short_interest = us_short_res.get("data")
+                us_short_interest_status = "success"
+            elif isinstance(us_short_res, BaseException):
+                us_short_interest_status = "error"
+
             # 板块资金流数据
             sector_fund_flow = {}
             sector_flow_status = "unknown"
@@ -962,6 +973,8 @@ async def get_data_center_dashboard(
                     "earningsMessage": earnings_message,
                     "marginTrading": margin_data,
                     "marginTradingStatus": margin_status,
+                    "usShortInterest": us_short_interest,
+                    "usShortInterestStatus": us_short_interest_status,
                     "sectorFundFlow": sector_fund_flow,
                     "sectorFundFlowStatus": sector_flow_status,
                 },
@@ -983,6 +996,13 @@ async def _fetch_margin_trading_data():
     from backend.services.margin.service import margin_service
 
     return await margin_service.get_all_margin_data()
+
+
+async def _fetch_us_short_interest():
+    """获取美股做空指标 (CBOE/FINRA 真实源)，无可用源时返回 error 由前端兜底隐藏"""
+    from backend.services.margin.us_share import get_us_share_margin
+
+    return await get_us_share_margin()
 
 
 async def _fetch_sector_fund_flow():
@@ -1191,10 +1211,11 @@ async def get_macro_assets(
                 if cpc_cache:
                     cpc_records = json.loads(cpc_cache)
                     if cpc_records and len(cpc_records) > 0:
-                        c_val = cpc_records[-1].get("Close")
+                        c_val = cpc_records[-1].get("close")
                         if c_val is None:
+                            # 兜底：旧 MultiIndex 列名形如 ("'Close'", "^CPC")
                             c_val = next(
-                                (v for k, v in cpc_records[-1].items() if str(k).startswith("('Close'")),
+                                (v for k, v in cpc_records[-1].items() if str(k).lower().startswith("close")),
                                 None,
                             )  # noqa: E501
                         if c_val:

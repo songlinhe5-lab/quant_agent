@@ -78,8 +78,15 @@ def fetch_history(
                 df.columns = df.columns.get_level_values(0)
         return df
     except Exception as e:
+        # DIST-SEC-05(2026-08-14): 直接向上抛出，而非吞异常返回空 DF。
+        # 雅虎在限流/服务熔断时常把异常伪装成 "possibly delisted" / 返回 None。
+        # 旧逻辑吞掉异常返回空 DF -> service 判空 -> count=0 成功返回，主服务 failover
+        # 与退避永远触发不了，雅虎熔断期仍高频重试打爆上游。
+        # 抛出后由 service._run_guarded 捕获并按 _is_data_unavailable 分类
+        # (delisted/No data -> DATA_UNAVAILABLE；网络/连接/限流 -> 源级故障)，
+        # 主服务据此 failover 到备份节点 + 退避冷却。
         logger.error(f"[History] 获取 {ticker} 历史失败: {e}")
-        return pd.DataFrame()
+        raise
 
 
 def fetch_fund_flow(ticker: str) -> Dict:

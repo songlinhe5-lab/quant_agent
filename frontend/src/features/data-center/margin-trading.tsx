@@ -143,8 +143,19 @@ function MarketMarginCard({ data }: { data: MarginMarketData }) {
   )
 }
 
+// 过滤掉「无任何有效融资/融券余额」的市场卡片（如美股仅提供做空指标，
+// 无融资融券余额概念，后端返回 financing/securities_balance 为 null，
+// 拿不到就不要展示空壳卡，避免误导 —— PROD 红线：零幻觉、不编造）
+function hasValidBalance(m: MarginMarketData): boolean {
+  const f = m.financing_balance
+  const s = m.securities_balance
+  const valid = (n: number | null | undefined) => n != null && !Number.isNaN(n)
+  return valid(f) || valid(s)
+}
+
 export function MarginTradingPanel({ data, status, lastUpdated }: MarginTradingPanelProps) {
-  if (!data || data.length === 0) {
+  const visibleData = (data || []).filter(hasValidBalance)
+  if (visibleData.length === 0) {
     return (
       <div className="glass-panel p-4 rounded-xl border border-border/20">
         <div className="flex items-center justify-center gap-2 text-muted-foreground/50">
@@ -177,7 +188,7 @@ export function MarginTradingPanel({ data, status, lastUpdated }: MarginTradingP
 
       {/* 市场卡片网格 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-        {data.map((market) => (
+        {visibleData.map((market) => (
           <MarketMarginCard key={market.market} data={market} />
         ))}
       </div>

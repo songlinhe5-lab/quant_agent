@@ -1,5 +1,4 @@
 import asyncio
-import os
 import time
 from typing import Any, Dict
 
@@ -12,7 +11,7 @@ from .base import BaseTool
 class KnowledgeBaseTool(BaseTool):
     """
     全局知识库检索工具。
-    在不提供具体 URL 的情况下，根据查询词检索系统已经读取并持久化在 ChromaDB 里的所有历史网页/研报碎片。
+    在不提供具体 URL 的情况下，根据查询词检索系统已经读取并持久化在 PostgreSQL pgvector 里的所有历史网页/研报碎片。
     """
 
     name = "search_global_knowledge"
@@ -39,66 +38,64 @@ class KnowledgeBaseTool(BaseTool):
             return {"status": "error", "message": "查询问题不能为空"}
 
         try:
-            summary = await asyncio.to_thread(self._search_chroma, query, limit, days_back)
+            summary = await asyncio.to_thread(self._search_pg, query, limit, days_back)
             return {"status": "success", "data": {"query": query, "content": summary}}
         except Exception as e:
             return {"status": "error", "message": f"全局知识库检索失败: {str(e)}"}
 
-    def _search_chroma(self, query: str, limit: int, days_back: int) -> str:
+    def _search_pg(self, query: str, limit: int, days_back: int) -> str:
+        """从 PostgreSQL pgvector (WebpageKnowledgeBase) 语义检索全局历史知识库。
+
+        与 fetch_webpage 写入共用 backend.core.embeddings.get_embeddings，向量空间一致。
+        """
         try:
-            import chromadb
-            from chromadb.utils import embedding_functions
-        except ImportError:
-            return "⚠️ 缺少 chromadb 依赖，无法进行知识库检索。"
+            from sqlalchemy import text as _text
 
-        db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data", "chroma_db"))
-        if not os.path.exists(db_path):
-            return "本地知识库为空，暂无持久化的历史网页数据。"
+            from backend.core.database import SessionLocal
+            from backend.core.embeddings import get_embeddings
+        except ImportError as e:
+            return f"⚠️ 知识库检索依赖缺失: {e}"
 
-        client = chromadb.PersistentClient(path=db_path)
+        if not query:
+            return "查询问题不能为空。"
 
-        emb_api_key = os.getenv("EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY", "")
-        if emb_api_key:
-            emb_base_url = os.getenv("EMBEDDING_BASE_URL")
-            emb_model = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
-            emb_fn = embedding_functions.OpenAIEmbeddingFunction(
-                api_key=emb_api_key, model_name=emb_model, api_base=emb_base_url
-            )
-        else:
-            emb_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
-                model_name="paraphrase-multilingual-MiniLM-L12-v2"
-            )
+        query_vec = get_embeddings([query])
+        if not query_vec:
+            return "⚠️ Embedding 服务不可用，无法生成查询向量。"
 
-        try:
-            collection = client.get_collection(name="webpage_knowledge_base", embedding_function=emb_fn)  # type: ignore
-        except Exception:
-            return "全局知识库 (webpage_knowledge_base) 不存在或为空，说明系统之前还未成功抓取并持久化过任何长文。"
-
-        # 构建 ChromaDB 元数据时间过滤器
-        where_filter: Any = None
-        if days_back > 0:
+        # 时间过滤: days_back > 0 时只检索最近 N 天
+        time_filter = ""
+        params: dict = {"q": str(query_vec[0]), "limit": limit}
+        if days_back and days_back > 0:
             cutoff = int(time.time()) - (days_back * 24 * 3600)
-            where_filter = {"timestamp": {"$gte": cutoff}}  # 过滤出大于等于截止时间的数据
+            time_filter = "AND timestamp >= :cutoff"
+            params["cutoff"] = cutoff
 
-        # 根据 Query 和 时间条件 进行全局语义检索
-        results = collection.query(query_texts=[query], n_results=limit, where=where_filter)
+        sql = _text(
+            f"""
+            SELECT content, url, 1 - (embedding <=> :q) AS score
+            FROM webpage_knowledge_base
+            WHERE 1=1 {time_filter}
+            ORDER BY embedding <=> :q
+            LIMIT :limit
+            """
+        )
 
-        docs = results.get("documents")
-        metas = results.get("metadatas")
+        try:
+            with SessionLocal() as db:
+                rows = db.execute(sql, params).fetchall()
+        except Exception as e:
+            return f"⚠️ 全局知识库检索失败: {e}"
 
-        if not docs or not docs[0]:
+        if not rows:
             return f"未能在全局知识库中检索到与 '{query}' 高度相关的内容。"
 
-        summary = f"🎯 根据查询 '{query}'，在全局历史知识库中跨文档检索到以下 {len(docs[0])} 个相关片段：\n\n"
-        safe_metas = metas[0] if metas and metas[0] else [{}] * len(docs[0])
-
-        for i, (doc, meta) in enumerate(zip(docs[0], safe_metas)):
-            meta = meta or {}
-            headers = " > ".join([str(v) for k, v in meta.items() if str(k).startswith("Header")])
-            title = f"[{i + 1}] 【章节: {headers}】" if headers else f"[{i + 1}] 【无标题片段】"
-            url = meta.get("url", "未知来源")
-            # 在每一段的下方显式附上其 URL 来源出处
-            summary += f"{title}\n{doc}\n(🔗 来源链接: {url})\n\n"
+        summary = f"🎯 根据查询 '{query}'，在全局历史知识库中跨文档检索到以下 {len(rows)} 个相关片段：\n\n"
+        for i, row in enumerate(rows):
+            doc = row[0]
+            url = row[1]
+            score = row[2]
+            summary += f"[{i + 1}] 【相关度: {score:.3f}】\n{doc}\n(🔗 来源链接: {url})\n\n"
 
         summary += "(💡 RAG 知识库提示：1. 如果以上片段存在数据矛盾，请明确指出冲突并自行推断，严禁强行掩盖。 2. 在组织回答时，必须像学术论文一样，在你陈述的事实或数据后，严格使用对应的序号进行内联引用标注，并在回答的最后附上「📚 参考文献」列表展示所有被引用的片段序号、对应标题和来源链接。)"
         return summary.strip()

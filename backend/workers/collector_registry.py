@@ -20,7 +20,7 @@ from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from backend.workers.collectors import akshare, finnhub, fmp, yfinance
+from backend.workers.collectors import akshare, cboe_pc_ratio, finnhub, fmp, yfinance
 
 CollectorFactory = Callable[[], Awaitable[Sequence[Coroutine[Any, Any, Any] | Awaitable[Any]]]]
 
@@ -62,6 +62,12 @@ COLLECTORS: Dict[str, CollectorDef] = {
         needs_postgres=False,
         description="FMP 盘后批量财报缓存 (Redis, credit 预算约束)",
         factory=fmp.start,
+    ),
+    "cboe_pc_ratio": CollectorDef(
+        name="cboe_pc_ratio",
+        needs_postgres=False,
+        description="CBOE 每日统计 TOTAL PUT/CALL RATIO (写入 yf_macro_cache_^CPC)",
+        factory=cboe_pc_ratio.start,
     ),
 }
 

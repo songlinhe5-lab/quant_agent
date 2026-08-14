@@ -1,6 +1,5 @@
 import asyncio
 import hashlib
-import os
 import re
 import time
 from typing import Any, Dict
@@ -191,18 +190,18 @@ class WebScrapeTool(BaseTool):
         return {"status": "success", "data": {"url": url, "content": content}}
 
     def _process_rag(self, content: str, query: str, url: str) -> str:
-        """执行本地 RAG 切分与检索"""
+        """执行 RAG 切分、持久化到 PGVector 知识库，并基于 Query 语义检索 Top3。
+
+        存储后端统一为 PostgreSQL pgvector (WebpageKnowledgeBase)，
+        写入与检索共用 backend.core.embeddings.get_embeddings，保证向量空间一致。
+        """
         try:
-            import chromadb
-            from chromadb.utils import embedding_functions
             from langchain_text_splitters import (  # type: ignore
                 MarkdownHeaderTextSplitter,
                 RecursiveCharacterTextSplitter,
             )
         except ImportError:
-            return "⚠️ 缺少 langchain-text-splitters 或 chromadb 依赖，无法进行 RAG 检索。\n\n" + safe_truncate(
-                content, 5000
-            )
+            return "⚠️ 缺少 langchain-text-splitters 依赖，无法进行 RAG 切分。\n\n" + safe_truncate(content, 5000)
 
         # 1. 标题切分 (保留文档父子层级关系)
         headers_to_split_on = [
@@ -226,66 +225,90 @@ class WebScrapeTool(BaseTool):
         if not splits:
             return "网页正文为空或无法切分。"
 
-        # 3. 构建持久化级别的向量数据库 (存入本地 data/chroma_db 目录)
-        db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data", "chroma_db"))
-        client = chromadb.PersistentClient(path=db_path)
+        # 3. 生成向量 + 持久化到 PGVector (WebpageKnowledgeBase)
+        try:
+            from backend.core.config import settings
+            from backend.core.embeddings import get_embeddings
 
-        emb_api_key = os.getenv("EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY", "")
-        if emb_api_key:
-            emb_base_url = os.getenv("EMBEDDING_BASE_URL")
-            emb_model = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
-            emb_fn = embedding_functions.OpenAIEmbeddingFunction(
-                api_key=emb_api_key, model_name=emb_model, api_base=emb_base_url
+            docs = []
+            for s in splits:
+                meta = s.metadata or {}
+                headers = " > ".join([str(v) for k, v in meta.items() if str(k).startswith("Header")])
+                # 把章节层级拼到正文前缀，保证检索命中时上下文完整
+                prefix = f"[{headers}] " if headers else ""
+                docs.append(prefix + s.page_content)
+
+            vectors = get_embeddings(docs)
+            if not vectors or len(vectors) != len(docs):
+                # 零幻觉：embedding 不可用时降级返回全文截断，不假装已入库
+                return "⚠️ Embedding 服务不可用，无法持久化知识库。\n\n网页开头：\n" + safe_truncate(content, 2000)
+
+            url_hash = hashlib.md5(url.encode("utf-8")).hexdigest()
+            current_ts = int(time.time())
+            emb_version = settings.embedding_model
+
+            from backend.core.database import SessionLocal
+            from backend.core.models import WebpageKnowledgeBase
+
+            rows = []
+            for i, (doc, vec) in enumerate(zip(docs, vectors)):
+                rows.append(
+                    WebpageKnowledgeBase(
+                        id=f"web_{url_hash}_{i}",
+                        url=url,
+                        content=doc,
+                        timestamp=current_ts,
+                        embedding_model_version=emb_version,
+                        embedding=vec,
+                    )
+                )
+
+            # 幂等写入：先按 id 删除旧片段 (同一 URL 重复抓取会更新而非堆积)
+            with SessionLocal() as db:
+                existing = {
+                    r.id
+                    for r in db.query(WebpageKnowledgeBase.id)
+                    .filter(WebpageKnowledgeBase.id.in_([r.id for r in rows]))
+                    .all()
+                }
+                if existing:
+                    db.query(WebpageKnowledgeBase).filter(WebpageKnowledgeBase.id.in_(existing)).delete(
+                        synchronize_session=False
+                    )
+                db.bulk_save_objects(rows)
+                db.commit()
+
+            # 4. 根据 Query 从 PGVector 语义检索 Top 3 最相关片段
+            query_vec = get_embeddings([query])
+            if not query_vec:
+                return "⚠️ 查询向量生成失败，无法检索。\n\n网页开头：\n" + safe_truncate(content, 2000)
+
+            from sqlalchemy import text as _text
+
+            # 余弦距离: 1 - cosine_distance，按相似度降序取 Top3
+            sql = _text(
+                """
+                SELECT content, url, 1 - (embedding <=> :q) AS score
+                FROM webpage_knowledge_base
+                WHERE url = :url
+                ORDER BY embedding <=> :q
+                LIMIT 3
+                """
             )
-        else:
-            emb_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
-                model_name="paraphrase-multilingual-MiniLM-L12-v2"
-            )
+            with SessionLocal() as db:
+                res = db.execute(sql, {"q": str(query_vec[0]), "url": url}).fetchall()
 
-        # 💡 使用 get_or_create_collection 建立长效独立的网页知识库 Collection
-        collection = client.get_or_create_collection(name="webpage_knowledge_base", embedding_function=emb_fn)  # type: ignore
+            if not res:
+                return "未能检索到与查询高度相关的段落。\n\n网页开头：\n" + safe_truncate(content, 2000)
 
-        url_hash = hashlib.md5(url.encode("utf-8")).hexdigest()
-        current_ts = int(time.time())
-        docs = [s.page_content for s in splits]
-        metadatas = [
-            {
-                **(s.metadata if s.metadata else {"source": "webpage"}),
-                "url": url,
-                "length": len(s.page_content),
-                "timestamp": current_ts,
-            }
-            for s in splits
-        ]
-        ids = [f"web_{url_hash}_{i}" for i in range(len(splits))]
+            summary = f"🎯 根据您的问题 '{query}'，从该研报/网页中精准检索到以下相关内容：\n\n"
+            for i, row in enumerate(res):
+                doc = row[0]
+                src = row[1]
+                summary += f"[{i + 1}] 【无标题片段】\n{doc}\n(🔗 来源链接: {src})\n\n"
 
-        # 💡 修复：分批与指数退避重试，防范第三方 Embedding API 单次输入越界与并发限流
-        @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1.5, min=2, max=10), reraise=True)
-        def _upsert_with_retry(b_docs, b_metas, b_ids):
-            collection.upsert(documents=b_docs, metadatas=b_metas, ids=b_ids)  # type: ignore
-
-        batch_size = 60
-        for i in range(0, len(docs), batch_size):
-            _upsert_with_retry(docs[i : i + batch_size], metadatas[i : i + batch_size], ids[i : i + batch_size])
-
-        # 4. 根据 Query 语义检索 Top 3 最相关片段
-        results = collection.query(query_texts=[query], n_results=min(3, len(splits)))
-
-        docs = results.get("documents")
-        metas = results.get("metadatas")
-
-        if not docs or not docs[0]:
-            return "未能检索到与查询高度相关的段落。\n\n网页开头：\n" + safe_truncate(content, 2000)
-
-        summary = f"🎯 根据您的问题 '{query}'，从该研报/网页中精准检索到以下相关内容：\n\n"
-
-        safe_metas = metas[0] if metas and metas[0] else [{}] * len(docs[0])
-
-        for i, (doc, meta) in enumerate(zip(docs[0], safe_metas)):
-            meta = meta or {}
-            headers = " > ".join([str(v) for k, v in meta.items() if str(k).startswith("Header")])
-            title = f"[{i + 1}] 【章节: {headers}】" if headers else f"[{i + 1}] 【无标题片段】"
-            summary += f"{title}\n{doc}\n\n"
-
-        summary += f"\n(💡 RAG 系统提示：1. 如果以上片段存在数据矛盾，请明确指出冲突并自行推断，严禁强行掩盖。 2. 绝对禁止在你的回答中大段复制粘贴或复述原始的 Markdown/JSON 内容，必须自行提炼核心结论！ 3. 在组织回答时，必须像学术论文一样，在你陈述的事实或数据后，严格使用对应的序号进行内联引用标注（例如：'苹果预计资本开支为150亿美元 [1] 。'），并在回答的最后附上「📚 参考文献」列表展示所有被引用的片段序号和对应标题。 4. 请务必在参考文献列表下方，单独附上该网页的原文链接：{url} ，以供用户点击阅读原文。)"
-        return summary.strip()
+            summary += f"\n(💡 RAG 系统提示：1. 如果以上片段存在数据矛盾，请明确指出冲突并自行推断，严禁强行掩盖。 2. 绝对禁止在你的回答中大段复制粘贴或复述原始的 Markdown/JSON 内容，必须自行提炼核心结论！ 3. 在组织回答时，必须像学术论文一样，在你陈述的事实或数据后，严格使用对应的序号进行内联引用标注（例如：'苹果预计资本开支为150亿美元 [1] 。'），并在回答的最后附上「📚 参考文献」列表展示所有被引用的片段序号和对应标题。 4. 请务必在参考文献列表下方，单独附上该网页的原文链接：{url} ，以供用户点击阅读原文。)"
+            return summary.strip()
+        except Exception as e:
+            logger.warning("rag_pg_failed_fallback", url=url, error=str(e))
+            return "⚠️ 知识库持久化或检索异常。\n\n网页开头：\n" + safe_truncate(content, 2000)

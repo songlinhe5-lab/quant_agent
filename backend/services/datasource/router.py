@@ -935,8 +935,8 @@ class DataSourceRouter:
             # 成功则让 _update_node_status 翻回 healthy。与 futu/fmp 等单节点源行为对齐。
             half_open = [
                 n
-                for n in self._nodes.get("yfinance", [])
-                if n.status != "healthy" and n.circuit_breaker_until <= time.time()
+                for key, n in self._nodes.items()
+                if key.startswith("yf_") and n.status != "healthy" and n.circuit_breaker_until <= time.time()
             ]
             if not half_open:
                 logger.warning("[YFinance] 无健康/可探测子服务节点（熔断冷却中或全 offline）")
@@ -947,7 +947,27 @@ class DataSourceRouter:
             logger.info(f"[YFinance] 健康节点空，启用半开探测节点: {[n.name for n in half_open]}")
             nodes = half_open
 
+        # DIST-SEC-05(2026-08-14): 雅虎服务熔断（表现为 possibly delisted / 连接失败 / 限流）时的
+        # 自愈策略 —— 切备份节点 + 退避 + 冷却后恢复。
+        #  1. 每个 YF 节点持有独立 RateLimitThrottler，节点级失败进入指数退避，退避期内跳过该节点
+        #     （不再反复打爆雅虎，避免雪崩），请求被导向其它备份节点（S2/S3/S4 不同公网 IP）。
+        #  2. 退避到期（半开）后自动重试，成功则 on_success 逐步降速恢复。
+        #  3. 所有节点都处于退避/不可达 → 整条 yfinance 源暂时熔断，返回明确可重试错误。
+        # 注意：退避作用在主服务侧（源入口），与子服务 yfinance:{symbol} 粒度熔断互补 —— 子服务防
+        # 单标的 miss 误杀，主服务防雅虎整源熔断时仍高频重试打爆上游。
+        throttlers = {n.name: rate_limit_registry.get_throttler(n.name) for n in nodes}
+        throttled_all = True
+        tried = []
         for node in nodes:
+            throttler = throttlers[node.name]
+            # 退避中：跳过该节点（不发起请求，不计入失败），导向备份节点
+            if throttler.should_throttle():
+                logger.info(
+                    f"[YFinance] 节点 {node.name} 退避中（剩余 {throttler.remaining_throttle_seconds():.0f}s），跳过"
+                )
+                continue
+            throttled_all = False
+            tried.append(node.name)
             try:
                 payload = {
                     "source": "yfinance",
@@ -962,15 +982,18 @@ class DataSourceRouter:
 
                 if result.get("status") == "success" or result.get("success"):
                     await self._update_node_status(node.name, success=True, record_breaker=record_breaker)
+                    throttler.on_success()
                     return result
 
                 # 非普通错误类处理
                 if error_category != ErrorCategory.NORMAL:
                     if error_category == ErrorCategory.DATA_UNAVAILABLE:
-                        # DIST-SEC-04(2026-08-14): 该标的 Yahoo 无数据属标的层面问题，非子服务故障。
-                        # 不计入熔断（否则单标的 miss 误杀整节点，连带正常标的也 No healthy node），
-                        # 直接返回干净错误，不 failover（单节点场景 failover 无意义）。
+                        # DIST-SEC-04/05(2026-08-14): 该标的 Yahoo 无数据属标的层面问题。
+                        # 但雅虎常把『服务暂时不可用』伪装成 delisted/No data，故仍尝试 failover 到
+                        # 下一个备份节点（不同 IP 可能正常）；若已是最后一个节点则干净返回。
                         logger.warning(f"[YFinance] 节点 {node.name} 数据不可用 ({ticker}): {result.get('error')}")
+                        if node is not nodes[-1]:
+                            continue
                         return {
                             "success": False,
                             "status": "error",
@@ -978,8 +1001,9 @@ class DataSourceRouter:
                             "error_category": "data_unavailable",
                             "source": "yfinance",
                         }
-                    # 限流类错误：不计入熔断器，触发 failover 到下一节点
+                    # 限流类错误：不计入熔断器，进入退避并 failover 到下一节点
                     logger.warning(f"[YFinance] 节点 {node.name} 限流 ({error_category.value}): {ticker}")
+                    throttler.on_rate_limit()
                     await self._update_node_status(
                         node.name,
                         success=False,
@@ -989,6 +1013,9 @@ class DataSourceRouter:
                     )
                     continue
 
+                # 普通错误（连接失败/超时/5xx/源级故障）：计入熔断 + 退避，failover 到下一节点
+                logger.warning(f"[YFinance] 节点 {node.name} 源级失败: {ticker}, {result.get('message')}")
+                throttler.on_rate_limit()
                 await self._update_node_status(
                     node.name,
                     success=False,
@@ -999,6 +1026,7 @@ class DataSourceRouter:
 
             except Exception as e:
                 logger.warning(f"[YFinance] 节点 {node.name} 失败: {ticker}, {str(e)}")
+                throttler.on_rate_limit()
                 await self._update_node_status(
                     node.name,
                     success=False,
@@ -1007,7 +1035,18 @@ class DataSourceRouter:
                     record_breaker=record_breaker,
                 )
 
-        logger.warning("[YFinance] 所有子服务节点失败（后端已移除本地兜底）")
+        if throttled_all:
+            logger.warning("[YFinance] 所有子服务节点均在退避期（雅虎熔断保护中），整源暂不可用")
+            return {
+                "success": False,
+                "status": "error",
+                "message": "YFinance 源熔断保护中（雅虎限流/不可用），退避结束后再试",
+                "error_category": "rate_limit",
+                "source": "yfinance",
+                "throttled_nodes": list(throttlers.keys()),
+            }
+
+        logger.warning(f"[YFinance] 所有子服务节点失败（已尝试 {tried}，后端已移除本地兜底）")
         return {
             "success": False,
             "message": "All YFinance subservice nodes failed (local yfinance disabled)",
