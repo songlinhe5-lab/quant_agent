@@ -32,9 +32,10 @@ class SentimentTracker:
                 if records and len(records) > 0:
                     v_val = records[-1].get("close")
                     if v_val is None:
-                        # 兜底：旧 yfinance MultiIndex 列名形如 ("'Close'", "^VIX")
+                        # 兜底：旧 yfinance MultiIndex 列名形如 ("'Close'", "^VIX") 或 "('Close', '^VIX')"
+                        # 注意 key 以 "(" 开头，不能 startswith("close")，需用 "close" in
                         v_val = next(
-                            (v for k, v in records[-1].items() if str(k).lower().startswith("close")),
+                            (v for k, v in records[-1].items() if "close" in str(k).lower()),
                             None,
                         )
                     if v_val:
@@ -50,7 +51,7 @@ class SentimentTracker:
                     c_val = records[-1].get("close")
                     if c_val is None:
                         c_val = next(
-                            (v for k, v in records[-1].items() if str(k).lower().startswith("close")),
+                            (v for k, v in records[-1].items() if "close" in str(k).lower()),
                             None,
                         )
                     if c_val:

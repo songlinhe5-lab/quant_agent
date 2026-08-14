@@ -37,7 +37,7 @@ class TestCollectorsDict:
 
     def test_all_collectors_defined(self):
         """测试所有采集器都已定义"""
-        expected_names = ["akshare", "finnhub", "fmp", "yfinance"]
+        expected_names = ["akshare", "finnhub", "fmp", "yfinance", "cboe_pc_ratio"]
         assert set(COLLECTORS.keys()) == set(expected_names)
 
     def test_collector_metadata(self):
@@ -70,13 +70,13 @@ class TestGetEnabledCollectors:
         """未设置任何环境变量时返回全部采集器"""
         with mock.patch.dict(os.environ, {}, clear=True):
             enabled = get_enabled_collectors()
-            assert set(enabled) == {"akshare", "finnhub", "yfinance", "fmp"}
+            assert set(enabled) == {"akshare", "finnhub", "yfinance", "fmp", "cboe_pc_ratio"}
 
     def test_returns_all_regardless_of_env(self):
         """get_enabled_collectors 始终返回全部采集器（COLLECTOR_* 开关已移除）"""
         with mock.patch.dict(os.environ, {}, clear=True):
             enabled = get_enabled_collectors()
-            assert set(enabled) == {"akshare", "finnhub", "yfinance", "fmp"}
+            assert set(enabled) == {"akshare", "finnhub", "yfinance", "fmp", "cboe_pc_ratio"}
 
 
 @pytest.mark.asyncio
