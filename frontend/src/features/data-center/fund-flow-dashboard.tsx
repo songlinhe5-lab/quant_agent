@@ -276,12 +276,19 @@ function SectorBar({ title, sectors, unit }: { title: string; sectors: SectorIte
 
 function HkConnectCard({ data }: { data: HkConnectData | null }) {
   if (!data || !data.channels || data.channels.length === 0) {
+    // 港股通数据仅在交易日由 AKShare 产生，周末/香港公众假期自然无数据。
+    // 空态明确标注"非交易日暂停"，避免用户误以为数据源故障 (bug)。
+    const now = new Date()
+    const isWeekend = now.getDay() === 0 || now.getDay() === 6
     return (
       <div className="glass-card rounded-lg p-4 flex flex-col gap-2">
         <div className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
           <ArrowRightLeft className="h-3.5 w-3.5 text-amber-400" /> 港股通南向双通道净买额
         </div>
-        <div className="text-sm text-muted-foreground/60">暂无港股通数据</div>
+        <div className="text-sm text-muted-foreground/60 flex items-center gap-1.5">
+          <Clock className="h-3.5 w-3.5 text-muted-foreground/40" />
+          {isWeekend ? '周末非交易日 · 港股通数据暂停更新' : '数据源暂未连通 · 港股通数据缺失'}
+        </div>
       </div>
     )
   }

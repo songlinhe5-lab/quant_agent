@@ -32,6 +32,16 @@ export function FlowItem({ item, onClick }: { item: CapitalFlowItem; onClick?: (
   const hasAmount = item.amount !== null && item.amount !== undefined && !Number.isNaN(item.amount)
   const inflow = hasAmount ? item.amount >= 0 : false
 
+  // 空态语义化：有数值但源标识缺失（如周末历史/缓存数据）→ "缓存数据"；
+  // 完全无数据（源未连通/非交易日）→ "数据源未连通"，避免冷冰冰的 N/A 误导用户以为是 bug
+  const sourceLabel =
+    !item.data_source || item.data_source === 'N/A'
+      ? hasAmount
+        ? '缓存数据'
+        : '数据源未连通'
+      : item.data_source
+  const statusBadge = hasAmount ? (inflow ? '流入' : '流出') : '暂停'
+
   // 💡 格式化更新时间
   const formatUpdateTime = (dateStr: string | null | undefined) => {
     if (!dateStr) return '--'
@@ -52,7 +62,7 @@ export function FlowItem({ item, onClick }: { item: CapitalFlowItem; onClick?: (
         ) : (
           <span className="text-xs font-bold font-mono tabular-nums whitespace-nowrap text-muted-foreground">--</span>
         )}
-        <span className={cn('text-[9px] font-mono font-bold px-1.5 py-0.5 rounded flex-shrink-0 transition-colors duration-300 ml-auto', hasAmount ? (inflow ? 'bg-[#0ecb81]/15 text-[#059669] dark:text-[#0ecb81]' : 'bg-[#f6465d]/15 text-[#e11d48] dark:text-[#f6465d]') : 'bg-secondary/20 text-muted-foreground')}>{hasAmount ? (inflow ? '流入' : '流出') : 'N/A'}</span>
+        <span className={cn('text-[9px] font-mono font-bold px-1.5 py-0.5 rounded flex-shrink-0 transition-colors duration-300 ml-auto', hasAmount ? (inflow ? 'bg-[#0ecb81]/15 text-[#059669] dark:text-[#0ecb81]' : 'bg-[#f6465d]/15 text-[#e11d48] dark:text-[#f6465d]') : 'bg-secondary/20 text-muted-foreground')}>{statusBadge}</span>
         <svg width="36" height="14" viewBox="0 0 36 14" aria-hidden="true" className="flex-shrink-0 opacity-60 ml-1.5">
           {/* 💡 sparkDirs 至少需 2 个点才能画出折线；map 已为首点加 M 前缀，外层不可再加，否则生成非法 "M Mx,y" */}
           {item.sparkDirs && item.sparkDirs.length >= 2 && (
@@ -69,7 +79,7 @@ export function FlowItem({ item, onClick }: { item: CapitalFlowItem; onClick?: (
         <div className="flex items-center gap-1 text-[8px] text-muted-foreground/50 flex-shrink-0 ml-1">
           <span className="flex items-center gap-0.5">
             <span className="inline-block w-1 h-1 rounded-full bg-emerald-400/60"></span>
-            {item.data_source || 'N/A'}
+            {sourceLabel}
           </span>
           <span className="font-mono tabular-nums">
             {formatUpdateTime(item.updated_at)}

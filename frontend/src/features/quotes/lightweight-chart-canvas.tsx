@@ -978,24 +978,41 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       if (e.data.id !== reqId) return
       const { ma20, ma50, ma200, bb, macdCalc, rsiCalc, kdjCalc } = e.data
       const markers: any[] = []
-      const lwData = sortedHistory.map((k, i) => {
-        const timestamp = new Date(k.time.replace(/-/g, '/')).getTime() / 1000
-        const point: any = { time: timestamp as UTCTimestamp, open: k.open, high: k.high, low: k.low, close: k.close, volume: k.volume }
-        if (i >= 5 && rsiCalc[i] !== '-' && rsiCalc[i-1] !== '-' && kdjCalc.k[i] !== '-' && kdjCalc.k[i-1] !== '-') {
-          const currClose = k.close; const prevClose = sortedHistory[i-1].close; const minClose5 = Math.min(...sortedHistory.slice(i-5, i).map(x => x.close)); const maxClose5 = Math.max(...sortedHistory.slice(i-5, i).map(x => x.close)); const currRsi = Number(rsiCalc[i]); const prevRsi = Number(rsiCalc[i-1]); const currMacdHist = Number(macdCalc.macd[i]); const prevMacdHist = Number(macdCalc.macd[i-1]); const currK = Number(kdjCalc.k[i]); const prevK = Number(kdjCalc.k[i-1]); const currD = Number(kdjCalc.d[i]); const prevD = Number(kdjCalc.d[i-1]);
-          const isNewLow = currClose < prevClose && currClose <= minClose5; const isNewHigh = currClose > prevClose && currClose >= maxClose5;
-          const rsiBottom = isNewLow && currRsi > prevRsi && currRsi < 40; const macdBottom = isNewLow && currMacdHist < 0 && currMacdHist > prevMacdHist; const kdjGolden = currK > currD && prevK <= prevD && currK < 50;
-          const rsiTop = isNewHigh && currRsi < prevRsi && currRsi > 60; const macdTop = isNewHigh && currMacdHist > 0 && currMacdHist < prevMacdHist; const kdjDeath = currK < currD && prevK >= prevD && currK > 50;
-          const buySignals = []; if (rsiBottom) buySignals.push('RSI底背'); if (macdBottom) buySignals.push('MACD底背'); if (kdjGolden) buySignals.push('KDJ金叉');
-          const sellSignals = []; if (rsiTop) sellSignals.push('RSI顶背'); if (macdTop) sellSignals.push('MACD顶背'); if (kdjDeath) sellSignals.push('KDJ死叉');
-          if (buySignals.length > 0) {
-            point.color = theme === 'dark' ? '#00ff88' : '#10b981'; point.wickColor = point.color; let buyDetail = `【买点特征】`; if (rsiBottom || macdBottom) { const sources = [rsiBottom ? 'RSI' : null, macdBottom ? 'MACD' : null].filter(Boolean).join('+'); buyDetail += `价格创新低 (${currClose.toFixed(2)})，但 ${sources} 指标拒绝创出新低并开始反转，暗示空头衰竭。`; } if (kdjGolden) { buyDetail += (rsiBottom || macdBottom ? '\n' : '') + `KDJ 在低位 (${currK.toFixed(1)}) 形成金叉，多头资金开始发力。`; } markers.push({ time: point.time, detail: buyDetail })
-          } else if (sellSignals.length > 0) {
-            point.color = theme === 'dark' ? '#ff0055' : '#ef4444'; point.wickColor = point.color; let sellDetail = `【卖点特征】`; if (rsiTop || macdTop) { const sources = [rsiTop ? 'RSI' : null, macdTop ? 'MACD' : null].filter(Boolean).join('+'); sellDetail += `价格创新高 (${currClose.toFixed(2)})，但 ${sources} 指标拒绝创出新高并开始反转，暗示多头衰竭。`; } if (kdjDeath) { sellDetail += (rsiTop || macdTop ? '\n' : '') + `KDJ 在高位 (${currK.toFixed(1)}) 形成死叉，空头抛压开始涌现。`; } markers.push({ time: point.time, detail: sellDetail })
+      const rawLwData = sortedHistory
+        .map((k, i) => {
+          const timestamp = toChartTime(k.time)
+          if (timestamp == null) return null
+          const o = Number(k.open), h = Number(k.high), l = Number(k.low), c = Number(k.close)
+          // 过滤 OHLC 含 NaN/非数字的脏 bar，避免 lightweight-charts setData 抛错
+          if (![o, h, l, c].every((v) => Number.isFinite(v))) return null
+          const point: any = { time: timestamp as UTCTimestamp, open: o, high: h, low: l, close: c, volume: Number(k.volume) || 0 }
+          if (i >= 5 && rsiCalc[i] !== '-' && rsiCalc[i - 1] !== '-' && kdjCalc.k[i] !== '-' && kdjCalc.k[i - 1] !== '-') {
+            const currClose = k.close; const prevClose = sortedHistory[i - 1].close; const minClose5 = Math.min(...sortedHistory.slice(i - 5, i).map((x) => x.close)); const maxClose5 = Math.max(...sortedHistory.slice(i - 5, i).map((x) => x.close)); const currRsi = Number(rsiCalc[i]); const prevRsi = Number(rsiCalc[i - 1]); const currMacdHist = Number(macdCalc.macd[i]); const prevMacdHist = Number(macdCalc.macd[i - 1]); const currK = Number(kdjCalc.k[i]); const prevK = Number(kdjCalc.k[i - 1]); const currD = Number(kdjCalc.d[i]); const prevD = Number(kdjCalc.d[i - 1]);
+            const isNewLow = currClose < prevClose && currClose <= minClose5; const isNewHigh = currClose > prevClose && currClose >= maxClose5;
+            const rsiBottom = isNewLow && currRsi > prevRsi && currRsi < 40; const macdBottom = isNewLow && currMacdHist < 0 && currMacdHist > prevMacdHist; const kdjGolden = currK > currD && prevK <= prevD && currK < 50;
+            const rsiTop = isNewHigh && currRsi < prevRsi && currRsi > 60; const macdTop = isNewHigh && currMacdHist > 0 && currMacdHist < prevMacdHist; const kdjDeath = currK < currD && prevK >= prevD && currK > 50;
+            const buySignals = []; if (rsiBottom) buySignals.push('RSI底背'); if (macdBottom) buySignals.push('MACD底背'); if (kdjGolden) buySignals.push('KDJ金叉');
+            const sellSignals = []; if (rsiTop) sellSignals.push('RSI顶背'); if (macdTop) sellSignals.push('MACD顶背'); if (kdjDeath) sellSignals.push('KDJ死叉');
+            if (buySignals.length > 0) {
+              point.color = theme === 'dark' ? '#00ff88' : '#10b981'; point.wickColor = point.color; let buyDetail = `【买点特征】`; if (rsiBottom || macdBottom) { const sources = [rsiBottom ? 'RSI' : null, macdBottom ? 'MACD' : null].filter(Boolean).join('+'); buyDetail += `价格创新低 (${currClose.toFixed(2)})，但 ${sources} 指标拒绝创出新低并开始反转，暗示空头衰竭。`; } if (kdjGolden) { buyDetail += (rsiBottom || macdBottom ? '\n' : '') + `KDJ 在低位 (${currK.toFixed(1)}) 形成金叉，多头资金开始发力。`; } markers.push({ time: point.time, detail: buyDetail })
+            } else if (sellSignals.length > 0) {
+              point.color = theme === 'dark' ? '#ff0055' : '#ef4444'; point.wickColor = point.color; let sellDetail = `【卖点特征】`; if (rsiTop || macdTop) { const sources = [rsiTop ? 'RSI' : null, macdTop ? 'MACD' : null].filter(Boolean).join('+'); sellDetail += `价格创新高 (${currClose.toFixed(2)})，但 ${sources} 指标拒绝创出新高并开始反转，暗示多头衰竭。`; } if (kdjDeath) { sellDetail += (rsiTop || macdTop ? '\n' : '') + `KDJ 在高位 (${currK.toFixed(1)}) 形成死叉，空头抛压开始涌现。`; } markers.push({ time: point.time, detail: sellDetail })
+            }
           }
-        }
-        return point
-      })
+          return point
+        })
+        .filter((p): p is NonNullable<typeof p> => p != null)
+
+      // lightweight-charts 要求 time 严格升序且无重复，否则 setData 抛错导致图表崩溃。
+      // 按 time 排序并去重，保证送入图表的 K 线数据合法。
+      const seen = new Set<number>()
+      const lwData = rawLwData
+        .sort((a, b) => (a.time as number) - (b.time as number))
+        .filter((p) => {
+          if (seen.has(p.time as number)) return false
+          seen.add(p.time as number)
+          return true
+        })
       const ma20Data: any[] = [], ma50Data: any[] = [], ma200Data: any[] = []; const bbUpperData: any[] = [], bbLowerData: any[] = []; const macdDiffData: any[] = [], macdDeaData: any[] = [], macdHistData: any[] = []; const rsiData: any[] = [], rsiHistData: any[] = []; const kdjKData: any[] = [], kdjDData: any[] = [], kdjJData: any[] = []; const volumeData: any[] = [];
       const upColor = theme === 'dark' ? 'rgba(16, 185, 129, 0.5)' : 'rgba(5, 150, 105, 0.5)'; const downColor = theme === 'dark' ? 'rgba(239, 68, 68, 0.5)' : 'rgba(220, 38, 38, 0.5)';
       for (let i = 0; i < lwData.length; i++) {

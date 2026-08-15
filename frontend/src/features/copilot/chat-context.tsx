@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, createContext, useCallback, useMemo } from 'react'
-import { fetchWithAuth, apiClient, API_BASE_URL, clearTokens, emitAuthRequired } from '@/lib/api-client'
+import { fetchWithAuth, apiClient, API_BASE_URL, clearTokens, emitAuthRequired, ApiError } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
 import { useConfirmDialog } from '@/components/confirm-dialog-context'
 import { SessionSidebarRef } from '@/features/copilot/session-sidebar'
@@ -374,8 +374,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       }
       console.error('流式请求异常:', error)
       const errMsg = error?.message || String(error)
-      // 💡 认证失效（401 / 无合法 Token）：清理本地态并跳登录，不再显示 (Unknown) 裸文案
-      if (errMsg.includes('401') || errMsg.includes('未携带合法 Token') || errMsg.includes('认证')) {
+      // 💡 精准判定登录失效：仅当统一错误类 ApiError 的 code===401 才视为令牌失效。
+      // 严禁用字符串 includes('401'/'认证') 散弹式误判——任何业务错误（如 5xx 文案含
+      // “认证服务不可用”、或瞬时网络抖动）都会被误判为登录失效而反复踢回登录页。
+      if (error instanceof ApiError && error.code === 401) {
         currentAssistantMsg.content += '\n\n> ❌ **登录态已失效**: 会话令牌已过期或被吊销，正在为你跳转登录页重新授权…'
         clearTokens()
         emitAuthRequired() // 统一出口：跳登录页（由 auth-context 注册）

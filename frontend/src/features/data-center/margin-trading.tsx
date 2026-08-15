@@ -21,6 +21,14 @@ interface MarginTradingPanelProps {
   lastUpdated?: string
 }
 
+// 安全格式化更新时间：lastUpdated 可能已是格式化好的时间字符串（如 "15:20:33"），
+// 若再次 new Date() 解析会失败得到 Invalid Date。因此先尝试解析，失败时原样返回字符串。
+function formatUpdatedAt(v: string | undefined): string {
+  if (!v) return ''
+  const d = new Date(v)
+  return Number.isNaN(d.getTime()) ? v : d.toLocaleTimeString('zh-CN', { hour12: false })
+}
+
 function MarketMarginCard({ data }: { data: MarginMarketData }) {
   const financingUp = (data.financing_change ?? 0) >= 0
   const securitiesUp = (data.securities_change ?? 0) >= 0
@@ -181,7 +189,7 @@ export function MarginTradingPanel({ data, status, lastUpdated }: MarginTradingP
         {lastUpdated && (
           <div className="flex items-center gap-1 text-[9px] text-muted-foreground/50">
             <Clock className="w-3 h-3" />
-            <span>更新于 {new Date(lastUpdated).toLocaleTimeString('zh-CN', { hour12: false })}</span>
+            <span>更新于 {formatUpdatedAt(lastUpdated)}</span>
           </div>
         )}
       </div>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { API_BASE_URL } from '@/lib/constants'
+import { apiClient } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 
 export interface VolMatrix {
@@ -40,35 +40,22 @@ export function OptionVolSurface({ symbol }: { symbol: string }) {
     let cancelled = false
     setLoading(true)
     setError(null)
-    fetch(
-      `${API_BASE_URL}/options/chain-matrix/${encodeURIComponent(symbol)}?max_expiries=8&max_strikes=21`,
-      { credentials: 'include' },
-    )
-      .then((r) => {
-        if (!r.ok) {
-          return r.json().then((err) => {
-            // 兼容统一信封 {code,msg,data} 与原生 {detail} 两种错误结构
-            const msg = err?.msg ?? err?.detail ?? err?.message ?? `HTTP ${r.status}`
-            throw new Error(msg)
-          })
-        }
-        return r.json()
-      })
+    // 改用统一 apiClient:自带 30s 超时(超时抛 ApiError(408)) + 401 续期 + 错误归一化,
+    // 与项目其他面板一致, 杜绝裸 fetch 无超时导致请求长时间挂起被网络层中断(Failed to fetch)。
+    apiClient
+      .get<VolMatrix>(
+        `/options/chain-matrix/${encodeURIComponent(symbol)}?max_expiries=8&max_strikes=21`,
+      )
       .then((j) => {
         if (!cancelled) {
           setData(j)
           setSelected(null)
         }
       })
-      .catch((e) => {
-        if (!cancelled) {
-          // 网络层/CORS 拦截导致 fetch 失败:浏览器只给 TypeError: Failed to fetch
-          if (e instanceof TypeError || /Failed to fetch/i.test(String(e.message ?? e))) {
-            setError('后端无响应或跨域被拒绝，请检查网络/数据源连通性后重试')
-          } else {
-            setError(e?.message || String(e))
-          }
-        }
+      .catch((e: any) => {
+        if (cancelled) return
+        // apiClient 已归一化:网络层失败→ApiError(408/网络层), HTTP 错误→ApiError(status, msg)
+        setError(e?.message || '期权数据获取失败，请稍后重试')
       })
       .finally(() => {
         if (!cancelled) setLoading(false)

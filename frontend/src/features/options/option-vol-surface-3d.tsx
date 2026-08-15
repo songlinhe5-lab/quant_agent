@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { API_BASE_URL } from '@/lib/constants'
+import { apiClient } from '@/lib/api-client'
 import type { VolMatrix } from './option-vol-surface'
 
 type LegType = 'call' | 'put'
@@ -32,23 +32,18 @@ export function OptionVolSurface3D({ symbol }: { symbol: string }) {
     let cancelled = false
     setLoading(true)
     setError(null)
-    fetch(
-      `${API_BASE_URL}/options/chain-matrix/${encodeURIComponent(symbol)}?max_expiries=8&max_strikes=21`,
-      { credentials: 'include' },
-    )
-      .then((r) => {
-        if (!r.ok) {
-          return r.json().then((err) => {
-            throw new Error(err?.detail || `HTTP ${r.status}`)
-          })
-        }
-        return r.json()
-      })
+    // 改用统一 apiClient:自带 30s 超时 + 401 续期 + 错误归一化, 与项目其他面板一致,
+    // 杜绝裸 fetch 无超时导致请求长时间挂起被网络层中断(Failed to fetch)。
+    apiClient
+      .get<VolMatrix>(
+        `/options/chain-matrix/${encodeURIComponent(symbol)}?max_expiries=8&max_strikes=21`,
+      )
       .then((j) => {
         if (!cancelled) setData(j)
       })
-      .catch((e) => {
-        if (!cancelled) setError(String(e))
+      .catch((e: any) => {
+        if (cancelled) return
+        setError(e?.message || '期权数据获取失败，请稍后重试')
       })
       .finally(() => {
         if (!cancelled) setLoading(false)

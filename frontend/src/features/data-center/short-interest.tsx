@@ -41,6 +41,14 @@ function fmtDays(n: number | null | undefined): string {
   return `${n.toFixed(2)} 天`
 }
 
+// 安全格式化更新时间：lastUpdated 可能已是格式化好的时间字符串（如 "15:20:33"），
+// 若再次 new Date() 解析会失败得到 Invalid Date。先尝试解析，失败时原样返回字符串。
+function formatUpdatedAt(v: string | undefined): string {
+  if (!v) return ''
+  const d = new Date(v)
+  return Number.isNaN(d.getTime()) ? v : d.toLocaleTimeString('zh-CN', { hour12: false })
+}
+
 export function ShortInterestPanel({ data, status, lastUpdated }: ShortInterestPanelProps) {
   // 拿不到就不展示（零幻觉：无真实源则整卡隐藏，不渲染空壳）
   if (!data || status === 'error') {
@@ -76,7 +84,7 @@ export function ShortInterestPanel({ data, status, lastUpdated }: ShortInterestP
         {lastUpdated && (
           <div className="flex items-center gap-1 text-[9px] text-muted-foreground/50">
             <Clock className="w-3 h-3" />
-            <span>更新于 {new Date(lastUpdated).toLocaleTimeString('zh-CN', { hour12: false })}</span>
+            <span>更新于 {formatUpdatedAt(lastUpdated)}</span>
           </div>
         )}
       </div>

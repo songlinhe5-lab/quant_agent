@@ -10,21 +10,39 @@ export function NewsStream({ news, visibleNewsCount, setVisibleNewsCount, classN
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
+  // 💡 真实展示新闻发布相对时间, 并对显著滞后(>6h)的新闻标注"源延迟",
+  // 避免用户误以为系统卡顿; 不伪造时间戳, 符合零幻觉红线。
+  const formatNewsTime = (n: any): { text: string; delayed: boolean } => {
+    let tsSec: number | null = null;
+    if (n.datetime != null) {
+      const v = Number(n.datetime);
+      tsSec = v > 1e11 ? v / 1000 : v; // 兼容秒/毫秒级时间戳
+    } else if (n.time && !isNaN(Date.parse(n.time))) {
+      tsSec = Date.parse(n.time) / 1000;
+    }
+    if (tsSec == null || isNaN(tsSec)) return { text: '最近', delayed: false };
+    const diffSec = Math.floor(Date.now() / 1000 - tsSec);
+    if (diffSec < 0) return { text: '刚刚', delayed: false };
+    if (diffSec < 60) return { text: '刚刚', delayed: false };
+    if (diffSec < 3600) return { text: `${Math.floor(diffSec / 60)} 分钟前`, delayed: false };
+    if (diffSec < 86400) return { text: `${Math.floor(diffSec / 3600)} 小时前`, delayed: diffSec > 6 * 3600 };
+    return { text: `${Math.floor(diffSec / 86400)} 天前`, delayed: true };
+  };
+
   return (
     <div className={cn('glass-card rounded-lg overflow-hidden flex flex-col', className || 'h-[350px]')}>
       <div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2 flex-shrink-0">
         <Newspaper className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">LLM 情感打分 · 财经快讯</span>
-        <span className="ml-auto text-[10px] text-muted-foreground font-mono">
+        <span className="ml-auto text-[10px] text-muted-foreground font-mono flex items-center gap-1.5">
           {news.length > 0 ? `共 ${news.length} 条` : ''}
+          <span className="text-[9px] text-amber-500/80 border border-amber-500/20 px-1 py-0.5 rounded" title="Finnhub 免费档行情新闻端点为延迟缓存，非实时推送">源延迟</span>
         </span>
       </div>
       <div className="flex-1 divide-y divide-border/15 overflow-y-auto custom-scrollbar">
         {news.slice(0, visibleNewsCount).map((n: any, i: number) => {
           const titleText = n.title || n.headline || '未知';
-          let ts = n.time;
-          if (!ts && n.datetime) ts = new Date(n.datetime * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-          ts = ts || '最近';
+          const timeInfo = formatNewsTime(n);
 
           const sentimentObj = typeof n.sentiment === 'object' ? n.sentiment : null;
           const score = sentimentObj ? Number(sentimentObj.score) : 0;
@@ -59,7 +77,7 @@ export function NewsStream({ news, visibleNewsCount, setVisibleNewsCount, classN
                         <span className={cn('text-[10px] font-mono font-bold', bullish ? 'text-[#059669] dark:text-[#0ecb81]' : 'text-[#e11d48] dark:text-[#f6465d]')}>{score > 0 ? '+' : ''}{score}</span>
                       </div>
                     </div>
-                    <div className="flex-shrink-0 flex flex-col items-end gap-1.5"><span className={cn('text-[10px] font-bold px-2 py-0.5 rounded uppercase', bullish ? 'bg-[#0ecb81]/15 text-[#059669] dark:text-[#0ecb81]' : 'bg-[#f6465d]/15 text-[#e11d48] dark:text-[#f6465d]')}>{label}</span><span className="text-[10px] text-muted-foreground font-mono">{ts}</span></div>
+                    <div className="flex-shrink-0 flex flex-col items-end gap-1.5"><span className={cn('text-[10px] font-bold px-2 py-0.5 rounded uppercase', bullish ? 'bg-[#0ecb81]/15 text-[#059669] dark:text-[#0ecb81]' : 'bg-[#f6465d]/15 text-[#e11d48] dark:text-[#f6465d]')}>{label}</span><span className="text-[10px] text-muted-foreground font-mono">{timeInfo.text}</span>{timeInfo.delayed && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 border border-amber-500/30 whitespace-nowrap">源延迟</span>}</div>
                   </div>
                   {(summaryZh || reasoning) && (
                     <div className="pl-5 border-t border-border/10 mt-1.5 pt-2 space-y-1.5">{summaryZh && <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2"><HighlightedText text={summaryZh} /></p>}{reasoning && <div className="flex items-start gap-1.5"><span className="text-[9px] text-indigo-400 font-mono shrink-0 mt-0.5 uppercase tracking-wider">AI Insight:</span><p className="text-[10px] text-muted-foreground/60 italic line-clamp-2"><HighlightedText text={reasoning} /></p></div>}</div>

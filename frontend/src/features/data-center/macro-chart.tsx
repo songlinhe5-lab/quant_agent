@@ -11,6 +11,7 @@ export function MacroChartPanel() {
   const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [latestDate, setLatestDate] = useState('')
   const { theme } = useTheme()
   const isDark = theme === 'dark'
 
@@ -18,6 +19,7 @@ export function MacroChartPanel() {
     if (!id) return
     setLoading(true)
     setError('')
+    setLatestDate('')
     try {
       const res = await apiClient.get(
         `/macro/series?series_id=${id}&limit=250${forceRefresh ? '&force_refresh=true' : ''}`
@@ -28,6 +30,9 @@ export function MacroChartPanel() {
           date: d.date.split(' ')[0],
         }))
         setData(chartData)
+        // 升序后最后一项为最新观测日期, 用于展示"数据更新至"以确认真实性
+        const last = chartData[chartData.length - 1]
+        setLatestDate(last?.date || '')
       } else {
         setError(res.data?.message || '获取失败')
         setData([])
@@ -109,6 +114,11 @@ export function MacroChartPanel() {
       <div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2 flex-shrink-0">
         <LineChartIcon className="h-3.5 w-3.5 text-indigo-500 dark:text-indigo-400" />
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">FRED 宏观图表自由查</span>
+        {latestDate && (
+          <span className="text-[10px] text-muted-foreground font-mono bg-secondary/30 px-1.5 py-0.5 rounded-full" title="数据最新观测日期">
+            更新至 {latestDate}
+          </span>
+        )}
         <form onSubmit={handleSearch} className="ml-auto flex items-center gap-1.5">
           <div className="relative flex items-center">
             <Search className="absolute left-2.5 h-3 w-3 text-muted-foreground" />

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -44,12 +45,16 @@ class FREDService:
     async def get_series_observations(self, series_id: str, limit: int = 100) -> dict[str, Any]:
         if not self.api_key:
             return {"status": "error", "message": "FRED_API_KEY 未配置"}
+        # 💡 FIX: 强制 observation_end=今天, 确保只返回截至今日的真实最新数据,
+        # 杜绝低频序列(季度GDP/年度M2) limit 向前追溯到多年前旧数据的问题。
+        today = datetime.now().strftime("%Y-%m-%d")
         params = {
             "series_id": series_id,
             "api_key": self.api_key,
             "file_type": "json",
             "sort_order": "desc",
             "limit": limit,
+            "observation_end": today,
         }
         try:
             async with httpx.AsyncClient(timeout=10.0) as c:
