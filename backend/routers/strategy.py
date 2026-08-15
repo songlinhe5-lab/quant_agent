@@ -314,6 +314,7 @@ async def generate_strategy_code(payload: GeneratePayload):
                     messages=[{"role": "user", "content": prompt}],
                     timeout=120.0,
                     stream=True,
+                    stream_options={"include_usage": True},
                 )
             )
 

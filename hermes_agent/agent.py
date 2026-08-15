@@ -826,6 +826,8 @@ class HermesAgent:
                     "messages": cast(Any, self.messages),
                     "temperature": 0.0,
                     "stream": True,  # 开启大模型的流式输出开关
+                    # 流式必须显式请求 usage，否则最后一个 chunk 不带 usage → token 漏计
+                    "stream_options": {"include_usage": True},
                 }
                 if schemas:
                     request_kwargs["tools"] = schemas
@@ -1101,7 +1103,12 @@ class HermesAgent:
             # 🛡️ TokenGuard：最终流式总结前也做预算护栏
             await self._guard_before_llm(max_input_tokens=150000)
             response = await self.client.chat.completions.create(
-                model=self.pro_model, messages=cast(Any, self.messages), temperature=0.0, stream=True
+                model=self.pro_model,
+                messages=cast(Any, self.messages),
+                temperature=0.0,
+                stream=True,
+                # 流式必须显式请求 usage，否则最后一个 chunk 不带 usage → token 漏计
+                stream_options={"include_usage": True},
             )
 
             _f_usage = None  # 捕获流式总结最后一块的 usage
