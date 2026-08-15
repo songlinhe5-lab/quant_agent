@@ -7,8 +7,7 @@ import { cn } from '@/lib/utils'
 export interface AShareSectorItem {
   name: string
   change_pct: number
-  main_net_inflow: number
-  main_net_pct: number
+  net_inflow: number
 }
 
 export interface HKSectorItem {
@@ -30,8 +29,7 @@ export interface SectorFundFlowData {
   a_share?: {
     status: string
     data?: {
-      inflow_top: AShareSectorItem[]
-      outflow_top: AShareSectorItem[]
+      sectors: AShareSectorItem[]
       unit: string
       updated_at: string
       source: string
@@ -76,11 +74,20 @@ type TabKey = (typeof TABS)[number]['key']
 // ── A股行业 Tab ───────────────────────────────────────────────────────────
 
 function AShareTab({ data }: { data: SectorFundFlowData['a_share'] }) {
-  if (!data || data.status !== 'success' || !data.data || !data.data.inflow_top || !data.data.outflow_top) {
+  if (!data || data.status !== 'success' || !data.data || !data.data.sectors || data.data.sectors.length === 0) {
     return <EmptyState message="暂无A股行业资金流数据" />
   }
 
-  const { inflow_top, outflow_top, unit, source, updated_at } = data.data
+  const { sectors, unit, source, updated_at } = data.data
+  // 后端返回统一的 sectors 数组（net_inflow 可正可负），按符号拆分为净流入榜/净流出榜
+  const inflow = sectors
+    .filter((s) => (s.net_inflow ?? 0) >= 0)
+    .sort((a, b) => (b.net_inflow ?? 0) - (a.net_inflow ?? 0))
+    .slice(0, 10)
+  const outflow = sectors
+    .filter((s) => (s.net_inflow ?? 0) < 0)
+    .sort((a, b) => (a.net_inflow ?? 0) - (b.net_inflow ?? 0))
+    .slice(0, 5)
 
   return (
     <div className="space-y-3">
@@ -91,7 +98,7 @@ function AShareTab({ data }: { data: SectorFundFlowData['a_share'] }) {
           <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">主力净流入 Top 10</span>
         </div>
         <div className="space-y-1">
-          {inflow_top.map((item, i) => (
+          {inflow.map((item, i) => (
             <div
               key={item.name}
               className="flex items-center justify-between py-1 px-2 rounded-lg bg-emerald-500/5 hover:bg-emerald-500/10 transition-colors"
@@ -113,11 +120,8 @@ function AShareTab({ data }: { data: SectorFundFlowData['a_share'] }) {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold font-mono text-emerald-600 dark:text-emerald-400">
-                  +{item.main_net_inflow != null ? item.main_net_inflow.toLocaleString() : '--'}
+                  +{item.net_inflow != null ? item.net_inflow.toLocaleString() : '--'}
                   <span className="text-[8px] ml-0.5 opacity-60">{unit}</span>
-                </span>
-                <span className="text-[10px] font-mono text-muted-foreground/50 w-12 text-right">
-                  {(item.main_net_pct ?? 0).toFixed(2)}%
                 </span>
               </div>
             </div>
@@ -132,7 +136,7 @@ function AShareTab({ data }: { data: SectorFundFlowData['a_share'] }) {
           <span className="text-xs font-bold text-red-600 dark:text-red-400">主力净流出 Top 5</span>
         </div>
         <div className="space-y-1">
-          {outflow_top.map((item, i) => (
+          {outflow.map((item, i) => (
             <div
               key={item.name}
               className="flex items-center justify-between py-1 px-2 rounded-lg bg-red-500/5 hover:bg-red-500/10 transition-colors"
@@ -154,11 +158,8 @@ function AShareTab({ data }: { data: SectorFundFlowData['a_share'] }) {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold font-mono text-red-600 dark:text-red-400">
-                  {item.main_net_inflow != null ? item.main_net_inflow.toLocaleString() : '--'}
+                  {item.net_inflow != null ? item.net_inflow.toLocaleString() : '--'}
                   <span className="text-[8px] ml-0.5 opacity-60">{unit}</span>
-                </span>
-                <span className="text-[10px] font-mono text-muted-foreground/50 w-12 text-right">
-                  {(item.main_net_pct ?? 0).toFixed(2)}%
                 </span>
               </div>
             </div>
@@ -292,6 +293,11 @@ function EmptyState({ message }: { message: string }) {
 }
 
 function SourceFooter({ source, updatedAt }: { source?: string; updatedAt?: string }) {
+  const fmtUpdated = (v?: string) => {
+    if (!v) return ''
+    const d = new Date(v)
+    return Number.isNaN(d.getTime()) ? v : d.toLocaleTimeString('zh-CN', { hour12: false })
+  }
   return (
     <div className="flex items-center justify-between pt-2 border-t border-border/10">
       <div className="flex items-center gap-1 text-[8px] text-muted-foreground/50">
@@ -301,9 +307,7 @@ function SourceFooter({ source, updatedAt }: { source?: string; updatedAt?: stri
       {updatedAt && (
         <div className="flex items-center gap-1 text-[8px] text-muted-foreground/50">
           <Clock className="w-2.5 h-2.5" />
-          <span className="font-mono tabular-nums">
-            {new Date(updatedAt).toLocaleTimeString('zh-CN', { hour12: false })}
-          </span>
+          <span className="font-mono tabular-nums">{fmtUpdated(updatedAt)}</span>
         </div>
       )}
     </div>

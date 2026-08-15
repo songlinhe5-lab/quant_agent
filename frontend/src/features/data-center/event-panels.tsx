@@ -107,16 +107,16 @@ export function EventDetailPanel({ event, onClose }: { event: any; onClose: () =
           <div className="grid grid-cols-3 gap-2 p-2.5 bg-secondary/20 rounded-lg border border-border/30">
             <div className="flex flex-col gap-1">
               <span className="text-[9px] text-muted-foreground">前值 (Prev)</span>
-              <span className="font-mono text-xs text-muted-foreground">{event.prev || event.previous || '-'}</span>
+              <span className="font-mono text-xs text-muted-foreground">{event.prev || event.previous || '源未提供'}</span>
             </div>
             <div className="flex flex-col gap-1 border-l border-border/30 pl-2">
               <span className="text-[9px] text-muted-foreground">预期 (Fcst)</span>
-              <span className="font-mono text-xs text-foreground">{event.forecast || event.estimate || '-'}</span>
+              <span className="font-mono text-xs text-foreground">{event.forecast || event.estimate || '源未提供'}</span>
             </div>
             <div className="flex flex-col gap-1 border-l border-border/30 pl-2">
               <span className="text-[9px] text-muted-foreground font-semibold">实际 (Act)</span>
               <span className={cn("font-mono text-xs font-bold whitespace-nowrap", actualColor)}>
-                {event.actual || '-'}
+                {event.actual || '待公布'}
                 {deviationArrow && <span className="ml-1 inline-block text-[10px]">{deviationArrow}</span>}
               </span>
             </div>

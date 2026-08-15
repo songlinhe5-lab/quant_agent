@@ -174,11 +174,11 @@ export function EconomicCalendar({
                   <td className={cn("px-2 py-2 leading-tight", isHigh ? "font-bold text-foreground" : "font-medium text-slate-700 dark:text-slate-300 text-[10px]")}>{ev.event_zh || ev.event_cn || ev.title_zh || ev.event}</td>
                   <td className="px-2 py-2 text-center"><span className={cn('inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold tracking-widest', isHigh ? 'text-[#e11d48] dark:text-[#f6465d]' : isLow ? 'text-sky-600/70 dark:text-sky-400/70' : 'text-amber-500/70 dark:text-amber-400/70')}>{isHigh ? '●●●' : isLow ? '●' : '●●'}</span></td>
                   <td className={cn("px-2 py-2 text-right font-mono text-[10px] whitespace-nowrap", ev.actual && "font-bold", actualColor)}>
-                    {ev.actual || '-'}
+                    {ev.actual || '— 待公布'}
                     {deviationArrow && <span className="ml-0.5 inline-block">{deviationArrow}</span>}
                   </td>
-                  <td className={cn("px-2 py-2 text-right font-mono text-[10px]", isHigh ? "text-foreground" : "text-slate-700 dark:text-slate-300")}>{ev.forecast || ev.estimate || '-'}</td>
-                  <td className="px-3 py-2 text-right font-mono text-[10px] text-slate-500 dark:text-slate-300">{ev.prev || ev.previous || '-'}</td>
+                  <td className={cn("px-2 py-2 text-right font-mono text-[10px]", ev.forecast || ev.estimate ? (isHigh ? "text-foreground" : "text-slate-700 dark:text-slate-300") : "text-slate-400 dark:text-slate-500 text-[9px]")}>{ev.forecast || ev.estimate || '源未提供'}</td>
+                  <td className={cn("px-3 py-2 text-right font-mono text-[10px]", ev.prev || ev.previous ? "text-slate-500 dark:text-slate-300" : "text-slate-400 dark:text-slate-500 text-[9px]")}>{ev.prev || ev.previous || '源未提供'}</td>
                 </tr>
               )
             })}

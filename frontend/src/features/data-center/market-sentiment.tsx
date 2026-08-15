@@ -32,7 +32,6 @@ export function SentimentInfoPanel({ onClose }: { onClose: () => void }) {
 
 export function MarketSentimentPanel({ vixData, sentimentInd }: { vixData: any, sentimentInd?: any }) {
   const [showInfo, setShowInfo] = useState(false)
-  const [fgScore, _setFgScore] = useState<number | null>(null);
 
   const [mockSparklines] = useState(() => {
     const genTrend = (start: number, vol: number) => {
@@ -42,17 +41,19 @@ export function MarketSentimentPanel({ vixData, sentimentInd }: { vixData: any, 
     return { fg: genTrend(60, 5), vix: genTrend(18, 2), pc: genTrend(0.9, 0.05), cs: genTrend(3.8, 0.1) }
   });
 
-  // 贪婪恐惧指数当前无真实数据源接入，不展示任何随机合成的假值；
-  // 统一置空，由 UI 渲染为 N/A。
+  // 贪婪恐惧指数由后端用真实行情因子合成（fear_greed.value），无数据时统一置空渲染 N/A。
+  const fgScore: number | null = sentimentInd?.fear_greed?.value ?? null
+  const fgStatus: string = sentimentInd?.fear_greed?.status ?? ''
 
-  let fgLabel = '暂无数据';
+  // 优先用后端下发的语义状态，无数据时降级为"暂无数据"；颜色按档位映射。
+  let fgLabel = fgScore == null ? '暂无数据' : (fgStatus || '中性');
   let fgColor = 'text-muted-foreground';
   if (fgScore != null) {
-    if (fgScore >= 75) { fgLabel = '极度贪婪'; fgColor = 'text-[#059669] dark:text-[#0ecb81]'; }
-    else if (fgScore >= 55) { fgLabel = '贪婪'; fgColor = 'text-[#059669] dark:text-[#0ecb81]'; }
-    else if (fgScore <= 25) { fgLabel = '极度恐惧'; fgColor = 'text-[#e11d48] dark:text-[#f6465d]'; }
-    else if (fgScore <= 45) { fgLabel = '恐惧'; fgColor = 'text-[#e11d48] dark:text-[#f6465d]'; }
-    else { fgLabel = '中性'; fgColor = 'text-amber-500'; }
+    if (fgScore >= 75) { fgColor = 'text-[#059669] dark:text-[#0ecb81]'; }
+    else if (fgScore >= 55) { fgColor = 'text-[#059669] dark:text-[#0ecb81]'; }
+    else if (fgScore <= 25) { fgColor = 'text-[#e11d48] dark:text-[#f6465d]'; }
+    else if (fgScore <= 45) { fgColor = 'text-[#e11d48] dark:text-[#f6465d]'; }
+    else { fgColor = 'text-amber-500'; }
   }
 
       const pcVal = sentimentInd?.pc_ratio?.value ?? null;
