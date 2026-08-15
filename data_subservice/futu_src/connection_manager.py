@@ -112,6 +112,21 @@ class ConnectionManager:
                 self.quote_ctx = OpenQuoteContext(host=self._host, port=self._port)
                 self.status = "CONNECTED"
                 self.error_msg = ""
+                # 🚨 [DIAG-CTX] 临时诊断 (2026-08-15)：S1 子服务线程爆炸至 2263，
+                # 疑似大量 futu 上下文(OpenQuoteContext/OpenSecTradeContext)未回收。
+                # 每次创建 quote_ctx 打印累计线程数，定位创建来源。定位后移除。
+                try:
+                    import os as _os
+
+                    _tc = len(_os.listdir("/proc/self/task"))
+                    import traceback as _tb
+
+                    _stack = " | ".join(
+                        f"{f.f_code.co_filename.split('/')[-1]}:{f.f_lineno}" for f in _tb.extract_stack(limit=6)[:-1]
+                    )
+                    print(f"🔍 [DIAG-CTX] new quote_ctx created (threads={_tc}) caller={_stack}")
+                except Exception:
+                    pass
                 print(f"✅ [ConnectionManager] 成功连接至全局 OpenD 行情网关 ({self._host}:{self._port})")  # noqa: E501
 
                 # 注册推送回调处理器（将 Futu 实时推送桥接到 Redis PubSub）
@@ -186,6 +201,23 @@ class ConnectionManager:
                 is_encrypt=is_cross_network,  # 跨网络启用加密，本地不加密
                 security_firm=SecurityFirm.FUTUSECURITIES,
             )
+            # 🚨 [DIAG-CTX] 临时诊断 (2026-08-15)：S1 子服务线程爆炸，疑似大量交易上下文
+            # (OpenSecTradeContext) 未回收。打印每次创建(含 trade_ctxs 当前规模 + 线程数 + 调用方)，
+            # 定位是否高频创建不同 market 的交易 ctx。定位后移除。
+            try:
+                import os as _os
+                import traceback as _tb
+
+                _tc = len(_os.listdir("/proc/self/task"))
+                _stack = " | ".join(
+                    f"{f.f_code.co_filename.split('/')[-1]}:{f.f_lineno}" for f in _tb.extract_stack(limit=6)[:-1]
+                )
+                print(
+                    f"🔍 [DIAG-CTX] new trade_ctx key={key} (trade_ctxs={len(self.trade_ctxs)} "
+                    f"threads={_tc}) caller={_stack}"
+                )
+            except Exception:
+                pass
         return self.trade_ctxs[key]
 
     async def unlock_trade_if_needed(self, trd_ctx: OpenSecTradeContext) -> bool:
