@@ -453,12 +453,36 @@ export const ChatMessageItem = React.memo(({
                             </div>
                           )
                         } catch (_err) {
-                          return <div className="my-4 p-3 rounded-lg border border-red-500/20 bg-red-500/10 text-xs text-red-400 font-mono">⚠️ 动态图表解析中，等待 JSON 格式闭环...</div>
+                          // 💡 修复：区分流式进行中与流已结束两种状态，避免永久卡在"等待闭环"
+                          // 流式进行中：JSON 尚未吐完属于正常中间态，渲染轻量 loading 占位
+                          // 流已结束仍解析失败：说明 JSON 确实损坏，渲染错误降级（可折叠查看原始内容）
+                          if (isGenerating) {
+                            return (
+                              <div className="my-4 p-3 rounded-lg border border-border/30 bg-zinc-950/30 text-xs text-muted-foreground font-mono flex items-center gap-2">
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                                动态图表解析中，等待 JSON 格式闭环...
+                              </div>
+                            )
+                          }
+                          return (
+                            <details className="my-4 rounded-lg border border-red-500/20 bg-red-500/10 text-xs">
+                              <summary className="px-3 py-2 text-red-400 font-mono cursor-pointer select-none">
+                                ⚠️ 图表 JSON 解析失败（已截断或损坏）
+                              </summary>
+                              <pre className="px-3 pb-3 pt-1 text-red-400/80 font-mono whitespace-pre-wrap break-all">{String(children)}</pre>
+                            </details>
+                          )
                         }
                       }
 
                       if (!isInline && lang === 'mermaid') {
                         return <MermaidRenderer chart={String(children)} />
+                      }
+
+                      // 💡 PROD-02: chart-annotations 块已由 SSE chart_annotation 事件推送至
+                      // useChartAnnotationStore 并在 K 线图上渲染，此处不再重复渲染可见块
+                      if (!isInline && lang === 'chart-annotations') {
+                        return null
                       }
 
                       return !isInline ? (
