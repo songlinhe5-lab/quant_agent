@@ -565,7 +565,12 @@ class HermesAgent:
         # 💡 动态注入防幻觉指令：禁止大模型在生成代码时调用工具去拉取数据，避免浪费时间与 Token
         code_gen_rule = "\n\n⚠️ 【严格风控指令】当用户要求你“编写”、“生成”量化策略代码或因子特征提取代码时，请**直接输出纯 Python 代码**，绝对不允许调用 `get_broker_market_data` 等工具去拉取 K 线或行情数据来进行测试验证。真实的行情数据拉取与回测将在独立的沙箱工作台中自动完成。"
 
-        return base_prompt + code_gen_rule
+        # 💡 动态注入图表输出约束：对话中禁止输出 ```echarts 块（模型易生成非法 JSON 导致前端卡死），
+        # 走势/价位标注统一走 ```chart-annotations 机器可读协议（已由前端 SSE 渲染到 K 线图）。
+        # 仅在用户明确要求“生成界面/Vibe Coding/HTML”时才允许输出 ```echarts 配置块。
+        chart_rule = "\n\n⚠️ 【图表输出约束】在普通对话分析中，**严禁输出** ` ```echarts ` 代码块（其 JSON 易损坏且会污染对话界面）。如需标注走势、支撑/压力位、买卖信号，请使用 ` ```chart-annotations ` 机器可读协议块（前端会自动渲染到该标的 K 线图上）。仅当用户明确要求“生成界面 / Vibe Coding / 输出 HTML 卡片”时，才允许输出 ` ```echarts ` 配置块。"
+
+        return base_prompt + code_gen_rule + chart_rule
 
     async def run_cli(self):
         """
@@ -826,6 +831,8 @@ class HermesAgent:
                     "messages": cast(Any, self.messages),
                     "temperature": 0.0,
                     "stream": True,  # 开启大模型的流式输出开关
+                    # 流式必须显式请求 usage，否则最后一个 chunk 不带 usage → token 漏计
+                    "stream_options": {"include_usage": True},
                 }
                 if schemas:
                     request_kwargs["tools"] = schemas
@@ -1101,7 +1108,12 @@ class HermesAgent:
             # 🛡️ TokenGuard：最终流式总结前也做预算护栏
             await self._guard_before_llm(max_input_tokens=150000)
             response = await self.client.chat.completions.create(
-                model=self.pro_model, messages=cast(Any, self.messages), temperature=0.0, stream=True
+                model=self.pro_model,
+                messages=cast(Any, self.messages),
+                temperature=0.0,
+                stream=True,
+                # 流式必须显式请求 usage，否则最后一个 chunk 不带 usage → token 漏计
+                stream_options={"include_usage": True},
             )
 
             _f_usage = None  # 捕获流式总结最后一块的 usage

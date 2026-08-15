@@ -21,12 +21,19 @@ LLM 调用，OpenAI / DeepSeek 等按 token 计费，且多数套餐有每日/�
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
+import re
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 from backend.core.redis_client import redis_client
+
+# 旧镜像遗留的脏 key 形态：把完整 ISO 时间戳（含 T18:32:44）误当 key 一部分写入，
+# 形如 quant:metrics:llm:tokens:2026-08-15T18:32:44.664514[:18]。新版只写
+# {YYYY-MM-DD} / {YYYY-MM-DD}:{HH} / {YYYY-MM} 三种干净桶，故以下正则命中者一律视为遗留垃圾。
+_LEGACY_KEY_RE = re.compile(r"^quant:metrics:llm:tokens:\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +110,38 @@ class TokenUsageStore:
             "total_tokens": 0,
             "calls": 0,
         }
+        # 启动时 best-effort 清理旧镜像残留的脏 key（不阻塞业务构造）
+        if self._enabled:
+            try:
+                asyncio.ensure_future(self._cleanup_legacy_keys())
+            except RuntimeError:
+                # 无 running event loop（如 import 期）时跳过，下次调用自然走干净逻辑
+                pass
+
+    @staticmethod
+    async def _cleanup_legacy_keys() -> None:
+        """
+        清理旧镜像误写的脏 key（T\\d{2}:\\d{2}:\\d{2} 形态的时桶）。
+
+        best-effort：任何 Redis 异常均静默吞掉，绝不抛回业务层。
+        使用 SCAN 游标分批删除，避免 KEYS 在大键空间下阻塞 Redis。
+        """
+        try:
+            cursor = 0
+            deleted = 0
+            while True:
+                cursor, keys = await redis_client.scan(cursor, match="quant:metrics:llm:tokens:*", count=200)
+                if keys:
+                    legacy = [k for k in keys if _LEGACY_KEY_RE.match(k)]
+                    if legacy:
+                        await redis_client.delete(*legacy)
+                        deleted += len(legacy)
+                if cursor == 0:
+                    break
+            if deleted:
+                logger.info(f"[TokenUsage] 已清理 {deleted} 个旧镜像残留的脏 key")
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"[TokenUsage] 旧格式脏 key 清理跳过（非致命）: {e}")
 
     @property
     def enabled(self) -> bool:
