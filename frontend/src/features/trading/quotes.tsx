@@ -20,7 +20,6 @@ import { ChartErrorBoundary, PanelErrorBoundary } from '@/components/error-bound
 import { AnomalyFlash } from '@/features/quotes/anomaly-flash'
 import { NarratorBubble } from '@/features/quotes/narrator-bubble'
 import { AIChat } from '@/features/strategy/layout/ai-chat'
-import { MarketNewsPanel } from './market-news-panel'
 
 import { InitOverlay, EmptyState } from '@/components/ui/data-display'
 
@@ -72,8 +71,6 @@ export function QuotesModule() {
   const [isWatchlistExpanded, setIsWatchlistExpanded] = useState(true)
   // PROD-12: 分屏同步对比模式开关
   const [compareMode, setCompareMode] = useState(false)
-  // PROD-05 深化：≥1920px 自动展开的新闻流次面板，允许用户在盯盘聚焦时收起
-  const [newsPanelOpen, setNewsPanelOpen] = useState(true)
   useEffect(() => {
     const saved = localStorage.getItem('quant_watchlist_expanded')
     if (saved !== null) setIsWatchlistExpanded(saved === 'true')
@@ -234,7 +231,7 @@ export function QuotesModule() {
             </button>
           </div>
           {/* AI-01: 默认/研究三栏场景也挂载异动解说联动——与 compare/watch 场景一致 */}
-          <AnomalyFlash symbol={selectedSymbol}>
+          <AnomalyFlash symbol={selectedSymbol} className="h-full">
             {hasData ? (
               compareMode ? (
                 <div className="flex flex-col flex-1 min-h-0 gap-1">
@@ -303,13 +300,6 @@ export function QuotesModule() {
           </PanelErrorBoundary>
         </Panel>
       </PanelGroup>
-
-      {/* PROD-05 深化：1920px 自动展开「新闻流」次面板（≥1920px 由 .resp-auto-panels 揭示，可收起） */}
-      {newsPanelOpen && (
-        <div data-secondary-panel className="hidden w-[340px] flex-shrink-0 min-h-0 border-l border-border/40">
-          <MarketNewsPanel onClose={() => setNewsPanelOpen(false)} />
-        </div>
-      )}
 
       {/* PROD-05 深化：超宽屏 21:9 三栏之一（行情+策略/新闻+AI），≥2560px 由 .resp-3col 揭示 */}
       <div data-ultrawide-ai className="hidden w-[360px] flex-shrink-0 min-h-0 border-l border-border/40">
