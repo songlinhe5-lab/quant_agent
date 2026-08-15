@@ -174,10 +174,20 @@ class WebScrapeTool(BaseTool):
             r"\n+\s*(免责声明|Disclaimer|投资风险提示)[：:\s].*", "", content, flags=re.IGNORECASE | re.DOTALL
         )
 
+        # 💡 无条件持久化到 PGVector 知识库（修复：原实现仅在 query 非空时才入库，
+        #    导致不带 query 的 fetch_webpage 调用永不写入，search_global_knowledge 永远查不到）。
+        #    写入失败仅告警降级，不阻断正文返回。
+        try:
+            await asyncio.to_thread(self._persist_to_kb, content, url)
+        except Exception as e:
+            logger.warning("rag_persist_failed", url=url, error=str(e))
+
+        # 带 query 时额外做语义检索，返回精准摘要；否则返回全文截断
         if query:
             try:
-                summary = await asyncio.to_thread(self._process_rag, content, query, url)
-                return {"status": "success", "data": {"url": url, "query": query, "content": summary}}
+                summary = await asyncio.to_thread(self._retrieve_from_kb, content, query, url)
+                if summary:
+                    return {"status": "success", "data": {"url": url, "query": query, "content": summary}}
             except Exception as e:
                 logger.warning("rag_extract_failed_fallback_fulltext", url=url, error=str(e))
 
@@ -189,19 +199,15 @@ class WebScrapeTool(BaseTool):
         content += "\n\n(💡 系统护栏提示：这是网页的原始内容。绝对禁止在你的输出中大段复制粘贴这些原文或打印整个 JSON/Markdown 结构！你必须消化后使用专业简练的语言进行总结。)"
         return {"status": "success", "data": {"url": url, "content": content}}
 
-    def _process_rag(self, content: str, query: str, url: str) -> str:
-        """执行 RAG 切分、持久化到 PGVector 知识库，并基于 Query 语义检索 Top3。
-
-        存储后端统一为 PostgreSQL pgvector (WebpageKnowledgeBase)，
-        写入与检索共用 backend.core.embeddings.get_embeddings，保证向量空间一致。
-        """
+    def _split_docs(self, content: str) -> List:
+        """RAG 切分：标题层级 + 滑动窗口，返回 LangChain Document 列表。"""
         try:
             from langchain_text_splitters import (  # type: ignore
                 MarkdownHeaderTextSplitter,
                 RecursiveCharacterTextSplitter,
             )
         except ImportError:
-            return "⚠️ 缺少 langchain-text-splitters 依赖，无法进行 RAG 切分。\n\n" + safe_truncate(content, 5000)
+            return []
 
         # 1. 标题切分 (保留文档父子层级关系)
         headers_to_split_on = [
@@ -220,13 +226,22 @@ class WebScrapeTool(BaseTool):
             # 财报 Markdown 表格按 \n 换行但通常没有句号，这样能最大程度保证普通段落按句子切分，大表格尽量作为一个整体，逼不得已时才按表行切分
             separators=["\n\n", "。", "！", "？", ".", "!", "?", "\n", "；", ";", "，", ",", " ", ""],
         )
-        splits = text_splitter.split_documents(md_splits)
+        return text_splitter.split_documents(md_splits)
 
-        if not splits:
-            return "网页正文为空或无法切分。"
+    def _persist_to_kb(self, content: str, url: str) -> bool:
+        """无条件将网页碎片切分+向量化后幂等写入 PGVector 知识库。
 
-        # 3. 生成向量 + 持久化到 PGVector (WebpageKnowledgeBase)
+        修复：原 _process_rag 仅在传入 query 时才入库，导致不带 query 的
+        fetch_webpage 调用永不写入，search_global_knowledge 永远查不到。
+        现抽出独立方法，由 _format_response 无条件调用。
+        返回 True 表示入库成功；False/异常表示降级跳过（不阻断正文返回）。
+        """
         try:
+            splits = self._split_docs(content)
+            if not splits:
+                logger.warning("rag_persist_empty", url=url)
+                return False
+
             from backend.core.config import settings
             from backend.core.embeddings import get_embeddings
 
@@ -240,8 +255,9 @@ class WebScrapeTool(BaseTool):
 
             vectors = get_embeddings(docs)
             if not vectors or len(vectors) != len(docs):
-                # 零幻觉：embedding 不可用时降级返回全文截断，不假装已入库
-                return "⚠️ Embedding 服务不可用，无法持久化知识库。\n\n网页开头：\n" + safe_truncate(content, 2000)
+                # 零幻觉：embedding 不可用时降级，不假装已入库
+                logger.warning("rag_persist_embedding_unavailable", url=url)
+                return False
 
             url_hash = hashlib.md5(url.encode("utf-8")).hexdigest()
             current_ts = int(time.time())
@@ -277,8 +293,21 @@ class WebScrapeTool(BaseTool):
                     )
                 db.bulk_save_objects(rows)
                 db.commit()
+            logger.info("rag_persist_ok", url=url, chunks=len(rows))
+            return True
+        except Exception as e:
+            logger.warning("rag_persist_failed", url=url, error=str(e))
+            return False
 
-            # 4. 根据 Query 从 PGVector 语义检索 Top 3 最相关片段
+    def _retrieve_from_kb(self, content: str, query: str, url: str) -> str:
+        """基于 Query 从 PGVector 语义检索 Top3（限定当前 URL）。返回格式化摘要。"""
+        try:
+            splits = self._split_docs(content)
+            if not splits:
+                return "网页正文为空或无法切分。"
+
+            from backend.core.embeddings import get_embeddings
+
             query_vec = get_embeddings([query])
             if not query_vec:
                 return "⚠️ 查询向量生成失败，无法检索。\n\n网页开头：\n" + safe_truncate(content, 2000)
@@ -295,6 +324,8 @@ class WebScrapeTool(BaseTool):
                 LIMIT 3
                 """
             )
+            from backend.core.database import SessionLocal
+
             with SessionLocal() as db:
                 res = db.execute(sql, {"q": str(query_vec[0]), "url": url}).fetchall()
 
@@ -311,4 +342,4 @@ class WebScrapeTool(BaseTool):
             return summary.strip()
         except Exception as e:
             logger.warning("rag_pg_failed_fallback", url=url, error=str(e))
-            return "⚠️ 知识库持久化或检索异常。\n\n网页开头：\n" + safe_truncate(content, 2000)
+            return "⚠️ 知识库检索异常。\n\n网页开头：\n" + safe_truncate(content, 2000)
