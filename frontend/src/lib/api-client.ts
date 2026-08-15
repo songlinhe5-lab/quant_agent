@@ -320,18 +320,37 @@ class RestClient {
       // 拿到任意 HTTP 响应（含 4xx/5xx）均说明后端在线 → 复位可达性状态、隐藏离线横幅
       useBackendStatusStore.getState().registerSuccess()
 
-      // 处理 401 - 尝试刷新 Token
+      // 处理 401 - 尝试刷新 Token（有限退避重试，避免瞬时抖动误踢）
       if (response.status === 401) {
-        // 仅 refresh/login 接口本身返回 401 → 说明 Refresh Token 也失效了，清除并跳转登录
-        if (path === '/auth/refresh' || path === '/auth/login') {
+        // refresh 接口本身返回 401 → Refresh Token 已失效，清 token + 跳登录（唯一真失效出口）
+        if (path === '/auth/refresh') {
           clearTokens()
           emitAuthRequired() // 统一出口：跳登录页（由 auth-context 注册）
           throw new ApiError(401, '认证失败')
         }
+        // 注意：/auth/login 的 401 是「用户名/密码错误」的正常业务错误，必须原样抛回
+        // 让登录页显示错误提示，绝不能触发全局登出（否则登录失败会清空表单硬跳登录页）。
 
-        const newToken = await this.refreshToken()
-        if (newToken) {
-          // 重试请求
+        // 最多重试 3 轮：每轮先强制 refresh，再用新 token 重发原请求。
+        // - Refresh 成功：带新 token 重发；仍 401 则进入下一轮（极端：token 刚被吊销）。
+        // - Refresh 瞬时失败（非 hard，如跨域/网络抖动）：间隔 800ms 后重试同一轮，
+        //   给后端/网络恢复窗口，避免一次抖动就抛 401 给上层触发散弹式登出。
+        // - Refresh 真 401（lastRefreshFailedHard）：立即清 token + 跳登录，不再重试。
+        const MAX_ROUNDS = 3
+        const RETRY_BACKOFF_MS = 800
+        for (let round = 0; round < MAX_ROUNDS; round++) {
+          const newToken = await this.refreshToken()
+          if (!newToken) {
+            if (lastRefreshFailedHard) {
+              // Refresh Token 确已失效：清 token + 跳登录（唯一真正的登出处）
+              clearTokens()
+              emitAuthRequired()
+              throw new ApiError(401, '认证已过期')
+            }
+            // 瞬时失败：退避后进入下一轮重试，不抛错、不踢人
+            await new Promise((r) => setTimeout(r, RETRY_BACKOFF_MS))
+            continue
+          }
           requestHeaders['Authorization'] = `Bearer ${newToken}`
           const retryResponse = await fetch(url, {
             method,
@@ -344,13 +363,14 @@ class RestClient {
             credentials: this.config.withCredentials ? 'include' : 'omit',
             signal: signal || controller.signal,
           })
-          return this.handleResponse<T>(retryResponse)
+          if (retryResponse.status !== 401) {
+            return this.handleResponse<T>(retryResponse)
+          }
         }
-        // 刷新失败：仅当刷新接口"真 401（Refresh Token 失效）"才清 token + 跳登录；
-        // 网络/跨域瞬时异常不清 token，由后续请求重试续期，避免误踢用户。
+        // 多轮重试后仍是 401：若刷新曾被硬拒绝则已跳登录；否则视为真失效，兜底踢出
         if (lastRefreshFailedHard) {
           clearTokens()
-          emitAuthRequired() // 统一出口：跳登录页（由 auth-context 注册）
+          emitAuthRequired()
         }
         throw new ApiError(401, '认证已过期')
       }
