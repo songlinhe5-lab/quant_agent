@@ -129,6 +129,16 @@ export function QuotesModule() {
 
   const { watchlist, addTicker, removeTicker, updateTicker, reorderWatchlist } = useWatchlist()
 
+  // 💡 初始化兜底：直接打开 /quotes 页（无任何搜索/路由跳转）时 watchlist 默认空，
+  // 会导致 useMarketData 内 `if (watchlist.length === 0) return` 不建 WS / 不拉 K 线。
+  // 此处把当前 selectedSymbol 自动加进自选，保证首屏即有实时行情与盘口。
+  useEffect(() => {
+    if (watchlist.length === 0 && selectedSymbol) {
+      addTicker(selectedSymbol)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const { realQuote, realHistory, gatewayStatus, isStale, latestStatsRef } = useMarketData({ selectedSymbol, selectedPeriod, watchlist, updateTicker })
 
   // 💡 键盘快捷键支持：使用上下方向键快速切换自选标的，数字键 1-7 快速切换周期
