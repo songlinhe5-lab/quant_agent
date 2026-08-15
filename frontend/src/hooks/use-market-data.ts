@@ -204,7 +204,7 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
       }
 
       const sym = selectedSymbol.replace('/', '')
-      const wsUrl = `${getWsBaseUrl()}/market/quotes/ws?token=` + token
+      const wsUrl = `${getWsBaseUrl()}/api/v1/market/quotes/ws?token=` + token
 
       const ws = new WebSocket(wsUrl)
       ws.binaryType = "arraybuffer"
