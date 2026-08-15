@@ -28,6 +28,18 @@ logger = logging.getLogger(__name__)
 # 长期累积导致数据服务线程数飙到 900+。强制设为 daemon，进程退出即回收，杜绝孤儿线程堆积。
 sys_config.SysConfig.set_all_thread_daemon(True)
 
+# 🚨 跨网络交易连接 RSA 配置 (2026-08-15)：OpenSecTradeContext(is_encrypt=True) 需要 RSA 私钥。
+# 若仅 OpenD 配 rsa_private_key 而客户端未 set_init_rsa_file，futu SDK 报 "check sha error"，
+# 行情+交易连接全失败。此处若配了 FUTU_RSA_PRIVATE_KEY（子服务容器内 RSA 私钥文件路径），
+# 则让 futu SDK 加密握手使用该私钥，使跨网络交易连接可正常建立（而非因缺私钥泄漏 callback 线程）。
+_rsa_key = os.getenv("FUTU_RSA_PRIVATE_KEY", "").strip()
+if _rsa_key:
+    try:
+        sys_config.SysConfig.set_init_rsa_file(_rsa_key)
+        print(f"🔐 [ConnectionManager] 已配置 Futu 客户端 RSA 私钥: {_rsa_key}")
+    except Exception as e:  # noqa: BLE001
+        print(f"⚠️ [ConnectionManager] set_init_rsa_file 配置失败: {e}")
+
 
 class ConnectionManager:
     """Futu OpenD 连接管理器"""
@@ -196,25 +208,30 @@ class ConnectionManager:
             # 当 host 是 localhost/127.0.0.1 时，视为本地连接，不启用加密
             is_cross_network = self._host not in ["127.0.0.1", "localhost", "::1"]
 
-            # 🚨 代码层防御 (2026-08-15): 跨网络交易连接需要 RSA 私钥/解锁密码 (FUTU_PWD_UNLOCK)。
+            # 🚨 代码层防御 (2026-08-15): 跨网络交易连接需要 RSA 私钥/解锁密码。
             # 未配置时 futu SDK 的 OpenSecTradeContext(is_encrypt=True) 会因 "Conn is encrypted,
             # but no RSA private key" 反复失败, 且每次创建都会启动 callback_executor 线程
             # (idle 在 queue.get()), 主服务高频 ACCOUNT_INFO 轮询 → 线程无限累积至 OOM/线程耗尽
-            # (S1 实测 2263 线程 degraded)。既然交易注定不可用, 直接在此拒绝创建交易上下文,
-            # 阻断 futu SDK 建连/起线程, 从源头止住交易相关的线程泄漏。行情 (quote_ctx) 不受影响。
+            # (S1 实测 2263 线程 degraded)。若交易注定不可用(跨网络但既无 FUTU_PWD_UNLOCK 解锁密码
+            # 也无客户端 RSA 私钥 FUTU_RSA_PRIVATE_KEY), 直接拒绝创建交易上下文, 阻断 futu SDK
+            # 建连/起线程, 从源头止住交易相关的线程泄漏。行情 (quote_ctx) 不受影响。
+            # 只要配置了任一项(FUTU_PWD_UNLOCK 或 FUTU_RSA_PRIVATE_KEY)即放行, 允许正常建连。
             _pwd = (
                 os.getenv("FUTU_PWD_UNLOCK", "")
                 or os.getenv("FUTU_TRD_UNLOCK_PWD", "")
                 or os.getenv("FUTU_TRADE_PWD", "")
             )  # noqa: E501
-            if is_cross_network and not _pwd:
+            _rsa = os.getenv("FUTU_RSA_PRIVATE_KEY", "").strip()
+            if is_cross_network and not _pwd and not _rsa:
                 self.status = "TRADE_DISABLED"
                 raise ConnectionError(
                     "交易服务已屏蔽: 跨网络(host="
-                    f"{self._host})交易连接需要配置 FUTU_PWD_UNLOCK(RSA 私钥/解锁密码), "
-                    "当前未配置导致 OpenSecTradeContext(is_encrypt=True) 无法建立加密交易会话, "
+                    f"{self._host})交易连接需要配置 FUTU_PWD_UNLOCK(解锁密码) 或 "
+                    "FUTU_RSA_PRIVATE_KEY(客户端 RSA 私钥), 当前均未配置导致 "
+                    "OpenSecTradeContext(is_encrypt=True) 无法建立加密交易会话, "
                     "且每次创建会泄漏 futu SDK 回调线程。为避免线程耗尽, 已拒绝创建交易上下文。"
-                    "请配置 .env.data-node 的 FUTU_PWD_UNLOCK 后重启子服务。行情通道不受影响。"
+                    "请配置 .env.data-node 的 FUTU_PWD_UNLOCK 或 FUTU_RSA_PRIVATE_KEY 后重启子服务。"
+                    "行情通道不受影响。"
                 )
 
             self.trade_ctxs[key] = OpenSecTradeContext(
