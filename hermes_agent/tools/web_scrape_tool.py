@@ -199,7 +199,7 @@ class WebScrapeTool(BaseTool):
         content += "\n\n(💡 系统护栏提示：这是网页的原始内容。绝对禁止在你的输出中大段复制粘贴这些原文或打印整个 JSON/Markdown 结构！你必须消化后使用专业简练的语言进行总结。)"
         return {"status": "success", "data": {"url": url, "content": content}}
 
-    def _split_docs(self, content: str) -> List:
+    def _split_docs(self, content: str) -> list:
         """RAG 切分：标题层级 + 滑动窗口，返回 LangChain Document 列表。"""
         try:
             from langchain_text_splitters import (  # type: ignore
