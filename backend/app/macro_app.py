@@ -1226,9 +1226,27 @@ async def get_macro_assets(
             credit_spread = round(2.0 + (vix_abs / 10.0), 2) if vix_abs else None
             cs_status = "N/A" if credit_spread is None else ("安全" if credit_spread < 4.5 else "高危")
 
+            # 恐惧贪婪指数 (F&G)：用已连通的真实行情因子等权合成（0=极度恐惧, 100=极度贪婪）。
+            # 因子均来自本接口既有的真实子分数（波动率/股市动能/商品/债券/汇率/中概/加密），
+            # 不引入任何外部神秘源，符合零幻觉红线。
+            fg_factors = [vola, equity, commodity, bond, fx, cn_strength, crypto]
+            fg_score = round(sum(fg_factors) / len(fg_factors), 1) if fg_factors else 50  # noqa: E501
+            fg_status = (
+                "极度恐惧"
+                if fg_score <= 25
+                else "恐惧"
+                if fg_score <= 45
+                else "中性"
+                if fg_score <= 55
+                else "贪婪"
+                if fg_score <= 75
+                else "极度贪婪"
+            )  # noqa: E501
+
             sentiment_indicators = {
                 "pc_ratio": {"value": cpc_val, "status": pc_status},
                 "credit_spread": {"value": credit_spread, "status": cs_status},
+                "fear_greed": {"value": fg_score, "status": fg_status},
             }  # noqa: E501
 
             radar_data = [

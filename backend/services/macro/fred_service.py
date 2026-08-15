@@ -37,7 +37,10 @@ class FREDService:
         """
         # 💡 防御特殊字符造成的 Redis 脏数据和查询污染
         safe_id = re.sub(r"[^A-Z0-9_-]", "", str(series_id).upper())[:30]
-        cache_key = f"fred_series_{safe_id}_{limit}"
+        # cache_key 纳入"今天", 确保每日首次查询拉取当日最新(截至今日)数据,
+        # 避免旧脏数据被 12h TTL 锁定导致图表长期显示陈旧年份。
+        today = datetime.now().strftime("%Y%m%d")
+        cache_key = f"fred_series_{safe_id}_{limit}_{today}"
         if not force_refresh:
             try:
                 cached_data = await redis_client.get(cache_key)
@@ -113,8 +116,8 @@ class FREDService:
             cacheable = len(observations) > 1 or limit <= 2
             if cacheable:
                 try:
-                    ttl = 43200 + random.randint(100, 600)
-                    await redis_client.set(cache_key, json.dumps(result), ex=ttl)  # 缓存 12 小时 + Jitter  # noqa: E501
+                    ttl = 21600 + random.randint(100, 600)
+                    await redis_client.set(cache_key, json.dumps(result), ex=ttl)  # 缓存 6 小时 + Jitter  # noqa: E501
                 except Exception as e:
                     print(f"⚠️ [FREDService] Redis 缓存写入异常: {e}")
             else:
