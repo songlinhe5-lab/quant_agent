@@ -4,7 +4,7 @@ System APM 路由 — 系统性能监控与聚合仪表盘
 
 import asyncio
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
@@ -16,6 +16,7 @@ from backend.core.logger import logger
 from backend.core.models import PerformanceLog
 from backend.routers._grafana_dashboard import build_grafana_dashboard
 from backend.routers.auth import get_current_user
+from backend.services.ai_narrator.token_usage_store import token_usage_store
 
 _BEIJING_TZ = ZoneInfo("Asia/Shanghai")
 
@@ -327,3 +328,60 @@ async def _build_perf_stats() -> dict:
     from backend.app.system_app import build_perf_stats
 
     return await build_perf_stats()
+
+
+# ---- LLM Token 消耗统计 (APM) ----
+
+_DATE_RE = __import__("re").compile(r"^\d{4}-\d{2}-\d{2}$")
+_MONTH_RE = __import__("re").compile(r"^\d{4}-\d{2}$")
+
+
+@router.get("/token-usage", summary="LLM token 消耗统计（每日/每小时/每月）")
+async def get_token_usage(
+    day: Optional[str] = Query(default=None, description="查询日期 YYYY-MM-DD，默认今日"),
+    month: Optional[str] = Query(default=None, description="查询月份 YYYY-MM，默认本月"),
+    days: int = Query(default=7, ge=1, le=31, description="近 N 日趋势天数，默认 7"),
+    current_user=Depends(get_current_user),
+) -> dict:
+    """返回 LLM token 消耗的日 / 时 / 月三维聚合，供前端 APM 面板展示。
+
+    - today: 指定日（默认今日）的当日累计
+    - hourly: 指定日的 24 小时分布（折线/柱状图用）
+    - monthly: 指定月（默认本月）的月累计
+    - daily_range: 近 N 日的每日聚合（趋势图用）
+    """
+    # 解析 day
+    if day and _DATE_RE.match(day):
+        y, m, d = map(int, day.split("-"))
+        target_day = date(y, m, d)
+    else:
+        target_day = date.today()
+
+    # 解析 month
+    if month and _MONTH_RE.match(month):
+        target_month = month
+    else:
+        target_month = target_day.strftime("%Y-%m")
+
+    # 近 N 日区间
+    end = target_day
+    start = end - timedelta(days=days - 1)
+
+    today_data = await token_usage_store.get_today(target_day)
+    hourly = await token_usage_store.get_hourly(target_day)
+    monthly_data = await token_usage_store.get_monthly(target_month)
+    daily_range = await token_usage_store.get_daily_range(start, end)
+
+    return {
+        "today": today_data,
+        "hourly": hourly,
+        "monthly": monthly_data,
+        "daily_range": daily_range,
+        "meta": {
+            "day": target_day.isoformat(),
+            "month": target_month,
+            "range_start": start.isoformat(),
+            "range_end": end.isoformat(),
+            "metric_source": today_data.get("metric_source"),
+        },
+    }

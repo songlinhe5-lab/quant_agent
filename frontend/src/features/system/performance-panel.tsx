@@ -9,6 +9,7 @@ import {
 import { apiClient } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { TokenUsagePanel } from '@/features/system/token-usage'
 
 // ─── 类型定义 ────────────────────────────────────────────────────────
 interface HealthData {
@@ -326,6 +327,9 @@ export function PerformancePanel() {
           </table>
         </div>
       </div>
+
+      {/* [6] LLM Token 消耗统计 (APM) */}
+      <TokenUsagePanel />
     </div>
   )
 }

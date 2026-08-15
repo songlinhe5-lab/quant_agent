@@ -295,3 +295,42 @@ https://quant-api.stephenhe.com/api/v1
 - 改 `VITE_API_BASE_URL` 后必须重新 `wrangler pages deploy`（走 main/master push 的 CI 才触发），develop push 只 build 不部署。
 - 发布前在 Cloudflare Pages 控制台核对构建变量值 = `https://quant-api.stephenhe.com/api/v1`。
 - WS 连接已统一用 `getWsBaseUrl()`（从 `API_BASE_URL` 推导 origin），跟随 REST 子域，不再裸用 `window.location.host`，避免同样被 `quant.stephenhe.com` 拦截。
+
+## 十二、北京 VPS 直连 GHCR 实测结论：MTU 无效，必须用中转（2026-08-15 实战）
+
+**🔴 实测背景**：用户质疑「降低 docker daemon MTU 能否解决北京 VPS 直连 GHCR 下载镜像慢」。北京 VPS 公网 IP `120.53.84.116` / Tailscale 内网 IP `100.124.178.96`（hostname `VM-0-5-ubuntu`，腾讯云）。
+
+**北京节点 daemon.json 已配 MTU=1450 + max-concurrent-downloads:10**（重启 dockerd 生效，`docker0` mtu=1450，容器 restart 策略自恢复 healthy）。
+
+**实测对比（docker pull 计时）**：
+| 方式 | 镜像源 | 结果 | 耗时 |
+|---|---|---|---|
+| 直连 GHCR | `ghcr.io/songlinhe5-lab/quant_agent-data-subservice:cn` | **卡死 `Pulling fs layer`，0 字节下载** | >160s 无进展（实质失败） |
+| 中转（Tailscale 内网） | `100.102.223.44:5000/...:cn`（S1 registry） | 成功（缓存命中） | **4s** |
+| 中转冷拉（S1 历史实测） | `100.102.223.44:5000/...:us` | 成功 | 201s（3m21s） |
+
+**根因结论**：MTU=1450 **对直连 GHCR 完全无效**。GHCR 镜像 blob 在 Azure CDN，北京跨境访问该 CDN 的**实际数据传输被阻断/严重限速**——TLS 握手仅 ~321ms（建连正常），但建连后第一个字节都下不来（非 MTU 黑洞重传，故改 MTU 无效）。**正解是继续走 S1 registry 中转（经 Tailscale 内网）**。
+
+**已落地修正**：
+- 北京节点 `.env.data-node` 的 `DATA_SUB_SERVICE_IMAGE` 已改回 `100.102.223.44:5000/quant-agent-data-subservice:cn`（中转）；临时直连验证用环境变量覆盖 `ghcr.io` 一次，部署后改回。
+- 验证用 GitHub PAT（`ghp_...`）登录后已 `docker logout ghcr.io` 清理，config 无残留凭证。
+- 部署验证：北京 data-subservice 经中转镜像 `up -d` 成功，health 返回 healthy（threads=10 无泄漏），主节点 S1 经 Tailscale 内网回调 `/api/v1/data` 返回 200，节点已重新接入主网。
+
+**勿再犯**：不要在未确认 GHCR 跨境可达性的前提下，把北京节点镜像源改成 `ghcr.io` 直连——会卡死在 `Pulling fs layer`。北京节点 daemon.json 的 MTU 改动在节点重装/迁移时会丢失，需补进部署文档。
+
+## 十三、S1 节点数据源巡检快照（2026-08-15）
+
+**S1（公网 `100.102.223.44` / Tailscale `100.102.223.44`，hostname `VM-0-5-ubuntu`，FASTNET LA）容器全绿**：
+- ` quant-agent-s1-master-1`（主服务）：uvicorn `--limit-concurrency 256 --limit-max-requests 2000 --limit-max-requests-jitter 200`（PR #323 内存优化已生效），healthy。
+- ` quant-agent-s1-data-subservice-1`（子服务）：`DS_CAPABILITIES=futu,fmp,finnhub,fred,dbnomics,rbi,tavily,bocha,jina,yfinance`，healthy，`threads.count=17`（对比历史泄漏 2263 已根治）。
+- ` quant-agent-s1-redis-1` / ` quant-agent-s1-postgres-1`：healthy。
+- ` quant-agent-s1-registry-1`（私有 registry:2）：healthy，**北京节点中转镜像源依赖它常驻**。
+- ` quant-agent-s1-opend-1`（Futu OpenD）：healthy，监听 `0.0.0.0:11111`。
+
+**主服务 `/api/v1/datasource/health-overview` 11 源全景**：
+- ✅ healthy（9 个）：futu、finnhub、akshare、tushare、fred、dbnomics、rbi、tavily、bocha、jina
+- ⚠️ `futu`: **healthy / connected=true / trade_connected=true / trade_unlocked=true**（RSA 加密交易修复 + 服务名互联生效，见 §十一前序 RSA 修复）
+- ⚠️ `yfinance`: **stale / connected=false**（probe_calls=959，err=None，节点注册但上游探测失败；子服务已声明 yfinance 能力、日志无报错，疑似主服务对该源探测静默失败，待查）
+- ⚠️ `fmp`: **healthy 但 error_count=4**（4 次错误累积但当前仍 healthy，需关注是否偶发限流）
+
+**待跟进**：yfinance source 在 S1 主服务侧 stale 的根因（子服务能力已声明、日志无错，疑为主服务 router 对 yfinance 节点探测逻辑问题）；fmp error_count=4 是否稳定复现。
