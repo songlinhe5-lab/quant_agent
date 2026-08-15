@@ -192,11 +192,9 @@ export function DataCenterModule() {
       !!usShortInterest &&
       usShortInterestStatus !== 'error' &&
       [usShortInterest.short_sale_volume, usShortInterest.total_volume, usShortInterest.short_volume_ratio, usShortInterest.short_interest_shares, usShortInterest.short_interest_ratio].some((v: any) => v != null && !Number.isNaN(v))
-    const sectorOk = !!sectorFlowData && !!(
-      sectorFlowData.a_share?.data || sectorFlowData.hk?.data || sectorFlowData.us?.data
-    )
-    return marginOk || shortOk || sectorOk
-  }, [marginData, usShortInterest, usShortInterestStatus, sectorFlowData])
+    // 注意：板块资金流向 (SectorFlowPanel) 不属于卖空区，其显隐独立控制，不纳入本判定
+    return marginOk || shortOk
+  }, [marginData, usShortInterest, usShortInterestStatus])
 
   const sentimentHasContent = useMemo(() => {
     const vixOk = !!assets.find((a: any) => a.symbol === 'VIX')
@@ -331,10 +329,10 @@ export function DataCenterModule() {
         <MarginTradingPanel data={marginData} status={marginStatus} lastUpdated={last} />
         {/* 美股做空指标（CBOE/FINRA，与融资融券拆开独立分区） */}
         <ShortInterestPanel data={usShortInterest} status={usShortInterestStatus} lastUpdated={last} />
-        {/* 板块资金流向 */}
-        {sectorFlowData && <SectorFlowPanel data={sectorFlowData} status={sectorFlowStatus} />}
       </>
     )}
+    {/* 板块资金流向：独立渲染，自带空态（无数据时显示"暂无板块资金流数据"），不被卖空区判定隐藏 */}
+    {sectorFlowData && <SectorFlowPanel data={sectorFlowData} status={sectorFlowStatus} />}
     {/* ─────────── 大类资产走势 ─────────── */}
     <SectionLabel label="大类资产走势" hint="Asset Prices" tone="sky" />
     <div className="glass-card rounded-lg overflow-hidden"><div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2"><TrendingUp className="h-3.5 w-3.5 text-muted-foreground" /><span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">大类资产走势</span><MarketClocks /></div><div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6 gap-2 p-2 bg-slate-50/50 dark:bg-black/10">{assets.filter((a: any) => a.symbol !== 'VIX').map((a: any) => (<AssetButton key={a.symbol} asset={a} />))}</div></div>

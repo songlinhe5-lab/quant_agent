@@ -28,7 +28,7 @@ export function OptionPcrPanel() {
     let cancelled = false
     setLoading(true)
     setError(null)
-    fetch(`${API_BASE_URL}/macro/sentiment/history?limit=60`, { credentials: 'include' })
+    fetch(`${API_BASE_URL}/macro/sentiment-history?limit=60`, { credentials: 'include' })
       .then((r) => {
         if (!r.ok) return r.json().then((err) => {
           throw new Error(err?.detail || `HTTP ${r.status}`)

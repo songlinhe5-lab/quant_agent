@@ -6,6 +6,7 @@ import { Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface OrderBookRowProps {
+  container: Container
   priceText: Text
   sizeText: Text
   depthBar: Graphics
@@ -14,21 +15,31 @@ interface OrderBookRowProps {
   lastSize: number
 }
 
+// 可选档位（档数），数据量不足时对应档位显示锁定标识
+const DEPTH_LEVELS = [5, 10, 20, 40]
+const MAX_POOL = 40 // 对象池上限，始终按最大档数创建，切换档位仅控制可见行
+
 export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: string; theme?: string; hideHeader?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<Application | null>(null)
+
+  // 档位选择（显示档数）与实时可用档数（用于锁定判断）
+  const [depthLevels, setDepthLevels] = useState<number>(20)
+  const depthLevelsRef = useRef<number>(20)
+  const [availableDepth, setAvailableDepth] = useState<number>(0)
+  // 档位切换时应用行可见性的函数引用（由 init 内部赋值）
+  const applyDepthRef = useRef<((levels: number) => void) | null>(null)
 
   // 维护对象池，避免在渲染循环中创建任何新对象 (Zero-GC)
   const askRows = useRef<OrderBookRowProps[]>([])
   const bidRows = useRef<OrderBookRowProps[]>([])
   const closedTextRef = useRef<Text | null>(null)
-  const zoomLevelRef = useRef<number>(1.0)
+  const midTextRef = useRef<Container | null>(null)
 
   useEffect(() => {
     if (!containerRef.current) return
     let isMounted = true
     let resizeObserver: ResizeObserver | null = null
-    let handleWheel: ((e: WheelEvent) => void) | null = null
 
     const initPixi = async () => {
       // 1. 初始化 PixiJS (WebGL)
@@ -54,7 +65,6 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
 
       // 2. 预设排版常量与文字样式
       const ROW_HEIGHT = 22
-      const MAX_ROWS = 40 // 💡 扩大上限至 40 档，以支持滚轮缩放查看极深盘口
       const WIDTH = app.screen.width
 
       const textStyle = new TextStyle({
@@ -97,7 +107,7 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
 
         mainContainer.addChild(rowContainer)
 
-        return { priceText, sizeText, depthBar, flashOverlay, flashAlpha: 0, lastSize: 0 }
+        return { container: rowContainer, priceText, sizeText, depthBar, flashOverlay, flashAlpha: 0, lastSize: 0 }
       }
 
       // 💡 修复：确保在初始化前清空对象池。
@@ -105,17 +115,17 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
       askRows.current = []
       bidRows.current = []
 
-      // Spread 间隔占位 (如需要可在坐标上+10)
-      const SPREAD_GAP = 10
+      // Spread 间隔占位：放大以容纳中间价/价差盘口信息行
+      const SPREAD_GAP = 30
 
-      // 生成卖盘 (Asks) - 从中心向上延伸
-      for (let i = 0; i < MAX_ROWS; i++) {
+      // 生成卖盘 (Asks) - 从中心向上延伸（按 MAX_POOL 全量创建，档位仅控制可见行）
+      for (let i = 0; i < MAX_POOL; i++) {
         const yPos = -SPREAD_GAP / 2 - (i + 1) * ROW_HEIGHT
         askRows.current.push(createRow(yPos, true))
       }
 
       // 生成买盘 (Bids) - 从中心向下延伸
-      for (let i = 0; i < MAX_ROWS; i++) {
+      for (let i = 0; i < MAX_POOL; i++) {
         const yPos = SPREAD_GAP / 2 + i * ROW_HEIGHT
         bidRows.current.push(createRow(yPos, false))
       }
@@ -136,6 +146,25 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
       app.stage.addChild(closedText)
       closedTextRef.current = closedText
 
+      // 5b. 中心盘口信息行：中间价 (Mid) + 价差 (Spread)
+      // 这是标准 Level 2 DOM 必备的核心盘口信息，此前缺失
+      const midContainer = new Container()
+      const midText = new Text({
+        text: '—  —',
+        style: new TextStyle({
+          fontFamily: 'monospace',
+          fontSize: 13,
+          fill: theme === 'dark' ? '#e2e8f0' : '#1e293b', // slate-200 / slate-800
+          fontWeight: 'bold',
+          align: 'center',
+        })
+      })
+      midText.anchor.set(0.5, 0.5) // 中心锚点
+      midText.y = 0
+      midContainer.addChild(midText)
+      mainContainer.addChild(midContainer)
+      midTextRef.current = midContainer
+
       // 3. 独立的高性能动画循环 (处理闪烁衰减)
       app.ticker.add(() => {
         const decayRate = 0.05 // 闪烁消退速度
@@ -151,12 +180,12 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
       })
 
       // 4. 监听容器 Resize，自适应更新内部渲染对象的坐标与宽度
+      // 固定尺寸：不缩放，virtualWidth 恒等于当前屏幕宽度
       resizeObserver = new ResizeObserver((entries) => {
         if (!isMounted || !appRef.current) return
         const newWidth = entries[0].contentRect.width
         const newHeight = entries[0].contentRect.height
-        const zoom = zoomLevelRef.current
-        const virtualWidth = newWidth / zoom
+        const virtualWidth = newWidth
 
         // 永远保持 Spread 价差区间在视觉正中心
         mainContainer.y = newHeight / 2
@@ -165,10 +194,14 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
 
         for (let i = 0; i < allRows.length; i++) {
           const row = allRows[i]
-          // 抵消缩放造成的 X 轴横向拉伸，确保挂单量始终精准贴靠右侧边缘
-          row.sizeText.x = virtualWidth - (10 / zoom)
+          // 固定尺寸：挂单量始终精准贴靠右侧边缘
+          row.sizeText.x = virtualWidth - 10
           row.flashOverlay.width = virtualWidth
           row.depthBar.x = virtualWidth - row.depthBar.width
+        }
+
+        if (midTextRef.current) {
+          midTextRef.current.x = newWidth / 2
         }
 
         if (closedTextRef.current) {
@@ -178,28 +211,28 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
       })
       resizeObserver.observe(containerRef.current)
 
-      // 6. 监听鼠标滚轮，实现原生级无损缩放
-      handleWheel = (e: WheelEvent) => {
-        e.preventDefault()
-        if (!appRef.current) return
-        // 向下滚缩小看更深，向上滚放大
-        const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1
-        const newZoom = Math.max(0.3, Math.min(1.5, zoomLevelRef.current * zoomFactor))
-        zoomLevelRef.current = newZoom
-        mainContainer.scale.set(newZoom)
-
-        const newWidth = appRef.current.screen.width
-        const virtualWidth = newWidth / newZoom
-
-        const allRows = [...askRows.current, ...bidRows.current]
-        for (let i = 0; i < allRows.length; i++) {
-          const row = allRows[i]
-          row.sizeText.x = virtualWidth - (10 / newZoom)
-          row.flashOverlay.width = virtualWidth
-          row.depthBar.x = virtualWidth - row.depthBar.width
+      // 6. 档位可见性控制：对象池固定 MAX_POOL 行，按 depthLevels 显示前 N 行
+      const applyDepth = (levels: number) => {
+        const setVisible = (rows: OrderBookRowProps[]) => {
+          rows.forEach((row, i) => {
+            row.container.visible = i < levels
+            // 超出档位的行清空内容，避免滞留旧数据
+            if (i >= levels) {
+              row.priceText.text = ''
+              row.sizeText.text = ''
+              row.depthBar.width = 0
+              row.lastSize = 0
+            }
+          })
         }
+        setVisible(askRows.current)
+        setVisible(bidRows.current)
       }
-      containerRef.current.addEventListener('wheel', handleWheel, { passive: false })
+      applyDepthRef.current = applyDepth
+      applyDepth(depthLevelsRef.current)
+
+      // 7. 固定尺寸显示，禁用滚轮缩放（用户要求：不要缩放）
+      // 坐标体系保持 1:1，virtualWidth 恒等于屏幕宽度，挂单量始终精准贴靠右侧边缘
     }
 
     initPixi()
@@ -212,6 +245,11 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
       if (cleanTicker(data.ticker) !== cleanTicker(symbol) || !appRef.current) return
 
       const isClosed = (!data.asks || data.asks.length === 0) && (!data.bids || data.bids.length === 0)
+
+      // 实时可用档数（取买卖盘较短一侧），用于档位锁定判断
+      if (!isClosed && data.asks && data.bids) {
+        setAvailableDepth(Math.min(data.asks.length, data.bids.length))
+      }
 
       if (closedTextRef.current) {
         closedTextRef.current.visible = isClosed
@@ -240,7 +278,7 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
           }
       }
 
-      const virtualWidth = appRef.current!.screen.width / zoomLevelRef.current
+      const virtualWidth = appRef.current!.screen.width
 
       // 更新卖盘 (Asks) - 从中心向外扩散
       if (data.asks) {
@@ -296,6 +334,20 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
           }
         }
       }
+
+      // 更新中心盘口信息行：中间价 (Mid) + 价差 (Spread)
+      if (midTextRef.current && data.asks && data.bids && data.asks.length > 0 && data.bids.length > 0) {
+        const bestAsk = Number(data.asks[0].price)
+        const bestBid = Number(data.bids[0].price)
+        if (Number.isFinite(bestAsk) && Number.isFinite(bestBid) && bestAsk > 0 && bestBid > 0) {
+          const mid = (bestAsk + bestBid) / 2
+          const spread = bestAsk - bestBid
+          const spreadPct = (spread / mid) * 100
+          const midLabel = midTextRef.current.getChildAt(0) as Text
+          midLabel.text = `中 ${mid.toFixed(2)}   差 ${spread.toFixed(2)} (${spreadPct.toFixed(3)}%)`
+          midTextRef.current.visible = true
+        }
+      }
     }
 
     window.addEventListener('market_tick', handleTick)
@@ -305,10 +357,6 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
       isMounted = false
       window.removeEventListener('market_tick', handleTick)
       if (resizeObserver) resizeObserver.disconnect()
-      if (containerRef.current && handleWheel) {
-// eslint-disable-next-line react-hooks/exhaustive-deps
-        containerRef.current.removeEventListener('wheel', handleWheel)
-      }
       if (appRef.current) {
         appRef.current.destroy(true, { children: true, texture: true })
         appRef.current = null
@@ -316,8 +364,17 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
       askRows.current = []
       bidRows.current = []
       closedTextRef.current = null
+      midTextRef.current = null
     }
   }, [symbol, theme]) // 将 theme 加入依赖项，主题切换时重建 Canvas 刷新颜色
+
+  // 档位切换：同步 ref 并应用行可见性
+  useEffect(() => {
+    depthLevelsRef.current = depthLevels
+    if (applyDepthRef.current) {
+      applyDepthRef.current(depthLevels)
+    }
+  }, [depthLevels])
 
   return (
     <div className={cn("flex flex-col w-full h-full bg-card backdrop-blur-md shadow-sm", !hideHeader && "border border-border/40 rounded-xl overflow-hidden")}>
@@ -327,6 +384,34 @@ export function OrderBookWebGL({ symbol, theme, hideHeader = false }: { symbol: 
            <span className="font-mono text-muted-foreground/80">{symbol}</span>
          </div>
        )}
+       {/* 档位切换条：可选 5/10/20/40 档，数据量不足时对应档位显示锁定标识 */}
+       <div className="flex items-center justify-between px-3 py-1 border-b border-border/30 bg-secondary/10">
+         <span className="text-[10px] text-muted-foreground uppercase tracking-wide">档位</span>
+         <div className="flex items-center gap-1">
+           {DEPTH_LEVELS.map((lv) => {
+             const locked = lv > availableDepth
+             const active = lv === depthLevels
+             return (
+               <button
+                 key={lv}
+                 type="button"
+                 disabled={locked}
+                 onClick={() => !locked && setDepthLevels(lv)}
+                 title={locked ? `当前数据仅 ${availableDepth} 档，无法显示 ${lv} 档` : `${lv} 档`}
+                 className={cn(
+                   "px-1.5 py-0.5 rounded text-[10px] font-mono border transition-colors",
+                   active
+                     ? "bg-primary text-primary-foreground border-primary"
+                     : "border-border/50 text-muted-foreground hover:bg-secondary/50",
+                   locked && "opacity-40 cursor-not-allowed line-through hover:bg-transparent",
+                 )}
+               >
+                 {locked ? `${lv}锁` : lv}
+               </button>
+             )
+           })}
+         </div>
+       </div>
        {/* WebGL Canvas 挂载点，必须设置 suppressHydrationWarning */}
        <div ref={containerRef} className="flex-1 w-full min-h-[300px] relative" suppressHydrationWarning />
     </div>
