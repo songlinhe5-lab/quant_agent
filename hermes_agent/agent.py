@@ -14,6 +14,20 @@ from rich.markdown import Markdown
 from backend.core.utils import safe_truncate
 from backend.services.ai_narrator.token_usage_store import token_usage_store
 
+# ── 对话事实自动沉淀到知识库 (PR-B) ──
+# 开关：默认开。关闭后对话结论不再写入知识库（仅依赖 fetch_webpage / ingest 脚本）。
+AUTO_SINK_KB = os.getenv("AUTO_SINK_KB", "true").lower() in ("1", "true", "yes", "on")
+
+# 事实抽取正则：仅命中「含数值 + 单位/货币/百分比/比率」的句子，天然过滤无数据闲聊。
+# 目的是只沉淀明确数值/事实结论，避免噪声灌库。
+_FACT_RE = re.compile(
+    r"[^。！？\n]*?"  # 句子前缀（非贪婪）
+    r"\d[\d,]*(?:\.\d+)?"  # 数字（支持千分位/小数）
+    r"(?:%|％|美元|美金|US\$|RMB|人民币|元|亿|万|倍|pct|points?|bps|股|手|%"  # 单位
+    r"|万亿|千亿|百亿|亿股|万股|亿美元|亿元人民币)?"  # 复合单位（可选）
+    r"[^。！？\n]*[。！？\n]"  # 句子后缀到标点
+)
+
 
 class SessionTitleValidator(BaseModel):
     """Pydantic 模型：用于校验和清洗大模型生成的会话标题"""
@@ -363,6 +377,93 @@ class HermesAgent:
         except Exception as e:
             print(f"⚠️ [Memory] 记忆保存失败: {e}")
 
+    # ── 对话事实自动沉淀到知识库 (PR-B) ──
+    async def _sink_to_kb(self, final_content: str) -> int:
+        """
+        将本轮最终结论中的「明确数值/事实」抽取后写入知识库。
+
+        设计原则:
+        - 零额外 token: 复用 pro 模型已产出的 final_content，仅做本地规则抽取，不调 LLM。
+        - 保守入库: 只命中含「数字+单位/货币/百分比/比率」的句子（_FACT_RE），过滤无数据闲聊。
+        - 幂等: id 含会话 id + 事实 hash，重复对话不会堆积。
+        返回实际写入的片段数。
+        """
+        if not AUTO_SINK_KB or not final_content:
+            return 0
+
+        # 1. 本地规则抽取事实句
+        facts = _FACT_RE.findall(final_content)
+        if not facts:
+            return 0
+
+        # 清洗：去空白、去重、限长
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for f in facts:
+            text = f.strip()
+            if len(text) < 8 or len(text) > 500:
+                continue
+            if text in seen:
+                continue
+            seen.add(text)
+            cleaned.append(text)
+
+        if not cleaned:
+            return 0
+
+        # 2. 批量向量化（复用与检索端一致的 embedding 模型）
+        try:
+            from backend.core.config import settings
+            from backend.core.embeddings import get_embeddings
+
+            vectors = get_embeddings(cleaned)
+            if not vectors or len(vectors) != len(cleaned):
+                self.console.print("⚠️ [SinkKB] Embedding 服务不可用，放弃本轮沉淀。")
+                return 0
+        except Exception as e:  # noqa: BLE001
+            self.console.print(f"⚠️ [SinkKB] Embedding 失败: {e}")
+            return 0
+
+        # 3. 幂等写入 WebpageKnowledgeBase
+        try:
+            import hashlib
+            import time
+
+            from backend.core.database import SessionLocal
+            from backend.core.models import WebpageKnowledgeBase
+
+            emb_version = settings.embedding_model
+            ts = int(time.time())
+            source_url = f"chat://{self.session_id}"
+            rows = []
+            for fact, vec in zip(cleaned, vectors):
+                fid = f"chat_sink_{self.session_id}_{hashlib.md5(fact.encode()).hexdigest()[:12]}"
+                rows.append(
+                    WebpageKnowledgeBase(
+                        id=fid,
+                        url=source_url,
+                        content=fact,
+                        timestamp=ts,
+                        category="general",  # 对话沉淀的事实，归入 general 类便于检索
+                        embedding_model_version=emb_version,
+                        embedding=vec,
+                    )
+                )
+
+            with SessionLocal() as db:
+                # 幂等：先删同 id 再插入，避免重复
+                db.query(WebpageKnowledgeBase).filter(WebpageKnowledgeBase.id.in_([r.id for r in rows])).delete(
+                    synchronize_session=False
+                )
+                db.bulk_save_objects(rows)
+                db.commit()
+
+            self.console.print(f"📥 [SinkKB] 本轮沉淀 {len(rows)} 条事实到知识库 (session={self.session_id})")
+            return len(rows)
+        except Exception as e:  # noqa: BLE001
+            self.console.print(f"⚠️ [SinkKB] 入库失败: {e}")
+            return 0
+
     async def _async_db_upsert(self, session_id: str, messages: list):
         """后台守护任务：将历史记忆异步 Upsert 到 PostgreSQL"""
         try:
@@ -527,7 +628,11 @@ class HermesAgent:
 
         try:
             result = await self._step_loop()
-            return result if result else "⚠️ 思考完成，但未返回任何内容。"
+            final = result if result else "⚠️ 思考完成，但未返回任何内容。"
+            # 📥 对话事实沉淀：将明确数值/事实结论写入知识库 (PR-B)
+            if final and not final.startswith("⚠️") and not final.startswith("❌"):
+                await self._sink_to_kb(final)
+            return final
         except Exception as e:
             return f"❌ [Agent Runtime Error] 运行异常: {e}"
 
@@ -1023,6 +1128,11 @@ class HermesAgent:
                 )
 
             self.messages.append({"role": "assistant", "content": final_content if final_content else None})
+
+            # 📥 对话事实沉淀：将明确数值/事实结论写入知识库 (PR-B)
+            if final_content:
+                await self._sink_to_kb(final_content)
+
             await self._save_session()
         except Exception as e:
             print(f"❌ [Agent Stream] 强制恢复失败: {e}")
