@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, createContext, useCallback, useMemo } from 'react'
-import { fetchWithAuth, apiClient, API_BASE_URL } from '@/lib/api-client'
+import { fetchWithAuth, apiClient, API_BASE_URL, clearTokens, emitAuthRequired } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
 import { useConfirmDialog } from '@/components/confirm-dialog-context'
 import { SessionSidebarRef } from '@/features/copilot/session-sidebar'
@@ -374,6 +374,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       }
       console.error('流式请求异常:', error)
       const errMsg = error?.message || String(error)
+      // 💡 认证失效（401 / 无合法 Token）：清理本地态并跳登录，不再显示 (Unknown) 裸文案
+      if (errMsg.includes('401') || errMsg.includes('未携带合法 Token') || errMsg.includes('认证')) {
+        currentAssistantMsg.content += '\n\n> ❌ **登录态已失效**: 会话令牌已过期或被吊销，正在为你跳转登录页重新授权…'
+        clearTokens()
+        emitAuthRequired() // 统一出口：跳登录页（由 auth-context 注册）
+        return
+      }
       // 💡 精确诊断：根据错误类型给出不同的提示
       if (errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError') || errMsg.includes('fetch')) {
         currentAssistantMsg.content += `\n\n> ❌ **网络连接失败**: 无法连接到后端服务，请检查后端是否正在运行。\n> \n> 技术详情: \`${errMsg}\``

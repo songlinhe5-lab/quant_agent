@@ -48,6 +48,20 @@ const DEFAULT_CONFIG: ClientConfig = {
 // ─── Token 管理（localStorage 持久化）─────────────────────────────────
 const TOKEN_KEY = 'quant_access_token'
 
+// 登录态彻底失效（Refresh Token 也被服务端拒绝）时触发的回调。
+// 由 auth-context 在挂载时注册，统一跳转到登录页，避免在多个请求里各自散弹式处理。
+let authRequiredHandler: (() => void) | null = null
+export function setAuthRequiredHandler(handler: (() => void) | null) {
+  authRequiredHandler = handler
+}
+function emitAuthRequired() {
+  if (authRequiredHandler) {
+    try { authRequiredHandler() } catch { /* 防止回调异常影响请求流 */ }
+  }
+}
+// 供无 401 拦截器的裸 fetch 场景（如 chat 流）在捕获到认证失效时主动触发重登
+export { emitAuthRequired }
+
 /**
  * 获取 Access Token（从 localStorage）
  */
@@ -198,10 +212,29 @@ export async function fetchWithAuth(
     return fetch(url, { ...init, headers: h, credentials: init.credentials ?? 'include' })
   }
 
+  // 401 自愈：最多重试 2 轮（每次先强制 refresh，再带新 token 重发）。
+  // - Refresh 成功但重发仍 401（极端：token 刚被吊销）→ 跳出，交给上层
+  // - Refresh 本身被服务端明确拒绝（lastRefreshFailedHard）→ 立即触发重登
   let res = await doFetch(token)
   if (res.status === 401) {
-    const refreshed = await refreshAccessToken()
-    if (refreshed) res = await doFetch(refreshed)
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const refreshed = await refreshAccessToken()
+      if (!refreshed) {
+        // refresh 失败：若服务端明确拒绝（Refresh Token 失效），直接跳登录
+        if (lastRefreshFailedHard) {
+          clearTokens()
+          emitAuthRequired()
+        }
+        break
+      }
+      res = await doFetch(refreshed)
+      if (res.status !== 401) break
+    }
+    // 两次重试后仍是 401，且 refresh 未被硬拒绝（瞬时跨域/网络）→ 不再死循环
+    if (res.status === 401 && lastRefreshFailedHard) {
+      clearTokens()
+      emitAuthRequired()
+    }
   }
   return res
 }
@@ -292,9 +325,7 @@ class RestClient {
         // 仅 refresh/login 接口本身返回 401 → 说明 Refresh Token 也失效了，清除并跳转登录
         if (path === '/auth/refresh' || path === '/auth/login') {
           clearTokens()
-          if (window.location.pathname !== '/login') {
-            window.location.href = '/login'
-          }
+          emitAuthRequired() // 统一出口：跳登录页（由 auth-context 注册）
           throw new ApiError(401, '认证失败')
         }
 
@@ -317,8 +348,9 @@ class RestClient {
         }
         // 刷新失败：仅当刷新接口"真 401（Refresh Token 失效）"才清 token + 跳登录；
         // 网络/跨域瞬时异常不清 token，由后续请求重试续期，避免误踢用户。
-        if (lastRefreshFailedHard && window.location.pathname !== '/login') {
-          window.location.href = '/login'
+        if (lastRefreshFailedHard) {
+          clearTokens()
+          emitAuthRequired() // 统一出口：跳登录页（由 auth-context 注册）
         }
         throw new ApiError(401, '认证已过期')
       }

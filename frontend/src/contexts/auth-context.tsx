@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { apiClient, setAccessToken, startTokenKeepAlive, stopTokenKeepAlive } from '@/lib/api-client';
+import { apiClient, setAccessToken, startTokenKeepAlive, stopTokenKeepAlive, setAuthRequiredHandler, clearTokens } from '@/lib/api-client';
 
 interface User {
   id: string | number;
@@ -21,6 +21,20 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // 统一注册"登录态彻底失效"出口：当 Refresh Token 也被服务端拒绝时，
+  // api-client 的 fetchWithAuth / RestClient 会调用此回调，跳登录页并清空本地态。
+  useEffect(() => {
+    setAuthRequiredHandler(() => {
+      clearTokens();
+      setUser(null);
+      stopTokenKeepAlive();
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    });
+    return () => setAuthRequiredHandler(null);
+  }, []);
 
   // 初始化：应用加载时检查用户是否已登录（结合 api-client 的无感刷新机制）
   useEffect(() => {
