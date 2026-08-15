@@ -665,6 +665,24 @@ class DataSourceRouter:
         self._ensure_http_client()
         url = f"{node.url}{_DATA_ENDPOINT}"
 
+        # 🚨 [DIAG-REQ] 采样定位请求风暴来源 (2026-08-14)：S1 子服务线程持续增长 (275 req/min)，
+        # 但主服务日志 action 记录极少，无法定位高频请求源。此处每 300 个请求采样一次完整调用栈，
+        # 定位是哪个调用方（market_engine 循环 / 前端端点 / WS 推送）在持续发起子服务请求。
+        # 仅采样不刷屏，定位后移除。
+        diag_n = getattr(self, "_diag_req_count", 0)
+        self._diag_req_count = diag_n + 1
+        if diag_n % 300 == 0:
+            import traceback
+
+            _tb = "".join(traceback.format_stack(limit=8)[:-1])
+            logger.warning(
+                "[DIAG-REQ] source=%s action=%s ticker=%s caller_stack:\n%s",
+                source,
+                payload.get("action"),
+                (payload.get("params") or {}).get("ticker"),
+                _tb,
+            )
+
         # 子服务对原始 body 字节验签, 故此处固定序列化一次并以 content= 发送,
         # 不能用 json=payload (httpx 会重新序列化, 字节可能不一致导致 403)。
         body = json.dumps(payload, ensure_ascii=False)
