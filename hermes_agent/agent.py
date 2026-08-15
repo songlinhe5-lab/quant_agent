@@ -12,6 +12,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 
 from backend.core.utils import safe_truncate
+from backend.services.ai_narrator.token_usage_store import token_usage_store
 
 
 class SessionTitleValidator(BaseModel):
@@ -261,38 +262,93 @@ class HermesAgent:
 
         self._compress_memory()
 
-    def _compress_memory(self, max_messages: int = 30, max_tool_len: int = 800):
-        """上下文记忆智能压缩机制：防止历史记录过长导致 Token 溢出与性能下降"""
+    def _estimate_tokens(self) -> int:
+        """粗略估算当前上下文 token 数（中文约 1 字/token，英文约 4 字符/token，取保守上界）"""
+        try:
+            raw = json.dumps(self.messages, ensure_ascii=False, default=str)
+        except Exception:
+            raw = str(self.messages)
+        # 混合语料保守系数：按字符数 / 1.6 估算（覆盖中文为主 + 部分英文/JSON）
+        return int(len(raw) / 1.6)
+
+    def _compress_memory(self, max_messages: int = 30, max_tool_len: int = 800, hard_cap_tokens: int = 60000):
+        """上下文记忆智能压缩机制：防止历史记录过长导致 Token 溢出与性能下降
+
+        hard_cap_tokens: 当估算上下文超过该阈值时，进入"激进压缩"模式——
+        把工具结果截断阈值降到 2000、滑动窗口收紧到 20，避免单次请求 token 爆炸。
+        """
         if len(self.messages) <= 2:
             return
 
+        # 0. 激进压缩模式：上下文已逼近预算红线，先整体砍一刀
+        aggressive = self._estimate_tokens() > hard_cap_tokens
+        eff_tool_len = 2000 if aggressive else max_tool_len
+        eff_max_messages = 20 if aggressive else max_messages
+
         # 1. 有损压缩：截断非最新轮次的巨型 Tool 返回值 (如过去的 K 线或财务报表)
         # 逻辑：模型得出当前轮结论后，旧的原始行情对未来的上下文价值极低，直接折叠。
+        # 财报类工具返回 JSON 动辄数万字符，必须在此处强制折叠，否则每轮 ReAct 都重发。
         for i in range(1, len(self.messages) - 4):  # 避开最新的 4 条记录，保证当轮推理完整
             msg = self.messages[i]
             if msg.get("role") == "tool" and isinstance(msg.get("content"), str):
-                if len(msg["content"]) > max_tool_len:
+                if len(msg["content"]) > eff_tool_len:
                     # 💡 采用自适应截断，防止将 JSON 或 Markdown 从中间生硬劈断导致解析异常
                     msg["content"] = safe_truncate(
                         msg["content"],
-                        max_tool_len,
+                        eff_tool_len,
                         suffix="\n... [老旧数据已被系统折叠，省略 {omitted} 字符以释放内存] ...",
                     )
 
         # 2. 滑动窗口：如果消息数依然超过最大阈值，安全剥离最老的记录
-        if len(self.messages) > max_messages:
+        if len(self.messages) > eff_max_messages:
             self.console.print(
                 f"[dim yellow]🗜️ [Memory] 上下文达 {len(self.messages)} 条，触发滑动窗口自动瘦身...[/dim yellow]"
             )
             system_msg = [self.messages[0]]  # 永远保留系统的 System Prompt
 
-            cut_idx = len(self.messages) - max_messages
+            cut_idx = len(self.messages) - eff_max_messages
             # 🚨 安全锁：寻找安全的切分点，绝不能从孤立的 tool 消息或者断裂的 tool_calls 中间切开
             # 如果切分点刚好是一个 tool 结果，往后顺延，直到找到一个完整的 user 提问或 assistant 普通对话
             while cut_idx < len(self.messages) and self.messages[cut_idx].get("role") in ["tool", "assistant"]:
                 cut_idx += 1
 
             self.messages = system_msg + self.messages[cut_idx:]
+
+    async def _guard_before_llm(self, window_sec: int = 3600, max_calls: int = 60, max_input_tokens: int = 120000):
+        """每次真正向 LLM 发送请求前的防爆护栏（直接止血 1,140 次/小时式烧钱）。
+
+        - 单 session 在 window_sec 内 LLM 调用次数超过 max_calls → 抛出异常阻断（防死循环/前端重连狂发）
+        - 单次请求估算 input token 超过 max_input_tokens → 先强制激进压缩，仍超限则抛异常阻断
+        """
+        # 1. 单 session 调用频率限流（基于 Redis 滑动计数，TTL = 窗口）
+        try:
+            rl_key = f"hermes:ratelimit:{self.session_id}"
+            calls = await self.redis_client.incr(rl_key)
+            if calls == 1:
+                await self.redis_client.expire(rl_key, window_sec)
+            if calls > max_calls:
+                raise RuntimeError(
+                    f"🚨 [TokenGuard] 会话 {self.session_id} 在 {window_sec}s 内已调用 LLM {calls} 次"
+                    f"（上限 {max_calls}），疑似死循环或前端重连狂发，已强制熔断。"
+                )
+        except RuntimeError:
+            raise
+        except Exception as e:
+            # Redis 不可用时降级为不限制，避免误伤正常对话
+            print(f"⚠️ [TokenGuard] 限流计数失败，降级放行: {e}")
+
+        # 2. 单次 input token 预算护栏
+        est = self._estimate_tokens()
+        if est > max_input_tokens:
+            self.console.print(
+                f"[red]🚨 [TokenGuard] 单次上下文估算 {est} token 超预算 {max_input_tokens}，强制激进压缩...[/red]"
+            )
+            self._compress_memory(hard_cap_tokens=1)  # 强制走激进模式
+            est = self._estimate_tokens()
+            if est > max_input_tokens:
+                raise RuntimeError(
+                    f"🚨 [TokenGuard] 激进压缩后仍超预算（{est} > {max_input_tokens} token），阻断本次请求。"
+                )
 
     async def _save_session(self):
         """将会话历史保存到 Redis (热数据)，并抛出后台任务异步落库 PostgreSQL (冷数据)"""
@@ -352,6 +408,14 @@ class HermesAgent:
                             temperature=0.3,
                             max_tokens=15,
                         )
+                        # 📊 Token 计量埋点：会话标题生成（量小但完整计入）
+                        _t_usage = getattr(response, "usage", None)
+                        if _t_usage is not None:
+                            await token_usage_store.record(
+                                prompt_tokens=getattr(_t_usage, "prompt_tokens", 0),
+                                completion_tokens=getattr(_t_usage, "completion_tokens", 0),
+                                total_tokens=getattr(_t_usage, "total_tokens", 0),
+                            )
                         raw_title = response.choices[0].message.content
                         new_title = raw_title.strip("。，. \"'“”") if raw_title else user_content[:20]
 
@@ -498,8 +562,20 @@ class HermesAgent:
                         self.console.print(f"[dim]Tools Configured: {len(request_kwargs['tools'])}[/dim]")
                     self.console.print("[dim cyan]------------------------------[/dim cyan]\n")
 
+                # 🛡️ TokenGuard：每次 ReAct 迭代真正发 LLM 前做限流 + 预算护栏
+                await self._guard_before_llm()
+
                 response = await self.client.chat.completions.create(**request_kwargs)
                 msg = response.choices[0].message
+
+                # 📊 Token 计量埋点：补齐 ReAct 非流式路径（之前 19M token 泄漏的统计黑洞）
+                _usage = getattr(response, "usage", None)
+                if _usage is not None:
+                    await token_usage_store.record(
+                        prompt_tokens=getattr(_usage, "prompt_tokens", 0),
+                        completion_tokens=getattr(_usage, "completion_tokens", 0),
+                        total_tokens=getattr(_usage, "total_tokens", 0),
+                    )
 
                 if self.debug_mode:
                     self.console.print("\n[dim magenta]--- 🐛 [Debug] LLM Response ---[/dim magenta]")
@@ -565,9 +641,19 @@ class HermesAgent:
 
             # 进行最后一次无 Tools 的 API 请求，强制剥夺模型的工具使用权
             # 💡 使用 pro 模型进行深度分析总结，提升最终结论质量
+            # 🛡️ TokenGuard：最终总结前也做预算护栏，防止历史累积过大
+            await self._guard_before_llm(max_input_tokens=150000)
             response = await self.client.chat.completions.create(
                 model=self.pro_model, messages=cast(Any, self.messages), temperature=0.0
             )
+            # 📊 Token 计量埋点：pro 最终总结（非流式）消耗巨大，必须计入
+            _f_usage = getattr(response, "usage", None)
+            if _f_usage is not None:
+                await token_usage_store.record(
+                    prompt_tokens=getattr(_f_usage, "prompt_tokens", 0),
+                    completion_tokens=getattr(_f_usage, "completion_tokens", 0),
+                    total_tokens=getattr(_f_usage, "total_tokens", 0),
+                )
             final_msg = response.choices[0].message
             self.messages.append(final_msg.model_dump(exclude_none=True))
             await self._save_session()
@@ -592,22 +678,27 @@ class HermesAgent:
         self._heal_memory()
 
         # 💡 多模态支持：将 base64 附件拼装为支持视觉大模型的数组结构
-        if user_input.strip() or attachments:
-            # 暂时禁用图片识别：attachments 不再作为消息内容的一部分发送给 LLM
-            # 只发送文本内容
-            if user_input.strip():
-                self.messages.append({"role": "user", "content": user_input.strip()})
-
         # MRKT-05: 个股分析时自动注入宏观判因上下文
+        # 💡 [Prefix-Cache 优化] market_ctx 必须折叠进 user message 末尾，而非单独 append 为第二条 system 消息。
+        # 原因：DeepSeek 上下文缓存按「相同输入前缀」自动命中，若把变化的 market_ctx 插在 system 之后，
+        # 会打断稳定前缀导致缓存几乎全 miss（实测命中率仅 11%）。折叠进 user 轮后，
+        # system(AGENTS.md) 成为唯一稳定前缀，可复用到 ~100%，单轮 input token 重复费砍掉九成。
+        enriched_user_input = user_input.strip() if user_input.strip() else ""
         if user_input.strip():
             try:
                 from backend.services.market_review.context_injector import try_inject_market_context
 
                 market_ctx = await try_inject_market_context(user_input.strip())
                 if market_ctx:
-                    self.messages.append({"role": "system", "content": market_ctx})
+                    enriched_user_input = f"{user_input.strip()}\n\n{market_ctx}"
             except Exception:
                 pass  # 判因注入失败不阻断主流程
+
+        if enriched_user_input or attachments:
+            # 暂时禁用图片识别：attachments 不再作为消息内容的一部分发送给 LLM
+            # 只发送文本内容
+            if enriched_user_input:
+                self.messages.append({"role": "user", "content": enriched_user_input})
 
         await self._save_session()
 
@@ -642,6 +733,9 @@ class HermesAgent:
                     self.console.print("[dim cyan]----------------------------------------------[/dim cyan]\n")
 
                 self.console.print("🌐 [Chat API] 正在向大模型发起流式请求 (等待首个 Token)...")
+
+                # 🛡️ TokenGuard：流式 ReAct 迭代发 LLM 前做限流 + 预算护栏
+                await self._guard_before_llm()
 
                 # 💡 心跳保活：LLM 推理期间定期发送 heartbeat，防止 Cloudflare 100s 空闲超时掐断连接
                 llm_response_queue: asyncio.Queue = asyncio.Queue()
@@ -679,11 +773,17 @@ class HermesAgent:
                 collected_content = ""
                 tool_calls_dict = {}
                 chunk_count = 0
+                _last_usage = None  # 捕获流式最后一块携带的 usage（DeepSeek/OpenAI 语义）
 
                 async for chunk in response:
                     chunk_count += 1
                     if not chunk.choices:
                         continue
+
+                    # 📊 Token 计量埋点：流式 usage 通常在最后一个 chunk 上
+                    _chunk_usage = getattr(chunk, "usage", None)
+                    if _chunk_usage is not None:
+                        _last_usage = _chunk_usage
 
                     delta = chunk.choices[0].delta
 
@@ -729,6 +829,14 @@ class HermesAgent:
                     ]
 
                 self.console.print(f"✅ [Chat API] 本轮流式接收完毕，共解析 {chunk_count} 个 Chunk。")
+
+                # 📊 Token 计量埋点：补齐 ReAct 流式路径（之前 19M token 泄漏的统计黑洞）
+                if _last_usage is not None:
+                    await token_usage_store.record(
+                        prompt_tokens=getattr(_last_usage, "prompt_tokens", 0),
+                        completion_tokens=getattr(_last_usage, "completion_tokens", 0),
+                        total_tokens=getattr(_last_usage, "total_tokens", 0),
+                    )
 
                 if self.debug_mode:
                     self.console.print("\n[dim magenta]--- 🐛 [Debug Stream] LLM Response Assembled ---[/dim magenta]")
@@ -885,13 +993,19 @@ class HermesAgent:
 
             final_content = ""
             # 💡 使用 pro 模型进行深度分析总结，提升最终结论质量
+            # 🛡️ TokenGuard：最终流式总结前也做预算护栏
+            await self._guard_before_llm(max_input_tokens=150000)
             response = await self.client.chat.completions.create(
                 model=self.pro_model, messages=cast(Any, self.messages), temperature=0.0, stream=True
             )
 
+            _f_usage = None  # 捕获流式总结最后一块的 usage
             async for chunk in response:
                 if not chunk.choices:
                     continue
+                _c_usage = getattr(chunk, "usage", None)
+                if _c_usage is not None:
+                    _f_usage = _c_usage
                 delta = chunk.choices[0].delta
                 reasoning = getattr(delta, "reasoning_content", None)
                 if reasoning:
@@ -899,6 +1013,14 @@ class HermesAgent:
                 if delta.content:
                     final_content += delta.content
                     yield {"type": "text_chunk", "content": delta.content}
+
+            # 📊 Token 计量埋点：pro 最终流式总结（消耗巨大，必须计入）
+            if _f_usage is not None:
+                await token_usage_store.record(
+                    prompt_tokens=getattr(_f_usage, "prompt_tokens", 0),
+                    completion_tokens=getattr(_f_usage, "completion_tokens", 0),
+                    total_tokens=getattr(_f_usage, "total_tokens", 0),
+                )
 
             self.messages.append({"role": "assistant", "content": final_content if final_content else None})
             await self._save_session()
