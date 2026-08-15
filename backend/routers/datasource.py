@@ -466,6 +466,12 @@ _TEST_LINK_GLOBAL_LOCK = asyncio.Lock()
 _TEST_LINK_SOURCE_LOCKS: Dict[str, asyncio.Lock] = {}
 _TEST_LINK_LAST_GLOBAL_TS = 0.0
 _TEST_LINK_LOCKS_GUARD = asyncio.Lock()
+# 并发真实探测上限：即使前端「全部测试连接」一次性发 13+ 源，
+# 也只允许最多 N 个上游探测同时在飞，其余排队。
+# 否则 13 个 source.health()/fetch 长 await 同时占满事件循环，
+# 会拖垮主事件循环（event_loop_block）并让 Dashboard 轮询集体超时。
+_TEST_LINK_MAX_CONCURRENT = int(os.getenv("TEST_LINK_MAX_CONCURRENT", "3"))
+_TEST_LINK_CONCURRENCY_SEM = asyncio.Semaphore(_TEST_LINK_MAX_CONCURRENT)
 
 
 async def _acquire_test_link_slot(name: str) -> asyncio.Lock:
@@ -531,100 +537,109 @@ async def test_datasource_link(name: str) -> Dict[str, Any]:
         connected = False
         healthy = False
         status = "unknown"
-        try:
-            raw = source.health()
-            info = await raw if inspect.isawaitable(raw) else raw
-            # health() 往返耗时仅用于被动状态诊断展示，绝不作为「业务延迟样本」写入统计
-            health_latency_ms = round((time.perf_counter() - start) * 1000, 2)
-            latency_ms = health_latency_ms
-            connected = bool(getattr(info, "connected", False))
-            healthy = bool(getattr(info, "healthy", connected))
-            status = getattr(info, "status", "ok")
-            error = getattr(info, "last_error", None)
+        # 并发信号量：限制同时在飞的真实上游探测数，防止「全部测试连接」
+        # 一次性触发 13+ 源各自 source.health()/fetch() 长 await 占满事件循环，
+        # 引发 event_loop_block 并拖垮 Dashboard 轮询。超出上限的探测在此排队。
+        async with _TEST_LINK_CONCURRENCY_SEM:
+            try:
+                raw = source.health()
+                info = await raw if inspect.isawaitable(raw) else raw
+                # health() 往返耗时仅用于被动状态诊断展示，绝不作为「业务延迟样本」写入统计
+                health_latency_ms = round((time.perf_counter() - start) * 1000, 2)
+                latency_ms = health_latency_ms
+                connected = bool(getattr(info, "connected", False))
+                healthy = bool(getattr(info, "healthy", connected))
+                status = getattr(info, "status", "ok")
+                error = getattr(info, "last_error", None)
 
-            # 主动真实探测：按 capability 发起一次轻量请求，测量真实网络往返延迟
-            caps = getattr(source, "capabilities", []) or []
-            probe_action: str | None = None
-            probe_params: dict[str, Any] = {}
-            # 大小写不敏感匹配：适配器 capabilities 约定不统一(futu/akshare 用大写，
-            # yfinance/macro 用小写)。若直接用小写 "quote"/"economic_calendar" 判断，
-            # futu(QUOTE)/akshare(ECONOMIC_CALENDAR) 会被漏掉 → 永远回退 health()≈0。
-            # 同时用适配器【声明的大小写】作为 action，避免 futu 等 fetch 对 action 大小写敏感而
-            # 直接返回 UNSUPPORTED_ACTION。
-            caps_upper = {c.upper(): c for c in caps}
-            if "QUOTE" in caps_upper:
-                # 绕过缓存测量真实上游延迟，避免命中 Redis 热缓存后误报 0ms 假阳性。
-                # 必须传 ttl：fetch_yf_data 的 ttl 是必填位置参数，缺失会抛 TypeError 导致探针静默失败。
-                probe_action = caps_upper["QUOTE"]
-                # _record_breaker=False：链接测试探测流量，失败不污染业务熔断器（BE-ARCH-08i）
-                probe_params = {"ticker": _LINK_TEST_TICKER, "skip_cache": True, "ttl": 60, "_record_breaker": False}
-            elif "STOCK_QUOTE" in caps_upper:
-                # Tushare 等 A 股数据源使用 stock_quote（非 QUOTE）
-                probe_action = caps_upper["STOCK_QUOTE"]
-                probe_params = {"ticker": "000001.SZ", "skip_cache": True, "_record_breaker": False}
-            elif "WEB_SEARCH" in caps_upper:
-                probe_action = caps_upper["WEB_SEARCH"]
-                # _record_breaker=False：链接测试探测流量，失败不污染业务熔断器
-                # （BE-ARCH-08i，避免 bocha 探测失败连坐 tavily/jina 整节点误杀）
-                probe_params = {"query": "quant agent test", "max_results": 1, "_record_breaker": False}
-            elif "WEB_SCRAPE" in caps_upper:
-                # 同样绕过缓存测量真实抓取延迟
-                probe_action = caps_upper["WEB_SCRAPE"]
-                probe_params = {"url": "https://example.com", "skip_cache": True, "_record_breaker": False}
-            elif "ECONOMIC_CALENDAR" in caps_upper or "MACRO_SERIES" in caps_upper:
-                # 宏观源(fred/dbnomics/rbi/finnhub)与 akshare 的真实上游探针并绕过缓存，
-                # 使其延迟可感知（此前因大小写漏掉 akshare，永远 health()≈0）
-                probe_action = caps_upper.get("ECONOMIC_CALENDAR") or caps_upper.get("MACRO_SERIES")
-                probe_params = {"days_ahead": 1, "skip_cache": True, "_record_breaker": False}
-            if probe_action:
-                try:
-                    probe_start = time.perf_counter()
-                    await source.fetch(probe_action, probe_params)
-                    # 仅探测成功才把真实上游延迟作为样本写入统计，杜绝 health() 耗时污染
-                    latency_ms = round((time.perf_counter() - probe_start) * 1000, 2)
-                    probed = True
-                except Exception as pe:
-                    # 探测失败仅作信息提示，不翻转被动健康结论（标的可能不被该源支持）
-                    # 注意：失败时不写入延迟样本，避免把一次超时/异常 await 误记为高延迟
-                    probed = False
-                    error = f"主动探测失败（被动健康仍有效）: {pe}"
+                # 主动真实探测：按 capability 发起一次轻量请求，测量真实网络往返延迟
+                caps = getattr(source, "capabilities", []) or []
+                probe_action: str | None = None
+                probe_params: dict[str, Any] = {}
+                # 大小写不敏感匹配：适配器 capabilities 约定不统一(futu/akshare 用大写，
+                # yfinance/macro 用小写)。若直接用小写 "quote"/"economic_calendar" 判断，
+                # futu(QUOTE)/akshare(ECONOMIC_CALENDAR) 会被漏掉 → 永远回退 health()≈0。
+                # 同时用适配器【声明的大小写】作为 action，避免 futu 等 fetch 对 action 大小写敏感而
+                # 直接返回 UNSUPPORTED_ACTION。
+                caps_upper = {c.upper(): c for c in caps}
+                if "QUOTE" in caps_upper:
+                    # 绕过缓存测量真实上游延迟，避免命中 Redis 热缓存后误报 0ms 假阳性。
+                    # 必须传 ttl：fetch_yf_data 的 ttl 是必填位置参数，缺失会抛 TypeError 导致探针静默失败。
+                    probe_action = caps_upper["QUOTE"]
+                    # _record_breaker=False：链接测试探测流量，失败不污染业务熔断器（BE-ARCH-08i）
+                    probe_params = {
+                        "ticker": _LINK_TEST_TICKER,
+                        "skip_cache": True,
+                        "ttl": 60,
+                        "_record_breaker": False,
+                    }
+                elif "STOCK_QUOTE" in caps_upper:
+                    # Tushare 等 A 股数据源使用 stock_quote（非 QUOTE）
+                    probe_action = caps_upper["STOCK_QUOTE"]
+                    probe_params = {"ticker": "000001.SZ", "skip_cache": True, "_record_breaker": False}
+                elif "WEB_SEARCH" in caps_upper:
+                    probe_action = caps_upper["WEB_SEARCH"]
+                    # _record_breaker=False：链接测试探测流量，失败不污染业务熔断器
+                    # （BE-ARCH-08i，避免 bocha 探测失败连坐 tavily/jina 整节点误杀）
+                    probe_params = {"query": "quant agent test", "max_results": 1, "_record_breaker": False}
+                elif "WEB_SCRAPE" in caps_upper:
+                    # 同样绕过缓存测量真实抓取延迟
+                    probe_action = caps_upper["WEB_SCRAPE"]
+                    probe_params = {"url": "https://example.com", "skip_cache": True, "_record_breaker": False}
+                elif "ECONOMIC_CALENDAR" in caps_upper or "MACRO_SERIES" in caps_upper:
+                    # 宏观源(fred/dbnomics/rbi/finnhub)与 akshare 的真实上游探针并绕过缓存，
+                    # 使其延迟可感知（此前因大小写漏掉 akshare，永远 health()≈0）
+                    probe_action = caps_upper.get("ECONOMIC_CALENDAR") or caps_upper.get("MACRO_SERIES")
+                    probe_params = {"days_ahead": 1, "skip_cache": True, "_record_breaker": False}
+                if probe_action:
+                    try:
+                        probe_start = time.perf_counter()
+                        await source.fetch(probe_action, probe_params)
+                        # 仅探测成功才把真实上游延迟作为样本写入统计，杜绝 health() 耗时污染
+                        latency_ms = round((time.perf_counter() - probe_start) * 1000, 2)
+                        probed = True
+                    except Exception as pe:
+                        # 探测失败仅作信息提示，不翻转被动健康结论（标的可能不被该源支持）
+                        # 注意：失败时不写入延迟样本，避免把一次超时/异常 await 误记为高延迟
+                        probed = False
+                        error = f"主动探测失败（被动健康仍有效）: {pe}"
 
-            # 延迟统计只接受「真实业务探测成功」的样本；health() 耗时绝不入统计
-            if probed:
-                rate_limit_registry.get_analyzer(name).record_request(is_error=False, latency_ms=latency_ms)
-            else:
-                # 未成功探测：仅记录错误/不可用状态，不污染延迟均值与 P95
-                # 错误标志以「真实链路成功」为准：health 连通但业务探测失败也视为链路异常
-                rate_limit_registry.get_analyzer(name).record_request(
-                    is_error=not (connected and probed), latency_ms=None
-                )
-            await call_metrics.record_probe(name, success=connected and probed)
-            return {
-                "source": name,
-                "connected": connected,
-                "healthy": healthy,
-                "status": status,
-                "latency_ms": latency_ms,
-                "probed": probed,
-                "validated": True,
-                "error": error,
-                "tested_at": datetime.now(timezone.utc).isoformat(),
-            }
-        except Exception as e:
-            latency_ms = round((time.perf_counter() - start) * 1000, 2)
-            rate_limit_registry.get_analyzer(name).record_request(is_error=True, latency_ms=latency_ms)
-            await call_metrics.record_probe(name, success=False)
-            return {
-                "source": name,
-                "connected": False,
-                "healthy": False,
-                "status": "error",
-                "latency_ms": latency_ms,
-                "probed": False,
-                "validated": True,
-                "error": str(e),
-                "tested_at": datetime.now(timezone.utc).isoformat(),
-            }
+                # 延迟统计只接受「真实业务探测成功」的样本；health() 耗时绝不入统计
+                if probed:
+                    rate_limit_registry.get_analyzer(name).record_request(is_error=False, latency_ms=latency_ms)
+                else:
+                    # 未成功探测：仅记录错误/不可用状态，不污染延迟均值与 P95
+                    # 错误标志以「真实链路成功」为准：health 连通但业务探测失败也视为链路异常
+                    rate_limit_registry.get_analyzer(name).record_request(
+                        is_error=not (connected and probed), latency_ms=None
+                    )
+                await call_metrics.record_probe(name, success=connected and probed)
+                return {
+                    "source": name,
+                    "connected": connected,
+                    "healthy": healthy,
+                    "status": status,
+                    "latency_ms": latency_ms,
+                    "probed": probed,
+                    "validated": True,
+                    "error": error,
+                    "tested_at": datetime.now(timezone.utc).isoformat(),
+                }
+            except Exception as e:
+                latency_ms = round((time.perf_counter() - start) * 1000, 2)
+                rate_limit_registry.get_analyzer(name).record_request(is_error=True, latency_ms=latency_ms)
+                await call_metrics.record_probe(name, success=False)
+                return {
+                    "source": name,
+                    "connected": False,
+                    "healthy": False,
+                    "status": "error",
+                    "latency_ms": latency_ms,
+                    "probed": False,
+                    "validated": True,
+                    "error": str(e),
+                    "tested_at": datetime.now(timezone.utc).isoformat(),
+                }
 
 
 @router.websocket("/ws/health")
