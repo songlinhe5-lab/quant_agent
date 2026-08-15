@@ -420,8 +420,10 @@ jobs:
               exit 1
             fi
 
-            timeout 900 docker compose -f docker-compose.master.yml --env-file .env pull \
-              || { echo "❌ 主节点 docker compose pull 超时或失败 (900s)"; exit 1; }
+            # S1 宿主(FASTNET 美西)→ GHCR(Azure CDN) 链路高 TCP 重传(实测单连接 retrans>1e6),
+            # 大镜像(主服务~1.5GB)拉取慢, 原 900s 经常超时。放宽到 2400s 给慢链路余量。
+            timeout 2400 docker compose -f docker-compose.master.yml --env-file .env pull \
+              || { echo "❌ 主节点 docker compose pull 超时或失败 (2400s)"; exit 1; }
 
             OLD_ORPHANS=$(docker ps -a --filter name='quant_' --format '{{.Names}}' | grep -E '^quant_(registry|postgres|redis|app|worker|prometheus|grafana)$' || true)
             if [ -n "${OLD_ORPHANS}" ]; then
@@ -469,8 +471,9 @@ jobs:
             docker tag "${IMAGE}" "${REGISTRY_IMAGE}"
             docker push "${REGISTRY_IMAGE}"
 
-            docker pull "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${DEPLOY_SHA}" \
-              || { echo "❌ 主节点从 GHCR 拉取 data-subservice:${DEPLOY_SHA} 失败，中止"; exit 1; }
+            # S1→GHCR 慢链路: 加 timeout 防止无限制卡死(曾因 containerd 死锁挂起), 放宽到 2400s。
+            timeout 2400 docker pull "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${DEPLOY_SHA}" \
+              || { echo "❌ 主节点从 GHCR 拉取 data-subservice:${DEPLOY_SHA} 超时或失败 (2400s)，中止"; exit 1; }
             docker tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${DEPLOY_SHA}" "127.0.0.1:5000/quant-agent-data-subservice:us"
             docker push "127.0.0.1:5000/quant-agent-data-subservice:us" \
               || { echo "❌ data-subservice:us 推送到本机 registry 失败 (磁盘/containerd 问题?)，中止避免从节点拉到空镜像"; exit 1; }

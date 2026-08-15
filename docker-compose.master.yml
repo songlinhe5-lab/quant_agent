@@ -76,7 +76,11 @@ services:
   quant-agent:
     image: ghcr.io/songlinhe5-lab/quant_agent:latest
     pull_policy: missing
-    command: python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1 --loop uvloop --http httptools --timeout-keep-alive 65 --limit-concurrency 5000 --no-access-log
+    # MEM-OPT(2026-08-15): 主节点仅 1.9GB 物理内存, 原 --limit-concurrency 5000 允许单
+    # worker 堆积 5000 个 in-flight 请求(各 Hold 缓冲)→ RSS 膨胀至 370MB+; 4G 内存上限在
+    # 1.9GB 宿主上形同虚设。改为 256 并发 + 每 2000 请求优雅重启释放堆(防微泄漏),
+    # 并设 1.5G 硬上限(稳态 370MB, 留 4x 缓冲)。
+    command: python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1 --loop uvloop --http httptools --timeout-keep-alive 65 --limit-concurrency 256 --limit-max-requests 2000 --limit-max-requests-jitter 200 --no-access-log
     restart: always
     depends_on:
       redis:
@@ -117,10 +121,12 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4G
+          # MEM-OPT(2026-08-15): S1 宿主仅 1.9GB 物理内存, 原 4G 上限形同虚设。
+          # 稳态约 370MB, 设 1.5G 硬上限(留 4x 缓冲), 防止内存失控拖垮宿主。
+          memory: 1.5G
           cpus: '2.0'
         reservations:
-          memory: 1G
+          memory: 512M
 
   quant-worker:
     image: ghcr.io/songlinhe5-lab/quant_agent:latest
