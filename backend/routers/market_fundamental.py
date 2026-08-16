@@ -668,3 +668,23 @@ async def get_insider_transactions(ticker: str, limit: int = 50):
         "data": mock_transactions[:limit],
         "source": "mock_insider_data",
     }
+
+
+@router.get("/analyst-vs-fundamental/{ticker}")
+async def get_analyst_vs_fundamental(ticker: str):
+    """G7 · 卖方分析师共识 vs 实际基本面（交叉验证面板）。
+
+    并发聚合 Futu 分析师共识（F4-4，卖方观点）与 G1 真基本面三源合并，
+    派生分析师目标价上行空间并给出交叉验证结论。
+    注意：分析师共识是卖方观点而非事实，响应显式标注 consensus_is_third_party_expectation。
+    """
+    res = await data_service.get_analyst_vs_actual(ticker)
+    if not res.is_success or not res.data:
+        err_msg = res.error.message if res.error else "未知错误"
+        return {
+            "status": "warning",
+            "message": f"[{ticker}] 卖方共识vs基本面交叉验证不可用: {err_msg}",
+            "data": {},
+        }
+
+    return {"status": "success", "data": res.data}

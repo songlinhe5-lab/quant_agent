@@ -197,6 +197,9 @@ _STALE_THRESHOLD_SEC = {
     "WARRANT_CHAIN": 300,
     "SCREEN_STOCKS": 600,
     "HSGT_HOLDERS": 3600,
+    "CAPITAL_DISTRIBUTION": 300,  # G3：主力筹码分层 + 背离信号（与资金流同频）
+    "HEAT_MAP": 300,  # G6：板块热力图（与资金流同频）
+    "ANALYST_CONSENSUS": 3600,  # G7：分析师共识（卖方观点，日级更新）
     "MACRO_SERIES": 86400,
 }
 
@@ -526,6 +529,121 @@ class DataServiceFacade:
 
         merged["_merged_at"] = datetime.now().isoformat()
         return Result.success_result(merged, source="facade", remark="G1真基本面三源合并")
+
+    async def get_analyst_consensus(self, ticker: str, prefer_sources: Optional[list[str]] = None) -> Result:
+        """G7·F4-4：分析师共识（卖方观点，非事实）。
+
+        底层 Futu ANALYST_CONSENSUS 返回的每条记录已显式标注
+        ``is_third_party_expectation=True`` / ``source=futu_consensus``，引用时必须声明是卖方观点。
+        """
+        return await self._dispatch(
+            "ANALYST_CONSENSUS",
+            {"ticker": ticker},
+            prefer_sources=prefer_sources or ["futu"],
+            enable_merge=False,
+        )
+
+    async def get_analyst_vs_actual(self, ticker: str, prefer_sources: Optional[list[str]] = None) -> Result:
+        """G7：卖方分析师共识 vs 实际基本面（交叉验证面板）。
+
+        并发拉取分析师共识（F4-4）与真基本面合并（G1），做防御式交叉验证：
+          - 提取分析师目标价（共识记录中价格类列，如 last_avg_price / target_price）
+          - 提取当前价（合并基本面中的 current_price / price / currentPrice）
+          - 派生上行空间 upside_pct = (目标价 - 当前价) / 当前价
+          - 给出交叉验证结论：卖方乐观(>15%) / 中性 / 卖方看空(<-5%)
+          - 显式标红 ``consensus_is_third_party_expectation=True``，禁止把卖方观点当事实结论
+        原始数据原样保留；任一缺失则对应字段给 None + note（零幻觉红线，不臆造价格）。
+        """
+        res_cons, res_fund = await asyncio.gather(
+            self.get_analyst_consensus(ticker, prefer_sources=prefer_sources),
+            self.get_fundamental_merged(ticker),
+        )
+
+        panel: dict = {
+            "ticker": ticker,
+            "consensus_is_third_party_expectation": True,
+            "target_price": None,
+            "current_price": None,
+            "upside_pct": None,
+            "verdict": None,
+            "notes": [],
+        }
+
+        # --- 解析分析师目标价（防御式，不硬编码 Futu 列名）---
+        target_price = None
+        if isinstance(res_cons, Result) and res_cons.is_success and isinstance(res_cons.data, dict):
+            cons_rows = res_cons.data.get("data") or []
+            if isinstance(cons_rows, list) and cons_rows:
+                # 优先命中含 avg/target 的价格列，其次任意含 price 的列
+                for r in cons_rows:
+                    if not isinstance(r, dict):
+                        continue
+                    for k, v in r.items():
+                        kl = str(k).lower()
+                        if any(t in kl for t in ("avg", "target")) and "price" in kl:
+                            fv = _to_float(v)
+                            if fv:
+                                target_price = fv
+                                break
+                    if target_price:
+                        break
+                if not target_price:
+                    for r in cons_rows:
+                        if not isinstance(r, dict):
+                            continue
+                        for k, v in r.items():
+                            if "price" in str(k).lower():
+                                fv = _to_float(v)
+                                if fv:
+                                    target_price = fv
+                                    break
+                        if target_price:
+                            break
+            else:
+                panel["notes"].append("分析师共识记录为空")
+        else:
+            panel["notes"].append("分析师共识源不可用")
+
+        # --- 解析当前价（合并基本面，防御式）---
+        current_price = None
+        fund_data = res_fund.data if isinstance(res_fund, Result) else None
+        if isinstance(fund_data, dict):
+            for src_key in ("futu", "yfinance", "fmp"):
+                src = fund_data.get(src_key)
+                if not isinstance(src, dict):
+                    continue
+                for cand in ("current_price", "price", "currentPrice", "last_price"):
+                    cp = _to_float(src.get(cand))
+                    if cp:
+                        current_price = cp
+                        break
+                if current_price:
+                    break
+        if current_price is None:
+            panel["notes"].append("合并基本面未取到当前价")
+
+        panel["target_price"] = target_price
+        panel["current_price"] = current_price
+
+        if target_price and current_price:
+            upside = round((target_price - current_price) / current_price * 100, 2)
+            panel["upside_pct"] = upside
+            if upside > 15:
+                panel["verdict"] = "sell_side_bullish"  # 卖方过度乐观，需警惕
+            elif upside < -5:
+                panel["verdict"] = "sell_side_bearish"  # 卖方看空
+            else:
+                panel["verdict"] = "neutral"
+        else:
+            panel["notes"].append("目标价或当前价缺失，无法计算上行空间")
+
+        # 回写原始数据引用（供前端透明展示）
+        out = {
+            "panel": panel,
+            "analyst_consensus": res_cons.data if isinstance(res_cons, Result) else None,
+            "fundamental_merged": fund_data,
+        }
+        return Result.success_result(out, source="facade", remark="G7卖方共识vs实际基本面交叉验证")
 
     async def _fetch_futu_fundamental(self, ticker: str) -> Result:
         """Futu 真基本面（三大表 + 估值明细）聚合为单 Result。
@@ -861,7 +979,8 @@ class DataServiceFacade:
         news_action = action_upper in ("COMPANY_NEWS", "MARKET_NEWS", "NEWS", "STOCK_NEWS")
         # G3/G6：CAPITAL_DISTRIBUTION 与 FUND_FLOW/HEAT_MAP 同属资金流语义，共用市场感知选源策略
         flow_action = action_upper in ("FUND_FLOW", "CAPITAL_DISTRIBUTION", "HEAT_MAP")
-        fundamental_action = action_upper in ("FUNDAMENTAL", "INFO")
+        # G7：ANALYST_CONSENSUS 是卖方观点，基本面语义，市场感知选源（futu 各市场均覆盖）
+        fundamental_action = action_upper in ("FUNDAMENTAL", "INFO", "ANALYST_CONSENSUS")
         if quote_action or news_action or flow_action or fundamental_action:
             ticker = params.get("ticker") or params.get("symbol") or ""
             market = _detect_market(str(ticker))
