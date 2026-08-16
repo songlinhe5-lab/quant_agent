@@ -204,6 +204,43 @@ class FutuService:
             is_unsupported_func=is_futu_unsupported,
         )
 
+    async def get_financials(
+        self,
+        ticker: str,
+        statement_type: str = None,
+        financial_type: str = None,
+        currency_code: str = None,
+        num: int = 1,
+    ) -> Dict[str, Any]:
+        return await self._route(
+            "fetch_financials",
+            {
+                "ticker": ticker,
+                "statement_type": statement_type,
+                "financial_type": financial_type,
+                "currency_code": currency_code,
+                "num": num,
+            },
+            self.option_fund_handler.get_financials_statements,
+            ticker=ticker,
+            statement_type=statement_type,
+            financial_type=financial_type,
+            currency_code=currency_code,
+            num=num,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_valuation(self, ticker: str) -> Dict[str, Any]:
+        return await self._route(
+            "fetch_valuation",
+            {"ticker": ticker},
+            self.option_fund_handler.get_valuation_detail,
+            ticker=ticker,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
     async def get_warrant_chain(self, ticker: str) -> Dict[str, Any]:
         return await self._route(
             "fetch_warrant_chain",

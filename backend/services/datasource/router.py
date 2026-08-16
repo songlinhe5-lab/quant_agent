@@ -110,6 +110,9 @@ _FUTU_ACTION_MAP = {
     # BE-ARCH-08c⑤: 前端 WS 订阅回传 — subscribe/unsubscribe 通知 OpenD 实时订阅
     "subscribe": "SUBSCRIBE",
     "unsubscribe": "UNSUBSCRIBE",
+    # F2: 三大财务报表 + 估值明细（G1 真基本面基座）
+    "financials": "FINANCIALS",
+    "valuation": "VALUATION",
 }
 
 # 主服务内部 fetch_type -> 子服务 action 映射 (Finnhub)

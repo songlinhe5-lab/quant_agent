@@ -364,6 +364,153 @@ class OptionFundHandler:
         self.cache_mgr.set_fundamental_cache(cache_key, time.time(), result)
         return result
 
+    # ── F2: 三大财务报表（G1 真基本面基座）──────────────────────────────
+    # 富途返回 field_id 是英文枚举（如 CASH_EQUIVALENTS），前端/用户需中文字段名。
+    # 这里建映射表，缺失的 field_id 保留原值透传（零幻觉：不臆造中文名）。
+    FINANCIAL_FIELD_MAP = {
+        # 资产负债表
+        "CASH_EQUIVALENTS": "现金及现金等价物",
+        "SHORT_TERM_INVESTMENT": "短期投资",
+        "TRADE_RECEIVABLE": "应收账款",
+        "INVENTORY": "存货",
+        "TOTAL_CURRENT_ASSETS": "流动资产合计",
+        "TOTAL_ASSETS": "资产总计",
+        "TRADE_PAYABLE": "应付账款",
+        "TOTAL_CURRENT_LIABILITIES": "流动负债合计",
+        "TOTAL_LIABILITIES": "负债合计",
+        "TOTAL_EQUITY": "所有者权益合计",
+        "RETAINED_EARNINGS": "留存收益",
+        # 利润表
+        "TOTAL_OPERATING_REVENUE": "营业总收入",
+        "TOTAL_OPERATING_COST": "营业总成本",
+        "GROSS_PROFIT": "毛利",
+        "OPERATING_PROFIT": "营业利润",
+        "NET_PROFIT": "净利润",
+        "BASIC_EPS": "基本每股收益",
+        "DILUTED_EPS": "稀释每股收益",
+        # 现金流量表
+        "NET_CASH_FLOW_FROM_OPERATING": "经营活动净现金流",
+        "NET_CASH_FLOW_FROM_INVESTING": "投资活动净现金流",
+        "NET_CASH_FLOW_FROM_FINANCING": "筹资活动净现金流",
+        "FREE_CASH_FLOW": "自由现金流",
+    }
+
+    async def get_financials_statements(
+        self,
+        ticker,
+        statement_type=None,
+        financial_type=None,
+        currency_code=None,
+        num=1,
+        format_ticker_func=format_ticker,
+        is_unsupported_func=is_futu_unsupported,
+    ) -> Dict[str, Any]:
+        """获取三大财务报表（资产负债表/利润表/现金流量表）。
+
+        入参:
+          statement_type: "BALANCE_SHEET" | "INCOME_STATEMENT" | "CASH_FLOW"（None 取默认）
+          financial_type: "ANNUAL" | "INTERIM" | "QUARTER"（None 取默认）
+          currency_code:  "HKD" | "USD" | ...（None 取原始货币）
+          num:            返回期数（默认 1，即最近一期）
+        """
+        if is_unsupported_func(ticker):
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "标的非港股/美股/沪深，富途不支持",
+            }
+        code = format_ticker_func(ticker)
+        if not code:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+
+        ctx = self.conn.get_quote_ctx()
+        if ctx is None:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "Futu OpenD 未连接", "code": code}
+
+        try:
+            # 10.10: get_financials_statements(code, statement_type, financial_type,
+            #        currency_code, next_key, num) — 收字符串/None，非枚举类
+            ret, data = ctx.get_financials_statements(
+                code,
+                statement_type=statement_type,
+                financial_type=financial_type,
+                currency_code=currency_code,
+                num=num,
+            )
+            if ret != RET_OK:
+                return {"status": "error", "source": "futu", "ticker": ticker, "message": str(data), "code": code}
+
+            # 字段级映射：field_id -> 中文
+            if hasattr(data, "to_dict"):
+                rows = data.to_dict("records")
+            else:
+                rows = list(data)
+            mapped = []
+            for r in rows:
+                field_id = r.get("field_id")
+                r = dict(r)
+                r["field_name_cn"] = self.FINANCIAL_FIELD_MAP.get(field_id, field_id)
+                mapped.append(r)
+
+            return {
+                "status": "success",
+                "source": "futu",
+                "ticker": ticker,
+                "code": code,
+                "statement_type": statement_type,
+                "financial_type": financial_type,
+                "count": len(mapped),
+                "data": mapped,
+            }
+        except Exception as e:
+            logger.error(f"❌ get_financials_statements 失败 {code}: {e}")
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": code}
+
+    # ── F2: 估值明细（G1 真基本面基座）──────────────────────────────────
+    async def get_valuation_detail(
+        self,
+        ticker,
+        format_ticker_func=format_ticker,
+        is_unsupported_func=is_futu_unsupported,
+    ) -> Dict[str, Any]:
+        """获取估值明细（PE/PB/股息率/市值等逐指标）。"""
+        if is_unsupported_func(ticker):
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "标的非港股/美股/沪深，富途不支持",
+            }
+        code = format_ticker_func(ticker)
+        if not code:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+
+        ctx = self.conn.get_quote_ctx()
+        if ctx is None:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "Futu OpenD 未连接", "code": code}
+
+        try:
+            ret, data = ctx.get_valuation_detail(code)
+            if ret != RET_OK:
+                return {"status": "error", "source": "futu", "ticker": ticker, "message": str(data), "code": code}
+
+            if hasattr(data, "to_dict"):
+                rows = data.to_dict("records")
+            else:
+                rows = list(data)
+            return {
+                "status": "success",
+                "source": "futu",
+                "ticker": ticker,
+                "code": code,
+                "count": len(rows),
+                "data": rows,
+            }
+        except Exception as e:
+            logger.error(f"❌ get_valuation_detail 失败 {code}: {e}")
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": code}
+
     @with_global_retry
     async def get_warrant_chain(
         self,
