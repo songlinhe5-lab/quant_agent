@@ -21,7 +21,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
-from ._compat import RET_OK, safe_float
+from futu import RET_OK
+
+from ._compat import safe_float
 
 logger = logging.getLogger(__name__)
 

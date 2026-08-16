@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
 import pytest
-from futu import ModifyOrderOp, OrderType, TrdMarket, TrdSide
+from futu import ModifyOrderOp, OrderType, TrdEnv, TrdMarket, TrdSide
 
 from data_subservice.futu_src.trade_handler import TradeHandler
 
@@ -268,3 +268,138 @@ class TestTradeHandler:
         assert result["status"] == "success"
         assert result["environment"] == "REAL"
         conn_mgr.unlock_trade_if_needed.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_emergency_liquidation_disconnected_returns_error(self):
+        """未连接时直接返回错误, 不触发 SDK 调用"""
+        handler, conn_mgr = _make_handler()
+        conn_mgr.status = "DISCONNECTED"
+        with patch("asyncio.to_thread") as mock_thread:
+            result = await handler.emergency_liquidation("HK")
+        assert result["status"] == "error"
+        assert result["ok"] is False
+        assert result["reason"] == "futu_opend_not_connected"
+        mock_thread.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_emergency_liquidation_full_flow(self):
+        """完整 kill switch: 撤单 + 市价平仓"""
+        handler, conn_mgr = _make_handler()
+        conn_mgr.status = "CONNECTED"
+        trd_ctx = conn_mgr.get_trade_context.return_value
+
+        orders_df = pd.DataFrame({"order_id": ["O1", "O2"], "trd_env": [TrdEnv.SIMULATE, TrdEnv.SIMULATE]})
+        positions_df = pd.DataFrame(
+            {
+                "code": ["HK.00700", "HK.09988"],
+                "qty": [1000.0, 500.0],
+                "position_side": ["LONG", "LONG"],
+                "trd_env": [TrdEnv.SIMULATE, TrdEnv.SIMULATE],
+            }
+        )
+
+        calls = {"order": 0, "modify": 0, "pos": 0, "place": 0}
+
+        async def fake_to_thread(func, *args, **kwargs):
+            # 通过函数身份识别 (mock 方法无 __name__, 用 id 映射)
+            fid = id(func)
+            if fid == id(trd_ctx.order_list_query):
+                calls["order"] += 1
+                return (0, orders_df)
+            if fid == id(trd_ctx.modify_order):
+                calls["modify"] += 1
+                return (0, "ok")
+            if fid == id(trd_ctx.position_list_query):
+                calls["pos"] += 1
+                return (0, positions_df)
+            if fid == id(trd_ctx.place_order):
+                calls["place"] += 1
+                return (0, pd.DataFrame({"order_id": ["X"]}))
+            return (-1, "unknown")
+
+        with patch("asyncio.to_thread", new=fake_to_thread):
+            result = await handler.emergency_liquidation("HK")
+
+        assert result["status"] == "success"
+        assert result["ok"] is True
+        assert result["cancelled"] == 2
+        assert result["closed"] == 2
+        assert calls["modify"] == 2
+        assert calls["place"] == 2
+
+    @pytest.mark.asyncio
+    async def test_emergency_liquidation_empty_orders_positions(self):
+        """无订单且无持仓时仍应成功返回"""
+        handler, conn_mgr = _make_handler()
+        conn_mgr.status = "CONNECTED"
+        trd_ctx = conn_mgr.get_trade_context.return_value
+
+        async def fake_to_thread(func, *args, **kwargs):
+            if id(func) == id(trd_ctx.order_list_query):
+                return (0, pd.DataFrame())
+            if id(func) == id(trd_ctx.position_list_query):
+                return (0, pd.DataFrame())
+            return (-1, "unknown")
+
+        with patch("asyncio.to_thread", new=fake_to_thread):
+            result = await handler.emergency_liquidation("US")
+        assert result["status"] == "success"
+        assert result["cancelled"] == 0
+        assert result["closed"] == 0
+
+    @pytest.mark.asyncio
+    async def test_emergency_liquidation_skips_zero_qty(self):
+        """持仓 qty=0 的标的跳过市价平仓"""
+        handler, conn_mgr = _make_handler()
+        conn_mgr.status = "CONNECTED"
+        trd_ctx = conn_mgr.get_trade_context.return_value
+
+        positions_df = pd.DataFrame(
+            {"code": ["HK.00700"], "qty": [0.0], "position_side": ["LONG"], "trd_env": [TrdEnv.SIMULATE]}
+        )
+
+        async def fake_to_thread(func, *args, **kwargs):
+            if id(func) == id(trd_ctx.order_list_query):
+                return (0, pd.DataFrame())
+            if id(func) == id(trd_ctx.position_list_query):
+                return (0, positions_df)
+            if id(func) == id(trd_ctx.place_order):
+                pytest.fail("不应调用 place_order (qty=0 被跳过)")
+            return (-1, "unknown")
+
+        with patch("asyncio.to_thread", new=fake_to_thread):
+            result = await handler.emergency_liquidation("HK")
+        assert result["closed"] == 0
+
+    @pytest.mark.asyncio
+    async def test_emergency_liquidation_short_position_buys_back(self):
+        """空头持仓应触发 BUY 回补"""
+        handler, conn_mgr = _make_handler()
+        conn_mgr.status = "CONNECTED"
+        trd_ctx = conn_mgr.get_trade_context.return_value
+
+        positions_df = pd.DataFrame(
+            {
+                "code": ["HK.00700"],
+                "qty": [200.0],
+                "position_side": ["SHORT"],
+                "trd_env": [TrdEnv.SIMULATE],
+            }
+        )
+
+        captured = {}
+
+        async def fake_to_thread(func, *args, **kwargs):
+            if id(func) == id(trd_ctx.order_list_query):
+                return (0, pd.DataFrame())
+            if id(func) == id(trd_ctx.position_list_query):
+                return (0, positions_df)
+            if id(func) == id(trd_ctx.place_order):
+                captured["trd_side"] = kwargs.get("trd_side")
+                return (0, pd.DataFrame({"order_id": ["X"]}))
+            return (-1, "unknown")
+
+        with patch("asyncio.to_thread", new=fake_to_thread):
+            result = await handler.emergency_liquidation("HK")
+        assert result["closed"] == 1
+        assert captured["trd_side"] == TrdSide.BUY
