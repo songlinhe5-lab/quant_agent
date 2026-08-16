@@ -13,6 +13,14 @@ export interface MarginMarketData {
   updated_at: string
   source: string
   note?: string
+  // 港股/美股卖空指标口径（监管底层，与 A 股两融余额概念不同）
+  short_sale_volume?: number | null
+  total_volume?: number | null
+  short_volume_ratio?: number | null
+  short_interest_shares?: number | null
+  short_interest_ratio?: number | null
+  as_of?: string
+  sources?: string[]
 }
 
 interface MarginTradingPanelProps {
@@ -33,6 +41,14 @@ function MarketMarginCard({ data }: { data: MarginMarketData }) {
   const financingUp = (data.financing_change ?? 0) >= 0
   const securitiesUp = (data.securities_change ?? 0) >= 0
 
+  // A 股使用两融余额口径；港股/美股使用监管卖空指标口径（概念不同，不强行对齐）
+  const isMarginBalanceMarket = data.market === 'A_SHARE'
+  const hasShortMetrics =
+    data.short_sale_volume != null ||
+    data.short_volume_ratio != null ||
+    data.short_interest_shares != null ||
+    data.short_interest_ratio != null
+
   // 格式化数字显示（DIST-SEC-01 配套：字段缺失时兜底为 '--'）
   const formatNumber = (num: number | null | undefined) => {
     if (num == null || Number.isNaN(num)) return '--'
@@ -46,6 +62,18 @@ function MarketMarginCard({ data }: { data: MarginMarketData }) {
     return `${sign}${num.toFixed(2)}`
   }
 
+  // 大数字（股数）紧凑显示：亿/万
+  const formatShares = (n: number | null | undefined) => {
+    if (n == null || Number.isNaN(n)) return '--'
+    if (n >= 1e8) return `${(n / 1e8).toFixed(2)} 亿股`
+    if (n >= 1e4) return `${(n / 1e4).toFixed(2)} 万股`
+    return `${n.toLocaleString('zh-CN')} 股`
+  }
+  const formatRatio = (n: number | null | undefined) => {
+    if (n == null || Number.isNaN(n)) return '--'
+    return `${n.toFixed(2)}%`
+  }
+
   return (
     <div className="glass-panel p-3 rounded-xl border border-border/20 hover:border-primary/30 transition-all duration-300">
       {/* 市场标题 */}
@@ -55,6 +83,11 @@ function MarketMarginCard({ data }: { data: MarginMarketData }) {
             {data.market === 'A_SHARE' ? '🇨🇳' : data.market === 'HK_SHARE' ? '🇭🇰' : '🇺🇸'}
           </span>
           <span className="text-xs font-bold text-foreground/90">{data.market_name}</span>
+          {!isMarginBalanceMarket && (
+            <span className="text-[8px] px-1 py-0.5 rounded bg-blue-500/10 text-blue-500">
+              卖空指标
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1 text-[8px] text-muted-foreground/50">
           <Clock className="w-2.5 h-2.5" />
@@ -64,7 +97,10 @@ function MarketMarginCard({ data }: { data: MarginMarketData }) {
         </div>
       </div>
 
-      {/* 融资余额 */}
+      {/* A 股：两融余额 */}
+      {isMarginBalanceMarket && (
+        <>
+          {/* 融资余额 */}
       <div className="mb-2">
         <div className="flex items-center justify-between mb-0.5">
           <span className="text-[10px] text-muted-foreground/70">融资余额</span>
@@ -133,6 +169,53 @@ function MarketMarginCard({ data }: { data: MarginMarketData }) {
           </span>
         </div>
       </div>
+        </>
+      )}
+
+      {/* 港股/美股：卖空指标口径（与 A 股两融余额概念不同，如实分列） */}
+      {!isMarginBalanceMarket && hasShortMetrics && (
+        <>
+          {data.short_volume_ratio != null && (
+            <div className="mb-1.5">
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="flex items-center gap-1 text-[10px] text-muted-foreground/70">
+                  做空成交占比
+                  <span className="text-[7px] px-1 rounded bg-slate-500/15 text-slate-400">HKEX</span>
+                </span>
+                <span className="text-xs font-bold font-mono tabular-nums text-orange-500">
+                  {formatRatio(data.short_volume_ratio)}
+                </span>
+              </div>
+            </div>
+          )}
+          {data.short_interest_shares != null && (
+            <div className="mb-1.5">
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="flex items-center gap-1 text-[10px] text-muted-foreground/70">
+                  卖空余额
+                  <span className="text-[7px] px-1 rounded bg-slate-500/15 text-slate-400">SFC</span>
+                </span>
+                <span className="text-xs font-bold font-mono tabular-nums text-foreground/90">
+                  {formatShares(data.short_interest_shares)}
+                </span>
+              </div>
+            </div>
+          )}
+          {data.short_interest_ratio != null && (
+            <div>
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="flex items-center gap-1 text-[10px] text-muted-foreground/70">
+                  回补天数 (Days to Cover)
+                  <span className="text-[7px] px-1 rounded bg-slate-500/15 text-slate-400">SFC</span>
+                </span>
+                <span className="text-xs font-bold font-mono tabular-nums text-foreground/90">
+                  {data.short_interest_ratio.toFixed(2)} 天
+                </span>
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
       {/* 数据来源 */}
       <div className="mt-2 pt-1.5 border-t border-border/10">
@@ -151,14 +234,23 @@ function MarketMarginCard({ data }: { data: MarginMarketData }) {
   )
 }
 
-// 过滤掉「无任何有效融资/融券余额」的市场卡片（如美股仅提供做空指标，
-// 无融资融券余额概念，后端返回 financing/securities_balance 为 null，
-// 拿不到就不要展示空壳卡，避免误导 —— PROD 红线：零幻觉、不编造）
+// 过滤掉「无任何有效数据」的市场卡片。
+// - A 股：需融资/融券余额任一有效（两融口径）；
+// - 港股/美股：无「融资融券余额」概念，只要任一卖空指标（做空占比/做空余额/回补天数/做空成交量）有效即展示；
+// 拿不到就不展示空壳卡，避免误导 —— PROD 红线：零幻觉、不编造
 function hasValidBalance(m: MarginMarketData): boolean {
+  const valid = (n: number | null | undefined) => n != null && !Number.isNaN(n)
   const f = m.financing_balance
   const s = m.securities_balance
-  const valid = (n: number | null | undefined) => n != null && !Number.isNaN(n)
-  return valid(f) || valid(s)
+  const hasMarginBalance = valid(f) || valid(s)
+  const hasShortMetrics =
+    valid(m.short_sale_volume) ||
+    valid(m.short_volume_ratio) ||
+    valid(m.short_interest_shares) ||
+    valid(m.short_interest_ratio)
+  // A 股必须靠两融余额；港股/美股靠卖空指标
+  if (m.market === 'A_SHARE') return hasMarginBalance
+  return hasShortMetrics
 }
 
 export function MarginTradingPanel({ data, status, lastUpdated }: MarginTradingPanelProps) {

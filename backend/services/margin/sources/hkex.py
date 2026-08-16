@@ -5,8 +5,8 @@
 （港股源无干净的免费市场级 API，故由运维将监管底层文件 URL 通过环境变量注入，
 适配器负责拉取 + 解析 + 市场级聚合，绝不写假数据）。
 
-配置（环境变量，未配置则优雅降级为 None）：
-    HKEX_SHORT_SELLING_URL     HKEX 每日卖空成交报表文件 URL（CSV）
+配置（环境变量，未配置则使用下面 DEFAULT_HKEX_URL 兜底模板）：
+    HKEX_SHORT_SELLING_URL     HKEX 每日卖空成交报表文件 URL（CSV，支持 {YYYYMMDD} 占位符）
     HKEX_SHORT_SELLING_COLUMNS 可选：列名映射 JSON，覆盖默认关键词匹配
 
 列识别为 best-effort（中英文关键词），若实际文件列名不同，调环境变量即可，无需改代码。
@@ -24,6 +24,10 @@ import structlog
 from backend.services.margin.sources.base import BaseMarginSource, MarketMarginSnapshot
 
 logger = structlog.get_logger(__name__)
+
+# 默认 HKEX 每日卖空成交报表 CSV 模板（env 未配置时使用；{YYYYMMDD} 按当天日期替换）。
+# 若实际文件 URL 格式变化，配 HKEX_SHORT_SELLING_URL 环境变量覆盖即可，无需改代码。
+DEFAULT_HKEX_URL = "https://www.hkex.com.hk/chi/stat/smarts/short_selling_{YYYYMMDD}.csv"
 
 _DEFAULT_COLUMNS = {
     "short_turnover": [
@@ -53,7 +57,8 @@ class HkexShortSellingSource(BaseMarginSource):
 
     def __init__(self):
         super().__init__()
-        self.url: Optional[str] = os.getenv("HKEX_SHORT_SELLING_URL") or None
+        # 环境变量优先；未配置则使用默认模板（{YYYYMMDD} 占位符在 fetch 时按日期替换）
+        self.url: Optional[str] = os.getenv("HKEX_SHORT_SELLING_URL") or DEFAULT_HKEX_URL
         self.columns = self._load_columns("HKEX_SHORT_SELLING_COLUMNS", _DEFAULT_COLUMNS)
 
     @staticmethod
@@ -118,7 +123,12 @@ class HkexShortSellingSource(BaseMarginSource):
         if not self.url:
             logger.debug("[Margin][hkex] 未配置 HKEX_SHORT_SELLING_URL，跳过")
             return None
-        text = await self._http_get_text(self.url, params={"date": as_of.isoformat()})
+        # 支持 URL 模板：含 {YYYYMMDD} 占位符时按日期自动拼真实地址，
+        # 否则视为固定直链原样使用（兼容旧的完整固定 URL 配置）。
+        url = self.url
+        if "{YYYYMMDD}" in url:
+            url = url.replace("{YYYYMMDD}", as_of.strftime("%Y%m%d"))
+        text = await self._http_get_text(url, params={"date": as_of.isoformat()})
         if not text:
             return None
         return self._parse(text, as_of)
