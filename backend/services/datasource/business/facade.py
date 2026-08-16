@@ -200,6 +200,7 @@ _STALE_THRESHOLD_SEC = {
     "CAPITAL_DISTRIBUTION": 300,  # G3：主力筹码分层 + 背离信号（与资金流同频）
     "HEAT_MAP": 300,  # G6：板块热力图（与资金流同频）
     "ANALYST_CONSENSUS": 3600,  # G7：分析师共识（卖方观点，日级更新）
+    "OPTION_STRATEGY": 300,  # G4：期权策略组合（与资金流同频）
     "MACRO_SERIES": 86400,
 }
 

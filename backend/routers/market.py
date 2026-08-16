@@ -19,6 +19,7 @@ from backend.services.datasource import ResultStatus
 # BE-ARCH-06c: 新 Facade 行情领域服务（统一经 DataSourceRegistry 取数）
 from backend.services.datasource.business import data_service
 from backend.services.datasource.business import market_data_service as _facade_market
+from backend.services.datasource.business.option import option_data_service as _facade_option
 from backend.services.datasource.router import data_source_router
 
 # BE-ARCH-07p: 进程内 broker/kline 实时缓存（消费 quant:broker:* / quant:kline:* 回灌）
@@ -532,6 +533,44 @@ async def get_option_chain(ticker: str, expiration_date: str = ""):
         raise HTTPException(status_code=400, detail=err_msg)
     if facade_res.status == ResultStatus.DEGRADED:
         err_msg = facade_res.error.message if facade_res.error else "期权链数据暂不可用"
+        return {
+            "status": "degraded",
+            "message": err_msg,
+            "data": facade_res.data,
+            "source": f"facade+{facade_res.source}",
+        }
+    return {
+        "status": "success",
+        "data": facade_res.data,
+        "source": f"facade+{facade_res.source}",
+    }
+
+
+@router.get("/option-strategy-lab")
+async def get_option_strategy_lab(
+    ticker: str,
+    strategy_type: str = "STRANGLE",
+    spread: int = 5,
+    underlying_price: float | None = None,
+):
+    """
+    G4：期权损益实验室（Futu OPTION_STRATEGY → 纯代数损益曲线 + 盈亏平衡点 + 真实 Greeks）
+
+    Args:
+        ticker: 正股/ETF/指数代码（非期权 code）
+        strategy_type: 策略类型（STRANGLE/CALL/PUT/...，默认 STRANGLE）
+        spread: 价差档位，默认 5
+        underlying_price: 情景网格中心价（可选，默认取行权价中值）
+    """
+    # BE-ARCH-06c: 经 Facade 统一选源（富途组合策略最准）
+    facade_res = await _facade_option.get_option_strategy_lab(
+        ticker, strategy_type=strategy_type, spread=spread, underlying_price=underlying_price
+    )
+    if facade_res.is_error:
+        err_msg = facade_res.error.message if facade_res.error else "期权损益实验室数据不可用"
+        raise HTTPException(status_code=400, detail=err_msg)
+    if facade_res.status == ResultStatus.DEGRADED:
+        err_msg = facade_res.error.message if facade_res.error else "期权损益实验室数据暂不可用"
         return {
             "status": "degraded",
             "message": err_msg,
