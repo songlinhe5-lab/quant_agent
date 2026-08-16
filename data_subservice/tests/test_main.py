@@ -12,7 +12,10 @@ import data_subservice.main as main_mod
 from data_subservice.main import app
 
 
-def _sign(body: str, secret: str = "change-me-in-prod") -> tuple:
+def _sign(body: str, secret: str = None) -> tuple:
+    # 签名 secret 必须与运行态 main 模块实际使用的 HMAC_SECRET 一致,
+    # 否则受环境变量 DATA_SOURCE_HMAC_SECRET 影响导致校验 403。
+    secret = secret or main_mod.HMAC_SECRET
     ts = str(int(time.time()))
     message = f"{ts}:{body}".encode("utf-8")
     sig = hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()
@@ -21,6 +24,8 @@ def _sign(body: str, secret: str = "change-me-in-prod") -> tuple:
 
 @pytest.fixture
 def client(monkeypatch):
+    # 固定 HMAC secret, 避免环境已有 DATA_SOURCE_HMAC 导致签名不一致 (403)
+    monkeypatch.setenv("DATA_SOURCE_HMAC_SECRET", "change-me-in-prod")
     # 默认声明 yfinance 能力, 避免 503
     monkeypatch.setenv("DS_CAPABILITIES", "yfinance")
     monkeypatch.setattr(main_mod, "_declared_capabilities", lambda: {"yfinance"})
