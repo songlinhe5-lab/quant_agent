@@ -75,6 +75,16 @@ async def handle_futu(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
                 market=params.get("market"),
                 count=int(params.get("count", 10)),
             )
+        elif action == "OPTION_STRATEGY":
+            return await futu_service.get_option_strategy(
+                params.get("symbol") or params.get("ticker"),
+                strategy_type=params.get("strategy_type", "STRANGLE"),
+                spread=int(params.get("spread", 5)),
+            )
+        elif action == "OPTION_VOLATILITY":
+            return await futu_service.get_option_volatility(
+                params.get("symbol") or params.get("ticker"),
+            )
         elif action == "WARRANT_CHAIN":
             return await futu_service.get_warrant_chain(params.get("symbol"))
         elif action == "SNAPSHOT":

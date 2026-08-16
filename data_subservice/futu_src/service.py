@@ -271,6 +271,33 @@ class FutuService:
             is_unsupported_func=is_futu_unsupported,
         )
 
+    # ── F3: 期权策略 + 期权波动率（G4 支撑）─────────────────────────────
+    async def get_option_strategy(
+        self, ticker: str, strategy_type: str = "STRANGLE", spread: int = 5
+    ) -> Dict[str, Any]:
+        """F3 期权策略组合（入参必须为正股/ETF/指数）。"""
+        return await self._route(
+            "fetch_option_strategy",
+            {"ticker": ticker, "strategy_type": strategy_type, "spread": spread},
+            self.option_fund_handler.get_option_strategy,
+            ticker=ticker,
+            strategy_type=strategy_type,
+            spread=spread,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_option_volatility(self, ticker: str) -> Dict[str, Any]:
+        """F3 期权波动率（入参必须为期权合约代码）。"""
+        return await self._route(
+            "fetch_option_volatility",
+            {"ticker": ticker},
+            self.option_fund_handler.get_option_volatility,
+            ticker=ticker,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
     async def get_warrant_chain(self, ticker: str) -> Dict[str, Any]:
         return await self._route(
             "fetch_warrant_chain",

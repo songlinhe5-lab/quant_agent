@@ -38,6 +38,37 @@ class OptionDataService:
         self._validate_ticker(ticker)
         return await self._facade.get_warrant_chain(ticker, prefer_sources=prefer_sources)
 
+    # ── F3: 期权策略 + 期权波动率（G4 支撑）─────────────────────────────
+    async def get_option_strategy(
+        self,
+        ticker: str,
+        strategy_type: str = "STRANGLE",
+        spread: int = 5,
+        prefer_sources: Optional[list[str]] = None,
+    ) -> Any:
+        """期权策略组合（入参必须为正股/ETF/指数，非期权 code）。"""
+        self._validate_ticker(ticker)
+        return await self._facade._dispatch(
+            "OPTION_STRATEGY",
+            {"ticker": ticker, "strategy_type": strategy_type, "spread": spread},
+            prefer_sources=prefer_sources or ["futu"],
+            enable_merge=False,
+        )
+
+    async def get_option_volatility(
+        self,
+        ticker: str,
+        prefer_sources: Optional[list[str]] = None,
+    ) -> Any:
+        """期权波动率（入参必须为期权合约代码，非正股）。"""
+        self._validate_ticker(ticker)
+        return await self._facade._dispatch(
+            "OPTION_VOLATILITY",
+            {"ticker": ticker},
+            prefer_sources=prefer_sources or ["futu"],
+            enable_merge=False,
+        )
+
     @staticmethod
     def _validate_ticker(ticker: str) -> None:
         if not ticker or not str(ticker).strip():

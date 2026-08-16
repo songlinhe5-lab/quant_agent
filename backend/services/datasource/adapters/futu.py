@@ -71,6 +71,8 @@ class FutuDataSource:
             "FINANCIALS",  # F2: 三大财务报表（G1 真基本面基座）
             "VALUATION",  # F2: 估值明细
             "SHORT_SELLING",  # F1: 卖空数据分析
+            "OPTION_STRATEGY",  # F3: 期权策略组合
+            "OPTION_VOLATILITY",  # F3: 期权波动率
         ]
 
     # ── 远程节点状态感知 ──────────────────────────────────────

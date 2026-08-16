@@ -114,6 +114,182 @@ class OptionFundHandler:
             self.cache_mgr.set_option_chain_cache(cache_key, time.time(), result)
         return result
 
+    # ── F3: 期权策略 + 期权波动率（G4 支撑）─────────────────────────────
+    @staticmethod
+    def _is_option_code(code: str) -> bool:
+        """判定 code 是否为期权合约代码（而非正股/ETF/指数）。
+
+        Futu 期权 code 形如 ``US.AAPL260417C00190000``（正股. + 6 位日期
+        + C/P + 8 位行权价），正股形如 ``US.AAPL`` / ``HK.00700``。
+        用于 F3-2 入参互斥校验：两接口入参正好相反，传错需报可读错误。
+        """
+        if not code or "." not in code:
+            return False
+        tail = code.split(".", 1)[1]
+        # 正股/ETF/指数：纯字母或数字（如 AAPL / 00700），无日期+CP 结构
+        import re
+
+        return bool(re.search(r"\d{6}[CP]\d+", tail))
+
+    @with_global_retry
+    async def get_option_strategy(
+        self,
+        ticker: str,
+        strategy_type: str = "STRANGLE",
+        spread: int = 5,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """F3-1 期权策略组合（入参必须为正股/ETF/指数，非期权 code）。
+
+        get_option_strategy(underlying, option_strategy=, spread=) → (ret, data)
+        """
+        if is_unsupported_func and is_unsupported_func(ticker):
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "富途原生不支持该大类资产"}
+
+        market_ticker = format_ticker_func(ticker) if format_ticker_func else ticker
+        if not market_ticker:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+
+        # F3-2 入参互斥校验：此接口要求正股/ETF/指数
+        if self._is_option_code(market_ticker):
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "code": market_ticker,
+                "message": (
+                    "get_option_strategy 需传入正股/ETF/指数代码（如 US.AAPL），"
+                    f"而非期权合约代码（{market_ticker}）。期权波动率请用 get_option_volatility。"
+                ),
+            }
+
+        if self.conn_mgr.quote_ctx is None:
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 未连接",
+                "code": market_ticker,
+            }
+        if self.conn_mgr.status != "CONNECTED":
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 重连中，请稍后重试",
+                "code": market_ticker,
+            }
+
+        try:
+            from futu import OptionStrategyType
+
+            strat = getattr(OptionStrategyType, str(strategy_type).upper(), OptionStrategyType.STRANGLE)
+            ret, data = await asyncio.to_thread(
+                self.conn_mgr.quote_ctx.get_option_strategy,
+                market_ticker,
+                option_strategy=strat,
+                spread=int(spread),
+            )
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {
+                    "status": "error",
+                    "source": "futu",
+                    "ticker": ticker,
+                    "message": f"期权策略获取失败: {data}",
+                    "code": market_ticker,
+                }
+
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [{k: safe_float(v) if isinstance(v, (int, float)) else v for k, v in r.items()} for r in rows]
+            return {
+                "status": "success",
+                "source": "futu",
+                "ticker": ticker,
+                "code": market_ticker,
+                "strategy_type": str(strategy_type).upper(),
+                "spread": int(spread),
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_option_strategy 失败 %s: %s", market_ticker, e)
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": market_ticker}
+
+    @with_global_retry
+    async def get_option_volatility(
+        self,
+        ticker: str,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """F3-1 期权波动率（入参必须为期权合约代码，非正股）。
+
+        get_option_volatility(opt_code) → (ret, data)。若只给正股，自动从
+        期权链取首个样本 code（graceful fallback，但仍优先尊重显式期权 code）。
+        """
+        if is_unsupported_func and is_unsupported_func(ticker):
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "富途原生不支持该大类资产"}
+
+        market_ticker = format_ticker_func(ticker) if format_ticker_func else ticker
+        if not market_ticker:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+
+        # F3-2 入参互斥校验：此接口要求期权 code
+        if not self._is_option_code(market_ticker):
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "code": market_ticker,
+                "message": (
+                    "get_option_volatility 需传入期权合约代码（如 US.AAPL260417C00190000），"
+                    f"而非正股代码（{market_ticker}）。期权策略请用 get_option_strategy。"
+                ),
+            }
+
+        if self.conn_mgr.quote_ctx is None:
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 未连接",
+                "code": market_ticker,
+            }
+        if self.conn_mgr.status != "CONNECTED":
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 重连中，请稍后重试",
+                "code": market_ticker,
+            }
+
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_option_volatility, market_ticker)
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {
+                    "status": "error",
+                    "source": "futu",
+                    "ticker": ticker,
+                    "message": f"期权波动率获取失败: {data}",
+                    "code": market_ticker,
+                }
+
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [{k: safe_float(v) if isinstance(v, (int, float)) else v for k, v in r.items()} for r in rows]
+            return {
+                "status": "success",
+                "source": "futu",
+                "ticker": ticker,
+                "code": market_ticker,
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_option_volatility 失败 %s: %s", market_ticker, e)
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": market_ticker}
+
     async def _enrich_option_chain_snapshot(self, market_ticker: str, chain_data: pd.DataFrame) -> pd.DataFrame:
         """用 get_market_snapshot 为期权链补充 IV / Greeks / 买卖价 / 量仓。
 

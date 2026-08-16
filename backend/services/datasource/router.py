@@ -115,6 +115,9 @@ _FUTU_ACTION_MAP = {
     "valuation": "VALUATION",
     # F1: 卖空数据分析（港股/美股卖空榜 + 每日卖空量）
     "short_selling": "SHORT_SELLING",
+    # F3: 期权策略 + 期权波动率（G4 支撑）
+    "option_strategy": "OPTION_STRATEGY",
+    "option_volatility": "OPTION_VOLATILITY",
 }
 
 # 主服务内部 fetch_type -> 子服务 action 映射 (Finnhub)
