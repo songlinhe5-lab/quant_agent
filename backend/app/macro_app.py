@@ -365,6 +365,17 @@ async def get_economic_calendar_facade(
     return data
 
 
+async def get_fed_watch_panel(prefer_sources: list[str] | None = None):
+    """G5：FedWatch 面板（Facade 防御式聚合，Futu FedWatch → 政策斜率）。"""
+    from backend.services.datasource.business.macro import macro_data_service
+
+    res = await macro_data_service.get_fed_watch_panel(prefer_sources=prefer_sources)
+    data = res.data if hasattr(res, "data") else res
+    if isinstance(data, dict) and data.get("status") == "error":
+        raise AppError(status_code=502, detail=data.get("message"))
+    return data
+
+
 # ── 宏观经济序列 (FRED) ───────────────────────────────────────────────────
 
 

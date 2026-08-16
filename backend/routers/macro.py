@@ -25,6 +25,7 @@ from backend.app.macro_app import (
     get_data_center_dashboard,
     get_earnings_calendar,
     get_economic_calendar_facade,
+    get_fed_watch_panel,
     get_macro_assets,
     get_macro_calendar,
     get_macro_news,
@@ -65,6 +66,14 @@ async def get_economic_calendar_facade_route(
 ):
     """宏观日历（Facade 聚合 fred/dbnomics/rbi，CPI actual 互补回填）"""
     return await get_economic_calendar_facade(days_ahead, days_back, prefer_sources)
+
+
+@router.get("/fed-watch")
+async def get_fed_watch_panel_route(
+    prefer_sources: list[str] | None = Query(None, description="临时偏好源（futu）"),
+):
+    """G5：FedWatch 面板（Futu FedWatch → 下一会议隐含利率 + 政策斜率）"""
+    return await get_fed_watch_panel(prefer_sources)
 
 
 @router.get("/sentiment-history")
