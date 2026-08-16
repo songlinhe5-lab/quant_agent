@@ -29,6 +29,28 @@ class QuantBaseException(Exception):
         super().__init__(msg)
 
 
+class DataSourceError(QuantBaseException):
+    """数据源层错误（合并失败 / 单源崩溃 / 全部失败）。
+
+    facade 历来以 ``message`` + ``source`` 关键字构造，故此处做兼容映射：
+    ``message`` -> ``msg``，``source`` -> ``data["source"]``。
+    """
+
+    def __init__(
+        self,
+        code: ErrorCode = ErrorCode.INTERNAL_ERROR,
+        message: str = "数据源错误",
+        source: str = "",
+        *,
+        data: Any = None,
+        trace_id: Optional[str] = None,
+    ):
+        merged_data = {"source": source}
+        if isinstance(data, dict):
+            merged_data.update(data)
+        super().__init__(code=code, msg=message, data=merged_data, trace_id=trace_id)
+
+
 # ─────────────────────────────────────────
 #  认证 / 鉴权异常（1xxx）
 # ─────────────────────────────────────────

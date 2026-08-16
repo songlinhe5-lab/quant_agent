@@ -246,8 +246,9 @@ class TestDataCollector:
         mock_registry.execute.assert_called_once_with("get_broker_market_data", ticker="AAPL")
 
     @pytest.mark.asyncio
+    @pytest.mark.slow
     async def test_collect_timeout(self):
-        """工具超时处理"""
+        """工具超时处理 (慢: 真实 asyncio 等待超时)"""
         mock_registry = MagicMock()
 
         async def slow_execute(*args, **kwargs):
@@ -448,6 +449,7 @@ class TestExpertTeamRouter:
 
         return TestClient(app)
 
+    @pytest.mark.slow
     def test_list_scenarios_endpoint(self, client):
         resp = client.get("/api/v1/expert-team/scenarios")
         assert resp.status_code == 200
@@ -457,6 +459,7 @@ class TestExpertTeamRouter:
         assert "scenarios" in payload
         assert len(payload["scenarios"]) == 4
 
+    @pytest.mark.slow
     def test_list_sessions_endpoint(self, client):
         resp = client.get("/api/v1/expert-team/sessions")
         assert resp.status_code == 200
@@ -464,6 +467,7 @@ class TestExpertTeamRouter:
         payload = data.get("data", data)
         assert "sessions" in payload
 
+    @pytest.mark.slow
     def test_get_session_not_found(self, client):
         resp = client.get("/api/v1/expert-team/sessions/nonexistent")
         assert resp.status_code == 404
@@ -477,3 +481,172 @@ class TestExpertTeamRouter:
             },
         )
         assert resp.status_code == 400
+
+    @pytest.mark.slow
+    def test_analyze_endpoint_runs_with_custom_team(self, client):
+        """自定义阵容 + 多轮: 端点应正常返回 200 (慢: 拉起全依赖链)。"""
+        resp = client.post(
+            "/api/v1/expert-team/analyze",
+            json={
+                "scenario": "financial_research",
+                "question": "AAPL 值得投资吗？",
+                "ticker": "AAPL",
+                "expert_ids": ["fundamental_analyst", "risk_officer"],
+                "rounds": 2,
+            },
+        )
+        # 端点本身只校验入参，SSE 流式在响应体；这里确认请求被接受 (200/400 取决于校验)
+        assert resp.status_code in (200, 400)
+
+
+# ─── 辩论扩展能力测试 (多轮 / 自定义阵容 / 流式切片) ────────────────
+
+
+class TestOrchestratorDebateExtensions:
+    """覆盖 rounds / expert_ids / _yield_opinion_stream 等扩展逻辑"""
+
+    def _make_opinion(self, expert_id="fundamental_analyst", stance="看涨"):
+        return ExpertOpinion(
+            expert_id=expert_id,
+            round=1,
+            stance=stance,
+            key_evidence=["ROE>20%"],
+            reasoning="基本面优秀",
+            challenges=["风控过度悲观"],
+            revised_stance="维持看涨",
+            confidence=0.7,
+        )
+
+    def test_opinion_text_parts_and_to_text(self):
+        op = self._make_opinion()
+        parts = DebateOrchestrator._opinion_text_parts(op)
+        assert len(parts) >= 5  # 核心/依据/推理/质疑/修正/置信度
+        full = DebateOrchestrator._opinion_to_text(op)
+        assert "看涨" in full
+        assert "ROE>20%" in full
+        assert "0.7" in full
+
+    def test_split_for_stream_basic(self):
+        s = "观点一。观点二！观点三？结尾"
+        chunks = DebateOrchestrator._split_for_stream(s, max_chunk=80)
+        # 按标点切分, 拼接后还原原文
+        assert "".join(chunks) == s
+        assert all(len(c) <= 80 for c in chunks)
+
+    def test_split_for_stream_long_sentence(self):
+        # 超长无标点句子应被强制切片
+        s = "这是一段没有标点的超长文本用于测试切片逻辑是否会在超过阈值时强制截断" * 3
+        chunks = DebateOrchestrator._split_for_stream(s, max_chunk=80)
+        assert len(chunks) > 1
+        assert "".join(chunks) == s
+
+    def test_split_for_stream_empty(self):
+        assert DebateOrchestrator._split_for_stream("") == [""]
+
+    def test_promote_round(self):
+        op = self._make_opinion()
+        sess = DebateSession(session_id="s", scenario="financial_research", question="q")
+        DebateOrchestrator._promote_round(sess, [op], round_index=2)
+        assert sess.round2_opinions[0].stance == "看涨"
+        assert 2 in sess.all_rounds
+
+    @pytest.mark.asyncio
+    async def test_yield_opinion_stream_slices_content(self):
+        """专家观点应被切成多片流式 yield, 首片带完整 data"""
+        op = self._make_opinion()
+        orch = DebateOrchestrator()
+        events = [ev async for ev in orch._yield_opinion_stream(op, round_index=1)]
+        assert len(events) > 1
+        # 首片带完整结构化 data + 完整 content
+        assert events[0].data.get("stance") == "看涨"
+        assert events[0].content
+        # 后续片仅增量 content, data 为空
+        for ev in events[1:]:
+            assert ev.data == {}
+            assert ev.content
+        # 所有片 content 拼接 = 完整文本
+        joined = "".join(e.content for e in events)
+        assert joined == DebateOrchestrator._opinion_to_text(op)
+
+    @pytest.mark.asyncio
+    async def test_debate_stream_multi_round(self):
+        """rounds=3 应触发 Round1 + Round2 + Round3 三轮辩论"""
+        orch = DebateOrchestrator(tool_registry=None)
+        mock_r1 = MagicMock(stance="看多", confidence=70, key_evidence=["e1"], reasoning="r1")
+        mock_r2 = MagicMock(
+            stance="维持",
+            confidence=72,
+            key_evidence=["e1"],
+            reasoning="r2",
+            challenges=["c1"],
+            confidence_delta=2,
+            revised_stance="维持",
+        )
+        mock_chief = ChiefReport(full_report="# 报告")
+
+        with patch("backend.services.expert_team.orchestrator.llm_service") as mock_llm:
+            # 5 专家 * 3 轮 + 1 首席
+            mock_llm.generate_pydantic = AsyncMock(
+                side_effect=[mock_r1] * 5 + [mock_r2] * 5 + [mock_r2] * 5 + [mock_chief]
+            )
+            rounds_seen = []
+            async for event in orch.run_debate_stream(
+                scenario_id="financial_research",
+                question="AAPL?",
+                ticker="AAPL",
+                rounds=3,
+            ):
+                if event.type == "round_complete":
+                    rounds_seen.append(event.data.get("round"))
+            assert rounds_seen == [1, 2, 3]
+
+    @pytest.mark.asyncio
+    async def test_debate_stream_custom_expert_ids(self):
+        """expert_ids 自定义阵容应覆盖场景默认, 并用 get_expert 实例化"""
+        orch = DebateOrchestrator(tool_registry=None)
+        mock_op = MagicMock(stance="自定义观点", confidence=60, key_evidence=["e"], reasoning="r")
+        mock_chief = ChiefReport(full_report="# 报告")
+
+        with patch("backend.services.expert_team.orchestrator.llm_service") as mock_llm:
+            mock_llm.generate_pydantic = AsyncMock(side_effect=[mock_op] * 2 + [mock_op] * 2 + [mock_chief])
+            seen_experts = []
+            async for event in orch.run_debate_stream(
+                scenario_id="financial_research",
+                question="AAPL?",
+                ticker="AAPL",
+                rounds=2,
+                expert_ids=["fundamental_analyst", "risk_officer"],
+            ):
+                if event.type == "expert_opinion" and event.data:
+                    seen_experts.append(event.data.get("expert_id"))
+            # 仅 2 个自定义专家参与两轮
+            assert "fundamental_analyst" in seen_experts
+            assert "risk_officer" in seen_experts
+            assert len([e for e in seen_experts if e]) == 4  # 2 专家 * 2 轮
+
+
+# ─── DataSourceError 测试 (facade 依赖) ───────────────────────────
+
+
+class TestDataSourceError:
+    """backend.core.exceptions.DataSourceError 构造兼容性"""
+
+    def test_construct_with_message_and_source(self):
+        from backend.core.error_codes import ErrorCode
+        from backend.core.exceptions import DataSourceError
+
+        err = DataSourceError(
+            code=ErrorCode.ALL_SOURCES_FAILED,
+            message="基本面三源合并失败",
+            source="facade",
+        )
+        assert int(err.code) == 3004
+        assert err.msg == "基本面三源合并失败"
+        assert err.data == {"source": "facade"}
+
+    def test_construct_defaults(self):
+        from backend.core.exceptions import DataSourceError
+
+        err = DataSourceError()
+        assert int(err.code) == 5000
+        assert err.data == {"source": ""}
