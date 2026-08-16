@@ -549,6 +549,27 @@ async def get_fundamental_merged(ticker: str):
     return {"status": "success", "data": res.data}
 
 
+@router.get("/short-selling/{ticker}")
+@router.get("/short-selling/{ticker}/{mode}")
+async def get_short_selling(ticker: str, mode: str = "rank"):
+    """G2 · 港股卖空拥挤度监控端点。
+
+    聚合 Futu 真卖空源（卖空榜 / 每日卖空量）+ HKEX/SFC 监管交叉验证，
+    派生卖空成交占比、拥挤度分位、挤空/崩塌告警信号。
+    T-1 红线：daily 模式当日盘后 0 行如实返回 no_data，不输出"卖空为 0"。
+    """
+    res = await data_service.get_short_selling(ticker, mode=mode)
+    if not res.is_success or not res.data:
+        err_msg = res.error.message if res.error else "未知错误"
+        return {
+            "status": "warning",
+            "message": f"[{ticker}] 卖空拥挤度数据不可用: {err_msg}",
+            "data": {},
+        }
+
+    return {"status": "success", "data": res.data}
+
+
 @router.get("/holders/{ticker}")
 async def get_top_holders(ticker: str):
     """

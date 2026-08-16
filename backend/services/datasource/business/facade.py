@@ -35,6 +35,17 @@ from backend.services.datasource import (
 )
 from backend.services.datasource.source_registry import datasource_registry
 
+
+def _to_float(v: Any) -> Optional[float]:
+    """安全转 float（None / 空 / 非数字返回 None，不臆造）。"""
+    if v is None or v == "":
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # 配置（env 可覆盖）
 # ────────────────────────────────────────────────────────────────────────────
@@ -358,6 +369,146 @@ class DataServiceFacade:
                 )
             )
         return Result.success_result(data, source="futu", remark="Futu真基本面(财报+估值)")
+
+    # ── G2: 港股卖空拥挤度监控 ──────────────────────────────────────────
+    async def get_short_selling(self, ticker: str, mode: str = "rank") -> Result:
+        """G2 · 卖空拥挤度监控（Futu 真卖空源 + HKEX/SFC 监管交叉验证）。
+
+        依赖 F1 落地的 Futu ``SHORT_SELLING`` action（``rank`` 卖空榜 / ``daily`` 每日卖空量）
+        + 已接 ``get_hk_share_margin``（HKEX 市场级卖空占比，监管交叉验证基准）。
+
+        派生指标（零幻觉：缺失不臆造，T-1 红线）：
+        - ``short_sale_ratio_median``：卖空榜中位数成交占比（市场拥挤度代理）
+        - ``cross_validation``：Futu 占比 vs HKEX 市场级 ``short_volume_ratio`` 一致性（偏差%）
+        - ``alert_signal``：占比突破阈值 → ``squeeze_candidate``（挤空候选）/ ``collapse_warning``（崩塌预警）
+
+        T-1 红线：``daily`` 模式当日盘后 0 行 → 如实标 ``no_data``，严禁输出"卖空为 0"。
+        """
+        import statistics
+
+        from backend.services.margin.hk_share import get_hk_share_margin
+
+        mode = (mode or "rank").lower()
+        if mode not in ("rank", "daily"):
+            mode = "rank"
+
+        async def _safe(label, coro):
+            try:
+                return label, await coro
+            except Exception as e:  # noqa: BLE001
+                logging.warning("get_short_selling: 源 %s 异常: %s", label, e)
+                return label, None
+
+        futu_coro = self._dispatch(
+            "SHORT_SELLING",
+            {"ticker": ticker, "sub_action": mode},
+            prefer_sources=["futu"],
+            enable_merge=False,
+        )
+        hk_coro = get_hk_share_margin()
+
+        futu_res, hk_res = await asyncio.gather(_safe("futu", futu_coro), _safe("hkex", hk_coro))
+
+        data: Dict[str, Any] = {
+            "ticker": ticker,
+            "mode": mode,
+            "sources": {},
+            "futu": None,
+            "regulatory": None,
+            "derived": None,
+        }
+
+        # ── Futu 真卖空源 ──
+        futu_payload = None
+        if isinstance(futu_res, tuple):
+            fr, _ = futu_res
+            if isinstance(fr, Result) and fr.is_success:
+                futu_payload = fr.data
+                data["sources"]["futu"] = "ok"
+            else:
+                err = fr.error.message if isinstance(fr, Result) and fr.error else "unknown"
+                data["sources"]["futu"] = f"failed: {err}"
+        if futu_payload is None:
+            return Result.error_result(
+                DataSourceError(
+                    code=ErrorCode.ALL_SOURCES_FAILED,
+                    message=f"卖空数据 Futu 源不可用: {ticker}",
+                    source="futu",
+                )
+            )
+
+        # T-1 红线：daily 0 行如实标 no_data
+        if futu_payload.get("status") == "no_data":
+            data["futu"] = futu_payload
+            data["sources"]["futu"] = "no_data"
+            data["_merged_at"] = datetime.now().isoformat()
+            return Result.success_result(data, source="facade", remark="G2卖空(T-1无数据,未臆造0)")
+
+        data["futu"] = futu_payload
+
+        # ── 监管交叉验证（HKEX/SFC 市场级占比）──
+        hk_ratio = None
+        if isinstance(hk_res, tuple):
+            hk_status, hk_payload = hk_res
+            if hk_status == "success" and hk_payload and hk_payload.get("data"):
+                hk_data = hk_payload["data"]
+                hk_ratio = hk_data.get("short_volume_ratio")
+                data["regulatory"] = {
+                    "short_volume_ratio": hk_ratio,
+                    "as_of": hk_data.get("as_of"),
+                    "sources": hk_data.get("sources", []),
+                    "note": hk_data.get("note", ""),
+                }
+                data["sources"]["hkex_sfc"] = "ok"
+            else:
+                data["sources"]["hkex_sfc"] = "unavailable"
+        else:
+            data["sources"]["hkex_sfc"] = "unavailable"
+
+        # ── 派生指标（基于 Futu 卖空榜 DataFrame）──
+        rows = futu_payload.get("data", [])
+        derived: Dict[str, Any] = {}
+        if mode == "rank" and rows:
+            ratios = []
+            for r in rows:
+                st = _to_float(r.get("short_sell_turnover"))
+                tt = _to_float(r.get("total_turnover")) or _to_float(r.get("turnover"))
+                if st is not None and tt and tt > 0:
+                    ratios.append(st / tt * 100)
+            if ratios:
+                median_ratio = statistics.median(ratios)
+                derived["short_sale_ratio_median"] = round(median_ratio, 4)
+                derived["short_sale_ratio_max"] = round(max(ratios), 4)
+                derived["short_sale_ratio_min"] = round(min(ratios), 4)
+                derived["rank_count"] = len(ratios)
+                # 拥挤度分位：中位占比越高 → 越拥挤（阈值经验值，需历史回填校准）
+                derived["crowding_level"] = "high" if median_ratio >= 15 else "mid" if median_ratio >= 8 else "low"
+
+        # 交叉验证一致性：Futu 中位占比 vs HKEX 市场级占比
+        if derived.get("short_sale_ratio_median") is not None and hk_ratio is not None:
+            dev = (derived["short_sale_ratio_median"] - hk_ratio) / hk_ratio * 100 if hk_ratio else None
+            derived["cross_validation_deviation_pct"] = round(dev, 2) if dev is not None else None
+            derived["cross_validation_consistent"] = abs(dev) < 30 if dev is not None else None
+
+        # 告警信号（供 AlertEngine 消费；实时订阅流后续迭代接）
+        alert_signal = None
+        if derived.get("crowding_level") == "high":
+            alert_signal = {
+                "type": "squeeze_candidate",
+                "severity": "warning",
+                "message": f"卖空成交占比中位 {derived['short_sale_ratio_median']}% 进入高位，挤空候选",
+            }
+        elif derived.get("cross_validation_consistent") is False:
+            alert_signal = {
+                "type": "collapse_warning",
+                "severity": "info",
+                "message": f"Futu 占比与 HKEX 监管值偏差 {derived['cross_validation_deviation_pct']}%，一致性异常",
+            }
+        derived["alert_signal"] = alert_signal
+        data["derived"] = derived
+
+        data["_merged_at"] = datetime.now().isoformat()
+        return Result.success_result(data, source="facade", remark="G2卖空拥挤度监控(三源收口)")
 
     async def get_company_news(
         self, ticker: str, days_back: int = 3, prefer_sources: Optional[list[str]] = None
