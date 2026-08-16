@@ -529,6 +529,47 @@ async def get_fundamental(ticker: str):
     return {"status": "success", "data": final_data}
 
 
+@router.get("/fundamental/merged/{ticker}")
+async def get_fundamental_merged(ticker: str):
+    """G1 · 真基本面三源合并端点。
+
+    并发聚合 Futu(财报+估值) + FMP(基本面) + YFinance(info) 三大真实源，
+    戳破旧版单源假基本面。单源失败不影响其他源（graceful degradation）。
+    返回结构含各源状态与合并时间戳，前端可据此标注数据完整度。
+    """
+    res = await data_service.get_fundamental_merged(ticker)
+    if not res.is_success or not res.data:
+        err_msg = res.error.message if res.error else "未知错误"
+        return {
+            "status": "warning",
+            "message": f"[{ticker}] 基本面三源合并均失败: {err_msg}",
+            "data": {},
+        }
+
+    return {"status": "success", "data": res.data}
+
+
+@router.get("/short-selling/{ticker}")
+@router.get("/short-selling/{ticker}/{mode}")
+async def get_short_selling(ticker: str, mode: str = "rank"):
+    """G2 · 港股卖空拥挤度监控端点。
+
+    聚合 Futu 真卖空源（卖空榜 / 每日卖空量）+ HKEX/SFC 监管交叉验证，
+    派生卖空成交占比、拥挤度分位、挤空/崩塌告警信号。
+    T-1 红线：daily 模式当日盘后 0 行如实返回 no_data，不输出"卖空为 0"。
+    """
+    res = await data_service.get_short_selling(ticker, mode=mode)
+    if not res.is_success or not res.data:
+        err_msg = res.error.message if res.error else "未知错误"
+        return {
+            "status": "warning",
+            "message": f"[{ticker}] 卖空拥挤度数据不可用: {err_msg}",
+            "data": {},
+        }
+
+    return {"status": "success", "data": res.data}
+
+
 @router.get("/holders/{ticker}")
 async def get_top_holders(ticker: str):
     """
@@ -627,3 +668,23 @@ async def get_insider_transactions(ticker: str, limit: int = 50):
         "data": mock_transactions[:limit],
         "source": "mock_insider_data",
     }
+
+
+@router.get("/analyst-vs-fundamental/{ticker}")
+async def get_analyst_vs_fundamental(ticker: str):
+    """G7 · 卖方分析师共识 vs 实际基本面（交叉验证面板）。
+
+    并发聚合 Futu 分析师共识（F4-4，卖方观点）与 G1 真基本面三源合并，
+    派生分析师目标价上行空间并给出交叉验证结论。
+    注意：分析师共识是卖方观点而非事实，响应显式标注 consensus_is_third_party_expectation。
+    """
+    res = await data_service.get_analyst_vs_actual(ticker)
+    if not res.is_success or not res.data:
+        err_msg = res.error.message if res.error else "未知错误"
+        return {
+            "status": "warning",
+            "message": f"[{ticker}] 卖方共识vs基本面交叉验证不可用: {err_msg}",
+            "data": {},
+        }
+
+    return {"status": "success", "data": res.data}

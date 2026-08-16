@@ -27,7 +27,12 @@ class FundamentalDataTool(BaseTool):
         backend_url = get_backend_api_url()
         # 强制格式化 ticker
         ticker = self.normalize_ticker(ticker)
-        url = f"{backend_url}/market/fundamental/{ticker}"
-        # RL-14: 限流感知智能重试
+        # G1 · 优先走三源合并端点（戳破单源假基本面）；旧端点作为兜底（兼容未部署节点）
+        url = f"{backend_url}/market/fundamental/merged/{ticker}"
         async with SecureAsyncClient(timeout=30.0) as client:
-            return await self.rate_limit_aware_request(client, "GET", url, timeout=30.0)
+            resp = await self.rate_limit_aware_request(client, "GET", url, timeout=30.0)
+            # merged 端点未部署（404）或全源失败时，回退旧单源端点
+            if isinstance(resp, dict) and resp.get("status") in ("error", "warning", None):
+                fallback_url = f"{backend_url}/market/fundamental/{ticker}"
+                return await self.rate_limit_aware_request(client, "GET", fallback_url, timeout=30.0)
+            return resp

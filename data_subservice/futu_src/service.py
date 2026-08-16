@@ -11,7 +11,7 @@ Futu 主服务模块
 
 import logging
 import threading
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from futu import ModifyOrderOp, TrdMarket, TrdSide
 
@@ -20,6 +20,7 @@ from .connection_manager import ConnectionManager
 from .option_fund_handler import OptionFundHandler
 from .quote_handler import QuoteHandler
 from .screener_handler import ScreenerHandler
+from .short_selling_handler import ShortSellingHandler
 from .source_router import FutuSourceRouter
 from .trade_handler import TradeHandler
 from .utils import format_ticker, is_futu_unsupported
@@ -52,6 +53,7 @@ class FutuService:
         # 初始化各个 Handler
         self.quote_handler = QuoteHandler(self.conn_mgr, self.cache_mgr)
         self.option_fund_handler = OptionFundHandler(self.conn_mgr, self.cache_mgr)
+        self.short_selling_handler = ShortSellingHandler(self.conn_mgr)
         self.screener_handler = ScreenerHandler(self.conn_mgr)
         self.trade_handler = TradeHandler(self.conn_mgr)
 
@@ -202,6 +204,138 @@ class FutuService:
             ticker=ticker,
             format_ticker_func=format_ticker,
             is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_financials(
+        self,
+        ticker: str,
+        statement_type: str = None,
+        financial_type: str = None,
+        currency_code: str = None,
+        num: int = 1,
+    ) -> Dict[str, Any]:
+        return await self._route(
+            "fetch_financials",
+            {
+                "ticker": ticker,
+                "statement_type": statement_type,
+                "financial_type": financial_type,
+                "currency_code": currency_code,
+                "num": num,
+            },
+            self.option_fund_handler.get_financials_statements,
+            ticker=ticker,
+            statement_type=statement_type,
+            financial_type=financial_type,
+            currency_code=currency_code,
+            num=num,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_valuation(self, ticker: str) -> Dict[str, Any]:
+        return await self._route(
+            "fetch_valuation",
+            {"ticker": ticker},
+            self.option_fund_handler.get_valuation_detail,
+            ticker=ticker,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    # ── F1: 卖空数据分析 ──────────────────────────────────────────────
+    async def get_short_selling_rank(
+        self, ticker: str, market: Optional[str] = None, count: int = 10
+    ) -> Dict[str, Any]:
+        """F1-1 卖空成交榜（港股/美股/沪深）。"""
+        return await self._route(
+            "fetch_short_selling_rank",
+            {"ticker": ticker, "market": market, "count": count},
+            self.short_selling_handler.get_short_selling_rank,
+            ticker=ticker,
+            market=market,
+            count=count,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_daily_short_volume(self, ticker: str, date: Optional[str] = None) -> Dict[str, Any]:
+        """F1-2 每日卖空量（T-1 结算语义）。"""
+        return await self._route(
+            "fetch_daily_short_volume",
+            {"ticker": ticker, "date": date},
+            self.short_selling_handler.get_daily_short_volume,
+            ticker=ticker,
+            date=date,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    # ── F3: 期权策略 + 期权波动率（G4 支撑）─────────────────────────────
+    async def get_option_strategy(
+        self, ticker: str, strategy_type: str = "STRANGLE", spread: int = 5
+    ) -> Dict[str, Any]:
+        """F3 期权策略组合（入参必须为正股/ETF/指数）。"""
+        return await self._route(
+            "fetch_option_strategy",
+            {"ticker": ticker, "strategy_type": strategy_type, "spread": spread},
+            self.option_fund_handler.get_option_strategy,
+            ticker=ticker,
+            strategy_type=strategy_type,
+            spread=spread,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_option_volatility(self, ticker: str) -> Dict[str, Any]:
+        """F3 期权波动率（入参必须为期权合约代码）。"""
+        return await self._route(
+            "fetch_option_volatility",
+            {"ticker": ticker},
+            self.option_fund_handler.get_option_volatility,
+            ticker=ticker,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    # ── F4: P1 资金分布 / FedWatch / 热力图 / 分析师共识 ──────────────────
+    async def get_capital_distribution(self, ticker: str) -> Dict[str, Any]:
+        """F4-1 主力筹码分层（8 档 in/out，支撑 G3 背离信号）。"""
+        return await self._route(
+            "fetch_capital_distribution",
+            {"ticker": ticker},
+            self.option_fund_handler.get_capital_distribution,
+            ticker=ticker,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_research_analyst_consensus(self, ticker: str) -> Dict[str, Any]:
+        """F4-4 分析师共识（卖方观点，非事实，G7 引用约束）。"""
+        return await self._route(
+            "fetch_analyst_consensus",
+            {"ticker": ticker},
+            self.option_fund_handler.get_research_analyst_consensus,
+            ticker=ticker,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_fed_watch(self) -> Dict[str, Any]:
+        """F4-2 FedWatch FOMC 隐含概率（市场级，支撑 G5）。"""
+        return await self._route(
+            "fetch_fed_watch",
+            {},
+            self.quote_handler.get_fed_watch_target_rate,
+        )
+
+    async def get_heat_map(self, market: str = "HK") -> Dict[str, Any]:
+        """F4-3 板块热力图（需 market 参数，支撑 G6）。"""
+        return await self._route(
+            "fetch_heat_map",
+            {"market": market},
+            self.quote_handler.get_heat_map_data,
+            market=market,
         )
 
     async def get_warrant_chain(self, ticker: str) -> Dict[str, Any]:

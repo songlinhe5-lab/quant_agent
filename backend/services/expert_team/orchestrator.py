@@ -45,9 +45,15 @@ class DebateOrchestrator:
         ticker: Optional[str] = None,
         code_context: Optional[str] = None,
         extra_context: Optional[dict[str, Any]] = None,
+        rounds: int = 2,
+        expert_ids: Optional[list[str]] = None,
     ) -> AsyncGenerator[StreamEvent, None]:
         """
         执行完整辩论流程，以 SSE 事件流输出进度。
+
+        Args:
+            rounds: 辩论轮数 (1=仅独立研判; 2=独立+交叉辩论; 3-4=多轮交叉深化)
+            expert_ids: 自定义专家阵容 (覆盖场景默认阵容); 为空则用场景默认
 
         Yields:
             StreamEvent: 各阶段进度事件
@@ -56,7 +62,7 @@ class DebateOrchestrator:
             session_id=str(uuid.uuid4())[:8],
             scenario=scenario_id,
             question=question,
-            context={"ticker": ticker, "code_context": code_context is not None},
+            context={"ticker": ticker, "code_context": code_context is not None, "rounds": rounds},
             status="pending",
             created_at=datetime.now(timezone.utc).isoformat(),
         )
@@ -64,13 +70,20 @@ class DebateOrchestrator:
         try:
             # ─── 阶段 0: 初始化专家团 ───────────────────────────
             template = get_scenario(scenario_id)
-            experts = instantiate_expert_team(scenario_id)
+            if expert_ids:
+                # 自定义阵容: 按传入顺序实例化 (保留 scenario 的 data_requirements/chief_prompt)
+                from backend.services.expert_team.expert_registry import get_expert
+
+                experts = [get_expert(eid) for eid in expert_ids]
+            else:
+                experts = instantiate_expert_team(scenario_id)
             session.experts = experts
 
             yield StreamEvent(
                 type="status",
-                message=f"专家团已组建: {', '.join(e.name for e in experts)}",
-                data={"experts": [e.model_dump() for e in experts]},
+                message=f"专家团已组建: {', '.join(e.name for e in experts)}"
+                + (f" · {rounds} 轮辩论" if rounds > 1 else " · 单轮研判"),
+                data={"experts": [e.model_dump() for e in experts], "rounds": rounds},
             )
 
             # ─── 阶段 1: 采集共享数据 ──────────────────────────
@@ -101,11 +114,8 @@ class DebateOrchestrator:
             session.round1_opinions = round1_opinions
 
             for opinion in round1_opinions:
-                yield StreamEvent(
-                    type="expert_opinion",
-                    message=f"{opinion.expert_id} 完成独立研判",
-                    data=opinion.model_dump(),
-                )
+                async for ev in self._yield_opinion_stream(opinion, round_index=1):
+                    yield ev
 
             yield StreamEvent(
                 type="round_complete",
@@ -113,36 +123,38 @@ class DebateOrchestrator:
                 data={"round": 1, "opinion_count": len(round1_opinions)},
             )
 
-            # ─── 阶段 3: Round 2 交叉辩论 ──────────────────────
-            session.status = "round2"
-            yield StreamEvent(type="status", message="Round 2: 交叉辩论中...")
+            # ─── 阶段 3: Round 2..N 交叉辩论 (多轮深化) ────────
+            latest_opinions = round1_opinions
+            for r in range(2, rounds + 1):
+                session.status = f"round{r}"
+                yield StreamEvent(type="status", message=f"Round {r}: 交叉辩论中...")
 
-            round2_opinions = await self._run_round2(session, experts, question, shared_text, round1_opinions)
-            session.round2_opinions = round2_opinions
+                round_opinions = await self._run_round2(session, experts, question, shared_text, latest_opinions)
+                # 用本轮输出覆盖上一轮 (便于合成阶段读取最新观点)
+                self._promote_round(session, round_opinions, round_index=r)
+                latest_opinions = round_opinions
 
-            for opinion in round2_opinions:
+                for opinion in round_opinions:
+                    async for ev in self._yield_opinion_stream(opinion, round_index=r):
+                        yield ev
+
                 yield StreamEvent(
-                    type="expert_opinion",
-                    message=f"{opinion.expert_id} 完成交叉辩论",
-                    data=opinion.model_dump(),
+                    type="round_complete",
+                    message=f"Round {r} 完成",
+                    data={"round": r, "opinion_count": len(round_opinions)},
                 )
-
-            yield StreamEvent(
-                type="round_complete",
-                message="Round 2 完成",
-                data={"round": 2, "opinion_count": len(round2_opinions)},
-            )
 
             # ─── 阶段 4: 首席收敛 ─────────────────────────────
             session.status = "synthesis"
             yield StreamEvent(type="status", message="首席分析师正在收敛最终报告...")
 
-            chief_report = await self._run_synthesis(session, question, round1_opinions, round2_opinions)
+            chief_report = await self._run_synthesis(session, question, round1_opinions, latest_opinions)
             session.chief_report = chief_report
 
             yield StreamEvent(
                 type="chief_report",
                 message="首席分析师报告完成",
+                content=chief_report.full_report,
                 data=chief_report.model_dump(),
             )
 
@@ -165,6 +177,72 @@ class DebateOrchestrator:
                 message=f"辩论流程异常: {str(e)}",
                 data={"session_id": session.session_id},
             )
+
+    # ─── 辅助方法 ─────────────────────────────────────────────
+
+    @staticmethod
+    def _opinion_to_text(opinion: ExpertOpinion) -> str:
+        """把专家观点拼为人读文本 (供前端流式渲染)"""
+        return "\n\n".join(DebateOrchestrator._opinion_text_parts(opinion))
+
+    @staticmethod
+    def _opinion_text_parts(opinion: ExpertOpinion) -> list[str]:
+        """把专家观点拆为段落列表 (供逐段流式推送)"""
+        parts: list[str] = [f"**核心观点**: {opinion.stance}"]
+        if opinion.key_evidence:
+            parts.append("**关键依据**:\n- " + "\n- ".join(opinion.key_evidence))
+        if opinion.reasoning:
+            parts.append(f"**推理**:\n{opinion.reasoning}")
+        if opinion.challenges:
+            parts.append("**对其他专家的质疑**:\n- " + "\n- ".join(opinion.challenges))
+        if opinion.revised_stance:
+            parts.append(f"**修正后观点**: {opinion.revised_stance}")
+        parts.append(f"*置信度: {opinion.confidence}*")
+        return parts
+
+    @staticmethod
+    def _split_for_stream(text: str, max_chunk: int = 80) -> list[str]:
+        """把文本切成小片段 (按句子/换行优先, 超长无标点硬切), 制造打字机效果"""
+        import re
+
+        if not text:
+            return [""]
+        raw = re.split(r"(?<=[。！？!?\n])", text)
+        chunks: list[str] = []
+        buf = ""
+        for seg in raw:
+            if not seg:
+                continue
+            buf += seg
+            # 缓冲达阈值: 先按 max_chunk 硬切已累积部分, 余下继续累积
+            while len(buf) >= max_chunk:
+                chunks.append(buf[:max_chunk])
+                buf = buf[max_chunk:]
+        if buf:
+            chunks.append(buf)
+        return chunks or [text]
+
+    async def _yield_opinion_stream(
+        self, opinion: ExpertOpinion, round_index: int
+    ) -> "AsyncGenerator[StreamEvent, None]":
+        """把单个专家观点切成多片流式 yield (首片带完整 data, 后续仅增量 content)"""
+        full_text = self._opinion_to_text(opinion)
+        parts = self._split_for_stream(full_text)
+        for i, chunk in enumerate(parts):
+            yield StreamEvent(
+                type="expert_opinion",
+                message=f"{opinion.expert_id} 撰写中 ({i + 1}/{len(parts)})",
+                # 首片附带完整结构化数据 + 完整文本, 后续片仅增量 content
+                content=chunk,
+                data=opinion.model_dump() if i == 0 else {},
+            )
+
+    @staticmethod
+    def _promote_round(session: DebateSession, opinions: list[ExpertOpinion], round_index: int) -> None:
+        """把最新一轮观点写入 session (覆盖 round2_opinions, 便于持久化展示)"""
+        session.__dict__.setdefault("all_rounds", {})
+        session.all_rounds[round_index] = [o.model_dump() for o in opinions]
+        session.round2_opinions = opinions
 
     # ─── Round 1: 独立研判 ─────────────────────────────────────
 

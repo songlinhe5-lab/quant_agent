@@ -109,7 +109,7 @@ def get_economic_calendar(days_ahead: int = 7, days_back: int = 0) -> Dict[str, 
 def get_future_calendar() -> List[dict]:
     """获取期货日历。"""
     try:
-        df = ak.futures_rule_summary()
+        df = ak.futures_rule()
         if df is None or df.empty:
             return []
         return df.head(30).to_dict(orient="records")

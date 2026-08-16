@@ -43,6 +43,7 @@
 | DS-FUTU-OPT | [TODO-FUTU-OPTION-COMBO-MARKETS.md](./TODO-FUTU-OPTION-COMBO-MARKETS.md) | Futu 组合期权：行情三件套 P0；交易类预留（沙箱）；新马日暂缓 | P1 |
 | DS-FUTU-EVENT | [TODO-FUTU-EVENT-CONTRACT.md](./TODO-FUTU-EVENT-CONTRACT.md) | Futu 预测市场：隐含概率数据源（行情侧完整、交易侧缺失），发现链+快照先接 | P2 |
 | DS-FUTU-SEARCH | [TODO-FUTU-SEARCH-MACRO.md](./TODO-FUTU-SEARCH-MACRO.md) | Futu 行情搜索（名称→代码）+ FedWatch 为真增量；指标列表/榜单/产业链跳过 | P1 |
+| **DS-FUTU-CAP** | [**TODO-FUTU-INTERFACE-CAPABILITY.md**](./TODO-FUTU-INTERFACE-CAPABILITY.md) | **全局地图 + 功能级 SSOT**（上列 4 份为分册）。2026-08-16 本机实测 26/26；**F0~F5 接口接入 + G1~G8 产品功能**：G1 真基本面收口 / G2 港股卖空拥挤度 / G3 主力筹码分层 / G4 期权策略损益 / G5 FedWatch / G6 板块热力图 / G7 预期差 / G8 数据正确性基座。⚠️ 受 **BE-ARCH-08a** 阻塞（主镜像 futu 硬依赖未修则新功能无法上线） | **P0/P1** |
 
 ---
 

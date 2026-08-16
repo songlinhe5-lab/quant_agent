@@ -114,6 +114,182 @@ class OptionFundHandler:
             self.cache_mgr.set_option_chain_cache(cache_key, time.time(), result)
         return result
 
+    # ── F3: 期权策略 + 期权波动率（G4 支撑）─────────────────────────────
+    @staticmethod
+    def _is_option_code(code: str) -> bool:
+        """判定 code 是否为期权合约代码（而非正股/ETF/指数）。
+
+        Futu 期权 code 形如 ``US.AAPL260417C00190000``（正股. + 6 位日期
+        + C/P + 8 位行权价），正股形如 ``US.AAPL`` / ``HK.00700``。
+        用于 F3-2 入参互斥校验：两接口入参正好相反，传错需报可读错误。
+        """
+        if not code or "." not in code:
+            return False
+        tail = code.split(".", 1)[1]
+        # 正股/ETF/指数：纯字母或数字（如 AAPL / 00700），无日期+CP 结构
+        import re
+
+        return bool(re.search(r"\d{6}[CP]\d+", tail))
+
+    @with_global_retry
+    async def get_option_strategy(
+        self,
+        ticker: str,
+        strategy_type: str = "STRANGLE",
+        spread: int = 5,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """F3-1 期权策略组合（入参必须为正股/ETF/指数，非期权 code）。
+
+        get_option_strategy(underlying, option_strategy=, spread=) → (ret, data)
+        """
+        if is_unsupported_func and is_unsupported_func(ticker):
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "富途原生不支持该大类资产"}
+
+        market_ticker = format_ticker_func(ticker) if format_ticker_func else ticker
+        if not market_ticker:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+
+        # F3-2 入参互斥校验：此接口要求正股/ETF/指数
+        if self._is_option_code(market_ticker):
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "code": market_ticker,
+                "message": (
+                    "get_option_strategy 需传入正股/ETF/指数代码（如 US.AAPL），"
+                    f"而非期权合约代码（{market_ticker}）。期权波动率请用 get_option_volatility。"
+                ),
+            }
+
+        if self.conn_mgr.quote_ctx is None:
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 未连接",
+                "code": market_ticker,
+            }
+        if self.conn_mgr.status != "CONNECTED":
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 重连中，请稍后重试",
+                "code": market_ticker,
+            }
+
+        try:
+            from futu import OptionStrategyType
+
+            strat = getattr(OptionStrategyType, str(strategy_type).upper(), OptionStrategyType.STRANGLE)
+            ret, data = await asyncio.to_thread(
+                self.conn_mgr.quote_ctx.get_option_strategy,
+                market_ticker,
+                option_strategy=strat,
+                spread=int(spread),
+            )
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {
+                    "status": "error",
+                    "source": "futu",
+                    "ticker": ticker,
+                    "message": f"期权策略获取失败: {data}",
+                    "code": market_ticker,
+                }
+
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [{k: safe_float(v) if isinstance(v, (int, float)) else v for k, v in r.items()} for r in rows]
+            return {
+                "status": "success",
+                "source": "futu",
+                "ticker": ticker,
+                "code": market_ticker,
+                "strategy_type": str(strategy_type).upper(),
+                "spread": int(spread),
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_option_strategy 失败 %s: %s", market_ticker, e)
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": market_ticker}
+
+    @with_global_retry
+    async def get_option_volatility(
+        self,
+        ticker: str,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """F3-1 期权波动率（入参必须为期权合约代码，非正股）。
+
+        get_option_volatility(opt_code) → (ret, data)。若只给正股，自动从
+        期权链取首个样本 code（graceful fallback，但仍优先尊重显式期权 code）。
+        """
+        if is_unsupported_func and is_unsupported_func(ticker):
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "富途原生不支持该大类资产"}
+
+        market_ticker = format_ticker_func(ticker) if format_ticker_func else ticker
+        if not market_ticker:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+
+        # F3-2 入参互斥校验：此接口要求期权 code
+        if not self._is_option_code(market_ticker):
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "code": market_ticker,
+                "message": (
+                    "get_option_volatility 需传入期权合约代码（如 US.AAPL260417C00190000），"
+                    f"而非正股代码（{market_ticker}）。期权策略请用 get_option_strategy。"
+                ),
+            }
+
+        if self.conn_mgr.quote_ctx is None:
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 未连接",
+                "code": market_ticker,
+            }
+        if self.conn_mgr.status != "CONNECTED":
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 重连中，请稍后重试",
+                "code": market_ticker,
+            }
+
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_option_volatility, market_ticker)
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {
+                    "status": "error",
+                    "source": "futu",
+                    "ticker": ticker,
+                    "message": f"期权波动率获取失败: {data}",
+                    "code": market_ticker,
+                }
+
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [{k: safe_float(v) if isinstance(v, (int, float)) else v for k, v in r.items()} for r in rows]
+            return {
+                "status": "success",
+                "source": "futu",
+                "ticker": ticker,
+                "code": market_ticker,
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_option_volatility 失败 %s: %s", market_ticker, e)
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": market_ticker}
+
     async def _enrich_option_chain_snapshot(self, market_ticker: str, chain_data: pd.DataFrame) -> pd.DataFrame:
         """用 get_market_snapshot 为期权链补充 IV / Greeks / 买卖价 / 量仓。
 
@@ -310,6 +486,149 @@ class OptionFundHandler:
         self.cache_mgr.set_fund_flow_cache(cache_key, time.time(), result)
         return result
 
+    # ── F4-1: 主力筹码分层（补 FUND_FLOW 8 档 in/out）────────────────────
+    @with_global_retry
+    async def get_capital_distribution(
+        self, ticker: str, format_ticker_func=None, is_unsupported_func=None
+    ) -> Dict[str, Any]:
+        """获取主力筹码分层（8 档 in/out 完整明细，非聚合净流入）。
+
+        支撑 G3 主力/散户背离信号。get_capital_distribution(code) → (ret, data) 二元组。
+        """
+        if is_unsupported_func and is_unsupported_func(ticker):
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "富途原生不支持该大类资产"}
+
+        market_ticker = format_ticker_func(ticker) if format_ticker_func else ticker
+        if not market_ticker:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+
+        if self.conn_mgr.quote_ctx is None:
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 未连接",
+                "code": market_ticker,
+            }
+        if self.conn_mgr.status != "CONNECTED":
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 重连中，请稍后重试",
+                "code": market_ticker,
+            }
+
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_capital_distribution, market_ticker)
+            if ret != RET_OK or not isinstance(data, pd.DataFrame) or data.empty:
+                return {
+                    "status": "error",
+                    "source": "futu",
+                    "ticker": ticker,
+                    "message": f"资金分层获取失败: {data}",
+                    "code": market_ticker,
+                }
+
+            row = data.iloc[0]
+            layers = {}
+            for lvl in ("super", "big", "mid", "small"):
+                cap_in = safe_float(row.get(f"capital_in_{lvl}"))
+                cap_out = safe_float(row.get(f"capital_out_{lvl}"))
+                layers[lvl] = {
+                    "in": cap_in,
+                    "out": cap_out,
+                    "net": (cap_in - cap_out) if cap_in is not None and cap_out is not None else None,
+                }
+            # 主力 = super + big；散户 = mid + small
+            main_net = (layers["super"]["net"] or 0) + (layers["big"]["net"] or 0)
+            retail_net = (layers["mid"]["net"] or 0) + (layers["small"]["net"] or 0)
+            update_time = row.get("update_time")
+
+            return {
+                "status": "success",
+                "source": "futu",
+                "ticker": ticker,
+                "code": market_ticker,
+                "update_time": str(update_time) if update_time is not None else None,
+                "layers": layers,
+                "main_net": main_net,  # 主力净额 = (super+big) in-out
+                "retail_net": retail_net,  # 散户净额 = (mid+small) in-out
+                # G3 背离信号：主力净流入 ∧ 散户净流出（或反向）
+                "divergence": (
+                    "main_in_retail_out"
+                    if main_net > 0 and retail_net < 0
+                    else "main_out_retail_in"
+                    if main_net < 0 and retail_net > 0
+                    else "aligned"
+                ),
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_capital_distribution 失败 %s: %s", market_ticker, e)
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": market_ticker}
+
+    # ── F4-4: 分析师共识（卖方观点，非事实）────────────────────────────
+    @with_global_retry
+    async def get_research_analyst_consensus(
+        self, ticker: str, format_ticker_func=None, is_unsupported_func=None
+    ) -> Dict[str, Any]:
+        """获取分析师共识（评级分布 / 目标价中位数）。
+
+        ⚠️ 红线：共识是卖方观点而非事实，返回结构显式标注 ``source=futu_consensus``
+        与 ``is_third_party_expectation=True``，禁止当预测结论输出（G7 引用约束）。
+        get_research_analyst_consensus(code) → (ret, data) 二元组。
+        """
+        if is_unsupported_func and is_unsupported_func(ticker):
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "富途原生不支持该大类资产"}
+
+        market_ticker = format_ticker_func(ticker) if format_ticker_func else ticker
+        if not market_ticker:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+
+        if self.conn_mgr.quote_ctx is None:
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 未连接",
+                "code": market_ticker,
+            }
+        if self.conn_mgr.status != "CONNECTED":
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 重连中，请稍后重试",
+                "code": market_ticker,
+            }
+
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_research_analyst_consensus, market_ticker)
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {
+                    "status": "error",
+                    "source": "futu",
+                    "ticker": ticker,
+                    "message": f"分析师共识获取失败: {data}",
+                    "code": market_ticker,
+                }
+
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [{k: safe_float(v) if isinstance(v, (int, float)) else v for k, v in r.items()} for r in rows]
+
+            return {
+                "status": "success",
+                "source": "futu_consensus",
+                "is_third_party_expectation": True,
+                "ticker": ticker,
+                "code": market_ticker,
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_research_analyst_consensus 失败 %s: %s", market_ticker, e)
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": market_ticker}
+
     @with_global_retry
     async def get_fundamental(self, ticker: str, format_ticker_func=None, is_unsupported_func=None) -> Dict[str, Any]:
         """获取基本面数据"""
@@ -363,6 +682,153 @@ class OptionFundHandler:
         result["data"] = {k: v for k, v in result["data"].items() if v is not None}
         self.cache_mgr.set_fundamental_cache(cache_key, time.time(), result)
         return result
+
+    # ── F2: 三大财务报表（G1 真基本面基座）──────────────────────────────
+    # 富途返回 field_id 是英文枚举（如 CASH_EQUIVALENTS），前端/用户需中文字段名。
+    # 这里建映射表，缺失的 field_id 保留原值透传（零幻觉：不臆造中文名）。
+    FINANCIAL_FIELD_MAP = {
+        # 资产负债表
+        "CASH_EQUIVALENTS": "现金及现金等价物",
+        "SHORT_TERM_INVESTMENT": "短期投资",
+        "TRADE_RECEIVABLE": "应收账款",
+        "INVENTORY": "存货",
+        "TOTAL_CURRENT_ASSETS": "流动资产合计",
+        "TOTAL_ASSETS": "资产总计",
+        "TRADE_PAYABLE": "应付账款",
+        "TOTAL_CURRENT_LIABILITIES": "流动负债合计",
+        "TOTAL_LIABILITIES": "负债合计",
+        "TOTAL_EQUITY": "所有者权益合计",
+        "RETAINED_EARNINGS": "留存收益",
+        # 利润表
+        "TOTAL_OPERATING_REVENUE": "营业总收入",
+        "TOTAL_OPERATING_COST": "营业总成本",
+        "GROSS_PROFIT": "毛利",
+        "OPERATING_PROFIT": "营业利润",
+        "NET_PROFIT": "净利润",
+        "BASIC_EPS": "基本每股收益",
+        "DILUTED_EPS": "稀释每股收益",
+        # 现金流量表
+        "NET_CASH_FLOW_FROM_OPERATING": "经营活动净现金流",
+        "NET_CASH_FLOW_FROM_INVESTING": "投资活动净现金流",
+        "NET_CASH_FLOW_FROM_FINANCING": "筹资活动净现金流",
+        "FREE_CASH_FLOW": "自由现金流",
+    }
+
+    async def get_financials_statements(
+        self,
+        ticker,
+        statement_type=None,
+        financial_type=None,
+        currency_code=None,
+        num=1,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """获取三大财务报表（资产负债表/利润表/现金流量表）。
+
+        入参:
+          statement_type: "BALANCE_SHEET" | "INCOME_STATEMENT" | "CASH_FLOW"（None 取默认）
+          financial_type: "ANNUAL" | "INTERIM" | "QUARTER"（None 取默认）
+          currency_code:  "HKD" | "USD" | ...（None 取原始货币）
+          num:            返回期数（默认 1，即最近一期）
+        """
+        if is_unsupported_func and is_unsupported_func(ticker):
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "标的非港股/美股/沪深，富途不支持",
+            }
+        code = format_ticker_func(ticker) if format_ticker_func else ticker
+        if not code:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+
+        ctx = self.conn.get_quote_ctx()
+        if ctx is None:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "Futu OpenD 未连接", "code": code}
+
+        try:
+            # 10.10: get_financials_statements(code, statement_type, financial_type,
+            #        currency_code, next_key, num) — 收字符串/None，非枚举类
+            ret, data = ctx.get_financials_statements(
+                code,
+                statement_type=statement_type,
+                financial_type=financial_type,
+                currency_code=currency_code,
+                num=num,
+            )
+            if ret != RET_OK:
+                return {"status": "error", "source": "futu", "ticker": ticker, "message": str(data), "code": code}
+
+            # 字段级映射：field_id -> 中文
+            if hasattr(data, "to_dict"):
+                rows = data.to_dict("records")
+            else:
+                rows = list(data)
+            mapped = []
+            for r in rows:
+                field_id = r.get("field_id")
+                r = dict(r)
+                r["field_name_cn"] = self.FINANCIAL_FIELD_MAP.get(field_id, field_id)
+                mapped.append(r)
+
+            return {
+                "status": "success",
+                "source": "futu",
+                "ticker": ticker,
+                "code": code,
+                "statement_type": statement_type,
+                "financial_type": financial_type,
+                "count": len(mapped),
+                "data": mapped,
+            }
+        except Exception as e:
+            logger.error(f"❌ get_financials_statements 失败 {code}: {e}")
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": code}
+
+    # ── F2: 估值明细（G1 真基本面基座）──────────────────────────────────
+    async def get_valuation_detail(
+        self,
+        ticker,
+        format_ticker_func=None,
+        is_unsupported_func=None,
+    ) -> Dict[str, Any]:
+        """获取估值明细（PE/PB/股息率/市值等逐指标）。"""
+        if is_unsupported_func and is_unsupported_func(ticker):
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "标的非港股/美股/沪深，富途不支持",
+            }
+        code = format_ticker_func(ticker) if format_ticker_func else ticker
+        if not code:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+
+        ctx = self.conn.get_quote_ctx()
+        if ctx is None:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "Futu OpenD 未连接", "code": code}
+
+        try:
+            ret, data = ctx.get_valuation_detail(code)
+            if ret != RET_OK:
+                return {"status": "error", "source": "futu", "ticker": ticker, "message": str(data), "code": code}
+
+            if hasattr(data, "to_dict"):
+                rows = data.to_dict("records")
+            else:
+                rows = list(data)
+            return {
+                "status": "success",
+                "source": "futu",
+                "ticker": ticker,
+                "code": code,
+                "count": len(rows),
+                "data": rows,
+            }
+        except Exception as e:
+            logger.error(f"❌ get_valuation_detail 失败 {code}: {e}")
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": code}
 
     @with_global_retry
     async def get_warrant_chain(

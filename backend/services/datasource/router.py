@@ -110,6 +110,19 @@ _FUTU_ACTION_MAP = {
     # BE-ARCH-08c⑤: 前端 WS 订阅回传 — subscribe/unsubscribe 通知 OpenD 实时订阅
     "subscribe": "SUBSCRIBE",
     "unsubscribe": "UNSUBSCRIBE",
+    # F2: 三大财务报表 + 估值明细（G1 真基本面基座）
+    "financials": "FINANCIALS",
+    "valuation": "VALUATION",
+    # F1: 卖空数据分析（港股/美股卖空榜 + 每日卖空量）
+    "short_selling": "SHORT_SELLING",
+    # F3: 期权策略 + 期权波动率（G4 支撑）
+    "option_strategy": "OPTION_STRATEGY",
+    "option_volatility": "OPTION_VOLATILITY",
+    # F4: P1 资金分布 / FedWatch / 热力图 / 分析师共识（支撑 G3/G5/G6/G7）
+    "capital_distribution": "CAPITAL_DISTRIBUTION",
+    "analyst_consensus": "ANALYST_CONSENSUS",
+    "fed_watch": "FED_WATCH",
+    "heat_map": "HEAT_MAP",
 }
 
 # 主服务内部 fetch_type -> 子服务 action 映射 (Finnhub)

@@ -68,6 +68,15 @@ class FutuDataSource:
             "SCREEN_STOCKS",
             "COMPANY_NEWS",  # 富途搜索资讯（港股个股新闻主源）
             "STOCK_NEWS",
+            "FINANCIALS",  # F2: 三大财务报表（G1 真基本面基座）
+            "VALUATION",  # F2: 估值明细
+            "SHORT_SELLING",  # F1: 卖空数据分析
+            "OPTION_STRATEGY",  # F3: 期权策略组合
+            "OPTION_VOLATILITY",  # F3: 期权波动率
+            "CAPITAL_DISTRIBUTION",  # F4-1: 主力筹码分层(支撑G3)
+            "ANALYST_CONSENSUS",  # F4-4: 分析师共识(卖方观点,支撑G7)
+            "FED_WATCH",  # F4-2: FedWatch FOMC隐含概率(支撑G5)
+            "HEAT_MAP",  # F4-3: 板块热力图(支撑G6)
         ]
 
     # ── 远程节点状态感知 ──────────────────────────────────────

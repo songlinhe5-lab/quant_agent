@@ -51,6 +51,56 @@ async def handle_futu(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
             return await futu_service.get_fund_flow(params.get("symbol"))
         elif action == "FUNDAMENTAL":
             return await futu_service.get_fundamental(params.get("symbol"))
+        elif action == "FINANCIALS":
+            return await futu_service.get_financials(
+                params.get("symbol"),
+                statement_type=params.get("statement_type"),
+                financial_type=params.get("financial_type"),
+                currency_code=params.get("currency_code"),
+                num=int(params.get("num", 1)),
+            )
+        elif action == "VALUATION":
+            return await futu_service.get_valuation(params.get("symbol"))
+        elif action == "SHORT_SELLING":
+            # F1 · 卖空数据：子模式 rank(卖空榜) / daily(每日卖空量)
+            sub = (params.get("sub_action") or params.get("mode") or "rank").lower()
+            if sub == "daily":
+                return await futu_service.get_daily_short_volume(
+                    params.get("symbol") or params.get("ticker"),
+                    date=params.get("date"),
+                )
+            # 默认 rank（卖空成交榜）
+            return await futu_service.get_short_selling_rank(
+                params.get("symbol") or params.get("ticker"),
+                market=params.get("market"),
+                count=int(params.get("count", 10)),
+            )
+        elif action == "OPTION_STRATEGY":
+            return await futu_service.get_option_strategy(
+                params.get("symbol") or params.get("ticker"),
+                strategy_type=params.get("strategy_type", "STRANGLE"),
+                spread=int(params.get("spread", 5)),
+            )
+        elif action == "OPTION_VOLATILITY":
+            return await futu_service.get_option_volatility(
+                params.get("symbol") or params.get("ticker"),
+            )
+        elif action == "CAPITAL_DISTRIBUTION":
+            # F4-1 主力筹码分层（8 档 in/out，支撑 G3）
+            return await futu_service.get_capital_distribution(
+                params.get("symbol") or params.get("ticker"),
+            )
+        elif action == "ANALYST_CONSENSUS":
+            # F4-4 分析师共识（卖方观点，非事实）
+            return await futu_service.get_research_analyst_consensus(
+                params.get("symbol") or params.get("ticker"),
+            )
+        elif action == "FED_WATCH":
+            # F4-2 FedWatch FOMC 隐含概率（市场级，无 code 参数）
+            return await futu_service.get_fed_watch()
+        elif action == "HEAT_MAP":
+            # F4-3 板块热力图（需 market 参数）
+            return await futu_service.get_heat_map(market=params.get("market", "HK"))
         elif action == "WARRANT_CHAIN":
             return await futu_service.get_warrant_chain(params.get("symbol"))
         elif action == "SNAPSHOT":

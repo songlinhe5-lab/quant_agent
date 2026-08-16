@@ -1,6 +1,7 @@
 """
 Futu QuoteHandler 单元测试
 覆盖: get_quote/get_history/unsubscribe_quote/get_order_book
+      get_search_news/get_fed_watch_target_rate/get_heat_map_data/subscribe_quote
 """
 
 import time
@@ -316,3 +317,194 @@ class TestQuoteHandler:
         assert result["bids"][0]["price"] == 350.0
         assert result["bids"][0]["size"] == 1000
         assert result["asks"][0]["price"] == 350.5
+
+
+class TestQuoteHandlerNewsFedHeat:
+    """get_search_news / get_fed_watch_target_rate / get_heat_map_data 分支覆盖"""
+
+    # ── get_search_news ──────────────────────────────────────────────
+    @pytest.mark.asyncio
+    async def test_get_search_news_not_connected(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx = None
+        result = await handler.get_search_news("HK.00700")
+        assert result["status"] == "error"
+        assert "未连接" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_get_search_news_invalid_ticker(self):
+        handler, _, _ = _make_handler()
+        result = await handler.get_search_news("")
+        assert result["status"] == "error"
+        assert "无效" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_get_search_news_success_with_filter(self):
+        handler, conn_mgr, _ = _make_handler()
+        df = pd.DataFrame(
+            [
+                {
+                    "title": "A",
+                    "news_sub_type": "NEWS",
+                    "source": "x",
+                    "publish_time": "t",
+                    "url": "u",
+                    "related_securities": ["HK.00772"],
+                },
+                {
+                    "title": "B",
+                    "news_sub_type": "NEWS",
+                    "source": "x",
+                    "publish_time": "t",
+                    "url": "u",
+                    "related_securities": ["HK.09988"],
+                },
+                {
+                    "title": "C",
+                    "news_sub_type": "NEWS",
+                    "source": "x",
+                    "publish_time": "t",
+                    "url": "u",
+                    "related_securities": [],
+                },
+            ]
+        )
+        conn_mgr.quote_ctx.get_search_news.return_value = (RET_OK, df)
+        result = await handler.get_search_news("HK.00772")
+        assert result["status"] == "success"
+        # 仅保留关联 HK.00772 的（A），以及无关联标的的（C）
+        assert result["count"] == 2
+        headlines = {n["headline"] for n in result["data"]}
+        assert headlines == {"A", "C"}
+
+    @pytest.mark.asyncio
+    async def test_get_search_news_unrelated_filtered_out(self):
+        handler, conn_mgr, _ = _make_handler()
+        df = pd.DataFrame(
+            [
+                {
+                    "title": "X",
+                    "news_sub_type": "NEWS",
+                    "source": "x",
+                    "publish_time": "t",
+                    "url": "u",
+                    "related_securities": ["HK.09988"],
+                },
+            ]
+        )
+        conn_mgr.quote_ctx.get_search_news.return_value = (RET_OK, df)
+        result = await handler.get_search_news("HK.00772")
+        assert result["count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_get_search_news_empty_df(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_search_news.return_value = (RET_OK, pd.DataFrame())
+        result = await handler.get_search_news("HK.00700")
+        assert result["status"] == "error"
+
+    @pytest.mark.asyncio
+    async def test_get_search_news_non_df(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_search_news.return_value = (-1, "fail")
+        result = await handler.get_search_news("HK.00700")
+        assert result["status"] == "error"
+
+    @pytest.mark.asyncio
+    async def test_get_search_news_exception(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_search_news.side_effect = RuntimeError("boom")
+        result = await handler.get_search_news("HK.00700")
+        assert result["status"] == "error"
+        assert "boom" in result["message"]
+
+    # ── get_fed_watch_target_rate ───────────────────────────────────
+    @pytest.mark.asyncio
+    async def test_fed_watch_not_connected(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx = None
+        result = await handler.get_fed_watch_target_rate()
+        assert result["status"] == "error"
+        assert result["source"] == "futu"
+
+    @pytest.mark.asyncio
+    async def test_fed_watch_reconnecting(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.status = "DISCONNECTED"
+        result = await handler.get_fed_watch_target_rate()
+        assert result["status"] == "error"
+        assert "重连" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_fed_watch_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        df = pd.DataFrame([{"rate": 4.5, "prob": 0.6}, {"rate": 4.75, "prob": 0.3}])
+        conn_mgr.quote_ctx.get_fed_watch_target_rate.return_value = (RET_OK, df)
+        result = await handler.get_fed_watch_target_rate()
+        assert result["status"] == "success"
+        assert result["count"] == 2
+        assert result["data"][0]["rate"] == 4.5
+
+    @pytest.mark.asyncio
+    async def test_fed_watch_bad_return(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_fed_watch_target_rate.return_value = (-1, "fail")
+        result = await handler.get_fed_watch_target_rate()
+        assert result["status"] == "error"
+
+    @pytest.mark.asyncio
+    async def test_fed_watch_exception(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_fed_watch_target_rate.side_effect = RuntimeError("kaboom")
+        result = await handler.get_fed_watch_target_rate()
+        assert result["status"] == "error"
+        assert "kaboom" in result["message"]
+
+    # ── get_heat_map_data ───────────────────────────────────────────
+    @pytest.mark.asyncio
+    async def test_heat_map_not_connected(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx = None
+        result = await handler.get_heat_map_data("HK")
+        assert result["status"] == "error"
+
+    @pytest.mark.asyncio
+    async def test_heat_map_reconnecting(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.status = "DISCONNECTED"
+        result = await handler.get_heat_map_data("HK")
+        assert result["status"] == "error"
+        assert "重连" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_heat_map_bad_shape(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_heat_map_data.return_value = {"wrong": 1}
+        result = await handler.get_heat_map_data("HK")
+        assert result["status"] == "error"
+        assert "形态异常" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_heat_map_success(self):
+        handler, conn_mgr, _ = _make_handler()
+        df = pd.DataFrame([{"code": "HK.00700", "change_rate": 1.2}, {"code": "HK.09988", "change_rate": -0.5}])
+        conn_mgr.quote_ctx.get_heat_map_data.return_value = (RET_OK, df)
+        result = await handler.get_heat_map_data("HK")
+        assert result["status"] == "success"
+        assert result["count"] == 2
+        assert result["market"] == "HK"
+
+    @pytest.mark.asyncio
+    async def test_heat_map_bad_return(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_heat_map_data.return_value = (-1, "fail")
+        result = await handler.get_heat_map_data("US")
+        assert result["status"] == "error"
+
+    @pytest.mark.asyncio
+    async def test_heat_map_exception(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_heat_map_data.side_effect = RuntimeError("boom")
+        result = await handler.get_heat_map_data("HK")
+        assert result["status"] == "error"
+        assert "boom" in result["message"]

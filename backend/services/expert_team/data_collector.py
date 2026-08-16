@@ -6,9 +6,10 @@
 
 import asyncio
 import traceback
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-from hermes_agent.tool_registry import ToolRegistry
+if TYPE_CHECKING:
+    pass
 
 # 数据类型 → 采集工具映射
 _DATA_COLLECTORS: dict[str, dict[str, Any]] = {
@@ -55,7 +56,7 @@ _COLLECT_TIMEOUT = 30.0
 
 async def collect_shared_data(
     data_requirements: list[str],
-    tool_registry: Optional[ToolRegistry] = None,
+    tool_registry: Optional[Any] = None,
     ticker: Optional[str] = None,
     code_context: Optional[str] = None,
     extra_context: Optional[dict[str, Any]] = None,
@@ -122,7 +123,7 @@ async def collect_shared_data(
 
 
 async def _safe_collect(
-    registry: ToolRegistry,
+    registry: Any,
     tool_name: str,
     data_type: str,
     kwargs: dict[str, Any],

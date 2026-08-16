@@ -31,6 +31,7 @@ class ErrorCode(IntEnum):
     FUTU_DISCONNECTED = 3001
     REDIS_UNAVAILABLE = 3002
     CIRCUIT_BREAKER_OPEN = 3003
+    ALL_SOURCES_FAILED = 3004
 
     # ===== 5xxx 内部错误 =====
     INTERNAL_ERROR = 5000

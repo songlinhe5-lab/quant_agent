@@ -19,6 +19,7 @@ from backend.services.datasource import ResultStatus
 # BE-ARCH-06c: 新 Facade 行情领域服务（统一经 DataSourceRegistry 取数）
 from backend.services.datasource.business import data_service
 from backend.services.datasource.business import market_data_service as _facade_market
+from backend.services.datasource.business.option import option_data_service as _facade_option
 from backend.services.datasource.router import data_source_router
 
 # BE-ARCH-07p: 进程内 broker/kline 实时缓存（消费 quant:broker:* / quant:kline:* 回灌）
@@ -545,6 +546,71 @@ async def get_option_chain(ticker: str, expiration_date: str = ""):
     }
 
 
+@router.get("/option-strategy-lab")
+async def get_option_strategy_lab(
+    ticker: str,
+    strategy_type: str = "STRANGLE",
+    spread: int = 5,
+    underlying_price: float | None = None,
+):
+    """
+    G4：期权损益实验室（Futu OPTION_STRATEGY → 纯代数损益曲线 + 盈亏平衡点 + 真实 Greeks）
+
+    Args:
+        ticker: 正股/ETF/指数代码（非期权 code）
+        strategy_type: 策略类型（STRANGLE/CALL/PUT/...，默认 STRANGLE）
+        spread: 价差档位，默认 5
+        underlying_price: 情景网格中心价（可选，默认取行权价中值）
+    """
+    # BE-ARCH-06c: 经 Facade 统一选源（富途组合策略最准）
+    facade_res = await _facade_option.get_option_strategy_lab(
+        ticker, strategy_type=strategy_type, spread=spread, underlying_price=underlying_price
+    )
+    if facade_res.is_error:
+        err_msg = facade_res.error.message if facade_res.error else "期权损益实验室数据不可用"
+        raise HTTPException(status_code=400, detail=err_msg)
+    if facade_res.status == ResultStatus.DEGRADED:
+        err_msg = facade_res.error.message if facade_res.error else "期权损益实验室数据暂不可用"
+        return {
+            "status": "degraded",
+            "message": err_msg,
+            "data": facade_res.data,
+            "source": f"facade+{facade_res.source}",
+        }
+    return {
+        "status": "success",
+        "data": facade_res.data,
+        "source": f"facade+{facade_res.source}",
+    }
+
+
+@router.get("/option-volatility")
+async def get_option_volatility(ticker: str):
+    """
+    F3：期权波动率（Futu OPTION_VOLATILITY → 单合约隐含波动率/历史波动率/Greeks）
+
+    Args:
+        ticker: 期权合约代码（OCC 格式，如 US.AAPL260320C200000，非正股）
+    """
+    facade_res = await _facade_option.get_option_volatility(ticker)
+    if facade_res.is_error:
+        err_msg = facade_res.error.message if facade_res.error else "期权波动率数据不可用"
+        raise HTTPException(status_code=400, detail=err_msg)
+    if facade_res.status == ResultStatus.DEGRADED:
+        err_msg = facade_res.error.message if facade_res.error else "期权波动率数据暂不可用"
+        return {
+            "status": "degraded",
+            "message": err_msg,
+            "data": facade_res.data,
+            "source": f"facade+{facade_res.source}",
+        }
+    return {
+        "status": "success",
+        "data": facade_res.data,
+        "source": f"facade+{facade_res.source}",
+    }
+
+
 @router.get("/fund-flow")
 async def get_fund_flow(ticker: str):
     """
@@ -559,6 +625,122 @@ async def get_fund_flow(ticker: str):
     facade_res = await _facade_market.get_fund_flow(ticker)
     if facade_res.is_error:
         err_msg = facade_res.error.message if facade_res.error else "资金流数据不可用"
+        raise HTTPException(status_code=400, detail=err_msg)
+    return {
+        "status": "success",
+        "data": facade_res.data,
+        "source": f"facade+{facade_res.source}",
+    }
+
+
+@router.get("/capital-distribution/{ticker}")
+async def get_capital_distribution(ticker: str):
+    """
+    G3：主力筹码分层 + 背离信号
+
+    Args:
+        ticker: 标的代码
+
+    Returns:
+        dict: {"status": "success", "data": CapitalDistributionData}
+    """
+    # BE-ARCH-06c: 经 Facade 统一选源（富途 9 档分层最准，与资金流同源）
+    facade_res = await _facade_market.get_capital_distribution(ticker)
+    if facade_res.is_error:
+        err_msg = facade_res.error.message if facade_res.error else "主力筹码分布数据不可用"
+        raise HTTPException(status_code=400, detail=err_msg)
+    return {
+        "status": "success",
+        "data": facade_res.data,
+        "source": f"facade+{facade_res.source}",
+    }
+
+
+@router.get("/heat-map/{market}")
+async def get_heat_map(market: str = "HK"):
+    """
+    G6：板块热力图（产品级聚合，供 ECharts treemap 渲染）
+
+    Args:
+        market: 市场代码（HK/US/SG，默认 HK）
+
+    Returns:
+        dict: {"status": "success", "data": HeatMapData}
+    """
+    # BE-ARCH-06c: 经 Facade 统一选源（富途热力图最准，与资金流同源）
+    facade_res = await _facade_market.get_heat_map(market)
+    if facade_res.is_error:
+        err_msg = facade_res.error.message if facade_res.error else "板块热力图数据不可用"
+        raise HTTPException(status_code=400, detail=err_msg)
+    return {
+        "status": "success",
+        "data": facade_res.data,
+        "source": f"facade+{facade_res.source}",
+    }
+
+
+@router.get("/order-book")
+async def get_order_book(ticker: str):
+    """
+    实时 L2 盘口深度（Futu ORDER_BOOK）。
+
+    Args:
+        ticker: 标的代码（如 HK.00700 / US.AAPL）
+
+    Returns:
+        dict: {"status": "success", "data": {ticker, bids, asks, spread, imbalance, ...}}
+    """
+    facade_res = await _facade_market.get_order_book(ticker)
+    if facade_res.is_error:
+        err_msg = facade_res.error.message if facade_res.error else "盘口数据不可用"
+        raise HTTPException(status_code=400, detail=err_msg)
+    return {
+        "status": "success",
+        "data": facade_res.data,
+        "source": f"facade+{facade_res.source}",
+    }
+
+
+@router.get("/snapshot")
+async def get_market_snapshot(tickers: str):
+    """
+    批量实时快照（Futu SNAPSHOT，最多 400 只/批）。
+
+    Args:
+        tickers: 逗号分隔的标的列表（如 HK.00700,US.AAPL,HK.09988）
+
+    Returns:
+        dict: {"status": "success", "data": {data:[...], panel:{count, avg_change, ups, downs, flats}}}
+    """
+    ticker_list = [t.strip() for t in tickers.split(",") if t.strip()]
+    if not ticker_list:
+        raise HTTPException(status_code=400, detail="tickers 不能为空")
+    facade_res = await _facade_market.get_market_snapshot(ticker_list)
+    if facade_res.is_error:
+        err_msg = facade_res.error.message if facade_res.error else "快照数据不可用"
+        raise HTTPException(status_code=400, detail=err_msg)
+    return {
+        "status": "success",
+        "data": facade_res.data,
+        "source": f"facade+{facade_res.source}",
+    }
+
+
+@router.get("/stock-basicinfo")
+async def get_stock_basicinfo(market: str, sec_type: str = "STOCK"):
+    """
+    全市场股票/ETF/指数基本信息（Futu STOCK_BASICINFO）。
+
+    Args:
+        market: 市场代码（HK/US/SG）
+        sec_type: 证券类型（STOCK/ETF/IDX/WARRANT，默认 STOCK）
+
+    Returns:
+        dict: {"status": "success", "data": {data:[...], panel:{count, market, sec_type}}}
+    """
+    facade_res = await _facade_market.get_stock_basicinfo(market, sec_type)
+    if facade_res.is_error:
+        err_msg = facade_res.error.message if facade_res.error else "基本信息数据不可用"
         raise HTTPException(status_code=400, detail=err_msg)
     return {
         "status": "success",

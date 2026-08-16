@@ -91,6 +91,8 @@ class AnalyzeRequest(BaseModel):
     ticker: Optional[str] = None  # 金融域: 标的代码
     code_context: Optional[str] = None  # 代码域: 代码片段
     extra_context: dict[str, Any] = Field(default_factory=dict)
+    rounds: int = Field(default=2, ge=1, le=4)  # 辩论轮数 (1=仅独立研判, 2=交叉辩论, 3-4=多轮深化)
+    expert_ids: Optional[list[str]] = None  # 自定义专家阵容 (覆盖场景默认; 为空则用场景默认)
 
 
 class SessionSummary(BaseModel):
@@ -122,3 +124,4 @@ class StreamEvent(BaseModel):
     ]
     data: dict[str, Any] = Field(default_factory=dict)
     message: str = ""
+    content: str = ""  # 可选: 整段文本 (专家观点/首席报告的人读摘要, 供前端流式渲染)
