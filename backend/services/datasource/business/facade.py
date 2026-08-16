@@ -16,6 +16,7 @@ import 具体数据源库（yfinance/futu/akshare）或直接 httpx.get 外部�
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import time
 from datetime import datetime
@@ -276,7 +277,7 @@ class DataServiceFacade:
             try:
                 return label, await coro
             except Exception as e:  # noqa: BLE001 - 单源崩溃不应拖垮合并
-                logger.warning("get_fundamental_merged: 源 %s 异常: %s", label, e)
+                logging.warning("get_fundamental_merged: 源 %s 异常: %s", label, e)
                 return label, Result.error_result(
                     DataSourceError(
                         code=ErrorCode.INTERNAL_ERROR,
@@ -291,7 +292,7 @@ class DataServiceFacade:
             ("fmp", self.get_fundamental(ticker, prefer_sources=["fmp"])),
             ("yfinance", self.get_fundamental_info(ticker, prefer_sources=["yfinance"])),
         ]
-        outcomes = await asyncio.gather(*[_safe_fetch(l, c) for l, c in labels_and_coros])
+        outcomes = await asyncio.gather(*[_safe_fetch(src, c) for src, c in labels_and_coros])
 
         merged = {
             "ticker": ticker,
@@ -334,7 +335,7 @@ class DataServiceFacade:
             try:
                 return action, await coro
             except Exception as e:  # noqa: BLE001
-                logger.warning("futu 基本面 action %s 异常: %s", action, e)
+                logging.warning("futu 基本面 action %s 异常: %s", action, e)
                 return action, None
 
         fin_res, val_res = await asyncio.gather(
