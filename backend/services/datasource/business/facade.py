@@ -20,7 +20,7 @@ import logging
 import os
 import time
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from backend.core.metrics import (
     DATASOURCE_FACADE_MERGE,
