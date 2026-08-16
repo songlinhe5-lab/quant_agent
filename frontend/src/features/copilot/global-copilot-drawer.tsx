@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useCallback, useContext, useRef, useState } from 'react'
-import { Brain, History, Plus, X } from 'lucide-react'
+import { Brain, History, Plus, X, Users, MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useSceneModeStore } from '@/stores/useSceneModeStore'
@@ -11,6 +11,9 @@ import { ChatSidebarWrapper } from '@/features/copilot/chat-sidebar-wrapper'
 import { MessageListArea } from '@/features/copilot/message-list-area'
 import { ChatInputBox } from '@/features/copilot/chat-input-box'
 import { useCopilotContextStore } from '@/stores/useCopilotContextStore'
+import { ResearchTeamView } from '@/features/copilot/research-team/research-team-view'
+
+type CopilotTab = 'chat' | 'team'
 
 const DEFAULT_WIDTH = 520
 const MIN_WIDTH = 360
@@ -20,6 +23,7 @@ function CopilotDrawerChrome({ width, onResizeStart }: { width: number; onResize
   const closeCopilot = useLayoutStore((s) => s.closeCopilot)
   const { handleNewChat } = useContext(ChatActionContext)
   const [sessionsOpen, setSessionsOpen] = useState(false)
+  const [tab, setTab] = useState<CopilotTab>('chat')
   const context = useCopilotContextStore((s) => s.context)
   const clearContext = useCopilotContextStore((s) => s.clearContext)
 
@@ -31,49 +35,64 @@ function CopilotDrawerChrome({ width, onResizeStart }: { width: number; onResize
         className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize bg-transparent hover:bg-scene/40 active:bg-scene/60 transition-colors z-10"
         title="拖动调整宽度 · 点击收起"
       />
-      <header className="h-12 shrink-0 flex items-center gap-2 px-3 border-b border-border/40">
-        <Brain className="h-4 w-4 text-scene shrink-0" aria-hidden />
-        <h2 className="text-xs font-semibold tracking-widest uppercase text-foreground truncate">
-          AI Copilot
-        </h2>
-        <div className="ml-auto flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setSessionsOpen((v) => !v)}
-            className={cn(
-              'p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors',
-              sessionsOpen && 'bg-scene/15 text-scene',
+      <header className="shrink-0 border-b border-border/40">
+        <div className="flex h-12 items-center gap-2 px-3">
+          <Brain className="h-4 w-4 text-scene shrink-0" aria-hidden />
+          <h2 className="text-xs font-semibold tracking-widest uppercase text-foreground truncate">
+            AI Copilot
+          </h2>
+          <div className="ml-auto flex items-center gap-1">
+            {tab === 'chat' && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSessionsOpen((v) => !v)}
+                  className={cn(
+                    'p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors',
+                    sessionsOpen && 'bg-scene/15 text-scene',
+                  )}
+                  aria-label="会话历史"
+                  title="会话历史"
+                >
+                  <History className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleNewChat?.()
+                    setSessionsOpen(false)
+                  }}
+                  className="p-1.5 rounded-md text-muted-foreground hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                  aria-label="新建对话"
+                  title="新建对话"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              </>
             )}
-            aria-label="会话历史"
-            title="会话历史"
-          >
-            <History className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              handleNewChat?.()
-              setSessionsOpen(false)
-            }}
-            className="p-1.5 rounded-md text-muted-foreground hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
-            aria-label="新建对话"
-            title="新建对话"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={closeCopilot}
-            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
-            aria-label="关闭 AI 副驾"
-            title="关闭 (Cmd+Shift+A)"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
+            <button
+              type="button"
+              onClick={closeCopilot}
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
+              aria-label="关闭 AI 副驾"
+              title="关闭 (Cmd+Shift+A)"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+        {/* Tab 切换：对话 / 投研团队 */}
+        <div className="flex gap-1 px-3 pb-2">
+          <TabButton active={tab === 'chat'} onClick={() => setTab('chat')} icon={<MessageSquare className="h-3.5 w-3.5" />} label="对话" />
+          <TabButton active={tab === 'team'} onClick={() => setTab('team')} icon={<Users className="h-3.5 w-3.5" />} label="AI投研团队" />
         </div>
       </header>
 
       <div className="relative flex-1 min-h-0 flex flex-col">
+        {tab === 'team' ? (
+          <ResearchTeamView />
+        ) : (
+          <>
         {sessionsOpen && (
           <div className="absolute inset-0 z-20 flex bg-background/95 backdrop-blur-sm">
             <div className="h-full w-full overflow-hidden [&_aside]:w-full [&_aside]:border-r-0">
@@ -101,8 +120,38 @@ function CopilotDrawerChrome({ width, onResizeStart }: { width: number; onResize
         )}
         <MessageListArea />
         <ChatInputBox />
+          </>
+        )}
       </div>
     </div>
+  )
+}
+
+function TabButton({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean
+  onClick: () => void
+  icon: React.ReactNode
+  label: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors',
+        active
+          ? 'bg-scene/15 text-scene'
+          : 'text-muted-foreground hover:bg-white/5 hover:text-foreground',
+      )}
+    >
+      {icon}
+      {label}
+    </button>
   )
 }
 

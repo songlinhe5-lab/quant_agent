@@ -39,6 +39,8 @@ class ExpertTeamService:
             ticker=request.ticker,
             code_context=request.code_context,
             extra_context=request.extra_context,
+            rounds=request.rounds,
+            expert_ids=request.expert_ids,
         ):
             # 序列化为 SSE
             payload = event.model_dump()
