@@ -14,6 +14,9 @@ from data_subservice._internal.redis_client import (
 @pytest.fixture
 def mock_redis():
     client = MagicMock()
+    client.get = AsyncMock(return_value=None)
+    client.set = AsyncMock()
+    client.hgetall = AsyncMock(return_value={})
     client.pipeline = MagicMock()
     return client
 

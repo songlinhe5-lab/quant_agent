@@ -188,6 +188,8 @@ class TestFetchOptionChainMocked:
         fake_chain = MagicMock()
         fake_chain.calls = calls_df
         fake_chain.puts = puts_df
+        # t.option_chain() 返回 OptionsChain 对象, list(chain) 产出到期日列表
+        fake_chain.__iter__ = MagicMock(return_value=iter(["2026-09-18"]))
         fake_ticker = MagicMock()
         fake_ticker.option_chain.return_value = fake_chain
         with patch("data_subservice._internal.yfinance.quote.yf.Ticker", return_value=fake_ticker):

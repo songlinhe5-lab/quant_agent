@@ -37,7 +37,8 @@ class TestCompressPushQuote:
     def test_compress_volume_small(self):
         row = {"code": "X", "last_price": 1.0, "prev_close_price": 1.0, "volume": 50}
         out = ph._compress_push_quote(row)
-        assert out["volume_str"] == "50"
+        # safe_float 将 volume 转为 float, 故 <1000 时 str(50.0) == "50.0"
+        assert out["volume_str"] == "50.0"
 
     def test_compress_zero_prev_close(self):
         row = {"code": "X", "last_price": 100.0, "prev_close_price": 0.0, "volume": 0}
@@ -48,11 +49,13 @@ class TestCompressPushQuote:
 class TestMainLoopManagement:
     def test_set_and_get_loop(self):
         loop = asyncio.new_event_loop()
+        loop.is_running = lambda: True
         try:
             ph.set_main_loop(loop)
             assert ph._get_main_loop() is loop
         finally:
             ph._main_loop = None
+            loop.is_running = lambda: False
             loop.close()
 
     def test_get_loop_none_when_not_running(self):
@@ -65,6 +68,7 @@ class TestMainLoopManagement:
 
     def test_schedule_with_loop(self):
         loop = asyncio.new_event_loop()
+        loop.is_running = lambda: True
 
         async def dummy():
             return 1
@@ -75,6 +79,7 @@ class TestMainLoopManagement:
             assert fut is not None
         finally:
             ph._main_loop = None
+            loop.is_running = lambda: False
             loop.close()
 
 

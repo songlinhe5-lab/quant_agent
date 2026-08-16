@@ -18,6 +18,14 @@ def _make_registry():
     pipe.__aenter__ = AsyncMock(return_value=pipe)
     pipe.__aexit__ = AsyncMock(return_value=False)
     r.pipeline = MagicMock(return_value=pipe)
+    # 真实 redis 客户端方法是协程
+    r.hget = AsyncMock(return_value=None)
+    r.hgetall = AsyncMock(return_value={})
+    r.zadd = AsyncMock()
+    r.zrangebyscore = AsyncMock(return_value=[])
+    r.hdel = AsyncMock()
+    r.sismember = AsyncMock(return_value=False)
+    r.hincrbyfloat = AsyncMock()
     return ServiceRegistry(r), r, pipe
 
 
@@ -69,7 +77,7 @@ class TestHeartbeat:
     @pytest.mark.asyncio
     async def test_heartbeat_success_with_metrics(self):
         reg, r, pipe = _make_registry()
-        r.hget.return_value = _node().model_dump_json().encode()
+        r.hget = AsyncMock(return_value=_node().model_dump_json().encode())
         ok = await reg.heartbeat("n1", metrics={"avg_latency_ms": 12.0})
         assert ok is True
         pipe.zadd.assert_called()
@@ -77,7 +85,7 @@ class TestHeartbeat:
     @pytest.mark.asyncio
     async def test_heartbeat_unregistered(self):
         reg, r, pipe = _make_registry()
-        r.hget.return_value = None
+        r.hget = AsyncMock(return_value=None)
         ok = await reg.heartbeat("n1")
         assert ok is False
 
@@ -97,8 +105,8 @@ class TestDiscover:
             b"n1": _node("n1", ["yfinance"]).model_dump_json().encode(),
             b"n2": _node("n2", ["futu"]).model_dump_json().encode(),
         }
-        r.hgetall.return_value = nodes
-        r.sismember.return_value = False
+        r.hgetall = AsyncMock(return_value=nodes)
+        r.sismember = AsyncMock(return_value=False)
         result = await reg.discover(capability="yfinance")
         assert [n.node_id for n in result] == ["n1"]
 
@@ -106,8 +114,8 @@ class TestDiscover:
     async def test_discover_excludes_draining(self):
         reg, r, pipe = _make_registry()
         nodes = {b"n1": _node("n1", status=NodeStatus.DRAINING).model_dump_json().encode()}
-        r.hgetall.return_value = nodes
-        r.sismember.return_value = True
+        r.hgetall = AsyncMock(return_value=nodes)
+        r.sismember = AsyncMock(return_value=True)
         result = await reg.discover()
         assert result == []
 
@@ -115,8 +123,8 @@ class TestDiscover:
     async def test_discover_include_draining(self):
         reg, r, pipe = _make_registry()
         nodes = {b"n1": _node("n1", status=NodeStatus.DRAINING).model_dump_json().encode()}
-        r.hgetall.return_value = nodes
-        r.sismember.return_value = True
+        r.hgetall = AsyncMock(return_value=nodes)
+        r.sismember = AsyncMock(return_value=True)
         result = await reg.discover(include_draining=True)
         assert len(result) == 1
 
@@ -124,8 +132,8 @@ class TestDiscover:
     async def test_discover_filters_region(self):
         reg, r, pipe = _make_registry()
         nodes = {b"n1": _node("n1", region="cn-north").model_dump_json().encode()}
-        r.hgetall.return_value = nodes
-        r.sismember.return_value = False
+        r.hgetall = AsyncMock(return_value=nodes)
+        r.sismember = AsyncMock(return_value=False)
         result = await reg.discover(region="us-west")
         assert result == []
 
@@ -137,8 +145,8 @@ class TestDiscover:
         n_lo = _node("lo", ["x"])
         n_lo.weight = 10
         nodes = {b"hi": n_hi.model_dump_json().encode(), b"lo": n_lo.model_dump_json().encode()}
-        r.hgetall.return_value = nodes
-        r.sismember.return_value = False
+        r.hgetall = AsyncMock(return_value=nodes)
+        r.sismember = AsyncMock(return_value=False)
         result = await reg.discover(capability="x")
         assert [n.node_id for n in result] == ["hi", "lo"]
 
@@ -146,8 +154,8 @@ class TestDiscover:
     async def test_discover_skips_dead(self):
         reg, r, pipe = _make_registry()
         nodes = {b"n1": _node("n1", alive=False).model_dump_json().encode()}
-        r.hgetall.return_value = nodes
-        r.sismember.return_value = False
+        r.hgetall = AsyncMock(return_value=nodes)
+        r.sismember = AsyncMock(return_value=False)
         result = await reg.discover()
         assert result == []
 
@@ -156,35 +164,35 @@ class TestGetters:
     @pytest.mark.asyncio
     async def test_get_node_success(self):
         reg, r, pipe = _make_registry()
-        r.hget.return_value = _node().model_dump_json().encode()
+        r.hget = AsyncMock(return_value=_node().model_dump_json().encode())
         n = await reg.get_node("n1")
         assert n.node_id == "n1"
 
     @pytest.mark.asyncio
     async def test_get_node_none(self):
         reg, r, pipe = _make_registry()
-        r.hget.return_value = None
+        r.hget = AsyncMock(return_value=None)
         assert await reg.get_node("n1") is None
 
     @pytest.mark.asyncio
     async def test_get_node_parse_error(self):
         reg, r, pipe = _make_registry()
-        r.hget.return_value = b"not json"
+        r.hget = AsyncMock(return_value=b"not json")
         assert await reg.get_node("n1") is None
 
     @pytest.mark.asyncio
     async def test_get_all_nodes_marks_dead(self):
         reg, r, pipe = _make_registry()
-        r.hgetall.return_value = {b"n1": _node("n1", alive=False).model_dump_json().encode()}
-        r.sismember.return_value = False
+        r.hgetall = AsyncMock(return_value={b"n1": _node("n1", alive=False).model_dump_json().encode()})
+        r.sismember = AsyncMock(return_value=False)
         nodes = await reg.get_all_nodes()
         assert nodes[0].status == NodeStatus.DEAD
 
     @pytest.mark.asyncio
     async def test_get_all_nodes_marks_draining(self):
         reg, r, pipe = _make_registry()
-        r.hgetall.return_value = {b"n1": _node("n1").model_dump_json().encode()}
-        r.sismember.return_value = True
+        r.hgetall = AsyncMock(return_value={b"n1": _node("n1").model_dump_json().encode()})
+        r.sismember = AsyncMock(return_value=True)
         nodes = await reg.get_all_nodes()
         assert nodes[0].status == NodeStatus.DRAINING
 
@@ -199,7 +207,7 @@ class TestDraining:
     @pytest.mark.asyncio
     async def test_mark_draining_with_existing(self):
         reg, r, pipe = _make_registry()
-        r.hget.return_value = _node().model_dump_json().encode()
+        r.hget = AsyncMock(return_value=_node().model_dump_json().encode())
         ok = await reg.mark_draining("n1")
         assert ok is True
 
@@ -212,7 +220,7 @@ class TestDraining:
     @pytest.mark.asyncio
     async def test_unmark_draining(self):
         reg, r, pipe = _make_registry()
-        r.hget.return_value = _node(status=NodeStatus.DRAINING).model_dump_json().encode()
+        r.hget = AsyncMock(return_value=_node(status=NodeStatus.DRAINING).model_dump_json().encode())
         assert await reg.unmark_draining("n1") is True
 
     @pytest.mark.asyncio
@@ -258,14 +266,15 @@ class TestCleanupStatsOverview:
     @pytest.mark.asyncio
     async def test_get_stats(self):
         reg, r, pipe = _make_registry()
-        r.hgetall.return_value = {b"avg_latency_ms": b"12.5"}
+        # Redis 真实返回 bytes key/value，源码仅 float(value) 不 decode key
+        r.hgetall = AsyncMock(return_value={b"avg_latency_ms": b"12.5"})
         stats = await reg.get_stats("n1")
-        assert stats == {"avg_latency_ms": 12.5}
+        assert stats == {b"avg_latency_ms": 12.5}
 
     @pytest.mark.asyncio
     async def test_get_stats_empty(self):
         reg, r, pipe = _make_registry()
-        r.hgetall.return_value = {}
+        r.hgetall = AsyncMock(return_value={})
         assert await reg.get_stats("n1") == {}
 
     @pytest.mark.asyncio
@@ -277,11 +286,13 @@ class TestCleanupStatsOverview:
     @pytest.mark.asyncio
     async def test_cluster_overview(self):
         reg, r, pipe = _make_registry()
-        r.hgetall.return_value = {
-            b"n1": _node("n1", region="us-west").model_dump_json().encode(),
-            b"n2": _node("n2", status=NodeStatus.DEAD, alive=False).model_dump_json().encode(),
-        }
-        r.sismember.return_value = False
+        r.hgetall = AsyncMock(
+            return_value={
+                b"n1": _node("n1", region="us-west").model_dump_json().encode(),
+                b"n2": _node("n2", status=NodeStatus.DEAD, alive=False).model_dump_json().encode(),
+            }
+        )
+        r.sismember = AsyncMock(return_value=False)
         ov = await reg.get_cluster_overview()
         assert ov["total_nodes"] == 2
         assert ov["active_nodes"] == 1
