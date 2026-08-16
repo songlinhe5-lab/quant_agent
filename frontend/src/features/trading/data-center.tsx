@@ -23,6 +23,10 @@ import { SectorFlowPanel, type SectorFundFlowData } from '@/features/data-center
 import { CapitalDistributionPanel } from '@/features/data-center/capital-distribution-panel'
 import { SectorHeatmapPanel } from '@/features/data-center/sector-heatmap-panel'
 import { AnalystVsFundamentalPanel } from '@/features/data-center/analyst-vs-fundamental-panel'
+import { ShortSellingPanel } from '@/features/data-center/short-selling-panel'
+import { OrderBookPanel } from '@/features/data-center/order-book-panel'
+import { MarketSnapshotPanel } from '@/features/data-center/market-snapshot-panel'
+import { StockBasicInfoPanel } from '@/features/data-center/stock-basicinfo-panel'
 
 export function DataCenterModule() {
   const setWsStatus = useSystemStore((state) => state.setWsStatus)
@@ -340,6 +344,10 @@ export function DataCenterModule() {
     {sectorFlowData && <SectorFlowPanel data={sectorFlowData} status={sectorFlowStatus} />}
     {/* G6：板块热力图（Futu HEAT_MAP，自包含 fetch，独立显隐） */}
     <SectorHeatmapPanel market="HK" />
+    {/* Futu 实时盘口 / 快照 / 基础信息（自包含 fetch，独立显隐） */}
+    <OrderBookPanel ticker="HK.00700" />
+    <MarketSnapshotPanel tickers="HK.00700,US.AAPL,HK.09988" />
+    <StockBasicInfoPanel market="HK" secType="STOCK" />
     {/* ─────────── 大类资产走势 ─────────── */}
     <SectionLabel label="大类资产走势" hint="Asset Prices" tone="sky" />
     <div className="glass-card rounded-lg overflow-hidden"><div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2"><TrendingUp className="h-3.5 w-3.5 text-muted-foreground" /><span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">大类资产走势</span><MarketClocks /></div><div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6 gap-2 p-2 bg-slate-50/50 dark:bg-black/10">{assets.filter((a: any) => a.symbol !== 'VIX').map((a: any) => (<AssetButton key={a.symbol} asset={a} />))}</div></div>
@@ -355,6 +363,8 @@ export function DataCenterModule() {
     )}
     {/* G7：卖方共识 vs 基本面（Futu ANALYST_CONSENSUS + 基本面合并，自包含 fetch） */}
     <AnalystVsFundamentalPanel ticker="US.AAPL" />
+    {/* F1：港股卖空拥挤度（Futu SHORT_SELLING + HKEX 交叉验证，自包含 fetch） */}
+    <ShortSellingPanel ticker="HK.00700" mode="rank" />
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
       {/* 经济日历 */}
       <EconomicCalendar

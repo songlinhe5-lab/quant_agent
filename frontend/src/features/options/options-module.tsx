@@ -5,6 +5,7 @@ import { OptionVolSurface3D } from './option-vol-surface-3d'
 import { OptionPcrPanel } from './option-pcr-panel'
 import { FedWatchPanel } from './fed-watch-panel'
 import { OptionStrategyLabPanel } from './option-strategy-lab-panel'
+import { OptionVolatilityPanel } from './option-volatility-panel'
 
 type TabKey = 'heatmap' | 'surface3d' | 'pcr'
 
@@ -48,6 +49,9 @@ export function OptionsModule() {
 
       {/* G4：期权损益实验室（Futu OPTION_STRATEGY，自包含 fetch） */}
       <OptionStrategyLabPanel ticker="US.AAPL" strategyType="STRANGLE" spread={5} />
+
+      {/* F3：期权波动率 & Greeks（Futu OPTION_VOLATILITY，自包含 fetch） */}
+      <OptionVolatilityPanel ticker="US.AAPL260320C200000" />
 
       <div className="inline-flex w-fit rounded-lg border border-border/60 p-0.5">
         {TABS.map((t) => (
