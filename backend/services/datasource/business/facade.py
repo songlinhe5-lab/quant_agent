@@ -268,7 +268,6 @@ class DataServiceFacade:
         if not isinstance(data, dict):
             return res
 
-        layers = data.get("layers")
         main_net = _to_float(data.get("main_net"))
         retail_net = _to_float(data.get("retail_net"))
 
