@@ -4,8 +4,8 @@
 数据来源：SFC 每周公布的《淡仓申报》(Short Position Reporting) 原始文件
 （市场级卖空余额；比率需流通股本，本适配器仅聚合股数，比率交由上层补充）。
 
-配置（环境变量，未配置则优雅降级为 None）：
-    SFC_SHORT_POSITIONS_URL     SFC 每周淡仓申报文件 URL（CSV）
+配置（环境变量，未配置则使用下面 DEFAULT_SFC_URL 兜底模板）：
+    SFC_SHORT_POSITIONS_URL     SFC 每周淡仓申报文件 URL（CSV，支持 {YYYYMMDD} 占位符）
     SFC_SHORT_POSITIONS_COLUMNS 可选：列名映射 JSON，覆盖默认关键词匹配
 """
 
@@ -21,6 +21,10 @@ import structlog
 from backend.services.margin.sources.base import BaseMarginSource, MarketMarginSnapshot
 
 logger = structlog.get_logger(__name__)
+
+# 默认 SFC 每周淡仓申报 CSV 模板（env 未配置时使用；{YYYYMMDD} 按申报日替换）。
+# 若实际文件 URL 格式变化，配 SFC_SHORT_POSITIONS_URL 环境变量覆盖即可。
+DEFAULT_SFC_URL = "https://www.sfc.hk/web/EN/REG/Short-positions/short_position_{YYYYMMDD}.csv"
 
 _DEFAULT_COLUMNS = {
     "short_position": [
@@ -39,7 +43,8 @@ class SfcShortPositionsSource(BaseMarginSource):
 
     def __init__(self):
         super().__init__()
-        self.url: Optional[str] = os.getenv("SFC_SHORT_POSITIONS_URL") or None
+        # 环境变量优先；未配置则使用默认模板（{YYYYMMDD} 占位符在 fetch 时按日期替换）
+        self.url: Optional[str] = os.getenv("SFC_SHORT_POSITIONS_URL") or DEFAULT_SFC_URL
         self.columns = self._load_columns("SFC_SHORT_POSITIONS_COLUMNS", _DEFAULT_COLUMNS)
 
     @staticmethod
@@ -93,7 +98,12 @@ class SfcShortPositionsSource(BaseMarginSource):
         if not self.url:
             logger.debug("[Margin][sfc] 未配置 SFC_SHORT_POSITIONS_URL，跳过")
             return None
-        text = await self._http_get_text(self.url, params={"date": as_of.isoformat()})
+        # 支持 URL 模板：含 {YYYYMMDD} 占位符时按日期自动拼真实地址，
+        # 否则视为固定直链原样使用。
+        url = self.url
+        if "{YYYYMMDD}" in url:
+            url = url.replace("{YYYYMMDD}", as_of.strftime("%Y%m%d"))
+        text = await self._http_get_text(url, params={"date": as_of.isoformat()})
         if not text:
             return None
         return self._parse(text, as_of)

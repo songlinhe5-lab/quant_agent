@@ -103,8 +103,8 @@ export function FlowDetailPanel({ flow, onClose }: { flow: CapitalFlowItem; onCl
   const hasAmount = flow.amount !== null && flow.amount !== undefined && !Number.isNaN(flow.amount)
   const isPositive = hasAmount ? flow.amount >= 0 : false;
   return (
-    <div className="absolute inset-0 z-20 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 animate-in fade-in duration-200" onClick={onClose}>
-      <div className="w-full h-full bg-card border border-border/40 rounded-lg overflow-hidden flex flex-col shadow-xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={onClose}>
+      <div className="w-full max-w-3xl h-[80vh] max-h-[80vh] bg-card border border-border/40 rounded-lg overflow-hidden flex flex-col shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-3 py-2 border-b border-border/30 bg-secondary/20">
           <h3 className="text-xs font-bold flex items-center gap-1.5"><ArrowRightLeft className="h-3 w-3 text-sky-500 dark:text-sky-400" />{flow.label} · 近8日净买入明细</h3>
           <div className="flex items-center gap-3">
