@@ -1410,7 +1410,7 @@ wheels = [
 
 [[package]]
 name = "futu-api"
-version = "10.7.6708"
+version = "10.10.7008"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pandas" },
@@ -1418,7 +1418,7 @@ dependencies = [
     { name = "pycryptodome" },
     { name = "simplejson" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/45/ca/34ea135e1bfc9ab7249bda4c77c89c93e31f65f53f5f48680ae5b95a2ed2/futu_api-10.7.6708.tar.gz", hash = "sha256:03118921c6662e5f14913d6071e9e72d7eee89674569bef4f86caadd48813867", size = 6299789, upload-time = "2026-06-04T12:28:15.599Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6f/f3/704504667433ecb06d5e84dc308786e0067b626143a55fa0453480af46a3/futu_api-10.10.7008.tar.gz", hash = "sha256:3c607c7dce02a3a2b308f3424420277a360d7b3a4ba4508b39eaa4ff11271f98", size = 6437037, upload-time = "2026-08-13T09:14:49.883Z" }
 
 [[package]]
 name = "google-auth"
@@ -4927,7 +4927,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.109.0" },
     { name = "finnhub-python", marker = "extra == 'datasource-all'", specifier = ">=2.4.29" },
     { name = "frozendict", specifier = ">=2.4.0" },
-    { name = "futu-api", marker = "extra == 'datasource-all'", specifier = ">=10.7.0" },
+    { name = "futu-api", marker = "extra == 'datasource-all'", specifier = ">=10.10.0" },
     { name = "google-auth", specifier = ">=2.28.0" },
     { name = "greenlet", specifier = ">=3.0.0" },
     { name = "httpx", specifier = ">=0.27.0" },
