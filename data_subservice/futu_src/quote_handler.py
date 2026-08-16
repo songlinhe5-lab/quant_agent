@@ -13,7 +13,7 @@ from futu import RET_OK, AuType, KLType, SubType
 from data_subservice._internal.logger import logger
 from data_subservice._internal.retry_utils import with_global_retry
 
-from ._compat import RET_OK, safe_float
+from ._compat import safe_float
 from .cache_manager import CacheManager
 
 
