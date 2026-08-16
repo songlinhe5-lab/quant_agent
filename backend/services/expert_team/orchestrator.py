@@ -183,7 +183,7 @@ class DebateOrchestrator:
     @staticmethod
     def _opinion_to_text(opinion: ExpertOpinion) -> str:
         """把专家观点拼为人读文本 (供前端流式渲染)"""
-        return "\n\n".join(orchestrator._opinion_text_parts(opinion))
+        return "\n\n".join(DebateOrchestrator._opinion_text_parts(opinion))
 
     @staticmethod
     def _opinion_text_parts(opinion: ExpertOpinion) -> list[str]:
