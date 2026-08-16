@@ -1,6 +1,9 @@
-import asyncio, sys, traceback
+import asyncio
+import sys
+
 sys.path.insert(0, "/app")
 from data_subservice.futu_src import futu_service as svc
+
 
 async def main():
     tests = [
@@ -11,7 +14,7 @@ async def main():
         ("OPTION_CHAIN", svc.get_option_chain, ("US.AAPL", "")),
         ("FUNDAMENTAL", svc.get_fundamental, ("HK.00700",)),
         ("STOCK_BASICINFO", svc.get_stock_basicinfo, ("HK", "STOCK")),
-        ("SNAPSHOT", svc.get_market_snapshots, (["HK.00700","US.AAPL"],)),
+        ("SNAPSHOT", svc.get_market_snapshots, (["HK.00700", "US.AAPL"],)),
     ]
     for label, fn, args in tests:
         try:
@@ -23,10 +26,11 @@ async def main():
                 detail = r.get("detail") or r.get("message") or r.get("error") or r.get("msg") or ""
                 print(f"[RES] {label}: status={st} data_len={dl} detail={str(detail)[:200]}")
             else:
-                ln = len(r) if hasattr(r,'__len__') else '?'
+                ln = len(r) if hasattr(r, "__len__") else "?"
                 print(f"[RES] {label}: type={type(r).__name__} len={ln}")
         except Exception as e:
             print(f"[EXC] {label}: {str(e)[:150]}")
+
 
 asyncio.run(main())
 print("ALL DONE")

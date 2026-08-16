@@ -15,15 +15,23 @@ import 具体数据源库（yfinance/futu/akshare）或直接 httpx.get 外部�
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
+from datetime import datetime
 from typing import Any, Optional
 
 from backend.core.metrics import (
     DATASOURCE_FACADE_MERGE,
     DATASOURCE_QUOTE_DEVIATION,
 )
-from backend.services.datasource import ErrorInfo, Result, ResultStatus
+from backend.services.datasource import (
+    DataSourceError,
+    ErrorCode,
+    ErrorInfo,
+    Result,
+    ResultStatus,
+)
 from backend.services.datasource.source_registry import datasource_registry
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -248,6 +256,107 @@ class DataServiceFacade:
             prefer_sources=prefer_sources,
             enable_merge=False,
         )
+
+    async def get_fundamental_merged(self, ticker: str) -> Result:
+        """G1 · 真基本面三源合并（戳破假基本面）。
+
+        并发拉取三路真实基本面，单源失败不影响全局（graceful degradation，
+        符合零幻觉红线——缺失字段保留原值，不臆造、不静默降级为假数据）：
+
+        - **Futu** (FINANCIALS + VALUATION)：经 OpenD 直连交易所的真实三大表
+          + 估值明细（PE/PB/股息率/市值），港股/美股原生覆盖强。
+        - **FMP** (FUNDAMENTAL)：profile + income_statement 兜底（美股覆盖好）。
+        - **YFinance** (INFO)：info 字典估值（PE/PB/市值/52周区间），多市场兜底。
+
+        返回统一结构：``{ "ticker", "sources": {源: 状态}, "futu": {...}, "fmp": {...}, "yfinance": {...} }``。
+        全部源失败时返回 ``ALL_SOURCES_FAILED``，如实暴露而非假绿。
+        """
+
+        async def _safe_fetch(label: str, coro):
+            try:
+                return label, await coro
+            except Exception as e:  # noqa: BLE001 - 单源崩溃不应拖垮合并
+                logger.warning("get_fundamental_merged: 源 %s 异常: %s", label, e)
+                return label, Result.error_result(
+                    DataSourceError(
+                        code=ErrorCode.INTERNAL_ERROR,
+                        message=f"源 {label} 基本面合并异常: {e}",
+                        source=label,
+                    )
+                )
+
+        # 并发拉取三路（Futu 两 action 并行，FMP/YF 各一路）
+        labels_and_coros = [
+            ("futu", self._fetch_futu_fundamental(ticker)),
+            ("fmp", self.get_fundamental(ticker, prefer_sources=["fmp"])),
+            ("yfinance", self.get_fundamental_info(ticker, prefer_sources=["yfinance"])),
+        ]
+        outcomes = await asyncio.gather(*[_safe_fetch(l, c) for l, c in labels_and_coros])
+
+        merged = {
+            "ticker": ticker,
+            "sources": {},
+            "futu": None,
+            "fmp": None,
+            "yfinance": None,
+        }
+        any_ok = False
+        for label, res in outcomes:
+            if isinstance(res, Result) and res.is_success and res.data:
+                any_ok = True
+                merged[label] = res.data
+                merged["sources"][label] = "ok"
+            else:
+                err_msg = res.error.message if isinstance(res, Result) and res.error else "unknown"
+                merged["sources"][label] = f"failed: {err_msg}"
+
+        if not any_ok:
+            return Result.error_result(
+                DataSourceError(
+                    code=ErrorCode.ALL_SOURCES_FAILED,
+                    message=f"基本面三源合并全部失败: {ticker}",
+                    source="facade",
+                )
+            )
+
+        merged["_merged_at"] = datetime.now().isoformat()
+        return Result.success_result(merged, source="facade", remark="G1真基本面三源合并")
+
+    async def _fetch_futu_fundamental(self, ticker: str) -> Result:
+        """Futu 真基本面（三大表 + 估值明细）聚合为单 Result。
+
+        经 DataSourceRouter 远程 futu 子服务（router action: FINANCIALS / VALUATION）。
+        任一 action 失败则该源降级为 failed 段，不阻塞其他源。
+        """
+
+        # 优先源：futu（FINANCIALS/VALUATION 仅 futu 声明了 capability）
+        async def _safe(action: str, coro):
+            try:
+                return action, await coro
+            except Exception as e:  # noqa: BLE001
+                logger.warning("futu 基本面 action %s 异常: %s", action, e)
+                return action, None
+
+        fin_res, val_res = await asyncio.gather(
+            self._dispatch("FINANCIALS", {"ticker": ticker}, prefer_sources=["futu"], enable_merge=False),
+            self._dispatch("VALUATION", {"ticker": ticker}, prefer_sources=["futu"], enable_merge=False),
+        )
+
+        data: dict[str, Any] = {}
+        if isinstance(fin_res, Result) and fin_res.is_success:
+            data["financials"] = fin_res.data
+        if isinstance(val_res, Result) and val_res.is_success:
+            data["valuation"] = val_res.data
+
+        if not data:
+            return Result.error_result(
+                DataSourceError(
+                    code=ErrorCode.ALL_SOURCES_FAILED,
+                    message=f"futu 基本面两 action 均失败: {ticker}",
+                    source="futu",
+                )
+            )
+        return Result.success_result(data, source="futu", remark="Futu真基本面(财报+估值)")
 
     async def get_company_news(
         self, ticker: str, days_back: int = 3, prefer_sources: Optional[list[str]] = None

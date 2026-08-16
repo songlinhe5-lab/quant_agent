@@ -529,6 +529,26 @@ async def get_fundamental(ticker: str):
     return {"status": "success", "data": final_data}
 
 
+@router.get("/fundamental/merged/{ticker}")
+async def get_fundamental_merged(ticker: str):
+    """G1 · 真基本面三源合并端点。
+
+    并发聚合 Futu(财报+估值) + FMP(基本面) + YFinance(info) 三大真实源，
+    戳破旧版单源假基本面。单源失败不影响其他源（graceful degradation）。
+    返回结构含各源状态与合并时间戳，前端可据此标注数据完整度。
+    """
+    res = await data_service.get_fundamental_merged(ticker)
+    if not res.is_success or not res.data:
+        err_msg = res.error.message if res.error else "未知错误"
+        return {
+            "status": "warning",
+            "message": f"[{ticker}] 基本面三源合并均失败: {err_msg}",
+            "data": {},
+        }
+
+    return {"status": "success", "data": res.data}
+
+
 @router.get("/holders/{ticker}")
 async def get_top_holders(ticker: str):
     """
