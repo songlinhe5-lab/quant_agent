@@ -514,7 +514,7 @@ class TestOrchestratorDebateExtensions:
             reasoning="基本面优秀",
             challenges=["风控过度悲观"],
             revised_stance="维持看涨",
-            confidence=0.7,
+            confidence=70,
         )
 
     def test_opinion_text_parts_and_to_text(self):
@@ -524,7 +524,7 @@ class TestOrchestratorDebateExtensions:
         full = DebateOrchestrator._opinion_to_text(op)
         assert "看涨" in full
         assert "ROE>20%" in full
-        assert "0.7" in full
+        assert "70" in full
 
     def test_split_for_stream_basic(self):
         s = "观点一。观点二！观点三？结尾"

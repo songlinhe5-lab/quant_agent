@@ -202,9 +202,11 @@ class DebateOrchestrator:
 
     @staticmethod
     def _split_for_stream(text: str, max_chunk: int = 80) -> list[str]:
-        """把文本切成小片段 (按句子/换行), 制造打字机效果, 避免单次大块推送"""
+        """把文本切成小片段 (按句子/换行优先, 超长无标点硬切), 制造打字机效果"""
         import re
 
+        if not text:
+            return [""]
         raw = re.split(r"(?<=[。！？!?\n])", text)
         chunks: list[str] = []
         buf = ""
@@ -212,9 +214,10 @@ class DebateOrchestrator:
             if not seg:
                 continue
             buf += seg
-            if len(buf) >= max_chunk:
-                chunks.append(buf)
-                buf = ""
+            # 缓冲达阈值: 先按 max_chunk 硬切已累积部分, 余下继续累积
+            while len(buf) >= max_chunk:
+                chunks.append(buf[:max_chunk])
+                buf = buf[max_chunk:]
         if buf:
             chunks.append(buf)
         return chunks or [text]
