@@ -22,6 +22,7 @@ from backend.services.datasource import (
     rate_limit_registry,
 )
 from backend.services.datasource.business.facade import _QUOTE_DEVIATION_PCT, DataServiceFacade
+from backend.services.datasource.business.fundamental import FundamentalDataService
 
 
 class _FakeSource:
@@ -164,3 +165,40 @@ class TestNormalize:
         raw = {"ticker": "AAPL", "close": 1}
         out = DataServiceFacade._normalize(raw, "HISTORY")
         assert out["adjust"] == "qfq"
+
+
+class TestFundamentalValidation:
+    """FundamentalDataService 入参校验分支 (business/fundamental.py)"""
+
+    def test_validate_ticker_empty_raises(self):
+        with pytest.raises(ValueError):
+            FundamentalDataService._validate_ticker("")
+
+    def test_validate_ticker_none_raises(self):
+        with pytest.raises(ValueError):
+            FundamentalDataService._validate_ticker(None)
+
+    def test_validate_ticker_whitespace_raises(self):
+        with pytest.raises(ValueError):
+            FundamentalDataService._validate_ticker("   ")
+
+    @pytest.mark.asyncio
+    async def test_get_fundamental_happy_path(self):
+        from unittest.mock import AsyncMock
+
+        fake = AsyncMock()
+        fake.get_fundamental.return_value = {"pe": 15}
+        svc = FundamentalDataService(facade=fake)
+        out = await svc.get_fundamental("AAPL")
+        assert out == {"pe": 15}
+        fake.get_fundamental.assert_awaited_once_with("AAPL", prefer_sources=None)
+
+    @pytest.mark.asyncio
+    async def test_get_fundamental_info_happy_path(self):
+        from unittest.mock import AsyncMock
+
+        fake = AsyncMock()
+        fake.get_fundamental_info.return_value = {"sector": "Tech"}
+        svc = FundamentalDataService(facade=fake)
+        out = await svc.get_fundamental_info("00700.HK")
+        assert out == {"sector": "Tech"}

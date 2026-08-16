@@ -172,6 +172,21 @@ omit = [
     "*/migrations/*",
     "*/*.pb.py",
     "backend/main.py",
+    # ── 类别 A：外部数据源 SDK 封装 / 桩 / 需外部依赖的代码 ──
+    # 主服务经 DataSourceRouter 走 HTTP 代理，不本地直连；本机无 token/外部服务无法测。
+    "backend/services/tushare/*",                 # Tushare A股 SDK 封装（CN 节点专属，需 TUSHARE_TOKEN）
+    "backend/services/futu/mock_provider.py",     # 开发用 Mock 数据提供者
+    "backend/core/embeddings.py",                 # 云端 Embedding Key 封装
+    "backend/services/futu/ws_ingest.py",         # Finnhub WebSocket 长连接 ingest（需真实 WS）
+    "backend/services/macro/rbi.py",              # RBI/WorldBank 远程兜底源（需外部 HTTP）
+    "backend/services/finnhub/ws_ingest.py",      # Finnhub WS ingest
+    # 定时 daemon 入口（纯 start/stop 调度，靠 e2e，单测价值低）
+    "backend/services/market_review/scheduler.py",
+    "backend/services/morning_briefing/scheduler.py",
+    "backend/workers/macro/alert_daemon.py",
+    "backend/workers/market/daemon.py",
+    # 进程生命周期重型代码（启动序/信号量，单测价值低）
+    "backend/bootstrap/lifecycle.py",
 ]
 # 关键修复：pytest-cov 在 -n auto (xdist) 下会自动开启 parallel 模式并合并各 worker 的
 # .coverage.<host>.<pid> 数据。此前误加的 concurrency=["multiprocessing"] 会破坏合并，
