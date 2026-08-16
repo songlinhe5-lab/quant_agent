@@ -20,6 +20,7 @@ from .connection_manager import ConnectionManager
 from .option_fund_handler import OptionFundHandler
 from .quote_handler import QuoteHandler
 from .screener_handler import ScreenerHandler
+from .short_selling_handler import ShortSellingHandler
 from .source_router import FutuSourceRouter
 from .trade_handler import TradeHandler
 from .utils import format_ticker, is_futu_unsupported
@@ -52,6 +53,7 @@ class FutuService:
         # 初始化各个 Handler
         self.quote_handler = QuoteHandler(self.conn_mgr, self.cache_mgr)
         self.option_fund_handler = OptionFundHandler(self.conn_mgr, self.cache_mgr)
+        self.short_selling_handler = ShortSellingHandler(self.conn_mgr)
         self.screener_handler = ScreenerHandler(self.conn_mgr)
         self.trade_handler = TradeHandler(self.conn_mgr)
 
@@ -237,6 +239,34 @@ class FutuService:
             {"ticker": ticker},
             self.option_fund_handler.get_valuation_detail,
             ticker=ticker,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    # ── F1: 卖空数据分析 ──────────────────────────────────────────────
+    async def get_short_selling_rank(
+        self, ticker: str, market: Optional[str] = None, count: int = 10
+    ) -> Dict[str, Any]:
+        """F1-1 卖空成交榜（港股/美股/沪深）。"""
+        return await self._route(
+            "fetch_short_selling_rank",
+            {"ticker": ticker, "market": market, "count": count},
+            self.short_selling_handler.get_short_selling_rank,
+            ticker=ticker,
+            market=market,
+            count=count,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_daily_short_volume(self, ticker: str, date: Optional[str] = None) -> Dict[str, Any]:
+        """F1-2 每日卖空量（T-1 结算语义）。"""
+        return await self._route(
+            "fetch_daily_short_volume",
+            {"ticker": ticker, "date": date},
+            self.short_selling_handler.get_daily_short_volume,
+            ticker=ticker,
+            date=date,
             format_ticker_func=format_ticker,
             is_unsupported_func=is_futu_unsupported,
         )

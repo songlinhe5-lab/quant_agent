@@ -113,6 +113,8 @@ _FUTU_ACTION_MAP = {
     # F2: 三大财务报表 + 估值明细（G1 真基本面基座）
     "financials": "FINANCIALS",
     "valuation": "VALUATION",
+    # F1: 卖空数据分析（港股/美股卖空榜 + 每日卖空量）
+    "short_selling": "SHORT_SELLING",
 }
 
 # 主服务内部 fetch_type -> 子服务 action 映射 (Finnhub)

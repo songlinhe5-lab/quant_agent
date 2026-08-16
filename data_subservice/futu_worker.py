@@ -61,6 +61,20 @@ async def handle_futu(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
             )
         elif action == "VALUATION":
             return await futu_service.get_valuation(params.get("symbol"))
+        elif action == "SHORT_SELLING":
+            # F1 · 卖空数据：子模式 rank(卖空榜) / daily(每日卖空量)
+            sub = (params.get("sub_action") or params.get("mode") or "rank").lower()
+            if sub == "daily":
+                return await futu_service.get_daily_short_volume(
+                    params.get("symbol") or params.get("ticker"),
+                    date=params.get("date"),
+                )
+            # 默认 rank（卖空成交榜）
+            return await futu_service.get_short_selling_rank(
+                params.get("symbol") or params.get("ticker"),
+                market=params.get("market"),
+                count=int(params.get("count", 10)),
+            )
         elif action == "WARRANT_CHAIN":
             return await futu_service.get_warrant_chain(params.get("symbol"))
         elif action == "SNAPSHOT":
