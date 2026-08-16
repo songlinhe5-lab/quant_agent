@@ -138,6 +138,14 @@ _MARKET_FLOW_PREFERENCE: dict[str, list[str]] = {
     "CN": ["tushare", "akshare", "futu"],
 }
 
+# G3：主力筹码分层 + 背离信号（CAPITAL_DISTRIBUTION）。与资金流同源，富途 9 档分层最准。
+# 该 action 在 _select_source 中作为 flow_action 处理（见 _FLOW_ACTIONS），此处仅给出市场感知偏好。
+_MARKET_CAPITAL_DIST_PREFERENCE: dict[str, list[str]] = {
+    "US": ["futu", "akshare", "yfinance"],
+    "HK": ["futu", "akshare", "yfinance"],
+    "CN": ["tushare", "akshare", "futu"],
+}
+
 # 基本面类 action (FUNDAMENTAL / INFO) 的市场感知源优先级。
 # DIST-SEC-05(2026-08-14): 此前 FUNDAMENTAL 无市场感知策略，默认退化为首个可用源（多为 FMP）。
 # FMP 免费档对港股/中股基本面覆盖稀疏（profile/income_statement 常返回空），而 yfinance 对
@@ -236,6 +244,79 @@ class DataServiceFacade:
             prefer_sources=prefer_sources,
             enable_merge=False,
         )
+
+    async def get_capital_distribution(self, ticker: str, prefer_sources: Optional[list[str]] = None) -> Result:
+        """G3：主力筹码分层 + 背离信号。
+
+        底层 Futu CAPITAL_DISTRIBUTION 已给出 9 档 in/out 资金、主力净额、散户净额与
+        单维 divergence 标记。此处做产品级收口：
+          - 透传原始 layers / main_net / retail_net
+          - 派生多空合力（main_net - retail_net）与机构主导度
+          - 把 divergence 升级为结构化 signals（背离方向 + 强度 + 解读），
+            供前端筹码图与 AlertEngine 直接消费
+        """
+        res = await self._dispatch(
+            "CAPITAL_DISTRIBUTION",
+            {"ticker": ticker},
+            prefer_sources=prefer_sources,
+            enable_merge=False,
+        )
+        if res.is_error:
+            return res
+
+        data = res.data
+        if not isinstance(data, dict):
+            return res
+
+        layers = data.get("layers")
+        main_net = _to_float(data.get("main_net"))
+        retail_net = _to_float(data.get("retail_net"))
+
+        # 多空合力 + 机构主导度（主力净额相对总净额占比）
+        net_total = None
+        if main_net is not None or retail_net is not None:
+            net_total = (main_net or 0.0) + (retail_net or 0.0)
+        institution_dominance = None
+        if main_net is not None and net_total is not None and net_total != 0:
+            institution_dominance = round(main_net / net_total, 4)
+
+        # 背离信号结构化：把底层 divergence 字符串升级为可读信号
+        signals: list[dict] = []
+        raw_div = data.get("divergence")
+        if raw_div:
+            if "主力流入" in raw_div and "价跌" in raw_div:
+                signals.append(
+                    {
+                        "type": "main_inflow_price_down",
+                        "direction": "bullish_divergence",
+                        "strength": "strong",
+                        "message": "主力净流入而价格下跌，底背离，暗吸筹码",
+                    }
+                )
+            elif "主力流出" in raw_div and "价涨" in raw_div:
+                signals.append(
+                    {
+                        "type": "main_outflow_price_up",
+                        "direction": "bearish_divergence",
+                        "strength": "strong",
+                        "message": "主力净流出而价格上涨，顶背离，派发迹象",
+                    }
+                )
+            else:
+                signals.append(
+                    {
+                        "type": "other",
+                        "direction": "neutral",
+                        "strength": "weak",
+                        "message": raw_div,
+                    }
+                )
+
+        # 仅在确有派生信息时回写，避免覆盖底层已算好的字段
+        data["net_total"] = net_total
+        data["institution_dominance"] = institution_dominance
+        data["signals"] = signals
+        return res
 
     async def get_option_chain(
         self,
@@ -666,7 +747,8 @@ class DataServiceFacade:
         action_upper = action.upper()
         quote_action = action_upper in ("QUOTE", "HISTORY")
         news_action = action_upper in ("COMPANY_NEWS", "MARKET_NEWS", "NEWS", "STOCK_NEWS")
-        flow_action = action_upper == "FUND_FLOW"
+        # G3：CAPITAL_DISTRIBUTION 与 FUND_FLOW 同属资金流语义，共用市场感知选源策略
+        flow_action = action_upper in ("FUND_FLOW", "CAPITAL_DISTRIBUTION")
         fundamental_action = action_upper in ("FUNDAMENTAL", "INFO")
         if quote_action or news_action or flow_action or fundamental_action:
             ticker = params.get("ticker") or params.get("symbol") or ""
@@ -695,7 +777,8 @@ class DataServiceFacade:
             if quote_action and market in _MARKET_QUOTE_PREFERENCE:
                 preference = _MARKET_QUOTE_PREFERENCE[market]
             elif flow_action and market in _MARKET_FLOW_PREFERENCE:
-                preference = _MARKET_FLOW_PREFERENCE[market]
+                # G3：资金流 / 主力筹码分层均走同一市场感知偏好
+                preference = _MARKET_CAPITAL_DIST_PREFERENCE.get(market) or _MARKET_FLOW_PREFERENCE[market]
             elif news_action and market in _MARKET_NEWS_PREFERENCE:
                 preference = _MARKET_NEWS_PREFERENCE[market]
             elif fundamental_action and market in _MARKET_FUNDAMENTAL_PREFERENCE:

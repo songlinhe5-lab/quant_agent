@@ -567,6 +567,29 @@ async def get_fund_flow(ticker: str):
     }
 
 
+@router.get("/capital-distribution/{ticker}")
+async def get_capital_distribution(ticker: str):
+    """
+    G3：主力筹码分层 + 背离信号
+
+    Args:
+        ticker: 标的代码
+
+    Returns:
+        dict: {"status": "success", "data": CapitalDistributionData}
+    """
+    # BE-ARCH-06c: 经 Facade 统一选源（富途 9 档分层最准，与资金流同源）
+    facade_res = await _facade_market.get_capital_distribution(ticker)
+    if facade_res.is_error:
+        err_msg = facade_res.error.message if facade_res.error else "主力筹码分布数据不可用"
+        raise HTTPException(status_code=400, detail=err_msg)
+    return {
+        "status": "success",
+        "data": facade_res.data,
+        "source": f"facade+{facade_res.source}",
+    }
+
+
 @router.get("/warrant-chain")
 async def get_warrant_chain(ticker: str):
     """
