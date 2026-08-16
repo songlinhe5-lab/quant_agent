@@ -114,12 +114,8 @@ class DebateOrchestrator:
             session.round1_opinions = round1_opinions
 
             for opinion in round1_opinions:
-                yield StreamEvent(
-                    type="expert_opinion",
-                    message=f"{opinion.expert_id} 完成独立研判",
-                    content=self._opinion_to_text(opinion),
-                    data=opinion.model_dump(),
-                )
+                async for ev in self._yield_opinion_stream(opinion, round_index=1):
+                    yield ev
 
             yield StreamEvent(
                 type="round_complete",
@@ -139,12 +135,8 @@ class DebateOrchestrator:
                 latest_opinions = round_opinions
 
                 for opinion in round_opinions:
-                    yield StreamEvent(
-                        type="expert_opinion",
-                        message=f"{opinion.expert_id} 完成第 {r} 轮辩论",
-                        content=self._opinion_to_text(opinion),
-                        data=opinion.model_dump(),
-                    )
+                    async for ev in self._yield_opinion_stream(opinion, round_index=r):
+                        yield ev
 
                 yield StreamEvent(
                     type="round_complete",
@@ -191,7 +183,12 @@ class DebateOrchestrator:
     @staticmethod
     def _opinion_to_text(opinion: ExpertOpinion) -> str:
         """把专家观点拼为人读文本 (供前端流式渲染)"""
-        parts = [f"**核心观点**: {opinion.stance}"]
+        return "\n\n".join(orchestrator._opinion_text_parts(opinion))
+
+    @staticmethod
+    def _opinion_text_parts(opinion: ExpertOpinion) -> list[str]:
+        """把专家观点拆为段落列表 (供逐段流式推送)"""
+        parts: list[str] = [f"**核心观点**: {opinion.stance}"]
         if opinion.key_evidence:
             parts.append("**关键依据**:\n- " + "\n- ".join(opinion.key_evidence))
         if opinion.reasoning:
@@ -201,7 +198,41 @@ class DebateOrchestrator:
         if opinion.revised_stance:
             parts.append(f"**修正后观点**: {opinion.revised_stance}")
         parts.append(f"*置信度: {opinion.confidence}*")
-        return "\n\n".join(parts)
+        return parts
+
+    @staticmethod
+    def _split_for_stream(text: str, max_chunk: int = 80) -> list[str]:
+        """把文本切成小片段 (按句子/换行), 制造打字机效果, 避免单次大块推送"""
+        import re
+
+        raw = re.split(r"(?<=[。！？!?\n])", text)
+        chunks: list[str] = []
+        buf = ""
+        for seg in raw:
+            if not seg:
+                continue
+            buf += seg
+            if len(buf) >= max_chunk:
+                chunks.append(buf)
+                buf = ""
+        if buf:
+            chunks.append(buf)
+        return chunks or [text]
+
+    async def _yield_opinion_stream(
+        self, opinion: ExpertOpinion, round_index: int
+    ) -> "AsyncGenerator[StreamEvent, None]":
+        """把单个专家观点切成多片流式 yield (首片带完整 data, 后续仅增量 content)"""
+        full_text = self._opinion_to_text(opinion)
+        parts = self._split_for_stream(full_text)
+        for i, chunk in enumerate(parts):
+            yield StreamEvent(
+                type="expert_opinion",
+                message=f"{opinion.expert_id} 撰写中 ({i + 1}/{len(parts)})",
+                # 首片附带完整结构化数据 + 完整文本, 后续片仅增量 content
+                content=chunk,
+                data=opinion.model_dump() if i == 0 else {},
+            )
 
     @staticmethod
     def _promote_round(session: DebateSession, opinions: list[ExpertOpinion], round_index: int) -> None:
