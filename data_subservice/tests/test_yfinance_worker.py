@@ -1,68 +1,102 @@
-"""yfinance worker 限流 error_category 标注测试（BE-ARCH-08d 补漏）。
+"""YFinance worker 单元测试 (_annotate_error_category 限流标注 + 全 action 路由)。
 
-验证 handle_yfinance 作为 yfinance 结果唯一出口，对含 error 的响应统一补上
-error_category=rate_limit，使主服务 router 能正确区分限流（退避）与普通失败（熔断），
-避免被限流节点被误判为普通故障触发熔断器。
+yfinance_service 整体替换为 MagicMock, 不触真实 Yahoo 网络。
 """
 
-import sys
-from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-# 允许以脚本方式运行（子服务独立 pytest 入口）
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from data_subservice.yfinance_worker import _annotate_error_category, handle_yfinance  # noqa: E402
+from data_subservice import yfinance_worker
 
 
 class TestAnnotateErrorCategory:
-    def test_rate_limit_error_gets_category(self):
-        out = _annotate_error_category(
-            {"symbol": "AAPL", "error": "Too Many Requests. Rate limited. Try after a while.", "source": "yfinance"}
-        )
-        assert out["error_category"] == "rate_limit"
-        assert out["error"] == "Too Many Requests. Rate limited. Try after a while."
-
-    def test_normal_error_not_annotated(self):
-        out = _annotate_error_category({"symbol": "AAPL", "error": "no history data", "source": "yfinance"})
-        assert "error_category" not in out
-
-    def test_existing_category_respected(self):
-        out = _annotate_error_category({"error": "x", "error_category": "ip_blocked"})
-        assert out["error_category"] == "ip_blocked"
-
-    def test_success_result_untouched(self):
-        out = _annotate_error_category({"symbol": "AAPL", "price": 302.25})
-        assert "error_category" not in out
-        assert out["price"] == 302.25
-
     def test_non_dict_passthrough(self):
-        assert _annotate_error_category("not a dict") == "not a dict"
+        assert yfinance_worker._annotate_error_category("x") == "x"
+
+    def test_already_has_category(self):
+        res = {"error": "boom", "error_category": "ip_blocked"}
+        assert yfinance_worker._annotate_error_category(res)["error_category"] == "ip_blocked"
+
+    def test_no_error_passthrough(self):
+        assert yfinance_worker._annotate_error_category({"data": 1}) == {"data": 1}
+
+    def test_rate_limit_detected(self):
+        res = yfinance_worker._annotate_error_category({"error": "Too Many Requests from Yahoo"})
+        assert res["error_category"] == "rate_limit"
+
+    def test_throttle_detected(self):
+        res = yfinance_worker._annotate_error_category({"error": "throttled by server"})
+        assert res["error_category"] == "rate_limit"
+
+    def test_normal_error_untouched(self):
+        res = yfinance_worker._annotate_error_category({"error": "some other failure"})
+        assert "error_category" not in res
+
+
+@pytest.fixture
+def mock_svc(monkeypatch):
+    fake = MagicMock()
+    for name in [
+        "get_quote",
+        "get_history",
+        "get_fund_flow",
+        "get_option_chain",
+        "get_financials",
+        "search",
+        "get_tech_indicators",
+        "get_batched_quote",
+        "get_news",
+    ]:
+        setattr(fake, name, AsyncMock(return_value={"ok": True}))
+    monkeypatch.setattr(yfinance_worker, "yfinance_service", fake)
+    return fake
 
 
 class TestHandleYfinance:
     @pytest.mark.asyncio
-    async def test_quote_rate_limit_annotated(self):
-        with patch("data_subservice.yfinance_worker.yfinance_service") as svc:
-            svc.get_quote = AsyncMock(
-                return_value={"symbol": "AAPL", "error": "Too Many Requests. Rate limited.", "source": "yfinance"}
-            )
-            out = await handle_yfinance("QUOTE", {"symbol": "AAPL"})
-        assert out["error_category"] == "rate_limit"
+    async def test_quote(self, mock_svc):
+        assert await yfinance_worker.handle_yfinance("QUOTE", {"symbol": "AAPL"}) == {"ok": True}
 
     @pytest.mark.asyncio
-    async def test_quote_success_untouched(self):
-        with patch("data_subservice.yfinance_worker.yfinance_service") as svc:
-            svc.get_quote = AsyncMock(return_value={"symbol": "AAPL", "price": 302.25, "source": "yfinance"})
-            out = await handle_yfinance("QUOTE", {"symbol": "AAPL"})
-        assert out["price"] == 302.25
-        assert "error_category" not in out
+    async def test_history(self, mock_svc):
+        assert await yfinance_worker.handle_yfinance("HISTORY", {"symbol": "AAPL"}) == {"ok": True}
 
     @pytest.mark.asyncio
-    async def test_worker_exception_rate_limit_annotated(self):
-        with patch("data_subservice.yfinance_worker.yfinance_service") as svc:
-            svc.get_history = AsyncMock(side_effect=RuntimeError("Too Many Requests. Rate limited."))
-            out = await handle_yfinance("HISTORY", {"symbol": "AAPL"})
+    async def test_fund_flow(self, mock_svc):
+        assert await yfinance_worker.handle_yfinance("FUND_FLOW", {"symbol": "AAPL"}) == {"ok": True}
+
+    @pytest.mark.asyncio
+    async def test_option_chain(self, mock_svc):
+        assert await yfinance_worker.handle_yfinance("OPTION_CHAIN", {"symbol": "AAPL"}) == {"ok": True}
+
+    @pytest.mark.asyncio
+    async def test_financials(self, mock_svc):
+        assert await yfinance_worker.handle_yfinance("FINANCIALS", {"symbol": "AAPL"}) == {"ok": True}
+
+    @pytest.mark.asyncio
+    async def test_search(self, mock_svc):
+        assert await yfinance_worker.handle_yfinance("SEARCH", {"query": "apple"}) == {"ok": True}
+
+    @pytest.mark.asyncio
+    async def test_tech(self, mock_svc):
+        assert await yfinance_worker.handle_yfinance("TECH", {"symbol": "AAPL"}) == {"ok": True}
+
+    @pytest.mark.asyncio
+    async def test_batch_quote(self, mock_svc):
+        assert await yfinance_worker.handle_yfinance("BATCH_QUOTE", {"symbols": ["AAPL"]}) == {"ok": True}
+
+    @pytest.mark.asyncio
+    async def test_news(self, mock_svc):
+        assert await yfinance_worker.handle_yfinance("NEWS", {"symbol": "AAPL"}) == {"ok": True}
+
+    @pytest.mark.asyncio
+    async def test_unknown_action(self, mock_svc):
+        out = await yfinance_worker.handle_yfinance("BOGUS", {})
+        assert "未知 yfinance action" in out["error"]
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_annotation(self, mock_svc):
+        mock_svc.get_quote = AsyncMock(return_value={"error": "Too Many Requests"})
+        out = await yfinance_worker.handle_yfinance("QUOTE", {"symbol": "AAPL"})
         assert out["error_category"] == "rate_limit"

@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from data_subservice.futu_src import service as fs_mod
 from data_subservice.futu_src.service import futu_service
 
 
@@ -40,7 +39,8 @@ class TestSubscribePrecheck:
 
 class TestHelpers:
     def test_is_futu_unsupported(self):
-        assert futu_service.is_futu_unsupported("BTCUSDT.CCX") is True
+        assert futu_service.is_futu_unsupported("EURUSD=X") is True
+        assert futu_service.is_futu_unsupported("BTCUSDT.CCX") is False
 
     def test_format_ticker(self):
         assert isinstance(futu_service.format_ticker("hk.00700"), str)

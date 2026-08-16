@@ -8,25 +8,29 @@ import pytest
 
 from data_subservice._internal.yfinance import service as yf_svc
 
-
 # ── _is_data_unavailable ──────────────────────────────────────────────────
 
+
 class TestIsDataUnavailable:
-    @pytest.mark.parametrize("msg,expected", [
-        ("Yahoo error = \"No data\"", True),
-        ("No data found for ticker", True),
-        ("Delisted security", True),
-        ("Empty dataset returned", True),
-        ("not found", True),
-        ("Rate limit exceeded", False),
-        ("Connection timeout", False),
-        ("", False),
-    ])
+    @pytest.mark.parametrize(
+        "msg,expected",
+        [
+            ('Yahoo error = "No data"', True),
+            ("No data found for ticker", True),
+            ("Delisted security", True),
+            ("Empty dataset returned", True),
+            ("not found", True),
+            ("Rate limit exceeded", False),
+            ("Connection timeout", False),
+            ("", False),
+        ],
+    )
     def test_variants(self, msg, expected):
         assert yf_svc.YFinanceService._is_data_unavailable(Exception(msg)) is expected
 
 
 # ── _df_to_records ────────────────────────────────────────────────────────
+
 
 class TestDfToRecords:
     def test_none(self):
@@ -36,12 +40,12 @@ class TestDfToRecords:
         assert yf_svc.YFinanceService()._df_to_records(pd.DataFrame()) == []
 
     def test_normal(self):
-        df = pd.DataFrame([
-            {"Date": "2026-01-01", "Open": 10.0, "High": 11.0, "Low": 9.0,
-             "Close": 10.5, "Volume": 1000},
-            {"Date": "2026-01-02", "Open": 10.5, "High": 12.0, "Low": 10.0,
-             "Close": 11.5, "Volume": 2000},
-        ])
+        df = pd.DataFrame(
+            [
+                {"Date": "2026-01-01", "Open": 10.0, "High": 11.0, "Low": 9.0, "Close": 10.5, "Volume": 1000},
+                {"Date": "2026-01-02", "Open": 10.5, "High": 12.0, "Low": 10.0, "Close": 11.5, "Volume": 2000},
+            ]
+        )
         recs = yf_svc.YFinanceService()._df_to_records(df)
         assert len(recs) == 2
         assert recs[0]["close"] == 10.5
@@ -61,39 +65,54 @@ class TestDfToRecords:
         assert len(recs) == 1
 
     def test_nan_rows_skipped(self):
-        df = pd.DataFrame([
-            {"Date": "2026-01-01", "Open": 10.0, "High": 11.0, "Low": 9.0,
-             "Close": 10.5, "Volume": 1000},
-            {"Date": "bad", "Open": "x", "High": "x", "Low": "x",
-             "Close": "x", "Volume": "x"},
-        ])
+        df = pd.DataFrame(
+            [
+                {"Date": "2026-01-01", "Open": 10.0, "High": 11.0, "Low": 9.0, "Close": 10.5, "Volume": 1000},
+                {"Date": "bad", "Open": "x", "High": "x", "Low": "x", "Close": "x", "Volume": "x"},
+            ]
+        )
         recs = yf_svc.YFinanceService()._df_to_records(df)
         assert len(recs) == 1
 
 
 # ── fetch_yf_data 路由表 ──────────────────────────────────────────────────
 
+
 class TestFetchYfDataRouting:
+    """路由测试：把真实的 async 实例方法替换为 async 假实现，避免触发网络。"""
+
     @pytest.fixture
     def svc(self, monkeypatch):
         s = yf_svc.YFinanceService()
-        monkeypatch.setattr(yf_svc, "fetch_quote", lambda s: {"symbol": s, "ok": True})
-        monkeypatch.setattr(yf_svc, "fetch_history", lambda *a, **k: pd.DataFrame(
-            [{"Date": "2026-01-01", "Open": 1, "High": 2, "Low": 0, "Close": 1.5, "Volume": 10}]))
-        monkeypatch.setattr(yf_svc, "fetch_fund_flow", lambda s: {"flow": True})
-        monkeypatch.setattr(yf_svc, "fetch_financials", lambda s, kind="annual": {"fin": kind})
-        monkeypatch.setattr(yf_svc, "fetch_option_chain", lambda s: {"chain": True})
-        monkeypatch.setattr(yf_svc, "search_tickers", lambda q, limit=10: [{"q": q}])
-        monkeypatch.setattr(yf_svc, "calculate_technical_indicators", lambda df, ind: {"ind": "x"})
-        monkeypatch.setattr(yf_svc, "detect_signals", lambda df: {"sig": "x"})
-        # 避免信号量/异步 to_thread 真实执行: 直接替换各 async 入口调用的底层
-        monkeypatch.setattr(yf_svc.YFinanceService, "get_quote", lambda self, s, **k: {"quote": s})
-        monkeypatch.setattr(yf_svc.YFinanceService, "get_history", lambda self, s, **k: {"hist": s})
-        monkeypatch.setattr(yf_svc.YFinanceService, "get_fund_flow", lambda self, s: {"flow": s})
-        monkeypatch.setattr(yf_svc.YFinanceService, "get_financials", lambda self, s, **k: {"fin": s})
-        monkeypatch.setattr(yf_svc.YFinanceService, "get_option_chain", lambda self, s, **k: {"oc": s})
-        monkeypatch.setattr(yf_svc.YFinanceService, "search", lambda self, q, **k: [{"q": q}])
-        monkeypatch.setattr(yf_svc.YFinanceService, "get_tech_indicators", lambda self, s, **k: {"ti": s})
+
+        async def fake_quote(self, symbol, **k):
+            return {"quote": symbol}
+
+        async def fake_history(self, symbol, **k):
+            return {"hist": symbol}
+
+        async def fake_flow(self, symbol, **k):
+            return {"flow": symbol}
+
+        async def fake_financials(self, symbol, **k):
+            return {"fin": symbol}
+
+        async def fake_option_chain(self, symbol, **k):
+            return {"oc": symbol}
+
+        async def fake_search(self, query, **k):
+            return [{"q": query}]
+
+        async def fake_tech(self, symbol, **k):
+            return {"ti": symbol}
+
+        monkeypatch.setattr(yf_svc.YFinanceService, "get_quote", fake_quote)
+        monkeypatch.setattr(yf_svc.YFinanceService, "get_history", fake_history)
+        monkeypatch.setattr(yf_svc.YFinanceService, "get_fund_flow", fake_flow)
+        monkeypatch.setattr(yf_svc.YFinanceService, "get_financials", fake_financials)
+        monkeypatch.setattr(yf_svc.YFinanceService, "get_option_chain", fake_option_chain)
+        monkeypatch.setattr(yf_svc.YFinanceService, "search", fake_search)
+        monkeypatch.setattr(yf_svc.YFinanceService, "get_tech_indicators", fake_tech)
         return s
 
     @pytest.mark.asyncio
@@ -131,6 +150,7 @@ class TestFetchYfDataRouting:
 
 
 # ── get_tech_indicators 空分支 ─────────────────────────────────────────────
+
 
 class TestGetTechIndicatorsEmpty:
     @pytest.mark.asyncio

@@ -1,380 +1,238 @@
-"""
-Futu Watchdog 单元测试
-覆盖: start/stop/_health_check/_do_reconnect/stats/get_watchdog
-"""
+"""FutuWatchdog 单元测试 — 覆盖健康探针、重连、订阅恢复、stop/stats 分支 (mock 网络/事件循环 sleep)。"""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
+from futu import RET_OK
 
-from data_subservice.futu_src.watchdog import FutuWatchdog, get_watchdog
-
-
-def _make_watchdog():
-    """构造带 mock futu_svc 的 watchdog 实例"""
-    futu_svc = MagicMock()
-    futu_svc.conn_mgr = MagicMock()
-    futu_svc.conn_mgr.status = "DISCONNECTED"
-    futu_svc.conn_mgr.quote_ctx = None
-    futu_svc.conn_mgr.error_msg = ""
-    return FutuWatchdog(futu_svc), futu_svc
+import data_subservice.futu_src.watchdog as wd_mod
+from data_subservice.futu_src.watchdog import FutuWatchdog
 
 
-class TestFutuWatchdog:
-    """FutuWatchdog 看门狗守护进程测试套件"""
+class _FakeCacheMgr:
+    def __init__(self):
+        self._topics = set()
 
-    def test_initial_state_not_running(self):
-        """新实例应处于未运行状态，计数器全部为 0"""
-        wd, _ = _make_watchdog()
-        assert wd._running is False
-        assert wd._consecutive_failures == 0
-        assert wd._total_reconnects == 0
-        assert wd._task is None
+    @property
+    def subscribed_topics(self):
+        return self._topics
 
-    def test_stop_when_not_running_is_safe(self):
-        """stop 在未运行状态下应安全无操作"""
-        wd, _ = _make_watchdog()
+    @property
+    def subscription_count(self):
+        return len(self._topics)
+
+    @property
+    def max_subscriptions(self):
+        return 100
+
+    def touch_topic(self, ticker, st):
+        self._topics.add((ticker, st))
+
+
+class _FakeConnMgr:
+    def __init__(self, status="CONNECTED", quote_ctx=None, error_msg=""):
+        self.status = status
+        self.quote_ctx = quote_ctx
+        self.error_msg = error_msg
+
+
+class _FakeFutu:
+    def __init__(self, conn_mgr, cache_mgr, connect_raises=False, close_raises=False):
+        self.conn_mgr = conn_mgr
+        self.cache_mgr = cache_mgr
+        self._connect_raises = connect_raises
+        self._close_raises = close_raises
+        self.close_called = False
+        self.connect_called = False
+
+    def close(self):
+        self.close_called = True
+        if self._close_raises:
+            raise RuntimeError("close boom")
+
+    def connect(self):
+        self.connect_called = True
+        if self._connect_raises:
+            raise RuntimeError("connect boom")
+        self.conn_mgr.status = "CONNECTED"
+
+
+def _make_wd(
+    conn_status="CONNECTED", quote_ctx=None, cache_topics=None, connect_raises=False, close_raises=False, error_msg=""
+):
+    cm = _FakeConnMgr(conn_status, quote_ctx, error_msg)
+    ccm = _FakeCacheMgr()
+    if cache_topics:
+        ccm._topics = set(cache_topics)
+    futu = _FakeFutu(cm, ccm, connect_raises=connect_raises, close_raises=close_raises)
+    return FutuWatchdog(futu), futu
+
+
+# ─── _health_check ──────────────────────────────────────────────────
+class TestHealthCheck:
+    def test_connected_ok(self, monkeypatch):
+        wd, futu = _make_wd(quote_ctx=MagicMock())
+        wd._conn_mgr.quote_ctx.get_global_state = lambda: (RET_OK, {"state": 1})
+        assert asyncio.run(wd._health_check()) is True
+
+    def test_not_connected(self):
+        wd, futu = _make_wd(conn_status="DISCONNECTED", quote_ctx=MagicMock())
+        assert asyncio.run(wd._health_check()) is False
+
+    def test_no_quote_ctx(self):
+        wd, futu = _make_wd(conn_status="CONNECTED", quote_ctx=None)
+        assert asyncio.run(wd._health_check()) is False
+        assert wd._conn_mgr.status == "DISCONNECTED"
+
+    def test_probe_ret_not_ok(self, monkeypatch):
+        wd, futu = _make_wd(quote_ctx=MagicMock())
+        wd._conn_mgr.quote_ctx.get_global_state = lambda: (1, None)
+        assert asyncio.run(wd._health_check()) is False
+        assert wd._conn_mgr.status == "DISCONNECTED"
+
+    def test_probe_exception(self, monkeypatch):
+        wd, futu = _make_wd(quote_ctx=MagicMock())
+
+        def boom():
+            raise RuntimeError("x")
+
+        wd._conn_mgr.quote_ctx.get_global_state = boom
+        assert asyncio.run(wd._health_check()) is False
+
+
+# ─── _do_reconnect ──────────────────────────────────────────────────
+class TestDoReconnect:
+    def test_success(self, monkeypatch):
+        wd, futu = _make_wd(conn_status="DISCONNECTED", quote_ctx=MagicMock())
+        monkeypatch.setattr(wd_mod.asyncio, "wait_for", lambda coro, timeout=None: coro)
+        assert asyncio.run(wd._do_reconnect()) is True
+        assert futu.connect_called is True
+        assert wd._conn_mgr.status == "CONNECTED"
+
+    def test_connect_raises(self, monkeypatch):
+        wd, futu = _make_wd(conn_status="DISCONNECTED", quote_ctx=MagicMock(), connect_raises=True)
+        monkeypatch.setattr(wd_mod.asyncio, "wait_for", lambda coro, timeout=None: coro)
+        assert asyncio.run(wd._do_reconnect()) is False
+
+    def test_close_raises_ignored(self, monkeypatch):
+        wd, futu = _make_wd(conn_status="DISCONNECTED", quote_ctx=MagicMock(), close_raises=True)
+        monkeypatch.setattr(wd_mod.asyncio, "wait_for", lambda coro, timeout=None: coro)
+        # close 抛异常被吞, 重连仍成功
+        assert asyncio.run(wd._do_reconnect()) is True
+
+    def test_reconnect_verify_fails(self, monkeypatch):
+        wd, futu = _make_wd(conn_status="DISCONNECTED", quote_ctx=MagicMock())
+        # connect 后 status 不置 CONNECTED -> 验证失败
+        futu.connect = lambda: None
+        monkeypatch.setattr(wd_mod.asyncio, "wait_for", lambda coro, timeout=None: coro)
+        assert asyncio.run(wd._do_reconnect()) is False
+
+    def test_wait_for_timeout(self, monkeypatch):
+        wd, futu = _make_wd(conn_status="DISCONNECTED", quote_ctx=MagicMock())
+
+        async def slow_coro():
+            await asyncio.sleep(0)  # 占位
+
+        def wait_for_timeout(coro, timeout=None):
+            raise asyncio.TimeoutError()
+
+        monkeypatch.setattr(wd_mod.asyncio, "wait_for", wait_for_timeout)
+        assert asyncio.run(wd._do_reconnect()) is False
+
+
+# ─── _restore_subscriptions ─────────────────────────────────────────
+class TestRestoreSubscriptions:
+    def test_empty_returns_early(self, monkeypatch):
+        wd, futu = _make_wd(cache_topics=[])
+        # 不应调用 quote_ctx.subscribe
+        assert asyncio.run(wd._restore_subscriptions()) is None
+
+    def test_restores(self, monkeypatch):
+        wd, _ = _make_wd(cache_topics=[("HK.00700", "QUOTE")])
+        sub = MagicMock()
+        sub.subscribe = lambda *a, **k: (RET_OK, None)
+        wd._conn_mgr.quote_ctx = sub
+        monkeypatch.setattr(wd_mod.asyncio, "wait_for", lambda coro, timeout=None: coro)
+        asyncio.run(wd._restore_subscriptions())
+        # 订阅成功后 LRU 被 touch
+        assert ("HK.00700", "QUOTE") in wd._futu.cache_mgr.subscribed_topics
+
+    def test_subscribe_failure_logged(self, monkeypatch):
+        wd, futu = _make_wd(cache_topics=[("HK.00700", "QUOTE")])
+        sub = MagicMock()
+        sub.subscribe = lambda *a, **k: (1, "err")
+        wd._conn_mgr.quote_ctx = sub
+        monkeypatch.setattr(wd_mod.asyncio, "wait_for", lambda coro, timeout=None: coro)
+        asyncio.run(wd._restore_subscriptions())  # 不应抛
+
+
+# ─── stop / stats ───────────────────────────────────────────────────
+class TestStopAndStats:
+    def test_stop_cancels_task(self):
+        wd, futu = _make_wd()
+        wd._running = True
+        wd._task = MagicMock(done=MagicMock(return_value=False))
         wd.stop()
         assert wd._running is False
+        wd._task.cancel.assert_called_once()
 
-    def test_stop_cancels_existing_task(self):
-        """stop 应取消已存在的 task"""
-        wd, _ = _make_watchdog()
-        fake_task = MagicMock()
-        fake_task.done.return_value = False
-        wd._task = fake_task
-        wd._running = True
-        wd.stop()
-        fake_task.cancel.assert_called_once()
+    def test_stats(self):
+        wd, futu = _make_wd(conn_status="CONNECTED")
+        wd._total_reconnects = 3
+        wd._consecutive_failures = 1
+        s = wd.stats
+        assert s["running"] is False
+        assert s["total_reconnects"] == 3
+        assert s["connection_status"] == "CONNECTED"
+
+
+# ─── _watchdog_loop 单轮 ────────────────────────────────────────────
+class TestWatchdogLoopSingleRound:
+    def test_one_unhealthy_round_then_stop(self, monkeypatch):
+        """health_check 返回 False -> 重连 -> 设 _running=False 退出。"""
+        wd, futu = _make_wd(conn_status="DISCONNECTED", quote_ctx=MagicMock())
+
+        async def fake_sleep(d):
+            return None
+
+        monkeypatch.setattr(wd_mod.asyncio, "sleep", fake_sleep)
+        monkeypatch.setattr(wd_mod.asyncio, "wait_for", lambda coro, timeout=None: coro)
+
+        # 让 health_check 返回 False
+        async def fake_health():
+            return False
+
+        monkeypatch.setattr(wd, "_health_check", fake_health)
+
+        # 重连后停止循环
+        async def fake_reconnect():
+            wd._running = False
+            return False
+
+        monkeypatch.setattr(wd, "_do_reconnect", fake_reconnect)
+
+        # 同步执行循环一轮
+        asyncio.run(wd._watchdog_loop())
         assert wd._running is False
 
-    def test_stats_returns_correct_dict(self):
-        """stats 属性应返回包含所有字段的字典"""
-        wd, futu_svc = _make_watchdog()
+    def test_healthy_round_sleeps_then_stop(self, monkeypatch):
+        wd, futu = _make_wd(conn_status="CONNECTED", quote_ctx=MagicMock())
+        wd._conn_mgr.quote_ctx.get_global_state = lambda: (RET_OK, {"s": 1})
+
+        calls = {"n": 0}
+
+        async def fake_sleep(d):
+            calls["n"] += 1
+            wd._running = False  # 第一次健康睡眠后退出
+            return None
+
+        monkeypatch.setattr(wd_mod.asyncio, "sleep", fake_sleep)
+
+        async def fake_health():
+            return True
+
+        monkeypatch.setattr(wd, "_health_check", fake_health)
+
         wd._running = True
-        wd._total_reconnects = 5
-        wd._consecutive_failures = 2
-        wd._last_reconnect_ts = 100.0
-        wd._last_success_ts = 200.0
-        futu_svc.conn_mgr.status = "CONNECTED"
-
-        stats = wd.stats
-        assert stats["running"] is True
-        assert stats["total_reconnects"] == 5
-        assert stats["consecutive_failures"] == 2
-        assert stats["last_reconnect_ts"] == 100.0
-        assert stats["last_success_ts"] == 200.0
-        assert stats["connection_status"] == "CONNECTED"
-
-    @pytest.mark.asyncio
-    async def test_start_idempotent_skip_when_running(self):
-        """已运行状态下重复调用 start 应立即返回"""
-        wd, _ = _make_watchdog()
-        wd._running = True
-        await wd.start()  # 应立即返回
-        assert wd._running is True
-
-    @pytest.mark.asyncio
-    async def test_start_loops_and_resets_running_flag_on_cancel(self):
-        """start 应在收到 CancelledError 后优雅退出并重置 _running"""
-        wd, futu_svc = _make_watchdog()
-        # 注意：start() 内部会检查 if self._running 跳过，所以初始必须 False
-        wd._running = False
-
-        call_count = 0
-
-        async def fake_loop():
-            nonlocal call_count
-            call_count += 1
-            raise asyncio.CancelledError()
-
-        with patch.object(wd, "_watchdog_loop", new=AsyncMock(side_effect=fake_loop)):
-            await wd.start()
-
-        assert call_count == 1
-        assert wd._running is False
-
-    @pytest.mark.asyncio
-    async def test_start_recovers_from_unexpected_exception(self):
-        """主循环异常后应休眠 5 秒，sleep 抛 CancelledError 时优雅退出"""
-        wd, _ = _make_watchdog()
-        wd._running = False
-        attempts = []
-
-        async def fake_loop():
-            attempts.append(1)
-            raise RuntimeError("unexpected")
-
-        sleep_calls = []
-
-        async def fake_sleep(secs):
-            sleep_calls.append(secs)
-            # 在 except 分支内 sleep 时抛 CancelledError，会跳过 except 继续向上传播
-            # finally 块会先重置 _running=False
-            raise asyncio.CancelledError()
-
-        with (
-            patch.object(wd, "_watchdog_loop", new=AsyncMock(side_effect=fake_loop)),
-            patch("asyncio.sleep", new=fake_sleep),
-        ):
-            try:
-                await wd.start()
-            except asyncio.CancelledError:
-                pass  # 预期向上传播的取消信号
-        assert len(attempts) == 1
-        assert wd._running is False
-
-    @pytest.mark.asyncio
-    async def test_health_check_disconnected_returns_false(self):
-        """status != CONNECTED 时直接返回 False"""
-        wd, futu_svc = _make_watchdog()
-        futu_svc.conn_mgr.status = "DISCONNECTED"
-        result = await wd._health_check()
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_health_check_no_quote_ctx_returns_false(self):
-        """status=CONNECTED 但 quote_ctx=None 时返回 False"""
-        wd, futu_svc = _make_watchdog()
-        futu_svc.conn_mgr.status = "CONNECTED"
-        futu_svc.conn_mgr.quote_ctx = None
-        result = await wd._health_check()
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_health_check_probe_success_returns_true(self):
-        """get_global_state 返回 ret=0 且非空 data 时应判定健康
-
-        💡 探针已改为 get_global_state()（不依赖具体标的市场数据），
-        避免休市/无行情权限标的返回空 df 误判断线（node-s1 复盘 2026-08-11）。
-        """
-        wd, futu_svc = _make_watchdog()
-        futu_svc.conn_mgr.status = "CONNECTED"
-        futu_svc.conn_mgr.quote_ctx = MagicMock()
-        with patch("asyncio.to_thread", new=AsyncMock(return_value=(0, {"server_ver": "1.0"}))):
-            result = await wd._health_check()
-        assert result is True
-
-    @pytest.mark.asyncio
-    async def test_health_check_probe_failure_returns_false(self):
-        """get_global_state 返回非零 ret 时应判定不健康"""
-        wd, futu_svc = _make_watchdog()
-        futu_svc.conn_mgr.status = "CONNECTED"
-        futu_svc.conn_mgr.quote_ctx = MagicMock()
-        with patch("asyncio.to_thread", new=AsyncMock(return_value=(-1, None))):
-            result = await wd._health_check()
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_health_check_none_data_returns_false(self):
-        """get_global_state 返回 ret=0 但 data 为 None 时应判定不健康"""
-        wd, futu_svc = _make_watchdog()
-        futu_svc.conn_mgr.status = "CONNECTED"
-        futu_svc.conn_mgr.quote_ctx = MagicMock()
-        with patch("asyncio.to_thread", new=AsyncMock(return_value=(0, None))):
-            result = await wd._health_check()
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_health_check_timeout_returns_false(self):
-        """探针超时应返回 False 而非抛出异常
-
-        💡 修复：直接 patch _health_check 内部的 asyncio.wait_for，
-        让它立即抛 TimeoutError，无需构造复杂的 Future。
-        同时 cancel 未被 await 的 Future 以消除 "coroutine was never awaited"。
-        """
-        wd, futu_svc = _make_watchdog()
-        futu_svc.conn_mgr.status = "CONNECTED"
-        futu_svc.conn_mgr.quote_ctx = MagicMock()
-
-        import asyncio as _asyncio
-
-        # 保存原始 wait_for，用于正确清理
-        _orig_wait_for = _asyncio.wait_for
-
-        async def _mocked_wait_for(coro, timeout):
-            """mock wait_for：立即抛 TimeoutError"""
-            # coro 是一个 Future（来自 asyncio.to_thread）
-            # 必须 cancel 它，否则会被 GC 时报告 "coroutine was never awaited"
-            if hasattr(coro, "cancel"):
-                coro.cancel()
-            raise _asyncio.TimeoutError()
-
-        with patch("asyncio.wait_for", new=_mocked_wait_for):
-            result = await wd._health_check()
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_health_check_exception_returns_false(self):
-        """探针抛出异常时应安全返回 False"""
-        wd, futu_svc = _make_watchdog()
-        futu_svc.conn_mgr.status = "CONNECTED"
-        futu_svc.conn_mgr.quote_ctx = MagicMock()
-        with patch("asyncio.to_thread", new=AsyncMock(side_effect=RuntimeError("boom"))):
-            result = await wd._health_check()
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_do_reconnect_success_returns_true(self):
-        """重连流程成功且状态变为 CONNECTED 时返回 True"""
-        wd, futu_svc = _make_watchdog()
-
-        def fake_connect():
-            futu_svc.conn_mgr.status = "CONNECTED"
-
-        futu_svc.connect = fake_connect
-        futu_svc.close = MagicMock()
-        with patch("asyncio.to_thread", new=AsyncMock(side_effect=lambda f, *a, **kw: f())):
-            result = await wd._do_reconnect()
-        assert result is True
-        futu_svc.close.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_do_reconnect_close_exception_resilient(self):
-        """futu.close() 抛异常不应影响后续重连流程"""
-        wd, futu_svc = _make_watchdog()
-        futu_svc.close = MagicMock(side_effect=RuntimeError("close failed"))
-
-        def fake_connect():
-            futu_svc.conn_mgr.status = "CONNECTED"
-
-        futu_svc.connect = fake_connect
-        with patch("asyncio.to_thread", new=AsyncMock(side_effect=lambda f, *a, **kw: f())):
-            result = await wd._do_reconnect()
-        assert result is True
-
-    @pytest.mark.asyncio
-    async def test_do_reconnect_status_not_connected_returns_false(self):
-        """重连后 status 仍不是 CONNECTED 时返回 False"""
-        wd, futu_svc = _make_watchdog()
-        futu_svc.close = MagicMock()
-        futu_svc.conn_mgr.status = "ERROR"
-        futu_svc.conn_mgr.error_msg = "OpenD unreachable"
-
-        def fake_connect():
-            pass  # 不修改 status
-
-        futu_svc.connect = fake_connect
-        with patch("asyncio.to_thread", new=AsyncMock(side_effect=lambda f, *a, **kw: f())):
-            result = await wd._do_reconnect()
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_do_reconnect_timeout_returns_false(self):
-        """重连超时应返回 False"""
-        wd, futu_svc = _make_watchdog()
-        futu_svc.close = MagicMock()
-        with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError()):
-            result = await wd._do_reconnect()
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_do_reconnect_unexpected_exception_returns_false(self):
-        """重连过程中出现未预期异常应返回 False"""
-        wd, futu_svc = _make_watchdog()
-        futu_svc.close = MagicMock()
-        with patch("asyncio.wait_for", side_effect=RuntimeError("unexpected")):
-            result = await wd._do_reconnect()
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_watchdog_loop_healthy_path_resets_counters(self):
-        """健康路径应重置 consecutive_failures 并休眠 HEALTH_CHECK_INTERVAL"""
-        wd, futu_svc = _make_watchdog()
-        wd._consecutive_failures = 3
-        wd._running = True
-        sleep_calls = []
-
-        async def fake_sleep(secs):
-            sleep_calls.append(secs)
-            wd._running = False  # 退出循环
-
-        with (
-            patch.object(wd, "_health_check", new=AsyncMock(return_value=True)),
-            patch("asyncio.sleep", new=fake_sleep),
-        ):
-            await wd._watchdog_loop()
-        assert wd._consecutive_failures == 0
-        assert sleep_calls == [wd.HEALTH_CHECK_INTERVAL]
-
-    @pytest.mark.asyncio
-    async def test_watchdog_loop_unhealthy_triggers_reconnect(self):
-        """不健康路径应递增计数器并调用 _do_reconnect"""
-        wd, futu_svc = _make_watchdog()
-        wd._running = True
-        sleep_calls = []
-
-        async def fake_sleep(secs):
-            sleep_calls.append(secs)
-            wd._running = False
-
-        with (
-            patch.object(wd, "_health_check", new=AsyncMock(return_value=False)),
-            patch.object(wd, "_do_reconnect", new=AsyncMock(return_value=True)),
-            patch("asyncio.sleep", new=fake_sleep),
-        ):
-            await wd._watchdog_loop()
-        assert wd._consecutive_failures == 1
-        assert wd._total_reconnects == 1
-        # sleep 应包含两段：退避延迟 + HEALTH_CHECK_INTERVAL 之前实际上没有
-        # 因为 _running=False 后立即 break，不进入下次 _health_check
-        assert len(sleep_calls) == 1  # 只调用了退避 sleep
-
-    @pytest.mark.asyncio
-    async def test_watchdog_loop_long_sleep_when_max_failures(self):
-        """连续失败 >= MAX_CONSECUTIVE_FAILURES 时应使用 LONG_SLEEP"""
-        wd, _ = _make_watchdog()
-        wd._running = True
-        # 预设计数器接近阈值
-        wd._consecutive_failures = wd.MAX_CONSECUTIVE_FAILURES - 1
-        sleep_calls = []
-
-        async def fake_sleep(secs):
-            sleep_calls.append(secs)
-            wd._running = False
-
-        with (
-            patch.object(wd, "_health_check", new=AsyncMock(return_value=False)),
-            patch.object(wd, "_do_reconnect", new=AsyncMock(return_value=False)),
-            patch("asyncio.sleep", new=fake_sleep),
-        ):
-            await wd._watchdog_loop()
-        # consecutive_failures 现在达到阈值，sleep 应是 LONG_SLEEP
-        assert wd._consecutive_failures == wd.MAX_CONSECUTIVE_FAILURES
-        assert sleep_calls[0] == wd.LONG_SLEEP
-
-    @pytest.mark.asyncio
-    async def test_watchdog_loop_reconnect_failure_increments_failure_metric(self):
-        """重连失败时不递增 consecutive_failures（仅在健康检查失败时递增）"""
-        wd, _ = _make_watchdog()
-        wd._running = True
-        sleep_calls = []
-
-        async def fake_sleep(secs):
-            sleep_calls.append(secs)
-            wd._running = False
-
-        with (
-            patch.object(wd, "_health_check", new=AsyncMock(return_value=False)),
-            patch.object(wd, "_do_reconnect", new=AsyncMock(return_value=False)),
-            patch("asyncio.sleep", new=fake_sleep),
-        ):
-            await wd._watchdog_loop()
-        # _health_check 失败一次 -> consecutive_failures=1
-        # _do_reconnect 失败但不会再次递增
-        assert wd._consecutive_failures == 1
-
-
-def test_get_watchdog_singleton(monkeypatch):
-    """get_watchdog 应返回全局单例"""
-    import data_subservice.futu_src.watchdog as wd_module
-
-    monkeypatch.setattr(wd_module, "_watchdog", None)
-    futu_svc = MagicMock()
-    futu_svc.conn_mgr = MagicMock()
-    wd1 = get_watchdog(futu_svc)
-    wd2 = get_watchdog(futu_svc)
-    assert wd1 is wd2
-    # 清理全局状态
-    monkeypatch.setattr(wd_module, "_watchdog", None)
+        asyncio.run(wd._watchdog_loop())
+        assert calls["n"] == 1

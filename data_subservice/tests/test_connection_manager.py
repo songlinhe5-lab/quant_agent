@@ -13,7 +13,7 @@ from data_subservice.futu_src.connection_manager import ConnectionManager
 class TestOpendReachable:
     def test_reachable(self):
         cm = ConnectionManager()
-        with patch("data_subservice.futu_src.connection_manager.socket.socket") as mock_sock_cls:
+        with patch("socket.socket") as mock_sock_cls:
             mock_sock = MagicMock()
             mock_sock_cls.return_value.__enter__.return_value = mock_sock
             mock_sock_cls.return_value.__exit__.return_value = False
@@ -21,7 +21,7 @@ class TestOpendReachable:
 
     def test_unreachable(self):
         cm = ConnectionManager()
-        with patch("data_subservice.futu_src.connection_manager.socket.socket") as mock_sock_cls:
+        with patch("socket.socket") as mock_sock_cls:
             inst = mock_sock_cls.return_value
             inst.__enter__.side_effect = OSError("cannot connect")
             assert cm._is_opend_reachable() is False
@@ -72,5 +72,4 @@ class TestGetTradeContextUnreachable:
         cm = ConnectionManager()
         with patch.object(cm, "_is_opend_reachable", return_value=False):
             with pytest.raises(ConnectionError):
-                cm.get_trade_context(market=__import__("futu").TrdMarket.HK,
-                                     trd_env=__import__("futu").TrdEnv.REAL)
+                cm.get_trade_context(market=__import__("futu").TrdMarket.HK, trd_env=__import__("futu").TrdEnv.REAL)
