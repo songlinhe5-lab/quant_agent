@@ -298,6 +298,46 @@ class FutuService:
             is_unsupported_func=is_futu_unsupported,
         )
 
+    # ── F4: P1 资金分布 / FedWatch / 热力图 / 分析师共识 ──────────────────
+    async def get_capital_distribution(self, ticker: str) -> Dict[str, Any]:
+        """F4-1 主力筹码分层（8 档 in/out，支撑 G3 背离信号）。"""
+        return await self._route(
+            "fetch_capital_distribution",
+            {"ticker": ticker},
+            self.option_fund_handler.get_capital_distribution,
+            ticker=ticker,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_research_analyst_consensus(self, ticker: str) -> Dict[str, Any]:
+        """F4-4 分析师共识（卖方观点，非事实，G7 引用约束）。"""
+        return await self._route(
+            "fetch_analyst_consensus",
+            {"ticker": ticker},
+            self.option_fund_handler.get_research_analyst_consensus,
+            ticker=ticker,
+            format_ticker_func=format_ticker,
+            is_unsupported_func=is_futu_unsupported,
+        )
+
+    async def get_fed_watch(self) -> Dict[str, Any]:
+        """F4-2 FedWatch FOMC 隐含概率（市场级，支撑 G5）。"""
+        return await self._route(
+            "fetch_fed_watch",
+            {},
+            self.quote_handler.get_fed_watch_target_rate,
+        )
+
+    async def get_heat_map(self, market: str = "HK") -> Dict[str, Any]:
+        """F4-3 板块热力图（需 market 参数，支撑 G6）。"""
+        return await self._route(
+            "fetch_heat_map",
+            {"market": market},
+            self.quote_handler.get_heat_map_data,
+            market=market,
+        )
+
     async def get_warrant_chain(self, ticker: str) -> Dict[str, Any]:
         return await self._route(
             "fetch_warrant_chain",

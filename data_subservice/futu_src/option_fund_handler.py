@@ -486,6 +486,149 @@ class OptionFundHandler:
         self.cache_mgr.set_fund_flow_cache(cache_key, time.time(), result)
         return result
 
+    # ── F4-1: 主力筹码分层（补 FUND_FLOW 8 档 in/out）────────────────────
+    @with_global_retry
+    async def get_capital_distribution(
+        self, ticker: str, format_ticker_func=None, is_unsupported_func=None
+    ) -> Dict[str, Any]:
+        """获取主力筹码分层（8 档 in/out 完整明细，非聚合净流入）。
+
+        支撑 G3 主力/散户背离信号。get_capital_distribution(code) → (ret, data) 二元组。
+        """
+        if is_unsupported_func and is_unsupported_func(ticker):
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "富途原生不支持该大类资产"}
+
+        market_ticker = format_ticker_func(ticker) if format_ticker_func else ticker
+        if not market_ticker:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+
+        if self.conn_mgr.quote_ctx is None:
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 未连接",
+                "code": market_ticker,
+            }
+        if self.conn_mgr.status != "CONNECTED":
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 重连中，请稍后重试",
+                "code": market_ticker,
+            }
+
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_capital_distribution, market_ticker)
+            if ret != RET_OK or not isinstance(data, pd.DataFrame) or data.empty:
+                return {
+                    "status": "error",
+                    "source": "futu",
+                    "ticker": ticker,
+                    "message": f"资金分层获取失败: {data}",
+                    "code": market_ticker,
+                }
+
+            row = data.iloc[0]
+            layers = {}
+            for lvl in ("super", "big", "mid", "small"):
+                cap_in = safe_float(row.get(f"capital_in_{lvl}"))
+                cap_out = safe_float(row.get(f"capital_out_{lvl}"))
+                layers[lvl] = {
+                    "in": cap_in,
+                    "out": cap_out,
+                    "net": (cap_in - cap_out) if cap_in is not None and cap_out is not None else None,
+                }
+            # 主力 = super + big；散户 = mid + small
+            main_net = (layers["super"]["net"] or 0) + (layers["big"]["net"] or 0)
+            retail_net = (layers["mid"]["net"] or 0) + (layers["small"]["net"] or 0)
+            update_time = row.get("update_time")
+
+            return {
+                "status": "success",
+                "source": "futu",
+                "ticker": ticker,
+                "code": market_ticker,
+                "update_time": str(update_time) if update_time is not None else None,
+                "layers": layers,
+                "main_net": main_net,  # 主力净额 = (super+big) in-out
+                "retail_net": retail_net,  # 散户净额 = (mid+small) in-out
+                # G3 背离信号：主力净流入 ∧ 散户净流出（或反向）
+                "divergence": (
+                    "main_in_retail_out"
+                    if main_net > 0 and retail_net < 0
+                    else "main_out_retail_in"
+                    if main_net < 0 and retail_net > 0
+                    else "aligned"
+                ),
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_capital_distribution 失败 %s: %s", market_ticker, e)
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": market_ticker}
+
+    # ── F4-4: 分析师共识（卖方观点，非事实）────────────────────────────
+    @with_global_retry
+    async def get_research_analyst_consensus(
+        self, ticker: str, format_ticker_func=None, is_unsupported_func=None
+    ) -> Dict[str, Any]:
+        """获取分析师共识（评级分布 / 目标价中位数）。
+
+        ⚠️ 红线：共识是卖方观点而非事实，返回结构显式标注 ``source=futu_consensus``
+        与 ``is_third_party_expectation=True``，禁止当预测结论输出（G7 引用约束）。
+        get_research_analyst_consensus(code) → (ret, data) 二元组。
+        """
+        if is_unsupported_func and is_unsupported_func(ticker):
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "富途原生不支持该大类资产"}
+
+        market_ticker = format_ticker_func(ticker) if format_ticker_func else ticker
+        if not market_ticker:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+
+        if self.conn_mgr.quote_ctx is None:
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 未连接",
+                "code": market_ticker,
+            }
+        if self.conn_mgr.status != "CONNECTED":
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 重连中，请稍后重试",
+                "code": market_ticker,
+            }
+
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_research_analyst_consensus, market_ticker)
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {
+                    "status": "error",
+                    "source": "futu",
+                    "ticker": ticker,
+                    "message": f"分析师共识获取失败: {data}",
+                    "code": market_ticker,
+                }
+
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [{k: safe_float(v) if isinstance(v, (int, float)) else v for k, v in r.items()} for r in rows]
+
+            return {
+                "status": "success",
+                "source": "futu_consensus",
+                "is_third_party_expectation": True,
+                "ticker": ticker,
+                "code": market_ticker,
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_research_analyst_consensus 失败 %s: %s", market_ticker, e)
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": market_ticker}
+
     @with_global_retry
     async def get_fundamental(self, ticker: str, format_ticker_func=None, is_unsupported_func=None) -> Dict[str, Any]:
         """获取基本面数据"""

@@ -43,6 +43,16 @@ class MacroDataService:
         """个股新闻（宏观视角下的事件驱动数据）。"""
         return await self._facade.get_company_news(ticker, days_back=days_back, prefer_sources=prefer_sources)
 
+    # ── F4-2: FedWatch FOMC 隐含概率（Tier1 宏观前瞻，支撑 G5）──────────
+    async def get_fed_watch(self, prefer_sources: Optional[list[str]] = None) -> Any:
+        """FedWatch FOMC 目标利率隐含概率（市场级，无 code 参数）。"""
+        return await self._facade._dispatch(
+            "FED_WATCH",
+            {},
+            prefer_sources=prefer_sources or ["futu"],
+            enable_merge=False,
+        )
+
 
 # 领域单例
 macro_data_service = MacroDataService()

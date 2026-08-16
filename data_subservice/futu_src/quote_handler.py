@@ -152,6 +152,72 @@ class QuoteHandler:
             )
         return {"status": "success", "data": news, "source": "futu", "count": len(news)}
 
+    # ── F4-2: FedWatch FOMC 隐含概率（市场级，无 code 参数）──────────────
+    @with_global_retry
+    async def get_fed_watch_target_rate(self) -> Dict[str, Any]:
+        """获取 FedWatch FOMC 目标利率隐含概率（Tier1 宏观前瞻）。
+
+        支撑 G5。get_fed_watch_target_rate() → (ret, data) 二元组，无 code 参数（全市场）。
+        """
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_fed_watch_target_rate)
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {"status": "error", "source": "futu", "message": f"FedWatch 获取失败: {data}"}
+
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [{k: safe_float(v) if isinstance(v, (int, float)) else v for k, v in r.items()} for r in rows]
+            return {
+                "status": "success",
+                "source": "futu",
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_fed_watch_target_rate 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
+    # ── F4-3: 板块热力图（需 market 参数）──────────────────────────────
+    @with_global_retry
+    async def get_heat_map_data(self, market: str = "HK") -> Dict[str, Any]:
+        """获取板块/个股热力图数据（前端 ECharts treemap 数据源）。
+
+        支撑 G6。get_heat_map_data(market) → (ret, data, page) 三元组。
+        market 默认 HK（港股），支持 US/SG 等。
+        """
+        from futu import Market
+
+        mkt = getattr(Market, str(market).upper(), Market.HK)
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+
+        try:
+            res = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_heat_map_data, mkt)
+            if not isinstance(res, (list, tuple)) or len(res) < 2:
+                return {"status": "error", "source": "futu", "message": f"热力图返回形态异常: {type(res)}"}
+            ret, data = res[0], res[1]
+            if ret != RET_OK or not isinstance(data, pd.DataFrame):
+                return {"status": "error", "source": "futu", "message": f"热力图获取失败: {data}"}
+
+            rows = data.to_dict("records") if hasattr(data, "to_dict") else list(data)
+            clean = [{k: safe_float(v) if isinstance(v, (int, float)) else v for k, v in r.items()} for r in rows]
+            return {
+                "status": "success",
+                "source": "futu",
+                "market": str(mkt).split(".")[-1],
+                "count": len(clean),
+                "data": clean,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_heat_map_data 失败 %s: %s", market, e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
     @with_global_retry
     async def get_history(self, ticker: str, ktype: str = "K_DAY", num: int = 60) -> Dict[str, Any]:  # noqa: E501
         """获取历史K线数据（带缓存和降级策略）"""

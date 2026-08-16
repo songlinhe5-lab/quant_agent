@@ -85,6 +85,22 @@ async def handle_futu(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
             return await futu_service.get_option_volatility(
                 params.get("symbol") or params.get("ticker"),
             )
+        elif action == "CAPITAL_DISTRIBUTION":
+            # F4-1 主力筹码分层（8 档 in/out，支撑 G3）
+            return await futu_service.get_capital_distribution(
+                params.get("symbol") or params.get("ticker"),
+            )
+        elif action == "ANALYST_CONSENSUS":
+            # F4-4 分析师共识（卖方观点，非事实）
+            return await futu_service.get_research_analyst_consensus(
+                params.get("symbol") or params.get("ticker"),
+            )
+        elif action == "FED_WATCH":
+            # F4-2 FedWatch FOMC 隐含概率（市场级，无 code 参数）
+            return await futu_service.get_fed_watch()
+        elif action == "HEAT_MAP":
+            # F4-3 板块热力图（需 market 参数）
+            return await futu_service.get_heat_map(market=params.get("market", "HK"))
         elif action == "WARRANT_CHAIN":
             return await futu_service.get_warrant_chain(params.get("symbol"))
         elif action == "SNAPSHOT":
