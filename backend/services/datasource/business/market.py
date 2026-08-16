@@ -51,6 +51,10 @@ class MarketDataService:
         self._validate_ticker(ticker)
         return await self._facade.get_capital_distribution(ticker, prefer_sources=prefer_sources)
 
+    async def get_heat_map(self, market: str = "HK", prefer_sources: Optional[list[str]] = None) -> Any:
+        """G6：板块热力图（产品级聚合，供 ECharts treemap 渲染）。market 级无 ticker。"""
+        return await self._facade.get_heat_map(market, prefer_sources=prefer_sources)
+
     async def get_option_chain(
         self,
         ticker: str,

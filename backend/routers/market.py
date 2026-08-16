@@ -590,6 +590,29 @@ async def get_capital_distribution(ticker: str):
     }
 
 
+@router.get("/heat-map/{market}")
+async def get_heat_map(market: str = "HK"):
+    """
+    G6：板块热力图（产品级聚合，供 ECharts treemap 渲染）
+
+    Args:
+        market: 市场代码（HK/US/SG，默认 HK）
+
+    Returns:
+        dict: {"status": "success", "data": HeatMapData}
+    """
+    # BE-ARCH-06c: 经 Facade 统一选源（富途热力图最准，与资金流同源）
+    facade_res = await _facade_market.get_heat_map(market)
+    if facade_res.is_error:
+        err_msg = facade_res.error.message if facade_res.error else "板块热力图数据不可用"
+        raise HTTPException(status_code=400, detail=err_msg)
+    return {
+        "status": "success",
+        "data": facade_res.data,
+        "source": f"facade+{facade_res.source}",
+    }
+
+
 @router.get("/warrant-chain")
 async def get_warrant_chain(ticker: str):
     """

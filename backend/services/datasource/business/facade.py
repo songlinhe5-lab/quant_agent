@@ -317,6 +317,119 @@ class DataServiceFacade:
         data["signals"] = signals
         return res
 
+    async def get_heat_map(self, market: str = "HK", prefer_sources: Optional[list[str]] = None) -> Result:
+        """G6：板块热力图（产品级聚合）。
+
+        底层 Futu HEAT_MAP 已返回板块/个股列表（含名称、涨跌幅等）。
+        此处做产品级收口：
+          - 识别名称列与涨跌幅列（Futu 列名随版本变动，不硬编码）
+          - 派生宽度统计（涨/跌/平家数、平均涨跌幅、涨跌比）与领涨/领跌榜
+          - 若数据含板块分组列（如板块名），则按板块聚合供 ECharts treemap 直接渲染
+        原始 data 原样保留（panel 仅做增强）；解析失败给 note 而非崩溃（零幻觉红线）。
+        """
+        res = await self._dispatch(
+            "HEAT_MAP",
+            {"market": market},
+            prefer_sources=prefer_sources or ["futu"],
+            enable_merge=False,
+        )
+        if res.is_error:
+            return res
+
+        data = res.data
+        if not isinstance(data, dict):
+            return res
+
+        rows = data.get("data")
+        if not isinstance(rows, list) or len(rows) == 0:
+            data["panel"] = {"available": False, "note": "热力图原始数据为空"}
+            return res
+
+        # 1) 识别名称列 / 涨跌幅列 / 板块列（防御式，不硬编码 Futu 列名）
+        keys = list(rows[0].keys())
+        name_col = next((k for k in keys if str(k).lower() in ("name", "code_name", "stock_name", "名称")), None)
+        chg_col = next(
+            (k for k in keys if any(t in str(k).lower() for t in ("change", "涨跌幅", "chg", "pct"))),
+            None,
+        )
+        sector_col = next(
+            (k for k in keys if any(t in str(k).lower() for t in ("sector", "板块", "industry", "行业"))), None
+        )
+
+        def _f(v: Any) -> Optional[float]:
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return None
+
+        up = down = flat = 0
+        chg_sum = 0.0
+        valid = 0
+        top_gainers: list[dict] = []
+        top_losers: list[dict] = []
+        sectors: dict[str, list[float]] = {}
+
+        for r in rows:
+            chg = _f(r.get(chg_col)) if chg_col else None
+            nm = r.get(name_col) if name_col else r.get("code")
+            if chg is not None:
+                if chg > 0:
+                    up += 1
+                elif chg < 0:
+                    down += 1
+                else:
+                    flat += 1
+                chg_sum += chg
+                valid += 1
+                entry = {"name": nm, "change": chg, "raw": r}
+                top_gainers.append(entry)
+                top_losers.append(entry)
+            if sector_col and nm is not None:
+                sec = r.get(sector_col)
+                if sec not in sectors:
+                    sectors[sec] = []
+                if chg is not None:
+                    sectors[sec].append(chg)
+
+        top_gainers.sort(key=lambda x: x["change"], reverse=True)
+        top_losers.sort(key=lambda x: x["change"])
+
+        sector_summary = None
+        if sector_col and sectors:
+            sector_summary = []
+            for sec, chgs in sectors.items():
+                if chgs:
+                    sector_summary.append(
+                        {
+                            "sector": sec,
+                            "count": len(chgs),
+                            "avg_change": round(sum(chgs) / len(chgs), 4),
+                        }
+                    )
+            sector_summary.sort(key=lambda x: x["avg_change"], reverse=True)
+
+        breadth_ratio = None
+        if (up + down) > 0:
+            breadth_ratio = round(up / (up + down), 4)
+
+        data["panel"] = {
+            "available": True,
+            "market": data.get("market", market),
+            "total": len(rows),
+            "up": up,
+            "down": down,
+            "flat": flat,
+            "avg_change": round(chg_sum / valid, 4) if valid else None,
+            "breadth_ratio": breadth_ratio,
+            "sentiment": (
+                "risk_on" if (breadth_ratio or 0) > 0.6 else "risk_off" if (breadth_ratio or 0) < 0.4 else "mixed"
+            ),
+            "top_gainers": top_gainers[:10],
+            "top_losers": top_losers[:10],
+            "sector_summary": sector_summary,
+        }
+        return res
+
     async def get_option_chain(
         self,
         ticker: str,
@@ -746,8 +859,8 @@ class DataServiceFacade:
         action_upper = action.upper()
         quote_action = action_upper in ("QUOTE", "HISTORY")
         news_action = action_upper in ("COMPANY_NEWS", "MARKET_NEWS", "NEWS", "STOCK_NEWS")
-        # G3：CAPITAL_DISTRIBUTION 与 FUND_FLOW 同属资金流语义，共用市场感知选源策略
-        flow_action = action_upper in ("FUND_FLOW", "CAPITAL_DISTRIBUTION")
+        # G3/G6：CAPITAL_DISTRIBUTION 与 FUND_FLOW/HEAT_MAP 同属资金流语义，共用市场感知选源策略
+        flow_action = action_upper in ("FUND_FLOW", "CAPITAL_DISTRIBUTION", "HEAT_MAP")
         fundamental_action = action_upper in ("FUNDAMENTAL", "INFO")
         if quote_action or news_action or flow_action or fundamental_action:
             ticker = params.get("ticker") or params.get("symbol") or ""
