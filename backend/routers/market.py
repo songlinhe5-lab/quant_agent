@@ -679,6 +679,76 @@ async def get_heat_map(market: str = "HK"):
     }
 
 
+@router.get("/order-book")
+async def get_order_book(ticker: str):
+    """
+    实时 L2 盘口深度（Futu ORDER_BOOK）。
+
+    Args:
+        ticker: 标的代码（如 HK.00700 / US.AAPL）
+
+    Returns:
+        dict: {"status": "success", "data": {ticker, bids, asks, spread, imbalance, ...}}
+    """
+    facade_res = await _facade_market.get_order_book(ticker)
+    if facade_res.is_error:
+        err_msg = facade_res.error.message if facade_res.error else "盘口数据不可用"
+        raise HTTPException(status_code=400, detail=err_msg)
+    return {
+        "status": "success",
+        "data": facade_res.data,
+        "source": f"facade+{facade_res.source}",
+    }
+
+
+@router.get("/snapshot")
+async def get_market_snapshot(tickers: str):
+    """
+    批量实时快照（Futu SNAPSHOT，最多 400 只/批）。
+
+    Args:
+        tickers: 逗号分隔的标的列表（如 HK.00700,US.AAPL,HK.09988）
+
+    Returns:
+        dict: {"status": "success", "data": {data:[...], panel:{count, avg_change, ups, downs, flats}}}
+    """
+    ticker_list = [t.strip() for t in tickers.split(",") if t.strip()]
+    if not ticker_list:
+        raise HTTPException(status_code=400, detail="tickers 不能为空")
+    facade_res = await _facade_market.get_market_snapshot(ticker_list)
+    if facade_res.is_error:
+        err_msg = facade_res.error.message if facade_res.error else "快照数据不可用"
+        raise HTTPException(status_code=400, detail=err_msg)
+    return {
+        "status": "success",
+        "data": facade_res.data,
+        "source": f"facade+{facade_res.source}",
+    }
+
+
+@router.get("/stock-basicinfo")
+async def get_stock_basicinfo(market: str, sec_type: str = "STOCK"):
+    """
+    全市场股票/ETF/指数基本信息（Futu STOCK_BASICINFO）。
+
+    Args:
+        market: 市场代码（HK/US/SG）
+        sec_type: 证券类型（STOCK/ETF/IDX/WARRANT，默认 STOCK）
+
+    Returns:
+        dict: {"status": "success", "data": {data:[...], panel:{count, market, sec_type}}}
+    """
+    facade_res = await _facade_market.get_stock_basicinfo(market, sec_type)
+    if facade_res.is_error:
+        err_msg = facade_res.error.message if facade_res.error else "基本信息数据不可用"
+        raise HTTPException(status_code=400, detail=err_msg)
+    return {
+        "status": "success",
+        "data": facade_res.data,
+        "source": f"facade+{facade_res.source}",
+    }
+
+
 @router.get("/warrant-chain")
 async def get_warrant_chain(ticker: str):
     """
