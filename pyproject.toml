@@ -71,7 +71,7 @@ datasource-all = [
     # futu-api 仅子服务镜像使用: backend/services/futu 已改造为纯 HTTP 透传 facade
     # (BE-ARCH-09), 主服务运行时绝不 import futu, 经 DataSourceRouter 转发至
     # data_subservice/futu_src。请勿在主服务默认环境安装此包。
-    "futu-api>=10.7.0",        # 港股/富途 (仅 data_subservice, 主服务走 HTTP 代理)
+    "futu-api>=10.10.0",        # 港股/富途 (仅 data_subservice, 主服务走 HTTP 代理)
     "finnhub-python>=2.4.29",  # Finnhub REST+WebSocket (长连接实时流)
 ]
 # 本地向量化模型（可选，默认用 API 替代）
