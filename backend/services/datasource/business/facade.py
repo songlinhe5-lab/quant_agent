@@ -202,6 +202,9 @@ _STALE_THRESHOLD_SEC = {
     "ANALYST_CONSENSUS": 3600,  # G7：分析师共识（卖方观点，日级更新）
     "OPTION_STRATEGY": 300,  # G4：期权策略组合（与资金流同频）
     "MACRO_SERIES": 86400,
+    "ORDER_BOOK": 2,  # 实时 L2 盘口（秒级刷新，stale 阈值极短）
+    "SNAPSHOT": 60,  # 批量快照（分钟级）
+    "STOCK_BASICINFO": 86400,  # 全市场基本信息（日级，几乎不变）
 }
 
 # 多源报价偏差阈值（百分比）；超过即触发偏差告警
@@ -530,6 +533,136 @@ class DataServiceFacade:
 
         merged["_merged_at"] = datetime.now().isoformat()
         return Result.success_result(merged, source="facade", remark="G1真基本面三源合并")
+
+    async def get_order_book(self, ticker: str, prefer_sources: Optional[list[str]] = None) -> Result:
+        """实时 L2 盘口深度（Futu ORDER_BOOK）。
+
+        底层返回 {ticker, bids:[{price,size}], asks:[{price,size}]}（已订阅推送）。
+        此处做轻量产品级收口：派生最优买卖价差(spread)与买卖盘量比(imbalance)，
+        供前端盘口图与流动性研判直接消费；不臆造任何价格字段（零幻觉红线）。
+        """
+        res = await self._dispatch(
+            "ORDER_BOOK",
+            {"ticker": ticker},
+            prefer_sources=prefer_sources or ["futu"],
+            enable_merge=False,
+        )
+        if res.is_error:
+            return res
+        data = res.data
+        if not isinstance(data, dict):
+            return res
+
+        bids = data.get("bids") or []
+        asks = data.get("asks") or []
+        best_bid = bids[0].get("price") if bids else None
+        best_ask = asks[0].get("price") if asks else None
+        bid_vol = sum(float(b.get("size", 0)) for b in bids) if bids else None
+        ask_vol = sum(float(a.get("size", 0)) for a in asks) if asks else None
+
+        spread = None
+        if best_bid is not None and best_ask is not None:
+            spread = round(best_ask - best_bid, 4)
+        imbalance = None
+        if bid_vol is not None and ask_vol is not None and ask_vol != 0:
+            imbalance = round(bid_vol / ask_vol, 4)
+
+        data["best_bid"] = best_bid
+        data["best_ask"] = best_ask
+        data["bid_vol"] = bid_vol
+        data["ask_vol"] = ask_vol
+        data["spread"] = spread
+        data["imbalance"] = imbalance
+        return res
+
+    async def get_market_snapshot(self, tickers: list[str], prefer_sources: Optional[list[str]] = None) -> Result:
+        """批量实时快照（Futu SNAPSHOT）。
+
+        底层返回 {data:[{record...}]}（最多 400 只/批）。此处做轻量收口：
+        派生 count 与（防御式列名识别后的）平均涨跌幅/涨跌家数，供前端快照墙直接渲染；
+        原始 records 原样保留（零幻觉红线，列名随版本变动不硬编码）。
+        """
+        res = await self._dispatch(
+            "SNAPSHOT",
+            {"tickers": tickers},
+            prefer_sources=prefer_sources or ["futu"],
+            enable_merge=False,
+        )
+        if res.is_error:
+            return res
+        data = res.data
+        if not isinstance(data, dict):
+            return res
+
+        rows = data.get("data")
+        if not isinstance(rows, list):
+            data["panel"] = {"available": False, "note": "快照原始数据为空"}
+            return res
+
+        # 防御式列名识别（不硬编码 Futu 列名）
+        chg_col = None
+        if rows:
+            keys = [str(k).lower() for k in rows[0].keys()]
+            chg_col = next(
+                (
+                    k
+                    for k, lk in zip(rows[0].keys(), keys)
+                    if lk in ("cur_price", "last_price", "price", "now", "涨跌幅", "change_rate", "change")
+                ),
+                None,
+            )
+
+        ups = downs = flats = 0
+        chg_sum = 0.0
+        n = 0
+        for r in rows:
+            v = _to_float(r.get(chg_col)) if chg_col else None
+            if v is None:
+                continue
+            n += 1
+            chg_sum += v
+            if v > 0:
+                ups += 1
+            elif v < 0:
+                downs += 1
+            else:
+                flats += 1
+
+        data["panel"] = {
+            "available": True,
+            "count": len(rows),
+            "avg_change": round(chg_sum / n, 4) if n else None,
+            "ups": ups,
+            "downs": downs,
+            "flats": flats,
+        }
+        return res
+
+    async def get_stock_basicinfo(
+        self, market: str, sec_type: str = "STOCK", prefer_sources: Optional[list[str]] = None
+    ) -> Result:
+        """全市场股票/ETF/指数基本信息（Futu STOCK_BASICINFO）。
+
+        底层返回 {data:[{record...}]}。此处仅做轻量收口：派生 count，
+        原始 records（代码/名称/上市日期等）原样保留供前端基础信息表直接渲染。
+        """
+        res = await self._dispatch(
+            "STOCK_BASICINFO",
+            {"market": market, "sec_type": sec_type},
+            prefer_sources=prefer_sources or ["futu"],
+            enable_merge=False,
+        )
+        if res.is_error:
+            return res
+        data = res.data
+        if not isinstance(data, dict):
+            return res
+        rows = data.get("data")
+        if isinstance(rows, list):
+            data["panel"] = {"available": True, "count": len(rows), "market": market, "sec_type": sec_type}
+        else:
+            data["panel"] = {"available": False, "note": "基本信息原始数据为空"}
+        return res
 
     async def get_analyst_consensus(self, ticker: str, prefer_sources: Optional[list[str]] = None) -> Result:
         """G7·F4-4：分析师共识（卖方观点，非事实）。
