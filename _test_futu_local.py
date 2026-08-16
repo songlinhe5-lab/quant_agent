@@ -99,8 +99,7 @@ def _row_count_expect(label, df_or_len, required_cols=None):
         else:
             n = df_or_len
         if n == 0:
-            return False, f"返回 0 行（结构未验/无数据）"
-        cols_ok = True
+            return False, "返回 0 行（结构未验/无数据）"
         if required_cols and hasattr(df_or_len, "columns"):
             missing = [c for c in required_cols if c not in df_or_len.columns]
             if missing:
@@ -219,7 +218,7 @@ def main():
         ret, data = res[0], res[1]
         if ret != RET_OK:
             return False, data
-        last, all_rows = data[0], data[1] if isinstance(data, (tuple, list)) else (data, data)
+        _, all_rows = data[0], data[1] if isinstance(data, (tuple, list)) else (data, data)
         n = len(all_rows) if hasattr(all_rows, "__len__") else "n/a"
         ok, detail = _row_count_expect("SCREEN_STOCKS", all_rows, required_cols=["code"])
         return ok, f"筛选返回 {n} 行 | {detail}"
@@ -320,7 +319,7 @@ def main():
         ret, data = quote_ctx.get_fed_watch_target_rate()
         if ret != RET_OK:
             return False, data
-        return True, f"FedWatch OK"
+        return True, "FedWatch OK"
 
     results["P1_fed_watch"] = run("P1 get_fed_watch_target_rate", _fed_watch)
 
@@ -330,7 +329,7 @@ def main():
         ret, data = res[0], res[1]
         if ret != RET_OK:
             return False, data
-        return True, f"热力图 OK"
+        return True, "热力图 OK"
 
     results["P1_heat_map"] = run("P1 get_heat_map_data", _heat_map)
 

@@ -402,8 +402,8 @@ class OptionFundHandler:
         financial_type=None,
         currency_code=None,
         num=1,
-        format_ticker_func=format_ticker,
-        is_unsupported_func=is_futu_unsupported,
+        format_ticker_func=None,
+        is_unsupported_func=None,
     ) -> Dict[str, Any]:
         """获取三大财务报表（资产负债表/利润表/现金流量表）。
 
@@ -413,14 +413,14 @@ class OptionFundHandler:
           currency_code:  "HKD" | "USD" | ...（None 取原始货币）
           num:            返回期数（默认 1，即最近一期）
         """
-        if is_unsupported_func(ticker):
+        if is_unsupported_func and is_unsupported_func(ticker):
             return {
                 "status": "error",
                 "source": "futu",
                 "ticker": ticker,
                 "message": "标的非港股/美股/沪深，富途不支持",
             }
-        code = format_ticker_func(ticker)
+        code = format_ticker_func(ticker) if format_ticker_func else ticker
         if not code:
             return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
 
@@ -471,18 +471,18 @@ class OptionFundHandler:
     async def get_valuation_detail(
         self,
         ticker,
-        format_ticker_func=format_ticker,
-        is_unsupported_func=is_futu_unsupported,
+        format_ticker_func=None,
+        is_unsupported_func=None,
     ) -> Dict[str, Any]:
         """获取估值明细（PE/PB/股息率/市值等逐指标）。"""
-        if is_unsupported_func(ticker):
+        if is_unsupported_func and is_unsupported_func(ticker):
             return {
                 "status": "error",
                 "source": "futu",
                 "ticker": ticker,
                 "message": "标的非港股/美股/沪深，富途不支持",
             }
-        code = format_ticker_func(ticker)
+        code = format_ticker_func(ticker) if format_ticker_func else ticker
         if not code:
             return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
 
