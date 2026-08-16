@@ -3,6 +3,8 @@ import { useMarketStore } from '@/stores/marketStore'
 import { OptionVolSurface } from './option-vol-surface'
 import { OptionVolSurface3D } from './option-vol-surface-3d'
 import { OptionPcrPanel } from './option-pcr-panel'
+import { FedWatchPanel } from './fed-watch-panel'
+import { OptionStrategyLabPanel } from './option-strategy-lab-panel'
 
 type TabKey = 'heatmap' | 'surface3d' | 'pcr'
 
@@ -40,6 +42,12 @@ export function OptionsModule() {
           />
         </div>
       </div>
+
+      {/* G5：FedWatch 利率路径面板（Futu FED_WATCH，自包含 fetch） */}
+      <FedWatchPanel />
+
+      {/* G4：期权损益实验室（Futu OPTION_STRATEGY，自包含 fetch） */}
+      <OptionStrategyLabPanel ticker="US.AAPL" strategyType="STRANGLE" spread={5} />
 
       <div className="inline-flex w-fit rounded-lg border border-border/60 p-0.5">
         {TABS.map((t) => (

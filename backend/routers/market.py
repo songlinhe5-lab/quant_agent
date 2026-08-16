@@ -584,6 +584,33 @@ async def get_option_strategy_lab(
     }
 
 
+@router.get("/option-volatility")
+async def get_option_volatility(ticker: str):
+    """
+    F3：期权波动率（Futu OPTION_VOLATILITY → 单合约隐含波动率/历史波动率/Greeks）
+
+    Args:
+        ticker: 期权合约代码（OCC 格式，如 US.AAPL260320C200000，非正股）
+    """
+    facade_res = await _facade_option.get_option_volatility(ticker)
+    if facade_res.is_error:
+        err_msg = facade_res.error.message if facade_res.error else "期权波动率数据不可用"
+        raise HTTPException(status_code=400, detail=err_msg)
+    if facade_res.status == ResultStatus.DEGRADED:
+        err_msg = facade_res.error.message if facade_res.error else "期权波动率数据暂不可用"
+        return {
+            "status": "degraded",
+            "message": err_msg,
+            "data": facade_res.data,
+            "source": f"facade+{facade_res.source}",
+        }
+    return {
+        "status": "success",
+        "data": facade_res.data,
+        "source": f"facade+{facade_res.source}",
+    }
+
+
 @router.get("/fund-flow")
 async def get_fund_flow(ticker: str):
     """
