@@ -159,7 +159,7 @@ class TestHandlerFactories:
         async def _run():
             with pytest.MonkeyPatch().context() as mp:
                 mp.setattr(ph, "_get_redis", AsyncMock(return_value=fake_redis))
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 ph.set_main_loop(loop)
                 # 直接触发内部 _publish 协程 (绕过 schedule 跨线程)
                 from data_subservice.futu_src.proto.market_pb2 import Order, QuoteData
@@ -176,7 +176,7 @@ class TestHandlerFactories:
                 await redis.publish("quant:quotes:stream", payload)
                 return True
 
-        result = asyncio.get_event_loop().run_until_complete(_run())
+        result = asyncio.run(_run())
         assert result is True
         fake_redis.publish.assert_awaited_once()
         ph._main_loop = None
