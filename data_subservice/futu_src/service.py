@@ -11,7 +11,7 @@ Futu 主服务模块
 
 import logging
 import threading
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from futu import ModifyOrderOp, TrdMarket, TrdSide
 
