@@ -149,9 +149,9 @@ class OptionDataService:
 
         # 校验：必须能解析出行权价与权利金，否则无法构建损益曲线（红线：不臆造）
         valid_legs = [
-            l
-            for l in legs
-            if l["strike"] is not None and l["premium"] is not None and l["option_type"] in ("CALL", "PUT")
+            leg
+            for leg in legs
+            if leg["strike"] is not None and leg["premium"] is not None and leg["option_type"] in ("CALL", "PUT")
         ]
         if len(valid_legs) == 0:
             data["lab"] = {
@@ -162,7 +162,7 @@ class OptionDataService:
             return res
 
         # ── 构建情景网格（基于真实行权价区间，不再外推定价）──
-        strikes = [l["strike"] for l in valid_legs]
+        strikes = [leg["strike"] for leg in valid_legs]
         lo, hi = min(strikes), max(strikes)
         span = (hi - lo) or (lo * 0.1 if lo else 10.0)
         center = underlying_price if underlying_price else (lo + hi) / 2
@@ -178,14 +178,14 @@ class OptionDataService:
 
         def _pnl_at(S):
             total = 0.0
-            for l in valid_legs:
-                intrinsic = _intrinsic(l["option_type"], S, l["strike"])
-                if l["side"] == "BUY":
+            for leg in valid_legs:
+                intrinsic = _intrinsic(leg["option_type"], S, leg["strike"])
+                if leg["side"] == "BUY":
                     # 买入腿：期初付权利金，到期内在价值 − 权利金
-                    total += intrinsic - l["premium"]
+                    total += intrinsic - leg["premium"]
                 else:
                     # 卖出腿：期初收权利金，到期义务 = 权利金 − 内在价值
-                    total += l["premium"] - intrinsic
+                    total += leg["premium"] - intrinsic
             return round(total, 4)
 
         curve = [{"underlying": S, "pnl": _pnl_at(S)} for S in grid]
@@ -205,14 +205,14 @@ class OptionDataService:
         # 真实 Greeks 敞口（各腿求和；缺失字段跳过而非补零）
         gex = {}
         for g in ("delta", "gamma", "vega", "theta"):
-            vals = [l["greeks"].get(g) for l in valid_legs if l["greeks"].get(g) is not None]
+            vals = [leg["greeks"].get(g) for leg in valid_legs if leg["greeks"].get(g) is not None]
             gex[g] = round(sum(vals), 6) if vals else None
 
         data["lab"] = {
             "available": True,
             "strategy_type": data.get("strategy_type"),
             "underlying_price": underlying_price,
-            "legs": [{k: v for k, v in l.items() if k != "raw"} for l in valid_legs],
+            "legs": [{k: v for k, v in leg.items() if k != "raw"} for leg in valid_legs],
             "payoff_curve": curve,
             "break_even": break_evens,
             "max_profit": max_profit,
