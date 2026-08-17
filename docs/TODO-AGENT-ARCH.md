@@ -86,7 +86,38 @@ Phase 4 韧性扩展    AGENT-06 / AGENT-13 / AGENT-14
 - [ ] **[AGENT-04]** **ReAct 单驱动收口**（前置）
   - **现状**：S1 + S2
   - **改法**：抽唯一 driver（参考 dsh `core/agent-loop`：`Agent` 接口 + 单一默认 driver + `agent/*` 事件），非流式实现降级为流式的消费者；turn/step 生命周期拆分参考 hermes `turn_context.py` / `turn_finalizer.py` / `turn_summary.py`
-  - **验收**：全仓 `max_iterations` 字面量只出现一次；`agent.py` 拆分后单文件 <300 行；`backend/tests/test_agent.py` 全绿
+  - **验收**：全仓 `max_iterations` 字面量只出现一次；`agent.py` 循环本体唯一（不苛求整文件 <300 行——1151 行含 `_heal_memory`/`_compress_memory`/`_save_session` 等非循环逻辑，拆循环不自动缩文件）；`backend/tests/test_agent.py` 全绿
+  - **硬约束**（违反即回归，每步验收必查）：
+    1. **SSE 事件契约冻结**：`chat_stream_async` 对外 yield 的事件类型（`text_chunk`/`reasoning_chunk`/`tool_start`/`tool_result`/`heartbeat`/`chart_annotation`/`strategy_code`/`error`）与字段名一字不改 —— `backend/routers/chat.py:215` 原样 JSON 化喂前端，改任何事件名=前端崩
+    2. **非流式返回值契约不变**：`chat()` 返回最终 `str`；`run()`(CLI) 语义不变
+    3. **流式独有逻辑必须保留**：参考文献自愈拦截、策略代码块/图表标注检测、LLM 推理与工具执行两处 heartbeat、`reasoning_content` 提取、chunk 碎片拼接 —— 这些是流式差异化，不得被"收口"误删
+    4. **`max_iterations=8` 全仓只出现一次**
+  - **子任务（方案 A · 单一 driver）**：
+    - **A-1 契约冻结与回归基线**（0.5d，最先做）
+      - [ ] A-1.1 枚举 `chat_stream_async` 全部 `yield {"type":...}` 事件（类型+字段）成清单
+      - [ ] A-1.2 新建 `backend/tests/test_agent_stream_events.py`：mock LLM 产出「仅文本/含 tool_call/含 reasoning_content/触发参考文献自愈/触发熔断恢复/触发图表标注」六类响应，断言 yield 事件序列与字段符合 A-1.1 —— 作为重构回归锚点，全绿
+      - [ ] A-1.3 检查 `routers/chat.py:215` 消费点对事件 dict 有无字段级强依赖，记录"不可动字段"
+    - **A-2 抽取无状态 helper**（0.5-1d，低风险先落地，立即消 max_iterations 重复）
+      - [ ] A-2.1 抽 `_build_request_kwargs(model, stream)`：合并 `:657-663`/`:829-838` 两处 schema/model/temperature/tools 构造；`max_iterations=8` 保留 `:649`、删 `:819`
+      - [ ] A-2.2 抽 `_record_usage(usage)`：合并 `:682-688`/`:946-951` 两处 token 计量埋点
+      - [ ] A-2.3 抽 `_safe_execute_tool(name, args_str)`：统一两处 safe_execute（`:704-711`/`:968-975`），内部 `json.loads` + `await execute` + try/except → 这是 **AGENT-02 中间件未来唯一挂点**，标注 `# AGENT-02 middleware seam`
+      - [ ] A-2.4 回归：`test_agent.py` + `test_agent_stream_events.py` 全绿；`routers/chat.py` 手测一次流式对话确认 NDJSON 事件流无变化
+      - commit: `refactor(agent): 抽取 request_kwargs/usage/tool-exec 三 helper，收敛 max_iterations 至单一常量`
+    - **A-3 抽 LLM 调用策略**（1-1.5d）
+      - [ ] A-3.1 定义归一化结果 `LLMResult(content, tool_calls, usage, reasoning_content)`
+      - [ ] A-3.2 抽 `_call_llm(request_kwargs, stream, heartbeat_cb)`：`stream=False` 直调返回 `LLMResult`；`stream=True` 复用现有 chunk 拼接逻辑（`:890-941`）收口进此函数；LLM 推理期 heartbeat（`:866-877`）经 `heartbeat_cb` 上报
+      - [ ] A-3.3 回归：重跑六类用例，重点验证流式 tool_calls 碎片拼接 / reasoning_content 顺序 / usage 落最后 chunk 三处无回归
+    - **A-4 合并为单一 `_react_loop`**（1-2d，风险最高）
+      - [ ] A-4.1 定义 driver 签名 `async def _react_loop(self, emit) -> str`；内部统一语义事件（think_start/tool_call/tool_result/output/recover_start），由调用方映射成对外事件
+      - [ ] A-4.2 流式 wrapper `chat_stream_async`：保留对外签名与 yield 事件，映射回冻结事件全集；参考文献自愈拦截、图表标注/策略代码块检测作为 wrapper post-processing，**不进 driver**（保持 driver 纯）
+      - [ ] A-4.3 非流式 wrapper：`chat()` 调 `_react_loop(emit=None)` 取返回 str；`run()`(CLI) 同
+      - [ ] A-4.4 熔断恢复唯一化：两处强制总结注入（`:745-773`/`:1097-`）合成 driver 内 `_circuit_break_recover()`
+      - [ ] A-4.5 大规模回归：六类 + `test_agent.py` + 全仓 pytest；实连 DeepSeek 真实流式对话，对比收口前后事件流 diff
+      - commit: `refactor(agent): 合并 _step_loop 与 chat_stream_async 为单一 _react_loop，事件契约不变`
+    - **A-5 收尾与文档**（0.5d）
+      - [ ] A-5.1 验收对齐：确认循环本体唯一 + max_iterations 单例
+      - [ ] A-5.2 为 AGENT-02 铺路：确认 `_safe_execute_tool`(A-2.3) 为中间件唯一挂点
+      - [ ] A-5.3 全仓 `pytest -q -m "not slow"` 通过并提交
 
 ### Phase 1 · 安全与正确性红线（P0）
 
