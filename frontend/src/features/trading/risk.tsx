@@ -16,6 +16,7 @@ export function RiskModule() {
   const [loading, setLoading] = useState(true)
   const { theme } = useTheme()
   const [accounts, setAccounts] = useState<AccountsMap>({})
+  const [emptyMessage, setEmptyMessage] = useState<string | null>(null)
 
   useEffect(() => { setIsMounted(true); fetchRiskData() }, [])
 
@@ -25,8 +26,10 @@ export function RiskModule() {
       const res = await apiClient.get('/risk/dashboard')
       const d = res.data?.data || res.data
       if (d?.accounts) setAccounts(d.accounts)
+      setEmptyMessage(d?.status === 'empty' || !d?.accounts ? (d?.message || '暂无账户数据') : null)
     } catch (err) {
       console.error('[Risk] 获取风控数据失败:', err)
+      setEmptyMessage('风控数据获取失败：数据源暂不可用')
     } finally {
       setLoading(false)
     }
@@ -62,9 +65,20 @@ export function RiskModule() {
           <AccountSection key={market} market={market} account={accounts[market]} isDark={isDark} loading={loading} />
         ))
       ) : (
-        <div className="flex items-center justify-center h-32 text-[10px] text-muted-foreground">
-          {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-          {loading ? '加载风控数据...' : '暂无账户数据'}
+        <div className="flex flex-col items-center justify-center h-32 gap-1 text-center px-4">
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          ) : (
+            <>
+              <span className="text-[10px] text-amber-500/90">
+                {emptyMessage || '暂无账户数据'}
+              </span>
+              <span className="text-[9px] text-muted-foreground/60">
+                数据源恢复后将自动重试
+              </span>
+            </>
+          )}
+          {loading ? <span className="text-[10px] text-muted-foreground">加载风控数据...</span> : null}
         </div>
       )}
     </div>

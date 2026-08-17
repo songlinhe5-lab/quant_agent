@@ -50,7 +50,13 @@ export function OrderBookPanel({ ticker = 'HK.00700' }: { ticker?: string }) {
   }, [ticker])
 
   if (loading) return <div className="p-6 text-sm text-slate-400">加载盘口深度 ({ticker})…</div>
-  if (error) return <div className="p-6 text-sm text-red-400">盘口数据获取失败：{error}</div>
+  if (error)
+    return (
+      <div className="p-6 text-sm text-amber-400/90">
+        盘口数据暂不可用：{error}
+        <span className="ml-1 text-[10px] text-amber-400/60">· 数据源恢复后将自动重试</span>
+      </div>
+    )
   if (!data || (!data.bids?.length && !data.asks?.length)) return <div className="p-6 text-sm text-slate-400">暂无盘口数据</div>
 
   const bids = (data.bids || []).slice(0, 5)

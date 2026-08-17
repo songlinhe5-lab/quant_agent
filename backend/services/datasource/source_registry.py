@@ -13,8 +13,6 @@ import threading
 import time
 from typing import Any, Optional
 
-logger = logging.getLogger(__name__)
-
 from backend.core.circuit_breaker import CircuitBreakerOpenError
 from backend.core.circuit_breaker_integration import fetch_via_breaker_async
 from backend.core.metrics import (
@@ -28,6 +26,8 @@ from . import ErrorInfo, Result, ResultStatus
 from .call_metrics_store import call_metrics
 from .protocol import DataSourceInterface
 from .registry import rate_limit_registry
+
+logger = logging.getLogger(__name__)
 
 
 class _SourceEntry:
@@ -167,8 +167,27 @@ class DataSourceRegistry:
             )
 
         t0 = time.perf_counter()
+        # DIST-SEC-03: futu 扩展行情（数据不可用型）失败不污染全局（per-source）熔断，
+        # 避免误杀 QUOTE/HEALTH 等核心行情通道
+        _FUTU_BREAKER_EXEMPT_ACTIONS = {
+            "CAPITAL_DISTRIBUTION",
+            "HEAT_MAP",
+            "ANALYST_CONSENSUS",
+            "FED_WATCH",
+            "FUND_FLOW",
+            "OPTION_CHAIN",
+            "WARRANT_CHAIN",
+            "FUNDAMENTAL",
+        }
+        exempt_from_breaker = source_name == "futu" and action in _FUTU_BREAKER_EXEMPT_ACTIONS
         try:
-            result = await fetch_via_breaker_async(source_name, source.fetch, action, params)
+            result = await fetch_via_breaker_async(
+                source_name,
+                source.fetch,
+                action,
+                params,
+                exempt_from_breaker=exempt_from_breaker,
+            )
         except CircuitBreakerOpenError:
             # 熔断器 OPEN：直接返回错误结果，不调用具体源（避免对熔断中服务施压）
             result = Result.make_error(

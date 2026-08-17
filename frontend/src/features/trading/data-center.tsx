@@ -36,6 +36,8 @@ export function DataCenterModule() {
   const [capitalFlows, setCapitalFlows] = useState<CapitalFlowItem[]>([])
   const [sentimentInd, setSentimentInd] = useState<any>(null)
   const [earnings, setEarnings] = useState<any[]>([])
+  const [earningsStatus, setEarningsStatus] = useState<string>('unknown')
+  const [earningsMessage, setEarningsMessage] = useState<string>('')
   const [marginData, setMarginData] = useState<MarginMarketData[]>([])
   const [marginStatus, setMarginStatus] = useState<string>('unknown')
   const [usShortInterest, setUsShortInterest] = useState<UsShortInterestData | null>(null)
@@ -96,6 +98,8 @@ export function DataCenterModule() {
           if (d.sentimentIndicators) setSentimentInd(d.sentimentIndicators)
           if (d.economicEvents) setEvents(d.economicEvents)
           if (d.earningsCalendar) setEarnings(d.earningsCalendar)
+          if (d.earningsStatus) setEarningsStatus(d.earningsStatus)
+          if (d.earningsMessage) setEarningsMessage(d.earningsMessage)
           if (d.marginTrading) setMarginData(d.marginTrading)
           if (d.marginTradingStatus) setMarginStatus(d.marginTradingStatus)
           if (d.usShortInterest) setUsShortInterest(d.usShortInterest)
@@ -386,7 +390,7 @@ export function DataCenterModule() {
         handleManualRefresh={handleManualRefresh}
       />
       {/* 财报日历 */}
-      <EarningsCalendar earnings={earnings} earnDed={earnDed} handleManualRefresh={handleManualRefresh} loading={fetching} />
+      <EarningsCalendar earnings={earnings} earnDed={earnDed} handleManualRefresh={handleManualRefresh} loading={fetching} status={earningsStatus} message={earningsMessage} />
       {/* 新闻情绪 */}
       <NewsStream news={news} visibleNewsCount={visibleNewsCount} setVisibleNewsCount={setVisibleNewsCount} />
       {/* FRED 宏观图表查询 */}
