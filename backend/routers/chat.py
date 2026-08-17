@@ -189,13 +189,13 @@ async def chat_endpoint(request: ChatRequest, username: str = Depends(get_curren
     if not global_registry:
         raise HTTPException(status_code=503, detail="Tool Registry 未初始化")
 
-    from hermes_agent.agent import HermesAgent
+    from hermes_agent.agent import DEFAULT_SYSTEM_PROMPT_PATH, HermesAgent
 
     safe_session_id = f"user_{username}_{request.session_id or 'default_api_session'}"
 
     current_agent = HermesAgent(
         tool_registry=global_registry,
-        system_prompt_path=os.path.abspath("AGENTS.md"),
+        system_prompt_path=DEFAULT_SYSTEM_PROMPT_PATH,
         session_id=safe_session_id,
         llm_client=global_llm_client,
         redis_client=redis_client,

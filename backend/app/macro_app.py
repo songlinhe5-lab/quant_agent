@@ -530,37 +530,49 @@ async def get_capital_flow_dashboard(force_refresh: bool = False):
         hk = None
         us = None
         if sectors_data:
-            a_raw = (sectors_data.get("a_share") or {}).get("data") or {}
-            a_items = a_raw.get("inflow_top") or []
-            a_share = {
-                "sectors": [
-                    {
-                        "name": it.get("名称"),
-                        "net_inflow": _to_float(it.get("主力净流入")),
-                        "change_pct": _to_float(it.get("涨跌幅")),
-                    }
-                    for it in a_items
-                ],
-                "unit": a_raw.get("unit"),
-                "updated_at": (sectors_data.get("a_share") or {}).get("updated_at"),
-                "source": (sectors_data.get("a_share") or {}).get("source"),
-            }
-            hk_raw = (sectors_data.get("hk") or {}).get("data") or {}
-            hk = {
-                "sectors": [
-                    {"name": it.get("name"), "net_inflow": _to_float(it.get("net_inflow"))}
-                    for it in (hk_raw.get("sectors") or [])
-                ],
-                "unit": hk_raw.get("unit"),
-            }
-            us_raw = (sectors_data.get("us") or {}).get("data") or {}
-            us = {
-                "sectors": [
-                    {"name": it.get("name"), "net_inflow": _to_float(it.get("net_inflow"))}
-                    for it in (us_raw.get("sectors") or [])
-                ],
-                "unit": us_raw.get("unit"),
-            }
+            a_share_block = sectors_data.get("a_share") or {}
+            if a_share_block.get("status") != "success":
+                a_share = None
+            else:
+                a_raw = a_share_block.get("data") or {}
+                a_items = a_raw.get("inflow_top") or []
+                a_share = {
+                    "sectors": [
+                        {
+                            "name": it.get("名称"),
+                            "net_inflow": _to_float(it.get("主力净流入")),
+                            "change_pct": _to_float(it.get("涨跌幅")),
+                        }
+                        for it in a_items
+                    ],
+                    "unit": a_raw.get("unit"),
+                    "updated_at": a_share_block.get("updated_at"),
+                    "source": a_share_block.get("source"),
+                }
+            hk_block = sectors_data.get("hk") or {}
+            if hk_block.get("status") != "success":
+                hk = None
+            else:
+                hk_raw = hk_block.get("data") or {}
+                hk = {
+                    "sectors": [
+                        {"name": it.get("name"), "net_inflow": _to_float(it.get("net_inflow"))}
+                        for it in (hk_raw.get("sectors") or [])
+                    ],
+                    "unit": hk_raw.get("unit"),
+                }
+            us_block = sectors_data.get("us") or {}
+            if us_block.get("status") != "success":
+                us = None
+            else:
+                us_raw = us_block.get("data") or {}
+                us = {
+                    "sectors": [
+                        {"name": it.get("name"), "net_inflow": _to_float(it.get("net_inflow"))}
+                        for it in (us_raw.get("sectors") or [])
+                    ],
+                    "unit": us_raw.get("unit"),
+                }
 
         def _hk_connect(payload):
             if not payload or payload.get("status") != "success":

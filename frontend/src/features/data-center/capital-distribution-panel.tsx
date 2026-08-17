@@ -50,7 +50,13 @@ export function CapitalDistributionPanel({ ticker = 'HK.00700' }: { ticker?: str
   }, [ticker])
 
   if (loading) return <div className="p-6 text-sm text-slate-400">加载主力筹码分层 ({ticker})…</div>
-  if (error) return <div className="p-6 text-sm text-red-400">主力筹码数据获取失败：{error}</div>
+  if (error)
+    return (
+      <div className="p-6 text-sm text-amber-400/90">
+        主力筹码数据暂不可用：{error}
+        <span className="ml-1 text-[10px] text-amber-400/60">· 数据源恢复后将自动重试</span>
+      </div>
+    )
   if (!data) return <div className="p-6 text-sm text-slate-400">暂无主力筹码数据</div>
 
   const fmt = (v?: number) => (v == null || Number.isNaN(v) ? '--' : `${v >= 0 ? '+' : ''}${v.toFixed(2)} 亿`)

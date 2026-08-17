@@ -1271,6 +1271,11 @@ class DataSourceRouter:
             "OPTION_CHAIN",
             "WARRANT_CHAIN",
             "FUNDAMENTAL",
+            # F4 扩展行情同样属"数据不可用"型, 失败不污染节点/全局熔断
+            "CAPITAL_DISTRIBUTION",
+            "HEAT_MAP",
+            "ANALYST_CONSENSUS",
+            "FED_WATCH",
         }
         is_trade_action = remote_action in _FUTU_TRADE_ACTIONS
 

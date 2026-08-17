@@ -8,7 +8,9 @@
 prompts/
 ├── README.md                    # 本文件：规范说明
 ├── system/                      # 系统级 Prompt（Agent 主脑人设）
-│   └── AGENT_SYSTEM.md          # → 符号链接至根目录 AGENTS.md
+│   ├── HERMES.md                # 盘中主脑运行时指令（agent.py 加载）
+│   └── AGENT_SYSTEM.md          # 索引：指向 HERMES.md / AGENTS.md
+
 ├── tasks/                       # 任务级 Prompt（子模型 / 专用 LLM 调用）
 │   ├── sentiment_analysis.md    # 新闻情感分析
 │   ├── screener_translate.md    # 选股 NLP → DSL 翻译
@@ -48,7 +50,7 @@ changelog: |
 
 | Prompt 名称 | 文件 | 代码位置 | 状态 |
 |:---|:---|:---|:---|
-| Agent 系统指令 | `AGENTS.md` | `backend/main.py:1214` 加载 | ✅ 已外部化 |
+| Agent 系统指令 | `prompts/system/HERMES.md` | `hermes_agent.agent.DEFAULT_SYSTEM_PROMPT_PATH` | ✅ 已与 IDE 宪法 `AGENTS.md` 分离 |
 | 新闻情感分析 | `tasks/sentiment_analysis.md` | `backend/services/sentiment_service.py:14` | 📋 待迁移 |
 | 选股 NLP→DSL | `tasks/screener_translate.md` | `backend/services/screener_service.py:1050` | 📋 待迁移 |
 | 会话标题生成 | `tasks/title_generator.md` | `hermes_agent/agent.py:280` | 📋 待迁移 |

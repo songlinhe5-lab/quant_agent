@@ -42,20 +42,29 @@ async def fetch_via_breaker_async(
     fetch_fn: Callable[..., Any],
     action: str,
     params: Optional[dict[str, Any]] = None,
+    exempt_from_breaker: bool = False,
 ) -> Any:
     """包装异步 source.fetch（DataSourceInterface / Result）。
 
     OPEN 时抛出 CircuitBreakerOpenError，由调用方转成错误结果。
+
+    exempt_from_breaker=True：该 action 失败不计入全局（per-source）熔断计数。
+    用于"数据不可用型"扩展行情（DIST-SEC-03）：单 action 失败属源能力缺失，
+    不应污染共享熔断器误杀同源核心通道（如 QUOTE/HEALTH）。
     """
     if circuit_breaker.get_state(source) == CircuitState.OPEN:
         raise CircuitBreakerOpenError(msg=f"外部 API [{source}] 熔断中，跳过调用", service=source)
     try:
         result = await fetch_fn(action, params or {})
     except Exception as e:  # noqa: BLE001
-        circuit_breaker.record_failure(source, is_rate_limit=circuit_breaker.is_rate_limit_error(e))
+        if not exempt_from_breaker:
+            circuit_breaker.record_failure(source, is_rate_limit=circuit_breaker.is_rate_limit_error(e))
         raise
     if _is_success(result):
         circuit_breaker.record_success(source)
+    elif exempt_from_breaker:
+        # 豁免 action：成功仍复位，失败不计入全局熔断
+        pass
     else:
         circuit_breaker.record_failure(
             source, is_rate_limit=_is_rate_limit_category(getattr(result, "error_category", None))

@@ -82,4 +82,4 @@ pnpm preview
 - `docs/04. 前端架构与零GC渲染.md` - 前端架构详细设计
 - `docs/02. Vibe Coding 工程规范.md` - 开发规范与约束
 - `docs/11. 领域对象与TS类型契约.md` - TypeScript 类型契约
-- `AI_INSTRUCTIONS.md` - AI 辅助开发指令
+- `AGENTS.md` - 跨 IDE 编码宪法（AI 辅助开发看这个，不要读 `AI_INSTRUCTIONS.md`）

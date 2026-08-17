@@ -28,9 +28,9 @@ export function AnalystVsFundamentalPanel({ ticker = 'US.AAPL' }: { ticker?: str
     setLoading(true)
     setError(null)
     apiClient
-      .get<{ data: AnalystVsFundamentalData }>(`/market-fundamental/analyst-vs-fundamental/${ticker}`)
+      .get<{ data: AnalystVsFundamentalData }>(`/market/analyst-vs-fundamental/${ticker}`)
       .then((res) => {
-        if (!cancelled) setData(res.data ?? null)
+        if (!cancelled) setData((res.data as any)?.data ?? (res.data as any) ?? null)
       })
       .catch((e) => {
         if (!cancelled) setError(String(e?.message || e))
@@ -44,7 +44,13 @@ export function AnalystVsFundamentalPanel({ ticker = 'US.AAPL' }: { ticker?: str
   }, [ticker])
 
   if (loading) return <div className="p-6 text-sm text-slate-400">加载卖方共识 vs 基本面 ({ticker})…</div>
-  if (error) return <div className="p-6 text-sm text-red-400">共识对比数据获取失败：{error}</div>
+  if (error)
+    return (
+      <div className="p-6 text-sm text-amber-400/90">
+        共识对比数据暂不可用：{error}
+        <span className="ml-1 text-[10px] text-amber-400/60">· 数据源恢复后将自动重试</span>
+      </div>
+    )
   if (!data) return <div className="p-6 text-sm text-slate-400">暂无卖方共识对比数据</div>
 
   const upside = data.upside_pct

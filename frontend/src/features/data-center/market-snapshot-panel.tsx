@@ -53,7 +53,13 @@ export function MarketSnapshotPanel({ tickers = 'HK.00700,US.AAPL,HK.09988' }: {
   }, [tickers])
 
   if (loading) return <div className="p-6 text-sm text-slate-400">加载批量快照…</div>
-  if (error) return <div className="p-6 text-sm text-red-400">快照获取失败：{error}</div>
+  if (error)
+    return (
+      <div className="p-6 text-sm text-amber-400/90">
+        快照数据暂不可用：{error}
+        <span className="ml-1 text-[10px] text-amber-400/60">· 数据源恢复后将自动重试</span>
+      </div>
+    )
   if (!data || !data.data?.length) return <div className="p-6 text-sm text-slate-400">暂无快照数据</div>
 
   const panel = data.panel || {}

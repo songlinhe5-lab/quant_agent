@@ -2,8 +2,10 @@ import React from 'react';
 import { LineChartIcon, Sparkles } from 'lucide-react';
 import EventCountdown from '@/components/ui/event-countdown';
 
-export function EarningsCalendar({ earnings, earnDed, handleManualRefresh, loading }: { earnings: any[], earnDed: string, handleManualRefresh: () => void, loading?: boolean }) {
+export function EarningsCalendar({ earnings, earnDed, handleManualRefresh, loading, status, message }: { earnings: any[], earnDed: string, handleManualRefresh: () => void, loading?: boolean, status?: string, message?: string }) {
   const safeEarnings = Array.isArray(earnings) ? earnings : []
+  // 区分「真无财报」与「数据源报错」：后端 dashboard 已透传 earningsStatus/earningsMessage
+  const degraded = safeEarnings.length === 0 && status && status !== "success" && status !== "warning"
   return (
     <div className="glass-card rounded-lg overflow-hidden flex flex-col h-[350px] relative">
       <div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2 flex-shrink-0">
@@ -49,7 +51,17 @@ export function EarningsCalendar({ earnings, earnDed, handleManualRefresh, loadi
             })}
           </tbody>
         </table>
-        {safeEarnings.length === 0 && <div className="p-4 text-center text-[10px] text-muted-foreground">{loading ? '数据加载中…' : '暂无数据'}</div>}
+        {safeEarnings.length === 0 && (
+          <div className="p-4 text-center text-[10px]">
+            {loading ? (
+              <span className="text-muted-foreground">数据加载中…</span>
+            ) : degraded ? (
+              <span className="text-amber-500">财报数据源暂不可用{message ? `（${message}）` : status === "error" ? "（接口异常）" : ""} · 恢复后自动重试</span>
+            ) : (
+              <span className="text-muted-foreground">暂无数据</span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

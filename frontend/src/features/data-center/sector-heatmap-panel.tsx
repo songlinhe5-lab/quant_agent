@@ -58,7 +58,13 @@ export function SectorHeatmapPanel({ market = 'HK' }: { market?: string }) {
   }, [market])
 
   if (loading) return <div className="p-6 text-sm text-slate-400">加载板块热力图 ({market})…</div>
-  if (error) return <div className="p-6 text-sm text-red-400">板块热力图获取失败：{error}</div>
+  if (error)
+    return (
+      <div className="p-6 text-sm text-amber-400/90">
+        板块热力图暂不可用：{error}
+        <span className="ml-1 text-[10px] text-amber-400/60">· 数据源恢复后将自动重试</span>
+      </div>
+    )
   if (!data) return <div className="p-6 text-sm text-slate-400">暂无板块热力图数据</div>
 
   const sectors = data.sector_summary || []

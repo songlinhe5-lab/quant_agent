@@ -160,7 +160,7 @@ function FlowCard({ title, point, accent }: { title: string; point: FlowPoint | 
 
 // ── 行业分布饼图 ─────────────────────────────────────────────────────────
 
-function SectorPie({ title, sectors, unit }: { title: string; sectors: SectorItem[]; unit: string | null }) {
+function SectorPie({ title, sectors, unit, unavailable }: { title: string; sectors: SectorItem[]; unit: string | null; unavailable?: boolean }) {
   const top = [...sectors].sort((a, b) => Math.abs(b.net_inflow ?? 0) - Math.abs(a.net_inflow ?? 0)).slice(0, 12)
   const ref = useEChart(() => {
     if (!top.length) return null
@@ -205,6 +205,8 @@ function SectorPie({ title, sectors, unit }: { title: string; sectors: SectorIte
       </div>
       {top.length ? (
         <div ref={ref} className="w-full h-[220px]" />
+      ) : unavailable ? (
+        <div className="h-[220px] flex items-center justify-center text-xs text-amber-500/90">数据源暂不可用 · 恢复后自动重试</div>
       ) : (
         <div className="h-[220px] flex items-center justify-center text-xs text-muted-foreground/60">暂无行业数据</div>
       )}
@@ -214,7 +216,7 @@ function SectorPie({ title, sectors, unit }: { title: string; sectors: SectorIte
 
 // ── 美股板块资金流柱状图 ─────────────────────────────────────────────────
 
-function SectorBar({ title, sectors, unit }: { title: string; sectors: SectorItem[]; unit: string | null }) {
+function SectorBar({ title, sectors, unit, unavailable }: { title: string; sectors: SectorItem[]; unit: string | null; unavailable?: boolean }) {
   const sorted = [...sectors].sort((a, b) => (a.net_inflow ?? 0) - (b.net_inflow ?? 0))
   const ref = useEChart(() => {
     if (!sorted.length) return null
@@ -265,6 +267,8 @@ function SectorBar({ title, sectors, unit }: { title: string; sectors: SectorIte
       </div>
       {sorted.length ? (
         <div ref={ref} className="w-full h-[260px]" />
+      ) : unavailable ? (
+        <div className="h-[260px] flex items-center justify-center text-xs text-amber-500/90">数据源暂不可用 · 恢复后自动重试</div>
       ) : (
         <div className="h-[260px] flex items-center justify-center text-xs text-muted-foreground/60">暂无板块数据</div>
       )}
@@ -408,6 +412,8 @@ export function FundFlowDashboardModule() {
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<MarketTab>('a')
   const [updatedAt, setUpdatedAt] = useState<string | null>(null)
+  const [source, setSource] = useState<string>('AKShare')
+  const [sourceDegraded, setSourceDegraded] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -419,6 +425,13 @@ export function FundFlowDashboardModule() {
         if (alive) {
           setData(inner)
           setUpdatedAt(inner ? fmtTime((body as any)?.updated_at) : null)
+          setSource((body as any)?.source || 'AKShare')
+          const allNull =
+            inner &&
+            [inner.northbound, inner.southbound, inner.a_share, inner.hk, inner.us, inner.us_big_order].every(
+              (x) => x == null,
+            )
+          setSourceDegraded(!!allNull)
         }
       } catch (_e) {
         if (alive) setError('资金流看板数据获取失败，请稍后重试')
@@ -449,7 +462,16 @@ export function FundFlowDashboardModule() {
           <span className="flex items-center gap-1">
             <Clock className="h-2.5 w-2.5" /> 更新: {updatedAt || '加载中'}
           </span>
-          <span className="px-1.5 py-0.5 rounded bg-secondary/30 border border-border/30">数据源: AKShare</span>
+          <span
+            className={cn(
+              'px-1.5 py-0.5 rounded border',
+              sourceDegraded
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-500/90'
+                : 'bg-secondary/30 border-border/30',
+            )}
+          >
+            数据源: {source}{sourceDegraded ? ' · 暂未连通' : ''}
+          </span>
         </div>
       </div>
 
@@ -480,7 +502,7 @@ export function FundFlowDashboardModule() {
           <AlertTriangle className="h-4 w-4" /> {error}
         </div>
       )}
-      {!loading && !error && data && (data.northbound || data.southbound || data.a_share || data.hk || data.us) === null && (
+      {!loading && !error && data && [data.northbound, data.southbound, data.a_share, data.hk, data.us, data.us_big_order].every((x) => x == null) && (
         <div className="flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground py-16">
           <AlertTriangle className="h-5 w-5 text-amber-500" />
           <span>当前所有资金流数据源暂不可用（AKShare / 互联互通），请检查网络后重试。</span>
@@ -493,7 +515,7 @@ export function FundFlowDashboardModule() {
           {tab === 'a' && (
             <div className="flex flex-col gap-3">
               <FlowCard title="北向资金 (外资买 A 股)" point={data.northbound} accent="#0ecb81" />
-              <SectorPie title="A股行业资金净流入分布" sectors={data.a_share?.sectors ?? []} unit={data.a_share?.unit ?? null} />
+              <SectorPie title="A股行业资金净流入分布" sectors={data.a_share?.sectors ?? []} unit={data.a_share?.unit ?? null} unavailable={!data?.a_share} />
               <div className="flex items-center justify-between text-[9px] text-muted-foreground/50 px-1">
                 <span>行业板块口径: {data.a_share?.source || 'AKShare'}</span>
                 <span>更新: {fmtTime(data.a_share?.updated_at)}</span>
@@ -505,13 +527,13 @@ export function FundFlowDashboardModule() {
             <div className="flex flex-col gap-3">
               <FlowCard title="南向资金 (港股通净买入)" point={data.southbound} accent="#f6465d" />
               <HkConnectCard data={data.hk_connect} />
-              <SectorPie title="港股通行业资金净流入分布" sectors={data.hk?.sectors ?? []} unit={data.hk?.unit ?? null} />
+              <SectorPie title="港股通行业资金净流入分布" sectors={data.hk?.sectors ?? []} unit={data.hk?.unit ?? null} unavailable={!data?.hk} />
             </div>
           )}
 
           {tab === 'us' && (
             <div className="flex flex-col gap-3">
-              <SectorBar title="美股板块 ETF 资金净流入" sectors={data.us?.sectors ?? []} unit={data.us?.unit ?? null} />
+              <SectorBar title="美股板块 ETF 资金净流入" sectors={data.us?.sectors ?? []} unit={data.us?.unit ?? null} unavailable={!data?.us} />
               <UsBigOrderCard data={data.us_big_order} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <FlowCard title="北向资金 (参照)" point={data.northbound} accent="#0ecb81" />

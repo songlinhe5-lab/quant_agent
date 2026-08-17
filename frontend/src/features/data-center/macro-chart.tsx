@@ -5,6 +5,18 @@ import { cn } from '@/lib/utils'
 import { useTheme } from 'next-themes'
 import { useEChart, ECHART_DARK } from '@/hooks/use-echart'
 
+// 后端返回的是内部架构说明文案, 对用户无意义, 映射为友好描述
+function _friendlyFredError(raw?: string): string {
+  if (!raw) return ''
+  if (/remote node.*local service disabled|remote node failed/i.test(raw)) {
+    return 'FRED 数据源暂不可用（远程节点未连接）'
+  }
+  if (/not found|unknown series|invalid/i.test(raw)) {
+    return '未找到该 FRED 序列（请检查序列 ID）'
+  }
+  return raw
+}
+
 export function MacroChartPanel() {
   const [seriesId, setSeriesId] = useState('DGS10')
   const [inputValue, setInputValue] = useState('DGS10')
@@ -34,11 +46,11 @@ export function MacroChartPanel() {
         const last = chartData[chartData.length - 1]
         setLatestDate(last?.date || '')
       } else {
-        setError(res.data?.message || '获取失败')
+        setError(_friendlyFredError(res.data?.message) || '获取失败')
         setData([])
       }
     } catch (e: any) {
-      setError(e.message || '网络请求失败')
+      setError(_friendlyFredError(e.message) || '网络请求失败')
       setData([])
     } finally {
       setLoading(false)
@@ -149,7 +161,10 @@ export function MacroChartPanel() {
 
       <div className="flex-1 p-4 relative min-h-0 bg-slate-50/30 dark:bg-black/10">
         {error ? (
-          <div className="flex items-center justify-center h-full text-xs text-red-500 font-mono bg-red-500/5 rounded-lg border border-red-500/10 p-4 text-center">⚠️ {error}</div>
+          <div className="flex flex-col items-center justify-center h-full text-xs text-amber-500 font-mono bg-amber-500/5 rounded-lg border border-amber-500/10 p-4 text-center gap-1">
+            <span>⚠️ {error}</span>
+            <span className="text-[10px] text-amber-500/60 font-sans">· 数据源恢复后将自动重试</span>
+          </div>
         ) : data.length > 0 ? (
           <div ref={chartRef} className="w-full h-full" />
         ) : (
