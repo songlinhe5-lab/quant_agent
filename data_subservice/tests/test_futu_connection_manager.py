@@ -38,7 +38,7 @@ class TestConnectionManager:
             ),
         ):
             mgr.connect()
-        mock_open.assert_called_once_with(host="127.0.0.1", port=11111)
+        mock_open.assert_called_once_with(host="127.0.0.1", port=11111, is_encrypt=False)
         assert mgr.quote_ctx is fake_ctx
         assert mgr.status == "CONNECTED"
         assert mgr.error_msg == ""
@@ -95,7 +95,7 @@ class TestConnectionManager:
             ),
         ):
             mgr.connect()
-        mock_open.assert_called_once_with(host="10.0.0.5", port=22222)
+        mock_open.assert_called_once_with(host="10.0.0.5", port=22222, is_encrypt=True)
 
     def test_close_releases_all_contexts(self):
         """close 应关闭 quote_ctx 和所有 trade_ctx 并清空字典"""
