@@ -73,8 +73,12 @@ class WebSearchTool(BaseTool):
                         pass
                     return {"status": "error", "message": f"搜索服务失败 (HTTP {resp.status_code}): {err_msg}"}
                 res = resp.json()
-                if res.get("status") == "success" and res.get("data"):
-                    await self.set_cached_data(cache_key, res, persist=True, ttl=3600)
-                return res
+                # 后端 API 统一响应封装为 {code, msg, data}，需先剥信封取出真实负载，
+                # 否则下方对 status/data 的判断会全部落空（status 藏在 res["data"] 里），
+                # 导致 WebScrapeTool 的降级搜索链路误判为失败。
+                payload = res.get("data") if isinstance(res, dict) and "data" in res else res
+                if isinstance(payload, dict) and payload.get("status") == "success" and payload.get("data"):
+                    await self.set_cached_data(cache_key, payload, persist=True, ttl=3600)
+                return payload
         except Exception as e:
             return {"status": "error", "message": f"请求后端搜索网关异常: {str(e)}"}
