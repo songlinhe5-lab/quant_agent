@@ -14,6 +14,10 @@ from rich.markdown import Markdown
 from backend.core.utils import safe_truncate
 from backend.services.ai_narrator.token_usage_store import token_usage_store
 
+# 盘中主脑 prompt（与 IDE 编码宪法 AGENTS.md 分离）
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+DEFAULT_SYSTEM_PROMPT_PATH = os.path.join(_REPO_ROOT, "prompts", "system", "HERMES.md")
+
 # ── 对话事实自动沉淀到知识库 (PR-B) ──
 # 开关：默认开。关闭后对话结论不再写入知识库（仅依赖 fetch_webpage / ingest 脚本）。
 AUTO_SINK_KB = os.getenv("AUTO_SINK_KB", "true").lower() in ("1", "true", "yes", "on")
@@ -115,14 +119,14 @@ class HermesAgent:
     def __init__(
         self,
         tool_registry,
-        system_prompt_path: str,
+        system_prompt_path: Optional[str] = None,
         session_id: str = "default",
         llm_client: Optional[AsyncOpenAI] = None,
         redis_client: Optional[redis.Redis] = None,
     ):
         self.console = Console()
         self.tool_registry = tool_registry
-        self.system_prompt_path = system_prompt_path
+        self.system_prompt_path = system_prompt_path or DEFAULT_SYSTEM_PROMPT_PATH
         self.session_id = session_id
         self.memory_key = f"hermes:memory:{self.session_id}"
 
@@ -153,7 +157,7 @@ class HermesAgent:
         self.pro_model = os.getenv("LLM_PRO_MODEL", "deepseek-v4-pro")
         self.vision_model = os.getenv("LLM_VISION_MODEL", "deepseek-v4-pro")  # 保留配置，但暂时禁用
 
-        # 1. 加载系统指令 (AGENTS.md)
+        # 1. 加载盘中主脑指令 (prompts/system/HERMES.md)
         self.system_prompt = self._load_system_prompt()
 
         # 2. 初始化对话记忆 (Context Window)
@@ -554,23 +558,12 @@ class HermesAgent:
             print(f"⚠️ [DB Error] 异步落库 PostgreSQL 失败: {e}")
 
     def _load_system_prompt(self) -> str:
-        """读取量化系统的红线与工作流设定"""
-        base_prompt = "你是一个专业的量化交易 Agent。"
+        """读取盘中主脑指令（HERMES.md）。代码生成/图表风控已写入该文件 §9，不再在此拼接。"""
         if os.path.exists(self.system_prompt_path):
             with open(self.system_prompt_path, "r", encoding="utf-8") as f:
-                base_prompt = f.read()
-        else:
-            print(f"⚠️ 警告: 未找到系统指令文件 {self.system_prompt_path}")
-
-        # 💡 动态注入防幻觉指令：禁止大模型在生成代码时调用工具去拉取数据，避免浪费时间与 Token
-        code_gen_rule = "\n\n⚠️ 【严格风控指令】当用户要求你“编写”、“生成”量化策略代码或因子特征提取代码时，请**直接输出纯 Python 代码**，绝对不允许调用 `get_broker_market_data` 等工具去拉取 K 线或行情数据来进行测试验证。真实的行情数据拉取与回测将在独立的沙箱工作台中自动完成。"
-
-        # 💡 动态注入图表输出约束：对话中禁止输出 ```echarts 块（模型易生成非法 JSON 导致前端卡死），
-        # 走势/价位标注统一走 ```chart-annotations 机器可读协议（已由前端 SSE 渲染到 K 线图）。
-        # 仅在用户明确要求“生成界面/Vibe Coding/HTML”时才允许输出 ```echarts 配置块。
-        chart_rule = "\n\n⚠️ 【图表输出约束】在普通对话分析中，**严禁输出** ` ```echarts ` 代码块（其 JSON 易损坏且会污染对话界面）。如需标注走势、支撑/压力位、买卖信号，请使用 ` ```chart-annotations ` 机器可读协议块（前端会自动渲染到该标的 K 线图上）。仅当用户明确要求“生成界面 / Vibe Coding / 输出 HTML 卡片”时，才允许输出 ` ```echarts ` 配置块。"
-
-        return base_prompt + code_gen_rule + chart_rule
+                return f.read()
+        print(f"⚠️ 警告: 未找到系统指令文件 {self.system_prompt_path}")
+        return "你是一个专业的量化交易 Agent。"
 
     async def run_cli(self):
         """
@@ -792,7 +785,7 @@ class HermesAgent:
         # 💡 [Prefix-Cache 优化] market_ctx 必须折叠进 user message 末尾，而非单独 append 为第二条 system 消息。
         # 原因：DeepSeek 上下文缓存按「相同输入前缀」自动命中，若把变化的 market_ctx 插在 system 之后，
         # 会打断稳定前缀导致缓存几乎全 miss（实测命中率仅 11%）。折叠进 user 轮后，
-        # system(AGENTS.md) 成为唯一稳定前缀，可复用到 ~100%，单轮 input token 重复费砍掉九成。
+        # system(HERMES.md) 成为唯一稳定前缀，可复用到 ~100%，单轮 input token 重复费砍掉九成。
         enriched_user_input = user_input.strip() if user_input.strip() else ""
         if user_input.strip():
             try:

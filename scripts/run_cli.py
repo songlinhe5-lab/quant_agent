@@ -8,7 +8,7 @@ import httpx
 # 将项目根目录加入 sys.path，避免 ModuleNotFoundError
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from hermes_agent.agent import HermesAgent
+from hermes_agent.agent import DEFAULT_SYSTEM_PROMPT_PATH, HermesAgent
 from hermes_agent.tool_registry import ToolRegistry
 
 
@@ -47,7 +47,7 @@ async def main_cli():
     # 初始化 Hermes Agent
     agent = HermesAgent(
         tool_registry=ToolRegistry(),  # 接入真实的工具网关
-        system_prompt_path="AGENTS.md",  # 系统提示词文件路径
+        system_prompt_path=DEFAULT_SYSTEM_PROMPT_PATH,
         session_id="local_cli_session",  # 终端独立会话 ID
     )
 

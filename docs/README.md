@@ -37,7 +37,8 @@
 以下是项目的基础目录结构：
 
     project-root/
-    ├── AGENTS.md        # 主脑 Agent 系统指令与核心架构约束
+    ├── AGENTS.md        # 跨 IDE 编码宪法（Cursor/Claude Code/Codex）
+    ├── prompts/system/HERMES.md  # 盘中 Hermes 主脑运行时指令
     ├── backend/         # FastAPI 提供的前后端通信 API 接口与 WebSocket 服务
     ├── frontend/        # React + Vite 前端可视化交互与控制面板
     ├── hermes_agent/    # 底层大语言模型 Agent 引擎框架（负责 ReAct 推理循环）
