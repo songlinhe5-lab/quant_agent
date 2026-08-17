@@ -224,6 +224,31 @@
   - **验收**：脚本 `_verify_be_arch_08h.py`（本环境 pytest 因 vectorbt safe-delete `SystemExit(1)` 副作用不可常驻运行，改手动驱动同断言）6 项全通过：① FMP/AKShare 的 `symbol` 对齐、② 08d 错误体判失败+`error_category` 透传、③ 503/403/403 三边界。正式 pytest 用例已写入 `test_cross_process_contract.py` 待 CI 常驻运行。
 
 
+### Hermes Agent 内核治理（AGENT 系列 · 2026-08-16 · 对标 hermes-agent / deepseek-harness）
+
+> **📌 任务明细 SSOT：[`docs/TODO-AGENT-ARCH.md`](./TODO-AGENT-ARCH.md)**（含现状基线 S1~S13、借鉴矩阵、分阶段路线图、明确不借清单）。此处仅留索引，勿在两处各写一份。
+>
+> **结论：hermes-agent 与 deepseek-harness 均不引入，只借架构范式** —— 前者是产品不是库；后者是 TS 且建库仅 3 天的 developer preview。
+
+| 阶段 | 任务 | 一句话 |
+|:---|:---|:---|
+| P0 前置 | **[AGENT-04]** ReAct 单驱动收口 | `_step_loop:645` 与 `chat_stream_async:778` 两套实现，不合并则以下每项都要写两遍 |
+| P1 红线 | **[AGENT-02]** 工具执行中间件管线 | `tool_registry.py:94` 无扩展点；§4.4「连续失败 3 次熔断」**从未实现**。Phase 1 共同落点，先做 |
+| P1 红线 | **[AGENT-07]** 逐笔交易审批闸门 | `engine/gateway.py` 是配置态静态锁，不是逐笔确认；需 fail-closed + 审计对 |
+| P1 红线 | **[AGENT-08]** Verify 阶段实装 | §4.1 强制四段式，代码里 Verify 是空的 |
+| P1 红线 | **[AGENT-09]** 工具结果正交分类 | success/empty/stale/rate_limited/error 各自独立；直接解 Futu 文档 §0.5 空结果三态不可分 |
+| P1 审计 | **[AGENT-01]** 会话事件日志 append-only | 历史被原地改写，无法重建"模型当时看到了什么" |
+| P1 审计 | **[AGENT-10]** 密钥作用域与日志脱敏 | 全仓无 redact 实现，却持有券商凭据 |
+| P1 成本 | **[AGENT-03]** 工具集按场景分发 | 37 个工具 schema 每步全量注入 |
+| P2 成本 | **[AGENT-11]** Prompt 缓存边界 + Token 计量 | 与 AGENT-03 协同：schema 子集稳定才谈得上命中 |
+| P2 成本 | **[AGENT-12]** 重复/停滞守卫 | 现在唯一止损是 `max_iterations=8`，不区分推进与打转 |
+| P2 成本 | **[AGENT-05]** 脚本经 RPC 批量调工具 | 收益最高成本最高；须沙箱且禁触交易工具 |
+| P2 韧性 | **[AGENT-06]** LLM Provider 适配缝 | 锁死 DeepSeek，Agent 层唯一单点 |
+| P2 扩展 | **[AGENT-13]** 自家工具暴露为 MCP Server | 想用 dsh/Cursor 当客户端的**正确接法**：我们供工具，不引入对方运行时 |
+| P2 扩展 | **[AGENT-14]** 子代理并行编排 | 多标的横截面分析目前串行 |
+
+> **连带清账**：`docs/TODO-frontend.md:69` 的 **[TEST-11]** 标 `[x]` 却声称验证了"推理步进 / Tool 路由 / 熔断中止（连续失败 3 次）/ 上下文裁剪"四项，`backend/tests/test_agent.py` 实际一项都没有 —— 属虚标完成，随 AGENT-02 回填（详见 TODO-AGENT-ARCH.md S13）。
+
 ### 告警中心子系统（2026-07-12 新增，对标 TradingView Alerts）
 
 > `docs/01 §十` 设计已两个版本但此前无任务承接。这是"盯盘工具 → 无人值守系统"的分水岭功能，也是移动端推送的前置依赖。

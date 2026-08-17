@@ -2,8 +2,8 @@
 
 > 创建时间：2026-08-16
 > **实测基线：2026-08-16 18:47（本机 Mac OpenD + futu-api 10.10.7008，脚本 `_test_futu_local.py`，26/26 调用无异常）**
-> 版本：**v0.3（2026-08-16 · 功能规划定稿 + 事实基线纠错）**
-> 状态：**接口能力已验证；本文件为全局地图 + 功能级排期 SSOT**
+> 版本：**v0.4（2026-08-16 23:30 · 落地状态刷新）**
+> 状态：**F1~F4 + G2~G7 已全链路落地；剩 G1 收口 / G8 基座 / F0 容器侧三项未完成**（逐项核实见 §三）
 > 配套专项 TODO（细节见分册，本文件不重复展开）：
 > - `docs/TODO-FUTU-SEARCH-MACRO.md` — 行情搜索 / FedWatch / 市场基本面
 > - `docs/TODO-FUTU-FUNDAMENTAL-SCREEN.md` — 财务三大表 / 选股因子 / 估值评级
@@ -59,13 +59,15 @@
 | `SCREEN_STOCKS` | 返回 `n/a` 行 | SDK 返回 `(list, last_page, all_count)` 元组，脚本未解包 → 结构未验 |
 | `get_daily_short_volume` | 0 行 | 当日盘后无结算数据（T-1 语义），**不是"无卖空"** |
 
-**剩余真实风险**：
-- S1 容器内 `socat` 转发 `172.19.0.1:11111 → 127.0.0.1:11111` 未固化为 systemd，重启即断。
-- **`BE-ARCH-08a` 未修 = 主镜像 import 阶段就崩**（`market_engine.py:33` 顶层 import `futu_service` + 主镜像不装 `futu-api`）。**此项未修前，本文件所有新功能只能本机验证，无法上线。**
+**剩余真实风险**（2026-08-16 23:30 复核）：
+- S1 容器内 `socat` 转发 `172.19.0.1:11111 → 127.0.0.1:11111` 未固化为 systemd，重启即断。**仍未做**（F0-3）。
+- ~~`BE-ARCH-08a` 未修 = 主镜像 import 阶段就崩~~ → **已解除**：`market_engine.py` 顶层 import 已收敛为 `from backend.services.futu.utils import is_futu_unsupported, mark_futu_unsupported`（纯函数、零 SDK），死代码已删。上线阻塞不复存在。
 
 ### 0.4 `FUNDAMENTAL` 是假基本面（代码证据）
 
-`data_subservice/futu_src/option_fund_handler.py:314-336` → `get_fundamental()` 内部调的是 `quote_ctx.get_market_snapshot([...])`。即 Hermes `get_fundamental_data` 返回的 PE/PB/ROE 全部来自**行情快照的估值字段**，没有三大表、没有历史序列。用户一问"最近 4 季经营现金流"必穿。→ G1 收口。
+`data_subservice/futu_src/option_fund_handler.py:314-336` → `get_fundamental()` 内部调的是 `quote_ctx.get_market_snapshot([...])`。即 Hermes `get_fundamental_data` 返回的 PE/PB/ROE 全部来自**行情快照的估值字段**，没有三大表、没有历史序列。用户一问"最近 4 季经营现金流"必穿。
+
+> **⚠️ 2026-08-16 23:30 复核：此硬伤仍然存在。** `FINANCIALS` / `VALUATION` 两个 action 的管道已铺到 worker + capabilities + action map（F2-1~F2-3 完成），**但收口没做**：`business/facade.py:454 get_fundamental()` 依旧是 `enable_merge=False` 的单源 dispatch 到 `FUNDAMENTAL`，且 `business/` 下**没有任何 `get_financials` / `get_valuation` 域方法** —— 新管道只能经 router 直连，走不到 Facade。**G1 未收口 = 假基本面照旧。见 §三 F2-4。**
 
 ### 0.5 空结果语义陷阱（本次实测暴露，必须写进实现）
 
@@ -87,18 +89,19 @@
 | `get_market_snapshot` / `get_stock_quote` / `get_order_book` | ✅ | 已接 |
 | `request_history_kline` | ✅ | 已接，返回含 PE/换手率 |
 | `get_capital_flow` | ✅ | 已接（仅净流入序列）|
-| **`get_capital_distribution`** | ✅ **未接** | 主力/散户 8 档分层，比 FUND_FLOW 深一层 → G3 |
-| `get_market_state` / `get_owner_plate` / `get_plate_*` | ❔ 未实测 | → F5 补探针 |
+| **`get_capital_distribution`** | ✅ **已接**（`CAPITAL_DISTRIBUTION`）| 主力/散户 8 档分层，比 FUND_FLOW 深一层 → G3 ✅ |
+| `get_market_state` / `get_plate_list` | ✅ 已入探针（F5-1）| **仍未接入** → G8 / G6 轮动 |
+| `get_owner_plate` / `get_plate_stock` | ❔ 未实测 | → F5 补探针（G6 轮动前置）|
 
 ### 1.3 基本面（核心缺口区，本次全部实测可用）
 
 | 接口 | 实测 | 优先级 | 结论 |
 |---|---|---|---|
-| `get_financials_statements` | ✅ | **P0** | 三大表可用，戳破假基本面 → G1 |
-| `get_valuation_detail` | ✅ | **P1** | 估值完整 → G1 |
-| `get_research_analyst_consensus` | ✅ | **P1** | 分析师共识 → G7 |
-| `get_short_selling_rank` | ✅ 2 行 | **P0** | 港股卖空榜 → G2 |
-| `get_daily_short_volume` | ✅ 0 行（T-1）| **P0** | 每日卖空，注意 T-1 语义 → G2 |
+| `get_financials_statements` | ✅ | **P0** | action 已接，**Facade 未收口** → G1 ⚠️ |
+| `get_valuation_detail` | ✅ | **P1** | action 已接，**Facade 未收口** → G1 ⚠️ |
+| `get_research_analyst_consensus` | ✅ | **P1** | 已接 → G7 ✅ |
+| `get_short_selling_rank` | ✅ 2 行 | **P0** | 已接 → G2 ✅ |
+| `get_daily_short_volume` | ✅ 0 行（T-1）| **P0** | 已接，T-1 语义已实现 → G2 ✅ |
 | `get_shareholders_*` / `get_corporate_actions_*` | ❔ 未实测 | P2 | → F5 补探针 |
 
 ### 1.4 衍生品
@@ -106,16 +109,16 @@
 | 接口 | 实测 | 结论 |
 |---|---|---|
 | `get_option_chain` / `get_warrant` | ✅ | 已接 |
-| **`get_option_strategy`** | ✅ **未接** | 入参必须**正股/ETF/指数**（非期权 code）→ G4 |
-| **`get_option_volatility`** | ✅ **未接** | 入参必须**期权 code**（与上者相反）→ G4 |
+| **`get_option_strategy`** | ✅ **已接**（`OPTION_STRATEGY`）| 入参必须**正股/ETF/指数**（非期权 code）→ G4 ✅ |
+| **`get_option_volatility`** | ✅ **已接**（`OPTION_VOLATILITY`）| 入参必须**期权 code**（与上者相反）→ G4 ✅ |
 | `get_stock_quote` 期权希腊字母 | ✅ | **重要发现**：QUOTE 已直接返回 `implied_volatility` / `delta` / `gamma` / `vega` / `theta` / `rho` → **Greeks 无需自算 BS**，可直取官方口径 |
 
 ### 1.5 市场 / 宏观 / 榜单
 
 | 接口 | 实测 | 结论 |
 |---|---|---|
-| **`get_fed_watch_target_rate`** | ✅ **未接** | Tier1 FOMC 隐含概率，现有宏观日历没有这个 → G5 |
-| **`get_heat_map_data`** | ✅ **未接** | 板块热力图，前端刚需 → G6 |
+| **`get_fed_watch_target_rate`** | ✅ **已接**（`FED_WATCH`）| Tier1 FOMC 隐含概率，现有宏观日历没有这个 → G5 ✅ |
+| **`get_heat_map_data`** | ✅ **已接**（`HEAT_MAP`）| 板块热力图，前端刚需 → G6 ✅ |
 | `get_stock_filter` | ⚠️ 已接但结构未验 | → F5 |
 
 ### 1.6 交易侧（只读实测通过，写操作冻结）
@@ -230,60 +233,69 @@ F0（容器侧落地）──> F1..F4（接口接入）──> G1..G7（产品�
 F5（未实测能力补探针）────────────────> G6 轮动 / G8 全部
 ```
 
-### F0 — 容器侧落地（原 F0-1/F0-2 已撤销，见 §0.3）
+> **状态基准：2026-08-16 23:30 逐项按代码核实**（非按提交记录推断）。核实口径见每项括注的文件:行号。
+
+### F0 — 容器侧落地
 
 - [x] ~~**F0-1** `connection_manager.py`: `from futu import OpenD` → 新 context 类~~ — **误报撤销**，`connection_manager.py:15-18` 早已是 `OpenQuoteContext`/`OpenSecTradeContext`
 - [x] ~~**F0-2** `futu_service` 内部 `OpenD` 引用替换~~ — **误报撤销**，全文无 `OpenD` 类引用
-- [ ] **F0-3** S1 容器 `socat` 转发 `172.19.0.1:11111 → 127.0.0.1:11111` 固化为 systemd（当前重启即断）
-- [ ] **F0-4** S1 容器内经 `data_subservice` 复跑 `_test_futu_local.py` 等价验证（**本机通过 ≠ 容器通过**）
+- [ ] **F0-3** S1 容器 `socat` 转发 `172.19.0.1:11111 → 127.0.0.1:11111` 固化为 systemd（当前重启即断）—— **未做**
+- [ ] **F0-4** S1 容器内经 `data_subservice` 复跑 `_test_futu_local.py` 等价验证 —— **未做**（本机通过 ≠ 容器通过，这条不做则全部落地都只是本机结论）
 
-### F5 — 未实测能力补探针（P2，但是 G6/G8 的前置）
+### F5 — 未实测能力补探针
 
-- [ ] **F5-1** 扩 `_test_futu_local.py`，一次跑清以下未实测接口：
-  - 数据正确性基座：`get_rehab` / `get_trading_days` / `get_history_kl_quota` / `get_market_state`
-  - 板块族：`get_plate_list` / `get_plate_stock` / `get_owner_plate`
-  - 其它：`get_broker_queue` / `get_rt_ticker` / `get_rt_data` / `get_multi_points_history_kline` / `get_ipo_list` / `get_referencestock_list` / `get_shareholders_*` / `get_corporate_actions_*` / `get_user_security`
-- [ ] **F5-2** 断言升级：从"未抛异常"改为**字段级断言**（行数 + 关键列存在），补验 §0.3 的 `ORDER_BOOK` / `SCREEN_STOCKS` / `daily_short_volume` 三项
-- [ ] **F5-3 硬规则**：未实测能力在本文档一律标 ❔，**禁止进入 P0/P1 排期**
+- [x] **F5-1** 扩 `_test_futu_local.py` —— **已做**：脚本已由 266 行扩至 **533 行**，`get_rehab:410` / `request_trading_days:419`（10.10 实际方法名，非 `get_trading_days`）/ `get_history_kl_quota:431` / `get_market_state:441` / `get_plate_list:378` 均已入列并以 `❔` 前缀标注未定稿
+- [ ] **F5-2** 断言升级为**字段级**（行数 + 关键列存在），补验 §0.3 的 `ORDER_BOOK` / `SCREEN_STOCKS` / `daily_short_volume` 三项 —— **未完成**
+- [x] **F5-3 硬规则**：未实测能力一律标 ❔，禁止进入 P0/P1 排期 —— 探针已按此执行
 
-### F1 — P0 卖空数据主源（支撑 G2）
+### F1 — P0 卖空数据主源（支撑 G2）✅ 全链路完成
 
-- [ ] F1-1 新增 `data_subservice/futu_src/short_selling_handler.py`
-- [ ] F1-2 `futu_src/service.py` 加 `_route` 包装；`futu_worker.py:36-123` 加 `SHORT_SELLING` action（`rank` / `daily` 子模式）
-- [ ] F1-3 `adapters/futu.py:57` capabilities + `router.py:97 _FUTU_ACTION_MAP` 注册
-- [ ] F1-4 **T-1 语义处理**：0 行 → 返回无数据/STALE，禁止输出 0（零幻觉红线）
-- [ ] F1-5 与 HKEX / SFC 源交叉验证一致性
+- [x] F1-1 卖空 handler
+- [x] F1-2 `futu_worker.py:64` `SHORT_SELLING` action（rank / daily 子模式）
+- [x] F1-3 `adapters/futu.py:73` capabilities + `router.py:117` action map
+- [x] F1-4 **T-1 语义**：`routers/market_fundamental.py:552-560` docstring 明载"daily 模式当日盘后 0 行如实返回 no_data，不输出卖空为 0"
+- [x] F1-5 HKEX / SFC 交叉验证（同上端点聚合）
 
-### F2 — P0 财务三大表 + 估值（支撑 G1）
+### F2 — P0 财务三大表 + 估值（支撑 G1）⚠️ **管道通、收口断**
 
-- [ ] F2-1 `futu_src/fundamental_handler.py` 补 `get_financials_statements` + `get_valuation_detail`
-- [ ] F2-2 `field_id → 中文字段名` 常量映射表 + `next_key` 分页
-- [ ] F2-3 新 action `FINANCIALS` / `VALUATION`（**不覆写** `FUNDAMENTAL`，保留为快照别名）
-- [ ] F2-4 Facade `business/fundamental.py` + `facade.py:234 get_fundamental` 改三源合并，逐字段标 source
+- [x] F2-1 `option_fund_handler.py` 补 `get_financials_statements` + `get_valuation_detail`
+- [x] F2-2 `field_id → 字段名` 映射表（`option_fund_handler.py`）
+- [x] F2-3 新 action `FINANCIALS`（`futu_worker.py:54`）/ `VALUATION`（`:62`）+ capabilities（`adapters/futu.py:71-72`）+ action map（`router.py:114-115`）
+- [ ] **F2-4 收口未做（本轮唯一 P0 遗留）**：`business/facade.py:454 get_fundamental()` 仍是 `enable_merge=False` 单源打到 `FUNDAMENTAL`；`business/` 下无 `get_financials` / `get_valuation` 域方法。**结果：三大表只能经 router 直连，Facade 与 Hermes 侧拿到的仍是行情快照——G1 声称要戳破的假基本面原封不动。**
 
-### F3 — P0/P1 期权策略（支撑 G4）
+### F3 — P0/P1 期权策略（支撑 G4）✅ 完成
 
-- [ ] F3-1 `futu_src/option_fund_handler.py` 加 `get_option_strategy`（正股入参）+ `get_option_volatility`（期权 code 入参）
-- [ ] F3-2 **入参互斥校验**：正股 vs 期权 code 传错必须报可读错误，不得静默返回空
-- [ ] F3-3 新 action `OPTION_STRATEGY` / `OPTION_VOLATILITY` 全链路注册（worker + capabilities + action map + Facade `business/option.py`）
+- [x] F3-1 `get_option_strategy` + `get_option_volatility` 接入
+- [x] F3-2 入参互斥校验（正股 vs 期权 code）
+- [x] F3-3 全链路：`futu_worker.py:78/84` + `adapters/futu.py:74-75` + `router.py:119-120` + `business/option.py:42/58/73`（含 `get_option_strategy_lab`）
 
-### F4 — P1 资金分布 / FedWatch / 热力图 / 分析师（支撑 G3/G5/G6/G7）
+### F4 — P1 资金分布 / FedWatch / 热力图 / 分析师 ✅ 完成
 
-- [ ] F4-1 `get_capital_distribution` → action `CAPITAL_DISTRIBUTION`（补 FUND_FLOW 分层）
-- [ ] F4-2 `get_fed_watch_target_rate` → action `FED_WATCH`，接 `business/macro.py`
-- [ ] F4-3 `get_heat_map_data` → action `HEAT_MAP`
-- [ ] F4-4 `get_research_analyst_consensus` → action `ANALYST_CONSENSUS`
+- [x] F4-1 `CAPITAL_DISTRIBUTION`（`futu_worker.py:88` + `business/market.py:49`）
+- [x] F4-2 `FED_WATCH`（`futu_worker.py:98` + `router.py:124`）
+- [x] F4-3 `HEAT_MAP`（`futu_worker.py:101` + `business/market.py:54`）
+- [x] F4-4 `ANALYST_CONSENSUS`（`futu_worker.py:93` + `facade.py:667`，另有 `facade.py:680 get_analyst_vs_actual` 直接支撑 G7）
 
-### G 系列功能任务（依赖对应 F 完成）
+### G 系列功能任务
 
-- [ ] **G1** 真基本面收口（依赖 F2）— 三源合并 + Hermes 改源 + 个股基本面页
-- [ ] **G2** 港股卖空拥挤度监控（依赖 F1）— 派生指标 + AlertEngine 规则 + 卖空榜页
-- [ ] **G3** 主力筹码分层与背离（依赖 F4-1）— 主力/散户口径 + 背离信号 + 分层图
-- [ ] **G4** 期权策略损益实验室（依赖 F3）— 损益曲线 + IV 微笑 + Greeks 取官方
-- [ ] **G5** FedWatch 面板（依赖 F4-2）— 概率分布 + 概率迁移 + 早报注入
-- [ ] **G6** 板块热力图（依赖 F4-3）— treemap；**轮动部分依赖 F5-1 板块族探针**
-- [ ] **G7** 共识 vs 实际预期差（依赖 F4-4 + F2）— 预期差信号 + 第三方观点标注
-- [ ] **G8** 数据正确性基座（依赖 F5-1）— 复权因子 / 交易日历 / K线额度 / 三态空结果归因
+- [ ] **G1** 真基本面收口 —— ⚠️ **未完成**，卡在 F2-4（管道已铺、Facade 未收口，假基本面仍在）
+- [x] **G2** 港股卖空拥挤度监控 —— 后端 `facade.py:819 get_short_selling` + 端点 `market_fundamental.py:552` + 工具 `short_selling_tool.py` + 前端 `features/data-center/short-selling-panel.tsx`
+- [x] **G3** 主力筹码分层与背离 —— `business/market.py:49` + 前端 `features/data-center/capital-distribution-panel.tsx`
+- [x] **G4** 期权策略损益实验室 —— `business/option.py:73 get_option_strategy_lab` + 工具 `option_strategy_lab_tool.py` / `option_volatility_tool.py` + 前端 `features/options/option-strategy-lab-panel.tsx`
+- [x] **G5** FedWatch 面板 —— 工具 `fed_watch_tool.py` + 前端 `features/options/fed-watch-panel.tsx`
+- [x] **G6** 板块热力图 —— 工具 `heat_map_tool.py` + 前端 `features/data-center/sector-heatmap-panel.tsx`。**板块轮动仍未做**（依赖 `get_plate_stock` / `get_owner_plate`，F5-1 已探针但未接入）
+- [x] **G7** 共识 vs 实际预期差 —— `facade.py:680 get_analyst_vs_actual` + 工具 `analyst_consensus_tool.py` / `earnings_compare_tool.py`
+- [ ] **G8** 数据正确性基座 —— ❌ **完全未落地**：`REHAB` / `TRADING_DAYS` / `MARKET_STATE` / `KL_QUOTA` 四个 action 在 `futu_worker.py`、`adapters/futu.py`、`router.py` 中**零命中**。探针（F5-1）已验证接口可用，但一行都没接进来。空结果三态归因（§0.5）因此仍无解
+
+### 本轮剩余清单（按优先级）
+
+| 优先级 | 任务 | 一句话 |
+|---|---|---|
+| **P0** | **F2-4 / G1** | Facade 收口，否则前面 F2-1~F2-3 白铺 |
+| P1 | **G8**（依赖已就绪） | 复权因子 / 交易日历 / K线额度 / 市场状态四件套，探针已过，接就完事 |
+| P1 | **F0-3 / F0-4** | 容器侧固化 + 等价验证；不做则所有"已完成"只是本机结论 |
+| P2 | F5-2 | 探针断言升级到字段级 |
+| P2 | G6 轮动 | 板块成分接入 |
 
 ### 验收标准（每个任务通用）
 
@@ -348,6 +360,7 @@ F5（未实测能力补探针）────────────────
 
 | 日期 | 版本 | 变更 |
 |---|---|---|
+| 2026-08-16 23:30 | v0.4 | **落地状态刷新（逐项按代码核实）**：F1/F3/F4 + G2~G7 全链路完成（含前端面板）；F5-1 探针已扩至 533 行；`BE-ARCH-08a` 上线阻塞已解除。**遗留三项**：F2-4/G1 收口未做（`facade.py:454` 仍单源，假基本面照旧）、G8 四个基座 action 零落地、F0-3/F0-4 容器侧未验 |
 | 2026-08-16 | v0.3 | 功能规划定稿：新增 G1~G8 功能级任务 + F5 补探针；纠正 F0 误报（`connection_manager` 早已 10.10 适配）；标注"26/26 ≠ 字段级验证"；落地清单 7 步 → 10 步全链路；补 §0.4 假基本面代码证据、§0.5 空结果语义陷阱 |
 | 2026-08-16 | v0.2 | 本机实测回填（26/26） |
 | 2026-08-16 | v0.1 | 初稿：接口能力总览 |

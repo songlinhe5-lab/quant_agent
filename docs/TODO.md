@@ -22,7 +22,7 @@
 
 | 文件 | 覆盖领域 | 关键任务系列 |
 |:---|:---|:---|
-| [TODO-backend.md](./TODO-backend.md) | 后端基础设施、整洁架构、数据服务红线、告警、OMS、Risk、工程规范 | BE / BE-ARCH / ALERT / OMS / RISK / SPEC / ARCH |
+| [TODO-backend.md](./TODO-backend.md) | 后端基础设施、整洁架构、数据服务红线、**Hermes Agent 内核**、告警、OMS、Risk、工程规范 | BE / BE-ARCH / **AGENT** / ALERT / OMS / RISK / SPEC / ARCH |
 | [TODO-frontend.md](./TODO-frontend.md) | 前端基础设施、体验、架构债、产品功能、AI 渗透 | FE / FE-ARCH / FE-PROD / PROD / AI / OPTION / FUNDFLOW |
 | [TODO-datasource.md](./TODO-datasource.md) | 分布式数据源集群、限流退避、三方服务监控 | DIST / RL / SVC |
 | [TODO-client.md](./TODO-client.md) | Flutter 客户端 | CLI |
@@ -43,6 +43,7 @@
 | DS-FUTU-OPT | [TODO-FUTU-OPTION-COMBO-MARKETS.md](./TODO-FUTU-OPTION-COMBO-MARKETS.md) | Futu 组合期权：行情三件套 P0；交易类预留（沙箱）；新马日暂缓 | P1 |
 | DS-FUTU-EVENT | [TODO-FUTU-EVENT-CONTRACT.md](./TODO-FUTU-EVENT-CONTRACT.md) | Futu 预测市场：隐含概率数据源（行情侧完整、交易侧缺失），发现链+快照先接 | P2 |
 | DS-FUTU-SEARCH | [TODO-FUTU-SEARCH-MACRO.md](./TODO-FUTU-SEARCH-MACRO.md) | Futu 行情搜索（名称→代码）+ FedWatch 为真增量；指标列表/榜单/产业链跳过 | P1 |
+| **AGENT-ARCH** | [**TODO-AGENT-ARCH.md**](./TODO-AGENT-ARCH.md) | **Hermes Agent 内核架构优化**（AGENT 系列 SSOT）。对标 hermes-agent / deepseek-harness 后结论：**两者均不引入，只借架构范式**。现状基线 S1~S13 + 14 项任务分 5 阶段：P0 单驱动收口 → P1 中间件管线/逐笔审批/Verify 实装/结果正交分类 → 审计日志/脱敏 → 成本效率 → 韧性扩展 | **P0/P1** |
 | **DS-FUTU-CAP** | [**TODO-FUTU-INTERFACE-CAPABILITY.md**](./TODO-FUTU-INTERFACE-CAPABILITY.md) | **全局地图 + 功能级 SSOT**（上列 4 份为分册）。2026-08-16 本机实测 26/26；**F0~F5 接口接入 + G1~G8 产品功能**：G1 真基本面收口 / G2 港股卖空拥挤度 / G3 主力筹码分层 / G4 期权策略损益 / G5 FedWatch / G6 板块热力图 / G7 预期差 / G8 数据正确性基座。⚠️ 受 **BE-ARCH-08a** 阻塞（主镜像 futu 硬依赖未修则新功能无法上线） | **P0/P1** |
 
 ---
@@ -124,9 +125,23 @@ S8: PT-01a ─► PT-01b ─► PT-01c ─► PT-02a ─► PT-02b
 
 > 07 系列清掉了"调用层直连"，但按用户三条验收标准（① HTTP API 完整可靠 ② 长连接可用 ③ 主服务不依赖第三方代码包）复审，**三条全部不达标，且 ③ 已阻塞生产部署**。详见 `docs/23` §八。
 
-- [ ] **[→ BE-ARCH-08a]** 主服务卸载 futu 包硬依赖 —— **主镜像 `uvicorn backend.main:app` 现在 import 阶段就崩**（`market_engine.py:33` 顶层 import + 主镜像不装 `futu-api`），**先修这个**
-- [ ] **[→ BE-ARCH-08b]** YFinance/AKShare/FMP 的 `ticker`↔`symbol` 键名错位 —— 线上取不到数，被离线 stub 掩盖
+- [x] **[→ BE-ARCH-08a]** 主服务卸载 futu 包硬依赖 —— 已修（2026-08-16 核实）：`market_engine.py` 顶层 import 收敛为 `from backend.services.futu.utils import is_futu_unsupported, mark_futu_unsupported`（纯函数、零 SDK），依赖主服务不持有资源的死代码已删，主镜像 import 阶段不再崩
+- [x] **[→ BE-ARCH-08b]** YFinance/AKShare/FMP 的 `ticker`↔`symbol` 键名错位 —— 已修（2026-08-16 核实）：`router.py:1330 _normalize_outbound_params` 双键兼容，4 处出站调用点（`:1017` / `:1124` / `:1198` / `:1370`）全部接入
 - [x] **[→ BE-ARCH-08d]** 子服务 `{"status":"error"}` 被吞成成功 —— 限流/配额感知失效（已修：router `_normalize_response` 识别 status==error 并透传 error_category）
 - [x] **[→ BE-ARCH-08e]** 9 个 pin 源熔断一次即永久失效（无半开探测）—— 已修：新增 `_pin_node_usable` 半开门控，冷却到期放行 HALF_OPEN 探测
 - [x] **[→ BE-ARCH-08c]** Futu 长连接推送四处断链 —— ① ②③④ 已修；⑤ 订阅回传已闭环（WS subscribe→router→futu_worker SUBSCRIBE→OpenD 实时订阅）
 - [x] **[→ BE-ARCH-08h]** 跨进程契约测试 —— 根治 08b/08d 这类盲区，已落 `test_cross_process_contract.py`（真起子服务 app + 边界/回归断言）
+
+> **线 7 已全绿**（2026-08-16 核实）：08a~08h 六项全部落地，三条验收标准解除阻塞。
+
+### 线 8 · Hermes Agent 内核架构优化（AGENT 系列 · 2026-08-16，**明细 SSOT 见 [TODO-AGENT-ARCH.md](./TODO-AGENT-ARCH.md)**）
+
+> 对标 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) 与 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 后结论：**两者均不引入**（前者是产品不是库；后者是 TS 且为 3 天大的 developer preview），**只借架构范式**。问题在自家 `agent.py` 的 1151 行里 —— 现状基线 S1~S13 全部按代码核实。
+
+- [ ] **Phase 0** `[→ AGENT-04]` ReAct 单驱动收口（**前置**，两套循环不合并则以下每项都要写两遍）
+- [ ] **Phase 1（P0 红线）** `[→ AGENT-02]` 中间件管线（共同落点，先做）→ 并行 `[→ AGENT-07]` 逐笔交易审批（fail-closed）· `[→ AGENT-08]` Verify 阶段实装 · `[→ AGENT-09]` 工具结果正交分类
+- [ ] **Phase 2（审计）** `[→ AGENT-01]` 会话事件日志 append-only · `[→ AGENT-10]` 密钥作用域与日志脱敏
+- [ ] **Phase 3（成本）** `[→ AGENT-03]` 工具集分发 · `[→ AGENT-11]` Prompt 缓存边界+Token 计量 · `[→ AGENT-12]` 重复守卫 · `[→ AGENT-05]` 脚本 RPC 批量
+- [ ] **Phase 4（韧性/扩展）** `[→ AGENT-06]` LLM 适配缝 · `[→ AGENT-13]` 工具暴露为 MCP Server · `[→ AGENT-14]` 子代理并行
+
+> **三条 AGENTS.md 红线目前无代码承载**（见 TODO-AGENT-ARCH.md §二）：§4.1 的 Verify 阶段不存在（S7）、§4.4 的连续失败 3 次熔断从未实现（S3）、§6 的交易二次确认无机制（S8）。Phase 1 就是补这三条。
