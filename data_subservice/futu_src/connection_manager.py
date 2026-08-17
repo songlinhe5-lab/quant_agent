@@ -121,7 +121,17 @@ class ConnectionManager:
                         pass
                     self.quote_ctx = None
 
-                self.quote_ctx = OpenQuoteContext(host=self._host, port=self._port)
+                # 跨网络行情连接启用加密(与交易上下文 _get_trade_context 一致):
+                # S1 经 host.docker.internal 访问宿主 OpenD, OpenD 已开启 RSA 加密,
+                # 若客户端 ctx 不传 is_encrypt=True 则走明文握手, OpenD 校验 SHA1 签名
+                # 失败 → "包体数据SHA1签名不正确" 反复断连 → data_subservice unhealthy。
+                # 客户端 RSA 私钥由 FUTU_RSA_PRIVATE_KEY 经 SysConfig.set_init_rsa_file 注入(见模块顶部)。
+                is_cross_network = self._host not in ["127.0.0.1", "localhost", "::1"]
+                self.quote_ctx = OpenQuoteContext(
+                    host=self._host,
+                    port=self._port,
+                    is_encrypt=is_cross_network,
+                )
                 self.status = "CONNECTED"
                 self.error_msg = ""
                 # 🚨 [DIAG-CTX] 临时诊断 (2026-08-15)：S1 子服务线程爆炸至 2263，
