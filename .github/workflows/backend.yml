@@ -267,6 +267,18 @@ jobs:
               --file ./data_subservice/Dockerfile \
               .
 
+      # 治本: 之前 precheck 命中(复用 PR 产物 skip-build)会让整个 build 跳过,
+      # 导致 :us 固定标签不被更新, 节点 pull 到旧代码
+      # (复现 PR#337 卖空榜 get_short_selling_rank 仍报 'int' object has no attribute 'items')。
+      # 此处无论是否 skip-build, push main 时都把最新 :<sha> 补打 :us 标签。
+      # 仅 imagetools create 加 tag, 不重新 build, 秒级完成且幂等。
+      - name: Retag :us on main push (reuse :<sha> artifact)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          docker buildx imagetools create \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:${{ env.DEPLOY_SHA }}" \
+            --tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-data-subservice:us"
+
   # ----------------------------------------------------------------
   # 部署 US-MASTER (主节点)
   # ----------------------------------------------------------------
