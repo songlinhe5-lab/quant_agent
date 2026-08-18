@@ -43,7 +43,8 @@ class TestHistoryAKShareFallback:
         )
         resp = client.get("/market/history?ticker=SH.600000&ktype=K_DAY")
         assert resp.status_code == 200
-        assert resp.json()["status"] == "success"
+        # BE-13 方案 B: /history 返回扁平 payload {data:[...], source, degraded}
+        assert len(resp.json()["data"]) == 1
 
     @pytest.mark.skip(reason="需要正确 mock pandas DataFrame，成本过高，后续单独处理")
     @patch("backend.routers.market.market_data_gateway")
@@ -98,7 +99,8 @@ class TestTechIndicatorsFallback:
         )
         resp = client.get("/market/tech-indicators?ticker=US.AAPL")
         assert resp.status_code == 200
-        assert resp.json()["status"] == "success"
+        # BE-13 方案 B: /tech-indicators 返回扁平 payload {klines, indicators, source, degraded}
+        assert "indicators" in resp.json()
 
     @patch("backend.routers.market.data_service")
     def test_both_fail_returns_400(self, mock_ds):

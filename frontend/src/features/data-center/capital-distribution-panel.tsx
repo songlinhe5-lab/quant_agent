@@ -36,7 +36,9 @@ export function CapitalDistributionPanel({ ticker = 'HK.00700' }: { ticker?: str
     apiClient
       .get<{ data: CapitalDistributionData }>(`/market/capital-distribution/${ticker}`)
       .then((res) => {
-        if (!cancelled) setData(res.data ?? null)
+        // 响应被 response_envelope_middleware 二次包装为 {code,msg,data:{status,data,source},ts}
+        // 需再解一层 .data 才能拿到真正的 CapitalDistributionData（与 analyst-vs-fundamental-panel 一致）
+        if (!cancelled) setData((res.data as any)?.data ?? (res.data as any) ?? null)
       })
       .catch((e) => {
         if (!cancelled) setError(String(e?.message || e))

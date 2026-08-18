@@ -81,7 +81,9 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
           setGatewayStatus(statusRes.data.status)
         }
 
-        if (isMounted && histRes?.data?.status === 'success' && histRes.data.data) {
+        // BE-13 方案 B: /history 返回扁平 payload {data:[...], source, degraded}（list 包入 data 键）
+        // 统一由 response_envelope_middleware 包成 {code,msg,data,ts}，apiClient 解包后 res.data 即该 payload
+        if (isMounted && histRes?.data?.data) {
           let historyData = histRes.data.data
           // 防御: 后端偶发嵌套信封 (data.data 仍是 {status,data} 结构) 会触发 .slice 崩溃
           if (!Array.isArray(historyData) && historyData?.data) {
