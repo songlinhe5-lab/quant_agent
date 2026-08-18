@@ -4,12 +4,15 @@ Futu 选股服务模块
 """
 
 import asyncio
+import logging
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from futu import RET_OK
 
 from data_subservice._internal.retry_utils import with_global_retry
+
+logger = logging.getLogger(__name__)
 
 # ─── Futu V2 选股接口支持检测 ───────────────────────────────────
 # 在模块加载时尝试导入 V2 选股相关常量，若失败则标记不支持
@@ -69,11 +72,32 @@ class ScreenerHandler:
         if self.conn_mgr.status != "CONNECTED" or not self.conn_mgr.quote_ctx:
             return {"status": "error", "message": "FutuService 未连接"}
 
+        # 防御性清洗：过滤 None / 空串 / 非「市场.代码」格式的非法标的。
+        # 上游（前端/后端）可能传入含脏值的列表，直接透传给 futu 的
+        # get_market_snapshot 会抛 ValueError: Out of range -> 500。
+        def _valid(t: Any) -> bool:
+            return isinstance(t, str) and bool(t.strip()) and "." in t.strip()
+
+        clean = [t.strip() for t in tickers if _valid(t)]
+        dropped = len(tickers) - len(clean)
+        if dropped:
+            logger.warning(
+                f"[ScreenerHandler] get_market_snapshots 过滤 {dropped} 个非法标的, "
+                f"原始 {len(tickers)} -> 有效 {len(clean)}"
+            )
+        if not clean:
+            return {"status": "error", "message": "无有效标的"}
+
         all_data = []
         # 富途快照每次最多支持 400 只股票并发查询
-        for i in range(0, len(tickers), 400):
-            batch = tickers[i : i + 400]
-            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_market_snapshot, batch)
+        for i in range(0, len(clean), 400):
+            batch = clean[i : i + 400]
+            try:
+                ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_market_snapshot, batch)
+            except Exception as e:  # noqa: BLE001
+                # futu 底层对个别非法代码仍可能抛 ValueError，逐个降级而非整体 500
+                logger.error(f"[ScreenerHandler] get_market_snapshot 批量失败: {e}")
+                return {"status": "error", "message": f"快照获取失败: {e}"}
             if ret == RET_OK and isinstance(data, pd.DataFrame) and not data.empty:
                 all_data.append(data)
             await asyncio.sleep(0.1)
