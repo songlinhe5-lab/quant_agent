@@ -77,6 +77,7 @@ class FutuDataSource:
             "ANALYST_CONSENSUS",  # F4-4: 分析师共识(卖方观点,支撑G7)
             "FED_WATCH",  # F4-2: FedWatch FOMC隐含概率(支撑G5)
             "HEAT_MAP",  # F4-3: 板块热力图(支撑G6)
+            "HK_SECTOR_FLOW",  # F4-5: 港股行业板块资金流聚合(支撑板块资金流向面板)
         ]
 
     # ── 远程节点状态感知 ──────────────────────────────────────

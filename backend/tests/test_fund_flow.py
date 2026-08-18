@@ -157,20 +157,20 @@ def test_hk_success():
         "status": "success",
         "data": {
             "market": "HK",
-            "market_name": "港股南向",
+            "market_name": "港股行业板块",
             "sectors": [
                 {"name": "科技", "net_inflow": 100.0, "pct": 0.6},
                 {"name": "金融", "net_inflow": -50.0, "pct": 0.4},
             ],
-            "unit": "万元",
-            "note": "日频更新，盘后刷新",
-            "source": "AKShare (东方财富)",
+            "unit": "港元",
+            "note": "由各板块龙头成分股主力净流入聚合，仅供参考",
+            "source": "Futu",
         },
-        "source": "akshare_stock_hsgt_fund_flow_summary_em",
+        "source": "futu",
     }
     with (
         patch.object(hk_sector, "redis_client", _fake_redis()),
-        patch.object(data_source_router, "fetch_akshare", _fake_fetch(payload)),
+        patch.object(data_source_router, "fetch_futu", _fake_fetch(payload)),
     ):
         res = asyncio.run(get_hk_sector_flow())
     assert res["status"] == "success"
@@ -178,26 +178,26 @@ def test_hk_success():
 
 
 def test_hk_empty_df():
-    payload = {"status": "error", "message": "AKShare 返回空数据", "data": None}
+    payload = {"status": "error", "message": "Futu 港股板块资金流失败", "data": None}
     with (
         patch.object(hk_sector, "redis_client", _fake_redis()),
-        patch.object(data_source_router, "fetch_akshare", _fake_fetch(payload)),
+        patch.object(data_source_router, "fetch_futu", _fake_fetch(payload)),
     ):
         res = asyncio.run(get_hk_sector_flow())
     assert res["status"] == "degraded"
 
 
-def test_hk_akshare_raises():
+def test_hk_futu_raises():
     with (
         patch.object(hk_sector, "redis_client", _fake_redis()),
-        patch.object(data_source_router, "fetch_akshare", AsyncMock(side_effect=RuntimeError("boom"))),
+        patch.object(data_source_router, "fetch_futu", AsyncMock(side_effect=RuntimeError("boom"))),
     ):
         res = asyncio.run(get_hk_sector_flow())
     assert res["status"] == "degraded"
 
 
 def test_hk_redis_get_raises_silent():
-    # redis 读取异常被吞, 回退到远程 fetch (覆盖 46)
+    # redis 读取异常被吞, 回退到远程 fetch
     rc = AsyncMock()
     rc.get = AsyncMock(side_effect=RuntimeError("redis boom"))
     rc.set = AsyncMock(return_value=True)
@@ -205,17 +205,17 @@ def test_hk_redis_get_raises_silent():
         "status": "success",
         "data": {
             "market": "HK",
-            "market_name": "港股南向",
+            "market_name": "港股行业板块",
             "sectors": [{"name": "科技", "net_inflow": 100.0, "pct": 1.0}],
-            "unit": "万元",
-            "note": "日频更新，盘后刷新",
-            "source": "AKShare (东方财富)",
+            "unit": "港元",
+            "note": "由各板块龙头成分股主力净流入聚合，仅供参考",
+            "source": "Futu",
         },
-        "source": "akshare_stock_hsgt_fund_flow_summary_em",
+        "source": "futu",
     }
     with (
         patch.object(hk_sector, "redis_client", rc),
-        patch.object(data_source_router, "fetch_akshare", _fake_fetch(payload)),
+        patch.object(data_source_router, "fetch_futu", _fake_fetch(payload)),
     ):
         res = asyncio.run(get_hk_sector_flow())
     assert res["status"] == "success"
@@ -230,17 +230,17 @@ def test_hk_cache_write_failure_silent():
         "status": "success",
         "data": {
             "market": "HK",
-            "market_name": "港股南向",
+            "market_name": "港股行业板块",
             "sectors": [{"name": "科技", "net_inflow": 100.0, "pct": 1.0}],
-            "unit": "万元",
-            "note": "日频更新，盘后刷新",
-            "source": "AKShare (东方财富)",
+            "unit": "港元",
+            "note": "由各板块龙头成分股主力净流入聚合，仅供参考",
+            "source": "Futu",
         },
-        "source": "akshare_stock_hsgt_fund_flow_summary_em",
+        "source": "futu",
     }
     with (
         patch.object(hk_sector, "redis_client", rc),
-        patch.object(data_source_router, "fetch_akshare", _fake_fetch(payload)),
+        patch.object(data_source_router, "fetch_futu", _fake_fetch(payload)),
     ):
         res = asyncio.run(get_hk_sector_flow())
     assert res["status"] == "success"
@@ -260,10 +260,10 @@ def test_us_sector_success_via_market_data():
     ):
         res = asyncio.run(us_sector.get_us_sector_flow())
     assert res["status"] == "success"
-    assert len(res["data"]["sectors"]) == 8
-    spy = next(s for s in res["data"]["sectors"] if s["ticker"] == "US.SPY")
-    assert spy["net_inflow"] == 1.5  # 1.5e8 -> 1.5 亿美元
-    assert spy["dir"] == 1
+    assert len(res["data"]["sectors"]) == 11  # 标准 GICS 11 大行业
+    xlf = next(s for s in res["data"]["sectors"] if s["ticker"] == "US.XLF")
+    assert xlf["net_inflow"] == 1.5  # 1.5e8 -> 1.5 亿美元
+    assert xlf["dir"] == 1
 
 
 def test_us_sector_cache_hit():
@@ -271,20 +271,20 @@ def test_us_sector_cache_hit():
     fake_market = MagicMock()
     fake_market.get_fund_flow = AsyncMock(return_value={"data": {"net_inflow": 0}})
     fake_manager = MagicMock()
-    fake_manager.flow_cache = {"US.SPY": cached}
+    fake_manager.flow_cache = {"US.XLF": cached}
     with (
         patch("backend.app.macro_app.manager", create=True, new=fake_manager),
         patch("backend.app.macro_app.market_data", create=True, new=fake_market),
     ):
         res = asyncio.run(us_sector.get_us_sector_flow())
     assert res["status"] == "success"
-    spy = next(s for s in res["data"]["sectors"] if s["ticker"] == "US.SPY")
+    spy = next(s for s in res["data"]["sectors"] if s["ticker"] == "US.XLF")
     assert spy["net_inflow"] == 9.0
 
 
 def test_us_sector_one_ticker_fails():
     def _side(ticker):
-        if ticker == "US.QQQ":
+        if ticker == "US.XLRE":
             raise RuntimeError("futu down")
         return {"data": {"net_inflow": 1.0e8}}
 
@@ -299,7 +299,7 @@ def test_us_sector_one_ticker_fails():
         res = asyncio.run(us_sector.get_us_sector_flow())
     assert res["status"] == "success"
     tickers = [s["ticker"] for s in res["data"]["sectors"]]
-    assert "US.QQQ" not in tickers  # 失败的 ETF 被跳过
+    assert "US.XLRE" not in tickers  # 失败的 ETF 被跳过
 
 
 def test_us_sector_nested_capital_flow():
@@ -313,7 +313,7 @@ def test_us_sector_nested_capital_flow():
     ):
         res = asyncio.run(us_sector.get_us_sector_flow())
     assert res["status"] == "success"
-    spy = next(s for s in res["data"]["sectors"] if s["ticker"] == "US.SPY")
+    spy = next(s for s in res["data"]["sectors"] if s["ticker"] == "US.XLF")
     assert spy["net_inflow"] == 2.0
 
 

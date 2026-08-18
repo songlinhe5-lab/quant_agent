@@ -219,6 +219,148 @@ class QuoteHandler:
             logger.error("❌ get_heat_map_data 失败 %s: %s", market, e)
             return {"status": "error", "source": "futu", "message": str(e)}
 
+    # ── F4-5: 港股行业板块资金流聚合（支撑板块资金流向面板）─────────────
+    async def get_hk_sector_flow(self) -> Dict[str, Any]:
+        """港股行业板块主力净流入聚合（Futu 板块 → 龙头成分股资金流）。
+
+        路径：get_plate_list(HK, INDUSTRY) → get_plate_stock(板块) 取成交额龙头
+              → get_capital_distribution(龙头) 聚合主力净流入，作为板块资金流代理。
+
+        限流防护（OpenD 有登录限流铁律）：
+          - 只取最多 MAX_PLATES 个行业板块
+          - 每板块只取成交额 Top TOP_K 龙头聚合（不拉全量成分股）
+          - 整体结果缓存 CACHE_TTL，避免高频穿透
+        任一环节失败诚实降级（空 sectors + note），零幻觉。
+
+        返回: {"status", "source", "data": {"market","sectors":[{"name","net_inflow","pct"}],
+                                            "unit","updated_at","note"}}
+        """
+        from futu import Market, Plate
+
+        CACHE_TTL = 1800  # 30 分钟强缓存
+        MAX_PLATES = 15  # 最多处理板块数（控制调用量）
+        TOP_K = 3  # 每板块龙头数
+
+        cache_key = "futu_hk_sector_flow"
+        now = time.time()
+        try:
+            cached = self.cache_mgr.get_fund_flow_cache(cache_key)
+            if cached and now - cached[0] < CACHE_TTL:
+                return cached[1]
+        except Exception:  # noqa: BLE001
+            pass
+
+        if self.conn_mgr.quote_ctx is None:
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
+        if self.conn_mgr.status != "CONNECTED":
+            return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
+
+        try:
+            # 1) 港股行业板块列表
+            ret, plate_df = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_plate_list, Market.HK, Plate.INDUSTRY)
+            if ret != RET_OK or not isinstance(plate_df, pd.DataFrame) or plate_df.empty:
+                return {
+                    "status": "error",
+                    "source": "futu",
+                    "message": f"港股行业板块列表获取失败: {plate_df}",
+                }
+
+            plate_rows = plate_df.to_dict("records")
+            plate_rows = plate_rows[:MAX_PLATES]
+
+            # 2) 逐板块取成分股龙头 → 聚合资金流
+            sectors = []
+            for pr in plate_rows:
+                p_code = str(pr.get("code", ""))
+                p_name = str(pr.get("plate_name", "") or pr.get("name", "")).strip()
+                if not p_code or not p_name:
+                    continue
+                try:
+                    ret2, stock_df = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_plate_stock, p_code)
+                    if ret2 != RET_OK or not isinstance(stock_df, pd.DataFrame) or stock_df.empty:
+                        continue
+                    # 取成交额/市值龙头（优先 turnOver/amount 列，缺省用 code 前 TOP_K）
+                    sort_col = next(
+                        (c for c in stock_df.columns if str(c).lower() in ("turnover", "amount", "成交额", "mktcap")),
+                        None,
+                    )
+                    top_df = stock_df
+                    if sort_col and pd.api.types.is_numeric_dtype(stock_df[sort_col]):
+                        top_df = stock_df.sort_values(sort_col, ascending=False)
+                    leaders = top_df.head(TOP_K)
+
+                    # 聚合龙头主力净流入（直接调 OpenD get_capital_distribution）
+                    net = 0.0
+                    valid = 0
+                    for _, srow in leaders.iterrows():
+                        scode = str(srow.get("code", ""))
+                        if not scode:
+                            continue
+                        try:
+                            cret, cdf = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_capital_distribution, scode)
+                            if cret != RET_OK or not isinstance(cdf, pd.DataFrame) or cdf.empty:
+                                continue
+                            crow = cdf.iloc[0]
+                            cap_in = safe_float(crow.get("capital_in_super", 0)) + safe_float(
+                                crow.get("capital_in_big", 0)
+                            )
+                            cap_out = safe_float(crow.get("capital_out_super", 0)) + safe_float(
+                                crow.get("capital_out_big", 0)
+                            )
+                            net += cap_in - cap_out
+                            valid += 1
+                        except Exception:  # noqa: BLE001
+                            continue
+                    if valid > 0:
+                        sectors.append(
+                            {
+                                "name": p_name,
+                                "net_inflow": round(net, 2),
+                                "stock_count": valid,
+                            }
+                        )
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("[Futu HK板块] %s 聚合失败: %s", p_code, e)
+                    continue
+
+            if not sectors:
+                res = {
+                    "status": "degraded",
+                    "source": "futu",
+                    "data": {
+                        "market": "HK",
+                        "market_name": "港股行业板块",
+                        "sectors": [],
+                        "unit": "港元",
+                        "note": "港股行业板块资金流暂不可用（板块数据或资金流接口受限）",
+                    },
+                }
+            else:
+                sectors.sort(key=lambda x: x["net_inflow"], reverse=True)
+                total_abs = sum(abs(s["net_inflow"]) for s in sectors) or 1
+                for s in sectors:
+                    s["pct"] = round(abs(s["net_inflow"]) / total_abs, 4)
+                res = {
+                    "status": "success",
+                    "source": "futu",
+                    "data": {
+                        "market": "HK",
+                        "market_name": "港股行业板块",
+                        "sectors": sectors,
+                        "unit": "港元",
+                        "updated_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+                        "note": "由各板块龙头成分股主力净流入聚合，仅供参考",
+                    },
+                }
+            try:
+                self.cache_mgr.set_fund_flow_cache(cache_key, time.time(), res)
+            except Exception:  # noqa: BLE001
+                pass
+            return res
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_hk_sector_flow 失败: %s", e)
+            return {"status": "error", "source": "futu", "message": str(e)}
+
     @with_global_retry
     async def get_history(self, ticker: str, ktype: str = "K_DAY", num: int = 60) -> Dict[str, Any]:  # noqa: E501
         """获取历史K线数据（带缓存和降级策略）"""

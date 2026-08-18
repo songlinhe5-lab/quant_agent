@@ -1,8 +1,8 @@
-"""港股南向资金行业分布 (AKShare 东方财富)
+"""港股行业板块资金流 (Futu 板块聚合)
 
-数据来源: 东方财富港股通行业资金流
-接口: ak.stock_hsgt_fund_flow_summary_em() 或板块排名
-频率: 日频 (盘后更新)
+数据来源: Futu 港股行业板块 (get_plate_list INDUSTRY) → 龙头成分股资金流聚合
+接口: HK_SECTOR_FLOW (data_subservice futu_worker)
+频率: 盘中聚合, 强缓存 30 分钟
 """
 
 import json
@@ -15,25 +15,27 @@ from backend.services.datasource.router import data_source_router
 
 # Redis 缓存配置
 _CACHE_KEY = "quant:fund_flow:hk_sector"
-_CACHE_TTL = 600  # 10 分钟 (日频数据)
+_CACHE_TTL = 1800  # 30 分钟 (聚合开销大, 强缓存)
 
 
 async def get_hk_sector_flow() -> dict[str, Any]:
     """
-    获取港股南向资金行业分布（远程调用 AKShare 子服务，本地已移除 akshare SDK）。
+    获取港股行业板块资金流（Futu 板块聚合）。
 
     返回格式:
     {
-        "status": "success",
+        "status": "success" | "degraded",
         "data": {
             "market": "HK",
-            "market_name": "港股南向",
+            "market_name": "港股行业板块",
             "sectors": [
-                {"name": "科技", "net_inflow": 12345.67, "pct": 0.35},
+                {"name": "金融", "net_inflow": 12345.67, "pct": 0.35},
                 ...
             ],
+            "unit": "港元",
             "updated_at": "...",
-            "source": "AKShare (东方财富)"
+            "note": "...",
+            "source": "Futu"
         }
     }
     """
@@ -45,13 +47,14 @@ async def get_hk_sector_flow() -> dict[str, Any]:
     except Exception as e:
         logger.warning(f"[FundFlow] 港股板块缓存读取失败: {e}")
 
-    # 2. 远程调用 AKShare 子服务（解析逻辑已下沉 data_subservice）
+    # 2. 远程调用 Futu 子服务港股板块资金流聚合
     try:
-        result = await data_source_router.fetch_akshare("SECTOR_FLOW_HK")
+        result = await data_source_router.fetch_futu("HK_SECTOR_FLOW")
         if result.get("status") != "success":
-            raise ValueError(result.get("message", "远程港股行业资金流返回非成功状态"))
+            raise ValueError(result.get("message", "Futu 港股板块资金流返回非成功状态"))
 
         result["data"]["updated_at"] = datetime.now(timezone.utc).isoformat()
+        result["data"]["source"] = "Futu"
 
         # 3. 写入缓存
         try:
@@ -62,7 +65,7 @@ async def get_hk_sector_flow() -> dict[str, Any]:
         return result
 
     except Exception as e:
-        logger.error(f"[FundFlow] 港股南向行业资金流获取失败: {e}", exc_info=True)
+        logger.error(f"[FundFlow] 港股板块资金流获取失败: {e}", exc_info=True)
         # 降级: 尝试返回 STALE 缓存
         try:
             stale = await redis_client.get(_CACHE_KEY)
@@ -79,11 +82,11 @@ def _fallback_result(reason: str) -> dict[str, Any]:
     """降级: 返回 STALE 缓存或错误"""
     return {
         "status": "degraded",
-        "message": f"港股南向行业数据暂不可用: {reason}",
+        "message": f"港股行业板块资金流暂不可用: {reason}",
         "data": {
             "market": "HK",
-            "market_name": "港股南向",
+            "market_name": "港股行业板块",
             "sectors": [],
-            "note": "日频更新，盘后刷新",
+            "note": "港股行业板块资金流暂不可用",
         },
     }

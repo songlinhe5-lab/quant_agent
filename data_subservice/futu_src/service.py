@@ -338,6 +338,14 @@ class FutuService:
             market=market,
         )
 
+    async def get_hk_sector_flow(self) -> Dict[str, Any]:
+        """F4-5 港股行业板块资金流聚合（支撑板块资金流向面板）。"""
+        return await self._route(
+            "fetch_hk_sector_flow",
+            {},
+            self.quote_handler.get_hk_sector_flow,
+        )
+
     async def get_warrant_chain(self, ticker: str) -> Dict[str, Any]:
         return await self._route(
             "fetch_warrant_chain",

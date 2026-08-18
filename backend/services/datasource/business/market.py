@@ -55,6 +55,21 @@ class MarketDataService:
         """G6：板块热力图（产品级聚合，供 ECharts treemap 渲染）。market 级无 ticker。"""
         return await self._facade.get_heat_map(market, prefer_sources=prefer_sources)
 
+    async def get_order_book(self, ticker: str, prefer_sources: Optional[list[str]] = None) -> Any:
+        """L2 盘口深度：派生最优买卖价差与买卖盘量比。"""
+        self._validate_ticker(ticker)
+        return await self._facade.get_order_book(ticker, prefer_sources=prefer_sources)
+
+    async def get_market_snapshot(self, tickers: list[str], prefer_sources: Optional[list[str]] = None) -> Any:
+        """批量实时快照：派生 count/平均涨跌幅/涨跌家数。"""
+        return await self._facade.get_market_snapshot(tickers, prefer_sources=prefer_sources)
+
+    async def get_stock_basicinfo(
+        self, market: str, sec_type: str = "STOCK", prefer_sources: Optional[list[str]] = None
+    ) -> Any:
+        """全市场股票/ETF/指数基本信息。"""
+        return await self._facade.get_stock_basicinfo(market, sec_type=sec_type, prefer_sources=prefer_sources)
+
     async def get_option_chain(
         self,
         ticker: str,
