@@ -70,10 +70,14 @@ async def get_us_sector_flow() -> dict[str, Any]:
             data = res.get("data", {}) if isinstance(res, dict) else {}
 
             # 解析 Futu 资金流数据
+            # 子服务 FUND_FLOW 实际返回 main_fund_net_inflow（主力净流入，元）；兼容 net_inflow/net_amount
             net_inflow = 0.0
             if isinstance(data, dict):
-                # 尝试多种字段名 (capital_flow 为嵌套结构, 不在此处强转)
-                for key in ["net_inflow", "net_amount"]:
+                # 注意：res 顶层可能含 main_fund_net_inflow（FUND_FLOW）或 data 内嵌
+                for key in ["main_fund_net_inflow", "net_inflow", "net_amount"]:
+                    if key in res and isinstance(res[key], (int, float)):
+                        net_inflow = float(res[key])
+                        break
                     if key in data:
                         net_inflow = float(data[key])
                         break

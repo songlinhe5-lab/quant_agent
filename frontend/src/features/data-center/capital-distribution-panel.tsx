@@ -61,7 +61,11 @@ export function CapitalDistributionPanel({ ticker = 'HK.00700' }: { ticker?: str
     )
   if (!data) return <div className="p-6 text-sm text-slate-400">暂无主力筹码数据</div>
 
-  const fmt = (v?: number) => (v == null || Number.isNaN(v) ? '--' : `${v >= 0 ? '+' : ''}${v.toFixed(2)} 亿`)
+  // main_net/retail_net 后端为原始元值（futu 资金分布单位），需 /1e8 转亿显示
+  const fmt = (v?: number) =>
+    v == null || Number.isNaN(v)
+      ? '--'
+      : `${v >= 0 ? '+' : ''}${(v / 1e8).toFixed(2)} 亿`
 
   return (
     <div className="glass-card rounded-lg overflow-hidden">

@@ -353,14 +353,23 @@ class DataServiceFacade:
             return res
 
         # 1) 识别名称列 / 涨跌幅列 / 板块列（防御式，不硬编码 Futu 列名）
+        #    注意：futu get_heat_map_data 返回 plate_name/change_rate/plate，需一并识别
         keys = list(rows[0].keys())
-        name_col = next((k for k in keys if str(k).lower() in ("name", "code_name", "stock_name", "名称")), None)
+        name_col = next(
+            (k for k in keys if str(k).lower() in ("name", "code_name", "stock_name", "名称", "plate_name")),
+            None,
+        )
         chg_col = next(
-            (k for k in keys if any(t in str(k).lower() for t in ("change", "涨跌幅", "chg", "pct"))),
+            (
+                k
+                for k in keys
+                if any(t in str(k).lower() for t in ("change", "涨跌幅", "chg", "pct", "change_rate"))
+            ),
             None,
         )
         sector_col = next(
-            (k for k in keys if any(t in str(k).lower() for t in ("sector", "板块", "industry", "行业"))), None
+            (k for k in keys if any(t in str(k).lower() for t in ("sector", "板块", "industry", "行业", "plate"))),
+            None
         )
 
         def _f(v: Any) -> Optional[float]:
@@ -553,12 +562,19 @@ class DataServiceFacade:
         if not isinstance(data, dict):
             return res
 
-        bids = data.get("bids") or []
-        asks = data.get("asks") or []
+        bids = [b for b in (data.get("bids") or []) if isinstance(b, dict)]
+        asks = [a for a in (data.get("asks") or []) if isinstance(a, dict)]
         best_bid = bids[0].get("price") if bids else None
         best_ask = asks[0].get("price") if asks else None
-        bid_vol = sum(float(b.get("size", 0)) for b in bids) if bids else None
-        ask_vol = sum(float(a.get("size", 0)) for a in asks) if asks else None
+
+        def _sz(x):
+            try:
+                return float(x.get("size", 0))
+            except (TypeError, ValueError):
+                return 0.0
+
+        bid_vol = sum(_sz(b) for b in bids) if bids else None
+        ask_vol = sum(_sz(a) for a in asks) if asks else None
 
         spread = None
         if best_bid is not None and best_ask is not None:
