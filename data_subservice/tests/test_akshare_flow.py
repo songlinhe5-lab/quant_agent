@@ -238,8 +238,11 @@ class TestHkSectorFlow:
         assert out["data"]["sectors"][0]["net_inflow"] == 100.0 / 1e4
 
     def test_unparseable_raises(self, monkeypatch):
-        # 单列非数值, 无法解析 flow_col
+        # 单列非数值, 无法解析行业/资金流列 → 诚实降级（success + 空 sectors + note），
+        # 不再伪造 name=日期 的坏数据，也不再 raise 成 error（避免把港股南向板块整体打挂）
         df = pd.DataFrame([{"行业": "X"}])
         monkeypatch.setattr(flow_mod.ak, "stock_hsgt_fund_flow_summary_em", lambda: df)
         out = flow_mod.get_hk_sector_flow()
-        assert out["status"] == "error"
+        assert out["status"] == "success"
+        assert out["data"]["sectors"] == []
+        assert "暂无行业分布数据" in out["data"]["note"]
