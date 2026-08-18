@@ -234,7 +234,7 @@ function MarketMarginCard({ data }: { data: MarginMarketData }) {
       <div className="mt-2 pt-1.5 border-t border-border/10">
         <div className="flex items-center gap-1 text-[8px] text-muted-foreground/50">
           <span className="inline-block w-1 h-1 rounded-full bg-emerald-400/60"></span>
-          <span>{data.source}</span>
+          <span>{data.source || (data.sources?.length ? data.sources.join(" / ") : "未知")}</span>
         </div>
         {data.note && (
           <div className="flex items-center gap-1 mt-0.5 text-[8px] text-amber-500/70">

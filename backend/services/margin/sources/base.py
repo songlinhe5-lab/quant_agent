@@ -106,6 +106,7 @@ class BaseMarginSource:
 # ── 编排器 ────────────────────────────────────────────────────────
 from backend.services.margin.sources.cboe import CboeShortInterestSource  # noqa: E402
 from backend.services.margin.sources.finra import FinraRegShoSource  # noqa: E402
+from backend.services.margin.sources.futu import FutuShortSellingSource  # noqa: E402
 from backend.services.margin.sources.hkex import HkexShortSellingSource  # noqa: E402
 from backend.services.margin.sources.sfc import SfcShortPositionsSource  # noqa: E402
 
@@ -115,7 +116,13 @@ from backend.services.margin.sources.sfc import SfcShortPositionsSource  # noqa:
 #  2) FinraRegShoSource —— FINRA Reg SHO 每日做空成交量 (需 token)，与 CBOE 互补
 #     (提供 short_sale_volume / ratio)。两者字段不冲突，编排器按字段合并。
 _US_SOURCES: List[MarginIndicatorSource] = [CboeShortInterestSource(), FinraRegShoSource()]
-_HK_SOURCES: List[MarginIndicatorSource] = [HkexShortSellingSource(), SfcShortPositionsSource()]
+# 港股源优先级：HKEX(每日卖空成交) → SFC(每周淡仓余额) → Futu(卖空榜聚合兜底)。
+# Futu 仅作兜底：监管源不可用时提供真实可算的市场级占比，不覆盖监管源。
+_HK_SOURCES: List[MarginIndicatorSource] = [
+    HkexShortSellingSource(),
+    SfcShortPositionsSource(),
+    FutuShortSellingSource(),
+]
 
 
 def _merge_snapshot(acc: Optional[Dict], snap: MarketMarginSnapshot) -> Dict:
