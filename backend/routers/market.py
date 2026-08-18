@@ -343,10 +343,11 @@ async def get_quote(ticker: str):
             logger.warning(f"[Market API] Futu fetch_futu 异常: {exc}")
             raise HTTPException(status_code=500, detail=f"Futu 数据源调用异常: {exc}")
         if isinstance(futu_res, dict) and futu_res.get("status") == "success":
+            futu_data = futu_res.get("data") or {}
             return {
-                "status": "success",
-                "data": futu_res.get("data"),
+                **(futu_data if isinstance(futu_data, dict) else {"data": futu_data}),
                 "source": "futu",
+                "degraded": False,
                 "latency_ms": futu_res.get("latency_ms"),
                 "cached": futu_res.get("cached", False),
             }
@@ -364,11 +365,12 @@ async def get_quote(ticker: str):
         err_msg = facade_res.error.message if facade_res.error else "所有数据源失败"
         raise HTTPException(status_code=400, detail=err_msg)
 
-    resp_status = "degraded" if facade_res.status == ResultStatus.DEGRADED else "success"
+    # BE-13 方案 B：直接返回扁平 payload，由 response_envelope_middleware 统一包成 {code,msg,data,ts}
+    # 前端统一读 res.data（含业务字段 + source 元数据），不再二次解包 .data
     return {
-        "status": resp_status,
-        "data": facade_res.data,
+        **facade_res.data,
         "source": f"facade+{facade_res.source}",
+        "degraded": facade_res.status == ResultStatus.DEGRADED,
         "latency_ms": facade_res.latency_ms,
         "cached": facade_res.cached,
     }
@@ -490,10 +492,11 @@ async def get_history(ticker: str, ktype: str = "K_DAY", num: int = 60):
             logger.warning(f"[Market API] Futu HISTORY fetch_futu 异常: {exc}")
             raise HTTPException(status_code=500, detail=f"Futu 历史数据调用异常: {exc}")
         if isinstance(futu_res, dict) and futu_res.get("status") == "success":
+            futu_data = futu_res.get("data") or {}
             return {
-                "status": "success",
-                "data": futu_res.get("data"),
+                **(futu_data if isinstance(futu_data, dict) else {"data": futu_data}),
                 "source": "futu",
+                "degraded": False,
                 "latency_ms": futu_res.get("latency_ms"),
                 "cached": futu_res.get("cached", False),
             }
@@ -508,10 +511,12 @@ async def get_history(ticker: str, ktype: str = "K_DAY", num: int = 60):
         err_msg = facade_res.error.message if facade_res.error else "获取历史数据失败"
         raise HTTPException(status_code=400, detail=err_msg)
 
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封。
+    # HISTORY 的 data 是 K 线 list，不能 ** 展开，统一包入 data 键（前端读 res.data.data）。
     return {
-        "status": "success",
         "data": facade_res.data,
         "source": f"facade+{facade_res.source}",
+        "degraded": facade_res.status == ResultStatus.DEGRADED,
     }
 
 
@@ -531,18 +536,12 @@ async def get_option_chain(ticker: str, expiration_date: str = ""):
     if facade_res.is_error:
         err_msg = facade_res.error.message if facade_res.error else "期权链数据不可用"
         raise HTTPException(status_code=400, detail=err_msg)
-    if facade_res.status == ResultStatus.DEGRADED:
-        err_msg = facade_res.error.message if facade_res.error else "期权链数据暂不可用"
-        return {
-            "status": "degraded",
-            "message": err_msg,
-            "data": facade_res.data,
-            "source": f"facade+{facade_res.source}",
-        }
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封；degraded 信号透传为布尔字段
     return {
-        "status": "success",
-        "data": facade_res.data,
+        **facade_res.data,
         "source": f"facade+{facade_res.source}",
+        "degraded": facade_res.status == ResultStatus.DEGRADED,
+        "degraded_message": facade_res.error.message if (facade_res.is_degraded and facade_res.error) else None,
     }
 
 
@@ -569,18 +568,12 @@ async def get_option_strategy_lab(
     if facade_res.is_error:
         err_msg = facade_res.error.message if facade_res.error else "期权损益实验室数据不可用"
         raise HTTPException(status_code=400, detail=err_msg)
-    if facade_res.status == ResultStatus.DEGRADED:
-        err_msg = facade_res.error.message if facade_res.error else "期权损益实验室数据暂不可用"
-        return {
-            "status": "degraded",
-            "message": err_msg,
-            "data": facade_res.data,
-            "source": f"facade+{facade_res.source}",
-        }
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封；degraded 信号透传为布尔字段
     return {
-        "status": "success",
-        "data": facade_res.data,
+        **facade_res.data,
         "source": f"facade+{facade_res.source}",
+        "degraded": facade_res.status == ResultStatus.DEGRADED,
+        "degraded_message": facade_res.error.message if (facade_res.is_degraded and facade_res.error) else None,
     }
 
 
@@ -596,18 +589,12 @@ async def get_option_volatility(ticker: str):
     if facade_res.is_error:
         err_msg = facade_res.error.message if facade_res.error else "期权波动率数据不可用"
         raise HTTPException(status_code=400, detail=err_msg)
-    if facade_res.status == ResultStatus.DEGRADED:
-        err_msg = facade_res.error.message if facade_res.error else "期权波动率数据暂不可用"
-        return {
-            "status": "degraded",
-            "message": err_msg,
-            "data": facade_res.data,
-            "source": f"facade+{facade_res.source}",
-        }
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封；degraded 信号透传为布尔字段
     return {
-        "status": "success",
-        "data": facade_res.data,
+        **facade_res.data,
         "source": f"facade+{facade_res.source}",
+        "degraded": facade_res.status == ResultStatus.DEGRADED,
+        "degraded_message": facade_res.error.message if (facade_res.is_degraded and facade_res.error) else None,
     }
 
 
@@ -626,10 +613,11 @@ async def get_fund_flow(ticker: str):
     if facade_res.is_error:
         err_msg = facade_res.error.message if facade_res.error else "资金流数据不可用"
         raise HTTPException(status_code=400, detail=err_msg)
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封
     return {
-        "status": "success",
-        "data": facade_res.data,
+        **facade_res.data,
         "source": f"facade+{facade_res.source}",
+        "degraded": facade_res.status == ResultStatus.DEGRADED,
     }
 
 
@@ -649,10 +637,11 @@ async def get_capital_distribution(ticker: str):
     if facade_res.is_error:
         err_msg = facade_res.error.message if facade_res.error else "主力筹码分布数据不可用"
         raise HTTPException(status_code=400, detail=err_msg)
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封（前端 capital-distribution-panel 读 res.data）
     return {
-        "status": "success",
-        "data": facade_res.data,
+        **facade_res.data,
         "source": f"facade+{facade_res.source}",
+        "degraded": facade_res.status == ResultStatus.DEGRADED,
     }
 
 
@@ -672,10 +661,11 @@ async def get_heat_map(market: str = "HK"):
     if facade_res.is_error:
         err_msg = facade_res.error.message if facade_res.error else "板块热力图数据不可用"
         raise HTTPException(status_code=400, detail=err_msg)
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封
     return {
-        "status": "success",
-        "data": facade_res.data,
+        **facade_res.data,
         "source": f"facade+{facade_res.source}",
+        "degraded": facade_res.status == ResultStatus.DEGRADED,
     }
 
 
@@ -694,10 +684,11 @@ async def get_order_book(ticker: str):
     if facade_res.is_error:
         err_msg = facade_res.error.message if facade_res.error else "盘口数据不可用"
         raise HTTPException(status_code=400, detail=err_msg)
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封
     return {
-        "status": "success",
-        "data": facade_res.data,
+        **facade_res.data,
         "source": f"facade+{facade_res.source}",
+        "degraded": facade_res.status == ResultStatus.DEGRADED,
     }
 
 
@@ -719,10 +710,11 @@ async def get_market_snapshot(tickers: str):
     if facade_res.is_error:
         err_msg = facade_res.error.message if facade_res.error else "快照数据不可用"
         raise HTTPException(status_code=400, detail=err_msg)
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封
     return {
-        "status": "success",
-        "data": facade_res.data,
+        **facade_res.data,
         "source": f"facade+{facade_res.source}",
+        "degraded": facade_res.status == ResultStatus.DEGRADED,
     }
 
 
@@ -742,10 +734,11 @@ async def get_stock_basicinfo(market: str, sec_type: str = "STOCK"):
     if facade_res.is_error:
         err_msg = facade_res.error.message if facade_res.error else "基本信息数据不可用"
         raise HTTPException(status_code=400, detail=err_msg)
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封
     return {
-        "status": "success",
-        "data": facade_res.data,
+        **facade_res.data,
         "source": f"facade+{facade_res.source}",
+        "degraded": facade_res.status == ResultStatus.DEGRADED,
     }
 
 
@@ -763,17 +756,19 @@ async def get_warrant_chain(ticker: str):
     # BE-ARCH-06c: 经 Facade 统一选源
     facade_res = await data_service.get_warrant_chain(ticker)
     if not facade_res.is_success:
+        # BE-13 方案 B：扁平 payload 交由中间件统一包信封
         return {
-            "status": "success",
             "data": [],
             "source": "not_implemented",
-            "message": f"[{ticker}] 窝轮/牛熊证链数据暂不支持（数据源未实现 warrant_chain 能力）",
+            "degraded": True,
+            "degraded_message": f"[{ticker}] 窝轮/牛熊证链数据暂不支持（数据源未实现 warrant_chain 能力）",
         }
 
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封
     return {
-        "status": "success",
-        "data": facade_res.data,
+        **facade_res.data,
         "source": f"facade+{facade_res.source}",
+        "degraded": facade_res.status == ResultStatus.DEGRADED,
     }
 
 
@@ -836,13 +831,12 @@ async def get_tech_indicators(ticker: str, lookback_days: int = 90):
 
     indicators = calculate_technical_indicators(klines)
 
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封（前端无 HTTP 调用方，保持后端一致性）
     return {
-        "status": "success",
-        "data": {
-            "klines": klines[:10],  # 返回最近 10 根 K 线
-            "indicators": indicators,  # 完整的计算结果
-        },
+        "klines": klines[:10],  # 返回最近 10 根 K 线
+        "indicators": indicators,  # 完整的计算结果
         "source": f"{source}+custom_tech_indicators",
+        "degraded": False,
     }
 
 
@@ -865,11 +859,21 @@ async def search_tickers(q: str):
         print(f"⚠️ [Search] 本地词库暂无 '{q}'，降级使用 Facade 搜索...")
         facade_res = await data_service.get_quote(q, prefer_sources=["yfinance"])
         if facade_res.is_success:
-            res = {"status": "success", "data": facade_res.data}
+            # BE-13 方案 B：扁平 payload（data 为 SearchResult 列表，包入 data 键）
+            return {
+                "data": facade_res.data,
+                "source": f"facade+{facade_res.source}",
+                "degraded": facade_res.status == ResultStatus.DEGRADED,
+            }
 
     if res.get("status") == "error":
         raise HTTPException(status_code=400, detail=res.get("message"))
-    return res
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封；data 为列表包入 data 键
+    return {
+        "data": res.get("data") or [],
+        "source": res.get("source", "local_dict"),
+        "degraded": res.get("status") == "degraded",
+    }
 
 
 # ────────────────────────────────────────────────────────────────────────────

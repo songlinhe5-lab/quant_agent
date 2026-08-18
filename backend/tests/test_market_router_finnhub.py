@@ -95,7 +95,8 @@ def test_events_real_source(finnhub):
     resp = client.get("/api/v1/market/events/AAPL?days_back=30&days_ahead=30")
     assert resp.status_code == 200
     body = _data(resp)
-    assert body["status"] == "success"
+    # BE-13 方案 B: /events 返回扁平 payload {ticker, count, data, degraded}（无外层 status）
+    assert body["degraded"] is False
     types = {e["type"] for e in body["data"]}
     assert "earnings" in types
     assert "news" in types
@@ -109,7 +110,8 @@ def test_events_fallback_mock(finnhub):
     resp = client.get("/api/v1/market/events/AAPL")
     assert resp.status_code == 200
     body = _data(resp)
-    assert body["status"] == "success"
+    # BE-13 方案 B: /events 返回扁平 payload {ticker, count, data, degraded}（无外层 status）
+    assert body["degraded"] is False
     earnings = [e for e in body["data"] if e["type"] == "earnings"]
     assert earnings
     assert earnings[0]["label"].startswith("Q")

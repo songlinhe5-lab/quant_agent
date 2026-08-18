@@ -92,7 +92,9 @@ class TestMarketFundFlowRoutes:
         client = TestClient(app)
         resp = client.get("/api/v1/market/fund-flow?ticker=HK.00700")
         assert resp.status_code == 200
-        assert _unwrap(resp)["status"] == "success"
+        # BE-13 方案 B: /fund-flow 返回扁平 payload（_unwrap 取中间件 data 字段）
+        # source 字段格式为 "facade+{source}"
+        assert _unwrap(resp)["source"] == "facade+futu"
 
     @patch("backend.routers.market._facade_market")
     def test_get_fund_flow_failure(self, mock_facade):
@@ -122,7 +124,8 @@ class TestMarketSearchRoutes:
         client = TestClient(app)
         resp = client.get("/api/v1/market/search?q=00700")
         assert resp.status_code == 200
-        assert _unwrap(resp)["status"] == "success"
+        # BE-13 方案 B: /search 返回扁平 payload {data:[...], source, degraded}
+        assert len(_unwrap(resp)["data"]) == 1
 
 
 class TestMarketHoldersRoutes:

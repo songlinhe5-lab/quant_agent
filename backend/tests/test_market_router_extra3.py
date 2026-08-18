@@ -37,8 +37,9 @@ class TestSearchTickers:
         )
         resp = client.get("/market/search?q=apple")
         assert resp.status_code == 200
+        # BE-13 方案 B: /search 返回扁平 payload {data:[...], source, degraded}
         data = resp.json()
-        assert data["status"] == "success"
+        assert len(data["data"]) == 1
 
     @patch("backend.routers.market.ticker_service")
     @patch("backend.routers.market.data_service")

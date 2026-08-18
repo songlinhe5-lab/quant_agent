@@ -384,7 +384,9 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       try {
         const sym = selectedSymbol.replace('/', '')
         const res = await apiClient.get(`/market/events/${sym}`, { days_back: 30, days_ahead: 30 })
-        if (isMounted && res.data?.status === 'success' && res.data.data) {
+        // BE-13 方案 B: /events 返回扁平 payload {ticker,count,data,degraded}
+        // 经中间件包信封 + apiClient 解包后, res.data 即该 payload, 直接读 .data
+        if (isMounted && res.data?.data) {
           setStockEvents(res.data.data)
         }
       } catch (e) {

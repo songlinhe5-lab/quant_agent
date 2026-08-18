@@ -122,8 +122,9 @@ class TestGetQuote:
         resp = client.get("/market/quote?ticker=US.AAPL")
         assert resp.status_code == 200
         body = resp.json()
-        assert body["status"] == "success"
+        # BE-13 方案 B: /quote 返回扁平 payload（含 source/degraded），无外层 status
         assert body["source"] == "futu"
+        assert body["last_price"] == 150.0
 
     @patch("backend.routers.market.data_source_router")
     def test_hk_futu_success(self, mock_ds):
@@ -153,7 +154,8 @@ class TestGetQuote:
         )
         resp = client.get("/market/quote?ticker=BTC-USD")
         assert resp.status_code == 200
-        assert resp.json()["status"] == "success"
+        # BE-13 方案 B: /quote 返回扁平 payload，直接读业务字段
+        assert resp.json()["last_price"] == 1.0
 
     @patch("backend.routers.market._facade_market")
     def test_facade_error_returns_400(self, mock_facade):
@@ -272,7 +274,8 @@ class TestSearchTickers:
         )
         resp = client.get("/market/search?q=apple")
         assert resp.status_code == 200
-        assert resp.json()["status"] == "success"
+        # BE-13 方案 B: /search 返回扁平 payload {data:[...], source, degraded}
+        assert len(resp.json()["data"]) == 1
 
     @patch("backend.routers.market.ticker_service")
     @patch("backend.routers.market.data_service")

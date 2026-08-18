@@ -46,11 +46,11 @@ export const OmniSearch: React.FC<OmniSearchProps> = ({ onSelect }) => {
         // apiClient.get 签名: get(path, params) — 直接传 params 对象
         const response = await apiClient.get('/market/search', { q: debouncedQuery });
 
-        // apiClient 返回的是 response.data 包装后的结果
-        if (response && response.status === 'success') {
-          setResults(response.data || []);
-        } else if (response?.data && response.data.status === 'success') {
-          setResults(response.data.data || []);
+        // BE-13 方案 B: /search 返回扁平 payload {data:[...], source, degraded}
+        // 经中间件包信封 + apiClient 解包后, response.data 即该 payload, 直接读 .data
+        const payload = response?.data;
+        if (payload && Array.isArray(payload.data)) {
+          setResults(payload.data);
         } else {
           setResults([]);
         }

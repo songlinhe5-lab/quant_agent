@@ -13,6 +13,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 
 from backend.core.redis_client import redis_client
+from backend.services.datasource import ResultStatus
 from backend.core.ticker_format import format_yf_ticker
 
 # Legacy OpenD 健康探测（仅用于 fundamental 端点的 FRED 路由）
@@ -406,11 +407,12 @@ async def get_stock_events(ticker: str, days_back: int = 30, days_ahead: int = 3
     # 💡 按日期排序
     events.sort(key=lambda x: x.get("date", ""))
 
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封（前端 lightweight-chart-canvas 读 res.data.data）
     return {
-        "status": "success",
         "ticker": safe_ticker,
         "count": len(events),
         "data": events,
+        "degraded": False,
     }
 
 
@@ -561,13 +563,20 @@ async def get_short_selling(ticker: str, mode: str = "rank"):
     res = await data_service.get_short_selling(ticker, mode=mode)
     if not res.is_success or not res.data:
         err_msg = res.error.message if res.error else "未知错误"
+        # BE-13 方案 B：扁平 payload 交由中间件统一包信封
         return {
-            "status": "warning",
             "message": f"[{ticker}] 卖空拥挤度数据不可用: {err_msg}",
             "data": {},
+            "source": f"facade+{res.source}",
+            "degraded": True,
         }
 
-    return {"status": "success", "data": res.data}
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封（前端 short-selling-panel 读 res.data 兼容）
+    return {
+        **res.data,
+        "source": f"facade+{res.source}",
+        "degraded": res.status == ResultStatus.DEGRADED,
+    }
 
 
 @router.get("/holders/{ticker}")
