@@ -3,6 +3,7 @@ import hashlib
 import json
 import random
 import re
+import time
 
 try:
     import zoneinfo
@@ -18,6 +19,7 @@ from backend.core.exceptions import AppError
 from backend.core.redis_client import redis_client
 from backend.services.ai_narrator.llm_service import llm_service
 from backend.services.fund_flow.us_big_order import get_us_big_order_flow
+from backend.services.margin.a_share import get_a_share_margin
 from backend.services.market_engine import manager
 
 # 用于防范缓存击穿的异步细粒度锁池
@@ -42,7 +44,9 @@ def _fallback_no_data() -> dict:
 
 
 async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = False, days_back: int = 0) -> dict:  # noqa: E501
-    cache_key = f"macro_calendar_akshare_{days_ahead}_{days_back}"
+    # 缓存 key 加入当天日期 → 跨自然日自动失效，避免 12h 长缓存锁住"明日已排布"的新事件
+    _today_key = datetime.now(timezone.utc).strftime("%Y%m%d")
+    cache_key = f"macro_calendar_akshare_{days_ahead}_{days_back}_{_today_key}"
     if not force_refresh:
         cached_data = await redis_client.get(cache_key)
         if cached_data:
@@ -173,8 +177,8 @@ async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = Fals
                     result["ai_deduction"] = "暂无 AI 前瞻推演"
 
             if compressed_events:
-                # 💡 增加随机 Jitter 防雪崩
-                ttl = 43200 + random.randint(100, 600)
+                # 💡 增加随机 Jitter 防雪崩；缓存 key 已含当天日期按自然日失效，TTL 缩到 ~2h 双保险
+                ttl = 7200 + random.randint(100, 300)
                 await redis_client.set(cache_key, json.dumps(result), ex=ttl)
             return result
         except Exception as e:
@@ -184,7 +188,9 @@ async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = Fals
 
 async def _fetch_earnings_calendar_data(days_ahead: int, force_refresh: bool = False, days_back: int = 0) -> dict:  # noqa: E501
     """带缓存的大模型财报日历前瞻推演包装器"""
-    cache_key = f"macro_earnings_calendar_with_ai_{days_ahead}_{days_back}"
+    # 缓存 key 加入当天日期 → 跨自然日自动失效，避免 12h 长缓存锁住"已公布 actual / 次日新排布"的财报
+    _today_key = datetime.now(timezone.utc).strftime("%Y%m%d")
+    cache_key = f"macro_earnings_calendar_with_ai_{days_ahead}_{days_back}_{_today_key}"
     if not force_refresh:
         cached_data = await redis_client.get(cache_key)
         if cached_data:
@@ -273,6 +279,47 @@ async def _fetch_earnings_calendar_data(days_ahead: int, force_refresh: bool = F
                 "BRK.B": "伯克希尔",
                 "SPY": "标普500ETF",
                 "QQQ": "纳指ETF",
+                # —— 扩充常见财报股 ——
+                "PG": "宝洁",
+                "UNH": "联合健康",
+                "MRK": "默沙东",
+                "ABBV": "艾伯维",
+                "BMY": "百时美施贵宝",
+                "AMGN": "安进",
+                "GILD": "吉利德",
+                "BAC": "美国银行",
+                "C": "花旗",
+                "WFC": "富国银行",
+                "AXP": "美国运通",
+                "SCHW": "嘉信理财",
+                "GM": "通用汽车",
+                "F": "福特",
+                "RIVN": "Rivian",
+                "PLTR": "Palantir",
+                "SNOW": "Snowflake",
+                "INTU": "Intuit",
+                "NOW": "ServiceNow",
+                "CSCO": "思科",
+                "AMAT": "应用材料",
+                "LRCX": "泛林",
+                "KLAC": "科磊",
+                "ADI": "亚德诺",
+                "MRVL": "迈威尔",
+                "NXPI": "恩智浦",
+                "OXY": "西方石油",
+                "SLB": "斯伦贝谢",
+                "CL": "高露洁",
+                "PM": "菲利普莫里斯",
+                "MDLZ": "亿滋",
+                "DELL": "戴尔",
+                "HPQ": "惠普",
+                "TME": "腾讯音乐",
+                "BILI": "哔哩哔哩",
+                "IQ": "爱奇艺",
+                "KWEB": "中概互联ETF",
+                "FUTU": "富途",
+                "TIGR": "老虎证券",
+                "YALA": "Yalla",
             }
             for item in earnings_list:
                 symbol = item.get("symbol", "")
@@ -322,7 +369,8 @@ async def _fetch_earnings_calendar_data(days_ahead: int, force_refresh: bool = F
                     result["ai_deduction"] = "暂无财报前瞻推演"
 
             if earnings_list:
-                ttl = 43200 + random.randint(100, 600)
+                # 缓存 key 已含当天日期按自然日失效，TTL 缩到 ~2h 双保险
+                ttl = 7200 + random.randint(100, 300)
                 await redis_client.set(cache_key, json.dumps(result), ex=ttl)
             return result
         except Exception as e:
@@ -623,7 +671,7 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
                 return manager.flow_cache[ticker]
             return await market_data.get_fund_flow(ticker)
 
-        csi300_task = _get_flow("SH.510300")
+        # A股核心改用沪深两融（get_a_share_margin），不再调 futu get_fund_flow("SH.510300")
         spy_task = _get_flow("US.SPY")
         qqq_task = _get_flow("US.QQQ")
         soxx_task = _get_flow("US.SOXX")
@@ -632,7 +680,6 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
 
         results = await asyncio.gather(
             south_task,
-            csi300_task,
             spy_task,
             qqq_task,
             soxx_task,
@@ -641,12 +688,11 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
             return_exceptions=True,
         )  # noqa: E501
         south_res = results[0] if isinstance(results[0], dict) else {}
-        csi300_res = results[1] if isinstance(results[1], dict) else {}
-        spy_res = results[2] if isinstance(results[2], dict) else {}
-        qqq_res = results[3] if isinstance(results[3], dict) else {}
-        soxx_res = results[4] if isinstance(results[4], dict) else {}
-        tlt_res = results[5] if isinstance(results[5], dict) else {}
-        kweb_res = results[6] if isinstance(results[6], dict) else {}
+        spy_res = results[1] if isinstance(results[1], dict) else {}
+        qqq_res = results[2] if isinstance(results[2], dict) else {}
+        soxx_res = results[3] if isinstance(results[3], dict) else {}
+        tlt_res = results[4] if isinstance(results[4], dict) else {}
+        kweb_res = results[5] if isinstance(results[5], dict) else {}
 
         flows = []
 
@@ -664,8 +710,10 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
                     "dir": 1 if (sd.get("net_inflow") or 0) >= 0 else -1,
                     "desc": sd.get("name", "沪深港通净买入港股"),
                     "sparkDirs": sd.get("sparkline", [1, 1, -1, 1, 1, 1, -1, 1]),
-                    "data_source": (sd.get("source") if sd else "N/A") or "N/A",
-                    "updated_at": sd.get("updated_at") or datetime.now(timezone.utc).isoformat(),
+                    # AKShare 子服务把 source 放在响应外层，不在 data 内层；从 south_res 外层取，
+                    # 否则取不到 → 前端误显示"缓存数据"。兜底"akshare"避免 N/A 误导。
+                    "data_source": (south_res.get("source") if south_res else "N/A") or "akshare",
+                    "updated_at": sd.get("date") or sd.get("updated_at") or datetime.now(timezone.utc).isoformat(),
                 }
             )
 
@@ -690,10 +738,29 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
                 None,
             )
 
-        # 💡 使用核心 ETF 的主买主卖差额代表板块的整体真实资金流
-        csi_amount, csi_dir, csi_desc, csi_unit, csi_source, csi_updated = _parse_futu_flow(
-            csi300_res, "沪深300ETF主力净流", "亿人民币"
-        )  # noqa: E501
+        # 💡 A股核心改用沪深两融融资余额环比（杠杆资金净流入）。
+        # futu 对 A股 ETF 无资金分布权限、tushare moneyflow 不支持 ETF，
+        # 改用 AKShare 两融 financing_change（较前日融资余额变化，亿元）表达 A股资金流向。
+        csi_amount = None
+        csi_dir = 0
+        csi_desc = "沪深两融融资净买入"
+        csi_unit = "亿人民币"
+        csi_source = "N/A"
+        csi_updated = None
+        try:
+            _margin_res = await get_a_share_margin()
+            if _margin_res and _margin_res.get("status") == "success":
+                _md = _margin_res.get("data") or {}
+                _fc = _to_float(_md.get("financing_change"))
+                if _fc is not None:
+                    csi_amount = round(_fc, 2)
+                    csi_dir = 1 if _fc >= 0 else -1
+                    csi_unit = _md.get("unit") or "亿人民币"
+                    csi_source = "AKShare 两融"
+                    csi_updated = _md.get("updated_at") or datetime.now(timezone.utc).isoformat()
+        except Exception:  # noqa: BLE001
+            csi_amount = None
+            csi_source = "N/A"
         spy_amount, spy_dir, spy_desc, spy_unit, spy_source, spy_updated = _parse_futu_flow(
             spy_res, "标普500ETF主力净流", "亿美元"
         )  # noqa: E501
@@ -716,7 +783,7 @@ async def _fetch_capital_flows() -> tuple[list, bool]:
                     "market": "CN",
                     "label": "A股核心",
                     "amount": csi_amount,
-                    "unit": "亿人民币",
+                    "unit": csi_unit,
                     "dir": csi_dir,
                     "desc": csi_desc,
                     "sparkDirs": [1, 1, 1, 1, -1, 1, 1, 1],
@@ -822,13 +889,28 @@ async def get_capital_flow():
 # ── 新闻 ────────────────────────────────────────────────────────────────────
 
 
+# 新闻 ZSET 新鲜度阈值：最新一条超过该时长（秒）即视为采集停滞，回退实时拉取
+_NEWS_MAX_AGE_SECONDS = 6 * 3600  # 6 小时
+
+
 async def _fetch_macro_news_from_stream(limit: int = 50) -> list:
-    """从 Redis ZSET 滑动窗口中拉取最新的新闻"""
+    """从 Redis ZSET 滑动窗口中拉取最新的新闻。
+
+    若 ZSET 里最新一条新闻的 score（时间戳）已超过 _NEWS_MAX_AGE_SECONDS，
+    判定为后台采集 daemon 停滞（如 finnhub collector 挂掉），返回空列表，
+    由调用方回退到实时拉取，避免把 13 天前的旧新闻当作"最新"展示。
+    """
     try:
-        # 取出分数最高（最新）的 limit 条
-        members = await redis_client.zrevrange("macro_news_stream", 0, limit - 1)
+        # 取出分数最高（最新）的 limit 条，含 score（Unix 时间戳）
+        members = await redis_client.zrevrange("macro_news_stream", 0, limit - 1, withscores=True)
         if members:
-            return [json.loads(m) for m in members if isinstance(m, (str, bytes, bytearray))]  # noqa: E501
+            now = time.time()
+            newest_ts = float(members[0][1]) if members[0][1] else 0
+            if newest_ts and (now - newest_ts) > _NEWS_MAX_AGE_SECONDS:
+                import logging as _lg
+                _lg.warning("macro_news_stream 最新新闻已停滞 %.1f 小时，判定采集停滞，回退实时拉取", (now - newest_ts) / 3600)
+                return []
+            return [json.loads(m[0]) for m in members if isinstance(m[0], (str, bytes, bytearray))]  # noqa: E501
     except Exception as e:
         print(f"⚠️ [Macro] 从 ZSET 读取新闻异常: {e}")
     return []

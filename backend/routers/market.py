@@ -45,6 +45,31 @@ class SyncKlineRequest(BaseModel):
 router = APIRouter(prefix="/market", tags=["Market & Portfolio"])
 
 
+def _flat_facade_payload(
+    facade_res,
+    fallback_msg: str,
+    fallback_data=None,
+):
+    """BE-13 方案 B：把 facade Result 拍平为供中间件包信封的扁平 payload。
+
+    当 facade 成功但 data 为空/非 dict（子服务返回空 payload 的常见情况）时，
+    必须返回降级扁平 payload，而非 `**None` 抛 TypeError → 500。
+    """
+    data = facade_res.data
+    if not isinstance(data, dict):
+        return {
+            "data": fallback_data if fallback_data is not None else {},
+            "source": f"facade+{facade_res.source}",
+            "degraded": True,
+            "degraded_message": fallback_msg,
+        }
+    return {
+        **data,
+        "source": f"facade+{facade_res.source}",
+        "degraded": facade_res.status == ResultStatus.DEGRADED,
+    }
+
+
 @router.websocket("/quotes/ws")
 async def quotes_websocket(websocket: WebSocket):
     """
@@ -536,12 +561,16 @@ async def get_option_chain(ticker: str, expiration_date: str = ""):
     if facade_res.is_error:
         err_msg = facade_res.error.message if facade_res.error else "期权链数据不可用"
         raise HTTPException(status_code=400, detail=err_msg)
-    # BE-13 方案 B：扁平 payload 交由中间件统一包信封；degraded 信号透传为布尔字段
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封
+    # degraded 信号：优先透传子服务返回的 degraded/degraded_message（如期权链快照补充失败），
+    # 而非仅依赖 ResultStatus.DEGRADED（后者只在 _detect_stale 触发，会冲掉子服务的降级信号）。
+    _sub_degraded = isinstance(facade_res.data, dict) and facade_res.data.get("degraded")
+    _sub_msg = facade_res.data.get("degraded_message") if isinstance(facade_res.data, dict) else None
     return {
         **facade_res.data,
         "source": f"facade+{facade_res.source}",
-        "degraded": facade_res.status == ResultStatus.DEGRADED,
-        "degraded_message": facade_res.error.message if (facade_res.is_degraded and facade_res.error) else None,
+        "degraded": _sub_degraded or facade_res.status == ResultStatus.DEGRADED,
+        "degraded_message": _sub_msg or (facade_res.error.message if (facade_res.is_degraded and facade_res.error) else None),
     }
 
 
@@ -661,12 +690,8 @@ async def get_heat_map(market: str = "HK"):
     if facade_res.is_error:
         err_msg = facade_res.error.message if facade_res.error else "板块热力图数据不可用"
         raise HTTPException(status_code=400, detail=err_msg)
-    # BE-13 方案 B：扁平 payload 交由中间件统一包信封
-    return {
-        **facade_res.data,
-        "source": f"facade+{facade_res.source}",
-        "degraded": facade_res.status == ResultStatus.DEGRADED,
-    }
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封（data 非 dict 时降级而非 500）
+    return _flat_facade_payload(facade_res, f"板块热力图数据不可用（{market}）")
 
 
 @router.get("/order-book")
@@ -684,12 +709,8 @@ async def get_order_book(ticker: str):
     if facade_res.is_error:
         err_msg = facade_res.error.message if facade_res.error else "盘口数据不可用"
         raise HTTPException(status_code=400, detail=err_msg)
-    # BE-13 方案 B：扁平 payload 交由中间件统一包信封
-    return {
-        **facade_res.data,
-        "source": f"facade+{facade_res.source}",
-        "degraded": facade_res.status == ResultStatus.DEGRADED,
-    }
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封（data 非 dict 时降级而非 500）
+    return _flat_facade_payload(facade_res, f"盘口数据不可用（{ticker}）")
 
 
 @router.get("/snapshot")
@@ -710,12 +731,8 @@ async def get_market_snapshot(tickers: str):
     if facade_res.is_error:
         err_msg = facade_res.error.message if facade_res.error else "快照数据不可用"
         raise HTTPException(status_code=400, detail=err_msg)
-    # BE-13 方案 B：扁平 payload 交由中间件统一包信封
-    return {
-        **facade_res.data,
-        "source": f"facade+{facade_res.source}",
-        "degraded": facade_res.status == ResultStatus.DEGRADED,
-    }
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封（data 非 dict 时降级而非 500）
+    return _flat_facade_payload(facade_res, "快照数据不可用")
 
 
 @router.get("/stock-basicinfo")
@@ -734,12 +751,8 @@ async def get_stock_basicinfo(market: str, sec_type: str = "STOCK"):
     if facade_res.is_error:
         err_msg = facade_res.error.message if facade_res.error else "基本信息数据不可用"
         raise HTTPException(status_code=400, detail=err_msg)
-    # BE-13 方案 B：扁平 payload 交由中间件统一包信封
-    return {
-        **facade_res.data,
-        "source": f"facade+{facade_res.source}",
-        "degraded": facade_res.status == ResultStatus.DEGRADED,
-    }
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封（data 非 dict 时降级而非 500）
+    return _flat_facade_payload(facade_res, f"基本信息数据不可用（{market}）")
 
 
 @router.get("/warrant-chain")
