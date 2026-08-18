@@ -94,14 +94,14 @@ class ConnectionManager:
         """
         # 线程安全：防止并发连接
         with self._lock:
-            # 双重检查：ctx 对象仍存活即复用，避免覆盖式泄漏
-            if self.quote_ctx is not None:
-                if self.status != "CONNECTED":
-                    # ctx 在但状态被 watchdog 标记断线：复用现有 ctx，
-                    # 让 watchdog 负责重连，这里不抢建连。
-                    print("♻️ [ConnectionManager] ctx 已存在，复用并保留供 watchdog 重连")
-                else:
-                    print("✅ [ConnectionManager] 已连接，跳过重复连接")
+            # 仅当「已 CONNECTED 且 ctx 存活」时才跳过重复建连，避免线程泄漏。
+            # ⚠️ 修复僵死态 (2026-08-19): 此前只要 quote_ctx 非 None 就复用并跳过,
+            # 导致 watchdog 把 status 标为 DISCONNECTED 后, 重连调用 connect() 永远
+            # 命中复用分支 → status 无法恢复 CONNECTED → 所有依赖 Futu 的 action 永久
+            # 返回「OpenD 未连接」。正确行为: status!=CONNECTED 时(被 watchdog 标记断线)
+            # 必须走重建分支(下方会先 close 旧 ctx 释放线程再 new), 让 watchdog 能自愈。
+            if self.quote_ctx is not None and self.status == "CONNECTED":
+                print("✅ [ConnectionManager] 已连接，跳过重复连接")
                 return
 
             # 快速探测：如果 OpenD 不可达，提前返回，避免 futu-api 内部重试
