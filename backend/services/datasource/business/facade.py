@@ -562,12 +562,19 @@ class DataServiceFacade:
         if not isinstance(data, dict):
             return res
 
-        bids = data.get("bids") or []
-        asks = data.get("asks") or []
+        bids = [b for b in (data.get("bids") or []) if isinstance(b, dict)]
+        asks = [a for a in (data.get("asks") or []) if isinstance(a, dict)]
         best_bid = bids[0].get("price") if bids else None
         best_ask = asks[0].get("price") if asks else None
-        bid_vol = sum(float(b.get("size", 0)) for b in bids) if bids else None
-        ask_vol = sum(float(a.get("size", 0)) for a in asks) if asks else None
+
+        def _sz(x):
+            try:
+                return float(x.get("size", 0))
+            except (TypeError, ValueError):
+                return 0.0
+
+        bid_vol = sum(_sz(b) for b in bids) if bids else None
+        ask_vol = sum(_sz(a) for a in asks) if asks else None
 
         spread = None
         if best_bid is not None and best_ask is not None:
