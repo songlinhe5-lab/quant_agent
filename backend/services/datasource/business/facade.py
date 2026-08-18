@@ -1106,8 +1106,12 @@ class DataServiceFacade:
         DATASOURCE_FACADE_MERGE.labels(
             action=action, mode=("multi" if enable_merge and len(results) > 1 else "single")
         ).inc()
-        # 业务级检测 + 归一化
-        stale = self._detect_stale(merged.data, action)
+        # 业务级检测 + 归一化（均加防御：数据源返回结构异常时降级保留原数据，而非抛 500）
+        try:
+            stale = self._detect_stale(merged.data, action)
+        except Exception as e:  # noqa: BLE001
+            logging.warning("facade._dispatch %s 检测stale异常: %s", action, e)
+            stale = None
         if stale is not None and merged.status == ResultStatus.SUCCESS:
             # 标记降级但不丢弃数据，供上层告警
             merged = Result(
@@ -1118,7 +1122,11 @@ class DataServiceFacade:
                 cached=merged.cached,
                 error=ErrorInfo.normal("DATA_STALE", stale, retryable=True),
             )
-        merged.data = self._normalize(merged.data, action)
+        try:
+            merged.data = self._normalize(merged.data, action)
+        except Exception as e:  # noqa: BLE001
+            # 归一化失败不丢弃数据：保留原 data，仅告警，避免面板 500
+            logging.warning("facade._dispatch %s 归一化异常(保留原data): %s", action, e)
         return merged
 
     # ── 策略原语 ──
