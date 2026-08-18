@@ -743,7 +743,7 @@ class OptionFundHandler:
         if not code:
             return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
 
-        ctx = self.conn.get_quote_ctx()
+        ctx = self.conn_mgr.get_quote_ctx()
         if ctx is None:
             return {"status": "error", "source": "futu", "ticker": ticker, "message": "Futu OpenD 未连接", "code": code}
 
@@ -805,7 +805,7 @@ class OptionFundHandler:
         if not code:
             return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
 
-        ctx = self.conn.get_quote_ctx()
+        ctx = self.conn_mgr.get_quote_ctx()
         if ctx is None:
             return {"status": "error", "source": "futu", "ticker": ticker, "message": "Futu OpenD 未连接", "code": code}
 

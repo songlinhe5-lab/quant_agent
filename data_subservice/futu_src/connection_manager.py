@@ -206,6 +206,14 @@ class ConnectionManager:
         self.trade_ctxs.clear()
         self.status = "DISCONNECTED"
 
+    def get_quote_ctx(self):
+        """获取行情上下文（OpenQuoteContext）。
+
+        统一入口供各 handler 取 quote_ctx，避免直接访问内部字段。
+        OpenD 未连接时返回 None，由调用方自行判定并返回错误。
+        """
+        return self.quote_ctx
+
     def get_trade_context(self, market: TrdMarket, trd_env: TrdEnv) -> OpenSecTradeContext:  # noqa: E501
         """获取或创建交易上下文（单例模式）"""
         key = (trd_env, market)

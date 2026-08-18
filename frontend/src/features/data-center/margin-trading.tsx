@@ -268,10 +268,10 @@ export function MarginTradingPanel({ data, status, lastUpdated }: MarginTradingP
 
   return (
     <div className="space-y-2">
-      {/* 面板标题 */}
+      {/* 面板标题 — 卖空区汇总（A 股两融 / 港股 HKEX 卖空 / 美股 FINRA，做空口径三市场并存） */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-bold text-foreground/90">融资融券余额</h3>
+          <h3 className="text-sm font-bold text-foreground/90">卖空区指标</h3>
           {status === 'partial' && (
             <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400">
               部分数据
