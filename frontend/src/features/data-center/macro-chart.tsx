@@ -24,6 +24,7 @@ export function MacroChartPanel() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [latestDate, setLatestDate] = useState('')
+  const [lagDays, setLagDays] = useState<number | null>(null)
   const { theme } = useTheme()
   const isDark = theme === 'dark'
 
@@ -45,6 +46,13 @@ export function MacroChartPanel() {
         // 升序后最后一项为最新观测日期, 用于展示"数据更新至"以确认真实性
         const last = chartData[chartData.length - 1]
         setLatestDate(last?.date || '')
+        // 计算最新观测日期距今天数，用于推断 FRED 数据频率/发布滞后（月度指标常滞后数十天，属正常）
+        if (last?.date) {
+          const lag = Math.round((Date.now() - new Date(last.date).getTime()) / 86400000)
+          setLagDays(lag >= 0 ? lag : 0)
+        } else {
+          setLagDays(null)
+        }
       } else {
         setError(_friendlyFredError(res.data?.message) || '获取失败')
         setData([])
@@ -129,6 +137,16 @@ export function MacroChartPanel() {
         {latestDate && (
           <span className="text-[10px] text-muted-foreground font-mono bg-secondary/30 px-1.5 py-0.5 rounded-full" title="数据最新观测日期">
             更新至 {latestDate}
+          </span>
+        )}
+        {lagDays !== null && lagDays >= 45 && (
+          <span className="text-[10px] text-amber-500 font-mono bg-amber-500/10 px-1.5 py-0.5 rounded-full" title="月度 FRED 指标（CPI/非农/失业率等）发布滞后，最近一期为上月数据，属正常">
+            月度指标 · 滞后 {lagDays} 天（正常）
+          </span>
+        )}
+        {lagDays !== null && lagDays >= 8 && lagDays < 45 && (
+          <span className="text-[10px] text-amber-500/80 font-mono bg-amber-500/5 px-1.5 py-0.5 rounded-full" title="周度/低频 FRED 指标，发布滞后属正常">
+            周度/低频 · 滞后 {lagDays} 天
           </span>
         )}
         <form onSubmit={handleSearch} className="ml-auto flex items-center gap-1.5">

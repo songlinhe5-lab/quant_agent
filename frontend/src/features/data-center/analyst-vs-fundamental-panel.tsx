@@ -30,7 +30,8 @@ export function AnalystVsFundamentalPanel({ ticker = 'US.AAPL' }: { ticker?: str
     apiClient
       .get<{ data: AnalystVsFundamentalData }>(`/market/analyst-vs-fundamental/${ticker}`)
       .then((res) => {
-        if (!cancelled) setData((res.data as any)?.data ?? (res.data as any) ?? null)
+        // 方案 B：路由返回扁平 payload，业务字段在 panel 子键（res.data.panel）
+        if (!cancelled) setData((res.data as any)?.panel ?? null)
       })
       .catch((e) => {
         if (!cancelled) setError(String(e?.message || e))

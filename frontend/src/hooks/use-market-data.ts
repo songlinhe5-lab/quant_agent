@@ -261,6 +261,8 @@ export function useMarketData({ selectedSymbol, selectedPeriod, watchlist, updat
 
             window.dispatchEvent(new CustomEvent('quote_update', { detail }))
             window.dispatchEvent(new CustomEvent('market_tick', { detail }))
+            // Level 2 DOM（OrderBookWebGL）监听 'orderbook' 事件，需单独派发，否则盘口深度不渲染
+            window.dispatchEvent(new CustomEvent('orderbook', { detail }))
 
             const cleanSym = (s: string) => s.replace(/^(US|HK|SH|SZ|JP|SG|UK)\./i, '').replace(/\.(HK|SH|SZ|SS)$/i, '')
             if (cleanSym(q.ticker) === cleanSym(selectedSymbol)) {
