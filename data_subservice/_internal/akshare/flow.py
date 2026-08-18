@@ -315,9 +315,19 @@ def get_individual_flow(symbol: str) -> Optional[Dict]:
 
 @with_global_retry
 def get_a_share_margin() -> Dict[str, Any]:
-    """A 股融资融券余额（上交所/深交所）。解析逻辑下沉，对齐主服务历史返回结构。"""
+    """A 股融资融券余额（上交所/深交所）。解析逻辑下沉，对齐主服务历史返回结构。
+
+    sse/szse 分开调用并各自容错：深交所接口偶发连接重置（反爬）时，
+    降级用上交所单独数据返回 success，避免整个两融源不可用导致 A 股核心资金面缺失。
+    """
     try:
-        sse_df, szse_df = ak.stock_margin_sse(), ak.stock_margin_szse()
+        # 深交所接口不稳定（Connection reset），分开容错，任一失败不阻断整体
+        sse_df = ak.stock_margin_sse()
+        try:
+            szse_df = ak.stock_margin_szse()
+        except Exception as _e:
+            logger.warning(f"[AKShare] 深交所融资融券获取失败（降级仅用上交所）: {_e}")
+            szse_df = None
         if sse_df is None or sse_df.empty:
             raise ValueError("上交所融资融券数据为空")
 

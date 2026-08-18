@@ -18,6 +18,16 @@ _CACHE_KEY = "quant:fund_flow:a_share_sector"
 _CACHE_TTL = 300  # 5 分钟
 
 
+def _safe_float(v) -> float | None:
+    """安全转 float，None/非法值返回 None（前端展示 '--'）。"""
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
 async def get_a_share_sector_flow() -> dict[str, Any]:
     """
     获取 A 股行业板块资金流排名（远程调用 AKShare 子服务，本地已移除 akshare SDK）。
@@ -49,7 +59,25 @@ async def get_a_share_sector_flow() -> dict[str, Any]:
         if result.get("status") != "success":
             raise ValueError(result.get("message", "远程A股板块资金流返回非成功状态"))
 
-        result["data"]["updated_at"] = datetime.now(timezone.utc).isoformat()
+        # 统一为前端期望的 sectors 数组（与 hk/us 一致）：合并净流入+净流出榜，
+        # 字段对齐 net_inflow/change_pct。子服务返回 inflow_top/outflow_top（main_net_inflow 正负混合）。
+        _rd = result.get("data") or {}
+        _in = _rd.get("inflow_top") or []
+        _out = _rd.get("outflow_top") or []
+        _sectors = []
+        for _it in list(_in) + list(_out):
+            _n = _it.get("name")
+            if not _n:
+                continue
+            _sectors.append(
+                {
+                    "name": _n,
+                    "net_inflow": _safe_float(_it.get("main_net_inflow")),
+                    "change_pct": _safe_float(_it.get("change_pct")),
+                }
+            )
+        _rd["sectors"] = _sectors
+        _rd["updated_at"] = datetime.now(timezone.utc).isoformat()
 
         # 3. 写入缓存
         try:

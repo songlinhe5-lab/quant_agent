@@ -406,7 +406,14 @@ class RestClient {
     const rawBody = await response.json()
 
     // 检查统一响应结构 { code, msg, data, ts }
-    if (rawBody && typeof rawBody === 'object' && 'code' in rawBody) {
+    // 注意：信封 code 恒为数字(0/200/5000...)，而扁平 payload 里的业务字段 code 可能是
+    // 字符串(如 ticker code "HK.00700")，必须用 typeof code==='number' 区分，避免误判为错误信封
+    if (
+      rawBody &&
+      typeof rawBody === 'object' &&
+      'code' in rawBody &&
+      typeof (rawBody as ApiResponse<unknown>).code === 'number'
+    ) {
       const apiData = rawBody as ApiResponse<unknown>
       if (apiData.code !== 0 && apiData.code !== 200) {
         throw new ApiError(apiData.code, apiData.msg || '请求失败', apiData.data)

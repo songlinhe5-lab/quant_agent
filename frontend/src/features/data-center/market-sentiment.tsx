@@ -11,8 +11,8 @@ export function SentimentInfoPanel({ onClose }: { onClose: () => void }) {
     { name: '高收益债利差 (HY Spread)', desc: '高收益企业债（垃圾债）与无风险国债的收益率之差。利差扩大意味着信贷市场认为违约风险上升，是系统性流动性危机的重要预警信号。' },
   ]
   return (
-    <div className="absolute inset-0 z-20 bg-black/60 backdrop-blur-sm rounded-lg flex items-center justify-center p-3 animate-in fade-in duration-200" onClick={onClose}>
-      <div className="w-full h-full bg-card border border-border/40 rounded-lg overflow-hidden flex flex-col shadow-xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={onClose}>
+      <div className="w-full max-w-3xl h-full max-h-[85vh] bg-card border border-border/40 rounded-lg overflow-hidden flex flex-col shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-3 py-2 border-b border-border/30">
           <h3 className="text-xs font-bold flex items-center gap-1.5"><Gauge className="h-3 w-3 text-muted-foreground" />市场情绪风向标 · 指标说明</h3>
           <button onClick={onClose} className="p-1 rounded hover:bg-secondary/50" aria-label="关闭"><X className="h-3.5 w-3.5" /></button>
