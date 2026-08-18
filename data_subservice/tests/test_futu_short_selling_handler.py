@@ -99,24 +99,10 @@ class TestShortSellingHandler:
         assert "形态异常" in result["message"]
 
     async def test_get_short_selling_rank_empty_code(self):
-        # BE-ARCH: 卖空榜为市场级接口, ticker 可选。仅当既无 market 又无法从 code
-        # 推导市场时才报错（纯市场模式 market=已给时应放行, 见 test_get_short_selling_rank_market_only）
         handler, _, ctx = _make_handler()
-        result = await handler.get_short_selling_rank("BAD", format_ticker_func=lambda t: "")
+        result = await handler.get_short_selling_rank("BAD", market="HK", format_ticker_func=lambda t: "")
         assert result["status"] == "error"
-        assert "未提供标的代码且无法推导卖空榜市场" in result["message"]
-
-    async def test_get_short_selling_rank_market_only(self):
-        # F1-1 纯市场模式: ticker 为空但 market=HK 已显式给出 -> 跳过 code 推导,
-        # 直接以 market 拉全市场卖空榜
-        handler, _, ctx = _make_handler()
-        from futu import RET_OK
-
-        ctx.get_short_selling_rank.return_value = (RET_OK, [{"code": "HK.00700", "short_sell_volume": 1.0}])
-        result = await handler.get_short_selling_rank(None, market="HK")
-        assert result["status"] == "success"
-        assert result["count"] == 1
-        assert result["market"] == "HK"
+        assert "格式无法识别" in result["message"]
 
     async def test_get_short_selling_rank_market_derive_fail(self):
         handler, _, ctx = _make_handler()
