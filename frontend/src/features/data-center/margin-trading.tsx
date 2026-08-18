@@ -49,6 +49,19 @@ function MarketMarginCard({ data }: { data: MarginMarketData }) {
     data.short_interest_shares != null ||
     data.short_interest_ratio != null
 
+  // 卖空数据源标签：优先取后端返回的 sources 真实源，否则按市场回退（零幻觉红线：标注必须与数据实际来源一致）
+  // - 美股：卖空余额/回补天数来自 CBOE（公开做空持仓），做空成交占比来自 FINRA
+  // - 港股：卖空余额来自 SFC（淡仓申报），做空成交占比来自 HKEX
+  const src = (data.sources || []).join(' ').toLowerCase()
+  const srcLabel = (field: 'ratio' | 'interest') => {
+    if (src.includes('cboe')) return 'CBOE'
+    if (src.includes('finra')) return 'FINRA'
+    if (src.includes('sfc')) return 'SFC'
+    if (src.includes('hkex')) return 'HKEX'
+    if (data.market === 'US_SHARE') return field === 'ratio' ? 'FINRA' : 'CBOE'
+    return field === 'ratio' ? 'HKEX' : 'SFC'
+  }
+
   // 格式化数字显示（DIST-SEC-01 配套：字段缺失时兜底为 '--'）
   const formatNumber = (num: number | null | undefined) => {
     if (num == null || Number.isNaN(num)) return '--'
@@ -180,7 +193,7 @@ function MarketMarginCard({ data }: { data: MarginMarketData }) {
               <div className="flex items-center justify-between mb-0.5">
                 <span className="flex items-center gap-1 text-[10px] text-muted-foreground/70">
                   做空成交占比
-                  <span className="text-[7px] px-1 rounded bg-slate-500/15 text-slate-400">HKEX</span>
+                  <span className="text-[7px] px-1 rounded bg-slate-500/15 text-slate-400">{srcLabel('ratio')}</span>
                 </span>
                 <span className="text-xs font-bold font-mono tabular-nums text-orange-500">
                   {formatRatio(data.short_volume_ratio)}
@@ -193,7 +206,7 @@ function MarketMarginCard({ data }: { data: MarginMarketData }) {
               <div className="flex items-center justify-between mb-0.5">
                 <span className="flex items-center gap-1 text-[10px] text-muted-foreground/70">
                   卖空余额
-                  <span className="text-[7px] px-1 rounded bg-slate-500/15 text-slate-400">SFC</span>
+                  <span className="text-[7px] px-1 rounded bg-slate-500/15 text-slate-400">{srcLabel('interest')}</span>
                 </span>
                 <span className="text-xs font-bold font-mono tabular-nums text-foreground/90">
                   {formatShares(data.short_interest_shares)}
@@ -206,7 +219,7 @@ function MarketMarginCard({ data }: { data: MarginMarketData }) {
               <div className="flex items-center justify-between mb-0.5">
                 <span className="flex items-center gap-1 text-[10px] text-muted-foreground/70">
                   回补天数 (Days to Cover)
-                  <span className="text-[7px] px-1 rounded bg-slate-500/15 text-slate-400">SFC</span>
+                  <span className="text-[7px] px-1 rounded bg-slate-500/15 text-slate-400">{srcLabel('interest')}</span>
                 </span>
                 <span className="text-xs font-bold font-mono tabular-nums text-foreground/90">
                   {data.short_interest_ratio.toFixed(2)} 天
