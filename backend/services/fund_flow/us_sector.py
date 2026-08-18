@@ -74,25 +74,27 @@ async def get_us_sector_flow() -> dict[str, Any]:
             data = res.get("data", {}) if isinstance(res, dict) else {}
 
             # 解析 Futu 资金流数据
-            # 子服务 FUND_FLOW 实际返回 main_fund_net_inflow（主力净流入，元）；兼容 net_inflow/net_amount
+            # 子服务 FUND_FLOW 仅返回 main_fund_net_inflow（主力净流入，单位：元）。
+            # 只信任该权威字段，避免历史缓存残留的 net_inflow/net_amount 错结构污染。
+            # res 顶层与 data 内层都可能有该键（Router 封装差异），优先取非空数值。
             net_inflow = 0.0
-            if isinstance(data, dict):
-                # 注意：res 顶层可能含 main_fund_net_inflow（FUND_FLOW）或 data 内嵌
-                for key in ["main_fund_net_inflow", "net_inflow", "net_amount"]:
-                    if key in res and isinstance(res[key], (int, float)):
-                        net_inflow = float(res[key])
+            for src in (res if isinstance(res, dict) else {}, data if isinstance(data, dict) else {}):
+                if "main_fund_net_inflow" in src and isinstance(src["main_fund_net_inflow"], (int, float)):
+                    v = float(src["main_fund_net_inflow"])
+                    if v != 0:
+                        net_inflow = v
                         break
-                    if key in data:
-                        net_inflow = float(data[key])
-                        break
-                # Futu 返回的可能是嵌套结构
-                if net_inflow == 0 and "capital_flow" in data:
-                    flow_data = data["capital_flow"]
-                    if isinstance(flow_data, dict):
-                        net_inflow = float(flow_data.get("net_amount", 0))
 
-            # 转换为亿美元
-            net_inflow_yi = round(net_inflow / 1e8, 2) if abs(net_inflow) > 1e6 else round(net_inflow, 2)
+            # 合理性边界：单 ETF 主力净流入超过 1 万亿（元）视为脏数据，降级为 0 并告警。
+            # 美股单只 ETF 日级主力净流入通常在 ±数十亿美元量级，异常大数必为上游单位错乱。
+            if abs(net_inflow) > 1e12:
+                logger.warning(
+                    f"[FundFlow] {ticker} 净流入异常 {net_inflow:.2e} 元，超过 1 万亿边界，疑似上游单位错乱，已降级为 0"
+                )
+                net_inflow = 0.0
+
+            # 上游已统一为「元」，直接换算为亿美元
+            net_inflow_yi = round(net_inflow / 1e8, 2)
 
             sectors.append(
                 {

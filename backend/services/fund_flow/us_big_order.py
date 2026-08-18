@@ -76,6 +76,10 @@ async def get_us_big_order_flow() -> Dict[str, Any]:
                 net = float(net)
             except (ValueError, TypeError):
                 continue
+            # 合理性边界：单 ETF 净流入超过 1 万亿（元）视为脏数据，跳过避免污染聚合。
+            if abs(net) > 1e12:
+                logger.warning(f"[BigOrder] {ticker} 净流入异常 {net:.2e} 元，超过 1 万亿边界，已跳过")
+                continue
             flows.append({"ticker": ticker, "name": _US_BIG_ORDER_NAMES.get(ticker, ticker), "net": net})
 
         if not flows:

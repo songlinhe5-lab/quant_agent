@@ -251,7 +251,7 @@ def test_hk_cache_write_failure_silent():
 
 def test_us_sector_success_via_market_data():
     fake_market = MagicMock()
-    fake_market.get_fund_flow = AsyncMock(return_value={"data": {"net_inflow": 1.5e8}})
+    fake_market.get_fund_flow = AsyncMock(return_value={"data": {"main_fund_net_inflow": 1.5e8}})
     fake_manager = MagicMock()
     fake_manager.flow_cache = {}
     with (
@@ -267,9 +267,10 @@ def test_us_sector_success_via_market_data():
 
 
 def test_us_sector_cache_hit():
-    cached = {"data": {"net_inflow": 9.0e8}}
+    # 仅信任权威字段 main_fund_net_inflow（单位：元），9e8 元 = 9.0 亿美元
+    cached = {"data": {"main_fund_net_inflow": 9.0e8}}
     fake_market = MagicMock()
-    fake_market.get_fund_flow = AsyncMock(return_value={"data": {"net_inflow": 0}})
+    fake_market.get_fund_flow = AsyncMock(return_value={"data": {"main_fund_net_inflow": 0}})
     fake_manager = MagicMock()
     fake_manager.flow_cache = {"US.XLF": cached}
     with (
@@ -286,7 +287,7 @@ def test_us_sector_one_ticker_fails():
     def _side(ticker):
         if ticker == "US.XLRE":
             raise RuntimeError("futu down")
-        return {"data": {"net_inflow": 1.0e8}}
+        return {"data": {"main_fund_net_inflow": 1.0e8}}
 
     fake_market = MagicMock()
     fake_market.get_fund_flow = AsyncMock(side_effect=_side)
@@ -302,19 +303,40 @@ def test_us_sector_one_ticker_fails():
     assert "US.XLRE" not in tickers  # 失败的 ETF 被跳过
 
 
-def test_us_sector_nested_capital_flow():
+def test_us_sector_ignores_legacy_fields():
+    # 历史脏结构：net_inflow/net_amount 字段存在但单位错乱，必须忽略，只取 main_fund_net_inflow
+    cached = {"data": {"net_inflow": 8.88e12, "net_amount": 7.6e13, "main_fund_net_inflow": 2.6e6}}
     fake_market = MagicMock()
-    fake_market.get_fund_flow = AsyncMock(return_value={"data": {"capital_flow": {"net_amount": 2.0e8}}})
+    fake_market.get_fund_flow = AsyncMock(return_value={"data": {}})
     fake_manager = MagicMock()
-    fake_manager.flow_cache = {}
+    fake_manager.flow_cache = {"US.XLRE": cached}
     with (
         patch("backend.app.macro_app.manager", create=True, new=fake_manager),
         patch("backend.app.macro_app.market_data", create=True, new=fake_market),
     ):
         res = asyncio.run(us_sector.get_us_sector_flow())
     assert res["status"] == "success"
-    spy = next(s for s in res["data"]["sectors"] if s["ticker"] == "US.XLF")
-    assert spy["net_inflow"] == 2.0
+    spy = next(s for s in res["data"]["sectors"] if s["ticker"] == "US.XLRE")
+    # 2.6e6 元 = 0.026 亿美元，且绝不能出现 88809 亿这类脏值
+    assert spy["net_inflow"] == 0.03 or abs(spy["net_inflow"] - 0.026) < 0.01
+    assert spy["net_inflow"] < 1.0  # 明确排除脏值量级
+
+
+def test_us_sector_dirty_value_boundary():
+    # 上游返回超过 1 万亿（元）的异常值，必须被边界降级为 0，杜绝 88809 亿进面板
+    cached = {"data": {"main_fund_net_inflow": 8.880933e12}}
+    fake_market = MagicMock()
+    fake_market.get_fund_flow = AsyncMock(return_value={"data": {}})
+    fake_manager = MagicMock()
+    fake_manager.flow_cache = {"US.XLB": cached}
+    with (
+        patch("backend.app.macro_app.manager", create=True, new=fake_manager),
+        patch("backend.app.macro_app.market_data", create=True, new=fake_market),
+    ):
+        res = asyncio.run(us_sector.get_us_sector_flow())
+    assert res["status"] == "success"
+    spy = next(s for s in res["data"]["sectors"] if s["ticker"] == "US.XLB")
+    assert spy["net_inflow"] == 0.0
 
 
 # ============================ 聚合服务 ============================
