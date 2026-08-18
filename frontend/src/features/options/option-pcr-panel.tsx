@@ -36,7 +36,8 @@ export function OptionPcrPanel() {
         return r.json()
       })
       .then((j) => {
-        if (!cancelled) setRows(Array.isArray(j) ? j : j?.data ?? null)
+        // 兼容：信封 {code,msg,data:{status,data:[...]}} → 取 data.data；老格式直接是数组
+        if (!cancelled) setRows(Array.isArray(j) ? j : (j as any)?.data?.data ?? (j as any)?.data ?? null)
       })
       .catch((e) => {
         if (!cancelled) setError(String(e))
@@ -52,10 +53,14 @@ export function OptionPcrPanel() {
   const buildOption = () => {
     if (!rows || !rows.length) return null
     const dates = rows.map((r) =>
-      (r.timestamp || '').replace('T', ' ').slice(0, 16),
+      ((r as any).time || r.timestamp || '').replace('T', ' ').slice(0, 16),
     )
     const pcr = rows.map((r) => (r.pc_ratio != null ? Number(r.pc_ratio.toFixed(3)) : null))
-    const vix = rows.map((r) => (r.vix_value != null ? Number(r.vix_value.toFixed(2)) : null))
+    const vix = rows.map((r) =>
+      ((r as any).vix ?? r.vix_value) != null
+        ? Number(((r as any).vix ?? r.vix_value).toFixed(2))
+        : null,
+    )
     return {
       backgroundColor: 'transparent',
       tooltip: {

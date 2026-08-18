@@ -179,6 +179,14 @@ export function OptionVolSurface3D({ symbol }: { symbol: string }) {
 
   return (
     <div className="flex flex-col gap-3">
+      {(data as any)?.degraded && (
+        <div
+          className="rounded-md bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-500 border border-amber-500/20"
+          title={(data as any)?.degraded_message}
+        >
+          ⚠ {(data as any)?.degraded_message || '期权数据降级，部分 IV 缺失'}
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="inline-flex rounded-lg border border-border/60 p-0.5">
           {(['call', 'put'] as LegType[]).map((t) => (

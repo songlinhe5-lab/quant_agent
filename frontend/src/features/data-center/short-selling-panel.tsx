@@ -42,7 +42,8 @@ export function ShortSellingPanel({ ticker = 'HK.00700', mode = 'rank' }: { tick
     apiClient
       .get<{ data: ShortSellData }>(`/market/short-selling/${ticker}/${mode}`)
       .then((res) => {
-        if (!cancelled) setData((res.data as any)?.data ?? (res.data as any) ?? null)
+        // 方案 B：路由返回扁平 payload（{ticker, mode, futu, regulatory, derived, source, degraded}），直接读信封层
+        if (!cancelled) setData((res.data as any) ?? null)
       })
       .catch((e) => {
         if (!cancelled) setError(String(e?.message || e))

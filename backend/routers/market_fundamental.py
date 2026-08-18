@@ -26,6 +26,27 @@ router = APIRouter(prefix="/market", tags=["Market & Portfolio"])
 _news_locks: dict[str, asyncio.Lock] = {}
 
 
+def _flat_facade_payload(facade_res, fallback_msg: str):
+    """BE-13 方案 B：把 facade Result 拍平为供中间件包信封的扁平 payload。
+
+    当 facade 成功但 data 为空/非 dict（子服务返回空 payload 的常见情况）时，
+    必须返回降级扁平 payload，而非 `**None` 抛 TypeError → 500。
+    """
+    data = facade_res.data
+    if not isinstance(data, dict):
+        return {
+            "data": {},
+            "source": f"facade+{facade_res.source}",
+            "degraded": True,
+            "degraded_message": fallback_msg,
+        }
+    return {
+        **data,
+        "source": f"facade+{facade_res.source}",
+        "degraded": facade_res.status == ResultStatus.DEGRADED,
+    }
+
+
 # ─────────────────────────────────────────────
 # Finnhub 真实数据源桥接（DataSourcePort + FinnhubAdapter）
 # 统一：优先真实源，失败/未配置时返回 None 由调用方回退模拟数据
@@ -690,10 +711,19 @@ async def get_analyst_vs_fundamental(ticker: str):
     res = await data_service.get_analyst_vs_actual(ticker)
     if not res.is_success or not res.data:
         err_msg = res.error.message if res.error else "未知错误"
+        # BE-13 方案 B：扁平 payload 交由中间件统一包信封
         return {
-            "status": "warning",
             "message": f"[{ticker}] 卖方共识vs基本面交叉验证不可用: {err_msg}",
             "data": {},
+            "source": f"facade+{res.source}",
+            "degraded": True,
         }
 
-    return {"status": "success", "data": res.data}
+    # BE-13 方案 B：扁平 payload 交由中间件统一包信封
+    # facade 返回的 res.data = {panel, analyst_consensus, fundamental_merged}，
+    # 业务字段在 panel 子键，前端 analyst-vs-fundamental-panel 读 res.data.panel
+    return {
+        **res.data,
+        "source": f"facade+{res.source}",
+        "degraded": res.status == ResultStatus.DEGRADED,
+    }

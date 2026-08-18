@@ -1046,7 +1046,19 @@ class DataServiceFacade:
         results: list[Result] = []
         last_err: Optional[Result] = None
         for src in candidates:
-            res = await datasource_registry.fetch(src, action, params)
+            try:
+                res = await datasource_registry.fetch(src, action, params)
+            except Exception as e:  # noqa: BLE001 子服务连接/超时等异常 → 记 error 继续下一源，杜绝 facade 500
+                logging.warning("facade._dispatch 源 %s action=%s 异常: %s", src, action, e)
+                last_err = Result.make_error(
+                    ErrorInfo.normal(
+                        "SOURCE_FETCH_ERROR",
+                        f"[{src}] 数据源调用异常: {e}",
+                        retryable=True,
+                    ),
+                    source=src,
+                )
+                continue
             if res.is_success:
                 results.append(res)
                 # 单源成功即可停止（除非需要多源融合）

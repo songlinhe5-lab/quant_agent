@@ -44,8 +44,8 @@ export function EarningsCalendar({ earnings, earnDed, handleManualRefresh, loadi
                 <tr key={i} className="hover:bg-slate-50 dark:hover:bg-secondary/30 transition-colors">
                   <td className="px-3 py-2 whitespace-nowrap"><div className="font-mono text-[10px] text-muted-foreground mb-1.5">{ea.date}</div><EventCountdown dateIso={isoTime} actual={ea.epsActual} onRefresh={handleManualRefresh} /></td>
                   <td className="px-2 py-2 font-bold font-mono text-[11px] text-foreground">{ea.symbol}</td>
-                  <td className="px-2 py-2 text-[10px] text-muted-foreground">{ea.name_cn || '-'}</td>
-                  <td className="px-2 py-2 text-center font-mono text-[10px] text-muted-foreground">Q{ea.quarter}</td><td className="px-3 py-2 text-right font-mono text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">{ea.epsEstimate ? `$${ea.epsEstimate}` : '-'}</td>
+                  <td className="px-2 py-2 text-[10px] text-muted-foreground">{ea.name_cn || ea.symbol}</td>
+                  <td className="px-2 py-2 text-center font-mono text-[10px] text-muted-foreground">Q{ea.quarter}</td><td className="px-3 py-2 text-right font-mono text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">{ea.epsEstimate != null ? `$${ea.epsEstimate}` : <span className="text-amber-500/80">未提供</span>}</td>
                 </tr>
               )
             })}

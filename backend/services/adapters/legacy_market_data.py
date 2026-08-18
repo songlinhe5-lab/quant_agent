@@ -278,11 +278,19 @@ class MarketDataGateway:
             iv_call, iv_put, delta_call, delta_put = [], [], [], []
             strikes_set: set = set()
             legs: list = []
+            degraded_signal = False
+            degraded_msgs: list[str] = []
             for exp in exp_dates[:max_expiries]:
                 chain = await self.get_option_chain(ticker, exp)
                 if chain.get("status") != "success":
                     logger.warning(f"[MarketData] matrix: 到期 {exp} 取链失败: {chain.get('message')}")
                     continue
+                # 透传子服务降级信号：futu 快照补充 IV 失败且 YF 兜底也失败时，期权链可用但 IV 缺失
+                if chain.get("degraded"):
+                    degraded_signal = True
+                    m = chain.get("degraded_message") or "期权链数据降级"
+                    if m not in degraded_msgs:
+                        degraded_msgs.append(m)
                 opts = chain.get("options") or []
                 if not opts:
                     continue
@@ -320,7 +328,7 @@ class MarketDataGateway:
                 spot = (q or {}).get("last_price")
             except Exception:
                 spot = None
-            return {
+            resp = {
                 "status": "success",
                 "symbol": ticker,
                 "underlying_price": spot,
@@ -331,6 +339,10 @@ class MarketDataGateway:
                 "legs": legs,
                 "source": src,
             }
+            if degraded_signal:
+                resp["degraded"] = True
+                resp["degraded_message"] = "IV/Greeks 快照补充失败（futu 快照 + YF 兜底均不可用），部分到期日 IV 缺失"
+            return resp
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[MarketDataGateway] 生产期权矩阵组装失败: {e}")
             return {
