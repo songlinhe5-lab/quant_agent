@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+import logging
 import random
 import re
 import time
@@ -902,15 +903,36 @@ async def _fetch_macro_news_from_stream(limit: int = 50) -> list:
     """
     try:
         # 取出分数最高（最新）的 limit 条，含 score（Unix 时间戳）
+        # withscores=True 时返回 [(member, score), ...]；但为兼容 mock / 意外返回纯字符串 list，
+        # 此处同时处理两种形态：score 解析失败时不判定 stale，保守返回新闻本身。
         members = await redis_client.zrevrange("macro_news_stream", 0, limit - 1, withscores=True)
         if members:
+            # 归一化为 (member, score) 列表：兼容 [(m,s)] 与 [m,...]
+            pairs: list = []
+            for it in members:
+                if isinstance(it, (tuple, list)) and len(it) >= 2:
+                    pairs.append((it[0], it[1]))
+                elif isinstance(it, (str, bytes, bytearray)):
+                    pairs.append((it, None))
+                else:
+                    pairs.append((it, None))
+            # 新鲜度检测：仅当能取到有效 score 且超时才算停滞
             now = time.time()
-            newest_ts = float(members[0][1]) if members[0][1] else 0
-            if newest_ts and (now - newest_ts) > _NEWS_MAX_AGE_SECONDS:
-                import logging as _lg
-                _lg.warning("macro_news_stream 最新新闻已停滞 %.1f 小时，判定采集停滞，回退实时拉取", (now - newest_ts) / 3600)
-                return []
-            return [json.loads(m[0]) for m in members if isinstance(m[0], (str, bytes, bytearray))]  # noqa: E501
+            if pairs:
+                _score = pairs[0][1]
+                try:
+                    newest_ts = float(_score) if _score not in (None, "", 0) else 0
+                except (TypeError, ValueError):
+                    newest_ts = 0
+                if newest_ts and (now - newest_ts) > _NEWS_MAX_AGE_SECONDS:
+                    logging.warning(
+                        "macro_news_stream 最新新闻已停滞 %.1f 小时，判定采集停滞，回退实时拉取",
+                        (now - newest_ts) / 3600,
+                    )
+                    return []
+            return [
+                json.loads(m) for m, _ in pairs if isinstance(m, (str, bytes, bytearray))
+            ]  # noqa: E501
     except Exception as e:
         print(f"⚠️ [Macro] 从 ZSET 读取新闻异常: {e}")
     return []
