@@ -103,7 +103,10 @@ class TestFetchFutuRemotePinnedMaster:
         with patch.object(remote_router, "_send_request", new=AsyncMock(return_value=fail_resp)):
             out = await remote_router.fetch_futu("QUOTE", ticker="HK.00700")
         assert out["status"] == "error"
-        assert "local SDK disabled" in out["message"]
+        # BE-ARCH-07b: 远程子服务失败时应透传其真实错误信封（message=subservice down），
+        # 不再被 router 硬编码 'local SDK disabled' 覆盖，便于上层诊断
+        assert out["message"] == "subservice down"
+        assert out["source"] == "futu"
 
     @pytest.mark.asyncio
     async def test_remote_exception_returns_error_no_local(self, remote_router):
@@ -127,5 +130,6 @@ class TestFetchFutuLocalBranch:
             out = await remote_router.fetch_futu("HISTORY", ticker="HK.00700", ktype="K_DAY", num=60)
         mock_send.assert_awaited_once()
         assert out["status"] == "error"
-        # 远程失败后回退到统一 error 文案（含 local SDK disabled 说明，无本地兜底）
-        assert "remote node failed" in out["message"]
+        # 远程失败后透传子服务真实错误信封（message=node down），无本地 SDK 降级兜底
+        assert out["message"] == "node down"
+        assert out["source"] == "futu"
