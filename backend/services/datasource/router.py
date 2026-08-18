@@ -1305,6 +1305,10 @@ class DataSourceRouter:
                 action=remote_action,
                 record_breaker=record_breaker,
             )
+            # 透传子服务原始信封（含真实 message/status），避免被下方硬编码错误覆盖；
+            # 子服务失败信封可能缺 source 字段，此处补齐以便上层识别来源
+            result.setdefault("source", "futu")
+            return result
         except Exception as e:
             logger.warning(f"[Futu] 远程节点失败: {remote_node.name}, {remote_action}, {str(e)}")
             if is_trade_action:
