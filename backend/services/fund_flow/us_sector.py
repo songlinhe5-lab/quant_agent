@@ -1,8 +1,8 @@
-"""美股板块 ETF 资金流代理 (Futu API)
+"""美股 GICS 行业板块资金流代理 (Futu API)
 
-数据来源: Futu 资金流接口 (核心行业 ETF)
-标的: SPY/QQQ/SOXX/XLF/XLE/XLV/KWEB 等
-频率: 盘中实时 (从 manager.flow_cache 读取)
+数据来源: Futu 资金流接口 (标准 GICS 11 大行业 SPDR ETF)
+标的: XLK/XLF/XLV/XLY/XLP/XLE/XLI/XLB/XLC/XLU/XLRE
+频率: 盘中实时 (优先从 manager.flow_cache 读取，miss 时实时调用)
 """
 
 import asyncio
@@ -11,16 +11,20 @@ from typing import Any
 
 from backend.core.logger import logger
 
-# 核心行业 ETF 映射
+# 标准 GICS 11 大行业板块 → SPDR 行业 ETF 代理映射
+# 每个行业用对应的 Sector SPDR ETF 获取主力资金流（Futu FUND_FLOW）
 _SECTOR_ETFS = {
-    "US.SPY": {"name": "标普500", "sector": "大盘"},
-    "US.QQQ": {"name": "纳斯达克100", "sector": "科技"},
-    "US.SOXX": {"name": "半导体ETF", "sector": "半导体"},
-    "US.XLF": {"name": "金融ETF", "sector": "金融"},
-    "US.XLE": {"name": "能源ETF", "sector": "能源"},
-    "US.XLV": {"name": "医疗ETF", "sector": "医疗"},
-    "US.KWEB": {"name": "中概互联", "sector": "中概股"},
-    "US.TLT": {"name": "20年+国债", "sector": "债券"},
+    "US.XLK": {"name": "科技", "sector": "信息技术"},
+    "US.XLF": {"name": "金融", "sector": "金融"},
+    "US.XLV": {"name": "医疗", "sector": "医疗保健"},
+    "US.XLY": {"name": "可选消费", "sector": "可选消费"},
+    "US.XLP": {"name": "必选消费", "sector": "必选消费"},
+    "US.XLE": {"name": "能源", "sector": "能源"},
+    "US.XLI": {"name": "工业", "sector": "工业"},
+    "US.XLB": {"name": "材料", "sector": "原材料"},
+    "US.XLC": {"name": "通信", "sector": "通信服务"},
+    "US.XLU": {"name": "公用事业", "sector": "公用事业"},
+    "US.XLRE": {"name": "地产", "sector": "房地产"},
 }
 
 

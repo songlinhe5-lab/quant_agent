@@ -65,7 +65,7 @@ interface SectorFlowPanelProps {
 
 const TABS = [
   { key: 'a_share', label: 'A股行业', flag: '🇨🇳' },
-  { key: 'hk', label: '港股南向', flag: '🇭🇰' },
+  { key: 'hk', label: '港股行业', flag: '🇭🇰' },
   { key: 'us', label: '美股板块', flag: '🇺🇸' },
 ] as const
 
@@ -176,7 +176,7 @@ function AShareTab({ data }: { data: SectorFundFlowData['a_share'] }) {
 
 function HKTab({ data }: { data: SectorFundFlowData['hk'] }) {
   if (!data || data.status !== 'success' || !data.data || !data.data.sectors || data.data.sectors.length === 0) {
-    return <EmptyState message={data?.data?.note || '暂无港股南向行业数据'} />
+    return <EmptyState message={data?.data?.note || '暂无港股行业资金流数据'} />
   }
 
   const { sectors, unit, source, updated_at, note } = data.data

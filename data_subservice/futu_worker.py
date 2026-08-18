@@ -101,6 +101,9 @@ async def handle_futu(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
         elif action == "HEAT_MAP":
             # F4-3 板块热力图（需 market 参数）
             return await futu_service.get_heat_map(market=params.get("market", "HK"))
+        elif action == "HK_SECTOR_FLOW":
+            # F4-5 港股行业板块资金流聚合（板块资金流向面板）
+            return await futu_service.get_hk_sector_flow()
         elif action == "WARRANT_CHAIN":
             return await futu_service.get_warrant_chain(params.get("symbol"))
         elif action == "SNAPSHOT":

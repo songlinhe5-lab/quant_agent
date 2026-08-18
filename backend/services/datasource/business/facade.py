@@ -386,6 +386,8 @@ class DataServiceFacade:
         sectors: dict[str, list[float]] = {}
 
         for r in rows:
+            if not isinstance(r, dict):
+                continue  # 防御：热力图元素非 dict 时跳过，避免 .get 抛 AttributeError → 500
             chg = _f(r.get(chg_col)) if chg_col else None
             nm = r.get(name_col) if name_col else r.get("code")
             if chg is not None:
@@ -632,6 +634,8 @@ class DataServiceFacade:
         chg_sum = 0.0
         n = 0
         for r in rows:
+            if not isinstance(r, dict):
+                continue  # 防御：快照元素非 dict 时跳过，避免 .get 抛 AttributeError → 500
             v = _to_float(r.get(chg_col)) if chg_col else None
             if v is None:
                 continue
@@ -704,10 +708,13 @@ class DataServiceFacade:
           - 显式标红 ``consensus_is_third_party_expectation=True``，禁止把卖方观点当事实结论
         原始数据原样保留；任一缺失则对应字段给 None + note（零幻觉红线，不臆造价格）。
         """
-        res_cons, res_fund = await asyncio.gather(
-            self.get_analyst_consensus(ticker, prefer_sources=prefer_sources),
-            self.get_fundamental_merged(ticker),
+        # 防御：任一子任务抛异常不导致整体 500（返回 None，后续零幻觉降级为缺失字段）
+        _pairs = await asyncio.gather(
+            self._safe("analyst_consensus", self.get_analyst_consensus(ticker, prefer_sources=prefer_sources)),
+            self._safe("fundamental_merged", self.get_fundamental_merged(ticker)),
         )
+        res_cons = _pairs[0][1] if _pairs and isinstance(_pairs[0], tuple) else None
+        res_fund = _pairs[1][1] if len(_pairs) > 1 and isinstance(_pairs[1], tuple) else None
 
         panel: dict = {
             "ticker": ticker,
@@ -1102,8 +1109,12 @@ class DataServiceFacade:
         DATASOURCE_FACADE_MERGE.labels(
             action=action, mode=("multi" if enable_merge and len(results) > 1 else "single")
         ).inc()
-        # 业务级检测 + 归一化
-        stale = self._detect_stale(merged.data, action)
+        # 业务级检测 + 归一化（均加防御：数据源返回结构异常时降级保留原数据，而非抛 500）
+        try:
+            stale = self._detect_stale(merged.data, action)
+        except Exception as e:  # noqa: BLE001
+            logging.warning("facade._dispatch %s 检测stale异常: %s", action, e)
+            stale = None
         if stale is not None and merged.status == ResultStatus.SUCCESS:
             # 标记降级但不丢弃数据，供上层告警
             merged = Result(
@@ -1114,7 +1125,11 @@ class DataServiceFacade:
                 cached=merged.cached,
                 error=ErrorInfo.normal("DATA_STALE", stale, retryable=True),
             )
-        merged.data = self._normalize(merged.data, action)
+        try:
+            merged.data = self._normalize(merged.data, action)
+        except Exception as e:  # noqa: BLE001
+            # 归一化失败不丢弃数据：保留原 data，仅告警，避免面板 500
+            logging.warning("facade._dispatch %s 归一化异常(保留原data): %s", action, e)
         return merged
 
     # ── 策略原语 ──

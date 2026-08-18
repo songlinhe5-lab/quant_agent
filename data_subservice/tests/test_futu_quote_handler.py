@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
 import pytest
-from futu import RET_OK
+from futu import RET_ERROR, RET_OK
 
 from data_subservice.futu_src.cache_manager import CacheManager
 from data_subservice.futu_src.quote_handler import QuoteHandler
@@ -508,3 +508,53 @@ class TestQuoteHandlerNewsFedHeat:
         result = await handler.get_heat_map_data("HK")
         assert result["status"] == "error"
         assert "boom" in result["message"]
+
+    # ── get_hk_sector_flow ──────────────────────────────────────────
+    @pytest.mark.asyncio
+    async def test_hk_sector_flow_not_connected(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx = None
+        result = await handler.get_hk_sector_flow()
+        assert result["status"] == "error"
+        assert "未连接" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_hk_sector_flow_success(self):
+        handler, conn_mgr, cache_mgr = _make_handler()
+        plate_df = pd.DataFrame(
+            [{"code": "HK.BK001", "plate_name": "金融"}, {"code": "HK.BK002", "plate_name": "科技"}]
+        )
+        stock_df = pd.DataFrame([{"code": "HK.00700", "turnover": 100}, {"code": "HK.09988", "turnover": 80}])
+        cap_df = pd.DataFrame(
+            [{"capital_in_super": 500.0, "capital_in_big": 200.0, "capital_out_super": 100.0, "capital_out_big": 50.0}]
+        )
+        conn_mgr.quote_ctx.get_plate_list.return_value = (RET_OK, plate_df)
+        conn_mgr.quote_ctx.get_plate_stock.return_value = (RET_OK, stock_df)
+        conn_mgr.quote_ctx.get_capital_distribution.return_value = (RET_OK, cap_df)
+        result = await handler.get_hk_sector_flow()
+        assert result["status"] == "success"
+        assert len(result["data"]["sectors"]) == 2
+        # 每板块聚合 2 只龙头，每只净流入 = (500+200) - (100+50) = 550 → 板块合计 1100
+        assert result["data"]["sectors"][0]["net_inflow"] == 1100.0
+        assert result["data"]["sectors"][0]["name"] == "金融"
+        assert result["data"]["sectors"][0]["stock_count"] == 2
+
+    @pytest.mark.asyncio
+    async def test_hk_sector_flow_empty_plate_degraded(self):
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.get_plate_list.return_value = (RET_OK, pd.DataFrame())
+        result = await handler.get_hk_sector_flow()
+        assert result["status"] == "error"
+
+    @pytest.mark.asyncio
+    async def test_hk_sector_flow_no_valid_flow_degraded(self):
+        handler, conn_mgr, _ = _make_handler()
+        plate_df = pd.DataFrame([{"code": "HK.BK001", "plate_name": "金融"}])
+        stock_df = pd.DataFrame([{"code": "HK.00700", "turnover": 100}])
+        conn_mgr.quote_ctx.get_plate_list.return_value = (RET_OK, plate_df)
+        conn_mgr.quote_ctx.get_plate_stock.return_value = (RET_OK, stock_df)
+        # 资金流接口失败 → 无有效聚合 → degraded
+        conn_mgr.quote_ctx.get_capital_distribution.return_value = (RET_ERROR, "fail")
+        result = await handler.get_hk_sector_flow()
+        assert result["status"] == "degraded"
+        assert result["data"]["sectors"] == []
