@@ -59,7 +59,7 @@ class ShortSellingHandler:
         is_unsupported_func=None,
     ) -> Dict[str, Any]:
         """获取卖空成交榜（按成交额/成交量排序的当日卖空头寸活跃度）。"""
-        if is_unsupported_func and is_unsupported_func(ticker):
+        if ticker and is_unsupported_func and is_unsupported_func(ticker):
             return {
                 "status": "error",
                 "source": "futu",
@@ -67,28 +67,23 @@ class ShortSellingHandler:
                 "message": "标的非港股/美股/沪深，富途不支持卖空数据",
             }
         code = format_ticker_func(ticker) if format_ticker_func else ticker
-        if not code:
-            return {
-                "status": "error",
-                "source": "futu",
-                "ticker": ticker,
-                "message": "标的代码格式无法识别",
-            }
 
-        # market 优先用显式参数，否则从代码前缀推导
+        # market 优先用显式参数，否则从代码前缀推导（卖空榜为市场级接口，
+        # ticker 可选——纯市场模式 market=已给时无需 code，仅当两者皆缺才报错）
         mkt = None
         if market:
             from futu import Market
 
             mkt = getattr(Market, market.upper(), None)
-        if mkt is None:
+        if mkt is None and code:
             mkt = _market_from_code(code)
+
         if mkt is None:
             return {
                 "status": "error",
                 "source": "futu",
                 "ticker": ticker,
-                "message": f"无法推导卖空榜市场: {code}",
+                "message": "未提供标的代码且无法推导卖空榜市场",
                 "code": code,
             }
 
