@@ -18,7 +18,6 @@ import { NewsStream } from '@/features/data-center/news-stream'
 import { GlobalStyle } from '@/features/data-center/global-style'
 import { CalendarsModule } from '@/features/calendars/module'
 import { MarginTradingPanel, type MarginMarketData } from '@/features/data-center/margin-trading'
-import { ShortInterestPanel, type UsShortInterestData } from '@/features/data-center/short-interest'
 import { SectorFlowPanel, type SectorFundFlowData } from '@/features/data-center/sector-flow'
 import { CapitalDistributionPanel } from '@/features/data-center/capital-distribution-panel'
 import { SectorHeatmapPanel } from '@/features/data-center/sector-heatmap-panel'
@@ -40,8 +39,6 @@ export function DataCenterModule() {
   const [earningsMessage, setEarningsMessage] = useState<string>('')
   const [marginData, setMarginData] = useState<MarginMarketData[]>([])
   const [marginStatus, setMarginStatus] = useState<string>('unknown')
-  const [usShortInterest, setUsShortInterest] = useState<UsShortInterestData | null>(null)
-  const [usShortInterestStatus, setUsShortInterestStatus] = useState<string>('unknown')
   const [sectorFlowData, setSectorFlowData] = useState<SectorFundFlowData | null>(null)
   const [sectorFlowStatus, setSectorFlowStatus] = useState<string>('unknown')
   const [ecoMsg, setEcoMsg] = useState('')
@@ -102,8 +99,6 @@ export function DataCenterModule() {
           if (d.earningsMessage) setEarningsMessage(d.earningsMessage)
           if (d.marginTrading) setMarginData(d.marginTrading)
           if (d.marginTradingStatus) setMarginStatus(d.marginTradingStatus)
-          if (d.usShortInterest) setUsShortInterest(d.usShortInterest)
-          if (d.usShortInterestStatus) setUsShortInterestStatus(d.usShortInterestStatus)
           if (d.sectorFundFlow) setSectorFlowData(d.sectorFundFlow)
           if (d.sectorFundFlowStatus) setSectorFlowStatus(d.sectorFundFlowStatus)
 
@@ -196,16 +191,19 @@ export function DataCenterModule() {
   // 分区内容存在性判定：区内有有效内容才显示区标 (避免空区标误导，对齐 PROD 零幻觉红线)
   // ⚠️ 必须放在 if (!m) return null 之前，遵守 Rules of Hooks（否则 hook 数量随 m 变化 → React #310）
   const shortSellingHasContent = useMemo(() => {
-    const marginOk = (marginData || []).some(
-      (mk: any) => [mk.financing_balance, mk.securities_balance].some((n: any) => n != null && !Number.isNaN(n)),
-    )
-    const shortOk =
-      !!usShortInterest &&
-      usShortInterestStatus !== 'error' &&
-      [usShortInterest.short_sale_volume, usShortInterest.total_volume, usShortInterest.short_volume_ratio, usShortInterest.short_interest_shares, usShortInterest.short_interest_ratio].some((v: any) => v != null && !Number.isNaN(v))
+    // 卖空区只剩 MarginTradingPanel 三卡（A 股两融 / 港股卖空 / 美股卖空）。
+    // 任一市场有「两融余额」或「卖空指标」即认为区内有内容，显示区标。
+    const valid = (n: any) => n != null && !Number.isNaN(n)
+    const marketHasContent = (mk: any) =>
+      valid(mk.financing_balance) ||
+      valid(mk.securities_balance) ||
+      valid(mk.short_sale_volume) ||
+      valid(mk.short_volume_ratio) ||
+      valid(mk.short_interest_shares) ||
+      valid(mk.short_interest_ratio)
     // 注意：板块资金流向 (SectorFlowPanel) 不属于卖空区，其显隐独立控制，不纳入本判定
-    return marginOk || shortOk
-  }, [marginData, usShortInterest, usShortInterestStatus])
+    return (marginData || []).some(marketHasContent)
+  }, [marginData])
 
   const sentimentHasContent = useMemo(() => {
     const vixOk = !!assets.find((a: any) => a.symbol === 'VIX')
@@ -338,10 +336,8 @@ export function DataCenterModule() {
     {shortSellingHasContent && (
       <>
         <SectionLabel label="卖空区" hint="Margin / Short Interest" tone="amber" />
-        {/* 融资融券余额（A股/港股） */}
+        {/* 融资融券余额 / 卖空（A股两融 + 港股卖空 + 美股卖空，三市场并行展示） */}
         <MarginTradingPanel data={marginData} status={marginStatus} lastUpdated={last} />
-        {/* 美股做空指标（CBOE/FINRA，与融资融券拆开独立分区） */}
-        <ShortInterestPanel data={usShortInterest} status={usShortInterestStatus} lastUpdated={last} />
       </>
     )}
     {/* 板块资金流向：独立渲染，自带空态（无数据时显示"暂无板块资金流数据"），不被卖空区判定隐藏 */}
