@@ -4,9 +4,11 @@
 接口源自 Futu OpenD 10.10.7008（经本机 Mac OpenD 实测验证，详见
 docs/TODO-FUTU-INTERFACE-CAPABILITY.md F1 段与 memory 实测结论）：
 
-- ``get_short_selling_rank(market=, count=)`` → ``(ret, data)`` 二元组，DataFrame
-  列含 ``code / name / short_sell_turnover / short_sell_volume /
-  short_sell_ratio / ...``，反映当日卖空成交活跃度榜。
+- ``get_short_selling_rank(market=, count=)`` → ``(ret, data)`` 二元组；
+  ``ret==RET_OK`` 时 ``data`` 为 ``(all_count, DataFrame)`` 二元组
+  （注意并非直接 DataFrame），列含 ``security / name / close_price /
+  change_ratio / volume / short_sell_volume / short_sell_ratio / ...``，
+  反映当日卖空成交活跃度榜。
 - ``get_daily_short_volume(code=)`` → ``(ret, data, next_key)`` 三元组，DataFrame
   **T-1 语义**：港股/美股卖空数据盘后结算，当日盘后查询通常为 0 行——
   因此空返回必须如实标 ``no_data`` 而非 0，禁止臆造卖空量为 0（零幻觉红线）。
@@ -101,7 +103,17 @@ class ShortSellingHandler:
             }
 
         try:
-            ret, data = ctx.get_short_selling_rank(market=mkt, count=count)
+            # 签名: (ret, data)；ret==RET_OK 时 data 为 (all_count, DataFrame) 二元组
+            res = ctx.get_short_selling_rank(market=mkt, count=count)
+            if not isinstance(res, (list, tuple)) or len(res) < 2:
+                return {
+                    "status": "error",
+                    "source": "futu",
+                    "ticker": ticker,
+                    "message": f"卖空榜接口返回形态异常: {type(res)}",
+                    "code": code,
+                }
+            ret, data = res[0], res[1]
             if ret != RET_OK:
                 return {
                     "status": "error",
@@ -111,10 +123,18 @@ class ShortSellingHandler:
                     "code": code,
                 }
 
-            if hasattr(data, "to_dict"):
-                rows = data.to_dict("records")
+            # ret==RET_OK 时 data = (all_count, DataFrame)
+            if isinstance(data, (list, tuple)) and len(data) == 2 and hasattr(data[1], "to_dict"):
+                df = data[1]
+            elif hasattr(data, "to_dict"):
+                df = data
             else:
-                rows = list(data)
+                df = data
+
+            if hasattr(df, "to_dict"):
+                rows = df.to_dict("records")
+            else:
+                rows = list(df)
 
             # 数值安全化（缺失保留原值，不臆造）
             clean = []
