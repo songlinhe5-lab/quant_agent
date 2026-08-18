@@ -474,19 +474,21 @@ def get_hk_sector_flow() -> Dict[str, Any]:
                 flow_col = col
 
         if name_col is None or flow_col is None:
-            cols = df.columns.tolist()
-            if len(cols) >= 2:
-                name_col = cols[0]
-                for col in cols[1:]:
-                    try:
-                        df[col] = df[col].astype(float)
-                        flow_col = col
-                        break
-                    except (ValueError, TypeError):
-                        continue
-
-        if name_col is None or flow_col is None:
-            raise ValueError("无法解析港股行业资金流字段")
+            # 找不到行业/资金流列：stock_hsgt_fund_flow_summary_em 是沪深港通汇总接口，
+            # 不含"行业分布"列，fallback 到第一列会把交易日当行业名（name=日期, net_inflow=0），
+            # 产生误导性坏数据。此处明确降级：返回空 sectors + 说明，绝不伪造行业分布。
+            return {
+                "status": "success",
+                "data": {
+                    "market": "HK",
+                    "market_name": "港股南向",
+                    "sectors": [],
+                    "unit": "万元",
+                    "note": "港股南向暂无行业分布数据（AKShare 仅提供港股通总额/双通道，无行业板块接口）",
+                    "source": "AKShare (东方财富)",
+                },
+                "source": "akshare_stock_hsgt_fund_flow_summary_em",
+            }
 
         df[flow_col] = df[flow_col].astype(float)
         df_sorted = df.sort_values(flow_col, ascending=False)
