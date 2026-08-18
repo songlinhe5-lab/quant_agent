@@ -386,6 +386,8 @@ class DataServiceFacade:
         sectors: dict[str, list[float]] = {}
 
         for r in rows:
+            if not isinstance(r, dict):
+                continue  # 防御：热力图元素非 dict 时跳过，避免 .get 抛 AttributeError → 500
             chg = _f(r.get(chg_col)) if chg_col else None
             nm = r.get(name_col) if name_col else r.get("code")
             if chg is not None:
@@ -632,6 +634,8 @@ class DataServiceFacade:
         chg_sum = 0.0
         n = 0
         for r in rows:
+            if not isinstance(r, dict):
+                continue  # 防御：快照元素非 dict 时跳过，避免 .get 抛 AttributeError → 500
             v = _to_float(r.get(chg_col)) if chg_col else None
             if v is None:
                 continue
