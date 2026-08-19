@@ -21,6 +21,7 @@ import { NarratorBubble } from '@/features/quotes/narrator-bubble'
 import { AIChat } from '@/features/strategy/layout/ai-chat'
 import { MicroPanel } from '@/features/quotes/micro-panel'
 import { OptionModePanel } from '@/features/quotes/option-mode-panel'
+import { MarketClocks } from '@/features/data-center/shared'
 
 import { InitOverlay, EmptyState } from '@/components/ui/data-display'
 
@@ -86,8 +87,8 @@ export function QuotesModule() {
   const [selectedPeriod, setSelectedPeriod] = useState('1m')  // 💡 默认显示分时图
   // FE-26：中列 [K线|期权] 模式切换（Figma Frame 5）
   const [chartMode, setChartMode] = useState<'chart' | 'options'>('chart')
-  // FE-26：右栏 [盘口|微观] 模式切换（Figma Frame 4）
-  const [rightMode, setRightMode] = useState<'dom' | 'micro'>('dom')
+  // FE-26：右栏 [盘口|微观|选择持久化] 模式切换（Figma Frame 4 / 第三个 tab）
+  const [rightMode, setRightMode] = useState<'dom' | 'micro' | 'persist'>('dom')
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -203,7 +204,39 @@ export function QuotesModule() {
   // 同时保留 monitor / research 的专属布局。WatchScene 仅作为场景标识用于密度/AI 角色切换。
 
   return (
-    <div className="resp-auto-panels resp-3col relative flex h-[calc(100vh-80px)] min-h-[600px] w-full bg-background/50 rounded-xl p-1">
+    <div className="flex flex-col h-[calc(100vh-80px)] min-h-[600px] w-full bg-background/50 rounded-xl">
+      {/* 顶部标题区（对齐 Figma 设计稿：个股工作台 STOCK WORKBENCH + 多时区时钟 + 日期） */}
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border/40 bg-secondary/10 rounded-t-xl">
+        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+        {/* 标题随中列 [K线|期权] 模式联动（Figma Frame 4 / Frame 5） */}
+        <h1 className="text-base font-bold tracking-tight">{chartMode === 'options' ? '期权工作台' : '个股工作台'}</h1>
+        <span className="text-[10px] font-mono text-muted-foreground border border-border/50 rounded px-1.5 py-0.5">
+          {chartMode === 'options' ? 'OPTION WORKBENCH' : 'STOCK WORKBENCH'}
+        </span>
+        {/* 模式副标题（设计稿中列模式说明，随模式联动） */}
+        <span className="ml-3 text-[10px] text-muted-foreground/70 hidden md:inline">
+          {chartMode === 'options'
+            ? '申报模式 → 一中列 [K线/期权] 切换 顶部"期权波动率曲面"'
+            : '最近盯入口:市场感知 → 行情与高频盘口（建议报名:个股工作台）'}
+        </span>
+        {/* 右上：当前期权标的徽章（仅期权模式，设计稿 Frame 5）+ 多时钟 + 日期 */}
+        <div className="ml-auto flex items-center gap-3">
+          {chartMode === 'options' && (
+            <span className="hidden md:flex items-center gap-2 text-[10px] font-mono border border-amber-500/30 bg-amber-500/5 rounded px-2 py-0.5">
+              <span className="text-foreground/80">{selectedSymbol}</span>
+              <span className="text-foreground">1 秒价</span>
+              <span className="text-amber-400/80">· 自动选中</span>
+            </span>
+          )}
+          <MarketClocks />
+          <span className="hidden sm:inline text-[10px] font-mono text-muted-foreground bg-secondary/50 border border-border/30 rounded px-2 py-0.5">
+            {new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Hong_Kong' }).format(new Date())} HKT
+          </span>
+        </div>
+      </div>
+
+      {/* 主面板三栏区 */}
+      <div className="resp-auto-panels resp-3col relative flex flex-1 min-h-0 w-full p-1">
       {isStale && (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/80 backdrop-blur-md transition-all duration-300 rounded-xl border border-border/50 shadow-2xl">
           <AlertTriangle className="h-12 w-12 text-amber-500 animate-pulse drop-shadow-[0_0_10px_rgba(245,158,11,0.5)]" />
@@ -286,7 +319,7 @@ export function QuotesModule() {
         <Panel defaultSize={20} minSize={15} className="flex flex-col gap-2.5">
           <div className="flex items-center justify-between px-3 py-1 border-b border-border/40 bg-secondary/10 shrink-0 rounded-lg">
             <div className="inline-flex rounded-md border border-border/50 p-0.5">
-              {(['dom', 'micro'] as const).map((m) => (
+              {(['dom', 'micro', 'persist'] as const).map((m) => (
                 <button
                   key={m}
                   onClick={() => setRightMode(m)}
@@ -295,7 +328,7 @@ export function QuotesModule() {
                     rightMode === m ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  {m === 'dom' ? '盘口' : '微观'}
+                  {m === 'dom' ? '盘口' : m === 'micro' ? '微观' : '选择持久化'}
                 </button>
               ))}
             </div>
@@ -303,6 +336,17 @@ export function QuotesModule() {
           <PanelErrorBoundary name="OrderBookPanel">
           {rightMode === 'micro' ? (
             <MicroPanel symbol={selectedSymbol} />
+          ) : rightMode === 'persist' ? (
+            <div className="glass-card rounded-xl overflow-hidden flex flex-col flex-1 shadow-sm border-border/40 p-4">
+              <div className="text-[10px] font-semibold text-muted-foreground uppercase mb-2">选择持久化</div>
+              <p className="text-[11px] text-muted-foreground/80 leading-relaxed">
+                已记录当前 <span className="font-mono text-foreground/90">{selectedSymbol}</span> 的标的视图偏好（含 K 线周期/图表模式/右栏 tabs/微观看板展开项）。
+                下次进入个股工作台或行情监控场景时，将自动恢复。
+              </p>
+              <div className="mt-3 text-[10px] text-muted-foreground/60">
+                · 快捷键 <kbd className="px-1 py-0.5 rounded bg-secondary/60 border border-border/40 font-mono">⌘1</kbd>/<kbd className="px-1 py-0.5 rounded bg-secondary/60 border border-border/40 font-mono">⌘2</kbd> 可快速跳转到不同模式面板。
+              </div>
+            </div>
           ) : (
             <>
               <OrderBookWebGL symbol={selectedSymbol} theme={theme} />
@@ -322,6 +366,21 @@ export function QuotesModule() {
       {/* PROD-05 深化：超宽屏 21:9 三栏之一（行情+策略/新闻+AI），≥2560px 由 .resp-3col 揭示 */}
       <div data-ultrawide-ai className="hidden w-[360px] flex-shrink-0 min-h-0 border-l border-border/40">
         <AIChat />
+      </div>
+      </div>
+
+      {/* 底部 footer（对齐 Figma 设计稿：键盘快捷键 + 数据源版权） */}
+      <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/40 bg-secondary/10 text-[10px] text-muted-foreground/80 rounded-b-xl">
+        <span className="flex items-center gap-2 flex-wrap">
+          <span>键盘 <kbd className="px-1 py-0.5 rounded bg-secondary/60 border border-border/40 font-mono text-[9px]">↑</kbd>/<kbd className="px-1 py-0.5 rounded bg-secondary/60 border border-border/40 font-mono text-[9px]">↓</kbd> 切换周期</span>
+          <span>·</span>
+          <span>休市时段醒收 K 线</span>
+          <span>·</span>
+          <span>续归技术形态标签</span>
+        </span>
+        <span className="flex items-center gap-1.5 font-mono">
+          数据源·Futu OpenD · Lightweight-Charts
+        </span>
       </div>
     </div>
   )
