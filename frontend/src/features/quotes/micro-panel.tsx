@@ -19,7 +19,7 @@ export function MicroPanel({ symbol }: { symbol: string }) {
   const hk = useMemo(() => isHkMarket(symbol), [symbol])
 
   return (
-    <div className="flex h-full flex-col gap-2.5 overflow-y-auto custom-scrollbar p-2">
+    <div className="flex h-full flex-col gap-3 overflow-y-auto custom-scrollbar p-2">
       <CapitalDistributionPanel ticker={futu} />
       <AnalystVsFundamentalPanel ticker={futu} />
       {hk && <ShortSellingPanel ticker={futu} mode="overview" />}

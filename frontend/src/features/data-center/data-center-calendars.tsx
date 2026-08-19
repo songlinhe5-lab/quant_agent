@@ -13,12 +13,12 @@ export function CalendarsTab({ data }: Props) {
   return (
     <div className="flex flex-col gap-4">
       <CalendarsModule />
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
         <MacroChartPanel />
         <FedWatchPanel />
       </div>
       <div className="glass-card p-4">
-        <h3 className="text-sm font-semibold text-foreground mb-3">财经快讯 · 实时流</h3>
+        <h3 className="text-[15px] font-semibold text-foreground mb-3">财经快讯 · 实时流</h3>
         <NewsStream
           news={news}
           visibleNewsCount={visibleNewsCount}

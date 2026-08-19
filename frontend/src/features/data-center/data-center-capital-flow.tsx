@@ -98,7 +98,7 @@ function CrossMarketFlowSection({
     <section>
       <div className="flex items-center gap-2 mb-2.5">
         <BarChart3 className="h-4 w-4 text-muted-foreground" />
-        <h2 className="text-sm font-semibold text-foreground">跨市场资金流向</h2>
+        <h2 className="text-[15px] font-semibold text-foreground">跨市场资金流向</h2>
         <span className="text-[10px] text-muted-foreground/70">切换周期后卡片显示该期累计净流入 + 趋势线</span>
         <div className="ml-auto inline-flex rounded-lg border border-border/60 p-0.5">
           {(['day', 'week', 'month'] as const).map((p) => (
@@ -176,7 +176,7 @@ function SectionHeader({ icon: Icon, title, sub }: { icon: any; title: string; s
   return (
     <div className="flex items-center gap-2">
       <Icon className="h-4 w-4 text-muted-foreground" />
-      <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+      <h2 className="text-[15px] font-semibold text-foreground">{title}</h2>
       {sub && <span className="text-[10px] text-muted-foreground/70">{sub}</span>}
     </div>
   )
