@@ -35,17 +35,36 @@ export function EarningsCalendar({ earnings, earnDed, handleManualRefresh, loadi
               <th className="text-left px-2 py-1.5 text-muted-foreground font-medium">中文名称</th>
               <th className="text-center px-2 py-1.5 text-muted-foreground font-medium">财报季度</th>
               <th className="text-right px-3 py-1.5 text-muted-foreground font-medium">华尔街预期 EPS</th>
+              <th className="text-right px-3 py-1.5 text-muted-foreground font-medium">实际 EPS</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border/15">
             {safeEarnings.map((ea: any, i: number) => {
               const isoTime = `${ea.date}T20:30:00Z`;
+              const est = ea.epsEstimate;
+              const act = ea.epsActual;
+              const hasActual = act !== null && act !== undefined && act !== "";
+              const beat = hasActual && est != null ? Number(act) - Number(est) : null;
+              const isBeat = beat !== null && beat >= 0;
               return (
-                <tr key={i} className="hover:bg-slate-50 dark:hover:bg-secondary/30 transition-colors">
+                <tr key={i} className={`hover:bg-slate-50 dark:hover:bg-secondary/30 transition-colors ${hasActual ? "opacity-70 saturate-50" : ""}`}>
                   <td className="px-3 py-2 whitespace-nowrap"><div className="font-mono text-[10px] text-muted-foreground mb-1.5">{ea.date}</div><EventCountdown dateIso={isoTime} actual={ea.epsActual} onRefresh={handleManualRefresh} /></td>
-                  <td className="px-2 py-2 font-bold font-mono text-[11px] text-foreground">{ea.symbol}</td>
+                  <td className="px-2 py-2 font-bold font-mono text-[11px] text-foreground">{ea.symbol}{hasActual && <span className="ml-1 text-[8px] align-middle px-1 py-0.5 rounded bg-slate-700/50 text-slate-400">已发布</span>}</td>
                   <td className="px-2 py-2 text-[10px] text-muted-foreground">{ea.name_cn || ea.symbol}</td>
-                  <td className="px-2 py-2 text-center font-mono text-[10px] text-muted-foreground">Q{ea.quarter}</td><td className="px-3 py-2 text-right font-mono text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">{ea.epsEstimate != null ? `$${ea.epsEstimate}` : <span className="text-amber-500/80">未提供</span>}</td>
+                  <td className="px-2 py-2 text-center font-mono text-[10px] text-muted-foreground">Q{ea.quarter}</td>
+                  <td className="px-3 py-2 text-right font-mono text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">{est != null ? `$${est}` : <span className="text-amber-500/80">未提供</span>}</td>
+                  <td className="px-3 py-2 text-right font-mono text-[10px] font-bold">
+                    {hasActual ? (
+                      <span className={isBeat ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}>
+                        ${act}
+                        {beat !== null && (
+                          <span className="ml-1 text-[9px] font-semibold">{isBeat ? "▲" : "▼"}{Math.abs(beat).toFixed(2)}</span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground/60">待发布</span>
+                    )}
+                  </td>
                 </tr>
               )
             })}
