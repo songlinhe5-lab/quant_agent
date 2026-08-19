@@ -22,8 +22,6 @@ import time
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from backend.core.error_codes import ErrorCode
-from backend.core.exceptions import DataSourceError
 from backend.core.metrics import (
     DATASOURCE_FACADE_MERGE,
     DATASOURCE_QUOTE_DEVIATION,
@@ -344,10 +342,14 @@ class DataServiceFacade:
             return res
 
         data = res.data
-        if not isinstance(data, dict):
+        if isinstance(data, list):
+            # FutuDataSource.fetch 会剥离子服务信封，HEAT_MAP 的 rows 直接是 list
+            rows = data
+            data = {}
+        elif isinstance(data, dict):
+            rows = data.get("data")
+        else:
             return res
-
-        rows = data.get("data")
         if not isinstance(rows, list) or len(rows) == 0:
             data["panel"] = {"available": False, "note": "热力图原始数据为空"}
             return res
@@ -360,16 +362,11 @@ class DataServiceFacade:
             None,
         )
         chg_col = next(
-            (
-                k
-                for k in keys
-                if any(t in str(k).lower() for t in ("change", "涨跌幅", "chg", "pct", "change_rate"))
-            ),
+            (k for k in keys if any(t in str(k).lower() for t in ("change", "涨跌幅", "chg", "pct", "change_rate"))),
             None,
         )
         sector_col = next(
-            (k for k in keys if any(t in str(k).lower() for t in ("sector", "板块", "industry", "行业", "plate"))),
-            None
+            (k for k in keys if any(t in str(k).lower() for t in ("sector", "板块", "industry", "行业", "plate"))), None
         )
 
         def _f(v: Any) -> Optional[float]:
@@ -500,12 +497,13 @@ class DataServiceFacade:
                 return label, await coro
             except Exception as e:  # noqa: BLE001 - 单源崩溃不应拖垮合并
                 logging.warning("get_fundamental_merged: 源 %s 异常: %s", label, e)
-                return label, Result.error_result(
-                    DataSourceError(
-                        code=ErrorCode.INTERNAL_ERROR,
-                        message=f"源 {label} 基本面合并异常: {e}",
-                        source=label,
-                    )
+                return label, Result.make_error(
+                    ErrorInfo.normal(
+                        f"{label.upper()}_FUNDAMENTAL_ERROR",
+                        f"源 {label} 基本面合并异常: {e}",
+                        retryable=True,
+                    ),
+                    source=label,
                 )
 
         # 并发拉取三路（Futu 两 action 并行，FMP/YF 各一路）
@@ -534,16 +532,17 @@ class DataServiceFacade:
                 merged["sources"][label] = f"failed: {err_msg}"
 
         if not any_ok:
-            return Result.error_result(
-                DataSourceError(
-                    code=ErrorCode.ALL_SOURCES_FAILED,
-                    message=f"基本面三源合并全部失败: {ticker}",
-                    source="facade",
-                )
+            return Result.make_error(
+                ErrorInfo.normal(
+                    "ALL_SOURCES_FAILED",
+                    f"基本面三源合并全部失败: {ticker}",
+                    retryable=True,
+                ),
+                source="facade",
             )
 
         merged["_merged_at"] = datetime.now().isoformat()
-        return Result.success_result(merged, source="facade", remark="G1真基本面三源合并")
+        return Result.make_success(merged, source="facade")
 
     async def get_order_book(self, ticker: str, prefer_sources: Optional[list[str]] = None) -> Result:
         """实时 L2 盘口深度（Futu ORDER_BOOK）。
@@ -800,7 +799,7 @@ class DataServiceFacade:
             "analyst_consensus": res_cons.data if isinstance(res_cons, Result) else None,
             "fundamental_merged": fund_data,
         }
-        return Result.success_result(out, source="facade", remark="G7卖方共识vs实际基本面交叉验证")
+        return Result.make_success(out, source="facade")
 
     async def _fetch_futu_fundamental(self, ticker: str) -> Result:
         """Futu 真基本面（三大表 + 估值明细）聚合为单 Result。
@@ -829,14 +828,15 @@ class DataServiceFacade:
             data["valuation"] = val_res.data
 
         if not data:
-            return Result.error_result(
-                DataSourceError(
-                    code=ErrorCode.ALL_SOURCES_FAILED,
-                    message=f"futu 基本面两 action 均失败: {ticker}",
-                    source="futu",
-                )
+            return Result.make_error(
+                ErrorInfo.normal(
+                    "ALL_SOURCES_FAILED",
+                    f"futu 基本面两 action 均失败: {ticker}",
+                    retryable=True,
+                ),
+                source="futu",
             )
-        return Result.success_result(data, source="futu", remark="Futu真基本面(财报+估值)")
+        return Result.make_success(data, source="futu")
 
     # ── G2: 港股卖空拥挤度监控 ──────────────────────────────────────────
     async def get_short_selling(self, ticker: str, mode: str = "rank") -> Result:
@@ -897,12 +897,13 @@ class DataServiceFacade:
                 err = fr.error.message if isinstance(fr, Result) and fr.error else "unknown"
                 data["sources"]["futu"] = f"failed: {err}"
         if futu_payload is None:
-            return Result.error_result(
-                DataSourceError(
-                    code=ErrorCode.ALL_SOURCES_FAILED,
-                    message=f"卖空数据 Futu 源不可用: {ticker}",
-                    source="futu",
-                )
+            return Result.make_error(
+                ErrorInfo.normal(
+                    "ALL_SOURCES_FAILED",
+                    f"卖空数据 Futu 源不可用: {ticker}",
+                    retryable=True,
+                ),
+                source="futu",
             )
 
         # T-1 红线：daily 0 行如实标 no_data
@@ -910,7 +911,7 @@ class DataServiceFacade:
             data["futu"] = futu_payload
             data["sources"]["futu"] = "no_data"
             data["_merged_at"] = datetime.now().isoformat()
-            return Result.success_result(data, source="facade", remark="G2卖空(T-1无数据,未臆造0)")
+            return Result.make_success(data, source="facade")
 
         data["futu"] = futu_payload
 
@@ -976,7 +977,7 @@ class DataServiceFacade:
         data["derived"] = derived
 
         data["_merged_at"] = datetime.now().isoformat()
-        return Result.success_result(data, source="facade", remark="G2卖空拥挤度监控(三源收口)")
+        return Result.make_success(data, source="facade")
 
     async def get_company_news(
         self, ticker: str, days_back: int = 3, prefer_sources: Optional[list[str]] = None
