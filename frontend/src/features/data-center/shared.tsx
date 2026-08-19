@@ -114,30 +114,30 @@ export function AssetButton({ asset }: { asset: any }) {
 
   return (
     <button onClick={() => navigate(`/market/${asset.symbol}`)}
-      className={cn('relative flex flex-col text-left p-2 rounded-xl border border-border/50', 'bg-white dark:bg-secondary/20 hover:bg-secondary/50 dark:hover:bg-secondary/40', 'transition-all outline-none focus-visible:ring-2 focus-visible:ring-primary', 'group shadow-xs hover:shadow-sm overflow-hidden', flash === 'up' && 'animate-flash-green', flash === 'down' && 'animate-flash-red')} title={`查看 ${asset.name} 详情`}>
-      <div className="flex items-start justify-between w-full mb-1.5">
+      className={cn('relative flex flex-col text-left px-3.5 py-3 rounded-xl border border-border/50', 'bg-white dark:bg-secondary/20 hover:bg-secondary/50 dark:hover:bg-secondary/40', 'transition-all outline-none focus-visible:ring-2 focus-visible:ring-primary', 'group shadow-xs hover:shadow-sm overflow-hidden', flash === 'up' && 'animate-flash-green', flash === 'down' && 'animate-flash-red')} title={`查看 ${asset.name} 详情`}>
+      <div className="flex items-start justify-between w-full mb-2">
         <div className="flex flex-col min-w-0 mr-2 text-left">
           <div className="flex items-center gap-1">
-            <span className="text-[9px] font-bold text-muted-foreground/70 group-hover:text-muted-foreground uppercase tracking-wider">{asset.symbol}</span>
+            <span className="text-[11px] font-bold text-muted-foreground/70 group-hover:text-muted-foreground uppercase tracking-wider">{asset.symbol}</span>
             {asset.source === 'fred' && (
               <span className="text-[7px] font-bold bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 border border-indigo-500/20 px-1 py-[1px] rounded-sm leading-none" title="当前数据由 FRED 降级兜底提供">FRED</span>
             )}
           </div>
           <span className="text-xs font-bold text-foreground/90 mt-0.5 truncate">{asset.name}</span>
         </div>
-        <div className={cn('px-1.5 py-0.5 rounded-md flex items-center gap-0.5 text-[9px] font-mono font-bold flex-shrink-0', (asset.change ?? 0) >= 0 ? 'bg-[#34D399]/15 text-[#10B981] dark:text-[#34D399]' : 'bg-[#F87171]/15 text-[#EF4444] dark:text-[#F87171]')}>
+        <div className={cn('px-1.5 py-0.5 rounded-md flex items-center gap-0.5 text-[11px] font-mono font-bold flex-shrink-0', (asset.change ?? 0) >= 0 ? 'bg-[#34D399]/15 text-[#10B981] dark:text-[#34D399]' : 'bg-[#F87171]/15 text-[#EF4444] dark:text-[#F87171]')}>
           {(asset.change ?? 0) >= 0 ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}{(asset.change ?? 0) >= 0 ? '+' : ''}{(asset.change ?? 0).toFixed(2)}%
         </div>
       </div>
       <div className="flex items-end justify-between w-full mt-auto">
-        <span className={cn('text-sm font-bold font-mono tabular-nums tracking-tight transition-colors duration-500', flash === 'up' ? 'text-[#10B981] dark:text-[#34D399]' : flash === 'down' ? 'text-[#EF4444] dark:text-[#F87171]' : 'text-foreground')}>
+        <span className={cn('text-xl font-bold font-mono tabular-nums tracking-tight transition-colors duration-500', flash === 'up' ? 'text-[#10B981] dark:text-[#34D399]' : flash === 'down' ? 'text-[#EF4444] dark:text-[#F87171]' : 'text-foreground')}>
           {asset.value != null ? asset.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--'}
         </span>
         {asset.sparkline && <div className="opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0"><MiniTrendLine data={asset.sparkline} isPositive={asset.change >= 0} /></div>}
       </div>
       {/* 💡 数据来源与更新时间 */}
-      <div className="mt-1.5 pt-1 border-t border-border/10">
-        <div className="flex items-center justify-between text-[8px] text-muted-foreground/50">
+      <div className="mt-2 pt-1.5 border-t border-border/10">
+        <div className="flex items-center justify-between text-[10px] text-muted-foreground/50">
           <span className="flex items-center gap-0.5">
             <span className="inline-block w-1 h-1 rounded-full bg-emerald-400/60"></span>
             {asset.data_source || 'YFinance'}

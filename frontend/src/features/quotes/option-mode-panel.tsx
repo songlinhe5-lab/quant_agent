@@ -28,7 +28,7 @@ export function OptionModePanel({ symbol }: { symbol: string }) {
   }, [leg, futu])
 
   return (
-    <div className="flex flex-col gap-2.5 overflow-y-auto custom-scrollbar p-2">
+    <div className="flex flex-col gap-3 overflow-y-auto custom-scrollbar p-2">
       {/* 顶部：视图切换 + 摘要条 */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="inline-flex rounded-lg border border-border/60 p-0.5">

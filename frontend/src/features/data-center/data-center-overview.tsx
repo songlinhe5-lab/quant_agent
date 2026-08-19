@@ -73,7 +73,7 @@ export function OverviewTab({ data, onNavigate }: Props) {
       <section>
         <div className="flex items-center gap-2 mb-2.5">
           <Globe2 className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-sm font-semibold text-foreground">全球市场脉搏</h2>
+          <h2 className="text-[15px] font-semibold text-foreground">全球市场脉搏</h2>
           <span className="text-[10px] text-muted-foreground/70">跨市场大类资产实时快照</span>
           <div className="ml-auto flex items-center gap-1">
             {CATEGORY_TABS.map((c) => (
@@ -93,7 +93,7 @@ export function OverviewTab({ data, onNavigate }: Props) {
           </div>
         </div>
         {filteredAssets.length ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
             {filteredAssets.map((a: any) => (
               <AssetButton key={a.symbol} asset={a} />
             ))}
@@ -132,7 +132,7 @@ export function OverviewTab({ data, onNavigate }: Props) {
       <section>
         <div className="flex items-center gap-2 mb-2.5">
           <Sparkles className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-sm font-semibold text-foreground">今日焦点</h2>
+          <h2 className="text-[15px] font-semibold text-foreground">今日焦点</h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {/* 经济日历今日 high（后端字段 impact/date/event） */}
