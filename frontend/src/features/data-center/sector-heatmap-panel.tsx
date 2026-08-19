@@ -15,6 +15,8 @@ interface HeatMapData {
   updated_at?: string
   source?: string
   note?: string
+  degraded?: boolean
+  degraded_message?: string
 }
 
 function toneBg(chg: number): string {
@@ -70,6 +72,22 @@ export function SectorHeatmapPanel({ market = 'HK' }: { market?: string }) {
   const sectors = data.sector_summary || []
   const gainers = data.top_gainers || []
   const losers = data.top_losers || []
+
+  // 后端 degraded / 空数据时给出明确提示，而非静默空
+  if (sectors.length === 0 && gainers.length === 0 && losers.length === 0) {
+    return (
+      <div className="glass-card rounded-lg overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2">
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">板块热力图</span>
+          <span className="font-mono text-xs text-foreground/80">{data.market || market}</span>
+        </div>
+        <div className="p-6 text-sm text-amber-400/90">
+          板块热力图数据暂不可用
+          <span className="ml-1 text-[10px] text-amber-400/60">· {data.degraded_message || '数据源（Futu 板块快照）暂未返回数据，恢复后自动重试'}</span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="glass-card rounded-lg overflow-hidden">
