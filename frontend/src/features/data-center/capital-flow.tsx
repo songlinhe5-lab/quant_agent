@@ -174,7 +174,7 @@ export function CapitalFlowPanel({ data }: { data?: CapitalFlowItem[] }) {
           <span>港股 · A股 · 美股</span>
         </span>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2 p-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2 p-2">
         {flows.map((item, idx) => (<FlowItem key={`${item.label}-${idx}`} item={item} onClick={() => setDetailFlow(item)} />))}
       </div>
     </div>

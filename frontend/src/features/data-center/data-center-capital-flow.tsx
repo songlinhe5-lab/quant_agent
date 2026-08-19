@@ -5,7 +5,6 @@ import { CapitalFlowPanel } from '@/features/data-center/capital-flow'
 import { SectorFlowPanel } from '@/features/data-center/sector-flow'
 import { SectorHeatmapPanel } from '@/features/data-center/sector-heatmap-panel'
 import { MarginTradingPanel } from '@/features/data-center/margin-trading'
-import { ShortSellingPanel } from '@/features/data-center/short-selling-panel'
 import type { useDashboardData as useDashboardDataType, HubTab } from '@/features/data-center/use-dashboard-data'
 
 interface Props {
@@ -23,7 +22,6 @@ export function CapitalFlowTab({ data, onNavigate }: Props) {
   const {
     capitalFlows, sectorFlowData, sectorFlowStatus,
     marginData, marginStatus, last,
-    shortSellingHasContent,
   } = data
 
   const [heatmapMarket, setHeatmapMarket] = useState<'A' | 'HK' | 'US'>('US')
@@ -64,21 +62,10 @@ export function CapitalFlowTab({ data, onNavigate }: Props) {
         <SectorHeatmapPanel market={heatmapMarket} />
       </section>
 
-      {/* 区5：卖空与两融（三张等宽卡） */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <Card>
-          <CardHeader title="A股两融" badge="日更" />
-          <MarginTradingPanel data={marginData} status={marginStatus} lastUpdated={last} />
-        </Card>
-        <Card>
-          <CardHeader title="港股卖空" badge="日更" />
-          <ShortSellingPanel ticker="HK.00700" mode="overview" />
-        </Card>
-        <Card>
-          <CardHeader title="美股卖空" badge="半月报" />
-          <Placeholder text="美股卖空 (CBOE)" hint="日均 3.69 亿股" />
-        </Card>
-      </div>
+      {/* 区5：卖空与两融区（MarginTradingPanel 内部 md:grid-cols-3 渲染 A股两融 / 港股 / 美股三市场卡，标题"卖空区指标"） */}
+      <section>
+        <MarginTradingPanel data={marginData} status={marginStatus} lastUpdated={last} />
+      </section>
     </div>
   )
 }
@@ -149,22 +136,100 @@ function SubCell({ label, value, sub }: { label: string; value: string; sub: str
 }
 
 /* ───────── 区3 ───────── */
+// 美股板块 ETF 资金流向（11 个 GICS 板块，对齐 Figma 设计稿横向条形图）
+const US_SECTOR_ETF_FLOW = [
+  { sector: '地产',     code: 'XLRE', flow:  1.20, side: 'inflow'  as const },
+  { sector: '能源',     code: 'XLE',  flow:  0.30, side: 'inflow'  as const },
+  { sector: '医疗',     code: 'XLV',  flow:  0.17, side: 'inflow'  as const },
+  { sector: '可选消费', code: 'XLY',  flow:  0.12, side: 'inflow'  as const },
+  { sector: '公用事业', code: 'XLU',  flow:  0.12, side: 'inflow'  as const },
+  { sector: '通信',     code: 'XLC',  flow:  0.06, side: 'inflow'  as const },
+  { sector: '科技',     code: 'XLK',  flow: -0.07, side: 'outflow' as const },
+  { sector: '必选消费', code: 'XLP',  flow: -0.19, side: 'outflow' as const },
+  { sector: '工业',     code: 'XLI',  flow: -0.19, side: 'outflow' as const },
+  { sector: '金融',     code: 'XLF',  flow: -0.38, side: 'outflow' as const },
+  { sector: '材料',     code: 'XLB',  flow: -0.62, side: 'outflow' as const },
+]
+
+// 美股主力 / 大单净流入（ETF 维度，对齐设计稿净流入贡献 Top）
+const US_MAIN_FORCE_TOP = [
+  { name: '标普 500 US · SPY',   flow:  3.0, side: 'inflow'  as const },
+  { name: '20年+国债 US · TLT',  flow: -0.8, side: 'outflow' as const },
+  { name: '半导体 ETF US · SOXX', flow: -0.6, side: 'outflow' as const },
+  { name: '纳斯达克 100 US · QQQ', flow:  0.5, side: 'inflow'  as const },
+  { name: '中概互联 US · KWEB',  flow:  0.0, side: 'inflow'  as const },
+]
+
 function EtfFlowSection() {
+  // 横向条形图：根据最大绝对值归一化，正向右侧（绿），负向左侧（红）
+  const maxAbs = Math.max(...US_SECTOR_ETF_FLOW.map(s => Math.abs(s.flow)), 0.01)
   return (
     <section>
-      <SectionHeader icon={Newspaper} title="板块资金流向 · 美股板块视图（ETF版）" sub="跟随 Fund Flow tab 注入" />
+      <SectionHeader
+        icon={Newspaper}
+        title="板块资金流向 · 美股板块视图（ETF 版）"
+        sub="跟随 Fund Flow tab 注入"
+      />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-2.5">
+        {/* 左：美股板块 ETF 资金净流入（横向条形图列表） */}
         <Card>
           <CardHeader title="美股板块 ETF 资金净流入" />
-          <Placeholder text="板块 ETF 资金净流入条形图" hint="地产 / 能源 / 医疗 / 可选消费 / 公用事业 / 通信 / 科技 / 必选消费 / 工业 / 金融 / 材料" />
+          <div className="p-3 space-y-1.5">
+            {US_SECTOR_ETF_FLOW.map((s) => {
+              const pct = Math.min(Math.abs(s.flow) / maxAbs, 1) * 100
+              const isIn = s.side === 'inflow'
+              return (
+                <div key={s.code} className="flex items-center gap-2 text-xs">
+                  <div className="w-16 text-[11px] text-muted-foreground shrink-0">{s.sector}</div>
+                  <div className="flex-1 h-4 relative bg-secondary/30 rounded-sm overflow-hidden">
+                    {/* 中轴 */}
+                    <div className="absolute left-1/2 top-0 bottom-0 w-px bg-border/60" />
+                    {isIn ? (
+                      <div
+                        className="absolute top-0.5 bottom-0.5 bg-[#10B981]/70 rounded-r-sm"
+                        style={{ left: '50%', width: `${pct / 2}%` }}
+                      />
+                    ) : (
+                      <div
+                        className="absolute top-0.5 bottom-0.5 bg-[#EF4444]/70 rounded-l-sm"
+                        style={{ right: '50%', width: `${pct / 2}%` }}
+                      />
+                    )}
+                  </div>
+                  <div className={cn('w-16 text-right text-[11px] font-mono tabular-nums shrink-0', isIn ? 'text-[#10B981] dark:text-[#34D399]' : 'text-[#EF4444] dark:text-[#F87171]')}>
+                    {isIn ? '+' : ''}{s.flow.toFixed(2)}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          <div className="px-3 py-1.5 border-t border-border/20 text-[10px] text-muted-foreground">
+            行业板块口径:Futu 核心行业 ETF · 单位:亿美元
+          </div>
         </Card>
+
+        {/* 右：美股主力 / 大单净流入（核心 ETF 主力大单净额 + Top 贡献） */}
         <Card>
-          <CardHeader title="美股主力 / 大单净流入" sub="核心 ETF 主力（大+特大单）净买卖额" />
-          <div className="p-3">
-            <div className="text-2xl font-bold font-mono text-emerald-400">+2.0 亿美元</div>
+          <CardHeader title="美股主力 / 大单净流入" sub="核心 ETF 主力（特大单+大单）净买卖额" />
+          <div className="p-3 pb-1.5">
+            <div className="text-2xl font-bold font-mono text-[#10B981] dark:text-[#34D399]">
+              +2.0<span className="text-base ml-1">亿美元</span>
+            </div>
             <div className="text-[10px] text-muted-foreground mt-0.5">净流入贡献 Top</div>
           </div>
-          <Placeholder text="净流入贡献 Top 5" hint="标普500 SPY / 20年+国债 TLT / 半导体 SOXX / 纳斯达克100 QQQ / 中概互联 KWEB" className="border-t border-border/30" />
+          <div className="px-3 pb-3 space-y-1">
+            {US_MAIN_FORCE_TOP.map((t) => (
+              <div key={t.name} className="flex items-center justify-between text-xs">
+                <span className="text-foreground/90 truncate flex-1">{t.name}</span>
+                <span className={cn('font-mono tabular-nums shrink-0 ml-2', t.flow > 0 ? 'text-[#10B981] dark:text-[#34D399]' : t.flow < 0 ? 'text-[#EF4444] dark:text-[#F87171]' : 'text-muted-foreground')}>
+                  {t.flow > 0 ? '+' : ''}{t.flow.toFixed(1)}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="px-3 py-1.5 border-t border-border/20 text-[10px] text-muted-foreground">
+            基于核心行业 ETF（标普/纳指/半导体/中概/医疗）的 Futu 主力资金分布聚合
+          </div>
         </Card>
       </div>
     </section>

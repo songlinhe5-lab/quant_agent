@@ -74,7 +74,7 @@ export function OverviewTab({ data, onNavigate }: Props) {
         <div className="flex items-center gap-2 mb-2.5">
           <Globe2 className="h-4 w-4 text-muted-foreground" />
           <h2 className="text-[15px] font-semibold text-foreground">全球市场脉搏</h2>
-          <span className="text-[10px] text-muted-foreground/70">跨市场大类资产实时快照</span>
+          <span className="text-[10px] text-muted-foreground/70">跨市场品类首道一入口</span>
           <div className="ml-auto flex items-center gap-1">
             {CATEGORY_TABS.map((c) => (
               <button
@@ -136,7 +136,15 @@ export function OverviewTab({ data, onNavigate }: Props) {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {/* 经济日历今日 high（后端字段 impact/date/event） */}
-          <FocusCard icon={CalendarClock} title="经济日历 · 重磅事件" onMore={() => onNavigate('calendars')} empty={todayHighEvents.length === 0} emptyText="暂无高影响事件">
+          <FocusCard
+            icon={CalendarClock}
+            title="经济日历 · 今日高影响"
+            badge={todayHighEvents.length > 0 ? `×${todayHighEvents.length}` : undefined}
+            moreLabel="查看完整日历 →"
+            onMore={() => onNavigate('calendars')}
+            empty={todayHighEvents.length === 0}
+            emptyText="暂无高影响事件"
+          >
             {todayHighEvents.map((ev: any, i: number) => (
               <div key={i} className="flex items-start gap-2 py-1.5 border-b border-border/10 last:border-0">
                 <span className="mt-1 h-1.5 w-1.5 rounded-full bg-rose-400/70 flex-shrink-0" />
@@ -149,7 +157,15 @@ export function OverviewTab({ data, onNavigate }: Props) {
           </FocusCard>
 
           {/* 本周财报前瞻（后端字段 date/symbol/name_cn/epsEstimate） */}
-          <FocusCard icon={BarChart3} title="本周核心财报" onMore={() => onNavigate('calendars')} empty={upcomingEarnings.length === 0} emptyText="暂无临近财报">
+          <FocusCard
+            icon={BarChart3}
+            title="财报 · 本周"
+            badge={upcomingEarnings.length > 0 ? `${upcomingEarnings.length} 家` : undefined}
+            moreLabel="查看财报日历 →"
+            onMore={() => onNavigate('calendars')}
+            empty={upcomingEarnings.length === 0}
+            emptyText="暂无临近财报"
+          >
             {upcomingEarnings.map((e: any, i: number) => (
               <div key={i} className="flex items-center justify-between py-1.5 border-b border-border/10 last:border-0">
                 <div className="min-w-0">
@@ -165,7 +181,15 @@ export function OverviewTab({ data, onNavigate }: Props) {
           </FocusCard>
 
           {/* 资金净流入 Top */}
-          <FocusCard icon={ArrowDownUp} title="资金净流入榜" onMore={() => onNavigate('capital')} empty={topInflows.length === 0} emptyText="暂无资金流数据">
+          <FocusCard
+            icon={ArrowDownUp}
+            title="资金一句话"
+            badge="跨市场"
+            moreLabel="资金流向 →"
+            onMore={() => onNavigate('capital')}
+            empty={topInflows.length === 0}
+            emptyText="暂无资金流数据"
+          >
             {topInflows.map((c: any, i: number) => (
               <div key={i} className="flex items-center justify-between py-1.5 border-b border-border/10 last:border-0">
                 <span className="text-xs text-foreground truncate">{c.label}</span>
@@ -182,16 +206,21 @@ export function OverviewTab({ data, onNavigate }: Props) {
 }
 
 function FocusCard({
-  icon: Icon, title, onMore, empty, emptyText, children,
+  icon: Icon, title, badge, moreLabel, onMore, empty, emptyText, children,
 }: {
-  icon: any; title: string; onMore: () => void; empty: boolean; emptyText: string; children: React.ReactNode
+  icon: any; title: string; badge?: string; moreLabel?: string; onMore: () => void; empty: boolean; emptyText: string; children: React.ReactNode
 }) {
   return (
     <div className="glass-card rounded-lg overflow-hidden flex flex-col">
       <div className="px-3 py-2 border-b border-border/30 flex items-center gap-2">
         <Icon className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-xs font-semibold text-foreground">{title}</span>
-        <button onClick={onMore} className="ml-auto text-[10px] text-primary hover:underline">更多</button>
+        {badge && (
+          <span className="text-[10px] font-mono text-muted-foreground/70 ml-0.5">{badge}</span>
+        )}
+        <button onClick={onMore} className="ml-auto text-[10px] text-primary hover:underline">
+          {moreLabel || '更多'}
+        </button>
       </div>
       <div className="p-3 flex-1">
         {empty ? <div className="text-[11px] text-muted-foreground/70 py-4 text-center">{emptyText}</div> : children}

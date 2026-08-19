@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Radio, Info } from 'lucide-react'
+import { Radio } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { RadarInfoPanel } from './event-panels'
 import { useEChart, ECHART_DARK } from '@/hooks/use-echart'
@@ -72,9 +72,21 @@ export function MacroRiskRadar({
       <div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2">
         <Radio className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">宏观风险雷达</span>
-        <button onClick={() => setRadarInfo(true)} className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-muted-foreground bg-secondary/30 hover:bg-secondary/60 px-2 py-0.5 rounded-full">
-          <Info className="h-3 w-3" /><span>算法</span>
-        </button>
+        {/* 顶部右侧切换按钮组：指标说明 / 算法（对齐 Figma 设计稿） */}
+        <div className="ml-auto flex items-center bg-secondary/40 rounded-full p-0.5 text-[10px]">
+          <button
+            onClick={() => setRadarInfo(true)}
+            className="px-2.5 py-0.5 rounded-full font-medium transition-colors bg-secondary text-foreground/90 shadow-sm"
+          >
+            指标说明
+          </button>
+          <button
+            onClick={() => setRadarInfo(true)}
+            className="px-2.5 py-0.5 rounded-full font-medium transition-colors text-muted-foreground hover:text-foreground"
+          >
+            算法
+          </button>
+        </div>
       </div>
       {radarInfo && <RadarInfoPanel radarData={radar} onClose={() => setRadarInfo(false)} />}
       <div className="p-1 h-44">
