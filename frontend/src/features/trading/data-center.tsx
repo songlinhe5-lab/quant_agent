@@ -1,403 +1,91 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
-import { TrendingUp, Loader2, Clock, CalendarDays } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
-import { apiClient, getValidAccessToken, getWsBaseUrl } from '@/lib/api-client'
-import type { CapitalFlowItem } from '@/services/mock'
+import { LayoutGrid, Coins, CalendarRange, Star } from 'lucide-react'
+import { useDashboardData, type HubTab } from '@/features/data-center/use-dashboard-data'
+import { OverviewTab } from '@/features/data-center/data-center-overview'
+import { CapitalFlowTab } from '@/features/data-center/data-center-capital-flow'
+import { CalendarsTab } from '@/features/data-center/data-center-calendars'
+import { WatchlistTab } from '@/features/data-center/data-center-watchlist'
+import { MarketClocks } from '@/features/data-center/shared'
 import { useSystemStore } from '@/stores/useSystemStore'
-import { useToast } from '@/hooks/use-toast'
-import { useKeepAliveActive } from '@/components/layout/keep-alive-context'
-import { MarketClocks, AssetButton, playAlertSound } from '@/features/data-center/shared'
-import { CapitalFlowPanel } from '@/features/data-center/capital-flow'
-import { MarketSentimentPanel } from '@/features/data-center/market-sentiment'
-import { MacroChartPanel } from '@/features/data-center/macro-chart'
-import { MacroRiskRadar } from '@/features/data-center/macro-risk-radar'
-import { EconomicCalendar } from '@/features/data-center/economic-calendar'
-import { EarningsCalendar } from '@/features/data-center/earnings-calendar'
-import { NewsStream } from '@/features/data-center/news-stream'
-import { GlobalStyle } from '@/features/data-center/global-style'
-import { CalendarsModule } from '@/features/calendars/module'
-import { MarginTradingPanel, type MarginMarketData } from '@/features/data-center/margin-trading'
-import { SectorFlowPanel, type SectorFundFlowData } from '@/features/data-center/sector-flow'
-import { CapitalDistributionPanel } from '@/features/data-center/capital-distribution-panel'
-import { SectorHeatmapPanel } from '@/features/data-center/sector-heatmap-panel'
-import { AnalystVsFundamentalPanel } from '@/features/data-center/analyst-vs-fundamental-panel'
-import { ShortSellingPanel } from '@/features/data-center/short-selling-panel'
-import { OrderBookPanel } from '@/features/data-center/order-book-panel'
-import { MarketSnapshotPanel } from '@/features/data-center/market-snapshot-panel'
-import { StockBasicInfoPanel } from '@/features/data-center/stock-basicinfo-panel'
+
+const WS_STATUS = {
+  CONNECTED: { dot: 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse', text: '实时推送已连接', color: 'text-emerald-400' },
+  CONNECTING: { dot: 'bg-amber-500 animate-pulse', text: '正在连接...', color: 'text-amber-400' },
+  DISCONNECTED: { dot: 'bg-red-500', text: '推送已断开', color: 'text-red-400' },
+} as const
+
+export const DCNavTab = ({ active, id, label, icon: Icon, onClick }: { active: boolean; id: string; label: string; icon: any; onClick: () => void }) => (
+  <button
+    id={id}
+    onClick={onClick}
+    className={cn(
+      'relative flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all whitespace-nowrap',
+      active
+        ? 'bg-primary/15 text-primary shadow-sm'
+        : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50',
+    )}
+  >
+    <Icon className="h-4 w-4" />
+    {label}
+    {active && <span className="absolute -bottom-[1px] left-1/2 -translate-x-1/2 h-[2px] w-8 rounded-full bg-primary" />}
+  </button>
+)
+
+export function DataCenterContent() {
+  const [activeTab, setActiveTab] = useState<HubTab>('overview')
+  const d = useDashboardData()
+  const wsStatus = useSystemStore((s) => s.wsStatus)
+
+  const tabs: { id: HubTab; label: string; icon: any }[] = [
+    { id: 'overview', label: '概览', icon: LayoutGrid },
+    { id: 'capital', label: '资金流', icon: Coins },
+    { id: 'calendars', label: '宏观日历', icon: CalendarRange },
+    { id: 'watchlist', label: '自选个股', icon: Star },
+  ]
+
+  const handleNavigate = (tab: HubTab, _assetSymbol?: string) => setActiveTab(tab)
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border/30 bg-card/30 backdrop-blur-sm">
+        <div>
+          <h1 className="text-lg font-bold text-foreground tracking-tight">数据中心与宏观</h1>
+          <p className="text-[11px] text-muted-foreground">多源聚合 · 实时刷新</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 text-[10px] font-mono">
+            <span className={cn('h-2 w-2 rounded-full', WS_STATUS[wsStatus].dot)} />
+            <span className={cn(WS_STATUS[wsStatus].color)}>{WS_STATUS[wsStatus].text}</span>
+          </div>
+          {d.last && <span className="text-[10px] text-muted-foreground font-mono">更新 {d.last}</span>}
+          <MarketClocks />
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex items-center gap-1 px-4 pt-2 overflow-x-auto custom-scrollbar border-b border-border/20">
+        {tabs.map((t) => (
+          <DCNavTab key={t.id} active={activeTab === t.id} id={`dc-tab-${t.id}`} label={t.label} icon={t.icon} onClick={() => handleNavigate(t.id)} />
+        ))}
+        <div className="ml-auto flex items-center gap-2 pr-1">
+          {d.fetching && <span className="text-[10px] text-muted-foreground animate-pulse">同步中…</span>}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+        {activeTab === 'overview' && <OverviewTab data={d} onNavigate={handleNavigate} />}
+        {activeTab === 'capital' && <CapitalFlowTab data={d} onNavigate={handleNavigate} />}
+        {activeTab === 'calendars' && <CalendarsTab data={d} />}
+        {activeTab === 'watchlist' && <WatchlistTab data={d} />}
+      </div>
+    </div>
+  )
+}
 
 export function DataCenterModule() {
-  const setWsStatus = useSystemStore((state) => state.setWsStatus)
-  const keepAliveActive = useKeepAliveActive()
-  const [m, setM] = useState(false); const [fetching, setFetching] = useState(false); const [last, setLast] = useState(''); const [radarInfo, setRadarInfo] = useState(false); const [calendarInfo, setCalendarInfo] = useState(false); const _navigate = useNavigate();
-  const [assets, setAssets] = useState<any[]>([]); const [radar, setRadar] = useState<any[]>([]); const [events, setEvents] = useState<any[]>([]); const [news, setNews] = useState<any[]>([])
-  const [capitalFlows, setCapitalFlows] = useState<CapitalFlowItem[]>([])
-  const [sentimentInd, setSentimentInd] = useState<any>(null)
-  const [earnings, setEarnings] = useState<any[]>([])
-  const [earningsStatus, setEarningsStatus] = useState<string>('unknown')
-  const [earningsMessage, setEarningsMessage] = useState<string>('')
-  const [marginData, setMarginData] = useState<MarginMarketData[]>([])
-  const [marginStatus, setMarginStatus] = useState<string>('unknown')
-  const [sectorFlowData, setSectorFlowData] = useState<SectorFundFlowData | null>(null)
-  const [sectorFlowStatus, setSectorFlowStatus] = useState<string>('unknown')
-  const [ecoMsg, setEcoMsg] = useState('')
-  const [ecoDed, setEcoDed] = useState('')
-  const [ecoSources, setEcoSources] = useState<string[]>([])
-  const [earnDed, setEarnDed] = useState('')
-  const [visibleNewsCount, setVisibleNewsCount] = useState(5)
-  const [selectedImpacts, setSelectedImpacts] = useState<string[]>(['high', 'medium', 'low'])
-  const [selectedCountry, setSelectedCountry] = useState('all')
-  const [selectedDateFilter, setSelectedDateFilter] = useState<'past' | 'all' | 'today' | 'tomorrow'>('all')
-  const [selectedEvent, setSelectedEvent] = useState<any>(null)
-  const lastAlertedHeadline = useRef<string>('')
-  const { toast } = useToast()
-  const [hubTab, setHubTab] = useState<'overview' | 'calendars'>('overview')
-
-  useEffect(() => {
-    setM(true)
-
-    // 初始化时从 LocalStorage 恢复日历的筛选偏好
-    const savedImpacts = localStorage.getItem('quant_macro_filter_impacts')
-    if (savedImpacts !== null) {
-      try { setSelectedImpacts(JSON.parse(savedImpacts)) } catch (_e) { /* ignore parse error */ }
-    } else {
-      // 兼容旧的单一开关偏好设定
-      const savedPref = localStorage.getItem('quant_macro_filter_high_impact')
-      if (savedPref !== null) setSelectedImpacts(savedPref === 'true' ? ['high'] : ['high', 'medium', 'low'])
-    }
-
-    const savedCountry = localStorage.getItem('quant_macro_filter_country')
-    if (savedCountry !== null) setSelectedCountry(savedCountry)
-
-    const savedDateFilter = localStorage.getItem('quant_macro_filter_date')
-    if (savedDateFilter) setSelectedDateFilter(savedDateFilter as any)
-
-    let isMounted = true
-
-    const fetchDashboardData = async () => {
-      if (document.hidden) return
-      try {
-        setFetching(true)
-        // 💡 优化：直接调用后端聚合好的大盘接口，同时包含日历、财报及大模型推演结果
-        const [dashRes, flowRes, newsRes] = await Promise.allSettled([
-          apiClient.get('/macro/dashboard'),
-          apiClient.get('/macro/capital-flow'),
-          apiClient.get('/macro/news?limit=50')
-        ])
-
-        if (!isMounted) return
-
-        if (dashRes.status === 'fulfilled' && dashRes.value.data?.status === 'success') {
-          const d = dashRes.value.data.data
-          if (d.macroAssets) setAssets(d.macroAssets)
-          if (d.radarData) setRadar(d.radarData)
-          if (d.sentimentIndicators) setSentimentInd(d.sentimentIndicators)
-          if (d.economicEvents) setEvents(d.economicEvents)
-          if (d.earningsCalendar) setEarnings(d.earningsCalendar)
-          if (d.earningsStatus) setEarningsStatus(d.earningsStatus)
-          if (d.earningsMessage) setEarningsMessage(d.earningsMessage)
-          if (d.marginTrading) setMarginData(d.marginTrading)
-          if (d.marginTradingStatus) setMarginStatus(d.marginTradingStatus)
-          if (d.sectorFundFlow) setSectorFlowData(d.sectorFundFlow)
-          if (d.sectorFundFlowStatus) setSectorFlowStatus(d.sectorFundFlowStatus)
-
-          setEcoMsg(d.economicEventsMessage || '')
-          setEcoDed(d.economicEventsDeduction || '')
-          setEcoSources(d.economicEventsSources || [])
-          setEarnDed(d.earningsCalendarDeduction || '')
-
-          if (dashRes.value.data.updated_at) {
-            setLast(new Date(dashRes.value.data.updated_at).toLocaleTimeString('zh-CN', { hour12: false }))
-          }
-        }
-        if (flowRes.status === 'fulfilled' && flowRes.value.data?.status === 'success') {
-          setCapitalFlows(flowRes.value.data.data || [])
-        }
-        if (newsRes.status === 'fulfilled' && newsRes.value.data?.status === 'success') {
-          setNews(newsRes.value.data.data || [])
-        }
-      } catch (err) {
-        console.warn('仪表盘数据获取失败:', err)
-      } finally {
-        if (isMounted) setFetching(false)
-      }
-    }
-
-    fetchDashboardData()
-    const intervalId = setInterval(fetchDashboardData, 300000)
-
-    // 💡 断网与恢复重连监听机制
-    const handleOnline = () => {
-      const now = Date.now()
-      if (!(window as any).__lastOnlineToast || now - (window as any).__lastOnlineToast > 2000) {
-        toast({ title: '🌐 网络已恢复', description: '宏观数据中心已重新连接，正在同步...' })
-        ;(window as any).__lastOnlineToast = now
-      }
-      fetchDashboardData() // 刷新大类资产与日历数据
-    }
-    const handleOffline = () => {
-      const now = Date.now()
-      if (!(window as any).__lastOfflineToast || now - (window as any).__lastOfflineToast > 2000) {
-        toast({ variant: 'destructive', title: '🔌 网络连接断开', description: '当前处于离线状态，宏观数据更新已暂停。' })
-        ;(window as any).__lastOfflineToast = now
-      }
-    }
-    window.addEventListener('online', handleOnline)
-    window.addEventListener('offline', handleOffline)
-
-    return () => {
-      isMounted = false
-      clearInterval(intervalId)
-      window.removeEventListener('online', handleOnline)
-      window.removeEventListener('offline', handleOffline)
-    }
-// eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // 💡 添加手动单点刷新数据的函数 (通过 force_refresh 参数请求网关)
-  const handleManualRefresh = async () => {
-    try {
-      // 增加 force_refresh 参数向后端声明绕过部分内存缓存
-      const dashRes = await apiClient.get('/macro/dashboard?force_refresh=true')
-      if (dashRes.data?.status === 'success') {
-        const d = dashRes.data.data
-        if (d.economicEvents) setEvents(d.economicEvents)
-        if (d.economicEventsSources) setEcoSources(d.economicEventsSources)
-        if (d.earningsCalendar) setEarnings(d.earningsCalendar)
-        if (dashRes.data.updated_at) {
-          setLast(new Date(dashRes.data.updated_at).toLocaleTimeString('zh-CN', { hour12: false }))
-        }
-        toast({ title: '刷新成功', description: '已尝试获取最新发布数据' })
-      }
-    } catch (err) {
-      console.warn('手动刷新失败:', err)
-      toast({ variant: 'destructive', title: '刷新失败', description: '无法连接到数据网关' })
-    }
-  }
-
-  // 当筛选偏好发生变化时，自动持久化到 LocalStorage
-  useEffect(() => {
-    if (m) {
-      localStorage.setItem('quant_macro_filter_impacts', JSON.stringify(selectedImpacts))
-      localStorage.setItem('quant_macro_filter_country', selectedCountry)
-      localStorage.setItem('quant_macro_filter_date', selectedDateFilter)
-    }
-  }, [selectedImpacts, selectedCountry, selectedDateFilter, m])
-
-  // 从事件数据中动态提取并排序国家列表
-  const uniqueCountries = ['all', ...Array.from(new Set(events.map((ev: any) => ev.country)))].sort()
-
-  // 分区内容存在性判定：区内有有效内容才显示区标 (避免空区标误导，对齐 PROD 零幻觉红线)
-  // ⚠️ 必须放在 if (!m) return null 之前，遵守 Rules of Hooks（否则 hook 数量随 m 变化 → React #310）
-  const shortSellingHasContent = useMemo(() => {
-    // 卖空区只剩 MarginTradingPanel 三卡（A 股两融 / 港股卖空 / 美股卖空）。
-    // 任一市场有「两融余额」或「卖空指标」即认为区内有内容，显示区标。
-    const valid = (n: any) => n != null && !Number.isNaN(n)
-    const marketHasContent = (mk: any) =>
-      valid(mk.financing_balance) ||
-      valid(mk.securities_balance) ||
-      valid(mk.short_sale_volume) ||
-      valid(mk.short_volume_ratio) ||
-      valid(mk.short_interest_shares) ||
-      valid(mk.short_interest_ratio)
-    // 注意：板块资金流向 (SectorFlowPanel) 不属于卖空区，其显隐独立控制，不纳入本判定
-    return (marginData || []).some(marketHasContent)
-  }, [marginData])
-
-  const sentimentHasContent = useMemo(() => {
-    const vixOk = !!assets.find((a: any) => a.symbol === 'VIX')
-    const sentOk = !!sentimentInd && Object.keys(sentimentInd).length > 0
-    const radarOk = (radar?.length ?? 0) > 0
-    return vixOk || sentOk || radarOk
-  }, [assets, sentimentInd, radar])
-
-  // 挂载实时新闻流 WebSocket
-  useEffect(() => {
-    let ws: WebSocket | null = null
-    let _reconnectTimer: NodeJS.Timeout
-    let isUnmounted = false
-
-    const connect = async () => {
-      if (isUnmounted) return
-      // 💡 keep-alive 后台模块 / 页面隐藏时不建立 WS，避免多模块 WS 并发重连风暴
-      if (!keepAliveActive || document.visibilityState !== 'visible') return
-      setWsStatus('CONNECTING')
-
-      // 统一 Token 获取：内部自动处理过期检测 + Refresh 续期
-      const token = await getValidAccessToken()
-      const wsUrl = `${getWsBaseUrl()}/macro/news/ws` + (token ? `?token=${token}` : '')
-
-      ws = new WebSocket(wsUrl)
-
-      ws.onopen = () => {
-        if (isUnmounted) return
-        setWsStatus('CONNECTED')
-      }
-      ws.onmessage = (e) => {
-        try {
-          const msg = JSON.parse(e.data)
-          if (msg.type === 'notification') {
-            toast({
-              title: msg.message.includes('🚨') ? '服务风控报警' : '系统恢复通知',
-              description: msg.message,
-              variant: msg.message.includes('🚨') ? 'destructive' : 'default',
-            })
-          } else if (msg.type === 'live_news' && msg.data) {
-            // 定义需要触发警报的高危标签
-            const highRiskTags = ['WAR', 'CRASH', 'GEOPOLITICS', 'EMERGENCY']
-            const isHighRisk = msg.data.tags?.some((t: string) => highRiskTags.includes(t.toUpperCase()))
-
-            setNews(prev => {
-              // 基于新闻 headline 去重，防并发推两次
-              if (prev.some(n => n.headline === msg.data.headline)) return prev
-
-              // 触发高危提示音 (利用 ref 排重，并将副作用移出渲染核心栈)
-              if (isHighRisk && lastAlertedHeadline.current !== msg.data.headline) {
-                lastAlertedHeadline.current = msg.data.headline
-                setTimeout(playAlertSound, 0)
-              }
-
-              // 自动将新新闻置顶，配合 React 渲染实现瀑布流下压
-              return [msg.data, ...prev]
-            })
-          }
-        } catch (err) {
-          console.warn("News WS Error:", err)
-        }
-      }
-    }
-
-    // 延迟 1.5 秒连接，避免与首次全量渲染争抢主线程卡顿
-    const t = setTimeout(connect, 1500)
-
-    // 💡 断网恢复时主动重连 WebSocket
-    const handleOnlineWS = () => {
-      if (!keepAliveActive || document.visibilityState !== 'visible') return
-      if (ws) ws.close()
-      setTimeout(() => { if (!isUnmounted) connect() }, 500)
-    }
-    window.addEventListener('online', handleOnlineWS)
-    // 💡 页面可见性 / keep-alive 激活态变化
-    const handleVisibilityOrActive = () => {
-      if (isUnmounted) return
-      if (!keepAliveActive || document.visibilityState !== 'visible') {
-        if (ws) { ws.onclose = null; ws.close(); ws = null }
-      } else {
-        connect()
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibilityOrActive)
-
-    return () => {
-      clearTimeout(t); isUnmounted = true
-      window.removeEventListener('online', handleOnlineWS)
-      document.removeEventListener('visibilitychange', handleVisibilityOrActive)
-      ws?.close()
-    }
-// eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keepAliveActive])
-
-  if (!m) return null
-
-  // 分区标注（轻量视觉分隔，不改变面板内部结构）
-  const SectionLabel = ({ label, hint, tone = 'sky' }: { label: string; hint?: string; tone?: 'sky' | 'violet' | 'emerald' | 'amber' }) => {
-    const toneMap: Record<string, string> = {
-      sky: 'bg-sky-500 dark:bg-sky-400',
-      violet: 'bg-violet-500 dark:bg-violet-400',
-      emerald: 'bg-emerald-500 dark:bg-emerald-400',
-      amber: 'bg-amber-500 dark:bg-amber-400',
-    }
-    return (
-      <div className="flex items-center gap-2 pt-1">
-        <div className={cn('h-1.5 w-1.5 rounded-full', toneMap[tone])} />
-        <span className="text-[11px] font-semibold tracking-wide text-foreground/70">{label}</span>
-        {hint && <span className="text-[9px] font-mono text-muted-foreground/50 border border-border/30 rounded px-1.5 py-0.5">{hint}</span>}
-        <div className="flex-1 h-px bg-border/20" />
-      </div>
-    )
-  }
-
-  return (<div className="space-y-2.5">
-    {/* Title */}
-    <div className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-sky-500 dark:bg-sky-400" /><h1 className="text-base font-bold tracking-tight">数据中心与宏观</h1><span className="text-[10px] font-mono text-muted-foreground border border-border/50 rounded px-1.5 py-0.5">Macro Intelligence</span>{fetching && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground ml-2" />}{last && <div className="ml-auto flex items-center gap-1.5 text-[10px] font-mono text-muted-foreground bg-secondary/50 border border-border/30 px-2 py-1 rounded"><Clock className="h-3 w-3" /><span>{last}</span></div>}</div>
-    {/* PROD-07: Macro Hub 子Tab — 概览 / 市场日历（Calendars 模块） */}
-    <div className="flex items-center gap-1 border-b border-border/30">
-      <button onClick={() => setHubTab('overview')} className={cn('px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors', hubTab === 'overview' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}>概览</button>
-      <button onClick={() => setHubTab('calendars')} className={cn('px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors flex items-center gap-1.5', hubTab === 'calendars' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}><CalendarDays className="h-3.5 w-3.5" />市场日历</button>
-    </div>
-    {hubTab === 'overview' && (
-    <>
-    {/* 资金流 */}
-    <CapitalFlowPanel data={capitalFlows} />
-    {/* G3：主力筹码分层 + 背离信号（Futu CAPITAL_DISTRIBUTION，自包含 fetch） */}
-    <CapitalDistributionPanel ticker="HK.00700" />
-    {/* ─────────── 卖空区 (区内有内容才显示区标) ─────────── */}
-    {shortSellingHasContent && (
-      <>
-        <SectionLabel label="卖空区" hint="Margin / Short Interest" tone="amber" />
-        {/* 融资融券余额 / 卖空（A股两融 + 港股卖空 + 美股卖空，三市场并行展示） */}
-        <MarginTradingPanel data={marginData} status={marginStatus} lastUpdated={last} />
-      </>
-    )}
-    {/* 板块资金流向：独立渲染，自带空态（无数据时显示"暂无板块资金流数据"），不被卖空区判定隐藏 */}
-    {sectorFlowData && <SectorFlowPanel data={sectorFlowData} status={sectorFlowStatus} />}
-    {/* G6：板块热力图（Futu HEAT_MAP，自包含 fetch，独立显隐） */}
-    <SectorHeatmapPanel market="HK" />
-    {/* Futu 实时盘口 / 快照 / 基础信息（自包含 fetch，独立显隐） */}
-    <OrderBookPanel ticker="HK.00700" />
-    <MarketSnapshotPanel tickers="HK.00700,US.AAPL,HK.09988" />
-    <StockBasicInfoPanel market="HK" secType="STOCK" />
-    {/* ─────────── 大类资产走势 ─────────── */}
-    <SectionLabel label="大类资产走势" hint="Asset Prices" tone="sky" />
-    <div className="glass-card rounded-lg overflow-hidden"><div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2"><TrendingUp className="h-3.5 w-3.5 text-muted-foreground" /><span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">大类资产走势</span><MarketClocks /></div><div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6 gap-2 p-2 bg-slate-50/50 dark:bg-black/10">{assets.filter((a: any) => a.symbol !== 'VIX').map((a: any) => (<AssetButton key={a.symbol} asset={a} />))}</div></div>
-    {/* ─────────── 情绪区 (区内有内容才显示区标) ─────────── */}
-    {sentimentHasContent && (
-      <>
-        <SectionLabel label="情绪区" hint="VIX · Sentiment · Risk Radar" tone="violet" />
-        <div className="grid grid-cols-1 lg:grid-cols-[220px_240px] xl:grid-cols-[240px_260px] gap-2.5">
-          <MarketSentimentPanel vixData={assets.find((a: any) => a.symbol === 'VIX')} sentimentInd={sentimentInd} />
-          <MacroRiskRadar radar={radar} radarInfo={radarInfo} setRadarInfo={setRadarInfo} />
-        </div>
-      </>
-    )}
-    {/* G7：卖方共识 vs 基本面（Futu ANALYST_CONSENSUS + 基本面合并，自包含 fetch） */}
-    <AnalystVsFundamentalPanel ticker="US.AAPL" />
-    {/* F1：港股卖空拥挤度（Futu SHORT_SELLING + HKEX 交叉验证，自包含 fetch） */}
-    <ShortSellingPanel ticker="HK.00700" mode="rank" />
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
-      {/* 经济日历 */}
-      <EconomicCalendar
-        events={events}
-        calendarInfo={calendarInfo}
-        setCalendarInfo={setCalendarInfo}
-        selectedEvent={selectedEvent}
-        setSelectedEvent={setSelectedEvent}
-        selectedDateFilter={selectedDateFilter}
-        setSelectedDateFilter={setSelectedDateFilter}
-        selectedCountry={selectedCountry}
-        setSelectedCountry={setSelectedCountry}
-        selectedImpacts={selectedImpacts}
-        setSelectedImpacts={setSelectedImpacts}
-        uniqueCountries={uniqueCountries}
-        ecoMsg={ecoMsg}
-        ecoDed={ecoDed}
-        sources={ecoSources}
-        handleManualRefresh={handleManualRefresh}
-      />
-      {/* 财报日历 */}
-      <EarningsCalendar earnings={earnings} earnDed={earnDed} handleManualRefresh={handleManualRefresh} loading={fetching} status={earningsStatus} message={earningsMessage} />
-      {/* 新闻情绪 */}
-      <NewsStream news={news} visibleNewsCount={visibleNewsCount} setVisibleNewsCount={setVisibleNewsCount} />
-      {/* FRED 宏观图表查询 */}
-      <div className="col-span-1">
-        <MacroChartPanel />
-      </div>
-    </div>
-    {/* 全局动画与自定义滚动条样式 */}
-    <GlobalStyle />
-    </>
-    )}
-    {hubTab === 'calendars' && <CalendarsModule />}
-  </div>)
+  return <DataCenterContent />
 }
+

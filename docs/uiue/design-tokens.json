@@ -1,0 +1,48 @@
+{
+  "color": {
+    "bg": { "$value": "#0F0F14", "$type": "color" },
+    "panel": { "$value": "#16181F", "$type": "color" },
+    "panel-2": { "$value": "#1C1F28", "$type": "color" },
+    "border": { "$value": "#FFFFFF12", "$type": "color" },
+    "text": {
+      "primary": { "$value": "#F9FAFB", "$type": "color" },
+      "secondary": { "$value": "#9CA3AF", "$type": "color" },
+      "label": { "$value": "#6B7280", "$type": "color" }
+    },
+    "semantic": {
+      "up": { "$value": "#34D399", "$type": "color", "$description": "涨 / 流入 / 利好" },
+      "down": { "$value": "#F87171", "$type": "color", "$description": "跌 / 流出 / 利空" },
+      "warning": { "$value": "#FBBF24", "$type": "color", "$description": "警示 / STALE / 更新频率" },
+      "ai": { "$value": "#A78BFA", "$type": "color", "$description": "AI 生成内容" },
+      "neutral": { "$value": "#6B7280", "$type": "color", "$description": "持平 / 休市" },
+      "link": { "$value": "#60A5FA", "$type": "color", "$description": "跳转链接 / 次级按钮" }
+    },
+    "tint": {
+      "up": { "$value": "#34D3991F", "$type": "color" },
+      "down": { "$value": "#F871711F", "$type": "color" }
+    }
+  },
+  "radius": {
+    "card": { "$value": "12", "$type": "dimension" },
+    "frame": { "$value": "16", "$type": "dimension" },
+    "pill": { "$value": "999", "$type": "dimension" }
+  },
+  "spacing": {
+    "gap": { "$value": "12", "$type": "dimension" },
+    "page-padding": { "$value": "24", "$type": "dimension" },
+    "card-padding": { "$value": "16", "$type": "dimension" }
+  },
+  "fontSize": {
+    "hero-number": { "$value": "30", "$type": "fontSize", "$description": "大数值 24~30 粗体" },
+    "card-number": { "$value": "20", "$type": "fontSize" },
+    "section-title": { "$value": "15", "$type": "fontSize" },
+    "body": { "$value": "13", "$type": "fontSize" },
+    "label": { "$value": "12", "$type": "fontSize" },
+    "caption": { "$value": "10", "$type": "fontSize" }
+  },
+  "layout": {
+    "frame-width": { "$value": "1600", "$type": "dimension" },
+    "grid-columns": { "$value": "12", "$type": "number" },
+    "asset-grid-columns": { "$value": "6", "$type": "number" }
+  }
+}

@@ -53,7 +53,6 @@ type NavItem = {
 
 const modules: NavItem[] = [
   { url: '/data-center', name: '数据中心与宏观', label: 'Data Center', icon: Globe, domain: 'market' },
-  { url: '/fund-flow-dashboard', name: '北向与南向资金', label: 'Fund Flow', icon: ArrowRightLeft, domain: 'market' },
   { url: '/quotes', name: '行情与高频盘口', label: 'Quotes', icon: BarChart3, domain: 'market' },
   { url: '/options', name: '期权波动率曲面', label: 'Options IV', icon: Activity, domain: 'market' },
   { url: '/screener', name: '智能量化选股', label: 'Screener', icon: ScanSearch, domain: 'research' },
