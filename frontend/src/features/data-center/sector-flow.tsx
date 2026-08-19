@@ -101,7 +101,7 @@ function AShareTab({ data }: { data: SectorFundFlowData['a_share'] }) {
           {inflow.map((item, i) => (
             <div
               key={item.name}
-              className="flex items-center justify-between py-1 px-2 rounded-lg bg-emerald-500/5 hover:bg-emerald-500/10 transition-colors"
+              className="flex items-center justify-between py-1.5 transition-colors hover:bg-secondary/20"
             >
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-mono text-muted-foreground/50 w-4">{i + 1}</span>
@@ -139,7 +139,7 @@ function AShareTab({ data }: { data: SectorFundFlowData['a_share'] }) {
           {outflow.map((item, i) => (
             <div
               key={item.name}
-              className="flex items-center justify-between py-1 px-2 rounded-lg bg-red-500/5 hover:bg-red-500/10 transition-colors"
+              className="flex items-center justify-between py-1.5 transition-colors hover:bg-secondary/20"
             >
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-mono text-muted-foreground/50 w-4">{i + 1}</span>

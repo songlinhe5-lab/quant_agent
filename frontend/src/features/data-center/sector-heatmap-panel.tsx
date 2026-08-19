@@ -28,6 +28,19 @@ function toneBg(chg: number): string {
   return 'bg-[#F87171]/5 border-[#F87171]/20'
 }
 
+// 单一板块背景色（按涨跌幅返回对应背景，无边框），用于设计稿横向条带
+function heatColor(chg: number): string {
+  if (chg >= 3) return 'bg-[#34D399]/70'
+  if (chg >= 1.5) return 'bg-[#34D399]/55'
+  if (chg >= 0.5) return 'bg-[#34D399]/40'
+  if (chg > 0) return 'bg-[#34D399]/25'
+  if (chg === 0) return 'bg-slate-500/40'
+  if (chg > -0.5) return 'bg-[#F87171]/25'
+  if (chg > -1.5) return 'bg-[#F87171]/40'
+  if (chg > -3) return 'bg-[#F87171]/55'
+  return 'bg-[#F87171]/70'
+}
+
 function sentimentTone(s?: string): string {
   if (s === 'risk_on') return 'text-emerald-400'
   if (s === 'risk_off') return 'text-red-400'
@@ -91,58 +104,68 @@ export function SectorHeatmapPanel({ market = 'HK' }: { market?: string }) {
 
   return (
     <div className="glass-card rounded-lg overflow-hidden">
+      {/* 标题区：紧凑摘要 + 右上领涨/领跌（对齐 Figma 设计稿） */}
       <div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">板块热力图</span>
-        <span className="font-mono text-xs text-foreground/80">{data.market || market}</span>
-        {data.sentiment && (
-          <span className={'ml-auto text-[10px] font-mono font-bold ' + sentimentTone(data.sentiment)}>
-            情绪: {data.sentiment.toUpperCase()}
-          </span>
-        )}
+        <span className="font-mono text-[10px] text-foreground/80 ml-1">
+          {data.market || market} · 涨 {data.up ?? '--'} · 平 {data.flat ?? '--'} · 跌 {data.down ?? '--'}
+        </span>
+        {/* 右上领涨/领跌摘要 */}
+        <span className="ml-auto text-[10px] font-mono">
+          {gainers[0] && (
+            <span className="text-[#10B981] dark:text-[#34D399]">
+              领涨 {gainers[0].name} +{gainers[0].change.toFixed(2)}%
+            </span>
+          )}
+          {gainers[0] && losers[0] && <span className="mx-1 text-muted-foreground/60">·</span>}
+          {losers[0] && (
+            <span className="text-[#EF4444] dark:text-[#F87171]">
+              领跌 {losers[0].name} {losers[0].change >= 0 ? '+' : ''}{losers[0].change.toFixed(2)}%
+            </span>
+          )}
+        </span>
       </div>
-      <div className="grid grid-cols-2 gap-3 p-3">
-        <div className="space-y-1.5">
-          <div className="text-[10px] text-slate-500 mb-1">板块涨跌分布（{sectors.length}）</div>
-          {sectors.slice(0, 12).map((s, i) => (
-            <div key={i} className={'flex items-center justify-between px-2 py-1 rounded border text-[11px] ' + toneBg(s.avg_change)}>
-              <span className="truncate text-foreground/80">{s.sector}</span>
-              <span className="font-mono tabular-nums">{s.avg_change >= 0 ? '+' : ''}{s.avg_change.toFixed(2)}%</span>
-            </div>
-          ))}
-        </div>
-        <div className="space-y-2">
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="rounded border border-border/30 bg-card/40 py-1">
-              <div className="text-[9px] text-slate-500">涨</div>
-              <div className="text-sm font-bold text-[#34D399]">{data.up ?? '--'}</div>
-            </div>
-            <div className="rounded border border-border/30 bg-card/40 py-1">
-              <div className="text-[9px] text-slate-500">平</div>
-              <div className="text-sm font-bold text-slate-300">{data.flat ?? '--'}</div>
-            </div>
-            <div className="rounded border border-border/30 bg-card/40 py-1">
-              <div className="text-[9px] text-slate-500">跌</div>
-              <div className="text-sm font-bold text-[#F87171]">{data.down ?? '--'}</div>
-            </div>
+
+      <div className="p-3 space-y-3">
+        {/* 顶部：横向连续热力条带（按 avg_change 排序着色） */}
+        {sectors.length > 0 && (
+          <div className="flex h-2 w-full rounded overflow-hidden">
+            {[...sectors]
+              .sort((a, b) => b.avg_change - a.avg_change)
+              .map((s, i) => (
+                <div
+                  key={i}
+                  className={heatColor(s.avg_change) + ' flex-1'}
+                  title={`${s.sector} ${s.avg_change >= 0 ? '+' : ''}${s.avg_change.toFixed(2)}%`}
+                />
+              ))}
           </div>
-          <div className="text-[10px] text-slate-500">领涨</div>
-          {gainers.slice(0, 4).map((g, i) => (
-            <div key={i} className="flex items-center justify-between text-[11px] px-2 py-0.5 rounded bg-[#34D399]/5">
-              <span className="truncate text-foreground/80">{g.name}</span>
-              <span className="font-mono text-[#34D399]">+{g.change.toFixed(2)}%</span>
-            </div>
-          ))}
-          <div className="text-[10px] text-slate-500 mt-1">领跌</div>
-          {losers.slice(0, 4).map((l, i) => (
-            <div key={i} className="flex items-center justify-between text-[11px] px-2 py-0.5 rounded bg-[#F87171]/5">
-              <span className="truncate text-foreground/80">{l.name}</span>
-              <span className="font-mono text-[#F87171]">{l.change.toFixed(2)}%</span>
+        )}
+
+        {/* 下方：板块方块（8 个，按涨跌从绿到红排列） */}
+        <div className="grid grid-cols-8 gap-1.5">
+          {sectors.slice(0, 8).map((s, i) => (
+            <div
+              key={i}
+              className={'flex flex-col items-center justify-center py-2 px-1 rounded border ' + toneBg(s.avg_change)}
+              title={`${s.sector} ${s.avg_change >= 0 ? '+' : ''}${s.avg_change.toFixed(2)}%`}
+            >
+              <div className="text-[11px] font-semibold text-foreground truncate w-full text-center">{s.sector}</div>
+              <div className="text-[10px] font-mono mt-0.5">
+                {s.avg_change >= 0 ? '+' : ''}{s.avg_change.toFixed(2)}%
+              </div>
             </div>
           ))}
         </div>
       </div>
-      <div className="px-3 py-2 border-t border-border/20 text-[9px] text-muted-foreground text-center bg-secondary/10">
-        数据源：{data.source || 'Futu 板块热力图'} · 涨跌比 {data.breadth_ratio != null ? (data.breadth_ratio * 100).toFixed(1) + '%' : '--'} · 更新于 {data.updated_at || '实时'}
+
+      {/* 底部 footer（对齐设计稿：左数据源 / 右更新于实时） */}
+      <div className="px-4 py-1.5 border-t border-border/20 flex items-center justify-between text-[10px] text-muted-foreground">
+        <span>数据源:{data.source || 'Futu'}</span>
+        <span className="flex items-center gap-1.5">
+          更新于
+          <span className="font-bold text-[#10B981] dark:text-[#34D399]">实时</span>
+        </span>
       </div>
     </div>
   )
