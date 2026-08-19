@@ -63,7 +63,7 @@ export function DataCenterContent() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 px-4 pt-2 overflow-x-auto custom-scrollbar border-b border-border/20">
+      <div className="flex items-center gap-1 px-4 pt-2 overflow-x-hidden border-b border-border/20">
         {tabs.map((t) => (
           <DCNavTab key={t.id} active={activeTab === t.id} id={`dc-tab-${t.id}`} label={t.label} icon={t.icon} onClick={() => handleNavigate(t.id)} />
         ))}

@@ -193,9 +193,13 @@ export function useDashboardData() {
       if (!keepAliveActive || document.visibilityState !== 'visible') return
       setWsStatus('CONNECTING')
       const token = await getValidAccessToken()
-      const wsUrl = `${getWsBaseUrl()}/macro/news/ws` + (token ? `?token=${token}` : '')
+      // 后端 WS 挂载在 /api/v1 下（与 use-market-data 一致），否则 404 导致 onopen 永不触发
+      const wsUrl = `${getWsBaseUrl()}/api/v1/macro/news/ws` + (token ? `?token=${token}` : '')
       ws = new WebSocket(wsUrl)
       ws.onopen = () => { if (!isUnmounted) setWsStatus('CONNECTED') }
+      // 连接失败/断开时状态回落，避免永久卡在 CONNECTING
+      ws.onerror = () => { if (!isUnmounted) setWsStatus('DISCONNECTED') }
+      ws.onclose = () => { if (!isUnmounted) setWsStatus('DISCONNECTED') }
       ws.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data)

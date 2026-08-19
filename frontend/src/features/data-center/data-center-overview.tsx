@@ -38,18 +38,25 @@ export function OverviewTab({ data, onNavigate }: Props) {
   }, [data.assets, cat])
 
   // C 区·今日焦点 派生
+  // 注意：后端 economicEvents 字段为 impact(非 importance/level)、date 为 UTC ISO
   const todayHighEvents = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10)
     return (data.events || [])
-      .filter((ev: any) => (ev.importance === 'high' || ev.level === 'high') && String(ev.date || ev.time || '').slice(0, 10) === today)
+      .filter((ev: any) => String(ev.impact || '').toLowerCase() === 'high')
+      .map((ev: any) => ({ ev, day: String(ev.date || ev.time || '').slice(0, 10) }))
+      .sort((a: any, b: any) => a.day.localeCompare(b.day))
+      // 优先显示今天及之后最近的高影响事件，避免仅因"严格限今天"导致空态
+      .filter((x: any) => x.day >= today)
       .slice(0, 4)
+      .map((x: any) => x.ev)
   }, [data.events])
 
+  // 注意：earningsCalendar 字段为 date/symbol/name_cn/epsEstimate/epsActual(非 reportDate/ticker/epsEstimated)
   const upcomingEarnings = useMemo(() => {
-    const now = Date.now()
+    const today = new Date().toISOString().slice(0, 10)
     return (data.earnings || [])
-      .filter((e: any) => e.reportDate && new Date(e.reportDate).getTime() >= now)
-      .sort((a: any, b: any) => new Date(a.reportDate).getTime() - new Date(b.reportDate).getTime())
+      .filter((e: any) => e.date && String(e.date).slice(0, 10) >= today)
+      .sort((a: any, b: any) => String(a.date).localeCompare(String(b.date)))
       .slice(0, 4)
   }, [data.earnings])
 
@@ -128,30 +135,30 @@ export function OverviewTab({ data, onNavigate }: Props) {
           <h2 className="text-sm font-semibold text-foreground">今日焦点</h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {/* 经济日历今日 high */}
-          <FocusCard icon={CalendarClock} title="经济日历 · 今日重磅" onMore={() => onNavigate('calendars')} empty={todayHighEvents.length === 0} emptyText="今日无高影响事件">
+          {/* 经济日历今日 high（后端字段 impact/date/event） */}
+          <FocusCard icon={CalendarClock} title="经济日历 · 重磅事件" onMore={() => onNavigate('calendars')} empty={todayHighEvents.length === 0} emptyText="暂无高影响事件">
             {todayHighEvents.map((ev: any, i: number) => (
               <div key={i} className="flex items-start gap-2 py-1.5 border-b border-border/10 last:border-0">
                 <span className="mt-1 h-1.5 w-1.5 rounded-full bg-rose-400/70 flex-shrink-0" />
                 <div className="min-w-0">
-                  <div className="text-xs text-foreground truncate">{ev.title || ev.name}</div>
-                  <div className="text-[10px] text-muted-foreground">{ev.country} · {ev.time || ev.date}</div>
+                  <div className="text-xs text-foreground truncate">{ev.event || ev.name}</div>
+                  <div className="text-[10px] text-muted-foreground">{ev.country} · {String(ev.date || '').slice(0, 10)}</div>
                 </div>
               </div>
             ))}
           </FocusCard>
 
-          {/* 本周财报前瞻 */}
+          {/* 本周财报前瞻（后端字段 date/symbol/name_cn/epsEstimate） */}
           <FocusCard icon={BarChart3} title="本周核心财报" onMore={() => onNavigate('calendars')} empty={upcomingEarnings.length === 0} emptyText="暂无临近财报">
             {upcomingEarnings.map((e: any, i: number) => (
               <div key={i} className="flex items-center justify-between py-1.5 border-b border-border/10 last:border-0">
                 <div className="min-w-0">
-                  <div className="text-xs font-semibold text-foreground truncate">{e.ticker}</div>
-                  <div className="text-[10px] text-muted-foreground truncate">{e.name}</div>
+                  <div className="text-xs font-semibold text-foreground truncate">{e.symbol}</div>
+                  <div className="text-[10px] text-muted-foreground truncate">{e.name_cn || e.symbol}</div>
                 </div>
                 <div className="text-right flex-shrink-0">
-                  <div className="text-[10px] text-muted-foreground font-mono">{e.reportDate}</div>
-                  <div className="text-[10px] text-amber-400">{e.epsEstimated != null ? `EPS 预期 ${e.epsEstimated}` : ''}</div>
+                  <div className="text-[10px] text-muted-foreground font-mono">{e.date}</div>
+                  <div className="text-[10px] text-amber-400">{e.epsEstimate != null ? `EPS 预期 ${e.epsEstimate}` : ''}</div>
                 </div>
               </div>
             ))}
