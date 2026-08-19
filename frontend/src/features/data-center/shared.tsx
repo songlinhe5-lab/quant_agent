@@ -25,8 +25,8 @@ export function getHighlightColor(term: string) {
   const bullish = ['多头', '做多', '看涨', '新高', '上涨', '飙升', '超预期', '降息', '降准', 'bullish', 'long', 'surge', 'rate cut']
   const bearish = ['空头', '做空', '看跌', '新低', '下跌', '暴跌', '低于预期', '加息', 'bearish', 'short', 'plunge', 'rate hike']
 
-  if (bullish.includes(t)) return 'text-[#059669] dark:text-[#0ecb81] bg-[#0ecb81]/10'
-  if (bearish.includes(t)) return 'text-[#e11d48] dark:text-[#f6465d] bg-[#f6465d]/10'
+  if (bullish.includes(t)) return 'text-[#10B981] dark:text-[#34D399] bg-[#34D399]/10'
+  if (bearish.includes(t)) return 'text-[#EF4444] dark:text-[#F87171] bg-[#F87171]/10'
   return 'text-sky-600 dark:text-sky-400 bg-sky-500/10' // 默认中性蓝色
 }
 
@@ -59,7 +59,7 @@ export function MiniTrendLine({ data, isPositive }: { data: number[], isPositive
   const pts = data.map((d, i) => `${(i / (data.length - 1)) * 48},${20 - ((d - min) / range) * 16}`).join(' L ')
   return (
     <svg width="48" height="20" viewBox="0 0 48 20" className="overflow-visible" aria-hidden="true">
-      <path d={`M ${pts}`} fill="none" stroke={isPositive ? (isDark ? '#0ecb81' : '#059669') : (isDark ? '#f6465d' : '#e11d48')} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={`M ${pts}`} fill="none" stroke={isPositive ? (isDark ? '#34D399' : '#10B981') : (isDark ? '#F87171' : '#EF4444')} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -125,12 +125,12 @@ export function AssetButton({ asset }: { asset: any }) {
           </div>
           <span className="text-xs font-bold text-foreground/90 mt-0.5 truncate">{asset.name}</span>
         </div>
-        <div className={cn('px-1.5 py-0.5 rounded-md flex items-center gap-0.5 text-[9px] font-mono font-bold flex-shrink-0', (asset.change ?? 0) >= 0 ? 'bg-[#0ecb81]/15 text-[#059669] dark:text-[#0ecb81]' : 'bg-[#f6465d]/15 text-[#e11d48] dark:text-[#f6465d]')}>
+        <div className={cn('px-1.5 py-0.5 rounded-md flex items-center gap-0.5 text-[9px] font-mono font-bold flex-shrink-0', (asset.change ?? 0) >= 0 ? 'bg-[#34D399]/15 text-[#10B981] dark:text-[#34D399]' : 'bg-[#F87171]/15 text-[#EF4444] dark:text-[#F87171]')}>
           {(asset.change ?? 0) >= 0 ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}{(asset.change ?? 0) >= 0 ? '+' : ''}{(asset.change ?? 0).toFixed(2)}%
         </div>
       </div>
       <div className="flex items-end justify-between w-full mt-auto">
-        <span className={cn('text-sm font-bold font-mono tabular-nums tracking-tight transition-colors duration-500', flash === 'up' ? 'text-[#059669] dark:text-[#0ecb81]' : flash === 'down' ? 'text-[#e11d48] dark:text-[#f6465d]' : 'text-foreground')}>
+        <span className={cn('text-sm font-bold font-mono tabular-nums tracking-tight transition-colors duration-500', flash === 'up' ? 'text-[#10B981] dark:text-[#34D399]' : flash === 'down' ? 'text-[#EF4444] dark:text-[#F87171]' : 'text-foreground')}>
           {asset.value != null ? asset.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--'}
         </span>
         {asset.sparkline && <div className="opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0"><MiniTrendLine data={asset.sparkline} isPositive={asset.change >= 0} /></div>}

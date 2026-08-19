@@ -130,11 +130,11 @@ export function OptionStrategyLabPanel({ ticker = 'US.AAPL', strategyType = 'STR
         </div>
         <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2">
           <div className="text-[10px] text-slate-500">最大盈利</div>
-          <div className="text-sm font-semibold font-mono text-[#0ecb81]">{maxProfit != null ? (maxProfit >= 0 ? '+' : '') + maxProfit.toFixed(2) : '∞'}</div>
+          <div className="text-sm font-semibold font-mono text-[#34D399]">{maxProfit != null ? (maxProfit >= 0 ? '+' : '') + maxProfit.toFixed(2) : '∞'}</div>
         </div>
         <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2">
           <div className="text-[10px] text-slate-500">最大亏损</div>
-          <div className="text-sm font-semibold font-mono text-[#f6465d]">{maxLoss != null ? (maxLoss >= 0 ? '+' : '') + maxLoss.toFixed(2) : '∞'}</div>
+          <div className="text-sm font-semibold font-mono text-[#F87171]">{maxLoss != null ? (maxLoss >= 0 ? '+' : '') + maxLoss.toFixed(2) : '∞'}</div>
         </div>
       </div>
       <div ref={ref} className="h-[280px] w-full px-2 pb-2" />

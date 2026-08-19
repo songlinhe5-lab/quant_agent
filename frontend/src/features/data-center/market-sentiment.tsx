@@ -49,10 +49,10 @@ export function MarketSentimentPanel({ vixData, sentimentInd }: { vixData: any, 
   let fgLabel = fgScore == null ? '暂无数据' : (fgStatus || '中性');
   let fgColor = 'text-muted-foreground';
   if (fgScore != null) {
-    if (fgScore >= 75) { fgColor = 'text-[#059669] dark:text-[#0ecb81]'; }
-    else if (fgScore >= 55) { fgColor = 'text-[#059669] dark:text-[#0ecb81]'; }
-    else if (fgScore <= 25) { fgColor = 'text-[#e11d48] dark:text-[#f6465d]'; }
-    else if (fgScore <= 45) { fgColor = 'text-[#e11d48] dark:text-[#f6465d]'; }
+    if (fgScore >= 75) { fgColor = 'text-[#10B981] dark:text-[#34D399]'; }
+    else if (fgScore >= 55) { fgColor = 'text-[#10B981] dark:text-[#34D399]'; }
+    else if (fgScore <= 25) { fgColor = 'text-[#EF4444] dark:text-[#F87171]'; }
+    else if (fgScore <= 45) { fgColor = 'text-[#EF4444] dark:text-[#F87171]'; }
     else { fgColor = 'text-amber-500'; }
   }
 
@@ -84,16 +84,16 @@ export function MarketSentimentPanel({ vixData, sentimentInd }: { vixData: any, 
             </div>
             <div className="flex items-baseline gap-1.5"><span className={cn("text-2xl font-bold font-mono tabular-nums leading-none transition-colors duration-500", fgColor)}>{fgScore ?? 'N/A'}</span><span className={cn("text-[10px] font-bold uppercase transition-colors duration-500", fgColor)}>{fgLabel}</span></div>
           </div>
-          <div className="relative h-2 w-full rounded-full bg-gradient-to-r from-[#e11d48] via-amber-500 to-[#059669] dark:from-[#f6465d] dark:to-[#0ecb81] opacity-90 overflow-hidden">
+          <div className="relative h-2 w-full rounded-full bg-gradient-to-r from-[#EF4444] via-amber-500 to-[#10B981] dark:from-[#F87171] dark:to-[#34D399] opacity-90 overflow-hidden">
              <div className="absolute top-0 bottom-0 w-1 bg-white shadow-[0_0_5px_rgba(255,255,255,1)] rounded-full transition-all duration-1000 ease-out" style={{ left: `${fgScore ?? 0}%`, transform: 'translateX(-50%)' }} />
           </div>
         </div>
         <div className="flex flex-col gap-1.5 pt-3 border-t border-border/20">
-          <div className="flex items-center justify-between"><span className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1"><Activity className="h-3 w-3" /> 恐慌指数 (VIX)</span>{vixData && vixData.value != null ? (<div className="flex items-center gap-2"><div className="opacity-60"><MiniTrendLine data={vixData.sparkline || mockSparklines.vix} isPositive={(vixData.change ?? 0) <= 0} /></div><div className="flex items-baseline gap-1.5"><span className="text-sm font-bold font-mono tabular-nums">{vixData.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span><span className={cn("text-[10px] font-mono font-bold", (vixData.change ?? 0) >= 0 ? "text-[#e11d48] dark:text-[#f6465d]" : "text-[#059669] dark:text-[#0ecb81]")}>{(vixData.change ?? 0) >= 0 ? '+' : ''}{(vixData.change ?? 0).toFixed(2)}%</span></div></div>) : (<span className="text-xs text-muted-foreground">--</span>)}</div>
+          <div className="flex items-center justify-between"><span className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1"><Activity className="h-3 w-3" /> 恐慌指数 (VIX)</span>{vixData && vixData.value != null ? (<div className="flex items-center gap-2"><div className="opacity-60"><MiniTrendLine data={vixData.sparkline || mockSparklines.vix} isPositive={(vixData.change ?? 0) <= 0} /></div><div className="flex items-baseline gap-1.5"><span className="text-sm font-bold font-mono tabular-nums">{vixData.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span><span className={cn("text-[10px] font-mono font-bold", (vixData.change ?? 0) >= 0 ? "text-[#EF4444] dark:text-[#F87171]" : "text-[#10B981] dark:text-[#34D399]")}>{(vixData.change ?? 0) >= 0 ? '+' : ''}{(vixData.change ?? 0).toFixed(2)}%</span></div></div>) : (<span className="text-xs text-muted-foreground">--</span>)}</div>
           <div className="text-[9px] text-muted-foreground leading-relaxed mt-1">{vixData?.value < 15 ? '隐含波动率处于低位，市场风险偏好较高，单边或缓涨行情为主。' : vixData?.value > 25 ? '隐含波动率大幅飙升，避险情绪浓厚，警惕资产价格尾部风险。' : '波动率处于历史均值区间，多空博弈分歧加剧，市场呈震荡态势。'}</div>
           <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-border/10">
-            <div className="flex flex-col gap-1"><div className="flex items-center justify-between"><span className="text-[9px] text-muted-foreground">期权 P/C Ratio</span><div className="opacity-60 scale-75 origin-right"><MiniTrendLine data={sentimentInd?.pc_ratio?.sparkline || mockSparklines.pc} isPositive={pcVal < 1.0} /></div></div><span className="text-xs font-mono font-bold text-foreground -mt-1">{pcVal != null ? pcVal.toFixed(2) : '--'} <span className={cn("text-[8px] ml-1", pcVal != null && pcVal < 1.0 ? "text-[#059669] dark:text-[#0ecb81]" : "text-[#e11d48] dark:text-[#f6465d]")}>{pcStatus}</span></span></div>
-            <div className="flex flex-col gap-1"><div className="flex items-center justify-between"><span className="text-[9px] text-muted-foreground">高收益债利差</span><div className="opacity-60 scale-75 origin-right"><MiniTrendLine data={sentimentInd?.credit_spread?.sparkline || mockSparklines.cs} isPositive={csVal < 4.5} /></div></div><span className="text-xs font-mono font-bold text-foreground -mt-1">{csVal != null ? csVal.toFixed(2) : '--'}% <span className={cn("text-[8px] ml-1", csVal != null && csVal < 4.5 ? "text-[#059669] dark:text-[#0ecb81]" : "text-[#e11d48] dark:text-[#f6465d]")}>{csStatus}</span></span></div>
+            <div className="flex flex-col gap-1"><div className="flex items-center justify-between"><span className="text-[9px] text-muted-foreground">期权 P/C Ratio</span><div className="opacity-60 scale-75 origin-right"><MiniTrendLine data={sentimentInd?.pc_ratio?.sparkline || mockSparklines.pc} isPositive={pcVal < 1.0} /></div></div><span className="text-xs font-mono font-bold text-foreground -mt-1">{pcVal != null ? pcVal.toFixed(2) : '--'} <span className={cn("text-[8px] ml-1", pcVal != null && pcVal < 1.0 ? "text-[#10B981] dark:text-[#34D399]" : "text-[#EF4444] dark:text-[#F87171]")}>{pcStatus}</span></span></div>
+            <div className="flex flex-col gap-1"><div className="flex items-center justify-between"><span className="text-[9px] text-muted-foreground">高收益债利差</span><div className="opacity-60 scale-75 origin-right"><MiniTrendLine data={sentimentInd?.credit_spread?.sparkline || mockSparklines.cs} isPositive={csVal < 4.5} /></div></div><span className="text-xs font-mono font-bold text-foreground -mt-1">{csVal != null ? csVal.toFixed(2) : '--'}% <span className={cn("text-[8px] ml-1", csVal != null && csVal < 4.5 ? "text-[#10B981] dark:text-[#34D399]" : "text-[#EF4444] dark:text-[#F87171]")}>{csStatus}</span></span></div>
           </div>
         </div>
       </div>

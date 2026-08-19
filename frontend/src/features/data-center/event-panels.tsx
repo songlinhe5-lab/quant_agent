@@ -72,7 +72,7 @@ export function EventDetailPanel({ event, onClose }: { event: any; onClose: () =
       const invert = /失业|unemployment|jobless|claims/.test(String(evName).toLowerCase());
       const isBetter = aNum > fNum;
       deviationArrow = aNum > fNum ? "↑" : "↓";
-      actualColor = (isBetter && !invert) || (!isBetter && invert) ? "text-[#059669] dark:text-[#0ecb81]" : "text-[#e11d48] dark:text-[#f6465d]";
+      actualColor = (isBetter && !invert) || (!isBetter && invert) ? "text-[#10B981] dark:text-[#34D399]" : "text-[#EF4444] dark:text-[#F87171]";
     }
   }
 
@@ -91,17 +91,17 @@ export function EventDetailPanel({ event, onClose }: { event: any; onClose: () =
       <div className="w-full max-w-3xl h-full max-h-[85vh] bg-card border border-border/40 rounded-lg overflow-hidden flex flex-col shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-3 py-2 border-b border-border/30 bg-secondary/20">
           <h3 className="text-xs font-bold flex items-center gap-1.5 truncate pr-2">
-            <AlertTriangle className={cn("h-3 w-3 shrink-0", isHigh ? "text-[#e11d48] dark:text-[#f6465d]" : isLow ? "text-sky-500 dark:text-sky-400" : "text-amber-500")} />
+            <AlertTriangle className={cn("h-3 w-3 shrink-0", isHigh ? "text-[#EF4444] dark:text-[#F87171]" : isLow ? "text-sky-500 dark:text-sky-400" : "text-amber-500")} />
             <span className="truncate">{evName}</span>
           </h3>
           <button onClick={onClose} className="p-1 rounded hover:bg-secondary/50 text-muted-foreground hover:text-foreground shrink-0" aria-label="关闭"><X className="h-3.5 w-3.5" /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded", isHigh ? "bg-[#f6465d]/15 text-[#e11d48] dark:text-[#f6465d]" : "bg-secondary text-muted-foreground")}>{event.country}</span>
+            <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded", isHigh ? "bg-[#F87171]/15 text-[#EF4444] dark:text-[#F87171]" : "bg-secondary text-muted-foreground")}>{event.country}</span>
             <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", macroSourceMeta(event.source).cls)}>{macroSourceMeta(event.source).label}</span>
             <span className="text-[10px] text-muted-foreground font-mono bg-secondary/40 px-2 py-0.5 rounded">{dd} {dt}</span>
-            <span className={cn('inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold tracking-widest', isHigh ? 'text-[#e11d48] dark:text-[#f6465d]' : isLow ? 'text-sky-600/70 dark:text-sky-400/70' : 'text-amber-500/70 dark:text-amber-400/70')}>{isHigh ? '●●●' : isLow ? '●' : '●●'}</span>
+            <span className={cn('inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold tracking-widest', isHigh ? 'text-[#EF4444] dark:text-[#F87171]' : isLow ? 'text-sky-600/70 dark:text-sky-400/70' : 'text-amber-500/70 dark:text-amber-400/70')}>{isHigh ? '●●●' : isLow ? '●' : '●●'}</span>
           </div>
 
           <div className="grid grid-cols-3 gap-2 p-2.5 bg-secondary/20 rounded-lg border border-border/30">

@@ -133,14 +133,14 @@ function FlowCard({ title, point, accent }: { title: string; point: FlowPoint | 
       <div className="flex items-end justify-between gap-3">
         <div className="flex flex-col">
           <span className="text-[10px] text-muted-foreground/70 mb-0.5">{periodLabel}净流入</span>
-          <span className={cn('text-2xl font-bold font-mono tabular-nums', positive ? 'text-[#059669] dark:text-[#0ecb81]' : 'text-[#e11d48] dark:text-[#f6465d]')}>
+          <span className={cn('text-2xl font-bold font-mono tabular-nums', positive ? 'text-[#10B981] dark:text-[#34D399]' : 'text-[#EF4444] dark:text-[#F87171]')}>
             {fmt(raw)}
             <span className="text-xs ml-1 opacity-70">{point.unit || ''}</span>
           </span>
         </div>
         {spark && spark.length >= 2 && (
           <div className="opacity-80">
-            {positive ? <TrendingUp className="h-4 w-4 text-[#0ecb81]" /> : <TrendingDown className="h-4 w-4 text-[#f6465d]" />}
+            {positive ? <TrendingUp className="h-4 w-4 text-[#34D399]" /> : <TrendingDown className="h-4 w-4 text-[#F87171]" />}
             <div className="mt-1"><MiniTrendLine data={spark} isPositive={positive} /></div>
           </div>
         )}
@@ -310,12 +310,12 @@ function HkConnectCard({ data }: { data: HkConnectData | null }) {
       <div className="flex items-end justify-between gap-3">
         <div className="flex flex-col">
           <span className="text-[10px] text-muted-foreground/70 mb-0.5">南向合计净买入</span>
-          <span className={cn('text-2xl font-bold font-mono tabular-nums', positive ? 'text-[#0ecb81]' : 'text-[#f6465d]')}>
+          <span className={cn('text-2xl font-bold font-mono tabular-nums', positive ? 'text-[#34D399]' : 'text-[#F87171]')}>
             {fmt(total)}
             <span className="text-xs ml-1 opacity-70">{data.unit || '亿元'}</span>
           </span>
         </div>
-        {positive ? <TrendingUp className="h-5 w-5 text-[#0ecb81]" /> : <TrendingDown className="h-5 w-5 text-[#f6465d]" />}
+        {positive ? <TrendingUp className="h-5 w-5 text-[#34D399]" /> : <TrendingDown className="h-5 w-5 text-[#F87171]" />}
       </div>
 
       <div className="grid grid-cols-1 gap-2 border-t border-border/10 pt-2">
@@ -325,12 +325,12 @@ function HkConnectCard({ data }: { data: HkConnectData | null }) {
             <div key={c.board} className="flex items-center justify-between gap-2 text-[11px]">
               <span className="font-medium text-foreground/90">{c.board}</span>
               <span className="flex items-center gap-2">
-                <span className={cn('font-mono tabular-nums', pos ? 'text-[#0ecb81]' : 'text-[#f6465d]')}>{fmt(c.net_buy)}</span>
+                <span className={cn('font-mono tabular-nums', pos ? 'text-[#34D399]' : 'text-[#F87171]')}>{fmt(c.net_buy)}</span>
                 <span className="text-muted-foreground/50 font-mono">
                   涨 {c.up ?? 0} / 跌 {c.down ?? 0}
                 </span>
                 {c.index_chg !== null && c.index_chg !== undefined && (
-                  <span className={cn('font-mono', (c.index_chg ?? 0) >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]')}>
+                  <span className={cn('font-mono', (c.index_chg ?? 0) >= 0 ? 'text-[#34D399]' : 'text-[#F87171]')}>
                     {(c.index_chg ?? 0) >= 0 ? '▲' : '▼'}
                     {Math.abs(c.index_chg ?? 0).toFixed(2)}%
                   </span>
@@ -375,12 +375,12 @@ function UsBigOrderCard({ data }: { data: UsBigOrderData | null }) {
       <div className="flex items-end justify-between gap-3">
         <div className="flex flex-col">
           <span className="text-[10px] text-muted-foreground/70 mb-0.5">核心 ETF 主力(超大单+大单)净买额</span>
-          <span className={cn('text-2xl font-bold font-mono tabular-nums', positive ? 'text-[#0ecb81]' : 'text-[#f6465d]')}>
+          <span className={cn('text-2xl font-bold font-mono tabular-nums', positive ? 'text-[#34D399]' : 'text-[#F87171]')}>
             {fmt(total)}
             <span className="text-xs ml-1 opacity-70">{data.unit || '亿美元'}</span>
           </span>
         </div>
-        {positive ? <TrendingUp className="h-5 w-5 text-[#0ecb81]" /> : <TrendingDown className="h-5 w-5 text-[#f6465d]" />}
+        {positive ? <TrendingUp className="h-5 w-5 text-[#34D399]" /> : <TrendingDown className="h-5 w-5 text-[#F87171]" />}
       </div>
 
       <div className="flex flex-col gap-1.5 border-t border-border/10 pt-2">
@@ -393,7 +393,7 @@ function UsBigOrderCard({ data }: { data: UsBigOrderData | null }) {
                 {b.name || b.ticker}
                 <span className="text-muted-foreground/40 ml-1 font-mono">{b.ticker}</span>
               </span>
-              <span className={cn('font-mono tabular-nums', pos ? 'text-[#0ecb81]' : 'text-[#f6465d]')}>{fmt(b.net_inflow)}</span>
+              <span className={cn('font-mono tabular-nums', pos ? 'text-[#34D399]' : 'text-[#F87171]')}>{fmt(b.net_inflow)}</span>
             </div>
           )
         })}
@@ -514,7 +514,7 @@ export function FundFlowDashboardModule() {
         <>
           {tab === 'a' && (
             <div className="flex flex-col gap-3">
-              <FlowCard title="北向资金 (外资买 A 股)" point={data.northbound} accent="#0ecb81" />
+              <FlowCard title="北向资金 (外资买 A 股)" point={data.northbound} accent="#34D399" />
               <SectorPie title="A股行业资金净流入分布" sectors={data.a_share?.sectors ?? []} unit={data.a_share?.unit ?? null} unavailable={!data?.a_share} />
               <div className="flex items-center justify-between text-[9px] text-muted-foreground/50 px-1">
                 <span>行业板块口径: {data.a_share?.source || 'AKShare'}</span>
@@ -525,7 +525,7 @@ export function FundFlowDashboardModule() {
 
           {tab === 'hk' && (
             <div className="flex flex-col gap-3">
-              <FlowCard title="南向资金 (港股通净买入)" point={data.southbound} accent="#f6465d" />
+              <FlowCard title="南向资金 (港股通净买入)" point={data.southbound} accent="#F87171" />
               <HkConnectCard data={data.hk_connect} />
               <SectorPie title="港股通行业资金净流入分布" sectors={data.hk?.sectors ?? []} unit={data.hk?.unit ?? null} unavailable={!data?.hk} />
             </div>
@@ -536,8 +536,8 @@ export function FundFlowDashboardModule() {
               <SectorBar title="美股板块 ETF 资金净流入" sectors={data.us?.sectors ?? []} unit={data.us?.unit ?? null} unavailable={!data?.us} />
               <UsBigOrderCard data={data.us_big_order} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <FlowCard title="北向资金 (参照)" point={data.northbound} accent="#0ecb81" />
-                <FlowCard title="南向资金 (参照)" point={data.southbound} accent="#f6465d" />
+                <FlowCard title="北向资金 (参照)" point={data.northbound} accent="#34D399" />
+                <FlowCard title="南向资金 (参照)" point={data.southbound} accent="#F87171" />
               </div>
             </div>
           )}

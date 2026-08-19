@@ -221,7 +221,7 @@ export function PerformancePanel() {
               ) : logs.map((log) => {
                 const isBlock = log.log_type === 'event_loop_block'
                 const typeColor = isBlock
-                  ? 'text-[#e11d48] dark:text-[#f6465d] bg-[#f6465d]/10 border-[#f6465d]/20'
+                  ? 'text-[#e11d48] dark:text-[#F87171] bg-[#F87171]/10 border-[#F87171]/20'
                   : 'text-amber-600 dark:text-amber-500 bg-amber-500/10 border-amber-500/20'
                 const Icon = isBlock ? AlertTriangle : Timer
                 return (
@@ -234,7 +234,7 @@ export function PerformancePanel() {
                       </span>
                     </td>
                     <td className="px-4 py-3 font-mono text-[11px] text-foreground">{log.endpoint || '-'}</td>
-                    <td className={cn('px-4 py-3 text-right font-mono font-bold tabular-nums', isBlock ? 'text-[#e11d48] dark:text-[#f6465d]' : 'text-amber-600 dark:text-amber-500')}>
+                    <td className={cn('px-4 py-3 text-right font-mono font-bold tabular-nums', isBlock ? 'text-[#e11d48] dark:text-[#F87171]' : 'text-amber-600 dark:text-amber-500')}>
                       {log.duration_ms.toFixed(1)}
                     </td>
                     <td className="px-4 py-3 text-[11px] text-muted-foreground leading-relaxed break-words max-w-md">
@@ -293,7 +293,7 @@ export function PerformancePanel() {
                 <tr><td colSpan={4} className="py-10 text-center text-muted-foreground">暂无浏览器日志</td></tr>
               ) : frontendLogs.map((log) => {
                 const levelColors: Record<string, string> = {
-                  ERROR: 'text-[#e11d48] dark:text-[#f6465d] bg-[#f6465d]/10 border-[#f6465d]/20',
+                  ERROR: 'text-[#e11d48] dark:text-[#F87171] bg-[#F87171]/10 border-[#F87171]/20',
                   WARN: 'text-amber-600 dark:text-amber-500 bg-amber-500/10 border-amber-500/20',
                   INFO: 'text-blue-500 bg-blue-500/10 border-blue-500/20',
                   DEBUG: 'text-slate-500 bg-slate-500/10 border-slate-500/20',

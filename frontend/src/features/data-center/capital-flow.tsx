@@ -54,21 +54,21 @@ export function FlowItem({ item, onClick }: { item: CapitalFlowItem; onClick?: (
   }
 
   return (
-    <div onClick={onClick} role="button" tabIndex={0} className={cn('flex flex-col justify-center gap-1 px-2.5 py-1.5 rounded-lg border border-border/20 overflow-hidden transition-colors cursor-pointer', 'bg-slate-50 dark:bg-secondary/10 hover:bg-slate-100 dark:hover:bg-secondary/30 focus:outline-none focus:ring-1 focus:ring-primary/50', 'border-l-2', item.market === 'HK' ? 'border-l-[#f6465d]/50' : item.market === 'CN' ? 'border-l-amber-500/50' : 'border-l-blue-500/50', flash === 'up' && 'animate-flash-green', flash === 'down' && 'animate-flash-red')}>
+    <div onClick={onClick} role="button" tabIndex={0} className={cn('flex flex-col justify-center gap-1 px-2.5 py-1.5 rounded-lg border border-border/20 overflow-hidden transition-colors cursor-pointer', 'bg-slate-50 dark:bg-secondary/10 hover:bg-slate-100 dark:hover:bg-secondary/30 focus:outline-none focus:ring-1 focus:ring-primary/50', 'border-l-2', item.market === 'HK' ? 'border-l-[#F87171]/50' : item.market === 'CN' ? 'border-l-amber-500/50' : 'border-l-blue-500/50', flash === 'up' && 'animate-flash-green', flash === 'down' && 'animate-flash-red')}>
       <div className="flex items-center gap-1.5 w-full">
         <span className="text-[10px] font-bold text-muted-foreground/80 whitespace-nowrap flex-shrink-0">{item.market === 'HK' ? '🇭🇰' : item.market === 'CN' ? '🇨🇳' : '🇺🇸'} <span className="text-foreground/80">{item.label}</span></span>
         {hasAmount ? (
-          <span className={cn('text-xs font-bold font-mono tabular-nums whitespace-nowrap transition-colors duration-500', inflow ? 'text-[#059669] dark:text-[#0ecb81]' : 'text-[#e11d48] dark:text-[#f6465d]')}>{inflow ? '+' : ''}{item.amount.toFixed(1)}<span className="text-[8px] ml-0.5 opacity-60">{item.unit}</span></span>
+          <span className={cn('text-xs font-bold font-mono tabular-nums whitespace-nowrap transition-colors duration-500', inflow ? 'text-[#10B981] dark:text-[#34D399]' : 'text-[#EF4444] dark:text-[#F87171]')}>{inflow ? '+' : ''}{item.amount.toFixed(1)}<span className="text-[8px] ml-0.5 opacity-60">{item.unit}</span></span>
         ) : (
           <span className="text-xs font-bold font-mono tabular-nums whitespace-nowrap text-muted-foreground">--</span>
         )}
-        <span className={cn('text-[9px] font-mono font-bold px-1.5 py-0.5 rounded flex-shrink-0 transition-colors duration-300 ml-auto', hasAmount ? (inflow ? 'bg-[#0ecb81]/15 text-[#059669] dark:text-[#0ecb81]' : 'bg-[#f6465d]/15 text-[#e11d48] dark:text-[#f6465d]') : 'bg-secondary/20 text-muted-foreground')}>{statusBadge}</span>
+        <span className={cn('text-[9px] font-mono font-bold px-1.5 py-0.5 rounded flex-shrink-0 transition-colors duration-300 ml-auto', hasAmount ? (inflow ? 'bg-[#34D399]/15 text-[#10B981] dark:text-[#34D399]' : 'bg-[#F87171]/15 text-[#EF4444] dark:text-[#F87171]') : 'bg-secondary/20 text-muted-foreground')}>{statusBadge}</span>
         <svg width="36" height="14" viewBox="0 0 36 14" aria-hidden="true" className="flex-shrink-0 opacity-60 ml-1.5">
           {/* 💡 sparkDirs 至少需 2 个点才能画出折线；map 已为首点加 M 前缀，外层不可再加，否则生成非法 "M Mx,y" */}
           {item.sparkDirs && item.sparkDirs.length >= 2 && (
             <path
               d={item.sparkDirs.reduce<{x:number;y:number}[]>((a,d,i)=>{const pY=a.length>0?a[a.length-1].y:7;a.push({x:(i/(item.sparkDirs.length-1))*32+2,y:Math.max(1.5,Math.min(12.5,pY-d*2))});return a},[]).map((p,i)=>`${i===0?'M':'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}
-              fill="none" stroke={!hasAmount ? '#64748b' : inflow ? (isDark ? '#0ecb81' : '#059669') : (isDark ? '#f6465d' : '#e11d48')} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+              fill="none" stroke={!hasAmount ? '#64748b' : inflow ? (isDark ? '#34D399' : '#10B981') : (isDark ? '#F87171' : '#EF4444')} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
             />
           )}
         </svg>
@@ -120,7 +120,7 @@ export function FlowDetailPanel({ flow, onClose }: { flow: CapitalFlowItem; onCl
                   <span className="text-muted-foreground font-mono">{h.date}</span>
                   {i === 0 && <span className="text-[9px] bg-primary/10 border border-primary/20 text-primary px-1.5 py-0.5 rounded">今日</span>}
                 </div>
-                <span className={cn("font-bold font-mono tabular-nums", h.dir > 0 ? "text-[#059669] dark:text-[#0ecb81]" : "text-[#e11d48] dark:text-[#f6465d]")}>{h.dir > 0 ? '+' : '-'}{h.val.toFixed(2)} {flow.unit}</span>
+                <span className={cn("font-bold font-mono tabular-nums", h.dir > 0 ? "text-[#10B981] dark:text-[#34D399]" : "text-[#EF4444] dark:text-[#F87171]")}>{h.dir > 0 ? '+' : '-'}{h.val.toFixed(2)} {flow.unit}</span>
               </div>
             ))}
           </div>
