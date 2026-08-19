@@ -601,7 +601,15 @@ class MarketDataGateway:
 
     async def get_market_news(self, category: str = "general", **kwargs: Any) -> Any:
         resp = await self._fetch_finnhub("market_news", category=category)
-        return resp
+        # 归一化为 {status, data, source} 信封，与 get_economic_calendar_finnhub 等契约对齐：
+        # get_macro_news 回退分支会调用 res.get("status")，resp 为 list 时崩溃（500）。
+        if isinstance(resp, dict) and resp.get("status") == "error":
+            return resp
+        return {
+            "status": "success",
+            "data": resp if isinstance(resp, list) else [],
+            "source": "finnhub",
+        }
 
     async def get_stock_history_fh(self, ticker: str, days_back: int = 365, **kwargs: Any) -> Any:
         resp = await self._fetch_finnhub("stock_history", ticker=ticker, days_back=days_back)

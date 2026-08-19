@@ -40,6 +40,13 @@ export function NewsStream({ news, visibleNewsCount, setVisibleNewsCount, classN
         </span>
       </div>
       <div className="flex-1 divide-y divide-border/15 overflow-y-auto custom-scrollbar">
+        {news.length === 0 && (
+          <div className="h-full flex flex-col items-center justify-center gap-2 py-10 text-center px-4">
+            <Newspaper className="h-8 w-8 text-muted-foreground/40" />
+            <p className="text-xs text-muted-foreground">暂无财经快讯</p>
+            <p className="text-[10px] text-muted-foreground/60">新闻采集暂时不可用，恢复后将自动刷新</p>
+          </div>
+        )}
         {news.slice(0, visibleNewsCount).map((n: any, i: number) => {
           const titleText = n.title || n.headline || '未知';
           const timeInfo = formatNewsTime(n);

@@ -43,6 +43,34 @@ class TestConnectionManager:
         assert mgr.status == "CONNECTED"
         assert mgr.error_msg == ""
 
+    def test_connect_revives_from_stale_disconnected_state(self):
+        """僵死态自愈 (2026-08-19 根因修复): quote_ctx 残留但 status=DISCONNECTED
+        （watchdog 探针失败标记断线后）时, connect() 必须真正重建连接, 而非复用跳过。
+        此前复用逻辑会让 watchdog 永远无法把 status 恢复为 CONNECTED。"""
+        mgr = ConnectionManager()
+        mgr._enabled = True
+        # 模拟僵死态: 旧 ctx 残留 + status 被 watchdog 标为 DISCONNECTED
+        old_ctx = MagicMock()
+        mgr.quote_ctx = old_ctx
+        mgr.status = "DISCONNECTED"
+        new_ctx = MagicMock()
+        with (
+            patch(
+                "data_subservice.futu_src.connection_manager.OpenQuoteContext",
+                return_value=new_ctx,
+            ) as mock_open,
+            patch(
+                "data_subservice.futu_src.connection_manager.ConnectionManager._is_opend_reachable",
+                return_value=True,
+            ),
+        ):
+            mgr.connect()
+        # 必须 close 旧 ctx 释放线程, 再 new 新 ctx
+        old_ctx.close.assert_called_once()
+        mock_open.assert_called_once()
+        assert mgr.quote_ctx is new_ctx
+        assert mgr.status == "CONNECTED"
+
     def test_connect_failure_sets_error_state(self):
         """connect 抛出异常时应进入 ERROR 状态并记录错误信息"""
         mgr = ConnectionManager()
@@ -232,36 +260,45 @@ class TestConnectionManager:
         assert CM is ConnectionManager
 
     def test_connect_no_leak_when_status_disconnected_but_ctx_alive(self):
-        """🐛 回归测试: 线程泄漏根因 (2026-08-13)
+        """🐛 回归测试: 线程泄漏根因 (2026-08-13) + 僵死态自愈 (2026-08-19)
 
-        watchdog 探针失败时把 status 改成 DISCONNECTED 但不清空 quote_ctx (旧 ctx
-        的 callback 线程仍存活)。旧逻辑的 connect() 双重检查 `status==CONNECTED and
-        quote_ctx is not None` 会因 status 已变而失败 → 反复 new OpenQuoteContext
-        覆盖旧 ctx → 旧 ctx 回调线程永久泄漏 (实测 35min 爬到 814 线程)。
+        2026-08-13 根因: watchdog 探针失败标 DISCONNECTED 但不清空 quote_ctx, 若
+        connect() 反复 new OpenQuoteContext 覆盖旧 ctx 而不 close → 旧 ctx 回调线程
+        永久泄漏 (实测 35min 爬到 814 线程)。
 
-        断言: 只要 quote_ctx 仍存活, 无论 status 如何, connect() 都不得创建新 ctx。
+        2026-08-19 修复: 此前的"只要 quote_ctx 存活就复用跳过"会把 status=DISCONNECTED
+        态永久僵死 (watchdog 永远无法重建连接)。正确行为:
+        - status==CONNECTED 且 ctx 存活 → 复用跳过 (不泄漏, 不做无谓重建);
+        - status!=CONNECTED 且 ctx 残留 → 走重建分支, 先 close 旧 ctx 再 new 新 ctx
+          (单次重建, 非反复 new, 故不泄漏), 让 watchdog 自愈。
+
+        本测试验证: status=DISCONNECTED 时单次 connect() 应重建 (close 旧 + new 新),
+        而非永久复用导致僵死。
         """
         mgr = ConnectionManager()
         mgr._enabled = True
         old_ctx = MagicMock()
         mgr.quote_ctx = old_ctx
         mgr.status = "DISCONNECTED"  # 模拟 watchdog 标记断线但 ctx 未释放
+        new_ctx = MagicMock()
         with (
             patch(
                 "data_subservice.futu_src.connection_manager.OpenQuoteContext",
-                return_value=MagicMock(),
+                return_value=new_ctx,
             ) as mock_open,
             patch(
                 "data_subservice.futu_src.connection_manager.ConnectionManager._is_opend_reachable",
                 return_value=True,
             ),
         ):
-            # 模拟 status 反复抖动 + 多次惰性重连触发
-            for _ in range(50):
-                mgr.connect()
-        # 关键断言: 绝不创建第二个 ctx, 旧 ctx 被复用
-        mock_open.assert_not_called()
-        assert mgr.quote_ctx is old_ctx
+            mgr.connect()
+        # 重建而非永久复用: 旧 ctx 被 close 释放线程, 新 ctx 被创建, status 恢复 CONNECTED
+        old_ctx.close.assert_called_once()
+        mock_open.assert_called_once()
+        assert mgr.quote_ctx is new_ctx
+        assert mgr.status == "CONNECTED"
+        # 关键: 重建分支只创建一次 ctx, 不会反复 new 覆盖 (防泄漏)
+        assert mock_open.call_count == 1
 
     def test_connect_closes_stale_ctx_before_recreate(self):
         """🐛 回归测试: 兜底防护

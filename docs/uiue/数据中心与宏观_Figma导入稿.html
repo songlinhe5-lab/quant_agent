@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1600" />
+<title>数据中心与宏观 · Figma 导入稿</title>
+<style>
+  :root{
+    --bg:#0F0F14; --panel:#16181F; --panel-2:#1C1F28; --line:rgba(255,255,255,.07);
+    --txt:#F9FAFB; --txt-2:#9CA3AF; --txt-3:#6B7280;
+    --up:#34D399; --down:#F87171; --warn:#FBBF24; --ai:#A78BFA; --blue:#60A5FA;
+    --r:12px; --gap:12px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#0A0A0E;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--txt);padding:24px 0;display:flex;flex-direction:column;align-items:center;gap:32px;}
+  .import-note{width:1600px;background:#101827;border:1px solid #1E3A5F;color:#93C5FD;padding:10px 16px;border-radius:8px;font-size:13px;}
+  .import-note b{color:#DBEAFE;}
+  /* ===== Frame ===== */
+  .frame{width:1600px;background:var(--bg);border:1px solid var(--line);border-radius:16px;overflow:hidden;}
+  .frame-label{padding:10px 24px;background:#101018;color:var(--txt-3);font-size:13px;border-bottom:1px solid var(--line);}
+  /* ===== Header ===== */
+  .hd{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--line);}
+  .brand{font-size:20px;font-weight:700;}
+  .brand .en{font-size:12px;font-weight:400;color:var(--txt-3);margin-left:8px;letter-spacing:.5px;}
+  .clocks{display:flex;gap:16px;font-size:13px;color:var(--txt-2);}
+  .clocks b{color:var(--txt);}
+  .tabs{display:flex;gap:8px;padding:14px 24px;border-bottom:1px solid var(--line);}
+  .tab{padding:8px 18px;border-radius:999px;font-size:14px;color:var(--txt-2);background:transparent;border:1px solid var(--line);}
+  .tab.on{background:#1E2A44;color:#DBEAFE;border-color:#2C3E5F;font-weight:600;}
+  .hd-right{display:flex;align-items:center;gap:16px;font-size:13px;color:var(--txt-2);}
+  .pill{padding:3px 10px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);font-size:12px;}
+  /* ===== Body ===== */
+  .bd{padding:20px 24px;display:flex;flex-direction:column;gap:var(--gap);}
+  .sec-title{font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;}
+  .sec-sub{font-size:12px;color:var(--txt-3);font-weight:400;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);}
+  .card-pad{padding:16px;}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;}
+  .chip{padding:5px 13px;border-radius:999px;font-size:12px;color:var(--txt-2);background:var(--panel-2);border:1px solid var(--line);}
+  .chip.on{background:#1E2A44;color:#DBEAFE;border-color:#2C3E5F;}
+  .chip.flag{display:flex;align-items:center;gap:6px;}
+  .grow{flex:1;}
+  .btn-mini{font-size:12px;color:var(--blue);border:1px solid #1E3A5F;background:#101827;border-radius:8px;padding:5px 12px;}
+  /* ===== Asset grid ===== */
+  .assets{display:grid;grid-template-columns:repeat(6,1fr);gap:var(--gap);}
+  .asset{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:6px;}
+  .asset .code{font-size:13px;font-weight:600;}
+  .asset .nm{font-size:11px;color:var(--txt-3);}
+  .asset .px{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .asset .meta{display:flex;align-items:center;justify-content:space-between;}
+  .bdg{font-size:11px;font-weight:600;padding:2px 7px;border-radius:6px;}
+  .bdg.up{color:var(--up);background:rgba(52,211,153,.12);}
+  .bdg.down{color:var(--down);background:rgba(248,113,113,.12);}
+  .bdg.flat{color:var(--txt-3);background:rgba(107,114,128,.15);}
+  .src{font-size:10px;color:var(--txt-3);}
+  svg.spark{width:100%;height:26px;}
+  /* ===== Sentiment / Radar ===== */
+  .row-2{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap);}
+  .gauge{height:12px;border-radius:999px;background:linear-gradient(90deg,#F87171,#FBBF24,#34D399);position:relative;margin:18px 0 8px;}
+  .gauge .dot{position:absolute;top:50%;transform:translate(-50%,-50%);width:18px;height:18px;border-radius:50%;background:#fff;border:3px solid #0F0F14;left:55.8%;}
+  .big-num{font-size:30px;font-weight:700;}
+  .lbl{font-size:12px;color:var(--txt-3);}
+  /* ===== Flow cards ===== */
+  .flow-row{display:flex;gap:var(--gap);overflow:hidden;}
+  .flow{flex:1;min-width:170px;background:var(--panel);border-radius:var(--r);padding:12px 14px;border:1px solid var(--line);display:flex;flex-direction:column;gap:6px;}
+  .flow.in{border-color:rgba(52,211,153,.35);background:linear-gradient(180deg,rgba(52,211,153,.06),var(--panel));}
+  .flow.out{border-color:rgba(248,113,113,.35);background:linear-gradient(180deg,rgba(248,113,113,.06),var(--panel));}
+  .flow .tt{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;}
+  .flow .amt{font-size:21px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .flow .dir{font-size:12px;}
+  .in .amt,.in .dir{color:var(--up);} .out .amt,.out .dir{color:var(--down);}
+  .flow .flat-a{color:var(--txt-3);}
+  /* ===== Sector rank ===== */
+  .seg{display:flex;gap:6px;}
+  .seg .tab{padding:6px 14px;font-size:13px;}
+  .rank-2{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap);}
+  table.rk{width:100%;border-collapse:collapse;font-size:13px;}
+  table.rk th{text-align:left;color:var(--txt-3);font-weight:500;font-size:12px;padding:8px 10px;border-bottom:1px solid var(--line);}
+  table.rk td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.04);}
+  table.rk .amt{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;}
+  .up-t{color:var(--up);} .down-t{color:var(--down);}
+  /* ===== Heatmap ===== */
+  .hm-bar{display:flex;height:14px;border-radius:999px;overflow:hidden;margin:10px 0;}
+  .hm-bar .g{background:var(--up);} .hm-bar .f{background:#4B5563;} .hm-bar .r{background:var(--down);}
+  .tree{display:grid;grid-template-columns:repeat(8,1fr);grid-auto-rows:44px;gap:6px;margin-top:12px;}
+  .tree div{border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;color:rgba(255,255,255,.85);}
+  /* ===== Short cards ===== */
+  .cards-3{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--gap);}
+  .freq{font-size:11px;color:var(--warn);background:rgba(251,191,36,.12);padding:2px 8px;border-radius:999px;}
+  /* ===== Calendar ===== */
+  .ai-card{border:1px solid rgba(167,139,250,.35);background:linear-gradient(180deg,rgba(167,139,250,.07),var(--panel));border-radius:var(--r);padding:14px 16px;}
+  .ai-bdg{color:var(--ai);background:rgba(167,139,250,.14);font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;}
+  table.cal{width:100%;border-collapse:collapse;font-size:13px;}
+  table.cal th{text-align:left;color:var(--txt-3);font-weight:500;font-size:12px;padding:9px 10px;border-bottom:1px solid var(--line);}
+  table.cal td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04);}
+  .star{color:var(--warn);font-size:12px;letter-spacing:1px;}
+  .row-hi{background:rgba(251,191,36,.05);}
+  /* ===== Stock depth ===== */
+  .ticker-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+  .tk{display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);font-size:13px;font-weight:600;}
+  .tk.on{background:#1E2A44;border-color:#2C3E5F;color:#DBEAFE;}
+  .tk .x{color:var(--txt-3);font-weight:400;}
+  .add{border:1px dashed #2C3E5F;color:var(--blue);background:transparent;border-radius:999px;padding:7px 16px;font-size:13px;}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap);}
+  .snap-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:var(--gap);}
+  .snap{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;}
+  .snap .c{font-size:12px;font-weight:600;}
+  .snap .p{font-size:17px;font-weight:700;margin:3px 0;font-variant-numeric:tabular-nums;}
+  /* order book */
+  .ob{display:flex;flex-direction:column;gap:5px;font-size:12px;font-variant-numeric:tabular-nums;}
+  .ob .row{display:flex;align-items:center;gap:8px;}
+  .ob .bar{height:16px;border-radius:3px;}
+  .ob .ask .bar{background:rgba(248,113,113,.6);} .ob .bid .bar{background:rgba(52,211,153,.6);}
+  .ob .pr{width:56px;color:var(--txt-2);} .ob .vl{width:52px;text-align:right;color:var(--txt);}
+  .foot{display:flex;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--line);font-size:11px;color:var(--txt-3);}
+  .collapse{padding:13px 16px;color:var(--txt-2);font-size:13px;display:flex;align-items:center;gap:8px;}
+</style>
+</head>
+<body>
+
+<div class="import-note">📐 <b>Figma 导入说明:</b>使用 html.to.design 插件 → 选择 <b>Full page</b> 一次性捕获,将得到 5 个独立 Frame(概览简报 / 资金流向 / 宏观日历 / 个股工作台 / 个股工作台·期权模式)。导入后可删除本说明条。(本文件为纯静态内联样式,无外部依赖)</div>
+
+<!-- ================= FRAME 1 · 概览简报 ================= -->
+<div class="frame">
+  <div class="frame-label">Frame 1 / 5 · 概览简报(默认落地页)— 昨夜发生了什么?今天盯什么?</div>
+  <div class="hd">
+    <div><span class="brand">市场脉搏<span class="en">MARKET INTELLIGENCE</span></span></div>
+    <div class="hd-right">
+      <span>NY <b>19:41</b></span><span>HK <b>07:41</b></span><span>TYO <b>08:41</b></span>
+      <span class="pill">08/19 07:40 · HKT ▾</span>
+    </div>
+  </div>
+  <div class="tabs">
+    <div class="tab on">概览简报</div><div class="tab">资金流向</div><div class="tab">宏观日历</div>
+  </div>
+  <div class="bd">
+
+    <!-- Zone A -->
+    <div class="card card-pad">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+        <div class="sec-title">全球市场脉搏 <span class="sec-sub">跨市场报价唯一入口</span></div>
+        <div class="grow"></div>
+        <div class="chips">
+          <div class="chip on">全部</div><div class="chip">股指</div><div class="chip">利率</div><div class="chip">外汇</div><div class="chip">商品</div><div class="chip">加密</div><div class="chip">行业ETF</div><div class="chip">⊙ 类目自定义</div>
+        </div>
+      </div>
+      <div class="assets">
+        <div class="asset"><div class="meta"><span class="code">SPX · 标普500</span><span class="bdg down">-0.69%</span></div><div class="px">7,691.76</div><svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline fill="none" stroke="#F87171" stroke-width="2" points="0,8 20,10 40,7 60,14 80,16 100,18"/></svg><div class="meta"><span class="src">YFinance</span><span class="src">08/18</span></div></div>
+        <div class="asset"><div class="meta"><span class="code">IXIC · 纳指综合</span><span class="bdg down">-1.33%</span></div><div class="px">26,289.71</div><svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline fill="none" stroke="#F87171" stroke-width="2" points="0,6 25,9 50,8 75,16 100,20"/></svg><div class="meta"><span class="src">YFinance</span><span class="src">08/18</span></div></div>
+        <div class="asset"><div class="meta"><span class="code">HSI · 恒生指数</span><span class="bdg up">+1.34%</span></div><div class="px">25,453.23</div><svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline fill="none" stroke="#34D399" stroke-width="2" points="0,18 25,15 50,16 75,9 100,7"/></svg><div class="meta"><span class="src">YFinance</span><span class="src">08/18</span></div></div>
+        <div class="asset"><div class="meta"><span class="code">TNX · 10Y美债</span><span class="bdg down">-0.38%</span></div><div class="px">4.71</div><svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline fill="none" stroke="#F87171" stroke-width="2" points="0,10 30,12 60,11 100,15"/></svg><div class="meta"><span class="src">YFinance</span><span class="src">08/18</span></div></div>
+        <div class="asset"><div class="meta"><span class="code">BTC · 比特币</span><span class="bdg up">+0.29%</span></div><div class="px">64,696</div><svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline fill="none" stroke="#34D399" stroke-width="2" points="0,14 30,12 60,15 100,11"/></svg><div class="meta"><span class="src">YFinance</span><span class="src">08/19</span></div></div>
+        <div class="asset"><div class="meta"><span class="code">XAU · 黄金</span><span class="bdg down">-0.71%</span></div><div class="px">4,386.50</div><svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline fill="none" stroke="#F87171" stroke-width="2" points="0,8 30,11 60,13 100,16"/></svg><div class="meta"><span class="src">YFinance</span><span class="src">08/18</span></div></div>
+        <div class="asset"><div class="meta"><span class="code">DX-Y · 美元指数</span><span class="bdg flat">+0.00%</span></div><div class="px">99.64</div><svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline fill="none" stroke="#6B7280" stroke-width="2" points="0,13 30,13 60,12 100,13"/></svg><div class="meta"><span class="src">YFinance</span><span class="src">08/18</span></div></div>
+        <div class="asset"><div class="meta"><span class="code">USDCNH · 离岸人民币</span><span class="bdg up">+0.01%</span></div><div class="px">6.75</div><svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline fill="none" stroke="#34D399" stroke-width="2" points="0,13 40,13 70,12 100,12"/></svg><div class="meta"><span class="src">YFinance</span><span class="src">08/18</span></div></div>
+        <div class="asset"><div class="meta"><span class="code">WTI · 原油</span><span class="bdg flat">+0.00%</span></div><div class="px">84.50</div><svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline fill="none" stroke="#6B7280" stroke-width="2" points="0,12 30,14 60,12 100,13"/></svg><div class="meta"><span class="src">YFinance</span><span class="src">08/18</span></div></div>
+        <div class="asset"><div class="meta"><span class="code">N225 · 日经225</span><span class="bdg up">+0.74%</span></div><div class="px">69,220</div><svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline fill="none" stroke="#34D399" stroke-width="2" points="0,16 30,14 60,10 100,9"/></svg><div class="meta"><span class="src">YFinance</span><span class="src">08/18</span></div></div>
+        <div class="asset"><div class="meta"><span class="code">XLK · 科技板块</span><span class="bdg down">-2.47%</span></div><div class="px">185.62</div><svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline fill="none" stroke="#F87171" stroke-width="2" points="0,6 30,9 60,14 100,20"/></svg><div class="meta"><span class="src">YFinance</span><span class="src">08/18</span></div></div>
+        <div class="asset"><div class="meta"><span class="code">KWEB · 中概互联</span><span class="bdg down">-0.63%</span></div><div class="px">26.78</div><svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline fill="none" stroke="#F87171" stroke-width="2" points="0,10 30,12 60,11 100,15"/></svg><div class="meta"><span class="src">YFinance</span><span class="src">08/18</span></div></div>
+      </div>
+    </div>
+
+    <!-- Zone B -->
+    <div class="row-2" style="grid-template-columns:1fr 1fr 1fr;">
+      <div class="card card-pad">
+        <div class="sec-title">市场情绪风向标</div>
+        <div style="margin-top:18px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--txt-3);"><span>恐惧</span><span>中性</span><span>贪婪</span></div>
+          <div class="gauge"><div class="dot"></div></div>
+          <div style="display:flex;align-items:baseline;gap:10px;margin-top:6px;"><span class="big-num" style="color:var(--up);">55.8</span><span class="bdg up">贪婪</span></div>
+        </div>
+        <div style="display:flex;gap:24px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+          <div><div class="lbl">恐慌指数 VIX</div><div style="font-size:20px;font-weight:700;">15.84 <span class="bdg down">+4.28%</span></div></div>
+        </div>
+        <div class="foot" style="padding:12px 0 0;border:none;"><span>数据源:CNN · CBOE</span><span>更新于 实时</span></div>
+      </div>
+      <div class="card card-pad">
+        <div style="display:flex;align-items:center;"><div class="sec-title">宏观风险雷达</div><div class="grow"></div><span class="btn-mini">指标说明</span>&nbsp;<span class="btn-mini">算法</span></div>
+        <svg viewBox="0 0 300 190" width="100%" height="190">
+          <g stroke="rgba(255,255,255,.08)" fill="none">
+            <polygon points="150,20 260,75 260,150 150,180 40,150 40,75"/>
+            <polygon points="150,55 225,90 225,135 150,155 75,135 75,90"/>
+            <polygon points="150,90 190,105 190,120 150,132 110,120 110,105"/>
+          </g>
+          <polygon points="150,30 250,85 235,150 150,168 70,140 55,80" fill="rgba(52,211,153,.15)" stroke="#34D399" stroke-width="2"/>
+          <g fill="#34D399"><circle cx="150" cy="30" r="3"/><circle cx="250" cy="85" r="3"/><circle cx="235" cy="150" r="3"/><circle cx="150" cy="168" r="3"/><circle cx="70" cy="140" r="3"/><circle cx="55" cy="80" r="3"/></g>
+          <g fill="#9CA3AF" font-size="11" text-anchor="middle">
+            <text x="150" y="14">波动率</text><text x="272" y="80">数字货币</text><text x="268" y="158">中概强度</text><text x="150" y="188">权益</text><text x="30" y="158">利率</text><text x="30" y="76">商品</text>
+          </g>
+        </svg>
+        <div class="foot" style="padding:6px 0 0;border:none;"><span>综合风险评分 · 6 轴</span><span>更新于 实时</span></div>
+      </div>
+      <div class="card card-pad">
+        <div class="sec-title">PCR 期权情绪 <span class="sec-sub">期权波动率页迁入</span></div>
+        <div style="display:flex;align-items:baseline;gap:10px;margin-top:14px;">
+          <span class="big-num" style="color:var(--up);">0.87</span><span class="bdg up">偏多</span><span class="lbl">&gt;1 偏空 · &lt;1 偏多</span>
+        </div>
+        <svg viewBox="0 0 300 84" width="100%" height="84" style="margin-top:10px;">
+          <line x1="0" y1="42" x2="300" y2="42" stroke="rgba(255,255,255,.12)" stroke-dasharray="4 4"/>
+          <text x="3" y="38" fill="#6B7280" font-size="9">PCR = 1</text>
+          <polyline fill="none" stroke="#60A5FA" stroke-width="2" points="0,54 25,50 50,58 75,52 100,46 125,50 150,42 175,47 200,40 225,44 250,38 275,42 300,40"/>
+          <polyline fill="none" stroke="#FBBF24" stroke-width="1.5" stroke-dasharray="3 3" points="0,30 50,28 100,34 150,30 200,26 250,32 300,28"/>
+        </svg>
+        <div style="display:flex;gap:14px;font-size:11px;color:var(--txt-3);margin-top:4px;"><span><span style="color:#60A5FA;">━</span> PCR · 60日</span><span><span style="color:#FBBF24;">╌</span> VIX</span></div>
+        <div class="foot" style="padding:12px 0 0;border:none;"><span>数据源:Futu · CBOE</span><span>更新于 实时</span></div>
+      </div>
+    </div>
+
+    <!-- Zone C -->
+    <div class="cards-3">
+      <div class="card card-pad">
+        <div style="display:flex;justify-content:space-between;align-items:center;"><div class="sec-title">经济日历 · 今日高影响</div><span class="lbl">×3</span></div>
+        <div style="margin-top:12px;display:flex;flex-direction:column;gap:9px;font-size:13px;">
+          <div style="display:flex;justify-content:space-between;"><span>14:30 澳洲央行利率决议</span><span class="star">★★★</span></div>
+          <div style="display:flex;justify-content:space-between;"><span>20:30 美国初请失业金</span><span class="star">★★★</span></div>
+          <div style="display:flex;justify-content:space-between;"><span>22:00 美国成屋销售</span><span class="star">★★</span></div>
+        </div>
+        <div style="margin-top:14px;text-align:right;"><span class="btn-mini">查看完整日历 →</span></div>
+      </div>
+      <div class="card card-pad">
+        <div style="display:flex;justify-content:space-between;align-items:center;"><div class="sec-title">财报 · 本周</div><span class="lbl">5 家</span></div>
+        <div style="margin-top:12px;display:flex;flex-direction:column;gap:9px;font-size:13px;">
+          <div style="display:flex;justify-content:space-between;"><span>ANF · Q2</span><span class="bdg up">$1.99</span></div>
+          <div style="display:flex;justify-content:space-between;"><span>BOX · Q2</span><span class="bdg up">$8.40</span></div>
+          <div style="display:flex;justify-content:space-between;"><span>ALCY · Q2</span><span class="bdg flat">—</span></div>
+        </div>
+        <div style="margin-top:14px;text-align:right;"><span class="btn-mini">查看财报日历 →</span></div>
+      </div>
+      <div class="card card-pad">
+        <div style="display:flex;justify-content:space-between;align-items:center;"><div class="sec-title">资金一句话</div><span class="lbl">跨市场</span></div>
+        <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px;font-size:13px;">
+          <div>最大流入 · 港股南向 <b class="up-t">+140.0亿</b></div>
+          <div>最大流出 · A股电子 <b class="down-t">-227.3亿</b></div>
+          <div class="lbl">南向连续 3 日净流入,科技板块承压</div>
+        </div>
+        <div style="margin-top:14px;text-align:right;"><span class="btn-mini">资金流向 →</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ================= FRAME 2 · 资金流向 ================= -->
+<div class="frame">
+  <div class="frame-label">Frame 2 / 5 · 资金流向 — 钱在往哪里流?(已合并原独立 Fund Flow tab:日/周/月周期、南向双通道下钻、美股 ETF 资金分解)</div>
+  <div class="hd">
+    <div><span class="brand">市场脉搏<span class="en">MARKET INTELLIGENCE</span></span></div>
+    <div class="hd-right"><span>NY <b>19:41</b></span><span>HK <b>07:41</b></span><span>TYO <b>08:41</b></span><span class="pill">08/19 07:40 · HKT ▾</span></div>
+  </div>
+  <div class="tabs">
+    <div class="tab">概览简报</div><div class="tab on">资金流向</div><div class="tab">宏观日历</div>
+  </div>
+  <div class="bd">
+
+    <div class="card card-pad">
+      <div style="display:flex;align-items:center;margin-bottom:12px;">
+        <div class="sec-title">跨市场资金流向 <span class="sec-sub">切换周期后卡片显示区间累计净流入 + 趋势线</span></div>
+        <div class="grow"></div>
+        <div class="seg"><div class="tab on">日</div><div class="tab">周</div><div class="tab">月</div></div>
+      </div>
+      <div class="flow-row">
+        <div class="flow in" style="border-color:#34D399;box-shadow:0 0 0 1px rgba(52,211,153,.45);"><div class="tt">🇭🇰 港股南向 <span class="bdg up" style="font-size:10px;">已展开</span></div><div class="amt">+140.0亿</div><div class="dir">流入 ↗</div><svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none" style="height:20px;"><polyline fill="none" stroke="#34D399" stroke-width="2" points="0,20 20,16 40,17 60,10 80,8 100,5"/></svg><span class="src">akshare · 08/18 · 点击展开双通道</span></div>
+        <div class="flow in"><div class="tt">🇺🇸 美股大盘</div><div class="amt">+3.0亿</div><div class="dir">流入 ↗</div><span class="src">Futu · 08/19</span></div>
+        <div class="flow out"><div class="tt">半导体</div><div class="amt">-0.6亿</div><div class="dir">流出 ↘</div><span class="src">Futu · 08/19</span></div>
+        <div class="flow"><div class="tt">中概互联</div><div class="amt flat-a">≈0</div><div class="dir" style="color:var(--txt-3);">持平</div><span class="src">Futu · 08/19</span></div>
+        <div class="flow"><div class="tt">🇨🇳 北向成交额</div><div class="amt" style="color:var(--txt);">1,286亿</div><div class="dir" style="color:var(--txt-3);">成交口径 · 净额停止披露</div><span class="src">akshare · 08/18</span></div>
+        <div class="flow out"><div class="tt">美债 ETF</div><div class="amt">-1.2亿</div><div class="dir">流出 ↘</div><span class="src">Futu · 08/19</span></div>
+        <div class="flow in"><div class="tt">黄金 ETF</div><div class="amt">+0.8亿</div><div class="dir">流入 ↗</div><span class="src">Futu · 08/19</span></div>
+        <div class="flow out"><div class="tt">加密 ETF</div><div class="amt">-0.4亿</div><div class="dir">流出 ↘</div><span class="src">Futu · 08/19</span></div>
+      </div>
+      <div class="card card-pad" style="margin-top:12px;border-color:rgba(52,211,153,.3);background:linear-gradient(180deg,rgba(52,211,153,.04),var(--panel));">
+        <div style="display:flex;align-items:center;margin-bottom:10px;">
+          <div class="sec-title" style="font-size:13px;">港股南向 · 沪深双通道下钻</div>
+          <span class="lbl" style="margin-left:10px;">交易日 2026-08-18</span>
+          <div class="grow"></div>
+          <span class="lbl">示意:点击"港股南向"卡片展开,再点收起</span>
+        </div>
+        <div style="display:flex;gap:12px;">
+          <div class="grow card card-pad" style="background:var(--panel-2);">
+            <div class="lbl">港股通(沪)</div>
+            <div style="font-size:22px;font-weight:700;color:var(--up);margin:4px 0;">+97.9亿</div>
+            <div class="lbl">↑213 / ↓386 · ▲0.07%</div>
+          </div>
+          <div class="grow card card-pad" style="background:var(--panel-2);">
+            <div class="lbl">港股通(深)</div>
+            <div style="font-size:22px;font-weight:700;color:var(--up);margin:4px 0;">+42.1亿</div>
+            <div class="lbl">↑213 / ↓386 · ▲0.07%</div>
+          </div>
+          <div class="grow card card-pad" style="background:var(--panel-2);">
+            <div class="lbl">南向合计净买入</div>
+            <div style="font-size:22px;font-weight:700;color:var(--up);margin:4px 0;">+140.0亿</div>
+            <div class="lbl">跟随 日/周/月 周期切换</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card card-pad">
+      <div style="display:flex;align-items:center;margin-bottom:12px;">
+        <div class="sec-title">板块资金流向</div><div class="grow"></div>
+        <div class="seg"><div class="tab on">🇨🇳 A股行业</div><div class="tab">🇭🇰 港股行业</div><div class="tab">🇺🇸 美股板块</div></div>
+      </div>
+      <div class="rank-2">
+        <div>
+          <div class="sec-title up-t" style="font-size:13px;margin-bottom:8px;">主力净流入 Top 10</div>
+          <table class="rk">
+            <tr><th>#</th><th>行业</th><th>涨跌</th><th style="text-align:right;">净额</th></tr>
+            <tr><td>1</td><td>农林牧渔</td><td><span class="bdg up">+4.80%</span></td><td class="amt up-t">+30.7亿</td></tr>
+            <tr><td>2</td><td>种植业</td><td><span class="bdg up">+10.56%</span></td><td class="amt up-t">+12.2亿</td></tr>
+            <tr><td>3</td><td>光学光电子</td><td><span class="bdg up">+0.04%</span></td><td class="amt up-t">+10.7亿</td></tr>
+            <tr><td>4</td><td>面板</td><td><span class="bdg up">+0.91%</span></td><td class="amt up-t">+10.6亿</td></tr>
+            <tr><td>5</td><td>化学原料</td><td><span class="bdg up">+0.02%</span></td><td class="amt up-t">+9.2亿</td></tr>
+            <tr><td>6</td><td>种子</td><td><span class="bdg up">+13.33%</span></td><td class="amt up-t">+7.0亿</td></tr>
+            <tr><td>7</td><td>农产品加工</td><td><span class="bdg up">+4.08%</span></td><td class="amt up-t">+6.6亿</td></tr>
+            <tr><td>8</td><td>养殖业</td><td><span class="bdg up">+3.77%</span></td><td class="amt up-t">+6.3亿</td></tr>
+          </table>
+        </div>
+        <div>
+          <div class="sec-title down-t" style="font-size:13px;margin-bottom:8px;">主力净流出 Top 5</div>
+          <table class="rk">
+            <tr><th>#</th><th>行业</th><th>涨跌</th><th style="text-align:right;">净额</th></tr>
+            <tr><td>1</td><td>电子</td><td><span class="bdg down">-1.10%</span></td><td class="amt down-t">-227.3亿</td></tr>
+            <tr><td>2</td><td>通信</td><td><span class="bdg down">-2.01%</span></td><td class="amt down-t">-125.7亿</td></tr>
+            <tr><td>3</td><td>半导体</td><td><span class="bdg down">-1.53%</span></td><td class="amt down-t">-123.5亿</td></tr>
+            <tr><td>4</td><td>通信设备</td><td><span class="bdg down">-1.94%</span></td><td class="amt down-t">-114.4亿</td></tr>
+            <tr><td>5</td><td>通信网络设备</td><td><span class="bdg down">-2.17%</span></td><td class="amt down-t">-79.3亿</td></tr>
+          </table>
+          <div class="lbl" style="margin-top:10px;">单位统一:亿元 / 亿美元(不再显示"万元")</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card card-pad">
+      <div style="display:flex;align-items:center;margin-bottom:12px;">
+        <div class="sec-title">板块资金流向 · 美股板块视图(ETF 版)<span class="sec-sub">原独立 Fund Flow tab 迁入</span></div>
+        <div class="grow"></div>
+        <div class="seg"><div class="tab">🇨🇳 A股行业</div><div class="tab">🇭🇰 港股行业</div><div class="tab on">🇺🇸 美股板块</div></div>
+      </div>
+      <div class="rank-2">
+        <div>
+          <div class="sec-title" style="font-size:13px;margin-bottom:10px;">美股板块 ETF 资金净流入</div>
+          <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;font-variant-numeric:tabular-nums;">
+            <div style="display:flex;align-items:center;gap:8px;"><span style="width:60px;text-align:right;color:var(--txt-2);">地产</span><div style="height:12px;border-radius:3px;background:rgba(52,211,153,.6);width:216px;"></div><span class="up-t">+1.2</span></div>
+            <div style="display:flex;align-items:center;gap:8px;"><span style="width:60px;text-align:right;color:var(--txt-2);">能源</span><div style="height:12px;border-radius:3px;background:rgba(52,211,153,.6);width:54px;"></div><span class="up-t">+0.30</span></div>
+            <div style="display:flex;align-items:center;gap:8px;"><span style="width:60px;text-align:right;color:var(--txt-2);">医疗</span><div style="height:12px;border-radius:3px;background:rgba(52,211,153,.6);width:31px;"></div><span class="up-t">+0.17</span></div>
+            <div style="display:flex;align-items:center;gap:8px;"><span style="width:60px;text-align:right;color:var(--txt-2);">可选消费</span><div style="height:12px;border-radius:3px;background:rgba(52,211,153,.6);width:22px;"></div><span class="up-t">+0.12</span></div>
+            <div style="display:flex;align-items:center;gap:8px;"><span style="width:60px;text-align:right;color:var(--txt-2);">公用事业</span><div style="height:12px;border-radius:3px;background:rgba(52,211,153,.6);width:22px;"></div><span class="up-t">+0.12</span></div>
+            <div style="display:flex;align-items:center;gap:8px;"><span style="width:60px;text-align:right;color:var(--txt-2);">通信</span><div style="height:12px;border-radius:3px;background:rgba(52,211,153,.6);width:11px;"></div><span class="up-t">+0.06</span></div>
+            <div style="display:flex;align-items:center;gap:8px;"><span style="width:60px;text-align:right;color:var(--txt-2);">科技</span><div style="height:12px;border-radius:3px;background:rgba(248,113,113,.6);width:13px;"></div><span class="down-t">-0.07</span></div>
+            <div style="display:flex;align-items:center;gap:8px;"><span style="width:60px;text-align:right;color:var(--txt-2);">必选消费</span><div style="height:12px;border-radius:3px;background:rgba(248,113,113,.6);width:34px;"></div><span class="down-t">-0.19</span></div>
+            <div style="display:flex;align-items:center;gap:8px;"><span style="width:60px;text-align:right;color:var(--txt-2);">工业</span><div style="height:12px;border-radius:3px;background:rgba(248,113,113,.6);width:34px;"></div><span class="down-t">-0.19</span></div>
+            <div style="display:flex;align-items:center;gap:8px;"><span style="width:60px;text-align:right;color:var(--txt-2);">金融</span><div style="height:12px;border-radius:3px;background:rgba(248,113,113,.6);width:68px;"></div><span class="down-t">-0.38</span></div>
+            <div style="display:flex;align-items:center;gap:8px;"><span style="width:60px;text-align:right;color:var(--txt-2);">材料</span><div style="height:12px;border-radius:3px;background:rgba(248,113,113,.6);width:94px;"></div><span class="down-t">-0.52</span></div>
+          </div>
+          <div class="lbl" style="margin-top:10px;">行业板块口径:Futu 核心行业 ETF · 单位:亿美元</div>
+        </div>
+        <div>
+          <div class="sec-title" style="font-size:13px;">美股主力 / 大单净流入</div>
+          <div class="lbl" style="margin-top:2px;">核心 ETF 主力(超大单+大单)净买额</div>
+          <div class="big-num up-t" style="margin:8px 0;">+2.0亿美元</div>
+          <div class="lbl" style="margin-bottom:8px;">净流入贡献 Top</div>
+          <table class="rk">
+            <tr><td>标普500 US · SPY</td><td class="amt up-t">+3.0</td></tr>
+            <tr><td>20年+国债 US · TLT</td><td class="amt down-t">-0.8</td></tr>
+            <tr><td>半导体ETF US · SOXX</td><td class="amt down-t">-0.6</td></tr>
+            <tr><td>纳斯达克100 US · QQQ</td><td class="amt up-t">+0.5</td></tr>
+            <tr><td>中概互联 US · KWEB</td><td class="amt" style="color:var(--txt-3);">≈0</td></tr>
+          </table>
+          <div class="lbl" style="margin-top:10px;">基于核心行业 ETF(标普/纳指/半导体/金融/能源/医疗/中概/长债)的 Futu 主力资金分布聚合</div>
+        </div>
+      </div>
+      <div class="foot"><span>数据源:Futu</span><span>更新于 07:40</span></div>
+    </div>
+
+    <div class="card card-pad">
+      <div style="display:flex;align-items:center;">
+        <div class="sec-title">板块热力图</div><div class="grow"></div>
+        <div class="seg"><div class="tab">A股</div><div class="tab on">港股</div><div class="tab">美股</div></div>
+      </div>
+      <div style="display:flex;gap:20px;font-size:13px;margin-top:10px;color:var(--txt-2);">
+        <span>涨 <b class="up-t">32</b></span><span>平 <b style="color:var(--txt-3);">5</b></span><span>跌 <b class="down-t">18</b></span>
+        <span class="grow"></span><span>领涨 <b class="up-t">地产 +3.2%</b></span><span>领跌 <b class="down-t">信息技术 -1.8%</b></span>
+      </div>
+      <div class="hm-bar"><div class="g" style="width:58%"></div><div class="f" style="width:9%"></div><div class="r" style="width:33%"></div></div>
+      <div class="tree">
+        <div style="background:rgba(52,211,153,.7);">地产</div><div style="background:rgba(52,211,153,.5);">能源</div><div style="background:rgba(52,211,153,.4);">医疗</div><div style="background:rgba(52,211,153,.3);">可选消费</div><div style="background:rgba(248,113,113,.3);">科技</div><div style="background:rgba(248,113,113,.4);">必选消费</div><div style="background:rgba(248,113,113,.5);">金融</div><div style="background:#4B5563;">公用事业</div>
+      </div>
+      <div class="foot" style="padding:12px 0 0;border:none;"><span>数据源:Futu</span><span>更新于 实时</span></div>
+    </div>
+
+    <div class="card card-pad">
+      <div class="sec-title" style="margin-bottom:12px;">卖空与两融区</div>
+      <div class="cards-3">
+        <div class="card card-pad" style="background:var(--panel-2);">
+          <div style="display:flex;justify-content:space-between;"><span style="font-weight:600;">A股两融</span><span class="freq">日更</span></div>
+          <div style="margin-top:12px;"><div class="lbl">融资余额</div><div class="big-num down-t">9,278亿 <span style="font-size:14px;">↓</span></div><div class="lbl">环比 -12.4亿</div></div>
+        </div>
+        <div class="card card-pad" style="background:var(--panel-2);">
+          <div style="display:flex;justify-content:space-between;"><span style="font-weight:600;">港股卖空</span><span class="freq">日更</span></div>
+          <div style="margin-top:12px;"><div class="lbl">卖空成交额占比</div><div class="big-num">18.2%</div><div class="lbl">环比 +1.1pct</div></div>
+        </div>
+        <div class="card card-pad" style="background:var(--panel-2);">
+          <div style="display:flex;justify-content:space-between;"><span style="font-weight:600;">美股卖空</span><span class="freq">半月报</span></div>
+          <div style="margin-top:12px;"><div class="lbl">卖空余额 (CBOE)</div><div class="big-num">4.69亿股</div><div class="lbl">回补天数 0.58 天</div></div>
+        </div>
+      </div>
+      <div class="lbl" style="margin-top:12px;">融券业务已暂停,相关指标显示灰态说明,不显示假数值</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ================= FRAME 3 · 宏观日历 ================= -->
+<div class="frame">
+  <div class="frame-label">Frame 3 / 5 · 宏观日历 — 宏观节奏如何?接下来有什么事件?(8 个子页签:利率路径自撤销的期权波动率页迁入)</div>
+  <div class="hd">
+    <div><span class="brand">市场脉搏<span class="en">MARKET INTELLIGENCE</span></span></div>
+    <div class="hd-right"><span>NY <b>19:41</b></span><span>HK <b>07:41</b></span><span>TYO <b>08:41</b></span><span class="pill">08/19 07:40 · HKT ▾</span></div>
+  </div>
+  <div class="tabs">
+    <div class="tab">概览简报</div><div class="tab">资金流向</div><div class="tab on">宏观日历</div>
+  </div>
+  <div class="bd">
+    <div class="chips">
+      <div class="chip on">经济日历</div><div class="chip">财报</div><div class="chip">分红</div><div class="chip">新股</div><div class="chip">交易时段</div><div class="chip">利率路径</div><div class="chip">FRED图表</div><div class="chip">快讯情感</div>
+    </div>
+
+    <div class="card card-pad">
+      <div class="lbl" style="margin-bottom:10px;">多源聚合状态</div>
+      <div class="chips"><div class="chip up-t">● AKShare</div><div class="chip" style="color:var(--ai);">● DBnomics</div><div class="chip" style="color:var(--blue);">● FRED</div><span class="lbl" style="align-self:center;">宏观日历多源聚合完成</span></div>
+    </div>
+
+    <div class="ai-card">
+      <div style="display:flex;align-items:center;gap:10px;"><span class="ai-bdg">AI 生成 · 仅供参考</span><span style="font-weight:600;">主脑前瞻推演</span></div>
+      <div style="margin-top:10px;font-size:13px;color:var(--txt-2);line-height:1.6;">本期焦点:新西兰 7 月电子销售数据。月度与年度趋势显示消费价格敏感度上升,或对 NZD 交叉盘形成扰动,关注 USD/CAD、NZD/JPY 联动。</div>
+    </div>
+
+    <div class="card card-pad">
+      <div style="display:flex;align-items:center;margin-bottom:12px;">
+        <div class="sec-title">经济日历 · 央行事件</div><div class="grow"></div>
+        <div class="chips"><div class="chip">地区 ▾</div><div class="chip">级别 ▾</div><div class="chip">日期 ▾</div></div>
+      </div>
+      <table class="cal">
+        <tr><th>日期</th><th>时间</th><th>地区</th><th>事件</th><th>级别</th><th>实际</th><th>预期</th><th>前值</th></tr>
+        <tr class="row-hi"><td>08/19</td><td>14:30</td><td>🇦🇺 澳洲</td><td>澳洲央行利率决议</td><td><span class="star">★★★</span></td><td>—</td><td>4.10%</td><td>4.10%</td></tr>
+        <tr><td>08/19</td><td>16:00</td><td>🇪🇺 欧元区</td><td>经常帐</td><td><span class="star">★</span></td><td>—</td><td>—</td><td>312亿</td></tr>
+        <tr class="row-hi"><td>08/19</td><td>20:30</td><td>🇺🇸 美国</td><td>初请失业金人数</td><td><span class="star">★★★</span></td><td>—</td><td>23.0万</td><td>22.4万</td></tr>
+        <tr><td>08/19</td><td>22:00</td><td>🇺🇸 美国</td><td>成屋销售</td><td><span class="star">★★</span></td><td>—</td><td>390万</td><td>393万</td></tr>
+        <tr><td>08/20</td><td>09:15</td><td>🇨🇳 中国</td><td>LPR 报价</td><td><span class="star">★★★</span></td><td>—</td><td>3.00%</td><td>3.00%</td></tr>
+      </table>
+      <div class="foot"><span>数据源:AKShare · DBnomics · FRED</span><span>更新于 07:40</span></div>
+    </div>
+
+    <div class="card card-pad">
+      <div style="display:flex;align-items:center;margin-bottom:10px;">
+        <div class="sec-title">利率路径 · FedWatch <span class="sec-sub">原顶级期权波动率页迁入</span></div>
+        <div class="grow"></div>
+        <div class="chips"><span class="chip">下次 FOMC 09/17 · <b class="down-t">降息概率 78%</b></span><span class="chip">还有 29 天</span></div>
+      </div>
+      <svg viewBox="0 0 600 150" width="100%" height="150">
+        <g stroke="rgba(255,255,255,.07)">
+          <line x1="40" y1="26" x2="580" y2="26"/><line x1="40" y1="50" x2="580" y2="50"/><line x1="40" y1="80" x2="580" y2="80"/><line x1="40" y1="110" x2="580" y2="110"/><line x1="40" y1="132" x2="580" y2="132"/>
+        </g>
+        <g fill="#6B7280" font-size="10">
+          <text x="2" y="29">4.00%</text><text x="2" y="53">3.75%</text><text x="2" y="83">3.50%</text><text x="2" y="113">3.25%</text><text x="2" y="135">3.00%</text>
+        </g>
+        <path d="M60,50 H150 V80 H270 V80 H390 V110 H510 V132 H580" fill="none" stroke="#60A5FA" stroke-width="2.5"/>
+        <g fill="#60A5FA"><circle cx="150" cy="80" r="4"/><circle cx="390" cy="110" r="4"/><circle cx="510" cy="132" r="4"/></g>
+        <g fill="#9CA3AF" font-size="10" text-anchor="middle">
+          <text x="60" y="147">当前 3.75%</text><text x="150" y="147">09/17 →3.50%</text><text x="270" y="147">10/28</text><text x="390" y="147">12/10 →3.25%</text><text x="510" y="147">27/01 →3.00%</text>
+        </g>
+      </svg>
+      <div class="foot"><span>数据源:Futu FedWatch · 隐含利率来自联邦基金期货定价,非 FOMC 点阵图</span><span>更新于 07:40</span></div>
+    </div>
+
+    <div class="row-2">
+      <div class="card card-pad">
+        <div style="display:flex;align-items:center;margin-bottom:10px;"><div class="sec-title">FRED 宏观图表</div><div class="grow"></div><span class="btn-mini">查询</span></div>
+        <div class="chips" style="margin-bottom:10px;"><div class="chip on">10年美债 DGS10</div><div class="chip">核心CPI</div><div class="chip">非农</div><div class="chip">失业率</div><div class="chip">M2</div></div>
+        <svg viewBox="0 0 400 120" width="100%" height="120"><polyline fill="none" stroke="#A78BFA" stroke-width="2" points="0,80 40,75 80,60 120,68 160,50 200,55 240,40 280,30 320,45 360,35 400,38"/></svg>
+        <div class="lbl" style="margin-top:6px;">DGS10 · 数据截至 2026-08-17</div>
+      </div>
+      <div class="card card-pad">
+        <div style="display:flex;align-items:center;margin-bottom:10px;"><div class="sec-title">LLM 情感打分 · 财经快讯</div><div class="grow"></div><span class="freq">源延迟</span></div>
+        <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;">
+          <div style="display:flex;gap:8px;align-items:center;"><span class="bdg up">利好</span><span>09:12 · 路透 · 南向资金持续流入科技权重</span></div>
+          <div style="display:flex;gap:8px;align-items:center;"><span class="bdg down">利空</span><span>08:47 · 彭博 · 美债收益率走高压制成长股</span></div>
+          <div style="display:flex;gap:8px;align-items:center;"><span class="bdg flat">中性</span><span>08:15 · 财新 · 8 月 LPR 报价即将公布</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ================= FRAME 4 · 个股工作台(行情页重构) ================= -->
+<div class="frame">
+  <div class="frame-label">Frame 4 / 5 · 个股工作台(行情与高频盘口重构)— 这只票现在怎么样?(原「数据中心 · 个股深度」并入右栏微观 tab;L2 盘口与批量快照去重,不再迁移)</div>
+  <div class="hd">
+    <div><span class="brand">个股工作台<span class="en">STOCK WORKBENCH</span></span></div>
+    <div class="hd-right"><span>NY <b>19:41</b></span><span>HK <b>07:41</b></span><span>TYO <b>08:41</b></span><span class="pill">08/19 07:40 · HKT ▾</span></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px;padding:12px 24px;border-bottom:1px solid var(--line);font-size:13px;">
+    <span class="lbl">侧边栏入口:市场感知 → 行情与高频盘口(建议更名:个股工作台)</span>
+    <div class="grow"></div>
+    <span style="font-weight:700;">HK.00700 · 腾讯控股</span>
+    <span style="font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;">372.80</span><span class="bdg up">+0.54%</span>
+    <span class="pill">自选池 = 全页唯一选择器</span>
+  </div>
+  <div class="bd">
+    <div style="display:flex;gap:var(--gap);align-items:stretch;">
+
+      <!-- 左列 · 自选池 -->
+      <div class="card" style="width:252px;flex:none;display:flex;flex-direction:column;">
+        <div style="padding:12px 14px;border-bottom:1px solid var(--line);">
+          <div class="sec-title" style="font-size:13px;">自选池 <span class="sec-sub">5 项 · 拖拽排序</span></div>
+          <div style="margin-top:8px;padding:7px 10px;border-radius:8px;background:var(--panel-2);border:1px solid var(--line);font-size:12px;color:var(--txt-3);">搜索或添加标的…</div>
+        </div>
+        <div style="flex:1;padding:8px;display:flex;flex-direction:column;gap:4px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;">
+            <div><div style="font-size:13px;font-weight:600;">BTC/USD</div><div class="lbl">比特币</div></div>
+            <div style="text-align:right;"><div style="font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;">67,542.3</div><span class="bdg up">+2.14%</span></div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;">
+            <div><div style="font-size:13px;font-weight:600;">ETH/USD</div><div class="lbl">以太坊</div></div>
+            <div style="text-align:right;"><div style="font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;">3,452.8</div><span class="bdg down">-1.03%</span></div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;background:#1E2A44;border:1px solid #2C3E5F;">
+            <div><div style="font-size:13px;font-weight:600;color:#DBEAFE;">HK.00700</div><div class="lbl">腾讯控股 · 已选中</div></div>
+            <div style="text-align:right;"><div style="font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;">372.80</div><span class="bdg up">+0.54%</span></div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;">
+            <div><div style="font-size:13px;font-weight:600;">SPY</div><div class="lbl">标普500 ETF</div></div>
+            <div style="text-align:right;"><div style="font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;">543.12</div><span class="bdg up">+0.89%</span></div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;">
+            <div><div style="font-size:13px;font-weight:600;">US.AAPL</div><div class="lbl">苹果</div></div>
+            <div style="text-align:right;"><div style="font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;">231.50</div><span class="bdg down">-0.32%</span></div>
+          </div>
+        </div>
+        <div class="lbl" style="padding:10px 14px;border-top:1px solid var(--line);">点击行 = 切换 K 线与右栏标的 · 空池显示空态引导,无 0.00 假值</div>
+      </div>
+
+      <!-- 中列 · K 线 -->
+      <div class="card" style="flex:1;display:flex;flex-direction:column;">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div class="seg"><div class="tab">分时</div><div class="tab">Tick</div><div class="tab">5日</div><div class="tab on">日K</div><div class="tab">周K</div><div class="tab">月K</div></div>
+          <div class="grow"></div>
+          <div class="chips">
+            <span class="chip" style="padding:3px 8px;"><span style="color:#f472b6;">●</span> MA20</span>
+            <span class="chip" style="padding:3px 8px;"><span style="color:#60a5fa;">●</span> MA50</span>
+            <span class="chip" style="padding:3px 8px;"><span style="color:#fbbf24;">●</span> MA200</span>
+            <span class="chip" style="padding:3px 8px;">BB</span>
+            <span class="chip" style="padding:3px 8px;">MACD</span>
+            <span class="chip" style="padding:3px 8px;">RSI</span>
+            <span class="chip" style="padding:3px 8px;">KDJ</span>
+          </div>
+        </div>
+        <div style="flex:1;padding:10px 14px;">
+          <svg viewBox="0 0 640 260" width="100%" height="264">
+            <!-- 跌蜡烛 -->
+            <g fill="#F87171" stroke="#F87171" stroke-width="1.5">
+              <line x1="16" y1="142" x2="16" y2="175"/><rect x="11" y="150" width="10" height="18" rx="1"/>
+              <line x1="42" y1="160" x2="42" y2="186"/><rect x="37" y="168" width="10" height="10" rx="1"/>
+              <line x1="120" y1="138" x2="120" y2="162"/><rect x="115" y="148" width="10" height="8" rx="1"/>
+              <line x1="198" y1="116" x2="198" y2="140"/><rect x="193" y="126" width="10" height="8" rx="1"/>
+              <line x1="276" y1="98" x2="276" y2="122"/><rect x="271" y="108" width="10" height="8" rx="1"/>
+              <line x1="302" y1="106" x2="302" y2="130"/><rect x="297" y="116" width="10" height="8" rx="1"/>
+              <line x1="406" y1="74" x2="406" y2="98"/><rect x="401" y="84" width="10" height="8" rx="1"/>
+              <line x1="484" y1="58" x2="484" y2="80"/><rect x="479" y="68" width="10" height="6" rx="1"/>
+              <line x1="562" y1="44" x2="562" y2="66"/><rect x="557" y="54" width="10" height="6" rx="1"/>
+            </g>
+            <!-- 涨蜡烛 -->
+            <g fill="#34D399" stroke="#34D399" stroke-width="1.5">
+              <line x1="68" y1="152" x2="68" y2="184"/><rect x="63" y="160" width="10" height="18" rx="1"/>
+              <line x1="94" y1="140" x2="94" y2="166"/><rect x="89" y="148" width="10" height="12" rx="1"/>
+              <line x1="146" y1="130" x2="146" y2="160"/><rect x="141" y="138" width="10" height="18" rx="1"/>
+              <line x1="172" y1="118" x2="172" y2="144"/><rect x="167" y="126" width="10" height="12" rx="1"/>
+              <line x1="224" y1="110" x2="224" y2="138"/><rect x="219" y="118" width="10" height="16" rx="1"/>
+              <line x1="250" y1="100" x2="250" y2="124"/><rect x="245" y="108" width="10" height="10" rx="1"/>
+              <line x1="328" y1="98" x2="328" y2="128"/><rect x="323" y="106" width="10" height="18" rx="1"/>
+              <line x1="354" y1="88" x2="354" y2="112"/><rect x="349" y="96" width="10" height="10" rx="1"/>
+              <line x1="380" y1="76" x2="380" y2="102"/><rect x="375" y="84" width="10" height="12" rx="1"/>
+              <line x1="432" y1="70" x2="432" y2="96"/><rect x="427" y="78" width="10" height="14" rx="1"/>
+              <line x1="458" y1="60" x2="458" y2="84"/><rect x="453" y="68" width="10" height="10" rx="1"/>
+              <line x1="510" y1="54" x2="510" y2="78"/><rect x="505" y="62" width="10" height="12" rx="1"/>
+              <line x1="536" y1="46" x2="536" y2="68"/><rect x="531" y="54" width="10" height="8" rx="1"/>
+              <line x1="588" y1="42" x2="588" y2="64"/><rect x="583" y="50" width="10" height="10" rx="1"/>
+              <line x1="614" y1="36" x2="614" y2="56"/><rect x="609" y="44" width="10" height="6" rx="1"/>
+            </g>
+            <!-- 均线 -->
+            <polyline fill="none" stroke="#60A5FA" stroke-width="1.5" points="16,158 42,168 68,166 94,158 120,154 146,148 172,138 198,132 224,126 250,118 276,114 302,116 328,112 354,104 380,94 406,90 432,84 458,76 484,72 510,66 536,60 562,56 588,52 614,47"/>
+            <polyline fill="none" stroke="#FBBF24" stroke-width="1.5" points="16,172 68,174 120,168 172,156 224,144 276,132 328,122 380,110 432,98 484,86 536,74 588,64 614,59"/>
+            <!-- 现价线 -->
+            <line x1="0" y1="44" x2="640" y2="44" stroke="rgba(52,211,153,.5)" stroke-dasharray="4 4"/>
+            <text x="636" y="38" fill="#34D399" font-size="10" text-anchor="end">372.80</text>
+            <!-- 成交量 -->
+            <line x1="0" y1="205" x2="640" y2="205" stroke="rgba(255,255,255,.08)"/>
+            <text x="2" y="218" fill="#6B7280" font-size="10">成交量</text>
+            <g>
+              <rect x="11" y="230" width="10" height="22" fill="rgba(248,113,113,.45)"/>
+              <rect x="37" y="238" width="10" height="14" fill="rgba(248,113,113,.45)"/>
+              <rect x="63" y="226" width="10" height="26" fill="rgba(52,211,153,.45)"/>
+              <rect x="89" y="234" width="10" height="18" fill="rgba(52,211,153,.45)"/>
+              <rect x="115" y="242" width="10" height="10" fill="rgba(248,113,113,.45)"/>
+              <rect x="141" y="222" width="10" height="30" fill="rgba(52,211,153,.45)"/>
+              <rect x="167" y="232" width="10" height="20" fill="rgba(52,211,153,.45)"/>
+              <rect x="193" y="240" width="10" height="12" fill="rgba(248,113,113,.45)"/>
+              <rect x="219" y="224" width="10" height="28" fill="rgba(52,211,153,.45)"/>
+              <rect x="245" y="236" width="10" height="16" fill="rgba(52,211,153,.45)"/>
+              <rect x="271" y="243" width="10" height="9" fill="rgba(248,113,113,.45)"/>
+              <rect x="297" y="241" width="10" height="11" fill="rgba(248,113,113,.45)"/>
+              <rect x="323" y="220" width="10" height="32" fill="rgba(52,211,153,.45)"/>
+              <rect x="349" y="234" width="10" height="18" fill="rgba(52,211,153,.45)"/>
+              <rect x="375" y="228" width="10" height="24" fill="rgba(52,211,153,.45)"/>
+              <rect x="401" y="239" width="10" height="13" fill="rgba(248,113,113,.45)"/>
+              <rect x="427" y="225" width="10" height="27" fill="rgba(52,211,153,.45)"/>
+              <rect x="453" y="232" width="10" height="20" fill="rgba(52,211,153,.45)"/>
+              <rect x="479" y="242" width="10" height="10" fill="rgba(248,113,113,.45)"/>
+              <rect x="505" y="222" width="10" height="30" fill="rgba(52,211,153,.45)"/>
+              <rect x="531" y="230" width="10" height="22" fill="rgba(52,211,153,.45)"/>
+              <rect x="557" y="240" width="10" height="12" fill="rgba(248,113,113,.45)"/>
+              <rect x="583" y="226" width="10" height="26" fill="rgba(52,211,153,.45)"/>
+              <rect x="609" y="218" width="10" height="34" fill="rgba(52,211,153,.45)"/>
+            </g>
+          </svg>
+        </div>
+        <div class="foot"><span>数据源:Futu OpenD · Lightweight-Charts</span><span>键盘 1-6 切换周期 · 休市时保留昨收 K 线并挂状态标签</span></div>
+      </div>
+
+      <!-- 右列 · 盘口 | 微观 -->
+      <div class="card" style="width:400px;flex:none;display:flex;flex-direction:column;">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;">
+          <div class="seg grow"><div class="tab" style="flex:1;text-align:center;">盘口</div><div class="tab on" style="flex:1;text-align:center;">微观</div></div>
+          <span class="lbl">选择持久化</span>
+        </div>
+        <div class="lbl" style="padding:8px 14px 0;">微观 tab = 原「数据中心 · 个股深度」迁入;盘口 tab = PixiJS 档位盘口 + 大单提示 + 成交流水(保留现状)</div>
+        <div style="flex:1;padding:10px 14px;display:flex;flex-direction:column;gap:10px;">
+          <div class="card card-pad" style="background:var(--panel-2);">
+            <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:600;font-size:13px;">主力筹码分层</span><span class="freq">日更</span></div>
+            <div style="display:flex;gap:10px;margin-top:10px;">
+              <div class="grow"><div class="lbl">主力净额</div><div class="down-t" style="font-size:18px;font-weight:700;">-5.52亿</div></div>
+              <div class="grow"><div class="lbl">散户净额</div><div class="down-t" style="font-size:18px;font-weight:700;">-5.55亿</div></div>
+              <div class="grow"><div class="lbl">机构主导度 <span style="color:var(--blue);font-size:11px;">?算法</span></div><div style="font-size:18px;font-weight:700;color:var(--ai);">49.9%</div></div>
+            </div>
+            <div class="foot" style="padding:10px 0 0;border:none;"><span>数据源:facade+futu</span><span>08/18</span></div>
+          </div>
+          <div class="card card-pad" style="background:var(--panel-2);">
+            <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:600;font-size:13px;">卖方共识 vs 基本面</span><span class="freq">日更</span></div>
+            <div style="display:flex;gap:10px;margin-top:10px;">
+              <div class="grow"><div class="lbl">共识评级</div><div style="font-size:18px;font-weight:700;color:var(--up);">买入</div><div class="lbl">12 家机构</div></div>
+              <div class="grow"><div class="lbl">目标价</div><div style="font-size:18px;font-weight:700;">512.0</div><div class="lbl">+15.8% 空间</div></div>
+              <div class="grow"><div class="lbl">一致预期 EPS</div><div style="font-size:18px;font-weight:700;">24.6</div><div class="lbl">FY2026</div></div>
+            </div>
+          </div>
+          <div class="card card-pad" style="background:var(--panel-2);">
+            <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:600;font-size:13px;">卖空拥挤度</span><span class="freq">仅港股标的显示 · 其他市场自动隐藏</span></div>
+            <div style="display:flex;gap:10px;margin-top:10px;">
+              <div class="grow"><div class="lbl">卖空占比</div><div style="font-size:18px;font-weight:700;">16.4%</div></div>
+              <div class="grow"><div class="lbl">拥挤度分位</div><div style="font-size:18px;font-weight:700;color:var(--warn);">78%</div></div>
+              <div class="grow"><div class="lbl">回补天数</div><div style="font-size:18px;font-weight:700;">0.42</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="collapse" style="border-top:1px solid var(--line);">▸ 基础信息(默认折叠 · 公司资料 / 股本 / 行业归属)</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ================= FRAME 5 · 个股工作台 · 期权模式 ================= -->
+<div class="frame">
+  <div class="frame-label">Frame 5 / 5 · 个股工作台 · 期权模式 — 中列 [K线|期权] 切换(原顶级"期权波动率曲面"tab 撤销迁入;标的由自选池驱动,无任何写死合约)</div>
+  <div class="hd">
+    <div><span class="brand">个股工作台<span class="en">STOCK WORKBENCH</span></span></div>
+    <div class="hd-right"><span>NY <b>19:41</b></span><span>HK <b>07:41</b></span><span>TYO <b>08:41</b></span><span class="pill">08/19 07:40 · HKT ▾</span></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px;padding:12px 24px;border-bottom:1px solid var(--line);font-size:13px;">
+    <span class="lbl">中列模式与右栏 tab 互相独立 · 模式选择随标的持久化</span>
+    <div class="grow"></div>
+    <span style="font-weight:700;">MU.US · 美光科技</span>
+    <span style="font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;">108.42</span><span class="bdg up">+1.12%</span>
+    <span class="pill">标的 = 自选池选中</span>
+  </div>
+  <div class="bd">
+    <div style="display:flex;gap:var(--gap);align-items:stretch;">
+
+      <!-- 左列 · 自选池 -->
+      <div class="card" style="width:252px;flex:none;display:flex;flex-direction:column;">
+        <div style="padding:12px 14px;border-bottom:1px solid var(--line);">
+          <div class="sec-title" style="font-size:13px;">自选池 <span class="sec-sub">5 项 · 拖拽排序</span></div>
+          <div style="margin-top:8px;padding:7px 10px;border-radius:8px;background:var(--panel-2);border:1px solid var(--line);font-size:12px;color:var(--txt-3);">搜索或添加标的…</div>
+        </div>
+        <div style="flex:1;padding:8px;display:flex;flex-direction:column;gap:4px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;background:#1E2A44;border:1px solid #2C3E5F;">
+            <div><div style="font-size:13px;font-weight:600;color:#DBEAFE;">MU.US</div><div class="lbl">美光科技 · 已选中</div></div>
+            <div style="text-align:right;"><div style="font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;">108.42</div><span class="bdg up">+1.12%</span></div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;">
+            <div><div style="font-size:13px;font-weight:600;">HK.00700</div><div class="lbl">腾讯控股</div></div>
+            <div style="text-align:right;"><div style="font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;">372.80</div><span class="bdg up">+0.54%</span></div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;">
+            <div><div style="font-size:13px;font-weight:600;">US.AAPL</div><div class="lbl">苹果</div></div>
+            <div style="text-align:right;"><div style="font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;">231.50</div><span class="bdg down">-0.32%</span></div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;">
+            <div><div style="font-size:13px;font-weight:600;">SPY</div><div class="lbl">标普500 ETF</div></div>
+            <div style="text-align:right;"><div style="font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;">543.12</div><span class="bdg up">+0.89%</span></div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;">
+            <div><div style="font-size:13px;font-weight:600;">BTC/USD</div><div class="lbl">比特币</div></div>
+            <div style="text-align:right;"><div style="font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;">67,542.3</div><span class="bdg up">+2.14%</span></div>
+          </div>
+        </div>
+        <div class="lbl" style="padding:10px 14px;border-top:1px solid var(--line);">切换标的 → K线/期权/右栏整体联动 · 无期权链标的显示空态</div>
+      </div>
+
+      <!-- 中列 · 期权模式 -->
+      <div class="card" style="flex:1;display:flex;flex-direction:column;">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div class="seg"><div class="tab">K线</div><div class="tab on">期权</div></div>
+          <div class="grow"></div>
+          <div class="chips">
+            <span class="chip">ATM IV <b>38.2%</b></span>
+            <span class="chip">IV 分位 <b class="up-t">64%</b></span>
+            <span class="chip">30日已实现 <b>31.5%</b></span>
+            <span class="chip">Skew <b>+2.1</b></span>
+          </div>
+        </div>
+        <div style="padding:10px 14px;display:flex;flex-direction:column;gap:10px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div class="seg"><div class="tab on">IV 热力图</div><div class="tab">3D 曲面</div></div>
+            <div class="grow"></div>
+            <span class="lbl">行=行权价 · 列=到期日 · 颜色=IV 高低 · 点击单元格选合约</span>
+          </div>
+          <!-- 热力图 -->
+          <div style="display:grid;grid-template-columns:64px repeat(5,1fr);gap:4px;font-size:11px;font-variant-numeric:tabular-nums;">
+            <div></div>
+            <div class="lbl" style="text-align:center;padding:4px 0;">09/19</div>
+            <div class="lbl" style="text-align:center;padding:4px 0;">10/17</div>
+            <div class="lbl" style="text-align:center;padding:4px 0;">11/21</div>
+            <div class="lbl" style="text-align:center;padding:4px 0;">12/19</div>
+            <div class="lbl" style="text-align:center;padding:4px 0;">26/03</div>
+
+            <div class="lbl" style="display:flex;align-items:center;">95</div>
+            <div style="background:rgba(248,113,113,.5);padding:6px 4px;border-radius:6px;text-align:center;">46.2</div>
+            <div style="background:rgba(248,113,113,.5);padding:6px 4px;border-radius:6px;text-align:center;">44.1</div>
+            <div style="background:rgba(248,113,113,.34);padding:6px 4px;border-radius:6px;text-align:center;">42.8</div>
+            <div style="background:rgba(251,191,36,.32);padding:6px 4px;border-radius:6px;text-align:center;">41.5</div>
+            <div style="background:rgba(251,191,36,.18);padding:6px 4px;border-radius:6px;text-align:center;">39.8</div>
+
+            <div class="lbl" style="display:flex;align-items:center;">100</div>
+            <div style="background:rgba(248,113,113,.34);padding:6px 4px;border-radius:6px;text-align:center;">42.5</div>
+            <div style="background:rgba(251,191,36,.32);padding:6px 4px;border-radius:6px;text-align:center;">40.8</div>
+            <div style="background:rgba(251,191,36,.18);padding:6px 4px;border-radius:6px;text-align:center;">39.6</div>
+            <div style="background:rgba(251,191,36,.18);padding:6px 4px;border-radius:6px;text-align:center;">38.4</div>
+            <div style="background:rgba(52,211,153,.22);padding:6px 4px;border-radius:6px;text-align:center;">37.2</div>
+
+            <div class="lbl" style="display:flex;align-items:center;">105</div>
+            <div style="background:rgba(251,191,36,.18);padding:6px 4px;border-radius:6px;text-align:center;">39.8</div>
+            <div style="background:rgba(251,191,36,.18);padding:6px 4px;border-radius:6px;text-align:center;">38.6</div>
+            <div style="background:rgba(52,211,153,.22);padding:6px 4px;border-radius:6px;text-align:center;">37.5</div>
+            <div style="background:rgba(52,211,153,.22);padding:6px 4px;border-radius:6px;text-align:center;">36.6</div>
+            <div style="background:rgba(52,211,153,.36);padding:6px 4px;border-radius:6px;text-align:center;">35.8</div>
+
+            <div style="display:flex;align-items:center;color:var(--warn);font-weight:600;">110 ◀ATM</div>
+            <div style="background:rgba(251,191,36,.18);padding:6px 4px;border-radius:6px;text-align:center;">38.2</div>
+            <div style="background:rgba(52,211,153,.22);padding:6px 4px;border-radius:6px;text-align:center;outline:2px solid var(--blue);outline-offset:-1px;font-weight:700;">37.4 ✓</div>
+            <div style="background:rgba(52,211,153,.22);padding:6px 4px;border-radius:6px;text-align:center;">36.5</div>
+            <div style="background:rgba(52,211,153,.36);padding:6px 4px;border-radius:6px;text-align:center;">35.8</div>
+            <div style="background:rgba(52,211,153,.36);padding:6px 4px;border-radius:6px;text-align:center;">35.0</div>
+
+            <div class="lbl" style="display:flex;align-items:center;">115</div>
+            <div style="background:rgba(251,191,36,.18);padding:6px 4px;border-radius:6px;text-align:center;">38.9</div>
+            <div style="background:rgba(52,211,153,.22);padding:6px 4px;border-radius:6px;text-align:center;">37.8</div>
+            <div style="background:rgba(52,211,153,.22);padding:6px 4px;border-radius:6px;text-align:center;">36.9</div>
+            <div style="background:rgba(52,211,153,.22);padding:6px 4px;border-radius:6px;text-align:center;">36.1</div>
+            <div style="background:rgba(52,211,153,.36);padding:6px 4px;border-radius:6px;text-align:center;">35.4</div>
+
+            <div class="lbl" style="display:flex;align-items:center;">120</div>
+            <div style="background:rgba(251,191,36,.32);padding:6px 4px;border-radius:6px;text-align:center;">40.5</div>
+            <div style="background:rgba(251,191,36,.18);padding:6px 4px;border-radius:6px;text-align:center;">39.1</div>
+            <div style="background:rgba(251,191,36,.18);padding:6px 4px;border-radius:6px;text-align:center;">38.0</div>
+            <div style="background:rgba(52,211,153,.22);padding:6px 4px;border-radius:6px;text-align:center;">37.0</div>
+            <div style="background:rgba(52,211,153,.22);padding:6px 4px;border-radius:6px;text-align:center;">36.0</div>
+
+            <div class="lbl" style="display:flex;align-items:center;">125</div>
+            <div style="background:rgba(248,113,113,.34);padding:6px 4px;border-radius:6px;text-align:center;">42.8</div>
+            <div style="background:rgba(251,191,36,.32);padding:6px 4px;border-radius:6px;text-align:center;">41.0</div>
+            <div style="background:rgba(251,191,36,.18);padding:6px 4px;border-radius:6px;text-align:center;">39.5</div>
+            <div style="background:rgba(251,191,36,.18);padding:6px 4px;border-radius:6px;text-align:center;">38.2</div>
+            <div style="background:rgba(52,211,153,.22);padding:6px 4px;border-radius:6px;text-align:center;">36.9</div>
+
+            <div class="lbl" style="display:flex;align-items:center;">130</div>
+            <div style="background:rgba(248,113,113,.5);padding:6px 4px;border-radius:6px;text-align:center;">45.5</div>
+            <div style="background:rgba(248,113,113,.34);padding:6px 4px;border-radius:6px;text-align:center;">43.4</div>
+            <div style="background:rgba(251,191,36,.32);padding:6px 4px;border-radius:6px;text-align:center;">41.6</div>
+            <div style="background:rgba(251,191,36,.32);padding:6px 4px;border-radius:6px;text-align:center;">40.0</div>
+            <div style="background:rgba(251,191,36,.18);padding:6px 4px;border-radius:6px;text-align:center;">38.5</div>
+          </div>
+
+          <!-- 损益实验室 + Greeks -->
+          <div class="grid-2">
+            <div class="card card-pad" style="background:var(--panel-2);">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <span style="font-weight:600;font-size:13px;">损益实验室</span>
+                <div class="grow"></div>
+                <div class="chips"><span class="chip">买入勒式 ▾</span><span class="chip">价差 5</span></div>
+              </div>
+              <svg viewBox="0 0 320 130" width="100%" height="118">
+                <line x1="10" y1="78" x2="310" y2="78" stroke="rgba(255,255,255,.18)"/>
+                <text x="310" y="74" fill="#6B7280" font-size="9" text-anchor="end">盈亏 0</text>
+                <polyline fill="none" stroke="#60A5FA" stroke-width="2.5" points="10,26 80,98 200,98 310,16"/>
+                <polyline fill="none" stroke="rgba(248,113,113,.5)" stroke-width="1.5" stroke-dasharray="4 4" points="10,98 310,98"/>
+                <circle cx="38" cy="78" r="3.5" fill="#34D399"/><circle cx="252" cy="78" r="3.5" fill="#34D399"/>
+                <text x="38" y="92" fill="#34D399" font-size="9" text-anchor="middle">盈亏平衡 96.2</text>
+                <text x="252" y="92" fill="#34D399" font-size="9" text-anchor="middle">盈亏平衡 118.8</text>
+                <text x="80" y="118" fill="#6B7280" font-size="9" text-anchor="middle">卖权 100</text>
+                <text x="200" y="118" fill="#6B7280" font-size="9" text-anchor="middle">买权 115</text>
+                <text x="140" y="62" fill="#9CA3AF" font-size="9" text-anchor="middle">最大亏损 = 权利金</text>
+              </svg>
+              <div class="foot" style="padding:8px 0 0;border:none;"><span>数据源:/market/option-strategy-lab</span><span>ECharts</span></div>
+            </div>
+            <div class="card card-pad" style="background:var(--panel-2);">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                <span style="font-weight:600;font-size:13px;">Greeks · 选中合约</span>
+                <div class="grow"></div>
+                <span class="bdg" style="color:var(--blue);background:rgba(96,165,250,.14);">热力图点选</span>
+              </div>
+              <div class="chip on" style="display:inline-flex;margin-bottom:10px;">MU.US 261017 C 110</div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+                <div><div class="lbl">Delta</div><div style="font-size:17px;font-weight:700;">0.58</div></div>
+                <div><div class="lbl">Gamma</div><div style="font-size:17px;font-weight:700;">0.032</div></div>
+                <div><div class="lbl">Theta</div><div class="down-t" style="font-size:17px;font-weight:700;">-0.11</div></div>
+                <div><div class="lbl">Vega</div><div style="font-size:17px;font-weight:700;">0.21</div></div>
+                <div><div class="lbl">IV</div><div style="font-size:17px;font-weight:700;color:var(--up);">38.2%</div></div>
+                <div><div class="lbl">理论价</div><div style="font-size:17px;font-weight:700;">3.85</div></div>
+              </div>
+              <div class="foot" style="padding:8px 0 0;border:none;"><span>数据源:/market/option-volatility</span><span>点击其他单元格即切换</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="foot"><span>数据源:facade+futu · /options/chain-matrix/{symbol}</span><span>无期权链标的显示空态"该标的无场内期权链" · 错误走错误卡+重试,无内联红字</span></div>
+      </div>
+
+      <!-- 右列 · 盘口 | 微观 -->
+      <div class="card" style="width:400px;flex:none;display:flex;flex-direction:column;">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;">
+          <div class="seg grow"><div class="tab on" style="flex:1;text-align:center;">盘口</div><div class="tab" style="flex:1;text-align:center;">微观</div></div>
+          <span class="lbl">选择持久化</span>
+        </div>
+        <div class="lbl" style="padding:8px 14px 0;">盘口 tab = PixiJS 档位盘口 + 大单提示 + 成交流水(保留现状;本图为 DOM 示意)</div>
+        <div style="flex:1;padding:10px 14px;display:flex;flex-direction:column;gap:8px;">
+          <div class="ob">
+            <div class="row ask"><span class="pr">108.58</span><div class="bar" style="width:86%;"></div><span class="vl">4,210</span></div>
+            <div class="row ask"><span class="pr">108.56</span><div class="bar" style="width:62%;"></div><span class="vl">3,050</span></div>
+            <div class="row ask"><span class="pr">108.54</span><div class="bar" style="width:48%;"></div><span class="vl">2,340</span></div>
+            <div class="row ask"><span class="pr">108.52</span><div class="bar" style="width:35%;"></div><span class="vl">1,720</span></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-radius:8px;background:var(--panel-2);font-size:13px;">
+            <span class="lbl">价差 0.02</span>
+            <span style="font-weight:700;font-size:16px;font-variant-numeric:tabular-nums;">108.50</span>
+            <span class="lbl">买卖量比 0.94</span>
+          </div>
+          <div class="ob">
+            <div class="row bid"><span class="pr">108.50</span><div class="bar" style="width:40%;"></div><span class="vl">1,960</span></div>
+            <div class="row bid"><span class="pr">108.48</span><div class="bar" style="width:55%;"></div><span class="vl">2,700</span></div>
+            <div class="row bid"><span class="pr">108.46</span><div class="bar" style="width:70%;"></div><span class="vl">3,440</span></div>
+            <div class="row bid"><span class="pr">108.44</span><div class="bar" style="width:82%;"></div><span class="vl">4,020</span></div>
+          </div>
+          <div class="lbl" style="margin-top:6px;">档位 5/10/20/40 可切 · 大单提示 · 成交流水(同 Frame 4 盘口 tab)</div>
+        </div>
+        <div class="foot"><span>数据源:Futu OpenD · PixiJS v8</span><span>休市显示状态说明,不裸占位</span></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  // Verification helper only: ?frame=N isolates the Nth frame for screenshots.
+  (function(){
+    var m = /[?&]frame=(\d+)/.exec(location.search);
+    if(!m) return;
+    var n = parseInt(m[1],10);
+    var frames = document.querySelectorAll('.frame');
+    var note = document.querySelector('.import-note');
+    if(note) note.style.display='none';
+    frames.forEach(function(f,i){ if(i+1!==n) f.style.display='none'; });
+  })();
+</script>
+
+</body>
+</html>
