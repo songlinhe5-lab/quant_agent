@@ -143,3 +143,40 @@ class TestWebpageKnowledgeBaseModel:
         from backend.core.models import WebpageKnowledgeBase
 
         assert hasattr(WebpageKnowledgeBase, "embedding_model_version")
+
+
+class TestEmbeddingSettingsResolution:
+    """Embedding 配置解析（修复：Hermes 进程无 .env 加载时从 pydantic settings 兜底）"""
+
+    def test_settings_resolved_when_env_missing(self, monkeypatch):
+        """模拟 Hermes CLI 进程：env 无 EMBEDDING_* 变量，仍能从 pydantic settings 读到配置。"""
+        for k in ("EMBEDDING_API_KEY", "EMBEDDING_BASE_URL", "EMBEDDING_MODEL"):
+            monkeypatch.delenv(k, raising=False)
+
+        from backend.core.embeddings import _embed_settings
+
+        model, api_key, base_url = _embed_settings()
+        assert model == "BAAI/bge-large-zh-v1.5"
+        assert api_key, "api_key 不应为空（应从 pydantic settings 加载 .env）"
+        assert base_url, "base_url 不应为空（应从 pydantic settings 加载 .env）"
+
+    def test_settings_fallback_to_env_when_settings_fails(self, monkeypatch):
+        """pydantic settings 不可用时回退裸 env（向后兼容）。"""
+        import builtins
+
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "backend.core.config":
+                raise ImportError("模拟 settings 不可用")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        monkeypatch.setenv("EMBEDDING_API_KEY", "env-key")
+        monkeypatch.setenv("EMBEDDING_BASE_URL", "https://example.com/v1")
+
+        from backend.core.embeddings import _embed_settings
+
+        model, api_key, base_url = _embed_settings()
+        assert api_key == "env-key"
+        assert base_url == "https://example.com/v1"

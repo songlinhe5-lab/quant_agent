@@ -19,6 +19,28 @@ logger = logging.getLogger(__name__)
 _BATCH_SIZE = 32  # 远程 API 单次批大小上限保护
 
 
+# Embedding 配置统一从 pydantic Settings 读取（Settings 加载 .env）。
+# 修复：此前用裸 os.getenv，Hermes CLI(scripts/run_cli.py) 未 load_dotenv 导致
+# EMBEDDING_API_KEY 读不到 → 走本地模型 → 返回空 → 知识库写入静默失败。
+def _embed_settings() -> tuple:
+    """返回 (model, api_key, base_url)。优先 pydantic settings(已加载 .env)，回退裸 env。"""
+    try:
+        from backend.core.config import settings
+
+        return (
+            settings.embedding_model,
+            settings.embedding_api_key,
+            settings.embedding_base_url,
+        )
+    except Exception:
+        # pydantic settings 不可用/校验失败时回退裸 env（保持向后兼容）
+        return (
+            os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-zh-v1.5"),
+            os.getenv("EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY", ""),
+            os.getenv("EMBEDDING_BASE_URL"),
+        )
+
+
 def _embed_api(texts: List[str], model: str, api_key: str, base_url: Optional[str]) -> Optional[List[List[float]]]:
     """通过 OpenAI 兼容 Embedding API 生成向量。"""
     import requests
@@ -72,9 +94,7 @@ def get_embeddings(texts: List[str]) -> List[List[float]]:
     if not texts:
         return []
 
-    model = os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-zh-v1.5")
-    api_key = os.getenv("EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY", "")
-    base_url = os.getenv("EMBEDDING_BASE_URL")
+    model, api_key, base_url = _embed_settings()
 
     if api_key:
         vecs = _embed_api(texts, model, api_key, base_url)

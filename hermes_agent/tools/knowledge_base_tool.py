@@ -39,7 +39,13 @@ class KnowledgeBaseTool(BaseTool):
 
         try:
             summary = await asyncio.to_thread(self._search_pg, query, limit, days_back)
-            return {"status": "success", "data": {"query": query, "content": summary}}
+            # 未命中（库中无相关内容）时不落缓存，避免 0 命中结果被 Redis 缓存 600s 遮蔽后续修复
+            missed = summary.startswith("未能在全局知识库中检索到")
+            return {
+                "status": "success",
+                "data": {"query": query, "content": summary},
+                "skip_cache": missed,
+            }
         except Exception as e:
             return {"status": "error", "message": f"全局知识库检索失败: {str(e)}"}
 
