@@ -76,7 +76,7 @@ export function DataCenterContent() {
       <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
         {activeTab === 'overview' && <OverviewTab data={d} onNavigate={handleNavigate} />}
         {activeTab === 'capital' && <CapitalFlowTab data={d} onNavigate={handleNavigate} />}
-        {activeTab === 'calendars' && <CalendarsTab data={d} />}
+        {activeTab === 'calendars' && <CalendarsTab />}
       </div>
     </div>
   )
