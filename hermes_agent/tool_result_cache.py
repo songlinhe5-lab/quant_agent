@@ -87,7 +87,10 @@ def cache_key(tool_name: str, kwargs: Dict[str, Any]) -> str:
 
 
 def should_cache_result(result: Any) -> bool:
-    """错误 / 限流 / 空结果不落缓存。"""
+    """错误 / 限流 / 空结果 / 显式 skip_cache 不落缓存。
+
+    skip_cache 由检索类工具在"未命中"时置位，避免 0 命中结果被缓存遮蔽修复。
+    """
     if result is None:
         return False
     if isinstance(result, dict):
@@ -95,6 +98,8 @@ def should_cache_result(result: Any) -> bool:
         if status in ("error", "rate_limited", "failed"):
             return False
         if result.get("error") and not result.get("data"):
+            return False
+        if result.get("skip_cache"):
             return False
     return True
 
@@ -124,6 +129,7 @@ class ToolResultCache:
             if not data:
                 self._misses += 1
                 return None
+
             # decode_responses=True → str keys; 兼容 bytes
             def _v(k: str) -> Optional[str]:
                 if k in data:
@@ -162,16 +168,12 @@ class ToolResultCache:
             # 去掉瞬时标记再存
             payload = result
             if isinstance(result, dict):
-                payload = {
-                    k: v for k, v in result.items() if not str(k).startswith("_cache")
-                }
+                payload = {k: v for k, v in result.items() if not str(k).startswith("_cache")}
             client = self._client()
             mapping = {
                 "result": json.dumps(payload, ensure_ascii=False, default=str),
                 "cached_at": str(int(time.time())),
-                "status": str(
-                    payload.get("status", "success") if isinstance(payload, dict) else "ok"
-                ),
+                "status": str(payload.get("status", "success") if isinstance(payload, dict) else "ok"),
                 "tool": tool_name,
             }
             pipe = client.pipeline()
