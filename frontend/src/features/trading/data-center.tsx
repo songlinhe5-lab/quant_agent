@@ -1,11 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
-import { LayoutGrid, Coins, CalendarRange, Star } from 'lucide-react'
+import { LayoutGrid, Coins, CalendarRange } from 'lucide-react'
 import { useDashboardData, type HubTab } from '@/features/data-center/use-dashboard-data'
 import { OverviewTab } from '@/features/data-center/data-center-overview'
 import { CapitalFlowTab } from '@/features/data-center/data-center-capital-flow'
 import { CalendarsTab } from '@/features/data-center/data-center-calendars'
-import { WatchlistTab } from '@/features/data-center/data-center-watchlist'
 import { MarketClocks } from '@/features/data-center/shared'
 import { useSystemStore } from '@/stores/useSystemStore'
 
@@ -41,7 +40,6 @@ export function DataCenterContent() {
     { id: 'overview', label: '概览', icon: LayoutGrid },
     { id: 'capital', label: '资金流', icon: Coins },
     { id: 'calendars', label: '宏观日历', icon: CalendarRange },
-    { id: 'watchlist', label: '自选个股', icon: Star },
   ]
 
   const handleNavigate = (tab: HubTab, _assetSymbol?: string) => setActiveTab(tab)
@@ -79,7 +77,6 @@ export function DataCenterContent() {
         {activeTab === 'overview' && <OverviewTab data={d} onNavigate={handleNavigate} />}
         {activeTab === 'capital' && <CapitalFlowTab data={d} onNavigate={handleNavigate} />}
         {activeTab === 'calendars' && <CalendarsTab data={d} />}
-        {activeTab === 'watchlist' && <WatchlistTab data={d} />}
       </div>
     </div>
   )
