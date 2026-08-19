@@ -269,7 +269,13 @@ function EconomicView() {
     apiClient
       .get('/macro/calendar', { days_ahead: 14 })
       .then((res: any) => {
-        const list = (res?.data?.data as any[]) || []
+        // 兼容多种信封结构：data.data 可能是数组 / {data:[...]} / null
+        const raw = res?.data?.data
+        const list = Array.isArray(raw)
+          ? raw
+          : Array.isArray(raw?.data)
+            ? (raw.data as any[])
+            : []
         if (!alive) return
         setEvents(list)
       })
