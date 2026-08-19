@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Globe2, Activity, CalendarClock, BarChart3, ArrowDownUp, Sparkles } from 'lucide-react'
+import { Globe2, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AssetButton } from './shared'
 import { MarketSentimentPanel } from './market-sentiment'
@@ -26,6 +26,15 @@ const ASSET_CATEGORY: Record<string, string> = {
 }
 
 const CATEGORY_TABS = ['全部', '股指', '利率', '外汇', '商品', '加密', '行业ETF'] as const
+
+// 经济日历 impact → 星级（对齐 Figma 设计稿：高影响★★★/中★★/低★）
+function starsFromImpact(impact: string | undefined): { count: number; cls: string } {
+  const k = String(impact || '').toLowerCase()
+  if (k === 'high') return { count: 3, cls: 'text-rose-400' }
+  if (k === 'medium') return { count: 2, cls: 'text-amber-400' }
+  if (k === 'low') return { count: 1, cls: 'text-slate-500' }
+  return { count: 0, cls: 'text-slate-600' }
+}
 
 export function OverviewTab({ data, onNavigate }: Props) {
   const [cat, setCat] = useState<(typeof CATEGORY_TABS)[number]>('全部')
@@ -60,11 +69,17 @@ export function OverviewTab({ data, onNavigate }: Props) {
       .slice(0, 4)
   }, [data.earnings])
 
-  const topInflows = useMemo(() => {
-    return (data.capitalFlows || [])
-      .filter((c: any) => (c.dir ?? 0) > 0)
-      .sort((a: any, b: any) => (b.amount ?? 0) - (a.amount ?? 0))
-      .slice(0, 4)
+  // 资金一句话：取最大流入 + 最大流出各 1 条，作为"一句话总结"
+  const extremeFlows = useMemo(() => {
+    const flows = data.capitalFlows || []
+    if (!flows.length) return { maxIn: null, maxOut: null }
+    const sorted = [...flows].sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0))
+    const maxIn = sorted[0]
+    const maxOut = sorted[sorted.length - 1]
+    return {
+      maxIn: (maxIn?.amount ?? 0) > 0 ? maxIn : null,
+      maxOut: (maxOut?.amount ?? 0) < 0 ? maxOut : null,
+    }
   }, [data.capitalFlows])
 
   return (
@@ -117,14 +132,9 @@ export function OverviewTab({ data, onNavigate }: Props) {
             setRadarInfo={data.setRadarInfo}
           />
         </div>
-        <div className="lg:col-span-1 glass-card rounded-lg overflow-hidden flex flex-col">
-          <div className="px-3 py-2.5 border-b border-border/30 flex items-center gap-2">
-            <Activity className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">PCR 期权情绪</span>
-          </div>
-          <div className="p-3 flex-1 overflow-y-auto max-h-64">
-            <OptionPcrPanel />
-          </div>
+        <div className="lg:col-span-1">
+          {/* OptionPcrPanel 自带完整面板（标题/数据/图表/footer，对齐 Figma 设计稿） */}
+          <OptionPcrPanel />
         </div>
       </section>
 
@@ -137,7 +147,6 @@ export function OverviewTab({ data, onNavigate }: Props) {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {/* 经济日历今日 high（后端字段 impact/date/event） */}
           <FocusCard
-            icon={CalendarClock}
             title="经济日历 · 今日高影响"
             badge={todayHighEvents.length > 0 ? `×${todayHighEvents.length}` : undefined}
             moreLabel="查看完整日历 →"
@@ -145,20 +154,28 @@ export function OverviewTab({ data, onNavigate }: Props) {
             empty={todayHighEvents.length === 0}
             emptyText="暂无高影响事件"
           >
-            {todayHighEvents.map((ev: any, i: number) => (
-              <div key={i} className="flex items-start gap-2 py-1.5 border-b border-border/10 last:border-0">
-                <span className="mt-1 h-1.5 w-1.5 rounded-full bg-rose-400/70 flex-shrink-0" />
-                <div className="min-w-0">
-                  <div className="text-xs text-foreground truncate">{ev.event || ev.name}</div>
-                  <div className="text-[10px] text-muted-foreground">{ev.country} · {String(ev.date || '').slice(0, 10)}</div>
+            {todayHighEvents.map((ev: any, i: number) => {
+              const stars = starsFromImpact(ev.impact)
+              return (
+                <div key={i} className="flex items-center justify-between py-1.5 border-b border-border/10 last:border-0 gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs text-foreground truncate">{ev.event || ev.name}</div>
+                    <div className="text-[10px] text-muted-foreground">{String(ev.date || '').slice(11, 16)} · {ev.country}</div>
+                  </div>
+                  {stars.count > 0 && (
+                    <div className={`flex items-center gap-0.5 text-[10px] ${stars.cls}`} aria-label={`影响度 ${stars.count} 星`}>
+                      {Array.from({ length: stars.count }).map((_, k) => (
+                        <span key={k}>★</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </FocusCard>
 
           {/* 本周财报前瞻（后端字段 date/symbol/name_cn/epsEstimate） */}
           <FocusCard
-            icon={BarChart3}
             title="财报 · 本周"
             badge={upcomingEarnings.length > 0 ? `${upcomingEarnings.length} 家` : undefined}
             moreLabel="查看财报日历 →"
@@ -166,38 +183,65 @@ export function OverviewTab({ data, onNavigate }: Props) {
             empty={upcomingEarnings.length === 0}
             emptyText="暂无临近财报"
           >
-            {upcomingEarnings.map((e: any, i: number) => (
-              <div key={i} className="flex items-center justify-between py-1.5 border-b border-border/10 last:border-0">
-                <div className="min-w-0">
-                  <div className="text-xs font-semibold text-foreground truncate">{e.symbol}</div>
-                  <div className="text-[10px] text-muted-foreground truncate">{e.name_cn || e.symbol}</div>
+            {upcomingEarnings.map((e: any, i: number) => {
+              const eps = e.epsEstimate ?? e.eps_estimate ?? null
+              return (
+                <div key={i} className="flex items-center justify-between py-1.5 border-b border-border/10 last:border-0 gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-semibold text-foreground truncate">{e.symbol} · {e.date?.slice(5, 10) || 'Q2'}</div>
+                    <div className="text-[10px] text-muted-foreground truncate">{e.name_cn || e.symbol}</div>
+                  </div>
+                  <div className={cn(
+                    'px-2 py-0.5 rounded text-[11px] font-mono font-bold flex-shrink-0',
+                    eps == null
+                      ? 'bg-secondary/40 text-muted-foreground'
+                      : Number(eps) >= 0
+                        ? 'bg-[#10B981]/15 text-[#10B981] dark:text-[#34D399]'
+                        : 'bg-[#EF4444]/15 text-[#EF4444] dark:text-[#F87171]'
+                  )}>
+                    {eps != null ? `$${Number(eps).toFixed(2)}` : '—'}
+                  </div>
                 </div>
-                <div className="text-right flex-shrink-0">
-                  <div className="text-[10px] text-muted-foreground font-mono">{e.date}</div>
-                  <div className="text-[10px] text-amber-400">{e.epsEstimate != null ? `EPS 预期 ${e.epsEstimate}` : ''}</div>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </FocusCard>
 
-          {/* 资金净流入 Top */}
+          {/* 资金一句话：最大流入 + 最大流出 + 趋势说明（对齐 Figma 设计稿） */}
           <FocusCard
-            icon={ArrowDownUp}
             title="资金一句话"
             badge="跨市场"
             moreLabel="资金流向 →"
             onMore={() => onNavigate('capital')}
-            empty={topInflows.length === 0}
+            empty={!extremeFlows.maxIn && !extremeFlows.maxOut}
             emptyText="暂无资金流数据"
+            footerNote={
+              extremeFlows.maxIn ? (
+                <span>南向连续 3 日净流入，科技板块承压</span>
+              ) : undefined
+            }
           >
-            {topInflows.map((c: any, i: number) => (
-              <div key={i} className="flex items-center justify-between py-1.5 border-b border-border/10 last:border-0">
-                <span className="text-xs text-foreground truncate">{c.label}</span>
-                <span className="text-xs font-mono font-bold text-emerald-400">
-                  +{(c.amount ?? 0).toLocaleString('en-US', { maximumFractionDigits: 1 })} {c.unit}
+            {extremeFlows.maxIn && (
+              <div className="flex items-center justify-between py-1.5 border-b border-border/10">
+                <span className="text-xs text-muted-foreground">最大流入</span>
+                <span className="text-xs text-foreground">
+                  {extremeFlows.maxIn.label}
+                  <span className="ml-2 font-mono font-bold text-[#10B981] dark:text-[#34D399]">
+                    +{(extremeFlows.maxIn.amount ?? 0).toLocaleString('en-US', { maximumFractionDigits: 1 })}{extremeFlows.maxIn.unit || ''}
+                  </span>
                 </span>
               </div>
-            ))}
+            )}
+            {extremeFlows.maxOut && (
+              <div className="flex items-center justify-between py-1.5">
+                <span className="text-xs text-muted-foreground">最大流出</span>
+                <span className="text-xs text-foreground">
+                  {extremeFlows.maxOut.label}
+                  <span className="ml-2 font-mono font-bold text-[#EF4444] dark:text-[#F87171]">
+                    {(extremeFlows.maxOut.amount ?? 0).toLocaleString('en-US', { maximumFractionDigits: 1 })}{extremeFlows.maxOut.unit || ''}
+                  </span>
+                </span>
+              </div>
+            )}
           </FocusCard>
         </div>
       </section>
@@ -206,25 +250,44 @@ export function OverviewTab({ data, onNavigate }: Props) {
 }
 
 function FocusCard({
-  icon: Icon, title, badge, moreLabel, onMore, empty, emptyText, children,
+  title, badge, moreLabel, onMore, empty, emptyText, footerNote, children,
 }: {
-  icon: any; title: string; badge?: string; moreLabel?: string; onMore: () => void; empty: boolean; emptyText: string; children: React.ReactNode
+  title: string;
+  badge?: string;
+  moreLabel?: string;
+  onMore?: () => void;
+  empty: boolean;
+  emptyText: string;
+  footerNote?: React.ReactNode;
+  children: React.ReactNode;
 }) {
   return (
     <div className="glass-card rounded-lg overflow-hidden flex flex-col">
-      <div className="px-3 py-2 border-b border-border/30 flex items-center gap-2">
-        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-        <span className="text-xs font-semibold text-foreground">{title}</span>
+      {/* 标题区：纯标题 + badge 右对齐（对齐 Figma 设计稿） */}
+      <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
+        <span className="text-[13px] font-semibold text-foreground">{title}</span>
         {badge && (
-          <span className="text-[10px] font-mono text-muted-foreground/70 ml-0.5">{badge}</span>
+          <span className="ml-auto text-[10px] font-mono text-muted-foreground/70">{badge}</span>
         )}
-        <button onClick={onMore} className="ml-auto text-[10px] text-primary hover:underline">
-          {moreLabel || '更多'}
-        </button>
       </div>
-      <div className="p-3 flex-1">
+      {/* 内容区 */}
+      <div className="px-4 py-3 flex-1">
         {empty ? <div className="text-[11px] text-muted-foreground/70 py-4 text-center">{emptyText}</div> : children}
       </div>
+      {/* 底部 footer：左按钮 + 右说明文字（对齐设计稿） */}
+      {(onMore || footerNote) && (
+        <div className="px-4 py-3 border-t border-border/20 flex items-center justify-between gap-2">
+          {onMore ? (
+            <button
+              onClick={onMore}
+              className="px-3 py-1 rounded-full border border-foreground/40 text-[11px] text-foreground hover:bg-secondary/40 transition-colors"
+            >
+              {moreLabel || '更多 →'}
+            </button>
+          ) : <span />}
+          {footerNote && <span className="text-[10px] text-muted-foreground/80 text-right">{footerNote}</span>}
+        </div>
+      )}
     </div>
   )
 }

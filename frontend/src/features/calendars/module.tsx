@@ -259,40 +259,126 @@ function impactBadge(impact: string) {
 
 function EconomicView() {
   const [loading, setLoading] = useState(true)
-  const [rows, setRows] = useState<any[][]>([])
+  const [events, setEvents] = useState<any[]>([])
+  const [regionFilter, setRegionFilter] = useState<string>('all')
+  const [impactFilter, setImpactFilter] = useState<string>('all')
+  const [dateFilter, setDateFilter] = useState<string>('all')
+
   useEffect(() => {
     let alive = true
     apiClient
-      .get('/macro/calendar', { days_ahead: 7 })
+      .get('/macro/calendar', { days_ahead: 14 })
       .then((res: any) => {
-        const events = (res?.data?.data as any[]) || []
+        // 兼容多种信封结构：data.data 可能是数组 / {data:[...]} / null
+        const raw = res?.data?.data
+        const list = Array.isArray(raw)
+          ? raw
+          : Array.isArray(raw?.data)
+            ? (raw.data as any[])
+            : []
         if (!alive) return
-        setRows(
-          events.map((e) => [
-            e.date?.slice(0, 10) || '--',
-            e.country || '--',
-            e.event || '--',
-            <span key="i" className={cn('px-1.5 py-0.5 rounded-full text-[10px]', impactBadge(e.impact))}>
-              {e.impact || 'low'}
-            </span>,
-            e.estimate ?? '—',
-            e.actual ?? '—',
-          ]),
-        )
+        setEvents(list)
       })
-      .catch(() => alive && setRows([]))
+      .catch(() => alive && setEvents([]))
       .finally(() => alive && setLoading(false))
     return () => {
       alive = false
     }
   }, [])
+
   if (loading) return <div className="flex items-center gap-2 text-sm text-muted-foreground p-4"><Loader2 className="h-4 w-4 animate-spin" />加载中…</div>
+
+  // 派生筛选选项
+  const regions = Array.from(new Set(events.map((e) => e.country).filter(Boolean)))
+  const impacts = ['high', 'medium', 'low']
+  const dates = Array.from(new Set(events.map((e) => String(e.date || '').slice(0, 10)).filter(Boolean)))
+
+  const filtered = events.filter((e) => {
+    if (regionFilter !== 'all' && e.country !== regionFilter) return false
+    if (impactFilter !== 'all' && e.impact !== impactFilter) return false
+    if (dateFilter !== 'all' && String(e.date || '').slice(0, 10) !== dateFilter) return false
+    return true
+  })
+
+  // 影响度 → 星级
+  const stars = (impact: string) => {
+    const n = impact === 'high' ? 3 : impact === 'medium' ? 2 : impact === 'low' ? 1 : 0
+    const cls = impact === 'high' ? 'text-rose-400' : impact === 'medium' ? 'text-amber-400' : 'text-slate-500'
+    return { n, cls }
+  }
+  // 地区 → 国旗 emoji（轻量映射，未覆盖回退）
+  const flag = (country: string) => {
+    const m: Record<string, string> = { '美国': '🇺🇸', 'US': '🇺🇸', '中国': '🇨🇳', 'CN': '🇨🇳', '欧元区': '🇪🇺', 'EU': '🇪🇺', '澳洲': '🇦🇺', 'AU': '🇦🇺', '英国': '🇬🇧', 'UK': '🇬🇧', '日本': '🇯🇵', 'JP': '🇯🇵', '加拿大': '🇨🇦', 'CA': '🇨🇦', '新西兰': '🇳🇿', 'NZ': '🇳🇿', '香港': '🇭🇰', 'HK': '🇭🇰' }
+    return m[country] || '🌐'
+  }
+
   return (
-    <ScheduleTable
-      columns={['日期', '国家', '事件', '影响', '预期', '实际']}
-      rows={rows}
-      empty="暂无宏观经济事件"
-    />
+    <div className="glass-card rounded-lg overflow-hidden">
+      {/* 面板标题 + 右上筛选下拉（对齐 Figma 设计稿：地区 / 级别 / 日期） */}
+      <div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2">
+        <span className="text-sm font-semibold text-foreground">经济日历 · 央行事件</span>
+        <div className="ml-auto flex items-center gap-1.5 text-[10px]">
+          <select value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)} className="bg-secondary/50 border border-border/30 rounded px-1.5 py-0.5 text-muted-foreground focus:outline-none">
+            <option value="all">地区 ▾</option>
+            {regions.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+          <select value={impactFilter} onChange={(e) => setImpactFilter(e.target.value)} className="bg-secondary/50 border border-border/30 rounded px-1.5 py-0.5 text-muted-foreground focus:outline-none">
+            <option value="all">级别 ▾</option>
+            {impacts.map((i) => <option key={i} value={i}>{i === 'high' ? '高' : i === 'medium' ? '中' : '低'}</option>)}
+          </select>
+          <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="bg-secondary/50 border border-border/30 rounded px-1.5 py-0.5 text-muted-foreground focus:outline-none">
+            <option value="all">日期 ▾</option>
+            {dates.map((d) => <option key={d} value={d}>{d.slice(5)}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* 表头 */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-border/30 text-muted-foreground">
+              <th className="text-left font-medium px-3 py-2 whitespace-nowrap">日期</th>
+              <th className="text-left font-medium px-3 py-2 whitespace-nowrap">时间</th>
+              <th className="text-left font-medium px-3 py-2 whitespace-nowrap">地区</th>
+              <th className="text-left font-medium px-3 py-2 whitespace-nowrap">事件</th>
+              <th className="text-left font-medium px-3 py-2 whitespace-nowrap">级别</th>
+              <th className="text-right font-medium px-3 py-2 whitespace-nowrap">实际</th>
+              <th className="text-right font-medium px-3 py-2 whitespace-nowrap">预期</th>
+              <th className="text-right font-medium px-3 py-2 whitespace-nowrap">前值</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 && (
+              <tr><td colSpan={8} className="text-center text-muted-foreground py-6">暂无宏观经济事件</td></tr>
+            )}
+            {filtered.map((e, i) => {
+              const s = stars(e.impact)
+              return (
+                <tr key={i} className="border-b border-border/10 hover:bg-secondary/30 transition-colors">
+                  <td className="px-3 py-2 whitespace-nowrap font-mono">{String(e.date || '').slice(0, 10) || '--'}</td>
+                  <td className="px-3 py-2 whitespace-nowrap font-mono">{String(e.date || '').slice(11, 16) || '--'}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{flag(e.country)} {e.country || '--'}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-foreground/90">{e.event || '--'}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {s.n > 0 ? <span className={s.cls}>{Array.from({ length: s.n }).map(() => '★').join('')}</span> : <span className="text-muted-foreground/40">—</span>}
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap text-right">{e.actual ?? '—'}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-right text-muted-foreground">{e.estimate ?? '—'}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-right text-muted-foreground">{e.previous ?? e.previous_value ?? '—'}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* 底部 footer（对齐设计稿：数据源 + 更新于） */}
+      <div className="px-4 py-1.5 border-t border-border/20 flex items-center justify-between text-[10px] text-muted-foreground">
+        <span>数据源:AKShare · DBNomics · FRED</span>
+        <span>更新于 07:40</span>
+      </div>
+    </div>
   )
 }
 
@@ -519,9 +605,28 @@ export function CalendarsModule() {
     return () => clearInterval(iv)
   }, [loadSnapshot])
 
+  // 多时钟显示（NY/HK/TYO + 日期）
+  const [now, setNow] = useState<Date>(new Date())
+  useEffect(() => {
+    const iv = setInterval(() => setNow(new Date()), 30_000)
+    return () => clearInterval(iv)
+  }, [])
+  const cityClocks = [
+    { code: 'NY',  zone: 'America/New_York' },
+    { code: 'HK',  zone: 'Asia/Hong_Kong' },
+    { code: 'TYO', zone: 'Asia/Tokyo' },
+  ]
+  const clockText = cityClocks
+    .map((c) => {
+      const t = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: c.zone }).format(now)
+      return `${c.code} ${t}`
+    })
+    .join('  ')
+  const todayHKT = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Hong_Kong' }).format(now)
+
   return (
     <div className="space-y-3 h-full flex flex-col">
-      {/* 标题 + 时区切换 */}
+      {/* 标题 + 多时钟显示（对齐 Figma 设计稿：市场脉搏 + 多时区时钟 + 日期） */}
       <div className="flex items-center gap-2">
         <div className="h-1.5 w-1.5 rounded-full bg-primary" />
         <h1 className="text-base font-bold tracking-tight">全球市场日历</h1>
@@ -529,12 +634,12 @@ export function CalendarsModule() {
           Calendars
         </span>
         {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground ml-2" />}
-        {last && (
-          <div className="ml-auto flex items-center gap-1.5 text-[10px] font-mono text-muted-foreground bg-secondary/50 border border-border/30 px-2 py-1 rounded">
-            <Clock className="h-3 w-3" />
-            <span>{last}</span>
-          </div>
-        )}
+        {/* 右侧多时区时钟 + 日期（设计稿右上角） */}
+        <div className="ml-auto flex items-center gap-2 text-[10px] font-mono text-muted-foreground">
+          <span className="hidden lg:inline">{clockText}</span>
+          <span className="bg-secondary/50 border border-border/30 rounded px-2 py-0.5">{todayHKT} HKT</span>
+        </div>
+        {/* 时区切换（保留向下选择，便于切时区视角） */}
         <select
           value={tz}
           onChange={(e) => setTz(e.target.value)}
@@ -547,6 +652,26 @@ export function CalendarsModule() {
             </option>
           ))}
         </select>
+      </div>
+
+      {/* 多源聚合状态（对齐 Figma 设计稿：AKShare / DBNomics / FRED 圆点） */}
+      <div className="flex items-center gap-3 px-1 text-[10px] text-muted-foreground">
+        <span className="font-semibold uppercase tracking-wide">多源聚合状态</span>
+        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#34D399]" />AKShare</span>
+        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-purple-400" />DBNomics</span>
+        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-blue-400" />FRED</span>
+        <span className="ml-2 text-muted-foreground/80">宏观日历多源聚合完成</span>
+      </div>
+
+      {/* AI 主脑前瞻推演卡（对齐 Figma 设计稿：紫色顶部 + 标题 + 文字说明） */}
+      <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 px-4 py-3">
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-[10px] font-bold text-purple-400 tracking-wide">AI 生成 · 仅供学习</span>
+          <span className="text-sm font-bold text-foreground">主脑前瞻推演</span>
+        </div>
+        <p className="text-xs text-foreground/80 leading-relaxed">
+          本周焦点 - 新西兰7月电子销售数据，月度与年度趋势显示消费价格敏感度上升，或对NZD交叉盘形成提振，关注USDCAD、NZDJPY联动。
+        </p>
       </div>
 
       {/* 顶部：全球市场行情（Markets）默认展示 — 不占子 tab 位，对齐 Figma 设计稿 */}

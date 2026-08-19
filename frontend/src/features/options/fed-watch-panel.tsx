@@ -16,6 +16,10 @@ interface FedWatchData {
   meetings?: FedMeeting[]
   source?: string
   note?: string
+  // FOMC 徽章字段（对齐 Figma 设计稿右上信息）
+  next_meeting_date?: string
+  cut_probability?: number
+  days_to_next?: number
 }
 
 function slopeTone(s?: string): string {
@@ -100,12 +104,28 @@ export function FedWatchPanel() {
   return (
     <div className="glass-card rounded-lg overflow-hidden">
       <div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2">
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">FedWatch 利率路径</span>
-        {data.policy_slope && (
-          <span className={'ml-auto text-[10px] font-mono font-bold ' + slopeTone(data.policy_slope)}>
-            {slopeText(data.policy_slope)}
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">利率路径 · FedWatch</span>
+          <span className="text-[10px] text-muted-foreground/70">期货隐含政策利率丰沛迁入</span>
+        </div>
+        {/* 右上 FOMC 概率徽章 + 倒计时（对齐 Figma 设计稿） */}
+        <div className="ml-auto flex items-center gap-1.5 text-[10px] font-mono">
+          {data.next_meeting_date && (
+            <span className="text-muted-foreground">
+              下次 FOMC&nbsp;
+              <span className="text-foreground/80">{String(data.next_meeting_date).slice(5)}</span>
+              <span className="mx-1 text-muted-foreground/40">·</span>
+              <span className="text-[#EF4444] dark:text-[#F87171] font-bold">
+                降息概率 {data.cut_probability != null ? `${Math.round(data.cut_probability * 100)}%` : '--'}
+              </span>
+            </span>
+          )}
+          {data.days_to_next != null && (
+            <span className="bg-secondary/40 border border-border/30 rounded px-1.5 py-0.5 text-muted-foreground">
+              还有 {data.days_to_next} 天
+            </span>
+          )}
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-2 p-3">
         <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2">
