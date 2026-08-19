@@ -14,17 +14,18 @@ interface Props {
   onNavigate: (tab: HubTab, symbol?: string) => void
 }
 
-// 前端按 symbol 映射资产类目，供 A 区类目筛选（后端 macroAssets 暂未下发 category）。
+// 前端按 symbol 映射资产类目，供 A 区类目筛选（对齐 Figma 稿类目条，后端 macroAssets 暂未下发 category）。
 const ASSET_CATEGORY: Record<string, string> = {
-  SPX: '指数', ES: '指数', IXIC: '指数', NQ: '指数', HSI: '指数',
-  HSTECH: '指数', N225: '指数', XLK: '指数', XLE: '指数', KWEB: '指数', VIX: '指数',
-  XAU: '商品', WTI: '商品', HG: '商品',
+  SPX: '股指', ES: '股指', IXIC: '股指', NQ: '股指', HSI: '股指',
+  HSTECH: '股指', N225: '股指', VIX: '股指',
+  TNX: '利率',
   'JPY=X': '外汇', 'DX-Y': '外汇', USDCNH: '外汇',
-  TNX: '债券',
+  XAU: '商品', WTI: '商品', HG: '商品',
   BTC: '加密',
+  XLK: '行业ETF', XLE: '行业ETF', KWEB: '行业ETF',
 }
 
-const CATEGORY_TABS = ['全部', '指数', '商品', '外汇', '债券', '加密'] as const
+const CATEGORY_TABS = ['全部', '股指', '利率', '外汇', '商品', '加密', '行业ETF'] as const
 
 export function OverviewTab({ data, onNavigate }: Props) {
   const [cat, setCat] = useState<(typeof CATEGORY_TABS)[number]>('全部')

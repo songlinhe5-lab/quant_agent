@@ -9,7 +9,7 @@ import { playAlertSound } from '@/features/data-center/shared'
 import type { MarginMarketData } from '@/features/data-center/margin-trading'
 import type { SectorFundFlowData } from '@/features/data-center/sector-flow'
 
-export type HubTab = 'overview' | 'capital' | 'calendars' | 'watchlist'
+export type HubTab = 'overview' | 'capital' | 'calendars'
 
 export function useDashboardData() {
   const setWsStatus = useSystemStore((state) => state.setWsStatus)
