@@ -28,7 +28,13 @@ function mmdd(d: string): string {
   return d.length >= 10 ? d.slice(5) : d
 }
 
-export function OptionVolSurface({ symbol }: { symbol: string }) {
+export interface OptionVolSurfaceProps {
+  symbol: string
+  /** 热力图点选合约回调（用于个股工作台联动 Greeks） */
+  onSelectContract?: (leg: { type: LegType; expiry: string; strike: number }) => void
+}
+
+export function OptionVolSurface({ symbol, onSelectContract }: OptionVolSurfaceProps) {
   const [type, setType] = useState<LegType>('call')
   const [data, setData] = useState<VolMatrix | null>(null)
   const [loading, setLoading] = useState(false)
@@ -177,7 +183,10 @@ export function OptionVolSurface({ symbol }: { symbol: string }) {
                   return (
                     <button
                       key={exp}
-                      onClick={() => setSelected({ expiry: exp, strike })}
+                      onClick={() => {
+                        setSelected({ expiry: exp, strike })
+                        onSelectContract?.({ type, expiry: exp, strike })
+                      }}
                       title={`${type.toUpperCase()} ${exp} K=${strike} IV=${iv?.toFixed(1)}%`}
                       className={cn(
                         'h-7 border border-black/10 tabular-nums text-white/95 transition-transform',

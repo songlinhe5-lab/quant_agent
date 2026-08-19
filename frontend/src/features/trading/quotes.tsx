@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react'
 import { ResizablePanelGroup as PanelGroup, ResizablePanel as Panel, ResizableHandle as PanelResizeHandle } from '@/components/ui/resizable'
 import { AlertTriangle } from 'lucide-react'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { useWatchlist } from '@/stores/use-watchlist'
@@ -20,6 +19,8 @@ import { ChartErrorBoundary, PanelErrorBoundary } from '@/components/error-bound
 import { AnomalyFlash } from '@/features/quotes/anomaly-flash'
 import { NarratorBubble } from '@/features/quotes/narrator-bubble'
 import { AIChat } from '@/features/strategy/layout/ai-chat'
+import { MicroPanel } from '@/features/quotes/micro-panel'
+import { OptionModePanel } from '@/features/quotes/option-mode-panel'
 
 import { InitOverlay, EmptyState } from '@/components/ui/data-display'
 
@@ -83,6 +84,10 @@ export function QuotesModule() {
 
   const [selectedSymbol, setSelectedSymbol] = useState('00700.HK')
   const [selectedPeriod, setSelectedPeriod] = useState('1m')  // 💡 默认显示分时图
+  // FE-26：中列 [K线|期权] 模式切换（Figma Frame 5）
+  const [chartMode, setChartMode] = useState<'chart' | 'options'>('chart')
+  // FE-26：右栏 [盘口|微观] 模式切换（Figma Frame 4）
+  const [rightMode, setRightMode] = useState<'dom' | 'micro'>('dom')
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -221,18 +226,35 @@ export function QuotesModule() {
 
         {/* ── Middle: Chart (Main Focus) ───────────────────────── */}
         <Panel defaultSize={60} minSize={40} className="flex flex-col">
-          <div className="flex items-center justify-between px-3 py-1 border-b border-border/40 bg-secondary/10 shrink-0">
-            <span className="text-[10px] font-medium text-muted-foreground">主图</span>
-            <button
-              onClick={() => setCompareMode(!compareMode)}
-              className={cn("text-[10px] px-2 py-0.5 rounded border border-border/50 transition-colors", compareMode ? "bg-primary/20 text-primary" : "bg-background hover:bg-secondary text-muted-foreground")}
-            >
-              {compareMode ? '退出同步对比' : '同步对比'}
-            </button>
+          <div className="flex items-center justify-between px-3 py-1 border-b border-border/40 bg-secondary/10 shrink-0 gap-2">
+            <div className="inline-flex rounded-md border border-border/50 p-0.5">
+              {(['chart', 'options'] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setChartMode(m)}
+                  className={cn(
+                    "text-[10px] px-2.5 py-0.5 rounded transition-colors",
+                    chartMode === m ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {m === 'chart' ? 'K线' : '期权'}
+                </button>
+              ))}
+            </div>
+            {chartMode === 'chart' && (
+              <button
+                onClick={() => setCompareMode(!compareMode)}
+                className={cn("text-[10px] px-2 py-0.5 rounded border border-border/50 transition-colors", compareMode ? "bg-primary/20 text-primary" : "bg-background hover:bg-secondary text-muted-foreground")}
+              >
+                {compareMode ? '退出同步对比' : '同步对比'}
+              </button>
+            )}
           </div>
           {/* AI-01: 默认/研究三栏场景也挂载异动解说联动——与 compare/watch 场景一致 */}
           <AnomalyFlash symbol={selectedSymbol} className="h-full">
-            {hasData ? (
+            {chartMode === 'options' ? (
+              <OptionModePanel symbol={selectedSymbol} />
+            ) : hasData ? (
               compareMode ? (
                 <div className="flex flex-col flex-1 min-h-0 gap-1">
                   <div className="flex-1 min-h-0">
@@ -260,31 +282,27 @@ export function QuotesModule() {
 
         <PanelResizeHandle className="w-1 mx-1 rounded-full bg-border/40 hover:bg-primary/50 hover:shadow-[0_0_8px_rgba(var(--primary),0.5)] transition-all cursor-col-resize" />
 
-        {/* ── Right: DOM + Recent Trades ────────────────────────────── */}
+        {/* ── Right: DOM / 微观 ────────────────────────────── */}
         <Panel defaultSize={20} minSize={15} className="flex flex-col gap-2.5">
-          <PanelErrorBoundary name="OrderBookPanel">
-          {isMobile ? (
-            <div className="glass-card rounded-xl overflow-hidden flex flex-col h-full shadow-sm border-border/40">
-              <Tabs defaultValue="dom" className="flex flex-col h-full">
-                <div className="border-b border-border/40 bg-secondary/20 px-3 pt-1.5 flex items-center shrink-0">
-                  <TabsList className="bg-transparent p-0 gap-0 h-8">
-                    <TabsTrigger value="dom" className="text-[11px] px-3 h-8 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">
-                      订单簿 DOM
-                    </TabsTrigger>
-                    <TabsTrigger value="trades" className="text-[11px] px-3 h-8 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">
-                      成交流水
-                    </TabsTrigger>
-                  </TabsList>
-                </div>
-                <TabsContent value="dom" className="flex-1 m-0 relative overflow-hidden flex flex-col">
-                  <OrderBookWebGL symbol={selectedSymbol} theme={theme} hideHeader />
-                  <OrderBookLargeOrderHint symbol={selectedSymbol} />
-                </TabsContent>
-                <TabsContent value="trades" className="flex-1 m-0 relative flex flex-col bg-background/50">
-                  <TradeHistory symbol={selectedSymbol} />
-                </TabsContent>
-              </Tabs>
+          <div className="flex items-center justify-between px-3 py-1 border-b border-border/40 bg-secondary/10 shrink-0 rounded-lg">
+            <div className="inline-flex rounded-md border border-border/50 p-0.5">
+              {(['dom', 'micro'] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setRightMode(m)}
+                  className={cn(
+                    "text-[10px] px-2.5 py-0.5 rounded transition-colors",
+                    rightMode === m ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {m === 'dom' ? '盘口' : '微观'}
+                </button>
+              ))}
             </div>
+          </div>
+          <PanelErrorBoundary name="OrderBookPanel">
+          {rightMode === 'micro' ? (
+            <MicroPanel symbol={selectedSymbol} />
           ) : (
             <>
               <OrderBookWebGL symbol={selectedSymbol} theme={theme} />

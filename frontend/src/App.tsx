@@ -48,7 +48,6 @@ const DataCenterModule = lazyWithRetry(() => import('@/features/trading/data-cen
 const DataSourceHealthModule = lazyWithRetry(() => import('@/features/data-center/datasource-health').then(m => ({ default: m.DataSourceHealthModule })))
 const MonitorPageModule = lazyWithRetry(() => import('@/features/scene/monitor-page').then(m => ({ default: m.MonitorPage })))
 const QuotesModule = lazyWithRetry(() => import('@/features/trading/quotes').then(m => ({ default: m.QuotesModule })))
-const OptionsModule = lazyWithRetry(() => import('@/features/options/options-module').then(m => ({ default: m.OptionsModule })))
 const ScreenerModule = lazyWithRetry(() => import('@/features/trading/screener').then(m => ({ default: m.ScreenerModule })))
 const StrategyDevModule = lazyWithRetry(() => import('@/features/trading/strategy').then(m => ({ default: m.StrategyDevModule })))
 const BacktestModule = lazyWithRetry(() => import('@/features/trading/backtest').then(m => ({ default: m.BacktestModule })))
@@ -103,7 +102,7 @@ export default function App() {
             <Route path="/fund-flow-dashboard" element={<Navigate to="/data-center" replace />} />
             <Route path="/quotes" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Quotes"><QuotesModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/monitor" element={<Suspense fallback={<LoadingFallback />}><MonitorPageModule /></Suspense>} />
-            <Route path="/options" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Options"><OptionsModule /></ModuleErrorBoundary></Suspense>} />
+            <Route path="/options" element={<Navigate to="/quotes" replace />} />
             <Route path="/screener" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Screener"><ScreenerModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/strategy" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Strategy"><StrategyDevModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/backtest" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Backtest"><BacktestModule /></ModuleErrorBoundary></Suspense>} />
