@@ -222,12 +222,14 @@ def _market_session_state(
 
 
 def _extract_closes_from_records(records: list) -> list[float]:
-    """从 yf 记录（含 Close 或 ('Close', ticker) 多级列名）提取收盘价序列。"""
+    """从 yf 记录（含 Close / close / ('Close', ticker) 多级列名）提取收盘价序列。"""
     closes: list[float] = []
     for r in records:
         if not isinstance(r, dict):
             continue
         c_val = r.get("Close")
+        if c_val is None:
+            c_val = r.get("close")
         if c_val is None:
             c_val = next((v for k, v in r.items() if str(k).startswith("('Close'")), None)
         if c_val is not None:
@@ -311,7 +313,7 @@ async def _fetch_calendar_tile_ondemand(cfg: dict, category_key: str) -> Optiona
             records = []
         tile = _build_tile_from_records(records, cfg, category_key)
         if tile is not None:
-            cache_key = f"yf_macro_cache_{cfg['yf']}"
+            cache_key = f"yf_macro_cache_{cfg['yf'].lower()}"
             try:
                 await redis_client.set(cache_key, json.dumps(records), ex=_STALE_TTL_SECONDS)
             except Exception:  # noqa: BLE001
@@ -330,7 +332,7 @@ async def _fetch_calendar_tile(cfg: dict, category_key: str) -> dict:
     symbol = cfg["symbol"]
     name = cfg["name"]
     yf_code = cfg["yf"]
-    cache_key = f"yf_macro_cache_{yf_code}"
+    cache_key = f"yf_macro_cache_{yf_code.lower()}"
     try:
         cached_data = await redis_client.get(cache_key)
         if cached_data:

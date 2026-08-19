@@ -312,7 +312,7 @@ class TestCalendarsSnapshotEnhanced:
         def fake_get(key: str):
             if key == "calendars_snapshot":
                 return None
-            if key == "yf_macro_cache_^GSPC":
+            if key == "yf_macro_cache_^gspc":
                 return json.dumps(
                     [
                         {"Date": "2026-07-15", "Close": 4900.0},

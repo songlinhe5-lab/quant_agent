@@ -131,7 +131,7 @@ describe('CalendarsModule', () => {
     })
   })
 
-  it('渲染标题与 6 个 Tab', async () => {
+  it('渲染标题与 8 个子 Tab', async () => {
     const { CalendarsModule } = await import('../module')
     render(
       <MemoryRouter>
@@ -139,12 +139,12 @@ describe('CalendarsModule', () => {
       </MemoryRouter>,
     )
     expect(screen.getByText('全球市场日历')).toBeInTheDocument()
-    for (const t of ['Markets', 'Economic', 'Earnings', 'Dividends', 'IPOs', 'Hours']) {
+    for (const t of ['经济日历', '财报', '分红', '新股', '交易时段', '利率路径', 'FRED 图表', '快讯情感']) {
       expect(screen.getByText(t)).toBeInTheDocument()
     }
   })
 
-  it('Markets Tab 按类目渲染横向卡片', async () => {
+  it('顶部 MarketsView 按类目渲染横向卡片', async () => {
     const { CalendarsModule } = await import('../module')
     render(
       <MemoryRouter>
@@ -154,7 +154,7 @@ describe('CalendarsModule', () => {
     await waitFor(() => {
       expect(screen.getAllByText('S&P 500').length).toBeGreaterThan(0)
     })
-    // 类目侧栏出现 US Markets
+    // 顶部 MarketsView 类目侧栏出现 US Markets
     expect(screen.getAllByText('US Markets').length).toBeGreaterThan(0)
   })
 
@@ -170,14 +170,14 @@ describe('CalendarsModule', () => {
     })
   })
 
-  it('切换到 Hours Tab 触发 /calendars/hours 请求', async () => {
+  it('切换到交易时段 Tab 触发 /calendars/hours 请求', async () => {
     const { CalendarsModule } = await import('../module')
     render(
       <MemoryRouter>
         <CalendarsModule />
       </MemoryRouter>,
     )
-    fireEvent.click(screen.getByText('Hours'))
+    fireEvent.click(screen.getByText('交易时段'))
     await waitFor(() => {
       expect(apiClient.get).toHaveBeenCalledWith('/calendars/hours')
     })

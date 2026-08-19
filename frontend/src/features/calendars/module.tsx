@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Loader2,
   Clock,
-  LineChart,
   CalendarDays,
   TrendingUp,
   Coins,
@@ -12,9 +11,16 @@ import {
   CalendarClock,
   Settings2,
   Globe2,
+  Newspaper,
+  LineChart,
+  Gauge,
 } from 'lucide-react'
 import { apiClient } from '@/lib/api-client'
 import { AssetButton } from '@/features/data-center/shared'
+import { MacroChartPanel } from '@/features/data-center/macro-chart'
+import { NewsStream } from '@/features/data-center/news-stream'
+import { FedWatchPanel } from '@/features/options/fed-watch-panel'
+import { useDashboardData } from '@/features/data-center/use-dashboard-data'
 import { cn } from '@/lib/utils'
 import {
   filterVisibleCategories,
@@ -23,13 +29,17 @@ import {
   type CalendarCategoryView,
 } from './utils'
 
+// 子 tab 列表（对齐 Figma 设计稿：经济日历/财报/分红/新股/交易时段/利率路径/FRED 图表/快讯情感）
+// Markets（全球市场行情）已上移到模块顶部默认展示，不占子 tab 位。
 const TABS = [
-  { id: 'markets', label: 'Markets', icon: LineChart },
-  { id: 'economic', label: 'Economic', icon: CalendarDays },
-  { id: 'earnings', label: 'Earnings', icon: TrendingUp },
-  { id: 'dividends', label: 'Dividends', icon: Coins },
-  { id: 'ipos', label: 'IPOs', icon: Rocket },
-  { id: 'hours', label: 'Hours', icon: CalendarClock },
+  { id: 'economic', label: '经济日历', icon: CalendarDays },
+  { id: 'earnings', label: '财报', icon: TrendingUp },
+  { id: 'dividends', label: '分红', icon: Coins },
+  { id: 'ipos', label: '新股', icon: Rocket },
+  { id: 'hours', label: '交易时段', icon: CalendarClock },
+  { id: 'fedwatch', label: '利率路径', icon: Gauge },
+  { id: 'fred', label: 'FRED 图表', icon: LineChart },
+  { id: 'news', label: '快讯情感', icon: Newspaper },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
@@ -481,11 +491,12 @@ function HoursView() {
 
 // ── 主模块 ─────────────────────────────────────────────────────────────
 export function CalendarsModule() {
-  const [tab, setTab] = useState<TabId>('markets')
+  const [tab, setTab] = useState<TabId>('economic')
   const [tz, setTz] = useState('Asia/Hong_Kong')
   const [snapshot, setSnapshot] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [last, setLast] = useState('')
+  const d = useDashboardData()
 
   const loadSnapshot = useCallback(async () => {
     setLoading(true)
@@ -509,7 +520,7 @@ export function CalendarsModule() {
   }, [loadSnapshot])
 
   return (
-    <div className="space-y-2.5 h-full flex flex-col">
+    <div className="space-y-3 h-full flex flex-col">
       {/* 标题 + 时区切换 */}
       <div className="flex items-center gap-2">
         <div className="h-1.5 w-1.5 rounded-full bg-primary" />
@@ -538,7 +549,10 @@ export function CalendarsModule() {
         </select>
       </div>
 
-      {/* 顶部 Tab 栏（粘性） */}
+      {/* 顶部：全球市场行情（Markets）默认展示 — 不占子 tab 位，对齐 Figma 设计稿 */}
+      <MarketsView snapshot={snapshot} />
+
+      {/* 子 tab 栏（8 个，对齐设计稿：经济日历/财报/分红/新股/交易时段/利率路径/FRED 图表/快讯情感） */}
       <div className="flex items-center gap-1 border-b border-border/30 overflow-x-auto scrollbar-thin">
         {TABS.map((t) => {
           const Icon = t.icon
@@ -563,12 +577,20 @@ export function CalendarsModule() {
 
       {/* Tab 内容 */}
       <div className="flex-1 min-h-0">
-        {tab === 'markets' && <MarketsView snapshot={snapshot} />}
         {tab === 'economic' && <EconomicView />}
         {tab === 'earnings' && <EarningsView />}
         {tab === 'dividends' && <DividendsView />}
         {tab === 'ipos' && <IPOsView />}
         {tab === 'hours' && <HoursView />}
+        {tab === 'fedwatch' && <FedWatchPanel />}
+        {tab === 'fred' && <MacroChartPanel />}
+        {tab === 'news' && (
+          <NewsStream
+            news={d.news}
+            visibleNewsCount={d.visibleNewsCount}
+            setVisibleNewsCount={d.setVisibleNewsCount}
+          />
+        )}
       </div>
     </div>
   )

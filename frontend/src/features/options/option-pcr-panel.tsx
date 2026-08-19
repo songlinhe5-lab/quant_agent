@@ -135,22 +135,38 @@ export function OptionPcrPanel() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-4 text-xs">
-        <div className="rounded-lg border border-border/50 bg-card/40 px-3 py-2">
-          <div className="text-slate-500">最新 Put/Call Ratio</div>
-          <div className={'text-lg font-semibold ' + verdict.cls}>
-            {(latest?.pc_ratio ?? NaN).toFixed(3)}
-          </div>
+      {/* 头部：最新 PCR 数值 + 研判 + 实时标签（对齐 Figma 设计稿） */}
+      <div className="flex flex-wrap items-center gap-3 text-xs">
+        <div className="flex items-baseline gap-2">
+          <span className="text-[10px] text-muted-foreground">最新 Put/Call Ratio</span>
+          <span className={'text-2xl font-bold font-mono tabular-nums leading-none ' + verdict.cls}>
+            {(latest?.pc_ratio ?? NaN).toFixed(2)}
+          </span>
+          <span className="flex items-center gap-1 text-[10px] font-bold text-[#10B981] dark:text-[#34D399] bg-[#34D399]/10 px-1.5 py-0.5 rounded">
+            <span className="inline-block w-1 h-1 rounded-full bg-[#10B981] animate-pulse" />
+            实时
+          </span>
+          <span className="text-[10px] text-muted-foreground ml-1">
+            <span className="text-[#10B981] dark:text-[#34D399]">&gt;1 较高</span>
+            <span className="mx-1.5 text-border">|</span>
+            <span className="text-[#EF4444] dark:text-[#F87171]">&lt;1 偏低</span>
+          </span>
         </div>
-        <div className="rounded-lg border border-border/50 bg-card/40 px-3 py-2">
-          <div className="text-slate-500">VIX 恐慌指数</div>
-          <div className="text-lg font-semibold text-amber-300">
+        <div className="hidden lg:block w-px h-5 bg-border/50" />
+        <div className="rounded-lg border border-border/50 bg-card/40 px-3 py-1.5">
+          <div className="text-[10px] text-slate-500">VIX 恐慌指数</div>
+          <div className="text-sm font-semibold text-amber-300 tabular-nums">
             {(latest?.vix_value ?? NaN).toFixed(2)}
           </div>
         </div>
-        <div className={'text-sm ' + verdict.cls}>研判：{verdict.text}</div>
+        <div className={'text-xs ' + verdict.cls}>{verdict.text}</div>
       </div>
-      <div ref={ref} className="h-[320px] w-full" />
+      {/* 图例 + 折线图 */}
+      <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-0.5 bg-[#10B981] dark:bg-[#34D399] rounded" />PCR · 60日</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-0.5 bg-amber-400 rounded" style={{borderTop: '1px dashed #f59e0b', background: 'transparent', height: '1px'}} />VIX</span>
+      </div>
+      <div ref={ref} className="h-[280px] w-full" />
       <div className="text-[11px] text-slate-500">
         PCR &gt; 1.0 通常反映看跌/对冲情绪升温；PCR &lt; 0.7 反映散户追涨、市场情绪过热。
         数据来源：市场级 Put/Call Ratio (CBOE ^CPC) 经 sentiment_tracker 真实落库。

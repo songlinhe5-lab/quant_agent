@@ -97,6 +97,11 @@ export function MarketSentimentPanel({ vixData, sentimentInd }: { vixData: any, 
           </div>
         </div>
       </div>
+      {/* 底部数据更新提示（对齐 Figma 设计稿） */}
+      <div className="px-3 py-1.5 border-t border-border/20 flex items-center text-[10px] text-muted-foreground/60">
+        <span className="inline-block w-1 h-1 rounded-full bg-emerald-400/70 mr-1.5" />
+        更新于&nbsp;实时
+      </div>
     </div>
   )
 }
