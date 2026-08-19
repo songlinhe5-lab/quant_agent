@@ -18,12 +18,12 @@ interface HeatMapData {
 }
 
 function toneBg(chg: number): string {
-  if (chg >= 3) return 'bg-[#0ecb81]/30 border-[#0ecb81]/50'
-  if (chg >= 1) return 'bg-[#0ecb81]/15 border-[#0ecb81]/30'
-  if (chg > 0) return 'bg-[#0ecb81]/5 border-[#0ecb81]/20'
-  if (chg <= -3) return 'bg-[#f6465d]/30 border-[#f6465d]/50'
-  if (chg <= -1) return 'bg-[#f6465d]/15 border-[#f6465d]/30'
-  return 'bg-[#f6465d]/5 border-[#f6465d]/20'
+  if (chg >= 3) return 'bg-[#34D399]/30 border-[#34D399]/50'
+  if (chg >= 1) return 'bg-[#34D399]/15 border-[#34D399]/30'
+  if (chg > 0) return 'bg-[#34D399]/5 border-[#34D399]/20'
+  if (chg <= -3) return 'bg-[#F87171]/30 border-[#F87171]/50'
+  if (chg <= -1) return 'bg-[#F87171]/15 border-[#F87171]/30'
+  return 'bg-[#F87171]/5 border-[#F87171]/20'
 }
 
 function sentimentTone(s?: string): string {
@@ -96,7 +96,7 @@ export function SectorHeatmapPanel({ market = 'HK' }: { market?: string }) {
           <div className="grid grid-cols-3 gap-2 text-center">
             <div className="rounded border border-border/30 bg-card/40 py-1">
               <div className="text-[9px] text-slate-500">涨</div>
-              <div className="text-sm font-bold text-[#0ecb81]">{data.up ?? '--'}</div>
+              <div className="text-sm font-bold text-[#34D399]">{data.up ?? '--'}</div>
             </div>
             <div className="rounded border border-border/30 bg-card/40 py-1">
               <div className="text-[9px] text-slate-500">平</div>
@@ -104,21 +104,21 @@ export function SectorHeatmapPanel({ market = 'HK' }: { market?: string }) {
             </div>
             <div className="rounded border border-border/30 bg-card/40 py-1">
               <div className="text-[9px] text-slate-500">跌</div>
-              <div className="text-sm font-bold text-[#f6465d]">{data.down ?? '--'}</div>
+              <div className="text-sm font-bold text-[#F87171]">{data.down ?? '--'}</div>
             </div>
           </div>
           <div className="text-[10px] text-slate-500">领涨</div>
           {gainers.slice(0, 4).map((g, i) => (
-            <div key={i} className="flex items-center justify-between text-[11px] px-2 py-0.5 rounded bg-[#0ecb81]/5">
+            <div key={i} className="flex items-center justify-between text-[11px] px-2 py-0.5 rounded bg-[#34D399]/5">
               <span className="truncate text-foreground/80">{g.name}</span>
-              <span className="font-mono text-[#0ecb81]">+{g.change.toFixed(2)}%</span>
+              <span className="font-mono text-[#34D399]">+{g.change.toFixed(2)}%</span>
             </div>
           ))}
           <div className="text-[10px] text-slate-500 mt-1">领跌</div>
           {losers.slice(0, 4).map((l, i) => (
-            <div key={i} className="flex items-center justify-between text-[11px] px-2 py-0.5 rounded bg-[#f6465d]/5">
+            <div key={i} className="flex items-center justify-between text-[11px] px-2 py-0.5 rounded bg-[#F87171]/5">
               <span className="truncate text-foreground/80">{l.name}</span>
-              <span className="font-mono text-[#f6465d]">{l.change.toFixed(2)}%</span>
+              <span className="font-mono text-[#F87171]">{l.change.toFixed(2)}%</span>
             </div>
           ))}
         </div>

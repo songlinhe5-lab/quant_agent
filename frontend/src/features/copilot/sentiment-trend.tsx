@@ -102,7 +102,7 @@ export function PCRatioTrendChart() {
               symbol: 'none',
               data: [{ yAxis: 1.0 }],
               lineStyle: { color: isDark ? 'rgba(246,70,93,0.5)' : 'rgba(225,29,72,0.5)', type: 'dashed' },
-              label: { formatter: '1.0 恐慌分水岭', color: isDark ? '#f6465d' : '#e11d48', fontSize: 9, position: 'insideStartTop' },
+              label: { formatter: '1.0 恐慌分水岭', color: isDark ? '#F87171' : '#e11d48', fontSize: 9, position: 'insideStartTop' },
             },
           },
           {
@@ -137,8 +137,8 @@ export function PCRatioTrendChart() {
             <span className={cn(
               'text-xs font-bold font-mono px-2 py-0.5 rounded',
               currentPC > 1.0
-                ? 'bg-[#f6465d]/15 text-[#e11d48] dark:text-[#f6465d]'
-                : 'bg-[#0ecb81]/15 text-[#059669] dark:text-[#0ecb81]',
+                ? 'bg-[#F87171]/15 text-[#e11d48] dark:text-[#F87171]'
+                : 'bg-[#34D399]/15 text-[#059669] dark:text-[#34D399]',
             )}>
               P/C: {currentPC.toFixed(2)}
             </span>

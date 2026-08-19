@@ -55,7 +55,7 @@ export function AnalystVsFundamentalPanel({ ticker = 'US.AAPL' }: { ticker?: str
   if (!data) return <div className="p-6 text-sm text-slate-400">暂无卖方共识对比数据</div>
 
   const upside = data.upside_pct
-  const upsideTone = upside == null ? 'text-slate-300' : upside >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'
+  const upsideTone = upside == null ? 'text-slate-300' : upside >= 0 ? 'text-[#34D399]' : 'text-[#F87171]'
 
   return (
     <div className="glass-card rounded-lg overflow-hidden">

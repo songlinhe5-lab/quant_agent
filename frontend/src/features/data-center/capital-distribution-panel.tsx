@@ -77,11 +77,11 @@ export function CapitalDistributionPanel({ ticker = 'HK.00700' }: { ticker?: str
       <div className="grid grid-cols-3 gap-2 p-3">
         <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2">
           <div className="text-[10px] text-slate-500">主力净额</div>
-          <div className={'text-base font-semibold font-mono ' + (data.main_net != null && data.main_net >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]')}>{fmt(data.main_net)}</div>
+          <div className={'text-base font-semibold font-mono ' + (data.main_net != null && data.main_net >= 0 ? 'text-[#34D399]' : 'text-[#F87171]')}>{fmt(data.main_net)}</div>
         </div>
         <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2">
           <div className="text-[10px] text-slate-500">散户净额</div>
-          <div className={'text-base font-semibold font-mono ' + (data.retail_net != null && data.retail_net >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]')}>{fmt(data.retail_net)}</div>
+          <div className={'text-base font-semibold font-mono ' + (data.retail_net != null && data.retail_net >= 0 ? 'text-[#34D399]' : 'text-[#F87171]')}>{fmt(data.retail_net)}</div>
         </div>
         <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2">
           <div className="text-[10px] text-slate-500">机构主导度</div>

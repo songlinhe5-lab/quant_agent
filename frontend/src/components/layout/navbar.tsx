@@ -78,8 +78,8 @@ function TickerTape() {
         {displayAssets.map((asset, i) => (
           <div key={i} onClick={() => navigate(`/market/${normalizeSymbol(asset.symbol)}`)} className="flex items-center gap-2 px-4 border-r border-slate-300 dark:border-slate-700 last:border-0 cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors h-9 whitespace-nowrap">
             <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">{asset.symbol}</span>
-            <span className={cn("text-[11px] font-mono tabular-nums", asset.change >= 0 ? "text-[#059669] dark:text-[#0ecb81]" : "text-[#e11d48] dark:text-[#f6465d]")}>{asset.value.toFixed(2)}</span>
-            <span className={cn("text-[10px] font-mono font-bold tabular-nums", asset.change >= 0 ? "text-[#059669] dark:text-[#0ecb81]" : "text-[#e11d48] dark:text-[#f6465d]")}>{asset.change >= 0 ? '+' : ''}{asset.change.toFixed(2)}%</span>
+            <span className={cn("text-[11px] font-mono tabular-nums", asset.change >= 0 ? "text-[#059669] dark:text-[#34D399]" : "text-[#e11d48] dark:text-[#F87171]")}>{asset.value.toFixed(2)}</span>
+            <span className={cn("text-[10px] font-mono font-bold tabular-nums", asset.change >= 0 ? "text-[#059669] dark:text-[#34D399]" : "text-[#e11d48] dark:text-[#F87171]")}>{asset.change >= 0 ? '+' : ''}{asset.change.toFixed(2)}%</span>
           </div>
         ))}
       </div>

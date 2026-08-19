@@ -22,13 +22,14 @@
   --border: 240 5.9% 90%;
   --input: 240 5.9% 90%;
   --ring: 240 5.9% 10%;
-  --radius: 0.5rem;
+  --radius: 0.75rem;
 
-  /* FE-25: 金融语义色 */
-  --color-bull: 160 84% 39%;
-  --color-bear: 0 72% 51%;
-  --color-warn: 38 92% 50%;
-  --color-info: 217 91% 60%;
+  /* FE-25: 金融语义色（对齐 docs/uiue design-tokens） */
+  --color-bull: 158 64% 39%;
+  --color-bear: 0 72% 55%;
+  --color-warn: 43 96% 50%;
+  --color-info: 213 94% 60%;
+  --color-ai: 255 92% 70%;
 
   /* FE-28: 动效 */
   --motion-fast: 150ms;
@@ -43,30 +44,33 @@
 }
 
 .dark {
-  --background: 240 10% 3.9%;
-  --foreground: 0 0% 98%;
-  --card: 240 10% 3.9%;
-  --card-foreground: 0 0% 98%;
-  --popover: 240 10% 3.9%;
-  --popover-foreground: 0 0% 98%;
+  /* FE-25 对齐 docs/uiue 方案：深色金融终端，背景 #0F0F14 + 面板分层 */
+  --background: 240 14% 7%;
+  --foreground: 210 20% 98%;
+  --card: 227 17% 10%;          /* panel #16181F */
+  --card-foreground: 210 20% 98%;
+  --popover: 227 17% 10%;
+  --popover-foreground: 210 20% 98%;
   --primary: 0 0% 98%;
   --primary-foreground: 240 5.9% 10%;
-  --secondary: 240 3.7% 15.9%;
+  --secondary: 225 18% 13%;     /* panel-2 #1C1F28 */
   --secondary-foreground: 0 0% 98%;
-  --muted: 240 3.7% 15.9%;
-  --muted-foreground: 240 5% 64.9%;
-  --accent: 240 3.7% 15.9%;
+  --muted: 225 18% 13%;
+  --muted-foreground: 220 9% 46%;
+  --accent: 225 18% 13%;
   --accent-foreground: 0 0% 98%;
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 240 3.7% 15.9%;
-  --input: 240 3.7% 15.9%;
-  --ring: 240 4.9% 83.9%;
+  --destructive: 0 91% 71%;
+  --destructive-foreground: 240 14% 7%;
+  --border: 216 8% 24%;         /* 细描边基础灰（面板分隔线，面板层另用白半透明） */
+  --input: 225 18% 13%;
+  --ring: 160 84% 52%;
 
-  --color-bull: 160 84% 45%;
-  --color-bear: 0 84% 60%;
-  --color-warn: 38 92% 50%;
-  --color-info: 217 91% 65%;
+  /* FE-25 语义色对齐方案：涨 #34D399 / 跌 #F87171 / 警示 #FBBF24 / AI #A78BFA */
+  --color-bull: 158 64% 52%;
+  --color-bear: 0 91% 71%;
+  --color-warn: 43 96% 56%;
+  --color-info: 213 94% 68%;
+  --color-ai: 255 92% 76%;
 }
 
 * {
@@ -91,14 +95,17 @@ body {
 }
 
 @layer components {
-  /* FE-25: 玻璃态面板 */
+  /* FE-25: 面板卡（对齐方案：深色实色面板 #16181F + 白半透明细描边，替代玻璃模糊） */
   .glass-card {
-    @apply backdrop-blur-md bg-white/5 border border-white/10;
-    background-color: color-mix(in srgb, hsl(var(--card)) 85%, transparent);
+    @apply border bg-secondary/60;
+    border-color: hsl(var(--border) / 0.35);
+    background-color: hsl(var(--card));
   }
 
   .dark .glass-card {
-    @apply bg-white/5 border-white/10;
+    @apply bg-secondary/60;
+    border-color: hsl(0 0% 100% / 0.08);
+    background-color: hsl(var(--card));
   }
 
   /* FE-11: STALE 降饱和 */
