@@ -1,10 +1,14 @@
-import { Play, Save, Rocket, Code2 } from 'lucide-react'
+import { Code2, Save, History, FolderOpen, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useStrategyStore } from '@/features/strategy/stores'
 import { useToast } from '@/hooks/use-toast'
 
+/**
+ * Topbar — 草稿名 + 同步状态 + SANDBOX 胶囊 + 版本/草稿库入口.
+ * STRAT-07: 删除"运行沙箱 / 部署至 OMS"空壳按钮, 动作入口唯一化到右列底部。
+ */
 export function Topbar() {
-  const { isDirty, formSchema, activeStrategy, saveCode, setWorkspaceTab } = useStrategyStore()
+  const { isDirty, formSchema, activeStrategy, saveCode } = useStrategyStore()
   const { toast } = useToast()
   const displayName = activeStrategy || (formSchema.length > 0 ? formSchema[0].class_name : 'UntitledStrategy')
 
@@ -18,33 +22,39 @@ export function Topbar() {
     }
   }
 
-  const handleRunSandbox = () => {
-    // STRAT-05 将完善：此处先跳转到代码编辑器，用户可通过右侧参数面板触发
-    setWorkspaceTab('code')
-    toast({ title: '💡 提示', description: '请在右侧参数面板点击「应用推演」以运行沙箱。' })
+  const handleShowVersions = () => {
+    window.dispatchEvent(new CustomEvent('quant_sidebar_tab', { detail: { tab: 'versions' } }))
   }
 
-  const handleDeploy = () => {
-    // STRAT-05 将完善：此处先跳转到参数面板
-    setWorkspaceTab('code')
-    toast({ title: '💡 提示', description: '请在右侧参数面板点击「部署实盘」以部署至 OMS。' })
+  const handleShowDrafts = () => {
+    window.dispatchEvent(new CustomEvent('quant_sidebar_tab', { detail: { tab: 'drafts' } }))
   }
 
   return (
     <div className="h-12 border-b border-border/40 bg-secondary/20 flex items-center justify-between px-4 shrink-0 transition-colors duration-300">
-      <div className="flex items-center gap-2">
-        <Code2 className="h-4 w-4 text-scene scene-accent-transition" />
-        <span className="text-xs font-semibold uppercase tracking-wide">{displayName}.py</span>
+      <div className="flex items-center gap-2 min-w-0">
+        <Code2 className="h-4 w-4 text-scene scene-accent-transition shrink-0" />
+        <span className="text-xs font-semibold uppercase tracking-wide truncate">{displayName}.py</span>
         {isDirty ? (
-          <span className="text-[10px] text-amber-500 font-bold ml-2 px-1.5 py-0.5 rounded border border-amber-500/50 bg-amber-500/10">未保存 (Unsaved)</span>
+          <span className="text-[10px] text-amber-500 font-bold ml-1 px-1.5 py-0.5 rounded border border-amber-500/50 bg-amber-500/10 shrink-0">未保存</span>
         ) : (
-          <span className="text-[10px] text-muted-foreground ml-2 px-1.5 py-0.5 rounded border border-border/50">已同步</span>
+          <span className="text-[10px] text-muted-foreground ml-1 px-1.5 py-0.5 rounded border border-border/50 shrink-0">已同步</span>
         )}
+        {/* 常驻 SANDBOX 胶囊 (宪法 §4: UI 必须显示 SANDBOX/LIVE 横幅) */}
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full text-amber-500 bg-amber-500/10 border border-amber-500/35 shrink-0 flex items-center gap-1">
+          <ShieldCheck className="h-3 w-3" /> SANDBOX · 纸面推演,非实盘
+        </span>
       </div>
-      <div className="flex items-center gap-2">
-        <Button size="sm" variant="ghost" onClick={handleSave} className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground"><Save className="h-3.5 w-3.5"/> 保存</Button>
-        <Button size="sm" variant="outline" onClick={handleRunSandbox} className="h-7 text-xs gap-1.5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"><Play className="h-3.5 w-3.5"/> 运行沙箱</Button>
-        <Button size="sm" onClick={handleDeploy} className="h-7 text-xs gap-1.5 bg-scene/10 text-scene shadow-none hover:bg-scene/20 scene-accent-transition"><Rocket className="h-3.5 w-3.5"/> 部署至 OMS</Button>
+      <div className="flex items-center gap-1.5 shrink-0">
+        <Button size="sm" variant="ghost" onClick={handleShowVersions} className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground">
+          <History className="h-3.5 w-3.5" /> 历史版本
+        </Button>
+        <Button size="sm" variant="ghost" onClick={handleShowDrafts} className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground">
+          <FolderOpen className="h-3.5 w-3.5" /> 草稿库
+        </Button>
+        <Button size="sm" variant="outline" onClick={handleSave} className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground">
+          <Save className="h-3.5 w-3.5" /> 保存
+        </Button>
       </div>
     </div>
   )

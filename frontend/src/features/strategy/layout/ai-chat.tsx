@@ -232,7 +232,7 @@ export function AIChat() {
           </Button>
         </div>
         <div className="mt-2 text-center">
-          <span className="text-[9px] text-muted-foreground">✨ AI 生成的代码将自动应用到左侧主编辑器中</span>
+          <span className="text-[9px] text-muted-foreground">✨ 生成代码需经 Diff 审查后应用（不再自动写入）</span>
         </div>
       </div>
     </div>

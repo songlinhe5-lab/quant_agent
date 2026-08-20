@@ -202,8 +202,8 @@ export function useStrategySandbox() {
     }
   }
 
-  // 💡 实盘一键部署引擎
-  const handleDeployToOMS = async (className: string, data: Record<string, any>) => {
+  // 💡 部署至 OMS 引擎 (STRAT-07: 经确认闸门, 携带目标环境 sandbox/live)
+  const handleDeployToOMS = async (className: string, data: Record<string, any>, env: 'sandbox' | 'live' = 'sandbox') => {
     toast({ title: '🚀 部署初始化', description: `正在将 ${className} 编译并持久化至底层 OMS 引擎...` })
 
     const sanitizedParams = { ...data }
@@ -228,10 +228,17 @@ export function useStrategySandbox() {
         ticker: store.testTicker,
         period: store.backtestPeriod,
         initial_capital: parseFloat(store.initialCapital) || 100000,
-        data_source: store.dataSource
+        data_source: store.dataSource,
+        env: env,
       })
       if (res.data?.status === 'success') {
-        toast({ title: '✅ 部署成功', description: '策略已挂载至实盘节点，请前往【OMS与算力节点】查看运行状态！' })
+        const rEnv = res.data.data?.env || env
+        toast({
+          title: rEnv === 'live' ? '✅ 已部署至 OMS' : '📄 纸面部署已记录',
+          description: rEnv === 'live'
+            ? '策略已挂载至实盘节点，请前往【OMS与算力节点】查看运行状态！'
+            : (res.data?.message || 'REAL_TRADE_EXECUTE 未开启, 未向 OMS 发送真实订单。'),
+        })
       } else {
         toast({ variant: 'destructive', title: '部署失败', description: res.data?.message })
       }

@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 try:
     from zoneinfo import ZoneInfo
@@ -171,14 +171,20 @@ class MacroCalendarAggregator:
         impact = str(ev.get("impact", "low")).lower()
         if impact not in ("high", "medium", "low"):
             impact = "low"
+
+        # 空串归一为 None：事件未公布的字段（前瞻期无 actual/estimate）前端应显示 —
+        def _norm(v: Any) -> Optional[str]:
+            s = str(ev.get(v, "")).strip()
+            return s if s and s.lower() != "nan" else None
+
         return {
             "date": iso,
             "country": str(ev.get("country", "Global")),
             "event": str(ev.get("event", "")),
             "impact": impact,
-            "previous": str(ev.get("previous", "")),
-            "estimate": str(ev.get("estimate", "")),
-            "actual": str(ev.get("actual", "")),
+            "previous": _norm("previous"),
+            "estimate": _norm("estimate"),
+            "actual": _norm("actual"),
             "_src": tag,
         }
 

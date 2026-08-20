@@ -155,15 +155,16 @@ describe('STRAT-01a: Store Slices', () => {
       expect(state.diff.source).toBe('ai-chat')
     })
 
-    it('Diff state machine: enterDiff should skip diff for empty editor', () => {
+    it('Diff state machine: enterDiff should always go through Diff even for empty editor (STRAT-07)', () => {
       const { setCode, enterDiff } = useStrategyStore.getState()
       setCode('')
 
       enterDiff('new code', 'ai-chat')
 
       const state = useStrategyStore.getState()
-      expect(state.diff.status).toBe('idle')
-      expect(state.code).toBe('new code')
+      expect(state.diff.status).toBe('pendingDiff')
+      expect(state.diff.original).toBe('')
+      expect(state.diff.incoming).toBe('new code')
     })
 
     it('Diff state machine: applyDiff should apply incoming code', () => {

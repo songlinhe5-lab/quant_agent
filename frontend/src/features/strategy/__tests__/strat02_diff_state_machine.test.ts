@@ -107,42 +107,44 @@ describe('STRAT-02: AI Diff State Machine', () => {
     })
   })
 
-  describe('Empty Editor Exception', () => {
-    it('should skip diff for empty editor', () => {
+  describe('Always through Diff (STRAT-07: no empty-editor exception)', () => {
+    it('should still go through Diff for empty editor', () => {
       useStrategyStore.setState({ code: '' })
       const { enterDiff } = useStrategyStore.getState()
 
       enterDiff('new code', 'ai-chat')
 
       const state = useStrategyStore.getState()
-      expect(state.diff.status).toBe('idle')
-      expect(state.code).toBe('new code')
-      expect(state.isDirty).toBe(true)
+      expect(state.diff.status).toBe('pendingDiff')
+      expect(state.diff.original).toBe('')
+      expect(state.diff.incoming).toBe('new code')
     })
 
-    it('should skip diff for editor with only comments', () => {
+    it('should still go through Diff for editor with only comments', () => {
       useStrategyStore.setState({ code: '# Just a comment\n# Another comment\n' })
       const { enterDiff } = useStrategyStore.getState()
 
       enterDiff('new code', 'ai-chat')
 
       const state = useStrategyStore.getState()
-      expect(state.diff.status).toBe('idle')
-      expect(state.code).toBe('new code')
+      expect(state.diff.status).toBe('pendingDiff')
+      expect(state.diff.original).toBe('# Just a comment\n# Another comment\n')
+      expect(state.diff.incoming).toBe('new code')
     })
 
-    it('should skip diff for editor with only whitespace', () => {
+    it('should still go through Diff for editor with only whitespace', () => {
       useStrategyStore.setState({ code: '   \n\n   \n' })
       const { enterDiff } = useStrategyStore.getState()
 
       enterDiff('new code', 'ai-chat')
 
       const state = useStrategyStore.getState()
-      expect(state.diff.status).toBe('idle')
-      expect(state.code).toBe('new code')
+      expect(state.diff.status).toBe('pendingDiff')
+      expect(state.diff.original).toBe('   \n\n   \n')
+      expect(state.diff.incoming).toBe('new code')
     })
 
-    it('should NOT skip diff for editor with actual code', () => {
+    it('should go through Diff for editor with actual code too', () => {
       useStrategyStore.setState({ code: 'print("real code")' })
       const { enterDiff } = useStrategyStore.getState()
 

@@ -12,6 +12,7 @@ import sys
 import time
 import traceback
 import uuid
+from datetime import datetime
 from typing import Optional
 from unittest.mock import MagicMock
 
@@ -34,6 +35,28 @@ from backend.routers.auth import get_current_user
 from backend.services.datalake.kline_warehouse import kline_warehouse
 
 router = APIRouter(prefix="/strategy", tags=["Strategy Dev"])
+
+
+def _mark_strategy_status(name: str, status: str) -> None:
+    """STRAT-06: 记录草稿真实状态 (draft/backtested/deployed), 与 strategy.py /list 共享 .status.json."""
+    try:
+        draft_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "strategies", "drafts"))
+        os.makedirs(draft_dir, exist_ok=True)
+        p = os.path.join(draft_dir, ".status.json")
+        data = {}
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    raw = json.load(f)
+                data = raw if isinstance(raw, dict) else {}
+            except Exception:
+                data = {}
+        data[name] = {"status": status, "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M")}
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        # 状态记录是增强能力, 失败不阻断主流程
+        pass
 
 
 # ─── 从 strategy.py 导入共享的限流中间件 ──────────────────────────────
@@ -87,6 +110,7 @@ class RunSandboxPayload(BaseModel):
     data_snapshot_id: Optional[str] = None
     random_seed: Optional[int] = 42
     persist_report: bool = False
+    env: str = "sandbox"  # STRAT-07: 部署目标环境 sandbox/live
 
 
 class OptimizeSandboxPayload(BaseModel):
@@ -532,6 +556,9 @@ async def run_strategy_sandbox(payload: RunSandboxPayload):
 
         report = await _attach_reproducibility(report, safe_code, payload, persist=payload.persist_report)
 
+        # STRAT-06: 回测成功 -> 记录草稿真实状态 backtested
+        _mark_strategy_status(payload.class_name, "backtested")
+
         return {"status": "success", "message": "真实历史推演完成", "data": report}
 
     except ValueError as ve:
@@ -715,7 +742,12 @@ async def monte_carlo_strategy_sandbox(payload: MonteCarloSandboxPayload):
 
 @router.post("/deploy-to-oms", dependencies=[Depends(get_current_user)])
 async def deploy_to_oms(payload: RunSandboxPayload):
-    """将沙箱中跑通的最优策略进行物理持久化，并通过 BotRuntimeManager 启动真实 Bot 算力节点 (OMS-05)"""
+    """将沙箱中跑通的最优策略进行物理持久化，并通过 BotRuntimeManager 启动真实 Bot 算力节点 (OMS-05)
+
+    宪法 §4 / STRAT-07: 必须先查 REAL_TRADE_EXECUTE(默认 false)。
+    未开启 -> SANDBOX 纸面部署(写 live 目录, 但标记 status=draft 且不启动真实 Bot, message 注明纸面)。
+    开启   -> LIVE 真实部署(写 live 目录 + 启动真实 Bot 节点)。
+    """
     try:
         strategies_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "strategies", "live"))  # noqa: E501
         os.makedirs(strategies_dir, exist_ok=True)
@@ -724,6 +756,16 @@ async def deploy_to_oms(payload: RunSandboxPayload):
         with open(file_path, "w", encoding="utf-8") as f:
             header = "from __future__ import annotations\nimport numpy as np\nimport pandas as pd\nfrom typing import Dict, Any, Optional\nfrom backend.backtest import BaseStrategySandbox as BaseStrategy\n\n"  # noqa: E501
             f.write(header + payload.source_code)
+
+        real_trade = os.getenv("REAL_TRADE_EXECUTE", "false").lower() == "true"
+        if not real_trade:
+            # SANDBOX 纸面: 不启动真实 Bot, 标记草稿状态为 draft(纸面推演, 非实盘)
+            _mark_strategy_status(payload.class_name, "draft")
+            return {
+                "status": "success",
+                "message": "SANDBOX 纸面部署已记录 (REAL_TRADE_EXECUTE 未开启, 未向 OMS 发送真实订单)。",
+                "data": {"env": "sandbox", "file": file_path},
+            }  # noqa: E501
 
         from backend.workers.oms.bot_runtime import bot_runtime
 
@@ -736,10 +778,13 @@ async def deploy_to_oms(payload: RunSandboxPayload):
             params=payload.params or {},
         )
 
+        # STRAT-06: 部署成功 -> 记录草稿真实状态 deployed
+        _mark_strategy_status(payload.class_name, "deployed")
+
         return {
             "status": "success",
             "message": f"策略已物理挂载至 {file_path}，Bot 算力节点 {bot_id} 已启动！",
-            "data": {"bot_id": bot_id, "file": file_path},
+            "data": {"env": "live", "bot_id": bot_id, "file": file_path},
         }  # noqa: E501
     except Exception as e:
         return {"status": "error", "message": f"部署失败: {str(e)}"}

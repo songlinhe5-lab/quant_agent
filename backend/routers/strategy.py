@@ -25,6 +25,52 @@ from backend.services.ai_narrator.llm_service import llm_service
 
 router = APIRouter(prefix="/strategy", tags=["Strategy Dev"])
 
+# ─────────────────────────────────────────────────────────────
+# 草稿真实状态记录 (STRAT-06): 状态来自最近一次真实动作, 不再全局写死
+# 取值: draft / backtested / deployed
+# ─────────────────────────────────────────────────────────────
+_STATUS_FILE = ".status.json"
+
+
+def _strategies_draft_dir() -> str:
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "strategies", "drafts"))
+
+
+def _strategies_live_dir() -> str:
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "strategies", "live"))
+
+
+def _status_file_path() -> str:
+    return os.path.join(_strategies_draft_dir(), _STATUS_FILE)
+
+
+def _load_strategy_status() -> dict:
+    """读取草稿状态记录文件, 不存在则返回空 dict."""
+    try:
+        p = _status_file_path()
+        if not os.path.exists(p):
+            return {}
+        with open(p, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _update_strategy_status(name: str, status: str) -> None:
+    """写入单个策略的真实状态 (draft/backtested/deployed)."""
+    try:
+        draft_dir = _strategies_draft_dir()
+        os.makedirs(draft_dir, exist_ok=True)
+        p = _status_file_path()
+        data = _load_strategy_status()
+        data[name] = {"status": status, "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M")}
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        # 状态记录是增强能力, 失败不阻断主流程
+        pass
+
 
 class CodePayload(BaseModel):
     source_code: str
@@ -431,26 +477,43 @@ async def save_strategy(payload: SaveStrategyPayload, db: Session = Depends(get_
 
 @router.get("/list", dependencies=[Depends(get_current_user)])
 async def list_strategies():
-    """拉取已保存的策略草稿列表"""
-    strategies_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "strategies", "drafts"))  # noqa: E501
+    """拉取已保存的策略草稿列表 (状态来自最近一次真实动作, 不再全局写死 testing)"""
+    strategies_dir = _strategies_draft_dir()
     if not os.path.exists(strategies_dir):
         return {"status": "success", "data": []}
 
+    live_dir = _strategies_live_dir()
+    status_map = _load_strategy_status()
+
     results = []
     for file_name in os.listdir(strategies_dir):
-        if file_name.endswith(".py"):
-            file_path = os.path.join(strategies_dir, file_name)
-            stat = os.stat(file_path)
-            modified_time = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")  # noqa: E501
-            results.append(
-                {
-                    "name": file_name[:-3],  # 移除 .py 后缀
-                    "lang": "Python",
-                    "version": "Draft",
-                    "status": "testing",
-                    "modified": modified_time,
-                }
-            )
+        if not file_name.endswith(".py"):
+            continue
+        file_path = os.path.join(strategies_dir, file_name)
+        stat = os.stat(file_path)
+        modified_time = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")  # noqa: E501
+        name = file_name[:-3]  # 移除 .py 后缀
+
+        # 状态优先级: deployed > backtested > draft (来源 = 最近一次真实动作)
+        rec = status_map.get(name) or {}
+        rec_status = rec.get("status")
+        if rec_status in ("deployed", "backtested"):
+            status = rec_status
+        elif os.path.exists(os.path.join(live_dir, file_name)):
+            status = "deployed"
+        else:
+            status = "draft"
+
+        results.append(
+            {
+                "name": name,
+                "lang": "Python",
+                "version": "Draft",
+                "status": status,
+                "status_updated_at": rec.get("updated_at"),
+                "modified": modified_time,
+            }
+        )
     results.sort(key=lambda x: x["modified"], reverse=True)
     return {"status": "success", "data": results}
 

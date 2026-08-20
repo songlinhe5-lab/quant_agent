@@ -50,12 +50,14 @@ export const RISK_COLORS = {
     { range: '3~5%', dark: '#10b981', light: '#047857' },
     { range: '> 5%', dark: '#059669', light: '#064e3b' },
   ],
-  /** 风险评分单色（score >= 阈值 映射） */
+  /** 风险评分单色（score >= 阈值 映射）
+   *  分级文案统一 SSOT: RISK_LEVEL_META (features/trading/risk-types.ts)
+   *  高 >=70 / 中高 >=50 / 中等 >=30 / 低 <30 */
   score: {
-    high: '#ef4444', // >=70 高风险
-    medium: '#f59e0b', // >=50 中风险
-    low: '#3b82f6', // >=30 低风险
-    minimal: '#10b981', // <30 极低风险
+    high: '#ef4444',
+    medium: '#f59e0b',
+    low: '#3b82f6',
+    minimal: '#10b981',
   },
 } as const;
 

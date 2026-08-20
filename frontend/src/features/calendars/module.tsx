@@ -261,7 +261,8 @@ function EconomicView() {
   const [loading, setLoading] = useState(true)
   const [events, setEvents] = useState<any[]>([])
   const [regionFilter, setRegionFilter] = useState<string>('all')
-  const [impactFilter, setImpactFilter] = useState<string>('all')
+  // 默认 'core'：优先展示核心（数据中最高影响级别）经济数据；无核心则降级显示级别高的项
+  const [impactFilter, setImpactFilter] = useState<string>('core')
   const [dateFilter, setDateFilter] = useState<string>('all')
 
   useEffect(() => {
@@ -293,9 +294,14 @@ function EconomicView() {
   const impacts = ['high', 'medium', 'low']
   const dates = Array.from(new Set(events.map((e) => String(e.date || '').slice(0, 10)).filter(Boolean)))
 
+  // 数据中实际存在的影响级别（按高→低），用于 'core' 默认态回退：无核心(high)则显示级别最高的项
+  const presentImpacts = impacts.filter((i) => events.some((e) => e.impact === i))
+  const topImpact = presentImpacts[0] ?? 'high'
+  const effectiveImpact = impactFilter === 'core' ? topImpact : impactFilter
+
   const filtered = events.filter((e) => {
     if (regionFilter !== 'all' && e.country !== regionFilter) return false
-    if (impactFilter !== 'all' && e.impact !== impactFilter) return false
+    if (effectiveImpact !== 'all' && e.impact !== effectiveImpact) return false
     if (dateFilter !== 'all' && String(e.date || '').slice(0, 10) !== dateFilter) return false
     return true
   })
@@ -323,7 +329,8 @@ function EconomicView() {
             {regions.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
           <select value={impactFilter} onChange={(e) => setImpactFilter(e.target.value)} className="bg-secondary/50 border border-border/30 rounded px-1.5 py-0.5 text-muted-foreground focus:outline-none">
-            <option value="all">级别 ▾</option>
+            <option value="core">核心 ▾</option>
+            <option value="all">全部</option>
             {impacts.map((i) => <option key={i} value={i}>{i === 'high' ? '高' : i === 'medium' ? '中' : '低'}</option>)}
           </select>
           <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="bg-secondary/50 border border-border/30 rounded px-1.5 py-0.5 text-muted-foreground focus:outline-none">
@@ -678,7 +685,7 @@ export function CalendarsModule() {
       <MarketsView snapshot={snapshot} />
 
       {/* 子 tab 栏（8 个，对齐设计稿：经济日历/财报/分红/新股/交易时段/利率路径/FRED 图表/快讯情感） */}
-      <div className="flex items-center gap-1 border-b border-border/30 overflow-x-auto scrollbar-thin">
+      <div className="flex items-center gap-0.5 border-b border-border/30 overflow-x-hidden">
         {TABS.map((t) => {
           const Icon = t.icon
           const active = t.id === tab
@@ -687,7 +694,7 @@ export function CalendarsModule() {
               key={t.id}
               onClick={() => setTab(t.id)}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-2 text-xs font-medium whitespace-nowrap border-b-2 -mb-px transition-colors',
+                'flex items-center gap-1 px-2.5 py-2 text-xs font-medium whitespace-nowrap border-b-2 -mb-px transition-colors',
                 active
                   ? 'border-primary text-primary'
                   : 'border-transparent text-muted-foreground hover:text-foreground',

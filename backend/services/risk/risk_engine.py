@@ -103,7 +103,7 @@ class RiskEngine:
             corr_result = self._calc_correlation_matrix(kline_data)
 
             risk_radar = self._build_risk_radar(risk_metrics, max_dd, kline_data, corr_result)
-            risk_factors = self._build_risk_factors(risk_metrics, max_dd)
+            risk_factors = self._build_risk_factors(risk_metrics, max_dd, nav=kpi.get("nav", 0))
 
             accounts[market] = {
                 "kpi": kpi,
@@ -425,13 +425,21 @@ class RiskEngine:
             {"axis": "DD", "current": round(dd_score, 0), "limit": 80},
         ]
 
-    def _build_risk_factors(self, metrics: Dict[str, Any], max_dd: float) -> List[Dict[str, Any]]:
-        """构建因子监控"""
+    def _build_risk_factors(self, metrics: Dict[str, Any], max_dd: float, nav: float = 0) -> List[Dict[str, Any]]:
+        """构建因子监控
+
+        STRAT/RISK-P0: VaR 改双口径 (金额 = |var_95| × 实际净值 + 百分比 = |var_95| × 100)。
+        弃用固定 $10k 名义量纲 (原 var_95*10000 误导), 阈值分档改百分比口径。
+        """
         beta = metrics.get("beta", 0)
-        var_95 = metrics.get("var_95", 0)
+        var_95 = metrics.get("var_95", 0)  # 日收益 5 分位 (比率, 负值)
         sharpe = metrics.get("sharpe", 0)
 
-        # 状态判断
+        # VaR 双口径: 百分比 + 金额 (按实际净值)
+        var_pct = abs(var_95) * 100 if var_95 else 0
+        var_amount = abs(var_95) * nav if var_95 else 0
+
+        # 状态判断 (百分比口径)
         def status(val: float, thresholds: tuple) -> str:
             if val <= thresholds[0]:
                 return "safe"
@@ -450,10 +458,11 @@ class RiskEngine:
             },
             {
                 "label": "VaR (95%)",
-                "value": round(var_95 * 10000, 0),  # 转换为金额
-                "threshold": -3000,
-                "unit": "$",
-                "status": status(abs(var_95 * 10000), (2000, 3000)),
+                "value": round(var_pct, 2),  # 百分比口径
+                "amount": round(var_amount, 0),  # 金额口径 (按实际净值)
+                "threshold": 5.0,  # 限额 ≤ 5% (百分比)
+                "unit": "%",
+                "status": status(var_pct, (3.0, 5.0)),
             },
             {
                 "label": "Sharpe",
