@@ -29,28 +29,30 @@ _ALLOWED_DOMAINS = [
     # ── 港股 ──
     "hkexnews.hk",
     "www1.hkexnews.hk",
-    "hkex.com.hk",          # 港交所官网
+    "hkex.com.hk",  # 港交所官网
     "www.hkex.com.hk",
     "news.hkex.com.hk",
     # ── 美股 (SEC + IR 托管平台) ──
     "sec.gov",
     "www.sec.gov",
-    "q4cdn.com",            # Q4 Inc — Apple/NVIDIA/Meta 等公司 IR 文件托管
+    "q4cdn.com",  # Q4 Inc — Apple/NVIDIA/Meta 等公司 IR 文件托管
     "s2.q4cdn.com",
     "ir.yuewen.com",
     "yuewen.com",
-    "apple.com",            # Apple Investor Relations
+    "apple.com",  # Apple Investor Relations
     "investor.apple.com",
-    "microsoft.com",        # Microsoft IR
-    "s203.q4cdn.com",       # 各公司专属 q4cdn 子域
+    "microsoft.com",  # Microsoft IR
+    "s203.q4cdn.com",  # 各公司专属 q4cdn 子域
     "edgar-online.com",
     # ── A股 ──
-    "cninfo.com.cn",        # 巨潮资讯 (深交所指定披露平台)
+    "cninfo.com.cn",  # 巨潮资讯 (深交所指定披露平台)
     "static.cninfo.com.cn",
-    "sse.com.cn",           # 上交所
+    "sse.com.cn",  # 上交所
     "static.sse.com.cn",
-    "szse.cn",              # 深交所
-    "eastmoney.com",        # 东方财富
+    "szse.cn",  # 深交所
+    "eastmoney.com",  # 东方财富
+    "dfcfw.com",  # 东方财富研报 PDF 静态域 (pdf.dfcfw.com) — 港股/A股研报主要来源
+    "pdf.dfcfw.com",
     "sina.com.cn",
     "finance.sina.com.cn",
 ]
@@ -215,7 +217,9 @@ class DownloadReportTool(BaseTool):
         "required": ["url", "ticker"],
     }
 
-    async def run(self, url: str, ticker: str = "", report_type: str = "", year: str = "", filename: str = "") -> Dict[str, Any]:
+    async def run(
+        self, url: str, ticker: str = "", report_type: str = "", year: str = "", filename: str = ""
+    ) -> Dict[str, Any]:
         if not url:
             return {"status": "error", "message": "缺失 url 参数。"}
         if not ticker:
@@ -246,7 +250,7 @@ class DownloadReportTool(BaseTool):
         if filepath.exists() and filepath.stat().st_size > 0:
             return {
                 "status": "success",
-                "message": f"文件已存在，无需重复下载。",
+                "message": "文件已存在，无需重复下载。",
                 "file_path": str(filepath),
                 "file_size_mb": round(filepath.stat().st_size / 1024 / 1024, 2),
             }
@@ -264,7 +268,7 @@ class DownloadReportTool(BaseTool):
                     "Host": "www.sec.gov",
                     "Sec-Ch-Ua": "Not_A;Brand=v8",
                     "Sec-Ch-Ua-Mobile": "?0",
-                    "Sec-Ch-Ua-Platform": "\"Linux\"",
+                    "Sec-Ch-Ua-Platform": '"Linux"',
                     "Sec-Fet-Dest": "document",
                     "Sec-Fet-Mode": "navigate",
                     "Sec-Fet-Site": "same-origin",
@@ -297,7 +301,7 @@ class DownloadReportTool(BaseTool):
                     html_snippet = content[:500].decode("utf-8", errors="ignore")
                     return {
                         "status": "error",
-                        "message": f"下载内容为 HTML 页面而非 PDF，可能触发了 Cloudflare 防护。建议：\n1. 检查 SEC.gov 链接是否为直链（应为 /Archives/edgar/data/XXX/XXX.pdf）\n2. 通过 https://www.sec.gov/cgi-bin/browse-edgar 搜索 TSLA 年报后右键 PDF 复制链接\n3. 手动在浏览器下载后放入 reports/TSLA_*.pdf",
+                        "message": "下载内容为 HTML 页面而非 PDF，可能触发了 Cloudflare 防护。建议：\n1. 检查 SEC.gov 链接是否为直链（应为 /Archives/edgar/data/XXX/XXX.pdf）\n2. 通过 https://www.sec.gov/cgi-bin/browse-edgar 搜索 TSLA 年报后右键 PDF 复制链接\n3. 手动在浏览器下载后放入 reports/TSLA_*.pdf",
                         "content_preview": html_snippet,
                     }
 
@@ -325,7 +329,7 @@ class DownloadReportTool(BaseTool):
                     "message": f"下载完成，已保存至 reports/{safe_name}",
                     "file_path": str(filepath),
                     "file_size_mb": round(len(content) / 1024 / 1024, 2),
-                    "next_step": f"现在可以调用 analyze_financial_report(ticker=\"{ticker}\") 解析该文件。",
+                    "next_step": f'现在可以调用 analyze_financial_report(ticker="{ticker}") 解析该文件。',
                 }
 
         except httpx.TimeoutException:

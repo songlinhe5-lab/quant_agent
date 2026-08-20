@@ -39,15 +39,57 @@ class KnowledgeBaseTool(BaseTool):
 
         try:
             summary = await asyncio.to_thread(self._search_pg, query, limit, days_back)
-            # 未命中（库中无相关内容）时不落缓存，避免 0 命中结果被 Redis 缓存 600s 遮蔽后续修复
             missed = summary.startswith("未能在全局知识库中检索到")
+            if not missed:
+                return {
+                    "status": "success",
+                    "data": {"query": query, "content": summary},
+                    "skip_cache": False,
+                }
+            # 💡 本地知识库未命中：联动 web_search 兜底，避免对「未持久化的研报/资讯」返回空。
+            #    用户查询如个股研报（目标价/盈利预测）时, 知识库通常未存过, 联网搜索才能拿到。
+            fallback = await self._fallback_web_search(query, limit)
+            if fallback is not None:
+                return {
+                    "status": "success",
+                    "data": {"query": query, "content": fallback},
+                    "skip_cache": True,  # 兜底结果不落长期缓存
+                    "source": "web_search_fallback",
+                }
+            # web_search 也不可用时, 返回原 miss 提示并引导
             return {
                 "status": "success",
                 "data": {"query": query, "content": summary},
-                "skip_cache": missed,
+                "skip_cache": True,
             }
         except Exception as e:
             return {"status": "error", "message": f"全局知识库检索失败: {str(e)}"}
+
+    async def _fallback_web_search(self, query: str, limit: int) -> str | None:
+        """本地知识库未命中时, 经 web_search 联网兜底 (DuckDuckGo → 后端搜索网关)。"""
+        try:
+            from .web_search_tool import WebSearchTool
+
+            res = await WebSearchTool().run(query, max_results=limit)
+            if res.get("status") != "success" or not res.get("data"):
+                return None
+            hits = res["data"]
+            if not isinstance(hits, list) or not hits:
+                return None
+            # 每个 hit 可能是 dict 或 str
+            parts = ["🌐 全局知识库未命中，以下为网络搜索兜底结果（建议结合 download_report 下载研报后解析）：\n"]
+            for i, h in enumerate(hits[:limit]):
+                if isinstance(h, dict):
+                    title = h.get("title") or h.get("headline") or h.get("url") or ""
+                    url = h.get("url") or h.get("link") or ""
+                    snippet = h.get("snippet") or h.get("summary") or ""
+                    parts.append(f"[{i + 1}] {title}\n{snippet}\n(🔗 {url})")
+                else:
+                    parts.append(f"[{i + 1}] {h}")
+                parts.append("")
+            return "\n".join(parts).strip()
+        except Exception:
+            return None
 
     def _search_pg(self, query: str, limit: int, days_back: int) -> str:
         """从 PostgreSQL pgvector (WebpageKnowledgeBase) 语义检索全局历史知识库。
