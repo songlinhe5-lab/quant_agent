@@ -85,7 +85,7 @@ CALENDAR_CATEGORIES: list[dict] = [
             {"symbol": "N225", "name": "日经 225", "yf": "^N225"},
             {"symbol": "KS11", "name": "韩国 KOSPI", "yf": "^KS11"},
             {"symbol": "KWEB", "name": "中概互联", "yf": "KWEB", "futu": "US.KWEB"},
-            {"symbol": "SSE", "name": "上证指数", "yf": "000001.SS"},
+            {"symbol": "SSE", "name": "上证指数", "yf": "000001.SS", "futu": "SH.000001"},
             {"symbol": "SENSEX", "name": "印度 SENSEX", "yf": "^BSESN"},
             {"symbol": "TWII", "name": "台湾加权", "yf": "^TWII"},
         ],
