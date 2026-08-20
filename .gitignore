@@ -250,6 +250,9 @@ fixtures/
 data/cache/
 data/temp/
 
+# 策略研发工作台运行时状态记录 (STRAT-06, 由 /list 与 run-sandbox/deploy 动态生成)
+backend/strategies/drafts/.status.json
+
 # ============================================
 # 9. 临时文件与备份
 # ============================================

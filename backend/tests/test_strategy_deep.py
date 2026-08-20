@@ -684,8 +684,9 @@ class TestDeployToOms:
     @patch("backend.workers.oms.bot_runtime.bot_runtime")
     @patch("builtins.open", create=True)
     @patch("os.makedirs")
+    @patch.dict(os.environ, {"REAL_TRADE_EXECUTE": "true"}, clear=False)
     def test_deploy_success(self, mock_makedirs, mock_open, mock_bot_rt, client):
-        """部署成功"""
+        """部署成功 (REAL_TRADE_EXECUTE 开启 -> LIVE, 返回 bot_id)"""
         mock_bot_rt.start_bot = AsyncMock()
         mock_file = MagicMock()
         mock_open.return_value.__enter__ = lambda s: mock_file
