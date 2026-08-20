@@ -12,7 +12,7 @@ export interface Message {
   status?: 'typing' | 'reasoning' | 'done' | 'error'
 }
 
-export type DiffSource = 'ai-chat' | 'auto-fix' | 'ast-fix' | 'hermes' | 'version-restore'
+export type DiffSource = 'ai-chat' | 'auto-fix' | 'ast-fix' | 'hermes' | 'version-restore' | 'optimize-apply'
 
 export interface DiffState {
   status: 'idle' | 'streaming' | 'pendingDiff'
@@ -72,12 +72,7 @@ export const createAiSlice: StateCreator<StrategyStore, [], [], AiSlice> = (set,
   enterDiff: (incoming, source, meta) => {
     const state = get()
     const currentCode = state.code
-    // Empty editor exception: skip Diff, apply directly
-    const isEmpty = !currentCode.trim() || /^[\s\n]*($|#[^\n]*\n)*$/.test(currentCode)
-    if (isEmpty) {
-      set({ code: incoming, isDirty: true, diff: { ...initialDiff } })
-      return
-    }
+    // STRAT-07: 永远走 Diff 确认, 删除"空编辑器直写"例外 (AI 落码语义统一)
     set({
       diff: { status: 'pendingDiff', original: currentCode, incoming, source, meta },
     })

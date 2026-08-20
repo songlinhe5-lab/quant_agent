@@ -1,5 +1,7 @@
 'use client'
 
+import { Link } from 'react-router-dom'
+import { ExternalLink } from 'lucide-react'
 import { useBacktest } from './use-backtest'
 import { InitOverlay } from '@/components/ui/data-display'
 import { BacktestConfig } from './backtest-config'
@@ -22,6 +24,14 @@ export function BacktestModule() {
         <div className="h-1.5 w-1.5 rounded-full bg-amber-500 dark:bg-amber-400 transition-colors duration-300" aria-hidden="true" />
         <h1 className="text-base font-bold tracking-tight">高频回测引擎</h1>
         <span className="text-[10px] font-mono text-muted-foreground border border-border/50 rounded px-1.5 py-0.5">Backtest Engine</span>
+        <span className="text-[10px] font-mono text-muted-foreground/60 border border-border/40 rounded px-1.5 py-0.5">独立大规模回测 · 端点 /backtest/run/stream</span>
+        <Link
+          to="/strategy"
+          className="ml-auto flex items-center gap-1 text-[10px] text-blue-500 hover:text-blue-400 transition-colors"
+          title="在工作台策略研发沙箱中打开 (端点 /strategy/run-sandbox/*)"
+        >
+          在工作台沙箱中打开 <ExternalLink className="h-3 w-3" />
+        </Link>
       </div>
 
       {/* Config + Launch */}

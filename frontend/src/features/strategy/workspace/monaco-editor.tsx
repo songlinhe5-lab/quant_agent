@@ -3,7 +3,7 @@ import Editor, { useMonaco, loader } from '@monaco-editor/react'
 import * as monaco_editor from 'monaco-editor'
 import { useTheme } from 'next-themes'
 import { useToast } from '@/hooks/use-toast'
-import { Loader2, Play, Save, AlertCircle, Bot } from 'lucide-react'
+import { Loader2, Play, Save, AlertCircle, Bot, Code2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { apiClient, API_BASE_URL, fetchWithAuth } from '@/lib/api-client'
 import { useStrategyStore } from '../stores'
@@ -230,9 +230,12 @@ export function MonacoEditorTab() {
     } catch (e: any) { toast({ variant: 'destructive', title: '修复异常', description: e.message }) } finally { setIsFixing(false) }
   }
 
+  // STRAT-07 / Frame 3: 空草稿态判断 (裸占位符视同空)
+  const isEmptyDraft = !store.code.trim() || store.code.trim() === '# Draft Strategy...'
+
   return (
     <div className="flex flex-col h-full w-full bg-slate-50 dark:bg-[oklch(0.09_0.005_270)]">
-      <div className="flex-1 relative w-full bg-transparent">
+      <div className="flex-1 relative w-full bg-transparent min-h-0">
         <Editor
           height="100%"
           language="python"
@@ -249,23 +252,71 @@ export function MonacoEditorTab() {
           options={{ minimap: { enabled: false }, fontSize: 13, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace', lineHeight: 22, padding: { top: 16, bottom: 16 }, scrollBeyondLastLine: false, smoothScrolling: true, cursorBlinking: "smooth", cursorSmoothCaretAnimation: "on", formatOnPaste: true, overviewRulerLanes: 0, renderLineHighlight: "all", hideCursorInOverviewRuler: true, scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 }, automaticLayout: true }}
           loading={<div className="flex items-center justify-center h-full text-muted-foreground text-xs font-mono gap-2"><Loader2 className="h-4 w-4 animate-spin" /> 启动 Monaco 核心引擎...</div>}
         />
+
+        {/* STRAT-07 / Frame 3: 空草稿态 = 从模板开始 (不再是 "# Draft Strategy..." 裸文本) */}
+        {isEmptyDraft && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 pointer-events-none">
+            <div className="flex flex-col items-center gap-2 pointer-events-auto bg-background/80 backdrop-blur-sm border border-dashed border-primary/40 rounded-xl px-8 py-6 text-center">
+              <Code2 className="h-8 w-8 text-primary/50" />
+              <div>
+                <p className="text-sm font-semibold text-foreground">空草稿态 · 从模板开始</p>
+                <p className="text-[10px] text-muted-foreground mt-1">模板自带 BaseStrategy 骨架, 新建即通过架构检查</p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2 mt-1">
+                {['空白模板', 'RSI 双均线', '网格', '突破跟随'].map((name) => (
+                  <button
+                    key={name}
+                    onClick={() => window.dispatchEvent(new CustomEvent('quant_sidebar_tab', { detail: { tab: 'drafts' } }))}
+                    className="px-3 py-1.5 rounded-full text-[11px] border border-border/50 bg-secondary/40 text-foreground hover:border-primary/40 hover:bg-primary/10 transition-colors"
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[9px] text-muted-foreground/60 mt-1">点击模板在左侧「模板中心」中选择</p>
+            </div>
+          </div>
+        )}
       </div>
-      {/* Bottom Action Bar for Editor */}
-      <div className="border-t border-border/20 px-4 py-2 flex items-center gap-2 bg-slate-100 dark:bg-[oklch(0.10_0.005_270)] transition-colors duration-300 shrink-0">
+      {/* STRAT-07: 状态栏只留动作, 红字诊断全部迁出到编辑器下方诊断区 */}
+      <div className="border-t border-border/20 px-4 py-1.5 flex items-center gap-2 bg-slate-100 dark:bg-[oklch(0.10_0.005_270)] transition-colors duration-300 shrink-0">
         <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={handleSaveStrategy} disabled={isSaving}>
           {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} {isSaving ? '保存中...' : '保存'}
         </Button>
         {store.isDirty && (<Button size="sm" variant="ghost" onClick={() => store.setCode(store.lastSavedCode)} className="h-7 text-xs px-2 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors animate-in fade-in">放弃修改</Button>)}
         <Button size="sm" variant="outline" onClick={handleSyntaxCheck} disabled={isChecking} className="h-7 text-xs gap-1.5 transition-colors">
-          {isChecking ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />} 强制语法检查
+          {isChecking ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />} 重新检查
         </Button>
-        {syntaxError ? (
-          <div className="ml-auto flex items-center gap-2 animate-in fade-in zoom-in duration-300">
-            <span className="text-[10px] font-mono text-red-500 flex items-center gap-1"><AlertCircle className="h-3.5 w-3.5" /> {syntaxError.msg}</span>
-            <Button size="sm" onClick={handleAutoFix} disabled={isFixing} className="h-6 px-2 text-[10px] bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500/20 shadow-none gap-1">{isFixing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Bot className="h-3 w-3" />} {isFixing ? '修复中...' : 'AI 一键修复'}</Button>
-          </div>
-        ) : store.formSchema.length > 0 ? (<span className="ml-auto text-[10px] font-mono text-emerald-600 dark:text-emerald-400 animate-in fade-in zoom-in duration-300">✓ AST 解析正常</span>) : null}
+        {syntaxError ? null : store.formSchema.length > 0 ? (<span className="ml-auto text-[10px] font-mono text-emerald-600 dark:text-emerald-400 animate-in fade-in zoom-in duration-300">✓ AST 解析正常</span>) : null}
       </div>
+
+      {/* 诊断区: 错误卡 (错误码 + 说明 + 行号跳转 + AI 修复 + 忽略一次) */}
+      {syntaxError && (
+        <div className="border-t border-red-500/30 bg-gradient-to-b from-red-500/5 to-transparent px-4 py-2.5 shrink-0">
+          <div className="flex items-center gap-2.5 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2.5 animate-in fade-in slide-in-from-bottom-1">
+            <span className="text-[10px] font-bold text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded shrink-0">SYN-113</span>
+            <span className="text-[11px] font-semibold text-foreground truncate">{syntaxError.msg}</span>
+            <button
+              onClick={() => {
+                const ed = editorRef.current
+                if (ed && syntaxError.line) ed.revealLineInCenter(Math.max(1, syntaxError.line))
+              }}
+              className="text-[10px] text-red-500/90 hover:text-red-400 underline underline-offset-2 shrink-0"
+              title="点击跳转到错误行"
+            >
+              第 {Math.max(1, syntaxError.line)} 行 →
+            </button>
+            <div className="ml-auto flex items-center gap-1.5 shrink-0">
+              <Button size="sm" onClick={handleAutoFix} disabled={isFixing} className="h-6 px-2.5 text-[10px] bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/25 hover:bg-indigo-500/20 shadow-none gap-1">
+                {isFixing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Bot className="h-3 w-3" />} {isFixing ? '修复中...' : '✦ AI 修复'}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setSyntaxError(null)} className="h-6 px-2 text-[10px] text-muted-foreground hover:text-foreground shadow-none gap-1">
+                <AlertCircle className="h-3 w-3" /> 忽略一次
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

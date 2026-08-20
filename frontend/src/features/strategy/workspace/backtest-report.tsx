@@ -63,7 +63,8 @@ export function BacktestReport() {
     if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
-  const applyOptimizedParams = async (className: string, params: any) => {
+  const applyOptimizedParams = (className: string, params: any) => {
+    // STRAT-07 / Frame 2: 寻优 Top3 应用走 Diff 确认, 不再自动覆盖代码 + 直接回测
     let updatedCode = store.code;
     const currentSchema = store.formSchema.find((s: any) => s.class_name === className);
     if (currentSchema) {
@@ -78,26 +79,12 @@ export function BacktestReport() {
       });
     }
 
-    if (updatedCode !== store.code) store.setCode(updatedCode);
-    store.setFormSchema(store.formSchema.map((s: any) => s.class_name === className ? { ...s, parameters: s.parameters.map((p: any) => params[p.name] !== undefined ? { ...p, default: params[p.name] } : p) } : s));
-
-    toast({ title: '🚀 启动沙箱推演', description: `正在挂载最优参数并执行推演...` })
-    store.setSimulating(true); store.setBacktestResult(null); store.setRuntimeError(null);
-
-    try {
-      const res = await apiClient.post('/strategy/run-sandbox', {
-        source_code: updatedCode, class_name: className, params: params, ticker: store.testTicker, period: store.backtestPeriod, initial_capital: parseFloat(store.initialCapital) || 100000, data_source: store.dataSource, debug_mode: store.isDebugMode, data_snapshot_id: store.dataSnapshotId || 'latest_published', random_seed: 42,
-      })
-      if (res.data?.status === 'success') {
-        store.setBacktestResult(res.data.data)
-        const m = res.data.data.metrics || res.data.data
-        toast({ title: '✅ 回测推演完成', description: `夏普比率: ${m.sharpe_ratio} | 收益率: ${m.total_return}` })
-      } else {
-        toast({ variant: 'destructive', title: '沙箱崩溃', description: res.data?.message }); store.setRuntimeError(res.data?.message)
-      }
-    } catch (e: any) {
-      toast({ variant: 'destructive', title: '执行异常', description: e.message }); store.setRuntimeError(e.message)
-    } finally { store.setSimulating(false) }
+    if (updatedCode !== store.code) {
+      store.enterDiff(updatedCode, 'optimize-apply')
+      toast({ title: '🔀 最优参数待审查', description: '已生成参数覆盖 Diff, 请在 Diff 视图中审查并确认应用。' })
+    } else {
+      toast({ title: 'ℹ️ 参数无变化', description: '最优参数与当前代码一致, 无需应用。' })
+    }
   }
 
   const metrics = store.backtestResult?.metrics || {}
