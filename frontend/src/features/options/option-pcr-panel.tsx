@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { EChartsCoreOption } from 'echarts'
-import { API_BASE_URL } from '@/lib/constants'
+import { API_BASE_URL, SEMANTIC_COLORS } from '@/lib/constants'
 import { useEChart, ECHART_DARK } from '@/hooks/use-echart'
 import { cn } from '@/lib/utils'
 
@@ -15,8 +15,8 @@ interface SentimentPoint {
 // 简化 verdict（对齐 Figma 设计稿：偏多/偏空/中性）
 function pcrVerdict(pcr: number | null): { text: string; cls: string } {
   if (pcr == null || !isFinite(pcr)) return { text: '数据缺失', cls: 'text-slate-400' }
-  if (pcr > 1.0) return { text: '偏空', cls: 'text-[#EF4444] dark:text-[#F87171]' }
-  if (pcr < 1.0) return { text: '偏多', cls: 'text-[#10B981] dark:text-[#34D399]' }
+  if (pcr > 1.0) return { text: '偏空', cls: 'text-[hsl(var(--bear))]' }
+  if (pcr < 1.0) return { text: '偏多', cls: 'text-[hsl(var(--bull))]' }
   return { text: '中性', cls: 'text-slate-300' }
 }
 
@@ -86,7 +86,7 @@ export function OptionPcrPanel() {
           position: 'left',
           min: (val: { min: number }) => Math.min(val.min, 0.7),
           max: (val: { max: number }) => Math.max(val.max, 1.2),
-          nameTextStyle: { color: '#60a5fa' },
+          nameTextStyle: { color: SEMANTIC_COLORS.info },
           axisLabel: { color: ECHART_DARK.text, fontSize: 10 },
           splitLine: { lineStyle: { color: ECHART_DARK.split } },
         },
@@ -94,7 +94,7 @@ export function OptionPcrPanel() {
           type: 'value',
           name: 'VIX',
           position: 'right',
-          nameTextStyle: { color: '#f59e0b' },
+          nameTextStyle: { color: SEMANTIC_COLORS.warn },
           axisLabel: { color: ECHART_DARK.text, fontSize: 10 },
           splitLine: { show: false },
         },
@@ -107,8 +107,8 @@ export function OptionPcrPanel() {
           data: pcr,
           smooth: true,
           showSymbol: false,
-          lineStyle: { color: '#60a5fa', width: 2 },
-          itemStyle: { color: '#60a5fa' },
+          lineStyle: { color: 'hsl(var(--info))', width: 2 },
+          itemStyle: { color: 'hsl(var(--info))' },
           // PCR=1 水平参考线（对齐 Figma 设计稿）
           markLine: {
             silent: true,
@@ -133,8 +133,8 @@ export function OptionPcrPanel() {
           smooth: true,
           showSymbol: false,
           // VIX 黄色虚线（对齐 Figma 设计稿）
-          lineStyle: { color: '#f59e0b', width: 1.5, type: 'dashed' },
-          itemStyle: { color: '#f59e0b' },
+          lineStyle: { color: 'hsl(var(--warn))', width: 1.5, type: 'dashed' },
+          itemStyle: { color: 'hsl(var(--warn))' },
         },
       ],
     } as EChartsCoreOption
@@ -191,15 +191,15 @@ export function OptionPcrPanel() {
           <span className={cn(
             'text-[10px] font-bold px-2 py-0.5 rounded',
             isBullish
-              ? 'bg-[#10B981]/15 text-[#10B981] dark:text-[#34D399]'
-              : 'bg-[#EF4444]/15 text-[#EF4444] dark:text-[#F87171]'
+              ? 'bg-[hsl(var(--bull))]/15 text-[hsl(var(--bull))]'
+              : 'bg-[hsl(var(--bear))]/15 text-[hsl(var(--bear))]'
           )}>
             {verdict.text}
           </span>
           <span className="text-[11px] text-muted-foreground">
-            <span className="text-[#EF4444] dark:text-[#F87171]">&gt;1 偏空</span>
+            <span className="text-[hsl(var(--bear))]">&gt;1 偏空</span>
             <span className="mx-1.5 text-border">·</span>
-            <span className="text-[#10B981] dark:text-[#34D399]">&lt;1 偏多</span>
+            <span className="text-[hsl(var(--bull))]">&lt;1 偏多</span>
           </span>
         </div>
       </div>
@@ -207,11 +207,11 @@ export function OptionPcrPanel() {
       {/* 图例（对齐设计稿：PCR · 60日 蓝实线 + VIX 黄虚线） */}
       <div className="px-4 pb-2 flex items-center gap-3 text-[10px] text-muted-foreground">
         <span className="flex items-center gap-1.5">
-          <span className="inline-block w-3 h-0.5 bg-[#60a5fa] rounded" />
+          <span className="inline-block w-3 h-0.5 bg-[hsl(var(--info))] rounded" />
           PCR · 60日
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block w-3" style={{ borderTop: '1px dashed #f59e0b' }} />
+          <span className="inline-block w-3" style={{ borderTop: '1px dashed hsl(var(--warn))' }} />
           VIX
         </span>
       </div>
@@ -224,8 +224,8 @@ export function OptionPcrPanel() {
         <span>数据源:Futu · CBOE</span>
         <span className="flex items-center gap-1.5">
           更新于
-          <span className="flex items-center gap-1 text-[#10B981] dark:text-[#34D399] font-bold">
-            <span className="inline-block w-1 h-1 rounded-full bg-[#10B981] animate-pulse" />
+          <span className="flex items-center gap-1 text-[hsl(var(--bull))] font-bold">
+            <span className="inline-block w-1 h-1 rounded-full bg-[hsl(var(--bull))] animate-pulse" />
             实时
           </span>
         </span>

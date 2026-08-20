@@ -657,7 +657,7 @@ export function CalendarsModule() {
       {/* 多源聚合状态（对齐 Figma 设计稿：AKShare / DBNomics / FRED 圆点） */}
       <div className="flex items-center gap-3 px-1 text-[10px] text-muted-foreground">
         <span className="font-semibold uppercase tracking-wide">多源聚合状态</span>
-        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#34D399]" />AKShare</span>
+        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--bull))]" />AKShare</span>
         <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-purple-400" />DBNomics</span>
         <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-blue-400" />FRED</span>
         <span className="ml-2 text-muted-foreground/80">宏观日历多源聚合完成</span>

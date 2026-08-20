@@ -46,10 +46,10 @@ export const SessionSidebar = forwardRef<SessionSidebarRef, SessionSidebarProps>
 
     let fgLabel = '中性';
     let fgColor = 'text-amber-500';
-    if (fgScore >= 75) { fgLabel = '极度贪婪'; fgColor = 'text-[#059669] dark:text-[#34D399]'; }
-    else if (fgScore >= 55) { fgLabel = '贪婪'; fgColor = 'text-[#059669] dark:text-[#34D399]'; }
-    else if (fgScore <= 25) { fgLabel = '极度恐惧'; fgColor = 'text-[#e11d48] dark:text-[#F87171]'; }
-    else if (fgScore <= 45) { fgLabel = '恐惧'; fgColor = 'text-[#e11d48] dark:text-[#F87171]'; }
+    if (fgScore >= 75) { fgLabel = '极度贪婪'; fgColor = 'text-[hsl(var(--bull))] dark:text-[hsl(var(--bull))]'; }
+    else if (fgScore >= 55) { fgLabel = '贪婪'; fgColor = 'text-[hsl(var(--bull))] dark:text-[hsl(var(--bull))]'; }
+    else if (fgScore <= 25) { fgLabel = '极度恐惧'; fgColor = 'text-[hsl(var(--bear))] dark:text-[hsl(var(--bear))]'; }
+    else if (fgScore <= 45) { fgLabel = '恐惧'; fgColor = 'text-[hsl(var(--bear))] dark:text-[hsl(var(--bear))]'; }
 
     const fetchSessions = async () => {
       setIsLoading(true);
@@ -203,7 +203,7 @@ export const SessionSidebar = forwardRef<SessionSidebarRef, SessionSidebarProps>
               <span className={cn("text-[10px] font-bold uppercase transition-colors duration-500", fgColor)}>{fgLabel}</span>
             </div>
           </div>
-          <div className="relative h-1.5 w-full rounded-full bg-gradient-to-r from-[#e11d48] via-amber-500 to-[#059669] dark:from-[#F87171] dark:to-[#34D399] opacity-90 overflow-hidden">
+          <div className="relative h-1.5 w-full rounded-full bg-gradient-to-r from-[hsl(var(--bear))] via-amber-500 to-[hsl(var(--bull))] dark:from-[hsl(var(--bear))] dark:to-[hsl(var(--bull))] opacity-90 overflow-hidden">
              <div className="absolute top-0 bottom-0 w-1 bg-white shadow-[0_0_5px_rgba(255,255,255,1)] rounded-full transition-all duration-1000 ease-out" style={{ left: `${fgScore}%`, transform: 'translateX(-50%)' }} />
           </div>
           <div className="flex justify-between text-[8px] text-muted-foreground uppercase font-bold mt-1">

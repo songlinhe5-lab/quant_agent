@@ -1,5 +1,6 @@
 import { useTheme } from 'next-themes'
 import { useEChart, ECHART_DARK } from '@/hooks/use-echart'
+import { MARKET_COLORS } from '@/lib/constants'
 import { ReturnsHistogramChart, type HistogramBin } from '@/features/strategy/workspace/returns-histogram-chart'
 
 type EquityPoint = {
@@ -75,7 +76,7 @@ export function BacktestEquityChart({ data }: { data: EquityPoint[] }) {
             type: 'line',
             data: data.map((d) => d.strategy),
             showSymbol: false,
-            lineStyle: { color: isDark ? '#34d399' : '#059669', width: 1.5 },
+            lineStyle: { color: MARKET_COLORS.bull, width: 1.5 },
             z: 3,
             markPoint: tradeMarks.length
               ? {
@@ -116,7 +117,7 @@ export function BacktestUnderwaterChart({
   const { theme } = useTheme()
   const isDark = theme === 'dark'
   const maxDd = parseFloat(maxDrawdown || '-12.3')
-  const ddColor = isDark ? '#f87171' : '#dc2626'
+  const ddColor = MARKET_COLORS.bear
 
   const chartRef = useEChart(
     () => {

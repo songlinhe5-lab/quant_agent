@@ -8,6 +8,7 @@ import { useTheme } from 'next-themes'
 import { useConfirmDialog } from '@/components/confirm-dialog-context'
 import { createChart, ColorType, CrosshairMode, CandlestickSeries, HistogramSeries } from 'lightweight-charts'
 import { formatDisplaySymbol } from './shared'
+import { MARKET_COLORS } from '@/lib/constants'
 
 // ── 订阅管理面板子组件 ──────────────────────────────────────────────────────
 export function SubscriptionManagerPanel({ onClose }: { onClose: () => void }) {
@@ -295,11 +296,11 @@ export function ChartPreviewModal({ symbol, price, change, onClose }: { symbol: 
              })
 
              const candlestickSeries = chart.addSeries(CandlestickSeries, {
-                upColor: theme === 'dark' ? '#10b981' : '#059669',
-                downColor: theme === 'dark' ? '#ef4444' : '#dc2626',
+                upColor: MARKET_COLORS.bull,
+                downColor: MARKET_COLORS.bear,
                 borderVisible: false,
-                wickUpColor: theme === 'dark' ? '#10b981' : '#059669',
-                wickDownColor: theme === 'dark' ? '#ef4444' : '#dc2626',
+                wickUpColor: MARKET_COLORS.bull,
+                wickDownColor: MARKET_COLORS.bear,
              })
 
              const volumeSeries = chart.addSeries(HistogramSeries, {

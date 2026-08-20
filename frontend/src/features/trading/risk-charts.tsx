@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useTheme } from 'next-themes'
 import { useEChart, ECHART_DARK } from '@/hooks/use-echart'
+import { RISK_COLORS } from '@/lib/constants'
 
 export function NavAreaChart({
   data,
@@ -11,7 +12,7 @@ export function NavAreaChart({
 }) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
-  const up = isDark ? '#34d399' : '#059669'
+  const up = ECHART_DARK.up
 
   const chartRef = useEChart(
     () => {
@@ -206,7 +207,7 @@ export function CVarWaterfallChart({
           type: 'bar',
           data: data.map((d) => ({
             value: d.cvar_contrib,
-            itemStyle: { color: d.cvar_contrib < 0 ? (isDark ? '#ef4444' : '#dc2626') : (isDark ? '#10b981' : '#059669') },
+            itemStyle: { color: d.cvar_contrib < 0 ? RISK_COLORS.score.high : RISK_COLORS.histogram[RISK_COLORS.histogram.length - 2].dark },
           })),
           barMaxWidth: 20,
         }],
@@ -228,7 +229,7 @@ export function RiskRadarChart({
   const indicators = useMemo(() => data.map((d) => ({ name: d.axis, max: 100 })), [data])
   const current = useMemo(() => data.map((d) => d.current), [data])
   const limit = useMemo(() => data.map((d) => d.limit), [data])
-  const cur = isDark ? '#34d399' : '#059669'
+  const cur = ECHART_DARK.up
 
   const chartRef = useEChart(
     () => {

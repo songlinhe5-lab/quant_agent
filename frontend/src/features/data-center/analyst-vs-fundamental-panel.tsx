@@ -55,7 +55,7 @@ export function AnalystVsFundamentalPanel({ ticker = 'US.AAPL' }: { ticker?: str
   if (!data) return <div className="p-6 text-sm text-slate-400">暂无卖方共识对比数据</div>
 
   const upside = data.upside_pct
-  const upsideTone = upside == null ? 'text-slate-300' : upside >= 0 ? 'text-[#34D399]' : 'text-[#F87171]'
+  const upsideTone = upside == null ? 'text-slate-300' : upside >= 0 ? 'text-[hsl(var(--bull))]' : 'text-[hsl(var(--bear))]'
 
   return (
     <div className="glass-card rounded-lg overflow-hidden">
@@ -73,7 +73,7 @@ export function AnalystVsFundamentalPanel({ ticker = 'US.AAPL' }: { ticker?: str
         </div>
         <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2">
           <div className="text-[10px] text-slate-500">目标价(共识均值)</div>
-          <div className="text-base font-semibold font-mono text-[#8b5cf6]">{data.target_price != null ? data.target_price.toFixed(2) : '--'}</div>
+          <div className="text-base font-semibold font-mono text-[hsl(var(--ai))]">{data.target_price != null ? data.target_price.toFixed(2) : '--'}</div>
         </div>
         <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2">
           <div className="text-[10px] text-slate-500">隐含上行空间</div>

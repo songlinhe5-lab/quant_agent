@@ -6,6 +6,7 @@ import { MarketSentimentPanel } from './market-sentiment'
 import { MacroRiskRadar } from './macro-risk-radar'
 import { OptionPcrPanel } from '@/features/options/option-pcr-panel'
 import { useDashboardData, type HubTab } from './use-dashboard-data'
+import { SegmentTabs, type SegmentItem } from '@/components/ui/data-display/segment-tabs'
 
 type DashData = ReturnType<typeof useDashboardData>
 
@@ -25,19 +26,28 @@ const ASSET_CATEGORY: Record<string, string> = {
   XLK: '行业ETF', XLE: '行业ETF', KWEB: '行业ETF',
 }
 
-const CATEGORY_TABS = ['全部', '股指', '利率', '外汇', '商品', '加密', '行业ETF'] as const
+const CATEGORY_TABS: SegmentItem[] = [
+  { value: '全部', label: '全部' },
+  { value: '股指', label: '股指' },
+  { value: '利率', label: '利率' },
+  { value: '外汇', label: '外汇' },
+  { value: '商品', label: '商品' },
+  { value: '加密', label: '加密' },
+  { value: '行业ETF', label: '行业ETF' },
+  { value: '类目自定义', label: '类目自定义' },
+]
 
 // 经济日历 impact → 星级（对齐 Figma 设计稿：高影响★★★/中★★/低★）
 function starsFromImpact(impact: string | undefined): { count: number; cls: string } {
   const k = String(impact || '').toLowerCase()
-  if (k === 'high') return { count: 3, cls: 'text-rose-400' }
-  if (k === 'medium') return { count: 2, cls: 'text-amber-400' }
+  if (k === 'high') return { count: 3, cls: 'text-[hsl(var(--bear))]' }
+  if (k === 'medium') return { count: 2, cls: 'text-[hsl(var(--warn))]' }
   if (k === 'low') return { count: 1, cls: 'text-slate-500' }
   return { count: 0, cls: 'text-slate-600' }
 }
 
 export function OverviewTab({ data, onNavigate }: Props) {
-  const [cat, setCat] = useState<(typeof CATEGORY_TABS)[number]>('全部')
+  const [cat, setCat] = useState<string>('全部')
 
   const vixAsset = useMemo(() => data.assets.find((a: any) => a.symbol === 'VIX') ?? null, [data.assets])
 
@@ -90,22 +100,12 @@ export function OverviewTab({ data, onNavigate }: Props) {
           <Globe2 className="h-4 w-4 text-muted-foreground" />
           <h2 className="text-[15px] font-semibold text-foreground">全球市场脉搏</h2>
           <span className="text-[10px] text-muted-foreground/70">跨市场品类首道一入口</span>
-          <div className="ml-auto flex items-center gap-1">
-            {CATEGORY_TABS.map((c) => (
-              <button
-                key={c}
-                onClick={() => setCat(c)}
-                className={cn(
-                  'px-2.5 py-1 text-[11px] rounded-full border transition-colors',
-                  cat === c
-                    ? 'bg-primary/15 text-primary border-primary/40'
-                    : 'text-muted-foreground border-border/40 hover:bg-secondary/40',
-                )}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
+          <SegmentTabs
+            className="ml-auto"
+            items={CATEGORY_TABS}
+            value={cat}
+            onChange={setCat}
+          />
         </div>
         {filteredAssets.length ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
@@ -196,8 +196,8 @@ export function OverviewTab({ data, onNavigate }: Props) {
                     eps == null
                       ? 'bg-secondary/40 text-muted-foreground'
                       : Number(eps) >= 0
-                        ? 'bg-[#10B981]/15 text-[#10B981] dark:text-[#34D399]'
-                        : 'bg-[#EF4444]/15 text-[#EF4444] dark:text-[#F87171]'
+                        ? 'bg-[hsl(var(--bull))]/15 text-[hsl(var(--bull))]'
+                        : 'bg-[hsl(var(--bear))]/15 text-[hsl(var(--bear))]'
                   )}>
                     {eps != null ? `$${Number(eps).toFixed(2)}` : '—'}
                   </div>
@@ -225,7 +225,7 @@ export function OverviewTab({ data, onNavigate }: Props) {
                 <span className="text-xs text-muted-foreground">最大流入</span>
                 <span className="text-xs text-foreground">
                   {extremeFlows.maxIn.label}
-                  <span className="ml-2 font-mono font-bold text-[#10B981] dark:text-[#34D399]">
+                  <span className="ml-2 font-mono font-bold text-[hsl(var(--bull))]">
                     +{(extremeFlows.maxIn.amount ?? 0).toLocaleString('en-US', { maximumFractionDigits: 1 })}{extremeFlows.maxIn.unit || ''}
                   </span>
                 </span>
@@ -236,7 +236,7 @@ export function OverviewTab({ data, onNavigate }: Props) {
                 <span className="text-xs text-muted-foreground">最大流出</span>
                 <span className="text-xs text-foreground">
                   {extremeFlows.maxOut.label}
-                  <span className="ml-2 font-mono font-bold text-[#EF4444] dark:text-[#F87171]">
+                  <span className="ml-2 font-mono font-bold text-[hsl(var(--bear))]">
                     {(extremeFlows.maxOut.amount ?? 0).toLocaleString('en-US', { maximumFractionDigits: 1 })}{extremeFlows.maxOut.unit || ''}
                   </span>
                 </span>

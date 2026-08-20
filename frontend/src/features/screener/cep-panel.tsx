@@ -97,7 +97,7 @@ export function CEPPanel() {
   }
 
   return (
-    <div className="glass-card rounded-xl border border-border/40 shadow-sm overflow-hidden">
+    <div className="glass-card rounded-[var(--radius-card)] border border-border/40 shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-border/30 bg-secondary/30 flex items-center gap-2">
         <Radio className="h-4 w-4 text-primary" />
         <span className="text-sm font-semibold">CEP 实时异动监控</span>

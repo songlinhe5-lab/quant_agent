@@ -19,6 +19,7 @@ import { evaluate, suggestPane, type CIBar } from './custom-indicator/engine'
 import { useCustomIndicatorStore } from './custom-indicator/store'
 import { CustomIndicatorPanel } from './custom-indicator/panel'
 import { AlertSandboxPanel } from './custom-indicator/alert-sandbox-panel'
+import { SEMANTIC_COLORS, MARKET_COLORS } from '@/lib/constants'
 
 // 💡 个股事件类型定义
 interface StockEvent {
@@ -520,10 +521,10 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
 
     // 2) 支撑/压力/目标/止损 -> 价格线
     const levelColor: Record<string, string> = {
-      support: '#10b981',
-      resistance: '#ef4444',
-      target: '#3b82f6',
-      stop: '#f59e0b',
+      support: MARKET_COLORS.bull,
+      resistance: MARKET_COLORS.bear,
+      target: SEMANTIC_COLORS.info,
+      stop: SEMANTIC_COLORS.warn,
     }
     ;(payload.levels || []).forEach((lv) => {
       const pl = series.createPriceLine({
@@ -590,10 +591,10 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
 
     const payload = ann.payload
     const levelColor: Record<string, string> = {
-      support: '#10b981',
-      resistance: '#ef4444',
-      target: '#3b82f6',
-      stop: '#f59e0b',
+      support: MARKET_COLORS.bull,
+      resistance: MARKET_COLORS.bear,
+      target: SEMANTIC_COLORS.info,
+      stop: SEMANTIC_COLORS.warn,
     }
     ;(payload.levels || []).forEach((lv) => {
       const pl = series.createPriceLine({
@@ -771,7 +772,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
 
     const bbUpperLine = chart.addSeries(AreaSeries, { lineColor: theme === 'dark' ? 'rgba(251, 191, 36, 0.4)' : 'rgba(217, 119, 6, 0.4)', topColor: theme === 'dark' ? 'rgba(251, 191, 36, 0.15)' : 'rgba(217, 119, 6, 0.15)', bottomColor: 'rgba(0, 0, 0, 0)', lineWidth: 1, lineStyle: LineStyle.Dashed, crosshairMarkerVisible: false })
     const bbLowerLine = chart.addSeries(LineSeries, { color: theme === 'dark' ? 'rgba(251, 191, 36, 0.4)' : 'rgba(217, 119, 6, 0.4)', lineWidth: 1, lineStyle: LineStyle.Dashed, crosshairMarkerVisible: false })
-    const candlestickSeries = chart.addSeries(CandlestickSeries, { upColor: theme === 'dark' ? '#10b981' : '#059669', downColor: theme === 'dark' ? '#ef4444' : '#dc2626', borderVisible: false, wickUpColor: theme === 'dark' ? '#10b981' : '#059669', wickDownColor: theme === 'dark' ? '#ef4444' : '#dc2626' })
+    const candlestickSeries = chart.addSeries(CandlestickSeries, { upColor: MARKET_COLORS.bull, downColor: MARKET_COLORS.bear, borderVisible: false, wickUpColor: MARKET_COLORS.bull, wickDownColor: MARKET_COLORS.bear })
     const ma20Line = chart.addSeries(LineSeries, { color: '#f472b6', lineWidth: 2, crosshairMarkerVisible: false })
     const ma50Line = chart.addSeries(LineSeries, { color: '#60a5fa', lineWidth: 2, crosshairMarkerVisible: false })
     const ma200Line = chart.addSeries(LineSeries, { color: '#fbbf24', lineWidth: 2, crosshairMarkerVisible: false })
@@ -1202,7 +1203,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
           <button onClick={() => setShowMACD(!showMACD)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium flex items-center gap-1', showMACD ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} title="MACD (指数平滑异同移动平均线)"><span className={cn("h-1.5 w-1.5 rounded-full bg-[#38bdf8]", !showMACD && "opacity-50")} />MACD</button>
         </div>
         <div className="flex items-center gap-0.5 bg-background border border-border/50 p-0.5 rounded-md shadow-sm" role="group" aria-label="RSI开关">
-          <button onClick={() => setShowRSI(!showRSI)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium flex items-center gap-1', showRSI ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} title="RSI (相对强弱指数)"><span className={cn("h-1.5 w-1.5 rounded-full bg-[#8b5cf6]", !showRSI && "opacity-50")} />RSI</button>
+          <button onClick={() => setShowRSI(!showRSI)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium flex items-center gap-1', showRSI ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} title="RSI (相对强弱指数)"><span className={cn("h-1.5 w-1.5 rounded-full bg-[hsl(var(--ai))]", !showRSI && "opacity-50")} />RSI</button>
         </div>
         <div className="flex items-center gap-0.5 bg-background border border-border/50 p-0.5 rounded-md shadow-sm" role="group" aria-label="KDJ开关">
           <button onClick={() => setShowKDJ(!showKDJ)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium flex items-center gap-1', showKDJ ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} title="KDJ (随机指标)"><span className={cn("h-1.5 w-1.5 rounded-full bg-[#f472b6]", !showKDJ && "opacity-50")} />KDJ</button>

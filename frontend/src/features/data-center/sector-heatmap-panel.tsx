@@ -20,25 +20,25 @@ interface HeatMapData {
 }
 
 function toneBg(chg: number): string {
-  if (chg >= 3) return 'bg-[#34D399]/30 border-[#34D399]/50'
-  if (chg >= 1) return 'bg-[#34D399]/15 border-[#34D399]/30'
-  if (chg > 0) return 'bg-[#34D399]/5 border-[#34D399]/20'
-  if (chg <= -3) return 'bg-[#F87171]/30 border-[#F87171]/50'
-  if (chg <= -1) return 'bg-[#F87171]/15 border-[#F87171]/30'
-  return 'bg-[#F87171]/5 border-[#F87171]/20'
+  if (chg >= 3) return 'bg-[hsl(var(--bull))]/30 border-[hsl(var(--bull))]/50'
+  if (chg >= 1) return 'bg-[hsl(var(--bull))]/15 border-[hsl(var(--bull))]/30'
+  if (chg > 0) return 'bg-[hsl(var(--bull))]/5 border-[hsl(var(--bull))]/20'
+  if (chg <= -3) return 'bg-[hsl(var(--bear))]/30 border-[hsl(var(--bear))]/50'
+  if (chg <= -1) return 'bg-[hsl(var(--bear))]/15 border-[hsl(var(--bear))]/30'
+  return 'bg-[hsl(var(--bear))]/5 border-[hsl(var(--bear))]/20'
 }
 
 // 单一板块背景色（按涨跌幅返回对应背景，无边框），用于设计稿横向条带
 function heatColor(chg: number): string {
-  if (chg >= 3) return 'bg-[#34D399]/70'
-  if (chg >= 1.5) return 'bg-[#34D399]/55'
-  if (chg >= 0.5) return 'bg-[#34D399]/40'
-  if (chg > 0) return 'bg-[#34D399]/25'
+  if (chg >= 3) return 'bg-[hsl(var(--bull))]/70'
+  if (chg >= 1.5) return 'bg-[hsl(var(--bull))]/55'
+  if (chg >= 0.5) return 'bg-[hsl(var(--bull))]/40'
+  if (chg > 0) return 'bg-[hsl(var(--bull))]/25'
   if (chg === 0) return 'bg-slate-500/40'
-  if (chg > -0.5) return 'bg-[#F87171]/25'
-  if (chg > -1.5) return 'bg-[#F87171]/40'
-  if (chg > -3) return 'bg-[#F87171]/55'
-  return 'bg-[#F87171]/70'
+  if (chg > -0.5) return 'bg-[hsl(var(--bear))]/25'
+  if (chg > -1.5) return 'bg-[hsl(var(--bear))]/40'
+  if (chg > -3) return 'bg-[hsl(var(--bear))]/55'
+  return 'bg-[hsl(var(--bear))]/70'
 }
 
 function sentimentTone(s?: string): string {
@@ -113,13 +113,13 @@ export function SectorHeatmapPanel({ market = 'HK' }: { market?: string }) {
         {/* 右上领涨/领跌摘要 */}
         <span className="ml-auto text-[10px] font-mono">
           {gainers[0] && (
-            <span className="text-[#10B981] dark:text-[#34D399]">
+            <span className="text-[hsl(var(--bull))] dark:text-[hsl(var(--bull))]">
               领涨 {gainers[0].name} +{gainers[0].change.toFixed(2)}%
             </span>
           )}
           {gainers[0] && losers[0] && <span className="mx-1 text-muted-foreground/60">·</span>}
           {losers[0] && (
-            <span className="text-[#EF4444] dark:text-[#F87171]">
+            <span className="text-[hsl(var(--bear))] dark:text-[hsl(var(--bear))]">
               领跌 {losers[0].name} {losers[0].change >= 0 ? '+' : ''}{losers[0].change.toFixed(2)}%
             </span>
           )}
@@ -168,7 +168,7 @@ export function SectorHeatmapPanel({ market = 'HK' }: { market?: string }) {
         <span>数据源:{data.source || 'Futu'}</span>
         <span className="flex items-center gap-1.5">
           更新于
-          <span className="font-bold text-[#10B981] dark:text-[#34D399]">实时</span>
+          <span className="font-bold text-[hsl(var(--bull))] dark:text-[hsl(var(--bull))]">实时</span>
         </span>
       </div>
     </div>

@@ -65,7 +65,7 @@ export function StockBasicInfoPanel({ market = 'HK', secType = 'STOCK' }: { mark
       <div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">全市场基础信息</span>
         <span className="font-mono text-xs text-foreground/80">{data.panel?.market || market}/{data.panel?.sec_type || secType}</span>
-        <span className="ml-auto text-[10px] font-mono text-[#8b5cf6]">共 {data.panel?.count ?? rows.length} 只</span>
+        <span className="ml-auto text-[10px] font-mono text-[hsl(var(--ai))]">共 {data.panel?.count ?? rows.length} 只</span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-[11px]">

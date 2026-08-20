@@ -5,6 +5,7 @@
 import { useState, useMemo } from 'react'
 import { ShieldAlert, Loader2, Info, X, Activity, PieChart, BarChart3, ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { RISK_COLORS } from '@/lib/constants'
 import { NavAreaChart, RiskRadarChart } from './risk-charts'
 import { RiskAdvancedPanel } from './risk-advanced-panel'
 import { MARKET_LABELS, statusMeta, RADAR_HELP, FACTOR_HELP } from './risk-types'
@@ -36,7 +37,7 @@ function RiskScoreGauge({ radar, isDark }: { radar: RiskRadarData[]; isDark: boo
     return Math.round(avg)
   }, [radar])
 
-  const color = score >= 70 ? '#ef4444' : score >= 50 ? '#f59e0b' : score >= 30 ? '#3b82f6' : '#10b981'
+  const color = score >= 70 ? RISK_COLORS.score.high : score >= 50 ? RISK_COLORS.score.medium : score >= 30 ? RISK_COLORS.score.low : RISK_COLORS.score.minimal
   const label = score >= 70 ? '高风险' : score >= 50 ? '中高风险' : score >= 30 ? '中等风险' : '低风险'
   const circumference = 2 * Math.PI * 36
   const dash = (score / 100) * circumference

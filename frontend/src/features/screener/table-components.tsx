@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { ChevronUp, ChevronDown, ArrowUpDown, Filter, Info, Building2 } from 'lucide-react'
+import { ChevronUp, ChevronDown, ArrowUpDown, Filter, Info, Building2, Plus, Sparkles, LineChart } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { formatDisplaySymbol, type SortKey } from './shared'
@@ -253,3 +253,63 @@ export function SortableTh({ label, k, sortKey, sortDir, onSort, align = 'right'
     </th>
   )
 }
+
+// ── 实时行情卡行：紧凑三列（代码 / 现价 / 涨跌幅）+ 操作列，含 WS 跳动闪烁 ──
+export const ScreenerQuoteRow = React.memo(({ r, onPreview, onSendToCopilot, onSendToBacktest, handleAddSingle }: any) => {
+  const [localPrice, setLocalPrice] = useState(r.price)
+  const [localChg, setLocalChg] = useState(r.chg)
+  const [flash, setFlash] = useState<'up' | 'down' | null>(null)
+  const flashTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  useEffect(() => {
+    const handleQuote = (e: Event) => {
+      if (document.hidden) return;
+      const q = (e as CustomEvent).detail
+      const ticker = q.ticker || q.requested_ticker
+      if (ticker === r.symbol || ticker === r.symbol.replace(/^(US|HK|SH|SZ)\./, '')) {
+        const newPrice = parseFloat(q.last_price) || 0
+        const newChange = parseFloat(q.change_pct) || 0
+        setLocalPrice((prev: number) => {
+          if (newPrice !== prev && newPrice > 0) {
+            if (flashTimerRef.current) clearTimeout(flashTimerRef.current)
+            setFlash(newPrice > prev ? 'up' : 'down')
+            flashTimerRef.current = setTimeout(() => setFlash(null), 800)
+          }
+          return newPrice > 0 ? newPrice : prev
+        })
+        setLocalChg(newChange)
+      }
+    }
+    window.addEventListener('screener_quote_update', handleQuote)
+    return () => { window.removeEventListener('screener_quote_update', handleQuote); if (flashTimerRef.current) clearTimeout(flashTimerRef.current) }
+  }, [r.symbol])
+
+  const chgNum = Number(localChg) || 0
+  const colorClass = chgNum > 0 ? 'text-red-500' : chgNum < 0 ? 'text-emerald-400' : 'text-foreground'
+  const bgFlash = flash === 'up' ? 'bg-red-500/10' : flash === 'down' ? 'bg-emerald-500/10' : ''
+
+  return (
+    <tr className={cn('border-b border-border/10 transition-colors', bgFlash, flash && 'animate-pulse')}>
+      <td className="pl-4 py-2">
+        <div className="flex flex-col leading-tight">
+          <span className="font-mono text-[11px] text-foreground font-medium">{formatDisplaySymbol(r.symbol)}</span>
+          <span className="text-[10px] text-muted-foreground truncate max-w-[110px]">{r.name || r.symbol}</span>
+        </div>
+      </td>
+      <td className={cn('px-3 py-2 text-right font-mono tabular-nums text-[11px] font-medium transition-colors', colorClass)}>
+        {localPrice != null && localPrice !== '' ? Number(localPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--'}
+      </td>
+      <td className={cn('px-3 py-2 text-right font-mono tabular-nums text-[11px] transition-colors', colorClass)}>
+        {chgNum > 0 ? '+' : ''}{chgNum.toFixed(2)}%
+      </td>
+      <td className="px-3 py-2 pr-4">
+        <div className="flex items-center justify-end gap-1">
+          <button title="推入自选" onClick={() => handleAddSingle(r.symbol)} className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"><Plus className="h-3.5 w-3.5" /></button>
+          <button title="AI 分析" onClick={() => onSendToCopilot(r.symbol)} className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"><Sparkles className="h-3.5 w-3.5" /></button>
+          <button title="回测" onClick={() => onSendToBacktest([r.symbol])} className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"><LineChart className="h-3.5 w-3.5" /></button>
+        </div>
+      </td>
+    </tr>
+  )
+})
+

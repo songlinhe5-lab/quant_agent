@@ -30,7 +30,7 @@ function ScreenerApp() {
             <TabsTrigger value="results" className="text-xs">筛选结果</TabsTrigger>
             <TabsTrigger value="cep" className="text-xs">CEP 异动</TabsTrigger>
           </TabsList>
-          <TabsContent value="results" className="mt-2 space-y-2">
+          <TabsContent value="results" className="mt-3 space-y-4">
             {selected.length >= 2 && (
               <div className="flex justify-end">
                 <button onClick={() => setShowBacktest(true)} className="text-xs px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 transition-colors font-medium">
@@ -38,10 +38,12 @@ function ScreenerApp() {
                 </button>
               </div>
             )}
+            {/* ③ AI 解读卡 */}
             <ScreenerAISummary results={results || []} />
+            {/* ① 实时行情卡 + ② 量化指标卡 并列 */}
             <ScreenerResultsTable />
           </TabsContent>
-          <TabsContent value="cep" className="mt-2">
+          <TabsContent value="cep" className="mt-3">
             <CEPPanel />
           </TabsContent>
         </Tabs>

@@ -9,6 +9,7 @@ import { useWatchlist } from '@/stores/use-watchlist'
 import { useMarketStore } from '@/stores/marketStore'
 import { useTheme } from 'next-themes'
 import { OrderBookWebGL } from '@/features/quotes/order-book-webgl'
+import { OrderBookDepthPanel } from '@/features/quotes/order-book-depth-panel'
 import { OrderBookLargeOrderHint } from '@/features/quotes/order-book-large-order-hint'
 import { PatternRecognition } from '@/features/quotes/pattern-recognition'
 import { TradeHistory } from '@/features/quotes/trade-history'
@@ -346,8 +347,7 @@ export function QuotesModule() {
             </div>
           ) : (
             <>
-              <OrderBookWebGL symbol={selectedSymbol} theme={theme} />
-              <OrderBookLargeOrderHint symbol={selectedSymbol} />
+              <OrderBookDepthPanel symbol={selectedSymbol} />
               <div className="glass-card rounded-xl overflow-hidden flex flex-col flex-1 shadow-sm border-border/40">
                 <div className="px-3 py-2.5 border-b border-border/40 bg-secondary/20 shrink-0">
                   <span className="text-[10px] font-semibold text-muted-foreground uppercase">成交流水</span>

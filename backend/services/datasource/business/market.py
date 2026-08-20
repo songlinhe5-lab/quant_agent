@@ -15,6 +15,16 @@ from typing import Any, Optional
 from backend.services.datasource.business.facade import DataServiceFacade, data_service
 
 
+def _to_float(v: Any) -> Optional[float]:
+    """安全转 float；None / 空 / 非数值返回 None（零幻觉红线，不抛不臆造）。"""
+    if v is None or v == "":
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
 class MarketDataService:
     """行情领域业务适配器：封装行情相关策略（ticker 校验、ktype 映射、期权过滤）。
 
@@ -59,6 +69,104 @@ class MarketDataService:
         """L2 盘口深度：派生最优买卖价差与买卖盘量比。"""
         self._validate_ticker(ticker)
         return await self._facade.get_order_book(ticker, prefer_sources=prefer_sources)
+
+    async def get_option_iv_summary(self, ticker: str, prefer_sources: Optional[list[str]] = None) -> Any:
+        """期权 IV 指标聚合（设计稿 IV 指标条：ATM IV / IV 分位 / 30日已实现 / Skew）。
+
+        派生逻辑（零幻觉红线，全部来自真实数据）：
+        - ATM IV：取最近到期日、行权价最贴近最新价的 call/put 隐含波动率均值
+        - IV 分位：当前 ATM IV 在“近 N 个到期日 ATM IV 序列”中的分位数
+        - 30日已实现波动率：取近 30 根日 K 收益率 std × sqrt(252)
+        - Skew：虚值 put IV 均值 − 虚值 call IV 均值（正=悲观倾斜）
+        任一底层不可用时对应字段置 None，不臆造。
+        """
+        self._validate_ticker(ticker)
+
+        # 并行取期权链 + 历史 K 线
+        chain_res = await self._facade.get_option_chain(ticker, expiration_date="", prefer_sources=prefer_sources)
+        hist_res = await self._facade.get_history(ticker, ktype="K_DAY", num=30, prefer_sources=prefer_sources)
+
+        # 最新价（从期权链快照或历史末值取得，仅用于 ATM 定位，不臆造）
+        last_price: Optional[float] = None
+        atm_iv: Optional[float] = None
+        iv_series: list[float] = []
+        skew: Optional[float] = None
+        _put_ivs: list[float] = []
+        _call_ivs: list[float] = []
+
+        if not chain_res.is_error and isinstance(chain_res.data, dict):
+            data = chain_res.data
+            # 优先取快照最新价
+            snap = data.get("snapshot") or {}
+            if isinstance(snap, dict):
+                last_price = _to_float(snap.get("last_price") or snap.get("price") or snap.get("close"))
+            chains = data.get("chains") or data.get("option_chain") or data.get("data") or []
+            if not isinstance(chains, list):
+                chains = []
+            # 跨到期日聚合 ATM IV
+            for exp in chains:
+                if not isinstance(exp, dict):
+                    continue
+                exp_iv = _to_float(exp.get("iv") or exp.get("atm_iv") or exp.get("implied_volatility"))
+                if exp_iv is not None:
+                    iv_series.append(exp_iv)
+                strikes = exp.get("strikes") or exp.get("items") or []
+                if not isinstance(strikes, list):
+                    strikes = []
+                for item in strikes:
+                    if not isinstance(item, dict):
+                        continue
+                    iv = _to_float(item.get("iv") or item.get("implied_volatility"))
+                    if iv is None:
+                        continue
+                    k = _to_float(item.get("strike") or item.get("exercise_price"))
+                    if k is None:
+                        continue
+                    if last_price is not None:
+                        # ATM 候选：行权价最接近最新价
+                        if atm_iv is None and abs(k - last_price) / max(last_price, 1e-9) < 0.02:
+                            atm_iv = iv
+                        # Skew：虚值 put（k < last）vs 虚值 call（k > last）
+                        if last_price is not None and k < last_price * 0.95:
+                            _put_ivs.append(iv)
+                        elif last_price is not None and k > last_price * 1.05:
+                            _call_ivs.append(iv)
+
+        # 30日已实现波动率
+        rv30d: Optional[float] = None
+        if not hist_res.is_error and isinstance(hist_res.data, (list, dict)):
+            bars = hist_res.data
+            if isinstance(bars, dict):
+                bars = bars.get("data") or bars.get("klines") or []
+            closes = [_to_float(b.get("close") or b.get("Close")) for b in (bars or []) if isinstance(b, dict)]
+            closes = [c for c in closes if c is not None]
+            if len(closes) >= 2:
+                import math
+
+                rets = [math.log(closes[i] / closes[i - 1]) for i in range(1, len(closes))]
+                if rets:
+                    mean = sum(rets) / len(rets)
+                    var = sum((r - mean) ** 2 for r in rets) / len(rets)
+                    rv30d = math.sqrt(var) * math.sqrt(252)
+
+        # IV 分位
+        iv_percentile: Optional[float] = None
+        if atm_iv is not None and len(iv_series) >= 2:
+            below = sum(1 for v in iv_series if v <= atm_iv)
+            iv_percentile = below / len(iv_series)
+
+        # Skew = mean(OTM put IV) - mean(OTM call IV)
+        if _put_ivs and _call_ivs:
+            skew = (sum(_put_ivs) / len(_put_ivs)) - (sum(_call_ivs) / len(_call_ivs))
+
+        return {
+            "ticker": ticker,
+            "atm_iv": atm_iv,
+            "iv_percentile": iv_percentile,
+            "rv30d": rv30d,
+            "skew": skew,
+            "available": any(v is not None for v in (atm_iv, iv_percentile, rv30d, skew)),
+        }
 
     async def get_market_snapshot(self, tickers: list[str], prefer_sources: Optional[list[str]] = None) -> Any:
         """批量实时快照：派生 count/平均涨跌幅/涨跌家数。"""
