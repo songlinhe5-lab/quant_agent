@@ -142,12 +142,16 @@ export function SectorHeatmapPanel({ market = 'HK' }: { market?: string }) {
           </div>
         )}
 
-        {/* 下方：板块方块（8 个，按涨跌从绿到红排列） */}
-        <div className="grid grid-cols-8 gap-1.5">
-          {sectors.slice(0, 8).map((s, i) => (
+        {/* 下方：板块方块（自适应列数，显示不下自动折行；窄容器不再硬挤 8 列导致截断） */}
+        <div className="flex flex-wrap gap-1.5">
+          {sectors.map((s, i) => (
             <div
               key={i}
-              className={'flex flex-col items-center justify-center py-2 px-1 rounded border ' + toneBg(s.avg_change)}
+              className={
+                'flex flex-col items-center justify-center py-2 px-1.5 rounded border ' +
+                toneBg(s.avg_change) +
+                ' flex-1 min-w-[64px] max-w-[12.5%]'
+              }
               title={`${s.sector} ${s.avg_change >= 0 ? '+' : ''}${s.avg_change.toFixed(2)}%`}
             >
               <div className="text-[11px] font-semibold text-foreground truncate w-full text-center">{s.sector}</div>

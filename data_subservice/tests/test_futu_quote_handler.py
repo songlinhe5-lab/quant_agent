@@ -192,6 +192,92 @@ class TestQuoteHandler:
         assert len(result["data"]) == 1
 
     @pytest.mark.asyncio
+    async def test_get_history_request_history_pagination(self):
+        """大跨度 num>370 时直接走 request_history_kline 分页, 拼接多页数据并去重排序"""
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.subscribe.return_value = (RET_OK, "")
+
+        # 模拟 2 页: 第一页(较新) + 第二页(更早), 分页返回 page_req_key 直到 None
+        def _make_page(days):
+            return pd.DataFrame(
+                {
+                    "time_key": [f"2020-01-{d:02d}" for d in days],
+                    "open": [100.0] * len(days),
+                    "high": [105.0] * len(days),
+                    "low": [95.0] * len(days),
+                    "close": [102.0] * len(days),
+                    "volume": [1000] * len(days),
+                }
+            )
+
+        page1 = _make_page([5, 6])  # 较新
+        page2 = _make_page([1, 2, 3])  # 更早
+        page3 = _make_page([])  # 空页表示没有更多(模拟 page_key=None 后返回空)
+
+        call_results = [
+            (RET_OK, page1, "page2"),  # 首页
+            (RET_OK, page2, "page3"),  # 第二页
+            (RET_OK, page3, None),  # 最后一页 page_key=None
+        ]
+
+        async def fake_to_thread(fn, *args, **kwargs):
+            return call_results.pop(0)
+
+        with patch("asyncio.to_thread", new=fake_to_thread):
+            result = await handler.get_history("HK.00700", num=400)
+        assert result["status"] == "success"
+        # 3+2=5 根去重后应全部返回(400 根数据量达不到, 按实际返回)
+        times = [k["time"] for k in result["data"]]
+        # 升序排列且去重
+        assert times == sorted(times)
+        assert len(times) == 5
+        assert times[0] == "2020-01-01"
+
+    @pytest.mark.asyncio
+    async def test_get_history_pagination_keeps_recent_n(self):
+        """分页拼接超过 num 根时, 应保留最近的 num 根(而非最旧), 保证视图能看到近期数据"""
+        handler, conn_mgr, _ = _make_handler()
+        conn_mgr.quote_ctx.subscribe.return_value = (RET_OK, "")
+        # 两页共 5 根, num=2 时取最近 2 根(升序后取末尾)
+        page1 = pd.DataFrame(
+            {
+                "time_key": ["2020-01-05", "2020-01-06", "2020-01-07"],
+                "open": [1.0] * 3,
+                "high": [2.0] * 3,
+                "low": [0.5] * 3,
+                "close": [1.5] * 3,
+                "volume": [10] * 3,
+            }
+        )
+        page2 = pd.DataFrame(
+            {
+                "time_key": ["2020-01-01", "2020-01-02"],
+                "open": [1.0] * 2,
+                "high": [2.0] * 2,
+                "low": [0.5] * 2,
+                "close": [1.5] * 2,
+                "volume": [10] * 2,
+            }
+        )
+        # mock has_topic=True 跳过 subscribe 步骤; get_cur_kline 失败强制进入分页
+        handler.cache_mgr.has_topic = MagicMock(return_value=True)
+        call_results = [
+            (-1, "cur_kline failed"),
+            (RET_OK, page1, "p2"),  # 首页较新
+            (RET_OK, page2, None),  # 第二页更早, page_key=None 结束
+        ]
+
+        async def fake_to_thread(fn, *args, **kwargs):
+            return call_results.pop(0)
+
+        with patch("asyncio.to_thread", new=fake_to_thread):
+            result = await handler.get_history("HK.00700", num=2)
+        assert result["status"] == "success"
+        times = [k["time"] for k in result["data"]]
+        # 应保留最近的 2 根 (1/6, 1/7), 而非最旧 (1/1, 1/2)
+        assert times == ["2020-01-06", "2020-01-07"]
+
+    @pytest.mark.asyncio
     async def test_get_history_all_fail_returns_error(self):
         """所有数据源都失败时应返回错误并缓存错误状态"""
         handler, conn_mgr, cache_mgr = _make_handler()
@@ -500,6 +586,43 @@ class TestQuoteHandlerNewsFedHeat:
         conn_mgr.quote_ctx.get_heat_map_data.return_value = (-1, "fail")
         result = await handler.get_heat_map_data("US")
         assert result["status"] == "error"
+
+    @pytest.mark.asyncio
+    async def test_heat_map_a_share_maps_to_sh_market(self):
+        """前端传 'A' 表示沪深A股, 必须映射到 futu Market.SH 而非 fallback HK。
+
+        回归: 此前 getattr(Market, 'A', Market.HK) 匹配不到 → fallback 到港股,
+        A 股热力图拿到港股数据甚至为空。
+        """
+        from futu import Market
+
+        handler, conn_mgr, _ = _make_handler()
+        df = pd.DataFrame([{"plate_name": "半导体", "change_rate": 0.8}])
+        conn_mgr.quote_ctx.get_heat_map_data.return_value = (RET_OK, df)
+
+        result = await handler.get_heat_map_data("A")
+
+        assert result["status"] == "success"
+        assert result["market"] == "SH"
+        # 应把 Market.SH 传给 futu 接口 (而非 Market.HK), 并带 count/plate_type
+        args, kwargs = conn_mgr.quote_ctx.get_heat_map_data.call_args
+        assert args[0] == Market.SH
+        assert kwargs.get("count") == 100
+
+    @pytest.mark.asyncio
+    async def test_map_heat_market_a_to_sh(self):
+        """_map_heat_market: 'A'/'CN' → Market.SH, 其他市场正常映射。"""
+        from futu import Market
+
+        from data_subservice.futu_src.quote_handler import _map_heat_market
+
+        assert _map_heat_market("A") == Market.SH
+        assert _map_heat_market("CN") == Market.SH
+        assert _map_heat_market("HK") == Market.HK
+        assert _map_heat_market("US") == Market.US
+        assert _map_heat_market("SZ") == Market.SZ
+        # 未知市场 fallback HK
+        assert _map_heat_market("XX") == Market.HK
 
     @pytest.mark.asyncio
     async def test_heat_map_exception(self):

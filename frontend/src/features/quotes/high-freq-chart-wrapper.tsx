@@ -3,69 +3,147 @@
 import { useEffect, useRef } from 'react'
 import { createChart, IChartApi, ISeriesApi, LineSeries } from 'lightweight-charts'
 
-export function HighFreqChartWrapper({ symbol }: { symbol: string }) {
+interface HighFreqChartWrapperProps {
+  symbol: string
+  /** 行情参考价（用于无 tick 数据时锚定 Y 轴与显示参考基线） */
+  referencePrice?: number | null
+  /** 参考价标签（如 '前收' / '现价'） */
+  referenceLabel?: string
+  /** 交易时区：HKT(港股)/ET(美股)/CT(大宗商品) */
+  marketTz?: 'HKT' | 'ET' | 'CT' | 'UTC'
+}
+
+const TZ_OFFSET_HOURS: Record<string, number> = {
+  HKT: 8,   // Asia/Hong_Kong (UTC+8)
+  ET: -5,   // America/New_York EST (UTC-5, 简化处理,不区分夏令时)
+  CT: -6,   // America/Chicago CST (UTC-6)
+  UTC: 0,
+}
+
+const MARKET_SESSION: Record<string, { start: [number, number]; end: [number, number] }> = {
+  HKT: { start: [9, 30], end: [16, 0] },     // 港股 09:30-16:00
+  ET:  { start: [9, 30], end: [16, 0] },     // 美股 09:30-16:00
+  CT:  { start: [8, 30], end: [15, 0] },     // 大宗商品期货日盘
+}
+
+function utcSecondsInMarketDay(now: Date, tz: keyof typeof TZ_OFFSET_HOURS): { from: number; to: number } {
+  const offset = TZ_OFFSET_HOURS[tz] ?? 0
+  const session = MARKET_SESSION[tz] ?? MARKET_SESSION.ET
+  const y = now.getUTCFullYear()
+  const m = now.getUTCMonth()
+  const d = now.getUTCDate()
+  // 当地日 = UTC 日 - offset 小时
+  // 当地 09:30 → UTC 09:30 - offset = UTC (09:30 - offset)
+  const startHourUTC = session.start[0] - offset
+  const endHourUTC = session.end[0] - offset
+  const from = Math.floor(Date.UTC(y, m, d, startHourUTC, session.start[1]) / 1000)
+  const to = Math.floor(Date.UTC(y, m, d, endHourUTC, session.end[1]) / 1000)
+  return { from, to }
+}
+
+export function HighFreqChartWrapper({
+  symbol,
+  referencePrice = null,
+  referenceLabel: _referenceLabel = '现价',
+  marketTz = 'ET',
+}: HighFreqChartWrapperProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const lineSeriesRef = useRef<ISeriesApi<"Line"> | null>(null)
   const hasSetRangeRef = useRef(false)
+  const anchorPriceRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (!chartContainerRef.current) return
 
-    // 💡 计算全天交易时间范围（9:30 开盘 - 16:00 收盘）
-    const now = new Date()
-    const todayStart = new Date(now)
-    todayStart.setHours(9, 30, 0, 0)
-    const todayEnd = new Date(now)
-    todayEnd.setHours(16, 0, 0, 0)
+    const session = utcSecondsInMarketDay(new Date(), marketTz)
 
     // 1. 初始化纯 Canvas 图表 (零 DOM 开销)
     const chart = createChart(chartContainerRef.current, {
       layout: { background: { color: 'transparent' }, textColor: '#94a3b8' },
       grid: { vertLines: { color: 'rgba(255, 255, 255, 0.08)' }, horzLines: { color: 'rgba(255, 255, 255, 0.08)' } },
+      rightPriceScale: {
+        borderColor: '#475569',
+        autoScale: true,
+        scaleMargins: { top: 0.15, bottom: 0.15 },
+      },
       timeScale: {
         borderColor: '#475569',
         timeVisible: true,
+        secondsVisible: false,
         fixLeftEdge: true,
-        fixRightEdge: false,  // 💡 不固定右边界，允许右侧空白展示未交易时间
-        rightOffset: 10,      // 💡 右侧留空
-        barSpacing: 3,
+        fixRightEdge: false,
+        rightOffset: 8,
+        barSpacing: 4,
         minBarSpacing: 3,
-        maxBarSpacing: 3,
+        maxBarSpacing: 6,
+        // 💡 强制 tickMarkFormatter 显示 HH:mm 时间刻度
+        tickMarkFormatter: (time: number) => {
+          const d = new Date(time * 1000)
+          const hh = d.getUTCHours().toString().padStart(2, '0')
+          const mm = d.getUTCMinutes().toString().padStart(2, '0')
+          // 港股/美股日内只显示 HH:mm（lwc 默认会有日期切换）
+          return `${hh}:${mm}`
+        },
+      },
+      crosshair: {
+        // 💡 关闭内置 crosshair,父容器自己绘制,避免与父 crosshair 双重叠
+        mode: 0 /* CrosshairMode.Hidden (lightweight-charts v5 用 enum, 这里传 0 保险) */,
+        vertLine: { visible: false, labelVisible: false },
+        horzLine: { visible: false, labelVisible: false },
       },
     })
     chartRef.current = chart
 
-    const lineSeries = chart.addSeries(LineSeries, { color: '#10b981', lineWidth: 2 })
+    const lineSeries = chart.addSeries(LineSeries, {
+      color: '#10b981',
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      // 💡 Y 轴自适应该 series,允许 ±0.5% 视野
+    })
     lineSeriesRef.current = lineSeries
     hasSetRangeRef.current = false
 
-    // 💡 注意：此处不能立即调用 setVisibleRange —— series 尚无任何数据点，
-    //    lightweight-charts 无法建立“时间→坐标”映射，会抛出 "Value is null"。
-    //    改为在首个真实 tick 到达（series 有数据锚点）后再设置一次全天范围。
+    // 2. 如果有参考价（现价/前收）且还没 tick,把参考价当作"伪锚点"画一条水平线 + 立即设可见范围
+    if (referencePrice && referencePrice > 0) {
+      anchorPriceRef.current = referencePrice
+      const anchorTime = Math.floor(Date.now() / 1000)
+      try {
+        lineSeries.update({ time: anchorTime as any, value: referencePrice })
+        // 立刻设可见范围,避免等真实 tick
+        chart.timeScale().setVisibleRange({
+          from: session.from as any,
+          to: session.to as any,
+        })
+        hasSetRangeRef.current = true
+      } catch {
+        // 静默:无数据时 setVisibleRange 可能 null
+      }
+    }
 
-    // 2. 监听底层 WebSocket Event Bus
+    // 3. 监听底层 WebSocket Event Bus
     const handleTick = (e: Event) => {
       const detail = (e as CustomEvent).detail
-      // 💡 修复：标准化 ticker 格式进行匹配
-      const cleanTicker = (s: string) => s.replace(/^(US|HK|SH|SZ|JP|SG|UK)\./i, '').replace(/\.(HK|SH|SZ|SS)$/i, '')
+      const cleanTicker = (s: string) =>
+        s.replace(/^(US|HK|SH|SZ|JP|SG|UK)\./i, '').replace(/\.(HK|SH|SZ|SS)$/i, '')
       if (cleanTicker(detail.ticker) === cleanTicker(symbol) && lineSeriesRef.current) {
         const lastPrice = parseFloat(detail.last_price)
         if (lastPrice > 0) {
           lineSeriesRef.current.update({
             time: Math.floor(Date.now() / 1000) as any,
-            value: lastPrice
+            value: lastPrice,
           })
-          // 💡 首个数据点到达后设置全天可见范围（此时时间轴已有锚点，不会 null）
+          // 💡 首个 tick 到达后再次设置全天范围(应对外部参考价缺失)
           if (!hasSetRangeRef.current && chartRef.current) {
             hasSetRangeRef.current = true
             try {
               chartRef.current.timeScale().setVisibleRange({
-                from: (todayStart.getTime() / 1000) as any,
-                to: (todayEnd.getTime() / 1000) as any,
+                from: session.from as any,
+                to: session.to as any,
               })
             } catch {
-              // 数据不足以映射到目标范围时静默忽略，交由图表自动缩放
+              /* 静默 */
             }
           }
         }
@@ -78,7 +156,7 @@ export function HighFreqChartWrapper({ symbol }: { symbol: string }) {
       window.removeEventListener('market_tick', handleTick)
       chart.remove()
     }
-  }, [symbol])
+  }, [symbol, referencePrice, marketTz])
 
   return (
     <div

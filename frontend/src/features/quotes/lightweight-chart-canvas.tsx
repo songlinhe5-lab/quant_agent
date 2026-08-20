@@ -440,9 +440,33 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
   // PROD-02: 归一化标的用于跨格式匹配（US.AAPL / AAPL / 00700.HK）
   const normalizeSymbol = (s?: string | null) => (s || '').replace(/^(US|HK|SH|SZ|MARKET)\./i, '').toUpperCase()
 
+  // 美东夏令时判定（3月第二个周日 ~ 11月第一个周日,K 线仅取 09:30+,故按天判定足够)
+  const isUSDST = (year: number, month1to12: number, day: number): boolean => {
+    const firstSundayOfMarch = ((8 - new Date(Date.UTC(year, 2, 1)).getUTCDay()) % 7) || 7
+    const secondSundayOfMarch = firstSundayOfMarch + 7
+    const firstSundayOfNovember = ((8 - new Date(Date.UTC(year, 10, 1)).getUTCDay()) % 7) || 7
+    const ymd = year * 10000 + month1to12 * 100 + day
+    return ymd >= year * 10000 + 3 * 100 + secondSundayOfMarch && ymd < year * 10000 + 11 * 100 + firstSundayOfNovember
+  }
+
   // 将 'YYYY-MM-DD' 或数字转换为图表使用的 Unix 秒（UTCTimestamp）
   const toChartTime = (t: string | number): number | null => {
     if (typeof t === 'number') return t
+    // 💡 futu 后端返回的 'YYYY-MM-DD HH:mm:ss' 是交易所本地时间（无时区标记）,
+    // 直接 new Date('2026-08-14T14:30:00') 会被 JS 按运行环境本地时区解析,
+    // 导致 PT 环境把美股 ET 14:30 误解为 PT 14:30 → X 轴挤左边。
+    // 这里按标的交易所时区补齐时区偏移,再转 UTC 秒戳。
+    const intradayMatch = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})(?::(\d{2}))?/.exec(t)
+    if (intradayMatch) {
+      const [, y, mo, d, hh, mm, ss] = intradayMatch
+      const isHK = /\.(HK)$|^HK\./i.test(selectedSymbol || '')
+      const tzOffsetMin = isHK
+        ? 8 * 60
+        : isUSDST(+y, +mo, +d) ? -240 : -300
+      const tsMs = Date.UTC(+y, +mo - 1, +d, +hh, +mm, +(ss || '0')) - tzOffsetMin * 60_000
+      return Math.floor(tsMs / 1000)
+    }
+    // 回退:纯日期 'YYYY-MM-DD' → UTC 00:00（兼容日K线历史数据）
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t)
     if (m) return Math.floor(Date.UTC(+m[1], +m[2] - 1, +m[3]) / 1000)
     const n = Number(t)
@@ -650,9 +674,24 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       const cleanSym = (s: string) => s.replace(/^(US|HK|SH|SZ|JP|SG|UK)\./i, '').replace(/\.(HK|SH|SZ|SS)$/i, '');
 
       if (cleanSym(detail.ticker) === cleanSym(selectedSymbol)) {
-        if (seriesRef.current && lastCandleRef.current) {
-          const lastPrice = detail.last_price;
-          if (!isNaN(lastPrice) && lastPrice > 0) {
+        const lastPrice = parseFloat(detail.last_price);
+        if (!isNaN(lastPrice) && lastPrice > 0) {
+          // 💡 Tick 模式:父组件没有 seriesRef,但需要刷新顶部 OHLCV 行
+          if (selectedPeriod === 'tick') {
+            // 维护内存中的 latestCandle 以便 OHLCV 面板跟随实时更新
+            if (!lastCandleRef.current) {
+              lastCandleRef.current = { time: Math.floor(Date.now() / 1000), open: lastPrice, high: lastPrice, low: lastPrice, close: lastPrice, volume: 0 }
+            } else {
+              lastCandleRef.current.high = Math.max(lastCandleRef.current.high, lastPrice)
+              lastCandleRef.current.low = Math.min(lastCandleRef.current.low, lastPrice)
+              lastCandleRef.current.close = lastPrice
+            }
+            if (updateOhlcvDomRef.current && !isCrosshairActiveRef.current) {
+              updateOhlcvDomRef.current(lastCandleRef.current)
+            }
+            return
+          }
+          if (seriesRef.current && lastCandleRef.current) {
             const current = lastCandleRef.current;
             current.close = lastPrice; current.high = Math.max(current.high, lastPrice); current.low = Math.min(current.low, lastPrice);
             if (document.hidden) return;
@@ -669,7 +708,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     };
     window.addEventListener('market_tick', handleTick);
     return () => window.removeEventListener('market_tick', handleTick);
-  }, [selectedSymbol, theme]);
+  }, [selectedSymbol, theme, selectedPeriod]);
 
   useEffect(() => {
     if (!chartContainerRef.current) return
@@ -705,6 +744,28 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
         barSpacing: fixedBarSpacing,         // 分时/日K及以上使用固定间距
         minBarSpacing: minBarSpacing,        // 缩放下限
         maxBarSpacing: maxBarSpacing,        // 缩放上限
+        // 💡 5日 K 线跨多天, 强制 tick 标签带日期(默认 lwc 只在跨日期时偶发加日期,容易看不到)
+        // 显示按标的交易所本地时区 (港股=HKT UTC+8, 美股=ET UTC-5/-4)
+                tickMarkFormatter: (time: number) => {
+                  const isHK = /\.(HK)$|^HK\./i.test(selectedSymbol || '')
+                  const d = new Date(time * 1000)
+                  // 把 UTC 毫秒转为交易所本地时间(直接加偏移,再以 UTC 方法取年月日时分)
+                  const useDST = isHK ? false : isUSDST(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate())
+                  const offsetMs = isHK ? 8 * 3600 * 1000 : (useDST ? -4 * 3600 * 1000 : -5 * 3600 * 1000)
+                  const l = new Date(d.getTime() + offsetMs)
+                  const M = (l.getUTCMonth() + 1).toString().padStart(2, '0')
+                  const D = l.getUTCDate().toString().padStart(2, '0')
+                  const h = l.getUTCHours().toString().padStart(2, '0')
+                  const m = l.getUTCMinutes().toString().padStart(2, '0')
+                  // 周K/月K 一格代表多日时,仅显示 MM-DD;日内格仅显示 HH:mm;跨天格显示 MM-DD HH:mm
+                  if (selectedPeriod === '1d' || selectedPeriod === '1w' || selectedPeriod === '1M') {
+                    return `${M}-${D}`
+                  }
+                  if (selectedPeriod === '1m' || selectedPeriod === '5m') {
+                    return `${M}-${D} ${h}:${m}`
+                  }
+                  return `${h}:${m}`
+                },
       },
     })
 
@@ -1038,24 +1099,33 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       if (!isFirstLoadFittedRef.current && chartRef.current && lwData.length > 0) {
         requestAnimationFrame(() => {
           if (chartRef.current) {
-            // 💡 分时线/五日线设置可见范围，右侧到收盘时间
             const isIntradayForRange = ['1m', '5m'].includes(selectedPeriod)
+            const firstTime = lwData[0].time as number
+            const lastTime = lwData[lwData.length - 1].time as number
             if (isIntradayForRange && lwData.length > 0) {
-              // 获取数据的时间范围
-              const firstTime = lwData[0].time as number
-              const lastTime = lwData[lwData.length - 1].time as number
-              // 计算交易时间（9:30 开盘，16:00 收盘）
-              const startDate = new Date(firstTime * 1000)
-              startDate.setHours(9, 30, 0, 0)
-              const endDate = new Date(lastTime * 1000)
-              endDate.setHours(16, 0, 0, 0)
-              // 设置可见范围
+              // 💡 分时线/五日线: 左侧开盘, 右侧到收盘时间
+              const isHK = /\.(HK)$|^HK\./i.test(selectedSymbol || '')
+              const firstDate = new Date(firstTime * 1000)
+              const lastDate = new Date(lastTime * 1000)
+              const y1 = firstDate.getUTCFullYear(), m1 = firstDate.getUTCMonth(), d1 = firstDate.getUTCDate()
+              const y2 = lastDate.getUTCFullYear(), m2 = lastDate.getUTCMonth(), d2 = lastDate.getUTCDate()
+              const tzOffsetMin = isHK ? 8 * 60 : (isUSDST(y1, m1 + 1, d1) ? -240 : -300)
+              const startUTC = Math.floor(Date.UTC(y1, m1, d1, 9, 30) - tzOffsetMin * 60_000) / 1000
+              const endUTC = Math.floor(Date.UTC(y2, m2, d2, 16, 0) - tzOffsetMin * 60_000) / 1000
               chartRef.current!.timeScale().setVisibleRange({
-                from: startDate.getTime() / 1000 as UTCTimestamp,
-                to: endDate.getTime() / 1000 as UTCTimestamp,
+                from: startUTC as UTCTimestamp,
+                to: endUTC as UTCTimestamp,
               })
             } else {
-              chartRef.current?.timeScale().fitContent()
+              // 💡 日线/周K/月K: 默认显示最近 ~120 根, 右边界贴住最后一条 K 线, 再留少量固定
+              // offset 恰好够放「现价」axisLabel (数据已拉满, 用户可拖动/缩放查看全部历史)
+              const visibleBars = 120
+              chartRef.current!.timeScale().applyOptions({ rightOffset: 3 })
+              const logicalFrom = Math.max(0, lwData.length - visibleBars)
+              chartRef.current!.timeScale().setVisibleLogicalRange({
+                from: logicalFrom as any,
+                to: lwData.length as any,
+              })
             }
           }
         })
@@ -1169,13 +1239,25 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       </div>
       <div ref={chartContainerRef} className="flex-1 relative transition-colors duration-300 overflow-hidden">
         {/* 💡 Tick 图模式：使用高频实时折线图 */}
-        {selectedPeriod === 'tick' && <HighFreqChartWrapper symbol={selectedSymbol} />}
-        <div ref={measureBoxRef} className="absolute pointer-events-none border border-primary/50 bg-primary/10 hidden z-10" />
-        <div ref={measureInfoRef} className="absolute pointer-events-none hidden z-20 flex-col items-center justify-center bg-popover/90 backdrop-blur-sm border border-border/50 rounded shadow-lg p-1.5 text-[10px] font-mono tabular-nums whitespace-nowrap transition-none">
-          <div ref={measurePriceRef} className="font-bold" />
-          <div ref={measurePctRef} />
-        </div>
-        {showEvents && stockEvents.slice(0, 3).map((ev: StockEvent, i: number) => {
+        {selectedPeriod === 'tick' && (
+          <HighFreqChartWrapper
+            symbol={selectedSymbol}
+            referencePrice={realQuote && hasData ? parseFloat(realQuote.last_price) : (selectedItem?.price ?? null)}
+            referenceLabel={realQuote && hasData ? '现价' : '前收'}
+            marketTz={/\.(HK)$|^HK\./i.test(selectedSymbol) ? 'HKT' : 'ET'}
+          />
+        )}
+        {/* 💡 Tick 模式下父组件 crosshair 测量盒不显示(避免与子图双重叠) */}
+        {selectedPeriod !== 'tick' && (
+          <>
+            <div ref={measureBoxRef} className="absolute pointer-events-none border border-primary/50 bg-primary/10 hidden z-10" />
+            <div ref={measureInfoRef} className="absolute pointer-events-none hidden z-20 flex-col items-center justify-center bg-popover/90 backdrop-blur-sm border border-border/50 rounded shadow-lg p-1.5 text-[10px] font-mono tabular-nums whitespace-nowrap transition-none">
+              <div ref={measurePriceRef} className="font-bold" />
+              <div ref={measurePctRef} />
+            </div>
+          </>
+        )}
+        {showEvents && selectedPeriod !== 'tick' && stockEvents.slice(0, 3).map((ev: StockEvent, i: number) => {
           // 💡 根据事件类型和重要性设置不同颜色
           const colorMap = {
             earnings: { bg: 'bg-blue-500/20 dark:bg-blue-400/20', border: 'border-blue-500/40 dark:border-blue-400/40', text: 'text-blue-600 dark:text-blue-300', line: 'bg-blue-500/50 dark:bg-blue-400/50', dot: 'bg-blue-500 dark:bg-blue-400' },

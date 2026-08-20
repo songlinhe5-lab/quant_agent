@@ -72,7 +72,9 @@ class MacroDataService:
         if not isinstance(data, dict):
             return res
 
-        df = data.get("df")
+        # ⚠️ 兼容字段名：子服务 get_fed_watch_target_rate 返回的是 "data"(list),
+        #    此前误读 "df" 导致 panel 恒为空。两者都支持。
+        df = data.get("df") or data.get("data")
         if df is None or not isinstance(df, list) or len(df) == 0:
             data["panel"] = {"available": False, "note": "FedWatch 原始数据为空，无法合成面板"}
             return res
@@ -83,14 +85,16 @@ class MacroDataService:
             (k for k in rows[0].keys() if any(t in str(k).lower() for t in ("date", "meeting", "时间", "会议"))),
             None,
         )
-        # 2) 识别利率区间列：列名含 % 或 -，且非日期类
+        # 2) 识别利率区间列：列名含 %、-、bp 或数字区间，且非日期类
         rate_cols = [
             k
             for k in rows[0].keys()
-            if any(t in str(k) for t in ("%", "-"))
+            if (any(t in str(k).lower() for t in ("%", "-", "bp", "区间")) or len(re.findall(r"\d", str(k))) >= 2)
             and "date" not in str(k).lower()
             and "meeting" not in str(k).lower()
             and "时间" not in str(k)
+            and "市场" not in str(k)
+            and "会议" not in str(k)
         ]
 
         def _mid_of_bucket(name: str) -> Optional[float]:

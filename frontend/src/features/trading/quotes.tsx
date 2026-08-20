@@ -343,9 +343,6 @@ export function QuotesModule() {
                 已记录当前 <span className="font-mono text-foreground/90">{selectedSymbol}</span> 的标的视图偏好（含 K 线周期/图表模式/右栏 tabs/微观看板展开项）。
                 下次进入个股工作台或行情监控场景时，将自动恢复。
               </p>
-              <div className="mt-3 text-[10px] text-muted-foreground/60">
-                · 快捷键 <kbd className="px-1 py-0.5 rounded bg-secondary/60 border border-border/40 font-mono">⌘1</kbd>/<kbd className="px-1 py-0.5 rounded bg-secondary/60 border border-border/40 font-mono">⌘2</kbd> 可快速跳转到不同模式面板。
-              </div>
             </div>
           ) : (
             <>
