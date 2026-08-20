@@ -45,6 +45,16 @@ def _fallback_no_data() -> dict:
     }
 
 
+def _to_float(v):
+    """容错转 float：None/'-'/''/逗号分隔 → None 或 float。模块级供多处复用。"""
+    if v is None or v == "" or v == "-":
+        return None
+    try:
+        return float(str(v).replace(",", ""))
+    except (ValueError, TypeError):
+        return None
+
+
 async def _fetch_macro_calendar_data(days_ahead: int, force_refresh: bool = False, days_back: int = 0) -> dict:  # noqa: E501
     # 缓存 key 加入当天日期 → 跨自然日自动失效，避免 12h 长缓存锁住"明日已排布"的新事件
     _today_key = datetime.now(timezone.utc).strftime("%Y%m%d")
@@ -527,14 +537,6 @@ async def get_capital_flow_dashboard(force_refresh: bool = False):
                     return json.loads(cached)
             except Exception:
                 pass
-
-        def _to_float(v):
-            if v is None or v == "" or v == "-":
-                return None
-            try:
-                return float(str(v).replace(",", ""))
-            except (ValueError, TypeError):
-                return None
 
         async def _safe(coro):
             try:
