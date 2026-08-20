@@ -95,8 +95,18 @@ def get_economic_calendar(days_ahead: int = 7, days_back: int = 0) -> Dict[str, 
                         "event": event_name,
                         "impact": impact,
                         "previous": str(item.get("前值", item.get("previous_value", item.get("previous", "")))),
-                        "estimate": str(item.get("预测值", item.get("predicted_value", item.get("consensus", "")))),
-                        "actual": str(item.get("公布值", item.get("actual_value", item.get("actual", "")))),
+                        "estimate": str(
+                            item.get(
+                                "预期",
+                                item.get(
+                                    "预测值",
+                                    item.get("predicted_value", item.get("forecast", item.get("consensus", ""))),
+                                ),
+                            )
+                        ),
+                        "actual": str(
+                            item.get("公布", item.get("公布值", item.get("actual_value", item.get("actual", ""))))
+                        ),
                     }
                 )
         events.sort(key=lambda x: x["time"])
