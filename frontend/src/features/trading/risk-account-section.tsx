@@ -3,13 +3,15 @@
  */
 
 import { useState, useMemo } from 'react'
-import { ShieldAlert, Loader2, Info, X, Activity, PieChart, BarChart3, ChevronDown, ChevronUp } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ShieldAlert, Loader2, Info, X, Activity, PieChart, BarChart3, ChevronDown, ChevronUp, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RISK_COLORS } from '@/lib/constants'
 import { NavAreaChart, RiskRadarChart } from './risk-charts'
 import { RiskAdvancedPanel } from './risk-advanced-panel'
-import { MARKET_LABELS, statusMeta, RADAR_HELP, FACTOR_HELP } from './risk-types'
-import type { AccountDetail, RiskRadarData } from './risk-types'
+import { RiskAttributionPanel } from './risk-attribution-panel'
+import { MARKET_LABELS, statusMeta, RADAR_HELP, FACTOR_HELP, riskLevelOf } from './risk-types'
+import type { AccountDetail, RiskRadarData, PositionData } from './risk-types'
 
 // ── Small sub-components ──
 
@@ -37,8 +39,10 @@ function RiskScoreGauge({ radar, isDark }: { radar: RiskRadarData[]; isDark: boo
     return Math.round(avg)
   }, [radar])
 
-  const color = score >= 70 ? RISK_COLORS.score.high : score >= 50 ? RISK_COLORS.score.medium : score >= 30 ? RISK_COLORS.score.low : RISK_COLORS.score.minimal
-  const label = score >= 70 ? '高风险' : score >= 50 ? '中高风险' : score >= 30 ? '中等风险' : '低风险'
+  // STRAT (诊断 7): 分级文案统一到 RISK_LEVEL_META SSOT
+  const level = riskLevelOf(score)
+  const color = level.color
+  const label = level.label
   const circumference = 2 * Math.PI * 36
   const dash = (score / 100) * circumference
 
@@ -72,6 +76,10 @@ export function AccountSection({ market, account, isDark, loading }: {
   const [showFactorHelp, setShowFactorHelp] = useState(false)
   const [positionsExpanded, setPositionsExpanded] = useState(true)
   const [riskTab, setRiskTab] = useState<'overview' | 'factor' | 'stress'>('overview')
+  const navigate = useNavigate()
+  // STRAT: 持仓表排序 (列 + 方向), 无排序时保持原始顺序
+  const [sortKey, setSortKey] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const sym = kpi.currency === 'HKD' ? 'HK$' : '$'
   const plDir = kpi.today_pl >= 0 ? 1 : -1
 
@@ -79,6 +87,40 @@ export function AccountSection({ market, account, isDark, loading }: {
     nav_snapshots.slice().reverse().map((s, i) => ({ t: i, nav: s.nav })),
     [nav_snapshots]
   )
+
+  // STRAT: 持仓排序 + 合计
+  const sortedPositions = useMemo(() => {
+    if (!sortKey || sortKey === 'code') return positions
+    const dir = sortDir === 'asc' ? 1 : -1
+    return [...positions].sort((a, b) => {
+      const av = a[sortKey as keyof PositionData] ?? 0
+      const bv = b[sortKey as keyof PositionData] ?? 0
+      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir
+      return String(av).localeCompare(String(bv)) * dir
+    })
+  }, [positions, sortKey, sortDir])
+
+  const totalMarketVal = useMemo(() => positions.reduce((s, p) => s + (p.market_val || 0), 0), [positions])
+  const totalPl = useMemo(() => positions.reduce((s, p) => s + (p.pl_val || 0), 0), [positions])
+  const totalNavPct = kpi.nav > 0 ? totalMarketVal / kpi.nav * 100 : 0
+
+  const toggleSort = (key: string) => {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir('desc') }
+  }
+
+  const SortIcon = ({ col }: { col: string }) => {
+    if (sortKey !== col) return <ArrowUpDown className="h-2.5 w-2.5 inline ml-0.5 opacity-40" />
+    return sortDir === 'asc' ? <ArrowUp className="h-2.5 w-2.5 inline ml-0.5 text-primary" /> : <ArrowDown className="h-2.5 w-2.5 inline ml-0.5 text-primary" />
+  }
+
+  // STRAT: 脏名启发式标注 (透传 Futu 名称, 不做前端臆测纠错)
+  // 仅当名称含替换符/控制字符/明显乱码时才标注"以交易所为准"
+  const isDirtyName = (name?: string) => {
+    if (!name) return false
+    // 含替换符 U+FFFD / 控制字符 / 英文混杂中文时的异常空格 (如 "闽文 集团" 前导空格)
+    return /[\uFFFD]|[\u0000-\u001F\u007F]/.test(name) || /^\s|[\s]{2,}/.test(name)
+  }
 
   const totalExposure = exposure.reduce((s, d) => s + d.value, 0)
   const topConcentration = exposure.reduce((m, d) => Math.max(m, d.pct), 0)
@@ -123,15 +165,23 @@ export function AccountSection({ market, account, isDark, loading }: {
           <p className="text-[9px] text-muted-foreground mt-0.5">杠杆 {kpi.leverage_fmt}</p>
         </div>
         <div className="glass-card rounded-lg px-2.5 py-1.5">
-          <p className="text-[8px] text-muted-foreground mb-0.5">VaR 95%</p>
+          <p className="text-[8px] text-muted-foreground mb-0.5">VaR 95% <span className="text-[7px] px-0.5 rounded bg-sky-500/10 text-sky-500">双口径</span></p>
           {(() => {
             const varFactor = risk_factors.find(f => f.label === 'VaR (95%)')
             if (!varFactor) return <p className="text-sm font-bold font-mono text-muted-foreground">--</p>
             const sm = statusMeta[varFactor.status]
+            const hasAmount = typeof (varFactor as any).amount === 'number'
+            // 旧固定量纲 (无 amount 字段) → 打占位, 不展示误导数字
+            if (!hasAmount || varFactor.value === 0) {
+              return <p className="text-sm font-bold font-mono text-amber-500">口径修正中</p>
+            }
+            const amount = Math.abs((varFactor as any).amount)
             return (
               <>
-                <p className={cn('text-sm font-bold font-mono tabular-nums', sm.cls)}>${Math.abs(varFactor.value).toLocaleString()}</p>
-                <p className={cn('text-[9px] mt-0.5', sm.cls, 'opacity-70')}>单日最大预期亏损</p>
+                <p className={cn('text-sm font-bold font-mono tabular-nums', sm.cls)}>
+                  {sym}{amount.toLocaleString()}<span className="text-[10px] text-muted-foreground font-semibold"> · {varFactor.value}%</span>
+                </p>
+                <p className={cn('text-[9px] mt-0.5', sm.cls, 'opacity-70')}>金额 · 日收益 5 分位 × 当前净值</p>
               </>
             )
           })()}
@@ -158,8 +208,8 @@ export function AccountSection({ market, account, isDark, loading }: {
           <span className="text-[9px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
             <Activity className="h-2.5 w-2.5" />净值
           </span>
-          <span className="text-[8px] text-muted-foreground font-mono">
-            {nav_snapshots.length > 0 ? `${nav_snapshots.length} 快照` : '等待积累'}
+          <span className="text-[8px] text-muted-foreground font-mono" title="NAV 守护进程每 300 秒采样, Redis ltrim 保留 288 条">
+            {nav_snapshots.length > 0 ? `${nav_snapshots.length} 快照 · 每 5 分钟采样` : '等待积累'}
           </span>
         </div>
         <div className="p-1.5 h-28">
@@ -254,7 +304,7 @@ export function AccountSection({ market, account, isDark, loading }: {
           <div className="glass-card rounded-lg overflow-hidden">
             <div className="px-2 py-1 border-b border-border/20 flex items-center justify-between">
               <span className="text-[9px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
-                <BarChart3 className="h-2.5 w-2.5" />因子
+                <BarChart3 className="h-2.5 w-2.5" />风险因子阈值
               </span>
               <button onClick={() => setShowFactorHelp(!showFactorHelp)} className={cn('transition-colors', showFactorHelp ? 'text-primary' : 'text-muted-foreground hover:text-foreground')}>
                 <Info className="h-2.5 w-2.5" />
@@ -271,7 +321,7 @@ export function AccountSection({ market, account, isDark, loading }: {
                       <span className="text-[9px] font-semibold">{f.label}</span>
                       <div className="flex items-center gap-1">
                         <span className={cn('text-[9px] font-mono font-bold tabular-nums', sm.cls)}>
-                          {f.unit === '$' ? `$${Math.abs(f.value).toLocaleString()}` : `${f.value}${f.unit}`}
+                          {f.unit === '%' ? `${f.value}%` : f.unit === '$' ? `$${Math.abs(f.value).toLocaleString()}` : `${f.value}${f.unit}`}
                         </span>
                         <span className={cn('text-[7px] px-0.5 py-px rounded border font-bold', sm.bg, sm.cls)}>{sm.label}</span>
                       </div>
@@ -289,22 +339,29 @@ export function AccountSection({ market, account, isDark, loading }: {
             </div>
           </div>
 
-          {/* 板块暴露 + 相关性矩阵 */}
-          <div className="md:col-span-2">
+          {/* Jensen 归因 + 板块/相关性 */}
+          <div className="md:col-span-2 space-y-1.5">
+            <RiskAttributionPanel market={market} />
             <RiskAdvancedPanel market={market} correlation={correlation} tabs={['sector', 'corr']} />
           </div>
         </div>
       )}
 
       {riskTab === 'stress' && (
-        <RiskAdvancedPanel market={market} correlation={correlation} tabs={['cvar', 'stress']} />
+        <div className="space-y-1.5">
+          <div className="px-2.5 py-1.5 rounded-md bg-amber-500/5 border border-amber-500/20 text-[9px] text-amber-600/90 dark:text-amber-400/90">
+            ⚠ 口径明示: 历史情景 (2008/2020/2022) 采用<b>预设 shock / 板块冲击系数</b>, 并非真实历史 K 线回放
+          </div>
+          <RiskAdvancedPanel market={market} correlation={correlation} tabs={['cvar', 'stress']} />
+        </div>
       )}
 
-      {/* Positions Table (always visible) */}
+      {/* Positions Table — STRAT: 排序 / 行下钻 / 合计校验 / 脏名标注 */}
       <div className="glass-card rounded-lg overflow-hidden">
         <div className="px-3 py-1 border-b border-border/20 flex items-center justify-between cursor-pointer" onClick={() => setPositionsExpanded(!positionsExpanded)}>
-          <span className="text-[9px] font-semibold text-muted-foreground uppercase">持仓</span>
+          <span className="text-[9px] font-semibold text-muted-foreground uppercase">持仓明细</span>
           <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground">
+            <span>点击表头排序 · 行点击下钻</span>
             <span>{positions.length} 只</span>
             {positionsExpanded ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
           </div>
@@ -318,23 +375,34 @@ export function AccountSection({ market, account, isDark, loading }: {
                     <th className="text-left px-3 py-1 font-medium">代码</th>
                     <th className="text-left px-2 py-1 font-medium">名称</th>
                     <th className="text-center px-2 py-1 font-medium">方向</th>
-                    <th className="text-right px-2 py-1 font-medium">数量</th>
-                    <th className="text-right px-2 py-1 font-medium">市值</th>
-                    <th className="text-right px-2 py-1 font-medium">盈亏</th>
-                    <th className="text-right px-2 py-1 font-medium">盈亏%</th>
+                    <th className="text-right px-2 py-1 font-medium cursor-pointer select-none" onClick={() => toggleSort('qty')}>数量 <SortIcon col="qty" /></th>
+                    <th className="text-right px-2 py-1 font-medium cursor-pointer select-none" onClick={() => toggleSort('market_val')}>市值 <SortIcon col="market_val" /></th>
+                    <th className="text-right px-2 py-1 font-medium cursor-pointer select-none" onClick={() => toggleSort('pl_val')}>盈亏 <SortIcon col="pl_val" /></th>
+                    <th className="text-right px-2 py-1 font-medium cursor-pointer select-none" onClick={() => toggleSort('pl_ratio')}>盈亏% <SortIcon col="pl_ratio" /></th>
                     <th className="text-right px-3 py-1 font-medium">占比</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {positions.map((p, i) => {
+                  {sortedPositions.map((p, i) => {
                     const mv = p.market_val || 0
                     const pl = p.pl_val || 0
                     const plR = p.pl_ratio || 0
                     const navPct = kpi.nav > 0 ? (mv / kpi.nav * 100) : 0
+                    const dirty = isDirtyName(p.stock_name)
                     return (
-                      <tr key={i} className="border-b border-border/5 hover:bg-muted/20 transition-colors">
+                      <tr
+                        key={i}
+                        onClick={() => navigate(`/market/${encodeURIComponent(p.code)}`)}
+                        className="border-b border-border/5 hover:bg-blue-500/5 transition-colors cursor-pointer"
+                        title={`点击下钻 ${p.code}`}
+                      >
                         <td className="px-3 py-1 font-mono font-semibold">{p.code}</td>
-                        <td className="px-2 py-1 text-muted-foreground truncate max-w-[80px]">{p.stock_name || '-'}</td>
+                        <td className="px-2 py-1 text-muted-foreground truncate max-w-[100px]">
+                          <span className="inline-flex items-center gap-1">
+                            {p.stock_name || '-'}
+                            {dirty && <span className="text-[7px] px-1 py-px rounded bg-amber-500/10 text-amber-500 whitespace-nowrap">数据源名称·以交易所为准</span>}
+                          </span>
+                        </td>
                         <td className="px-2 py-1 text-center">
                           <span className={cn('text-[8px] px-1 py-px rounded font-bold',
                             p.position_side === 'LONG' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'
@@ -352,6 +420,22 @@ export function AccountSection({ market, account, isDark, loading }: {
                       </tr>
                     )
                   })}
+                  {/* 合计行 + 占比校验 */}
+                  <tr className="bg-muted/30 border-t border-border/40 font-semibold text-foreground">
+                    <td colSpan={4} className="px-3 py-1 text-[9px] text-muted-foreground">合计 · 占比校验 (分母 = nav)</td>
+                    <td className="px-2 py-1 text-right font-mono tabular-nums">{sym}{(totalMarketVal / 1000).toFixed(1)}K</td>
+                    <td className={cn('px-2 py-1 text-right font-mono tabular-nums', totalPl >= 0 ? 'text-emerald-500' : 'text-red-500')}>
+                      {totalPl >= 0 ? '+' : ''}{sym}{Math.abs(totalPl).toFixed(0)}
+                    </td>
+                    <td className={cn('px-2 py-1 text-right font-mono tabular-nums', totalPl >= 0 ? 'text-emerald-500' : 'text-red-500')}>
+                      {totalPl >= 0 ? '+' : ''}{(kpi.nav > 0 ? totalPl / kpi.nav * 100 : 0).toFixed(2)}%
+                    </td>
+                    <td className="px-3 py-1 text-right font-mono tabular-nums">
+                      <span className={cn(Math.abs(totalNavPct - 100) < 5 ? 'text-emerald-500' : 'text-amber-500')}>
+                        {totalNavPct.toFixed(1)}% {Math.abs(totalNavPct - 100) < 5 ? '✓' : '⚠'}
+                      </span>
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             ) : (

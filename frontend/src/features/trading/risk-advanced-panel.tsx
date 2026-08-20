@@ -21,6 +21,7 @@ export function RiskAdvancedPanel({ market, correlation, tabs }: RiskAdvancedPan
   const visibleTabs = tabs && tabs.length > 0 ? tabs : ALL_ADV_TABS
   const [sectorData, setSectorData] = useState<SectorData[]>([])
   const [cvarData, setCvarData] = useState<CVarData[]>([])
+  const [cvarSummary, setCvarSummary] = useState<{ portfolio_cvar: number; var_threshold: number } | null>(null)
   const [stressResult, setStressResult] = useState<any>(null)
   const [stressScenario, setStressScenario] = useState('2008_crash')
 
@@ -34,7 +35,12 @@ export function RiskAdvancedPanel({ market, correlation, tabs }: RiskAdvancedPan
     if (advancedTab === 'cvar' && cvarData.length === 0) {
       apiClient.get<any>(`/risk/cvar?market=${market}`).then(res => {
         const d = res.data?.data || res.data
-        if (d?.decompositions) setCvarData(d.decompositions)
+        if (d?.decompositions) {
+          setCvarData(d.decompositions)
+          if (typeof d.portfolio_cvar === 'number' && typeof d.var_threshold === 'number') {
+            setCvarSummary({ portfolio_cvar: d.portfolio_cvar, var_threshold: d.var_threshold })
+          }
+        }
       }).catch(() => {})
     }
 // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -90,6 +96,16 @@ export function RiskAdvancedPanel({ market, correlation, tabs }: RiskAdvancedPan
         <div className="p-1.5 space-y-1.5">
           {cvarData.length > 0 ? (
             <>
+              <div className="flex items-baseline gap-2">
+                <span className="text-lg font-bold font-mono text-red-500 tabular-nums">
+                  {cvarSummary && cvarSummary.portfolio_cvar <= 0 ? '-' : ''}{Math.abs((cvarSummary?.portfolio_cvar || 0) * 100).toFixed(2)}%
+                </span>
+                {cvarSummary && (
+                  <span className="text-[8px] text-muted-foreground">
+                    对比 VaR 95% {Math.abs((cvarSummary.var_threshold || 0) * 100).toFixed(2)}% · 尾部加深 {Math.abs(Math.abs(cvarSummary.portfolio_cvar) - Math.abs(cvarSummary.var_threshold)) * 100 >= 0 ? '+' : ''}{(Math.abs(Math.abs(cvarSummary.portfolio_cvar) - Math.abs(cvarSummary.var_threshold)) * 100).toFixed(2)}pct
+                  </span>
+                )}
+              </div>
               <div className="h-28"><CVarWaterfallChart data={cvarData} /></div>
               <div className="grid grid-cols-2 gap-1 text-[8px]">
                 {cvarData.map(d => (
@@ -109,12 +125,12 @@ export function RiskAdvancedPanel({ market, correlation, tabs }: RiskAdvancedPan
         <div className="p-2 space-y-1.5">
           <div className="flex flex-wrap gap-1">
             {[
-              { id: '2008_crash', label: '🏦 2008 金融危机' },
-              { id: '2020_covid', label: '🦠 2020 新冠' },
-              { id: '2022_hike', label: '📈 2022 加息' },
-              { id: 'vol_double', label: '🌊 波动率翻倍' },
-              { id: 'rate_plus_1', label: '💰 利率+1%' },
-              { id: 'fx_depreciation', label: '💱 汇率-5%' },
+              { id: '2008_crash', label: '🏦 历史 · 2008 金融危机' },
+              { id: '2020_covid', label: '🦠 历史 · 2020 疫情' },
+              { id: '2022_hike', label: '📈 历史 · 2022 加息' },
+              { id: 'vol_double', label: '🌊 假设 · 波动率 +50%' },
+              { id: 'rate_plus_1', label: '💰 假设 · 利率 +100bp' },
+              { id: 'fx_depreciation', label: '💱 假设 · 汇率 -5%' },
             ].map(s => (
               <button
                 key={s.id}

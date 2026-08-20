@@ -56,17 +56,33 @@ export const statusMeta = {
 }
 
 export const RADAR_HELP = [
-  { name: 'Beta', desc: '市场敏感度。>1 波动大于大盘，<1 相对稳健' },
+  { name: 'Beta', desc: '市场敏感度 (OLS vs 基准)。>1 波动大于大盘，<1 相对稳健' },
   { name: 'Vol', desc: '年化波动率。60 日日收益率标准差，越高越不稳定' },
-  { name: 'Liq', desc: '流动性评分。基于持仓市值与成交量估算变现难度' },
-  { name: 'Corr', desc: '持仓相关性。越低分散化越好，过高则风险集中' },
-  { name: 'Mom', desc: '动量因子。近期趋势强度，极端值暗示反转风险' },
+  { name: 'Liq', desc: '流动性评分(简化代理)。基于持仓收益率波动的倒数估算，波动越低流动性越好' },
+  { name: 'Corr', desc: '持仓相关性。取 60 日相关矩阵非对角均值，越低分散化越好' },
+  { name: 'Mom', desc: '动量因子。50 + 20 日对数动量均值 × 200，极端值暗示反转风险' },
   { name: 'DD', desc: '最大回撤。NAV 快照序列计算的净值峰值跌幅' },
 ]
 
 export const FACTOR_HELP = [
   { name: 'Market Beta', desc: '组合相对大盘敏感度。=1 同步，>1 波动更大，<1 更防御' },
-  { name: 'VaR (95%)', desc: '95% 置信下单日最大预期亏损。60 日历史模拟法' },
+  { name: 'VaR (95%)', desc: '95% 置信下单日最大预期亏损。60 日历史模拟法。金额 = |日收益5分位| × 当前净值' },
   { name: 'Sharpe', desc: '(年化收益 - 无风险利率) / 波动率。>1.5 优秀，<1.0 补偿不足' },
   { name: 'Max DD', desc: '净值峰值到最低点的最大跌幅。极端行情账面亏损幅度' },
 ]
+
+// ── 风险分级单一 SSOT (诊断 7: 消除与 lib/constants.ts 的语义冲突) ──────────
+export const RISK_LEVEL_META: Array<{
+  min: number
+  label: string
+  color: string
+}> = [
+  { min: 70, label: '高风险', color: '#ef4444' },
+  { min: 50, label: '中高风险', color: '#f59e0b' },
+  { min: 30, label: '中等风险', color: '#3b82f6' },
+  { min: 0, label: '低风险', color: '#10b981' },
+]
+
+export function riskLevelOf(score: number) {
+  return RISK_LEVEL_META.find(l => score >= l.min) || RISK_LEVEL_META[RISK_LEVEL_META.length - 1]
+}
