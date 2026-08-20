@@ -135,7 +135,7 @@ export function StrategyIDE({ className }: { className?: string }) {
       <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 text-[9px] font-mono text-muted-foreground/70 bg-background/70 backdrop-blur px-2.5 py-0.5 rounded-full border border-border/30">
         <span><kbd className="text-scene">⌘1</kbd> 代码</span>
         <span><kbd className="text-scene">⌘2</kbd> 回测</span>
-        <span><kbd className="text-scene">⌘3</kbd> AI 助手</span>
+        <span><kbd className="text-scene">⌘3</kbd> 聚焦 AI 对话</span>
       </div>
     </div>
   )
