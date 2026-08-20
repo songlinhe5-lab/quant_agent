@@ -332,3 +332,45 @@ class TestSyncKlineWarehouse:
         mock_wh.update_ticker = AsyncMock(return_value=False)
         resp = client.post("/market/kline/sync", json={"ticker": "US.AAPL", "interval": "1d"})
         assert resp.status_code == 500
+
+
+# ─── /market/option-iv-summary ──────────────────────────────────────────────
+class TestOptionIvSummary:
+    @patch("backend.routers.market._facade_market")
+    def test_success_envelope(self, mock_facade):
+        # 业务方法返回扁平 dict（含 available 标记），路由包入 data 信封
+        mock_facade.get_option_iv_summary = AsyncMock(
+            return_value={
+                "ticker": "US.AAPL",
+                "atm_iv": 0.382,
+                "iv_percentile": 0.64,
+                "rv30d": 0.315,
+                "skew": 2.1,
+                "available": True,
+            }
+        )
+        resp = client.get("/market/option-iv-summary?ticker=US.AAPL")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "data" in body
+        data = body["data"]
+        assert data["atm_iv"] == 0.382
+        assert data["iv_percentile"] == 0.64
+        assert data["skew"] == 2.1
+
+    @patch("backend.routers.market._facade_market")
+    def test_degraded_when_unavailable(self, mock_facade):
+        # 底层不可用时 available=False → 路由标记 degraded=True，不 500
+        mock_facade.get_option_iv_summary = AsyncMock(
+            return_value={
+                "ticker": "US.AAPL",
+                "atm_iv": None,
+                "iv_percentile": None,
+                "rv30d": None,
+                "skew": None,
+                "available": False,
+            }
+        )
+        resp = client.get("/market/option-iv-summary?ticker=US.AAPL")
+        assert resp.status_code == 200
+        assert resp.json()["degraded"] is True

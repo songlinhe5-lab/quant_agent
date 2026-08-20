@@ -570,7 +570,37 @@ async def get_option_chain(ticker: str, expiration_date: str = ""):
         **facade_res.data,
         "source": f"facade+{facade_res.source}",
         "degraded": _sub_degraded or facade_res.status == ResultStatus.DEGRADED,
-        "degraded_message": _sub_msg or (facade_res.error.message if (facade_res.is_degraded and facade_res.error) else None),
+        "degraded_message": _sub_msg
+        or (facade_res.error.message if (facade_res.is_degraded and facade_res.error) else None),
+    }
+
+
+@router.get("/option-iv-summary")
+async def get_option_iv_summary(ticker: str):
+    """
+    F3：期权 IV 指标聚合（设计稿 IV 指标条：ATM IV / IV 分位 / 30日已实现 / Skew）
+
+    Args:
+        ticker: 正股/ETF/指数代码（非期权 code）
+
+    Returns:
+        dict: {"status": "success", "data": OptionIvSummary}
+    """
+    facade_res = await _facade_market.get_option_iv_summary(ticker)
+    if isinstance(facade_res, dict):
+        # get_option_iv_summary 返回的是扁平 dict（非 Result），直接包信封
+        return {
+            "data": facade_res,
+            "source": "facade+market",
+            "degraded": not facade_res.get("available", False),
+        }
+    if hasattr(facade_res, "is_error") and facade_res.is_error:
+        err_msg = facade_res.error.message if facade_res.error else "期权 IV 指标数据不可用"
+        raise HTTPException(status_code=400, detail=err_msg)
+    return {
+        "data": facade_res.data if hasattr(facade_res, "data") else facade_res,
+        "source": f"facade+{getattr(facade_res, 'source', 'market')}",
+        "degraded": getattr(facade_res, "status", None) == ResultStatus.DEGRADED,
     }
 
 
