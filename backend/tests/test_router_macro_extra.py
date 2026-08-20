@@ -118,24 +118,50 @@ class TestMacroCapitalFlow:
 
 
 class TestMacroNews:
+    @patch("backend.app.macro_app.sentiment_service")
     @patch("backend.app.macro_app._fetch_macro_news_from_stream", new_callable=AsyncMock)
-    def test_news_from_stream(self, mock_stream, client):
+    def test_news_from_stream(self, mock_stream, mock_sent, client):
         """从 Redis 流获取新闻"""
         mock_stream.return_value = [{"headline": "Fed holds rates", "source": "Reuters"}]
+        mock_sent.batch_analyze_news = AsyncMock(return_value=[])
         resp = client.get("/api/v1/macro/news?category=general&limit=10")
         assert resp.status_code == 200
         data = _unwrap(resp)
         assert data["status"] == "success"
         assert len(data["data"]) == 1
 
+    @patch("backend.app.macro_app.sentiment_service")
     @patch("backend.app.macro_app.market_data")
     @patch("backend.app.macro_app._fetch_macro_news_from_stream", new_callable=AsyncMock)
-    def test_news_fallback_to_market_data(self, mock_stream, mock_md, client):
+    def test_news_fallback_to_market_data(self, mock_stream, mock_md, mock_sent, client):
         """Redis 为空时降级到 market_data"""
         mock_stream.return_value = []
         mock_md.get_market_news = AsyncMock(return_value={"status": "success", "data": [{"headline": "Test news"}]})
+        mock_sent.batch_analyze_news = AsyncMock(return_value=[])
         resp = client.get("/api/v1/macro/news?category=general")
         assert resp.status_code == 200
+
+    @patch("backend.app.macro_app.sentiment_service")
+    @patch("backend.app.macro_app._fetch_macro_news_from_stream", new_callable=AsyncMock)
+    def test_news_missing_sentiment_gets_scored(self, mock_stream, mock_sent, client):
+        """新闻缺 sentiment 时, get_macro_news 应调用 LLM 补充情感打分与中文翻译。"""
+        mock_stream.return_value = [{"headline": "AI stocks rally", "source": "Reuters"}]
+        scored = [
+            {
+                "headline": "AI stocks rally",
+                "source": "Reuters",
+                "sentiment": {"score": 80, "label": "Bullish", "summary_zh": "AI股大涨", "reasoning": "需求强劲"},
+            }
+        ]
+        mock_sent.batch_analyze_news = AsyncMock(return_value=scored)
+        resp = client.get("/api/v1/macro/news?category=general&limit=10")
+        assert resp.status_code == 200
+        data = _unwrap(resp)
+        assert data["status"] == "success"
+        item = data["data"][0]
+        # 翻译 + 温度打分已被补充
+        assert item["sentiment"]["summary_zh"] == "AI股大涨"
+        assert item["sentiment"]["score"] == 80
 
     @patch("backend.app.macro_app.market_data")
     def test_news_non_general_category(self, mock_md, client):
@@ -164,6 +190,66 @@ class TestMacroCalendarExtra:
         mock_fetch.return_value = {"status": "success", "data": []}
         resp = client.get("/api/v1/macro/calendar?days_ahead=3&days_back=2")
         assert resp.status_code == 200
+
+
+# ==========================================
+# 全球市场日历: futu 优先 (calendars.py)
+# ==========================================
+
+
+@pytest.mark.asyncio
+async def test_fetch_calendar_tile_futu_returns_tile():
+    """配了 futu 代码的标的(美股ETF), 从 futu 拉日 K 并组装为 tile。"""
+    from backend.routers import calendars
+
+    cfg = {"symbol": "SPY", "name": "SPDR 标普 ETF", "yf": "SPY", "futu": "US.SPY"}
+    fake_hist = {
+        "status": "success",
+        "data": [
+            {"time": 1784500000, "open": 765.0, "high": 770.0, "low": 764.0, "close": 769.0, "volume": 1000},
+            {"time": 1784586400, "open": 768.0, "high": 772.0, "low": 767.0, "close": 771.0, "volume": 1200},
+        ],
+    }
+    with patch(
+        "backend.services.datasource.router.data_source_router.fetch_futu",
+        new=AsyncMock(return_value=fake_hist),
+    ):
+        tile = await calendars._fetch_calendar_tile_futu(cfg, "us")
+    assert tile is not None
+    assert tile["symbol"] == "SPY"
+    assert tile["source"] == "Futu"
+    # 最近收盘 771 vs 上一收盘 769 → +0.26%
+    assert tile["price"] == 771.0
+    assert tile["change_pct"] > 0
+
+
+@pytest.mark.asyncio
+async def test_fetch_calendar_tile_futu_failure_returns_none():
+    """futu 获取失败时返回 None, 供上层降级 yfinance。"""
+    from backend.routers import calendars
+
+    cfg = {"symbol": "SPY", "name": "SPDR 标普 ETF", "yf": "SPY", "futu": "US.SPY"}
+    with patch(
+        "backend.services.datasource.router.data_source_router.fetch_futu",
+        new=AsyncMock(return_value={"status": "error", "message": "权限不足"}),
+    ):
+        tile = await calendars._fetch_calendar_tile_futu(cfg, "us")
+    assert tile is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_calendar_tile_no_futu_skips():
+    """未配 futu 代码的标的直接返回 None(不调 futu), 走 yfinance。"""
+    from backend.routers import calendars
+
+    cfg = {"symbol": "VIX", "name": "VIX 恐慌指数", "yf": "^VIX"}
+    with patch(
+        "backend.services.datasource.router.data_source_router.fetch_futu",
+        new=AsyncMock(),
+    ) as m:
+        tile = await calendars._fetch_calendar_tile_futu(cfg, "us")
+    assert tile is None
+    m.assert_not_awaited()
 
 
 # ==========================================

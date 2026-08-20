@@ -53,9 +53,9 @@ CALENDAR_CATEGORIES: list[dict] = [
             {"symbol": "DJI", "name": "道琼斯指数", "yf": "^DJI"},
             {"symbol": "RTY", "name": "罗素 2000", "yf": "^RUT"},
             {"symbol": "VIX", "name": "VIX 恐慌指数", "yf": "^VIX"},
-            {"symbol": "SPY", "name": "SPDR 标普 ETF", "yf": "SPY"},
-            {"symbol": "QQQ", "name": "纳指 100 ETF", "yf": "QQQ"},
-            {"symbol": "IWM", "name": "罗素 2000 ETF", "yf": "IWM"},
+            {"symbol": "SPY", "name": "SPDR 标普 ETF", "yf": "SPY", "futu": "US.SPY"},
+            {"symbol": "QQQ", "name": "纳指 100 ETF", "yf": "QQQ", "futu": "US.QQQ"},
+            {"symbol": "IWM", "name": "罗素 2000 ETF", "yf": "IWM", "futu": "US.IWM"},
         ],
     },
     {
@@ -80,11 +80,11 @@ CALENDAR_CATEGORIES: list[dict] = [
         "open": (9, 30),
         "close": (16, 0),
         "tiles": [
-            {"symbol": "HSI", "name": "恒生指数", "yf": "^HSI"},
+            {"symbol": "HSI", "name": "恒生指数", "yf": "^HSI", "futu": "HK.800000"},
             {"symbol": "HSTECH", "name": "恒生科技", "yf": "HSTECH.HK"},
             {"symbol": "N225", "name": "日经 225", "yf": "^N225"},
             {"symbol": "KS11", "name": "韩国 KOSPI", "yf": "^KS11"},
-            {"symbol": "KWEB", "name": "中概互联", "yf": "KWEB"},
+            {"symbol": "KWEB", "name": "中概互联", "yf": "KWEB", "futu": "US.KWEB"},
             {"symbol": "SSE", "name": "上证指数", "yf": "000001.SS"},
             {"symbol": "SENSEX", "name": "印度 SENSEX", "yf": "^BSESN"},
             {"symbol": "TWII", "name": "台湾加权", "yf": "^TWII"},
@@ -117,7 +117,7 @@ CALENDAR_CATEGORIES: list[dict] = [
             {"symbol": "FVX", "name": "5Y 美债收益率", "yf": "^FVX"},
             {"symbol": "IRX", "name": "13W 美债收益率", "yf": "^IRX"},
             {"symbol": "TWO", "name": "2Y 美债收益率", "yf": "^TWO"},
-            {"symbol": "TLT", "name": "20Y+ 国债 ETF", "yf": "TLT"},
+            {"symbol": "TLT", "name": "20Y+ 国债 ETF", "yf": "TLT", "futu": "US.TLT"},
         ],
     },
     {
@@ -324,14 +324,74 @@ async def _fetch_calendar_tile_ondemand(cfg: dict, category_key: str) -> Optiona
         return None
 
 
-async def _fetch_calendar_tile(cfg: dict, category_key: str) -> dict:
-    """组装单个 CalendarTile：优先读 yf 守护进程写入的 Redis 缓存；
+async def _fetch_calendar_tile_futu(cfg: dict, category_key: str) -> Optional[dict]:
+    """优先从 futu 获取单标的日 K（仅对配了 futu 代码的标的，如美股 ETF / 恒生指数）。
 
-    cache miss 时经 DataSourceRegistry on-demand 兜底抓取（自愈），避免快照全空。
+    实测验证：futu OpenD 对美股 ETF(US.SPY 等)与恒指(HK.800000)可正常返回历史 K 线，
+    而对美股指数/加密/期货/外汇/美债收益率不可用(代码或权限问题)。故仅对可覆盖的标的走 futu。
+    经 data_source_router.fetch_futu 经主节点子服务取数；失败返回 None → 上层降级 yfinance。
+    """
+    futu_code = cfg.get("futu")
+    if not futu_code:
+        return None
+    try:
+        from backend.services.datasource.router import data_source_router
+
+        result = await data_source_router.fetch_futu("HISTORY", ticker=futu_code, ktype="K_DAY", num=70)
+        if result.get("status") != "success" or not result.get("data"):
+            return None
+        # futu K 线字段为 {time(秒戳), open, high, low, close, volume}; 转成 _build_tile_from_records 期望的记录
+        records: list[dict] = []
+        for k in result["data"]:
+            try:
+                t = k.get("time")
+                # futu time 可能是秒戳或 'YYYY-MM-DD' 字符串, 统一转 ISO 日期串供 is_stale/前端展示
+                date_str = None
+                if isinstance(t, (int, float)) and t:
+                    date_str = datetime.fromtimestamp(t, tz=timezone.utc).strftime("%Y-%m-%d")
+                elif t:
+                    date_str = str(t)
+                records.append(
+                    {
+                        "Date": date_str,
+                        "date": date_str,
+                        "Open": float(k.get("open") or 0),
+                        "High": float(k.get("high") or 0),
+                        "Low": float(k.get("low") or 0),
+                        "Close": float(k.get("close") or 0),
+                        "close": float(k.get("close") or 0),
+                        "Volume": float(k.get("volume") or 0),
+                    }
+                )
+            except (TypeError, ValueError):
+                continue
+        if not records:
+            return None
+        tile = _build_tile_from_records(records, cfg, category_key)
+        if tile is not None:
+            tile["source"] = "Futu"
+        return tile
+    except Exception as e:  # noqa: BLE001
+        print(f"⚠️ [Calendars] futu 优先获取 {cfg.get('yf')} 失败: {e}")
+        return None
+
+
+async def _fetch_calendar_tile(cfg: dict, category_key: str) -> dict:
+    """组装单个 CalendarTile：
+
+    futu 优先(仅对实测可覆盖的标的) → 读 yf Redis 缓存 → on-demand yfinance 兜底。
+    配了 futu 字段的标的(美股 ETF/恒指)优先从 futu 取实时行情, futu 失败再降级 yfinance。
     """
     symbol = cfg["symbol"]
     name = cfg["name"]
     yf_code = cfg["yf"]
+
+    # 💡 futu 优先：仅对配了 futu 代码且实测可获取的标的
+    if cfg.get("futu"):
+        futu_tile = await _fetch_calendar_tile_futu(cfg, category_key)
+        if futu_tile is not None:
+            return futu_tile
+
     cache_key = f"yf_macro_cache_{yf_code.lower()}"
     try:
         cached_data = await redis_client.get(cache_key)

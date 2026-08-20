@@ -20,6 +20,7 @@ from backend.core.exceptions import AppError
 from backend.core.redis_client import redis_client
 from backend.services.ai_narrator.llm_service import llm_service
 from backend.services.fund_flow.us_big_order import get_us_big_order_flow
+from backend.services.macro.sentiment_service import sentiment_service
 from backend.services.margin.a_share import get_a_share_margin
 from backend.services.market_engine import manager
 
@@ -930,9 +931,7 @@ async def _fetch_macro_news_from_stream(limit: int = 50) -> list:
                         (now - newest_ts) / 3600,
                     )
                     return []
-            return [
-                json.loads(m) for m, _ in pairs if isinstance(m, (str, bytes, bytearray))
-            ]  # noqa: E501
+            return [json.loads(m) for m, _ in pairs if isinstance(m, (str, bytes, bytearray))]  # noqa: E501
     except Exception as e:
         print(f"⚠️ [Macro] 从 ZSET 读取新闻异常: {e}")
     return []
@@ -954,6 +953,17 @@ async def get_macro_news(
             res = await market_data.get_market_news(category="general")
             if res.get("status") == "success":
                 news_list = res.get("data", [])[:limit]
+        # 💡 确保每条新闻都带 LLM 情感打分与中文翻译(summary_zh)。
+        #    回退到实时 Finnhub 拉取时, 原始新闻无 sentiment 字段 → 前端翻译/温度打分缺失。
+        #    此处对缺失 sentiment 的新闻补做分析, 而非仅依赖后台 daemon。
+        need_score = [n for n in news_list if not n.get("sentiment") or not isinstance(n.get("sentiment"), dict)]
+        if need_score:
+            scored = await sentiment_service.batch_analyze_news(need_score)
+            scored_by_headline = {n.get("headline"): n for n in scored}
+            for n in news_list:
+                s = scored_by_headline.get(n.get("headline"))
+                if s and s.get("sentiment"):
+                    n["sentiment"] = s["sentiment"]
         return {"status": "success", "data": news_list}
     except Exception as e:
         raise AppError(status_code=500, detail=str(e))
