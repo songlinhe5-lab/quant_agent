@@ -3,11 +3,40 @@
  * 管理 WS 连接生命周期、自动重连、Token 续期、订阅/退订
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { getValidAccessToken, getWsBaseUrl } from '@/lib/api-client'
 import { market } from '@/lib/proto/market'
 import { useKeepAliveActive } from '@/components/layout/keep-alive-context'
 import { useBackendStatusStore } from '@/stores/useBackendStatusStore'
+
+const WS_STATUS_EVENT = 'screener_ws_status'
+let wsConnected = false
+const wsStatusListeners = new Set<() => void>()
+
+function emitWsStatus(connected: boolean) {
+  if (wsConnected === connected) return
+  wsConnected = connected
+  window.dispatchEvent(new CustomEvent(WS_STATUS_EVENT, { detail: connected }))
+  wsStatusListeners.forEach((l) => l())
+}
+
+/**
+ * 读取选股器实时行情 WS 连通状态（LIVE / STALE 徽章用）。
+ * 由 useScreenerWs 内部 onopen/onclose 驱动。
+ */
+export function useScreenerWsStatus(): { connected: boolean } {
+  const subscribe = (cb: () => void) => {
+    wsStatusListeners.add(cb)
+    const onEvt = () => cb()
+    window.addEventListener(WS_STATUS_EVENT, onEvt)
+    return () => {
+      wsStatusListeners.delete(cb)
+      window.removeEventListener(WS_STATUS_EVENT, onEvt)
+    }
+  }
+  const getSnapshot = () => wsConnected
+  return { connected: useSyncExternalStore(subscribe, getSnapshot, getSnapshot) }
+}
 
 /**
  * 建立并管理选股器 WS 连接，根据 pageSymbols 自动订阅/退订
@@ -39,6 +68,7 @@ export function useScreenerWs(pageSymbols: string[]) {
       wsRef.current.onopen = () => {
         if (!isMountedRef.current) return;
         wsOpenedRef.current = true;
+        emitWsStatus(true);
         useBackendStatusStore.getState().registerSuccess()
         const pureTickers = prevSymbolsRef.current.map((s: string) => s.replace(/^(US|HK|SH|SZ)\./, ''));
         if (pureTickers.length > 0) wsRef.current!.send(JSON.stringify({ action: 'subscribe', tickers: pureTickers }));
@@ -58,6 +88,7 @@ export function useScreenerWs(pageSymbols: string[]) {
       };
       wsRef.current.onclose = (ev?: CloseEvent) => {
         wsOpenedRef.current = false;
+        emitWsStatus(false);
         if (!isMountedRef.current) return;
         if (ev) console.warn(`[Screener WS] 连接关闭 code=${ev.code} reason=${ev.reason || '(空)'}`);
         reconnectTimer = setTimeout(connectWS, 1000);

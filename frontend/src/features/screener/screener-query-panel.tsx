@@ -1,11 +1,35 @@
 'use client'
 
-import React from 'react'
-import { Search, Sparkles, CornerDownLeft, History, RefreshCw, Database, ChevronRight, Zap, BellRing, Code2, Loader2 } from 'lucide-react'
+import React, { useState } from 'react'
+import { Search, Sparkles, CornerDownLeft, History, RefreshCw, Database, ChevronRight, Zap, BellRing, Code2, Loader2, Tag } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { getZhLabel } from './shared'
 import { useScreenerContext } from './screener-context'
 import { apiClient } from '@/lib/api-client'
+
+// 设计稿「选股树」单级标签筛选：市场 / 自选 / 策略模板
+const TREE_GROUPS = [
+  { id: 'market', label: '市场', items: [
+    { key: 'us', label: '美股', q: '筛选美股市场标的' },
+    { key: 'hk', label: '港股', q: '筛选港股市场标的' },
+    { key: 'cn', label: 'A股', q: '筛选A股市场标的' },
+    { key: 'sh', label: '沪股', q: '筛选沪市标的' },
+    { key: 'sz', label: '深股', q: '筛选深市标的' },
+  ]},
+  { id: 'watchlist', label: '自选', items: [
+    { key: 'my', label: '我的自选', q: '筛选我的自选股' },
+    { key: 'hot', label: '热门自选', q: '筛选热门自选标的' },
+    { key: 'institution', label: '机构持仓', q: '筛选机构重仓标的' },
+  ]},
+  { id: 'strategy', label: '策略模板', items: [
+    { key: 'value', label: '低估值价值', q: '低市盈率低市净率的价值股' },
+    { key: 'growth', label: '高成长', q: '营收利润高成长标的' },
+    { key: 'momentum', label: '强势动量', q: '近一月涨幅居前的动量股' },
+    { key: 'dividend', label: '高股息', q: '高股息率稳定分红标的' },
+    { key: 'turnaround', label: '困境反转', q: '业绩困境反转拐点标的' },
+  ]},
+]
 
 export function ScreenerQueryPanel() {
   const {
@@ -13,6 +37,7 @@ export function ScreenerQueryPanel() {
     history, setHistory, placeholderText, displayPrompts, refreshPrompts,
     isLoading, progress, scanStatus, handleTranslate, showRawDsl, setShowRawDsl, handleSubscribe
   } = useScreenerContext()
+  const [activeTag, setActiveTag] = useState<{ group: string; key: string } | null>(null)
 
   const _parseVal = (v: any) => {
     const str = String(v).replace(/[+%]/g, '')
@@ -27,8 +52,16 @@ export function ScreenerQueryPanel() {
     return isNaN(num) ? 0 : num
   }
 
+  const applyTag = (groupLabel: string, item: { key: string; label: string; q: string }) => {
+    const next = { group: groupLabel, key: item.key }
+    setActiveTag((prev) => (prev?.group === groupLabel && prev.key === item.key ? null : next))
+    setNlpQuery(item.q)
+    setDslQuery('')
+    handleTranslate(item.q)
+  }
+
   return (
-    <div className="glass-card rounded-xl overflow-hidden transition-colors duration-300 border border-border/40 shadow-sm relative">
+    <div className="glass-card rounded-[var(--radius-card)] overflow-hidden transition-colors duration-300 border border-border/40 shadow-sm relative">
       <div className="p-4 space-y-3">
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-1.5 text-primary">
@@ -63,11 +96,29 @@ export function ScreenerQueryPanel() {
           </div>
         </div>
 
+        {/* 选股树：单级标签筛选（市场 / 自选 / 策略模板），点击即触发 */}
+        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+          <Tag className="h-3 w-3 text-muted-foreground shrink-0" />
+          {TREE_GROUPS.map((g) => (
+            <React.Fragment key={g.id}>
+              <span className="text-[10px] text-muted-foreground/70 font-medium px-1">{g.label}</span>
+              {g.items.map((item) => {
+                const isActive = activeTag?.group === g.label && activeTag.key === item.key
+                return (
+                  <button key={item.key} onClick={() => applyTag(g.label, item)} className={cn('text-[10px] px-2 py-0.5 rounded-full border transition-all cursor-pointer', isActive ? 'bg-primary/15 text-primary border-primary/30 font-medium' : 'bg-secondary/50 text-muted-foreground hover:text-foreground hover:bg-secondary/80 border-transparent')}>
+                    {item.label}
+                  </button>
+                )
+              })}
+            </React.Fragment>
+          ))}
+        </div>
+
         <div className="relative group">
           <div className="absolute left-3 top-3.5 text-muted-foreground group-focus-within:text-primary transition-colors">
             <Search className="h-4 w-4" />
           </div>
-          <textarea id="nlp-query" placeholder={placeholderText} className="w-full pl-9 pr-12 py-3 rounded-xl bg-background border border-border/60 hover:border-primary/50 focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none transition-all duration-300 text-sm font-mono resize-none leading-relaxed shadow-sm dark:bg-black/20" rows={3} value={nlpQuery} onChange={(e) => { setNlpQuery(e.target.value); setDslQuery('') }} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleTranslate() } }} aria-label="输入自然语言选股条件" />
+          <textarea id="nlp-query" placeholder={placeholderText} className="w-full pl-9 pr-12 py-3 rounded-xl bg-background border border-border/60 hover:border-primary/50 focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none transition-all duration-300 text-sm font-mono resize-none leading-relaxed shadow-sm dark:bg-black/20" rows={3} value={nlpQuery} onChange={(e) => { setNlpQuery(e.target.value); setDslQuery(''); setActiveTag(null) }} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleTranslate() } }} aria-label="输入自然语言选股条件" />
           <div className="absolute right-2 bottom-2 flex items-center gap-2">
             {isLoading && progress > 0 && (
               <div className="flex items-center gap-1.5 mr-1 bg-background/80 backdrop-blur px-2 py-1 rounded-md">
@@ -85,7 +136,7 @@ export function ScreenerQueryPanel() {
         <div className="flex flex-wrap items-center gap-2 pt-1 max-h-48 overflow-y-auto custom-scrollbar pr-2">
           <span className="text-[10px] text-muted-foreground font-medium py-1">💡 灵感：</span>
           {displayPrompts.map((prompt, idx) => (
-            <button key={idx} onClick={() => { setNlpQuery(prompt); setDslQuery('') }} className="text-[10px] px-2.5 py-1 rounded-full bg-secondary/60 hover:bg-primary/10 text-muted-foreground hover:text-primary border border-transparent hover:border-primary/20 transition-all cursor-pointer text-left">
+            <button key={idx} onClick={() => { setNlpQuery(prompt); setDslQuery(''); setActiveTag(null) }} className="text-[10px] px-2.5 py-1 rounded-full bg-secondary/60 hover:bg-primary/10 text-muted-foreground hover:text-primary border border-transparent hover:border-primary/20 transition-all cursor-pointer text-left">
               {prompt}
             </button>
           ))}
