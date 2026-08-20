@@ -70,23 +70,23 @@ export function MarketSnapshotPanel({ tickers = 'HK.00700,US.AAPL,HK.09988' }: {
       <div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-2">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">批量实时快照</span>
         {panel.avg_change != null && (
-          <span className={'ml-auto text-[10px] font-mono font-bold ' + (panel.avg_change >= 0 ? 'text-[#34D399]' : 'text-[#F87171]')}>
+          <span className={'ml-auto text-[10px] font-mono font-bold ' + (panel.avg_change >= 0 ? 'text-[hsl(var(--bull))]' : 'text-[hsl(var(--bear))]')}>
             均值 {panel.avg_change >= 0 ? '+' : ''}{panel.avg_change.toFixed(2)}%
           </span>
         )}
       </div>
       <div className="grid grid-cols-3 gap-2 p-3">
-        <div className="rounded border border-[#34D399]/30 bg-[#34D399]/5 px-2 py-1 text-center">
+        <div className="rounded border border-[hsl(var(--bull))]/30 bg-[hsl(var(--bull))]/5 px-2 py-1 text-center">
           <div className="text-[9px] text-slate-500">涨</div>
-          <div className="text-sm font-bold text-[#34D399]">{panel.ups ?? 0}</div>
+          <div className="text-sm font-bold text-[hsl(var(--bull))]">{panel.ups ?? 0}</div>
         </div>
         <div className="rounded border border-border/30 bg-secondary/10 px-2 py-1 text-center">
           <div className="text-[9px] text-slate-500">平</div>
           <div className="text-sm font-bold text-slate-300">{panel.flats ?? 0}</div>
         </div>
-        <div className="rounded border border-[#F87171]/30 bg-[#F87171]/5 px-2 py-1 text-center">
+        <div className="rounded border border-[hsl(var(--bear))]/30 bg-[hsl(var(--bear))]/5 px-2 py-1 text-center">
           <div className="text-[9px] text-slate-500">跌</div>
-          <div className="text-sm font-bold text-[#F87171]">{panel.downs ?? 0}</div>
+          <div className="text-sm font-bold text-[hsl(var(--bear))]">{panel.downs ?? 0}</div>
         </div>
       </div>
       <div className="space-y-1 px-3 pb-3">
@@ -94,7 +94,7 @@ export function MarketSnapshotPanel({ tickers = 'HK.00700,US.AAPL,HK.09988' }: {
           const code = r.code || r.name || '--'
           const price = r.cur_price ?? r.last_price ?? r.price
           const chg = r.change_rate ?? r.change
-          const tone = chg == null ? 'text-slate-300' : chg >= 0 ? 'text-[#34D399]' : 'text-[#F87171]'
+          const tone = chg == null ? 'text-slate-300' : chg >= 0 ? 'text-[hsl(var(--bull))]' : 'text-[hsl(var(--bear))]'
           return (
             <div key={i} className="flex items-center justify-between text-[11px] px-2 py-0.5 rounded bg-secondary/5">
               <span className="font-mono text-foreground/80 truncate max-w-[120px]">{code}</span>

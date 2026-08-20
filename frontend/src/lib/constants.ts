@@ -17,6 +17,48 @@ export const MARKET_COLORS = {
   neutral: '#64748b', // slate-500
 };
 
+/**
+ * 语义色 SSOT（JS/逻辑层用，与 globals.css 的 --bull/--bear/--warn/--info/--ai 对齐）。
+ * ECharts 配置 / 图表逻辑请引用此对象，禁止在业务文件散落重复 HEX。
+ */
+export const SEMANTIC_COLORS = {
+  bull: MARKET_COLORS.bull,
+  bear: MARKET_COLORS.bear,
+  warn: '#f59e0b', // amber-500
+  info: '#3b82f6', // blue-500
+  ai: '#8b5cf6', // violet-500
+  primary: '#8b5cf6',
+  accent: '#3b82f6',
+  neutral: MARKET_COLORS.neutral,
+} as const;
+
+/**
+ * 风险色阶 SSOT（JS/逻辑层用）。
+ * - histogram: 收益分布直方图 8 阶（暗/亮双模式），与 backtest-report-stats 原值一致
+ * - score：风险评分单色（高→低 红→橙→蓝→绿）
+ * - 禁止在业务文件散落重复 HEX，统一引用本对象。
+ */
+export const RISK_COLORS = {
+  /** 收益直方图 8 阶：[暗色, 亮色] */
+  histogram: [
+    { range: '< -5%', dark: '#f87171', light: '#dc2626' },
+    { range: '-5~-3%', dark: '#fca5a5', light: '#ef4444' },
+    { range: '-3~-1%', dark: '#fcd34d', light: '#f59e0b' },
+    { range: '-1~0%', dark: '#d1d5db', light: '#9ca3af' },
+    { range: '0~1%', dark: '#6ee7b7', light: '#10b981' },
+    { range: '1~3%', dark: '#34d399', light: '#059669' },
+    { range: '3~5%', dark: '#10b981', light: '#047857' },
+    { range: '> 5%', dark: '#059669', light: '#064e3b' },
+  ],
+  /** 风险评分单色（score >= 阈值 映射） */
+  score: {
+    high: '#ef4444', // >=70 高风险
+    medium: '#f59e0b', // >=50 中风险
+    low: '#3b82f6', // >=30 低风险
+    minimal: '#10b981', // <30 极低风险
+  },
+} as const;
+
 // 模块列表
 export const MODULES = [
   { id: 'quotes', name: '行情', icon: 'trending-up' },

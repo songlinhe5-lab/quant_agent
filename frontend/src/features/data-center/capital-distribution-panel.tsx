@@ -77,15 +77,15 @@ export function CapitalDistributionPanel({ ticker = 'HK.00700' }: { ticker?: str
       <div className="grid grid-cols-3 gap-2 p-3">
         <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2">
           <div className="text-[10px] text-slate-500">主力净额</div>
-          <div className={'text-base font-semibold font-mono ' + (data.main_net != null && data.main_net >= 0 ? 'text-[#34D399]' : 'text-[#F87171]')}>{fmt(data.main_net)}</div>
+          <div className={'text-base font-semibold font-mono ' + (data.main_net != null && data.main_net >= 0 ? 'text-[hsl(var(--bull))]' : 'text-[hsl(var(--bear))]')}>{fmt(data.main_net)}</div>
         </div>
         <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2">
           <div className="text-[10px] text-slate-500">散户净额</div>
-          <div className={'text-base font-semibold font-mono ' + (data.retail_net != null && data.retail_net >= 0 ? 'text-[#34D399]' : 'text-[#F87171]')}>{fmt(data.retail_net)}</div>
+          <div className={'text-base font-semibold font-mono ' + (data.retail_net != null && data.retail_net >= 0 ? 'text-[hsl(var(--bull))]' : 'text-[hsl(var(--bear))]')}>{fmt(data.retail_net)}</div>
         </div>
         <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2">
           <div className="text-[10px] text-slate-500">机构主导度</div>
-          <div className="text-base font-semibold font-mono text-[#8b5cf6]">{data.institution_dominance != null ? `${(data.institution_dominance * 100).toFixed(1)}%` : '--'}</div>
+          <div className="text-base font-semibold font-mono text-[hsl(var(--ai))]">{data.institution_dominance != null ? `${(data.institution_dominance * 100).toFixed(1)}%` : '--'}</div>
         </div>
       </div>
       {data.signals && data.signals.length > 0 && (

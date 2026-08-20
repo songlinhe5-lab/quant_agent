@@ -79,12 +79,12 @@ export function NewsStream({ news, visibleNewsCount, setVisibleNewsCount, classN
                       )}
                       <div className="flex items-center gap-3 mt-1.5">
                         <div className="flex-1 h-1.5 bg-slate-200 dark:bg-secondary/60 rounded-full overflow-hidden max-w-[120px]">
-                          <div className={cn('h-full rounded-full', bullish ? 'bg-[#10B981] dark:bg-[#34D399]' : 'bg-[#EF4444] dark:bg-[#F87171]')} style={{ width: `${it * 100}%` }} />
+                          <div className={cn('h-full rounded-full', bullish ? 'bg-[hsl(var(--bull))] dark:bg-[hsl(var(--bull))]' : 'bg-[hsl(var(--bear))] dark:bg-[hsl(var(--bear))]')} style={{ width: `${it * 100}%` }} />
                         </div>
-                        <span className={cn('text-[10px] font-mono font-bold', bullish ? 'text-[#10B981] dark:text-[#34D399]' : 'text-[#EF4444] dark:text-[#F87171]')}>{score > 0 ? '+' : ''}{score}</span>
+                        <span className={cn('text-[10px] font-mono font-bold', bullish ? 'text-[hsl(var(--bull))] dark:text-[hsl(var(--bull))]' : 'text-[hsl(var(--bear))] dark:text-[hsl(var(--bear))]')}>{score > 0 ? '+' : ''}{score}</span>
                       </div>
                     </div>
-                    <div className="flex-shrink-0 flex flex-col items-end gap-1.5"><span className={cn('text-[10px] font-bold px-2 py-0.5 rounded uppercase', bullish ? 'bg-[#34D399]/15 text-[#10B981] dark:text-[#34D399]' : 'bg-[#F87171]/15 text-[#EF4444] dark:text-[#F87171]')}>{label}</span><span className="text-[10px] text-muted-foreground font-mono">{timeInfo.text}</span>{timeInfo.delayed && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 border border-amber-500/30 whitespace-nowrap">源延迟</span>}</div>
+                    <div className="flex-shrink-0 flex flex-col items-end gap-1.5"><span className={cn('text-[10px] font-bold px-2 py-0.5 rounded uppercase', bullish ? 'bg-[hsl(var(--bull))]/15 text-[hsl(var(--bull))] dark:text-[hsl(var(--bull))]' : 'bg-[hsl(var(--bear))]/15 text-[hsl(var(--bear))] dark:text-[hsl(var(--bear))]')}>{label}</span><span className="text-[10px] text-muted-foreground font-mono">{timeInfo.text}</span>{timeInfo.delayed && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 border border-amber-500/30 whitespace-nowrap">源延迟</span>}</div>
                   </div>
                   {(summaryZh || reasoning) && (
                     <div className="pl-5 border-t border-border/10 mt-1.5 pt-2 space-y-1.5">{summaryZh && <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2"><HighlightedText text={summaryZh} /></p>}{reasoning && <div className="flex items-start gap-1.5"><span className="text-[9px] text-indigo-400 font-mono shrink-0 mt-0.5 uppercase tracking-wider">AI Insight:</span><p className="text-[10px] text-muted-foreground/60 italic line-clamp-2"><HighlightedText text={reasoning} /></p></div>}</div>

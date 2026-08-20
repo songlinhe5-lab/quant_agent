@@ -21,7 +21,7 @@ interface OptionVolData {
 function greeksTone(v: number | undefined, positiveGood = true): string {
   if (v == null || Number.isNaN(v)) return 'text-slate-300'
   const good = positiveGood ? v >= 0 : v <= 0
-  return good ? 'text-[#34D399]' : 'text-[#F87171]'
+  return good ? 'text-[hsl(var(--bull))]' : 'text-[hsl(var(--bear))]'
 }
 
 export function OptionVolatilityPanel({ ticker = 'US.AAPL260320C200000' }: { ticker?: string }) {
@@ -70,7 +70,7 @@ export function OptionVolatilityPanel({ ticker = 'US.AAPL260320C200000' }: { tic
       <div className="grid grid-cols-3 gap-2 p-3">
         <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2">
           <div className="text-[10px] text-slate-500">隐含波动率 IV</div>
-          <div className="text-base font-semibold font-mono text-[#8b5cf6]">{data.iv != null ? (data.iv * 100).toFixed(1) + '%' : '--'}</div>
+          <div className="text-base font-semibold font-mono text-[hsl(var(--ai))]">{data.iv != null ? (data.iv * 100).toFixed(1) + '%' : '--'}</div>
         </div>
         <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2">
           <div className="text-[10px] text-slate-500">历史波动率 HV</div>
@@ -78,7 +78,7 @@ export function OptionVolatilityPanel({ ticker = 'US.AAPL260320C200000' }: { tic
         </div>
         <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2">
           <div className="text-[10px] text-slate-500">IV-HV 价差</div>
-          <div className={'text-base font-semibold font-mono ' + (data.iv != null && data.hv != null ? (data.iv - data.hv >= 0 ? 'text-[#34D399]' : 'text-[#F87171]') : 'text-slate-300')}>
+          <div className={'text-base font-semibold font-mono ' + (data.iv != null && data.hv != null ? (data.iv - data.hv >= 0 ? 'text-[hsl(var(--bull))]' : 'text-[hsl(var(--bear))]') : 'text-slate-300')}>
             {data.iv != null && data.hv != null ? (data.iv - data.hv >= 0 ? '+' : '') + ((data.iv - data.hv) * 100).toFixed(1) + '%' : '--'}
           </div>
         </div>

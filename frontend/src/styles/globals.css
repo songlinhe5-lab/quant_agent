@@ -41,11 +41,16 @@
   /* PROD-04: 场景模式 */
   --density-scale: 1;
   --scene-accent: 38 92% 50%;
+
+  /* FE-UIE: 统一圆角与表面令牌（对齐市场脉搏看板风格） */
+  --radius-card: 0.875rem;
+  --radius-pill: 9999px;
+  --surface-glow: 0 0 0 1px hsl(0 0% 100% / 0.06);
 }
 
 .dark {
   /* FE-25 对齐 docs/uiue 方案：深色金融终端，背景 #0F0F14 + 面板分层 */
-  --background: 240 14% 7%;
+  --background: 240 16% 4%;
   --foreground: 210 20% 98%;
   --card: 227 17% 10%;          /* panel #16181F */
   --card-foreground: 210 20% 98%;
@@ -95,17 +100,41 @@ body {
 }
 
 @layer components {
-  /* FE-25: 面板卡（对齐方案：深色实色面板 #16181F + 白半透明细描边，替代玻璃模糊） */
+  /* FE-25: 面板卡（对齐方案：深色实色面板 + 白半透明细描边，替代玻璃模糊） */
   .glass-card {
-    @apply border bg-secondary/60;
+    @apply border;
+    border-radius: var(--radius-card);
     border-color: hsl(var(--border) / 0.35);
     background-color: hsl(var(--card));
   }
 
   .dark .glass-card {
-    @apply bg-secondary/60;
-    border-color: hsl(0 0% 100% / 0.08);
+    border-radius: var(--radius-card);
+    border-color: hsl(0 0% 100% / 0.06);
     background-color: hsl(var(--card));
+  }
+
+  /* FE-UIE: 分段标签（截图「全部/股指/利率/外汇/商品/加密」pill 分组） */
+  .segment-tabs {
+    @apply inline-flex items-center gap-1 p-0.5 rounded-full border;
+    border-color: hsl(0 0% 100% / 0.08);
+    background-color: hsl(var(--card) / 0.6);
+  }
+  .segment-tabs .seg-item {
+    @apply px-3 py-1 rounded-full text-[11px] font-medium transition-colors;
+    color: hsl(220 9% 60%);
+  }
+  .segment-tabs .seg-item:hover {
+    color: hsl(0 0% 96%);
+  }
+  .segment-tabs .seg-item[data-active='true'] {
+    background-color: hsl(0 0% 100% / 0.92);
+    color: hsl(240 16% 4%);
+  }
+
+  /* FE-UIE: 微型趋势线容器（截图表格内 sparkline） */
+  .sparkline {
+    @apply block w-full h-6;
   }
 
   /* FE-11: STALE 降饱和 */

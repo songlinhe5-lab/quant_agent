@@ -1,6 +1,7 @@
 import { useRef, useEffect } from 'react'
 import { useTheme } from 'next-themes'
 import * as echarts from 'echarts'
+import { MARKET_COLORS } from '@/lib/constants'
 
 /** ECharts underwater drawdown series with max-DD mark area/point. */
 export function DrawdownChart({ drawdownStats }: { drawdownStats: any }) {
@@ -18,7 +19,7 @@ export function DrawdownChart({ drawdownStats }: { drawdownStats: any }) {
     const isDark = theme === 'dark'
     const textColor = isDark ? '#94a3b8' : '#64748b'
     const splitLineColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'
-    const ddColor = isDark ? '#f87171' : '#dc2626'
+    const ddColor = MARKET_COLORS.bear
     const areaColor = isDark ? 'rgba(248, 113, 113, 0.3)' : 'rgba(220, 38, 38, 0.3)'
 
     const dates = drawdownStats.data.map((d: any) => d.date)

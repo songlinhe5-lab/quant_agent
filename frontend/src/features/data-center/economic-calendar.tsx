@@ -69,7 +69,7 @@ export function EconomicCalendar({
           </select>
           <div className="flex items-center bg-secondary/30 rounded-full p-0.5 border border-border/20">
             {[
-              { id: 'high', label: '高', color: 'text-[#EF4444] dark:text-[#F87171]', bg: 'bg-[#F87171]/15' },
+              { id: 'high', label: '高', color: 'text-[hsl(var(--bear))] dark:text-[hsl(var(--bear))]', bg: 'bg-[hsl(var(--bear))]/15' },
               { id: 'medium', label: '中', color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500/15' },
               { id: 'low', label: '低', color: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-500/15' }
             ].map(imp => {
@@ -156,23 +156,23 @@ export function EconomicCalendar({
                   const invert = /失业|unemployment|jobless|claims/.test(evName); // 智能反转失业率等逆向指标
                   const isBetter = aNum > fNum;
                   deviationArrow = aNum > fNum ? "↑" : "↓";
-                  actualColor = (isBetter && !invert) || (!isBetter && invert) ? "text-[#10B981] dark:text-[#34D399]" : "text-[#EF4444] dark:text-[#F87171]";
+                  actualColor = (isBetter && !invert) || (!isBetter && invert) ? "text-[hsl(var(--bull))] dark:text-[hsl(var(--bull))]" : "text-[hsl(var(--bear))] dark:text-[hsl(var(--bear))]";
                 }
               }
 
               return (
-                <tr key={i} onClick={() => setSelectedEvent(ev)} className={cn('transition-all cursor-pointer', isHigh ? 'bg-[#F87171]/5 hover:bg-[#F87171]/10 border-l-2 border-l-[#F87171]' : 'opacity-80 hover:opacity-100 hover:bg-slate-50 dark:hover:bg-secondary/30')}>
+                <tr key={i} onClick={() => setSelectedEvent(ev)} className={cn('transition-all cursor-pointer', isHigh ? 'bg-[hsl(var(--bear))]/5 hover:bg-[hsl(var(--bear))]/10 border-l-2 border-l-[hsl(var(--bear))]' : 'opacity-80 hover:opacity-100 hover:bg-slate-50 dark:hover:bg-secondary/30')}>
                   <td className="px-3 py-2 font-mono text-[9px] text-slate-700 dark:text-slate-300 whitespace-nowrap">{dd}</td>
                   <td className="px-2 py-2 whitespace-nowrap">
                     <div className="font-mono text-[9px] text-slate-700 dark:text-slate-300 mb-1.5">{dt}</div>
                     <EventCountdown dateIso={ev.date} actual={ev.actual} onRefresh={handleManualRefresh} />
                   </td>
                   <td className="px-2 py-2">
-                    <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded", isHigh ? "bg-[#F87171]/15 text-[#EF4444] dark:text-[#F87171]" : "bg-secondary/60 text-slate-700 dark:text-slate-300")}>{ev.country}</span>
+                    <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded", isHigh ? "bg-[hsl(var(--bear))]/15 text-[hsl(var(--bear))] dark:text-[hsl(var(--bear))]" : "bg-secondary/60 text-slate-700 dark:text-slate-300")}>{ev.country}</span>
                     {(() => { const m = macroSourceMeta(ev.source); return <span className={cn("mt-1 block text-[8px] font-medium px-1 py-0.5 rounded w-fit", m.cls)}>{m.label}</span> })()}
                   </td>
                   <td className={cn("px-2 py-2 leading-tight", isHigh ? "font-bold text-foreground" : "font-medium text-slate-700 dark:text-slate-300 text-[10px]")}>{ev.event_zh || ev.event_cn || ev.title_zh || ev.event}</td>
-                  <td className="px-2 py-2 text-center"><span className={cn('inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold tracking-widest', isHigh ? 'text-[#EF4444] dark:text-[#F87171]' : isLow ? 'text-sky-600/70 dark:text-sky-400/70' : 'text-amber-500/70 dark:text-amber-400/70')}>{isHigh ? '●●●' : isLow ? '●' : '●●'}</span></td>
+                  <td className="px-2 py-2 text-center"><span className={cn('inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold tracking-widest', isHigh ? 'text-[hsl(var(--bear))] dark:text-[hsl(var(--bear))]' : isLow ? 'text-sky-600/70 dark:text-sky-400/70' : 'text-amber-500/70 dark:text-amber-400/70')}>{isHigh ? '●●●' : isLow ? '●' : '●●'}</span></td>
                   <td className={cn("px-2 py-2 text-right font-mono text-[10px] whitespace-nowrap", ev.actual && "font-bold", actualColor)}>
                     {ev.actual || '— 待公布'}
                     {deviationArrow && <span className="ml-0.5 inline-block">{deviationArrow}</span>}

@@ -27,7 +27,7 @@ export function MacroRiskRadar({
       if (!indicators.length) return null
       const text = isDark ? ECHART_DARK.text : '#64748b'
       const split = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'
-      const cur = isDark ? '#34D399' : '#10B981'
+      const cur = 'hsl(var(--bull))'
       return {
         backgroundColor: 'transparent',
         tooltip: {
@@ -93,7 +93,7 @@ export function MacroRiskRadar({
         <div ref={chartRef} className="w-full h-full" />
       </div>
       <div className="px-4 py-1.5 border-t border-border/20 flex items-center gap-4 text-[10px]">
-        <span className="flex items-center gap-1.5"><span className="inline-block h-0.5 w-4 bg-[#10B981] dark:bg-[#34D399] rounded" />当前</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block h-0.5 w-4 bg-[hsl(var(--bull))] rounded" />当前</span>
         <span className="flex items-center gap-1.5"><span className="inline-block h-0.5 w-4 border-t border-dashed border-muted-foreground/50" />基准</span>
         <span className="ml-auto text-[9px] text-muted-foreground italic">{'>'}70=乐观</span>
       </div>

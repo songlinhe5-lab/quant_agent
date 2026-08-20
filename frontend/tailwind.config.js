@@ -61,6 +61,8 @@ export default {
       },
       borderRadius: {
         lg: 'var(--radius)',
+        card: 'var(--radius-card)',
+        pill: 'var(--radius-pill)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
       },

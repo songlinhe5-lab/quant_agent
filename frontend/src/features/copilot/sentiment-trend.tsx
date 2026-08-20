@@ -47,7 +47,7 @@ export function PCRatioTrendChart() {
       if (!data.length) return null
       const text = isDark ? ECHART_DARK.text : '#64748b'
       const split = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'
-      const purple = isDark ? '#8b5cf6' : '#7c3aed'
+      const purple = isDark ? 'hsl(var(--ai))' : '#7c3aed'
       return {
         backgroundColor: 'transparent',
         grid: { top: 24, right: 48, bottom: 24, left: 40 },
@@ -102,7 +102,7 @@ export function PCRatioTrendChart() {
               symbol: 'none',
               data: [{ yAxis: 1.0 }],
               lineStyle: { color: isDark ? 'rgba(246,70,93,0.5)' : 'rgba(225,29,72,0.5)', type: 'dashed' },
-              label: { formatter: '1.0 恐慌分水岭', color: isDark ? '#F87171' : '#e11d48', fontSize: 9, position: 'insideStartTop' },
+              label: { formatter: '1.0 恐慌分水岭', color: isDark ? 'hsl(var(--bear))' : 'hsl(var(--bear))', fontSize: 9, position: 'insideStartTop' },
             },
           },
           {
@@ -111,7 +111,7 @@ export function PCRatioTrendChart() {
             yAxisIndex: 1,
             data: data.map((d) => d.vix),
             showSymbol: false,
-            lineStyle: { color: isDark ? '#fbbf24' : '#f59e0b', width: 2 },
+            lineStyle: { color: isDark ? '#fbbf24' : 'hsl(var(--warn))', width: 2 },
           },
         ],
       }
@@ -137,8 +137,8 @@ export function PCRatioTrendChart() {
             <span className={cn(
               'text-xs font-bold font-mono px-2 py-0.5 rounded',
               currentPC > 1.0
-                ? 'bg-[#F87171]/15 text-[#e11d48] dark:text-[#F87171]'
-                : 'bg-[#34D399]/15 text-[#059669] dark:text-[#34D399]',
+                ? 'bg-[hsl(var(--bear))]/15 text-[hsl(var(--bear))] dark:text-[hsl(var(--bear))]'
+                : 'bg-[hsl(var(--bull))]/15 text-[hsl(var(--bull))] dark:text-[hsl(var(--bull))]',
             )}>
               P/C: {currentPC.toFixed(2)}
             </span>

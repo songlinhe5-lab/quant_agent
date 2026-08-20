@@ -115,7 +115,7 @@ export function FedWatchPanel() {
               下次 FOMC&nbsp;
               <span className="text-foreground/80">{String(data.next_meeting_date).slice(5)}</span>
               <span className="mx-1 text-muted-foreground/40">·</span>
-              <span className="text-[#EF4444] dark:text-[#F87171] font-bold">
+              <span className="text-[hsl(var(--bear))] dark:text-[hsl(var(--bear))] font-bold">
                 降息概率 {data.cut_probability != null ? `${Math.round(data.cut_probability * 100)}%` : '--'}
               </span>
             </span>
@@ -130,7 +130,7 @@ export function FedWatchPanel() {
       <div className="grid grid-cols-2 gap-2 p-3">
         <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2">
           <div className="text-[10px] text-slate-500">下次会议隐含利率</div>
-          <div className="text-lg font-semibold font-mono text-[#f59e0b]">
+          <div className="text-lg font-semibold font-mono text-[hsl(var(--warn))]">
             {data.next_meeting_implied_rate != null ? data.next_meeting_implied_rate.toFixed(2) + '%' : '--'}
           </div>
         </div>

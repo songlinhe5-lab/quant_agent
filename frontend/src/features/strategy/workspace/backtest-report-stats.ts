@@ -1,4 +1,5 @@
 import type { HistogramBin } from './returns-histogram-chart'
+import { RISK_COLORS } from '@/lib/constants'
 
 export function buildTearSheetMetrics(metrics: Record<string, any>) {
   return [
@@ -118,16 +119,12 @@ export function computeDrawdownStats(equityCurve: any[] | undefined) {
 }
 
 export function computeReturnsHistogram(equityCurve: any[] | undefined): HistogramBin[] {
-  const defaultData: HistogramBin[] = [
-    { range: '< -5%', count: 0, color: '#f87171', lightColor: '#dc2626' },
-    { range: '-5~-3%', count: 0, color: '#fca5a5', lightColor: '#ef4444' },
-    { range: '-3~-1%', count: 0, color: '#fcd34d', lightColor: '#f59e0b' },
-    { range: '-1~0%', count: 0, color: '#d1d5db', lightColor: '#9ca3af' },
-    { range: '0~1%', count: 0, color: '#6ee7b7', lightColor: '#10b981' },
-    { range: '1~3%', count: 0, color: '#34d399', lightColor: '#059669' },
-    { range: '3~5%', count: 0, color: '#10b981', lightColor: '#047857' },
-    { range: '> 5%', count: 0, color: '#059669', lightColor: '#064e3b' },
-  ]
+  const defaultData: HistogramBin[] = RISK_COLORS.histogram.map((h) => ({
+    range: h.range,
+    count: 0,
+    color: h.dark,
+    lightColor: h.light,
+  }))
 
   if (!equityCurve || equityCurve.length < 2) return defaultData
 

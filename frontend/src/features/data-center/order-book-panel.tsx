@@ -21,7 +21,7 @@ interface OrderBookData {
 }
 
 function priceTone(side: 'bid' | 'ask'): string {
-  return side === 'bid' ? 'text-[#34D399]' : 'text-[#F87171]'
+  return side === 'bid' ? 'text-[hsl(var(--bull))]' : 'text-[hsl(var(--bear))]'
 }
 
 export function OrderBookPanel({ ticker = 'HK.00700' }: { ticker?: string }) {
@@ -73,16 +73,16 @@ export function OrderBookPanel({ ticker = 'HK.00700' }: { ticker?: string }) {
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">L2 盘口深度 (Futu)</span>
         <span className="font-mono text-xs text-foreground/80">{data.ticker}</span>
         {data.spread != null && (
-          <span className="ml-auto text-[10px] font-mono text-[#8b5cf6]">价差 {data.spread}</span>
+          <span className="ml-auto text-[10px] font-mono text-[hsl(var(--ai))]">价差 {data.spread}</span>
         )}
       </div>
       <div className="grid grid-cols-2 gap-2 p-3">
         {/* 卖盘（倒序显示，最优卖价贴近中间） */}
         <div className="space-y-1">
-          <div className="text-[9px] text-[#F87171] font-semibold mb-0.5">卖盘 ASK</div>
+          <div className="text-[9px] text-[hsl(var(--bear))] font-semibold mb-0.5">卖盘 ASK</div>
           {[...asks].reverse().map((a, i) => (
-            <div key={'a' + i} className="relative flex items-center justify-between px-2 py-1 rounded text-[11px] bg-[#F87171]/5">
-              <div className="absolute left-0 top-0 bottom-0 bg-[#F87171]/10" style={{ width: `${((a.size || 0) / maxSize) * 100}%` }} />
+            <div key={'a' + i} className="relative flex items-center justify-between px-2 py-1 rounded text-[11px] bg-[hsl(var(--bear))]/5">
+              <div className="absolute left-0 top-0 bottom-0 bg-[hsl(var(--bear))]/10" style={{ width: `${((a.size || 0) / maxSize) * 100}%` }} />
               <span className={'relative font-mono ' + priceTone('ask')}>{a.price?.toFixed(2)}</span>
               <span className="relative font-mono text-slate-400">{a.size}</span>
             </div>
@@ -90,10 +90,10 @@ export function OrderBookPanel({ ticker = 'HK.00700' }: { ticker?: string }) {
         </div>
         {/* 买盘 */}
         <div className="space-y-1">
-          <div className="text-[9px] text-[#34D399] font-semibold mb-0.5">买盘 BID</div>
+          <div className="text-[9px] text-[hsl(var(--bull))] font-semibold mb-0.5">买盘 BID</div>
           {bids.map((b, i) => (
-            <div key={'b' + i} className="relative flex items-center justify-between px-2 py-1 rounded text-[11px] bg-[#34D399]/5">
-              <div className="absolute left-0 top-0 bottom-0 bg-[#34D399]/10" style={{ width: `${((b.size || 0) / maxSize) * 100}%` }} />
+            <div key={'b' + i} className="relative flex items-center justify-between px-2 py-1 rounded text-[11px] bg-[hsl(var(--bull))]/5">
+              <div className="absolute left-0 top-0 bottom-0 bg-[hsl(var(--bull))]/10" style={{ width: `${((b.size || 0) / maxSize) * 100}%` }} />
               <span className={'relative font-mono ' + priceTone('bid')}>{b.price?.toFixed(2)}</span>
               <span className="relative font-mono text-slate-400">{b.size}</span>
             </div>
@@ -102,7 +102,7 @@ export function OrderBookPanel({ ticker = 'HK.00700' }: { ticker?: string }) {
       </div>
       {data.imbalance != null && (
         <div className="px-3 pb-2 text-[10px] font-mono text-slate-400">
-          买卖盘量比 (Bid/Ask): <span className={data.imbalance >= 1 ? 'text-[#34D399]' : 'text-[#F87171]'}>{data.imbalance.toFixed(2)}</span>
+          买卖盘量比 (Bid/Ask): <span className={data.imbalance >= 1 ? 'text-[hsl(var(--bull))]' : 'text-[hsl(var(--bear))]'}>{data.imbalance.toFixed(2)}</span>
           {data.imbalance >= 1.5 ? ' · 买盘主导' : data.imbalance <= 0.67 ? ' · 卖盘压制' : ' · 均衡'}
         </div>
       )}

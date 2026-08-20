@@ -4,6 +4,7 @@ import { apiClient } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { useTheme } from 'next-themes'
 import { useEChart, ECHART_DARK } from '@/hooks/use-echart'
+import { SEMANTIC_COLORS } from '@/lib/constants'
 
 interface TimeSeriesPoint {
   time: string
@@ -137,7 +138,7 @@ export function ErrorRateTrendChart({ source, className }: ErrorRateTrendChartPr
             type: 'bar',
             data: data.time_series.map((p) => p.calls),
             itemStyle: {
-              color: '#3b82f6',
+              color: SEMANTIC_COLORS.info,
               borderRadius: [4, 4, 0, 0],
             },
             barWidth: '40%',
@@ -147,7 +148,7 @@ export function ErrorRateTrendChart({ source, className }: ErrorRateTrendChartPr
             type: 'bar',
             data: data.time_series.map((p) => p.errors),
             itemStyle: {
-              color: '#ef4444',
+              color: SEMANTIC_COLORS.bear,
               borderRadius: [4, 4, 0, 0],
             },
             barWidth: '40%',
@@ -158,11 +159,11 @@ export function ErrorRateTrendChart({ source, className }: ErrorRateTrendChartPr
             yAxisIndex: 1,
             data: data.time_series.map((p) => p.error_rate),
             lineStyle: {
-              color: '#f59e0b',
+              color: SEMANTIC_COLORS.warn,
               width: 2,
             },
             itemStyle: {
-              color: '#f59e0b',
+              color: SEMANTIC_COLORS.warn,
             },
             symbol: 'circle',
             symbolSize: 6,

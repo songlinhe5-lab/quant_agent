@@ -4,6 +4,7 @@ import { apiClient } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { useTheme } from 'next-themes'
 import { useEChart, ECHART_DARK } from '@/hooks/use-echart'
+import { SEMANTIC_COLORS } from '@/lib/constants'
 
 interface LatencyBucket {
   range: string
@@ -102,7 +103,7 @@ export function LatencyDistributionChart({ source, className }: LatencyDistribut
             type: 'bar',
             data: data.buckets.map((b) => b.count),
             itemStyle: {
-              color: '#8b5cf6',
+              color: SEMANTIC_COLORS.ai,
               borderRadius: [4, 4, 0, 0],
             },
             emphasis: {

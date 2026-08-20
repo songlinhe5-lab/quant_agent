@@ -1,3 +1,5 @@
 export { EmptyState, default as EmptyStateDefault } from './EmptyState'
 export { DataSourceBadge, default as DataSourceBadgeDefault } from './DataSourceBadge'
 export { InitOverlay, default as InitOverlayDefault } from './InitOverlay'
+export { Sparkline } from './sparkline'
+export { SegmentTabs, type SegmentItem } from './segment-tabs'

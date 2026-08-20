@@ -186,17 +186,17 @@ function EtfFlowSection() {
                     <div className="absolute left-1/2 top-0 bottom-0 w-px bg-border/60" />
                     {isIn ? (
                       <div
-                        className="absolute top-0.5 bottom-0.5 bg-[#10B981]/70 rounded-r-sm"
+                        className="absolute top-0.5 bottom-0.5 bg-[hsl(var(--bull))]/70 rounded-r-sm"
                         style={{ left: '50%', width: `${pct / 2}%` }}
                       />
                     ) : (
                       <div
-                        className="absolute top-0.5 bottom-0.5 bg-[#EF4444]/70 rounded-l-sm"
+                        className="absolute top-0.5 bottom-0.5 bg-[hsl(var(--bear))]/70 rounded-l-sm"
                         style={{ right: '50%', width: `${pct / 2}%` }}
                       />
                     )}
                   </div>
-                  <div className={cn('w-16 text-right text-[11px] font-mono tabular-nums shrink-0', isIn ? 'text-[#10B981] dark:text-[#34D399]' : 'text-[#EF4444] dark:text-[#F87171]')}>
+                  <div className={cn('w-16 text-right text-[11px] font-mono tabular-nums shrink-0', isIn ? 'text-[hsl(var(--bull))] dark:text-[hsl(var(--bull))]' : 'text-[hsl(var(--bear))] dark:text-[hsl(var(--bear))]')}>
                     {isIn ? '+' : ''}{s.flow.toFixed(2)}
                   </div>
                 </div>
@@ -212,7 +212,7 @@ function EtfFlowSection() {
         <Card>
           <CardHeader title="美股主力 / 大单净流入" sub="核心 ETF 主力（特大单+大单）净买卖额" />
           <div className="p-3 pb-1.5">
-            <div className="text-2xl font-bold font-mono text-[#10B981] dark:text-[#34D399]">
+            <div className="text-2xl font-bold font-mono text-[hsl(var(--bull))] dark:text-[hsl(var(--bull))]">
               +2.0<span className="text-base ml-1">亿美元</span>
             </div>
             <div className="text-[10px] text-muted-foreground mt-0.5">净流入贡献 Top</div>
@@ -221,7 +221,7 @@ function EtfFlowSection() {
             {US_MAIN_FORCE_TOP.map((t) => (
               <div key={t.name} className="flex items-center justify-between text-xs">
                 <span className="text-foreground/90 truncate flex-1">{t.name}</span>
-                <span className={cn('font-mono tabular-nums shrink-0 ml-2', t.flow > 0 ? 'text-[#10B981] dark:text-[#34D399]' : t.flow < 0 ? 'text-[#EF4444] dark:text-[#F87171]' : 'text-muted-foreground')}>
+                <span className={cn('font-mono tabular-nums shrink-0 ml-2', t.flow > 0 ? 'text-[hsl(var(--bull))] dark:text-[hsl(var(--bull))]' : t.flow < 0 ? 'text-[hsl(var(--bear))] dark:text-[hsl(var(--bear))]' : 'text-muted-foreground')}>
                   {t.flow > 0 ? '+' : ''}{t.flow.toFixed(1)}
                 </span>
               </div>

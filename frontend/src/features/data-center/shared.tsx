@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 import { useTheme } from 'next-themes'
 import { TrendingUp, TrendingDown } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { Sparkline } from '@/components/ui/data-display/sparkline'
 
 export const FINANCIAL_TERMS = [
   // 中文实体
@@ -25,8 +26,8 @@ export function getHighlightColor(term: string) {
   const bullish = ['多头', '做多', '看涨', '新高', '上涨', '飙升', '超预期', '降息', '降准', 'bullish', 'long', 'surge', 'rate cut']
   const bearish = ['空头', '做空', '看跌', '新低', '下跌', '暴跌', '低于预期', '加息', 'bearish', 'short', 'plunge', 'rate hike']
 
-  if (bullish.includes(t)) return 'text-[#10B981] dark:text-[#34D399] bg-[#34D399]/10'
-  if (bearish.includes(t)) return 'text-[#EF4444] dark:text-[#F87171] bg-[#F87171]/10'
+  if (bullish.includes(t)) return 'text-[hsl(var(--bull))] dark:text-[hsl(var(--bull))] bg-[hsl(var(--bull))]/10'
+  if (bearish.includes(t)) return 'text-[hsl(var(--bear))] dark:text-[hsl(var(--bear))] bg-[hsl(var(--bear))]/10'
   return 'text-sky-600 dark:text-sky-400 bg-sky-500/10' // 默认中性蓝色
 }
 
@@ -59,7 +60,7 @@ export function MiniTrendLine({ data, isPositive }: { data: number[], isPositive
   const pts = data.map((d, i) => `${(i / (data.length - 1)) * 48},${20 - ((d - min) / range) * 16}`).join(' L ')
   return (
     <svg width="48" height="20" viewBox="0 0 48 20" className="overflow-visible" aria-hidden="true">
-      <path d={`M ${pts}`} fill="none" stroke={isPositive ? (isDark ? '#34D399' : '#10B981') : (isDark ? '#F87171' : '#EF4444')} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={`M ${pts}`} fill="none" stroke={isPositive ? (isDark ? 'hsl(var(--bull))' : 'hsl(var(--bull))') : (isDark ? 'hsl(var(--bear))' : 'hsl(var(--bear))')} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -125,15 +126,19 @@ export function AssetButton({ asset }: { asset: any }) {
           </div>
           <span className="text-xs font-bold text-foreground/90 mt-0.5 truncate">{asset.name}</span>
         </div>
-        <div className={cn('px-1.5 py-0.5 rounded-md flex items-center gap-0.5 text-[11px] font-mono font-bold flex-shrink-0', (asset.change ?? 0) >= 0 ? 'bg-[#34D399]/15 text-[#10B981] dark:text-[#34D399]' : 'bg-[#F87171]/15 text-[#EF4444] dark:text-[#F87171]')}>
+        <div className={cn('px-1.5 py-0.5 rounded-md flex items-center gap-0.5 text-[11px] font-mono font-bold flex-shrink-0', (asset.change ?? 0) >= 0 ? 'bg-[hsl(var(--bull))]/15 text-[hsl(var(--bull))]' : 'bg-[hsl(var(--bear))]/15 text-[hsl(var(--bear))]')}>
           {(asset.change ?? 0) >= 0 ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}{(asset.change ?? 0) >= 0 ? '+' : ''}{(asset.change ?? 0).toFixed(2)}%
         </div>
       </div>
       <div className="flex items-end justify-between w-full mt-auto">
-        <span className={cn('text-xl font-bold font-mono tabular-nums tracking-tight transition-colors duration-500', flash === 'up' ? 'text-[#10B981] dark:text-[#34D399]' : flash === 'down' ? 'text-[#EF4444] dark:text-[#F87171]' : 'text-foreground')}>
+        <span className={cn('text-xl font-bold font-mono tabular-nums tracking-tight transition-colors duration-500', flash === 'up' ? 'text-[hsl(var(--bull))]' : flash === 'down' ? 'text-[hsl(var(--bear))]' : 'text-foreground')}>
           {asset.value != null ? asset.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--'}
         </span>
-        {asset.sparkline && <div className="opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0"><MiniTrendLine data={asset.sparkline} isPositive={asset.change >= 0} /></div>}
+        {asset.sparkline && (
+          <div className="opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
+            <Sparkline data={asset.sparkline} tone={asset.change >= 0 ? 'bull' : 'bear'} />
+          </div>
+        )}
       </div>
       {/* 💡 数据来源与更新时间 */}
       <div className="mt-2 pt-1.5 border-t border-border/10">
