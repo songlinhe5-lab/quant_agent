@@ -1279,6 +1279,39 @@ class DataSourceRouter:
         }
         is_trade_action = remote_action in _FUTU_TRADE_ACTIONS
 
+        # 💡 低频扩展行情 Redis 缓存（避免每次穿透 OpenD, 有限流风险）
+        # 只缓存数据变化慢的扩展行情; QUOTE/HISTORY 实时行情不缓存, 交易类/账户类不缓存。
+        _FUTU_CACHE_TTL = {
+            "CAPITAL_DISTRIBUTION": 300,
+            "HEAT_MAP": 300,
+            "FUND_FLOW": 300,
+            "ANALYST_CONSENSUS": 3600,
+            "FED_WATCH": 3600,
+        }
+        _FUTU_CACHE_PREFIX = "quant:cache:futu"
+        cache_ttl = _FUTU_CACHE_TTL.get(remote_action)
+        cache_key: Optional[str] = None
+        futu_redis = None
+        if cache_ttl:
+            try:
+                from backend.core.redis_client import redis_client
+
+                futu_redis = redis_client
+                cache_key = (
+                    f"{_FUTU_CACHE_PREFIX}:{remote_action}:"
+                    + hashlib.md5(json.dumps(norm_params, sort_keys=True).encode()).hexdigest()[:10]
+                )
+                cached_raw = await futu_redis.get(cache_key)
+                if cached_raw:
+                    cached = json.loads(cached_raw)
+                    cached.setdefault("source", "futu")
+                    cached["cached"] = True
+                    return cached
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"[Futu] Redis 缓存读取失败(直连子服务): {e}")
+                cache_key = None
+                futu_redis = None
+
         try:
             payload = {
                 "source": "futu",
@@ -1290,6 +1323,12 @@ class DataSourceRouter:
                 await self._update_node_status(
                     remote_node.name, success=True, action=remote_action, record_breaker=record_breaker
                 )
+                # 写入 Redis 缓存(仅成功响应)
+                if cache_key is not None and futu_redis is not None and cache_ttl:
+                    try:
+                        await futu_redis.set(cache_key, json.dumps(result, ensure_ascii=False), ex=cache_ttl)
+                    except Exception as e:  # noqa: BLE001
+                        logger.debug(f"[Futu] Redis 缓存写入失败: {e}")
                 # 直接透传子服务信封 (含 status/data 字段)
                 return result
             if is_trade_action:

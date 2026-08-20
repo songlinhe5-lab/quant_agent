@@ -150,6 +150,113 @@ class TestMergeAndStale:
         assert res.error and res.error.code == "DATA_STALE"
 
 
+class TestFedWatchPanel:
+    """get_fed_watch_panel 字段名兼容 + 利率区间列识别。"""
+
+    @pytest.mark.asyncio
+    async def test_fed_watch_panel_accepts_data_field(self):
+        """子服务返回 "data"(list) 字段时也能合成 panel (此前误读 "df" 导致空)。"""
+        # 用 SimpleNamespace 而非 AsyncMock, 避免 is_error 被 mock 成 truthy 提前 return
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, patch
+
+        from backend.services.datasource.business.macro import macro_data_service
+
+        fake = SimpleNamespace(
+            is_error=False,
+            error=None,
+            data={
+                "status": "success",
+                "count": 2,
+                "data": [
+                    {"会议日期": "2026-09-16", "50-75bp": 70.0, "75-100bp": 30.0},
+                    {"会议日期": "2026-12-16", "50-75bp": 55.0, "75-100bp": 45.0},
+                ],
+            },
+        )
+        with patch.object(macro_data_service._facade, "_dispatch", new=AsyncMock(return_value=fake)):
+            res = await macro_data_service.get_fed_watch_panel()
+        assert not res.is_error
+        data = res.data
+        panel = data.get("panel", {})
+        # 应合成 panel 且 available=true
+        assert panel.get("available") is True
+        assert len(panel.get("meetings", [])) == 2
+        # 下一会议 2026-09-16 隐含利率为最概率区间(50-75bp)中点 = 62.5%
+        assert panel["meetings"][0]["date"] == "2026-09-16"
+        assert abs(panel["meetings"][0]["implied_rate"] - 62.5) < 1e-3
+
+    @pytest.mark.asyncio
+    async def test_fed_watch_panel_empty_df_gives_unavailable(self):
+        """子服务返回空 data 时 panel available=false, 而非崩溃。"""
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, patch
+
+        from backend.services.datasource.business.macro import macro_data_service
+
+        fake = SimpleNamespace(
+            is_error=False,
+            error=None,
+            data={"status": "success", "count": 0, "data": []},
+        )
+        with patch.object(macro_data_service._facade, "_dispatch", new=AsyncMock(return_value=fake)):
+            res = await macro_data_service.get_fed_watch_panel()
+        assert not res.is_error
+        assert res.data.get("panel", {}).get("available") is False
+
+
+class TestCapitalDistribution:
+    """facade.get_capital_distribution 派生字段与背离信号收口。"""
+
+    @pytest.mark.asyncio
+    async def test_institution_dominance_and_signals(self):
+        from unittest.mock import AsyncMock, patch
+
+        facade = DataServiceFacade()
+        fake = AsyncMock()
+        fake.is_error = False
+        fake.error = None
+        fake.data = {
+            "status": "success",
+            "source": "futu",
+            "main_net": 4000000,
+            "retail_net": 3000000,
+            "divergence": "main_in_retail_out",  # 主力流入价跌底背离
+        }
+        with patch.object(facade, "_dispatch", new=AsyncMock(return_value=fake)):
+            res = await facade.get_capital_distribution("00772.HK")
+        assert res.is_success
+        data = res.data
+        # net_total = 700万, institution_dominance = 400/700 ≈ 0.5714
+        assert data["net_total"] == 7000000
+        assert abs(data["institution_dominance"] - 0.5714) < 0.001
+        # divergence 升级为结构化信号
+        assert data["signals"]
+        assert data["signals"][0]["type"] == "main_inflow_price_down"
+        assert data["signals"][0]["direction"] == "bullish_divergence"
+
+    @pytest.mark.asyncio
+    async def test_institution_dominance_null_when_net_zero(self):
+        from unittest.mock import AsyncMock, patch
+
+        facade = DataServiceFacade()
+        fake = AsyncMock()
+        fake.is_error = False
+        fake.error = None
+        fake.data = {
+            "status": "success",
+            "source": "futu",
+            "main_net": 0,
+            "retail_net": 0,
+            "divergence": "aligned",
+        }
+        with patch.object(facade, "_dispatch", new=AsyncMock(return_value=fake)):
+            res = await facade.get_capital_distribution("00772.HK")
+        assert res.is_success
+        # net_total = 0, 避免除零, institution_dominance 应为 None
+        assert res.data["institution_dominance"] is None
+
+
 class TestNormalize:
     def test_ohlc_alias_unified(self):
         raw = {"Open": 1, "High": 2, "Low": 3, "Close": 4, "Volume": 5}

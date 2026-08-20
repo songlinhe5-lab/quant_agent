@@ -16,6 +16,7 @@ _OPTION_TTL = 300  # 期权链 5 分钟
 _FUND_FLOW_TTL = 120  # 资金流向 2 分钟
 _ORDER_BOOK_TTL = 30  # 盘口 30 秒
 _FUNDAMENTAL_TTL = 86400  # 基本面 24 小时
+_CAPITAL_DIST_TTL = 300  # 主力筹码分层 5 分钟 (与资金流同源, 可复用较短 TTL)
 _MAX_CACHE_SIZE = 200  # 单类缓存最大条目数
 
 
@@ -45,6 +46,7 @@ class CacheManager:
         self._fund_flow_cache: Dict[str, Tuple[float, Dict]] = {}
         self._order_book_cache: Dict[str, Tuple[float, Dict]] = {}
         self._fundamental_cache: Dict[str, Tuple[float, Dict]] = {}
+        self._capital_dist_cache: Dict[str, Tuple[float, Dict]] = {}
 
         # 资金流向限流与熔断
         self.ff_lock: Optional[asyncio.Lock] = None
@@ -128,6 +130,7 @@ class CacheManager:
             (self._fund_flow_cache, _FUND_FLOW_TTL),
             (self._order_book_cache, _ORDER_BOOK_TTL),
             (self._fundamental_cache, _FUNDAMENTAL_TTL),
+            (self._capital_dist_cache, _CAPITAL_DIST_TTL),
         ]
         for cache_dict, ttl in cache_configs:
             # 1. 清理过期条目
@@ -179,6 +182,14 @@ class CacheManager:
 
     def set_order_book_cache(self, key: str, timestamp: float, data: Dict):
         self._order_book_cache[key] = (timestamp, data)
+
+    # ── Capital Distribution Cache (主力筹码分层) ──────────────────
+
+    def get_capital_dist_cache(self, key: str) -> Optional[Tuple[float, Dict]]:
+        return self._capital_dist_cache.get(key)
+
+    def set_capital_dist_cache(self, key: str, timestamp: float, data: Dict):
+        self._capital_dist_cache[key] = (timestamp, data)
 
     # ── Fundamental Cache ─────────────────────────────────────────
 

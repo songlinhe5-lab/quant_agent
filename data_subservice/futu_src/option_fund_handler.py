@@ -15,7 +15,7 @@ from data_subservice._internal.circuit_breaker import get_cooldown_seconds
 from data_subservice._internal.retry_utils import with_global_retry
 
 from ._compat import safe_float
-from .cache_manager import CacheManager
+from .cache_manager import _CAPITAL_DIST_TTL, CacheManager
 from .quote_handler import _execute_unsubscriptions
 
 logger = logging.getLogger(__name__)
@@ -503,6 +503,7 @@ class OptionFundHandler:
         """获取主力筹码分层（8 档 in/out 完整明细，非聚合净流入）。
 
         支撑 G3 主力/散户背离信号。get_capital_distribution(code) → (ret, data) 二元组。
+        带 L1 内存缓存(5 分钟)，避免每次穿透 OpenD 资金分布接口(与资金流同源, 有限流风险)。
         """
         if is_unsupported_func and is_unsupported_func(ticker):
             return {"status": "error", "source": "futu", "ticker": ticker, "message": "富途原生不支持该大类资产"}
@@ -510,6 +511,13 @@ class OptionFundHandler:
         market_ticker = format_ticker_func(ticker) if format_ticker_func else ticker
         if not market_ticker:
             return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+
+        # 💡 L1 内存缓存命中直接返回(5 分钟 TTL, 与资金流同源降频)
+        cache_key = f"futu_capital_dist_{market_ticker}"
+        now = time.time()
+        cached = self.cache_mgr.get_capital_dist_cache(cache_key)
+        if cached and now - cached[0] < _CAPITAL_DIST_TTL:
+            return cached[1]
 
         if self.conn_mgr.quote_ctx is None:
             return {
@@ -554,7 +562,7 @@ class OptionFundHandler:
             retail_net = (layers["mid"]["net"] or 0) + (layers["small"]["net"] or 0)
             update_time = row.get("update_time")
 
-            return {
+            res = {
                 "status": "success",
                 "source": "futu",
                 "ticker": ticker,
@@ -572,6 +580,9 @@ class OptionFundHandler:
                     else "aligned"
                 ),
             }
+            # 写入 L1 缓存, 避免高频穿透 OpenD 资金分布接口
+            self.cache_mgr.set_capital_dist_cache(cache_key, now, res)
+            return res
         except Exception as e:  # noqa: BLE001
             logger.error("❌ get_capital_distribution 失败 %s: %s", market_ticker, e)
             return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": market_ticker}

@@ -90,6 +90,50 @@ class TestFetchFutuRemotePinnedMaster:
         assert out["data"]["data"]["last_price"] == 12
 
     @pytest.mark.asyncio
+    async def test_remote_capital_distribution_writes_redis_cache(self, remote_router):
+        """CAPITAL_DISTRIBUTION 属低频扩展行情, 成功响应应写入 Redis 缓存。"""
+        fake_resp = {
+            "status": "success",
+            "data": {"status": "success", "data": {"main_net": 4000000, "retail_net": 3000000}},
+        }
+        fake_redis = AsyncMock()
+        fake_redis.get = AsyncMock(return_value=None)
+        fake_redis.set = AsyncMock()
+        with (
+            patch.object(remote_router, "_send_request", new=AsyncMock(return_value=fake_resp)),
+            patch(
+                "backend.core.redis_client.redis_client",
+                fake_redis,
+                create=True,
+            ),
+        ):
+            out = await remote_router.fetch_futu("CAPITAL_DISTRIBUTION", ticker="HK.00772")
+        assert out["status"] == "success"
+        # 应写入 Redis 缓存
+        fake_redis.set.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_remote_capital_distribution_hits_redis_cache(self, remote_router):
+        """CAPITAL_DISTRIBUTION 命中 Redis 缓存时应直接返回, 不再发远程请求。"""
+        cached = {"status": "success", "source": "futu", "data": {"main_net": 4000000, "retail_net": 3000000}}
+        fake_redis = AsyncMock()
+        fake_redis.get = AsyncMock(return_value=__import__("json").dumps(cached))
+        fake_redis.set = AsyncMock()
+        with (
+            patch.object(remote_router, "_send_request", new=AsyncMock()) as mock_send,
+            patch(
+                "backend.core.redis_client.redis_client",
+                fake_redis,
+                create=True,
+            ),
+        ):
+            out = await remote_router.fetch_futu("CAPITAL_DISTRIBUTION", ticker="HK.00772")
+        assert out["status"] == "success"
+        # 命中缓存, 不发送远程请求
+        mock_send.assert_not_awaited()
+        assert out["cached"] is True
+
+    @pytest.mark.asyncio
     async def test_remote_snapshot_maps_to_snapshot(self, remote_router):
         fake_resp = {"status": "success", "data": {"status": "success", "data": []}}
         with patch.object(remote_router, "_send_request", new=AsyncMock(return_value=fake_resp)) as mock_send:

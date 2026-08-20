@@ -126,6 +126,12 @@ class TestDataCaches:
         cm.set_fundamental_cache("fa", 1.0, {"x": 1})
         assert cm.get_fundamental_cache("fa") is not None
 
+    def test_capital_dist_roundtrip(self):
+        cm = CacheManager()
+        cm.set_capital_dist_cache("cd", 1.0, {"main_net": 4000000})
+        assert cm.get_capital_dist_cache("cd") == (1.0, {"main_net": 4000000})
+        assert cm.get_capital_dist_cache("NOPE") is None
+
 
 class TestCompressChainData:
     def _df(self):

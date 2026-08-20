@@ -285,36 +285,46 @@ class DataServiceFacade:
             institution_dominance = round(main_net / net_total, 4)
 
         # 背离信号结构化：把底层 divergence 字符串升级为可读信号
+        # ⚠️ 子服务返回的是英文枚举 (main_in_retail_out / main_out_retail_in / aligned),
+        #    此前误用中文关键词匹配("主力流入"/"价跌")导致永远落 "other", 正确信号丢失。
         signals: list[dict] = []
-        raw_div = data.get("divergence")
-        if raw_div:
-            if "主力流入" in raw_div and "价跌" in raw_div:
-                signals.append(
-                    {
-                        "type": "main_inflow_price_down",
-                        "direction": "bullish_divergence",
-                        "strength": "strong",
-                        "message": "主力净流入而价格下跌，底背离，暗吸筹码",
-                    }
-                )
-            elif "主力流出" in raw_div and "价涨" in raw_div:
-                signals.append(
-                    {
-                        "type": "main_outflow_price_up",
-                        "direction": "bearish_divergence",
-                        "strength": "strong",
-                        "message": "主力净流出而价格上涨，顶背离，派发迹象",
-                    }
-                )
-            else:
-                signals.append(
-                    {
-                        "type": "other",
-                        "direction": "neutral",
-                        "strength": "weak",
-                        "message": raw_div,
-                    }
-                )
+        raw_div = data.get("divergence") or ""
+        if raw_div == "main_in_retail_out":
+            signals.append(
+                {
+                    "type": "main_inflow_price_down",
+                    "direction": "bullish_divergence",
+                    "strength": "strong",
+                    "message": "主力净流入而散户净流出，底背离，暗吸筹码",
+                }
+            )
+        elif raw_div == "main_out_retail_in":
+            signals.append(
+                {
+                    "type": "main_outflow_price_up",
+                    "direction": "bearish_divergence",
+                    "strength": "strong",
+                    "message": "主力净流出而散户净流入，顶背离，派发迹象",
+                }
+            )
+        elif raw_div == "aligned":
+            signals.append(
+                {
+                    "type": "other",
+                    "direction": "neutral",
+                    "strength": "weak",
+                    "message": "主力与散户同向，无背离信号",
+                }
+            )
+        elif raw_div:
+            signals.append(
+                {
+                    "type": "other",
+                    "direction": "neutral",
+                    "strength": "weak",
+                    "message": raw_div,
+                }
+            )
 
         # 仅在确有派生信息时回写，避免覆盖底层已算好的字段
         data["net_total"] = net_total
