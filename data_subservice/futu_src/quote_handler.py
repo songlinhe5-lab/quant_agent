@@ -17,6 +17,28 @@ from ._compat import safe_float
 from .cache_manager import CacheManager
 
 
+def _map_heat_market(market: str) -> Any:
+    """把前端/主服务传的市场代码映射到 futu Market 枚举。
+
+    ⚠️ 关键：前端用 'A'/'CN' 表示沪深A股。实测 futu 10.10 Market 枚举
+    成员为 AU/CA/CC/EC/FX/HK/HK_FUTURE/JP/MY/NONE/SG/SH/SZ/US, **没有 CN**。
+    A股对应 Market.SH(沪)/Market.SZ(深), 因此 'A' 映射到 Market.SH(沪市 A 股板块)。
+    此前用 getattr(Market, 'A', Market.HK) 会 fallback 到港股,
+    导致 A 股热力图拿到港股数据甚至为空。
+    """
+    from futu import Market
+
+    key = market.upper()
+    if key in ("A", "CN", "CNSH", "SH"):
+        return Market.SH
+    if key == "SZ":
+        return Market.SZ
+    if key in ("HK", "US", "SG", "JP", "AU", "CA"):
+        return getattr(Market, key, Market.HK)
+    # 其他未知市场 fallback 到 HK（保持向后兼容）
+    return Market.HK
+
+
 async def _execute_unsubscriptions(conn_mgr, cache_mgr: CacheManager, evicted: list) -> None:
     """
     执行 LRU 淘汰后的实际退订操作。
@@ -188,18 +210,28 @@ class QuoteHandler:
         """获取板块/个股热力图数据（前端 ECharts treemap 数据源）。
 
         支撑 G6。get_heat_map_data(market) → (ret, data, page) 三元组。
-        market 默认 HK（港股），支持 US/SG 等。
+        market 默认 HK（港股），支持 US/SG/A(CN) 等。
         """
-        from futu import Market
-
-        mkt = getattr(Market, str(market).upper(), Market.HK)
+        # ⚠️ 市场映射：前端用 'A'/'CN' 表示沪深A股, 实测 futu Market 枚举无 CN,
+        #    'A' 映射到 Market.SH(沪市 A 股板块)。不能用 getattr(Market,'A',Market.HK)
+        #    — 会 fallback 到港股导致 A 股请求拿到港股数据。
+        mkt = _map_heat_market(str(market).upper())
         if self.conn_mgr.quote_ctx is None:
             return {"status": "error", "source": "futu", "message": "Futu OpenD 未连接"}
         if self.conn_mgr.status != "CONNECTED":
             return {"status": "error", "source": "futu", "message": "Futu OpenD 重连中，请稍后重试"}
 
         try:
-            res = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_heat_map_data, mkt)
+            from futu import HeatMapPlateType
+
+            # ⚠️ 按 futu 文档显式传 count + plate_type(行业板块), 提高港股/A股板块数据返回成功率。
+            #    默认只传 market 时部分 OpenD 配置下可能返回空板块。
+            res = await asyncio.to_thread(
+                self.conn_mgr.quote_ctx.get_heat_map_data,
+                mkt,
+                count=100,
+                plate_type=HeatMapPlateType.INDUSTRY,
+            )
             if not isinstance(res, (list, tuple)) or len(res) < 2:
                 return {"status": "error", "source": "futu", "message": f"热力图返回形态异常: {type(res)}"}
             ret, data = res[0], res[1]
@@ -401,39 +433,83 @@ class QuoteHandler:
         kt = getattr(KLType, ktype.upper(), KLType.K_DAY)
         st = getattr(SubType, ktype.upper(), SubType.K_DAY)
 
-        # 优化：优先使用 get_cur_kline (消耗订阅额度，比历史额度更宽松)
-        if not self.cache_mgr.has_topic(market_ticker, st):
-            # LRU 容量检查
-            evicted = self.cache_mgr.ensure_capacity(needed=1)
-            await _execute_unsubscriptions(self.conn_mgr, self.cache_mgr, evicted)
+        # 优化：优先使用 get_cur_kline (消耗订阅额度，比历史额度更宽松)。
+        # ⚠️ 注意：get_cur_kline 的 num 上限为 370，超限会报 invalid_parameter 并降级。
+        # 日线及以上大跨度需要最大时间数据（前端日线传 num=1000），
+        # 若走 get_cur_kline 会触发 num>370 报错再降级, 浪费一次调用, 故直接走 request_history_kline 拉满。
+        use_cur_kline = num <= 370
 
-            sub_ret, _ = await asyncio.to_thread(
-                self.conn_mgr.quote_ctx.subscribe,
-                [market_ticker],
-                [st],
-                subscribe_push=False,  # noqa: E501
-            )
-            if sub_ret == RET_OK:
-                self.cache_mgr.touch_topic(market_ticker, st)
+        if use_cur_kline:
+            if not self.cache_mgr.has_topic(market_ticker, st):
+                # LRU 容量检查
+                evicted = self.cache_mgr.ensure_capacity(needed=1)
+                await _execute_unsubscriptions(self.conn_mgr, self.cache_mgr, evicted)
 
-        ret, df = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_cur_kline, market_ticker, num, kt, AuType.QFQ)
+                sub_ret, _ = await asyncio.to_thread(
+                    self.conn_mgr.quote_ctx.subscribe,
+                    [market_ticker],
+                    [st],
+                    subscribe_push=False,  # noqa: E501
+                )
+                if sub_ret == RET_OK:
+                    self.cache_mgr.touch_topic(market_ticker, st)
 
+            ret, df = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_cur_kline, market_ticker, num, kt, AuType.QFQ)
+        else:
+            ret, df = -1, None
+
+        # 仅在 get_cur_kline 失败(或大跨度 num>370)时, 降级使用 request_history_kline 分页拉取。
+        # ⚠️ request_history_kline 单次 max_count 建议 ≤1000 根, 超过会超时/截断;
+        #    分页调用: 首页 page_req_key=None, 后续传上次返回的 page_req_key 直到其返回 None,
+        #    拼接所有页的数据, 保证日线/周K/月K能拉到 2007 年以来的完整历史。
         if ret != RET_OK or not isinstance(df, pd.DataFrame) or df.empty:
-            # 降级使用 request_history_kline
-            ret, df, page_key = await asyncio.to_thread(
-                self.conn_mgr.quote_ctx.request_history_kline,
-                market_ticker,
-                start=None,
-                end=None,
-                ktype=kt,
-                autype=AuType.QFQ,
-                max_count=num,  # noqa: E501
-            )
+            collected_pages: list[pd.DataFrame] = []
+            page_key: str | None = None
+            page_count = 0
+            max_pages = (num // 800) + 3  # 每页 800 根, 预留缓冲
+            while True:
+                if page_count >= max_pages:
+                    logger.warning("[Futu] history 分页超过 %d 页, 强制停止", max_pages)
+                    break
+                ret, page_df, page_key = await asyncio.to_thread(
+                    self.conn_mgr.quote_ctx.request_history_kline,
+                    market_ticker,
+                    start=None,
+                    end=None,
+                    ktype=kt,
+                    autype=AuType.QFQ,
+                    max_count=min(num, 800),
+                    page_req_key=page_key,
+                )
+                if ret != RET_OK or not isinstance(page_df, pd.DataFrame) or page_df.empty:
+                    if ret != RET_OK:
+                        res = {"status": "error", "message": f"历史K线获取失败: {page_df}"}
+                        self.cache_mgr.set_history_cache(cache_key, now, res)
+                        return res
+                    break
+                collected_pages.append(page_df)
+                page_count += 1
+                if page_key is None:
+                    break
+                # 已拉够 num 根则停止（拼接后按时间排序取最旧 num 根）
+                fetched_total = sum(len(p) for p in collected_pages)
+                if fetched_total >= num:
+                    break
 
-        if ret != RET_OK:
-            res = {"status": "error", "message": f"历史K线获取失败: {df}"}
-            self.cache_mgr.set_history_cache(cache_key, now, res)
-            return res
+            if not collected_pages:
+                res = {"status": "error", "message": "历史K线获取失败: 无数据"}
+                self.cache_mgr.set_history_cache(cache_key, now, res)
+                return res
+
+            # 拼接所有页, 按时间升序; futu 首页返回最新, 翻页返回更早, 拼接后即完整序列。
+            # 取最近的 num 根 (K线图默认展示最近数据; 周线 num=1000 可覆盖约 19 年, 即到 2007 年)。
+            if len(collected_pages) > 1:
+                df = pd.concat(collected_pages, ignore_index=True)
+            else:
+                df = collected_pages[0]
+            df = df.sort_values("time_key", ascending=True).reset_index(drop=True)
+            if len(df) > num:
+                df = df.iloc[-num:]  # 保留最近 num 根
 
         kl_list = []
         if isinstance(df, pd.DataFrame) and not df.empty:
