@@ -133,12 +133,16 @@ def _fake_openai_client(raise_times: int):
 
 
 async def test_llm_fallback_to_ollama_on_repeated_failure(llm_router, monkeypatch):
-    """主供应商连续失败达阈值 → 降级 Ollama（get_client 返回 Ollama client），且 is_fallback_active=True。"""
+    """主供应商连续失败达阈值 → 降级 Ollama（get_client 返回 Ollama client），且 is_fallback_active=True。
+
+    前置：Ollama 可达（mock 探测），否则按 3402622 加固逻辑不会降级到死路。
+    """
     primary = _fake_openai_client(raise_times=3)
     ollama = MagicMock()
 
     monkeypatch.setattr(llm_router, "_get_primary_client", lambda: primary)
     monkeypatch.setattr(llm_router, "_get_ollama_client", lambda: ollama)
+    monkeypatch.setattr(llm_router, "_probe_ollama_sync", lambda: True)
 
     assert llm_router.is_fallback_active is False
 
@@ -152,6 +156,21 @@ async def test_llm_fallback_to_ollama_on_repeated_failure(llm_router, monkeypatc
 
     # 主供应商恢复 → 切回
     llm_router.record_success(ModelTier.STANDARD)
+    assert llm_router.is_fallback_active is False
+    assert llm_router.get_client(ModelTier.STANDARD) is primary
+
+
+async def test_llm_fallback_skipped_when_ollama_unreachable(llm_router, monkeypatch):
+    """加固逻辑（3402622）：主供应商连续失败但 Ollama 不可达 → 不降级，维持主链路，防降级到死路死锁。"""
+    primary = _fake_openai_client(raise_times=3)
+    monkeypatch.setattr(llm_router, "_get_primary_client", lambda: primary)
+    # 模拟 Ollama 不可达环境（CI / 无本地 Ollama）
+    monkeypatch.setattr(llm_router, "_probe_ollama_sync", lambda: False)
+
+    assert llm_router.is_fallback_active is False
+    for _ in range(2):
+        llm_router.record_failure(ModelTier.STANDARD)
+    # 不降级，继续保持主链路
     assert llm_router.is_fallback_active is False
     assert llm_router.get_client(ModelTier.STANDARD) is primary
 
