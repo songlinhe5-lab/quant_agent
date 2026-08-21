@@ -67,6 +67,47 @@ class HermesAgent(MemoryOperationsMixin):
     _MAX_REACT_ITERATIONS = 8
 
     # A-2.1: 抽 _build_request_kwargs 辅助函数，统一 schema/model/temperature/tools 构造（AGENT-04）
+    # AGENT-03-NEXT: 引入意图识别 + scope 过滤
+
+    def _extract_intents(self, user_query: str) -> List[str]:
+        """
+        基于关键词匹配提取用户意图对应的工具场景（scope）。
+
+        简单启发式规则（未来可升级为 LLM-based 分类器或 embedding 语义检索）：
+        - quote: 最新价/价格/涨跌/行情/tick
+        - fundamental: PE/PB/ROE/财报/估值/基本面
+        - macro: 美债/VIX/非农/FOMC/利率决议/宏观
+        - indicators: MA/均线/MACD/RSI/布林带/指标
+        - news: 新闻/公告/舆情/头条
+        - trade: 买入/卖出/下单/交易/订单
+        - search: 搜索/研报/下载/网页/Knowledge
+
+        Args:
+            user_query: 用户原始查询文本
+        Returns:
+            匹配到的 scopes 列表（去重）
+        """
+        if not user_query:
+            return []
+
+        query = user_query.lower()
+        keyword_map = {
+            "quote": ["最新价", "价格", "报价", "tick", "盘口", "买卖档", "行情", "涨", "跌", "上涨", "下跌", "跌幅"],
+            "fundamental": ["pe", "pb", "roe", "财报", "财务报表", "估值", "市盈率", "市净率", "基本面"],
+            "macro": ["美债", "vix", "非农", "失业率", "fomc", "利率决议", "宏观", "gdp", "通胀"],
+            "indicators": ["ma", "均线", "macd", "rsi", "布林带", "指标", "kdj", "adx"],
+            "news": ["新闻", "公告", "舆情", "头条", "消息", "要闻"],
+            "trade": ["买入", "卖出", "下单", "订单", "oms", "交易", "平仓", "建仓"],
+            "search": ["搜索", "研报", "下载", "知识", "网页", "internet"],
+        }
+
+        matched_scopes = set()
+        for scope, keywords in keyword_map.items():
+            if any(kw in query for kw in keywords):
+                matched_scopes.add(scope)
+
+        return list(matched_scopes)
+
     def _build_request_kwargs(self, stream: bool = False):
         """
         构建统一的 LLM 请求参数。
@@ -78,7 +119,20 @@ class HermesAgent(MemoryOperationsMixin):
             dict: 包含 model/messages/temperature/stream/stream_options/tools 的请求参数字典
         """
         model_to_use = self.model  # 暂时禁用视觉模型，强制使用文本模型
-        schemas = self.tool_registry.get_all_schemas()
+
+        # AGENT-03-NEXT: 基于用户查询的最近一条消息提取意图 scopes
+        last_user_message = ""
+        for msg in reversed(self.messages):
+            if msg.get("role") == "user" and msg.get("content"):
+                last_user_message = msg.get("content", "")
+                break
+
+        matched_scopes = self._extract_intents(last_user_message)
+        if matched_scopes:
+            schemas = self.tool_registry.get_schemas_by_scopes(matched_scopes)
+        else:
+            # 无匹配 → 全量（向后兼容 + warning）
+            schemas = self.tool_registry.get_all_schemas(warn=True)
 
         request_kwargs = {
             "model": model_to_use,
