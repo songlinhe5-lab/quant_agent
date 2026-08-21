@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
+import { apiClient } from '@/lib/api-client'
 import { Link, useLocation } from 'react-router-dom'
 import { KeepAliveOutlet } from './keep-alive-outlet'
 import { Globe, BarChart3, ScanSearch, Code2, FlaskConical, Bot, ShieldAlert, Server, Bell, Database, ArrowRightLeft, Users, Microscope } from 'lucide-react'
@@ -81,6 +82,29 @@ function useCopilotHotkey() {
   }, [toggleCopilot])
 }
 
+// UIRF-23: OMS 徽章动态计数（活跃订单数 + 运行 bots 数），替换硬编码 badge:'3'
+function useOmsBadge(): string | null {
+  const [badge, setBadge] = useState<string | null>(null)
+  useEffect(() => {
+    let mounted = true
+    apiClient.get('/oms/initial-state')
+      .then((res: any) => {
+        if (!mounted) return
+        const data = res?.data?.data
+        if (!data) return
+        const activeOrders = Array.isArray(data.active_orders) ? data.active_orders.length : 0
+        const runningBots = Array.isArray(data.bots)
+          ? data.bots.filter((b: any) => b.status === 'running' || b.status === 'active').length
+          : 0
+        const count = activeOrders + runningBots
+        setBadge(count > 0 ? String(count) : null)
+      })
+      .catch(() => { /* 忽略，保持无徽章 */ })
+    return () => { mounted = false }
+  }, [])
+  return badge
+}
+
 function useHydrateTradingMode() {
   useEffect(() => {
     void hydrateTradingMode()
@@ -118,6 +142,8 @@ export default function DashboardLayout() {
   useSceneHotkey()
   useHydrateTradingMode()
   useSceneAiBehavior()
+  // UIRF-23: OMS 徽章动态计数（活跃订单 + 运行 bots）
+  const omsBadge = useOmsBadge()
 
   const isAiFullscreen = sceneMeta.aiRole === 'fullscreen'
   const sidebarHidden = !sceneMeta.sidebarVisible
@@ -133,6 +159,8 @@ export default function DashboardLayout() {
         <SidebarContent>
           {domainOrder.map((domain) => {
             const items = modules.filter((m) => m.domain === domain)
+              // UIRF-23: OMS 徽章动态计数覆盖静态 badge
+              .map((m) => (m.url === '/oms' ? { ...m, badge: omsBadge ?? m.badge } : m))
             if (items.length === 0) return null
             const meta = domainMeta[domain]
 
