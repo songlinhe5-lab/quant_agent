@@ -449,7 +449,7 @@
   - 全仓监听统一为 `quant_copilot_invoke`（`chat-context.tsx:453-461` 已有路径）
   - 依赖：无（可与 COPILOT-01 并行）
   - 预期工时：FE 2h
-- [ ] **[COPILOT-05]** **投研会历史诚实空态 + 后端 save_session**（P0-2）：
+- [x] **[COPILOT-05]** **投研会历史诚实空态 + 后端 save_session**（P0-2）：✅ `5a490ad`
   - 后端：`expert_team_service.py` 补 `save_session`（Redis 热 TTL 12h + PG 冷，对齐 chat 双层模式），`GET /expert-team/sessions` 返回真实历史
   - 前端：辩论室历史区在后端落库前显示 EmptyState「投研会记录将在后端持久化上线后出现——当前刷新即失」，**禁止用内存数据伪装历史**
   - 依赖：BE 侧 save_session 实现
