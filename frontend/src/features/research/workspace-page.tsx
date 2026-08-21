@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { apiClient } from '@/lib/api-client'
-import { Microscope, PanelRightClose, PanelRightOpen, MessagesSquare, Activity } from 'lucide-react'
+import { Microscope, PanelRightClose, PanelRightOpen, Activity } from 'lucide-react'
 import { useTradingModeStore } from '@/stores/useTradingModeStore'
 import { MODE_META } from '@/features/trading/trading-mode-types'
+import { SessionCenter, type SessionItem } from './session-center'
 
 interface ResearchMeta {
   tools_count: number
@@ -21,6 +22,7 @@ interface ResearchMeta {
 export function ResearchWorkspacePage() {
   const [meta, setMeta] = useState<ResearchMeta>({ tools_count: 0, model_name: '' })
   const [b3Open, setB3Open] = useState(true)
+  const [activeSession, setActiveSession] = useState<SessionItem | undefined>(undefined)
   const mode = useTradingModeStore((s) => s.mode)
   const modeMeta = MODE_META[mode]
 
@@ -67,21 +69,20 @@ export function ResearchWorkspacePage() {
 
       {/* 三列骨架 */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* B1 会话中心 */}
-        <aside className="w-[240px] shrink-0 border-r border-border/30 flex flex-col">
-          <div className="flex h-8 items-center gap-2 px-3 border-b border-border/20">
-            <MessagesSquare className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">会话中心</span>
-          </div>
-          <div className="flex-1 flex items-center justify-center p-4 text-center text-[10px] text-muted-foreground">
-            会话列表骨架（COPILOT-13 填充）
-          </div>
-        </aside>
+        {/* B1 会话中心（COPILOT-13） */}
+        <SessionCenter
+          activeId={activeSession?.id}
+          onSelect={(it) => setActiveSession(it)}
+          onNewChat={() => setActiveSession(undefined)}
+          onNewDebate={() => setActiveSession(undefined)}
+        />
 
         {/* B2 主区 */}
         <main className="flex-1 min-w-0 flex flex-col">
           <div className="flex-1 flex items-center justify-center p-6 text-center text-[10px] text-muted-foreground">
-            对话 / 辩论室主区骨架（COPILOT-14~17 填充）
+            {activeSession
+              ? `已选中：${activeSession.title}（${activeSession.kind === 'debate' ? '投研会' : '对话'}）— B2 主区 COPILOT-14~17 填充`
+              : '对话 / 辩论室主区骨架（COPILOT-14~17 填充）'}
           </div>
         </main>
 
