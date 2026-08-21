@@ -150,6 +150,28 @@ class HermesAgent(MemoryOperationsMixin):
                 total_tokens=getattr(usage, "total_tokens", 0),
             )
 
+    # A-2.3: 抽 _safe_execute_tool 辅助函数，统一工具执行逻辑（AGENT-04）
+    # AGENT-02 middleware seam: 未来中间件管线（审批闸门 → 失败熔断 → 结果分类 → 脱敏 → 缓存 → 限流）
+    # 的唯一挂点。当前仅做 json.loads + execute + try/except，后续 AGENT-02 实装时在此处
+    # 插入 pre_execute → execute → post_execute 责任链
+    async def _safe_execute_tool(self, tool_name: str, arguments_str: str):
+        """
+        统一的工具执行辅助函数。
+
+        Args:
+            tool_name: 工具名称
+            arguments_str: JSON 格式的工具参数字符串
+
+        Returns:
+            dict: 工具执行结果，异常时返回 {"status": "error", "message": "..."}
+        """
+        try:
+            args = json.loads(arguments_str)
+            # 💡 核心修复：execute 是 async 函数，必须 await
+            return await self.tool_registry.execute(tool_name, **args)
+        except Exception as e:
+            return {"status": "error", "message": f"工具执行异常: {str(e)}"}
+
     def __init__(
         self,
         tool_registry,
@@ -336,17 +358,12 @@ class HermesAgent(MemoryOperationsMixin):
 
                 # 如果模型决定调用工具
                 if msg.tool_calls:
-
-                    async def safe_execute(tc):
+                    # A-2.3: 使用统一的 _safe_execute_tool 辅助函数（AGENT-04）
+                    async def execute_tool(tc):
                         print(f"🧠 [Agent Plan] 决定调用工具: {tc.function.name}")
-                        try:
-                            args = json.loads(tc.function.arguments)
-                            # 💡 核心修复：execute 是 async 函数，必须 await
-                            return await self.tool_registry.execute(tc.function.name, **args)
-                        except Exception as e:
-                            return {"status": "error", "message": f"工具执行异常: {str(e)}"}
+                        return await self._safe_execute_tool(tc.function.name, tc.function.arguments)
 
-                    tasks = [safe_execute(tc) for tc in msg.tool_calls]
+                    tasks = [execute_tool(tc) for tc in msg.tool_calls]
                     # 并发执行所有工具，并捕获底层的崩溃防止跳过组装步骤
                     results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -579,14 +596,9 @@ class HermesAgent(MemoryOperationsMixin):
                             "input": tc["function"]["arguments"],
                         }
 
+                    # A-2.3: 使用统一的 _safe_execute_tool 辅助函数（AGENT-04）
                     async def safe_execute(tc):
-                        try:
-                            # 💡 核心修复：execute 是 async 函数，必须 await
-                            return await self.tool_registry.execute(
-                                tc["function"]["name"], **json.loads(tc["function"]["arguments"])
-                            )
-                        except Exception as e:
-                            return {"status": "error", "message": f"工具执行异常: {str(e)}"}
+                        return await self._safe_execute_tool(tc["function"]["name"], tc["function"]["arguments"])
 
                     # 💡 心跳保活：工具执行期间定期发送 heartbeat，防止 Cloudflare 100s 空闲超时掐断连接
                     result_queue: asyncio.Queue = asyncio.Queue()
