@@ -191,7 +191,7 @@ S8: PT-01a ─► PT-01b ─► PT-01c ─► PT-02a ─► PT-02b
 
 - [x] **UIRF-18** 回测表单控件统一 shadcn（Select/Input/Switch/Collapsible）；`backtest-charts.tsx` L119 水下图写死 `-12.3` fallback 清除（✅ 4d21353）
 - [x] **UIRF-19** 数据中心二期：板块资金流向三市场版式与单位统一（亿元/亿美元，废"万元"）；资产 tile 类目分组；面板更名"市场脉搏"
-- [x] **UIRF-20** 个股工作台三期：场景模式联动（monitor→盘口 / research→微观）；右栏/中列快捷键 D/M/C/O；微观卡"所属板块"跳转资金流向（✅ Alt+D/M/C/O + MicroPanel 所属板块入口）
+- [x] **UIRF-20** 个股工作台三期：场景模式联动（monitor→盘口 / research→微观）；右栏/中列快捷键 D/M/C/O；微观卡"所属板块"跳转资金流向（✅ Alt+D/M/C/O + MicroPanel 所属板块入口 + 场景自动切换 + 标题徽章）
 - [x] **UIRF-21** 数据中心三期：概览资产卡点击 → `/market/:ticker` 深链接通（机制已存在）（✅ shared.tsx L117）
 - [x] **UIRF-22** 选股器历史记录改输入框右上角图标按钮 + 一键重放（✅ c0fd66d）
 - [x] **UIRF-23** OMS 导航徽章 `badge:'3'` 硬编码字符串改动态计数（✅ da5724c）

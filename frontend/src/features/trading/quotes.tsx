@@ -25,6 +25,8 @@ import { AIChat } from '@/features/strategy/layout/ai-chat'
 import { MicroPanel } from '@/features/quotes/micro-panel'
 import { OptionModePanel } from '@/features/quotes/option-mode-panel'
 import { MarketClocks } from '@/features/data-center/shared'
+import { useSceneModeStore } from '@/stores/useSceneModeStore'
+import { SCENE_META } from '@/features/scene/scene-mode-types'
 
 import { InitOverlay, EmptyState } from '@/components/ui/data-display'
 
@@ -62,14 +64,33 @@ export function QuotesModule() {
   // 💡 进入工作台时按当前标的自动恢复已保存的视图偏好
   const initialPref = readViewPrefs()['00700.HK']
   const [selectedPeriod, setSelectedPeriod] = useState<string>(initialPref?.period ?? '1m')  // 💡 默认显示分时图
-  // FE-26：中列 [K线|期权] 模式切换（Figma Frame 5）
+  // FE-26：中列 [K 线 | 期权] 模式切换（Figma Frame 5）
   const [chartMode, setChartMode] = useState<'chart' | 'options'>(initialPref?.chartMode ?? 'chart')
-  // FE-26：右栏 [盘口|微观|选择持久化] 模式切换（Figma Frame 4 / 第三个 tab）
+  // FE-26：右栏 [盘口 | 微观 | 选择持久化] 模式切换（Figma Frame 4 / 第三个 tab）
   const [rightMode, setRightMode] = useState<'dom' | 'micro' | 'persist'>(initialPref?.rightMode ?? 'dom')
   // 💡 已保存的全部标的视图偏好（localStorage 镜像）
   const [savedPrefs, setSavedPrefs] = useState<Record<string, SymbolViewPref>>(readViewPrefs())
 
+  // UIRF-20 深化：从 Store 读取场景模式并监听变化
+  const currentScene = useSceneModeStore((s) => s.mode)
+
   useEffect(() => { setMounted(true) }, [])
+
+  // UIRF-20 深化：不同场景下自动切换到对应的 Tab
+  // watch → DOM (盘口), research → Micro (微观)
+  useEffect(() => {
+    // 仅在非 persist 模式下才自动切换
+    if (rightMode === 'persist') return
+
+    // 盯盘模式 → 默认盘口
+    if (currentScene === 'watch' && rightMode !== 'dom') {
+      setRightMode('dom')
+    }
+    // 研究模式 → 默认微观
+    else if (currentScene === 'research' && rightMode !== 'micro') {
+      setRightMode('micro')
+    }
+  }, [currentScene, rightMode])
 
   // 💡 切换标的/周期/图表模式/右栏时自动持久化当前标的视图偏好
   useEffect(() => {
@@ -223,10 +244,16 @@ export function QuotesModule() {
       {/* 顶部标题区（对齐 Figma 设计稿：个股工作台 STOCK WORKBENCH + 多时区时钟 + 日期） */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border/40 bg-secondary/10 rounded-t-xl">
         <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-        {/* 标题随中列 [K线|期权] 模式联动（Figma Frame 4 / Frame 5） */}
-        <h1 className="text-base font-bold tracking-tight">{chartMode === 'options' ? '期权工作台' : '个股工作台'}</h1>
+        {/* 标题随中列 [K 线 | 期权] 模式联动（Figma Frame 4 / Frame 5）+ 场景模式 */}
+        <h1 className="text-base font-bold tracking-tight">
+          {currentScene === 'research' ? '研究工作台' : currentScene === 'monitor' ? '监控工作台' : '个股工作台'}
+        </h1>
         <span className="text-[10px] font-mono text-muted-foreground border border-border/50 rounded px-1.5 py-0.5">
           {chartMode === 'options' ? 'OPTION WORKBENCH' : 'STOCK WORKBENCH'}
+        </span>
+        {/* 场景徽章 */}
+        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded border border-border/50 bg-secondary/50 text-muted-foreground">
+          {SCENE_META[currentScene]?.emoji} {SCENE_META[currentScene]?.short}
         </span>
         {/* 模式副标题（设计稿中列模式说明，随模式联动） */}
         <span className="ml-3 text-[10px] text-muted-foreground/70 hidden md:inline">
