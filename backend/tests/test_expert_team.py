@@ -381,14 +381,28 @@ class TestExpertTeamService:
         scenarios = service.get_scenarios()
         assert len(scenarios) == 4
 
-    def test_get_sessions_empty(self):
+    @pytest.mark.asyncio
+    async def test_get_sessions_empty(self):
+        import sys
+        from unittest.mock import AsyncMock, MagicMock, patch
+
         from backend.services.expert_team.expert_team_service import ExpertTeamService
 
         service = ExpertTeamService()
-        sessions = service.get_sessions()
+        # Mock Redis 模块: scan 返回空 (cursor=0 立即结束)
+        mock_redis = AsyncMock()
+        mock_redis.scan = AsyncMock(return_value=(0, []))
+        mock_module = MagicMock()
+        mock_module.redis_client = mock_redis
+        with patch.dict(sys.modules, {"backend.core.redis_client": mock_module}):
+            sessions = await service.get_sessions()
         assert isinstance(sessions, list)
 
-    def test_save_and_get_session(self):
+    @pytest.mark.asyncio
+    async def test_save_and_get_session(self):
+        import sys
+        from unittest.mock import AsyncMock, MagicMock, patch
+
         from backend.services.expert_team.expert_team_service import ExpertTeamService
 
         service = ExpertTeamService()
@@ -399,8 +413,16 @@ class TestExpertTeamService:
             status="done",
             created_at="2024-01-01T00:00:00Z",
         )
-        service.save_session(session)
-        retrieved = service.get_session("test_001")
+        # Mock Redis + PG 均不可用 → 走内存兜底
+        mock_redis = AsyncMock()
+        mock_redis.scan = AsyncMock(return_value=(0, []))
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.set = AsyncMock(return_value=True)
+        mock_module = MagicMock()
+        mock_module.redis_client = mock_redis
+        with patch.dict(sys.modules, {"backend.core.redis_client": mock_module}):
+            await service.save_session(session)
+            retrieved = await service.get_session("test_001")
         assert retrieved is not None
         assert retrieved.question == "测试"
 

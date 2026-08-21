@@ -5,8 +5,7 @@
  * 解析 StreamEvent 协议（见 backend/services/expert_team/event_schema）。
  * 使用 apiClient.stream（裸 fetch，返回原始 Response，不 .json() 避免缓冲整流）。
  */
-import { apiClient } from '@/lib/api-client'
-import type { ApiError } from '@/lib/api-client'
+import { apiClient, ApiError } from '@/lib/api-client'
 
 export type StreamEventType =
   | 'status'
@@ -139,4 +138,34 @@ export function startTeamAnalysis(params: AnalyzeParams, handlers: TeamStreamHan
     })
 
   return controller
+}
+
+// ─── COPILOT-05: 会话历史 API ───────────────────────────────────
+
+export interface SessionSummary {
+  session_id: string
+  scenario: string
+  question: string
+  status: string
+  expert_count: number
+  probability_assessment: number | null
+  created_at: string
+  completed_at: string
+}
+
+/** 获取投研会历史会话列表 */
+export async function fetchSessionHistory(limit = 20): Promise<SessionSummary[]> {
+  const res = await apiClient.get(`/expert-team/sessions?limit=${limit}`)
+  if (res.data?.sessions) return res.data.sessions
+  return []
+}
+
+/** 获取单个投研会完整辩论记录 */
+export async function fetchSession(sessionId: string): Promise<Record<string, unknown> | null> {
+  try {
+    const res = await apiClient.get(`/expert-team/sessions/${sessionId}`)
+    return res.data ?? null
+  } catch {
+    return null
+  }
 }

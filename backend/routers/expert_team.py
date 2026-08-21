@@ -2,7 +2,7 @@
 专家团 API 端点
 POST /api/v1/expert-team/analyze  - SSE 流式分析
 GET  /api/v1/expert-team/scenarios - 场景模板列表
-GET  /api/v1/expert-team/sessions  - 历史会话
+GET  /api/v1/expert-team/sessions  - 历史会话 (Redis 热 → PG 冷)
 GET  /api/v1/expert-team/sessions/{id} - 完整辩论记录
 """
 
@@ -57,17 +57,17 @@ async def list_scenarios():
 
 @router.get("/sessions")
 async def list_sessions(limit: int = 20):
-    """获取历史会话列表"""
+    """获取历史会话列表 (COPILOT-05: Redis 热 → PG 冷双层查询)"""
     service = get_expert_team_service()
-    sessions = service.get_sessions(limit=limit)
+    sessions = await service.get_sessions(limit=limit)
     return {"sessions": [s.model_dump() for s in sessions]}
 
 
 @router.get("/sessions/{session_id}")
 async def get_session(session_id: str):
-    """获取完整辩论记录"""
+    """获取完整辩论记录 (COPILOT-05: Redis → PG → 内存三级降级)"""
     service = get_expert_team_service()
-    session = service.get_session(session_id)
+    session = await service.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail=f"会话不存在: {session_id}")
     return session.model_dump()

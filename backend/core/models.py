@@ -123,6 +123,20 @@ class AgentSession(Base):
     owner: Mapped[Optional["User"]] = relationship("User")
 
 
+class ExpertTeamSession(Base):
+    """专家团投研会辩论会话持久化 (冷数据落盘)"""
+
+    __tablename__ = "expert_team_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    session_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    session_data: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)  # 完整 DebateSession JSON
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())  # noqa: E501
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )  # noqa: E501
+
+
 class PerformanceLog(Base):
     """系统性能监控日志表 (慢请求与事件循环卡顿)"""
 
