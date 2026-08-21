@@ -39,6 +39,7 @@ export function BacktestModule() {
         running={bt.running}
         done={bt.done}
         progress={bt.progress}
+        progressStage={bt.progressStage}
         ticker={bt.ticker} setTicker={bt.setTicker}
         period={bt.period} setPeriod={bt.setPeriod}
         interval={bt.interval} setIntervalVal={bt.setIntervalVal}
@@ -58,6 +59,8 @@ export function BacktestModule() {
         setStrategyParams={bt.setStrategyParams}
         customExpr={bt.customExpr}
         setCustomExpr={bt.setCustomExpr}
+        reproParams={bt.reproParams}
+        setReproParams={bt.setReproParams}
       />
 
       {/* Results */}

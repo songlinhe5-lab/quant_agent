@@ -18,6 +18,8 @@ export function useBacktest() {
   const [rawReturns, setRawReturns] = useState<number[]>([])
   // UIRF-02: 回测错误态（错误卡 + 重试，禁止「报错也显示完成」）
   const [error, setError] = useState<string | null>(null)
+  // UIRF-05: 回测成本/复现参数显性化（原 L163/165 硬编码）
+  const [reproParams, setReproParams] = useState({ atr_multiplier: 2.0, commission_pct: 0.0005, slippage_pct: 0.001, random_seed: 42 })
   const abortControllerRef = useRef<AbortController | null>(null)
 
   const [ticker, setTicker] = useState('US.NVDA')
@@ -160,9 +162,9 @@ export function useBacktest() {
       const res = await apiClient.stream('/backtest/run/stream', {
         ticker, period, interval,
         initial_capital: initialCapital,
-        atr_multiplier: 2.0, commission_pct: 0.0005, slippage_pct: 0.001,
+        atr_multiplier: reproParams.atr_multiplier, commission_pct: reproParams.commission_pct, slippage_pct: reproParams.slippage_pct,
         data_source: dataSource, debug_mode: isDebugMode,
-        data_snapshot_id: dataSnapshotId, random_seed: 42,
+        data_snapshot_id: dataSnapshotId, random_seed: reproParams.random_seed,
         source_code: sourceCode || undefined,
         class_name: strategyClassName || undefined,
         params: Object.keys(sanitizedParams).length > 0 ? sanitizedParams : undefined
@@ -265,7 +267,13 @@ export function useBacktest() {
   }, [backtestResult]);
 
   const metrics = backtestResult?.metrics || {}
-  const reproBadge = extractReproducibilityBadge(backtestResult)
+  // UIRF-05: ReproducibilityBadge 记录与实际提交 payload 一致（优先真实结果，缺失时用实际参数）
+  const reproBadge = extractReproducibilityBadge(backtestResult) || {
+    atr_multiplier: reproParams.atr_multiplier,
+    commission_pct: reproParams.commission_pct,
+    slippage_pct: reproParams.slippage_pct,
+    random_seed: reproParams.random_seed,
+  }
 
   const currentTearSheet = backtestResult ? [
     { label: '总收益率',   value: metrics.total_return,  dir: parseFloat(metrics.total_return) > 0 ? 1 : -1,  note: '相对初始本金' },
@@ -285,7 +293,7 @@ export function useBacktest() {
     backtestResult, dataSource, setDataSource, isDebugMode, setIsDebugMode,
     dataSnapshotId, setDataSnapshotId, strategies, selectedStrategy,
     formSchema, strategyParams, isMounted,
-    customExpr, setCustomExpr, error, setError,
+    customExpr, setCustomExpr, error, setError, reproParams, setReproParams,
     // computed
     histogramData, underwaterDataComputed, curve, metrics, reproBadge, currentTearSheet,
     // handlers
