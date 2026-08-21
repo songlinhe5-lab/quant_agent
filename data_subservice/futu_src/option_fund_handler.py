@@ -954,6 +954,10 @@ class OptionFundHandler:
             if ret != RET_OK:
                 return {"status": "error", "source": "futu", "ticker": ticker, "message": str(data), "code": code}
 
+            # 防护：10.10 下 data 可能为 str（错误消息）而非 DataFrame/Iterable，直接 to_dict/list 会抛 'str' 异常
+            if isinstance(data, str):
+                return {"status": "error", "source": "futu", "ticker": ticker, "message": data, "code": code}
+
             # 字段级映射：field_id -> 中文
             if hasattr(data, "to_dict"):
                 rows = data.to_dict("records")

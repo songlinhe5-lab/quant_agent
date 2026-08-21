@@ -64,7 +64,7 @@ class TechnicalIndicatorsTool(BaseTool):
         atr_period: int = 14,
         stop_loss_multiplier: float = 2.0,
         take_profit_multiplier: float = 3.0,
-        lookback_days: int = 1,
+        lookback_days: int = 90,
         bbands_period: int = 20,
         bbands_std_dev: float = 2.0,
     ) -> Dict[str, Any]:
