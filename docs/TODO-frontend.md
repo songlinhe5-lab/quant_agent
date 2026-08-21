@@ -480,7 +480,7 @@
   - 消除 `chat-context.tsx:17-22` / `fullscreen-copilot.tsx:23-64` / `chat.py:138-159` 三处并存
   - 依赖：无
   - 预期工时：FE 4h + BE 2h
-- [ ] **[COPILOT-11]** **超限文件拆分**（P1-6）：
+- [x] **[COPILOT-11]** **超限文件拆分**（P1-6）：✅ `424be27`
   - `chat-message-item.tsx`(589) → 按消息类型拆为 text/tool/strategy/chart 四个分子组件（各 ≤150）
   - `chat-input-box.tsx`(286) / `session-sidebar.tsx`(251) / `roster-panel.tsx`(232) / `team-session.tsx`(202) 按职责拆分至规范行数内
   - 后端：`agent.py`(1144) / `chat.py`(383) / `orchestrator.py`(546) 按 AGENTS.md §3 硬顶拆分
