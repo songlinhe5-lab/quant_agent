@@ -11,6 +11,51 @@ import { resolveDataStatus } from '@/components/data-state-utils'
 import { useScreenerWsStatus } from './use-screener-ws'
 import { ScreenerAgGrid } from './screener-ag-grid'
 
+// UIRF-13: 从 DSL 解析可放宽的过滤字段，生成「放宽」建议（改 min/max 后重查）
+interface RelaxSuggestion { field: string; label: string; dsl: string }
+function buildRelaxSuggestions(dslQuery: string): RelaxSuggestion[] {
+  if (!dslQuery) return []
+  try {
+    const data = JSON.parse(dslQuery)
+    const filters = Array.isArray(data?.filters) ? data.filters : []
+    const suggestions: RelaxSuggestion[] = []
+    for (const f of filters) {
+      if (!f?.field) continue
+      const fieldName = getZhLabel(String(f.field).toLowerCase()) || f.field
+      const min = f.min_value ?? f.min
+      const max = f.max_value ?? f.max
+      if (min !== undefined && max !== undefined) {
+        // 区间条件：放宽上下限（下限减半，上限加倍）
+        const newMin = typeof min === 'number' ? min * 0.5 : min
+        const newMax = typeof max === 'number' ? max * 2 : max
+        const next = JSON.parse(JSON.stringify(data))
+        const tf = next.filters.find((x: any) => x.field === f.field)
+        if (tf.min_value !== undefined) tf.min_value = newMin
+        else tf.min_value = newMin
+        if (tf.max_value !== undefined) tf.max_value = newMax
+        suggestions.push({ field: String(f.field), label: `放宽 ${fieldName} 区间`, dsl: JSON.stringify(next) })
+      } else if (min !== undefined) {
+        // 下限条件：减半
+        const newMin = typeof min === 'number' ? min * 0.5 : min
+        const next = JSON.parse(JSON.stringify(data))
+        const tf = next.filters.find((x: any) => x.field === f.field)
+        tf.min_value = newMin
+        suggestions.push({ field: String(f.field), label: `放宽 ${fieldName} 下限`, dsl: JSON.stringify(next) })
+      } else if (max !== undefined) {
+        // 上限条件：加倍
+        const newMax = typeof max === 'number' ? max * 2 : max
+        const next = JSON.parse(JSON.stringify(data))
+        const tf = next.filters.find((x: any) => x.field === f.field)
+        tf.max_value = newMax
+        suggestions.push({ field: String(f.field), label: `放宽 ${fieldName} 上限`, dsl: JSON.stringify(next) })
+      }
+    }
+    return suggestions.slice(0, 3)
+  } catch {
+    return []
+  }
+}
+
 export function ScreenerResultsTable() {
   const {
     realDataLength, columnFilters, setColumnFilters, setCurrentPage, dslQuery, fetchPageData, pageSize, sortKey, sortDir,
@@ -25,6 +70,8 @@ export function ScreenerResultsTable() {
   })
   const useAgGrid = pageSize >= 50 && paginatedData.length > 0
   const wsStatus = useScreenerWsStatus()
+  // UIRF-13: 空结果时的放宽建议（从 DSL 解析可放宽字段）
+  const relaxSuggestions = !isLoading && paginatedData.length === 0 ? buildRelaxSuggestions(dslQuery) : []
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[minmax(280px,360px)_1fr] gap-4">
@@ -124,6 +171,23 @@ export function ScreenerResultsTable() {
               </table>
             </div>
           </DataState>
+        )}
+
+        {/* UIRF-13: 空结果放宽建议按钮 —— 直接改 DSL 重查 */}
+        {relaxSuggestions.length > 0 && (
+          <div className="px-4 py-3 border-t border-border/30 flex flex-wrap items-center gap-2">
+            <span className="text-[10px] text-muted-foreground">未能匹配，试试放宽条件：</span>
+            {relaxSuggestions.map((s) => (
+              <button
+                key={s.field}
+                type="button"
+                onClick={() => { setColumnFilters({}); fetchPageData(s.dsl, 1, pageSize, sortKey, sortDir, {}) }}
+                className="text-[10px] px-2.5 py-1 rounded-full border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
         )}
 
         {paginatedData.length > 0 && (
