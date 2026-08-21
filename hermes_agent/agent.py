@@ -360,15 +360,29 @@ class HermesAgent(MemoryOperationsMixin):
 
                         received_results += 1
                         final_res = {"status": "error", "message": str(res)} if isinstance(res, Exception) else res
-                        self.messages.append(
-                            {
-                                "role": "tool",
-                                "tool_call_id": tc["id"],
+
+                        # AGENT-02: 熔断检测 — 同一 Tool 连续失败 3 次后返回 circuit_breaker
+                        if final_res.get("status") == "circuit_breaker":
+                            yield {
+                                "type": "circuit_breaker",
                                 "name": tc["function"]["name"],
-                                "content": json.dumps(final_res, ensure_ascii=False),
+                                "report": {
+                                    "tool": final_res.get("tool", tc["function"]["name"]),
+                                    "reason": final_res.get("reason", ""),
+                                    "suggestion": final_res.get("suggestion", ""),
+                                },
+                                "message": final_res.get("message", ""),
                             }
-                        )
-                        yield {"type": "tool_result", "name": tc["function"]["name"], "result": final_res}
+                        else:
+                            self.messages.append(
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": tc["id"],
+                                    "name": tc["function"]["name"],
+                                    "content": json.dumps(final_res, ensure_ascii=False),
+                                }
+                            )
+                            yield {"type": "tool_result", "name": tc["function"]["name"], "result": final_res}
 
                     if tool_tasks:
                         await asyncio.gather(*tool_tasks, return_exceptions=True)
