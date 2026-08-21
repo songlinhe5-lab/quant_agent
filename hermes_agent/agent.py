@@ -102,6 +102,9 @@ class HermesAgent(MemoryOperationsMixin):
     职责：维护上下文状态、对接大模型 API、调度 ReAct 工作流。
     """
 
+    # AGENT-04: ReAct 最大迭代次数唯一收敛（两套循环共享，禁止重复字面量）
+    _MAX_REACT_ITERATIONS = 8
+
     def __init__(
         self,
         tool_registry,
@@ -248,7 +251,7 @@ class HermesAgent(MemoryOperationsMixin):
         """
         核心 ReAct 执行循环 (Plan -> Tool -> Verify -> Output)
         """
-        max_iterations = 8
+        max_iterations = self._MAX_REACT_ITERATIONS
         for i in range(max_iterations):
             print(f"🤖 [Agent] 思考中 (第 {i + 1} 轮)...")
             try:
@@ -418,7 +421,7 @@ class HermesAgent(MemoryOperationsMixin):
             self.console.print("⚠️ [Agent Stream] 上下文为空 (或仅含 System 指令)，拒绝发起大模型请求。")
             return  # 仅有 system prompt 时不触发大模型请求
 
-        max_iterations = 8
+        max_iterations = self._MAX_REACT_ITERATIONS
         for i in range(max_iterations):
             # 💡 每轮 ReAct 开始前发送心跳，防止工具完成后到下一轮 LLM 响应前的空白期被 Cloudflare 掐断
             yield {"type": "heartbeat", "tick": i + 1}
