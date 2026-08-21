@@ -140,6 +140,33 @@ export function QuotesModule() {
       // 带修饰键的组合键（如 ⌘1/2/3 研究模式面板跳转）交由对应模式处理，不在此拦截
       if (e.metaKey || e.ctrlKey) return;
 
+      // UIRF-20: 个股工作台快捷鍵 D/M/C/O
+      // D: DOM(盘口), M: Micro(微观), C: Chart(K 线), O: Options(期权)
+      if (!e.altKey) {
+        // 無 Alt 時，優先級低於以下操作
+      } else {
+        // Alt+D → 切換盤口 (DOM)
+        if (e.key.toLowerCase() === 'd' && rightMode !== 'dom') {
+          e.preventDefault();
+          setRightMode('dom');
+        }
+        // Alt+M → 切換微观 (Micro)
+        else if (e.key.toLowerCase() === 'm' && rightMode !== 'micro') {
+          e.preventDefault();
+          setRightMode('micro');
+        }
+        // Alt+C → 切換 K 線圖 (Chart mode)
+        else if (e.key.toLowerCase() === 'c' && chartMode !== 'chart') {
+          e.preventDefault();
+          setChartMode('chart');
+        }
+        // Alt+O → 切換期權 (Options mode)
+        else if (e.key.toLowerCase() === 'o' && chartMode !== 'options') {
+          e.preventDefault();
+          setChartMode('options');
+        }
+      }
+
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         if (watchlist.length === 0) return;
         const currentIndex = watchlist.findIndex(item => item.symbol === selectedSymbol);
@@ -161,10 +188,10 @@ export function QuotesModule() {
       const periodMap: Record<string, string> = {
         '1': '1m',   // 分时
         '2': 'tick', // Tick
-        '3': '5m',   // 5日
-        '4': '1d',   // 日K
-        '5': '1w',   // 周K
-        '6': '1M',   // 月K
+        '3': '5m',   // 5 日
+        '4': '1d',   // 日 K
+        '5': '1w',   // 周 K
+        '6': '1M',   // 月 K
       };
       if (periodMap[e.key]) {
         e.preventDefault();
@@ -410,6 +437,10 @@ export function QuotesModule() {
       <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/40 bg-secondary/10 text-[10px] text-muted-foreground/80 rounded-b-xl">
         <span className="flex items-center gap-2 flex-wrap">
           <span>键盘 <kbd className="px-1 py-0.5 rounded bg-secondary/60 border border-border/40 font-mono text-[9px]">↑</kbd>/<kbd className="px-1 py-0.5 rounded bg-secondary/60 border border-border/40 font-mono text-[9px]">↓</kbd> 切换周期</span>
+          <span>·</span>
+          <span><kbd className="px-1 py-0.5 rounded bg-secondary/60 border border-border/40 font-mono text-[9px]">Alt+D</kbd>/<kbd className="px-1 py-0.5 rounded bg-secondary/60 border border-border/40 font-mono text-[9px]">Alt+M</kbd> 盘口/微观</span>
+          <span>·</span>
+          <span><kbd className="px-1 py-0.5 rounded bg-secondary/60 border border-border/40 font-mono text-[9px]">Alt+C</kbd>/<kbd className="px-1 py-0.5 rounded bg-secondary/60 border border-border/40 font-mono text-[9px]">Alt+O</kbd> K 线/期权</span>
           <span>·</span>
           <span>休市时段醒收 K 线</span>
           <span>·</span>
