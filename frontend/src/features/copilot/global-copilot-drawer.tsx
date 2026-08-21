@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useCallback, useRef, useState } from 'react'
-import { Brain, History, Plus, X, MessageSquare, Wallet } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Brain, History, Plus, X, MessageSquare, Wallet, Maximize2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useSceneModeStore } from '@/stores/useSceneModeStore'
@@ -20,12 +21,22 @@ const MIN_WIDTH = 360
 const MAX_WIDTH = 800
 
 function CopilotDrawerChrome({ width, onResizeStart }: { width: number; onResizeStart: (e: React.MouseEvent) => void }) {
+  const navigate = useNavigate()
   const closeCopilot = useLayoutStore((s) => s.closeCopilot)
+  const openCopilot = useLayoutStore((s) => s.openCopilot)
   const handleNewChat = useChatStore((s) => s.handleNewChat)
+  const sessionId = useChatStore((s) => s.sessionId)
+  const isGenerating = useChatStore((s) => s.isGenerating)
   const [sessionsOpen, setSessionsOpen] = useState(false)
   const [tab, setTab] = useState<CopilotTab>('chat')
   const context = useCopilotContextStore((s) => s.context)
   const clearContext = useCopilotContextStore((s) => s.clearContext)
+
+  // COPILOT-20: 抽屉「展开」→ 跳投研页，同一 session 无缝继续（共享 useChatStore 单例）
+  const expandToResearch = () => {
+    closeCopilot()
+    navigate(sessionId ? `/research?session=${sessionId}` : '/research')
+  }
 
   return (
     <div className="h-full flex flex-col bg-slate-50/90 dark:bg-zinc-950/95 backdrop-blur-md border-l border-white/10" style={{ width }}>
@@ -44,6 +55,22 @@ function CopilotDrawerChrome({ width, onResizeStart }: { width: number; onResize
           <div className="ml-auto flex items-center gap-1">
             {tab === 'chat' && (
               <>
+                {/* COPILOT-20: 展开到投研工作台 */}
+                <button
+                  type="button"
+                  onClick={expandToResearch}
+                  className={cn(
+                    'relative p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors',
+                    isGenerating && 'text-scene',
+                  )}
+                  aria-label="展开到投研工作台"
+                  title={isGenerating ? '流式进行中，展开不会中断对话' : '在投研工作台继续'}
+                >
+                  <Maximize2 className="h-3.5 w-3.5" />
+                  {isGenerating && (
+                    <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-scene animate-ping" />
+                  )}
+                </button>
                 <button
                   type="button"
                   onClick={() => setSessionsOpen((v) => !v)}
