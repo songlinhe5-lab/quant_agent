@@ -210,6 +210,9 @@ Phase 4 韧性扩展    AGENT-06 / AGENT-13 / AGENT-14
 | billing / credits_tracker / credential_pool / browser_provider / image_gen / video_gen / pet | hermes `agent/` | 与量化无关，纯增依赖与攻击面 |
 | LSP 子系统 | 双方均有 | 我们不是代码编辑器 |
 | Cordis / 插件热更新全套 | dsh | 借"缝"的思想即可；引入整套 DI 框架属过度设计（AGENTS.md §A.1 YAGNI）|
+| **codex-rs 运行时 / TUI / apply_patch / unified_exec** | codex `codex-rs/{cli,apply-patch,unified_exec}` | 我们不是 coding agent；引入 Rust 运行时撞技术栈锁定（同拒绝 deepseek-harness 的理由）|
+| **OS 级沙箱（seatbelt / landlock / bwrap）** | codex `sandboxing/` / `exec_policy.rs` | 当前无子进程执行面；AGENT-05 落地沙箱时借 `exec_policy` 分级思想，不引入 OS 沙箱组件 |
+| cloud-tasks / chatgpt 登录 / connectors / analytics 埋点上报 | codex 云套件 | 与量化交易无关的产品化能力，纯增依赖与隐私面 |
 
 ---
 
@@ -226,4 +229,67 @@ Phase 4 韧性扩展    AGENT-06 / AGENT-13 / AGENT-14
 - 本仓：`hermes_agent/agent.py`（1151 行）、`tool_registry.py`、`tool_result_cache.py`、`tools/`（37 个）、`backend/engine/gateway.py`、`backend/routers/eval.py`
 - dsh 架构：`docs/architecture.md`（Turn flow / 事件域 / capability seams）、`docs/subsystems/{approval,tools,session,invariants,token-meter,subagent}.md`、`docs/defensive-patterns.md`
 - hermes 模块：`agent/verify/`、`verification_{evidence,stop}.py`、`tool_{executor,guardrails,result_classification}.py`、`prompt_cache_*.py`、`secret_scope.py`、`redact.py`、`toolsets.py`、`transports/`
+- codex 核心：`codex-rs/core/src/{rollout.rs, compact*.rs, context_manager/, turn_metadata.rs, turn_timing.rs, responses_retry.rs, elicitation.rs, command_canonicalization.rs}`、`codex-rs/{core,exec,mcp,protocol}`
 - 规范：`AGENTS.md` §3 零幻觉 / §4.1 ReAct / §4.4 熔断 / §6 安全边界 / §10.8 限流感知 / §A.1 YAGNI
+
+---
+
+## 九、对标 openai/codex — 补充借鉴线（2026-08-21）
+
+> 仓库事实（GitHub API 核实）：[openai/codex](https://github.com/openai/codex) — **Rust** · 110,782★ · "Lightweight coding agent that runs in your terminal" · 核实时当日仍在推送。核心 `codex-rs/core` 含 70+ 模块，rollout/history/state 已独立成 crate。
+> 结论与 hermes/dsh 同构：**不引入 Rust 运行时，只借架构范式**。codex 是 coding agent（shell 执行 + patch 应用），其沙箱/exec 系不适用；但**会话持久化、摘要压缩、轮次可观测**三块范式是三个对标对象中最成熟的。
+
+### 9.1 现状新缺口（Phase 2 后基线，对标 codex 发现）
+
+| # | 缺口 | 证据（本仓） |
+|---|---|---|
+| S14 | **事件日志仅存内存** | `hermes_agent/event_log.py` SessionEventLog 是进程内 list，重启即丢；AGENT-01 解决了"可重建"但未解决"已持久化" |
+| S15 | **压缩是破坏性截断而非摘要** | `_compress_memory` 直接折叠老旧 tool 内容 + 滑动窗口丢弃；codex 用 LLM 摘要压缩并将压缩产物写回历史项 |
+| S16 | **轮次级可观测无身份** | `_react_loop` 只有 heartbeat tick；无 turn_id / 每轮 token / 每轮延迟分解，Prometheus 无法归因到具体轮次 |
+| S17 | **LLM 调用无重试退避** | `_call_llm` / `_react_loop` 推理异常直接进 error 事件；瞬时网络故障无分类重试 |
+| S18 | **Agent 无法主动提问** | AGENTS.md §1 人设要求"质疑追问"但机制缺位：无暂停提问事件，模型只能把歧义咽成猜测 |
+
+### 9.2 借鉴矩阵（codex → 新任务）
+
+| 借鉴点 | codex 出处 | 对应缺口 | 任务 |
+|---|---|---|---|
+| Rollout 持久化：append-only 会话文件 + SessionMeta 首行 + cursor 分页 + budget/截断/归档 | `rollout.rs` / `codex_rollout` crate / `rollout_budget.rs` / `thread_rollout_truncation.rs` | S14 | AGENT-15 |
+| 摘要压缩：pre/post hooks + 压缩模型 fallback + token budget + 压缩产物写回历史（`ContextCompactionItem`）+ analytics 全埋点 | `compact.rs` / `compact_model_fallback.rs` / `compact_token_budget.rs` | S15 | AGENT-16 |
+| 不可变历史 + 版本号：`Arc<Vec<Envelope>>` COW 共享 + `history_version` 每次重写 bump | `context_manager/history.rs` | S15 | AGENT-16 并入 |
+| token-based 截断策略统一收口（模型上下文与持久化共用一套） | `history.rs` 引用的 `codex-utils-output_truncation::TruncationPolicy` | S15 | AGENT-16 并入 |
+| 轮次身份与计时：turn_id / parent_turn_id / root_turn_id 血缘 + 每轮延迟/token 元数据 | `turn_metadata.rs` / `turn_timing.rs` / `responses_metadata.rs` | S16 | AGENT-17 |
+| 重试分类 + 指数退避 | `responses_retry.rs` | S17 | AGENT-18 |
+| Elicitation 结构化提问流 | `elicitation.rs` | S18 | AGENT-19 |
+| 审批去重：同类请求规范化，避免重复弹窗 | `command_canonicalization.rs` | AGENT-07 完整版 | 回填 AGENT-07 |
+| 子代理血缘（parent/root turn id 透传） | `responses_metadata.rs` | AGENT-14 | 回填 AGENT-14 |
+
+### 9.3 任务清单（AGENT-15 ~ AGENT-19）
+
+- [ ] **[AGENT-15]** **会话事件日志持久化（Rollout）**
+  - **现状**：S14
+  - **改法**：SessionEventLog 增加 JSONL rollout 落盘：`logs/sessions/{date}/{session_id}.jsonl`，首行 SessionMeta（session_id / model / 创建时间）；append-only 写入；budget 上限（单文件超限 → 移入 archived 子目录，事件不丢）；`_load_session` 冷启动时从 rollout 重放事件日志（Redis/PG 消息与事件日志双轨恢复）
+  - **验收**：进程重启后事件日志可完整重放；budget 超限走归档而非截断；恢复幂等测试
+- [ ] **[AGENT-16]** **摘要压缩取代破坏性截断**
+  - **现状**：S15 —— 现在滑动窗口直接丢消息，被丢内容不可恢复（仅事件日志可重建，但模型看不到的部分没有摘要承接）
+  - **改法**：`_compress_memory` 新增摘要路径：被裁部分用 pro 模型生成摘要，产出 `ContextCompactionItem` 写回 messages 头部与事件日志（压缩本身可审计）；摘要失败时 fallback 现有有损截断（codex `compact_model_fallback` 范式）；token-based 截断策略统一事件日志 4KB / tool 内容 800 字两处口径
+  - **验收**：压缩后窗口含摘要项且旧消息不可见；摘要模型注入故障时自动降级且测试通过；事件日志有 memory/compact 事件与摘要引用
+- [ ] **[AGENT-17]** **轮次身份与计时元数据**
+  - **现状**：S16
+  - **改法**：`_react_loop` 每轮生成 `turn_id`（uuid），turn/start|end 事件携带：iteration / model / prompt_tokens / completion_tokens / latency 分解（inference_ms / tool_ms / save_ms）；预留 parent_turn_id / root_turn_id 字段（AGENT-14 血缘）；Prometheus `agent_turn_duration_seconds` histogram
+  - **验收**：事件日志 turn 事件全带 turn_id 与计时；指标端点可见每轮延迟分布；tool_result 可按 turn_id 归组
+- [ ] **[AGENT-18]** **LLM 调用重试分类与退避**
+  - **现状**：S17
+  - **改法**（codex `responses_retry.rs` 范式）：retryable（429 / timeout / 5xx / 连接复位）与非 retryable（鉴权 / 参数错误）分类；retryable 指数退避 + jitter 最多 3 次；非 retryable 直进 error 事件；重试耗尽计入 AGENT-02 FailureTracker；**不得对已产生流式输出的半截轮次重试**（防重复下单类副作用）
+  - **验收**：mock 429/timeout 重试后成功；mock 鉴权错误零重试直接报错；半截流式不重试的否定用例
+- [ ] **[AGENT-19]** **Elicitation 提问缝（人设落地）**
+  - **现状**：S18 —— AGENTS.md §1 的"质疑精神"无机制承载
+  - **改法**（codex `elicitation.rs` 范式）：新增 SSE 事件 `elicitation`（question + options + request_id），前端经 WebSocket/端点应答；Agent 暂停当前轮等待应答；复用 AGENT-07 审批通道基建；fail-closed：应答超时降级为"声明假设后继续"而非挂死
+  - **验收**：触发提问时模型输出暂停等待；超时自动降级并在输出中声明所做假设；应答后继续的上下文含用户选择
+
+### 9.4 优先级建议
+
+```
+Phase 2.5（审计延伸，P1）：AGENT-15（rollout 持久化）→ AGENT-17（轮次元数据）
+Phase 3（成本效率，与现有编排并行）：AGENT-16（摘要压缩，与 AGENT-11 prompt 缓存天然协同）
+Phase 4（韧性）：AGENT-18（重试）→ AGENT-19（提问，依赖前端 COPILOT 配合）
+```
