@@ -19,7 +19,49 @@ import { evaluate, suggestPane, type CIBar } from './custom-indicator/engine'
 import { useCustomIndicatorStore } from './custom-indicator/store'
 import { CustomIndicatorPanel } from './custom-indicator/panel'
 import { AlertSandboxPanel } from './custom-indicator/alert-sandbox-panel'
-import { SEMANTIC_COLORS, MARKET_COLORS } from '@/lib/constants'
+// 图表主题色：对齐 design tokens (docs/20)
+const CHART_COLORS: Record<'dark' | 'light', {
+  grid: string; crosshair: string; text: string; axisBorder: string
+  bull: string; bear: string; ma20: string; ma50: string; ma200: string
+  volumeUp: string; volumeDown: string; info: string; warn: string; ai: string; aiBand: string; neutral: string
+}> = {
+  dark: {
+    grid: 'rgba(46, 52, 64, 0.15)',
+    crosshair: 'rgba(148, 163, 184, 0.25)',
+    text: '#94a3b8',
+    axisBorder: 'rgba(46, 52, 64, 0.6)',
+    bull: '#34d399',
+    bear: '#f87171',
+    ma20: '#fbbf24',
+    ma50: '#60a5fa',
+    ma200: '#a78bfa',
+    volumeUp: 'rgba(52, 211, 153, 0.5)',
+    volumeDown: 'rgba(248, 113, 113, 0.5)',
+    info: '#60a5fa',
+    warn: '#fbbf24',
+    ai: '#a78bfa',
+    aiBand: 'rgba(167, 139, 250, 0.16)',
+    neutral: '#94a3b8',
+  },
+  light: {
+    grid: 'rgba(148, 163, 184, 0.2)',
+    crosshair: 'rgba(100, 116, 139, 0.3)',
+    text: '#64748b',
+    axisBorder: '#cbd5e1',
+    bull: '#15803d',
+    bear: '#dc2626',
+    ma20: '#f59e0b',
+    ma50: '#3b82f6',
+    ma200: '#8b5cf6',
+    volumeUp: 'rgba(21, 128, 61, 0.5)',
+    volumeDown: 'rgba(220, 38, 38, 0.5)',
+    info: '#3b82f6',
+    warn: '#f59e0b',
+    ai: '#8b5cf6',
+    aiBand: 'rgba(139, 92, 246, 0.16)',
+    neutral: '#64748b',
+  },
+}
 
 // 💡 个股事件类型定义
 interface StockEvent {
@@ -195,6 +237,7 @@ interface LightweightChartCanvasProps {
 }
 
 export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSelectedPeriod, theme, realQuote, realHistory, gatewayStatus, isWatchlistExpanded, toggleWatchlist, selectedItem, hasData, syncGroup = 'default' }: LightweightChartCanvasProps) {
+  const resolvedTheme = theme === 'light' ? 'light' : 'dark'
   const { toast } = useToast()
   const [showEvents, setShowEvents] = useState(true)
   const [showMA20, setShowMA20] = useState(true)
@@ -344,9 +387,9 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     clearPositionLines()
     const positions = useTradeStore.getState().positions[selectedSymbol] ?? []
     positions.forEach((pos) => {
-      positionLinesRef.current[`${pos.id}:entry`] = series.createPriceLine({ price: pos.entryPrice, color: pos.side === 'BUY' ? '#10b981' : '#ef4444', lineWidth: 1, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: `${pos.side} ${pos.qty}` })
-      if (pos.sl != null) positionLinesRef.current[`${pos.id}:sl`] = series.createPriceLine({ price: pos.sl, color: '#ef4444', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'SL' })
-      if (pos.tp != null) positionLinesRef.current[`${pos.id}:tp`] = series.createPriceLine({ price: pos.tp, color: '#10b981', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'TP' })
+      positionLinesRef.current[`${pos.id}:entry`] = series.createPriceLine({ price: pos.entryPrice, color: pos.side === 'BUY' ? CHART_COLORS[resolvedTheme].bull : CHART_COLORS[resolvedTheme].bear, lineWidth: 1, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: `${pos.side} ${pos.qty}` })
+      if (pos.sl != null) positionLinesRef.current[`${pos.id}:sl`] = series.createPriceLine({ price: pos.sl, color: CHART_COLORS[resolvedTheme].bear, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'SL' })
+      if (pos.tp != null) positionLinesRef.current[`${pos.id}:tp`] = series.createPriceLine({ price: pos.tp, color: CHART_COLORS[resolvedTheme].bull, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'TP' })
     })
   }, [selectedSymbol, clearPositionLines])
 
@@ -509,7 +552,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
           return {
             time: t as Time,
             position: sig.side === 'buy' ? 'belowBar' : 'aboveBar',
-            color: sig.side === 'buy' ? '#10b981' : '#ef4444',
+            color: sig.side === 'buy' ? CHART_COLORS[resolvedTheme].bull : CHART_COLORS[resolvedTheme].bear,
             shape: sig.side === 'buy' ? 'arrowUp' : 'arrowDown',
             text: sig.label || (sig.side === 'buy' ? 'B' : 'S'),
           }
@@ -524,15 +567,15 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
 
     // 2) 支撑/压力/目标/止损 -> 价格线
     const levelColor: Record<string, string> = {
-      support: MARKET_COLORS.bull,
-      resistance: MARKET_COLORS.bear,
-      target: SEMANTIC_COLORS.info,
-      stop: SEMANTIC_COLORS.warn,
+      support: CHART_COLORS[resolvedTheme].bull,
+      resistance: CHART_COLORS[resolvedTheme].bear,
+      target: CHART_COLORS[resolvedTheme].info,
+      stop: CHART_COLORS[resolvedTheme].warn,
     }
     ;(payload.levels || []).forEach((lv) => {
       const pl = series.createPriceLine({
         price: lv.price,
-        color: levelColor[lv.type] || '#8b5cf6',
+        color: levelColor[lv.type] || CHART_COLORS[resolvedTheme].ai,
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
@@ -543,7 +586,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
 
     // 3) 区域高亮 -> 半透明基线带（baseline 介于 lower 与 upper 之间填充）
     ;(payload.zones || []).forEach((z) => {
-      const band = z.color || 'rgba(139,92,246,0.16)'
+      const band = z.color || CHART_COLORS[resolvedTheme].aiBand
       const zone = chart.addSeries(BaselineSeries, {
         topLineColor: 'rgba(0,0,0,0)',
         bottomLineColor: 'rgba(0,0,0,0)',
@@ -594,15 +637,15 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
 
     const payload = ann.payload
     const levelColor: Record<string, string> = {
-      support: MARKET_COLORS.bull,
-      resistance: MARKET_COLORS.bear,
-      target: SEMANTIC_COLORS.info,
-      stop: SEMANTIC_COLORS.warn,
+      support: CHART_COLORS[resolvedTheme].bull,
+      resistance: CHART_COLORS[resolvedTheme].bear,
+      target: CHART_COLORS[resolvedTheme].info,
+      stop: CHART_COLORS[resolvedTheme].warn,
     }
     ;(payload.levels || []).forEach((lv) => {
       const pl = series.createPriceLine({
         price: lv.price,
-        color: levelColor[lv.type] || '#8b5cf6',
+        color: levelColor[lv.type] || CHART_COLORS[resolvedTheme].ai,
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
@@ -611,7 +654,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       patternPriceLinesRef.current.push(pl)
     })
     ;(payload.zones || []).forEach((z) => {
-      const band = z.color || 'rgba(139,92,246,0.12)'
+      const band = z.color || CHART_COLORS[resolvedTheme].aiBand
       const zone = chart.addSeries(BaselineSeries, {
         topLineColor: 'rgba(0,0,0,0)',
         bottomLineColor: 'rgba(0,0,0,0)',
@@ -702,7 +745,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
             seriesRef.current.update(current);
             if (volumeRef.current) {
               const isUp = current.close >= current.open;
-              volumeRef.current.update({ time: current.time, value: current.volume || 0, color: isUp ? (theme === 'dark' ? 'rgba(16, 185, 129, 0.5)' : 'rgba(5, 150, 105, 0.5)') : (theme === 'dark' ? 'rgba(239, 68, 68, 0.5)' : 'rgba(220, 38, 38, 0.5)') });
+              volumeRef.current.update({ time: current.time, value: current.volume || 0, color: isUp ? CHART_COLORS[resolvedTheme].volumeUp : CHART_COLORS[resolvedTheme].volumeDown });
             }
             if (currentPriceLineRef.current) currentPriceLineRef.current.applyOptions({ price: lastPrice });
             if (updateOhlcvDomRef.current && !isCrosshairActiveRef.current) updateOhlcvDomRef.current(current);
@@ -733,16 +776,19 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     const minBarSpacing = disableZoom ? fixedBarSpacing : 2
     const maxBarSpacing = disableZoom ? fixedBarSpacing : 20
 
+    const c = CHART_COLORS[resolvedTheme]
     const chart = createChart(chartContainerRef.current, {
-      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: theme === 'dark' ? '#94a3b8' : '#64748b' },
-      grid: { vertLines: { color: theme === 'dark' ? '#334155' : '#e2e8f0' }, horzLines: { color: theme === 'dark' ? '#334155' : '#e2e8f0' } },
-      crosshair: { mode: CrosshairMode.Magnet },
-      rightPriceScale: { borderColor: theme === 'dark' ? '#475569' : '#cbd5e1', autoScale: true, scaleMargins: { top: 0.1, bottom: 0.40 } },
+      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: c.text },
+      grid: { vertLines: { color: c.grid }, horzLines: { color: c.grid } },
+      crosshair: { mode: CrosshairMode.Magnet, vertLine: { color: c.crosshair, style: LineStyle.Dashed }, horzLine: { color: c.crosshair, style: LineStyle.Dashed } },
+      rightPriceScale: { borderColor: c.axisBorder, autoScale: true, scaleMargins: { top: 0.1, bottom: 0.40 } },
       // 💡 分时线/5日线禁止左右拖动：关闭水平滚动 + 固定左右边界
       handleScroll: { mouseWheel: true, pressedMouseMove: !isIntraday, horzTouchDrag: !isIntraday, vertTouchDrag: true },
+      // 💡 分时/Tick 模式禁止缩放（滚轮+捏合），保持固定 barSpacing；K线图允许缩放
+      handleScale: isIntraday ? false : { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
       // 💡 K线图左右拖动配置：允许拖动但不超过K线数据最大最小值
       timeScale: {
-        borderColor: theme === 'dark' ? '#475569' : '#cbd5e1',
+        borderColor: c.axisBorder,
         timeVisible: true,
         fixLeftEdge: true,      // 固定左边界，不允许拖动超过数据起点
         fixRightEdge: true,     // 分时线/5日线固定右边界，禁止左右拖动（不允许右侧空白偏移）
@@ -775,9 +821,9 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       },
     })
 
-    const bbUpperLine = chart.addSeries(AreaSeries, { lineColor: theme === 'dark' ? 'rgba(251, 191, 36, 0.4)' : 'rgba(217, 119, 6, 0.4)', topColor: theme === 'dark' ? 'rgba(251, 191, 36, 0.15)' : 'rgba(217, 119, 6, 0.15)', bottomColor: 'rgba(0, 0, 0, 0)', lineWidth: 1, lineStyle: LineStyle.Dashed, crosshairMarkerVisible: false })
-    const bbLowerLine = chart.addSeries(LineSeries, { color: theme === 'dark' ? 'rgba(251, 191, 36, 0.4)' : 'rgba(217, 119, 6, 0.4)', lineWidth: 1, lineStyle: LineStyle.Dashed, crosshairMarkerVisible: false })
-    const candlestickSeries = chart.addSeries(CandlestickSeries, { upColor: MARKET_COLORS.bull, downColor: MARKET_COLORS.bear, borderVisible: false, wickUpColor: MARKET_COLORS.bull, wickDownColor: MARKET_COLORS.bear })
+    const bbUpperLine = chart.addSeries(AreaSeries, { lineColor: c.warn, topColor: resolvedTheme === 'dark' ? 'rgba(251, 191, 36, 0.12)' : 'rgba(245, 158, 11, 0.12)', bottomColor: 'rgba(0, 0, 0, 0)', lineWidth: 1, lineStyle: LineStyle.Dashed, crosshairMarkerVisible: false })
+    const bbLowerLine = chart.addSeries(LineSeries, { color: c.warn, lineWidth: 1, lineStyle: LineStyle.Dashed, crosshairMarkerVisible: false })
+    const candlestickSeries = chart.addSeries(CandlestickSeries, { upColor: c.bull, downColor: c.bear, borderVisible: false, wickUpColor: c.bull, wickDownColor: c.bear })
     // 💡 5日线每日分隔竖线载体：透明 LineSeries (线不可见, 仅承载 vertical_line markers, 避免与 AI markers 共用同一 series 冲突)
     const dailyDividerSeries = chart.addSeries(LineSeries, {
       color: 'rgba(0,0,0,0)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
@@ -785,22 +831,22 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     });
     dailyDividerSeriesRef.current = dailyDividerSeries
     dailyDividerMarkersRef.current = createSeriesMarkers(dailyDividerSeries, [])
-    const ma20Line = chart.addSeries(LineSeries, { color: '#f472b6', lineWidth: 2, crosshairMarkerVisible: false })
-    const ma50Line = chart.addSeries(LineSeries, { color: '#60a5fa', lineWidth: 2, crosshairMarkerVisible: false })
-    const ma200Line = chart.addSeries(LineSeries, { color: '#fbbf24', lineWidth: 2, crosshairMarkerVisible: false })
-    const volumeSeries = chart.addSeries(HistogramSeries, { color: '#26a69a', priceFormat: { type: 'volume' }, priceScaleId: '' })
+    const ma20Line = chart.addSeries(LineSeries, { color: c.ma20, lineWidth: 2, crosshairMarkerVisible: false })
+    const ma50Line = chart.addSeries(LineSeries, { color: c.ma50, lineWidth: 2, crosshairMarkerVisible: false })
+    const ma200Line = chart.addSeries(LineSeries, { color: c.ma200, lineWidth: 2, crosshairMarkerVisible: false })
+    const volumeSeries = chart.addSeries(HistogramSeries, { color: c.volumeUp, priceFormat: { type: 'volume' }, priceScaleId: '' })
     chart.priceScale('').applyOptions({ scaleMargins: { top: 0.62, bottom: 0.26 } })
     const macdHistSeries = chart.addSeries(HistogramSeries, { priceScaleId: 'macd' })
-    const macdDiffSeries = chart.addSeries(LineSeries, { color: theme === 'dark' ? '#38bdf8' : '#0284c7', lineWidth: 1, priceScaleId: 'macd', crosshairMarkerVisible: false })
-    const macdDeaSeries = chart.addSeries(LineSeries, { color: theme === 'dark' ? '#fbbf24' : '#d97706', lineWidth: 1, priceScaleId: 'macd', crosshairMarkerVisible: false })
+    const macdDiffSeries = chart.addSeries(LineSeries, { color: c.info, lineWidth: 1, priceScaleId: 'macd', crosshairMarkerVisible: false })
+    const macdDeaSeries = chart.addSeries(LineSeries, { color: c.warn, lineWidth: 1, priceScaleId: 'macd', crosshairMarkerVisible: false })
     chart.priceScale('macd').applyOptions({ scaleMargins: { top: 0.76, bottom: 0.13 } })
     const rsiHistSeries = chart.addSeries(HistogramSeries, { priceScaleId: 'rsi', base: 50 })
-    const rsiLineSeries = chart.addSeries(LineSeries, { color: theme === 'dark' ? '#a78bfa' : '#8b5cf6', lineWidth: 1, priceScaleId: 'rsi', crosshairMarkerVisible: false })
+    const rsiLineSeries = chart.addSeries(LineSeries, { color: c.ai, lineWidth: 1, priceScaleId: 'rsi', crosshairMarkerVisible: false })
     chart.priceScale('rsi').applyOptions({ scaleMargins: { top: 0.88, bottom: 0 } })
-    const kdjKSeries = chart.addSeries(LineSeries, { color: theme === 'dark' ? '#f8fafc' : '#475569', lineWidth: 1, priceScaleId: 'rsi', crosshairMarkerVisible: false })
-    const kdjDSeries = chart.addSeries(LineSeries, { color: '#fbbf24', lineWidth: 1, priceScaleId: 'rsi', crosshairMarkerVisible: false })
-    const kdjJSeries = chart.addSeries(LineSeries, { color: '#f472b6', lineWidth: 1, priceScaleId: 'rsi', crosshairMarkerVisible: false })
-    const priceLine = candlestickSeries.createPriceLine({ price: 0, color: theme === 'dark' ? '#38bdf8' : '#0284c7', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: '现价' })
+    const kdjKSeries = chart.addSeries(LineSeries, { color: c.neutral, lineWidth: 1, priceScaleId: 'rsi', crosshairMarkerVisible: false })
+    const kdjDSeries = chart.addSeries(LineSeries, { color: c.warn, lineWidth: 1, priceScaleId: 'rsi', crosshairMarkerVisible: false })
+    const kdjJSeries = chart.addSeries(LineSeries, { color: c.bear, lineWidth: 1, priceScaleId: 'rsi', crosshairMarkerVisible: false })
+    const priceLine = candlestickSeries.createPriceLine({ price: 0, color: c.info, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: '现价' })
 
     chartRef.current = chart; seriesRef.current = candlestickSeries; ma20Ref.current = ma20Line; ma50Ref.current = ma50Line; ma200Ref.current = ma200Line; bbUpperRef.current = bbUpperLine; bbLowerRef.current = bbLowerLine; macdDiffRef.current = macdDiffSeries; macdDeaRef.current = macdDeaSeries; macdHistRef.current = macdHistSeries; rsiLineRef.current = rsiLineSeries; rsiHistRef.current = rsiHistSeries; kdjKRef.current = kdjKSeries; kdjDRef.current = kdjDSeries; kdjJRef.current = kdjJSeries; volumeRef.current = volumeSeries; currentPriceLineRef.current = priceLine;
 
@@ -905,7 +951,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       if (price === null) return;
       const container = chartContainerRef.current as any;
       const tool = drawToolRef.current;
-      const color = theme === 'dark' ? '#38bdf8' : '#0284c7';
+      const color = c.info;
       if (!container._activeDrawingPlugin) {
         if (tool === 'hline') {
           const p = new HLinePrimitive(candlestickSeries, param.time ?? null, price, color);
@@ -1033,6 +1079,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
 
   useEffect(() => {
     if (!seriesRef.current) return
+    const c = CHART_COLORS[resolvedTheme]
     if (!realHistory.length) {
       seriesRef.current.setData([]); if (ma20Ref.current) ma20Ref.current.setData([]); if (ma50Ref.current) ma50Ref.current.setData([]); if (ma200Ref.current) ma200Ref.current.setData([]); if (bbUpperRef.current) bbUpperRef.current.setData([]); if (bbLowerRef.current) bbLowerRef.current.setData([]); if (volumeRef.current) volumeRef.current.setData([]); if (macdDiffRef.current) macdDiffRef.current.setData([]); if (macdDeaRef.current) macdDeaRef.current.setData([]); if (macdHistRef.current) macdHistRef.current.setData([]); if (rsiLineRef.current) rsiLineRef.current.setData([]); if (rsiHistRef.current) rsiHistRef.current.setData([]); if (kdjKRef.current) kdjKRef.current.setData([]); if (kdjDRef.current) kdjDRef.current.setData([]); if (kdjJRef.current) kdjJRef.current.setData([]); if (dailyDividerSeriesRef.current) { dailyDividerSeriesRef.current.setData([]); dailyDividerMarkersRef.current?.setMarkers([]) }
       if (oRef.current) oRef.current.textContent = '--'; if (hRef.current) hRef.current.textContent = '--'; if (lRef.current) lRef.current.textContent = '--'; if (cRef.current) cRef.current.textContent = '--'; if (vRef.current) vRef.current.textContent = '--'; lastCandleRef.current = null; return
@@ -1070,9 +1117,9 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
             const buySignals = []; if (rsiBottom) buySignals.push('RSI底背'); if (macdBottom) buySignals.push('MACD底背'); if (kdjGolden) buySignals.push('KDJ金叉');
             const sellSignals = []; if (rsiTop) sellSignals.push('RSI顶背'); if (macdTop) sellSignals.push('MACD顶背'); if (kdjDeath) sellSignals.push('KDJ死叉');
             if (buySignals.length > 0) {
-              point.color = theme === 'dark' ? '#00ff88' : '#10b981'; point.wickColor = point.color; let buyDetail = `【买点特征】`; if (rsiBottom || macdBottom) { const sources = [rsiBottom ? 'RSI' : null, macdBottom ? 'MACD' : null].filter(Boolean).join('+'); buyDetail += `价格创新低 (${currClose.toFixed(2)})，但 ${sources} 指标拒绝创出新低并开始反转，暗示空头衰竭。`; } if (kdjGolden) { buyDetail += (rsiBottom || macdBottom ? '\n' : '') + `KDJ 在低位 (${currK.toFixed(1)}) 形成金叉，多头资金开始发力。`; } markers.push({ time: point.time, detail: buyDetail })
+              point.color = CHART_COLORS[resolvedTheme].bull; point.wickColor = point.color; let buyDetail = `【买点特征】`; if (rsiBottom || macdBottom) { const sources = [rsiBottom ? 'RSI' : null, macdBottom ? 'MACD' : null].filter(Boolean).join('+'); buyDetail += `价格创新低 (${currClose.toFixed(2)})，但 ${sources} 指标拒绝创出新低并开始反转，暗示空头衰竭。`; } if (kdjGolden) { buyDetail += (rsiBottom || macdBottom ? '\n' : '') + `KDJ 在低位 (${currK.toFixed(1)}) 形成金叉，多头资金开始发力。`; } markers.push({ time: point.time, detail: buyDetail })
             } else if (sellSignals.length > 0) {
-              point.color = theme === 'dark' ? '#ff0055' : '#ef4444'; point.wickColor = point.color; let sellDetail = `【卖点特征】`; if (rsiTop || macdTop) { const sources = [rsiTop ? 'RSI' : null, macdTop ? 'MACD' : null].filter(Boolean).join('+'); sellDetail += `价格创新高 (${currClose.toFixed(2)})，但 ${sources} 指标拒绝创出新高并开始反转，暗示多头衰竭。`; } if (kdjDeath) { sellDetail += (rsiTop || macdTop ? '\n' : '') + `KDJ 在高位 (${currK.toFixed(1)}) 形成死叉，空头抛压开始涌现。`; } markers.push({ time: point.time, detail: sellDetail })
+              point.color = CHART_COLORS[resolvedTheme].bear; point.wickColor = point.color; let sellDetail = `【卖点特征】`; if (rsiTop || macdTop) { const sources = [rsiTop ? 'RSI' : null, macdTop ? 'MACD' : null].filter(Boolean).join('+'); sellDetail += `价格创新高 (${currClose.toFixed(2)})，但 ${sources} 指标拒绝创出新高并开始反转，暗示多头衰竭。`; } if (kdjDeath) { sellDetail += (rsiTop || macdTop ? '\n' : '') + `KDJ 在高位 (${currK.toFixed(1)}) 形成死叉，空头抛压开始涌现。`; } markers.push({ time: point.time, detail: sellDetail })
             }
           }
           return point
@@ -1090,7 +1137,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
           return true
         })
       const ma20Data: any[] = [], ma50Data: any[] = [], ma200Data: any[] = []; const bbUpperData: any[] = [], bbLowerData: any[] = []; const macdDiffData: any[] = [], macdDeaData: any[] = [], macdHistData: any[] = []; const rsiData: any[] = [], rsiHistData: any[] = []; const kdjKData: any[] = [], kdjDData: any[] = [], kdjJData: any[] = []; const volumeData: any[] = [];
-      const upColor = theme === 'dark' ? 'rgba(16, 185, 129, 0.5)' : 'rgba(5, 150, 105, 0.5)'; const downColor = theme === 'dark' ? 'rgba(239, 68, 68, 0.5)' : 'rgba(220, 38, 38, 0.5)';
+      const upColor = c.volumeUp; const downColor = c.volumeDown;
       for (let i = 0; i < lwData.length; i++) {
         const d = lwData[i]; const t = d.time;
         if (ma20[i] !== '-') ma20Data.push({ time: t, value: ma20[i] }); if (ma50[i] !== '-') ma50Data.push({ time: t, value: ma50[i] }); if (ma200[i] !== '-') ma200Data.push({ time: t, value: ma200[i] });
@@ -1127,7 +1174,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
               seen.add(day.key)
               // 跳过最早一天(图左端无需标识), 仅对后续每个交易日首根画日期标识
               if (seen.size > 1) {
-                dividerMarkers.push({ time: p.time, position: 'aboveBar', color: theme === 'dark' ? '#94a3b8' : '#64748b', shape: 'square', text: day.label, size: 0.6 })
+                dividerMarkers.push({ time: p.time, position: 'aboveBar', color: c.text, shape: 'square', text: day.label, size: 0.6 })
               }
             }
           }
@@ -1241,21 +1288,21 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
         </span>
         <div className="flex-1" />
         <div className="flex items-center gap-0.5 bg-background border border-border/50 p-0.5 rounded-md shadow-sm" role="group" aria-label="均线开关">
-          <button onClick={() => setShowMA20(!showMA20)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium flex items-center gap-1', showMA20 ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} title="MA20 (20日短期生命线)"><span className={cn("h-1.5 w-1.5 rounded-full bg-[#f472b6]", !showMA20 && "opacity-50")} />MA20</button>
-          <button onClick={() => setShowMA50(!showMA50)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium flex items-center gap-1', showMA50 ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} title="MA50 (50日中期分水岭)"><span className={cn("h-1.5 w-1.5 rounded-full bg-[#60a5fa]", !showMA50 && "opacity-50")} />MA50</button>
-          <button onClick={() => setShowMA200(!showMA200)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium flex items-center gap-1', showMA200 ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} title="MA200 (200日长期牛熊线)"><span className={cn("h-1.5 w-1.5 rounded-full bg-[#fbbf24]", !showMA200 && "opacity-50")} />MA200</button>
+          <button onClick={() => setShowMA20(!showMA20)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium flex items-center gap-1', showMA20 ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} title="MA20 (20日短期生命线)"><span className={cn("h-1.5 w-1.5 rounded-full", !showMA20 && "opacity-50")} style={{ backgroundColor: CHART_COLORS[resolvedTheme].ma20 }} />MA20</button>
+          <button onClick={() => setShowMA50(!showMA50)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium flex items-center gap-1', showMA50 ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} title="MA50 (50日中期分水岭)"><span className={cn("h-1.5 w-1.5 rounded-full", !showMA50 && "opacity-50")} style={{ backgroundColor: CHART_COLORS[resolvedTheme].ma50 }} />MA50</button>
+          <button onClick={() => setShowMA200(!showMA200)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium flex items-center gap-1', showMA200 ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} title="MA200 (200日长期牛熊线)"><span className={cn("h-1.5 w-1.5 rounded-full", !showMA200 && "opacity-50")} style={{ backgroundColor: CHART_COLORS[resolvedTheme].ma200 }} />MA200</button>
         </div>
         <div className="flex items-center gap-0.5 bg-background border border-border/50 p-0.5 rounded-md shadow-sm" role="group" aria-label="指标开关">
-          <button onClick={() => setShowBB(!showBB)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium flex items-center gap-1', showBB ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} title="Bollinger Bands (布林带)"><span className={cn("h-1.5 w-1.5 rounded-full bg-[#d97706]", !showBB && "opacity-50")} />BB</button>
+          <button onClick={() => setShowBB(!showBB)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium flex items-center gap-1', showBB ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} title="Bollinger Bands (布林带)"><span className={cn("h-1.5 w-1.5 rounded-full", !showBB && "opacity-50")} style={{ backgroundColor: CHART_COLORS[resolvedTheme].warn }} />BB</button>
         </div>
         <div className="flex items-center gap-0.5 bg-background border border-border/50 p-0.5 rounded-md shadow-sm" role="group" aria-label="MACD开关">
-          <button onClick={() => setShowMACD(!showMACD)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium flex items-center gap-1', showMACD ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} title="MACD (指数平滑异同移动平均线)"><span className={cn("h-1.5 w-1.5 rounded-full bg-[#38bdf8]", !showMACD && "opacity-50")} />MACD</button>
+          <button onClick={() => setShowMACD(!showMACD)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium flex items-center gap-1', showMACD ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} title="MACD (指数平滑异同移动平均线)"><span className={cn("h-1.5 w-1.5 rounded-full", !showMACD && "opacity-50")} style={{ backgroundColor: CHART_COLORS[resolvedTheme].info }} />MACD</button>
         </div>
         <div className="flex items-center gap-0.5 bg-background border border-border/50 p-0.5 rounded-md shadow-sm" role="group" aria-label="RSI开关">
-          <button onClick={() => setShowRSI(!showRSI)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium flex items-center gap-1', showRSI ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} title="RSI (相对强弱指数)"><span className={cn("h-1.5 w-1.5 rounded-full bg-[hsl(var(--ai))]", !showRSI && "opacity-50")} />RSI</button>
+          <button onClick={() => setShowRSI(!showRSI)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium flex items-center gap-1', showRSI ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} title="RSI (相对强弱指数)"><span className={cn("h-1.5 w-1.5 rounded-full", !showRSI && "opacity-50")} style={{ backgroundColor: CHART_COLORS[resolvedTheme].ai }} />RSI</button>
         </div>
         <div className="flex items-center gap-0.5 bg-background border border-border/50 p-0.5 rounded-md shadow-sm" role="group" aria-label="KDJ开关">
-          <button onClick={() => setShowKDJ(!showKDJ)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium flex items-center gap-1', showKDJ ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} title="KDJ (随机指标)"><span className={cn("h-1.5 w-1.5 rounded-full bg-[#f472b6]", !showKDJ && "opacity-50")} />KDJ</button>
+          <button onClick={() => setShowKDJ(!showKDJ)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium flex items-center gap-1', showKDJ ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} title="KDJ (随机指标)"><span className={cn("h-1.5 w-1.5 rounded-full", !showKDJ && "opacity-50")} style={{ backgroundColor: CHART_COLORS[resolvedTheme].bear }} />KDJ</button>
         </div>
         <div className="flex items-center gap-0.5 bg-background border border-border/50 p-0.5 rounded-md shadow-sm" role="group" aria-label="K线周期">
           {periods.map((p, idx) => (<button key={p.id} onClick={() => setSelectedPeriod(p.id)} className={cn('px-2 py-0.5 rounded text-[10px] font-mono transition-colors font-medium', selectedPeriod === p.id ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground')} aria-pressed={selectedPeriod === p.id} title={`切换至${p.label}周期 (快捷键: ${idx + 1})`}>{p.label}</button>))}

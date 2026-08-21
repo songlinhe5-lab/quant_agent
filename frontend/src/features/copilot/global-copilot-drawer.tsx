@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useCallback, useContext, useRef, useState } from 'react'
-import { Brain, History, Plus, X, Users, MessageSquare } from 'lucide-react'
+import { Brain, History, Plus, X, Users, MessageSquare, Wallet } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useSceneModeStore } from '@/stores/useSceneModeStore'
@@ -13,7 +13,7 @@ import { ChatInputBox } from '@/features/copilot/chat-input-box'
 import { useCopilotContextStore } from '@/stores/useCopilotContextStore'
 import { ResearchTeamView } from '@/features/copilot/research-team/research-team-view'
 
-type CopilotTab = 'chat' | 'team'
+type CopilotTab = 'chat' | 'team' | 'assets'
 
 const DEFAULT_WIDTH = 520
 const MIN_WIDTH = 360
@@ -66,7 +66,7 @@ function CopilotDrawerChrome({ width, onResizeStart }: { width: number; onResize
                   aria-label="新建对话"
                   title="新建对话"
                 >
-                  <Plus className="h-3.5 w-3.5" />
+                  <Plus className="h- 3.5 w-3.5" />
                 </button>
               </>
             )}
@@ -81,16 +81,19 @@ function CopilotDrawerChrome({ width, onResizeStart }: { width: number; onResize
             </button>
           </div>
         </div>
-        {/* Tab 切换：对话 / 投研团队 */}
-        <div className="flex gap-1 px-3 pb-2">
+        {/* Tab 切换：对话 / 投研团队 / 资产 */}
+        <div className="flex items-center gap-1 px-3 pb-0 pt-1 border-b border-border/30">
           <TabButton active={tab === 'chat'} onClick={() => setTab('chat')} icon={<MessageSquare className="h-3.5 w-3.5" />} label="对话" />
           <TabButton active={tab === 'team'} onClick={() => setTab('team')} icon={<Users className="h-3.5 w-3.5" />} label="AI投研团队" />
+          <TabButton active={tab === 'assets'} onClick={() => setTab('assets')} icon={<Wallet className="h-3.5 w-3.5" />} label="资产" />
         </div>
       </header>
 
       <div className="relative flex-1 min-h-0 flex flex-col">
         {tab === 'team' ? (
           <ResearchTeamView />
+        ) : tab === 'assets' ? (
+          <CopilotAssetsPanel onClose={() => setTab('chat')} />
         ) : (
           <>
         {sessionsOpen && (
@@ -101,10 +104,10 @@ function CopilotDrawerChrome({ width, onResizeStart }: { width: number; onResize
           </div>
         )}
         {context && (
-          <div className="mx-3 mt-3 flex items-start gap-2 rounded-lg border border-scene/30 bg-scene/10 px-3 py-2 text-xs text-scene scene-accent-transition">
-            <span className="mt-0.5">📎</span>
+          <div className="mx-3 mt-3 flex items-start gap-2 rounded-full border border-scene/30 bg-scene/10 px-3 py-2 text-xs text-scene scene-accent-transition">
+            <Brain className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <div className="min-w-0 flex-1">
-              <div className="font-medium text-scene">已附加上下文 · {context.title}</div>
+              <div className="font-medium text-scene">大脑上下文 · {context.title}</div>
               <div className="mt-0.5 whitespace-pre-wrap break-words text-scene/80">{context.summary}</div>
             </div>
             <button
@@ -143,15 +146,34 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={cn(
-        'flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors',
+        'relative flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium transition-colors border-b-2 -mb-px',
         active
-          ? 'bg-scene/15 text-scene'
-          : 'text-muted-foreground hover:bg-white/5 hover:text-foreground',
+          ? 'border-scene text-scene'
+          : 'border-transparent text-muted-foreground hover:text-foreground',
       )}
     >
       {icon}
       {label}
     </button>
+  )
+}
+
+// 💡 资产 Tab：组合快照占位（后续接入 Portfolio API）
+function CopilotAssetsPanel({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8 text-center text-muted-foreground">
+      <div className="h-16 w-16 rounded-2xl bg-scene/10 border border-scene/20 flex items-center justify-center">
+        <Wallet className="h-8 w-8 text-scene" />
+      </div>
+      <h3 className="text-sm font-semibold text-foreground">资产视图</h3>
+      <p className="text-xs max-w-xs">实时组合净值、持仓分布与风险敞口将在此呈现。敬请期待投资组合 API 接入。</p>
+      <button
+        onClick={onClose}
+        className="mt-2 rounded-full border border-border/50 px-3 py-1 text-xs hover:bg-secondary/50 transition-colors"
+      >
+        返回对话
+      </button>
+    </div>
   )
 }
 

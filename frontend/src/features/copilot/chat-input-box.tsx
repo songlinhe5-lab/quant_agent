@@ -173,14 +173,14 @@ export function ChatInputBox() {
         >
           {/* 💡 拖拽时的毛玻璃提示蒙版 */}
           {isDragging && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm border-2 border-dashed border-indigo-500 m-2 rounded-xl pointer-events-none">
-              <div className="flex flex-col items-center gap-2 text-indigo-500 dark:text-indigo-400">
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm border-2 border-dashed border-[hsl(var(--scene-accent))] m-2 rounded-xl pointer-events-none">
+              <div className="flex flex-col items-center gap-2 text-scene">
                 <Upload className="h-8 w-8 animate-bounce" />
                 <span className="font-bold text-sm tracking-wide">松开鼠标，提取为投研附件</span>
               </div>
             </div>
           )}
-          <div className="max-w-4xl mx-auto flex flex-col relative bg-white dark:bg-black/50 border border-slate-300 dark:border-white/10 rounded-xl p-2 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/50 transition-all shadow-sm">
+          <div className="max-w-4xl mx-auto flex flex-col relative bg-white dark:bg-black/50 border border-slate-300 dark:border-white/10 rounded-full p-1.5 focus-within:border-scene/50 focus-within:ring-1 focus-within:ring-scene/50 transition-all shadow-sm">
 
             {mentionQuery !== null && (
               <div className="absolute bottom-full left-12 mb-2 w-56 bg-white dark:bg-zinc-900 border border-border/50 rounded-xl shadow-xl overflow-hidden z-50 flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-200">
@@ -242,7 +242,7 @@ export function ChatInputBox() {
 
               <button
                 onClick={handleNewChat}
-                className="h-10 w-10 shrink-0 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-500 dark:hover:text-red-400 flex items-center justify-center transition-all mb-0.5"
+                className="h-10 w-10 shrink-0 rounded-full hover:bg-red-500/10 text-muted-foreground hover:text-red-500 dark:hover:text-red-400 flex items-center justify-center transition-all"
                 title="清空上下文 (新推演)"
               >
                 <Trash2 className="h-4 w-4" />
@@ -250,7 +250,7 @@ export function ChatInputBox() {
 
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="h-10 w-10 shrink-0 rounded-lg hover:bg-secondary/80 text-muted-foreground flex items-center justify-center transition-all mb-0.5"
+                className="h-10 w-10 shrink-0 rounded-full hover:bg-secondary/80 text-muted-foreground flex items-center justify-center transition-all"
                 title="上传图片或PDF附件"
               >
                 <Paperclip className="h-4 w-4" />
@@ -263,23 +263,23 @@ export function ChatInputBox() {
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
                 placeholder="输入投研指令，或粘贴图片/PDF，例如：分析 AAPL 的近期新闻..."
-                className="w-full max-h-32 min-h-[44px] bg-transparent text-sm text-slate-900 dark:text-gray-200 placeholder:text-slate-400 dark:placeholder:text-gray-600 resize-none outline-none px-2 py-3 custom-scrollbar font-mono"
+                className="w-full max-h-32 min-h-[44px] bg-transparent text-sm text-slate-900 dark:text-gray-200 placeholder:text-slate-400 dark:placeholder:text-gray-600 resize-none outline-none px-2 py-3 custom-scrollbar"
                 rows={1}
               />
 
               {isGenerating ? (
-                <button onClick={handleStop} className="h-10 w-10 shrink-0 rounded-lg bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-all shadow-[0_0_10px_rgba(239,68,68,0.3)] mb-0.5 mr-0.5" title="停止生成">
+                <button onClick={handleStop} className="h-10 w-10 shrink-0 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-all shadow-[0_0_10px_rgba(239,68,68,0.3)] mr-0.5" title="停止生成">
                   <Square className="h-4 w-4 fill-current" />
                 </button>
               ) : (
-                <button onClick={onSendClick} disabled={!input.trim() && attachments.length === 0} className="h-10 w-10 shrink-0 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-[0_0_10px_rgba(var(--primary),0.3)] hover:shadow-[0_0_15px_rgba(var(--primary),0.5)] mb-0.5 mr-0.5" title="发送">
+                <button onClick={onSendClick} disabled={!input.trim() && attachments.length === 0} className="h-10 w-10 shrink-0 rounded-full bg-scene hover:bg-[hsl(var(--scene-accent)/0.9)] text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-[0_0_10px_rgba(var(--scene-accent),0.3)] hover:shadow-[0_0_15px_rgba(var(--scene-accent),0.5)] mr-0.5" title="发送">
                   <Send className="h-4 w-4 ml-0.5" />
                 </button>
               )}
             </div>
           </div>
           <div className="text-center mt-2">
-            <span className="text-[10px] text-muted-foreground font-mono">Enter 换行 | Cmd/Ctrl + Enter 发送 | 支持粘贴图片/PDF</span>
+            <span className="text-[10px] text-muted-foreground">Enter 换行 | Cmd/Ctrl + Enter 发送 | 支持粘贴图片/PDF</span>
           </div>
         </div>
   )

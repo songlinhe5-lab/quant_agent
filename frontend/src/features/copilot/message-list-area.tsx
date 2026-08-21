@@ -30,24 +30,24 @@ export function MessageListArea() {
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-muted-foreground space-y-6 animate-in fade-in duration-700 max-w-2xl mx-auto px-4">
               <div className="flex flex-col items-center gap-3">
-                <div className="h-16 w-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center shadow-[0_0_15px_rgba(var(--primary),0.2)]">
-                  <Sparkles className="h-8 w-8 text-primary" />
+                <div className="h-16 w-16 rounded-2xl bg-scene/10 border border-scene/20 flex items-center justify-center shadow-[0_0_15px_rgba(var(--scene-accent),0.2)]">
+                  <Sparkles className="h-8 w-8 text-scene" />
                 </div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-lg font-bold text-foreground tracking-widest uppercase">Hermes Quant Agent</h3>
                   <button onClick={refreshPrompts} className="p-1 rounded-md hover:bg-secondary/80 text-muted-foreground hover:text-foreground transition-colors" title="换一批灵感"><RefreshCw className="h-3.5 w-3.5" /></button>
                 </div>
-                <p className="text-xs font-mono">量化投研主脑已就绪，请输入投研指令或选择下方快捷模板...</p>
+                <p className="text-xs">量化投研主脑已就绪，请输入投研指令或选择下方快捷模板...</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 w-full mt-4">
-                {quickPrompts.map((qp, i) => (
-                  <button key={i} onClick={() => handleSend(qp.prompt)} className="flex items-start gap-3 p-3 rounded-xl border border-border/40 bg-secondary/20 hover:bg-secondary/60 hover:border-primary/40 transition-all text-left group shadow-sm hover:shadow-md">
-                    <div className="p-2 rounded-lg bg-background border border-border/50 group-hover:shadow-sm">
+                {quickPrompts.slice(0, 6).map((qp, i) => (
+                  <button key={i} onClick={() => handleSend(qp.prompt)} className="flex items-start gap-3 p-3 rounded-xl border border-border/40 bg-secondary/20 hover:bg-secondary/60 hover:border-scene/40 transition-all text-left group shadow-sm hover:shadow-md">
+                    <div className="p-2 rounded-lg bg-background border border-border/50 group-hover:shadow-sm group-hover:border-scene/30">
                       {getIconForTitle(qp.title)}
                     </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-foreground mb-1">{qp.title}</h4>
+                    <div className="min-w-0">
+                      <h4 className="text-xs font-bold text-foreground mb-1 truncate">{qp.title}</h4>
                       <p className="text-[10px] text-muted-foreground line-clamp-2">{qp.prompt}</p>
                     </div>
                   </button>
@@ -55,7 +55,7 @@ export function MessageListArea() {
               </div>
 
               {/* 个股深度研判快捷指令 */}
-              <div className="w-full mt-6">
+              <div className="w-full mt-4">
                 <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3 text-center">
                   个股深度研判 · 快捷指令
                 </h4>
@@ -64,12 +64,12 @@ export function MessageListArea() {
                     <button
                       key={cmd.label}
                       onClick={() => inputSetterRef?.current?.(cmd.template)}
-                      className="flex items-center gap-3 bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 hover:bg-blue-500/20 cursor-pointer transition-colors text-left group"
+                      className="flex items-center gap-3 bg-scene/10 border border-scene/20 rounded-lg p-3 hover:bg-scene/20 cursor-pointer transition-colors text-left group"
                     >
                       <span className="text-lg shrink-0">{cmd.emoji}</span>
-                      <div>
-                        <h5 className="text-sm font-semibold text-slate-200 group-hover:text-white transition-colors">{cmd.label}</h5>
-                        <p className="text-[10px] text-slate-400 line-clamp-1 mt-0.5">{cmd.template}</p>
+                      <div className="min-w-0">
+                        <h5 className="text-sm font-semibold text-foreground group-hover:text-scene transition-colors truncate">{cmd.label}</h5>
+                        <p className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5">{cmd.template}</p>
                       </div>
                     </button>
                   ))}
