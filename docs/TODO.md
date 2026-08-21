@@ -154,4 +154,4 @@ S8: PT-01a ─► PT-01b ─► PT-01c ─► PT-02a ─► PT-02b
 - [x] **Phase 0（前置）** `[→ COPILOT-01 ✅ 854e43c]` Zustand 状态提升 → 并行 `[→ COPILOT-04 ✅ b5a5e34]` 事件协议统一 / `[→ COPILOT-07 ✅ b5a5e34]` 移除假指数 / `[→ COPILOT-10 ✅ b5a5e34]` 快捷指令统一
 - [ ] **Phase 1（P0 修复）** `[→ COPILOT-02 ✅ bba7ede]` 假附件撤下 / `[→ COPILOT-03 ✅ 8bec707]` 思维链进度器 / `[→ COPILOT-05 ✅ 5a490ad]` 投研会持久化 + 诚实空态 / `[→ COPILOT-09 ✅ a97bae7]` 迭代上限披露
 - [ ] **Phase 2（新功能）** `[→ COPILOT-12~20]` 投研工作台三列骨架 + 会话中心 + 对话宽屏版 + 辩论室三态（组局/辩论/收敛）+ 资产库 + 运行信息列 + 抽屉展开按钮
-- [ ] **Phase 3（可信 + 治理）** `[→ COPILOT-06]` 投研会迁出抽屉 / `[→ COPILOT-08]` 鉴权统一 / `[→ COPILOT-11]` 超限文件拆分 / `[→ COPILOT-21]` 工具失败明示 + STALE 角标 / `[→ COPILOT-22]` SANDBOX 策略卡
+- [ ] **Phase 3（可信 + 治理）** `[→ COPILOT-06 ✅ 125cf45]` 投研会迁出抽屉 / `[→ COPILOT-08]` 鉴权统一 / `[→ COPILOT-11]` 超限文件拆分 / `[→ COPILOT-21]` 工具失败明示 + STALE 角标 / `[→ COPILOT-22]` SANDBOX 策略卡
