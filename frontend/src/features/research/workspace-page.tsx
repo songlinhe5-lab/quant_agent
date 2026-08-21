@@ -109,6 +109,9 @@ export function ResearchWorkspacePage() {
               question={debateRun.question}
               config={debateRun.config}
               runToken={debateRun.runToken}
+              // COPILOT-17: 调整阵容重跑 → 回填组局态；追问首席 → 切对话模式
+              onRerun={() => setB2Mode('composer')}
+              onAskChief={() => { setActiveSession(undefined); setB2Mode('chat') }}
             />
           ) : (
             <ChatWorkspace />

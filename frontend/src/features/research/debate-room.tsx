@@ -3,17 +3,21 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Crown, AlertTriangle, Square, RotateCcw, Users, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { BriefingMarkdown } from '@/features/briefing/briefing-markdown'
 import { ExpertOpinionCard, type ExpertOpinionState } from '@/features/copilot/research-team/expert-opinion-card'
 import { expertById, type ExpertBias } from '@/features/copilot/research-team/expert-roster'
 import { startTeamAnalysis, type TeamStreamEvent, type ChiefReportEvent } from '@/features/copilot/research-team/expert-team-client'
 import type { TeamConfig } from '@/features/copilot/research-team/roster-panel'
+import { ChiefReportCard } from './chief-report-card'
 
 interface DebateRoomProps {
   question: string
   config: TeamConfig
   runToken: number
   onDone?: () => void
+  /** COPILOT-17: 调整阵容重跑（回填组局态） */
+  onRerun?: () => void
+  /** COPILOT-17: 追问首席（切换对话模式） */
+  onAskChief?: () => void
 }
 
 type Phase = 'idle' | 'running' | 'done' | 'error' | 'stopped'
@@ -28,7 +32,7 @@ interface CompletedRound { round: number; consensus: number }
  *  阵营面板按专家 bias 分组(多/空/中性)人数柱 + 平均信心
  *  断流 amber 横幅 + 重试；停止按钮落「已停止」态
  */
-export function DebateRoom({ question, config, runToken, onDone }: DebateRoomProps) {
+export function DebateRoom({ question, config, runToken, onDone, onRerun, onAskChief }: DebateRoomProps) {
   const [phase, setPhase] = useState<Phase>('idle')
   const [statusText, setStatusText] = useState('')
   const [opinions, setOpinions] = useState<ExpertOpinionState[]>([])
@@ -241,18 +245,26 @@ export function DebateRoom({ question, config, runToken, onDone }: DebateRoomPro
             </div>
           )}
 
-          {/* 首席报告 */}
+          {/* 首席收敛报告（COPILOT-17） */}
           {chief && (
-            <div className="rounded-xl border border-yellow-300/40 bg-yellow-300/5 p-3">
-              <div className="mb-2 flex items-center gap-2">
-                <Crown className="h-4 w-4 text-yellow-300" />
-                <span className="text-xs font-bold text-yellow-300">首席投资官 · 最终研判</span>
-                {typeof chief.bullish_probability === 'number' && (
-                  <span className="ml-auto rounded-full border border-scene/40 bg-scene/10 px-2 py-0.5 text-[10px] text-scene">看涨概率 {chief.bullish_probability}%</span>
-                )}
-              </div>
-              <BriefingMarkdown content={chief.content} />
-            </div>
+            <ChiefReportCard
+              event={chief}
+              config={config}
+              expertCount={config.expertIds.length}
+              onSave={() => { /* 资产库接入后存档 */ }}
+              onExport={() => {
+                if (!chief.content) return
+                const blob = new Blob([`# 首席投资官 · 最终研判\n\n${chief.content}`], { type: 'text/markdown;charset=utf-8' })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = `chief_report_${new Date().toISOString().slice(0, 10)}.md`
+                a.click()
+                URL.revokeObjectURL(url)
+              }}
+              onRerun={onRerun ?? (() => {})}
+              onAskChief={onAskChief ?? (() => {})}
+            />
           )}
         </div>
 

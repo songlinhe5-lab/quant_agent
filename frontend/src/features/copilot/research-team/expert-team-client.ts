@@ -41,6 +41,18 @@ export interface RoundCompleteEvent extends BaseEvent {
   message?: string
 }
 
+export interface ChiefReportData {
+  consensus_areas?: string[]
+  divergence_areas?: string[]
+  strongest_bull_case?: string
+  strongest_bear_case?: string
+  probability_assessment?: number
+  final_recommendation?: string
+  risk_warnings?: string[]
+  minority_opinion?: string
+  full_report?: string
+}
+
 export interface ChiefReportEvent extends BaseEvent {
   type: 'chief_report'
   /** 首席最终报告 Markdown */
@@ -48,6 +60,8 @@ export interface ChiefReportEvent extends BaseEvent {
   /** 结构化字段（如有）：概率/结论/矩阵，由后端 JSON 字段透传 */
   bullish_probability?: number
   conclusion?: string
+  /** COPILOT-17: 后端 ChiefReport.model_dump() 结构化字段 */
+  data?: ChiefReportData
 }
 
 export interface ErrorEvent extends BaseEvent {
