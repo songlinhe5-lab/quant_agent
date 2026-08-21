@@ -1,12 +1,13 @@
 'use client'
 
-import React, { useCallback, useContext, useRef, useState } from 'react'
+import React, { useCallback, useRef, useState } from 'react'
 import { Brain, History, Plus, X, Users, MessageSquare, Wallet } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useSceneModeStore } from '@/stores/useSceneModeStore'
 import { SCENE_META } from '@/features/scene/scene-mode-types'
-import { ChatProvider, ChatActionContext } from '@/features/copilot/chat-context'
+import { useChatStore } from '@/stores/useChatStore'
+import { useChat } from '@/features/copilot/useChat'
 import { ChatSidebarWrapper } from '@/features/copilot/chat-sidebar-wrapper'
 import { MessageListArea } from '@/features/copilot/message-list-area'
 import { ChatInputBox } from '@/features/copilot/chat-input-box'
@@ -21,7 +22,7 @@ const MAX_WIDTH = 800
 
 function CopilotDrawerChrome({ width, onResizeStart }: { width: number; onResizeStart: (e: React.MouseEvent) => void }) {
   const closeCopilot = useLayoutStore((s) => s.closeCopilot)
-  const { handleNewChat } = useContext(ChatActionContext)
+  const handleNewChat = useChatStore((s) => s.handleNewChat)
   const [sessionsOpen, setSessionsOpen] = useState(false)
   const [tab, setTab] = useState<CopilotTab>('chat')
   const context = useCopilotContextStore((s) => s.context)
@@ -185,6 +186,7 @@ function CopilotAssetsPanel({ onClose }: { onClose: () => void }) {
 export function GlobalCopilotDrawer() {
   const copilotOpen = useLayoutStore((s) => s.copilotOpen)
   const closeCopilot = useLayoutStore((s) => s.closeCopilot)
+  const { handleClearAll } = useChat()
   const [width, setWidth] = useState(DEFAULT_WIDTH)
   const dragStartRef = useRef<{ x: number; width: number } | null>(null)
   const hasDraggedRef = useRef(false)
@@ -231,9 +233,7 @@ export function GlobalCopilotDrawer() {
       )}
       style={{ width: copilotOpen ? width : 0 }}
     >
-      <ChatProvider>
-        <CopilotDrawerChrome width={width} onResizeStart={handleResizeStart} />
-      </ChatProvider>
+      <CopilotDrawerChrome width={width} onResizeStart={handleResizeStart} />
     </aside>
   )
 }

@@ -1,9 +1,10 @@
 'use client'
 
-import React, { useContext, useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Brain, History, Plus, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { ChatProvider, ChatActionContext } from '@/features/copilot/chat-context'
+import { useChatStore } from '@/stores/useChatStore'
+import { useChat } from '@/features/copilot/useChat'
 import { ChatSidebarWrapper } from '@/features/copilot/chat-sidebar-wrapper'
 import { MessageListArea } from '@/features/copilot/message-list-area'
 import { ChatInputBox } from '@/features/copilot/chat-input-box'
@@ -69,7 +70,8 @@ const AI_QUICK_COMMANDS: AiQuickCommand[] = [
  * PROD-04b: 补充快捷指令栏 + 进入时自动携带当前聚焦标的 ticker（上下文感知）。
  */
 function FullscreenCopilotChrome() {
-  const { handleNewChat, handleSend } = useContext(ChatActionContext)
+  const handleNewChat = useChatStore((s) => s.handleNewChat)
+  const handleSend = useChatStore((s) => s._sendImpl)
   const [sessionsOpen, setSessionsOpen] = useState(false)
 
   // PROD-04b: 进入 AI 分析模式时，将全局当前聚焦标的注入副驾上下文（实现跨模式 ticker 携带）
@@ -90,7 +92,7 @@ function FullscreenCopilotChrome() {
     const ticker = useMarketStore.getState().currentTicker
     const prompt = cmd.ticker ? cmd.template.replace(/\{symbol\}/g, ticker || '当前聚焦标的') : cmd.template
     // 快捷指令自带明确意图，跳过页面上下文自动注入以避免重复
-    handleSend?.(prompt, [], { skipPageContext: true })
+    handleSend?.(prompt, { skipPageContext: true })
   }
 
   return (
@@ -166,9 +168,6 @@ function FullscreenCopilotChrome() {
 }
 
 export function FullscreenCopilot() {
-  return (
-    <ChatProvider>
-      <FullscreenCopilotChrome />
-    </ChatProvider>
-  )
+  useChat() // 初始化生命周期 + SSE 编排
+  return <FullscreenCopilotChrome />
 }

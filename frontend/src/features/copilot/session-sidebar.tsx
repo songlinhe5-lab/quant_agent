@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { Plus, Trash2, Loader2, Gauge, X, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiClient } from '@/lib/api-client';
@@ -20,6 +20,8 @@ interface SessionSidebarProps {
   activeSessionId?: string;
   onSelectSession: (sessionId: string) => void;
   onNewChat: () => void;
+  /** COPILOT-01: ref 就绪回调，供父组件同步至 Zustand store */
+  onRefReady?: (ref: SessionSidebarRef | null) => void;
 }
 
 export interface SessionSidebarRef {
@@ -28,7 +30,7 @@ export interface SessionSidebarRef {
 
 // --- Component ---
 export const SessionSidebar = forwardRef<SessionSidebarRef, SessionSidebarProps>(
-  ({ activeSessionId, onSelectSession, onNewChat }, ref) => {
+  ({ activeSessionId, onSelectSession, onNewChat, onRefReady }, ref) => {
     const { confirm } = useConfirmDialog();
     const [sessions, setSessions] = useState<SessionRecord[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -51,7 +53,7 @@ export const SessionSidebar = forwardRef<SessionSidebarRef, SessionSidebarProps>
     else if (fgScore <= 25) { fgLabel = '极度恐惧'; fgColor = 'text-[hsl(var(--bear))] dark:text-[hsl(var(--bear))]'; }
     else if (fgScore <= 45) { fgLabel = '恐惧'; fgColor = 'text-[hsl(var(--bear))] dark:text-[hsl(var(--bear))]'; }
 
-    const fetchSessions = async () => {
+    const fetchSessions = useCallback(async () => {
       setIsLoading(true);
       try {
         const res = await apiClient.get('/sessions');
@@ -63,12 +65,17 @@ export const SessionSidebar = forwardRef<SessionSidebarRef, SessionSidebarProps>
       } finally {
         setIsLoading(false);
       }
-    };
+    }, []);
 
     // 暴露刷新方法给父组件，方便在新建对话或产生新消息后刷新列表
     useImperativeHandle(ref, () => ({
       fetchSessions,
     }));
+
+    useEffect(() => {
+      onRefReady?.({ fetchSessions });
+      return () => onRefReady?.(null);
+    }, [fetchSessions]);
 
     useEffect(() => {
       fetchSessions();

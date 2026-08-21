@@ -1,13 +1,16 @@
-import React, { useState, useRef, useEffect, useContext } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { Send, Square, Trash2, Paperclip, X, Upload, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { ChatMessagesContext, ChatActionContext } from './chat-context'
+import { useChatStore } from '@/stores/useChatStore'
 import { SUGGEST_STOCKS } from './shared'
 import { ChatAttachment } from './types'
 
 export function ChatInputBox() {
-  const { isGenerating } = useContext(ChatMessagesContext)
-  const { handleSend, handleStop, handleNewChat, inputSetterRef } = useContext(ChatActionContext)
+  const isGenerating = useChatStore((s) => s.isGenerating)
+  const handleSend = useChatStore((s) => s._sendImpl)
+  const handleStop = useChatStore((s) => s.handleStop)
+  const handleNewChat = useChatStore((s) => s.handleNewChat)
+  const setInputSetterRef = useChatStore((s) => s.setInputSetterRef)
 
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<ChatAttachment[]>([])
@@ -17,25 +20,22 @@ export function ChatInputBox() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // 💡 注册 setInput 到 context ref，允许兄弟组件（MessageListArea）预填输入框
+  // 💡 注册 setInput 到 store ref，允许兄弟组件（MessageListArea）预填输入框
   useEffect(() => {
-    if (inputSetterRef?.current !== undefined) {
-      inputSetterRef.current = (text: string) => {
-        setInput(text)
-        // 聚焦到 {输入标的} 占位符位置
-        setTimeout(() => {
-          if (textareaRef.current) {
-            textareaRef.current.focus()
-            const placeholderIdx = text.indexOf('{输入标的}')
-            if (placeholderIdx !== -1) {
-              textareaRef.current.setSelectionRange(placeholderIdx, placeholderIdx + '{输入标的}'.length)
-            }
+    setInputSetterRef((text: string) => {
+      setInput(text)
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus()
+          const placeholderIdx = text.indexOf('{输入标的}')
+          if (placeholderIdx !== -1) {
+            textareaRef.current.setSelectionRange(placeholderIdx, placeholderIdx + '{输入标的}'.length)
           }
-        }, 0)
-      }
-    }
-    return () => { if (inputSetterRef) inputSetterRef.current = null }
-  }, [inputSetterRef])
+        }
+      }, 0)
+    })
+    return () => { setInputSetterRef(null) }
+  }, [setInputSetterRef])
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -140,7 +140,7 @@ export function ChatInputBox() {
 
   const onSendClick = () => {
     if (input.trim() || attachments.length > 0) {
-      handleSend(input, []) // 暂时禁用图片识别，不传递 attachments
+      handleSend?.(input)
       setInput('')
       setAttachments([])
     }
