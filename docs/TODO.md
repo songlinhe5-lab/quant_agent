@@ -163,28 +163,28 @@ S8: PT-01a ─► PT-01b ─► PT-01c ─► PT-02a ─► PT-02b
 
 #### 🔴 P0 可信红线（数据造假 / 误导，立即修）
 
-- [ ] **UIRF-01** 删回测 Box-Muller 假收益：`use-backtest.ts` L202-209 成功时用随机高斯填充收益分布直方图；L147 已有真实 `dailyReturns` 接入，删除假兜底，无序列时收益分布 tab 走 EmptyState
-- [ ] **UIRF-02** 修回测 `finally` 状态机：`use-backtest.ts` L216-221 非 abort 一切路径置 `progress=100 + done=true`，后端报错也显示"回测完成"；改为仅 `{type:'result'}` → 成功 / `error`·网络失败 → 错误卡 + 重试（进度停实际值）/ abort → 已停止
-- [ ] **UIRF-03** 资金流下钻层硬编码示例值：`data-center-capital-flow.tsx` L119-121 港股通(沪) +97.9亿 / (深) +42.1亿 / 合计 +140.0亿 为写死数字；接真实双通道数据，接入前 EmptyState
+- [x] **UIRF-01** 删回测 Box-Muller 假收益：`use-backtest.ts` L202-209 成功时用随机高斯填充收益分布直方图；L147 已有真实 `dailyReturns` 接入，删除假兜底，无序列时收益分布 tab 走 EmptyState
+- [x] **UIRF-02** 修回测 `finally` 状态机：`use-backtest.ts` L216-221 非 abort 一切路径置 `progress=100 + done=true`，后端报错也显示"回测完成"；改为仅 `{type:'result'}` → 成功 / `error`·网络失败 → 错误卡 + 重试（进度停实际值）/ abort → 已停止
+- [x] **UIRF-03** 资金流下钻层硬编码示例值：`data-center-capital-flow.tsx` L119-121 港股通(沪) +97.9亿 / (深) +42.1亿 / 合计 +140.0亿 为写死数字；接真实双通道数据，接入前 EmptyState
 
 #### 🟠 P1 功能补全
 
-- [ ] **UIRF-04** 删回测运行中装饰日志（`backtest-config.tsx` L153-156 "PairsTradingBot / Z-Score=2.73"），只渲染 NDJSON `stage/detail` 真实事件
-- [ ] **UIRF-05** 回测成本/复现参数显性化：`use-backtest.ts` L160-162 硬编码 `atr_multiplier/commission_pct/slippage_pct/random_seed` → 表单字段（④高级与复现折叠区），ReproducibilityBadge 记录与实际 payload 一致
-- [ ] **UIRF-06** 回测文案与选择器：删 "Serverless"（`backtest-config.tsx` L177）→ "启动回测 · 单次沙箱推演"；策略下拉三分组（内置引擎 / 我的草稿·真实状态 / Pine 自定义）
-- [ ] **UIRF-07** 资金流 tab Placeholder 收敛：跨市场 ETF / 美股板块 ETF / 美股主力大单 / 美股卖空四块接现有数据源；确无数据的改诚实"未接入"说明 + 北向成交额中性卡（港交所 2024-08 停止披露净额口径标注）
-- [ ] **UIRF-08** 删孤儿 `fund-flow-dashboard.tsx`（550 行，路由已重定向、全仓无引用）；**前置**：UIRF-07 验收后执行
-- [ ] **UIRF-09** 选股器可编辑规则 chips：条件 chip 数值就地编辑 / `×` 删除 / `+ 添加条件` → 修改即重查（现 `rag_rules` 仅只读列表，`screener-query-panel.tsx` L155-163）
-- [ ] **UIRF-10** 选股器同名多市场伪重复归并开关（默认开，展示层归并 + 市场覆盖徽章 + "已归并 N 条"计数）
-- [ ] **UIRF-11** 选股器 RAG 召回依据卡：来源类型徽章 + 相关度分数，最多 3 条 + "查看全部"折叠
-- [ ] **UIRF-12** 选股器 AI 洞察卡规范化：`[AI 生成 · 仅供参考]` 徽章必挂 + 主线概念/结构特征/龙头点评三段 + 失败错误态重试（禁编数）
-- [ ] **UIRF-13** 选股器空结果放宽建议按钮（如"市盈率放宽到 ≥80"直接改规则重查）
+- [x] **UIRF-04** 删回测运行中装饰日志（`backtest-config.tsx` L153-156 "PairsTradingBot / Z-Score=2.73"），只渲染 NDJSON `stage/detail` 真实事件
+- [x] **UIRF-05** 回测成本/复现参数显性化：`use-backtest.ts` L160-162 硬编码 `atr_multiplier/commission_pct/slippage_pct/random_seed` → 表单字段（④高级与复现折叠区），ReproducibilityBadge 记录与实际 payload 一致
+- [x] **UIRF-06** 回测文案与选择器：删 "Serverless"（`backtest-config.tsx` L177）→ "启动回测 · 单次沙箱推演"；策略下拉三分组（内置引擎 / 我的草稿·真实状态 / Pine 自定义）
+- [x] **UIRF-07** 资金流 tab Placeholder 收敛：跨市场 ETF / 美股板块 ETF / 美股主力大单 / 美股卖空四块接现有数据源；确无数据的改诚实"未接入"说明 + 北向成交额中性卡（港交所 2024-08 停止披露净额口径标注）
+- [x] **UIRF-08** 删孤儿 `fund-flow-dashboard.tsx`（550 行，路由已重定向、全仓无引用）；**前置**：UIRF-07 验收后执行
+- [x] **UIRF-09** 选股器可编辑规则 chips：条件 chip 数值就地编辑 / `×` 删除 / `+ 添加条件` → 修改即重查（现 `rag_rules` 仅只读列表，`screener-query-panel.tsx` L155-163）
+- [x] **UIRF-10** 选股器同名多市场伪重复归并开关（默认开，展示层归并 + 市场覆盖徽章 + "已归并 N 条"计数）
+- [x] **UIRF-11** 选股器 RAG 召回依据卡：来源类型徽章 + 相关度分数，最多 3 条 + "查看全部"折叠
+- [x] **UIRF-12** 选股器 AI 洞察卡规范化：`[AI 生成 · 仅供参考]` 徽章必挂 + 主线概念/结构特征/龙头点评三段 + 失败错误态重试（禁编数）
+- [x] **UIRF-13** 选股器空结果放宽建议按钮（如"市盈率放宽到 ≥80"直接改规则重查）
 
 #### 🟠 P1 工程债 · 行数超限（编码宪法 feature 页 ≤250 / hook ≤100）
 
-- [ ] **UIRF-14** `quotes.tsx` 462 行拆分：抽 `CompareChartPanel` 等分子组件至 `features/quotes/`
-- [ ] **UIRF-15** 数据中心子 tab 拆分：`data-center-overview.tsx` 293 / `data-center-capital-flow.tsx` 270 / `use-dashboard-data.ts` 266 → 各 ≤250
-- [ ] **UIRF-16** `use-backtest.ts` 290 行按状态机拆分（建议与 UIRF-02/04/05 同批执行）
+- [x] **UIRF-14** `quotes.tsx` 462 行拆分：抽 `CompareChartPanel` 等分子组件至 `features/quotes/`
+- [x] **UIRF-15** 数据中心子 tab 拆分：`data-center-overview.tsx` 293 / `data-center-capital-flow.tsx` 270 / `use-dashboard-data.ts` 266 → 各 ≤250
+- [x] **UIRF-16** `use-backtest.ts` 290 行按状态机拆分（建议与 UIRF-02/04/05 同批执行）
 - [ ] **UIRF-17** `risk-account-section.tsx` 452 行拆为 KPI / 风险画像 / tabs / 持仓四分子组件
 
 #### 🟡 P2 一致性与增强
