@@ -142,6 +142,7 @@ Phase 4 韧性扩展    AGENT-06 / AGENT-13 / AGENT-14
   - **现状**：S3 —— 现在只有"成功 / 异常"二元，`{"status":"error"}` 把限流、空结果、过期、真故障糊成一团
   - **改法**（dsh `defensive-patterns.md` 首条 + hermes `tool_result_classification.py`）：`success` / `empty` / `stale` / `rate_limited` / `error` **各自独立成标志，禁止嵌套在彼此的分支里**（原文：一个进程可以同时 timeout **且** exit 0）。限流不计入 AGENT-02 的失败熔断计数（与 AGENTS.md §10.8 一致）
   - **⭐ 直接价值**：这正是 `TODO-FUTU-INTERFACE-CAPABILITY.md` §0.5 记录的空结果语义陷阱 —— 盘后正常空 / 无数据 / 故障空三态目前不可分，会同时造成误报告警与把 0 当真数据
+  - **⚠️ 前端契约（与 COPILOT-21 耦合，2026-08-21 记录）**：`tool_result` 事件外壳字段（`type/name/result`）受 AGENT-04 硬约束一字不改；但本任务把 `result` **内部**从 `{"status":"error"}` 改为正交独立标志（`success/empty/stale/rate_limited/error`）时，**必须保留 `error` 字段名**（或同步更新 `frontend/src/features/copilot/useChat.ts` onToolResult 的失败检测：现查 `r.status==='error' || r.error || r.failed`）。否则前端 COPILOT-21 的红色失败块「数据获取失败」会静默失效。验收时补充：用 mock 的 error 标志 result 断言前端失败块仍渲染。
 
 ### Phase 2 · 审计与可观测（P1）
 
