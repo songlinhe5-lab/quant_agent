@@ -1,0 +1,271 @@
+name: Prompt Governance CI/CD Pipeline
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'prompts/**'
+      - 'backend/services/prompt/**'
+      - 'hermes_agent/prompt_versioning.py'
+  pull_request:
+    branches: [develop]
+    paths:
+      - 'prompts/**'
+      - 'backend/services/prompt/**'
+      - 'hermes_agent/prompt_versioning.py'
+
+env:
+  PYTHON_VERSION: "3.11"
+  QUALITY_THRESHOLD: 0.7
+  CI: "true"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ========================================================================
+  # JOB 1: Golden Dataset Regression Testing
+  # ========================================================================
+  golden-dataset-test:
+    name: Golden Dataset Regression Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pytest pytest-asyncio pandas numpy pydantic
+          pip install -e .  # Install project in editable mode
+      
+      - name: Run Golden Dataset Regression Test
+        id: golden_test
+        run: |
+          echo "🧪 Running Golden Dataset Regression Test..."
+          
+          # Run the test suite for prompt governance
+          pytest backend/tests/test_prompt_governance.py::test_golden_dataset_runner_create_sample \
+            -v --tb=short \
+            -k "golden" || exit_code=$?
+          
+          if [ ${exit_code:-0} -ne 0 ]; then
+            echo "::error::Golden dataset test failed!"
+            exit 1
+          fi
+          
+          echo "✅ Golden dataset test passed"
+        
+        continue-on-error: false
+      
+      - name: Validate Prompt Quality Scores
+        id: quality_check
+        run: |
+          echo "📊 Validating prompt quality scores..."
+          
+          # Import and evaluate a sample prompt
+          python << 'EOF'
+import sys
+sys.path.insert(0, '.')
+
+from hermes_agent.prompt_versioning import PromptQualityEvaluator
+from backend.services.prompt.governance_service import PromptGovernanceService
+
+# Load governance service
+service = get_prompt_governance_service()
+
+# Evaluate all prompts in the compact directory
+manager = service.version_manager
+all_passed = True
+results = []
+
+for name in manager.templates.keys():
+    template = manager.load_template(name)
+    content = template.versions[-1].content if template.versions else ""
+    
+    if not content:
+        continue
+    
+    evaluator = PromptQualityEvaluator()
+    metrics = evaluator.evaluate(content)
+    
+    score = metrics.composite_score or 0.0
+    passed = score >= 0.7
+    
+    results.append({
+        "name": name,
+        "version": template.current_version,
+        "score": score,
+        "passed": passed,
+        "coherence": metrics.coherence or 0.0,
+        "clarity": metrics.clarity or 0.0,
+        "relevance": metrics.relevance or 0.0,
+    })
+    
+    if not passed:
+        all_passed = False
+        print(f"❌ {name} v{template.current_version}: Score={score:.2f} (< {int(sys.argv[1] if len(sys.argv) > 1 else 70)}%)")
+    else:
+        print(f"✅ {name} v{template.current_version}: Score={score:.2f}")
+
+# Save results as JSON for reporting
+import json
+with open("quality-results.json", "w", encoding="utf-8") as f:
+    json.dump({
+        "timestamp": __import__('time').time(),
+        "threshold": float(sys.argv[1] if len(sys.argv) > 1 else 0.7),
+        "results": results,
+        "all_passed": all_passed,
+    }, f, ensure_ascii=False, indent=2)
+
+if not all_passed:
+    sys.exit(1)
+EOF
+
+        env:
+          QUALITY_THRESHOLD: "${{ env.QUALITY_THRESHOLD }}"
+        
+        continue-on-error: false
+    
+    outputs:
+      quality-results: ${{ steps.quality_check.outputs.quality-results }}
+  
+  # ========================================================================
+  # JOB 2: Unit Tests & Linter Checks
+  # ========================================================================
+  unit-tests:
+    name: Unit Tests & Linter
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pytest pytest-asyncio pre-commit ruff black
+          pip install -e .
+      
+      - name: Run Pre-commit Hooks
+        run: |
+          pre-commit run --all-files --show-diff-on-failure --color=always
+      
+      - name: Run Backend Unit Tests
+        run: |
+          pytest backend/tests/test_prompt_governance.py -v --tb=short
+      
+  # ========================================================================
+  # JOB 3: PR Comment with Quality Report
+  # ========================================================================
+  pr-comment:
+    name: PR Comment - Quality Report
+    needs: [golden-dataset-test, unit-tests]
+    if: github.event_name == 'pull_request' && always()
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Download quality results
+        uses: actions/download-artifact@v4
+        with:
+          name: quality-results
+          path: artifacts
+      
+      - name: Generate PR Comment
+        if: hashFiles('artifacts/quality-results.json') != ''
+        run: |
+          python << 'EOF'
+import json
+from pathlib import Path
+
+# Read quality results
+results_file = Path("artifacts/quality-results.json")
+if not results_file.exists():
+    print("No quality results found")
+    exit(0)
+
+with open(results_file, "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+results = data.get("results", [])
+threshold = data.get("threshold", 0.7)
+all_passed = data.get("all_passed", True)
+
+# Generate markdown comment
+comment = """
+## 🧪 Prompt Quality Report
+
+### Summary
+${{ all_passed and '✅ All prompts passed quality threshold' or '⚠️ Some prompts below quality threshold' }}
+
+| Prompt Name | Version | Score | Status |
+|-------------|---------|-------|--------|
+"""
+
+for r in results:
+    status = "✅" if r["passed"] else "❌"
+    comment += f"| {r['name']} | v{r['version']} | {r['score']:.2f} | {status} |\n"
+
+comment += f"""
+### Details
+- **Threshold**: {threshold}
+- **Total Prompts Evaluated**: {len(results)}
+- **Passed**: {sum(1 for r in results if r['passed'])}
+- **Failed**: {sum(1 for r in results if not r['passed'])}
+
+> 💡 **Note**: Please ensure all prompts meet the minimum quality threshold before merging.
+"""
+
+# Write to file
+Path("pr-comment.md").write_text(comment, encoding="utf-8")
+print("PR comment generated successfully")
+EOF
+        
+      - name: Post PR Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const comment = fs.readFileSync('pr-comment.md', 'utf8');
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            })
+
+  # ========================================================================
+  # JOB 4: Upload Quality Results Artifacts
+  # ========================================================================
+  upload-artifacts:
+    name: Upload Quality Results
+    needs: [golden-dataset-test]
+    if: always()
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Save Quality Results
+        run: |
+          mkdir -p artifacts
+          echo '{"timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ)"'", "job": "${{ github.job }}" }' > artifacts/metadata.json
+  
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-results
+          path: artifacts/
+          retention-days: 30
