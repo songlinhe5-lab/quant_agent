@@ -3,9 +3,9 @@
  * 对接 backend/routers/expert_team.py 的 POST /api/v1/expert-team/analyze
  * SSE 文本格式: "data: {json}\n\n"，payload.type 区分事件类型。
  * 解析 StreamEvent 协议（见 backend/services/expert_team/event_schema）。
- * 使用 apiClient.stream（裸 fetch，返回原始 Response，不 .json() 避免缓冲整流）。
+ * COPILOT-08: 从 apiClient.stream 改走 fetchWithAuth，对齐 chat-stream-service 口径（带 401 自动续期重试）。
  */
-import { apiClient, ApiError } from '@/lib/api-client'
+import { apiClient, fetchWithAuth, API_BASE_URL, ApiError } from '@/lib/api-client'
 
 export type StreamEventType =
   | 'status'
@@ -84,7 +84,8 @@ export interface TeamStreamHandlers {
 }
 
 /**
- * 发起专家团分析，原生 fetch + ReadableStream 解析 SSE。
+ * COPILOT-08: 发起专家团分析，fetchWithAuth + ReadableStream 解析 SSE。
+ * 对齐 chat-stream-service 口径，带 401 自动续期重试。
  * 返回 AbortController，调用方可在组件卸载/用户中止时 abort。
  */
 export function startTeamAnalysis(params: AnalyzeParams, handlers: TeamStreamHandlers): AbortController {
@@ -99,9 +100,15 @@ export function startTeamAnalysis(params: AnalyzeParams, handlers: TeamStreamHan
   if (params.expert_ids && params.expert_ids.length > 0) body.expert_ids = params.expert_ids
   if (params.code_context) body.code_context = params.code_context
 
-  apiClient
-    .stream('/expert-team/analyze', body, controller.signal)
+  fetchWithAuth(`${API_BASE_URL}/expert-team/analyze`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+    signal: controller.signal,
+  })
     .then((res) => {
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+      }
       if (!res.body) throw new Error('响应无流主体')
       const reader = res.body.getReader()
       const decoder = new TextDecoder()

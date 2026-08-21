@@ -4,6 +4,7 @@
 
 import asyncio
 import json
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -471,9 +472,18 @@ class TestExpertTeamRouter:
 
         return TestClient(app)
 
+    @pytest.fixture
+    def auth_headers(self):
+        """COPILOT-08: 生成合法 JWT 以通过 expert_team 端点鉴权"""
+        from jose import jwt
+
+        secret = os.getenv("SECRET_KEY", "your-super-secret-key-keep-it-safe")
+        token = jwt.encode({"sub": "test_user"}, secret, algorithm="HS256")
+        return {"Authorization": f"Bearer {token}"}
+
     @pytest.mark.slow
-    def test_list_scenarios_endpoint(self, client):
-        resp = client.get("/api/v1/expert-team/scenarios")
+    def test_list_scenarios_endpoint(self, client, auth_headers):
+        resp = client.get("/api/v1/expert-team/scenarios", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         # API 响应有统一包装 {code, msg, data}
@@ -482,30 +492,31 @@ class TestExpertTeamRouter:
         assert len(payload["scenarios"]) == 4
 
     @pytest.mark.slow
-    def test_list_sessions_endpoint(self, client):
-        resp = client.get("/api/v1/expert-team/sessions")
+    def test_list_sessions_endpoint(self, client, auth_headers):
+        resp = client.get("/api/v1/expert-team/sessions", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         payload = data.get("data", data)
         assert "sessions" in payload
 
     @pytest.mark.slow
-    def test_get_session_not_found(self, client):
-        resp = client.get("/api/v1/expert-team/sessions/nonexistent")
+    def test_get_session_not_found(self, client, auth_headers):
+        resp = client.get("/api/v1/expert-team/sessions/nonexistent", headers=auth_headers)
         assert resp.status_code == 404
 
-    def test_analyze_invalid_scenario(self, client):
+    def test_analyze_invalid_scenario(self, client, auth_headers):
         resp = client.post(
             "/api/v1/expert-team/analyze",
             json={
                 "scenario": "invalid",
                 "question": "test",
             },
+            headers=auth_headers,
         )
         assert resp.status_code == 400
 
     @pytest.mark.slow
-    def test_analyze_endpoint_runs_with_custom_team(self, client):
+    def test_analyze_endpoint_runs_with_custom_team(self, client, auth_headers):
         """自定义阵容 + 多轮: 端点应正常返回 200 (慢: 拉起全依赖链)。"""
         resp = client.post(
             "/api/v1/expert-team/analyze",
@@ -516,6 +527,7 @@ class TestExpertTeamRouter:
                 "expert_ids": ["fundamental_analyst", "risk_officer"],
                 "rounds": 2,
             },
+            headers=auth_headers,
         )
         # 端点本身只校验入参，SSE 流式在响应体；这里确认请求被接受 (200/400 取决于校验)
         assert resp.status_code in (200, 400)
