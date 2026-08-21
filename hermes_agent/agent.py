@@ -105,6 +105,36 @@ class HermesAgent(MemoryOperationsMixin):
     # AGENT-04: ReAct 最大迭代次数唯一收敛（两套循环共享，禁止重复字面量）
     _MAX_REACT_ITERATIONS = 8
 
+    # A-2.1: 抽 _build_request_kwargs 辅助函数，统一 schema/model/temperature/tools 构造（AGENT-04）
+    def _build_request_kwargs(self, stream: bool = False):
+        """
+        构建统一的 LLM 请求参数。
+
+        Args:
+            stream: 是否开启流式输出
+
+        Returns:
+            dict: 包含 model/messages/temperature/stream/stream_options/tools 的请求参数字典
+        """
+        model_to_use = self.model  # 暂时禁用视觉模型，强制使用文本模型
+        schemas = self.tool_registry.get_all_schemas()
+
+        request_kwargs = {
+            "model": model_to_use,
+            "messages": cast(Any, self.messages),
+            "temperature": 0.0,  # 量化场景要求低随机性，确保结果确定性
+            "stream": stream,
+        }
+
+        # 仅当启用流式时添加 stream_options（DeepSeek API 要求）
+        if stream:
+            request_kwargs["stream_options"] = {"include_usage": True}
+
+        if schemas:
+            request_kwargs["tools"] = schemas
+
+        return request_kwargs
+
     def __init__(
         self,
         tool_registry,
@@ -256,16 +286,8 @@ class HermesAgent(MemoryOperationsMixin):
             print(f"🤖 [Agent] 思考中 (第 {i + 1} 轮)...")
             try:
                 # 💡 动态模型切换：如果最新一条用户消息包含图片，自动切换至多模态视觉模型
-                model_to_use = self.model  # 暂时禁用视觉模型，强制使用文本模型
-
-                schemas = self.tool_registry.get_all_schemas()
-                request_kwargs = {
-                    "model": model_to_use,
-                    "messages": cast(Any, self.messages),
-                    "temperature": 0.0,  # 量化场景要求低随机性，确保结果确定性
-                }
-                if schemas:
-                    request_kwargs["tools"] = schemas
+                # A-2.1: 使用统一的 request_kwargs 构造逻辑（AGENT-04）
+                request_kwargs = self._build_request_kwargs(stream=False)
 
                 if self.debug_mode:
                     self.console.print("\n[dim cyan]--- 🐛 [Debug] LLM Request ---[/dim cyan]")
@@ -428,19 +450,8 @@ class HermesAgent(MemoryOperationsMixin):
             self.console.print(f"🤖 [Agent Stream] 流式思考中 (第 {i + 1} 轮)...")
             try:
                 # 💡 动态模型切换：如果最新一条用户消息包含图片，自动切换至多模态视觉模型
-                model_to_use = self.model  # 暂时禁用视觉模型，强制使用文本模型
-
-                schemas = self.tool_registry.get_all_schemas()
-                request_kwargs = {
-                    "model": model_to_use,
-                    "messages": cast(Any, self.messages),
-                    "temperature": 0.0,
-                    "stream": True,  # 开启大模型的流式输出开关
-                    # 流式必须显式请求 usage，否则最后一个 chunk 不带 usage → token 漏计
-                    "stream_options": {"include_usage": True},
-                }
-                if schemas:
-                    request_kwargs["tools"] = schemas
+                # A-2.1: 使用统一的 request_kwargs 构造逻辑（AGENT-04）
+                request_kwargs = self._build_request_kwargs(stream=True)
 
                 if self.debug_mode:
                     self.console.print("\n[dim cyan]--- 🐛 [Debug Stream] LLM Request Payload ---[/dim cyan]")
