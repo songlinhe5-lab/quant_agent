@@ -68,3 +68,25 @@ export interface FeedbackRequest {
   rating: -1 | 0 | 1;
   comment?: string;
 }
+
+// ============= Prompt Approval Types =============
+export interface PendingApprovalResponse {
+  id: string;
+  prompt_name: string;
+  from_version: string;
+  to_version: string;
+  quality_score_at_approval: number;
+  created_at: string;
+  reviewer_username?: string;
+}
+
+export interface ApprovalHistoryResponse {
+  id: string;
+  status: "pending" | "approved" | "rejected" | "rolled_back";
+  reviewer_user_id?: string;
+  reviewer_username?: string;
+  approved_at?: string;
+  rejected_at?: string;
+  deployed_to_production: boolean;
+  deployed_to_production_at?: string;
+}
