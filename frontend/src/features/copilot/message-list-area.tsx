@@ -1,11 +1,12 @@
 import React, { useRef, useEffect } from 'react'
 import { Sparkles, RefreshCw } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { useChatStore } from '@/stores/useChatStore'
 import { STOCK_QUICK_COMMANDS } from './chat-context'
 import { ChatMessageItem } from './chat-message-item'
 import { getIconForTitle } from './shared'
 
-export function MessageListArea() {
+export function MessageListArea({ wide = false }: { wide?: boolean }) {
   const messages = useChatStore((s) => s.messages)
   const isGenerating = useChatStore((s) => s.isGenerating)
   const copiedIndex = useChatStore((s) => s.copiedIndex)
@@ -34,7 +35,8 @@ export function MessageListArea() {
   }
 
   return (
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar" onScroll={handleScroll}>
+        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar" onScroll={handleScroll}>
+          <div className={cn('space-y-6', wide ? 'max-w-[760px] mx-auto' : 'max-w-2xl mx-auto')}>
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-muted-foreground space-y-6 animate-in fade-in duration-700 max-w-2xl mx-auto px-4">
               <div className="flex flex-col items-center gap-3">
@@ -90,6 +92,7 @@ export function MessageListArea() {
             ))
           )}
           <div ref={messagesEndRef} />
+          </div>
         </div>
   )
 }

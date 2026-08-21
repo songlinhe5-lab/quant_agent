@@ -7,6 +7,7 @@ import { Microscope, PanelRightClose, PanelRightOpen, Activity } from 'lucide-re
 import { useTradingModeStore } from '@/stores/useTradingModeStore'
 import { MODE_META } from '@/features/trading/trading-mode-types'
 import { SessionCenter, type SessionItem } from './session-center'
+import { ChatWorkspace } from './chat-workspace'
 
 interface ResearchMeta {
   tools_count: number
@@ -77,13 +78,15 @@ export function ResearchWorkspacePage() {
           onNewDebate={() => setActiveSession(undefined)}
         />
 
-        {/* B2 主区 */}
-        <main className="flex-1 min-w-0 flex flex-col">
-          <div className="flex-1 flex items-center justify-center p-6 text-center text-[10px] text-muted-foreground">
-            {activeSession
-              ? `已选中：${activeSession.title}（${activeSession.kind === 'debate' ? '投研会' : '对话'}）— B2 主区 COPILOT-14~17 填充`
-              : '对话 / 辩论室主区骨架（COPILOT-14~17 填充）'}
-          </div>
+        {/* B2 主区：对话(COPILOT-14 宽屏版) / 辩论室(COPILOT-15~17) */}
+        <main className="relative flex-1 min-w-0 flex flex-col">
+          {activeSession?.kind === 'debate' ? (
+            <div className="flex-1 flex items-center justify-center p-6 text-center text-[10px] text-muted-foreground">
+              辩论室主区（COPILOT-15~17 填充）
+            </div>
+          ) : (
+            <ChatWorkspace />
+          )}
         </main>
 
         {/* B3 运行信息（可折叠） */}
