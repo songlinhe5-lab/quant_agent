@@ -4,7 +4,6 @@
 
 import asyncio
 import json
-import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -474,11 +473,16 @@ class TestExpertTeamRouter:
 
     @pytest.fixture
     def auth_headers(self):
-        """COPILOT-08: 生成合法 JWT 以通过 expert_team 端点鉴权"""
+        """COPILOT-08: 生成合法 JWT 以通过 expert_team 端点鉴权
+
+        直接引用 expert_team.SECRET_KEY（而非 os.getenv 快照），
+        确保与路由解码使用同一密钥，杜绝 CI/本地环境变量差异导致的 401。
+        """
         from jose import jwt
 
-        secret = os.getenv("SECRET_KEY", "your-super-secret-key-keep-it-safe")
-        token = jwt.encode({"sub": "test_user"}, secret, algorithm="HS256")
+        from backend.routers.expert_team import SECRET_KEY
+
+        token = jwt.encode({"sub": "test_user"}, SECRET_KEY, algorithm="HS256")
         return {"Authorization": f"Bearer {token}"}
 
     @pytest.mark.slow
