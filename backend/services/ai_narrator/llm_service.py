@@ -71,6 +71,8 @@ class LLMRouter:
         self._failure_counts: Dict[ModelTier, int] = {t: 0 for t in ModelTier}
         # 是否处于降级状态
         self._in_fallback: bool = False
+        # Ollama 可达性缓存 (None=未探测, True/False=探测结果)。防降级到死路。
+        self._ollama_available: Optional[bool] = None
 
     def _get_primary_client(self) -> AsyncOpenAI:
         if self._primary_client is None:
@@ -79,7 +81,7 @@ class LLMRouter:
                 api_key=key,
                 base_url=self.base_url,
                 timeout=30.0,
-                max_retries=0,  # 由 router 自行管理重试
+                max_retries=2,  # 网络抖动透明重试, 缓解瞬时 Connection error (由 router 统一管理重试)
                 http_client=httpx.AsyncClient(
                     event_hooks={
                         "request": [httpx_log_request],
@@ -99,6 +101,23 @@ class LLMRouter:
             )
         return self._ollama_client
 
+    def _probe_ollama_sync(self) -> bool:
+        """同步短超时探测 Ollama 可达性 (结果缓存, 防阻塞主调用链)。
+
+        用于降级前确认降级目标可用, 避免无 Ollama 环境降级到死路形成死锁。
+        """
+        if self._ollama_available is not None:
+            return self._ollama_available
+        try:
+            with httpx.Client(timeout=2.0) as c:
+                r = c.get(self.ollama_base_url.rstrip("/") + "/models")
+                self._ollama_available = r.status_code < 500
+        except Exception:
+            self._ollama_available = False
+        if not self._ollama_available:
+            logger.warning(f"[LLMRouter] Ollama 不可达 ({self.ollama_base_url})，降级目标无效，维持主链路")
+        return self._ollama_available
+
     def get_model(self, tier: ModelTier = ModelTier.STANDARD) -> str:
         """返回指定 tier 的钉定模型版本号"""
         return self._models[tier]
@@ -106,9 +125,15 @@ class LLMRouter:
     def get_client(self, tier: ModelTier = ModelTier.STANDARD) -> AsyncOpenAI:
         """
         获取客户端。若主供应商已触发降级且 fallback 开启，返回 Ollama 客户端。
+
+        STRAT/RISK 加固: 降级前探测 Ollama 可达性, 若降级目标本身不可达则维持主链路,
+        避免"降级到死路"导致 `_in_fallback` 无法恢复的死锁。
         """
         if self._in_fallback and self.fallback_enabled:
-            return self._get_ollama_client()
+            if self._probe_ollama_sync():
+                return self._get_ollama_client()
+            logger.warning("[LLMRouter] Ollama 不可达，跳过降级，继续使用主供应商")
+            return self._get_primary_client()
         return self._get_primary_client()
 
     def record_success(self, tier: ModelTier = ModelTier.STANDARD) -> None:
@@ -119,10 +144,19 @@ class LLMRouter:
             self._in_fallback = False
 
     def record_failure(self, tier: ModelTier = ModelTier.STANDARD) -> None:
-        """记录失败调用，达到阈值后触发降级"""
+        """记录失败调用，达到阈值后触发降级。
+
+        加固: 触发降级前探测 Ollama, 不可达则不降级 (避免进入无恢复可能的死路)。
+        """
         self._failure_counts[tier] += 1
         if self._failure_counts[tier] >= self.fallback_threshold:
             if self.fallback_enabled and not self._in_fallback:
+                if not self._probe_ollama_sync():
+                    logger.warning(
+                        f"[LLMRouter] 主供应商连续失败 {self._failure_counts[tier]} 次但 Ollama 不可达，"
+                        "不降级，保持主链路重试"
+                    )
+                    return
                 logger.warning(f"[LLMRouter] 主供应商连续失败 {self._failure_counts[tier]} 次，降级至 Ollama")
                 self._in_fallback = True
 
@@ -138,13 +172,15 @@ class LLMRouter:
         except Exception:
             results["primary"] = False
 
-        # Ollama
+        # Ollama (同步写入可达性缓存, 供 get_client/record_failure 降级决策复用)
         try:
             client = self._get_ollama_client()
             await client.models.list()
             results["ollama"] = True
+            self._ollama_available = True
         except Exception:
             results["ollama"] = False
+            self._ollama_available = False
 
         return results
 
