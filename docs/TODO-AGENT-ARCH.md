@@ -150,15 +150,17 @@ Phase 4 韧性扩展    AGENT-06 / AGENT-13 / AGENT-14
 
 ### Phase 2 · 审计与可观测（P1）
 
-- [ ] **[AGENT-01]** **会话事件日志（append-only）+「模型可见即已记录」不变量**
+- [x] **[AGENT-01]** **会话事件日志（append-only）+「模型可见即已记录」不变量** ✅ 4d2d154
   - **现状**：S6
   - **改法**（参考 dsh `core/session` + `subsystems/session-projection.md` + `invariants.md`）：事件至少覆盖 `user/message`、`assistant/chunk`、`tool/call`、`tool/result`、`step/*`、`turn/*`、`approval/*`；模型可见消息由投影函数从日志派生；**压缩只影响投影，不删事件**；加运行时不变量断言（dsh 原话："Anything that reaches a model request must be reconstructable from the log"）
   - **量化价值**：AGENTS.md §3 要求每个数字可溯源到具体 Tool 返回。这条落地后，溯源从"靠自觉"变成"结构上做不到不溯源"，同时给事故复盘与合规审计提供完整回放
   - **验收**：任一历史会话可重放出当时模型看到的完整上下文；违反不变量即测试失败
-- [ ] **[AGENT-10]** **密钥作用域与日志脱敏**
+  - **实装**：`hermes_agent/event_log.py` — SessionEventLog（10 类事件闭集：user/assistant/tool/turn/memory/approval）+ derive_messages 投影（tool_calls 合并语义）+ check_invariant 包含关系校验；`agent.py` _react_loop 全链路埋点（含自愈/熔断注入指令）；`memory_ops.py` 压缩/自愈仅记事件；12 个测试（重放重建/不变量违反检测/压缩窗口子集）
+- [x] **[AGENT-10]** **密钥作用域与日志脱敏** ✅ aba5588
   - **现状**：S9 —— 交易系统持有 Futu 解锁密码、券商凭据、各数据源 API Key，却无任何脱敏层
   - **改法**：① 日志 / 遥测 / 轨迹上传三处统一脱敏（hermes `redact.py` + `monitoring/redaction.py`）② 密钥作用域化，按需注入而非全局可见（`secret_scope.py`）③ **子进程环境擦洗**：为 AGENT-05 的脚本沙箱预置，spawn 时 drop `*KEY*` / `*SECRET*` / `*TOKEN*` / `*PASSWORD*`（dsh `defensive-patterns.md` 原文规则）
   - **验收**：注入含密钥的工具入参 / 异常栈，日志与 SSE 输出中均不出现明文
+  - **实装**：`hermes_agent/redact.py` — redact_text 正则脱敏（Bearer/sk-xxx/URL 内嵌密码/key=赋值）+ redact_obj 递归脱敏（键名命中即 mask，深度封顶 12）+ scrub_subprocess_env 环境擦洗；集成三处错误路径（core_tool_execute / _safe_execute_tool / _react_loop 两处 error 事件）；17 个测试（含集成验收：含密钥异常 message 无明文）
 
 ### Phase 3 · 成本与效率（P1/P2）
 
