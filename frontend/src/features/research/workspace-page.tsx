@@ -11,6 +11,8 @@ import { ChatWorkspace } from './chat-workspace'
 import { DebateComposer, type ComposerResult } from './debate-composer'
 import { DebateRoom } from './debate-room'
 import { AssetLibrary } from './asset-library'
+import { RunInfoPanel } from './run-info-panel'
+import { useChatStore } from '@/stores/useChatStore'
 import type { TeamConfig } from '@/features/copilot/research-team/roster-panel'
 
 interface ResearchMeta {
@@ -33,6 +35,9 @@ export function ResearchWorkspacePage() {
   // B2 主区模式：对话 / 组局态(COPILOT-15) / 辩论态(COPILOT-16)
   const [b2Mode, setB2Mode] = useState<B2Mode>('chat')
   const [debateRun, setDebateRun] = useState<{ question: string; config: TeamConfig; runToken: number } | null>(null)
+  const chatMessages = useChatStore((s) => s.messages)
+  // COPILOT-19: 折叠后关键状态（迭代数）微徽章
+  const chatIterCount = chatMessages.reduce((acc, m) => acc + (m.tools?.length ?? 0), 0)
   const mode = useTradingModeStore((s) => s.mode)
   const modeMeta = MODE_META[mode]
 
@@ -150,23 +155,29 @@ export function ResearchWorkspacePage() {
                 <PanelRightClose className="h-3.5 w-3.5" />
               </button>
             </div>
-            <div className="flex-1 flex items-center justify-center p-4 text-center text-[10px] text-muted-foreground">
-              工具调用轨迹 / 状态骨架（COPILOT-19 填充）
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <RunInfoPanel modelName={meta.model_name} />
             </div>
           </aside>
         )}
 
-        {/* 折叠后的展开按钮 */}
+        {/* 折叠后的展开按钮 + 迭代/熔断微徽章 */}
         {!b3Open && (
-          <button
-            type="button"
-            onClick={() => setB3Open(true)}
-            className="shrink-0 self-center border border-border/30 border-l-0 rounded-r-md bg-secondary/30 p-1 text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
-            aria-label="展开运行信息列"
-            title="展开"
-          >
-            <PanelRightOpen className="h-3.5 w-3.5" />
-          </button>
+          <div className="flex shrink-0 flex-col items-center self-center gap-1 border-l border-border/30 py-1">
+            <button
+              type="button"
+              onClick={() => setB3Open(true)}
+              className="border border-border/30 border-l-0 rounded-r-md bg-secondary/30 p-1 text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+              aria-label="展开运行信息列"
+              title="展开"
+            >
+              <PanelRightOpen className="h-3.5 w-3.5" />
+            </button>
+            {/* 折叠后关键状态微徽章 */}
+            <span className="rounded-full border border-border/40 bg-secondary/20 px-1.5 text-[8px] font-mono text-muted-foreground" title="迭代步数">
+              {chatIterCount}/8
+            </span>
+          </div>
         )}
       </div>
     </div>
