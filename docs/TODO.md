@@ -151,7 +151,7 @@ S8: PT-01a ─► PT-01b ─► PT-01c ─► PT-02a ─► PT-02b
 
 > 设计稿 `AI Copilot_UI重构设计.md` (v1.0) 诊断 5 个 P0 + 6 个 P1，定义「一体两态」架构：浮动抽屉（轻量）+ 左导航投研工作台（深度），共享 Zustand 会话状态。22 项任务明细见 `TODO-frontend.md` COPILOT 系列。
 
-- [ ] **Phase 0（前置）** `[→ COPILOT-01]` Zustand 状态提升（所有后续任务的前置）→ 并行 `[→ COPILOT-04]` 事件协议统一 / `[→ COPILOT-07]` 移除假指数 / `[→ COPILOT-10]` 快捷指令统一
+- [x] **Phase 0（前置）** `[→ COPILOT-01 ✅ 854e43c]` Zustand 状态提升 → 并行 `[→ COPILOT-04]` 事件协议统一 / `[→ COPILOT-07]` 移除假指数 / `[→ COPILOT-10]` 快捷指令统一
 - [ ] **Phase 1（P0 修复）** `[→ COPILOT-02]` 假附件撤下 / `[→ COPILOT-03]` 思维链进度器 / `[→ COPILOT-05]` 投研会持久化 + 诚实空态 / `[→ COPILOT-09]` 迭代上限披露
 - [ ] **Phase 2（新功能）** `[→ COPILOT-12~20]` 投研工作台三列骨架 + 会话中心 + 对话宽屏版 + 辩论室三态（组局/辩论/收敛）+ 资产库 + 运行信息列 + 抽屉展开按钮
 - [ ] **Phase 3（可信 + 治理）** `[→ COPILOT-06]` 投研会迁出抽屉 / `[→ COPILOT-08]` 鉴权统一 / `[→ COPILOT-11]` 超限文件拆分 / `[→ COPILOT-21]` 工具失败明示 + STALE 角标 / `[→ COPILOT-22]` SANDBOX 策略卡

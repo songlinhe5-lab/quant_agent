@@ -425,7 +425,7 @@
 
 #### P0 — 阻塞性架构债（必须先解）
 
-- [ ] **[COPILOT-01]** **会话状态提升为 Zustand store 单例**（P0-1 根治）：
+- [x] **[COPILOT-01]** **会话状态提升为 Zustand store 单例**（P0-1 根治）：✅ `854e43c`
   - `chat-context.tsx`（480 行巨石 Provider）→ 拆为 `useChatStore`（Zustand，会话/消息/流状态）+ `chat-stream-service.ts`（≤200 行，SSE 解析独立）
   - 抽屉（`global-copilot-drawer.tsx`）与投研页（`/research`）订阅同一 store，根治双 `<ChatProvider>` 实例会话互不可见
   - 保留现有能力：折叠不卸载 / 页面上下文注入 / 会话双层持久化 / tool_call_id 精准重组 / Markdown 导出
