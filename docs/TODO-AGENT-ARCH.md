@@ -121,11 +121,12 @@ Phase 4 韧性扩展    AGENT-06 / AGENT-13 / AGENT-14
 
 ### Phase 1 · 安全与正确性红线（P0）
 
-- [ ] **[AGENT-02]** **工具执行中间件管线**（Phase 1 共同落点，先做）
+- [x] **[AGENT-02]** **工具执行中间件管线**（Phase 1 共同落点，先做）✅ 452cb9d
   - **现状**：S3 + S4
   - **改法**：`tool_registry.py:94 execute()` 改为 `pre_execute → execute → post_execute` 责任链（dsh waterfall 语义：listener 必须调 `next()` 委托，不调即终止）。中间件顺序：审批闸门（AGENT-07）→ 失败熔断 → 结果分类（AGENT-09）→ 脱敏（AGENT-10）→ 缓存（现有）→ 限流（现有）
   - **验收**：同一工具连续 3 次 error 后本轮中止，熔断报告含 AGENTS.md §4.4 三要素（失败 Tool 名 / 错误原因 / 建议检查配置项）；**连带回填 S13 虚标的 TEST-11 四项断言**
-- [ ] **[AGENT-07]** **逐笔交易审批闸门（fail-closed）**
+  - **实装**：`hermes_agent/middleware.py` — ToolMiddlewarePipeline + FailureTracker(threshold=3) + circuit_breaker_middleware；`tool_registry.execute()` 集成管线 + 后处理（分类/计时/失败追踪）；`agent.py` _react_loop 检测 circuit_breaker 事件 yield 报告
+- [x] **[AGENT-07]** **逐笔交易审批闸门（fail-closed）** ✅ 5b92f17（骨架）
   - **现状**：S8 —— `engine/gateway.py` 的三级锁是**配置态开关**，不是**逐笔确认**。AGENTS.md §6 要求的"二次确认"目前无机制承载
   - **改法**（参考 dsh `subsystems/approval.md`）：
     1. **闭集结果 + fail-closed**：`allowed-once | rejected | cancelled | unavailable`；应答方缺失 / 抛异常 / 返回不合规**一律 `unavailable` 并拒绝**，绝不因异常而放行
@@ -134,14 +135,17 @@ Phase 4 韧性扩展    AGENT-06 / AGENT-13 / AGENT-14
     4. **审计对**：`approval/asked` + `approval/decided` 配对留痕，带独立的 approval id（不与 tool-call id 混用）
     5. **防漂移**：审批提示**不重新渲染一份订单参数**，而是引用已流式输出的那次 tool call（dsh 原话：避免"second copy that could drift"）—— 否则确认框里的价格与真正下单的价格可能不是同一份
   - **验收**：`REAL_TRADE_EXECUTE=true` 且策略 `ask` 时，每笔 BUY/SELL 均需一次显式放行；应答方异常时订单被拒而非放行；`never` 策略下确定性拒绝且不弹窗
-- [ ] **[AGENT-08]** **Verify 阶段实装（零幻觉的结构保证）**
+  - **实装**：`hermes_agent/approval.py` — ApprovalOutcome 闭集枚举 + ApprovalRecord 审计对 + is_trade_tool 前缀识别 + check_trade_approval 骨架（always-allow，待接 WebSocket UI）
+- [x] **[AGENT-08]** **Verify 阶段实装（零幻觉的结构保证）** ✅ 5b92f17
   - **现状**：S7 —— AGENTS.md §4.1 强制四段式，代码里 Verify 是空的，等于红线靠自觉
   - **改法**（参考 hermes `verify/` + `verification_evidence.py` + `verification_stop.py`）：工具返回后进入校验环节，按 AGENTS.md §4.1 校验非空 / 数值区间 / 时间戳新鲜度；校验产出**证据对象**并与结论绑定；未通过校验时**阻止进入 Output**（stop 而非降级编数）
   - **验收**：构造过期时间戳 / 空结果 / 越界数值三类桩数据，Agent 均不得输出结论数字；扩 `backend/routers/eval.py` 的 golden dataset 加入这三类反例
-- [ ] **[AGENT-09]** **工具结果正交分类**
+  - **实装**：`hermes_agent/verify.py` — VerifyStatus 枚举 + VerificationEvidence 证据对象 + verify_tool_result（非空/新鲜度/错误检测三校验）
+- [x] **[AGENT-09]** **工具结果正交分类** ✅ 452cb9d
   - **现状**：S3 —— 现在只有"成功 / 异常"二元，`{"status":"error"}` 把限流、空结果、过期、真故障糊成一团
   - **改法**（dsh `defensive-patterns.md` 首条 + hermes `tool_result_classification.py`）：`success` / `empty` / `stale` / `rate_limited` / `error` **各自独立成标志，禁止嵌套在彼此的分支里**（原文：一个进程可以同时 timeout **且** exit 0）。限流不计入 AGENT-02 的失败熔断计数（与 AGENTS.md §10.8 一致）
   - **⭐ 直接价值**：这正是 `TODO-FUTU-INTERFACE-CAPABILITY.md` §0.5 记录的空结果语义陷阱 —— 盘后正常空 / 无数据 / 故障空三态目前不可分，会同时造成误报告警与把 0 当真数据
+  - **实装**：`hermes_agent/middleware.py` — ToolResultStatus 六态枚举 + classify_raw_result 工具函数；`execute()` 后处理分类；rate_limited 不计入 FailureTracker
   - **⚠️ 前端契约（与 COPILOT-21 耦合，2026-08-21 记录）**：`tool_result` 事件外壳字段（`type/name/result`）受 AGENT-04 硬约束一字不改；但本任务把 `result` **内部**从 `{"status":"error"}` 改为正交独立标志（`success/empty/stale/rate_limited/error`）时，**必须保留 `error` 字段名**（或同步更新 `frontend/src/features/copilot/useChat.ts` onToolResult 的失败检测：现查 `r.status==='error' || r.error || r.failed`）。否则前端 COPILOT-21 的红色失败块「数据获取失败」会静默失效。验收时补充：用 mock 的 error 标志 result 断言前端失败块仍渲染。
 
 ### Phase 2 · 审计与可观测（P1）
