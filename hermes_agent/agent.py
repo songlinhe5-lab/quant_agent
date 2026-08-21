@@ -3,6 +3,7 @@ import functools
 import json
 import os
 import re
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, cast
 
 import redis.asyncio as redis
@@ -17,6 +18,22 @@ from hermes_agent.memory_ops import MemoryOperationsMixin
 # 盘中主脑 prompt（与 IDE 编码宪法 AGENTS.md 分离）
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DEFAULT_SYSTEM_PROMPT_PATH = os.path.join(_REPO_ROOT, "prompts", "system", "HERMES.md")
+
+
+# A-3.1: LLM 调用归一化结果（AGENT-04）
+@dataclass
+class LLMResult:
+    """
+    LLM 调用的归一化结果。
+
+    统一非流式/流式两条路径的返回结构，屏蔽 OpenAI SDK 的 response 对象差异。
+    后续 AGENT-06 (LLM Provider 适配缝) 可在此基础上扩展多 provider 归一化。
+    """
+
+    content: Optional[str]  # 文本内容
+    tool_calls: Optional[List[Dict[str, Any]]]  # 工具调用列表（已归一化为 dict 格式）
+    usage: Any  # token 使用量对象（可传给 _record_usage）
+    reasoning_content: Optional[str] = None  # CoT 推理内容（DeepSeek 等模型的深度思考字段）
 
 
 class SessionTitleValidator(BaseModel):
@@ -171,6 +188,72 @@ class HermesAgent(MemoryOperationsMixin):
             return await self.tool_registry.execute(tool_name, **args)
         except Exception as e:
             return {"status": "error", "message": f"工具执行异常: {str(e)}"}
+
+    # A-3.2: 抽 _call_llm 统一 LLM 调用逻辑（AGENT-04）
+    # 合并非流式调用路径：client.chat.completions.create + record_usage + debug 输出
+    # 流式路径因涉及 SSE yield 事件循环，暂不纳入（保持原有 chunk 拼接逻辑）
+    async def _call_llm(self, request_kwargs: dict) -> LLMResult:
+        """
+        统一的 LLM 调用辅助函数（非流式）。
+
+        封装 client.chat.completions.create + token 计量 + 响应 debug 输出，
+        返回归一化的 LLMResult。
+
+        Args:
+            request_kwargs: LLM 请求参数（由 _build_request_kwargs 构建）
+
+        Returns:
+            LLMResult: 归一化的 LLM 调用结果
+        """
+        response = await self.client.chat.completions.create(**request_kwargs)
+        msg = response.choices[0].message
+
+        # 📊 Token 计量埋点：A-3.2 统一在 _call_llm 内记录（AGENT-04）
+        await self._record_usage(getattr(response, "usage", None))
+
+        if self.debug_mode:
+            self.console.print("\n[dim magenta]--- 🐛 [Debug] LLM Response ---[/dim magenta]")
+            self.console.print(
+                f"[dim]{json.dumps(msg.model_dump(exclude_none=True), ensure_ascii=False, indent=2, default=str)}[/dim]"
+            )
+            self.console.print("[dim magenta]-------------------------------[/dim magenta]\n")
+
+        # 归一化 tool_calls 为 dict 格式，与流式路径的 tool_calls_dict 结构对齐
+        tool_calls_list = None
+        if msg.tool_calls:
+            tool_calls_list = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                }
+                for tc in msg.tool_calls
+            ]
+
+        return LLMResult(
+            content=msg.content,
+            tool_calls=tool_calls_list,
+            usage=getattr(response, "usage", None),
+            reasoning_content=getattr(msg, "reasoning_content", None),
+        )
+
+    # A-3.2: 支持熔断恢复路径的模型覆盖（AGENT-04）
+    def _build_request_kwargs_model(self, model_override: str, stream: bool = False) -> dict:
+        """
+        构建 LLM 请求参数，但使用指定的模型覆盖。
+
+        主要用于熔断恢复路径，需要使用 pro 模型进行最终总结。
+
+        Args:
+            model_override: 覆盖的模型名称
+            stream: 是否开启流式输出
+
+        Returns:
+            dict: 包含 model/messages/temperature/stream/tools 的请求参数字典
+        """
+        kwargs = self._build_request_kwargs(stream=stream)
+        kwargs["model"] = model_override
+        return kwargs
 
     def __init__(
         self,
@@ -339,43 +422,38 @@ class HermesAgent(MemoryOperationsMixin):
                 # 🛡️ TokenGuard：每次 ReAct 迭代真正发 LLM 前做限流 + 预算护栏
                 await self._guard_before_llm()
 
-                response = await self.client.chat.completions.create(**request_kwargs)
-                msg = response.choices[0].message
+                # A-3.2: 使用统一的 _call_llm 辅助函数（AGENT-04）
+                llm_result = await self._call_llm(request_kwargs)
 
-                # 📊 Token 计量埋点：A-2.2 使用统一的 _record_usage 辅助函数（AGENT-04）
-                await self._record_usage(getattr(response, "usage", None))
-
-                if self.debug_mode:
-                    self.console.print("\n[dim magenta]--- 🐛 [Debug] LLM Response ---[/dim magenta]")
-                    self.console.print(
-                        f"[dim]{json.dumps(msg.model_dump(exclude_none=True), ensure_ascii=False, indent=2, default=str)}[/dim]"
-                    )
-                    self.console.print("[dim magenta]-------------------------------[/dim magenta]\n")
-
-                # 将模型回复加入上下文 (使用 exclude_none 防止结构冗余)
-                self.messages.append(msg.model_dump(exclude_none=True))
+                # 将模型回复加入上下文（从归一化 LLMResult 构建 message dict）
+                msg_dict = {"role": "assistant"}
+                if llm_result.content:
+                    msg_dict["content"] = llm_result.content
+                if llm_result.tool_calls:
+                    msg_dict["tool_calls"] = llm_result.tool_calls
+                self.messages.append(msg_dict)
                 # ❌ 移除这里的 self._save_session()，防止中途崩溃导致上下文未闭环就被写入硬盘
 
                 # 如果模型决定调用工具
-                if msg.tool_calls:
+                if llm_result.tool_calls:
                     # A-2.3: 使用统一的 _safe_execute_tool 辅助函数（AGENT-04）
                     async def execute_tool(tc):
-                        print(f"🧠 [Agent Plan] 决定调用工具: {tc.function.name}")
-                        return await self._safe_execute_tool(tc.function.name, tc.function.arguments)
+                        print(f"🧠 [Agent Plan] 决定调用工具: {tc['function']['name']}")
+                        return await self._safe_execute_tool(tc["function"]["name"], tc["function"]["arguments"])
 
-                    tasks = [execute_tool(tc) for tc in msg.tool_calls]
+                    tasks = [execute_tool(tc) for tc in llm_result.tool_calls]
                     # 并发执行所有工具，并捕获底层的崩溃防止跳过组装步骤
                     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                    for tool_call, result in zip(msg.tool_calls, results):
+                    for tool_call, result in zip(llm_result.tool_calls, results):
                         if isinstance(result, Exception):
                             result = {"status": "error", "message": f"并发调度异常: {str(result)}"}
                         # 将工具执行结果作为 tool role 加入上下文
                         self.messages.append(
                             {
                                 "role": "tool",
-                                "tool_call_id": tool_call.id,
-                                "name": tool_call.function.name,
+                                "tool_call_id": tool_call["id"],
+                                "name": tool_call["function"]["name"],
                                 "content": json.dumps(result, ensure_ascii=False),
                             }
                         )
@@ -385,8 +463,10 @@ class HermesAgent(MemoryOperationsMixin):
                     await self._save_session()  # ✅ 如果不需要调用工具，则证明推理完整结束，直接保存
                     # 模型没有调用工具的需求，得出最终结论 (Output)
                     self.console.print("\n[bold green]💬 [Agent Output]:[/bold green]")
-                    self.console.print(Markdown(msg.content or ""))  # 加入 or "" 防止模型未输出内容导致 Rich 渲染报错
-                    return msg.content or ""
+                    self.console.print(
+                        Markdown(llm_result.content or "")
+                    )  # 加入 or "" 防止模型未输出内容导致 Rich 渲染报错
+                    return llm_result.content or ""
 
             except Exception as e:
                 print(f"❌ [Agent API Error] 大模型交互异常: {e}")
@@ -406,18 +486,15 @@ class HermesAgent(MemoryOperationsMixin):
             # 💡 使用 pro 模型进行深度分析总结，提升最终结论质量
             # 🛡️ TokenGuard：最终总结前也做预算护栏，防止历史累积过大
             await self._guard_before_llm(max_input_tokens=150000)
-            response = await self.client.chat.completions.create(
-                model=self.pro_model, messages=cast(Any, self.messages), temperature=0.0
-            )
-            # 📊 Token 计量埋点：A-2.2 pro 最终总结（非流式）使用统一的 _record_usage（AGENT-04）
-            await self._record_usage(getattr(response, "usage", None))
-            final_msg = response.choices[0].message
-            self.messages.append(final_msg.model_dump(exclude_none=True))
+            # A-3.2: 使用统一的 _call_llm + _build_request_kwargs_model（AGENT-04）
+            cb_kwargs = self._build_request_kwargs_model(self.pro_model, stream=False)
+            llm_result = await self._call_llm(cb_kwargs)
+            self.messages.append({"role": "assistant", "content": llm_result.content or None})
             await self._save_session()
 
             self.console.print("\n[bold yellow]💬 [Agent Output (强制总结)]:[/bold yellow]")
-            self.console.print(Markdown(final_msg.content or ""))
-            return final_msg.content or ""
+            self.console.print(Markdown(llm_result.content or ""))
+            return llm_result.content or ""
         except Exception as e:
             print(f"❌ [Agent API Error] 强制恢复失败: {e}")
             return f"❌ 强制恢复失败: {e}"
