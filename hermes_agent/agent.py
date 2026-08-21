@@ -131,7 +131,10 @@ class HermesAgent(MemoryOperationsMixin):
             # 💡 核心修复：execute 是 async 函数，必须 await
             return await self.tool_registry.execute(tool_name, **args)
         except Exception as e:
-            return {"status": "error", "message": f"工具执行异常: {str(e)}"}
+            # AGENT-10: 异常消息脱敏，防止凭据泄漏进模型上下文
+            from hermes_agent.redact import redact_exception
+
+            return {"status": "error", "message": f"工具执行异常: {redact_exception(e)}"}
 
     # A-3.2: 抽 _call_llm 统一 LLM 调用逻辑（AGENT-04）
     async def _call_llm(self, request_kwargs: dict) -> LLMResult:
@@ -457,9 +460,12 @@ class HermesAgent(MemoryOperationsMixin):
             except Exception as e:
                 import traceback
 
+                from hermes_agent.redact import redact_exception
+
                 self.console.print("\n[bold red]❌ [Agent API Error] 底层调用发生异常:[/bold red]")
                 self.console.print(f"[red]{traceback.format_exc()}[/red]")
-                yield {"type": "error", "content": f"\n❌ [Agent API Error]: {e}"}
+                # AGENT-10: SSE error 事件内容脱敏
+                yield {"type": "error", "content": f"\n❌ [Agent API Error]: {redact_exception(e)}"}
                 yield {"type": "_done", "content": collected_content}
                 return
 
@@ -507,8 +513,11 @@ class HermesAgent(MemoryOperationsMixin):
             return
 
         except Exception as e:
-            print(f"❌ [Agent] 强制恢复失败: {e}")
-            yield {"type": "error", "content": f"\n❌ 强制恢复失败: {e}"}
+            from hermes_agent.redact import redact_exception
+
+            # AGENT-10: 强制恢复失败的日志与 SSE 事件脱敏
+            print(f"❌ [Agent] 强制恢复失败: {redact_exception(e)}")
+            yield {"type": "error", "content": f"\n❌ 强制恢复失败: {redact_exception(e)}"}
             yield {"type": "_done", "content": ""}
             return
 

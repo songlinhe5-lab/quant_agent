@@ -419,4 +419,7 @@ async def core_tool_execute(ctx: ToolContext, tools: Dict[str, Any]) -> Any:
         else:
             return await asyncio.to_thread(tool.run, **ctx.kwargs)
     except Exception as e:
-        return {"status": "error", "message": f"工具执行异常: {str(e)}"}
+        # AGENT-10: 异常消息可能携带凭据（URL 内嵌密码 / 请求头），脱敏后再进入上下文与日志
+        from hermes_agent.redact import redact_exception
+
+        return {"status": "error", "message": f"工具执行异常: {redact_exception(e)}"}
