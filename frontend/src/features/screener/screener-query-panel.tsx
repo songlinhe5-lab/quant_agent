@@ -106,29 +106,6 @@ export function ScreenerQueryPanel() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-muted-foreground font-mono bg-secondary/50 px-2 py-0.5 rounded border border-border/30 hidden sm:inline-block">全市场 5,832 只 · 毫秒级扫描</span>
-            <div className="relative">
-              <button onClick={() => setShowHistory(!showHistory)} onBlur={() => setTimeout(() => setShowHistory(false), 200)} className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary transition-colors bg-secondary/30 hover:bg-secondary/60 px-2 py-0.5 rounded border border-border/50">
-                <History className="h-3 w-3" /> 历史记录
-              </button>
-              {showHistory && (
-                <div className="absolute right-0 top-full mt-1 w-64 bg-card border border-border/50 rounded-lg shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
-                  <div className="px-3 py-1.5 border-b border-border/30 bg-secondary/20 flex justify-between items-center">
-                     <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">最近查询记录</span>
-                     {history.length > 0 && <button onMouseDown={(e) => { e.preventDefault(); setHistory([]); localStorage.removeItem('quant_screener_history'); apiClient.post('/screener/history', { history: [] }).catch(()=>{}); }} className="text-[9px] text-red-500 hover:underline">清空</button>}
-                  </div>
-                  <div className="max-h-48 overflow-y-auto custom-scrollbar p-1">
-                    {history.length === 0 ? (
-                      <div className="text-center text-[10px] text-muted-foreground py-4">暂无历史记录</div>
-                    ) : history.map((h, i) => (
-                      <button key={i} onMouseDown={(e) => { e.preventDefault(); setNlpQuery(h.nlp); setDslQuery(h.dsl); setShowHistory(false); handleTranslate(h.nlp); }} className="w-full text-left px-2 py-1.5 hover:bg-secondary/50 rounded transition-colors flex flex-col gap-0.5 group">
-                        <span className="text-[11px] text-foreground truncate font-medium group-hover:text-primary">{h.nlp}</span>
-                        <span className="text-[9px] text-muted-foreground font-mono truncate">{new Date(h.time).toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
         </div>
 
@@ -156,6 +133,35 @@ export function ScreenerQueryPanel() {
           </div>
           <textarea id="nlp-query" placeholder={placeholderText} className="w-full pl-9 pr-12 py-3 rounded-xl bg-background border border-border/60 hover:border-primary/50 focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none transition-all duration-300 text-sm font-mono resize-none leading-relaxed shadow-sm dark:bg-black/20" rows={3} value={nlpQuery} onChange={(e) => { setNlpQuery(e.target.value); setDslQuery(''); setActiveTag(null) }} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleTranslate() } }} aria-label="输入自然语言选股条件" />
           <div className="absolute right-2 bottom-2 flex items-center gap-2">
+            {/* UIRF-22: 历史记录图标按钮（输入框右上角） + 一键重放 */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowHistory(!showHistory)}
+                className="h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-secondary/60 transition-colors border border-border/40"
+                title="历史记录（点击重放）"
+              >
+                <History className="h-3.5 w-3.5" />
+              </button>
+              {showHistory && (
+                <div className="absolute right-0 bottom-full mb-1 w-64 bg-card border border-border/50 rounded-lg shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-bottom-2">
+                  <div className="px-3 py-1.5 border-b border-border/30 bg-secondary/20 flex justify-between items-center">
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">最近查询记录</span>
+                    {history.length > 0 && <button onMouseDown={(e) => { e.preventDefault(); setHistory([]); localStorage.removeItem('quant_screener_history'); apiClient.post('/screener/history', { history: [] }).catch(()=>{}); }} className="text-[9px] text-red-500 hover:underline">清空</button>}
+                  </div>
+                  <div className="max-h-48 overflow-y-auto custom-scrollbar p-1">
+                    {history.length === 0 ? (
+                      <div className="text-center text-[10px] text-muted-foreground py-4">暂无历史记录</div>
+                    ) : history.map((h, i) => (
+                      <button key={i} onMouseDown={(e) => { e.preventDefault(); setNlpQuery(h.nlp); setDslQuery(h.dsl); setShowHistory(false); handleTranslate(h.nlp); }} className="w-full text-left px-2 py-1.5 hover:bg-secondary/50 rounded transition-colors flex flex-col gap-0.5 group">
+                        <span className="text-[11px] text-foreground truncate font-medium group-hover:text-primary">{h.nlp}</span>
+                        <span className="text-[9px] text-muted-foreground font-mono truncate">{new Date(h.time).toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
             {isLoading && progress > 0 && (
               <div className="flex items-center gap-1.5 mr-1 bg-background/80 backdrop-blur px-2 py-1 rounded-md">
                 <span className="text-[10px] text-primary font-mono animate-pulse">{scanStatus}</span>
