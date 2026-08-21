@@ -471,7 +471,7 @@
   - 前端：`expert-team-client.ts:91-142` 从裸 `apiClient.stream` 改走 `fetchWithAuth`（对齐 `chat-context.tsx:243` 口径）
   - 依赖：BE 侧 Depends 实现
   - 预期工时：FE 2h + BE 2h
-- [ ] **[COPILOT-09]** **迭代上限 UI 披露**（P1-4）：
+- [x] **[COPILOT-09]** **迭代上限 UI 披露**（P1-4）：✅ `a97bae7`
   - `max_iterations=8` 达限时在消息流顶部渲染 amber 提示条「已达 8 步推理上限，以下为降级模型兜底总结」
   - 依赖：COPILOT-01（需从 store 读取迭代计数）
   - 预期工时：FE 2h
