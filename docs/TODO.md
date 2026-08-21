@@ -97,8 +97,9 @@ S8: PT-01a ─► PT-01b ─► PT-01c ─► PT-02a ─► PT-02b
 
 #### Phase 2 ～ 工具集场景分发（已完成） ✅
 
-- [x] **[AGENT-03]** 工具集按场景分发（scopes 枚举 + decorator 工厂 + get_schemas_by_scopes() + 35 tools 打标）✅ [当前提交]
-- [ ] 后续：`agent.py` ReAct loop 中增加 scope 筛选逻辑（基于用户问题关键词），减少 LLM 上下文负担
+- [x] **[AGENT-03]** 工具集按场景分发（scopes 枚举 + decorator 工厂 + get_schemas_by_scopes() + 35 tools 打标）✅ [commit 7778186]
+  - 📄 [实施总结](docs/AGENT-03_IMPLEMENTATION_SUMMARY.md)
+  - [ ] agent.py ReAct loop 集成 scope 筛选逻辑（NEXT TASK）
 
 #### Phase 2.5 ～ 对标 codex 补充线（进行中） ⏳
 
