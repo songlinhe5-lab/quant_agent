@@ -12,7 +12,7 @@ interface BrokerItem {
 }
 
 interface TopBrokersResp {
-  status: string
+  status: 'success' | 'error' | 'unsupported'
   source?: string
   buy_brokers?: BrokerItem[]
   sell_brokers?: BrokerItem[]
@@ -102,6 +102,11 @@ export function BrokerPanel({ symbol }: { symbol: string }) {
 
       {loading && !data ? (
         <div className="px-3 py-4 text-center text-[10px] text-muted-foreground">加载经纪商数据…</div>
+      ) : status === 'unsupported' ? (
+        <div className="px-3 py-4 text-center text-[10px] text-gray-400">
+          {data?.message || '当前市场不支持经纪商版面'}
+          <span className="ml-1 text-gray-600">(Futu 仅港股提供)</span>
+        </div>
       ) : stale && !data?.buy_brokers?.length && !data?.sell_brokers?.length ? (
         <div className="px-3 py-4 text-center text-[10px] text-amber-500">
           数据源暂不可用 · 经纪商未返回

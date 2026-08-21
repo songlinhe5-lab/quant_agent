@@ -320,29 +320,21 @@ class TestOptionFundHandler:
         assert cached is not None
 
     @pytest.mark.asyncio
-    async def test_get_top_brokers_us_fallback(self):
-        """US 标的应走十大经纪商兜底（不拦截 unsupported）"""
+    async def test_get_top_brokers_us_unsupported(self):
+        """US 等港股以外市场 futu 无经纪商明细接口，应直接返回 unsupported（非 error/非 STALE）"""
         handler, conn_mgr, cache_mgr = _make_handler()
-        df = pd.DataFrame(
-            {
-                ("broker_name", "US.AAPL"): ["BrokerX", "BrokerY"],
-                ("buy_sell_type", "US.AAPL"): ["BUY", "SELL"],
-                ("avg_price", "US.AAPL"): [180.5, 179.9],
-                ("net_vol", "US.AAPL"): [3000, -2000],
-                ("total_vol", "US.AAPL"): [3500, 2200],
-                ("total_turnover", "US.AAPL"): [6.3e5, 4.0e5],
-                ("is_real_time", "US.AAPL"): [1, 1],
-            }
-        )
+        called = {"n": 0}
 
         async def fake_to_thread(fn, *args, **kwargs):
-            return (RET_OK, df)
+            called["n"] += 1
+            return (RET_OK, pd.DataFrame())
 
         with patch("asyncio.to_thread", new=fake_to_thread):
             result = await handler.get_top_brokers("US.AAPL")
-        assert result["status"] == "success"
-        assert len(result["buy_brokers"]) == 1
-        assert result["sell_brokers"][0]["broker_name"] == "BrokerY"
+        assert result["status"] == "unsupported"
+        assert "港股" in (result.get("message") or "")
+        # 不应调用底层接口（提前拦截）
+        assert called["n"] == 0
 
     @pytest.mark.asyncio
     async def test_get_top_brokers_empty_returns_error(self):

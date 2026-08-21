@@ -710,13 +710,23 @@ class OptionFundHandler:
     ) -> Dict[str, Any]:
         """获取十大买卖经纪商（净买/净卖两组）。
 
-        - HK: get_top_ten_buy_sell_brokers 实时返回净买/净卖经纪商明细。
-        - US: 同一接口支持(days_before=0 走实时)，无 broker_queue 但有十大净买卖 → 兜底。
-        不传 is_unsupported_func，使 US 标的也能走(符合"US 用十大经纪商兜底"决策)。
+        futu `get_top_ten_buy_sell_brokers` 仅支持港股正股/基金（实测 US 标的返回
+        "只支持港股正股和基金"）。US 等其它市场 futu 无经纪商明细接口，直接标记
+        unsupported，避免误报为数据源故障/STALE。
         """
         market_ticker = format_ticker_func(ticker) if format_ticker_func else ticker
         if not market_ticker:
             return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+
+        # 仅港股支持经纪商明细；其它市场（US 等）futu 无此接口，提前返回 unsupported
+        if not market_ticker.upper().startswith("HK."):
+            return {
+                "status": "unsupported",
+                "source": "futu",
+                "ticker": ticker,
+                "code": market_ticker,
+                "message": "Futu 经纪商明细仅支持港股，当前市场不支持",
+            }
 
         cache_key = f"futu_top_brokers_{market_ticker}_{days_before}"
         now = time.time()
