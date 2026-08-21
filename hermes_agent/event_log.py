@@ -21,6 +21,14 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+
+# AGENT-15: 延迟加载 RolloutStorage（避免循环导入）
+def _import_rollout():
+    from hermes_agent.rollout_storage import RolloutStorage, SessionEvent, create_rollout_storage
+
+    return RolloutStorage, create_rollout_storage, SessionEvent
+
+
 # ── 事件类型闭集 ────────────────────────────────────────────────────
 # user/message    — 用户输入（含系统注入的校验/强制指令）
 # assistant/message — 助手完整回复（turn 结束时定稿）
@@ -68,22 +76,44 @@ class SessionEventLog:
     - append() 只追加；不提供修改/删除单条事件的接口
     - reset() 仅在 /clear（用户显式清空会话）时允许，且自身作为事件留痕
     - derive_messages() 从事件派生模型可见消息（投影）
+
+    AGENT-15: 新增 RolloutStorage 持久化层（JSONL 追加文件）
     """
 
-    def __init__(self, session_id: str = ""):
+    def __init__(self, session_id: str = "", rollout_storage: Optional["RolloutStorage"] = None):
         self.session_id = session_id
         self._events: List[SessionEvent] = []
         self._seq = 0
 
+        # AGENT-15: Rollout 持久化层（可选注入，便于测试）
+        _RolloutStorage, _, _ = _import_rollout()
+        if rollout_storage is None and session_id:
+            self.rollout = _RolloutStorage()  # 默认创建实例
+        else:
+            self.rollout = rollout_storage
+
     # ── 追加 ────────────────────────────────────────────────────────
     def append(self, event_type: str, payload: Optional[Dict[str, Any]] = None) -> SessionEvent:
-        """追加一条事件。未知类型仍会记录（宽容写入），但标记 invalid_type。"""
+        """追加一条事件。未知类型仍会记录（宽容写入），但标记 invalid_type。
+
+        AGENT-15: 同时写入内存和 RolloutStorage
+        """
         if event_type not in EVENT_TYPES:
             payload = dict(payload or {})
             payload["_invalid_type"] = True
         self._seq += 1
         evt = SessionEvent(seq=self._seq, ts=time.time(), type=event_type, payload=payload or {})
         self._events.append(evt)
+
+        # AGENT-15: 持久化到 Rollout（幂等：session_id 非空时才写）
+        if self.rollout and self.session_id:
+            try:
+                self.rollout.append_event(self.session_id, evt)
+                # Budget 检查：每次追加后检查（避免单文件过大）
+                self.rollout.check_budget_and_archive(self.session_id)
+            except Exception as e:
+                print(f"⚠️ [SessionEventLog] Rollout 持久化失败：{e}")
+
         return evt
 
     def record_user_message(self, content: str) -> SessionEvent:
@@ -121,6 +151,30 @@ class SessionEventLog:
         """用户显式 /clear 时重置（保留审计语义：调用方应先记录清空事件）。"""
         self._events = []
         self._seq = 0
+
+    # ── AGENT-15: Rollout 持久化相关 ───────────────────────────────────────
+
+    @classmethod
+    def load_from_rollout(cls, session_id: str) -> "SessionEventLog":
+        """
+        从 Rollout 加载事件日志（冷启动恢复）。
+
+        Args:
+            session_id: 会话 ID
+        Returns:
+            重放后的 SessionEventLog 实例
+        """
+        _RolloutStorage, _, SessionEvent = _import_rollout()
+        storage = _RolloutStorage()
+        events = storage.load_events(session_id)
+
+        # 创建新的 SessionEventLog 实例（不触发 Rollout 写入）
+        log = cls(session_id=session_id, rollout_storage=None)
+        log._events = events
+        log._seq = len(events)
+
+        print(f"✅ [SessionEventLog] 从 Rollout 恢复 {len(events)} 条事件 (session={session_id})")
+        return log
 
 
 # ── 投影函数 ────────────────────────────────────────────────────────
