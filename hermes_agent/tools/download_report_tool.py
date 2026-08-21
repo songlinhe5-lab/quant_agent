@@ -177,7 +177,7 @@ def _build_filename(ticker: str, url: str, report_type: str = "", year: str = ""
     return "_".join(parts) + ext
 
 
-@register_tool
+@register_tool(scopes=["search"])  # 研报 PDF 下载
 class DownloadReportTool(BaseTool):
     """
     从公开 URL 下载财报/研报 PDF 到本地 reports/ 目录。

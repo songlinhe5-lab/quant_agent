@@ -6,7 +6,7 @@ from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["macro"])  # 恐慌指数 VIX/P/C Ratio/利差
 class MacroSentimentTool(BaseTool):
     """
     宏观情绪风向标历史序列工具。

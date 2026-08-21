@@ -7,7 +7,7 @@ from hermes_agent.tool_registry import register_tool
 from .base import BaseTool
 
 
-@register_tool
+@register_tool(scopes=["search"])  # 本地知识库 RAG（研报/文档检索）
 class KnowledgeBaseTool(BaseTool):
     """
     全局知识库检索工具。

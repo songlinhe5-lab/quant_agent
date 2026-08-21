@@ -78,6 +78,52 @@ S8: PT-01a ─► PT-01b ─► PT-01c ─► PT-02a ─► PT-02b
 
 ### 线 2 · 分布式集群部署收尾（Phase 3~4）
 
+---
+
+### 线 3 · HERMES AGENT 内核架构优化 (AGENT 系列)
+
+#### Phase 0 ～ 结构前置（已完成）✅
+
+- [x] **[AGENT-04]** ReAct 单驱动收口（统一 `_react_loop` + SSE 事件契约冻结）✅ fa8fc65
+- [x] **[AGENT-02]** 中间件管线（circuit_breaker + FailureTracker）✅ 452cb9d
+- [x] **[AGENT-07]** 审批闸门骨架（fail-closed + audit pair）✅ 5b92f17
+- [x] **[AGENT-08]** Verify 阶段（非空校验 + 新鲜度 + 错误检测）✅ 5b92f17
+- [x] **[AGENT-09]** 结果正交分类（success/empty/stale/rate_limited/error/circuit_breaker）✅ 452cb9d
+
+#### Phase 1 ～ 审计与可观测（已完成） ✅
+
+- [x] **[AGENT-01]** Append-only 会话事件日志（SessionEventLog + derive_messages 投影 + check_invariant）✅ 4d2d154
+- [x] **[AGENT-10]** 密钥脱敏层（redact_text/redact_obj/scrub_subprocess_env + 三处错误路径集成）✅ aba5588
+
+#### Phase 2 ～ 工具集场景分发（已完成） ✅
+
+- [x] **[AGENT-03]** 工具集按场景分发（scopes 枚举 + decorator 工厂 + get_schemas_by_scopes() + 35 tools 打标）✅ [当前提交]
+- [ ] 后续：`agent.py` ReAct loop 中增加 scope 筛选逻辑（基于用户问题关键词），减少 LLM 上下文负担
+
+#### Phase 2.5 ～ 对标 codex 补充线（进行中） ⏳
+
+- [ ] **[AGENT-03]** **工具集按场景分发**（工具→scopes 映射 + get_schemas_by_scopes() + agent.py 路由）⏳ 进行中
+  - [x] 定义场景分类枚举 `hermes_agent/scopes.py`
+  - [x] 扩展 `@register_tool(cls, scopes=[...])`
+  - [x] 实现 `get_schemas_by_scopes()`过滤方法
+  - [x] 生成初始 mapping (`tool_scope_mapping.json`) → 人工审核中
+  - [ ] 人工审核并逐个注入 `scopes=[...]` 参数到现有工具
+  - [ ] 修改 `_react_loop`路由逻辑（关键词匹配→动态 scopes 筛选）
+  - [ ] 编写单元测试 `backend/tests/test_tool_sets_ag03.py`
+  
+- [ ] **[AGENT-15]** 会话事件日志持久化（Rollout JSONL + budget 归档）← 待启动
+- [ ] **[AGENT-17]** 轮次元数据（turn_id / latency breakdown / Prometheus histogram）← 待启动
+
+#### Phase 3 ～ 成本效率（待定）
+
+- [ ] **[AGENT-16]** 摘要压缩取代破坏性截断（LLM 摘要 fallback 策略）← 待定
+- [ ] **[AGENT-11]** Prompt 缓存边界 + Token 成本计量 ← 待定
+
+#### Phase 4 ～ 韧性扩展（待定）
+
+- [ ] **[AGENT-18]** LLM 调用重试分类与退避（指数退避 + jitter）← 待定
+- [ ] **[AGENT-19]** Elicitation 提问缝（暂停等待用户应答）← 待定
+
 - [x] ~~**[CL-01~04]** 核心集群通信 (60 tests)~~ ✅
 - [x] ~~**[→ DIST-13]** 加州 VPS (38.60.126.42) 部署主节点~~ ✅ CI/CD 已指向 VPS_S1
 - [x] ~~**[→ DIST-14]** 北京 VPS 部署辅助节点~~ ✅ 一键脚本已就绪

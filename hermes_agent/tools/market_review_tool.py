@@ -12,7 +12,7 @@ from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["macro", "news"])  # 市场复盘日报（宏观 + 资金流）
 class MarketReviewTool(BaseTool):
     """
     获取每日市场复盘报告（宏观大盘分析），用于个股判因时引用市场上下文。

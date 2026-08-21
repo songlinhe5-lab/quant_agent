@@ -6,7 +6,7 @@ from hermes_agent.tool_registry import register_tool
 from .base import BaseTool
 
 
-@register_tool
+@register_tool(scopes=["search"])  # 知识库删除
 class DeleteKnowledgeTool(BaseTool):
     """
     全局知识库清理工具。

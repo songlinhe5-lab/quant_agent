@@ -6,7 +6,7 @@ from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["quote", "fund_flow"])  # 盘口报价 + 资金流
 class BrokerMarketTool(BaseTool):
     """
     大模型统一的市场数据感知探针。

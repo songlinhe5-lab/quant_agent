@@ -6,7 +6,7 @@ from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["macro"])  # 美债收益率/FOMC 决议/非农就业
 # 工具类名必须与 __init__.py 中导入的一致 (FredMacroTool)
 class FredMacroTool(BaseTool):
     """

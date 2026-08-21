@@ -6,7 +6,7 @@ from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["trade"])  # 策略参数寻优
 class OptimizeStrategyTool(BaseTool):
     """
     大模型专用的高频策略网格搜索寻优器。

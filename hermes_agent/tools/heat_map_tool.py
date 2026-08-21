@@ -6,7 +6,7 @@ from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["quote", "macro"])  # 板块热力图
 class HeatMapTool(BaseTool):
     """
     G6：板块热力图（市场级，需 market 参数）。

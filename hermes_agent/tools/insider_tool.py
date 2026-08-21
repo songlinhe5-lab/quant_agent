@@ -15,7 +15,7 @@ class InsiderTransactionsInput(BaseModel):
     limit: int = Field(default=20, description="返回的交易记录条数，默认 20")
 
 
-@register_tool
+@register_tool(scopes=["fundamental", "news"])  # 高管内幕交易
 class InsiderTransactionsTool:
     """
     查询高管内幕交易的 Agent Tool。

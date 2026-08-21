@@ -6,7 +6,7 @@ from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["search"])  # 网络搜索 + 网页摘要
 class WebSearchTool(BaseTool):
     """
     DuckDuckGo 互联网搜索工具

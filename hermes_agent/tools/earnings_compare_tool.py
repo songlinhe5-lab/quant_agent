@@ -32,7 +32,7 @@ class EarningsExpectation(BaseModel):
     notes: str = Field(default="", description="关键假设说明")
 
 
-@register_tool
+@register_tool(scopes=["fundamental"])  # 财报预期对比
 class EarningsCompareTool:
     """
     财报预期对比工具：存储预期值 → 拉取实际数据 → 生成差异分析报告

@@ -1,0 +1,32 @@
+{
+  "analyst_consensus_tool": [
+    "fundamental"
+  ],
+  "broker_market_tool": [
+    "quote"
+  ],
+  "broker_trade_tool": [
+    "trade"
+  ],
+  "company_news_tool": [
+    "news"
+  ],
+  "fred_macro_tool": [
+    "macro"
+  ],
+  "fundamental_data_tool": [
+    "fundamental"
+  ],
+  "macro_news_tool": [
+    "news"
+  ],
+  "technical_indicators_tool": [
+    "indicators"
+  ],
+  "web_scrape_tool": [
+    "search"
+  ],
+  "web_search_tool": [
+    "search"
+  ]
+}

@@ -27,7 +27,7 @@ def _domain_of(url: str) -> str:
         return "unknown"
 
 
-@register_tool
+@register_tool(scopes=["search"])  # 研报下载 + 财报网页抓取
 class WebScrapeTool(BaseTool):
     """
     网页正文提取工具，利用 Jina Reader API 直接抓取网页并提取纯文本 Markdown。

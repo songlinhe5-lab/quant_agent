@@ -6,7 +6,7 @@ from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["search"])  # 财报深度阅读
 class FinancialReportTool(BaseTool):
     """
     自动寻找并解析本地存放的财报文件。

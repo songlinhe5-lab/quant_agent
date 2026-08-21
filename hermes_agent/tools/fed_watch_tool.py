@@ -6,7 +6,7 @@ from .base import BaseTool, get_backend_api_url
 from .secure_client import SecureAsyncClient
 
 
-@register_tool
+@register_tool(scopes=["macro"])  # FedWatch 利率决议概率
 class FedWatchTool(BaseTool):
     """
     G5：FedWatch 面板（市场级，无 code 参数）。
