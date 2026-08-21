@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useCallback, useRef, useState } from 'react'
-import { Brain, History, Plus, X, Users, MessageSquare, Wallet } from 'lucide-react'
+import { Brain, History, Plus, X, MessageSquare, Wallet } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLayoutStore } from '@/stores/useLayoutStore'
 import { useSceneModeStore } from '@/stores/useSceneModeStore'
@@ -12,9 +12,8 @@ import { ChatSidebarWrapper } from '@/features/copilot/chat-sidebar-wrapper'
 import { MessageListArea } from '@/features/copilot/message-list-area'
 import { ChatInputBox } from '@/features/copilot/chat-input-box'
 import { useCopilotContextStore } from '@/stores/useCopilotContextStore'
-import { ResearchTeamView } from '@/features/copilot/research-team/research-team-view'
 
-type CopilotTab = 'chat' | 'team' | 'assets'
+type CopilotTab = 'chat' | 'assets'
 
 const DEFAULT_WIDTH = 520
 const MIN_WIDTH = 360
@@ -82,18 +81,15 @@ function CopilotDrawerChrome({ width, onResizeStart }: { width: number; onResize
             </button>
           </div>
         </div>
-        {/* Tab 切换：对话 / 投研团队 / 资产 */}
+        {/* Tab 切换：对话 / 资产 (COPILOT-06: 投研团队已迁至左导航 /research-team 宽屏页) */}
         <div className="flex items-center gap-1 px-3 pb-0 pt-1 border-b border-border/30">
           <TabButton active={tab === 'chat'} onClick={() => setTab('chat')} icon={<MessageSquare className="h-3.5 w-3.5" />} label="对话" />
-          <TabButton active={tab === 'team'} onClick={() => setTab('team')} icon={<Users className="h-3.5 w-3.5" />} label="AI投研团队" />
           <TabButton active={tab === 'assets'} onClick={() => setTab('assets')} icon={<Wallet className="h-3.5 w-3.5" />} label="资产" />
         </div>
       </header>
 
       <div className="relative flex-1 min-h-0 flex flex-col">
-        {tab === 'team' ? (
-          <ResearchTeamView />
-        ) : tab === 'assets' ? (
+        {tab === 'assets' ? (
           <CopilotAssetsPanel onClose={() => setTab('chat')} />
         ) : (
           <>

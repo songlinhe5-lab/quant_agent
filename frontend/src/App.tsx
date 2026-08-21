@@ -54,6 +54,7 @@ const BacktestModule = lazyWithRetry(() => import('@/features/trading/backtest')
 const OMSModule = lazyWithRetry(() => import('@/features/trading/oms').then(m => ({ default: m.OMSModule })))
 const RiskModule = lazyWithRetry(() => import('@/features/trading/risk').then(m => ({ default: m.RiskModule })))
 const CopilotModule = lazyWithRetry(() => import('@/features/trading/copilot').then(m => ({ default: m.CopilotModule })))
+const ResearchTeamPageModule = lazyWithRetry(() => import('@/features/trading/research-team-page').then(m => ({ default: m.ResearchTeamPage })))
 const ApmModule = lazyWithRetry(() => import('@/features/system/performance-panel').then(m => ({ default: m.PerformancePanel })))
 const AlertCenterModule = lazyWithRetry(() => import('@/features/trading/alert-center').then(m => ({ default: m.AlertCenterModule })))
 const CalendarsModule = lazyWithRetry(() => import('@/features/calendars/module').then(m => ({ default: m.CalendarsModule })))
@@ -109,6 +110,7 @@ export default function App() {
             <Route path="/oms" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="OMS"><OMSModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/risk" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Risk"><RiskModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/copilot" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Copilot"><CopilotModule /></ModuleErrorBoundary></Suspense>} />
+            <Route path="/research-team" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="ResearchTeam"><ResearchTeamPageModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/apm" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="APM"><ApmModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/alerts" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Alerts"><AlertCenterModule /></ModuleErrorBoundary></Suspense>} />
             <Route path="/calendars" element={<Suspense fallback={<LoadingFallback />}><ModuleErrorBoundary name="Calendars"><CalendarsModule /></ModuleErrorBoundary></Suspense>} />
