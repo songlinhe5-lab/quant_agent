@@ -16,6 +16,8 @@ export function useBacktest() {
   const [progress, setProgress] = useState(0)
   const [progressStage, setProgressStage] = useState('')
   const [rawReturns, setRawReturns] = useState<number[]>([])
+  // UIRF-02: 回测错误态（错误卡 + 重试，禁止「报错也显示完成」）
+  const [error, setError] = useState<string | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
   const [ticker, setTicker] = useState('US.NVDA')
@@ -93,6 +95,7 @@ export function useBacktest() {
     setRunning(true)
     setProgress(0)
     setProgressStage('')
+    setError(null)
     if (!isSilent) setBacktestResult(null)
     setRawReturns([])
 
@@ -197,26 +200,27 @@ export function useBacktest() {
       }
 
       if (finalData?.status === 'success' && finalData.data) {
+        // UIRF-02: 仅 {type:'result'} 且 success → 成功态
         setBacktestResult(finalData.data)
+        setDone(true)
         if (!isSilent) toast({ title: '✅ 回测推演完成', description: `策略执行完毕，已生成 Tear Sheet。` })
-        const generatedReturns = Array.from({length: 1000}, () => {
-          let u = 0, v = 0;
-          while(u === 0) u = Math.random();
-          while(v === 0) v = Math.random();
-          const z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
-          return 0.05 + z * 0.08;
-        });
-        setRawReturns(generatedReturns)
+        // UIRF-01: 删除 Box-Muller 随机高斯假收益；真实 dailyReturns 来自后端 result.data（若有）
+        const realReturns = Array.isArray(finalData.data?.daily_returns) ? finalData.data.daily_returns : []
+        setRawReturns(realReturns)
       } else if (finalData) {
-        toast({ variant: 'destructive', title: '回测失败', description: finalData.message })
+        // UIRF-02: 后端返回非成功 → 错误态（进度停实际值，非 100）
+        setError(finalData.message || '回测执行失败')
+        if (!isSilent) toast({ variant: 'destructive', title: '回测失败', description: finalData.message })
       }
     } catch (e: any) {
       if (e.name === 'CanceledError' || e.code === 'ERR_CANCELED' || e.message === 'canceled') return;
-      toast({ variant: 'destructive', title: '网络异常', description: e.message })
+      // UIRF-02: 网络异常 → 错误态（进度停实际值，非 100）
+      setError(`网络异常：${e.message}`)
+      if (!isSilent) toast({ variant: 'destructive', title: '网络异常', description: e.message })
     } finally {
+      // UIRF-02: 状态机 —— 仅成功才 done；错误态保留 error + 进度停实际值；abort 由 handleCancel 已置 running=false
       if (!abortControllerRef.current?.signal.aborted) {
-        setProgress(100)
-        setTimeout(() => { setRunning(false); setDone(true) }, isSilent ? 0 : 400)
+        setRunning(false)
       }
     }
   }
@@ -281,7 +285,7 @@ export function useBacktest() {
     backtestResult, dataSource, setDataSource, isDebugMode, setIsDebugMode,
     dataSnapshotId, setDataSnapshotId, strategies, selectedStrategy,
     formSchema, strategyParams, isMounted,
-    customExpr, setCustomExpr,
+    customExpr, setCustomExpr, error, setError,
     // computed
     histogramData, underwaterDataComputed, curve, metrics, reproBadge, currentTearSheet,
     // handlers

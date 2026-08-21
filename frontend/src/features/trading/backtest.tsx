@@ -73,6 +73,9 @@ export function BacktestModule() {
         curve={bt.curve}
         underwaterDataComputed={bt.underwaterDataComputed}
         histogramData={bt.histogramData}
+        // UIRF-02: 错误态（错误卡 + 重试）
+        error={bt.error}
+        onRetry={() => { bt.setError(null); bt.setDone(false); bt.handleRun() }}
       />
     </div>
   )

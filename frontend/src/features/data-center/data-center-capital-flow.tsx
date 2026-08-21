@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BarChart3, Flame, Briefcase, Newspaper } from 'lucide-react'
+import { BarChart3, Flame, Briefcase, Newspaper, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { CapitalFlowPanel } from '@/features/data-center/capital-flow'
 import { SectorFlowPanel } from '@/features/data-center/sector-flow'
@@ -112,26 +112,16 @@ function CrossMarketFlowSection({
         <div className="px-3 py-2.5 border-b border-border/30 flex items-center gap-2">
           <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
           <span className="text-xs font-semibold text-foreground">港股南向 · 沪深港通下钻</span>
-          <span className="ml-2 text-[10px] text-muted-foreground">交易日 2026-08-18</span>
-          <span className="ml-auto text-[10px] text-primary cursor-pointer">点击展开 →</span>
+          <span className="ml-auto text-[10px] text-muted-foreground">敬请期待</span>
         </div>
-        <div className="grid grid-cols-3 divide-x divide-border/30">
-          <SubCell label="港股通(沪)" value="+97.9亿" sub="+213 / ↓386 · ▲0.07%" />
-          <SubCell label="港股通(深)" value="+42.1亿" sub="+213 / ↓386 · ▲0.07%" />
-          <SubCell label="南向合计净买入" value="+140.0亿" sub="跟随 日/周/月 周期切换" />
+        {/* UIRF-03: 移除硬编码示例值(原 +97.9亿/+42.1亿/+140.0亿 为写死数字)，接真实双通道数据前走诚实空态 */}
+        <div className="flex flex-col items-center justify-center gap-1 px-3 py-6 text-center">
+          <AlertTriangle className="h-4 w-4 text-muted-foreground/40" />
+          <p className="text-[11px] text-muted-foreground">南向双通道（港股通沪 / 深）数据未接入</p>
+          <p className="text-[10px] text-muted-foreground/60">接入实时沪深港通净买入后，此处展示沪 / 深 / 合计三项。</p>
         </div>
       </Card>
     </section>
-  )
-}
-
-function SubCell({ label, value, sub }: { label: string; value: string; sub: string }) {
-  return (
-    <div className="px-3 py-3">
-      <div className="text-[10px] text-muted-foreground">{label}</div>
-      <div className="text-xl font-bold font-mono text-emerald-400 mt-0.5">{value}</div>
-      <div className="text-[10px] text-muted-foreground/80 font-mono mt-0.5">{sub}</div>
-    </div>
   )
 }
 

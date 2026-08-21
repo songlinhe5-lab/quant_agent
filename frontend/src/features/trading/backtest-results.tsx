@@ -2,7 +2,7 @@
  * 回测结果展示：Tear Sheet KPIs + 图表 Tabs + 交易明细
  */
 
-import { AlertTriangle, BarChart3 } from 'lucide-react'
+import { AlertTriangle, BarChart3, RotateCcw } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { BacktestEquityChart, BacktestUnderwaterChart, BacktestReturnsHistogram } from './backtest-charts'
@@ -21,12 +21,16 @@ interface BacktestResultsProps {
   curve: any[]
   underwaterDataComputed: any[]
   histogramData: any[]
+  /** UIRF-02: 回测错误态 */
+  error?: string | null
+  onRetry?: () => void
 }
 
 export function BacktestResults({
   backtestResult, running, progress, progressStage, isDebugMode,
   currentTearSheet, reproBadge, metrics,
   curve, underwaterDataComputed, histogramData,
+  error, onRetry,
 }: BacktestResultsProps) {
   // §14.1/§14.2：区分「推演进行中」与「从未运行」两种空态。
   // running 且尚无结果 → 进度骨架屏（引擎已在撮合，不应提示"请运行"）；
@@ -49,6 +53,30 @@ export function BacktestResults({
           title="请运行回测推演"
           description="在左侧配置策略参数后点击「运行回测」，生成 Tear Sheet、权益曲线与成交明细。"
         />
+      </div>
+    )
+  }
+  // UIRF-02: 错误态 —— 后端报错/网络失败时显示错误卡 + 重试，进度停实际值，禁止「报错也显示完成」
+  if (error) {
+    return (
+      <div className="rounded-xl border border-red-400/30 bg-red-500/5 p-5">
+        <div className="flex items-center gap-2 text-red-400">
+          <AlertTriangle className="h-4 w-4" />
+          <span className="text-xs font-bold">回测执行失败</span>
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-red-300/80">{error}</p>
+        <p className="mt-1 text-[10px] text-red-400/60">进度停留在实际值（{progress}%），未伪造成「完成」。</p>
+        <div className="mt-3 flex gap-2">
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="flex items-center gap-1.5 rounded-lg bg-red-500/15 border border-red-400/40 px-3 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-500/25 transition-colors"
+            >
+              <RotateCcw className="h-3 w-3" /> 重试
+            </button>
+          )}
+        </div>
       </div>
     )
   }
