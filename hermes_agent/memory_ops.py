@@ -91,7 +91,7 @@ class MemoryOperationsMixin:
         try:
             from hermes_agent.compact import CompactConfig, ContextCompressor
 
-            # 使用默认配置（可从环境变量加载）
+            # AGENT-16-NEXT: 支持运行时配置重载（watchdog hot reload）
             config = CompactConfig.from_env()
 
             compressor = ContextCompressor(
