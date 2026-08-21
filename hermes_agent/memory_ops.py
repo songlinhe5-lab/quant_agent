@@ -73,6 +73,10 @@ class MemoryOperationsMixin:
             while cut_idx < len(self.messages) and self.messages[cut_idx].get("role") in ["tool", "assistant"]:
                 cut_idx += 1
             self.messages = system_msg + self.messages[cut_idx:]
+            # AGENT-01: 压缩只影响运行时窗口，事件日志不被删改，仅记录事件
+            _evlog = getattr(self, "event_log", None)
+            if _evlog is not None:
+                _evlog.record_memory_op("compress", f"window_cut={cut_idx} aggressive={aggressive}")
 
     # ── 记忆自愈 ────────────────────────────────────────────────────
     def _heal_memory(self):
@@ -124,7 +128,12 @@ class MemoryOperationsMixin:
             self.console.print(
                 "\n[dim yellow]🩹 [Memory] 检测到破损的工具调用上下文，已自动完成记忆修复！[/dim yellow]"
             )
+            _heal_delta = len(final_healed) - len(self.messages)
             self.messages = final_healed
+            # AGENT-01: 自愈事件入日志（修复行为本身可审计）
+            _evlog = getattr(self, "event_log", None)
+            if _evlog is not None:
+                _evlog.record_memory_op("heal", f"delta={_heal_delta}")
 
         self._compress_memory()
 

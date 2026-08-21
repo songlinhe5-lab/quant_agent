@@ -207,6 +207,8 @@ class HermesAgent(MemoryOperationsMixin):
         collected_content = ""
 
         for i in range(max_iterations):
+            # AGENT-01: 轮次开始事件（append-only）
+            self.event_log.record_turn_start(i + 1)
             # 💡 心跳保活：每轮 ReAct 开始前发送心跳
             yield {"type": "heartbeat", "tick": i + 1}
             print(f"🤖 [Agent] 思考中 (第 {i + 1} 轮)...")
@@ -328,6 +330,13 @@ class HermesAgent(MemoryOperationsMixin):
                     msg_dict["tool_calls"] = assembled_tool_calls
                 self.messages.append({k: v for k, v in msg_dict.items() if v is not None})
 
+                # AGENT-01: 助手消息/工具调用意图入事件日志（append-only）
+                if iter_content:
+                    self.event_log.record_assistant_message(iter_content)
+                if assembled_tool_calls:
+                    for tc in assembled_tool_calls:
+                        self.event_log.record_tool_call(tc["id"], tc["function"]["name"], tc["function"]["arguments"])
+
                 if self.debug_mode and assembled_tool_calls:
                     self.console.print("\n[dim magenta]--- 🐛 [Debug] LLM Response Assembled ---[/dim magenta]")
                     self.console.print(f"[dim]{json.dumps(msg_dict, ensure_ascii=False, indent=2, default=str)}[/dim]")
@@ -385,6 +394,11 @@ class HermesAgent(MemoryOperationsMixin):
                                     "content": json.dumps(final_res, ensure_ascii=False),
                                 }
                             )
+                            # AGENT-01: 工具返回入事件日志（截断 4KB 控制内存，全文仍在 Redis/PG 会话中）
+                            _ev_content = json.dumps(final_res, ensure_ascii=False)
+                            if len(_ev_content) > 4096:
+                                _ev_content = _ev_content[:4096] + "...[truncated]"
+                            self.event_log.record_tool_result(tc["id"], tc["function"]["name"], _ev_content)
                             yield {"type": "tool_result", "name": tc["function"]["name"], "result": final_res}
 
                     if tool_tasks:
@@ -394,6 +408,7 @@ class HermesAgent(MemoryOperationsMixin):
                 else:
                     # ── 5. 无工具调用 → 参考文献自愈 + 输出 ──────────────
                     if not iter_content:
+                        self.event_log.record_turn_end(i + 1, content_len=len(collected_content))  # AGENT-01
                         yield {"type": "_done", "content": collected_content}
                         return
 
@@ -428,6 +443,8 @@ class HermesAgent(MemoryOperationsMixin):
                                     "content": f"⚠️ 系统校验拦截：你在刚才的回答中引用了 {', '.join([f'[{m}]' for m in missing])}，但文末缺失对应文献。请**仅补充输出**遗漏的参考文献条目（无需任何开头客套话和重复正文）。",
                                 }
                             )
+                            # AGENT-01: 系统注入的自愈指令同样入事件日志（模型可见即已记录）
+                            self.event_log.record_user_message(self.messages[-1]["content"])
                             continue  # 继续下一轮循环
 
                     await self._save_session()
@@ -454,6 +471,8 @@ class HermesAgent(MemoryOperationsMixin):
                                     if isinstance(item, dict):
                                         yield {"type": "chart_annotation", "data": item}
 
+                    # AGENT-01: 正常结束的轮次记录 turn_end
+                    self.event_log.record_turn_end(i + 1, content_len=len(collected_content))
                     yield {"type": "_done", "content": collected_content}
                     return
 
@@ -480,6 +499,8 @@ class HermesAgent(MemoryOperationsMixin):
                     "content": "⚠️ 系统强制指令：你的思考与工具调用次数已达上限。请立即停止尝试使用工具，仅根据当前上下文中已获取到的数据，给出一个最终的分析总结。",
                 }
             )
+            # AGENT-01: 熔断恢复的系统注入指令入事件日志
+            self.event_log.record_user_message(self.messages[-1]["content"])
 
             await self._guard_before_llm(max_input_tokens=150000)
             cb_kwargs = self._build_request_kwargs_model(self.pro_model, stream=True)
@@ -503,6 +524,10 @@ class HermesAgent(MemoryOperationsMixin):
 
             await self._record_usage(_f_usage)
             self.messages.append({"role": "assistant", "content": final_content if final_content else None})
+            # AGENT-01: 熔断恢复的最终回复入事件日志
+            if final_content:
+                self.event_log.record_assistant_message(final_content)
+            self.event_log.record_turn_end(max_iterations, content_len=len(final_content or ""))
 
             # 📥 对话事实沉淀
             if final_content:
@@ -572,6 +597,11 @@ class HermesAgent(MemoryOperationsMixin):
         # 2. 初始化对话记忆 (Context Window)
         self.messages: List[Dict[str, Any]] = [{"role": "system", "content": self.system_prompt}]
 
+        # AGENT-01: append-only 会话事件日志（压缩/自愈不改写日志，只影响投影）
+        from hermes_agent.event_log import SessionEventLog
+
+        self.event_log = SessionEventLog(session_id=self.session_id)
+
         print(f"🧠 [Agent Brain] 初始化完成。主推理: {self.model} | 深度分析: {self.pro_model}")
 
     async def initialize(self):
@@ -608,6 +638,7 @@ class HermesAgent(MemoryOperationsMixin):
 
                 if user_input.lower() == "/clear":
                     self.messages = [{"role": "system", "content": self.system_prompt}]
+                    self.event_log.reset()  # AGENT-01: 用户显式清空 → 事件日志同步重置
                     await self._save_session()
                     self.console.print("\n[bold yellow]🧹 [Memory] 历史记忆已彻底清空，大脑已重置！[/bold yellow]")
                     continue
@@ -617,6 +648,7 @@ class HermesAgent(MemoryOperationsMixin):
 
                 self._heal_memory()
                 self.messages.append({"role": "user", "content": user_input})
+                self.event_log.record_user_message(user_input)  # AGENT-01
                 await self._save_session()
 
                 # A-4: CLI 也使用统一 _react_loop，带 Rich Markdown 格式化输出
@@ -642,6 +674,7 @@ class HermesAgent(MemoryOperationsMixin):
         """
         if user_input.strip().lower() == "/clear":
             self.messages = [{"role": "system", "content": self.system_prompt}]
+            self.event_log.reset()  # AGENT-01
             await self._save_session()
             return "🧹 历史记忆已彻底清空，大脑已重置！"
 
@@ -649,6 +682,7 @@ class HermesAgent(MemoryOperationsMixin):
 
         if user_input.strip():
             self.messages.append({"role": "user", "content": user_input.strip()})
+            self.event_log.record_user_message(user_input.strip())  # AGENT-01
         await self._save_session()
 
         if len(self.messages) <= 1:
@@ -680,6 +714,7 @@ class HermesAgent(MemoryOperationsMixin):
         """
         if user_input.strip().lower() == "/clear":
             self.messages = [{"role": "system", "content": self.system_prompt}]
+            self.event_log.reset()  # AGENT-01
             await self._save_session()
             yield {"type": "text_chunk", "content": "🧹 历史记忆已彻底清空，大脑已重置！"}
             return
@@ -701,6 +736,8 @@ class HermesAgent(MemoryOperationsMixin):
 
         if enriched_user_input:
             self.messages.append({"role": "user", "content": enriched_user_input})
+            # AGENT-01: 记录注入宏观上下文后的完整用户消息（模型实际看到的内容）
+            self.event_log.record_user_message(enriched_user_input)
 
         await self._save_session()
 
