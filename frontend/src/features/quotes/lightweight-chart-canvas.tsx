@@ -467,7 +467,9 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       const tzOffsetMin = isHK
         ? 8 * 60
         : isUSDST(+y, +mo, +d) ? -240 : -300
-      const tsMs = Date.UTC(+y, +mo - 1, +d, +hh, +mm, +(ss || '0')) - tzOffsetMin * 60_000
+      let tsMs = Date.UTC(+y, +mo - 1, +d, +hh, +mm, +(ss || '0')) - tzOffsetMin * 60_000
+      // 💡 港股午休 12:00-13:00（当地）从 X 轴扣除：下午段(>=13:00)整体前移 1h，使 12:00 后紧贴 13:00
+      if (isHK && (+hh * 60 + +mm) >= 13 * 60) tsMs -= 3600_000
       return Math.floor(tsMs / 1000)
     }
     // 回退:纯日期 'YYYY-MM-DD' → UTC 00:00（兼容日K线历史数据）
@@ -758,7 +760,11 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
                   // 把 UTC 毫秒转为交易所本地时间(直接加偏移,再以 UTC 方法取年月日时分)
                   const useDST = isHK ? false : isUSDST(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate())
                   const offsetMs = isHK ? 8 * 3600 * 1000 : (useDST ? -4 * 3600 * 1000 : -5 * 3600 * 1000)
-                  const l = new Date(d.getTime() + offsetMs)
+                  // 💡 港股午休压缩数据: 下午段 time 已减 1h, 这里 hour>=12 即真实 13:00 起, 还原 +1h 使刻度显示真实 13:00-16:00
+                  const displayMs = isHK && (d.getTime() + offsetMs) >= 0 && new Date(d.getTime() + offsetMs).getUTCHours() >= 12
+                    ? d.getTime() + offsetMs + 3600_000
+                    : d.getTime() + offsetMs
+                  const l = new Date(displayMs)
                   const M = (l.getUTCMonth() + 1).toString().padStart(2, '0')
                   const D = l.getUTCDate().toString().padStart(2, '0')
                   const h = l.getUTCHours().toString().padStart(2, '0')
@@ -1161,7 +1167,10 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
               const y2 = lastDate.getUTCFullYear(), m2 = lastDate.getUTCMonth(), d2 = lastDate.getUTCDate()
               const tzOffsetMin = isHK ? 8 * 60 : (isUSDST(y1, m1 + 1, d1) ? -240 : -300)
               const startUTC = Math.floor(Date.UTC(y1, m1, d1, 9, 30) - tzOffsetMin * 60_000) / 1000
-              const endUTC = Math.floor(Date.UTC(y2, m2, d2, 16, 0) - tzOffsetMin * 60_000) / 1000
+              // 💡 港股午休 12:00-13:00 从 X 轴扣除：收盘端整体前移 1h（16:00 → 15:00），与 toChartTime 压缩一致
+              const endHour = isHK ? 15 : 16
+              const endMin = isHK ? 0 : 0
+              const endUTC = Math.floor(Date.UTC(y2, m2, d2, endHour, endMin) - tzOffsetMin * 60_000) / 1000
               chartRef.current!.timeScale().setVisibleRange({
                 from: startUTC as UTCTimestamp,
                 to: endUTC as UTCTimestamp,
