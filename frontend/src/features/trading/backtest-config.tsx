@@ -203,7 +203,7 @@ export function BacktestConfig(props: BacktestConfigProps) {
                   ? <><CheckCircle className="h-4 w-4" aria-hidden="true" />回测完成</>
                   : running
                     ? <><FlaskConical className="h-4 w-4 animate-spin" aria-hidden="true" />运行中…</>
-                    : <><Play className="h-4 w-4" aria-hidden="true" />启动回测 (Serverless)</>
+                    : <><Play className="h-4 w-4" aria-hidden="true" />启动回测 · 单次沙箱推演</>
                 }
               </Button>
               {running && (
