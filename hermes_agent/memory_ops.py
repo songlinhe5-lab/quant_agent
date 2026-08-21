@@ -89,13 +89,17 @@ class MemoryOperationsMixin:
     async def _maybe_compress_with_llm(self, max_messages: int, max_tool_len: int):
         """AGENT-16: 异步尝试摘要压缩（失败则无感降级）"""
         try:
-            from hermes_agent.compact import ContextCompressor
+            from hermes_agent.compact import CompactConfig, ContextCompressor
+
+            # 使用默认配置（可从环境变量加载）
+            config = CompactConfig.from_env()
 
             compressor = ContextCompressor(
                 llm_client=self.client,
                 event_log=getattr(self, "event_log", None),
                 model=self.model,
                 pro_model="deepseek-pro",
+                config=config,  # 注入配置
             )
 
             await compressor.maybe_compress(

@@ -27,9 +27,52 @@ AGENT-16 · 摘要压缩取代破坏性截断
 
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+
+try:
+    from pydantic import Field
+except ImportError:
+    # Fallback: if pydantic not installed, define a no-op Field
+    def Field(default):  # type: ignore
+        return default
+
+
+@dataclass
+class CompactConfig:
+    """
+    AGENT-16 · 摘要压缩配置（支持环境变量）
+
+    关键参数：
+    - SUMMARY_SYSTEM_PROMPT: Pro 模型系统提示词（默认专业化量化交易场景）
+    - COMPACT_SYSTEM_PROMPT: 压缩器核心提示词（提取关键信息）
+    - MAX_SUMMARY_TOKENS: 最大摘要长度（默认 2000 tokens）
+    """
+
+    # System Prompts (可配置)
+    summary_system_prompt: str = Field(
+        default="你是一个专业的量化交易记忆压缩助手。请高度凝练地总结以下对话中的关键事实、决策依据和结论，用简洁专业的中文输出（不超过 2000 字）。"
+    )
+    compact_system_prompt: str = Field(default="以下是需要压缩的历史对话片段，请提取核心事实与决策。")
+
+    # Token Limits (可配置)
+    max_summary_tokens: int = Field(default=2000)
+
+    @classmethod
+    def from_env(cls) -> "CompactConfig":
+        """从环境变量加载配置"""
+        return cls(
+            summary_system_prompt=os.getenv(
+                "HERMES_COMPACT_SUMMARY_SYSTEM_PROMPT",
+                "你是一个专业的量化交易记忆压缩助手。请高度凝练地总结以下对话中的关键事实、决策依据和结论，用简洁专业的中文输出（不超过 2000 字）。",
+            ),
+            compact_system_prompt=os.getenv(
+                "HERMES_COMPACT_SYSTEM_PROMPT", "以下是需要压缩的历史对话片段，请提取核心事实与决策。"
+            ),
+            max_summary_tokens=int(os.getenv("HERMES_COMPACT_MAX_SUMMARY_TOKENS", "2000")),
+        )
 
 
 @dataclass
@@ -79,16 +122,17 @@ class ContextCompressor:
         model: str = "deepseek-chat",
         pro_model: str = "deepseek-pro",
         max_tokens_before_compress: int = 120000,
-        max_summary_tokens: int = 5000,
         min_items_retained: int = 10,
+        config: Optional[CompactConfig] = None,
     ):
         self.client = llm_client
         self.event_log = event_log
         self.model = model
         self.pro_model = pro_model
         self.max_tokens_before_compress = max_tokens_before_compress
-        self.max_summary_tokens = max_summary_tokens
         self.min_items_retained = min_items_retained
+        # 配置：优先使用传入配置，否则从环境变量加载
+        self.config = config or CompactConfig.from_env()
 
     async def maybe_compress(
         self,
@@ -134,7 +178,7 @@ class ContextCompressor:
         items_to_compact = messages[1:cut_idx]  # 排除 system
         original_token_count = sum(len(str(item)) for item in items_to_compact)
 
-        # 2. 构建压缩 Prompt（参考 codex compact.rs）
+        # 2. 构建压缩 Prompt（使用配置的模板）
         prompt = self._build_compaction_prompt(items_to_compact)
 
         # 3. 调用 Pro 模型生成摘要
@@ -144,12 +188,12 @@ class ContextCompressor:
                 messages=[
                     {
                         "role": "system",
-                        "content": "你是一个专业的量化交易记忆压缩助手。请高度凝练地总结以下对话中的关键事实、决策依据和结论，用简洁专业的中文输出（不超过 2000 字）。",
+                        "content": self.config.summary_system_prompt,  # 使用配置的系统提示词
                     },
                     *prompt,
                 ],
                 temperature=0.3,
-                max_tokens=self.max_summary_tokens,
+                max_tokens=self.config.max_summary_tokens,  # 使用配置的最大长度
             )
 
             summary = response.choices[0].message.content.strip()
@@ -236,7 +280,7 @@ class ContextCompressor:
         return False
 
     def _build_compaction_prompt(self, items_to_compact: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """构建压缩 Prompt（提取关键信息，避免过长）"""
+        """构建压缩 Prompt（使用配置的模板）"""
         # 只提取 user 和 assistant 消息，tool 消息简化
         simplified_items = []
         for item in items_to_compact:
@@ -252,5 +296,5 @@ class ContextCompressor:
                 simplified_items.append(item)
 
         return [
-            {"role": "system", "content": "以下是需要压缩的历史对话片段，请提取核心事实与决策。"}
+            {"role": "system", "content": self.config.compact_system_prompt}  # 使用配置的提示词
         ] + simplified_items
