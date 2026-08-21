@@ -466,7 +466,7 @@
   - `session-sidebar.tsx:40-52` 的装饰性恐惧贪婪指数（与真实数据无链路）删除
   - 依赖：无
   - 预期工时：FE 1h
-- [ ] **[COPILOT-08]** **投研会鉴权 + API 口径统一**（P1-3）：
+- [x] **[COPILOT-08]** **投研会鉴权 + API 口径统一**（P1-3）：✅ `34f2452`
   - 后端：`/expert-team/analyze` 补 `Depends(get_current_user)`（`expert_team.py:18-47`）
   - 前端：`expert-team-client.ts:91-142` 从裸 `apiClient.stream` 改走 `fetchWithAuth`（对齐 `chat-context.tsx:243` 口径）
   - 依赖：BE 侧 Depends 实现
