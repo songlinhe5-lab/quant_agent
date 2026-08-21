@@ -84,7 +84,7 @@ export const CodeBlockRenderer = React.memo(({
                   }, 50)
                 }}
                 className="flex items-center gap-1.5 hover:text-indigo-400 text-indigo-500 transition-colors bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20 normal-case"
-                title="将此代码发送至工作台，一键生成实盘策略"
+                title="将此代码发送至策略研发工作台（沙箱 · 未实盘）"
               >
                 <Code2 className="h-3 w-3" />
                 转为策略

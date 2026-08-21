@@ -34,6 +34,8 @@ function ToolResultItem({ tool, tIdx }: { tool: ToolStep; tIdx: number }) {
   const isBrowse = tName.includes('browse') || tName.includes('read')
   const ToolIcon = isSearch ? Search : isNews ? Globe : isMarket ? Database : isBrowse ? FileText : Code2
   const stale = isStale(tool)
+  // COPILOT-22: 交易执行类工具（真实下单能力）标红边警示
+  const isTradeExec = tName.includes('manage_broker_orders') || tName.includes('broker_orders') || tName.includes('trade_execute')
 
   let actionName = '调用工具'
   if (isSearch) actionName = '搜索网络'
@@ -59,7 +61,7 @@ function ToolResultItem({ tool, tIdx }: { tool: ToolStep; tIdx: number }) {
   } catch (_e) { /* ignore */ }
 
   return (
-    <div key={tIdx} className={cn('border rounded-md p-2 bg-slate-100/50 dark:bg-zinc-900/50', tool.status === 'error' ? 'border-red-400/40' : 'border-border/30', stale && 'opacity-60 saturate-50')}>
+    <div key={tIdx} className={cn('border rounded-md p-2 bg-slate-100/50 dark:bg-zinc-900/50', tool.status === 'error' ? 'border-red-400/40' : 'border-border/30', isTradeExec && 'border-l-2 border-l-red-400', stale && 'opacity-60 saturate-50')}>
       <div className="flex items-center gap-1.5 mb-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
         {tool.status === 'running' ? <Loader2 className="h-3 w-3 animate-spin text-primary" /> : tool.status === 'error' ? <AlertTriangle className="h-3 w-3 text-red-400" /> : <ToolIcon className="h-3 w-3 text-emerald-500" />}
         {actionName} {tool.name !== actionName && <span className="font-mono text-[9px] text-muted-foreground">({tool.name})</span>}
