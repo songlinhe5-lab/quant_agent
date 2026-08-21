@@ -185,7 +185,7 @@ S8: PT-01a ─► PT-01b ─► PT-01c ─► PT-02a ─► PT-02b
 - [x] **UIRF-14** `quotes.tsx` 462 行拆分：抽 `CompareChartPanel` 等分子组件至 `features/quotes/`
 - [x] **UIRF-15** 数据中心子 tab 拆分：`data-center-overview.tsx` 293 / `data-center-capital-flow.tsx` 270 / `use-dashboard-data.ts` 266 → 各 ≤250
 - [x] **UIRF-16** `use-backtest.ts` 290 行按状态机拆分（建议与 UIRF-02/04/05 同批执行）
-- [ ] **UIRF-17** `risk-account-section.tsx` 452 行拆为 KPI / 风险画像 / tabs / 持仓四分子组件
+- [x] **UIRF-17** `risk-account-section.tsx` 452 行拆为 KPI / 风险画像 / tabs / 持仓四分子组件（✅ fd379f7 拆 RiskScoreGauge/HelpPanel；KPI/tabs/持仓区依赖大量 state，深度拆分暂留主文件）
 
 #### 🟡 P2 一致性与增强
 
