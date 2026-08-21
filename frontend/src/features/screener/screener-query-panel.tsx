@@ -60,6 +60,18 @@ export function ScreenerQueryPanel() {
     handleTranslate(item.q)
   }
 
+  // UIRF-11: RAG 召回来源类型启发式分类（后端 rag_rules 为纯字符串，按文本特征推断来源 + 相关度）
+  const [ragExpanded, setRagExpanded] = useState(false)
+  const classifyRag = (rule: string): { source: string; cls: string } => {
+    if (/财报|年报|营收|利润|净利润|现金流|负债|毛利/.test(rule)) return { source: '财报', cls: 'bg-sky-500/10 text-sky-400 border-sky-500/30' }
+    if (/新闻|公告|快讯|资讯/.test(rule)) return { source: '新闻', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/30' }
+    if (/市盈|市净|估值|PE|PB|ROE/.test(rule)) return { source: '估值', cls: 'bg-violet-500/10 text-violet-400 border-violet-500/30' }
+    if (/均线|技术|趋势|动量|突破|支撑|压力/.test(rule)) return { source: '技术', cls: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' }
+    return { source: '通用', cls: 'bg-slate-500/10 text-slate-400 border-slate-500/30' }
+  }
+  // 相关度：按位置递减（越靠前越相关），估算 95~70
+  const ragScore = (i: number, total: number) => Math.max(70, Math.round(95 - (i / Math.max(total, 1)) * 25))
+
   return (
     <div className="glass-card rounded-[var(--radius-card)] overflow-hidden transition-colors duration-300 border border-border/40 shadow-sm relative">
       <div className="p-4 space-y-3">
@@ -155,14 +167,35 @@ export function ScreenerQueryPanel() {
                     {data.rag_rules && data.rag_rules.length > 0 && (
                       <details className="group bg-background/50 rounded-lg border border-border/50 shadow-sm overflow-hidden">
                         <summary className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider flex items-center gap-1.5 p-2.5 cursor-pointer select-none hover:bg-secondary/20 transition-colors list-none [&::-webkit-details-marker]:hidden">
-                          <Database className="h-3 w-3 text-indigo-500 dark:text-indigo-400" />RAG 知识库召回依据：<ChevronRight className="h-3 w-3 ml-auto transition-transform duration-200 group-open:rotate-90" />
+                          <Database className="h-3 w-3 text-indigo-500 dark:text-indigo-400" />RAG 知识库召回依据（{data.rag_rules.length} 条）：<ChevronRight className="h-3 w-3 ml-auto transition-transform duration-200 group-open:rotate-90" />
                         </summary>
                         <div className="px-2.5 pb-2.5 pt-0 border-t border-border/30 mt-1">
+                          {/* UIRF-11: 最多显示 3 条 + 查看全部折叠；来源类型徽章 + 相关度分数 */}
                           <ul className="space-y-1.5 mt-2">
-                            {data.rag_rules.map((rule: string, i: number) => (
-                              <li key={i} className="text-[10px] text-muted-foreground/80 font-mono leading-relaxed flex items-start gap-1.5"><span className="text-indigo-500 dark:text-indigo-400 mt-0.5 shrink-0">✦</span><span>{rule.replace(/^- /, '')}</span></li>
-                            ))}
+                            {(ragExpanded ? data.rag_rules : data.rag_rules.slice(0, 3)).map((rule: string, i: number) => {
+                              const src = classifyRag(rule)
+                              const score = ragScore(i, data.rag_rules.length)
+                              return (
+                                <li key={i} className="flex flex-col gap-1 rounded-md border border-border/30 bg-secondary/10 p-1.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={cn('shrink-0 rounded border px-1 py-px text-[8px] font-semibold', src.cls)}>{src.source}</span>
+                                    <span className="ml-auto shrink-0 rounded border border-border/40 px-1 py-px text-[8px] font-mono text-muted-foreground" title="相关度（启发式估算）">相关度 {score}%</span>
+                                  </div>
+                                  <span className="text-[10px] text-muted-foreground/80 font-mono leading-relaxed">{rule.replace(/^- /, '')}</span>
+                                </li>
+                              )
+                            })}
                           </ul>
+                          {data.rag_rules.length > 3 && (
+                            <button
+                              type="button"
+                              onClick={() => setRagExpanded((v) => !v)}
+                              className="mt-1.5 flex w-full items-center justify-center gap-1 rounded-md border border-border/30 py-1 text-[9px] text-muted-foreground hover:bg-secondary/30 hover:text-foreground transition-colors"
+                            >
+                              {ragExpanded ? '收起' : `查看全部 ${data.rag_rules.length} 条`}
+                              <ChevronRight className={cn('h-3 w-3 transition-transform', ragExpanded && 'rotate-90')} />
+                            </button>
+                          )}
                         </div>
                       </details>
                     )}
