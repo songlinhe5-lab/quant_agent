@@ -3,7 +3,11 @@ export interface ToolStep {
   name: string
   input: string
   result?: string
-  status: 'running' | 'done'
+  status: 'running' | 'done' | 'error'
+  /** COPILOT-21: 取数完成时间戳（毫秒），用于 STALE 判定 */
+  timestamp?: number
+  /** COPILOT-21: 工具失败原因（status='error' 时展示） */
+  errorMessage?: string
 }
 
 export interface ChatAttachment {

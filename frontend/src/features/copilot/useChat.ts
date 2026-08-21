@@ -79,6 +79,19 @@ export function useChat() {
               for (let i = tools.length - 1; i >= 0; i--) {
                 if (tools[i].name === name && tools[i].status === 'running') { targetIdx = i; break }
               }
+              // COPILOT-21: 检测工具失败（result 为 {status:'error'} 或含 error 标记）
+              let isError = false
+              let errorMsg: string | undefined
+              if (typeof result === 'object' && result !== null) {
+                const r = result as Record<string, unknown>
+                if (r.status === 'error' || r.error || r.failed) {
+                  isError = true
+                  errorMsg = (r.message as string) || (r.error as string) || (r.detail as string) || '工具执行失败'
+                }
+              } else if (typeof result === 'string' && /error|failed|exception/i.test(result) && result.length < 300) {
+                isError = true
+                errorMsg = result
+              }
               let resStr = typeof result === 'string' ? result : JSON.stringify(result, null, 2)
               // 💡 前端自适应安全截断
               if (resStr.length > 1500) {
@@ -89,7 +102,13 @@ export function useChat() {
                 }
                 resStr = resStr.substring(0, cutIdx) + `\n\n... [数据过长，前端已自适应截断隐藏了 ${resStr.length - cutIdx} 个字符以保持终端整洁] ...`
               }
-              tools[targetIdx] = { ...tools[targetIdx], status: 'done', result: resStr }
+              tools[targetIdx] = {
+                ...tools[targetIdx],
+                status: isError ? 'error' : 'done',
+                result: resStr,
+                timestamp: Date.now(),
+                errorMessage: isError ? errorMsg : undefined,
+              }
               last.tools = tools
             }
           },

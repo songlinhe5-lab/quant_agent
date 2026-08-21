@@ -4,10 +4,27 @@
  * 从 chat-message-item.tsx 拆出，原 ~140 行 JSX。
  */
 import React, { useRef, useEffect, useCallback } from 'react'
-import { Loader2, Sparkles, ChevronRight, Search, Globe, Database, FileText, Code2 } from 'lucide-react'
+import { Loader2, Sparkles, ChevronRight, Search, Globe, Database, FileText, Code2, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ThinkTimer } from '@/features/copilot/think-timer'
 import type { ChatMessage, ToolStep } from './types'
+
+// COPILOT-21: 取数时间 STALE 判定
+// 行情类(5分钟) / 基本面类(1日) 超时视为过期
+function isStale(tool: ToolStep): boolean {
+  if (!tool.timestamp) return false
+  const tName = tool.name.toLowerCase()
+  const elapsed = Date.now() - tool.timestamp
+  if (tName.includes('market') || tName.includes('quote') || tName.includes('price')) return elapsed > 5 * 60 * 1000
+  if (tName.includes('fundamental') || tName.includes('valuation') || tName.includes('profile') || tName.includes('financial')) return elapsed > 24 * 60 * 60 * 1000
+  return false
+}
+
+function fmtTs(ts?: number): string {
+  if (!ts) return ''
+  const d = new Date(ts)
+  return isNaN(d.getTime()) ? '' : d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
 
 function ToolResultItem({ tool, tIdx }: { tool: ToolStep; tIdx: number }) {
   const tName = tool.name.toLowerCase()
@@ -16,6 +33,7 @@ function ToolResultItem({ tool, tIdx }: { tool: ToolStep; tIdx: number }) {
   const isMarket = tName.includes('market') || tName.includes('quote')
   const isBrowse = tName.includes('browse') || tName.includes('read')
   const ToolIcon = isSearch ? Search : isNews ? Globe : isMarket ? Database : isBrowse ? FileText : Code2
+  const stale = isStale(tool)
 
   let actionName = '调用工具'
   if (isSearch) actionName = '搜索网络'
@@ -41,13 +59,27 @@ function ToolResultItem({ tool, tIdx }: { tool: ToolStep; tIdx: number }) {
   } catch (_e) { /* ignore */ }
 
   return (
-    <div key={tIdx} className="border border-border/30 rounded-md p-2 bg-slate-100/50 dark:bg-zinc-900/50">
+    <div key={tIdx} className={cn('border rounded-md p-2 bg-slate-100/50 dark:bg-zinc-900/50', tool.status === 'error' ? 'border-red-400/40' : 'border-border/30', stale && 'opacity-60 saturate-50')}>
       <div className="flex items-center gap-1.5 mb-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
-        {tool.status === 'running' ? <Loader2 className="h-3 w-3 animate-spin text-primary" /> : <ToolIcon className="h-3 w-3 text-emerald-500" />}
+        {tool.status === 'running' ? <Loader2 className="h-3 w-3 animate-spin text-primary" /> : tool.status === 'error' ? <AlertTriangle className="h-3 w-3 text-red-400" /> : <ToolIcon className="h-3 w-3 text-emerald-500" />}
         {actionName} {tool.name !== actionName && <span className="font-mono text-[9px] text-muted-foreground">({tool.name})</span>}
         {queryDesc && queryDesc !== '{}' && <span className="text-muted-foreground font-normal truncate max-w-[200px]"> - {queryDesc}</span>}
+        {/* COPILOT-21: 取数时间戳 + STALE 角标 */}
+        {tool.timestamp && tool.status !== 'running' && (
+          <span className="ml-auto shrink-0 font-mono text-[9px] text-muted-foreground">取数 {fmtTs(tool.timestamp)}</span>
+        )}
+        {stale && (
+          <span className="shrink-0 rounded border border-amber-500/40 bg-amber-500/10 px-1 py-px text-[8px] font-bold text-amber-500" title="数据已超过有效期，以下结论可能基于过期数据">STALE</span>
+        )}
       </div>
-      {tool.status === 'done' && (
+
+      {/* COPILOT-21: 工具失败 → 红色失败块，禁止估计值兜底 */}
+      {tool.status === 'error' ? (
+        <div className="mt-1.5 rounded-md border border-red-400/30 bg-red-500/10 px-2 py-1.5 text-[10px] text-red-400">
+          <div className="font-bold">数据获取失败：{tool.errorMessage || '未知原因'}</div>
+          <div className="mt-0.5 text-red-300/80">以下结论不含该项数据</div>
+        </div>
+      ) : tool.status === 'done' && (
         <div className="mt-1.5 pt-1.5 border-t border-border/40">
           <div className="text-[10px] text-muted-foreground mb-1 font-medium">
             {resultList ? `✅ ${isBrowse ? '浏览了' : '获取到'} ${resultList.length} ${isBrowse ? '个页面' : isNews ? '篇资讯' : '条数据'}` : '✅ 执行完毕'}
