@@ -12,7 +12,9 @@ interface Trade {
 
 export const TradeHistory = React.memo(function TradeHistory({ symbol }: { symbol: string }) {
   const [recentTrades, setRecentTrades] = useState<Trade[]>([])
+  const [stale, setStale] = useState(false)
   const prevPriceRef = useRef<number | null>(null)
+  const staleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     const handleTick = (e: Event) => {
@@ -22,6 +24,13 @@ export const TradeHistory = React.memo(function TradeHistory({ symbol }: { symbo
 
       const currentPrice = parseFloat(data.last_price) || 0
       const prevPrice = prevPriceRef.current
+
+      // 收到推送即视为数据源可用，清除 STALE
+      if (staleTimerRef.current) {
+        clearTimeout(staleTimerRef.current)
+        staleTimerRef.current = null
+      }
+      setStale(false)
 
       // 当最新价发生有效跳动时，判定为产生了一笔新交易
       if (prevPrice !== null && currentPrice !== prevPrice && currentPrice > 0) {
@@ -46,17 +55,24 @@ export const TradeHistory = React.memo(function TradeHistory({ symbol }: { symbo
 
     window.addEventListener('market_tick', handleTick)
 
-    // 切换标的时，清空旧流水
+    // 切换标的时，清空旧流水，并启动 STALE 计时（超过 8s 无任何推送即判定数据源不可用）
     setRecentTrades([])
+    setStale(false)
     prevPriceRef.current = null
+    if (staleTimerRef.current) clearTimeout(staleTimerRef.current)
+    staleTimerRef.current = setTimeout(() => setStale(true), 8000)
 
     return () => {
       window.removeEventListener('market_tick', handleTick)
+      if (staleTimerRef.current) {
+        clearTimeout(staleTimerRef.current)
+        staleTimerRef.current = null
+      }
     }
   }, [symbol])
 
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar">
+    <div className={cn('flex-1 overflow-y-auto custom-scrollbar', stale && 'opacity-60 saturate-50')}>
       {recentTrades.length > 0 ? recentTrades.map((t, i) => (
         <div key={i} className="px-3 py-[2px] grid grid-cols-3 text-[9px] font-mono hover:bg-secondary/20 transition-colors">
           <span className={cn('tabular-nums font-semibold', t.side === 'buy' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>
@@ -66,7 +82,13 @@ export const TradeHistory = React.memo(function TradeHistory({ symbol }: { symbo
           <span className="text-right text-muted-foreground/60 tabular-nums">{t.time}</span>
         </div>
       )) : (
-        <div className="px-3 py-4 text-center text-[9px] text-muted-foreground font-mono">等待行情快照推送...</div>
+        <div className="px-3 py-4 text-center text-[9px] font-mono flex items-center justify-center gap-1.5">
+          {stale ? (
+            <span className="text-amber-500">数据源暂不可用 · 行情推送中断</span>
+          ) : (
+            <span className="text-muted-foreground">等待行情快照推送...</span>
+          )}
+        </div>
       )}
     </div>
   )

@@ -10,6 +10,7 @@ import { useMarketStore } from '@/stores/marketStore'
 import { useTheme } from 'next-themes'
 import { OrderBookWebGL } from '@/features/quotes/order-book-webgl'
 import { OrderBookDepthPanel } from '@/features/quotes/order-book-depth-panel'
+import { BrokerPanel } from '@/features/quotes/broker-panel'
 import { OrderBookLargeOrderHint } from '@/features/quotes/order-book-large-order-hint'
 import { PatternRecognition } from '@/features/quotes/pattern-recognition'
 import { TradeHistory } from '@/features/quotes/trade-history'
@@ -32,6 +33,17 @@ const COMPARE_PERIODS = [
   { id: '1h', label: '1时' }, { id: '4h', label: '4时' }, { id: '1d', label: '日K' },
   { id: '1w', label: '周K' }, { id: '1M', label: '月K' },
 ]
+
+// 💡 标的视图偏好持久化：按 symbol 存 { period, chartMode, rightMode } 到 localStorage，进入工作台时自动恢复
+const VIEWPREF_KEY = 'quant_symbol_viewpref'
+type SymbolViewPref = { period: string; chartMode: 'chart' | 'options'; rightMode: 'dom' | 'micro' }
+const readViewPrefs = (): Record<string, SymbolViewPref> => {
+  try { return JSON.parse(localStorage.getItem(VIEWPREF_KEY) || '{}') } catch { return {} }
+}
+const writeViewPrefs = (m: Record<string, SymbolViewPref>) => localStorage.setItem(VIEWPREF_KEY, JSON.stringify(m))
+const PERIOD_LABEL: Record<string, string> = {
+  '1m': '分时', '5m': '5日', '15m': '15分', '1h': '1时', '4h': '4时', '1d': '日K', '1w': '周K', '1M': '月K', '1q': '季K', '1y': '年K',
+}
 
 function CompareChartPanel({ watchlist, updateTicker, mainSymbol, theme, syncGroup }: { watchlist: any[]; updateTicker: (s: string, d: any) => void; mainSymbol: string; theme: string | undefined; syncGroup: string }) {
   const [compareSymbol, setCompareSymbol] = useState<string>(() => {
@@ -85,13 +97,26 @@ export function QuotesModule() {
   }
 
   const [selectedSymbol, setSelectedSymbol] = useState('00700.HK')
-  const [selectedPeriod, setSelectedPeriod] = useState('1m')  // 💡 默认显示分时图
+  // 💡 进入工作台时按当前标的自动恢复已保存的视图偏好
+  const initialPref = readViewPrefs()['00700.HK']
+  const [selectedPeriod, setSelectedPeriod] = useState<string>(initialPref?.period ?? '1m')  // 💡 默认显示分时图
   // FE-26：中列 [K线|期权] 模式切换（Figma Frame 5）
-  const [chartMode, setChartMode] = useState<'chart' | 'options'>('chart')
+  const [chartMode, setChartMode] = useState<'chart' | 'options'>(initialPref?.chartMode ?? 'chart')
   // FE-26：右栏 [盘口|微观|选择持久化] 模式切换（Figma Frame 4 / 第三个 tab）
-  const [rightMode, setRightMode] = useState<'dom' | 'micro' | 'persist'>('dom')
+  const [rightMode, setRightMode] = useState<'dom' | 'micro' | 'persist'>(initialPref?.rightMode ?? 'dom')
+  // 💡 已保存的全部标的视图偏好（localStorage 镜像）
+  const [savedPrefs, setSavedPrefs] = useState<Record<string, SymbolViewPref>>(readViewPrefs())
 
   useEffect(() => { setMounted(true) }, [])
+
+  // 💡 切换标的/周期/图表模式/右栏时自动持久化当前标的视图偏好
+  useEffect(() => {
+    setSavedPrefs((prev) => {
+      const next = { ...prev, [selectedSymbol]: { period: selectedPeriod, chartMode, rightMode: rightMode === 'persist' ? 'micro' : rightMode } as SymbolViewPref }
+      writeViewPrefs(next)
+      return next
+    })
+  }, [selectedSymbol, selectedPeriod, chartMode, rightMode])
 
   // 🛠️ 2026-08-14：Quotes（行情页）不再被 research/monitor 场景劫持替换布局。
   // 场景模式（watch/research/monitor）改为导航栏场景切换器的「独立入口」：
@@ -338,16 +363,69 @@ export function QuotesModule() {
           {rightMode === 'micro' ? (
             <MicroPanel symbol={selectedSymbol} />
           ) : rightMode === 'persist' ? (
-            <div className="glass-card rounded-xl overflow-hidden flex flex-col flex-1 shadow-sm border-border/40 p-4">
-              <div className="text-[10px] font-semibold text-muted-foreground uppercase mb-2">选择持久化</div>
-              <p className="text-[11px] text-muted-foreground/80 leading-relaxed">
-                已记录当前 <span className="font-mono text-foreground/90">{selectedSymbol}</span> 的标的视图偏好（含 K 线周期/图表模式/右栏 tabs/微观看板展开项）。
-                下次进入个股工作台或行情监控场景时，将自动恢复。
-              </p>
+            <div className="glass-card rounded-xl overflow-hidden flex flex-col flex-1 shadow-sm border-border/40 p-4 gap-3 overflow-y-auto">
+              <div className="text-[10px] font-semibold text-muted-foreground uppercase">标的视图偏好</div>
+              {/* 当前标的已保存偏好快照 */}
+              <div className="rounded-lg border border-border/40 bg-secondary/10 p-2.5">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] font-mono text-foreground/90">{selectedSymbol}</span>
+                  <span className="text-[9px] text-muted-foreground/70">{savedPrefs[selectedSymbol] ? '已保存' : '未保存'}</span>
+                </div>
+                {savedPrefs[selectedSymbol] ? (
+                  <div className="text-[10px] text-muted-foreground/80 leading-5">
+                    周期 <span className="text-foreground/90">{PERIOD_LABEL[savedPrefs[selectedSymbol].period] ?? savedPrefs[selectedSymbol].period}</span>
+                    {' · '}模式 <span className="text-foreground/90">{savedPrefs[selectedSymbol].chartMode === 'options' ? '期权' : 'K线'}</span>
+                    {' · '}右栏 <span className="text-foreground/90">{savedPrefs[selectedSymbol].rightMode === 'micro' ? '微观' : '盘口'}</span>
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-muted-foreground/70 leading-5">当前视图尚未保存，切换周期/模式后将自动记录。</div>
+                )}
+              </div>
+              {/* 操作按钮 */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setSavedPrefs((prev) => { const next = { ...prev, [selectedSymbol]: { period: selectedPeriod, chartMode, rightMode: rightMode === 'persist' ? 'micro' : rightMode } as SymbolViewPref }; writeViewPrefs(next); return next })}
+                  className="flex-1 text-[10px] px-2 py-1.5 rounded border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                >
+                  保存当前视图
+                </button>
+                {savedPrefs[selectedSymbol] && (
+                  <button
+                    onClick={() => setSavedPrefs((prev) => { const next = { ...prev }; delete next[selectedSymbol]; writeViewPrefs(next); return next })}
+                    className="text-[10px] px-2 py-1.5 rounded border border-border/50 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    清除
+                  </button>
+                )}
+              </div>
+              {/* 已保存标的列表：点击应用偏好并切换标的 */}
+              <div className="mt-1">
+                <div className="text-[9px] font-semibold text-muted-foreground/70 uppercase mb-1.5">已保存标的（点击恢复）</div>
+                {Object.keys(savedPrefs).length === 0 ? (
+                  <div className="text-[10px] text-muted-foreground/60">暂无其它已保存标的。</div>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    {Object.entries(savedPrefs).map(([sym, p]) => (
+                      <button
+                        key={sym}
+                        onClick={() => { setSelectedSymbol(sym); setSelectedPeriod(p.period); setChartMode(p.chartMode); setRightMode(p.rightMode) }}
+                        className={cn(
+                          "flex items-center justify-between text-[10px] px-2 py-1.5 rounded border transition-colors",
+                          sym === selectedSymbol ? "border-primary/40 bg-primary/10 text-primary" : "border-border/40 text-muted-foreground hover:text-foreground hover:border-border/70",
+                        )}
+                      >
+                        <span className="font-mono">{sym}</span>
+                        <span className="text-muted-foreground/70">{PERIOD_LABEL[p.period] ?? p.period}{p.chartMode === 'options' ? '·期权' : ''}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <>
               <OrderBookDepthPanel symbol={selectedSymbol} />
+              <BrokerPanel symbol={selectedSymbol} />
               <div className="glass-card rounded-xl overflow-hidden flex flex-col flex-1 shadow-sm border-border/40">
                 <div className="px-3 py-2.5 border-b border-border/40 bg-secondary/20 shrink-0">
                   <span className="text-[10px] font-semibold text-muted-foreground uppercase">成交流水</span>

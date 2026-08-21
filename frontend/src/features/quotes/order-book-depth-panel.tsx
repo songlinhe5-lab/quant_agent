@@ -47,6 +47,7 @@ export function OrderBookDepthPanel({ symbol }: { symbol: string }) {
   const [bids, setBids] = useState<DepthRow[]>([])
   const [tape, setTape] = useState<TapeTick[]>([])
   const [mainLayers, setMainLayers] = useState<{ name: string; in: number; out: number }[] | null>(null)
+  const [mainStale, setMainStale] = useState(false)
   const [stale, setStale] = useState(false)
   const [lastPrice, setLastPrice] = useState<number | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
@@ -54,6 +55,8 @@ export function OrderBookDepthPanel({ symbol }: { symbol: string }) {
   useEffect(() => {
     let cancelled = false
     const sym = encodeURIComponent(futu)
+    setStale(false)
+    setMainStale(false)
 
     // 档位盘口（后端返回 {price, size}）
     apiClient
@@ -80,7 +83,10 @@ export function OrderBookDepthPanel({ symbol }: { symbol: string }) {
       .then((r) => {
         if (cancelled) return
         const d = r.data
-        if (!d) return
+        if (!d) {
+          setMainStale(true)
+          return
+        }
         const layers = Array.isArray(d.layers)
           ? d.layers
           : Array.isArray(d.data?.layers)
@@ -96,7 +102,7 @@ export function OrderBookDepthPanel({ symbol }: { symbol: string }) {
           )
         }
       })
-      .catch(() => {})
+      .catch(() => !cancelled && setMainStale(true))
 
     // 实时逐笔（轻量 WS）
     try {
@@ -193,7 +199,7 @@ export function OrderBookDepthPanel({ symbol }: { symbol: string }) {
       </div>
 
       {/* 成交笔数（逐笔 tape） */}
-      <div className="glass-card rounded-lg overflow-hidden">
+      <div className={cn('glass-card rounded-lg overflow-hidden', stale && 'opacity-60 saturate-50')}>
         <div className="px-3 py-1.5 border-b border-border/30 flex items-center gap-2">
           <Activity className="h-3 w-3 text-muted-foreground" />
           <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">成交笔数</span>
@@ -201,7 +207,10 @@ export function OrderBookDepthPanel({ symbol }: { symbol: string }) {
         </div>
         <div className="max-h-32 overflow-y-auto custom-scrollbar divide-y divide-border/20">
           {tape.length === 0 ? (
-            <div className="px-3 py-2 text-[10px] text-slate-500">暂无逐笔成交</div>
+            <div className="px-3 py-2 text-[10px] text-amber-500/90 flex items-center gap-1.5">
+              <Activity className="h-3 w-3" />
+              {stale ? '数据源暂不可用 · 逐笔成交未推送' : '暂无逐笔成交'}
+            </div>
           ) : (
             tape.map((t, i) => (
               <div key={i} className="grid grid-cols-3 text-[10px] font-mono px-3 py-0.5">
@@ -217,7 +226,7 @@ export function OrderBookDepthPanel({ symbol }: { symbol: string }) {
       </div>
 
       {/* 主力栏（9 档主力筹码 in/out） */}
-      <div className="glass-card rounded-lg overflow-hidden">
+      <div className={cn('glass-card rounded-lg overflow-hidden', mainStale && 'opacity-60 saturate-50')}>
         <div className="px-3 py-1.5 border-b border-border/30 flex items-center gap-2">
           <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">主力栏</span>
           <span className="ml-auto text-[9px] text-slate-500">买 / 卖按档</span>
@@ -239,11 +248,14 @@ export function OrderBookDepthPanel({ symbol }: { symbol: string }) {
               })}
             </div>
           ) : (
-            <div className="text-[10px] text-slate-500 text-center py-6">暂无主力分层数据</div>
+            <div className="text-[10px] text-amber-500/90 text-center py-6">
+              {mainStale ? '数据源暂不可用 · 主力分层未返回' : '暂无主力分层数据'}
+            </div>
           )}
         </div>
         <div className="px-3 py-1.5 border-t border-border/20 text-[9px] text-muted-foreground text-center bg-secondary/10">
           数据源：Facade Futu · PixUi v8 · PriceLine Bid/Ask 四价
+          {mainStale && <span className="ml-1 text-amber-500">· STALE</span>}
         </div>
       </div>
     </div>

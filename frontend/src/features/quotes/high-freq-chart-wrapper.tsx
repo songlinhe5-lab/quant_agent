@@ -15,9 +15,28 @@ interface HighFreqChartWrapperProps {
 
 const TZ_OFFSET_HOURS: Record<string, number> = {
   HKT: 8,   // Asia/Hong_Kong (UTC+8)
-  ET: -5,   // America/New_York EST (UTC-5, 简化处理,不区分夏令时)
+  ET: -5,   // America/New_York EST (UTC-5)
   CT: -6,   // America/Chicago CST (UTC-6)
   UTC: 0,
+}
+
+// 💡 美东夏令时判定 (与主图 K 线一致: 3月第二个周日 ~ 11月第一个周日)
+function isUSDST(year: number, month1to12: number, day: number): boolean {
+  const firstSundayOfMarch = ((8 - new Date(Date.UTC(year, 2, 1)).getUTCDay()) % 7) || 7
+  const secondSundayOfMarch = firstSundayOfMarch + 7
+  const firstSundayOfNov = ((8 - new Date(Date.UTC(year, 10, 1)).getUTCDay()) % 7) || 7
+  const target = new Date(Date.UTC(year, month1to12 - 1, day)).getTime()
+  const dstStart = new Date(Date.UTC(year, 2, secondSundayOfMarch, 2)).getTime()
+  const dstEnd = new Date(Date.UTC(year, 10, firstSundayOfNov, 2)).getTime()
+  return target >= dstStart && target < dstEnd
+}
+
+// 💡 ET 分夏令时 (UTC-4) / 冬令时 (UTC-5); 其余时区固定偏移
+function getOffsetHours(tz: keyof typeof TZ_OFFSET_HOURS, date: Date): number {
+  if (tz === 'ET') {
+    return isUSDST(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate()) ? -4 : -5
+  }
+  return TZ_OFFSET_HOURS[tz] ?? 0
 }
 
 const MARKET_SESSION: Record<string, { start: [number, number]; end: [number, number] }> = {
@@ -27,18 +46,28 @@ const MARKET_SESSION: Record<string, { start: [number, number]; end: [number, nu
 }
 
 function utcSecondsInMarketDay(now: Date, tz: keyof typeof TZ_OFFSET_HOURS): { from: number; to: number } {
-  const offset = TZ_OFFSET_HOURS[tz] ?? 0
+  const offset = getOffsetHours(tz, now)
   const session = MARKET_SESSION[tz] ?? MARKET_SESSION.ET
-  const y = now.getUTCFullYear()
-  const m = now.getUTCMonth()
-  const d = now.getUTCDate()
-  // 当地日 = UTC 日 - offset 小时
-  // 当地 09:30 → UTC 09:30 - offset = UTC (09:30 - offset)
+  // 先把 UTC 时刻转换为交易所当地日期 (now + offset 小时), 再在该当地日上构造交易时段
+  const local = new Date(now.getTime() + offset * 3600 * 1000)
+  const ly = local.getUTCFullYear()
+  const lm = local.getUTCMonth()
+  const ld = local.getUTCDate()
+  // 当地 HH:mm → 对应 UTC 秒 = Date.UTC(当地日, 当地start - offset)
   const startHourUTC = session.start[0] - offset
   const endHourUTC = session.end[0] - offset
-  const from = Math.floor(Date.UTC(y, m, d, startHourUTC, session.start[1]) / 1000)
-  const to = Math.floor(Date.UTC(y, m, d, endHourUTC, session.end[1]) / 1000)
+  const from = Math.floor(Date.UTC(ly, lm, ld, startHourUTC, session.start[1]) / 1000)
+  const to = Math.floor(Date.UTC(ly, lm, ld, endHourUTC, session.end[1]) / 1000)
   return { from, to }
+}
+
+// 💡 把 UTC 时间戳格式化为交易所当地 HH:mm (tickMarkFormatter 用, 避免刻度偏时区)
+function formatMarketLocalHM(time: number, tz: keyof typeof TZ_OFFSET_HOURS): string {
+  const offset = getOffsetHours(tz, new Date(time * 1000))
+  const d = new Date((time + offset * 3600) * 1000)
+  const hh = d.getUTCHours().toString().padStart(2, '0')
+  const mm = d.getUTCMinutes().toString().padStart(2, '0')
+  return `${hh}:${mm}`
 }
 
 export function HighFreqChartWrapper({
@@ -77,14 +106,8 @@ export function HighFreqChartWrapper({
         barSpacing: 4,
         minBarSpacing: 3,
         maxBarSpacing: 6,
-        // 💡 强制 tickMarkFormatter 显示 HH:mm 时间刻度
-        tickMarkFormatter: (time: number) => {
-          const d = new Date(time * 1000)
-          const hh = d.getUTCHours().toString().padStart(2, '0')
-          const mm = d.getUTCMinutes().toString().padStart(2, '0')
-          // 港股/美股日内只显示 HH:mm（lwc 默认会有日期切换）
-          return `${hh}:${mm}`
-        },
+        // 💡 强制 tickMarkFormatter 显示交易所当地 HH:mm 时间刻度 (按 marketTz 折算, 非 UTC)
+        tickMarkFormatter: (time: number) => formatMarketLocalHM(time, marketTz),
       },
       crosshair: {
         // 💡 关闭内置 crosshair,父容器自己绘制,避免与父 crosshair 双重叠

@@ -431,6 +431,9 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
   const aiPriceLinesRef = useRef<IPriceLine[]>([])
   const aiZoneSeriesRef = useRef<ISeriesApi<'Baseline'>[]>([])
   const aiSignalsClickRef = useRef<{ time: number; detail: string }[]>([])
+  // 💡 5日线每日分隔标识：透明 LineSeries 作载体(提供时间轴) + markers 插件实例承载每日日期标识
+  const dailyDividerSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
+  const dailyDividerMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
   const latestAnnotationRef = useRef<{ symbol: string; payload: ChartAnnotationPayload } | null>(null)
   const selectedSymbolRef = useRef(selectedSymbol)
   const themeRef = useRef(theme)
@@ -735,13 +738,15 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
       grid: { vertLines: { color: theme === 'dark' ? '#334155' : '#e2e8f0' }, horzLines: { color: theme === 'dark' ? '#334155' : '#e2e8f0' } },
       crosshair: { mode: CrosshairMode.Magnet },
       rightPriceScale: { borderColor: theme === 'dark' ? '#475569' : '#cbd5e1', autoScale: true, scaleMargins: { top: 0.1, bottom: 0.40 } },
+      // 💡 分时线/5日线禁止左右拖动：关闭水平滚动 + 固定左右边界
+      handleScroll: { mouseWheel: true, pressedMouseMove: !isIntraday, horzTouchDrag: !isIntraday, vertTouchDrag: true },
       // 💡 K线图左右拖动配置：允许拖动但不超过K线数据最大最小值
       timeScale: {
         borderColor: theme === 'dark' ? '#475569' : '#cbd5e1',
         timeVisible: true,
         fixLeftEdge: true,      // 固定左边界，不允许拖动超过数据起点
-        fixRightEdge: !isIntraday,     // 分时线不固定右边界，允许右侧空白
-        rightOffset: isIntraday ? 10 : 0,         // 分时线右侧留空
+        fixRightEdge: true,     // 分时线/5日线固定右边界，禁止左右拖动（不允许右侧空白偏移）
+        rightOffset: selectedPeriod === '1m' ? 10 : 0,         // 仅分时线右侧留空展示；5日线/日K以上不留空以免可拖
         barSpacing: fixedBarSpacing,         // 分时/日K及以上使用固定间距
         minBarSpacing: minBarSpacing,        // 缩放下限
         maxBarSpacing: maxBarSpacing,        // 缩放上限
@@ -773,6 +778,13 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
     const bbUpperLine = chart.addSeries(AreaSeries, { lineColor: theme === 'dark' ? 'rgba(251, 191, 36, 0.4)' : 'rgba(217, 119, 6, 0.4)', topColor: theme === 'dark' ? 'rgba(251, 191, 36, 0.15)' : 'rgba(217, 119, 6, 0.15)', bottomColor: 'rgba(0, 0, 0, 0)', lineWidth: 1, lineStyle: LineStyle.Dashed, crosshairMarkerVisible: false })
     const bbLowerLine = chart.addSeries(LineSeries, { color: theme === 'dark' ? 'rgba(251, 191, 36, 0.4)' : 'rgba(217, 119, 6, 0.4)', lineWidth: 1, lineStyle: LineStyle.Dashed, crosshairMarkerVisible: false })
     const candlestickSeries = chart.addSeries(CandlestickSeries, { upColor: MARKET_COLORS.bull, downColor: MARKET_COLORS.bear, borderVisible: false, wickUpColor: MARKET_COLORS.bull, wickDownColor: MARKET_COLORS.bear })
+    // 💡 5日线每日分隔竖线载体：透明 LineSeries (线不可见, 仅承载 vertical_line markers, 避免与 AI markers 共用同一 series 冲突)
+    const dailyDividerSeries = chart.addSeries(LineSeries, {
+      color: 'rgba(0,0,0,0)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
+      crosshairMarkerVisible: false, priceScaleId: 'right',
+    });
+    dailyDividerSeriesRef.current = dailyDividerSeries
+    dailyDividerMarkersRef.current = createSeriesMarkers(dailyDividerSeries, [])
     const ma20Line = chart.addSeries(LineSeries, { color: '#f472b6', lineWidth: 2, crosshairMarkerVisible: false })
     const ma50Line = chart.addSeries(LineSeries, { color: '#60a5fa', lineWidth: 2, crosshairMarkerVisible: false })
     const ma200Line = chart.addSeries(LineSeries, { color: '#fbbf24', lineWidth: 2, crosshairMarkerVisible: false })
@@ -1022,7 +1034,7 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
   useEffect(() => {
     if (!seriesRef.current) return
     if (!realHistory.length) {
-      seriesRef.current.setData([]); if (ma20Ref.current) ma20Ref.current.setData([]); if (ma50Ref.current) ma50Ref.current.setData([]); if (ma200Ref.current) ma200Ref.current.setData([]); if (bbUpperRef.current) bbUpperRef.current.setData([]); if (bbLowerRef.current) bbLowerRef.current.setData([]); if (volumeRef.current) volumeRef.current.setData([]); if (macdDiffRef.current) macdDiffRef.current.setData([]); if (macdDeaRef.current) macdDeaRef.current.setData([]); if (macdHistRef.current) macdHistRef.current.setData([]); if (rsiLineRef.current) rsiLineRef.current.setData([]); if (rsiHistRef.current) rsiHistRef.current.setData([]); if (kdjKRef.current) kdjKRef.current.setData([]); if (kdjDRef.current) kdjDRef.current.setData([]); if (kdjJRef.current) kdjJRef.current.setData([]);
+      seriesRef.current.setData([]); if (ma20Ref.current) ma20Ref.current.setData([]); if (ma50Ref.current) ma50Ref.current.setData([]); if (ma200Ref.current) ma200Ref.current.setData([]); if (bbUpperRef.current) bbUpperRef.current.setData([]); if (bbLowerRef.current) bbLowerRef.current.setData([]); if (volumeRef.current) volumeRef.current.setData([]); if (macdDiffRef.current) macdDiffRef.current.setData([]); if (macdDeaRef.current) macdDeaRef.current.setData([]); if (macdHistRef.current) macdHistRef.current.setData([]); if (rsiLineRef.current) rsiLineRef.current.setData([]); if (rsiHistRef.current) rsiHistRef.current.setData([]); if (kdjKRef.current) kdjKRef.current.setData([]); if (kdjDRef.current) kdjDRef.current.setData([]); if (kdjJRef.current) kdjJRef.current.setData([]); if (dailyDividerSeriesRef.current) { dailyDividerSeriesRef.current.setData([]); dailyDividerMarkersRef.current?.setMarkers([]) }
       if (oRef.current) oRef.current.textContent = '--'; if (hRef.current) hRef.current.textContent = '--'; if (lRef.current) lRef.current.textContent = '--'; if (cRef.current) cRef.current.textContent = '--'; if (vRef.current) vRef.current.textContent = '--'; lastCandleRef.current = null; return
     }
 
@@ -1089,6 +1101,43 @@ export function LightweightChartCanvas({ selectedSymbol, selectedPeriod, setSele
         volumeData.push({ time: t, value: d.volume || 0, color: d.close >= d.open ? upColor : downColor });
       }
       seriesRef.current?.setData(lwData); markersRef.current = markers;
+      // 💡 日/周/月线等日级以上周期：右边界固定贴最新数据(已 fixRightEdge), 加载后强制滚到实时端, 保证右边贴边缘且不可向左拖出右边界
+      if (selectedPeriod !== '1m' && selectedPeriod !== '5m' && chartRef.current) {
+        chartRef.current.timeScale().scrollToRealTime()
+      }
+      // 💡 5日线每日划分标识：每日首根 K 线顶部放带日期文字的 marker (lightweight-charts v5 原生 markers 无 vertical_line 形状, 用 square+text 标识相邻交易日)
+      if (dailyDividerMarkersRef.current) {
+        if (selectedPeriod === '5m' && lwData.length > 0) {
+          const isHK = /\.(HK)$|^HK\./i.test(selectedSymbol || '')
+          const localDayKey = (t: number) => {
+            const d = new Date(t * 1000)
+            const useDST = isHK ? false : isUSDST(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate())
+            const offMs = isHK ? 8 * 3600 * 1000 : (useDST ? -4 * 3600 * 1000 : -5 * 3600 * 1000)
+            const l = new Date(d.getTime() + offMs)
+            const M = (l.getUTCMonth() + 1).toString().padStart(2, '0')
+            const D = l.getUTCDate().toString().padStart(2, '0')
+            const wd = ['日', '一', '二', '三', '四', '五', '六'][l.getUTCDay()]
+            return { key: `${M}-${D}`, label: `${M}-${D} 周${wd}` }
+          }
+          const seen = new Set<string>()
+          const dividerMarkers: SeriesMarker<Time>[] = []
+          for (const p of lwData) {
+            const day = localDayKey(p.time as number)
+            if (!seen.has(day.key)) {
+              seen.add(day.key)
+              // 跳过最早一天(图左端无需标识), 仅对后续每个交易日首根画日期标识
+              if (seen.size > 1) {
+                dividerMarkers.push({ time: p.time, position: 'aboveBar', color: theme === 'dark' ? '#94a3b8' : '#64748b', shape: 'square', text: day.label, size: 0.6 })
+              }
+            }
+          }
+          dailyDividerSeriesRef.current?.setData(lwData.map((p) => ({ time: p.time, value: 0 })))
+          dailyDividerMarkersRef.current.setMarkers(dividerMarkers)
+        } else {
+          dailyDividerSeriesRef.current?.setData([])
+          dailyDividerMarkersRef.current.setMarkers([])
+        }
+      }
       // PROD-02: 数据重载后重新叠加 AI 标注
       applyAiAnnotationsRef.current?.()
       // AI-01 能力②: 数据重载后重新叠加形态识别标注

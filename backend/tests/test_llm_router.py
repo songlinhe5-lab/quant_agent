@@ -61,6 +61,8 @@ class TestLLMRouter:
         from backend.services.ai_narrator.llm_service import ModelTier
 
         router = self._make_router(fallback_threshold=3)
+        # 降级目标 Ollama 视为可达 (避免真实网络探测)
+        router._ollama_available = True
         assert not router.is_fallback_active
 
         router.record_failure(ModelTier.STANDARD)
@@ -73,10 +75,26 @@ class TestLLMRouter:
         router.record_failure(ModelTier.STANDARD)
         assert router.is_fallback_active
 
+    def test_failure_does_not_fallback_when_ollama_unreachable(self):
+        """加固: 主供应商失败但 Ollama 不可达 -> 不降级, 维持主链路 (防降级死锁)"""
+        from backend.services.ai_narrator.llm_service import ModelTier
+
+        router = self._make_router(fallback_threshold=2)
+        router._ollama_available = False  # Ollama 不可达
+
+        router.record_failure(ModelTier.STANDARD)
+        router.record_failure(ModelTier.STANDARD)
+        # 即使连续失败达阈值, 因 Ollama 不可达不降级
+        assert not router.is_fallback_active
+        # get_client 也应维持主供应商
+        client = router.get_client(ModelTier.STANDARD)
+        assert "localhost" not in str(client.base_url)
+
     def test_fallback_returns_ollama_client(self):
         from backend.services.ai_narrator.llm_service import ModelTier
 
         router = self._make_router(fallback_threshold=2)
+        router._ollama_available = True
 
         # 触发降级
         router.record_failure(ModelTier.STANDARD)
@@ -93,6 +111,7 @@ class TestLLMRouter:
         from backend.services.ai_narrator.llm_service import ModelTier
 
         router = self._make_router(fallback_threshold=2)
+        router._ollama_available = True
 
         router.record_failure(ModelTier.STANDARD)
         router.record_failure(ModelTier.STANDARD)
@@ -106,6 +125,7 @@ class TestLLMRouter:
         from backend.services.ai_narrator.llm_service import ModelTier
 
         router = self._make_router(fallback_threshold=3)
+        router._ollama_available = True
 
         router.record_failure(ModelTier.STANDARD)
         router.record_failure(ModelTier.STANDARD)
