@@ -116,6 +116,13 @@ export function useChat() {
               if (symbol) useChartAnnotationStore.getState().setAnnotation(symbol, data)
             }
           },
+          onIterationLimitReached: (maxIterations) => {
+            const msgs = store.getState().messages
+            const last = msgs[msgs.length - 1]
+            if (last && last.role === 'assistant') {
+              last.iterationLimitReached = true
+            }
+          },
           onFlush: () => {
             // 触发 React 重新渲染：浅拷贝最后一条 assistant 消息
             store.setState(prev => {

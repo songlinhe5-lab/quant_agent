@@ -247,6 +247,13 @@ export const ChatMessageItem = React.memo(({
           </div>
         ) : (
           <div className="flex flex-col">
+            {/* COPILOT-09: 迭代上限已达——降级兜底总结提示条 */}
+            {msg.iterationLimitReached && (
+              <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                <span>已达 <strong>8</strong> 步推理上限，以下为降级模型兜底总结，结论可能不完整。</span>
+              </div>
+            )}
             {/* COPILOT-03: 生成中 → 四阶段进度器；完成后 → 可折叠思考过程面板 */}
             {isGenerating && isLast ? (
               <ThinkingProgress msg={msg} isLast={isLast} isGenerating={isGenerating} />

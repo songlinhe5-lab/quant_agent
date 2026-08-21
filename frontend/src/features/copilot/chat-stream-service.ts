@@ -9,6 +9,8 @@ export interface StreamCallbacks {
   onError: (content: string) => void
   onStrategyCode: (code: string) => void
   onChartAnnotation: (data: any) => void
+  /** COPILOT-09: ReAct 迭代上限已达 */
+  onIterationLimitReached: (maxIterations: number) => void
   onFlush: () => void
   onStreamEnd: () => void
 }
@@ -83,6 +85,8 @@ export async function runChatStream(params: StreamParams, cb: StreamCallbacks): 
           cb.onStrategyCode(data.code)
         } else if (data.type === 'chart_annotation') {
           cb.onChartAnnotation(data.data)
+        } else if (data.type === 'iteration_limit_reached') {
+          cb.onIterationLimitReached(data.max_iterations ?? 8)
         }
 
         const now = Date.now()

@@ -1086,8 +1086,9 @@ class HermesAgent:
                 yield {"type": "error", "content": f"\n❌ [Agent API Error]: {e}"}
                 return
 
-        # 💡 强制熔断恢复策略：5 轮工具调用耗尽后，强制 LLM 输出最终结论
+        # 💡 COPILOT-09: 迭代上限信号——通知前端渲染 amber 提示条
         print("⚠️ [Agent Stream] 达到最大思考循环次数，启动强制熔断恢复策略。")
+        yield {"type": "iteration_limit_reached", "max_iterations": max_iterations}
         try:
             self.messages.append(
                 {
