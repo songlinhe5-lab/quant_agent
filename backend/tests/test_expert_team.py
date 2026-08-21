@@ -381,14 +381,28 @@ class TestExpertTeamService:
         scenarios = service.get_scenarios()
         assert len(scenarios) == 4
 
-    def test_get_sessions_empty(self):
+    @pytest.mark.asyncio
+    async def test_get_sessions_empty(self):
+        import sys
+        from unittest.mock import AsyncMock, MagicMock, patch
+
         from backend.services.expert_team.expert_team_service import ExpertTeamService
 
         service = ExpertTeamService()
-        sessions = service.get_sessions()
+        # Mock Redis 模块: scan 返回空 (cursor=0 立即结束)
+        mock_redis = AsyncMock()
+        mock_redis.scan = AsyncMock(return_value=(0, []))
+        mock_module = MagicMock()
+        mock_module.redis_client = mock_redis
+        with patch.dict(sys.modules, {"backend.core.redis_client": mock_module}):
+            sessions = await service.get_sessions()
         assert isinstance(sessions, list)
 
-    def test_save_and_get_session(self):
+    @pytest.mark.asyncio
+    async def test_save_and_get_session(self):
+        import sys
+        from unittest.mock import AsyncMock, MagicMock, patch
+
         from backend.services.expert_team.expert_team_service import ExpertTeamService
 
         service = ExpertTeamService()
@@ -399,8 +413,16 @@ class TestExpertTeamService:
             status="done",
             created_at="2024-01-01T00:00:00Z",
         )
-        service.save_session(session)
-        retrieved = service.get_session("test_001")
+        # Mock Redis + PG 均不可用 → 走内存兜底
+        mock_redis = AsyncMock()
+        mock_redis.scan = AsyncMock(return_value=(0, []))
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.set = AsyncMock(return_value=True)
+        mock_module = MagicMock()
+        mock_module.redis_client = mock_redis
+        with patch.dict(sys.modules, {"backend.core.redis_client": mock_module}):
+            await service.save_session(session)
+            retrieved = await service.get_session("test_001")
         assert retrieved is not None
         assert retrieved.question == "测试"
 
@@ -449,9 +471,23 @@ class TestExpertTeamRouter:
 
         return TestClient(app)
 
+    @pytest.fixture
+    def auth_headers(self):
+        """COPILOT-08: 生成合法 JWT 以通过 expert_team 端点鉴权
+
+        直接引用 expert_team.SECRET_KEY（而非 os.getenv 快照），
+        确保与路由解码使用同一密钥，杜绝 CI/本地环境变量差异导致的 401。
+        """
+        from jose import jwt
+
+        from backend.routers.expert_team import SECRET_KEY
+
+        token = jwt.encode({"sub": "test_user"}, SECRET_KEY, algorithm="HS256")
+        return {"Authorization": f"Bearer {token}"}
+
     @pytest.mark.slow
-    def test_list_scenarios_endpoint(self, client):
-        resp = client.get("/api/v1/expert-team/scenarios")
+    def test_list_scenarios_endpoint(self, client, auth_headers):
+        resp = client.get("/api/v1/expert-team/scenarios", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         # API 响应有统一包装 {code, msg, data}
@@ -460,30 +496,31 @@ class TestExpertTeamRouter:
         assert len(payload["scenarios"]) == 4
 
     @pytest.mark.slow
-    def test_list_sessions_endpoint(self, client):
-        resp = client.get("/api/v1/expert-team/sessions")
+    def test_list_sessions_endpoint(self, client, auth_headers):
+        resp = client.get("/api/v1/expert-team/sessions", headers=auth_headers)
         assert resp.status_code == 200
         data = resp.json()
         payload = data.get("data", data)
         assert "sessions" in payload
 
     @pytest.mark.slow
-    def test_get_session_not_found(self, client):
-        resp = client.get("/api/v1/expert-team/sessions/nonexistent")
+    def test_get_session_not_found(self, client, auth_headers):
+        resp = client.get("/api/v1/expert-team/sessions/nonexistent", headers=auth_headers)
         assert resp.status_code == 404
 
-    def test_analyze_invalid_scenario(self, client):
+    def test_analyze_invalid_scenario(self, client, auth_headers):
         resp = client.post(
             "/api/v1/expert-team/analyze",
             json={
                 "scenario": "invalid",
                 "question": "test",
             },
+            headers=auth_headers,
         )
         assert resp.status_code == 400
 
     @pytest.mark.slow
-    def test_analyze_endpoint_runs_with_custom_team(self, client):
+    def test_analyze_endpoint_runs_with_custom_team(self, client, auth_headers):
         """自定义阵容 + 多轮: 端点应正常返回 200 (慢: 拉起全依赖链)。"""
         resp = client.post(
             "/api/v1/expert-team/analyze",
@@ -494,6 +531,7 @@ class TestExpertTeamRouter:
                 "expert_ids": ["fundamental_analyst", "risk_officer"],
                 "rounds": 2,
             },
+            headers=auth_headers,
         )
         # 端点本身只校验入参，SSE 流式在响应体；这里确认请求被接受 (200/400 取决于校验)
         assert resp.status_code in (200, 400)

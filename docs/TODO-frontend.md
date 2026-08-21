@@ -417,3 +417,177 @@
 
 ---
 
+### AI Copilot 一体两态重构（COPILOT 系列 · 2026-08-21）
+
+> **设计稿**：`AI Copilot_UI重构设计.md` (v1.0) + `AI Copilot_Figma导入稿.html`
+> **核心决策**：**一体两态** —— 保留全局浮动抽屉（轻量随问随答）+ 左导航新增「投研」工作台（深度投研会与资产沉淀），两形态共享同一 Zustand 会话状态。
+> **现状诊断**：5 个 P0（双 ChatProvider 不同步 / 假附件入口 / 思维链事件丢弃 / 事件名冲突 / 投研会无持久化）+ 6 个 P1（13 专家挤 520px / 模拟恐惧贪婪指数 / 无鉴权 / 迭代上限无披露 / 三套快捷指令 / 文件超限）。
+
+#### P0 — 阻塞性架构债（必须先解）
+
+- [x] **[COPILOT-01]** **会话状态提升为 Zustand store 单例**（P0-1 根治）：✅ `854e43c`
+  - `chat-context.tsx`（480 行巨石 Provider）→ 拆为 `useChatStore`（Zustand，会话/消息/流状态）+ `chat-stream-service.ts`（≤200 行，SSE 解析独立）
+  - 抽屉（`global-copilot-drawer.tsx`）与投研页（`/research`）订阅同一 store，根治双 `<ChatProvider>` 实例会话互不可见
+  - 保留现有能力：折叠不卸载 / 页面上下文注入 / 会话双层持久化 / tool_call_id 精准重组 / Markdown 导出
+  - 依赖：无（所有后续 COPILOT 任务的前置）
+  - 预期工时：FE 12h
+- [x] **[COPILOT-02]** **撤下假附件入口 + 上下文 chip 可视化**（P0-3）：✅ `bba7ede`
+  - 移除 `chat-input-box.tsx` 的图片/PDF 上传三入口（选择/粘贴/拖拽，L78-139）
+  - 输入区左下改放「附加页面上下文」chip（虚线 "+ 附加本页上下文"，有上下文时显示实线 chip + kind 图标：kline=蜡烛/risk=盾/screener=漏斗/analysis=星）
+  - 后端 `chat.py:215` 的 `attachments=None` 硬编码保留（附件上传 `POST /chat/uploads` 列为 roadmap）
+  - 依赖：COPILOT-01
+  - 预期工时：FE 4h
+- [x] **[COPILOT-03]** **思维链四阶段进度器**（P0-4）：✅ `8bec707`
+  - 消费真实事件：`reasoning_chunk`（Plan）→ `tool_start/tool_result`（Tool）→ 二次同类 tool 或 `</think>` 标记（Verify）→ `text_chunk`（Output）
+  - 视觉：四阶段进度条 `[规划 Plan]──[调用工具 Tool]──[核验 Verify]──[输出 Output]`，Plan=紫色呼吸点+可展开推理片段，Tool=chip 名称+参数摘要，heartbeat 驱动呼吸动画
+  - 30s 无任何事件 → amber「响应缓慢，后端可能排队」，不转假圈
+  - 依赖：COPILOT-01
+  - 预期工时：FE 8h
+- [x] **[COPILOT-04]** **统一事件协议**（P0-5）：✅ `b5a5e34`
+  - `copilot-prefill` 与 `quant_copilot_invoke` 二选一收敛为 `quant_copilot_invoke`（detail 携带 `{prompt, symbol, kind}`）
+  - 修复 `symbol-context-menu.tsx:45-52` dispatch 的 `copilot-prefill` 无监听者问题
+  - 全仓监听统一为 `quant_copilot_invoke`（`chat-context.tsx:453-461` 已有路径）
+  - 依赖：无（可与 COPILOT-01 并行）
+  - 预期工时：FE 2h
+- [x] **[COPILOT-05]** **投研会历史诚实空态 + 后端 save_session**（P0-2）：✅ `5a490ad`
+  - 后端：`expert_team_service.py` 补 `save_session`（Redis 热 TTL 12h + PG 冷，对齐 chat 双层模式），`GET /expert-team/sessions` 返回真实历史
+  - 前端：辩论室历史区在后端落库前显示 EmptyState「投研会记录将在后端持久化上线后出现——当前刷新即失」，**禁止用内存数据伪装历史**
+  - 依赖：BE 侧 save_session 实现
+  - 预期工时：FE 4h + BE 6h
+
+#### P1 — 体验缺陷修复
+
+- [x] **[COPILOT-06]** **投研会迁出抽屉 → 投研页辩论室**（P1-1）：✅ `125cf45`
+  - 13 专家配置区（`roster-panel.tsx` 232 行）+ 流式辩论（`team-session.tsx` 202 行）从 520px 抽屉整体迁至左导航「投研」页宽屏
+  - 抽屉头部不再出现「对话 / AI 投研团队」tab 切换，只保留对话
+  - 依赖：COPILOT-01, COPILOT-05
+  - 预期工时：FE 8h
+- [x] **[COPILOT-07]** **移除模拟恐惧贪婪指数**（P1-2）：✅ `b5a5e34`
+  - `session-sidebar.tsx:40-52` 的装饰性恐惧贪婪指数（与真实数据无链路）删除
+  - 依赖：无
+  - 预期工时：FE 1h
+- [x] **[COPILOT-08]** **投研会鉴权 + API 口径统一**（P1-3）：✅ `34f2452`
+  - 后端：`/expert-team/analyze` 补 `Depends(get_current_user)`（`expert_team.py:18-47`）
+  - 前端：`expert-team-client.ts:91-142` 从裸 `apiClient.stream` 改走 `fetchWithAuth`（对齐 `chat-context.tsx:243` 口径）
+  - 依赖：BE 侧 Depends 实现
+  - 预期工时：FE 2h + BE 2h
+- [x] **[COPILOT-09]** **迭代上限 UI 披露**（P1-4）：✅ `a97bae7`
+  - `max_iterations=8` 达限时在消息流顶部渲染 amber 提示条「已达 8 步推理上限，以下为降级模型兜底总结」
+  - 依赖：COPILOT-01（需从 store 读取迭代计数）
+  - 预期工时：FE 2h
+- [x] **[COPILOT-10]** **快捷指令统一配置源**（P1-5）：✅ `b5a5e34`
+  - 合并三套快捷指令为单一配置模块：页面级四件套（预填式，`STOCK_QUICK_COMMANDS`）+ 场景级（投研页欢迎区）+ 动态建议（后端 `/chat/suggestions`，失败回退静态四条并标注兜底角标）
+  - 消除 `chat-context.tsx:17-22` / `fullscreen-copilot.tsx:23-64` / `chat.py:138-159` 三处并存
+  - 依赖：无
+  - 预期工时：FE 4h + BE 2h
+- [x] **[COPILOT-11]** **超限文件拆分**（P1-6）：✅ `424be27`
+  - `chat-message-item.tsx`(589) → 按消息类型拆为 text/tool/strategy/chart 四个分子组件（各 ≤150）
+  - `chat-input-box.tsx`(286) / `session-sidebar.tsx`(251) / `roster-panel.tsx`(232) / `team-session.tsx`(202) 按职责拆分至规范行数内
+  - 后端：`agent.py`(1144) / `chat.py`(383) / `orchestrator.py`(546) 按 AGENTS.md §3 硬顶拆分
+  - 依赖：COPILOT-01（`chat-context.tsx` 480 行在 Zustand 提升时同步拆）
+  - 预期工时：FE 8h + BE 6h
+
+#### 新功能 — 投研工作台（形态 B · 左导航「投研」）
+
+- [ ] **[COPILOT-12]** **左导航新增「投研」路由 + 三列布局骨架**：
+  - `/research` 路由 + 三列骨架：B1 会话中心(240px) / B2 主区(≥880px, 1fr) / B3 运行信息(280px, 可折叠)
+  - 页面标题条：「投研」+ 副标题"Hermes ReAct · {tools_count} tools · {model_name}"（数据来自注册表，禁止写死）
+  - 右侧：SANDBOX/LIVE 全局徽章（与策略工作台同口径）
+  - 依赖：COPILOT-01
+  - 预期工时：FE 6h
+- [ ] **[COPILOT-13]** **B1 会话中心**：
+  - 顶部双按钮：`+ 新对话`（蓝）/ `+ 发起投研会`（紫 `#A78BFA`）
+  - 搜索框 + 分组列表（今天 / 近 7 天 / 更早）+ 类型图标（💬 对话 / ⚖️ 投研会）+ 投研会结果徽章（多/空/中性，来自 `chief_report.bullish_probability` 分档）
+  - 悬停操作：删除（加二次确认 inline）；重命名入口待后端落库后开放
+  - 底部：导出当前会话 Markdown（现状能力迁移）
+  - 依赖：COPILOT-12
+  - 预期工时：FE 6h
+- [ ] **[COPILOT-14]** **B2 对话模式（宽屏版）**：
+  - 复用抽屉 MessageStream 组件实例（与抽屉共享，非新组件）
+  - 宽屏增强：消息流最大宽度 760px 居中；长工具结果表格展开完整；助手消息右上操作栏（复制 / 重答 / 存入资产库）
+  - 顶部工具条：`ReAct · 第 n/8 步` + session_id 短码 + 导出按钮
+  - 图表注解卡点击联动个股工作台（深链 `/market/:ticker`）
+  - 依赖：COPILOT-12, COPILOT-01
+  - 预期工时：FE 6h
+- [ ] **[COPILOT-15]** **B2 辩论室·组局态（Proposition Composer）**：
+  - 四组配置居中 720px：① 投研命题 textarea（3 行起，占位符示例 + "从当前持仓生成"辅助按钮）② 投研场景 4 张单选卡（金融投研/完整投决会/交易决策/代码审查，数据来自 `GET /expert-team/scenarios`，静态镜像标兜底角标）③ 出战阵容 13 专家网格（多选，默认按场景推荐勾选，代码域 4 人仅代码审查场景出现）④ 辩论轮数分段控件 1/2/3
+  - 底部 CTA：`▶ 发起投研会`（紫），命题空禁用
+  - 预估耗时提示：`≈ 专家数 × 轮数 × 20s`（标注"估算"）
+  - 依赖：COPILOT-12
+  - 预期工时：FE 8h
+- [ ] **[COPILOT-16]** **B2 辩论室·辩论态（Debate Room）**：
+  - 三列：观点流（按事件顺序追加，可折叠上一轮）/ 实时阵营面板(220px，多/空/中性人数柱 + 平均信心滑动)
+  - 顶部横向轮次时间线：R1 ✓ → R2 ●(进行中) → 首席收敛 ○
+  - 专家卡：头像·角色·阵营色边（多=emerald / 空=red / 中性=gray）+ stance 徽章 + confidence 条 + challenges 列表
+  - `round_complete` 事件：时间线打勾 + 轮分隔条「第 N 轮结束 · 共识度 X%」
+  - 断流处置：SSE 中断 → amber 横幅「连接中断 · 已保留 N 条观点 · 重试」
+  - 停止按钮：■ 中止，落「已停止」态（保留已产出，明示未完成）
+  - 依赖：COPILOT-15
+  - 预期工时：FE 10h
+- [ ] **[COPILOT-17]** **B2 辩论室·收敛态（Chief Report）**：
+  - 首席投资官报告卡（居中 760px）：① 概率仪表（`bullish_probability` 0-100 半环仪表，≥60 emerald / 40-60 gray / <40 red）② 结论摘要段落（流式渲染）③ 关键分歧保留区（多/空两列对照）④ 元信息行（专家数·轮数·总耗时·模型）
+  - 操作行：`存入资产库` / `导出 Markdown` / `调整阵容重跑`（回填组局态）/ `追问首席`（以该会话继续对话模式）
+  - 依赖：COPILOT-16
+  - 预期工时：FE 6h
+- [ ] **[COPILOT-18]** **B2 资产库**：
+  - 卡片列表：类型图标（📄 对话导出 / ⚖️ 首席报告）+ 标题 + 来源会话 + 日期；搜索框；点开只读预览（Markdown 渲染）
+  - 数据来源：对话导出（从"下载文件"升级为"同时存档"）+ 首席报告存档
+  - 后端落库前显示 EmptyState「还没有沉淀的研究成果——完成一次投研会或导出对话后，这里会成为你的研究档案室」
+  - 依赖：COPILOT-05
+  - 预期工时：FE 4h
+- [ ] **[COPILOT-19]** **B3 运行信息列（可折叠）**：
+  - 页面上下文：`useCopilotContextStore` 内容（kind 图标 + summary 摘要），「附加到下一条消息」开关
+  - 工具调用记录：本次会话 tools 流水——名称、耗时、缓存命中角标（`tool_registry.py:94-122` Redis 缓存）、失败红点；连续失败 3 次的工具显示熔断徽章「已熔断 · 检查数据源」
+  - 运行参数：模型名（LLM_MODEL）、迭代 `n/8`、会话 TTL（热 12h）
+  - 折叠后关键状态（迭代数、熔断）以头部微徽章透出
+  - 依赖：COPILOT-12
+  - 预期工时：FE 4h
+- [ ] **[COPILOT-20]** **抽屉头部「展开」按钮**：
+  - 点击跳转 `/research?session={id}`，同一 session_id 无缝进入投研页继续
+  - 流式进行中「展开」按钮显示脉冲点，提示"流不会中断"
+  - 反向：投研页头部「收起」按钮返回抽屉形态
+  - 依赖：COPILOT-12, COPILOT-01
+  - 预期工时：FE 2h
+
+#### 数字可信与状态规范
+
+- [ ] **[COPILOT-21]** **工具失败明示 + 数据 STALE 角标**：
+  - 工具失败的消息渲染红色失败块「数据获取失败：{原因}，以下结论不含该项数据」——禁止估计值兜底
+  - 工具结果卡显示取数时间戳；超 5 分钟（行情类）/ 1 日（基本面类）加 STALE 角标（`text-amber-500` + 区域 `opacity-60 saturate-50`）
+  - 依赖：COPILOT-01
+  - 预期工时：FE 3h
+- [ ] **[COPILOT-22]** **SANDBOX/LIVE 全局徽章 + 策略卡**：
+  - `strategy_code` 事件渲染为 SANDBOX 卡：深色代码预览 + 徽章「SANDBOX · 未实盘」+ 按钮"去策略研发工作台"（深链携带代码块 id）
+  - LIVE 文案永不出现在 `REAL_TRADE_EXECUTE` 闸门通过之前
+  - 交易执行类工具（`manage_broker_orders_and_account`）的任何调用在工具记录里标红边
+  - 依赖：COPILOT-01
+  - 预期工时：FE 3h
+
+#### 依赖图
+
+```
+COPILOT-01 (Zustand 提升) ──► {COPILOT-02, COPILOT-03, COPILOT-09, COPILOT-11}
+COPILOT-01 ──► COPILOT-12 (投研页骨架) ──► {COPILOT-13, COPILOT-14, COPILOT-15, COPILOT-19, COPILOT-20}
+COPILOT-15 ──► COPILOT-16 ──► COPILOT-17
+COPILOT-05 (投研会持久化) ──► COPILOT-06 ──► COPILOT-18
+COPILOT-04 (事件协议) 独立
+COPILOT-07 (移除假指数) 独立
+COPILOT-08 (鉴权) BE 依赖
+COPILOT-10 (快捷指令) 独立
+COPILOT-21/22 (数字可信) ──► COPILOT-01
+```
+
+#### 验收清单（对齐设计稿 §10）
+
+1. 抽屉与投研页可互跳同一会话，流式不中断（COPILOT-01 + COPILOT-20）
+2. 右键"问 AI 分析"预填 100% 到达输入框（COPILOT-04）
+3. 思维链进度器四阶段由真实事件驱动，无事件时不假动（COPILOT-03）
+4. UI 中不存在图片/PDF 上传入口（COPILOT-02）
+5. 投研会三态完整：组局配置来自真实 scenarios 端点 / 辩论态流式渲染带断流横幅 / 收敛态概率仪表+分歧保留（COPILOT-15~17）
+6. 投研会历史区在后端落库前保持诚实空态（COPILOT-05）
+7. 所有数字可溯源到工具调用；失败明示不估计（COPILOT-21）
+8. 无一处假数据/装饰指数（COPILOT-07）
+9. 行数：新拆文件全部低于 AGENTS.md §3 硬顶（COPILOT-11）
+
+---
+

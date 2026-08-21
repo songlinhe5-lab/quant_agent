@@ -1,12 +1,21 @@
-import React, { useContext, useRef, useEffect } from 'react'
+import React, { useRef, useEffect } from 'react'
 import { Sparkles, RefreshCw } from 'lucide-react'
-import { ChatMessagesContext, ChatActionContext, STOCK_QUICK_COMMANDS } from './chat-context'
+import { cn } from '@/lib/utils'
+import { useChatStore } from '@/stores/useChatStore'
+import { STOCK_QUICK_COMMANDS } from './chat-context'
 import { ChatMessageItem } from './chat-message-item'
 import { getIconForTitle } from './shared'
 
-export function MessageListArea() {
-  const { messages, isGenerating, copiedIndex, quickPrompts } = useContext(ChatMessagesContext)
-  const { handleCopy, handleRetry, handleSend, refreshPrompts, inputSetterRef } = useContext(ChatActionContext)
+export function MessageListArea({ wide = false }: { wide?: boolean }) {
+  const messages = useChatStore((s) => s.messages)
+  const isGenerating = useChatStore((s) => s.isGenerating)
+  const copiedIndex = useChatStore((s) => s.copiedIndex)
+  const quickPrompts = useChatStore((s) => s.quickPrompts)
+  const handleCopy = useChatStore((s) => s.handleCopy)
+  const handleRetry = useChatStore((s) => s.handleRetry)
+  const handleSend = useChatStore((s) => s._sendImpl)
+  const refreshPrompts = useChatStore((s) => s.refreshPrompts)
+  const inputSetterRef = useChatStore((s) => s.inputSetterRef)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const userScrolledUpRef = useRef(false)
 
@@ -26,7 +35,8 @@ export function MessageListArea() {
   }
 
   return (
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar" onScroll={handleScroll}>
+        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar" onScroll={handleScroll}>
+          <div className={cn('space-y-6', wide ? 'max-w-[760px] mx-auto' : 'max-w-2xl mx-auto')}>
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-muted-foreground space-y-6 animate-in fade-in duration-700 max-w-2xl mx-auto px-4">
               <div className="flex flex-col items-center gap-3">
@@ -42,7 +52,7 @@ export function MessageListArea() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 w-full mt-4">
                 {quickPrompts.slice(0, 6).map((qp, i) => (
-                  <button key={i} onClick={() => handleSend(qp.prompt)} className="flex items-start gap-3 p-3 rounded-xl border border-border/40 bg-secondary/20 hover:bg-secondary/60 hover:border-scene/40 transition-all text-left group shadow-sm hover:shadow-md">
+                  <button key={i} onClick={() => handleSend?.(qp.prompt)} className="flex items-start gap-3 p-3 rounded-xl border border-border/40 bg-secondary/20 hover:bg-secondary/60 hover:border-scene/40 transition-all text-left group shadow-sm hover:shadow-md">
                     <div className="p-2 rounded-lg bg-background border border-border/50 group-hover:shadow-sm group-hover:border-scene/30">
                       {getIconForTitle(qp.title)}
                     </div>
@@ -63,7 +73,7 @@ export function MessageListArea() {
                   {STOCK_QUICK_COMMANDS.map((cmd) => (
                     <button
                       key={cmd.label}
-                      onClick={() => inputSetterRef?.current?.(cmd.template)}
+                      onClick={() => inputSetterRef?.(cmd.template)}
                       className="flex items-center gap-3 bg-scene/10 border border-scene/20 rounded-lg p-3 hover:bg-scene/20 cursor-pointer transition-colors text-left group"
                     >
                       <span className="text-lg shrink-0">{cmd.emoji}</span>
@@ -78,10 +88,11 @@ export function MessageListArea() {
             </div>
           ) : (
             messages.map((msg, idx) => (
-              <ChatMessageItem key={idx} msg={msg} idx={idx} isLast={idx === messages.length - 1} isGenerating={isGenerating} copiedIndex={copiedIndex} onCopy={handleCopy} onRetry={handleRetry} onSend={handleSend} />
+              <ChatMessageItem key={idx} msg={msg} idx={idx} isLast={idx === messages.length - 1} isGenerating={isGenerating} copiedIndex={copiedIndex} onCopy={handleCopy} onRetry={handleRetry} onSend={(text) => handleSend?.(text)} />
             ))
           )}
           <div ref={messagesEndRef} />
+          </div>
         </div>
   )
 }

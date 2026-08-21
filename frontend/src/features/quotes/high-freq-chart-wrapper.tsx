@@ -45,6 +45,25 @@ const MARKET_SESSION: Record<string, { start: [number, number]; end: [number, nu
   CT:  { start: [8, 30], end: [15, 0] },     // 大宗商品期货日盘
 }
 
+// 💡 港股午休 12:00-13:00（当地时），Tick/分时 X 轴需扣除：下午时段时间戳整体前移 1h，使午休从轴消失
+const LUNCH_BREAK: Record<string, { resume: [number, number]; seconds: number }> = {
+  HKT: { resume: [13, 0], seconds: 3600 },
+}
+const LUNCH_SECONDS = 3600
+
+// 💡 把交易所当地时刻压缩掉午休：当地 >= 13:00 的时间戳减 3600s，使 12:00 之后紧贴 13:00，X 轴无空洞
+function compressLunchBreak(tz: keyof typeof TZ_OFFSET_HOURS, utcSec: number): number {
+  const lb = LUNCH_BREAK[tz]
+  if (!lb) return utcSec
+  const offset = getOffsetHours(tz, new Date(utcSec * 1000))
+  const local = new Date((utcSec + offset * 3600) * 1000)
+  const lh = local.getUTCHours()
+  const lm = local.getUTCMinutes()
+  const cmp = lh * 60 + lm
+  const resumeCmp = lb.resume[0] * 60 + lb.resume[1]
+  return cmp >= resumeCmp ? utcSec - LUNCH_SECONDS : utcSec
+}
+
 function utcSecondsInMarketDay(now: Date, tz: keyof typeof TZ_OFFSET_HOURS): { from: number; to: number } {
   const offset = getOffsetHours(tz, now)
   const session = MARKET_SESSION[tz] ?? MARKET_SESSION.ET
@@ -56,15 +75,21 @@ function utcSecondsInMarketDay(now: Date, tz: keyof typeof TZ_OFFSET_HOURS): { f
   // 当地 HH:mm → 对应 UTC 秒 = Date.UTC(当地日, 当地start - offset)
   const startHourUTC = session.start[0] - offset
   const endHourUTC = session.end[0] - offset
-  const from = Math.floor(Date.UTC(ly, lm, ld, startHourUTC, session.start[1]) / 1000)
-  const to = Math.floor(Date.UTC(ly, lm, ld, endHourUTC, session.end[1]) / 1000)
+  let from = Math.floor(Date.UTC(ly, lm, ld, startHourUTC, session.start[1]) / 1000)
+  let to = Math.floor(Date.UTC(ly, lm, ld, endHourUTC, session.end[1]) / 1000)
+  // 💡 港股午休压缩：收盘端整体前移 1h（16:00 → 15:00），使可见范围终点贴合压缩后的轴
+  const lb = LUNCH_BREAK[tz]
+  if (lb) to -= lb.seconds
   return { from, to }
 }
 
 // 💡 把 UTC 时间戳格式化为交易所当地 HH:mm (tickMarkFormatter 用, 避免刻度偏时区)
+//    港股下午段已被压缩 1h,这里还原(+1h)使刻度显示真实 13:00-16:00,与"扣除午休"的轴一致
 function formatMarketLocalHM(time: number, tz: keyof typeof TZ_OFFSET_HOURS): string {
-  const offset = getOffsetHours(tz, new Date(time * 1000))
-  const d = new Date((time + offset * 3600) * 1000)
+  const lb = LUNCH_BREAK[tz]
+  const displayTime = lb ? time + lb.seconds : time
+  const offset = getOffsetHours(tz, new Date(displayTime * 1000))
+  const d = new Date((displayTime + offset * 3600) * 1000)
   const hh = d.getUTCHours().toString().padStart(2, '0')
   const mm = d.getUTCMinutes().toString().padStart(2, '0')
   return `${hh}:${mm}`
@@ -131,7 +156,7 @@ export function HighFreqChartWrapper({
     // 2. 如果有参考价（现价/前收）且还没 tick,把参考价当作"伪锚点"画一条水平线 + 立即设可见范围
     if (referencePrice && referencePrice > 0) {
       anchorPriceRef.current = referencePrice
-      const anchorTime = Math.floor(Date.now() / 1000)
+      const anchorTime = compressLunchBreak(marketTz, Math.floor(Date.now() / 1000))
       try {
         lineSeries.update({ time: anchorTime as any, value: referencePrice })
         // 立刻设可见范围,避免等真实 tick
@@ -153,8 +178,10 @@ export function HighFreqChartWrapper({
       if (cleanTicker(detail.ticker) === cleanTicker(symbol) && lineSeriesRef.current) {
         const lastPrice = parseFloat(detail.last_price)
         if (lastPrice > 0) {
+          // 💡 港股午休压缩：下午段时间戳减 1h，使午休从 X 轴消失
+          const rawSec = Math.floor(Date.now() / 1000)
           lineSeriesRef.current.update({
-            time: Math.floor(Date.now() / 1000) as any,
+            time: compressLunchBreak(marketTz, rawSec) as any,
             value: lastPrice,
           })
           // 💡 首个 tick 到达后再次设置全天范围(应对外部参考价缺失)

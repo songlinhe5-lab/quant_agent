@@ -73,6 +73,13 @@ async def handle_yfinance(action: str, params: Dict[str, Any]) -> Dict[str, Any]
             return _annotate_error_category(
                 await yfinance_service.get_financials(params.get("symbol"), kind=params.get("kind", "annual"))
             )
+        elif action == "INFO":
+            # INFO（公司概况/财务详情）在 yfinance 子服务映射到财务三大表。
+            # 此前 INFO 未注册 → 后端 get_fundamental_info(yfinance 兜底) 永远 failed，
+            # 即使 yfinance 对港股(0772.HK)财务数据完好。补此分支以解锁 INFO 兜底。
+            return _annotate_error_category(
+                await yfinance_service.get_financials(params.get("symbol"), kind=params.get("kind", "annual"))
+            )
         elif action == "SEARCH":
             return _annotate_error_category(
                 await yfinance_service.search(params.get("query", ""), limit=params.get("limit", 10))

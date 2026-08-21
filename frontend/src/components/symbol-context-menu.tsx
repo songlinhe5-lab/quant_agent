@@ -45,7 +45,7 @@ export function SymbolContextMenu({ symbol, children, onRemove, onSelect }: Symb
   const askAi = () => {
     openCopilot()
     window.dispatchEvent(
-      new CustomEvent('copilot-prefill', {
+      new CustomEvent('quant_copilot_invoke', {
         detail: { prompt: `请分析 ${symbol} 的最新走势与风险点` },
       }),
     )

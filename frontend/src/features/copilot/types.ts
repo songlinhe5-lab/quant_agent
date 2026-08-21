@@ -62,4 +62,6 @@ export interface ChatMessage {
   strategyBlocks?: StrategyBlock[]
   /** PROD-02: 本消息携带的图表标注 */
   chartAnnotations?: ChartAnnotationPayload[]
+  /** COPILOT-09: ReAct 迭代上限已达，后续内容为降级兜底总结 */
+  iterationLimitReached?: boolean
 }

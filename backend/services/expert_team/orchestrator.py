@@ -37,6 +37,8 @@ class DebateOrchestrator:
 
     def __init__(self, tool_registry: Optional[ToolRegistry] = None):
         self.tool_registry = tool_registry
+        # 💡 COPILOT-05: 保留最近一次辩论的 session 引用，供 service 层持久化
+        self._last_session: Optional[DebateSession] = None
 
     async def run_debate_stream(
         self,
@@ -161,6 +163,7 @@ class DebateOrchestrator:
             # ─── 完成 ─────────────────────────────────────────
             session.status = "done"
             session.completed_at = datetime.now(timezone.utc).isoformat()
+            self._last_session = session  # 💡 COPILOT-05: 暴露给 service 持久化
 
             yield StreamEvent(
                 type="done",
@@ -171,6 +174,8 @@ class DebateOrchestrator:
         except Exception as e:
             session.status = "error"
             session.error_message = str(e)
+            session.completed_at = datetime.now(timezone.utc).isoformat()
+            self._last_session = session  # 💡 COPILOT-05: 错误状态也持久化
             print(f"❌ [Orchestrator] 辩论异常: {e}\n{traceback.format_exc()}")
             yield StreamEvent(
                 type="error",

@@ -1,67 +1,16 @@
 'use client'
 
-import React, { useContext, useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Brain, History, Plus, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { ChatProvider, ChatActionContext } from '@/features/copilot/chat-context'
+import { useChatStore } from '@/stores/useChatStore'
+import { useChat } from '@/features/copilot/useChat'
 import { ChatSidebarWrapper } from '@/features/copilot/chat-sidebar-wrapper'
 import { MessageListArea } from '@/features/copilot/message-list-area'
 import { ChatInputBox } from '@/features/copilot/chat-input-box'
 import { useMarketStore } from '@/stores/marketStore'
 import { useCopilotContextStore } from '@/stores/useCopilotContextStore'
-
-/** PROD-04b: AI 分析模式快捷指令定义 */
-interface AiQuickCommand {
-  key: string
-  emoji: string
-  label: string
-  /** 是否需要内联当前聚焦标的 ticker */
-  ticker: boolean
-  template: string
-}
-
-const AI_QUICK_COMMANDS: AiQuickCommand[] = [
-  {
-    key: 'morning',
-    emoji: '🌤️',
-    label: '今日早报',
-    ticker: false,
-    template:
-      '请生成今日盘前推演早报，调用宏观新闻与行情工具，汇总全球宏观高危事件、核心标的监控与多空研判，并生成内联数据卡片。',
-  },
-  {
-    key: 'compare',
-    emoji: '⚖️',
-    label: '对比分析',
-    ticker: true,
-    template:
-      '请对比分析 {symbol} 与同行业 top 3 竞品，调用行情与基本面工具，从估值、技术面与资金面给出差异化研判，并生成内联对比图表。',
-  },
-  {
-    key: 'option',
-    emoji: '📡',
-    label: '期权链',
-    ticker: true,
-    template:
-      '请拉取 {symbol} 的期权链 (OPTION_CHAIN)，分析隐含波动率曲面与多空持仓结构，给出期权策略建议，并生成内联图表。',
-  },
-  {
-    key: 'macro',
-    emoji: '🌐',
-    label: '宏观雷达',
-    ticker: false,
-    template:
-      '请扫描当前全球宏观高危事件与情绪雷达（VIX、P/C Ratio、利率、FRED 数据），调用宏观工具给出风险推演，并生成内联图表。',
-  },
-  {
-    key: 'watchlist',
-    emoji: '📋',
-    label: '查询自选',
-    ticker: false,
-    template:
-      '请列出我的自选股池，调用行情工具做整体强弱扫描、异动提示与板块分布，并生成内联数据卡片。',
-  },
-]
+import { SCENE_QUICK_COMMANDS, type SceneQuickCommand } from '@/features/copilot/copilot-quick-commands'
 
 /**
  * PROD-04: AI 分析模式全屏对话工作台
@@ -69,7 +18,8 @@ const AI_QUICK_COMMANDS: AiQuickCommand[] = [
  * PROD-04b: 补充快捷指令栏 + 进入时自动携带当前聚焦标的 ticker（上下文感知）。
  */
 function FullscreenCopilotChrome() {
-  const { handleNewChat, handleSend } = useContext(ChatActionContext)
+  const handleNewChat = useChatStore((s) => s.handleNewChat)
+  const handleSend = useChatStore((s) => s._sendImpl)
   const [sessionsOpen, setSessionsOpen] = useState(false)
 
   // PROD-04b: 进入 AI 分析模式时，将全局当前聚焦标的注入副驾上下文（实现跨模式 ticker 携带）
@@ -86,11 +36,11 @@ function FullscreenCopilotChrome() {
     }
   }, [])
 
-  const runCommand = (cmd: AiQuickCommand) => {
+  const runCommand = (cmd: SceneQuickCommand) => {
     const ticker = useMarketStore.getState().currentTicker
     const prompt = cmd.ticker ? cmd.template.replace(/\{symbol\}/g, ticker || '当前聚焦标的') : cmd.template
     // 快捷指令自带明确意图，跳过页面上下文自动注入以避免重复
-    handleSend?.(prompt, [], { skipPageContext: true })
+    handleSend?.(prompt, { skipPageContext: true })
   }
 
   return (
@@ -135,7 +85,7 @@ function FullscreenCopilotChrome() {
       {/* PROD-04b: 快捷指令栏（上下文感知，自动携带当前标的） */}
       <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-border/30 bg-secondary/20 overflow-x-auto custom-scrollbar">
         <Sparkles className="h-3.5 w-3.5 text-scene shrink-0" aria-hidden />
-        {AI_QUICK_COMMANDS.map((cmd) => (
+        {SCENE_QUICK_COMMANDS.map((cmd) => (
           <button
             key={cmd.key}
             type="button"
@@ -166,9 +116,6 @@ function FullscreenCopilotChrome() {
 }
 
 export function FullscreenCopilot() {
-  return (
-    <ChatProvider>
-      <FullscreenCopilotChrome />
-    </ChatProvider>
-  )
+  useChat() // 初始化生命周期 + SSE 编排
+  return <FullscreenCopilotChrome />
 }

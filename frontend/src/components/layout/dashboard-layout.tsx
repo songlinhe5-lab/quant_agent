@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { KeepAliveOutlet } from './keep-alive-outlet'
-import { Globe, BarChart3, ScanSearch, Code2, FlaskConical, Bot, ShieldAlert, Server, Bell, Database, ArrowRightLeft } from 'lucide-react'
+import { Globe, BarChart3, ScanSearch, Code2, FlaskConical, Bot, ShieldAlert, Server, Bell, Database, ArrowRightLeft, Users, Microscope } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -56,6 +56,8 @@ const modules: NavItem[] = [
   { url: '/quotes', name: '行情与高频盘口', label: 'Quotes', icon: BarChart3, domain: 'market' },
   { url: '/screener', name: '智能量化选股', label: 'Screener', icon: ScanSearch, domain: 'research' },
   { url: '/strategy', name: '策略研发工作台', label: 'Strategy Dev', icon: Code2, domain: 'research' },
+  { url: '/research', name: '投研工作台', label: 'Research', icon: Microscope, domain: 'research' },
+  { url: '/research-team', name: '专家团投研会', label: 'Research Team', icon: Users, domain: 'research' },
   { url: '/backtest', name: '高频回测引擎', label: 'Backtest', icon: FlaskConical, domain: 'trading' },
   { url: '/oms', name: '订单中枢与算力节点', label: 'OMS & Bots', icon: Bot, domain: 'trading', badge: '3' },
   { url: '/risk', name: '资产风控与高级归因', label: 'Risk', icon: ShieldAlert, domain: 'risk' },
@@ -145,7 +147,12 @@ export default function DashboardLayout() {
                 <SidebarGroupContent>
                   <SidebarMenu>
                     {items.map((item) => {
-                      const routeActive = item.url === '/' ? pathname === '/' : pathname.startsWith(item.url)
+                      // 前缀冲突规避：/research 需精确匹配，避免吞掉 /research-team 的高亮
+                      const routeActive = item.url === '/'
+                        ? pathname === '/'
+                        : item.url === '/research'
+                          ? (pathname === '/research' || pathname.startsWith('/research/'))
+                          : pathname.startsWith(item.url)
                       const drawerActive =
                         (item.action === 'copilot' && copilotOpen) ||
                         (item.action === 'settings' && settingsOpen)

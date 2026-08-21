@@ -1,17 +1,19 @@
-import React, { useContext } from 'react'
+import React from 'react'
 import { SessionSidebar } from '@/features/copilot/session-sidebar'
-import { ChatSessionContext, ChatActionContext } from './chat-context'
+import { useChatStore } from '@/stores/useChatStore'
 
 export function ChatSidebarWrapper() {
-  const sessionId = useContext(ChatSessionContext)
-  const { handleSelectSession, handleNewChat, sidebarRef } = useContext(ChatActionContext)
+  const sessionId = useChatStore((s) => s.sessionId)
+  const handleSelectSession = useChatStore((s) => s.handleSelectSession)
+  const handleNewChat = useChatStore((s) => s.handleNewChat)
+  const setSidebarRef = useChatStore((s) => s.setSidebarRef)
 
   return (
     <SessionSidebar
-      ref={sidebarRef}
       activeSessionId={sessionId}
       onSelectSession={handleSelectSession}
       onNewChat={handleNewChat}
+      onRefReady={setSidebarRef}
     />
   )
 }

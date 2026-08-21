@@ -45,6 +45,7 @@
 | DS-FUTU-SEARCH | [TODO-FUTU-SEARCH-MACRO.md](./TODO-FUTU-SEARCH-MACRO.md) | Futu 行情搜索（名称→代码）+ FedWatch 为真增量；指标列表/榜单/产业链跳过 | P1 |
 | **AGENT-ARCH** | [**TODO-AGENT-ARCH.md**](./TODO-AGENT-ARCH.md) | **Hermes Agent 内核架构优化**（AGENT 系列 SSOT）。对标 hermes-agent / deepseek-harness 后结论：**两者均不引入，只借架构范式**。现状基线 S1~S13 + 14 项任务分 5 阶段：P0 单驱动收口 → P1 中间件管线/逐笔审批/Verify 实装/结果正交分类 → 审计日志/脱敏 → 成本效率 → 韧性扩展 | **P0/P1** |
 | **DS-FUTU-CAP** | [**TODO-FUTU-INTERFACE-CAPABILITY.md**](./TODO-FUTU-INTERFACE-CAPABILITY.md) | **全局地图 + 功能级 SSOT**（上列 4 份为分册）。2026-08-16 本机实测 26/26；**F0~F5 接口接入 + G1~G8 产品功能**：G1 真基本面收口 / G2 港股卖空拥挤度 / G3 主力筹码分层 / G4 期权策略损益 / G5 FedWatch / G6 板块热力图 / G7 预期差 / G8 数据正确性基座。⚠️ 受 **BE-ARCH-08a** 阻塞（主镜像 futu 硬依赖未修则新功能无法上线） | **P0/P1** |
+| **COPILOT** | 设计稿 `AI Copilot_UI重构设计.md` | 一体两态重构：Zustand 状态提升 + 投研工作台 + 思维链进度器 + 辩论室 + 资产库；P0 双实例不同步/假附件/思维链丢弃/事件名冲突 + P1 拥挤/鉴权/超限。22 项任务分 4 阶段，详见 `TODO-frontend.md` COPILOT 系列 | **P0/P1** |
 
 ---
 
@@ -145,3 +146,12 @@ S8: PT-01a ─► PT-01b ─► PT-01c ─► PT-02a ─► PT-02b
 - [ ] **Phase 4（韧性/扩展）** `[→ AGENT-06]` LLM 适配缝 · `[→ AGENT-13]` 工具暴露为 MCP Server · `[→ AGENT-14]` 子代理并行
 
 > **三条 AGENTS.md 红线目前无代码承载**（见 TODO-AGENT-ARCH.md §二）：§4.1 的 Verify 阶段不存在（S7）、§4.4 的连续失败 3 次熔断从未实现（S3）、§6 的交易二次确认无机制（S8）。Phase 1 就是补这三条。
+
+### 线 9 · AI Copilot 一体两态重构（COPILOT 系列 · 2026-08-21）
+
+> 设计稿 `AI Copilot_UI重构设计.md` (v1.0) 诊断 5 个 P0 + 6 个 P1，定义「一体两态」架构：浮动抽屉（轻量）+ 左导航投研工作台（深度），共享 Zustand 会话状态。22 项任务明细见 `TODO-frontend.md` COPILOT 系列。
+
+- [x] **Phase 0（前置）** `[→ COPILOT-01 ✅ 854e43c]` Zustand 状态提升 → 并行 `[→ COPILOT-04 ✅ b5a5e34]` 事件协议统一 / `[→ COPILOT-07 ✅ b5a5e34]` 移除假指数 / `[→ COPILOT-10 ✅ b5a5e34]` 快捷指令统一
+- [ ] **Phase 1（P0 修复）** `[→ COPILOT-02 ✅ bba7ede]` 假附件撤下 / `[→ COPILOT-03 ✅ 8bec707]` 思维链进度器 / `[→ COPILOT-05 ✅ 5a490ad]` 投研会持久化 + 诚实空态 / `[→ COPILOT-09 ✅ a97bae7]` 迭代上限披露
+- [ ] **Phase 2（新功能）** `[→ COPILOT-12~20]` 投研工作台三列骨架 + 会话中心 + 对话宽屏版 + 辩论室三态（组局/辩论/收敛）+ 资产库 + 运行信息列 + 抽屉展开按钮
+- [ ] **Phase 3（可信 + 治理）** `[→ COPILOT-06 ✅ 125cf45]` 投研会迁出抽屉 / `[→ COPILOT-08 ✅ 34f2452]` 鉴权统一 / `[→ COPILOT-11]` 超限文件拆分 / `[→ COPILOT-21]` 工具失败明示 + STALE 角标 / `[→ COPILOT-22]` SANDBOX 策略卡
