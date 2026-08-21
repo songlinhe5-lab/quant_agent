@@ -3,13 +3,14 @@
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { apiClient } from '@/lib/api-client'
-import { Microscope, PanelRightClose, PanelRightOpen, Activity } from 'lucide-react'
+import { Microscope, PanelRightClose, PanelRightOpen, Activity, Archive } from 'lucide-react'
 import { useTradingModeStore } from '@/stores/useTradingModeStore'
 import { MODE_META } from '@/features/trading/trading-mode-types'
 import { SessionCenter, type SessionItem } from './session-center'
 import { ChatWorkspace } from './chat-workspace'
 import { DebateComposer, type ComposerResult } from './debate-composer'
 import { DebateRoom } from './debate-room'
+import { AssetLibrary } from './asset-library'
 import type { TeamConfig } from '@/features/copilot/research-team/roster-panel'
 
 interface ResearchMeta {
@@ -23,7 +24,7 @@ interface ResearchMeta {
  *  - 标题条副标题 Hermes ReAct · {tools_count} tools · {model_name}（来自 GET /research/meta，禁止写死）
  *  - 右侧 SANDBOX/LIVE 徽章（与策略工作台同口径）
  */
-type B2Mode = 'chat' | 'composer' | 'debate'
+type B2Mode = 'chat' | 'composer' | 'debate' | 'assets'
 
 export function ResearchWorkspacePage() {
   const [meta, setMeta] = useState<ResearchMeta>({ tools_count: 0, model_name: '' })
@@ -70,6 +71,19 @@ export function ResearchWorkspacePage() {
         <span className="text-[10px] text-muted-foreground font-mono truncate">
           Hermes ReAct · {meta.tools_count} tools · {meta.model_name}
         </span>
+        <button
+          type="button"
+          onClick={() => setB2Mode('assets')}
+          className={cn(
+            'ml-2 flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition-colors',
+            b2Mode === 'assets'
+              ? 'border-sky-500/40 bg-sky-500/10 text-sky-400'
+              : 'border-border/40 text-muted-foreground hover:bg-secondary/50 hover:text-foreground',
+          )}
+          title="资产库"
+        >
+          <Archive className="h-3 w-3" /> 资产库
+        </button>
         {/* SANDBOX/LIVE 徽章（与策略工作台同口径） */}
         <span
           className={cn(
@@ -96,9 +110,11 @@ export function ResearchWorkspacePage() {
           onNewDebate={() => { setActiveSession(undefined); setB2Mode('composer') }}
         />
 
-        {/* B2 主区：对话(COPILOT-14) / 组局态(COPILOT-15) / 辩论态(COPILOT-16) */}
+        {/* B2 主区：对话(COPILOT-14) / 组局态(COPILOT-15) / 辩论态(COPILOT-16) / 资产库(COPILOT-18) */}
         <main className="relative flex-1 min-w-0 flex flex-col">
-          {b2Mode === 'composer' ? (
+          {b2Mode === 'assets' ? (
+            <AssetLibrary onClose={() => setB2Mode('chat')} />
+          ) : b2Mode === 'composer' ? (
             <DebateComposer
               onLaunch={handleLaunchDebate}
               onUseHoldings={() => { /* 预留：资产库接入后从当前持仓生成命题 */ }}

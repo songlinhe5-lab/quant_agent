@@ -7,6 +7,7 @@ import { ExpertOpinionCard, type ExpertOpinionState } from '@/features/copilot/r
 import { expertById, type ExpertBias } from '@/features/copilot/research-team/expert-roster'
 import { startTeamAnalysis, type TeamStreamEvent, type ChiefReportEvent } from '@/features/copilot/research-team/expert-team-client'
 import type { TeamConfig } from '@/features/copilot/research-team/roster-panel'
+import { useAssetLibrary } from '@/stores/useAssetLibrary'
 import { ChiefReportCard } from './chief-report-card'
 
 interface DebateRoomProps {
@@ -33,6 +34,7 @@ interface CompletedRound { round: number; consensus: number }
  *  断流 amber 横幅 + 重试；停止按钮落「已停止」态
  */
 export function DebateRoom({ question, config, runToken, onDone, onRerun, onAskChief }: DebateRoomProps) {
+  const addAsset = useAssetLibrary((s) => s.addAsset)
   const [phase, setPhase] = useState<Phase>('idle')
   const [statusText, setStatusText] = useState('')
   const [opinions, setOpinions] = useState<ExpertOpinionState[]>([])
@@ -251,7 +253,14 @@ export function DebateRoom({ question, config, runToken, onDone, onRerun, onAskC
               event={chief}
               config={config}
               expertCount={config.expertIds.length}
-              onSave={() => { /* 资产库接入后存档 */ }}
+              onSave={() => {
+                addAsset({
+                  type: 'chief',
+                  title: `首席报告 · ${question.slice(0, 20)}`,
+                  source: question.slice(0, 40),
+                  content: chief.content || '',
+                })
+              }}
               onExport={() => {
                 if (!chief.content) return
                 const blob = new Blob([`# 首席投资官 · 最终研判\n\n${chief.content}`], { type: 'text/markdown;charset=utf-8' })

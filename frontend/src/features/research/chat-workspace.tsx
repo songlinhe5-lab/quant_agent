@@ -2,8 +2,9 @@
 
 import React, { useMemo } from 'react'
 import { cn } from '@/lib/utils'
-import { Loader2, Download, Bot } from 'lucide-react'
+import { Loader2, Download, Save, Bot } from 'lucide-react'
 import { useChatStore } from '@/stores/useChatStore'
+import { useAssetLibrary } from '@/stores/useAssetLibrary'
 import { MessageListArea } from '@/features/copilot/message-list-area'
 import { ChatInputBox } from '@/features/copilot/chat-input-box'
 
@@ -18,6 +19,9 @@ export function ChatWorkspace() {
   const isGenerating = useChatStore((s) => s.isGenerating)
   const sessionId = useChatStore((s) => s.sessionId)
   const handleExport = useChatStore((s) => s.handleExport)
+  const addAsset = useAssetLibrary((s) => s.addAsset)
+
+  // COPILOT-18: 对话导出升级为「同时存档」——生成 Markdown 并存入资产库
 
   // 当前 ReAct 步数：取最后一条生成中/最近的助手消息里的工具步数
   const currentStep = useMemo(() => {
@@ -53,15 +57,31 @@ export function ChatWorkspace() {
             {shortId}
           </span>
         )}
-        <button
-          type="button"
-          onClick={handleExport}
-          disabled={messages.length === 0}
-          className="ml-auto flex items-center gap-1 rounded-md border border-border/40 px-2 py-1 text-[10px] text-muted-foreground hover:bg-secondary/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
-          title="导出当前会话为 Markdown"
-        >
-          <Download className="h-3 w-3" /> 导出
-        </button>
+        <div className="ml-auto flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => addAsset({
+              type: 'chat',
+              title: messages.find((m) => m.role === 'user')?.content?.slice(0, 20) || '对话',
+              source: sessionId,
+              content: messages.map((m) => `## ${m.role === 'user' ? '用户' : '助手'}\n\n${m.content}`).join('\n\n---\n\n'),
+            })}
+            disabled={messages.length === 0}
+            className="flex items-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[10px] text-sky-400 hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+            title="存入资产库"
+          >
+            <Save className="h-3 w-3" /> 存库
+          </button>
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={messages.length === 0}
+            className="flex items-center gap-1 rounded-md border border-border/40 px-2 py-1 text-[10px] text-muted-foreground hover:bg-secondary/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+            title="导出当前会话为 Markdown"
+          >
+            <Download className="h-3 w-3" /> 导出
+          </button>
+        </div>
       </div>
 
       {/* 复用抽屉消息流（宽屏 760px 居中）+ 输入框 */}
