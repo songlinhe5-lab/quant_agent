@@ -35,7 +35,8 @@ export function ScreenerQueryPanel() {
   const {
     nlpQuery, setNlpQuery, dslQuery, setDslQuery, showHistory, setShowHistory,
     history, setHistory, placeholderText, displayPrompts, refreshPrompts,
-    isLoading, progress, scanStatus, handleTranslate, showRawDsl, setShowRawDsl, handleSubscribe
+    isLoading, progress, scanStatus, handleTranslate, showRawDsl, setShowRawDsl, handleSubscribe,
+    fetchPageData, setCurrentPage, sortKey, sortDir, pageSize, columnFilters
   } = useScreenerContext()
   const [activeTag, setActiveTag] = useState<{ group: string; key: string } | null>(null)
 
@@ -62,6 +63,29 @@ export function ScreenerQueryPanel() {
 
   // UIRF-11: RAG 召回来源类型启发式分类（后端 rag_rules 为纯字符串，按文本特征推断来源 + 相关度）
   const [ragExpanded, setRagExpanded] = useState(false)
+  // UIRF-09: 过滤规则 chips 编辑（内联编辑数值 / 删除 / 添加后重查）
+  const [editingField, setEditingField] = useState<string | null>(null)
+  const [editVal, setEditVal] = useState('')
+
+  const rerunWithDsl = (newDsl: string) => {
+    setDslQuery(newDsl)
+    setShowRawDsl(true)
+    setCurrentPage(1)
+    fetchPageData(newDsl, 1, pageSize, sortKey, sortDir, {})
+  }
+
+  const updateFilter = (data: any, field: string, updater: (f: any) => void) => {
+    const next = JSON.parse(JSON.stringify(data))
+    const tf = next.filters?.find((f: any) => f.field === field)
+    if (tf) updater(tf)
+    rerunWithDsl(JSON.stringify(next))
+  }
+
+  const removeFilter = (data: any, field: string) => {
+    const next = JSON.parse(JSON.stringify(data))
+    next.filters = (next.filters || []).filter((f: any) => f.field !== field)
+    rerunWithDsl(JSON.stringify(next))
+  }
   const classifyRag = (rule: string): { source: string; cls: string } => {
     if (/财报|年报|营收|利润|净利润|现金流|负债|毛利/.test(rule)) return { source: '财报', cls: 'bg-sky-500/10 text-sky-400 border-sky-500/30' }
     if (/新闻|公告|快讯|资讯/.test(rule)) return { source: '新闻', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/30' }
@@ -217,8 +241,78 @@ export function ScreenerQueryPanel() {
                           if (minV !== undefined && maxV !== undefined) valStr = `${formatVal(minV)} ~ ${formatVal(maxV)}`; else if (minV !== undefined) valStr = `≥ ${formatVal(minV)}`; else if (maxV !== undefined) valStr = `≤ ${formatVal(maxV)}`; else if (f.value !== undefined) valStr = `= ${Array.isArray(f.value) ? f.value.join(', ') : f.value}`;
                           const termStr = (f.type === 'financial' && f.term && f.term !== 'ANNUAL') ? ` (${f.term})` : '';
                           if (f.type === 'exclude_plate') return (<span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 shadow-sm">剔除板块: {valStr.replace('= ', '')}</span>);
-                          return (<span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-700 dark:text-violet-300 border border-violet-500/20 shadow-sm">{fieldName}{termStr}: {valStr}</span>);
+                          // UIRF-09: 条件 chip 可编辑（数值内联编辑 / × 删除）→ 修改即重查
+                          if (editingField === f.field) {
+                            return (
+                              <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-700 dark:text-violet-300 border border-violet-500/30 shadow-sm">
+                                {fieldName}{termStr}:
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  value={editVal}
+                                  onChange={(e) => setEditVal(e.target.value)}
+                                  onBlur={() => {
+                                    const parsed = parseFloat(editVal)
+                                    if (!isNaN(parsed)) {
+                                      updateFilter(data, f.field, (tf) => {
+                                        // 单值编辑：同时放宽上下限到该值（近似，区间则设均值）
+                                        if (tf.min_value !== undefined && tf.max_value !== undefined) { const half = parsed / 2; tf.min_value = half; tf.max_value = half * 3 }
+                                        else if (tf.min_value !== undefined) tf.min_value = parsed
+                                        else if (tf.max_value !== undefined) tf.max_value = parsed
+                                        else tf.value = parsed
+                                      })
+                                    }
+                                    setEditingField(null)
+                                  }}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setEditingField(null) }}
+                                  className="w-16 bg-background/60 rounded px-1 py-px text-[10px] font-mono outline-none border border-violet-400/40"
+                                />
+                                <button onClick={() => setEditingField(null)} className="text-violet-400 hover:text-violet-600">✓</button>
+                              </span>
+                            )
+                          }
+                          return (
+                            <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-700 dark:text-violet-300 border border-violet-500/20 shadow-sm group/chip">
+                              <button
+                                type="button"
+                                onClick={() => { setEditingField(f.field); const v = minV !== undefined ? minV : (maxV !== undefined ? maxV : f.value); setEditVal(String(v ?? '')) }}
+                                className="hover:text-violet-500 transition-colors"
+                                title="点击编辑数值"
+                              >
+                                {fieldName}{termStr}: {valStr}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeFilter(data, f.field)}
+                                className="text-violet-400/60 hover:text-red-400 transition-colors opacity-0 group-hover/chip:opacity-100"
+                                title="删除此条件"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          );
                         })}
+                        {/* UIRF-09: + 添加条件（输入字段名+值 → 追加过滤重查） */}
+                        <span className="inline-flex items-center gap-1">
+                          <input
+                            type="text"
+                            placeholder="+ 添加条件 如 PE_TTM:30"
+                            onKeyDown={(e) => {
+                              if (e.key !== 'Enter') return
+                              const raw = (e.target as HTMLInputElement).value.trim()
+                              const m = raw.match(/^([A-Za-z0-9_]+)\s*[:=]\s*(\d+(?:\.\d+)?)$/)
+                              if (!m) return
+                              const [, field, valStr] = m
+                              const val = parseFloat(valStr)
+                              const next = JSON.parse(JSON.stringify(data))
+                              next.filters = next.filters || []
+                              next.filters.push({ field, type: 'simple', term: 'ANNUAL', min_value: val })
+                              rerunWithDsl(JSON.stringify(next))
+                              ;(e.target as HTMLInputElement).value = ''
+                            }}
+                            className="w-36 rounded border border-dashed border-violet-400/40 bg-transparent px-1.5 py-0.5 text-[10px] font-mono text-violet-300 placeholder:text-violet-400/40 outline-none focus:border-violet-400"
+                          />
+                        </span>
                       </div>
                       {showRawDsl && (<div className="mt-2.5 p-2 bg-black/40 rounded-md border border-border/40 overflow-x-auto custom-scrollbar animate-in fade-in slide-in-from-top-1 shadow-inner"><pre className="text-[10px] text-violet-300/80 font-mono leading-relaxed">{JSON.stringify(data, null, 2)}</pre></div>)}
                     </div>
