@@ -1,10 +1,11 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import { Filter, Plus, Activity, Table2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SortableTh, ScreenerRow, ScreenerQuoteRow } from './table-components'
-import { getZhLabel } from './shared'
+import { getZhLabel, formatDisplaySymbol } from './shared'
+import { cn } from '@/lib/utils'
 import { useScreenerContext } from './screener-context'
 import { DataState } from '@/components/data-state'
 import { resolveDataStatus } from '@/components/data-state-utils'
@@ -72,6 +73,33 @@ export function ScreenerResultsTable() {
   const wsStatus = useScreenerWsStatus()
   // UIRF-13: 空结果时的放宽建议（从 DSL 解析可放宽字段）
   const relaxSuggestions = !isLoading && paginatedData.length === 0 ? buildRelaxSuggestions(dslQuery) : []
+  // UIRF-10: 同名多市场伪重复归并开关（默认开，展示层归并）
+  const [mergeDup, setMergeDup] = useState(true)
+  const mergedData = React.useMemo(() => {
+    if (!mergeDup) return paginatedData
+    // 按 name 分组，同一 name 跨多市场合并
+    const groups = new Map<string, any[]>()
+    for (const r of paginatedData) {
+      const key = r.name || r.symbol
+      const arr = groups.get(key) ?? []
+      arr.push(r)
+      groups.set(key, arr)
+    }
+    const out: any[] = []
+    let mergedCount = 0
+    for (const [name, arr] of groups) {
+      if (arr.length > 1) {
+        // 伪重复：合并为一项，记录覆盖市场
+        const markets = Array.from(new Set(arr.map((r) => String(r.symbol).split('.')[0].toUpperCase())))
+        out.push({ ...arr[0], __merged: true, __mergedCount: arr.length, __markets: markets.join('+') })
+        mergedCount += arr.length - 1
+      } else {
+        out.push(arr[0])
+      }
+    }
+    ;(out as any).__mergedTotal = mergedCount
+    return out
+  }, [paginatedData, mergeDup])
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[minmax(280px,360px)_1fr] gap-4">
@@ -130,6 +158,19 @@ export function ScreenerResultsTable() {
             {Object.keys(columnFilters).length > 0 && (
               <Button variant="ghost" size="sm" onClick={() => { setColumnFilters({}); setCurrentPage(1); if (dslQuery) fetchPageData(dslQuery, 1, pageSize, sortKey, sortDir, {}); }} className="h-7 text-[10px] text-amber-600 dark:text-amber-500 hover:text-amber-700 bg-amber-500/10">清除全部过滤</Button>
             )}
+            {/* UIRF-10: 同名多市场伪重复归并开关 */}
+            {(mergedData as any).__mergedTotal > 0 && (
+              <button
+                type="button"
+                onClick={() => setMergeDup((v) => !v)}
+                className="flex items-center gap-1.5 h-7 rounded-md border border-border/40 px-2 text-[10px] text-muted-foreground hover:bg-secondary/50 transition-colors"
+                title="合并同一公司在不同市场的重复标的"
+              >
+                <span className={cn('h-3 w-3 rounded-full border', mergeDup ? 'bg-primary border-primary' : 'border-border')} />
+                归并
+                {mergeDup && (mergedData as any).__mergedTotal > 0 && <span className="text-primary font-bold">已归并 {(mergedData as any).__mergedTotal} 条</span>}
+              </button>
+            )}
             <Button variant="ghost" size="sm" onClick={handleExportCSV} className="h-7 text-[10px] text-muted-foreground hover:text-foreground">导出 CSV</Button>
           </div>
         </div>
@@ -164,9 +205,28 @@ export function ScreenerResultsTable() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/15">
-                  {paginatedData.map((r) => (
-                    <ScreenerRow key={r.symbol} r={r} isSelected={selected.includes(r.symbol)} dynamicCols={dynamicCols} toggleOne={toggleOne} handleAddAndOpen={handleAddAndOpen} handleAddSingle={handleAddSingle} onPreview={setPreviewData} onSendToCopilot={handleSendToCopilot} onSendToBacktest={handleSendToBacktest} />
-                  ))}
+                  {(mergedData as any[]).map((r) => {
+                    // UIRF-10: 同名多市场伪重复归并项 —— 展示主标的 + 市场覆盖徽章 + 已归并计数
+                    if ((r as any).__merged) {
+                      return (
+                        <tr key={r.symbol} className="bg-primary/[0.03] hover:bg-primary/10 transition-colors">
+                          <td className="px-3 py-2.5 pl-4"><input type="checkbox" className="rounded-sm border-border accent-primary" checked={false} onChange={() => {}} aria-label={`归并项 ${r.symbol}`} /></td>
+                          <td className="px-3 py-2.5 font-mono text-muted-foreground tabular-nums">{r.rank}</td>
+                          <td className="px-3 py-2.5 font-mono text-primary">{formatDisplaySymbol(r.symbol)}</td>
+                          <td className="px-3 py-2.5 text-foreground">{r.name}</td>
+                          <td colSpan={Math.max(dynamicCols.length, 1)} className="px-3 py-2.5">
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[9px] text-primary">
+                              市场覆盖：{(r as any).__markets}
+                            </span>
+                            <span className="ml-1.5 text-[9px] text-muted-foreground">已归并 {(r as any).__mergedCount} 条 · 仅展示主标的</span>
+                          </td>
+                        </tr>
+                      )
+                    }
+                    return (
+                      <ScreenerRow key={r.symbol} r={r} isSelected={selected.includes(r.symbol)} dynamicCols={dynamicCols} toggleOne={toggleOne} handleAddAndOpen={handleAddAndOpen} handleAddSingle={handleAddSingle} onPreview={setPreviewData} onSendToCopilot={handleSendToCopilot} onSendToBacktest={handleSendToBacktest} />
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
