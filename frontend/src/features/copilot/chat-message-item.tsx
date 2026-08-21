@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect, useCallback } from 'react'
 import { User, Bot, Loader2, Sparkles, ChevronRight, ChevronDown, ChevronUp, Search, Globe, Database, FileText, Code2, Check, Copy, RotateCcw, AlertTriangle, Rocket } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ThinkTimer } from '@/features/copilot/think-timer'
+import { ThinkingProgress } from '@/features/copilot/thinking-progress'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -246,16 +247,19 @@ export const ChatMessageItem = React.memo(({
           </div>
         ) : (
           <div className="flex flex-col">
-            {(hasThinking || hasTools) && (
+            {/* COPILOT-03: 生成中 → 四阶段进度器；完成后 → 可折叠思考过程面板 */}
+            {isGenerating && isLast ? (
+              <ThinkingProgress msg={msg} isLast={isLast} isGenerating={isGenerating} />
+            ) : (hasThinking || hasTools) ? (
               <details
                 ref={detailsRef}
                 onToggle={handleThinkToggle}
                 className="group border border-border/30 rounded-lg overflow-hidden bg-slate-50/50 dark:bg-black/20 text-xs transition-colors mb-3"
               >
                 <summary className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-white/5 font-semibold select-none list-none transition-colors [&::-webkit-details-marker]:hidden">
-                  {(isThinkingState || hasRunningTools) ? <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> : <Sparkles className="h-3.5 w-3.5 text-slate-500" />}
+                  {hasRunningTools ? <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> : <Sparkles className="h-3.5 w-3.5 text-slate-500" />}
                   <span className="text-slate-600 dark:text-gray-300">思考过程</span>
-                  {msg.startTime && (
+                  {msg.startTime && msg.thinkEndTime && (
                     <span className="text-[10px] text-muted-foreground ml-1">
                       (<ThinkTimer startTime={msg.startTime} endTime={msg.thinkEndTime} />)
                     </span>
@@ -385,7 +389,7 @@ export const ChatMessageItem = React.memo(({
                   )}
                 </div>
               </details>
-            )}
+            ) : null}
 
             <div className="markdown-body">
               <MarkdownErrorBoundary fallbackContent={finalContent}>
