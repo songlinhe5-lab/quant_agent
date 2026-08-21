@@ -15,7 +15,13 @@ export interface ExpertOpinionState {
   streaming: boolean
 }
 
-export function ExpertOpinionCard({ opinion }: { opinion: ExpertOpinionState }) {
+const CAMP_BORDER: Record<ExpertBias, string> = {
+  bullish: 'border-emerald-400/40',
+  bearish: 'border-red-400/40',
+  neutral: 'border-slate-400/40',
+}
+
+export function ExpertOpinionCard({ opinion, campBorder = false }: { opinion: ExpertOpinionState; campBorder?: boolean }) {
   const profile = expertById(opinion.expertId)
   const bias: ExpertBias = profile?.bias ?? 'neutral'
   const badge = biasBadge(bias)
@@ -24,7 +30,7 @@ export function ExpertOpinionCard({ opinion }: { opinion: ExpertOpinionState }) 
     <div
       className={cn(
         'rounded-xl border bg-white/5 p-3 transition-colors',
-        profile?.accent ?? 'border-white/10',
+        campBorder ? CAMP_BORDER[bias] : (profile?.accent ?? 'border-white/10'),
         opinion.streaming && 'ring-1 ring-scene/40',
       )}
     >

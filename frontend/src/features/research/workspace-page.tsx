@@ -9,7 +9,7 @@ import { MODE_META } from '@/features/trading/trading-mode-types'
 import { SessionCenter, type SessionItem } from './session-center'
 import { ChatWorkspace } from './chat-workspace'
 import { DebateComposer, type ComposerResult } from './debate-composer'
-import { TeamSession } from '@/features/copilot/research-team/team-session'
+import { DebateRoom } from './debate-room'
 import type { TeamConfig } from '@/features/copilot/research-team/roster-panel'
 
 interface ResearchMeta {
@@ -104,12 +104,10 @@ export function ResearchWorkspacePage() {
               onUseHoldings={() => { /* 预留：资产库接入后从当前持仓生成命题 */ }}
             />
           ) : b2Mode === 'debate' && debateRun ? (
-            <TeamSession
+            <DebateRoom
               key={debateRun.runToken}
               question={debateRun.question}
               config={debateRun.config}
-              // 组局态已由用户勾选阵容，始终传 expert_ids 生效
-              customMode={true}
               runToken={debateRun.runToken}
             />
           ) : (
