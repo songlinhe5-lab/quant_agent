@@ -3,7 +3,7 @@
 > **受众**：Cursor / Claude Code / Codex / Copilot 等**写仓库代码**的 Agent。
 > **不是**盘中交易主脑。Hermes 运行时指令：`prompts/system/HERMES.md`。
 > **版本**：V3.0（2026-08-17）| 冲突时以本文件为准；Cursor 适配器 `.cursor/rules/vibe-coding.mdc` 不得另立规则。
-> **体积上限**：本文件保持 ≤500 行。细节按 §8 按需加载，禁止把 `docs/02`/`AI_INSTRUCTIONS.md` 整本灌进上下文。
+> **体积上限**：本文件保持 ≤500 行。细节按 §8 按需加载，禁止把 `docs/02. Vibe Coding与AI工程规范.md`/`AI_INSTRUCTIONS.md` 整本灌进上下文。
 
 你是本仓库的编码 Agent：先 Grep 证明符号存在，再最小 diff。不要扮演华尔街毒舌主脑。
 
@@ -13,9 +13,43 @@
 
 - 本文件是跨 IDE 的 **L0 SSOT**。已在上下文中则不要再 Read 一遍。
 - Cursor 另注入 `.cursor/rules/vibe-coding.mdc`（指针 + fail-safe）。冲突 → 本文件。
-- **禁止默认加载**（即使文件名很像指令）：`AI_INSTRUCTIONS.md`（L4 空壳）、`MEMORY.md`（会话笔记）、`docs/TODO-backend.md`、`docs/VIBE_CODING_COMMIT_RULES.md`、`docs/02` 全文。
-- 操作流程在 `docs/02` 的 **§0 / §2.3 / §7**，禁止整本 900 行。
+- **禁止默认加载**（即使文件名很像指令）：`AI_INSTRUCTIONS.md`（L4 空壳）、`MEMORY.md`（会话笔记）、`docs/TODO-backend.md`、`docs/VIBE_CODING_COMMIT_RULES.md`。`docs/02. Vibe Coding与AI工程规范.md` 为单文件（约 940 行），**禁止整本灌入，仅按具体章节单节加载**（见下"什么问题读哪节"）：
+  - 加载规则 / SSOT 层级 → **§0**
+  - 反过度设计 / Clean Architecture / 少写代码 → **§2.3**
+  - 禁止事项速查（Vibe Coding 独有红线）→ **§7**
+  - 日志规范（print 禁令）→ **§6.1**（通用红线见本文件 §7）
+- 操作流程在 `docs/02. Vibe Coding与AI工程规范.md`，按上表章节单节加载，禁止整本 940 行。
 - 自动排除：遵守仓库根 `.aiexclude`（`node_modules/`、`.venv/`、lock、`data/`、日志、密钥）。
+
+### 0.1 文档别名索引（按需加载入口）
+
+下文 §2 / §8 用 `docs/NN` 简写引用，Agent 须**先查此表拿真实路径**再 `read_file` 具体章节。文件名形如 `docs/NN. 中文名.md`（`数字. ` 点+空格+中文），`search_file docs/NN*` 全局 glob 不可靠，务必用本表或 `search_file` 在 `docs/` 目录内按 `NN*` 查。
+
+| 简写 | 真实文件 |
+|:---|:---|
+| docs/01 | docs/01. 产品功能与UIUE架构.md |
+| docs/02 | docs/02. Vibe Coding与AI工程规范.md |
+| docs/03 | docs/03. 后端架构与执行引擎.md |
+| docs/04 | docs/04. 前端架构与零GC渲染.md |
+| docs/05 | docs/05. 客户端架构与Tauri壳资源.md |
+| docs/06 | docs/06. 工程化配置与部署方案.md |
+| docs/07 | docs/07. 子系统架构速查手册.md |
+| docs/08 | docs/08. 日志与可观测性规范.md |
+| docs/09 | docs/09. 性能测试规范.md |
+| docs/10 | docs/10. API接口规范.md |
+| docs/11 | docs/11. 数据模型与领域设计.md |
+| docs/12 | docs/12. 运维手册与应急预案.md |
+| docs/13 | docs/13. 质量评估体系.md |
+| docs/14 | docs/14. 分布式数据源服务架构.md |
+| docs/15 | docs/15. 回测实盘同构引擎设计.md |
+| docs/16 | docs/16. 策略实验室完整架构.md |
+| docs/17 | docs/17. 纸面组合系统架构.md |
+| docs/18 | docs/18. 多通道推送路由设计.md |
+| docs/19 | docs/19. Parquet数据湖快照版本化设计.md |
+| docs/20 | docs/20. 前端视觉设计规范.md |
+| docs/21 | docs/21. 专家团多智能体协作系统.md |
+| docs/22 | docs/22. Agent 工具链稳定性保障体系.md |
+| docs/23 | docs/23. 业务数据源聚合Facade设计.md |
 
 ---
 
@@ -63,7 +97,7 @@ Python 3.11 + FastAPI + Pydantic v2 + SQLAlchemy 2.0 async + Redis + PostgreSQL/
 - 禁止 async 路由里同步阻塞：用 `asyncio.to_thread` 或进程池。
 - 密钥与连接串只从环境变量读取，禁止硬编码、禁止提交 `.env`。
 
-数据源细则：`docs/14`、`docs/23`、`docs/06`（按任务**单章**）。拓扑：US-MASTER + US-YF-A/B + CN-DATA；Yahoo 不得集中单 IP。主服务经 `DataSourceRouter.fetch_*()`，OpenD 仅主节点 `data_subservice` 持有。
+数据源细则：按任务**单章**加载——框架接口 `docs/14` §2 / Facade 层 `docs/14` §2.5 / 熔断降级 `docs/14` §5.4 / HMAC 签名 `docs/14` §6.3 / 限流退避 `docs/14` §12 / 扩展新源 `docs/14` §9；业务聚合 `docs/23` §二·§3（现状审计 SSOT 见 `docs/23` §八）；部署拓扑 `docs/06` §一·§1.5。拓扑：US-MASTER + US-YF-A/B + CN-DATA；Yahoo 不得集中单 IP。主服务经 `DataSourceRouter.fetch_*()`，OpenD 仅主节点 `data_subservice` 持有。
 
 **部署踩坑（写 compose / 连 OpenD 时必看）**：容器访问宿主服务用 Tailscale IP，禁止写死 docker0/`172.17/172.19` 网关。Futu OpenD 是唯一例外：须监听 `0.0.0.0:11111`（禁止改回 `127.0.0.1`），容器内 `FUTU_HOST=host.docker.internal`。端口不对公网暴露。健康检查分级：`/health/live` 不依赖数据源；`ready` 才查 Redis/PG/数据源。
 
@@ -127,23 +161,19 @@ PROD 禁止注入 mock（仅 `import.meta.env.DEV && VITE_ENABLE_MOCK==='true'`�
 
 **Docker**：必须 healthcheck；生产镜像禁止 `:latest`。
 
-**日志**：structlog / 前端 `logger`；级别 DEBUG/INFO/WARNING/ERROR/CRITICAL 语义见 `docs/02`。
+**日志**：structlog / 前端 `logger`；级别 DEBUG/INFO/WARNING/ERROR/CRITICAL 语义见 `docs/02. Vibe Coding与AI工程规范.md` **§6.2**。
 
 **Ponytail（少写代码）**：先问是否已有 helper / 标准库 / 现有依赖。不造未要求的抽象。修 Bug 改共享根因，不要每个调用方加一层 guard。复杂逻辑留一个可运行检查。
 
 ---
 
-## 7. 红线速查
+## 7. 红线速查（前端图表/状态/Tick 等详见 §3，后端 API/实盘等详见 §4）
 
 | 禁止 | 替代 |
 |:---|:---|
-| `useState` 存 Tick | `useRef` + DOM 突变 |
-| ECharts 做 K 线主图 | Lightweight-Charts |
-| 原生大表 | AG Grid |
 | Vue / Next / Axios | React / Vite / fetch |
 | 路由里同步阻塞 / 写业务 | `to_thread` / `services/` |
 | 各模块直连外部 API | Gateway / data_subservice |
-| Futu 百分比传 `15` | 传 `0.15` |
 | 无 `REAL_TRADE_EXECUTE` 实盘 | 先检查环境变量 |
 | 提交 `.env` | gitignore |
 | 生产 `:latest` | 精确版本 tag |
@@ -155,14 +185,16 @@ PROD 禁止注入 mock（仅 `import.meta.env.DEV && VITE_ENABLE_MOCK==='true'`�
 
 ## 8. 按需加载（禁止开场灌整库）
 
+> `docs/NN` 简写 → 真实文件见 **§0.1 文档别名索引**。加载时按右侧章节定位，禁止整本灌入。
+
 | 任务 | 再读 | 不要读 |
 |:---|:---|:---|
 | 修 Bug | 目标文件 + 对应 test + 1 个调用方 | 全目录、`*.log`、lock |
 | 新 Router | 同类 router 1 个 + service/schema | 技术栈散文、无关 docs |
 | 新 UI | `features/<domain>/` 1 个参考组件 + store slice | `node_modules/`、全量 docs |
-| 数据源/Facade | `docs/23` 或 `docs/14` **单章** + TODO 条目 | 03+04+06+14 一起灌 |
-| 前端渲染 | `docs/04` 相关节 | `HERMES.md` 早报模板 |
-| 部署 | `docs/06` 相关节 | |
-| SOP / 冻结区 | `docs/02` 的 §0 / §2.3 / §7 | `docs/02` 全文、`AI_INSTRUCTIONS.md`、`MEMORY.md` |
+| 数据源/Facade | `docs/23` §二·§3（三层边界）/ `docs/14` §2.5（Facade 层）单章 + TODO 条目 | 03+04+06+14 一起灌 |
+| 前端渲染 | `docs/04` §2（布局）/ §3.1（颜色）/ §3.6（空状态）/ §6（零 GC）/ §4.6（WS 断连） | `HERMES.md` 早报模板 |
+| 部署 | `docs/06` §一（拓扑）/ §1.5（Tailscale）/ §3.2（CI/CD）/ §四（采集器） | |
+| SOP / 冻结区 | `docs/02. Vibe Coding与AI工程规范.md` **§0**（加载规则）/ **§2.3**（反过度设计+Clean Arch）/ **§7**（禁止事项速查） | `docs/02. Vibe Coding与AI工程规范.md` 全文、`AI_INSTRUCTIONS.md`、`MEMORY.md` |
 
 不确定路径时：**先 Grep，再 Read**。单次任务涉及文件 >5 先拆或等人确认。
