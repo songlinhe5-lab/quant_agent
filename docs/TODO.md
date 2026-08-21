@@ -46,6 +46,7 @@
 | **AGENT-ARCH** | [**TODO-AGENT-ARCH.md**](./TODO-AGENT-ARCH.md) | **Hermes Agent 内核架构优化**（AGENT 系列 SSOT）。对标 hermes-agent / deepseek-harness 后结论：**两者均不引入，只借架构范式**。现状基线 S1~S13 + 14 项任务分 5 阶段：P0 单驱动收口 → P1 中间件管线/逐笔审批/Verify 实装/结果正交分类 → 审计日志/脱敏 → 成本效率 → 韧性扩展 | **P0/P1** |
 | **DS-FUTU-CAP** | [**TODO-FUTU-INTERFACE-CAPABILITY.md**](./TODO-FUTU-INTERFACE-CAPABILITY.md) | **全局地图 + 功能级 SSOT**（上列 4 份为分册）。2026-08-16 本机实测 26/26；**F0~F5 接口接入 + G1~G8 产品功能**：G1 真基本面收口 / G2 港股卖空拥挤度 / G3 主力筹码分层 / G4 期权策略损益 / G5 FedWatch / G6 板块热力图 / G7 预期差 / G8 数据正确性基座。⚠️ 受 **BE-ARCH-08a** 阻塞（主镜像 futu 硬依赖未修则新功能无法上线） | **P0/P1** |
 | **COPILOT** | 设计稿 `AI Copilot_UI重构设计.md` | 一体两态重构：Zustand 状态提升 + 投研工作台 + 思维链进度器 + 辩论室 + 资产库；P0 双实例不同步/假附件/思维链丢弃/事件名冲突 + P1 拥挤/鉴权/超限。22 项任务分 4 阶段，详见 `TODO-frontend.md` COPILOT 系列 | **P0/P1** |
+| **UIRF** | 设计稿 ×8（数据中心与宏观 / 行情页个股工作台 / 期权重组 / 策略研发工作台 / 智能量化选股 / 高频回测引擎 / 资产风控与高级归因 + design-tokens.json） | 六模块前端 UI 重构 review（2026-08-21）：策略工作台 / 资产风控 / 数据中心一期 / 个股工作台一期已落地；**剩余 3 项 P0 可信红线（回测假收益 / 回测失败态机 / 资金流硬编码示例值）+ 20 项 P1/P2**，详见本文件「线 10」 | **P0/P1** |
 
 ---
 
@@ -154,4 +155,45 @@ S8: PT-01a ─► PT-01b ─► PT-01c ─► PT-02a ─► PT-02b
 - [x] **Phase 0（前置）** `[→ COPILOT-01 ✅ 854e43c]` Zustand 状态提升 → 并行 `[→ COPILOT-04 ✅ b5a5e34]` 事件协议统一 / `[→ COPILOT-07 ✅ b5a5e34]` 移除假指数 / `[→ COPILOT-10 ✅ b5a5e34]` 快捷指令统一
 - [ ] **Phase 1（P0 修复）** `[→ COPILOT-02 ✅ bba7ede]` 假附件撤下 / `[→ COPILOT-03 ✅ 8bec707]` 思维链进度器 / `[→ COPILOT-05 ✅ 5a490ad]` 投研会持久化 + 诚实空态 / `[→ COPILOT-09 ✅ a97bae7]` 迭代上限披露
 - [ ] **Phase 2（新功能）** `[→ COPILOT-12~20]` 投研工作台三列骨架 + 会话中心 + 对话宽屏版 + 辩论室三态（组局/辩论/收敛）+ 资产库 + 运行信息列 + 抽屉展开按钮
-- [ ] **Phase 3（可信 + 治理）** `[→ COPILOT-06 ✅ 125cf45]` 投研会迁出抽屉 / `[→ COPILOT-08 ✅ 34f2452]` 鉴权统一 / `[→ COPILOT-11]` 超限文件拆分 / `[→ COPILOT-21]` 工具失败明示 + STALE 角标 / `[→ COPILOT-22]` SANDBOX 策略卡
+- [ ] **Phase 3（可信 + 治理）** `[→ COPILOT-06 ✅ 125cf45]` 投研会迁出抽屉 / `[→ COPILOT-08 ✅ 34f2452]` 鉴权统一 / `[→ COPILOT-11 ✅ 424be27]` 超限文件拆分 / `[→ COPILOT-21]` 工具失败明示 + STALE 角标 / `[→ COPILOT-22]` SANDBOX 策略卡
+
+### 线 10 · 前端 UI 重构收尾（UIRF 系列 · 2026-08-21 review）
+
+> 对照 8 份设计稿（数据中心与宏观 / 行情页个股工作台 / 期权波动率重组 / 策略研发工作台 / 智能量化选股 / 高频回测引擎 / 资产风控与高级归因 / design-tokens）逐项 review 现有实现。**已落地**：策略工作台（`a2cffb0/684e07d/eff1773/7832a44`：空壳按钮删除 / MainTabs 可见化 + 死事件修复 / 诊断卡 / AI 落码统一 Diff / 模板中心 / 部署闸门 / 草稿真实状态）、资产风控（`81e49ab/eebf5b0`：VaR 双口径 / 账户切换 tabs / 因子归因 tab / STALE 遮罩 / 分级 SSOT）、数据中心一期（3 tab 骨架 / `options-module` + 孤儿文件删除 / `/options` `/fund-flow-dashboard` 路由收敛 / PCR→概览 B 区 / FedWatch→宏观日历）、个股工作台一期（右栏 [盘口\|微观] 持久化切换 / 中列期权模式 + 热力图 `onSelectContract` 联动）、选股器基础（AG Grid / STALE 徽章 / AI 摘要卡 / 示例 chips）。**剩余任务如下**（ID 前缀 UIRF 避撞既有 BT-xx/STRAT-xx）。
+
+#### 🔴 P0 可信红线（数据造假 / 误导，立即修）
+
+- [ ] **UIRF-01** 删回测 Box-Muller 假收益：`use-backtest.ts` L202-209 成功时用随机高斯填充收益分布直方图；L147 已有真实 `dailyReturns` 接入，删除假兜底，无序列时收益分布 tab 走 EmptyState
+- [ ] **UIRF-02** 修回测 `finally` 状态机：`use-backtest.ts` L216-221 非 abort 一切路径置 `progress=100 + done=true`，后端报错也显示"回测完成"；改为仅 `{type:'result'}` → 成功 / `error`·网络失败 → 错误卡 + 重试（进度停实际值）/ abort → 已停止
+- [ ] **UIRF-03** 资金流下钻层硬编码示例值：`data-center-capital-flow.tsx` L119-121 港股通(沪) +97.9亿 / (深) +42.1亿 / 合计 +140.0亿 为写死数字；接真实双通道数据，接入前 EmptyState
+
+#### 🟠 P1 功能补全
+
+- [ ] **UIRF-04** 删回测运行中装饰日志（`backtest-config.tsx` L153-156 "PairsTradingBot / Z-Score=2.73"），只渲染 NDJSON `stage/detail` 真实事件
+- [ ] **UIRF-05** 回测成本/复现参数显性化：`use-backtest.ts` L160-162 硬编码 `atr_multiplier/commission_pct/slippage_pct/random_seed` → 表单字段（④高级与复现折叠区），ReproducibilityBadge 记录与实际 payload 一致
+- [ ] **UIRF-06** 回测文案与选择器：删 "Serverless"（`backtest-config.tsx` L177）→ "启动回测 · 单次沙箱推演"；策略下拉三分组（内置引擎 / 我的草稿·真实状态 / Pine 自定义）
+- [ ] **UIRF-07** 资金流 tab Placeholder 收敛：跨市场 ETF / 美股板块 ETF / 美股主力大单 / 美股卖空四块接现有数据源；确无数据的改诚实"未接入"说明 + 北向成交额中性卡（港交所 2024-08 停止披露净额口径标注）
+- [ ] **UIRF-08** 删孤儿 `fund-flow-dashboard.tsx`（550 行，路由已重定向、全仓无引用）；**前置**：UIRF-07 验收后执行
+- [ ] **UIRF-09** 选股器可编辑规则 chips：条件 chip 数值就地编辑 / `×` 删除 / `+ 添加条件` → 修改即重查（现 `rag_rules` 仅只读列表，`screener-query-panel.tsx` L155-163）
+- [ ] **UIRF-10** 选股器同名多市场伪重复归并开关（默认开，展示层归并 + 市场覆盖徽章 + "已归并 N 条"计数）
+- [ ] **UIRF-11** 选股器 RAG 召回依据卡：来源类型徽章 + 相关度分数，最多 3 条 + "查看全部"折叠
+- [ ] **UIRF-12** 选股器 AI 洞察卡规范化：`[AI 生成 · 仅供参考]` 徽章必挂 + 主线概念/结构特征/龙头点评三段 + 失败错误态重试（禁编数）
+- [ ] **UIRF-13** 选股器空结果放宽建议按钮（如"市盈率放宽到 ≥80"直接改规则重查）
+
+#### 🟠 P1 工程债 · 行数超限（编码宪法 feature 页 ≤250 / hook ≤100）
+
+- [ ] **UIRF-14** `quotes.tsx` 462 行拆分：抽 `CompareChartPanel` 等分子组件至 `features/quotes/`
+- [ ] **UIRF-15** 数据中心子 tab 拆分：`data-center-overview.tsx` 293 / `data-center-capital-flow.tsx` 270 / `use-dashboard-data.ts` 266 → 各 ≤250
+- [ ] **UIRF-16** `use-backtest.ts` 290 行按状态机拆分（建议与 UIRF-02/04/05 同批执行）
+- [ ] **UIRF-17** `risk-account-section.tsx` 452 行拆为 KPI / 风险画像 / tabs / 持仓四分子组件
+
+#### 🟡 P2 一致性与增强
+
+- [ ] **UIRF-18** 回测表单控件统一 shadcn（Select/Input/Switch/Collapsible）；`backtest-charts.tsx` L119 水下图写死 `-12.3` fallback 清除；"恢复上次参数"次按钮
+- [ ] **UIRF-19** 数据中心二期：板块资金流向三市场版式与单位统一（亿元/亿美元，废"万元"）；资产 tile 类目分组；面板更名"市场脉搏"
+- [ ] **UIRF-20** 个股工作台三期：场景模式联动（monitor→盘口 / research→微观）；右栏/中列快捷键 D/M/C/O；微观卡"所属板块"跳转资金流向
+- [ ] **UIRF-21** 数据中心三期：概览资产卡点击 → `/market/:ticker` 深链接通（机制已存在）；时段感知默认页；场景落地页映射
+- [ ] **UIRF-22** 选股器历史记录改输入框右上角图标按钮 + 一键重放
+- [ ] **UIRF-23** OMS 导航徽章 `badge:'3'` 硬编码字符串改动态计数（独立小工单）
+
+> **依赖与执行序**：UIRF-01~03（P0）随时可做、互不依赖 → UIRF-04~06 + 16 同批（回测页一次改完）→ UIRF-07 → UIRF-08（删除）→ UIRF-09~13（选股器批）→ UIRF-14/15/17（拆分批，可并行）→ P2 按兴趣排期。每项独立原子提交（`docs/VIBE_CODING_COMMIT_RULES.md`）。

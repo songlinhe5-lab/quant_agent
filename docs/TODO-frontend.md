@@ -551,12 +551,12 @@
 
 #### 数字可信与状态规范
 
-- [ ] **[COPILOT-21]** **工具失败明示 + 数据 STALE 角标**：
+- [x] **[COPILOT-21]** **工具失败明示 + 数据 STALE 角标**：✅ `a807599`
   - 工具失败的消息渲染红色失败块「数据获取失败：{原因}，以下结论不含该项数据」——禁止估计值兜底
   - 工具结果卡显示取数时间戳；超 5 分钟（行情类）/ 1 日（基本面类）加 STALE 角标（`text-amber-500` + 区域 `opacity-60 saturate-50`）
   - 依赖：COPILOT-01
   - 预期工时：FE 3h
-- [ ] **[COPILOT-22]** **SANDBOX/LIVE 全局徽章 + 策略卡**：
+- [x] **[COPILOT-22]** **SANDBOX/LIVE 全局徽章 + 策略卡**：✅ `07d72d9`
   - `strategy_code` 事件渲染为 SANDBOX 卡：深色代码预览 + 徽章「SANDBOX · 未实盘」+ 按钮"去策略研发工作台"（深链携带代码块 id）
   - LIVE 文案永不出现在 `REAL_TRADE_EXECUTE` 闸门通过之前
   - 交易执行类工具（`manage_broker_orders_and_account`）的任何调用在工具记录里标红边
