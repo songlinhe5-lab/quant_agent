@@ -8,6 +8,9 @@ import { useTradingModeStore } from '@/stores/useTradingModeStore'
 import { MODE_META } from '@/features/trading/trading-mode-types'
 import { SessionCenter, type SessionItem } from './session-center'
 import { ChatWorkspace } from './chat-workspace'
+import { DebateComposer, type ComposerResult } from './debate-composer'
+import { TeamSession } from '@/features/copilot/research-team/team-session'
+import type { TeamConfig } from '@/features/copilot/research-team/roster-panel'
 
 interface ResearchMeta {
   tools_count: number
@@ -20,12 +23,27 @@ interface ResearchMeta {
  *  - 标题条副标题 Hermes ReAct · {tools_count} tools · {model_name}（来自 GET /research/meta，禁止写死）
  *  - 右侧 SANDBOX/LIVE 徽章（与策略工作台同口径）
  */
+type B2Mode = 'chat' | 'composer' | 'debate'
+
 export function ResearchWorkspacePage() {
   const [meta, setMeta] = useState<ResearchMeta>({ tools_count: 0, model_name: '' })
   const [b3Open, setB3Open] = useState(true)
   const [activeSession, setActiveSession] = useState<SessionItem | undefined>(undefined)
+  // B2 主区模式：对话 / 组局态(COPILOT-15) / 辩论态(COPILOT-16)
+  const [b2Mode, setB2Mode] = useState<B2Mode>('chat')
+  const [debateRun, setDebateRun] = useState<{ question: string; config: TeamConfig; runToken: number } | null>(null)
   const mode = useTradingModeStore((s) => s.mode)
   const modeMeta = MODE_META[mode]
+
+  const handleLaunchDebate = (r: ComposerResult) => {
+    // runToken>0 才触发 TeamSession 的 run()；每次发起递增避免重复 key remount
+    setDebateRun((prev) => ({
+      question: r.question,
+      config: { scenario: r.scenario, expertIds: r.expertIds, rounds: r.rounds },
+      runToken: (prev?.runToken ?? 0) + 1,
+    }))
+    setB2Mode('debate')
+  }
 
   useEffect(() => {
     let mounted = true
@@ -73,17 +91,27 @@ export function ResearchWorkspacePage() {
         {/* B1 会话中心（COPILOT-13） */}
         <SessionCenter
           activeId={activeSession?.id}
-          onSelect={(it) => setActiveSession(it)}
-          onNewChat={() => setActiveSession(undefined)}
-          onNewDebate={() => setActiveSession(undefined)}
+          onSelect={(it) => { setActiveSession(it); if (it.kind === 'debate') setB2Mode('chat') }}
+          onNewChat={() => { setActiveSession(undefined); setB2Mode('chat') }}
+          onNewDebate={() => { setActiveSession(undefined); setB2Mode('composer') }}
         />
 
-        {/* B2 主区：对话(COPILOT-14 宽屏版) / 辩论室(COPILOT-15~17) */}
+        {/* B2 主区：对话(COPILOT-14) / 组局态(COPILOT-15) / 辩论态(COPILOT-16) */}
         <main className="relative flex-1 min-w-0 flex flex-col">
-          {activeSession?.kind === 'debate' ? (
-            <div className="flex-1 flex items-center justify-center p-6 text-center text-[10px] text-muted-foreground">
-              辩论室主区（COPILOT-15~17 填充）
-            </div>
+          {b2Mode === 'composer' ? (
+            <DebateComposer
+              onLaunch={handleLaunchDebate}
+              onUseHoldings={() => { /* 预留：资产库接入后从当前持仓生成命题 */ }}
+            />
+          ) : b2Mode === 'debate' && debateRun ? (
+            <TeamSession
+              key={debateRun.runToken}
+              question={debateRun.question}
+              config={debateRun.config}
+              // 组局态已由用户勾选阵容，始终传 expert_ids 生效
+              customMode={true}
+              runToken={debateRun.runToken}
+            />
           ) : (
             <ChatWorkspace />
           )}
