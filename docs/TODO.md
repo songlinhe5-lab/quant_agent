@@ -140,7 +140,7 @@ S8: PT-01a ─► PT-01b ─► PT-01c ─► PT-02a ─► PT-02b
 
 > 对标 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) 与 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 后结论：**两者均不引入**（前者是产品不是库；后者是 TS 且为 3 天大的 developer preview），**只借架构范式**。问题在自家 `agent.py` 的 1151 行里 —— 现状基线 S1~S13 全部按代码核实。
 
-- [ ] **Phase 0** `[→ AGENT-04 🚧 in progress]` ReAct 单驱动收口（**前置**，两套循环不合并则以下每项都要写两遍）
+- [ ] **Phase 0** `[→ AGENT-04 🚧 A-2.1 ✅ ce2ed74]` ReAct 单驱动收口（**前置**，两套循环不合并则以下每项都要写两遍）
 - [ ] **Phase 1（P0 红线）** `[→ AGENT-02]` 中间件管线（共同落点，先做）→ 并行 `[→ AGENT-07]` 逐笔交易审批（fail-closed）· `[→ AGENT-08]` Verify 阶段实装 · `[→ AGENT-09]` 工具结果正交分类
 - [ ] **Phase 2（审计）** `[→ AGENT-01]` 会话事件日志 append-only · `[→ AGENT-10]` 密钥作用域与日志脱敏
 - [ ] **Phase 3（成本）** `[→ AGENT-03]` 工具集分发 · `[→ AGENT-11]` Prompt 缓存边界+Token 计量 · `[→ AGENT-12]` 重复守卫 · `[→ AGENT-05]` 脚本 RPC 批量

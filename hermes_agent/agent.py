@@ -135,6 +135,21 @@ class HermesAgent(MemoryOperationsMixin):
 
         return request_kwargs
 
+    # A-2.2: 抽 _record_usage 辅助函数，统一 token 计量埋点逻辑（AGENT-04）
+    async def _record_usage(self, usage):
+        """
+        统一的 token 使用量记录辅助函数。
+
+        Args:
+            usage: OpenAI API 返回的 usage 对象（包含 prompt_tokens/completion_tokens/total_tokens）
+        """
+        if usage is not None:
+            await token_usage_store.record(
+                prompt_tokens=getattr(usage, "prompt_tokens", 0),
+                completion_tokens=getattr(usage, "completion_tokens", 0),
+                total_tokens=getattr(usage, "total_tokens", 0),
+            )
+
     def __init__(
         self,
         tool_registry,
@@ -305,14 +320,8 @@ class HermesAgent(MemoryOperationsMixin):
                 response = await self.client.chat.completions.create(**request_kwargs)
                 msg = response.choices[0].message
 
-                # 📊 Token 计量埋点：补齐 ReAct 非流式路径（之前 19M token 泄漏的统计黑洞）
-                _usage = getattr(response, "usage", None)
-                if _usage is not None:
-                    await token_usage_store.record(
-                        prompt_tokens=getattr(_usage, "prompt_tokens", 0),
-                        completion_tokens=getattr(_usage, "completion_tokens", 0),
-                        total_tokens=getattr(_usage, "total_tokens", 0),
-                    )
+                # 📊 Token 计量埋点：A-2.2 使用统一的 _record_usage 辅助函数（AGENT-04）
+                await self._record_usage(getattr(response, "usage", None))
 
                 if self.debug_mode:
                     self.console.print("\n[dim magenta]--- 🐛 [Debug] LLM Response ---[/dim magenta]")
@@ -383,14 +392,8 @@ class HermesAgent(MemoryOperationsMixin):
             response = await self.client.chat.completions.create(
                 model=self.pro_model, messages=cast(Any, self.messages), temperature=0.0
             )
-            # 📊 Token 计量埋点：pro 最终总结（非流式）消耗巨大，必须计入
-            _f_usage = getattr(response, "usage", None)
-            if _f_usage is not None:
-                await token_usage_store.record(
-                    prompt_tokens=getattr(_f_usage, "prompt_tokens", 0),
-                    completion_tokens=getattr(_f_usage, "completion_tokens", 0),
-                    total_tokens=getattr(_f_usage, "total_tokens", 0),
-                )
+            # 📊 Token 计量埋点：A-2.2 pro 最终总结（非流式）使用统一的 _record_usage（AGENT-04）
+            await self._record_usage(getattr(response, "usage", None))
             final_msg = response.choices[0].message
             self.messages.append(final_msg.model_dump(exclude_none=True))
             await self._save_session()
@@ -558,13 +561,8 @@ class HermesAgent(MemoryOperationsMixin):
 
                 self.console.print(f"✅ [Chat API] 本轮流式接收完毕，共解析 {chunk_count} 个 Chunk。")
 
-                # 📊 Token 计量埋点：补齐 ReAct 流式路径（之前 19M token 泄漏的统计黑洞）
-                if _last_usage is not None:
-                    await token_usage_store.record(
-                        prompt_tokens=getattr(_last_usage, "prompt_tokens", 0),
-                        completion_tokens=getattr(_last_usage, "completion_tokens", 0),
-                        total_tokens=getattr(_last_usage, "total_tokens", 0),
-                    )
+                # 📊 Token 计量埋点：A-2.2 使用统一的 _record_usage 辅助函数（AGENT-04）
+                await self._record_usage(_last_usage)
 
                 if self.debug_mode:
                     self.console.print("\n[dim magenta]--- 🐛 [Debug Stream] LLM Response Assembled ---[/dim magenta]")
@@ -748,13 +746,8 @@ class HermesAgent(MemoryOperationsMixin):
                     final_content += delta.content
                     yield {"type": "text_chunk", "content": delta.content}
 
-            # 📊 Token 计量埋点：pro 最终流式总结（消耗巨大，必须计入）
-            if _f_usage is not None:
-                await token_usage_store.record(
-                    prompt_tokens=getattr(_f_usage, "prompt_tokens", 0),
-                    completion_tokens=getattr(_f_usage, "completion_tokens", 0),
-                    total_tokens=getattr(_f_usage, "total_tokens", 0),
-                )
+            # 📊 Token 计量埋点：A-2.2 pro 最终流式总结使用统一的 _record_usage（AGENT-04）
+            await self._record_usage(_f_usage)
 
             self.messages.append({"role": "assistant", "content": final_content if final_content else None})
 
