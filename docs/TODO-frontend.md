@@ -431,19 +431,19 @@
   - 保留现有能力：折叠不卸载 / 页面上下文注入 / 会话双层持久化 / tool_call_id 精准重组 / Markdown 导出
   - 依赖：无（所有后续 COPILOT 任务的前置）
   - 预期工时：FE 12h
-- [ ] **[COPILOT-02]** **撤下假附件入口 + 上下文 chip 可视化**（P0-3）：
+- [x] **[COPILOT-02]** **撤下假附件入口 + 上下文 chip 可视化**（P0-3）：✅ `bba7ede`
   - 移除 `chat-input-box.tsx` 的图片/PDF 上传三入口（选择/粘贴/拖拽，L78-139）
   - 输入区左下改放「附加页面上下文」chip（虚线 "+ 附加本页上下文"，有上下文时显示实线 chip + kind 图标：kline=蜡烛/risk=盾/screener=漏斗/analysis=星）
   - 后端 `chat.py:215` 的 `attachments=None` 硬编码保留（附件上传 `POST /chat/uploads` 列为 roadmap）
   - 依赖：COPILOT-01
   - 预期工时：FE 4h
-- [ ] **[COPILOT-03]** **思维链四阶段进度器**（P0-4）：
+- [x] **[COPILOT-03]** **思维链四阶段进度器**（P0-4）：✅ `8bec707`
   - 消费真实事件：`reasoning_chunk`（Plan）→ `tool_start/tool_result`（Tool）→ 二次同类 tool 或 `</think>` 标记（Verify）→ `text_chunk`（Output）
   - 视觉：四阶段进度条 `[规划 Plan]──[调用工具 Tool]──[核验 Verify]──[输出 Output]`，Plan=紫色呼吸点+可展开推理片段，Tool=chip 名称+参数摘要，heartbeat 驱动呼吸动画
   - 30s 无任何事件 → amber「响应缓慢，后端可能排队」，不转假圈
   - 依赖：COPILOT-01
   - 预期工时：FE 8h
-- [ ] **[COPILOT-04]** **统一事件协议**（P0-5）：
+- [x] **[COPILOT-04]** **统一事件协议**（P0-5）：✅ `b5a5e34`
   - `copilot-prefill` 与 `quant_copilot_invoke` 二选一收敛为 `quant_copilot_invoke`（detail 携带 `{prompt, symbol, kind}`）
   - 修复 `symbol-context-menu.tsx:45-52` dispatch 的 `copilot-prefill` 无监听者问题
   - 全仓监听统一为 `quant_copilot_invoke`（`chat-context.tsx:453-461` 已有路径）
@@ -462,7 +462,7 @@
   - 抽屉头部不再出现「对话 / AI 投研团队」tab 切换，只保留对话
   - 依赖：COPILOT-01, COPILOT-05
   - 预期工时：FE 8h
-- [ ] **[COPILOT-07]** **移除模拟恐惧贪婪指数**（P1-2）：
+- [x] **[COPILOT-07]** **移除模拟恐惧贪婪指数**（P1-2）：✅ `b5a5e34`
   - `session-sidebar.tsx:40-52` 的装饰性恐惧贪婪指数（与真实数据无链路）删除
   - 依赖：无
   - 预期工时：FE 1h
@@ -475,7 +475,7 @@
   - `max_iterations=8` 达限时在消息流顶部渲染 amber 提示条「已达 8 步推理上限，以下为降级模型兜底总结」
   - 依赖：COPILOT-01（需从 store 读取迭代计数）
   - 预期工时：FE 2h
-- [ ] **[COPILOT-10]** **快捷指令统一配置源**（P1-5）：
+- [x] **[COPILOT-10]** **快捷指令统一配置源**（P1-5）：✅ `b5a5e34`
   - 合并三套快捷指令为单一配置模块：页面级四件套（预填式，`STOCK_QUICK_COMMANDS`）+ 场景级（投研页欢迎区）+ 动态建议（后端 `/chat/suggestions`，失败回退静态四条并标注兜底角标）
   - 消除 `chat-context.tsx:17-22` / `fullscreen-copilot.tsx:23-64` / `chat.py:138-159` 三处并存
   - 依赖：无
