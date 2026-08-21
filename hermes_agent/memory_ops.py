@@ -42,7 +42,10 @@ class MemoryOperationsMixin:
 
     # ── 记忆压缩 ────────────────────────────────────────────────────
     def _compress_memory(self, max_messages: int = 30, max_tool_len: int = 800, hard_cap_tokens: int = 60000):
-        """上下文记忆智能压缩机制：防止历史记录过长导致 Token 溢出与性能下降"""
+        """上下文记忆智能压缩机制：防止历史记录过长导致 Token 溢出与性能下降
+
+        AGENT-16: 新增摘要压缩路径（compact.py）取代纯截断
+        """
         if len(self.messages) <= 2:
             return
 
@@ -50,7 +53,7 @@ class MemoryOperationsMixin:
         eff_tool_len = 2000 if aggressive else max_tool_len
         eff_max_messages = 20 if aggressive else max_messages
 
-        # 1. 有损压缩：截断非最新轮次的巨型 Tool 返回值
+        # 1. 有损压缩：截断非最新轮次的巨型 Tool 返回值（保留至最后几条，避免误删关键上下文）
         from backend.utils.text_utils import safe_truncate
 
         for i in range(1, len(self.messages) - 4):
@@ -62,6 +65,11 @@ class MemoryOperationsMixin:
                         eff_tool_len,
                         suffix="\n... [老旧数据被折叠，省略 {omitted} 字符以释放内存] ...",
                     )
+
+        # 2. AGENT-16: 摘要压缩优先尝试（异步，不阻塞主流程）
+        import asyncio
+
+        asyncio.create_task(self._maybe_compress_with_llm(eff_max_messages, eff_tool_len))
 
         # 2. 滑动窗口
         if len(self.messages) > eff_max_messages:
@@ -77,6 +85,28 @@ class MemoryOperationsMixin:
             _evlog = getattr(self, "event_log", None)
             if _evlog is not None:
                 _evlog.record_memory_op("compress", f"window_cut={cut_idx} aggressive={aggressive}")
+
+    async def _maybe_compress_with_llm(self, max_messages: int, max_tool_len: int):
+        """AGENT-16: 异步尝试摘要压缩（失败则无感降级）"""
+        try:
+            from hermes_agent.compact import ContextCompressor
+
+            compressor = ContextCompressor(
+                llm_client=self.client,
+                event_log=getattr(self, "event_log", None),
+                model=self.model,
+                pro_model="deepseek-pro",
+            )
+
+            await compressor.maybe_compress(
+                messages=self.messages,
+                estimate_tokens_func=self._estimate_tokens,
+                max_messages=max_messages,
+                max_tool_len=max_tool_len,
+            )
+        except Exception as e:
+            # 静默降级：摘要失败不影响主流程
+            print(f"ℹ️ [Agent-16] 摘要压缩跳过：{e}")
 
     # ── 记忆自愈 ────────────────────────────────────────────────────
     def _heal_memory(self):
