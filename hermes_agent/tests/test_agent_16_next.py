@@ -109,7 +109,7 @@ async def test_ab_test_orchestrator_select_variant():
     orchestrator = ABTestOrchestrator(version_manager)
 
     # Create a test with two variants
-    test = orchestrator.create_test(
+    orchestrator.create_test(
         name="compact_prompt_test",
         variants=[("v1", "1.0.0"), ("v2", "1.1.0")],
         metric="token_reduction_rate",
