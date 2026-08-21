@@ -5,6 +5,7 @@ import { CapitalDistributionPanel } from '@/features/data-center/capital-distrib
 import { AnalystVsFundamentalPanel } from '@/features/data-center/analyst-vs-fundamental-panel'
 import { ShortSellingPanel } from '@/features/data-center/short-selling-panel'
 import { StockBasicInfoPanel } from '@/features/data-center/stock-basicinfo-panel'
+import { CapitalFlowPanel } from '@/features/quotes/capital-flow-panel'
 import { toMarketSymbol, isHkMarket } from './symbol-utils'
 
 /**
@@ -21,6 +22,7 @@ export function MicroPanel({ symbol }: { symbol: string }) {
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto custom-scrollbar p-2">
       <CapitalDistributionPanel ticker={futu} />
+      <CapitalFlowPanel symbol={futu} />
       <AnalystVsFundamentalPanel ticker={futu} />
       {hk && <ShortSellingPanel ticker={futu} mode="overview" />}
       <details className="glass-card rounded-lg overflow-hidden group">

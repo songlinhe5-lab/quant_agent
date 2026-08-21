@@ -49,6 +49,14 @@ async def handle_futu(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
             )
         elif action == "FUND_FLOW":
             return await futu_service.get_fund_flow(params.get("symbol"))
+        elif action == "TOP_BROKERS":
+            return await futu_service.get_top_brokers(
+                params.get("symbol"), days_before=int(params.get("days_before", 0))
+            )
+        elif action == "CAPITAL_FLOW":
+            return await futu_service.get_capital_flow(
+                params.get("symbol"), period_type=params.get("period_type", "INTRADAY")
+            )
         elif action == "FUNDAMENTAL":
             return await futu_service.get_fundamental(params.get("symbol"))
         elif action == "FINANCIALS":

@@ -196,6 +196,30 @@ class FutuService:
             is_unsupported_func=is_futu_unsupported,
         )
 
+    async def get_top_brokers(self, ticker: str, days_before: int = 0) -> Dict[str, Any]:
+        """F5 十大买卖经纪商（HK 实时队列 + US 十大净买卖兜底）。"""
+        return await self._route(
+            "fetch_top_brokers",
+            {"ticker": ticker, "days_before": days_before},
+            self.option_fund_handler.get_top_brokers,
+            ticker=ticker,
+            days_before=days_before,
+            format_ticker_func=format_ticker,
+            # 注意：不传 is_unsupported_func，使 US 标的也能走十大经纪商兜底
+        )
+
+    async def get_capital_flow(self, ticker: str, period_type: str = "INTRADAY") -> Dict[str, Any]:
+        """F6 个股资金流向时间序列（INTRADAY 当日分时）。"""
+        return await self._route(
+            "fetch_capital_flow",
+            {"ticker": ticker, "period_type": period_type},
+            self.option_fund_handler.get_capital_flow,
+            ticker=ticker,
+            period_type=period_type,
+            format_ticker_func=format_ticker,
+            # 注意：不传 is_unsupported_func，US/HK 均支持资金流向
+        )
+
     async def get_fundamental(self, ticker: str) -> Dict[str, Any]:
         return await self._route(
             "fetch_fundamental",

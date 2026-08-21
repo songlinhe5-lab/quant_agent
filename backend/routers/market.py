@@ -704,6 +704,59 @@ async def get_capital_distribution(ticker: str):
     }
 
 
+@router.get("/top-brokers/{ticker}")
+async def get_top_brokers(ticker: str):
+    """
+    F5：十大买卖经纪商（经纪版面，盘口 tab）。
+
+    HK: 实时经纪商净买/净卖明细；US: 同一接口 days_before=0 走实时，
+    无 broker_queue 但有十大净买卖数据，作兜底（符合 US 用十大经纪商决策）。
+    """
+    # BE-ARCH-06c: 经 DataSourceRouter.fetch_futu 单独通道（facade/registry 不注册 futu）
+    try:
+        futu_res = await data_source_router.fetch_futu("TOP_BROKERS", ticker=ticker, days_before=0)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"[Market API] Futu TOP_BROKERS 异常: {exc}")
+        raise HTTPException(status_code=500, detail=f"Futu 经纪商数据调用异常: {exc}")
+    if isinstance(futu_res, dict) and futu_res.get("status") == "success":
+        futu_data = futu_res.get("data") or {}
+        return {
+            **(futu_data if isinstance(futu_data, dict) else {"data": futu_data}),
+            "source": "futu",
+            "degraded": False,
+            "latency_ms": futu_res.get("latency_ms"),
+            "cached": futu_res.get("cached", False),
+        }
+    err_msg = futu_res.get("message", "Futu 经纪商数据失败") if isinstance(futu_res, dict) else str(futu_res)
+    raise HTTPException(status_code=400, detail=err_msg)
+
+
+@router.get("/capital-flow/{ticker}")
+async def get_capital_flow(ticker: str, period_type: str = "INTRADAY"):
+    """
+    F6：个股资金流向时间序列（资金流向曲线，微观 tab）。
+
+    period_type: INTRADAY(当日分时) / 历史周期。返回 data_time_str / capital_in_flow / capital_out_flow。
+    """
+    # BE-ARCH-06c: 经 DataSourceRouter.fetch_futu 单独通道
+    try:
+        futu_res = await data_source_router.fetch_futu("CAPITAL_FLOW", ticker=ticker, period_type=period_type)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"[Market API] Futu CAPITAL_FLOW 异常: {exc}")
+        raise HTTPException(status_code=500, detail=f"Futu 资金流向数据调用异常: {exc}")
+    if isinstance(futu_res, dict) and futu_res.get("status") == "success":
+        futu_data = futu_res.get("data") or {}
+        return {
+            **(futu_data if isinstance(futu_data, dict) else {"data": futu_data}),
+            "source": "futu",
+            "degraded": False,
+            "latency_ms": futu_res.get("latency_ms"),
+            "cached": futu_res.get("cached", False),
+        }
+    err_msg = futu_res.get("message", "Futu 资金流向数据失败") if isinstance(futu_res, dict) else str(futu_res)
+    raise HTTPException(status_code=400, detail=err_msg)
+
+
 @router.get("/heat-map/{market}")
 async def get_heat_map(market: str = "HK"):
     """

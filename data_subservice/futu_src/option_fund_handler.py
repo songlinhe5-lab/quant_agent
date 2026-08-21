@@ -703,6 +703,170 @@ class OptionFundHandler:
         self.cache_mgr.set_fundamental_cache(cache_key, time.time(), result)
         return result
 
+    # ── F5: 十大买卖经纪商（经纪版面，盘口 tab）──────────────────────────
+    @with_global_retry
+    async def get_top_brokers(
+        self, ticker: str, days_before: int = 0, format_ticker_func=None, is_unsupported_func=None
+    ) -> Dict[str, Any]:
+        """获取十大买卖经纪商（净买/净卖两组）。
+
+        - HK: get_top_ten_buy_sell_brokers 实时返回净买/净卖经纪商明细。
+        - US: 同一接口支持(days_before=0 走实时)，无 broker_queue 但有十大净买卖 → 兜底。
+        不传 is_unsupported_func，使 US 标的也能走(符合"US 用十大经纪商兜底"决策)。
+        """
+        market_ticker = format_ticker_func(ticker) if format_ticker_func else ticker
+        if not market_ticker:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+
+        cache_key = f"futu_top_brokers_{market_ticker}_{days_before}"
+        now = time.time()
+        cached = self.cache_mgr.get_top_brokers_cache(cache_key)
+        if cached and now - cached[0] < _CAPITAL_DIST_TTL:
+            return cached[1]
+
+        if self.conn_mgr.quote_ctx is None:
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 未连接",
+                "code": market_ticker,
+            }
+        if self.conn_mgr.status != "CONNECTED":
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 重连中，请稍后重试",
+                "code": market_ticker,
+            }
+
+        try:
+            ret, data = await asyncio.to_thread(
+                self.conn_mgr.quote_ctx.get_top_ten_buy_sell_brokers, market_ticker, days_before
+            )
+            if ret != RET_OK or not isinstance(data, pd.DataFrame) or data.empty:
+                return {
+                    "status": "error",
+                    "source": "futu",
+                    "ticker": ticker,
+                    "message": f"十大经纪商获取失败: {data}",
+                    "code": market_ticker,
+                }
+
+            # 💡 DIST-SEC-02 教训：futu yfinance 等历史 K 线 columns 为 MultiIndex，
+            # 单层键访问会错位静默丢失。这里统一拍平为第一级列名。
+            if isinstance(data.columns, pd.MultiIndex):
+                data.columns = data.columns.get_level_values(0)
+
+            buy_list, sell_list = [], []
+            for _, row in data.iterrows():
+                btype = str(row.get("buy_sell_type", "")).upper()
+                item = {
+                    "broker_name": row.get("broker_name"),
+                    "avg_price": safe_float(row.get("avg_price")),
+                    "net_vol": safe_float(row.get("net_vol")),
+                    "total_vol": safe_float(row.get("total_vol")),
+                    "total_turnover": safe_float(row.get("total_turnover")),
+                }
+                if btype == "BUY":
+                    buy_list.append(item)
+                elif btype == "SELL":
+                    sell_list.append(item)
+
+            res = {
+                "status": "success",
+                "source": "futu",
+                "ticker": ticker,
+                "code": market_ticker,
+                "days_before": days_before,
+                "is_real_time": bool(safe_float(row.get("is_real_time", 0)) if "is_real_time" in data.columns else 0),
+                "buy_brokers": buy_list,
+                "sell_brokers": sell_list,
+            }
+            self.cache_mgr.set_top_brokers_cache(cache_key, now, res)
+            return res
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_top_brokers 失败 %s: %s", market_ticker, e)
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": market_ticker}
+
+    # ── F6: 个股资金流向时间序列（资金流向曲线，微观 tab）───────────────────
+    @with_global_retry
+    async def get_capital_flow(
+        self, ticker: str, period_type: str = "INTRADAY", format_ticker_func=None, is_unsupported_func=None
+    ) -> Dict[str, Any]:
+        """获取个股资金流入流出时间序列。
+
+        get_capital_flow(code, period_type='INTRADAY', start, end) → (ret, data) 二元组。
+        INTRADAY = 当日分时净流入；返回 data_time_str / capital_in_flow / capital_out_flow 等。
+        带 L1 缓存(2 分钟)，与资金流同源降频。
+        """
+        market_ticker = format_ticker_func(ticker) if format_ticker_func else ticker
+        if not market_ticker:
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
+
+        cache_key = f"futu_capital_flow_{market_ticker}_{period_type}"
+        now = time.time()
+        cached = self.cache_mgr.get_capital_flow_cache(cache_key)
+        if cached and now - cached[0] < _CAPITAL_DIST_TTL:
+            return cached[1]
+
+        if self.conn_mgr.quote_ctx is None:
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 未连接",
+                "code": market_ticker,
+            }
+        if self.conn_mgr.status != "CONNECTED":
+            return {
+                "status": "error",
+                "source": "futu",
+                "ticker": ticker,
+                "message": "Futu OpenD 重连中，请稍后重试",
+                "code": market_ticker,
+            }
+
+        try:
+            ret, data = await asyncio.to_thread(self.conn_mgr.quote_ctx.get_capital_flow, market_ticker, period_type)
+            if ret != RET_OK or not isinstance(data, pd.DataFrame) or data.empty:
+                return {
+                    "status": "error",
+                    "source": "futu",
+                    "ticker": ticker,
+                    "message": f"资金流向获取失败: {data}",
+                    "code": market_ticker,
+                }
+
+            if isinstance(data.columns, pd.MultiIndex):
+                data.columns = data.columns.get_level_values(0)
+
+            flow = []
+            for _, row in data.iterrows():
+                flow.append(
+                    {
+                        "time": str(row.get("data_time_str") or row.get("data_time", "")),
+                        "in_flow": safe_float(row.get("capital_in_flow")),
+                        "out_flow": safe_float(row.get("capital_out_flow")),
+                    }
+                )
+
+            res = {
+                "status": "success",
+                "source": "futu",
+                "ticker": ticker,
+                "code": market_ticker,
+                "period_type": period_type,
+                "count": len(flow),
+                "flow": flow,
+            }
+            self.cache_mgr.set_capital_flow_cache(cache_key, now, res)
+            return res
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_capital_flow 失败 %s: %s", market_ticker, e)
+            return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": market_ticker}
+
     # ── F2: 三大财务报表（G1 真基本面基座）──────────────────────────────
     # 富途返回 field_id 是英文枚举（如 CASH_EQUIVALENTS），前端/用户需中文字段名。
     # 这里建映射表，缺失的 field_id 保留原值透传（零幻觉：不臆造中文名）。

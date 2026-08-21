@@ -285,6 +285,126 @@ class TestOptionFundHandler:
         cached = cache_mgr.get_fund_flow_cache("futu_fund_flow_US.AAPL")
         assert cached is not None
 
+    # ── F5: 十大买卖经纪商 (get_top_brokers) ──────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_get_top_brokers_hk_success(self):
+        """HK 十大经纪商应返回买盘/卖盘两组并拍平 MultiIndex"""
+        handler, conn_mgr, cache_mgr = _make_handler()
+        # futu 历史类接口常返回 MultiIndex columns，需拍平（DIST-SEC-02 教训）
+        df = pd.DataFrame(
+            {
+                ("broker_name", "HK.00700"): ["BrokerA", "BrokerB", "BrokerC"],
+                ("buy_sell_type", "HK.00700"): ["BUY", "SELL", "BUY"],
+                ("avg_price", "HK.00700"): [350.2, 349.8, 351.0],
+                ("net_vol", "HK.00700"): [12000, -8000, 5000],
+                ("total_vol", "HK.00700"): [15000, 9000, 6000],
+                ("total_turnover", "HK.00700"): [5.2e6, 3.1e6, 2.1e6],
+                ("is_real_time", "HK.00700"): [1, 1, 1],
+            }
+        )
+
+        async def fake_to_thread(fn, *args, **kwargs):
+            return (RET_OK, df)
+
+        with patch("asyncio.to_thread", new=fake_to_thread):
+            result = await handler.get_top_brokers("HK.00700")
+        assert result["status"] == "success"
+        # 拍平后 buy/sell 拆分正确
+        assert len(result["buy_brokers"]) == 2
+        assert len(result["sell_brokers"]) == 1
+        assert result["buy_brokers"][0]["broker_name"] == "BrokerA"
+        assert result["is_real_time"] is True
+        # 缓存写入
+        cached = cache_mgr.get_top_brokers_cache("futu_top_brokers_HK.00700_0")
+        assert cached is not None
+
+    @pytest.mark.asyncio
+    async def test_get_top_brokers_us_fallback(self):
+        """US 标的应走十大经纪商兜底（不拦截 unsupported）"""
+        handler, conn_mgr, cache_mgr = _make_handler()
+        df = pd.DataFrame(
+            {
+                ("broker_name", "US.AAPL"): ["BrokerX", "BrokerY"],
+                ("buy_sell_type", "US.AAPL"): ["BUY", "SELL"],
+                ("avg_price", "US.AAPL"): [180.5, 179.9],
+                ("net_vol", "US.AAPL"): [3000, -2000],
+                ("total_vol", "US.AAPL"): [3500, 2200],
+                ("total_turnover", "US.AAPL"): [6.3e5, 4.0e5],
+                ("is_real_time", "US.AAPL"): [1, 1],
+            }
+        )
+
+        async def fake_to_thread(fn, *args, **kwargs):
+            return (RET_OK, df)
+
+        with patch("asyncio.to_thread", new=fake_to_thread):
+            result = await handler.get_top_brokers("US.AAPL")
+        assert result["status"] == "success"
+        assert len(result["buy_brokers"]) == 1
+        assert result["sell_brokers"][0]["broker_name"] == "BrokerY"
+
+    @pytest.mark.asyncio
+    async def test_get_top_brokers_empty_returns_error(self):
+        """空 DataFrame 应返回错误（非空数据才成功）"""
+        handler, conn_mgr, _ = _make_handler()
+
+        async def fake_to_thread(fn, *args, **kwargs):
+            return (RET_OK, pd.DataFrame())
+
+        with patch("asyncio.to_thread", new=fake_to_thread):
+            result = await handler.get_top_brokers("HK.00700")
+        assert result["status"] == "error"
+
+    @pytest.mark.asyncio
+    async def test_get_top_brokers_disconnected_returns_error(self):
+        """未连接应返回错误（不让前端误显示为空数据）"""
+        handler, conn_mgr, _ = _make_handler(connected=False)
+        conn_mgr.status = "DISCONNECTED"
+        conn_mgr.quote_ctx = None
+        result = await handler.get_top_brokers("HK.00700")
+        assert result["status"] == "error"
+        assert "未连接" in result["message"] or "重连中" in result["message"]
+
+    # ── F6: 个股资金流向时间序列 (get_capital_flow) ──────────────────────
+
+    @pytest.mark.asyncio
+    async def test_get_capital_flow_intraday_success(self):
+        """INTRADAY 资金流向应返回时间序列并拍平 MultiIndex"""
+        handler, conn_mgr, cache_mgr = _make_handler()
+        df = pd.DataFrame(
+            {
+                ("data_time_str", "HK.00700"): ["2026-08-21 09:30:00", "2026-08-21 09:31:00"],
+                ("capital_in_flow", "HK.00700"): [1.2e6, 0.8e6],
+                ("capital_out_flow", "HK.00700"): [0.9e6, 1.1e6],
+            }
+        )
+
+        async def fake_to_thread(fn, *args, **kwargs):
+            return (RET_OK, df)
+
+        with patch("asyncio.to_thread", new=fake_to_thread):
+            result = await handler.get_capital_flow("HK.00700")
+        assert result["status"] == "success"
+        assert result["period_type"] == "INTRADAY"
+        assert result["count"] == 2
+        assert result["flow"][0]["in_flow"] == pytest.approx(1.2e6)
+        assert result["flow"][1]["out_flow"] == pytest.approx(1.1e6)
+        cached = cache_mgr.get_capital_flow_cache("futu_capital_flow_HK.00700_INTRADAY")
+        assert cached is not None
+
+    @pytest.mark.asyncio
+    async def test_get_capital_flow_empty_returns_error(self):
+        """空 DataFrame 应返回错误"""
+        handler, conn_mgr, _ = _make_handler()
+
+        async def fake_to_thread(fn, *args, **kwargs):
+            return (RET_OK, pd.DataFrame())
+
+        with patch("asyncio.to_thread", new=fake_to_thread):
+            result = await handler.get_capital_flow("HK.00700")
+        assert result["status"] == "error"
+
     @pytest.mark.asyncio
     async def test_get_fund_flow_hk_success_with_broker_queue(self):
         """HK 标的成功获取应包含 broker_queue 与 order_book_level_1"""

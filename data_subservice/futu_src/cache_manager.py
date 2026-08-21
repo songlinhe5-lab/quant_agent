@@ -47,6 +47,8 @@ class CacheManager:
         self._order_book_cache: Dict[str, Tuple[float, Dict]] = {}
         self._fundamental_cache: Dict[str, Tuple[float, Dict]] = {}
         self._capital_dist_cache: Dict[str, Tuple[float, Dict]] = {}
+        self._top_brokers_cache: Dict[str, Tuple[float, Dict]] = {}
+        self._capital_flow_cache: Dict[str, Tuple[float, Dict]] = {}
 
         # 资金流向限流与熔断
         self.ff_lock: Optional[asyncio.Lock] = None
@@ -131,6 +133,8 @@ class CacheManager:
             (self._order_book_cache, _ORDER_BOOK_TTL),
             (self._fundamental_cache, _FUNDAMENTAL_TTL),
             (self._capital_dist_cache, _CAPITAL_DIST_TTL),
+            (self._top_brokers_cache, _FUND_FLOW_TTL),
+            (self._capital_flow_cache, _FUND_FLOW_TTL),
         ]
         for cache_dict, ttl in cache_configs:
             # 1. 清理过期条目
@@ -190,6 +194,22 @@ class CacheManager:
 
     def set_capital_dist_cache(self, key: str, timestamp: float, data: Dict):
         self._capital_dist_cache[key] = (timestamp, data)
+
+    # ── Top Brokers Cache (十大买卖经纪商) ──────────────────────────
+
+    def get_top_brokers_cache(self, key: str) -> Optional[Tuple[float, Dict]]:
+        return self._top_brokers_cache.get(key)
+
+    def set_top_brokers_cache(self, key: str, timestamp: float, data: Dict):
+        self._top_brokers_cache[key] = (timestamp, data)
+
+    # ── Capital Flow Cache (个股资金流向时间序列) ───────────────────
+
+    def get_capital_flow_cache(self, key: str) -> Optional[Tuple[float, Dict]]:
+        return self._capital_flow_cache.get(key)
+
+    def set_capital_flow_cache(self, key: str, timestamp: float, data: Dict):
+        self._capital_flow_cache[key] = (timestamp, data)
 
     # ── Fundamental Cache ─────────────────────────────────────────
 
