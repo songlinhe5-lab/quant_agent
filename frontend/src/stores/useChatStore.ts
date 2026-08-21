@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { apiClient } from '@/lib/api-client'
+import { DYNAMIC_SUGGESTION_FALLBACK } from '@/features/copilot/copilot-quick-commands'
 import type { ChatMessage, ToolStep, StrategyBlock } from '@/features/copilot/types'
 
 // 💡 从 assistant 消息内容中提取策略代码块（用于历史记录恢复）
@@ -187,14 +188,7 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
         set({ quickPrompts: res.data.data })
       }
     } catch (_e) {
-      set({
-        quickPrompts: [
-          { title: '今日宏观风向', prompt: '提取今天全球核心经济体的宏观大事件，并给出你的风险判断。' },
-          { title: '个股研报分析', prompt: '分析 0700.HK (腾讯控股) 最近的动态，结合基本面给出一份研报。' },
-          { title: '生成交易策略', prompt: '请帮我用 Python 写一个双均线 (MA10, MA20) 交叉的实盘策略框架。' },
-          { title: '技术面诊股', prompt: '帮我分析下 AAPL (苹果) 的最新走势。' },
-        ],
-      })
+      set({ quickPrompts: DYNAMIC_SUGGESTION_FALLBACK })
     }
   },
 }))
