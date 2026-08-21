@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: docs
+title: 量化交易系统文档中心
+scope:
+    - docs/
+source_files: []
+depends_on: []
+related_to: []

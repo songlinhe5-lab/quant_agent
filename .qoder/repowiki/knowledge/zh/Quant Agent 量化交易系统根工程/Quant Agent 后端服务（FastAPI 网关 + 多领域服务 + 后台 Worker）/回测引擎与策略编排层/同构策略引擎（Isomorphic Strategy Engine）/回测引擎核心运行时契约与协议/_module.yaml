@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: backend/backtest_engine/engine_core/core_runtime
+title: 回测引擎核心运行时契约与协议
+scope:
+    - backend/engine/clock.py
+    - backend/engine/context.py
+    - backend/engine/contracts.py
+source_files: []
+depends_on: []
+related_to: []

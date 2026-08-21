@@ -15,7 +15,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 try:
     from hermes_agent.prompt_versioning import (
-        ABTestOrchestrator,
         PromptQualityEvaluator,
         PromptQualityMetrics,
         PromptVersionManager,
@@ -30,7 +29,7 @@ except ImportError:
 
 
 @dataclass
-class FeedbackRecord:
+class GoldenDatasetItem:
     """单条用户反馈记录"""
 
     prompt_name: str

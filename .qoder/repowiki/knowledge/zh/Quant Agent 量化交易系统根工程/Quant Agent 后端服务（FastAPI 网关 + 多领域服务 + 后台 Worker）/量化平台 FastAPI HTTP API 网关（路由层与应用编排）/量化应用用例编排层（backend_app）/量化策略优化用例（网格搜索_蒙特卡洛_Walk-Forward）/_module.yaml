@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: backend/api_routers/app_services/optimization_apps
+title: 量化策略优化用例（网格搜索/蒙特卡洛/Walk-Forward）
+scope:
+    - backend/app/grid_search_app.py
+    - backend/app/monte_carlo_app.py
+    - backend/app/walk_forward_app.py
+source_files: []
+depends_on: []
+related_to: []

@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: backend/api_routers/research_analysis_routers
+title: 投研与因子分析 HTTP 路由层
+scope:
+    - backend/routers/research.py
+    - backend/routers/screener.py
+    - backend/routers/factor.py
+source_files: []
+depends_on: []
+related_to: []

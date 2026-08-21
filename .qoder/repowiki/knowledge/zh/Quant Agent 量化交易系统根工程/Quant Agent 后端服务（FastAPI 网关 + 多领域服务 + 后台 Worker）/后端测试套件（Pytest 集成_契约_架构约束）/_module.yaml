@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backend/tests
+title: 后端测试套件（Pytest 集成/契约/架构约束）
+scope:
+    - backend/tests/
+source_files: []
+depends_on: []
+related_to: []

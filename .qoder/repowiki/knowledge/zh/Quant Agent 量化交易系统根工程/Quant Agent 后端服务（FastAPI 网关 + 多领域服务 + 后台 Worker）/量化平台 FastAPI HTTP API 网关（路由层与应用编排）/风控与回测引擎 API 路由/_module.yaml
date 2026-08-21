@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: backend/api_routers/risk_backtest_routers
+title: 风控与回测引擎 API 路由
+scope:
+    - backend/routers/risk.py
+    - backend/routers/backtest.py
+    - backend/routers/backtest_reports.py
+source_files: []
+depends_on: []
+related_to: []

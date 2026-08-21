@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: backend/api_routers/data_source_routers
+title: 数据源与数据湖路由层（限流/健康/投票/快照）
+scope:
+    - backend/routers/datasource.py
+    - backend/routers/datalake.py
+    - backend/routers/datasource_vote.py
+source_files: []
+depends_on: []
+related_to: []

@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: backend/backtest_engine/engine_core/strategy_and_verification
+title: 策略抽象、订单网关与回测同构校验
+scope:
+    - backend/engine/gateway.py
+    - backend/engine/strategy.py
+    - backend/engine/verify.py
+    - backend/engine/overfit.py
+source_files: []
+depends_on: []
+related_to: []

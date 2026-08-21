@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: frontend
+title: Quant Agent 前端应用（Vite + React 交易终端）
+scope:
+    - frontend/
+source_files: []
+depends_on: []
+related_to: []

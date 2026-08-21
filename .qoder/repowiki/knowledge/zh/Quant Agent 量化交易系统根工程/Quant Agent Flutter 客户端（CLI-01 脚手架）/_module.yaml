@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: client_flutter
+title: Quant Agent Flutter 客户端（CLI-01 脚手架）
+scope:
+    - client/flutter_app/
+source_files: []
+depends_on: []
+related_to: []
