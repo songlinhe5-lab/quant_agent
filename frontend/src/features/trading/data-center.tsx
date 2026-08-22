@@ -85,4 +85,3 @@ export function DataCenterContent() {
 export function DataCenterModule() {
   return <DataCenterContent />
 }
-

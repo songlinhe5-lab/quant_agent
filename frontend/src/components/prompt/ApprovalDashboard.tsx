@@ -27,7 +27,7 @@ export function ApprovalDashboard({ currentUser }: ApprovalDashboardProps) {
   const [pendingApprovals, setPendingApprovals] = useState<PendingApprovalResponse[]>([]);
   const [selectedPrompt, setSelectedPrompt] = useState<string>("all");
   const [loading, setLoading] = useState(true);
-  
+
   // Modal states
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [selectedAuditId, setSelectedAuditId] = useState<string | null>(null);
@@ -35,7 +35,7 @@ export function ApprovalDashboard({ currentUser }: ApprovalDashboardProps) {
   const [comment, setComment] = useState("");
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  
+
   // Deployment history
   const [deploymentHistory, setDeploymentHistory] = useState<any[]>([]);
   const [showDeployments, setShowDeployments] = useState(false);
@@ -57,7 +57,7 @@ export function ApprovalDashboard({ currentUser }: ApprovalDashboardProps) {
     }
 
     loadApprovals();
-    
+
     // Auto-refresh every 30 seconds
     const interval = setInterval(loadApprovals, 30000);
     return () => clearInterval(interval);
@@ -203,8 +203,8 @@ export function ApprovalDashboard({ currentUser }: ApprovalDashboardProps) {
             Human-in-the-loop 审批流程管理 • 待审批：<Badge variant="secondary">{pendingApprovals.length}</Badge>
           </p>
         </div>
-        
-        <Button 
+
+        <Button
           onClick={() => window.location.reload()}
           variant="outline"
           disabled={loading}
@@ -216,23 +216,23 @@ export function ApprovalDashboard({ currentUser }: ApprovalDashboardProps) {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <StatCard 
-          title="待审批数量" 
-          value={pendingApprovals.length} 
+        <StatCard
+          title="待审批数量"
+          value={pendingApprovals.length}
           icon={<Clock className="h-5 w-5 text-amber-500" />}
           color="amber"
         />
-        
-        <StatCard 
-          title="本月已批准" 
-          value={deploymentHistory.filter(d => d.status === "approved").length} 
+
+        <StatCard
+          title="本月已批准"
+          value={deploymentHistory.filter(d => d.status === "approved").length}
           icon={<CheckCircle2 className="h-5 w-5 text-emerald-500" />}
           color="emerald"
         />
-        
-        <StatCard 
-          title="本月已拒绝" 
-          value={deploymentHistory.filter(d => d.status === "rejected").length} 
+
+        <StatCard
+          title="本月已拒绝"
+          value={deploymentHistory.filter(d => d.status === "rejected").length}
           icon={<XCircle className="h-5 w-5 text-red-500" />}
           color="red"
         />
@@ -255,7 +255,7 @@ export function ApprovalDashboard({ currentUser }: ApprovalDashboardProps) {
                   <option key={name} value={name}>{name}</option>
                 ))}
             </select>
-            
+
             <span className="text-sm text-muted-foreground ml-auto">
               自动刷新间隔：30 秒
             </span>
@@ -313,29 +313,29 @@ export function ApprovalDashboard({ currentUser }: ApprovalDashboardProps) {
                           {new Date(approval.created_at).toLocaleString("zh-CN")}
                         </td>
                         <td className="px-4 py-3 text-right space-x-2">
-                          <Button 
-                            variant="ghost" 
+                          <Button
+                            variant="ghost"
                             size="sm"
                             onClick={() => openActionDialog(approval.id, "approve")}
                           >
                             ✅ 批准
                           </Button>
-                          <Button 
-                            variant="ghost" 
+                          <Button
+                            variant="ghost"
                             size="sm"
                             onClick={() => openActionDialog(approval.id, "reject")}
                           >
                             ❌ 拒绝
                           </Button>
-                          <Button 
-                            variant="ghost" 
+                          <Button
+                            variant="ghost"
                             size="sm"
                             onClick={() => loadDeploymentHistory(approval.prompt_name)}
                           >
                             <Eye className="h-3 w-3" />
                           </Button>
-                          <Button 
-                            variant="ghost" 
+                          <Button
+                            variant="ghost"
                             size="sm"
                             onClick={() => openActionDialog(approval.id, "rollback")}
                           >
@@ -366,7 +366,7 @@ export function ApprovalDashboard({ currentUser }: ApprovalDashboardProps) {
               {actionType === "rollback" && "确认回滚到此版本？这将覆盖当前生产版本！"}
             </DialogDescription>
           </DialogHeader>
-          
+
           {actionType === "reject" && (
             <div className="space-y-4 py-4">
               <div className="space-y-2">
@@ -381,7 +381,7 @@ export function ApprovalDashboard({ currentUser }: ApprovalDashboardProps) {
               </div>
             </div>
           )}
-          
+
           {actionType === "approve" && (
             <div className="space-y-4 py-4">
               <div className="space-y-2">
@@ -395,7 +395,7 @@ export function ApprovalDashboard({ currentUser }: ApprovalDashboardProps) {
               </div>
             </div>
           )}
-          
+
           {actionType === "rollback" && (
             <Alert>
               <AlertTitle className="text-red-500">⚠️ 警告：此操作将覆盖生产环境!</AlertTitle>
@@ -404,15 +404,15 @@ export function ApprovalDashboard({ currentUser }: ApprovalDashboardProps) {
               </AlertDescription>
             </Alert>
           )}
-          
+
           <DialogFooter>
             {actionType === "approve" && (
               <>
                 <Button variant="outline" onClick={() => setActionDialogOpen(false)}>
                   取消
                 </Button>
-                <Button 
-                  onClick={handleApprove} 
+                <Button
+                  onClick={handleApprove}
                   disabled={submitting}
                   className="bg-emerald-600 hover:bg-emerald-700"
                 >
@@ -420,14 +420,14 @@ export function ApprovalDashboard({ currentUser }: ApprovalDashboardProps) {
                 </Button>
               </>
             )}
-            
+
             {actionType === "reject" && (
               <>
                 <Button variant="outline" onClick={() => setActionDialogOpen(false)}>
                   取消
                 </Button>
-                <Button 
-                  onClick={handleReject} 
+                <Button
+                  onClick={handleReject}
                   disabled={submitting}
                   className="bg-red-600 hover:bg-red-700"
                 >
@@ -435,14 +435,14 @@ export function ApprovalDashboard({ currentUser }: ApprovalDashboardProps) {
                 </Button>
               </>
             )}
-            
+
             {actionType === "rollback" && (
               <>
                 <Button variant="outline" onClick={() => setActionDialogOpen(false)}>
                   取消
                 </Button>
-                <Button 
-                  onClick={handleRollback} 
+                <Button
+                  onClick={handleRollback}
                   disabled={submitting}
                   className="bg-amber-600 hover:bg-amber-700"
                 >
@@ -463,7 +463,7 @@ export function ApprovalDashboard({ currentUser }: ApprovalDashboardProps) {
               查看所有最近的生产部署和回滚操作
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-3">
             {deploymentHistory.length === 0 ? (
               <div className="text-center text-muted-foreground py-8">
@@ -485,7 +485,7 @@ export function ApprovalDashboard({ currentUser }: ApprovalDashboardProps) {
                       {new Date(deployment.created_at).toLocaleString("zh-CN")}
                     </span>
                   </div>
-                  
+
                   <div className="text-sm space-y-1">
                     <div>
                       <span className="text-muted-foreground">操作人:</span>{" "}
@@ -512,14 +512,14 @@ export function ApprovalDashboard({ currentUser }: ApprovalDashboardProps) {
 }
 
 // StatCard Component
-function StatCard({ 
-  title, 
-  value, 
+function StatCard({
+  title,
+  value,
   icon,
   color = "gray"
-}: { 
-  title: string; 
-  value: number | string; 
+}: {
+  title: string;
+  value: number | string;
   icon: React.ReactNode;
   color?: string;
 }) {

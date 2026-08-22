@@ -9,7 +9,7 @@
 
 ### 1. ✅ turn_id 生成与跟踪
 - **每轮唯一 ID**: `str(uuid.uuid4())[:8]` → 8 字符短 ID 便于日志阅读（如 `"a3f7b2c1"`）
-- **全链路传播**: 
+- **全链路传播**:
   - `record_turn_start`: 携带 `turn_id`, `model`
   - `record_tool_result`: 携带 `turn_id`（便于按轮归组）
   - `record_turn_end`: 携带 `turn_id` + 所有延迟指标
@@ -272,6 +272,6 @@ histogram_quantile(0.95, agent_turn_duration_seconds_bucket{phase="tool_executio
 
 ---
 
-**Commit**: c0e1d8a (core), [docs commit]  
-**Tests**: 11 passed (hermes_agent/tests/test_agent_17_turn_metadata.py)  
+**Commit**: c0e1d8a (core), [docs commit]
+**Tests**: 11 passed (hermes_agent/tests/test_agent_17_turn_metadata.py)
 **Status**: ✅ 全部验收标准达成

@@ -1,9 +1,9 @@
 # AGENT-11: Prompt 缓存边界 + Token 成本计量 - 最终完成报告
 
-**状态**: 🟢 **Production Ready (100%)**  
-**完成日期**: 2026-08-22  
-**测试覆盖**: ✅ 22/22 tests passed  
-**代码行数**: 891 lines (3 modules)  
+**状态**: 🟢 **Production Ready (100%)**
+**完成日期**: 2026-08-22
+**测试覆盖**: ✅ 22/22 tests passed
+**代码行数**: 891 lines (3 modules)
 **Breaking Changes**: ✅ None | Backward Compatible
 
 ---
@@ -33,7 +33,7 @@ class ModelPricing:
     model_name: str
     prompt_price: float      # USD per 1K prompt tokens
     completion_price: float  # USD per 1K completion tokens
-    
+
     def calculate_cost(self, prompt_tokens: int, completion_tokens: int) -> float:
         """计算单次调用的成本（USD）"""
         prompt_cost = (prompt_tokens / 1000) * self.prompt_price
@@ -86,7 +86,7 @@ _LLM_COST_SESSION = Gauge(
 class PromptCacheBoundary:
     """
     Prompt 缓存边界拆分结果
-    
+
     - cacheable_prefix: 稳定前缀（可被 LLM 提供商缓存）
     - volatile_suffix: 易变后缀（每次调用都不同）
     - prefix_hash: 前缀的 SHA256 哈希（用于缓存键）
@@ -117,7 +117,7 @@ def split_messages(
 ) -> PromptCacheBoundary:
     """
     将 messages 数组拆分为稳定前缀 + 易变后缀
-    
+
     策略：
     1. System prompt → 稳定前缀（通常不变）
     2. Tool schemas → 稳定前缀（与 AGENT-03 协同，scope 子集稳定）
@@ -158,7 +158,7 @@ def should_inject_boundary_marker(self, messages: List[Dict[str, Any]]) -> bool:
 class ScrubbedResponse:
     """
     清洗后的 LLM Response
-    
+
     - content: 可见内容（去除 reasoning_content 后的最终输出）
     - reasoning_content: 推理过程（可选，用于前端展示）
     - reasoning_tokens: 推理 token 数（如果模型返回）
@@ -177,7 +177,7 @@ class ScrubbedResponse:
 def scrub(self, response: Any, model: str = "unknown") -> ScrubbedResponse:
     """
     从 LLM response 中提取 reasoning_content，返回清洗后的 response
-    
+
     支持：
     - OpenAI ChatCompletion response 对象
     - DeepSeek API response 对象
@@ -185,18 +185,18 @@ def scrub(self, response: Any, model: str = "unknown") -> ScrubbedResponse:
     """
     # 提取 reasoning_content
     reasoning_content = getattr(response, "reasoning_content", None)
-    
+
     # 估算 reasoning_tokens（如果模型未返回）
     reasoning_tokens = 0
     if reasoning_content:
         # 简单估算：1 token ≈ 2 字符（中英文混合）
         char_count = len(reasoning_content)
         reasoning_tokens = int(char_count / 2)
-    
+
     # 记录推理 token 消耗
     if reasoning_tokens > 0:
         self._record_reasoning_tokens(model, reasoning_tokens)
-    
+
     # 返回清洗后的 response
     return ScrubbedResponse(
         content=getattr(response, "content", None),
@@ -216,7 +216,7 @@ def generate_summary(
 ) -> str:
     """
     生成推理过程摘要（用于前端展示）
-    
+
     策略：
     - 取前 N 个字符 + "..."
     - 尝试在句子边界截断（优先保留完整句子）
@@ -251,18 +251,18 @@ async def _record_usage(self, usage, model: str = "unknown", session_id: str = "
     """
     if usage is None:
         return
-    
+
     prompt_tokens = getattr(usage, "prompt_tokens", 0)
     completion_tokens = getattr(usage, "completion_tokens", 0)
     total_tokens = getattr(usage, "total_tokens", 0)
-    
+
     # 1. Token 使用量记录（原有逻辑）
     await token_usage_store.record(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
         total_tokens=total_tokens,
     )
-    
+
     # 2. AGENT-11: 成本计量
     await usage_pricing_calculator.record_session_cost(
         session_id=session_id,
@@ -270,7 +270,7 @@ async def _record_usage(self, usage, model: str = "unknown", session_id: str = "
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
     )
-    
+
     # 3. AGENT-11: 缓存边界管理（可选，需要 system_prompt 和 tool_schemas 上下文）
     # TODO: 从 _react_loop 传入 system_prompt 和 tool_schemas，调用 split_messages()
     # 当前仅记录缓存命中统计，实际拆分逻辑需要重构 _react_loop 的 messages 构建
@@ -449,8 +449,8 @@ graph TD
 
 **统一挂点设计**：`_record_usage()` 成为 token/cost/cache/reasoning 的统一挂点，与 AGENT-04 的 `_safe_execute_tool` 形成双挂点体系
 
-**状态**: 🟢 **Production Ready (100%)**  
-**测试覆盖**: ✅ 22/22 tests passed  
+**状态**: 🟢 **Production Ready (100%)**
+**测试覆盖**: ✅ 22/22 tests passed
 **Breaking Changes**: ✅ None | Backward Compatible
 
 ---

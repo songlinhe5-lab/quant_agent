@@ -446,7 +446,7 @@ Hermes Agent通过HermesAgent类的ReAct工作流实现了强大的对话推理�
 - 最终输出：
   - 流式推送text_chunk与reasoning_chunk。
   - 支持策略代码与图表标注检测。
-- **故障转移配置**：**新增** 
+- **故障转移配置**：**新增**
   - 设置LLM_FALLBACK_API_KEY配置备用提供商。
   - 监控provider状态摘要，及时处理故障切换。
   - 前端接收provider_degraded事件，显示降级状态。

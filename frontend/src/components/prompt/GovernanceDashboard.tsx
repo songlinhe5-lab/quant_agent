@@ -22,7 +22,7 @@ export function PromptGovernanceDashboard() {
   const [versionHistory, setVersionHistory] = useState<VersionHistoryResponse | null>(null);
   const [loadingDashboard, setLoadingDashboard] = useState(true);
   const [loadingVersions, setLoadingVersions] = useState(false);
-  
+
   // Fetch dashboard metrics on mount
   useEffect(() => {
     async function loadDashboard() {
@@ -35,15 +35,15 @@ export function PromptGovernanceDashboard() {
         setLoadingDashboard(false);
       }
     }
-    
+
     loadDashboard();
   }, []);
-  
+
   // Fetch version history when prompt changes
   useEffect(() => {
     async function loadVersions() {
       if (!selectedPrompt) return;
-      
+
       setLoadingVersions(true);
       try {
         const data = await fetchVersionHistory(selectedPrompt);
@@ -54,10 +54,10 @@ export function PromptGovernanceDashboard() {
         setLoadingVersions(false);
       }
     }
-    
+
     loadVersions();
   }, [selectedPrompt]);
-  
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -68,7 +68,7 @@ export function PromptGovernanceDashboard() {
             可视化 Prompt 版本质量趋势、A/B 测试结果和用户反馈
           </p>
         </div>
-        
+
         {/* Prompt Selector */}
         <select
           className="input input-bordered w-full max-w-xs"
@@ -82,30 +82,30 @@ export function PromptGovernanceDashboard() {
           ))}
         </select>
       </div>
-      
+
       {/* Main Dashboard Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Quality Score */}
-        <QualityScoreCard 
-          data={dashboardData?.find(d => d.prompt_name === selectedPrompt)} 
+        <QualityScoreCard
+          data={dashboardData?.find(d => d.prompt_name === selectedPrompt)}
         />
-        
+
         {/* Feedback Stats */}
-        <FeedbackStatsCard 
-          data={dashboardData?.find(d => d.prompt_name === selectedPrompt)} 
+        <FeedbackStatsCard
+          data={dashboardData?.find(d => d.prompt_name === selectedPrompt)}
         />
-        
+
         {/* Version Count */}
-        <VersionCountCard 
-          data={dashboardData?.find(d => d.prompt_name === selectedPrompt)} 
+        <VersionCountCard
+          data={dashboardData?.find(d => d.prompt_name === selectedPrompt)}
         />
-        
+
         {/* Trend Analysis */}
-        <TrendCard 
-          data={dashboardData?.find(d => d.prompt_name === selectedPrompt)} 
+        <TrendCard
+          data={dashboardData?.find(d => d.prompt_name === selectedPrompt)}
         />
       </div>
-      
+
       {/* Tabs for Detailed Views */}
       <Tabs defaultValue="versions" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
@@ -113,23 +113,23 @@ export function PromptGovernanceDashboard() {
           <TabsTrigger value="ab-tests">A/B 测试</TabsTrigger>
           <TabsTrigger value="feedback">用户反馈</TabsTrigger>
         </TabsList>
-        
+
         <TabsContent value="versions">
-          <VersionHistoryTable 
-            data={versionHistory} 
-            loading={loadingVersions} 
+          <VersionHistoryTable
+            data={versionHistory}
+            loading={loadingVersions}
           />
         </TabsContent>
-        
+
         <TabsContent value="ab-tests">
-          <ABTestResultsPanel 
-            data={dashboardData?.find(d => d.prompt_name === selectedPrompt)} 
+          <ABTestResultsPanel
+            data={dashboardData?.find(d => d.prompt_name === selectedPrompt)}
           />
         </TabsContent>
-        
+
         <TabsContent value="feedback">
-          <FeedbackFeed 
-            data={dashboardData?.find(d => d.prompt_name === selectedPrompt)} 
+          <FeedbackFeed
+            data={dashboardData?.find(d => d.prompt_name === selectedPrompt)}
           />
         </TabsContent>
       </Tabs>
@@ -141,13 +141,13 @@ export function PromptGovernanceDashboard() {
 function QualityScoreCard({ data }: { data?: DashboardResponse }) {
   const score = data?.quality_score ?? 0;
   const trend = data?.trend_7d.length > 0 ? "up" : "neutral";
-  
+
   const getScoreColor = (score: number) => {
     if (score >= 0.8) return "text-emerald-400";
     if (score >= 0.6) return "text-amber-400";
     return "text-red-400";
   };
-  
+
   return (
     <Card className="glass-panel">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -171,7 +171,7 @@ function FeedbackStatsCard({ data }: { data?: DashboardResponse }) {
   const stats = data?.feedback_stats ?? {};
   const upRatio = stats.up_ratio ?? 0;
   const avgRating = stats.avg_rating ?? 0;
-  
+
   return (
     <Card className="glass-panel">
       <CardHeader>
@@ -200,7 +200,7 @@ function FeedbackStatsCard({ data }: { data?: DashboardResponse }) {
 // Version Count Card
 function VersionCountCard({ data }: { data?: DashboardResponse }) {
   const count = data?.version_count ?? 0;
-  
+
   return (
     <Card className="glass-panel">
       <CardHeader>
@@ -219,7 +219,7 @@ function VersionCountCard({ data }: { data?: DashboardResponse }) {
 // Trend Card
 function TrendCard({ data }: { data?: DashboardResponse }) {
   const trend = data?.trend_7d ?? [];
-  
+
   return (
     <Card className="glass-panel">
       <CardHeader>
@@ -260,7 +260,7 @@ function VersionHistoryTable({ data, loading }: { data?: VersionHistoryResponse;
       </Card>
     );
   }
-  
+
   if (!data) {
     return (
       <Card className="glass-panel">
@@ -270,7 +270,7 @@ function VersionHistoryTable({ data, loading }: { data?: VersionHistoryResponse;
       </Card>
     );
   }
-  
+
   return (
     <Card className="glass-panel">
       <CardHeader>
@@ -324,7 +324,7 @@ function VersionHistoryTable({ data, loading }: { data?: VersionHistoryResponse;
 // A/B Test Results Panel
 function ABTestResultsPanel({ data }: { data?: DashboardResponse }) {
   const tests = data?.ab_tests ?? [];
-  
+
   if (tests.length === 0) {
     return (
       <Card className="glass-panel">
@@ -338,7 +338,7 @@ function ABTestResultsPanel({ data }: { data?: DashboardResponse }) {
       </Card>
     );
   }
-  
+
   return (
     <Card className="glass-panel">
       <CardHeader>
@@ -385,7 +385,7 @@ function FeedbackFeed({ data }: { data?: DashboardResponse }) {
     { user: "bob", rating: 1, comment: "Excellent quality improvement", time: "5h ago" },
     { user: "charlie", rating: -1, comment: "Needs more specific constraints", time: "1d ago" },
   ];
-  
+
   return (
     <Card className="glass-panel">
       <CardHeader>

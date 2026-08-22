@@ -1,8 +1,8 @@
 # AGENT-03: 工具集按场景分发 - 实施总结报告
 
-**提交哈希**: `7778186`  
-**完成时间**: 2026-08-21  
-**对标参考**: [openai/codex tools/](https://github.com/openai/codex/tree/main/tools) + hermes `toolsets.py`  
+**提交哈希**: `7778186`
+**完成时间**: 2026-08-21
+**对标参考**: [openai/codex tools/](https://github.com/openai/codex/tree/main/tools) + hermes `toolsets.py`
 
 ---
 
@@ -10,7 +10,7 @@
 
 ### S5: 全量工具注入导致 Context 浪费
 - **现状**: `ToolRegistry.get_all_schemas()` 返回全部 32+ 工具 schema，每轮 LLM 调用均携带
-- **影响**: 
+- **影响**:
   - 冗余 token 消耗（平均 2-4KB/轮）
   - LLM 注意力分散（ irrelevant tools noise）
   - 无法按用户意图动态裁剪工具集
@@ -35,7 +35,7 @@ graph LR
     C --> D[ToolRegistry.__init__]
     D --> E[get_schemas_by_scopes filters]
     E --> F[agent.py ReAct loop]
-    
+
     style A fill:#e4f0fe
     style B fill:#f0e4fe
     style E fill:#efe4fe
@@ -175,13 +175,13 @@ class HermesAgent:
     def _react_loop(self):
         # 1. 意图识别：提取 user_query 关键词
         intents = self._extract_intents(user_input)  # e.g., ["quote", "technical"]
-        
+
         # 2. 动态筛选 tool schemas
         schemas = self.tool_registry.get_schemas_by_scopes(intents)
-        
+
         # 3. 注入 messages context
         assembled = self.assemble_context(schemas, history)
-        
+
         # 4. LLM inference with reduced context
         response = self.llm_client.call(assembled)
 ```
@@ -214,7 +214,7 @@ class HermesAgent:
    - 实现 `_extract_intents()` 基于关键词/ML classifier
    - 增加单元测试覆盖边界情况
    - A/B 测试验证 token 节省效果
-   
+
 2. **[AGENT-03-TEST]** 编写正式单元测试
    - `backend/tests/test_tool_sets_ag03.py`
    - Coverage > 90%
@@ -244,9 +244,9 @@ class HermesAgent:
 
 ## ✍️ 九、贡献者签名 (Contributor Notes)
 
-**Author**: Qoder AI Agent  
-**Reviewers**: TBD  
-**Date**: 2026-08-21  
+**Author**: Qoder AI Agent
+**Reviewers**: TBD
+**Date**: 2026-08-21
 
 > 💡 ** Lessons Learned **(Memory Update)
 > - Decorator factory pattern ≠ direct decorator → `@register_tool()` vs `@register_tool(scopes=[...])`

@@ -590,4 +590,3 @@ COPILOT-21/22 (数字可信) ──► COPILOT-01
 9. 行数：新拆文件全部低于 AGENTS.md §3 硬顶（COPILOT-11）
 
 ---
-

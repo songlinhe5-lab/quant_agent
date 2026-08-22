@@ -1,9 +1,9 @@
 # AGENT-13: 把自家工具暴露为 MCP Server - 最终完成报告
 
-**状态**: 🟢 **Production Ready (100%)**  
-**完成日期**: 2026-08-22  
-**测试覆盖**: ✅ 21/21 tests passed  
-**代码行数**: 359 lines (1 module) + 53 lines (router integration)  
+**状态**: 🟢 **Production Ready (100%)**
+**完成日期**: 2026-08-22
+**测试覆盖**: ✅ 21/21 tests passed
+**代码行数**: 359 lines (1 module) + 53 lines (router integration)
 **Breaking Changes**: ✅ None | Backward Compatible
 
 ---
@@ -150,7 +150,7 @@ POST /mcp/message?session_id=abc123
 
 # 4. 调用工具
 POST /mcp/message?session_id=abc123
-{"jsonrpc": "2.0", "id": 3, "method": "tools/call", 
+{"jsonrpc": "2.0", "id": 3, "method": "tools/call",
  "params": {"name": "get_broker_market_data", "arguments": {"action": "QUOTE", "ticker": "AAPL"}}}
 ```
 
@@ -162,7 +162,7 @@ POST /mcp/rpc
 {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
 
 # 响应
-{"jsonrpc": "2.0", "id": 1, 
+{"jsonrpc": "2.0", "id": 1,
  "result": {"tools": [
    {"name": "get_broker_market_data", "description": "...", "inputSchema": {...}},
    {"name": "calculate_technical_indicators", "description": "...", "inputSchema": {...}},
@@ -234,9 +234,9 @@ feat(AGENT-13): 把自家工具暴露为 MCP Server 完整实现 ✅
 
 ## 🎉 八、状态
 
-**AGENT-13**: 🟢 **Production Ready (100%)**  
-**测试覆盖**: ✅ 21/21 tests passed  
-**代码行数**: 359 lines (1 module) + 53 lines (router)  
+**AGENT-13**: 🟢 **Production Ready (100%)**
+**测试覆盖**: ✅ 21/21 tests passed
+**代码行数**: 359 lines (1 module) + 53 lines (router)
 **Breaking Changes**: ✅ None | Backward Compatible
 
 ---

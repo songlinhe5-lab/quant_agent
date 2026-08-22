@@ -287,7 +287,7 @@ Router-->>Client : 统一响应 {code,msg,data,ts}
           "call_id": "call_001"
         },
         {
-          "tool_name": "get_fundamental_data", 
+          "tool_name": "get_fundamental_data",
           "arguments": {"ticker": "MSFT"},
           "call_id": "call_002"
         }

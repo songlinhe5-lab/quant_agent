@@ -65,7 +65,7 @@ success = manager.rollback("compact_summary_system_prompt", "1.0.0")
 if success:
     template = manager.load_template("compact_summary_system_prompt")
     print(f"已回滚至版本：{template.current_version}")
-    
+
     # 获取该版本内容
     content = manager.get_variant("compact_summary_system_prompt", "1.0.0")
 ```
@@ -135,7 +135,7 @@ def on_template_changed(name: str, template):
     """回调函数：当 Prompt 文件被修改时触发"""
     print(f"✅ [HotReload] {name} 已更新到版本 {template.current_version}")
     # 重新加载 LLM 客户端或刷新缓存
-    
+
 reloader = PromptHotReloader(
     version_manager=version_manager,
     callback=on_template_changed
@@ -274,7 +274,7 @@ def get_compact_summary_prompt():
 # 2. 调用 LLM 执行压缩
 async def compress_dialogue(dialogue_history: str, max_tokens: int = 500):
     system_prompt = get_compact_summary_prompt()
-    
+
     llm = LLMService.get_instance()
     response = await llm.chat.completions.create(
         model="deepseek-pro/v4",
@@ -285,7 +285,7 @@ async def compress_dialogue(dialogue_history: str, max_tokens: int = 500):
         temperature=0.0,  # Deterministic output
         response_format={"type": "json_object"},
     )
-    
+
     summary = json.loads(response.choices[0].message.content)
     return summary
 
@@ -361,5 +361,5 @@ test_agent_16_next.py::test_prompt_quality_evaluator_composite_score PASSED
 
 ---
 
-**状态**: ✅ Production Ready  
+**状态**: ✅ Production Ready
 **影响范围**: 新增模块，不影响现有代码
