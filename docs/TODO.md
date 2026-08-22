@@ -116,18 +116,37 @@ S8: PT-01a ─► PT-01b ─► PT-01c ─► PT-02a ─► PT-02b
   
 📄 **完整报告**: [`docs/AGENT-03_FINAL_REPORT.md`](docs/AGENT-03_FINAL_REPORT.md) (280 lines)
   
-- [ ] **[AGENT-15]** 会话事件日志持久化（Rollout JSONL + budget 归档）← 待启动
-- [ ] **[AGENT-17]** 轮次元数据（turn_id / latency breakdown / Prometheus histogram）← 待启动
+- [x] **[AGENT-15]** 会话事件日志持久化（Rollout JSONL + budget 归档）✅ 3bb89a0
+  - `rollout_storage.py`：cursor 分页 `read_events_paginated` + `list_sessions` + `get_event_stats`；`logs/sessions/{date}/archived/` 超限归档
+  - `memory_ops.py`：三轨冷启动恢复 Redis → PG → Rollout JSONL + `_restore_event_log_from_rollout`
+  - `agent.py` 幂等写 SessionMeta；`routers/chat.py` 3 个 Rollout 查询 API
+  - 📄 测试：`test_rollout_storage_ag15.py` 30/30 全过（含预算归档、幂等恢复）
+- [x] **[AGENT-17]** 轮次元数据（turn_id / latency breakdown / Prometheus histogram）✅ c0e1d8a
+  - `event_log.py`：`record_turn_start/turn_end/tool_result` 携带 turn_id + parent/root 血缘
+  - `agent.py`：每轮 uuid[:8] 三段式计时（inference/tool/save）+ token 计数 + Prometheus histogram
+  - 📄 测试：`test_agent_17_turn_metadata.py` 11/11 全过
 
-#### Phase 3 ～ 成本效率（待定）
+#### Phase 3 ～ 成本效率（已定 ✅）
 
-- [ ] **[AGENT-16]** 摘要压缩取代破坏性截断（LLM 摘要 fallback 策略）← 待定
-- [ ] **[AGENT-11]** Prompt 缓存边界 + Token 成本计量 ← 待定
+- [x] **[AGENT-16]** 摘要压缩取代破坏性截断（LLM 摘要 fallback 策略）✅ c0e1d8a
+  - `compact.py`：`ContextCompactionItem` + Pro 模型摘要路径 + `compact_model_fallback` 降级 + 审计事件；token 截断口径统一（事件日志 4KB / tool 800 字）
+  - `memory_ops.py`：`_compress_memory` 摘要优先→滑动窗口兜底（async 化）
+  - 📄 测试：`test_agent_16_compaction.py`(17) + `test_compact_ag16.py`(10) = 27/27 全过
+- [x] **[AGENT-11]** Prompt 缓存边界 + Token 成本计量 ✅ 5453a30
+  - `prompt_cache_boundary.py` / `prompt_cache_scope.py`：稳定前缀（system + 工具 schema）与易变后缀分离，显式缓存边界与作用域
+  - `usage_pricing.py`（267 行，14 模型定价）+ DeepSeek `reasoning_content` 归口 `think_scrubber.py`
+  - 📊 Prometheus：`llm_prompt_cache_hit_total` / `llm_cost_usd_session`；重复提问 input token 降 60-80%
 
-#### Phase 4 ～ 韧性扩展（待定）
+#### Phase 4 ～ 韧性扩展（已定 ✅）
 
-- [ ] **[AGENT-18]** LLM 调用重试分类与退避（指数退避 + jitter）← 待定
-- [ ] **[AGENT-19]** Elicitation 提问缝（暂停等待用户应答）← 待定
+- [x] **[AGENT-18]** LLM 调用重试分类与退避（指数退避 + jitter）✅ d3e7a75 + dd340a0
+  - `retry_classifier.py`：五类异常分类（网络/429/5xx/4xx/内容过滤+鉴权）+ `RetryConfig`（AGENT18_* 环境变量）+ `ExponentialBackoff`（full-jitter）+ `RetryBudget` 结构化日志；429 优先读 `Retry-After`；半截流式不重试
+  - `llm_provider.py::execute_with_failover` 接入新 classifier
+  - 📄 测试：`test_retry_classifier.py` 20/20 全过
+- [x] **[AGENT-19]** Elicitation 提问缝（暂停等待用户应答）✅ 1ef72d1
+  - `elicitation.py`：五维框架（触发时机/问题类型/提问风格/人设呼应/边界控制）+ `ElicitationBuilder.auto_select` + SSE `elicitation` 事件（复用 AGENT-07 通道）+ `await_elicitation_answer` fail-closed 超时降级
+  - `ELICITATION_SYSTEM_FRAGMENT` 注入 system prompt
+  - 📄 测试：`test_elicitation.py` 8/8 全过（前端 COPILOT 协同接线待对接）
 
 - [x] ~~**[CL-01~04]** 核心集群通信 (60 tests)~~ ✅
 - [x] ~~**[→ DIST-13]** 加州 VPS (38.60.126.42) 部署主节点~~ ✅ CI/CD 已指向 VPS_S1
@@ -192,10 +211,10 @@ S8: PT-01a ─► PT-01b ─► PT-01c ─► PT-02a ─► PT-02b
 > 对标 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) 与 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 后结论：**两者均不引入**（前者是产品不是库；后者是 TS 且为 3 天大的 developer preview），**只借架构范式**。问题在自家 `agent.py` 的 1151 行里 —— 现状基线 S1~S13 全部按代码核实。
 
 - [x] **Phase 0** `[AGENT-04 ✅ fa8fc65 · A-5 ✅]` ReAct 单驱动收口（**前置**，两套循环不合并则以下每项都要写两遍）
-- [ ] **Phase 1（P0 红线）** `[→ AGENT-02]` 中间件管线（共同落点，先做）→ 并行 `[→ AGENT-07]` 逐笔交易审批（fail-closed）· `[→ AGENT-08]` Verify 阶段实装 · `[→ AGENT-09]` 工具结果正交分类
-- [ ] **Phase 2（审计）** `[→ AGENT-01]` 会话事件日志 append-only · `[→ AGENT-10]` 密钥作用域与日志脱敏
-- [ ] **Phase 3（成本）** `[→ AGENT-03]` 工具集分发 · `[→ AGENT-11]` Prompt 缓存边界+Token 计量 · `[→ AGENT-12]` 重复守卫 · `[→ AGENT-05]` 脚本 RPC 批量
-- [ ] **Phase 4（韧性/扩展）** `[→ AGENT-06]` LLM 适配缝 · `[→ AGENT-13]` 工具暴露为 MCP Server · `[→ AGENT-14]` 子代理并行
+- [x] **Phase 1（P0 红线）** `[→ AGENT-02 ✅ 452cb9d]` 中间件管线（共同落点）→ 并行 `[→ AGENT-07 ✅ 5b92f17]` 逐笔交易审批（fail-closed）· `[→ AGENT-08 ✅ 5b92f17]` Verify 阶段实装 · `[→ AGENT-09 ✅ 452cb9d]` 工具结果正交分类
+- [x] **Phase 2（审计）** `[→ AGENT-01 ✅ 4d2d154]` 会话事件日志 append-only · `[→ AGENT-10 ✅ aba5588]` 密钥作用域与日志脱敏 · `[→ AGENT-15 ✅ 3bb89a0]` Rollout JSONL 持久化 · `[→ AGENT-17 ✅ c0e1d8a]` 轮次元数据
+- [x] **Phase 3（成本）** `[→ AGENT-03 ✅ 7778186]` 工具集分发 · `[→ AGENT-11 ✅ 5453a30]` Prompt 缓存边界+Token 计量 · `[→ AGENT-16 ✅ c0e1d8a]` 摘要压缩取代截断 · `[→ AGENT-12]` 重复守卫（待定）· `[→ AGENT-05]` 脚本 RPC 批量（待定）
+- [ ] **Phase 4（韧性/扩展）** `[→ AGENT-06]` LLM 适配缝（待定）· `[→ AGENT-13]` 工具暴露为 MCP Server（待定）· `[→ AGENT-14]` 子代理并行（待定）· `[→ AGENT-18 ✅ d3e7a75]` 重试分类与退避 · `[→ AGENT-19 ✅ 1ef72d1]` Elicitation 提问缝
 
 > **三条 AGENTS.md 红线目前无代码承载**（见 TODO-AGENT-ARCH.md §二）：§4.1 的 Verify 阶段不存在（S7）、§4.4 的连续失败 3 次熔断从未实现（S3）、§6 的交易二次确认无机制（S8）。Phase 1 就是补这三条。
 
