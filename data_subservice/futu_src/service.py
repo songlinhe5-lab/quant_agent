@@ -630,6 +630,36 @@ class FutuService:
     ) -> Dict[str, Any]:
         return await self.trade_handler.place_order(ticker, qty, price, trd_side, market, format_ticker)
 
+    async def place_combo_order(
+        self,
+        combo_legs: Any,
+        price: float,
+        qty: int,
+        market: TrdMarket,
+        order_type: str = "NORMAL",
+        force_real: bool = False,
+        remark: str = "",
+    ) -> Dict[str, Any]:
+        """P1 组合期权下单（骨架，默认 SIMULATE 沙箱）。"""
+        return await self.trade_handler.place_combo_order(
+            combo_legs, price, qty, market, order_type=order_type, force_real=force_real, remark=remark
+        )
+
+    async def comboorder_tradinginfo_query(
+        self,
+        combo_legs: Any,
+        price: float,
+        qty: int,
+        market: TrdMarket,
+        order_type: str = "NORMAL",
+        order_id: Optional[str] = None,
+        force_real: bool = False,
+    ) -> Dict[str, Any]:
+        """P1 组合订单交易信息查询（预检，默认 SIMULATE）。"""
+        return await self.trade_handler.comboorder_tradinginfo_query(
+            combo_legs, price, qty, market, order_type=order_type, order_id=order_id, force_real=force_real
+        )
+
     async def modify_order(self, order_id: str, op: ModifyOrderOp, market: TrdMarket) -> Dict[str, Any]:
         return await self.trade_handler.modify_order(order_id, op, market)
 

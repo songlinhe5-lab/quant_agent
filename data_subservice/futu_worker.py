@@ -284,6 +284,28 @@ async def handle_futu(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
                 trd_side=_as_enum(TrdSide, params.get("trd_side")),
                 market=_as_enum(TrdMarket, params.get("market")),
             )
+        elif action == "PLACE_COMBO_ORDER":
+            # P1 组合期权下单（骨架，默认 SIMULATE；REAL 需 REAL_TRADE_EXECUTE + force_real）
+            return await futu_service.place_combo_order(
+                combo_legs=params.get("combo_legs"),
+                price=params.get("price", 0.0),
+                qty=params.get("qty", 0),
+                market=_as_enum(TrdMarket, params.get("market")),
+                order_type=params.get("order_type", "NORMAL"),
+                force_real=bool(params.get("force_real", False)),
+                remark=params.get("remark", ""),
+            )
+        elif action == "COMBO_TRADINGINFO_QUERY":
+            # P1 组合订单交易信息预检（默认 SIMULATE）
+            return await futu_service.comboorder_tradinginfo_query(
+                combo_legs=params.get("combo_legs"),
+                price=params.get("price", 0.0),
+                qty=params.get("qty", 0),
+                market=_as_enum(TrdMarket, params.get("market")),
+                order_type=params.get("order_type", "NORMAL"),
+                order_id=params.get("order_id"),
+                force_real=bool(params.get("force_real", False)),
+            )
         elif action == "SCREEN_STOCKS":
             return await futu_service.screen_stocks(
                 market=params.get("market", "HK"),

@@ -78,10 +78,10 @@
 
 ### 阶段 P1：组合期权交易（预留，待 OMS 实装）
 
-- [ ] **P1.1** 在 `trade_handler.py` 预留 `place_combo_order` / `comboorder_tradinginfo_query` 的 action 定义与路由骨架。
-- [ ] **P1.2** 严守 AGENTS.md §6 沙箱约束：默认 SIMULATE，仅 `REAL_TRADE_EXECUTE` 标志 + 二次确认才实盘。
-- [ ] **P1.3** 等 OMS 实盘工具实装后，再填充真实下单逻辑。
-- [ ] **P1.4** 单测（模拟下单）+ 提交 PR。
+- [x] **P1.1** 预留骨架：✅ 2026-08-22 在 `trade_handler.py` 实现 `place_combo_order`（`_build_combo_legs` 把 [{code,trd_side,qty_ratio}] 转 `ComboLeg`）+ `comboorder_tradinginfo_query`；worker 新增 `PLACE_COMBO_ORDER` / `COMBO_TRADINGINFO_QUERY` action；service 包装。**SDK 核查**：`place_combo_order` / `comboorder_tradinginfo_query` 均存在，`ComboLeg` 字段 = code/trd_side/qty_ratio/position_id/pred_side。
+- [x] **P1.2** 沙箱约束：✅ `_resolve_trd_env` 严守 AGENTS.md §6——默认 SIMULATE；仅 `REAL_TRADE_EXECUTE=1` **且** `force_real=True`（调用方二次确认）才 REAL，两者缺一回落 SIMULATE。单测覆盖：无标志时 force_real 仍 SIMULATE、有标志+确认才 REAL。
+- [x] **P1.3** 待 OMS 实装：✅ 骨架方法内注明「OMS 组合实盘工具尚未实装，当前为骨架预留；SIMULATE 盘可推演组合成交」。真实下单逻辑待 OMS 实装后填充（占位明确，非静默空转）。
+- [x] **P1.4** 单测 + 提交 PR：✅ 新增 `test_trade_combo_order.py` **9 例全过**（SIMULATE 成功/沙箱约束×2/非法腿/空腿/网关未连/SDK失败/交易信息查询成功+失败）；worker/service 61 例无回归。
 
 ### 阶段 P2：新马日市场（暂缓，有需求再启）
 

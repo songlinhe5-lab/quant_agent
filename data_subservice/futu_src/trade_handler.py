@@ -5,7 +5,7 @@ Futu 交易服务模块
 
 import asyncio
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import pandas as pd
 from futu import RET_OK, ModifyOrderOp, OrderType, TrdEnv, TrdMarket, TrdSide
@@ -251,3 +251,148 @@ class TradeHandler:
             return {"status": "error", "message": "账户数据为空"}
         except Exception as e:
             return {"status": "error", "message": f"API 异常: {str(e)}"}
+
+    # ── P1 组合期权交易（预留骨架，AGENTS.md §6 沙箱约束）──────────────────
+    @staticmethod
+    def _build_combo_legs(legs: Any) -> tuple:
+        """把 [{code, trd_side, qty_ratio}] 转成 futu ComboLeg 对象列表。
+
+        ComboLeg 字段: code / trd_side / qty_ratio / position_id / pred_side。
+        解析失败返回 (None, err_msg)。
+        """
+        from futu import ComboLeg, TrdSide
+
+        if not isinstance(legs, (list, tuple)) or len(legs) == 0:
+            return None, "combo_legs 须为非空 [{code, trd_side, qty_ratio}] 列表"
+        built = []
+        for leg in legs:
+            if not isinstance(leg, dict) or not leg.get("code"):
+                return None, f"非法组合腿: {leg}"
+            o = ComboLeg()
+            o.code = str(leg["code"])
+            side_str = str(leg.get("trd_side", "BUY")).upper()
+            o.trd_side = TrdSide.BUY if side_str in ("BUY", "1") else TrdSide.SELL
+            o.qty_ratio = int(leg.get("qty_ratio", 1))
+            o.position_id = leg.get("position_id") or ""
+            o.pred_side = leg.get("pred_side") or ""
+            built.append(o)
+        return built, None
+
+    def _resolve_trd_env(self, force_real: bool = False) -> TrdEnv:
+        """沙箱约束：默认 SIMULATE，仅 REAL_TRADE_EXECUTE 标志 + force_real 才 REAL。
+
+        AGENTS.md §6 红线：交易默认纯模拟推演；实盘需环境标志 REAL_TRADE_EXECUTE 且调用方
+        二次确认(force_real=True)。两者缺一即回落 SIMULATE。
+        """
+        allow_real = os.getenv("REAL_TRADE_EXECUTE", "0") == "1"
+        if allow_real and force_real:
+            return TrdEnv.REAL
+        return TrdEnv.SIMULATE
+
+    @with_global_retry
+    async def place_combo_order(
+        self,
+        combo_legs: Any,
+        price: float,
+        qty: int,
+        market: TrdMarket,
+        order_type: str = "NORMAL",
+        force_real: bool = False,
+        remark: str = "",
+    ) -> Dict[str, Any]:
+        """P1 组合期权下单（骨架，预留 OMS 实装位）。
+
+        ⚠️ P1.3：OMS 实盘工具尚未实装，本方法仅走 SIMULATE 沙箱推演；
+        当 REAL_TRADE_EXECUTE=1 且 force_real=True 时才触达 REAL，且仍建议先二次确认。
+        组合腿解析失败 / 未连交易网关 / SDK 不支持均降级返回，绝不静默下单。
+        """
+        from futu import OrderType, TrdEnv
+
+        built, err = self._build_combo_legs(combo_legs)
+        if err:
+            return {"status": "error", "message": err}
+        trd_env = self._resolve_trd_env(force_real=force_real)
+        trd_ctx = self.conn_mgr.get_trade_context(market=market, trd_env=trd_env)
+        if trd_ctx is None:
+            return {"status": "error", "message": "Futu OpenD 交易网关未连接"}
+
+        await self.conn_mgr.unlock_trade_if_needed(trd_ctx)
+
+        ot = OrderType.NORMAL if str(order_type).upper() in ("NORMAL", "LIMIT") else OrderType.MARKET
+        try:
+            ret, data = await asyncio.to_thread(
+                trd_ctx.place_combo_order,
+                combo_leg_list=built,
+                price=float(price),
+                qty=int(qty),
+                order_type=ot,
+                trd_env=trd_env,
+                remark=remark,
+            )
+            if ret != RET_OK:
+                return {"status": "error", "message": f"组合下单失败: {data}"}
+            oid = str(data["order_id"].iloc[0]) if isinstance(data, pd.DataFrame) and not data.empty else str(data)
+            env_label = "REAL" if trd_env == TrdEnv.REAL else "SIMULATE"
+            return {
+                "status": "success",
+                "message": f"组合订单已提交({env_label})！订单号: {oid}",
+                "order_id": oid,
+                "environment": env_label,
+                "note": "OMS 组合实盘工具尚未实装，当前为骨架预留；SIMULATE 盘可推演组合成交",
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ place_combo_order 失败: %s", e)
+            return {"status": "error", "message": f"组合下单异常: {str(e)}"}
+
+    @with_global_retry
+    async def comboorder_tradinginfo_query(
+        self,
+        combo_legs: Any,
+        price: float,
+        qty: int,
+        market: TrdMarket,
+        order_type: str = "NORMAL",
+        order_id: Optional[str] = None,
+        force_real: bool = False,
+    ) -> Dict[str, Any]:
+        """P1 组合订单交易信息查询（组合下单前可用性/购买力预检，骨架）。
+
+        仅查询，不触达成交；默认 SIMULATE，REAL 需 REAL_TRADE_EXECUTE + force_real。
+        """
+        from futu import OrderType, TrdEnv
+
+        built, err = self._build_combo_legs(combo_legs)
+        if err:
+            return {"status": "error", "message": err}
+        trd_env = self._resolve_trd_env(force_real=force_real)
+        trd_ctx = self.conn_mgr.get_trade_context(market=market, trd_env=trd_env)
+        if trd_ctx is None:
+            return {"status": "error", "message": "Futu OpenD 交易网关未连接"}
+
+        await self.conn_mgr.unlock_trade_if_needed(trd_ctx)
+
+        ot = OrderType.NORMAL if str(order_type).upper() in ("NORMAL", "LIMIT") else OrderType.MARKET
+        try:
+            ret, data = await asyncio.to_thread(
+                trd_ctx.comboorder_tradinginfo_query,
+                combo_leg_list=built,
+                price=float(price),
+                qty=int(qty),
+                order_type=ot,
+                order_id=order_id,
+                trd_env=trd_env,
+            )
+            if ret != RET_OK:
+                return {"status": "error", "message": f"组合订单信息查询失败: {data}"}
+            env_label = "REAL" if trd_env == TrdEnv.REAL else "SIMULATE"
+            rows = data.to_dict("records") if isinstance(data, pd.DataFrame) else data
+            return {
+                "status": "success",
+                "message": f"组合订单信息已获取({env_label})",
+                "environment": env_label,
+                "count": len(rows) if isinstance(rows, list) else 0,
+                "data": rows,
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ comboorder_tradinginfo_query 失败: %s", e)
+            return {"status": "error", "message": f"组合订单信息查询异常: {str(e)}"}
