@@ -360,10 +360,12 @@ Phase 4 韧性扩展    AGENT-06 / AGENT-13 / AGENT-14
     - `memory_ops.py` +44/-38：`_compress_memory` async 化 + 摘要优先→滑动窗口兜底 + 修复滑动窗口断点方向
     - `agent.py` +3/-3：`_heal_memory` async 化 + 3 处 await
     - `test_agent_16_compaction.py` (17 tests) + `test_compact_ag16.py` (10 tests)：27/27 全通过
-- [ ] **[AGENT-17]** **轮次身份与计时元数据**
-  - **现状**：S16
-  - **改法**：`_react_loop` 每轮生成 `turn_id`（uuid），turn/start|end 事件携带：iteration / model / prompt_tokens / completion_tokens / latency 分解（inference_ms / tool_ms / save_ms）；预留 parent_turn_id / root_turn_id 字段（AGENT-14 血缘）；Prometheus `agent_turn_duration_seconds` histogram
-  - **验收**：事件日志 turn 事件全带 turn_id 与计时；指标端点可见每轮延迟分布；tool_result 可按 turn_id 归组
+- [x] **[AGENT-17]** **轮次身份与计时元数据**
+  - **实现** (commit c0e1d8a):
+    - `event_log.py` +55/-8：record_turn_start/turn_end/tool_result 新增 turn_id + model + latency 分解 + 血缘预留
+    - `agent.py` +85 net：_react_loop 每轮生成 uuid[:8]；三段式计时（inference/tool/save）；提取 token 计数；Prometheus histogram
+    - `test_agent_17_turn_metadata.py` (11 tests)：11/11 全通过
+  - **验收**: ✅ 事件日志 turn 事件全带 turn_id 与计时；✅ 指标端点可见每轮延迟分布；✅ tool_result 可按 turn_id 归组
 - [ ] **[AGENT-18]** **LLM 调用重试分类与退避**
   - **现状**：S17
   - **改法**（codex `responses_retry.rs` 范式）：retryable（429 / timeout / 5xx / 连接复位）与非 retryable（鉴权 / 参数错误）分类；retryable 指数退避 + jitter 最多 3 次；非 retryable 直进 error 事件；重试耗尽计入 AGENT-02 FailureTracker；**不得对已产生流式输出的半截轮次重试**（防重复下单类副作用）

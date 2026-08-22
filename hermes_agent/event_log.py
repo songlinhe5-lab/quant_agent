@@ -125,14 +125,61 @@ class SessionEventLog:
     def record_tool_call(self, call_id: str, name: str, arguments: str) -> SessionEvent:
         return self.append("tool/call", {"call_id": call_id, "name": name, "arguments": arguments})
 
-    def record_tool_result(self, call_id: str, name: str, content: str) -> SessionEvent:
-        return self.append("tool/result", {"call_id": call_id, "name": name, "content": content})
+    def record_tool_result(self, call_id: str, name: str, content: str, turn_id: str = "") -> SessionEvent:
+        """记录工具返回（AGENT-17: 携带 turn_id 便于按轮次归组）"""
+        payload = {"call_id": call_id, "name": name, "content": content}
+        if turn_id:
+            payload["turn_id"] = turn_id
+        return self.append("tool/result", payload)
 
-    def record_turn_start(self, iteration: int) -> SessionEvent:
-        return self.append("turn/start", {"iteration": iteration})
+    def record_turn_start(
+        self,
+        iteration: int,
+        turn_id: str = "",
+        model: str = "",
+        parent_turn_id: str = "",
+        root_turn_id: str = "",
+    ) -> SessionEvent:
+        """记录 ReAct 轮次开始（AGENT-17: 携带 turn_id + 血缘字段）"""
+        payload: Dict[str, Any] = {"iteration": iteration}
+        if turn_id:
+            payload["turn_id"] = turn_id
+        if model:
+            payload["model"] = model
+        # AGENT-14 血缘预留
+        if parent_turn_id:
+            payload["parent_turn_id"] = parent_turn_id
+        if root_turn_id:
+            payload["root_turn_id"] = root_turn_id
+        return self.append("turn/start", payload)
 
-    def record_turn_end(self, iteration: int, content_len: int = 0) -> SessionEvent:
-        return self.append("turn/end", {"iteration": iteration, "content_len": content_len})
+    def record_turn_end(
+        self,
+        iteration: int,
+        content_len: int = 0,
+        turn_id: str = "",
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+        inference_ms: float = 0.0,
+        tool_ms: float = 0.0,
+        save_ms: float = 0.0,
+    ) -> SessionEvent:
+        """记录 ReAct 轮次结束（AGENT-17: 携带完整计时分解）"""
+        payload: Dict[str, Any] = {"iteration": iteration, "content_len": content_len}
+        if turn_id:
+            payload["turn_id"] = turn_id
+        if prompt_tokens:
+            payload["prompt_tokens"] = prompt_tokens
+        if completion_tokens:
+            payload["completion_tokens"] = completion_tokens
+        # 延迟分解（毫秒）
+        if inference_ms or tool_ms or save_ms:
+            payload["latency"] = {
+                "inference_ms": round(inference_ms, 2),
+                "tool_ms": round(tool_ms, 2),
+                "save_ms": round(save_ms, 2),
+            }
+        return self.append("turn/end", payload)
 
     def record_memory_op(self, op: str, detail: str = "") -> SessionEvent:
         """记录 memory/compress 或 memory/heal（压缩不改事件日志本身）。"""

@@ -2,6 +2,8 @@ import asyncio
 import json
 import os
 import re
+import time
+import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, cast
 
@@ -22,6 +24,35 @@ from hermes_agent.subagent import SubAgentTask, run_parallel_analysis
 # 盘中主脑 prompt（与 IDE 编码宪法 AGENTS.md 分离）
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DEFAULT_SYSTEM_PROMPT_PATH = os.path.join(_REPO_ROOT, "prompts", "system", "HERMES.md")
+
+
+# ── AGENT-17: Prometheus 指标（延迟初始化）────────────────────────────
+_TURN_DURATION_HISTOGRAM: Any = None
+
+
+def _init_prometheus_metrics():
+    """延迟初始化 Prometheus 指标（避免未安装 prometheus_client 时崩溃）"""
+    global _TURN_DURATION_HISTOGRAM
+    if _TURN_DURATION_HISTOGRAM is not None:
+        return
+    try:
+        from prometheus_client import Histogram
+
+        _TURN_DURATION_HISTOGRAM = Histogram(
+            "agent_turn_duration_seconds",
+            "ReAct 轮次延迟分布（按阶段分解）",
+            ["phase", "model"],
+            buckets=(0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0),
+        )
+    except Exception:
+        pass  # prometheus_client 未安装时静默跳过
+
+
+def _observe_turn_duration(phase: str, model: str, duration_seconds: float):
+    """观测轮次延迟（秒）"""
+    _init_prometheus_metrics()
+    if _TURN_DURATION_HISTOGRAM is not None:
+        _TURN_DURATION_HISTOGRAM.labels(phase=phase, model=model).observe(duration_seconds)
 
 
 # A-3.1: LLM 调用归一化结果（AGENT-04）
@@ -405,11 +436,29 @@ class HermesAgent(MemoryOperationsMixin):
                 }
                 return  # 提前退出循环
 
-            # AGENT-01: 轮次开始事件（append-only）
-            self.event_log.record_turn_start(i + 1)
+            # AGENT-17: 生成轮次唯一 ID（uuid4）
+            turn_id = str(uuid.uuid4())[:8]  # 短 ID 便于日志阅读
+            current_model = self.provider_router.get_active_model()
+
+            # AGENT-01 + AGENT-17: 轮次开始事件（携带 turn_id + model + 血缘预留）
+            self.event_log.record_turn_start(
+                iteration=i + 1,
+                turn_id=turn_id,
+                model=current_model,
+                # AGENT-14 血缘预留（当前为空，未来子 Agent 调用时填充）
+                parent_turn_id="",
+                root_turn_id="",
+            )
             # 💡 心跳保活：每轮 ReAct 开始前发送心跳
             yield {"type": "heartbeat", "tick": i + 1}
-            print(f"🤖 [Agent] 思考中 (第 {i + 1} 轮)...")
+            print(f"🤖 [Agent] 思考中 (第 {i + 1} 轮, turn_id={turn_id})...")
+
+            # AGENT-17: 计时初始化
+            inference_ms = 0.0
+            tool_ms = 0.0
+            save_ms = 0.0
+            prompt_tokens = 0
+            completion_tokens = 0
 
             try:
                 # ── 1. 构建请求 & 调试输出 ──────────────────────────────
@@ -432,6 +481,10 @@ class HermesAgent(MemoryOperationsMixin):
 
                 # AGENT-06: 用 router 的活跃 provider 覆盖 model
                 request_kwargs["model"] = self.provider_router.get_active_model()
+                current_model = request_kwargs["model"]  # AGENT-17: 用于 Prometheus 标签
+
+                # AGENT-17: LLM 推理计时开始
+                inference_start = time.monotonic()
 
                 async def do_llm_inference():
                     try:
@@ -534,8 +587,16 @@ class HermesAgent(MemoryOperationsMixin):
 
                 self.console.print(f"✅ [Chat API] 本轮流式接收完毕，共解析 {chunk_count} 个 Chunk。")
 
+                # AGENT-17: LLM 推理计时结束
+                inference_ms = (time.monotonic() - inference_start) * 1000
+
                 # 📊 Token 计量
                 await self._record_usage(_last_usage)
+
+                # AGENT-17: 提取 token 计数
+                if _last_usage:
+                    prompt_tokens = getattr(_last_usage, "prompt_tokens", 0) or 0
+                    completion_tokens = getattr(_last_usage, "completion_tokens", 0) or 0
 
                 # 组装 message dict 并加入上下文
                 msg_dict = {"role": "assistant", "content": iter_content if iter_content else None}
@@ -557,6 +618,9 @@ class HermesAgent(MemoryOperationsMixin):
 
                 # ── 4. 工具执行（含心跳保活）──────────────────────────────
                 if assembled_tool_calls:
+                    # AGENT-17: 工具执行计时开始
+                    tool_start = time.monotonic()
+
                     for tc in msg_dict["tool_calls"]:
                         yield {
                             "type": "tool_start",
@@ -607,21 +671,44 @@ class HermesAgent(MemoryOperationsMixin):
                                     "content": json.dumps(final_res, ensure_ascii=False),
                                 }
                             )
-                            # AGENT-01: 工具返回入事件日志（截断 4KB 控制内存，全文仍在 Redis/PG 会话中）
+                            # AGENT-01 + AGENT-17: 工具返回入事件日志（携带 turn_id 便于归组）
                             _ev_content = json.dumps(final_res, ensure_ascii=False)
                             if len(_ev_content) > 4096:
                                 _ev_content = _ev_content[:4096] + "...[truncated]"
-                            self.event_log.record_tool_result(tc["id"], tc["function"]["name"], _ev_content)
+                            self.event_log.record_tool_result(
+                                tc["id"], tc["function"]["name"], _ev_content, turn_id=turn_id
+                            )
                             yield {"type": "tool_result", "name": tc["function"]["name"], "result": final_res}
 
                     if tool_tasks:
                         await asyncio.gather(*tool_tasks, return_exceptions=True)
+
+                    # AGENT-17: 工具执行计时结束
+                    tool_ms = (time.monotonic() - tool_start) * 1000
+
+                    # AGENT-17: 会话保存计时
+                    save_start = time.monotonic()
                     await self._save_session()
+                    save_ms = (time.monotonic() - save_start) * 1000
 
                 else:
                     # ── 5. 无工具调用 → 参考文献自愈 + 输出 ──────────────
                     if not iter_content:
-                        self.event_log.record_turn_end(i + 1, content_len=len(collected_content))  # AGENT-01
+                        # AGENT-01 + AGENT-17: 轮次结束事件（携带计时）
+                        self.event_log.record_turn_end(
+                            i + 1,
+                            content_len=len(collected_content),
+                            turn_id=turn_id,
+                            prompt_tokens=prompt_tokens,
+                            completion_tokens=completion_tokens,
+                            inference_ms=inference_ms,
+                            tool_ms=tool_ms,
+                            save_ms=save_ms,
+                        )
+
+                        # AGENT-17: 观测 Prometheus 指标（early exit，仅保存时间）
+                        _observe_turn_duration("early_exit", current_model, save_ms / 1000)
+
                         yield {"type": "_done", "content": collected_content}
                         return
 
@@ -684,8 +771,21 @@ class HermesAgent(MemoryOperationsMixin):
                                     if isinstance(item, dict):
                                         yield {"type": "chart_annotation", "data": item}
 
-                    # AGENT-01: 正常结束的轮次记录 turn_end
-                    self.event_log.record_turn_end(i + 1, content_len=len(collected_content))
+                    # AGENT-01 + AGENT-17: 正常结束的轮次记录 turn_end（携带完整计时）
+                    self.event_log.record_turn_end(
+                        i + 1,
+                        content_len=len(collected_content),
+                        turn_id=turn_id,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        inference_ms=inference_ms,
+                        tool_ms=tool_ms,
+                        save_ms=save_ms,
+                    )
+
+                    # AGENT-17: 观测 Prometheus 指标（仅 phase=start+inference，不含 tool/save 因分属独立路径）
+                    _observe_turn_duration("start_inference", current_model, (inference_ms + save_ms) / 1000)
+
                     yield {"type": "_done", "content": collected_content}
                     return
 
@@ -721,6 +821,10 @@ class HermesAgent(MemoryOperationsMixin):
 
             _f_usage = None
             final_content = ""
+
+            # AGENT-17: 熔断恢复路径计时开始（inference）
+            recovery_inference_start = time.monotonic()
+
             async for chunk in response:
                 if not chunk.choices:
                     continue
@@ -736,17 +840,36 @@ class HermesAgent(MemoryOperationsMixin):
                     yield {"type": "text_chunk", "content": delta.content}
 
             await self._record_usage(_f_usage)
+
+            # AGENT-17: 熔断恢复推理计时结束
+            recovery_inference_ms = (time.monotonic() - recovery_inference_start) * 1000
             self.messages.append({"role": "assistant", "content": final_content if final_content else None})
-            # AGENT-01: 熔断恢复的最终回复入事件日志
+            # AGENT-01 + AGENT-17: 熔断恢复的最终回复入事件日志（携带计时）
             if final_content:
                 self.event_log.record_assistant_message(final_content)
-            self.event_log.record_turn_end(max_iterations, content_len=len(final_content or ""))
+            # AGENT-17: 熔断恢复轮次结束事件（仅 inference，无 tool/save）
+            self.event_log.record_turn_end(
+                max_iterations,
+                content_len=len(final_content or ""),
+                turn_id=turn_id,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                inference_ms=recovery_inference_ms,
+                tool_ms=0.0,
+                save_ms=0.0,
+            )
 
             # 📥 对话事实沉淀
             if final_content:
                 await self._sink_to_kb(final_content)
 
+            # AGENT-17: 保存会话也计入时间
+            save_start = time.monotonic()
             await self._save_session()
+            save_ms = (time.monotonic() - save_start) * 1000
+
+            # AGENT-17: 观测 Prometheus 指标
+            _observe_turn_duration("recovery_fallback", current_model, (recovery_inference_ms + save_ms) / 1000)
             yield {"type": "_done", "content": final_content}
             return
 
