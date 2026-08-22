@@ -878,53 +878,54 @@ class OptionFundHandler:
             return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": market_ticker}
 
     # ── F2: 三大财务报表（G1 真基本面基座）──────────────────────────────
-    # 富途返回 field_id 是英文枚举（如 CASH_EQUIVALENTS），前端/用户需中文字段名。
-    # 这里建映射表，缺失的 field_id 保留原值透传（零幻觉：不臆造中文名）。
-    FINANCIAL_FIELD_MAP = {
-        # 资产负债表
-        "CASH_EQUIVALENTS": "现金及现金等价物",
-        "SHORT_TERM_INVESTMENT": "短期投资",
-        "TRADE_RECEIVABLE": "应收账款",
-        "INVENTORY": "存货",
-        "TOTAL_CURRENT_ASSETS": "流动资产合计",
-        "TOTAL_ASSETS": "资产总计",
-        "TRADE_PAYABLE": "应付账款",
-        "TOTAL_CURRENT_LIABILITIES": "流动负债合计",
-        "TOTAL_LIABILITIES": "负债合计",
-        "TOTAL_EQUITY": "所有者权益合计",
-        "RETAINED_EARNINGS": "留存收益",
-        # 利润表
-        "TOTAL_OPERATING_REVENUE": "营业总收入",
-        "TOTAL_OPERATING_COST": "营业总成本",
-        "GROSS_PROFIT": "毛利",
-        "OPERATING_PROFIT": "营业利润",
-        "NET_PROFIT": "净利润",
-        "BASIC_EPS": "基本每股收益",
-        "DILUTED_EPS": "稀释每股收益",
-        # 现金流量表
-        "NET_CASH_FLOW_FROM_OPERATING": "经营活动净现金流",
-        "NET_CASH_FLOW_FROM_INVESTING": "投资活动净现金流",
-        "NET_CASH_FLOW_FROM_FINANCING": "筹资活动净现金流",
-        "FREE_CASH_FLOW": "自由现金流",
+    # 富途 get_financials_statements 实测（2026-08-22, futu-api 10.10.7008, OpenD 在线）：
+    #   statement_type 必须传【整数枚举】：1=利润表 2=资产负债表 3=现金流量表 4=关键指标
+    #   financial_type 传【F10Type 字符串】：'ANNUAL' / 'QUARTERLY_ANNUAL' / 'INTERIM' / 'Q1'...
+    #   返回 dict：{
+    #     "next_key": "时间戳,期标识" | "",   # 非空=还有下一页（分页游标，续拉填回）
+    #     "structure_list": [{"field_id":int, "display_name":"中文"}],
+    #     "report_list": [{date_time, fiscal_year, financial_type, period_text,
+    #                      currency_code, accounting_standards,
+    #                      item_list:[{field_id, display_name, data, yoy, qoq}]}]
+    #   }
+    # ⚠️ 字段中文名来自 SDK 返回的 display_name（零幻觉，禁手编英文枚举映射）；
+    #   旧 FINANCIAL_FIELD_MAP（英文枚举 key）已废弃——field_id 实际是整数，永远命中不到。
+    # 对外契约：statement_type 接受语义字符串(income/balance_sheet/cash_flow/main_index)或整数 1~4。
+
+    # 对外语义字符串 -> SDK 整数枚举（兼容历史调用传字符串）
+    _STMT_TYPE_MAP = {
+        "income": 1,
+        "income_statement": 1,
+        "profit": 1,
+        "balance": 2,
+        "balance_sheet": 2,
+        "cash_flow": 3,
+        "cashflow": 3,
+        "cashflow_statement": 3,
+        "main_index": 4,
+        "key_indicators": 4,
+        "mainindex": 4,
     }
 
+    @with_global_retry
     async def get_financials_statements(
         self,
         ticker,
         statement_type=None,
         financial_type=None,
         currency_code=None,
-        num=1,
+        num=None,
         format_ticker_func=None,
         is_unsupported_func=None,
     ) -> Dict[str, Any]:
-        """获取三大财务报表（资产负债表/利润表/现金流量表）。
+        """获取三大财务报表（资产负债表/利润表/现金流量表/关键指标）。
 
         入参:
-          statement_type: "BALANCE_SHEET" | "INCOME_STATEMENT" | "CASH_FLOW"（None 取默认）
-          financial_type: "ANNUAL" | "INTERIM" | "QUARTER"（None 取默认）
-          currency_code:  "HKD" | "USD" | ...（None 取原始货币）
-          num:            返回期数（默认 1，即最近一期）
+          statement_type: 整数 1/2/3/4，或语义字符串 income/balance_sheet/cash_flow/main_index
+                          （None 默认 2=资产负债表）
+          financial_type: F10Type 字符串 ANNUAL/QUARTERLY_ANNUAL/INTERIM/Q1...（None 默认 ANNUAL）
+          currency_code:  ISO 4217（None 返回原始货币）
+          num:            期望返回的报告期数（分页续拉直到满足或 next_key 空，默认 4）
         """
         if is_unsupported_func and is_unsupported_func(ticker):
             return {
@@ -937,51 +938,94 @@ class OptionFundHandler:
         if not code:
             return {"status": "error", "source": "futu", "ticker": ticker, "message": "标的代码格式无法识别"}
 
+        # statement_type 归一为整数枚举（1~4）
+        if statement_type is None:
+            stmt_int = 2
+        elif isinstance(statement_type, int):
+            stmt_int = statement_type
+        else:
+            stmt_int = self._STMT_TYPE_MAP.get(str(statement_type).strip().lower())
+            if stmt_int is None:
+                return {
+                    "status": "error",
+                    "source": "futu",
+                    "ticker": ticker,
+                    "message": f"不支持的 statement_type: {statement_type!r}（支持 income/balance_sheet/cash_flow/main_index 或 1~4）",
+                    "code": code,
+                }
+
+        ft = financial_type or "ANNUAL"
+        want = int(num) if num else 4
+
         ctx = self.conn_mgr.get_quote_ctx()
         if ctx is None:
             return {"status": "error", "source": "futu", "ticker": ticker, "message": "Futu OpenD 未连接", "code": code}
 
+        cache_key = f"futu_financials_{code}_{stmt_int}_{ft}_{currency_code or 'orig'}"
+        cached = self.cache_mgr.get_financials_cache(cache_key)
+        if cached is not None:
+            return cached[1]
+
         try:
-            # 10.10: get_financials_statements(code, statement_type, financial_type,
-            #        currency_code, next_key, num) — 收字符串/None，非枚举类
-            ret, data = ctx.get_financials_statements(
-                code,
-                statement_type=statement_type,
-                financial_type=financial_type,
-                currency_code=currency_code,
-                num=num,
-            )
-            if ret != RET_OK:
-                return {"status": "error", "source": "futu", "ticker": ticker, "message": str(data), "code": code}
+            reports: list = []
+            next_key = ""
+            pages = 0
+            # 分页续拉：每次拉满 50（API 上限），累计达到 want 或 next_key 空则停
+            while len(reports) < want and pages < 20:
+                ret, data = await asyncio.to_thread(
+                    ctx.get_financials_statements, code, stmt_int, ft, currency_code, next_key, 50
+                )
+                if ret != RET_OK:
+                    return {"status": "error", "source": "futu", "ticker": ticker, "message": str(data), "code": code}
+                if not isinstance(data, dict):
+                    break
+                reports.extend(data.get("report_list", []) or [])
+                next_key = data.get("next_key") or ""
+                pages += 1
+                if not next_key:
+                    break
 
-            # 防护：10.10 下 data 可能为 str（错误消息）而非 DataFrame/Iterable，直接 to_dict/list 会抛 'str' 异常
-            if isinstance(data, str):
-                return {"status": "error", "source": "futu", "ticker": ticker, "message": data, "code": code}
+            # 字段中文名来自 SDK item_list.display_name（零幻觉，不手编）
+            periods = []
+            for rep in reports[:want]:
+                items = []
+                for it in rep.get("item_list", []) or []:
+                    items.append(
+                        {
+                            "field_id": it.get("field_id"),
+                            "name_cn": it.get("display_name") or it.get("field_id"),
+                            "value": it.get("data"),
+                            "yoy": it.get("yoy"),
+                            "qoq": it.get("qoq"),
+                        }
+                    )
+                periods.append(
+                    {
+                        "fiscal_year": rep.get("fiscal_year"),
+                        "financial_type": rep.get("financial_type"),
+                        "period_text": rep.get("period_text"),
+                        "date_time_str": rep.get("date_time_str"),
+                        "currency_code": rep.get("currency_code"),
+                        "accounting_standards": rep.get("accounting_standards"),
+                        "items": items,
+                    }
+                )
 
-            # 字段级映射：field_id -> 中文
-            if hasattr(data, "to_dict"):
-                rows = data.to_dict("records")
-            else:
-                rows = list(data)
-            mapped = []
-            for r in rows:
-                field_id = r.get("field_id")
-                r = dict(r)
-                r["field_name_cn"] = self.FINANCIAL_FIELD_MAP.get(field_id, field_id)
-                mapped.append(r)
-
-            return {
+            result = {
                 "status": "success",
                 "source": "futu",
                 "ticker": ticker,
                 "code": code,
-                "statement_type": statement_type,
-                "financial_type": financial_type,
-                "count": len(mapped),
-                "data": mapped,
+                "statement_type": stmt_int,
+                "financial_type": ft,
+                "currency_code": currency_code,
+                "count": len(periods),
+                "data": periods,
             }
-        except Exception as e:
-            logger.error(f"❌ get_financials_statements 失败 {code}: {e}")
+            self.cache_mgr.set_financials_cache(cache_key, time.time(), result)
+            return result
+        except Exception as e:  # noqa: BLE001
+            logger.error("❌ get_financials_statements 失败 %s: %s", code, e)
             return {"status": "error", "source": "futu", "ticker": ticker, "message": str(e), "code": code}
 
     # ── F2: 估值明细（G1 真基本面基座）──────────────────────────────────

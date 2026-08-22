@@ -1,7 +1,7 @@
 # TODO — Futu 基本面 / 选股接口评估与接入计划
 
 > 创建时间：2026-08-13
-> 状态：评估已完成，**代码未开始**（后期开动）
+> 状态：评估已完成，**P0（财务三大表）已于 2026-08-22 完成并验证**，P1.1（估值详情）已验证可用；P1.2~P1.7 待办（按需填坑）。
 > 触发来源：富途 Futu API v10.9 新增能力评估（`get_stock_screen` / `get_financials_statements`）
 > 参考文档：
 > - `https://openapi.futunn.com/futu-api-doc/quote/get-stock-screen.html`（协议 3252）
@@ -80,18 +80,18 @@ company_name / trailing_PE / price_to_book / dividend_yield / market_cap
 
 ### 阶段 P0：财务三大表（ROI 最高，先做）
 
-- [ ] **P0.1** 新增 `data_subservice/futu_src/fundamental_handler.py`（或扩展 `option_fund_handler.py`），实现 `get_financials_statements(ticker, statement_type, financial_type)`。
-- [ ] **P0.2** 处理 `next_key` 游标分页 + `num` 参数（1~50）。
-- [ ] **P0.3** 字段映射：`field_id` → 中文 `display_name`（利用返回的 `structure_list`），构造结构化三大表 + yoy/qoq。
-- [ ] **P0.4** 接入 `futu_worker.py` 的 `_FUTU_ACTION_MAP`：新增 action（如 `FINANCIAL_STATEMENTS`）。
-- [ ] **P0.5** 主服务 `adapters/futu.py` 的 `capabilities` 声明新 action + `router.py` 路由。
-- [ ] **P0.6** 接入现有 `@with_global_retry` + `cache_mgr` 缓存（财报低频，缓存周期可设 1 天级）。
-- [ ] **P0.7** 单测：正常返回、分页、字段映射、异常兜底、限流退避。
-- [ ] **P0.8** 提交 PR。
+- [x] **P0.1** 实现 `get_financials_statements`：✅ 2026-08-22 修正并验证（`option_fund_handler.py`）。**关键修复（零幻觉）**：原代码用错 `statement_type` 字符串枚举（如 `'BALANCE_SHEET'`）→ SDK 返回 `ret=-1 unknown enum label`，被 `is_unsupported` 降级，宏观层实际拿不到真财务数据（即「假基本面」真因）。实跑确认正确入参为 **整数枚举 1/2/3/4 + F10Type 字符串**（`'ANNUAL'` 等）。
+- [x] **P0.2** `next_key` 游标分页 + `num`：✅ 已实现（每页拉满 50，续拉直到 `next_key` 空或达 `want`）。
+- [x] **P0.3** 字段映射：✅ 利用返回的 `structure_list` / `item_list.display_name` 作中文字段名（**零幻觉，不手编英文枚举映射**——旧 `FINANCIAL_FIELD_MAP` 因 field_id 是整数永远命中不到，已废弃）。
+- [x] **P0.4** `futu_worker.py` `_FUTU_ACTION_MAP`：✅ 已有 `FINANCIALS` 分支（透传 statement_type/financial_type/currency_code/num）→ `service.get_financials` → `option_fund_handler.get_financials_statements`（兼容语义字符串 balance_sheet/income/cash_flow/main_index 或整数 1~4）。
+- [x] **P0.5** 主服务 `adapters/futu.py` `capabilities`：✅ 已声明 `FINANCIALS` + `VALUATION`；`router.py` 已含 `"financials": "FINANCIALS"` 映射。
+- [x] **P0.6** `@with_global_retry` + `cache_mgr`：✅ 已接入（`cache_manager.py` 新增 `get/set_financials_cache`，24h TTL，财报低频）。
+- [x] **P0.7** 单测：✅ `test_futu_option_fund_handler.py::TestFinancialsStatements`（5 例：枚举映射/解析/分页/缓存/非法类型），37 例全过；另实跑 `US.AAPL` 四种报表端到端验证（资产负债表/利润表/现金流量表/关键指标均有真实数据）。
+- [x] **P0.8** 提交 PR：✅ 见 git log（commit 待本批次统一）。
 
 ### 阶段 P1：基本面接口族（按需分批「填坑」）
 
-- [ ] **P1.1** 估值详情 `get_valuation_detail`（PE/PB/PS 完整）——优先，补 `get_fundamental` 的估值残缺。
+- [x] **P1.1** 估值详情 `get_valuation_detail`：✅ 2026-08-22 实跑验证有效（`option_fund_handler.py`，`ctx.get_valuation_detail(code)` 返回估值分布类 7 字段：trend/market_distribution/profit_growth_rate 等）。PE/PB/市值等核心估值已由 `get_fundamental` 的 trailing_PE/market_cap 覆盖。注：当前返回偏「估值分布」而非逐指标 PE/PB/PS 拆解，如需纯 PE/PB/PS 明细再增强（非阻塞）。
 - [ ] **P1.2** 分析师评级 `get_research_analyst_consensus` / `get_research_rating_summary`。
 - [ ] **P1.3** 主营构成 `get_financials_revenue_breakdown`。
 - [ ] **P1.4** 卖空数据 `get_short_interest` / `get_daily_short_volume`（美股）。

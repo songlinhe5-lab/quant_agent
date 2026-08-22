@@ -520,3 +520,144 @@ class TestOptionFundHandler:
         assert data["market_cap"] == 50000000000.0
         assert "price_to_book" not in data
         assert "dividend_yield" not in data
+
+
+# ── F2: 三大财务报表（P0 阶段，零幻觉解析真实返回结构）────────────────
+_SAMPLE_REPORT = {
+    "date_time": 1782489600,
+    "date_time_str": "2026-06-26",
+    "fiscal_year": 2026,
+    "financial_type": "Q3",
+    "period_text": "2026/Q3",
+    "currency_code": "USD",
+    "accounting_standards": "US_GAAP",
+    "item_list": [
+        {"field_id": 8001, "display_name": "资产合计", "data": 383266000000.0, "yoy": 15.6, "qoq": 3.28},
+        {"field_id": 8002, "display_name": "流动资产合计", "data": 149818000000.0, "yoy": 22.3, "qoq": 3.96},
+    ],
+}
+
+
+def _fin_resp(next_key="", reports=None):
+    return {
+        "next_key": next_key,
+        "structure_list": [{"field_id": 8001, "display_name": "资产合计"}],
+        "report_list": reports if reports is not None else [_SAMPLE_REPORT],
+    }
+
+
+class TestFinancialsStatements:
+    """F2 三大财务报表解析 + 分页 + 缓存 + 枚举映射"""
+
+    @pytest.mark.asyncio
+    async def test_statement_type_string_maps_to_int(self):
+        """语义字符串 balance_sheet 必须映射为 SDK 整数枚举 2（零幻觉：旧代码传错字符串导致 ret=-1）"""
+        handler, conn_mgr, _ = _make_handler()
+        captured = {}
+
+        def _fake_to_thread(fn, *args):
+            captured["args"] = args
+            return (RET_OK, _fin_resp())
+
+        with patch("asyncio.to_thread", side_effect=_fake_to_thread):
+            await handler.get_financials_statements(
+                "US.AAPL",
+                statement_type="balance_sheet",
+                financial_type="ANNUAL",
+                format_ticker_func=_fmt,
+                is_unsupported_func=_unsupported,
+            )
+        # patch 替换 asyncio.to_thread 后 side_effect 收到的首个参数即 code（fn 不在内）
+        # 实际顺序: (code, stmt_int, ft, currency_code, next_key, 50)
+        assert captured["args"][0] == "US.AAPL"
+        assert captured["args"][1] == 2, f"balance_sheet 应映射为 2, got {captured['args'][1]}"
+        assert captured["args"][2] == "ANNUAL"
+
+    @pytest.mark.asyncio
+    async def test_parses_report_list_with_cn_names(self):
+        """report_list 字段中文名来自 SDK display_name（不手编英文映射）"""
+        handler, _, _ = _make_handler()
+        with patch("asyncio.to_thread", new=AsyncMock(return_value=(RET_OK, _fin_resp()))):
+            result = await handler.get_financials_statements(
+                "US.AAPL",
+                statement_type=2,
+                financial_type="ANNUAL",
+                format_ticker_func=_fmt,
+                is_unsupported_func=_unsupported,
+            )
+        assert result["status"] == "success"
+        assert result["count"] == 1
+        period = result["data"][0]
+        assert period["period_text"] == "2026/Q3"
+        assert period["currency_code"] == "USD"
+        assert period["items"][0]["name_cn"] == "资产合计"
+        assert period["items"][0]["value"] == 383266000000.0
+        assert period["items"][0]["yoy"] == 15.6
+
+    @pytest.mark.asyncio
+    async def test_pagination_follows_next_key(self):
+        """next_key 非空应续拉直到空；合并多页报告期"""
+        handler, _, _ = _make_handler()
+        pages = [
+            (RET_OK, _fin_resp(next_key="ts,2025_7", reports=[_SAMPLE_REPORT])),
+            (RET_OK, _fin_resp(next_key="", reports=[_SAMPLE_REPORT])),
+        ]
+
+        def _fake(fn, *args):
+            return pages.pop(0)
+
+        with patch("asyncio.to_thread", side_effect=_fake):
+            result = await handler.get_financials_statements(
+                "US.AAPL",
+                statement_type=1,
+                num=10,
+                format_ticker_func=_fmt,
+                is_unsupported_func=_unsupported,
+            )
+        assert result["status"] == "success"
+        assert result["count"] == 2, "两页各 1 期应合并为 2 期"
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_skips_sdk(self):
+        """缓存命中不调用 SDK（财报低频，24h TTL）"""
+        handler, _, cache_mgr = _make_handler()
+        cache_mgr.set_financials_cache(
+            "futu_financials_US.AAPL_2_ANNUAL_orig",
+            time.time(),
+            {"status": "success", "cached": True, "data": []},
+        )
+        called = {"n": 0}
+
+        def _fake(fn, *args):
+            called["n"] += 1
+            return (RET_OK, _fin_resp())
+
+        with patch("asyncio.to_thread", side_effect=_fake):
+            result = await handler.get_financials_statements(
+                "US.AAPL",
+                statement_type="balance_sheet",
+                format_ticker_func=_fmt,
+                is_unsupported_func=_unsupported,
+            )
+        assert called["n"] == 0, "缓存命中不应调 SDK"
+        assert result.get("cached") is True
+
+    @pytest.mark.asyncio
+    async def test_invalid_statement_type_returns_error(self):
+        """非法 statement_type 应明确报错，不发起 SDK 调用"""
+        handler, _, _ = _make_handler()
+        called = {"n": 0}
+
+        def _fake(fn, *args):
+            called["n"] += 1
+            return (RET_OK, _fin_resp())
+
+        with patch("asyncio.to_thread", side_effect=_fake):
+            result = await handler.get_financials_statements(
+                "US.AAPL",
+                statement_type="not_a_real_stmt",
+                format_ticker_func=_fmt,
+                is_unsupported_func=_unsupported,
+            )
+        assert result["status"] == "error"
+        assert called["n"] == 0
