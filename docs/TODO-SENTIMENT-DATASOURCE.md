@@ -76,14 +76,14 @@
 - [ ] **0.2** 确认消费方式：走 `DataSourceRouter.fetch_sentiment` HTTP 代理（禁止前端/主服务直连外部）。
 - [x] **0.3** 本文件即决策记录，落地后摘要沉淀到 `update_memory` 知识库（**勿写 `MEMORY.md`**：AGENTS.md §0 规定其为会话笔记、禁止默认加载，本仓记忆机制已迁移至 `update_memory`）。*（2026-08-22 已修正引用并完成重议）*
 
-### 阶段 A：热度榜（ApeWisdom，✅ 已可用）
+### 阶段 A：热度榜（ApeWisdom，✅ 已可用，2026-08-22 已实现）
 
-- [ ] **A.1** 新增 `data_subservice/_internal/sentiment/apewisdom.py`：封装 `GET https://apewisdom.io/api/v1.0/filter/{filter}/page/{n}`。
-- [ ] **A.2** 复用现有 `_get` 风格 + 超时 + 429/异常兜底（参考 `_internal/finnhub/__init__.py` 的 `error_category` 模式）。
-- [ ] **A.3** 分页处理：当前约 11 页 × 100 条，提供 `page` 参数 + 可选抓全量 top N。
-- [ ] **A.4** worker 注册 + `DS_CAPABILITIES=sentiment`。
-- [ ] **A.5** 主服务 `router.py` 加 `fetch_sentiment` + 路由。
-- [ ] **A.6** 单测：正常返回、异常兜底、分页、字段完整性。
+- [x] **A.1** 新增 `data_subservice/_internal/sentiment/apewisdom.py`：封装 `GET https://apewisdom.io/api/v1.0/filter/{filter}/page/{n}`。
+- [x] **A.2** 复用 `_get` 风格 + httpx 超时 + 429(`rate_limit`)/异常兜底（对齐 finnhub `error_category` 模式）。
+- [x] **A.3** 分页处理：提供 `page` 参数 + `top_n` 自动翻页抓全量（受 `_MAX_PAGES` 限，默认 11 页 × 100 条）。
+- [x] **A.4** worker 注册（`sentiment_worker.py` + `main.py` `_WORKER_IMPORTS`）；`DS_CAPABILITIES` 部署时显式声明 `sentiment`。
+- [x] **A.5** 主服务 `router.py` 加 `sentiment_master` 节点 + `fetch_sentiment` + `_SENTIMENT_ACTION_MAP`；后端 `adapters/sentiment.py` 经 `DataSourceRegistry` 注册。
+- [x] **A.6** 单测：正常返回、异常兜底、分页、字段归一化、中途失败部分返回——`tests/test_apewisdom.py` 5 passed。
 - [ ] **A.7** 提交 PR。
 
 ### 阶段 B：多空情绪（❌ 暂无可用的免费源，待定）
