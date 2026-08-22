@@ -37,6 +37,9 @@
 2. 新增 `PUT /api/v1/preferences/ai-push`、`GET /api/v1/preferences/ai-push`。
 3. 前端抽 `useAiPushPrefStore`(persist)，取代散落开关；AI-01~08 推送逻辑统一读此 store。
 
+> ✅ **底座已实现**（早于 B3 批次）：`PreferencesModel` 扩 `ai_push` 字段；`GET/PUT /settings/preferences/ai-push`（`preferences.py`，未知模块返回 400，已单测 `test_api_preferences.py`）；`useAiPushPrefStore`(persist) + 前端 `AiPushPreferencesCard`（`settings-content.tsx`）渲染 ai01~08 独立开关 + 阈值输入，已被 AI-01~08 真实消费。
+> ⚠️ **自然语言配置子项（"把告警推到 Telegram，只推 P0/P1"）未做**：拆出为 P3，依赖 Telegram/推送通道接入（`notifications` 仍为占位），非 B3 红线范围，单独跟踪。
+
 **接口契约**
 ```
 PUT /api/v1/preferences/ai-push

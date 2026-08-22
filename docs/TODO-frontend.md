@@ -288,10 +288,10 @@
 - [x] **[AI-08]** 宏观数据中心 · 事件推演（P2）：✅ **2026-08-22**：`POST /macro/event-inference`(高危事件 → LLM(STANDARD) 推演 + confidence, 诚实降级返回 warning)；`EconomicView` 紫卡 `AiEventInferenceCard`(ai08 开关)从硬编码假文本改为真实调用。commit `bb61d01`
   - 高危事件旁 AI 推演卡："FOMC 若加息 25bp → 港股科技预计 -2~3%"
   - 指标与持仓关联：VIX hover → "你的组合 Beta 1.1，VIX 每升 5 点日波动 +¥8,200"
-- [ ] **[AI-09]** AI 推送偏好设置（P2）：
-  - Settings 中每模块独立开关（市场异动/选股建议/回测解读/风控预警/告警分诊）
-  - 触发阈值可调（异动 1%/2%/5%）
-  - 自然语言配置："把告警推到 Telegram，只推 P0 和 P1"
+- [x] **[AI-09]** AI 推送偏好设置底座（P2）：✅ 底座已落地（早于 B3 批次）：后端 `GET/PUT /settings/preferences/ai-push`（`preferences.py`，支持 ai01~08 的 `enabled`+`threshold`，未知模块 400，已单测 `test_api_preferences.py`）；前端 `AiPushPreferencesCard`（`settings-content.tsx`）渲染 ai01~08 全部模块独立开关 + 阈值输入，经 `useAiPushPrefStore` 持久化。已被 AI-01~08 真实消费（统一开关底座）。commit 底座早于 B3
+  - [x] Settings 中每模块独立开关（市场异动/选股建议/回测解读/风控预警/告警分诊）→ 已实现（ai01~08 全覆盖）
+  - [x] 触发阈值可调（异动 1%/2%/5%）→ 已实现（数字输入 + 持久化到后端）
+  - [ ] 自然语言配置："把告警推到 Telegram，只推 P0 和 P1" → **拆出为 P3**（依赖 Telegram/推送通道接入；`notifications` tab 仍为占位，见 `docs/01 §` 系统设置·配置助手 P3）。非 B3 红线范围，单独跟踪。
 
 #### 数据源能力矩阵与产品形态升级（2026-07-26 产品功能审计）
 
