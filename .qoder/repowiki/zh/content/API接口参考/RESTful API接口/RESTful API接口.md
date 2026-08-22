@@ -14,6 +14,9 @@
 - [backend/routers/system.py](file://backend/routers/system.py)
 - [backend/routers/prompt_governance.py](file://backend/routers/prompt_governance.py)
 - [backend/routers/prompt_approval.py](file://backend/routers/prompt_approval.py)
+- [backend/routers/chat.py](file://backend/routers/chat.py)
+- [hermes_agent/agent.py](file://hermes_agent/agent.py)
+- [hermes_agent/relay_tools.py](file://hermes_agent/relay_tools.py)
 - [backend/services/prompt/governance_service.py](file://backend/services/prompt/governance_service.py)
 - [backend/services/prompt/approval_service.py](file://backend/services/prompt/approval_service.py)
 - [backend/core/response.py](file://backend/core/response.py)
@@ -22,10 +25,10 @@
 
 ## 更新摘要
 **变更内容**
-- 新增提示词治理API端点，包括版本管理、仪表板聚合、黄金数据集验证、反馈收集、相似提示词搜索和质量评估
-- 新增审批工作流API端点，支持人工审批流程、部署管理和回滚操作
+- 新增批量工具执行API端点 POST /api/v1/agent/batch-execute，支持JWT认证和批量工具调用
+- 新增批量工具执行的安全验证机制，包括白名单、黑名单和并发控制
+- 增强了Agent工具的批量处理能力，支持零上下文成本的批量工具调用
 - 更新了路由注册和API前缀配置
-- 增强了Prompt治理功能的完整实现
 
 ## 目录
 1. [简介](#简介)
@@ -42,7 +45,7 @@
 ## 简介
 本文件为 Quant Agent 后端服务的 RESTful API 接口文档，覆盖认证、交易、回测、策略、组合优化、期权、系统监控以及新增的提示词治理等核心能力。所有业务接口统一以 /api/v1 前缀暴露（版本控制通过环境变量 API_URL_VERSION 配置），并采用统一的响应封装与错误码体系。文档同时说明 CORS 配置、认证方式、权限控制、速率限制策略以及错误处理规范，并提供集成最佳实践。
 
-**更新** 新增了完整的提示词治理和审批工作流API，支持Prompt的版本管理、质量评估、用户反馈收集和人工审批流程。
+**更新** 新增了完整的提示词治理和审批工作流API，支持Prompt的版本管理、质量评估、用户反馈收集和人工审批流程。**新增** 批量工具执行API端点，支持零上下文成本的批量工具调用，大幅节省token成本。
 
 ## 项目结构
 后端基于 FastAPI 构建，入口在 backend/main.py，集中注册中间件、CORS、OpenAPI 元数据，并按模块挂载路由。各功能域以 routers/* 划分，通用基础设施位于 core/*。
@@ -60,12 +63,16 @@ C --> C6["期权 /options<br/>backend/routers/options.py"]
 C --> C7["系统 /system<br/>backend/routers/system.py"]
 C --> C8["提示词治理 /prompt-governance<br/>backend/routers/prompt_governance.py"]
 C --> C9["审批工作流 /prompt-governance/approval<br/>backend/routers/prompt_approval.py"]
+C --> C10["批量工具执行 /agent/batch-execute<br/>backend/routers/chat.py"]
 A --> D["全局响应/错误码<br/>core/response.py, core/error_codes.py"]
+D --> E["批量执行引擎<br/>hermes_agent/relay_tools.py"]
 ```
 
 **图表来源**
 - [backend/main.py:125-218](file://backend/main.py#L125-L218)
 - [backend/core/middleware.py:90-133](file://backend/core/middleware.py#L90-L133)
+- [backend/routers/chat.py:406-444](file://backend/routers/chat.py#L406-L444)
+- [hermes_agent/relay_tools.py:274-384](file://hermes_agent/relay_tools.py#L274-L384)
 
 章节来源
 - [backend/main.py:125-218](file://backend/main.py#L125-L218)
@@ -79,6 +86,7 @@ A --> D["全局响应/错误码<br/>core/response.py, core/error_codes.py"]
 - 安全工具：HMAC-SHA256 签名生成与校验，用于内部服务间通信防护。
 - **新增** 提示词治理服务：提供版本管理、质量评估、用户反馈收集和黄金数据集验证功能。
 - **新增** 审批工作流服务：支持人工审批流程、环境部署管理和版本回滚操作。
+- **新增** 批量工具执行引擎：支持零上下文成本的批量工具调用，具备三层安全防护机制。
 
 章节来源
 - [backend/main.py:120-160](file://backend/main.py#L120-L160)
@@ -98,6 +106,7 @@ participant App as "FastAPI 应用"
 participant MW as "中间件(日志/CORS)"
 participant Auth as "认证依赖"
 participant Router as "业务路由"
+participant BatchExec as "批量执行引擎"
 participant Svc as "领域服务"
 Client->>App : HTTP 请求 /api/v1/...
 App->>MW : 进入中间件栈
@@ -105,8 +114,15 @@ MW-->>App : 记录日志/指标
 App->>Auth : 解析 JWT (可选)
 Auth-->>App : 当前用户/上下文
 App->>Router : 分发到具体端点
+alt 批量工具执行
+Router->>BatchExec : 批量工具调用
+BatchExec->>BatchExec : 安全验证(白名单/黑名单)
+BatchExec->>BatchExec : 并发执行+超时保护
+BatchExec-->>Router : 聚合结果报告
+else 普通业务逻辑
 Router->>Svc : 执行业务逻辑
 Svc-->>Router : 返回结果
+end
 Router-->>Client : 统一响应 {code,msg,data,ts}
 ```
 
@@ -114,7 +130,8 @@ Router-->>Client : 统一响应 {code,msg,data,ts}
 - [backend/main.py:125-218](file://backend/main.py#L125-L218)
 - [backend/core/middleware.py:90-133](file://backend/core/middleware.py#L90-L133)
 - [backend/routers/auth.py:65-98](file://backend/routers/auth.py#L65-L98)
-- [backend/core/response.py:26-69](file://backend/core/response.py#L26-L69)
+- [backend/routers/chat.py:406-444](file://backend/routers/chat.py#L406-L444)
+- [hermes_agent/relay_tools.py:300-384](file://hermes_agent/relay_tools.py#L300-L384)
 
 ## 详细组件分析
 
@@ -254,6 +271,77 @@ Router-->>Client : 统一响应 {code,msg,data,ts}
 章节来源
 - [backend/routers/market.py:73-200](file://backend/routers/market.py#L73-L200)
 
+### 批量工具执行（/api/v1/agent/batch-execute）
+**新增** 批量工具执行API端点，支持零上下文成本的批量工具调用，大幅节省token成本。
+
+#### 端点详情
+- POST /agent/batch-execute
+  - 鉴权：JWT Bearer Token（通过 get_current_username 依赖注入）
+  - 请求体：
+    ```json
+    {
+      "tool_calls": [
+        {
+          "tool_name": "get_broker_market_data",
+          "arguments": {"action": "QUOTE", "ticker": "AAPL"},
+          "call_id": "call_001"
+        },
+        {
+          "tool_name": "get_fundamental_data", 
+          "arguments": {"ticker": "MSFT"},
+          "call_id": "call_002"
+        }
+      ],
+      "batch_id": "batch_001"
+    }
+    ```
+  - 响应：批量执行报告
+    ```json
+    {
+      "status": "success",
+      "data": {
+        "batch_id": "batch_001",
+        "summary": {
+          "total": 2,
+          "successful": 2,
+          "failed": 0,
+          "blocked": 0,
+          "timed_out": 0
+        },
+        "timing": {
+          "total_execution_time": 1.234,
+          "wall_clock_time": 1.567
+        },
+        "results": [
+          {
+            "call_id": "call_001",
+            "tool_name": "get_broker_market_data",
+            "status": "success",
+            "result": {...},
+            "execution_time": 0.567
+          }
+        ]
+      }
+    }
+    ```
+  - 状态码：200/500
+
+#### 安全机制
+- **白名单验证**：仅允许只读数据工具（quote、indicators、fund_flow、fundamental、macro、news）
+- **黑名单过滤**：硬编码禁止交易类、系统类、计算密集型工具
+- **并发控制**：最大并发数20，单个调用超时30秒，批量请求超时120秒
+- **结果脱敏**：敏感信息自动脱敏处理
+
+#### 使用场景
+- 脚本经RPC批量调工具（零上下文成本轮次）
+- 将N次带上下文的工具往返压成1轮批量执行
+- 大幅节省token成本，提升执行效率
+
+章节来源
+- [backend/routers/chat.py:386-444](file://backend/routers/chat.py#L386-L444)
+- [hermes_agent/agent.py:233-263](file://hermes_agent/agent.py#L233-L263)
+- [hermes_agent/relay_tools.py:274-384](file://hermes_agent/relay_tools.py#L274-L384)
+
 ### 提示词治理（/api/v1/prompt-governance）
 **新增** 完整的提示词治理API，提供版本管理、质量评估和用户反馈收集功能。
 
@@ -387,6 +475,7 @@ Router-->>Client : 统一响应 {code,msg,data,ts}
 - 外部依赖：市场数据、数据湖、Redis、Prometheus 等通过 services 层接入。
 - **新增** 提示词治理服务依赖：hermes_agent.prompt_versioning、数据库会话、向量存储集成。
 - **新增** 审批工作流依赖：SQLAlchemy数据库模型、审批状态管理、部署环境管理。
+- **新增** 批量工具执行依赖：hermes_agent.agent、hermes_agent.relay_tools、ToolRegistry。
 
 ```mermaid
 graph LR
@@ -398,8 +487,11 @@ Routers --> Err["error_codes.py<br/>错误码映射"]
 Routers --> Svc["services/*<br/>外部依赖"]
 Routers --> PG["prompt_governance.py<br/>提示词治理"]
 Routers --> PA["prompt_approval.py<br/>审批工作流"]
+Routers --> BE["chat.py<br/>批量工具执行"]
 PG --> PGS["governance_service.py<br/>治理服务"]
 PA --> PAS["approval_service.py<br/>审批服务"]
+BE --> HA["hermes_agent/agent.py<br/>Agent实例"]
+BE --> RT["hermes_agent/relay_tools.py<br/>批量执行引擎"]
 ```
 
 **图表来源**
@@ -408,6 +500,7 @@ PA --> PAS["approval_service.py<br/>审批服务"]
 - [backend/routers/auth.py:65-98](file://backend/routers/auth.py#L65-L98)
 - [backend/core/response.py:26-69](file://backend/core/response.py#L26-L69)
 - [backend/core/error_codes.py:40-55](file://backend/core/error_codes.py#L40-L55)
+- [backend/routers/chat.py:406-444](file://backend/routers/chat.py#L406-L444)
 
 章节来源
 - [backend/main.py:125-218](file://backend/main.py#L125-L218)
@@ -422,6 +515,11 @@ PA --> PAS["approval_service.py<br/>审批服务"]
 - 速率限制：
   - 策略路由内置 RateLimiter，支持按 IP/用户维度限制，结合 Redis 实现黑名单与全局防刷。
   - 其他路由可按需复用该限流器或扩展为网关级限流。
+- **新增** 批量执行限流：
+  - 最大并发数：20个并发调用
+  - 单个调用超时：30秒
+  - 批量请求超时：120秒
+  - 单次批量大小限制：200个工具调用
 - 建议：
   - 对高并发读接口启用缓存（如 Redis）与分页/限参。
   - 对写接口增加幂等键与重试退避。
@@ -430,6 +528,7 @@ PA --> PAS["approval_service.py<br/>审批服务"]
 章节来源
 - [backend/core/middleware.py:10-88](file://backend/core/middleware.py#L10-L88)
 - [backend/routers/strategy.py:97-177](file://backend/routers/strategy.py#L97-L177)
+- [hermes_agent/relay_tools.py:87-97](file://hermes_agent/relay_tools.py#L87-L97)
 
 ## 故障排查指南
 - 常见错误码与含义：
@@ -449,6 +548,12 @@ PA --> PAS["approval_service.py<br/>审批服务"]
   - 验证提示词版本管理器的配置文件路径
   - 确认黄金数据集文件格式和路径
   - 检查向量存储服务的连接状态
+- **新增** 批量工具执行故障排查：
+  - 检查工具是否在白名单中，是否被黑名单阻止
+  - 验证批量请求大小是否超过200个限制
+  - 检查并发数是否达到20个上限
+  - 确认单个工具调用是否超过30秒超时
+  - 查看批量执行报告的blocked和failed统计
 
 章节来源
 - [backend/core/error_codes.py:15-55](file://backend/core/error_codes.py#L15-L55)
@@ -456,7 +561,7 @@ PA --> PAS["approval_service.py<br/>审批服务"]
 - [backend/core/middleware.py:90-133](file://backend/core/middleware.py#L90-L133)
 
 ## 结论
-Quant Agent 的 REST API 以 FastAPI 为核心，采用模块化路由、统一响应与错误码、完善的鉴权与中间件栈，支撑交易、回测、策略、组合优化、期权、系统监控以及新增的提示词治理等场景。通过版本化前缀与 CORS 配置，满足前后端分离与跨域需求；通过限流与指标监控，保障高可用与可观测性。新增的提示词治理和审批工作流功能为AI提示词的生命周期管理提供了完整的解决方案。建议在生产环境严格配置 SECRET_KEY、ALLOWED_ORIGINS、BCRYPT_ROUNDS 等敏感参数，并结合 Prometheus/Grafana 建立告警与容量规划。
+Quant Agent 的 REST API 以 FastAPI 为核心，采用模块化路由、统一响应与错误码、完善的鉴权与中间件栈，支撑交易、回测、策略、组合优化、期权、系统监控以及新增的提示词治理等场景。通过版本化前缀与 CORS 配置，满足前后端分离与跨域需求；通过限流与指标监控，保障高可用与可观测性。新增的提示词治理和审批工作流功能为AI提示词的生命周期管理提供了完整的解决方案。**新增的批量工具执行API端点进一步提升了系统的执行效率，通过零上下文成本的批量调用大幅节省了token成本，同时提供了完善的安全防护机制。** 建议在生产环境严格配置 SECRET_KEY、ALLOWED_ORIGINS、BCRYPT_ROUNDS 等敏感参数，并结合 Prometheus/Grafana 建立告警与容量规划。
 
 ## 附录：端点清单与示例
 
@@ -586,6 +691,32 @@ Quant Agent 的 REST API 以 FastAPI 为核心，采用模块化路由、统一�
 
 章节来源
 - [backend/routers/market.py:73-200](file://backend/routers/market.py#L73-L200)
+
+### 批量工具执行（/api/v1/agent/batch-execute）
+**新增** 批量工具执行API端点
+
+- POST /agent/batch-execute
+  - 鉴权：JWT Bearer Token
+  - 请求体：
+    ```json
+    {
+      "tool_calls": [
+        {
+          "tool_name": "get_broker_market_data",
+          "arguments": {"action": "QUOTE", "ticker": "AAPL"},
+          "call_id": "call_001"
+        }
+      ],
+      "batch_id": "batch_001"
+    }
+    ```
+  - 响应：批量执行报告
+  - 状态码：200/500
+
+章节来源
+- [backend/routers/chat.py:386-444](file://backend/routers/chat.py#L386-L444)
+- [hermes_agent/agent.py:233-263](file://hermes_agent/agent.py#L233-L263)
+- [hermes_agent/relay_tools.py:274-384](file://hermes_agent/relay_tools.py#L274-L384)
 
 ### 提示词治理（/api/v1/prompt-governance）
 **新增** 完整的提示词治理API端点
@@ -738,10 +869,12 @@ Quant Agent 的 REST API 以 FastAPI 为核心，采用模块化路由、统一�
 
 ### 速率限制策略
 - 策略路由内置 RateLimiter：按 IP/用户维度限制，支持 Redis 管道原子操作、违规记忆窗口、黑名单封禁与全局防刷
+- **新增** 批量执行限流：最大并发20，单个调用超时30秒，批量请求超时120秒
 - 建议：对其他高频接口复用该限流器或在网关层统一限流
 
 章节来源
 - [backend/routers/strategy.py:97-177](file://backend/routers/strategy.py#L97-L177)
+- [hermes_agent/relay_tools.py:87-97](file://hermes_agent/relay_tools.py#L87-L97)
 
 ### 集成最佳实践
 - 客户端侧：
@@ -758,5 +891,11 @@ Quant Agent 的 REST API 以 FastAPI 为核心，采用模块化路由、统一�
   - 建立用户反馈收集机制，持续优化提示词效果
   - 实施人工审批流程，确保生产环境变更的可控性
   - 利用相似提示词搜索功能，促进知识共享和复用
+- **新增** 批量工具执行集成：
+  - 使用批量执行API进行只读数据工具的批量调用，避免多次LLM上下文交互
+  - 合理设置batch_id用于追踪和日志记录
+  - 注意批量大小限制（200个调用）和并发限制（20个并发）
+  - 利用call_id关联请求和响应，便于错误处理和重试
+  - 监控批量执行报告中的blocked和failed统计，及时调整调用策略
 
 [本节为概念性指导，不直接分析具体文件]

@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: backend/core_infrastructure
+title: 后端核心基础设施（启动生命周期、中间件栈与共享能力）
+scope:
+    - backend/core/
+    - backend/middleware/
+    - backend/bootstrap/
+source_files: []
+depends_on: []
+related_to: []

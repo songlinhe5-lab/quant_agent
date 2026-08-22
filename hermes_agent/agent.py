@@ -842,8 +842,29 @@ class HermesAgent(MemoryOperationsMixin):
         print(f"🧠 [Agent Brain] 初始化完成。主推理: {self.model} | 深度分析: {self.pro_model}")
 
     async def initialize(self):
-        """异步初始化：从 Redis 加载历史记忆"""
+        """
+        异步初始化：从三轨存储加载历史记忆 + 写入 SessionMeta。
+        AGENT-15: 新增 SessionMeta 写入（Rollout 首行）
+        """
         await self._load_session()
+
+        # AGENT-15: 写入 SessionMeta（仅新会话时写入，幂等）
+        if self.session_id and self.session_id != "default":
+            try:
+                from datetime import datetime, timezone
+
+                from hermes_agent.rollout_storage import RolloutStorage, SessionMeta
+
+                storage = RolloutStorage()
+                meta = SessionMeta(
+                    session_id=self.session_id,
+                    model=self.model,
+                    created_at=datetime.now(timezone.utc).isoformat(),
+                    event_count=len(self.event_log) if hasattr(self, "event_log") else 0,
+                )
+                storage.save_session_meta(self.session_id, meta)
+            except Exception as e:
+                print(f"⚠️ [Agent] SessionMeta 写入失败: {e}")
 
     def _apply_system_prompt(self, messages: list):
         """辅助方法：强制使用最新版本的系统指令覆盖历史记忆"""

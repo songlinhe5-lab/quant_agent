@@ -181,7 +181,11 @@ class MemoryOperationsMixin:
             print(f"⚠️ [Memory] 记忆保存失败: {e}")
 
     async def _load_session(self):
-        """从 Redis 加载历史记录。若未命中，尝试从 PostgreSQL 唤醒冷数据"""
+        """
+        三轨冷启动恢复：Redis (热) → PostgreSQL (冷) → Rollout JSONL (持久化事件日志)
+        AGENT-15: 新增 Rollout 第三轨恢复
+        """
+        # ── Track 1: Redis 热数据 ────────────────────────────────
         try:
             raw_data = await self.redis_client.get(self.memory_key)
             if raw_data:
@@ -189,10 +193,13 @@ class MemoryOperationsMixin:
                 self._apply_system_prompt(saved_messages)
                 self.messages = saved_messages
                 print(f"📦 [Memory] 成功从 Redis 加载历史对话，共恢复 {len(self.messages) - 1} 条记录。")
+                # AGENT-15: 同步恢复事件日志（从 Rollout 重放）
+                self._restore_event_log_from_rollout()
                 return
         except Exception as e:
             print(f"⚠️ [Memory] 从 Redis 读取历史失败: {e}")
 
+        # ── Track 2: PostgreSQL 冷数据 ────────────────────────────
         try:
 
             def fetch_db():
@@ -211,11 +218,56 @@ class MemoryOperationsMixin:
                 self.messages = db_messages
                 print(f"🗄️ [Memory] 成功从 PostgreSQL 唤醒冷数据对话，共恢复 {len(self.messages) - 1} 条记录。")
                 await self._save_session()
+                # AGENT-15: 同步恢复事件日志
+                self._restore_event_log_from_rollout()
                 return
         except Exception as e:
             print(f"⚠️ [Memory] 从 PostgreSQL 唤醒冷数据失败: {e}")
 
+        # ── Track 3: AGENT-15 Rollout JSONL 事件日志重放 ───────────
+        if self.session_id and self.session_id != "default":
+            try:
+                from hermes_agent.event_log import SessionEventLog, derive_messages
+
+                rollout_log = SessionEventLog.load_from_rollout(self.session_id)
+                if len(rollout_log) > 0:
+                    # 从事件日志投影出模型可见消息
+                    projected = derive_messages(rollout_log)
+                    if projected:
+                        self._apply_system_prompt(projected)
+                        self.messages = projected
+                        # 恢复事件日志实例（指向同一 rollout）
+                        self.event_log = rollout_log
+                        print(
+                            f"📜 [Memory] AGENT-15: 从 Rollout 重放恢复 {len(rollout_log)} 条事件，"
+                            f"投影出 {len(projected)} 条消息 (session={self.session_id})"
+                        )
+                        await self._save_session()  # 回填 Redis 热缓存
+                        return
+            except Exception as e:
+                print(f"⚠️ [Memory] 从 Rollout 重放恢复失败: {e}")
+
         self.messages = [{"role": "system", "content": self.system_prompt}]
+
+    def _restore_event_log_from_rollout(self):
+        """
+        AGENT-15: 从 Rollout 恢复事件日志实例（当 messages 已从 Redis/PG 恢复时）。
+        确保 event_log 与 messages 同步。
+        """
+        if not self.session_id or self.session_id == "default":
+            return
+        try:
+            from hermes_agent.event_log import SessionEventLog
+
+            if hasattr(self, "event_log") and self.event_log and len(self.event_log) > 0:
+                return  # 事件日志已有数据，无需恢复
+
+            rollout_log = SessionEventLog.load_from_rollout(self.session_id)
+            if len(rollout_log) > 0:
+                self.event_log = rollout_log
+                print(f"📜 [Memory] AGENT-15: 事件日志从 Rollout 恢复 {len(rollout_log)} 条事件")
+        except Exception as e:
+            print(f"⚠️ [Memory] 事件日志恢复失败: {e}")
 
     async def _async_db_upsert(self, session_id: str, messages: list):
         """后台守护任务：将历史记忆异步 Upsert 到 PostgreSQL"""

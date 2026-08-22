@@ -507,3 +507,86 @@ async def parallel_analyze(
         return {"status": "success", "data": report}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"并行分析失败: {str(e)}")
+
+
+# ========================================================================
+# AGENT-15: Rollout 持久化查询 API
+# ========================================================================
+
+
+@router.get("/sessions/{session_id}/rollout")
+async def get_session_rollout(
+    session_id: str,
+    cursor: Optional[int] = None,
+    limit: int = 50,
+    direction: str = "forward",
+    username: str = Depends(get_current_username),
+):
+    """
+    AGENT-15: Cursor 分页查询会话事件日志（Rollout JSONL）。
+
+    参数:
+        session_id: 会话 ID
+        cursor: 起始 seq（None=从头/尾开始）
+        limit: 每页事件数（默认 50）
+        direction: "forward"（向后）或 "backward"（向前）
+    """
+    safe_session_id = f"user_{username}_{session_id}"
+
+    try:
+        from hermes_agent.rollout_storage import RolloutStorage
+
+        storage = RolloutStorage()
+        page = storage.read_events_paginated(
+            session_id=safe_session_id,
+            cursor=cursor,
+            limit=limit,
+            direction=direction,
+        )
+        return {"status": "success", "data": page.to_dict()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"查询 Rollout 失败: {str(e)}")
+
+
+@router.get("/sessions/{session_id}/rollout/stats")
+async def get_session_rollout_stats(
+    session_id: str,
+    username: str = Depends(get_current_username),
+):
+    """
+    AGENT-15: 获取会话事件统计信息（事件数/类型分布/文件大小/时间范围）。
+    """
+    safe_session_id = f"user_{username}_{session_id}"
+
+    try:
+        from hermes_agent.rollout_storage import RolloutStorage
+
+        storage = RolloutStorage()
+        stats = storage.get_event_stats(safe_session_id)
+        return {"status": "success", "data": stats}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"查询统计失败: {str(e)}")
+
+
+@router.get("/rollout/sessions")
+async def list_rollout_sessions(
+    limit: int = 20,
+    username: str = Depends(get_current_username),
+):
+    """
+    AGENT-15: 列出最近的 Rollout 会话（按日期倒序）。
+    """
+    try:
+        from hermes_agent.rollout_storage import RolloutStorage
+
+        storage = RolloutStorage()
+        sessions = storage.list_sessions(limit=limit)
+        # 过滤当前用户的会话
+        prefix = f"user_{username}_"
+        user_sessions = [s for s in sessions if s.session_id.startswith(prefix)]
+        return {
+            "status": "success",
+            "data": [s.to_dict() for s in user_sessions],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"列出会话失败: {str(e)}")

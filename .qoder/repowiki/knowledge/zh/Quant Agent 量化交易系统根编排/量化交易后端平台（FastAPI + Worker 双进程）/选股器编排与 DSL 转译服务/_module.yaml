@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: backend/screener
+title: 选股器编排与 DSL 转译服务
+scope:
+    - backend/services/screener/
+    - backend/app/screener_app.py
+source_files: []
+depends_on: []
+related_to: []

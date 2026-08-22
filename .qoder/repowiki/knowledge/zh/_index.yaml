@@ -3,11 +3,11 @@ schema_version: 1
 locale: zh-CN
 branch: develop
 nodes_managed: true
-exported_at: "2026-08-22T00:50:29Z"
+exported_at: "2026-08-22T01:24:48Z"
 modules:
     "":
-        dir_name: Quant Agent 量化交易平台根工程
-        title: Quant Agent 量化交易平台根工程
+        dir_name: Quant Agent 量化交易系统根编排
+        title: Quant Agent 量化交易系统根编排
         scope:
             - README.md
             - .gitignore
@@ -67,8 +67,8 @@ modules:
         depends_on: []
         related_to: []
     backend:
-        dir_name: Quant Agent 后端平台（HTTP 网关 + 后台 Worker 集群）
-        title: Quant Agent 后端平台（HTTP 网关 + 后台 Worker 集群）
+        dir_name: 量化交易后端平台（FastAPI + Worker 双进程）
+        title: 量化交易后端平台（FastAPI + Worker 双进程）
         scope:
             - backend/
         source_files: []
@@ -90,8 +90,8 @@ modules:
         depends_on: []
         related_to: []
     backend/ai_research:
-        dir_name: AI 研究服务与评估体系
-        title: AI 研究服务与评估体系
+        dir_name: AI 研究能力与质量保障服务集
+        title: AI 研究能力与质量保障服务集
         scope:
             - backend/services/ai_narrator/
             - backend/services/expert_team/
@@ -101,8 +101,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: hermes_agent
+        related_to: []
     backend/alerting:
         dir_name: 告警引擎与多通道推送系统
         title: 告警引擎与多通道推送系统
@@ -113,13 +112,10 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/api_routers/system_admin_routers
-            - path: backend/screener
-            - path: backend/workers_daemons
+        related_to: []
     backend/api_routers:
-        dir_name: 后端 API 网关与路由编排层
-        title: 后端 API 网关与路由编排层
+        dir_name: 后端 HTTP API 网关与路由编排（backend_routers + app + schemas）
+        title: 后端 HTTP API 网关与路由编排（backend/routers + app + schemas）
         scope:
             - backend/routers/
             - backend/schemas/
@@ -134,8 +130,7 @@ modules:
             - backend/api_routers/risk_backtest_routers
             - backend/api_routers/system_admin_routers
         depends_on: []
-        related_to:
-            - path: frontend
+        related_to: []
     backend/api_routers/app_services:
         dir_name: 量化应用用例编排层（backend_app）
         title: 量化应用用例编排层（backend/app）
@@ -158,8 +153,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/api_routers/app_services/trading_apps
+        related_to: []
     backend/api_routers/app_services/optimization_apps:
         dir_name: 量化策略优化用例（网格搜索_蒙特卡洛_Walk-Forward）
         title: 量化策略优化用例（网格搜索/蒙特卡洛/Walk-Forward）
@@ -181,8 +175,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/api_routers/app_services/analytics_apps
+        related_to: []
     backend/api_routers/data_source_routers:
         dir_name: 数据源与数据湖路由层（限流_健康_投票_快照）
         title: 数据源与数据湖路由层（限流/健康/投票/快照）
@@ -204,8 +197,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: data_subservice
+        related_to: []
     backend/api_routers/portfolio_trading_routers:
         dir_name: 投资组合与交易路由层（Portfolio_Trade_Paper）
         title: 投资组合与交易路由层（Portfolio/Trade/Paper）
@@ -216,8 +208,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/api_routers/risk_backtest_routers
+        related_to: []
     backend/api_routers/research_analysis_routers:
         dir_name: 投研与因子分析 HTTP 路由层
         title: 投研与因子分析 HTTP 路由层
@@ -239,8 +230,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/api_routers/portfolio_trading_routers
+        related_to: []
     backend/api_routers/system_admin_routers:
         dir_name: 系统管理 API 路由层（认证、系统监控、告警中心）
         title: 系统管理 API 路由层（认证、系统监控、告警中心）
@@ -251,8 +241,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/alerting
+        related_to: []
     backend/backtest_engine:
         dir_name: 回测引擎与策略编排层
         title: 回测引擎与策略编排层
@@ -311,8 +300,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/backtest_engine/event_engine
+        related_to: []
     backend/backtest_engine/engine_core/strategy_and_verification:
         dir_name: 策略抽象、订单网关与回测同构校验
         title: 策略抽象、订单网关与回测同构校验
@@ -333,10 +321,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/backtest_engine/engine_core/drivers
-            - path: backend/screener
-            - path: backend/tests
+        related_to: []
     backend/backtest_engine/strategies:
         dir_name: 量化交易策略集合
         title: 量化交易策略集合
@@ -356,8 +341,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/migrations_scripts
+        related_to: []
     backend/datalake:
         dir_name: 数据湖与 K 线快照服务（Kline Warehouse _ Snapshot _ PIT）
         title: 数据湖与 K 线快照服务（Kline Warehouse / Snapshot / PIT）
@@ -367,8 +351,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/workers_daemons
+        related_to: []
     backend/datasource_market_data:
         dir_name: 多数据源市场数据服务聚合层
         title: 多数据源市场数据服务聚合层
@@ -402,10 +385,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/datasource_market_data/market_quote_sources
-            - path: backend/macro_fundamental
-            - path: data_subservice
+        related_to: []
     backend/datasource_market_data/market_quote_sources:
         dir_name: 市场报价数据源适配层（AKShare _ Finnhub _ FMP _ Tushare）
         title: 市场报价数据源适配层（AKShare / Finnhub / FMP / Tushare）
@@ -417,9 +397,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/datasource_market_data/fundamental_macro_search
-            - path: backend/tests
+        related_to: []
     backend/macro_fundamental:
         dir_name: 宏观_资金流_情绪与复盘早报服务
         title: 宏观/资金流/情绪与复盘早报服务
@@ -432,8 +410,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/datasource_market_data/fundamental_macro_search
+        related_to: []
     backend/migrations_scripts:
         dir_name: 数据库迁移、运维脚本与技术指标工具集
         title: 数据库迁移、运维脚本与技术指标工具集
@@ -444,8 +421,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/core_infrastructure
+        related_to: []
     backend/oms_trading:
         dir_name: OMS 订单管理系统与纸面交易结算
         title: OMS 订单管理系统与纸面交易结算
@@ -458,9 +434,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/risk_portfolio
-            - path: backend/workers_daemons
+        related_to: []
     backend/risk_portfolio:
         dir_name: 投资组合风控与融资融券余额服务
         title: 投资组合风控与融资融券余额服务
@@ -471,8 +445,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/oms_trading
+        related_to: []
     backend/screener:
         dir_name: 选股器编排与 DSL 转译服务
         title: 选股器编排与 DSL 转译服务
@@ -482,21 +455,16 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/alerting
-            - path: backend/backtest_engine/event_engine
-            - path: prompts
+        related_to: []
     backend/tests:
-        dir_name: 后端测试套件（pytest + vcrpy 契约回放）
-        title: 后端测试套件（pytest + vcrpy 契约回放）
+        dir_name: 后端全量 pytest 测试套件
+        title: 后端全量 pytest 测试套件
         scope:
             - backend/tests/
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/backtest_engine/event_engine
-            - path: backend/datasource_market_data/market_quote_sources
+        related_to: []
     backend/workers_daemons:
         dir_name: 后台 Worker 与守护进程集群（数据采集_告警_OMS_CEP_数据质量）
         title: 后台 Worker 与守护进程集群（数据采集/告警/OMS/CEP/数据质量）
@@ -507,10 +475,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/alerting
-            - path: backend/datalake
-            - path: backend/oms_trading
+        related_to: []
     client_flutter:
         dir_name: Quant Agent Flutter 客户端（CLI-01 脚手架）
         title: Quant Agent Flutter 客户端（CLI-01 脚手架）
@@ -528,12 +493,10 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/api_routers/market_data_routers
-            - path: backend/datasource_market_data/fundamental_macro_search
+        related_to: []
     docs:
-        dir_name: 量化交易系统文档与架构知识库
-        title: 量化交易系统文档与架构知识库
+        dir_name: 量化交易系统文档与架构规范集
+        title: 量化交易系统文档与架构规范集
         scope:
             - docs/
         source_files: []
@@ -548,19 +511,16 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/api_routers
+        related_to: []
     hermes_agent:
-        dir_name: Hermes Agent 主脑与工具编排
-        title: Hermes Agent 主脑与工具编排
+        dir_name: Hermes 量化交易对话 Agent
+        title: Hermes 量化交易对话 Agent
         scope:
             - hermes_agent/
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/ai_research
-            - path: prompts
+        related_to: []
     prompts:
         dir_name: Prompt 版本管理与模板库
         title: Prompt 版本管理与模板库
@@ -569,9 +529,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: backend/screener
-            - path: hermes_agent
+        related_to: []
     scripts:
         dir_name: 运维脚本与数据源探针集
         title: 运维脚本与数据源探针集

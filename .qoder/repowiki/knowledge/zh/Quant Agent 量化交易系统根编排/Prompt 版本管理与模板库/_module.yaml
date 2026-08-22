@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: prompts
+title: Prompt 版本管理与模板库
+scope:
+    - prompts/
+source_files: []
+depends_on: []
+related_to: []

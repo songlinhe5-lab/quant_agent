@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: frontend
+title: 量化交易前端工作台（Quant Agent Frontend）
+scope:
+    - frontend/
+source_files: []
+depends_on: []
+related_to: []

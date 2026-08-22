@@ -155,17 +155,18 @@ class SessionEventLog:
     # ── AGENT-15: Rollout 持久化相关 ───────────────────────────────────────
 
     @classmethod
-    def load_from_rollout(cls, session_id: str) -> "SessionEventLog":
+    def load_from_rollout(cls, session_id: str, base_dir: Optional[str] = None) -> "SessionEventLog":
         """
         从 Rollout 加载事件日志（冷启动恢复）。
 
         Args:
             session_id: 会话 ID
+            base_dir: Rollout 存储根目录（None=默认 logs/sessions）
         Returns:
             重放后的 SessionEventLog 实例
         """
         _RolloutStorage, _, SessionEvent = _import_rollout()
-        storage = _RolloutStorage()
+        storage = _RolloutStorage(base_dir=base_dir) if base_dir else _RolloutStorage()
         events = storage.load_events(session_id)
 
         # 创建新的 SessionEventLog 实例（不触发 Rollout 写入）
